@@ -3,7 +3,6 @@ import shutil
 from pathlib import Path
 
 import numpy as np
-import polars as pl
 
 import artistools as at
 
@@ -98,7 +97,8 @@ def verify_file_checksums(
                 m.update(chunk)
 
         checksums_actual[fullpath] = str(m.hexdigest())
-        print(f"{filename}: {checksums_actual[fullpath]} expected {checksum_expected}")
+        strpassfail = "pass" if checksums_actual[fullpath] == checksum_expected else "FAILED"
+        print(f"{filename}: {strpassfail} if actual {checksums_actual[fullpath]} expected {checksum_expected}")
 
     for filename, checksum_expected in checksums_expected.items():
         fullpath = Path(folder) / filename
@@ -113,12 +113,13 @@ def test_maptogrid() -> None:
         testdatapath / "kilonova", outpath_kn, dirs_exist_ok=True, ignore=shutil.ignore_patterns("trajectories")
     )
     at.inputmodel.maptogrid.main(argsraw=[], inputpath=outpath_kn, outputpath=outpath_kn, ncoordgrid=16)
+    (outpath_kn / "gridcontributions.txt").rename(outpath_kn / "gridcontributions_maptogrid.txt")
 
     verify_file_checksums(
         {
             "ejectapartanalysis.dat": "e8694a679515c54c2b4867122122263a375d9ffa144a77310873ea053bb5a8b4",
             "grid.dat": "ea930d0decca79d2e65ac1df1aaaa1eb427fdf45af965a623ed38240dce89954",
-            "gridcontributions.txt": "a2c09b96d32608db2376f9df61980c2ad1423066b579fbbe744f07e536f2891e",
+            "gridcontributions_maptogrid.txt": "a2c09b96d32608db2376f9df61980c2ad1423066b579fbbe744f07e536f2891e",
         },
         digest="sha256",
         folder=outpath_kn,
@@ -126,25 +127,61 @@ def test_maptogrid() -> None:
 
 
 def test_makeartismodelfromparticlegridmap() -> None:
-    outpath_kn = outputpath / "kilonova"
-    at.inputmodel.modelfromhydro.main(
-        argsraw=[],
-        gridfolderpath=outpath_kn,
-        trajectoryroot=testdatapath / "kilonova" / "trajectories",
-        outputpath=outpath_kn,
-        dimensions=3,
-        targetmodeltime_days=0.1,
-    )
+    gridfolderpath = outputpath / "kilonova"
+    checksums_3d: dict[Path | str, str] = {
+        "gridcontributions.txt": "12f006c43c0c8d1f84c3927b3c80959c1b2cecc01598be92c2f24a130892bc60",
+        "abundances.txt": "5f782005ce879a8c81c43d0a7a791ad9b177eee8630b4771586949bf7fbca28e",
+        "model.txt": "9a40a97c13eb5f100628d9e69f6b773635803ef75062645d5be9141a88be471e",
+    }
 
-    verify_file_checksums(
-        {
-            "abundances.txt": "3e7ad41548eedcc3b3a042208fd6ad6d7b6dd35c474783dc2abbbc5036f306aa",
-            "model.txt": "7a3eee92f9653eb478a01080d16b711773031bedd38a90ec167c7fda98c15ef9",
-            "gridcontributions.txt": "12f006c43c0c8d1f84c3927b3c80959c1b2cecc01598be92c2f24a130892bc60",
-        },
-        digest="sha256",
-        folder=outpath_kn,
-    )
+    dfcontribs = {}
+    for dimensions in [3, 2, 1]:
+        outpath_kn = outputpath / f"kilonova_{dimensions:d}d"
+        shutil.copyfile(gridfolderpath / "gridcontributions_maptogrid.txt", gridfolderpath / "gridcontributions.txt")
+
+        at.inputmodel.modelfromhydro.main(
+            argsraw=[],
+            gridfolderpath=gridfolderpath,
+            trajectoryroot=testdatapath / "kilonova" / "trajectories",
+            outputpath=outpath_kn,
+            dimensions=dimensions,
+            targetmodeltime_days=0.1,
+        )
+
+        dfcontribs[dimensions] = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(
+            outputpath / f"kilonova_{dimensions:d}d"
+        )
+
+        if dimensions == 3:
+            verify_file_checksums(
+                checksums_3d,
+                digest="sha256",
+                folder=outpath_kn,
+            )
+            dfcontrib_source = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(gridfolderpath)
+
+            assert dfcontrib_source.frame_equal(
+                dfcontribs[3].drop("frac_of_cellmass").rename({"frac_of_cellmass_includemissing": "frac_of_cellmass"})
+            )
+        else:
+            dfmodel3lz, modelmeta3 = at.inputmodel.get_modeldata_polars(modelpath=outputpath / f"kilonova_{3:d}d")
+            dfmodel3 = dfmodel3lz.collect()
+            dfmodel_lowerdlz, modelmeta_lowerd = at.inputmodel.get_modeldata_polars(
+                modelpath=outputpath / f"kilonova_{3:d}d"
+            )
+            dfmodel_lowerd = dfmodel_lowerdlz.collect()
+
+            # check that the total mass is conserved
+            assert np.isclose(dfmodel_lowerd["mass_g"].sum(), dfmodel3["mass_g"].sum())
+            assert np.isclose(dfmodel_lowerd["tracercount"].sum(), dfmodel3["tracercount"].sum())
+
+            # check that the total mass of each species is conserved
+            for col in dfmodel3.columns:
+                if col.startswith("X_"):
+                    assert np.isclose(
+                        (dfmodel_lowerd["mass_g"] * dfmodel_lowerd[col]).sum(),
+                        (dfmodel3["mass_g"] * dfmodel3[col]).sum(),
+                    )
 
 
 def test_make1dmodelfromcone() -> None:
@@ -175,7 +212,7 @@ def test_maketardismodel() -> None:
 
 def test_make_empty_abundance_file() -> None:
     clear_modelfiles()
-    at.inputmodel.save_empty_abundance_file(ngrid=50, outputfilepath=outputpath)
+    at.inputmodel.save_empty_abundance_file(npts_model=50, outputfilepath=outputpath)
 
 
 def test_opacity_by_Ye_file() -> None:
@@ -193,21 +230,22 @@ def test_plotdensity() -> None:
 
 def test_save_load_3d_model() -> None:
     clear_modelfiles()
-    dfmodel_pl, modelmeta = at.inputmodel.get_empty_3d_model(ncoordgrid=50, vmax=1000, t_model_init_days=1)
-    dfmodel = dfmodel_pl.collect().to_pandas(use_pyarrow_extension_array=True)
-    dfmodel.loc[75000, ["rho"]] = 1
-    dfmodel.loc[75001, ["rho"]] = 2
-    dfmodel.loc[95200, ["rho"]] = 3
-    dfmodel.loc[75001, ["rho"]] = 0.5
+    lzdfmodel, modelmeta = at.inputmodel.get_empty_3d_model(ncoordgrid=50, vmax=1000, t_model_init_days=1)
+    dfmodel = lzdfmodel.collect()
+
+    dfmodel[75000, "rho"] = 1
+    dfmodel[75001, "rho"] = 2
+    dfmodel[95200, "rho"] = 3
+    dfmodel[75001, "rho"] = 0.5
 
     at.inputmodel.save_modeldata(outpath=outputpath, dfmodel=dfmodel, modelmeta=modelmeta)
-    dfmodel2, modelmeta2 = at.inputmodel.get_modeldata(modelpath=outputpath)
-    assert dfmodel.equals(dfmodel2.drop("modelgridindex", axis=1))
+    dfmodel2, modelmeta2 = at.inputmodel.get_modeldata_polars(modelpath=outputpath)
+    assert dfmodel.frame_equal(dfmodel2.collect())
     assert modelmeta == modelmeta2
 
     # next load will use the parquet file
-    dfmodel3, modelmeta3 = at.inputmodel.get_modeldata(modelpath=outputpath)
-    assert dfmodel.equals(dfmodel3.drop("modelgridindex", axis=1))
+    dfmodel3, modelmeta3 = at.inputmodel.get_modeldata_polars(modelpath=outputpath)
+    assert dfmodel.frame_equal(dfmodel3.collect())
     assert modelmeta == modelmeta3
 
 
@@ -221,14 +259,11 @@ def test_dimension_reduce_3d_model() -> None:
     mgi2 = 25 * 25 * 25 + 25 * 25 + 25
     dfmodel3d_pl[mgi2, "rho"] = 1
     dfmodel3d_pl[mgi1, "X_Ni56"] = 0.75
-    dfmodel3d = dfmodel3d_pl.to_pandas(use_pyarrow_extension_array=True)
-    dfmodel3d = (
-        at.inputmodel.add_derived_cols_to_modeldata(
-            dfmodel=pl.DataFrame(dfmodel3d), modelmeta=modelmeta_3d, derived_cols=["mass_g"]
-        )
-        .collect()
-        .to_pandas(use_pyarrow_extension_array=True)
-    )
+
+    dfmodel3d_pl = at.inputmodel.add_derived_cols_to_modeldata(
+        dfmodel=dfmodel3d_pl, modelmeta=modelmeta_3d, derived_cols=["mass_g"]
+    ).collect()
+
     for outputdimensions in [1, 2]:
         (
             dfmodel_lowerd,
@@ -236,23 +271,20 @@ def test_dimension_reduce_3d_model() -> None:
             dfgridcontributions_lowerd,
             modelmeta_lowerd,
         ) = at.inputmodel.dimension_reduce_3d_model(
-            dfmodel=dfmodel3d, modelmeta=modelmeta_3d, outputdimensions=outputdimensions
+            dfmodel=dfmodel3d_pl, modelmeta=modelmeta_3d, outputdimensions=outputdimensions
         )
-        dfmodel_lowerd = (
-            at.inputmodel.add_derived_cols_to_modeldata(
-                dfmodel=pl.DataFrame(dfmodel_lowerd), modelmeta=modelmeta_lowerd, derived_cols=["mass_g"]
-            )
-            .collect()
-            .to_pandas(use_pyarrow_extension_array=True)
-        )
+
+        dfmodel_lowerd = at.inputmodel.add_derived_cols_to_modeldata(
+            dfmodel=dfmodel_lowerd, modelmeta=modelmeta_lowerd, derived_cols=["mass_g"]
+        ).collect()
 
         # check that the total mass is conserved
-        assert np.isclose(dfmodel_lowerd["mass_g"].sum(), dfmodel3d["mass_g"].sum())
+        assert np.isclose(dfmodel_lowerd["mass_g"].sum(), dfmodel3d_pl["mass_g"].sum())
 
         # check that the total mass of each species is conserved
-        for col in dfmodel3d.columns:
+        for col in dfmodel3d_pl.columns:
             if col.startswith("X_"):
                 assert np.isclose(
                     (dfmodel_lowerd["mass_g"] * dfmodel_lowerd[col]).sum(),
-                    (dfmodel3d["mass_g"] * dfmodel3d[col]).sum(),
+                    (dfmodel3d_pl["mass_g"] * dfmodel3d_pl[col]).sum(),
                 )

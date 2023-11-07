@@ -1,4 +1,3 @@
-import argparse
 import errno
 import gc
 import math
@@ -144,8 +143,6 @@ def read_modelfile_text(
             dtypes=pldtypes,
             truncate_ragged_lines=True,
         )
-        if "tracercount" in dfmodel.columns:
-            dfmodel = dfmodel.with_columns(pl.col("tracercount").cast(pl.Int32))
     else:
         nrows_read = 1 if getheadersonly else npts_model
         skiprows: list[int] | int | None = (
@@ -160,7 +157,6 @@ def read_modelfile_text(
 
         dtypes: defaultdict[str, str] = defaultdict(lambda: "float32[pyarrow]")
         dtypes["inputcellid"] = "int32[pyarrow]"
-        dtypes["tracercount"] = "int32[pyarrow]"
 
         # each cell takes up two lines in the model file
         dfmodelpd = pd.read_csv(
@@ -366,7 +362,7 @@ def get_modeldata_polars(
     if dfmodel is None:
         dfmodel = dfmodel_in
     elif dfmodel.schema != dfmodel_in.schema:
-        print("ERRORL: parquet schema does not match model.txt. Remove {filenameparquet} and try again.")
+        print(f"ERROR: parquet schema does not match model.txt. Remove {filenameparquet} and try again.")
         raise AssertionError
 
     mebibyte = 1024 * 1024
@@ -450,12 +446,13 @@ def get_empty_3d_model(
         ]
     )
 
-    dfmodel = dfmodel.drop(["modelgridindex", "n_x", "n_y", "n_z"])
-
     standardcols = get_standard_columns(3, includenico57=includenico57)
+
     dfmodel = dfmodel.with_columns(
         [pl.lit(0.0, dtype=pl.Float32).alias(colname) for colname in standardcols if colname not in dfmodel.columns]
     )
+
+    dfmodel = dfmodel.select([*standardcols, "modelgridindex"])
 
     return dfmodel, modelmeta
 
@@ -774,59 +771,7 @@ def get_mean_cell_properties_of_angle_bin(
     return mean_bin_properties
 
 
-def get_3d_model_data_merged_model_and_abundances_minimal(args: argparse.Namespace) -> pd.DataFrame:
-    """Get 3D data without generating all the extra columns in standard routine.
-
-    Needed for large (eg. 200^3) models.
-    """
-    model = get_3d_modeldata_minimal(args.modelpath[0])
-    abundances = get_initelemabundances(args.modelpath[0])
-
-    with Path(args.modelpath[0], "model.txt").open() as fmodelin:
-        fmodelin.readline()  # npts_model3d
-        args.t_model = float(fmodelin.readline())  # days
-        args.vmax = float(fmodelin.readline())  # v_max in [cm/s]
-
-    print(model.keys())
-
-    merge_dfs = model.merge(abundances, how="inner", on="inputcellid")
-
-    del model
-    del abundances
-    gc.collect()
-
-    merge_dfs.info(verbose=False, memory_usage="deep")
-
-    return merge_dfs
-
-
-def get_3d_modeldata_minimal(modelpath: str | Path) -> pd.DataFrame:
-    """Read 3D model without generating all the extra columns in standard routine.
-
-    Needed for large (eg. 200^3) models.
-    """
-    model = pd.read_csv(Path(modelpath, "model.txt"), delim_whitespace=True, header=None, skiprows=3, dtype=np.float64)
-    columns = [
-        "inputcellid",
-        "cellpos_in[z]",
-        "cellpos_in[y]",
-        "cellpos_in[x]",
-        "rho_model",
-        "X_Fegroup",
-        "X_Ni56",
-        "X_Co56",
-        "X_Fe52",
-        "X_Cr48",
-    ]
-    model = pd.DataFrame(model.to_numpy().reshape(-1, 10))
-    model.columns = columns
-
-    print("model.txt memory usage:")
-    model.info(verbose=False, memory_usage="deep")
-    return model
-
-
-def get_standard_columns(dimensions: int, includenico57: bool = False) -> list[str]:
+def get_standard_columns(dimensions: int, includenico57: bool = False, includeabund: bool = True) -> list[str]:
     """Get standard (artis classic) columns for modeldata DataFrame."""
     match dimensions:
         case 1:
@@ -835,6 +780,9 @@ def get_standard_columns(dimensions: int, includenico57: bool = False) -> list[s
             cols = ["inputcellid", "pos_rcyl_mid", "pos_z_mid", "rho"]
         case 3:
             cols = ["inputcellid", "pos_x_min", "pos_y_min", "pos_z_min", "rho"]
+
+    if not includeabund:
+        return cols
 
     cols += ["X_Fegroup", "X_Ni56", "X_Co56", "X_Fe52", "X_Cr48"]
 
@@ -851,7 +799,6 @@ def save_modeldata(
     headercommentlines: list[str] | None = None,
     modelmeta: dict[str, t.Any] | None = None,
     twolinespercell: bool = False,
-    float_format: str = ".4e",
     **kwargs: t.Any,
 ) -> None:
     """Save an artis model.txt (density and composition versus velocity) from a pandas DataFrame of cell properties and other metadata such as the time after explosion.
@@ -871,8 +818,10 @@ def save_modeldata(
     dfmodel must contain columns: inputcellid, pos_x_min, pos_y_min, pos_z_min, rho, X_Fegroup, X_Ni56, X_Co56", X_Fe52, X_Cr48
     modelmeta must define: vmax, ncoordgridr and ncoordgridz
     """
-    if isinstance(dfmodel, pl.LazyFrame | pl.DataFrame):
-        dfmodel = dfmodel.lazy().collect().to_pandas(use_pyarrow_extension_array=True)
+    if isinstance(dfmodel, pd.DataFrame):
+        dfmodel = pl.from_pandas(dfmodel)
+
+    dfmodel = dfmodel.lazy().collect()
 
     if modelmeta is None:
         modelmeta = {}
@@ -904,7 +853,8 @@ def save_modeldata(
         print(f" 2D grid size: {len(dfmodel)} ({modelmeta['ncoordgridrcyl']} x {modelmeta['ncoordgridz']})")
         assert modelmeta["ncoordgridrcyl"] * modelmeta["ncoordgridz"] == len(dfmodel)
     elif modelmeta["dimensions"] == 3:
-        dfmodel = dfmodel.rename(columns={"gridindex": "inputcellid"})
+        if "gridindex" in dfmodel.columns:
+            dfmodel = dfmodel.rename({"gridindex": "inputcellid"})
         griddimension = int(round(len(dfmodel) ** (1.0 / 3.0)))
         print(f" 3D grid size: {len(dfmodel)} ({griddimension}^3)")
         assert griddimension**3 == len(dfmodel)
@@ -920,9 +870,9 @@ def save_modeldata(
     # set missing radioabundance columns to zero
     for col in standardcols:
         if col not in dfmodel.columns and col.startswith("X_"):
-            dfmodel[col] = 0.0
+            dfmodel = dfmodel.with_columns(pl.lit(0.0).alias(col))
 
-    dfmodel = dfmodel.astype({"inputcellid": int})
+    dfmodel = dfmodel.with_columns(pl.col("inputcellid").cast(pl.Int32))
     customcols = [col for col in dfmodel.columns if col not in standardcols]
     customcols.sort(
         key=lambda col: at.get_z_a_nucname(col) if col.startswith("X_") else (float("inf"), 0)
@@ -959,58 +909,34 @@ def save_modeldata(
 
         abundcols = [*[col for col in standardcols if col.startswith("X_")], *customcols]
 
+        zeroabund = " ".join(["0.0" for _ in abundcols])
         if modelmeta["dimensions"] == 1:
-            for cell in dfmodel.itertuples(index=False):
-                fmodel.write(f"{cell.inputcellid:d} {cell.vel_r_max_kmps:9.2f} {cell.logrho:10.8f} ")
-                fmodel.write(" ".join([f"{getattr(cell, col)}" for col in abundcols]))
+            for inputcellid, vel_r_max_kmps, logrho, *othercolvals in dfmodel.select(
+                ["inputcellid", "vel_r_max_kmps", "logrho", *abundcols]
+            ).iter_rows():
+                fmodel.write(f"{inputcellid:d} {vel_r_max_kmps:9.2f} {logrho:10.8f} ")
+                fmodel.write(
+                    " ".join([(f"{colvalue:.4e}" if colvalue > 0.0 else "0.0") for colvalue in othercolvals])
+                    if logrho > -99.0
+                    else zeroabund
+                )
                 fmodel.write("\n")
 
         else:
-            zeroabund = " ".join(["0.0" for _ in abundcols])
-            line_end = "\n" if twolinespercell else " "
-            if modelmeta["dimensions"] == 2:
-                # Luke: quite a lot of code duplication here with the 3D case,
-                # but I think adding a function call per line would be too slow
-                for inputcellid, pos_rcyl_mid, pos_z_mid, rho, *othercolvals in dfmodel[
-                    ["inputcellid", "pos_rcyl_mid", "pos_z_mid", "rho", *abundcols]
-                ].itertuples(index=False, name=None):
-                    fmodel.write(f"{inputcellid:d} {pos_rcyl_mid} {pos_z_mid} {rho}{line_end}")
-                    fmodel.write(
-                        " ".join(
-                            [
-                                (
-                                    (f"{colvalue:{float_format}}" if colvalue > 0.0 else "0.0")
-                                    if isinstance(colvalue, float)
-                                    else f"{colvalue}"
-                                )
-                                for colvalue in othercolvals
-                            ]
-                        )
-                        if rho > 0.0
-                        else zeroabund
-                    )
-                    fmodel.write("\n")
-
-            elif modelmeta["dimensions"] == 3:
-                for inputcellid, posxmin, posymin, poszmin, rho, *othercolvals in dfmodel[
-                    ["inputcellid", "pos_x_min", "pos_y_min", "pos_z_min", "rho", *abundcols]
-                ].itertuples(index=False, name=None):
-                    fmodel.write(f"{inputcellid:d} {posxmin} {posymin} {poszmin} {rho}{line_end}")
-                    fmodel.write(
-                        " ".join(
-                            [
-                                (
-                                    (f"{colvalue:{float_format}}" if colvalue > 0.0 else "0.0")
-                                    if isinstance(colvalue, float)
-                                    else f"{colvalue}"
-                                )
-                                for colvalue in othercolvals
-                            ]
-                        )
-                        if rho > 0.0
-                        else zeroabund
-                    )
-                    fmodel.write("\n")
+            lineend = "\n" if twolinespercell else " "
+            startcols = get_standard_columns(modelmeta["dimensions"], includeabund=False)
+            dfmodel = dfmodel.select([*startcols, *abundcols])
+            nstartcols = len(startcols)
+            for colvals in dfmodel.iter_rows():
+                startvals = colvals[:nstartcols]
+                fmodel.write(" ".join(str(val) for val in startvals))
+                fmodel.write(lineend)
+                fmodel.write(
+                    " ".join((f"{colvalue:.4e}" if colvalue > 0.0 else "0.0") for colvalue in colvals[nstartcols:])
+                    if startvals[-1] > 0.0
+                    else zeroabund
+                )
+                fmodel.write("\n")
 
     print(f"Saved {modelfilepath} (took {time.perf_counter() - timestart:.1f} seconds)")
 
@@ -1112,7 +1038,7 @@ def get_initelemabundances_polars(
 
 
 def save_initelemabundances(
-    dfelabundances: pd.DataFrame,
+    dfelabundances: pd.DataFrame | pl.DataFrame | pl.LazyFrame,
     outpath: Path | str | None = None,
     headercommentlines: t.Sequence[str] | None = None,
 ) -> None:
@@ -1131,11 +1057,21 @@ def save_initelemabundances(
     else:
         abundancefilename = Path(outpath)
 
-    dfelabundances = dfelabundances.astype({"inputcellid": int})
-    atomic_numbers = [
-        at.get_atomic_number(colname[2:]) for colname in dfelabundances.columns if colname.startswith("X_")
-    ]
-    elcolnames = [f"X_{at.get_elsymbol(Z)}" for Z in range(1, 1 + max(atomic_numbers))]
+    if isinstance(dfelabundances, pd.DataFrame):
+        dfelabundances = pl.from_pandas(dfelabundances)
+
+    dfelabundances = dfelabundances.clone().lazy().collect()
+
+    dfelabundances = dfelabundances.with_columns([pl.col("inputcellid").cast(pl.Int32)])
+
+    atomic_numbers = {
+        at.get_atomic_number(colname[2:]) for colname in dfelabundances.select(pl.selectors.starts_with("X_")).columns
+    }
+    max_atomic_number = max([30, *atomic_numbers])
+    elcolnames = [f"X_{at.get_elsymbol(Z)}" for Z in range(1, 1 + max_atomic_number)]
+    for colname in elcolnames:
+        if colname not in dfelabundances.columns:
+            dfelabundances = dfelabundances.with_columns(pl.lit(0.0).alias(colname))
 
     # set missing elemental abundance columns to zero
     for col in elcolnames:
@@ -1149,29 +1085,27 @@ def save_initelemabundances(
     with Path(abundancefilename).open("w", encoding="utf-8") as fabund:
         if headercommentlines is not None:
             fabund.write("\n".join([f"# {line}" for line in headercommentlines]) + "\n")
-        for row in dfelabundances.itertuples(index=False):
-            fabund.write(f"{row.inputcellid:} ")
-            fabund.write(" ".join([f"{getattr(row, colname, 0.):.6e}" for colname in elcolnames]))
+        for inputcellid, *abundvals in dfelabundances.select(["inputcellid", *elcolnames]).iter_rows():
+            fabund.write(f"{inputcellid:} ")
+            fabund.write(" ".join([f"{abund:.6e}" for abund in abundvals]))
             fabund.write("\n")
 
     print(f"Saved {abundancefilename} (took {time.perf_counter() - timestart:.1f} seconds)")
 
 
-def save_empty_abundance_file(ngrid: int, outputfilepath: str | Path = Path()) -> None:
+def save_empty_abundance_file(npts_model: int, outputfilepath: str | Path = Path()) -> None:
     """Save dummy abundance file with only zeros."""
     if Path(outputfilepath).is_dir():
         outputfilepath = Path(outputfilepath) / "abundances.txt"
 
-    Z_atomic = np.arange(1, 31)
-
-    abundancedata: dict[str, t.Any] = {"cellid": range(1, ngrid + 1)}
-    for atomic_number in Z_atomic:
-        abundancedata[f"Z={atomic_number}"] = np.zeros(ngrid)
-
-    # abundancedata['Z=28'] = np.ones(ngrid)
-
-    dfabundances = pd.DataFrame(data=abundancedata).round(decimals=5)
-    dfabundances.to_csv(outputfilepath, header=False, sep=" ", index=False)
+    save_initelemabundances(
+        pl.DataFrame(
+            {
+                "inputcellid": range(1, npts_model + 1),
+            }
+        ),
+        outpath=outputfilepath,
+    )
 
 
 def get_dfmodel_dimensions(dfmodel: pd.DataFrame | pl.DataFrame | pl.LazyFrame) -> int:
@@ -1183,17 +1117,19 @@ def get_dfmodel_dimensions(dfmodel: pd.DataFrame | pl.DataFrame | pl.LazyFrame) 
 
 
 def dimension_reduce_3d_model(
-    dfmodel: pd.DataFrame,
+    dfmodel: pl.DataFrame | pl.LazyFrame,
     outputdimensions: int,
-    dfelabundances: pd.DataFrame | None = None,
-    dfgridcontributions: pd.DataFrame | None = None,
+    dfelabundances: pl.DataFrame | None = None,
+    dfgridcontributions: pl.DataFrame | None = None,
     ncoordgridr: int | None = None,
     ncoordgridz: int | None = None,
     modelmeta: dict[str, t.Any] | None = None,
     **kwargs: t.Any,
-) -> tuple[pd.DataFrame, pd.DataFrame | None, pd.DataFrame | None, dict[str, t.Any]]:
+) -> tuple[pl.DataFrame, pl.DataFrame | None, pl.DataFrame | None, dict[str, t.Any]]:
     """Convert 3D Cartesian grid model to 1D spherical or 2D cylindrical. Particle gridcontributions and an elemental abundance table can optionally be updated to match."""
     assert outputdimensions in {1, 2}
+
+    dfmodel = dfmodel.lazy().collect()
 
     if modelmeta is None:
         modelmeta = {}
@@ -1218,11 +1154,17 @@ def dimension_reduce_3d_model(
 
     print(f"Resampling 3D model with {ngridpoints} cells to {outputdimensions}D...")
     timestart = time.perf_counter()
-    dfmodel = dfmodel.copy()
-    celldensity = dict(dfmodel[["inputcellid", "rho"]].itertuples(index=False))
 
-    for ax in ["x", "y", "z"]:
-        dfmodel[f"vel_{ax}_mid"] = (dfmodel[f"pos_{ax}_min"] + (0.5 * wid_initx)) / t_model_init_seconds
+    celldensity: dict[int, float] = {
+        int(cellid): float(rho) for cellid, rho in dfmodel[["inputcellid", "rho"]].iter_rows()
+    }
+
+    dfmodel = dfmodel.with_columns(
+        [
+            ((pl.col(f"pos_{ax}_min") + (0.5 * wid_initx)) / t_model_init_seconds).alias(f"vel_{ax}_mid")
+            for ax in ["x", "y", "z"]
+        ]
+    )
 
     km_to_cm = 1e5
     if ncoordgridr is None:
@@ -1232,15 +1174,17 @@ def dimension_reduce_3d_model(
         ncoordgridz = int(ncoordgridx)
 
     if outputdimensions == 2:
-        dfmodel["vel_rcyl_mid"] = np.sqrt(dfmodel["vel_x_mid"] ** 2 + dfmodel["vel_y_mid"] ** 2)
+        dfmodel = dfmodel.with_columns(
+            [(pl.col("vel_x_mid") ** 2 + pl.col("vel_y_mid") ** 2).sqrt().alias("vel_rcyl_mid")]
+        )
         modelmeta_out["ncoordgridz"] = ncoordgridz
         modelmeta_out["ncoordgridrcyl"] = ncoordgridr
         modelmeta_out["wid_init_z"] = 2 * xmax / ncoordgridz
         modelmeta_out["wid_init_rcyl"] = xmax / ncoordgridr
     else:
         # 1D
-        dfmodel["vel_r_mid"] = np.sqrt(
-            dfmodel["vel_x_mid"] ** 2 + dfmodel["vel_y_mid"] ** 2 + dfmodel["vel_z_mid"] ** 2
+        dfmodel = dfmodel.with_columns(
+            [(pl.col("vel_x_mid") ** 2 + pl.col("vel_y_mid") ** 2 + pl.col("vel_z_mid") ** 2).sqrt().alias("vel_r_mid")]
         )
         modelmeta_out["ncoordgridr"] = ncoordgridr
 
@@ -1262,14 +1206,12 @@ def dimension_reduce_3d_model(
             assert vel_r_max > vel_r_min
             cellindexout = n_z * ncoordgridr + n_r + 1
             if outputdimensions == 1:
-                matchedcells = dfmodel[(dfmodel["vel_r_mid"] > vel_r_min) & (dfmodel["vel_r_mid"] <= vel_r_max)]
+                matchedcells = dfmodel.filter(pl.col("vel_r_mid").is_between(vel_r_min, vel_r_max, closed="right"))
             elif outputdimensions == 2:
-                matchedcells = dfmodel[
-                    (dfmodel["vel_rcyl_mid"] > vel_r_min)
-                    & (dfmodel["vel_rcyl_mid"] <= vel_r_max)
-                    & (dfmodel["vel_z_mid"] > vel_z_min)
-                    & (dfmodel["vel_z_mid"] <= vel_z_max)
-                ]
+                matchedcells = dfmodel.filter(
+                    pl.col("vel_rcyl_mid").is_between(vel_r_min, vel_r_max, closed="right")
+                    & pl.col("vel_z_mid").is_between(vel_z_min, vel_z_max, closed="right")
+                )
 
             if len(matchedcells) == 0:
                 rho_out = 0
@@ -1282,7 +1224,7 @@ def dimension_reduce_3d_model(
                     shell_volume = (
                         math.pi * (vel_r_max**2 - vel_r_min**2) * (vel_z_max - vel_z_min) * t_model_init_seconds**3
                     )
-                rho_out = matchedcells.mass_g.sum() / shell_volume
+                rho_out = matchedcells["mass_g"].sum() / shell_volume
 
             cellout: dict[str, t.Any] = {"inputcellid": cellindexout}
 
@@ -1312,16 +1254,16 @@ def dimension_reduce_3d_model(
     outgridcontributions = []
 
     for cellindexout, (dictcell, matchedcells) in allmatchedcells.items():
-        matchedcellrhosum = matchedcells.rho.sum()
+        matchedcellrhosum = matchedcells["rho"].sum()
         nonempty = matchedcellrhosum > 0.0
         if matchedcellrhosum > 0.0 and dfgridcontributions is not None:
-            dfcellcont = dfgridcontributions[dfgridcontributions["cellindex"].isin(matchedcells.inputcellid)]
+            dfcellcont = dfgridcontributions.filter(pl.col("cellindex").is_in(matchedcells["inputcellid"]))
 
-            for particleid, dfparticlecontribs in dfcellcont.groupby("particleid"):
+            for particleid, dfparticlecontribs in dfcellcont.group_by("particleid"):
                 frac_of_cellmass_avg = (
                     sum(
-                        row.frac_of_cellmass * celldensity[row.cellindex]
-                        for row in dfparticlecontribs.itertuples(index=False)
+                        row["frac_of_cellmass"] * celldensity[row["cellindex"]]
+                        for row in dfparticlecontribs.iter_rows(named=True)
                     )
                     / matchedcellrhosum
                 )
@@ -1335,8 +1277,8 @@ def dimension_reduce_3d_model(
                 if includemissingcolexists:
                     frac_of_cellmass_includemissing_avg = (
                         sum(
-                            row.frac_of_cellmass_includemissing * celldensity[row.cellindex]
-                            for row in dfparticlecontribs.itertuples(index=False)
+                            row["frac_of_cellmass_includemissing"] * celldensity[row["cellindex"]]
+                            for row in dfparticlecontribs.iter_rows(named=True)
                         )
                         / matchedcellrhosum
                     )
@@ -1347,33 +1289,40 @@ def dimension_reduce_3d_model(
         for column in matchedcells.columns:
             if column.startswith("X_") or column in {"cellYe", "q"}:
                 # take mass-weighted average mass fraction
-                massfrac = np.dot(matchedcells[column], matchedcells.rho) / matchedcellrhosum if nonempty else 0.0
+                dotprod = matchedcells[column].dot(matchedcells["rho"])
+                assert isinstance(dotprod, float)
+                massfrac = dotprod / matchedcellrhosum if nonempty else 0.0
                 dictcell[column] = massfrac
 
         outcells.append(dictcell)
 
         if dfelabundances is not None:
-            abund_matchedcells = dfelabundances.loc[matchedcells.index] if nonempty else None
-            dictcellabundances = {"inputcellid": cellindexout}
+            abund_matchedcells = dfelabundances.filter(pl.col("inputcellid").is_in(matchedcells["inputcellid"]))
+            dictcellabundances: dict[str, int | float] = {"inputcellid": cellindexout}
             for column in dfelabundances.columns:
                 if column.startswith("X_"):
-                    massfrac = (
-                        np.dot(abund_matchedcells[column], matchedcells.rho) / matchedcellrhosum if nonempty else 0.0
-                    )
+                    dotprod = abund_matchedcells[column].dot(matchedcells["rho"]) if nonempty else 0.0
+                    assert isinstance(dotprod, float)
+                    massfrac = dotprod / matchedcellrhosum if nonempty else 0.0
                     dictcellabundances[column] = massfrac
 
             outcellabundances.append(dictcellabundances)
 
-    dfmodel_out = pd.DataFrame(outcells)
+    dfmodel_out = pl.DataFrame(outcells)
     modelmeta_out["npts_model"] = len(dfmodel_out)
 
-    dfabundances_out = pd.DataFrame(outcellabundances) if outcellabundances else None
+    dfabundances_out = pl.DataFrame(outcellabundances) if outcellabundances else None
 
-    dfgridcontributions_out = pd.DataFrame(outgridcontributions) if outgridcontributions else None
+    dfgridcontributions_out = pl.DataFrame(outgridcontributions) if outgridcontributions else None
 
     print(f"  took {time.perf_counter() - timestart:.1f} seconds")
 
-    return dfmodel_out, dfabundances_out, dfgridcontributions_out, modelmeta_out
+    return (
+        dfmodel_out,
+        dfabundances_out,
+        dfgridcontributions_out,
+        modelmeta_out,
+    )
 
 
 def scale_model_to_time(

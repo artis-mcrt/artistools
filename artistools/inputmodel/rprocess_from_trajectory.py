@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
-
 import argparse
+import gc
 import io
 import math
 import multiprocessing
@@ -29,11 +29,12 @@ def get_elemabund_from_nucabund(dfnucabund: pd.DataFrame) -> dict[str, float]:
     return dictelemabund
 
 
-def get_dfelemabund_from_dfmodel(dfmodel: pd.DataFrame, dfnucabundances: pd.DataFrame) -> pd.DataFrame:
+def get_dfelemabund_from_dfmodel(dfmodel: pl.DataFrame, dfnucabundances: pl.DataFrame) -> pl.DataFrame:
     timestart = time.perf_counter()
     print("Adding up isotopes for elemental abundances and creating dfelabundances...", end="", flush=True)
     elemisotopes: dict[int, list[str]] = {}
     nuclidesincluded = 0
+
     for colname in sorted(dfnucabundances.columns):
         if not colname.startswith("X_"):
             continue
@@ -43,30 +44,30 @@ def get_dfelemabund_from_dfmodel(dfmodel: pd.DataFrame, dfnucabundances: pd.Data
             elemisotopes[atomic_number].append(colname)
         else:
             elemisotopes[atomic_number] = [colname]
+
     elementsincluded = len(elemisotopes)
 
-    dfelabundances_partial = pd.DataFrame(
+    dfelabundances_partial = pl.DataFrame(
         {
-            "inputcellid": dfnucabundances.inputcellid,
+            "inputcellid": dfnucabundances["inputcellid"],
             **{
                 f"X_{at.get_elsymbol(atomic_number)}": (
-                    dfnucabundances[elemisotopes[atomic_number]].sum(axis=1, skipna=True)
+                    dfnucabundances.select(elemisotopes[atomic_number]).sum(axis=1)
                     if atomic_number in elemisotopes
                     else np.zeros(len(dfnucabundances))
                 )
                 for atomic_number in range(1, max(elemisotopes.keys()) + 1)
             },
         },
-        index=dfnucabundances.index,
     )
 
     # ensure cells with no traj contributions are included
-    dfelabundances = dfmodel[["inputcellid"]].merge(
+    dfelabundances = pl.DataFrame(pl.Series(name="inputcellid", values=dfmodel["inputcellid"], dtype=pl.Int32))
+
+    dfelabundances = dfelabundances.join(
         dfelabundances_partial, how="left", left_on="inputcellid", right_on="inputcellid"
-    )
-    dfnucabundances = dfnucabundances.set_index("inputcellid", drop=False)
-    dfnucabundances.index.name = None
-    dfelabundances = dfelabundances.fillna(0.0)
+    ).fill_null(0.0)
+
     print(f" took {time.perf_counter() - timestart:.1f} seconds")
     print(f" there are {nuclidesincluded} nuclides from {elementsincluded} elements included")
 
@@ -243,7 +244,7 @@ def get_trajectory_abund_q(
     t_model_s: float | None = None,
     nts: int | None = None,
     getqdotintegral: bool = False,
-) -> dict[str, float]:
+) -> dict[tuple[int, int] | str, float]:
     """Get the nuclear mass fractions (and Qdotintegral) for a particle particle number as a given time
     nts: GSI network timestep number.
     """
@@ -271,20 +272,16 @@ def get_trajectory_abund_q(
     massfractotal = dftrajnucabund.massfrac.sum()
     dftrajnucabund = dftrajnucabund.loc[dftrajnucabund["Z"] >= 1]
 
-    dftrajnucabund["nucabundcolname"] = [
-        f"X_{at.get_elsymbol(int(row.Z))}{int(row.N + row.Z)}" for row in dftrajnucabund.itertuples()
-    ]
-
-    colmassfracs = list(dftrajnucabund[["nucabundcolname", "massfrac"]].itertuples(index=False))
-    colmassfracs.sort(key=lambda row: at.get_z_a_nucname(row[0]))
-
     # print(f'trajectory particle id {particleid} massfrac sum: {massfractotal:.2f}')
     # print(f' grid snapshot: {t_model_s:.2e} s, network: {traj_time_s:.2e} s (timestep {nts})')
     assert np.isclose(massfractotal, 1.0, rtol=0.02)
     if t_model_s is not None:
         assert np.isclose(traj_time_s, t_model_s, rtol=0.2, atol=1.0)
 
-    dict_traj_nuc_abund = {nucabundcolname: massfrac / massfractotal for nucabundcolname, massfrac in colmassfracs}
+    dict_traj_nuc_abund: dict[tuple[int, int] | str, float] = {
+        (Z, N): massfrac / massfractotal
+        for Z, N, massfrac in dftrajnucabund[["Z", "N", "massfrac"]].itertuples(index=False)
+    }
 
     if getqdotintegral:
         # set the cell energy at model time [erg/g]
@@ -293,49 +290,6 @@ def get_trajectory_abund_q(
         )
 
     return dict_traj_nuc_abund
-
-
-def get_modelcellabundance(
-    dict_traj_nuc_abund: dict[int, dict[str, float]], minparticlespercell: int, cellgroup: tuple[int, pl.DataFrame]
-) -> dict[str, float] | None:
-    cellindex: int
-    dfthiscellcontribs: pl.DataFrame
-    cellindex, dfthiscellcontribs = cellgroup
-
-    if len(dfthiscellcontribs) < minparticlespercell:
-        return None
-
-    contribparticles = [
-        (dict_traj_nuc_abund[particleid], frac_of_cellmass)
-        for particleid, frac_of_cellmass in dfthiscellcontribs[["particleid", "frac_of_cellmass"]].iter_rows()
-        if particleid in dict_traj_nuc_abund
-    ]
-
-    # adjust frac_of_cellmass for missing particles
-    cell_frac_sum = sum(frac_of_cellmass for _, frac_of_cellmass in contribparticles)
-
-    nucabundcolnames = {
-        col for particleid in dfthiscellcontribs["particleid"] for col in dict_traj_nuc_abund.get(particleid, {})
-    }
-
-    row = {
-        nucabundcolname: sum(
-            frac_of_cellmass * traj_nuc_abund.get(nucabundcolname, 0.0) / cell_frac_sum
-            for traj_nuc_abund, frac_of_cellmass in contribparticles
-        )
-        for nucabundcolname in nucabundcolnames
-    }
-
-    row["inputcellid"] = cellindex
-
-    # if n % 100 == 0:
-    #     functime = time.perf_counter() - timefuncstart
-    #     print(f'cell id {cellindex:6d} ('
-    #           f'{n:4d} of {active_inputcellcount:4d}, {n / active_inputcellcount * 100:4.1f}%) '
-    #           f' contributing {len(dfthiscellcontribs):4d} particles.'
-    #           f' total func time {functime:.1f} s, {n / functime:.1f} cell/s,'
-    #           f' expected time: {functime / n * active_inputcellcount:.1f}')
-    return row
 
 
 def get_gridparticlecontributions(gridcontribpath: Path | str) -> pl.DataFrame:
@@ -393,25 +347,29 @@ def filtermissinggridparticlecontributions(traj_root: Path, dfcontribs: pl.DataF
         cell_frac_sum[cellindex] = dfparticlecontribs["frac_of_cellmass"].sum()
         cell_frac_includemissing_sum[cellindex] = dfparticlecontribs["frac_of_cellmass_includemissing"].sum()
 
-    dfcontribs = dfcontribs.with_columns(
-        [
-            pl.Series(
-                (
-                    row["frac_of_cellmass"] / cell_frac_sum[row["cellindex"]]
-                    if cell_frac_sum[row["cellindex"]] > 0.0
-                    else 0.0
-                )
-                for row in dfcontribs.iter_rows(named=True)
-            ).alias("frac_of_cellmass"),
-            pl.Series(
-                (
-                    row["frac_of_cellmass_includemissing"] / cell_frac_includemissing_sum[row["cellindex"]]
-                    if cell_frac_includemissing_sum[row["cellindex"]] > 0.0
-                    else 0.0
-                )
-                for row in dfcontribs.iter_rows(named=True)
-            ).alias("frac_of_cellmass_includemissing"),
-        ]
+    dfcontribs = (
+        dfcontribs.lazy()
+        .with_columns(
+            [
+                pl.Series(
+                    (
+                        row["frac_of_cellmass"] / cell_frac_sum[row["cellindex"]]
+                        if cell_frac_sum[row["cellindex"]] > 0.0
+                        else 0.0
+                    )
+                    for row in dfcontribs.iter_rows(named=True)
+                ).alias("frac_of_cellmass"),
+                pl.Series(
+                    (
+                        row["frac_of_cellmass_includemissing"] / cell_frac_includemissing_sum[row["cellindex"]]
+                        if cell_frac_includemissing_sum[row["cellindex"]] > 0.0
+                        else 0.0
+                    )
+                    for row in dfcontribs.iter_rows(named=True)
+                ).alias("frac_of_cellmass_includemissing"),
+            ]
+        )
+        .collect()
     )
 
     for cellindex, dfparticlecontribs in dfcontribs.group_by("cellindex"):
@@ -444,39 +402,29 @@ def save_gridparticlecontributions(dfcontribs: pd.DataFrame | pl.DataFrame, grid
 
 def add_abundancecontributions(
     dfgridcontributions: pl.DataFrame,
-    dfmodel: pd.DataFrame,
+    dfmodel: pl.LazyFrame | pl.DataFrame,
     t_model_days_incpremerger: float,
     traj_root: Path | str,
-    minparticlespercell: int = 0,
-) -> tuple[pd.DataFrame, pd.DataFrame, pl.DataFrame]:
-    """Contribute trajectory network calculation abundances to model cell abundances."""
+) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
+    """Contribute trajectory network calculation abundances to model cell abundances and return dfmodel, dfelabundances, dfcontribs."""
     t_model_s = t_model_days_incpremerger * 86400
     dfcontribs = dfgridcontributions
 
+    dfmodel = dfmodel.lazy().collect()
     if "X_Fegroup" not in dfmodel.columns:
-        dfmodel = pd.concat([dfmodel, pd.DataFrame({"X_Fegroup": np.ones(len(dfmodel))})], axis=1)
-
-    active_inputcellids = [
-        cellindex
-        for cellindex, dfthiscellcontribs in dfcontribs.group_by("cellindex")
-        if len(dfthiscellcontribs) >= minparticlespercell
-    ]
+        dfmodel = dfmodel.with_columns(pl.lit(1.0).alias("X_Fegroup"))
 
     traj_root = Path(traj_root)
-    dfcontribs = dfcontribs.filter(pl.col("cellindex").is_in(active_inputcellids))
-    dfcontribs = filtermissinggridparticlecontributions(traj_root, dfcontribs)
-    active_inputcellids = dfcontribs["cellindex"].unique().to_list()
-    active_inputcellcount = len(active_inputcellids)
+    dfcontribs = filtermissinggridparticlecontributions(traj_root, dfcontribs).sort("particleid")
+    active_inputcellcount = dfcontribs["cellindex"].unique().shape[0]
 
     particleids = dfcontribs["particleid"].unique()
-    particle_count = len(particleids)
 
     print(
-        f"{active_inputcellcount} of {len(dfmodel)} model cells have >={minparticlespercell} particles contributing "
-        f"({len(dfcontribs)} cell contributions from {particle_count} particles after filter)"
+        f"{active_inputcellcount} of {len(dfmodel)} model cells have >0 particles contributing "
+        f"({len(dfcontribs)} cell contributions from {len(particleids)} particles)"
     )
 
-    listcellnucabundances = []
     print("Reading trajectory abundances...")
     timestart = time.perf_counter()
     trajworker = partial(get_trajectory_abund_q, t_model_s=t_model_s, traj_root=traj_root, getqdotintegral=True)
@@ -492,47 +440,56 @@ def add_abundancecontributions(
     n_missing_particles = len([d for d in list_traj_nuc_abund if not d])
     print(f"  {n_missing_particles} particles are missing network abundance data")
 
-    assert particle_count > n_missing_particles
+    assert len(particleids) > n_missing_particles
 
-    dict_traj_nuc_abund = {
-        particleid: dftrajnucabund
-        for particleid, dftrajnucabund in zip(particleids, list_traj_nuc_abund)
-        if dftrajnucabund
-    }
+    allkeys = list({k for abund in list_traj_nuc_abund for k in abund})
+
+    dfnucabundances = pl.DataFrame(
+        {
+            f"particle_{particleid}": [traj_nuc_abund.get(k, 0.0) for k in allkeys]
+            for particleid, traj_nuc_abund in zip(particleids, list_traj_nuc_abund)
+        }
+    ).with_columns(pl.all().cast(pl.Float64))
+
+    del list_traj_nuc_abund
+    gc.collect()
+
     print(f"Reading trajectory abundances took {time.perf_counter() - timestart:.1f} seconds")
-
-    print("Generating cell abundances...")
-    timestart = time.perf_counter()
-    dfcontribs_cellgroups = dfcontribs.group_by("cellindex")
-
-    cellabundworker = partial(get_modelcellabundance, dict_traj_nuc_abund, minparticlespercell)
-
-    if at.get_config()["num_processes"] > 1:
-        chunksize = math.ceil(len(dfcontribs["cellindex"].unique()) / at.get_config()["num_processes"])
-        with multiprocessing.get_context("spawn").Pool(processes=at.get_config()["num_processes"]) as pool:
-            listcellnucabundances = pool.map(cellabundworker, dfcontribs_cellgroups, chunksize=chunksize)
-            pool.close()
-            pool.join()
-    else:
-        listcellnucabundances = [cellabundworker(cellgroup) for cellgroup in dfcontribs_cellgroups]
-
-    listcellnucabundances = [x for x in listcellnucabundances if x is not None]
-    print(f"  took {time.perf_counter() - timestart:.1f} seconds")
 
     timestart = time.perf_counter()
     print("Creating dfnucabundances...", end="", flush=True)
-    dfnucabundances = pd.DataFrame(listcellnucabundances)
-    dfnucabundances = dfnucabundances.set_index("inputcellid", drop=False)
-    dfnucabundances.index.name = None
-    dfnucabundances = dfnucabundances.fillna(0.0)
+
+    dfnucabundanceslz = dfnucabundances.lazy().with_columns(
+        [
+            pl.sum_horizontal(
+                [
+                    pl.col(f"particle_{particleid}") * pl.lit(frac_of_cellmass)
+                    for particleid, frac_of_cellmass in dfthiscellcontribs[
+                        ["particleid", "frac_of_cellmass"]
+                    ].iter_rows()
+                ]
+            ).alias(f"{cellindex}")
+            for cellindex, dfthiscellcontribs in dfcontribs.group_by("cellindex")
+        ]
+    )
+
+    colnames = [
+        key if isinstance(key, str) else f"X_{at.get_elsymbol(int(key[0]))}{int(key[0] + key[1])}" for key in allkeys
+    ]
+
+    dfnucabundances = (
+        dfnucabundanceslz.drop([col for col in dfnucabundances.columns if col.startswith("particle_")])
+        .collect()
+        .transpose(include_header=True, column_names=colnames, header_name="inputcellid")
+        .with_columns(pl.col("inputcellid").cast(pl.Int32))
+    )
     print(f" took {time.perf_counter() - timestart:.1f} seconds")
 
     dfelabundances = get_dfelemabund_from_dfmodel(dfmodel, dfnucabundances)
 
     timestart = time.perf_counter()
     print("Merging isotopic abundances into dfmodel...", end="", flush=True)
-    dfmodel = dfmodel.merge(dfnucabundances, how="left", left_on="inputcellid", right_on="inputcellid")
-    dfmodel = dfmodel.fillna(0.0)
+    dfmodel = dfmodel.join(dfnucabundances, how="left", left_on="inputcellid", right_on="inputcellid").fill_null(0.0)
     print(f" took {time.perf_counter() - timestart:.1f} seconds")
 
     return dfmodel, dfelabundances, dfcontribs
