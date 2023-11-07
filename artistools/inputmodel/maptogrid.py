@@ -385,6 +385,8 @@ def maptogrid(
                 if grho[i, j, k] < 1.0e-20 and dis < rmean:
                     nzerocentral = nzerocentral + 1
 
+    logprint(f"fraction of total mass on grid {gmass / totmass}")
+
     logprint(
         f"{'WARNING!' if gmass / totmass < 0.9 else ''} mass on grid from rho*V: {gmass} mass of particles: {totmass} "
     )
