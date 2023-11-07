@@ -247,9 +247,8 @@ def maptogrid(
     # ...
 
     # set up grid
-
-    x0 = -0.5 * rmax  # 90% is hand waving - choose #
-
+    x0 = -args.setgrid_fractionrmax * rmax  # Set x0 (gridmax) to a fraction of the maximum radius of the SPH particles
+    # Default is 50% (but is hand waving - choose) #
     # x0 = - rmean
 
     dx = 2.0 * abs(x0) / (ncoordgrid)  # -1 to be symmetric, right?
@@ -443,6 +442,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         default=0.5,
         help="Time in seconds to propagate SPH particles ballistically after end of SPH simulation."
         " 0 for no extrapolation",
+    )
+    parser.add_argument(
+        "-setgrid_fractionrmax",
+        type=float,
+        default=0.5,
+        help="Setup grid to have max equal to fraction of particle rmax. Default is 50% of rmax.",
     )
     parser.add_argument(
         "-downsamplefactor",
