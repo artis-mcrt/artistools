@@ -1012,7 +1012,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-readonlymgi",
         default=False,
-        choices=["alongaxis"],  # plan to extend this to e.g. 2D slice
+        choices=["alongaxis", "cone"],  # plan to extend this to e.g. 2D slice
         help="Option to read only selected mgi and choice of which mgi to select. Choose which axis with args.axis",
     )
 
@@ -1048,6 +1048,11 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         args.sliceaxis = args.axis[1]
         assert args.axis[0] in {"+", "-"}
         args.positive_axis = args.axis[0] == "+"
+
+        axes = ["x", "y", "z"]
+        axes.remove(args.sliceaxis)
+        args.other_axis1 = axes[0]
+        args.other_axis2 = axes[1]
 
     print(
         f"Plotting estimators for '{modelname}' timesteps {timestepmin} to {timestepmax} "
@@ -1088,11 +1093,16 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         # [['gamma_NT', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II']]],
     ]
 
-    if args.readonlymgi == "alongaxis":
-        print(f"Getting mgi along {args.axis} axis")
-        args.modelgridindex = at.estimators.plot3destimators_classic.get_modelgridcells_along_axis(
-            modelpath=modelpath, args=args
-        )
+    if args.readonlymgi:
+        if args.readonlymgi == "alongaxis":
+            print(f"Getting mgi along {args.axis} axis")
+            dfselectedcells = at.inputmodel.slice1dfromconein3dmodel.get_profile_along_axis(args=args)
+
+        elif args.readonlymgi == "cone":
+            print(f"Getting mgi lying within a cone around {args.axis} axis")
+            dfselectedcells = at.inputmodel.slice1dfromconein3dmodel.make_cone(args)
+        dfselectedcells = dfselectedcells.query("rho > 0")
+        args.modelgridindex = dfselectedcells["inputcellid"]
 
     if temperatures_only := plotlist_is_temperatures_only(plotlist):
         print("Plotting temperatures only (from parquet if available)")
