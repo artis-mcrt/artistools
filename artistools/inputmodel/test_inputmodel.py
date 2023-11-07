@@ -97,7 +97,8 @@ def verify_file_checksums(
                 m.update(chunk)
 
         checksums_actual[fullpath] = str(m.hexdigest())
-        print(f"{filename}: actual {checksums_actual[fullpath]} expected {checksum_expected}")
+        strpassfail = "pass" if checksums_actual[fullpath] == checksum_expected else "FAILED"
+        print(f"{filename}: {strpassfail} if actual {checksums_actual[fullpath]} expected {checksum_expected}")
 
     for filename, checksum_expected in checksums_expected.items():
         fullpath = Path(folder) / filename

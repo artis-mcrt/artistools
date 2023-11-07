@@ -119,7 +119,7 @@ def read_griddat_file(
     # Get simulation time for ejecta snapshot
     simulation_end_time_geomunits, mergertime_geomunits = get_snapshot_time_geomunits(pathtogriddata)
 
-    griddata = pd.read_csv(griddatfilepath, delim_whitespace=True, comment="#", skiprows=3)
+    griddata = pd.read_csv(griddatfilepath, delim_whitespace=True, comment="#", skiprows=3, dtype_backend="pyarrow")
     griddata = griddata.rename(
         columns={
             "gridindex": "inputcellid",
@@ -341,7 +341,7 @@ def makemodelfromgriddata(
         else None
     )
 
-    dfmodel = pl.from_pandas(dfmodel).with_columns(pl.col("inputcellid").cast(pl.Int32))
+    dfmodel = pl.from_pandas(dfmodel).with_columns(pl.col("inputcellid").cast(pl.Int32)).sort("inputcellid")
 
     if traj_root is not None:
         print(f"Nuclear network abundances from {traj_root} will be used")

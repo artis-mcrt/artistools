@@ -244,7 +244,7 @@ def get_trajectory_abund_q(
     t_model_s: float | None = None,
     nts: int | None = None,
     getqdotintegral: bool = False,
-) -> dict[str, float]:
+) -> dict[tuple[int, int] | str, float]:
     """Get the nuclear mass fractions (and Qdotintegral) for a particle particle number as a given time
     nts: GSI network timestep number.
     """
@@ -272,19 +272,16 @@ def get_trajectory_abund_q(
     massfractotal = dftrajnucabund.massfrac.sum()
     dftrajnucabund = dftrajnucabund.loc[dftrajnucabund["Z"] >= 1]
 
-    dftrajnucabund["nucabundcolname"] = [
-        f"X_{at.get_elsymbol(int(row.Z))}{int(row.N + row.Z)}" for row in dftrajnucabund.itertuples()
-    ]
-
-    colmassfracs = list(dftrajnucabund[["nucabundcolname", "massfrac"]].itertuples(index=False))
-
     # print(f'trajectory particle id {particleid} massfrac sum: {massfractotal:.2f}')
     # print(f' grid snapshot: {t_model_s:.2e} s, network: {traj_time_s:.2e} s (timestep {nts})')
     assert np.isclose(massfractotal, 1.0, rtol=0.02)
     if t_model_s is not None:
         assert np.isclose(traj_time_s, t_model_s, rtol=0.2, atol=1.0)
 
-    dict_traj_nuc_abund = {nucabundcolname: massfrac / massfractotal for nucabundcolname, massfrac in colmassfracs}
+    dict_traj_nuc_abund: dict[tuple[int, int] | str, float] = {
+        (Z, N): massfrac / massfractotal
+        for Z, N, massfrac in dftrajnucabund[["Z", "N", "massfrac"]].itertuples(index=False)
+    }
 
     if getqdotintegral:
         # set the cell energy at model time [erg/g]
@@ -419,6 +416,7 @@ def add_abundancecontributions(
 
     traj_root = Path(traj_root)
     dfcontribs = filtermissinggridparticlecontributions(traj_root, dfcontribs)
+    dfcontribs = dfcontribs.sort("particleid")
     active_inputcellcount = dfcontribs["cellindex"].unique().shape[0]
 
     particleids = dfcontribs["particleid"].unique()
@@ -450,10 +448,11 @@ def add_abundancecontributions(
 
     dfnucabundances = pl.DataFrame(
         {
-            f"particle_{particleid}": [list_traj_nuc_abund[particleindex].get(k, 0.0) for k in allkeys]
-            for particleindex, particleid in enumerate(particleids)
+            f"particle_{particleid}": [traj_nuc_abund.get(k, 0.0) for k in allkeys]
+            for particleid, traj_nuc_abund in zip(particleids, list_traj_nuc_abund)
         }
     ).with_columns(pl.all().cast(pl.Float64))
+
     del list_traj_nuc_abund
     gc.collect()
 
@@ -476,10 +475,14 @@ def add_abundancecontributions(
         ]
     )
 
+    colnames = [
+        key if isinstance(key, str) else f"X_{at.get_elsymbol(int(key[0]))}{int(key[0] + key[1])}" for key in allkeys
+    ]
+
     dfnucabundances = (
         dfnucabundanceslz.drop([col for col in dfnucabundances.columns if col.startswith("particle_")])
         .collect()
-        .transpose(include_header=True, column_names=allkeys, header_name="inputcellid")
+        .transpose(include_header=True, column_names=colnames, header_name="inputcellid")
         .with_columns(pl.col("inputcellid").cast(pl.Int32))
     )
     print(f" took {time.perf_counter() - timestart:.1f} seconds")

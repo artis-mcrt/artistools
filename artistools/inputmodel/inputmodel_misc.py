@@ -1259,7 +1259,7 @@ def dimension_reduce_3d_model(
         if matchedcellrhosum > 0.0 and dfgridcontributions is not None:
             dfcellcont = dfgridcontributions.filter(pl.col("cellindex").is_in(matchedcells["inputcellid"]))
 
-            for particleid, dfparticlecontribs in dfcellcont.groupby("particleid"):
+            for particleid, dfparticlecontribs in dfcellcont.group_by("particleid"):
                 frac_of_cellmass_avg = (
                     sum(
                         row["frac_of_cellmass"] * celldensity[row["cellindex"]]
