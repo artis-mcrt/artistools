@@ -297,30 +297,34 @@ def maptogrid(
         ]
 
         for i, j, k, dis2 in searchcoords:
-            # -- change h by hand --------- we could do these particle thinsg also further up
+            if args.modifysmoothinglength != "False":
+                # -- change h by hand --------- we could do these particle thinsg also further up
 
-            # option 1 minimum that no particle is lost
+                # option 1 minimum that no particle is lost
 
-            # option 2 increase smoothing everywhere, i.e. less holes but also less strcuture
+                # option 2 increase smoothing everywhere, i.e. less holes but also less strcuture
 
-            # option 3 increase smoothing beyond some distance
+                # option 3 increase smoothing beyond some distance
 
-            # options can be combined, i.e. option 1 alone fills the hole in the center
-            # (which we could also replace by later ejecta)
+                # options can be combined, i.e. option 1 alone fills the hole in the center
+                # (which we could also replace by later ejecta)
 
-            # h[n] = max(h[n],1.5*dx) # option 1
+                # h[n] = max(h[n],1.5*dx) # option 1
 
-            # h[n] = max(h[n],0.25*dis) #  option 2
+                # h[n] = max(h[n],0.25*dis) #  option 2
 
-            dis = math.sqrt(x[n] * x[n] + y[n] * y[n] + z[n] * z[n])
+                dis = math.sqrt(x[n] * x[n] + y[n] * y[n] + z[n] * z[n])
 
-            # if (dis>1.5*rmean) h[n]=max(h[n],0.4*dis) # option 3
-            if dis > rmean:
-                h[n] = max(h[n], hmean * 1.5)
+                # if (dis>1.5*rmean) h[n]=max(h[n],0.4*dis) # option 3
 
-            # -------------------------------
+                # option 4 (default) -- for particles with radius > mean particle radius choose the larger h
+                # from the particle h and 150% of the mean h for all particles
+                if args.modifysmoothinglength == "option4" and dis > rmean:
+                    h[n] = max(h[n], hmean * 1.5)
 
-            # or via neighbors  - not yet implemented
+                # -------------------------------
+
+                # or via neighbors  - not yet implemented
 
             if dis2 <= maxdist2:
                 wtij = kernelvals2(dis2, h[n], wij)
@@ -454,6 +458,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         type=int,
         default=1,
         help="Randomly sample particles, reducing the number by this factor (e.g. 2 will ignore half of the particles)",
+    )
+    parser.add_argument(
+        "-modifysmoothinglength",
+        default="option4",
+        choices=["option4", "False"],  # We should choose if the default should be false and how we want to name these
+        help="Option to modify smoothing length h. Choose from options."
+        "Default modifies h. Set to False for no modifications to h.",
     )
     parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")
 
