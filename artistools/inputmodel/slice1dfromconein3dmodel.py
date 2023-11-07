@@ -199,21 +199,28 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Path to ARTIS model folders with model.txt and abundances.txt",
     )
 
-    parser.add_argument(
-        "-sliceaxis",
-        type=str,
-        default="x",
-        help=(
-            "Choose x, y or z. The 1D model will be made based on this axis."
-            "If cone then cone made around sliceaxis. Otherwise model along axis."
-        ),
-    )
+    # parser.add_argument(
+    #     "-sliceaxis",
+    #     type=str,
+    #     default="x",
+    #     help=(
+    #         "Choose x, y or z. The 1D model will be made based on this axis."
+    #         "If cone then cone made around sliceaxis. Otherwise model along axis."
+    #     ),
+    # )
+    #
+    # parser.add_argument(
+    #     "--positive_axis",
+    #     action="store",
+    #     default=False,
+    #     help="Make 1D model from positive axis. Default is False to use negative axis.",
+    # )
 
     parser.add_argument(
-        "--positive_axis",
-        action="store",
-        default=False,
-        help="Make 1D model from positive axis. Default is False to use negative axis.",
+        "-axis",
+        default="+z",
+        choices=["+x", "-x", "+y", "-y", "+z", "-z"],
+        help="Choose an axis. USE INSTEAD OF DEPRECATED --POSITIVE_AXES AND -SLICEAXIS ARGS. Hint: for negative use e.g. -axis=-z",
     )
 
     parser.add_argument(
@@ -240,7 +247,11 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     if not args.modelpath:
         args.modelpath = [Path()]
 
-    print(f"making model from slice around {args.sliceaxis} axis")
+    args.sliceaxis = args.axis[1]
+    assert args.axis[0] in {"+", "-"}
+    args.positive_axis = args.axis[0] == "+"
+
+    print(f"making model from slice around {args.axis} axis")
 
     axes = ["x", "y", "z"]
     args.other_axis1 = next(ax for ax in axes if ax != args.sliceaxis)
