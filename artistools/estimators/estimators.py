@@ -182,7 +182,7 @@ def parse_estimfile(
                         ion_stage = int(ion_stage_str.rstrip(":"))
                     except ValueError:
                         if variablename == "populations" and ion_stage_str.startswith(elsymbol):
-                            estimblock[f"{variablename}_{ion_stage_str.rstrip(':')}"] = float(value)
+                            estimblock[f"populations_{ion_stage_str.rstrip(':')}"] = float(value)
                         else:
                             print(ion_stage_str, elsymbol)
                             print(f"Cannot parse row: {row}")
