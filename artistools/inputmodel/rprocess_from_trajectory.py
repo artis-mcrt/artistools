@@ -438,7 +438,7 @@ def add_abundancecontributions(
         list_traj_nuc_abund = [trajworker(particleid) for particleid in particleids]
 
     n_missing_particles = len([d for d in list_traj_nuc_abund if not d])
-    print(f"  {n_missing_particles} particles are missing network abundance data")
+    print(f"  {n_missing_particles} particles are missing network abundance data out of {len(particleids)}")
 
     assert len(particleids) > n_missing_particles
 
