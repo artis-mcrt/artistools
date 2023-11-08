@@ -173,12 +173,13 @@ def parse_estimfile(
                 estimblock.setdefault(variablename, {})
 
                 for ion_stage_str, value in zip(row[startindex::2], row[startindex + 1 :: 2]):
-                    if ion_stage_str.strip() == "(or":
+                    ion_stage_str_strip = ion_stage_str.strip()
+                    if ion_stage_str_strip == "(or":
                         continue
 
                     value_thision = float(value.rstrip(","))
 
-                    if ion_stage_str.strip() == "SUM:":
+                    if ion_stage_str_strip == "SUM:":
                         estimblock[variablename][atomic_number] = value_thision
                         continue
 
