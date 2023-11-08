@@ -120,7 +120,6 @@ def get_units_string(variable: str) -> str:
 def parse_estimfile(
     estfilepath: Path | str,
     get_ion_values: bool = True,
-    get_heatingcooling: bool = True,
     skip_emptycells: bool = False,
 ) -> t.Iterator[tuple[int, int, dict[str, t.Any]]]:  # pylint: disable=unused-argument
     """Generate timestep, modelgridindex, dict from estimator file."""
@@ -208,7 +207,7 @@ def parse_estimfile(
                     estimblock.setdefault("nntot", 0.0)
                     estimblock["nntot"] += estimblock[f"populations_{atomic_number}"]
 
-            elif row[0] == "heating:" and get_heatingcooling:
+            elif row[0] == "heating:":
                 for heatingtype, value in zip(row[1::2], row[2::2]):
                     key = heatingtype if heatingtype.startswith("heating_") else f"heating_{heatingtype}"
                     estimblock[key] = float(value)
@@ -218,7 +217,7 @@ def parse_estimfile(
                 elif "heating_dep/total_dep" in estimblock and estimblock["heating_dep/total_dep"] > 0:
                     estimblock["total_dep"] = estimblock["heating_dep"] / estimblock["heating_dep/total_dep"]
 
-            elif row[0] == "cooling:" and get_heatingcooling:
+            elif row[0] == "cooling:":
                 for coolingtype, value in zip(row[1::2], row[2::2]):
                     estimblock[f"cooling_{coolingtype}"] = float(value)
 
@@ -232,7 +231,6 @@ def read_estimators_from_file(
     modelpath: Path,
     printfilename: bool = False,
     get_ion_values: bool = True,
-    get_heatingcooling: bool = True,
     skip_emptycells: bool = False,
 ) -> dict[tuple[int, int], dict[str, t.Any]]:
     if printfilename:
@@ -245,7 +243,6 @@ def read_estimators_from_file(
         for timestep, mgi, file_estimblock in parse_estimfile(
             estfilepath,
             get_ion_values=get_ion_values,
-            get_heatingcooling=get_heatingcooling,
             skip_emptycells=skip_emptycells,
         )
     }
@@ -258,7 +255,6 @@ def read_estimators(
     mpirank: int | None = None,
     runfolder: None | str | Path = None,
     get_ion_values: bool = True,
-    get_heatingcooling: bool = True,
     skip_emptycells: bool = False,
     add_velocity: bool = True,
 ) -> dict[tuple[int, int], dict[str, t.Any]]:
@@ -319,7 +315,6 @@ def read_estimators(
             read_estimators_from_file,
             modelpath=modelpath,
             get_ion_values=get_ion_values,
-            get_heatingcooling=get_heatingcooling,
             printfilename=printfilename,
             skip_emptycells=skip_emptycells,
         )
@@ -464,7 +459,6 @@ def get_temperatures(modelpath: str | Path) -> pl.LazyFrame:
         estimators = at.estimators.read_estimators(
             modelpath,
             get_ion_values=False,
-            get_heatingcooling=False,
             skip_emptycells=True,
         )
         assert len(estimators) > 0

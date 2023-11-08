@@ -455,7 +455,7 @@ def get_packets_with_emission_conditions(
     tend: float,
     maxpacketfiles: int | None = None,
 ) -> pd.DataFrame:
-    estimators = at.estimators.read_estimators(modelpath, get_ion_values=False, get_heatingcooling=False)
+    estimators = at.estimators.read_estimators(modelpath, get_ion_values=False)
 
     modeldata, _ = at.inputmodel.get_modeldata(modelpath)
     ts = at.get_timestep_of_timedays(modelpath, tend)
@@ -655,7 +655,7 @@ def make_emitting_regions_plot(args):
                             "em_Te": dfpackets_selected.em_Te.to_numpy(),
                         }
 
-            estimators = at.estimators.read_estimators(modelpath, get_ion_values=False, get_heatingcooling=False)
+            estimators = at.estimators.read_estimators(modelpath, get_ion_values=False)
             modeldata, _ = at.inputmodel.get_modeldata(modelpath)
             Tedata_all[modelindex] = {}
             log10nnedata_all[modelindex] = {}

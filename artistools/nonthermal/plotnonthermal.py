@@ -70,7 +70,7 @@ def make_xs_plot(axis: plt.Axes, nonthermaldata: pd.DataFrame, args: argparse.Na
 
 def plot_contributions(axis, modelpath, timestep, modelgridindex, nonthermaldata, args):
     estimators = at.estimators.read_estimators(
-        modelpath, get_ion_values=True, get_heatingcooling=True, modelgridindex=modelgridindex, timestep=timestep
+        modelpath, get_ion_values=True, modelgridindex=modelgridindex, timestep=timestep
     )
 
     total_depev = estimators[(timestep, modelgridindex)]["total_dep"] * u.erg.to("eV")
