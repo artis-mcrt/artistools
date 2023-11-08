@@ -124,8 +124,8 @@ def parse_estimfile(
 ) -> t.Iterator[tuple[int, int, dict[str, t.Any]]]:  # pylint: disable=unused-argument
     """Generate timestep, modelgridindex, dict from estimator file."""
     with at.zopen(estfilepath) as estimfile:
-        timestep: int = -1
-        modelgridindex: int = -1
+        timestep: int | None = None
+        modelgridindex: int | None = None
         estimblock: dict[str, t.Any] = {}
         for line in estimfile:
             row: list[str] = line.split()
@@ -135,8 +135,8 @@ def parse_estimfile(
             if row[0] == "timestep":
                 # yield the previous block before starting a new one
                 if (
-                    timestep >= 0
-                    and modelgridindex >= 0
+                    timestep is not None
+                    and modelgridindex is not None
                     and (not skip_emptycells or not estimblock.get("emptycell", True))
                 ):
                     yield timestep, modelgridindex, estimblock
@@ -222,7 +222,11 @@ def parse_estimfile(
                     estimblock[f"cooling_{coolingtype}"] = float(value)
 
     # reached the end of file
-    if timestep >= 0 and modelgridindex >= 0 and (not skip_emptycells or not estimblock.get("emptycell", True)):
+    if (
+        timestep is not None
+        and modelgridindex is not None
+        and (not skip_emptycells or not estimblock.get("emptycell", True))
+    ):
         yield timestep, modelgridindex, estimblock
 
 
