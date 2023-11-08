@@ -175,8 +175,6 @@ def maptogrid(
     vratiomean = 0.0
 
     # Propagate particles to dtextra using velocities
-    # dtextra_seconds = 0.5  # in seconds ---  dtextra = 0.0 # for no extrapolation
-
     dtextra = args.dtextra_seconds / 4.926e-6  # convert to geom units.
 
     particleid = dfsnapshot.id.to_numpy()
