@@ -118,8 +118,7 @@ def get_units_string(variable: str) -> str:
 
 
 def parse_estimfile(
-    estfilepath: Path,
-    modelpath: Path,
+    estfilepath: Path | str,
     get_ion_values: bool = True,
     get_heatingcooling: bool = True,
     skip_emptycells: bool = False,
@@ -229,31 +228,22 @@ def parse_estimfile(
 
 
 def read_estimators_from_file(
-    folderpath: Path | str,
+    estfilepath: Path | str,
     modelpath: Path,
-    mpirank: int,
     printfilename: bool = False,
     get_ion_values: bool = True,
     get_heatingcooling: bool = True,
     skip_emptycells: bool = False,
 ) -> dict[tuple[int, int], dict[str, t.Any]]:
-    estimfilename = f"estimators_{mpirank:04d}.out"
-    try:
-        estfilepath = at.firstexisting(estimfilename, folder=folderpath, tryzipped=True)
-    except FileNotFoundError:
-        # not worth printing an error, because ranks with no cells to update do not produce an estimator file
-        # print(f'Warning: Could not find {estfilepath.relative_to(modelpath.parent)}')
-        return {}
-
     if printfilename:
-        filesize = Path(estfilepath).stat().st_size / 1024 / 1024
+        estfilepath = Path(estfilepath)
+        filesize = estfilepath.stat().st_size / 1024 / 1024
         print(f"Reading {estfilepath.relative_to(modelpath.parent)} ({filesize:.2f} MiB)")
 
     return {
-        (fileblock_timestep, fileblock_modelgridindex): file_estimblock
-        for fileblock_timestep, fileblock_modelgridindex, file_estimblock in parse_estimfile(
+        (timestep, mgi): file_estimblock
+        for timestep, mgi, file_estimblock in parse_estimfile(
             estfilepath,
-            modelpath,
             get_ion_values=get_ion_values,
             get_heatingcooling=get_heatingcooling,
             skip_emptycells=skip_emptycells,
@@ -313,15 +303,21 @@ def read_estimators(
 
     estimators: dict[tuple[int, int], dict] = {}
     for folderpath in runfolders:
+        estfilepaths = []
+        for mpirank in mpiranklist:
+            # not worth printing an error, because ranks with no cells to update do not produce an estimator file
+            with contextlib.suppress(FileNotFoundError):
+                estfilepath = at.firstexisting(f"estimators_{mpirank:04d}.out", folder=folderpath, tryzipped=True)
+                estfilepaths.append(estfilepath)
+
         if not printfilename:
             print(
-                f"Reading {len(list(mpiranklist))} estimator files in {folderpath.relative_to(Path(modelpath).parent)}"
+                f"Reading {len(list(estfilepaths))} estimator files in {folderpath.relative_to(Path(modelpath).parent)}"
             )
 
         processfile = partial(
             read_estimators_from_file,
-            folderpath,
-            modelpath,
+            modelpath=modelpath,
             get_ion_values=get_ion_values,
             get_heatingcooling=get_heatingcooling,
             printfilename=printfilename,
@@ -330,22 +326,21 @@ def read_estimators(
 
         if at.get_config()["num_processes"] > 1:
             with multiprocessing.get_context("spawn").Pool(processes=at.get_config()["num_processes"]) as pool:
-                arr_rankestimators = pool.map(processfile, mpiranklist)
+                arr_rankestimators = pool.map(processfile, estfilepaths)
                 pool.close()
                 pool.join()
                 pool.terminate()
         else:
-            arr_rankestimators = [processfile(rank) for rank in mpiranklist]
+            arr_rankestimators = [processfile(estfilepath) for estfilepath in estfilepaths]
 
-        for mpirank, estimators_thisfile in zip(mpiranklist, arr_rankestimators):
+        for estfilepath, estimators_thisfile in zip(estfilepaths, arr_rankestimators):
             dupekeys = sorted([k for k in estimators_thisfile if k in estimators])
             for k in dupekeys:
                 # dropping the lowest timestep is normal for restarts. Only warn about other cases
                 if k[0] != dupekeys[0][0]:
-                    filepath = Path(folderpath, f"estimators_{mpirank:04d}.out")
                     print(
                         f"WARNING: Duplicate estimator block for (timestep, mgi) key {k}. "
-                        f"Dropping block from {filepath}"
+                        f"Dropping block from {estfilepath}"
                     )
 
                 del estimators_thisfile[k]

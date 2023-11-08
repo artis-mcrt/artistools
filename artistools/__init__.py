@@ -27,6 +27,7 @@ from artistools.__main__ import addargs
 from artistools.__main__ import main
 from artistools.configuration import get_config
 from artistools.configuration import set_config
+from artistools.estimators import read_estimators
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_cell_angle
 from artistools.inputmodel import get_dfmodel_dimensions
