@@ -928,7 +928,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--recombrates", action="store_true", help="Make a recombination rate plot")
 
     parser.add_argument(
-        "-modelgridindex", "-cell", "-mgi", type=int, default=-1, help="Modelgridindex for time evolution plot"
+        "-modelgridindex", "-cell", "-mgi", type=int, default=None, help="Modelgridindex for time evolution plot"
     )
 
     parser.add_argument("-timestep", "-ts", nargs="?", help="Timestep number for internal structure plot")
@@ -1024,7 +1024,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     modelname = at.get_model_name(modelpath)
 
-    if not args.timedays and not args.timestep and args.modelgridindex > -1:
+    if not args.timedays and not args.timestep and args.modelgridindex is not None:
         args.timestep = f"0-{len(at.get_timestep_times(modelpath)) - 1}"
 
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
@@ -1129,7 +1129,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath)
 
-    if not args.readonlymgi and (args.modelgridindex > -1 or args.x in {"time", "timestep"}):
+    if not args.readonlymgi and (args.modelgridindex is not None or args.x in {"time", "timestep"}):
         # plot time evolution in specific cell
         if not args.x:
             args.x = "time"
