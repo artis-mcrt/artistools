@@ -337,7 +337,7 @@ def get_modeldata_polars(
         print(f"{filename} has been modified after {filenameparquet}. Deleting out of date parquet file.")
         filenameparquet.unlink()
 
-    dfmodel: pl.LazyFrame | None | pl.DataFrame
+    dfmodel: pl.LazyFrame | None | pl.DataFrame = None
     if not getheadersonly and filenameparquet.is_file():
         if not printwarningsonly:
             print(f"Reading data table from {filenameparquet}")
@@ -346,22 +346,20 @@ def get_modeldata_polars(
         except pl.exceptions.ComputeError:
             print(f"Problem reading {filenameparquet}. Will regenerate and overwite from text source.")
             dfmodel = None
-    else:
-        dfmodel = None
 
     if dfmodel is not None:
         # already read in the model data, just need to get the metadata
         getheadersonly = True
 
-    dfmodel_in, modelmeta = read_modelfile_text(
+    dfmodel_textfile, modelmeta = read_modelfile_text(
         filename=filename,
         printwarningsonly=printwarningsonly,
         getheadersonly=getheadersonly,
     )
 
     if dfmodel is None:
-        dfmodel = dfmodel_in
-    elif dfmodel.schema != dfmodel_in.schema:
+        dfmodel = dfmodel_textfile
+    elif dfmodel.schema != dfmodel_textfile.schema:
         print(f"ERROR: parquet schema does not match model.txt. Remove {filenameparquet} and try again.")
         raise AssertionError
 
