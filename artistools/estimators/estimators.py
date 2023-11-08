@@ -262,9 +262,9 @@ def read_estimators(
     skip_emptycells: bool = False,
     add_velocity: bool = True,
 ) -> dict[tuple[int, int], dict[str, t.Any]]:
-    """Read estimator files into a nested dictionary structure.
+    """Read estimator files into a dictionary of (timestep, modelgridindex): estimators.
 
-    Speed it up by only retrieving estimators for a particular timestep(s) or modelgrid cells.
+    Selecting particular timesteps or modelgrid cells will using speed this up by reducing the number of files that must be read.
     """
     modelpath = Path(modelpath)
     match_modelgridindex: t.Collection[int]
@@ -345,7 +345,12 @@ def read_estimators(
 
                 del estimators_thisfile[k]
 
-            estimators |= estimators_thisfile
+            estimators |= {
+                (ts, mgi): v
+                for (ts, mgi), v in estimators_thisfile.items()
+                if (not match_modelgridindex or mgi in match_modelgridindex)
+                and (not match_timestep or ts in match_timestep)
+            }
 
     return estimators
 
