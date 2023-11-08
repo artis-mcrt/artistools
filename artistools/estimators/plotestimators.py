@@ -320,7 +320,7 @@ def plot_multi_ion_series(
         print("WARNING: Could not read an ARTIS compositiondata.txt file")
         for atomic_number, ion_stage in iontuplelist:
             mgits = (timestepslist[0][0], mgilist[0])
-            if (atomic_number, ion_stage) not in estimators[mgits]["populations"]:
+            if f"populations_{atomic_number}_{ion_stage}" not in estimators[mgits]:
                 missingions.add((atomic_number, ion_stage))
 
     if missingions:

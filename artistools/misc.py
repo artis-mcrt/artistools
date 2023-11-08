@@ -627,6 +627,40 @@ def get_elsymbol(atomic_number: int | np.int64) -> str:
     return get_elsymbolslist()[atomic_number]
 
 
+def get_ion_tuple(ionstr: str) -> tuple[int, int] | int:
+    """Return a tuple of the atomic number and ionisation stage such as (26,2) for an ion string like 'FeII', 'Fe II', or '26_2'.
+
+    Return the atomic number for a string like 'Fe' or '26'.
+    """
+    ionstr = ionstr.removeprefix("populations_")
+    if ionstr.isdigit():
+        return int(ionstr)
+
+    if ionstr in at.get_elsymbolslist():
+        return at.get_atomic_number(ionstr)
+
+    elem = None
+    if " " in ionstr:
+        elem, strionstage = ionstr.split(" ")
+    elif "_" in ionstr:
+        elem, strionstage = ionstr.split("_")
+    else:
+        for elsym in at.get_elsymbolslist():
+            if ionstr.startswith(elsym):
+                elem = elsym
+                strionstage = ionstr.removeprefix(elsym)
+                break
+
+    if not elem:
+        msg = f"Could not parse ionstr {ionstr}"
+        raise ValueError(msg)
+
+    atomic_number = int(elem) if elem.isdigit() else at.get_atomic_number(elem)
+    ionstage = int(strionstage) if strionstage.isdigit() else at.decode_roman_numeral(strionstage)
+
+    return (atomic_number, ionstage)
+
+
 @lru_cache(maxsize=16)
 def get_ionstring(
     atomic_number: int | np.int64,

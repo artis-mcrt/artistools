@@ -85,12 +85,12 @@ def plot_contributions(axis, modelpath, timestep, modelgridindex, nonthermaldata
     dfcollion = at.nonthermal.read_colliondata()
 
     elementlist = at.get_composition_data(modelpath)
-    totalpop = estimators[(timestep, modelgridindex)]["populations"]["total"]
+    totalpop = estimators[(timestep, modelgridindex)]["populations_total"]
     nelements = len(elementlist)
     for element in range(nelements):
         Z = elementlist.Z[element]
 
-        elpop = estimators[(timestep, modelgridindex)]["populations"][Z]
+        elpop = estimators[(timestep, modelgridindex)][f"populations_{Z}"]
         if elpop <= 1e-4 * totalpop:
             continue
 
@@ -100,7 +100,7 @@ def plot_contributions(axis, modelpath, timestep, modelgridindex, nonthermaldata
         nions = elementlist.nions[element]
         for ion in range(nions):
             ionstage = ion + elementlist.lowermost_ionstage[element]
-            ionpop = estimators[(timestep, modelgridindex)]["populations"][(Z, ionstage)]
+            ionpop = estimators[(timestep, modelgridindex)][f"populations_{Z}_{ionstage}"]
 
             dfcollion_thision = dfcollion.query("Z == @Z and ionstage == @ionstage")
 

@@ -161,7 +161,7 @@ def read_reference_estimators(
                                 estimators[tsmgi][f"populations_{atomic_number}"] += ionpop
 
                         except ValueError:
-                            estimators[tsmgi]["populations"][(atomic_number, ion_stage)] = float("NaN")
+                            estimators[tsmgi][f"populations_{atomic_number}_{ion_stage}"] = float("NaN")
 
                     assert np.isclose(float(row[0]), estimators[tsmgi]["vel_mid"], rtol=0.01)
                     assert estimators[key]["vel_mid"]

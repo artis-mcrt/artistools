@@ -198,7 +198,7 @@ def make_ionsubplot(
         dfpopthision = dfpopthision.query("level <= @args.maxlevel")
 
     ionpopulation = dfpopthision["n_NLTE"].sum()
-    ionpopulation_fromest = estimators[(timestep, modelgridindex)]["populations"].get((atomic_number, ion_stage), 0.0)
+    ionpopulation_fromest = estimators[(timestep, modelgridindex)].get(f"populations_{atomic_number}_{ion_stage}", 0.0)
 
     dfpopthision["parity"] = [
         1 if (row.level != -1 and ion_data.levels.iloc[int(row.level)].levelname.split("[")[0][-1] == "o") else 0

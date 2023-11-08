@@ -186,12 +186,16 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             print(f"ERROR: no NLTE populations for cell {args.modelgridindex} at timestep {args.timestep}")
             raise AssertionError
 
-        nntot = estim["populations"]["total"]
+        nntot = estim["populations_total"]
         # nne = estim["nne"]
         T_e = estim["Te"]
         print("WARNING: Use LTE pops at Te for now")
         deposition_density_ev = estim["heating_dep"] / 1.6021772e-12  # convert erg to eV
-        ionpopdict = estim["populations"]
+        ionpopdict = {
+            at.get_ion_tuple(k): v
+            for k, v in estim.items()
+            if k.startswith("populations_") and "_" in k.removeprefix("populations_")
+        }
 
         velocity = modeldata["vel_r_max_kmps"][args.modelgridindex]
         args.timedays = float(at.get_timestep_time(modelpath, args.timestep))

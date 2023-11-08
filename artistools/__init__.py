@@ -61,6 +61,7 @@ from artistools.misc import get_file_metadata
 from artistools.misc import get_filterfunc
 from artistools.misc import get_grid_mapping
 from artistools.misc import get_inputparams
+from artistools.misc import get_ion_tuple
 from artistools.misc import get_ionstring
 from artistools.misc import get_linelist_dataframe
 from artistools.misc import get_linelist_dict

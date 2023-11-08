@@ -315,7 +315,7 @@ def get_kappa_bf_ion(atomic_number, lower_ion_stage, modelgridindex, timestep, m
     ion_data = adata.query("Z == @atomic_number and ion_stage == @lower_ion_stage").iloc[0]
     upper_ion_data = adata.query("Z == @atomic_number and ion_stage == (@lower_ion_stage + 1)").iloc[0]
 
-    lowerionpopdensity = estimators[(timestep, modelgridindex)]["populations"][(atomic_number, lower_ion_stage)]
+    lowerionpopdensity = estimators[(timestep, modelgridindex)][f"populations_{atomic_number}_{lower_ion_stage}"]
 
     ion_popfactor_sum = sum(
         level.g * math.exp(-level.energy_ev * EV / KB / T_e) for _, level in ion_data.levels[:max_levels].iterrows()
@@ -352,11 +352,11 @@ def get_recombination_emission(
 
     estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
 
-    upperionpopdensity = estimators[(timestep, modelgridindex)]["populations"][(atomic_number, upper_ion_stage)]
+    upperionpopdensity = estimators[(timestep, modelgridindex)][f"populations_{atomic_number}_{upper_ion_stage}"]
     T_e = estimators[(timestep, modelgridindex)]["Te"]
     nne = estimators[(timestep, modelgridindex)]["nne"]
 
-    upperionpopdensity = estimators[(timestep, modelgridindex)]["populations"][(atomic_number, upper_ion_stage)]
+    upperionpopdensity = estimators[(timestep, modelgridindex)][f"populations_{atomic_number}_{upper_ion_stage}"]
     print(f"Recombination from {upperionstr} -> {lowerionstr} ({upperionstr} pop = {upperionpopdensity:.1e}/cm3)")
 
     if use_lte_pops:

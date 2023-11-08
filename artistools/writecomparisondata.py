@@ -114,11 +114,11 @@ def write_ionfracts(
                         continue
                     v_mid = (cell.vel_r_min_kmps + cell.vel_r_max_kmps) / 2.0
                     f.write(f"{v_mid:.2f}")
-                    elabund = estimators[(timestep, modelgridindex)]["populations"].get(atomic_number, 0)
+                    elabund = estimators[(timestep, modelgridindex)].get(f"populations_{atomic_number}", 0)
                     for ion in range(nions):
                         ion_stage = ion + elementlist.lowermost_ionstage[element]
-                        ionabund = estimators[(timestep, modelgridindex)]["populations"].get(
-                            (atomic_number, ion_stage), 0
+                        ionabund = estimators[(timestep, modelgridindex)].get(
+                            f"populations_{atomic_number}_{ion_stage}", 0
                         )
                         ionfrac = ionabund / elabund if elabund > 0 else 0
                         if ionfrac > 0.0:
@@ -149,8 +149,8 @@ def write_phys(modelpath, model_id, selected_timesteps, estimators, allnonemptym
                     10**cell.logrho * (modelmeta["t_model_init_days"] / times[timestep]) ** 3
                 )
 
-                estimators[(timestep, modelgridindex)]["nntot"] = estimators[(timestep, modelgridindex)]["populations"][
-                    "total"
+                estimators[(timestep, modelgridindex)]["nntot"] = estimators[(timestep, modelgridindex)][
+                    "populations_total"
                 ]
 
                 v_mid = (cell.vel_r_min_kmps + cell.vel_r_max_kmps) / 2.0
