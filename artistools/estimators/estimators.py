@@ -168,6 +168,7 @@ def parse_estimfile(
                 else:
                     atomic_number = int(row[1].split("=")[1])
                     startindex = 2
+                elsymbol = at.get_elsymbol(atomic_number)
 
                 estimblock.setdefault(variablename, {})
 
@@ -184,10 +185,10 @@ def parse_estimfile(
                     try:
                         ion_stage = int(ion_stage_str.rstrip(":"))
                     except ValueError:
-                        if variablename == "populations" and ion_stage_str.startswith(at.get_elsymbol(atomic_number)):
+                        if variablename == "populations" and ion_stage_str.startswith(elsymbol):
                             estimblock[variablename][ion_stage_str.rstrip(":")] = float(value)
                         else:
-                            print(ion_stage_str, at.get_elsymbol(atomic_number))
+                            print(ion_stage_str, elsymbol)
                             print(f"Cannot parse row: {row}")
                         continue
 
