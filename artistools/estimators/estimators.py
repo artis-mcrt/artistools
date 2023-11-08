@@ -263,20 +263,17 @@ def read_estimators(
     Selecting particular timesteps or modelgrid cells will using speed this up by reducing the number of files that must be read.
     """
     modelpath = Path(modelpath)
-    match_modelgridindex: t.Collection[int]
+    match_modelgridindex: None | t.Sequence[int]
     if modelgridindex is None:
-        match_modelgridindex = []
+        match_modelgridindex = None
     elif isinstance(modelgridindex, int):
         match_modelgridindex = (modelgridindex,)
     else:
         match_modelgridindex = tuple(modelgridindex)
 
-    if -1 in match_modelgridindex:
-        match_modelgridindex = []
-
-    match_timestep: t.Collection[int]
+    match_timestep: None | t.Sequence[int]
     if timestep is None:
-        match_timestep = []
+        match_timestep = None
     elif isinstance(timestep, int):
         match_timestep = (timestep,)
     else:
