@@ -8,7 +8,6 @@ Examples are temperatures, populations, heating/cooling rates.
 import argparse
 import contextlib
 import math
-import sys
 import typing as t
 from pathlib import Path
 
@@ -150,9 +149,7 @@ def plot_average_ionisation_excitation(
             for timestep in timesteps:
                 if seriestype == "averageionisation":
                     valuesum += (
-                        at.estimators.get_averageionisation(
-                            estimators[(timestep, modelgridindex)]["populations"], atomic_number
-                        )
+                        at.estimators.get_averageionisation(estimators[(timestep, modelgridindex)], atomic_number)
                         * arr_tdelta[timestep]
                     )
                 elif seriestype == "averageexcitation":
@@ -360,29 +357,37 @@ def plot_multi_ion_series(
                 #         f"cell {modelgridindex} timesteps {timesteps}"
                 #     )
 
+                if ion_stage == "ALL":
+                    key = f"populations_{atomic_number}"
+                elif hasattr(ion_stage, "lower") and ion_stage.startswith(at.get_elsymbol(atomic_number)):
+                    # not really an ionstage but maybe isotope?
+                    key = f"populations_{ion_stage}"
+                else:
+                    key = f"populations_{atomic_number}_{ion_stage}"
+
                 try:
                     estimpop = at.estimators.get_averaged_estimators(
-                        modelpath, estimators, timesteps, modelgridindex, ["populations"]
+                        modelpath,
+                        estimators,
+                        timesteps,
+                        modelgridindex,
+                        [key, f"populations_{atomic_number}", "populations_total"],
                     )
                 except KeyError:
+                    print(f"KeyError: {key} not in estimators")
                     ylist.append(float("nan"))
                     continue
 
-                if ion_stage == "ALL":
-                    nionpop = estimpop.get((atomic_number), 0.0)
-                elif hasattr(ion_stage, "lower") and ion_stage.startswith(at.get_elsymbol(atomic_number)):
-                    nionpop = estimpop.get(ion_stage, 0.0)
-                else:
-                    nionpop = estimpop.get((atomic_number, ion_stage), 0.0)
+                nionpop = estimpop.get(key, 0.0)
 
                 try:
                     if args.ionpoptype == "absolute":
                         yvalue = nionpop  # Plot as fraction of element population
                     elif args.ionpoptype == "elpop":
-                        elpop = estimpop.get(atomic_number, 0.0)
+                        elpop = estimpop.get(f"populations_{atomic_number}", 0.0)
                         yvalue = nionpop / elpop  # Plot as fraction of element population
                     elif args.ionpoptype == "totalpop":
-                        totalpop = estimpop["total"]
+                        totalpop = estimpop["populations_total"]
                         yvalue = nionpop / totalpop  # Plot as fraction of total population
                     else:
                         raise AssertionError
@@ -391,32 +396,11 @@ def plot_multi_ion_series(
 
                 ylist.append(yvalue)
 
-            # elif seriestype == 'Alpha_R':
-            #     ylist.append(estim['Alpha_R*nne'].get((atomic_number, ion_stage), 0.) / estim['nne'])
-            # else:
-            #     ylist.append(estim[seriestype].get((atomic_number, ion_stage), 0.))
             else:
-                # this is very slow!
-                try:
-                    estim = at.estimators.get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, [])
-                except KeyError:
-                    ylist.append(float("nan"))
-                    continue
-
-                dictvars = {}
-                for k, value in estim.items():
-                    if isinstance(value, dict):
-                        dictvars[k] = value.get((atomic_number, ion_stage), 0.0)
-                    else:
-                        dictvars[k] = value
-
-                # dictvars will now define things like 'Te', 'TR',
-                # as well as 'populations' which applies to the current ion
-
-                try:
-                    yvalue = eval(seriestype, {"__builtins__": math}, dictvars)
-                except ZeroDivisionError:
-                    yvalue = float("NaN")
+                key = f"{seriestype}_{atomic_number}_{ion_stage}"
+                yvalue = at.estimators.get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, key)[
+                    key
+                ]
                 ylist.append(yvalue)
 
         plotlabel = (
@@ -511,16 +495,17 @@ def plot_series(
 
     ylist: list[float] = []
     for modelgridindex, timesteps in zip(mgilist, timestepslist):
-        estimavg = at.estimators.get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, [])
-        assert isinstance(estimavg, dict)
         try:
-            ylist.append(eval(variablename, {"__builtins__": math}, estimavg))
+            yvalue = at.estimators.get_averaged_estimators(
+                modelpath, estimators, timesteps, modelgridindex, variablename
+            )[variablename]
+            ylist.append(yvalue)
         except KeyError:
             if (timesteps[0], modelgridindex) in estimators:
                 print(f"Undefined variable: {variablename} in cell {modelgridindex}")
             else:
                 print(f"No data for cell {modelgridindex}")
-            sys.exit()
+            raise
 
     try:
         if math.log10(max(ylist) / min(ylist)) > 2:
@@ -598,7 +583,9 @@ def get_xlist(
         mgilist_out = []
         timestepslist_out = []
         for modelgridindex, timesteps in zip(allnonemptymgilist, timestepslist):
-            xvalue = at.estimators.get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, xvariable)
+            xvalue = at.estimators.get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, xvariable)[
+                xvariable
+            ]
             assert isinstance(xvalue, float | int)
             xlist.append(xvalue)
             mgilist_out.append(modelgridindex)

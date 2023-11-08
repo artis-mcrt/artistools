@@ -126,8 +126,7 @@ def make_plot(
     peak_y_value = -1
     yvalues_combined = np.zeros((len(temperature_list), len(xvalues)))
     for seriesindex, temperature in enumerate(temperature_list):
-        T_exc = eval(temperature, vardict)
-        serieslabel = "NLTE" if T_exc < 0 else f"LTE {temperature} = {T_exc:.0f} K"
+        serieslabel = "NLTE" if temperature == "NOTEMPNLTE" else f"LTE {temperature} = {vardict[temperature]:.0f} K"
         for ion_index, axis in enumerate(axes[: len(ionlist)]):
             # an ion subplot
             yvalues_combined[seriesindex] += yvalues[seriesindex][ion_index]
@@ -326,8 +325,8 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             figure_title += f" ({time_days:.1f}d)"
 
         # -1 means use NLTE populations
-        temperature_list = ["Te", "TR", "-1"]
-        temperature_list = ["-1"]
+        temperature_list = ["Te", "TR", "NOTEMPNLTE"]
+        temperature_list = ["NOTEMPNLTE"]
         vardict = {"Te": Te, "TR": TR}
     else:
         if not args.T:
@@ -408,8 +407,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             )
 
             for seriesindex, temperature in enumerate(temperature_list):
-                T_exc = eval(temperature, vardict)
-                if T_exc < 0:
+                if temperature == "NOTEMPNLTE":
                     dfnltepops_thision = dfnltepops.query("Z==@ion.Z & ion_stage==@ion.ion_stage")
 
                     nltepopdict = {x.level: x["n_NLTE"] for _, x in dfnltepops_thision.iterrows()}
@@ -433,6 +431,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
                     with pd.option_context("display.width", 200):
                         print(dftransitions.nlargest(1, "flux_factor_nlte"))
                 else:
+                    T_exc = vardict[temperature]
                     popcolumnname = f"upper_pop_lte_{T_exc:.0f}K"
                     if args.atomicdatabase == "artis":
                         dftransitions = dftransitions.eval("upper_g = @ion.levels.loc[upper].g.to_numpy()")
@@ -467,7 +466,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
         def get_strionfracs(atomic_number, ionstages):
             est_ionfracs = [
-                estimators["populations"][(atomic_number, ionstage)] / estimators["populations"][atomic_number]
+                estimators[f"populations_{atomic_number}_{ionstage}"] / estimators[f"populations_{atomic_number}"]
                 for ionstage in ionstages
             ]
             ionfracs_str = " ".join([f"{pop:6.0e}" if pop < 0.01 else f"{pop:6.2f}" for pop in est_ionfracs])
@@ -489,8 +488,8 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             f"{velocity:5.0f} km/s({modelgridindex})      {fe2depcoeff:5.2f}                   "
             f"{ni2depcoeff:.2f}        "
             f"{est_fe_ionfracs_str}   /  {est_ni_ionfracs_str}      {Te:.0f}    "
-            f"{estimators['populations'][(26, 3)] / estimators['populations'][(26, 2)]:.2f}          "
-            f"{estimators['populations'][(28, 3)] / estimators['populations'][(28, 2)]:5.2f}"
+            f"{estimators['populations_26_3'] / estimators['populations_26_2']:.2f}          "
+            f"{estimators['populations_28_3'] / estimators['populations_28_2']:5.2f}"
         )
 
     outputfilename = (

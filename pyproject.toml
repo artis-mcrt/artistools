@@ -111,7 +111,7 @@ ignore_errors = true
 max-line-length = 120
 disable = """
     broad-exception-caught,
-    eval-used,
+    #eval-used,
     fixme,
     missing-function-docstring,
     missing-module-docstring,
@@ -176,7 +176,7 @@ ignore = [
     "N999",  # invalid-module-name
     "PD901",  # df is a bad variable name
     "PERF203", # try-except-in-loop
-    "PGH001",  # No builtin `eval()` allowed
+    #"PGH001",  # No builtin `eval()` allowed
     "PLR0911",  # too-many-return-statements
     "PLR0912",  # too-many-branches
     "PLR0913",  # too-many-arguments
@@ -186,7 +186,7 @@ ignore = [
     "PYI024", # Use `typing.NamedTuple` instead of `collections.namedtuple`
     "S101",  # Use of assert detected
     "S301",  # suspicious-pickle-usage
-    "S307",  # suspicious-eval-usage
+    #"S307",  # suspicious-eval-usage
     "S311",  # suspicious-non-cryptographic-random-usage
     "S603",  # subprocess-without-shell-equals-true
     "S607",  # start-process-with-partial-path

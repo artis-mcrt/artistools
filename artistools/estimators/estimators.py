@@ -12,7 +12,6 @@ import sys
 import typing as t
 from collections import namedtuple
 from functools import partial
-from functools import reduce
 from pathlib import Path
 
 import numpy as np
@@ -124,12 +123,12 @@ def parse_estimfile(
     get_ion_values: bool = True,
     get_heatingcooling: bool = True,
     skip_emptycells: bool = False,
-) -> t.Iterator[tuple[int, int, dict]]:  # pylint: disable=unused-argument
+) -> t.Iterator[tuple[int, int, dict[str, t.Any]]]:  # pylint: disable=unused-argument
     """Generate timestep, modelgridindex, dict from estimator file."""
     with at.zopen(estfilepath) as estimfile:
         timestep: int = -1
         modelgridindex: int = -1
-        estimblock: dict[t.Any, t.Any] = {}
+        estimblock: dict[str, t.Any] = {}
         for line in estimfile:
             row: list[str] = line.split()
             if not row:
@@ -170,8 +169,6 @@ def parse_estimfile(
                     startindex = 2
                 elsymbol = at.get_elsymbol(atomic_number)
 
-                estimblock.setdefault(variablename, {})
-
                 for ion_stage_str, value in zip(row[startindex::2], row[startindex + 1 :: 2]):
                     ion_stage_str_strip = ion_stage_str.strip()
                     if ion_stage_str_strip == "(or":
@@ -180,38 +177,37 @@ def parse_estimfile(
                     value_thision = float(value.rstrip(","))
 
                     if ion_stage_str_strip == "SUM:":
-                        estimblock[variablename][atomic_number] = value_thision
+                        estimblock[f"{variablename}_{atomic_number}"] = value_thision
                         continue
 
                     try:
                         ion_stage = int(ion_stage_str.rstrip(":"))
                     except ValueError:
                         if variablename == "populations" and ion_stage_str.startswith(elsymbol):
-                            estimblock[variablename][ion_stage_str.rstrip(":")] = float(value)
+                            estimblock[f"{variablename}_{ion_stage_str.rstrip(':')}"] = float(value)
                         else:
                             print(ion_stage_str, elsymbol)
                             print(f"Cannot parse row: {row}")
                         continue
 
-                    estimblock[variablename][(atomic_number, ion_stage)] = value_thision
+                    estimblock[f"{variablename}_{atomic_number}_{ion_stage}"] = value_thision
 
                     if variablename in {"Alpha_R*nne", "AlphaR*nne"}:
-                        estimblock.setdefault("Alpha_R", {})
-                        estimblock["Alpha_R"][(atomic_number, ion_stage)] = (
+                        estimblock[f"Alpha_R_{atomic_number}_{ion_stage}"] = (
                             value_thision / estimblock["nne"] if estimblock["nne"] > 0.0 else float("inf")
                         )
 
                     else:  # variablename == 'populations':
                         # contribute the ion population to the element population
-                        estimblock[variablename].setdefault(atomic_number, 0.0)
-                        estimblock[variablename][atomic_number] += value_thision
+                        estimblock.setdefault(f"{variablename}_{atomic_number}", 0.0)
+                        estimblock[f"{variablename}_{atomic_number}"] += value_thision
 
                 if variablename == "populations":
                     # contribute the element population to the total population
-                    estimblock["populations"].setdefault("total", 0.0)
-                    estimblock["populations"]["total"] += estimblock["populations"][atomic_number]
+                    estimblock.setdefault("populations_total", 0.0)
+                    estimblock["populations_total"] += estimblock[f"populations_{atomic_number}"]
                     estimblock.setdefault("nntot", 0.0)
-                    estimblock["nntot"] += estimblock["populations"][atomic_number]
+                    estimblock["nntot"] += estimblock[f"populations_{atomic_number}"]
 
             elif row[0] == "heating:" and get_heatingcooling:
                 for heatingtype, value in zip(row[1::2], row[2::2]):
@@ -240,7 +236,7 @@ def read_estimators_from_file(
     get_ion_values: bool = True,
     get_heatingcooling: bool = True,
     skip_emptycells: bool = False,
-) -> dict[tuple[int, int], t.Any]:
+) -> dict[tuple[int, int], dict[str, t.Any]]:
     estimfilename = f"estimators_{mpirank:04d}.out"
     try:
         estfilepath = at.firstexisting(estimfilename, folder=folderpath, tryzipped=True)
@@ -275,7 +271,7 @@ def read_estimators(
     get_heatingcooling: bool = True,
     skip_emptycells: bool = False,
     add_velocity: bool = True,
-) -> dict[tuple[int, int], dict]:
+) -> dict[tuple[int, int], dict[str, t.Any]]:
     """Read estimator files into a nested dictionary structure.
 
     Speed it up by only retrieving estimators for a particular timestep(s) or modelgrid cells.
@@ -364,62 +360,48 @@ def get_averaged_estimators(
     estimators: dict[tuple[int, int], dict],
     timesteps: int | t.Sequence[int],
     modelgridindex: int,
-    keys: str | list,
+    keys: str | list | None,
     avgadjcells: int = 0,
-) -> dict | float:
+) -> dict[str, t.Any]:
     """Get the average of estimators[(timestep, modelgridindex)][keys[0]]...[keys[-1]] across timesteps."""
+    modelgridindex = int(modelgridindex)
+    if isinstance(timesteps, int):
+        timesteps = [timesteps]
+
     if isinstance(keys, str):
         keys = [keys]
-    modelgridindex = int(modelgridindex)
+    elif keys is None or not keys:
+        keys = list(estimators[(timesteps[0], modelgridindex)].keys())
 
-    # reduce(lambda d, k: d[k], keys, dictionary) returns dictionary[keys[0]][keys[1]]...[keys[-1]]
-    # applying all keys in the keys list
-
-    # if single timestep, no averaging needed
-    if isinstance(timesteps, int):
-        return reduce(lambda d, k: d[k], [(timesteps, modelgridindex), *keys], estimators)
-
-    firsttimestepvalue = reduce(lambda d, k: d[k], [(timesteps[0], modelgridindex), *keys], estimators)
-    if isinstance(firsttimestepvalue, dict):
-        return {
-            k: get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, [*keys, k])
-            for k in firsttimestepvalue
-        }
-
+    dictout = {}
     tdeltas = at.get_timestep_times(modelpath, loc="delta")
-    valuesum = 0
-    tdeltasum = 0
-    for timestep, tdelta in zip(timesteps, tdeltas):
-        for mgi in range(modelgridindex - avgadjcells, modelgridindex + avgadjcells + 1):
-            with contextlib.suppress(KeyError):
-                valuesum += reduce(lambda d, k: d[k], [(timestep, mgi), *keys], estimators) * tdelta
+    for k in keys:
+        valuesum = 0
+        tdeltasum = 0
+        for timestep, tdelta in zip(timesteps, tdeltas):
+            for mgi in range(modelgridindex - avgadjcells, modelgridindex + avgadjcells + 1):
+                valuesum += estimators[(timestep, mgi)][k] * tdelta
                 tdeltasum += tdelta
-    return valuesum / tdeltasum
+        dictout[k] = valuesum / tdeltasum
 
-    # except KeyError:
-    #     if (timestep, modelgridindex) in estimators:
-    #         print(f'Unknown x variable: {xvariable} for timestep {timestep} in cell {modelgridindex}')
-    #     else:
-    #         print(f'No data for cell {modelgridindex} at timestep {timestep}')
-    #     print(estimators[(timestep, modelgridindex)])
-    #     sys.exit()
+    return dictout
 
 
-def get_averageionisation(populations: dict[t.Any, float], atomic_number: int) -> float:
+def get_averageionisation(estimatorstsmgi: dict[str, float], atomic_number: int) -> float:
     free_electron_weighted_pop_sum = 0.0
     found = False
     popsum = 0.0
-    for key in populations:
-        if isinstance(key, tuple) and key[0] == atomic_number:
+    for key in estimatorstsmgi:
+        if key.startswith(f"populations_{atomic_number}_"):
             found = True
-            ion_stage = key[1]
-            free_electron_weighted_pop_sum += populations[key] * (ion_stage - 1)
-            popsum += populations[key]
+            ion_stage = int(key.removeprefix(f"populations_{atomic_number}_"))
+            free_electron_weighted_pop_sum += estimatorstsmgi[key] * (ion_stage - 1)
+            popsum += estimatorstsmgi[key]
 
     if not found:
         return float("NaN")
 
-    return free_electron_weighted_pop_sum / populations[atomic_number]
+    return free_electron_weighted_pop_sum / estimatorstsmgi[f"populations_{atomic_number}"]
 
 
 def get_averageexcitation(
@@ -459,7 +441,7 @@ def get_averageexcitation(
     return energypopsum / ionpopsum
 
 
-def get_partiallycompletetimesteps(estimators: dict[tuple[int, int], dict]) -> list[int]:
+def get_partiallycompletetimesteps(estimators: dict[tuple[int, int], dict[str, t.Any]]) -> list[int]:
     """During a simulation, some estimator files can contain information for some cells but not others
     for the current timestep.
     """

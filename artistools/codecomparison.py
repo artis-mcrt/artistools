@@ -148,8 +148,6 @@ def read_reference_estimators(
                     cur_modelgridindex += 1
 
                     tsmgi = (cur_timestep, cur_modelgridindex)
-                    if "populations" not in estimators[tsmgi]:
-                        estimators[tsmgi]["populations"] = {}
 
                     assert len(row) == nstages + 1
                     assert len(iontuples) == nstages
@@ -158,9 +156,9 @@ def read_reference_estimators(
                             ionfrac = float(strionfrac)
                             ionpop = ionfrac * estimators[tsmgi]["nntot"]
                             if ionpop > 1e-80:
-                                estimators[tsmgi]["populations"][(atomic_number, ion_stage)] = ionpop
-                                estimators[tsmgi]["populations"].setdefault(atomic_number, 0.0)
-                                estimators[tsmgi]["populations"][atomic_number] += ionpop
+                                estimators[tsmgi][f"populations_{atomic_number}_{ion_stage}"] = ionpop
+                                estimators[tsmgi].setdefault(f"populations_{atomic_number}", 0.0)
+                                estimators[tsmgi][f"populations_{atomic_number}"] += ionpop
 
                         except ValueError:
                             estimators[tsmgi]["populations"][(atomic_number, ion_stage)] = float("NaN")
