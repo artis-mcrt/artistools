@@ -24,9 +24,10 @@ SAHACONST = 2.0706659e-16
 
 
 @lru_cache(maxsize=4)
-def read_files(modelpath, timestep=-1, modelgridindex=-1):
+def read_files(modelpath: Path | str, timestep: int | None = None, modelgridindex: int | None = None):
     """Read radiation field data from a list of file paths into a pandas DataFrame."""
     radfielddata = pd.DataFrame()
+    modelpath = Path(modelpath)
 
     mpiranklist = at.get_mpiranklist(modelpath, modelgridindex=modelgridindex)
     for folderpath in at.get_runfolders(modelpath, timestep=timestep):
@@ -35,21 +36,21 @@ def read_files(modelpath, timestep=-1, modelgridindex=-1):
             radfieldfilepath = Path(folderpath, radfieldfilename)
             radfieldfilepath = at.firstexisting(radfieldfilename, folder=folderpath, tryzipped=True)
 
-            if modelgridindex > -1:
+            if modelgridindex is not None:
                 filesize = Path(radfieldfilepath).stat().st_size / 1024 / 1024
                 print(f"Reading {Path(radfieldfilepath).relative_to(modelpath.parent)} ({filesize:.2f} MiB)")
 
             radfielddata_thisfile = pd.read_csv(radfieldfilepath, delim_whitespace=True)
             # radfielddata_thisfile[['modelgridindex', 'timestep']].apply(pd.to_numeric)
 
-            if timestep >= 0:
+            if timestep is not None:
                 radfielddata_thisfile = radfielddata_thisfile.query("timestep==@timestep")
 
-            if modelgridindex >= 0:
+            if modelgridindex is not None:
                 radfielddata_thisfile = radfielddata_thisfile.query("modelgridindex==@modelgridindex")
 
             if not radfielddata_thisfile.empty:
-                if timestep >= 0 and modelgridindex >= 0:
+                if timestep is not None and modelgridindex is not None:
                     return radfielddata_thisfile
                 radfielddata = radfielddata.append(radfielddata_thisfile.copy(), ignore_index=True)
 
