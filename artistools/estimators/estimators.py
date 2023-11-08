@@ -213,7 +213,7 @@ def parse_estimfile(
 
             elif row[0] == "heating:" and get_heatingcooling:
                 for heatingtype, value in zip(row[1::2], row[2::2]):
-                    key = heatingtype if heatingtype.startswith("heating_") else "heating_" + heatingtype
+                    key = heatingtype if heatingtype.startswith("heating_") else f"heating_{heatingtype}"
                     estimblock[key] = float(value)
 
                 if "heating_gamma/gamma_dep" in estimblock and estimblock["heating_gamma/gamma_dep"] > 0:
@@ -223,7 +223,7 @@ def parse_estimfile(
 
             elif row[0] == "cooling:" and get_heatingcooling:
                 for coolingtype, value in zip(row[1::2], row[2::2]):
-                    estimblock["cooling_" + coolingtype] = float(value)
+                    estimblock[f"cooling_{coolingtype}"] = float(value)
 
     # reached the end of file
     if timestep >= 0 and modelgridindex >= 0 and (not skip_emptycells or not estimblock.get("emptycell", True)):
