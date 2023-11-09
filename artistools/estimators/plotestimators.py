@@ -780,6 +780,23 @@ def make_plot(
         plotkwargs["linestyle"] = "None"
         plotkwargs["marker"] = "."
 
+    # ideally, we could start filtering the columns here, but it's still faster to collect the whole thing
+    allts: set[int] = set()
+    for tspoint in timestepslist:
+        if isinstance(tspoint, int):
+            allts.add(tspoint)
+        else:
+            for ts in tspoint:
+                allts.add(ts)
+
+    estimators = (
+        estimators.filter(pl.col("modelgridindex").is_in(mgilist))
+        .filter(pl.col("timestep").is_in(allts))
+        .lazy()
+        .collect()
+        .lazy()
+    )
+
     for ax, plotitems in zip(axes, plotlist):
         ax.set_xlim(left=xmin, right=xmax)
         plot_subplot(
