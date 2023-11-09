@@ -469,8 +469,9 @@ def plot_multi_ion_series(
         ylist.insert(0, ylist[0])
 
         xlist, ylist = at.estimators.apply_filters(xlist, ylist, args)
-
-        ax.plot(xlist, ylist, linewidth=linewidth, label=plotlabel, color=color, dashes=dashes, **plotkwargs)
+        if plotkwargs["linestyle"] != "None":
+            plotkwargs["dashes"] = dashes
+        ax.plot(xlist, ylist, linewidth=linewidth, label=plotlabel, color=color, **plotkwargs)
         prev_atomic_number = atomic_number
         plotted_something = True
 
@@ -578,6 +579,8 @@ def get_xlist(
         timestepslist_out = timestepslist
     elif xvariable in {"velocity", "beta"}:
         dfmodel, modelmeta = at.inputmodel.get_modeldata_polars(modelpath, derived_cols=["vel_r_mid"])
+        if modelmeta["dimensions"] > 1:
+            args.markersonly = True
         if modelmeta["vmax_cmps"] > 0.3 * 29979245800:
             args.x = "beta"
             xvariable = "beta"
@@ -983,7 +986,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--hidexlabel", action="store_true", help="Hide the bottom horizontal axis label")
 
-    parser.add_argument("--markersonly", action="store_true", help="Plot markers instead of lines")
+    parser.add_argument(
+        "--markersonly", action="store_true", help="Plot markers instead of lines (always set for 2D and 3D)"
+    )
 
     parser.add_argument("-filtermovingavg", type=int, default=0, help="Smoothing length (1 is same as none)")
 
@@ -1094,7 +1099,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         # [['averageexcitation', ['Fe II', 'Fe III']]],
         # [["populations", ["Sr90", "Sr91", "Sr92", "Sr93", "Sr94"]]],
         #  ['_ymin', 1e-3], ['_ymax', 5]],
-        [["populations", ["Sr"]]],
+        [["populations", ["Sr II"]]],
         # [['populations', ['He I', 'He II', 'He III']]],
         # [['populations', ['C I', 'C II', 'C III', 'C IV', 'C V']]],
         # [['populations', ['O I', 'O II', 'O III', 'O IV']]],
