@@ -212,7 +212,7 @@ def plot_levelpop(
         ionlevels = adata.query("Z == @atomic_number and ionstage == @ionstage").iloc[0].levels
         levelname = ionlevels.iloc[levelindex].levelname
         label = (
-            f"{at.get_ionstring(atomic_number, ionstage, style="chargelatex")} level {levelindex}:"
+            f"{at.get_ionstring(atomic_number, ionstage, style='chargelatex')} level {levelindex}:"
             f" {at.nltepops.texifyconfiguration(levelname)}"
         )
 
