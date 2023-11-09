@@ -311,9 +311,7 @@ def evaluate_phixs(
 
 def get_kappa_bf_ion(atomic_number, lower_ionstage, modelgridindex, timestep, modelpath, arr_nu_hz, max_levels):
     adata = at.atomic.get_levels(modelpath, get_photoionisations=True)
-    estimators = at.estimators.read_estimators(
-        modelpath, timestep=timestep, modelgridindex=modelgridindex, use_polars=False
-    )
+    estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
     T_e = estimators[(timestep, modelgridindex)]["Te"]
 
     ion_data = adata.query("Z == @atomic_number and ionstage == @lower_ionstage").iloc[0]
@@ -355,9 +353,9 @@ def get_recombination_emission(
     upper_ion_data = adata.query("Z == @atomic_number and ionstage == @upper_ionstage").iloc[0]
     lower_ion_data = adata.query("Z == @atomic_number and ionstage == @lower_ionstage").iloc[0]
 
-    estimtsmgi = at.estimators.read_estimators(
-        modelpath, timestep=timestep, modelgridindex=modelgridindex, use_polars=False
-    )[(timestep, modelgridindex)]
+    estimtsmgi = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)[
+        (timestep, modelgridindex)
+    ]
 
     upperionstr = at.get_ionstring(atomic_number, upper_ionstage, sep="_", style="spectral")
     upperionpopdensity = estimtsmgi[f"nnion_{upperionstr}"]
@@ -461,9 +459,7 @@ def get_recombination_emission(
 
 def get_ion_gamma_dnu(modelpath, modelgridindex, timestep, atomic_number, ionstage, arr_nu_hz, J_nu_arr, max_levels):
     """Calculate the contribution to the photoionisation rate coefficient per J_nu at each frequency nu for an ion."""
-    estimators = at.estimators.read_estimators(
-        modelpath, timestep=timestep, modelgridindex=modelgridindex, use_polars=False
-    )
+    estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
 
     T_e = estimators[(timestep, modelgridindex)]["Te"]
     T_R = estimators[(timestep, modelgridindex)]["TR"]
