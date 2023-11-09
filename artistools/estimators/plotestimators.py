@@ -589,7 +589,7 @@ def get_xlist(
             dfmodel = dfmodel.filter(pl.col("vel_r_mid") / 1e5 <= args.xmax)
         else:
             dfmodel = dfmodel.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"])
-        dfmodelcollect = dfmodel.collect()
+        dfmodelcollect = dfmodel.select(["vel_r_mid", "modelgridindex"]).collect()
 
         scalefactor = 1e5 if xvariable == "velocity" else 29979245800
         xlist = (dfmodelcollect["vel_r_mid"] / scalefactor).to_list()
@@ -1075,7 +1075,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         ["Te"],
         [["averageionisation", ["Sr"]]],
         # [['averageexcitation', ['Fe II', 'Fe III']]],
-        [["populations", ["Sr89", "Sr90", "Sr91", "Sr92", "Sr93", "Sr94"]]],
+        # [["populations", ["Sr90", "Sr91", "Sr92", "Sr93", "Sr94"]]],
         #  ['_ymin', 1e-3], ['_ymax', 5]],
         [["populations", ["Fe", "Co", "Ni", "Sr", "Nd"]]],
         # [['populations', ['He I', 'He II', 'He III']]],

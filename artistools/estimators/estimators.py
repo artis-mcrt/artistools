@@ -427,18 +427,21 @@ def get_averaged_estimators(
 
     dictout = {}
     tdeltas = at.get_timestep_times(modelpath, loc="delta")
+    mgilist = list(range(modelgridindex - avgadjcells, modelgridindex + avgadjcells + 1))
+    estcollect = (
+        estimators.lazy()
+        .filter(pl.col("timestep").is_in(timesteps))
+        .filter(pl.col("modelgridindex").is_in(mgilist))
+        .select({*keys, "timestep", "modelgridindex"})
+        .collect()
+    )
     for k in keys:
         valuesum = 0
         tdeltasum = 0
         for timestep, tdelta in zip(timesteps, tdeltas):
-            for mgi in range(modelgridindex - avgadjcells, modelgridindex + avgadjcells + 1):
+            for mgi in mgilist:
                 value = (
-                    estimators.filter(pl.col("timestep") == timestep)
-                    .filter(pl.col("modelgridindex") == mgi)
-                    .select(k)
-                    .lazy()
-                    .collect()
-                    .item(0, 0)
+                    estcollect.filter(pl.col("timestep") == timestep).filter(pl.col("modelgridindex") == mgi)[k].item(0)
                 )
                 if value is None:
                     msg = f"{k} not found for timestep {timestep} and modelgridindex {mgi}"
@@ -446,6 +449,7 @@ def get_averaged_estimators(
 
                 valuesum += value * tdelta
                 tdeltasum += tdelta
+
         dictout[k] = valuesum / tdeltasum
 
     return dictout

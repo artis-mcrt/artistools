@@ -364,7 +364,7 @@ def get_modeldata_polars(
         raise AssertionError
 
     mebibyte = 1024 * 1024
-    if isinstance(dfmodel, pl.DataFrame) and filename.stat().st_size > 10 * mebibyte and not getheadersonly:
+    if isinstance(dfmodel, pl.DataFrame) and filename.stat().st_size > 5 * mebibyte and not getheadersonly:
         print(f"Saving {filenameparquet}")
         dfmodel.write_parquet(filenameparquet, compression="zstd")
         print("  Done.")
