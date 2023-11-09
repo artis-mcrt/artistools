@@ -121,7 +121,7 @@ def read_estimators_from_file(
     estfilepath: Path | str,
     printfilename: bool = False,
     skip_emptycells: bool = False,
-) -> list[dict[str, t.Any]]:
+) -> pl.DataFrame:
     if printfilename:
         estfilepath = Path(estfilepath)
         filesize = estfilepath.stat().st_size / 1024 / 1024
@@ -234,7 +234,10 @@ def read_estimators_from_file(
         estimblock["timestep"] = timestep
         estimblock["modelgridindex"] = modelgridindex
         estimblocklist.append(estimblock)
-    return estimblocklist
+
+    return pl.DataFrame(estimblocklist).with_columns(
+        pl.col(pl.Int64).cast(pl.Int32), pl.col(pl.Float64).cast(pl.Float32)
+    )
 
 
 def read_estimators_in_folder_polars(
@@ -263,12 +266,8 @@ def read_estimators_in_folder_polars(
     )
 
     pldf = pl.DataFrame()
-    with multiprocessing.get_context("fork").Pool(processes=at.get_config()["num_processes"]) as pool:
-        for estim_onefile in pool.imap(processfile, estfilepaths):
-            pldf_file = pl.DataFrame(estim_onefile).with_columns(
-                pl.col(pl.Int64).cast(pl.Int32), pl.col(pl.Float64).cast(pl.Float32)
-            )
-            pldf = pl.concat([pldf, pldf_file], how="diagonal_relaxed")
+    with multiprocessing.get_context("spawn").Pool(processes=at.get_config()["num_processes"]) as pool:
+        pldf = pl.concat(pool.imap(processfile, estfilepaths), how="diagonal_relaxed")
 
         pool.close()
         pool.join()
