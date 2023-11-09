@@ -1109,13 +1109,12 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
         modeldata, _ = at.inputmodel.get_modeldata(modelpath)
         estimators = artistools.estimators.estimators_classic.read_classic_estimators(modelpath, modeldata)
-    elif temperatures_only:
-        estimators = at.estimators.read_estimators(
-            modelpath=modelpath, modelgridindex=args.modelgridindex, timestep=tuple(timesteps_included), keys=["TR"]
-        )
     else:
         estimators = at.estimators.read_estimators(
-            modelpath=modelpath, modelgridindex=args.modelgridindex, timestep=tuple(timesteps_included)
+            modelpath=modelpath,
+            modelgridindex=args.modelgridindex,
+            timestep=tuple(timesteps_included),
+            keys=["TR"] if temperatures_only else None,
         )
     assert estimators is not None
 
