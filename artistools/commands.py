@@ -19,7 +19,7 @@ dictcommands: CommandType = {
     "plotinitialcomposition": ("initial_composition", "main"),
     "plotlightcurves": ("lightcurve.plotlightcurve", "main"),
     "plotlinefluxes": ("linefluxes", "main"),
-    "plotmodeldensity": ("inputmodel.plotdensity", "main"),
+    "plotdensity": ("inputmodel.plotdensity", "main"),
     "plotmodeldeposition": ("deposition", "main"),
     "plotmacroatom": ("macroatom", "main"),
     "plotnltepops": ("nltepops.plotnltepops", "main"),
