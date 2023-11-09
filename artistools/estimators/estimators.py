@@ -267,7 +267,8 @@ def read_estimators_in_folder_polars(
 
     pldf = pl.DataFrame()
     with multiprocessing.get_context("spawn").Pool(processes=at.get_config()["num_processes"]) as pool:
-        pldf = pl.concat(pool.imap(processfile, estfilepaths), how="diagonal_relaxed")
+        for pldf_file in pool.imap(processfile, estfilepaths):
+            pldf = pl.concat([pldf, pldf_file], how="diagonal_relaxed")
 
         pool.close()
         pool.join()
