@@ -26,7 +26,7 @@ def read_modelfile_text(
 
     modelmeta: dict[str, t.Any] = {"headercommentlines": []}
 
-    if not printwarningsonly:
+    if not printwarningsonly and not getheadersonly:
         print(f"Reading {filename}")
 
     numheaderrows = 0
@@ -116,7 +116,7 @@ def read_modelfile_text(
 
         assert columns is not None
         if ncols_line_even == len(columns):
-            if not printwarningsonly:
+            if not printwarningsonly and not getheadersonly:
                 print("  model file is one line per cell")
             ncols_line_odd = 0
             onelinepercellformat = True
@@ -340,7 +340,7 @@ def get_modeldata_polars(
     dfmodel: pl.LazyFrame | None | pl.DataFrame = None
     if not getheadersonly and filenameparquet.is_file():
         if not printwarningsonly:
-            print(f"Reading data table from {filenameparquet}")
+            print(f"Reading model table from {filenameparquet}")
         try:
             dfmodel = pl.scan_parquet(filenameparquet)
         except pl.exceptions.ComputeError:
