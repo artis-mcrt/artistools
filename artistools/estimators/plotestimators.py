@@ -675,6 +675,7 @@ def plot_subplot(
                     modelpath,
                     dfalldata=dfalldata,
                     args=args,
+                    **plotkwargs,
                 )
 
             elif seriestype == "_ymin":
@@ -762,6 +763,10 @@ def make_plot(
     xmin = args.xmin if args.xmin >= 0 else min(xlist)
     xmax = args.xmax if args.xmax > 0 else max(xlist)
 
+    if args.markersonly:
+        plotkwargs["linestyle"] = "None"
+        plotkwargs["marker"] = "."
+
     for ax, plotitems in zip(axes, plotlist):
         ax.set_xlim(left=xmin, right=xmax)
         plot_subplot(
@@ -801,7 +806,7 @@ def make_plot(
         else:
             figure_title = f"{modelname}\nTimestep {timestepslist[0]} ({timeavg:.2f}d)"
 
-        defaultoutputfile = Path("plotestimators_ts{timestep:02d}_{timeavg:.0f}d.pdf")
+        defaultoutputfile = Path("plotestimators_ts{timestep:02d}_{timeavg:.2f}d.pdf")
         if Path(args.outputfile).is_dir():
             args.outputfile = str(Path(args.outputfile, defaultoutputfile))
 
@@ -955,6 +960,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--hidexlabel", action="store_true", help="Hide the bottom horizontal axis label")
 
+    parser.add_argument("--makersonly", action="store_true", help="Plot markers instead of lines")
+
     parser.add_argument("-filtermovingavg", type=int, default=0, help="Smoothing length (1 is same as none)")
 
     parser.add_argument(
@@ -1056,10 +1063,10 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         #  ['_yscale', 'linear']],
         # [['initmasses', ['Ni_56', 'He', 'C', 'Mg']]],
         # ['heating_gamma/gamma_dep'],
-        ["nne"],
-        ["TR", ["_yscale", "linear"], ["_ymin", 1000], ["_ymax", 22000]],
+        ["nne", ["_ymin", 1e5], ["_ymax", 1e11]],
+        ["TR", ["_yscale", "linear"], ["_ymin", 1000], ["_ymax", 26000]],
         # ['Te'],
-        [["averageionisation", ["Fe", "Ni", "Sr"]]],
+        [["averageionisation", ["Sr"]]],
         # [['averageexcitation', ['Fe II', 'Fe III']]],
         # [['populations', ['Sr89', 'Sr90', 'Sr91', 'Sr92', 'Sr93', 'Sr94', 'Sr95']],
         #  ['_ymin', 1e-3], ['_ymax', 5]],

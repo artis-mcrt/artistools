@@ -126,7 +126,7 @@ def read_estimators_from_file(
     if printfilename:
         estfilepath = Path(estfilepath)
         filesize = estfilepath.stat().st_size / 1024 / 1024
-        print(f"Reading {estfilepath.relative_to(estfilepath.parent.parent)} ({filesize:.2f} MiB)")
+        print(f"  Reading {estfilepath.relative_to(estfilepath.parent.parent)} ({filesize:.2f} MiB)")
     estimblocklist: list[dict[str, t.Any]] = []
     with at.zopen(estfilepath) as estimfile:
         timestep: int | None = None
@@ -267,21 +267,20 @@ def read_estimators_in_folder_polars(
     printfilename = True
     mpirank_groups = list(batched_it(list(mpiranklist), 100))
     group_parquetfiles = [
-        folderpath / f"estimators_{group[0]:05d}_{group[-1]:05d}.out.parquet.tmp" for group in mpirank_groups
+        folderpath / f"estimators_{mpigroup[0]:05d}_{mpigroup[-1]:05d}.out.parquet.tmp" for mpigroup in mpirank_groups
     ]
-    for group, parquetfilename in zip(mpirank_groups, group_parquetfiles):
-        print(parquetfilename)
-
+    for mpigroup, parquetfilename in zip(mpirank_groups, group_parquetfiles):
         if not parquetfilename.exists():
+            print(f"{parquetfilename.relative_to(modelpath.parent)} does not exist")
             estfilepaths = []
-            for mpirank in group:
+            for mpirank in mpigroup:
                 # not worth printing an error, because ranks with no cells to update do not produce an estimator file
                 with contextlib.suppress(FileNotFoundError):
                     estfilepath = at.firstexisting(f"estimators_{mpirank:04d}.out", folder=folderpath, tryzipped=True)
                     estfilepaths.append(estfilepath)
 
             print(
-                f"Reading {len(list(estfilepaths))} estimator files in {folderpath.relative_to(Path(folderpath).parent)}"
+                f"Reading {len(list(estfilepaths))} estimator files from {folderpath.relative_to(Path(folderpath).parent)}"
             )
 
             processfile = partial(
@@ -363,7 +362,7 @@ def read_estimators(
         pldf.write_parquet(parquetfile, compression="zstd")
 
     for folderpath, parquetfile in zip(runfolders, parquetfiles):
-        print(f"Reading {parquetfile.relative_to(modelpath.parent)}")
+        print(f"Scanning {parquetfile.relative_to(modelpath.parent)}")
 
     pldflazy = pl.scan_parquet(parquetfiles)
 
