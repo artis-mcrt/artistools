@@ -10,7 +10,6 @@ from artistools.estimators.estimators import get_averageionisation
 from artistools.estimators.estimators import get_dictlabelreplacements
 from artistools.estimators.estimators import get_ionrecombrates_fromfile
 from artistools.estimators.estimators import get_partiallycompletetimesteps
-from artistools.estimators.estimators import get_temperatures
 from artistools.estimators.estimators import get_units_string
 from artistools.estimators.estimators import get_variablelongunits
 from artistools.estimators.estimators import get_variableunits

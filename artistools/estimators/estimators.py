@@ -393,14 +393,16 @@ def read_estimators(
     runfolder: None | str | Path = None,
     keys: t.Collection[str] | None = None,
 ) -> dict[tuple[int, int], dict[str, t.Any]]:
-    if keys is None:
-        keys = {}
+    if isinstance(keys, str):
+        keys = {keys}
     pldflazy = read_estimators_polars(modelpath, modelgridindex, timestep, runfolder)
     estimators: dict[tuple[int, int], dict[str, t.Any]] = {}
     for estimtsmgi in pldflazy.collect().iter_rows(named=True):
         ts, mgi = estimtsmgi["timestep"], estimtsmgi["modelgridindex"]
         estimators[(ts, mgi)] = {
-            k: v for k, v in estimtsmgi.items() if k not in {"timestep", "modelgridindex", *keys} and v is not None
+            k: v
+            for k, v in estimtsmgi.items()
+            if k not in {"timestep", "modelgridindex"} and (keys is None or k in keys) and v is not None
         }
 
     return estimators

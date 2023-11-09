@@ -1110,8 +1110,9 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         modeldata, _ = at.inputmodel.get_modeldata(modelpath)
         estimators = artistools.estimators.estimators_classic.read_classic_estimators(modelpath, modeldata)
     elif temperatures_only:
-        df_estimators = at.estimators.get_temperatures(modelpath).filter(pl.col("timestep").is_in(timesteps_included))
-        estimators = df_estimators.collect().rows_by_key(key=["timestep", "modelgridindex"], named=True, unique=True)
+        estimators = at.estimators.read_estimators(
+            modelpath=modelpath, modelgridindex=args.modelgridindex, timestep=tuple(timesteps_included), keys=["TR"]
+        )
     else:
         estimators = at.estimators.read_estimators(
             modelpath=modelpath, modelgridindex=args.modelgridindex, timestep=tuple(timesteps_included)

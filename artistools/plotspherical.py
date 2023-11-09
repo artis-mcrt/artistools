@@ -119,8 +119,11 @@ def plot_spherical(
             ).alias("em_timestep")
         )
 
-        df_estimators = at.estimators.get_temperatures(modelpath).rename(
-            {"timestep": "em_timestep", "modelgridindex": "em_modelgridindex", "TR": "em_TR"}
+        df_estimators = (
+            at.estimators.read_estimators_polars(modelpath=modelpath)
+            .select(["timestep", "modelgridindex", "TR"])
+            .drop_nulls()
+            .rename({"timestep": "em_timestep", "modelgridindex": "em_modelgridindex", "TR": "em_TR"})
         )
         dfpackets = dfpackets.join(df_estimators, on=["em_timestep", "em_modelgridindex"], how="left")
         aggs.append(((pl.col("em_TR") * pl.col("e_rf")).mean() / pl.col("e_rf").mean()).alias("temperature"))
