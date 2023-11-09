@@ -466,6 +466,9 @@ def get_averageionisation(estimatorstsmgi: pl.LazyFrame, atomic_number: int) -> 
     for key in dfselected.columns:
         found = True
         nnion = dfselected[key].item(0)
+        if nnion is None:
+            nnion = f"WARNING: {key} is None"
+            nnion = 0
         ionstage = at.decode_roman_numeral(key.removeprefix(f"nnion_{elsymb}_"))
         free_electron_weighted_pop_sum += nnion * (ionstage - 1)
         popsum += nnion
