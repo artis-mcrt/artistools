@@ -10,11 +10,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pynonthermal
-from astropy import units as u
 
 import artistools as at
 
 defaultoutputfile = "plotnonthermal_cell{0:03d}_timestep{1:03d}.pdf"
+ERG_TO_EV = 6.242e11
 
 
 @lru_cache(maxsize=4)
@@ -73,7 +73,7 @@ def plot_contributions(axis, modelpath, timestep, modelgridindex, nonthermaldata
         modelpath, get_ion_values=True, modelgridindex=modelgridindex, timestep=timestep
     )
 
-    total_depev = estimators[(timestep, modelgridindex)]["total_dep"] * u.erg.to("eV")
+    total_depev = estimators[(timestep, modelgridindex)]["total_dep"] * ERG_TO_EV
 
     print(f"Deposition: {total_depev:.1f} [eV/cm3/s]")
 
