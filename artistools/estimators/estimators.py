@@ -117,11 +117,16 @@ def get_units_string(variable: str) -> str:
     return ""
 
 
-def parse_estimfile(
+def read_estimators_from_file(
     estfilepath: Path | str,
+    printfilename: bool = False,
     skip_emptycells: bool = False,
-) -> t.Iterator[tuple[int, int, dict[str, t.Any]]]:  # pylint: disable=unused-argument
-    """Generate timestep, modelgridindex, dict from estimator file."""
+) -> list[dict[str, t.Any]]:
+    if printfilename:
+        estfilepath = Path(estfilepath)
+        filesize = estfilepath.stat().st_size / 1024 / 1024
+        print(f"Reading {estfilepath.relative_to(estfilepath.parent.parent)} ({filesize:.2f} MiB)")
+    estimblocklist: list[dict[str, t.Any]] = []
     with at.zopen(estfilepath) as estimfile:
         timestep: int | None = None
         modelgridindex: int | None = None
@@ -138,7 +143,9 @@ def parse_estimfile(
                     and modelgridindex is not None
                     and (not skip_emptycells or not estimblock.get("emptycell", True))
                 ):
-                    yield timestep, modelgridindex, estimblock
+                    estimblock["timestep"] = timestep
+                    estimblock["modelgridindex"] = modelgridindex
+                    estimblocklist.append(estimblock)
 
                 timestep = int(row[1])
                 # if timestep > itstep:
@@ -224,36 +231,20 @@ def parse_estimfile(
         and modelgridindex is not None
         and (not skip_emptycells or not estimblock.get("emptycell", True))
     ):
-        yield timestep, modelgridindex, estimblock
+        estimblock["timestep"] = timestep
+        estimblock["modelgridindex"] = modelgridindex
+        estimblocklist.append(estimblock)
+    return estimblocklist
 
 
-def read_estimators_from_file(
-    estfilepath: Path | str,
-    printfilename: bool = False,
-    skip_emptycells: bool = False,
-) -> dict[tuple[int, int], dict[str, t.Any]]:
-    if printfilename:
-        estfilepath = Path(estfilepath)
-        filesize = estfilepath.stat().st_size / 1024 / 1024
-        print(f"Reading {estfilepath.relative_to(estfilepath.parent.parent)} ({filesize:.2f} MiB)")
-
-    return {
-        (timestep, mgi): file_estimblock
-        for timestep, mgi, file_estimblock in parse_estimfile(
-            estfilepath,
-            skip_emptycells=skip_emptycells,
-        )
-    }
-
-
-def get_estimators_in_folder(
+def read_estimators_in_folder_polars(
     modelpath: Path,
     folderpath: Path,
     match_modelgridindex: None | t.Sequence[int],
     skip_emptycells: bool,
-) -> dict:
+) -> pl.DataFrame:
     mpiranklist = at.get_mpiranklist(modelpath, modelgridindex=match_modelgridindex, only_ranks_withgridcells=True)
-    printfilename = len(mpiranklist) < 10
+    printfilename = len(mpiranklist) < 4000
 
     estfilepaths = []
     for mpirank in mpiranklist:
@@ -271,31 +262,19 @@ def get_estimators_in_folder(
         skip_emptycells=skip_emptycells,
     )
 
-    if at.get_config()["num_processes"] > 1:
-        with multiprocessing.get_context("spawn").Pool(processes=at.get_config()["num_processes"]) as pool:
-            arr_rankestimators = pool.map(processfile, estfilepaths)
-            pool.close()
-            pool.join()
-            pool.terminate()
-    else:
-        arr_rankestimators = [processfile(estfilepath) for estfilepath in estfilepaths]
+    pldf = pl.DataFrame()
+    with multiprocessing.get_context("fork").Pool(processes=at.get_config()["num_processes"]) as pool:
+        for estim_onefile in pool.imap(processfile, estfilepaths):
+            pldf_file = pl.DataFrame(estim_onefile).with_columns(
+                pl.col(pl.Int64).cast(pl.Int32), pl.col(pl.Float64).cast(pl.Float32)
+            )
+            pldf = pl.concat([pldf, pldf_file], how="diagonal_relaxed")
 
-    estimators: dict[tuple[int, int], dict[str, t.Any]] = {}
-    for estfilepath, estimators_thisfile in zip(estfilepaths, arr_rankestimators):
-        dupekeys = sorted([k for k in estimators_thisfile if k in estimators])
-        for k in dupekeys:
-            # dropping the lowest timestep is normal for restarts. Only warn about other cases
-            if k[0] != dupekeys[0][0]:
-                print(
-                    f"WARNING: Duplicate estimator block for (timestep, mgi) key {k}. "
-                    f"Dropping block from {estfilepath}"
-                )
+        pool.close()
+        pool.join()
+        pool.terminate()
 
-            del estimators_thisfile[k]
-
-        estimators |= estimators_thisfile
-
-    return estimators
+    return pldf
 
 
 def read_estimators(
@@ -341,24 +320,13 @@ def read_estimators(
         if parquetfile.exists():
             continue
 
-        estim_folder = get_estimators_in_folder(
+        pldf = read_estimators_in_folder_polars(
             modelpath,
             folderpath,
             match_modelgridindex=None,
             skip_emptycells=True,
         )
 
-        pldf = pl.DataFrame(
-            [
-                {
-                    "timestep": ts,
-                    "modelgridindex": mgi,
-                    **estimvals,
-                }
-                for (ts, mgi), estimvals in estim_folder.items()
-                if not estimvals.get("emptycell", True)
-            ]
-        )
         print(f"Writing {parquetfile.relative_to(modelpath.parent)}")
         pldf.write_parquet(parquetfile, compression="zstd")
 
