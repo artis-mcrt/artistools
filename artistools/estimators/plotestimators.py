@@ -141,7 +141,7 @@ def plot_average_ionisation_excitation(
             atomic_number = at.get_atomic_number(paramvalue)
         else:
             atomic_number = at.get_atomic_number(paramvalue.split(" ")[0])
-            ion_stage = at.decode_roman_numeral(paramvalue.split(" ")[1])
+            ionstage = at.decode_roman_numeral(paramvalue.split(" ")[1])
         ylist = []
         for modelgridindex, timesteps in zip(mgilist, timestepslist):
             valuesum = 0
@@ -156,7 +156,7 @@ def plot_average_ionisation_excitation(
                     T_exc = estimators[(timestep, modelgridindex)]["Te"]
                     valuesum += (
                         at.estimators.get_averageexcitation(
-                            modelpath, modelgridindex, timestep, atomic_number, ion_stage, T_exc
+                            modelpath, modelgridindex, timestep, atomic_number, ionstage, T_exc
                         )
                         * arr_tdelta[timestep]
                     )
@@ -206,13 +206,13 @@ def plot_levelpop(
     for paramvalue in params:
         paramsplit = paramvalue.split(" ")
         atomic_number = at.get_atomic_number(paramsplit[0])
-        ion_stage = at.decode_roman_numeral(paramsplit[1])
+        ionstage = at.decode_roman_numeral(paramsplit[1])
         levelindex = int(paramsplit[2])
 
-        ionlevels = adata.query("Z == @atomic_number and ion_stage == @ion_stage").iloc[0].levels
+        ionlevels = adata.query("Z == @atomic_number and ionstage == @ionstage").iloc[0].levels
         levelname = ionlevels.iloc[levelindex].levelname
         label = (
-            f"{at.get_ionstring(atomic_number, ion_stage, spectral=False)} level {levelindex}:"
+            f"{at.get_ionstring(atomic_number, ionstage, style="chargelatex")} level {levelindex}:"
             f" {at.nltepops.texifyconfiguration(levelname)}"
         )
 
@@ -220,7 +220,7 @@ def plot_levelpop(
 
         # level index query goes outside for caching granularity reasons
         dfnltepops = at.nltepops.read_files(
-            modelpath, dfquery=f"Z=={atomic_number:.0f} and ion_stage=={ion_stage:.0f}"
+            modelpath, dfquery=f"Z=={atomic_number:.0f} and ionstage=={ionstage:.0f}"
         ).query("level==@levelindex")
 
         ylist = []
@@ -233,7 +233,7 @@ def plot_levelpop(
                 levelpop = (
                     dfnltepops.query(
                         "modelgridindex==@modelgridindex and timestep==@timestep and Z==@atomic_number"
-                        " and ion_stage==@ion_stage and level==@levelindex"
+                        " and ionstage==@ionstage and level==@levelindex"
                     )
                     .iloc[0]
                     .n_NLTE
@@ -251,9 +251,9 @@ def plot_levelpop(
         if dfalldata is not None:
             elsym = at.get_elsymbol(atomic_number).lower()
             colname = (
-                f"nlevel_on_dv_{elsym}_ionstage{ion_stage}_level{levelindex}"
+                f"nlevel_on_dv_{elsym}_ionstage{ionstage}_level{levelindex}"
                 if seriestype == "levelpopulation_dn_on_dvel"
-                else f"nnlevel_{elsym}_ionstage{ion_stage}_level{levelindex}"
+                else f"nnlevel_{elsym}_ionstage{ionstage}_level{levelindex}"
             )
             dfalldata[colname] = ylist
 
@@ -306,34 +306,38 @@ def plot_multi_ion_series(
             compositiondata = at.estimators.estimators_classic.get_atomic_composition(modelpath)
         else:
             compositiondata = at.get_composition_data(modelpath)
-        for atomic_number, ion_stage in iontuplelist:
+        for atomic_number, ionstage in iontuplelist:
             if (
-                not hasattr(ion_stage, "lower")
+                not hasattr(ionstage, "lower")
                 and not args.classicartis
                 and compositiondata.query(
-                    "Z == @atomic_number & lowermost_ionstage <= @ion_stage & uppermost_ionstage >= @ion_stage"
+                    "Z == @atomic_number & lowermost_ionstage <= @ionstage & uppermost_ionstage >= @ionstage"
                 ).empty
             ):
-                missingions.add((atomic_number, ion_stage))
+                missingions.add((atomic_number, ionstage))
 
     except FileNotFoundError:
         print("WARNING: Could not read an ARTIS compositiondata.txt file")
-        for atomic_number, ion_stage in iontuplelist:
+        for atomic_number, ionstage in iontuplelist:
             mgits = (timestepslist[0][0], mgilist[0])
-            if f"populations_{atomic_number}_{ion_stage}" not in estimators[mgits]:
-                missingions.add((atomic_number, ion_stage))
+            ionstr = at.get_ionstring(atomic_number, ionstage, sep="_", style="spectral")
+            if f"nnion_{ionstr}" not in estimators[mgits]:
+                missingions.add((atomic_number, ionstage))
 
     if missingions:
         print(f" Warning: Can't plot {seriestype} for {missingions} because these ions are not in compositiondata.txt")
 
     prev_atomic_number = iontuplelist[0][0]
     colorindex = 0
-    for atomic_number, ion_stage in iontuplelist:
-        if (atomic_number, ion_stage) in missingions:
+    for atomic_number, ionstage in iontuplelist:
+        if (atomic_number, ionstage) in missingions:
             continue
 
         if atomic_number != prev_atomic_number:
             colorindex += 1
+
+        elsymbol = at.get_elsymbol(atomic_number)
+        ionstr = at.get_ionstring(atomic_number, ionstage, sep="_", style="spectral")
 
         if seriestype == "populations":
             if args.ionpoptype == "absolute":
@@ -351,19 +355,19 @@ def plot_multi_ion_series(
         ylist = []
         for modelgridindex, timesteps in zip(mgilist, timestepslist):
             if seriestype == "populations":
-                # if (atomic_number, ion_stage) not in estimators[timesteps[0], modelgridindex]["populations"]:
+                # if (atomic_number, ionstage) not in estimators[timesteps[0], modelgridindex]["populations"]:
                 #     print(
-                #         f"Note: population for {(atomic_number, ion_stage)} not in estimators for "
+                #         f"Note: population for {(atomic_number, ionstage)} not in estimators for "
                 #         f"cell {modelgridindex} timesteps {timesteps}"
                 #     )
 
-                if ion_stage == "ALL":
-                    key = f"populations_{atomic_number}"
-                elif hasattr(ion_stage, "lower") and ion_stage.startswith(at.get_elsymbol(atomic_number)):
-                    # not really an ionstage but maybe isotope?
-                    key = f"populations_{ion_stage}"
+                if ionstage == "ALL":
+                    key = f"nnelement_{elsymbol}"
+                elif hasattr(ionstage, "lower") and ionstage.startswith(at.get_elsymbol(atomic_number)):
+                    # not really an ionstage but an isotope name
+                    key = f"nniso_{ionstage}"
                 else:
-                    key = f"populations_{atomic_number}_{ion_stage}"
+                    key = f"nnion_{ionstr}"
 
                 try:
                     estimpop = at.estimators.get_averaged_estimators(
@@ -371,7 +375,7 @@ def plot_multi_ion_series(
                         estimators,
                         timesteps,
                         modelgridindex,
-                        [key, f"populations_{atomic_number}", "populations_total"],
+                        [key, f"nnelement_{elsymbol}", "nntot"],
                     )
                 except KeyError:
                     print(f"KeyError: {key} not in estimators")
@@ -384,10 +388,10 @@ def plot_multi_ion_series(
                     if args.ionpoptype == "absolute":
                         yvalue = nionpop  # Plot as fraction of element population
                     elif args.ionpoptype == "elpop":
-                        elpop = estimpop.get(f"populations_{atomic_number}", 0.0)
+                        elpop = estimpop.get(f"nnelement_{elsymbol}", 0.0)
                         yvalue = nionpop / elpop  # Plot as fraction of element population
                     elif args.ionpoptype == "totalpop":
-                        totalpop = estimpop["populations_total"]
+                        totalpop = estimpop["nntot"]
                         yvalue = nionpop / totalpop  # Plot as fraction of total population
                     else:
                         raise AssertionError
@@ -397,32 +401,32 @@ def plot_multi_ion_series(
                 ylist.append(yvalue)
 
             else:
-                key = f"{seriestype}_{atomic_number}_{ion_stage}"
+                key = f"{seriestype}_{ionstr}"
                 yvalue = at.estimators.get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, key)[
                     key
                 ]
                 ylist.append(yvalue)
 
         plotlabel = (
-            ion_stage
-            if hasattr(ion_stage, "lower") and ion_stage != "ALL"
-            else at.get_ionstring(atomic_number, ion_stage, spectral=False)
+            ionstage
+            if hasattr(ionstage, "lower") and ionstage != "ALL"
+            else at.get_ionstring(atomic_number, ionstage, style="chargelatex")
         )
 
         color = get_elemcolor(atomic_number=atomic_number)
 
-        # linestyle = ['-.', '-', '--', (0, (4, 1, 1, 1)), ':'] + [(0, x) for x in dashes_list][ion_stage - 1]
-        if ion_stage == "ALL":
+        # linestyle = ['-.', '-', '--', (0, (4, 1, 1, 1)), ':'] + [(0, x) for x in dashes_list][ionstage - 1]
+        if ionstage == "ALL":
             dashes = ()
             linewidth = 1.0
         else:
-            if hasattr(ion_stage, "lower") and ion_stage.endswith("stable"):
+            if hasattr(ionstage, "lower") and ionstage.endswith("stable"):
                 index = 8
-            elif hasattr(ion_stage, "lower"):
+            elif hasattr(ionstage, "lower"):
                 # isotopic abundance, use the mass number
-                index = int(ion_stage.lstrip(at.get_elsymbol(atomic_number)))
+                index = int(ionstage.lstrip(at.get_elsymbol(atomic_number)))
             else:
-                index = ion_stage
+                index = ionstage
 
             dashes_list = [(3, 1, 1, 1), (), (1.5, 1.5), (6, 3), (1, 3)]
             dashes = dashes_list[(index - 1) % len(dashes_list)]
@@ -432,7 +436,7 @@ def plot_multi_ion_series(
 
             if args.colorbyion:
                 color = f"C{index - 1 % 10}"
-                # plotlabel = f'{at.get_elsymbol(atomic_number)} {at.roman_numerals[ion_stage]}'
+                # plotlabel = f'{at.get_elsymbol(atomic_number)} {at.roman_numerals[ionstage]}'
                 dashes = ()
 
         # assert colorindex < 10
@@ -442,11 +446,11 @@ def plot_multi_ion_series(
         if dfalldata is not None:
             elsym = at.get_elsymbol(atomic_number).lower()
             if args.ionpoptype == "absolute":
-                colname = f"nnion_{elsym}_ionstage{ion_stage}"
+                colname = f"nnion_{elsym}_ionstage{ionstage}"
             elif args.ionpoptype == "elpop":
-                colname = f"nnion_over_nnelem_{elsym}_ionstage{ion_stage}"
+                colname = f"nnion_over_nnelem_{elsym}_ionstage{ionstage}"
             elif args.ionpoptype == "totalpop":
-                colname = f"nnion_over_nntot_{elsym}_ionstage{ion_stage}"
+                colname = f"nnion_over_nntot_{elsym}_ionstage{ionstage}"
             dfalldata[colname] = ylist
 
         ylist.insert(0, ylist[0])
@@ -825,9 +829,9 @@ def make_plot(
     return outfilename
 
 
-def plot_recombrates(modelpath, estimators, atomic_number, ion_stage_list, **plotkwargs):
+def plot_recombrates(modelpath, estimators, atomic_number, ionstage_list, **plotkwargs):
     fig, axes = plt.subplots(
-        nrows=len(ion_stage_list),
+        nrows=len(ionstage_list),
         ncols=1,
         sharex=True,
         figsize=(5, 8),
@@ -838,10 +842,8 @@ def plot_recombrates(modelpath, estimators, atomic_number, ion_stage_list, **plo
 
     recombcalibrationdata = at.atomic.get_ionrecombratecalibration(modelpath)
 
-    for ax, ion_stage in zip(axes, ion_stage_list):
-        ionstr = (
-            f"{at.get_elsymbol(atomic_number)} {at.roman_numerals[ion_stage]} to {at.roman_numerals[ion_stage - 1]}"
-        )
+    for ax, ionstage in zip(axes, ionstage_list):
+        ionstr = f"{at.get_elsymbol(atomic_number)} {at.roman_numerals[ionstage]} to {at.roman_numerals[ionstage - 1]}"
 
         listT_e = []
         list_rrc = []
@@ -849,11 +851,11 @@ def plot_recombrates(modelpath, estimators, atomic_number, ion_stage_list, **plo
         for dicttimestepmodelgrid in estimators.values():
             if (
                 not dicttimestepmodelgrid["emptycell"]
-                and (atomic_number, ion_stage) in dicttimestepmodelgrid["RRC_LTE_Nahar"]
+                and (atomic_number, ionstage) in dicttimestepmodelgrid["RRC_LTE_Nahar"]
             ):
                 listT_e.append(dicttimestepmodelgrid["Te"])
-                list_rrc.append(dicttimestepmodelgrid["RRC_LTE_Nahar"][(atomic_number, ion_stage)])
-                list_rrc2.append(dicttimestepmodelgrid["Alpha_R"][(atomic_number, ion_stage)])
+                list_rrc.append(dicttimestepmodelgrid["RRC_LTE_Nahar"][(atomic_number, ionstage)])
+                list_rrc2.append(dicttimestepmodelgrid["Alpha_R"][(atomic_number, ionstage)])
 
         if not list_rrc:
             continue
@@ -865,7 +867,7 @@ def plot_recombrates(modelpath, estimators, atomic_number, ion_stage_list, **plo
         ax.plot(listT_e, list_rrc2, linewidth=2, label=f"{ionstr} ARTIS Alpha_R", **plotkwargs)
 
         with contextlib.suppress(KeyError):
-            dfrates = recombcalibrationdata[(atomic_number, ion_stage)].query(
+            dfrates = recombcalibrationdata[(atomic_number, ionstage)].query(
                 "T_e > @T_e_min & T_e < @T_e_max", local_dict={"T_e_min": min(listT_e), "T_e_max": max(listT_e)}
             )
 
@@ -880,7 +882,7 @@ def plot_recombrates(modelpath, estimators, atomic_number, ion_stage_list, **plo
             )
         # rrcfiles = glob.glob(
         #     f'/Users/lshingles/Library/Mobile Documents/com~apple~CloudDocs/GitHub/'
-        #     f'artis-atomic/atomic-data-nahar/{at.get_elsymbol(atomic_number).lower()}{ion_stage - 1}.rrc*.txt')
+        #     f'artis-atomic/atomic-data-nahar/{at.get_elsymbol(atomic_number).lower()}{ionstage - 1}.rrc*.txt')
         # if rrcfiles:
         #     dfrecombrates = get_ionrecombrates_fromfile(rrcfiles[0])
         #

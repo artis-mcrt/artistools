@@ -186,16 +186,12 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             print(f"ERROR: no NLTE populations for cell {args.modelgridindex} at timestep {args.timestep}")
             raise AssertionError
 
-        nntot = estim["populations_total"]
+        nntot = estim["nntot"]
         # nne = estim["nne"]
         T_e = estim["Te"]
         print("WARNING: Use LTE pops at Te for now")
         deposition_density_ev = estim["heating_dep"] / 1.6021772e-12  # convert erg to eV
-        ionpopdict = {
-            at.get_ion_tuple(k): v
-            for k, v in estim.items()
-            if k.startswith("populations_") and "_" in k.removeprefix("populations_")
-        }
+        ionpopdict = {at.get_ion_tuple(k): v for k, v in estim.items() if k.startswith(("nnion_", "nnelement_"))}
 
         velocity = modeldata["vel_r_max_kmps"][args.modelgridindex]
         args.timedays = float(at.get_timestep_time(modelpath, args.timestep))
@@ -325,15 +321,15 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         if step == 0 and args.ostat:
             with Path(args.ostat).open("w") as fstat:
                 strheader = "#emin emax npts x_e frac_sum frac_excitation frac_ionization frac_heating"
-                for atomic_number, ion_stage in ions:
-                    strheader += " frac_ionization_" + at.get_ionstring(atomic_number, ion_stage, nospace=True)
+                for atomic_number, ionstage in ions:
+                    strheader += " frac_ionization_" + at.get_ionstring(atomic_number, ionstage, sep="")
                 fstat.write(strheader + "\n")
 
         with pynt.SpencerFanoSolver(emin_ev=emin, emax_ev=emax, npts=npts, verbose=True) as sf:
             for Z, ionstage in ions:
                 nnion = ionpopdict[(Z, ionstage)]
                 if nnion == 0.0:
-                    print(f"   skipping Z={Z} ion_stage {ionstage} due to nnion={nnion:.1e}")
+                    print(f"   skipping Z={Z} ionstage {ionstage} due to nnion={nnion:.1e}")
                     continue
 
                 sf.add_ionisation(Z, ionstage, nnion)

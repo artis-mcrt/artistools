@@ -96,9 +96,9 @@ def write_ionfracts(
     nelements = len(elementlist)
     for element in range(nelements):
         atomic_number = elementlist.Z[element]
-        elsymb = at.get_elsymbol(atomic_number).lower()
+        elsymb = at.get_elsymbol(atomic_number)
         nions = elementlist.nions[element]
-        pathfileout = Path(outputpath, f"ionfrac_{elsymb}_{model_id}_artisnebular.txt")
+        pathfileout = Path(outputpath, f"ionfrac_{elsymb.lower()}_{model_id}_artisnebular.txt")
         fileisallzeros = True  # will be changed when a non-zero is encountered
         with pathfileout.open("w") as f:
             f.write(f"#NTIMES: {len(selected_timesteps)}\n")
@@ -108,18 +108,17 @@ def write_ionfracts(
             for timestep in selected_timesteps:
                 f.write(f"#TIME: {times[timestep]:.2f}\n")
                 f.write(f"#NVEL: {len(allnonemptymgilist)}\n")
-                f.write(f'#vel_mid[km/s] {" ".join([f"{elsymb}{ion}" for ion in range(nions)])}\n')
+                f.write(f'#vel_mid[km/s] {" ".join([f"{elsymb.lower()}{ion}" for ion in range(nions)])}\n')
                 for modelgridindex, cell in modeldata.iterrows():
                     if modelgridindex not in allnonemptymgilist:
                         continue
                     v_mid = (cell.vel_r_min_kmps + cell.vel_r_max_kmps) / 2.0
                     f.write(f"{v_mid:.2f}")
-                    elabund = estimators[(timestep, modelgridindex)].get(f"populations_{atomic_number}", 0)
+                    elabund = estimators[(timestep, modelgridindex)].get(f"nnelement_{elsymb}", 0)
                     for ion in range(nions):
-                        ion_stage = ion + elementlist.lowermost_ionstage[element]
-                        ionabund = estimators[(timestep, modelgridindex)].get(
-                            f"populations_{atomic_number}_{ion_stage}", 0
-                        )
+                        ionstage = ion + elementlist.lowermost_ionstage[element]
+                        ionstr = at.get_ionstring(atomic_number, ionstage, sep="_", style="spectral")
+                        ionabund = estimators[(timestep, modelgridindex)].get(f"nnion_{ionstr}", 0)
                         ionfrac = ionabund / elabund if elabund > 0 else 0
                         if ionfrac > 0.0:
                             fileisallzeros = False
@@ -149,9 +148,7 @@ def write_phys(modelpath, model_id, selected_timesteps, estimators, allnonemptym
                     10**cell.logrho * (modelmeta["t_model_init_days"] / times[timestep]) ** 3
                 )
 
-                estimators[(timestep, modelgridindex)]["nntot"] = estimators[(timestep, modelgridindex)][
-                    "populations_total"
-                ]
+                estimators[(timestep, modelgridindex)]["nntot"] = estimators[(timestep, modelgridindex)]["nntot"]
 
                 v_mid = (cell.vel_r_min_kmps + cell.vel_r_max_kmps) / 2.0
                 f.write(f"{v_mid:.2f}")

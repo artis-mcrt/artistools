@@ -94,11 +94,11 @@ def read_binding_energies(modelpath: str = ".") -> np.ndarray:
     return electron_binding
 
 
-def get_electronoccupancy(atomic_number: int, ion_stage: int, nt_shells: int) -> np.ndarray:
+def get_electronoccupancy(atomic_number: int, ionstage: int, nt_shells: int) -> np.ndarray:
     # adapted from ARTIS code
     q = np.zeros(nt_shells)
 
-    ioncharge = ion_stage - 1
+    ioncharge = ionstage - 1
     nbound = atomic_number - ioncharge  # number of bound electrons
 
     for _electron_loop in range(nbound):
@@ -144,12 +144,10 @@ def get_electronoccupancy(atomic_number: int, ion_stage: int, nt_shells: int) ->
     return q
 
 
-def get_mean_binding_energy(
-    atomic_number: int, ion_stage: int, electron_binding: np.ndarray, ionpot_ev: float
-) -> float:
+def get_mean_binding_energy(atomic_number: int, ionstage: int, electron_binding: np.ndarray, ionpot_ev: float) -> float:
     # LJS: this came from ARTIS and I'm not sure what this actually is - inverse binding energy? electrons per erg?
     n_z_binding, nt_shells = electron_binding.shape
-    q = get_electronoccupancy(atomic_number, ion_stage, nt_shells)
+    q = get_electronoccupancy(atomic_number, ionstage, nt_shells)
 
     total = 0.0
     for electron_loop in range(nt_shells):
@@ -166,20 +164,20 @@ def get_mean_binding_energy(
                 # is for 8 (corresponding to that shell) then just use the M4 value
                 print(
                     "WARNING: I'm trying to use a binding energy when I have no data. "
-                    f"element {atomic_number} ionstage {ion_stage}\n"
+                    f"element {atomic_number} ionstage {ionstage}\n"
                 )
                 assert electron_loop == 8
-                # print("Z = %d, ion_stage = %d\n", get_element(element), get_ionstage(element, ion));
+                # print("Z = %d, ionstage = %d\n", get_element(element), get_ionstage(element, ion));
         total += electronsinshell / use3 if use2 < use3 else electronsinshell / use2
         # print("total total)
 
     return total
 
 
-def get_mean_binding_energy_alt(atomic_number, ion_stage, electron_binding, ionpot_ev):
+def get_mean_binding_energy_alt(atomic_number, ionstage, electron_binding, ionpot_ev):
     # LJS: this should be mean binding energy [erg] per electron
     n_z_binding, nt_shells = electron_binding.shape
-    q = get_electronoccupancy(atomic_number, ion_stage, nt_shells)
+    q = get_electronoccupancy(atomic_number, ionstage, nt_shells)
 
     total = 0.0
     ecount = 0
@@ -198,17 +196,17 @@ def get_mean_binding_energy_alt(atomic_number, ion_stage, electron_binding, ionp
                 # is for 8 (corresponding to that shell) then just use the M4 value
                 print(
                     "WARNING: I'm trying to use a binding energy when I have no data. "
-                    f"element {atomic_number} ionstage {ion_stage}\n"
+                    f"element {atomic_number} ionstage {ionstage}\n"
                 )
                 assert electron_loop == 8
-                # print("Z = %d, ion_stage = %d\n", get_element(element), get_ionstage(element, ion));
+                # print("Z = %d, ionstage = %d\n", get_element(element), get_ionstage(element, ion));
         total += electronsinshell * use3 if use2 < use3 else electronsinshell * use2
-    assert ecount == (atomic_number - ion_stage + 1)
+    assert ecount == (atomic_number - ionstage + 1)
 
     return total / ecount
 
 
-def get_lotz_xs_ionisation(atomic_number, ion_stage, electron_binding, ionpot_ev, en_ev):
+def get_lotz_xs_ionisation(atomic_number, ionstage, electron_binding, ionpot_ev, en_ev):
     # Axelrod 1980 Eq 3.38
 
     en_erg = en_ev * EV
@@ -218,7 +216,7 @@ def get_lotz_xs_ionisation(atomic_number, ion_stage, electron_binding, ionpot_ev
     # print(f'{gamma=} {beta=}')
 
     n_z_binding, nt_shells = electron_binding.shape
-    q = get_electronoccupancy(atomic_number, ion_stage, nt_shells)
+    q = get_electronoccupancy(atomic_number, ionstage, nt_shells)
 
     part_sigma = 0.0
     for electron_loop in range(nt_shells):
@@ -235,10 +233,10 @@ def get_lotz_xs_ionisation(atomic_number, ion_stage, electron_binding, ionpot_ev
                 # is for 8 (corresponding to that shell) then just use the M4 value
                 print(
                     "WARNING: I'm trying to use a binding energy when I have no data. "
-                    f"element {atomic_number} ionstage {ion_stage}\n"
+                    f"element {atomic_number} ionstage {ionstage}\n"
                 )
                 assert electron_loop == 8
-                # print("Z = %d, ion_stage = %d\n", get_element(element), get_ionstage(element, ion));
+                # print("Z = %d, ionstage = %d\n", get_element(element), get_ionstage(element, ion));
 
         p = max(use2, use3)
 
@@ -833,7 +831,7 @@ def solve_spencerfano_differentialform(
     dftransitions = {}
     for Z, ionstage in ions:
         nnion = ionpopdict[(Z, ionstage)]
-        print(f"  including Z={Z} ion_stage {ionstage} ({at.get_ionstring(Z, ionstage)}) nnion={nnion:.2e} ionisation")
+        print(f"  including Z={Z} ionstage {ionstage} ({at.get_ionstring(Z, ionstage)}) nnion={nnion:.2e} ionisation")
         dfcollion_thision = dfcollion.query("Z == @Z and ionstage == @ionstage", inplace=False)
         # print(dfcollion_thision)
 
@@ -888,7 +886,7 @@ def analyse_ntspectrum(
     for Z, ionstage in ions:
         nnion = ionpopdict[(Z, ionstage)]
         if nnion == 0.0:
-            print(f"skipping Z={Z:2d} ion_stage {ionstage} due to nnion = {nnion}")
+            print(f"skipping Z={Z:2d} ionstage {ionstage} due to nnion = {nnion}")
             continue
         X_ion = nnion / nntot
         dfcollion_thision = dfcollion.query("Z == @Z and ionstage == @ionstage", inplace=False)
@@ -897,7 +895,7 @@ def analyse_ntspectrum(
         ionpot_valence = dfcollion_thision.ionpot_ev.min()
 
         print(
-            f"====> Z={Z:2d} ion_stage {ionstage} {at.get_ionstring(Z, ionstage)} (valence potential"
+            f"====> Z={Z:2d} ionstage {ionstage} {at.get_ionstring(Z, ionstage)} (valence potential"
             f" {ionpot_valence:.1f} eV)"
         )
 
@@ -1187,7 +1185,7 @@ def calculate_Latom_excitation(ions, ionpopdict, nntot, en_ev, adata, T_exc=5000
     for Z, ionstage in ions:
         nnion = ionpopdict[(Z, ionstage)]
 
-        ion = adata.query("Z == @Z and ion_stage == @ionstage").iloc[0]
+        ion = adata.query("Z == @Z and ionstage == @ionstage").iloc[0]
         # filterquery = 'collstr >= 0 or forbidden == False'
         filterquery = "collstr != -999"
         if maxnlevelslower is not None:
@@ -1345,7 +1343,6 @@ def workfunction_tests(modelpath, args):
         #       f'Latom_axelrod: {Latom_axelrod[i]:.3e} ratio(elec/atom): {Lelec_axelrod_nne[i] / Latom_axelrod[i]:.2e} ratio(atom/elec) {Latom_axelrod[i] / Lelec_axelrod_nne[i]:.2e} bound/free {nnebound/nne:.2e}')
 
     for Z, ionstage in ions:
-        # ionstr = at.get_ionstring(Z, ionstage, spectral=True, nospace=False)
         dfcollion_thision = dfcollion.query("Z == @Z and ionstage == @ionstage", inplace=False)
 
         # dfcollion_thision.query('n == 3 and l == 2', inplace=True)

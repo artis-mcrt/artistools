@@ -69,11 +69,11 @@ def make_xs_plot(axis: plt.Axes, nonthermaldata: pd.DataFrame, args: argparse.Na
 
 
 def plot_contributions(axis, modelpath, timestep, modelgridindex, nonthermaldata, args):
-    estimators = at.estimators.read_estimators(
+    estim_tsmgi = at.estimators.read_estimators(
         modelpath, get_ion_values=True, modelgridindex=modelgridindex, timestep=timestep
-    )
+    )[(timestep, modelgridindex)]
 
-    total_depev = estimators[(timestep, modelgridindex)]["total_dep"] * ERG_TO_EV
+    total_depev = estim_tsmgi["total_dep"] * ERG_TO_EV
 
     print(f"Deposition: {total_depev:.1f} [eV/cm3/s]")
 
@@ -85,12 +85,12 @@ def plot_contributions(axis, modelpath, timestep, modelgridindex, nonthermaldata
     dfcollion = at.nonthermal.read_colliondata()
 
     elementlist = at.get_composition_data(modelpath)
-    totalpop = estimators[(timestep, modelgridindex)]["populations_total"]
+    totalpop = estim_tsmgi["nntot"]
     nelements = len(elementlist)
     for element in range(nelements):
         Z = elementlist.Z[element]
-
-        elpop = estimators[(timestep, modelgridindex)][f"populations_{Z}"]
+        elsymbol = at.get_elsymbol(Z)
+        elpop = estim_tsmgi[f"nnelement_{elsymbol}"]
         if elpop <= 1e-4 * totalpop:
             continue
 
@@ -100,7 +100,8 @@ def plot_contributions(axis, modelpath, timestep, modelgridindex, nonthermaldata
         nions = elementlist.nions[element]
         for ion in range(nions):
             ionstage = ion + elementlist.lowermost_ionstage[element]
-            ionpop = estimators[(timestep, modelgridindex)][f"populations_{Z}_{ionstage}"]
+            ionstr = at.get_ionstring(Z, ionstage, sep="_", style="spectral")
+            ionpop = estim_tsmgi[f"nnion_{ionstr}"]
 
             dfcollion_thision = dfcollion.query("Z == @Z and ionstage == @ionstage")
 
@@ -125,7 +126,7 @@ def plot_contributions(axis, modelpath, timestep, modelgridindex, nonthermaldata
         if frac_ionisation_element > 1e-5:
             axis.plot(arr_enev, arr_ionisation_element, label=f"Ionisation Z={Z}")
 
-    nne = estimators[(timestep, modelgridindex)]["nne"]
+    nne = estim_tsmgi["nne"]
     arr_heating = np.array([at.nonthermal.lossfunction(enev, nne) / total_depev for enev in arr_enev])
 
     frac_heating = np.trapz(x=arr_enev, y=arr_heating)

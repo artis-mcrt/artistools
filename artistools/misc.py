@@ -576,11 +576,15 @@ def get_model_name(path: Path | str) -> str:
 
 
 def get_z_a_nucname(nucname: str) -> tuple[int, int]:
-    """Return atomic number and mass number from a string like 'Pb208' (returns 92, 208)."""
-    nucname = nucname.removeprefix("X_")
+    """Return atomic number and mass number from a string like 'Pb208', 'X_Pb208', or "nniso_Pb208' (returns 92, 208)."""
+    if "_" in nucname:
+        nucname = nucname.split("_")[1]
+
     z = get_atomic_number(nucname.rstrip("0123456789"))
     assert z > 0
+
     a = int(nucname.lower().lstrip("abcdefghijklmnopqrstuvwxyz"))
+
     return z, a
 
 
@@ -632,7 +636,9 @@ def get_ion_tuple(ionstr: str) -> tuple[int, int] | int:
 
     Return the atomic number for a string like 'Fe' or '26'.
     """
-    ionstr = ionstr.removeprefix("populations_")
+    if "_" in ionstr:
+        ionstr = ionstr.split("_", maxsplit=1)[1]
+
     if ionstr.isdigit():
         return int(ionstr)
 
@@ -665,8 +671,8 @@ def get_ion_tuple(ionstr: str) -> tuple[int, int] | int:
 def get_ionstring(
     atomic_number: int | np.int64,
     ionstage: None | int | np.int64 | t.Literal["ALL"],
-    spectral: bool = True,
-    nospace: bool = False,
+    style: t.Literal["spectral", "chargelatex", "charge"] = "spectral",
+    sep: str = " ",
 ) -> str:
     """Return a string with the element symbol and ionisation stage."""
     if ionstage is None or ionstage == "ALL":
@@ -674,16 +680,21 @@ def get_ionstring(
 
     assert not isinstance(ionstage, str)
 
-    if spectral:
-        return f"{get_elsymbol(atomic_number)}{'' if nospace else ' '}{roman_numerals[ionstage]}"
+    if style == "spectral":
+        return f"{get_elsymbol(atomic_number)}{sep}{roman_numerals[ionstage]}"
 
-    # ion notion e.g. Co+, Fe2+
-    if ionstage > 2:
-        strcharge = r"$^{" + str(ionstage - 1) + r"{+}}$"
+    strcharge = ""
+    if style == "chargelatex":
+        # ion notion e.g. Co+, Fe2+
+        if ionstage > 2:
+            strcharge = r"$^{" + f"{ionstage - 1}" + r"{+}}$"
+        elif ionstage == 2:
+            strcharge = r"$^{+}$"
+    elif ionstage > 2:
+        strcharge = f"{ionstage - 1}+"
     elif ionstage == 2:
-        strcharge = r"$^{+}$"
-    else:
-        strcharge = ""
+        strcharge = "+"
+
     return f"{get_elsymbol(atomic_number)}{strcharge}"
 
 
@@ -941,8 +952,8 @@ def get_bflist(modelpath: Path | str) -> dict[int, tuple[int, int, int, int]]:
             i, elementindex, ionindex, level = rowints[:4]
             upperionlevel = rowints[4] if len(rowints) > 4 else -1
             atomic_number = compositiondata.Z[elementindex]
-            ion_stage = ionindex + compositiondata.lowermost_ionstage[elementindex]
-            bflist[i] = (atomic_number, ion_stage, level, upperionlevel)
+            ionstage = ionindex + compositiondata.lowermost_ionstage[elementindex]
+            bflist[i] = (atomic_number, ionstage, level, upperionlevel)
 
     return bflist
 
@@ -961,8 +972,8 @@ def read_linestatfile(filepath: Path | str) -> tuple[int, list[float], list[int]
     atomic_numbers = data[1].astype(int)
     assert len(atomic_numbers) == nlines
 
-    ion_stages = data[2].astype(int)
-    assert len(ion_stages) == nlines
+    ionstages = data[2].astype(int)
+    assert len(ionstages) == nlines
 
     # the file adds one to the levelindex, i.e. lowest level is 1
     upper_levels = data[3].astype(int)
@@ -971,21 +982,21 @@ def read_linestatfile(filepath: Path | str) -> tuple[int, list[float], list[int]
     lower_levels = data[4].astype(int)
     assert len(lower_levels) == nlines
 
-    return nlines, lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels
+    return nlines, lambda_angstroms, atomic_numbers, ionstages, upper_levels, lower_levels
 
 
 def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
     textfile = at.firstexisting("linestat.out", folder=modelpath)
     parquetfile = Path(modelpath, "linelist.out.parquet")
     if not parquetfile.is_file() or parquetfile.stat().st_mtime < textfile.stat().st_mtime:
-        _, lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels = read_linestatfile(textfile)
+        _, lambda_angstroms, atomic_numbers, ionstages, upper_levels, lower_levels = read_linestatfile(textfile)
 
         pldf = (
             pl.DataFrame(
                 {
                     "lambda_angstroms": lambda_angstroms,
                     "atomic_number": atomic_numbers,
-                    "ion_stage": ion_stages,
+                    "ionstage": ionstages,
                     "upper_level": upper_levels,
                     "lower_level": lower_levels,
                 },
@@ -1003,7 +1014,7 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
 
 def get_linelist_dict(modelpath: Path | str) -> dict[int, linetuple]:
     """Return a dict of line tuples from linestat.out."""
-    nlines, lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels = read_linestatfile(
+    nlines, lambda_angstroms, atomic_numbers, ionstages, upper_levels, lower_levels = read_linestatfile(
         Path(modelpath, "linestat.out")
     )
     return {
@@ -1012,7 +1023,7 @@ def get_linelist_dict(modelpath: Path | str) -> dict[int, linetuple]:
             range(nlines),
             lambda_angstroms,
             atomic_numbers,
-            ion_stages,
+            ionstages,
             upper_levels,
             lower_levels,
         )
@@ -1023,7 +1034,7 @@ def get_linelist_dict(modelpath: Path | str) -> dict[int, linetuple]:
 def get_linelist_dataframe(
     modelpath: Path | str,
 ) -> pd.DataFrame:
-    nlines, lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels = read_linestatfile(
+    nlines, lambda_angstroms, atomic_numbers, ionstages, upper_levels, lower_levels = read_linestatfile(
         Path(modelpath, "linestat.out")
     )
 
@@ -1031,7 +1042,7 @@ def get_linelist_dataframe(
         {
             "lambda_angstroms": lambda_angstroms,
             "atomic_number": atomic_numbers,
-            "ionstage": ion_stages,
+            "ionstage": ionstages,
             "upperlevelindex": upper_levels,
             "lowerlevelindex": lower_levels,
         },

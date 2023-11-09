@@ -167,45 +167,43 @@ def parse_estimfile(
                     startindex = 2
                 elsymbol = at.get_elsymbol(atomic_number)
 
-                for ion_stage_str, value in zip(row[startindex::2], row[startindex + 1 :: 2]):
-                    ion_stage_str_strip = ion_stage_str.strip()
-                    if ion_stage_str_strip == "(or":
+                for ionstage_str, value in zip(row[startindex::2], row[startindex + 1 :: 2]):
+                    ionstage_str_strip = ionstage_str.strip()
+                    if ionstage_str_strip == "(or":
                         continue
 
                     value_thision = float(value.rstrip(","))
 
-                    if ion_stage_str_strip == "SUM:":
-                        estimblock[f"{variablename}_{atomic_number}"] = value_thision
+                    if ionstage_str_strip == "SUM:":
+                        estimblock[f"nnelement_{elsymbol}"] = value_thision
                         continue
 
                     try:
-                        ion_stage = int(ion_stage_str.rstrip(":"))
+                        ionstage = int(ionstage_str.rstrip(":"))
                     except ValueError:
-                        if variablename == "populations" and ion_stage_str.startswith(elsymbol):
-                            estimblock[f"populations_{ion_stage_str.rstrip(':')}"] = float(value)
+                        if variablename == "populations" and ionstage_str.startswith(elsymbol):
+                            estimblock[f"nniso_{ionstage_str.rstrip(':')}"] = float(value)
                         else:
-                            print(ion_stage_str, elsymbol)
+                            print(ionstage_str, elsymbol)
                             print(f"Cannot parse row: {row}")
                         continue
 
-                    estimblock[f"{variablename}_{atomic_number}_{ion_stage}"] = value_thision
+                    ionstr = at.get_ionstring(atomic_number, ionstage, sep="_", style="spectral")
+                    estimblock[f"{'nnion' if variablename=='populations' else variablename}_{ionstr}"] = value_thision
 
                     if variablename in {"Alpha_R*nne", "AlphaR*nne"}:
-                        estimblock[f"Alpha_R_{atomic_number}_{ion_stage}"] = (
+                        estimblock[f"Alpha_R_{ionstr}"] = (
                             value_thision / estimblock["nne"] if estimblock["nne"] > 0.0 else float("inf")
                         )
 
-                    else:  # variablename == 'populations':
-                        # contribute the ion population to the element population
-                        estimblock.setdefault(f"{variablename}_{atomic_number}", 0.0)
-                        estimblock[f"{variablename}_{atomic_number}"] += value_thision
+                    elif variablename == "populations":
+                        estimblock.setdefault(f"nnelement_{elsymbol}", 0.0)
+                        estimblock[f"nnelement_{elsymbol}"] += value_thision
 
                 if variablename == "populations":
                     # contribute the element population to the total population
-                    estimblock.setdefault("populations_total", 0.0)
-                    estimblock["populations_total"] += estimblock[f"populations_{atomic_number}"]
                     estimblock.setdefault("nntot", 0.0)
-                    estimblock["nntot"] += estimblock[f"populations_{atomic_number}"]
+                    estimblock["nntot"] += estimblock[f"nnelement_{elsymbol}"]
 
             elif row[0] == "heating:":
                 for heatingtype, value in zip(row[1::2], row[2::2]):
@@ -387,25 +385,26 @@ def get_averageionisation(estimatorstsmgi: dict[str, float], atomic_number: int)
     free_electron_weighted_pop_sum = 0.0
     found = False
     popsum = 0.0
+    elsymb = at.get_elsymbol(atomic_number)
     for key in estimatorstsmgi:
-        if key.startswith(f"populations_{atomic_number}_"):
+        if key.startswith(f"nnion_{elsymb}_"):
             found = True
-            ion_stage = int(key.removeprefix(f"populations_{atomic_number}_"))
-            free_electron_weighted_pop_sum += estimatorstsmgi[key] * (ion_stage - 1)
+            ionstage = at.decode_roman_numeral(key.removeprefix(f"nnion_{elsymb}_"))
+            free_electron_weighted_pop_sum += estimatorstsmgi[key] * (ionstage - 1)
             popsum += estimatorstsmgi[key]
 
     if not found:
         return float("NaN")
 
-    return free_electron_weighted_pop_sum / estimatorstsmgi[f"populations_{atomic_number}"]
+    return free_electron_weighted_pop_sum / estimatorstsmgi[f"nnelement_{elsymb}"]
 
 
 def get_averageexcitation(
-    modelpath: Path, modelgridindex: int, timestep: int, atomic_number: int, ion_stage: int, T_exc: float
+    modelpath: Path, modelgridindex: int, timestep: int, atomic_number: int, ionstage: int, T_exc: float
 ) -> float:
     dfnltepops = at.nltepops.read_files(modelpath, modelgridindex=modelgridindex, timestep=timestep)
     adata = at.atomic.get_levels(modelpath)
-    ionlevels = adata.query("Z == @atomic_number and ion_stage == @ion_stage").iloc[0].levels
+    ionlevels = adata.query("Z == @atomic_number and ionstage == @ionstage").iloc[0].levels
 
     energypopsum = 0
     ionpopsum = 0
@@ -413,7 +412,7 @@ def get_averageexcitation(
         return float("NaN")
 
     dfnltepops_ion = dfnltepops.query(
-        "modelgridindex==@modelgridindex and timestep==@timestep and Z==@atomic_number & ion_stage==@ion_stage"
+        "modelgridindex==@modelgridindex and timestep==@timestep and Z==@atomic_number & ionstage==@ionstage"
     )
 
     k_b = 8.617333262145179e-05  # eV / K  # noqa: F841
@@ -474,3 +473,22 @@ def get_temperatures(modelpath: str | Path) -> pl.LazyFrame:
         )
 
     return pl.scan_parquet(dfest_parquetfile)
+
+
+def read_estimators_polars(*args, **kwargs) -> pl.LazyFrame:
+    estimators = read_estimators(*args, **kwargs)
+    pldf = pl.DataFrame(
+        [
+            {
+                "timestep": ts,
+                "modelgridindex": mgi,
+                **estimvals,
+            }
+            for (ts, mgi), estimvals in estimators.items()
+            if not estimvals.get("emptycell", True)
+        ]
+    )
+    print(pldf.columns)
+    print(pldf.transpose(include_header=True))
+
+    return pldf.lazy()

@@ -1171,7 +1171,7 @@ def print_integrated_flux(
         f" integrated flux ({arr_lambda_angstroms.min():.1f} to "
         f"{arr_lambda_angstroms.max():.1f} A): {integrated_flux:.3e} erg/s/cm2"
     )
-    return integrated_flux.value
+    return integrated_flux
 
 
 def get_reference_spectrum(filename: Path | str) -> tuple[pd.DataFrame, dict[t.Any, t.Any]]:

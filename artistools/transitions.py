@@ -17,7 +17,7 @@ import artistools as at
 
 defaultoutputfile = "plottransitions_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf"
 
-iontuple = namedtuple("iontuple", "Z ion_stage")
+iontuple = namedtuple("iontuple", "Z ionstage")
 
 
 def get_kurucz_transitions() -> tuple[pd.DataFrame, list[iontuple]]:
@@ -142,8 +142,8 @@ def make_plot(
             peak_y_value = max(peak_y_value, **yvalues_combined[seriesindex])
 
     axislabels = [
-        f"{at.get_elsymbol(Z)} {at.roman_numerals[ion_stage]}\n(pop={ionpopdict[(Z, ion_stage)]:.1e}/cm3)"
-        for (Z, ion_stage) in ionlist
+        f"{at.get_elsymbol(Z)} {at.roman_numerals[ionstage]}\n(pop={ionpopdict[(Z, ionstage)]:.1e}/cm3)"
+        for (Z, ionstage) in ionlist
     ]
     axislabels += ["Total"]
 
@@ -307,8 +307,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             sys.exit(1)
 
         ionpopdict = {
-            (Z, ion_stage): dfnltepops.query("Z==@Z and ion_stage==@ion_stage")["n_NLTE"].sum()
-            for Z, ion_stage in ionlist
+            (Z, ionstage): dfnltepops.query("Z==@Z and ionstage==@ionstage")["n_NLTE"].sum() for Z, ionstage in ionlist
         }
 
         modelname = at.get_model_name(modelpath)
@@ -357,21 +356,21 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     fe2depcoeff, ni2depcoeff = None, None
     for _, ion in adata.iterrows() if args.atomicdatabase == "artis" else enumerate(ionlist):
-        ionid = iontuple(ion.Z, ion.ion_stage)
+        ionid = iontuple(ion.Z, ion.ionstage)
         if ionid not in ionlist:
             continue
 
         ionindex = ionlist.index(ionid)
 
         if args.atomicdatabase == "kurucz":
-            dftransitions = dftransgfall.query("Z == @ion.Z and ionstage == @ion.ion_stage", inplace=False).copy()
+            dftransitions = dftransgfall.query("Z == @ion.Z and ionstage == @ion.ionstage", inplace=False).copy()
         elif args.atomicdatabase == "nist":
-            dftransitions = get_nist_transitions(f"nist/nist-{ion.Z:02d}-{ion.ion_stage:02d}.txt")
+            dftransitions = get_nist_transitions(f"nist/nist-{ion.Z:02d}-{ion.ionstage:02d}.txt")
         else:
             dftransitions = ion.transitions
 
         print(
-            f"\n======> {at.get_elsymbol(ion.Z)} {at.roman_numerals[ion.ion_stage]:3s} "
+            f"\n======> {at.get_elsymbol(ion.Z)} {at.roman_numerals[ion.ionstage]:3s} "
             f"(pop={ionpopdict[ionid]:.2e} / cm3, {len(dftransitions):6d} transitions)"
         )
 
@@ -408,7 +407,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
             for seriesindex, temperature in enumerate(temperature_list):
                 if temperature == "NOTEMPNLTE":
-                    dfnltepops_thision = dfnltepops.query("Z==@ion.Z & ion_stage==@ion.ion_stage")
+                    dfnltepops_thision = dfnltepops.query("Z==@ion.Z & ionstage==@ion.ionstage")
 
                     nltepopdict = {x.level: x["n_NLTE"] for _, x in dfnltepops_thision.iterrows()}
 
@@ -465,8 +464,10 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         feions = [2, 3]
 
         def get_strionfracs(atomic_number, ionstages):
+            elsym = at.get_elsymbol(atomic_number)
             est_ionfracs = [
-                estimators[f"populations_{atomic_number}_{ionstage}"] / estimators[f"populations_{atomic_number}"]
+                estimators[f"nnion_{at.get_ionstring(atomic_number, ionstage, sep='_', style='spectral')}"]
+                / estimators[f"nnelement_{elsym}"]
                 for ionstage in ionstages
             ]
             ionfracs_str = " ".join([f"{pop:6.0e}" if pop < 0.01 else f"{pop:6.2f}" for pop in est_ionfracs])
@@ -488,8 +489,8 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             f"{velocity:5.0f} km/s({modelgridindex})      {fe2depcoeff:5.2f}                   "
             f"{ni2depcoeff:.2f}        "
             f"{est_fe_ionfracs_str}   /  {est_ni_ionfracs_str}      {Te:.0f}    "
-            f"{estimators['populations_26_3'] / estimators['populations_26_2']:.2f}          "
-            f"{estimators['populations_28_3'] / estimators['populations_28_2']:5.2f}"
+            f"{estimators['nnion_Fe_III'] / estimators['nnion_Fe_II']:.2f}          "
+            f"{estimators['nnion_Ni_III'] / estimators['nnion_Ni_II']:5.2f}"
         )
 
     outputfilename = (

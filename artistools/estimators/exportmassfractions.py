@@ -35,8 +35,8 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             numberdens = {}
             totaldens = 0.0  # number density times atomic mass summed over all elements
             for key, val in estimators[(timestep, modelgridindex)].items():
-                if key.startswith("populations") and key.removeprefix("populations_").isdigit():
-                    atomic_number = int(key.removeprefix("populations_"))
+                if key.startswith("nnelement_"):
+                    atomic_number = at.get_atomic_number(key.removeprefix("nnelement_"))
                     numberdens[atomic_number] = val
                     totaldens += numberdens[atomic_number] * elmass[atomic_number]
             massfracs = {

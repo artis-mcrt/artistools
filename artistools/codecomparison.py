@@ -140,9 +140,9 @@ def read_reference_estimators(
                         if ion_startnumber is None:
                             ion_startnumber = ion_number
 
-                        ion_stage = ion_number + 1 if ion_startnumber == 0 else ion_number
+                        ionstage = ion_number + 1 if ion_startnumber == 0 else ion_number
 
-                        iontuples.append((atomic_number, ion_stage))
+                        iontuples.append((atomic_number, ionstage))
 
                 elif not line.lstrip().startswith("#"):
                     cur_modelgridindex += 1
@@ -151,17 +151,19 @@ def read_reference_estimators(
 
                     assert len(row) == nstages + 1
                     assert len(iontuples) == nstages
-                    for (atomic_number, ion_stage), strionfrac in zip(iontuples, row[1:]):
+                    for (atomic_number, ionstage), strionfrac in zip(iontuples, row[1:]):
+                        elsym = at.get_elsymbol(atomic_number)
+                        ionstr = at.get_ionstring(atomic_number, ionstage, sep="_", style="spectral")
                         try:
                             ionfrac = float(strionfrac)
                             ionpop = ionfrac * estimators[tsmgi]["nntot"]
                             if ionpop > 1e-80:
-                                estimators[tsmgi][f"populations_{atomic_number}_{ion_stage}"] = ionpop
-                                estimators[tsmgi].setdefault(f"populations_{atomic_number}", 0.0)
-                                estimators[tsmgi][f"populations_{atomic_number}"] += ionpop
+                                estimators[tsmgi][f"nnion_{ionstr}"] = ionpop
+                                estimators[tsmgi].setdefault(f"nnelement_{elsym}", 0.0)
+                                estimators[tsmgi][f"nnelement_{elsym}"] += ionpop
 
                         except ValueError:
-                            estimators[tsmgi][f"populations_{atomic_number}_{ion_stage}"] = float("NaN")
+                            estimators[tsmgi][f"nnion_{ionstr}"] = float("NaN")
 
                     assert np.isclose(float(row[0]), estimators[tsmgi]["vel_mid"], rtol=0.01)
                     assert estimators[key]["vel_mid"]

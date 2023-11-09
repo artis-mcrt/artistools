@@ -215,6 +215,8 @@ show-fixes = true
 "matplotlib.typing" = "mplt"
 "numpy.typing" = "npt"
 "typing" = "t"
+"polars" = "pl"
+"polars.selectors" = "cs"
 
 [tool.ruff.flake8-tidy-imports]
 ban-relative-imports = "all"
