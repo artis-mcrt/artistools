@@ -445,7 +445,7 @@ def get_averaged_estimators(
                 )
                 if value is None:
                     print(f"{k} not found for timestep {timestep} and modelgridindex {mgi}")
-                    value = 0.0
+                    continue
 
                 valuesum += value * tdelta
                 tdeltasum += tdelta
@@ -473,8 +473,7 @@ def get_averageionisation(estimatorstsmgi: pl.LazyFrame, atomic_number: int) -> 
         found = True
         nnion = dfselected[key].item(0)
         if nnion is None:
-            nnion = f"WARNING: {key} is None"
-            nnion = 0.0
+            continue
 
         ionstage = at.decode_roman_numeral(key.removeprefix(f"nnion_{elsymb}_"))
         free_electron_weighted_pop_sum += nnion * (ionstage - 1)
