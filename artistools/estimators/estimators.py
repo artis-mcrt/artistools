@@ -374,9 +374,11 @@ def read_estimators(
         pldflazy = pldflazy.filter(pl.col("timestep").is_in(match_timestep))
 
     for estimtsmgi in pldflazy.collect().iter_rows(named=True):
-        estimators[(estimtsmgi["timestep"], estimtsmgi["modelgridindex"])] = {
-            k: v for k, v in estimtsmgi.items() if k not in {"timestep", "modelgridindex"} and v is not None
-        }
+        ts, mgi = estimtsmgi["timestep"], estimtsmgi["modelgridindex"]
+        if ts is not None and mgi is not None:
+            estimators[(ts, mgi)] = {
+                k: v for k, v in estimtsmgi.items() if k not in {"timestep", "modelgridindex"} and v is not None
+            }
 
     return estimators
 
