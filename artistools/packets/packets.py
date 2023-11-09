@@ -431,7 +431,7 @@ def get_packetsfilepaths(
 
     searchfolders = [Path(modelpath, "packets"), Path(modelpath)]
     # in descending priority (based on speed of reading)
-    suffix_priority = [".out.zst", ".out.lz4", ".out.zst", ".out", ".out.gz", ".out.xz"]
+    suffix_priority = [".out.zst", ".out.zst", ".out", ".out.gz", ".out.xz"]
     t_lastschemachange = calendar.timegm(time_parquetschemachange)
 
     parquetpacketsfiles = []

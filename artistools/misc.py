@@ -9,7 +9,6 @@ from functools import lru_cache
 from itertools import chain
 from pathlib import Path
 
-import lz4.frame
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
@@ -773,9 +772,9 @@ def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None, f
     """
     if forpolars:
         mode = "r"
-    ext_fopen = [(".lz4", lz4.frame.open), (".zst", pyzstd.open), (".gz", gzip.open), (".xz", xz.open)]
+    ext_fopen: dict[str, t.Callable] = {".zst": pyzstd.open, ".gz": gzip.open, ".xz": xz.open}
 
-    for ext, fopen in ext_fopen:
+    for ext, fopen in ext_fopen.items():
         file_ext = str(filename) if str(filename).endswith(ext) else str(filename) + ext
         if Path(file_ext).exists():
             return fopen(file_ext, mode=mode, encoding=encoding)
@@ -801,7 +800,7 @@ def firstexisting(
         fullpaths.append(Path(folder) / filename)
 
         if tryzipped:
-            for ext in [".lz4", ".zst", ".gz", ".xz"]:
+            for ext in [".zst", ".gz", ".xz"]:
                 filenameext = str(filename) if str(filename).endswith(ext) else str(filename) + ext
                 if filenameext not in filelist:
                     fullpaths.append(folder / filenameext)
@@ -865,7 +864,7 @@ def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
 
     import yaml
 
-    filepath = Path(str(filepath).replace(".xz", "").replace(".gz", "").replace(".lz4", "").replace(".zst", ""))
+    filepath = Path(str(filepath).replace(".xz", "").replace(".gz", "").replace(".zst", ""))
 
     # check if the reference file (e.g. spectrum.txt) has an metadata file (spectrum.txt.meta.yml)
     individualmetafile = filepath.with_suffix(f"{filepath.suffix}.meta.yml")

@@ -3,7 +3,6 @@ astropy>=5.3.4
 coverage>=7.3.2
 extinction>=0.4.6
 imageio>=2.32.0
-lz4>=4.3.2
 matplotlib>=3.8.1
 mypy>=1.6.1
 numpy>=1.26.1
