@@ -10,6 +10,7 @@ import artistools as at
 modelpath = at.get_config()["path_testartismodel"]
 modelpath_3d = at.get_config()["path_testartismodel"].parent / "testmodel_3d_10^3"
 outputpath = at.get_config()["path_testoutput"]
+outputpath.mkdir(exist_ok=True, parents=True)
 
 
 def funcname() -> str:
@@ -88,7 +89,7 @@ def test_nltepops() -> None:
 
 def test_radfield() -> None:
     funcoutpath = outputpath / funcname()
-    funcoutpath.mkdir(exist_ok=True)
+    funcoutpath.mkdir(exist_ok=True, parents=True)
     at.radfield.main(argsraw=[], modelpath=modelpath, modelgridindex=0, outputfile=funcoutpath)
 
 
@@ -98,7 +99,7 @@ def test_get_ionrecombratecalibration() -> None:
 
 def test_plotspherical() -> None:
     funcoutpath = outputpath / funcname()
-    funcoutpath.mkdir(exist_ok=True)
+    funcoutpath.mkdir(exist_ok=True, parents=True)
     at.plotspherical.main(argsraw=[], modelpath=modelpath, outputfile=funcoutpath)
 
 
