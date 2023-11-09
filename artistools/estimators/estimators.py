@@ -314,7 +314,6 @@ def read_estimators(
     timestep: None | int | t.Sequence[int] = None,
     runfolder: None | str | Path = None,
     skip_emptycells: bool = False,
-    add_velocity: bool = True,
 ) -> dict[tuple[int, int], dict[str, t.Any]]:
     """Read estimator files into a dictionary of (timestep, modelgridindex): estimators.
 
