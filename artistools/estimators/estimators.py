@@ -444,8 +444,8 @@ def get_averaged_estimators(
                     estcollect.filter(pl.col("timestep") == timestep).filter(pl.col("modelgridindex") == mgi)[k].item(0)
                 )
                 if value is None:
-                    msg = f"{k} not found for timestep {timestep} and modelgridindex {mgi}"
-                    raise ValueError(msg)
+                    print(f"{k} not found for timestep {timestep} and modelgridindex {mgi}")
+                    value = 0.0
 
                 valuesum += value * tdelta
                 tdeltasum += tdelta
