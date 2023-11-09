@@ -1,9 +1,8 @@
 name: Update packages
 
 on:
-  # every day at 9am
   schedule:
-    - cron: "0 9 * * *"
+    - cron: "0 12 * * *"
   workflow_dispatch:
 
 permissions:
@@ -22,10 +21,13 @@ jobs:
             python-version-file: .python-version
 
       - name: Install requirements
-        run: python -m pip pur
+        run: python -m pip install pur
 
       - name: Run pre-commit autoupdate
         run: pre-commit autoupdate
+
+      - name: Run pur
+        run: pur
 
       - name: Commit and push
         run: |
