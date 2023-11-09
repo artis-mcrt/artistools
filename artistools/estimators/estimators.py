@@ -119,7 +119,6 @@ def get_units_string(variable: str) -> str:
 
 def parse_estimfile(
     estfilepath: Path | str,
-    get_ion_values: bool = True,
     skip_emptycells: bool = False,
 ) -> t.Iterator[tuple[int, int, dict[str, t.Any]]]:  # pylint: disable=unused-argument
     """Generate timestep, modelgridindex, dict from estimator file."""
@@ -157,7 +156,7 @@ def parse_estimfile(
                         estimblock[variablename] = float(value)
                     estimblock["lognne"] = math.log10(estimblock["nne"]) if estimblock["nne"] > 0 else float("-inf")
 
-            elif row[1].startswith("Z=") and get_ion_values:
+            elif row[1].startswith("Z="):
                 variablename = row[0]
                 if row[1].endswith("="):
                     atomic_number = int(row[2])
@@ -230,33 +229,80 @@ def parse_estimfile(
 
 def read_estimators_from_file(
     estfilepath: Path | str,
-    modelpath: Path,
     printfilename: bool = False,
-    get_ion_values: bool = True,
     skip_emptycells: bool = False,
 ) -> dict[tuple[int, int], dict[str, t.Any]]:
     if printfilename:
         estfilepath = Path(estfilepath)
         filesize = estfilepath.stat().st_size / 1024 / 1024
-        print(f"Reading {estfilepath.relative_to(modelpath.parent)} ({filesize:.2f} MiB)")
+        print(f"Reading {estfilepath.relative_to(estfilepath.parent.parent)} ({filesize:.2f} MiB)")
 
     return {
         (timestep, mgi): file_estimblock
         for timestep, mgi, file_estimblock in parse_estimfile(
             estfilepath,
-            get_ion_values=get_ion_values,
             skip_emptycells=skip_emptycells,
         )
     }
+
+
+def get_estimators_in_folder(
+    modelpath: Path,
+    folderpath: Path,
+    match_modelgridindex: None | t.Sequence[int],
+    skip_emptycells: bool,
+) -> dict:
+    mpiranklist = at.get_mpiranklist(modelpath, modelgridindex=match_modelgridindex, only_ranks_withgridcells=True)
+    printfilename = len(mpiranklist) < 10
+
+    estfilepaths = []
+    for mpirank in mpiranklist:
+        # not worth printing an error, because ranks with no cells to update do not produce an estimator file
+        with contextlib.suppress(FileNotFoundError):
+            estfilepath = at.firstexisting(f"estimators_{mpirank:04d}.out", folder=folderpath, tryzipped=True)
+            estfilepaths.append(estfilepath)
+
+    if not printfilename:
+        print(f"Reading {len(list(estfilepaths))} estimator files in {folderpath.relative_to(Path(folderpath).parent)}")
+
+    processfile = partial(
+        read_estimators_from_file,
+        printfilename=printfilename,
+        skip_emptycells=skip_emptycells,
+    )
+
+    if at.get_config()["num_processes"] > 1:
+        with multiprocessing.get_context("spawn").Pool(processes=at.get_config()["num_processes"]) as pool:
+            arr_rankestimators = pool.map(processfile, estfilepaths)
+            pool.close()
+            pool.join()
+            pool.terminate()
+    else:
+        arr_rankestimators = [processfile(estfilepath) for estfilepath in estfilepaths]
+
+    estimators: dict[tuple[int, int], dict[str, t.Any]] = {}
+    for estfilepath, estimators_thisfile in zip(estfilepaths, arr_rankestimators):
+        dupekeys = sorted([k for k in estimators_thisfile if k in estimators])
+        for k in dupekeys:
+            # dropping the lowest timestep is normal for restarts. Only warn about other cases
+            if k[0] != dupekeys[0][0]:
+                print(
+                    f"WARNING: Duplicate estimator block for (timestep, mgi) key {k}. "
+                    f"Dropping block from {estfilepath}"
+                )
+
+            del estimators_thisfile[k]
+
+        estimators |= estimators_thisfile
+
+    return estimators
 
 
 def read_estimators(
     modelpath: Path | str = Path(),
     modelgridindex: None | int | t.Sequence[int] = None,
     timestep: None | int | t.Sequence[int] = None,
-    mpirank: int | None = None,
     runfolder: None | str | Path = None,
-    get_ion_values: bool = True,
     skip_emptycells: bool = False,
     add_velocity: bool = True,
 ) -> dict[tuple[int, int], dict[str, t.Any]]:
@@ -286,65 +332,51 @@ def read_estimators(
 
     # print(f" matching cells {match_modelgridindex} and timesteps {match_timestep}")
 
-    mpiranklist = (
-        at.get_mpiranklist(modelpath, modelgridindex=match_modelgridindex, only_ranks_withgridcells=True)
-        if mpirank is None
-        else [mpirank]
-    )
-
     runfolders = at.get_runfolders(modelpath, timesteps=match_timestep) if runfolder is None else [Path(runfolder)]
 
-    printfilename = len(mpiranklist) < 10
+    estimators: dict[tuple[int, int], dict[str, t.Any]] = {}
+    parquetfiles = [folderpath / "estimators.out.parquet.tmp" for folderpath in runfolders]
 
-    estimators: dict[tuple[int, int], dict] = {}
-    for folderpath in runfolders:
-        estfilepaths = []
-        for mpirank in mpiranklist:
-            # not worth printing an error, because ranks with no cells to update do not produce an estimator file
-            with contextlib.suppress(FileNotFoundError):
-                estfilepath = at.firstexisting(f"estimators_{mpirank:04d}.out", folder=folderpath, tryzipped=True)
-                estfilepaths.append(estfilepath)
+    for folderpath, parquetfile in zip(runfolders, parquetfiles):
+        if parquetfile.exists():
+            continue
 
-        if not printfilename:
-            print(
-                f"Reading {len(list(estfilepaths))} estimator files in {folderpath.relative_to(Path(modelpath).parent)}"
-            )
-
-        processfile = partial(
-            read_estimators_from_file,
-            modelpath=modelpath,
-            get_ion_values=get_ion_values,
-            printfilename=printfilename,
-            skip_emptycells=skip_emptycells,
+        estim_folder = get_estimators_in_folder(
+            modelpath,
+            folderpath,
+            match_modelgridindex=None,
+            skip_emptycells=True,
         )
 
-        if at.get_config()["num_processes"] > 1:
-            with multiprocessing.get_context("spawn").Pool(processes=at.get_config()["num_processes"]) as pool:
-                arr_rankestimators = pool.map(processfile, estfilepaths)
-                pool.close()
-                pool.join()
-                pool.terminate()
-        else:
-            arr_rankestimators = [processfile(estfilepath) for estfilepath in estfilepaths]
+        pldf = pl.DataFrame(
+            [
+                {
+                    "timestep": ts,
+                    "modelgridindex": mgi,
+                    **estimvals,
+                }
+                for (ts, mgi), estimvals in estim_folder.items()
+                if not estimvals.get("emptycell", True)
+            ]
+        )
+        print(f"Writing {parquetfile.relative_to(modelpath.parent)}")
+        pldf.write_parquet(parquetfile, compression="zstd")
 
-        for estfilepath, estimators_thisfile in zip(estfilepaths, arr_rankestimators):
-            dupekeys = sorted([k for k in estimators_thisfile if k in estimators])
-            for k in dupekeys:
-                # dropping the lowest timestep is normal for restarts. Only warn about other cases
-                if k[0] != dupekeys[0][0]:
-                    print(
-                        f"WARNING: Duplicate estimator block for (timestep, mgi) key {k}. "
-                        f"Dropping block from {estfilepath}"
-                    )
+    for folderpath, parquetfile in zip(runfolders, parquetfiles):
+        print(f"Reading {parquetfile.relative_to(modelpath.parent)}")
 
-                del estimators_thisfile[k]
+    pldflazy = pl.scan_parquet(parquetfiles)
 
-            estimators |= {
-                (ts, mgi): v
-                for (ts, mgi), v in estimators_thisfile.items()
-                if (not match_modelgridindex or mgi in match_modelgridindex)
-                and (not match_timestep or ts in match_timestep)
-            }
+    if match_modelgridindex is not None:
+        pldflazy = pldflazy.filter(pl.col("modelgridindex").is_in(match_modelgridindex))
+
+    if match_timestep is not None:
+        pldflazy = pldflazy.filter(pl.col("timestep").is_in(match_timestep))
+
+    for estimtsmgi in pldflazy.collect().iter_rows(named=True):
+        estimators[(estimtsmgi["timestep"], estimtsmgi["modelgridindex"])] = {
+            k: v for k, v in estimtsmgi.items() if k not in {"timestep", "modelgridindex"} and v is not None
+        }
 
     return estimators
 
@@ -458,7 +490,6 @@ def get_temperatures(modelpath: str | Path) -> pl.LazyFrame:
     if not dfest_parquetfile.is_file():
         estimators = at.estimators.read_estimators(
             modelpath,
-            get_ion_values=False,
             skip_emptycells=True,
         )
         assert len(estimators) > 0
@@ -473,22 +504,3 @@ def get_temperatures(modelpath: str | Path) -> pl.LazyFrame:
         )
 
     return pl.scan_parquet(dfest_parquetfile)
-
-
-def read_estimators_polars(*args, **kwargs) -> pl.LazyFrame:
-    estimators = read_estimators(*args, **kwargs)
-    pldf = pl.DataFrame(
-        [
-            {
-                "timestep": ts,
-                "modelgridindex": mgi,
-                **estimvals,
-            }
-            for (ts, mgi), estimvals in estimators.items()
-            if not estimvals.get("emptycell", True)
-        ]
-    )
-    print(pldf.columns)
-    print(pldf.transpose(include_header=True))
-
-    return pldf.lazy()

@@ -69,9 +69,9 @@ def make_xs_plot(axis: plt.Axes, nonthermaldata: pd.DataFrame, args: argparse.Na
 
 
 def plot_contributions(axis, modelpath, timestep, modelgridindex, nonthermaldata, args):
-    estim_tsmgi = at.estimators.read_estimators(
-        modelpath, get_ion_values=True, modelgridindex=modelgridindex, timestep=timestep
-    )[(timestep, modelgridindex)]
+    estim_tsmgi = at.estimators.read_estimators(modelpath, modelgridindex=modelgridindex, timestep=timestep)[
+        (timestep, modelgridindex)
+    ]
 
     total_depev = estim_tsmgi["total_dep"] * ERG_TO_EV
 
