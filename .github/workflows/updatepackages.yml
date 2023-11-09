@@ -33,6 +33,8 @@ jobs:
 
       - name: Commit and push
         run: |
+          git config --global user.email "luke.shingles@gmail.com"
+          git config --global user.name "Autoupdate"
           git add ".pre-commit-config.yaml"
           git add "requirements.txt"
           git commit -m "Upgrade pre-commit dependencies"
