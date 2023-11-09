@@ -121,7 +121,7 @@ def get_units_string(variable: str) -> str:
 def read_estimators_from_file(
     estfilepath: Path | str,
     printfilename: bool = False,
-    skip_emptycells: bool = False,
+    skip_emptycells: bool = True,
 ) -> pl.DataFrame:
     if printfilename:
         estfilepath = Path(estfilepath)
@@ -261,13 +261,12 @@ def read_estimators_in_folder_polars(
     modelpath: Path,
     folderpath: Path,
     match_modelgridindex: None | t.Sequence[int],
-    skip_emptycells: bool,
-) -> pl.DataFrame:
+) -> pl.LazyFrame:
     mpiranklist = at.get_mpiranklist(modelpath, modelgridindex=match_modelgridindex, only_ranks_withgridcells=True)
     printfilename = True
     mpirank_groups = list(batched_it(list(mpiranklist), 100))
     group_parquetfiles = [
-        folderpath / f"estimators_{mpigroup[0]:05d}_{mpigroup[-1]:05d}.out.parquet.tmp" for mpigroup in mpirank_groups
+        folderpath / f"estimators_{mpigroup[0]:04d}_{mpigroup[-1]:04d}.out.parquet.tmp" for mpigroup in mpirank_groups
     ]
     for mpigroup, parquetfilename in zip(mpirank_groups, group_parquetfiles):
         if not parquetfilename.exists():
@@ -286,17 +285,20 @@ def read_estimators_in_folder_polars(
             processfile = partial(
                 read_estimators_from_file,
                 printfilename=printfilename,
-                skip_emptycells=skip_emptycells,
             )
 
-            pldf_group = pl.DataFrame()
+            pldf_group = None
             with multiprocessing.get_context("spawn").Pool(processes=at.get_config()["num_processes"]) as pool:
                 for pldf_file in pool.imap(processfile, estfilepaths):
-                    pldf_group = pl.concat([pldf_group, pldf_file], how="diagonal_relaxed")
+                    if pldf_group is None:
+                        pldf_group = pldf_file
+                    else:
+                        pldf_group = pl.concat([pldf_group, pldf_file], how="diagonal_relaxed")
 
                 pool.close()
                 pool.join()
                 pool.terminate()
+            assert pldf_group is not None
             print(f"Writing {parquetfilename.relative_to(modelpath.parent)}")
             pldf_group.write_parquet(parquetfilename, compression="zstd")
 
@@ -304,17 +306,16 @@ def read_estimators_in_folder_polars(
         print(f"Reading {parquetfilename.relative_to(modelpath.parent)}")
 
     return pl.concat(
-        [pl.read_parquet(parquetfilename) for parquetfilename in group_parquetfiles], how="diagonal_relaxed"
-    )
+        [pl.scan_parquet(parquetfilename) for parquetfilename in group_parquetfiles], how="diagonal_relaxed"
+    ).sort(["timestep", "modelgridindex"])
 
 
-def read_estimators(
+def read_estimators_polars(
     modelpath: Path | str = Path(),
     modelgridindex: None | int | t.Sequence[int] = None,
     timestep: None | int | t.Sequence[int] = None,
     runfolder: None | str | Path = None,
-    skip_emptycells: bool = False,
-) -> dict[tuple[int, int], dict[str, t.Any]]:
+) -> pl.LazyFrame:
     """Read estimator files into a dictionary of (timestep, modelgridindex): estimators.
 
     Selecting particular timesteps or modelgrid cells will using speed this up by reducing the number of files that must be read.
@@ -337,33 +338,44 @@ def read_estimators(
         match_timestep = tuple(timestep)
 
     if not Path(modelpath).exists() and Path(modelpath).parts[0] == "codecomparison":
-        return at.codecomparison.read_reference_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
+        estimators = at.codecomparison.read_reference_estimators(
+            modelpath, timestep=timestep, modelgridindex=modelgridindex
+        )
+        return pl.DataFrame(
+            [
+                {
+                    "timestep": ts,
+                    "modelgridindex": mgi,
+                    **estimvals,
+                }
+                for (ts, mgi), estimvals in estimators.items()
+                if not estimvals.get("emptycell", True)
+            ]
+        ).lazy()
 
     # print(f" matching cells {match_modelgridindex} and timesteps {match_timestep}")
 
     runfolders = at.get_runfolders(modelpath, timesteps=match_timestep) if runfolder is None else [Path(runfolder)]
 
-    estimators: dict[tuple[int, int], dict[str, t.Any]] = {}
     parquetfiles = [folderpath / "estimators.out.parquet.tmp" for folderpath in runfolders]
 
     for folderpath, parquetfile in zip(runfolders, parquetfiles):
-        if parquetfile.exists():
-            continue
+        if not parquetfile.exists():
+            pldflazy = read_estimators_in_folder_polars(
+                modelpath,
+                folderpath,
+                match_modelgridindex=None,
+            )
 
-        pldf = read_estimators_in_folder_polars(
-            modelpath,
-            folderpath,
-            match_modelgridindex=None,
-            skip_emptycells=True,
-        )
-
-        print(f"Writing {parquetfile.relative_to(modelpath.parent)}")
-        pldf.write_parquet(parquetfile, compression="zstd")
+            print(f"Writing {parquetfile.relative_to(modelpath.parent)}")
+            pldflazy.collect().write_parquet(parquetfile, compression="zstd")
 
     for folderpath, parquetfile in zip(runfolders, parquetfiles):
         print(f"Scanning {parquetfile.relative_to(modelpath.parent)}")
 
-    pldflazy = pl.scan_parquet(parquetfiles)
+    pldflazy = pl.concat(
+        [pl.scan_parquet(parquetfilename) for parquetfilename in parquetfiles], how="diagonal_relaxed"
+    ).unique(["timestep", "modelgridindex"], maintain_order=True, keep="first")
 
     if match_modelgridindex is not None:
         pldflazy = pldflazy.filter(pl.col("modelgridindex").is_in(match_modelgridindex))
@@ -371,12 +383,25 @@ def read_estimators(
     if match_timestep is not None:
         pldflazy = pldflazy.filter(pl.col("timestep").is_in(match_timestep))
 
+    return pldflazy
+
+
+def read_estimators(
+    modelpath: Path | str = Path(),
+    modelgridindex: None | int | t.Sequence[int] = None,
+    timestep: None | int | t.Sequence[int] = None,
+    runfolder: None | str | Path = None,
+    keys: t.Collection[str] | None = None,
+) -> dict[tuple[int, int], dict[str, t.Any]]:
+    if keys is None:
+        keys = {}
+    pldflazy = read_estimators_polars(modelpath, modelgridindex, timestep, runfolder)
+    estimators: dict[tuple[int, int], dict[str, t.Any]] = {}
     for estimtsmgi in pldflazy.collect().iter_rows(named=True):
         ts, mgi = estimtsmgi["timestep"], estimtsmgi["modelgridindex"]
-        if ts is not None and mgi is not None:
-            estimators[(ts, mgi)] = {
-                k: v for k, v in estimtsmgi.items() if k not in {"timestep", "modelgridindex"} and v is not None
-            }
+        estimators[(ts, mgi)] = {
+            k: v for k, v in estimtsmgi.items() if k not in {"timestep", "modelgridindex", *keys} and v is not None
+        }
 
     return estimators
 
@@ -485,22 +510,8 @@ def get_partiallycompletetimesteps(estimators: dict[tuple[int, int], dict[str, t
 
 def get_temperatures(modelpath: str | Path) -> pl.LazyFrame:
     """Get a polars DataFrame containing the temperatures at every timestep and modelgridindex."""
-    dfest_parquetfile = Path(modelpath, "temperatures.parquet.tmp")
-
-    if not dfest_parquetfile.is_file():
-        estimators = at.estimators.read_estimators(
-            modelpath,
-            skip_emptycells=True,
-        )
-        assert len(estimators) > 0
-        pl.DataFrame(
-            {
-                "timestep": (ts for ts, _ in estimators),
-                "modelgridindex": (mgi for _, mgi in estimators),
-                "TR": (estimators[tsmgi].get("TR", -1) for tsmgi in estimators),
-            },
-        ).filter(pl.col("TR") >= 0).with_columns(pl.col(pl.Int64).cast(pl.Int32)).write_parquet(
-            dfest_parquetfile, compression="zstd"
-        )
-
-    return pl.scan_parquet(dfest_parquetfile)
+    return (
+        at.estimators.read_estimators_polars(modelpath=modelpath)
+        .select(["timestep", "modelgridindex", "TR"])
+        .drop_nulls()
+    )

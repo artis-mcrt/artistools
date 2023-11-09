@@ -16,5 +16,6 @@ from artistools.estimators.estimators import get_variablelongunits
 from artistools.estimators.estimators import get_variableunits
 from artistools.estimators.estimators import read_estimators
 from artistools.estimators.estimators import read_estimators_from_file
+from artistools.estimators.estimators import read_estimators_polars
 from artistools.estimators.plotestimators import addargs
 from artistools.estimators.plotestimators import main as plot
