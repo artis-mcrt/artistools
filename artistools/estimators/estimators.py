@@ -444,13 +444,12 @@ def get_averaged_estimators(
                     estcollect.filter(pl.col("timestep") == timestep).filter(pl.col("modelgridindex") == mgi)[k].item(0)
                 )
                 if value is None:
-                    print(f"{k} not found for timestep {timestep} and modelgridindex {mgi}")
                     continue
 
                 valuesum += value * tdelta
                 tdeltasum += tdelta
 
-        dictout[k] = valuesum / tdeltasum
+        dictout[k] = valuesum / tdeltasum if tdeltasum > 0 else float("NaN")
 
     return dictout
 
@@ -469,7 +468,7 @@ def get_averageionisation(estimatorstsmgi: pl.LazyFrame, atomic_number: int) -> 
 
     found = False
     popsum = 0.0
-    for key in dfselected.columns:
+    for key in dfselected.select(cs.starts_with(f"nnion_{elsymb}_")).columns:
         found = True
         nnion = dfselected[key].item(0)
         if nnion is None:
