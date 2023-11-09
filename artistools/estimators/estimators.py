@@ -26,12 +26,12 @@ import artistools as at
 def get_variableunits(key: str | None = None) -> str | dict[str, str]:
     variableunits = {
         "time": "days",
-        "gamma_NT": "/s",
-        "gamma_R_bfest": "/s",
+        "gamma_NT": "s^-1",
+        "gamma_R_bfest": "s^-1",
         "TR": "K",
         "Te": "K",
         "TJ": "K",
-        "nne": "e-/cm3",
+        "nne": "e^-/cm3",
         "heating": "erg/s/cm3",
         "heating_dep/total_dep": "Ratio",
         "cooling": "erg/s/cm3",
@@ -54,6 +54,7 @@ def get_variablelongunits(key: str | None = None) -> str | dict[str, str]:
 
 def get_dictlabelreplacements() -> dict[str, str]:
     return {
+        "nne": r"n$_{\rm e}$",
         "lognne": r"Log n$_{\rm e}$",
         "Te": r"T$_{\rm e}$",
         "TR": r"T$_{\rm R}$",

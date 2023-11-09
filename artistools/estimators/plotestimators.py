@@ -354,7 +354,7 @@ def plot_multi_ion_series(
 
         if seriestype == "populations":
             if args.ionpoptype == "absolute":
-                ax.set_ylabel("X$_{i}$ [/cm3]")
+                ax.set_ylabel(r"Number density $\left[\rm{cm}^{-3}\right]$")
             elif args.ionpoptype == "elpop":
                 # elsym = at.get_elsymbol(atomic_number)
                 ax.set_ylabel(r"X$_{i}$/X$_{\rm element}$")
@@ -501,13 +501,14 @@ def plot_series(
     assert len(xlist) - 1 == len(mgilist) == len(timestepslist)
     formattedvariablename = at.estimators.get_dictlabelreplacements().get(variablename, variablename)
     serieslabel = f"{formattedvariablename}"
-    if not nounits:
-        serieslabel += at.estimators.get_units_string(variablename)
+    units_string = at.estimators.get_units_string(variablename)
 
     if showlegend:
         linelabel = serieslabel
+        if not nounits:
+            linelabel += units_string
     else:
-        ax.set_ylabel(serieslabel)
+        ax.set_ylabel(serieslabel + units_string)
         linelabel = None
 
     ylist: list[float] = []
@@ -558,7 +559,7 @@ def get_xlist(
     timestepslist: t.Any,
     modelpath: str | Path,
     args: t.Any,
-) -> tuple[list[float | int], list[int | t.Sequence[int]], list[int | list[int]]]:
+) -> tuple[list[float | int], list[int | t.Sequence[int]], list[list[int]]]:
     xlist: t.Sequence[float | int]
     if xvariable in {"cellid", "modelgridindex"}:
         mgilist_out = [mgi for mgi in allnonemptymgilist if mgi <= args.xmax] if args.xmax >= 0 else allnonemptymgilist
@@ -624,21 +625,21 @@ def plot_subplot(
     # these three lists give the x value, modelgridex, and a list of timesteps (for averaging) for each plot of the plot
     assert len(xlist) - 1 == len(mgilist) == len(timestepslist)
     showlegend = False
-
+    seriescount = 0
     ylabel = None
     sameylabel = True
     for variablename in plotitems:
-        if not isinstance(variablename, str):
-            pass
-        elif ylabel is None:
-            ylabel = get_ylabel(variablename)
-        elif ylabel != get_ylabel(variablename):
-            sameylabel = False
-            break
+        if isinstance(variablename, str):
+            seriescount += 1
+            if ylabel is None:
+                ylabel = get_ylabel(variablename)
+            elif ylabel != get_ylabel(variablename):
+                sameylabel = False
+                break
 
     for plotitem in plotitems:
         if isinstance(plotitem, str):
-            showlegend = len(plotitems) > 1 or len(plotitem) > 20
+            showlegend = seriescount > 1 or len(plotitem) > 20 or not sameylabel
             plot_series(
                 ax,
                 xlist,
@@ -812,9 +813,7 @@ def make_plot(
             **plotkwargs,
         )
 
-    if (
-        len(set(mgilist)) == 1 and not isinstance(timestepslist[0], int) and len(timestepslist[0]) > 1
-    ):  # single grid cell versus time plot
+    if len(set(mgilist)) == 1 and len(timestepslist[0]) > 1:  # single grid cell versus time plot
         figure_title = f"{modelname}\nCell {mgilist[0]}"
 
         defaultoutputfile = Path("plotestimators_cell{modelgridindex:03d}.pdf")
@@ -835,13 +834,13 @@ def make_plot(
                 .collect()
                 .item(0)
             )
-            figure_title = f"{modelname}\nTimestep {timestepslist[0]} ({tdays:.2f}d)"
+            figure_title = f"{modelname}\nTimestep {timestepslist[0][0]} ({tdays:.2f}d)"
         elif args.multiplot:
             assert isinstance(timestepslist[0], int)
             timedays = float(at.get_timestep_time(modelpath, timestepslist[0]))
-            figure_title = f"{modelname}\nTimestep {timestepslist[0]} ({timedays:.2f}d)"
+            figure_title = f"{modelname}\nTimestep {timestepslist[0][0]} ({timedays:.2f}d)"
         else:
-            figure_title = f"{modelname}\nTimestep {timestepslist[0]} ({timeavg:.2f}d)"
+            figure_title = f"{modelname}\nTimestep {timestepslist[0][0]} ({timeavg:.2f}d)"
 
         defaultoutputfile = Path("plotestimators_ts{timestep:02d}_{timeavg:.2f}d.pdf")
         if Path(args.outputfile).is_dir():
@@ -851,7 +850,7 @@ def make_plot(
         outfilename = str(args.outputfile).format(timestep=timestepslist[0][0], timeavg=timeavg)
 
     if not args.notitle:
-        axes[0].set_title(figure_title, fontsize=11)
+        axes[0].set_title(figure_title, fontsize=8)
     # plt.suptitle(figure_title, fontsize=11, verticalalignment='top')
 
     if args.write_data:
@@ -1090,11 +1089,12 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         ["nne", ["_ymin", 1e5], ["_ymax", 1e11]],
         # ["TR", ["_yscale", "linear"], ["_ymin", 1000], ["_ymax", 26000]],
         ["Te"],
+        # ["Te", "TR"],
         [["averageionisation", ["Sr"]]],
         # [['averageexcitation', ['Fe II', 'Fe III']]],
         # [["populations", ["Sr90", "Sr91", "Sr92", "Sr93", "Sr94"]]],
         #  ['_ymin', 1e-3], ['_ymax', 5]],
-        [["populations", ["Fe", "Co", "Ni", "Sr", "Nd"]]],
+        [["populations", ["Sr"]]],
         # [['populations', ['He I', 'He II', 'He III']]],
         # [['populations', ['C I', 'C II', 'C III', 'C IV', 'C V']]],
         # [['populations', ['O I', 'O II', 'O III', 'O IV']]],
