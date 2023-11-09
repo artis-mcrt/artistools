@@ -15,14 +15,13 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import polars as pl
-from astropy import constants as const
-from astropy import units as u
 
 import artistools as at
 
 fluxcontributiontuple = namedtuple(
     "fluxcontributiontuple", "fluxcontrib linelabel array_flambda_emission array_flambda_absorption color"
 )
+megaparsec_to_cm = 3.0856e24
 
 
 def timeshift_fluxscale_co56law(scaletoreftime: float | None, spectime: float) -> float:
@@ -191,7 +190,6 @@ def get_from_packets(
     dfpackets = dfpackets.select(getcols).collect().lazy()
 
     dfdict = {}
-    megaparsec_to_cm = 3.085677581491367e24
     for dirbin in directionbins:
         if dirbin == -1:
             solidanglefactor = 1.0
@@ -726,7 +724,7 @@ def get_flux_contributions(
         nions = elementlist.nions[element]
         # nions = elementlist.iloc[element].uppermost_ionstage - elementlist.iloc[element].lowermost_ionstage + 1
         for ion in range(nions):
-            ion_stage = ion + elementlist.lowermost_ionstage[element]
+            ionstage = ion + elementlist.lowermost_ionstage[element]
             ionserieslist: list[tuple[int, str]] = [
                 (element * maxion + ion, "bound-bound"),
                 (nelements * maxion + element * maxion + ion, "bound-free"),
@@ -781,11 +779,11 @@ def get_flux_contributions(
                 )
 
                 if emissiontypeclass == "bound-bound":
-                    linelabel = at.get_ionstring(elementlist.Z[element], ion_stage)
+                    linelabel = at.get_ionstring(elementlist.Z[element], ionstage)
                 elif emissiontypeclass == "free-free":
                     linelabel = "free-free"
                 else:
-                    linelabel = f"{at.get_ionstring(elementlist.Z[element], ion_stage)} {emissiontypeclass}"
+                    linelabel = f"{at.get_ionstring(elementlist.Z[element], ionstage)} {emissiontypeclass}"
 
                 contribution_list.append(
                     fluxcontributiontuple(
@@ -839,14 +837,14 @@ def get_flux_contributions_from_packets(
 
             if groupby == "terms":
                 upper_config = (
-                    adata.query("Z == @line.atomic_number and ion_stage == @line.ionstage", inplace=False)
+                    adata.query("Z == @line.atomic_number and ionstage == @line.ionstage", inplace=False)
                     .iloc[0]
                     .levels.iloc[line.upperlevelindex]
                     .levelname
                 )
                 upper_term_noj = upper_config.split("_")[-1].split("[")[0]
                 lower_config = (
-                    adata.query("Z == @line.atomic_number and ion_stage == @line.ionstage", inplace=False)
+                    adata.query("Z == @line.atomic_number and ionstage == @line.ionstage", inplace=False)
                     .iloc[0]
                     .levels.iloc[line.lowerlevelindex]
                     .levelname
@@ -856,7 +854,7 @@ def get_flux_contributions_from_packets(
 
             if groupby == "upperterm":
                 upper_config = (
-                    adata.query("Z == @line.atomic_number and ion_stage == @line.ionstage", inplace=False)
+                    adata.query("Z == @line.atomic_number and ionstage == @line.ionstage", inplace=False)
                     .iloc[0]
                     .levels.iloc[line.upperlevelindex]
                     .levelname
@@ -902,8 +900,8 @@ def get_flux_contributions_from_packets(
 
     if use_escapetime:
         modeldata, _ = at.inputmodel.get_modeldata(modelpath)
-        vmax = modeldata.iloc[-1].vel_r_max_kmps * u.km / u.s
-        betafactor = math.sqrt(1 - (vmax / const.c).decompose().value ** 2)
+        vmax = modeldata.iloc[-1].vel_r_max_kmps * 1e5
+        betafactor = math.sqrt(1 - (vmax / 29979245800) ** 2)
 
     packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles)
 
@@ -1032,7 +1030,6 @@ def get_flux_contributions_from_packets(
             print("volume", volume, "shell volume", volume_shells, "-------------------------------------------------")
         normfactor = c_cgs / 4 / math.pi / delta_lambda / volume / nprocs_read
     else:
-        megaparsec_to_cm = 3.085677581491367e24
         normfactor = 1.0 / delta_lambda / (timehigh - timelow) / 4 / math.pi / (megaparsec_to_cm**2) / nprocs_read
 
     array_flambda_emission_total = energysum_spectrum_emission_total * normfactor
@@ -1169,15 +1166,11 @@ def sort_and_reduce_flux_contribution_list(
 def print_integrated_flux(
     arr_f_lambda: np.ndarray | pd.Series, arr_lambda_angstroms: np.ndarray | pd.Series, distance_megaparsec: float = 1.0
 ) -> float:
-    integrated_flux = (
-        abs(np.trapz(np.nan_to_num(arr_f_lambda, nan=0.0), x=arr_lambda_angstroms)) * u.erg / u.s / (u.cm**2)
-    )
+    integrated_flux = abs(np.trapz(np.nan_to_num(arr_f_lambda, nan=0.0), x=arr_lambda_angstroms))
     print(
         f" integrated flux ({arr_lambda_angstroms.min():.1f} to "
-        f"{arr_lambda_angstroms.max():.1f} A): {integrated_flux:.3e}"
+        f"{arr_lambda_angstroms.max():.1f} A): {integrated_flux:.3e} erg/s/cm2"
     )
-    # luminosity = integrated_flux * 4 * math.pi * (distance_megaparsec * u.megaparsec ** 2)
-    # print(f'(L={luminosity.to("Lsun"):.3e})')
     return integrated_flux.value
 
 
