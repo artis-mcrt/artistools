@@ -6,6 +6,7 @@ Examples are temperatures, populations, and heating/cooling rates.
 
 import argparse
 import contextlib
+import itertools
 import math
 import multiprocessing
 import sys
@@ -240,6 +241,22 @@ def read_estimators_from_file(
     )
 
 
+def batched_it(iterable, n):
+    """Batch data into iterators of length n. The last batch may be shorter."""
+    # batched('ABCDEFG', 3) --> ABC DEF G
+    if n < 1:
+        msg = "n must be at least one"
+        raise ValueError(msg)
+    it = iter(iterable)
+    while True:
+        chunk_it = itertools.islice(it, n)
+        try:
+            first_el = next(chunk_it)
+        except StopIteration:
+            return
+        yield list(itertools.chain((first_el,), chunk_it))
+
+
 def read_estimators_in_folder_polars(
     modelpath: Path,
     folderpath: Path,
@@ -247,34 +264,49 @@ def read_estimators_in_folder_polars(
     skip_emptycells: bool,
 ) -> pl.DataFrame:
     mpiranklist = at.get_mpiranklist(modelpath, modelgridindex=match_modelgridindex, only_ranks_withgridcells=True)
-    printfilename = len(mpiranklist) < 4000
+    printfilename = True
+    mpirank_groups = list(batched_it(list(mpiranklist), 100))
+    group_parquetfiles = [
+        folderpath / f"estimators_{group[0]:05d}_{group[-1]:05d}.out.parquet.tmp" for group in mpirank_groups
+    ]
+    for group, parquetfilename in zip(mpirank_groups, group_parquetfiles):
+        print(parquetfilename)
 
-    estfilepaths = []
-    for mpirank in mpiranklist:
-        # not worth printing an error, because ranks with no cells to update do not produce an estimator file
-        with contextlib.suppress(FileNotFoundError):
-            estfilepath = at.firstexisting(f"estimators_{mpirank:04d}.out", folder=folderpath, tryzipped=True)
-            estfilepaths.append(estfilepath)
+        if not parquetfilename.exists():
+            estfilepaths = []
+            for mpirank in group:
+                # not worth printing an error, because ranks with no cells to update do not produce an estimator file
+                with contextlib.suppress(FileNotFoundError):
+                    estfilepath = at.firstexisting(f"estimators_{mpirank:04d}.out", folder=folderpath, tryzipped=True)
+                    estfilepaths.append(estfilepath)
 
-    if not printfilename:
-        print(f"Reading {len(list(estfilepaths))} estimator files in {folderpath.relative_to(Path(folderpath).parent)}")
+            print(
+                f"Reading {len(list(estfilepaths))} estimator files in {folderpath.relative_to(Path(folderpath).parent)}"
+            )
 
-    processfile = partial(
-        read_estimators_from_file,
-        printfilename=printfilename,
-        skip_emptycells=skip_emptycells,
+            processfile = partial(
+                read_estimators_from_file,
+                printfilename=printfilename,
+                skip_emptycells=skip_emptycells,
+            )
+
+            pldf_group = pl.DataFrame()
+            with multiprocessing.get_context("spawn").Pool(processes=at.get_config()["num_processes"]) as pool:
+                for pldf_file in pool.imap(processfile, estfilepaths):
+                    pldf_group = pl.concat([pldf_group, pldf_file], how="diagonal_relaxed")
+
+                pool.close()
+                pool.join()
+                pool.terminate()
+            print(f"Writing {parquetfilename.relative_to(modelpath.parent)}")
+            pldf_group.write_parquet(parquetfilename, compression="zstd")
+
+    for parquetfilename in group_parquetfiles:
+        print(f"Reading {parquetfilename.relative_to(modelpath.parent)}")
+
+    return pl.concat(
+        [pl.read_parquet(parquetfilename) for parquetfilename in group_parquetfiles], how="diagonal_relaxed"
     )
-
-    pldf = pl.DataFrame()
-    with multiprocessing.get_context("spawn").Pool(processes=at.get_config()["num_processes"]) as pool:
-        for pldf_file in pool.imap(processfile, estfilepaths):
-            pldf = pl.concat([pldf, pldf_file], how="diagonal_relaxed")
-
-        pool.close()
-        pool.join()
-        pool.terminate()
-
-    return pldf
 
 
 def read_estimators(
