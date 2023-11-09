@@ -960,7 +960,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--hidexlabel", action="store_true", help="Hide the bottom horizontal axis label")
 
-    parser.add_argument("--makersonly", action="store_true", help="Plot markers instead of lines")
+    parser.add_argument("--markersonly", action="store_true", help="Plot markers instead of lines")
 
     parser.add_argument("-filtermovingavg", type=int, default=0, help="Smoothing length (1 is same as none)")
 
