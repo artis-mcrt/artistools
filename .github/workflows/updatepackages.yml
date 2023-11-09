@@ -1,9 +1,9 @@
-name: Update pre-commit
+name: Update packages
 
 on:
-  # every week on monday
+  # every day at 9am
   schedule:
-    - cron: "0 0 * * 1"
+    - cron: "0 9 * * *"
   workflow_dispatch:
 
 permissions:
@@ -15,13 +15,22 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Run autoupdate
-        run: |
-          pre-commit autoupdate
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+            cache: pip
+            python-version: ${{ matrix.python-version }}
+
+      - name: Install requirements
+        run: python -m pip pur
+
+      - name: Run pre-commit autoupdate
+        run: pre-commit autoupdate
 
       - name: Commit and push
         run: |
           git add ".pre-commit-config.yaml"
+          git add "requirements.txt"
           git commit -m "Upgrade pre-commit dependencies"
           git push origin upgrade/pre-commit
 
