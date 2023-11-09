@@ -457,26 +457,30 @@ def get_averaged_estimators(
 
 def get_averageionisation(estimatorstsmgi: pl.LazyFrame, atomic_number: int) -> float:
     free_electron_weighted_pop_sum = 0.0
-    found = False
-    popsum = 0.0
     elsymb = at.get_elsymbol(atomic_number)
+
     dfselected = estimatorstsmgi.select(
         cs.starts_with(f"nnion_{elsymb}_") | cs.by_name(f"nnelement_{elsymb}")
     ).collect()
+
+    nnelement = dfselected[f"nnelement_{elsymb}"].item(0)
+    if nnelement is None:
+        return float("NaN")
+
+    found = False
+    popsum = 0.0
     for key in dfselected.columns:
         found = True
         nnion = dfselected[key].item(0)
         if nnion is None:
             nnion = f"WARNING: {key} is None"
             nnion = 0.0
+
         ionstage = at.decode_roman_numeral(key.removeprefix(f"nnion_{elsymb}_"))
         free_electron_weighted_pop_sum += nnion * (ionstage - 1)
         popsum += nnion
 
-    if not found:
-        return float("NaN")
-
-    return free_electron_weighted_pop_sum / dfselected[f"nnelement_{elsymb}"].item(0)
+    return free_electron_weighted_pop_sum / nnelement if found else float("NaN")
 
 
 def get_averageexcitation(
