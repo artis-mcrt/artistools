@@ -35,10 +35,11 @@ jobs:
         run: |
           git config --global user.email "luke.shingles@gmail.com"
           git config --global user.name "Autoupdate"
+          git checkout -b my-new-branch
           git add ".pre-commit-config.yaml"
           git add "requirements.txt"
-          git commit -m "Upgrade pre-commit dependencies"
-          git push origin upgrade/pre-commit
+          git commit -m "Update pre-commit dependencies"
+          git push origin autoupdate
 
       - name: Open pull request
         run: |
