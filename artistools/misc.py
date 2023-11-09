@@ -677,6 +677,10 @@ def get_ionstring(
     if ionstage is None or ionstage == "ALL":
         return f"{get_elsymbol(atomic_number)}"
 
+    if isinstance(ionstage, str) and ionstage.startswith(at.get_elsymbol(atomic_number)):
+        # nuclides like Sr89 get passed in as atomic_number=38, ionstage='Sr89'
+        return ionstage
+
     assert not isinstance(ionstage, str)
 
     if style == "spectral":

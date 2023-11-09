@@ -18,6 +18,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import polars as pl
+import polars.selectors as cs
 
 import artistools as at
 
@@ -127,6 +128,7 @@ def read_estimators_from_file(
         estfilepath = Path(estfilepath)
         filesize = estfilepath.stat().st_size / 1024 / 1024
         print(f"  Reading {estfilepath.relative_to(estfilepath.parent.parent)} ({filesize:.2f} MiB)")
+
     estimblocklist: list[dict[str, t.Any]] = []
     with at.zopen(estfilepath) as estimfile:
         timestep: int | None = None
@@ -263,7 +265,7 @@ def read_estimators_in_folder_polars(
     match_modelgridindex: None | t.Sequence[int],
 ) -> pl.LazyFrame:
     mpiranklist = at.get_mpiranklist(modelpath, modelgridindex=match_modelgridindex, only_ranks_withgridcells=True)
-    printfilename = True
+
     mpirank_groups = list(batched_it(list(mpiranklist), 100))
     group_parquetfiles = [
         folderpath / f"estimators_{mpigroup[0]:04d}_{mpigroup[-1]:04d}.out.parquet.tmp" for mpigroup in mpirank_groups
@@ -282,10 +284,7 @@ def read_estimators_in_folder_polars(
                 f"Reading {len(list(estfilepaths))} estimator files from {folderpath.relative_to(Path(folderpath).parent)}"
             )
 
-            processfile = partial(
-                read_estimators_from_file,
-                printfilename=printfilename,
-            )
+            processfile = partial(read_estimators_from_file)
 
             pldf_group = None
             with multiprocessing.get_context("spawn").Pool(processes=at.get_config()["num_processes"]) as pool:
@@ -410,7 +409,7 @@ def read_estimators(
 
 def get_averaged_estimators(
     modelpath: Path | str,
-    estimators: dict[tuple[int, int], dict],
+    estimators: pl.LazyFrame | pl.DataFrame,
     timesteps: int | t.Sequence[int],
     modelgridindex: int,
     keys: str | list | None,
@@ -424,7 +423,7 @@ def get_averaged_estimators(
     if isinstance(keys, str):
         keys = [keys]
     elif keys is None or not keys:
-        keys = list(estimators[(timesteps[0], modelgridindex)].keys())
+        keys = [c for c in estimators.columns if c not in {"timestep", "modelgridindex"}]
 
     dictout = {}
     tdeltas = at.get_timestep_times(modelpath, loc="delta")
@@ -433,29 +432,44 @@ def get_averaged_estimators(
         tdeltasum = 0
         for timestep, tdelta in zip(timesteps, tdeltas):
             for mgi in range(modelgridindex - avgadjcells, modelgridindex + avgadjcells + 1):
-                valuesum += estimators[(timestep, mgi)][k] * tdelta
+                value = (
+                    estimators.filter(pl.col("timestep") == timestep)
+                    .filter(pl.col("modelgridindex") == mgi)
+                    .select(k)
+                    .lazy()
+                    .collect()
+                    .item(0, 0)
+                )
+                if value is None:
+                    msg = f"{k} not found for timestep {timestep} and modelgridindex {mgi}"
+                    raise ValueError(msg)
+
+                valuesum += value * tdelta
                 tdeltasum += tdelta
         dictout[k] = valuesum / tdeltasum
 
     return dictout
 
 
-def get_averageionisation(estimatorstsmgi: dict[str, float], atomic_number: int) -> float:
+def get_averageionisation(estimatorstsmgi: pl.LazyFrame, atomic_number: int) -> float:
     free_electron_weighted_pop_sum = 0.0
     found = False
     popsum = 0.0
     elsymb = at.get_elsymbol(atomic_number)
-    for key in estimatorstsmgi:
-        if key.startswith(f"nnion_{elsymb}_"):
-            found = True
-            ionstage = at.decode_roman_numeral(key.removeprefix(f"nnion_{elsymb}_"))
-            free_electron_weighted_pop_sum += estimatorstsmgi[key] * (ionstage - 1)
-            popsum += estimatorstsmgi[key]
+    dfselected = estimatorstsmgi.select(
+        cs.starts_with(f"nnion_{elsymb}_") | cs.by_name(f"nnelement_{elsymb}")
+    ).collect()
+    for key in dfselected.columns:
+        found = True
+        nnion = dfselected[key].item(0)
+        ionstage = at.decode_roman_numeral(key.removeprefix(f"nnion_{elsymb}_"))
+        free_electron_weighted_pop_sum += nnion * (ionstage - 1)
+        popsum += nnion
 
     if not found:
         return float("NaN")
 
-    return free_electron_weighted_pop_sum / estimatorstsmgi[f"nnelement_{elsymb}"]
+    return free_electron_weighted_pop_sum / dfselected[f"nnelement_{elsymb}"].item(0)
 
 
 def get_averageexcitation(
@@ -508,12 +522,3 @@ def get_partiallycompletetimesteps(estimators: dict[tuple[int, int], dict[str, t
         all_mgis.add(mgi)
 
     return [nts for nts, mgilist in timestepcells.items() if len(mgilist) < len(all_mgis)]
-
-
-def get_temperatures(modelpath: str | Path) -> pl.LazyFrame:
-    """Get a polars DataFrame containing the temperatures at every timestep and modelgridindex."""
-    return (
-        at.estimators.read_estimators_polars(modelpath=modelpath)
-        .select(["timestep", "modelgridindex", "TR"])
-        .drop_nulls()
-    )

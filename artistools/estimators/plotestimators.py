@@ -149,11 +149,23 @@ def plot_average_ionisation_excitation(
             for timestep in timesteps:
                 if seriestype == "averageionisation":
                     valuesum += (
-                        at.estimators.get_averageionisation(estimators[(timestep, modelgridindex)], atomic_number)
+                        at.estimators.get_averageionisation(
+                            estimators.filter(pl.col("timestep") == timestep).filter(
+                                pl.col("modelgridindex") == modelgridindex
+                            ),
+                            atomic_number,
+                        )
                         * arr_tdelta[timestep]
                     )
                 elif seriestype == "averageexcitation":
-                    T_exc = estimators[(timestep, modelgridindex)]["Te"]
+                    T_exc = (
+                        estimators.filter(pl.col("timestep") == timestep)
+                        .filter(pl.col("modelgridindex") == modelgridindex)
+                        .select("Te")
+                        .lazy()
+                        .collect()
+                        .item(0, 0)
+                    )
                     valuesum += (
                         at.estimators.get_averageexcitation(
                             modelpath, modelgridindex, timestep, atomic_number, ionstage, T_exc
@@ -337,6 +349,7 @@ def plot_multi_ion_series(
             colorindex += 1
 
         elsymbol = at.get_elsymbol(atomic_number)
+
         ionstr = at.get_ionstring(atomic_number, ionstage, sep="_", style="spectral")
 
         if seriestype == "populations":
@@ -541,7 +554,7 @@ def plot_series(
 def get_xlist(
     xvariable: str,
     allnonemptymgilist: t.Sequence[int],
-    estimators: dict,
+    estimators: pl.LazyFrame | pl.DataFrame,
     timestepslist: t.Any,
     modelpath: str | Path,
     args: t.Any,
@@ -722,7 +735,7 @@ def make_plot(
     modelpath: Path | str,
     timestepslist_unfiltered: list[list[int]],
     allnonemptymgilist: list[int],
-    estimators: dict,
+    estimators: pl.LazyFrame | pl.DataFrame,
     xvariable: str,
     plotlist,
     args: t.Any,
@@ -797,7 +810,14 @@ def make_plot(
         timeavg = (args.timemin + args.timemax) / 2.0
         if args.multiplot and not args.classicartis:
             assert isinstance(timestepslist[0], list)
-            tdays = estimators[(timestepslist[0][0], mgilist[0])]["tdays"]
+            tdays = (
+                estimators.filter(pl.col("timestep") == timestepslist[0][0])
+                .filter(pl.col("modelgridindex") == mgilist[0])
+                .select("tdays")
+                .lazy()
+                .collect()
+                .item(0)
+            )
             figure_title = f"{modelname}\nTimestep {timestepslist[0]} ({tdays:.2f}d)"
         elif args.multiplot:
             assert isinstance(timestepslist[0], int)
@@ -912,19 +932,6 @@ def plot_recombrates(modelpath, estimators, atomic_number, ionstage_list, **plot
     fig.savefig(outfilename)
     print(f"Saved {outfilename}")
     plt.close()
-
-
-def plotlist_is_temperatures_only(plotlist: str | t.Sequence) -> bool:
-    if isinstance(plotlist, str):
-        if plotlist != "TR" and not plotlist.startswith("_"):
-            return False
-
-    elif not isinstance(plotlist[0], str) or not plotlist[0].startswith("_"):
-        for item in plotlist:
-            if not plotlist_is_temperatures_only(item):
-                return False
-
-    return True
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -1064,13 +1071,13 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         # [['initmasses', ['Ni_56', 'He', 'C', 'Mg']]],
         # ['heating_gamma/gamma_dep'],
         ["nne", ["_ymin", 1e5], ["_ymax", 1e11]],
-        ["TR", ["_yscale", "linear"], ["_ymin", 1000], ["_ymax", 26000]],
-        # ['Te'],
+        # ["TR", ["_yscale", "linear"], ["_ymin", 1000], ["_ymax", 26000]],
+        ["Te"],
         [["averageionisation", ["Sr"]]],
         # [['averageexcitation', ['Fe II', 'Fe III']]],
-        # [['populations', ['Sr89', 'Sr90', 'Sr91', 'Sr92', 'Sr93', 'Sr94', 'Sr95']],
+        [["populations", ["Sr89", "Sr90", "Sr91", "Sr92", "Sr93", "Sr94"]]],
         #  ['_ymin', 1e-3], ['_ymax', 5]],
-        # [["populations", ["Fe", "Co", "Ni", "Sr", "Nd", "U"]]],
+        [["populations", ["Fe", "Co", "Ni", "Sr", "Nd"]]],
         # [['populations', ['He I', 'He II', 'He III']]],
         # [['populations', ['C I', 'C II', 'C III', 'C IV', 'C V']]],
         # [['populations', ['O I', 'O II', 'O III', 'O IV']]],
@@ -1100,26 +1107,34 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         dfselectedcells = dfselectedcells.query("rho > 0")
         args.modelgridindex = dfselectedcells["inputcellid"]
 
-    if temperatures_only := plotlist_is_temperatures_only(plotlist):
-        print("Plotting temperatures only (from parquet if available)")
-
     timesteps_included = list(range(timestepmin, timestepmax + 1))
     if args.classicartis:
         import artistools.estimators.estimators_classic
 
         modeldata, _ = at.inputmodel.get_modeldata(modelpath)
-        estimators = artistools.estimators.estimators_classic.read_classic_estimators(modelpath, modeldata)
+        estimatorsdict = artistools.estimators.estimators_classic.read_classic_estimators(modelpath, modeldata)
+        assert estimatorsdict is not None
+        estimators = pl.DataFrame(
+            [
+                {
+                    "timestep": ts,
+                    "modelgridindex": mgi,
+                    **estimvals,
+                }
+                for (ts, mgi), estimvals in estimatorsdict.items()
+                if not estimvals.get("emptycell", True)
+            ]
+        ).lazy()
     else:
-        estimators = at.estimators.read_estimators(
+        estimators = at.estimators.read_estimators_polars(
             modelpath=modelpath,
             modelgridindex=args.modelgridindex,
             timestep=tuple(timesteps_included),
-            keys=["TR"] if temperatures_only else None,
         )
     assert estimators is not None
 
     for ts in reversed(timesteps_included):
-        tswithdata = [ts for (ts, mgi) in estimators]
+        tswithdata = estimators.select("timestep").unique().collect().to_numpy()
         for ts in timesteps_included:
             if ts not in tswithdata:
                 timesteps_included.remove(ts)
@@ -1159,7 +1174,11 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             allnonemptymgilist = [
                 modelgridindex
                 for modelgridindex in modeldata.index
-                if (timesteps_included[0], modelgridindex) in estimators
+                if not estimators.filter(pl.col("modelgridindex") == modelgridindex)
+                .select("modelgridindex")
+                .lazy()
+                .collect()
+                .is_empty()
             ]
         else:
             allnonemptymgilist = [mgi for mgi, assocpropcells in assoc_cells.items() if assocpropcells]
