@@ -189,17 +189,17 @@ def plot_average_ionisation_excitation(
 
 
 def plot_levelpop(
-    ax,
-    xlist,
-    seriestype,
-    params,
-    timestepslist,
-    mgilist,
-    estimators,
-    modelpath,
-    dfalldata=None,
-    args=None,
-    **plotkwargs,
+    ax: plt.Axes,
+    xlist: t.Sequence[int | float] | np.ndarray,
+    seriestype: str,
+    params: t.Sequence[str],
+    timestepslist: t.Sequence[t.Sequence[int]],
+    mgilist: t.Sequence[int],
+    estimators: pl.LazyFrame | pl.DataFrame,
+    modelpath: str | Path,
+    dfalldata: pd.DataFrame | None,
+    args: argparse.Namespace,
+    **plotkwargs: t.Any,
 ):
     if seriestype == "levelpopulation_dn_on_dvel":
         ax.set_ylabel("dN/dV [{}km$^{{-1}}$ s]")
@@ -277,17 +277,17 @@ def plot_levelpop(
 
 
 def plot_multi_ion_series(
-    ax,
-    xlist,
-    seriestype,
-    ionlist,
-    timestepslist,
-    mgilist,
-    estimators,
-    modelpath,
-    dfalldata,
-    args,
-    **plotkwargs,
+    ax: plt.Axes,
+    xlist: t.Sequence[int | float] | np.ndarray,
+    seriestype: str,
+    ionlist: t.Sequence[str],
+    timestepslist: t.Sequence[t.Sequence[int]],
+    mgilist: t.Sequence[int],
+    estimators: pl.LazyFrame | pl.DataFrame,
+    modelpath: str | Path,
+    dfalldata: pd.DataFrame | None,
+    args: argparse.Namespace,
+    **plotkwargs: t.Any,
 ):
     """Plot an ion-specific property, e.g., populations."""
     assert len(xlist) - 1 == len(mgilist) == len(timestepslist)
@@ -314,26 +314,29 @@ def plot_multi_ion_series(
 
     missingions = set()
     try:
-        if args.classicartis:
-            compositiondata = at.estimators.estimators_classic.get_atomic_composition(modelpath)
-        else:
+        if not args.classicartis:
             compositiondata = at.get_composition_data(modelpath)
-        for atomic_number, ionstage in iontuplelist:
-            if (
-                not hasattr(ionstage, "lower")
-                and not args.classicartis
-                and compositiondata.query(
-                    "Z == @atomic_number & lowermost_ionstage <= @ionstage & uppermost_ionstage >= @ionstage"
-                ).empty
-            ):
-                missingions.add((atomic_number, ionstage))
+            for atomic_number, ionstage in iontuplelist:
+                if (
+                    not hasattr(ionstage, "lower")
+                    and not args.classicartis
+                    and compositiondata.query(
+                        "Z == @atomic_number & lowermost_ionstage <= @ionstage & uppermost_ionstage >= @ionstage"
+                    ).empty
+                ):
+                    missingions.add((atomic_number, ionstage))
 
     except FileNotFoundError:
         print("WARNING: Could not read an ARTIS compositiondata.txt file")
+        estim_mgits = estimators.filter(pl.col("timestep") == timestepslist[0][0]).filter(
+            pl.col("modelgridindex") == mgilist[0]
+        )
         for atomic_number, ionstage in iontuplelist:
-            mgits = (timestepslist[0][0], mgilist[0])
             ionstr = at.get_ionstring(atomic_number, ionstage, sep="_", style="spectral")
-            if f"nnion_{ionstr}" not in estimators[mgits]:
+            if (
+                f"nnion_{ionstr}" not in estim_mgits.columns
+                or estim_mgits.select(f"nnion_{ionstr}").lazy().collect()[f"nnion_{ionstr}"].is_null().all()
+            ):
                 missingions.add((atomic_number, ionstage))
 
     if missingions:
@@ -365,6 +368,7 @@ def plot_multi_ion_series(
         else:
             ax.set_ylabel(at.estimators.get_dictlabelreplacements().get(seriestype, seriestype))
 
+        print(f"Plotting {seriestype} {ionstr}")
         ylist = []
         for modelgridindex, timesteps in zip(mgilist, timestepslist):
             if seriestype == "populations":
@@ -429,6 +433,7 @@ def plot_multi_ion_series(
         color = get_elemcolor(atomic_number=atomic_number)
 
         # linestyle = ['-.', '-', '--', (0, (4, 1, 1, 1)), ':'] + [(0, x) for x in dashes_list][ionstage - 1]
+        dashes: tuple[float, ...]
         if ionstage == "ALL":
             dashes = ()
             linewidth = 1.0
@@ -485,17 +490,17 @@ def plot_multi_ion_series(
 
 
 def plot_series(
-    ax,
-    xlist,
-    variablename,
+    ax: plt.Axes,
+    xlist: t.Sequence[int | float] | np.ndarray,
+    variablename: str,
     showlegend: bool,
-    timestepslist,
-    mgilist,
+    timestepslist: t.Sequence[t.Sequence[int]],
+    mgilist: t.Sequence[int],
     modelpath: str | Path,
-    estimators,
+    estimators: pl.LazyFrame | pl.DataFrame,
     args: argparse.Namespace,
     nounits: bool = False,
-    dfalldata=None,
+    dfalldata: pd.DataFrame | None = None,
     **plotkwargs,
 ):
     """Plot something like Te or TR."""
@@ -511,25 +516,15 @@ def plot_series(
     else:
         ax.set_ylabel(serieslabel + units_string)
         linelabel = None
-
+    print(f"Plotting {variablename}")
     ylist: list[float] = []
     for modelgridindex, timesteps in zip(mgilist, timestepslist):
-        try:
-            yvalue = at.estimators.get_averaged_estimators(
-                modelpath, estimators, timesteps, modelgridindex, variablename
-            )[variablename]
-            ylist.append(yvalue)
-        except KeyError:
-            if (timesteps[0], modelgridindex) in estimators:
-                print(f"Undefined variable: {variablename} in cell {modelgridindex}")
-            else:
-                print(f"No data for cell {modelgridindex}")
-            raise
+        yvalue = at.estimators.get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, variablename)[
+            variablename
+        ]
+        ylist.append(yvalue)
 
-    try:
-        if math.log10(max(ylist) / min(ylist)) > 2:
-            ax.set_yscale("log")
-    except ZeroDivisionError:
+    if math.log10(max(ylist) / min(ylist)) > 2 or min(ylist) == 0:
         ax.set_yscale("log")
 
     dictcolors = {
@@ -537,9 +532,6 @@ def plot_series(
         # 'heating_gamma': 'blue',
         # 'cooling_adiabatic': 'blue'
     }
-
-    # print out the data to stdout. Maybe want to add a CSV export option at some point?
-    # print(f'#cellidorvelocity {variablename}\n' + '\n'.join([f'{x}  {y}' for x, y in zip(xlist, ylist)]))
 
     if dfalldata is not None:
         dfalldata[variablename] = ylist

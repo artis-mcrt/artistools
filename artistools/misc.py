@@ -890,16 +890,14 @@ def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
     return {}
 
 
-def get_filterfunc(
-    args: argparse.Namespace, mode: str = "interp"
-) -> t.Callable[[list[float] | np.ndarray], np.ndarray] | None:
+def get_filterfunc(args: argparse.Namespace, mode: str = "interp") -> t.Callable | None:
     """Use command line arguments to determine the appropriate filter function."""
-    filterfunc: t.Callable[[list[float] | np.ndarray], np.ndarray] | None = None
+    filterfunc = None
     dictargs = vars(args)
 
     if dictargs.get("filtermovingavg", False):
 
-        def movavgfilterfunc(ylist: list[float] | np.ndarray) -> np.ndarray:
+        def movavgfilterfunc(ylist: t.Any) -> t.Any:
             n = args.filtermovingavg
             arr_padded = np.pad(ylist, (n // 2, n - 1 - n // 2), mode="edge")
             return np.convolve(arr_padded, np.ones((n,)) / n, mode="valid")
@@ -912,7 +910,7 @@ def get_filterfunc(
 
         window_length, poly_order = (int(x) for x in args.filtersavgol)
 
-        def savgolfilterfunc(ylist: list[float] | np.ndarray) -> np.ndarray:
+        def savgolfilterfunc(ylist: t.Any) -> t.Any:
             return scipy.signal.savgol_filter(ylist, window_length, poly_order, mode=mode)
 
         assert filterfunc is None

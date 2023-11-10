@@ -3,7 +3,6 @@
 
 Examples are temperatures, populations, and heating/cooling rates.
 """
-
 import argparse
 import contextlib
 import itertools
@@ -66,11 +65,9 @@ def get_dictlabelreplacements() -> dict[str, str]:
 
 
 def apply_filters(
-    xlist: list[float] | np.ndarray, ylist: list[float] | np.ndarray, args: argparse.Namespace
-) -> tuple[list[float] | np.ndarray, list[float] | np.ndarray]:
-    filterfunc = at.get_filterfunc(args)
-
-    if filterfunc is not None:
+    xlist: t.Sequence[float] | np.ndarray, ylist: t.Sequence[float] | np.ndarray, args: argparse.Namespace
+) -> tuple[t.Any, t.Any]:
+    if (filterfunc := at.get_filterfunc(args)) is not None:
         ylist = filterfunc(ylist)
 
     return xlist, ylist
@@ -397,7 +394,7 @@ def get_averaged_estimators(
     modelgridindex: int,
     keys: str | list | None,
 ) -> dict[str, t.Any]:
-    """Get the average of estimators[(timestep, modelgridindex)][keys[0]]...[keys[-1]] across timesteps."""
+    """Get the average across timsteps for a cell."""
     modelgridindex = int(modelgridindex)
     if isinstance(timesteps, int):
         timesteps = [timesteps]
