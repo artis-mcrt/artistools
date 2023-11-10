@@ -269,7 +269,6 @@ def maptogrid(
 
     for n in range(npart):
         maxdist = 2.0 * h[n]
-        maxdist2 = maxdist**2
 
         ilow = max(math.floor((x[n] - maxdist - x0) / dx), 0)
         ihigh = min(math.ceil((x[n] + maxdist - x0) / dx), ncoordgrid - 1)
@@ -317,7 +316,7 @@ def maptogrid(
 
             # or via neighbors  - not yet implemented
 
-            if dis2 <= maxdist2:
+            if dis2 <= 4.*np.power(h[n], 2):
                 wtij = kernelvals2(dis2, h[n], wij)
 
                 # USED PREVIOUSLY: less accurate?
