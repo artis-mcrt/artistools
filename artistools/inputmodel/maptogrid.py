@@ -316,7 +316,7 @@ def maptogrid(
 
             # or via neighbors  - not yet implemented
 
-            if dis2 <= 4.*np.power(h[n], 2):
+            if dis2 <= 4.0 * np.power(h[n], 2):
                 wtij = kernelvals2(dis2, h[n], wij)
 
                 # USED PREVIOUSLY: less accurate?
