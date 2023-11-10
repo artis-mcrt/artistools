@@ -194,7 +194,7 @@ def plot_levelpop(
     seriestype: str,
     params: t.Sequence[str],
     timestepslist: t.Sequence[t.Sequence[int]],
-    mgilist: t.Sequence[int],
+    mgilist: t.Sequence[int | t.Sequence[int]],
     estimators: pl.LazyFrame | pl.DataFrame,
     modelpath: str | Path,
     dfalldata: pd.DataFrame | None,
@@ -282,7 +282,7 @@ def plot_multi_ion_series(
     seriestype: str,
     ionlist: t.Sequence[str],
     timestepslist: t.Sequence[t.Sequence[int]],
-    mgilist: t.Sequence[int],
+    mgilist: t.Sequence[int | t.Sequence[int]],
     estimators: pl.LazyFrame | pl.DataFrame,
     modelpath: str | Path,
     dfalldata: pd.DataFrame | None,
@@ -495,14 +495,14 @@ def plot_series(
     variablename: str,
     showlegend: bool,
     timestepslist: t.Sequence[t.Sequence[int]],
-    mgilist: t.Sequence[int],
+    mgilist: t.Sequence[int | t.Sequence[int]],
     modelpath: str | Path,
     estimators: pl.LazyFrame | pl.DataFrame,
     args: argparse.Namespace,
     nounits: bool = False,
     dfalldata: pd.DataFrame | None = None,
-    **plotkwargs,
-):
+    **plotkwargs: t.Any,
+) -> None:
     """Plot something like Te or TR."""
     assert len(xlist) - 1 == len(mgilist) == len(timestepslist)
     formattedvariablename = at.estimators.get_dictlabelreplacements().get(variablename, variablename)
@@ -614,7 +614,16 @@ def get_xlist(
 
 
 def plot_subplot(
-    ax, timestepslist, xlist, plotitems, mgilist, modelpath, estimators, dfalldata=None, args=None, **plotkwargs
+    ax: plt.Axes,
+    timestepslist: list[list[int]],
+    xlist: list[float | int],
+    plotitems: list[t.Any],
+    mgilist: list[int | t.Sequence[int]],
+    modelpath: str | Path,
+    estimators: pl.LazyFrame | pl.DataFrame,
+    dfalldata: pd.DataFrame | None,
+    args: argparse.Namespace,
+    **plotkwargs: t.Any,
 ):
     """Make plot from ARTIS estimators."""
     # these three lists give the x value, modelgridex, and a list of timesteps (for averaging) for each plot of the plot
@@ -649,7 +658,7 @@ def plot_subplot(
                 dfalldata=dfalldata,
                 **plotkwargs,
             )
-            if showlegend and sameylabel:
+            if showlegend and sameylabel and ylabel is not None:
                 ax.set_ylabel(ylabel)
         else:  # it's a sequence of values
             showlegend = True

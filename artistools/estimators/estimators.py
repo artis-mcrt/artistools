@@ -391,11 +391,11 @@ def get_averaged_estimators(
     modelpath: Path | str,
     estimators: pl.LazyFrame | pl.DataFrame,
     timesteps: int | t.Sequence[int],
-    modelgridindex: int,
+    modelgridindex: int | t.Sequence[int],
     keys: str | list | None,
 ) -> dict[str, t.Any]:
     """Get the average across timsteps for a cell."""
-    modelgridindex = int(modelgridindex)
+    assert isinstance(modelgridindex, int)
     if isinstance(timesteps, int):
         timesteps = [timesteps]
 
