@@ -353,19 +353,6 @@ def plot_multi_ion_series(
 
         ionstr = at.get_ionstring(atomic_number, ionstage, sep="_", style="spectral")
 
-        if seriestype == "populations":
-            if args.ionpoptype == "absolute":
-                ax.set_ylabel(r"Number density $\left[\rm{cm}^{-3}\right]$")
-            elif args.ionpoptype == "elpop":
-                # elsym = at.get_elsymbol(atomic_number)
-                ax.set_ylabel(r"X$_{i}$/X$_{\rm element}$")
-            elif args.ionpoptype == "totalpop":
-                ax.set_ylabel(r"X$_{i}$/X$_{rm tot}$")
-            else:
-                raise AssertionError
-        else:
-            ax.set_ylabel(at.estimators.get_dictlabelreplacements().get(seriestype, seriestype))
-
         print(f"Plotting {seriestype} {ionstr}")
         ylist = []
         for modelgridindex, timesteps in zip(mgilist, timestepslist):
@@ -466,6 +453,19 @@ def plot_multi_ion_series(
         ax.plot(xlist, ylist, linewidth=linewidth, label=plotlabel, color=color, **plotkwargs)
         prev_atomic_number = atomic_number
         plotted_something = True
+
+    if seriestype == "populations":
+        if args.ionpoptype == "absolute":
+            ax.set_ylabel(r"Number density $\left[\rm{cm}^{-3}\right]$")
+        elif args.ionpoptype == "elpop":
+            # elsym = at.get_elsymbol(atomic_number)
+            ax.set_ylabel(r"X$_{i}$/X$_{\rm element}$")
+        elif args.ionpoptype == "totalpop":
+            ax.set_ylabel(r"X$_{i}$/X$_{rm tot}$")
+        else:
+            raise AssertionError
+    else:
+        ax.set_ylabel(at.estimators.get_dictlabelreplacements().get(seriestype, seriestype))
 
     if plotted_something:
         ax.set_yscale(args.yscale)
