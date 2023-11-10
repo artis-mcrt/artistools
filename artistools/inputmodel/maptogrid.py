@@ -306,14 +306,16 @@ def maptogrid(
 
                 # options can be combined, i.e. option 1 alone fills the hole in the center
                 # (which we could also replace by later ejecta)
-
-                # h[n] = max(h[n],1.5*dx) # option 1
-
-                # h[n] = max(h[n],0.25*dis) #  option 2
+                if args.modifysmoothinglength == "option1":
+                    h[n] = max(h[n], 1.5 * dx)  # option 1
 
                 dis = math.sqrt(x[n] * x[n] + y[n] * y[n] + z[n] * z[n])
 
-                # if (dis>1.5*rmean) h[n]=max(h[n],0.4*dis) # option 3
+                if args.modifysmoothinglength == "option2":
+                    h[n] = max(h[n], 0.25 * dis)  #  option 2
+
+                if args.modifysmoothinglength == "option3" and dis > 1.5 * rmean:
+                    h[n] = max(h[n], 0.4 * dis)  # option 3
 
                 # option 4 (default) -- for particles with radius > mean particle radius choose the larger h
                 # from the particle h and 150% of the mean h for all particles
@@ -460,7 +462,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-modifysmoothinglength",
         default="option4",
-        choices=["option4", "False"],  # We should choose if the default should be false and how we want to name these
+        choices=[
+            "option1",
+            "option2",
+            "option3",
+            "option4",
+            "False",
+        ],  # We should choose if the default should be false and how we want to name these
         help="Option to modify smoothing length h. Choose from options."
         "Default modifies h. Set to False for no modifications to h.",
     )
