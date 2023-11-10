@@ -128,8 +128,6 @@ def read_estimators_from_file(
 
     estimblocklist: list[dict[str, t.Any]] = []
     with at.zopen(estfilepath) as estimfile:
-        timestep: int | None = None
-        modelgridindex: int | None = None
         estimblock: dict[str, t.Any] = {}
         for line in estimfile:
             row: list[str] = line.split()
@@ -138,19 +136,16 @@ def read_estimators_from_file(
 
             if row[0] == "timestep":
                 # yield the previous block before starting a new one
-                if timestep is not None and modelgridindex is not None and (not estimblock.get("emptycell", True)):
-                    estimblock["timestep"] = timestep
-                    estimblock["modelgridindex"] = modelgridindex
+                if (
+                    estimblock.get("timestep") is not None
+                    and estimblock.get("modelgridindex") is not None
+                    and (not estimblock.get("emptycell", True))
+                ):
                     estimblocklist.append(estimblock)
 
-                timestep = int(row[1])
-                # if timestep > itstep:
-                #     print(f"Dropping estimator data from timestep {timestep} and later (> itstep {itstep})")
-                #     # itstep in input.txt is updated by ARTIS at every timestep, so the data beyond here
-                #     # could be half-written to disk and cause parsing errors
-                #     return
+                estimblock["timestep"] = int(row[1])
 
-                modelgridindex = int(row[3])
+                estimblock["modelgridindex"] = int(row[3])
                 emptycell = row[4] == "EMPTYCELL"
                 estimblock = {"emptycell": emptycell}
                 if not emptycell:
@@ -222,9 +217,11 @@ def read_estimators_from_file(
                     estimblock[f"cooling_{coolingtype}"] = float(value)
 
     # reached the end of file
-    if timestep is not None and modelgridindex is not None and (not estimblock.get("emptycell", True)):
-        estimblock["timestep"] = timestep
-        estimblock["modelgridindex"] = modelgridindex
+    if (
+        estimblock.get("timestep") is not None
+        and estimblock.get("modelgridindex") is not None
+        and not estimblock.get("emptycell", True)
+    ):
         estimblocklist.append(estimblock)
 
     return pl.DataFrame(estimblocklist).with_columns(
