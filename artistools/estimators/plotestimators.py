@@ -504,12 +504,9 @@ def plot_series(
         ax.set_ylabel(serieslabel + units_string)
         linelabel = None
     print(f"Plotting {variablename}")
-    ylist: list[float] = []
-    for modelgridindex, timesteps in zip(mgilist, timestepslist):
-        yvalue = at.estimators.get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, variablename)[
-            variablename
-        ]
-        ylist.append(yvalue)
+
+    series = estimators.group_by("xvalue").agg(pl.col(variablename).mean()).lazy().collect().sort("xvalue")
+    ylist = series[variablename].to_list()
 
     if math.log10(max(ylist) / min(ylist)) > 2 or min(ylist) == 0:
         ax.set_yscale("log")
@@ -539,7 +536,7 @@ def get_xlist(
     timestepslist: t.Any,
     modelpath: str | Path,
     args: t.Any,
-) -> tuple[list[float | int], list[int | t.Sequence[int]], list[list[int]]]:
+) -> tuple[list[float | int], list[int | t.Sequence[int]], list[list[int]], pl.LazyFrame | pl.DataFrame]:
     xlist: t.Sequence[float | int]
     if xvariable in {"cellid", "modelgridindex"}:
         mgilist_out = [mgi for mgi in allnonemptymgilist if mgi <= args.xmax] if args.xmax >= 0 else allnonemptymgilist
@@ -550,11 +547,13 @@ def get_xlist(
         check_type(timestepslist, t.Sequence[int])
         xlist = timestepslist
         timestepslist_out = timestepslist
+        estimators = estimators.with_columns(xvalue=pl.Series(xlist))
     elif xvariable == "time":
         mgilist_out = allnonemptymgilist
         timearray = at.get_timestep_times(modelpath)
         check_type(timestepslist, t.Sequence[t.Sequence[int]])
         xlist = [np.mean([timearray[ts] for ts in tslist]) for tslist in timestepslist]
+        estimators = estimators.with_columns(xvalue=pl.Series(xlist))
         timestepslist_out = timestepslist
     elif xvariable in {"velocity", "beta"}:
         dfmodel, modelmeta = at.inputmodel.get_modeldata_polars(modelpath, derived_cols=["vel_r_mid"])
@@ -578,6 +577,12 @@ def get_xlist(
         xlist = (dfmodelcollect["vel_r_mid"] / scalefactor).to_list()
         mgilist_out = dfmodelcollect["modelgridindex"].to_list()
         timestepslist_out = timestepslist
+        estimators = estimators.filter(pl.col("modelgridindex").is_in(mgilist_out))
+        estimators = (
+            estimators.lazy()
+            .join(dfmodel.select(["modelgridindex", "vel_r_mid"]).lazy(), on="modelgridindex")
+            .rename({"vel_r_mid": "xvalue"})
+        )
     else:
         xlist = []
         mgilist_out = []
@@ -597,7 +602,7 @@ def get_xlist(
 
     assert len(xlist) == len(mgilist_out) == len(timestepslist_out)
 
-    return list(xlist), list(mgilist_out), list(timestepslist_out)
+    return list(xlist), list(mgilist_out), list(timestepslist_out), estimators
 
 
 def plot_subplot(
@@ -751,7 +756,7 @@ def make_plot(
     if not args.hidexlabel:
         axes[-1].set_xlabel(f"{xvariable}{at.estimators.get_units_string(xvariable)}")
 
-    xlist, mgilist, timestepslist = get_xlist(
+    xlist, mgilist, timestepslist, estimators = get_xlist(
         xvariable, allnonemptymgilist, estimators, timestepslist_unfiltered, modelpath, args
     )
 
@@ -1079,15 +1084,15 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         #  ['_yscale', 'linear']],
         # [['initmasses', ['Ni_56', 'He', 'C', 'Mg']]],
         # ['heating_gamma/gamma_dep'],
-        ["nne", ["_ymin", 1e5], ["_ymax", 1e11]],
+        # ["nne", ["_ymin", 1e5], ["_ymax", 1e11]],
         # ["TR", ["_yscale", "linear"], ["_ymin", 1000], ["_ymax", 26000]],
         ["Te"],
         # ["Te", "TR"],
-        [["averageionisation", ["Sr"]]],
+        # [["averageionisation", ["Sr"]]],
         # [['averageexcitation', ['Fe II', 'Fe III']]],
         # [["populations", ["Sr90", "Sr91", "Sr92", "Sr93", "Sr94"]]],
         #  ['_ymin', 1e-3], ['_ymax', 5]],
-        [["populations", ["Sr II"]]],
+        # [["populations", ["Sr II"]]],
         # [['populations', ['He I', 'He II', 'He III']]],
         # [['populations', ['C I', 'C II', 'C III', 'C IV', 'C V']]],
         # [['populations', ['O I', 'O II', 'O III', 'O IV']]],
