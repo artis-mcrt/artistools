@@ -597,13 +597,14 @@ def plot_subplot(
             if showlegend and sameylabel and ylabel is not None:
                 ax.set_ylabel(ylabel)
         else:  # it's a sequence of values
-            showlegend = True
             seriestype, params = plotitem
 
             if seriestype in {"initabundances", "initmasses"}:
+                showlegend = True
                 plot_init_abundances(ax, xlist, params, mgilist, modelpath, seriestype, args=args)
 
             elif seriestype == "levelpopulation" or seriestype.startswith("levelpopulation_"):
+                showlegend = True
                 plot_levelpop(
                     ax,
                     xlist,
@@ -617,6 +618,7 @@ def plot_subplot(
                 )
 
             elif seriestype in {"averageionisation", "averageexcitation"}:
+                showlegend = True
                 plot_average_ionisation_excitation(
                     ax,
                     xlist,
@@ -640,6 +642,7 @@ def plot_subplot(
                 ax.set_yscale(params)
 
             else:
+                showlegend = True
                 seriestype, ionlist = plotitem
                 plot_multi_ion_series(
                     ax,
@@ -842,7 +845,7 @@ def plot_recombrates(modelpath, estimators, atomic_number, ionstage_list, **plot
                 dfrates.T_e,
                 dfrates.rrc_total,
                 linewidth=2,
-                label=ionstr + " (calibration)",
+                label=f"{ionstr} (calibration)",
                 markersize=6,
                 marker="s",
                 **plotkwargs,
@@ -1012,8 +1015,8 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         #  ['_yscale', 'linear']],
         # [['initmasses', ['Ni_56', 'He', 'C', 'Mg']]],
         # ['heating_gamma/gamma_dep'],
-        ["nne", ["_ymin", 1e5], ["_ymax", 1e11]],
-        ["TR", ["_yscale", "linear"], ["_ymin", 1000], ["_ymax", 26000]],
+        ["nne", ["_ymin", 1e5], ["_ymax", 1e10]],
+        ["TR", ["_yscale", "linear"], ["_ymin", 1000], ["_ymax", 16000]],
         # ["Te"],
         # ["Te", "TR"],
         [["averageionisation", ["Sr"]]],
