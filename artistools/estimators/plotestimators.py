@@ -469,7 +469,7 @@ def plot_multi_ion_series(
         ylist.insert(0, ylist[0])
 
         xlist, ylist = at.estimators.apply_filters(xlist, ylist, args)
-        if plotkwargs["linestyle"] != "None":
+        if plotkwargs.get("linestyle", "solid") != "None":
             plotkwargs["dashes"] = dashes
         ax.plot(xlist, ylist, linewidth=linewidth, label=plotlabel, color=color, **plotkwargs)
         prev_atomic_number = atomic_number
