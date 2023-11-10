@@ -133,7 +133,7 @@ def read_modelfile_text(
         pldtypes = {col: pl.Int32 if col in {"inputcellid"} else pl.Float32 for col in columns}
 
         dfmodel = pl.read_csv(
-            at.zopen(filename, forpolars=True),
+            at.zopenpl(filename),
             separator=" ",
             comment_char="#",
             new_columns=columns,
@@ -1006,7 +1006,7 @@ def get_initelemabundances_polars(
         dtypes = {col: pl.Float32 if col.startswith("X_") else pl.Int32 for col in colnames}
 
         abundancedata = pl.read_csv(
-            at.zopen(abundancefilepath, forpolars=True),
+            at.zopenpl(abundancefilepath),
             has_header=False,
             separator=" ",
             comment_char="#",

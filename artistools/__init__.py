@@ -101,6 +101,7 @@ from artistools.misc import stripallsuffixes
 from artistools.misc import trim_or_pad
 from artistools.misc import vec_len
 from artistools.misc import zopen
+from artistools.misc import zopenpl
 from artistools.plottools import set_mpl_style
 
 

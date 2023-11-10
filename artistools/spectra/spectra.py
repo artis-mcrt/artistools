@@ -255,12 +255,7 @@ def read_spec(modelpath: Path) -> pl.DataFrame:
     print(f"Reading {specfilename}")
 
     return (
-        pl.read_csv(
-            at.zopen(specfilename, forpolars=True),
-            separator=" ",
-            infer_schema_length=0,
-            truncate_ragged_lines=True,
-        )
+        pl.read_csv(at.zopenpl(specfilename), separator=" ", infer_schema_length=0, truncate_ragged_lines=True)
         .with_columns(pl.all().cast(pl.Float64))
         .rename({"0": "nu"})
     )
@@ -276,9 +271,7 @@ def read_spec_res(modelpath: Path) -> dict[int, pl.DataFrame]:
     )
 
     print(f"Reading {specfilename} (in read_spec_res)")
-    res_specdata_in = pl.read_csv(
-        at.zopen(specfilename, forpolars=True), separator=" ", has_header=False, infer_schema_length=0
-    )
+    res_specdata_in = pl.read_csv(at.zopenpl(specfilename), separator=" ", has_header=False, infer_schema_length=0)
 
     # drop last column of nulls (caused by trailing space on each line)
     if res_specdata_in[res_specdata_in.columns[-1]].is_null().all():
@@ -326,7 +319,7 @@ def read_emission_absorption_file(emabsfilename: str | Path) -> pl.DataFrame:
         print(f" Reading {emabsfilename}")
 
     dfemabs = pl.read_csv(
-        at.zopen(emabsfilename, forpolars=True), separator=" ", has_header=False, infer_schema_length=0
+        at.zopenpl(emabsfilename), separator=" ", has_header=False, infer_schema_length=0
     ).with_columns(pl.all().cast(pl.Float32, strict=False))
 
     # drop last column of nulls (caused by trailing space on each line)

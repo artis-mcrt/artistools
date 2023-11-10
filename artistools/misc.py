@@ -767,29 +767,31 @@ def flatten_list(listin: list[t.Any]) -> list[t.Any]:
     return listout
 
 
-def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None, forpolars: bool = False) -> t.Any:
-    """Open filename, filename.gz or filename.xz.
-
-    Arguments:
-    ---------
-    forpolars: if polars.read_csv can read the file directly, return a Path object instead of a file object
-    """
-    if forpolars:
-        mode = "r"
+def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None) -> t.Any:
+    """Open filename, filename.ztd, filename.gz or filename.xz."""
     ext_fopen: dict[str, t.Callable] = {".zst": pyzstd.open, ".gz": gzip.open, ".xz": xz.open}
 
     for ext, fopen in ext_fopen.items():
         file_withext = str(filename) if str(filename).endswith(ext) else str(filename) + ext
         if Path(file_withext).exists():
-            if forpolars and ext in {".gz", ".zst"}:
-                return Path(file_withext)
             return fopen(file_withext, mode=mode, encoding=encoding)
-
-    if forpolars:
-        return Path(filename)
 
     # open() can raise file not found if this file doesn't exist
     return Path(filename).open(mode=mode, encoding=encoding)  # noqa: SIM115
+
+
+def zopenpl(filename: Path | str, mode: str = "rt", encoding: str | None = None) -> t.Any | Path:
+    """Open filename, filename.ztd, filename.gz or filename.xz. If polars.read_csv can read the file directly, return a Path object instead of a file object."""
+    mode = "r"
+    ext_fopen: dict[str, t.Callable] = {".zst": pyzstd.open, ".gz": gzip.open, ".xz": xz.open}
+
+    for ext, fopen in ext_fopen.items():
+        file_withext = str(filename) if str(filename).endswith(ext) else str(filename) + ext
+        if Path(file_withext).exists():
+            if ext in {".gz", ".zst"}:
+                return Path(file_withext)
+            return fopen(file_withext, mode=mode, encoding=encoding)
+    return Path(filename)
 
 
 def firstexisting(
