@@ -171,6 +171,9 @@ def maptogrid(
     dfsnapshot = dfsnapshot.with_columns(dis_orig=(pl.col("x") ** 2 + pl.col("y") ** 2 + pl.col("z") ** 2).sqrt())
 
     dfsnapshot = dfsnapshot.with_columns(
+        x_orig=pl.col("x"),
+        y_orig=pl.col("y"),
+        z_orig=pl.col("z"),
         x=pl.col("x") + pl.col("vx") * dtextra,
         y=pl.col("y") + pl.col("vy") * dtextra,
         z=pl.col("z") + pl.col("vz") * dtextra,
