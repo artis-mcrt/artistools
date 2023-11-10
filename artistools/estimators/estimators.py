@@ -120,7 +120,6 @@ def get_units_string(variable: str) -> str:
 def read_estimators_from_file(
     estfilepath: Path | str,
     printfilename: bool = False,
-    skip_emptycells: bool = True,
 ) -> pl.DataFrame:
     if printfilename:
         estfilepath = Path(estfilepath)
@@ -139,11 +138,7 @@ def read_estimators_from_file(
 
             if row[0] == "timestep":
                 # yield the previous block before starting a new one
-                if (
-                    timestep is not None
-                    and modelgridindex is not None
-                    and (not skip_emptycells or not estimblock.get("emptycell", True))
-                ):
+                if timestep is not None and modelgridindex is not None and (not estimblock.get("emptycell", True)):
                     estimblock["timestep"] = timestep
                     estimblock["modelgridindex"] = modelgridindex
                     estimblocklist.append(estimblock)
@@ -227,11 +222,7 @@ def read_estimators_from_file(
                     estimblock[f"cooling_{coolingtype}"] = float(value)
 
     # reached the end of file
-    if (
-        timestep is not None
-        and modelgridindex is not None
-        and (not skip_emptycells or not estimblock.get("emptycell", True))
-    ):
+    if timestep is not None and modelgridindex is not None and (not estimblock.get("emptycell", True)):
         estimblock["timestep"] = timestep
         estimblock["modelgridindex"] = modelgridindex
         estimblocklist.append(estimblock)
