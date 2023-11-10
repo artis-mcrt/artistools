@@ -445,7 +445,7 @@ def get_averageionisation(estimatorstsmgi: pl.LazyFrame, atomic_number: int) -> 
 
 def get_averageexcitation(
     modelpath: Path, modelgridindex: int, timestep: int, atomic_number: int, ionstage: int, T_exc: float
-) -> float:
+) -> float | None:
     dfnltepops = at.nltepops.read_files(modelpath, modelgridindex=modelgridindex, timestep=timestep)
     adata = at.atomic.get_levels(modelpath)
     ionlevels = adata.query("Z == @atomic_number and ionstage == @ionstage").iloc[0].levels
@@ -453,7 +453,7 @@ def get_averageexcitation(
     energypopsum = 0
     ionpopsum = 0
     if dfnltepops.empty:
-        return float("NaN")
+        return None
 
     dfnltepops_ion = dfnltepops.query(
         "modelgridindex==@modelgridindex and timestep==@timestep and Z==@atomic_number & ionstage==@ionstage"

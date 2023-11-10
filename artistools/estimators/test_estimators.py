@@ -92,7 +92,7 @@ def test_estimator_averaging(mockplot) -> None:
         "Te": 5784.4521484375,
         "averageionisation_Fe": 1.9466091928476605,
         "averageionisation_Ni": 1.9673294753348698,
-        "averageexcitation_FeII": float("nan"),
+        "averageexcitation_FeII": 0.1975447074846265,
         "populations_FeI": 4.668364835386799e-05,
         "populations_FeII": 0.35026945954378863,
         "populations_FeIII": 0.39508678896764393,

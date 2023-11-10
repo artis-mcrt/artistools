@@ -136,11 +136,11 @@ def plot_average_ionisation_excitation(
             atomic_number = at.get_atomic_number(paramvalue.split(" ")[0])
             ionstage = at.decode_roman_numeral(paramvalue.split(" ")[1])
         ylist = []
-        for modelgridindex, timesteps in zip(mgilist, timestepslist):
-            valuesum = 0
-            tdeltasum = 0
-            for timestep in timesteps:
-                if seriestype == "averageionisation":
+        if seriestype == "averageionisation":
+            for modelgridindex, timesteps in zip(mgilist, timestepslist):
+                valuesum = 0
+                tdeltasum = 0
+                for timestep in timesteps:
                     valuesum += (
                         at.estimators.get_averageionisation(
                             estimators.filter(pl.col("timestep") == timestep).filter(
@@ -150,7 +150,13 @@ def plot_average_ionisation_excitation(
                         )
                         * arr_tdelta[timestep]
                     )
-                elif seriestype == "averageexcitation":
+                    tdeltasum += arr_tdelta[timestep]
+                ylist.append(valuesum / tdeltasum)
+        elif seriestype == "averageexcitation":
+            for modelgridindex, timesteps in zip(mgilist, timestepslist):
+                valuesum = 0
+                tdeltasum = 0
+                for timestep in timesteps:
                     T_exc = (
                         estimators.filter(pl.col("timestep") == timestep)
                         .filter(pl.col("modelgridindex") == modelgridindex)
@@ -159,13 +165,13 @@ def plot_average_ionisation_excitation(
                         .collect()
                         .item(0, 0)
                     )
-                    valuesum += (
-                        at.estimators.get_averageexcitation(
-                            modelpath, modelgridindex, timestep, atomic_number, ionstage, T_exc
-                        )
-                        * arr_tdelta[timestep]
+                    exc = at.estimators.get_averageexcitation(
+                        modelpath, modelgridindex, timestep, atomic_number, ionstage, T_exc
                     )
-                tdeltasum += arr_tdelta[timestep]
+                    if exc is None:
+                        continue
+                    valuesum += exc * arr_tdelta[timestep]
+                    tdeltasum += arr_tdelta[timestep]
 
             ylist.append(valuesum / tdeltasum)
 
