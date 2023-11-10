@@ -11,7 +11,6 @@ import multiprocessing
 import sys
 import typing as t
 from collections import namedtuple
-from functools import partial
 from pathlib import Path
 
 import numpy as np
@@ -127,8 +126,8 @@ def read_estimators_from_file(
         print(f"  Reading {estfilepath.relative_to(estfilepath.parent.parent)} ({filesize:.2f} MiB)")
 
     estimblocklist: list[dict[str, t.Any]] = []
+    estimblock: dict[str, t.Any] = {}
     with at.zopen(estfilepath) as estimfile:
-        estimblock: dict[str, t.Any] = {}
         for line in estimfile:
             row: list[str] = line.split()
             if not row:
@@ -265,11 +264,9 @@ def get_rankbatch_parquetfile(
             f"  reading {len(list(estfilepaths))} estimator files from {folderpath.relative_to(Path(folderpath).parent)}"
         )
 
-        processfile = partial(read_estimators_from_file)
-
         pldf_group = None
         with multiprocessing.get_context("spawn").Pool(processes=at.get_config()["num_processes"]) as pool:
-            for pldf_file in pool.imap(processfile, estfilepaths):
+            for pldf_file in pool.imap(read_estimators_from_file, estfilepaths):
                 if pldf_group is None:
                     pldf_group = pldf_file
                 else:
