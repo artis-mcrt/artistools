@@ -321,7 +321,11 @@ def readfile_text(packetsfile: Path | str, modelpath: Path = Path()) -> pl.DataF
 
     try:
         dfpackets = pl.read_csv(
-            fpackets, separator=" ", has_header=False, new_columns=column_names, infer_schema_length=20000
+            fpackets,
+            separator=" ",
+            has_header=False,
+            new_columns=column_names,
+            infer_schema_length=20000,
         )
 
     except Exception:

@@ -21,11 +21,19 @@ def readfile(
     lcdata: dict[int, pl.DataFrame] = {}
     if "_res" in str(filepath):
         # get a dict of dfs with light curves at each viewing direction bin
-        lcdata_res = pl.read_csv(filepath, separator=" ", has_header=False, new_columns=["time", "lum", "lum_cmf"])
+        lcdata_res = pl.read_csv(
+            at.zopen(filepath, forpolars=True),
+            separator=" ",
+            has_header=False,
+            new_columns=["time", "lum", "lum_cmf"],
+        )
         lcdata = at.split_dataframe_dirbins(lcdata_res, index_of_repeated_value=0, output_polarsdf=True)
     else:
         dfsphericalaverage = pl.read_csv(
-            filepath, separator=" ", has_header=False, new_columns=["time", "lum", "lum_cmf"]
+            at.zopen(filepath, forpolars=True),
+            separator=" ",
+            has_header=False,
+            new_columns=["time", "lum", "lum_cmf"],
         )
 
         if list(dfsphericalaverage["time"].to_numpy()) != sorted(dfsphericalaverage["time"].to_numpy()):
