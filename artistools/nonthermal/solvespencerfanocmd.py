@@ -160,6 +160,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     if Path(args.outputfile).is_dir():
         args.outputfile = Path(args.outputfile, defaultoutputfile)
 
+    ionpopdict: dict[tuple[int, int] | int, float]
     if args.composition == "artis":
         if args.timedays:
             args.timestep = at.get_timestep_of_timedays(modelpath, args.timedays)
