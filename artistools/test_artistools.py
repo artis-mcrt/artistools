@@ -63,10 +63,6 @@ def test_deposition() -> None:
     at.deposition.main(argsraw=[], modelpath=modelpath)
 
 
-def test_initial_composition() -> None:
-    at.initial_composition.main(argsraw=["-modelpath", str(modelpath_3d), "-o", str(outputpath), "rho", "Fe"])
-
-
 def test_get_inputparams() -> None:
     inputparams = at.get_inputparams(modelpath)
     dicthash = hashlib.sha256(str(sorted(inputparams.items())).encode("utf-8")).hexdigest()

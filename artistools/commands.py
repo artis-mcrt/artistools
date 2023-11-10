@@ -16,7 +16,7 @@ dictcommands: CommandType = {
     "makeartismodelfromparticlegridmap": ("inputmodel.modelfromhydro", "main"),
     "maptogrid": ("inputmodel.maptogrid", "main"),
     "plotestimators": ("estimators.plotestimators", "main"),
-    "plotinitialcomposition": ("initial_composition", "main"),
+    "plotinitialcomposition": ("inputmodel.plotinitialcomposition", "main"),
     "plotlightcurves": ("lightcurve.plotlightcurve", "main"),
     "plotlinefluxes": ("linefluxes", "main"),
     "plotdensity": ("inputmodel.plotdensity", "main"),
@@ -71,7 +71,7 @@ def get_commandlist() -> dict[str, tuple[str, str]]:
         "plotartisradfield": ("artistools.radfield", "main"),
         "plotartisspectrum": ("artistools.spectra.plotspectra", "main"),
         "plotartistransitions": ("artistools.transitions", "main"),
-        "plotartisinitialcomposition": ("artistools.initial_composition", "main"),
+        "plotartisinitialcomposition": ("artistools.inputmodel.plotinitialcomposition", "main"),
         "plotartisviewingangles": ("artistools.viewing_angles_visualization", "main"),
     }
 
