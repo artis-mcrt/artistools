@@ -779,13 +779,16 @@ def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None, f
     ext_fopen: dict[str, t.Callable] = {".zst": pyzstd.open, ".gz": gzip.open, ".xz": xz.open}
 
     for ext, fopen in ext_fopen.items():
-        file_ext = str(filename) if str(filename).endswith(ext) else str(filename) + ext
-        if Path(file_ext).exists():
-            return fopen(file_ext, mode=mode, encoding=encoding)
+        file_withext = str(filename) if str(filename).endswith(ext) else str(filename) + ext
+        if Path(file_withext).exists():
+            if forpolars and ext in {".gz", ".zst"}:
+                return Path(file_withext)
+            return fopen(file_withext, mode=mode, encoding=encoding)
 
-    # open() can raise file not found if this file doesn't exist
     if forpolars:
         return Path(filename)
+
+    # open() can raise file not found if this file doesn't exist
     return Path(filename).open(mode=mode, encoding=encoding)  # noqa: SIM115
 
 
