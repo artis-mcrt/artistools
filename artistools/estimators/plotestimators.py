@@ -137,6 +137,7 @@ def plot_average_ionisation_excitation(
             ionstage = at.decode_roman_numeral(paramvalue.split(" ")[1])
         ylist = []
         if seriestype == "averageionisation":
+            # TODO: replace loop with Polars groupby
             for modelgridindex, timesteps in zip(mgilist, timestepslist):
                 valuesum = 0
                 tdeltasum = 0
