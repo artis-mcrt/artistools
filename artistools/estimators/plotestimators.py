@@ -59,7 +59,7 @@ def plot_init_abundances(
     if seriestype == "initabundances":
         mergemodelabundata, _ = at.inputmodel.get_modeldata(modelpath, get_elemabundances=True)
     elif seriestype == "initmasses":
-        mergemodelabundata = at.initial_composition.get_model_abundances_Msun_1D(modelpath)
+        mergemodelabundata = at.inputmodel.plotinitialcomposition.get_model_abundances_Msun_1D(modelpath)
     else:
         raise AssertionError
 
