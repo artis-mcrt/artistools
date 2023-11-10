@@ -247,14 +247,14 @@ def batched(iterable, n):
 def get_rankbatch_parquetfile(
     modelpath: Path,
     folderpath: Path,
-    mpiranks: t.Sequence[int],
+    batch_mpiranks: t.Sequence[int],
 ) -> Path:
-    parquetfilepath = folderpath / f"estimators_{mpiranks[0]:04d}_{mpiranks[-1]:04d}.out.parquet.tmp"
+    parquetfilepath = folderpath / f"estimators_{batch_mpiranks[0]:04d}_{batch_mpiranks[-1]:04d}.out.parquet.tmp"
 
     if not parquetfilepath.exists():
         print(f"{parquetfilepath.relative_to(modelpath.parent)} does not exist")
         estfilepaths = []
-        for mpirank in mpiranks:
+        for mpirank in batch_mpiranks:
             # not worth printing an error, because ranks with no cells to update do not produce an estimator file
             with contextlib.suppress(FileNotFoundError):
                 estfilepath = at.firstexisting(f"estimators_{mpirank:04d}.out", folder=folderpath, tryzipped=True)
