@@ -342,12 +342,10 @@ def plot_multi_ion_series(
     if missingions:
         print(f" Warning: Can't plot {seriestype} for {missingions} because these ions are not in compositiondata.txt")
 
+    iontuplelist = [iontuple for iontuple in iontuplelist if iontuple not in missingions]
     prev_atomic_number = iontuplelist[0][0]
     colorindex = 0
     for atomic_number, ionstage in iontuplelist:
-        if (atomic_number, ionstage) in missingions:
-            continue
-
         if atomic_number != prev_atomic_number:
             colorindex += 1
 
@@ -372,12 +370,6 @@ def plot_multi_ion_series(
         ylist = []
         for modelgridindex, timesteps in zip(mgilist, timestepslist):
             if seriestype == "populations":
-                # if (atomic_number, ionstage) not in estimators[timesteps[0], modelgridindex]["populations"]:
-                #     print(
-                #         f"Note: population for {(atomic_number, ionstage)} not in estimators for "
-                #         f"cell {modelgridindex} timesteps {timesteps}"
-                #     )
-
                 if ionstage == "ALL":
                     key = f"nnelement_{elsymbol}"
                 elif hasattr(ionstage, "lower") and ionstage.startswith(at.get_elsymbol(atomic_number)):
@@ -386,18 +378,13 @@ def plot_multi_ion_series(
                 else:
                     key = f"nnion_{ionstr}"
 
-                try:
-                    estimpop = at.estimators.get_averaged_estimators(
-                        modelpath,
-                        estimators,
-                        timesteps,
-                        modelgridindex,
-                        [key, f"nnelement_{elsymbol}", "nntot"],
-                    )
-                except KeyError:
-                    print(f"KeyError: {key} not in estimators")
-                    ylist.append(float("nan"))
-                    continue
+                estimpop = at.estimators.get_averaged_estimators(
+                    modelpath,
+                    estimators,
+                    timesteps,
+                    modelgridindex,
+                    [key, f"nnelement_{elsymbol}", "nntot"],
+                )
 
                 nionpop = estimpop.get(key, 0.0)
 
