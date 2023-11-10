@@ -164,13 +164,6 @@ def maptogrid(
 
     npart = len(dfsnapshot)
 
-    totmass = 0.0
-    rmax = 0.0
-    rmean = 0.0
-    hmean = 0.0
-    hmin = 100000.0
-    vratiomean = 0.0
-
     # Propagate particles to dtextra using velocities
     dtextra_seconds = 0.5  # in seconds ---  dtextra = 0.0 # for no extrapolation
 
@@ -209,8 +202,6 @@ def maptogrid(
     totmass = dfsnapshot["pmass"].sum()
     rmean = dfsnapshot["dis"].mean()
     hmean = dfsnapshot["h"].mean()
-    vratiomean = dfsnapshot.select(pl.col("vperp") - pl.col("vrad")).mean()
-    hmin = dfsnapshot["h"].min()
     rmax = dfsnapshot["dis"].max()
     with Path(outputfolderpath, "ejectapartanalysis.dat").open(mode="w", encoding="utf-8") as fpartanalysis:
         for part in dfsnapshot.select(["dis", "h", "vrad", "vperp", "vtot"]).iter_rows(named=True):
@@ -221,8 +212,8 @@ def maptogrid(
     logprint(f"saved {outputfolderpath / 'ejectapartanalysis.dat'}")
 
     logprint(f"total mass of sph particle {totmass} max dist {rmax} mean dist {rmean}")
-    logprint(f"smoothing length min {hmin} mean {hmean}")
-    logprint("ratio between vrad and vperp mean", vratiomean)
+    logprint(f"smoothing length min {dfsnapshot['h'].min()} mean {hmean}")
+    logprint("ratio between vrad and vperp mean", dfsnapshot.select(pl.col("vperp") - pl.col("vrad")).mean().item(0, 0))
 
     # check maybe cm and correct by shifting
 
