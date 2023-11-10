@@ -542,12 +542,13 @@ def get_xlist(
         mgilist_out = [mgi for mgi in allnonemptymgilist if mgi <= args.xmax] if args.xmax >= 0 else allnonemptymgilist
         xlist = list(mgilist_out)
         timestepslist_out = timestepslist
+        estimators = estimators.with_columns(xvalue=pl.col("modelgridindex"))
     elif xvariable == "timestep":
         mgilist_out = allnonemptymgilist
         check_type(timestepslist, t.Sequence[int])
         xlist = timestepslist
         timestepslist_out = timestepslist
-        estimators = estimators.with_columns(xvalue=pl.Series(xlist))
+        estimators = estimators.with_columns(xvalue=pl.col("timestep"))
     elif xvariable == "time":
         mgilist_out = allnonemptymgilist
         timearray = at.get_timestep_times(modelpath)
