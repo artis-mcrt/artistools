@@ -396,7 +396,6 @@ def get_averaged_estimators(
     timesteps: int | t.Sequence[int],
     modelgridindex: int,
     keys: str | list | None,
-    avgadjcells: int = 0,
 ) -> dict[str, t.Any]:
     """Get the average of estimators[(timestep, modelgridindex)][keys[0]]...[keys[-1]] across timesteps."""
     modelgridindex = int(modelgridindex)
@@ -410,11 +409,11 @@ def get_averaged_estimators(
 
     dictout = {}
     tdeltas = at.get_timestep_times(modelpath, loc="delta")
-    mgilist = list(range(modelgridindex - avgadjcells, modelgridindex + avgadjcells + 1))
+
     estcollect = (
         estimators.lazy()
         .filter(pl.col("timestep").is_in(timesteps))
-        .filter(pl.col("modelgridindex").is_in(mgilist))
+        .filter(pl.col("modelgridindex") == modelgridindex)
         .select({*keys, "timestep", "modelgridindex"})
         .collect()
     )
@@ -422,15 +421,16 @@ def get_averaged_estimators(
         valuesum = 0
         tdeltasum = 0
         for timestep, tdelta in zip(timesteps, tdeltas):
-            for mgi in mgilist:
-                value = (
-                    estcollect.filter(pl.col("timestep") == timestep).filter(pl.col("modelgridindex") == mgi)[k].item(0)
-                )
-                if value is None:
-                    continue
+            value = (
+                estcollect.filter(pl.col("timestep") == timestep)
+                .filter(pl.col("modelgridindex") == modelgridindex)[k]
+                .item(0)
+            )
+            if value is None:
+                continue
 
-                valuesum += value * tdelta
-                tdeltasum += tdelta
+            valuesum += value * tdelta
+            tdeltasum += tdelta
 
         dictout[k] = valuesum / tdeltasum if tdeltasum > 0 else float("NaN")
 
