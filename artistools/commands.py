@@ -58,21 +58,12 @@ def get_commandlist() -> dict[str, tuple[str, str]]:
     return {
         "at": ("artistools", "main"),
         "artistools": ("artistools", "main"),
-        "makeartismodel1dslicefromcone": (
-            "artistools.inputmodel.slice1dfromconein3dmodel",
-            "main",
-        ),
+        "makeartismodel1dslicefromcone": ("artistools.inputmodel.slice1dfromconein3dmodel", "main"),
         "makeartismodel": ("artistools.inputmodel.makeartismodel", "main"),
         "plotartismodeldensity": ("artistools.inputmodel.plotdensity", "main"),
         "plotartismodeldeposition": ("artistools.deposition", "main"),
-        "plotartisestimators": (
-            "artistools.estimators.plotestimators",
-            "main",
-        ),
-        "plotartislightcurve": (
-            "artistools.lightcurve.plotlightcurve",
-            "main",
-        ),
+        "plotartisestimators": ("artistools.estimators.plotestimators", "main"),
+        "plotartislightcurve": ("artistools.lightcurve.plotlightcurve", "main"),
         "plotartislinefluxes": ("artistools.linefluxes", "main"),
         "plotartismacroatom": ("artistools.macroatom", "main"),
         "plotartisnltepops": ("artistools.nltepops.plotnltepops", "main"),
@@ -80,14 +71,8 @@ def get_commandlist() -> dict[str, tuple[str, str]]:
         "plotartisradfield": ("artistools.radfield", "main"),
         "plotartisspectrum": ("artistools.spectra.plotspectra", "main"),
         "plotartistransitions": ("artistools.transitions", "main"),
-        "plotartisinitialcomposition": (
-            "artistools.initial_composition",
-            "main",
-        ),
-        "plotartisviewingangles": (
-            "artistools.viewing_angles_visualization",
-            "main",
-        ),
+        "plotartisinitialcomposition": ("artistools.initial_composition", "main"),
+        "plotartisviewingangles": ("artistools.viewing_angles_visualization", "main"),
     }
 
 
