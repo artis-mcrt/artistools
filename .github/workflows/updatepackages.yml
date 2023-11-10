@@ -20,27 +20,15 @@ jobs:
             cache: pip
             python-version-file: .python-version
 
-      - name: Install requirements
-        run: python -m pip install pur pre-commit
+      # - name: Install requirements
+      #   run: python -m pip install pur pre-commit
 
-      - name: Run pre-commit autoupdate
-        run: |
-          pre-commit install
-          pre-commit autoupdate
+      - uses: browniebroke/pre-commit-autoupdate-action@main
 
-      - name: Run pur
-        run: pur
-
-      - name: Commit and push
-        run: |
-          git config --global user.email "luke.shingles@gmail.com"
-          git config --global user.name "Autoupdate"
-          git checkout -b my-new-branch
-          git add ".pre-commit-config.yaml"
-          git add "requirements.txt"
-          git commit -m "Update pre-commit dependencies"
-          git push origin autoupdate
-
-      - name: Open pull request
-        run: |
-          gh pr create --fill
+      - uses: peter-evans/create-pull-request@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: update/pre-commit-hooks
+          title: Update pre-commit hooks
+          commit-message: "chore: update pre-commit hooks"
+          body: Update versions of pre-commit hooks to latest version.
