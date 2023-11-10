@@ -138,9 +138,7 @@ def read_estimators_from_file(
             if row[0] == "timestep":
                 # yield the previous block before starting a new one
                 if timestep is not None and modelgridindex is not None and (not estimblock.get("emptycell", True)):
-                    estimblock["timestep"] = timestep
-                    estimblock["modelgridindex"] = modelgridindex
-                    estimblocklist.append(estimblock)
+                    estimblocklist.append(estimblock | {"timestep": timestep, "modelgridindex": modelgridindex})
 
                 timestep = int(row[1])
                 modelgridindex = int(row[3])
@@ -216,9 +214,7 @@ def read_estimators_from_file(
 
     # reached the end of file
     if timestep is not None and modelgridindex is not None and (not estimblock.get("emptycell", True)):
-        estimblock["timestep"] = timestep
-        estimblock["modelgridindex"] = modelgridindex
-        estimblocklist.append(estimblock)
+        estimblocklist.append(estimblock | {"timestep": timestep, "modelgridindex": modelgridindex})
 
     return pl.DataFrame(estimblocklist).with_columns(
         pl.col(pl.Int64).cast(pl.Int32), pl.col(pl.Float64).cast(pl.Float32)
