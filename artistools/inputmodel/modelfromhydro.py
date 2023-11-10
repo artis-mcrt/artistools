@@ -126,6 +126,9 @@ def read_griddat_file(
             "pos_x": "pos_x_min",
             "pos_y": "pos_y_min",
             "pos_z": "pos_z_min",
+            "posx": "pos_x_min",  # for compatibility with fortran maptogrid script
+            "posy": "pos_y_min",
+            "posz": "pos_z_min",
         },
     )
     # griddata in geom units
@@ -439,9 +442,9 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     pd.options.mode.copy_on_write = True
     gridfolderpath = args.gridfolderpath
     if not Path(gridfolderpath, "grid.dat").is_file() or not Path(gridfolderpath, "gridcontributions.txt").is_file():
-        print("grid.dat and gridcontributions.txt are required. Run artistools-maptogrid")
-        raise FileNotFoundError
-        # at.inputmodel.maptogrid.main()
+        print("grid.dat and gridcontributions.txt are required for abundances. Run artistools-maptogrid")
+    #     raise FileNotFoundError
+    # at.inputmodel.maptogrid.main()
 
     outputpath = Path(f"artismodel_{args.dimensions}d") if args.outputpath is None else Path(args.outputpath)
 
