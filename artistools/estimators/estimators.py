@@ -127,6 +127,8 @@ def read_estimators_from_file(
 
     estimblocklist: list[dict[str, t.Any]] = []
     estimblock: dict[str, t.Any] = {}
+    timestep: int | None = None
+    modelgridindex: int | None = None
     with at.zopen(estfilepath) as estimfile:
         for line in estimfile:
             row: list[str] = line.split()
@@ -135,16 +137,13 @@ def read_estimators_from_file(
 
             if row[0] == "timestep":
                 # yield the previous block before starting a new one
-                if (
-                    estimblock.get("timestep") is not None
-                    and estimblock.get("modelgridindex") is not None
-                    and (not estimblock.get("emptycell", True))
-                ):
+                if timestep is not None and modelgridindex is not None and (not estimblock.get("emptycell", True)):
+                    estimblock["timestep"] = timestep
+                    estimblock["modelgridindex"] = modelgridindex
                     estimblocklist.append(estimblock)
 
-                estimblock["timestep"] = int(row[1])
-
-                estimblock["modelgridindex"] = int(row[3])
+                timestep = int(row[1])
+                modelgridindex = int(row[3])
                 emptycell = row[4] == "EMPTYCELL"
                 estimblock = {"emptycell": emptycell}
                 if not emptycell:
@@ -216,11 +215,9 @@ def read_estimators_from_file(
                     estimblock[f"cooling_{coolingtype}"] = float(value)
 
     # reached the end of file
-    if (
-        estimblock.get("timestep") is not None
-        and estimblock.get("modelgridindex") is not None
-        and not estimblock.get("emptycell", True)
-    ):
+    if timestep is not None and modelgridindex is not None and (not estimblock.get("emptycell", True)):
+        estimblock["timestep"] = timestep
+        estimblock["modelgridindex"] = modelgridindex
         estimblocklist.append(estimblock)
 
     return pl.DataFrame(estimblocklist).with_columns(
