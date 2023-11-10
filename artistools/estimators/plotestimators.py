@@ -352,51 +352,30 @@ def plot_multi_ion_series(
         elsymbol = at.get_elsymbol(atomic_number)
 
         ionstr = at.get_ionstring(atomic_number, ionstage, sep="_", style="spectral")
+        if seriestype == "populations":
+            if ionstage == "ALL":
+                key = f"nnelement_{elsymbol}"
+            elif hasattr(ionstage, "lower") and ionstage.startswith(at.get_elsymbol(atomic_number)):
+                # not really an ionstage but an isotope name
+                key = f"nniso_{ionstage}"
+            else:
+                key = f"nnion_{ionstr}"
+        else:
+            key = f"{seriestype}_{ionstr}"
 
         print(f"Plotting {seriestype} {ionstr}")
-        ylist = []
-        for modelgridindex, timesteps in zip(mgilist, timestepslist):
-            if seriestype == "populations":
-                if ionstage == "ALL":
-                    key = f"nnelement_{elsymbol}"
-                elif hasattr(ionstage, "lower") and ionstage.startswith(at.get_elsymbol(atomic_number)):
-                    # not really an ionstage but an isotope name
-                    key = f"nniso_{ionstage}"
-                else:
-                    key = f"nnion_{ionstr}"
 
-                estimpop = at.estimators.get_averaged_estimators(
-                    modelpath,
-                    estimators,
-                    timesteps,
-                    modelgridindex,
-                    [key, f"nnelement_{elsymbol}", "nntot"],
-                )
+        if seriestype != "populations" or args.ionpoptype == "absolute":
+            scalefactor = pl.lit(1)
+        elif args.ionpoptype == "elpop":
+            scalefactor = pl.col(f"nnelement_{elsymbol}").mean()
+        elif args.ionpoptype == "totalpop":
+            scalefactor = pl.col("nntot").mean()
+        else:
+            raise AssertionError
 
-                nionpop = estimpop.get(key, 0.0)
-
-                try:
-                    if args.ionpoptype == "absolute":
-                        yvalue = nionpop  # Plot as fraction of element population
-                    elif args.ionpoptype == "elpop":
-                        elpop = estimpop.get(f"nnelement_{elsymbol}", 0.0)
-                        yvalue = nionpop / elpop  # Plot as fraction of element population
-                    elif args.ionpoptype == "totalpop":
-                        totalpop = estimpop["nntot"]
-                        yvalue = nionpop / totalpop  # Plot as fraction of total population
-                    else:
-                        raise AssertionError
-                except ZeroDivisionError:
-                    yvalue = 0.0
-
-                ylist.append(yvalue)
-
-            else:
-                key = f"{seriestype}_{ionstr}"
-                yvalue = at.estimators.get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, key)[
-                    key
-                ]
-                ylist.append(yvalue)
+        series = estimators.group_by("xvalue").agg(pl.col(key).mean() / scalefactor).lazy().collect().sort("xvalue")
+        ylist = series[key].to_list()
 
         plotlabel = (
             ionstage
@@ -1093,7 +1072,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         # [['averageexcitation', ['Fe II', 'Fe III']]],
         # [["populations", ["Sr90", "Sr91", "Sr92", "Sr93", "Sr94"]]],
         #  ['_ymin', 1e-3], ['_ymax', 5]],
-        # [["populations", ["Sr II"]]],
+        [["populations", ["Sr II"]]],
         # [['populations', ['He I', 'He II', 'He III']]],
         # [['populations', ['C I', 'C II', 'C III', 'C IV', 'C V']]],
         # [['populations', ['O I', 'O II', 'O III', 'O IV']]],
