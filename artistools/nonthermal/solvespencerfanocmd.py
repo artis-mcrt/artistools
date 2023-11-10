@@ -306,11 +306,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             ionpopdict[(compelement_atomicnumber, 2)] = nntot * x_e
 
         # keep only the ion populations, not element or total populations
-        ions = [
-            key
-            for key in ionpopdict
-            if isinstance(key, tuple) and len(key) == 2 and ionpopdict[key] / nntot >= minionfraction
-        ]
+        ions = [key for key in ionpopdict if isinstance(key, tuple) and ionpopdict[key] / nntot >= minionfraction]
         ions.sort()
 
         if args.noexcitation:

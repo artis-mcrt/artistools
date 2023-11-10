@@ -988,7 +988,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--notitle", action="store_true", help="Suppress the top title from the plot")
 
-    parser.add_argument("-plotlist", type=list, default=[], help="Plot list (when calling from Python only)")  # type: ignore[arg-type]
+    parser.add_argument("-plotlist", type=list, default=[], help="Plot list (when calling from Python only)")
 
     parser.add_argument(
         "-ionpoptype",
