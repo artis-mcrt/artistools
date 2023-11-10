@@ -14,7 +14,6 @@ from pathlib import Path
 import argcomplete
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 import polars as pl
 from typeguard import check_type
 
@@ -51,9 +50,7 @@ def get_ylabel(variable):
     return ""
 
 
-def plot_init_abundances(
-    ax, xlist, specieslist, mgilist, modelpath, seriestype, dfalldata=None, args=None, **plotkwargs
-):
+def plot_init_abundances(ax, xlist, specieslist, mgilist, modelpath, seriestype, args=None, **plotkwargs):
     assert len(xlist) - 1 == len(mgilist)
 
     if seriestype == "initabundances":
@@ -100,9 +97,6 @@ def plot_init_abundances(
                 yvalue = mergemodelabundata.loc[modelgridindex][f"{valuetype}{elsymbol}"]
             ylist.append(yvalue)
 
-        if dfalldata is not None:
-            dfalldata["initabundances." + speciesstr] = ylist
-
         ylist.insert(0, ylist[0])
         # or ax.step(where='pre', )
         color = get_elemcolor(atomic_number=atomic_number)
@@ -124,7 +118,6 @@ def plot_average_ionisation_excitation(
     mgilist,
     estimators,
     modelpath,
-    dfalldata=None,
     args=None,
     **plotkwargs,
 ):
@@ -178,9 +171,6 @@ def plot_average_ionisation_excitation(
 
         color = get_elemcolor(atomic_number=atomic_number)
 
-        if dfalldata is not None:
-            dfalldata[seriestype + "." + paramvalue] = ylist
-
         ylist.insert(0, ylist[0])
 
         xlist, ylist = at.estimators.apply_filters(xlist, ylist, args)
@@ -197,7 +187,6 @@ def plot_levelpop(
     mgilist: t.Sequence[int | t.Sequence[int]],
     estimators: pl.LazyFrame | pl.DataFrame,
     modelpath: str | Path,
-    dfalldata: pd.DataFrame | None,
     args: argparse.Namespace,
     **plotkwargs: t.Any,
 ):
@@ -260,15 +249,6 @@ def plot_levelpop(
             else:
                 ylist.append(valuesum / tdeltasum)
 
-        if dfalldata is not None:
-            elsym = at.get_elsymbol(atomic_number).lower()
-            colname = (
-                f"nlevel_on_dv_{elsym}_ionstage{ionstage}_level{levelindex}"
-                if seriestype == "levelpopulation_dn_on_dvel"
-                else f"nnlevel_{elsym}_ionstage{ionstage}_level{levelindex}"
-            )
-            dfalldata[colname] = ylist
-
         ylist.insert(0, ylist[0])
 
         xlist, ylist = at.estimators.apply_filters(xlist, ylist, args)
@@ -285,7 +265,6 @@ def plot_multi_ion_series(
     mgilist: t.Sequence[int | t.Sequence[int]],
     estimators: pl.LazyFrame | pl.DataFrame,
     modelpath: str | Path,
-    dfalldata: pd.DataFrame | None,
     args: argparse.Namespace,
     **plotkwargs: t.Any,
 ):
@@ -414,16 +393,6 @@ def plot_multi_ion_series(
         # color = f'C{colorindex}'
         # or ax.step(where='pre', )
 
-        if dfalldata is not None:
-            elsym = at.get_elsymbol(atomic_number).lower()
-            if args.ionpoptype == "absolute":
-                colname = f"nnion_{elsym}_ionstage{ionstage}"
-            elif args.ionpoptype == "elpop":
-                colname = f"nnion_over_nnelem_{elsym}_ionstage{ionstage}"
-            elif args.ionpoptype == "totalpop":
-                colname = f"nnion_over_nntot_{elsym}_ionstage{ionstage}"
-            dfalldata[colname] = ylist
-
         ylist.insert(0, ylist[0])
 
         xlist, ylist = at.estimators.apply_filters(xlist, ylist, args)
@@ -466,7 +435,6 @@ def plot_series(
     estimators: pl.LazyFrame | pl.DataFrame,
     args: argparse.Namespace,
     nounits: bool = False,
-    dfalldata: pd.DataFrame | None = None,
     **plotkwargs: t.Any,
 ) -> None:
     """Plot something like Te or TR."""
@@ -484,8 +452,9 @@ def plot_series(
         linelabel = None
     print(f"Plotting {variablename}")
 
-    series = estimators.group_by("xvalue").agg(pl.col(variablename).mean()).lazy().collect().sort("xvalue")
+    series = estimators.group_by("xvalue").agg(pl.col(variablename).mean()).lazy().collect()
     ylist = series[variablename].to_list()
+    xlist2 = series["xvalue"].to_list()
 
     if math.log10(max(ylist) / min(ylist)) > 2 or min(ylist) == 0:
         ax.set_yscale("log")
@@ -496,12 +465,10 @@ def plot_series(
         # 'cooling_adiabatic': 'blue'
     }
 
-    if dfalldata is not None:
-        dfalldata[variablename] = ylist
-
+    xlist2.insert(0, xlist[0])
     ylist.insert(0, ylist[0])
 
-    xlist_filtered, ylist_filtered = at.estimators.apply_filters(xlist, ylist, args)
+    xlist_filtered, ylist_filtered = at.estimators.apply_filters(xlist2, ylist, args)
 
     ax.plot(
         xlist_filtered, ylist_filtered, linewidth=1.5, label=linelabel, color=dictcolors.get(variablename), **plotkwargs
@@ -558,11 +525,10 @@ def get_xlist(
         mgilist_out = dfmodelcollect["modelgridindex"].to_list()
         timestepslist_out = timestepslist
         estimators = estimators.filter(pl.col("modelgridindex").is_in(mgilist_out))
-        estimators = (
-            estimators.lazy()
-            .join(dfmodel.select(["modelgridindex", "vel_r_mid"]).lazy(), on="modelgridindex")
-            .rename({"vel_r_mid": "xvalue"})
-        )
+        estimators = estimators.lazy().join(dfmodel.select(["modelgridindex", "vel_r_mid"]).lazy(), on="modelgridindex")
+        estimators = estimators.with_columns(xvalue=(pl.col("vel_r_mid") / scalefactor))
+        estimators = estimators.sort("xvalue")
+        xlist = estimators.select("xvalue").collect()["xvalue"].to_list()
     else:
         xlist = []
         mgilist_out = []
@@ -593,7 +559,6 @@ def plot_subplot(
     mgilist: list[int | t.Sequence[int]],
     modelpath: str | Path,
     estimators: pl.LazyFrame | pl.DataFrame,
-    dfalldata: pd.DataFrame | None,
     args: argparse.Namespace,
     **plotkwargs: t.Any,
 ):
@@ -627,7 +592,6 @@ def plot_subplot(
                 estimators,
                 args,
                 nounits=sameylabel,
-                dfalldata=dfalldata,
                 **plotkwargs,
             )
             if showlegend and sameylabel and ylabel is not None:
@@ -637,7 +601,7 @@ def plot_subplot(
             seriestype, params = plotitem
 
             if seriestype in {"initabundances", "initmasses"}:
-                plot_init_abundances(ax, xlist, params, mgilist, modelpath, seriestype, dfalldata=dfalldata, args=args)
+                plot_init_abundances(ax, xlist, params, mgilist, modelpath, seriestype, args=args)
 
             elif seriestype == "levelpopulation" or seriestype.startswith("levelpopulation_"):
                 plot_levelpop(
@@ -649,7 +613,6 @@ def plot_subplot(
                     mgilist,
                     estimators,
                     modelpath,
-                    dfalldata=dfalldata,
                     args=args,
                 )
 
@@ -663,7 +626,6 @@ def plot_subplot(
                     mgilist,
                     estimators,
                     modelpath,
-                    dfalldata=dfalldata,
                     args=args,
                     **plotkwargs,
                 )
@@ -688,7 +650,6 @@ def plot_subplot(
                     mgilist,
                     estimators,
                     modelpath,
-                    dfalldata,
                     args,
                     **plotkwargs,
                 )
@@ -740,10 +701,6 @@ def make_plot(
         xvariable, allnonemptymgilist, estimators, timestepslist_unfiltered, modelpath, args
     )
 
-    dfalldata = pd.DataFrame()
-    # dfalldata.index.name = "modelgridindex"
-    dfalldata[xvariable] = xlist
-
     xlist = list(
         np.insert(xlist, 0, 0.0)
         if (xvariable.startswith("velocity") or xvariable == "beta")
@@ -784,7 +741,6 @@ def make_plot(
             mgilist,
             modelpath,
             estimators,
-            dfalldata=dfalldata,
             args=args,
             **plotkwargs,
         )
@@ -828,12 +784,6 @@ def make_plot(
     if not args.notitle:
         axes[0].set_title(figure_title, fontsize=8)
     # plt.suptitle(figure_title, fontsize=11, verticalalignment='top')
-
-    if args.write_data:
-        dfalldata = dfalldata.sort_index()
-        dataoutfilename = Path(outfilename).with_suffix(".txt")
-        dfalldata.to_csv(dataoutfilename)
-        print(f"Saved {dataoutfilename}")
 
     fig.savefig(outfilename)
     print(f"Saved {outfilename}")
@@ -992,8 +942,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--show", action="store_true", help="Show plot before quitting")
 
-    parser.add_argument("--write_data", action="store_true", help="Save data used to generate the plot in a CSV file")
-
     parser.add_argument(
         "-o", action="store", dest="outputfile", type=Path, default=Path(), help="Filename for PDF file"
     )
@@ -1064,15 +1012,14 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         #  ['_yscale', 'linear']],
         # [['initmasses', ['Ni_56', 'He', 'C', 'Mg']]],
         # ['heating_gamma/gamma_dep'],
-        # ["nne", ["_ymin", 1e5], ["_ymax", 1e11]],
-        # ["TR", ["_yscale", "linear"], ["_ymin", 1000], ["_ymax", 26000]],
-        ["Te"],
+        ["nne", ["_ymin", 1e5], ["_ymax", 1e11]],
+        ["TR", ["_yscale", "linear"], ["_ymin", 1000], ["_ymax", 26000]],
+        # ["Te"],
         # ["Te", "TR"],
-        # [["averageionisation", ["Sr"]]],
+        [["averageionisation", ["Sr"]]],
         # [['averageexcitation', ['Fe II', 'Fe III']]],
         # [["populations", ["Sr90", "Sr91", "Sr92", "Sr93", "Sr94"]]],
-        #  ['_ymin', 1e-3], ['_ymax', 5]],
-        [["populations", ["Sr II"]]],
+        # [["populations", ["Sr II"]]],
         # [['populations', ['He I', 'He II', 'He III']]],
         # [['populations', ['C I', 'C II', 'C III', 'C IV', 'C V']]],
         # [['populations', ['O I', 'O II', 'O III', 'O IV']]],

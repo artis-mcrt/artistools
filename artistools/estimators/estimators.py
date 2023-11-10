@@ -221,7 +221,7 @@ def read_estimators_from_file(
     )
 
 
-def batched(iterable, n):
+def batched(iterable, n):  # -> Generator[list, Any, None]:
     """Batch data into iterators of length n. The last batch may be shorter."""
     # batched('ABCDEFG', 3) --> ABC DEF G
     if n < 1:
@@ -420,7 +420,11 @@ def get_averageionisation(estimatorstsmgi: pl.LazyFrame, atomic_number: int) -> 
         cs.starts_with(f"nnion_{elsymb}_") | cs.by_name(f"nnelement_{elsymb}")
     ).collect()
 
-    nnelement = dfselected[f"nnelement_{elsymb}"].item(0)
+    dfnnelement = dfselected[f"nnelement_{elsymb}"]
+    if dfnnelement.is_empty():
+        return float("NaN")
+
+    nnelement = dfnnelement.item(0)
     if nnelement is None:
         return float("NaN")
 
