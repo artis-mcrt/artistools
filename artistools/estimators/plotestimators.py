@@ -184,12 +184,15 @@ def plot_average_ionisation_excitation(
             ioncols = [col for col in dfselected.columns if col.startswith(f"nnion_{elsymb}_")]
             ioncharges = [at.decode_roman_numeral(col.removeprefix(f"nnion_{elsymb}_")) - 1 for col in ioncols]
             dfselected = dfselected.with_columns(
-                (
+                pl.when(pl.col(f"nnelement_{elsymb}") > 0.0)
+                .then(
                     pl.sum_horizontal([pl.col(ioncol) * ioncharge for ioncol, ioncharge in zip(ioncols, ioncharges)])
                     / pl.col(f"nnelement_{elsymb}")
-                ).alias(f"averageionisation_{elsymb}")
+                )
+                .otherwise(pl.lit(None))
+                .alias(f"averageionisation_{elsymb}")
             )
-
+            dfselected.drop_nulls(f"averageionisation_{elsymb}")
             series = (
                 dfselected.group_by("plotpointid", maintain_order=True)
                 .agg(pl.col(f"averageionisation_{elsymb}").mean(), pl.col("xvalue").mean())
