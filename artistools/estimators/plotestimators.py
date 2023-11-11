@@ -233,7 +233,7 @@ def plot_average_ionisation_excitation(
         if startfromzero:
             ylist.insert(0, ylist[0])
         print(f"  Plotting {seriestype} {paramvalue}")
-        print(xlist, ylist, startfromzero)
+
         ax.plot(xlist, ylist, label=paramvalue, color=color, **plotkwargs)
 
 
