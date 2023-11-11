@@ -517,7 +517,7 @@ def plot_series(
     ylist = series[variablename].to_list()
     xlist = series["xvalue"].to_list()
 
-    if math.log10(max(ylist) / min(ylist)) > 2 or min(ylist) == 0:
+    if min(ylist) == 0 or math.log10(max(ylist) / min(ylist)) > 2:
         ax.set_yscale("log")
 
     dictcolors = {
@@ -1049,7 +1049,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     )
 
     plotlist = args.plotlist or [
-        [["initabundances", ["Fe", "Ni_stable", "Ni_56"]]],
+        # [["initabundances", ["Fe", "Ni_stable", "Ni_56"]]],
         # ['heating_dep', 'heating_coll', 'heating_bf', 'heating_ff',
         #  ['_yscale', 'linear']],
         # ['cooling_adiabatic', 'cooling_coll', 'cooling_fb', 'cooling_ff',
