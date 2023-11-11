@@ -50,8 +50,18 @@ def get_ylabel(variable):
     return ""
 
 
-def plot_init_abundances(ax, xlist, specieslist, mgilist, modelpath, seriestype, args=None, **plotkwargs):
-    assert len(xlist) - 1 == len(mgilist)
+def plot_init_abundances(
+    ax: plt.Axes,
+    xlist: list[float],
+    specieslist: list[str],
+    mgilist: t.Sequence[float],
+    modelpath: Path,
+    seriestype: str,
+    startfromzero: bool,
+    args: argparse.Namespace,
+    **plotkwargs,
+) -> None:
+    assert len(xlist) == len(mgilist)
 
     if seriestype == "initabundances":
         mergemodelabundata, _ = at.inputmodel.get_modeldata(modelpath, get_elemabundances=True)
@@ -59,6 +69,10 @@ def plot_init_abundances(ax, xlist, specieslist, mgilist, modelpath, seriestype,
         mergemodelabundata = at.inputmodel.plotinitialcomposition.get_model_abundances_Msun_1D(modelpath)
     else:
         raise AssertionError
+
+    if startfromzero:
+        xlist = xlist.copy()
+        xlist.insert(0, 0.0)
 
     for speciesstr in specieslist:
         splitvariablename = speciesstr.split("_")
@@ -97,11 +111,12 @@ def plot_init_abundances(ax, xlist, specieslist, mgilist, modelpath, seriestype,
                 yvalue = mergemodelabundata.loc[modelgridindex][f"{valuetype}{elsymbol}"]
             ylist.append(yvalue)
 
-        ylist.insert(0, ylist[0])
-        # or ax.step(where='pre', )
         color = get_elemcolor(atomic_number=atomic_number)
 
         xlist, ylist = at.estimators.apply_filters(xlist, ylist, args)
+
+        if startfromzero:
+            ylist.insert(0, ylist[0])
 
         ax.plot(xlist, ylist, linewidth=1.5, label=linelabel, linestyle=linestyle, color=color, **plotkwargs)
 
@@ -128,6 +143,10 @@ def plot_average_ionisation_excitation(
         ax.set_ylabel("Average excitation [eV]")
     else:
         raise ValueError
+
+    if startfromzero:
+        xlist = xlist.copy()
+        xlist.insert(0, 0.0)
 
     arr_tdelta = at.get_timestep_times(modelpath, loc="delta")
     for paramvalue in params:
@@ -178,12 +197,10 @@ def plot_average_ionisation_excitation(
                 .collect()
             )
             xlist = series["xvalue"].to_list()
-            ylist = series[f"averageionisation_{elsymb}"].to_list()
-
             if startfromzero:
-                # make a line segment from 0 velocity
                 xlist.insert(0, 0.0)
-                ylist.insert(0, ylist[0])
+
+            ylist = series[f"averageionisation_{elsymb}"].to_list()
 
         elif seriestype == "averageexcitation":
             print("  This will be slow!")
@@ -209,13 +226,14 @@ def plot_average_ionisation_excitation(
                 msg = f"ERROR: No excitation data found for {paramvalue}"
                 raise ValueError(msg)
             ylist.append(exc_ev_times_tdelta_sum / tdeltasum if tdeltasum > 0 else float("nan"))
-            if startfromzero:
-                ylist.insert(0, ylist[0])
 
         color = get_elemcolor(atomic_number=atomic_number)
 
         xlist, ylist = at.estimators.apply_filters(xlist, ylist, args)
-
+        if startfromzero:
+            ylist.insert(0, ylist[0])
+        print(f"  Plotting {seriestype} {paramvalue}")
+        print(xlist, ylist, startfromzero)
         ax.plot(xlist, ylist, label=paramvalue, color=color, **plotkwargs)
 
 
@@ -528,7 +546,7 @@ def get_xlist(
     modelpath: str | Path,
     groupbyxvalue: bool,
     args: t.Any,
-) -> tuple[list[float | int], list[int | t.Sequence[int]], list[list[int]], pl.LazyFrame | pl.DataFrame]:
+) -> tuple[list[float | int], list[int], list[list[int]], pl.LazyFrame | pl.DataFrame]:
     if xvariable in {"cellid", "modelgridindex"}:
         estimators = estimators.with_columns(xvalue=pl.col("modelgridindex"), plotpointid=pl.col("modelgridindex"))
     elif xvariable == "timestep":
@@ -544,9 +562,10 @@ def get_xlist(
         )
         estimators = estimators.with_columns(xvalue=pl.col("time_mid"), plotpointid=pl.col("timestep"))
     elif xvariable in {"velocity", "beta"}:
+        velcolumn = "vel_r_mid"
         scalefactor = 1e5 if xvariable == "velocity" else 29979245800
         estimators = estimators.with_columns(
-            xvalue=(pl.col("vel_r_mid") / scalefactor), plotpointid=pl.col("modelgridindex")
+            xvalue=(pl.col(velcolumn) / scalefactor), plotpointid=pl.col("modelgridindex")
         )
     else:
         estimators = estimators.with_columns(xvalue=pl.col(xvariable), plotpointid=pl.col("modelgridindex"))
@@ -584,7 +603,7 @@ def plot_subplot(
     xvariable: str,
     startfromzero: bool,
     plotitems: list[t.Any],
-    mgilist: list[int | t.Sequence[int]],
+    mgilist: list[int],
     modelpath: str | Path,
     estimators: pl.LazyFrame | pl.DataFrame,
     args: argparse.Namespace,
@@ -626,7 +645,16 @@ def plot_subplot(
 
             if seriestype in {"initabundances", "initmasses"}:
                 showlegend = True
-                plot_init_abundances(ax, xlist, params, mgilist, modelpath, seriestype, args=args)
+                plot_init_abundances(
+                    ax=ax,
+                    xlist=xlist,
+                    specieslist=params,
+                    mgilist=mgilist,
+                    modelpath=Path(modelpath),
+                    seriestype=seriestype,
+                    startfromzero=startfromzero,
+                    args=args,
+                )
 
             elif seriestype == "levelpopulation" or seriestype.startswith("levelpopulation_"):
                 showlegend = True
@@ -734,8 +762,6 @@ def make_plot(
         args=args,
     )
     startfromzero = (xvariable.startswith("velocity") or xvariable == "beta") and not args.markersonly
-    if startfromzero:
-        xlist.insert(0, 0.0)
 
     xmin = args.xmin if args.xmin >= 0 else min(xlist)
     xmax = args.xmax if args.xmax > 0 else max(xlist)
@@ -1023,7 +1049,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     )
 
     plotlist = args.plotlist or [
-        # [['initabundances', ['Fe', 'Ni_stable', 'Ni_56']]],
+        [["initabundances", ["Fe", "Ni_stable", "Ni_56"]]],
         # ['heating_dep', 'heating_coll', 'heating_bf', 'heating_ff',
         #  ['_yscale', 'linear']],
         # ['cooling_adiabatic', 'cooling_coll', 'cooling_fb', 'cooling_ff',
@@ -1118,11 +1144,19 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         if not args.x:
             args.x = "time"
         mgilist = [args.modelgridindex] * len(timesteps_included)
-        timesteplist_unfiltered = [[ts] for ts in timesteps_included]
+        timestepslist_unfiltered = [[ts] for ts in timesteps_included]
         if not assoc_cells.get(args.modelgridindex, []):
             msg = f"cell {args.modelgridindex} is empty. no estimators available"
             raise ValueError(msg)
-        make_plot(modelpath, timesteplist_unfiltered, mgilist, estimators, args.x, plotlist, args)
+        make_plot(
+            modelpath=modelpath,
+            timestepslist_unfiltered=timestepslist_unfiltered,
+            allnonemptymgilist=mgilist,
+            estimators=estimators,
+            xvariable=args.x,
+            plotlist=plotlist,
+            args=args,
+        )
     else:
         # plot a range of cells in a time snapshot showing internal structure
 
@@ -1161,9 +1195,15 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             pdf_list = []
             modelpath_list = []
             for timestep in range(timestepmin, timestepmax + 1):
-                timesteplist_unfiltered = [[timestep]] * len(allnonemptymgilist)
+                timestepslist_unfiltered = [[timestep]] * len(allnonemptymgilist)
                 outfilename = make_plot(
-                    modelpath, timesteplist_unfiltered, allnonemptymgilist, estimators, args.x, plotlist, args
+                    modelpath=modelpath,
+                    timestepslist_unfiltered=timestepslist_unfiltered,
+                    allnonemptymgilist=allnonemptymgilist,
+                    estimators=estimators,
+                    xvariable=args.x,
+                    plotlist=plotlist,
+                    args=args,
                 )
 
                 if "/" in outfilename:
@@ -1176,8 +1216,16 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
                 at.join_pdf_files(pdf_list, modelpath_list)
 
         else:
-            timesteplist_unfiltered = [timesteps_included] * len(allnonemptymgilist)
-            make_plot(modelpath, timesteplist_unfiltered, allnonemptymgilist, estimators, args.x, plotlist, args)
+            timestepslist_unfiltered = [timesteps_included] * len(allnonemptymgilist)
+            make_plot(
+                modelpath=modelpath,
+                timestepslist_unfiltered=timestepslist_unfiltered,
+                allnonemptymgilist=allnonemptymgilist,
+                estimators=estimators,
+                xvariable=args.x,
+                plotlist=plotlist,
+                args=args,
+            )
 
 
 if __name__ == "__main__":
