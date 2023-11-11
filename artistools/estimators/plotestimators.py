@@ -560,10 +560,10 @@ def get_xlist(
         if modelmeta["vmax_cmps"] > 0.3 * 29979245800:
             args.x = "beta"
             xvariable = "beta"
-        dfmodel = dfmodel.with_columns(pl.col("inputcellid").sub(1).alias("modelgridindex"))
-        dfmodel = dfmodel.filter(pl.col("modelgridindex").is_in(allnonemptymgilist))
+
         if args.readonlymgi:
             dfmodel = dfmodel.filter(pl.col("modelgridindex").is_in(args.modelgridindex))
+
         dfmodel = dfmodel.select(["modelgridindex", "vel_r_mid"]).sort(by="vel_r_mid")
         scalefactor = 1e5 if xvariable == "velocity" else 29979245800
         dfmodel = dfmodel.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"])
