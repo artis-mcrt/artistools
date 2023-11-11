@@ -449,7 +449,7 @@ def plot_multi_ion_series(
 
 def plot_series(
     ax: plt.Axes,
-    xvariable: str,
+    startfromzero: bool,
     variablename: str,
     showlegend: bool,
     modelpath: str | Path,
@@ -485,7 +485,7 @@ def plot_series(
         # 'cooling_adiabatic': 'blue'
     }
 
-    if xvariable.startswith("velocity") or xvariable == "beta":
+    if startfromzero:
         # make a line segment from 0 velocity
         xlist.insert(0, 0.0)
         ylist.insert(0, ylist[0])
@@ -578,6 +578,7 @@ def plot_subplot(
     timestepslist: list[list[int]],
     xlist: list[float | int],
     xvariable: str,
+    startfromzero: bool,
     plotitems: list[t.Any],
     mgilist: list[int | t.Sequence[int]],
     modelpath: str | Path,
@@ -587,7 +588,6 @@ def plot_subplot(
 ):
     """Make plot from ARTIS estimators."""
     # these three lists give the x value, modelgridex, and a list of timesteps (for averaging) for each plot of the plot
-    assert len(xlist) - 1 == len(mgilist) == len(timestepslist)
     showlegend = False
     seriescount = 0
     ylabel = None
@@ -600,13 +600,13 @@ def plot_subplot(
             elif ylabel != get_ylabel(variablename):
                 sameylabel = False
                 break
-    startfromzero = xvariable.startswith("velocity") or xvariable == "beta"
+
     for plotitem in plotitems:
         if isinstance(plotitem, str):
             showlegend = seriescount > 1 or len(plotitem) > 20 or not sameylabel
             plot_series(
                 ax=ax,
-                xvariable=xvariable,
+                startfromzero=startfromzero,
                 variablename=plotitem,
                 showlegend=showlegend,
                 modelpath=modelpath,
@@ -722,12 +722,9 @@ def make_plot(
     xlist, mgilist, timestepslist, estimators = get_xlist(
         xvariable, allnonemptymgilist, estimators, timestepslist_unfiltered, modelpath, args
     )
-
-    xlist = list(
-        np.insert(xlist, 0, 0.0)
-        if (xvariable.startswith("velocity") or xvariable == "beta")
-        else np.insert(xlist, 0, xlist[0])
-    )
+    startfromzero = xvariable.startswith("velocity") or xvariable == "beta"
+    if startfromzero:
+        xlist.insert(0, 0.0)
 
     xmin = args.xmin if args.xmin >= 0 else min(xlist)
     xmax = args.xmax if args.xmax > 0 else max(xlist)
@@ -755,14 +752,15 @@ def make_plot(
     for ax, plotitems in zip(axes, plotlist):
         ax.set_xlim(left=xmin, right=xmax)
         plot_subplot(
-            ax,
-            timestepslist,
-            xlist,
-            xvariable,
-            plotitems,
-            mgilist,
-            modelpath,
-            estimators,
+            ax=ax,
+            timestepslist=timestepslist,
+            xlist=xlist,
+            xvariable=xvariable,
+            plotitems=plotitems,
+            mgilist=mgilist,
+            modelpath=modelpath,
+            estimators=estimators,
+            startfromzero=startfromzero,
             args=args,
             **plotkwargs,
         )
