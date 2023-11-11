@@ -579,12 +579,12 @@ def get_xlist(
         estimators = estimators.sort("xvalue")
         xlist = estimators.group_by(pl.col("plotpointid")).agg(pl.col("xvalue").mean()).collect()["xvalue"].to_list()
     else:
-        dfmodel, modelmeta = at.inputmodel.get_modeldata_polars(modelpath, derived_cols=["vel_r_mid"])
+        dfmodel, modelmeta = at.inputmodel.get_modeldata_polars(modelpath, derived_cols=[xvariable])
         # handle xvariable is in dfmodel. TODO: handle xvariable is in estimators
         assert xvariable in dfmodel.columns
         if modelmeta["dimensions"] > 1:
             args.markersonly = True
-        dfmodel = dfmodel.with_columns(pl.col("inputcellid").sub(1).alias("modelgridindex"))
+
         dfmodel = dfmodel.filter(pl.col("modelgridindex").is_in(allnonemptymgilist))
         if args.readonlymgi:
             dfmodel = dfmodel.filter(pl.col("modelgridindex").is_in(args.modelgridindex))
