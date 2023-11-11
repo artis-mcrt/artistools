@@ -433,11 +433,9 @@ def plot_multi_ion_series(
 
 def plot_series(
     ax: plt.Axes,
-    xlist: t.Sequence[int | float] | np.ndarray,
+    xvariable: str,
     variablename: str,
     showlegend: bool,
-    timestepslist: t.Sequence[t.Sequence[int]],
-    mgilist: t.Sequence[int | t.Sequence[int]],
     modelpath: str | Path,
     estimators: pl.LazyFrame | pl.DataFrame,
     args: argparse.Namespace,
@@ -445,7 +443,6 @@ def plot_series(
     **plotkwargs: t.Any,
 ) -> None:
     """Plot something like Te or TR."""
-    assert len(xlist) - 1 == len(mgilist) == len(timestepslist)
     formattedvariablename = at.estimators.get_dictlabelreplacements().get(variablename, variablename)
     serieslabel = f"{formattedvariablename}"
     units_string = at.estimators.get_units_string(variablename)
@@ -459,9 +456,9 @@ def plot_series(
         linelabel = None
     print(f"Plotting {variablename}")
 
-    series = estimators.group_by("xvalue").agg(pl.col(variablename).mean()).lazy().collect()
+    series = estimators.group_by("xvalue", maintain_order=True).agg(pl.col(variablename).mean()).lazy().collect()
     ylist = series[variablename].to_list()
-    xlist2 = series["xvalue"].to_list()
+    xlist = series["xvalue"].to_list()
 
     if math.log10(max(ylist) / min(ylist)) > 2 or min(ylist) == 0:
         ax.set_yscale("log")
@@ -472,10 +469,12 @@ def plot_series(
         # 'cooling_adiabatic': 'blue'
     }
 
-    xlist2.insert(0, xlist[0])
-    ylist.insert(0, ylist[0])
+    if xvariable.startswith("velocity") or xvariable == "beta":
+        # make a line segment from 0 velocity
+        xlist.insert(0, 0.0)
+        ylist.insert(0, ylist[0])
 
-    xlist_filtered, ylist_filtered = at.estimators.apply_filters(xlist2, ylist, args)
+    xlist_filtered, ylist_filtered = at.estimators.apply_filters(xlist, ylist, args)
 
     ax.plot(
         xlist_filtered, ylist_filtered, linewidth=1.5, label=linelabel, color=dictcolors.get(variablename), **plotkwargs
@@ -521,13 +520,13 @@ def get_xlist(
         if args.readonlymgi:
             dfmodel = dfmodel.filter(pl.col("modelgridindex").is_in(args.modelgridindex))
         dfmodel = dfmodel.select(["modelgridindex", "vel_r_mid"]).sort(by="vel_r_mid")
+        scalefactor = 1e5 if xvariable == "velocity" else 29979245800
         if args.xmax > 0:
-            dfmodel = dfmodel.filter(pl.col("vel_r_mid") / 1e5 <= args.xmax)
+            dfmodel = dfmodel.filter(pl.col("vel_r_mid") / scalefactor <= args.xmax)
         else:
             dfmodel = dfmodel.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"])
         dfmodelcollect = dfmodel.select(["vel_r_mid", "modelgridindex"]).collect()
 
-        scalefactor = 1e5 if xvariable == "velocity" else 29979245800
         xlist = (dfmodelcollect["vel_r_mid"] / scalefactor).to_list()
         mgilist_out = dfmodelcollect["modelgridindex"].to_list()
         timestepslist_out = timestepslist
@@ -562,6 +561,7 @@ def plot_subplot(
     ax: plt.Axes,
     timestepslist: list[list[int]],
     xlist: list[float | int],
+    xvariable: str,
     plotitems: list[t.Any],
     mgilist: list[int | t.Sequence[int]],
     modelpath: str | Path,
@@ -589,15 +589,13 @@ def plot_subplot(
         if isinstance(plotitem, str):
             showlegend = seriescount > 1 or len(plotitem) > 20 or not sameylabel
             plot_series(
-                ax,
-                xlist,
-                plotitem,
-                showlegend,
-                timestepslist,
-                mgilist,
-                modelpath,
-                estimators,
-                args,
+                ax=ax,
+                xvariable=xvariable,
+                variablename=plotitem,
+                showlegend=showlegend,
+                modelpath=modelpath,
+                estimators=estimators,
+                args=args,
                 nounits=sameylabel,
                 **plotkwargs,
             )
@@ -747,6 +745,7 @@ def make_plot(
             ax,
             timestepslist,
             xlist,
+            xvariable,
             plotitems,
             mgilist,
             modelpath,
