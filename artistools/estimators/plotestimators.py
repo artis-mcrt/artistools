@@ -527,19 +527,18 @@ def get_xlist(
     estimators: pl.LazyFrame | pl.DataFrame,
     timestepslist: t.Any,
     modelpath: str | Path,
+    groupbyxvalue: bool,
     args: t.Any,
 ) -> tuple[list[float | int], list[int | t.Sequence[int]], list[list[int]], pl.LazyFrame | pl.DataFrame]:
     xlist: t.Sequence[float | int]
     if xvariable in {"cellid", "modelgridindex"}:
         mgilist_out = [mgi for mgi in allnonemptymgilist if mgi <= args.xmax] if args.xmax >= 0 else allnonemptymgilist
         xlist = list(mgilist_out)
-        timestepslist_out = timestepslist
         estimators = estimators.with_columns(xvalue=pl.col("modelgridindex"), plotpointid=pl.col("modelgridindex"))
     elif xvariable == "timestep":
         mgilist_out = allnonemptymgilist
         check_type(timestepslist, t.Sequence[int])
         xlist = timestepslist
-        timestepslist_out = timestepslist
         estimators = estimators.with_columns(xvalue=pl.col("timestep"), plotpointid=pl.col("timestep"))
     elif xvariable == "time":
         mgilist_out = allnonemptymgilist
@@ -547,11 +546,8 @@ def get_xlist(
         check_type(timestepslist, t.Sequence[t.Sequence[int]])
         xlist = [np.mean([timearray[ts] for ts in tslist]) for tslist in timestepslist]
         estimators = estimators.with_columns(xvalue=pl.Series(xlist), plotpointid=pl.col("timestep"))
-        timestepslist_out = timestepslist
     elif xvariable in {"velocity", "beta"}:
         dfmodel, modelmeta = at.inputmodel.get_modeldata_polars(modelpath, derived_cols=["vel_r_mid"])
-        if modelmeta["dimensions"] > 1:
-            args.markersonly = True
         if modelmeta["vmax_cmps"] > 0.3 * 29979245800:
             args.x = "beta"
             xvariable = "beta"
@@ -570,14 +566,12 @@ def get_xlist(
 
         xlist = (dfmodelcollect["vel_r_mid"] / scalefactor).to_list()
         mgilist_out = dfmodelcollect["modelgridindex"].to_list()
-        timestepslist_out = timestepslist
         estimators = estimators.filter(pl.col("modelgridindex").is_in(mgilist_out))
         estimators = estimators.lazy().join(dfmodel.select(["modelgridindex", "vel_r_mid"]).lazy(), on="modelgridindex")
         estimators = estimators.with_columns(
             xvalue=(pl.col("vel_r_mid") / scalefactor), plotpointid=pl.col("modelgridindex")
         )
         estimators = estimators.sort("xvalue")
-        xlist = estimators.group_by(pl.col("plotpointid")).agg(pl.col("xvalue").mean()).collect()["xvalue"].to_list()
     else:
         dfmodel, modelmeta = at.inputmodel.get_modeldata_polars(modelpath, derived_cols=[xvariable])
         # handle xvariable is in dfmodel. TODO: handle xvariable is in estimators
@@ -596,18 +590,43 @@ def get_xlist(
 
         xlist = dfmodelcollect[xvariable].to_list()
         mgilist_out = dfmodelcollect["modelgridindex"].to_list()
-        timestepslist_out = timestepslist
         estimators = estimators.filter(pl.col("modelgridindex").is_in(mgilist_out))
         estimators = estimators.lazy().join(dfmodel, on="modelgridindex")
         estimators = estimators.with_columns(xvalue=pl.col(xvariable), plotpointid=pl.col("modelgridindex"))
-        estimators = estimators.sort("xvalue")
-        xlist = estimators.select("xvalue").collect()["xvalue"].to_list()
 
-    xlist, mgilist_out, timestepslist_out = zip(*sorted(zip(xlist, mgilist_out, timestepslist_out)))
+    allts: set[int] = set()
+    for tspoint in timestepslist:
+        if isinstance(tspoint, int):
+            allts.add(tspoint)
+        else:
+            for ts in tspoint:
+                allts.add(ts)
 
-    assert len(xlist) == len(mgilist_out) == len(timestepslist_out)
+    estimators = estimators.filter(pl.col("modelgridindex").is_in(allnonemptymgilist)).filter(
+        pl.col("timestep").is_in(allts)
+    )
 
-    return list(xlist), list(mgilist_out), list(timestepslist_out), estimators
+    # single valued line plot
+    if groupbyxvalue:
+        estimators = estimators.with_columns(plotpointid=pl.col("xvalue"))
+
+    estimators = estimators.sort("plotpointid")
+    pointgroups = (
+        (
+            estimators.select(["plotpointid", "xvalue", "modelgridindex", "timestep"])
+            .group_by("plotpointid", maintain_order=True)
+            .agg(pl.col("xvalue").first(), pl.col("modelgridindex").first(), pl.col("timestep").unique())
+        )
+        .lazy()
+        .collect()
+    )
+
+    return (
+        pointgroups["xvalue"].to_list(),
+        pointgroups["modelgridindex"].to_list(),
+        pointgroups["timestep"].to_list(),
+        estimators,
+    )
 
 
 def plot_subplot(
@@ -758,7 +777,13 @@ def make_plot(
         axes[-1].set_xlabel(f"{xvariable}{at.estimators.get_units_string(xvariable)}")
 
     xlist, mgilist, timestepslist, estimators = get_xlist(
-        xvariable, allnonemptymgilist, estimators, timestepslist_unfiltered, modelpath, args
+        xvariable=xvariable,
+        allnonemptymgilist=allnonemptymgilist,
+        estimators=estimators,
+        timestepslist=timestepslist_unfiltered,
+        modelpath=modelpath,
+        groupbyxvalue=not args.markersonly,
+        args=args,
     )
     startfromzero = (xvariable.startswith("velocity") or xvariable == "beta") and not args.markersonly
     if startfromzero:
@@ -773,19 +798,6 @@ def make_plot(
 
         # with no lines, line styles cannot distringuish ions
         args.colorbyion = True
-
-    # ideally, we could start filtering the columns here, but it's still faster to collect the whole thing
-    allts: set[int] = set()
-    for tspoint in timestepslist:
-        if isinstance(tspoint, int):
-            allts.add(tspoint)
-        else:
-            for ts in tspoint:
-                allts.add(ts)
-
-    estimators = (
-        estimators.filter(pl.col("modelgridindex").is_in(mgilist)).filter(pl.col("timestep").is_in(allts)).lazy()
-    )
 
     for ax, plotitems in zip(axes, plotlist):
         ax.set_xlim(left=xmin, right=xmax)
@@ -843,8 +855,8 @@ def make_plot(
         axes[0].set_title(figure_title, fontsize=8)
     # plt.suptitle(figure_title, fontsize=11, verticalalignment='top')
 
+    print(f"Saving {outfilename} ...")
     fig.savefig(outfilename)
-    print(f"Saved {outfilename}")
 
     if args.show:
         plt.show()
