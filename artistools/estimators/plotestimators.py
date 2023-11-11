@@ -170,14 +170,16 @@ def plot_average_ionisation_excitation(
                     / pl.col(f"nnelement_{elsymb}")
                 ).alias(f"averageionisation_{elsymb}")
             )
-            # TODO: for more performance, replace with a group_by expression
-            for modelgridindex, timesteps in zip(mgilist, timestepslist):
-                dfselected_mgi = dfselected.filter(pl.col("modelgridindex") == modelgridindex)
-                avg_ionisation_timeavg = (
-                    dfselected_mgi.select(pl.col(f"averageionisation_{elsymb}") * pl.col("tdelta")).sum().item(0, 0)
-                    / dfselected_mgi["tdelta"].sum()
-                )
-                ylist.append(avg_ionisation_timeavg)
+
+            series = dfselected.group_by("xvalue").agg(pl.col(f"averageionisation_{elsymb}").mean()).lazy().collect()
+            xlist = series["xvalue"].to_list()
+            ylist = series[f"averageionisation_{elsymb}"].to_list()
+
+            if startfromzero:
+                # make a line segment from 0 velocity
+                xlist.insert(0, 0.0)
+                ylist.insert(0, ylist[0])
+
         elif seriestype == "averageexcitation":
             print("  This will be slow!")
             for modelgridindex, timesteps in zip(mgilist, timestepslist):
@@ -202,10 +204,10 @@ def plot_average_ionisation_excitation(
                 msg = f"ERROR: No excitation data found for {paramvalue}"
                 raise ValueError(msg)
             ylist.append(exc_ev_times_tdelta_sum / tdeltasum if tdeltasum > 0 else float("nan"))
+            if startfromzero:
+                ylist.insert(0, ylist[0])
 
         color = get_elemcolor(atomic_number=atomic_number)
-        if startfromzero:
-            ylist.insert(0, ylist[0])
 
         xlist, ylist = at.estimators.apply_filters(xlist, ylist, args)
 
