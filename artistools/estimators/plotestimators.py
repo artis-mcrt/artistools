@@ -151,6 +151,7 @@ def plot_average_ionisation_excitation(
                     | cs.by_name("modelgridindex")
                     | cs.by_name("timestep")
                     | cs.by_name("xvalue")
+                    | cs.by_name("plotpointid")
                 )
                 .with_columns(pl.col(pl.Float32).fill_null(0.0))
                 .collect()
@@ -171,7 +172,12 @@ def plot_average_ionisation_excitation(
                 ).alias(f"averageionisation_{elsymb}")
             )
 
-            series = dfselected.group_by("xvalue").agg(pl.col(f"averageionisation_{elsymb}").mean()).lazy().collect()
+            series = (
+                dfselected.group_by("plotpointid", maintain_order=True)
+                .agg(pl.col(f"averageionisation_{elsymb}").mean(), pl.col("xvalue").mean())
+                .lazy()
+                .collect()
+            )
             xlist = series["xvalue"].to_list()
             ylist = series[f"averageionisation_{elsymb}"].to_list()
 
@@ -380,7 +386,13 @@ def plot_multi_ion_series(
         else:
             raise AssertionError
 
-        series = estimators.group_by("xvalue").agg(pl.col(key).mean() / scalefactor).lazy().collect().sort("xvalue")
+        series = (
+            estimators.group_by("plotpointid")
+            .agg(pl.col(key).mean() / scalefactor, pl.col("xvalue").mean())
+            .lazy()
+            .collect()
+            .sort("xvalue")
+        )
         xlist = series["xvalue"].to_list()
         ylist = series[key].to_list()
         if startfromzero:
@@ -479,7 +491,12 @@ def plot_series(
         linelabel = None
     print(f"Plotting {variablename}")
 
-    series = estimators.group_by("xvalue", maintain_order=True).agg(pl.col(variablename).mean()).lazy().collect()
+    series = (
+        estimators.group_by("plotpointid", maintain_order=True)
+        .agg(pl.col(variablename).mean(), pl.col("xvalue").mean())
+        .lazy()
+        .collect()
+    )
     ylist = series[variablename].to_list()
     xlist = series["xvalue"].to_list()
 
@@ -517,19 +534,19 @@ def get_xlist(
         mgilist_out = [mgi for mgi in allnonemptymgilist if mgi <= args.xmax] if args.xmax >= 0 else allnonemptymgilist
         xlist = list(mgilist_out)
         timestepslist_out = timestepslist
-        estimators = estimators.with_columns(xvalue=pl.col("modelgridindex"))
+        estimators = estimators.with_columns(xvalue=pl.col("modelgridindex"), plotpointid=pl.col("modelgridindex"))
     elif xvariable == "timestep":
         mgilist_out = allnonemptymgilist
         check_type(timestepslist, t.Sequence[int])
         xlist = timestepslist
         timestepslist_out = timestepslist
-        estimators = estimators.with_columns(xvalue=pl.col("timestep"))
+        estimators = estimators.with_columns(xvalue=pl.col("timestep"), plotpointid=pl.col("timestep"))
     elif xvariable == "time":
         mgilist_out = allnonemptymgilist
         timearray = at.get_timestep_times(modelpath)
         check_type(timestepslist, t.Sequence[t.Sequence[int]])
         xlist = [np.mean([timearray[ts] for ts in tslist]) for tslist in timestepslist]
-        estimators = estimators.with_columns(xvalue=pl.Series(xlist))
+        estimators = estimators.with_columns(xvalue=pl.Series(xlist), plotpointid=pl.col("timestep"))
         timestepslist_out = timestepslist
     elif xvariable in {"velocity", "beta"}:
         dfmodel, modelmeta = at.inputmodel.get_modeldata_polars(modelpath, derived_cols=["vel_r_mid"])
@@ -556,9 +573,11 @@ def get_xlist(
         timestepslist_out = timestepslist
         estimators = estimators.filter(pl.col("modelgridindex").is_in(mgilist_out))
         estimators = estimators.lazy().join(dfmodel.select(["modelgridindex", "vel_r_mid"]).lazy(), on="modelgridindex")
-        estimators = estimators.with_columns(xvalue=(pl.col("vel_r_mid") / scalefactor))
+        estimators = estimators.with_columns(
+            xvalue=(pl.col("vel_r_mid") / scalefactor), plotpointid=pl.col("modelgridindex")
+        )
         estimators = estimators.sort("xvalue")
-        xlist = estimators.select("xvalue").collect()["xvalue"].to_list()
+        xlist = estimators.group_by(pl.col("plotpointid")).agg(pl.col("xvalue").mean()).collect()["xvalue"].to_list()
     else:
         dfmodel, modelmeta = at.inputmodel.get_modeldata_polars(modelpath, derived_cols=["vel_r_mid"])
         # handle xvariable is in dfmodel. TODO: handle xvariable is in estimators
@@ -579,8 +598,8 @@ def get_xlist(
         mgilist_out = dfmodelcollect["modelgridindex"].to_list()
         timestepslist_out = timestepslist
         estimators = estimators.filter(pl.col("modelgridindex").is_in(mgilist_out))
-        estimators = estimators.lazy().join(dfmodel.select(["modelgridindex", xvariable]).lazy(), on="modelgridindex")
-        estimators = estimators.with_columns(xvalue=pl.col(xvariable))
+        estimators = estimators.lazy().join(dfmodel, on="modelgridindex")
+        estimators = estimators.with_columns(xvalue=pl.col(xvariable), plotpointid=pl.col("modelgridindex"))
         estimators = estimators.sort("xvalue")
         xlist = estimators.select("xvalue").collect()["xvalue"].to_list()
 
