@@ -139,45 +139,40 @@ def plot_average_ionisation_excitation(
             ionstage = at.decode_roman_numeral(paramvalue.split(" ")[1])
         ylist = []
         if seriestype == "averageionisation":
-            # TODO: replace loop with Polars groupby
+            elsymb = at.get_elsymbol(atomic_number)
+            dfselected = (
+                estimators.select(
+                    cs.starts_with(f"nnion_{elsymb}_")
+                    | cs.by_name(f"nnelement_{elsymb}")
+                    | cs.by_name("modelgridindex")
+                    | cs.by_name("timestep")
+                    | cs.by_name("xvalue")
+                )
+                .with_columns(pl.col(pl.Float32).fill_null(0.0))
+                .collect()
+                .join(
+                    pl.DataFrame({"timestep": range(len(arr_tdelta)), "tdelta": arr_tdelta}).with_columns(
+                        pl.col("timestep").cast(pl.Int32)
+                    ),
+                    on="timestep",
+                    how="left",
+                )
+            )
+            ioncols = [col for col in dfselected.columns if col.startswith(f"nnion_{elsymb}_")]
+            ioncharges = [at.decode_roman_numeral(col.removeprefix(f"nnion_{elsymb}_")) - 1 for col in ioncols]
+            dfselected = dfselected.with_columns(
+                (
+                    pl.sum_horizontal([pl.col(ioncol) * ioncharge for ioncol, ioncharge in zip(ioncols, ioncharges)])
+                    / pl.col(f"nnelement_{elsymb}")
+                ).alias(f"averageionisation_{elsymb}")
+            )
             for modelgridindex, timesteps in zip(mgilist, timestepslist):
-                valuesum = 0
-                tdeltasum = 0
-                for timestep in timesteps:
-                    estimatorstsmgi = estimators.filter(pl.col("timestep") == timestep).filter(
-                        pl.col("modelgridindex") == modelgridindex
-                    )
-                    elsymb = at.get_elsymbol(atomic_number)
-                    dfselected = (
-                        estimatorstsmgi.select(cs.starts_with(f"nnion_{elsymb}_") | cs.by_name(f"nnelement_{elsymb}"))
-                        .fill_null(0.0)
-                        .collect()
-                    )
-
-                    dfnnelement = dfselected[f"nnelement_{elsymb}"]
-                    if dfnnelement.is_empty():
-                        myval = float("NaN")
-                    else:
-                        nnelement = dfnnelement.item(0)
-                        if nnelement is None:
-                            myval = float("NaN")
-                        elif ioncols := [col for col in dfselected.columns if col.startswith(f"nnion_{elsymb}_")]:
-                            ioncharges = [
-                                at.decode_roman_numeral(col.removeprefix(f"nnion_{elsymb}_")) - 1 for col in ioncols
-                            ]
-                            myval = (
-                                dfselected.select(
-                                    pl.sum_horizontal(
-                                        [pl.col(ioncol) * ioncharge for ioncol, ioncharge in zip(ioncols, ioncharges)]
-                                    )
-                                ).item(0, 0)
-                                / nnelement
-                            )
-                        else:
-                            myval = float("NaN")
-                    valuesum += myval * arr_tdelta[timestep]
-                    tdeltasum += arr_tdelta[timestep]
-                ylist.append(valuesum / tdeltasum if tdeltasum > 0 else float("nan"))
+                dfselected_mgi = dfselected.filter(pl.col("modelgridindex") == modelgridindex)
+                avg_ionisation_timeavg = (
+                    dfselected_mgi.select(pl.col(f"averageionisation_{elsymb}") * pl.col("tdelta")).sum().item(0, 0)
+                    / dfselected_mgi["tdelta"].sum()
+                )
+                ylist.append(avg_ionisation_timeavg)
         elif seriestype == "averageexcitation":
             print("  This will be slow!")
             for modelgridindex, timesteps in zip(mgilist, timestepslist):
