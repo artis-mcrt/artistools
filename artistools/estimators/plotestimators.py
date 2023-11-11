@@ -166,6 +166,7 @@ def plot_average_ionisation_excitation(
                     / pl.col(f"nnelement_{elsymb}")
                 ).alias(f"averageionisation_{elsymb}")
             )
+            # TODO: for more performance, replace with a group_by expression
             for modelgridindex, timesteps in zip(mgilist, timestepslist):
                 dfselected_mgi = dfselected.filter(pl.col("modelgridindex") == modelgridindex)
                 avg_ionisation_timeavg = (
@@ -286,7 +287,7 @@ def plot_levelpop(
 
 def plot_multi_ion_series(
     ax: plt.Axes,
-    xlist: t.Sequence[int | float] | np.ndarray,
+    xvariable: str,
     seriestype: str,
     ionlist: t.Sequence[str],
     timestepslist: t.Sequence[t.Sequence[int]],
@@ -297,7 +298,6 @@ def plot_multi_ion_series(
     **plotkwargs: t.Any,
 ):
     """Plot an ion-specific property, e.g., populations."""
-    assert len(xlist) - 1 == len(mgilist) == len(timestepslist)
     # if seriestype == 'populations':
     #     ax.yaxis.set_major_locator(ticker.MultipleLocator(base=0.10))
 
@@ -382,7 +382,12 @@ def plot_multi_ion_series(
             raise AssertionError
 
         series = estimators.group_by("xvalue").agg(pl.col(key).mean() / scalefactor).lazy().collect().sort("xvalue")
+        xlist = series["xvalue"].to_list()
         ylist = series[key].to_list()
+        if xvariable.startswith("velocity") or xvariable == "beta":
+            # make a line segment from 0 velocity
+            xlist.insert(0, 0.0)
+            ylist.insert(0, ylist[0])
 
         plotlabel = (
             ionstage
@@ -420,8 +425,6 @@ def plot_multi_ion_series(
         # assert colorindex < 10
         # color = f'C{colorindex}'
         # or ax.step(where='pre', )
-
-        ylist.insert(0, ylist[0])
 
         xlist, ylist = at.estimators.apply_filters(xlist, ylist, args)
         if plotkwargs.get("linestyle", "solid") != "None":
@@ -533,6 +536,7 @@ def get_xlist(
         dfmodel, modelmeta = at.inputmodel.get_modeldata_polars(modelpath, derived_cols=["vel_r_mid"])
         if modelmeta["dimensions"] > 1:
             args.markersonly = True
+            args.colorbyion = True
         if modelmeta["vmax_cmps"] > 0.3 * 29979245800:
             args.x = "beta"
             xvariable = "beta"
@@ -672,7 +676,7 @@ def plot_subplot(
                 seriestype, ionlist = plotitem
                 plot_multi_ion_series(
                     ax,
-                    xlist,
+                    xvariable,
                     seriestype,
                     ionlist,
                     timestepslist,
