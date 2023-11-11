@@ -29,6 +29,9 @@ def get_variableunits(key: str | None = None) -> str | dict[str, str]:
         "Te": "K",
         "TJ": "K",
         "nne": "e^-/cm3",
+        "nniso": "cm$^{-3}$",
+        "nnion": "cm$^{-3}$",
+        "nnelement": "cm$^{-3}$",
         "heating": "erg/s/cm3",
         "heating_dep/total_dep": "Ratio",
         "cooling": "erg/s/cm3",
@@ -340,7 +343,7 @@ def read_estimators_polars(
     if match_timestep is not None:
         pldflazy = pldflazy.filter(pl.col("timestep").is_in(match_timestep))
 
-    return pldflazy
+    return pldflazy.fill_null(0)
 
 
 def read_estimators(
