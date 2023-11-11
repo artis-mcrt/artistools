@@ -726,7 +726,7 @@ def make_plot(
     xlist, mgilist, timestepslist, estimators = get_xlist(
         xvariable, allnonemptymgilist, estimators, timestepslist_unfiltered, modelpath, args
     )
-    startfromzero = xvariable.startswith("velocity") or xvariable == "beta"
+    startfromzero = (xvariable.startswith("velocity") or xvariable == "beta") and not args.markersonly
     if startfromzero:
         xlist.insert(0, 0.0)
 
