@@ -119,6 +119,7 @@ def plot_average_ionisation_excitation(
     mgilist,
     estimators,
     modelpath,
+    startfromzero: bool,
     args=None,
     **plotkwargs,
 ):
@@ -203,7 +204,8 @@ def plot_average_ionisation_excitation(
             ylist.append(exc_ev_times_tdelta_sum / tdeltasum if tdeltasum > 0 else float("nan"))
 
         color = get_elemcolor(atomic_number=atomic_number)
-        ylist.insert(0, ylist[0])
+        if startfromzero:
+            ylist.insert(0, ylist[0])
 
         xlist, ylist = at.estimators.apply_filters(xlist, ylist, args)
 
@@ -556,19 +558,29 @@ def get_xlist(
         estimators = estimators.sort("xvalue")
         xlist = estimators.select("xvalue").collect()["xvalue"].to_list()
     else:
-        xlist = []
-        mgilist_out = []
-        timestepslist_out = []
-        for modelgridindex, timesteps in zip(allnonemptymgilist, timestepslist):
-            xvalue = at.estimators.get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, xvariable)[
-                xvariable
-            ]
-            assert isinstance(xvalue, float | int)
-            xlist.append(xvalue)
-            mgilist_out.append(modelgridindex)
-            timestepslist_out.append(timesteps)
-            if args.xmax > 0 and xvalue > args.xmax:
-                break
+        dfmodel, modelmeta = at.inputmodel.get_modeldata_polars(modelpath, derived_cols=["vel_r_mid"])
+        # handle xvariable is in dfmodel. TODO: handle xvariable is in estimators
+        assert xvariable in dfmodel.columns
+        if modelmeta["dimensions"] > 1:
+            args.markersonly = True
+        dfmodel = dfmodel.with_columns(pl.col("inputcellid").sub(1).alias("modelgridindex"))
+        dfmodel = dfmodel.filter(pl.col("modelgridindex").is_in(allnonemptymgilist))
+        if args.readonlymgi:
+            dfmodel = dfmodel.filter(pl.col("modelgridindex").is_in(args.modelgridindex))
+        dfmodel = dfmodel.select(["modelgridindex", xvariable]).sort(by=xvariable)
+
+        if args.xmax > 0:
+            dfmodel = dfmodel.filter(pl.col(xvariable) <= args.xmax)
+        dfmodelcollect = dfmodel.select(["modelgridindex", xvariable]).collect()
+
+        xlist = dfmodelcollect[xvariable].to_list()
+        mgilist_out = dfmodelcollect["modelgridindex"].to_list()
+        timestepslist_out = timestepslist
+        estimators = estimators.filter(pl.col("modelgridindex").is_in(mgilist_out))
+        estimators = estimators.lazy().join(dfmodel.select(["modelgridindex", xvariable]).lazy(), on="modelgridindex")
+        estimators = estimators.with_columns(xvalue=pl.col(xvariable))
+        estimators = estimators.sort("xvalue")
+        xlist = estimators.select("xvalue").collect()["xvalue"].to_list()
 
     xlist, mgilist_out, timestepslist_out = zip(*sorted(zip(xlist, mgilist_out, timestepslist_out)))
 
@@ -653,6 +665,7 @@ def plot_subplot(
                     mgilist,
                     estimators,
                     modelpath,
+                    startfromzero=startfromzero,
                     args=args,
                     **plotkwargs,
                 )
