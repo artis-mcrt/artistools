@@ -308,6 +308,7 @@ def get_modeldata_polars(
         - modelpath: either a path to model.txt file, or a folder containing model.txt
         - get_elemabundances: also read elemental abundances (abundances.txt) and
             merge with the output DataFrame
+        - derived_cols: list of derived columns to add to the model data, or "ALL" to add all possible derived columns
 
     return dfmodel, modelmeta
         - dfmodel: a pandas DataFrame with a row for each model grid cell
@@ -489,6 +490,7 @@ def add_derived_cols_to_modeldata(
     original_cols = dfmodel.columns
 
     t_model_init_seconds = modelmeta["t_model_init_days"] * 86400.0
+    keep_all = "ALL" in derived_cols
 
     dimensions = modelmeta["dimensions"]
     match dimensions:
@@ -644,17 +646,18 @@ def add_derived_cols_to_modeldata(
     dfmodel = dfmodel.with_columns([(pl.col("rho") * pl.col("volume")).alias("mass_g")])
 
     if unknown_cols := [
-        col for col in derived_cols if col not in dfmodel.columns and col not in {"pos_min", "pos_max"}
+        col for col in derived_cols if col not in dfmodel.columns and col not in {"pos_min", "pos_max", "ALL"}
     ]:
         print(f"WARNING: Unknown derived columns: {unknown_cols}")
 
-    if "pos_min" in derived_cols:
+    if "pos_min" in derived_cols or keep_all:
         derived_cols.extend([f"pos_{ax}_min" for ax in axes])
 
-    if "pos_max" in derived_cols:
+    if "pos_max" in derived_cols or keep_all:
         derived_cols.extend([f"pos_{ax}_max" for ax in axes])
 
-    dfmodel = dfmodel.drop([col for col in dfmodel.columns if col not in original_cols and col not in derived_cols])
+    if not keep_all:
+        dfmodel = dfmodel.drop([col for col in dfmodel.columns if col not in original_cols and col not in derived_cols])
 
     if "angle_bin" in derived_cols:
         assert modelpath is not None

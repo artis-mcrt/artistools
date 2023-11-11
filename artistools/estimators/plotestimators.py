@@ -529,18 +529,6 @@ def get_xlist(
     groupbyxvalue: bool,
     args: t.Any,
 ) -> tuple[list[float | int], list[int | t.Sequence[int]], list[list[int]], pl.LazyFrame | pl.DataFrame]:
-    allts: set[int] = set()
-    for tspoint in timestepslist:
-        if isinstance(tspoint, int):
-            allts.add(tspoint)
-        else:
-            for ts in tspoint:
-                allts.add(ts)
-
-    estimators = estimators.filter(pl.col("modelgridindex").is_in(allnonemptymgilist)).filter(
-        pl.col("timestep").is_in(allts)
-    )
-
     if xvariable in {"cellid", "modelgridindex"}:
         estimators = estimators.with_columns(xvalue=pl.col("modelgridindex"), plotpointid=pl.col("modelgridindex"))
     elif xvariable == "timestep":
@@ -556,36 +544,11 @@ def get_xlist(
         )
         estimators = estimators.with_columns(xvalue=pl.col("time_mid"), plotpointid=pl.col("timestep"))
     elif xvariable in {"velocity", "beta"}:
-        dfmodel, modelmeta = at.inputmodel.get_modeldata_polars(modelpath, derived_cols=["vel_r_mid"])
-        if modelmeta["vmax_cmps"] > 0.3 * 29979245800:
-            args.x = "beta"
-            xvariable = "beta"
-
-        if args.readonlymgi:
-            dfmodel = dfmodel.filter(pl.col("modelgridindex").is_in(args.modelgridindex))
-
-        dfmodel = dfmodel.select(["modelgridindex", "vel_r_mid"]).sort(by="vel_r_mid")
         scalefactor = 1e5 if xvariable == "velocity" else 29979245800
-        dfmodel = dfmodel.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"])
-
-        estimators = estimators.lazy().join(dfmodel.select(["modelgridindex", "vel_r_mid"]).lazy(), on="modelgridindex")
         estimators = estimators.with_columns(
             xvalue=(pl.col("vel_r_mid") / scalefactor), plotpointid=pl.col("modelgridindex")
         )
-        estimators = estimators.sort("xvalue")
     else:
-        dfmodel, modelmeta = at.inputmodel.get_modeldata_polars(modelpath, derived_cols=[xvariable])
-        # handle xvariable is in dfmodel. TODO: handle xvariable is in estimators
-        assert xvariable in dfmodel.columns
-        if modelmeta["dimensions"] > 1:
-            args.markersonly = True
-
-        dfmodel = dfmodel.filter(pl.col("modelgridindex").is_in(allnonemptymgilist))
-        if args.readonlymgi:
-            dfmodel = dfmodel.filter(pl.col("modelgridindex").is_in(args.modelgridindex))
-        dfmodel = dfmodel.select(["modelgridindex", xvariable]).sort(by=xvariable)
-
-        estimators = estimators.lazy().join(dfmodel, on="modelgridindex")
         estimators = estimators.with_columns(xvalue=pl.col(xvariable), plotpointid=pl.col("modelgridindex"))
 
     # single valued line plot
@@ -593,7 +556,7 @@ def get_xlist(
         estimators = estimators.with_columns(plotpointid=pl.col("xvalue"))
 
     if args.xmax > 0:
-        dfmodel = dfmodel.filter(pl.col("xvalue") <= args.xmax)
+        estimators = estimators.filter(pl.col("xvalue") <= args.xmax)
 
     estimators = estimators.sort("plotpointid")
     pointgroups = (
@@ -1073,7 +1036,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         # ["Te", "TR"],
         [["averageionisation", ["Sr"]]],
         # [["averageexcitation", ["Fe II", "Fe III"]]],
-        [["populations", ["Sr90", "Sr91", "Sr92", "Sr93", "Sr94"]]],
+        [["populations", ["Sr90", "Sr91", "Sr92", "Sr94"]]],
         [["populations", ["Sr I", "Sr II", "Sr III"]]],
         # [['populations', ['He I', 'He II', 'He III']]],
         # [['populations', ['C I', 'C II', 'C III', 'C IV', 'C V']]],
@@ -1166,6 +1129,16 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         if not args.x:
             args.x = "velocity"
 
+        dfmodel, modelmeta = at.inputmodel.get_modeldata_polars(modelpath, derived_cols=["ALL"])
+        if args.x == "velocity" and modelmeta["vmax_cmps"] > 0.3 * 29979245800:
+            args.x = "beta"
+
+        dfmodel = dfmodel.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"])
+        estimators = estimators.join(dfmodel, on="modelgridindex")
+
+        if args.readonlymgi:
+            estimators = estimators.filter(pl.col("modelgridindex").is_in(args.modelgridindex))
+
         if args.classicartis:
             modeldata, _ = at.inputmodel.get_modeldata(modelpath)
             allnonemptymgilist = [
@@ -1179,6 +1152,10 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             ]
         else:
             allnonemptymgilist = [mgi for mgi, assocpropcells in assoc_cells.items() if assocpropcells]
+
+        estimators = estimators.filter(pl.col("modelgridindex").is_in(allnonemptymgilist)).filter(
+            pl.col("timestep").is_in(timesteps_included)
+        )
 
         if args.multiplot:
             pdf_list = []
