@@ -16,7 +16,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import polars as pl
-import polars.selectors as cs
 
 import artistools as at
 
@@ -410,35 +409,6 @@ def get_averaged_estimators(
         dictout[k] = valuesum / tdeltasum if tdeltasum > 0 else float("NaN")
 
     return dictout
-
-
-def get_averageionisation(estimatorstsmgi: pl.LazyFrame, atomic_number: int) -> float:
-    elsymb = at.get_elsymbol(atomic_number)
-
-    dfselected = (
-        estimatorstsmgi.select(cs.starts_with(f"nnion_{elsymb}_") | cs.by_name(f"nnelement_{elsymb}"))
-        .fill_null(0.0)
-        .collect()
-    )
-
-    dfnnelement = dfselected[f"nnelement_{elsymb}"]
-    if dfnnelement.is_empty():
-        return float("NaN")
-
-    nnelement = dfnnelement.item(0)
-    if nnelement is None:
-        return float("NaN")
-
-    ioncols = [col for col in dfselected.columns if col.startswith(f"nnion_{elsymb}_")]
-    if not ioncols:
-        return float("NaN")
-    ioncharges = [at.decode_roman_numeral(col.removeprefix(f"nnion_{elsymb}_")) - 1 for col in ioncols]
-    return (
-        dfselected.select(
-            pl.sum_horizontal([pl.col(ioncol) * ioncharge for ioncol, ioncharge in zip(ioncols, ioncharges)])
-        ).item(0, 0)
-        / nnelement
-    )
 
 
 def get_averageexcitation(
