@@ -16,7 +16,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
 import polars.selectors as cs
-from typeguard import check_type
 
 import artistools as at
 
@@ -530,22 +529,32 @@ def get_xlist(
     groupbyxvalue: bool,
     args: t.Any,
 ) -> tuple[list[float | int], list[int | t.Sequence[int]], list[list[int]], pl.LazyFrame | pl.DataFrame]:
-    xlist: t.Sequence[float | int]
+    allts: set[int] = set()
+    for tspoint in timestepslist:
+        if isinstance(tspoint, int):
+            allts.add(tspoint)
+        else:
+            for ts in tspoint:
+                allts.add(ts)
+
+    estimators = estimators.filter(pl.col("modelgridindex").is_in(allnonemptymgilist)).filter(
+        pl.col("timestep").is_in(allts)
+    )
+
     if xvariable in {"cellid", "modelgridindex"}:
-        mgilist_out = [mgi for mgi in allnonemptymgilist if mgi <= args.xmax] if args.xmax >= 0 else allnonemptymgilist
-        xlist = list(mgilist_out)
         estimators = estimators.with_columns(xvalue=pl.col("modelgridindex"), plotpointid=pl.col("modelgridindex"))
     elif xvariable == "timestep":
-        mgilist_out = allnonemptymgilist
-        check_type(timestepslist, t.Sequence[int])
-        xlist = timestepslist
         estimators = estimators.with_columns(xvalue=pl.col("timestep"), plotpointid=pl.col("timestep"))
     elif xvariable == "time":
-        mgilist_out = allnonemptymgilist
         timearray = at.get_timestep_times(modelpath)
-        check_type(timestepslist, t.Sequence[t.Sequence[int]])
-        xlist = [np.mean([timearray[ts] for ts in tslist]) for tslist in timestepslist]
-        estimators = estimators.with_columns(xvalue=pl.Series(xlist), plotpointid=pl.col("timestep"))
+        estimators = estimators.lazy().join(
+            pl.DataFrame({"timestep": range(len(timearray)), "time_mid": timearray})
+            .with_columns(pl.col("timestep").cast(pl.Int32))
+            .lazy(),
+            on="timestep",
+            how="left",
+        )
+        estimators = estimators.with_columns(xvalue=pl.col("time_mid"), plotpointid=pl.col("timestep"))
     elif xvariable in {"velocity", "beta"}:
         dfmodel, modelmeta = at.inputmodel.get_modeldata_polars(modelpath, derived_cols=["vel_r_mid"])
         if modelmeta["vmax_cmps"] > 0.3 * 29979245800:
@@ -557,16 +566,8 @@ def get_xlist(
             dfmodel = dfmodel.filter(pl.col("modelgridindex").is_in(args.modelgridindex))
         dfmodel = dfmodel.select(["modelgridindex", "vel_r_mid"]).sort(by="vel_r_mid")
         scalefactor = 1e5 if xvariable == "velocity" else 29979245800
-        if args.xmax > 0:
-            dfmodel = dfmodel.filter(pl.col("vel_r_mid") / scalefactor <= args.xmax)
-        else:
-            dfmodel = dfmodel.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"])
+        dfmodel = dfmodel.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"])
 
-        dfmodelcollect = dfmodel.select(["vel_r_mid", "modelgridindex"]).collect()
-
-        xlist = (dfmodelcollect["vel_r_mid"] / scalefactor).to_list()
-        mgilist_out = dfmodelcollect["modelgridindex"].to_list()
-        estimators = estimators.filter(pl.col("modelgridindex").is_in(mgilist_out))
         estimators = estimators.lazy().join(dfmodel.select(["modelgridindex", "vel_r_mid"]).lazy(), on="modelgridindex")
         estimators = estimators.with_columns(
             xvalue=(pl.col("vel_r_mid") / scalefactor), plotpointid=pl.col("modelgridindex")
@@ -584,31 +585,15 @@ def get_xlist(
             dfmodel = dfmodel.filter(pl.col("modelgridindex").is_in(args.modelgridindex))
         dfmodel = dfmodel.select(["modelgridindex", xvariable]).sort(by=xvariable)
 
-        if args.xmax > 0:
-            dfmodel = dfmodel.filter(pl.col(xvariable) <= args.xmax)
-        dfmodelcollect = dfmodel.select(["modelgridindex", xvariable]).collect()
-
-        xlist = dfmodelcollect[xvariable].to_list()
-        mgilist_out = dfmodelcollect["modelgridindex"].to_list()
-        estimators = estimators.filter(pl.col("modelgridindex").is_in(mgilist_out))
         estimators = estimators.lazy().join(dfmodel, on="modelgridindex")
         estimators = estimators.with_columns(xvalue=pl.col(xvariable), plotpointid=pl.col("modelgridindex"))
-
-    allts: set[int] = set()
-    for tspoint in timestepslist:
-        if isinstance(tspoint, int):
-            allts.add(tspoint)
-        else:
-            for ts in tspoint:
-                allts.add(ts)
-
-    estimators = estimators.filter(pl.col("modelgridindex").is_in(allnonemptymgilist)).filter(
-        pl.col("timestep").is_in(allts)
-    )
 
     # single valued line plot
     if groupbyxvalue:
         estimators = estimators.with_columns(plotpointid=pl.col("xvalue"))
+
+    if args.xmax > 0:
+        dfmodel = dfmodel.filter(pl.col("xvalue") <= args.xmax)
 
     estimators = estimators.sort("plotpointid")
     pointgroups = (
