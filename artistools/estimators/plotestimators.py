@@ -287,14 +287,14 @@ def plot_levelpop(
 
 def plot_multi_ion_series(
     ax: plt.Axes,
-    xvariable: str,
+    startfromzero: bool,
     seriestype: str,
     ionlist: t.Sequence[str],
     estimators: pl.LazyFrame | pl.DataFrame,
     modelpath: str | Path,
     args: argparse.Namespace,
     **plotkwargs: t.Any,
-):
+) -> None:
     """Plot an ion-specific property, e.g., populations."""
     # if seriestype == 'populations':
     #     ax.yaxis.set_major_locator(ticker.MultipleLocator(base=0.10))
@@ -376,7 +376,7 @@ def plot_multi_ion_series(
         series = estimators.group_by("xvalue").agg(pl.col(key).mean() / scalefactor).lazy().collect().sort("xvalue")
         xlist = series["xvalue"].to_list()
         ylist = series[key].to_list()
-        if xvariable.startswith("velocity") or xvariable == "beta":
+        if startfromzero:
             # make a line segment from 0 velocity
             xlist.insert(0, 0.0)
             ylist.insert(0, ylist[0])
@@ -600,7 +600,7 @@ def plot_subplot(
             elif ylabel != get_ylabel(variablename):
                 sameylabel = False
                 break
-
+    startfromzero = xvariable.startswith("velocity") or xvariable == "beta"
     for plotitem in plotitems:
         if isinstance(plotitem, str):
             showlegend = seriescount > 1 or len(plotitem) > 20 or not sameylabel
@@ -667,7 +667,7 @@ def plot_subplot(
                 seriestype, ionlist = plotitem
                 plot_multi_ion_series(
                     ax=ax,
-                    xvariable=xvariable,
+                    startfromzero=startfromzero,
                     seriestype=seriestype,
                     ionlist=ionlist,
                     estimators=estimators,
