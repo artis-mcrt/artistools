@@ -140,6 +140,9 @@ def plot_average_ionisation_excitation(
         ylist = []
         if seriestype == "averageionisation":
             elsymb = at.get_elsymbol(atomic_number)
+            if f"nnelement_{elsymb}" not in estimators.columns:
+                msg = f"ERROR: No element data found for {paramvalue}"
+                raise ValueError(msg)
             dfselected = (
                 estimators.select(
                     cs.starts_with(f"nnion_{elsymb}_")
@@ -541,6 +544,7 @@ def get_xlist(
             dfmodel = dfmodel.filter(pl.col("vel_r_mid") / scalefactor <= args.xmax)
         else:
             dfmodel = dfmodel.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"])
+
         dfmodelcollect = dfmodel.select(["vel_r_mid", "modelgridindex"]).collect()
 
         xlist = (dfmodelcollect["vel_r_mid"] / scalefactor).to_list()
