@@ -415,7 +415,7 @@ def get_averaged_estimators(
 
 
 def get_averageexcitation(
-    modelpath: Path, modelgridindex: int, timestep: int, atomic_number: int, ionstage: int, T_exc: float
+    modelpath: Path | str, modelgridindex: int, timestep: int, atomic_number: int, ionstage: int, T_exc: float
 ) -> float | None:
     dfnltepops = at.nltepops.read_files(modelpath, modelgridindex=modelgridindex, timestep=timestep)
     if dfnltepops.empty:

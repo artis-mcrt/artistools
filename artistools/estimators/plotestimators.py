@@ -125,14 +125,14 @@ def plot_init_abundances(
 
 
 def plot_average_ionisation_excitation(
-    ax,
-    xlist,
-    seriestype,
-    params,
-    timestepslist,
-    mgilist,
-    estimators,
-    modelpath,
+    ax: plt.Axes,
+    xlist: list[float],
+    seriestype: str,
+    params: t.Sequence[str],
+    timestepslist: t.Sequence[t.Sequence[int]],
+    mgilist: t.Sequence[int],
+    estimators: pl.LazyFrame,
+    modelpath: Path | str,
     startfromzero: bool,
     args=None,
     **plotkwargs,
@@ -185,18 +185,21 @@ def plot_average_ionisation_excitation(
 
             ioncols = [col for col in dfselected.columns if col.startswith(f"nnion_{elsymb}_")]
             ioncharges = [at.decode_roman_numeral(col.removeprefix(f"nnion_{elsymb}_")) - 1 for col in ioncols]
+
             dfselected = dfselected.with_columns(
                 (
                     pl.sum_horizontal([pl.col(ioncol) * ioncharge for ioncol, ioncharge in zip(ioncols, ioncharges)])
                     / pl.col(f"nnelement_{elsymb}")
                 ).alias(f"averageionisation_{elsymb}")
             )
+
             series = (
                 dfselected.group_by("plotpointid", maintain_order=True)
                 .agg(pl.col(f"averageionisation_{elsymb}").mean(), pl.col("xvalue").mean())
                 .lazy()
                 .collect()
             )
+
             xlist = series["xvalue"].to_list()
             if startfromzero:
                 xlist.insert(0, 0.0)
@@ -542,12 +545,12 @@ def plot_series(
 def get_xlist(
     xvariable: str,
     allnonemptymgilist: t.Sequence[int],
-    estimators: pl.LazyFrame | pl.DataFrame,
+    estimators: pl.LazyFrame,
     timestepslist: t.Any,
     modelpath: str | Path,
     groupbyxvalue: bool,
     args: t.Any,
-) -> tuple[list[float | int], list[int], list[list[int]], pl.LazyFrame | pl.DataFrame]:
+) -> tuple[list[float | int], list[int], list[list[int]], pl.LazyFrame]:
     if xvariable in {"cellid", "modelgridindex"}:
         estimators = estimators.with_columns(xvalue=pl.col("modelgridindex"), plotpointid=pl.col("modelgridindex"))
     elif xvariable == "timestep":
@@ -606,7 +609,7 @@ def plot_subplot(
     plotitems: list[t.Any],
     mgilist: list[int],
     modelpath: str | Path,
-    estimators: pl.LazyFrame | pl.DataFrame,
+    estimators: pl.LazyFrame,
     args: argparse.Namespace,
     **plotkwargs: t.Any,
 ):
@@ -729,7 +732,7 @@ def make_plot(
     modelpath: Path | str,
     timestepslist_unfiltered: list[list[int]],
     allnonemptymgilist: list[int],
-    estimators: pl.LazyFrame | pl.DataFrame,
+    estimators: pl.LazyFrame,
     xvariable: str,
     plotlist,
     args: t.Any,
