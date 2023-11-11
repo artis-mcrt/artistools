@@ -290,8 +290,6 @@ def plot_multi_ion_series(
     xvariable: str,
     seriestype: str,
     ionlist: t.Sequence[str],
-    timestepslist: t.Sequence[t.Sequence[int]],
-    mgilist: t.Sequence[int | t.Sequence[int]],
     estimators: pl.LazyFrame | pl.DataFrame,
     modelpath: str | Path,
     args: argparse.Namespace,
@@ -334,16 +332,10 @@ def plot_multi_ion_series(
                     missingions.add((atomic_number, ionstage))
 
     except FileNotFoundError:
-        print("WARNING: Could not read an ARTIS compositiondata.txt file")
-        estim_mgits = estimators.filter(pl.col("timestep") == timestepslist[0][0]).filter(
-            pl.col("modelgridindex") == mgilist[0]
-        )
+        print("WARNING: Could not read an ARTIS compositiondata.txt file to check ion availability")
         for atomic_number, ionstage in iontuplelist:
             ionstr = at.get_ionstring(atomic_number, ionstage, sep="_", style="spectral")
-            if (
-                f"nnion_{ionstr}" not in estim_mgits.columns
-                or estim_mgits.select(f"nnion_{ionstr}").lazy().collect()[f"nnion_{ionstr}"].is_null().all()
-            ):
+            if f"nnion_{ionstr}" not in estimators.columns:
                 missingions.add((atomic_number, ionstage))
 
     if missingions:
@@ -536,7 +528,6 @@ def get_xlist(
         dfmodel, modelmeta = at.inputmodel.get_modeldata_polars(modelpath, derived_cols=["vel_r_mid"])
         if modelmeta["dimensions"] > 1:
             args.markersonly = True
-            args.colorbyion = True
         if modelmeta["vmax_cmps"] > 0.3 * 29979245800:
             args.x = "beta"
             xvariable = "beta"
@@ -675,15 +666,13 @@ def plot_subplot(
                 showlegend = True
                 seriestype, ionlist = plotitem
                 plot_multi_ion_series(
-                    ax,
-                    xvariable,
-                    seriestype,
-                    ionlist,
-                    timestepslist,
-                    mgilist,
-                    estimators,
-                    modelpath,
-                    args,
+                    ax=ax,
+                    xvariable=xvariable,
+                    seriestype=seriestype,
+                    ionlist=ionlist,
+                    estimators=estimators,
+                    modelpath=modelpath,
+                    args=args,
                     **plotkwargs,
                 )
 
@@ -747,6 +736,9 @@ def make_plot(
         plotkwargs["linestyle"] = "None"
         plotkwargs["marker"] = "."
 
+        # with no lines, line styles cannot distringuish ions
+        args.colorbyion = True
+
     # ideally, we could start filtering the columns here, but it's still faster to collect the whole thing
     allts: set[int] = set()
     for tspoint in timestepslist:
@@ -758,8 +750,6 @@ def make_plot(
 
     estimators = (
         estimators.filter(pl.col("modelgridindex").is_in(mgilist)).filter(pl.col("timestep").is_in(allts)).lazy()
-        # .collect()
-        # .lazy()
     )
 
     for ax, plotitems in zip(axes, plotlist):
