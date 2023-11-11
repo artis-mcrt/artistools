@@ -130,6 +130,7 @@ def plot_average_ionisation_excitation(
 
     arr_tdelta = at.get_timestep_times(modelpath, loc="delta")
     for paramvalue in params:
+        print(f"Plotting {seriestype} {paramvalue}")
         if seriestype == "averageionisation":
             atomic_number = at.get_atomic_number(paramvalue)
         else:
@@ -152,11 +153,12 @@ def plot_average_ionisation_excitation(
                         * arr_tdelta[timestep]
                     )
                     tdeltasum += arr_tdelta[timestep]
-                ylist.append(valuesum / tdeltasum)
+                ylist.append(valuesum / tdeltasum if tdeltasum > 0 else float("nan"))
         elif seriestype == "averageexcitation":
+            print("  This will be slow!")
             for modelgridindex, timesteps in zip(mgilist, timestepslist):
-                valuesum = 0
-                tdeltasum = 0
+                exc_ev_times_tdelta_sum = 0.0
+                tdeltasum = 0.0
                 for timestep in timesteps:
                     T_exc = (
                         estimators.filter(pl.col("timestep") == timestep)
@@ -166,18 +168,18 @@ def plot_average_ionisation_excitation(
                         .collect()
                         .item(0, 0)
                     )
-                    exc = at.estimators.get_averageexcitation(
+                    exc_ev = at.estimators.get_averageexcitation(
                         modelpath, modelgridindex, timestep, atomic_number, ionstage, T_exc
                     )
-                    if exc is None:
-                        continue
-                    valuesum += exc * arr_tdelta[timestep]
-                    tdeltasum += arr_tdelta[timestep]
-
-            ylist.append(valuesum / tdeltasum)
+                    if exc_ev is not None:
+                        exc_ev_times_tdelta_sum += exc_ev * arr_tdelta[timestep]
+                        tdeltasum += arr_tdelta[timestep]
+            if tdeltasum == 0.0:
+                msg = f"ERROR: No excitation data found for {paramvalue}"
+                raise ValueError(msg)
+            ylist.append(exc_ev_times_tdelta_sum / tdeltasum if tdeltasum > 0 else float("nan"))
 
         color = get_elemcolor(atomic_number=atomic_number)
-
         ylist.insert(0, ylist[0])
 
         xlist, ylist = at.estimators.apply_filters(xlist, ylist, args)
@@ -732,11 +734,9 @@ def make_plot(
                 allts.add(ts)
 
     estimators = (
-        estimators.filter(pl.col("modelgridindex").is_in(mgilist))
-        .filter(pl.col("timestep").is_in(allts))
-        .lazy()
-        .collect()
-        .lazy()
+        estimators.filter(pl.col("modelgridindex").is_in(mgilist)).filter(pl.col("timestep").is_in(allts)).lazy()
+        # .collect()
+        # .lazy()
     )
 
     for ax, plotitems in zip(axes, plotlist):
@@ -1085,7 +1085,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     assert estimators is not None
 
     for ts in reversed(timesteps_included):
-        tswithdata = estimators.select("timestep").unique().collect().to_numpy()
+        tswithdata = estimators.select("timestep").unique().collect().to_series()
         for ts in timesteps_included:
             if ts not in tswithdata:
                 timesteps_included.remove(ts)

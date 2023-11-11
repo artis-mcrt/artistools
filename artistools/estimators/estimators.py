@@ -447,6 +447,9 @@ def get_averageexcitation(
     modelpath: Path, modelgridindex: int, timestep: int, atomic_number: int, ionstage: int, T_exc: float
 ) -> float | None:
     dfnltepops = at.nltepops.read_files(modelpath, modelgridindex=modelgridindex, timestep=timestep)
+    if dfnltepops.empty:
+        print(f"WARNING: NLTE pops not found for cell {modelgridindex} at timestep {timestep}")
+
     adata = at.atomic.get_levels(modelpath)
     ionlevels = adata.query("Z == @atomic_number and ionstage == @ionstage").iloc[0].levels
 
@@ -477,6 +480,7 @@ def get_averageexcitation(
         boltzfac_sum = ionlevels.iloc[levelnumber_sl:].eval("g * exp(- energy_ev / @k_b / @T_exc)").sum()
         # adjust to the actual superlevel population from ARTIS
         energypopsum += energy_boltzfac_sum * superlevelrow.n_NLTE / boltzfac_sum
+
     return energypopsum / ionpopsum
 
 

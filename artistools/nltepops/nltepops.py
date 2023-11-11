@@ -177,7 +177,11 @@ def read_file_filtered(nltefilepath, strquery=None, dfqueryvars=None):
 
 @lru_cache(maxsize=2)
 def read_files(
-    modelpath, timestep=-1, modelgridindex=-1, dfquery=None, dfqueryvars: dict | None = None
+    modelpath: str | Path,
+    timestep: int = -1,
+    modelgridindex: int = -1,
+    dfquery: str | None = None,
+    dfqueryvars: dict | None = None,
 ) -> pd.DataFrame:
     """Read in NLTE populations from a model for a particular timestep and grid cell."""
     if dfqueryvars is None:
