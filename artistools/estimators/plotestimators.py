@@ -137,10 +137,10 @@ def plot_average_ionisation_excitation(
     args=None,
     **plotkwargs,
 ):
-    if seriestype == "averageionisation":
-        ax.set_ylabel("Average ion charge")
-    elif seriestype == "averageexcitation":
+    if seriestype == "averageexcitation":
         ax.set_ylabel("Average excitation [eV]")
+    elif seriestype == "averageionisation":
+        ax.set_ylabel("Average ion charge")
     else:
         raise ValueError
 
@@ -157,7 +157,32 @@ def plot_average_ionisation_excitation(
             atomic_number = at.get_atomic_number(paramvalue.split(" ")[0])
             ionstage = at.decode_roman_numeral(paramvalue.split(" ")[1])
         ylist = []
-        if seriestype == "averageionisation":
+        if seriestype == "averageexcitation":
+            print("  This will be slow!")
+            for modelgridindex, timesteps in zip(mgilist, timestepslist):
+                exc_ev_times_tdelta_sum = 0.0
+                tdeltasum = 0.0
+                for timestep in timesteps:
+                    T_exc = (
+                        estimators.filter(pl.col("timestep") == timestep)
+                        .filter(pl.col("modelgridindex") == modelgridindex)
+                        .select("Te")
+                        .lazy()
+                        .collect()
+                        .item(0, 0)
+                    )
+                    exc_ev = at.estimators.get_averageexcitation(
+                        modelpath, modelgridindex, timestep, atomic_number, ionstage, T_exc
+                    )
+                    if exc_ev is not None:
+                        exc_ev_times_tdelta_sum += exc_ev * arr_tdelta[timestep]
+                        tdeltasum += arr_tdelta[timestep]
+            if tdeltasum == 0.0:
+                msg = f"ERROR: No excitation data found for {paramvalue}"
+                raise ValueError(msg)
+            ylist.append(exc_ev_times_tdelta_sum / tdeltasum if tdeltasum > 0 else float("nan"))
+
+        elif seriestype == "averageionisation":
             elsymb = at.get_elsymbol(atomic_number)
             if f"nnelement_{elsymb}" not in estimators.columns:
                 msg = f"ERROR: No element data found for {paramvalue}"
@@ -205,31 +230,6 @@ def plot_average_ionisation_excitation(
                 xlist.insert(0, 0.0)
 
             ylist = series[f"averageionisation_{elsymb}"].to_list()
-
-        elif seriestype == "averageexcitation":
-            print("  This will be slow!")
-            for modelgridindex, timesteps in zip(mgilist, timestepslist):
-                exc_ev_times_tdelta_sum = 0.0
-                tdeltasum = 0.0
-                for timestep in timesteps:
-                    T_exc = (
-                        estimators.filter(pl.col("timestep") == timestep)
-                        .filter(pl.col("modelgridindex") == modelgridindex)
-                        .select("Te")
-                        .lazy()
-                        .collect()
-                        .item(0, 0)
-                    )
-                    exc_ev = at.estimators.get_averageexcitation(
-                        modelpath, modelgridindex, timestep, atomic_number, ionstage, T_exc
-                    )
-                    if exc_ev is not None:
-                        exc_ev_times_tdelta_sum += exc_ev * arr_tdelta[timestep]
-                        tdeltasum += arr_tdelta[timestep]
-            if tdeltasum == 0.0:
-                msg = f"ERROR: No excitation data found for {paramvalue}"
-                raise ValueError(msg)
-            ylist.append(exc_ev_times_tdelta_sum / tdeltasum if tdeltasum > 0 else float("nan"))
 
         color = get_elemcolor(atomic_number=atomic_number)
 
@@ -1061,12 +1061,12 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         # [['initmasses', ['Ni_56', 'He', 'C', 'Mg']]],
         # ['heating_gamma/gamma_dep'],
         ["nne", ["_ymin", 1e5], ["_ymax", 1e10]],
-        ["TR", ["_yscale", "linear"], ["_ymin", 1000], ["_ymax", 16000]],
+        ["TR", ["_yscale", "linear"], ["_ymin", 1000], ["_ymax", 10000]],
         # ["Te"],
         # ["Te", "TR"],
         [["averageionisation", ["Sr"]]],
         # [["averageexcitation", ["Fe II", "Fe III"]]],
-        [["populations", ["Sr90", "Sr91", "Sr92", "Sr94"]]],
+        # [["populations", ["Sr90", "Sr91", "Sr92", "Sr94"]]],
         [["populations", ["Sr I", "Sr II", "Sr III"]]],
         # [['populations', ['He I', 'He II', 'He III']]],
         # [['populations', ['C I', 'C II', 'C III', 'C IV', 'C V']]],
