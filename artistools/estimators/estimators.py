@@ -9,6 +9,7 @@ import itertools
 import math
 import multiprocessing
 import sys
+import time
 import typing as t
 from collections import namedtuple
 from pathlib import Path
@@ -243,8 +244,11 @@ def get_rankbatch_parquetfile(
     modelpath: Path,
     folderpath: Path,
     batch_mpiranks: t.Sequence[int],
+    batchindex: int,
 ) -> Path:
-    parquetfilepath = folderpath / f"estimators_{batch_mpiranks[0]:04d}_{batch_mpiranks[-1]:04d}.out.parquet.tmp"
+    parquetfilepath = (
+        folderpath / f"estimbatch{batchindex:02d}_{batch_mpiranks[0]:04d}_{batch_mpiranks[-1]:04d}.out.parquet.tmp"
+    )
 
     if not parquetfilepath.exists():
         print(f"{parquetfilepath.relative_to(modelpath.parent)} does not exist")
@@ -259,6 +263,8 @@ def get_rankbatch_parquetfile(
             f"  reading {len(list(estfilepaths))} estimator files from {folderpath.relative_to(Path(folderpath).parent)}"
         )
 
+        time_start = time.perf_counter()
+
         pldf_group = None
         with multiprocessing.get_context("spawn").Pool(processes=at.get_config()["num_processes"]) as pool:
             for pldf_file in pool.imap(read_estimators_from_file, estfilepaths):
@@ -271,9 +277,11 @@ def get_rankbatch_parquetfile(
             pool.join()
             pool.terminate()
 
+        print(f"    took {time.perf_counter() - time_start:.1f} s")
+
         assert pldf_group is not None
         print(f"  writing {parquetfilepath.relative_to(modelpath.parent)}")
-        pldf_group.write_parquet(parquetfilepath, compression="zstd")
+        pldf_group.write_parquet(parquetfilepath, compression="zstd", statistics=True, compression_level=8)
 
     print(f"Scanning {parquetfilepath.relative_to(modelpath.parent)}")
 
@@ -329,9 +337,9 @@ def read_estimators_polars(
     runfolders = at.get_runfolders(modelpath, timesteps=match_timestep)
 
     parquetfiles = (
-        get_rankbatch_parquetfile(modelpath, runfolder, mpiranks)
+        get_rankbatch_parquetfile(modelpath, runfolder, mpiranks, batchindex=batchindex)
         for runfolder in runfolders
-        for mpiranks in mpirank_groups
+        for batchindex, mpiranks in enumerate(mpirank_groups)
     )
 
     pldflazy = pl.concat([pl.scan_parquet(pfile) for pfile in parquetfiles], how="diagonal_relaxed")
