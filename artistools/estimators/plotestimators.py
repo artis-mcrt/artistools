@@ -551,6 +551,8 @@ def get_xlist(
     groupbyxvalue: bool,
     args: t.Any,
 ) -> tuple[list[float | int], list[int], list[list[int]], pl.LazyFrame]:
+    estimators = estimators.filter(pl.col("timestep").is_in([ts for tssublist in timestepslist for ts in tssublist]))
+
     if xvariable in {"cellid", "modelgridindex"}:
         estimators = estimators.with_columns(xvalue=pl.col("modelgridindex"), plotpointid=pl.col("modelgridindex"))
     elif xvariable == "timestep":
@@ -739,6 +741,7 @@ def make_plot(
     **plotkwargs: t.Any,
 ):
     modelname = at.get_model_name(modelpath)
+
     fig, axes = plt.subplots(
         nrows=len(plotlist),
         ncols=1,
@@ -804,23 +807,12 @@ def make_plot(
 
     else:
         timeavg = (args.timemin + args.timemax) / 2.0
-        if args.multiplot and not args.classicartis:
-            assert isinstance(timestepslist[0], list)
-            tdays = (
-                estimators.filter(pl.col("timestep") == timestepslist[0][0])
-                .filter(pl.col("modelgridindex") == mgilist[0])
-                .select("tdays")
-                .lazy()
-                .collect()
-                .item(0)
-            )
-            figure_title = f"{modelname}\nTimestep {timestepslist[0][0]} ({tdays:.2f}d)"
-        elif args.multiplot:
-            assert isinstance(timestepslist[0], int)
-            timedays = float(at.get_timestep_time(modelpath, timestepslist[0]))
+        if args.multiplot:
+            timedays = float(at.get_timestep_time(modelpath, timestepslist[0][0]))
             figure_title = f"{modelname}\nTimestep {timestepslist[0][0]} ({timedays:.2f}d)"
         else:
             figure_title = f"{modelname}\nTimestep {timestepslist[0][0]} ({timeavg:.2f}d)"
+        print(f"Plotting {figure_title.replace('\n', ' ')}")
 
         defaultoutputfile = Path("plotestimators_ts{timestep:02d}_{timeavg:.2f}d.pdf")
         if Path(args.outputfile).is_dir():
