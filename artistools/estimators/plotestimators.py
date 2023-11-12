@@ -1183,28 +1183,13 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             pl.col("timestep").is_in(timesteps_included)
         )
 
-        if args.multiplot:
-            pdf_files = []
-            for timestep in range(timestepmin, timestepmax + 1):
-                timestepslist_unfiltered = [[timestep]] * len(allnonemptymgilist)
-                outfilename = make_plot(
-                    modelpath=modelpath,
-                    timestepslist_unfiltered=timestepslist_unfiltered,
-                    allnonemptymgilist=allnonemptymgilist,
-                    estimators=estimators,
-                    xvariable=args.x,
-                    plotlist=plotlist,
-                    args=args,
-                )
-
-                pdf_files.append(outfilename)
-
-            if len(pdf_files) > 1:
-                at.join_pdf_files(pdf_files)
-
-        else:
+        frames_timesteps_included = (
+            [[ts] for ts in range(timestepmin, timestepmax + 1)] if args.multiplot else [timesteps_included]
+        )
+        pdf_files = []
+        for timesteps_included in frames_timesteps_included:
             timestepslist_unfiltered = [timesteps_included] * len(allnonemptymgilist)
-            make_plot(
+            outfilename = make_plot(
                 modelpath=modelpath,
                 timestepslist_unfiltered=timestepslist_unfiltered,
                 allnonemptymgilist=allnonemptymgilist,
@@ -1213,6 +1198,11 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
                 plotlist=plotlist,
                 args=args,
             )
+
+            pdf_files.append(outfilename)
+
+        if len(pdf_files) > 1:
+            at.join_pdf_files(pdf_files)
 
 
 if __name__ == "__main__":
