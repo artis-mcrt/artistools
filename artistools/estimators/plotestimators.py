@@ -717,17 +717,18 @@ def plot_subplot(
 
     ax.tick_params(right=True)
     if showlegend and not args.nolegend:
-        if plotitems[0][0] == "populations" and args.yscale == "log":
-            ax.legend(
-                loc="best", handlelength=2, ncol=math.ceil(len(plotitems[0][1]) / 2.0), frameon=False, numpoints=1
-            )
-        else:
-            ax.legend(
-                loc="best",
-                handlelength=2,
-                frameon=False,
-                numpoints=1,
-            )  # prop={'size': 9})
+        ax.legend(
+            loc="best",
+            handlelength=2,
+            frameon=False,
+            numpoints=1,
+            **(
+                {"ncol": math.ceil(len(plotitems[0][1]) / 2.0)}
+                if (plotitems[0][0] == "populations" and args.yscale == "log")
+                else {}
+            ),
+            markerscale=10,
+        )
 
 
 def make_plot(
@@ -776,6 +777,8 @@ def make_plot(
     if args.markersonly:
         plotkwargs["linestyle"] = "None"
         plotkwargs["marker"] = "."
+        plotkwargs["markersize"] = 1
+        plotkwargs["alpha"] = 0.5
 
         # with no lines, line styles cannot distringuish ions
         args.colorbyion = True
