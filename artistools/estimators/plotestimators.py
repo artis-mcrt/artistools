@@ -408,7 +408,7 @@ def plot_multi_ion_series(
             raise AssertionError
 
         series = (
-            estimators.group_by("plotpointid")
+            estimators.group_by("plotpointid", maintain_order=True)
             .agg(pl.col(key).mean() / scalefactor, pl.col("xvalue").mean())
             .lazy()
             .collect()
