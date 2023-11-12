@@ -129,8 +129,6 @@ def read_estimators_from_file(
 
     estimblocklist: list[dict[str, t.Any]] = []
     estimblock: dict[str, t.Any] = {}
-    timestep: int | None = None
-    modelgridindex: int | None = None
     with at.zopen(estfilepath) as estimfile:
         for line in estimfile:
             row: list[str] = line.split()
@@ -139,15 +137,15 @@ def read_estimators_from_file(
 
             if row[0] == "timestep":
                 # yield the previous block before starting a new one
-                if timestep is not None and modelgridindex is not None and (not estimblock.get("emptycell", True)):
-                    estimblocklist.append(estimblock | {"timestep": timestep, "modelgridindex": modelgridindex})
+                if estimblock:
+                    estimblocklist.append(estimblock)
 
-                timestep = int(row[1])
-                modelgridindex = int(row[3])
                 emptycell = row[4] == "EMPTYCELL"
-                estimblock = {"emptycell": emptycell}
-                if not emptycell:
+                if emptycell:
+                    estimblock = {}
+                else:
                     # will be TR, Te, W, TJ, nne
+                    estimblock = {"timestep": int(row[1]), "modelgridindex": int(row[3])}
                     for variablename, value in zip(row[4::2], row[5::2]):
                         estimblock[variablename] = float(value)
 
@@ -214,8 +212,8 @@ def read_estimators_from_file(
                     estimblock[f"cooling_{coolingtype}"] = float(value)
 
     # reached the end of file
-    if timestep is not None and modelgridindex is not None and (not estimblock.get("emptycell", True)):
-        estimblocklist.append(estimblock | {"timestep": timestep, "modelgridindex": modelgridindex})
+    if estimblock:
+        estimblocklist.append(estimblock)
 
     return pl.DataFrame(estimblocklist).with_columns(
         pl.col(pl.Int64).cast(pl.Int32), pl.col(pl.Float64).cast(pl.Float32)
@@ -325,7 +323,6 @@ def scan_estimators(
                     **estimvals,
                 }
                 for (ts, mgi), estimvals in estimators.items()
-                if not estimvals.get("emptycell", True)
             ]
         ).lazy()
 
