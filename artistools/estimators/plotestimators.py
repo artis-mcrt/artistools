@@ -237,7 +237,6 @@ def plot_average_ionisation_excitation(
         xlist, ylist = at.estimators.apply_filters(xlist, ylist, args)
         if startfromzero:
             ylist.insert(0, ylist[0])
-        print(f"  Plotting {seriestype} {paramvalue}")
 
         ax.plot(xlist, ylist, label=paramvalue, color=color, **plotkwargs)
 
