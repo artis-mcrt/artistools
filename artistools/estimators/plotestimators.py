@@ -1116,7 +1116,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             ]
         ).lazy()
     else:
-        estimators = at.estimators.read_estimators_polars(
+        estimators = at.estimators.scan_estimators(
             modelpath=modelpath,
             modelgridindex=args.modelgridindex,
             timestep=tuple(timesteps_included),

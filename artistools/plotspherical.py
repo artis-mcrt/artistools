@@ -120,7 +120,7 @@ def plot_spherical(
         )
 
         df_estimators = (
-            at.estimators.read_estimators_polars(modelpath=modelpath)
+            at.estimators.scan_estimators(modelpath=modelpath)
             .select(["timestep", "modelgridindex", "TR"])
             .drop_nulls()
             .rename({"timestep": "em_timestep", "modelgridindex": "em_modelgridindex", "TR": "em_TR"})

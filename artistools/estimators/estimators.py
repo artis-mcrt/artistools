@@ -288,7 +288,7 @@ def get_rankbatch_parquetfile(
     return parquetfilepath
 
 
-def read_estimators_polars(
+def scan_estimators(
     modelpath: Path | str = Path(),
     modelgridindex: None | int | t.Sequence[int] = None,
     timestep: None | int | t.Sequence[int] = None,
@@ -362,7 +362,7 @@ def read_estimators(
 ) -> dict[tuple[int, int], dict[str, t.Any]]:
     if isinstance(keys, str):
         keys = {keys}
-    pldflazy = read_estimators_polars(modelpath, modelgridindex, timestep)
+    pldflazy = scan_estimators(modelpath, modelgridindex, timestep)
     estimators: dict[tuple[int, int], dict[str, t.Any]] = {}
     for estimtsmgi in pldflazy.collect().iter_rows(named=True):
         ts, mgi = estimtsmgi["timestep"], estimtsmgi["modelgridindex"]
