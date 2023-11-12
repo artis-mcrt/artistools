@@ -352,7 +352,7 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
         import imageio.v2 as iio
 
         gifname = outdir / "sphericalplot.gif" if (args.outputfile).is_dir() else args.outputfile
-        with iio.get_writer(gifname, mode="I", fps=1.5) as writer:
+        with iio.get_writer(gifname, mode="I", duration=(1000 * 1 / 1.5)) as writer:
             for filename in outputfilenames:
                 image = iio.imread(filename)
                 writer.append_data(image)  # type: ignore[attr-defined]

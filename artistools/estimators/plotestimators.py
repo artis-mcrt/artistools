@@ -210,6 +210,7 @@ def plot_average_ionisation_excitation(
 
             ioncols = [col for col in dfselected.columns if col.startswith(f"nnion_{elsymb}_")]
             ioncharges = [at.decode_roman_numeral(col.removeprefix(f"nnion_{elsymb}_")) - 1 for col in ioncols]
+            ax.set_ylim(0.0, max(ioncharges) + 0.1)
 
             dfselected = dfselected.with_columns(
                 (
@@ -482,9 +483,12 @@ def plot_multi_ion_series(
         ax.set_yscale(args.yscale)
         if args.yscale == "log":
             ymin, ymax = ax.get_ylim()
+            ymin = max(ymin, ymax / 1e10)
+            ax.set_ylim(bottom=ymin)
+            # make space for the legend
             new_ymax = ymax * 10 ** (0.3 * math.log10(ymax / ymin))
             if ymin > 0 and new_ymax > ymin and np.isfinite(new_ymax):
-                ax.set_ylim(ymin, new_ymax)
+                ax.set_ylim(top=new_ymax)
 
 
 def plot_series(
@@ -718,7 +722,7 @@ def plot_subplot(
     ax.tick_params(right=True)
     if showlegend and not args.nolegend:
         ax.legend(
-            loc="best",
+            loc="upper right",
             handlelength=2,
             frameon=False,
             numpoints=1,
@@ -830,8 +834,10 @@ def make_plot(
         axes[0].set_title(figure_title, fontsize=8)
     # plt.suptitle(figure_title, fontsize=11, verticalalignment='top')
 
+    if args.makegif:
+        outfilename = outfilename.replace(".pdf", ".png")
     print(f"Saving {outfilename} ...")
-    fig.savefig(outfilename)
+    fig.savefig(outfilename, dpi=300)
 
     if args.show:
         plt.show()
@@ -962,6 +968,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         nargs=2,
         help="Savitzky-Golay filter. Specify the window_length and polyorder.e.g. -filtersavgol 5 3",
     )
+
+    parser.add_argument("--makegif", action="store_true", help="Make a gif with time evolution (requires --multiplot)")
 
     parser.add_argument("--notitle", action="store_true", help="Suppress the top title from the plot")
 
@@ -1136,6 +1144,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath)
 
+    outdir = args.outputfile if (args.outputfile).is_dir() else Path()
     if not args.readonlymgi and (args.modelgridindex is not None or args.x in {"time", "timestep"}):
         # plot time evolution in specific cell
         if not args.x:
@@ -1191,7 +1200,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         frames_timesteps_included = (
             [[ts] for ts in range(timestepmin, timestepmax + 1)] if args.multiplot else [timesteps_included]
         )
-        pdf_files = []
+        outputfiles = []
         for timesteps_included in frames_timesteps_included:
             timestepslist_unfiltered = [timesteps_included] * len(allnonemptymgilist)
             outfilename = make_plot(
@@ -1204,10 +1213,20 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
                 args=args,
             )
 
-            pdf_files.append(outfilename)
+            outputfiles.append(outfilename)
 
-        if len(pdf_files) > 1:
-            at.join_pdf_files(pdf_files)
+        if args.makegif:
+            assert args.multiplot
+            import imageio.v2 as iio
+
+            gifname = outdir / f"plotestim_evolution_ts{timestepmin:03d}_ts{timestepmax:03d}.gif"
+            with iio.get_writer(gifname, mode="I", duration=500) as writer:
+                for filename in outputfiles:
+                    image = iio.imread(filename)
+                    writer.append_data(image)  # type: ignore[attr-defined]
+            print(f"Created gif: {gifname}")
+        elif len(outputfiles) > 1:
+            at.join_pdf_files(outputfiles)
 
 
 if __name__ == "__main__":
