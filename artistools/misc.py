@@ -925,18 +925,18 @@ def get_filterfunc(args: argparse.Namespace, mode: str = "interp") -> t.Callable
     return filterfunc
 
 
-def join_pdf_files(pdf_list: list[str], modelpath_list: list[Path]) -> None:
+def join_pdf_files(pdf_files: list[str]) -> None:
     """Merge a list of PDF files into a single PDF file."""
     from PyPDF2 import PdfMerger
 
     merger = PdfMerger()
 
-    for pdf, modelpath in zip(pdf_list, modelpath_list):
-        fullpath = firstexisting([pdf], folder=modelpath)
-        merger.append(fullpath.open("rb"))
-        fullpath.unlink()
+    for pdfpath in pdf_files:
+        with Path(pdfpath).open("rb") as pdffile:
+            merger.append(pdffile)
+        Path(pdfpath).unlink()
 
-    resultfilename = f'{pdf_list[0].split(".")[0]}-{pdf_list[-1].split(".")[0]}'
+    resultfilename = f'{pdf_files[0].split(".")[0]}-{pdf_files[-1].split(".")[0]}'
     with Path(f"{resultfilename}.pdf").open("wb") as resultfile:
         merger.write(resultfile)
 

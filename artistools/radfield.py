@@ -1008,7 +1008,6 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     modelpath = args.modelpath
 
     pdf_list = []
-    modelpath_list = []
     modelgridindexlist = []
 
     if args.velocity >= 0.0:
@@ -1042,7 +1041,6 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
                     normalised=args.normalised,
                 ):
                     pdf_list.append(outputfile)
-                    modelpath_list.append(args.modelpath)
         elif args.xaxis == "timestep":
             outputfile = args.outputfile.format(modelgridindex=modelgridindex)
             plot_timeevolution(modelpath, outputfile, modelgridindex, args)
@@ -1051,10 +1049,8 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             raise AssertionError
 
     if len(pdf_list) > 1:
-        print(pdf_list, modelpath_list)
-        at.join_pdf_files(pdf_list, modelpath_list)
-        return
-    return
+        print(pdf_list)
+        at.join_pdf_files(pdf_list)
 
 
 if __name__ == "__main__":

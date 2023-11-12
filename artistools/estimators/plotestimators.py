@@ -812,7 +812,7 @@ def make_plot(
             figure_title = f"{modelname}\nTimestep {timestepslist[0][0]} ({timedays:.2f}d)"
         else:
             figure_title = f"{modelname}\nTimestep {timestepslist[0][0]} ({timeavg:.2f}d)"
-        print(f"Plotting {figure_title.replace('\n', ' ')}")
+        print("Plotting ", figure_title.replace("\n", " "))
 
         defaultoutputfile = Path("plotestimators_ts{timestep:02d}_{timeavg:.2f}d.pdf")
         if Path(args.outputfile).is_dir():
@@ -1184,8 +1184,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         )
 
         if args.multiplot:
-            pdf_list = []
-            modelpath_list = []
+            pdf_files = []
             for timestep in range(timestepmin, timestepmax + 1):
                 timestepslist_unfiltered = [[timestep]] * len(allnonemptymgilist)
                 outfilename = make_plot(
@@ -1198,14 +1197,10 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
                     args=args,
                 )
 
-                if "/" in outfilename:
-                    outfilename = outfilename.split("/")[1]
+                pdf_files.append(outfilename)
 
-                pdf_list.append(outfilename)
-                modelpath_list.append(modelpath)
-
-            if len(pdf_list) > 1:
-                at.join_pdf_files(pdf_list, modelpath_list)
+            if len(pdf_files) > 1:
+                at.join_pdf_files(pdf_files)
 
         else:
             timestepslist_unfiltered = [timesteps_included] * len(allnonemptymgilist)
