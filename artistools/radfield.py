@@ -1050,7 +1050,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     if len(pdf_list) > 1:
         print(pdf_list)
-        at.join_pdf_files(pdf_list)
+        at.merge_pdf_files(pdf_list)
 
 
 if __name__ == "__main__":

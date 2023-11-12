@@ -85,10 +85,10 @@ from artistools.misc import get_vspec_dir_labels
 from artistools.misc import get_wid_init_at_tmin
 from artistools.misc import get_wid_init_at_tmodel
 from artistools.misc import get_z_a_nucname
-from artistools.misc import join_pdf_files
 from artistools.misc import linetuple
 from artistools.misc import makelist
 from artistools.misc import match_closest_time
+from artistools.misc import merge_pdf_files
 from artistools.misc import namedtuple
 from artistools.misc import parse_range
 from artistools.misc import parse_range_list

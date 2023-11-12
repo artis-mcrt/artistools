@@ -808,7 +808,7 @@ def make_plot(
     if len(set(mgilist)) == 1 and len(timestepslist[0]) > 1:  # single grid cell versus time plot
         figure_title = f"{modelname}\nCell {mgilist[0]}"
 
-        defaultoutputfile = Path("plotestimators_cell{modelgridindex:03d}.pdf")
+        defaultoutputfile = Path("plotestimators_cell{modelgridindex:03d}.{format}")
         if Path(args.outputfile).is_dir():
             args.outputfile = str(Path(args.outputfile, defaultoutputfile))
 
@@ -823,19 +823,17 @@ def make_plot(
             figure_title = f"{modelname}\nTimestep {timestepslist[0][0]} ({timeavg:.2f}d)"
         print("Plotting ", figure_title.replace("\n", " "))
 
-        defaultoutputfile = Path("plotestimators_ts{timestep:02d}_{timeavg:.2f}d.pdf")
+        defaultoutputfile = Path("plotestimators_ts{timestep:02d}_{timeavg:.2f}d.{format}")
         if Path(args.outputfile).is_dir():
             args.outputfile = str(Path(args.outputfile, defaultoutputfile))
 
         assert isinstance(timestepslist[0], list)
-        outfilename = str(args.outputfile).format(timestep=timestepslist[0][0], timeavg=timeavg)
+        outfilename = str(args.outputfile).format(timestep=timestepslist[0][0], timeavg=timeavg, format=args.format)
 
     if not args.notitle:
         axes[0].set_title(figure_title, fontsize=8)
     # plt.suptitle(figure_title, fontsize=11, verticalalignment='top')
 
-    if args.makegif:
-        outfilename = outfilename.replace(".pdf", ".png")
     print(f"Saving {outfilename} ...")
     fig.savefig(outfilename, dpi=300)
 
@@ -969,6 +967,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Savitzky-Golay filter. Specify the window_length and polyorder.e.g. -filtersavgol 5 3",
     )
 
+    parser.add_argument("-format", "-f", default="pdf", choices=["pdf", "png"], help="Set format of output plot files")
+
     parser.add_argument("--makegif", action="store_true", help="Make a gif with time evolution (requires --multiplot)")
 
     parser.add_argument("--notitle", action="store_true", help="Suppress the top title from the plot")
@@ -1062,11 +1062,11 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         #  ['_yscale', 'linear']],
         # [['initmasses', ['Ni_56', 'He', 'C', 'Mg']]],
         # ['heating_gamma/gamma_dep'],
-        ["nne", ["_ymin", 1e5], ["_ymax", 1e10]],
+        # ["nne", ["_ymin", 1e5], ["_ymax", 1e10]],
         ["TR", ["_yscale", "linear"], ["_ymin", 1000], ["_ymax", 15000]],
         # ["Te"],
         # ["Te", "TR"],
-        [["averageionisation", ["Sr"]]],
+        [["averageionisation", ["Sr", "Y", "Zr"]]],
         # [["averageexcitation", ["Fe II", "Fe III"]]],
         # [["populations", ["Sr90", "Sr91", "Sr92", "Sr94"]]],
         [["populations", ["Sr I", "Sr II", "Sr III"]]],
@@ -1200,6 +1200,11 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         frames_timesteps_included = (
             [[ts] for ts in range(timestepmin, timestepmax + 1)] if args.multiplot else [timesteps_included]
         )
+
+        if args.makegif:
+            args.multiplot = True
+            args.format = "png"
+
         outputfiles = []
         for timesteps_included in frames_timesteps_included:
             timestepslist_unfiltered = [timesteps_included] * len(allnonemptymgilist)
@@ -1215,18 +1220,20 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
             outputfiles.append(outfilename)
 
-        if args.makegif:
-            assert args.multiplot
-            import imageio.v2 as iio
+        if len(outputfiles) > 1:
+            if args.makegif:
+                assert args.multiplot
+                assert args.format == "png"
+                import imageio.v2 as iio
 
-            gifname = outdir / f"plotestim_evolution_ts{timestepmin:03d}_ts{timestepmax:03d}.gif"
-            with iio.get_writer(gifname, mode="I", duration=500) as writer:
-                for filename in outputfiles:
-                    image = iio.imread(filename)
-                    writer.append_data(image)  # type: ignore[attr-defined]
-            print(f"Created gif: {gifname}")
-        elif len(outputfiles) > 1:
-            at.join_pdf_files(outputfiles)
+                gifname = outdir / f"plotestim_evolution_ts{timestepmin:03d}_ts{timestepmax:03d}.gif"
+                with iio.get_writer(gifname, mode="I", duration=1000) as writer:
+                    for filename in outputfiles:
+                        image = iio.imread(filename)
+                        writer.append_data(image)  # type: ignore[attr-defined]
+                print(f"Created gif: {gifname}")
+            elif args.format == "pdf":
+                at.merge_pdf_files(outputfiles)
 
 
 if __name__ == "__main__":
