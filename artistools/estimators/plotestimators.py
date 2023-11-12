@@ -807,31 +807,34 @@ def make_plot(
     if len(set(mgilist)) == 1 and len(timestepslist[0]) > 1:  # single grid cell versus time plot
         figure_title = f"{modelname}\nCell {mgilist[0]}"
 
-        defaultoutputfile = Path("plotestimators_cell{modelgridindex:03d}.{format}")
+        defaultoutputfile = "plotestimators_cell{modelgridindex:03d}.{format}"
         if Path(args.outputfile).is_dir():
-            args.outputfile = str(Path(args.outputfile, defaultoutputfile))
+            args.outputfile = str(Path(args.outputfile) / defaultoutputfile)
 
         outfilename = str(args.outputfile).format(modelgridindex=mgilist[0])
 
     else:
-        timeavg = (args.timemin + args.timemax) / 2.0
         if args.multiplot:
-            timedays = float(at.get_timestep_time(modelpath, timestepslist[0][0]))
-            figure_title = f"{modelname}\nTimestep {timestepslist[0][0]} ({timedays:.2f}d)"
+            timestep = f"ts{timestepslist[0][0]:02d}"
+            timedays = f"{at.get_timestep_time(modelpath, timestepslist[0][0]):.2f}d"
         else:
-            figure_title = f"{modelname}\nTimestep {timestepslist[0][0]} ({timeavg:.2f}d)"
+            timestepmin = min(timestepslist[0])
+            timestepmax = max(timestepslist[0])
+            timestep = f"ts{timestepmin:02d}-ts{timestepmax:02d}"
+            timedays = f"{at.get_timestep_time(modelpath, timestepmin):.2f}d-{at.get_timestep_time(modelpath, timestepmax):.2f}d"
+
+        figure_title = f"{modelname}\nTimestep {timestep} ({timedays})"
         print("Plotting ", figure_title.replace("\n", " "))
 
-        defaultoutputfile = Path("plotestimators_ts{timestep:02d}_{timeavg:.2f}d.{format}")
+        defaultoutputfile = "plotestimators_{timestep}_{timedays}.{format}"
         if Path(args.outputfile).is_dir():
-            args.outputfile = str(Path(args.outputfile, defaultoutputfile))
+            args.outputfile = str(Path(args.outputfile) / defaultoutputfile)
 
         assert isinstance(timestepslist[0], list)
-        outfilename = str(args.outputfile).format(timestep=timestepslist[0][0], timeavg=timeavg, format=args.format)
+        outfilename = str(args.outputfile).format(timestep=timestep, timedays=timedays, format=args.format)
 
     if not args.notitle:
         axes[0].set_title(figure_title, fontsize=8)
-    # plt.suptitle(figure_title, fontsize=11, verticalalignment='top')
 
     print(f"Saving {outfilename} ...")
     fig.savefig(outfilename, dpi=300)
