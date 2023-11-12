@@ -645,6 +645,10 @@ def add_derived_cols_to_modeldata(
 
     dfmodel = dfmodel.with_columns([(pl.col("rho") * pl.col("volume")).alias("mass_g")])
 
+    dfmodel = dfmodel.with_columns(
+        [(pl.col(colname) / 29979245800.0).alias(f"{colname}_on_c") for colname in dfmodel.columns]
+    )
+
     if unknown_cols := [
         col for col in derived_cols if col not in dfmodel.columns and col not in {"pos_min", "pos_max", "ALL"}
     ]:
