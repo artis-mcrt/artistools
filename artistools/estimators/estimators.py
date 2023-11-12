@@ -283,7 +283,8 @@ def get_rankbatch_parquetfile(
         print(f"  writing {parquetfilepath.relative_to(modelpath.parent)}")
         pldf_group.write_parquet(parquetfilepath, compression="zstd", statistics=True, compression_level=8)
 
-    print(f"Scanning {parquetfilepath.relative_to(modelpath.parent)}")
+    filesize = parquetfilepath.stat().st_size / 1024 / 1024
+    print(f"Scanning {parquetfilepath.relative_to(modelpath.parent)} ({filesize:.2f} MiB)")
 
     return parquetfilepath
 
