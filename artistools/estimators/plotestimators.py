@@ -1068,7 +1068,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         ["TR", ["_yscale", "linear"], ["_ymin", 1000], ["_ymax", 15000]],
         # ["Te"],
         # ["Te", "TR"],
-        [["averageionisation", ["Sr", "Y", "Zr"]]],
+        [["averageionisation", ["Sr"]]],
         # [["averageexcitation", ["Fe II", "Fe III"]]],
         # [["populations", ["Sr90", "Sr91", "Sr92", "Sr94"]]],
         [["populations", ["Sr I", "Sr II", "Sr III"]]],
