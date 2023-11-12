@@ -476,7 +476,7 @@ def plot_multi_ion_series(
         else:
             raise AssertionError
     else:
-        ax.set_ylabel(at.estimators.get_dictlabelreplacements().get(seriestype, seriestype))
+        ax.set_ylabel(at.estimators.get_varname_formatted(seriestype))
 
     if plotted_something:
         ax.set_yscale(args.yscale)
@@ -499,7 +499,7 @@ def plot_series(
     **plotkwargs: t.Any,
 ) -> None:
     """Plot something like Te or TR."""
-    formattedvariablename = at.estimators.get_dictlabelreplacements().get(variablename, variablename)
+    formattedvariablename = at.estimators.get_varname_formatted(variablename)
     serieslabel = f"{formattedvariablename}"
     units_string = at.estimators.get_units_string(variablename)
 
@@ -758,7 +758,9 @@ def make_plot(
 
     # ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
     if not args.hidexlabel:
-        axes[-1].set_xlabel(f"{xvariable}{at.estimators.get_units_string(xvariable)}")
+        axes[-1].set_xlabel(
+            f"{at.estimators.get_varname_formatted(xvariable)}{at.estimators.get_units_string(xvariable)}"
+        )
 
     xlist, mgilist, timestepslist, estimators = get_xlist(
         xvariable=xvariable,

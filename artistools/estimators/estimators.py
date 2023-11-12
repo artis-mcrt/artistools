@@ -38,6 +38,8 @@ def get_variableunits(key: str | None = None) -> str | dict[str, str]:
         "velocity": "km/s",
         "beta": "v/c",
         "vel_r_max_kmps": "km/s",
+        **{f"vel_{ax}_mid": "cm/s" for ax in ["x", "y", "z", "r", "rcyl"]},
+        **{f"vel_{ax}_mid_on_c": "c" for ax in ["x", "y", "z", "r", "rcyl"]},
     }
     return variableunits[key] if key else variableunits
 
@@ -52,8 +54,8 @@ def get_variablelongunits(key: str | None = None) -> str | dict[str, str]:
     return variablelongunits[key] if key else variablelongunits
 
 
-def get_dictlabelreplacements() -> dict[str, str]:
-    return {
+def get_varname_formatted(varname: str) -> str:
+    replacements = {
         "nne": r"n$_{\rm e}$",
         "lognne": r"Log n$_{\rm e}$",
         "Te": r"T$_{\rm e}$",
@@ -62,7 +64,9 @@ def get_dictlabelreplacements() -> dict[str, str]:
         "gamma_NT": r"$\Gamma_{\rm non-thermal}$ [s$^{-1}$]",
         "gamma_R_bfest": r"$\Gamma_{\rm phot}$ [s$^{-1}$]",
         "heating_dep/total_dep": "Heating fraction",
+        **{f"vel_{ax}_mid_on_c": f"$v_{{{ax}}}$" for ax in ["x", "y", "z", "r", "rcyl"]},
     }
+    return replacements.get(varname, varname)
 
 
 def apply_filters(
