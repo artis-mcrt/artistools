@@ -1,5 +1,4 @@
 import argparse
-import contextlib
 import gzip
 import io
 import math
@@ -1123,21 +1122,15 @@ def get_inputparams(modelpath: Path) -> dict[str, t.Any]:
 @lru_cache(maxsize=16)
 def get_runfolder_timesteps(folderpath: Path | str) -> tuple[int, ...]:
     """Get the set of timesteps covered by the output files in an ARTIS run folder."""
-    folder_timesteps = set()
-    with contextlib.suppress(FileNotFoundError), zopen(Path(folderpath, "estimators_0000.out")) as estfile:
-        restart_timestep = -1
-        for line in estfile:
-            if line.startswith("timestep "):
-                timestep = int(line.split()[1])
+    estimfiles = sorted(Path(folderpath).glob("estimators_*.out*"))
+    if not estimfiles:
+        return ()
 
-                if restart_timestep < 0 and timestep != 0 and 0 not in folder_timesteps:
-                    # the first timestep of a restarted run is duplicate and should be ignored
-                    restart_timestep = timestep
-
-                if timestep != restart_timestep:
-                    folder_timesteps.add(timestep)
-
-    return tuple(folder_timesteps)
+    with zopen(estimfiles[0]) as estfile:
+        timesteps_contained = sorted({int(line.split()[1]) for line in estfile if line.startswith("timestep ")})
+        # the first timestep of a restarted run is duplicate and should be ignored
+        restart_timestep = None if 0 in timesteps_contained else timesteps_contained[0]
+        return tuple(ts for ts in timesteps_contained if ts != restart_timestep)
 
 
 def get_runfolders(
