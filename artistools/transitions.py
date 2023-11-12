@@ -258,9 +258,6 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             sys.exit(1)
 
         estimators = estimators_all[(timestep, modelgridindex)]
-        if estimators["emptycell"]:
-            print(f"ERROR: cell {modelgridindex} is marked as empty")
-            sys.exit(1)
 
     # also calculate wavelengths outside the plot range to include lines whose
     # edges pass through the plot range

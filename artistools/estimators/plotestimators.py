@@ -864,10 +864,7 @@ def plot_recombrates(modelpath, estimators, atomic_number, ionstage_list, **plot
         list_rrc = []
         list_rrc2 = []
         for dicttimestepmodelgrid in estimators.values():
-            if (
-                not dicttimestepmodelgrid["emptycell"]
-                and (atomic_number, ionstage) in dicttimestepmodelgrid["RRC_LTE_Nahar"]
-            ):
+            if (atomic_number, ionstage) in dicttimestepmodelgrid["RRC_LTE_Nahar"]:
                 listT_e.append(dicttimestepmodelgrid["Te"])
                 list_rrc.append(dicttimestepmodelgrid["RRC_LTE_Nahar"][(atomic_number, ionstage)])
                 list_rrc2.append(dicttimestepmodelgrid["Alpha_R"][(atomic_number, ionstage)])
@@ -1112,7 +1109,6 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
                     **estimvals,
                 }
                 for (ts, mgi), estimvals in estimatorsdict.items()
-                if not estimvals.get("emptycell", True)
             ]
         ).lazy()
     else:

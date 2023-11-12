@@ -487,7 +487,7 @@ def plot_qdot_abund_modelcells(
         for nts, mgi in sorted(estimators.keys()):
             if nts in partiallycomplete_timesteps:
                 continue
-            if mgi not in mgiplotlist and not get_global_Ye or estimators[(nts, mgi)]["emptycell"]:
+            if mgi not in mgiplotlist and not get_global_Ye:
                 continue
 
             if first_mgi is None:

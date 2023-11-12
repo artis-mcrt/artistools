@@ -459,9 +459,7 @@ def get_packets_with_emission_conditions(
 
     modeldata, _ = at.inputmodel.get_modeldata(modelpath)
     ts = at.get_timestep_of_timedays(modelpath, tend)
-    allnonemptymgilist = [
-        modelgridindex for modelgridindex in modeldata.index if not estimators[(ts, modelgridindex)]["emptycell"]
-    ]
+    allnonemptymgilist = list({modelgridindex for estimts, modelgridindex in estimators if estimts == ts})
 
     # model_tmids = at.get_timestep_times(modelpath, loc='mid')
     # arr_velocity_mid = tuple(list([(float(v1) + float(v2)) * 0.5 for v1, v2 in zip(

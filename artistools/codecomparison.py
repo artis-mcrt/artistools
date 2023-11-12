@@ -86,9 +86,6 @@ def read_reference_estimators(
 
                 key = (cur_timestep, cur_modelgridindex)
 
-                if key not in estimators:
-                    estimators[key] = {"emptycell": False}
-
                 estimators[key]["vel_mid"] = float(row[0])
                 estimators[key]["Te"] = float(row[1])
                 estimators[key]["rho"] = float(row[2])

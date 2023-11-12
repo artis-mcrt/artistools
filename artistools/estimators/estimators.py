@@ -6,7 +6,6 @@ Examples are temperatures, populations, and heating/cooling rates.
 import argparse
 import contextlib
 import itertools
-import math
 import multiprocessing
 import sys
 import time
@@ -132,6 +131,7 @@ def read_estimators_from_file(
     estimblock: dict[str, t.Any] = {}
     timestep: int | None = None
     modelgridindex: int | None = None
+    emptycell: bool | None = None
     with at.zopen(estfilepath) as estimfile:
         for line in estimfile:
             row: list[str] = line.split()
@@ -140,18 +140,16 @@ def read_estimators_from_file(
 
             if row[0] == "timestep":
                 # yield the previous block before starting a new one
-                if timestep is not None and modelgridindex is not None and (not estimblock.get("emptycell", True)):
+                if timestep is not None and modelgridindex is not None and not emptycell:
                     estimblocklist.append(estimblock | {"timestep": timestep, "modelgridindex": modelgridindex})
 
                 timestep = int(row[1])
                 modelgridindex = int(row[3])
                 emptycell = row[4] == "EMPTYCELL"
-                estimblock = {"emptycell": emptycell}
                 if not emptycell:
                     # will be TR, Te, W, TJ, nne
                     for variablename, value in zip(row[4::2], row[5::2]):
                         estimblock[variablename] = float(value)
-                    estimblock["lognne"] = math.log10(estimblock["nne"]) if estimblock["nne"] > 0 else float("-inf")
 
             elif row[1].startswith("Z="):
                 variablename = row[0]
@@ -216,7 +214,7 @@ def read_estimators_from_file(
                     estimblock[f"cooling_{coolingtype}"] = float(value)
 
     # reached the end of file
-    if timestep is not None and modelgridindex is not None and (not estimblock.get("emptycell", True)):
+    if timestep is not None and modelgridindex is not None and not emptycell:
         estimblocklist.append(estimblock | {"timestep": timestep, "modelgridindex": modelgridindex})
 
     return pl.DataFrame(estimblocklist).with_columns(
@@ -327,7 +325,6 @@ def scan_estimators(
                     **estimvals,
                 }
                 for (ts, mgi), estimvals in estimators.items()
-                if not estimvals.get("emptycell", True)
             ]
         ).lazy()
 

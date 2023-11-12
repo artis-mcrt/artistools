@@ -214,11 +214,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
         modeldata, t_model_init_days, _ = at.inputmodel.get_modeldata_tuple(modelpath)
         estimators = at.estimators.read_estimators(modelpath=modelpath)
-        allnonemptymgilist = [
-            modelgridindex
-            for modelgridindex in modeldata.index
-            if not estimators[(selected_timesteps[0], modelgridindex)]["emptycell"]
-        ]
+        allnonemptymgilist = list({modelgridindex for ts, modelgridindex in estimators if ts == selected_timesteps[0]})
 
         try:
             write_lbol_edep(

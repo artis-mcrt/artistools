@@ -572,16 +572,11 @@ def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, 
         print(f"Z={atomic_number} {elsymbol}")
 
         if estimators:
-            if not estimators[(timestep, modelgridindex)]["emptycell"]:
-                T_e = estimators[(timestep, modelgridindex)]["Te"]
-                T_R = estimators[(timestep, modelgridindex)]["TR"]
-                W = estimators[(timestep, modelgridindex)]["W"]
-                nne = estimators[(timestep, modelgridindex)]["nne"]
-                print(f"nne = {nne} cm^-3, T_e = {T_e} K, T_R = {T_R} K, W = {W}")
-            else:
-                print(f"ERROR: cell {modelgridindex} is empty. Setting T_e = T_R = {args.exc_temperature} K")
-                T_e = args.exc_temperature
-                T_R = args.exc_temperature
+            T_e = estimators[(timestep, modelgridindex)]["Te"]
+            T_R = estimators[(timestep, modelgridindex)]["TR"]
+            W = estimators[(timestep, modelgridindex)]["W"]
+            nne = estimators[(timestep, modelgridindex)]["nne"]
+            print(f"nne = {nne} cm^-3, T_e = {T_e} K, T_R = {T_R} K, W = {W}")
         else:
             print("WARNING: No estimator data. Setting T_e = T_R =  6000 K")
             T_e = args.exc_temperature
