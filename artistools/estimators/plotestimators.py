@@ -811,7 +811,7 @@ def make_plot(
         if Path(args.outputfile).is_dir():
             args.outputfile = str(Path(args.outputfile) / defaultoutputfile)
 
-        outfilename = str(args.outputfile).format(modelgridindex=mgilist[0])
+        outfilename = str(args.outputfile).format(modelgridindex=mgilist[0], format=args.format)
 
     else:
         if args.multiplot:
