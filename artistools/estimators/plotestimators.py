@@ -730,7 +730,7 @@ def plot_subplot(
                 if (plotitems[0][0] == "populations" and args.yscale == "log")
                 else {}
             ),
-            markerscale=10,
+            markerscale=3,
         )
 
 
@@ -782,7 +782,7 @@ def make_plot(
     if args.markersonly:
         plotkwargs["linestyle"] = "None"
         plotkwargs["marker"] = "."
-        plotkwargs["markersize"] = 1
+        plotkwargs["markersize"] = 3
         plotkwargs["alpha"] = 0.5
 
         # with no lines, line styles cannot distringuish ions
@@ -1065,7 +1065,8 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         # [['initmasses', ['Ni_56', 'He', 'C', 'Mg']]],
         # ['heating_gamma/gamma_dep'],
         # ["nne", ["_ymin", 1e5], ["_ymax", 1e10]],
-        ["TR", ["_yscale", "linear"], ["_ymin", 1000], ["_ymax", 15000]],
+        ["rho", ["_yscale", "log"]],
+        ["TR", ["_yscale", "linear"]],  # , ["_ymin", 1000], ["_ymax", 15000]
         # ["Te"],
         # ["Te", "TR"],
         [["averageionisation", ["Sr"]]],
