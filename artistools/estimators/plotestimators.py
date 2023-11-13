@@ -1118,6 +1118,14 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             timestep=tuple(timesteps_included),
         )
     assert estimators is not None
+    tmids = at.get_timestep_times(modelpath, loc="mid")
+    estimators = estimators.join(
+        pl.DataFrame({"timestep": range(len(tmids)), "time_mid": tmids})
+        .with_columns(pl.col("timestep").cast(pl.Int32))
+        .lazy(),
+        on="timestep",
+        how="left",
+    )
 
     for ts in reversed(timesteps_included):
         tswithdata = estimators.select("timestep").unique().collect().to_series()
@@ -1170,14 +1178,6 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
         dfmodel = dfmodel.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"])
         estimators = estimators.join(dfmodel, on="modelgridindex")
-        tmids = at.get_timestep_times(modelpath, loc="mid")
-        estimators = estimators.join(
-            pl.DataFrame({"timestep": range(len(tmids)), "time_mid": tmids})
-            .with_columns(pl.col("timestep").cast(pl.Int32))
-            .lazy(),
-            on="timestep",
-            how="left",
-        )
         estimators = estimators.with_columns(
             rho_init=pl.col("rho"),
             rho=pl.col("rho") * (modelmeta["t_model_init_days"] / pl.col("time_mid")) ** 3,
