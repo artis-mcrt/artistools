@@ -325,7 +325,8 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
 
     outputfilenames = []
     for tstart, tend, label in time_ranges:
-        print(f"Plotting spherical map for {tstart:.2f}-{tend:.2f} days {label}")
+        if tstart is not None and tend is not None:
+            print(f"Plotting spherical map for {tstart:.2f}-{tend:.2f} days {label}")
         # tstart and tend are requested, but the actual plotted time range may be different
         fig, axes, timemindays, timemaxdays = plot_spherical(
             modelpath=args.modelpath,
