@@ -561,14 +561,6 @@ def get_xlist(
     elif xvariable == "timestep":
         estimators = estimators.with_columns(xvalue=pl.col("timestep"), plotpointid=pl.col("timestep"))
     elif xvariable == "time":
-        timearray = at.get_timestep_times(modelpath)
-        estimators = estimators.lazy().join(
-            pl.DataFrame({"timestep": range(len(timearray)), "time_mid": timearray})
-            .with_columns(pl.col("timestep").cast(pl.Int32))
-            .lazy(),
-            on="timestep",
-            how="left",
-        )
         estimators = estimators.with_columns(xvalue=pl.col("time_mid"), plotpointid=pl.col("timestep"))
     elif xvariable in {"velocity", "beta"}:
         velcolumn = "vel_r_mid"
@@ -1178,6 +1170,18 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
         dfmodel = dfmodel.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"])
         estimators = estimators.join(dfmodel, on="modelgridindex")
+        tmids = at.get_timestep_times(modelpath, loc="mid")
+        estimators = estimators.join(
+            pl.DataFrame({"timestep": range(len(tmids)), "time_mid": tmids})
+            .with_columns(pl.col("timestep").cast(pl.Int32))
+            .lazy(),
+            on="timestep",
+            how="left",
+        )
+        estimators = estimators.with_columns(
+            rho_init=pl.col("rho"),
+            rho=pl.col("rho") * (modelmeta["t_model_init_days"] / pl.col("time_mid")) ** 3,
+        )
 
         if args.readonlymgi:
             estimators = estimators.filter(pl.col("modelgridindex").is_in(args.modelgridindex))
