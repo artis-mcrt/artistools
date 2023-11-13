@@ -25,6 +25,9 @@ def plot_spherical(
     timemaxdays: float | None,
     nphibins: int,
     ncosthetabins: int,
+    dfmodel: pl.LazyFrame | None = None,
+    modelmeta: dict[str, t.Any] | None = None,
+    dfestimators: pl.LazyFrame | None = None,
     maxpacketfiles: int | None = None,
     atomic_number: int | None = None,
     ionstage: int | None = None,
@@ -35,8 +38,6 @@ def plot_spherical(
 ) -> tuple[plt.Figure, t.Any, float, float]:
     if plotvars is None:
         plotvars = ["luminosity", "emvelocityoverc", "emlosvelocityoverc"]
-
-    dfmodel, modelmeta = at.get_modeldata(modelpath=modelpath, getheadersonly=True, printwarningsonly=True)
 
     _, tmin_d_valid, tmax_d_valid = at.get_escaped_arrivalrange(modelpath)
     if tmin_d_valid is None or tmax_d_valid is None:
@@ -81,7 +82,6 @@ def plot_spherical(
     # dfpackets = dfpackets.filter(pl.col("dirz") > 0.9)
 
     aggs = []
-    dfpackets = at.packets.add_derived_columns_lazy(dfpackets, modelmeta=modelmeta, dfmodel=dfmodel)
 
     if "emvelocityoverc" in plotvars:
         aggs.append(
@@ -119,13 +119,13 @@ def plot_spherical(
             ).alias("em_timestep")
         )
 
-        df_estimators = (
-            at.estimators.scan_estimators(modelpath=modelpath)
-            .select(["timestep", "modelgridindex", "TR"])
+        assert dfestimators is not None
+        dfestimators = (
+            dfestimators.select(["timestep", "modelgridindex", "TR"])
             .drop_nulls()
             .rename({"timestep": "em_timestep", "modelgridindex": "em_modelgridindex", "TR": "em_TR"})
         )
-        dfpackets = dfpackets.join(df_estimators, on=["em_timestep", "em_modelgridindex"], how="left")
+        dfpackets = dfpackets.join(dfestimators, on=["em_timestep", "em_modelgridindex"], how="left")
         aggs.append(((pl.col("em_TR") * pl.col("e_rf")).mean() / pl.col("e_rf").mean()).alias("temperature"))
 
     if atomic_number is not None or ionstage is not None:
@@ -141,7 +141,6 @@ def plot_spherical(
         dfpackets = dfpackets.filter(pl.col("emissiontype").is_in(selected_emtypes))
 
     aggs.append(pl.count())
-
     dfpackets = dfpackets.group_by(["costhetabin", "phibin"]).agg(aggs)
     dfpackets = dfpackets.select(["costhetabin", "phibin", "count", *plotvars])
 
@@ -176,7 +175,7 @@ def plot_spherical(
         1,
         figsize=(figscale * at.get_config()["figwidth"], 3.7 * len(plotvars)),
         subplot_kw={"projection": "mollweide"},
-        tight_layout={"pad": 0.1, "w_pad": 0.0, "h_pad": 0.0},
+        tight_layout={"pad": 0.5, "w_pad": 0.5, "h_pad": 0.5},
     )
 
     if len(plotvars) == 1:
@@ -295,9 +294,13 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
         assert args.atomic_number is None
         args.atomic_number = at.get_atomic_number(args.elem)
 
+    dfmodel, modelmeta = at.get_modeldata_polars(modelpath=args.modelpath, getheadersonly=True, printwarningsonly=True)
+    dfestimators = at.estimators.scan_estimators(modelpath=args.modelpath) if "temperature" in args.plotvars else None
+
     nprocs_read, dfpackets = at.packets.get_packets_pl(
         args.modelpath, args.maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
+    dfpackets = at.packets.add_derived_columns_lazy(dfpackets, modelmeta=modelmeta, dfmodel=dfmodel)
 
     if args.makegif:
         tstarts = at.get_timestep_times(args.modelpath, loc="start")
@@ -319,6 +322,9 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
         fig, axes, timemindays, timemaxdays = plot_spherical(
             modelpath=args.modelpath,
             dfpackets=dfpackets,
+            dfestimators=dfestimators,
+            dfmodel=dfmodel,
+            modelmeta=modelmeta,
             nprocs_read=nprocs_read,
             timemindays=tstart,
             timemaxdays=tend,
@@ -341,7 +347,7 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
             else outdir / args.outputfile
         )
 
-        fig.savefig(outfilename, format=outformat)
+        fig.savefig(outfilename, format=outformat, dpi=300)
         print(f"Saved {outfilename}")
         plt.close()
         plt.clf()
@@ -351,7 +357,9 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
     if args.makegif:
         import imageio.v2 as iio
 
-        gifname = outdir / "sphericalplot.gif" if (args.outputfile).is_dir() else args.outputfile
+        gifname = (
+            outdir / "sphericalplot.gif" if (args.outputfile).is_dir() else args.outputfile.replace(".pdf", ".gif")
+        )
         with iio.get_writer(gifname, mode="I", duration=(1000 * 1 / 1.5)) as writer:
             for filename in outputfilenames:
                 image = iio.imread(filename)

@@ -373,7 +373,8 @@ def get_modeldata_polars(
         gc.collect()
         dfmodel = pl.scan_parquet(filenameparquet)
 
-    print(f"  model is {modelmeta['dimensions']}D with {modelmeta['npts_model']} cells")
+    if not printwarningsonly:
+        print(f"  model is {modelmeta['dimensions']}D with {modelmeta['npts_model']} cells")
     dfmodel = dfmodel.lazy()
 
     if get_elemabundances:

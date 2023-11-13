@@ -1071,7 +1071,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         [["averageionisation", ["Sr"]]],
         # [["averageexcitation", ["Fe II", "Fe III"]]],
         # [["populations", ["Sr90", "Sr91", "Sr92", "Sr94"]]],
-        [["populations", ["Sr I", "Sr II", "Sr III"]]],
+        [["populations", ["Sr I", "Sr II", "Sr III", "Sr IV"]]],
         # [['populations', ['He I', 'He II', 'He III']]],
         # [['populations', ['C I', 'C II', 'C III', 'C IV', 'C V']]],
         # [['populations', ['O I', 'O II', 'O III', 'O IV']]],
