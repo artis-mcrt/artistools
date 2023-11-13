@@ -35,6 +35,7 @@ def get_variableunits(key: str | None = None) -> str | dict[str, str]:
         "heating": "erg/s/cm3",
         "heating_dep/total_dep": "Ratio",
         "cooling": "erg/s/cm3",
+        "rho": "g/cm3",
         "velocity": "km/s",
         "beta": "v/c",
         "vel_r_max_kmps": "km/s",
@@ -58,6 +59,7 @@ def get_varname_formatted(varname: str) -> str:
     replacements = {
         "nne": r"n$_{\rm e}$",
         "lognne": r"Log n$_{\rm e}$",
+        "rho": r"$\rho$",
         "Te": r"T$_{\rm e}$",
         "TR": r"T$_{\rm R}$",
         "TJ": r"T$_{\rm J}$",
