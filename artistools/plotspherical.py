@@ -240,6 +240,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         default=Path(),
         help="Path to ARTIS folder",
     )
+    parser.add_argument("-timestep", "-ts", action="store", type=int, default=None, help="Timestep index")
     parser.add_argument("-timemin", "-tmin", action="store", type=float, default=None, help="Time minimum [d]")
     parser.add_argument("-timemax", "-tmax", action="store", type=float, default=None, help="Time maximum [d]")
     parser.add_argument("-nphibins", action="store", type=int, default=64, help="Number of azimuthal bins")
@@ -273,7 +274,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         action="store",
         dest="outputfile",
         type=Path,
-        default=Path("plotspherical.pdf"),
+        default=Path("plotspherical.{outformat}"),
         help="Filename for PDF file",
     )
 
@@ -302,15 +303,18 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
     )
     dfpackets = at.packets.add_derived_columns_lazy(dfpackets, modelmeta=modelmeta, dfmodel=dfmodel)
 
+    tstarts = at.get_timestep_times(args.modelpath, loc="start")
+    tends = at.get_timestep_times(args.modelpath, loc="end")
     if args.makegif:
-        tstarts = at.get_timestep_times(args.modelpath, loc="start")
-        tends = at.get_timestep_times(args.modelpath, loc="end")
         time_ranges = [
             (tstart, tend)
             for tstart, tend in zip(tstarts, tends)
             if ((args.timemin is None or tstart >= args.timemin) and (args.timemax is None or tend <= args.timemax))
         ]
         outformat = "png"
+    elif args.timestep is not None:
+        time_ranges = [(tstarts[args.timestep], tends[args.timestep])]
+        outformat = "pdf"
     else:
         time_ranges = [(args.timemin, args.timemax)]
         outformat = "pdf"
@@ -341,11 +345,11 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
 
         axes[0].set_title(f"{timemindays:.2f}-{timemaxdays:.2f} days")
 
-        outfilename = (
-            outdir / f"plotspherical_{timemindays:.2f}-{timemaxdays:.2f}d.{outformat}"
+        outfilename = str(
+            outdir / "plotspherical_{timemindays:.2f}-{timemaxdays:.2f}d.{outformat}"
             if args.makegif or (args.outputfile).is_dir()
             else outdir / args.outputfile
-        )
+        ).format(timemindays=timemindays, timemaxdays=timemaxdays, outformat=outformat)
 
         fig.savefig(outfilename, format=outformat, dpi=300)
         print(f"Saved {outfilename}")
@@ -358,7 +362,7 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
         import imageio.v2 as iio
 
         gifname = (
-            outdir / "sphericalplot.gif" if (args.outputfile).is_dir() else args.outputfile.replace(".pdf", ".gif")
+            outdir / "sphericalplot.gif" if (args.outputfile).is_dir() else args.outputfile.format(outformat=outformat)
         )
         with iio.get_writer(gifname, mode="I", duration=(1000 * 1 / 1.5)) as writer:
             for filename in outputfilenames:
