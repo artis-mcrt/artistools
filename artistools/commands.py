@@ -124,9 +124,13 @@ def setup_completions(*args: t.Any, **kwargs: t.Any) -> None:
             completecommand = strcommandregister.replace("__MY_COMMAND__", command)
             f.write(completecommand + "\n")
 
-    print("To enable completions, add these line to your .zshrc/.bashrc")
+    print("To enable completions, add these lines to your .zshrc or .bashrc file:")
+    print("\n.zshrc:")
     print(f'source "{completionscriptpath}"')
     print("autoload -Uz compinit && compinit")
+
+    print("\n.bashrc:")
+    print(f"source {completionscriptpath}")
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
