@@ -396,7 +396,7 @@ def plot_multi_ion_series(
         else:
             key = f"{seriestype}_{ionstr}"
 
-        print(f"Plotting {seriestype} {ionstr}")
+        print(f"Plotting {seriestype} {ionstr.replace('_', ' ')}")
 
         if seriestype != "populations" or args.ionpoptype == "absolute":
             scalefactor = pl.lit(1)
