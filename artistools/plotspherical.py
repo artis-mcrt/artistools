@@ -240,7 +240,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         default=Path(),
         help="Path to ARTIS folder",
     )
-    parser.add_argument("-timestep", "-ts", action="store", type=int, default=None, help="Timestep index")
+    parser.add_argument("-timestep", "-ts", action="store", type=str, default=None, help="Timestep index")
     parser.add_argument("-timemin", "-tmin", action="store", type=float, default=None, help="Time minimum [d]")
     parser.add_argument("-timemax", "-tmax", action="store", type=float, default=None, help="Time maximum [d]")
     parser.add_argument("-nphibins", action="store", type=int, default=64, help="Number of azimuthal bins")
@@ -273,10 +273,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-o",
         action="store",
         dest="outputfile",
-        type=Path,
-        default=Path("plotspherical.{outformat}"),
-        help="Filename for PDF file",
+        type=str,
+        default="",
+        help="Filename for plot output file",
     )
+
+    parser.add_argument("-format", "-f", default="", choices=["pdf", "png"], help="Set format of output plot files")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = None, **kwargs: t.Any) -> None:
@@ -307,21 +309,23 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
     tends = at.get_timestep_times(args.modelpath, loc="end")
     if args.makegif:
         time_ranges = [
-            (tstart, tend)
-            for tstart, tend in zip(tstarts, tends)
+            (tstart, tend, f"timestep {ts}")
+            for ts, (tstart, tend) in enumerate(zip(tstarts, tends))
             if ((args.timemin is None or tstart >= args.timemin) and (args.timemax is None or tend <= args.timemax))
         ]
         outformat = "png"
     elif args.timestep is not None:
-        time_ranges = [(tstarts[args.timestep], tends[args.timestep])]
-        outformat = "pdf"
+        time_ranges = [
+            (tstarts[int(ts)], tends[int(ts)], f"timestep {ts}") for ts in at.parse_range_list(args.timestep)
+        ]
+        outformat = args.format or "pdf"
     else:
-        time_ranges = [(args.timemin, args.timemax)]
-        outformat = "pdf"
+        time_ranges = [(args.timemin, args.timemax, "")]
+        outformat = args.format or "pdf"
 
-    outdir = args.outputfile if (args.outputfile).is_dir() else Path()
     outputfilenames = []
-    for tstart, tend in time_ranges:
+    for tstart, tend, label in time_ranges:
+        print(f"Plotting spherical map for {tstart:.2f}-{tend:.2f} days {label}")
         # tstart and tend are requested, but the actual plotted time range may be different
         fig, axes, timemindays, timemaxdays = plot_spherical(
             modelpath=args.modelpath,
@@ -345,10 +349,11 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
 
         axes[0].set_title(f"{timemindays:.2f}-{timemaxdays:.2f} days")
 
+        defaultfilename = "plotspherical_{timemindays:.2f}-{timemaxdays:.2f}d.{outformat}"
         outfilename = str(
-            outdir / "plotspherical_{timemindays:.2f}-{timemaxdays:.2f}d.{outformat}"
-            if args.makegif or (args.outputfile).is_dir()
-            else outdir / args.outputfile
+            args.outputfile
+            if (args.outputfile and not Path(args.outputfile).is_dir() and not args.makegif)
+            else Path(args.outputfile) / defaultfilename
         ).format(timemindays=timemindays, timemaxdays=timemaxdays, outformat=outformat)
 
         fig.savefig(outfilename, format=outformat, dpi=300)
@@ -362,7 +367,9 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
         import imageio.v2 as iio
 
         gifname = (
-            outdir / "sphericalplot.gif" if (args.outputfile).is_dir() else args.outputfile.format(outformat=outformat)
+            Path(args.outputfile) / "sphericalplot.gif"
+            if Path(args.outputfile).is_dir()
+            else args.outputfile.format(outformat=outformat)
         )
         with iio.get_writer(gifname, mode="I", duration=(1000 * 1 / 1.5)) as writer:
             for filename in outputfilenames:
