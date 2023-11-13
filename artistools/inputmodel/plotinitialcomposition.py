@@ -196,12 +196,12 @@ def plot_2d_initial_abundances(modelpath, args=None) -> None:
         cbar.set_label(r"log10($\rho$) [g/cm3]" if args.logcolorscale else r"$\rho$ [g/cm3]")
 
     defaultfilename = Path(modelpath) / f"plotcomposition_{','.join(args.plotvars)}.pdf"
-    if args.outputfile.is_dir():
-        outfilename = defaultfilename
+    if args.outputfile and Path(args.outputfile).is_dir():
+        outfilename = Path(modelpath) / defaultfilename
     elif args.outputfile:
         outfilename = args.outputfile
     else:
-        outfilename = Path(modelpath) / defaultfilename
+        outfilename = defaultfilename
 
     plt.savefig(outfilename, format="pdf")
 
@@ -266,7 +266,7 @@ def make_3d_plot(modelpath, args):
     model = merge_dfs
 
     # choose what surface will be coloured by
-    if args.rho:
+    if "rho" in args.plotvars:
         coloursurfaceby = "rho"
     elif args.opacity:
         model["opacity"] = at.inputmodel.opacityinputfile.get_opacity_from_file(modelpath)
