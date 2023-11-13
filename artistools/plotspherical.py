@@ -173,9 +173,10 @@ def plot_spherical(
     fig, axes = plt.subplots(
         len(plotvars),
         1,
-        figsize=(figscale * at.get_config()["figwidth"], 3.7 * len(plotvars)),
+        figsize=(figscale * at.get_config()["figwidth"], 3.2 * len(plotvars)),
         subplot_kw={"projection": "mollweide"},
-        tight_layout={"pad": 0.5, "w_pad": 0.5, "h_pad": 0.5},
+        # tight_layout={"pad": 0, "w_pad": 0, "h_pad": 5.0},
+        gridspec_kw={"wspace": 0.0, "hspace": 0.0},
     )
 
     if len(plotvars) == 1:
@@ -204,7 +205,7 @@ def plot_spherical(
             case _:
                 raise AssertionError
 
-        cbar = fig.colorbar(colormesh, ax=ax, location="bottom")
+        cbar = fig.colorbar(colormesh, ax=ax, location="bottom", pad=0.2)
         cbar.outline.set_linewidth(0)  # type: ignore[operator]
         cbar.ax.tick_params(axis="both", direction="out")
         cbar.ax.xaxis.set_ticks_position("top")
