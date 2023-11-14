@@ -6,7 +6,7 @@ import numpy as np
 
 import artistools as at
 
-modelpath = at.get_config()["path_testartismodel"].parent / "vspecpolmodel"
+modelpath = at.get_config()["path_testdata"] / "vspecpolmodel"
 outputpath = at.get_config()["path_testoutput"]
 
 

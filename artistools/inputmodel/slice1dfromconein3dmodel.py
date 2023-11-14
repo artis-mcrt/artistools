@@ -45,7 +45,7 @@ def make_cone(args):
     return cone
 
 
-def get_profile_along_axis(args=None, modeldata=None, derived_cols=False):
+def get_profile_along_axis(args=None, modeldata=None, derived_cols=None):
     print("Getting profile along axis")
 
     # merge_dfs, args.t_model, args.vmax = at.inputmodel.get_modeldata_tuple(args.modelpath, dimensions=3, get_elemabundances=True)

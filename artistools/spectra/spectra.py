@@ -34,11 +34,7 @@ def timeshift_fluxscale_co56law(scaletoreftime: float | None, spectime: float) -
     return 1.0
 
 
-def get_exspec_bins() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    mnubins = 1000
-    nu_min_r = 1e13
-    nu_max_r = 5e16
-
+def get_exspec_bins(mnubins=1000, nu_min_r=1e13, nu_max_r=5e16) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     print(
         f" assuming {mnubins=} {nu_min_r=:.1e} {nu_max_r=:.1e}. Check artisoptions.h if you want to exactly match"
         " exspec binning."
@@ -49,8 +45,7 @@ def get_exspec_bins() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     dlognu = (math.log(nu_max_r) - math.log(nu_min_r)) / mnubins
 
     bins_nu_lower = np.array([math.exp(math.log(nu_min_r) + (m * (dlognu))) for m in range(mnubins)])
-    # bins_nu_upper = np.array(
-    #     [math.exp(math.log(NU_MIN_R) + ((m + 1) * (dlognu))) for m in range(MNUBINS)])
+    # bins_nu_upper = np.array([math.exp(math.log(nu_min_r) + ((m + 1) * (dlognu))) for m in range(mnubins)])
     bins_nu_upper = bins_nu_lower * math.exp(dlognu)
     bins_nu_centre = 0.5 * (bins_nu_lower + bins_nu_upper)
 
