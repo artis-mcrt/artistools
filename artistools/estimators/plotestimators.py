@@ -485,7 +485,7 @@ def plot_multi_ion_series(
             ymin = max(ymin, ymax / 1e10)
             ax.set_ylim(bottom=ymin)
             # make space for the legend
-            new_ymax = ymax * 10 ** (0.3 * math.log10(ymax / ymin))
+            new_ymax = ymax * 10 ** (0.1 * math.log10(ymax / ymin))
             if ymin > 0 and new_ymax > ymin and np.isfinite(new_ymax):
                 ax.set_ylim(top=new_ymax)
 
@@ -826,7 +826,7 @@ def make_plot(
         outfilename = str(args.outputfile).format(timestep=timestep, timedays=timedays, format=args.format)
 
     if not args.notitle:
-        axes[0].set_title(figure_title, fontsize=8)
+        axes[0].set_title(figure_title, fontsize=12)
 
     print(f"Saving {outfilename} ...")
     fig.savefig(outfilename, dpi=300)
@@ -1057,7 +1057,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         # [['initmasses', ['Ni_56', 'He', 'C', 'Mg']]],
         # ['heating_gamma/gamma_dep'],
         # ["nne", ["_ymin", 1e5], ["_ymax", 1e10]],
-        ["rho", ["_yscale", "log"]],
+        ["rho", ["_yscale", "log"], ["_ymin", 1e-16]],
         ["TR", ["_yscale", "linear"]],  # , ["_ymin", 1000], ["_ymax", 15000]
         # ["Te"],
         # ["Te", "TR"],
