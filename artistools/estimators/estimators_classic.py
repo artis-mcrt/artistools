@@ -26,23 +26,22 @@ def get_atomic_composition(modelpath: Path) -> dict[int, int]:
 
 
 def parse_ion_row_classic(row: list[str], outdict: dict[str, t.Any], atomic_composition: dict[int, int]) -> None:
-    outdict["populations"] = {}
-
     elements = atomic_composition.keys()
 
     i = 6  # skip first 6 numbers in est file. These are n, TR, Te, W, TJ, grey_depth.
     # Numbers after these 6 are populations
     for atomic_number in elements:
-        for ion_stage in range(1, atomic_composition[atomic_number] + 1):
+        for ionstage in range(1, atomic_composition[atomic_number] + 1):
             value_thision = float(row[i])
-            outdict["populations"][(atomic_number, ion_stage)] = value_thision
+            ionstr = at.get_ionstring(atomic_number, ionstage, sep="_")
+            outdict[f"nnion_{ionstr}"] = value_thision
             i += 1
 
-            elpop = outdict["populations"].get(atomic_number, 0)
-            outdict["populations"][atomic_number] = elpop + value_thision
+            elpop = outdict.get(f"nnelement_{atomic_number}", 0)
+            outdict[f"nnelement_{atomic_number}"] = elpop + value_thision
 
-            totalpop = outdict["populations"].get("total", 0)
-            outdict["populations"]["total"] = totalpop + value_thision
+            totalpop = outdict.get("nntot", 0)
+            outdict["nntot"] = totalpop + value_thision
 
 
 def get_first_ts_in_run_directory(modelpath) -> dict[str, int]:

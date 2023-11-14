@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import argparse
-import contextlib
 import typing as t
 from pathlib import Path
 
@@ -32,14 +31,13 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindexlist)
         for modelgridindex in modelgridindexlist:
             tdays = estimators[(timestep, modelgridindex)]["tdays"]
-            popdict = estimators[(timestep, modelgridindex)]["populations"]
 
             numberdens = {}
             totaldens = 0.0  # number density times atomic mass summed over all elements
-            for key in popdict:
-                with contextlib.suppress(ValueError, TypeError):
-                    atomic_number = int(key)
-                    numberdens[atomic_number] = popdict[atomic_number]
+            for key, val in estimators[(timestep, modelgridindex)].items():
+                if key.startswith("nnelement_"):
+                    atomic_number = at.get_atomic_number(key.removeprefix("nnelement_"))
+                    numberdens[atomic_number] = val
                     totaldens += numberdens[atomic_number] * elmass[atomic_number]
             massfracs = {
                 atomic_number: numberdens[atomic_number] * elmass[atomic_number] / totaldens

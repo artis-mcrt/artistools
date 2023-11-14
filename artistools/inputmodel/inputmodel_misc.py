@@ -26,7 +26,7 @@ def read_modelfile_text(
 
     modelmeta: dict[str, t.Any] = {"headercommentlines": []}
 
-    if not printwarningsonly:
+    if not printwarningsonly and not getheadersonly:
         print(f"Reading {filename}")
 
     numheaderrows = 0
@@ -116,7 +116,7 @@ def read_modelfile_text(
 
         assert columns is not None
         if ncols_line_even == len(columns):
-            if not printwarningsonly:
+            if not printwarningsonly and not getheadersonly:
                 print("  model file is one line per cell")
             ncols_line_odd = 0
             onelinepercellformat = True
@@ -133,7 +133,7 @@ def read_modelfile_text(
         pldtypes = {col: pl.Int32 if col in {"inputcellid"} else pl.Float32 for col in columns}
 
         dfmodel = pl.read_csv(
-            at.zopen(filename, forpolars=True),
+            at.zopenpl(filename),
             separator=" ",
             comment_char="#",
             new_columns=columns,
@@ -308,6 +308,7 @@ def get_modeldata_polars(
         - modelpath: either a path to model.txt file, or a folder containing model.txt
         - get_elemabundances: also read elemental abundances (abundances.txt) and
             merge with the output DataFrame
+        - derived_cols: list of derived columns to add to the model data, or "ALL" to add all possible derived columns
 
     return dfmodel, modelmeta
         - dfmodel: a pandas DataFrame with a row for each model grid cell
@@ -337,36 +338,34 @@ def get_modeldata_polars(
         print(f"{filename} has been modified after {filenameparquet}. Deleting out of date parquet file.")
         filenameparquet.unlink()
 
-    dfmodel: pl.LazyFrame | None | pl.DataFrame
+    dfmodel: pl.LazyFrame | None | pl.DataFrame = None
     if not getheadersonly and filenameparquet.is_file():
         if not printwarningsonly:
-            print(f"Reading data table from {filenameparquet}")
+            print(f"Reading model table from {filenameparquet}")
         try:
             dfmodel = pl.scan_parquet(filenameparquet)
         except pl.exceptions.ComputeError:
             print(f"Problem reading {filenameparquet}. Will regenerate and overwite from text source.")
             dfmodel = None
-    else:
-        dfmodel = None
 
     if dfmodel is not None:
         # already read in the model data, just need to get the metadata
         getheadersonly = True
 
-    dfmodel_in, modelmeta = read_modelfile_text(
+    dfmodel_textfile, modelmeta = read_modelfile_text(
         filename=filename,
         printwarningsonly=printwarningsonly,
         getheadersonly=getheadersonly,
     )
 
     if dfmodel is None:
-        dfmodel = dfmodel_in
-    elif dfmodel.schema != dfmodel_in.schema:
+        dfmodel = dfmodel_textfile
+    elif dfmodel.schema != dfmodel_textfile.schema:
         print(f"ERROR: parquet schema does not match model.txt. Remove {filenameparquet} and try again.")
         raise AssertionError
 
     mebibyte = 1024 * 1024
-    if isinstance(dfmodel, pl.DataFrame) and filename.stat().st_size > 10 * mebibyte and not getheadersonly:
+    if isinstance(dfmodel, pl.DataFrame) and filename.stat().st_size > 5 * mebibyte and not getheadersonly:
         print(f"Saving {filenameparquet}")
         dfmodel.write_parquet(filenameparquet, compression="zstd")
         print("  Done.")
@@ -374,7 +373,8 @@ def get_modeldata_polars(
         gc.collect()
         dfmodel = pl.scan_parquet(filenameparquet)
 
-    print(f"  model is {modelmeta['dimensions']}D with {modelmeta['npts_model']} cells")
+    if not printwarningsonly:
+        print(f"  model is {modelmeta['dimensions']}D with {modelmeta['npts_model']} cells")
     dfmodel = dfmodel.lazy()
 
     if get_elemabundances:
@@ -491,6 +491,7 @@ def add_derived_cols_to_modeldata(
     original_cols = dfmodel.columns
 
     t_model_init_seconds = modelmeta["t_model_init_days"] * 86400.0
+    keep_all = "ALL" in derived_cols
 
     dimensions = modelmeta["dimensions"]
     match dimensions:
@@ -645,18 +646,23 @@ def add_derived_cols_to_modeldata(
 
     dfmodel = dfmodel.with_columns([(pl.col("rho") * pl.col("volume")).alias("mass_g")])
 
+    dfmodel = dfmodel.with_columns(
+        [(pl.col(colname) / 29979245800.0).alias(f"{colname}_on_c") for colname in dfmodel.columns]
+    )
+
     if unknown_cols := [
-        col for col in derived_cols if col not in dfmodel.columns and col not in {"pos_min", "pos_max"}
+        col for col in derived_cols if col not in dfmodel.columns and col not in {"pos_min", "pos_max", "ALL"}
     ]:
         print(f"WARNING: Unknown derived columns: {unknown_cols}")
 
-    if "pos_min" in derived_cols:
+    if "pos_min" in derived_cols or keep_all:
         derived_cols.extend([f"pos_{ax}_min" for ax in axes])
 
-    if "pos_max" in derived_cols:
+    if "pos_max" in derived_cols or keep_all:
         derived_cols.extend([f"pos_{ax}_max" for ax in axes])
 
-    dfmodel = dfmodel.drop([col for col in dfmodel.columns if col not in original_cols and col not in derived_cols])
+    if not keep_all:
+        dfmodel = dfmodel.drop([col for col in dfmodel.columns if col not in original_cols and col not in derived_cols])
 
     if "angle_bin" in derived_cols:
         assert modelpath is not None
@@ -1008,7 +1014,7 @@ def get_initelemabundances_polars(
         dtypes = {col: pl.Float32 if col.startswith("X_") else pl.Int32 for col in colnames}
 
         abundancedata = pl.read_csv(
-            at.zopen(abundancefilepath, forpolars=True),
+            at.zopenpl(abundancefilepath),
             has_header=False,
             separator=" ",
             comment_char="#",

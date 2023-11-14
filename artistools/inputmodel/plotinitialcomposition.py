@@ -59,8 +59,11 @@ def plot_slice_modelcolumn(ax, dfmodelslice, modelmeta, colname, plotaxis1, plot
 
     if args.logcolorscale:
         # logscale for colormap
+        floorval = 1e-16
+        colorscale = [floorval if x < floorval or not math.isfinite(x) else x for x in colorscale]
         with np.errstate(divide="ignore"):
             colorscale = np.log10(colorscale)
+        # np.nan_to_num(colorscale, posinf=-99, neginf=-99)
 
     normalise_between_0_and_1 = False
     if normalise_between_0_and_1:
@@ -144,6 +147,7 @@ def plot_2d_initial_abundances(modelpath, args=None) -> None:
         axeschars: list[AxisType] = ["x", "y", "z"]
         plotaxis1 = next(ax for ax in axeschars if ax != sliceaxis)
         plotaxis2 = next(ax for ax in axeschars if ax not in {sliceaxis, plotaxis1})
+        print(f"Plotting slice through {sliceaxis}=0, plotting {plotaxis1} vs {plotaxis2}")
 
         df2dslice = get_2D_slice_through_3d_model(
             dfmodel=dfmodel, modelmeta=modelmeta, sliceaxis=sliceaxis, plotaxis1=plotaxis1, plotaxis2=plotaxis2
@@ -188,20 +192,22 @@ def plot_2d_initial_abundances(modelpath, args=None) -> None:
     xlabel = r"v$_{" + f"{plotaxis1}" + r"}$ [$c$]"
     ylabel = r"v$_{" + f"{plotaxis2}" + r"}$ [$c$]"
 
-    cbar = fig.colorbar(scaledmap, cax=axcbar, location="top", use_gridspec=True)
+    cbar = fig.colorbar(im, cax=axcbar, location="top", use_gridspec=True)
     axes[0].set_xlabel(xlabel)
     axes[0].set_ylabel(ylabel)
 
     if "cellYe" not in args.plotvars and "tracercount" not in args.plotvars:
-        cbar.set_label(r"log10($\rho$) [g/cm3]" if args.logcolorscale else r"$\rho$ [g/cm3]")
+        cbar.set_label(r"log10($\rho$ [g/cm3])" if args.logcolorscale else r"$\rho$ [g/cm3]")
+    else:
+        cbar.set_label("Ye" if "cellYe" in args.plotvars else "tracercount")
 
     defaultfilename = Path(modelpath) / f"plotcomposition_{','.join(args.plotvars)}.pdf"
-    if args.outputfile.is_dir():
-        outfilename = defaultfilename
+    if args.outputfile and Path(args.outputfile).is_dir():
+        outfilename = Path(modelpath) / defaultfilename
     elif args.outputfile:
         outfilename = args.outputfile
     else:
-        outfilename = Path(modelpath) / defaultfilename
+        outfilename = defaultfilename
 
     plt.savefig(outfilename, format="pdf")
 
@@ -266,7 +272,7 @@ def make_3d_plot(modelpath, args):
     model = merge_dfs
 
     # choose what surface will be coloured by
-    if args.rho:
+    if "rho" in args.plotvars:
         coloursurfaceby = "rho"
     elif args.opacity:
         model["opacity"] = at.inputmodel.opacityinputfile.get_opacity_from_file(modelpath)
