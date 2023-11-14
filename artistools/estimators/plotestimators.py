@@ -1091,8 +1091,11 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         elif args.readonlymgi == "cone":
             print(f"Getting mgi lying within a cone around {args.axis} axis")
             dfselectedcells = at.inputmodel.slice1dfromconein3dmodel.make_cone(args)
-        dfselectedcells = dfselectedcells.query("rho > 0")
-        args.modelgridindex = dfselectedcells["inputcellid"]
+        else:
+            msg = f"Invalid args.readonlymgi: {args.readonlymgi}"
+            raise ValueError(msg)
+        dfselectedcells = dfselectedcells[dfselectedcells["rho"] > 0]
+        args.modelgridindex = list(dfselectedcells["inputcellid"])
 
     timesteps_included = list(range(timestepmin, timestepmax + 1))
     if args.classicartis:

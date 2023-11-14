@@ -6,8 +6,8 @@ import numpy as np
 
 import artistools as at
 
-modelpath = at.get_config()["path_testartismodel"]
-modelpath_3d = at.get_config()["path_testartismodel"].parent / "testmodel_3d_10^3"
+modelpath = at.get_config()["path_testdata"] / "testmodel"
+modelpath_3d = at.get_config()["path_testdata"] / "testmodel_3d_10^3"
 outputpath = at.get_config()["path_testoutput"]
 testdatapath = at.get_config()["path_testdata"]
 
