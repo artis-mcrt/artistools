@@ -1104,7 +1104,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         else:
             msg = f"Invalid args.readonlymgi: {args.readonlymgi}"
             raise ValueError(msg)
-        dfselectedcells = dfselectedcells.query("rho > 0")
+        dfselectedcells = dfselectedcells[dfselectedcells["rho"] > 0]
         args.modelgridindex = list(dfselectedcells["inputcellid"])
 
     if temperatures_only := plotlist_is_temperatures_only(plotlist):
