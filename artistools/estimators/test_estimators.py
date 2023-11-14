@@ -636,7 +636,7 @@ def test_estimator_snapshot_classic_3d(mockplot) -> None:
     ]
 
     for x in mockplot.call_args_list:
-        assert xarr == x[0][1]
+        assert xarr == mockplot.call_args_list[0][1], x[0][1]
 
     # order of keys is important
     expectedvals = {
@@ -663,6 +663,70 @@ def test_estimator_snapshot_classic_3d(mockplot) -> None:
         "cooling_coll": 4.343953996625696e-05,
         "cooling_fb": 9.58727795462437e-08,
         "cooling_ff": 6.657026859049402e-10,
+    }
+
+    assert len(expectedvals) == len(mockplot.call_args_list)
+    yvals = {varname: callargs[0][2] for varname, callargs in zip(expectedvals.keys(), mockplot.call_args_list)}
+
+    print({key: np.array(yarr).mean() for key, yarr in yvals.items()})
+
+    for varname, expectedval in expectedvals.items():
+        assert np.allclose(expectedval, np.array(yvals[varname]).mean(), rtol=0.001), (
+            varname,
+            expectedval,
+            yvals[varname][1],
+        )
+
+
+@mock.patch.object(matplotlib.axes.Axes, "plot", side_effect=matplotlib.axes.Axes.plot, autospec=True)
+def test_estimator_snapshot_classic_3d_x_axis(mockplot) -> None:
+    plotlist = [
+        [["initabundances", ["Fe", "Ni_stable", "Ni_56"]]],
+        ["nne"],
+        ["TR", ["_yscale", "linear"], ["_ymin", 1000], ["_ymax", 22000]],
+        ["Te"],
+        [["averageionisation", ["Fe"]]],
+        [["populations", ["Fe I", "Fe II", "Fe III", "Fe IV", "Fe V"]]],
+        [["populations", ["Co II", "Co III", "Co IV"]]],
+        ["heating_dep", "heating_coll", "heating_bf", "heating_ff", ["_yscale", "linear"]],
+        ["cooling_adiabatic", "cooling_coll", "cooling_fb", "cooling_ff", ["_yscale", "linear"]],
+    ]
+
+    at.estimators.plot(
+        argsraw=[],
+        modelpath=modelpath_classic_3d,
+        plotlist=plotlist,
+        outputfile=outputpath,
+        timedays=4,
+        readonlymgi="alongaxis",
+        axis="+x",
+    )
+
+    # order of keys is important
+    expectedvals = {
+        "init_fe": 0.011052947585195368,
+        "init_nistable": 0.000944194626933764,
+        "init_ni56": 0.002896747941237337,
+        "nne": 382033722.1422282,
+        "TR": 19732.04,
+        "Te": 47127.520000000004,
+        "averageionisation_Fe": 3.0271734010069435,
+        "populations_FeI": 6.5617829754545176e-24,
+        "populations_FeII": 3.161551652102325e-13,
+        "populations_FeIII": 0.00010731048012085833,
+        "populations_FeIV": 0.9728187853219049,
+        "populations_FeV": 0.027125606020167697,
+        "populations_CoII": 0.20777361030622207,
+        "populations_CoIII": 0.22753057860431092,
+        "populations_CoIV": 0.5646079825984672,
+        "heating_dep": 5.879422739895874e-08,
+        "heating_coll": 0.0,
+        "heating_bf": 8.988080000000003e-16,
+        "heating_ff": 4.492620000000028e-18,
+        "cooling_adiabatic": 1.9406654213040002e-14,
+        "cooling_coll": 2.1374800003106965e-14,
+        "cooling_fb": 3.376760000131059e-17,
+        "cooling_ff": 1.3946640000041897e-17,
     }
 
     assert len(expectedvals) == len(mockplot.call_args_list)
