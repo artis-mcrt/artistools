@@ -6,16 +6,14 @@ from artistools.estimators import plotestimators
 from artistools.estimators.estimators import apply_filters
 from artistools.estimators.estimators import get_averaged_estimators
 from artistools.estimators.estimators import get_averageexcitation
-from artistools.estimators.estimators import get_averageionisation
-from artistools.estimators.estimators import get_dictlabelreplacements
 from artistools.estimators.estimators import get_ionrecombrates_fromfile
 from artistools.estimators.estimators import get_partiallycompletetimesteps
-from artistools.estimators.estimators import get_temperatures
 from artistools.estimators.estimators import get_units_string
 from artistools.estimators.estimators import get_variablelongunits
 from artistools.estimators.estimators import get_variableunits
-from artistools.estimators.estimators import parse_estimfile
+from artistools.estimators.estimators import get_varname_formatted
 from artistools.estimators.estimators import read_estimators
 from artistools.estimators.estimators import read_estimators_from_file
+from artistools.estimators.estimators import scan_estimators
 from artistools.estimators.plotestimators import addargs
 from artistools.estimators.plotestimators import main as plot

@@ -8,16 +8,14 @@ Examples are temperatures, populations, heating/cooling rates.
 import argparse
 import contextlib
 import math
-import sys
 import typing as t
 from pathlib import Path
 
 import argcomplete
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 import polars as pl
-from typeguard import check_type
+import polars.selectors as cs
 
 import artistools as at
 
@@ -53,16 +51,28 @@ def get_ylabel(variable):
 
 
 def plot_init_abundances(
-    ax, xlist, specieslist, mgilist, modelpath, seriestype, dfalldata=None, args=None, **plotkwargs
-):
-    assert len(xlist) - 1 == len(mgilist)
+    ax: plt.Axes,
+    xlist: list[float],
+    specieslist: list[str],
+    mgilist: t.Sequence[float],
+    modelpath: Path,
+    seriestype: str,
+    startfromzero: bool,
+    args: argparse.Namespace,
+    **plotkwargs,
+) -> None:
+    assert len(xlist) == len(mgilist)
 
     if seriestype == "initabundances":
         mergemodelabundata, _ = at.inputmodel.get_modeldata(modelpath, get_elemabundances=True)
     elif seriestype == "initmasses":
-        mergemodelabundata = at.initial_composition.get_model_abundances_Msun_1D(modelpath)
+        mergemodelabundata = at.inputmodel.plotinitialcomposition.get_model_abundances_Msun_1D(modelpath)
     else:
         raise AssertionError
+
+    if startfromzero:
+        xlist = xlist.copy()
+        xlist.insert(0, 0.0)
 
     for speciesstr in specieslist:
         splitvariablename = speciesstr.split("_")
@@ -101,14 +111,12 @@ def plot_init_abundances(
                 yvalue = mergemodelabundata.loc[modelgridindex][f"{valuetype}{elsymbol}"]
             ylist.append(yvalue)
 
-        if dfalldata is not None:
-            dfalldata["initabundances." + speciesstr] = ylist
-
-        ylist.insert(0, ylist[0])
-        # or ax.step(where='pre', )
         color = get_elemcolor(atomic_number=atomic_number)
 
         xlist, ylist = at.estimators.apply_filters(xlist, ylist, args)
+
+        if startfromzero:
+            ylist.insert(0, ylist[0])
 
         ax.plot(xlist, ylist, linewidth=1.5, label=linelabel, linestyle=linestyle, color=color, **plotkwargs)
 
@@ -117,80 +125,133 @@ def plot_init_abundances(
 
 
 def plot_average_ionisation_excitation(
-    ax,
-    xlist,
-    seriestype,
-    params,
-    timestepslist,
-    mgilist,
-    estimators,
-    modelpath,
-    dfalldata=None,
+    ax: plt.Axes,
+    xlist: list[float],
+    seriestype: str,
+    params: t.Sequence[str],
+    timestepslist: t.Sequence[t.Sequence[int]],
+    mgilist: t.Sequence[int],
+    estimators: pl.LazyFrame,
+    modelpath: Path | str,
+    startfromzero: bool,
     args=None,
     **plotkwargs,
 ):
-    if seriestype == "averageionisation":
-        ax.set_ylabel("Average ion charge")
-    elif seriestype == "averageexcitation":
+    if seriestype == "averageexcitation":
         ax.set_ylabel("Average excitation [eV]")
+    elif seriestype == "averageionisation":
+        ax.set_ylabel("Average ion charge")
     else:
         raise ValueError
 
+    if startfromzero:
+        xlist = xlist.copy()
+        xlist.insert(0, 0.0)
+
     arr_tdelta = at.get_timestep_times(modelpath, loc="delta")
     for paramvalue in params:
+        print(f"Plotting {seriestype} {paramvalue}")
         if seriestype == "averageionisation":
             atomic_number = at.get_atomic_number(paramvalue)
         else:
             atomic_number = at.get_atomic_number(paramvalue.split(" ")[0])
-            ion_stage = at.decode_roman_numeral(paramvalue.split(" ")[1])
+            ionstage = at.decode_roman_numeral(paramvalue.split(" ")[1])
         ylist = []
-        for modelgridindex, timesteps in zip(mgilist, timestepslist):
-            valuesum = 0
-            tdeltasum = 0
-            for timestep in timesteps:
-                if seriestype == "averageionisation":
-                    valuesum += (
-                        at.estimators.get_averageionisation(
-                            estimators[(timestep, modelgridindex)]["populations"], atomic_number
-                        )
-                        * arr_tdelta[timestep]
+        if seriestype == "averageexcitation":
+            print("  This will be slow!")
+            for modelgridindex, timesteps in zip(mgilist, timestepslist):
+                exc_ev_times_tdelta_sum = 0.0
+                tdeltasum = 0.0
+                for timestep in timesteps:
+                    T_exc = (
+                        estimators.filter(pl.col("timestep") == timestep)
+                        .filter(pl.col("modelgridindex") == modelgridindex)
+                        .select("Te")
+                        .lazy()
+                        .collect()
+                        .item(0, 0)
                     )
-                elif seriestype == "averageexcitation":
-                    T_exc = estimators[(timestep, modelgridindex)]["Te"]
-                    valuesum += (
-                        at.estimators.get_averageexcitation(
-                            modelpath, modelgridindex, timestep, atomic_number, ion_stage, T_exc
-                        )
-                        * arr_tdelta[timestep]
+                    exc_ev = at.estimators.get_averageexcitation(
+                        modelpath, modelgridindex, timestep, atomic_number, ionstage, T_exc
                     )
-                tdeltasum += arr_tdelta[timestep]
+                    if exc_ev is not None:
+                        exc_ev_times_tdelta_sum += exc_ev * arr_tdelta[timestep]
+                        tdeltasum += arr_tdelta[timestep]
+            if tdeltasum == 0.0:
+                msg = f"ERROR: No excitation data found for {paramvalue}"
+                raise ValueError(msg)
+            ylist.append(exc_ev_times_tdelta_sum / tdeltasum if tdeltasum > 0 else float("nan"))
 
-            ylist.append(valuesum / tdeltasum)
+        elif seriestype == "averageionisation":
+            elsymb = at.get_elsymbol(atomic_number)
+            if f"nnelement_{elsymb}" not in estimators.columns:
+                msg = f"ERROR: No element data found for {paramvalue}"
+                raise ValueError(msg)
+            dfselected = (
+                estimators.select(
+                    cs.starts_with(f"nnion_{elsymb}_")
+                    | cs.by_name(f"nnelement_{elsymb}")
+                    | cs.by_name("modelgridindex")
+                    | cs.by_name("timestep")
+                    | cs.by_name("xvalue")
+                    | cs.by_name("plotpointid")
+                )
+                .with_columns(pl.col(pl.Float32).fill_null(0.0))
+                .collect()
+                .join(
+                    pl.DataFrame({"timestep": range(len(arr_tdelta)), "tdelta": arr_tdelta}).with_columns(
+                        pl.col("timestep").cast(pl.Int32)
+                    ),
+                    on="timestep",
+                    how="left",
+                )
+            )
+            dfselected = dfselected.filter(pl.col(f"nnelement_{elsymb}") > 0.0)
+
+            ioncols = [col for col in dfselected.columns if col.startswith(f"nnion_{elsymb}_")]
+            ioncharges = [at.decode_roman_numeral(col.removeprefix(f"nnion_{elsymb}_")) - 1 for col in ioncols]
+            ax.set_ylim(0.0, max(ioncharges) + 0.1)
+
+            dfselected = dfselected.with_columns(
+                (
+                    pl.sum_horizontal([pl.col(ioncol) * ioncharge for ioncol, ioncharge in zip(ioncols, ioncharges)])
+                    / pl.col(f"nnelement_{elsymb}")
+                ).alias(f"averageionisation_{elsymb}")
+            )
+
+            series = (
+                dfselected.group_by("plotpointid", maintain_order=True)
+                .agg(pl.col(f"averageionisation_{elsymb}").mean(), pl.col("xvalue").mean())
+                .lazy()
+                .collect()
+            )
+
+            xlist = series["xvalue"].to_list()
+            if startfromzero:
+                xlist.insert(0, 0.0)
+
+            ylist = series[f"averageionisation_{elsymb}"].to_list()
 
         color = get_elemcolor(atomic_number=atomic_number)
 
-        if dfalldata is not None:
-            dfalldata[seriestype + "." + paramvalue] = ylist
-
-        ylist.insert(0, ylist[0])
-
         xlist, ylist = at.estimators.apply_filters(xlist, ylist, args)
+        if startfromzero:
+            ylist.insert(0, ylist[0])
 
         ax.plot(xlist, ylist, label=paramvalue, color=color, **plotkwargs)
 
 
 def plot_levelpop(
-    ax,
-    xlist,
-    seriestype,
-    params,
-    timestepslist,
-    mgilist,
-    estimators,
-    modelpath,
-    dfalldata=None,
-    args=None,
-    **plotkwargs,
+    ax: plt.Axes,
+    xlist: t.Sequence[int | float] | np.ndarray,
+    seriestype: str,
+    params: t.Sequence[str],
+    timestepslist: t.Sequence[t.Sequence[int]],
+    mgilist: t.Sequence[int | t.Sequence[int]],
+    estimators: pl.LazyFrame | pl.DataFrame,
+    modelpath: str | Path,
+    args: argparse.Namespace,
+    **plotkwargs: t.Any,
 ):
     if seriestype == "levelpopulation_dn_on_dvel":
         ax.set_ylabel("dN/dV [{}km$^{{-1}}$ s]")
@@ -209,13 +270,13 @@ def plot_levelpop(
     for paramvalue in params:
         paramsplit = paramvalue.split(" ")
         atomic_number = at.get_atomic_number(paramsplit[0])
-        ion_stage = at.decode_roman_numeral(paramsplit[1])
+        ionstage = at.decode_roman_numeral(paramsplit[1])
         levelindex = int(paramsplit[2])
 
-        ionlevels = adata.query("Z == @atomic_number and ion_stage == @ion_stage").iloc[0].levels
+        ionlevels = adata.query("Z == @atomic_number and ionstage == @ionstage").iloc[0].levels
         levelname = ionlevels.iloc[levelindex].levelname
         label = (
-            f"{at.get_ionstring(atomic_number, ion_stage, spectral=False)} level {levelindex}:"
+            f"{at.get_ionstring(atomic_number, ionstage, style='chargelatex')} level {levelindex}:"
             f" {at.nltepops.texifyconfiguration(levelname)}"
         )
 
@@ -223,7 +284,7 @@ def plot_levelpop(
 
         # level index query goes outside for caching granularity reasons
         dfnltepops = at.nltepops.read_files(
-            modelpath, dfquery=f"Z=={atomic_number:.0f} and ion_stage=={ion_stage:.0f}"
+            modelpath, dfquery=f"Z=={atomic_number:.0f} and ionstage=={ionstage:.0f}"
         ).query("level==@levelindex")
 
         ylist = []
@@ -236,7 +297,7 @@ def plot_levelpop(
                 levelpop = (
                     dfnltepops.query(
                         "modelgridindex==@modelgridindex and timestep==@timestep and Z==@atomic_number"
-                        " and ion_stage==@ion_stage and level==@levelindex"
+                        " and ionstage==@ionstage and level==@levelindex"
                     )
                     .iloc[0]
                     .n_NLTE
@@ -251,15 +312,6 @@ def plot_levelpop(
             else:
                 ylist.append(valuesum / tdeltasum)
 
-        if dfalldata is not None:
-            elsym = at.get_elsymbol(atomic_number).lower()
-            colname = (
-                f"nlevel_on_dv_{elsym}_ionstage{ion_stage}_level{levelindex}"
-                if seriestype == "levelpopulation_dn_on_dvel"
-                else f"nnlevel_{elsym}_ionstage{ion_stage}_level{levelindex}"
-            )
-            dfalldata[colname] = ylist
-
         ylist.insert(0, ylist[0])
 
         xlist, ylist = at.estimators.apply_filters(xlist, ylist, args)
@@ -268,20 +320,16 @@ def plot_levelpop(
 
 
 def plot_multi_ion_series(
-    ax,
-    xlist,
-    seriestype,
-    ionlist,
-    timestepslist,
-    mgilist,
-    estimators,
-    modelpath,
-    dfalldata,
-    args,
-    **plotkwargs,
-):
+    ax: plt.Axes,
+    startfromzero: bool,
+    seriestype: str,
+    ionlist: t.Sequence[str],
+    estimators: pl.LazyFrame | pl.DataFrame,
+    modelpath: str | Path,
+    args: argparse.Namespace,
+    **plotkwargs: t.Any,
+) -> None:
     """Plot an ion-specific property, e.g., populations."""
-    assert len(xlist) - 1 == len(mgilist) == len(timestepslist)
     # if seriestype == 'populations':
     #     ax.yaxis.set_major_locator(ticker.MultipleLocator(base=0.10))
 
@@ -305,140 +353,95 @@ def plot_multi_ion_series(
 
     missingions = set()
     try:
-        if args.classicartis:
-            compositiondata = at.estimators.estimators_classic.get_atomic_composition(modelpath)
-        else:
+        if not args.classicartis:
             compositiondata = at.get_composition_data(modelpath)
-        for atomic_number, ion_stage in iontuplelist:
-            if (
-                not hasattr(ion_stage, "lower")
-                and not args.classicartis
-                and compositiondata.query(
-                    "Z == @atomic_number & lowermost_ionstage <= @ion_stage & uppermost_ionstage >= @ion_stage"
-                ).empty
-            ):
-                missingions.add((atomic_number, ion_stage))
+            for atomic_number, ionstage in iontuplelist:
+                if (
+                    not hasattr(ionstage, "lower")
+                    and not args.classicartis
+                    and compositiondata.query(
+                        "Z == @atomic_number & lowermost_ionstage <= @ionstage & uppermost_ionstage >= @ionstage"
+                    ).empty
+                ):
+                    missingions.add((atomic_number, ionstage))
 
     except FileNotFoundError:
-        print("WARNING: Could not read an ARTIS compositiondata.txt file")
-        for atomic_number, ion_stage in iontuplelist:
-            mgits = (timestepslist[0][0], mgilist[0])
-            if (atomic_number, ion_stage) not in estimators[mgits]["populations"]:
-                missingions.add((atomic_number, ion_stage))
+        print("WARNING: Could not read an ARTIS compositiondata.txt file to check ion availability")
+        for atomic_number, ionstage in iontuplelist:
+            ionstr = at.get_ionstring(atomic_number, ionstage, sep="_", style="spectral")
+            if f"nnion_{ionstr}" not in estimators.columns:
+                missingions.add((atomic_number, ionstage))
 
     if missingions:
         print(f" Warning: Can't plot {seriestype} for {missingions} because these ions are not in compositiondata.txt")
 
+    iontuplelist = [iontuple for iontuple in iontuplelist if iontuple not in missingions]
     prev_atomic_number = iontuplelist[0][0]
     colorindex = 0
-    for atomic_number, ion_stage in iontuplelist:
-        if (atomic_number, ion_stage) in missingions:
-            continue
-
+    for atomic_number, ionstage in iontuplelist:
         if atomic_number != prev_atomic_number:
             colorindex += 1
 
+        elsymbol = at.get_elsymbol(atomic_number)
+
+        ionstr = at.get_ionstring(atomic_number, ionstage, sep="_", style="spectral")
         if seriestype == "populations":
-            if args.ionpoptype == "absolute":
-                ax.set_ylabel("X$_{i}$ [/cm3]")
-            elif args.ionpoptype == "elpop":
-                # elsym = at.get_elsymbol(atomic_number)
-                ax.set_ylabel(r"X$_{i}$/X$_{\rm element}$")
-            elif args.ionpoptype == "totalpop":
-                ax.set_ylabel(r"X$_{i}$/X$_{rm tot}$")
+            if ionstage == "ALL":
+                key = f"nnelement_{elsymbol}"
+            elif hasattr(ionstage, "lower") and ionstage.startswith(at.get_elsymbol(atomic_number)):
+                # not really an ionstage but an isotope name
+                key = f"nniso_{ionstage}"
             else:
-                raise AssertionError
+                key = f"nnion_{ionstr}"
         else:
-            ax.set_ylabel(at.estimators.get_dictlabelreplacements().get(seriestype, seriestype))
+            key = f"{seriestype}_{ionstr}"
 
-        ylist = []
-        for modelgridindex, timesteps in zip(mgilist, timestepslist):
-            if seriestype == "populations":
-                # if (atomic_number, ion_stage) not in estimators[timesteps[0], modelgridindex]["populations"]:
-                #     print(
-                #         f"Note: population for {(atomic_number, ion_stage)} not in estimators for "
-                #         f"cell {modelgridindex} timesteps {timesteps}"
-                #     )
+        print(f"Plotting {seriestype} {ionstr.replace('_', ' ')}")
 
-                try:
-                    estimpop = at.estimators.get_averaged_estimators(
-                        modelpath, estimators, timesteps, modelgridindex, ["populations"]
-                    )
-                except KeyError:
-                    ylist.append(float("nan"))
-                    continue
+        if seriestype != "populations" or args.ionpoptype == "absolute":
+            scalefactor = pl.lit(1)
+        elif args.ionpoptype == "elpop":
+            scalefactor = pl.col(f"nnelement_{elsymbol}").mean()
+        elif args.ionpoptype == "totalpop":
+            scalefactor = pl.col("nntot").mean()
+        else:
+            raise AssertionError
 
-                if ion_stage == "ALL":
-                    nionpop = estimpop.get((atomic_number), 0.0)
-                elif hasattr(ion_stage, "lower") and ion_stage.startswith(at.get_elsymbol(atomic_number)):
-                    nionpop = estimpop.get(ion_stage, 0.0)
-                else:
-                    nionpop = estimpop.get((atomic_number, ion_stage), 0.0)
-
-                try:
-                    if args.ionpoptype == "absolute":
-                        yvalue = nionpop  # Plot as fraction of element population
-                    elif args.ionpoptype == "elpop":
-                        elpop = estimpop.get(atomic_number, 0.0)
-                        yvalue = nionpop / elpop  # Plot as fraction of element population
-                    elif args.ionpoptype == "totalpop":
-                        totalpop = estimpop["total"]
-                        yvalue = nionpop / totalpop  # Plot as fraction of total population
-                    else:
-                        raise AssertionError
-                except ZeroDivisionError:
-                    yvalue = 0.0
-
-                ylist.append(yvalue)
-
-            # elif seriestype == 'Alpha_R':
-            #     ylist.append(estim['Alpha_R*nne'].get((atomic_number, ion_stage), 0.) / estim['nne'])
-            # else:
-            #     ylist.append(estim[seriestype].get((atomic_number, ion_stage), 0.))
-            else:
-                # this is very slow!
-                try:
-                    estim = at.estimators.get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, [])
-                except KeyError:
-                    ylist.append(float("nan"))
-                    continue
-
-                dictvars = {}
-                for k, value in estim.items():
-                    if isinstance(value, dict):
-                        dictvars[k] = value.get((atomic_number, ion_stage), 0.0)
-                    else:
-                        dictvars[k] = value
-
-                # dictvars will now define things like 'Te', 'TR',
-                # as well as 'populations' which applies to the current ion
-
-                try:
-                    yvalue = eval(seriestype, {"__builtins__": math}, dictvars)
-                except ZeroDivisionError:
-                    yvalue = float("NaN")
-                ylist.append(yvalue)
+        series = (
+            estimators.group_by("plotpointid", maintain_order=True)
+            .agg(pl.col(key).mean() / scalefactor, pl.col("xvalue").mean())
+            .lazy()
+            .collect()
+            .sort("xvalue")
+        )
+        xlist = series["xvalue"].to_list()
+        ylist = series[key].to_list()
+        if startfromzero:
+            # make a line segment from 0 velocity
+            xlist.insert(0, 0.0)
+            ylist.insert(0, ylist[0])
 
         plotlabel = (
-            ion_stage
-            if hasattr(ion_stage, "lower") and ion_stage != "ALL"
-            else at.get_ionstring(atomic_number, ion_stage, spectral=False)
+            ionstage
+            if hasattr(ionstage, "lower") and ionstage != "ALL"
+            else at.get_ionstring(atomic_number, ionstage, style="chargelatex")
         )
 
         color = get_elemcolor(atomic_number=atomic_number)
 
-        # linestyle = ['-.', '-', '--', (0, (4, 1, 1, 1)), ':'] + [(0, x) for x in dashes_list][ion_stage - 1]
-        if ion_stage == "ALL":
+        # linestyle = ['-.', '-', '--', (0, (4, 1, 1, 1)), ':'] + [(0, x) for x in dashes_list][ionstage - 1]
+        dashes: tuple[float, ...]
+        if ionstage == "ALL":
             dashes = ()
             linewidth = 1.0
         else:
-            if hasattr(ion_stage, "lower") and ion_stage.endswith("stable"):
+            if hasattr(ionstage, "lower") and ionstage.endswith("stable"):
                 index = 8
-            elif hasattr(ion_stage, "lower"):
+            elif hasattr(ionstage, "lower"):
                 # isotopic abundance, use the mass number
-                index = int(ion_stage.lstrip(at.get_elsymbol(atomic_number)))
+                index = int(ionstage.lstrip(at.get_elsymbol(atomic_number)))
             else:
-                index = ion_stage
+                index = ionstage
 
             dashes_list = [(3, 1, 1, 1), (), (1.5, 1.5), (6, 3), (1, 3)]
             dashes = dashes_list[(index - 1) % len(dashes_list)]
@@ -448,84 +451,80 @@ def plot_multi_ion_series(
 
             if args.colorbyion:
                 color = f"C{index - 1 % 10}"
-                # plotlabel = f'{at.get_elsymbol(atomic_number)} {at.roman_numerals[ion_stage]}'
+                # plotlabel = f'{at.get_elsymbol(atomic_number)} {at.roman_numerals[ionstage]}'
                 dashes = ()
 
         # assert colorindex < 10
         # color = f'C{colorindex}'
         # or ax.step(where='pre', )
 
-        if dfalldata is not None:
-            elsym = at.get_elsymbol(atomic_number).lower()
-            if args.ionpoptype == "absolute":
-                colname = f"nnion_{elsym}_ionstage{ion_stage}"
-            elif args.ionpoptype == "elpop":
-                colname = f"nnion_over_nnelem_{elsym}_ionstage{ion_stage}"
-            elif args.ionpoptype == "totalpop":
-                colname = f"nnion_over_nntot_{elsym}_ionstage{ion_stage}"
-            dfalldata[colname] = ylist
-
-        ylist.insert(0, ylist[0])
-
         xlist, ylist = at.estimators.apply_filters(xlist, ylist, args)
-
-        ax.plot(xlist, ylist, linewidth=linewidth, label=plotlabel, color=color, dashes=dashes, **plotkwargs)
+        if plotkwargs.get("linestyle", "solid") != "None":
+            plotkwargs["dashes"] = dashes
+        ax.plot(xlist, ylist, linewidth=linewidth, label=plotlabel, color=color, **plotkwargs)
         prev_atomic_number = atomic_number
         plotted_something = True
+
+    if seriestype == "populations":
+        if args.ionpoptype == "absolute":
+            ax.set_ylabel(r"Number density $\left[\rm{cm}^{-3}\right]$")
+        elif args.ionpoptype == "elpop":
+            # elsym = at.get_elsymbol(atomic_number)
+            ax.set_ylabel(r"X$_{i}$/X$_{\rm element}$")
+        elif args.ionpoptype == "totalpop":
+            ax.set_ylabel(r"X$_{i}$/X$_{rm tot}$")
+        else:
+            raise AssertionError
+    else:
+        ax.set_ylabel(at.estimators.get_varname_formatted(seriestype))
 
     if plotted_something:
         ax.set_yscale(args.yscale)
         if args.yscale == "log":
             ymin, ymax = ax.get_ylim()
-            new_ymax = ymax * 10 ** (0.3 * math.log10(ymax / ymin))
+            ymin = max(ymin, ymax / 1e10)
+            ax.set_ylim(bottom=ymin)
+            # make space for the legend
+            new_ymax = ymax * 10 ** (0.1 * math.log10(ymax / ymin))
             if ymin > 0 and new_ymax > ymin and np.isfinite(new_ymax):
-                ax.set_ylim(ymin, new_ymax)
+                ax.set_ylim(top=new_ymax)
 
 
 def plot_series(
-    ax,
-    xlist,
-    variablename,
+    ax: plt.Axes,
+    startfromzero: bool,
+    variablename: str,
     showlegend: bool,
-    timestepslist,
-    mgilist,
     modelpath: str | Path,
-    estimators,
+    estimators: pl.LazyFrame | pl.DataFrame,
     args: argparse.Namespace,
     nounits: bool = False,
-    dfalldata=None,
-    **plotkwargs,
-):
+    **plotkwargs: t.Any,
+) -> None:
     """Plot something like Te or TR."""
-    assert len(xlist) - 1 == len(mgilist) == len(timestepslist)
-    formattedvariablename = at.estimators.get_dictlabelreplacements().get(variablename, variablename)
+    formattedvariablename = at.estimators.get_varname_formatted(variablename)
     serieslabel = f"{formattedvariablename}"
-    if not nounits:
-        serieslabel += at.estimators.get_units_string(variablename)
+    units_string = at.estimators.get_units_string(variablename)
 
     if showlegend:
         linelabel = serieslabel
+        if not nounits:
+            linelabel += units_string
     else:
-        ax.set_ylabel(serieslabel)
+        ax.set_ylabel(serieslabel + units_string)
         linelabel = None
+    print(f"Plotting {variablename}")
 
-    ylist: list[float] = []
-    for modelgridindex, timesteps in zip(mgilist, timestepslist):
-        estimavg = at.estimators.get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, [])
-        assert isinstance(estimavg, dict)
-        try:
-            ylist.append(eval(variablename, {"__builtins__": math}, estimavg))
-        except KeyError:
-            if (timesteps[0], modelgridindex) in estimators:
-                print(f"Undefined variable: {variablename} in cell {modelgridindex}")
-            else:
-                print(f"No data for cell {modelgridindex}")
-            sys.exit()
+    series = (
+        estimators.group_by("plotpointid", maintain_order=True)
+        .agg(pl.col(variablename).mean(), pl.col("xvalue").mean())
+        .lazy()
+        .collect()
+    )
+    ylist = series[variablename].to_list()
+    xlist = series["xvalue"].to_list()
 
-    try:
-        if math.log10(max(ylist) / min(ylist)) > 2:
-            ax.set_yscale("log")
-    except ZeroDivisionError:
+    if min(ylist) == 0 or math.log10(max(ylist) / min(ylist)) > 2:
         ax.set_yscale("log")
 
     dictcolors = {
@@ -534,13 +533,10 @@ def plot_series(
         # 'cooling_adiabatic': 'blue'
     }
 
-    # print out the data to stdout. Maybe want to add a CSV export option at some point?
-    # print(f'#cellidorvelocity {variablename}\n' + '\n'.join([f'{x}  {y}' for x, y in zip(xlist, ylist)]))
-
-    if dfalldata is not None:
-        dfalldata[variablename] = ylist
-
-    ylist.insert(0, ylist[0])
+    if startfromzero:
+        # make a line segment from 0 velocity
+        xlist.insert(0, 0.0)
+        ylist.insert(0, ylist[0])
 
     xlist_filtered, ylist_filtered = at.estimators.apply_filters(xlist, ylist, args)
 
@@ -552,113 +548,117 @@ def plot_series(
 def get_xlist(
     xvariable: str,
     allnonemptymgilist: t.Sequence[int],
-    estimators: dict,
+    estimators: pl.LazyFrame,
     timestepslist: t.Any,
     modelpath: str | Path,
+    groupbyxvalue: bool,
     args: t.Any,
-) -> tuple[list[float | int], list[int | t.Sequence[int]], list[int | list[int]]]:
-    xlist: t.Sequence[float | int]
+) -> tuple[list[float | int], list[int], list[list[int]], pl.LazyFrame]:
+    estimators = estimators.filter(pl.col("timestep").is_in([ts for tssublist in timestepslist for ts in tssublist]))
+
     if xvariable in {"cellid", "modelgridindex"}:
-        mgilist_out = [mgi for mgi in allnonemptymgilist if mgi <= args.xmax] if args.xmax >= 0 else allnonemptymgilist
-        xlist = list(mgilist_out)
-        timestepslist_out = timestepslist
+        estimators = estimators.with_columns(xvalue=pl.col("modelgridindex"), plotpointid=pl.col("modelgridindex"))
     elif xvariable == "timestep":
-        mgilist_out = allnonemptymgilist
-        check_type(timestepslist, t.Sequence[int])
-        xlist = timestepslist
-        timestepslist_out = timestepslist
+        estimators = estimators.with_columns(xvalue=pl.col("timestep"), plotpointid=pl.col("timestep"))
     elif xvariable == "time":
-        mgilist_out = allnonemptymgilist
-        timearray = at.get_timestep_times(modelpath)
-        check_type(timestepslist, t.Sequence[t.Sequence[int]])
-        xlist = [np.mean([timearray[ts] for ts in tslist]) for tslist in timestepslist]
-        timestepslist_out = timestepslist
+        estimators = estimators.with_columns(xvalue=pl.col("time_mid"), plotpointid=pl.col("timestep"))
     elif xvariable in {"velocity", "beta"}:
-        dfmodel, modelmeta = at.inputmodel.get_modeldata_polars(modelpath, derived_cols=["vel_r_mid"])
-        if modelmeta["vmax_cmps"] > 0.3 * 29979245800:
-            args.x = "beta"
-            xvariable = "beta"
-        dfmodel = dfmodel.with_columns(pl.col("inputcellid").sub(1).alias("modelgridindex"))
-        dfmodel = dfmodel.filter(pl.col("modelgridindex").is_in(allnonemptymgilist))
-        if args.readonlymgi:
-            dfmodel = dfmodel.filter(pl.col("modelgridindex").is_in(args.modelgridindex))
-        dfmodel = dfmodel.select(["modelgridindex", "vel_r_mid"]).sort(by="vel_r_mid")
-        if args.xmax > 0:
-            dfmodel = dfmodel.filter(pl.col("vel_r_mid") / 1e5 <= args.xmax)
-        else:
-            dfmodel = dfmodel.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"])
-        dfmodelcollect = dfmodel.collect()
-
+        velcolumn = "vel_r_mid"
         scalefactor = 1e5 if xvariable == "velocity" else 29979245800
-        xlist = (dfmodelcollect["vel_r_mid"] / scalefactor).to_list()
-        mgilist_out = dfmodelcollect["modelgridindex"].to_list()
-        timestepslist_out = timestepslist
+        estimators = estimators.with_columns(
+            xvalue=(pl.col(velcolumn) / scalefactor), plotpointid=pl.col("modelgridindex")
+        )
     else:
-        xlist = []
-        mgilist_out = []
-        timestepslist_out = []
-        for modelgridindex, timesteps in zip(allnonemptymgilist, timestepslist):
-            xvalue = at.estimators.get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, xvariable)
-            assert isinstance(xvalue, float | int)
-            xlist.append(xvalue)
-            mgilist_out.append(modelgridindex)
-            timestepslist_out.append(timesteps)
-            if args.xmax > 0 and xvalue > args.xmax:
-                break
+        estimators = estimators.with_columns(xvalue=pl.col(xvariable), plotpointid=pl.col("modelgridindex"))
 
-    xlist, mgilist_out, timestepslist_out = zip(*sorted(zip(xlist, mgilist_out, timestepslist_out)))
+    # single valued line plot
+    if groupbyxvalue:
+        estimators = estimators.with_columns(plotpointid=pl.col("xvalue"))
 
-    assert len(xlist) == len(mgilist_out) == len(timestepslist_out)
+    if args.xmax > 0:
+        estimators = estimators.filter(pl.col("xvalue") <= args.xmax)
 
-    return list(xlist), list(mgilist_out), list(timestepslist_out)
+    estimators = estimators.sort("plotpointid")
+    pointgroups = (
+        (
+            estimators.select(["plotpointid", "xvalue", "modelgridindex", "timestep"])
+            .group_by("plotpointid", maintain_order=True)
+            .agg(pl.col("xvalue").first(), pl.col("modelgridindex").first(), pl.col("timestep").unique())
+        )
+        .lazy()
+        .collect()
+    )
+
+    return (
+        pointgroups["xvalue"].to_list(),
+        pointgroups["modelgridindex"].to_list(),
+        pointgroups["timestep"].to_list(),
+        estimators,
+    )
 
 
 def plot_subplot(
-    ax, timestepslist, xlist, plotitems, mgilist, modelpath, estimators, dfalldata=None, args=None, **plotkwargs
+    ax: plt.Axes,
+    timestepslist: list[list[int]],
+    xlist: list[float | int],
+    xvariable: str,
+    startfromzero: bool,
+    plotitems: list[t.Any],
+    mgilist: list[int],
+    modelpath: str | Path,
+    estimators: pl.LazyFrame,
+    args: argparse.Namespace,
+    **plotkwargs: t.Any,
 ):
     """Make plot from ARTIS estimators."""
     # these three lists give the x value, modelgridex, and a list of timesteps (for averaging) for each plot of the plot
-    assert len(xlist) - 1 == len(mgilist) == len(timestepslist)
     showlegend = False
-
+    seriescount = 0
     ylabel = None
     sameylabel = True
     for variablename in plotitems:
-        if not isinstance(variablename, str):
-            pass
-        elif ylabel is None:
-            ylabel = get_ylabel(variablename)
-        elif ylabel != get_ylabel(variablename):
-            sameylabel = False
-            break
+        if isinstance(variablename, str):
+            seriescount += 1
+            if ylabel is None:
+                ylabel = get_ylabel(variablename)
+            elif ylabel != get_ylabel(variablename):
+                sameylabel = False
+                break
 
     for plotitem in plotitems:
         if isinstance(plotitem, str):
-            showlegend = len(plotitems) > 1 or len(plotitem) > 20
+            showlegend = seriescount > 1 or len(plotitem) > 20 or not sameylabel
             plot_series(
-                ax,
-                xlist,
-                plotitem,
-                showlegend,
-                timestepslist,
-                mgilist,
-                modelpath,
-                estimators,
-                args,
+                ax=ax,
+                startfromzero=startfromzero,
+                variablename=plotitem,
+                showlegend=showlegend,
+                modelpath=modelpath,
+                estimators=estimators,
+                args=args,
                 nounits=sameylabel,
-                dfalldata=dfalldata,
                 **plotkwargs,
             )
-            if showlegend and sameylabel:
+            if showlegend and sameylabel and ylabel is not None:
                 ax.set_ylabel(ylabel)
         else:  # it's a sequence of values
-            showlegend = True
             seriestype, params = plotitem
 
             if seriestype in {"initabundances", "initmasses"}:
-                plot_init_abundances(ax, xlist, params, mgilist, modelpath, seriestype, dfalldata=dfalldata, args=args)
+                showlegend = True
+                plot_init_abundances(
+                    ax=ax,
+                    xlist=xlist,
+                    specieslist=params,
+                    mgilist=mgilist,
+                    modelpath=Path(modelpath),
+                    seriestype=seriestype,
+                    startfromzero=startfromzero,
+                    args=args,
+                )
 
             elif seriestype == "levelpopulation" or seriestype.startswith("levelpopulation_"):
+                showlegend = True
                 plot_levelpop(
                     ax,
                     xlist,
@@ -668,11 +668,11 @@ def plot_subplot(
                     mgilist,
                     estimators,
                     modelpath,
-                    dfalldata=dfalldata,
                     args=args,
                 )
 
             elif seriestype in {"averageionisation", "averageexcitation"}:
+                showlegend = True
                 plot_average_ionisation_excitation(
                     ax,
                     xlist,
@@ -682,8 +682,9 @@ def plot_subplot(
                     mgilist,
                     estimators,
                     modelpath,
-                    dfalldata=dfalldata,
+                    startfromzero=startfromzero,
                     args=args,
+                    **plotkwargs,
                 )
 
             elif seriestype == "_ymin":
@@ -696,47 +697,47 @@ def plot_subplot(
                 ax.set_yscale(params)
 
             else:
+                showlegend = True
                 seriestype, ionlist = plotitem
                 plot_multi_ion_series(
-                    ax,
-                    xlist,
-                    seriestype,
-                    ionlist,
-                    timestepslist,
-                    mgilist,
-                    estimators,
-                    modelpath,
-                    dfalldata,
-                    args,
+                    ax=ax,
+                    startfromzero=startfromzero,
+                    seriestype=seriestype,
+                    ionlist=ionlist,
+                    estimators=estimators,
+                    modelpath=modelpath,
+                    args=args,
                     **plotkwargs,
                 )
 
     ax.tick_params(right=True)
     if showlegend and not args.nolegend:
-        if plotitems[0][0] == "populations" and args.yscale == "log":
-            ax.legend(
-                loc="best", handlelength=2, ncol=math.ceil(len(plotitems[0][1]) / 2.0), frameon=False, numpoints=1
-            )
-        else:
-            ax.legend(
-                loc="best",
-                handlelength=2,
-                frameon=False,
-                numpoints=1,
-            )  # prop={'size': 9})
+        ax.legend(
+            loc="upper right",
+            handlelength=2,
+            frameon=False,
+            numpoints=1,
+            **(
+                {"ncol": math.ceil(len(plotitems[0][1]) / 2.0)}
+                if (plotitems[0][0] == "populations" and args.yscale == "log")
+                else {}
+            ),
+            markerscale=3,
+        )
 
 
 def make_plot(
     modelpath: Path | str,
     timestepslist_unfiltered: list[list[int]],
     allnonemptymgilist: list[int],
-    estimators: dict,
+    estimators: pl.LazyFrame,
     xvariable: str,
     plotlist,
     args: t.Any,
     **plotkwargs: t.Any,
 ):
     modelname = at.get_model_name(modelpath)
+
     fig, axes = plt.subplots(
         nrows=len(plotlist),
         ncols=1,
@@ -752,83 +753,83 @@ def make_plot(
 
     # ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
     if not args.hidexlabel:
-        axes[-1].set_xlabel(f"{xvariable}{at.estimators.get_units_string(xvariable)}")
+        axes[-1].set_xlabel(
+            f"{at.estimators.get_varname_formatted(xvariable)}{at.estimators.get_units_string(xvariable)}"
+        )
 
-    xlist, mgilist, timestepslist = get_xlist(
-        xvariable, allnonemptymgilist, estimators, timestepslist_unfiltered, modelpath, args
+    xlist, mgilist, timestepslist, estimators = get_xlist(
+        xvariable=xvariable,
+        allnonemptymgilist=allnonemptymgilist,
+        estimators=estimators,
+        timestepslist=timestepslist_unfiltered,
+        modelpath=modelpath,
+        groupbyxvalue=not args.markersonly,
+        args=args,
     )
-
-    dfalldata = pd.DataFrame()
-    # dfalldata.index.name = "modelgridindex"
-    dfalldata[xvariable] = xlist
-
-    xlist = list(
-        np.insert(xlist, 0, 0.0)
-        if (xvariable.startswith("velocity") or xvariable == "beta")
-        else np.insert(xlist, 0, xlist[0])
-    )
+    startfromzero = (xvariable.startswith("velocity") or xvariable == "beta") and not args.markersonly
 
     xmin = args.xmin if args.xmin >= 0 else min(xlist)
     xmax = args.xmax if args.xmax > 0 else max(xlist)
 
+    if args.markersonly:
+        plotkwargs["linestyle"] = "None"
+        plotkwargs["marker"] = "."
+        plotkwargs["markersize"] = 3
+        plotkwargs["alpha"] = 0.5
+
+        # with no lines, line styles cannot distringuish ions
+        args.colorbyion = True
+
     for ax, plotitems in zip(axes, plotlist):
         ax.set_xlim(left=xmin, right=xmax)
         plot_subplot(
-            ax,
-            timestepslist,
-            xlist,
-            plotitems,
-            mgilist,
-            modelpath,
-            estimators,
-            dfalldata=dfalldata,
+            ax=ax,
+            timestepslist=timestepslist,
+            xlist=xlist,
+            xvariable=xvariable,
+            plotitems=plotitems,
+            mgilist=mgilist,
+            modelpath=modelpath,
+            estimators=estimators,
+            startfromzero=startfromzero,
             args=args,
             **plotkwargs,
         )
 
-    if (
-        len(set(mgilist)) == 1 and not isinstance(timestepslist[0], int) and len(timestepslist[0]) > 1
-    ):  # single grid cell versus time plot
+    if len(set(mgilist)) == 1 and len(timestepslist[0]) > 1:  # single grid cell versus time plot
         figure_title = f"{modelname}\nCell {mgilist[0]}"
 
-        defaultoutputfile = Path("plotestimators_cell{modelgridindex:03d}.pdf")
+        defaultoutputfile = "plotestimators_cell{modelgridindex:03d}.{format}"
         if Path(args.outputfile).is_dir():
-            args.outputfile = str(Path(args.outputfile, defaultoutputfile))
+            args.outputfile = str(Path(args.outputfile) / defaultoutputfile)
 
-        outfilename = str(args.outputfile).format(modelgridindex=mgilist[0])
+        outfilename = str(args.outputfile).format(modelgridindex=mgilist[0], format=args.format)
 
     else:
-        timeavg = (args.timemin + args.timemax) / 2.0
-        if args.multiplot and not args.classicartis:
-            assert isinstance(timestepslist[0], list)
-            tdays = estimators[(timestepslist[0][0], mgilist[0])]["tdays"]
-            figure_title = f"{modelname}\nTimestep {timestepslist[0]} ({tdays:.2f}d)"
-        elif args.multiplot:
-            assert isinstance(timestepslist[0], int)
-            timedays = float(at.get_timestep_time(modelpath, timestepslist[0]))
-            figure_title = f"{modelname}\nTimestep {timestepslist[0]} ({timedays:.2f}d)"
+        if args.multiplot:
+            timestep = f"ts{timestepslist[0][0]:02d}"
+            timedays = f"{at.get_timestep_time(modelpath, timestepslist[0][0]):.2f}d"
         else:
-            figure_title = f"{modelname}\nTimestep {timestepslist[0]} ({timeavg:.2f}d)"
+            timestepmin = min(timestepslist[0])
+            timestepmax = max(timestepslist[0])
+            timestep = f"ts{timestepmin:02d}-ts{timestepmax:02d}"
+            timedays = f"{at.get_timestep_time(modelpath, timestepmin):.2f}d-{at.get_timestep_time(modelpath, timestepmax):.2f}d"
 
-        defaultoutputfile = Path("plotestimators_ts{timestep:02d}_{timeavg:.0f}d.pdf")
+        figure_title = f"{modelname}\nTimestep {timestep} ({timedays})"
+        print("Plotting ", figure_title.replace("\n", " "))
+
+        defaultoutputfile = "plotestimators_{timestep}_{timedays}.{format}"
         if Path(args.outputfile).is_dir():
-            args.outputfile = str(Path(args.outputfile, defaultoutputfile))
+            args.outputfile = str(Path(args.outputfile) / defaultoutputfile)
 
         assert isinstance(timestepslist[0], list)
-        outfilename = str(args.outputfile).format(timestep=timestepslist[0][0], timeavg=timeavg)
+        outfilename = str(args.outputfile).format(timestep=timestep, timedays=timedays, format=args.format)
 
     if not args.notitle:
-        axes[0].set_title(figure_title, fontsize=11)
-    # plt.suptitle(figure_title, fontsize=11, verticalalignment='top')
+        axes[0].set_title(figure_title, fontsize=12)
 
-    if args.write_data:
-        dfalldata = dfalldata.sort_index()
-        dataoutfilename = Path(outfilename).with_suffix(".txt")
-        dfalldata.to_csv(dataoutfilename)
-        print(f"Saved {dataoutfilename}")
-
-    fig.savefig(outfilename)
-    print(f"Saved {outfilename}")
+    print(f"Saving {outfilename} ...")
+    fig.savefig(outfilename, dpi=300)
 
     if args.show:
         plt.show()
@@ -838,9 +839,9 @@ def make_plot(
     return outfilename
 
 
-def plot_recombrates(modelpath, estimators, atomic_number, ion_stage_list, **plotkwargs):
+def plot_recombrates(modelpath, estimators, atomic_number, ionstage_list, **plotkwargs):
     fig, axes = plt.subplots(
-        nrows=len(ion_stage_list),
+        nrows=len(ionstage_list),
         ncols=1,
         sharex=True,
         figsize=(5, 8),
@@ -851,22 +852,17 @@ def plot_recombrates(modelpath, estimators, atomic_number, ion_stage_list, **plo
 
     recombcalibrationdata = at.atomic.get_ionrecombratecalibration(modelpath)
 
-    for ax, ion_stage in zip(axes, ion_stage_list):
-        ionstr = (
-            f"{at.get_elsymbol(atomic_number)} {at.roman_numerals[ion_stage]} to {at.roman_numerals[ion_stage - 1]}"
-        )
+    for ax, ionstage in zip(axes, ionstage_list):
+        ionstr = f"{at.get_elsymbol(atomic_number)} {at.roman_numerals[ionstage]} to {at.roman_numerals[ionstage - 1]}"
 
         listT_e = []
         list_rrc = []
         list_rrc2 = []
         for dicttimestepmodelgrid in estimators.values():
-            if (
-                not dicttimestepmodelgrid["emptycell"]
-                and (atomic_number, ion_stage) in dicttimestepmodelgrid["RRC_LTE_Nahar"]
-            ):
+            if (atomic_number, ionstage) in dicttimestepmodelgrid["RRC_LTE_Nahar"]:
                 listT_e.append(dicttimestepmodelgrid["Te"])
-                list_rrc.append(dicttimestepmodelgrid["RRC_LTE_Nahar"][(atomic_number, ion_stage)])
-                list_rrc2.append(dicttimestepmodelgrid["Alpha_R"][(atomic_number, ion_stage)])
+                list_rrc.append(dicttimestepmodelgrid["RRC_LTE_Nahar"][(atomic_number, ionstage)])
+                list_rrc2.append(dicttimestepmodelgrid["Alpha_R"][(atomic_number, ionstage)])
 
         if not list_rrc:
             continue
@@ -878,7 +874,7 @@ def plot_recombrates(modelpath, estimators, atomic_number, ion_stage_list, **plo
         ax.plot(listT_e, list_rrc2, linewidth=2, label=f"{ionstr} ARTIS Alpha_R", **plotkwargs)
 
         with contextlib.suppress(KeyError):
-            dfrates = recombcalibrationdata[(atomic_number, ion_stage)].query(
+            dfrates = recombcalibrationdata[(atomic_number, ionstage)].query(
                 "T_e > @T_e_min & T_e < @T_e_max", local_dict={"T_e_min": min(listT_e), "T_e_max": max(listT_e)}
             )
 
@@ -886,14 +882,14 @@ def plot_recombrates(modelpath, estimators, atomic_number, ion_stage_list, **plo
                 dfrates.T_e,
                 dfrates.rrc_total,
                 linewidth=2,
-                label=ionstr + " (calibration)",
+                label=f"{ionstr} (calibration)",
                 markersize=6,
                 marker="s",
                 **plotkwargs,
             )
         # rrcfiles = glob.glob(
         #     f'/Users/lshingles/Library/Mobile Documents/com~apple~CloudDocs/GitHub/'
-        #     f'artis-atomic/atomic-data-nahar/{at.get_elsymbol(atomic_number).lower()}{ion_stage - 1}.rrc*.txt')
+        #     f'artis-atomic/atomic-data-nahar/{at.get_elsymbol(atomic_number).lower()}{ionstage - 1}.rrc*.txt')
         # if rrcfiles:
         #     dfrecombrates = get_ionrecombrates_fromfile(rrcfiles[0])
         #
@@ -920,19 +916,6 @@ def plot_recombrates(modelpath, estimators, atomic_number, ion_stage_list, **plo
     plt.close()
 
 
-def plotlist_is_temperatures_only(plotlist: str | t.Sequence) -> bool:
-    if isinstance(plotlist, str):
-        if plotlist != "TR" and not plotlist.startswith("_"):
-            return False
-
-    elif not isinstance(plotlist[0], str) or not plotlist[0].startswith("_"):
-        for item in plotlist:
-            if not plotlist_is_temperatures_only(item):
-                return False
-
-    return True
-
-
 def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-modelpath", default=".", help="Paths to ARTIS folder (or virtual path e.g. codecomparison/ddc10/cmfgen)"
@@ -941,7 +924,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--recombrates", action="store_true", help="Make a recombination rate plot")
 
     parser.add_argument(
-        "-modelgridindex", "-cell", "-mgi", type=int, default=-1, help="Modelgridindex for time evolution plot"
+        "-modelgridindex", "-cell", "-mgi", type=int, default=None, help="Modelgridindex for time evolution plot"
     )
 
     parser.add_argument("-timestep", "-ts", nargs="?", help="Timestep number for internal structure plot")
@@ -966,6 +949,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--hidexlabel", action="store_true", help="Hide the bottom horizontal axis label")
 
+    parser.add_argument(
+        "--markersonly", action="store_true", help="Plot markers instead of lines (always set for 2D and 3D)"
+    )
+
     parser.add_argument("-filtermovingavg", type=int, default=0, help="Smoothing length (1 is same as none)")
 
     parser.add_argument(
@@ -973,6 +960,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         nargs=2,
         help="Savitzky-Golay filter. Specify the window_length and polyorder.e.g. -filtersavgol 5 3",
     )
+
+    parser.add_argument("-format", "-f", default="pdf", choices=["pdf", "png"], help="Set format of output plot files")
+
+    parser.add_argument("--makegif", action="store_true", help="Make a gif with time evolution (requires --multiplot)")
 
     parser.add_argument("--notitle", action="store_true", help="Suppress the top title from the plot")
 
@@ -994,8 +985,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-scalefigwidth", type=float, default=1.0, help="Scale factor for plot width.")
 
     parser.add_argument("--show", action="store_true", help="Show plot before quitting")
-
-    parser.add_argument("--write_data", action="store_true", help="Save data used to generate the plot in a CSV file")
 
     parser.add_argument(
         "-o", action="store", dest="outputfile", type=Path, default=Path(), help="Filename for PDF file"
@@ -1037,7 +1026,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     modelname = at.get_model_name(modelpath)
 
-    if not args.timedays and not args.timestep and args.modelgridindex > -1:
+    if not args.timedays and not args.timestep and args.modelgridindex is not None:
         args.timestep = f"0-{len(at.get_timestep_times(modelpath)) - 1}"
 
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
@@ -1060,21 +1049,22 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     )
 
     plotlist = args.plotlist or [
-        # [['initabundances', ['Fe', 'Ni_stable', 'Ni_56']]],
+        # [["initabundances", ["Fe", "Ni_stable", "Ni_56"]]],
         # ['heating_dep', 'heating_coll', 'heating_bf', 'heating_ff',
         #  ['_yscale', 'linear']],
         # ['cooling_adiabatic', 'cooling_coll', 'cooling_fb', 'cooling_ff',
         #  ['_yscale', 'linear']],
         # [['initmasses', ['Ni_56', 'He', 'C', 'Mg']]],
         # ['heating_gamma/gamma_dep'],
-        # ['nne'],
-        ["TR", ["_yscale", "linear"], ["_ymin", 1000], ["_ymax", 22000]],
-        # ['Te'],
-        # [['averageionisation', ['Fe', 'Ni']]],
-        # [['averageexcitation', ['Fe II', 'Fe III']]],
-        # [['populations', ['Sr89', 'Sr90', 'Sr91', 'Sr92', 'Sr93', 'Sr94', 'Sr95']],
-        #  ['_ymin', 1e-3], ['_ymax', 5]],
-        # [["populations", ["Fe", "Co", "Ni", "Sr", "Nd", "U"]]],
+        # ["nne", ["_ymin", 1e5], ["_ymax", 1e10]],
+        ["rho", ["_yscale", "log"], ["_ymin", 1e-16]],
+        ["TR", ["_yscale", "linear"]],  # , ["_ymin", 1000], ["_ymax", 15000]
+        # ["Te"],
+        # ["Te", "TR"],
+        [["averageionisation", ["Sr"]]],
+        # [["averageexcitation", ["Fe II", "Fe III"]]],
+        # [["populations", ["Sr90", "Sr91", "Sr92", "Sr94"]]],
+        [["populations", ["Sr I", "Sr II", "Sr III", "Sr IV"]]],
         # [['populations', ['He I', 'He II', 'He III']]],
         # [['populations', ['C I', 'C II', 'C III', 'C IV', 'C V']]],
         # [['populations', ['O I', 'O II', 'O III', 'O IV']]],
@@ -1107,26 +1097,41 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         dfselectedcells = dfselectedcells[dfselectedcells["rho"] > 0]
         args.modelgridindex = list(dfselectedcells["inputcellid"])
 
-    if temperatures_only := plotlist_is_temperatures_only(plotlist):
-        print("Plotting temperatures only (from parquet if available)")
-
     timesteps_included = list(range(timestepmin, timestepmax + 1))
     if args.classicartis:
         import artistools.estimators.estimators_classic
 
         modeldata, _ = at.inputmodel.get_modeldata(modelpath)
-        estimators = artistools.estimators.estimators_classic.read_classic_estimators(modelpath, modeldata)
-    elif temperatures_only:
-        df_estimators = at.estimators.get_temperatures(modelpath).filter(pl.col("timestep").is_in(timesteps_included))
-        estimators = df_estimators.collect().rows_by_key(key=["timestep", "modelgridindex"], named=True, unique=True)
+        estimatorsdict = artistools.estimators.estimators_classic.read_classic_estimators(modelpath, modeldata)
+        assert estimatorsdict is not None
+        estimators = pl.DataFrame(
+            [
+                {
+                    "timestep": ts,
+                    "modelgridindex": mgi,
+                    **estimvals,
+                }
+                for (ts, mgi), estimvals in estimatorsdict.items()
+            ]
+        ).lazy()
     else:
-        estimators = at.estimators.read_estimators(
-            modelpath=modelpath, modelgridindex=args.modelgridindex, timestep=tuple(timesteps_included)
+        estimators = at.estimators.scan_estimators(
+            modelpath=modelpath,
+            modelgridindex=args.modelgridindex,
+            timestep=tuple(timesteps_included),
         )
     assert estimators is not None
+    tmids = at.get_timestep_times(modelpath, loc="mid")
+    estimators = estimators.join(
+        pl.DataFrame({"timestep": range(len(tmids)), "time_mid": tmids})
+        .with_columns(pl.col("timestep").cast(pl.Int32))
+        .lazy(),
+        on="timestep",
+        how="left",
+    )
 
     for ts in reversed(timesteps_included):
-        tswithdata = [ts for (ts, mgi) in estimators]
+        tswithdata = estimators.select("timestep").unique().collect().to_series()
         for ts in timesteps_included:
             if ts not in tswithdata:
                 timesteps_included.remove(ts)
@@ -1145,53 +1150,100 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath)
 
-    if not args.readonlymgi and (args.modelgridindex > -1 or args.x in {"time", "timestep"}):
+    outdir = args.outputfile if (args.outputfile).is_dir() else Path()
+    if not args.readonlymgi and (args.modelgridindex is not None or args.x in {"time", "timestep"}):
         # plot time evolution in specific cell
         if not args.x:
             args.x = "time"
         mgilist = [args.modelgridindex] * len(timesteps_included)
-        timesteplist_unfiltered = [[ts] for ts in timesteps_included]
+        timestepslist_unfiltered = [[ts] for ts in timesteps_included]
         if not assoc_cells.get(args.modelgridindex, []):
             msg = f"cell {args.modelgridindex} is empty. no estimators available"
             raise ValueError(msg)
-        make_plot(modelpath, timesteplist_unfiltered, mgilist, estimators, args.x, plotlist, args)
+        make_plot(
+            modelpath=modelpath,
+            timestepslist_unfiltered=timestepslist_unfiltered,
+            allnonemptymgilist=mgilist,
+            estimators=estimators,
+            xvariable=args.x,
+            plotlist=plotlist,
+            args=args,
+        )
     else:
         # plot a range of cells in a time snapshot showing internal structure
 
         if not args.x:
             args.x = "velocity"
 
+        dfmodel, modelmeta = at.inputmodel.get_modeldata_polars(modelpath, derived_cols=["ALL"])
+        if args.x == "velocity" and modelmeta["vmax_cmps"] > 0.3 * 29979245800:
+            args.x = "beta"
+
+        dfmodel = dfmodel.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"])
+        estimators = estimators.join(dfmodel, on="modelgridindex")
+        estimators = estimators.with_columns(
+            rho_init=pl.col("rho"),
+            rho=pl.col("rho") * (modelmeta["t_model_init_days"] / pl.col("time_mid")) ** 3,
+        )
+
+        if args.readonlymgi:
+            estimators = estimators.filter(pl.col("modelgridindex").is_in(args.modelgridindex))
+
         if args.classicartis:
             modeldata, _ = at.inputmodel.get_modeldata(modelpath)
             allnonemptymgilist = [
                 modelgridindex
                 for modelgridindex in modeldata.index
-                if (timesteps_included[0], modelgridindex) in estimators
+                if not estimators.filter(pl.col("modelgridindex") == modelgridindex)
+                .select("modelgridindex")
+                .lazy()
+                .collect()
+                .is_empty()
             ]
         else:
             allnonemptymgilist = [mgi for mgi, assocpropcells in assoc_cells.items() if assocpropcells]
 
-        if args.multiplot:
-            pdf_list = []
-            modelpath_list = []
-            for timestep in range(timestepmin, timestepmax + 1):
-                timesteplist_unfiltered = [[timestep]] * len(allnonemptymgilist)
-                outfilename = make_plot(
-                    modelpath, timesteplist_unfiltered, allnonemptymgilist, estimators, args.x, plotlist, args
-                )
+        estimators = estimators.filter(pl.col("modelgridindex").is_in(allnonemptymgilist)).filter(
+            pl.col("timestep").is_in(timesteps_included)
+        )
 
-                if "/" in outfilename:
-                    outfilename = outfilename.split("/")[1]
+        frames_timesteps_included = (
+            [[ts] for ts in range(timestepmin, timestepmax + 1)] if args.multiplot else [timesteps_included]
+        )
 
-                pdf_list.append(outfilename)
-                modelpath_list.append(modelpath)
+        if args.makegif:
+            args.multiplot = True
+            args.format = "png"
 
-            if len(pdf_list) > 1:
-                at.join_pdf_files(pdf_list, modelpath_list)
+        outputfiles = []
+        for timesteps_included in frames_timesteps_included:
+            timestepslist_unfiltered = [timesteps_included] * len(allnonemptymgilist)
+            outfilename = make_plot(
+                modelpath=modelpath,
+                timestepslist_unfiltered=timestepslist_unfiltered,
+                allnonemptymgilist=allnonemptymgilist,
+                estimators=estimators,
+                xvariable=args.x,
+                plotlist=plotlist,
+                args=args,
+            )
 
-        else:
-            timesteplist_unfiltered = [timesteps_included] * len(allnonemptymgilist)
-            make_plot(modelpath, timesteplist_unfiltered, allnonemptymgilist, estimators, args.x, plotlist, args)
+            outputfiles.append(outfilename)
+
+        if len(outputfiles) > 1:
+            if args.makegif:
+                assert args.multiplot
+                assert args.format == "png"
+                import imageio.v2 as iio
+
+                gifname = outdir / f"plotestim_evolution_ts{timestepmin:03d}_ts{timestepmax:03d}.gif"
+                with iio.get_writer(gifname, mode="I", duration=1000) as writer:
+                    for filename in outputfiles:
+                        image = iio.imread(filename)
+                        writer.append_data(image)  # type: ignore[attr-defined]
+                print(f"Created gif: {gifname}")
+            elif args.format == "pdf":
+                at.merge_pdf_files(outputfiles)
 
 
 if __name__ == "__main__":

@@ -487,7 +487,7 @@ def plot_qdot_abund_modelcells(
         for nts, mgi in sorted(estimators.keys()):
             if nts in partiallycomplete_timesteps:
                 continue
-            if mgi not in mgiplotlist and not get_global_Ye or estimators[(nts, mgi)]["emptycell"]:
+            if mgi not in mgiplotlist and not get_global_Ye:
                 continue
 
             if first_mgi is None:
@@ -501,7 +501,7 @@ def plot_qdot_abund_modelcells(
             rho_cgs = rho_init_cgs * (t_model_init_days / time_days) ** 3
 
             for strnuc, a in zip(arr_strnuc, arr_a):
-                abund = estimators[(nts, mgi)]["populations"][strnuc]
+                abund = estimators[(nts, mgi)][f"nniso_{strnuc}"]
                 massfrac = abund * a * MH / rho_cgs
                 massfrac = massfrac + dfmodel.iloc[mgi][f"X_{strnuc}"] * (correction_factors[strnuc] - 1.0)
 
@@ -519,7 +519,7 @@ def plot_qdot_abund_modelcells(
             if "Ye" not in arr_abund_artis[mgi]:
                 arr_abund_artis[mgi]["Ye"] = []
 
-            abund = estimators[(nts, mgi)]["populations"].get(strnuc, 0.0)
+            abund = estimators[(nts, mgi)].get(f"nniso_{strnuc}", 0.0)
             if "Ye" in estimators[(nts, mgi)]:
                 cell_Ye = estimators[(nts, mgi)]["Ye"]
                 arr_abund_artis[mgi]["Ye"].append(cell_Ye)
@@ -529,8 +529,8 @@ def plot_qdot_abund_modelcells(
                 cell_protoncount = 0.0
                 cell_nucleoncount = 0.0
                 cellvolume = dfmodel.iloc[mgi].volume
-                for popkey, abund in estimators[(nts, mgi)]["populations"].items():
-                    if isinstance(popkey, str) and abund > 0.0:
+                for popkey, abund in estimators[(nts, mgi)].items():
+                    if popkey.startswith("nniso_") and abund > 0.0:
                         if popkey.endswith("_otherstable"):
                             # TODO: use mean molecular weight, but this is not needed for kilonova input files anyway
                             print(f"WARNING {popkey}={abund} not contributed")

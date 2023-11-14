@@ -1,6 +1,7 @@
 {
     "recommendations": [
         "ms-python.mypy-type-checker",
-        "charliermarsh.ruff"
+        "charliermarsh.ruff",
+        "sourcery.sourcery"
     ]
 }

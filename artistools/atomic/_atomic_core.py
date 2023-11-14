@@ -153,7 +153,7 @@ def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisati
                 phixsdict[(Z, lowerionstage, lowerionlevel)] = (phixstargetlist, phixstable)
 
     level_lists = []
-    iontuple = namedtuple("ion", "Z ion_stage level_count ion_pot levels transitions")
+    iontuple = namedtuple("ion", "Z ionstage level_count ion_pot levels transitions")
 
     with at.zopen(adatafilename) as fadata:
         if not quiet:

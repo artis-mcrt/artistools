@@ -80,7 +80,7 @@ def main_analytical(args: argparse.Namespace | None = None, argsraw: list[str] |
     # dfnltepops = at.nltepops.read_files(
     #     args.modelpath, timestep=timestep).query('Z == 26')
 
-    # phixs = adata.query('Z==26 & ion_stage==1', inplace=False).iloc[0].levels.iloc[0].phixstable[0][1] * 1e-18
+    # phixs = adata.query('Z==26 & ionstage==1', inplace=False).iloc[0].levels.iloc[0].phixstable[0][1] * 1e-18
 
     global_posdep = 0.0 * u.erg / u.s
     for i, row in dfmodel.iterrows():

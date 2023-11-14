@@ -809,9 +809,8 @@ def make_contrib_plot(axes: t.Iterable[plt.Axes], modelpath: Path, densityplotyv
 
     else:
         estimators = at.estimators.read_estimators(modelpath=modelpath)
-        allnonemptymgilist = [
-            modelgridindex for modelgridindex in modeldata.index if not estimators[(0, modelgridindex)]["emptycell"]
-        ]
+        allnonemptymgilist = list({modelgridindex for ts, modelgridindex in estimators})
+
     assert estimators is not None
     packetsfiles = at.packets.get_packetsfilepaths(modelpath, args.maxpacketfiles)
     assert args.timemin is not None

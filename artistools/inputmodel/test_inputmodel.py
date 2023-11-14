@@ -228,6 +228,12 @@ def test_plotdensity() -> None:
     at.inputmodel.plotdensity.main(argsraw=[], modelpath=[modelpath], outputpath=outputpath)
 
 
+def test_plotinitialcomposition() -> None:
+    at.inputmodel.plotinitialcomposition.main(
+        argsraw=["-modelpath", str(modelpath_3d), "-o", str(outputpath), "rho", "Fe"]
+    )
+
+
 def test_save_load_3d_model() -> None:
     clear_modelfiles()
     lzdfmodel, modelmeta = at.inputmodel.get_empty_3d_model(ncoordgrid=50, vmax=1000, t_model_init_days=1)

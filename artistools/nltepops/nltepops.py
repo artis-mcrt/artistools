@@ -68,27 +68,27 @@ def add_lte_pops(modelpath, dfpop, columntemperature_tuples, noprint=False, maxl
     """
     k_b = const.k_B.to("eV / K").value
 
-    for _, row in dfpop.drop_duplicates(["modelgridindex", "timestep", "Z", "ion_stage"]).iterrows():
+    for _, row in dfpop.drop_duplicates(["modelgridindex", "timestep", "Z", "ionstage"]).iterrows():
         modelgridindex = int(row.modelgridindex)
         timestep = int(row.timestep)
         Z = int(row.Z)
-        ion_stage = int(row.ion_stage)
+        ionstage = int(row.ionstage)
 
-        ionlevels = at.atomic.get_levels(modelpath).query("Z == @Z and ion_stage == @ion_stage").iloc[0].levels
+        ionlevels = at.atomic.get_levels(modelpath).query("Z == @Z and ionstage == @ionstage").iloc[0].levels
 
         gs_g = ionlevels.iloc[0].g
         gs_energy = ionlevels.iloc[0].energy_ev
 
         # gs_pop = dfpop.query(
         #     "modelgridindex == @modelgridindex and timestep == @timestep "
-        #     "and Z == @Z and ion_stage == @ion_stage and level == 0"
+        #     "and Z == @Z and ionstage == @ionstage and level == 0"
         # ).iloc[0]["n_NLTE"]
 
         masksuperlevel = (
             (dfpop["modelgridindex"] == modelgridindex)
             & (dfpop["timestep"] == timestep)
             & (dfpop["Z"] == Z)
-            & (dfpop["ion_stage"] == ion_stage)
+            & (dfpop["ionstage"] == ionstage)
             & (dfpop["level"] == -1)
         )
 
@@ -96,7 +96,7 @@ def add_lte_pops(modelpath, dfpop, columntemperature_tuples, noprint=False, maxl
             (dfpop["modelgridindex"] == modelgridindex)
             & (dfpop["timestep"] == timestep)
             & (dfpop["Z"] == Z)
-            & (dfpop["ion_stage"] == ion_stage)
+            & (dfpop["ionstage"] == ionstage)
             & (dfpop["level"] != -1)
         )
 
@@ -116,7 +116,7 @@ def add_lte_pops(modelpath, dfpop, columntemperature_tuples, noprint=False, maxl
             levelnumber_sl = (
                 dfpop.query(
                     "modelgridindex == @modelgridindex and timestep == @timestep "
-                    "and Z == @Z and ion_stage == @ion_stage"
+                    "and Z == @Z and ionstage == @ionstage"
                 ).level.max()
                 + 1
             )
@@ -124,7 +124,7 @@ def add_lte_pops(modelpath, dfpop, columntemperature_tuples, noprint=False, maxl
             if maxlevel < 0 or levelnumber_sl <= maxlevel:
                 if not noprint:
                     print(
-                        f"{at.get_elsymbol(Z)} {at.roman_numerals[ion_stage]} "
+                        f"{at.get_elsymbol(Z)} {at.roman_numerals[ionstage]} "
                         f"has a superlevel at level {levelnumber_sl}"
                     )
 
@@ -160,6 +160,8 @@ def read_file(nltefilepath: str | Path) -> pd.DataFrame:
         dfpop = pd.read_csv(nltefilepath, delim_whitespace=True)
     except pd.errors.EmptyDataError:
         return pd.DataFrame()
+    if "ion_stage" in dfpop.columns:
+        dfpop = dfpop.rename(columns={"ion_stage": "ionstage"})
 
     return dfpop
 
@@ -175,7 +177,11 @@ def read_file_filtered(nltefilepath, strquery=None, dfqueryvars=None):
 
 @lru_cache(maxsize=2)
 def read_files(
-    modelpath, timestep=-1, modelgridindex=-1, dfquery=None, dfqueryvars: dict | None = None
+    modelpath: str | Path,
+    timestep: int = -1,
+    modelgridindex: int = -1,
+    dfquery: str | None = None,
+    dfqueryvars: dict | None = None,
 ) -> pd.DataFrame:
     """Read in NLTE populations from a model for a particular timestep and grid cell."""
     if dfqueryvars is None:

@@ -12,7 +12,7 @@ import artistools as at
 DAY = 86400
 TWOHOVERCLIGHTSQUARED = 1.4745007e-47
 HOVERKB = 4.799243681748932e-11
-PARSEC = 3.086e18
+PARSEC = 3.0857e18
 c_cgs = const.c.to("cm/s").value
 c_ang_s = const.c.to("angstrom/s").value
 
