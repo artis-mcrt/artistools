@@ -7,7 +7,7 @@ import numpy as np
 
 import artistools as at
 
-modelpath = at.get_config()["path_testartismodel"]
+modelpath = at.get_config()["path_testdata"] / "testmodel"
 outputpath = at.get_config()["path_testoutput"]
 
 

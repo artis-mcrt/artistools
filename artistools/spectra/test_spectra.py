@@ -9,7 +9,7 @@ import pandas as pd
 
 import artistools as at
 
-modelpath = at.get_config()["path_testartismodel"]
+modelpath = at.get_config()["path_testdata"] / "testmodel"
 outputpath = at.get_config()["path_testoutput"]
 modelpath_classic_3d = at.get_config()["path_testdata"] / "test-classicmode_3d"
 
