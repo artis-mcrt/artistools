@@ -976,7 +976,9 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
     if args.show:
         plt.show()
 
-    (ax[0] if args.subplots else ax).invert_yaxis()
+    ymin, ymax = (ax[0] if args.subplots else ax).get_ylim()
+    if ymin < ymax:
+        (ax[0] if args.subplots else ax).invert_yaxis()
 
     plt.savefig(args.outputfile, format="pdf")
     print(f"Saved figure: {args.outputfile}")
