@@ -11,6 +11,7 @@ import artistools as at
 
 modelpath = at.get_config()["path_testartismodel"]
 outputpath = at.get_config()["path_testoutput"]
+modelpath_classic_3d = at.get_config()["path_testdata"] / "test-classicmode_3d"
 
 
 @mock.patch.object(matplotlib.axes.Axes, "plot", side_effect=matplotlib.axes.Axes.plot, autospec=True)
@@ -102,6 +103,69 @@ def test_spectra_get_spectrum() -> None:
     )[-1]
 
     check_spectrum(dfspectrumpkts)
+
+
+def test_spectra_get_spectrum_polar_angles() -> None:
+    kwargs = {
+        "modelpath": modelpath_classic_3d,
+        "directionbins": [0, 10, 20, 30, 40, 50, 60, 70, 80, 90],
+        "average_over_phi": True,
+    }
+
+    spectra = at.spectra.get_spectrum(**kwargs, timestepmin=20, timestepmax=25)
+
+    assert all(np.isclose(dirspec["lambda_angstroms"].mean(), 7510.074, rtol=1e-3) for dirspec in spectra.values())
+    assert all(np.isclose(dirspec["lambda_angstroms"].std(), 7647.317, rtol=1e-3) for dirspec in spectra.values())
+
+    expected_results = {
+        0: (8.944885683622777e-12, 2.5390561316336613e-11),
+        10: (7.192449910173842e-12, 2.0713405870496142e-11),
+        20: (8.963182635824623e-12, 2.4720178744713477e-11),
+        30: (8.06805028771611e-12, 2.2672897557383406e-11),
+        40: (7.8306536944195e-12, 2.2812958326863807e-11),
+        50: (8.259135507460651e-12, 2.2795973908331984e-11),
+        60: (7.964029031817186e-12, 2.637892822134082e-11),
+        70: (7.691392868658026e-12, 2.1262113332060223e-11),
+        80: (8.450665096838155e-12, 2.352725654000879e-11),
+        90: (8.828105146277665e-12, 2.534549767123003e-11),
+    }
+
+    results = {
+        dirbin: (
+            dfspecdir["f_lambda"].mean(),
+            dfspecdir["f_lambda"].std(),
+        )
+        for dirbin, dfspecdir in spectra.items()
+    }
+
+    print(f"expected_results = {results!r}")
+
+    for dirbin in spectra:
+        assert results[dirbin] == expected_results[dirbin]
+
+    # lambda_min = spectra[0]["lambda_angstroms"].to_numpy()[0]
+    # lambda_max = spectra[0]["lambda_angstroms"].to_numpy()[-1]
+    # timelowdays = at.get_timestep_times(modelpath, loc="start")[20]
+    # timehighdays = at.get_timestep_times(modelpath, loc="end")[25]
+
+    # spectrafrompkts = at.spectra.get_from_packets(
+    #     **kwargs, timelowdays=timelowdays, timehighdays=timehighdays, lambda_min=lambda_min, lambda_max=lambda_max
+    # )
+
+    # results_pkts = {
+    #     dirbin: (
+    #         dfspecdir["f_lambda"].mean(),
+    #         dfspecdir["f_lambda"].std(),
+    #     )
+    #     for dirbin, dfspecdir in spectrafrompkts.items()
+    # }
+
+    # print(f"results_pkts = {results_pkts!r}")
+
+    # for dirbin in spectrafrompkts:
+    #     assert (
+    #         results_pkts[dirbin] == expected_results[dirbin]
+    #     ), f"dirbin={dirbin} expected: {expected_results[dirbin]} actual: {results_pkts[dirbin]}"
 
 
 def test_spectra_get_flux_contributions() -> None:
