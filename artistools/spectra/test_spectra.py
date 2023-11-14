@@ -106,16 +106,26 @@ def test_spectra_get_spectrum() -> None:
 
 
 def test_spectra_get_spectrum_polar_angles() -> None:
-    kwargs = {
-        "modelpath": modelpath_classic_3d,
-        "directionbins": [0, 10, 20, 30, 40, 50, 60, 70, 80, 90],
-        "average_over_phi": True,
-    }
-
-    spectra = at.spectra.get_spectrum(**kwargs, timestepmin=20, timestepmax=25)
+    spectra = at.spectra.get_spectrum(
+        modelpath=modelpath_classic_3d,
+        directionbins=[0, 10, 20, 30, 40, 50, 60, 70, 80, 90],
+        average_over_phi=True,
+        timestepmin=20,
+        timestepmax=25,
+    )
 
     assert all(np.isclose(dirspec["lambda_angstroms"].mean(), 7510.074, rtol=1e-3) for dirspec in spectra.values())
     assert all(np.isclose(dirspec["lambda_angstroms"].std(), 7647.317, rtol=1e-3) for dirspec in spectra.values())
+
+    results = {
+        dirbin: (
+            dfspecdir["f_lambda"].mean(),
+            dfspecdir["f_lambda"].std(),
+        )
+        for dirbin, dfspecdir in spectra.items()
+    }
+
+    print(f"expected_results = {results!r}")
 
     expected_results = {
         0: (8.944885683622777e-12, 2.5390561316336613e-11),
@@ -130,42 +140,50 @@ def test_spectra_get_spectrum_polar_angles() -> None:
         90: (8.828105146277665e-12, 2.534549767123003e-11),
     }
 
-    results = {
+    for dirbin in spectra:
+        assert results[dirbin] == expected_results[dirbin]
+
+
+def test_spectra_get_spectrum_polar_angles_frompackets() -> None:
+    timelowdays = at.get_timestep_times(modelpath_classic_3d, loc="start")[0]
+    timehighdays = at.get_timestep_times(modelpath_classic_3d, loc="end")[25]
+
+    spectrafrompkts = at.spectra.get_from_packets(
+        modelpath=modelpath_classic_3d,
+        directionbins=[0, 10, 20, 30, 40, 50, 60, 70, 80, 90],
+        average_over_phi=True,
+        timelowdays=timelowdays,
+        timehighdays=timehighdays,
+        lambda_min=100,
+        lambda_max=50000,
+    )
+
+    results_pkts = {
         dirbin: (
             dfspecdir["f_lambda"].mean(),
             dfspecdir["f_lambda"].std(),
         )
-        for dirbin, dfspecdir in spectra.items()
+        for dirbin, dfspecdir in spectrafrompkts.items()
+    }
+    print(spectrafrompkts[0]["f_lambda"].max())
+
+    print(f"expected_results = {results_pkts!r}")
+
+    expected_results = {
+        0: (4.3529439120747186e-12, 1.0314066492861092e-11),
+        10: (3.780678513149676e-12, 9.529723964592956e-12),
+        20: (4.4246323512365474e-12, 1.0166369617322156e-11),
+        30: (3.851546304731156e-12, 9.243745813551232e-12),
+        40: (4.067455987977417e-12, 9.994481885245608e-12),
+        50: (4.062094857762276e-12, 9.823422691843564e-12),
+        60: (3.858054725612363e-12, 9.157894155554632e-12),
+        70: (3.997110745634441e-12, 9.534252566271398e-12),
+        80: (4.121413251153407e-12, 9.480857140587749e-12),
+        90: (4.299536899380859e-12, 9.957108958110141e-12),
     }
 
-    print(f"expected_results = {results!r}")
-
-    for dirbin in spectra:
-        assert results[dirbin] == expected_results[dirbin]
-
-    # lambda_min = spectra[0]["lambda_angstroms"].to_numpy()[0]
-    # lambda_max = spectra[0]["lambda_angstroms"].to_numpy()[-1]
-    # timelowdays = at.get_timestep_times(modelpath, loc="start")[20]
-    # timehighdays = at.get_timestep_times(modelpath, loc="end")[25]
-
-    # spectrafrompkts = at.spectra.get_from_packets(
-    #     **kwargs, timelowdays=timelowdays, timehighdays=timehighdays, lambda_min=lambda_min, lambda_max=lambda_max
-    # )
-
-    # results_pkts = {
-    #     dirbin: (
-    #         dfspecdir["f_lambda"].mean(),
-    #         dfspecdir["f_lambda"].std(),
-    #     )
-    #     for dirbin, dfspecdir in spectrafrompkts.items()
-    # }
-
-    # print(f"results_pkts = {results_pkts!r}")
-
-    # for dirbin in spectrafrompkts:
-    #     assert (
-    #         results_pkts[dirbin] == expected_results[dirbin]
-    #     ), f"dirbin={dirbin} expected: {expected_results[dirbin]} actual: {results_pkts[dirbin]}"
+    for dirbin in results_pkts:
+        assert results_pkts[dirbin] == expected_results[dirbin]
 
 
 def test_spectra_get_flux_contributions() -> None:
