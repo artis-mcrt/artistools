@@ -272,6 +272,7 @@ def maptogrid(
 
     for n in range(npart):
         maxdist = 2.0 * h[n]
+        maxdist2 = maxdist**2
 
         ilow = max(math.floor((x[n] - maxdist - x0) / dx), 0)
         ihigh = min(math.ceil((x[n] + maxdist - x0) / dx), ncoordgrid - 1)
@@ -321,11 +322,13 @@ def maptogrid(
                 if args.modifysmoothinglength == "option4" and dis > rmean:
                     h[n] = max(h[n], hmean * 1.5)
 
+                if not args.shinglesetal23hbug:
+                    maxdist2 = (2.0 * h[n]) ** 2
                 # -------------------------------
 
                 # or via neighbors  - not yet implemented
 
-            if dis2 <= 4.0 * np.power(h[n], 2):
+            if dis2 <= maxdist2:
                 wtij = kernelvals2(dis2, h[n], wij)
 
                 # USED PREVIOUSLY: less accurate?
@@ -471,6 +474,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Option to modify smoothing length h. Choose from options."
         "Default modifies h. Set to False for no modifications to h.",
     )
+
+    parser.add_argument(
+        "--shinglesetal23hbug",
+        action="store_true",
+        help="Reproduce Shingles et al. 2023 method with a bug that increased h in outer regions but did not update the maximum distance from particle to cell midpoints",
+    )
+
     parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")
 
 
