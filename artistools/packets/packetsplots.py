@@ -1,6 +1,9 @@
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import numpy as np
+import polars as pl
+from astropy import units as u
 
 import artistools as at
 
@@ -124,5 +127,63 @@ def plot_packet_mean_emission_velocity(modelpath, write_emission_data=True):
         emission_data.to_csv(Path(modelpath) / "meanemissionvelocity.txt", sep=" ", index=False)
 
     outfilename = "meanemissionvelocity.pdf"
+    plt.savefig(Path(modelpath) / outfilename, format="pdf")
+    print(f"Saved {outfilename}")
+
+
+def plot_last_emission_velocities_histogram(
+    modelpath, timestep_min, timestep_max, costhetabin=None, maxpacketfiles=None
+):
+    fig, ax = plt.subplots(
+        nrows=1, ncols=1, figsize=(5, 4), tight_layout={"pad": 1.0, "w_pad": 0.0, "h_pad": 0.5}, sharex=True
+    )
+
+    dfmodel, modelmeta = at.get_modeldata(modelpath=modelpath, getheadersonly=True, printwarningsonly=True)
+
+    nprocs_read, dfpackets = at.packets.get_packets_pl(
+        modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
+    )
+    dfpackets = at.packets.bin_packet_directions_lazypolars(dfpackets=dfpackets, phibintype="artis_pi_reversal")
+    dfpackets = at.packets.add_derived_columns_lazy(dfpackets, modelmeta=modelmeta, dfmodel=dfmodel)
+    print("read packets data")
+
+    timeminarray = at.misc.get_timestep_times(modelpath=modelpath, loc="start")
+    timemaxarray = at.misc.get_timestep_times(modelpath=modelpath, loc="end")
+    timelow = timeminarray[timestep_min]
+    timehigh = timemaxarray[timestep_max]
+    print(f"Using packets arriving at observer between {timelow:.2f} and {timehigh:.2f} days")
+
+    dfpackets_selected = dfpackets.filter(pl.col("t_arrive_d").is_between(timelow, timehigh, closed="right"))
+
+    if costhetabin is not None:
+        dfpackets_selected = dfpackets.filter(pl.col("costhetabin") == costhetabin)
+
+    weight_by_energy = True
+    if weight_by_energy:
+        e_rf = dfpackets_selected.collect().select("e_rf")
+        weights = e_rf
+    else:
+        weights = None
+
+    # bin packets by ejecta velocity the packet was emitted from
+    hist, bin_edges = np.histogram(
+        dfpackets_selected.collect().select("emission_velocity") / 2.99792458e10,
+        range=(0.0, 0.7),
+        bins=28,
+        weights=weights,
+    )
+    hist = hist / nprocs_read / (timemaxarray[timestep_max] - timeminarray[timestep_min])  # erg/day
+    hist = hist * (u.erg / u.day).to("erg/s")
+    hist = hist / 1e40
+    width = np.diff(bin_edges)
+    center = (bin_edges[:-1] + bin_edges[1:]) / 2
+
+    ax.bar(center, hist, align="center", width=width, linewidth=2, fill=True)
+
+    ax.set_xticks(bin_edges[::4])
+    ax.set_xlabel("Velocity [c]")
+    ax.set_ylabel(r"Energy rate ($10^{40}$ erg/s)")
+
+    outfilename = f"hist_emission_vel_{timeminarray[timestep_min]:.2f}-{timemaxarray[timestep_max]:.2f}d.pdf"
     plt.savefig(Path(modelpath) / outfilename, format="pdf")
     print(f"Saved {outfilename}")
