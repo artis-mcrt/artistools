@@ -160,14 +160,14 @@ def plot_last_emission_velocities_histogram(
 
     weight_by_energy = True
     if weight_by_energy:
-        e_rf = dfpackets_selected.collect().select("e_rf")
+        e_rf = dfpackets_selected.select("e_rf").collect()
         weights = e_rf
     else:
         weights = None
 
     # bin packets by ejecta velocity the packet was emitted from
     hist, bin_edges = np.histogram(
-        dfpackets_selected.collect().select("emission_velocity") / 2.99792458e10,
+        dfpackets_selected.select("emission_velocity").collect() / 2.99792458e10,
         range=(0.0, 0.7),
         bins=28,
         weights=weights,
