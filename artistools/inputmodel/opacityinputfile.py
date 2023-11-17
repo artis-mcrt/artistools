@@ -56,10 +56,11 @@ def write_Ye_file(outputfilepath: Path | str, griddata: pd.DataFrame | pl.DataFr
     if isinstance(griddata, pd.DataFrame):
         griddata = pl.from_pandas(griddata)
     griddata = griddata.with_columns(pl.col("inputcellid").cast(pl.Int32))  # ensure is int
+
     with Path(outputfilepath, "Ye.txt").open("w") as fYe:
         fYe.write(f'{len(griddata["inputcellid"])}\n')
         griddata.to_pandas()[["inputcellid", "cellYe"]].to_csv(
-            fYe, sep="\t", index=False, header=False, float_format="%.10f"
+            fYe, sep="\t", index=False, header=False, float_format="%.10f", na_rep=0.0
         )
 
     print("Saved Ye.txt")
