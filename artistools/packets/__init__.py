@@ -1,6 +1,7 @@
 import artistools as at
 from artistools.packets.packets import add_derived_columns
 from artistools.packets.packets import add_derived_columns_lazy
+from artistools.packets.packets import add_packet_directions_lazypolars
 from artistools.packets.packets import bin_and_sum
 from artistools.packets.packets import bin_packet_directions
 from artistools.packets.packets import bin_packet_directions_lazypolars
@@ -11,6 +12,5 @@ from artistools.packets.packets import get_packetsfilepaths
 from artistools.packets.packets import make_3d_grid
 from artistools.packets.packets import make_3d_histogram_from_packets
 from artistools.packets.packets import readfile
-from artistools.packets.packets import readfile_pl
 from artistools.packets.packets import readfile_text
 from artistools.packets.packets import type_ids

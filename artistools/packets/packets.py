@@ -200,13 +200,13 @@ def add_derived_columns(
 
 
 def add_derived_columns_lazy(
-    dfpackets: pl.LazyFrame, modelmeta: dict[str, t.Any], dfmodel: pd.DataFrame | pl.LazyFrame | None
+    dfpackets: pl.LazyFrame | pl.DataFrame, modelmeta: dict[str, t.Any], dfmodel: pd.DataFrame | pl.LazyFrame | None
 ) -> pl.LazyFrame:
     """Add columns to a packets DataFrame that are derived from the values that are stored in the packets files.
 
     We might as well add everything, since the columns only get calculated when they are actually used (polars LazyFrame).
     """
-    dfpackets = dfpackets.with_columns(
+    dfpackets = dfpackets.lazy().with_columns(
         [
             (
                 (pl.col("em_posx") ** 2 + pl.col("em_posy") ** 2 + pl.col("em_posz") ** 2).sqrt() / pl.col("em_time")
@@ -359,11 +359,17 @@ def readfile(
     escape_type: t.Literal["TYPE_RPKT", "TYPE_GAMMA"] | None = None,
 ) -> pd.DataFrame:
     """Read a packet file into a Pandas DataFrame."""
-    return (
-        readfile_pl(packetsfile, packet_type=packet_type, escape_type=escape_type)
-        .collect()
-        .to_pandas(use_pyarrow_extension_array=True)
-    )
+    dfpackets = pl.read_parquet(packetsfile)
+
+    if escape_type is not None:
+        assert packet_type is None or packet_type == "TYPE_ESCAPE"
+        dfpackets = dfpackets.filter(
+            (pl.col("type_id") == type_ids["TYPE_ESCAPE"]) & (pl.col("escape_type_id") == type_ids[escape_type])
+        )
+    elif packet_type is not None and packet_type:
+        dfpackets = dfpackets.filter(pl.col("type_id") == type_ids[packet_type])
+
+    return dfpackets.to_pandas(use_pyarrow_extension_array=True)
 
 
 def convert_text_to_parquet(
@@ -404,26 +410,6 @@ def convert_text_to_parquet(
     dfpackets.collect().write_parquet(packetsfileparquet, compression="zstd", statistics=True, compression_level=6)
 
     return packetsfileparquet
-
-
-def readfile_pl(
-    packetsfile: Path | str,
-    modelpath: None | Path | str = None,
-    packet_type: str | None = None,
-    escape_type: t.Literal["TYPE_RPKT", "TYPE_GAMMA"] | None = None,
-) -> pl.LazyFrame:
-    """Read a packets file into a Polars LazyFrame from either a parquet file or a text file (and save .parquet)."""
-    dfpackets = pl.scan_parquet(packetsfile)
-
-    if escape_type is not None:
-        assert packet_type is None or packet_type == "TYPE_ESCAPE"
-        dfpackets = dfpackets.filter(
-            (pl.col("type_id") == type_ids["TYPE_ESCAPE"]) & (pl.col("escape_type_id") == type_ids[escape_type])
-        )
-    elif packet_type is not None and packet_type:
-        dfpackets = dfpackets.filter(pl.col("type_id") == type_ids[packet_type])
-
-    return dfpackets
 
 
 def get_packetsfilepaths(
@@ -550,7 +536,10 @@ def get_directionbin(
     return (costhetabin * nphibins) + phibin
 
 
-def add_packet_directions_lazypolars(dfpackets: pl.LazyFrame, syn_dir: tuple[float, float, float]) -> pl.LazyFrame:
+def add_packet_directions_lazypolars(
+    dfpackets: pl.LazyFrame | pl.DataFrame, syn_dir: tuple[float, float, float]
+) -> pl.LazyFrame:
+    dfpackets = dfpackets.lazy()
     assert len(syn_dir) == 3
     xhat = np.array([1.0, 0.0, 0.0])
     vec2 = np.cross(xhat, syn_dir)
@@ -617,11 +606,12 @@ def add_packet_directions_lazypolars(dfpackets: pl.LazyFrame, syn_dir: tuple[flo
 
 
 def bin_packet_directions_lazypolars(
-    dfpackets: pl.LazyFrame,
+    dfpackets: pl.LazyFrame | pl.DataFrame,
     nphibins: int | None = None,
     ncosthetabins: int | None = None,
     phibintype: t.Literal["artis_pi_reversal", "monotonic"] = "artis_pi_reversal",
 ) -> pl.LazyFrame:
+    dfpackets = dfpackets.lazy()
     if nphibins is None:
         nphibins = at.get_viewingdirection_phibincount()
 
@@ -655,11 +645,13 @@ def bin_packet_directions_lazypolars(
     )
 
 
-def bin_packet_directions(modelpath: Path | str, dfpackets: pd.DataFrame) -> pd.DataFrame:
+def bin_packet_directions(
+    modelpath: Path | str, dfpackets: pd.DataFrame, syn_dir: tuple[float, float, float] | None = None
+) -> pd.DataFrame:
     nphibins = at.get_viewingdirection_phibincount()
     ncosthetabins = at.get_viewingdirection_costhetabincount()
 
-    syn_dir = at.get_syn_dir(Path(modelpath))
+    syn_dir = at.get_syn_dir(Path(modelpath)) if syn_dir is None else syn_dir
     xhat = np.array([1.0, 0.0, 0.0])
     vec2 = np.cross(xhat, syn_dir)
 

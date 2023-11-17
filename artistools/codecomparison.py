@@ -9,7 +9,7 @@ import math
 import typing as t
 from pathlib import Path
 
-import matplotlib.axes
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
@@ -190,7 +190,7 @@ def get_spectra(modelpath: str | Path) -> tuple[pd.DataFrame, np.ndarray]:
     return dfspectra, arr_timedays
 
 
-def plot_spectrum(modelpath: str | Path, timedays: str | float, axis: matplotlib.axes.Axes, **plotkwargs) -> None:
+def plot_spectrum(modelpath: str | Path, timedays: str | float, axis: plt.Axes, **plotkwargs) -> None:
     dfspectra, arr_timedays = get_spectra(modelpath)
     timeindex = (np.abs(arr_timedays - float(timedays))).argmin()
     timedays_found = dfspectra.columns[timeindex + 1]
