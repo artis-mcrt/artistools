@@ -421,7 +421,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-d",
         default=3,
         type=int,
-        help="Number of dimensions: 1 for spherically symmetric 1D, 3 for 3D Cartesian",
+        help="Number of dimensions: 0 for one-zone spherical, 1 for spherically symmetric 1D, 2 for 2D cylindrical, 3 for 3D Cartesian",
     )
     parser.add_argument(
         "-targetmodeltime_days", "-t", type=float, default=0.1, help="Time in days for the output model snapshot"

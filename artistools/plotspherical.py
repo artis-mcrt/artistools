@@ -65,7 +65,7 @@ def plot_spherical(
                 f"WARNING! timemaxdays {timemaxdays} is too late to recieve light from the entire ejecta "
                 f" ({tmax_d_valid:.2f} d)"
             )
-        dfpackets = dfpackets.filter((pl.col("t_arrive_d") >= timemindays) & (pl.col("t_arrive_d") <= timemaxdays))
+        dfpackets = dfpackets.filter(pl.col("t_arrive_d").is_between(timemindays, timemaxdays))
 
     assert timemindays is not None
     assert timemaxdays is not None
