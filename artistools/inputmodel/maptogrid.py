@@ -87,9 +87,12 @@ def kernelvals2(rij2: float, hmean: float, wij: np.ndarray) -> float:  # ist sch
 def maptogrid(
     ejectasnapshotpath: Path,
     outputfolderpath: Path | str,
-    args: argparse.Namespace,
     ncoordgrid: int = 50,
     downsamplefactor: int = 1,
+    dtextra_seconds: float = 0.5,
+    setgrid_fractionrmax: float = 0.5,
+    modifysmoothinglength: str = "option4",
+    shinglesetal23hbug: bool = False,
 ) -> None:
     if not ejectasnapshotpath.is_file():
         print(f"{ejectasnapshotpath} not found")
@@ -160,8 +163,7 @@ def maptogrid(
         dfsnapshot = dfsnapshot.sample(len(dfsnapshot) // downsamplefactor)
 
     logprint(dfsnapshot)
-
-    logprint(f"Selected args: {args}")
+    logprint(f"ncoordgrid: {ncoordgrid}")
 
     assert len(dfsnapshot.columns) == len(snapshot_columns_used)
 
@@ -175,7 +177,8 @@ def maptogrid(
     vratiomean = 0.0
 
     # Propagate particles to dtextra using velocities
-    dtextra = args.dtextra_seconds / 4.926e-6  # convert to geom units.
+    logprint(f"Propagating particles for dtextra_seconds={dtextra_seconds}")
+    dtextra = dtextra_seconds / 4.926e-6  # convert to geom units.
 
     particleid = dfsnapshot.id.to_numpy()
     x = dfsnapshot["x"].to_numpy().copy()
@@ -245,7 +248,10 @@ def maptogrid(
     # ...
 
     # set up grid
-    x0 = -args.setgrid_fractionrmax * rmax  # Set x0 (gridmax) to a fraction of the maximum radius of the SPH particles
+    logprint(
+        f"setgrid_fractionrmax={setgrid_fractionrmax}: gridmax is set to {setgrid_fractionrmax}*rmax of the SPH particles"
+    )
+    x0 = -setgrid_fractionrmax * rmax  # Set x0 (gridmax) to a fraction of the maximum radius of the SPH particles
     # Default is 50% (but is hand waving - choose) #
     # x0 = - rmean
 
@@ -269,6 +275,10 @@ def maptogrid(
 
     particlesused = set()
     particlesinsidegrid = set()
+
+    logprint(f"modifysmoothinglength: {modifysmoothinglength}")
+    if shinglesetal23hbug:
+        logprint("WARNING: including shinglesetal23hbug")
 
     for n in range(npart):
         maxdist = 2.0 * h[n]
@@ -295,7 +305,7 @@ def maptogrid(
         ]
 
         for i, j, k, dis2 in searchcoords:
-            if args.modifysmoothinglength != "False":
+            if modifysmoothinglength != "False":
                 # -- change h by hand --------- we could do these particle thinsg also further up
 
                 # option 1 minimum that no particle is lost
@@ -306,23 +316,23 @@ def maptogrid(
 
                 # options can be combined, i.e. option 1 alone fills the hole in the center
                 # (which we could also replace by later ejecta)
-                if args.modifysmoothinglength == "option1":
+                if modifysmoothinglength == "option1":
                     h[n] = max(h[n], 1.5 * dx)  # option 1
 
                 dis = math.sqrt(x[n] * x[n] + y[n] * y[n] + z[n] * z[n])
 
-                if args.modifysmoothinglength == "option2":
+                if modifysmoothinglength == "option2":
                     h[n] = max(h[n], 0.25 * dis)  #  option 2
 
-                if args.modifysmoothinglength == "option3" and dis > 1.5 * rmean:
+                if modifysmoothinglength == "option3" and dis > 1.5 * rmean:
                     h[n] = max(h[n], 0.4 * dis)  # option 3
 
                 # option 4 (default) -- for particles with radius > mean particle radius choose the larger h
                 # from the particle h and 150% of the mean h for all particles
-                if args.modifysmoothinglength == "option4" and dis > rmean:
+                if modifysmoothinglength == "option4" and dis > rmean:
                     h[n] = max(h[n], hmean * 1.5)
 
-                if not args.shinglesetal23hbug:
+                if not shinglesetal23hbug:
                     maxdist2 = (2.0 * h[n]) ** 2
                 # -------------------------------
 
@@ -501,10 +511,13 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     maptogrid(
         ejectasnapshotpath=ejectasnapshotpath,
-        args=args,
         ncoordgrid=args.ncoordgrid,
         outputfolderpath=args.outputpath,
         downsamplefactor=args.downsamplefactor,
+        dtextra_seconds=args.dtextra_seconds,
+        setgrid_fractionrmax=args.setgrid_fractionrmax,
+        modifysmoothinglength=args.modifysmoothinglength,
+        shinglesetal23hbug=args.shinglesetal23hbug,
     )
 
 
