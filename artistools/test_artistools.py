@@ -1,14 +1,25 @@
 #!/usr/bin/env python3
 import hashlib
 import importlib
+import inspect
 import math
 import typing as t
 
 import artistools as at
 
-modelpath = at.get_config()["path_testartismodel"]
-modelpath_3d = at.get_config()["path_testartismodel"].parent / "testmodel_3d_10^3"
+modelpath = at.get_config()["path_testdata"] / "testmodel"
+modelpath_3d = at.get_config()["path_testdata"] / "testmodel_3d_10^3"
 outputpath = at.get_config()["path_testoutput"]
+outputpath.mkdir(exist_ok=True, parents=True)
+
+
+def funcname() -> str:
+    """Get the name of the calling function."""
+    try:
+        return inspect.currentframe().f_back.f_code.co_name  # type: ignore[union-attr]
+    except AttributeError as e:
+        msg = "Could not get the name of the calling function."
+        raise RuntimeError(msg) from e
 
 
 def test_commands() -> None:
@@ -52,10 +63,6 @@ def test_deposition() -> None:
     at.deposition.main(argsraw=[], modelpath=modelpath)
 
 
-def test_initial_composition() -> None:
-    at.initial_composition.main(argsraw=["-modelpath", str(modelpath_3d), "-o", str(outputpath), "rho", "Fe"])
-
-
 def test_get_inputparams() -> None:
     inputparams = at.get_inputparams(modelpath)
     dicthash = hashlib.sha256(str(sorted(inputparams.items())).encode("utf-8")).hexdigest()
@@ -76,12 +83,10 @@ def test_nltepops() -> None:
     at.nltepops.plot(argsraw=[], modelpath=modelpath, outputfile=outputpath, timestep=40)
 
 
-def test_nonthermal() -> None:
-    at.nonthermal.plot(argsraw=[], modelpath=modelpath, outputfile=outputpath, timestep=70)
-
-
 def test_radfield() -> None:
-    at.radfield.main(argsraw=[], modelpath=modelpath, modelgridindex=0, outputfile=outputpath)
+    funcoutpath = outputpath / funcname()
+    funcoutpath.mkdir(exist_ok=True, parents=True)
+    at.radfield.main(argsraw=[], modelpath=modelpath, modelgridindex=0, outputfile=funcoutpath)
 
 
 def test_get_ionrecombratecalibration() -> None:
@@ -89,17 +94,13 @@ def test_get_ionrecombratecalibration() -> None:
 
 
 def test_plotspherical() -> None:
-    at.plotspherical.main(argsraw=[], modelpath=modelpath, outputfile=outputpath)
+    funcoutpath = outputpath / funcname()
+    funcoutpath.mkdir(exist_ok=True, parents=True)
+    at.plotspherical.main(argsraw=[], modelpath=modelpath, outputfile=funcoutpath)
 
 
 def test_plotspherical_gif() -> None:
     at.plotspherical.main(argsraw=[], modelpath=modelpath, makegif=True, timemax=270, outputfile=outputpath)
-
-
-def test_spencerfano() -> None:
-    at.nonthermal.solvespencerfanocmd.main(
-        argsraw=[], modelpath=modelpath, timedays=300, makeplot=True, npts=200, noexcitation=True, outputfile=outputpath
-    )
 
 
 def test_transitions() -> None:

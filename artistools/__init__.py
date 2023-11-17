@@ -10,7 +10,6 @@ from artistools import codecomparison
 from artistools import commands
 from artistools import deposition
 from artistools import estimators
-from artistools import initial_composition
 from artistools import inputmodel
 from artistools import lightcurve
 from artistools import macroatom
@@ -27,6 +26,7 @@ from artistools.__main__ import addargs
 from artistools.__main__ import main
 from artistools.configuration import get_config
 from artistools.configuration import set_config
+from artistools.estimators import read_estimators
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_cell_angle
 from artistools.inputmodel import get_dfmodel_dimensions
@@ -60,6 +60,7 @@ from artistools.misc import get_file_metadata
 from artistools.misc import get_filterfunc
 from artistools.misc import get_grid_mapping
 from artistools.misc import get_inputparams
+from artistools.misc import get_ion_tuple
 from artistools.misc import get_ionstring
 from artistools.misc import get_linelist_dataframe
 from artistools.misc import get_linelist_dict
@@ -84,10 +85,10 @@ from artistools.misc import get_vspec_dir_labels
 from artistools.misc import get_wid_init_at_tmin
 from artistools.misc import get_wid_init_at_tmodel
 from artistools.misc import get_z_a_nucname
-from artistools.misc import join_pdf_files
 from artistools.misc import linetuple
 from artistools.misc import makelist
 from artistools.misc import match_closest_time
+from artistools.misc import merge_pdf_files
 from artistools.misc import namedtuple
 from artistools.misc import parse_range
 from artistools.misc import parse_range_list
@@ -100,6 +101,7 @@ from artistools.misc import stripallsuffixes
 from artistools.misc import trim_or_pad
 from artistools.misc import vec_len
 from artistools.misc import zopen
+from artistools.misc import zopenpl
 from artistools.plottools import set_mpl_style
 
 

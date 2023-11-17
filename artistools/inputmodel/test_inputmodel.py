@@ -7,8 +7,8 @@ import numpy as np
 
 import artistools as at
 
-modelpath = at.get_config()["path_testartismodel"]
-modelpath_3d = at.get_config()["path_testartismodel"].parent / "testmodel_3d_10^3"
+modelpath = at.get_config()["path_testdata"] / "testmodel"
+modelpath_3d = at.get_config()["path_testdata"] / "testmodel_3d_10^3"
 outputpath = at.get_config()["path_testoutput"]
 testdatapath = at.get_config()["path_testdata"]
 
@@ -244,6 +244,12 @@ def test_opacity_by_Ye_file() -> None:
 
 def test_plotdensity() -> None:
     at.inputmodel.plotdensity.main(argsraw=[], modelpath=[modelpath], outputpath=outputpath)
+
+
+def test_plotinitialcomposition() -> None:
+    at.inputmodel.plotinitialcomposition.main(
+        argsraw=["-modelpath", str(modelpath_3d), "-o", str(outputpath), "rho", "Fe"]
+    )
 
 
 def test_save_load_3d_model() -> None:

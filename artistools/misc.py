@@ -1,5 +1,4 @@
 import argparse
-import contextlib
 import gzip
 import io
 import math
@@ -9,7 +8,6 @@ from functools import lru_cache
 from itertools import chain
 from pathlib import Path
 
-import lz4.frame
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
@@ -576,11 +574,15 @@ def get_model_name(path: Path | str) -> str:
 
 
 def get_z_a_nucname(nucname: str) -> tuple[int, int]:
-    """Return atomic number and mass number from a string like 'Pb208' (returns 92, 208)."""
-    nucname = nucname.removeprefix("X_")
+    """Return atomic number and mass number from a string like 'Pb208', 'X_Pb208', or "nniso_Pb208' (returns 92, 208)."""
+    if "_" in nucname:
+        nucname = nucname.split("_")[1]
+
     z = get_atomic_number(nucname.rstrip("0123456789"))
     assert z > 0
+
     a = int(nucname.lower().lstrip("abcdefghijklmnopqrstuvwxyz"))
+
     return z, a
 
 
@@ -627,29 +629,74 @@ def get_elsymbol(atomic_number: int | np.int64) -> str:
     return get_elsymbolslist()[atomic_number]
 
 
+def get_ion_tuple(ionstr: str) -> tuple[int, int] | int:
+    """Return a tuple of the atomic number and ionisation stage such as (26,2) for an ion string like 'FeII', 'Fe II', or '26_2'.
+
+    Return the atomic number for a string like 'Fe' or '26'.
+    """
+    if "_" in ionstr:
+        ionstr = ionstr.split("_", maxsplit=1)[1]
+
+    if ionstr.isdigit():
+        return int(ionstr)
+
+    if ionstr in at.get_elsymbolslist():
+        return at.get_atomic_number(ionstr)
+
+    elem = None
+    if " " in ionstr:
+        elem, strionstage = ionstr.split(" ")
+    elif "_" in ionstr:
+        elem, strionstage = ionstr.split("_")
+    else:
+        for elsym in at.get_elsymbolslist():
+            if ionstr.startswith(elsym):
+                elem = elsym
+                strionstage = ionstr.removeprefix(elsym)
+                break
+
+    if not elem:
+        msg = f"Could not parse ionstr {ionstr}"
+        raise ValueError(msg)
+
+    atomic_number = int(elem) if elem.isdigit() else at.get_atomic_number(elem)
+    ionstage = int(strionstage) if strionstage.isdigit() else at.decode_roman_numeral(strionstage)
+
+    return (atomic_number, ionstage)
+
+
 @lru_cache(maxsize=16)
 def get_ionstring(
     atomic_number: int | np.int64,
     ionstage: None | int | np.int64 | t.Literal["ALL"],
-    spectral: bool = True,
-    nospace: bool = False,
+    style: t.Literal["spectral", "chargelatex", "charge"] = "spectral",
+    sep: str = " ",
 ) -> str:
     """Return a string with the element symbol and ionisation stage."""
     if ionstage is None or ionstage == "ALL":
         return f"{get_elsymbol(atomic_number)}"
 
+    if isinstance(ionstage, str) and ionstage.startswith(at.get_elsymbol(atomic_number)):
+        # nuclides like Sr89 get passed in as atomic_number=38, ionstage='Sr89'
+        return ionstage
+
     assert not isinstance(ionstage, str)
 
-    if spectral:
-        return f"{get_elsymbol(atomic_number)}{'' if nospace else ' '}{roman_numerals[ionstage]}"
+    if style == "spectral":
+        return f"{get_elsymbol(atomic_number)}{sep}{roman_numerals[ionstage]}"
 
-    # ion notion e.g. Co+, Fe2+
-    if ionstage > 2:
-        strcharge = r"$^{" + str(ionstage - 1) + r"{+}}$"
+    strcharge = ""
+    if style == "chargelatex":
+        # ion notion e.g. Co+, Fe2+
+        if ionstage > 2:
+            strcharge = r"$^{" + f"{ionstage - 1}" + r"{+}}$"
+        elif ionstage == 2:
+            strcharge = r"$^{+}$"
+    elif ionstage > 2:
+        strcharge = f"{ionstage - 1}+"
     elif ionstage == 2:
-        strcharge = r"$^{+}$"
-    else:
-        strcharge = ""
+        strcharge = "+"
+
     return f"{get_elsymbol(atomic_number)}{strcharge}"
 
 
@@ -719,26 +766,31 @@ def flatten_list(listin: list[t.Any]) -> list[t.Any]:
     return listout
 
 
-def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None, forpolars: bool = False) -> t.Any:
-    """Open filename, filename.gz or filename.xz.
+def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None) -> t.Any:
+    """Open filename, filename.ztd, filename.gz or filename.xz."""
+    ext_fopen: dict[str, t.Callable] = {".zst": pyzstd.open, ".gz": gzip.open, ".xz": xz.open}
 
-    Arguments:
-    ---------
-    forpolars: if polars.read_csv can read the file directly, return a Path object instead of a file object
-    """
-    if forpolars:
-        mode = "r"
-    ext_fopen = [(".lz4", lz4.frame.open), (".zst", pyzstd.open), (".gz", gzip.open), (".xz", xz.open)]
-
-    for ext, fopen in ext_fopen:
-        file_ext = str(filename) if str(filename).endswith(ext) else str(filename) + ext
-        if Path(file_ext).exists():
-            return fopen(file_ext, mode=mode, encoding=encoding)
+    for ext, fopen in ext_fopen.items():
+        file_withext = str(filename) if str(filename).endswith(ext) else str(filename) + ext
+        if Path(file_withext).exists():
+            return fopen(file_withext, mode=mode, encoding=encoding)
 
     # open() can raise file not found if this file doesn't exist
-    if forpolars:
-        return Path(filename)
     return Path(filename).open(mode=mode, encoding=encoding)  # noqa: SIM115
+
+
+def zopenpl(filename: Path | str, mode: str = "rt", encoding: str | None = None) -> t.Any | Path:
+    """Open filename, filename.ztd, filename.gz or filename.xz. If polars.read_csv can read the file directly, return a Path object instead of a file object."""
+    mode = "r"
+    ext_fopen: dict[str, t.Callable] = {".zst": pyzstd.open, ".gz": gzip.open, ".xz": xz.open}
+
+    for ext, fopen in ext_fopen.items():
+        file_withext = str(filename) if str(filename).endswith(ext) else str(filename) + ext
+        if Path(file_withext).exists():
+            if ext in {".gz", ".zst"}:
+                return Path(file_withext)
+            return fopen(file_withext, mode=mode, encoding=encoding)
+    return Path(filename)
 
 
 def firstexisting(
@@ -756,7 +808,7 @@ def firstexisting(
         fullpaths.append(Path(folder) / filename)
 
         if tryzipped:
-            for ext in [".lz4", ".zst", ".gz", ".xz"]:
+            for ext in [".zst", ".gz", ".xz"]:
                 filenameext = str(filename) if str(filename).endswith(ext) else str(filename) + ext
                 if filenameext not in filelist:
                     fullpaths.append(folder / filenameext)
@@ -820,7 +872,7 @@ def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
 
     import yaml
 
-    filepath = Path(str(filepath).replace(".xz", "").replace(".gz", "").replace(".lz4", "").replace(".zst", ""))
+    filepath = Path(str(filepath).replace(".xz", "").replace(".gz", "").replace(".zst", ""))
 
     # check if the reference file (e.g. spectrum.txt) has an metadata file (spectrum.txt.meta.yml)
     individualmetafile = filepath.with_suffix(f"{filepath.suffix}.meta.yml")
@@ -842,16 +894,14 @@ def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
     return {}
 
 
-def get_filterfunc(
-    args: argparse.Namespace, mode: str = "interp"
-) -> t.Callable[[list[float] | np.ndarray], np.ndarray] | None:
+def get_filterfunc(args: argparse.Namespace, mode: str = "interp") -> t.Callable | None:
     """Use command line arguments to determine the appropriate filter function."""
-    filterfunc: t.Callable[[list[float] | np.ndarray], np.ndarray] | None = None
+    filterfunc = None
     dictargs = vars(args)
 
     if dictargs.get("filtermovingavg", False):
 
-        def movavgfilterfunc(ylist: list[float] | np.ndarray) -> np.ndarray:
+        def movavgfilterfunc(ylist: t.Any) -> t.Any:
             n = args.filtermovingavg
             arr_padded = np.pad(ylist, (n // 2, n - 1 - n // 2), mode="edge")
             return np.convolve(arr_padded, np.ones((n,)) / n, mode="valid")
@@ -864,7 +914,7 @@ def get_filterfunc(
 
         window_length, poly_order = (int(x) for x in args.filtersavgol)
 
-        def savgolfilterfunc(ylist: list[float] | np.ndarray) -> np.ndarray:
+        def savgolfilterfunc(ylist: t.Any) -> t.Any:
             return scipy.signal.savgol_filter(ylist, window_length, poly_order, mode=mode)
 
         assert filterfunc is None
@@ -875,18 +925,18 @@ def get_filterfunc(
     return filterfunc
 
 
-def join_pdf_files(pdf_list: list[str], modelpath_list: list[Path]) -> None:
+def merge_pdf_files(pdf_files: list[str]) -> None:
     """Merge a list of PDF files into a single PDF file."""
     from PyPDF2 import PdfMerger
 
     merger = PdfMerger()
 
-    for pdf, modelpath in zip(pdf_list, modelpath_list):
-        fullpath = firstexisting([pdf], folder=modelpath)
-        merger.append(fullpath.open("rb"))
-        fullpath.unlink()
+    for pdfpath in pdf_files:
+        with Path(pdfpath).open("rb") as pdffile:
+            merger.append(pdffile)
+        Path(pdfpath).unlink()
 
-    resultfilename = f'{pdf_list[0].split(".")[0]}-{pdf_list[-1].split(".")[0]}'
+    resultfilename = f'{pdf_files[0].replace(".pdf","")}-{pdf_files[-1].replace(".pdf","")}'
     with Path(f"{resultfilename}.pdf").open("wb") as resultfile:
         merger.write(resultfile)
 
@@ -907,8 +957,8 @@ def get_bflist(modelpath: Path | str) -> dict[int, tuple[int, int, int, int]]:
             i, elementindex, ionindex, level = rowints[:4]
             upperionlevel = rowints[4] if len(rowints) > 4 else -1
             atomic_number = compositiondata.Z[elementindex]
-            ion_stage = ionindex + compositiondata.lowermost_ionstage[elementindex]
-            bflist[i] = (atomic_number, ion_stage, level, upperionlevel)
+            ionstage = ionindex + compositiondata.lowermost_ionstage[elementindex]
+            bflist[i] = (atomic_number, ionstage, level, upperionlevel)
 
     return bflist
 
@@ -927,8 +977,8 @@ def read_linestatfile(filepath: Path | str) -> tuple[int, list[float], list[int]
     atomic_numbers = data[1].astype(int)
     assert len(atomic_numbers) == nlines
 
-    ion_stages = data[2].astype(int)
-    assert len(ion_stages) == nlines
+    ionstages = data[2].astype(int)
+    assert len(ionstages) == nlines
 
     # the file adds one to the levelindex, i.e. lowest level is 1
     upper_levels = data[3].astype(int)
@@ -937,21 +987,21 @@ def read_linestatfile(filepath: Path | str) -> tuple[int, list[float], list[int]
     lower_levels = data[4].astype(int)
     assert len(lower_levels) == nlines
 
-    return nlines, lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels
+    return nlines, lambda_angstroms, atomic_numbers, ionstages, upper_levels, lower_levels
 
 
 def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
     textfile = at.firstexisting("linestat.out", folder=modelpath)
     parquetfile = Path(modelpath, "linelist.out.parquet")
     if not parquetfile.is_file() or parquetfile.stat().st_mtime < textfile.stat().st_mtime:
-        _, lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels = read_linestatfile(textfile)
+        _, lambda_angstroms, atomic_numbers, ionstages, upper_levels, lower_levels = read_linestatfile(textfile)
 
         pldf = (
             pl.DataFrame(
                 {
                     "lambda_angstroms": lambda_angstroms,
                     "atomic_number": atomic_numbers,
-                    "ion_stage": ion_stages,
+                    "ionstage": ionstages,
                     "upper_level": upper_levels,
                     "lower_level": lower_levels,
                 },
@@ -969,7 +1019,7 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
 
 def get_linelist_dict(modelpath: Path | str) -> dict[int, linetuple]:
     """Return a dict of line tuples from linestat.out."""
-    nlines, lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels = read_linestatfile(
+    nlines, lambda_angstroms, atomic_numbers, ionstages, upper_levels, lower_levels = read_linestatfile(
         Path(modelpath, "linestat.out")
     )
     return {
@@ -978,7 +1028,7 @@ def get_linelist_dict(modelpath: Path | str) -> dict[int, linetuple]:
             range(nlines),
             lambda_angstroms,
             atomic_numbers,
-            ion_stages,
+            ionstages,
             upper_levels,
             lower_levels,
         )
@@ -989,7 +1039,7 @@ def get_linelist_dict(modelpath: Path | str) -> dict[int, linetuple]:
 def get_linelist_dataframe(
     modelpath: Path | str,
 ) -> pd.DataFrame:
-    nlines, lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels = read_linestatfile(
+    nlines, lambda_angstroms, atomic_numbers, ionstages, upper_levels, lower_levels = read_linestatfile(
         Path(modelpath, "linestat.out")
     )
 
@@ -997,7 +1047,7 @@ def get_linelist_dataframe(
         {
             "lambda_angstroms": lambda_angstroms,
             "atomic_number": atomic_numbers,
-            "ionstage": ion_stages,
+            "ionstage": ionstages,
             "upperlevelindex": upper_levels,
             "lowerlevelindex": lower_levels,
         },
@@ -1072,21 +1122,15 @@ def get_inputparams(modelpath: Path) -> dict[str, t.Any]:
 @lru_cache(maxsize=16)
 def get_runfolder_timesteps(folderpath: Path | str) -> tuple[int, ...]:
     """Get the set of timesteps covered by the output files in an ARTIS run folder."""
-    folder_timesteps = set()
-    with contextlib.suppress(FileNotFoundError), zopen(Path(folderpath, "estimators_0000.out")) as estfile:
-        restart_timestep = -1
-        for line in estfile:
-            if line.startswith("timestep "):
-                timestep = int(line.split()[1])
+    estimfiles = sorted(Path(folderpath).glob("estimators_*.out*"))
+    if not estimfiles:
+        return ()
 
-                if restart_timestep < 0 and timestep != 0 and 0 not in folder_timesteps:
-                    # the first timestep of a restarted run is duplicate and should be ignored
-                    restart_timestep = timestep
-
-                if timestep != restart_timestep:
-                    folder_timesteps.add(timestep)
-
-    return tuple(folder_timesteps)
+    with zopen(estimfiles[0]) as estfile:
+        timesteps_contained = sorted({int(line.split()[1]) for line in estfile if line.startswith("timestep ")})
+        # the first timestep of a restarted run is duplicate and should be ignored
+        restart_timestep = None if 0 in timesteps_contained else timesteps_contained[0]
+        return tuple(ts for ts in timesteps_contained if ts != restart_timestep)
 
 
 def get_runfolders(
@@ -1234,8 +1278,8 @@ def get_phi_bins(usedegrees: bool) -> tuple[npt.NDArray[np.float64], npt.NDArray
     # convert phibin number to what the number would be if things were sane
     phisteps = list(range(nphibins // 2)) + list(reversed(range(nphibins // 2, nphibins)))
 
-    phi_lower = np.array([step * 2 * math.pi / nphibins for step in phisteps])
-    phi_upper = np.array([(step + 1) * 2 * math.pi / nphibins for step in phisteps])
+    phi_lower = 2 * math.pi - np.array([(step + 1) * 2 * math.pi / nphibins for step in phisteps])
+    phi_upper = 2 * math.pi - np.array([step * 2 * math.pi / nphibins for step in phisteps])
 
     binlabels = []
     for phibin, step in enumerate(phisteps):

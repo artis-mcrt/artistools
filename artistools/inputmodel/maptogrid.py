@@ -11,6 +11,7 @@ from pathlib import Path
 import argcomplete
 import numpy as np
 import pandas as pd
+import polars as pl
 
 import artistools as at
 
@@ -162,6 +163,8 @@ def maptogrid(
     if downsamplefactor > 1:
         dfsnapshot = dfsnapshot.sample(len(dfsnapshot) // downsamplefactor)
 
+    dfsnapshot = pl.from_pandas(dfsnapshot)
+
     logprint(dfsnapshot)
     logprint(f"ncoordgrid: {ncoordgrid}")
 
@@ -169,79 +172,58 @@ def maptogrid(
 
     npart = len(dfsnapshot)
 
-    totmass = 0.0
-    rmax = 0.0
-    rmean = 0.0
-    hmean = 0.0
-    hmin = 100000.0
-    vratiomean = 0.0
-
     # Propagate particles to dtextra using velocities
     logprint(f"Propagating particles for dtextra_seconds={dtextra_seconds}")
     dtextra = dtextra_seconds / 4.926e-6  # convert to geom units.
+    dfsnapshot = dfsnapshot.with_columns(dis_orig=(pl.col("x") ** 2 + pl.col("y") ** 2 + pl.col("z") ** 2).sqrt())
 
-    particleid = dfsnapshot.id.to_numpy()
-    x = dfsnapshot["x"].to_numpy().copy()
-    y = dfsnapshot["y"].to_numpy().copy()
-    z = dfsnapshot["z"].to_numpy().copy()
+    dfsnapshot = dfsnapshot.with_columns(
+        x_orig=pl.col("x"),
+        y_orig=pl.col("y"),
+        z_orig=pl.col("z"),
+        x=pl.col("x") + pl.col("vx") * dtextra,
+        y=pl.col("y") + pl.col("vy") * dtextra,
+        z=pl.col("z") + pl.col("vz") * dtextra,
+    )
+
+    dfsnapshot = dfsnapshot.with_columns(dis=(pl.col("x") ** 2 + pl.col("y") ** 2 + pl.col("z") ** 2).sqrt())
+
+    dfsnapshot = dfsnapshot.with_columns(
+        h=pl.col("h") / pl.col("dis_orig") * pl.col("dis"),
+        vrad=(pl.col("vx") * pl.col("x") + pl.col("vy") * pl.col("y") + pl.col("vz") * pl.col("z")) / pl.col("dis"),
+        vtot=(pl.col("vx") ** 2 + pl.col("vy") ** 2 + pl.col("vz") ** 2).sqrt(),
+    )
+    dfsnapshot = dfsnapshot.with_columns(
+        vperp=pl.when(pl.col("vtot") > pl.col("vrad"))
+        .then((pl.col("vtot") ** 2 - pl.col("vrad") ** 2).sqrt())
+        .otherwise(0.0),
+    )
+
+    particleid = dfsnapshot["id"].to_numpy()
+    x = dfsnapshot["x"].to_numpy()
+    y = dfsnapshot["y"].to_numpy()
+    z = dfsnapshot["z"].to_numpy()
     h = dfsnapshot["h"].to_numpy().copy()
-    vx = dfsnapshot["vx"].to_numpy()
-    vy = dfsnapshot["vy"].to_numpy()
-    vz = dfsnapshot["vz"].to_numpy()
     pmass = dfsnapshot["pmass"].to_numpy()
     rho_rst = dfsnapshot["rho_rst"].to_numpy()
     rho = dfsnapshot["rho"].to_numpy()
     Ye = dfsnapshot["ye"].to_numpy()
 
+    totmass = dfsnapshot["pmass"].sum()
+    rmean = dfsnapshot["dis"].mean()
+    hmean = dfsnapshot["h"].mean()
+    rmax = dfsnapshot["dis"].max()
     with Path(outputfolderpath, "ejectapartanalysis.dat").open(mode="w", encoding="utf-8") as fpartanalysis:
-        for n in range(npart):
-            totmass = totmass + pmass[n]
-
-            dis = math.sqrt(x[n] ** 2 + y[n] ** 2 + z[n] ** 2)  # original dis
-
-            x[n] += vx[n] * dtextra
-            y[n] += vy[n] * dtextra
-            z[n] += vz[n] * dtextra
-
-            # actually we should also extrapolate smoothing length h unless we disrgard it below
-
-            # extrapolate h such that ratio between dis and h remains constant
-            h[n] = h[n] / dis * math.sqrt(x[n] ** 2 + y[n] ** 2 + z[n] ** 2)
-
-            dis = math.sqrt(x[n] ** 2 + y[n] ** 2 + z[n] ** 2)  # possibly new distance
-
-            rmean = rmean + dis
-
-            rmax = max(rmax, dis)
-
-            hmean = hmean + h[n]
-
-            hmin = min(hmin, h[n])
-
-            vtot = math.sqrt(vx[n] ** 2 + vy[n] ** 2 + vz[n] ** 2)
-
-            vrad = (vx[n] * x[n] + vy[n] * y[n] + vz[n] * z[n]) / dis  # radial velocity
-
-            # velocity perpendicular
-            # if we extrapolate roundoff error can lead to Nan, ly?
-            vperp = math.sqrt(vtot * vtot - vrad * vrad) if vtot > vrad else 0.0
-
-            vratiomean = vratiomean + vperp / vrad
-
-            # output some ejecta properties in file
-
-            fpartanalysis.write(f"{dis} {h[n]} {h[n] / dis} {vrad} {vperp} {vtot}\n")
+        for part in dfsnapshot.select(["dis", "h", "vrad", "vperp", "vtot"]).iter_rows(named=True):
+            fpartanalysis.write(
+                f"{part['dis']} {part['h']} {part['h'] / part['dis']} {part['vrad']} {part['vperp']} {part['vtot']}\n"
+            )
 
     logprint(f"saved {outputfolderpath / 'ejectapartanalysis.dat'}")
-    rmean = rmean / npart
-
-    hmean = hmean / npart
-
-    vratiomean = vratiomean / npart
 
     logprint(f"total mass of sph particle {totmass} max dist {rmax} mean dist {rmean}")
-    logprint(f"smoothing length min {hmin} mean {hmean}")
-    logprint("ratio between vrad and vperp mean", vratiomean)
+    logprint(f"smoothing length min {dfsnapshot['h'].min()} mean {hmean}")
+    logprint("ratio between vrad and vperp mean", dfsnapshot.select(pl.col("vperp") - pl.col("vrad")).mean().item(0, 0))
 
     # check maybe cm and correct by shifting
 

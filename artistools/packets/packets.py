@@ -199,7 +199,9 @@ def add_derived_columns(
     return dfpackets
 
 
-def add_derived_columns_lazy(dfpackets: pl.LazyFrame, modelmeta: dict, dfmodel: pd.DataFrame | None) -> pl.LazyFrame:
+def add_derived_columns_lazy(
+    dfpackets: pl.LazyFrame, modelmeta: dict[str, t.Any], dfmodel: pd.DataFrame | pl.LazyFrame | None
+) -> pl.LazyFrame:
     """Add columns to a packets DataFrame that are derived from the values that are stored in the packets files.
 
     We might as well add everything, since the columns only get calculated when they are actually used (polars LazyFrame).
@@ -269,7 +271,7 @@ def add_derived_columns_lazy(dfpackets: pl.LazyFrame, modelmeta: dict, dfmodel: 
             )
     elif modelmeta["dimensions"] == 1:
         assert dfmodel is not None, "dfmodel must be provided for 1D models to set em_modelgridindex"
-        velbins = (dfmodel["vel_r_max_kmps"] * 1000).to_list()
+        velbins = (dfmodel.select("vel_r_max_kmps").lazy().collect()["vel_r_max_kmps"] * 1000.0).to_list()
         dfpackets = dfpackets.with_columns(
             (
                 pl.col("emission_velocity")
@@ -431,7 +433,7 @@ def get_packetsfilepaths(
 
     searchfolders = [Path(modelpath, "packets"), Path(modelpath)]
     # in descending priority (based on speed of reading)
-    suffix_priority = [".out.zst", ".out.lz4", ".out.zst", ".out", ".out.gz", ".out.xz"]
+    suffix_priority = [".out.zst", ".out.zst", ".out", ".out.gz", ".out.xz"]
     t_lastschemachange = calendar.timegm(time_parquetschemachange)
 
     parquetpacketsfiles = []

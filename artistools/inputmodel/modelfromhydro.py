@@ -439,7 +439,6 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         argcomplete.autocomplete(parser)
         args = parser.parse_args(argsraw)
 
-    pd.options.mode.copy_on_write = True
     gridfolderpath = args.gridfolderpath
     if not Path(gridfolderpath, "grid.dat").is_file() or not Path(gridfolderpath, "gridcontributions.txt").is_file():
         print("grid.dat and gridcontributions.txt are required for abundances. Run artistools-maptogrid")

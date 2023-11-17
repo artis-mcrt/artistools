@@ -8,6 +8,7 @@ from artistools.inputmodel import maptogrid
 from artistools.inputmodel import modelfromhydro
 from artistools.inputmodel import opacityinputfile
 from artistools.inputmodel import plotdensity
+from artistools.inputmodel import plotinitialcomposition
 from artistools.inputmodel import rprocess_from_trajectory
 from artistools.inputmodel import slice1dfromconein3dmodel
 from artistools.inputmodel import to_tardis
