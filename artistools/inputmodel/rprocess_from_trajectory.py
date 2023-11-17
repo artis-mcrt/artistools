@@ -52,7 +52,7 @@ def get_dfelemabund_from_dfmodel(dfmodel: pl.DataFrame, dfnucabundances: pl.Data
             "inputcellid": dfnucabundances["inputcellid"],
             **{
                 f"X_{at.get_elsymbol(atomic_number)}": (
-                    dfnucabundances.select(elemisotopes[atomic_number]).sum(axis=1)
+                    dfnucabundances.select(elemisotopes[atomic_number]).sum_horizontal()
                     if atomic_number in elemisotopes
                     else np.zeros(len(dfnucabundances))
                 )
