@@ -1133,7 +1133,11 @@ def dimension_reduce_3d_model(
     **kwargs: t.Any,
 ) -> tuple[pl.DataFrame, pl.DataFrame | None, pl.DataFrame | None, dict[str, t.Any]]:
     """Convert 3D Cartesian grid model to 1D spherical or 2D cylindrical. Particle gridcontributions and an elemental abundance table can optionally be updated to match."""
-    assert outputdimensions in {1, 2}
+    assert outputdimensions in {0, 1, 2}
+
+    if outputdimensions == 0:
+        outputdimensions = 1
+        ncoordgridr = 1
 
     dfmodel = dfmodel.lazy().collect()
 
@@ -1152,7 +1156,7 @@ def dimension_reduce_3d_model(
     vmax = modelmeta["vmax_cmps"]
     xmax = vmax * t_model_init_seconds
     ngridpoints = modelmeta.get("npts_model", len(dfmodel))
-    ncoordgridx = modelmeta.get("ncoordx", int(round(ngridpoints ** (1.0 / 3.0))))
+    ncoordgridx = modelmeta.get("ncoordgridx", int(round(ngridpoints ** (1.0 / 3.0))))
     wid_initx = 2 * xmax / ncoordgridx
 
     assert modelmeta.get("dimensions", 3) == 3
