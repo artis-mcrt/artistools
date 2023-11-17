@@ -143,8 +143,6 @@ def test_makeartismodelfrom_sph_particles() -> None:
             testdatapath / "kilonova", gridfolderpath, dirs_exist_ok=True, ignore=shutil.ignore_patterns("trajectories")
         )
 
-
-    dfcontribs = {}
     for dimensions in [3, 2, 1, 0]:
         outpath_kn = outputpath / f"kilonova_{dimensions:d}d"
         shutil.copyfile(gridfolderpath / "gridcontributions_maptogrid.txt", gridfolderpath / "gridcontributions.txt")
