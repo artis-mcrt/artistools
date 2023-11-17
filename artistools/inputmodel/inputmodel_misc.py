@@ -651,15 +651,20 @@ def add_derived_cols_to_modeldata(
     )
 
     if unknown_cols := [
-        col for col in derived_cols if col not in dfmodel.columns and col not in {"pos_min", "pos_max", "ALL"}
+        col
+        for col in derived_cols
+        if col not in dfmodel.columns and col not in {"pos_min", "pos_max", "ALL", "velocity"}
     ]:
         print(f"WARNING: Unknown derived columns: {unknown_cols}")
 
-    if "pos_min" in derived_cols or keep_all:
-        derived_cols.extend([f"pos_{ax}_min" for ax in axes])
+    if "pos_min" in derived_cols:
+        derived_cols.extend(col for col in dfmodel.columns if col.startswith("pos_") and col.endswith("_min"))
 
-    if "pos_max" in derived_cols or keep_all:
-        derived_cols.extend([f"pos_{ax}_max" for ax in axes])
+    if "pos_max" in derived_cols:
+        derived_cols.extend(col for col in dfmodel.columns if col.startswith("pos_") and col.endswith("_max"))
+
+    if "velocity" in derived_cols:
+        derived_cols.extend(col for col in dfmodel.columns if col.startswith("vel_"))
 
     if not keep_all:
         dfmodel = dfmodel.drop([col for col in dfmodel.columns if col not in original_cols and col not in derived_cols])
@@ -1125,7 +1130,7 @@ def get_dfmodel_dimensions(dfmodel: pd.DataFrame | pl.DataFrame | pl.LazyFrame) 
 def dimension_reduce_3d_model(
     dfmodel: pl.DataFrame | pl.LazyFrame,
     outputdimensions: int,
-    dfelabundances: pl.DataFrame | None = None,
+    dfelabundances: pl.DataFrame | pl.LazyFrame | None = None,
     dfgridcontributions: pl.DataFrame | None = None,
     ncoordgridr: int | None = None,
     ncoordgridz: int | None = None,
@@ -1138,6 +1143,7 @@ def dimension_reduce_3d_model(
     if outputdimensions == 0:
         outputdimensions = 1
         ncoordgridr = 1
+        ncoordgridz = 0
 
     dfmodel = dfmodel.lazy().collect()
 
@@ -1157,24 +1163,21 @@ def dimension_reduce_3d_model(
     xmax = vmax * t_model_init_seconds
     ngridpoints = modelmeta.get("npts_model", len(dfmodel))
     ncoordgridx = modelmeta.get("ncoordgridx", int(round(ngridpoints ** (1.0 / 3.0))))
-    wid_initx = 2 * xmax / ncoordgridx
 
-    assert modelmeta.get("dimensions", 3) == 3
+    ndim_in = modelmeta["dimensions"]
+    assert ndim_in > outputdimensions or (ndim_in == outputdimensions == 1 and ncoordgridr == 1)
     modelmeta_out["dimensions"] = outputdimensions
 
-    print(f"Resampling 3D model with {ngridpoints} cells to {outputdimensions}D...")
+    print(f"Resampling {ndim_in:d}D model with {ngridpoints} cells to {outputdimensions}D...")
     timestart = time.perf_counter()
 
-    celldensity: dict[int, float] = {
-        int(cellid): float(rho) for cellid, rho in dfmodel[["inputcellid", "rho"]].iter_rows()
-    }
-
-    dfmodel = dfmodel.with_columns(
-        [
-            ((pl.col(f"pos_{ax}_min") + (0.5 * wid_initx)) / t_model_init_seconds).alias(f"vel_{ax}_mid")
-            for ax in ["x", "y", "z"]
-        ]
+    dfmodel = at.inputmodel.add_derived_cols_to_modeldata(
+        dfmodel, modelmeta=modelmeta, derived_cols=["velocity", "rho"]
     )
+
+    celldensity: dict[int, float] = {
+        int(cellid): float(rho) for cellid, rho in dfmodel.select(["inputcellid", "rho"]).collect().iter_rows()
+    }
 
     km_to_cm = 1e5
     if ncoordgridr is None:
@@ -1193,9 +1196,6 @@ def dimension_reduce_3d_model(
         modelmeta_out["wid_init_rcyl"] = xmax / ncoordgridr
     else:
         # 1D
-        dfmodel = dfmodel.with_columns(
-            [(pl.col("vel_x_mid") ** 2 + pl.col("vel_y_mid") ** 2 + pl.col("vel_z_mid") ** 2).sqrt().alias("vel_r_mid")]
-        )
         modelmeta_out["ncoordgridr"] = ncoordgridr
 
     # velocities in cm/s
@@ -1215,13 +1215,16 @@ def dimension_reduce_3d_model(
         for n_r, (vel_r_min, vel_r_max) in enumerate(zip(velocity_bins_r_min, velocity_bins_r_max)):
             assert vel_r_max > vel_r_min
             cellindexout = n_z * ncoordgridr + n_r + 1
+
             if outputdimensions == 1:
-                matchedcells = dfmodel.filter(pl.col("vel_r_mid").is_between(vel_r_min, vel_r_max, closed="right"))
+                matchedcells = dfmodel.filter(
+                    pl.col("vel_r_mid").is_between(vel_r_min, vel_r_max, closed="right")
+                ).collect()
             elif outputdimensions == 2:
                 matchedcells = dfmodel.filter(
                     pl.col("vel_rcyl_mid").is_between(vel_r_min, vel_r_max, closed="right")
                     & pl.col("vel_z_mid").is_between(vel_z_min, vel_z_max, closed="right")
-                )
+                ).collect()
 
             if len(matchedcells) == 0:
                 rho_out = 0
@@ -1307,7 +1310,9 @@ def dimension_reduce_3d_model(
         outcells.append(dictcell)
 
         if dfelabundances is not None:
-            abund_matchedcells = dfelabundances.filter(pl.col("inputcellid").is_in(matchedcells["inputcellid"]))
+            abund_matchedcells = (
+                dfelabundances.filter(pl.col("inputcellid").is_in(matchedcells["inputcellid"])).lazy().collect()
+            )
             dictcellabundances: dict[str, int | float] = {"inputcellid": cellindexout}
             for column in dfelabundances.columns:
                 if column.startswith("X_"):

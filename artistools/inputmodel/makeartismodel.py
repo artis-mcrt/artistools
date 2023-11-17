@@ -21,6 +21,14 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-outputgridsize", default=50, type=int, help="Size of small model grid for downscale script")
 
     parser.add_argument(
+        "-dimensionreduce",
+        "-d",
+        default=None,
+        type=int,
+        help="Number of dimensions: 0 for one-zone, 1 for spherically symmetric 1D, 2 for 2D Cylindrical",
+    )
+
+    parser.add_argument(
         "--makemodelfromgriddata", action="store_true", help="Make ARTIS model files from SPH grid.dat file"
     )
 
@@ -64,6 +72,50 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             modelpath=Path(args.modelpath[0]), outputgridsize=args.outputgridsize
         )
         return
+
+    if args.dimensionreduce is not None:
+        ndim_out = args.dimensionreduce
+        assert ndim_out in {0, 1, 2}
+        for modelpath in args.modelpath:
+            dfmodel, modelmeta = at.inputmodel.get_modeldata_polars(modelpath, derived_cols=["mass_g"])
+            ndim_in = modelmeta["dimensions"]
+            if ndim_in <= ndim_out:
+                msg = f"Cannot reduce {ndim_in}D model to {ndim_out}D"
+                raise ValueError(msg)
+
+            dfelabundances = at.inputmodel.get_initelemabundances_polars(modelpath)
+            dfgridcontributions = (
+                at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(modelpath)
+                if Path(modelpath, "gridcontributions.txt").is_file()
+                else None
+            )
+
+            (
+                dfmodel_out,
+                dfelabundances_out,
+                dfgridcontributions_out,
+                modelmeta_out,
+            ) = at.inputmodel.dimension_reduce_3d_model(
+                dfmodel=dfmodel,
+                outputdimensions=ndim_out,
+                dfelabundances=dfelabundances,
+                dfgridcontributions=dfgridcontributions,
+                modelmeta=modelmeta,
+            )
+            outdir = (
+                Path(args.outputpath) if Path(args.outputpath).is_dir() else Path(args.outputpath).parent
+            ) / f"dimreduce_{ndim_out}d"
+            outdir.mkdir(exist_ok=True, parents=True)
+            modelmeta_out["headercommentlines"] = [
+                *modelmeta.get("headercommentlines", []),
+                f"Dimension reduced from {ndim_in}-dimensional model",
+            ]
+            at.inputmodel.save_initelemabundances(dfelabundances_out, outpath=outdir)
+            at.inputmodel.save_modeldata(
+                dfmodel=dfmodel_out,
+                modelmeta=modelmeta_out,
+                outpath=outdir,
+            )
 
     if args.makemodelfromgriddata:
         print(args)

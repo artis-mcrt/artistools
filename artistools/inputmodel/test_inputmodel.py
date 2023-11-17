@@ -270,7 +270,7 @@ def test_dimension_reduce_3d_model() -> None:
         dfmodel=dfmodel3d_pl, modelmeta=modelmeta_3d, derived_cols=["mass_g"]
     ).collect()
 
-    for outputdimensions in [1, 2]:
+    for outputdimensions in [0, 1, 2]:
         (
             dfmodel_lowerd,
             dfabundances_lowerd,
