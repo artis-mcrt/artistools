@@ -13,7 +13,6 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from astropy import constants as const
 from matplotlib import ticker
 
 import artistools as at
@@ -278,10 +277,8 @@ def make_ionsubplot(
             dfpopthision.query("level == @trans.upper").iloc[0].n_NLTE * trans.A * trans.energy_trans
             for _, trans in dftrans.iterrows()
         ]
-
-        dftrans["wavelength"] = [
-            round((const.h * const.c).to("eV angstrom").value / trans.energy_trans) for _, trans in dftrans.iterrows()
-        ]
+        hc_evangstrom = 12398.419843320025
+        dftrans["wavelength"] = [round(hc_evangstrom / trans.energy_trans) for _, trans in dftrans.iterrows()]
 
         dftrans = dftrans.sort_values("emissionstrength", ascending=False)
 
