@@ -445,9 +445,7 @@ def plot_artis_lightcurve(
             lcdata_after_valid = pd.DataFrame(data=None, columns=lcdata.columns)
             lcdata_valid = pd.DataFrame(data=None, columns=lcdata.columns)
         else:
-            lcdata_valid = lcdata.filter(
-                (pl.col("time") >= validrange_start_days) & (pl.col("time") <= validrange_end_days)
-            )
+            lcdata_valid = lcdata.filter(pl.col("time").is_between(validrange_start_days, validrange_end_days))
 
             lcdata_before_valid = lcdata.filter(pl.col("time") >= lcdata_valid["time"].min())
             lcdata_after_valid = lcdata.filter(pl.col("time") >= lcdata_valid["time"].max())

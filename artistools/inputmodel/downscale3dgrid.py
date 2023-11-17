@@ -1,3 +1,4 @@
+import itertools
 from pathlib import Path
 
 import numpy as np
@@ -42,68 +43,56 @@ def make_downscaled_3d_grid(
     print("reading abundance file")
 
     cellindex = 0
-    for z in range(grid):
-        for y in range(grid):
-            for x in range(grid):
-                abund[x, y, z] = dfelemabund.iloc[cellindex].to_numpy()
-                cellindex += 1
+    for z, y, x in itertools.product(range(grid), range(grid), range(grid)):
+        abund[x, y, z] = dfelemabund.iloc[cellindex].to_numpy()
+        cellindex += 1
 
     print("reading model file")
     t_model_days = modelmeta["t_model_init_days"]
     vmax = modelmeta["vmax_cmps"]
 
     cellindex = 0
-    for z in range(grid):
-        for y in range(grid):
-            for x in range(grid):
-                rho[x, y, z] = dfmodel.iloc[cellindex]["rho"]
-                radioabunds[x, y, z, :] = dfmodel.iloc[cellindex][abundcols]
+    for z, y, x in itertools.product(range(grid), range(grid), range(grid)):
+        rho[x, y, z] = dfmodel.iloc[cellindex]["rho"]
+        radioabunds[x, y, z, :] = dfmodel.iloc[cellindex][abundcols]
 
-                cellindex += 1
+        cellindex += 1
 
     rho_small = np.zeros((smallgrid, smallgrid, smallgrid))
     radioabunds_small = np.zeros((smallgrid, smallgrid, smallgrid, nabundcols))
     abund_small = np.zeros((smallgrid, smallgrid, smallgrid, max_atomic_number + 1))
 
-    for z in range(smallgrid):
-        for y in range(smallgrid):
-            for x in range(smallgrid):
-                for zz in range(merge):
-                    for yy in range(merge):
-                        for xx in range(merge):
-                            rho_small[x, y, z] += rho[x * merge + xx, y * merge + yy, z * merge + zz]
-                            for i in range(nabundcols):
-                                radioabunds_small[x, y, z, i] += (
-                                    radioabunds[x * merge + xx, y * merge + yy, z * merge + zz, i]
-                                    * rho[x * merge + xx, y * merge + yy, z * merge + zz]
-                                )
+    for z, y, x, zz, yy, xx in itertools.product(
+        range(smallgrid), range(smallgrid), range(smallgrid), range(merge), range(merge), range(merge)
+    ):
+        rho_small[x, y, z] += rho[x * merge + xx, y * merge + yy, z * merge + zz]
+        for i in range(nabundcols):
+            radioabunds_small[x, y, z, i] += (
+                radioabunds[x * merge + xx, y * merge + yy, z * merge + zz, i]
+                * rho[x * merge + xx, y * merge + yy, z * merge + zz]
+            )
 
-                            abund_small[x, y, z, :] += (
-                                abund[x * merge + xx, y * merge + yy, z * merge + zz]
-                                * rho[x * merge + xx, y * merge + yy, z * merge + zz]
-                            )
+        abund_small[x, y, z, :] += (
+            abund[x * merge + xx, y * merge + yy, z * merge + zz] * rho[x * merge + xx, y * merge + yy, z * merge + zz]
+        )
 
-    for z in range(smallgrid):
-        for y in range(smallgrid):
-            for x in range(smallgrid):
-                if rho_small[x, y, z] > 0:
-                    radioabunds_small[x, y, z, :] /= rho_small[x, y, z]
+    for z, y, x in itertools.product(range(smallgrid), range(smallgrid), range(smallgrid)):
+        if rho_small[x, y, z] > 0:
+            radioabunds_small[x, y, z, :] /= rho_small[x, y, z]
 
-                    for i in range(1, max_atomic_number + 1):  # check this
-                        abund_small[x, y, z, i] /= rho_small[x, y, z]
-                    rho_small[x, y, z] /= merge**3
+            for i in range(1, max_atomic_number + 1):  # check this
+                abund_small[x, y, z, i] /= rho_small[x, y, z]
+            rho_small[x, y, z] /= merge**3
 
     print("writing abundance file")
     i = 0
     with (modelpath / smallabundancefile).open("w") as newabundancefile:
-        for z in range(smallgrid):
-            for y in range(smallgrid):
-                for x in range(smallgrid):
-                    line = abund_small[x, y, z, :].tolist()  # index 1:30 are abundances
-                    line[0] = int(i + 1)  # replace index 0 with index id
-                    i += 1
-                    newabundancefile.writelines("%g " % item for item in line)
-                    newabundancefile.writelines("\n")
+        for z, y, x in itertools.product(range(smallgrid), range(smallgrid), range(smallgrid)):
+            line = abund_small[x, y, z, :].tolist()  # index 1:30 are abundances
+            line[0] = int(i + 1)  # replace index 0 with index id
+            i += 1
+            newabundancefile.writelines("%g " % item for item in line)
+            newabundancefile.writelines("\n")
 
     print("writing model file")
     xmax = vmax * t_model_days * 3600 * 24
@@ -114,22 +103,20 @@ def make_downscaled_3d_grid(
         newmodelfile.write(f"{t_model_days}\n")
         newmodelfile.write(f"{vmax}\n")
 
-        for z in range(smallgrid):
-            for y in range(smallgrid):
-                for x in range(smallgrid):
-                    line1 = [
-                        int(cellindex + 1),
-                        -xmax + 2 * x * xmax / smallgrid,
-                        -xmax + 2 * y * xmax / smallgrid,
-                        -xmax + 2 * z * xmax / smallgrid,
-                        rho_small[x, y, z],
-                    ]
-                    line2 = radioabunds_small[x, y, z, :]
-                    newmodelfile.writelines("%g " % item for item in line1)
-                    newmodelfile.writelines("\n")
-                    newmodelfile.writelines("%g " % item for item in line2)
-                    newmodelfile.writelines("\n")
-                    cellindex += 1
+        for z, y, x in itertools.product(range(smallgrid), range(smallgrid), range(smallgrid)):
+            line1 = [
+                int(cellindex + 1),
+                -xmax + 2 * x * xmax / smallgrid,
+                -xmax + 2 * y * xmax / smallgrid,
+                -xmax + 2 * z * xmax / smallgrid,
+                rho_small[x, y, z],
+            ]
+            line2 = radioabunds_small[x, y, z, :]
+            newmodelfile.writelines("%g " % item for item in line1)
+            newmodelfile.writelines("\n")
+            newmodelfile.writelines("%g " % item for item in line2)
+            newmodelfile.writelines("\n")
+            cellindex += 1
 
     if plot:
         print("making diagnostic plot")

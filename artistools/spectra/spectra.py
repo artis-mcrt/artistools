@@ -151,13 +151,11 @@ def get_from_packets(
     )
 
     if use_time == "arrival":
-        dfpackets = dfpackets.filter(
-            (float(timelowdays) <= pl.col("t_arrive_d")) & (pl.col("t_arrive_d") <= float(timehighdays))
-        )
+        dfpackets = dfpackets.filter(pl.col("t_arrive_d").is_between(float(timelowdays), float(timehighdays)))
     elif use_time == "escape":
+        assert escapesurfacegamma is not None
         dfpackets = dfpackets.filter(
-            (timelow <= (pl.col("escape_time") * escapesurfacegamma))
-            & ((pl.col("escape_time") * escapesurfacegamma) <= timehigh)
+            pl.col("escape_time").is_between(timelow / escapesurfacegamma, timehigh / escapesurfacegamma)
         )
     elif use_time == "emission":
         mean_correction = float(
@@ -166,9 +164,9 @@ def get_from_packets(
 
         em_time_low = float(timelowdays) * 86400.0 + mean_correction
         em_time_high = float(timehighdays) * 86400.0 + mean_correction
-        dfpackets = dfpackets.filter((em_time_low <= pl.col("em_time")) & (pl.col("em_time") <= em_time_high))
+        dfpackets = dfpackets.filter(pl.col("em_time").is_between(em_time_low, em_time_high))
 
-    dfpackets = dfpackets.filter((float(nu_min) <= pl.col("nu_rf")) & (pl.col("nu_rf") <= float(nu_max)))
+    dfpackets = dfpackets.filter(pl.col("nu_rf").is_between(float(nu_min), float(nu_max)))
 
     if fnufilterfunc:
         print("Applying filter to ARTIS spectrum")
