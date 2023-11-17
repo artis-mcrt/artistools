@@ -936,7 +936,7 @@ def merge_pdf_files(pdf_files: list[str]) -> None:
             merger.append(pdffile)
         Path(pdfpath).unlink()
 
-    resultfilename = f'{pdf_files[0].replace(".pdf","")}-{pdf_files[-1].replace(".pdf","")}'
+    resultfilename = f'{pdf_files[0].replace(".pdf", "")}-{pdf_files[-1].replace(".pdf", "")}'
     with Path(f"{resultfilename}.pdf").open("wb") as resultfile:
         merger.write(resultfile)
 
