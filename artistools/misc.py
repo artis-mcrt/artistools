@@ -1278,8 +1278,8 @@ def get_phi_bins(usedegrees: bool) -> tuple[npt.NDArray[np.float64], npt.NDArray
     # convert phibin number to what the number would be if things were sane
     phisteps = list(range(nphibins // 2)) + list(reversed(range(nphibins // 2, nphibins)))
 
-    phi_lower = np.array([step * 2 * math.pi / nphibins for step in phisteps])
-    phi_upper = np.array([(step + 1) * 2 * math.pi / nphibins for step in phisteps])
+    phi_lower = 2 * math.pi - np.array([(step + 1) * 2 * math.pi / nphibins for step in phisteps])
+    phi_upper = 2 * math.pi - np.array([step * 2 * math.pi / nphibins for step in phisteps])
 
     binlabels = []
     for phibin, step in enumerate(phisteps):
