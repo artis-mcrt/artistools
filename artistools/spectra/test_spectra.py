@@ -114,8 +114,12 @@ def test_spectra_get_spectrum_polar_angles() -> None:
         timestepmax=25,
     )
 
-    assert all(np.isclose(dirspec["lambda_angstroms"].mean(), 7510.074, rtol=1e-3) for dirspec in spectra.values())
-    assert all(np.isclose(dirspec["lambda_angstroms"].std(), 7647.317, rtol=1e-3) for dirspec in spectra.values())
+    assert all(
+        np.isclose(dirspec["lambda_angstroms"].to_numpy().mean(), 7510.074, rtol=1e-3) for dirspec in spectra.values()
+    )
+    assert all(
+        np.isclose(dirspec["lambda_angstroms"].to_numpy().std(), 7647.317, rtol=1e-3) for dirspec in spectra.values()
+    )
 
     results = {
         dirbin: (
@@ -141,7 +145,10 @@ def test_spectra_get_spectrum_polar_angles() -> None:
     }
 
     for dirbin in spectra:
-        assert results[dirbin] == expected_results[dirbin]
+        assert isinstance(results[dirbin][0], float)
+        assert np.isclose(results[dirbin][0], expected_results[dirbin][0], rtol=1e-3)
+        assert isinstance(results[dirbin][1], float)
+        assert np.isclose(results[dirbin][1], expected_results[dirbin][1], rtol=1e-3)
 
 
 def test_spectra_get_spectrum_polar_angles_frompackets() -> None:

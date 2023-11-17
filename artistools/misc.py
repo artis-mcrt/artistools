@@ -1278,8 +1278,8 @@ def get_phi_bins(usedegrees: bool) -> tuple[npt.NDArray[np.float64], npt.NDArray
     # convert phibin number to what the number would be if things were sane
     phisteps = list(range(nphibins // 2)) + list(reversed(range(nphibins // 2, nphibins)))
 
-    phi_lower = 2 * math.pi - np.array([(step + 1) * 2 * math.pi / nphibins for step in phisteps])
-    phi_upper = 2 * math.pi - np.array([step * 2 * math.pi / nphibins for step in phisteps])
+    phi_lower = np.array([step * 2 * math.pi / nphibins for step in phisteps])
+    phi_upper = np.array([(step + 1) * 2 * math.pi / nphibins for step in phisteps])
 
     binlabels = []
     for phibin, step in enumerate(phisteps):
@@ -1303,11 +1303,11 @@ def get_costheta_bins(usedegrees: bool, usepiminustheta: bool = False) -> tuple[
     costhetabins_upper = costhetabins_lower + 2.0 / ncosthetabins
     if usedegrees:
         if usepiminustheta:
-            thetabins_upper = (np.pi - np.arccos(costhetabins_upper)) / np.pi * 180
-            thetabins_lower = (np.pi - np.arccos(costhetabins_lower)) / np.pi * 180
+            piminusthetabins_upper = (np.pi - np.arccos(costhetabins_upper)) / np.pi * 180
+            piminusthetabins_lower = (np.pi - np.arccos(costhetabins_lower)) / np.pi * 180
             binlabels = [
                 rf"{lower:.0f}° < $\pi$-$\theta$ < {upper:.0f}°"
-                for lower, upper in zip(thetabins_lower, thetabins_upper)
+                for lower, upper in zip(piminusthetabins_lower, piminusthetabins_upper)
             ]
         else:
             thetabins_upper = np.arccos(costhetabins_lower) / np.pi * 180
