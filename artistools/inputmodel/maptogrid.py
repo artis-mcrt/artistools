@@ -341,7 +341,7 @@ def maptogrid(
             for (n, i, j, k), rho_contrib in particle_rho_contribs.items():
                 gridindex = (k * ncoordgrid + j) * ncoordgrid + i + 1
                 fcontribs.write(f"{particleid[n]} {gridindex} {rho_contrib / grho[i, j, k]}\n")
-        logprint(f"saved {outputfolderpath/'gridcontributions.txt'}")
+        logprint(f"saved {outputfolderpath / 'gridcontributions.txt'}")
 
     # check some stuff on the grid
 
@@ -378,7 +378,7 @@ def maptogrid(
 
     logprint(
         f"number of central cells (dis<rmean) with rho=0 {nzerocentral}, ratio"
-        f" {(nzerocentral) / (4.0 * 3.14 / 3.0 * rmean**3 / (dx * dy * dz))}"
+        f" {(nzerocentral) / (4.0 * math.pi / 3.0 * rmean**3 / (dx * dy * dz))}"
     )
 
     logprint("probably we want to choose grid size, i.e. x0, as compromise between mapped mass and rho=0 cells")

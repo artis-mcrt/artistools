@@ -961,7 +961,7 @@ def analyse_ntspectrum(
         # print(f'Alternative Gamma: {integralgamma:.2e}')
 
         binding = get_mean_binding_energy(Z, ionstage, electron_binding, ionpot_ev=ionpot_valence)  # binding in erg
-        oneoverW = Aconst * binding / Zbar / (2 * 3.14159 * pow(QE, 4))  # per erg
+        oneoverW = Aconst * binding / Zbar / (2 * math.pi * pow(QE, 4))  # per erg
         deposition_density_erg = deposition_density_ev * EV
 
         # to get the non-thermal ionization rate we need to divide the energy deposited
@@ -1370,7 +1370,7 @@ def workfunction_tests(modelpath, args):
         print(f"mean binding energy: {binding_alt / EV:.2f} eV")
         Aconst = 1.33e-14 * EV * EV
         binding = get_mean_binding_energy(Z, ionstage, electron_binding, ionpot_ev=ionpot_valence_ev)  # binding in erg
-        oneoverW_limit_sim = Aconst * binding / Zbar / (2 * 3.14159 * pow(QE, 4))  # per erg
+        oneoverW_limit_sim = Aconst * binding / Zbar / (2 * math.pi * pow(QE, 4))  # per erg
         workfn_limit_ev_sim = 1.0 / oneoverW_limit_sim / EV
         print(f"\n workfn_limit_ev_sim {workfn_limit_ev_sim:.2f} eV")
         print(f"   eta_ion  {ionpot_valence_ev / workfn_limit_ev_sim:.3f}")

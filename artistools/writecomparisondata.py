@@ -3,6 +3,7 @@
 
 
 import argparse
+import math
 import typing as t
 from io import TextIOWrapper
 from pathlib import Path
@@ -25,7 +26,7 @@ def write_spectra(modelpath: str | Path, model_id: str, selected_timesteps: t.Se
 
     # 1 parsec in cm is 3.086e18
     # area in cm^2 of a spherical of radius 1 Mpc is:
-    area = 3.086e18 * 3.086e18 * 1e12 * 4.0 * 3.141592654
+    area = 3.086e18 * 3.086e18 * 1e12 * 4.0 * math.pi
 
     lum_lambda = np.zeros((len(lambdas), len(times)))
 

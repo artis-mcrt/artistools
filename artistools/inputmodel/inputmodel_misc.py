@@ -130,7 +130,7 @@ def read_modelfile_text(
     if onelinepercellformat and "  " not in data_line_even and "  " not in data_line_odd and not getheadersonly:
         print("  using fast method polars.read_csv (requires one line per cell and single space delimiters)")
 
-        pldtypes = {col: pl.Int32 if col in {"inputcellid"} else pl.Float32 for col in columns}
+        pldtypes = {col: pl.Int32 if col == "inputcellid" else pl.Float32 for col in columns}
 
         dfmodel = pl.read_csv(
             at.zopenpl(filename),
@@ -513,7 +513,7 @@ def add_derived_cols_to_modeldata(
                 [
                     (
                         (4.0 / 3.0)
-                        * 3.14159265
+                        * math.pi
                         * (
                             pl.col("vel_r_max_kmps").cast(pl.Float64).pow(3)
                             - pl.col("vel_r_min_kmps").cast(pl.Float64).pow(3)

@@ -187,7 +187,7 @@ def read_estimators_from_file(
                         continue
 
                     ionstr = at.get_ionstring(atomic_number, ionstage, sep="_", style="spectral")
-                    estimblock[f"{'nnion' if variablename=='populations' else variablename}_{ionstr}"] = value_thision
+                    estimblock[f"{'nnion' if variablename == 'populations' else variablename}_{ionstr}"] = value_thision
 
                     if variablename in {"Alpha_R*nne", "AlphaR*nne"}:
                         estimblock[f"Alpha_R_{ionstr}"] = (
