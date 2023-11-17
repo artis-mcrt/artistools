@@ -256,8 +256,9 @@ def test_save_load_3d_model() -> None:
 
 
 def test_dimension_reduce_3d_model() -> None:
-    clear_modelfiles()
-    dfmodel3d_pl_lazy, modelmeta_3d = at.inputmodel.get_empty_3d_model(ncoordgrid=50, vmax=1000, t_model_init_days=1)
+    outpath = outputpath / "test_dimension_reduce_3d_model"
+    outpath.mkdir(exist_ok=True, parents=True)
+    dfmodel3d_pl_lazy, modelmeta_3d = at.inputmodel.get_empty_3d_model(ncoordgrid=50, vmax=100000, t_model_init_days=1)
     dfmodel3d_pl = dfmodel3d_pl_lazy.collect()
     mgi1 = 26 * 26 * 26 + 26 * 26 + 26
     dfmodel3d_pl[mgi1, "rho"] = 2
@@ -280,9 +281,12 @@ def test_dimension_reduce_3d_model() -> None:
             dfmodel=dfmodel3d_pl, modelmeta=modelmeta_3d, outputdimensions=outputdimensions
         )
 
-        dfmodel_lowerd = at.inputmodel.add_derived_cols_to_modeldata(
-            dfmodel=dfmodel_lowerd, modelmeta=modelmeta_lowerd, derived_cols=["mass_g"]
-        ).collect()
+        at.inputmodel.save_modeldata(outpath=outpath, dfmodel=dfmodel_lowerd, modelmeta=modelmeta_lowerd)
+
+        dfmodel_lowerd_lz, modelmeta_lowerd = at.inputmodel.get_modeldata_polars(
+            modelpath=outpath, derived_cols=["mass_g"]
+        )
+        dfmodel_lowerd = dfmodel_lowerd_lz.collect()
 
         # check that the total mass is conserved
         assert np.isclose(dfmodel_lowerd["mass_g"].sum(), dfmodel3d_pl["mass_g"].sum())
