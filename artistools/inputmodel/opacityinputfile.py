@@ -55,6 +55,7 @@ def get_opacity_from_file(modelpath):
 def write_Ye_file(outputfilepath: Path | str, griddata: pd.DataFrame | pl.DataFrame) -> None:
     if isinstance(griddata, pd.DataFrame):
         griddata = pl.from_pandas(griddata)
+    griddata = griddata.with_columns(pl.col("inputcellid").cast(pl.Int32))  # ensure is int
     with Path(outputfilepath, "Ye.txt").open("w") as fYe:
         fYe.write(f'{len(griddata["inputcellid"])}\n')
         griddata.to_pandas()[["inputcellid", "cellYe"]].to_csv(
