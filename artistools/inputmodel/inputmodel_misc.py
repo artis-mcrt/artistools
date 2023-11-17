@@ -1320,7 +1320,7 @@ def dimension_reduce_3d_model(
             dictcellabundances: dict[str, int | float] = {"inputcellid": cellindexout}
             for column in dfelabundances.columns:
                 if column.startswith("X_"):
-                    dotprod = abund_matchedcells[column].dot(matchedcells["rho"]) if nonempty else 0.0
+                    dotprod = abund_matchedcells[column].dot(matchedcells["mass_g"]) if nonempty else 0.0
                     assert isinstance(dotprod, float)
                     massfrac = dotprod / matchedcellmass if nonempty else 0.0
                     dictcellabundances[column] = massfrac
