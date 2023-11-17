@@ -1176,7 +1176,7 @@ def dimension_reduce_3d_model(
     timestart = time.perf_counter()
 
     dfmodel = at.inputmodel.add_derived_cols_to_modeldata(
-        dfmodel, modelmeta=modelmeta, derived_cols=["velocity", "rho"]
+        dfmodel, modelmeta=modelmeta, derived_cols=["velocity", "mass_g"]
     )
 
     inputcellmass: dict[int, float] = {
