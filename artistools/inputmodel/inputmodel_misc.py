@@ -832,6 +832,10 @@ def save_modeldata(
     if isinstance(dfmodel, pd.DataFrame):
         dfmodel = pl.from_pandas(dfmodel)
 
+    if "mass_g" in dfmodel.columns:
+        # cell mass is derived from rho and volume, so we don't need to save it
+        dfmodel.drop("mass_g")
+
     dfmodel = dfmodel.lazy().collect()
 
     if modelmeta is None:
@@ -1175,8 +1179,8 @@ def dimension_reduce_3d_model(
         dfmodel, modelmeta=modelmeta, derived_cols=["velocity", "rho"]
     )
 
-    celldensity: dict[int, float] = {
-        int(cellid): float(rho) for cellid, rho in dfmodel.select(["inputcellid", "rho"]).collect().iter_rows()
+    inputcellmass: dict[int, float] = {
+        int(cellid): float(rho) for cellid, rho in dfmodel.select(["inputcellid", "mass_g"]).collect().iter_rows()
     }
 
     km_to_cm = 1e5
@@ -1239,7 +1243,7 @@ def dimension_reduce_3d_model(
                     )
                 rho_out = matchedcells["mass_g"].sum() / shell_volume
 
-            cellout: dict[str, t.Any] = {"inputcellid": cellindexout}
+            cellout: dict[str, t.Any] = {"inputcellid": cellindexout, "mass_g": matchedcells["mass_g"].sum()}
 
             if outputdimensions == 1:
                 cellout |= {
@@ -1267,18 +1271,18 @@ def dimension_reduce_3d_model(
     outgridcontributions = []
 
     for cellindexout, (dictcell, matchedcells) in allmatchedcells.items():
-        matchedcellrhosum = matchedcells["rho"].sum()
-        nonempty = matchedcellrhosum > 0.0
-        if matchedcellrhosum > 0.0 and dfgridcontributions is not None:
+        matchedcellmass = matchedcells["mass_g"].sum()
+        nonempty = matchedcellmass > 0.0
+        if matchedcellmass > 0.0 and dfgridcontributions is not None:
             dfcellcont = dfgridcontributions.filter(pl.col("cellindex").is_in(matchedcells["inputcellid"]))
 
             for particleid, dfparticlecontribs in dfcellcont.group_by("particleid"):
                 frac_of_cellmass_avg = (
                     sum(
-                        row["frac_of_cellmass"] * celldensity[row["cellindex"]]
+                        row["frac_of_cellmass"] * inputcellmass[row["cellindex"]]
                         for row in dfparticlecontribs.iter_rows(named=True)
                     )
-                    / matchedcellrhosum
+                    / matchedcellmass
                 )
 
                 contriboutrow = {
@@ -1290,10 +1294,10 @@ def dimension_reduce_3d_model(
                 if includemissingcolexists:
                     frac_of_cellmass_includemissing_avg = (
                         sum(
-                            row["frac_of_cellmass_includemissing"] * celldensity[row["cellindex"]]
+                            row["frac_of_cellmass_includemissing"] * inputcellmass[row["cellindex"]]
                             for row in dfparticlecontribs.iter_rows(named=True)
                         )
-                        / matchedcellrhosum
+                        / matchedcellmass
                     )
                     contriboutrow["frac_of_cellmass_includemissing"] = frac_of_cellmass_includemissing_avg
 
@@ -1302,9 +1306,9 @@ def dimension_reduce_3d_model(
         for column in matchedcells.columns:
             if column.startswith("X_") or column in {"cellYe", "q"}:
                 # take mass-weighted average mass fraction
-                dotprod = matchedcells[column].dot(matchedcells["rho"])
+                dotprod = matchedcells[column].dot(matchedcells["mass_g"])
                 assert isinstance(dotprod, float)
-                massfrac = dotprod / matchedcellrhosum if nonempty else 0.0
+                massfrac = dotprod / matchedcellmass if nonempty else 0.0
                 dictcell[column] = massfrac
 
         outcells.append(dictcell)
@@ -1318,7 +1322,7 @@ def dimension_reduce_3d_model(
                 if column.startswith("X_"):
                     dotprod = abund_matchedcells[column].dot(matchedcells["rho"]) if nonempty else 0.0
                     assert isinstance(dotprod, float)
-                    massfrac = dotprod / matchedcellrhosum if nonempty else 0.0
+                    massfrac = dotprod / matchedcellmass if nonempty else 0.0
                     dictcellabundances[column] = massfrac
 
             outcellabundances.append(dictcellabundances)
