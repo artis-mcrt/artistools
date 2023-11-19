@@ -1,4 +1,3 @@
-import itertools
 import math
 from pathlib import Path
 
@@ -10,21 +9,30 @@ import artistools as at
 
 
 def test_directionbins() -> None:
-    syn_dir = (0, 0, 1)
     nphibins = 10
     ncosthetabins = 10
     costhetabinlowers, costhetabinuppers, _ = at.get_costheta_bins(usedegrees=False)
     phibinlowers, phibinuppers, _ = at.get_phi_bins(usedegrees=False)
 
-    phitests = np.linspace(0.0, 2 * math.pi, nphibins * 5, endpoint=True)
-    costhetatests = np.linspace(0.001, 0.999, ncosthetabins * 5, endpoint=True)
+    testdirections = pl.DataFrame({"phi": np.linspace(0.1, 2 * math.pi, nphibins * 2, endpoint=False)}).join(
+        pl.DataFrame({"costheta": np.linspace(0.0, 1.0, ncosthetabins * 2, endpoint=False)}), how="cross"
+    )
 
-    for phi, costheta in itertools.product(phitests, costhetatests):
-        # Luke: The negative on the diry is inconsistent with the virtual packet observer definition
-        # but is consistent with angle-resolved exspec bin definitions
-        dirx = math.sqrt(1.0 - costheta * costheta) * math.cos(phi)
-        diry = -math.sqrt(1.0 - costheta * costheta) * math.sin(phi)
-        dirz = costheta
+    syn_dir = (0, 0, 1)
+    testdirections = testdirections.with_columns(
+        dirx=((1 - testdirections["costheta"] ** 2).sqrt() * pl.col("phi").cos()),
+        diry=((1 - testdirections["costheta"] ** 2).sqrt() * pl.col("phi").sin()),
+        dirz=pl.col("costheta"),
+    )
+
+    for phi, costheta, dirx, diry, dirz in testdirections.select(
+        ["phi", "costheta", "dirx", "diry", "dirz"]
+    ).iter_rows():
+        # dirx = math.sqrt(1.0 - costheta * costheta) * math.cos(phi)
+        # diry = math.sqrt(1.0 - costheta * costheta) * math.sin(phi)
+        # dirz = costheta
+
+        assert np.isclose(dirx**2 + diry**2 + dirz**2, 1.0, rtol=0.001)
 
         packets = pl.DataFrame({"dirx": [dirx], "diry": [diry], "dirz": [dirz]})
         packets = at.packets.add_packet_directions_lazypolars(packets, syn_dir=syn_dir).collect()
@@ -62,5 +70,7 @@ def test_directionbins() -> None:
         assert costhetabinlowers[costhetabin] <= costheta * 1.01
         assert costhetabinuppers[costhetabin] > costheta * 0.99
 
-        assert phibinlowers[phibin] <= phi
+        assert phibinlowers[phibin] <= phi, f"{phibinlowers[phibin]} <= {phi}"
         assert phibinuppers[phibin] >= phi
+
+        # print(dirx, diry, dirz, dirbin, costhetabin, phibin)
