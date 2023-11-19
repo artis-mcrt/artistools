@@ -646,6 +646,7 @@ def bin_packet_directions_lazypolars(
 def bin_packet_directions(
     modelpath: Path | str, dfpackets: pd.DataFrame, syn_dir: tuple[float, float, float] | None = None
 ) -> pd.DataFrame:
+    """Avoid this slow pandas function and use bin_packet_directions_lazypolars instead for new code."""
     nphibins = at.get_viewingdirection_phibincount()
     ncosthetabins = at.get_viewingdirection_costhetabincount()
 
