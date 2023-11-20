@@ -936,7 +936,7 @@ def merge_pdf_files(pdf_files: list[str]) -> None:
             merger.append(pdffile)
         Path(pdfpath).unlink()
 
-    resultfilename = f'{pdf_files[0].replace(".pdf","")}-{pdf_files[-1].replace(".pdf","")}'
+    resultfilename = f'{pdf_files[0].replace(".pdf", "")}-{pdf_files[-1].replace(".pdf", "")}'
     with Path(f"{resultfilename}.pdf").open("wb") as resultfile:
         merger.write(resultfile)
 
@@ -1278,8 +1278,8 @@ def get_phi_bins(usedegrees: bool) -> tuple[npt.NDArray[np.float64], npt.NDArray
     # convert phibin number to what the number would be if things were sane
     phisteps = list(range(nphibins // 2)) + list(reversed(range(nphibins // 2, nphibins)))
 
-    phi_lower = 2 * math.pi - np.array([(step + 1) * 2 * math.pi / nphibins for step in phisteps])
-    phi_upper = 2 * math.pi - np.array([step * 2 * math.pi / nphibins for step in phisteps])
+    phi_lower = np.array([2 * math.pi * (1 - (step + 1) / nphibins) for step in phisteps])
+    phi_upper = np.array([2 * math.pi * (1 - step / nphibins) for step in phisteps])
 
     binlabels = []
     for phibin, step in enumerate(phisteps):
@@ -1287,8 +1287,12 @@ def get_phi_bins(usedegrees: bool) -> tuple[npt.NDArray[np.float64], npt.NDArray
             str_phi_lower = f"{phi_lower[step] / math.pi * 180:.0f}°"
             str_phi_upper = f"{phi_upper[step] / math.pi * 180:.0f}°"
         else:
-            str_phi_lower = f"{step}π/{nphibins // 2}" if step > 0 else "0"
-            str_phi_upper = f"{step + 1}π/{nphibins // 2}" if step < nphibins - 1 else "2π"
+            coeff_lower = phi_lower[step] / (2 * math.pi) * nphibins
+            assert np.isclose(coeff_lower, round(coeff_lower), rtol=0.01), coeff_lower
+            str_phi_lower = f"{round(coeff_lower)}π/{nphibins // 2}" if phi_lower[step] > 0.0 else "0"
+            coeff_upper = phi_upper[step] / (2 * math.pi) * nphibins
+            assert np.isclose(coeff_upper, round(coeff_upper), rtol=0.01)
+            str_phi_upper = f"{round(coeff_upper)}π/{nphibins // 2}" if phi_upper[step] < 2 * math.pi else "2π"
 
         lower_compare = "≤" if phibin < (nphibins // 2) else "<"
         upper_compare = "≤" if phibin > (nphibins // 2) else "<"
@@ -1303,11 +1307,11 @@ def get_costheta_bins(usedegrees: bool, usepiminustheta: bool = False) -> tuple[
     costhetabins_upper = costhetabins_lower + 2.0 / ncosthetabins
     if usedegrees:
         if usepiminustheta:
-            thetabins_upper = (np.pi - np.arccos(costhetabins_upper)) / np.pi * 180
-            thetabins_lower = (np.pi - np.arccos(costhetabins_lower)) / np.pi * 180
+            piminusthetabins_upper = (np.pi - np.arccos(costhetabins_upper)) / np.pi * 180
+            piminusthetabins_lower = (np.pi - np.arccos(costhetabins_lower)) / np.pi * 180
             binlabels = [
                 rf"{lower:.0f}° < $\pi$-$\theta$ < {upper:.0f}°"
-                for lower, upper in zip(thetabins_lower, thetabins_upper)
+                for lower, upper in zip(piminusthetabins_lower, piminusthetabins_upper)
             ]
         else:
             thetabins_upper = np.arccos(costhetabins_lower) / np.pi * 180

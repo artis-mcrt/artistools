@@ -75,7 +75,7 @@ def plot_spherical(
     # y=math.sin(-phi)
 
     dfpackets = at.packets.bin_packet_directions_lazypolars(
-        dfpackets=dfpackets, nphibins=nphibins, ncosthetabins=ncosthetabins, phibintype="monotonic"
+        dfpackets=dfpackets, nphibins=nphibins, ncosthetabins=ncosthetabins, phibintype="phiascending"
     )
 
     # for figuring out where the axes are on the plot, make a cut
@@ -158,7 +158,7 @@ def plot_spherical(
         .sort(["costhetabin", "phibin"])
     )
 
-    print(f'packets plotted: {alldirbins.select("count").sum().item(0,0):.1e}')
+    print(f'packets plotted: {alldirbins.select("count").sum().item(0, 0):.1e}')
 
     # these phi and theta angle ranges are defined differently to artis
     phigrid = np.linspace(-np.pi, np.pi, nphibins + 1, endpoint=True, dtype=np.float64)

@@ -13,7 +13,7 @@ import polars as pl
 import artistools as at
 
 # for the parquet files
-time_parquetschemachange = (2023, 4, 22, 12, 31, 0)
+time_parquetschemachange = (2023, 11, 19, 12, 0, 0)
 
 CLIGHT = 2.99792458e10
 DAY = 86400
@@ -200,13 +200,13 @@ def add_derived_columns(
 
 
 def add_derived_columns_lazy(
-    dfpackets: pl.LazyFrame, modelmeta: dict[str, t.Any], dfmodel: pd.DataFrame | pl.LazyFrame | None
+    dfpackets: pl.LazyFrame | pl.DataFrame, modelmeta: dict[str, t.Any], dfmodel: pd.DataFrame | pl.LazyFrame | None
 ) -> pl.LazyFrame:
     """Add columns to a packets DataFrame that are derived from the values that are stored in the packets files.
 
     We might as well add everything, since the columns only get calculated when they are actually used (polars LazyFrame).
     """
-    dfpackets = dfpackets.with_columns(
+    dfpackets = dfpackets.lazy().with_columns(
         [
             (
                 (pl.col("em_posx") ** 2 + pl.col("em_posy") ** 2 + pl.col("em_posz") ** 2).sqrt() / pl.col("em_time")
@@ -359,11 +359,17 @@ def readfile(
     escape_type: t.Literal["TYPE_RPKT", "TYPE_GAMMA"] | None = None,
 ) -> pd.DataFrame:
     """Read a packet file into a Pandas DataFrame."""
-    return (
-        readfile_pl(packetsfile, packet_type=packet_type, escape_type=escape_type)
-        .collect()
-        .to_pandas(use_pyarrow_extension_array=True)
-    )
+    dfpackets = pl.read_parquet(packetsfile)
+
+    if escape_type is not None:
+        assert packet_type is None or packet_type == "TYPE_ESCAPE"
+        dfpackets = dfpackets.filter(
+            (pl.col("type_id") == type_ids["TYPE_ESCAPE"]) & (pl.col("escape_type_id") == type_ids[escape_type])
+        )
+    elif packet_type is not None and packet_type:
+        dfpackets = dfpackets.filter(pl.col("type_id") == type_ids[packet_type])
+
+    return dfpackets.to_pandas(use_pyarrow_extension_array=True)
 
 
 def convert_text_to_parquet(
@@ -404,26 +410,6 @@ def convert_text_to_parquet(
     dfpackets.collect().write_parquet(packetsfileparquet, compression="zstd", statistics=True, compression_level=6)
 
     return packetsfileparquet
-
-
-def readfile_pl(
-    packetsfile: Path | str,
-    modelpath: None | Path | str = None,
-    packet_type: str | None = None,
-    escape_type: t.Literal["TYPE_RPKT", "TYPE_GAMMA"] | None = None,
-) -> pl.LazyFrame:
-    """Read a packets file into a Polars LazyFrame from either a parquet file or a text file (and save .parquet)."""
-    dfpackets = pl.scan_parquet(packetsfile)
-
-    if escape_type is not None:
-        assert packet_type is None or packet_type == "TYPE_ESCAPE"
-        dfpackets = dfpackets.filter(
-            (pl.col("type_id") == type_ids["TYPE_ESCAPE"]) & (pl.col("escape_type_id") == type_ids[escape_type])
-        )
-    elif packet_type is not None and packet_type:
-        dfpackets = dfpackets.filter(pl.col("type_id") == type_ids[packet_type])
-
-    return dfpackets
 
 
 def get_packetsfilepaths(
@@ -539,21 +525,23 @@ def get_directionbin(
 
     vec3 = np.cross(vec2, syn_dir)
     testphi = np.dot(vec1, vec3)
-    # phi = math.acos(cosphi) if testphi > 0 else (math.acos(-cosphi) + np.pi)
 
     phibin = (
-        int(math.acos(cosphi) / 2.0 / np.pi * nphibins)
+        int(math.acos(cosphi) / 2.0 / math.pi * nphibins)
         if testphi >= 0
-        else int((math.acos(cosphi) + np.pi) / 2.0 / np.pi * nphibins)
+        else int((math.acos(cosphi) + math.pi) / 2.0 / math.pi * nphibins)
     )
 
     return (costhetabin * nphibins) + phibin
 
 
-def add_packet_directions_lazypolars(dfpackets: pl.LazyFrame, syn_dir: tuple[float, float, float]) -> pl.LazyFrame:
+def add_packet_directions_lazypolars(
+    dfpackets: pl.LazyFrame | pl.DataFrame, syn_dir: tuple[float, float, float]
+) -> pl.LazyFrame:
+    dfpackets = dfpackets.lazy()
     assert len(syn_dir) == 3
     xhat = np.array([1.0, 0.0, 0.0])
-    vec2 = np.cross(xhat, syn_dir)
+    vec2 = np.cross(xhat, syn_dir)  # -yhat if syn_dir is zhat
 
     if "dirmag" not in dfpackets.columns:
         dfpackets = dfpackets.with_columns(
@@ -571,6 +559,7 @@ def add_packet_directions_lazypolars(dfpackets: pl.LazyFrame, syn_dir: tuple[flo
         )
 
     if "phi" not in dfpackets.columns:
+        # vec1 = dir cross syn_dir
         dfpackets = dfpackets.with_columns(
             ((pl.col("diry") * syn_dir[2] - pl.col("dirz") * syn_dir[1]) / pl.col("dirmag")).alias("vec1_x"),
             ((pl.col("dirz") * syn_dir[0] - pl.col("dirx") * syn_dir[2]) / pl.col("dirmag")).alias("vec1_y"),
@@ -587,14 +576,7 @@ def add_packet_directions_lazypolars(dfpackets: pl.LazyFrame, syn_dir: tuple[flo
             .alias("cosphi"),
         )
 
-        # vec1 = dir cross syn_dir
-        dfpackets = dfpackets.with_columns(
-            ((pl.col("diry") * syn_dir[2] - pl.col("dirz") * syn_dir[1]) / pl.col("dirmag")).alias("vec1_x"),
-            ((pl.col("dirz") * syn_dir[0] - pl.col("dirx") * syn_dir[2]) / pl.col("dirmag")).alias("vec1_y"),
-            ((pl.col("dirx") * syn_dir[1] - pl.col("diry") * syn_dir[0]) / pl.col("dirmag")).alias("vec1_z"),
-        )
-
-        vec3 = np.cross(vec2, syn_dir)
+        vec3 = np.cross(vec2, syn_dir)  # -xhat if syn_dir is zhat
 
         # arr_testphi = np.dot(arr_vec1, vec3)
         dfpackets = dfpackets.with_columns(
@@ -606,8 +588,8 @@ def add_packet_directions_lazypolars(dfpackets: pl.LazyFrame, syn_dir: tuple[flo
         dfpackets = dfpackets.with_columns(
             (
                 pl.when(pl.col("testphi") >= 0)
-                .then(pl.col("cosphi").arccos())
-                .otherwise(pl.col("cosphi").mul(-1.0).arccos() + np.pi)
+                .then(2 * math.pi - pl.col("cosphi").arccos())
+                .otherwise(pl.col("cosphi").arccos())
             )
             .cast(pl.Float32)
             .alias("phi"),
@@ -617,11 +599,12 @@ def add_packet_directions_lazypolars(dfpackets: pl.LazyFrame, syn_dir: tuple[flo
 
 
 def bin_packet_directions_lazypolars(
-    dfpackets: pl.LazyFrame,
+    dfpackets: pl.LazyFrame | pl.DataFrame,
     nphibins: int | None = None,
     ncosthetabins: int | None = None,
-    phibintype: t.Literal["artis_pi_reversal", "monotonic"] = "artis_pi_reversal",
+    phibintype: t.Literal["phidescending", "phiascending"] = "phidescending",
 ) -> pl.LazyFrame:
+    dfpackets = dfpackets.lazy()
     if nphibins is None:
         nphibins = at.get_viewingdirection_phibincount()
 
@@ -632,18 +615,17 @@ def bin_packet_directions_lazypolars(
         ((pl.col("costheta") + 1) / 2.0 * ncosthetabins).fill_nan(0.0).cast(pl.Int32).alias("costhetabin"),
     )
 
-    if phibintype == "monotonic":
+    if phibintype == "phiascending":
         dfpackets = dfpackets.with_columns(
-            (pl.col("phi") / 2.0 / np.pi * nphibins).fill_nan(0.0).cast(pl.Int32).alias("phibin"),
+            (pl.col("phi") / 2.0 / math.pi * nphibins).fill_nan(0.0).cast(pl.Int32).alias("phibin"),
         )
     else:
-        # for historical consistency, this binning is not monotonically increasing in phi angle,
-        # but switches to decreasing for phi > pi
+        # for historical consistency, this binning method decreases phi angle with increasing bin index
         dfpackets = dfpackets.with_columns(
             (
-                pl.when(pl.col("testphi") >= 0)
-                .then(pl.col("cosphi").arccos() / 2.0 / np.pi * nphibins)
-                .otherwise((pl.col("cosphi").arccos() + np.pi) / 2.0 / np.pi * nphibins)
+                pl.when(pl.col("testphi") > 0)
+                .then(pl.col("cosphi").arccos() / (2 * math.pi) * nphibins)
+                .otherwise((pl.col("cosphi").arccos() + math.pi) / (2 * math.pi) * nphibins)
             )
             .fill_nan(0.0)
             .cast(pl.Int32)
@@ -655,11 +637,14 @@ def bin_packet_directions_lazypolars(
     )
 
 
-def bin_packet_directions(modelpath: Path | str, dfpackets: pd.DataFrame) -> pd.DataFrame:
+def bin_packet_directions(
+    modelpath: Path | str, dfpackets: pd.DataFrame, syn_dir: tuple[float, float, float] | None = None
+) -> pd.DataFrame:
+    """Avoid this slow pandas function and use bin_packet_directions_lazypolars instead for new code."""
     nphibins = at.get_viewingdirection_phibincount()
     ncosthetabins = at.get_viewingdirection_costhetabincount()
 
-    syn_dir = at.get_syn_dir(Path(modelpath))
+    syn_dir = at.get_syn_dir(Path(modelpath)) if syn_dir is None else syn_dir
     xhat = np.array([1.0, 0.0, 0.0])
     vec2 = np.cross(xhat, syn_dir)
 
@@ -680,9 +665,9 @@ def bin_packet_directions(modelpath: Path | str, dfpackets: pd.DataFrame) -> pd.
 
     arr_phibin = np.zeros(len(pktdirvecs), dtype=int)
     filta = arr_testphi >= 0
-    arr_phibin[filta] = np.arccos(arr_cosphi[filta]) / 2.0 / np.pi * nphibins
+    arr_phibin[filta] = np.arccos(arr_cosphi[filta]) / 2.0 / math.pi * nphibins
     filtb = np.invert(filta)
-    arr_phibin[filtb] = (np.arccos(arr_cosphi[filtb]) + np.pi) / 2.0 / np.pi * nphibins
+    arr_phibin[filtb] = (np.arccos(arr_cosphi[filtb]) + math.pi) / 2.0 / math.pi * nphibins
     dfpackets["phibin"] = arr_phibin
     dfpackets["arccoscosphi"] = np.arccos(arr_cosphi)
 
