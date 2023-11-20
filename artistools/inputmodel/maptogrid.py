@@ -86,7 +86,14 @@ def kernelvals2(rij2: float, hmean: float, wij: np.ndarray) -> float:  # ist sch
 
 
 def maptogrid(
-    ejectasnapshotpath: Path, outputfolderpath: Path | str, ncoordgrid: int = 50, downsamplefactor: int = 1
+    ejectasnapshotpath: Path,
+    outputfolderpath: Path | str,
+    ncoordgrid: int = 50,
+    downsamplefactor: int = 1,
+    dtextra_seconds: float = 0.5,
+    setgrid_fractionrmax: float = 0.5,
+    modifysmoothinglength: str = "option4",
+    shinglesetal23hbug: bool = False,
 ) -> None:
     if not ejectasnapshotpath.is_file():
         print(f"{ejectasnapshotpath} not found")
@@ -159,14 +166,14 @@ def maptogrid(
     dfsnapshot = pl.from_pandas(dfsnapshot)
 
     logprint(dfsnapshot)
+    logprint(f"ncoordgrid: {ncoordgrid}")
 
     assert len(dfsnapshot.columns) == len(snapshot_columns_used)
 
     npart = len(dfsnapshot)
 
     # Propagate particles to dtextra using velocities
-    dtextra_seconds = 0.5  # in seconds ---  dtextra = 0.0 # for no extrapolation
-
+    logprint(f"Propagating particles for dtextra_seconds={dtextra_seconds}")
     dtextra = dtextra_seconds / 4.926e-6  # convert to geom units.
     dfsnapshot = dfsnapshot.with_columns(dis_orig=(pl.col("x") ** 2 + pl.col("y") ** 2 + pl.col("z") ** 2).sqrt())
 
@@ -223,9 +230,11 @@ def maptogrid(
     # ...
 
     # set up grid
-
-    x0 = -0.5 * rmax  # 90% is hand waving - choose #
-
+    logprint(
+        f"setgrid_fractionrmax={setgrid_fractionrmax}: gridmax is set to {setgrid_fractionrmax}*rmax of the SPH particles"
+    )
+    x0 = -setgrid_fractionrmax * rmax  # Set x0 (gridmax) to a fraction of the maximum radius of the SPH particles
+    # Default is 50% (but is hand waving - choose) #
     # x0 = - rmean
 
     dx = 2.0 * abs(x0) / (ncoordgrid)  # -1 to be symmetric, right?
@@ -248,6 +257,10 @@ def maptogrid(
 
     particlesused = set()
     particlesinsidegrid = set()
+
+    logprint(f"modifysmoothinglength: {modifysmoothinglength}")
+    if shinglesetal23hbug:
+        logprint("WARNING: including shinglesetal23hbug")
 
     for n in range(npart):
         maxdist = 2.0 * h[n]
@@ -274,30 +287,38 @@ def maptogrid(
         ]
 
         for i, j, k, dis2 in searchcoords:
-            # -- change h by hand --------- we could do these particle thinsg also further up
+            if modifysmoothinglength != "False":
+                # -- change h by hand --------- we could do these particle thinsg also further up
 
-            # option 1 minimum that no particle is lost
+                # option 1 minimum that no particle is lost
 
-            # option 2 increase smoothing everywhere, i.e. less holes but also less strcuture
+                # option 2 increase smoothing everywhere, i.e. less holes but also less strcuture
 
-            # option 3 increase smoothing beyond some distance
+                # option 3 increase smoothing beyond some distance
 
-            # options can be combined, i.e. option 1 alone fills the hole in the center
-            # (which we could also replace by later ejecta)
+                # options can be combined, i.e. option 1 alone fills the hole in the center
+                # (which we could also replace by later ejecta)
+                if modifysmoothinglength == "option1":
+                    h[n] = max(h[n], 1.5 * dx)  # option 1
 
-            # h[n] = max(h[n],1.5*dx) # option 1
+                dis = math.sqrt(x[n] * x[n] + y[n] * y[n] + z[n] * z[n])
 
-            # h[n] = max(h[n],0.25*dis) #  option 2
+                if modifysmoothinglength == "option2":
+                    h[n] = max(h[n], 0.25 * dis)  #  option 2
 
-            dis = math.sqrt(x[n] * x[n] + y[n] * y[n] + z[n] * z[n])
+                if modifysmoothinglength == "option3" and dis > 1.5 * rmean:
+                    h[n] = max(h[n], 0.4 * dis)  # option 3
 
-            # if (dis>1.5*rmean) h[n]=max(h[n],0.4*dis) # option 3
-            if dis > rmean:
-                h[n] = max(h[n], hmean * 1.5)
+                # option 4 (default) -- for particles with radius > mean particle radius choose the larger h
+                # from the particle h and 150% of the mean h for all particles
+                if modifysmoothinglength == "option4" and dis > rmean:
+                    h[n] = max(h[n], hmean * 1.5)
 
-            # -------------------------------
+                if not shinglesetal23hbug:
+                    maxdist2 = (2.0 * h[n]) ** 2
+                # -------------------------------
 
-            # or via neighbors  - not yet implemented
+                # or via neighbors  - not yet implemented
 
             if dis2 <= maxdist2:
                 wtij = kernelvals2(dis2, h[n], wij)
@@ -367,6 +388,8 @@ def maptogrid(
                 if grho[i, j, k] < 1.0e-20 and dis < rmean:
                     nzerocentral = nzerocentral + 1
 
+    logprint(f"fraction of total mass on grid {gmass / totmass}")
+
     logprint(
         f"{'WARNING!' if gmass / totmass < 0.9 else ''} mass on grid from rho*V: {gmass} mass of particles: {totmass} "
     )
@@ -412,11 +435,44 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-ncoordgrid", type=int, default=50, help="Number of grid positions per axis (numcells = ncoordgrid^3)"
     )
     parser.add_argument(
+        "-dtextra_seconds",
+        type=float,
+        default=0.5,
+        help="Time in seconds to propagate SPH particles ballistically after end of SPH simulation."
+        " 0 for no extrapolation",
+    )
+    parser.add_argument(
+        "-setgrid_fractionrmax",
+        type=float,
+        default=0.5,
+        help="Setup grid to have max equal to fraction of particle rmax. Default is 50% of rmax.",
+    )
+    parser.add_argument(
         "-downsamplefactor",
         type=int,
         default=1,
         help="Randomly sample particles, reducing the number by this factor (e.g. 2 will ignore half of the particles)",
     )
+    parser.add_argument(
+        "-modifysmoothinglength",
+        default="option4",
+        choices=[
+            "option1",
+            "option2",
+            "option3",
+            "option4",
+            "False",
+        ],  # We should choose if the default should be false and how we want to name these
+        help="Option to modify smoothing length h. Choose from options."
+        "Default modifies h. Set to False for no modifications to h.",
+    )
+
+    parser.add_argument(
+        "--shinglesetal23hbug",
+        action="store_true",
+        help="Reproduce Shingles et al. 2023 method with a bug that increased h in outer regions but did not update the maximum distance from particle to cell midpoints",
+    )
+
     parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")
 
 
@@ -440,6 +496,10 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         ncoordgrid=args.ncoordgrid,
         outputfolderpath=args.outputpath,
         downsamplefactor=args.downsamplefactor,
+        dtextra_seconds=args.dtextra_seconds,
+        setgrid_fractionrmax=args.setgrid_fractionrmax,
+        modifysmoothinglength=args.modifysmoothinglength,
+        shinglesetal23hbug=args.shinglesetal23hbug,
     )
 
 
