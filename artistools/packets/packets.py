@@ -13,7 +13,7 @@ import polars as pl
 import artistools as at
 
 # for the parquet files
-time_parquetschemachange = (2023, 4, 22, 12, 31, 0)
+time_parquetschemachange = (2023, 11, 19, 12, 0, 0)
 
 CLIGHT = 2.99792458e10
 DAY = 86400
@@ -525,12 +525,11 @@ def get_directionbin(
 
     vec3 = np.cross(vec2, syn_dir)
     testphi = np.dot(vec1, vec3)
-    # phi = math.acos(cosphi) if testphi > 0 else (math.acos(-cosphi) + np.pi)
 
     phibin = (
-        int(math.acos(cosphi) / 2.0 / np.pi * nphibins)
+        int(math.acos(cosphi) / 2.0 / math.pi * nphibins)
         if testphi >= 0
-        else int((math.acos(cosphi) + np.pi) / 2.0 / np.pi * nphibins)
+        else int((math.acos(cosphi) + math.pi) / 2.0 / math.pi * nphibins)
     )
 
     return (costhetabin * nphibins) + phibin
@@ -595,8 +594,8 @@ def add_packet_directions_lazypolars(
         dfpackets = dfpackets.with_columns(
             (
                 pl.when(pl.col("testphi") >= 0)
-                .then(pl.col("cosphi").arccos())
-                .otherwise(pl.col("cosphi").mul(-1.0).arccos() + np.pi)
+                .then(2 * math.pi - pl.col("cosphi").arccos())
+                .otherwise(pl.col("cosphi").arccos())
             )
             .cast(pl.Float32)
             .alias("phi"),
@@ -609,7 +608,7 @@ def bin_packet_directions_lazypolars(
     dfpackets: pl.LazyFrame | pl.DataFrame,
     nphibins: int | None = None,
     ncosthetabins: int | None = None,
-    phibintype: t.Literal["artis_pi_reversal", "monotonic"] = "artis_pi_reversal",
+    phibintype: t.Literal["phidescending", "phiascending"] = "phidescending",
 ) -> pl.LazyFrame:
     dfpackets = dfpackets.lazy()
     if nphibins is None:
@@ -622,18 +621,17 @@ def bin_packet_directions_lazypolars(
         ((pl.col("costheta") + 1) / 2.0 * ncosthetabins).fill_nan(0.0).cast(pl.Int32).alias("costhetabin"),
     )
 
-    if phibintype == "monotonic":
+    if phibintype == "phiascending":
         dfpackets = dfpackets.with_columns(
-            (pl.col("phi") / 2.0 / np.pi * nphibins).fill_nan(0.0).cast(pl.Int32).alias("phibin"),
+            (pl.col("phi") / 2.0 / math.pi * nphibins).fill_nan(0.0).cast(pl.Int32).alias("phibin"),
         )
     else:
-        # for historical consistency, this binning is not monotonically increasing in phi angle,
-        # but switches to decreasing for phi > pi
+        # for historical consistency, this binning method decreases phi angle with increasing bin index
         dfpackets = dfpackets.with_columns(
             (
-                pl.when(pl.col("testphi") >= 0)
-                .then(pl.col("cosphi").arccos() / 2.0 / np.pi * nphibins)
-                .otherwise((pl.col("cosphi").arccos() + np.pi) / 2.0 / np.pi * nphibins)
+                pl.when(pl.col("testphi") > 0)
+                .then(pl.col("cosphi").arccos() / (2 * math.pi) * nphibins)
+                .otherwise((pl.col("cosphi").arccos() + math.pi) / (2 * math.pi) * nphibins)
             )
             .fill_nan(0.0)
             .cast(pl.Int32)
@@ -648,6 +646,7 @@ def bin_packet_directions_lazypolars(
 def bin_packet_directions(
     modelpath: Path | str, dfpackets: pd.DataFrame, syn_dir: tuple[float, float, float] | None = None
 ) -> pd.DataFrame:
+    """Avoid this slow pandas function and use bin_packet_directions_lazypolars instead for new code."""
     nphibins = at.get_viewingdirection_phibincount()
     ncosthetabins = at.get_viewingdirection_costhetabincount()
 
@@ -672,9 +671,9 @@ def bin_packet_directions(
 
     arr_phibin = np.zeros(len(pktdirvecs), dtype=int)
     filta = arr_testphi >= 0
-    arr_phibin[filta] = np.arccos(arr_cosphi[filta]) / 2.0 / np.pi * nphibins
+    arr_phibin[filta] = np.arccos(arr_cosphi[filta]) / 2.0 / math.pi * nphibins
     filtb = np.invert(filta)
-    arr_phibin[filtb] = (np.arccos(arr_cosphi[filtb]) + np.pi) / 2.0 / np.pi * nphibins
+    arr_phibin[filtb] = (np.arccos(arr_cosphi[filtb]) + math.pi) / 2.0 / math.pi * nphibins
     dfpackets["phibin"] = arr_phibin
     dfpackets["arccoscosphi"] = np.arccos(arr_cosphi)
 
