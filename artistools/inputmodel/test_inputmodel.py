@@ -108,7 +108,7 @@ def verify_file_checksums(checksums_expected: dict, digest: str = "sha256", fold
 
 def test_makeartismodelfrom_sph_particles() -> None:
     gridfolderpath = outputpath / "kilonova"
-    outpath_kn = outputpath / "kilonova"
+
     config_checksums_3d: list[dict[str, dict[str, t.Any]]] = [
         {
             "maptogridargs": {"ncoordgrid": 16, "shinglesetal23hbug": True},
@@ -143,8 +143,6 @@ def test_makeartismodelfrom_sph_particles() -> None:
             testdatapath / "kilonova", gridfolderpath, dirs_exist_ok=True, ignore=shutil.ignore_patterns("trajectories")
         )
 
-        shutil.copyfile(gridfolderpath / "gridcontributions_maptogrid.txt", gridfolderpath / "gridcontributions.txt")
-
         at.inputmodel.maptogrid.main(
             argsraw=[], inputpath=gridfolderpath, outputpath=gridfolderpath, **config["maptogridargs"]
         )
@@ -158,6 +156,9 @@ def test_makeartismodelfrom_sph_particles() -> None:
         dfcontribs = {}
         for dimensions in [3, 2, 1, 0]:
             outpath_kn = outputpath / f"kilonova_{dimensions:d}d"
+            outpath_kn.mkdir(exist_ok=True, parents=True)
+
+            shutil.copyfile(gridfolderpath / "gridcontributions.txt", outpath_kn / "gridcontributions.txt")
 
             at.inputmodel.modelfromhydro.main(
                 argsraw=[],
