@@ -205,6 +205,18 @@ def test_makeartismodelfrom_sph_particles() -> None:
                         )
 
 
+def test_makeartismodelfrom_fortrangriddat() -> None:
+    gridfolderpath = testdatapath / "kilonova"
+    outpath_kn = outputpath / "kilonova"
+    at.inputmodel.modelfromhydro.main(
+        argsraw=[],
+        gridfolderpath=gridfolderpath,
+        outputpath=outpath_kn,
+        dimensions=3,
+        targetmodeltime_days=0.1,
+    )
+
+
 def test_make1dmodelfromcone() -> None:
     at.inputmodel.slice1dfromconein3dmodel.main(argsraw=[], modelpath=[modelpath_3d], outputpath=outputpath, axis="-z")
 
