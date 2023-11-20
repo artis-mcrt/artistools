@@ -142,7 +142,7 @@ def plot_2d_initial_abundances(modelpath, args=None) -> None:
         )
 
     if modelmeta["dimensions"] == 3:
-        sliceaxis: AxisType = "z"
+        sliceaxis: AxisType = args.sliceaxis
 
         axeschars: list[AxisType] = ["x", "y", "z"]
         plotaxis1 = next(ax for ax in axeschars if ax != sliceaxis)
@@ -409,6 +409,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("-floorval", default=False, type=float, help="Set a floor value for colorscale. Expects float.")
 
+    parser.add_argument(
+        "-axis",
+        default="+z",
+        choices=["x", "y", "z", "+x", "-x", "+y", "-y", "+z", "-z"],
+        help="Choose an axis for use with args.readonlymgi. Hint: for negative use e.g. -axis=-z",
+    )
+
 
 def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
     """Plot ARTIS input model composition."""
@@ -418,6 +425,11 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         parser.set_defaults(**kwargs)
         argcomplete.autocomplete(parser)
         args = parser.parse_args(argsraw)
+
+    if args.axis[0] in {"+", "-"}:
+        args.positive_axis = args.axis[0] == "+"
+        args.axis = args.axis[1]
+    args.sliceaxis = args.axis
 
     if not args.modelpath:
         args.modelpath = ["."]
