@@ -135,7 +135,7 @@ def read_modelfile_text(
         dfmodel = pl.read_csv(
             at.zopenpl(filename),
             separator=" ",
-            comment_char="#",
+            comment_prefix="#",
             new_columns=columns,
             n_rows=npts_model,
             has_header=False,
@@ -1026,7 +1026,7 @@ def get_initelemabundances_polars(
             at.zopenpl(abundancefilepath),
             has_header=False,
             separator=" ",
-            comment_char="#",
+            comment_prefix="#",
             infer_schema_length=0,
         )
 
