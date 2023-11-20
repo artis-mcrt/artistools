@@ -440,10 +440,9 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         args = parser.parse_args(argsraw)
 
     gridfolderpath = args.gridfolderpath
-    if not Path(gridfolderpath, "grid.dat").is_file() or not Path(gridfolderpath, "gridcontributions.txt").is_file():
-        print("grid.dat and gridcontributions.txt are required for abundances. Run artistools-maptogrid")
-    #     raise FileNotFoundError
-    # at.inputmodel.maptogrid.main()
+    if not Path(gridfolderpath, "grid.dat").is_file():
+        msg = "grid.dat is required. Run artistools maptogrid"
+        raise FileNotFoundError(msg)
 
     outputpath = Path(f"artismodel_{args.dimensions}d") if args.outputpath is None else Path(args.outputpath)
 
