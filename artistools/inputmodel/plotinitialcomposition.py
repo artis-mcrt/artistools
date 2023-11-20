@@ -59,8 +59,8 @@ def plot_slice_modelcolumn(ax, dfmodelslice, modelmeta, colname, plotaxis1, plot
 
     if args.logcolorscale:
         # logscale for colormap
-        floorval = 1e-16
-        colorscale = [floorval if x < floorval or not math.isfinite(x) else x for x in colorscale]
+        if args.floorval:
+            colorscale = [args.floorval if x < args.floorval or not math.isfinite(x) else x for x in colorscale]
         with np.errstate(divide="ignore"):
             colorscale = np.log10(colorscale)
         # np.nan_to_num(colorscale, posinf=-99, neginf=-99)
@@ -406,6 +406,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--plot3d", action="store_true", help="Make 3D plot")
 
     parser.add_argument("-surfaces3d", type=float, nargs="+", help="define positions of surfaces for 3D plots")
+
+    parser.add_argument("-floorval", default=False, type=float, help="Set a floor value for colorscale. Expects float.")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
