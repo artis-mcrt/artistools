@@ -541,7 +541,7 @@ def add_packet_directions_lazypolars(
     dfpackets = dfpackets.lazy()
     assert len(syn_dir) == 3
     xhat = np.array([1.0, 0.0, 0.0])
-    vec2 = np.cross(xhat, syn_dir)
+    vec2 = np.cross(xhat, syn_dir)  # -yhat if syn_dir is zhat
 
     if "dirmag" not in dfpackets.columns:
         dfpackets = dfpackets.with_columns(
@@ -559,6 +559,7 @@ def add_packet_directions_lazypolars(
         )
 
     if "phi" not in dfpackets.columns:
+        # vec1 = dir cross syn_dir
         dfpackets = dfpackets.with_columns(
             ((pl.col("diry") * syn_dir[2] - pl.col("dirz") * syn_dir[1]) / pl.col("dirmag")).alias("vec1_x"),
             ((pl.col("dirz") * syn_dir[0] - pl.col("dirx") * syn_dir[2]) / pl.col("dirmag")).alias("vec1_y"),
@@ -575,14 +576,7 @@ def add_packet_directions_lazypolars(
             .alias("cosphi"),
         )
 
-        # vec1 = dir cross syn_dir
-        dfpackets = dfpackets.with_columns(
-            ((pl.col("diry") * syn_dir[2] - pl.col("dirz") * syn_dir[1]) / pl.col("dirmag")).alias("vec1_x"),
-            ((pl.col("dirz") * syn_dir[0] - pl.col("dirx") * syn_dir[2]) / pl.col("dirmag")).alias("vec1_y"),
-            ((pl.col("dirx") * syn_dir[1] - pl.col("diry") * syn_dir[0]) / pl.col("dirmag")).alias("vec1_z"),
-        )
-
-        vec3 = np.cross(vec2, syn_dir)
+        vec3 = np.cross(vec2, syn_dir)  # -xhat if syn_dir is zhat
 
         # arr_testphi = np.dot(arr_vec1, vec3)
         dfpackets = dfpackets.with_columns(
