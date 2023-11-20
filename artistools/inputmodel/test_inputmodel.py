@@ -143,17 +143,10 @@ def test_makeartismodelfrom_sph_particles() -> None:
             testdatapath / "kilonova", gridfolderpath, dirs_exist_ok=True, ignore=shutil.ignore_patterns("trajectories")
         )
 
-    for dimensions in [3, 2, 1, 0]:
-        outpath_kn = outputpath / f"kilonova_{dimensions:d}d"
         shutil.copyfile(gridfolderpath / "gridcontributions_maptogrid.txt", gridfolderpath / "gridcontributions.txt")
 
-        at.inputmodel.modelfromhydro.main(
-            argsraw=[],
-            gridfolderpath=gridfolderpath,
-            trajectoryroot=testdatapath / "kilonova" / "trajectories",
-            outputpath=outpath_kn,
-            dimensions=dimensions,
-            targetmodeltime_days=0.1,
+        at.inputmodel.maptogrid.main(
+            argsraw=[], inputpath=gridfolderpath, outputpath=gridfolderpath, **config["maptogridargs"]
         )
 
         verify_file_checksums(
@@ -163,7 +156,7 @@ def test_makeartismodelfrom_sph_particles() -> None:
         )
 
         dfcontribs = {}
-        for dimensions in [3, 2, 1]:
+        for dimensions in [3, 2, 1, 0]:
             outpath_kn = outputpath / f"kilonova_{dimensions:d}d"
 
             at.inputmodel.modelfromhydro.main(
