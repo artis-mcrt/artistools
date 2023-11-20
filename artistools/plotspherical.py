@@ -75,7 +75,7 @@ def plot_spherical(
     # y=math.sin(-phi)
 
     dfpackets = at.packets.bin_packet_directions_lazypolars(
-        dfpackets=dfpackets, nphibins=nphibins, ncosthetabins=ncosthetabins, phibintype="monotonic"
+        dfpackets=dfpackets, nphibins=nphibins, ncosthetabins=ncosthetabins, phibintype="phiascending"
     )
 
     # for figuring out where the axes are on the plot, make a cut

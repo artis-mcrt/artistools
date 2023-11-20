@@ -1,66 +1,66 @@
-import itertools
 import math
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 import polars as pl
 
 import artistools as at
 
 
 def test_directionbins() -> None:
-    syn_dir = (0, 0, 1)
     nphibins = 10
     ncosthetabins = 10
     costhetabinlowers, costhetabinuppers, _ = at.get_costheta_bins(usedegrees=False)
     phibinlowers, phibinuppers, _ = at.get_phi_bins(usedegrees=False)
 
-    phitests = np.linspace(0.0, 2 * math.pi, nphibins * 5, endpoint=True)
-    costhetatests = np.linspace(0.001, 0.999, ncosthetabins * 5, endpoint=True)
+    testdirections = pl.DataFrame({"phi_defined": np.linspace(0.1, 2 * math.pi, nphibins * 2, endpoint=False)}).join(
+        pl.DataFrame({"costheta_defined": np.linspace(0.0, 1.0, ncosthetabins * 2, endpoint=False)}), how="cross"
+    )
 
-    for phi, costheta in itertools.product(phitests, costhetatests):
-        # Luke: The negative on the diry is inconsistent with the virtual packet observer definition
-        # but is consistent with angle-resolved exspec bin definitions
-        dirx = math.sqrt(1.0 - costheta * costheta) * math.cos(phi)
-        diry = -math.sqrt(1.0 - costheta * costheta) * math.sin(phi)
-        dirz = costheta
+    syn_dir = (0, 0, 1)
+    testdirections = testdirections.with_columns(
+        dirx=((1.0 - pl.col("costheta_defined").pow(2)).sqrt() * pl.col("phi_defined").cos()),
+        diry=((1.0 - pl.col("costheta_defined").pow(2)).sqrt() * pl.col("phi_defined").sin()),
+        dirz=pl.col("costheta_defined"),
+    )
 
-        packets = pl.DataFrame({"dirx": [dirx], "diry": [diry], "dirz": [dirz]})
-        packets = at.packets.add_packet_directions_lazypolars(packets, syn_dir=syn_dir).collect()
-        packets = at.packets.bin_packet_directions_lazypolars(packets).collect()
+    testdirections = at.packets.add_packet_directions_lazypolars(testdirections, syn_dir=syn_dir).collect()
+    testdirections = at.packets.bin_packet_directions_lazypolars(testdirections).collect()
 
-        assert np.isclose(
-            costheta, float(packets.item(0, "costheta")), rtol=1e-4, atol=1e-4
-        ), f"{costheta} != {packets['costheta'][0]}"
+    for pkt in testdirections.iter_rows(named=True):
+        assert np.isclose(pkt["dirx"] ** 2 + pkt["diry"] ** 2 + pkt["dirz"] ** 2, 1.0, rtol=0.001)
 
-        assert np.isclose(phi, float(packets.item(0, "phi")), rtol=1e-4, atol=1e-4), f"{phi} != {packets['phi'][0]}"
+        assert np.isclose(pkt["costheta_defined"], pkt["costheta"], rtol=1e-4, atol=1e-4)
 
-        costhetabin = int(packets.item(0, "costhetabin"))
-        phibin = packets.item(0, "phibin")
-        dirbin = packets.item(0, "dirbin")
+        assert np.isclose(pkt["phi_defined"], pkt["phi"], rtol=1e-4, atol=1e-4)
 
         dirbin2 = at.packets.get_directionbin(
-            dirx, diry, dirz, nphibins=nphibins, ncosthetabins=ncosthetabins, syn_dir=syn_dir
-        )
-        assert dirbin2 == dirbin, f"{dirbin2} != {dirbin}, {phi}, {costheta}"
-        costhetabin2 = dirbin2 // nphibins
-        phibin2 = dirbin2 % nphibins
-        assert costhetabin2 == costhetabin
-        assert phibin2 == phibin
-
-        pddfpackets = at.packets.bin_packet_directions(
-            dfpackets=pd.DataFrame({"dirx": [dirx], "diry": [diry], "dirz": [dirz]}),
-            modelpath=Path(),
-            syn_dir=syn_dir,
+            pkt["dirx"], pkt["diry"], pkt["dirz"], nphibins=nphibins, ncosthetabins=ncosthetabins, syn_dir=syn_dir
         )
 
-        assert pddfpackets["dirbin"][0] == dirbin, f"{pddfpackets['dirbin'][0]} != {dirbin}"
-        assert pddfpackets["costhetabin"][0] == costhetabin, f"{pddfpackets['costhetabin'][0]} != {costhetabin}"
-        assert pddfpackets["phibin"][0] == phibin, f"{pddfpackets['phibin'][0]} != {phibin}"
+        assert dirbin2 == pkt["dirbin"]
 
-        assert costhetabinlowers[costhetabin] <= costheta * 1.01
-        assert costhetabinuppers[costhetabin] > costheta * 0.99
+        assert pkt["costhetabin"] == dirbin2 // nphibins
+        assert pkt["phibin"] == dirbin2 % nphibins
 
-        assert phibinlowers[phibin] <= phi
-        assert phibinuppers[phibin] >= phi
+        assert costhetabinlowers[pkt["costhetabin"]] <= pkt["costheta_defined"] * 1.01
+        assert costhetabinuppers[pkt["costhetabin"]] > pkt["costheta_defined"] * 0.99
+
+        assert phibinlowers[pkt["phibin"]] <= pkt["phi_defined"]
+        assert phibinuppers[pkt["phibin"]] >= pkt["phi_defined"]
+
+        # print(dirx, diry, dirz, dirbin, costhetabin, phibin)
+
+    testdirections_pandas = testdirections.to_pandas(use_pyarrow_extension_array=False)
+
+    pddfpackets = at.packets.bin_packet_directions(
+        dfpackets=testdirections_pandas,
+        modelpath=Path(),
+        syn_dir=syn_dir,
+    )
+
+    for row in pddfpackets.itertuples(index=True):
+        assert np.isclose(row.costheta_defined, row.costheta, rtol=1e-4, atol=1e-4)
+        assert np.isclose(row.phi_defined, row.phi, rtol=1e-4, atol=1e-4)
+
+        assert np.isclose(testdirections.item(row[0], "dirbin"), row.dirbin, rtol=1e-4, atol=1e-4)
