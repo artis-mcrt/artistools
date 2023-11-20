@@ -165,6 +165,7 @@ ignore = [
     "D213",  # multi-line-summary-second-line
     "D417",  # undocumented-param
     "E501", # Line too long
+    "E1121", # Too many positional arguments for function call
     "ERA001",  # commented-out-code
     "FBT",
     "FIX002",  # line contains TODO
