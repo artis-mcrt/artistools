@@ -6,6 +6,7 @@ Examples are temperatures, populations, and heating/cooling rates.
 import argparse
 import contextlib
 import itertools
+import math
 import multiprocessing
 import sys
 import time
@@ -191,7 +192,7 @@ def read_estimators_from_file(
 
                     if variablename in {"Alpha_R*nne", "AlphaR*nne"}:
                         estimblock[f"Alpha_R_{ionstr}"] = (
-                            value_thision / estimblock["nne"] if estimblock["nne"] > 0.0 else float("inf")
+                            value_thision / estimblock["nne"] if estimblock["nne"] > 0.0 else math.inf
                         )
 
                     elif variablename == "populations":
@@ -419,7 +420,7 @@ def get_averaged_estimators(
             valuesum += value * tdelta
             tdeltasum += tdelta
 
-        dictout[k] = valuesum / tdeltasum if tdeltasum > 0 else float("NaN")
+        dictout[k] = valuesum / tdeltasum if tdeltasum > 0 else math.nan
 
     return dictout
 

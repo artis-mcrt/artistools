@@ -890,7 +890,7 @@ def save_modeldata(
     dfmodel = dfmodel.with_columns(pl.col("inputcellid").cast(pl.Int32))
     customcols = [col for col in dfmodel.columns if col not in standardcols]
     customcols.sort(
-        key=lambda col: at.get_z_a_nucname(col) if col.startswith("X_") else (float("inf"), 0)
+        key=lambda col: at.get_z_a_nucname(col) if col.startswith("X_") else (math.inf, 0)
     )  # sort columns by atomic number, mass number
 
     if outpath is None:
@@ -978,7 +978,7 @@ def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist: t.Sequenc
     if velocity < arr_vouter[index_closestvouter + 1]:
         return mgilist[index_closestvouter + 1]
     if np.isnan(velocity):
-        return float("nan")
+        return math.nan
 
     print(f"Can't find cell with velocity of {velocity}. Velocity list: {arr_vouter}")
     raise AssertionError
