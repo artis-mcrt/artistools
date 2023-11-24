@@ -160,7 +160,7 @@ def read_reference_estimators(
                                 estimators[tsmgi][f"nnelement_{elsym}"] += ionpop
 
                         except ValueError:
-                            estimators[tsmgi][f"nnion_{ionstr}"] = float("NaN")
+                            estimators[tsmgi][f"nnion_{ionstr}"] = math.nan
 
                     assert np.isclose(float(row[0]), estimators[tsmgi]["vel_mid"], rtol=0.01)
                     assert estimators[key]["vel_mid"]

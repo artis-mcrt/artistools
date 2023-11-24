@@ -6,11 +6,15 @@ on:
     workflow_dispatch:
 
 permissions:
+    contents: write
     pull-requests: write
 
 jobs:
     upgrade:
         runs-on: ubuntu-latest
+        permissions:
+            contents: write
+            pull-requests: write
         env:
             GITHUB_TOKEN: ${{ github.token }}
         steps:
@@ -36,7 +40,7 @@ jobs:
             - uses: peter-evans/create-pull-request@v5
               with:
                   token: ${{ secrets.GITHUB_TOKEN }}
-                  branch: update/pre-commit-hooks
-                  title: Update pre-commit hooks
-                  commit-message: 'chore: update pre-commit hooks'
-                  body: Update versions of pre-commit hooks to latest version.
+                  branch: update/packages
+                  title: Update packages
+                  commit-message: 'chore: update pre-commit hooks and packages'
+                  body: Update versions of pre-commit hooks and python packages to latest versions.

@@ -58,7 +58,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     )
 
     dfmodel = dfmodel.filter(pl.col("rho") > 0.0)
-    dfmodel = dfmodel.drop(["X_Fegroup", "X_n"])  # skip special X_Fegroup and don't confuse neutrons with Nitrogen
+    dfmodel = dfmodel.drop(["X_n"])  # don't confuse neutrons with Nitrogen
 
     if args.noabund:
         dfmodel = dfmodel.drop(pl.selectors.starts_with("X_"))
@@ -92,6 +92,17 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         if modelmeta["dimensions"] == 2:
             vmax_corner_2d = math.sqrt(2 * vmax**2)
             print(f"  2D corner vmax: {vmax_corner_2d:.2e} cm/s ({vmax_corner_2d * 1e-5 / 299792.458:.2f} * c)")
+
+    minrho = dfmodel.select(pl.col("rho").min()).collect().item(0, 0)
+    minrho_cellcount = (
+        dfmodel.filter(pl.col("rho") == minrho)
+        .group_by("rho", maintain_order=False)
+        .agg(pl.count("inputcellid").alias("count_inputcellid"))
+        .select("count_inputcellid")
+        .collect()
+        .item(0, 0)
+    )
+    print(f"  min density: {minrho:.2e} g/cm^3. Cells with this density: {minrho_cellcount}")
 
     if args.cell is not None:
         mgi = int(args.cell)
@@ -174,7 +185,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     mass_msun_actinides = 0.0
     speciesmasses: dict[str, float] = {}
 
-    for column in dfmodel.select(pl.selectors.starts_with("X_")).columns:
+    for column in dfmodel.select(pl.selectors.starts_with("X_") - pl.selectors.by_name("X_Fegroup")).columns:
         species = column.replace("X_", "")
 
         speciesabund_g = dfmodel.select(pl.col(column).dot(pl.col("mass_g"))).collect().item(0, 0)
@@ -217,6 +228,12 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             f'  {"M_tot_iso":19s} {mass_msun_isotopes:8.5f} MSun ({mass_msun_isotopes / mass_msun_rho * 100:6.2f}% '
             "of M_tot_rho, but can be < 100% if stable isotopes not tracked)"
         )
+
+    mass_msun_fegroup = dfmodel.select(pl.col("X_Fegroup").dot(pl.col("mass_g"))).collect().item(0, 0) / msun_g
+    print(
+        f'  {"M_Fegroup":19s} {mass_msun_fegroup:8.5f} MSun'
+        f" ({mass_msun_fegroup / mass_msun_rho * 100:6.2f}% of M_tot_rho)"
+    )
 
     print(
         f'  {"M_lanthanide_isosum":19s} {mass_msun_lanthanides:8.5f} MSun'
