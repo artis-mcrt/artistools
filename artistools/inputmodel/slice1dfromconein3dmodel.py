@@ -101,7 +101,7 @@ def make_1d_profile(args):
     )  # Remove columns we don't need
 
     if args.rhoscale:
-        print(f"Scaling density by a factor of {args.rhoscale}")
+        logprint("Scaling density by a factor of:", args.rhoscale)
         slice1d["rho"] = slice1d["rho"] * args.rhoscale
 
     slice1d["rho"] = slice1d["rho"].apply(lambda x: np.log10(x) if x != 0 else -100)
