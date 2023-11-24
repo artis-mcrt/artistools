@@ -100,6 +100,10 @@ def make_1d_profile(args):
         ["inputcellid", f"pos_{args.other_axis1}_min", f"pos_{args.other_axis2}_min"], axis=1
     )  # Remove columns we don't need
 
+    if args.rhoscale:
+        print(f"Scaling density by a factor of {args.rhoscale}")
+        slice1d["rho"] = slice1d["rho"] * args.rhoscale
+
     slice1d["rho"] = slice1d["rho"].apply(lambda x: np.log10(x) if x != 0 else -100)
     # slice1d = slice1d[slice1d['rho_model'] != -100]  # Remove empty cells
     # TODO: fix this, -100 probably breaks things if it's not one of the outer cells that gets chopped
@@ -220,6 +224,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")
+
+    parser.add_argument("-rhoscale", "-v", default=None, type=float, help="Density scale factor")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs: t.Any) -> None:
