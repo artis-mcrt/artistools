@@ -380,7 +380,7 @@ def plot_artis_lightcurve(
             " range of validity: could not determine due to missing files "
             "(requires deposition.out, input.txt, model.txt)"
         )
-        nts_last, validrange_start_days, validrange_end_days = None, float("-inf"), float("inf")
+        nts_last, validrange_start_days, validrange_end_days = None, -math.inf, math.inf
 
     colorindex = None
     for dirbin in dirbins:

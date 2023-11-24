@@ -19,7 +19,7 @@ import polars.selectors as cs
 
 import artistools as at
 
-colors_tab10 = list(plt.get_cmap("tab10")(np.linspace(0, 1.0, 10)))
+colors_tab10: list[str] = list(plt.get_cmap("tab10")(np.linspace(0, 1.0, 10)))
 
 # reserve colours for these elements
 elementcolors = {
@@ -29,25 +29,19 @@ elementcolors = {
 }
 
 
-def get_elemcolor(atomic_number=None, elsymbol=None):
+def get_elemcolor(atomic_number: int | None = None, elsymbol: str | None = None) -> str | np.ndarray:
     """Get the colour of an element from the reserved color list (reserving a new one if needed)."""
     assert (atomic_number is None) != (elsymbol is None)
     if atomic_number is not None:
         elsymbol = at.get_elsymbol(atomic_number)
-
+    assert elsymbol is not None
     # assign a new colour to this element if needed
 
     return elementcolors.setdefault(elsymbol, colors_tab10[len(elementcolors)])
 
 
-def get_ylabel(variable):
-    if variable in at.estimators.get_variablelongunits():
-        return at.estimators.get_variablelongunits()[variable]
-    if variable in at.estimators.get_variableunits():
-        return f"[{at.estimators.get_variableunits()[variable]}]"
-    if variable.split("_")[0] in at.estimators.get_variableunits():
-        return f'[{at.estimators.get_variableunits()[variable.split("_")[0]]}]'
-    return ""
+def get_ylabel(variable: str) -> str:
+    return at.estimators.get_variablelongunits(variable) or at.estimators.get_units_string(variable)
 
 
 def plot_init_abundances(
@@ -136,7 +130,7 @@ def plot_average_ionisation_excitation(
     startfromzero: bool,
     args=None,
     **plotkwargs,
-):
+) -> None:
     if seriestype == "averageexcitation":
         ax.set_ylabel("Average excitation [eV]")
     elif seriestype == "averageionisation":
@@ -180,7 +174,7 @@ def plot_average_ionisation_excitation(
             if tdeltasum == 0.0:
                 msg = f"ERROR: No excitation data found for {paramvalue}"
                 raise ValueError(msg)
-            ylist.append(exc_ev_times_tdelta_sum / tdeltasum if tdeltasum > 0 else float("nan"))
+            ylist.append(exc_ev_times_tdelta_sum / tdeltasum if tdeltasum > 0 else math.nan)
 
         elif seriestype == "averageionisation":
             elsymb = at.get_elsymbol(atomic_number)
@@ -252,7 +246,7 @@ def plot_levelpop(
     modelpath: str | Path,
     args: argparse.Namespace,
     **plotkwargs: t.Any,
-):
+) -> None:
     if seriestype == "levelpopulation_dn_on_dvel":
         ax.set_ylabel("dN/dV [{}km$^{{-1}}$ s]")
         ax.yaxis.set_major_formatter(at.plottools.ExponentLabelFormatter(ax.get_ylabel(), useMathText=True))
@@ -569,6 +563,7 @@ def get_xlist(
             xvalue=(pl.col(velcolumn) / scalefactor), plotpointid=pl.col("modelgridindex")
         )
     else:
+        assert xvariable in estimators.columns
         estimators = estimators.with_columns(xvalue=pl.col(xvariable), plotpointid=pl.col("modelgridindex"))
 
     # single valued line plot
@@ -609,7 +604,7 @@ def plot_subplot(
     estimators: pl.LazyFrame,
     args: argparse.Namespace,
     **plotkwargs: t.Any,
-):
+) -> None:
     """Make plot from ARTIS estimators."""
     # these three lists give the x value, modelgridex, and a list of timesteps (for averaging) for each plot of the plot
     showlegend = False
@@ -735,7 +730,7 @@ def make_plot(
     plotlist,
     args: t.Any,
     **plotkwargs: t.Any,
-):
+) -> str:
     modelname = at.get_model_name(modelpath)
 
     fig, axes = plt.subplots(

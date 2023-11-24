@@ -6,6 +6,7 @@ Examples are temperatures, populations, and heating/cooling rates.
 import argparse
 import contextlib
 import itertools
+import math
 import multiprocessing
 import sys
 import time
@@ -20,7 +21,7 @@ import polars as pl
 import artistools as at
 
 
-def get_variableunits(key: str | None = None) -> str | dict[str, str]:
+def get_variableunits(key: str) -> str | None:
     variableunits = {
         "time": "days",
         "gamma_NT": "s^-1",
@@ -42,17 +43,18 @@ def get_variableunits(key: str | None = None) -> str | dict[str, str]:
         **{f"vel_{ax}_mid": "cm/s" for ax in ["x", "y", "z", "r", "rcyl"]},
         **{f"vel_{ax}_mid_on_c": "c" for ax in ["x", "y", "z", "r", "rcyl"]},
     }
-    return variableunits[key] if key else variableunits
+
+    return variableunits.get(key) or variableunits.get(key.split("_")[0])
 
 
-def get_variablelongunits(key: str | None = None) -> str | dict[str, str]:
+def get_variablelongunits(key: str) -> str | None:
     variablelongunits = {
         "heating_dep/total_dep": "",
         "TR": "Temperature [K]",
         "Te": "Temperature [K]",
         "TJ": "Temperature [K]",
     }
-    return variablelongunits[key] if key else variablelongunits
+    return variablelongunits.get(key)
 
 
 def get_varname_formatted(varname: str) -> str:
@@ -117,11 +119,7 @@ def get_ionrecombrates_fromfile(filename: Path | str) -> pd.DataFrame:
 
 
 def get_units_string(variable: str) -> str:
-    if variable in get_variableunits():
-        return f" [{get_variableunits(variable)}]"
-    if variable.split("_")[0] in get_variableunits():
-        return f' [{get_variableunits(variable.split("_")[0])}]'
-    return ""
+    return f" [{units}]" if (units := get_variableunits(variable)) else ""
 
 
 def read_estimators_from_file(
@@ -191,7 +189,7 @@ def read_estimators_from_file(
 
                     if variablename in {"Alpha_R*nne", "AlphaR*nne"}:
                         estimblock[f"Alpha_R_{ionstr}"] = (
-                            value_thision / estimblock["nne"] if estimblock["nne"] > 0.0 else float("inf")
+                            value_thision / estimblock["nne"] if estimblock["nne"] > 0.0 else math.inf
                         )
 
                     elif variablename == "populations":
@@ -419,7 +417,7 @@ def get_averaged_estimators(
             valuesum += value * tdelta
             tdeltasum += tdelta
 
-        dictout[k] = valuesum / tdeltasum if tdeltasum > 0 else float("NaN")
+        dictout[k] = valuesum / tdeltasum if tdeltasum > 0 else math.nan
 
     return dictout
 

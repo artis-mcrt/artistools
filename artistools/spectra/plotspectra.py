@@ -4,6 +4,7 @@
 
 
 import argparse
+import math
 import sys
 import typing as t
 from pathlib import Path
@@ -136,7 +137,7 @@ def plot_reference_spectrum(
             # specdata = specdata.query("lambda_angstroms < @band_low or lambda_angstroms > @band_high")
             specdata.loc[
                 (specdata["lambda_angstroms"] >= band_low) & (specdata["lambda_angstroms"] <= band_high), "f_lambda"
-            ] = float("nan")
+            ] = math.nan
     print(f"Reference spectrum '{plotkwargs['label']}' has {len(specdata)} points in the plot range")
     print(f" file: {filename}")
 
