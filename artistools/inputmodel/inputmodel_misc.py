@@ -832,7 +832,7 @@ def save_modeldata(
     if isinstance(dfmodel, pd.DataFrame):
         dfmodel = pl.from_pandas(dfmodel)
 
-    unusedcolumns = ["mass_g", "modelgridindex"]
+    unusedcolumns = ["mass_g"]  # , "modelgridindex"]
     # cell mass is derived from rho and volume, so we don't need to save it.
     # inputcellid in dfmodel so don't need modelgridindex
     for col in unusedcolumns:
