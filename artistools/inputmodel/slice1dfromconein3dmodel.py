@@ -73,14 +73,22 @@ def get_profile_along_axis(args=None, modeldata=None, derived_cols=None):
 
 
 def make_1d_profile(args):
+    logprint = at.inputmodel.inputmodel_misc.savetologfile(
+        outputfolderpath=Path(args.outputpath), logfilename="make1dmodellog.txt"
+    )
+
+    logprint("Making 1D model from 3D model:", at.get_model_name(args.modelpath[0]))
     if args.makefromcone:
+        logprint("from a cone")
         cone = make_cone(args)
 
         slice1d = cone.groupby([f"pos_{args.sliceaxis}_min"], as_index=False).mean()
         # where more than 1 X value, average rows eg. (1,0,0) (1,1,0) (1,1,1)
 
     else:  # make from along chosen axis
+        logprint("from along the axis")
         slice1d = get_profile_along_axis(args)
+    logprint("using axis:", args.axis)
 
     slice1d[f"pos_{args.sliceaxis}_min"] = slice1d[f"pos_{args.sliceaxis}_min"].apply(
         lambda x: x / args.t_model * (u.cm / u.day).to("km/s")
