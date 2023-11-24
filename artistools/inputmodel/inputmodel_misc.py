@@ -1380,3 +1380,16 @@ def scale_model_to_time(
         )
 
     return dfmodel, modelmeta
+
+
+def savetologfile(outputfolderpath, logfilename="modellog.txt"):
+    # save the printed output to a log file
+    logfilepath = outputfolderpath / logfilename
+    logfilepath.unlink(missing_ok=True)
+
+    def logprint(*args, **kwargs):
+        print(*args, **kwargs)
+        with logfilepath.open("a", encoding="utf-8") as logfile:
+            logfile.write(" ".join([str(x) for x in args]) + "\n")
+
+    return logprint
