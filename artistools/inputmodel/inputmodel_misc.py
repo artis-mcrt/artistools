@@ -832,9 +832,12 @@ def save_modeldata(
     if isinstance(dfmodel, pd.DataFrame):
         dfmodel = pl.from_pandas(dfmodel)
 
-    if "mass_g" in dfmodel.columns:
-        # cell mass is derived from rho and volume, so we don't need to save it
-        dfmodel.drop("mass_g")
+    unusedcolumns = ["mass_g", "modelgridindex"]
+    # cell mass is derived from rho and volume, so we don't need to save it.
+    # inputcellid in dfmodel so don't need modelgridindex
+    for col in unusedcolumns:
+        if col in dfmodel.columns:
+            dfmodel.drop(col)
 
     dfmodel = dfmodel.lazy().collect()
 
