@@ -837,7 +837,7 @@ def save_modeldata(
     # inputcellid in dfmodel so don't need modelgridindex
     for col in unusedcolumns:
         if col in dfmodel.columns:
-            dfmodel.drop(col)
+            dfmodel = dfmodel.drop(col)
 
     dfmodel = dfmodel.lazy().collect()
 
