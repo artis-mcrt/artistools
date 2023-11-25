@@ -179,7 +179,7 @@ def test_makeartismodelfrom_sph_particles() -> None:
                 )
                 dfcontrib_source = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(gridfolderpath)
 
-                assert dfcontrib_source.frame_equal(
+                assert dfcontrib_source.equals(
                     dfcontribs[3]
                     .drop("frac_of_cellmass")
                     .rename({"frac_of_cellmass_includemissing": "frac_of_cellmass"})
@@ -279,12 +279,12 @@ def test_save_load_3d_model() -> None:
 
     at.inputmodel.save_modeldata(outpath=outputpath, dfmodel=dfmodel, modelmeta=modelmeta)
     dfmodel2, modelmeta2 = at.inputmodel.get_modeldata_polars(modelpath=outputpath)
-    assert dfmodel.frame_equal(dfmodel2.collect())
+    assert dfmodel.equals(dfmodel2.collect())
     assert modelmeta == modelmeta2
 
     # next load will use the parquet file
     dfmodel3, modelmeta3 = at.inputmodel.get_modeldata_polars(modelpath=outputpath)
-    assert dfmodel.frame_equal(dfmodel3.collect())
+    assert dfmodel.equals(dfmodel3.collect())
     assert modelmeta == modelmeta3
 
 
