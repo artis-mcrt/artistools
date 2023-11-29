@@ -59,8 +59,8 @@ def plot_slice_modelcolumn(ax, dfmodelslice, modelmeta, colname, plotaxis1, plot
 
     if args.logcolorscale:
         # logscale for colormap
-        floorval = 1e-16
-        colorscale = [floorval if x < floorval or not math.isfinite(x) else x for x in colorscale]
+        if args.floorval:
+            colorscale = [args.floorval if x < args.floorval or not math.isfinite(x) else x for x in colorscale]
         with np.errstate(divide="ignore"):
             colorscale = np.log10(colorscale)
         # np.nan_to_num(colorscale, posinf=-99, neginf=-99)
@@ -142,7 +142,7 @@ def plot_2d_initial_abundances(modelpath, args=None) -> None:
         )
 
     if modelmeta["dimensions"] == 3:
-        sliceaxis: AxisType = "z"
+        sliceaxis: AxisType = args.sliceaxis
 
         axeschars: list[AxisType] = ["x", "y", "z"]
         plotaxis1 = next(ax for ax in axeschars if ax != sliceaxis)
@@ -407,6 +407,15 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("-surfaces3d", type=float, nargs="+", help="define positions of surfaces for 3D plots")
 
+    parser.add_argument("-floorval", default=False, type=float, help="Set a floor value for colorscale. Expects float.")
+
+    parser.add_argument(
+        "-axis",
+        default="+z",
+        choices=["x", "y", "z", "+x", "-x", "+y", "-y", "+z", "-z"],
+        help="Choose an axis for use with args.readonlymgi. Hint: for negative use e.g. -axis=-z",
+    )
+
 
 def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
     """Plot ARTIS input model composition."""
@@ -416,6 +425,13 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         parser.set_defaults(**kwargs)
         argcomplete.autocomplete(parser)
         args = parser.parse_args(argsraw)
+
+    if args.axis[0] in {"+", "-"}:
+        args.positive_axis = args.axis[0] == "+"
+        args.axis = args.axis[1]
+    args.sliceaxis = args.axis
+
+    args.plotvars = ["cellYe" if var == "Ye" else var for var in args.plotvars]
 
     if not args.modelpath:
         args.modelpath = ["."]

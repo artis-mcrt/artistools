@@ -832,11 +832,7 @@ def save_modeldata(
     if isinstance(dfmodel, pd.DataFrame):
         dfmodel = pl.from_pandas(dfmodel)
 
-    if "mass_g" in dfmodel.columns:
-        # cell mass is derived from rho and volume, so we don't need to save it
-        dfmodel.drop("mass_g")
-
-    dfmodel = dfmodel.lazy().collect()
+    dfmodel = dfmodel.drop("mass_g").lazy().collect()
 
     if modelmeta is None:
         modelmeta = {}
