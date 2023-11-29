@@ -832,14 +832,7 @@ def save_modeldata(
     if isinstance(dfmodel, pd.DataFrame):
         dfmodel = pl.from_pandas(dfmodel)
 
-    unusedcolumns = ["mass_g"]  # , "modelgridindex"]
-    # cell mass is derived from rho and volume, so we don't need to save it.
-    # inputcellid in dfmodel so don't need modelgridindex
-    for col in unusedcolumns:
-        if col in dfmodel.columns:
-            dfmodel = dfmodel.drop(col)
-
-    dfmodel = dfmodel.lazy().collect()
+    dfmodel = dfmodel.drop("mass_g").lazy().collect()
 
     if modelmeta is None:
         modelmeta = {}
