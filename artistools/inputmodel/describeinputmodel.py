@@ -9,6 +9,7 @@ from pathlib import Path
 import argcomplete
 import numpy as np
 import polars as pl
+import polars.selectors as cs
 
 import artistools as at
 
@@ -58,13 +59,13 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     )
 
     dfmodel = dfmodel.filter(pl.col("rho") > 0.0)
-    dfmodel = dfmodel.drop(["X_n"])  # don't confuse neutrons with Nitrogen
+    dfmodel = dfmodel.drop("X_n")  # don't confuse neutrons with Nitrogen
 
     if args.noabund:
-        dfmodel = dfmodel.drop(pl.selectors.starts_with("X_"))
+        dfmodel = dfmodel.drop(cs.starts_with("X_"))
 
     if not args.isotopes:
-        dfmodel = dfmodel.drop(pl.selectors.matches("X_[A-z]+[0-9]"))
+        dfmodel = dfmodel.drop(cs.matches("X_[A-z]+[0-9]"))
 
     dfmodel = dfmodel.collect().lazy()
 
@@ -185,7 +186,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     mass_msun_actinides = 0.0
     speciesmasses: dict[str, float] = {}
 
-    for column in dfmodel.select(pl.selectors.starts_with("X_") - pl.selectors.by_name("X_Fegroup")).columns:
+    for column in dfmodel.select(cs.starts_with("X_") - cs.by_name("X_Fegroup")).columns:
         species = column.replace("X_", "")
 
         speciesabund_g = dfmodel.select(pl.col(column).dot(pl.col("mass_g"))).collect().item(0, 0)
