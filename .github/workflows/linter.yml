@@ -6,7 +6,7 @@ on:
     merge_group:
     schedule:
         - cron: '0 13 * * 1'
-    #    pull_request:
+    pull_request:
     workflow_dispatch:
 
 jobs:
