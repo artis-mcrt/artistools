@@ -269,10 +269,10 @@ def make_3d_plot(modelpath, args):
         coloursurfaceby = "rho"
     elif "cellYe" in args.plotvars:
         coloursurfaceby = "cellYe"
-    # else:
-    #     print(f"Colours set by X_{args.plotvars}")
-    #     coloursurfaceby = f"X_{args.plotvars}"
-    #     get_elemabundances = True
+    else:
+        print(f"Colours set by X_{args.plotvars}")
+        coloursurfaceby = f"X_{args.plotvars}"
+        get_elemabundances = True
 
     model, t_model, vmax = at.inputmodel.get_modeldata_tuple(modelpath, get_elemabundances=get_elemabundances)
 
@@ -318,8 +318,7 @@ def make_3d_plot(modelpath, args):
         surfacepositions = np.linspace(min(mesh[coloursurfaceby]), max(mesh[coloursurfaceby]), num=10)
         print(f"Using default surfaces {surfacepositions} \n define these with -surfaces3d for better results")
     else:
-        surfacepositions = args.surfaces3d
-    # surfacepositions = [1, 50, 100, 300, 500, 800, 1000, 1100, 1200, 1300, 1400, 1450, 1500] # choose these
+        surfacepositions = args.surfaces3d  # expects an array of surface positions
 
     surf = mesh.contour(surfacepositions, scalars=coloursurfaceby)  # create isosurfaces
 
@@ -335,11 +334,8 @@ def make_3d_plot(modelpath, args):
 
     plotter = pv.Plotter()
     # plotter.add_mesh(mesh.outline(), color="k")
-    plotcoloropacity = [0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
-    # plotcoloropacity = [0.9, 1]
-    # plotcoloropacity = 'linear'
-    # plotcoloropacity = 'sigmoid'
-    # plotter.set_scale(0.95, 0.95, 0.95)
+    plotcoloropacity = [0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]  # some choices: 'linear' 'sigmoid'
+    # plotter.set_scale(0.95, 0.95, 0.95) # adjusts fig resolution
     plotter.show_bounds(
         mesh,
         grid=False,
@@ -354,16 +350,16 @@ def make_3d_plot(modelpath, args):
     )
     plotter.add_mesh(surf, opacity=plotcoloropacity, scalar_bar_args=sargs, cmap="coolwarm_r")
     # plotter.add_mesh(surf, opacity=plotcoloropacity, use_transparency=True, cmap='coolwarm_r') #magma
-    # plotter.add_mesh(surf, opacity=plotcoloropacity, scalar_bar_args=sargs)
-    # plotter.remove_scalar_bar()
+
+    # plotter.remove_scalar_bar() # removes colorbar
 
     plotter.camera_position = "xz"
     plotter.camera.azimuth = 45.0
     plotter.camera.elevation = 10.0
     # plotter.camera.azimuth = 15
     plotter.show(screenshot=modelpath / "3Dplot.png", auto_close=False)
-    # quit()
-    #
+
+    ##Make gif:
     # # viewup = [0.5, 0.5, 1]
     # path = plotter.generate_orbital_path(n_points=150, shift=mesh.length / 5)
     # plotter.open_gif("orbit.gif")
