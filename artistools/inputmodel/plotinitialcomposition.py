@@ -263,23 +263,31 @@ def make_3d_plot(modelpath, args):
 
     pv.set_plot_theme("document")  # set white background
 
-    model, t_model, vmax = at.inputmodel.get_modeldata_tuple(modelpath, get_elemabundances=False)
-    abundances = at.inputmodel.get_initelemabundances(modelpath)
-
-    abundances["inputcellid"] = abundances["inputcellid"].apply(float)
-
-    merge_dfs = model.merge(abundances, how="inner", on="inputcellid")
-    model = merge_dfs
-
+    get_elemabundances = False
     # choose what surface will be coloured by
     if "rho" in args.plotvars:
         coloursurfaceby = "rho"
-    elif args.opacity:
-        model["opacity"] = at.inputmodel.opacityinputfile.get_opacity_from_file(modelpath)
-        coloursurfaceby = "opacity"
-    else:
-        print(f"Colours set by X_{args.plotvars}")
-        coloursurfaceby = f"X_{args.plotvars}"
+    elif "cellYe" in args.plotvars:
+        coloursurfaceby = "cellYe"
+    # else:
+    #     print(f"Colours set by X_{args.plotvars}")
+    #     coloursurfaceby = f"X_{args.plotvars}"
+    #     get_elemabundances = True
+
+    model, t_model, vmax = at.inputmodel.get_modeldata_tuple(modelpath, get_elemabundances=get_elemabundances)
+
+    if "cellYe" in args.plotvars and "cellYe" not in model:
+        file_contents = np.loadtxt(Path(modelpath) / "Ye.txt", unpack=True, skiprows=1)
+        Ye = file_contents[1]
+        model["cellYe"] = Ye
+
+    mincellparticles = 0
+    if mincellparticles > 0:
+        if "tracercount" not in model:
+            griddata = pd.read_csv(modelpath / "grid.dat", delim_whitespace=True, comment="#", skiprows=3)
+            model["tracercount"] = griddata["tracercount"]
+        print(model["tracercount"], max(model["tracercount"]))
+        model[coloursurfaceby][model["tracercount"] < mincellparticles] = 0
 
     # generate grid from data
     grid = round(len(model["rho"]) ** (1.0 / 3.0))
@@ -287,7 +295,7 @@ def make_3d_plot(modelpath, args):
     xgrid = np.zeros(grid)
 
     surfacearr = np.array(model[coloursurfaceby])
-
+    vmax = vmax / 2.99792458e10
     i = 0
     for z in range(grid):
         for y in range(grid):
@@ -315,7 +323,52 @@ def make_3d_plot(modelpath, args):
 
     surf = mesh.contour(surfacepositions, scalars=coloursurfaceby)  # create isosurfaces
 
-    surf.plot(opacity="linear", screenshot=modelpath / "3Dplot.png")  # plot surfaces and save screenshot
+    # surf.plot(opacity="linear", screenshot=modelpath / "3Dplot.png")  # plot surfaces and save screenshot
+    sargs = {
+        "height": 0.25,
+        "vertical": True,
+        "position_x": 0.05,
+        "position_y": 0.1,
+        "title_font_size": 22,
+        "label_font_size": 22,
+    }
+
+    plotter = pv.Plotter()
+    # plotter.add_mesh(mesh.outline(), color="k")
+    plotcoloropacity = [0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
+    # plotcoloropacity = [0.9, 1]
+    # plotcoloropacity = 'linear'
+    # plotcoloropacity = 'sigmoid'
+    # plotter.set_scale(0.95, 0.95, 0.95)
+    plotter.show_bounds(
+        mesh,
+        grid=False,
+        location="outer",
+        xlabel="vx / c",
+        ylabel="vy / c",
+        zlabel="vz / c",
+        ticks="inside",
+        minor_ticks=False,
+        font_size=28,
+        bold=False,
+    )
+    plotter.add_mesh(surf, opacity=plotcoloropacity, scalar_bar_args=sargs, cmap="coolwarm_r")
+    # plotter.add_mesh(surf, opacity=plotcoloropacity, use_transparency=True, cmap='coolwarm_r') #magma
+    # plotter.add_mesh(surf, opacity=plotcoloropacity, scalar_bar_args=sargs)
+    # plotter.remove_scalar_bar()
+
+    plotter.camera_position = "xz"
+    plotter.camera.azimuth = 45.0
+    plotter.camera.elevation = 10.0
+    # plotter.camera.azimuth = 15
+    plotter.show(screenshot=modelpath / "3Dplot.png", auto_close=False)
+    # quit()
+    #
+    # # viewup = [0.5, 0.5, 1]
+    # path = plotter.generate_orbital_path(n_points=150, shift=mesh.length / 5)
+    # plotter.open_gif("orbit.gif")
+    # plotter.orbit_on_path(path, write_frames=True)
+    # plotter.close()
 
 
 def plot_phi_hist(modelpath):
