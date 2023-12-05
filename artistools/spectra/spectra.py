@@ -56,7 +56,7 @@ def get_exspec_bins(mnubins=1000, nu_min_r=1e13, nu_max_r=5e16) -> tuple[np.ndar
 
 
 def stackspectra(
-    spectra_and_factors: list[tuple[np.ndarray[t.Any, np.dtype[np.float64]], float]]
+    spectra_and_factors: list[tuple[np.ndarray[t.Any, np.dtype[np.float64]], float]],
 ) -> np.ndarray[t.Any, np.dtype[np.float64]]:
     """Add spectra using weighting factors, i.e., specout[nu] = spec1[nu] * factor1 + spec2[nu] * factor2 + ...
 
