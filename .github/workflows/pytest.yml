@@ -8,6 +8,8 @@ on:
         - cron: '0 13 * * 1'
     pull_request:
     workflow_dispatch:
+    repository_dispatch:
+        types: [trigger_checks]
 
 jobs:
     pytest:
