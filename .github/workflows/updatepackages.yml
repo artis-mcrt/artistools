@@ -44,3 +44,7 @@ jobs:
                   title: Update packages
                   commit-message: 'chore: update pre-commit hooks and packages'
                   body: Update versions of pre-commit hooks and python packages to latest versions.
+
+            - uses: peter-evans/repository-dispatch@v2
+              with:
+                  event-type: trigger_checks
