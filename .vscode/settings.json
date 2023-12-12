@@ -3,9 +3,9 @@
      "editor.formatOnSave": true,
      "[python]": {
          "editor.codeActionsOnSave": {
-             "source.fixAll": true,
-             "source.organizeImports": true
-         },
+            "source.fixAll": "explicit",
+            "source.organizeImports": "explicit"
+        },
          "editor.defaultFormatter": "charliermarsh.ruff"
      },
      "python.analysis.typeCheckingMode": "off"
