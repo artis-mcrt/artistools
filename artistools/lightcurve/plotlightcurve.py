@@ -201,9 +201,7 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
         )
 
         f_alpha = depdata["alphadep_Lsun"] / depdata["eps_alpha_Lsun"]
-        import scipy.signal
 
-        f_alpha = scipy.signal.savgol_filter(f_alpha, 9, 3, mode="interp")
         axistherm.plot(
             depdata["tmid_days"],
             f_alpha,
