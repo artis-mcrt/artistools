@@ -157,7 +157,7 @@ def make_2d_plot(grid, grid_Te, vmax, modelpath, xgrid, time):
 
     imshow = True
     if imshow:
-        ### imshow
+        # imshow
         extent = {"left": -vmax, "right": vmax, "bottom": vmax, "top": -vmax}
         extent = extent["left"], extent["right"], extent["bottom"], extent["top"]
         data = np.zeros((grid, grid))
