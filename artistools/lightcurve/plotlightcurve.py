@@ -584,7 +584,9 @@ def make_lightcurve_plot(
     if not args.nolegend:
         axis.legend(loc="best", handlelength=2, frameon=args.legendframeon, numpoints=1, prop={"size": 9})
         if args.plotthermalisation:
-            axistherm.legend(loc="best", handlelength=2, frameon=args.legendframeon, numpoints=1, prop={"size": 9})
+            axistherm.legend(
+                loc="upper right", handlelength=2, frameon=args.legendframeon, numpoints=1, prop={"size": 9}
+            )
 
     axis.set_xlabel(r"Time [days]")
 
