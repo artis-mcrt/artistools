@@ -1336,11 +1336,16 @@ def get_vspec_dir_labels(modelpath: str | Path, viewinganglelabelunits: str = "r
     dirlabels = {}
     for dirindex in range(vpkt_config["nobsdirections"]):
         phi_angle = round(vpkt_config["phi"][dirindex])
-        if viewinganglelabelunits == "deg":
-            theta_angle = round(math.degrees(math.acos(vpkt_config["cos_theta"][dirindex])))
-            dirlabels[dirindex] = rf"v$\theta$ = {theta_angle}$^\circ$, $\phi$ = {phi_angle}$^\circ$"
-        elif viewinganglelabelunits == "rad":
-            dirlabels[dirindex] = rf"cos $\theta$ = {vpkt_config['cos_theta'][dirindex]}, $\phi$ = {phi_angle}$^\circ$"
+        for specindex in range(vpkt_config["nspectraperobs"]):
+            ind_comb = vpkt_config["nspectraperobs"] * dirindex + specindex
+            if viewinganglelabelunits == "deg":
+                theta_angle = round(math.degrees(math.acos(vpkt_config["cos_theta"][dirindex])))
+                dirlabels[ind_comb] = rf"v$\theta$ = {theta_angle}$^\circ$, $\phi$ = {phi_angle}$^\circ$ {specindex=}"
+            elif viewinganglelabelunits == "rad":
+                dirlabels[
+                    ind_comb
+                ] = rf"cos $\theta$ = {vpkt_config['cos_theta'][dirindex]}, $\phi$ = {phi_angle}$^\circ$ {specindex=}"
+
     return dirlabels
 
 
