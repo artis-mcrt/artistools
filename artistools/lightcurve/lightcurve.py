@@ -134,7 +134,9 @@ def get_from_packets(
         dftimebinned = dftimebinned.with_columns(
             [
                 pl.Series(name="time", values=tmidarray),
-                ((pl.col("e_rf_sum") / nprocs_read * solidanglefactor * unitfactor) / arr_timedelta).alias("lum"),
+                ((pl.col("e_rf_sum") / nprocs_read * solidanglefactor * unitfactor) / pl.Series(arr_timedelta)).alias(
+                    "lum"
+                ),
             ]
         ).drop(["e_rf_sum", "t_arrive_d_bin"])
 
