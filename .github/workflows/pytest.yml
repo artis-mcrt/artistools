@@ -54,7 +54,6 @@ jobs:
               run: pytest --cov=./ --cov-report=xml
 
             - name: Report coverage
-              continue-on-error: true
               run: coverage report
 
             - name: Upload coverage to Codecov
@@ -66,6 +65,6 @@ jobs:
                   flags: unittests
                   env_vars: OS,PYTHON
                   name: codecov-umbrella
-                  fail_ci_if_error: true
+                  fail_ci_if_error: false
                   # path_to_write_report: ./coverage/codecov_report.txt
                   verbose: true
