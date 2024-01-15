@@ -54,7 +54,6 @@ jobs:
               run: pytest --cov=./ --cov-report=xml
 
             - name: Report coverage
-              continue-on-error: true
               run: coverage report
 
             - name: Upload coverage to Codecov
