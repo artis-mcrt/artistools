@@ -130,6 +130,7 @@ disable = """
     unused-argument,
     unused-variable,
     unspecified-encoding,
+    unsupported-assignment-operation,
     C,
     R,
 """
