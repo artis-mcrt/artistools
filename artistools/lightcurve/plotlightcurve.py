@@ -513,7 +513,8 @@ def make_lightcurve_plot(
     reflightcurveindex = 0
 
     plottedsomething = False
-    for lcindex, modelpath in enumerate(modelpaths):
+    lcindex = 0
+    for modelpath in modelpaths:
         if not Path(modelpath).is_dir() and not Path(modelpath).exists() and "." in str(modelpath):
             bolreflightcurve = Path(modelpath)
 
@@ -555,6 +556,9 @@ def make_lightcurve_plot(
                 args=args,
             )
             plottedsomething = plottedsomething or (lcdataframes is not None)
+
+        if plottedsomething:
+            lcindex += 1
 
     if args.reflightcurves:
         for bolreflightcurve in args.reflightcurves:
