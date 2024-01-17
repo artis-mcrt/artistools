@@ -48,7 +48,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             massfracsum = 0.0
             for atomic_number, value in massfracs.items():
                 massfracsum += value
-                fout.write(f"{atomic_number} {at.get_elsymbol(atomic_number)} {massfracs[atomic_number]}\n")
+                fout.write(f"{atomic_number} {at.get_elsymbol(atomic_number)} {value}\n")
 
             assert np.isclose(massfracsum, 1.0)
 

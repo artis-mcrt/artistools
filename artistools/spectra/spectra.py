@@ -425,13 +425,8 @@ def make_virtual_spectra_summed_file(modelpath: Path) -> Path:
     )
     for mpirank in range(nprocs):
         vspecpolfilename = f"vspecpol_{mpirank}-0.out"
-        print(f"Reading rank {mpirank} filename {vspecpolfilename}")
-        vspecpolpath = Path(modelpath, vspecpolfilename)
-        if not vspecpolpath.is_file():
-            vspecpolpath = Path(modelpath, vspecpolfilename + ".gz")
-            if not vspecpolpath.is_file():
-                print(f"Warning: Could not find {vspecpolpath.relative_to(modelpath.parent)}")
-                continue
+        vspecpolpath = at.firstexisting(vspecpolfilename, folder=modelpath, tryzipped=True)
+        print(f"Reading rank {mpirank} filename {vspecpolpath}")
 
         vspecpolfile = pd.read_csv(vspecpolpath, delim_whitespace=True, header=None)
         # Where times of timesteps are written out a new virtual spectrum starts

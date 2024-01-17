@@ -444,17 +444,21 @@ def plot_artis_lightcurve(
             lcdata_valid = pd.DataFrame(data=None, columns=lcdata.columns)
         else:
             lcdata_valid = lcdata.filter(pl.col("time").is_between(validrange_start_days, validrange_end_days))
-
-            lcdata_before_valid = lcdata.filter(pl.col("time") >= lcdata_valid["time"].min())
-            lcdata_after_valid = lcdata.filter(pl.col("time") >= lcdata_valid["time"].max())
-
-        axis.plot(lcdata_valid["time"], lcdata_valid[ycolumn], **plotkwargs)
+            if lcdata_valid.is_empty():
+                # valid range doesn't contain any data points
+                lcdata_before_valid = lcdata
+                lcdata_after_valid = pd.DataFrame(data=None, columns=lcdata.columns)
+            else:
+                lcdata_before_valid = lcdata.filter(pl.col("time") <= lcdata_valid["time"].min())
+                lcdata_after_valid = lcdata.filter(pl.col("time") >= lcdata_valid["time"].max())
 
         if args.plotinvalidpart:
             plotkwargs_invalidrange = plotkwargs.copy()
             plotkwargs_invalidrange.update({"label": None, "alpha": 0.5})
             axis.plot(lcdata_before_valid["time"], lcdata_before_valid[ycolumn], **plotkwargs_invalidrange)
             axis.plot(lcdata_after_valid["time"], lcdata_after_valid[ycolumn], **plotkwargs_invalidrange)
+
+        axis.plot(lcdata_valid["time"], lcdata_valid[ycolumn], **plotkwargs)
 
         if args.print_data:
             print(lcdata[["time", ycolumn, "lum_cmf"]])
@@ -509,7 +513,8 @@ def make_lightcurve_plot(
     reflightcurveindex = 0
 
     plottedsomething = False
-    for lcindex, modelpath in enumerate(modelpaths):
+    lcindex = 0
+    for modelpath in modelpaths:
         if not Path(modelpath).is_dir() and not Path(modelpath).exists() and "." in str(modelpath):
             bolreflightcurve = Path(modelpath)
 
@@ -552,6 +557,9 @@ def make_lightcurve_plot(
             )
             plottedsomething = plottedsomething or (lcdataframes is not None)
 
+        if plottedsomething:
+            lcindex += 1
+
     if args.reflightcurves:
         for bolreflightcurve in args.reflightcurves:
             if args.Lsun:
@@ -584,7 +592,9 @@ def make_lightcurve_plot(
     if not args.nolegend:
         axis.legend(loc="best", handlelength=2, frameon=args.legendframeon, numpoints=1, prop={"size": 9})
         if args.plotthermalisation:
-            axistherm.legend(loc="best", handlelength=2, frameon=args.legendframeon, numpoints=1, prop={"size": 9})
+            axistherm.legend(
+                loc="upper right", handlelength=2, frameon=args.legendframeon, numpoints=1, prop={"size": 9}
+            )
 
     axis.set_xlabel(r"Time [days]")
 
