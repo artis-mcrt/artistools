@@ -300,7 +300,7 @@ def maptogrid(
                 dis = math.sqrt(x[n] * x[n] + y[n] * y[n] + z[n] * z[n])
 
                 if modifysmoothinglength == "option2":
-                    h[n] = max(h[n], 0.25 * dis)  #  option 2
+                    h[n] = max(h[n], 0.25 * dis)  # option 2
 
                 if modifysmoothinglength == "option3" and dis > 1.5 * rmean:
                     h[n] = max(h[n], 0.4 * dis)  # option 3

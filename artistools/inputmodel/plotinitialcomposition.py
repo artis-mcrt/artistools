@@ -359,7 +359,7 @@ def make_3d_plot(modelpath, args):
     # plotter.camera.azimuth = 15
     plotter.show(screenshot=modelpath / "3Dplot.png", auto_close=False)
 
-    ##Make gif:
+    # Make gif:
     # # viewup = [0.5, 0.5, 1]
     # path = plotter.generate_orbital_path(n_points=150, shift=mesh.length / 5)
     # plotter.open_gif("orbit.gif")
