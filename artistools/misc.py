@@ -1331,20 +1331,35 @@ def get_costhetabin_phibin_labels(usedegrees: bool) -> tuple[list[str], list[str
     return costhetabinlabels, phibinlabels
 
 
+def get_opacity_condition_label(z_exclude: int) -> str:
+    if z_exclude == 0:
+        # normal case: all opacities sources included
+        return ""
+    if z_exclude == -1:
+        return "no-bb"
+    if z_exclude == -2:
+        return "no-bf"
+    return "no-es" if z_exclude == -3 else f"no-{at.get_elsymbol(z_exclude)}"
+
+
 def get_vspec_dir_labels(modelpath: str | Path, viewinganglelabelunits: str = "rad") -> dict[int, str]:
     vpkt_config = at.get_vpkt_config(modelpath)
     dirlabels = {}
     for dirindex in range(vpkt_config["nobsdirections"]):
         phi_angle = round(vpkt_config["phi"][dirindex])
         for specindex in range(vpkt_config["nspectraperobs"]):
+            opacity_condition_label = get_opacity_condition_label(int(vpkt_config["z_excludelist"][specindex]))
             ind_comb = vpkt_config["nspectraperobs"] * dirindex + specindex
+            cos_theta = vpkt_config["cos_theta"][dirindex]
             if viewinganglelabelunits == "deg":
-                theta_angle = round(math.degrees(math.acos(vpkt_config["cos_theta"][dirindex])))
-                dirlabels[ind_comb] = rf"v$\theta$ = {theta_angle}$^\circ$, $\phi$ = {phi_angle}$^\circ$ {specindex=}"
+                theta_degrees = round(math.degrees(math.acos(cos_theta)))
+                dirlabels[
+                    ind_comb
+                ] = rf"v$\theta$ = {theta_degrees}$^\circ$, $\phi$ = {phi_angle}$^\circ$ {specindex} {opacity_condition_label}"
             elif viewinganglelabelunits == "rad":
                 dirlabels[
                     ind_comb
-                ] = rf"cos $\theta$ = {vpkt_config['cos_theta'][dirindex]}, $\phi$ = {phi_angle}$^\circ$ {specindex=}"
+                ] = rf"cos $\theta$ = {cos_theta}, $\phi$ = {phi_angle}$^\circ$ {opacity_condition_label}"
 
     return dirlabels
 
