@@ -1,4 +1,4 @@
-argcomplete>=3.2.1
+argcomplete>=3.2.2
 astropy>=6.0.0
 coverage>=7.4.0
 extinction>=0.4.6
