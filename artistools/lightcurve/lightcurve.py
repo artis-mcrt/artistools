@@ -19,7 +19,7 @@ def readfile(
     """Read an ARTIS light curve file."""
     print(f"Reading {filepath}")
     lcdata: dict[int, pl.DataFrame] = {}
-    if "_res" in str(filepath):
+    if "_res" in str(Path(filepath).stem):
         # get a dict of dfs with light curves at each viewing direction bin
         lcdata_res = pl.read_csv(
             at.zopenpl(filepath), separator=" ", has_header=False, new_columns=["time", "lum", "lum_cmf"]
