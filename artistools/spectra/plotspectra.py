@@ -485,21 +485,26 @@ def make_spectrum_plot(
 
             plotkwargs["linelabel"] = args.label[seriesindex]
 
-            seriesdata = plot_artis_spectrum(
-                axes,
-                specpath,
-                args=args,
-                scale_to_peak=scale_to_peak,
-                from_packets=args.frompackets,
-                maxpacketfiles=args.maxpacketfiles,
-                filterfunc=filterfunc,
-                plotpacketcount=args.plotpacketcount,
-                directionbins=args.plotvspecpol or args.plotviewingangle,
-                average_over_phi=args.average_over_phi_angle,
-                average_over_theta=args.average_over_theta_angle,
-                usedegrees=args.usedegrees,
-                **plotkwargs,
-            )
+            try:
+                seriesdata = plot_artis_spectrum(
+                    axes,
+                    specpath,
+                    args=args,
+                    scale_to_peak=scale_to_peak,
+                    from_packets=args.frompackets,
+                    maxpacketfiles=args.maxpacketfiles,
+                    filterfunc=filterfunc,
+                    plotpacketcount=args.plotpacketcount,
+                    directionbins=args.plotvspecpol or args.plotviewingangle,
+                    average_over_phi=args.average_over_phi_angle,
+                    average_over_theta=args.average_over_theta_angle,
+                    usedegrees=args.usedegrees,
+                    **plotkwargs,
+                )
+            except FileNotFoundError:
+                print(f"WARNING: Skipping {specpath} because it does not exist")
+                continue
+
             if seriesdata is not None:
                 seriesname = at.get_model_name(specpath)
                 artisindex += 1

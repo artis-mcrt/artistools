@@ -386,12 +386,16 @@ def get_spectrum(
         arr_nu = specdata[dirbin]["nu"].to_numpy()
         arr_tdelta = at.get_timestep_times(modelpath, loc="delta")
 
-        arr_f_nu = stackspectra(
-            [
-                (specdata[dirbin][specdata[dirbin].columns[timestep + 1]].to_numpy(), arr_tdelta[timestep])
-                for timestep in range(timestepmin, timestepmax + 1)
-            ]
-        )
+        try:
+            arr_f_nu = stackspectra(
+                [
+                    (specdata[dirbin][specdata[dirbin].columns[timestep + 1]].to_numpy(), arr_tdelta[timestep])
+                    for timestep in range(timestepmin, timestepmax + 1)
+                ]
+            )
+        except IndexError:
+            print(" ERROR: data not available for timestep range")
+            return specdataout
 
         # best to use the filter on this list because it
         # has regular sampling
