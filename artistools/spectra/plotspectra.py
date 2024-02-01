@@ -342,9 +342,12 @@ def plot_artis_spectrum(
             print(f"No data for direction bin(s): {missingdirectionbins}")
             if founddirectionbins:
                 directionbins = founddirectionbins
-            else:
+            elif -1 in viewinganglespectra:
                 directionbins = [-1]
                 print("Showing spherically-averaged spectrum instead")
+            else:
+                print("No data to plot")
+                return None
 
         for dirbin in directionbins:
             if len(directionbins) > 1 and dirbin != directionbins[0]:
