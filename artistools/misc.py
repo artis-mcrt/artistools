@@ -593,6 +593,7 @@ def get_elsymbolslist() -> list[str]:
     Example:
     -------
     elsymbolslist()[26] = 'Fe'.
+
     """
     return [
         "n",

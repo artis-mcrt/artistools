@@ -313,6 +313,7 @@ def get_modeldata_polars(
     return dfmodel, modelmeta
         - dfmodel: a pandas DataFrame with a row for each model grid cell
         - modelmeta: a dictionary of input model parameters, with keys such as t_model_init_days, vmax_cmps, dimensions, etc.
+
     """
     if isinstance(derived_cols, str):
         derived_cols = [derived_cols]
