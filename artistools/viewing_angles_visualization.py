@@ -125,6 +125,7 @@ def viewing_angles_visualisation(
     Returns
     -------
     isomin, isomax : float, float
+
     """
     try:
         import plotly.express as px

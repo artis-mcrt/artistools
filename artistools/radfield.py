@@ -119,6 +119,7 @@ def j_nu_dbb(arr_nu_hz: t.Sequence[float] | npt.NDArray, W: float, T: float) -> 
     -------
     list
         A list of spectral energy density values (in CGS units) corresponding to the input frequencies.
+
     """
     if W > 0.0:
         try:
