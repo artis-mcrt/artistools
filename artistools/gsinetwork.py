@@ -29,8 +29,9 @@ def strnuc_to_latex(strnuc: str):
 
 def plot_qdot(
     modelpath: Path,
-    dfpartcontrib: pd.DataFrame,
-    dfmodel: pd.DataFrame,
+    dfpartcontrib: pl.DataFrame,
+    lzdfmodel: pl.LazyFrame,
+    modelmeta: dict[str, t.Any],
     allparticledata: dict[int, dict[str, np.ndarray]],
     arr_time_artis_days: t.Sequence[float],
     arr_artis_ye: t.Sequence[float],
@@ -48,26 +49,27 @@ def plot_qdot(
     heatcols = ["hbeta", "halpha", "hbfis", "hspof", "Ye", "Qdot"]
 
     arr_heat = {col: np.zeros_like(arr_time_gsi_days) for col in heatcols}
+    dfmodel = lzdfmodel.select("mass_g").collect()
 
-    model_mass_grams = dfmodel.mass_g.sum()
+    model_mass_grams = dfmodel.select("mass_g").sum().item()
     print(f"model mass: {model_mass_grams / 1.989e33:.3f} Msun")
 
     print("Calculating global heating rates from the individual particle heating rates...")
     dfpartcontrib_nomissing = dfpartcontrib.filter(pl.col("particleid").is_in(allparticledata.keys()))
     for cellindex, dfpartcontribthiscell in dfpartcontrib_nomissing.group_by("cellindex"):
-        if cellindex >= len(dfmodel):
+        if cellindex >= modelmeta["npts_model"]:
             continue
-
-        cell_mass_frac = dfmodel.iloc[cellindex - 1].mass_g / model_mass_grams
+        assert isinstance(cellindex, int)
+        cell_mass_frac = (dfmodel[cellindex - 1]["mass_g"] / model_mass_grams).item()
 
         if cell_mass_frac == 0.0:
             continue
 
-        frac_of_cellmass_sum = dfpartcontribthiscell.frac_of_cellmass.sum()
+        frac_of_cellmass_sum = dfpartcontribthiscell["frac_of_cellmass"].sum()
 
-        contribtuples = dfpartcontribthiscell[["particleid", "frac_of_cellmass"]].itertuples(index=False)
-
-        for particleid, frac_of_cellmass in contribtuples:
+        for particleid, frac_of_cellmass in dfpartcontribthiscell.select(
+            ["particleid", "frac_of_cellmass"]
+        ).iter_rows():
             thisparticledata = allparticledata[particleid]
             for col in heatcols:
                 arr_heat[col] += thisparticledata[col] * cell_mass_frac * frac_of_cellmass / frac_of_cellmass_sum
@@ -212,23 +214,23 @@ def plot_qdot(
 
 def plot_cell_abund_evolution(
     modelpath: Path,
-    dfpartcontrib: pd.DataFrame,
+    dfpartcontrib: pl.DataFrame,
     allparticledata,
     arr_time_artis_days: t.Sequence[float],
     arr_time_gsi_days: t.Sequence[float],
     arr_strnuc: t.Sequence[str],
     arr_abund_artis: dict[str, list[float]],
     t_model_init_days: float,
-    dfcell: pd.DataFrame,
+    dfcell: pl.DataFrame,
     pdfoutpath: Path,
     mgi: int,
     hideinputmodelpoints: bool = True,
     xmax: None | float = None,
 ) -> None:
-    dfpartcontrib_thiscell = dfpartcontrib[
-        (dfpartcontrib["cellindex"] == (mgi + 1)) & (dfpartcontrib["particleid"].isin(allparticledata.keys()))
-    ]
-    frac_of_cellmass_sum = dfpartcontrib_thiscell.frac_of_cellmass.sum()
+    dfpartcontrib_thiscell = dfpartcontrib.filter(
+        (pl.col("cellindex") == (mgi + 1)) & (pl.col("particleid").is_in(allparticledata.keys()))
+    )
+    frac_of_cellmass_sum = dfpartcontrib_thiscell["frac_of_cellmass"].sum()
     print(f"frac_of_cellmass_sum: {frac_of_cellmass_sum} (can be < 1.0 because of missing particles)")
     # if arr_strnuc[0] != 'Ye':
     #     arr_strnuc.insert(0, 'Ye')
@@ -238,12 +240,8 @@ def plot_cell_abund_evolution(
     }
 
     # calculate the GSI values from the particles contributing to this cell
-    for particleid, frac_of_cellmass in dfpartcontrib_thiscell[["particleid", "frac_of_cellmass"]].itertuples(
-        index=False
-    ):
-        frac_of_cellmass = dfpartcontrib_thiscell[dfpartcontrib_thiscell["particleid"] == particleid][
-            "frac_of_cellmass"
-        ].sum()
+    for particleid, frac_of_cellmass in dfpartcontrib_thiscell.select(["particleid", "frac_of_cellmass"]).iter_rows():
+        frac_of_cellmass = dfpartcontrib_thiscell.filter(pl.col("particleid") == particleid)["frac_of_cellmass"].sum()
 
         for strnuc in arr_strnuc:
             arr_abund_gsi[strnuc] += allparticledata[particleid][strnuc] * frac_of_cellmass / frac_of_cellmass_sum
@@ -324,7 +322,7 @@ def plot_cell_abund_evolution(
 
 def get_particledata(
     arr_time_s: t.Sequence[float],
-    arr_strnuc: list[str],
+    arr_strnuc_z_n: list[tuple[str, int, int]],
     traj_root: Path,
     particleid: int,
     verbose: bool = False,
@@ -341,15 +339,15 @@ def get_particledata(
     except FileNotFoundError:
         print(f"No network calculation for particle {particleid}")
         # make sure we weren't requesting abundance data for this particle that has no network data
-        if arr_strnuc:
-            print("ERROR:", particleid, arr_strnuc)
-        assert not arr_strnuc
+        if arr_strnuc_z_n:
+            print("ERROR:", particleid, arr_strnuc_z_n)
+        assert not arr_strnuc_z_n
         return -1, {}
 
     if verbose:
         print(
             "Reading network calculation heating.dat,"
-            f" energy_thermo.dat{', and nz-plane abundances' if arr_strnuc else ''} for particle {particleid}..."
+            f" energy_thermo.dat{', and nz-plane abundances' if arr_strnuc_z_n else ''} for particle {particleid}..."
         )
 
     particledata = {}
@@ -397,9 +395,9 @@ def get_particledata(
         for col in storecols:
             particledata[col] = np.array(np.interp(arr_time_s, arr_time_s_source, data_in[col]))
 
-    if arr_strnuc:
+    if arr_strnuc_z_n:
         arr_traj_time_s = []
-        arr_massfracs: dict[str, list[float]] = {strnuc: [] for strnuc in arr_strnuc}
+        arr_massfracs: dict[str, list[float]] = {strnuc: [] for strnuc, _, _ in arr_strnuc_z_n}
         for nts in range(nts_min, nts_max + 1):
             timesec = nstep_timesec[nts]
             arr_traj_time_s.append(timesec)
@@ -407,10 +405,10 @@ def get_particledata(
             traj_nuc_abund = at.inputmodel.rprocess_from_trajectory.get_trajectory_abund_q(
                 particleid, traj_root=traj_root, nts=nts
             )
-            for strnuc in arr_strnuc:
-                arr_massfracs[strnuc].append(traj_nuc_abund.get(f"X_{strnuc}", 0.0))
+            for strnuc, Z, N in arr_strnuc_z_n:
+                arr_massfracs[strnuc].append(traj_nuc_abund.get((Z, N), 0.0))
 
-        for strnuc in arr_strnuc:
+        for strnuc, _, _ in arr_strnuc_z_n:
             massfracs_interp = np.interp(arr_time_s, arr_traj_time_s, arr_massfracs[strnuc])
             particledata[strnuc] = np.array(massfracs_interp)
 
@@ -445,27 +443,41 @@ def plot_qdot_abund_modelcells(
 
     arr_el, arr_a = zip(*arr_el_a)
     arr_strnuc: list[str] = [el + str(a) for el, a in arr_el_a]
+    arr_z = [at.get_atomic_number(el) for el in arr_el]
+    arr_n = [a - z for z, a in zip(arr_z, arr_a)]
+    arr_strnuc_z_n = list(zip(arr_strnuc, arr_z, arr_n, strict=True))
 
     # arr_z = [at.get_atomic_number(el) for el in arr_el]
 
-    dfmodel, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata_tuple(
-        modelpath, derived_cols=["mass_g", "rho", "volume"]
+    lzdfmodel, modelmeta = at.inputmodel.get_modeldata_polars(
+        modelpath, derived_cols=["mass_g", "rho", "logrho", "volume"]
     )
-    npts_model = len(dfmodel)
+    npts_model = modelmeta["npts_model"]
 
     # these factors correct for missing mass due to skipped shells, and volume error due to Cartesian grid map
     correction_factors = {}
     assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath)
     # WARNING sketchy inference!
     propcellcount = math.ceil(max(mgi_of_propcells.keys()) ** (1 / 3.0)) ** 3
-    xmax_tmodel = vmax_cmps * t_model_init_days * 86400
-    wid_init = at.get_wid_init_at_tmodel(modelpath, propcellcount, t_model_init_days, xmax_tmodel)  # noqa: F841
-    dfmodel["n_assoc_cells"] = [len(assoc_cells.get(inputcellid - 1, [])) for inputcellid in dfmodel["inputcellid"]]
+    xmax_tmodel = modelmeta["vmax_cmps"] * modelmeta["t_model_init_days"] * 86400
+    wid_init = at.get_wid_init_at_tmodel(modelpath, propcellcount, modelmeta["t_model_init_days"], xmax_tmodel)
+
+    lzdfmodel = lzdfmodel.with_columns(
+        n_assoc_cells=pl.Series(
+            [
+                len(assoc_cells.get(inputcellid - 1, []))
+                for (inputcellid,) in lzdfmodel.select("inputcellid").collect().iter_rows()
+            ]
+        )
+    )
 
     # for spherical models, ARTIS mapping to a cubic grid introduces some errors in the cell volumes
-    dfmodel = dfmodel.eval("mass_g_mapped = 10 ** logrho * @wid_init ** 3 * n_assoc_cells")
+    lzdfmodel = lzdfmodel.with_columns(mass_g_mapped=10 ** pl.col("logrho") * wid_init**3 * pl.col("n_assoc_cells"))
     for strnuc in arr_strnuc:
-        corr = dfmodel.eval(f"X_{strnuc} * mass_g_mapped").sum() / dfmodel.eval(f"X_{strnuc} * mass_g").sum()
+        corr = (
+            lzdfmodel.select(pl.col(f"X_{strnuc}") * pl.col("mass_g_mapped")).sum().collect().item()
+            / lzdfmodel.select(pl.col(f"X_{strnuc}") * pl.col("mass_g")).sum().collect().item()
+        )
         # print(strnuc, corr)
         correction_factors[strnuc] = corr
 
@@ -484,6 +496,7 @@ def plot_qdot_abund_modelcells(
 
         first_mgi = None
         partiallycomplete_timesteps = at.estimators.get_partiallycompletetimesteps(estimators)
+        dfmodel = lzdfmodel.select(["logrho", "mass_g", "volume", *[f"X_{strnuc}" for strnuc in arr_strnuc]]).collect()
         for nts, mgi in sorted(estimators.keys()):
             if nts in partiallycomplete_timesteps:
                 continue
@@ -497,13 +510,13 @@ def plot_qdot_abund_modelcells(
             if mgi == first_mgi:
                 arr_time_artis_days.append(time_days)
 
-            rho_init_cgs = 10 ** dfmodel.iloc[mgi].logrho
-            rho_cgs = rho_init_cgs * (t_model_init_days / time_days) ** 3
+            rho_init_cgs = 10 ** dfmodel[mgi]["logrho"].item()
+            rho_cgs = rho_init_cgs * (modelmeta["t_model_init_days"] / time_days) ** 3
 
             for strnuc, a in zip(arr_strnuc, arr_a):
                 abund = estimators[(nts, mgi)][f"nniso_{strnuc}"]
                 massfrac = abund * a * MH / rho_cgs
-                massfrac = massfrac + dfmodel.iloc[mgi][f"X_{strnuc}"] * (correction_factors[strnuc] - 1.0)
+                massfrac = massfrac + dfmodel[mgi][f"X_{strnuc}"].item() * (correction_factors[strnuc] - 1.0)
 
                 if mgi not in arr_abund_artis:
                     arr_abund_artis[mgi] = {}
@@ -523,12 +536,12 @@ def plot_qdot_abund_modelcells(
             if "Ye" in estimators[(nts, mgi)]:
                 cell_Ye = estimators[(nts, mgi)]["Ye"]
                 arr_abund_artis[mgi]["Ye"].append(cell_Ye)
-                artis_ye_sum[nts] = artis_ye_sum.get(nts, 0.0) + cell_Ye * dfmodel.iloc[mgi].mass_g
-                artis_ye_norm[nts] = artis_ye_norm.get(nts, 0.0) + dfmodel.iloc[mgi].mass_g
+                artis_ye_sum[nts] = artis_ye_sum.get(nts, 0.0) + cell_Ye * dfmodel[mgi]["mass_g"].item()
+                artis_ye_norm[nts] = artis_ye_norm.get(nts, 0.0) + dfmodel[mgi]["mass_g"].item()
             else:
                 cell_protoncount = 0.0
                 cell_nucleoncount = 0.0
-                cellvolume = dfmodel.iloc[mgi].volume
+                cellvolume = dfmodel[mgi]["volume"]
                 for popkey, abund in estimators[(nts, mgi)].items():
                     if popkey.startswith("nniso_") and abund > 0.0:
                         if popkey.endswith("_otherstable"):
@@ -554,20 +567,22 @@ def plot_qdot_abund_modelcells(
     if not arr_time_artis_days:
         arr_time_artis_days = list(arr_time_artis_days_alltimesteps)
 
-    arr_time_gsi_s = np.array([t_model_init_days * 86400, *arr_time_artis_s_alltimesteps])
+    arr_time_gsi_s = np.array([modelmeta["t_model_init_days"] * 86400, *arr_time_artis_s_alltimesteps])
 
     # times in artis are relative to merger, but NSM simulation time started earlier
     mergertime_geomunits = at.inputmodel.modelfromhydro.get_merger_time_geomunits(griddata_root)
     t_mergertime_s = mergertime_geomunits * 4.926e-6
-    arr_time_gsi_s_incpremerger = np.array([t_model_init_days * 86400 + t_mergertime_s, *arr_time_artis_s_alltimesteps])
+    arr_time_gsi_s_incpremerger = np.array(
+        [modelmeta["t_model_init_days"] * 86400 + t_mergertime_s, *arr_time_artis_s_alltimesteps]
+    )
     arr_time_gsi_days = list(arr_time_gsi_s / 86400)
 
     dfpartcontrib = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(modelpath)
-    dfpartcontrib = dfpartcontrib[(dfpartcontrib["cellindex"] <= npts_model) & (dfpartcontrib["frac_of_cellmass"] > 0)]
+    dfpartcontrib = dfpartcontrib.filter((pl.col("cellindex") <= npts_model) & (pl.col("frac_of_cellmass") > 0))
 
     mgiplotlistplus1 = [mgi + 1 for mgi in mgiplotlist]
     list_particleids_getabund = dfpartcontrib.filter(pl.col("cellindex").is_in(mgiplotlistplus1))["particleid"].unique()
-    fworkerwithabund = partial(get_particledata, arr_time_gsi_s_incpremerger, arr_strnuc, traj_root, verbose=True)
+    fworkerwithabund = partial(get_particledata, arr_time_gsi_s_incpremerger, arr_strnuc_z_n, traj_root, verbose=True)
 
     print(f"Reading trajectories from {traj_root}")
     print(f"Reading Qdot/thermo and abundance data for {len(list_particleids_getabund)} particles")
@@ -599,7 +614,8 @@ def plot_qdot_abund_modelcells(
     plot_qdot(
         modelpath,
         dfpartcontrib,
-        dfmodel,
+        lzdfmodel,
+        modelmeta,
         allparticledata,
         arr_time_artis_days,
         arr_artis_ye,
@@ -617,8 +633,8 @@ def plot_qdot_abund_modelcells(
             arr_time_gsi_days,
             arr_strnuc,
             arr_abund_artis.get(mgi, {}),
-            t_model_init_days,
-            dfmodel.iloc[mgi],
+            modelmeta["t_model_init_days"],
+            lzdfmodel.select(modelgridindex=mgi).collect(),
             mgi=mgi,
             pdfoutpath=Path(modelpath, f"gsinetwork_cell{mgi}-abundance.pdf"),
             xmax=xmax,
