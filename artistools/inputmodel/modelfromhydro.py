@@ -112,7 +112,7 @@ def get_snapshot_time_geomunits(pathtogriddata: Path | str) -> tuple[float, floa
 
 
 def read_griddat_file(
-    pathtogriddata, targetmodeltime_days=None
+    pathtogriddata: str | Path, targetmodeltime_days: None | float = None
 ) -> tuple[pd.DataFrame, float, float, float, dict[str, t.Any]]:
     griddatfilepath = Path(pathtogriddata) / "grid.dat"
 
@@ -327,16 +327,16 @@ def makemodelfromgriddata(
     dimensions=3,
     args=None,
 ) -> None:
-    dfmodel, t_model_days, t_mergertime_s, vmax, modelmeta = at.inputmodel.modelfromhydro.read_griddat_file(
+    pddfmodel, t_model_days, t_mergertime_s, vmax, modelmeta = at.inputmodel.modelfromhydro.read_griddat_file(
         pathtogriddata=gridfolderpath,
         targetmodeltime_days=targetmodeltime_days,
     )
 
     if getattr(args, "fillcentralhole", False):
-        dfmodel = at.inputmodel.modelfromhydro.add_mass_to_center(dfmodel, t_model_days, vmax, args)
+        pddfmodel = at.inputmodel.modelfromhydro.add_mass_to_center(pddfmodel, t_model_days, vmax, args)
 
     if getattr(args, "getcellopacityfromYe", False):
-        at.inputmodel.opacityinputfile.opacity_by_Ye(outputpath, dfmodel)
+        at.inputmodel.opacityinputfile.opacity_by_Ye(outputpath, pddfmodel)
 
     dfgridcontributions = (
         at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(gridfolderpath)
@@ -344,7 +344,7 @@ def makemodelfromgriddata(
         else None
     )
 
-    dfmodel = pl.from_pandas(dfmodel).sort("inputcellid")
+    dfmodel = pl.from_pandas(pddfmodel).sort("inputcellid")
     assert dfmodel["inputcellid"].dtype in pl.INTEGER_DTYPES
     dfmodel = dfmodel.with_columns(pl.col("inputcellid").cast(pl.Int32))
 
