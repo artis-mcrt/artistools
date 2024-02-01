@@ -346,7 +346,8 @@ def makemodelfromgriddata(
 
     dfmodel = pl.from_pandas(pddfmodel).sort("inputcellid")
     assert dfmodel["inputcellid"].dtype in pl.INTEGER_DTYPES
-    dfmodel = dfmodel.with_columns(pl.col("inputcellid").cast(pl.Int32))
+    assert isinstance(dfmodel, pl.DataFrame)
+    dfmodel = dfmodel.with_columns(pl.col("inputcellid").cast(pl.Int32))  # pylint: disable=no-member
 
     if traj_root is not None:
         print(f"Nuclear network abundances from {traj_root} will be used")
