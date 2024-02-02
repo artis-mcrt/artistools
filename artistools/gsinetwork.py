@@ -457,29 +457,41 @@ def plot_qdot_abund_modelcells(
     # these factors correct for missing mass due to skipped shells, and volume error due to Cartesian grid map
     correction_factors = {}
     assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath)
-    # WARNING sketchy inference!
-    propcellcount = math.ceil(max(mgi_of_propcells.keys()) ** (1 / 3.0)) ** 3
-    xmax_tmodel = modelmeta["vmax_cmps"] * modelmeta["t_model_init_days"] * 86400
-    wid_init = at.get_wid_init_at_tmodel(modelpath, propcellcount, modelmeta["t_model_init_days"], xmax_tmodel)
 
-    lzdfmodel = lzdfmodel.with_columns(
-        n_assoc_cells=pl.Series(
-            [
-                len(assoc_cells.get(inputcellid - 1, []))
-                for (inputcellid,) in lzdfmodel.select("inputcellid").collect().iter_rows()
-            ]
-        )
+    direct_model_propgrid_map = all(
+        len(propcells) == 1 and mgi == propcells[0] for mgi, propcells in assoc_cells.items()
     )
 
-    # for spherical models, ARTIS mapping to a cubic grid introduces some errors in the cell volumes
-    lzdfmodel = lzdfmodel.with_columns(mass_g_mapped=10 ** pl.col("logrho") * wid_init**3 * pl.col("n_assoc_cells"))
-    for strnuc in arr_strnuc:
-        corr = (
-            lzdfmodel.select(pl.col(f"X_{strnuc}") * pl.col("mass_g_mapped")).sum().collect().item()
-            / lzdfmodel.select(pl.col(f"X_{strnuc}") * pl.col("mass_g")).sum().collect().item()
+    if direct_model_propgrid_map:
+        print("  detected direct mapping of model cells to propagation grid")
+        correction_factors = {strnuc: 1.0 for strnuc in arr_strnuc}
+
+        lzdfmodel = lzdfmodel.with_columns(n_assoc_cells=pl.lit(1.0))
+    else:
+        ncoordgridx = math.ceil(np.cbrt(max(mgi_of_propcells.keys())))
+        propcellcount = int(math.ceil(ncoordgridx ** (1 / 3.0)) ** 3)
+        assert propcellcount**3 == ncoordgridx
+        xmax_tmodel = modelmeta["vmax_cmps"] * modelmeta["t_model_init_days"] * 86400
+        wid_init = at.get_wid_init_at_tmodel(modelpath, propcellcount, modelmeta["t_model_init_days"], xmax_tmodel)
+
+        lzdfmodel = lzdfmodel.with_columns(
+            n_assoc_cells=pl.Series(
+                [
+                    len(assoc_cells.get(inputcellid - 1, []))
+                    for (inputcellid,) in lzdfmodel.select("inputcellid").collect().iter_rows()
+                ]
+            )
         )
-        # print(strnuc, corr)
-        correction_factors[strnuc] = corr
+
+        # for spherical models, ARTIS mapping to a cubic grid introduces some errors in the cell volumes
+        lzdfmodel = lzdfmodel.with_columns(mass_g_mapped=10 ** pl.col("logrho") * wid_init**3 * pl.col("n_assoc_cells"))
+        for strnuc in arr_strnuc:
+            corr = (
+                lzdfmodel.select(pl.col(f"X_{strnuc}") * pl.col("mass_g_mapped")).sum().collect().item()
+                / lzdfmodel.select(pl.col(f"X_{strnuc}") * pl.col("mass_g")).sum().collect().item()
+            )
+            # print(strnuc, corr)
+            correction_factors[strnuc] = corr
 
     tmids = at.get_timestep_times(modelpath, loc="mid")
     MH = 1.67352e-24  # g
