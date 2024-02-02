@@ -357,9 +357,7 @@ def get_particledata(
     with at.inputmodel.rprocess_from_trajectory.open_tar_file_or_extracted(
         traj_root, particleid, "./Run_rprocess/heating.dat"
     ) as f:
-        dfheating = pd.read_csv(
-            f, delim_whitespace=True, usecols=["#count", "time/s", "hbeta", "halpha", "hbfis", "hspof"]
-        )
+        dfheating = pd.read_csv(f, sep=r"\s+", usecols=["#count", "time/s", "hbeta", "halpha", "hbfis", "hspof"])
         heatcols = ["hbeta", "halpha", "hbfis", "hspof"]
 
         heatrates_in: dict[str, list[float]] = {col: [] for col in heatcols}
@@ -381,7 +379,7 @@ def get_particledata(
     ) as f:
         storecols = ["Qdot", "Ye"]
 
-        dfthermo = pd.read_csv(f, delim_whitespace=True, usecols=["#count", "time/s", *storecols])
+        dfthermo = pd.read_csv(f, sep=r"\s+", usecols=["#count", "time/s", *storecols])
 
         data_in: dict[str, list[float]] = {col: [] for col in storecols}
         arr_time_s_source = []

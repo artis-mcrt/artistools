@@ -34,7 +34,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         atomicnumberofspecies[species] = atomic_number
         isotopesofelem.setdefault(atomic_number, []).append(species)
 
-    datain = pd.read_csv(args.inputpath, delim_whitespace=True, skiprows=0, header=[0]).dropna()
+    datain = pd.read_csv(args.inputpath, sep=r"\s+", skiprows=0, header=[0]).dropna()
 
     dfmodel = pd.DataFrame(
         columns=[

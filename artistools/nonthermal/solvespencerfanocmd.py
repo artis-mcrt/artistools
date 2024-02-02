@@ -23,7 +23,7 @@ def make_ntstats_plot(ntstatfile: str | Path) -> None:
         nrows=1, ncols=1, sharex=True, figsize=(4, 3), tight_layout={"pad": 0.5, "w_pad": 0.3, "h_pad": 0.3}
     )
 
-    dfstats = pd.read_csv(ntstatfile, delim_whitespace=True, escapechar="#")
+    dfstats = pd.read_csv(ntstatfile, sep=r"\s+", escapechar="#")
     dfstats = dfstats.fillna(0)
 
     norm_frac_sum = False
