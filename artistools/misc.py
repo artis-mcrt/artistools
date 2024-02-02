@@ -324,7 +324,7 @@ def vec_len(vec: t.Sequence[float] | np.ndarray[t.Any, np.dtype[np.float64]]) ->
 def get_nu_grid(modelpath: Path) -> np.ndarray[t.Any, np.dtype[np.float64]]:
     """Return an array of frequencies at which the ARTIS spectra are binned by exspec."""
     specfilename = firstexisting(["spec.out", "specpol.out"], folder=modelpath, tryzipped=True)
-    specdata = pd.read_csv(specfilename, delim_whitespace=True)
+    specdata = pd.read_csv(specfilename, sep=r"\s+")
     return specdata.loc[:, "0"].to_numpy()
 
 
@@ -347,7 +347,7 @@ def get_deposition(modelpath: Path | str = ".") -> pd.DataFrame:
             fdep.seek(filepos)  # undo the readline() and go back
             columns = ["tmid_days", "gammadep_Lsun", "positrondep_Lsun", "total_dep_Lsun"]
 
-        depdata = pd.read_csv(fdep, delim_whitespace=True, header=None, names=columns)
+        depdata = pd.read_csv(fdep, sep=r"\s+", header=None, names=columns)
 
     depdata.index.name = "timestep"
 
@@ -376,7 +376,7 @@ def get_timestep_times(
     # use timestep.out if possible (allowing arbitrary timestep lengths)
     tsfilepath = Path(modelpath, "timesteps.out")
     if tsfilepath.exists():
-        dftimesteps = pd.read_csv(tsfilepath, delim_whitespace=True, escapechar="#", index_col="timestep")
+        dftimesteps = pd.read_csv(tsfilepath, sep=r"\s+", escapechar="#", index_col="timestep")
         if loc == "mid":
             return dftimesteps.tmid_days.to_numpy()
         if loc == "start":
@@ -1218,7 +1218,7 @@ def get_cellsofmpirank(mpirank: int, modelpath: Path | str) -> t.Iterable[int]:
 def get_dfrankassignments(modelpath: Path | str) -> pd.DataFrame | None:
     filerankassignments = Path(modelpath, "modelgridrankassignments.out")
     if filerankassignments.is_file():
-        df = pd.read_csv(filerankassignments, delim_whitespace=True)
+        df = pd.read_csv(filerankassignments, sep=r"\s+")
         return df.rename(columns={df.columns[0]: str(df.columns[0]).lstrip("#")})
     return None
 

@@ -41,7 +41,7 @@ def read_files(modelpath: Path | str, timestep: int | None = None, modelgridinde
                 filesize = Path(radfieldfilepath).stat().st_size / 1024 / 1024
                 print(f"Reading {Path(radfieldfilepath).relative_to(modelpath.parent)} ({filesize:.2f} MiB)")
 
-            radfielddata_thisfile = pd.read_csv(radfieldfilepath, delim_whitespace=True)
+            radfielddata_thisfile = pd.read_csv(radfieldfilepath, sep=r"\s+")
             # radfielddata_thisfile[['modelgridindex', 'timestep']].apply(pd.to_numeric)
 
             if timestep is not None:

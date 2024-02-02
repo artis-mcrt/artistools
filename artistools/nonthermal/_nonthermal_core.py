@@ -454,7 +454,7 @@ def read_colliondata(collionfilename="collion.txt", modelpath: None | str | Path
     with Path(modelpath, collionfilename).open() as collionfile:
         _nrows = int(collionfile.readline().strip())
         # print(f'Collionfile: expecting {_nrows} rows')
-        dfcollion = pd.read_csv(collionfile, delim_whitespace=True, header=None, names=collionrow._fields)
+        dfcollion = pd.read_csv(collionfile, sep=r"\s+", header=None, names=collionrow._fields)
 
     # assert len(dfcollion) == nrows  # artis enforces this, but last 10 rows were not inportant anyway (high ionized Ni)
     return dfcollion.eval("ionstage = Z - nelec + 1")

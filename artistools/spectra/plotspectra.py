@@ -181,7 +181,7 @@ def plot_filter_functions(axis: plt.Axes) -> None:
     for index, filter_name in enumerate(filter_names):
         filter_data = pd.read_csv(
             filterdir / f"{filter_name}.txt",
-            delim_whitespace=True,
+            sep=r"\s+",
             header=None,
             skiprows=4,
             names=["lamba_angstroms", "flux_normalised"],

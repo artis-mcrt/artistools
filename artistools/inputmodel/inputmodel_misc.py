@@ -767,8 +767,7 @@ def get_mean_cell_properties_of_angle_bin(
 
         binned = pd.cut(dfanglebin["vel_r_mid"], velocity_bins, labels=False, include_lowest=True)
         i = 0
-        for binindex, mean_rho in dfanglebin.groupby(binned)["rho"].mean().iteritems():
-            i += 1
+        for i, (binindex, mean_rho) in enumerate(dfanglebin.groupby(binned)["rho"].mean().iteritems(), 1):
             mean_bin_properties[bin_number]["mean_rho"][binindex] += mean_rho
         i = 0
         if "Ye" in dfmodeldata:
@@ -1015,7 +1014,7 @@ def get_initelemabundances_polars(
     else:
         if not printwarningsonly:
             print(f"Reading {abundancefilepath}")
-        ncols = len(pd.read_csv(abundancefilepath, delim_whitespace=True, header=None, comment="#", nrows=1).columns)
+        ncols = len(pd.read_csv(abundancefilepath, sep=r"\s+", header=None, comment="#", nrows=1).columns)
         colnames = ["inputcellid", *["X_" + at.get_elsymbol(x) for x in range(1, ncols)]]
         dtypes = {col: pl.Float32 if col.startswith("X_") else pl.Int32 for col in colnames}
 

@@ -31,7 +31,7 @@ def read_files(modelpath: Path, timestep: int = -1, modelgridindex: int = -1) ->
                 filesize = Path(filepath).stat().st_size / 1024 / 1024
                 print(f"Reading {Path(filepath).relative_to(modelpath.parent)} ({filesize:.2f} MiB)")
 
-            nonthermaldata_thisfile = pd.read_csv(filepath, delim_whitespace=True, on_bad_lines="skip")
+            nonthermaldata_thisfile = pd.read_csv(filepath, sep=r"\s+", on_bad_lines="skip")
             # radfielddata_thisfile[['modelgridindex', 'timestep']].apply(pd.to_numeric)
 
             if timestep >= 0:

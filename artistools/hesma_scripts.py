@@ -10,7 +10,7 @@ import artistools as at
 
 def plot_hesma_spectrum(timeavg, axes):
     hesma_file = Path("/Users/ccollins/Downloads/hesma_files/M2a/hesma_specseq.dat")
-    hesma_spec = pd.read_csv(hesma_file, comment="#", delim_whitespace=True, dtype=float)
+    hesma_spec = pd.read_csv(hesma_file, comment="#", sep=r"\s+", dtype=float)
     # print(hesma_spec)
 
     def match_closest_time(reftime):
@@ -33,7 +33,7 @@ def plothesmaresspec(fig, ax):
     specfiles = ["/Users/ccollins/Downloads/hesma_files/M2a/hesma_virtualspecseq_theta.dat"]
 
     for specfilename in specfiles:
-        specdata = pd.read_csv(specfilename, delim_whitespace=True, header=None, dtype=float)
+        specdata = pd.read_csv(specfilename, sep=r"\s+", header=None, dtype=float)
 
         # index_to_split = specdata.index[specdata.iloc[:, 1] == specdata.iloc[0, 1]]
         # res_specdata = []
@@ -123,7 +123,7 @@ def make_hesma_peakmag_dm15_dm40(band, pathtofiles, modelname, outpath, dm40=Fal
     dm15filename = f"{band}band_{modelname}_viewing_angle_data.txt"
     dm15data = pd.read_csv(
         pathtofiles / dm15filename,
-        delim_whitespace=True,
+        sep=r"\s+",
         header=None,
         names=["peakmag", "risetime", "dm15"],
         skiprows=1,
@@ -133,7 +133,7 @@ def make_hesma_peakmag_dm15_dm40(band, pathtofiles, modelname, outpath, dm40=Fal
         dm40filename = f"{band}band_{modelname}_viewing_angle_data_deltam40.txt"
         dm40data = pd.read_csv(
             pathtofiles / dm40filename,
-            delim_whitespace=True,
+            sep=r"\s+",
             header=None,
             names=["peakmag", "risetime", "dm40"],
             skiprows=1,
@@ -159,7 +159,7 @@ def read_hesma_peakmag_dm15_dm40(pathtofiles):
     data = []
     for filename in os.listdir(pathtofiles):
         print(filename)
-        data.append(pd.read_csv(pathtofiles / filename, delim_whitespace=True))
+        data.append(pd.read_csv(pathtofiles / filename, sep=r"\s+"))
     print(data[0])
 
     for df in data:

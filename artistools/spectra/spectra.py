@@ -432,7 +432,7 @@ def make_virtual_spectra_summed_file(modelpath: Path) -> Path:
         vspecpolpath = at.firstexisting(vspecpolfilename, folder=modelpath, tryzipped=True)
         print(f"Reading rank {mpirank} filename {vspecpolpath}")
 
-        vspecpolfile = pd.read_csv(vspecpolpath, delim_whitespace=True, header=None)
+        vspecpolfile = pd.read_csv(vspecpolpath, sep=r"\s+", header=None)
         # Where times of timesteps are written out a new virtual spectrum starts
         # Find where the time in row 0, column 1 repeats in any column 1
         index_of_new_spectrum = vspecpolfile.index[vspecpolfile.iloc[:, 1] == vspecpolfile.iloc[0, 1]]
@@ -480,9 +480,7 @@ def make_averaged_vspecfiles(args: argparse.Namespace) -> None:
     filenames = sorted_by_number(filenames)
 
     for spec_index, filename in enumerate(filenames):  # vspecpol-total files
-        vspecdata = [
-            pd.read_csv(modelpath / filename, delim_whitespace=True, header=None) for modelpath in args.modelpath
-        ]
+        vspecdata = [pd.read_csv(modelpath / filename, sep=r"\s+", header=None) for modelpath in args.modelpath]
         for i in range(1, len(vspecdata)):
             vspecdata[0].iloc[1:, 1:] += vspecdata[i].iloc[1:, 1:]
 
@@ -505,7 +503,7 @@ def get_specpol_data(
         )
 
         print(f"Reading {specfilename}")
-        specdata = pd.read_csv(specfilename, delim_whitespace=True)
+        specdata = pd.read_csv(specfilename, sep=r"\s+")
 
     return split_dataframe_stokesparams(specdata)
 
@@ -528,7 +526,7 @@ def get_vspecpol_data(
             specfilename = make_virtual_spectra_summed_file(modelpath=modelpath)
 
         print(f"Reading {specfilename}")
-        specdata = pd.read_csv(specfilename, delim_whitespace=True)
+        specdata = pd.read_csv(specfilename, sep=r"\s+")
 
     return split_dataframe_stokesparams(specdata)
 
@@ -1180,7 +1178,7 @@ def get_reference_spectrum(filename: Path | str) -> tuple[pd.DataFrame, dict[t.A
 
     specdata = pd.read_csv(
         filepath,
-        delim_whitespace=True,
+        sep=r"\s+",
         header=None,
         comment="#",
         names=["lambda_angstroms", "f_lambda"],

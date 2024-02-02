@@ -146,6 +146,12 @@ useLibraryCodeForTypes = false
 addopts = " --durations=0  --typeguard-packages=artistools"
 
 [tool.ruff]
+line-length = 120
+target-version = "py310"
+fix = true
+show-fixes = true
+
+[tool.ruff.lint]
 select = ["ALL"]
 ignore = [
     "ARG001", # ignored because variables in df.eval() are not detected
@@ -204,12 +210,8 @@ unfixable = [
     "SIM222", # expr-or-true
     "SIM223", # expr-and-false
 ]
-line-length = 120
-target-version = "py310"
-fix = true
-show-fixes = true
 
-[tool.ruff.flake8-import-conventions.extend-aliases]
+[tool.ruff.lint.flake8-import-conventions.extend-aliases]
 "artistools" = "at"
 "matplotlib" = "mpl"
 "matplotlib.pyplot" = "plt"
@@ -219,13 +221,13 @@ show-fixes = true
 "polars" = "pl"
 "polars.selectors" = "cs"
 
-[tool.ruff.flake8-tidy-imports]
+[tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
 
-[tool.ruff.per-file-ignores]
+[tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
 
-[tool.ruff.isort]
+[tool.ruff.lint.isort]
 force-single-line = true
 order-by-type = false
 

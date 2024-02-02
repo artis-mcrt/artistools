@@ -183,9 +183,7 @@ def get_spectra(modelpath: str | Path) -> tuple[pd.DataFrame, np.ndarray]:
         arr_timedays = np.array([float(x) for x in fspec.readline().split()[1:]])
         assert len(arr_timedays) == ntimes
 
-        dfspectra = pd.read_csv(
-            fspec, delim_whitespace=True, header=None, names=["lambda", *list(arr_timedays)], comment="#"
-        )
+        dfspectra = pd.read_csv(fspec, sep=r"\s+", header=None, names=["lambda", *list(arr_timedays)], comment="#")
 
     return dfspectra, arr_timedays
 

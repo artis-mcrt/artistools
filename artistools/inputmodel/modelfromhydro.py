@@ -59,7 +59,7 @@ def read_ejectasnapshot(pathtosnapshot):
 
     return pd.read_csv(
         Path(pathtosnapshot) / "ejectasnapshot.dat",
-        delim_whitespace=True,
+        sep=r"\s+",
         header=None,
         names=column_names,
         dtype=types_dict,
@@ -119,7 +119,7 @@ def read_griddat_file(
     # Get simulation time for ejecta snapshot
     simulation_end_time_geomunits, mergertime_geomunits = get_snapshot_time_geomunits(pathtogriddata)
 
-    griddata = pd.read_csv(griddatfilepath, delim_whitespace=True, comment="#", skiprows=3, dtype_backend="pyarrow")
+    griddata = pd.read_csv(griddatfilepath, sep=r"\s+", comment="#", skiprows=3, dtype_backend="pyarrow")
     griddata = griddata.rename(
         columns={
             "gridindex": "inputcellid",
@@ -207,7 +207,7 @@ def read_mattia_grid_data_file(pathtogriddata):
     # griddatfilepath = Path(pathtogriddata) / "q90_m0.01_v0.1.txt"
     griddatfilepath = Path(pathtogriddata) / "1D_m0.01_v0.1.txt"
 
-    griddata = pd.read_csv(griddatfilepath, delim_whitespace=True, comment="#", skiprows=1)
+    griddata = pd.read_csv(griddatfilepath, sep=r"\s+", comment="#", skiprows=1)
     with griddatfilepath.open() as gridfile:
         t_model = float(gridfile.readline())
         print(f"t_model {t_model} seconds")

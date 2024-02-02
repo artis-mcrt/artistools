@@ -24,7 +24,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         args = parser.parse_args(argsraw)
 
     dfsolarabund = pd.read_csv(
-        at.get_config()["path_datadir"] / "solar_r_abundance_pattern.txt", delim_whitespace=True, comment="#"
+        at.get_config()["path_datadir"] / "solar_r_abundance_pattern.txt", sep=r"\s+", comment="#"
     )
 
     dfsolarabund["radioactive"] = True
@@ -33,7 +33,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     dfbetaminus = pd.read_csv(
         at.get_config()["path_datadir"] / "betaminusdecays.txt",
-        delim_whitespace=True,
+        sep=r"\s+",
         comment="#",
         names=["A", "Z", "Q[MeV]", "Egamma[MeV]", "Eelec[MeV]", "Eneutrino[MeV]", "tau[s]"],
     )
@@ -75,7 +75,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         with Path(wollager_profilename).open("rt") as f:
             t_model_init_days_in = float(f.readline().strip().removesuffix(" day"))
         dfdensities = pd.read_csv(
-            wollager_profilename, delim_whitespace=True, skiprows=1, names=["cellid", "vel_r_max_kmps", "rho"]
+            wollager_profilename, sep=r"\s+", skiprows=1, names=["cellid", "vel_r_max_kmps", "rho"]
         )
         dfdensities["cellid"] = dfdensities["cellid"].astype(int)
         dfdensities["vel_r_min_kmps"] = np.concatenate(([0.0], dfdensities["vel_r_max_kmps"].to_numpy()[:-1]))

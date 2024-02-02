@@ -120,7 +120,7 @@ def get_floers_data(dfpopthision, atomic_number, ionstage, modelpath, T_e, model
         floersfilename = "andreas_level_populations_fe2.txt" if ionstage == 2 else "andreas_level_populations_fe3.txt"
         if Path(modelpath / floersfilename).is_file():
             print(f"reading {floersfilename}")
-            floers_levelpops = pd.read_csv(modelpath / floersfilename, comment="#", delim_whitespace=True)
+            floers_levelpops = pd.read_csv(modelpath / floersfilename, comment="#", sep=r"\s+")
             # floers_levelnums = floers_levelpops['index'].values - 1
             floers_levelpops = floers_levelpops.sort_values(by="energypercm")
             floers_levelnums = list(range(len(floers_levelpops)))

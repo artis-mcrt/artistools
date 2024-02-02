@@ -43,7 +43,7 @@ def read_3d_gammalightcurve(
 ) -> dict[int, pd.DataFrame]:
     columns = ["time"]
     columns.extend(np.arange(0, 100))
-    lcdata = pd.read_csv(filepath, delim_whitespace=True, header=None)
+    lcdata = pd.read_csv(filepath, sep=r"\s+", header=None)
     lcdata.columns = columns
     # lcdata = lcdata.rename(columns={0: 'time', 1: 'lum', 2: 'lum_cmf'})
 
@@ -185,18 +185,18 @@ def generate_band_lightcurve_data(
         timearray = vspecdata.keys()[1:]
     elif args.plotviewingangle and at.anyexist(["specpol_res.out", "spec_res.out"], folder=modelpath, tryzipped=True):
         specfilename = at.firstexisting(["specpol_res.out", "spec_res.out"], folder=modelpath, tryzipped=True)
-        specdataresdata = pd.read_csv(specfilename, delim_whitespace=True)
+        specdataresdata = pd.read_csv(specfilename, sep=r"\s+")
         timearray = [i for i in specdataresdata.columns.to_numpy()[1:] if i[-2] != "."]
     # elif Path(modelpath, 'specpol.out').is_file():
     #     specfilename = os.path.join(modelpath, "specpol.out")
-    #     specdata = pd.read_csv(specfilename, delim_whitespace=True)
+    #     specdata = pd.read_csv(specfilename, sep='\s+')
     #     timearray = [i for i in specdata.columns.values[1:] if i[-2] != '.']
     else:
         if args.plotviewingangle:
             print("WARNING: no direction-resolved spectra available. Using angle-averaged spectra.")
 
         specfilename = at.firstexisting(["spec.out", "specpol.out"], folder=modelpath, tryzipped=True)
-        specdata = pd.read_csv(specfilename, delim_whitespace=True)
+        specdata = pd.read_csv(specfilename, sep=r"\s+")
 
         timearray = (
             # Ignore Q and U values in pol file
@@ -417,12 +417,10 @@ def read_hesma_lightcurve(args: argparse.Namespace) -> pd.DataFrame:
         first_line = f.readline()
         if "#" in first_line:
             column_names.extend(i for i in first_line if i not in {"#", " ", "\n"})
-            hesma_model = pd.read_csv(
-                hesma_modelname, delim_whitespace=True, header=None, comment="#", names=column_names
-            )
+            hesma_model = pd.read_csv(hesma_modelname, sep=r"\s+", header=None, comment="#", names=column_names)
 
         else:
-            hesma_model = pd.read_csv(hesma_modelname, delim_whitespace=True)
+            hesma_model = pd.read_csv(hesma_modelname, sep=r"\s+")
     return hesma_model
 
 
@@ -433,7 +431,7 @@ def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pd.Dat
     data_path = Path(at.get_config()["path_artistools_dir"], f"data/lightcurves/{lightcurvefilename}")
     lightcurve_data = pd.read_csv(data_path, comment="#")
     if len(lightcurve_data.keys()) == 1:
-        lightcurve_data = pd.read_csv(data_path, comment="#", delim_whitespace=True)
+        lightcurve_data = pd.read_csv(data_path, comment="#", sep=r"\s+")
 
     lightcurve_data["magnitude"] = pd.to_numeric(lightcurve_data["magnitude"])  # force column to be float
 
@@ -475,7 +473,7 @@ def read_bol_reflightcurve_data(lightcurvefilename):
             flc.seek(filepos)  # undo the readline() and go back
             columns = None
 
-        dflightcurve = pd.read_csv(flc, delim_whitespace=True, header=None, names=columns)
+        dflightcurve = pd.read_csv(flc, sep=r"\s+", header=None, names=columns)
 
     if colrenames := {
         k: v
@@ -493,7 +491,7 @@ def read_bol_reflightcurve_data(lightcurvefilename):
 
 def get_sn_sample_bol():
     datafilepath = Path(at.get_config()["path_artistools_dir"], "data", "lightcurves", "SNsample", "bololc.txt")
-    sn_data = pd.read_csv(datafilepath, delim_whitespace=True, comment="#")
+    sn_data = pd.read_csv(datafilepath, sep=r"\s+", comment="#")
 
     print(sn_data)
     bol_luminosity = sn_data["Lmax"].astype(float)
@@ -540,7 +538,7 @@ def get_sn_sample_bol():
 
 def get_phillips_relation_data():
     datafilepath = Path(at.get_config()["path_artistools_dir"], "data", "lightcurves", "SNsample", "CfA3_Phillips.dat")
-    sn_data = pd.read_csv(datafilepath, delim_whitespace=True, comment="#")
+    sn_data = pd.read_csv(datafilepath, sep=r"\s+", comment="#")
     print(sn_data)
 
     sn_data["dm15(B)"] = sn_data["dm15(B)"].astype(float)

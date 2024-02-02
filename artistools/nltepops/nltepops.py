@@ -157,7 +157,7 @@ def read_file(nltefilepath: str | Path) -> pd.DataFrame:
     print(f"Reading {nltefilepath} ({filesize:.2f} MiB)")
 
     try:
-        dfpop = pd.read_csv(nltefilepath, delim_whitespace=True)
+        dfpop = pd.read_csv(nltefilepath, sep=r"\s+")
     except pd.errors.EmptyDataError:
         return pd.DataFrame()
     if "ion_stage" in dfpop.columns:

@@ -284,7 +284,7 @@ def make_3d_plot(modelpath, args):
     mincellparticles = 0
     if mincellparticles > 0:
         if "tracercount" not in model:
-            griddata = pd.read_csv(modelpath / "grid.dat", delim_whitespace=True, comment="#", skiprows=3)
+            griddata = pd.read_csv(modelpath / "grid.dat", sep=r"\s+", comment="#", skiprows=3)
             model["tracercount"] = griddata["tracercount"]
         print(model["tracercount"], max(model["tracercount"]))
         model[coloursurfaceby][model["tracercount"] < mincellparticles] = 0
