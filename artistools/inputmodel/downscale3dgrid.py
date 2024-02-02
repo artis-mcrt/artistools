@@ -43,7 +43,7 @@ def make_downscaled_3d_grid(
     print("reading abundance file")
 
     cellindex = 0
-    for i, (z, y, x) in enumerate(itertools.product(range(grid), range(grid), range(grid))):
+    for cellindex, (z, y, x) in enumerate(itertools.product(range(grid), range(grid), range(grid))):
         abund[x, y, z] = dfelemabund.iloc[cellindex].to_numpy()
 
     print("reading model file")

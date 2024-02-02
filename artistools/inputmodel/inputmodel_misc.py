@@ -1014,7 +1014,7 @@ def get_initelemabundances_polars(
     else:
         if not printwarningsonly:
             print(f"Reading {abundancefilepath}")
-        ncols = len(pd.read_csv(abundancefilepath, delim_whitespace=True, header=None, comment="#", nrows=1).columns)
+        ncols = len(pd.read_csv(abundancefilepath, sep=r"\s+", header=None, comment="#", nrows=1).columns)
         colnames = ["inputcellid", *["X_" + at.get_elsymbol(x) for x in range(1, ncols)]]
         dtypes = {col: pl.Float32 if col.startswith("X_") else pl.Int32 for col in colnames}
 
