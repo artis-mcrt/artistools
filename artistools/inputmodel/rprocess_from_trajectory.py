@@ -592,7 +592,7 @@ def get_wollaeger_density_profile(wollaeger_profilename):
         t_model_init_days_in = float(f.readline().strip().removesuffix(" day"))
     result = pd.read_csv(
         wollaeger_profilename,
-        delim_whitespace=True,
+        sep=r"\s+",
         skiprows=1,
         names=["cellid", "vel_r_max_kmps", "rho"],
     )

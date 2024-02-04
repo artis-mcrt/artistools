@@ -202,7 +202,7 @@ def test_spectra_get_flux_contributions() -> None:
 
     integrated_flux_specout = np.trapz(dfspectrum["f_lambda"], x=dfspectrum["lambda_angstroms"])
 
-    specdata = pd.read_csv(modelpath / "spec.out", delim_whitespace=True)
+    specdata = pd.read_csv(modelpath / "spec.out", sep=r"\s+")
     arraynu = specdata.loc[:, "0"].to_numpy()
     c_ang_per_s = 2.99792458e18
     arraylambda_angstroms = c_ang_per_s / arraynu

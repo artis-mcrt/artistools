@@ -146,7 +146,7 @@ def read_files(
         for filepath in files:
             print(f"Loading {filepath}...")
 
-            df_thisfile = pd.read_csv(filepath, delim_whitespace=True)
+            df_thisfile = pd.read_csv(filepath, sep=r"\s+")
             # df_thisfile[['modelgridindex', 'timestep']].apply(pd.to_numeric)
             if modelgridindex:
                 df_thisfile = df_thisfile[df_thisfile["modelgridindex"] == modelgridindex]

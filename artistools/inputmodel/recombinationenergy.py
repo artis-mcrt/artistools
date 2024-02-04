@@ -103,7 +103,7 @@ def get_particle_nucenergy_released(traj_root, particleid, tmin_s, time_s_end):
     with at.inputmodel.rprocess_from_trajectory.open_tar_file_or_extracted(
         traj_root=traj_root, particleid=particleid, memberfilename=memberfilename
     ) as fthermo:
-        dfthermo = pd.read_csv(fthermo, delim_whitespace=True, usecols=["#count", "time/s", "Qdot", "Ye"])
+        dfthermo = pd.read_csv(fthermo, sep=r"\s+", usecols=["#count", "time/s", "Qdot", "Ye"])
         dfthermo = dfthermo.rename(columns={"time/s": "time_s"})
         dfthermo = dfthermo.query("time_s >= @tmin_s")
         dfthermo = dfthermo.query("time_s <= @time_s_end")
@@ -205,7 +205,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         for _ in range(11):
             header = fbinding.readline().lstrip(" #").split()
         # print(header)
-        dfbinding = pd.read_csv(fbinding, delim_whitespace=True, names=header)
+        dfbinding = pd.read_csv(fbinding, sep=r"\s+", names=header)
         # print(dfbinding)
 
     traj_root = Path(

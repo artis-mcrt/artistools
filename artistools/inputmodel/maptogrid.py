@@ -151,7 +151,7 @@ def maptogrid(
     dfsnapshot = pd.read_csv(
         ejectasnapshotpath,
         names=snapshot_columns,
-        delim_whitespace=True,
+        sep=r"\s+",
         usecols=snapshot_columns_used,
         dtype_backend="pyarrow",
     )

@@ -157,7 +157,7 @@ def get_rprocess_calculation_files(path_to_rprocess_calculation, interpolate_tra
         tar = tarfile.open(path_to_rprocess_calculation / file, mode="r:*")
 
         energythermo_file = tar.extractfile(member=energy_thermo_filepath)
-        energy_thermo_data = pd.read_csv(energythermo_file, delim_whitespace=True)
+        energy_thermo_data = pd.read_csv(energythermo_file, sep=r"\s+")
         # print(energy_thermo_data['Qdot'])
         # print(energy_thermo_data['time/s'])
 
@@ -211,7 +211,7 @@ def make_energy_files(rho, Mtot_grams, outputpath=None, modelpath=None, model=No
         times_and_rate, E_tot_per_gram = define_heating_rate()
     # else:
     #     path = Path(".")
-    #     energy_thermo_data = pd.read_csv(path / "interpolatedQdot.dat", delim_whitespace=True)
+    #     energy_thermo_data = pd.read_csv(path / "interpolatedQdot.dat", sep='\s+')
     #     energy_thermo_data = energy_thermo_data.rename(columns={"mean": "Qdot"})
     #     print("Taking rate from averaged trajectories Qdot")
     #     with pd.option_context("display.max_rows", None, "display.max_columns", None):
@@ -243,7 +243,7 @@ def get_etot_fromfile(modelpath):
     energydistribution_data = pd.read_csv(
         Path(modelpath) / "energydistribution.txt",
         skiprows=1,
-        delim_whitespace=True,
+        sep=r"\s+",
         header=None,
         names=["cellid", "cell_energy"],
     )
@@ -252,6 +252,4 @@ def get_etot_fromfile(modelpath):
 
 
 def get_energy_rate_fromfile(modelpath):
-    return pd.read_csv(
-        Path(modelpath) / "energyrate.txt", skiprows=1, delim_whitespace=True, header=None, names=["times", "rate"]
-    )
+    return pd.read_csv(Path(modelpath) / "energyrate.txt", skiprows=1, sep=r"\s+", header=None, names=["times", "rate"])

@@ -43,9 +43,8 @@ def make_downscaled_3d_grid(
     print("reading abundance file")
 
     cellindex = 0
-    for z, y, x in itertools.product(range(grid), range(grid), range(grid)):
+    for cellindex, (z, y, x) in enumerate(itertools.product(range(grid), range(grid), range(grid))):
         abund[x, y, z] = dfelemabund.iloc[cellindex].to_numpy()
-        cellindex += 1
 
     print("reading model file")
     t_model_days = modelmeta["t_model_init_days"]
