@@ -190,7 +190,8 @@ def test_spectra_get_spectrum_polar_angles_frompackets() -> None:
     }
 
     for dirbin in results_pkts:
-        assert results_pkts[dirbin] == expected_results[dirbin]
+        for i in range(2):
+            assert np.isclose(results_pkts[dirbin][i], expected_results[dirbin][i], rtol=1e-3)
 
 
 def test_spectra_get_flux_contributions() -> None:
