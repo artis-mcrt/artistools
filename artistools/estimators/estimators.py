@@ -332,15 +332,16 @@ def scan_estimators(
 
     # print(f" matching cells {match_modelgridindex} and timesteps {match_timestep}")
     mpiranklist = at.get_mpiranklist(modelpath, only_ranks_withgridcells=True)
-    if match_modelgridindex is not None:
-        mpiranks_matched = {
-            at.get_mpirankofcell(modelpath=modelpath, modelgridindex=mgi) for mgi in match_modelgridindex
-        }
-        mpirank_groups = [
-            (batchindex, mpiranks)
-            for batchindex, mpiranks in enumerate(batched(mpiranklist, 100))
-            if mpiranks_matched.intersection(mpiranks)
-        ]
+    mpiranks_matched = (
+        {at.get_mpirankofcell(modelpath=modelpath, modelgridindex=mgi) for mgi in match_modelgridindex}
+        if match_modelgridindex
+        else set(mpiranklist)
+    )
+    mpirank_groups = [
+        (batchindex, mpiranks)
+        for batchindex, mpiranks in enumerate(batched(mpiranklist, 100))
+        if mpiranks_matched.intersection(mpiranks)
+    ]
 
     runfolders = at.get_runfolders(modelpath, timesteps=match_timestep)
 
