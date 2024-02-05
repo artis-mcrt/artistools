@@ -48,18 +48,21 @@ def plot_qdot(
     heatcols = ["hbeta", "halpha", "hbfis", "hspof", "Ye", "Qdot"]
 
     arr_heat = {col: np.zeros_like(arr_time_gsi_days) for col in heatcols}
-    dfmodel = lzdfmodel.select("mass_g").collect()
+    series_mass_g = lzdfmodel.select("mass_g").collect().get_column("mass_g")
 
-    model_mass_grams = dfmodel.select("mass_g").sum().item()
+    model_mass_grams = series_mass_g.sum()
     print(f"model mass: {model_mass_grams / 1.989e33:.3f} Msun")
+
+    cell_mass_fracs = series_mass_g / model_mass_grams
 
     print("Calculating global heating rates from the individual particle heating rates...")
     dfpartcontrib_nomissing = dfpartcontrib.filter(pl.col("particleid").is_in(allparticledata.keys()))
     for cellindex, dfpartcontribthiscell in dfpartcontrib_nomissing.group_by("cellindex"):
-        if cellindex >= modelmeta["npts_model"]:
-            continue
         assert isinstance(cellindex, int)
-        cell_mass_frac = (dfmodel[cellindex - 1]["mass_g"] / model_mass_grams).item()
+        mgi = cellindex - 1
+        if mgi >= modelmeta["npts_model"]:
+            continue
+        cell_mass_frac = cell_mass_fracs[mgi]
 
         if cell_mass_frac == 0.0:
             continue
