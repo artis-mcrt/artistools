@@ -341,6 +341,7 @@ def scan_estimators(
         for runfolder in runfolders
         for batchindex, mpiranks in enumerate(mpirank_groups)
     )
+    assert bool(parquetfiles)
 
     pldflazy = pl.concat([pl.scan_parquet(pfile) for pfile in parquetfiles], how="diagonal_relaxed")
     pldflazy = pldflazy.unique(["timestep", "modelgridindex"], maintain_order=True, keep="first")
