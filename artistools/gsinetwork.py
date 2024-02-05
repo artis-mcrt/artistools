@@ -236,7 +236,7 @@ def plot_cell_abund_evolution(
 
     axes[-1].set_xlabel("Time [days]")
     axis = axes[0]
-    print("nuc", "gsi_abund", "inputmodel_abund", "artis_abund")
+    print("nuc gsi_abund artis_abund")
     for axis, strnuc in zip(axes, arr_strnuc):
         # print(arr_time_artis_days)
         xmin = min(arr_time_gsi_days) * 0.9
@@ -273,6 +273,9 @@ def plot_cell_abund_evolution(
                 color="red",
             )
 
+        print(
+            f"{strnuc} {arr_abund_gsi[strnuc][0]:.2e} {arr_abund_artis[strnuc][0]:.2e}",
+        )
         if f"X_{strnuc}" in dfcell and not hideinputmodelpoints:
             axis.plot(
                 t_model_init_days,
@@ -282,9 +285,6 @@ def plot_cell_abund_evolution(
                 markeredgewidth=2,
                 label=f"{strnuc_latex} ARTIS inputmodel",
                 color="blue",
-            )
-            print(
-                f'{strnuc} {arr_abund_gsi[strnuc][0]:.2e} {dfcell[f"X_{strnuc}"]:.2e}, {arr_abund_artis[strnuc][0]:.2e}'
             )
 
         axis.legend(loc="best", frameon=False, handlelength=1, ncol=1, numpoints=1)
