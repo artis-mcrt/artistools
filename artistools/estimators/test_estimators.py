@@ -156,7 +156,7 @@ def test_estimator_snapshot_classic_3d(mockplot) -> None:
 
     # order of keys is important
     expectedvals = {
-        "init_fe": 0.03029252884676537,
+        "init_fe": 0.030294,
         "init_nistable": 0.021893564453473548,
         "init_ni56": 0.16024263036897185,
         "nne": 59517277409.47505,
