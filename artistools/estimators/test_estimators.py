@@ -190,7 +190,7 @@ def test_estimator_snapshot_classic_3d(mockplot) -> None:
         assert np.allclose(expectedval, np.array(yvals[varname]).mean(), rtol=0.001), (
             varname,
             expectedval,
-            yvals[varname][1],
+            np.array(yvals[varname]).mean(),
         )
 
 
