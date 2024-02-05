@@ -34,7 +34,6 @@ def plot_qdot(
     modelmeta: dict[str, t.Any],
     allparticledata: dict[int, dict[str, np.ndarray]],
     arr_time_artis_days: t.Sequence[float],
-    arr_artis_ye: t.Sequence[float],
     arr_time_gsi_days: t.Sequence[float],
     pdfoutpath: Path | str,
     xmax: None | float = None,
@@ -76,8 +75,7 @@ def plot_qdot(
 
     print("  done.")
 
-    show_ye = False
-    nrows = 2 if show_ye else 1
+    nrows = 1
     fig, axes = plt.subplots(
         nrows=nrows,
         ncols=1,
@@ -181,30 +179,6 @@ def plot_qdot(
     )
 
     axis.legend(loc="best", frameon=False, handlelength=1, ncol=3, numpoints=1)
-
-    if show_ye:
-        axes[1].plot(
-            arr_time_gsi_days,
-            arr_heat["Ye"],
-            linewidth=2,
-            color="black",
-            linestyle="dashed",
-            # marker='x', markersize=8,
-            label=r"Ye GSI Network",
-        )
-
-        axes[1].plot(
-            arr_time_artis_days,
-            arr_artis_ye,
-            linewidth=2,
-            # linestyle='None',
-            # marker='+', markersize=15,
-            label="Ye ARTIS",
-            color="red",
-        )
-
-        axes[1].set_ylabel("Ye [e-/nucleon]")
-        axes[1].legend(loc="best", frameon=False, handlelength=1, ncol=3, numpoints=1)
 
     # fig.suptitle(f'{at.get_model_name(modelpath)}', fontsize=10)
     at.plottools.autoscale(axis, margin=0.0)
@@ -496,37 +470,74 @@ def plot_qdot_abund_modelcells(
 
     arr_time_artis_days: list[float] = []
     arr_abund_artis: dict[int, dict[str, list[float]]] = {}
-    get_global_Ye = False
-    artis_ye_sum: dict[int, float] = {}
-    artis_ye_norm: dict[int, float] = {}
 
     with contextlib.suppress(FileNotFoundError):
-        get_mgi_list = None if get_global_Ye else tuple(mgiplotlist)  # all cells if Ye is calculated
-        estimators = at.estimators.read_estimators(modelpath, modelgridindex=get_mgi_list)
+        get_mgi_list = tuple(mgiplotlist)  # all cells if Ye is calculated
+        estimators_lazy = at.estimators.scan_estimators(
+            modelpath=modelpath,
+            modelgridindex=get_mgi_list,
+        )
+        assert estimators_lazy is not None
+        estimators_lazy = estimators_lazy.filter(pl.col("timestep") > 0)
 
         first_mgi = None
-        partiallycomplete_timesteps = at.estimators.get_partiallycompletetimesteps(estimators)
-        dfmodel = lzdfmodel.select(["logrho", "mass_g", "volume", *[f"X_{strnuc}" for strnuc in arr_strnuc]]).collect()
-        for nts, mgi in sorted(estimators.keys()):
-            if nts in partiallycomplete_timesteps:
-                continue
-            if mgi not in mgiplotlist and not get_global_Ye:
-                continue
+        estimators_lazy = estimators_lazy.filter(pl.col("modelgridindex").is_in(mgiplotlist))
+
+        estimators_lazy = estimators_lazy.select(
+            "modelgridindex",
+            "timestep",
+            *[f"nniso_{strnuc}" for strnuc in arr_strnuc if f"nniso_{strnuc}" in estimators_lazy.columns],
+        )
+
+        estimators_lazy = (
+            estimators_lazy.join(
+                lzdfmodel.select(
+                    "modelgridindex",
+                    "rho",
+                    *[f"X_{strnuc}" for strnuc in arr_strnuc if f"X_{strnuc}" in lzdfmodel.columns],
+                ),
+                on="modelgridindex",
+            )
+            .collect()
+            .lazy()
+        )
+
+        estimators_lazy = estimators_lazy.join(
+            pl.DataFrame({"timestep": range(len(tmids)), "time_mid": tmids})
+            .with_columns(pl.col("timestep").cast(pl.Int32))
+            .lazy(),
+            on="timestep",
+            how="left",
+        )
+
+        estimators_lazy = estimators_lazy.with_columns(
+            rho_init=pl.col("rho"),
+            rho=pl.col("rho") * (modelmeta["t_model_init_days"] / pl.col("time_mid")) ** 3,
+        )
+        # assert False
+
+        # estimators_lazy = estimators_lazy.with_columns(
+        #     rho=pl.col("rho") * (modelmeta["t_model_init_days"] / pl.col("time_mid")) ** 3
+        # )
+
+        estimators_lazy = estimators_lazy.sort(by=["timestep", "modelgridindex"])
+        estimators = estimators_lazy.collect()
+
+        for (nts, mgi), estimtsmgsi in estimators.group_by(["timestep", "modelgridindex"], maintain_order=True):  # type: ignore[misc]
+            assert isinstance(nts, int)
+            assert isinstance(mgi, int)
 
             if first_mgi is None:
                 first_mgi = mgi
-            time_days = tmids[nts]
+            time_days = estimtsmgsi["time_mid"].item()
 
             if mgi == first_mgi:
                 arr_time_artis_days.append(time_days)
 
-            rho_init_cgs = 10 ** dfmodel[mgi]["logrho"].item()
-            rho_cgs = rho_init_cgs * (modelmeta["t_model_init_days"] / time_days) ** 3
-
             for strnuc, a in zip(arr_strnuc, arr_a):
-                abund = estimators[(nts, mgi)][f"nniso_{strnuc}"]
-                massfrac = abund * a * MH / rho_cgs
-                massfrac = massfrac + dfmodel[mgi][f"X_{strnuc}"].item() * (correction_factors[strnuc] - 1.0)
+                abund = estimtsmgsi[f"nniso_{strnuc}"].item()
+                massfrac = abund * a * MH / estimtsmgsi["rho"].item()
+                massfrac = massfrac + estimtsmgsi[f"X_{strnuc}"].item() * (correction_factors[strnuc] - 1.0)
 
                 if mgi not in arr_abund_artis:
                     arr_abund_artis[mgi] = {}
@@ -539,37 +550,7 @@ def plot_qdot_abund_modelcells(
             if mgi not in arr_abund_artis:
                 arr_abund_artis[mgi] = {}
 
-            if "Ye" not in arr_abund_artis[mgi]:
-                arr_abund_artis[mgi]["Ye"] = []
-
-            abund = estimators[(nts, mgi)].get(f"nniso_{strnuc}", 0.0)
-            if "Ye" in estimators[(nts, mgi)]:
-                cell_Ye = estimators[(nts, mgi)]["Ye"]
-                arr_abund_artis[mgi]["Ye"].append(cell_Ye)
-                artis_ye_sum[nts] = artis_ye_sum.get(nts, 0.0) + cell_Ye * dfmodel[mgi]["mass_g"].item()
-                artis_ye_norm[nts] = artis_ye_norm.get(nts, 0.0) + dfmodel[mgi]["mass_g"].item()
-            else:
-                cell_protoncount = 0.0
-                cell_nucleoncount = 0.0
-                cellvolume = dfmodel[mgi]["volume"]
-                for popkey, abund in estimators[(nts, mgi)].items():
-                    if popkey.startswith("nniso_") and abund > 0.0:
-                        if popkey.endswith("_otherstable"):
-                            # TODO: use mean molecular weight, but this is not needed for kilonova input files anyway
-                            print(f"WARNING {popkey}={abund} not contributed")
-                        else:
-                            with contextlib.suppress(AssertionError):
-                                z, a = at.get_z_a_nucname(popkey)
-                                cell_protoncount += z * abund * cellvolume
-                                cell_nucleoncount += a * abund * cellvolume
-
-                cell_Ye = cell_protoncount / cell_nucleoncount
-
-                arr_abund_artis[mgi]["Ye"].append(cell_Ye)
-                artis_ye_sum[nts] = artis_ye_sum.get(nts, 0.0) + cell_protoncount
-                artis_ye_norm[nts] = artis_ye_norm.get(nts, 0.0) + cell_nucleoncount
-
-        arr_artis_ye = [artis_ye_sum[nts] / artis_ye_norm[nts] for nts in sorted(artis_ye_sum.keys())]
+            abund = estimtsmgsi[f"nniso_{strnuc}"].item()
 
     arr_time_artis_days_alltimesteps = at.get_timestep_times(modelpath)
     arr_time_artis_s_alltimesteps = np.array([t * 8.640000e04 for t in arr_time_artis_days_alltimesteps])
@@ -628,7 +609,6 @@ def plot_qdot_abund_modelcells(
         modelmeta,
         allparticledata,
         arr_time_artis_days,
-        arr_artis_ye,
         arr_time_gsi_days,
         pdfoutpath=Path(modelpath, "gsinetwork_global-qdot.pdf"),
         xmax=xmax,

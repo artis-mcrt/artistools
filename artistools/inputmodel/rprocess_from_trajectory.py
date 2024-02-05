@@ -298,7 +298,7 @@ def get_trajectory_abund_q(
 
 def get_gridparticlecontributions(gridcontribpath: Path | str) -> pl.DataFrame:
     return pl.read_csv(
-        Path(gridcontribpath, "gridcontributions.txt"),
+        at.firstexisting("gridcontributions.txt", folder=gridcontribpath, tryzipped=True),
         has_header=True,
         separator=" ",
         dtypes={

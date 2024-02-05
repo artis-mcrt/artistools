@@ -462,18 +462,3 @@ def get_averageexcitation(
         energypopsum += energy_boltzfac_sum * superlevelrow.n_NLTE / boltzfac_sum
 
     return energypopsum / ionpopsum
-
-
-def get_partiallycompletetimesteps(estimators: dict[tuple[int, int], dict[str, t.Any]]) -> list[int]:
-    """During a simulation, some estimator files can contain information for some cells but not others
-    for the current timestep.
-    """
-    timestepcells: dict[int, list[int]] = {}
-    all_mgis = set()
-    for nts, mgi in estimators:
-        if nts not in timestepcells:
-            timestepcells[nts] = []
-        timestepcells[nts].append(mgi)
-        all_mgis.add(mgi)
-
-    return [nts for nts, mgilist in timestepcells.items() if len(mgilist) < len(all_mgis)]
