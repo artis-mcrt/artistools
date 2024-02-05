@@ -331,15 +331,23 @@ def scan_estimators(
         ).lazy()
 
     # print(f" matching cells {match_modelgridindex} and timesteps {match_timestep}")
-
     mpiranklist = at.get_mpiranklist(modelpath, only_ranks_withgridcells=True)
-    mpirank_groups = list(batched(mpiranklist, 100))
+    if match_modelgridindex is not None:
+        mpiranks_matched = {
+            at.get_mpirankofcell(modelpath=modelpath, modelgridindex=mgi) for mgi in match_modelgridindex
+        }
+        mpirank_groups = [
+            (batchindex, mpiranks)
+            for batchindex, mpiranks in enumerate(batched(mpiranklist, 100))
+            if mpiranks_matched.intersection(mpiranks)
+        ]
+
     runfolders = at.get_runfolders(modelpath, timesteps=match_timestep)
 
     parquetfiles = (
         get_rankbatch_parquetfile(modelpath, runfolder, mpiranks, batchindex=batchindex)
         for runfolder in runfolders
-        for batchindex, mpiranks in enumerate(mpirank_groups)
+        for batchindex, mpiranks in mpirank_groups
     )
     assert bool(parquetfiles)
 
