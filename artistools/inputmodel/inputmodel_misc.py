@@ -1302,6 +1302,8 @@ def dimension_reduce_3d_model(
                 assert isinstance(dotprod, float)
                 massfrac = dotprod / matchedcellmass if nonempty else 0.0
                 dictcell[column] = massfrac
+            elif column == "tracercount":
+                dictcell["tracercount"] = matchedcells["tracercount"].sum()
 
         outcells.append(dictcell)
 

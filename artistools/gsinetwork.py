@@ -391,7 +391,11 @@ def get_particledata(
 
 
 def plot_qdot_abund_modelcells(
-    modelpath: Path, mgiplotlist: t.Sequence[int], arr_el_a: list[tuple[str, int]], xmax: None | float = None
+    modelpath: Path,
+    merger_root: Path,
+    mgiplotlist: t.Sequence[int],
+    arr_el_a: list[tuple[str, int]],
+    xmax: None | float = None,
 ):
     # default values, because early model.txt didn't specify this
     griddatafolder: Path = Path("SFHo_snapshot")
@@ -408,8 +412,6 @@ def plot_qdot_abund_modelcells(
             elif line.startswith("# trajfolder:"):
                 trajfolder = Path(line.strip().removeprefix("# trajfolder: ").replace("SFHO", "SFHo"))
 
-    merger_root = Path(Path.home() / "Google Drive/Shared Drives/GSI NSM/Mergers")
-    # merger_root = Path("/Users/luke/Downloads/Mergers")
     griddata_root = Path(merger_root, mergermodelfolder, griddatafolder)
     traj_root = Path(merger_root, mergermodelfolder, trajfolder)
     print(f"model.txt traj_root: {traj_root}")
@@ -431,14 +433,18 @@ def plot_qdot_abund_modelcells(
 
     # these factors correct for missing mass due to skipped shells, and volume error due to Cartesian grid map
     correction_factors = {}
-    assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath)
-
-    direct_model_propgrid_map = all(
-        len(propcells) == 1 and mgi == propcells[0] for mgi, propcells in assoc_cells.items()
-    )
+    try:
+        assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath)
+        direct_model_propgrid_map = all(
+            len(propcells) == 1 and mgi == propcells[0] for mgi, propcells in assoc_cells.items()
+        )
+        if direct_model_propgrid_map:
+            print("  detected direct mapping of model cells to propagation grid")
+    except FileNotFoundError:
+        print("No grid mapping file found, assuming direct mapping of model cells to propagation grid")
+        direct_model_propgrid_map = True
 
     if direct_model_propgrid_map:
-        print("  detected direct mapping of model cells to propagation grid")
         correction_factors = {strnuc: 1.0 for strnuc in arr_strnuc}
 
         lzdfmodel = lzdfmodel.with_columns(n_assoc_cells=pl.lit(1.0))
@@ -632,6 +638,12 @@ def plot_qdot_abund_modelcells(
 def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-modelpath", default=".", help="Path for ARTIS files")
 
+    parser.add_argument(
+        "-mergerroot",
+        default=Path(Path.home() / "Google Drive/Shared Drives/GSI NSM/Mergers"),
+        help="Base path for merger snapshot and trajectory data specified in model.txt",
+    )
+
     parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")
 
     parser.add_argument("-xmax", default=None, type=int, help="Maximum time in days to plot")
@@ -701,7 +713,9 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     else:
         mgiplotlist = [int(args.modelgridindex)]
 
-    plot_qdot_abund_modelcells(modelpath, mgiplotlist, arr_el_a, xmax=args.xmax)
+    plot_qdot_abund_modelcells(
+        modelpath=modelpath, merger_root=args.mergerroot, mgiplotlist=mgiplotlist, arr_el_a=arr_el_a, xmax=args.xmax
+    )
 
 
 if __name__ == "__main__":
