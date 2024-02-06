@@ -550,11 +550,6 @@ def plot_qdot_abund_modelcells(
 
                 arr_abund_artis[mgi][strnuc].append(massfrac)
 
-            if mgi not in arr_abund_artis:
-                arr_abund_artis[mgi] = {}
-
-            abund = estimtsmgsi[f"nniso_{strnuc}"].item()
-
     arr_time_artis_days_alltimesteps = at.get_timestep_times(modelpath)
     arr_time_artis_s_alltimesteps = np.array([t * 8.640000e04 for t in arr_time_artis_days_alltimesteps])
     # no completed timesteps yet, so display full set of timesteps that artis will compute
