@@ -342,9 +342,12 @@ def plot_artis_spectrum(
             print(f"No data for direction bin(s): {missingdirectionbins}")
             if founddirectionbins:
                 directionbins = founddirectionbins
-            else:
+            elif -1 in viewinganglespectra:
                 directionbins = [-1]
                 print("Showing spherically-averaged spectrum instead")
+            else:
+                print("No data to plot")
+                return None
 
         for dirbin in directionbins:
             if len(directionbins) > 1 and dirbin != directionbins[0]:
@@ -619,7 +622,12 @@ def make_emissionabsorption_plot(
         )
     else:
         arraylambda_angstroms = 2.99792458e18 / arraynu
-        assert args.groupby in {None, "ion"}
+        if args.groupby not in {
+            None,
+            "ion",
+        }:
+            msg = "Only groupby='ion' is available unless --frompacket is used"
+            raise ValueError(msg)
         contribution_list, array_flambda_emission_total = at.spectra.get_flux_contributions(
             modelpath,
             filterfunc,
