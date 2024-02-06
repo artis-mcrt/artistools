@@ -766,17 +766,13 @@ def get_mean_cell_properties_of_angle_bin(
         dfanglebin = dfmodeldata.query("cos_bin == @cos_bin_number", inplace=False)
 
         binned = pd.cut(dfanglebin["vel_r_mid"], velocity_bins, labels=False, include_lowest=True)
-        i = 0
-        for i, (binindex, mean_rho) in enumerate(dfanglebin.groupby(binned)["rho"].mean().iteritems(), 1):
+        for binindex, mean_rho in dfanglebin.groupby(binned)["rho"].mean().iteritems():
             mean_bin_properties[bin_number]["mean_rho"][binindex] += mean_rho
-        i = 0
         if "Ye" in dfmodeldata:
             for binindex, mean_Ye in dfanglebin.groupby(binned)["Ye"].mean().iteritems():
-                i += 1
                 mean_bin_properties[bin_number]["mean_Ye"][binindex] += mean_Ye
         if "Q" in dfmodeldata:
             for binindex, mean_Q in dfanglebin.groupby(binned)["Q"].mean().iteritems():
-                i += 1
                 mean_bin_properties[bin_number]["mean_Q"][binindex] += mean_Q
 
     return mean_bin_properties
@@ -1306,6 +1302,8 @@ def dimension_reduce_3d_model(
                 assert isinstance(dotprod, float)
                 massfrac = dotprod / matchedcellmass if nonempty else 0.0
                 dictcell[column] = massfrac
+            elif column == "tracercount":
+                dictcell["tracercount"] = matchedcells["tracercount"].sum()
 
         outcells.append(dictcell)
 

@@ -7,7 +7,6 @@ from artistools.estimators.estimators import apply_filters
 from artistools.estimators.estimators import get_averaged_estimators
 from artistools.estimators.estimators import get_averageexcitation
 from artistools.estimators.estimators import get_ionrecombrates_fromfile
-from artistools.estimators.estimators import get_partiallycompletetimesteps
 from artistools.estimators.estimators import get_units_string
 from artistools.estimators.estimators import get_variablelongunits
 from artistools.estimators.estimators import get_variableunits

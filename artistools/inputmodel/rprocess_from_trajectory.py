@@ -95,7 +95,11 @@ def open_tar_file_or_extracted(traj_root: Path, particleid: int, memberfilename:
 
     # and memberfilename.endswith(".dat")
     if not path_extracted_file.is_file() and tarfilepath is not None:
-        tarfile.open(tarfilepath, "r:*").extract(path=Path(traj_root, str(particleid)), member=memberfilename)
+        try:
+            tarfile.open(tarfilepath, "r:*").extract(path=Path(traj_root, str(particleid)), member=memberfilename)
+        except OSError:
+            print(f"Problem extracting file {memberfilename} from {tarfilepath}")
+            raise
 
     if path_extracted_file.is_file():
         return path_extracted_file.open(encoding="utf-8")
@@ -294,7 +298,7 @@ def get_trajectory_abund_q(
 
 def get_gridparticlecontributions(gridcontribpath: Path | str) -> pl.DataFrame:
     return pl.read_csv(
-        Path(gridcontribpath, "gridcontributions.txt"),
+        at.firstexisting("gridcontributions.txt", folder=gridcontribpath, tryzipped=True),
         has_header=True,
         separator=" ",
         dtypes={

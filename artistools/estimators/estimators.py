@@ -331,16 +331,26 @@ def scan_estimators(
         ).lazy()
 
     # print(f" matching cells {match_modelgridindex} and timesteps {match_timestep}")
-
     mpiranklist = at.get_mpiranklist(modelpath, only_ranks_withgridcells=True)
-    mpirank_groups = list(batched(mpiranklist, 100))
+    mpiranks_matched = (
+        {at.get_mpirankofcell(modelpath=modelpath, modelgridindex=mgi) for mgi in match_modelgridindex}
+        if match_modelgridindex
+        else set(mpiranklist)
+    )
+    mpirank_groups = [
+        (batchindex, mpiranks)
+        for batchindex, mpiranks in enumerate(batched(mpiranklist, 100))
+        if mpiranks_matched.intersection(mpiranks)
+    ]
+
     runfolders = at.get_runfolders(modelpath, timesteps=match_timestep)
 
     parquetfiles = (
         get_rankbatch_parquetfile(modelpath, runfolder, mpiranks, batchindex=batchindex)
         for runfolder in runfolders
-        for batchindex, mpiranks in enumerate(mpirank_groups)
+        for batchindex, mpiranks in mpirank_groups
     )
+    assert bool(parquetfiles)
 
     pldflazy = pl.concat([pl.scan_parquet(pfile) for pfile in parquetfiles], how="diagonal_relaxed")
     pldflazy = pldflazy.unique(["timestep", "modelgridindex"], maintain_order=True, keep="first")
@@ -461,18 +471,3 @@ def get_averageexcitation(
         energypopsum += energy_boltzfac_sum * superlevelrow.n_NLTE / boltzfac_sum
 
     return energypopsum / ionpopsum
-
-
-def get_partiallycompletetimesteps(estimators: dict[tuple[int, int], dict[str, t.Any]]) -> list[int]:
-    """During a simulation, some estimator files can contain information for some cells but not others
-    for the current timestep.
-    """
-    timestepcells: dict[int, list[int]] = {}
-    all_mgis = set()
-    for nts, mgi in estimators:
-        if nts not in timestepcells:
-            timestepcells[nts] = []
-        timestepcells[nts].append(mgi)
-        all_mgis.add(mgi)
-
-    return [nts for nts, mgilist in timestepcells.items() if len(mgilist) < len(all_mgis)]

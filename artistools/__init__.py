@@ -10,6 +10,7 @@ from artistools import codecomparison
 from artistools import commands
 from artistools import deposition
 from artistools import estimators
+from artistools import gsinetwork
 from artistools import inputmodel
 from artistools import lightcurve
 from artistools import macroatom
