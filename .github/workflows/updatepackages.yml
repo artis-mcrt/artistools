@@ -2,7 +2,7 @@ name: Update packages
 
 on:
     schedule:
-        - cron: '00 10 * * *'
+        - cron: '00 10 1-7 * 1'
     workflow_dispatch:
 
 permissions:
