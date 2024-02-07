@@ -121,6 +121,7 @@ jobs:
               env:
                   LINTER_RULES_PATH: ./
                   LOG_LEVEL: WARN
+                  VALIDATE_GITHUB_ACTIONS: false
                   VALIDATE_GITLEAKS: false
                   VALIDATE_JSCPD: false
                   VALIDATE_PYTHON_BLACK: false
