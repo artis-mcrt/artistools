@@ -101,7 +101,7 @@ jobs:
 
     superlinter:
         name: Super linter
-        runs-on: macos-14
+        runs-on: ubuntu-latest
 
         steps:
             - name: Checkout Code
