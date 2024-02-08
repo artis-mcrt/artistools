@@ -805,47 +805,45 @@ def get_flux_contributions_from_packets(
     if groupby in {"terms", "upperterm"}:
         adata = at.atomic.get_levels(modelpath)
 
-    def get_emprocesslabel(
-        linelist: dict[int, at.linetuple], bflist: dict[int, tuple[int, int, int, int]], emtype: int
-    ) -> str:
+    def get_emprocesslabel(linelist: pl.DataFrame, bflist: dict[int, tuple[int, int, int, int]], emtype: int) -> str:
         if emtype >= 0:
-            line = linelist[emtype]
+            line = linelist.row(emtype, named=True)
 
             if groupby == "line":
                 return (
-                    f"{at.get_ionstring(line.atomic_number, line.ionstage)} "
-                    f"λ{line.lambda_angstroms:.0f} "
-                    f"({line.upperlevelindex}-{line.lowerlevelindex})"
+                    f"{at.get_ionstring(line['atomic_number'], line['ionstage'])} "
+                    f"λ{line['lambda_angstroms']:.0f} "
+                    f"({line['upperlevelindex']}-{line['lowerlevelindex']})"
                 )
 
             if groupby == "terms":
                 upper_config = (
                     adata.query("Z == @line.atomic_number and ionstage == @line.ionstage", inplace=False)
                     .iloc[0]
-                    .levels.iloc[line.upperlevelindex]
+                    .levels.iloc[line["upperlevelindex"]]
                     .levelname
                 )
                 upper_term_noj = upper_config.split("_")[-1].split("[")[0]
                 lower_config = (
                     adata.query("Z == @line.atomic_number and ionstage == @line.ionstage", inplace=False)
                     .iloc[0]
-                    .levels.iloc[line.lowerlevelindex]
+                    .levels.iloc[line["lowerlevelindex"]]
                     .levelname
                 )
                 lower_term_noj = lower_config.split("_")[-1].split("[")[0]
-                return f"{at.get_ionstring(line.atomic_number, line.ionstage)} {upper_term_noj}->{lower_term_noj}"
+                return f"{at.get_ionstring(line['atomic_number'], line['ionstage'])} {upper_term_noj}->{lower_term_noj}"
 
             if groupby == "upperterm":
                 upper_config = (
                     adata.query("Z == @line.atomic_number and ionstage == @line.ionstage", inplace=False)
                     .iloc[0]
-                    .levels.iloc[line.upperlevelindex]
+                    .levels.iloc[line["upperlevelindex"]]
                     .levelname
                 )
                 upper_term_noj = upper_config.split("_")[-1].split("[")[0]
-                return f"{at.get_ionstring(line.atomic_number, line.ionstage)} {upper_term_noj}"
+                return f"{at.get_ionstring(line['atomic_number'], line['ionstage'])} {upper_term_noj}"
 
-            return f"{at.get_ionstring(line.atomic_number, line.ionstage)} bound-bound"
+            return f"{at.get_ionstring(line['atomic_number'], line['ionstage'])} bound-bound"
 
         if emtype == -9999999:
             return "free-free"
@@ -859,16 +857,16 @@ def get_flux_contributions_from_packets(
 
         return f"? bound-free (bfindex={bfindex})"
 
-    def get_absprocesslabel(linelist: dict[int, at.linetuple], abstype: int) -> str:
+    def get_absprocesslabel(linelist: pl.DataFrame, abstype: int) -> str:
         if abstype >= 0:
-            line = linelist[abstype]
+            line = linelist.row(abstype, named=True)
             if groupby == "line":
                 return (
-                    f"{at.get_ionstring(line.atomic_number, line.ionstage)} "
-                    f"λ{line.lambda_angstroms:.0f} "
-                    f"({line.upperlevelindex}-{line.lowerlevelindex})"
+                    f"{at.get_ionstring(line['atomic_number'], line['ionstage'])} "
+                    f"λ{line['lambda_angstroms']:.0f} "
+                    f"({line['upperlevelindex']}-{line['lowerlevelindex']})"
                 )
-            return f"{at.get_ionstring(line.atomic_number, line.ionstage)} bound-bound"
+            return f"{at.get_ionstring(line['atomic_number'], line['ionstage'])} bound-bound"
         if abstype == -1:
             return "free-free"
         return "bound-free" if abstype == -2 else "? other absorp."
@@ -888,7 +886,7 @@ def get_flux_contributions_from_packets(
 
     packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles)
 
-    linelist = at.get_linelist_dict(modelpath=modelpath)
+    linelist = at.get_linelist_pldf(modelpath=modelpath).collect()
 
     energysum_spectrum_emission_total = np.zeros_like(array_lambda, dtype=float)
     array_energysum_spectra = {}
@@ -931,7 +929,10 @@ def get_flux_contributions_from_packets(
                 dfpackets = dfpackets.query("where in @assoc_cells[@modelgridindex]")
             print(f"  {len(dfpackets)} internal r-packets matching frequency range")
         else:
-            dfpackets = at.packets.readfile(packetsfile, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
+            dfpackets = at.packets.readfile(
+                packetsfile, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT", use_pyarrow_extension_array=False
+            )
+
             dfpackets = dfpackets.query(
                 "@nu_min <= nu_rf < @nu_max and trueemissiontype >= 0 and "
                 + (
@@ -954,11 +955,12 @@ def get_flux_contributions_from_packets(
                     "xindexabsorbed = floor((2.99792458e18 / absorption_freq - @lambda_min) / @delta_lambda)",
                 )
         else:
-            dfpackets["xindex"] = (
+            dfpackets.loc[:, "xindex"] = (
                 np.digitize(2.99792458e18 / dfpackets.nu_rf, bins=array_lambdabinedges, right=True) - 1
             )
+
             if getabsorption:
-                dfpackets["xindexabsorbed"] = (
+                dfpackets.loc[:, "xindexabsorbed"] = (
                     np.digitize(2.99792458e18 / dfpackets.absorption_freq, bins=array_lambdabinedges, right=True) - 1
                 )
 

@@ -87,7 +87,7 @@ def get_column_names_artiscode(modelpath: str | Path) -> list[str] | None:
         print("detected artis code directory")
         packet_properties: list[str] = []
         inputfilename = at.firstexisting(["packet_init.cc", "packet_init.c"], folder=modelpath / "artis")
-        print(f"found {inputfilename}: getting packet column names from artis code")
+        print(f"found {inputfilename}: getting packet column names from artis code:")
         with inputfilename.open() as inputfile:
             packet_print_lines = [line.split(",") for line in inputfile if "fprintf(packets_file," in line]
             for line in packet_print_lines:
@@ -125,6 +125,7 @@ def get_column_names_artiscode(modelpath: str | Path) -> list[str] | None:
         for i, column_name in enumerate(columns):
             if column_name in replacements_dict:
                 columns[i] = replacements_dict[column_name]
+        print(columns)
 
         return columns
 
@@ -285,7 +286,7 @@ def add_derived_columns_lazy(
 
 
 def readfile_text(packetsfile: Path | str, modelpath: Path = Path()) -> pl.DataFrame:
-    """Read a packets*.out(.xz) space-separated text file into a polars DataFrame."""
+    """Read a packets*.out(.xz/.zstd) space-separated text file into a polars DataFrame."""
     print(f"Reading {packetsfile}")
     # skiprows = 0
     column_names: list[str] | None = None
@@ -323,9 +324,10 @@ def readfile_text(packetsfile: Path | str, modelpath: Path = Path()) -> pl.DataF
 
     try:
         dfpackets = pl.read_csv(
-            fpackets,
+            packetsfile,
             separator=" ",
             has_header=False,
+            comment_prefix="#",
             new_columns=column_names,
             infer_schema_length=20000,
         )
@@ -357,6 +359,7 @@ def readfile(
     packetsfile: Path | str,
     packet_type: str | None = None,
     escape_type: t.Literal["TYPE_RPKT", "TYPE_GAMMA"] | None = None,
+    use_pyarrow_extension_array=True,
 ) -> pd.DataFrame:
     """Read a packet file into a Pandas DataFrame."""
     dfpackets = pl.read_parquet(packetsfile)
@@ -369,7 +372,7 @@ def readfile(
     elif packet_type is not None and packet_type:
         dfpackets = dfpackets.filter(pl.col("type_id") == type_ids[packet_type])
 
-    return dfpackets.to_pandas(use_pyarrow_extension_array=True)
+    return dfpackets.to_pandas(use_pyarrow_extension_array=use_pyarrow_extension_array)
 
 
 def convert_text_to_parquet(
