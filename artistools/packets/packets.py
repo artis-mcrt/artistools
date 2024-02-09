@@ -324,7 +324,7 @@ def readfile_text(packetsfile: Path | str, modelpath: Path = Path()) -> pl.DataF
 
     try:
         dfpackets = pl.read_csv(
-            packetsfile,
+            fpackets,
             separator=" ",
             has_header=False,
             comment_prefix="#",
