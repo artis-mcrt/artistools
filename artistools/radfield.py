@@ -604,33 +604,6 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
     # fieldlist += [(arraylambda_angstrom_recomb, J_lambda_recomb_total, fieldlabel)]
     ymax = max(ymax, J_lambda_recomb_total)
 
-    if args.frompackets:
-        (
-            contribution_list,
-            array_jlambda_emission_total,
-            arraylambda_angstrom_em,
-        ) = at.spectra.get_flux_contributions_from_packets(
-            modelpath,
-            timelowerdays=-1,
-            timeupperdays=2000,
-            lambda_min=xmin,
-            lambda_max=xmax,
-            getemission=True,
-            getabsorption=False,
-            modelgridindex=modelgridindex,
-            maxpacketfiles=args.maxpacketfiles,
-            groupby="ion",
-            delta_lambda=20,
-            useinternalpackets=True,
-        )
-        axes[2].plot(arraylambda_angstrom_em, array_jlambda_emission_total, label="Internal radfield from packets")
-
-        fieldlist += [
-            (arraylambda_angstrom_em, contribrow.array_flambda_emission, contribrow.linelabel)
-            for contribrow in contribution_list
-        ]
-        fieldlist += [(arraylambda_angstrom_em, array_jlambda_emission_total, "Total emission")]
-
     lw = 1.0
     # fieldlist += [(arr_lambda_fitted, j_lambda_fitted, 'binned field')]
 
@@ -943,10 +916,6 @@ def plot_timeevolution(modelpath, outputfile, modelgridindex, args):
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     parser.add_argument("-modelpath", default=".", type=Path, help="Path to ARTIS folder")
-
-    parser.add_argument("--frompackets", action="store_true", help="Read packets files for internal radiation field")
-
-    parser.add_argument("-maxpacketfiles", type=int, default=None, help="Limit the number of packet files read")
 
     parser.add_argument(
         "-xaxis", "-x", default="lambda", choices=["lambda", "timestep"], help="Horizontal axis variable."

@@ -25,6 +25,7 @@ jobs:
             OS: ${{ matrix.os }}
             PYTHON: ${{ matrix.python-version }}
 
+        name: pytest python${{ matrix.python-version }}
         steps:
             - name: Checkout Code
               uses: actions/checkout@v4

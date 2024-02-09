@@ -1015,25 +1015,11 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
     else:
         print(f"Reading {parquetfile}")
 
-    return pl.scan_parquet(parquetfile)
-
-
-def get_linelist_dict(modelpath: Path | str) -> dict[int, linetuple]:
-    """Return a dict of line tuples from linestat.out."""
-    nlines, lambda_angstroms, atomic_numbers, ionstages, upper_levels, lower_levels = read_linestatfile(
-        Path(modelpath, "linestat.out")
+    return (
+        pl.scan_parquet(parquetfile)
+        .with_columns(upperlevelindex=pl.col("upper_level") - 1, lowerlevelindex=pl.col("lower_level") - 1)
+        .drop(["upper_level", "lower_level"])
     )
-    return {
-        index: linetuple(lambda_a, Z, ionstage, upper, lower)
-        for index, lambda_a, Z, ionstage, upper, lower in zip(
-            range(nlines),
-            lambda_angstroms,
-            atomic_numbers,
-            ionstages,
-            upper_levels,
-            lower_levels,
-        )
-    }
 
 
 @lru_cache(maxsize=8)

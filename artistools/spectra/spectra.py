@@ -108,15 +108,15 @@ def get_from_packets(
     delta_lambda: None | float | np.ndarray = None,
     use_time: t.Literal["arrival", "emission", "escape"] = "arrival",
     maxpacketfiles: int | None = None,
-    useinternalpackets: bool = False,
     getpacketcount: bool = False,
     directionbins: t.Collection[int] | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
+    nu_column: str = "nu_rf",
     fnufilterfunc: t.Callable[[np.ndarray], np.ndarray] | None = None,
+    nprocs_read_dfpackets: tuple[int, pl.DataFrame] | None = None,
 ) -> dict[int, pd.DataFrame]:
     """Get a spectrum dataframe using the packets files as input."""
-    assert not useinternalpackets
     if directionbins is None:
         directionbins = [-1]
 
@@ -129,15 +129,17 @@ def get_from_packets(
     else:
         escapesurfacegamma = None
 
-    nu_min = 2.99792458e18 / lambda_max
-    nu_max = 2.99792458e18 / lambda_min
-
     array_lambdabinedges: np.ndarray
     if delta_lambda:
         array_lambdabinedges = np.arange(lambda_min, lambda_max + delta_lambda, delta_lambda)
         array_lambda = 0.5 * (array_lambdabinedges[:-1] + array_lambdabinedges[1:])  # bin centres
     else:
         array_lambdabinedges, array_lambda, delta_lambda = get_exspec_bins()
+        lambda_min = array_lambda[0]
+        lambda_max = array_lambda[-1]
+
+    nu_min = 2.99792458e18 / lambda_max
+    nu_max = 2.99792458e18 / lambda_min
 
     timelow = timelowdays * 86400.0
     timehigh = timehighdays * 86400.0
@@ -146,7 +148,7 @@ def get_from_packets(
     ncosthetabins = at.get_viewingdirection_costhetabincount()
     ndirbins = at.get_viewingdirectionbincount()
 
-    nprocs_read, dfpackets = at.packets.get_packets_pl(
+    nprocs_read, dfpackets = nprocs_read_dfpackets or at.packets.get_packets_pl(
         modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
 
@@ -159,20 +161,23 @@ def get_from_packets(
         )
     elif use_time == "emission":
         mean_correction = float(
-            dfpackets.select((pl.col("em_time") - pl.col("t_arrive_d") * 86400.0).mean()).collect().to_numpy()[0][0]
+            dfpackets.select((pl.col("em_time") - pl.col("t_arrive_d") * 86400.0).mean())
+            .lazy()
+            .collect()
+            .to_numpy()[0][0]
         )
 
         em_time_low = float(timelowdays) * 86400.0 + mean_correction
         em_time_high = float(timehighdays) * 86400.0 + mean_correction
         dfpackets = dfpackets.filter(pl.col("em_time").is_between(em_time_low, em_time_high))
 
-    dfpackets = dfpackets.filter(pl.col("nu_rf").is_between(float(nu_min), float(nu_max)))
+    dfpackets = dfpackets.filter(pl.col(nu_column).is_between(float(nu_min), float(nu_max)))
 
     if fnufilterfunc:
         print("Applying filter to ARTIS spectrum")
 
     encol = "e_cmf" if use_time == "escape" else "e_rf"
-    getcols = ["nu_rf", encol]
+    getcols = [nu_column, encol]
     if directionbins != [-1]:
         if average_over_phi:
             getcols.append("costhetabin")
@@ -180,7 +185,7 @@ def get_from_packets(
             getcols.append("phibin")
         else:
             getcols.append("dirbin")
-    dfpackets = dfpackets.select(getcols).collect().lazy()
+    dfpackets = dfpackets.select(getcols).lazy().collect().lazy()
 
     dfdict = {}
     for dirbin in directionbins:
@@ -199,7 +204,7 @@ def get_from_packets(
             pldfpackets_dirbin_lazy = dfpackets.filter(pl.col("dirbin") == dirbin)
 
         pldfpackets_dirbin = pldfpackets_dirbin_lazy.with_columns(
-            [(2.99792458e18 / pl.col("nu_rf")).alias("lambda_angstroms")]
+            [(2.99792458e18 / pl.col(nu_column)).alias("lambda_angstroms")]
         ).select(["lambda_angstroms", encol])
 
         dfbinned = at.packets.bin_and_sum(
@@ -616,8 +621,8 @@ def get_flux_contributions(
     getabsorption: bool = True,
     use_lastemissiontype: bool = True,
     directionbin: int | None = None,
-    averageoverphi: bool = False,
-    averageovertheta: bool = False,
+    average_over_phi: bool = False,
+    average_over_theta: bool = False,
 ) -> tuple[list[fluxcontributiontuple], npt.NDArray[np.float64]]:
     arr_tmid = at.get_timestep_times(modelpath, loc="mid")
     arr_tdelta = at.get_timestep_times(modelpath, loc="delta")
@@ -632,12 +637,12 @@ def get_flux_contributions(
 
     if directionbin is None:
         dbinlist = [-1]
-    elif averageoverphi:
-        assert not averageovertheta
+    elif average_over_phi:
+        assert not average_over_theta
         assert directionbin % at.get_viewingdirection_phibincount() == 0
         dbinlist = list(range(directionbin, directionbin + at.get_viewingdirection_phibincount()))
-    elif averageovertheta:
-        assert not averageoverphi
+    elif average_over_theta:
+        assert not average_over_phi
         assert directionbin < at.get_viewingdirection_phibincount()
         dbinlist = list(range(directionbin, at.get_viewingdirectionbincount(), at.get_viewingdirection_phibincount()))
     else:
@@ -784,8 +789,8 @@ def get_flux_contributions(
 @lru_cache(maxsize=4)
 def get_flux_contributions_from_packets(
     modelpath: Path,
-    timelowerdays: float,
-    timeupperdays: float,
+    timelowdays: float,
+    timehighdays: float,
     lambda_min: float,
     lambda_max: float,
     delta_lambda: None | float | np.ndarray = None,
@@ -797,55 +802,47 @@ def get_flux_contributions_from_packets(
     modelgridindex: int | None = None,
     use_escapetime: bool = False,
     use_lastemissiontype: bool = True,
-    useinternalpackets: bool = False,
     emissionvelocitycut: float | None = None,
+    directionbin: int | None = None,
+    average_over_phi: bool = False,
+    average_over_theta: bool = False,
 ) -> tuple[list[fluxcontributiontuple], np.ndarray, np.ndarray]:
     assert groupby in {None, "ion", "line", "upperterm", "terms"}
 
+    if directionbin is None:
+        directionbin = -1
     if groupby in {"terms", "upperterm"}:
         adata = at.atomic.get_levels(modelpath)
 
-    def get_emprocesslabel(
-        linelist: dict[int, at.linetuple], bflist: dict[int, tuple[int, int, int, int]], emtype: int
-    ) -> str:
+    linelist = at.get_linelist_pldf(modelpath=modelpath).collect()
+    bflist = at.get_bflist(modelpath)
+
+    def get_emprocesslabel(emtype: int) -> str:
         if emtype >= 0:
-            line = linelist[emtype]
+            line = linelist.row(emtype, named=True)
 
             if groupby == "line":
                 return (
-                    f"{at.get_ionstring(line.atomic_number, line.ionstage)} "
-                    f"λ{line.lambda_angstroms:.0f} "
-                    f"({line.upperlevelindex}-{line.lowerlevelindex})"
+                    f"{at.get_ionstring(line['atomic_number'], line['ionstage'])} "
+                    f"λ{line['lambda_angstroms']:.0f} "
+                    f"({line['upperlevelindex']}-{line['lowerlevelindex']})"
                 )
 
             if groupby == "terms":
-                upper_config = (
-                    adata.query("Z == @line.atomic_number and ionstage == @line.ionstage", inplace=False)
-                    .iloc[0]
-                    .levels.iloc[line.upperlevelindex]
-                    .levelname
-                )
+                ion = adata[(adata["Z"] == line["atomic_number"]) & (adata["ionstage"] == line["ionstage"])].iloc[0]
+                upper_config = ion.levels.iloc[line["upperlevelindex"]].levelname
                 upper_term_noj = upper_config.split("_")[-1].split("[")[0]
-                lower_config = (
-                    adata.query("Z == @line.atomic_number and ionstage == @line.ionstage", inplace=False)
-                    .iloc[0]
-                    .levels.iloc[line.lowerlevelindex]
-                    .levelname
-                )
+                lower_config = ion.levels.iloc[line["lowerlevelindex"]].levelname
                 lower_term_noj = lower_config.split("_")[-1].split("[")[0]
-                return f"{at.get_ionstring(line.atomic_number, line.ionstage)} {upper_term_noj}->{lower_term_noj}"
+                return f"{at.get_ionstring(line['atomic_number'], line['ionstage'])} {upper_term_noj}->{lower_term_noj}"
 
             if groupby == "upperterm":
-                upper_config = (
-                    adata.query("Z == @line.atomic_number and ionstage == @line.ionstage", inplace=False)
-                    .iloc[0]
-                    .levels.iloc[line.upperlevelindex]
-                    .levelname
-                )
+                ion = adata[(adata["Z"] == line["atomic_number"]) & (adata["ionstage"] == line["ionstage"])].iloc[0]
+                upper_config = ion.levels.iloc[line["upperlevelindex"]].levelname
                 upper_term_noj = upper_config.split("_")[-1].split("[")[0]
-                return f"{at.get_ionstring(line.atomic_number, line.ionstage)} {upper_term_noj}"
+                return f"{at.get_ionstring(line['atomic_number'], line['ionstage'])} {upper_term_noj}"
 
-            return f"{at.get_ionstring(line.atomic_number, line.ionstage)} bound-bound"
+            return f"{at.get_ionstring(line['atomic_number'], line['ionstage'])} bound-bound"
 
         if emtype == -9999999:
             return "free-free"
@@ -859,175 +856,120 @@ def get_flux_contributions_from_packets(
 
         return f"? bound-free (bfindex={bfindex})"
 
-    def get_absprocesslabel(linelist: dict[int, at.linetuple], abstype: int) -> str:
+    def get_absprocesslabel(abstype: int) -> str:
         if abstype >= 0:
-            line = linelist[abstype]
+            line = linelist.row(abstype, named=True)
             if groupby == "line":
                 return (
-                    f"{at.get_ionstring(line.atomic_number, line.ionstage)} "
-                    f"λ{line.lambda_angstroms:.0f} "
-                    f"({line.upperlevelindex}-{line.lowerlevelindex})"
+                    f"{at.get_ionstring(line['atomic_number'], line['ionstage'])} "
+                    f"λ{line['lambda_angstroms']:.0f} "
+                    f"({line['upperlevelindex']}-{line['lowerlevelindex']})"
                 )
-            return f"{at.get_ionstring(line.atomic_number, line.ionstage)} bound-bound"
+            return f"{at.get_ionstring(line['atomic_number'], line['ionstage'])} bound-bound"
         if abstype == -1:
             return "free-free"
         return "bound-free" if abstype == -2 else "? other absorp."
 
-    array_lambdabinedges: np.ndarray
-    if delta_lambda is not None:
-        array_lambdabinedges = np.arange(lambda_min, lambda_max + delta_lambda, delta_lambda)
-        array_lambda = 0.5 * (array_lambdabinedges[:-1] + array_lambdabinedges[1:])  # bin centres
-    else:
-        array_lambdabinedges, array_lambda, delta_lambda = get_exspec_bins()
-    assert delta_lambda is not None
+    emtypecolumn = "emissiontype" if use_lastemissiontype else "trueemissiontype"
 
-    if use_escapetime:
-        modeldata, _ = at.inputmodel.get_modeldata(modelpath)
-        vmax = modeldata.iloc[-1].vel_r_max_kmps * 1e5
-        betafactor = math.sqrt(1 - (vmax / 29979245800) ** 2)
-
-    packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles)
-
-    linelist = at.get_linelist_dict(modelpath=modelpath)
-
-    energysum_spectrum_emission_total = np.zeros_like(array_lambda, dtype=float)
-    array_energysum_spectra = {}
-
-    timelow = timelowerdays * 86400.0
-    timehigh = timeupperdays * 86400.0
-
-    nprocs_read = len(packetsfiles)
-    c_cgs = 29979245800.0
-    nu_min = 2.99792458e18 / lambda_max  # noqa: F841
-    nu_max = 2.99792458e18 / lambda_min  # noqa: F841
-
-    emtypecolumn = (
-        "emissiontype" if useinternalpackets else "emissiontype" if use_lastemissiontype else "trueemissiontype"
+    nprocs_read, lzdfpackets = at.packets.get_packets_pl(
+        modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
 
-    for packetsfile in packetsfiles:
-        if useinternalpackets:
-            # if we're using packets*.out files, these packets are from the last timestep
-            t_seconds = at.get_timestep_times(modelpath, loc="start")[-1] * 86400.0
+    lzdfpackets = lzdfpackets.filter(pl.col("t_arrive_d").is_between(float(timelowdays), float(timehighdays)))
 
-            if modelgridindex is not None:
-                v_inner = at.inputmodel.get_modeldata_tuple(modelpath)[0]["vel_r_min_kmps"].iloc[modelgridindex] * 1e5
-                v_outer = at.inputmodel.get_modeldata_tuple(modelpath)[0]["vel_r_max_kmps"].iloc[modelgridindex] * 1e5
-            else:
-                v_inner = 0.0
-                v_outer = at.inputmodel.get_modeldata_tuple(modelpath)[0]["vel_r_max_kmps"].iloc[-1] * 1e5
+    cols = {"t_arrive_d", "e_rf"}
 
-            r_inner = t_seconds * v_inner
-            r_outer = t_seconds * v_outer
+    if getemission:
+        cols |= {"emissiontype_str", "nu_rf"}
+        emtypes = lzdfpackets.select(emtypecolumn).collect().get_column(emtypecolumn).unique().sort()
 
-            dfpackets = at.packets.readfile(packetsfile, packet_type="TYPE_RPKT")
-            print("Using non-escaped internal r-packets")
-            dfpackets = dfpackets.query(f'type_id == {at.packets.type_ids["TYPE_RPKT"]} and @nu_min <= nu_rf < @nu_max')
-            if modelgridindex is not None:
-                assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath=modelpath)
-                # dfpackets.eval(f'velocity = sqrt(posx ** 2 + posy ** 2 + posz ** 2) / @t_seconds', inplace=True)
-                # dfpackets.query(f'@v_inner <= velocity <= @v_outer',
-                #                 inplace=True)
-                dfpackets = dfpackets.query("where in @assoc_cells[@modelgridindex]")
-            print(f"  {len(dfpackets)} internal r-packets matching frequency range")
-        else:
-            dfpackets = at.packets.readfile(packetsfile, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
-            dfpackets = dfpackets.query(
-                "@nu_min <= nu_rf < @nu_max and trueemissiontype >= 0 and "
-                + (
-                    "@timelow < escape_time * @betafactor < @timehigh"
-                    if use_escapetime
-                    else "@timelow < (escape_time - (posx * dirx + posy * diry + posz * dirz) / @c_cgs) < @timehigh"
-                ),
-            )
-            print(f"  {len(dfpackets)} escaped r-packets matching frequency and arrival time ranges")
+        lzdfpackets = lzdfpackets.join(
+            pl.DataFrame({emtypecolumn: emtypes, "emissiontype_str": emtypes.map_elements(get_emprocesslabel)}).lazy(),
+            on=emtypecolumn,
+            how="left",
+        )
 
-            if emissionvelocitycut:
-                dfpackets = at.packets.add_derived_columns(dfpackets, modelpath, ["emission_velocity"])
+    if getabsorption:
+        cols |= {"absorptiontype_str", "absorption_freq"}
+        abstypes = lzdfpackets.select("absorption_type").collect().get_column("absorption_type").unique().sort()
 
-                dfpackets = dfpackets.query("(emission_velocity / 1e5) > @emissionvelocitycut")
+        lzdfpackets = lzdfpackets.join(
+            pl.DataFrame(
+                {"absorption_type": abstypes, "absorptiontype_str": abstypes.map_elements(get_absprocesslabel)}
+            ).lazy(),
+            on="absorption_type",
+            how="left",
+        )
 
-        if np.isscalar(delta_lambda):
-            dfpackets = dfpackets.eval("xindex = floor((2.99792458e18 / nu_rf - @lambda_min) / @delta_lambda)")
-            if getabsorption:
-                dfpackets = dfpackets.eval(
-                    "xindexabsorbed = floor((2.99792458e18 / absorption_freq - @lambda_min) / @delta_lambda)",
-                )
-        else:
-            dfpackets["xindex"] = (
-                np.digitize(2.99792458e18 / dfpackets.nu_rf, bins=array_lambdabinedges, right=True) - 1
-            )
-            if getabsorption:
-                dfpackets["xindexabsorbed"] = (
-                    np.digitize(2.99792458e18 / dfpackets.absorption_freq, bins=array_lambdabinedges, right=True) - 1
-                )
+    if directionbin != -1:
+        cols |= {"costhetabin", "phibin", "dirbin"}
 
-        bflist = at.get_bflist(modelpath)
-        for _, packet in dfpackets.iterrows():
-            xindex = int(packet.xindex)
-            assert xindex >= 0
+    dfpackets = lzdfpackets.select([col for col in cols if col in lzdfpackets.columns]).collect()
 
-            pkt_en = packet.e_cmf / betafactor if use_escapetime else packet.e_rf
+    emissiongroups = dict(dfpackets.group_by("emissiontype_str")) if getemission else {}
+    absorptiongroups = dict(dfpackets.group_by("absorptiontype_str")) if getabsorption else {}
+    allgroupnames = set(emissiongroups.keys()) | set(absorptiongroups.keys())
 
-            energysum_spectrum_emission_total[xindex] += pkt_en
-
-            if getemission:
-                # if emtype >= 0 and linelist[emtype].upperlevelindex <= 80:
-                #     continue
-                # emprocesskey = get_emprocesslabel(packet.emissiontype)
-                emprocesskey = get_emprocesslabel(linelist, bflist, packet[emtypecolumn])
-                # print('packet lambda_cmf: {2.99792458e18 / packet.nu_cmf}.1f}, lambda_rf {lambda_rf:.1f}, {emprocesskey}')
-
-                if emprocesskey not in array_energysum_spectra:
-                    array_energysum_spectra[emprocesskey] = (
-                        np.zeros_like(array_lambda, dtype=float),
-                        np.zeros_like(array_lambda, dtype=float),
-                    )
-
-                array_energysum_spectra[emprocesskey][0][xindex] += pkt_en
-
-            if getabsorption:
-                abstype = packet.absorption_type
-                if abstype > 0:
-                    absprocesskey = get_absprocesslabel(linelist, abstype)
-
-                    xindexabsorbed = int(packet.xindexabsorbed)  # bin by absorption wavelength
-                    # xindexabsorbed = xindex  # bin by final escaped wavelength
-
-                    if absprocesskey not in array_energysum_spectra:
-                        array_energysum_spectra[absprocesskey] = (
-                            np.zeros_like(array_lambda, dtype=float),
-                            np.zeros_like(array_lambda, dtype=float),
-                        )
-
-                    array_energysum_spectra[absprocesskey][1][xindexabsorbed] += pkt_en
-
-    if useinternalpackets:
-        volume = 4 / 3.0 * math.pi * (r_outer**3 - r_inner**3)
-        if modelgridindex:
-            volume_shells = volume
-            assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath=modelpath)
-            volume = (
-                at.get_wid_init_at_tmin(modelpath) * t_seconds / (at.get_inputparams(modelpath)["tmin"] * 86400.0)
-            ) ** 3 * len(assoc_cells[modelgridindex])
-            print("volume", volume, "shell volume", volume_shells, "-------------------------------------------------")
-        normfactor = c_cgs / 4 / math.pi / delta_lambda / volume / nprocs_read
-    else:
-        normfactor = 1.0 / delta_lambda / (timehigh - timelow) / 4 / math.pi / (megaparsec_to_cm**2) / nprocs_read
-
-    array_flambda_emission_total = energysum_spectrum_emission_total * normfactor
-
+    array_flambda_emission_total = None
     contribution_list = []
-    for groupname, (energysum_spec_emission, energysum_spec_absorption) in array_energysum_spectra.items():
-        array_flambda_emission = energysum_spec_emission * normfactor
+    array_lambda = None
+    for groupname in allgroupnames:
+        array_flambda_emission = None
 
-        array_flambda_absorption = energysum_spec_absorption * normfactor
+        if groupname in emissiongroups:
+            spec_group = get_from_packets(
+                modelpath=modelpath,
+                timelowdays=timelowdays,
+                timehighdays=timehighdays,
+                lambda_min=lambda_min,
+                lambda_max=lambda_max,
+                delta_lambda=delta_lambda,
+                fnufilterfunc=filterfunc,
+                nprocs_read_dfpackets=(nprocs_read, emissiongroups[groupname]),
+                directionbins=[directionbin],
+                average_over_phi=average_over_phi,
+                average_over_theta=average_over_theta,
+            )[directionbin]
+
+            if array_lambda is None:
+                array_lambda = spec_group["lambda_angstroms"].to_numpy()
+
+            array_flambda_emission = spec_group["f_lambda"].to_numpy()
+
+            if array_flambda_emission_total is None:
+                array_flambda_emission_total = np.zeros_like(array_flambda_emission, dtype=float)
+
+            array_flambda_emission_total += array_flambda_emission
+
+        if groupname in absorptiongroups:
+            spec_group = get_from_packets(
+                modelpath=modelpath,
+                timelowdays=timelowdays,
+                timehighdays=timehighdays,
+                lambda_min=lambda_min,
+                lambda_max=lambda_max,
+                delta_lambda=delta_lambda,
+                nu_column="absorption_freq",
+                fnufilterfunc=filterfunc,
+                nprocs_read_dfpackets=(nprocs_read, absorptiongroups[groupname]),
+            )[-1]
+
+            if array_lambda is None:
+                array_lambda = spec_group["lambda_angstroms"].to_numpy()
+
+            array_flambda_absorption = spec_group["f_lambda"].to_numpy()
+        else:
+            array_flambda_absorption = np.zeros_like(array_flambda_emission, dtype=float)
+
+        if array_flambda_emission is None:
+            array_flambda_emission = np.zeros_like(array_flambda_absorption, dtype=float)
 
         fluxcontribthisseries = abs(np.trapz(array_flambda_emission, x=array_lambda)) + abs(
             np.trapz(array_flambda_absorption, x=array_lambda)
         )
 
-        linelabel = groupname.replace(" bound-bound", "")
+        linelabel = str(groupname).replace(" bound-bound", "")
 
         contribution_list.append(
             fluxcontributiontuple(
@@ -1038,6 +980,8 @@ def get_flux_contributions_from_packets(
                 color=None,
             )
         )
+    assert array_flambda_emission_total is not None
+    assert array_lambda is not None
 
     return contribution_list, array_flambda_emission_total, array_lambda
 

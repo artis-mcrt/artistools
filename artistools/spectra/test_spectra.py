@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import itertools
 import math
 from pathlib import Path
 from unittest import mock
@@ -189,9 +190,8 @@ def test_spectra_get_spectrum_polar_angles_frompackets() -> None:
         90: (4.29975310930973e-12, 9.95760966920298e-12),
     }
 
-    for dirbin in results_pkts:
-        for i in range(2):
-            assert np.isclose(results_pkts[dirbin][i], expected_results[dirbin][i], rtol=1e-3)
+    for dirbin, i in itertools.product(results_pkts, range(2)):
+        assert np.isclose(results_pkts[dirbin][i], expected_results[dirbin][i], rtol=1e-3)
 
 
 def test_spectra_get_flux_contributions() -> None:

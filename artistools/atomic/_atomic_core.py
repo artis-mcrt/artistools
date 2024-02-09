@@ -27,7 +27,7 @@ def parse_adata(fadata, phixsdict, ionlist):
             for levelindex in range(level_count):
                 row = fadata.readline().split()
 
-                levelname = row[4].strip("'") if len(row) >= 5 else None
+                levelname = " ".join(row[4:]).strip("'") if len(row) >= 5 else None
                 numberin = int(row[0])
                 assert levelindex == numberin - firstlevelnumber
                 phixstargetlist, phixstable = phixsdict.get((Z, ionstage, numberin), ([], []))
