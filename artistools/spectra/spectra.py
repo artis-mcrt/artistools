@@ -112,6 +112,7 @@ def get_from_packets(
     directionbins: t.Collection[int] | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
+    nu_column: str = "nu_rf",
     fnufilterfunc: t.Callable[[np.ndarray], np.ndarray] | None = None,
     nprocs_read_dfpackets: tuple[int, pl.DataFrame] | None = None,
 ) -> dict[int, pd.DataFrame]:
@@ -168,13 +169,13 @@ def get_from_packets(
         em_time_high = float(timehighdays) * 86400.0 + mean_correction
         dfpackets = dfpackets.filter(pl.col("em_time").is_between(em_time_low, em_time_high))
 
-    dfpackets = dfpackets.filter(pl.col("nu_rf").is_between(float(nu_min), float(nu_max)))
+    dfpackets = dfpackets.filter(pl.col(nu_column).is_between(float(nu_min), float(nu_max)))
 
     if fnufilterfunc:
         print("Applying filter to ARTIS spectrum")
 
     encol = "e_cmf" if use_time == "escape" else "e_rf"
-    getcols = ["nu_rf", encol]
+    getcols = [nu_column, encol]
     if directionbins != [-1]:
         if average_over_phi:
             getcols.append("costhetabin")
@@ -201,7 +202,7 @@ def get_from_packets(
             pldfpackets_dirbin_lazy = dfpackets.filter(pl.col("dirbin") == dirbin)
 
         pldfpackets_dirbin = pldfpackets_dirbin_lazy.with_columns(
-            [(2.99792458e18 / pl.col("nu_rf")).alias("lambda_angstroms")]
+            [(2.99792458e18 / pl.col(nu_column)).alias("lambda_angstroms")]
         ).select(["lambda_angstroms", encol])
 
         dfbinned = at.packets.bin_and_sum(
@@ -806,7 +807,10 @@ def get_flux_contributions_from_packets(
     if groupby in {"terms", "upperterm"}:
         adata = at.atomic.get_levels(modelpath)
 
-    def get_emprocesslabel(linelist: pl.DataFrame, bflist: dict[int, tuple[int, int, int, int]], emtype: int) -> str:
+    linelist = at.get_linelist_pldf(modelpath=modelpath).collect()
+    bflist = at.get_bflist(modelpath)
+
+    def get_emprocesslabel(emtype: int) -> str:
         if emtype >= 0:
             line = linelist.row(emtype, named=True)
 
@@ -858,7 +862,7 @@ def get_flux_contributions_from_packets(
 
         return f"? bound-free (bfindex={bfindex})"
 
-    def get_absprocesslabel(linelist: pl.DataFrame, abstype: int) -> str:
+    def get_absprocesslabel(abstype: int) -> str:
         if abstype >= 0:
             line = linelist.row(abstype, named=True)
             if groupby == "line":
@@ -872,59 +876,98 @@ def get_flux_contributions_from_packets(
             return "free-free"
         return "bound-free" if abstype == -2 else "? other absorp."
 
-    linelist = at.get_linelist_pldf(modelpath=modelpath).collect()
-
     nu_min = 2.99792458e18 / lambda_max
     nu_max = 2.99792458e18 / lambda_min
 
     emtypecolumn = "emissiontype" if use_lastemissiontype else "trueemissiontype"
-    assert not getabsorption
-    bflist = at.get_bflist(modelpath)
+
     nprocs_read, lzdfpackets = at.packets.get_packets_pl(
         modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
 
     lzdfpackets = lzdfpackets.filter(pl.col("t_arrive_d").is_between(float(timelowerdays), float(timeupperdays)))
-    lzdfpackets = lzdfpackets.filter(pl.col("nu_rf").is_between(float(nu_min), float(nu_max)))
-    dfpackets = (
-        lzdfpackets.with_columns(
-            pl.col(emtypecolumn)
-            .map_elements(lambda x: get_emprocesslabel(linelist, bflist, x))
-            .alias("emissiontype_str")
-        )
-        .select(["emissiontype_str", "t_arrive_d", "nu_rf", "e_rf"])
-        .sort("emissiontype_str")
-        .collect()
+    lzdfpackets = lzdfpackets.filter(
+        pl.col("nu_rf").is_between(float(nu_min), float(nu_max))
+        | pl.col("absorption_freq").is_between(float(nu_min), float(nu_max))
     )
+    if getemission:
+        lzdfpackets = lzdfpackets.with_columns(
+            pl.col(emtypecolumn).map_elements(lambda x: get_emprocesslabel(x)).alias("emissiontype_str")
+        )
+
+    if getabsorption:
+        lzdfpackets = lzdfpackets.with_columns(
+            pl.col("absorption_type").map_elements(lambda x: get_absprocesslabel(x)).alias("absorptiontype_str")
+        )
+
+    dfpackets = lzdfpackets.select(
+        [
+            col
+            for col in ["emissiontype_str", "absorptiontype_str", "t_arrive_d", "nu_rf", "e_rf", "absorption_freq"]
+            if col in lzdfpackets.columns
+        ]
+    ).collect()
+
+    emissiongroups = dict(dfpackets.group_by("emissiontype_str")) if getemission else {}
+    absorptiongroups = dict(dfpackets.group_by("absorptiontype_str")) if getabsorption else {}
+    allgroupnames = set(emissiongroups.keys()) | set(absorptiongroups.keys())
 
     array_flambda_emission_total = None
     contribution_list = []
-    for (groupname), dfpacketgroup in dfpackets.group_by("emissiontype_str"):
-        spec_group = get_from_packets(
-            modelpath=modelpath,
-            timelowdays=timelowerdays,
-            timehighdays=timeupperdays,
-            lambda_min=lambda_min,
-            lambda_max=lambda_max,
-            delta_lambda=delta_lambda,
-            fnufilterfunc=filterfunc,
-            nprocs_read_dfpackets=(nprocs_read, dfpacketgroup),
-        )[-1]
+    array_lambda = None
+    for groupname in allgroupnames:
+        array_flambda_emission = None
 
-        array_flambda_emission = spec_group["f_lambda"].to_numpy()
-        array_flambda_absorption = np.zeros_like(array_flambda_emission, dtype=float)
+        if groupname in emissiongroups:
+            spec_group = get_from_packets(
+                modelpath=modelpath,
+                timelowdays=timelowerdays,
+                timehighdays=timeupperdays,
+                lambda_min=lambda_min,
+                lambda_max=lambda_max,
+                delta_lambda=delta_lambda,
+                fnufilterfunc=filterfunc,
+                nprocs_read_dfpackets=(nprocs_read, emissiongroups[groupname]),
+            )[-1]
 
-        if array_flambda_emission_total is None:
-            array_flambda_emission_total = np.zeros_like(array_flambda_emission, dtype=float)
-            array_lambda = spec_group["lambda_angstroms"].to_numpy()
+            if array_lambda is None:
+                array_lambda = spec_group["lambda_angstroms"].to_numpy()
+
+            array_flambda_emission = spec_group["f_lambda"].to_numpy()
+
+            if array_flambda_emission_total is None:
+                array_flambda_emission_total = np.zeros_like(array_flambda_emission, dtype=float)
+
+            array_flambda_emission_total += array_flambda_emission
+
+        if groupname in absorptiongroups:
+            spec_group = get_from_packets(
+                modelpath=modelpath,
+                timelowdays=timelowerdays,
+                timehighdays=timeupperdays,
+                lambda_min=lambda_min,
+                lambda_max=lambda_max,
+                delta_lambda=delta_lambda,
+                nu_column="absorption_freq",
+                fnufilterfunc=filterfunc,
+                nprocs_read_dfpackets=(nprocs_read, absorptiongroups[groupname]),
+            )[-1]
+
+            if array_lambda is None:
+                array_lambda = spec_group["lambda_angstroms"].to_numpy()
+
+            array_flambda_absorption = spec_group["f_lambda"].to_numpy()
+        else:
+            array_flambda_absorption = np.zeros_like(array_flambda_emission, dtype=float)
+
+        if array_flambda_emission is None:
+            array_flambda_emission = np.zeros_like(array_flambda_absorption, dtype=float)
 
         fluxcontribthisseries = abs(np.trapz(array_flambda_emission, x=array_lambda)) + abs(
             np.trapz(array_flambda_absorption, x=array_lambda)
         )
 
         linelabel = str(groupname).replace(" bound-bound", "")
-
-        array_flambda_emission_total += array_flambda_emission
 
         contribution_list.append(
             fluxcontributiontuple(
@@ -936,6 +979,7 @@ def get_flux_contributions_from_packets(
             )
         )
     assert array_flambda_emission_total is not None
+    assert array_lambda is not None
 
     return contribution_list, array_flambda_emission_total, array_lambda
 
