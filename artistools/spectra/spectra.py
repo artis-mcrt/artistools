@@ -822,29 +822,16 @@ def get_flux_contributions_from_packets(
                 )
 
             if groupby == "terms":
-                upper_config = (
-                    adata.query("Z == @line['atomic_number'] and ionstage == @line['ionstage']", inplace=False)
-                    .iloc[0]
-                    .levels.iloc[line["upperlevelindex"]]
-                    .levelname
-                )
+                ion = adata[(adata["Z"] == line["atomic_number"]) & (adata["ionstage"] == line["ionstage"])].iloc[0]
+                upper_config = ion.levels.iloc[line["upperlevelindex"]].levelname
                 upper_term_noj = upper_config.split("_")[-1].split("[")[0]
-                lower_config = (
-                    adata.query("Z == @line['atomic_number'] and ionstage == @line['ionstage']", inplace=False)
-                    .iloc[0]
-                    .levels.iloc[line["lowerlevelindex"]]
-                    .levelname
-                )
+                lower_config = ion.levels.iloc[line["lowerlevelindex"]].levelname
                 lower_term_noj = lower_config.split("_")[-1].split("[")[0]
                 return f"{at.get_ionstring(line['atomic_number'], line['ionstage'])} {upper_term_noj}->{lower_term_noj}"
 
             if groupby == "upperterm":
-                upper_config = (
-                    adata.query("Z == @line['atomic_number'] and ionstage == @line['ionstage']", inplace=False)
-                    .iloc[0]
-                    .levels.iloc[line["upperlevelindex"]]
-                    .levelname
-                )
+                ion = adata[(adata["Z"] == line["atomic_number"]) & (adata["ionstage"] == line["ionstage"])].iloc[0]
+                upper_config = ion.levels.iloc[line["upperlevelindex"]].levelname
                 upper_term_noj = upper_config.split("_")[-1].split("[")[0]
                 return f"{at.get_ionstring(line['atomic_number'], line['ionstage'])} {upper_term_noj}"
 
