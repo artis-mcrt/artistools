@@ -289,7 +289,6 @@ def plot_artis_spectrum(
                 use_time=use_time,
                 maxpacketfiles=maxpacketfiles,
                 delta_lambda=args.deltalambda,
-                useinternalpackets=args.internalpackets,
                 getpacketcount=plotpacketcount,
                 directionbins=dbins_get,
                 average_over_phi=average_over_phi,
@@ -617,8 +616,10 @@ def make_emissionabsorption_plot(
             groupby=args.groupby,
             delta_lambda=args.deltalambda,
             use_lastemissiontype=not args.use_thermalemissiontype,
-            useinternalpackets=args.internalpackets,
             emissionvelocitycut=args.emissionvelocitycut,
+            directionbin=args.plotviewingangle[0] if args.plotviewingangle else None,
+            average_over_phi=args.average_over_phi_angle,
+            average_over_theta=args.average_over_theta_angle,
         )
     else:
         arraylambda_angstroms = 2.99792458e18 / arraynu
@@ -637,8 +638,8 @@ def make_emissionabsorption_plot(
             getabsorption=args.showabsorption,
             use_lastemissiontype=not args.use_thermalemissiontype,
             directionbin=args.plotviewingangle[0] if args.plotviewingangle else None,
-            averageoverphi=args.average_over_phi_angle,
-            averageovertheta=args.average_over_theta_angle,
+            average_over_phi=args.average_over_phi_angle,
+            average_over_theta=args.average_over_theta_angle,
         )
 
     at.spectra.print_integrated_flux(array_flambda_emission_total, arraylambda_angstroms)
@@ -697,7 +698,6 @@ def make_emissionabsorption_plot(
                     -x.array_flambda_absorption * scalefactor,
                     color=linecolor,
                     linewidth=1,
-                    alpha=0.6,
                 )
     elif contributions_sorted_reduced:
         if args.showemission:
@@ -791,15 +791,8 @@ def make_emissionabsorption_plot(
     ymax = max(ymaxrefall, scalefactor * max_flambda_emission_total * 1.2)
     axis.set_ylim(top=ymax)
 
-    if not args.hideyticklabels:
-        if scale_to_peak:
-            axis.set_ylabel(r"Scaled F$_\lambda$")
-        elif args.internalpackets:
-            if args.logscale:
-                # don't include the {} that will be replaced with the power of 10 by the custom formatter
-                axis.set_ylabel(r"J$_\lambda$ [erg/s/cm$^2$/$\mathrm{{\AA}}$]")
-            else:
-                axis.set_ylabel(r"J$_\lambda$ [{}erg/s/cm$^2$/$\mathrm{{\AA}}$]")
+    if not args.hideyticklabels and scale_to_peak:
+        axis.set_ylabel(r"Scaled F$_\lambda$")
 
     if args.showbinedges:
         radfielddata = at.radfield.read_files(modelpath, timestep=timestepmax, modelgridindex=30)
@@ -971,12 +964,7 @@ def make_plot(args) -> tuple[plt.Figure, list[plt.Axes], pd.DataFrame]:
 
     if args.showemission or args.showabsorption:
         legendncol = 2
-        if args.internalpackets:
-            defaultoutputfile = Path(
-                "plotspecinternalemission_{time_days_min:.1f}d_{time_days_max:.1f}d{directionbins}.pdf"
-            )
-        else:
-            defaultoutputfile = Path("plotspecemission_{time_days_min:.1f}d_{time_days_max:.1f}d{directionbins}.pdf")
+        defaultoutputfile = Path("plotspecemission_{time_days_min:.1f}d_{time_days_max:.1f}d{directionbins}.pdf")
 
         plotobjects, plotobjectlabels, dfalldata = make_emissionabsorption_plot(
             Path(args.specpath[0]), axes[-1], filterfunc, args=args, scale_to_peak=scale_to_peak
@@ -1126,8 +1114,6 @@ def addargs(parser) -> None:
             "is greater than some velocity (km/s) eg. --emissionvelocitycut 15000"
         ),
     )
-
-    parser.add_argument("--internalpackets", action="store_true", help="Use non-escaped packets")
 
     parser.add_argument(
         "--plotpacketcount", action="store_true", help="Plot bin packet counts instead of specific intensity"
