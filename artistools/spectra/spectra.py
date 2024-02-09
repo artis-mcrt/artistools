@@ -621,8 +621,8 @@ def get_flux_contributions(
     getabsorption: bool = True,
     use_lastemissiontype: bool = True,
     directionbin: int | None = None,
-    averageoverphi: bool = False,
-    averageovertheta: bool = False,
+    average_over_phi: bool = False,
+    average_over_theta: bool = False,
 ) -> tuple[list[fluxcontributiontuple], npt.NDArray[np.float64]]:
     arr_tmid = at.get_timestep_times(modelpath, loc="mid")
     arr_tdelta = at.get_timestep_times(modelpath, loc="delta")
@@ -637,12 +637,12 @@ def get_flux_contributions(
 
     if directionbin is None:
         dbinlist = [-1]
-    elif averageoverphi:
-        assert not averageovertheta
+    elif average_over_phi:
+        assert not average_over_theta
         assert directionbin % at.get_viewingdirection_phibincount() == 0
         dbinlist = list(range(directionbin, directionbin + at.get_viewingdirection_phibincount()))
-    elif averageovertheta:
-        assert not averageoverphi
+    elif average_over_theta:
+        assert not average_over_phi
         assert directionbin < at.get_viewingdirection_phibincount()
         dbinlist = list(range(directionbin, at.get_viewingdirectionbincount(), at.get_viewingdirection_phibincount()))
     else:
@@ -789,8 +789,8 @@ def get_flux_contributions(
 @lru_cache(maxsize=4)
 def get_flux_contributions_from_packets(
     modelpath: Path,
-    timelowerdays: float,
-    timeupperdays: float,
+    timelowdays: float,
+    timehighdays: float,
     lambda_min: float,
     lambda_max: float,
     delta_lambda: None | float | np.ndarray = None,
@@ -804,8 +804,8 @@ def get_flux_contributions_from_packets(
     use_lastemissiontype: bool = True,
     emissionvelocitycut: float | None = None,
     directionbin: int | None = None,
-    averageoverphi: bool = False,
-    averageovertheta: bool = False,
+    average_over_phi: bool = False,
+    average_over_theta: bool = False,
 ) -> tuple[list[fluxcontributiontuple], np.ndarray, np.ndarray]:
     assert groupby in {None, "ion", "line", "upperterm", "terms"}
 
@@ -876,7 +876,7 @@ def get_flux_contributions_from_packets(
         modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
 
-    lzdfpackets = lzdfpackets.filter(pl.col("t_arrive_d").is_between(float(timelowerdays), float(timeupperdays)))
+    lzdfpackets = lzdfpackets.filter(pl.col("t_arrive_d").is_between(float(timelowdays), float(timehighdays)))
 
     cols = {"t_arrive_d", "e_rf"}
 
@@ -920,16 +920,16 @@ def get_flux_contributions_from_packets(
         if groupname in emissiongroups:
             spec_group = get_from_packets(
                 modelpath=modelpath,
-                timelowdays=timelowerdays,
-                timehighdays=timeupperdays,
+                timelowdays=timelowdays,
+                timehighdays=timehighdays,
                 lambda_min=lambda_min,
                 lambda_max=lambda_max,
                 delta_lambda=delta_lambda,
                 fnufilterfunc=filterfunc,
                 nprocs_read_dfpackets=(nprocs_read, emissiongroups[groupname]),
                 directionbins=[directionbin],
-                average_over_phi=averageoverphi,
-                average_over_theta=averageovertheta,
+                average_over_phi=average_over_phi,
+                average_over_theta=average_over_theta,
             )[directionbin]
 
             if array_lambda is None:
@@ -945,8 +945,8 @@ def get_flux_contributions_from_packets(
         if groupname in absorptiongroups:
             spec_group = get_from_packets(
                 modelpath=modelpath,
-                timelowdays=timelowerdays,
-                timehighdays=timeupperdays,
+                timelowdays=timelowdays,
+                timehighdays=timehighdays,
                 lambda_min=lambda_min,
                 lambda_max=lambda_max,
                 delta_lambda=delta_lambda,

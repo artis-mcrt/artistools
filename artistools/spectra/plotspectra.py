@@ -618,8 +618,8 @@ def make_emissionabsorption_plot(
             use_lastemissiontype=not args.use_thermalemissiontype,
             emissionvelocitycut=args.emissionvelocitycut,
             directionbin=args.plotviewingangle[0] if args.plotviewingangle else None,
-            averageoverphi=args.average_over_phi_angle,
-            averageovertheta=args.average_over_theta_angle,
+            average_over_phi=args.average_over_phi_angle,
+            average_over_theta=args.average_over_theta_angle,
         )
     else:
         arraylambda_angstroms = 2.99792458e18 / arraynu
@@ -638,8 +638,8 @@ def make_emissionabsorption_plot(
             getabsorption=args.showabsorption,
             use_lastemissiontype=not args.use_thermalemissiontype,
             directionbin=args.plotviewingangle[0] if args.plotviewingangle else None,
-            averageoverphi=args.average_over_phi_angle,
-            averageovertheta=args.average_over_theta_angle,
+            average_over_phi=args.average_over_phi_angle,
+            average_over_theta=args.average_over_theta_angle,
         )
 
     at.spectra.print_integrated_flux(array_flambda_emission_total, arraylambda_angstroms)
