@@ -695,7 +695,6 @@ def make_emissionabsorption_plot(
                     -x.array_flambda_absorption * scalefactor,
                     color=linecolor,
                     linewidth=1,
-                    alpha=0.6,
                 )
     elif contributions_sorted_reduced:
         if args.showemission:
