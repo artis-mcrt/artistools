@@ -823,14 +823,14 @@ def get_flux_contributions_from_packets(
 
             if groupby == "terms":
                 upper_config = (
-                    adata.query("Z == @line.atomic_number and ionstage == @line.ionstage", inplace=False)
+                    adata.query("Z == @line['atomic_number'] and ionstage == @line['ionstage']", inplace=False)
                     .iloc[0]
                     .levels.iloc[line["upperlevelindex"]]
                     .levelname
                 )
                 upper_term_noj = upper_config.split("_")[-1].split("[")[0]
                 lower_config = (
-                    adata.query("Z == @line.atomic_number and ionstage == @line.ionstage", inplace=False)
+                    adata.query("Z == @line['atomic_number'] and ionstage == @line['ionstage']", inplace=False)
                     .iloc[0]
                     .levels.iloc[line["lowerlevelindex"]]
                     .levelname
@@ -840,7 +840,7 @@ def get_flux_contributions_from_packets(
 
             if groupby == "upperterm":
                 upper_config = (
-                    adata.query("Z == @line.atomic_number and ionstage == @line.ionstage", inplace=False)
+                    adata.query("Z == @line['atomic_number'] and ionstage == @line['ionstage']", inplace=False)
                     .iloc[0]
                     .levels.iloc[line["upperlevelindex"]]
                     .levelname
@@ -890,6 +890,7 @@ def get_flux_contributions_from_packets(
         pl.col("nu_rf").is_between(float(nu_min), float(nu_max))
         | pl.col("absorption_freq").is_between(float(nu_min), float(nu_max))
     )
+
     if getemission:
         lzdfpackets = lzdfpackets.with_columns(
             pl.col(emtypecolumn).map_elements(lambda x: get_emprocesslabel(x)).alias("emissiontype_str")
