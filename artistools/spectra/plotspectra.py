@@ -439,7 +439,10 @@ def make_spectrum_plot(
 
         seriesdata = pd.DataFrame()
 
-        if not Path(specpath).is_dir() and not Path(specpath).exists() and "." in str(specpath):
+        if (
+            Path(specpath).is_file()
+            or Path(at.get_config()["path_artistools_dir"], "data", "refspectra", specpath).is_file()
+        ):
             # reference spectrum
             if "linewidth" not in plotkwargs:
                 plotkwargs["linewidth"] = 1.1
