@@ -800,7 +800,7 @@ def get_flux_contributions_from_packets(
     filterfunc: t.Callable[[np.ndarray], np.ndarray] | None = None,
     groupby: t.Literal["ion", "line", "upperterm", "terms"] | None = "ion",
     modelgridindex: int | None = None,
-    use_escapetime: bool = False,
+    use_time: t.Literal["arrival", "emission", "escape"] = "arrival",
     use_lastemissiontype: bool = True,
     emissionvelocitycut: float | None = None,
     directionbin: int | None = None,
@@ -848,13 +848,11 @@ def get_flux_contributions_from_packets(
             return "free-free"
 
         bfindex = -emtype - 1
-        if bfindex in bflist:
-            (atomic_number, ionstage, level) = bflist[bfindex][:3]
-            if groupby == "line":
-                return f"{at.get_ionstring(atomic_number, ionstage)} bound-free {level}"
-            return f"{at.get_ionstring(atomic_number, ionstage)} bound-free"
+        atomic_number, ionstage = bflist.item(bfindex, "atomic_number"), bflist.item(bfindex, "ionstage")
 
-        return f"? bound-free (bfindex={bfindex})"
+        if groupby == "line":
+            return f"{at.get_ionstring(atomic_number, ionstage)} bound-free {bflist.item(bfindex, "lowerlevel")}-{bflist.item(bfindex, "upperionlevel")}"
+        return f"{at.get_ionstring(atomic_number, ionstage)} bound-free"
 
     def get_absprocesslabel(abstype: int) -> str:
         if abstype >= 0:
@@ -875,15 +873,19 @@ def get_flux_contributions_from_packets(
     nprocs_read, lzdfpackets = at.packets.get_packets_pl(
         modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
+    if emissionvelocitycut is not None:
+        lzdfpackets = at.packets.add_derived_columns_lazy(lzdfpackets)
+        lzdfpackets = lzdfpackets.filter(pl.col("emission_velocity") > emissionvelocitycut)
 
     lzdfpackets = lzdfpackets.filter(pl.col("t_arrive_d").is_between(float(timelowdays), float(timehighdays)))
 
-    cols = {"t_arrive_d", "e_rf"}
+    cols = {"e_rf"}
+    cols.add({"arrival": "t_arrive_d", "emission": "em_time", "escape": "excape_time"}[use_time])
 
     if getemission:
         cols |= {"emissiontype_str", "nu_rf"}
-        emtypes = lzdfpackets.select(emtypecolumn).collect().get_column(emtypecolumn).unique().sort()
 
+        emtypes = lzdfpackets.select(emtypecolumn).collect().get_column(emtypecolumn).unique().sort()
         lzdfpackets = lzdfpackets.join(
             pl.DataFrame({emtypecolumn: emtypes, "emissiontype_str": emtypes.map_elements(get_emprocesslabel)}).lazy(),
             on=emtypecolumn,
@@ -924,6 +926,7 @@ def get_flux_contributions_from_packets(
                 timehighdays=timehighdays,
                 lambda_min=lambda_min,
                 lambda_max=lambda_max,
+                use_time=use_time,
                 delta_lambda=delta_lambda,
                 fnufilterfunc=filterfunc,
                 nprocs_read_dfpackets=(nprocs_read, emissiongroups[groupname]),

@@ -892,6 +892,8 @@ def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
 
         return add_derived_metadata(metadata)
 
+    print(f"No metadata found for: {filepath}")
+
     return {}
 
 
@@ -944,24 +946,33 @@ def merge_pdf_files(pdf_files: list[str]) -> None:
     print(f"Files merged and saved to {resultfilename}.pdf")
 
 
-@lru_cache(maxsize=2)
-def get_bflist(modelpath: Path | str) -> dict[int, tuple[int, int, int, int]]:
+def get_bflist(modelpath: Path | str) -> pl.DataFrame:
     """Return a dict of bound-free transitions from bflist.out."""
     compositiondata = get_composition_data(modelpath)
-    bflist = {}
     bflistpath = firstexisting(["bflist.out", "bflist.dat"], folder=modelpath, tryzipped=True)
-    with zopen(bflistpath) as filein:
-        bflistcount = int(filein.readline())
+    print(f"Loading {bflistpath}")
 
-        for _ in range(bflistcount):
-            rowints = [int(x) for x in filein.readline().split()]
-            i, elementindex, ionindex, level = rowints[:4]
-            upperionlevel = rowints[4] if len(rowints) > 4 else -1
-            atomic_number = compositiondata.Z[elementindex]
-            ionstage = ionindex + compositiondata.lowermost_ionstage[elementindex]
-            bflist[i] = (atomic_number, ionstage, level, upperionlevel)
-
-    return bflist
+    dfboundfree = pl.read_csv(
+        bflistpath,
+        skip_rows=1,
+        separator=" ",
+        new_columns=["i", "elementindex", "ionindex", "lowerlevel", "upperionlevel"],
+        dtypes={
+            "i": pl.Int32,
+            "elementindex": pl.Int32,
+            "ionindex": pl.Int32,
+            "lowerlevel": pl.Int32,
+            "upperionlevel": pl.Int32,
+        },
+    )
+    dfboundfree = dfboundfree.with_columns(
+        atomic_number=pl.col("elementindex").map_elements(lambda elementindex: compositiondata["Z"][elementindex]),
+        ionstage=pl.col("ionindex")
+        + pl.col("elementindex").map_elements(lambda elementindex: compositiondata["lowermost_ionstage"][elementindex]),
+    )
+    return dfboundfree.drop(["elementindex", "ionindex"]).select(
+        ["atomic_number", "ionstage", "lowerlevel", "upperionlevel"]
+    )
 
 
 linetuple = namedtuple("linetuple", "lambda_angstroms atomic_number ionstage upperlevelindex lowerlevelindex")
