@@ -849,10 +849,11 @@ def get_flux_contributions_from_packets(
 
         bfindex = -emtype - 1
         atomic_number, ionstage = bflist.item(bfindex, "atomic_number"), bflist.item(bfindex, "ionstage")
+        ionstr = at.get_ionstring(atomic_number, ionstage)
 
         if groupby == "line":
-            return f"{at.get_ionstring(atomic_number, ionstage)} bound-free {bflist.item(bfindex, "lowerlevel")}-{bflist.item(bfindex, "upperionlevel")}"
-        return f"{at.get_ionstring(atomic_number, ionstage)} bound-free"
+            return f"{ionstr} bound-free {bflist.item(bfindex, 'lowerlevel')}-{bflist.item(bfindex, 'upperionlevel')}"
+        return f"{ionstr} bound-free"
 
     def get_absprocesslabel(abstype: int) -> str:
         if abstype >= 0:
