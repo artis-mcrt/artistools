@@ -958,29 +958,35 @@ def get_flux_contributions_from_packets(
     if directionbin != -1:
         cols |= {"costhetabin", "phibin", "dirbin"}
 
-    dfpackets = lzdfpackets.select([col for col in cols if col in lzdfpackets.columns]).collect()
+    nu_min = 2.99792458e18 / lambda_max
+    nu_max = 2.99792458e18 / lambda_min
+    dfpackets = (
+        lzdfpackets.filter(
+            (pl.col("nu_rf").is_between(nu_min, nu_max)) | (pl.col("absorption_freq").is_between(nu_min, nu_max))
+        )
+        .select([col for col in cols if col in lzdfpackets.columns])
+        .collect()
+    )
 
-    emissiongroups = dict(dfpackets.group_by("emissiontype_str")) if getemission else {}
-    absorptiongroups = dict(dfpackets.group_by("absorptiontype_str")) if getabsorption else {}
+    emissiongroups = (
+        dict(dfpackets.filter(pl.col("nu_rf").is_between(nu_min, nu_max)).group_by("emissiontype_str"))
+        if getemission
+        else {}
+    )
+    absorptiongroups = (
+        dict(dfpackets.filter(pl.col("absorption_freq").is_between(nu_min, nu_max)).group_by("absorptiontype_str"))
+        if getabsorption
+        else {}
+    )
     allgroupnames = set(emissiongroups.keys()) | set(absorptiongroups.keys())
 
     if maxseriescount is not None and len(allgroupnames) > maxseriescount:
         # group small contributions together to avoid the cost of binning individual spectra for them
 
-        nu_min = 2.99792458e18 / lambda_max
-        nu_max = 2.99792458e18 / lambda_min
         grouptotals = []
         for groupname in allgroupnames:
-            groupemiss = (
-                emissiongroups[groupname].filter(pl.col("nu_rf").is_between(nu_min, nu_max))["e_rf"].sum()
-                if groupname in emissiongroups
-                else 0.0
-            )
-            groupabs = (
-                (absorptiongroups[groupname].filter(pl.col("absorption_freq").is_between(nu_min, nu_max))["e_rf"].sum())
-                if groupname in absorptiongroups
-                else 0.0
-            )
+            groupemiss = emissiongroups[groupname]["e_rf"].sum() if groupname in emissiongroups else 0.0
+            groupabs = absorptiongroups[groupname]["e_rf"].sum() if groupname in absorptiongroups else 0.0
             grouptotal = groupemiss + groupabs
 
             if grouptotal > 0.0 and groupname is not None:
