@@ -814,8 +814,14 @@ def get_flux_contributions_from_packets(
     if groupby in {"terms", "upperterm"}:
         adata = at.atomic.get_levels(modelpath)
 
-    linelist = at.get_linelist_pldf(modelpath=modelpath).collect()
-    bflist = at.get_bflist(modelpath)
+    emtypecolumn = "emissiontype" if use_lastemissiontype else "trueemissiontype"
+
+    linelistlazy = at.get_linelist_pldf(modelpath=modelpath, get_ion_str=True)
+    bflistlazy = at.get_bflist(modelpath, get_ion_str=True)
+
+    if groupby != "ion":
+        linelist = linelistlazy.collect()
+        bflist = bflistlazy.collect()
 
     def get_emprocesslabel(emtype: int) -> str:
         if emtype >= 0:
@@ -823,7 +829,7 @@ def get_flux_contributions_from_packets(
 
             if groupby == "line":
                 return (
-                    f"{at.get_ionstring(line['atomic_number'], line['ionstage'])} "
+                    f"{line['ion_str']} "
                     f"λ{line['lambda_angstroms']:.0f} "
                     f"({line['upperlevelindex']}-{line['lowerlevelindex']})"
                 )
@@ -834,15 +840,15 @@ def get_flux_contributions_from_packets(
                 upper_term_noj = upper_config.split("_")[-1].split("[")[0]
                 lower_config = ion.levels.iloc[line["lowerlevelindex"]].levelname
                 lower_term_noj = lower_config.split("_")[-1].split("[")[0]
-                return f"{at.get_ionstring(line['atomic_number'], line['ionstage'])} {upper_term_noj}->{lower_term_noj}"
+                return f"{line['ion_str']} {upper_term_noj}->{lower_term_noj}"
 
             if groupby == "upperterm":
                 ion = adata[(adata["Z"] == line["atomic_number"]) & (adata["ionstage"] == line["ionstage"])].iloc[0]
                 upper_config = ion.levels.iloc[line["upperlevelindex"]].levelname
                 upper_term_noj = upper_config.split("_")[-1].split("[")[0]
-                return f"{at.get_ionstring(line['atomic_number'], line['ionstage'])} {upper_term_noj}"
+                return f"{line['ion_str']} {upper_term_noj}"
 
-            return f"{at.get_ionstring(line['atomic_number'], line['ionstage'])} bound-bound"
+            return line["ion_str"]
 
         if emtype == -9999999:
             return "free-free"
@@ -869,11 +875,10 @@ def get_flux_contributions_from_packets(
             return "free-free"
         return "bound-free" if abstype == -2 else "? other absorp."
 
-    emtypecolumn = "emissiontype" if use_lastemissiontype else "trueemissiontype"
-
     nprocs_read, lzdfpackets = at.packets.get_packets_pl(
         modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
+
     if emissionvelocitycut is not None:
         lzdfpackets = at.packets.add_derived_columns_lazy(lzdfpackets)
         lzdfpackets = lzdfpackets.filter(pl.col("emission_velocity") > emissionvelocitycut)
@@ -885,13 +890,28 @@ def get_flux_contributions_from_packets(
 
     if getemission:
         cols |= {"emissiontype_str", "nu_rf"}
+        if groupby == "ion":
+            emtypestrings = pl.concat(
+                [
+                    linelistlazy.select([pl.col("lineindex").cast(pl.Int32).alias(emtypecolumn), pl.col("ion_str")]),
+                    pl.DataFrame(
+                        {emtypecolumn: [-9999999], "ion_str": "free-free"},
+                        schema_overrides={emtypecolumn: pl.Int32, "ion_str": pl.String},
+                    ).lazy(),
+                    bflistlazy.select([(-1 - pl.col("bfindex").cast(pl.Int32)).alias(emtypecolumn), pl.col("ion_str")]),
+                ],
+            ).rename({"ion_str": "emissiontype_str"})
 
-        emtypes = lzdfpackets.select(emtypecolumn).collect().get_column(emtypecolumn).unique().sort()
-        lzdfpackets = lzdfpackets.join(
-            pl.DataFrame({emtypecolumn: emtypes, "emissiontype_str": emtypes.map_elements(get_emprocesslabel)}).lazy(),
-            on=emtypecolumn,
-            how="left",
-        )
+            lzdfpackets = lzdfpackets.join(emtypestrings, on=emtypecolumn, how="left")
+        else:
+            emtypes = lzdfpackets.select(emtypecolumn).collect().get_column(emtypecolumn).unique().sort()
+            lzdfpackets = lzdfpackets.join(
+                pl.DataFrame(
+                    {emtypecolumn: emtypes, "emissiontype_str": emtypes.map_elements(get_emprocesslabel)}
+                ).lazy(),
+                on=emtypecolumn,
+                how="left",
+            )
 
     if getabsorption:
         cols |= {"absorptiontype_str", "absorption_freq"}
