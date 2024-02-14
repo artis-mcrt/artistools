@@ -1090,7 +1090,9 @@ def get_flux_contributions_from_packets(
                 )
             )
 
-    assert array_flambda_emission_total is not None
+    if array_flambda_emission_total is None:
+        array_flambda_emission_total = np.zeros_like(array_lambda, dtype=float)
+
     assert array_lambda is not None
 
     return contribution_list, array_flambda_emission_total, array_lambda

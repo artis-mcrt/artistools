@@ -694,15 +694,19 @@ def make_emissionabsorption_plot(
                 linecolor = emissioncomponentplot.get_color()
             else:
                 linecolor = None
-            plotobjects.append(mpatches.Patch(color=linecolor))
 
             if args.showabsorption:
-                axis.plot(
+                (absorptioncomponentplot,) = axis.plot(
                     arraylambda_angstroms,
                     -x.array_flambda_absorption * scalefactor,
                     color=linecolor,
                     linewidth=1,
                 )
+                if not args.showemission:
+                    linecolor = absorptioncomponentplot.get_color()
+
+            plotobjects.append(mpatches.Patch(color=linecolor))
+
     elif contributions_sorted_reduced:
         if args.showemission:
             stackplot = axis.stackplot(
