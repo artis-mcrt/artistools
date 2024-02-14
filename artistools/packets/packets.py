@@ -905,32 +905,3 @@ def bin_and_sum(
     # now we will include the empty bins
     dfout = pl.DataFrame(pl.Series(name=f"{bincol}_bin", values=np.arange(0, len(bins) - 1), dtype=pl.Int32))
     return dfout.join(wlbins, how="left", on=f"{bincol}_bin").fill_null(0)
-
-    # pandas method
-
-    # dfout2 = pd.DataFrame({f"{bincol}_bin": np.arange(0, len(bins) - 1)})
-    # if isinstance(df, pl.DataFrame):
-    #     df2 = df.to_pandas(use_pyarrow_extension_array=True)
-    # elif isinstance(df, pl.LazyFrame):
-    #     df2 = df.collect().to_pandas(use_pyarrow_extension_array=True)
-
-    # pdbins = pd.cut(
-    #     x=df2[bincol],
-    #     bins=bins,
-    #     right=True,
-    #     labels=range(len(bins) - 1),
-    #     include_lowest=True,
-    # )
-
-    # if sumcols is not None:
-    #     for col in sumcols:
-    #         # dfout = dfout.with_columns(
-    #         #     [pl.Series(col + "_sum", df[col].groupby(pdbins).sum().values) for col in sumcols]
-    #         # )
-    #         dfout2[col + "_sum"] = df2[col].groupby(pdbins).sum().values
-    # if getcounts:
-    #     # dfout = dfout.with_columns([pl.Series("count", df[bincol].groupby(pdbins).count().values)])
-    #     dfout2["count"] = df2[bincol].groupby(pdbins).count().values
-
-    # print(dfout2)
-    # return dfout2
