@@ -909,7 +909,7 @@ def get_flux_contributions_from_packets(
             lzdfpackets = lzdfpackets.join(emtypestrings, on=emtypecolumn, how="left")
 
         else:
-            """ getting terms is very slow """
+            # getting terms is very slow!
             emtypes = lzdfpackets.select(emtypecolumn).collect().get_column(emtypecolumn).unique().sort()
             lzdfpackets = lzdfpackets.join(
                 pl.DataFrame(
