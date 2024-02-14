@@ -964,19 +964,37 @@ def get_flux_contributions_from_packets(
     absorptiongroups = dict(dfpackets.group_by("absorptiontype_str")) if getabsorption else {}
     allgroupnames = set(emissiongroups.keys()) | set(absorptiongroups.keys())
 
-    if maxseriescount is not None:
+    if maxseriescount is not None and len(allgroupnames) > maxseriescount:
         # group small contributions together to avoid the cost of binning individual spectra for them
+
+        nu_min = 2.99792458e18 / lambda_max
+        nu_max = 2.99792458e18 / lambda_min
         grouptotals = []
         for groupname in allgroupnames:
-            grouptotal = 0.0
-            if groupname in emissiongroups:
-                grouptotal += emissiongroups[groupname]["e_rf"].sum()
-            if groupname in absorptiongroups:
-                grouptotal += absorptiongroups[groupname]["e_rf"].sum()
-            grouptotals.append((grouptotal, groupname))
+            groupemiss = (
+                emissiongroups[groupname].filter(pl.col("nu_rf").is_between(nu_min, nu_max))["e_rf"].sum()
+                if groupname in emissiongroups
+                else 0.0
+            )
+            groupabs = (
+                (absorptiongroups[groupname].filter(pl.col("absorption_freq").is_between(nu_min, nu_max))["e_rf"].sum())
+                if groupname in absorptiongroups
+                else 0.0
+            )
+            grouptotal = groupemiss + groupabs
 
-        sorted_grouptotals = sorted(grouptotals, reverse=True)
+            if grouptotal > 0.0 and groupname is not None:
+                grouptotals.append((grouptotal, groupname))
+            else:
+                with contextlib.suppress(KeyError):
+                    del emissiongroups[groupname]
+                    del absorptiongroups[groupname]
+
+        allgroupnames = set(emissiongroups.keys()) | set(absorptiongroups.keys())
+
+        sorted_grouptotals = sorted(grouptotals, reverse=True, key=lambda x: x[0])
         other_groups = sorted_grouptotals[maxseriescount:]
+
         if other_groups:
             allgroupnames.add("Other")
 
@@ -1055,15 +1073,17 @@ def get_flux_contributions_from_packets(
 
         linelabel = str(groupname).replace(" bound-bound", "")
 
-        contribution_list.append(
-            fluxcontributiontuple(
-                fluxcontrib=fluxcontribthisseries,
-                linelabel=linelabel,
-                array_flambda_emission=array_flambda_emission,
-                array_flambda_absorption=array_flambda_absorption,
-                color=None,
+        if fluxcontribthisseries > 0.0:
+            contribution_list.append(
+                fluxcontributiontuple(
+                    fluxcontrib=fluxcontribthisseries,
+                    linelabel=linelabel,
+                    array_flambda_emission=array_flambda_emission,
+                    array_flambda_absorption=array_flambda_absorption,
+                    color=None,
+                )
             )
-        )
+
     assert array_flambda_emission_total is not None
     assert array_lambda is not None
 
@@ -1098,11 +1118,6 @@ def sort_and_reduce_flux_contribution_list(
 
     contribution_list = sorted(contribution_list_in, key=sortkey)
 
-    # combine the items past maxseriescount or not in manual list into a single item
-    remainder_flambda_emission = np.zeros_like(arraylambda_angstroms, dtype=float)
-    remainder_flambda_absorption = np.zeros_like(arraylambda_angstroms, dtype=float)
-    remainder_fluxcontrib = 0
-
     color_list: list[t.Any]
     if greyscale:
         hatches = at.spectra.plotspectra.hatches
@@ -1120,12 +1135,18 @@ def sort_and_reduce_flux_contribution_list(
     else:
         color_list = list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20)))
 
+    # combine the items past maxseriescount or not in manual list into a single item
+    remainder_flambda_emission = np.zeros_like(arraylambda_angstroms, dtype=float)
+    remainder_flambda_absorption = np.zeros_like(arraylambda_angstroms, dtype=float)
+    remainder_fluxcontrib = 0
+
     contribution_list_out = []
     numotherprinted = 0
     maxnumotherprinted = 20
     entered_other = False
     plotted_ion_list = []
     index = 0
+
     for row in contribution_list:
         if row.linelabel != "Other" and fixedionlist and row.linelabel in fixedionlist:
             contribution_list_out.append(row._replace(color=color_list[fixedionlist.index(row.linelabel)]))
