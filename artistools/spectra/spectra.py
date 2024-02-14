@@ -819,20 +819,14 @@ def get_flux_contributions_from_packets(
     linelistlazy = at.get_linelist_pldf(modelpath=modelpath, get_ion_str=True)
     bflistlazy = at.get_bflist(modelpath, get_ion_str=True)
 
-    if groupby != "ion":
+    if groupby not in {"ion", "line"}:
         linelist = linelistlazy.collect()
         bflist = bflistlazy.collect()
 
     def get_emprocesslabel(emtype: int) -> str:
+        assert groupby in {"upperterm", "terms"}
         if emtype >= 0:
             line = linelist.row(emtype, named=True)
-
-            if groupby == "line":
-                return (
-                    f"{line['ion_str']} "
-                    f"λ{line['lambda_angstroms']:.0f} "
-                    f"({line['upperlevelindex']}-{line['lowerlevelindex']})"
-                )
 
             if groupby == "terms":
                 ion = adata[(adata["Z"] == line["atomic_number"]) & (adata["ionstage"] == line["ionstage"])].iloc[0]
@@ -848,8 +842,6 @@ def get_flux_contributions_from_packets(
                 upper_term_noj = upper_config.split("_")[-1].split("[")[0]
                 return f"{line['ion_str']} {upper_term_noj}"
 
-            return line["ion_str"]
-
         if emtype == -9999999:
             return "free-free"
 
@@ -857,23 +849,7 @@ def get_flux_contributions_from_packets(
         atomic_number, ionstage = bflist.item(bfindex, "atomic_number"), bflist.item(bfindex, "ionstage")
         ionstr = at.get_ionstring(atomic_number, ionstage)
 
-        if groupby == "line":
-            return f"{ionstr} bound-free {bflist.item(bfindex, 'lowerlevel')}-{bflist.item(bfindex, 'upperionlevel')}"
         return f"{ionstr} bound-free"
-
-    def get_absprocesslabel(abstype: int) -> str:
-        if abstype >= 0:
-            line = linelist.row(abstype, named=True)
-            if groupby == "line":
-                return (
-                    f"{at.get_ionstring(line['atomic_number'], line['ionstage'])} "
-                    f"λ{line['lambda_angstroms']:.0f} "
-                    f"({line['upperlevelindex']}-{line['lowerlevelindex']})"
-                )
-            return f"{at.get_ionstring(line['atomic_number'], line['ionstage'])} bound-bound"
-        if abstype == -1:
-            return "free-free"
-        return "bound-free" if abstype == -2 else "? other absorp."
 
     nprocs_read, lzdfpackets = at.packets.get_packets_pl(
         modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
@@ -890,20 +866,50 @@ def get_flux_contributions_from_packets(
 
     if getemission:
         cols |= {"emissiontype_str", "nu_rf"}
-        if groupby == "ion":
+        bflistlazy = bflistlazy.with_columns((-1 - pl.col("bfindex").cast(pl.Int32)).alias(emtypecolumn))
+        if groupby in {"ion", "line"}:
+            expr_linelist_to_str = (
+                pl.col("ion_str")
+                if groupby == "ion"
+                else pl.format(
+                    "{} λ{} {}-{}",
+                    pl.col("ion_str"),
+                    pl.col("lambda_angstroms").round(2),
+                    pl.col("upperlevelindex"),
+                    pl.col("lowerlevelindex"),
+                )
+            )
+            expr_bflist_to_str = (
+                pl.col("ion_str")
+                if groupby == "ion"
+                else pl.format("{} {}-{}", pl.col("ion_str"), pl.col("lowerlevel"), pl.col("upperionlevel"))
+            )
+
             emtypestrings = pl.concat(
                 [
-                    linelistlazy.select([pl.col("lineindex").cast(pl.Int32).alias(emtypecolumn), pl.col("ion_str")]),
+                    linelistlazy.select(
+                        [
+                            pl.col("lineindex").alias(emtypecolumn),
+                            expr_linelist_to_str.alias("emissiontype_str"),
+                        ]
+                    ),
                     pl.DataFrame(
-                        {emtypecolumn: [-9999999], "ion_str": "free-free"},
-                        schema_overrides={emtypecolumn: pl.Int32, "ion_str": pl.String},
+                        {emtypecolumn: [-9999999], "emissiontype_str": ["free-free"]},
+                        schema_overrides={emtypecolumn: pl.Int32, "emissiontype_str": pl.String},
                     ).lazy(),
-                    bflistlazy.select([(-1 - pl.col("bfindex").cast(pl.Int32)).alias(emtypecolumn), pl.col("ion_str")]),
+                    bflistlazy.select(
+                        [
+                            pl.col(emtypecolumn),
+                            expr_bflist_to_str.alias("emissiontype_str"),
+                        ]
+                    ),
                 ],
-            ).rename({"ion_str": "emissiontype_str"})
+            )
 
             lzdfpackets = lzdfpackets.join(emtypestrings, on=emtypecolumn, how="left")
+
         else:
+            """ getting terms is very slow """
             emtypes = lzdfpackets.select(emtypecolumn).collect().get_column(emtypecolumn).unique().sort()
             lzdfpackets = lzdfpackets.join(
                 pl.DataFrame(
@@ -915,15 +921,37 @@ def get_flux_contributions_from_packets(
 
     if getabsorption:
         cols |= {"absorptiontype_str", "absorption_freq"}
-        abstypes = lzdfpackets.select("absorption_type").collect().get_column("absorption_type").unique().sort()
+        if groupby in {"ion", "line"}:
+            abstypestrings = pl.concat(
+                [
+                    linelistlazy.select(
+                        [
+                            pl.col("lineindex").alias("absorption_type"),
+                            (
+                                pl.col("ion_str")
+                                if groupby == "ion"
+                                else pl.format(
+                                    "{} λ{} {}-{}",
+                                    pl.col("ion_str"),
+                                    pl.col("lambda_angstroms").round(2),
+                                    pl.col("upperlevelindex"),
+                                    pl.col("lowerlevelindex"),
+                                )
+                            ).alias("absorptiontype_str"),
+                        ]
+                    ),
+                    pl.DataFrame(
+                        {"absorption_type": [-1, -2], "absorptiontype_str": ["free-free", "bound-free"]},
+                        schema_overrides={"absorption_type": pl.Int32, "absorptiontype_str": pl.String},
+                    ).lazy(),
+                ],
+            )
 
-        lzdfpackets = lzdfpackets.join(
-            pl.DataFrame(
-                {"absorption_type": abstypes, "absorptiontype_str": abstypes.map_elements(get_absprocesslabel)}
-            ).lazy(),
-            on="absorption_type",
-            how="left",
-        )
+            lzdfpackets = lzdfpackets.join(abstypestrings, on="absorption_type", how="left")
+
+        else:
+            msg = "groupby='terms' or 'upperterm' not implemented for absorption"
+            raise NotImplementedError(msg)
 
     if directionbin != -1:
         cols |= {"costhetabin", "phibin", "dirbin"}

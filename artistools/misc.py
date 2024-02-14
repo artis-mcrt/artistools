@@ -993,22 +993,25 @@ def get_bflist(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame
     ).lazy()
 
     dfboundfree = dfboundfree.with_columns(
-        atomic_number=pl.col("elementindex").map_elements(lambda elementindex: compositiondata["Z"][elementindex]),
-        ionstage=pl.col("ionindex")
-        + pl.col("elementindex").map_elements(lambda elementindex: compositiondata["lowermost_ionstage"][elementindex]),
+        atomic_number=pl.col("elementindex")
+        .map_elements(lambda elementindex: compositiondata["Z"][elementindex])
+        .cast(pl.Int32),
+        ionstage=(
+            pl.col("ionindex")
+            + pl.col("elementindex")
+            .map_elements(lambda elementindex: compositiondata["lowermost_ionstage"][elementindex])
+            .cast(pl.Int32)
+        ),
     )
 
     dfboundfree = dfboundfree.drop(["elementindex", "ionindex"])
 
     if get_ion_str:
-        dfgroupstrings = dfboundfree.group_by(["atomic_number", "ionstage"]).agg(
-            pl.map_groups(
-                exprs=[pl.col("atomic_number").first(), pl.col("ionstage").first()],
-                function=lambda z_ionstage: f"{at.get_ionstring(z_ionstage[0].item(), z_ionstage[1].item())} bound-free",
-            ).alias("ion_str"),
+        dfboundfree = (
+            dfboundfree.join(at.get_ionstage_roman_numeral_df().lazy(), on="ionstage", how="left")
+            .join(at.get_elsymbols_df().lazy(), on="atomic_number", how="left")
+            .with_columns(ion_str=pl.col("elsymbol") + " " + pl.col("ionstage_roman") + " bound-free")
         )
-
-        dfboundfree = dfboundfree.join(dfgroupstrings, how="left", on=["atomic_number", "ionstage"])
 
     return dfboundfree
 
@@ -1056,8 +1059,10 @@ def get_linelist_pldf(modelpath: Path | str, get_ion_str: bool = False) -> pl.La
                     "lower_level": lower_levels,
                 },
             )
-            .with_columns(pl.col(pl.Int64).cast(pl.Int32))
             .with_row_count(name="lineindex")
+            .with_columns(
+                pl.col(pl.UInt32).cast(pl.Int32), pl.col(pl.Int64).cast(pl.Int32), pl.col(pl.Float64).cast(pl.Float32)
+            )
         )
         pldf.write_parquet(parquetfile, compression="zstd")
         print(f"Saved {parquetfile}")
@@ -1066,6 +1071,9 @@ def get_linelist_pldf(modelpath: Path | str, get_ion_str: bool = False) -> pl.La
 
     linelist_lazy = (
         pl.scan_parquet(parquetfile)
+        .with_columns(
+            pl.col(pl.UInt32).cast(pl.Int32), pl.col(pl.Int64).cast(pl.Int32), pl.col(pl.Float64).cast(pl.Float32)
+        )
         .with_columns(upperlevelindex=pl.col("upper_level") - 1, lowerlevelindex=pl.col("lower_level") - 1)
         .drop(["upper_level", "lower_level"])
         .with_columns(pl.col(pl.Int64).cast(pl.Int32))
@@ -1073,16 +1081,9 @@ def get_linelist_pldf(modelpath: Path | str, get_ion_str: bool = False) -> pl.La
 
     if get_ion_str:
         linelist_lazy = (
-            linelist_lazy.group_by(["atomic_number", "ionstage"])
-            .agg(
-                pl.struct(pl.exclude(["atomic_number", "ionstage"])).alias("othercols"),
-                pl.map_groups(
-                    exprs=[pl.col("atomic_number").first(), pl.col("ionstage").first()],
-                    function=lambda z_ionstage: f"{at.get_ionstring(z_ionstage[0].item(), z_ionstage[1].item())} bound-bound",
-                ).alias("ion_str"),
-            )
-            .explode("othercols")
-            .unnest("othercols")
+            linelist_lazy.join(at.get_ionstage_roman_numeral_df().lazy(), on="ionstage", how="left")
+            .join(at.get_elsymbols_df().lazy(), on="atomic_number", how="left")
+            .with_columns(ion_str=pl.col("elsymbol") + " " + pl.col("ionstage_roman") + " bound-bound")
         )
 
     return linelist_lazy
