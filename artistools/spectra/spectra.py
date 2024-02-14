@@ -1163,6 +1163,8 @@ def sort_and_reduce_flux_contribution_list(
         cmdarg = "'" + "' '".join(plotted_ion_list) + "'"
         print("To reuse this ion/process contribution list, pass the following command-line argument: ")
         print(f"     -fixedionlist {cmdarg}")
+        print("Or in python: ")
+        print(f"     fixedionlist={plotted_ion_list}")
 
     if remainder_fluxcontrib > 0.0 and not hideother:
         contribution_list_out.append(
