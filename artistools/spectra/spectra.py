@@ -906,7 +906,7 @@ def get_flux_contributions_from_packets(
                         ]
                     ),
                 ],
-            )
+            ).with_columns(pl.col("emissiontype_str").cast(pl.Categorical))
 
             lzdfpackets = lzdfpackets.join(emtypestrings, on=emtypecolumn, how="left")
 
@@ -947,7 +947,7 @@ def get_flux_contributions_from_packets(
                         schema_overrides={"absorption_type": pl.Int32, "absorptiontype_str": pl.String},
                     ).lazy(),
                 ],
-            )
+            ).with_columns(pl.col("absorptiontype_str").cast(pl.Categorical))
 
             lzdfpackets = lzdfpackets.join(abstypestrings, on="absorption_type", how="left")
 
@@ -979,17 +979,18 @@ def get_flux_contributions_from_packets(
         other_groups = sorted_grouptotals[maxseriescount:]
         if other_groups:
             allgroupnames.add("Other")
-            emdfs = [emissiongroups[groupname] for _, groupname in other_groups if groupname in emissiongroups]
-            if emdfs:
+
+            if emdfs := [emissiongroups[groupname] for _, groupname in other_groups if groupname in emissiongroups]:
                 emissiongroups["Other"] = pl.concat(emdfs)
-            absdfs = [absorptiongroups[groupname] for _, groupname in other_groups if groupname in absorptiongroups]
-            if absdfs:
+
+            if absdfs := [
+                absorptiongroups[groupname] for _, groupname in other_groups if groupname in absorptiongroups
+            ]:
                 absorptiongroups["Other"] = pl.concat(absdfs)
 
             for grouptotal, groupname in other_groups:
                 with contextlib.suppress(KeyError):
                     del emissiongroups[groupname]
-                with contextlib.suppress(KeyError):
                     del absorptiongroups[groupname]
                 allgroupnames.remove(groupname)
 
