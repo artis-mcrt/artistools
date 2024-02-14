@@ -617,6 +617,7 @@ def make_emissionabsorption_plot(
             maxpacketfiles=args.maxpacketfiles,
             filterfunc=filterfunc,
             groupby=args.groupby,
+            maxseriescount=args.maxseriescount + 20,
             delta_lambda=args.deltalambda,
             use_lastemissiontype=not args.use_thermalemissiontype,
             emissionvelocitycut=args.emissionvelocitycut,

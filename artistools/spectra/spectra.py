@@ -1,6 +1,7 @@
 """Artistools - spectra related functions."""
 
 import argparse
+import contextlib
 import math
 import os
 import re
@@ -799,6 +800,7 @@ def get_flux_contributions_from_packets(
     maxpacketfiles: int | None = None,
     filterfunc: t.Callable[[np.ndarray], np.ndarray] | None = None,
     groupby: t.Literal["ion", "line", "upperterm", "terms"] | None = "ion",
+    maxseriescount: int | None = None,
     modelgridindex: int | None = None,
     use_time: t.Literal["arrival", "emission", "escape"] = "arrival",
     use_lastemissiontype: bool = True,
@@ -962,6 +964,35 @@ def get_flux_contributions_from_packets(
     absorptiongroups = dict(dfpackets.group_by("absorptiontype_str")) if getabsorption else {}
     allgroupnames = set(emissiongroups.keys()) | set(absorptiongroups.keys())
 
+    if maxseriescount is not None:
+        # group small contributions together to avoid the cost of binning individual spectra for them
+        grouptotals = []
+        for groupname in allgroupnames:
+            grouptotal = 0.0
+            if groupname in emissiongroups:
+                grouptotal += emissiongroups[groupname]["e_rf"].sum()
+            if groupname in absorptiongroups:
+                grouptotal += absorptiongroups[groupname]["e_rf"].sum()
+            grouptotals.append((grouptotal, groupname))
+
+        sorted_grouptotals = sorted(grouptotals, reverse=True)
+        other_groups = sorted_grouptotals[maxseriescount:]
+        if other_groups:
+            allgroupnames.add("Other")
+            emdfs = [emissiongroups[groupname] for _, groupname in other_groups if groupname in emissiongroups]
+            if emdfs:
+                emissiongroups["Other"] = pl.concat(emdfs)
+            absdfs = [absorptiongroups[groupname] for _, groupname in other_groups if groupname in absorptiongroups]
+            if absdfs:
+                absorptiongroups["Other"] = pl.concat(absdfs)
+
+            for grouptotal, groupname in other_groups:
+                with contextlib.suppress(KeyError):
+                    del emissiongroups[groupname]
+                with contextlib.suppress(KeyError):
+                    del absorptiongroups[groupname]
+                allgroupnames.remove(groupname)
+
     array_flambda_emission_total = None
     contribution_list = []
     array_lambda = None
@@ -1093,21 +1124,25 @@ def sort_and_reduce_flux_contribution_list(
     maxnumotherprinted = 20
     entered_other = False
     plotted_ion_list = []
-    for index, row in enumerate(contribution_list):
-        if fixedionlist and row.linelabel in fixedionlist:
+    index = 0
+    for row in contribution_list:
+        if row.linelabel != "Other" and fixedionlist and row.linelabel in fixedionlist:
             contribution_list_out.append(row._replace(color=color_list[fixedionlist.index(row.linelabel)]))
-        elif not fixedionlist and index < maxseriescount:
+        elif row.linelabel != "Other" and not fixedionlist and index < maxseriescount:
             contribution_list_out.append(row._replace(color=color_list[index]))
             plotted_ion_list.append(row.linelabel)
         else:
             remainder_fluxcontrib += row.fluxcontrib
             remainder_flambda_emission += row.array_flambda_emission
             remainder_flambda_absorption += row.array_flambda_absorption
-            if not entered_other:
+            if row.linelabel != "Other" and not entered_other:
                 print(f"  Other (top {maxnumotherprinted}):")
                 entered_other = True
 
-        if numotherprinted < maxnumotherprinted:
+        if row.linelabel != "Other":
+            index += 1
+
+        if numotherprinted < maxnumotherprinted and row.linelabel != "Other":
             integemiss = abs(np.trapz(row.array_flambda_emission, x=arraylambda_angstroms))
             integabsorp = abs(np.trapz(-row.array_flambda_absorption, x=arraylambda_angstroms))
             if integabsorp > 0.0 and integemiss > 0.0:
