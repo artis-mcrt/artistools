@@ -13,7 +13,7 @@ import polars as pl
 import artistools as at
 
 # for the parquet files
-time_parquetschemachange = (2023, 11, 19, 12, 0, 0)
+time_parquetschemachange = (2024, 2, 14, 11, 0, 0)
 
 CLIGHT = 2.99792458e10
 DAY = 86400
@@ -201,7 +201,9 @@ def add_derived_columns(
 
 
 def add_derived_columns_lazy(
-    dfpackets: pl.LazyFrame | pl.DataFrame, modelmeta: dict[str, t.Any], dfmodel: pd.DataFrame | pl.LazyFrame | None
+    dfpackets: pl.LazyFrame | pl.DataFrame,
+    modelmeta: dict[str, t.Any] | None = None,
+    dfmodel: pd.DataFrame | pl.LazyFrame | None = None,
 ) -> pl.LazyFrame:
     """Add columns to a packets DataFrame that are derived from the values that are stored in the packets files.
 
@@ -227,6 +229,9 @@ def add_derived_columns_lazy(
             ).alias("emission_velocity_lineofsight")
         ]
     )
+
+    if modelmeta is None:
+        return dfpackets
 
     if modelmeta["dimensions"] > 1:
         t_model_s = modelmeta["t_model_init_days"] * 86400.0
@@ -322,6 +327,43 @@ def readfile_text(packetsfile: Path | str, modelpath: Path = Path()) -> pl.DataF
         print(f"\nBad Gzip File: {packetsfile}")
         raise
 
+    dtype_overrides = {
+        "absorption_freq": pl.Float32,
+        "absorption_type": pl.Int32,
+        "absorptiondirx": pl.Float32,
+        "absorptiondiry": pl.Float32,
+        "absorptiondirz": pl.Float32,
+        "e_cmf": pl.Float64,
+        "e_rf": pl.Float64,
+        "em_posx": pl.Float32,
+        "em_posy": pl.Float32,
+        "em_posz": pl.Float32,
+        "em_time": pl.Float32,
+        "emissiontype": pl.Int32,
+        "escape_time": pl.Float32,
+        "escape_type_id": pl.Int32,
+        "interactions": pl.Int32,
+        "last_event": pl.Int32,
+        "nscatterings": pl.Int32,
+        "nu_cmf": pl.Float32,
+        "nu_rf": pl.Float32,
+        "number": pl.Int32,
+        "originated_from_positron": pl.Int32,
+        "pellet_nucindex": pl.Int32,
+        "pol_dirx": pl.Float32,
+        "pol_diry": pl.Float32,
+        "pol_dirz": pl.Float32,
+        "scat_count": pl.Int32,
+        "stokes1": pl.Float32,
+        "stokes2": pl.Float32,
+        "stokes3": pl.Float32,
+        "t_decay": pl.Float32,
+        "true_emission_velocity": pl.Float32,
+        "trueem_time": pl.Float32,
+        "trueemissiontype": pl.Int32,
+        "type_id": pl.Int32,
+    }
+
     try:
         dfpackets = pl.read_csv(
             fpackets,
@@ -330,6 +372,7 @@ def readfile_text(packetsfile: Path | str, modelpath: Path = Path()) -> pl.DataF
             comment_prefix="#",
             new_columns=column_names,
             infer_schema_length=20000,
+            dtypes=dtype_overrides,
         )
 
     except Exception:
@@ -418,6 +461,7 @@ def convert_text_to_parquet(
 def get_packetsfilepaths(
     modelpath: str | Path, maxpacketfiles: int | None = None, printwarningsonly: bool = False
 ) -> list[Path]:
+    """Get a list of Paths to parquet-formatted packets files, (which are generated from text files if needed)."""
     nprocs = at.get_nprocs(modelpath)
 
     searchfolders = [Path(modelpath, "packets"), Path(modelpath)]
@@ -861,32 +905,3 @@ def bin_and_sum(
     # now we will include the empty bins
     dfout = pl.DataFrame(pl.Series(name=f"{bincol}_bin", values=np.arange(0, len(bins) - 1), dtype=pl.Int32))
     return dfout.join(wlbins, how="left", on=f"{bincol}_bin").fill_null(0)
-
-    # pandas method
-
-    # dfout2 = pd.DataFrame({f"{bincol}_bin": np.arange(0, len(bins) - 1)})
-    # if isinstance(df, pl.DataFrame):
-    #     df2 = df.to_pandas(use_pyarrow_extension_array=True)
-    # elif isinstance(df, pl.LazyFrame):
-    #     df2 = df.collect().to_pandas(use_pyarrow_extension_array=True)
-
-    # pdbins = pd.cut(
-    #     x=df2[bincol],
-    #     bins=bins,
-    #     right=True,
-    #     labels=range(len(bins) - 1),
-    #     include_lowest=True,
-    # )
-
-    # if sumcols is not None:
-    #     for col in sumcols:
-    #         # dfout = dfout.with_columns(
-    #         #     [pl.Series(col + "_sum", df[col].groupby(pdbins).sum().values) for col in sumcols]
-    #         # )
-    #         dfout2[col + "_sum"] = df2[col].groupby(pdbins).sum().values
-    # if getcounts:
-    #     # dfout = dfout.with_columns([pl.Series("count", df[bincol].groupby(pdbins).count().values)])
-    #     dfout2["count"] = df2[bincol].groupby(pdbins).count().values
-
-    # print(dfout2)
-    # return dfout2

@@ -606,6 +606,20 @@ def get_elsymbolslist() -> list[str]:
     ]
 
 
+def get_elsymbols_df() -> pl.DataFrame:
+    """Return a polars DataFrame of atomic number and element symbols."""
+    return (
+        pl.read_csv(
+            at.get_config()["path_datadir"] / "elements.csv",
+            separator=",",
+            has_header=True,
+            dtypes={"Z": pl.Int32},
+        )
+        .drop("name")
+        .rename({"symbol": "elsymbol", "Z": "atomic_number"})
+    )
+
+
 def get_atomic_number(elsymbol: str) -> int:
     """Return the atomic number of an element symbol."""
     assert elsymbol is not None
@@ -623,6 +637,17 @@ def decode_roman_numeral(strin: str) -> int:
     if strin.upper() in roman_numerals:
         return roman_numerals.index(strin.upper())
     return -1
+
+
+def get_ionstage_roman_numeral_df() -> pl.DataFrame:
+    """Return a polars DataFrame of ionisation stage and roman numerals."""
+    return pl.DataFrame(
+        {
+            "ionstage": list(range(1, len(roman_numerals))),
+            "ionstage_roman": roman_numerals[1:],
+        },
+        schema={"ionstage": pl.Int32, "ionstage_roman": pl.Utf8},
+    )
 
 
 def get_elsymbol(atomic_number: int | np.int64) -> str:
@@ -892,6 +917,8 @@ def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
 
         return add_derived_metadata(metadata)
 
+    print(f"No metadata found for: {filepath}")
+
     return {}
 
 
@@ -944,24 +971,49 @@ def merge_pdf_files(pdf_files: list[str]) -> None:
     print(f"Files merged and saved to {resultfilename}.pdf")
 
 
-@lru_cache(maxsize=2)
-def get_bflist(modelpath: Path | str) -> dict[int, tuple[int, int, int, int]]:
+def get_bflist(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame:
     """Return a dict of bound-free transitions from bflist.out."""
     compositiondata = get_composition_data(modelpath)
-    bflist = {}
     bflistpath = firstexisting(["bflist.out", "bflist.dat"], folder=modelpath, tryzipped=True)
-    with zopen(bflistpath) as filein:
-        bflistcount = int(filein.readline())
+    print(f"Loading {bflistpath}")
 
-        for _ in range(bflistcount):
-            rowints = [int(x) for x in filein.readline().split()]
-            i, elementindex, ionindex, level = rowints[:4]
-            upperionlevel = rowints[4] if len(rowints) > 4 else -1
-            atomic_number = compositiondata.Z[elementindex]
-            ionstage = ionindex + compositiondata.lowermost_ionstage[elementindex]
-            bflist[i] = (atomic_number, ionstage, level, upperionlevel)
+    dfboundfree = pl.read_csv(
+        bflistpath,
+        skip_rows=1,
+        has_header=False,
+        separator=" ",
+        new_columns=["bfindex", "elementindex", "ionindex", "lowerlevel", "upperionlevel"],
+        dtypes={
+            "bfindex": pl.Int32,
+            "elementindex": pl.Int32,
+            "ionindex": pl.Int32,
+            "lowerlevel": pl.Int32,
+            "upperionlevel": pl.Int32,
+        },
+    ).lazy()
 
-    return bflist
+    dfboundfree = dfboundfree.with_columns(
+        atomic_number=pl.col("elementindex")
+        .map_elements(lambda elementindex: compositiondata["Z"][elementindex])
+        .cast(pl.Int32),
+        ionstage=(
+            pl.col("ionindex")
+            + pl.col("elementindex")
+            .map_elements(lambda elementindex: compositiondata["lowermost_ionstage"][elementindex])
+            .cast(pl.Int32)
+        ),
+    )
+
+    dfboundfree = dfboundfree.drop(["elementindex", "ionindex"])
+
+    if get_ion_str:
+        dfboundfree = (
+            dfboundfree.join(at.get_ionstage_roman_numeral_df().lazy(), on="ionstage", how="left")
+            .join(at.get_elsymbols_df().lazy(), on="atomic_number", how="left")
+            .with_columns(ion_str=pl.col("elsymbol") + " " + pl.col("ionstage_roman") + " bound-free")
+        )
+
+    return dfboundfree
 
 
 linetuple = namedtuple("linetuple", "lambda_angstroms atomic_number ionstage upperlevelindex lowerlevelindex")
@@ -991,7 +1043,7 @@ def read_linestatfile(filepath: Path | str) -> tuple[int, list[float], list[int]
     return nlines, lambda_angstroms, atomic_numbers, ionstages, upper_levels, lower_levels
 
 
-def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
+def get_linelist_pldf(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame:
     textfile = at.firstexisting("linestat.out", folder=modelpath)
     parquetfile = Path(modelpath, "linelist.out.parquet")
     if not parquetfile.is_file() or parquetfile.stat().st_mtime < textfile.stat().st_mtime:
@@ -1007,19 +1059,34 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
                     "lower_level": lower_levels,
                 },
             )
-            # .with_columns(pl.col(pl.Int64).cast(pl.Int32))
             .with_row_count(name="lineindex")
+            .with_columns(
+                pl.col(pl.UInt32).cast(pl.Int32), pl.col(pl.Int64).cast(pl.Int32), pl.col(pl.Float64).cast(pl.Float32)
+            )
         )
         pldf.write_parquet(parquetfile, compression="zstd")
         print(f"Saved {parquetfile}")
     else:
         print(f"Reading {parquetfile}")
 
-    return (
+    linelist_lazy = (
         pl.scan_parquet(parquetfile)
+        .with_columns(
+            pl.col(pl.UInt32).cast(pl.Int32), pl.col(pl.Int64).cast(pl.Int32), pl.col(pl.Float64).cast(pl.Float32)
+        )
         .with_columns(upperlevelindex=pl.col("upper_level") - 1, lowerlevelindex=pl.col("lower_level") - 1)
         .drop(["upper_level", "lower_level"])
+        .with_columns(pl.col(pl.Int64).cast(pl.Int32))
     )
+
+    if get_ion_str:
+        linelist_lazy = (
+            linelist_lazy.join(at.get_ionstage_roman_numeral_df().lazy(), on="ionstage", how="left")
+            .join(at.get_elsymbols_df().lazy(), on="atomic_number", how="left")
+            .with_columns(ion_str=pl.col("elsymbol") + " " + pl.col("ionstage_roman") + " bound-bound")
+        )
+
+    return linelist_lazy
 
 
 @lru_cache(maxsize=8)
