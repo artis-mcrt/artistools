@@ -34,11 +34,34 @@ def timeshift_fluxscale_co56law(scaletoreftime: float | None, spectime: float) -
     return 1.0
 
 
-def get_exspec_bins(mnubins=1000, nu_min_r=1e13, nu_max_r=5e16) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    print(
-        f" assuming {mnubins=} {nu_min_r=:.1e} {nu_max_r=:.1e}. Check artisoptions.h if you want to exactly match"
-        " exspec binning."
-    )
+def get_exspec_bins(
+    modelpath: str | Path | None = None,
+    mnubins: int | None = None,
+    nu_min_r: float | None = None,
+    nu_max_r: float | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Get the wavelength bins for the emergent spectrum."""
+    if modelpath is not None:
+        dfspec = read_spec(modelpath, printwarningsonly=True)
+        if mnubins is None:
+            mnubins = dfspec.height
+
+        nu_centre_min = dfspec.item(0, 0)
+        nu_centre_max = dfspec.item(dfspec.height - 1, 0)
+
+        # This is an exact solution for dlognu since we're assuming the bin centre spacing matches the bin edge spacing
+        # but it's close enough for our purposes and avoids the difficulty of finding the exact solution (lots more algebra)
+        dlognu = math.log(dfspec.item(1, 0) / dfspec.item(0, 0))
+
+        if nu_min_r is None:
+            nu_min_r = nu_centre_min / (1 + 0.5 * dlognu)
+
+        if nu_max_r is None:
+            nu_max_r = nu_centre_max * (1 + 0.5 * dlognu)
+
+    assert nu_min_r is not None
+    assert nu_max_r is not None
+    assert mnubins is not None
 
     c_ang_s = 2.99792458e18
 
@@ -49,11 +72,12 @@ def get_exspec_bins(mnubins=1000, nu_min_r=1e13, nu_max_r=5e16) -> tuple[np.ndar
     bins_nu_upper = bins_nu_lower * math.exp(dlognu)
     bins_nu_centre = 0.5 * (bins_nu_lower + bins_nu_upper)
 
-    array_lambdabinedges = np.append(c_ang_s / np.flip(bins_nu_upper), c_ang_s / bins_nu_lower[0])
-    array_lambda = c_ang_s / np.flip(bins_nu_centre)
-    delta_lambda = np.flip(c_ang_s / bins_nu_lower - c_ang_s / bins_nu_upper)
+    # np.flip is used to get an ascending wavelength array from an ascending nu array
+    lambda_bin_edges = np.append(c_ang_s / np.flip(bins_nu_upper), c_ang_s / bins_nu_lower[0])
+    lambda_bin_centres = c_ang_s / np.flip(bins_nu_centre)
+    delta_lambdas = np.flip(c_ang_s / bins_nu_lower - c_ang_s / bins_nu_upper)
 
-    return array_lambdabinedges, array_lambda, delta_lambda
+    return lambda_bin_edges, lambda_bin_centres, delta_lambdas
 
 
 def stackspectra(
@@ -130,14 +154,14 @@ def get_from_packets(
     else:
         escapesurfacegamma = None
 
-    array_lambdabinedges: np.ndarray
-    if delta_lambda:
-        array_lambdabinedges = np.arange(lambda_min, lambda_max + delta_lambda, delta_lambda)
-        array_lambda = 0.5 * (array_lambdabinedges[:-1] + array_lambdabinedges[1:])  # bin centres
+    lambda_bin_edges: np.ndarray
+    if delta_lambda is not None:
+        lambda_bin_edges = np.arange(lambda_min, lambda_max + delta_lambda, delta_lambda)
+        lambda_bin_centres = 0.5 * (lambda_bin_edges[:-1] + lambda_bin_edges[1:])  # bin centres
     else:
-        array_lambdabinedges, array_lambda, delta_lambda = get_exspec_bins()
-        lambda_min = array_lambda[0]
-        lambda_max = array_lambda[-1]
+        lambda_bin_edges, lambda_bin_centres, delta_lambda = get_exspec_bins(modelpath=modelpath)
+        lambda_min = lambda_bin_centres[0]
+        lambda_max = lambda_bin_centres[-1]
 
     nu_min = 2.99792458e18 / lambda_max
     nu_max = 2.99792458e18 / lambda_min
@@ -178,14 +202,15 @@ def get_from_packets(
         print("Applying filter to ARTIS spectrum")
 
     encol = "e_cmf" if use_time == "escape" else "e_rf"
-    getcols = [nu_column, encol]
+    getcols = {nu_column, encol}
     if directionbins != [-1]:
         if average_over_phi:
-            getcols.append("costhetabin")
+            getcols.add("costhetabin")
         elif average_over_theta:
-            getcols.append("phibin")
+            getcols.add("phibin")
         else:
-            getcols.append("dirbin")
+            getcols.add("dirbin")
+
     dfpackets = dfpackets.select(getcols).lazy().collect().lazy()
 
     dfdict = {}
@@ -211,7 +236,7 @@ def get_from_packets(
         dfbinned = at.packets.bin_and_sum(
             pldfpackets_dirbin,
             bincol="lambda_angstroms",
-            bins=list(array_lambdabinedges),
+            bins=list(lambda_bin_edges),
             sumcols=[encol],
             getcounts=getpacketcount,
         )
@@ -230,14 +255,14 @@ def get_from_packets(
             array_flambda /= escapesurfacegamma
 
         if fnufilterfunc:
-            arr_nu = 2.99792458e18 / array_lambda
-            array_f_nu = array_flambda * array_lambda / arr_nu
+            arr_nu = 2.99792458e18 / lambda_bin_centres
+            array_f_nu = array_flambda * lambda_bin_centres / arr_nu
             array_f_nu = fnufilterfunc(array_f_nu)
-            array_flambda = array_f_nu * arr_nu / array_lambda
+            array_flambda = array_f_nu * arr_nu / lambda_bin_centres
 
         dfdict[dirbin] = pd.DataFrame(
             {
-                "lambda_angstroms": array_lambda,
+                "lambda_angstroms": lambda_bin_centres,
                 "f_lambda": array_flambda,
             }
         )
@@ -249,7 +274,7 @@ def get_from_packets(
 
 
 @lru_cache(maxsize=16)
-def read_spec(modelpath: Path) -> pl.DataFrame:
+def read_spec(modelpath: Path, printwarningsonly: bool = False) -> pl.DataFrame:
     specfilename = at.firstexisting("spec.out", folder=modelpath, tryzipped=True)
     print(f"Reading {specfilename}")
 
