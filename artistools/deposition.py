@@ -57,7 +57,7 @@ def main_analytical(args: argparse.Namespace | None = None, argsraw: list[str] |
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
         addargs(parser)
-        parser.set_defaults(**kwargs)
+        at.set_args_from_dict(parser, kwargs)
         args = parser.parse_args([] if kwargs else argsraw)
     dfmodel, modelmeta = at.inputmodel.get_modeldata(args.modelpath, derived_cols=["mass_g", "vel_r_min_kmps"])
 
@@ -127,7 +127,7 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
         addargs(parser)
-        parser.set_defaults(**kwargs)
+        at.set_args_from_dict(parser, kwargs)
         args = parser.parse_args([] if kwargs else argsraw)
 
         # TODO: plot deposition.out file!

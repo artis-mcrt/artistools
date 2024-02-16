@@ -145,7 +145,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             description=__doc__,
         )
         addargs(parser)
-        parser.set_defaults(**kwargs)
+        at.set_args_from_dict(parser, kwargs)
         args = parser.parse_args([] if kwargs else argsraw)
 
     if args.plotstats:

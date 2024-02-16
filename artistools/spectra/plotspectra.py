@@ -1361,8 +1361,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             description=__doc__,
         )
         addargs(parser)
-        at.set_argparse_from_dict(parser, kwargs)
-
+        at.set_args_from_dict(parser, kwargs)
         argcomplete.autocomplete(parser)
         args = parser.parse_args([] if kwargs else argsraw)
         if args.average_every_tenth_viewing_angle:
