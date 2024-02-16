@@ -34,11 +34,34 @@ def timeshift_fluxscale_co56law(scaletoreftime: float | None, spectime: float) -
     return 1.0
 
 
-def get_exspec_bins(mnubins=1000, nu_min_r=1e13, nu_max_r=5e16) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    print(
-        f" assuming {mnubins=} {nu_min_r=:.1e} {nu_max_r=:.1e}. Check artisoptions.h if you want to exactly match"
-        " exspec binning."
-    )
+def get_exspec_bins(
+    modelpath: str | Path | None = None,
+    mnubins: int | None = None,
+    nu_min_r: float | None = None,
+    nu_max_r: float | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Get the wavelength bins for the emergent spectrum."""
+    if modelpath is not None:
+        dfspec = read_spec(modelpath, printwarningsonly=True)
+        if mnubins is None:
+            mnubins = dfspec.height
+
+        nu_centre_min = dfspec.item(0, 0)
+        nu_centre_max = dfspec.item(dfspec.height - 1, 0)
+
+        # This is an exact solution for dlognu since we're assuming the bin centre spacing matches the bin edge spacing
+        # but it's close enough for our purposes and avoids the difficulty of finding the exact solution (lots more algebra)
+        dlognu = math.log(dfspec.item(1, 0) / dfspec.item(0, 0))
+
+        if nu_min_r is None:
+            nu_min_r = nu_centre_min / (1 + 0.5 * dlognu)
+
+        if nu_max_r is None:
+            nu_max_r = nu_centre_max * (1 + 0.5 * dlognu)
+
+    assert nu_min_r is not None
+    assert nu_max_r is not None
+    assert mnubins is not None
 
     c_ang_s = 2.99792458e18
 
@@ -49,11 +72,12 @@ def get_exspec_bins(mnubins=1000, nu_min_r=1e13, nu_max_r=5e16) -> tuple[np.ndar
     bins_nu_upper = bins_nu_lower * math.exp(dlognu)
     bins_nu_centre = 0.5 * (bins_nu_lower + bins_nu_upper)
 
-    array_lambdabinedges = np.append(c_ang_s / np.flip(bins_nu_upper), c_ang_s / bins_nu_lower[0])
-    array_lambda = c_ang_s / np.flip(bins_nu_centre)
-    delta_lambda = np.flip(c_ang_s / bins_nu_lower - c_ang_s / bins_nu_upper)
+    # np.flip is used to get an ascending wavelength array from an ascending nu array
+    lambda_bin_edges = np.append(c_ang_s / np.flip(bins_nu_upper), c_ang_s / bins_nu_lower[0])
+    lambda_bin_centres = c_ang_s / np.flip(bins_nu_centre)
+    delta_lambdas = np.flip(c_ang_s / bins_nu_lower - c_ang_s / bins_nu_upper)
 
-    return array_lambdabinedges, array_lambda, delta_lambda
+    return lambda_bin_edges, lambda_bin_centres, delta_lambdas
 
 
 def stackspectra(
@@ -130,14 +154,14 @@ def get_from_packets(
     else:
         escapesurfacegamma = None
 
-    array_lambdabinedges: np.ndarray
-    if delta_lambda:
-        array_lambdabinedges = np.arange(lambda_min, lambda_max + delta_lambda, delta_lambda)
-        array_lambda = 0.5 * (array_lambdabinedges[:-1] + array_lambdabinedges[1:])  # bin centres
+    lambda_bin_edges: np.ndarray
+    if delta_lambda is not None:
+        lambda_bin_edges = np.arange(lambda_min, lambda_max + delta_lambda, delta_lambda)
+        lambda_bin_centres = 0.5 * (lambda_bin_edges[:-1] + lambda_bin_edges[1:])  # bin centres
     else:
-        array_lambdabinedges, array_lambda, delta_lambda = get_exspec_bins()
-        lambda_min = array_lambda[0]
-        lambda_max = array_lambda[-1]
+        lambda_bin_edges, lambda_bin_centres, delta_lambda = get_exspec_bins(modelpath=modelpath)
+        lambda_min = lambda_bin_centres[0]
+        lambda_max = lambda_bin_centres[-1]
 
     nu_min = 2.99792458e18 / lambda_max
     nu_max = 2.99792458e18 / lambda_min
@@ -178,14 +202,15 @@ def get_from_packets(
         print("Applying filter to ARTIS spectrum")
 
     encol = "e_cmf" if use_time == "escape" else "e_rf"
-    getcols = [nu_column, encol]
+    getcols = {nu_column, encol}
     if directionbins != [-1]:
         if average_over_phi:
-            getcols.append("costhetabin")
+            getcols.add("costhetabin")
         elif average_over_theta:
-            getcols.append("phibin")
+            getcols.add("phibin")
         else:
-            getcols.append("dirbin")
+            getcols.add("dirbin")
+
     dfpackets = dfpackets.select(getcols).lazy().collect().lazy()
 
     dfdict = {}
@@ -211,7 +236,7 @@ def get_from_packets(
         dfbinned = at.packets.bin_and_sum(
             pldfpackets_dirbin,
             bincol="lambda_angstroms",
-            bins=list(array_lambdabinedges),
+            bins=list(lambda_bin_edges),
             sumcols=[encol],
             getcounts=getpacketcount,
         )
@@ -230,14 +255,14 @@ def get_from_packets(
             array_flambda /= escapesurfacegamma
 
         if fnufilterfunc:
-            arr_nu = 2.99792458e18 / array_lambda
-            array_f_nu = array_flambda * array_lambda / arr_nu
+            arr_nu = 2.99792458e18 / lambda_bin_centres
+            array_f_nu = array_flambda * lambda_bin_centres / arr_nu
             array_f_nu = fnufilterfunc(array_f_nu)
-            array_flambda = array_f_nu * arr_nu / array_lambda
+            array_flambda = array_f_nu * arr_nu / lambda_bin_centres
 
         dfdict[dirbin] = pd.DataFrame(
             {
-                "lambda_angstroms": array_lambda,
+                "lambda_angstroms": lambda_bin_centres,
                 "f_lambda": array_flambda,
             }
         )
@@ -249,7 +274,7 @@ def get_from_packets(
 
 
 @lru_cache(maxsize=16)
-def read_spec(modelpath: Path) -> pl.DataFrame:
+def read_spec(modelpath: Path, printwarningsonly: bool = False) -> pl.DataFrame:
     specfilename = at.firstexisting("spec.out", folder=modelpath, tryzipped=True)
     print(f"Reading {specfilename}")
 
@@ -787,7 +812,6 @@ def get_flux_contributions(
     return contribution_list, array_flambda_emission_total
 
 
-@lru_cache(maxsize=4)
 def get_flux_contributions_from_packets(
     modelpath: Path,
     timelowdays: float,
@@ -799,8 +823,9 @@ def get_flux_contributions_from_packets(
     getabsorption: bool = True,
     maxpacketfiles: int | None = None,
     filterfunc: t.Callable[[np.ndarray], np.ndarray] | None = None,
-    groupby: t.Literal["ion", "line", "upperterm", "terms"] | None = "ion",
+    groupby: t.Literal["ion", "line"] = "ion",
     maxseriescount: int | None = None,
+    fixedionlist: list[str] | None = None,
     modelgridindex: int | None = None,
     use_time: t.Literal["arrival", "emission", "escape"] = "arrival",
     use_lastemissiontype: bool = True,
@@ -809,49 +834,15 @@ def get_flux_contributions_from_packets(
     average_over_phi: bool = False,
     average_over_theta: bool = False,
 ) -> tuple[list[fluxcontributiontuple], np.ndarray, np.ndarray]:
-    assert groupby in {None, "ion", "line", "upperterm", "terms"}
+    assert groupby in {"ion", "line"}
 
     if directionbin is None:
         directionbin = -1
-    if groupby in {"terms", "upperterm"}:
-        adata = at.atomic.get_levels(modelpath)
 
     emtypecolumn = "emissiontype" if use_lastemissiontype else "trueemissiontype"
 
     linelistlazy = at.get_linelist_pldf(modelpath=modelpath, get_ion_str=True)
     bflistlazy = at.get_bflist(modelpath, get_ion_str=True)
-
-    if groupby not in {"ion", "line"}:
-        linelist = linelistlazy.collect()
-        bflist = bflistlazy.collect()
-
-    def get_emprocesslabel(emtype: int) -> str:
-        assert groupby in {"upperterm", "terms"}
-        if emtype >= 0:
-            line = linelist.row(emtype, named=True)
-
-            if groupby == "terms":
-                ion = adata[(adata["Z"] == line["atomic_number"]) & (adata["ionstage"] == line["ionstage"])].iloc[0]
-                upper_config = ion.levels.iloc[line["upperlevelindex"]].levelname
-                upper_term_noj = upper_config.split("_")[-1].split("[")[0]
-                lower_config = ion.levels.iloc[line["lowerlevelindex"]].levelname
-                lower_term_noj = lower_config.split("_")[-1].split("[")[0]
-                return f"{line['ion_str']} {upper_term_noj}->{lower_term_noj}"
-
-            if groupby == "upperterm":
-                ion = adata[(adata["Z"] == line["atomic_number"]) & (adata["ionstage"] == line["ionstage"])].iloc[0]
-                upper_config = ion.levels.iloc[line["upperlevelindex"]].levelname
-                upper_term_noj = upper_config.split("_")[-1].split("[")[0]
-                return f"{line['ion_str']} {upper_term_noj}"
-
-        if emtype == -9999999:
-            return "free-free"
-
-        bfindex = -emtype - 1
-        atomic_number, ionstage = bflist.item(bfindex, "atomic_number"), bflist.item(bfindex, "ionstage")
-        ionstr = at.get_ionstring(atomic_number, ionstage)
-
-        return f"{ionstr} bound-free"
 
     nprocs_read, lzdfpackets = at.packets.get_packets_pl(
         modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
@@ -866,94 +857,69 @@ def get_flux_contributions_from_packets(
     cols = {"e_rf"}
     cols.add({"arrival": "t_arrive_d", "emission": "em_time", "escape": "excape_time"}[use_time])
 
+    expr_linelist_to_str = (
+        pl.col("ion_str")
+        if groupby == "ion"
+        else pl.format(
+            "{} λ{} {}-{}",
+            pl.col("ion_str"),
+            pl.col("lambda_angstroms").round(1),
+            pl.col("upperlevelindex"),
+            pl.col("lowerlevelindex"),
+        )
+    )
+
     if getemission:
         cols |= {"emissiontype_str", "nu_rf"}
         bflistlazy = bflistlazy.with_columns((-1 - pl.col("bfindex").cast(pl.Int32)).alias(emtypecolumn))
-        if groupby in {"ion", "line"}:
-            expr_linelist_to_str = (
-                pl.col("ion_str")
-                if groupby == "ion"
-                else pl.format(
-                    "{} λ{} {}-{}",
-                    pl.col("ion_str"),
-                    pl.col("lambda_angstroms").round(2),
-                    pl.col("upperlevelindex"),
-                    pl.col("lowerlevelindex"),
-                )
-            )
-            expr_bflist_to_str = (
-                pl.col("ion_str")
-                if groupby == "ion"
-                else pl.format("{} {}-{}", pl.col("ion_str"), pl.col("lowerlevel"), pl.col("upperionlevel"))
-            )
+        expr_bflist_to_str = (
+            pl.col("ion_str") + " bound-free"
+            if groupby == "ion"
+            else pl.format("{} bound-free {}-{}", pl.col("ion_str"), pl.col("lowerlevel"), pl.col("upperionlevel"))
+        )
 
-            emtypestrings = pl.concat(
-                [
-                    linelistlazy.select(
-                        [
-                            pl.col("lineindex").alias(emtypecolumn),
-                            expr_linelist_to_str.alias("emissiontype_str"),
-                        ]
-                    ),
-                    pl.DataFrame(
-                        {emtypecolumn: [-9999999], "emissiontype_str": ["free-free"]},
-                        schema_overrides={emtypecolumn: pl.Int32, "emissiontype_str": pl.String},
-                    ).lazy(),
-                    bflistlazy.select(
-                        [
-                            pl.col(emtypecolumn),
-                            expr_bflist_to_str.alias("emissiontype_str"),
-                        ]
-                    ),
-                ],
-            ).with_columns(pl.col("emissiontype_str").cast(pl.Categorical))
-
-            lzdfpackets = lzdfpackets.join(emtypestrings, on=emtypecolumn, how="left")
-
-        else:
-            # getting terms is very slow!
-            emtypes = lzdfpackets.select(emtypecolumn).collect().get_column(emtypecolumn).unique().sort()
-            lzdfpackets = lzdfpackets.join(
+        emtypestrings = pl.concat(
+            [
+                linelistlazy.select(
+                    [
+                        pl.col("lineindex").alias(emtypecolumn),
+                        expr_linelist_to_str.alias("emissiontype_str"),
+                    ]
+                ),
                 pl.DataFrame(
-                    {emtypecolumn: emtypes, "emissiontype_str": emtypes.map_elements(get_emprocesslabel)}
+                    {emtypecolumn: [-9999999], "emissiontype_str": ["free-free"]},
+                    schema_overrides={emtypecolumn: pl.Int32, "emissiontype_str": pl.String},
                 ).lazy(),
-                on=emtypecolumn,
-                how="left",
-            )
+                bflistlazy.select(
+                    [
+                        pl.col(emtypecolumn),
+                        expr_bflist_to_str.alias("emissiontype_str"),
+                    ]
+                ),
+            ],
+        ).with_columns(pl.col("emissiontype_str").cast(pl.Categorical))
+
+        lzdfpackets = lzdfpackets.join(emtypestrings, on=emtypecolumn, how="left")
 
     if getabsorption:
         cols |= {"absorptiontype_str", "absorption_freq"}
-        if groupby in {"ion", "line"}:
-            abstypestrings = pl.concat(
-                [
-                    linelistlazy.select(
-                        [
-                            pl.col("lineindex").alias("absorption_type"),
-                            (
-                                pl.col("ion_str")
-                                if groupby == "ion"
-                                else pl.format(
-                                    "{} λ{} {}-{}",
-                                    pl.col("ion_str"),
-                                    pl.col("lambda_angstroms").round(2),
-                                    pl.col("upperlevelindex"),
-                                    pl.col("lowerlevelindex"),
-                                )
-                            ).alias("absorptiontype_str"),
-                        ]
-                    ),
-                    pl.DataFrame(
-                        {"absorption_type": [-1, -2], "absorptiontype_str": ["free-free", "bound-free"]},
-                        schema_overrides={"absorption_type": pl.Int32, "absorptiontype_str": pl.String},
-                    ).lazy(),
-                ],
-            ).with_columns(pl.col("absorptiontype_str").cast(pl.Categorical))
 
-            lzdfpackets = lzdfpackets.join(abstypestrings, on="absorption_type", how="left")
+        abstypestrings = pl.concat(
+            [
+                linelistlazy.select(
+                    [
+                        pl.col("lineindex").alias("absorption_type"),
+                        expr_linelist_to_str.alias("absorptiontype_str"),
+                    ]
+                ),
+                pl.DataFrame(
+                    {"absorption_type": [-1, -2], "absorptiontype_str": ["free-free", "bound-free"]},
+                    schema_overrides={"absorption_type": pl.Int32, "absorptiontype_str": pl.String},
+                ).lazy(),
+            ],
+        ).with_columns(pl.col("absorptiontype_str").cast(pl.Categorical))
 
-        else:
-            msg = "groupby='terms' or 'upperterm' not implemented for absorption"
-            raise NotImplementedError(msg)
+        lzdfpackets = lzdfpackets.join(abstypestrings, on="absorption_type", how="left")
 
     if directionbin != -1:
         cols |= {"costhetabin", "phibin", "dirbin"}
@@ -973,50 +939,63 @@ def get_flux_contributions_from_packets(
         if getemission
         else {}
     )
+
     absorptiongroups = (
         dict(dfpackets.filter(pl.col("absorption_freq").is_between(nu_min, nu_max)).group_by("absorptiontype_str"))
         if getabsorption
         else {}
     )
+
     allgroupnames = set(emissiongroups.keys()) | set(absorptiongroups.keys())
 
-    if maxseriescount is not None and len(allgroupnames) > maxseriescount:
-        # group small contributions together to avoid the cost of binning individual spectra for them
+    if maxseriescount is None:
+        maxseriescount = len(allgroupnames)
 
-        grouptotals = []
-        for groupname in allgroupnames:
-            groupemiss = emissiongroups[groupname]["e_rf"].sum() if groupname in emissiongroups else 0.0
-            groupabs = absorptiongroups[groupname]["e_rf"].sum() if groupname in absorptiongroups else 0.0
-            grouptotal = groupemiss + groupabs
+    # group small contributions together to avoid the cost of binning individual spectra for them
+    grouptotals: list[tuple[float, str]] = []
+    for groupname in allgroupnames:
+        groupemiss = emissiongroups[groupname]["e_rf"].sum() if groupname in emissiongroups else 0.0
+        groupabs = absorptiongroups[groupname]["e_rf"].sum() if groupname in absorptiongroups else 0.0
+        grouptotal = groupemiss + groupabs
 
-            if grouptotal > 0.0 and groupname is not None:
-                grouptotals.append((grouptotal, groupname))
-            else:
-                with contextlib.suppress(KeyError):
-                    del emissiongroups[groupname]
-                    del absorptiongroups[groupname]
+        if groupname is not None:
+            assert isinstance(groupname, str)
+            grouptotals.append((grouptotal, groupname))
+        else:
+            with contextlib.suppress(KeyError):
+                del emissiongroups[groupname]
+                del absorptiongroups[groupname]
 
-        allgroupnames = set(emissiongroups.keys()) | set(absorptiongroups.keys())
+    allgroupnames = set(emissiongroups.keys()) | set(absorptiongroups.keys())
 
-        sorted_grouptotals = sorted(grouptotals, reverse=True, key=lambda x: x[0])
-        other_groups = sorted_grouptotals[maxseriescount:]
+    if fixedionlist is not None and (unrecognised_items := [x for x in fixedionlist if x not in allgroupnames]):
+        print(f"WARNING: (packets) did not find {len(unrecognised_items)} items in fixedionlist: {unrecognised_items}")
 
-        if other_groups:
-            allgroupnames.add("Other")
+    def sortkey(x: tuple[float, str]) -> tuple[int, float]:
+        (grouptotal, groupname) = x
 
-            if emdfs := [emissiongroups[groupname] for _, groupname in other_groups if groupname in emissiongroups]:
-                emissiongroups["Other"] = pl.concat(emdfs)
+        if fixedionlist is None:
+            return (0, -grouptotal)
 
-            if absdfs := [
-                absorptiongroups[groupname] for _, groupname in other_groups if groupname in absorptiongroups
-            ]:
-                absorptiongroups["Other"] = pl.concat(absdfs)
+        return (fixedionlist.index(groupname), 0) if groupname in fixedionlist else (len(fixedionlist) + 1, -grouptotal)
 
-            for grouptotal, groupname in other_groups:
-                with contextlib.suppress(KeyError):
-                    del emissiongroups[groupname]
-                    del absorptiongroups[groupname]
-                allgroupnames.remove(groupname)
+    sorted_grouptotals = sorted(grouptotals, key=sortkey)
+    other_groups = sorted_grouptotals[maxseriescount:]
+
+    if other_groups:
+        allgroupnames.add("Other")
+
+        if emdfs := [emissiongroups[groupname] for _, groupname in other_groups if groupname in emissiongroups]:
+            emissiongroups["Other"] = pl.concat(emdfs)
+
+        if absdfs := [absorptiongroups[groupname] for _, groupname in other_groups if groupname in absorptiongroups]:
+            absorptiongroups["Other"] = pl.concat(absdfs)
+
+        for grouptotal, groupname in other_groups:
+            with contextlib.suppress(KeyError):
+                del emissiongroups[groupname]
+                del absorptiongroups[groupname]
+            allgroupnames.remove(groupname)
 
     array_flambda_emission_total = None
     contribution_list = []
@@ -1077,13 +1056,11 @@ def get_flux_contributions_from_packets(
             np.trapz(array_flambda_absorption, x=array_lambda)
         )
 
-        linelabel = str(groupname).replace(" bound-bound", "")
-
         if fluxcontribthisseries > 0.0:
             contribution_list.append(
                 fluxcontributiontuple(
                     fluxcontrib=fluxcontribthisseries,
-                    linelabel=linelabel,
+                    linelabel=str(groupname),
                     array_flambda_emission=array_flambda_emission,
                     array_flambda_absorption=array_flambda_absorption,
                     color=None,
@@ -1107,8 +1084,7 @@ def sort_and_reduce_flux_contribution_list(
     greyscale: bool = False,
 ) -> list[fluxcontributiontuple]:
     if fixedionlist:
-        unrecognised_items = [x for x in fixedionlist if x not in [y.linelabel for y in contribution_list_in]]
-        if unrecognised_items:
+        if unrecognised_items := [x for x in fixedionlist if x not in [y.linelabel for y in contribution_list_in]]:
             print(f"WARNING: did not understand these items in fixedionlist: {unrecognised_items}")
 
         # sort in manual order
