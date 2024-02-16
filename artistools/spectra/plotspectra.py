@@ -597,6 +597,9 @@ def make_emissionabsorption_plot(
         print(f"Can't plot {modelname}...skipping")
         return [], [], None
 
+    assert args.timemin is not None
+    assert args.timemax is not None
+
     print(f"Plotting {modelname} timesteps {timestepmin} to {timestepmax} ({args.timemin:.3f} to {args.timemax:.3f}d)")
 
     xmin, xmax = axis.get_xlim()
@@ -617,6 +620,7 @@ def make_emissionabsorption_plot(
             maxpacketfiles=args.maxpacketfiles,
             filterfunc=filterfunc,
             groupby=args.groupby,
+            fixedionlist=args.fixedionlist,
             maxseriescount=args.maxseriescount + 20,
             delta_lambda=args.deltalambda,
             use_lastemissiontype=not args.use_thermalemissiontype,
@@ -1207,8 +1211,8 @@ def addargs(parser) -> None:
     parser.add_argument(
         "-groupby",
         default="ion",
-        choices=["ion", "line", "upperterm", "terms"],
-        help="Use a different color for each ion or line. Requires showemission and frompackets.",
+        choices=["ion", "line"],
+        help="Use a different color for each ion or line when using --showemission. groupby='line' requires --frompackets.",
     )
 
     parser.add_argument(
