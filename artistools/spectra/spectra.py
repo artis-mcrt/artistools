@@ -823,7 +823,7 @@ def get_flux_contributions_from_packets(
     getabsorption: bool = True,
     maxpacketfiles: int | None = None,
     filterfunc: t.Callable[[np.ndarray], np.ndarray] | None = None,
-    groupby: t.Literal["ion", "line"] | None = "ion",
+    groupby: t.Literal["ion", "line"] = "ion",
     maxseriescount: int | None = None,
     fixedionlist: list[str] | None = None,
     modelgridindex: int | None = None,
@@ -834,7 +834,7 @@ def get_flux_contributions_from_packets(
     average_over_phi: bool = False,
     average_over_theta: bool = False,
 ) -> tuple[list[fluxcontributiontuple], np.ndarray, np.ndarray]:
-    assert groupby in {None, "ion", "line"}
+    assert groupby in {"ion", "line"}
 
     if directionbin is None:
         directionbin = -1
