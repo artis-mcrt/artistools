@@ -514,7 +514,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         addargs(parser)
         parser.set_defaults(**kwargs)
         argcomplete.autocomplete(parser)
-        args = parser.parse_args(argsraw)
+        args = parser.parse_args([] if kwargs else argsraw)
 
     traj_root = Path(
         Path.home() / "Google Drive/Shared Drives/GSI NSM/Mergers/SFHo_long/Trajectory_SFHo_long-radius-entropy"

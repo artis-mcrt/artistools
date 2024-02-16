@@ -33,7 +33,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         )
         addargs(parser)
         parser.set_defaults(**kwargs)
-        args = parser.parse_args(argsraw)
+        args = parser.parse_args([] if kwargs else argsraw)
 
     if Path(args.outputfile).is_dir():
         args.outputfile = str(Path(args.outputfile, defaultoutputfile))

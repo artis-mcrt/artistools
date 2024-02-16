@@ -34,7 +34,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
         addargs(parser)
         parser.set_defaults(**kwargs)
-        args = parser.parse_args(argsraw)
+        args = parser.parse_args([] if kwargs else argsraw)
 
     e_k = 1.2  # in units of 10^51 erg
     m_ej = 1.4  # in solar masses

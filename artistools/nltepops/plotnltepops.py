@@ -734,7 +734,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         parser = argparse.ArgumentParser(description=__doc__)
         addargs(parser)
         parser.set_defaults(**kwargs)
-        args = parser.parse_args(argsraw)
+        args = parser.parse_args([] if kwargs else argsraw)
 
     at.set_mpl_style()
 

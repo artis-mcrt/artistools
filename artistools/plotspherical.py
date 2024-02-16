@@ -289,7 +289,7 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
         addargs(parser)
         parser.set_defaults(**kwargs)
         argcomplete.autocomplete(parser)
-        args = parser.parse_args(argsraw)
+        args = parser.parse_args([] if kwargs else argsraw)
 
     if not args.modelpath:
         args.modelpath = ["."]

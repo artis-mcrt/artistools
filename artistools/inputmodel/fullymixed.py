@@ -23,7 +23,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
         addargs(parser)
         parser.set_defaults(**kwargs)
-        args = parser.parse_args(argsraw)
+        args = parser.parse_args([] if kwargs else argsraw)
 
     dfmodel, t_model_init_days, _ = at.inputmodel.get_modeldata_tuple(args.inputpath, derived_cols=["mass_g"])
     print("Read model.txt")

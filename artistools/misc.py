@@ -726,7 +726,18 @@ def get_ionstring(
     return f"{get_elsymbol(atomic_number)}{strcharge}"
 
 
-# based on code from https://gist.github.com/kgaughan/2491663/b35e9a117b02a3567c8107940ac9b2023ba34ced
+def set_argparse_from_dict(parser: argparse.ArgumentParser, kwargs: dict[str, t.Any]) -> None:
+    """Set argparse defaults from a dictionary."""
+    # set_defaults expects the dest of an argument. Here we allow the option strings to be used as keys
+    for arg in parser._actions:
+        for optstring in arg.option_strings:
+            if optstring.lstrip("-") in kwargs and arg.dest not in kwargs:
+                kwargs[arg.dest] = kwargs.pop(optstring.lstrip("-"))
+
+    parser.set_defaults(**kwargs)
+    if unknown := {k: v for k, v in kwargs.items() if k not in (arg.dest for arg in parser._actions)}:
+        msg = f"Unknown argument names: {unknown}"
+        raise ValueError(msg)
 
 
 def parse_range(rng: str, dictvars: dict[str, int]) -> t.Iterable[t.Any]:

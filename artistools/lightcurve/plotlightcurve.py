@@ -1576,9 +1576,9 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
         addargs(parser)
-        parser.set_defaults(**kwargs)
+        at.set_argparse_from_dict(parser, kwargs)
         argcomplete.autocomplete(parser)
-        args = parser.parse_args(argsraw)
+        args = parser.parse_args([] if kwargs else argsraw)
         if args.average_every_tenth_viewing_angle:
             print("WARNING: --average_every_tenth_viewing_angle is deprecated. use --average_over_phi_angle instead")
             args.average_over_phi_angle = True

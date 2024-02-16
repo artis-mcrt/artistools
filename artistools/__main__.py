@@ -59,7 +59,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     argcomplete.autocomplete(parser)
     if args is None:
-        args = parser.parse_args(argsraw)
+        args = parser.parse_args([] if kwargs else argsraw)
         args.func(args=args)
 
 
