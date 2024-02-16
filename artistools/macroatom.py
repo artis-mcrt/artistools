@@ -144,7 +144,7 @@ def read_files(
         print("No files")
     else:
         for filepath in files:
-            print(f"Loading {filepath}...")
+            print(f"Reading {filepath}...")
 
             df_thisfile = pd.read_csv(filepath, sep=r"\s+")
             # df_thisfile[['modelgridindex', 'timestep']].apply(pd.to_numeric)

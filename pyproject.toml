@@ -206,6 +206,7 @@ fixable = ["ALL"]
 unfixable = [
     "COM812",  # missing-trailing-comma
     "ERA001",  # commented-out-code (will just delete it!)
+    "F401",  # unused-import
     "F841",  # unused-variable
     "SIM222", # expr-or-true
     "SIM223", # expr-and-false

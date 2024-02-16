@@ -975,7 +975,7 @@ def get_bflist(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame
     """Return a dict of bound-free transitions from bflist.out."""
     compositiondata = get_composition_data(modelpath)
     bflistpath = firstexisting(["bflist.out", "bflist.dat"], folder=modelpath, tryzipped=True)
-    print(f"Loading {bflistpath}")
+    print(f"Reading {bflistpath}")
 
     dfboundfree = pl.read_csv(
         bflistpath,
@@ -1010,7 +1010,7 @@ def get_bflist(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame
         dfboundfree = (
             dfboundfree.join(at.get_ionstage_roman_numeral_df().lazy(), on="ionstage", how="left")
             .join(at.get_elsymbols_df().lazy(), on="atomic_number", how="left")
-            .with_columns(ion_str=pl.col("elsymbol") + " " + pl.col("ionstage_roman") + " bound-free")
+            .with_columns(ion_str=pl.col("elsymbol") + " " + pl.col("ionstage_roman"))
         )
 
     return dfboundfree
@@ -1021,7 +1021,7 @@ linetuple = namedtuple("linetuple", "lambda_angstroms atomic_number ionstage upp
 
 def read_linestatfile(filepath: Path | str) -> tuple[int, list[float], list[int], list[int], list[int], list[int]]:
     """Load linestat.out containing transitions wavelength, element, ion, upper and lower levels."""
-    print(f"Loading {filepath}")
+    print(f"Reading {filepath}")
 
     data = np.loadtxt(zopen(filepath))
     lambda_angstroms = data[0] * 1e8
@@ -1083,7 +1083,7 @@ def get_linelist_pldf(modelpath: Path | str, get_ion_str: bool = False) -> pl.La
         linelist_lazy = (
             linelist_lazy.join(at.get_ionstage_roman_numeral_df().lazy(), on="ionstage", how="left")
             .join(at.get_elsymbols_df().lazy(), on="atomic_number", how="left")
-            .with_columns(ion_str=pl.col("elsymbol") + " " + pl.col("ionstage_roman") + " bound-bound")
+            .with_columns(ion_str=pl.col("elsymbol") + " " + pl.col("ionstage_roman"))
         )
 
     return linelist_lazy
