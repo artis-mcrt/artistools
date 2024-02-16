@@ -140,7 +140,7 @@ def plot_spherical(
         selected_emtypes = dflinelist.select("lineindex").collect().get_column("lineindex")
         dfpackets = dfpackets.filter(pl.col("emissiontype").is_in(selected_emtypes))
 
-    aggs.append(pl.count())
+    aggs.append(pl.len().alias("count"))
     dfpackets = dfpackets.group_by(["costhetabin", "phibin"]).agg(aggs)
     dfpackets = dfpackets.select(["costhetabin", "phibin", "count", *plotvars])
 
