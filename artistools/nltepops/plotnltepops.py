@@ -40,22 +40,22 @@ def annotate_emission_line(ax: plt.Axes, y: float, upperlevel: int, lowerlevel: 
     )
 
 
-def plot_reference_data(ax, atomic_number: int, ionstage: int, estimators_celltimestep, dfpopthision, annotatelines):
+def plot_reference_data(ax, atomic_number: int, ion_stage: int, estimators_celltimestep, dfpopthision, annotatelines):
     nne, Te, TR, W = (estimators_celltimestep[s] for s in ["nne", "Te", "TR", "W"])
     # comparison to Chianti file
     elsym = at.get_elsymbol(atomic_number)
     elsymlower = elsym.lower()
-    if Path("data", f"{elsymlower}_{ionstage}-levelmap.txt").exists():
+    if Path("data", f"{elsymlower}_{ion_stage}-levelmap.txt").exists():
         # ax.set_ylim(bottom=2e-3)
         # ax.set_ylim(top=4)
-        with Path("data", f"{elsymlower}_{ionstage}-levelmap.txt").open("r") as levelmapfile:
+        with Path("data", f"{elsymlower}_{ion_stage}-levelmap.txt").open("r") as levelmapfile:
             levelnumofconfigterm = {}
             for line in levelmapfile:
                 row = line.split()
                 levelnumofconfigterm[(row[0], row[1])] = int(row[2]) - 1
 
         # ax.set_ylim(bottom=5e-4)
-        for depfilepath in sorted(Path("data").rglob(f"chianti_{elsym}_{ionstage}_*.txt")):
+        for depfilepath in sorted(Path("data").rglob(f"chianti_{elsym}_{ion_stage}_*.txt")):
             with depfilepath.open("r") as depfile:
                 firstline = depfile.readline()
                 file_nne = float(firstline[firstline.find("ne = ") + 5 :].split(",")[0])
@@ -90,7 +90,7 @@ def plot_reference_data(ax, atomic_number: int, ionstage: int, estimators_cellti
                                 if firstdep < 0:
                                     firstdep = float(row[0])
                                 depcoeffs.append(float(row[0]) / firstdep)
-                    ionstr = at.get_ionstring(atomic_number, ionstage, style="chargelatex")
+                    ionstr = at.get_ionstring(atomic_number, ion_stage, style="chargelatex")
                     ax.plot(
                         levelnums,
                         depcoeffs,
@@ -102,22 +102,22 @@ def plot_reference_data(ax, atomic_number: int, ionstage: int, estimators_cellti
                         zorder=-1,
                     )
 
-        if annotatelines and atomic_number == 28 and ionstage == 2:
+        if annotatelines and atomic_number == 28 and ion_stage == 2:
             annotate_emission_line(ax=ax, y=0.04, upperlevel=6, lowerlevel=0, label=r"7378$~\mathrm{{\AA}}$")
             annotate_emission_line(ax=ax, y=0.15, upperlevel=6, lowerlevel=2, label=r"1.939 $\mu$m")
             annotate_emission_line(ax=ax, y=0.26, upperlevel=7, lowerlevel=1, label=r"7412$~\mathrm{{\AA}}$")
 
-    if annotatelines and atomic_number == 26 and ionstage == 2:
+    if annotatelines and atomic_number == 26 and ion_stage == 2:
         annotate_emission_line(ax=ax, y=0.66, upperlevel=9, lowerlevel=0, label=r"12570$~\mathrm{{\AA}}$")
         annotate_emission_line(ax=ax, y=0.53, upperlevel=16, lowerlevel=5, label=r"7155$~\mathrm{{\AA}}$")
 
 
-def get_floers_data(dfpopthision, atomic_number, ionstage, modelpath, T_e, modelgridindex):
+def get_floers_data(dfpopthision, atomic_number, ion_stage, modelpath, T_e, modelgridindex):
     floers_levelnums, floers_levelpop_values = None, None
 
     # comparison to Andeas Floers's NLTE pops for Shingles et al. (2022)
-    if atomic_number == 26 and ionstage in {2, 3}:
-        floersfilename = "andreas_level_populations_fe2.txt" if ionstage == 2 else "andreas_level_populations_fe3.txt"
+    if atomic_number == 26 and ion_stage in {2, 3}:
+        floersfilename = "andreas_level_populations_fe2.txt" if ion_stage == 2 else "andreas_level_populations_fe3.txt"
         if Path(modelpath / floersfilename).is_file():
             print(f"reading {floersfilename}")
             floers_levelpops = pd.read_csv(modelpath / floersfilename, comment="#", sep=r"\s+")
@@ -167,7 +167,7 @@ def make_ionsubplot(
     ax,
     modelpath,
     atomic_number,
-    ionstage,
+    ion_stage,
     dfpop,
     ion_data,
     estimators,
@@ -179,11 +179,11 @@ def make_ionsubplot(
     lastsubplot,
 ):
     """Plot the level populations the specified ion, cell, and timestep."""
-    ionstr = at.get_ionstring(atomic_number, ionstage, style="chargelatex")
+    ionstr = at.get_ionstring(atomic_number, ion_stage, style="chargelatex")
 
     dfpopthision = dfpop.query(
         "modelgridindex == @modelgridindex and timestep == @timestep "
-        "and Z == @atomic_number and ionstage == @ionstage",
+        "and Z == @atomic_number and ion_stage == @ion_stage",
         inplace=False,
     ).copy()
 
@@ -197,7 +197,7 @@ def make_ionsubplot(
         dfpopthision = dfpopthision.query("level <= @args.maxlevel")
 
     ionpopulation = dfpopthision["n_NLTE"].sum()
-    ionstr = at.get_ionstring(atomic_number, ionstage, sep="_", style="spectral")
+    ionstr = at.get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
     ionpopulation_fromest = estimators[(timestep, modelgridindex)].get(f"nnion_{ionstr}", 0.0)
 
     dfpopthision["parity"] = [
@@ -237,7 +237,7 @@ def make_ionsubplot(
         ax.set_xticklabels("" for _ in configtexlist)
 
     print(
-        f"{at.get_elsymbol(atomic_number)} {at.roman_numerals[ionstage]} has a summed "
+        f"{at.get_elsymbol(atomic_number)} {at.roman_numerals[ion_stage]} has a summed "
         f"level population of {ionpopulation:.1f} (from estimator file ion pop = {ionpopulation_fromest})"
     )
 
@@ -256,7 +256,7 @@ def make_ionsubplot(
     pd.set_option("display.max_columns", 150)
     if len(dfpopthision) < 30:
         # print(dfpopthision[
-        #     ['Z', 'ionstage', 'level', 'config', 'departure_coeff', 'texname']].to_string(index=False))
+        #     ['Z', 'ion_stage', 'level', 'config', 'departure_coeff', 'texname']].to_string(index=False))
         print(
             dfpopthision.loc[
                 :, [c not in {"timestep", "modelgridindex", "Z", "parity", "texname"} for c in dfpopthision.columns]
@@ -289,7 +289,7 @@ def make_ionsubplot(
     ax.set_yscale("log")
 
     floers_levelnums, floers_levelpop_values = get_floers_data(
-        dfpopthision, atomic_number, ionstage, modelpath, T_e, modelgridindex
+        dfpopthision, atomic_number, ion_stage, modelpath, T_e, modelgridindex
     )
 
     if args.departuremode:
@@ -370,7 +370,7 @@ def make_ionsubplot(
 
     if args.plotrefdata:
         plot_reference_data(
-            ax, atomic_number, ionstage, estimators[(timestep, modelgridindex)], dfpopthision, annotatelines=True
+            ax, atomic_number, ion_stage, estimators[(timestep, modelgridindex)], dfpopthision, annotatelines=True
         )
 
 
@@ -381,10 +381,10 @@ def make_plot_populations_with_time_or_velocity(modelpaths, args):
     ionlevels = args.levels
 
     Z = int(at.get_atomic_number(args.elements[0]))
-    ionstage = int(args.ionstages[0])
+    ion_stage = int(args.ion_stages[0])
 
     adata = at.atomic.get_levels(args.modelpath[0], get_transitions=True)
-    ion_data = adata.query("Z == @Z and ionstage == @ionstage").iloc[0]
+    ion_data = adata.query("Z == @Z and ion_stage == @ion_stage").iloc[0]
     levelconfignames = ion_data["levels"]["levelname"]
     # levelconfignames = [at.nltepops.texifyconfiguration(name) for name in levelconfignames]
 
@@ -412,7 +412,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths, args):
     for plotnumber, timedays in enumerate(timedayslist):
         axis = ax[plotnumber] if args.subplots else ax
         plot_populations_with_time_or_velocity(
-            axis, modelpaths, timedays, ionstage, ionlevels, Z, levelconfignames, args
+            axis, modelpaths, timedays, ion_stage, ionlevels, Z, levelconfignames, args
         )
 
     labelfontsize = 20
@@ -436,7 +436,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths, args):
         ax.set_yscale("log")
 
     if not args.notitle:
-        title = f"Z={Z}, ionstage={ionstage}"
+        title = f"Z={Z}, ion_stage={ion_stage}"
         if args.x == "time":
             title = title + f", mgi = {args.modelgridindex[0]}"
         elif args.x == "velocity":
@@ -450,7 +450,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths, args):
     print(f"Saved {figname}")
 
 
-def plot_populations_with_time_or_velocity(ax, modelpaths, timedays, ionstage, ionlevels, Z, levelconfignames, args):
+def plot_populations_with_time_or_velocity(ax, modelpaths, timedays, ion_stage, ionlevels, Z, levelconfignames, args):
     if args.x == "time":
         timesteps = list(range(args.timestepmin, args.timestepmax))
 
@@ -479,7 +479,7 @@ def plot_populations_with_time_or_velocity(ax, modelpaths, timedays, ionstage, i
         for timestep, mgi in zip(timesteps, modelgridindex_list):
             dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=mgi)
             try:
-                timesteppops = dfpop.loc[(dfpop["Z"] == Z) & (dfpop["ionstage"] == ionstage)]
+                timesteppops = dfpop.loc[(dfpop["Z"] == Z) & (dfpop["ion_stage"] == ion_stage)]
             except KeyError:
                 continue
             for ionlevel in ionlevels:
@@ -508,7 +508,7 @@ def plot_populations_with_time_or_velocity(ax, modelpaths, timedays, ionstage, i
             #          label=f'level {ionlevel} {modelname} LTE')
 
 
-def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, args):
+def make_plot(modelpath, atomic_number, ion_stages_displayed, mgilist, timestep, args):
     """Plot level populations for chosens ions of an element in a cell and timestep of an ARTIS model."""
     modelname = at.get_model_name(modelpath)
     adata = at.atomic.get_levels(modelpath, get_transitions=args.gettransitions)
@@ -525,22 +525,22 @@ def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, 
     dfpop = dfpop.query("Z == @atomic_number")
 
     # top_ion = 9999
-    max_ionstage = dfpop.ionstage.max()
+    max_ion_stage = dfpop.ion_stage.max()
 
-    if len(dfpop.query("ionstage == @max_ionstage")) == 1:  # single-level ion, so skip it
-        max_ionstage -= 1
+    if len(dfpop.query("ion_stage == @max_ion_stage")) == 1:  # single-level ion, so skip it
+        max_ion_stage -= 1
 
-    ionstage_list = sorted(
+    ion_stage_list = sorted(
         [
             i
-            for i in dfpop.ionstage.unique()
-            if i <= max_ionstage and (ionstages_displayed is None or i in ionstages_displayed)
+            for i in dfpop.ion_stage.unique()
+            if i <= max_ion_stage and (ion_stages_displayed is None or i in ion_stages_displayed)
         ]
     )
 
     subplotheight = 2.4 / 6 if args.x == "config" else 1.8 / 6
 
-    nrows = len(ionstage_list) * len(mgilist)
+    nrows = len(ion_stage_list) * len(mgilist)
     fig, axes = plt.subplots(
         nrows=nrows,
         ncols=1,
@@ -555,11 +555,11 @@ def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, 
     if nrows == 1:
         axes = [axes]
 
-    prev_ionstage = -1
+    prev_ion_stage = -1
     assert len(mgilist) > 0
     for mgilistindex, modelgridindex in enumerate(mgilist):
         mgifirstaxindex = mgilistindex
-        mgilastaxindex = mgilistindex + len(ionstage_list) - 1
+        mgilastaxindex = mgilistindex + len(ion_stage_list) - 1
 
         estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
         elsymbol = at.get_elsymbol(atomic_number)
@@ -588,10 +588,10 @@ def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, 
         dfpop = dfpop.query("Z == @atomic_number")
 
         # top_ion = 9999
-        max_ionstage = dfpop.ionstage.max()
+        max_ion_stage = dfpop.ion_stage.max()
 
-        if len(dfpop.query("ionstage == @max_ionstage")) == 1:  # single-level ion, so skip it
-            max_ionstage -= 1
+        if len(dfpop.query("ion_stage == @max_ion_stage")) == 1:  # single-level ion, so skip it
+            max_ion_stage -= 1
 
         # timearray = at.get_timestep_times(modelpath)
         nne = estimators[(timestep, modelgridindex)]["nne"]
@@ -615,14 +615,14 @@ def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, 
         if not args.notitle:
             axes[mgifirstaxindex].set_title(subplot_title, fontsize=10)
 
-        for ax, ionstage in zip(axes[mgifirstaxindex : mgilastaxindex + 1], ionstage_list):
-            ion_data = adata.query("Z == @atomic_number and ionstage == @ionstage").iloc[0]
-            lastsubplot = modelgridindex == mgilist[-1] and ionstage == ionstage_list[-1]
+        for ax, ion_stage in zip(axes[mgifirstaxindex : mgilastaxindex + 1], ion_stage_list):
+            ion_data = adata.query("Z == @atomic_number and ion_stage == @ion_stage").iloc[0]
+            lastsubplot = modelgridindex == mgilist[-1] and ion_stage == ion_stage_list[-1]
             make_ionsubplot(
                 ax,
                 modelpath,
                 atomic_number,
-                ionstage,
+                ion_stage,
                 dfpop,
                 ion_data,
                 estimators,
@@ -648,10 +648,10 @@ def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, 
             if args.ymax is not None:
                 ax.set_ylim(top=args.ymax)
 
-            if not args.nolegend and prev_ionstage != ionstage:
+            if not args.nolegend and prev_ion_stage != ion_stage:
                 ax.legend(loc="best", handlelength=1, frameon=True, numpoints=1, edgecolor="0.93", facecolor="0.93")
 
-            prev_ionstage = ionstage
+            prev_ion_stage = ion_stage
 
     if args.x == "index":
         axes[-1].set_xlabel(r"Level index")
@@ -691,7 +691,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-x", choices=["index", "config", "time", "velocity", "none"], default="index", help="Horizontal axis variable"
     )
 
-    parser.add_argument("-ionstages", help="Ion stage range, 1 is neutral, 2 is 1+")
+    parser.add_argument("-ion_stages", help="Ion stage range, 1 is neutral, 2 is 1+")
 
     parser.add_argument(
         "-levels", type=int, nargs="+", help="Choose levels to plot"
@@ -745,8 +745,8 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         # if not args.timedays:
         #     print("Please specify time range with -timedays")
         #     sys.exit(1)
-        if not args.ionstages:
-            print("Please specify ionstage")
+        if not args.ion_stages:
+            print("Please specify ion_stage")
             sys.exit(1)
         if not args.levels:
             print("Please specify levels")
@@ -768,7 +768,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     if Path(args.outputfile).is_dir():
         args.outputfile = Path(args.outputfile, defaultoutputfile)
 
-    ionstages_permitted = at.parse_range_list(args.ionstages) if args.ionstages else None
+    ion_stages_permitted = at.parse_range_list(args.ion_stages) if args.ion_stages else None
 
     if isinstance(args.modelgridindex, str):
         args.modelgridindex = [args.modelgridindex]
@@ -798,7 +798,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             if atomic_number < 1:
                 print(f"Could not find element '{elsymbol}'")
 
-        make_plot(modelpath, atomic_number, ionstages_permitted, mgilist, timestep, args)
+        make_plot(modelpath, atomic_number, ion_stages_permitted, mgilist, timestep, args)
 
 
 if __name__ == "__main__":

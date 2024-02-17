@@ -17,13 +17,13 @@ import artistools as at
 
 defaultoutputfile = "plottransitions_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf"
 
-iontuple = namedtuple("iontuple", "Z ionstage")
+iontuple = namedtuple("iontuple", "Z ion_stage")
 
 
 def get_kurucz_transitions() -> tuple[pd.DataFrame, list[iontuple]]:
     hc_evcm = (const.h * const.c).to("eV cm").value
     transitiontuple = namedtuple(
-        "transitiontuple", "Z ionstage lambda_angstroms A lower_energy_ev upper_energy_ev lower_g upper_g"
+        "transitiontuple", "Z ion_stage lambda_angstroms A lower_energy_ev upper_energy_ev lower_g upper_g"
     )
     translist = []
     ionlist = []
@@ -31,8 +31,8 @@ def get_kurucz_transitions() -> tuple[pd.DataFrame, list[iontuple]]:
         for line in fnist:
             row = line.split()
             if len(row) >= 24:
-                Z, ionstage = int(row[2].split(".")[0]), int(row[2].split(".")[1]) + 1
-                if Z < 44 or ionstage >= 2:  # and Z not in [26, 27]
+                Z, ion_stage = int(row[2].split(".")[0]), int(row[2].split(".")[1]) + 1
+                if Z < 44 or ion_stage >= 2:  # and Z not in [26, 27]
                     continue
                 lambda_angstroms = float(line[:12]) * 10
                 loggf = float(line[11:18])
@@ -42,12 +42,12 @@ def get_kurucz_transitions() -> tuple[pd.DataFrame, list[iontuple]]:
                 A = fij / (1.49919e-16 * upper_g / lower_g * lambda_angstroms**2)
                 translist.append(
                     transitiontuple(
-                        Z, ionstage, lambda_angstroms, A, lower_energy_ev, upper_energy_ev, lower_g, upper_g
+                        Z, ion_stage, lambda_angstroms, A, lower_energy_ev, upper_energy_ev, lower_g, upper_g
                     )
                 )
 
-                if iontuple(Z, ionstage) not in ionlist:
-                    ionlist.append(iontuple(Z, ionstage))
+                if iontuple(Z, ion_stage) not in ionlist:
+                    ionlist.append(iontuple(Z, ion_stage))
 
     dftransitions = pd.DataFrame(translist, columns=transitiontuple._fields)
     return dftransitions, ionlist
@@ -142,8 +142,8 @@ def make_plot(
             peak_y_value = max(peak_y_value, **yvalues_combined[seriesindex])
 
     axislabels = [
-        f"{at.get_elsymbol(Z)} {at.roman_numerals[ionstage]}\n(pop={ionpopdict[(Z, ionstage)]:.1e}/cm3)"
-        for (Z, ionstage) in ionlist
+        f"{at.get_elsymbol(Z)} {at.roman_numerals[ion_stage]}\n(pop={ionpopdict[(Z, ion_stage)]:.1e}/cm3)"
+        for (Z, ion_stage) in ionlist
     ]
     axislabels += ["Total"]
 
@@ -304,7 +304,8 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             sys.exit(1)
 
         ionpopdict = {
-            (Z, ionstage): dfnltepops.query("Z==@Z and ionstage==@ionstage")["n_NLTE"].sum() for Z, ionstage in ionlist
+            (Z, ion_stage): dfnltepops.query("Z==@Z and ion_stage==@ion_stage")["n_NLTE"].sum()
+            for Z, ion_stage in ionlist
         }
 
         modelname = at.get_model_name(modelpath)
@@ -353,21 +354,21 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     fe2depcoeff, ni2depcoeff = None, None
     for _, ion in adata.iterrows() if args.atomicdatabase == "artis" else enumerate(ionlist):
-        ionid = iontuple(ion.Z, ion.ionstage)
+        ionid = iontuple(ion.Z, ion.ion_stage)
         if ionid not in ionlist:
             continue
 
         ionindex = ionlist.index(ionid)
 
         if args.atomicdatabase == "kurucz":
-            dftransitions = dftransgfall.query("Z == @ion.Z and ionstage == @ion.ionstage", inplace=False).copy()
+            dftransitions = dftransgfall.query("Z == @ion.Z and ion_stage == @ion.ion_stage", inplace=False).copy()
         elif args.atomicdatabase == "nist":
-            dftransitions = get_nist_transitions(f"nist/nist-{ion.Z:02d}-{ion.ionstage:02d}.txt")
+            dftransitions = get_nist_transitions(f"nist/nist-{ion.Z:02d}-{ion.ion_stage:02d}.txt")
         else:
             dftransitions = ion.transitions
 
         print(
-            f"\n======> {at.get_elsymbol(ion.Z)} {at.roman_numerals[ion.ionstage]:3s} "
+            f"\n======> {at.get_elsymbol(ion.Z)} {at.roman_numerals[ion.ion_stage]:3s} "
             f"(pop={ionpopdict[ionid]:.2e} / cm3, {len(dftransitions):6d} transitions)"
         )
 
@@ -404,7 +405,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
             for seriesindex, temperature in enumerate(temperature_list):
                 if temperature == "NOTEMPNLTE":
-                    dfnltepops_thision = dfnltepops.query("Z==@ion.Z & ionstage==@ion.ionstage")
+                    dfnltepops_thision = dfnltepops.query("Z==@ion.Z & ion_stage==@ion.ion_stage")
 
                     nltepopdict = {x.level: x["n_NLTE"] for _, x in dfnltepops_thision.iterrows()}
 
@@ -460,16 +461,16 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     if from_model:
         feions = [2, 3]
 
-        def get_strionfracs(atomic_number, ionstages):
+        def get_strionfracs(atomic_number, ion_stages):
             elsym = at.get_elsymbol(atomic_number)
             est_ionfracs = [
-                estimators[f"nnion_{at.get_ionstring(atomic_number, ionstage, sep='_', style='spectral')}"]
+                estimators[f"nnion_{at.get_ionstring(atomic_number, ion_stage, sep='_', style='spectral')}"]
                 / estimators[f"nnelement_{elsym}"]
-                for ionstage in ionstages
+                for ion_stage in ion_stages
             ]
             ionfracs_str = " ".join([f"{pop:6.0e}" if pop < 0.01 else f"{pop:6.2f}" for pop in est_ionfracs])
             strions = " ".join(
-                [f"{at.get_elsymbol(atomic_number)}{at.roman_numerals[ionstage]}".rjust(6) for ionstage in feions]
+                [f"{at.get_elsymbol(atomic_number)}{at.roman_numerals[ion_stage]}".rjust(6) for ion_stage in feions]
             )
             return strions, ionfracs_str
 

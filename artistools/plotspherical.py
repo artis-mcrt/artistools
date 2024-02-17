@@ -30,7 +30,7 @@ def plot_spherical(
     dfestimators: pl.LazyFrame | None = None,
     maxpacketfiles: int | None = None,
     atomic_number: int | None = None,
-    ionstage: int | None = None,
+    ion_stage: int | None = None,
     gaussian_sigma: int | None = None,
     plotvars: list[str] | None = None,
     figscale: float = 1.0,
@@ -128,14 +128,14 @@ def plot_spherical(
         dfpackets = dfpackets.join(dfestimators, on=["em_timestep", "em_modelgridindex"], how="left")
         aggs.append(((pl.col("em_TR") * pl.col("e_rf")).mean() / pl.col("e_rf").mean()).alias("temperature"))
 
-    if atomic_number is not None or ionstage is not None:
+    if atomic_number is not None or ion_stage is not None:
         dflinelist = at.get_linelist_pldf(modelpath)
         if atomic_number is not None:
             print(f"Including only packets emitted by Z={atomic_number} {at.get_elsymbol(atomic_number)}")
             dflinelist = dflinelist.filter(pl.col("atomic_number") == atomic_number)
-        if ionstage is not None:
-            print(f"Including only packets emitted by ionisation stage {ionstage}")
-            dflinelist = dflinelist.filter(pl.col("ionstage") == ionstage)
+        if ion_stage is not None:
+            print(f"Including only packets emitted by ionisation stage {ion_stage}")
+            dflinelist = dflinelist.filter(pl.col("ion_stage") == ion_stage)
 
         selected_emtypes = dflinelist.select("lineindex").collect().get_column("lineindex")
         dfpackets = dfpackets.filter(pl.col("emissiontype").is_in(selected_emtypes))
@@ -260,7 +260,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-atomic_number", type=int, default=None, help="Filter emitted packets by element of last emission"
     )
     parser.add_argument(
-        "-ionstage", type=int, default=None, help="Filter emitted packets by ionistion stage of last emission"
+        "-ion_stage", type=int, default=None, help="Filter emitted packets by ionistion stage of last emission"
     )
     parser.add_argument("-cmap", default=None, type=str, help="Matplotlib color map name")
 
@@ -343,7 +343,7 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
             maxpacketfiles=args.maxpacketfiles,
             gaussian_sigma=args.gaussian_sigma,
             atomic_number=args.atomic_number,
-            ionstage=args.ionstage,
+            ion_stage=args.ion_stage,
             plotvars=args.plotvars,
             cmap=args.cmap,
             figscale=args.figscale,
