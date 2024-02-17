@@ -25,6 +25,9 @@ dynamic = ["version", "dependencies", "entry-points", "readme", "scripts"]
 requires-python = ">=3.10"
 license = { file = "LICENSE.txt" }
 
+[project.urls]
+Repository ="https://www.github.com/artis-mcrt/artistools/"
+
 #[project.scripts]
 #atcompletions = "artistoolscompletions.sh"
 

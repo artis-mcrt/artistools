@@ -145,8 +145,8 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             description=__doc__,
         )
         addargs(parser)
-        parser.set_defaults(**kwargs)
-        args = parser.parse_args(argsraw)
+        at.set_args_from_dict(parser, kwargs)
+        args = parser.parse_args([] if kwargs else argsraw)
 
     if args.plotstats:
         make_ntstats_plot(args.plotstats)
@@ -318,20 +318,20 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         if step == 0 and args.ostat:
             with Path(args.ostat).open("w") as fstat:
                 strheader = "#emin emax npts x_e frac_sum frac_excitation frac_ionization frac_heating"
-                for atomic_number, ionstage in ions:
-                    strheader += " frac_ionization_" + at.get_ionstring(atomic_number, ionstage, sep="")
+                for atomic_number, ion_stage in ions:
+                    strheader += " frac_ionization_" + at.get_ionstring(atomic_number, ion_stage, sep="")
                 fstat.write(strheader + "\n")
 
         with pynt.SpencerFanoSolver(emin_ev=emin, emax_ev=emax, npts=npts, verbose=True) as sf:
-            for Z, ionstage in ions:
-                nnion = ionpopdict[(Z, ionstage)]
+            for Z, ion_stage in ions:
+                nnion = ionpopdict[(Z, ion_stage)]
                 if nnion == 0.0:
-                    print(f"   skipping Z={Z} ionstage {ionstage} due to nnion={nnion:.1e}")
+                    print(f"   skipping Z={Z} ion_stage {ion_stage} due to nnion={nnion:.1e}")
                     continue
 
-                sf.add_ionisation(Z, ionstage, nnion)
+                sf.add_ionisation(Z, ion_stage, nnion)
                 if not args.noexcitation:
-                    sf.add_ion_ltepopexcitation(Z, ionstage, nnion, adata=adata, temperature=T_e)
+                    sf.add_ion_ltepopexcitation(Z, ion_stage, nnion, adata=adata, temperature=T_e)
 
             sf.solve(depositionratedensity_ev=deposition_density_ev)
 
@@ -351,9 +351,9 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
                         f"{sf.get_frac_excitation_tot():6.3f} {sf.get_frac_ionisation_tot():6.3f} "
                         f" {sf.get_frac_heating():6.3f}"
                     )
-                    for atomic_number, ionstage in ions:
-                        nnion = ionpopdict[(atomic_number, ionstage)]
-                        frac_ionis_ion = sf.get_frac_ionisation_ion(atomic_number, ionstage) if nnion > 0.0 else 0.0
+                    for atomic_number, ion_stage in ions:
+                        nnion = ionpopdict[(atomic_number, ion_stage)]
+                        frac_ionis_ion = sf.get_frac_ionisation_ion(atomic_number, ion_stage) if nnion > 0.0 else 0.0
                         strlineout += f" {frac_ionis_ion:.4f}"
                     fstat.write(strlineout + "\n")
 

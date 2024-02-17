@@ -130,8 +130,8 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             formatter_class=at.CustomArgHelpFormatter, description="Plot durations from log files."
         )
         addargs(parser)
-        parser.set_defaults(**kwargs)
-        args = parser.parse_args(argsraw)
+        at.set_args_from_dict(parser, kwargs)
+        args = parser.parse_args([] if kwargs else argsraw)
 
     if not args.modelpath:
         args.modelpath = [Path()]

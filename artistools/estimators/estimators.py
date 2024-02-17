@@ -83,7 +83,7 @@ def apply_filters(
 
 
 def get_ionrecombrates_fromfile(filename: Path | str) -> pd.DataFrame:
-    """WARNING: copy pasted from artis-atomic! replace with a package import soon ionstage is the lower ion stage."""
+    """WARNING: copy pasted from artis-atomic! replace with a package import soon ion_stage is the lower ion stage."""
     print(f"Reading {filename}")
 
     header_row = []
@@ -163,28 +163,28 @@ def read_estimators_from_file(
                     startindex = 2
                 elsymbol = at.get_elsymbol(atomic_number)
 
-                for ionstage_str, value in zip(row[startindex::2], row[startindex + 1 :: 2]):
-                    ionstage_str_strip = ionstage_str.strip()
-                    if ionstage_str_strip == "(or":
+                for ion_stage_str, value in zip(row[startindex::2], row[startindex + 1 :: 2]):
+                    ion_stage_str_strip = ion_stage_str.strip()
+                    if ion_stage_str_strip == "(or":
                         continue
 
                     value_thision = float(value.rstrip(","))
 
-                    if ionstage_str_strip == "SUM:":
+                    if ion_stage_str_strip == "SUM:":
                         estimblock[f"nnelement_{elsymbol}"] = value_thision
                         continue
 
                     try:
-                        ionstage = int(ionstage_str.rstrip(":"))
+                        ion_stage = int(ion_stage_str.rstrip(":"))
                     except ValueError:
-                        if variablename == "populations" and ionstage_str.startswith(elsymbol):
-                            estimblock[f"nniso_{ionstage_str.rstrip(':')}"] = float(value)
+                        if variablename == "populations" and ion_stage_str.startswith(elsymbol):
+                            estimblock[f"nniso_{ion_stage_str.rstrip(':')}"] = float(value)
                         else:
-                            print(ionstage_str, elsymbol)
+                            print(ion_stage_str, elsymbol)
                             print(f"Cannot parse row: {row}")
                         continue
 
-                    ionstr = at.get_ionstring(atomic_number, ionstage, sep="_", style="spectral")
+                    ionstr = at.get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
                     estimblock[f"{'nnion' if variablename == 'populations' else variablename}_{ionstr}"] = value_thision
 
                     if variablename in {"Alpha_R*nne", "AlphaR*nne"}:
@@ -433,14 +433,14 @@ def get_averaged_estimators(
 
 
 def get_averageexcitation(
-    modelpath: Path | str, modelgridindex: int, timestep: int, atomic_number: int, ionstage: int, T_exc: float
+    modelpath: Path | str, modelgridindex: int, timestep: int, atomic_number: int, ion_stage: int, T_exc: float
 ) -> float | None:
     dfnltepops = at.nltepops.read_files(modelpath, modelgridindex=modelgridindex, timestep=timestep)
     if dfnltepops.empty:
         print(f"WARNING: NLTE pops not found for cell {modelgridindex} at timestep {timestep}")
 
     adata = at.atomic.get_levels(modelpath)
-    ionlevels = adata.query("Z == @atomic_number and ionstage == @ionstage").iloc[0].levels
+    ionlevels = adata.query("Z == @atomic_number and ion_stage == @ion_stage").iloc[0].levels
 
     energypopsum = 0
     ionpopsum = 0
@@ -448,7 +448,7 @@ def get_averageexcitation(
         return None
 
     dfnltepops_ion = dfnltepops.query(
-        "modelgridindex==@modelgridindex and timestep==@timestep and Z==@atomic_number & ionstage==@ionstage"
+        "modelgridindex==@modelgridindex and timestep==@timestep and Z==@atomic_number & ion_stage==@ion_stage"
     )
 
     k_b = 8.617333262145179e-05  # eV / K  # noqa: F841

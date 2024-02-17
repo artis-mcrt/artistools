@@ -62,8 +62,8 @@ from artistools.misc import get_file_metadata
 from artistools.misc import get_filterfunc
 from artistools.misc import get_grid_mapping
 from artistools.misc import get_inputparams
+from artistools.misc import get_ion_stage_roman_numeral_df
 from artistools.misc import get_ion_tuple
-from artistools.misc import get_ionstage_roman_numeral_df
 from artistools.misc import get_ionstring
 from artistools.misc import get_linelist_dataframe
 from artistools.misc import get_linelist_pldf
@@ -97,6 +97,7 @@ from artistools.misc import parse_range_list
 from artistools.misc import read_linestatfile
 from artistools.misc import readnoncommentline
 from artistools.misc import roman_numerals
+from artistools.misc import set_args_from_dict
 from artistools.misc import showtimesteptimes
 from artistools.misc import split_dataframe_dirbins
 from artistools.misc import stripallsuffixes

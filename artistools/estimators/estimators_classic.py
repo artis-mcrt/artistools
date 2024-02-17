@@ -31,9 +31,9 @@ def parse_ion_row_classic(row: list[str], outdict: dict[str, t.Any], atomic_comp
     i = 6  # skip first 6 numbers in est file. These are n, TR, Te, W, TJ, grey_depth.
     # Numbers after these 6 are populations
     for atomic_number in elements:
-        for ionstage in range(1, atomic_composition[atomic_number] + 1):
+        for ion_stage in range(1, atomic_composition[atomic_number] + 1):
             value_thision = float(row[i])
-            ionstr = at.get_ionstring(atomic_number, ionstage, sep="_")
+            ionstr = at.get_ionstring(atomic_number, ion_stage, sep="_")
             outdict[f"nnion_{ionstr}"] = value_thision
             i += 1
 

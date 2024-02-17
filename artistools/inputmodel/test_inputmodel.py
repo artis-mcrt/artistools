@@ -21,11 +21,11 @@ def clear_modelfiles() -> None:
 
 
 def test_describeinputmodel() -> None:
-    at.inputmodel.describeinputmodel.main(argsraw=[], inputfile=modelpath, get_elemabundances=True)
+    at.inputmodel.describeinputmodel.main(argsraw=[], inputfile=modelpath, isotopes=True)
 
 
 def test_describeinputmodel_3d() -> None:
-    at.inputmodel.describeinputmodel.main(argsraw=[], inputfile=modelpath_3d, get_elemabundances=True)
+    at.inputmodel.describeinputmodel.main(argsraw=[], inputfile=modelpath_3d, isotopes=True)
 
 
 def test_get_modeldata_1d() -> None:
@@ -234,9 +234,7 @@ def test_makemodel() -> None:
 
 def test_makemodel_energyfiles() -> None:
     clear_modelfiles()
-    at.inputmodel.makeartismodel.main(
-        argsraw=[], modelpath=modelpath, makeenergyinputfiles=True, modeldim=1, outputpath=outputpath
-    )
+    at.inputmodel.makeartismodel.main(argsraw=[], modelpath=modelpath, makeenergyinputfiles=True, outputpath=outputpath)
 
 
 def test_maketardismodel() -> None:
