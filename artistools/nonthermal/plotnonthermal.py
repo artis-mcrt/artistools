@@ -99,13 +99,13 @@ def plot_contributions(axis, modelpath, timestep, modelgridindex, nonthermaldata
 
         nions = elementlist.nions[element]
         for ion in range(nions):
-            ionstage = ion + elementlist.lowermost_ionstage[element]
-            ionstr = at.get_ionstring(Z, ionstage, sep="_", style="spectral")
+            ion_stage = ion + elementlist.lowermost_ion_stage[element]
+            ionstr = at.get_ionstring(Z, ion_stage, sep="_", style="spectral")
             ionpop = estim_tsmgi[f"nnion_{ionstr}"]
 
-            dfcollion_thision = dfcollion.query("Z == @Z and ionstage == @ionstage")
+            dfcollion_thision = dfcollion.query("Z == @Z and ion_stage == @ion_stage")
 
-            # print(at.get_ionstring(Z, ionstage), ionpop)
+            # print(at.get_ionstring(Z, ion_stage), ionpop)
 
             arr_ionisation_ion = np.zeros(len(arr_enev), dtype=float)
             frac_ionisation_ion = 0.0
@@ -291,8 +291,8 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
 
         addargs(parser)
-        parser.set_defaults(**kwargs)
-        args = parser.parse_args(argsraw)
+        at.set_args_from_dict(parser, kwargs)
+        args = parser.parse_args([] if kwargs else argsraw)
 
     if not args.modelpath:
         args.modelpath = [Path()]

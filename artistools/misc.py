@@ -99,7 +99,7 @@ def get_composition_data(filename: Path | str) -> pd.DataFrame:
     """Return a pandas DataFrame containing details of included elements and ions."""
     filename = Path(filename, "compositiondata.txt") if Path(filename).is_dir() else Path(filename)
 
-    columns = ("Z,nions,lowermost_ionstage,uppermost_ionstage,nlevelsmax_readin,abundance,mass,startindex").split(",")
+    columns = ("Z,nions,lowermost_ion_stage,uppermost_ion_stage,nlevelsmax_readin,abundance,mass,startindex").split(",")
 
     rowdfs = []
     with filename.open() as fcompdata:
@@ -138,8 +138,8 @@ def get_composition_data_from_outputfile(modelpath: Path) -> pd.DataFrame:
                     atomic_composition[Z] = ioncount
 
     composition_df = pd.DataFrame([(Z, atomic_composition[Z]) for Z in atomic_composition], columns=["Z", "nions"])
-    composition_df["lowermost_ionstage"] = [1] * composition_df.shape[0]
-    composition_df["uppermost_ionstage"] = composition_df["nions"]
+    composition_df["lowermost_ion_stage"] = [1] * composition_df.shape[0]
+    composition_df["uppermost_ion_stage"] = composition_df["nions"]
     return composition_df
 
 
@@ -639,14 +639,14 @@ def decode_roman_numeral(strin: str) -> int:
     return -1
 
 
-def get_ionstage_roman_numeral_df() -> pl.DataFrame:
+def get_ion_stage_roman_numeral_df() -> pl.DataFrame:
     """Return a polars DataFrame of ionisation stage and roman numerals."""
     return pl.DataFrame(
         {
-            "ionstage": list(range(1, len(roman_numerals))),
-            "ionstage_roman": roman_numerals[1:],
+            "ion_stage": list(range(1, len(roman_numerals))),
+            "ion_stage_roman": roman_numerals[1:],
         },
-        schema={"ionstage": pl.Int32, "ionstage_roman": pl.Utf8},
+        schema={"ion_stage": pl.Int32, "ion_stage_roman": pl.Utf8},
     )
 
 
@@ -671,14 +671,14 @@ def get_ion_tuple(ionstr: str) -> tuple[int, int] | int:
 
     elem = None
     if " " in ionstr:
-        elem, strionstage = ionstr.split(" ")
+        elem, strion_stage = ionstr.split(" ")
     elif "_" in ionstr:
-        elem, strionstage = ionstr.split("_")
+        elem, strion_stage = ionstr.split("_")
     else:
         for elsym in at.get_elsymbolslist():
             if ionstr.startswith(elsym):
                 elem = elsym
-                strionstage = ionstr.removeprefix(elsym)
+                strion_stage = ionstr.removeprefix(elsym)
                 break
 
     if not elem:
@@ -686,47 +686,58 @@ def get_ion_tuple(ionstr: str) -> tuple[int, int] | int:
         raise ValueError(msg)
 
     atomic_number = int(elem) if elem.isdigit() else at.get_atomic_number(elem)
-    ionstage = int(strionstage) if strionstage.isdigit() else at.decode_roman_numeral(strionstage)
+    ion_stage = int(strion_stage) if strion_stage.isdigit() else at.decode_roman_numeral(strion_stage)
 
-    return (atomic_number, ionstage)
+    return (atomic_number, ion_stage)
 
 
 @lru_cache(maxsize=16)
 def get_ionstring(
     atomic_number: int | np.int64,
-    ionstage: None | int | np.int64 | t.Literal["ALL"],
+    ion_stage: None | int | np.int64 | t.Literal["ALL"],
     style: t.Literal["spectral", "chargelatex", "charge"] = "spectral",
     sep: str = " ",
 ) -> str:
     """Return a string with the element symbol and ionisation stage."""
-    if ionstage is None or ionstage == "ALL":
+    if ion_stage is None or ion_stage == "ALL":
         return f"{get_elsymbol(atomic_number)}"
 
-    if isinstance(ionstage, str) and ionstage.startswith(at.get_elsymbol(atomic_number)):
-        # nuclides like Sr89 get passed in as atomic_number=38, ionstage='Sr89'
-        return ionstage
+    if isinstance(ion_stage, str) and ion_stage.startswith(at.get_elsymbol(atomic_number)):
+        # nuclides like Sr89 get passed in as atomic_number=38, ion_stage='Sr89'
+        return ion_stage
 
-    assert not isinstance(ionstage, str)
+    assert not isinstance(ion_stage, str)
 
     if style == "spectral":
-        return f"{get_elsymbol(atomic_number)}{sep}{roman_numerals[ionstage]}"
+        return f"{get_elsymbol(atomic_number)}{sep}{roman_numerals[ion_stage]}"
 
     strcharge = ""
     if style == "chargelatex":
         # ion notion e.g. Co+, Fe2+
-        if ionstage > 2:
-            strcharge = r"$^{" + f"{ionstage - 1}" + r"{+}}$"
-        elif ionstage == 2:
+        if ion_stage > 2:
+            strcharge = r"$^{" + f"{ion_stage - 1}" + r"{+}}$"
+        elif ion_stage == 2:
             strcharge = r"$^{+}$"
-    elif ionstage > 2:
-        strcharge = f"{ionstage - 1}+"
-    elif ionstage == 2:
+    elif ion_stage > 2:
+        strcharge = f"{ion_stage - 1}+"
+    elif ion_stage == 2:
         strcharge = "+"
 
     return f"{get_elsymbol(atomic_number)}{strcharge}"
 
 
-# based on code from https://gist.github.com/kgaughan/2491663/b35e9a117b02a3567c8107940ac9b2023ba34ced
+def set_args_from_dict(parser: argparse.ArgumentParser, kwargs: dict[str, t.Any]) -> None:
+    """Set argparse defaults from a dictionary."""
+    # set_defaults expects the dest of an argument. Here we allow the option strings to be used as keys
+    for arg in parser._actions:
+        for optstring in arg.option_strings:
+            if optstring.lstrip("-") in kwargs and arg.dest not in kwargs:
+                kwargs[arg.dest] = kwargs.pop(optstring.lstrip("-"))
+
+    parser.set_defaults(**kwargs)
+    if unknown := {k: v for k, v in kwargs.items() if k not in (arg.dest for arg in parser._actions)}:
+        msg = f"Unknown argument names: {unknown}"
+        raise ValueError(msg)
 
 
 def parse_range(rng: str, dictvars: dict[str, int]) -> t.Iterable[t.Any]:
@@ -996,10 +1007,10 @@ def get_bflist(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame
         atomic_number=pl.col("elementindex")
         .map_elements(lambda elementindex: compositiondata["Z"][elementindex])
         .cast(pl.Int32),
-        ionstage=(
+        ion_stage=(
             pl.col("ionindex")
             + pl.col("elementindex")
-            .map_elements(lambda elementindex: compositiondata["lowermost_ionstage"][elementindex])
+            .map_elements(lambda elementindex: compositiondata["lowermost_ion_stage"][elementindex])
             .cast(pl.Int32)
         ),
     )
@@ -1008,15 +1019,15 @@ def get_bflist(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame
 
     if get_ion_str:
         dfboundfree = (
-            dfboundfree.join(at.get_ionstage_roman_numeral_df().lazy(), on="ionstage", how="left")
+            dfboundfree.join(at.get_ion_stage_roman_numeral_df().lazy(), on="ion_stage", how="left")
             .join(at.get_elsymbols_df().lazy(), on="atomic_number", how="left")
-            .with_columns(ion_str=pl.col("elsymbol") + " " + pl.col("ionstage_roman"))
+            .with_columns(ion_str=pl.col("elsymbol") + " " + pl.col("ion_stage_roman"))
         )
 
     return dfboundfree
 
 
-linetuple = namedtuple("linetuple", "lambda_angstroms atomic_number ionstage upperlevelindex lowerlevelindex")
+linetuple = namedtuple("linetuple", "lambda_angstroms atomic_number ion_stage upperlevelindex lowerlevelindex")
 
 
 def read_linestatfile(filepath: Path | str) -> tuple[int, list[float], list[int], list[int], list[int], list[int]]:
@@ -1030,8 +1041,8 @@ def read_linestatfile(filepath: Path | str) -> tuple[int, list[float], list[int]
     atomic_numbers = data[1].astype(int)
     assert len(atomic_numbers) == nlines
 
-    ionstages = data[2].astype(int)
-    assert len(ionstages) == nlines
+    ion_stages = data[2].astype(int)
+    assert len(ion_stages) == nlines
 
     # the file adds one to the levelindex, i.e. lowest level is 1
     upper_levels = data[3].astype(int)
@@ -1040,21 +1051,21 @@ def read_linestatfile(filepath: Path | str) -> tuple[int, list[float], list[int]
     lower_levels = data[4].astype(int)
     assert len(lower_levels) == nlines
 
-    return nlines, lambda_angstroms, atomic_numbers, ionstages, upper_levels, lower_levels
+    return nlines, lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels
 
 
 def get_linelist_pldf(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame:
     textfile = at.firstexisting("linestat.out", folder=modelpath)
     parquetfile = Path(modelpath, "linelist.out.parquet")
     if not parquetfile.is_file() or parquetfile.stat().st_mtime < textfile.stat().st_mtime:
-        _, lambda_angstroms, atomic_numbers, ionstages, upper_levels, lower_levels = read_linestatfile(textfile)
+        _, lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels = read_linestatfile(textfile)
 
         pldf = (
             pl.DataFrame(
                 {
                     "lambda_angstroms": lambda_angstroms,
                     "atomic_number": atomic_numbers,
-                    "ionstage": ionstages,
+                    "ion_stage": ion_stages,
                     "upper_level": upper_levels,
                     "lower_level": lower_levels,
                 },
@@ -1081,9 +1092,9 @@ def get_linelist_pldf(modelpath: Path | str, get_ion_str: bool = False) -> pl.La
 
     if get_ion_str:
         linelist_lazy = (
-            linelist_lazy.join(at.get_ionstage_roman_numeral_df().lazy(), on="ionstage", how="left")
+            linelist_lazy.join(at.get_ion_stage_roman_numeral_df().lazy(), on="ion_stage", how="left")
             .join(at.get_elsymbols_df().lazy(), on="atomic_number", how="left")
-            .with_columns(ion_str=pl.col("elsymbol") + " " + pl.col("ionstage_roman"))
+            .with_columns(ion_str=pl.col("elsymbol") + " " + pl.col("ion_stage_roman"))
         )
 
     return linelist_lazy
@@ -1093,7 +1104,7 @@ def get_linelist_pldf(modelpath: Path | str, get_ion_str: bool = False) -> pl.La
 def get_linelist_dataframe(
     modelpath: Path | str,
 ) -> pd.DataFrame:
-    nlines, lambda_angstroms, atomic_numbers, ionstages, upper_levels, lower_levels = read_linestatfile(
+    nlines, lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels = read_linestatfile(
         Path(modelpath, "linestat.out")
     )
 
@@ -1101,14 +1112,14 @@ def get_linelist_dataframe(
         {
             "lambda_angstroms": lambda_angstroms,
             "atomic_number": atomic_numbers,
-            "ionstage": ionstages,
+            "ion_stage": ion_stages,
             "upperlevelindex": upper_levels,
             "lowerlevelindex": lower_levels,
         },
         dtype={
             "lambda_angstroms": float,
             "atomic_number": int,
-            "ionstage": int,
+            "ion_stage": int,
             "upperlevelindex": int,
             "lowerlevelindex": int,
         },

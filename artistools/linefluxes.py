@@ -151,7 +151,7 @@ def get_line_fluxes_from_pops(emfeatures, modelpath, arr_tstart=None, arr_tend=N
 
     modeldata, _ = at.inputmodel.get_modeldata(modelpath)
 
-    ionlist = [(feature.atomic_number, feature.ionstage) for feature in emfeatures]
+    ionlist = [(feature.atomic_number, feature.ion_stage) for feature in emfeatures]
     adata = at.atomic.get_levels(modelpath, ionlist=tuple(ionlist), get_transitions=True, get_photoionisations=False)
 
     # timearrayplusend = np.concatenate([arr_tstart, [arr_tend[-1]]])
@@ -162,10 +162,10 @@ def get_line_fluxes_from_pops(emfeatures, modelpath, arr_tstart=None, arr_tend=N
         fluxdata = np.zeros_like(arr_tmid, dtype=float)
 
         dfnltepops = at.nltepops.read_files(
-            modelpath, dfquery=f"Z=={feature.atomic_number:.0f} and ionstage=={feature.ionstage:.0f}"
+            modelpath, dfquery=f"Z=={feature.atomic_number:.0f} and ion_stage=={feature.ion_stage:.0f}"
         ).query("level in @feature.upperlevelindicies")
 
-        ion = adata.query("Z == @feature.atomic_number and ionstage == @feature.ionstage").iloc[0]
+        ion = adata.query("Z == @feature.atomic_number and ion_stage == @feature.ion_stage").iloc[0]
 
         for timeindex, timedays in enumerate(arr_tmid):
             v_inner = modeldata.vel_r_min_kmps.to_numpy() * u.km / u.s
@@ -185,7 +185,7 @@ def get_line_fluxes_from_pops(emfeatures, modelpath, arr_tstart=None, arr_tend=N
                         levelpop = (
                             dfnltepops.query(
                                 "modelgridindex==@modelgridindex and timestep==@timestep and Z==@feature.atomic_number"
-                                " and ionstage==@feature.ionstage and level==@upperlevelindex"
+                                " and ion_stage==@feature.ion_stage and level==@upperlevelindex"
                             )
                             .iloc[0]
                             .n_NLTE
@@ -225,7 +225,7 @@ def get_line_fluxes_from_pops(emfeatures, modelpath, arr_tstart=None, arr_tend=N
 def get_closelines(
     modelpath,
     atomic_number: int,
-    ionstage: int,
+    ion_stage: int,
     approxlambdalabel: str | int,
     lambdamin: float | None = None,
     lambdamax: float | None = None,
@@ -233,7 +233,7 @@ def get_closelines(
     upperlevelindex: int | None = None,
 ):
     dflinelist = at.get_linelist_dataframe(modelpath)
-    dflinelistclosematches = dflinelist.query("atomic_number == @atomic_number and ionstage == @ionstage").copy()
+    dflinelistclosematches = dflinelist.query("atomic_number == @atomic_number and ion_stage == @ion_stage").copy()
     if lambdamin is not None:
         dflinelistclosematches = dflinelistclosematches.query("@lambdamin < lambda_angstroms")
     if lambdamax is not None:
@@ -249,8 +249,8 @@ def get_closelines(
     lowerlevelindicies = tuple(dflinelistclosematches.lowerlevelindex.to_numpy())
     lowestlambda = dflinelistclosematches.lambda_angstroms.min()
     highestlamba = dflinelistclosematches.lambda_angstroms.max()
-    colname = f"flux_{at.get_ionstring(atomic_number, ionstage, sep='')}_{approxlambdalabel}"
-    featurelabel = f"{at.get_ionstring(atomic_number, ionstage)} {approxlambdalabel} Å"
+    colname = f"flux_{at.get_ionstring(atomic_number, ion_stage, sep='')}_{approxlambdalabel}"
+    featurelabel = f"{at.get_ionstring(atomic_number, ion_stage)} {approxlambdalabel} Å"
 
     return (
         colname,
@@ -260,7 +260,7 @@ def get_closelines(
         lowestlambda,
         highestlamba,
         atomic_number,
-        ionstage,
+        ion_stage,
         upperlevelindicies,
         lowerlevelindicies,
     )
@@ -277,7 +277,7 @@ def get_labelandlineindices(modelpath, emfeaturesearch):
             "lowestlambda",
             "highestlamba",
             "atomic_number",
-            "ionstage",
+            "ion_stage",
             "upperlevelindicies",
             "lowerlevelindicies",
         ],
@@ -898,8 +898,8 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             description=(__doc__),
         )
         addargs(parser)
-        parser.set_defaults(**kwargs)
-        args = parser.parse_args(argsraw)
+        at.set_args_from_dict(parser, kwargs)
+        args = parser.parse_args([] if kwargs else argsraw)
 
     if not args.modelpath:
         args.modelpath = [Path()]

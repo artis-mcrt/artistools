@@ -57,8 +57,8 @@ def main_analytical(args: argparse.Namespace | None = None, argsraw: list[str] |
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
         addargs(parser)
-        parser.set_defaults(**kwargs)
-        args = parser.parse_args(argsraw)
+        at.set_args_from_dict(parser, kwargs)
+        args = parser.parse_args([] if kwargs else argsraw)
     dfmodel, modelmeta = at.inputmodel.get_modeldata(args.modelpath, derived_cols=["mass_g", "vel_r_min_kmps"])
 
     t_init = modelmeta["t_model_init_days"] * u.day
@@ -80,7 +80,7 @@ def main_analytical(args: argparse.Namespace | None = None, argsraw: list[str] |
     # dfnltepops = at.nltepops.read_files(
     #     args.modelpath, timestep=timestep).query('Z == 26')
 
-    # phixs = adata.query('Z==26 & ionstage==1', inplace=False).iloc[0].levels.iloc[0].phixstable[0][1] * 1e-18
+    # phixs = adata.query('Z==26 & ion_stage==1', inplace=False).iloc[0].levels.iloc[0].phixstable[0][1] * 1e-18
 
     global_posdep = 0.0 * u.erg / u.s
     for i, row in dfmodel.iterrows():
@@ -127,8 +127,8 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
         addargs(parser)
-        parser.set_defaults(**kwargs)
-        args = parser.parse_args(argsraw)
+        at.set_args_from_dict(parser, kwargs)
+        args = parser.parse_args([] if kwargs else argsraw)
 
         # TODO: plot deposition.out file!
 

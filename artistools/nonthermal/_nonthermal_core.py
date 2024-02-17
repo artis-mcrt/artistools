@@ -27,18 +27,18 @@ use_collstrengths = False
 def get_nntot(ions: list[tuple[int, int]], ionpopdict: dict[tuple[int, int], float]) -> float:
     # total number density of all nuclei [cm^-3]
     nntot = 0.0
-    for Z, ionstage in ions:
-        nntot += ionpopdict[(Z, ionstage)]
+    for Z, ion_stage in ions:
+        nntot += ionpopdict[(Z, ion_stage)]
     return nntot
 
 
 def get_nne(ions: list[tuple[int, int]], ionpopdict: dict[tuple[int, int], float]) -> float:
     # number density of free electrons [cm-^3]
     nne = 0.0
-    for Z, ionstage in ions:
-        charge = ionstage - 1
+    for Z, ion_stage in ions:
+        charge = ion_stage - 1
         assert charge >= 0
-        nne += charge * ionpopdict[(Z, ionstage)]
+        nne += charge * ionpopdict[(Z, ion_stage)]
 
     return nne
 
@@ -48,8 +48,8 @@ def get_Zbar(ions: list[tuple[int, int]], ionpopdict: dict[tuple[int, int], floa
     # i.e. protons per nucleus
     Zbar = 0.0
     nntot = get_nntot(ions, ionpopdict)
-    for Z, ionstage in ions:
-        nnion = ionpopdict[(Z, ionstage)]
+    for Z, ion_stage in ions:
+        nnion = ionpopdict[(Z, ion_stage)]
         Zbar += Z * nnion / nntot
 
     return Zbar
@@ -59,9 +59,9 @@ def get_Zboundbar(ions: list[tuple[int, int]], ionpopdict: dict[tuple[int, int],
     # number density-weighted average number of bound electrons per nucleus
     Zboundbar = 0.0
     nntot = get_nntot(ions, ionpopdict)
-    for Z, ionstage in ions:
-        nnion = ionpopdict[(Z, ionstage)]
-        Zboundbar += (Z - ionstage + 1) * nnion / nntot
+    for Z, ion_stage in ions:
+        nnion = ionpopdict[(Z, ion_stage)]
+        Zboundbar += (Z - ion_stage + 1) * nnion / nntot
 
     return Zboundbar
 
@@ -70,8 +70,8 @@ def get_nnetot(ions: list[tuple[int, int]], ionpopdict: dict[tuple[int, int], fl
     # total number density of electrons (free + bound) [cm-^3]
     # return get_Zbar(ions, ionpopdict) * get_nntot(ions, ionpopdict)
     nnetot = 0.0
-    for Z, ionstage in ions:
-        nnetot += Z * ionpopdict[(Z, ionstage)]
+    for Z, ion_stage in ions:
+        nnetot += Z * ionpopdict[(Z, ion_stage)]
 
     return nnetot
 
@@ -94,11 +94,11 @@ def read_binding_energies(modelpath: str = ".") -> np.ndarray:
     return electron_binding
 
 
-def get_electronoccupancy(atomic_number: int, ionstage: int, nt_shells: int) -> np.ndarray:
+def get_electronoccupancy(atomic_number: int, ion_stage: int, nt_shells: int) -> np.ndarray:
     # adapted from ARTIS code
     q = np.zeros(nt_shells)
 
-    ioncharge = ionstage - 1
+    ioncharge = ion_stage - 1
     nbound = atomic_number - ioncharge  # number of bound electrons
 
     for _electron_loop in range(nbound):
@@ -144,10 +144,12 @@ def get_electronoccupancy(atomic_number: int, ionstage: int, nt_shells: int) -> 
     return q
 
 
-def get_mean_binding_energy(atomic_number: int, ionstage: int, electron_binding: np.ndarray, ionpot_ev: float) -> float:
+def get_mean_binding_energy(
+    atomic_number: int, ion_stage: int, electron_binding: np.ndarray, ionpot_ev: float
+) -> float:
     # LJS: this came from ARTIS and I'm not sure what this actually is - inverse binding energy? electrons per erg?
     n_z_binding, nt_shells = electron_binding.shape
-    q = get_electronoccupancy(atomic_number, ionstage, nt_shells)
+    q = get_electronoccupancy(atomic_number, ion_stage, nt_shells)
 
     total = 0.0
     for electron_loop in range(nt_shells):
@@ -164,20 +166,20 @@ def get_mean_binding_energy(atomic_number: int, ionstage: int, electron_binding:
                 # is for 8 (corresponding to that shell) then just use the M4 value
                 print(
                     "WARNING: I'm trying to use a binding energy when I have no data. "
-                    f"element {atomic_number} ionstage {ionstage}\n"
+                    f"element {atomic_number} ion_stage {ion_stage}\n"
                 )
                 assert electron_loop == 8
-                # print("Z = %d, ionstage = %d\n", get_element(element), get_ionstage(element, ion));
+                # print("Z = %d, ion_stage = %d\n", get_element(element), get_ion_stage(element, ion));
         total += electronsinshell / use3 if use2 < use3 else electronsinshell / use2
         # print("total total)
 
     return total
 
 
-def get_mean_binding_energy_alt(atomic_number, ionstage, electron_binding, ionpot_ev):
+def get_mean_binding_energy_alt(atomic_number, ion_stage, electron_binding, ionpot_ev):
     # LJS: this should be mean binding energy [erg] per electron
     n_z_binding, nt_shells = electron_binding.shape
-    q = get_electronoccupancy(atomic_number, ionstage, nt_shells)
+    q = get_electronoccupancy(atomic_number, ion_stage, nt_shells)
 
     total = 0.0
     ecount = 0
@@ -196,17 +198,17 @@ def get_mean_binding_energy_alt(atomic_number, ionstage, electron_binding, ionpo
                 # is for 8 (corresponding to that shell) then just use the M4 value
                 print(
                     "WARNING: I'm trying to use a binding energy when I have no data. "
-                    f"element {atomic_number} ionstage {ionstage}\n"
+                    f"element {atomic_number} ion_stage {ion_stage}\n"
                 )
                 assert electron_loop == 8
-                # print("Z = %d, ionstage = %d\n", get_element(element), get_ionstage(element, ion));
+                # print("Z = %d, ion_stage = %d\n", get_element(element), get_ion_stage(element, ion));
         total += electronsinshell * use3 if use2 < use3 else electronsinshell * use2
-    assert ecount == (atomic_number - ionstage + 1)
+    assert ecount == (atomic_number - ion_stage + 1)
 
     return total / ecount
 
 
-def get_lotz_xs_ionisation(atomic_number, ionstage, electron_binding, ionpot_ev, en_ev):
+def get_lotz_xs_ionisation(atomic_number, ion_stage, electron_binding, ionpot_ev, en_ev):
     # Axelrod 1980 Eq 3.38
 
     en_erg = en_ev * EV
@@ -216,7 +218,7 @@ def get_lotz_xs_ionisation(atomic_number, ionstage, electron_binding, ionpot_ev,
     # print(f'{gamma=} {beta=}')
 
     n_z_binding, nt_shells = electron_binding.shape
-    q = get_electronoccupancy(atomic_number, ionstage, nt_shells)
+    q = get_electronoccupancy(atomic_number, ion_stage, nt_shells)
 
     part_sigma = 0.0
     for electron_loop in range(nt_shells):
@@ -233,10 +235,10 @@ def get_lotz_xs_ionisation(atomic_number, ionstage, electron_binding, ionpot_ev,
                 # is for 8 (corresponding to that shell) then just use the M4 value
                 print(
                     "WARNING: I'm trying to use a binding energy when I have no data. "
-                    f"element {atomic_number} ionstage {ionstage}\n"
+                    f"element {atomic_number} ion_stage {ion_stage}\n"
                 )
                 assert electron_loop == 8
-                # print("Z = %d, ionstage = %d\n", get_element(element), get_ionstage(element, ion));
+                # print("Z = %d, ion_stage = %d\n", get_element(element), get_ion_stage(element, ion));
 
         p = max(use2, use3)
 
@@ -312,10 +314,10 @@ def Psecondary(e_p, ionpot_ev, J, e_s=-1, epsilon=-1):
     return 1.0 / J / atan((e_p - ionpot_ev) / 2.0 / J) / (1 + ((e_s / J) ** 2))
 
 
-def get_J(Z, ionstage, ionpot_ev):
+def get_J(Z, ion_stage, ionpot_ev):
     # returns an energy in eV
     # values from Opal et al. 1971 as applied by Kozma & Fransson 1992
-    if ionstage == 1:
+    if ion_stage == 1:
         if Z == 2:  # He I
             return 15.8
         if Z == 10:  # Ne I
@@ -345,9 +347,9 @@ def get_arxs_array_shell(arr_enev, shell):
     return np.array([ar_xs(energy_ev, shell.ionpot_ev, shell.A, shell.B, shell.C, shell.D) for energy_ev in arr_enev])
 
 
-def get_arxs_array_ion(arr_enev, dfcollion, Z, ionstage):
+def get_arxs_array_ion(arr_enev, dfcollion, Z, ion_stage):
     ar_xs_array = np.zeros(len(arr_enev))
-    dfcollion_thision = dfcollion.query("Z == @Z and ionstage == @ionstage")
+    dfcollion_thision = dfcollion.query("Z == @Z and ion_stage == @ion_stage")
     for _index, shell in dfcollion_thision.iterrows():
         ar_xs_array += get_arxs_array_shell(arr_enev, shell)
 
@@ -457,7 +459,7 @@ def read_colliondata(collionfilename="collion.txt", modelpath: None | str | Path
         dfcollion = pd.read_csv(collionfile, sep=r"\s+", header=None, names=collionrow._fields)
 
     # assert len(dfcollion) == nrows  # artis enforces this, but last 10 rows were not inportant anyway (high ionized Ni)
-    return dfcollion.eval("ionstage = Z - nelec + 1")
+    return dfcollion.eval("ion_stage = Z - nelec + 1")
 
 
 def calculate_nt_frac_excitation(engrid, dftransitions, yvec, deposition_density_ev):
@@ -506,12 +508,12 @@ def calculate_N_e(energy_ev, engrid, ions, ionpopdict, dfcollion, yvec, dftransi
 
     deltaen = engrid[1] - engrid[0]
 
-    for Z, ionstage in ions:
+    for Z, ion_stage in ions:
         N_e_ion = 0.0
-        nnion = ionpopdict[(Z, ionstage)]
+        nnion = ionpopdict[(Z, ion_stage)]
 
-        if not noexcitation and (Z, ionstage) in dftransitions:
-            for _, row in dftransitions[(Z, ionstage)].iterrows():
+        if not noexcitation and (Z, ion_stage) in dftransitions:
+            for _, row in dftransitions[(Z, ion_stage)].iterrows():
                 epsilon_trans_ev = row.epsilon_trans_ev
                 if energy_ev + epsilon_trans_ev >= engrid[0]:
                     i = get_energyindex_lteq(en_ev=energy_ev + epsilon_trans_ev, engrid=engrid)
@@ -523,13 +525,13 @@ def calculate_N_e(energy_ev, engrid, ions, ionpopdict, dfcollion, yvec, dftransi
                     # yvecinterp = (1 - x) * yvec[i] + x * yvec[i + 1]
                     # N_e_ion += (nnlevel / nnion) * yvecinterp * get_xs_excitation(energy_ev + epsilon_trans_ev, row)
 
-        dfcollion_thision = dfcollion.query("Z == @Z and ionstage == @ionstage", inplace=False)
+        dfcollion_thision = dfcollion.query("Z == @Z and ion_stage == @ion_stage", inplace=False)
 
         for _index, shell in dfcollion_thision.iterrows():
             ionpot_ev = shell.ionpot_ev
 
             enlambda = min(engrid[-1] - energy_ev, energy_ev + ionpot_ev)
-            J = get_J(shell.Z, shell.ionstage, ionpot_ev)
+            J = get_J(shell.Z, shell.ion_stage, ionpot_ev)
 
             ar_xs_array = at.nonthermal.get_arxs_array_shell(engrid, shell)
 
@@ -640,7 +642,7 @@ def sfmatrix_add_ionization_shell(engrid, nnion, shell, sfmatrix):
     # related to ionisation cross sections
     deltaen = engrid[1] - engrid[0]
     ionpot_ev = shell.ionpot_ev
-    J = get_J(shell.Z, shell.ionstage, ionpot_ev)
+    J = get_J(shell.Z, shell.ion_stage, ionpot_ev)
     npts = len(engrid)
 
     ar_xs_array = at.nonthermal.get_arxs_array_shell(engrid, shell)
@@ -702,7 +704,7 @@ def differentialsfmatrix_add_ionization_shell(engrid, nnion, shell, sfmatrix):
     # related to ionisation cross sections
     delta_en = engrid[1] - engrid[0]
     ionpot_ev = shell.ionpot_ev
-    J = get_J(shell.Z, shell.ionstage, ionpot_ev)
+    J = get_J(shell.Z, shell.ion_stage, ionpot_ev)
     npts = len(engrid)
 
     ar_xs_array = at.nonthermal.get_arxs_array_shell(engrid, shell)
@@ -829,10 +831,12 @@ def solve_spencerfano_differentialform(
         sfmatrix[i, i] -= (lossfunction(en + deltaen, nne) - lossfngrid[i]) / deltaen
 
     dftransitions = {}
-    for Z, ionstage in ions:
-        nnion = ionpopdict[(Z, ionstage)]
-        print(f"  including Z={Z} ionstage {ionstage} ({at.get_ionstring(Z, ionstage)}) nnion={nnion:.2e} ionisation")
-        dfcollion_thision = dfcollion.query("Z == @Z and ionstage == @ionstage", inplace=False)
+    for Z, ion_stage in ions:
+        nnion = ionpopdict[(Z, ion_stage)]
+        print(
+            f"  including Z={Z} ion_stage {ion_stage} ({at.get_ionstring(Z, ion_stage)}) nnion={nnion:.2e} ionisation"
+        )
+        dfcollion_thision = dfcollion.query("Z == @Z and ion_stage == @ion_stage", inplace=False)
         # print(dfcollion_thision)
 
         for _index, shell in dfcollion_thision.iterrows():
@@ -883,26 +887,26 @@ def analyse_ntspectrum(
 
     Aconst = 1.33e-14 * EV * EV
 
-    for Z, ionstage in ions:
-        nnion = ionpopdict[(Z, ionstage)]
+    for Z, ion_stage in ions:
+        nnion = ionpopdict[(Z, ion_stage)]
         if nnion == 0.0:
-            print(f"skipping Z={Z:2d} ionstage {ionstage} due to nnion = {nnion}")
+            print(f"skipping Z={Z:2d} ion_stage {ion_stage} due to nnion = {nnion}")
             continue
         X_ion = nnion / nntot
-        dfcollion_thision = dfcollion.query("Z == @Z and ionstage == @ionstage", inplace=False)
+        dfcollion_thision = dfcollion.query("Z == @Z and ion_stage == @ion_stage", inplace=False)
         # if dfcollion.empty:
         #     continue
         ionpot_valence = dfcollion_thision.ionpot_ev.min()
 
         print(
-            f"====> Z={Z:2d} ionstage {ionstage} {at.get_ionstring(Z, ionstage)} (valence potential"
+            f"====> Z={Z:2d} ion_stage {ion_stage} {at.get_ionstring(Z, ion_stage)} (valence potential"
             f" {ionpot_valence:.1f} eV)"
         )
 
         print(f"               nnion: {nnion:.2e} [/cm3]")
         print(f"         nnion/nntot: {X_ion:.5f}")
 
-        frac_ionization_ion[(Z, ionstage)] = 0.0
+        frac_ionization_ion[(Z, ion_stage)] = 0.0
         # integralgamma = 0.
         eta_over_ionpot_sum = 0.0
         for _index, shell in dfcollion_thision.iterrows():
@@ -924,43 +928,43 @@ def analyse_ntspectrum(
                 # for k in range(10):
                 #     print(nnion * shell.ionpot_ev * yvec_reference[k] * ar_xs_array[k] * deltaen / E_init_ev)
 
-            frac_ionization_ion[(Z, ionstage)] += frac_ionization_shell
+            frac_ionization_ion[(Z, ion_stage)] += frac_ionization_shell
             eta_over_ionpot_sum += frac_ionization_shell / shell.ionpot_ev
 
-        frac_ionization += frac_ionization_ion[(Z, ionstage)]
+        frac_ionization += frac_ionization_ion[(Z, ion_stage)]
 
         eff_ionpot_2 = X_ion / eta_over_ionpot_sum if eta_over_ionpot_sum else math.inf
 
         eff_ionpot = (
-            ionpot_valence * X_ion / frac_ionization_ion[(Z, ionstage)]
-            if frac_ionization_ion[(Z, ionstage)] > 0.0
+            ionpot_valence * X_ion / frac_ionization_ion[(Z, ion_stage)]
+            if frac_ionization_ion[(Z, ion_stage)] > 0.0
             else math.inf
         )
 
-        print(f"     frac_ionization: {frac_ionization_ion[(Z, ionstage)]:.4f}")
+        print(f"     frac_ionization: {frac_ionization_ion[(Z, ion_stage)]:.4f}")
         if not noexcitation:
             if nnion > 0.0:
-                frac_excitation_ion[(Z, ionstage)] = calculate_nt_frac_excitation(
-                    engrid, dftransitions[(Z, ionstage)], yvec, deposition_density_ev
+                frac_excitation_ion[(Z, ion_stage)] = calculate_nt_frac_excitation(
+                    engrid, dftransitions[(Z, ion_stage)], yvec, deposition_density_ev
                 )
             else:
-                frac_excitation_ion[(Z, ionstage)] = 0.0
+                frac_excitation_ion[(Z, ion_stage)] = 0.0
 
-            if frac_excitation_ion[(Z, ionstage)] > 1:
-                frac_excitation_ion[(Z, ionstage)] = 0.0
-                print(f"Ignoring invalid frac_excitation_ion of {frac_excitation_ion[(Z, ionstage)]}.")
-            frac_excitation += frac_excitation_ion[(Z, ionstage)]
-            print(f"     frac_excitation: {frac_excitation_ion[(Z, ionstage)]:.4f}")
+            if frac_excitation_ion[(Z, ion_stage)] > 1:
+                frac_excitation_ion[(Z, ion_stage)] = 0.0
+                print(f"Ignoring invalid frac_excitation_ion of {frac_excitation_ion[(Z, ion_stage)]}.")
+            frac_excitation += frac_excitation_ion[(Z, ion_stage)]
+            print(f"     frac_excitation: {frac_excitation_ion[(Z, ion_stage)]:.4f}")
         else:
-            frac_excitation_ion[(Z, ionstage)] = 0.0
+            frac_excitation_ion[(Z, ion_stage)] = 0.0
 
         print(f" eff_ionpot_shellpot: {eff_ionpot_2:.2f} [eV]")
         print(f"  eff_ionpot_valence: {eff_ionpot:.2f} [eV]")
-        gamma_nt[(Z, ionstage)] = deposition_density_ev / nntot / eff_ionpot
-        print(f"  Spencer-Fano Gamma: {gamma_nt[(Z, ionstage)]:.2e} [/s]")
+        gamma_nt[(Z, ion_stage)] = deposition_density_ev / nntot / eff_ionpot
+        print(f"  Spencer-Fano Gamma: {gamma_nt[(Z, ion_stage)]:.2e} [/s]")
         # print(f'Alternative Gamma: {integralgamma:.2e}')
 
-        binding = get_mean_binding_energy(Z, ionstage, electron_binding, ionpot_ev=ionpot_valence)  # binding in erg
+        binding = get_mean_binding_energy(Z, ion_stage, electron_binding, ionpot_ev=ionpot_valence)  # binding in erg
         oneoverW = Aconst * binding / Zbar / (2 * math.pi * pow(QE, 4))  # per erg
         deposition_density_erg = deposition_density_ev * EV
 
@@ -1182,10 +1186,10 @@ def calculate_Latom_excitation(ions, ionpopdict, nntot, en_ev, adata, T_exc=5000
     maxnlevelsupper = 250
 
     k_b = 8.617333262145179e-05  # eV / K  # noqa: F841
-    for Z, ionstage in ions:
-        nnion = ionpopdict[(Z, ionstage)]
+    for Z, ion_stage in ions:
+        nnion = ionpopdict[(Z, ion_stage)]
 
-        ion = adata.query("Z == @Z and ionstage == @ionstage").iloc[0]
+        ion = adata.query("Z == @Z and ion_stage == @ion_stage").iloc[0]
         # filterquery = 'collstr >= 0 or forbidden == False'
         filterquery = "collstr != -999"
         if maxnlevelslower is not None:
@@ -1219,28 +1223,28 @@ def calculate_Latom_excitation(ions, ionpopdict, nntot, en_ev, adata, T_exc=5000
 
 def calculate_Latom_ionisation(ions, ionpopdict, dfcollion, nntot, nne, en_ev, nnetot=None, electron_binding=None):
     L_atom_sum = 0.0
-    for Z, ionstage in ions:
-        nnion = ionpopdict[(Z, ionstage)]
-        dfcollion_thision = dfcollion.query("Z == @Z and ionstage == @ionstage", inplace=False)
+    for Z, ion_stage in ions:
+        nnion = ionpopdict[(Z, ion_stage)]
+        dfcollion_thision = dfcollion.query("Z == @Z and ion_stage == @ion_stage", inplace=False)
         # ionpot_valence_ev = dfcollion_thision.ionpot_ev.min()
 
         for _, shell in dfcollion_thision.iterrows():
-            J = get_J(Z, ionstage, shell.ionpot_ev)
+            J = get_J(Z, ion_stage, shell.ionpot_ev)
 
             eps_avg = get_epsilon_avg(en_ev, J, shell.ionpot_ev)
             # eps_avg = shell.ionpot_ev
             if eps_avg > 0:
-                # sigma = get_lotz_xs_ionisation(Z, ionstage, electron_binding, ionpot_ev=ionpot_valence_ev, en_ev=en_ev)
+                # sigma = get_lotz_xs_ionisation(Z, ion_stage, electron_binding, ionpot_ev=ionpot_valence_ev, en_ev=en_ev)
                 sigma = at.nonthermal.ar_xs(en_ev, shell.ionpot_ev, shell.A, shell.B, shell.C, shell.D)
                 # L_atom_sum += ME * CLIGHT / math.pi / (QE ** 2) * sigma * eps_avg * nnion / nntot
                 L_atom_sum += sigma * eps_avg * EV * nnion / nntot
 
-        # J = get_J(Z, ionstage, ionpot_valence_ev)
+        # J = get_J(Z, ion_stage, ionpot_valence_ev)
         # eps_avg = get_epsilon_avg(en_ev, J, ionpot_valence_ev)
         # # test case: secondary electron has no energy
         # # eps_avg = ionpot_valence_ev
         # if eps_avg > 0:
-        #     sigma = get_lotz_xs_ionisation(Z, ionstage, electron_binding, ionpot_ev=ionpot_valence_ev, en_ev=en_ev)
+        #     sigma = get_lotz_xs_ionisation(Z, ion_stage, electron_binding, ionpot_ev=ionpot_valence_ev, en_ev=en_ev)
         #     # sigma = at.nonthermal.ar_xs(en_ev, shell.ionpot_ev, shell.A, shell.B, shell.C, shell.D)
         #     # L_atom_sum += ME * CLIGHT / math.pi / (QE ** 2) * sigma * eps_avg * nnion / nntot
         #     # nnebound = nnetot - nne
@@ -1342,8 +1346,8 @@ def workfunction_tests(modelpath, args):
         # print(f'{en_ev:.2f} eV L_elec_axelrod: {Lelec_axelrod_nne[i]:.3e} '
         #       f'Latom_axelrod: {Latom_axelrod[i]:.3e} ratio(elec/atom): {Lelec_axelrod_nne[i] / Latom_axelrod[i]:.2e} ratio(atom/elec) {Latom_axelrod[i] / Lelec_axelrod_nne[i]:.2e} bound/free {nnebound/nne:.2e}')
 
-    for Z, ionstage in ions:
-        dfcollion_thision = dfcollion.query("Z == @Z and ionstage == @ionstage", inplace=False)
+    for Z, ion_stage in ions:
+        dfcollion_thision = dfcollion.query("Z == @Z and ion_stage == @ion_stage", inplace=False)
 
         # dfcollion_thision.query('n == 3 and l == 2', inplace=True)
         # dfcollion_thision.eval('A = 0', inplace=True)
@@ -1356,20 +1360,20 @@ def workfunction_tests(modelpath, args):
         #     shellstr = f'\nn {shell.n} l {shell.l} ionpot {shell.ionpot_ev} eV'
         #     print(shellstr)
         #     e_p = arr_en_ev[-1]
-        #     J = get_J(Z, ionstage, shell.ionpot_ev)
+        #     J = get_J(Z, ion_stage, shell.ionpot_ev)
         #     e_s_test(axes[-1], shell.ionpot_ev, J, arr_en_ev, shellstr, color=f'C{shellindex}')
         #     shellindex += 1
 
         ionpot_valence_ev = dfcollion_thision.ionpot_ev.min()
-        print(f"\n===> ion Z {Z} ionstage {ionstage} ionpot_valence_ev {ionpot_valence_ev}")
+        print(f"\n===> ion Z {Z} ion_stage {ion_stage} ionpot_valence_ev {ionpot_valence_ev}")
         # print(dfcollion_thision)
 
         binding_alt = get_mean_binding_energy_alt(
-            Z, ionstage, electron_binding, ionpot_ev=ionpot_valence_ev
+            Z, ion_stage, electron_binding, ionpot_ev=ionpot_valence_ev
         )  # binding in erg
         print(f"mean binding energy: {binding_alt / EV:.2f} eV")
         Aconst = 1.33e-14 * EV * EV
-        binding = get_mean_binding_energy(Z, ionstage, electron_binding, ionpot_ev=ionpot_valence_ev)  # binding in erg
+        binding = get_mean_binding_energy(Z, ion_stage, electron_binding, ionpot_ev=ionpot_valence_ev)  # binding in erg
         oneoverW_limit_sim = Aconst * binding / Zbar / (2 * math.pi * pow(QE, 4))  # per erg
         workfn_limit_ev_sim = 1.0 / oneoverW_limit_sim / EV
         print(f"\n workfn_limit_ev_sim {workfn_limit_ev_sim:.2f} eV")
@@ -1377,12 +1381,12 @@ def workfunction_tests(modelpath, args):
         print(f"   eta_heat {1 - ionpot_valence_ev / workfn_limit_ev_sim:.3f}")
         arr_workfn_limit_sim = np.array([workfn_limit_ev_sim for _ in arr_en_ev])  # noqa: F841
 
-        arr_xs_ar92 = at.nonthermal.get_arxs_array_ion(arr_en_ev, dfcollion_thision, Z, ionstage)
+        arr_xs_ar92 = at.nonthermal.get_arxs_array_ion(arr_en_ev, dfcollion_thision, Z, ion_stage)
         Latom_ionisation_ar92 = arr_xs_ar92 * (ionpot_valence_ev * EV)  # noqa: F841
 
         arr_xs_lotz = np.array(
             [
-                get_lotz_xs_ionisation(Z, ionstage, electron_binding, ionpot_ev=ionpot_valence_ev, en_ev=en_ev)
+                get_lotz_xs_ionisation(Z, ion_stage, electron_binding, ionpot_ev=ionpot_valence_ev, en_ev=en_ev)
                 for en_ev in arr_en_ev
             ]
         )

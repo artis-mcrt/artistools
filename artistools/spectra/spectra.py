@@ -736,9 +736,9 @@ def get_flux_contributions(
     assert maxion is not None
     for element in range(nelements):
         nions = elementlist.nions[element]
-        # nions = elementlist.iloc[element].uppermost_ionstage - elementlist.iloc[element].lowermost_ionstage + 1
+        # nions = elementlist.iloc[element].uppermost_ion_stage - elementlist.iloc[element].lowermost_ion_stage + 1
         for ion in range(nions):
-            ionstage = ion + elementlist.lowermost_ionstage[element]
+            ion_stage = ion + elementlist.lowermost_ion_stage[element]
             ionserieslist: list[tuple[int, str]] = [
                 (element * maxion + ion, "bound-bound"),
                 (nelements * maxion + element * maxion + ion, "bound-free"),
@@ -793,11 +793,11 @@ def get_flux_contributions(
                 )
 
                 if emissiontypeclass == "bound-bound":
-                    linelabel = at.get_ionstring(elementlist.Z[element], ionstage)
+                    linelabel = at.get_ionstring(elementlist.Z[element], ion_stage)
                 elif emissiontypeclass == "free-free":
                     linelabel = "free-free"
                 else:
-                    linelabel = f"{at.get_ionstring(elementlist.Z[element], ionstage)} {emissiontypeclass}"
+                    linelabel = f"{at.get_ionstring(elementlist.Z[element], ion_stage)} {emissiontypeclass}"
 
                 contribution_list.append(
                     fluxcontributiontuple(

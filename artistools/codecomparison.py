@@ -137,9 +137,9 @@ def read_reference_estimators(
                         if ion_startnumber is None:
                             ion_startnumber = ion_number
 
-                        ionstage = ion_number + 1 if ion_startnumber == 0 else ion_number
+                        ion_stage = ion_number + 1 if ion_startnumber == 0 else ion_number
 
-                        iontuples.append((atomic_number, ionstage))
+                        iontuples.append((atomic_number, ion_stage))
 
                 elif not line.lstrip().startswith("#"):
                     cur_modelgridindex += 1
@@ -148,9 +148,9 @@ def read_reference_estimators(
 
                     assert len(row) == nstages + 1
                     assert len(iontuples) == nstages
-                    for (atomic_number, ionstage), strionfrac in zip(iontuples, row[1:]):
+                    for (atomic_number, ion_stage), strionfrac in zip(iontuples, row[1:]):
                         elsym = at.get_elsymbol(atomic_number)
-                        ionstr = at.get_ionstring(atomic_number, ionstage, sep="_", style="spectral")
+                        ionstr = at.get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
                         try:
                             ionfrac = float(strionfrac)
                             ionpop = ionfrac * estimators[tsmgi]["nntot"]

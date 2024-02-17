@@ -117,8 +117,8 @@ def write_ionfracts(
                     f.write(f"{v_mid:.2f}")
                     elabund = estimators[(timestep, modelgridindex)].get(f"nnelement_{elsymb}", 0)
                     for ion in range(nions):
-                        ionstage = ion + elementlist.lowermost_ionstage[element]
-                        ionstr = at.get_ionstring(atomic_number, ionstage, sep="_", style="spectral")
+                        ion_stage = ion + elementlist.lowermost_ion_stage[element]
+                        ionstr = at.get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
                         ionabund = estimators[(timestep, modelgridindex)].get(f"nnion_{ionstr}", 0)
                         ionfrac = ionabund / elabund if elabund > 0 else 0
                         if ionfrac > 0.0:
@@ -196,8 +196,8 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             description=__doc__,
         )
         addargs(parser)
-        parser.set_defaults(**kwargs)
-        args = parser.parse_args(argsraw)
+        at.set_args_from_dict(parser, kwargs)
+        args = parser.parse_args([] if kwargs else argsraw)
 
     if not args.modelpath:
         args.modelpath = [Path()]

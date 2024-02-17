@@ -33,10 +33,9 @@ jobs:
             - name: Build
               run: |
                   python3 -m setuptools_scm
-                  python3 setup.py sdist bdist_wheel
-                  # python3 -m build --sdist --wheel --outdir dist/ .
-                  twine check dist/*
+                  python3 -m build --sdist --wheel --outdir dist/ .
+                  python3 -m twine check dist/*
 
             - name: Publish to Test PyPI
               run: |
-                  twine upload --skip-existing --verbose -r testpypi -u __token__ -p ${{ secrets.TESTPYPI_TOKEN }} --non-interactive dist/*
+                  python3 -m twine upload --skip-existing --verbose -r testpypi -u __token__ -p ${{ secrets.TESTPYPI_TOKEN }} --non-interactive dist/*

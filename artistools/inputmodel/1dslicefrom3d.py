@@ -7,7 +7,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
-from artistools import CustomArgHelpFormatter
+import artistools as at
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -27,11 +27,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs: t.Any) -> None:
     if args is None:
         parser = argparse.ArgumentParser(
-            formatter_class=CustomArgHelpFormatter,
+            formatter_class=at.CustomArgHelpFormatter,
             description="Covert abundances.txt and model.txt from 3D to a one dimensional slice.",
         )
         addargs(parser)
-        parser.set_defaults(**kwargs)
+        at.set_args_from_dict(parser, kwargs)
         args = parser.parse_args()
 
     if not Path(args.outputfolder).exists():
