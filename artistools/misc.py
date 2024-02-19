@@ -987,31 +987,34 @@ def get_bflist(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame
     compositiondata = get_composition_data(modelpath)
     bflistpath = firstexisting(["bflist.out", "bflist.dat"], folder=modelpath, tryzipped=True)
     print(f"Reading {bflistpath}")
-
-    dfboundfree = pl.read_csv(
-        bflistpath,
-        skip_rows=1,
-        has_header=False,
-        separator=" ",
-        new_columns=["bfindex", "elementindex", "ionindex", "lowerlevel", "upperionlevel"],
-        dtypes={
-            "bfindex": pl.Int32,
-            "elementindex": pl.Int32,
-            "ionindex": pl.Int32,
-            "lowerlevel": pl.Int32,
-            "upperionlevel": pl.Int32,
-        },
-    ).lazy()
+    dtypes = {
+        "bfindex": pl.Int32,
+        "elementindex": pl.Int32,
+        "ionindex": pl.Int32,
+        "lowerlevel": pl.Int32,
+        "upperionlevel": pl.Int32,
+    }
+    try:
+        dfboundfree = pl.read_csv(
+            bflistpath,
+            skip_rows=1,
+            has_header=False,
+            separator=" ",
+            new_columns=["bfindex", "elementindex", "ionindex", "lowerlevel", "upperionlevel"],
+            dtypes=dtypes,
+        ).lazy()
+    except pl.NoDataError:
+        dfboundfree = pl.DataFrame(schema=dtypes).lazy()
 
     dfboundfree = dfboundfree.with_columns(
-        atomic_number=pl.col("elementindex")
-        .map_elements(lambda elementindex: compositiondata["Z"][elementindex])
-        .cast(pl.Int32),
+        atomic_number=pl.col("elementindex").map_elements(
+            lambda elementindex: compositiondata["Z"][elementindex], return_dtype=pl.Int32
+        ),
         ion_stage=(
             pl.col("ionindex")
-            + pl.col("elementindex")
-            .map_elements(lambda elementindex: compositiondata["lowermost_ion_stage"][elementindex])
-            .cast(pl.Int32)
+            + pl.col("elementindex").map_elements(
+                lambda elementindex: compositiondata["lowermost_ion_stage"][elementindex], return_dtype=pl.Int32
+            )
         ),
     )
 
