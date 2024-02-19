@@ -56,7 +56,9 @@ jobs:
               run: source ./setuptestdata.sh
 
             - name: Test with pytest
-              run: python3 -m pytest --cov=./ --cov-report=xml
+              run: |
+                  source .venv/bin/activate
+                  .venv/bin/pytest --cov=./ --cov-report=xml
 
             - name: Report coverage
               run: coverage report
