@@ -631,12 +631,6 @@ def make_emissionabsorption_plot(
         )
     else:
         arraylambda_angstroms = 2.99792458e18 / arraynu
-        if args.groupby not in {
-            None,
-            "ion",
-        }:
-            msg = "Only groupby='ion' is available unless --frompacket is used"
-            raise ValueError(msg)
         contribution_list, array_flambda_emission_total = at.spectra.get_flux_contributions(
             modelpath,
             filterfunc,
@@ -1212,7 +1206,7 @@ def addargs(parser) -> None:
         "-groupby",
         default="ion",
         choices=["ion", "line"],
-        help="Use a different color for each ion or line when using --showemission. groupby='line' requires --frompackets.",
+        help="Use a different color for each ion or line when using --showemission. groupby='line' implies --frompackets.",
     )
 
     parser.add_argument(
@@ -1403,7 +1397,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         len(args.specpath), args.color, args.label, args.linestyle, args.linealpha, args.dashes, args.linewidth
     )
 
-    if args.emissionvelocitycut:
+    if args.emissionvelocitycut or args.groupby == "line":
         args.frompackets = True
 
     if args.makevspecpol:
