@@ -35,7 +35,6 @@ jobs:
             - name: Set up Python ${{ matrix.python-version }}
               uses: actions/setup-python@v5
               with:
-                  cache: pip
                   python-version: ${{ matrix.python-version }}
 
             - name: Install artistools
@@ -61,7 +60,8 @@ jobs:
                   .venv/bin/pytest --cov=./ --cov-report=xml
 
             - name: Report coverage
-              run: coverage report
+              run: |
+                  .venv/bin/coverage report
 
             - name: Upload coverage to Codecov
               uses: codecov/codecov-action@v4
