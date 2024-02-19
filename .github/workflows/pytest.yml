@@ -40,8 +40,10 @@ jobs:
 
             - name: Install artistools
               run: |
-                  python3 -m pip install --upgrade pip
-                  python3 -m pip install .
+                  python3 -m pip install --upgrade uv
+                  uv venv
+                  source .venv/bin/activate
+                  uv pip install -e .
 
             - name: Cache test data
               uses: actions/cache@v4
