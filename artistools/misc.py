@@ -1086,12 +1086,21 @@ def get_linelist_pldf(modelpath: Path | str, get_ion_str: bool = False) -> pl.La
     linelist_lazy = (
         pl.scan_parquet(parquetfile)
         .with_columns(
-            pl.col(pl.UInt32).cast(pl.Int32), pl.col(pl.Int64).cast(pl.Int32), pl.col(pl.Float64).cast(pl.Float32)
+            pl.when(pl.col("lambda_angstroms").is_between(2000, 20000))
+            .then(pl.col("lambda_angstroms") / 1.0003)
+            .otherwise(pl.col("lambda_angstroms"))
+            .alias("lambda_angstroms_air"),
+            pl.col(pl.UInt32).cast(pl.Int32),
+            pl.col(pl.Int64).cast(pl.Int32),
+            pl.col(pl.Float64).cast(pl.Float32),
         )
         .with_columns(upperlevelindex=pl.col("upper_level") - 1, lowerlevelindex=pl.col("lower_level") - 1)
         .drop(["upper_level", "lower_level"])
         .with_columns(pl.col(pl.Int64).cast(pl.Int32))
     )
+
+    if "ionstage" in linelist_lazy.columns:
+        linelist_lazy = linelist_lazy.rename({"ionstage": "ion_stage"})
 
     if get_ion_str:
         linelist_lazy = (

@@ -863,7 +863,7 @@ def get_flux_contributions_from_packets(
         else pl.format(
             "{} λ{} {}-{}",
             pl.col("ion_str"),
-            pl.col("lambda_angstroms").round(1),
+            pl.col("lambda_angstroms_air").sub(0.5).round(0).cast(pl.String).str.strip_suffix(".0"),
             pl.col("upperlevelindex"),
             pl.col("lowerlevelindex"),
         )
