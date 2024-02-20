@@ -3,10 +3,32 @@ import subprocess
 import typing as t
 from pathlib import Path
 
+# top-level commands (one file installed per command)
+# we generally should phase this out except for a couple of main ones like at and artistools
+COMMANDS = [
+    "at",
+    "artistools",
+    "makeartismodel1dslicefromcone",
+    "makeartismodel",
+    "plotartisdensity",
+    "plotartisdeposition",
+    "plotartisestimators",
+    "plotartislightcurve",
+    "plotartislinefluxes",
+    "plotartismacroatom",
+    "plotartisnltepops",
+    "plotartisnonthermal",
+    "plotartisradfield",
+    "plotartisspectrum",
+    "plotartistransitions",
+    "plotartisinitialcomposition",
+    "plotartisviewingangles",
+]
+
 CommandType: t.TypeAlias = dict[str, t.Union[tuple[str, str], "CommandType"]]
 
 # new subparser based list
-dictcommands: CommandType = {
+subcommandtree: CommandType = {
     "comparetogsinetwork": ("gsinetwork", "main"),
     "deposition": ("deposition", "main_analytical"),
     "describeinputmodel": ("inputmodel.describeinputmodel", "main"),
@@ -52,36 +74,6 @@ dictcommands: CommandType = {
 }
 
 
-def get_commandlist() -> dict[str, tuple[str, str]]:
-    # direct commands (one file installed per command)
-    # we generally should phase this out except for a couple of main ones like at and artistools
-    return {
-        "at": ("artistools", "main"),
-        "artistools": ("artistools", "main"),
-        "makeartismodel1dslicefromcone": ("artistools.inputmodel.slice1dfromconein3dmodel", "main"),
-        "makeartismodel": ("artistools.inputmodel.makeartismodel", "main"),
-        "plotartisdensity": ("artistools.inputmodel.plotdensity", "main"),
-        "plotartisdeposition": ("artistools.deposition", "main"),
-        "plotartisestimators": ("artistools.estimators.plotestimators", "main"),
-        "plotartislightcurve": ("artistools.lightcurve.plotlightcurve", "main"),
-        "plotartislinefluxes": ("artistools.linefluxes", "main"),
-        "plotartismacroatom": ("artistools.macroatom", "main"),
-        "plotartisnltepops": ("artistools.nltepops.plotnltepops", "main"),
-        "plotartisnonthermal": ("artistools.nonthermal", "main"),
-        "plotartisradfield": ("artistools.radfield", "main"),
-        "plotartisspectrum": ("artistools.spectra.plotspectra", "main"),
-        "plotartistransitions": ("artistools.transitions", "main"),
-        "plotartisinitialcomposition": ("artistools.inputmodel.plotinitialcomposition", "main"),
-        "plotartisviewingangles": ("artistools.viewing_angles_visualization", "main"),
-    }
-
-
-def get_console_scripts() -> list[str]:
-    return [
-        f"{command} = {submodulename}:{funcname}" for command, (submodulename, funcname) in get_commandlist().items()
-    ]
-
-
 def setup_completions(*args: t.Any, **kwargs: t.Any) -> None:
     # Add the following lines to your .zshrc file to get command completion:
     # autoload -U bashcompinit
@@ -105,7 +97,7 @@ def setup_completions(*args: t.Any, **kwargs: t.Any) -> None:
         f.write(strsplit)
         f.write("\n\n")
 
-        for command in get_commandlist():
+        for command in COMMANDS:
             completecommand = strcommandregister.replace("__MY_COMMAND__", command)
             f.write(completecommand + "\n")
 

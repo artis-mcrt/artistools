@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-
+import argparse
 import math
 from collections import namedtuple
 from math import atan
@@ -284,7 +284,7 @@ def lossfunction(energy_ev, nne_cgs):
     return lossfunc / EV  # return as [eV / cm]
 
 
-def Psecondary(e_p, ionpot_ev, J, e_s=-1, epsilon=-1):
+def Psecondary(e_p: float, ionpot_ev: float, J: float, e_s: float = -1, epsilon: float = -1) -> float:
     # probability distribution function for secondaries energy e_s [eV] (or equivalently the energy loss of
     # the primary electron epsilon [eV]) given a primary energy e_p [eV] for an impact ionisation event
 
@@ -1257,7 +1257,7 @@ def calculate_Latom_ionisation(ions, ionpopdict, dfcollion, nntot, nne, en_ev, n
     return L_atom_sum
 
 
-def workfunction_tests(modelpath, args):
+def workfunction_tests(modelpath: str | Path, args: argparse.Namespace) -> None:
     electron_binding = read_binding_energies()
     dfcollion = at.nonthermal.read_colliondata()
 
@@ -1266,14 +1266,11 @@ def workfunction_tests(modelpath, args):
     )
     axes = [axes]
 
-    ionpopdict = {
-        # (16, 2): 3e5,
+    ionpopdict: dict[tuple[int, int], float] = {
         (26, 2): 1e5,
     }
 
-    # keep only the ion populations, not element or total populations
-    ions = [key for key in ionpopdict if isinstance(key, tuple) and len(key) == 2]
-    ions.sort()
+    ions = sorted(ionpopdict.keys())
 
     nntot = get_nntot(ions=ions, ionpopdict=ionpopdict)
     nnetot = get_nnetot(ions=ions, ionpopdict=ionpopdict)  # total electrons: free and bound included
@@ -1454,7 +1451,9 @@ def workfunction_tests(modelpath, args):
         integrand = arr_xs / (L / EV)
         # arr_workfn_integrated[i] is the en_ev / (integral xs / L dE from EMIN to E[i])
         with np.errstate(divide="ignore"):
-            arr_workfn_integrated = [arr_en_ev[i] / (sum((integrand * delta_en_ev)[:i])) for i in range(len(arr_en_ev))]
+            arr_workfn_integrated = np.array(
+                [arr_en_ev[i] / (sum((integrand * delta_en_ev)[:i])) for i in range(len(arr_en_ev))]
+            )
 
         print(f"\n workfn_integral_Emin_Emax: {arr_workfn_integrated[-1]:.2f} eV")
         print(f"   eta_ion  {ionpot_valence_ev / arr_workfn_integrated[-1]:.3f}")
