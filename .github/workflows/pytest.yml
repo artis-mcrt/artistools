@@ -57,7 +57,6 @@ jobs:
             - name: Check artistools command line tool
               run: |
                   .venv/bin/artistools --help
-                  .venv/bin/artistools setupcompletions
 
             - name: Test with pytest
               run: |
