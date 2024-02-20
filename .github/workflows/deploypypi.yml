@@ -26,7 +26,7 @@ jobs:
 
             - name: Build
               run: |
-                  python3 -m setuptools_scm
+                  python3 -m setuptools_scm --strip-dev
                   python3 -m build --sdist --wheel --outdir dist/ .
                   python3 -m twine check dist/*
 
