@@ -46,7 +46,7 @@ jobs:
             - name: Install artistools
               run: |
                   python3 -m pip install --upgrade uv
-                  uv venv .venv
+                  if [ ! -d ".venv" ]; then uv venv .venv; fi
                   source .venv/bin/activate
                   echo "PATH=$PWD/.venv/bin:$PATH" >> $GITHUB_ENV
                   uv pip install -e .
