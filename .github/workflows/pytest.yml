@@ -37,10 +37,16 @@ jobs:
               with:
                   python-version: ${{ matrix.python-version }}
 
+            - name: Cache venv
+              uses: actions/cache@v4
+              with:
+                  path: .venv-cache
+                  key: venvcache
+
             - name: Install artistools
               run: |
                   python3 -m pip install --upgrade uv
-                  uv venv
+                  uv venv --cache-dir .venv-cache .venv
                   source .venv/bin/activate
                   echo "PATH=$PWD/.venv/bin:$PATH" >> $GITHUB_ENV
                   uv pip install -e .
