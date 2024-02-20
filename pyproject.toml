@@ -267,7 +267,7 @@ exclude = ["tests", "**/dist", "**/lib", "**/build", "*.egg-info", "**/.*"]
 dependencies = {file = ["requirements.txt"]}
 
 [tool.setuptools_scm]
-write_to = "_version.py"
+version_file = "_version.py"
 local_scheme = "no-local-version"
 
 [tool.vulture]
