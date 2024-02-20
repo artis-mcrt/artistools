@@ -255,6 +255,7 @@ order-by-type = false
 
 [tool.setuptools]
 include-package-data = false
+license-files = ["LICENSE.txt"]
 
 [tool.setuptools.packages.find]
 namespaces = false
