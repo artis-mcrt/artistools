@@ -21,9 +21,10 @@ classifiers = [
     "Framework :: Matplotlib",
     "Intended Audience :: Science/Research",
 ]
-dynamic = ["version", "dependencies", "readme"]
+dynamic = ["version", "dependencies"]
 requires-python = ">=3.10"
 license = { file = "LICENSE.txt" }
+readme = {file = "README.md", content-type='text/markdown'}
 
 [project.urls]
 Repository ="https://www.github.com/artis-mcrt/artistools/"
@@ -261,7 +262,6 @@ where = ["."]
 exclude = ["tests", "build", "**/dist", "lib", "**/build"]
 
 [tool.setuptools.dynamic]
-readme = {file = ["README.md"]}
 dependencies = {file = ["requirements.txt"]}
 
 [tool.setuptools_scm]
