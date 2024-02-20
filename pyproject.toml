@@ -21,15 +21,32 @@ classifiers = [
     "Framework :: Matplotlib",
     "Intended Audience :: Science/Research",
 ]
-dynamic = ["version", "dependencies", "entry-points", "readme", "scripts"]
+dynamic = ["version", "dependencies", "readme"]
 requires-python = ">=3.10"
 license = { file = "LICENSE.txt" }
 
 [project.urls]
 Repository ="https://www.github.com/artis-mcrt/artistools/"
 
-#[project.scripts]
+[project.scripts]
 #atcompletions = "artistoolscompletions.sh"
+at = 'artistools:main'
+artistools = 'artistools:main'
+makeartismodel1dslicefromcone = 'artistools.inputmodel.slice1dfromconein3dmodel:main'
+makeartismodel = 'artistools.inputmodel.makeartismodel:main'
+plotartisdensity = 'artistools.inputmodel.plotdensity:main'
+plotartisdeposition = 'artistools.deposition:main'
+plotartisestimators = 'artistools.estimators.plotestimators:main'
+plotartislightcurve = 'artistools.lightcurve.plotlightcurve:main'
+plotartislinefluxes = 'artistools.linefluxes:main'
+plotartismacroatom = 'artistools.macroatom:main'
+plotartisnltepops = 'artistools.nltepops.plotnltepops:main'
+plotartisnonthermal = 'artistools.nonthermal:main'
+plotartisradfield = 'artistools.radfield:main'
+plotartisspectrum = 'artistools.spectra.plotspectra:main'
+plotartistransitions = 'artistools.transitions:main'
+plotartisinitialcomposition = 'artistools.inputmodel.plotinitialcomposition:main'
+plotartisviewingangles = 'artistools.viewing_angles_visualization:main'
 
 [tool.black]
 line-length = 120
@@ -235,16 +252,17 @@ ban-relative-imports = "all"
 force-single-line = true
 order-by-type = false
 
-#[tool.setuptools]
-#packages = ["artistools"]
-#include-package-data = true
+[tool.setuptools]
+include-package-data = false
+
+[tool.setuptools.packages.find]
+namespaces = false
+where = ["."]
+exclude = ["tests", "build", "**/dist", "lib", "**/build"]
 
 [tool.setuptools.dynamic]
 readme = {file = ["README.md"]}
 dependencies = {file = ["requirements.txt"]}
-
-[tool.setuptools.packages.find]
-where = ["."]
 
 [tool.setuptools_scm]
 write_to = "_version.py"

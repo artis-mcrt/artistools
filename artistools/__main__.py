@@ -8,12 +8,12 @@ import typing as t
 import argcomplete
 
 from artistools.commands import CommandType
-from artistools.commands import dictcommands as atdictcommands
+from artistools.commands import subcommandtree as atdictcommands
 from artistools.misc import CustomArgHelpFormatter
 
 
 def addsubparsers(
-    parser: argparse.ArgumentParser, parentcommand: str, dictcommands: CommandType, depth: int = 1
+    parser: argparse.ArgumentParser, parentcommand: str, subcommandtree: CommandType, depth: int = 1
 ) -> None:
     def func(args: t.Any) -> None:
         parser.print_help()
@@ -21,7 +21,7 @@ def addsubparsers(
     parser.set_defaults(func=func)
     subparsers = parser.add_subparsers(dest=f"{parentcommand} command", required=False)
 
-    for subcommand, subcommands in dictcommands.items():
+    for subcommand, subcommands in subcommandtree.items():
         strhelp: str | None
         if isinstance(subcommands, dict):
             strhelp = "command group"
@@ -40,7 +40,7 @@ def addsubparsers(
             subparser.set_defaults(func=func)
         else:
             assert not isinstance(subcommands, tuple)
-            addsubparsers(parser=subparser, parentcommand=subcommand, dictcommands=subcommands, depth=depth + 1)
+            addsubparsers(parser=subparser, parentcommand=subcommand, subcommandtree=subcommands, depth=depth + 1)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
