@@ -36,7 +36,15 @@ _python_argcomplete() {
             _ARGCOMPLETE_SHELL="zsh" \
             _ARGCOMPLETE_SUPPRESS_SPACE=1 \
             __python_argcomplete_run ${script:-${words[1]}}))
-        _describe "${words[1]}" completions -o nosort
+        local nosort=()
+        local nospace=()
+        if is-at-least 5.8; then
+            nosort=(-o nosort)
+        fi
+        if [[ "${completions-}" =~ ([^\\]): && "${match[1]}" =~ [=/:] ]]; then
+            nospace=(-S '')
+        fi
+        _describe "${words[1]}" completions "${nosort[@]}" "${nospace[@]}"
     else
         local SUPPRESS_SPACE=0
         if compopt +o nospace 2> /dev/null; then
@@ -63,102 +71,119 @@ _python_argcomplete() {
 if [[ -z "${ZSH_VERSION-}" ]]; then
     complete -o nospace -o default -o bashdefault -F _python_argcomplete at
 else
+    autoload is-at-least
     compdef _python_argcomplete at
 fi
 
 if [[ -z "${ZSH_VERSION-}" ]]; then
     complete -o nospace -o default -o bashdefault -F _python_argcomplete artistools
 else
+    autoload is-at-least
     compdef _python_argcomplete artistools
 fi
 
 if [[ -z "${ZSH_VERSION-}" ]]; then
     complete -o nospace -o default -o bashdefault -F _python_argcomplete makeartismodel1dslicefromcone
 else
+    autoload is-at-least
     compdef _python_argcomplete makeartismodel1dslicefromcone
 fi
 
 if [[ -z "${ZSH_VERSION-}" ]]; then
     complete -o nospace -o default -o bashdefault -F _python_argcomplete makeartismodel
 else
+    autoload is-at-least
     compdef _python_argcomplete makeartismodel
 fi
 
 if [[ -z "${ZSH_VERSION-}" ]]; then
-    complete -o nospace -o default -o bashdefault -F _python_argcomplete plotartismodeldensity
+    complete -o nospace -o default -o bashdefault -F _python_argcomplete plotartisdensity
 else
-    compdef _python_argcomplete plotartismodeldensity
+    autoload is-at-least
+    compdef _python_argcomplete plotartisdensity
 fi
 
 if [[ -z "${ZSH_VERSION-}" ]]; then
-    complete -o nospace -o default -o bashdefault -F _python_argcomplete plotartismodeldeposition
+    complete -o nospace -o default -o bashdefault -F _python_argcomplete plotartisdeposition
 else
-    compdef _python_argcomplete plotartismodeldeposition
+    autoload is-at-least
+    compdef _python_argcomplete plotartisdeposition
 fi
 
 if [[ -z "${ZSH_VERSION-}" ]]; then
     complete -o nospace -o default -o bashdefault -F _python_argcomplete plotartisestimators
 else
+    autoload is-at-least
     compdef _python_argcomplete plotartisestimators
 fi
 
 if [[ -z "${ZSH_VERSION-}" ]]; then
     complete -o nospace -o default -o bashdefault -F _python_argcomplete plotartislightcurve
 else
+    autoload is-at-least
     compdef _python_argcomplete plotartislightcurve
 fi
 
 if [[ -z "${ZSH_VERSION-}" ]]; then
     complete -o nospace -o default -o bashdefault -F _python_argcomplete plotartislinefluxes
 else
+    autoload is-at-least
     compdef _python_argcomplete plotartislinefluxes
 fi
 
 if [[ -z "${ZSH_VERSION-}" ]]; then
     complete -o nospace -o default -o bashdefault -F _python_argcomplete plotartismacroatom
 else
+    autoload is-at-least
     compdef _python_argcomplete plotartismacroatom
 fi
 
 if [[ -z "${ZSH_VERSION-}" ]]; then
     complete -o nospace -o default -o bashdefault -F _python_argcomplete plotartisnltepops
 else
+    autoload is-at-least
     compdef _python_argcomplete plotartisnltepops
 fi
 
 if [[ -z "${ZSH_VERSION-}" ]]; then
     complete -o nospace -o default -o bashdefault -F _python_argcomplete plotartisnonthermal
 else
+    autoload is-at-least
     compdef _python_argcomplete plotartisnonthermal
 fi
 
 if [[ -z "${ZSH_VERSION-}" ]]; then
     complete -o nospace -o default -o bashdefault -F _python_argcomplete plotartisradfield
 else
+    autoload is-at-least
     compdef _python_argcomplete plotartisradfield
 fi
 
 if [[ -z "${ZSH_VERSION-}" ]]; then
     complete -o nospace -o default -o bashdefault -F _python_argcomplete plotartisspectrum
 else
+    autoload is-at-least
     compdef _python_argcomplete plotartisspectrum
 fi
 
 if [[ -z "${ZSH_VERSION-}" ]]; then
     complete -o nospace -o default -o bashdefault -F _python_argcomplete plotartistransitions
 else
+    autoload is-at-least
     compdef _python_argcomplete plotartistransitions
 fi
 
 if [[ -z "${ZSH_VERSION-}" ]]; then
     complete -o nospace -o default -o bashdefault -F _python_argcomplete plotartisinitialcomposition
 else
+    autoload is-at-least
     compdef _python_argcomplete plotartisinitialcomposition
 fi
 
 if [[ -z "${ZSH_VERSION-}" ]]; then
     complete -o nospace -o default -o bashdefault -F _python_argcomplete plotartisviewingangles
 else
+    autoload is-at-least
     compdef _python_argcomplete plotartisviewingangles
 fi
 

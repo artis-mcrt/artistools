@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
+import contextlib
 import hashlib
 import importlib
 import inspect
 import math
 import typing as t
+from pathlib import Path
 
 import artistools as at
 
@@ -23,12 +25,21 @@ def funcname() -> str:
 
 
 def test_commands() -> None:
-    # ensure that the commands are pointing to valid submodule.function() targets
-    for _command, (submodulename, funcname) in sorted(at.commands.get_commandlist().items()):
-        submodule = importlib.import_module(submodulename)
-        assert hasattr(submodule, funcname) or (
-            funcname == "main" and hasattr(importlib.import_module(f"{submodulename}.__main__"), funcname)
-        )
+    commands: dict[str, tuple[str, str]] = {}
+
+    with contextlib.suppress(ImportError):
+        import tomllib
+
+        with Path("pyproject.toml").open("rb") as f:
+            pyproj = tomllib.load(f)
+        commands = {k: tuple(v.split(":")) for k, v in pyproj["project"]["scripts"].items()}
+
+        # ensure that the commands are pointing to valid submodule.function() targets
+        for command, (submodulename, funcname) in commands.items():
+            submodule = importlib.import_module(submodulename)
+            assert hasattr(submodule, funcname) or (
+                funcname == "main" and hasattr(importlib.import_module(f"{submodulename}.__main__"), funcname)
+            ), f"{submodulename}.{funcname} not found for command {command}"
 
     def recursive_check(dictcmd: dict[str, t.Any]) -> None:
         for cmdtarget in dictcmd.values():
@@ -43,7 +54,7 @@ def test_commands() -> None:
                     funcname == "main" and hasattr(importlib.import_module(f"{namestr}.__main__"), funcname)
                 )
 
-    recursive_check(at.commands.dictcommands)
+    recursive_check(at.commands.subcommandtree)
 
 
 def test_timestep_times() -> None:

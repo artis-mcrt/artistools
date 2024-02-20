@@ -1,8 +1,15 @@
 recursive-include artistools *.csv
 recursive-include artistools *.txt
 recursive-include artistools matplotlibrc
-global-include *.pyi
-global-include *.typed
 global-include *.md
 global-include *.cff
 include LICENSE.txt
+recursive-exclude dist *
+recursive-exclude build *
+prune **/.*
+prune **/*.egg*
+prune tests
+prune build
+prune lib
+prune dist
+prune images
