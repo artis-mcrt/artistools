@@ -54,6 +54,11 @@ jobs:
               working-directory: tests/data/
               run: source ./setuptestdata.sh
 
+            - name: Check artistools command line tool
+              run: |
+                  artistools --help
+                  artistools setupcompletions
+
             - name: Test with pytest
               run: |
                   source .venv/bin/activate
