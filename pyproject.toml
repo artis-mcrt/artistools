@@ -254,13 +254,14 @@ force-single-line = true
 order-by-type = false
 
 [tool.setuptools]
-include-package-data = false
+include-package-data = true
 license-files = ["LICENSE.txt"]
 
 [tool.setuptools.packages.find]
 namespaces = false
 where = ["."]
-exclude = ["tests", "build", "**/dist", "lib", "**/build"]
+include = ["*", "**/matplotlibrc", "**/data"]
+exclude = ["tests", "**/dist", "**/lib", "**/build", "*.egg-info", "**/.*"]
 
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
