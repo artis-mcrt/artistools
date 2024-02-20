@@ -42,6 +42,7 @@ jobs:
                   python3 -m pip install --upgrade uv
                   uv venv
                   source .venv/bin/activate
+                  echo "PATH=$PWD/.venv/bin:$PATH" >> $GITHUB_ENV
                   uv pip install -e .
 
             - name: Cache test data
@@ -57,6 +58,7 @@ jobs:
             - name: Check artistools command line tool
               run: |
                   .venv/bin/artistools --help
+                  .venv/bin/artistools setupcompletions
 
             - name: Test with pytest
               run: |
