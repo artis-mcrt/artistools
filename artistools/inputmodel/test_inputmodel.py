@@ -328,12 +328,12 @@ def lower_dim_and_check_mass_conservation(outputdimensions: int) -> None:
 
 
 def test_dimension_reduce_3d_2d() -> None:
-    lower_dim_and_check_mass_conservation(2)
+    lower_dim_and_check_mass_conservation(outputdimensions=2)
 
 
 def test_dimension_reduce_3d_1d() -> None:
-    lower_dim_and_check_mass_conservation(1)
+    lower_dim_and_check_mass_conservation(outputdimensions=1)
 
 
 def test_dimension_reduce_3d_0d() -> None:
-    lower_dim_and_check_mass_conservation(0)
+    lower_dim_and_check_mass_conservation(outputdimensions=0)
