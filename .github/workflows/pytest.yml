@@ -40,7 +40,7 @@ jobs:
             - name: Cache uv
               uses: actions/cache@v4
               with:
-                  path: /Users/runner/Library/Caches/uv
+                  path: ~/Library/Caches/uv
                   key: py${{ matrix.python-version }}-uvcache
 
             - name: Install artistools

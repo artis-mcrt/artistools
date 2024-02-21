@@ -13,13 +13,6 @@ outputpath = at.get_config()["path_testoutput"]
 testdatapath = at.get_config()["path_testdata"]
 
 
-def clear_modelfiles() -> None:
-    (outputpath / "model.txt").unlink(missing_ok=True)
-    (outputpath / "model.parquet").unlink(missing_ok=True)
-    (outputpath / "abundances.txt").unlink(missing_ok=True)
-    (outputpath / "abundances.parquet").unlink(missing_ok=True)
-
-
 def test_describeinputmodel() -> None:
     at.inputmodel.describeinputmodel.main(argsraw=[], inputfile=modelpath, isotopes=True)
 
@@ -223,28 +216,33 @@ def test_make1dmodelfromcone() -> None:
 
 
 def test_makemodel_botyanski2017() -> None:
-    clear_modelfiles()
-    at.inputmodel.botyanski2017.main(argsraw=[], outputpath=outputpath)
+    outpath = outputpath / "test_makemodel_botyanski2017"
+    outpath.mkdir(exist_ok=True, parents=True)
+    at.inputmodel.botyanski2017.main(argsraw=[], outputpath=outpath)
 
 
 def test_makemodel() -> None:
-    clear_modelfiles()
-    at.inputmodel.makeartismodel.main(argsraw=[], modelpath=modelpath, outputpath=outputpath)
+    outpath = outputpath / "test_makemodel"
+    outpath.mkdir(exist_ok=True, parents=True)
+    at.inputmodel.makeartismodel.main(argsraw=[], modelpath=modelpath, outputpath=outpath)
 
 
 def test_makemodel_energyfiles() -> None:
-    clear_modelfiles()
-    at.inputmodel.makeartismodel.main(argsraw=[], modelpath=modelpath, makeenergyinputfiles=True, outputpath=outputpath)
+    outpath = outputpath / "test_makemodel_energyfiles"
+    outpath.mkdir(exist_ok=True, parents=True)
+    at.inputmodel.makeartismodel.main(argsraw=[], modelpath=modelpath, makeenergyinputfiles=True, outputpath=outpath)
 
 
 def test_maketardismodel() -> None:
-    clear_modelfiles()
-    at.inputmodel.to_tardis.main(argsraw=[], inputpath=modelpath, outputpath=outputpath)
+    outpath = outputpath / "test_maketardismodel"
+    outpath.mkdir(exist_ok=True, parents=True)
+    at.inputmodel.to_tardis.main(argsraw=[], inputpath=modelpath, outputpath=outpath)
 
 
 def test_make_empty_abundance_file() -> None:
-    clear_modelfiles()
-    at.inputmodel.save_empty_abundance_file(npts_model=50, outputfilepath=outputpath)
+    outpath = outputpath / "test_make_empty_abundance_file"
+    outpath.mkdir(exist_ok=True, parents=True)
+    at.inputmodel.save_empty_abundance_file(npts_model=50, outputfilepath=outpath)
 
 
 def test_opacity_by_Ye_file() -> None:
@@ -267,7 +265,6 @@ def test_plotinitialcomposition() -> None:
 
 
 def test_save_load_3d_model() -> None:
-    clear_modelfiles()
     lzdfmodel, modelmeta = at.inputmodel.get_empty_3d_model(ncoordgrid=50, vmax=1000, t_model_init_days=1)
     dfmodel = lzdfmodel.collect()
 
