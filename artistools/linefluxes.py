@@ -75,7 +75,7 @@ def get_packets_with_emtype(
     processfile = partial(get_packets_with_emtype_onefile, emtypecolumn, lineindices)
     if at.get_config()["num_processes"] > 1:
         print(f"Reading packets files with {at.get_config()['num_processes']} processes")
-        with multiprocessing.get_context("fork").Pool(processes=at.get_config()["num_processes"]) as pool:
+        with multiprocessing.get_context("spawn").Pool(processes=at.get_config()["num_processes"]) as pool:
             arr_dfmatchingpackets = pool.map(processfile, packetsfiles)
             pool.close()
             pool.join()

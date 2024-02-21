@@ -14,6 +14,8 @@ modelpath_3d = at.get_config()["path_testdata"] / "testmodel_3d_10^3"
 outputpath = at.get_config()["path_testoutput"]
 outputpath.mkdir(exist_ok=True, parents=True)
 
+REPOPATH = at.get_config("path_artistools_repository")
+
 
 def funcname() -> str:
     """Get the name of the calling function."""
@@ -30,7 +32,8 @@ def test_commands() -> None:
     with contextlib.suppress(ImportError):
         import tomllib
 
-        with Path("pyproject.toml").open("rb") as f:
+        assert isinstance(REPOPATH, Path)
+        with (REPOPATH / "pyproject.toml").open("rb") as f:
             pyproj = tomllib.load(f)
         commands = {k: tuple(v.split(":")) for k, v in pyproj["project"]["scripts"].items()}
 

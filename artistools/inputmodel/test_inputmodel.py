@@ -13,13 +13,6 @@ outputpath = at.get_config()["path_testoutput"]
 testdatapath = at.get_config()["path_testdata"]
 
 
-def clear_modelfiles() -> None:
-    (outputpath / "model.txt").unlink(missing_ok=True)
-    (outputpath / "model.parquet").unlink(missing_ok=True)
-    (outputpath / "abundances.txt").unlink(missing_ok=True)
-    (outputpath / "abundances.parquet").unlink(missing_ok=True)
-
-
 def test_describeinputmodel() -> None:
     at.inputmodel.describeinputmodel.main(argsraw=[], inputfile=modelpath, isotopes=True)
 
@@ -223,28 +216,33 @@ def test_make1dmodelfromcone() -> None:
 
 
 def test_makemodel_botyanski2017() -> None:
-    clear_modelfiles()
-    at.inputmodel.botyanski2017.main(argsraw=[], outputpath=outputpath)
+    outpath = outputpath / "test_makemodel_botyanski2017"
+    outpath.mkdir(exist_ok=True, parents=True)
+    at.inputmodel.botyanski2017.main(argsraw=[], outputpath=outpath)
 
 
 def test_makemodel() -> None:
-    clear_modelfiles()
-    at.inputmodel.makeartismodel.main(argsraw=[], modelpath=modelpath, outputpath=outputpath)
+    outpath = outputpath / "test_makemodel"
+    outpath.mkdir(exist_ok=True, parents=True)
+    at.inputmodel.makeartismodel.main(argsraw=[], modelpath=modelpath, outputpath=outpath)
 
 
 def test_makemodel_energyfiles() -> None:
-    clear_modelfiles()
-    at.inputmodel.makeartismodel.main(argsraw=[], modelpath=modelpath, makeenergyinputfiles=True, outputpath=outputpath)
+    outpath = outputpath / "test_makemodel_energyfiles"
+    outpath.mkdir(exist_ok=True, parents=True)
+    at.inputmodel.makeartismodel.main(argsraw=[], modelpath=modelpath, makeenergyinputfiles=True, outputpath=outpath)
 
 
 def test_maketardismodel() -> None:
-    clear_modelfiles()
-    at.inputmodel.to_tardis.main(argsraw=[], inputpath=modelpath, outputpath=outputpath)
+    outpath = outputpath / "test_maketardismodel"
+    outpath.mkdir(exist_ok=True, parents=True)
+    at.inputmodel.to_tardis.main(argsraw=[], inputpath=modelpath, outputpath=outpath)
 
 
 def test_make_empty_abundance_file() -> None:
-    clear_modelfiles()
-    at.inputmodel.save_empty_abundance_file(npts_model=50, outputfilepath=outputpath)
+    outpath = outputpath / "test_make_empty_abundance_file"
+    outpath.mkdir(exist_ok=True, parents=True)
+    at.inputmodel.save_empty_abundance_file(npts_model=50, outputfilepath=outpath)
 
 
 def test_opacity_by_Ye_file() -> None:
@@ -267,7 +265,6 @@ def test_plotinitialcomposition() -> None:
 
 
 def test_save_load_3d_model() -> None:
-    clear_modelfiles()
     lzdfmodel, modelmeta = at.inputmodel.get_empty_3d_model(ncoordgrid=50, vmax=1000, t_model_init_days=1)
     dfmodel = lzdfmodel.collect()
 
@@ -276,20 +273,19 @@ def test_save_load_3d_model() -> None:
     dfmodel[95200, "rho"] = 3
     dfmodel[75001, "rho"] = 0.5
 
-    at.inputmodel.save_modeldata(outpath=outputpath, dfmodel=dfmodel, modelmeta=modelmeta)
-    dfmodel2, modelmeta2 = at.inputmodel.get_modeldata_polars(modelpath=outputpath)
+    outpath = outputpath / "test_save_load_3d_model"
+    at.inputmodel.save_modeldata(outpath=outpath, dfmodel=dfmodel, modelmeta=modelmeta)
+    dfmodel2, modelmeta2 = at.inputmodel.get_modeldata_polars(modelpath=outpath)
     assert dfmodel.equals(dfmodel2.collect())
     assert modelmeta == modelmeta2
 
     # next load will use the parquet file
-    dfmodel3, modelmeta3 = at.inputmodel.get_modeldata_polars(modelpath=outputpath)
+    dfmodel3, modelmeta3 = at.inputmodel.get_modeldata_polars(modelpath=outpath)
     assert dfmodel.equals(dfmodel3.collect())
     assert modelmeta == modelmeta3
 
 
-def test_dimension_reduce_3d_model() -> None:
-    outpath = outputpath / "test_dimension_reduce_3d_model"
-    outpath.mkdir(exist_ok=True, parents=True)
+def lower_dim_and_check_mass_conservation(outputdimensions: int) -> None:
     dfmodel3d_pl_lazy, modelmeta_3d = at.inputmodel.get_empty_3d_model(ncoordgrid=50, vmax=100000, t_model_init_days=1)
     dfmodel3d_pl = dfmodel3d_pl_lazy.collect()
     mgi1 = 26 * 26 * 26 + 26 * 26 + 26
@@ -303,30 +299,41 @@ def test_dimension_reduce_3d_model() -> None:
         dfmodel=dfmodel3d_pl, modelmeta=modelmeta_3d, derived_cols=["mass_g"]
     ).collect()
 
-    for outputdimensions in [0, 1, 2]:
-        (
-            dfmodel_lowerd,
-            dfabundances_lowerd,
-            dfgridcontributions_lowerd,
-            modelmeta_lowerd,
-        ) = at.inputmodel.dimension_reduce_3d_model(
-            dfmodel=dfmodel3d_pl, modelmeta=modelmeta_3d, outputdimensions=outputdimensions
-        )
+    outpath = outputpath / "test_dimension_reduce_3d_{outputdimensions:d}d"
+    outpath.mkdir(exist_ok=True, parents=True)
+    (
+        dfmodel_lowerd,
+        dfabundances_lowerd,
+        dfgridcontributions_lowerd,
+        modelmeta_lowerd,
+    ) = at.inputmodel.dimension_reduce_3d_model(
+        dfmodel=dfmodel3d_pl, modelmeta=modelmeta_3d, outputdimensions=outputdimensions
+    )
 
-        at.inputmodel.save_modeldata(outpath=outpath, dfmodel=dfmodel_lowerd, modelmeta=modelmeta_lowerd)
+    at.inputmodel.save_modeldata(outpath=outpath, dfmodel=dfmodel_lowerd, modelmeta=modelmeta_lowerd)
 
-        dfmodel_lowerd_lz, modelmeta_lowerd = at.inputmodel.get_modeldata_polars(
-            modelpath=outpath, derived_cols=["mass_g"]
-        )
-        dfmodel_lowerd = dfmodel_lowerd_lz.collect()
+    dfmodel_lowerd_lz, modelmeta_lowerd = at.inputmodel.get_modeldata_polars(modelpath=outpath, derived_cols=["mass_g"])
+    dfmodel_lowerd = dfmodel_lowerd_lz.collect()
 
-        # check that the total mass is conserved
-        assert np.isclose(dfmodel_lowerd["mass_g"].sum(), dfmodel3d_pl["mass_g"].sum())
+    # check that the total mass is conserved
+    assert np.isclose(dfmodel_lowerd["mass_g"].sum(), dfmodel3d_pl["mass_g"].sum())
 
-        # check that the total mass of each species is conserved
-        for col in dfmodel3d_pl.columns:
-            if col.startswith("X_"):
-                assert np.isclose(
-                    (dfmodel_lowerd["mass_g"] * dfmodel_lowerd[col]).sum(),
-                    (dfmodel3d_pl["mass_g"] * dfmodel3d_pl[col]).sum(),
-                )
+    # check that the total mass of each species is conserved
+    for col in dfmodel3d_pl.columns:
+        if col.startswith("X_"):
+            assert np.isclose(
+                (dfmodel_lowerd["mass_g"] * dfmodel_lowerd[col]).sum(),
+                (dfmodel3d_pl["mass_g"] * dfmodel3d_pl[col]).sum(),
+            )
+
+
+def test_dimension_reduce_3d_2d() -> None:
+    lower_dim_and_check_mass_conservation(outputdimensions=2)
+
+
+def test_dimension_reduce_3d_1d() -> None:
+    lower_dim_and_check_mass_conservation(outputdimensions=1)
+
+
+def test_dimension_reduce_3d_0d() -> None:
+    lower_dim_and_check_mass_conservation(outputdimensions=0)
