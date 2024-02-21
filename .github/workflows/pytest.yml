@@ -37,6 +37,12 @@ jobs:
               with:
                   python-version: ${{ matrix.python-version }}
 
+            - name: Cache uv
+              uses: actions/cache@v4
+              with:
+                  path: /Users/runner/Library/Caches/uv
+                  key: py${{ matrix.python-version }}-uvcache
+
             - name: Install artistools
               run: |
                   python3 -m pip install --upgrade uv
