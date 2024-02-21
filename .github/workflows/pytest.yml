@@ -70,7 +70,7 @@ jobs:
             - name: Test with pytest
               run: |
                   source .venv/bin/activate
-                  .venv/bin/pytest --cov=./ --cov-report=xml
+                  .venv/bin/pytest --cov=./ --cov-report=xml -n 2
 
             - name: Report coverage
               run: |
