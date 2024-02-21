@@ -276,13 +276,14 @@ def test_save_load_3d_model() -> None:
     dfmodel[95200, "rho"] = 3
     dfmodel[75001, "rho"] = 0.5
 
-    at.inputmodel.save_modeldata(outpath=outputpath, dfmodel=dfmodel, modelmeta=modelmeta)
-    dfmodel2, modelmeta2 = at.inputmodel.get_modeldata_polars(modelpath=outputpath)
+    outpath = outputpath / "test_save_load_3d_model"
+    at.inputmodel.save_modeldata(outpath=outpath, dfmodel=dfmodel, modelmeta=modelmeta)
+    dfmodel2, modelmeta2 = at.inputmodel.get_modeldata_polars(modelpath=outpath)
     assert dfmodel.equals(dfmodel2.collect())
     assert modelmeta == modelmeta2
 
     # next load will use the parquet file
-    dfmodel3, modelmeta3 = at.inputmodel.get_modeldata_polars(modelpath=outputpath)
+    dfmodel3, modelmeta3 = at.inputmodel.get_modeldata_polars(modelpath=outpath)
     assert dfmodel.equals(dfmodel3.collect())
     assert modelmeta == modelmeta3
 
