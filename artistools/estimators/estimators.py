@@ -266,16 +266,22 @@ def get_rankbatch_parquetfile(
         time_start = time.perf_counter()
 
         pldf_group = None
-        with multiprocessing.get_context("spawn").Pool(processes=at.get_config()["num_processes"]) as pool:
-            for pldf_file in pool.imap(read_estimators_from_file, estfilepaths):
-                if pldf_group is None:
-                    pldf_group = pldf_file
-                else:
-                    pldf_group = pl.concat([pldf_group, pldf_file], how="diagonal_relaxed")
+        if at.get_config()["num_processes"] > 1:
+            with multiprocessing.get_context("spawn").Pool(processes=at.get_config()["num_processes"]) as pool:
+                for pldf_file in pool.imap(read_estimators_from_file, estfilepaths):
+                    if pldf_group is None:
+                        pldf_group = pldf_file
+                    else:
+                        pldf_group = pl.concat([pldf_group, pldf_file], how="diagonal_relaxed")
 
-            pool.close()
-            pool.join()
-            pool.terminate()
+                pool.close()
+                pool.join()
+                pool.terminate()
+        else:
+            for pldf_file in (read_estimators_from_file(estfilepath) for estfilepath in estfilepaths):
+                pldf_group = (
+                    pldf_file if pldf_group is None else pl.concat([pldf_group, pldf_file], how="diagonal_relaxed")
+                )
 
         print(f"    took {time.perf_counter() - time_start:.1f} s")
 
