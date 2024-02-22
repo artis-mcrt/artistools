@@ -298,7 +298,7 @@ def readfile_text(packetsfile: Path | str, modelpath: Path = Path()) -> pl.DataF
         fpackets = at.zopen(packetsfile, mode="r", encoding="utf-8")
 
         datastartpos = fpackets.tell()  # will be updated if this was actually the start of a header
-        firstline = fpackets.readline().decode()
+        firstline = fpackets.readline()
 
         if firstline.lstrip().startswith("#"):
             column_names = firstline.lstrip("#").split()
@@ -306,7 +306,7 @@ def readfile_text(packetsfile: Path | str, modelpath: Path = Path()) -> pl.DataF
 
             # get the column count from the first data line to check header matched
             datastartpos = fpackets.tell()
-            dataline = fpackets.readline().decode()
+            dataline = fpackets.readline()
             inputcolumncount = len(dataline.split())
             assert inputcolumncount == len(column_names)
         else:
