@@ -41,7 +41,7 @@ jobs:
               uses: actions/cache@v4
               with:
                   path: ~/Library/Caches/uv
-                  key: py${{ matrix.python-version }}-uvcache-${{ hashFiles('~/Library/Caches/uv/**') }}
+                  key: py${{ matrix.python-version }}-uvcache-${{ hashFiles('**/requirements.txt') }}
 
             - name: Install artistools
               run: |
