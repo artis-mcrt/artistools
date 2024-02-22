@@ -295,7 +295,7 @@ def readfile_text(packetsfile: Path | str, modelpath: Path = Path()) -> pl.DataF
     print(f"Reading {packetsfile}")
     column_names: list[str] | None = None
     try:
-        fpackets = at.zopen(packetsfile, mode="r")
+        fpackets = at.zopen(packetsfile, mode="r", encoding="utf-8")
 
         datastartpos = fpackets.tell()  # will be updated if this was actually the start of a header
         firstline = fpackets.readline().decode()
