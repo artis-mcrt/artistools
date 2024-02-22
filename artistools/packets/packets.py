@@ -506,7 +506,7 @@ def get_packetsfilepaths(
         if maxpacketfiles is not None and (len(parquetpacketsfiles) + len(parquetrequiredfiles)) >= maxpacketfiles:
             break
 
-    if len(parquetrequiredfiles) >= 20:
+    if len(parquetrequiredfiles) >= 20 and at.get_config()["num_processes"] > 1:
         with multiprocessing.get_context("spawn").Pool(processes=at.get_config()["num_processes"]) as pool:
             convertedparquetpacketsfiles = pool.map(convert_text_to_parquet, parquetrequiredfiles)
             pool.close()
