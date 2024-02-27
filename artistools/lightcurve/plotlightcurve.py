@@ -1382,7 +1382,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         nargs="+",
         help=(
             "Plot viewing angles. Expects int for angle number in specpol_res.out"
-            "use args = -1 to select all the viewing angles"
+            "use args = -2 to select all the viewing angles"
         ),
     )
     parser.add_argument(
@@ -1457,7 +1457,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             "all viewing angles specified for plotting at a later time "
             "as these values take a long time to calculate for all "
             "viewing angles. Need to run this command first alongside "
-            "--plotviewingangles in order to save the data for the "
+            "-plotviewingangle in order to save the data for the "
             "viewing angles you want to use before making the scatter"
             "plots"
         ),
@@ -1470,7 +1470,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             "Plots the lightcurves for each  viewing angle along with"
             "the polynomial fit for each viewing angle specified"
             "to check the fit is working properly: use alongside"
-            "--plotviewingangle "
+            "-plotviewingangle "
         ),
     )
 
