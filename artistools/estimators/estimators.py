@@ -3,6 +3,7 @@
 
 Examples are temperatures, populations, and heating/cooling rates.
 """
+
 import argparse
 import contextlib
 import itertools

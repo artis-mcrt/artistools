@@ -1430,13 +1430,13 @@ def get_vspec_dir_labels(modelpath: str | Path, viewinganglelabelunits: str = "r
             cos_theta = vpkt_config["cos_theta"][dirindex]
             if viewinganglelabelunits == "deg":
                 theta_degrees = round(math.degrees(math.acos(cos_theta)))
-                dirlabels[
-                    ind_comb
-                ] = rf"v$\theta$ = {theta_degrees}$^\circ$, $\phi$ = {phi_angle}$^\circ$ {specindex} {opacity_condition_label}"
+                dirlabels[ind_comb] = (
+                    rf"v$\theta$ = {theta_degrees}$^\circ$, $\phi$ = {phi_angle}$^\circ$ {specindex} {opacity_condition_label}"
+                )
             elif viewinganglelabelunits == "rad":
-                dirlabels[
-                    ind_comb
-                ] = rf"cos $\theta$ = {cos_theta}, $\phi$ = {phi_angle}$^\circ$ {opacity_condition_label}"
+                dirlabels[ind_comb] = (
+                    rf"cos $\theta$ = {cos_theta}, $\phi$ = {phi_angle}$^\circ$ {opacity_condition_label}"
+                )
 
     return dirlabels
 

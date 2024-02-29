@@ -1,4 +1,5 @@
 """Artistools - spectra related functions."""
+
 from artistools.spectra import plotspectra
 from artistools.spectra import writespectra
 from artistools.spectra.plotspectra import main as plot

@@ -4,6 +4,7 @@
 rd_nuc_decay_data
 rd_sn_hydro_data
 """
+
 import sys
 
 import numpy as np
