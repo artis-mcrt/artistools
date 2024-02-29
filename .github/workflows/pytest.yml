@@ -62,7 +62,7 @@ jobs:
             - name: Check artistools command line tool
               run: |
                   artistools --help
-                  bin/artistools setupcompletions
+                  artistools setupcompletions
 
             - name: Test with pytest
               run: |
