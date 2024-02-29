@@ -41,4 +41,4 @@ Distributed under the MIT license. See [LICENSE](https://github.com/artis-mcrt/a
 
 ## Citing Artistools
 
-If you make use of artistools please cite it. For details, see [https://zenodo.org/badge/latestdoi/53433932](https://zenodo.org/badge/latestdoi/53433932).
+If you artistools for a paper or presentation, please cite it. For details, see [https://zenodo.org/badge/latestdoi/53433932](https://zenodo.org/badge/latestdoi/53433932).
