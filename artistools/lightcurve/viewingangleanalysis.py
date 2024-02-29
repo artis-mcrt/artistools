@@ -208,7 +208,7 @@ def save_viewing_angle_data_for_plotting(band_name, modelname, args):
             )
         else:
             np.savetxt(
-                outputfolder / band_name + "band_" + f"{modelname}" + "_viewing_angle_data.txt",
+                outputfolder / f"{band_name}band_{modelname}_viewing_angle_data.txt",
                 np.c_[args.band_peakmag_polyfit, args.band_risetime_polyfit, args.band_deltam15_polyfit],
                 delimiter=" ",
                 header="peak_mag_polyfit risetime_polyfit deltam15_polyfit",
