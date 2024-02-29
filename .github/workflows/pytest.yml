@@ -46,10 +46,7 @@ jobs:
             - name: Install artistools
               run: |
                   python3 -m pip install --upgrade uv
-                  uv venv .venv
-                  source .venv/bin/activate
-                  echo "PATH=$PWD/.venv/bin:$PATH" >> $GITHUB_ENV
-                  uv pip install --strict --upgrade --editable .
+                  uv pip install --system --upgrade --editable .
                   uv cache dir
 
             - name: Cache test data
@@ -64,17 +61,16 @@ jobs:
 
             - name: Check artistools command line tool
               run: |
-                  .venv/bin/artistools --help
-                  .venv/bin/artistools setupcompletions
+                  artistools --help
+                  artistools setupcompletions
 
             - name: Test with pytest
               run: |
-                  source .venv/bin/activate
-                  .venv/bin/pytest --cov=./ --cov-report=xml
+                  pytest --cov=./ --cov-report=xml
 
             - name: Report coverage
               run: |
-                  .venv/bin/coverage report
+                  coverage report
 
             - name: Upload coverage to Codecov
               uses: codecov/codecov-action@v4
