@@ -113,7 +113,7 @@ def test_makeartismodelfrom_sph_particles() -> None:
             "makeartismodel_sums": {
                 "gridcontributions.txt": "12f006c43c0c8d1f84c3927b3c80959c1b2cecc01598be92c2f24a130892bc60",
                 "abundances.txt": "5f782005ce879a8c81c43d0a7a791ad9b177eee8630b4771586949bf7fbca28e",
-                "model.txt": "9b1d2b39af397ab24f84e9b3304eee5e8c1c699aae7bb850b4dc7ecfb563f8ba",
+                "model.txt": "547426e194741e4ab58a65848f165dcd3ef9275de711ba4870b11f32bf7b06d5",
             },
         },
         {
@@ -126,7 +126,7 @@ def test_makeartismodelfrom_sph_particles() -> None:
             "makeartismodel_sums": {
                 "gridcontributions.txt": "6c8186b992e8037f27c249feb19557705dc11db86dc47fa0d1e7257e420fce23",
                 "abundances.txt": "5f782005ce879a8c81c43d0a7a791ad9b177eee8630b4771586949bf7fbca28e",
-                "model.txt": "5700128f7aaefa18a71d58cc47e3df6b125991b72eae3f3bdd3245f9bd3100dc",
+                "model.txt": "01c5870c321fa25f07ab080a2c11705b340c7b810748ee2500fc3746479f6286",
             },
         },
     ]
