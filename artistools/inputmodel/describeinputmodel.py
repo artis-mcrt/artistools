@@ -76,14 +76,14 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     print(f"Model is defined at {t_model_init_days} days ({t_model_init_seconds:.4f} seconds)")
 
     if modelmeta["dimensions"] == 1:
-        vmax_kmps = dfmodel.select(pl.col("vel_r_max_kmps").max()).collect().item(0, 0)
+        vmax_kmps = dfmodel.select(pl.col("vel_r_max_kmps").max()).collect().item()
         vmax = vmax_kmps * 1e5
         print(
             f"Model contains {modelmeta['npts_model']} 1D spherical shells with vmax = {vmax / 1e5} km/s"
             f" ({vmax / 29979245800:.2f} * c)"
         )
     else:
-        nonemptycells = dfmodel.select([(pl.col("rho") > 0.0).count()]).collect().item(0, 0)
+        nonemptycells = dfmodel.filter(pl.col("rho") > 0.0).select(pl.len()).collect().item()
         print(
             f"Model contains {modelmeta['npts_model']} grid cells ({nonemptycells} nonempty) with "
             f"vmax = {vmax} cm/s ({vmax * 1e-5 / 299792.458:.2f} * c)"
@@ -94,14 +94,14 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             vmax_corner_2d = math.sqrt(2 * vmax**2)
             print(f"  2D corner vmax: {vmax_corner_2d:.2e} cm/s ({vmax_corner_2d * 1e-5 / 299792.458:.2f} * c)")
 
-    minrho = dfmodel.select(pl.col("rho").min()).collect().item(0, 0)
+    minrho = dfmodel.select(pl.col("rho").min()).collect().item()
     minrho_cellcount = (
         dfmodel.filter(pl.col("rho") == minrho)
         .group_by("rho", maintain_order=False)
-        .agg(pl.count("inputcellid").alias("count_inputcellid"))
-        .select("count_inputcellid")
+        .agg(pl.len().alias("minrho_cellcount"))
+        .select("minrho_cellcount")
         .collect()
-        .item(0, 0)
+        .item()
     )
     print(f"  min density: {minrho:.2e} g/cm^3. Cells with this density: {minrho_cellcount}")
 
@@ -121,13 +121,13 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         assoc_cells, mgi_of_propcells = None, None
 
     if "q" in dfmodel.columns:
-        initial_energy = dfmodel.select(pl.col("q").dot(pl.col("mass_g"))).collect().item(0, 0)
+        initial_energy = dfmodel.select(pl.col("q").dot(pl.col("mass_g"))).collect().item()
         assert initial_energy is not None
         print(f'  {"initial energy":19s} {initial_energy:.3e} erg')
     else:
         initial_energy = 0.0
 
-    mass_msun_rho = dfmodel.select(pl.col("mass_g").sum() / msun_g).collect().item(0, 0)
+    mass_msun_rho = dfmodel.select(pl.col("mass_g").sum() / msun_g).collect().item()
 
     if assoc_cells is not None and mgi_of_propcells is not None:
         direct_model_propgrid_map = all(
@@ -170,7 +170,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             .filter(pl.col("vel_r_mid") > vmax)
             .select(pl.col("mass_g").sum())
             .collect()
-            .item(0, 0)
+            .item()
         ) / msun_g
         print(
             f'  {"M_corners":19s} {corner_mass:8.5f} MSun ('
@@ -189,7 +189,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     for column in dfmodel.select(cs.starts_with("X_") - cs.by_name("X_Fegroup")).columns:
         species = column.replace("X_", "")
 
-        speciesabund_g = dfmodel.select(pl.col(column).dot(pl.col("mass_g"))).collect().item(0, 0)
+        speciesabund_g = dfmodel.select(pl.col(column).dot(pl.col("mass_g"))).collect().item()
 
         assert isinstance(speciesabund_g, float)
 
@@ -230,7 +230,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             "of M_tot_rho, but can be < 100% if stable isotopes not tracked)"
         )
 
-    mass_msun_fegroup = dfmodel.select(pl.col("X_Fegroup").dot(pl.col("mass_g"))).collect().item(0, 0) / msun_g
+    mass_msun_fegroup = dfmodel.select(pl.col("X_Fegroup").dot(pl.col("mass_g"))).collect().item() / msun_g
     print(
         f'  {"M_Fegroup":19s} {mass_msun_fegroup:8.5f} MSun'
         f" ({mass_msun_fegroup / mass_msun_rho * 100:6.2f}% of M_tot_rho)"
