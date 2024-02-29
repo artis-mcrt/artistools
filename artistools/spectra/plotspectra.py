@@ -2,7 +2,6 @@
 # PYTHON_ARGCOMPLETE_OK
 """Artistools - spectra plotting functions."""
 
-
 import argparse
 import math
 import sys

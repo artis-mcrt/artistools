@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Artistools - spectra related functions."""
 
-
 import argparse
 import contextlib
 import json
