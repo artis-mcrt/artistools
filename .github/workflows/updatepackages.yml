@@ -30,7 +30,7 @@ jobs:
                   pip install --upgrade pip
                   pip install --upgrade uv
                   uv pip install --system pur
-                  uv pip install --system --upgrade --editable .
+                  uv pip install --system -r requirements.txt
 
             - name: run pur
               run: |
