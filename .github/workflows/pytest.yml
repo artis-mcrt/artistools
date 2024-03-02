@@ -39,6 +39,7 @@ jobs:
 
             - name: Install artistools
               run: |
+                  brew update
                   brew install uv
                   uv pip install --system --upgrade --editable .
 
