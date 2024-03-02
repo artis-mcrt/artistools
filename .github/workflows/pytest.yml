@@ -37,17 +37,10 @@ jobs:
               with:
                   python-version: ${{ matrix.python-version }}
 
-            - name: Cache uv
-              uses: actions/cache@v4
-              with:
-                  path: ~/Library/Caches/uv
-                  key: uvcache-${{ hashFiles('~/Library/Caches/uv/**') }}
-
             - name: Install artistools
               run: |
-                  python3 -m pip install --upgrade uv
+                  brew install uv
                   uv pip install --system --upgrade --editable .
-                  uv cache dir
 
             - name: Cache test data
               uses: actions/cache@v4
