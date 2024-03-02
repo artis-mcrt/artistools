@@ -25,5 +25,4 @@ setuptools_scm[toml]>=8.0.4
 typeguard>=4.1.5
 types-PyYAML>=6.0.12.12
 #vtk>=9.2.3
-uv>=0.1.12
 wheel>=0.42.0
