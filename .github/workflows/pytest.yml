@@ -39,8 +39,8 @@ jobs:
 
             - name: Install artistools
               run: |
-                  brew update
-                  brew install uv
+                  pip install --upgrade pip
+                  pip install --upgrade uv
                   uv pip install --system --upgrade --editable .
 
             - name: Cache test data
