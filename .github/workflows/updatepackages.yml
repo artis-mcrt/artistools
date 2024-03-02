@@ -38,7 +38,7 @@ jobs:
 
             - uses: browniebroke/pre-commit-autoupdate-action@main
 
-            - uses: peter-evans/create-pull-request@v5
+            - uses: peter-evans/create-pull-request@v6
               with:
                   token: ${{ secrets.GITHUB_TOKEN }}
                   branch: update/packages
@@ -46,6 +46,6 @@ jobs:
                   commit-message: 'chore: update pre-commit hooks and packages'
                   body: Update versions of pre-commit hooks and python packages to latest versions.
 
-            - uses: peter-evans/repository-dispatch@v2
+            - uses: peter-evans/repository-dispatch@v3
               with:
                   event-type: trigger_checks
