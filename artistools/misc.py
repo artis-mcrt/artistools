@@ -804,7 +804,7 @@ def flatten_list(listin: list[t.Any]) -> list[t.Any]:
 
 
 def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None) -> t.Any:
-    """Open filename, filename.ztd, filename.gz or filename.xz."""
+    """Open filename, filename.zst, filename.gz or filename.xz."""
     ext_fopen: dict[str, t.Callable] = {".zst": pyzstd.open, ".gz": gzip.open, ".xz": xz.open}
 
     for ext, fopen in ext_fopen.items():
@@ -817,16 +817,15 @@ def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None) -
 
 
 def zopenpl(filename: Path | str, mode: str = "rt", encoding: str | None = None) -> t.Any | Path:
-    """Open filename, filename.ztd, filename.gz or filename.xz. If polars.read_csv can read the file directly, return a Path object instead of a file object."""
+    """Open filename, filename.zst, filename.gz or filename.xz. If polars.read_csv can read the file directly, return a Path object instead of a file object."""
     mode = "r"
-    ext_fopen: dict[str, t.Callable] = {".zst": pyzstd.open, ".gz": gzip.open, ".xz": xz.open}
+    ext_fopen: dict[str, t.Callable | None] = {".zst": None, ".gz": None, ".xz": xz.open}
 
     for ext, fopen in ext_fopen.items():
         file_withext = str(filename) if str(filename).endswith(ext) else str(filename) + ext
         if Path(file_withext).exists():
-            if ext in {".gz", ".zst"}:
-                return Path(file_withext)
-            return fopen(file_withext, mode=mode, encoding=encoding)
+            return Path(file_withext) if fopen is None else fopen(file_withext, mode=mode, encoding=encoding)
+
     return Path(filename)
 
 
