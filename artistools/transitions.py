@@ -476,11 +476,8 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     print()
 
     if args.save_lines:
-        try:
-            from tabulate import tabulate
-        except ImportError:
-            print("Please install tabulate to output transition lines")
-            sys.exit(1)
+        from tabulate import tabulate
+
         assert dftransitions_all is not None
         dftransitions_all = dftransitions_all[dftransitions_all["A"] > 0]
         dftransitions_all = dftransitions_all.rename(
