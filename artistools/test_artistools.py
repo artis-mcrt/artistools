@@ -119,6 +119,7 @@ def test_plotspherical_gif() -> None:
 
 def test_transitions() -> None:
     at.transitions.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, timedays=300)
+    at.transitions.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, timedays=300, save_lines=True)
 
 
 def test_write_comparisondata() -> None:

@@ -23,7 +23,8 @@ iontuple = namedtuple("iontuple", "Z ion_stage")
 def get_kurucz_transitions() -> tuple[pd.DataFrame, list[iontuple]]:
     hc_evcm = (const.h * const.c).to("eV cm").value
     transitiontuple = namedtuple(
-        "transitiontuple", "Z ion_stage lambda_angstroms A lower_energy_ev upper_energy_ev lower_g upper_g"
+        "transitiontuple",
+        "Z ion_stage lambda_angstroms A lower_energy_ev upper_energy_ev lower_statweight upper_statweight",
     )
     translist = []
     ionlist = []
@@ -37,12 +38,19 @@ def get_kurucz_transitions() -> tuple[pd.DataFrame, list[iontuple]]:
                 lambda_angstroms = float(line[:12]) * 10
                 loggf = float(line[11:18])
                 lower_energy_ev, upper_energy_ev = hc_evcm * float(line[24:36]), hc_evcm * float(line[52:64])
-                lower_g, upper_g = 2 * float(line[36:42]) + 1, 2 * float(line[64:70]) + 1
-                fij = (10**loggf) / lower_g
-                A = fij / (1.49919e-16 * upper_g / lower_g * lambda_angstroms**2)
+                lower_statweight, upper_statweight = 2 * float(line[36:42]) + 1, 2 * float(line[64:70]) + 1
+                fij = (10**loggf) / lower_statweight
+                A = fij / (1.49919e-16 * upper_statweight / lower_statweight * lambda_angstroms**2)
                 translist.append(
                     transitiontuple(
-                        Z, ion_stage, lambda_angstroms, A, lower_energy_ev, upper_energy_ev, lower_g, upper_g
+                        Z,
+                        ion_stage,
+                        lambda_angstroms,
+                        A,
+                        lower_energy_ev,
+                        upper_energy_ev,
+                        lower_statweight,
+                        upper_statweight,
                     )
                 )
 
@@ -55,7 +63,7 @@ def get_kurucz_transitions() -> tuple[pd.DataFrame, list[iontuple]]:
 
 def get_nist_transitions(filename: Path | str) -> pd.DataFrame:
     transitiontuple = namedtuple(
-        "transitiontuple", "lambda_angstroms A lower_energy_ev upper_energy_ev lower_g upper_g"
+        "transitiontuple", "lambda_angstroms A lower_energy_ev upper_energy_ev lower_statweight upper_statweight"
     )
     translist = []
     with Path(filename).open() as fnist:
@@ -70,9 +78,11 @@ def get_nist_transitions(filename: Path | str) -> pd.DataFrame:
                     continue
                 A = float(row[3]) if len(row[3].strip()) > 0 else 1e8
                 lower_energy_ev, upper_energy_ev = (float(x.strip(" []")) for x in row[5].split("-"))
-                lower_g, upper_g = (float(x.strip()) for x in row[12].split("-"))
+                lower_statweight, upper_statweight = (float(x.strip()) for x in row[12].split("-"))
                 translist.append(
-                    transitiontuple(lambda_angstroms, A, lower_energy_ev, upper_energy_ev, lower_g, upper_g)
+                    transitiontuple(
+                        lambda_angstroms, A, lower_energy_ev, upper_energy_ev, lower_statweight, upper_statweight
+                    )
                 )
 
     return pd.DataFrame(translist, columns=transitiontuple._fields)
@@ -181,7 +191,7 @@ def add_upper_lte_pop(dftransitions, T_exc, ionpop, ltepartfunc, columnname=None
     scalefactor = ionpop / ltepartfunc  # noqa: F841
     if columnname is None:
         columnname = f"upper_pop_lte_{T_exc:.0f}K"
-    return dftransitions.eval(f"{columnname} = @scalefactor * upper_g * exp(-upper_energy_ev / @K_B / @T_exc)")
+    return dftransitions.eval(f"{columnname} = @scalefactor * upper_statweight * exp(-upper_energy_ev / @K_B / @T_exc)")
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -209,9 +219,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--normalised", action="store_true", help="Normalise all spectra to their peak values")
 
-    parser.add_argument(
-        "--print-lines", action="store_true", help="Output details of matching line details to standard out"
-    )
+    parser.add_argument("--print-lines", action="store_true", help="Output details of matching lines to standard out")
+
+    parser.add_argument("--save-lines", action="store_true", help="Output details of all lines to transitionlines.txt")
 
     parser.add_argument(
         "--atomicdatabase",
@@ -351,7 +361,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     xvalues = np.arange(args.xmin, args.xmax, step=plot_resolution)
     yvalues = np.zeros((len(temperature_list) + 1, len(ionlist), len(xvalues)))
-
+    dftransitions_all = None
     fe2depcoeff, ni2depcoeff = None, None
     for _, ion in adata.iterrows() if args.atomicdatabase == "artis" else enumerate(ionlist):
         ionid = iontuple(ion.Z, ion.ion_stage)
@@ -381,22 +391,33 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
                 dftransitions = dftransitions.eval("upper_energy_ev = @ion.levels.loc[upper].energy_ev.to_numpy()")
                 dftransitions = dftransitions.eval("lower_energy_ev = @ion.levels.loc[lower].energy_ev.to_numpy()")
                 dftransitions = dftransitions.eval("lambda_angstroms = @hc / (upper_energy_ev - lower_energy_ev)")
+                dftransitions["upper_level"] = [ion.levels.loc[upper].levelname for upper in dftransitions["upper"]]
+                dftransitions["lower_level"] = [ion.levels.loc[lower].levelname for lower in dftransitions["lower"]]
 
-            dftransitions = dftransitions.query(
-                "lambda_angstroms >= @plot_xmin_wide & lambda_angstroms <= @plot_xmax_wide"
-            )
+            # dftransitions = dftransitions.query(
+            #     "lambda_angstroms >= @plot_xmin_wide & lambda_angstroms <= @plot_xmax_wide"
+            # )
 
             dftransitions = dftransitions.sort_values(by="lambda_angstroms")
 
             print(f"  {len(dftransitions)} plottable transitions")
 
             if args.atomicdatabase == "artis":
-                dftransitions = dftransitions.eval("upper_g = @ion.levels.loc[upper].g.to_numpy()")
+                dftransitions["lower_statweight"] = [ion.levels.loc[lower].g for lower in dftransitions["lower"]]
+                dftransitions = dftransitions.eval("upper_statweight = @ion.levels.loc[upper].g.to_numpy()")
                 K_B = const.k_B.to("eV / K").value
                 T_exc = vardict["Te"]
                 ltepartfunc = ion.levels.eval("g * exp(-energy_ev / @K_B / @T_exc)").sum()
             else:
                 ltepartfunc = 1.0
+
+            if args.save_lines:
+                dftransitions["Z"] = ion.Z
+                dftransitions["ion_stage"] = ion.ion_stage
+                if dftransitions_all is None:
+                    dftransitions_all = dftransitions
+                else:
+                    dftransitions_all = pd.concat([dftransitions_all, dftransitions])
 
             dftransitions = dftransitions.eval("flux_factor = (upper_energy_ev - lower_energy_ev) * A")
             dftransitions = add_upper_lte_pop(
@@ -431,7 +452,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
                     T_exc = vardict[temperature]
                     popcolumnname = f"upper_pop_lte_{T_exc:.0f}K"
                     if args.atomicdatabase == "artis":
-                        dftransitions = dftransitions.eval("upper_g = @ion.levels.loc[upper].g.to_numpy()")
+                        dftransitions = dftransitions.eval("upper_statweight = @ion.levels.loc[upper].g.to_numpy()")
                         K_B = const.k_B.to("eV / K").value  # noqa: F841
                         ltepartfunc = ion.levels.eval("g * exp(-energy_ev / @K_B / @T_exc)").sum()
                     else:
@@ -451,12 +472,33 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
         if args.print_lines:
             print(dftransitions.columns)
-            print(
-                dftransitions[
-                    ["lower", "upper", "forbidden", "A", "lambda_angstroms", "flux_factor_upper_pop_lte_3000K"]
-                ].to_string(index=False)
-            )
+            print(dftransitions[["lower", "upper", "forbidden", "A", "lambda_angstroms"]].to_string(index=False))
     print()
+    from tabulate import tabulate
+
+    if args.save_lines:
+        assert dftransitions_all is not None
+        dftransitions_all = dftransitions_all[dftransitions_all["A"] > 0]
+        dftransitions_all = dftransitions_all.rename(
+            {"lower_energy_ev": "lower_energy_Ev", "upper_energy_ev": "upper_energy_Ev"}, axis=1
+        )
+        dftransitions_all = dftransitions_all.astype({"forbidden": "int32"})
+        dftransitions_all["lambda_angstroms"] = dftransitions_all["lambda_angstroms"] / 1.0003
+        dftransitions_all = dftransitions_all.sort_values(by=["Z", "ion_stage", "lower", "upper"], ascending=True)
+        dftransitions_all = dftransitions_all[
+            "lambda_angstroms A            Z   ion_stage lower_energy_Ev   lower_statweight  forbidden  lower_level               upper_level               upper_statweight  upper_energy_Ev".split()
+        ]
+        print(dftransitions_all)
+        # dftransitions_all.to_csv("transitions.txt", index=False, sep=" ")
+        content = tabulate(dftransitions_all.to_numpy().tolist(), list(dftransitions_all.columns), tablefmt="plain")
+        # print(content)
+
+        outpath = (
+            Path(args.outputfile).parent if Path(args.outputfile).suffix else Path(args.outputfile)
+        ) / "transitionlines.txt"
+        print(f"Writing {outpath}")
+        with outpath.open("w") as f:
+            f.write(content)
 
     if from_model:
         feions = [2, 3]
