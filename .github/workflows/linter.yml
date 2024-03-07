@@ -33,6 +33,7 @@ jobs:
             - uses: pre-commit/action@v3.0.1
 
     lint:
+        name: Lint (ruff, mypy, pylint)
         runs-on: macos-14
         steps:
             - name: Checkout Code
