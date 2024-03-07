@@ -221,9 +221,7 @@ def main() -> None:
             co56frac = a["isofrac"][i, 89]
             cr48frac = a["isofrac"][i, 75]
             v48frac = a["isofrac"][i, 49]
-            strout = "{:4d} {:1.7e} {:1.7e} {:1.7e} {:1.7e} {:1.7e} {:1.7e} {:1.7e}\n".format(
-                i + 1, vel, rho, igefrac, ni56frac, co56frac, cr48frac, v48frac
-            )
+            strout = f"{i + 1:4d} {vel:1.7e} {rho:1.7e} {igefrac:1.7e} {ni56frac:1.7e} {co56frac:1.7e} {cr48frac:1.7e} {v48frac:1.7e}\n"
             f.write(strout)
 
     # Create an array of size n_radial_cells*31 (31=running index + 30 ARTIS species)

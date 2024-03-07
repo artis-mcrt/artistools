@@ -23,19 +23,17 @@ jobs:
             - name: Set up Python
               uses: actions/setup-python@v5
               with:
-                  cache: pip
                   python-version-file: .python-version
 
             - name: Install dependencies
               run: |
-                  python3 -m pip install --upgrade pip wheel mypy
-                  python3 -m pip install -r requirements.txt
+                  python3 -m pip install --upgrade pip uv
+                  uv pip install --system -r requirements.txt
 
-            - name: Run pre-commit
-              run: |
-                  pre-commit run --all-files
+            - uses: pre-commit/action@v3.0.1
 
     lint:
+        name: Lint (ruff, mypy, pylint)
         runs-on: macos-14
         steps:
             - name: Checkout Code
@@ -44,13 +42,13 @@ jobs:
             - name: Set up Python
               uses: actions/setup-python@v5
               with:
-                  cache: pip
                   python-version-file: .python-version
 
             - name: Install dependencies
               run: |
-                  python3 -m pip install --upgrade pip wheel pylint mypy ruff
-                  python3 -m pip install -r requirements.txt
+                  python3 -m pip install --upgrade pip uv
+                  uv pip install --system --upgrade pylint mypy ruff
+                  uv pip install --system -r requirements.txt
 
             - name: Run Ruff
               run: ruff check --output-format=github .
