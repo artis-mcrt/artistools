@@ -26,8 +26,8 @@ jobs:
 
             - name: Install dependencies
               run: |
-                  python3 -m pip install --upgrade pip
-                  python3 -m pip install --upgrade setuptools setuptools_scm[toml] wheel twine build
+                  python3 -m pip install --upgrade pip uv
+                  uv pip install --system --upgrade setuptools setuptools_scm[toml] wheel twine build
 
             - name: Build
               run: |
