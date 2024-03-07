@@ -30,9 +30,7 @@ jobs:
                   python3 -m pip install --upgrade pip uv
                   uv pip install --system -r requirements.txt
 
-            - name: Run pre-commit
-              run: |
-                  pre-commit run --all-files
+            - uses: pre-commit/action@v3.0.1
 
     lint:
         runs-on: macos-14
