@@ -1,4 +1,4 @@
-argcomplete>=3.2.2
+argcomplete>=3.2.3
 astropy>=6.0.0
 coverage>=7.4.3
 extinction>=0.4.6
@@ -10,7 +10,7 @@ numpy>=1.26.4
 pandas[compression,consortium-standard,parquet,pyarrow]>=2.2.1
 polars>=0.20.14
 pre-commit>=3.6.2
-pyarrow>=15.0.0
+pyarrow>=15.0.1
 pynonthermal>=2024.2.17
 pypdf2>=3.0.1
 pytest>=8.0.2
