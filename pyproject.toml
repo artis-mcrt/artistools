@@ -54,6 +54,7 @@ line-length = 120
 target-versions = ["py310", "py311", "py312"]
 
 [tool.mypy]
+local_partial_types = true
 check_untyped_defs = false
 disallow_any_explicit = false
 disallow_any_generics = false
