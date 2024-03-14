@@ -623,11 +623,10 @@ def plot_subplot(
     ylabel = None
     sameylabel = True
     seriesvars = [var for var in plotitems if isinstance(var, str | pl.Expr)]
-    seriesnames = [var.meta.output_name() if isinstance(var, pl.Expr) else var for var in seriesvars]
     seriescount = len(seriesvars)
 
-    for variable, variablename in zip(seriesvars, seriesnames):
-        # variablename = variable.meta.output_name() if isinstance(variable, pl.Expr) else variable
+    for variable in seriesvars:
+        variablename = variable.meta.output_name() if isinstance(variable, pl.Expr) else variable
         if ylabel is None:
             ylabel = get_ylabel(variablename)
         elif ylabel != get_ylabel(variablename):
@@ -636,7 +635,8 @@ def plot_subplot(
 
     for plotitem in plotitems:
         if isinstance(plotitem, str | pl.Expr):
-            variablename = variable.meta.output_name() if isinstance(variable, pl.Expr) else variable
+            variablename = plotitem.meta.output_name() if isinstance(plotitem, pl.Expr) else plotitem
+            assert isinstance(variablename, str)
             showlegend = seriescount > 1 or len(variablename) > 35 or not sameylabel
             print(f"Plotting {showlegend=} {len(variablename)=} {sameylabel=} {ylabel=}")
             plot_series(
