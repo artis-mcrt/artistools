@@ -2,6 +2,7 @@ from unittest import mock
 
 import matplotlib.axes
 import numpy as np
+import polars as pl
 
 import artistools as at
 
@@ -24,6 +25,7 @@ def test_estimator_snapshot(mockplot) -> None:
         [["gamma_NT", ["Fe I", "Fe II", "Fe III", "Fe IV"]]],
         ["heating_dep", "heating_coll", "heating_bf", "heating_ff", ["_yscale", "linear"]],
         ["cooling_adiabatic", "cooling_coll", "cooling_fb", "cooling_ff", ["_yscale", "linear"]],
+        [(pl.col("heating_coll") - pl.col("cooling_coll")).alias("collisional heating - cooling")],
     ]
 
     at.estimators.plot(argsraw=[], modelpath=modelpath, plotlist=plotlist, outputfile=outputpath, timedays=300)
@@ -62,6 +64,7 @@ def test_estimator_snapshot(mockplot) -> None:
         "cooling_coll": 3.02786e-09,
         "cooling_fb": 4.82714e-12,
         "cooling_ff": 1.62999e-13,
+        "collisional heating - cooling": -6.4962990e-10,
     }
     assert len(expectedvals) == len(mockplot.call_args_list)
     yvals = {varname: callargs[0][2] for varname, callargs in zip(expectedvals.keys(), mockplot.call_args_list)}
@@ -90,6 +93,7 @@ def test_estimator_averaging(mockplot) -> None:
         [["gamma_NT", ["Fe I", "Fe II", "Fe III", "Fe IV"]]],
         ["heating_dep", "heating_coll", "heating_bf", "heating_ff", ["_yscale", "linear"]],
         ["cooling_adiabatic", "cooling_coll", "cooling_fb", "cooling_ff", ["_yscale", "linear"]],
+        [(pl.col("heating_coll") - pl.col("cooling_coll")).alias("collisional heating - cooling")],
     ]
 
     at.estimators.plot(argsraw=[], modelpath=modelpath, plotlist=plotlist, outputfile=outputpath, timestep="50-54")
@@ -128,6 +132,7 @@ def test_estimator_averaging(mockplot) -> None:
         "cooling_coll": 3.1562059632506134e-09,
         "cooling_fb": 5.0357105638165756e-12,
         "cooling_ff": 1.7027620090835638e-13,
+        "collisional heating - cooling": -6.782059913668093e-10,
     }
     assert len(expectedvals) == len(mockplot.call_args_list)
     yvals = {varname: callargs[0][2] for varname, callargs in zip(expectedvals.keys(), mockplot.call_args_list)}

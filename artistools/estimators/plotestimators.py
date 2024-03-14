@@ -487,7 +487,7 @@ def plot_multi_ion_series(
 def plot_series(
     ax: plt.Axes,
     startfromzero: bool,
-    variablename: str,
+    variable: str | pl.Expr,
     showlegend: bool,
     modelpath: str | Path,
     estimators: pl.LazyFrame | pl.DataFrame,
@@ -496,6 +496,14 @@ def plot_series(
     **plotkwargs: t.Any,
 ) -> None:
     """Plot something like Te or TR."""
+    if isinstance(variable, pl.Expr):
+        colexpr = variable
+    else:
+        assert variable in estimators.columns
+        colexpr = pl.col(variable)
+
+    variablename = colexpr.meta.output_name()
+
     formattedvariablename = at.estimators.get_varname_formatted(variablename)
     serieslabel = f"{formattedvariablename}"
     units_string = at.estimators.get_units_string(variablename)
@@ -511,15 +519,17 @@ def plot_series(
 
     series = (
         estimators.group_by("plotpointid", maintain_order=True)
-        .agg(pl.col(variablename).mean(), pl.col("xvalue").mean())
+        .agg(colexpr.mean(), pl.col("xvalue").mean())
         .lazy()
         .collect()
     )
+
     ylist = series[variablename].to_list()
     xlist = series["xvalue"].to_list()
 
-    if min(ylist) == 0 or math.log10(max(ylist) / min(ylist)) > 2:
-        ax.set_yscale("log")
+    with contextlib.suppress(ValueError):
+        if min(ylist) == 0 or math.log10(max(ylist) / min(ylist)) > 2:
+            ax.set_yscale("log")
 
     dictcolors = {
         "Te": "red",
@@ -608,25 +618,31 @@ def plot_subplot(
     """Make plot from ARTIS estimators."""
     # these three lists give the x value, modelgridex, and a list of timesteps (for averaging) for each plot of the plot
     showlegend = False
+    legend_kwargs = {}
     seriescount = 0
     ylabel = None
     sameylabel = True
-    for variablename in plotitems:
-        if isinstance(variablename, str):
-            seriescount += 1
-            if ylabel is None:
-                ylabel = get_ylabel(variablename)
-            elif ylabel != get_ylabel(variablename):
-                sameylabel = False
-                break
+    seriesvars = [var for var in plotitems if isinstance(var, str | pl.Expr)]
+    seriescount = len(seriesvars)
+
+    for variable in seriesvars:
+        variablename = variable.meta.output_name() if isinstance(variable, pl.Expr) else variable
+        if ylabel is None:
+            ylabel = get_ylabel(variablename)
+        elif ylabel != get_ylabel(variablename):
+            sameylabel = False
+            break
 
     for plotitem in plotitems:
-        if isinstance(plotitem, str):
-            showlegend = seriescount > 1 or len(plotitem) > 20 or not sameylabel
+        if isinstance(plotitem, str | pl.Expr):
+            variablename = plotitem.meta.output_name() if isinstance(plotitem, pl.Expr) else plotitem
+            assert isinstance(variablename, str)
+            showlegend = seriescount > 1 or len(variablename) > 35 or not sameylabel
+            print(f"Plotting {showlegend=} {len(variablename)=} {sameylabel=} {ylabel=}")
             plot_series(
                 ax=ax,
                 startfromzero=startfromzero,
-                variablename=plotitem,
+                variable=plotitem,
                 showlegend=showlegend,
                 modelpath=modelpath,
                 estimators=estimators,
@@ -694,6 +710,9 @@ def plot_subplot(
             else:
                 showlegend = True
                 seriestype, ionlist = plotitem
+                if seriestype == "populations" and len(ionlist) > 2 and args.yscale == "log":
+                    legend_kwargs["ncol"] = 2
+
                 plot_multi_ion_series(
                     ax=ax,
                     startfromzero=startfromzero,
@@ -712,11 +731,7 @@ def plot_subplot(
             handlelength=2,
             frameon=False,
             numpoints=1,
-            **(
-                {"ncol": math.ceil(len(plotitems[0][1]) / 2.0)}
-                if (plotitems[0][0] == "populations" and args.yscale == "log")
-                else {}
-            ),
+            **legend_kwargs,
             markerscale=3,
         )
 
@@ -741,7 +756,8 @@ def make_plot(
             args.figscale * at.get_config()["figwidth"] * args.scalefigwidth,
             args.figscale * at.get_config()["figwidth"] * 0.5 * len(plotlist),
         ),
-        tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
+        layout="constrained",
+        # tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
     )
     if len(plotlist) == 1:
         axes = [axes]
@@ -821,7 +837,7 @@ def make_plot(
         outfilename = str(args.outputfile).format(timestep=timestep, timedays=timedays, format=args.format)
 
     if not args.notitle:
-        axes[0].set_title(figure_title, fontsize=12)
+        axes[0].set_title(figure_title, fontsize=10)
 
     print(f"Saving {outfilename} ...")
     fig.savefig(outfilename, dpi=300)
@@ -1051,6 +1067,10 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         #  ['_yscale', 'linear']],
         # ['cooling_adiabatic', 'cooling_coll', 'cooling_fb', 'cooling_ff',
         #  ['_yscale', 'linear']],
+        # [
+        #     (pl.col("heating_coll") - pl.col("cooling_coll")).alias("collisional heating - cooling"),
+        #     ["_yscale", "linear"],
+        # ],
         # [['initmasses', ['Ni_56', 'He', 'C', 'Mg']]],
         # ['heating_gamma/gamma_dep'],
         # ["nne", ["_ymin", 1e5], ["_ymax", 1e10]],
