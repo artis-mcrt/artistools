@@ -505,8 +505,9 @@ def make_spectrum_plot(
                     usedegrees=args.usedegrees,
                     **plotkwargs,
                 )
-            except FileNotFoundError:
+            except FileNotFoundError as e:
                 print(f"WARNING: Skipping {specpath} because it does not exist")
+                print(e)
                 continue
 
             if seriesdata is not None:
