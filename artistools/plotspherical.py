@@ -35,7 +35,8 @@ def plot_spherical(
     plotvars: list[str] | None = None,
     figscale: float = 1.0,
     cmap: str | None = None,
-) -> tuple[plt.Figure, t.Any, float, float]:
+) -> tuple[plt.Figure, t.Any, float, float, str]:
+    condition = ""
     if plotvars is None:
         plotvars = ["luminosity", "emvelocityoverc", "emlosvelocityoverc"]
 
@@ -82,6 +83,11 @@ def plot_spherical(
     # dfpackets = dfpackets.filter(pl.col("dirz") > 0.9)
 
     aggs = []
+    if nnelement_vars := [var for var in plotvars if var.startswith("nnelement_")]:
+        aggs += [
+            ((pl.col(var) * pl.col("e_rf")).mean() / pl.col("e_rf").mean() / 29979245800).alias(var)
+            for var in nnelement_vars
+        ]
 
     if "emvelocityoverc" in plotvars:
         aggs.append(
@@ -89,6 +95,9 @@ def plot_spherical(
                 "emvelocityoverc"
             )
         )
+
+    if "emvelocityoverc_sigma" in plotvars:
+        aggs.append(((pl.col("emission_velocity") / 29979245800).std()).alias("emvelocityoverc_sigma"))
 
     if "emlosvelocityoverc" in plotvars:
         aggs.append(
@@ -105,7 +114,7 @@ def plot_spherical(
             )
         )
 
-    if "temperature" in plotvars:
+    if "temperature" in plotvars or "temperature_sigma" in plotvars or nnelement_vars:
         timebins = [
             *at.get_timestep_times(modelpath, loc="start") * 86400.0,
             at.get_timestep_times(modelpath, loc="end")[-1] * 86400.0,
@@ -121,42 +130,52 @@ def plot_spherical(
 
         assert dfestimators is not None
         dfestimators = (
-            dfestimators.select(["timestep", "modelgridindex", "TR"])
+            dfestimators.select(["timestep", "modelgridindex", "TR", *nnelement_vars])
             .drop_nulls()
-            .rename({"timestep": "em_timestep", "modelgridindex": "em_modelgridindex", "TR": "em_TR"})
+            .rename({"timestep": "em_timestep", "modelgridindex": "em_modelgridindex"})
         )
         dfpackets = dfpackets.join(dfestimators, on=["em_timestep", "em_modelgridindex"], how="left")
-        aggs.append(((pl.col("em_TR") * pl.col("e_rf")).mean() / pl.col("e_rf").mean()).alias("temperature"))
+
+    if "temperature" in plotvars:
+        aggs.append(((pl.col("TR") * pl.col("e_rf")).mean() / pl.col("e_rf").mean()).alias("temperature"))
+
+    if "temperature_sigma" in plotvars:
+        aggs.append((pl.col("TR").std()).alias("temperature_sigma"))
 
     if atomic_number is not None or ion_stage is not None:
         dflinelist = at.get_linelist_pldf(modelpath)
+        elem_cond = f"Z={atomic_number} {at.get_elsymbol(atomic_number)}" if atomic_number is not None else ""
+        ion_stage_cond = f"ion stage {ion_stage}" if ion_stage is not None else ""
+        condition = f"last emitted/absorbed by {elem_cond} {ion_stage_cond}"
+        print(f"Including only packets {condition}")
         if atomic_number is not None:
-            print(f"Including only packets emitted by Z={atomic_number} {at.get_elsymbol(atomic_number)}")
             dflinelist = dflinelist.filter(pl.col("atomic_number") == atomic_number)
         if ion_stage is not None:
-            print(f"Including only packets emitted by ionisation stage {ion_stage}")
             dflinelist = dflinelist.filter(pl.col("ion_stage") == ion_stage)
 
         selected_emtypes = dflinelist.select("lineindex").collect().get_column("lineindex")
-        dfpackets = dfpackets.filter(pl.col("emissiontype").is_in(selected_emtypes))
+        dfpackets = dfpackets.filter(
+            pl.col("emissiontype").is_in(selected_emtypes) | pl.col("absorption_type").is_in(selected_emtypes)
+        )
 
     aggs.append(pl.len().alias("count"))
     dfpackets = dfpackets.group_by(["costhetabin", "phibin"]).agg(aggs)
     dfpackets = dfpackets.select(["costhetabin", "phibin", "count", *plotvars])
 
     ndirbins = nphibins * ncosthetabins
-    alldirbins = pl.DataFrame(
-        {"phibin": (d % nphibins for d in range(ndirbins)), "costhetabin": (d // nphibins for d in range(ndirbins))}
-    ).with_columns(pl.all().cast(pl.Int32))
+    alldirbinslazy = pl.DataFrame(
+        {"phibin": (d % nphibins for d in range(ndirbins)), "costhetabin": (d // nphibins for d in range(ndirbins))},
+        schema={"phibin": pl.Int32, "costhetabin": pl.Int32},
+    ).lazy()
     alldirbins = (
-        alldirbins.join(
-            dfpackets.collect(),
+        alldirbinslazy.join(
+            dfpackets,
             how="left",
             on=["costhetabin", "phibin"],
         )
         .fill_null(0)
         .sort(["costhetabin", "phibin"])
-    )
+    ).collect()
 
     print(f'packets plotted: {alldirbins.select("count").sum().item(0, 0):.1e}')
 
@@ -173,15 +192,16 @@ def plot_spherical(
     fig, axes = plt.subplots(
         len(plotvars),
         1,
-        figsize=(figscale * at.get_config()["figwidth"], 3.2 * len(plotvars)),
+        figsize=(figscale * at.get_config()["figwidth"], 3.5 * len(plotvars)),
         subplot_kw={"projection": "mollweide"},
-        # tight_layout={"pad": 0, "w_pad": 0, "h_pad": 5.0},
+        layout="constrained",
         gridspec_kw={"wspace": 0.0, "hspace": 0.0},
     )
 
     if len(plotvars) == 1:
         axes = (axes,)
 
+    # for ax, axcbar, plotvar in zip(axes[::2], axes[1::2], plotvars):
     for ax, plotvar in zip(axes, plotvars):
         data = alldirbins.get_column(plotvar).to_numpy().reshape((ncosthetabins, nphibins))
 
@@ -198,14 +218,22 @@ def plot_spherical(
                 colorbartitle = r"Mean line of sight velocity [c]"
             case "emvelocityoverc":
                 colorbartitle = r"Last interaction ejecta velocity [c]"
+            case "emvelocityoverc_sigma":
+                colorbartitle = r"Last interaction ejecta velocity standard deviation [c]"
             case "luminosity":
                 colorbartitle = r"Radiant intensity $\cdot\,4π$ [{}erg/s]"
             case "temperature":
                 colorbartitle = r"Temperature [{}K]"
+            case "temperature_sigma":
+                colorbartitle = r"Temperature standard deviation [{}K]"
+            case s if s.startswith("nnelement_"):
+                elemsymbol = s.split("_", maxsplit=1)[1]
+                colorbartitle = f"Number density of {elemsymbol} " + r"[{}/cm³]"
             case _:
-                raise AssertionError
+                msg = f"Unknown plotvar {plotvar}"
+                raise AssertionError(msg)
 
-        cbar = fig.colorbar(colormesh, ax=ax, location="bottom", pad=0.2)
+        cbar = fig.colorbar(colormesh, location="bottom", pad=0.03, ax=ax, shrink=0.95)
         cbar.outline.set_linewidth(0)  # type: ignore[operator]
         cbar.ax.tick_params(axis="both", direction="out")
         cbar.ax.xaxis.set_ticks_position("top")
@@ -231,7 +259,7 @@ def plot_spherical(
         #     ticks=-yticks_deg / 180 * np.pi + np.pi / 2.0, labels=[rf"${deg:.0f}\degree$" for deg in yticks_deg]
         # )
 
-    return fig, axes, timemindays, timemaxdays
+    return fig, axes, timemindays, timemaxdays, condition
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -329,7 +357,7 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
         if tstart is not None and tend is not None:
             print(f"Plotting spherical map for {tstart:.2f}-{tend:.2f} days {label}")
         # tstart and tend are requested, but the actual plotted time range may be different
-        fig, axes, timemindays, timemaxdays = plot_spherical(
+        fig, axes, timemindays, timemaxdays, condition = plot_spherical(
             modelpath=args.modelpath,
             dfpackets=dfpackets,
             dfestimators=dfestimators,
@@ -349,7 +377,10 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
             figscale=args.figscale,
         )
 
-        axes[0].set_title(f"{timemindays:.2f}-{timemaxdays:.2f} days")
+        axes[0].set_title(
+            f"{timemindays:.2f}-{timemaxdays:.2f} days{f' ({condition})' if condition else ''}",
+            loc="left",
+        )
 
         defaultfilename = "plotspherical_{timemindays:.2f}-{timemaxdays:.2f}d.{outformat}"
         outfilename = str(
@@ -358,7 +389,7 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
             else Path(args.outputfile) / defaultfilename
         ).format(timemindays=timemindays, timemaxdays=timemaxdays, outformat=outformat)
 
-        fig.savefig(outfilename, format=outformat, dpi=300)
+        fig.savefig(outfilename, format=outformat, dpi=300, pad_inches=0.0)
         print(f"Saved {outfilename}")
         plt.close()
         plt.clf()

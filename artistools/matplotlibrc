@@ -1,6 +1,6 @@
 pdf.fonttype: 42
 font.family: sans-serif
-font.sans-serif: Tahoma, 'DejaVu Sans', 'Lucida Grande', Verdana
+font.sans-serif: Tahoma, DejaVu Sans, Bitstream Vera Sans, Computer Modern Sans Serif, Lucida Grande, Verdana, Geneva, Lucid, Arial, Helvetica, Avant Garde, sans-serif
 #figure.constrained_layout.use: True
 # figure.figsize: 4.5, 4.
 

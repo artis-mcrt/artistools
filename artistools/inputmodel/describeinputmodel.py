@@ -103,7 +103,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         .collect()
         .item()
     )
-    print(f"  min density: {minrho:.2e} g/cm^3. Cells with this density: {minrho_cellcount}")
+    print(f"  min density: {minrho:.2e} g/cm³. Cells with this density: {minrho_cellcount}")
 
     if args.cell is not None:
         mgi = int(args.cell)
