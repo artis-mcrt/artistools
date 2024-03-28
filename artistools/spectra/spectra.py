@@ -142,6 +142,7 @@ def get_from_packets(
     nu_column: str = "nu_rf",
     fnufilterfunc: t.Callable[[np.ndarray], np.ndarray] | None = None,
     nprocs_read_dfpackets: tuple[int, pl.DataFrame] | None = None,
+    directionbins_are_vpkt_observers: bool = False,
 ) -> dict[int, pd.DataFrame]:
     """Get a spectrum dataframe using the packets files as input."""
     if directionbins is None:
@@ -175,9 +176,18 @@ def get_from_packets(
     ncosthetabins = at.get_viewingdirection_costhetabincount()
     ndirbins = at.get_viewingdirectionbincount()
 
-    nprocs_read, dfpackets = nprocs_read_dfpackets or at.packets.get_packets_pl(
-        modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
-    )
+    dfpackets: pl.DataFrame | pl.LazyFrame
+    if directionbins_are_vpkt_observers:
+        files = list(Path(modelpath).glob("vpackets_*.out"))
+        nprocs_read = len(files)
+        print(f"Reading {nprocs_read} vpacket files")
+        dfpackets = pl.scan_csv(files, separator=" ", has_header=True)
+        dfpackets = dfpackets.rename({"#obsdirindex": "obsdirindex"})
+        dfpackets = dfpackets.with_columns(t_arrive_d=pl.col("t_arrive") / 86400.0)
+    else:
+        nprocs_read, dfpackets = nprocs_read_dfpackets or at.packets.get_packets_pl(
+            modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
+        )
 
     if use_time == "arrival":
         dfpackets = dfpackets.filter(pl.col("t_arrive_d").is_between(float(timelowdays), float(timehighdays)))
@@ -203,21 +213,34 @@ def get_from_packets(
     if fnufilterfunc:
         print("Applying filter to ARTIS spectrum")
 
-    encol = "e_cmf" if use_time == "escape" else "e_rf"
-    getcols = {nu_column, encol}
-    if directionbins != [-1]:
-        if average_over_phi:
-            getcols.add("costhetabin")
-        elif average_over_theta:
-            getcols.add("phibin")
-        else:
-            getcols.add("dirbin")
+    getcols = {nu_column}
+
+    if directionbins_are_vpkt_observers:
+        vpkt_config = at.get_vpkt_config(modelpath)
+        getcols.add("obsdirindex")
+        getcols |= {f"e_rf_{i}" for i in range(vpkt_config["nspectraperobs"])}
+    else:
+        encol = "e_cmf" if use_time == "escape" else "e_rf"
+        getcols.add(encol)
+        if directionbins != [-1]:
+            if average_over_phi:
+                getcols.add("costhetabin")
+            elif average_over_theta:
+                getcols.add("phibin")
+            else:
+                getcols.add("dirbin")
 
     dfpackets = dfpackets.select(getcols).lazy().collect().lazy()
 
     dfdict = {}
     for dirbin in directionbins:
-        if dirbin == -1:
+        if directionbins_are_vpkt_observers:
+            obsdirindex = dirbin // vpkt_config["nspectraperobs"]
+            opacchoiceindex = dirbin % vpkt_config["nspectraperobs"]
+            pldfpackets_dirbin_lazy = dfpackets.filter(pl.col("obsdirindex") == obsdirindex)
+            encol = f"e_rf_{opacchoiceindex}"
+            solidanglefactor = 4 * math.pi
+        elif dirbin == -1:
             solidanglefactor = 1.0
             pldfpackets_dirbin_lazy = dfpackets
         elif average_over_phi:

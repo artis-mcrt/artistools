@@ -278,7 +278,6 @@ def plot_artis_spectrum(
 
         supxmin, supxmax = axis.get_xlim()
         if from_packets:
-            assert args.plotvspecpol is None
             viewinganglespectra = at.spectra.get_from_packets(
                 modelpath,
                 args.timemin,
@@ -293,7 +292,9 @@ def plot_artis_spectrum(
                 average_over_phi=average_over_phi,
                 average_over_theta=average_over_theta,
                 fnufilterfunc=filterfunc,
+                directionbins_are_vpkt_observers=args.plotvspecpol is not None,
             )
+
         elif args.plotvspecpol is not None:
             # read virtual packet files (after running plotartisspectrum --makevspecpol)
             vpkt_config = at.get_vpkt_config(modelpath)
