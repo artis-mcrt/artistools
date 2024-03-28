@@ -1151,6 +1151,8 @@ def addargs(parser) -> None:
         help="Savitzky-Golay filter. Specify the window_length and poly_order.e.g. -filtersavgol 5 3",
     )
 
+    parser.add_argument("-filtermovingavg", type=int, default=0, help="Smoothing length (1 is same as none)")
+
     parser.add_argument("-timestep", "-ts", dest="timestep", nargs="?", help="First timestep or a range e.g. 45-65")
 
     parser.add_argument(
