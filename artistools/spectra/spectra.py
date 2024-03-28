@@ -416,6 +416,9 @@ def get_spectrum(
 
     specdataout: dict[int, pd.DataFrame] = {}
     for dirbin in directionbins:
+        if dirbin not in specdata:
+            print(f"WARNING: Direction bin {dirbin} not found in specdata. Dirbins: {list(specdata.keys())}")
+            continue
         arr_nu = specdata[dirbin]["nu"].to_numpy()
         arr_tdelta = at.get_timestep_times(modelpath, loc="delta")
 
