@@ -145,7 +145,7 @@ define_colours_list2 = [
 
 def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> tuple[t.Sequence[int], dict[int, str]]:
     modelpath = Path(modelpath)
-    viewing_angle_data_exists = bool(list(modelpath.glob("*_res.out*")))
+    viewing_angle_data_exists = args.frompackets or bool(list(modelpath.glob("*_res.out*")))
     if isinstance(args.plotviewingangle, int):
         args.plotviewingangle = [args.plotviewingangle]
     dirbins = []
