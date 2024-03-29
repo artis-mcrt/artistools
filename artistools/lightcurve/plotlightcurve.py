@@ -318,6 +318,7 @@ def plot_artis_lightcurve(
             average_over_phi=average_over_phi,
             average_over_theta=average_over_theta,
             get_cmf_column=args.plotcmf,
+            directionbins_are_vpkt_observers=args.plotvspecpol is not None,
         )
     else:
         if lcfilename is None:
@@ -541,6 +542,7 @@ def make_lightcurve_plot(
             reflightcurveindex += 1
             plottedsomething = True
         else:
+            dirbin = args.plotviewingangle or (args.plotvspecpol or [-1])
             lcdataframes = plot_artis_lightcurve(
                 modelpath=modelpath,
                 lcindex=lcindex,
@@ -550,7 +552,7 @@ def make_lightcurve_plot(
                 frompackets=frompackets,
                 maxpacketfiles=maxpacketfiles,
                 axistherm=axistherm,
-                directionbins=args.plotviewingangle if args.plotviewingangle is not None else [-1],
+                directionbins=dirbin,
                 average_over_phi=args.average_over_phi_angle,
                 average_over_theta=args.average_over_theta_angle,
                 usedegrees=args.usedegrees,
