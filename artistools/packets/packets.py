@@ -541,6 +541,8 @@ def get_virtual_packets_pl(modelpath: str | Path, maxpacketfiles: int | None = N
             "trueemissiontype": pl.Int32,
             "absorption_type": pl.Int32,
             "absorption_freq": pl.Float32,
+            "absorptiontype": pl.Int32,
+            "absorptionfreq": pl.Float32,
         },
     )
     dfpackets = dfpackets.rename({"#obsdirindex": "obsdirindex"})
@@ -550,8 +552,8 @@ def get_virtual_packets_pl(modelpath: str | Path, maxpacketfiles: int | None = N
     # some fudging to imitate the packets file
     dfpackets = dfpackets.with_columns(type_id=type_ids["TYPE_ESCAPE"], escape_type_id=type_ids["TYPE_RPKT"])
 
-    if "absorption_freq" not in dfpackets.columns:
-        dfpackets = dfpackets.with_columns(absorption_freq=-1)
+    renames = {"absorptiontype": "absorption_type", "absorptionfreq": "absorption_freq"}
+    dfpackets = dfpackets.rename({a: b for a, b in renames.items() if a in dfpackets.columns})
 
     return nprocs_read, dfpackets
 

@@ -1072,11 +1072,15 @@ def get_flux_contributions_from_packets(
                 timehighdays=timehighdays,
                 lambda_min=lambda_min,
                 lambda_max=lambda_max,
+                use_time=use_time,
                 delta_lambda=delta_lambda,
                 nu_column="absorption_freq",
                 fnufilterfunc=filterfunc,
                 nprocs_read_dfpackets=(nprocs_read, absorptiongroups[groupname]),
-            )[-1]
+                directionbins=[directionbin],
+                average_over_phi=average_over_phi,
+                average_over_theta=average_over_theta,
+            )[directionbin]
 
             if array_lambda is None:
                 array_lambda = spec_group["lambda_angstroms"].to_numpy()
