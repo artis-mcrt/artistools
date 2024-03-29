@@ -424,12 +424,19 @@ def make_spectrum_plot(
     refspecindex = 0
     seriesindex = 0
 
+    # take any specified colours our of the cycle
+    colors = [
+        color for i, color in enumerate(plt.rcParams["axes.prop_cycle"].by_key()["color"]) if f"C{i}" not in args.color
+    ]
+    for ax in axes:
+        ax.set_prop_cycle(color=colors)
+
     for seriesindex, specpath in enumerate(speclist):
         specpath = Path(specpath)
         plotkwargs: dict[str, t.Any] = {
             "alpha": args.linealpha[seriesindex],
             "linestyle": args.linestyle[seriesindex],
-            "color": args.color[refspecindex + artisindex],
+            "color": args.color[seriesindex],
         }
 
         if args.dashes[seriesindex]:

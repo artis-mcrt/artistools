@@ -506,7 +506,7 @@ def make_lightcurve_plot(
     else:
         axistherm = None
 
-    # take any assigned colours our of the cycle
+    # take any specified colours our of the cycle
     colors = [
         color for i, color in enumerate(plt.rcParams["axes.prop_cycle"].by_key()["color"]) if f"C{i}" not in args.color
     ]
