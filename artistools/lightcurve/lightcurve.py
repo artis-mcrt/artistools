@@ -118,6 +118,9 @@ def get_from_packets(
 
     dfpackets = dfpackets.select(getcols).collect(streaming=True).lazy()
 
+    npkts_selected = dfpackets.select(pl.count("*")).collect().item(0, 0)
+    print(f"  time/frequency selection contains {npkts_selected:.2e} packets")
+
     lcdata = {}
     for dirbin in directionbins:
         if directionbins_are_vpkt_observers:
@@ -146,6 +149,9 @@ def get_from_packets(
             bins=list(timearrayplusend),
             sumcols=["e_rf"],
         )
+
+        npkts_selected = pldfpackets_dirbin.select(pl.count("*")).collect().item(0, 0)
+        print(f"    dirbin {dirbin} contains {npkts_selected:.2e} packets")
 
         unitfactor = float((u.erg / u.day).to("solLum"))
         dftimebinned = dftimebinned.with_columns(

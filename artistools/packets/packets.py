@@ -555,6 +555,11 @@ def get_virtual_packets_pl(modelpath: str | Path, maxpacketfiles: int | None = N
     renames = {"absorptiontype": "absorption_type", "absorptionfreq": "absorption_freq"}
     dfpackets = dfpackets.rename({a: b for a, b in renames.items() if a in dfpackets.columns})
 
+    npkts_total = dfpackets.select(pl.count("*")).collect().item(0, 0)
+    print(
+        f"  files contain {npkts_total:.2e} virtual packets (counting separately all directions and opacity exclusions)"
+    )
+
     return nprocs_read, dfpackets
 
 
@@ -573,7 +578,7 @@ def get_packets_pl(
 
     nprocs_read = len(packetsfiles)
     packetsdatasize_gb = nprocs_read * Path(packetsfiles[0]).stat().st_size / 1024 / 1024 / 1024
-    print(f" data size is {packetsdatasize_gb:.1f} GB ({nprocs_read} * size of {packetsfiles[0].parts[-1]})")
+    print(f"  data size is {packetsdatasize_gb:.1f} GB ({nprocs_read} * size of {packetsfiles[0].parts[-1]})")
 
     pldfpackets = pl.scan_parquet(packetsfiles)
 
@@ -584,6 +589,9 @@ def get_packets_pl(
         )
     elif packet_type is not None and packet_type:
         pldfpackets = pldfpackets.filter(pl.col("type_id") == type_ids[packet_type])
+
+    npkts_total = pldfpackets.select(pl.count("*")).collect().item(0, 0)
+    print(f"  files contain {npkts_total:.2e} packets")
 
     return nprocs_read, pldfpackets
 

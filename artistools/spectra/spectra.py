@@ -229,6 +229,10 @@ def get_from_packets(
 
     dfpackets = dfpackets.select(getcols).lazy().collect().lazy()
 
+    if nprocs_read_dfpackets is None:
+        npkts_selected = dfpackets.select(pl.count("*")).collect().item(0, 0)
+        print(f"  time/frequency selection contains {npkts_selected:.2e} packets")
+
     dfdict = {}
     for dirbin in directionbins:
         if directionbins_are_vpkt_observers:
@@ -254,6 +258,10 @@ def get_from_packets(
         pldfpackets_dirbin = pldfpackets_dirbin_lazy.with_columns(
             [(2.99792458e18 / pl.col(nu_column)).alias("lambda_angstroms")]
         ).select(["lambda_angstroms", encol])
+
+        if nprocs_read_dfpackets is None:
+            npkts_selected = pldfpackets_dirbin.select(pl.count("*")).collect().item(0, 0)
+            print(f"    dirbin {dirbin} contains {npkts_selected:.2e} packets")
 
         dfbinned = at.packets.bin_and_sum(
             pldfpackets_dirbin,
@@ -962,13 +970,17 @@ def get_flux_contributions_from_packets(
 
     nu_min = 2.99792458e18 / lambda_max
     nu_max = 2.99792458e18 / lambda_min
+    condition_nu_emit = pl.col("nu_rf").is_between(nu_min, nu_max) if getemission else pl.lit(False)
+    condition_nu_abs = pl.col("absorption_freq").is_between(nu_min, nu_max) if getabsorption else pl.lit(False)
+
     dfpackets = (
-        lzdfpackets.filter(
-            (pl.col("nu_rf").is_between(nu_min, nu_max)) | (pl.col("absorption_freq").is_between(nu_min, nu_max))
-        )
+        lzdfpackets.filter(condition_nu_emit | condition_nu_abs)
         .select([col for col in cols if col in lzdfpackets.columns])
         .collect()
     )
+
+    npkts_selected = dfpackets.select(pl.count("*")).item(0, 0)
+    print(f"  time/frequency selection contains {npkts_selected:.2e} packets")
 
     emissiongroups = (
         dict(dfpackets.filter(pl.col("nu_rf").is_between(nu_min, nu_max)).group_by("emissiontype_str"))

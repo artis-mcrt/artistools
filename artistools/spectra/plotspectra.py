@@ -273,7 +273,7 @@ def plot_artis_spectrum(
 
         # have to get the spherical average "bin" if directionbins is None
         dbins_get = list(directionbins).copy()
-        if -1 not in dbins_get:
+        if -1 not in dbins_get and not args.plotvspecpol:
             dbins_get.append(-1)
 
         supxmin, supxmax = axis.get_xlim()
