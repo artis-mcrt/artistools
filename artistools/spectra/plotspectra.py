@@ -613,6 +613,9 @@ def make_emissionabsorption_plot(
     xmin, xmax = axis.get_xlim()
 
     if args.frompackets:
+        dirbin = (
+            args.plotviewingangle[0] if args.plotviewingangle else args.plotvspecpol[0] if args.plotvspecpol else None
+        )
         (
             contribution_list,
             array_flambda_emission_total,
@@ -633,9 +636,10 @@ def make_emissionabsorption_plot(
             delta_lambda=args.deltalambda,
             use_lastemissiontype=not args.use_thermalemissiontype,
             emissionvelocitycut=args.emissionvelocitycut,
-            directionbin=args.plotviewingangle[0] if args.plotviewingangle else None,
+            directionbin=dirbin,
             average_over_phi=args.average_over_phi_angle,
             average_over_theta=args.average_over_theta_angle,
+            directionbins_are_vpkt_observers=args.plotvspecpol is not None,
         )
     else:
         arraylambda_angstroms = 2.99792458e18 / arraynu

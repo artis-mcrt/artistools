@@ -153,6 +153,10 @@ def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> 
         dirbins = args.plotvspecpol
     elif args.plotviewingangle and args.plotviewingangle[0] == -2 and viewing_angle_data_exists:
         dirbins = np.arange(0, 100, 1, dtype=int).tolist()
+        if args.average_over_phi_angle:
+            dirbins = [d for d in dirbins if d % at.get_viewingdirection_phibincount() == 0]
+        if args.average_over_theta_angle:
+            dirbins = [d for d in dirbins if d < at.get_viewingdirection_costhetabincount()]
     elif args.plotviewingangle and viewing_angle_data_exists:
         dirbins = args.plotviewingangle
     elif (

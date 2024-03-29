@@ -177,15 +177,12 @@ def get_from_packets(
     ndirbins = at.get_viewingdirectionbincount()
 
     dfpackets: pl.DataFrame | pl.LazyFrame
-    if directionbins_are_vpkt_observers:
-        files = list(Path(modelpath).glob("vpackets_*.out"))
-        nprocs_read = len(files)
-        print(f"Reading {nprocs_read} vpacket files")
-        dfpackets = pl.scan_csv(files, separator=" ", has_header=True)
-        dfpackets = dfpackets.rename({"#obsdirindex": "obsdirindex"})
-        dfpackets = dfpackets.with_columns(t_arrive_d=pl.col("t_arrive") / 86400.0)
+    if nprocs_read_dfpackets:
+        nprocs_read, dfpackets = nprocs_read_dfpackets
+    elif directionbins_are_vpkt_observers:
+        nprocs_read, dfpackets = at.packets.get_virtual_packets_pl(modelpath, maxpacketfiles=maxpacketfiles)
     else:
-        nprocs_read, dfpackets = nprocs_read_dfpackets or at.packets.get_packets_pl(
+        nprocs_read, dfpackets = at.packets.get_packets_pl(
             modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
         )
 
@@ -264,16 +261,17 @@ def get_from_packets(
             bins=list(lambda_bin_edges),
             sumcols=[encol],
             getcounts=getpacketcount,
-        )
+        ).collect()
+
         array_flambda = (
-            dfbinned[f"{encol}_sum"]
+            dfbinned.get_column(f"{encol}_sum").to_numpy()
             / delta_lambda
             / (timehigh - timelow)
             / (4 * math.pi)
             * solidanglefactor
             / (megaparsec_to_cm**2)
             / nprocs_read
-        ).to_numpy()
+        )
 
         if use_time == "escape":
             assert escapesurfacegamma is not None
@@ -293,7 +291,7 @@ def get_from_packets(
         )
 
         if getpacketcount:
-            dfdict[dirbin]["packetcount"] = dfbinned["count"]
+            dfdict[dirbin]["packetcount"] = dfbinned.get_column("count")
 
     return dfdict
 
@@ -861,6 +859,7 @@ def get_flux_contributions_from_packets(
     directionbin: int | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
+    directionbins_are_vpkt_observers: bool = False,
 ) -> tuple[list[fluxcontributiontuple], np.ndarray, np.ndarray]:
     assert groupby in {"ion", "line"}
 
@@ -872,9 +871,18 @@ def get_flux_contributions_from_packets(
     linelistlazy = at.get_linelist_pldf(modelpath=modelpath, get_ion_str=True)
     bflistlazy = at.get_bflist(modelpath, get_ion_str=True)
 
-    nprocs_read, lzdfpackets = at.packets.get_packets_pl(
-        modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
-    )
+    if directionbins_are_vpkt_observers:
+        vpkt_config = at.get_vpkt_config(modelpath)
+        opacchoiceindex = directionbin % vpkt_config["nspectraperobs"]
+        nprocs_read, lzdfpackets = at.packets.get_virtual_packets_pl(modelpath, maxpacketfiles=maxpacketfiles)
+        lzdfpackets = lzdfpackets.filter(pl.col("obsdirindex") == directionbin)
+        lzdfpackets = lzdfpackets.with_columns(
+            e_rf=pl.col(f"e_rf_{opacchoiceindex}"), costhetabin=-1, phibin=-1, dirbin=directionbin
+        )
+    else:
+        nprocs_read, lzdfpackets = at.packets.get_packets_pl(
+            modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
+        )
 
     if emissionvelocitycut is not None:
         lzdfpackets = at.packets.add_derived_columns_lazy(lzdfpackets)

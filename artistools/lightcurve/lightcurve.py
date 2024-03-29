@@ -140,7 +140,7 @@ def get_from_packets(
             ]
         ).drop(["e_rf_sum", "t_arrive_d_bin"])
 
-        lcdata[dirbin] = dftimebinned
+        lcdata[dirbin] = dftimebinned.collect()
 
         if get_cmf_column:
             dftimebinned_cmf = at.packets.bin_and_sum(
@@ -148,12 +148,12 @@ def get_from_packets(
                 bincol="t_arrive_cmf_d",
                 bins=list(timearrayplusend),
                 sumcols=["e_cmf"],
-            )
+            ).collect()
 
             assert escapesurfacegamma is not None
             lcdata[dirbin] = lcdata[dirbin].with_columns(
                 (
-                    dftimebinned_cmf["e_cmf_sum"]
+                    dftimebinned_cmf.get_column("e_cmf_sum").to_numpy()
                     / nprocs_read
                     * solidanglefactor
                     / escapesurfacegamma

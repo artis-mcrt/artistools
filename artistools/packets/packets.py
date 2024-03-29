@@ -525,6 +525,37 @@ def get_packetsfilepaths(
     return parquetpacketsfiles
 
 
+def get_virtual_packets_pl(modelpath: str | Path, maxpacketfiles: int | None = None) -> tuple[int, pl.LazyFrame]:
+    files = list(Path(modelpath).glob("vpackets_*.out"))
+    if maxpacketfiles is not None:
+        files = files[:maxpacketfiles]
+
+    nprocs_read = len(files)
+    print(f"Reading {nprocs_read} vpacket files")
+    dfpackets = pl.scan_csv(
+        files,
+        separator=" ",
+        has_header=True,
+        dtypes={
+            "emissiontype": pl.Int32,
+            "trueemissiontype": pl.Int32,
+            "absorption_type": pl.Int32,
+            "absorption_freq": pl.Float32,
+        },
+    )
+    dfpackets = dfpackets.rename({"#obsdirindex": "obsdirindex"})
+    if "t_arrive_d" not in dfpackets.columns:
+        dfpackets = dfpackets.with_columns(t_arrive_d=pl.col("t_arrive") / 86400.0)
+
+    # some fudging to imitate the packets file
+    dfpackets = dfpackets.with_columns(type_id=type_ids["TYPE_ESCAPE"], escape_type_id=type_ids["TYPE_RPKT"])
+
+    if "absorption_freq" not in dfpackets.columns:
+        dfpackets = dfpackets.with_columns(absorption_freq=-1)
+
+    return nprocs_read, dfpackets
+
+
 def get_packets_pl(
     modelpath: str | Path,
     maxpacketfiles: int | None = None,
@@ -880,11 +911,11 @@ def bin_and_sum(
     bins: list[float | int],
     sumcols: list[str] | None = None,
     getcounts: bool = False,
-) -> pl.DataFrame:
+) -> pl.LazyFrame:
     """Bins is a list of lower edges, and the final upper edge."""
     # Polars method
 
-    df = df.with_columns(
+    df = df.lazy().with_columns(
         (
             pl.col(bincol)
             .cut(breaks=list(bins), labels=[str(x) for x in range(-1, len(bins))])
@@ -898,8 +929,8 @@ def bin_and_sum(
     if getcounts:
         aggs.append(pl.col(bincol).count().alias("count"))
 
-    wlbins = df.group_by(f"{bincol}_bin").agg(aggs).lazy().collect()
+    wlbins = df.group_by(f"{bincol}_bin").agg(aggs).lazy()
 
     # now we will include the empty bins
-    dfout = pl.DataFrame(pl.Series(name=f"{bincol}_bin", values=np.arange(0, len(bins) - 1), dtype=pl.Int32))
+    dfout = pl.DataFrame(pl.Series(name=f"{bincol}_bin", values=np.arange(0, len(bins) - 1), dtype=pl.Int32)).lazy()
     return dfout.join(wlbins, how="left", on=f"{bincol}_bin").fill_null(0)
