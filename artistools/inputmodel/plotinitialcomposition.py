@@ -4,6 +4,7 @@
 
 import argparse
 import math
+import string
 import typing as t
 from pathlib import Path
 
@@ -123,7 +124,7 @@ def plot_slice_modelcolumn(ax, dfmodelslice, modelmeta, colname, plotaxis1, plot
 
 def plot_2d_initial_abundances(modelpath, args=None) -> None:
     # if the species ends in a number then we need to also get the nuclear mass fractions (not just element abundances)
-    get_elemabundances = any(plotvar[-1] not in "0123456789" for plotvar in args.plotvars)
+    get_elemabundances = any(plotvar[-1] not in string.digits for plotvar in args.plotvars)
     dfmodel, modelmeta = at.get_modeldata(
         modelpath,
         get_elemabundances=get_elemabundances,

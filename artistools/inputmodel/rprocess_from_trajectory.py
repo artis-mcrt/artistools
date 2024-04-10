@@ -5,6 +5,7 @@ import gc
 import io
 import math
 import multiprocessing
+import string
 import tarfile
 import time
 import typing as t
@@ -39,7 +40,7 @@ def get_dfelemabund_from_dfmodel(dfmodel: pl.DataFrame, dfnucabundances: pl.Data
         if not colname.startswith("X_"):
             continue
         nuclidesincluded += 1
-        atomic_number = at.get_atomic_number(colname[2:].rstrip("0123456789"))
+        atomic_number = at.get_atomic_number(colname[2:].rstrip(string.digits))
         if atomic_number in elemisotopes:
             elemisotopes[atomic_number].append(colname)
         else:

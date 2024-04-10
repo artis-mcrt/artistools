@@ -2,6 +2,7 @@ import argparse
 import gzip
 import io
 import math
+import string
 import typing as t
 from collections import namedtuple
 from functools import lru_cache
@@ -578,10 +579,10 @@ def get_z_a_nucname(nucname: str) -> tuple[int, int]:
     if "_" in nucname:
         nucname = nucname.split("_")[1]
 
-    z = get_atomic_number(nucname.rstrip("0123456789"))
+    z = get_atomic_number(nucname.rstrip(string.digits))
     assert z > 0
 
-    a = int(nucname.lower().lstrip("abcdefghijklmnopqrstuvwxyz"))
+    a = int(nucname.lower().lstrip(string.ascii_lowercase))
 
     return z, a
 
@@ -624,7 +625,7 @@ def get_atomic_number(elsymbol: str) -> int:
     """Return the atomic number of an element symbol."""
     assert elsymbol is not None
     elsymbol = elsymbol.removeprefix("X_")
-    elsymbol = elsymbol.split("_")[0].split("-")[0].rstrip("0123456789")
+    elsymbol = elsymbol.split("_")[0].split("-")[0].rstrip(string.digits)
 
     if elsymbol.title() in get_elsymbolslist():
         return get_elsymbolslist().index(elsymbol.title())
@@ -844,7 +845,7 @@ def firstexisting(
         fullpaths.append(Path(folder) / filename)
 
         if tryzipped:
-            for ext in [".zst", ".gz", ".xz"]:
+            for ext in (".zst", ".gz", ".xz"):
                 filenameext = str(filename) if str(filename).endswith(ext) else str(filename) + ext
                 if filenameext not in filelist:
                     fullpaths.append(folder / filenameext)
@@ -1483,11 +1484,11 @@ def get_dirbin_labels(
         phi_index = dirbin % nphibins
 
         if average_over_phi:
-            angle_definitions[dirbin] = f"{costhetabinlabels[costheta_index]}"
+            angle_definitions[dirbin] = str(costhetabinlabels[costheta_index])
             assert phi_index == 0
             assert not average_over_theta
         elif average_over_theta:
-            angle_definitions[dirbin] = f"{phibinlabels[phi_index]}"
+            angle_definitions[dirbin] = str(phibinlabels[phi_index])
             assert costheta_index == 0
         else:
             angle_definitions[dirbin] = f"{costhetabinlabels[costheta_index]}, {phibinlabels[phi_index]}"

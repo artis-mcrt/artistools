@@ -8,6 +8,8 @@ Examples are temperatures, populations, heating/cooling rates.
 import argparse
 import contextlib
 import math
+import operator
+import string
 import typing as t
 from pathlib import Path
 
@@ -70,7 +72,7 @@ def plot_init_abundances(
 
     for speciesstr in specieslist:
         splitvariablename = speciesstr.split("_")
-        elsymbol = splitvariablename[0].strip("0123456789")
+        elsymbol = splitvariablename[0].strip(string.digits)
         atomic_number = at.get_atomic_number(elsymbol)
         if seriestype == "initabundances":
             ax.set_ylim(1e-20, 1.0)
@@ -881,7 +883,7 @@ def plot_recombrates(modelpath, estimators, atomic_number, ion_stage_list, **plo
             continue
 
         # sort the pairs by temperature ascending
-        listT_e, list_rrc, list_rrc2 = zip(*sorted(zip(listT_e, list_rrc, list_rrc2), key=lambda x: x[0]))
+        listT_e, list_rrc, list_rrc2 = zip(*sorted(zip(listT_e, list_rrc, list_rrc2), key=operator.itemgetter(0)))
 
         ax.plot(listT_e, list_rrc, linewidth=2, label=f"{ionstr} ARTIS RRC_LTE_Nahar", **plotkwargs)
         ax.plot(listT_e, list_rrc2, linewidth=2, label=f"{ionstr} ARTIS Alpha_R", **plotkwargs)

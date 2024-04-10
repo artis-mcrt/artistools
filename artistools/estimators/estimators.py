@@ -114,7 +114,7 @@ def get_ionrecombrates_fromfile(filename: Path | str) -> pd.DataFrame:
                     print(header_row)
                     print(row)
                     sys.exit()
-                records.append(recomb_tuple(*[float(row[index]) for index in [index_logt, index_low_n, index_tot]]))
+                records.append(recomb_tuple(*[float(row[index]) for index in (index_logt, index_low_n, index_tot)]))
 
     return pd.DataFrame.from_records(records, columns=recomb_tuple._fields)
 

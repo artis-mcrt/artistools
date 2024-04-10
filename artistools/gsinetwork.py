@@ -6,6 +6,7 @@ import argparse
 import contextlib
 import math
 import multiprocessing
+import string
 import typing as t
 from functools import partial
 from pathlib import Path
@@ -21,7 +22,7 @@ import artistools as at
 
 def strnuc_to_latex(strnuc: str):
     """Convert a string like sr89 to $^{89}$Sr."""
-    elsym = strnuc.rstrip("0123456789")
+    elsym = strnuc.rstrip(string.digits)
     massnum = strnuc.removeprefix(elsym)
 
     return rf"$^{{{massnum}}}${elsym.title()}"

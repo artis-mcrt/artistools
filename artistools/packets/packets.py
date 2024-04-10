@@ -194,7 +194,7 @@ def add_derived_columns(
     if "em_timestep" in colnames:
         dfpackets["em_timestep"] = dfpackets.apply(em_timestep, axis=1)
 
-    if any(x in colnames for x in ["angle_bin", "dirbin", "costhetabin", "phibin"]):
+    if any(x in colnames for x in ("angle_bin", "dirbin", "costhetabin", "phibin")):
         dfpackets = bin_packet_directions(modelpath, dfpackets)
 
     return dfpackets
@@ -263,7 +263,7 @@ def add_derived_columns_lazy(
                     ((pl.col(f"em_pos{ax}") / pl.col("em_time") + vmax) / vwidth)
                     .cast(pl.Int32)
                     .alias(f"coordpointnum{ax}")
-                    for ax in ["x", "y", "z"]
+                    for ax in ("x", "y", "z")
                 ]
             )
             dfpackets = dfpackets.with_columns(

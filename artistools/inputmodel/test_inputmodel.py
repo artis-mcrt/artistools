@@ -22,7 +22,7 @@ def test_describeinputmodel_3d() -> None:
 
 
 def test_get_modeldata_1d() -> None:
-    for getheadersonly in [False, True]:
+    for getheadersonly in (False, True):
         dfmodel, modelmeta = at.get_modeldata(modelpath=modelpath, getheadersonly=getheadersonly)
         assert np.isclose(modelmeta["vmax_cmps"], 800000000.0)
         assert modelmeta["dimensions"] == 1
@@ -33,7 +33,7 @@ def test_get_modeldata_1d() -> None:
 
 
 def test_get_modeldata_3d() -> None:
-    for getheadersonly in [False, True]:
+    for getheadersonly in (False, True):
         dfmodel, modelmeta = at.get_modeldata(modelpath=modelpath_3d, getheadersonly=getheadersonly)
         assert np.isclose(modelmeta["vmax_cmps"], 2892020000.0)
         assert modelmeta["dimensions"] == 3
@@ -147,7 +147,7 @@ def test_makeartismodelfrom_sph_particles() -> None:
         )
 
         dfcontribs = {}
-        for dimensions in [3, 2, 1, 0]:
+        for dimensions in (3, 2, 1, 0):
             outpath_kn = outputpath / f"kilonova_{dimensions:d}d"
             outpath_kn.mkdir(exist_ok=True, parents=True)
 

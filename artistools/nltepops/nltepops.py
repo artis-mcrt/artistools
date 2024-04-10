@@ -3,6 +3,7 @@
 import math
 import multiprocessing
 import re
+import string
 from functools import lru_cache
 from functools import partial
 from pathlib import Path
@@ -32,7 +33,7 @@ def texifyterm(strterm: str) -> str:
                 strtermtex += r"$^{\rm " + termpiece + r"}$"
         elif re.match(r"[0-9]?.*\]", termpiece) is not None:
             # J value
-            strtermtex += termpiece.split("[")[0] + r"$_{" + termpiece.lstrip("0123456789").strip("[]") + r"}$"
+            strtermtex += termpiece.split("[")[0] + r"$_{" + termpiece.lstrip(string.digits).strip("[]") + r"}$"
         elif re.match("[0-9]", termpiece) is not None and passed_term_Lchar:
             # extra number after S char
             strtermtex += termpiece
