@@ -168,7 +168,7 @@ useLibraryCodeForTypes = false
 addopts = " --durations=0 --typeguard-packages=artistools -n auto"
 
 [tool.refurb]
-ignore = []
+ignore = ["FURB120"]
 quiet = false
 enable_all = true
 python_version = "3.10"
