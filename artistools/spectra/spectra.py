@@ -195,9 +195,11 @@ def get_from_packets(
         for dirbin in directionbins:
             obsdirindex = dirbin // vpkt_config["nspectraperobs"]
             opacchoiceindex = dirbin % vpkt_config["nspectraperobs"]
-            getcols |= {f"dir{obsdirindex}_nu_rf"}
-            getcols |= {f"dir{obsdirindex}_t_arrive_d"}
-            getcols |= {f"dir{obsdirindex}_e_rf_{opacchoiceindex}"}
+            getcols |= {
+                f"dir{obsdirindex}_nu_rf",
+                f"dir{obsdirindex}_t_arrive_d",
+                f"dir{obsdirindex}_e_rf_{opacchoiceindex}",
+            }
             time_conditions.append(pl.col(f"dir{obsdirindex}_t_arrive_d").is_between(timelowdays, timehighdays))
             nu_conditions.append(pl.col(f"dir{obsdirindex}_nu_rf").is_between(float(nu_min), float(nu_max)))
         dfpackets = dfpackets.filter(pl.any_horizontal(time_conditions)).filter(pl.any_horizontal(nu_conditions))
@@ -250,6 +252,7 @@ def get_from_packets(
             opacchoiceindex = dirbin % vpkt_config["nspectraperobs"]
             pldfpackets_dirbin_lazy = dfpackets.filter(
                 pl.col(f"dir{obsdirindex}_t_arrive_d").is_between(timelowdays, timehighdays)
+                & pl.col(f"dir{obsdirindex}_nu_rf").is_between(float(nu_min), float(nu_max))
             )
             pldfpackets_dirbin_lazy = pldfpackets_dirbin_lazy.with_columns(
                 e_rf=pl.col(f"dir{obsdirindex}_e_rf_{opacchoiceindex}"),

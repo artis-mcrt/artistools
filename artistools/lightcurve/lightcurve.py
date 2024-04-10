@@ -99,22 +99,28 @@ def get_from_packets(
             ]
         )
 
-    getcols = ["t_arrive_d"]
+    getcols = set()
     if directionbins_are_vpkt_observers:
         vpkt_config = at.get_vpkt_config(modelpath)
-        getcols.append("obsdirindex")
-        getcols += [f"e_rf_{i}" for i in range(vpkt_config["nspectraperobs"])]
+        for dirbin in directionbins:
+            obsdirindex = dirbin // vpkt_config["nspectraperobs"]
+            opacchoiceindex = dirbin % vpkt_config["nspectraperobs"]
+            getcols |= {
+                f"dir{obsdirindex}_nu_rf",
+                f"dir{obsdirindex}_t_arrive_d",
+                f"dir{obsdirindex}_e_rf_{opacchoiceindex}",
+            }
     else:
-        getcols.append("e_rf")
+        getcols |= {"t_arrive_d", "e_rf"}
         if get_cmf_column:
-            getcols += ["e_cmf", "t_arrive_cmf_d"]
+            getcols |= {"e_cmf", "t_arrive_cmf_d"}
         if directionbins != [-1]:
             if average_over_phi:
-                getcols.append("costhetabin")
+                getcols.add("costhetabin")
             elif average_over_theta:
-                getcols.append("phibin")
+                getcols.add("phibin")
             else:
-                getcols.append("dirbin")
+                getcols.add("dirbin")
 
     dfpackets = dfpackets.select(getcols).collect(streaming=True).lazy()
 
@@ -126,8 +132,10 @@ def get_from_packets(
         if directionbins_are_vpkt_observers:
             obsdirindex = dirbin // vpkt_config["nspectraperobs"]
             opacchoiceindex = dirbin % vpkt_config["nspectraperobs"]
-            pldfpackets_dirbin = dfpackets.filter(pl.col("obsdirindex") == obsdirindex)
-            pldfpackets_dirbin = pldfpackets_dirbin.with_columns(e_rf=pl.col(f"e_rf_{opacchoiceindex}"))
+            pldfpackets_dirbin = dfpackets.with_columns(
+                e_rf=pl.col(f"dir{obsdirindex}_e_rf_{opacchoiceindex}"),
+                t_arrive_d=pl.col(f"dir{obsdirindex}_t_arrive_d"),
+            )
             solidanglefactor = 4 * math.pi
         elif dirbin == -1:
             solidanglefactor = 1.0
