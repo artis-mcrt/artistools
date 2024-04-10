@@ -680,10 +680,11 @@ def get_vspecpol_spectrum(
         print("Applying filter to ARTIS spectrum")
         f_nu = fnufilterfunc(f_nu)
 
-    dfspectrum = pd.DataFrame({"nu": nu, "f_nu": f_nu})
-    dfspectrum = dfspectrum.sort_values(by="nu", ascending=False)
-
-    dfspectrum = dfspectrum.eval("lambda_angstroms = @c / nu", local_dict={"c": 2.99792458e18})
+    dfspectrum = (
+        pd.DataFrame({"nu": nu, "f_nu": f_nu})
+        .sort_values(by="nu", ascending=False)
+        .eval("lambda_angstroms = @c / nu", local_dict={"c": 2.99792458e18})
+    )
     return dfspectrum.eval("f_lambda = f_nu * nu / lambda_angstroms")
 
 
