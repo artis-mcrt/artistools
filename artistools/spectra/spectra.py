@@ -205,9 +205,9 @@ def get_from_packets(
         dfpackets = dfpackets.filter(pl.any_horizontal(time_conditions)).filter(pl.any_horizontal(nu_conditions))
         getcols.discard("nu_rf")
     else:
-        dfpackets = dfpackets.filter(pl.col(nu_column).is_between(float(nu_min), float(nu_max)))
+        dfpackets = dfpackets.filter(pl.col(nu_column).is_between(nu_min, nu_max))
         if use_time == "arrival":
-            dfpackets = dfpackets.filter(pl.col("t_arrive_d").is_between(float(timelowdays), float(timehighdays)))
+            dfpackets = dfpackets.filter(pl.col("t_arrive_d").is_between(timelowdays, timehighdays))
         elif use_time == "escape":
             assert escapesurfacegamma is not None
             dfpackets = dfpackets.filter(
@@ -221,8 +221,8 @@ def get_from_packets(
                 .to_numpy()[0][0]
             )
 
-            em_time_low = float(timelowdays) * 86400.0 + mean_correction
-            em_time_high = float(timehighdays) * 86400.0 + mean_correction
+            em_time_low = timelowdays * 86400.0 + mean_correction
+            em_time_high = timehighdays * 86400.0 + mean_correction
             dfpackets = dfpackets.filter(pl.col("em_time").is_between(em_time_low, em_time_high))
 
     if fnufilterfunc:
@@ -253,11 +253,6 @@ def get_from_packets(
             pldfpackets_dirbin_lazy = dfpackets.filter(
                 pl.col(f"dir{obsdirindex}_t_arrive_d").is_between(timelowdays, timehighdays)
                 & pl.col(f"dir{obsdirindex}_nu_rf").is_between(float(nu_min), float(nu_max))
-            )
-            pldfpackets_dirbin_lazy = pldfpackets_dirbin_lazy.with_columns(
-                e_rf=pl.col(f"dir{obsdirindex}_e_rf_{opacchoiceindex}"),
-                nu_rf=pl.col(f"dir{obsdirindex}_nu_rf"),
-                t_arrive_d=pl.col(f"dir{obsdirindex}_t_arrive_d"),
             )
             encol = f"dir{obsdirindex}_e_rf_{opacchoiceindex}"
             nu_column = f"dir{obsdirindex}_nu_rf"
