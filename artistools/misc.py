@@ -886,7 +886,7 @@ def readnoncommentline(file: io.TextIOBase) -> str:
     """Read a line from the text file, skipping blank and comment lines that begin with #."""
     line = ""
 
-    while not line.strip() or line.strip().lstrip().startswith("#"):
+    while not line.strip() or line.lstrip().startswith("#"):
         line = file.readline()
 
     return line
