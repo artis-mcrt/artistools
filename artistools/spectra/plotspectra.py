@@ -21,6 +21,14 @@ import artistools as at
 hatches = ["", "x", "-", "\\", "+", "O", ".", "", "x", "*", "\\", "+", "O", "."]  # ,
 
 
+def path_is_artis_model(filepath: str | Path) -> bool:
+    if Path(filepath).name.endswith(".out.zst"):
+        return True
+    if Path(filepath).suffix == ".out":
+        return True
+    return Path(filepath).is_dir()
+
+
 def plot_polarisation(modelpath: Path, args) -> None:
     angle = args.plotviewingangle[0]
     stokes_params = at.spectra.get_specpol_data(angle=angle, modelpath=modelpath)
@@ -35,7 +43,7 @@ def plot_polarisation(modelpath: Path, args) -> None:
     timeavg = (args.timemin + args.timemax) / 2.0
 
     def match_closest_time(reftime):
-        return str(f"{min((float(x) for x in timearray), key=lambda x: abs(x - reftime)):.4f}")
+        return f"{min((float(x) for x in timearray), key=lambda x: abs(x - reftime)):.4f}"
 
     timeavg = match_closest_time(timeavg)
 
@@ -85,7 +93,7 @@ def plot_polarisation(modelpath: Path, args) -> None:
     plt.ylim(args.ymin, args.ymax)
     plt.xlim(args.xmin, args.xmax)
 
-    plt.ylabel(f"{args.stokesparam}")
+    plt.ylabel(str(args.stokesparam))
     plt.xlabel(r"Wavelength ($\mathrm{{\AA}}$)")
     figname = f"plotpol_{timeavg}_days_{args.stokesparam.split('/')[0]}_{args.stokesparam.split('/')[1]}.pdf"
     plt.savefig(modelpath / figname, format="pdf")
@@ -253,7 +261,7 @@ def plot_artis_spectrum(
         timedelta = (args.timemax - args.timemin) / 2
         linelabel_is_custom = linelabel is not None
         if linelabel is None:
-            linelabel = f"{modelname}" if len(modelname) < 70 else f"...{modelname[-67:]}"
+            linelabel = modelname if len(modelname) < 70 else f"...{modelname[-67:]}"
 
             if not args.hidemodeltime and not args.multispecplot:
                 # TODO: fix this for multispecplot - use args.showtime for now
@@ -751,8 +759,10 @@ def make_emissionabsorption_plot(
     ymaxrefall = 0.0
     plotkwargs = {}
     for index, filepath in enumerate(args.specpath):
-        if Path(filepath).is_dir() or Path(filepath).name.endswith(".out"):
+        filepath = Path(filepath)
+        if path_is_artis_model(filepath):
             continue
+
         if index < len(args.color):
             plotkwargs["color"] = args.color[index]
             plotkwargs["label"] = args.label[index]
@@ -1400,7 +1410,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         refspecnum = 0
         artismodelnum = 0
         for filepath in args.specpath:
-            if Path(filepath).is_dir() or Path(filepath).name.endswith(".out"):
+            if path_is_artis_model(filepath):
                 args.color.append(artismodelcolors[artismodelnum])
                 artismodelnum += 1
             else:

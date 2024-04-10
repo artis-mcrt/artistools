@@ -537,17 +537,13 @@ def get_virtual_packets_pl(modelpath: str | Path, maxpacketfiles: int | None = N
         separator=" ",
         has_header=True,
         dtypes={
-            "emissiontype": pl.Int32,
+            "#emissiontype": pl.Int32,
             "trueemissiontype": pl.Int32,
             "absorption_type": pl.Int32,
             "absorption_freq": pl.Float32,
-            "absorptiontype": pl.Int32,
-            "absorptionfreq": pl.Float32,
         },
     )
-    dfpackets = dfpackets.rename({"#obsdirindex": "obsdirindex"})
-    if "t_arrive_d" not in dfpackets.columns:
-        dfpackets = dfpackets.with_columns(t_arrive_d=pl.col("t_arrive") / 86400.0)
+    dfpackets = dfpackets.rename({"#emissiontype": "emissiontype"})
 
     # some fudging to imitate the packets file
     dfpackets = dfpackets.with_columns(type_id=type_ids["TYPE_ESCAPE"], escape_type_id=type_ids["TYPE_RPKT"])

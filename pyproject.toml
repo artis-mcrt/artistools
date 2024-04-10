@@ -167,6 +167,12 @@ useLibraryCodeForTypes = false
 [tool.pytest.ini_options]
 addopts = " --durations=0 --typeguard-packages=artistools -n auto"
 
+[tool.refurb]
+ignore = []
+quiet = false
+enable_all = true
+python_version = "3.10"
+
 [tool.ruff]
 line-length = 120
 target-version = "py310"

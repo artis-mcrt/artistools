@@ -283,8 +283,8 @@ def plot_levelpop(
 
         ylist = []
         for modelgridindex, timesteps in zip(mgilist, timestepslist):
-            valuesum = 0
-            tdeltasum = 0
+            valuesum = 0.0
+            tdeltasum = 0.0
             # print(f'modelgridindex {modelgridindex} timesteps {timesteps}')
 
             for timestep in timesteps:

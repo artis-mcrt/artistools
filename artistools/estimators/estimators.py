@@ -420,8 +420,8 @@ def get_averaged_estimators(
         .collect()
     )
     for k in keys:
-        valuesum = 0
-        tdeltasum = 0
+        valuesum = 0.0
+        tdeltasum = 0.0
         for timestep, tdelta in zip(timesteps, tdeltas):
             value = (
                 estcollect.filter(pl.col("timestep") == timestep)

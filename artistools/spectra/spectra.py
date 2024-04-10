@@ -29,7 +29,7 @@ def timeshift_fluxscale_co56law(scaletoreftime: float | None, spectime: float) -
     if scaletoreftime is not None:
         # Co56 decay flux scaling
         assert spectime > 150
-        return math.exp(float(spectime) / 113.7) / math.exp(scaletoreftime / 113.7)
+        return math.exp(spectime / 113.7) / math.exp(scaletoreftime / 113.7)
 
     return 1.0
 
@@ -186,37 +186,47 @@ def get_from_packets(
             modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
         )
 
-    if use_time == "arrival":
-        dfpackets = dfpackets.filter(pl.col("t_arrive_d").is_between(float(timelowdays), float(timehighdays)))
-    elif use_time == "escape":
-        assert escapesurfacegamma is not None
-        dfpackets = dfpackets.filter(
-            pl.col("escape_time").is_between(timelow / escapesurfacegamma, timehigh / escapesurfacegamma)
-        )
-    elif use_time == "emission":
-        mean_correction = float(
-            dfpackets.select((pl.col("em_time") - pl.col("t_arrive_d") * 86400.0).mean())
-            .lazy()
-            .collect()
-            .to_numpy()[0][0]
-        )
-
-        em_time_low = float(timelowdays) * 86400.0 + mean_correction
-        em_time_high = float(timehighdays) * 86400.0 + mean_correction
-        dfpackets = dfpackets.filter(pl.col("em_time").is_between(em_time_low, em_time_high))
-
-    dfpackets = dfpackets.filter(pl.col(nu_column).is_between(float(nu_min), float(nu_max)))
-
-    if fnufilterfunc:
-        print("Applying filter to ARTIS spectrum")
-
     getcols = {nu_column}
 
     if directionbins_are_vpkt_observers:
         vpkt_config = at.get_vpkt_config(modelpath)
-        getcols.add("obsdirindex")
-        getcols |= {f"e_rf_{i}" for i in range(vpkt_config["nspectraperobs"])}
+        time_conditions = []
+        nu_conditions = []
+        for dirbin in directionbins:
+            obsdirindex = dirbin // vpkt_config["nspectraperobs"]
+            opacchoiceindex = dirbin % vpkt_config["nspectraperobs"]
+            getcols |= {f"dir{obsdirindex}_nu_rf"}
+            getcols |= {f"dir{obsdirindex}_t_arrive_d"}
+            getcols |= {f"dir{obsdirindex}_e_rf_{opacchoiceindex}"}
+            time_conditions.append(pl.col(f"dir{obsdirindex}_t_arrive_d").is_between(timelowdays, timehighdays))
+            nu_conditions.append(pl.col(f"dir{obsdirindex}_nu_rf").is_between(float(nu_min), float(nu_max)))
+        dfpackets = dfpackets.filter(pl.any_horizontal(time_conditions)).filter(pl.any_horizontal(nu_conditions))
+        getcols.discard("nu_rf")
     else:
+        dfpackets = dfpackets.filter(pl.col(nu_column).is_between(float(nu_min), float(nu_max)))
+        if use_time == "arrival":
+            dfpackets = dfpackets.filter(pl.col("t_arrive_d").is_between(float(timelowdays), float(timehighdays)))
+        elif use_time == "escape":
+            assert escapesurfacegamma is not None
+            dfpackets = dfpackets.filter(
+                pl.col("escape_time").is_between(timelow / escapesurfacegamma, timehigh / escapesurfacegamma)
+            )
+        elif use_time == "emission":
+            mean_correction = float(
+                dfpackets.select((pl.col("em_time") - pl.col("t_arrive_d") * 86400.0).mean())
+                .lazy()
+                .collect()
+                .to_numpy()[0][0]
+            )
+
+            em_time_low = float(timelowdays) * 86400.0 + mean_correction
+            em_time_high = float(timehighdays) * 86400.0 + mean_correction
+            dfpackets = dfpackets.filter(pl.col("em_time").is_between(em_time_low, em_time_high))
+
+    if fnufilterfunc:
+        print("Applying filter to ARTIS spectrum")
+
+    if not directionbins_are_vpkt_observers:
         encol = "e_cmf" if use_time == "escape" else "e_rf"
         getcols.add(encol)
         if directionbins != [-1]:
@@ -238,8 +248,16 @@ def get_from_packets(
         if directionbins_are_vpkt_observers:
             obsdirindex = dirbin // vpkt_config["nspectraperobs"]
             opacchoiceindex = dirbin % vpkt_config["nspectraperobs"]
-            pldfpackets_dirbin_lazy = dfpackets.filter(pl.col("obsdirindex") == obsdirindex)
-            encol = f"e_rf_{opacchoiceindex}"
+            pldfpackets_dirbin_lazy = dfpackets.filter(
+                pl.col(f"dir{obsdirindex}_t_arrive_d").is_between(timelowdays, timehighdays)
+            )
+            pldfpackets_dirbin_lazy = pldfpackets_dirbin_lazy.with_columns(
+                e_rf=pl.col(f"dir{obsdirindex}_e_rf_{opacchoiceindex}"),
+                nu_rf=pl.col(f"dir{obsdirindex}_nu_rf"),
+                t_arrive_d=pl.col(f"dir{obsdirindex}_t_arrive_d"),
+            )
+            encol = f"dir{obsdirindex}_e_rf_{opacchoiceindex}"
+            nu_column = f"dir{obsdirindex}_nu_rf"
             solidanglefactor = 4 * math.pi
         elif dirbin == -1:
             solidanglefactor = 1.0
@@ -614,7 +632,7 @@ def split_dataframe_stokesparams(specdata: pd.DataFrame) -> dict[str, pd.DataFra
     )
     stokes_params["U"] = pd.concat([specdata["nu"], specdata.iloc[:, cols_to_split[2] :]], axis="columns")
 
-    for param in ["Q", "U"]:
+    for param in ("Q", "U"):
         stokes_params[param].columns = stokes_params["I"].keys()
         stokes_params[param + "/I"] = pd.concat(
             [specdata["nu"], stokes_params[param].iloc[:, 1:] / stokes_params["I"].iloc[:, 1:]], axis="columns"
@@ -640,7 +658,7 @@ def get_vspecpol_spectrum(
     arr_tdelta = [l1 - l2 for l1, l2 in zip(arr_tmid[1:], arr_tmid[:-1])] + [arr_tmid[-1] - arr_tmid[-2]]
 
     def match_closest_time(reftime: float) -> str:
-        return str(f"{min((float(x) for x in arr_tmid), key=lambda x: abs(x - reftime))}")
+        return f"{min(arr_tmid, key=lambda x: abs(x - reftime))}"
 
     # if 'timemin' and 'timemax' in args:
     #     timelower = match_closest_time(args.timemin)  # how timemin, timemax are used changed at some point
@@ -723,7 +741,7 @@ def get_flux_contributions(
             if "pol" in str(emissionfilename):
                 print("This artis run contains polarisation data")
                 # File contains I, Q and U and so times are repeated 3 times
-                arr_tmid = np.array(arr_tmid.tolist() * 3)
+                arr_tmid = np.tile(np.array(arr_tmid), 3)
 
             emissiondata[dbin] = read_emission_absorption_file(emissionfilename)
 
@@ -881,11 +899,16 @@ def get_flux_contributions_from_packets(
 
     if directionbins_are_vpkt_observers:
         vpkt_config = at.get_vpkt_config(modelpath)
+        obsdirindex = directionbin // vpkt_config["nspectraperobs"]
         opacchoiceindex = directionbin % vpkt_config["nspectraperobs"]
         nprocs_read, lzdfpackets = at.packets.get_virtual_packets_pl(modelpath, maxpacketfiles=maxpacketfiles)
-        lzdfpackets = lzdfpackets.filter(pl.col("obsdirindex") == directionbin)
         lzdfpackets = lzdfpackets.with_columns(
-            e_rf=pl.col(f"e_rf_{opacchoiceindex}"), costhetabin=-1, phibin=-1, dirbin=directionbin
+            e_rf=pl.col(f"dir{obsdirindex}_e_rf_{opacchoiceindex}"),
+            nu_rf=pl.col(f"dir{obsdirindex}_nu_rf"),
+            t_arrive_d=pl.col(f"dir{obsdirindex}_t_arrive_d"),
+            costhetabin=-1,
+            phibin=-1,
+            dirbin=directionbin,
         )
     else:
         nprocs_read, lzdfpackets = at.packets.get_packets_pl(
@@ -896,7 +919,7 @@ def get_flux_contributions_from_packets(
         lzdfpackets = at.packets.add_derived_columns_lazy(lzdfpackets)
         lzdfpackets = lzdfpackets.filter(pl.col("emission_velocity") > emissionvelocitycut)
 
-    lzdfpackets = lzdfpackets.filter(pl.col("t_arrive_d").is_between(float(timelowdays), float(timehighdays)))
+    lzdfpackets = lzdfpackets.filter(pl.col("t_arrive_d").is_between(timelowdays, timehighdays))
 
     cols = {"e_rf"}
     cols.add({"arrival": "t_arrive_d", "emission": "em_time", "escape": "excape_time"}[use_time])
