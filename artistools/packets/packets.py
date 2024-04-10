@@ -553,7 +553,7 @@ def get_virtual_packets_pl(modelpath: str | Path, maxpacketfiles: int | None = N
 
     npkts_total = dfpackets.select(pl.count("*")).collect().item(0, 0)
     print(
-        f"  files contain {npkts_total:.2e} virtual packets (counting separately all directions and opacity exclusions)"
+        f"  files contain {npkts_total:.2e} virtual packet events (that can be further split into directions and opacity choices)"
     )
 
     return nprocs_read, dfpackets
