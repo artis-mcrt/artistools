@@ -573,8 +573,9 @@ def plot_qdot_abund_modelcells(
     )
     arr_time_gsi_days = list(arr_time_gsi_s / 86400)
 
-    dfpartcontrib = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(modelpath)
-    dfpartcontrib = dfpartcontrib.filter((pl.col("cellindex") <= npts_model) & (pl.col("frac_of_cellmass") > 0))
+    dfpartcontrib = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(modelpath).filter(
+        (pl.col("cellindex") <= npts_model) & (pl.col("frac_of_cellmass") > 0)
+    )
 
     mgiplotlistplus1 = [mgi + 1 for mgi in mgiplotlist]
     list_particleids_getabund = dfpartcontrib.filter(pl.col("cellindex").is_in(mgiplotlistplus1))["particleid"].unique()
