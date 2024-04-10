@@ -426,34 +426,33 @@ def get_empty_3d_model(
         "headercommentlines": [],
     }
 
-    dfmodel = pl.DataFrame(
-        {"modelgridindex": range(ncoordgrid**3), "inputcellid": range(1, 1 + ncoordgrid**3)},
-        schema={"modelgridindex": pl.Int32, "inputcellid": pl.Int32},
-    ).lazy()
-
-    dfmodel = dfmodel.with_columns(
-        [
-            pl.col("modelgridindex").mod(ncoordgrid).alias("n_x"),
-            (pl.col("modelgridindex") // ncoordgrid).mod(ncoordgrid).alias("n_y"),
-            (pl.col("modelgridindex") // (ncoordgrid**2)).mod(ncoordgrid).alias("n_z"),
-        ]
-    )
-
-    dfmodel = dfmodel.with_columns(
-        [
-            (-xmax + 2 * pl.col("n_x") * xmax / ncoordgrid).cast(pl.Float32).alias("pos_x_min"),
-            (-xmax + 2 * pl.col("n_y") * xmax / ncoordgrid).cast(pl.Float32).alias("pos_y_min"),
-            (-xmax + 2 * pl.col("n_z") * xmax / ncoordgrid).cast(pl.Float32).alias("pos_z_min"),
-        ]
+    dfmodel = (
+        pl.DataFrame(
+            {"modelgridindex": range(ncoordgrid**3), "inputcellid": range(1, 1 + ncoordgrid**3)},
+            schema={"modelgridindex": pl.Int32, "inputcellid": pl.Int32},
+        )
+        .lazy()
+        .with_columns(
+            [
+                pl.col("modelgridindex").mod(ncoordgrid).alias("n_x"),
+                (pl.col("modelgridindex") // ncoordgrid).mod(ncoordgrid).alias("n_y"),
+                (pl.col("modelgridindex") // (ncoordgrid**2)).mod(ncoordgrid).alias("n_z"),
+            ]
+        )
+        .with_columns(
+            [
+                (-xmax + 2 * pl.col("n_x") * xmax / ncoordgrid).cast(pl.Float32).alias("pos_x_min"),
+                (-xmax + 2 * pl.col("n_y") * xmax / ncoordgrid).cast(pl.Float32).alias("pos_y_min"),
+                (-xmax + 2 * pl.col("n_z") * xmax / ncoordgrid).cast(pl.Float32).alias("pos_z_min"),
+            ]
+        )
     )
 
     standardcols = get_standard_columns(3, includenico57=includenico57)
 
     dfmodel = dfmodel.with_columns(
         [pl.lit(0.0, dtype=pl.Float32).alias(colname) for colname in standardcols if colname not in dfmodel.columns]
-    )
-
-    dfmodel = dfmodel.select([*standardcols, "modelgridindex"])
+    ).select([*standardcols, "modelgridindex"])
 
     return dfmodel, modelmeta
 
@@ -1065,9 +1064,7 @@ def save_initelemabundances(
     if isinstance(dfelabundances, pd.DataFrame):
         dfelabundances = pl.from_pandas(dfelabundances)
 
-    dfelabundances = dfelabundances.clone().lazy().collect()
-
-    dfelabundances = dfelabundances.with_columns([pl.col("inputcellid").cast(pl.Int32)])
+    dfelabundances = dfelabundances.clone().lazy().collect().with_columns([pl.col("inputcellid").cast(pl.Int32)])
 
     atomic_numbers = {
         at.get_atomic_number(colname[2:]) for colname in dfelabundances.select(pl.selectors.starts_with("X_")).columns
