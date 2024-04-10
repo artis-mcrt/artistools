@@ -159,16 +159,21 @@ def plot_spherical(
         )
 
     aggs.append(pl.len().alias("count"))
-    dfpackets = dfpackets.group_by(["costhetabin", "phibin"]).agg(aggs)
-    dfpackets = dfpackets.select(["costhetabin", "phibin", "count", *plotvars])
+    dfpackets = (
+        dfpackets.group_by(["costhetabin", "phibin"]).agg(aggs).select(["costhetabin", "phibin", "count", *plotvars])
+    )
 
     ndirbins = nphibins * ncosthetabins
-    alldirbinslazy = pl.DataFrame(
-        {"phibin": (d % nphibins for d in range(ndirbins)), "costhetabin": (d // nphibins for d in range(ndirbins))},
-        schema={"phibin": pl.Int32, "costhetabin": pl.Int32},
-    ).lazy()
     alldirbins = (
-        alldirbinslazy.join(
+        pl.DataFrame(
+            {
+                "phibin": (d % nphibins for d in range(ndirbins)),
+                "costhetabin": (d // nphibins for d in range(ndirbins)),
+            },
+            schema={"phibin": pl.Int32, "costhetabin": pl.Int32},
+        )
+        .lazy()
+        .join(
             dfpackets,
             how="left",
             on=["costhetabin", "phibin"],
