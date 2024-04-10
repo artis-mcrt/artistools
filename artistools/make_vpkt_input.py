@@ -40,7 +40,7 @@ with new_vpktfile.open("w") as vpktfile:
         f"{' '.join(str(phi) for _, phi in directions_costheta_phi)}\n"
         f"{bool(opacityexclusions):d} {f'{len(opacityexclusions)} ' + ' '.join(str(x) for x in opacityexclusions) if opacityexclusions else ''}\n"
         f"{override_tminmax} {vspec_tmin_in_days} {vspec_tmax_in_days}\n"
-        f"{bool(custom_lambda_ranges):d} {(f'{len(custom_lambda_ranges)}' + ' '.join(f'{lmin} {lmax}' for lmin, lmax in custom_lambda_ranges)) if custom_lambda_ranges else ''}\n"  # this can have multiple wavelength ranges. May need changed.
+        f"{bool(custom_lambda_ranges):d} {(f'{len(custom_lambda_ranges)}' + ' '.join(f"{lmin} {lmax}" for lmin, lmax in custom_lambda_ranges)) if custom_lambda_ranges else ''}\n"  # this can have multiple wavelength ranges. May need changed.
         f"{overrride_thickcell_tau:d} {cell_is_optically_thick_vpkt}\n"
         f"{tau_max_vpkt}\n"
         f"{vgrid_on:d}\n"
