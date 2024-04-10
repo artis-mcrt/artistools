@@ -307,7 +307,7 @@ def generate_band_lightcurve_data(
 
 def bolometric_magnitude(
     modelpath: Path,
-    timearray: t.Collection[float],
+    timearray: t.Collection[float | str],
     args: argparse.Namespace,
     angle: int = -1,
     average_over_phi: bool = False,
@@ -317,6 +317,7 @@ def bolometric_magnitude(
     times = []
 
     for timestep, time in enumerate(timearray):
+        time = float(time)
         if (args.timemin is None or args.timemin <= time) and (args.timemax is None or args.timemax >= time):
             if angle == -1:
                 spectrum = at.spectra.get_spectrum(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)[-1]
