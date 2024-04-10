@@ -125,7 +125,7 @@ def get_from_packets(
     dfpackets = dfpackets.select(getcols).collect(streaming=True).lazy()
 
     npkts_selected = dfpackets.select(pl.count("*")).collect().item(0, 0)
-    print(f"  time/frequency selection contains {npkts_selected:.2e} packets")
+    print(f"  {npkts_selected:.2e} packets")
 
     lcdata = {}
     for dirbin in directionbins:
