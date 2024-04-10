@@ -596,7 +596,7 @@ def make_plot(modelpath, atomic_number, ion_stages_displayed, mgilist, timestep,
         nne = estimators[(timestep, modelgridindex)]["nne"]
         W = estimators[(timestep, modelgridindex)]["W"]
 
-        subplot_title = f"{modelname}"
+        subplot_title = str(modelname)
         if len(modelname) > 10:
             subplot_title += "\n"
         velocity = at.inputmodel.get_modeldata_tuple(modelpath)[0]["vel_r_max_kmps"][modelgridindex]

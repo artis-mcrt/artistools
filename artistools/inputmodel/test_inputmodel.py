@@ -88,7 +88,7 @@ def verify_file_checksums(checksums_expected: dict, digest: str = "sha256", fold
             for chunk in f:
                 m.update(chunk)
 
-        checksums_actual[fullpath] = str(m.hexdigest())
+        checksums_actual[fullpath] = m.hexdigest()
         strpassfail = "pass" if checksums_actual[fullpath] == checksum_expected else "FAILED"
         print(f"{filename}: {strpassfail} if actual {checksums_actual[fullpath]} expected {checksum_expected}")
 

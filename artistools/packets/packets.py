@@ -922,12 +922,9 @@ def bin_and_sum(
     # Polars method
 
     df = df.lazy().with_columns(
-        (
-            pl.col(bincol)
-            .cut(breaks=list(bins), labels=[str(x) for x in range(-1, len(bins))])
-            .cast(str)
-            .cast(pl.Int32)
-        ).alias(f"{bincol}_bin")
+        (pl.col(bincol).cut(breaks=bins, labels=[str(x) for x in range(-1, len(bins))]).cast(str).cast(pl.Int32)).alias(
+            f"{bincol}_bin"
+        )
     )
 
     aggs = [pl.col(col).sum().alias(col + "_sum") for col in sumcols] if sumcols is not None else []

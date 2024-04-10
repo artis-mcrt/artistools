@@ -317,8 +317,6 @@ def bolometric_magnitude(
     times = []
 
     for timestep, time in enumerate(timearray):
-        time = float(time)
-
         if (args.timemin is None or args.timemin <= time) and (args.timemax is None or args.timemax >= time):
             if angle == -1:
                 spectrum = at.spectra.get_spectrum(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)[-1]

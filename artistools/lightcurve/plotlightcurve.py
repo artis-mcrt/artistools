@@ -710,11 +710,11 @@ def get_linelabel(
     elif args.label:
         linelabel = rf"{args.label[modelnumber]}"
     else:
-        linelabel = f"{modelname}"
+        linelabel = str(modelname)
         # linelabel = 'Angle averaged'
 
     if linelabel == "None" or linelabel is None:
-        linelabel = f"{modelname}"
+        linelabel = str(modelname)
 
     return linelabel
 

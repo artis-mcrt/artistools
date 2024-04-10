@@ -955,8 +955,6 @@ def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist: t.Sequenc
     """
     modeldata, _, _ = get_modeldata_tuple(modelpath)
 
-    velocity = float(velocity)
-
     if not mgilist:
         mgilist = list(modeldata.index)
         arr_vouter = modeldata["vel_r_max_kmps"].to_numpy()
