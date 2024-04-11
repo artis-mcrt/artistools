@@ -70,13 +70,13 @@ def get_nist_transitions(filename: Path | str) -> pd.DataFrame:
         for line in fnist:
             row = line.split("|")
             if len(row) == 17 and "-" in row[5]:
-                if len(row[0].strip()) > 0:
+                if row[0].strip():
                     lambda_angstroms = float(row[0])
-                elif len(row[1].strip()) > 0:
+                elif row[1].strip():
                     lambda_angstroms = float(row[1])
                 else:
                     continue
-                A = float(row[3]) if len(row[3].strip()) > 0 else 1e8
+                A = float(row[3]) if row[3].strip() else 1e8
                 lower_energy_ev, upper_energy_ev = (float(x.strip(" []")) for x in row[5].split("-"))
                 lower_statweight, upper_statweight = (float(x.strip()) for x in row[12].split("-"))
                 translist.append(
