@@ -498,20 +498,15 @@ def add_derived_cols_to_modeldata(
         case 1:
             axes = ["r"]
 
-            dfmodel = dfmodel.with_columns(pl.col("vel_r_max_kmps").shift(n=1, fill_value=0.0).alias("vel_r_min_kmps"))
-
-            dfmodel = dfmodel.with_columns(
-                [
-                    (pl.col("vel_r_min_kmps") * 1e5).alias("vel_r_min"),
-                    (pl.col("vel_r_max_kmps") * 1e5).alias("vel_r_max"),
-                ]
-            )
-
-            dfmodel = dfmodel.with_columns(((pl.col("vel_r_max") + pl.col("vel_r_min")) / 2).alias("vel_r_mid"))
-
-            dfmodel = dfmodel.with_columns(
-                [
-                    (
+            dfmodel = (
+                dfmodel.with_columns(vel_r_min_kmps=pl.col("vel_r_max_kmps").shift(n=1, fill_value=0.0))
+                .with_columns(
+                    vel_r_min=(pl.col("vel_r_min_kmps") * 1e5),
+                    vel_r_max=(pl.col("vel_r_max_kmps") * 1e5),
+                )
+                .with_columns(vel_r_mid=((pl.col("vel_r_max") + pl.col("vel_r_min")) / 2))
+                .with_columns(
+                    volume=(
                         (4.0 / 3.0)
                         * math.pi
                         * (
@@ -519,8 +514,8 @@ def add_derived_cols_to_modeldata(
                             - pl.col("vel_r_min_kmps").cast(pl.Float64).pow(3)
                         )
                         * pl.lit(1e5 * t_model_init_seconds).pow(3)
-                    ).alias("volume")
-                ]
+                    )
+                )
             )
 
         case 2:
@@ -531,51 +526,27 @@ def add_derived_cols_to_modeldata(
             # TODO: get wid_init from modelmeta
             dfmodel = dfmodel.with_columns(
                 [(pl.col(f"pos_{ax}_mid") - modelmeta[f"wid_init_{ax}"] / 2.0).alias(f"pos_{ax}_min") for ax in axes]
-            )
-
-            dfmodel = dfmodel.with_columns(
+            ).with_columns(
                 [(pl.col(f"pos_{ax}_mid") + modelmeta[f"wid_init_{ax}"] / 2.0).alias(f"pos_{ax}_max") for ax in axes]
             )
 
             # add a 3D radius column
             axes.append("r")
             dfmodel = dfmodel.with_columns(
-                [
-                    (
-                        pl.col("pos_rcyl_min").pow(2)
-                        + pl.min_horizontal(pl.col("pos_z_min").abs(), pl.col("pos_z_max").abs()).pow(2)
-                    )
-                    .sqrt()
-                    .alias("pos_r_min")
-                ]
-            )
-
-            dfmodel = dfmodel.with_columns(
-                [(pl.col("pos_rcyl_mid").pow(2) + pl.col("pos_z_mid").pow(2)).sqrt().alias("pos_r_mid")]
-            )
-
-            dfmodel = dfmodel.with_columns(
-                [
-                    (
-                        pl.col("pos_rcyl_max").pow(2)
-                        + pl.max_horizontal(pl.col("pos_z_min").abs(), pl.col("pos_z_max").abs()).pow(2)
-                    )
-                    .sqrt()
-                    .alias("pos_r_max"),
-                ]
-            )
-
-            dfmodel = dfmodel.with_columns(
-                [
-                    (
-                        math.pi
-                        * (
-                            pl.col("pos_rcyl_max").cast(pl.Float64).pow(2)
-                            - pl.col("pos_rcyl_min").cast(pl.Float64).pow(2)
-                        )
-                        * modelmeta["wid_init_z"]
-                    ).alias("volume")
-                ]
+                pos_r_min=(
+                    pl.col("pos_rcyl_min").pow(2)
+                    + pl.min_horizontal(pl.col("pos_z_min").abs(), pl.col("pos_z_max").abs()).pow(2)
+                ).sqrt(),
+                pos_r_mid=(pl.col("pos_rcyl_mid").pow(2) + pl.col("pos_z_mid").pow(2)).sqrt(),
+                pos_r_max=(
+                    pl.col("pos_rcyl_max").pow(2)
+                    + pl.max_horizontal(pl.col("pos_z_min").abs(), pl.col("pos_z_max").abs()).pow(2)
+                ).sqrt(),
+                volume=(
+                    math.pi
+                    * (pl.col("pos_rcyl_max").cast(pl.Float64).pow(2) - pl.col("pos_rcyl_min").cast(pl.Float64).pow(2))
+                    * modelmeta["wid_init_z"]
+                ),
             )
 
         case 3:
@@ -584,16 +555,19 @@ def add_derived_cols_to_modeldata(
                 if f"wid_init_{ax}" not in modelmeta:
                     modelmeta[f"wid_init_{ax}"] = modelmeta["wid_init"]
 
-            dfmodel = dfmodel.with_columns(
-                [pl.lit(modelmeta["wid_init_x"] * modelmeta["wid_init_y"] * modelmeta["wid_init_z"]).alias("volume")]
-            )
-
-            dfmodel = dfmodel.with_columns(
-                [(pl.col(f"pos_{ax}_min") + 0.5 * modelmeta[f"wid_init_{ax}"]).alias(f"pos_{ax}_mid") for ax in axes]
-            )
-
-            dfmodel = dfmodel.with_columns(
-                [(pl.col(f"pos_{ax}_min") + modelmeta[f"wid_init_{ax}"]).alias(f"pos_{ax}_max") for ax in axes]
+            dfmodel = (
+                dfmodel.with_columns(
+                    volume=pl.lit(modelmeta["wid_init_x"] * modelmeta["wid_init_y"] * modelmeta["wid_init_z"])
+                )
+                .with_columns(
+                    [
+                        (pl.col(f"pos_{ax}_min") + 0.5 * modelmeta[f"wid_init_{ax}"]).alias(f"pos_{ax}_mid")
+                        for ax in axes
+                    ]
+                )
+                .with_columns(
+                    [(pl.col(f"pos_{ax}_min") + modelmeta[f"wid_init_{ax}"]).alias(f"pos_{ax}_max") for ax in axes]
+                )
             )
 
             # add a 3D radius column
@@ -601,35 +575,17 @@ def add_derived_cols_to_modeldata(
 
             # xyz positions can be negative, so the min xyz side of the cube can have a larger radius than the max side
             dfmodel = dfmodel.with_columns(
-                [
-                    (
-                        pl.min_horizontal(pl.col("pos_x_min").abs(), pl.col("pos_x_max").abs()).pow(2)
-                        + pl.min_horizontal(pl.col("pos_y_min").abs(), pl.col("pos_y_max").abs()).pow(2)
-                        + pl.min_horizontal(pl.col("pos_z_min").abs(), pl.col("pos_z_max").abs()).pow(2)
-                    )
-                    .sqrt()
-                    .alias("pos_r_min")
-                ]
-            )
-
-            dfmodel = dfmodel.with_columns(
-                [
-                    (pl.col("pos_x_mid").pow(2) + pl.col("pos_y_mid").pow(2) + pl.col("pos_z_mid").pow(2))
-                    .sqrt()
-                    .alias("pos_r_mid")
-                ]
-            )
-
-            dfmodel = dfmodel.with_columns(
-                [
-                    (
-                        pl.max_horizontal(pl.col("pos_x_min").abs(), pl.col("pos_x_max").abs()).pow(2)
-                        + pl.max_horizontal(pl.col("pos_y_min").abs(), pl.col("pos_y_max").abs()).pow(2)
-                        + pl.max_horizontal(pl.col("pos_z_min").abs(), pl.col("pos_z_max").abs()).pow(2)
-                    )
-                    .sqrt()
-                    .alias("pos_r_max")
-                ]
+                pos_r_min=(
+                    pl.min_horizontal(pl.col("pos_x_min").abs(), pl.col("pos_x_max").abs()).pow(2)
+                    + pl.min_horizontal(pl.col("pos_y_min").abs(), pl.col("pos_y_max").abs()).pow(2)
+                    + pl.min_horizontal(pl.col("pos_z_min").abs(), pl.col("pos_z_max").abs()).pow(2)
+                ).sqrt(),
+                pos_r_mid=(pl.col("pos_x_mid").pow(2) + pl.col("pos_y_mid").pow(2) + pl.col("pos_z_mid").pow(2)).sqrt(),
+                pos_r_max=(
+                    pl.max_horizontal(pl.col("pos_x_min").abs(), pl.col("pos_x_max").abs()).pow(2)
+                    + pl.max_horizontal(pl.col("pos_y_min").abs(), pl.col("pos_y_max").abs()).pow(2)
+                    + pl.max_horizontal(pl.col("pos_z_min").abs(), pl.col("pos_z_max").abs()).pow(2)
+                ).sqrt(),
             )
 
     for col in dfmodel.columns:
@@ -637,16 +593,14 @@ def add_derived_cols_to_modeldata(
             dfmodel = dfmodel.with_columns((pl.col(col) / t_model_init_seconds).alias(col.replace("pos_", "vel_")))
 
     if "logrho" not in dfmodel.columns:
-        dfmodel = dfmodel.with_columns(pl.col("rho").log10().alias("logrho"))
+        dfmodel = dfmodel.with_columns(logrho=pl.col("rho").log10())
 
     if "rho" not in dfmodel.columns:
         dfmodel = dfmodel.with_columns(
-            (pl.when(pl.col("logrho") > -98).then(10 ** pl.col("logrho")).otherwise(0.0)).alias("rho")
+            rho=(pl.when(pl.col("logrho") > -98).then(10 ** pl.col("logrho")).otherwise(0.0))
         )
 
-    dfmodel = dfmodel.with_columns([(pl.col("rho") * pl.col("volume")).alias("mass_g")])
-
-    dfmodel = dfmodel.with_columns(
+    dfmodel = dfmodel.with_columns(mass_g=(pl.col("rho") * pl.col("volume"))).with_columns(
         [(pl.col(colname) / 29979245800.0).alias(f"{colname}_on_c") for colname in dfmodel.columns]
     )
 
