@@ -15,6 +15,7 @@ import pandas as pd
 import polars as pl
 import pyzstd
 import xz
+from typeguard import typechecked
 
 import artistools as at
 
@@ -428,6 +429,7 @@ def get_timestep_of_timedays(modelpath: Path | str, timedays: str | float) -> in
     raise ValueError(msg)
 
 
+@typechecked
 def get_time_range(
     modelpath: Path,
     timestep_range_str: str | None = None,
