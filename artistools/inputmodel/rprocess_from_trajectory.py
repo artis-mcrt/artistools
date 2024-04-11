@@ -11,6 +11,7 @@ import time
 import typing as t
 from functools import lru_cache
 from functools import partial
+from itertools import chain
 from pathlib import Path
 
 import argcomplete
@@ -445,7 +446,7 @@ def add_abundancecontributions(
 
     assert len(particleids) > n_missing_particles
 
-    allkeys = list({k for abund in list_traj_nuc_abund for k in abund})
+    allkeys = list(set(chain.from_iterable(list_traj_nuc_abund)))
 
     dfnucabundances = pl.DataFrame(
         {
