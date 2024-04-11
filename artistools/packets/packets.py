@@ -456,8 +456,36 @@ def convert_text_to_parquet(
     return packetsfileparquet
 
 
+def convert_virtual_packets_text_to_parquet(
+    packetsfiletext: Path | str,
+) -> Path:
+    packetsfiletext = Path(packetsfiletext)
+    packetsfileparquet = at.stripallsuffixes(packetsfiletext).with_suffix(".out.parquet")
+
+    dfpackets = pl.read_csv(
+        packetsfiletext,
+        separator=" ",
+        has_header=True,
+        dtypes={
+            "#emissiontype": pl.Int32,
+            "trueemissiontype": pl.Int32,
+            "absorption_type": pl.Int32,
+            "absorption_freq": pl.Float32,
+        },
+    )
+
+    dfpackets = dfpackets.rename({"#emissiontype": "emissiontype"})
+
+    print(f"Saving {packetsfileparquet}")
+    dfpackets = dfpackets.sort(by=["dir0_t_arrive_d"])
+
+    dfpackets.write_parquet(packetsfileparquet, compression="zstd", statistics=True, compression_level=6)
+
+    return packetsfileparquet
+
+
 def get_packetsfilepaths(
-    modelpath: str | Path, maxpacketfiles: int | None = None, printwarningsonly: bool = False
+    modelpath: str | Path, maxpacketfiles: int | None = None, printwarningsonly: bool = False, virtual: bool = False
 ) -> list[Path]:
     """Get a list of Paths to parquet-formatted packets files, (which are generated from text files if needed)."""
     nprocs = at.get_nprocs(modelpath)
@@ -471,7 +499,7 @@ def get_packetsfilepaths(
     parquetrequiredfiles = []
 
     for rank in range(nprocs + 1):
-        name_nosuffix = f"packets00_{rank:04d}"
+        name_nosuffix = f"vpackets_{rank:04d}" if virtual else f"packets00_{rank:04d}"
         found_rank = False
 
         for folderpath in searchfolders:
@@ -505,14 +533,14 @@ def get_packetsfilepaths(
 
         if maxpacketfiles is not None and (len(parquetpacketsfiles) + len(parquetrequiredfiles)) >= maxpacketfiles:
             break
-
+    converter = convert_virtual_packets_text_to_parquet if virtual else convert_text_to_parquet
     if len(parquetrequiredfiles) >= 20 and at.get_config()["num_processes"] > 1:
         with multiprocessing.get_context("spawn").Pool(processes=at.get_config()["num_processes"]) as pool:
-            convertedparquetpacketsfiles = pool.map(convert_text_to_parquet, parquetrequiredfiles)
+            convertedparquetpacketsfiles = pool.map(converter, parquetrequiredfiles)
             pool.close()
             pool.join()
     else:
-        convertedparquetpacketsfiles = [convert_text_to_parquet(p) for p in parquetrequiredfiles]
+        convertedparquetpacketsfiles = [converter(p) for p in parquetrequiredfiles]
 
     parquetpacketsfiles += list(convertedparquetpacketsfiles)
 
@@ -526,37 +554,19 @@ def get_packetsfilepaths(
 
 
 def get_virtual_packets_pl(modelpath: str | Path, maxpacketfiles: int | None = None) -> tuple[int, pl.LazyFrame]:
-    files = list(Path(modelpath).glob("vpackets_*.out"))
-    if maxpacketfiles is not None:
-        files = files[:maxpacketfiles]
+    vpacketparquetfiles = get_packetsfilepaths(modelpath, maxpacketfiles=maxpacketfiles, virtual=True)
 
-    nprocs_read = len(files)
-    print(f"Reading {nprocs_read} vpacket files")
-    dfpackets = pl.scan_csv(
-        files,
-        separator=" ",
-        has_header=True,
-        dtypes={
-            "#emissiontype": pl.Int32,
-            "trueemissiontype": pl.Int32,
-            "absorption_type": pl.Int32,
-            "absorption_freq": pl.Float32,
-        },
-    )
-    dfpackets = dfpackets.rename({"#emissiontype": "emissiontype"})
+    dfpackets = pl.scan_parquet(vpacketparquetfiles)
 
     # some fudging to imitate the packets file
     dfpackets = dfpackets.with_columns(type_id=type_ids["TYPE_ESCAPE"], escape_type_id=type_ids["TYPE_RPKT"])
-
-    renames = {"absorptiontype": "absorption_type", "absorptionfreq": "absorption_freq"}
-    dfpackets = dfpackets.rename({a: b for a, b in renames.items() if a in dfpackets.columns})
 
     npkts_total = dfpackets.select(pl.count("*")).collect().item(0, 0)
     print(
         f"  files contain {npkts_total:.2e} virtual packet events (that can be further split into directions and opacity choices)"
     )
 
-    return nprocs_read, dfpackets
+    return len(vpacketparquetfiles), dfpackets
 
 
 def get_packets_pl(
