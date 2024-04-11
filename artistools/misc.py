@@ -53,8 +53,7 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
         getinvocation = super()._format_action_invocation
 
         def my_sort(action: argparse.Action) -> str:
-            opstr = getinvocation(action)
-            return opstr.upper().replace("-", "z")  # push dash chars below alphabet
+            return getinvocation(action).upper().replace("-", "z")  # push dash chars below alphabet
 
         actions = sorted(actions, key=my_sort)
         super().add_arguments(actions)

@@ -113,10 +113,10 @@ def get_particle_nucenergy_released(traj_root, particleid, tmin_s, time_s_end):
 
 
 def get_particles_recomb_nuc_energy(traj_root, dfbinding):
+    # sourcery skip: use-contextlib-suppress
     dfsnapshot = at.inputmodel.modelfromhydro.read_ejectasnapshot(
         "/Users/luke/Library/Mobile Documents/com~apple~CloudDocs/Archive/Astronomy/Mergers/SFHo_snapshot"
-    )
-    dfsnapshot = dfsnapshot.sort_values("ye")
+    ).sort_values("ye")
 
     dictbinding = dict(dfbinding[["Z", "TotBEn"]].itertuples(index=False))
 

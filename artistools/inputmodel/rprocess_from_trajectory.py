@@ -598,14 +598,11 @@ def get_wollaeger_density_profile(wollaeger_profilename):
     result["vel_r_min_kmps"] = np.concatenate(([0.0], result["vel_r_max_kmps"].to_numpy()[:-1]))
 
     t_model_init_seconds_in = t_model_init_days_in * 24 * 60 * 60  # noqa: F841
-    result = result.eval(
+    return result.eval(
         "mass_g = rho * 4. / 3. * @math.pi * (vel_r_max_kmps ** 3 - vel_r_min_kmps ** 3)"
         "* (1e5 * @t_model_init_seconds_in) ** 3"
-    )
-
-    # now replace the density at the input time with the density at required time
-
-    return result.eval(
+    ).eval(
+        # now replace the density at the input time with the density at required time
         "rho = mass_g / ("
         "4. / 3. * @math.pi * (vel_r_max_kmps ** 3 - vel_r_min_kmps ** 3)"
         " * (1e5 * @t_model_init_seconds) ** 3)"
