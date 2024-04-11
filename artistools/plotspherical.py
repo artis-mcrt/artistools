@@ -120,7 +120,7 @@ def plot_spherical(
         dfpackets = dfpackets.with_columns(
             (
                 pl.col("em_time")
-                .cut(breaks=list(timebins), labels=[str(x) for x in range(-1, len(timebins))])
+                .cut(breaks=timebins, labels=[str(x) for x in range(-1, len(timebins))])
                 .cast(str)
                 .cast(pl.Int32)
             ).alias("em_timestep")

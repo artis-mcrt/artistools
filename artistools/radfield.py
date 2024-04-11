@@ -229,8 +229,9 @@ def plot_line_estimators(axis, radfielddata, xmin, xmax, modelgridindex=None, ti
         + (" & timestep==@timestep" if timestep else "")
     )[["nu_upper", "J_nu_avg"]]
 
-    radfielddataselected = radfielddataselected.eval("lambda_angstroms = 2.99792458e18 / nu_upper")
-    radfielddataselected = radfielddataselected.eval("Jb_lambda = J_nu_avg * (nu_upper ** 2) / 2.99792458e18")
+    radfielddataselected = radfielddataselected.eval("lambda_angstroms = 2.99792458e18 / nu_upper").eval(
+        "Jb_lambda = J_nu_avg * (nu_upper ** 2) / 2.99792458e18"
+    )
 
     ymax = radfielddataselected["Jb_lambda"].max()
 
@@ -833,15 +834,16 @@ def plot_line_estimator_evolution(
     axis, radfielddata, bin_num, modelgridindex=None, timestep_min=None, timestep_max=None, **plotkwargs
 ):
     """Plot the Jblue_lu values over time for a detailed line estimators."""
-    radfielddataselected = radfielddata.query(
-        "bin_num == @bin_num"
-        + (" & modelgridindex == @modelgridindex" if modelgridindex else "")
-        + (" & timestep >= @timestep_min" if timestep_min else "")
-        + (" & timestep <= @timestep_max" if timestep_max else "")
-    )[["timestep", "nu_upper", "J_nu_avg"]]
-
-    radfielddataselected = radfielddataselected.eval("lambda_angstroms = 2.99792458e18 / nu_upper")
-    radfielddataselected = radfielddataselected.eval("Jb_lambda = J_nu_avg * (nu_upper ** 2) / 2.99792458e18")
+    radfielddataselected = (
+        radfielddata.query(
+            "bin_num == @bin_num"
+            + (" & modelgridindex == @modelgridindex" if modelgridindex else "")
+            + (" & timestep >= @timestep_min" if timestep_min else "")
+            + (" & timestep <= @timestep_max" if timestep_max else "")
+        )[["timestep", "nu_upper", "J_nu_avg"]]
+        .eval("lambda_angstroms = 2.99792458e18 / nu_upper")
+        .eval("Jb_lambda = J_nu_avg * (nu_upper ** 2) / 2.99792458e18")
+    )
 
     axis.plot(
         radfielddataselected["timestep"],
@@ -871,13 +873,16 @@ def plot_timeevolution(modelpath, outputfile, modelgridindex, args):
     )
 
     timestep = at.get_timestep_of_timedays(modelpath, 330)
-    time_days = float(at.get_timestep_time(modelpath, timestep))
+    time_days = at.get_timestep_time(modelpath, timestep)
 
-    dftopestimators = radfielddataselected.query("timestep==@timestep and bin_num < -1").copy()
-    dftopestimators = dftopestimators.eval("lambda_angstroms = 2.99792458e18 / nu_upper")
-    dftopestimators = dftopestimators.eval("Jb_lambda = J_nu_avg * (nu_upper ** 2) / 2.99792458e18")
-    dftopestimators = dftopestimators.sort_values(by="Jb_lambda", ascending=False)
-    dftopestimators = dftopestimators.iloc[:nlinesplotted]
+    dftopestimators = (
+        radfielddataselected.query("timestep==@timestep and bin_num < -1")
+        .copy()
+        .eval("lambda_angstroms = 2.99792458e18 / nu_upper")
+        .eval("Jb_lambda = J_nu_avg * (nu_upper ** 2) / 2.99792458e18")
+        .sort_values(by="Jb_lambda", ascending=False)
+        .iloc[:nlinesplotted]
+    )
 
     print(f"Top estimators at timestep {timestep} t={time_days:.1f}")
     print(dftopestimators)

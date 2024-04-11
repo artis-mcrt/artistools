@@ -201,7 +201,7 @@ def get_from_packets(
                 f"dir{obsdirindex}_e_rf_{opacchoiceindex}",
             }
             time_conditions.append(pl.col(f"dir{obsdirindex}_t_arrive_d").is_between(timelowdays, timehighdays))
-            nu_conditions.append(pl.col(f"dir{obsdirindex}_nu_rf").is_between(float(nu_min), float(nu_max)))
+            nu_conditions.append(pl.col(f"dir{obsdirindex}_nu_rf").is_between(nu_min, nu_max))
         dfpackets = dfpackets.filter(pl.any_horizontal(time_conditions)).filter(pl.any_horizontal(nu_conditions))
         getcols.discard("nu_rf")
     else:
@@ -252,7 +252,7 @@ def get_from_packets(
             opacchoiceindex = dirbin % vpkt_config["nspectraperobs"]
             pldfpackets_dirbin_lazy = dfpackets.filter(
                 pl.col(f"dir{obsdirindex}_t_arrive_d").is_between(timelowdays, timehighdays)
-                & pl.col(f"dir{obsdirindex}_nu_rf").is_between(float(nu_min), float(nu_max))
+                & pl.col(f"dir{obsdirindex}_nu_rf").is_between(nu_min, nu_max)
             )
             encol = f"dir{obsdirindex}_e_rf_{opacchoiceindex}"
             nu_column = f"dir{obsdirindex}_nu_rf"
@@ -272,7 +272,7 @@ def get_from_packets(
             pldfpackets_dirbin_lazy = dfpackets.filter(pl.col("dirbin") == dirbin)
 
         pldfpackets_dirbin = pldfpackets_dirbin_lazy.with_columns(
-            [(2.99792458e18 / pl.col(nu_column)).alias("lambda_angstroms")]
+            lambda_angstroms=(2.99792458e18 / pl.col(nu_column))
         ).select(["lambda_angstroms", encol])
 
         if nprocs_read_dfpackets is None:
@@ -527,7 +527,7 @@ def make_virtual_spectra_summed_file(modelpath: Path) -> Path:
             )
             vspecpol_data.append(chunk)
 
-        if len(vspecpol_data_old) > 0:
+        if vspecpol_data_old:
             for i in range(len(vspecpol_data)):
                 dftmp = vspecpol_data[i].copy()  # copy of vspectrum number i in a file
                 # add copy to the same spectrum number from previous file
@@ -656,7 +656,7 @@ def get_vspecpol_spectrum(
     arr_tdelta = [l1 - l2 for l1, l2 in zip(arr_tmid[1:], arr_tmid[:-1])] + [arr_tmid[-1] - arr_tmid[-2]]
 
     def match_closest_time(reftime: float) -> str:
-        return f"{min(arr_tmid, key=lambda x: abs(x - reftime))}"
+        return str(min(arr_tmid, key=lambda x: abs(x - reftime)))
 
     # if 'timemin' and 'timemax' in args:
     #     timelower = match_closest_time(args.timemin)  # how timemin, timemax are used changed at some point
@@ -680,12 +680,12 @@ def get_vspecpol_spectrum(
         print("Applying filter to ARTIS spectrum")
         f_nu = fnufilterfunc(f_nu)
 
-    dfspectrum = (
+    return (
         pd.DataFrame({"nu": nu, "f_nu": f_nu})
         .sort_values(by="nu", ascending=False)
         .eval("lambda_angstroms = @c / nu", local_dict={"c": 2.99792458e18})
+        .eval("f_lambda = f_nu * nu / lambda_angstroms")
     )
-    return dfspectrum.eval("f_lambda = f_nu * nu / lambda_angstroms")
 
 
 @lru_cache(maxsize=4)
@@ -937,7 +937,7 @@ def get_flux_contributions_from_packets(
 
     if getemission:
         cols |= {"emissiontype_str", "nu_rf"}
-        bflistlazy = bflistlazy.with_columns((-1 - pl.col("bfindex").cast(pl.Int32)).alias(emtypecolumn))
+        bflistlazy = bflistlazy.with_columns(emtypecolumn=(-1 - pl.col("bfindex").cast(pl.Int32)))
         expr_bflist_to_str = (
             pl.col("ion_str") + " bound-free"
             if groupby == "ion"

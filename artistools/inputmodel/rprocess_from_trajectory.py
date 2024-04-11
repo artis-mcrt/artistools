@@ -63,11 +63,11 @@ def get_dfelemabund_from_dfmodel(dfmodel: pl.DataFrame, dfnucabundances: pl.Data
     )
 
     # ensure cells with no traj contributions are included
-    dfelabundances = pl.DataFrame(pl.Series(name="inputcellid", values=dfmodel["inputcellid"], dtype=pl.Int32))
-
-    dfelabundances = dfelabundances.join(
-        dfelabundances_partial, how="left", left_on="inputcellid", right_on="inputcellid"
-    ).fill_null(0.0)
+    dfelabundances = (
+        pl.DataFrame(pl.Series(name="inputcellid", values=dfmodel["inputcellid"], dtype=pl.Int32))
+        .join(dfelabundances_partial, how="left", left_on="inputcellid", right_on="inputcellid")
+        .fill_null(0.0)
+    )
 
     print(f" took {time.perf_counter() - timestart:.1f} seconds")
     print(f" there are {nuclidesincluded} nuclides from {elementsincluded} elements included")
@@ -85,12 +85,12 @@ def open_tar_file_or_extracted(traj_root: Path, particleid: int, memberfilename:
     path_extracted_file = Path(traj_root, str(particleid), memberfilename)
     tarfilepaths = [
         Path(traj_root, filename)
-        for filename in [
+        for filename in (
             f"{particleid}.tar",
             f"{particleid:05d}.tar",
             f"{particleid}.tar.xz",
             f"{particleid:05d}.tar.xz",
-        ]
+        )
     ]
     tarfilepath = next((tarfilepath for tarfilepath in tarfilepaths if tarfilepath.is_file()), None)
 
@@ -314,12 +314,12 @@ def get_gridparticlecontributions(gridcontribpath: Path | str) -> pl.DataFrame:
 def particlenetworkdatafound(traj_root: Path, particleid: int) -> bool:
     tarfilepaths = [
         Path(traj_root, filename)
-        for filename in [
+        for filename in (
             f"{particleid}.tar",
             f"{particleid:05d}.tar",
             f"{particleid}.tar.xz",
             f"{particleid:05d}.tar.xz",
-        ]
+        )
     ]
     return any(tarfilepath.is_file() for tarfilepath in tarfilepaths)
 
@@ -337,12 +337,10 @@ def filtermissinggridparticlecontributions(traj_root: Path, dfcontribs: pl.DataF
     )
     # after filtering, frac_of_cellmass_includemissing will still include particles with rho but no abundance data
     # frac_of_cellmass will exclude particles with no abundances
-    dfcontribs = dfcontribs.with_columns(pl.col("frac_of_cellmass").alias("frac_of_cellmass_includemissing"))
-    dfcontribs = dfcontribs.with_columns(
-        pl.when(pl.col("particleid").is_in(missing_particleids))
+    dfcontribs = dfcontribs.with_columns(frac_of_cellmass_includemissing=pl.col("frac_of_cellmass")).with_columns(
+        frac_of_cellmass=pl.when(pl.col("particleid").is_in(missing_particleids))
         .then(0.0)
         .otherwise(pl.col("frac_of_cellmass"))
-        .alias("frac_of_cellmass")
     )
 
     cell_frac_sum: dict[int, float] = {}
@@ -473,14 +471,12 @@ def add_abundancecontributions(
                         ["particleid", "frac_of_cellmass"]
                     ].iter_rows()
                 ]
-            ).alias(f"{cellindex}")
+            ).alias(str(cellindex))
             for (cellindex,), dfthiscellcontribs in dfcontribs.group_by(["cellindex"])
         ]
     )
 
-    colnames = [
-        key if isinstance(key, str) else f"X_{at.get_elsymbol(int(key[0]))}{int(key[0] + key[1])}" for key in allkeys
-    ]
+    colnames = [key if isinstance(key, str) else f"X_{at.get_elsymbol(key[0])}{key[0] + key[1]}" for key in allkeys]
 
     dfnucabundances = (
         dfnucabundanceslz.drop([col for col in dfnucabundances.columns if col.startswith("particle_")])
@@ -544,7 +540,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     # write abundances.txt
     dictelemabund = get_elemabund_from_nucabund(dfnucabund)
 
-    dfelabundances = pd.DataFrame([dict(inputcellid=mgi + 1, **dictelemabund) for mgi in range(len(dfdensities))])
+    dfelabundances = pd.DataFrame([dictelemabund | {"inputcellid": mgi + 1} for mgi in range(len(dfdensities))])
     # print(dfelabundances)
     at.inputmodel.save_initelemabundances(dfelabundances=dfelabundances, outpath=args.outputpath)
 
@@ -568,12 +564,12 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         rowdict[f"X_{at.get_elsymbol(row.Z)}{A}"] = row.massfrac
 
     modeldata = [
-        dict(
-            inputcellid=mgi + 1,
-            vel_r_max_kmps=densityrow["vel_r_max_kmps"],
-            logrho=math.log10(densityrow["rho"]),
-            **rowdict,
-        )
+        {
+            "inputcellid": mgi + 1,
+            "vel_r_max_kmps": densityrow["vel_r_max_kmps"],
+            "logrho": math.log10(densityrow["rho"]),
+        }
+        | rowdict
         for mgi, densityrow in dfdensities.iterrows()
     ]
     # print(modeldata)

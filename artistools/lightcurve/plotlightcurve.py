@@ -703,18 +703,18 @@ def get_linelabel(
 ) -> str:
     if angle is not None and angle != -1:
         assert angle_definition is not None
-        linelabel = f"{angle_definition[angle]}" if args.nomodelname else f"{modelname} {angle_definition[angle]}"
+        linelabel = angle_definition[angle] if args.nomodelname else f"{modelname} {angle_definition[angle]}"
         # linelabel = None
         # linelabel = fr"{modelname} $\theta$ = {angle_names[index]}$^\circ$"
         # plt.plot(time, magnitude, label=linelabel, linewidth=3)
     elif args.label:
-        linelabel = rf"{args.label[modelnumber]}"
+        linelabel = str(args.label[modelnumber])
     else:
-        linelabel = str(modelname)
+        linelabel = modelname
         # linelabel = 'Angle averaged'
 
     if linelabel == "None" or linelabel is None:
-        linelabel = str(modelname)
+        linelabel = modelname
 
     return linelabel
 

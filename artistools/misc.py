@@ -703,7 +703,7 @@ def get_ionstring(
 ) -> str:
     """Return a string with the element symbol and ionisation stage."""
     if ion_stage is None or ion_stage == "ALL":
-        return f"{get_elsymbol(atomic_number)}"
+        return str(get_elsymbol(atomic_number))
 
     if isinstance(ion_stage, str) and ion_stage.startswith(at.get_elsymbol(atomic_number)):
         # nuclides like Sr89 get passed in as atomic_number=38, ion_stage='Sr89'
@@ -718,7 +718,7 @@ def get_ionstring(
     if style == "chargelatex":
         # ion notion e.g. Co+, Fe2+
         if ion_stage > 2:
-            strcharge = r"$^{" + f"{ion_stage - 1}" + r"{+}}$"
+            strcharge = r"$^{" + str(ion_stage - 1) + r"{+}}$"
         elif ion_stage == 2:
             strcharge = r"$^{+}$"
     elif ion_stage > 2:
@@ -1486,11 +1486,11 @@ def get_dirbin_labels(
         phi_index = dirbin % nphibins
 
         if average_over_phi:
-            angle_definitions[dirbin] = str(costhetabinlabels[costheta_index])
+            angle_definitions[dirbin] = costhetabinlabels[costheta_index]
             assert phi_index == 0
             assert not average_over_theta
         elif average_over_theta:
-            angle_definitions[dirbin] = str(phibinlabels[phi_index])
+            angle_definitions[dirbin] = phibinlabels[phi_index]
             assert costheta_index == 0
         else:
             angle_definitions[dirbin] = f"{costhetabinlabels[costheta_index]}, {phibinlabels[phi_index]}"

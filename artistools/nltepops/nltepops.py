@@ -58,8 +58,7 @@ def texifyconfiguration(levelname: str) -> str:
     strterm = levelname.split("_")[-1]
     strout += " " + texifyterm(strterm)
 
-    strout = strout.replace("#", "")
-    return strout.replace("$$", "")
+    return strout.replace("#", "").replace("$$", "")
 
 
 def add_lte_pops(modelpath, dfpop, columntemperature_tuples, noprint=False, maxlevel=-1):

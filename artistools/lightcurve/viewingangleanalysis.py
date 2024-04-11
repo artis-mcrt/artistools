@@ -249,7 +249,7 @@ def write_viewing_angle_data(band_name, modelnames, args):
         or args.make_viewing_angle_peakmag_delta_m15_scatter_plot
     ):
         np.savetxt(
-            band_name + "band_" + f"{modelnames[0]}" + "_angle_averaged_all_models_data.txt",
+            f"{band_name}band_{modelnames[0]}_angle_averaged_all_models_data.txt",
             np.c_[
                 modelnames,
                 args.band_risetime_angle_averaged_polyfit,
@@ -289,7 +289,7 @@ def calculate_peak_time_mag_deltam15(time, magnitude, modelname, angle, key, arg
     fxfit, xfit = lightcurve_polyfit(time, magnitude, args)
 
     def match_closest_time_polyfit(reftime_polyfit):
-        return str(f"{min((float(x) for x in xfit), key=lambda x: abs(x - reftime_polyfit))}")
+        return str(min((float(x) for x in xfit), key=lambda x: abs(x - reftime_polyfit)))
 
     index_min = np.argmin(fxfit)
     tmax_polyfit = xfit[index_min]
