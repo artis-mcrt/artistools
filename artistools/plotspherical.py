@@ -44,9 +44,7 @@ def plot_spherical(
     if tmin_d_valid is None or tmax_d_valid is None:
         print("WARNING! The observer never gets light from the entire ejecta. Plotting all packets anyway")
         timemindays, timemaxdays = (
-            dfpackets.select(pl.col("t_arrive_d").min().alias("tmin"), pl.col("t_arrive_d").max().alias("tmax"))
-            .collect()
-            .to_numpy()[0]
+            dfpackets.select(tmin=pl.col("t_arrive_d").min(), tmax=pl.col("t_arrive_d").max()).collect().to_numpy()[0]
         )
     else:
         if timemindays is None:
