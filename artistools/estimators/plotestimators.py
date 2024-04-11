@@ -506,8 +506,7 @@ def plot_series(
 
     variablename = colexpr.meta.output_name()
 
-    formattedvariablename = at.estimators.get_varname_formatted(variablename)
-    serieslabel = f"{formattedvariablename}"
+    serieslabel = at.estimators.get_varname_formatted(variablename)
     units_string = at.estimators.get_units_string(variablename)
 
     if showlegend:
