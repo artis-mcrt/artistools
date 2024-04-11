@@ -355,7 +355,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         #     (26, 3): Fe3overFe2 / (1 + Fe3overFe2),
         #     (28, 2): 1.0e-2,
         # }
-        ionpopdict = {ion: 1 for ion in ionlist}
+        ionpopdict = dict.fromkeys(ionlist, 1)
 
     hc = (const.h * const.c).to("eV Angstrom").value  # noqa: F841
 

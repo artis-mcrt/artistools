@@ -446,7 +446,7 @@ def plot_qdot_abund_modelcells(
         direct_model_propgrid_map = True
 
     if direct_model_propgrid_map:
-        correction_factors = {strnuc: 1.0 for strnuc in arr_strnuc}
+        correction_factors = dict.fromkeys(arr_strnuc, 1.0)
 
         lzdfmodel = lzdfmodel.with_columns(n_assoc_cells=pl.lit(1.0))
     else:
