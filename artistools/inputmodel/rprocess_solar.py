@@ -102,7 +102,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             "Z == @atomic_number", inplace=False
         ).massfrac.sum()
 
-    dfelabundances = pd.DataFrame([dict(inputcellid=mgi + 1, **dictelemabund) for mgi in range(cellcount)])
+    dfelabundances = pd.DataFrame([{"inputcellid": mgi + 1} | dictelemabund for mgi in range(cellcount)])
     # print(dfelabundances)
     at.inputmodel.save_initelemabundances(dfelabundances=dfelabundances, outpath=Path(args.outputpath))
 
@@ -128,12 +128,12 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     for mgi, densityrow in dfdensities.iterrows():
         # print(mgi, densityrow)
         modeldata.append(
-            dict(
-                inputcellid=mgi + 1,
-                vel_r_max_kmps=densityrow["vel_r_max_kmps"],
-                logrho=math.log10(densityrow["rho"]),
-                **rowdict,
-            )
+            {
+                "inputcellid": mgi + 1,
+                "vel_r_max_kmps": densityrow["vel_r_max_kmps"],
+                "logrho": math.log10(densityrow["rho"]),
+            }
+            | rowdict
         )
     # print(modeldata)
 

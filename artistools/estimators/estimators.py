@@ -260,9 +260,7 @@ def get_rankbatch_parquetfile(
                 estfilepath = at.firstexisting(f"estimators_{mpirank:04d}.out", folder=folderpath, tryzipped=True)
                 estfilepaths.append(estfilepath)
 
-        print(
-            f"  reading {len(list(estfilepaths))} estimator files from {folderpath.relative_to(Path(folderpath).parent)}"
-        )
+        print(f"  reading {len(estfilepaths)} estimator files from {folderpath.relative_to(Path(folderpath).parent)}")
 
         time_start = time.perf_counter()
 

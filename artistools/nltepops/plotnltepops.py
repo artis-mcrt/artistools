@@ -379,7 +379,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths, args):
 
     ionlevels = args.levels
 
-    Z = int(at.get_atomic_number(args.elements[0]))
+    Z = at.get_atomic_number(args.elements[0])
     ion_stage = int(args.ion_stages[0])
 
     adata = at.atomic.get_levels(args.modelpath[0], get_transitions=True)
@@ -496,7 +496,7 @@ def plot_populations_with_time_or_velocity(ax, modelpaths, timedays, ion_stage, 
             )
             # plotpopulationsLTE = np.array([float(populationsLTE[ts, level]) for ts, level in populationsLTE.keys()
             #                             if level == ionlevel])
-            linelabel = rf"{levelconfignames[ionlevel]}"
+            linelabel = str(levelconfignames[ionlevel])
             # linelabel = f'level {ionlevel} {modelname}'
 
             if args.x == "time":

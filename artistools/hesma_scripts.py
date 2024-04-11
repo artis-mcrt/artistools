@@ -150,8 +150,7 @@ def make_hesma_peakmag_dm15_dm40(band, pathtofiles, modelname, outpath, dm40=Fal
         outdata["dm40"] = dm40data["dm40"]
     outdata["angle_bin"] = angle_definition.values()
 
-    outdataframe = pd.DataFrame(outdata)
-    outdataframe = outdataframe.round(decimals=4)
+    outdataframe = pd.DataFrame(outdata).round(decimals=4)
     outdataframe.to_csv(outpath / f"{modelname}_width-luminosity.dat", sep=" ", index=False, header=True)
 
 

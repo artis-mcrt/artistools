@@ -648,7 +648,7 @@ def make_lightcurve_plot(
 
         # filenameout2 = "plotthermalisation.pdf"
         filenameout2 = str(filenameout).replace(".pdf", "_thermalisation.pdf")
-        figtherm.savefig(str(filenameout2), format="pdf")
+        figtherm.savefig(filenameout2, format="pdf")
         print(f"Saved {filenameout2}")
 
     plt.close()
