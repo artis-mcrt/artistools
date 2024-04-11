@@ -40,7 +40,7 @@ def annotate_emission_line(ax: plt.Axes, y: float, upperlevel: int, lowerlevel: 
 
 
 def plot_reference_data(ax, atomic_number: int, ion_stage: int, estimators_celltimestep, dfpopthision, annotatelines):
-    nne, Te, TR, W = (estimators_celltimestep[s] for s in ["nne", "Te", "TR", "W"])
+    nne, Te, TR, W = (estimators_celltimestep[s] for s in ("nne", "Te", "TR", "W"))
     # comparison to Chianti file
     elsym = at.get_elsymbol(atomic_number)
     elsymlower = elsym.lower()
@@ -490,7 +490,7 @@ def plot_populations_with_time_or_velocity(ax, modelpaths, timedays, ion_stage, 
 
         for ionlevel in ionlevels:
             plottimesteps = np.array([int(ts) for ts, level, mgi in populations if level == ionlevel])
-            timedays = [float(at.get_timestep_time(modelpath, ts)) for ts in plottimesteps]
+            timedays = [at.get_timestep_time(modelpath, ts) for ts in plottimesteps]
             plotpopulations = np.array(
                 [float(populations[ts, level, mgi]) for ts, level, mgi in populations if level == ionlevel]
             )
@@ -512,7 +512,7 @@ def make_plot(modelpath, atomic_number, ion_stages_displayed, mgilist, timestep,
     modelname = at.get_model_name(modelpath)
     adata = at.atomic.get_levels(modelpath, get_transitions=args.gettransitions)
 
-    time_days = float(at.get_timestep_time(modelpath, timestep))
+    time_days = at.get_timestep_time(modelpath, timestep)
     modelname = at.get_model_name(modelpath)
 
     dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=mgilist[0]).copy()
@@ -603,7 +603,7 @@ def make_plot(modelpath, atomic_number, ion_stages_displayed, mgilist, timestep,
         subplot_title += f" {velocity:.0f} km/s at"
 
         try:
-            time_days = float(at.get_timestep_time(modelpath, timestep))
+            time_days = at.get_timestep_time(modelpath, timestep)
         except FileNotFoundError:
             time_days = 0
             subplot_title += f" timestep {timestep:d}"

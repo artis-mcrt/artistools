@@ -713,9 +713,7 @@ def make_emitting_regions_plot(args):
                     )
 
             if modeltag == "all":
-                for bars in [
-                    False,
-                ]:  # [False, True]
+                for bars in (False,):  # (False, True)
                     for truemodelindex in range(modelindex):
                         emfeatures = get_labelandlineindices(args.modelpath[truemodelindex], args.emfeaturesearch)
 
@@ -761,9 +759,7 @@ def make_emitting_regions_plot(args):
                     label="All cells",
                 )
 
-                for bars in [
-                    False,
-                ]:  # [False, True]
+                for bars in (False,):  # (False, True)
                     for featureindex, feature in enumerate(emfeatures):
                         emdata = emdata_all[modelindex][(tmid, feature.colname)]
 

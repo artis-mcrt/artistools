@@ -195,7 +195,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         ionpopdict = {at.get_ion_tuple(k): v for k, v in estim.items() if k.startswith(("nnion_", "nnelement_"))}
 
         velocity = modeldata["vel_r_max_kmps"][args.modelgridindex]
-        args.timedays = float(at.get_timestep_time(modelpath, args.timestep))
+        args.timedays = at.get_timestep_time(modelpath, args.timestep)
         print(f"timestep {args.timestep} cell {args.modelgridindex} (v={velocity} km/s at {args.timedays:.1f}d)")
 
     # ionpopdict = {}

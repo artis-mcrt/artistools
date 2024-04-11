@@ -217,7 +217,7 @@ def average_direction_bins(
 
 def match_closest_time(reftime: float, searchtimes: list[t.Any]) -> str:
     """Get time closest to reftime in list of times (searchtimes)."""
-    return str(f"{min((float(x) for x in searchtimes), key=lambda x: abs(x - reftime))}")
+    return str(min((float(x) for x in searchtimes), key=lambda x: abs(x - reftime)))
 
 
 def get_vpkt_config(modelpath: Path | str) -> dict[str, t.Any]:
@@ -703,7 +703,7 @@ def get_ionstring(
 ) -> str:
     """Return a string with the element symbol and ionisation stage."""
     if ion_stage is None or ion_stage == "ALL":
-        return str(get_elsymbol(atomic_number))
+        return get_elsymbol(atomic_number)
 
     if isinstance(ion_stage, str) and ion_stage.startswith(at.get_elsymbol(atomic_number)):
         # nuclides like Sr89 get passed in as atomic_number=38, ion_stage='Sr89'

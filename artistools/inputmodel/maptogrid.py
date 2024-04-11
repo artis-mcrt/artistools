@@ -171,28 +171,27 @@ def maptogrid(
     # Propagate particles to dtextra using velocities
     logprint(f"Propagating particles for dtextra_seconds={dtextra_seconds}")
     dtextra = dtextra_seconds / 4.926e-6  # convert to geom units.
-    dfsnapshot = dfsnapshot.with_columns(dis_orig=(pl.col("x") ** 2 + pl.col("y") ** 2 + pl.col("z") ** 2).sqrt())
-
-    dfsnapshot = dfsnapshot.with_columns(
-        x_orig=pl.col("x"),
-        y_orig=pl.col("y"),
-        z_orig=pl.col("z"),
-        x=pl.col("x") + pl.col("vx") * dtextra,
-        y=pl.col("y") + pl.col("vy") * dtextra,
-        z=pl.col("z") + pl.col("vz") * dtextra,
-    )
-
-    dfsnapshot = dfsnapshot.with_columns(dis=(pl.col("x") ** 2 + pl.col("y") ** 2 + pl.col("z") ** 2).sqrt())
-
-    dfsnapshot = dfsnapshot.with_columns(
-        h=pl.col("h") / pl.col("dis_orig") * pl.col("dis"),
-        vrad=(pl.col("vx") * pl.col("x") + pl.col("vy") * pl.col("y") + pl.col("vz") * pl.col("z")) / pl.col("dis"),
-        vtot=(pl.col("vx") ** 2 + pl.col("vy") ** 2 + pl.col("vz") ** 2).sqrt(),
-    )
-    dfsnapshot = dfsnapshot.with_columns(
-        vperp=pl.when(pl.col("vtot") > pl.col("vrad"))
-        .then((pl.col("vtot") ** 2 - pl.col("vrad") ** 2).sqrt())
-        .otherwise(0.0),
+    dfsnapshot = (
+        dfsnapshot.with_columns(
+            dis_orig=(pl.col("x") ** 2 + pl.col("y") ** 2 + pl.col("z") ** 2).sqrt(),
+            x_orig=pl.col("x"),
+            y_orig=pl.col("y"),
+            z_orig=pl.col("z"),
+            x=pl.col("x") + pl.col("vx") * dtextra,
+            y=pl.col("y") + pl.col("vy") * dtextra,
+            z=pl.col("z") + pl.col("vz") * dtextra,
+        )
+        .with_columns(dis=(pl.col("x") ** 2 + pl.col("y") ** 2 + pl.col("z") ** 2).sqrt())
+        .with_columns(
+            h=pl.col("h") / pl.col("dis_orig") * pl.col("dis"),
+            vrad=(pl.col("vx") * pl.col("x") + pl.col("vy") * pl.col("y") + pl.col("vz") * pl.col("z")) / pl.col("dis"),
+            vtot=(pl.col("vx") ** 2 + pl.col("vy") ** 2 + pl.col("vz") ** 2).sqrt(),
+        )
+        .with_columns(
+            vperp=pl.when(pl.col("vtot") > pl.col("vrad"))
+            .then((pl.col("vtot") ** 2 - pl.col("vrad") ** 2).sqrt())
+            .otherwise(0.0),
+        )
     )
 
     particleid = dfsnapshot["id"].to_numpy()
@@ -210,10 +209,10 @@ def maptogrid(
     hmean = dfsnapshot["h"].mean()
     rmax = dfsnapshot["dis"].max()
     with Path(outputfolderpath, "ejectapartanalysis.dat").open(mode="w", encoding="utf-8") as fpartanalysis:
-        for part in dfsnapshot.select(["dis", "h", "vrad", "vperp", "vtot"]).iter_rows(named=True):
-            fpartanalysis.write(
-                f"{part['dis']} {part['h']} {part['h'] / part['dis']} {part['vrad']} {part['vperp']} {part['vtot']}\n"
-            )
+        fpartanalysis.writelines(
+            f"{part["dis"]} {part["h"]} {part["h"] / part["dis"]} {part["vrad"]} {part["vperp"]} {part["vtot"]}\n"
+            for part in dfsnapshot.select(["dis", "h", "vrad", "vperp", "vtot"]).iter_rows(named=True)
+        )
 
     logprint(f"saved {outputfolderpath / 'ejectapartanalysis.dat'}")
 

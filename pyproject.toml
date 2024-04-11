@@ -172,6 +172,7 @@ ignore = ["FURB120"]
 quiet = false
 enable_all = true
 python_version = "3.10"
+sort_by = "error"
 
 [tool.ruff]
 line-length = 120
