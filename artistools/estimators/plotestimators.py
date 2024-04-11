@@ -11,6 +11,7 @@ import math
 import operator
 import string
 import typing as t
+from itertools import chain
 from pathlib import Path
 
 import argcomplete
@@ -559,7 +560,7 @@ def get_xlist(
     groupbyxvalue: bool,
     args: t.Any,
 ) -> tuple[list[float | int], list[int], list[list[int]], pl.LazyFrame]:
-    estimators = estimators.filter(pl.col("timestep").is_in([ts for tssublist in timestepslist for ts in tssublist]))
+    estimators = estimators.filter(pl.col("timestep").is_in(set(chain.from_iterable(timestepslist))))
 
     if xvariable in {"cellid", "modelgridindex"}:
         estimators = estimators.with_columns(xvalue=pl.col("modelgridindex"), plotpointid=pl.col("modelgridindex"))
