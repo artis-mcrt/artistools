@@ -268,7 +268,7 @@ def plot_specout(
     label = "Emergent spectrum"
     if scale_factor is not None:
         label += " (scaled)"
-        dfspectrum["f_lambda"] = dfspectrum["f_lambda"] * scale_factor
+        dfspectrum["f_lambda"] *= scale_factor
 
     if peak_value is not None:
         label += " (normalised)"

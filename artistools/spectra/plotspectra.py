@@ -1082,7 +1082,7 @@ def make_plot(args) -> tuple[plt.Figure, list[plt.Axes], pd.DataFrame]:
 
     if args.showtime and not args.multispecplot:
         if not args.ymax:
-            ymin, ymax = ax.get_ylim()
+            _ymin, ymax = ax.get_ylim()
         else:
             ymax = args.ymax
 
@@ -1445,7 +1445,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             args.showemission = True
             args.showabsorption = True
 
-        fig, axes, dfalldata = make_plot(args)
+        fig, _axes, dfalldata = make_plot(args)
 
         strdirectionbins = (
             "_direction" + "_".join([f"{angle:02d}" for angle in args.plotviewingangle])

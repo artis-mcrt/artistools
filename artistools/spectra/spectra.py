@@ -565,7 +565,7 @@ def make_averaged_vspecfiles(args: argparse.Namespace) -> None:
         for i in range(1, len(vspecdata)):
             vspecdata[0].iloc[1:, 1:] += vspecdata[i].iloc[1:, 1:]
 
-        vspecdata[0].iloc[1:, 1:] = vspecdata[0].iloc[1:, 1:] / len(vspecdata)
+        vspecdata[0].iloc[1:, 1:] /= len(vspecdata)
         vspecdata[0].to_csv(
             args.modelpath[0] / f"vspecpol_averaged-{spec_index}.out", sep=" ", index=False, header=False
         )

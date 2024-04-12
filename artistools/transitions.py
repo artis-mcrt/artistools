@@ -484,7 +484,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             {"lower_energy_ev": "lower_energy_Ev", "upper_energy_ev": "upper_energy_Ev"}, axis=1
         )
         dftransitions_all = dftransitions_all.astype({"forbidden": "int32"})
-        dftransitions_all["lambda_angstroms"] = dftransitions_all["lambda_angstroms"] / 1.0003
+        dftransitions_all["lambda_angstroms"] /= 1.0003
         dftransitions_all = dftransitions_all.sort_values(by=["Z", "ion_stage", "lower", "upper"], ascending=True)
         dftransitions_all = dftransitions_all[
             "lambda_angstroms A            Z   ion_stage lower_energy_Ev   lower_statweight  forbidden  lower_level               upper_level               upper_statweight  upper_energy_Ev".split()

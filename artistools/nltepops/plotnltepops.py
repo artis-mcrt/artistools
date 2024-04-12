@@ -437,9 +437,9 @@ def make_plot_populations_with_time_or_velocity(modelpaths, args):
     if not args.notitle:
         title = f"Z={Z}, ion_stage={ion_stage}"
         if args.x == "time":
-            title = title + f", mgi = {args.modelgridindex[0]}"
+            title += f", mgi = {args.modelgridindex[0]}"
         elif args.x == "velocity":
-            title = title + f", {args.timedays} days"
+            title += f", {args.timedays} days"
         plt.title(title)
 
     at.plottools.set_axis_properties(ax, args)

@@ -208,7 +208,7 @@ def test_spectra_get_flux_contributions() -> None:
     c_ang_per_s = 2.99792458e18
     arraylambda_angstroms = c_ang_per_s / arraynu
 
-    contribution_list, array_flambda_emission_total = at.spectra.get_flux_contributions(
+    _contribution_list, array_flambda_emission_total = at.spectra.get_flux_contributions(
         modelpath,
         timestepmin=timestepmin,
         timestepmax=timestepmax,

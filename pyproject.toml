@@ -211,6 +211,10 @@ ignore = [
     "N803",  # Argument name should be lowercase
     "N806",  # non-lowercase-variable-in-function
     "N999",  # invalid-module-name
+    "PLC0415", # import-outside-toplevel
+    "PLR0914", # too-many-locals
+    "PLR0917", # too-many-positional
+    "PLR1702", # too-many-nested-blocks
     "PD901",  # df is a bad variable name
     "PERF203", # try-except-in-loop
     #"PGH001",  # No builtin `eval()` allowed
