@@ -3,3 +3,5 @@ testmodel
 testmodel/
 vspecpolmodel/
 test-classicmode_3d
+*.parquet
+*.tmp

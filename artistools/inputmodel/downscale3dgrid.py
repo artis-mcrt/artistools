@@ -2,10 +2,12 @@ import itertools
 from pathlib import Path
 
 import numpy as np
+from typeguard import typechecked
 
 import artistools as at
 
 
+@typechecked
 def make_downscaled_3d_grid(
     modelpath: str | Path, outputgridsize: int = 50, plot: bool = False, outputfolder: Path | str | None = None
 ) -> Path:
@@ -21,7 +23,7 @@ def make_downscaled_3d_grid(
     grid = int(inputgridsize)
 
     assert inputgridsize % outputgridsize == 0
-    smallgrid = int(outputgridsize)
+    smallgrid = outputgridsize
 
     merge = grid / smallgrid
     merge = int(merge)
@@ -88,7 +90,7 @@ def make_downscaled_3d_grid(
     with (modelpath / smallabundancefile).open("w") as newabundancefile:
         for z, y, x in itertools.product(range(smallgrid), range(smallgrid), range(smallgrid)):
             line = abund_small[x, y, z, :].tolist()  # index 1:30 are abundances
-            line[0] = int(i + 1)  # replace index 0 with index id
+            line[0] = i + 1  # replace index 0 with index id
             i += 1
             newabundancefile.writelines("%g " % item for item in line)
             newabundancefile.writelines("\n")
@@ -97,14 +99,14 @@ def make_downscaled_3d_grid(
     xmax = vmax * t_model_days * 3600 * 24
     cellindex = 0
     with (modelpath / smallmodelfile).open("w") as newmodelfile:
-        gridsize = int(smallgrid**3)
+        gridsize = smallgrid**3
         newmodelfile.write(f"{gridsize}\n")
         newmodelfile.write(f"{t_model_days}\n")
         newmodelfile.write(f"{vmax}\n")
 
         for z, y, x in itertools.product(range(smallgrid), range(smallgrid), range(smallgrid)):
             line1 = [
-                int(cellindex + 1),
+                cellindex + 1,
                 -xmax + 2 * x * xmax / smallgrid,
                 -xmax + 2 * y * xmax / smallgrid,
                 -xmax + 2 * z * xmax / smallgrid,

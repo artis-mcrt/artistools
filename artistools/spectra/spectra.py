@@ -29,7 +29,7 @@ def timeshift_fluxscale_co56law(scaletoreftime: float | None, spectime: float) -
     if scaletoreftime is not None:
         # Co56 decay flux scaling
         assert spectime > 150
-        return math.exp(float(spectime) / 113.7) / math.exp(scaletoreftime / 113.7)
+        return math.exp(spectime / 113.7) / math.exp(scaletoreftime / 113.7)
 
     return 1.0
 
@@ -142,6 +142,7 @@ def get_from_packets(
     nu_column: str = "nu_rf",
     fnufilterfunc: t.Callable[[np.ndarray], np.ndarray] | None = None,
     nprocs_read_dfpackets: tuple[int, pl.DataFrame] | None = None,
+    directionbins_are_vpkt_observers: bool = False,
 ) -> dict[int, pd.DataFrame]:
     """Get a spectrum dataframe using the packets files as input."""
     if directionbins is None:
@@ -175,49 +176,88 @@ def get_from_packets(
     ncosthetabins = at.get_viewingdirection_costhetabincount()
     ndirbins = at.get_viewingdirectionbincount()
 
-    nprocs_read, dfpackets = nprocs_read_dfpackets or at.packets.get_packets_pl(
-        modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
-    )
-
-    if use_time == "arrival":
-        dfpackets = dfpackets.filter(pl.col("t_arrive_d").is_between(float(timelowdays), float(timehighdays)))
-    elif use_time == "escape":
-        assert escapesurfacegamma is not None
-        dfpackets = dfpackets.filter(
-            pl.col("escape_time").is_between(timelow / escapesurfacegamma, timehigh / escapesurfacegamma)
-        )
-    elif use_time == "emission":
-        mean_correction = float(
-            dfpackets.select((pl.col("em_time") - pl.col("t_arrive_d") * 86400.0).mean())
-            .lazy()
-            .collect()
-            .to_numpy()[0][0]
+    dfpackets: pl.DataFrame | pl.LazyFrame
+    if nprocs_read_dfpackets:
+        nprocs_read, dfpackets = nprocs_read_dfpackets
+    elif directionbins_are_vpkt_observers:
+        nprocs_read, dfpackets = at.packets.get_virtual_packets_pl(modelpath, maxpacketfiles=maxpacketfiles)
+    else:
+        nprocs_read, dfpackets = at.packets.get_packets_pl(
+            modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
         )
 
-        em_time_low = float(timelowdays) * 86400.0 + mean_correction
-        em_time_high = float(timehighdays) * 86400.0 + mean_correction
-        dfpackets = dfpackets.filter(pl.col("em_time").is_between(em_time_low, em_time_high))
+    getcols = {nu_column}
 
-    dfpackets = dfpackets.filter(pl.col(nu_column).is_between(float(nu_min), float(nu_max)))
+    if directionbins_are_vpkt_observers:
+        vpkt_config = at.get_vpkt_config(modelpath)
+        time_conditions = []
+        nu_conditions = []
+        for dirbin in directionbins:
+            obsdirindex = dirbin // vpkt_config["nspectraperobs"]
+            opacchoiceindex = dirbin % vpkt_config["nspectraperobs"]
+            getcols |= {
+                f"dir{obsdirindex}_nu_rf",
+                f"dir{obsdirindex}_t_arrive_d",
+                f"dir{obsdirindex}_e_rf_{opacchoiceindex}",
+            }
+            time_conditions.append(pl.col(f"dir{obsdirindex}_t_arrive_d").is_between(timelowdays, timehighdays))
+            nu_conditions.append(pl.col(f"dir{obsdirindex}_nu_rf").is_between(nu_min, nu_max))
+        dfpackets = dfpackets.filter(pl.any_horizontal(time_conditions)).filter(pl.any_horizontal(nu_conditions))
+        getcols.discard("nu_rf")
+    else:
+        dfpackets = dfpackets.filter(pl.col(nu_column).is_between(nu_min, nu_max))
+        if use_time == "arrival":
+            dfpackets = dfpackets.filter(pl.col("t_arrive_d").is_between(timelowdays, timehighdays))
+        elif use_time == "escape":
+            assert escapesurfacegamma is not None
+            dfpackets = dfpackets.filter(
+                pl.col("escape_time").is_between(timelow / escapesurfacegamma, timehigh / escapesurfacegamma)
+            )
+        elif use_time == "emission":
+            mean_correction = float(
+                dfpackets.select((pl.col("em_time") - pl.col("t_arrive_d") * 86400.0).mean())
+                .lazy()
+                .collect()
+                .to_numpy()[0][0]
+            )
+
+            em_time_low = timelowdays * 86400.0 + mean_correction
+            em_time_high = timehighdays * 86400.0 + mean_correction
+            dfpackets = dfpackets.filter(pl.col("em_time").is_between(em_time_low, em_time_high))
 
     if fnufilterfunc:
         print("Applying filter to ARTIS spectrum")
 
-    encol = "e_cmf" if use_time == "escape" else "e_rf"
-    getcols = {nu_column, encol}
-    if directionbins != [-1]:
-        if average_over_phi:
-            getcols.add("costhetabin")
-        elif average_over_theta:
-            getcols.add("phibin")
-        else:
-            getcols.add("dirbin")
+    if not directionbins_are_vpkt_observers:
+        encol = "e_cmf" if use_time == "escape" else "e_rf"
+        getcols.add(encol)
+        if directionbins != [-1]:
+            if average_over_phi:
+                getcols.add("costhetabin")
+            elif average_over_theta:
+                getcols.add("phibin")
+            else:
+                getcols.add("dirbin")
 
     dfpackets = dfpackets.select(getcols).lazy().collect().lazy()
 
+    if nprocs_read_dfpackets is None:
+        npkts_selected = dfpackets.select(pl.count("*")).collect().item(0, 0)
+        print(f"  time/frequency selection contains {npkts_selected:.2e} packets")
+
     dfdict = {}
     for dirbin in directionbins:
-        if dirbin == -1:
+        if directionbins_are_vpkt_observers:
+            obsdirindex = dirbin // vpkt_config["nspectraperobs"]
+            opacchoiceindex = dirbin % vpkt_config["nspectraperobs"]
+            pldfpackets_dirbin_lazy = dfpackets.filter(
+                pl.col(f"dir{obsdirindex}_t_arrive_d").is_between(timelowdays, timehighdays)
+                & pl.col(f"dir{obsdirindex}_nu_rf").is_between(nu_min, nu_max)
+            )
+            encol = f"dir{obsdirindex}_e_rf_{opacchoiceindex}"
+            nu_column = f"dir{obsdirindex}_nu_rf"
+            solidanglefactor = 4 * math.pi
+        elif dirbin == -1:
             solidanglefactor = 1.0
             pldfpackets_dirbin_lazy = dfpackets
         elif average_over_phi:
@@ -232,8 +272,12 @@ def get_from_packets(
             pldfpackets_dirbin_lazy = dfpackets.filter(pl.col("dirbin") == dirbin)
 
         pldfpackets_dirbin = pldfpackets_dirbin_lazy.with_columns(
-            [(2.99792458e18 / pl.col(nu_column)).alias("lambda_angstroms")]
+            lambda_angstroms=(2.99792458e18 / pl.col(nu_column))
         ).select(["lambda_angstroms", encol])
+
+        if nprocs_read_dfpackets is None:
+            npkts_selected = pldfpackets_dirbin.select(pl.count("*")).collect().item(0, 0)
+            print(f"    dirbin {dirbin} contains {npkts_selected:.2e} packets")
 
         dfbinned = at.packets.bin_and_sum(
             pldfpackets_dirbin,
@@ -241,16 +285,17 @@ def get_from_packets(
             bins=list(lambda_bin_edges),
             sumcols=[encol],
             getcounts=getpacketcount,
-        )
+        ).collect()
+
         array_flambda = (
-            dfbinned[f"{encol}_sum"]
+            dfbinned.get_column(f"{encol}_sum").to_numpy()
             / delta_lambda
             / (timehigh - timelow)
             / (4 * math.pi)
             * solidanglefactor
             / (megaparsec_to_cm**2)
             / nprocs_read
-        ).to_numpy()
+        )
 
         if use_time == "escape":
             assert escapesurfacegamma is not None
@@ -270,7 +315,7 @@ def get_from_packets(
         )
 
         if getpacketcount:
-            dfdict[dirbin]["packetcount"] = dfbinned["count"]
+            dfdict[dirbin]["packetcount"] = dfbinned.get_column("count")
 
     return dfdict
 
@@ -482,7 +527,7 @@ def make_virtual_spectra_summed_file(modelpath: Path) -> Path:
             )
             vspecpol_data.append(chunk)
 
-        if len(vspecpol_data_old) > 0:
+        if vspecpol_data_old:
             for i in range(len(vspecpol_data)):
                 dftmp = vspecpol_data[i].copy()  # copy of vspectrum number i in a file
                 # add copy to the same spectrum number from previous file
@@ -520,7 +565,7 @@ def make_averaged_vspecfiles(args: argparse.Namespace) -> None:
         for i in range(1, len(vspecdata)):
             vspecdata[0].iloc[1:, 1:] += vspecdata[i].iloc[1:, 1:]
 
-        vspecdata[0].iloc[1:, 1:] = vspecdata[0].iloc[1:, 1:] / len(vspecdata)
+        vspecdata[0].iloc[1:, 1:] /= len(vspecdata)
         vspecdata[0].to_csv(
             args.modelpath[0] / f"vspecpol_averaged-{spec_index}.out", sep=" ", index=False, header=False
         )
@@ -585,7 +630,7 @@ def split_dataframe_stokesparams(specdata: pd.DataFrame) -> dict[str, pd.DataFra
     )
     stokes_params["U"] = pd.concat([specdata["nu"], specdata.iloc[:, cols_to_split[2] :]], axis="columns")
 
-    for param in ["Q", "U"]:
+    for param in ("Q", "U"):
         stokes_params[param].columns = stokes_params["I"].keys()
         stokes_params[param + "/I"] = pd.concat(
             [specdata["nu"], stokes_params[param].iloc[:, 1:] / stokes_params["I"].iloc[:, 1:]], axis="columns"
@@ -611,7 +656,7 @@ def get_vspecpol_spectrum(
     arr_tdelta = [l1 - l2 for l1, l2 in zip(arr_tmid[1:], arr_tmid[:-1])] + [arr_tmid[-1] - arr_tmid[-2]]
 
     def match_closest_time(reftime: float) -> str:
-        return str(f"{min((float(x) for x in arr_tmid), key=lambda x: abs(x - reftime))}")
+        return str(min(arr_tmid, key=lambda x: abs(x - reftime)))
 
     # if 'timemin' and 'timemax' in args:
     #     timelower = match_closest_time(args.timemin)  # how timemin, timemax are used changed at some point
@@ -635,11 +680,12 @@ def get_vspecpol_spectrum(
         print("Applying filter to ARTIS spectrum")
         f_nu = fnufilterfunc(f_nu)
 
-    dfspectrum = pd.DataFrame({"nu": nu, "f_nu": f_nu})
-    dfspectrum = dfspectrum.sort_values(by="nu", ascending=False)
-
-    dfspectrum = dfspectrum.eval("lambda_angstroms = @c / nu", local_dict={"c": 2.99792458e18})
-    return dfspectrum.eval("f_lambda = f_nu * nu / lambda_angstroms")
+    return (
+        pd.DataFrame({"nu": nu, "f_nu": f_nu})
+        .sort_values(by="nu", ascending=False)
+        .eval("lambda_angstroms = @c / nu", local_dict={"c": 2.99792458e18})
+        .eval("f_lambda = f_nu * nu / lambda_angstroms")
+    )
 
 
 @lru_cache(maxsize=4)
@@ -694,7 +740,7 @@ def get_flux_contributions(
             if "pol" in str(emissionfilename):
                 print("This artis run contains polarisation data")
                 # File contains I, Q and U and so times are repeated 3 times
-                arr_tmid = np.array(arr_tmid.tolist() * 3)
+                arr_tmid = np.tile(np.array(arr_tmid), 3)
 
             emissiondata[dbin] = read_emission_absorption_file(emissionfilename)
 
@@ -838,6 +884,7 @@ def get_flux_contributions_from_packets(
     directionbin: int | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
+    directionbins_are_vpkt_observers: bool = False,
 ) -> tuple[list[fluxcontributiontuple], np.ndarray, np.ndarray]:
     assert groupby in {"ion", "line"}
 
@@ -849,15 +896,29 @@ def get_flux_contributions_from_packets(
     linelistlazy = at.get_linelist_pldf(modelpath=modelpath, get_ion_str=True)
     bflistlazy = at.get_bflist(modelpath, get_ion_str=True)
 
-    nprocs_read, lzdfpackets = at.packets.get_packets_pl(
-        modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
-    )
+    if directionbins_are_vpkt_observers:
+        vpkt_config = at.get_vpkt_config(modelpath)
+        obsdirindex = directionbin // vpkt_config["nspectraperobs"]
+        opacchoiceindex = directionbin % vpkt_config["nspectraperobs"]
+        nprocs_read, lzdfpackets = at.packets.get_virtual_packets_pl(modelpath, maxpacketfiles=maxpacketfiles)
+        lzdfpackets = lzdfpackets.with_columns(
+            e_rf=pl.col(f"dir{obsdirindex}_e_rf_{opacchoiceindex}"),
+            nu_rf=pl.col(f"dir{obsdirindex}_nu_rf"),
+            t_arrive_d=pl.col(f"dir{obsdirindex}_t_arrive_d"),
+            costhetabin=-1,
+            phibin=-1,
+            dirbin=directionbin,
+        )
+    else:
+        nprocs_read, lzdfpackets = at.packets.get_packets_pl(
+            modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
+        )
 
     if emissionvelocitycut is not None:
         lzdfpackets = at.packets.add_derived_columns_lazy(lzdfpackets)
         lzdfpackets = lzdfpackets.filter(pl.col("emission_velocity") > emissionvelocitycut)
 
-    lzdfpackets = lzdfpackets.filter(pl.col("t_arrive_d").is_between(float(timelowdays), float(timehighdays)))
+    lzdfpackets = lzdfpackets.filter(pl.col("t_arrive_d").is_between(timelowdays, timehighdays))
 
     cols = {"e_rf"}
     cols.add({"arrival": "t_arrive_d", "emission": "em_time", "escape": "excape_time"}[use_time])
@@ -876,7 +937,7 @@ def get_flux_contributions_from_packets(
 
     if getemission:
         cols |= {"emissiontype_str", "nu_rf"}
-        bflistlazy = bflistlazy.with_columns((-1 - pl.col("bfindex").cast(pl.Int32)).alias(emtypecolumn))
+        bflistlazy = bflistlazy.with_columns(emtypecolumn=(-1 - pl.col("bfindex").cast(pl.Int32)))
         expr_bflist_to_str = (
             pl.col("ion_str") + " bound-free"
             if groupby == "ion"
@@ -931,13 +992,17 @@ def get_flux_contributions_from_packets(
 
     nu_min = 2.99792458e18 / lambda_max
     nu_max = 2.99792458e18 / lambda_min
+    condition_nu_emit = pl.col("nu_rf").is_between(nu_min, nu_max) if getemission else pl.lit(False)
+    condition_nu_abs = pl.col("absorption_freq").is_between(nu_min, nu_max) if getabsorption else pl.lit(False)
+
     dfpackets = (
-        lzdfpackets.filter(
-            (pl.col("nu_rf").is_between(nu_min, nu_max)) | (pl.col("absorption_freq").is_between(nu_min, nu_max))
-        )
+        lzdfpackets.filter(condition_nu_emit | condition_nu_abs)
         .select([col for col in cols if col in lzdfpackets.columns])
         .collect()
     )
+
+    npkts_selected = dfpackets.select(pl.count("*")).item(0, 0)
+    print(f"  time/frequency selection contains {npkts_selected:.2e} packets")
 
     emissiongroups = (
         dict(dfpackets.filter(pl.col("nu_rf").is_between(nu_min, nu_max)).group_by("emissiontype_str"))
@@ -1041,11 +1106,15 @@ def get_flux_contributions_from_packets(
                 timehighdays=timehighdays,
                 lambda_min=lambda_min,
                 lambda_max=lambda_max,
+                use_time=use_time,
                 delta_lambda=delta_lambda,
                 nu_column="absorption_freq",
                 fnufilterfunc=filterfunc,
                 nprocs_read_dfpackets=(nprocs_read, absorptiongroups[groupname]),
-            )[-1]
+                directionbins=[directionbin],
+                average_over_phi=average_over_phi,
+                average_over_theta=average_over_theta,
+            )[directionbin]
 
             if array_lambda is None:
                 array_lambda = spec_group["lambda_angstroms"].to_numpy()

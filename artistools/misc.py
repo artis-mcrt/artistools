@@ -2,6 +2,7 @@ import argparse
 import gzip
 import io
 import math
+import string
 import typing as t
 from collections import namedtuple
 from functools import lru_cache
@@ -14,6 +15,7 @@ import pandas as pd
 import polars as pl
 import pyzstd
 import xz
+from typeguard import typechecked
 
 import artistools as at
 
@@ -51,8 +53,7 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
         getinvocation = super()._format_action_invocation
 
         def my_sort(action: argparse.Action) -> str:
-            opstr = getinvocation(action)
-            return opstr.upper().replace("-", "z")  # push dash chars below alphabet
+            return getinvocation(action).upper().replace("-", "z")  # push dash chars below alphabet
 
         actions = sorted(actions, key=my_sort)
         super().add_arguments(actions)
@@ -215,7 +216,7 @@ def average_direction_bins(
 
 def match_closest_time(reftime: float, searchtimes: list[t.Any]) -> str:
     """Get time closest to reftime in list of times (searchtimes)."""
-    return str(f"{min((float(x) for x in searchtimes), key=lambda x: abs(x - reftime))}")
+    return str(min((float(x) for x in searchtimes), key=lambda x: abs(x - reftime)))
 
 
 def get_vpkt_config(modelpath: Path | str) -> dict[str, t.Any]:
@@ -427,6 +428,7 @@ def get_timestep_of_timedays(modelpath: Path | str, timedays: str | float) -> in
     raise ValueError(msg)
 
 
+@typechecked
 def get_time_range(
     modelpath: Path,
     timestep_range_str: str | None = None,
@@ -578,10 +580,10 @@ def get_z_a_nucname(nucname: str) -> tuple[int, int]:
     if "_" in nucname:
         nucname = nucname.split("_")[1]
 
-    z = get_atomic_number(nucname.rstrip("0123456789"))
+    z = get_atomic_number(nucname.rstrip(string.digits))
     assert z > 0
 
-    a = int(nucname.lower().lstrip("abcdefghijklmnopqrstuvwxyz"))
+    a = int(nucname.lower().lstrip(string.ascii_lowercase))
 
     return z, a
 
@@ -624,7 +626,7 @@ def get_atomic_number(elsymbol: str) -> int:
     """Return the atomic number of an element symbol."""
     assert elsymbol is not None
     elsymbol = elsymbol.removeprefix("X_")
-    elsymbol = elsymbol.split("_")[0].split("-")[0].rstrip("0123456789")
+    elsymbol = elsymbol.split("_")[0].split("-")[0].rstrip(string.digits)
 
     if elsymbol.title() in get_elsymbolslist():
         return get_elsymbolslist().index(elsymbol.title())
@@ -700,7 +702,7 @@ def get_ionstring(
 ) -> str:
     """Return a string with the element symbol and ionisation stage."""
     if ion_stage is None or ion_stage == "ALL":
-        return f"{get_elsymbol(atomic_number)}"
+        return get_elsymbol(atomic_number)
 
     if isinstance(ion_stage, str) and ion_stage.startswith(at.get_elsymbol(atomic_number)):
         # nuclides like Sr89 get passed in as atomic_number=38, ion_stage='Sr89'
@@ -715,7 +717,7 @@ def get_ionstring(
     if style == "chargelatex":
         # ion notion e.g. Co+, Fe2+
         if ion_stage > 2:
-            strcharge = r"$^{" + f"{ion_stage - 1}" + r"{+}}$"
+            strcharge = r"$^{" + str(ion_stage - 1) + r"{+}}$"
         elif ion_stage == 2:
             strcharge = r"$^{+}$"
     elif ion_stage > 2:
@@ -844,7 +846,7 @@ def firstexisting(
         fullpaths.append(Path(folder) / filename)
 
         if tryzipped:
-            for ext in [".zst", ".gz", ".xz"]:
+            for ext in (".zst", ".gz", ".xz"):
                 filenameext = str(filename) if str(filename).endswith(ext) else str(filename) + ext
                 if filenameext not in filelist:
                     fullpaths.append(folder / filenameext)
@@ -885,7 +887,7 @@ def readnoncommentline(file: io.TextIOBase) -> str:
     """Read a line from the text file, skipping blank and comment lines that begin with #."""
     line = ""
 
-    while not line.strip() or line.strip().lstrip().startswith("#"):
+    while not line.strip() or line.lstrip().startswith("#"):
         line = file.readline()
 
     return line
@@ -1483,11 +1485,11 @@ def get_dirbin_labels(
         phi_index = dirbin % nphibins
 
         if average_over_phi:
-            angle_definitions[dirbin] = f"{costhetabinlabels[costheta_index]}"
+            angle_definitions[dirbin] = costhetabinlabels[costheta_index]
             assert phi_index == 0
             assert not average_over_theta
         elif average_over_theta:
-            angle_definitions[dirbin] = f"{phibinlabels[phi_index]}"
+            angle_definitions[dirbin] = phibinlabels[phi_index]
             assert costheta_index == 0
         else:
             angle_definitions[dirbin] = f"{costhetabinlabels[costheta_index]}, {phibinlabels[phi_index]}"

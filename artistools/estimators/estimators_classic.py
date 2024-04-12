@@ -94,7 +94,7 @@ def read_classic_estimators(
             modelgridindex = -1
             for line in estfile:
                 row = line.split()
-                if int(row[0]) <= int(modelgridindex):
+                if int(row[0]) <= modelgridindex:
                     timestep += 1
                 modelgridindex = int(row[0])
 

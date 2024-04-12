@@ -46,22 +46,18 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     dfsolarabund_undecayed["Z"] = dfsolarabund_undecayed.apply(undecayed_z, axis=1)
 
     # Andreas uses 90% Fe and the rest solar
-    dfsolarabund_undecayed = dfsolarabund_undecayed.append(
-        {"Z": 26, "A": 56, "numberfrac": 0.005, "radioactive": False}, ignore_index=True
-    )
-    dfsolarabund_undecayed = dfsolarabund_undecayed.append(
-        {"Z": 27, "A": 59, "numberfrac": 0.005, "radioactive": False}, ignore_index=True
-    )
-    dfsolarabund_undecayed = dfsolarabund_undecayed.append(
-        {"Z": 28, "A": 58, "numberfrac": 0.005, "radioactive": False}, ignore_index=True
+    dfsolarabund_undecayed = (
+        dfsolarabund_undecayed.append({"Z": 26, "A": 56, "numberfrac": 0.005, "radioactive": False}, ignore_index=True)
+        .append({"Z": 27, "A": 59, "numberfrac": 0.005, "radioactive": False}, ignore_index=True)
+        .append({"Z": 28, "A": 58, "numberfrac": 0.005, "radioactive": False}, ignore_index=True)
     )
 
     normfactor = (  # noqa: F841
         dfsolarabund_undecayed.numberfrac.sum()
     )  # convert number fractions in solar to fractions of r-process
-    dfsolarabund_undecayed = dfsolarabund_undecayed.eval("numberfrac = numberfrac / @normfactor")
-
-    dfsolarabund_undecayed = dfsolarabund_undecayed.eval("massfrac = numberfrac * A")
+    dfsolarabund_undecayed = dfsolarabund_undecayed.eval("numberfrac = numberfrac / @normfactor").eval(
+        "massfrac = numberfrac * A"
+    )
     massfracnormfactor = dfsolarabund_undecayed.massfrac.sum()  # noqa: F841
     dfsolarabund_undecayed = dfsolarabund_undecayed.eval("massfrac = massfrac / @massfracnormfactor")
 
@@ -106,7 +102,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             "Z == @atomic_number", inplace=False
         ).massfrac.sum()
 
-    dfelabundances = pd.DataFrame([dict(inputcellid=mgi + 1, **dictelemabund) for mgi in range(cellcount)])
+    dfelabundances = pd.DataFrame([{"inputcellid": mgi + 1} | dictelemabund for mgi in range(cellcount)])
     # print(dfelabundances)
     at.inputmodel.save_initelemabundances(dfelabundances=dfelabundances, outpath=Path(args.outputpath))
 
@@ -132,12 +128,12 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     for mgi, densityrow in dfdensities.iterrows():
         # print(mgi, densityrow)
         modeldata.append(
-            dict(
-                inputcellid=mgi + 1,
-                vel_r_max_kmps=densityrow["vel_r_max_kmps"],
-                logrho=math.log10(densityrow["rho"]),
-                **rowdict,
-            )
+            {
+                "inputcellid": mgi + 1,
+                "vel_r_max_kmps": densityrow["vel_r_max_kmps"],
+                "logrho": math.log10(densityrow["rho"]),
+            }
+            | rowdict
         )
     # print(modeldata)
 

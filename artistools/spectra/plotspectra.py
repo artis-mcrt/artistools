@@ -21,6 +21,14 @@ import artistools as at
 hatches = ["", "x", "-", "\\", "+", "O", ".", "", "x", "*", "\\", "+", "O", "."]  # ,
 
 
+def path_is_artis_model(filepath: str | Path) -> bool:
+    if Path(filepath).name.endswith(".out.zst"):
+        return True
+    if Path(filepath).suffix == ".out":
+        return True
+    return Path(filepath).is_dir()
+
+
 def plot_polarisation(modelpath: Path, args) -> None:
     angle = args.plotviewingangle[0]
     stokes_params = at.spectra.get_specpol_data(angle=angle, modelpath=modelpath)
@@ -35,7 +43,7 @@ def plot_polarisation(modelpath: Path, args) -> None:
     timeavg = (args.timemin + args.timemax) / 2.0
 
     def match_closest_time(reftime):
-        return str(f"{min((float(x) for x in timearray), key=lambda x: abs(x - reftime)):.4f}")
+        return f"{min((float(x) for x in timearray), key=lambda x: abs(x - reftime)):.4f}"
 
     timeavg = match_closest_time(timeavg)
 
@@ -85,7 +93,7 @@ def plot_polarisation(modelpath: Path, args) -> None:
     plt.ylim(args.ymin, args.ymax)
     plt.xlim(args.xmin, args.xmax)
 
-    plt.ylabel(f"{args.stokesparam}")
+    plt.ylabel(str(args.stokesparam))
     plt.xlabel(r"Wavelength ($\mathrm{{\AA}}$)")
     figname = f"plotpol_{timeavg}_days_{args.stokesparam.split('/')[0]}_{args.stokesparam.split('/')[1]}.pdf"
     plt.savefig(modelpath / figname, format="pdf")
@@ -253,7 +261,7 @@ def plot_artis_spectrum(
         timedelta = (args.timemax - args.timemin) / 2
         linelabel_is_custom = linelabel is not None
         if linelabel is None:
-            linelabel = f"{modelname}" if len(modelname) < 70 else f"...{modelname[-67:]}"
+            linelabel = modelname if len(modelname) < 70 else f"...{modelname[-67:]}"
 
             if not args.hidemodeltime and not args.multispecplot:
                 # TODO: fix this for multispecplot - use args.showtime for now
@@ -273,12 +281,11 @@ def plot_artis_spectrum(
 
         # have to get the spherical average "bin" if directionbins is None
         dbins_get = list(directionbins).copy()
-        if -1 not in dbins_get:
+        if -1 not in dbins_get and not args.plotvspecpol:
             dbins_get.append(-1)
 
         supxmin, supxmax = axis.get_xlim()
         if from_packets:
-            assert args.plotvspecpol is None
             viewinganglespectra = at.spectra.get_from_packets(
                 modelpath,
                 args.timemin,
@@ -293,7 +300,9 @@ def plot_artis_spectrum(
                 average_over_phi=average_over_phi,
                 average_over_theta=average_over_theta,
                 fnufilterfunc=filterfunc,
+                directionbins_are_vpkt_observers=args.plotvspecpol is not None,
             )
+
         elif args.plotvspecpol is not None:
             # read virtual packet files (after running plotartisspectrum --makevspecpol)
             vpkt_config = at.get_vpkt_config(modelpath)
@@ -423,12 +432,19 @@ def make_spectrum_plot(
     refspecindex = 0
     seriesindex = 0
 
+    # take any specified colours our of the cycle
+    colors = [
+        color for i, color in enumerate(plt.rcParams["axes.prop_cycle"].by_key()["color"]) if f"C{i}" not in args.color
+    ]
+    for ax in axes:
+        ax.set_prop_cycle(color=colors)
+
     for seriesindex, specpath in enumerate(speclist):
         specpath = Path(specpath)
         plotkwargs: dict[str, t.Any] = {
             "alpha": args.linealpha[seriesindex],
             "linestyle": args.linestyle[seriesindex],
-            "color": args.color[refspecindex + artisindex],
+            "color": args.color[seriesindex],
         }
 
         if args.dashes[seriesindex]:
@@ -605,6 +621,9 @@ def make_emissionabsorption_plot(
     xmin, xmax = axis.get_xlim()
 
     if args.frompackets:
+        dirbin = (
+            args.plotviewingangle[0] if args.plotviewingangle else args.plotvspecpol[0] if args.plotvspecpol else None
+        )
         (
             contribution_list,
             array_flambda_emission_total,
@@ -625,9 +644,10 @@ def make_emissionabsorption_plot(
             delta_lambda=args.deltalambda,
             use_lastemissiontype=not args.use_thermalemissiontype,
             emissionvelocitycut=args.emissionvelocitycut,
-            directionbin=args.plotviewingangle[0] if args.plotviewingangle else None,
+            directionbin=dirbin,
             average_over_phi=args.average_over_phi_angle,
             average_over_theta=args.average_over_theta_angle,
+            directionbins_are_vpkt_observers=args.plotvspecpol is not None,
         )
     else:
         arraylambda_angstroms = 2.99792458e18 / arraynu
@@ -739,8 +759,10 @@ def make_emissionabsorption_plot(
     ymaxrefall = 0.0
     plotkwargs = {}
     for index, filepath in enumerate(args.specpath):
-        if Path(filepath).is_dir() or Path(filepath).name.endswith(".out"):
+        filepath = Path(filepath)
+        if path_is_artis_model(filepath):
             continue
+
         if index < len(args.color):
             plotkwargs["color"] = args.color[index]
             plotkwargs["label"] = args.label[index]
@@ -1060,7 +1082,7 @@ def make_plot(args) -> tuple[plt.Figure, list[plt.Axes], pd.DataFrame]:
 
     if args.showtime and not args.multispecplot:
         if not args.ymax:
-            ymin, ymax = ax.get_ylim()
+            _ymin, ymax = ax.get_ylim()
         else:
             ymax = args.ymax
 
@@ -1149,6 +1171,8 @@ def addargs(parser) -> None:
         nargs=2,
         help="Savitzky-Golay filter. Specify the window_length and poly_order.e.g. -filtersavgol 5 3",
     )
+
+    parser.add_argument("-filtermovingavg", type=int, default=0, help="Smoothing length (1 is same as none)")
 
     parser.add_argument("-timestep", "-ts", dest="timestep", nargs="?", help="First timestep or a range e.g. 45-65")
 
@@ -1386,7 +1410,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         refspecnum = 0
         artismodelnum = 0
         for filepath in args.specpath:
-            if Path(filepath).is_dir() or Path(filepath).name.endswith(".out"):
+            if path_is_artis_model(filepath):
                 args.color.append(artismodelcolors[artismodelnum])
                 artismodelnum += 1
             else:
@@ -1421,7 +1445,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             args.showemission = True
             args.showabsorption = True
 
-        fig, axes, dfalldata = make_plot(args)
+        fig, _axes, dfalldata = make_plot(args)
 
         strdirectionbins = (
             "_direction" + "_".join([f"{angle:02d}" for angle in args.plotviewingangle])

@@ -4,6 +4,7 @@
 
 import argparse
 import math
+import string
 import typing as t
 from pathlib import Path
 
@@ -123,7 +124,7 @@ def plot_slice_modelcolumn(ax, dfmodelslice, modelmeta, colname, plotaxis1, plot
 
 def plot_2d_initial_abundances(modelpath, args=None) -> None:
     # if the species ends in a number then we need to also get the nuclear mass fractions (not just element abundances)
-    get_elemabundances = any(plotvar[-1] not in "0123456789" for plotvar in args.plotvars)
+    get_elemabundances = any(plotvar[-1] not in string.digits for plotvar in args.plotvars)
     dfmodel, modelmeta = at.get_modeldata(
         modelpath,
         get_elemabundances=get_elemabundances,
@@ -189,8 +190,8 @@ def plot_2d_initial_abundances(modelpath, args=None) -> None:
             ax, df2dslice, modelmeta, colname, plotaxis1, plotaxis2, modelmeta["t_model_init_days"], args
         )
 
-    xlabel = r"v$_{" + f"{plotaxis1}" + r"}$ [$c$]"
-    ylabel = r"v$_{" + f"{plotaxis2}" + r"}$ [$c$]"
+    xlabel = r"v$_{" + str(plotaxis1) + r"}$ [$c$]"
+    ylabel = r"v$_{" + str(plotaxis2) + r"}$ [$c$]"
 
     cbar = fig.colorbar(im, cax=axcbar, location="top", use_gridspec=True)
     axes[0].set_xlabel(xlabel)
@@ -414,7 +415,7 @@ def plot_phi_hist(modelpath):
     im = ax.pcolormesh(phis, radii, z, cmap=cmap)
     cbar = fig.colorbar(im)
 
-    cbar.set_label(f"{weightby}", rotation=90)
+    cbar.set_label(weightby, rotation=90)
     plt.xlabel(r"azimuthal angle")
     plt.ylabel("Radial velocity [c]")
     ax.yaxis.set_label_coords(-0.15, 0.5)
