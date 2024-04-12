@@ -145,7 +145,7 @@ define_colours_list2 = [
 
 def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> tuple[t.Sequence[int], dict[int, str]]:
     modelpath = Path(modelpath)
-    viewing_angle_data_exists = bool(list(modelpath.glob("*_res.out*")))
+    viewing_angle_data_exists = args.frompackets or bool(list(modelpath.glob("*_res.out*")))
     if isinstance(args.plotviewingangle, int):
         args.plotviewingangle = [args.plotviewingangle]
     dirbins = []
@@ -153,6 +153,10 @@ def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> 
         dirbins = args.plotvspecpol
     elif args.plotviewingangle and args.plotviewingangle[0] == -2 and viewing_angle_data_exists:
         dirbins = np.arange(0, 100, 1, dtype=int).tolist()
+        if args.average_over_phi_angle:
+            dirbins = [d for d in dirbins if d % at.get_viewingdirection_phibincount() == 0]
+        if args.average_over_theta_angle:
+            dirbins = [d for d in dirbins if d < at.get_viewingdirection_costhetabincount()]
     elif args.plotviewingangle and viewing_angle_data_exists:
         dirbins = args.plotviewingangle
     elif (
@@ -245,7 +249,7 @@ def write_viewing_angle_data(band_name, modelnames, args):
         or args.make_viewing_angle_peakmag_delta_m15_scatter_plot
     ):
         np.savetxt(
-            band_name + "band_" + f"{modelnames[0]}" + "_angle_averaged_all_models_data.txt",
+            f"{band_name}band_{modelnames[0]}_angle_averaged_all_models_data.txt",
             np.c_[
                 modelnames,
                 args.band_risetime_angle_averaged_polyfit,
@@ -285,7 +289,7 @@ def calculate_peak_time_mag_deltam15(time, magnitude, modelname, angle, key, arg
     fxfit, xfit = lightcurve_polyfit(time, magnitude, args)
 
     def match_closest_time_polyfit(reftime_polyfit):
-        return str(f"{min((float(x) for x in xfit), key=lambda x: abs(x - reftime_polyfit))}")
+        return str(min((float(x) for x in xfit), key=lambda x: abs(x - reftime_polyfit)))
 
     index_min = np.argmin(fxfit)
     tmax_polyfit = xfit[index_min]
@@ -529,7 +533,7 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(modelnames, key, 
     )
 
     for ii, modelname in enumerate(modelnames):
-        viewing_angle_plot_data = pd.read_csv(key + "band_" + f"{modelname}" + "_viewing_angle_data.txt", delimiter=" ")
+        viewing_angle_plot_data = pd.read_csv(key + "band_" + str(modelname) + "_viewing_angle_data.txt", delimiter=" ")
 
         band_peak_mag_viewing_angles = viewing_angle_plot_data["peak_mag_polyfit"].to_numpy()
         band_delta_m15_viewing_angles = viewing_angle_plot_data["deltam15_polyfit"].to_numpy()
@@ -618,7 +622,7 @@ def make_peak_colour_viewing_angle_plot(args):
 
         bands = [args.filter[0], args.filter[1]]
 
-        datafilename = bands[0] + "band_" + f"{modelname}" + "_viewing_angle_data.txt"
+        datafilename = bands[0] + "band_" + str(modelname) + "_viewing_angle_data.txt"
         viewing_angle_plot_data = pd.read_csv(datafilename, delimiter=" ")
         data = {f"{bands[0]}max": viewing_angle_plot_data["peak_mag_polyfit"].to_numpy()}
         data[f"time_{bands[0]}max"] = viewing_angle_plot_data["risetime_polyfit"].to_numpy()

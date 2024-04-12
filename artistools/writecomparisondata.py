@@ -50,9 +50,9 @@ def write_spectra(modelpath: str | Path, model_id: str, selected_timesteps: t.Se
 
 def write_ntimes_nvel(outfile: TextIOWrapper, selected_timesteps: t.Sequence[int], modelpath: str | Path) -> None:
     times = at.get_timestep_times(modelpath)
-    modeldata, t_model_init_days, _ = at.inputmodel.get_modeldata_tuple(modelpath)
+    _, modelmeta = at.inputmodel.get_modeldata(modelpath, getheadersonly=True)
     outfile.write(f"#NTIMES: {len(selected_timesteps)}\n")
-    outfile.write(f"#NVEL: {len(modeldata)}\n")
+    outfile.write(f"#NVEL: {modelmeta['npts_model']}\n")
     outfile.write(f'#TIMES[d]: {" ".join([f"{times[ts]:.2f}" for ts in selected_timesteps])}\n')
 
 
@@ -212,7 +212,6 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         model_id = str(modelpath.name).split("_")[0]
         print(f"{model_id=}")
 
-        modeldata, t_model_init_days, _ = at.inputmodel.get_modeldata_tuple(modelpath)
         estimators = at.estimators.read_estimators(modelpath=modelpath)
         allnonemptymgilist = list({modelgridindex for ts, modelgridindex in estimators if ts == selected_timesteps[0]})
 

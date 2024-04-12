@@ -318,6 +318,7 @@ def plot_artis_lightcurve(
             average_over_phi=average_over_phi,
             average_over_theta=average_over_theta,
             get_cmf_column=args.plotcmf,
+            directionbins_are_vpkt_observers=args.plotvspecpol is not None,
         )
     else:
         if lcfilename is None:
@@ -506,7 +507,7 @@ def make_lightcurve_plot(
     else:
         axistherm = None
 
-    # take any assigned colours our of the cycle
+    # take any specified colours our of the cycle
     colors = [
         color for i, color in enumerate(plt.rcParams["axes.prop_cycle"].by_key()["color"]) if f"C{i}" not in args.color
     ]
@@ -541,6 +542,7 @@ def make_lightcurve_plot(
             reflightcurveindex += 1
             plottedsomething = True
         else:
+            dirbin = args.plotviewingangle or (args.plotvspecpol or [-1])
             lcdataframes = plot_artis_lightcurve(
                 modelpath=modelpath,
                 lcindex=lcindex,
@@ -550,7 +552,7 @@ def make_lightcurve_plot(
                 frompackets=frompackets,
                 maxpacketfiles=maxpacketfiles,
                 axistherm=axistherm,
-                directionbins=args.plotviewingangle if args.plotviewingangle is not None else [-1],
+                directionbins=dirbin,
                 average_over_phi=args.average_over_phi_angle,
                 average_over_theta=args.average_over_theta_angle,
                 usedegrees=args.usedegrees,
@@ -646,7 +648,7 @@ def make_lightcurve_plot(
 
         # filenameout2 = "plotthermalisation.pdf"
         filenameout2 = str(filenameout).replace(".pdf", "_thermalisation.pdf")
-        figtherm.savefig(str(filenameout2), format="pdf")
+        figtherm.savefig(filenameout2, format="pdf")
         print(f"Saved {filenameout2}")
 
     plt.close()
@@ -701,18 +703,18 @@ def get_linelabel(
 ) -> str:
     if angle is not None and angle != -1:
         assert angle_definition is not None
-        linelabel = f"{angle_definition[angle]}" if args.nomodelname else f"{modelname} {angle_definition[angle]}"
+        linelabel = angle_definition[angle] if args.nomodelname else f"{modelname} {angle_definition[angle]}"
         # linelabel = None
         # linelabel = fr"{modelname} $\theta$ = {angle_names[index]}$^\circ$"
         # plt.plot(time, magnitude, label=linelabel, linewidth=3)
     elif args.label:
-        linelabel = rf"{args.label[modelnumber]}"
+        linelabel = str(args.label[modelnumber])
     else:
-        linelabel = f"{modelname}"
+        linelabel = modelname
         # linelabel = 'Angle averaged'
 
     if linelabel == "None" or linelabel is None:
-        linelabel = f"{modelname}"
+        linelabel = modelname
 
     return linelabel
 

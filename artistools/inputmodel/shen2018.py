@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import math
+import string
 import typing as t
 from pathlib import Path
 
@@ -30,7 +31,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     atomicnumberofspecies = {}
     isotopesofelem: dict[int, list[str]] = {}
     for species in columns[5:]:
-        atomic_number = at.get_atomic_number(species.rstrip("0123456789"))
+        atomic_number = at.get_atomic_number(species.rstrip(string.digits))
         atomicnumberofspecies[species] = atomic_number
         isotopesofelem.setdefault(atomic_number, []).append(species)
 

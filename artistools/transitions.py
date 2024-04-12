@@ -70,13 +70,13 @@ def get_nist_transitions(filename: Path | str) -> pd.DataFrame:
         for line in fnist:
             row = line.split("|")
             if len(row) == 17 and "-" in row[5]:
-                if len(row[0].strip()) > 0:
+                if row[0].strip():
                     lambda_angstroms = float(row[0])
-                elif len(row[1].strip()) > 0:
+                elif row[1].strip():
                     lambda_angstroms = float(row[1])
                 else:
                     continue
-                A = float(row[3]) if len(row[3].strip()) > 0 else 1e8
+                A = float(row[3]) if row[3].strip() else 1e8
                 lower_energy_ev, upper_energy_ev = (float(x.strip(" []")) for x in row[5].split("-"))
                 lower_statweight, upper_statweight = (float(x.strip()) for x in row[12].split("-"))
                 translist.append(
@@ -327,7 +327,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         figure_title += (
             f"Cell {modelgridindex} ({velocity} km/s) with Te = {Te:.1f} K, TR = {TR:.1f} K at timestep {timestep}"
         )
-        time_days = float(at.get_timestep_time(modelpath, timestep))
+        time_days = at.get_timestep_time(modelpath, timestep)
         if time_days != -1:
             figure_title += f" ({time_days:.1f}d)"
 
@@ -355,7 +355,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         #     (26, 3): Fe3overFe2 / (1 + Fe3overFe2),
         #     (28, 2): 1.0e-2,
         # }
-        ionpopdict = {ion: 1 for ion in ionlist}
+        ionpopdict = dict.fromkeys(ionlist, 1)
 
     hc = (const.h * const.c).to("eV Angstrom").value  # noqa: F841
 
@@ -484,7 +484,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             {"lower_energy_ev": "lower_energy_Ev", "upper_energy_ev": "upper_energy_Ev"}, axis=1
         )
         dftransitions_all = dftransitions_all.astype({"forbidden": "int32"})
-        dftransitions_all["lambda_angstroms"] = dftransitions_all["lambda_angstroms"] / 1.0003
+        dftransitions_all["lambda_angstroms"] /= 1.0003
         dftransitions_all = dftransitions_all.sort_values(by=["Z", "ion_stage", "lower", "upper"], ascending=True)
         dftransitions_all = dftransitions_all[
             "lambda_angstroms A            Z   ion_stage lower_energy_Ev   lower_statweight  forbidden  lower_level               upper_level               upper_statweight  upper_energy_Ev".split()

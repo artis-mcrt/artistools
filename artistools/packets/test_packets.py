@@ -64,3 +64,12 @@ def test_directionbins() -> None:
         assert np.isclose(row.phi_defined, row.phi, rtol=1e-4, atol=1e-4)
 
         assert np.isclose(testdirections.item(row[0], "dirbin"), row.dirbin, rtol=1e-4, atol=1e-4)
+
+
+def test_get_virtual_packets_pl():
+    nprocs, dfvpkt = at.packets.get_virtual_packets_pl(
+        modelpath=at.get_config()["path_testdata"] / "vpktcontrib", maxpacketfiles=2
+    )
+
+    npkts_total = dfvpkt.select(pl.count("*")).collect().item(0, 0)
+    assert npkts_total

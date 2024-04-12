@@ -114,7 +114,7 @@ def get_ionrecombrates_fromfile(filename: Path | str) -> pd.DataFrame:
                     print(header_row)
                     print(row)
                     sys.exit()
-                records.append(recomb_tuple(*[float(row[index]) for index in [index_logt, index_low_n, index_tot]]))
+                records.append(recomb_tuple(*[float(row[index]) for index in (index_logt, index_low_n, index_tot)]))
 
     return pd.DataFrame.from_records(records, columns=recomb_tuple._fields)
 
@@ -260,9 +260,7 @@ def get_rankbatch_parquetfile(
                 estfilepath = at.firstexisting(f"estimators_{mpirank:04d}.out", folder=folderpath, tryzipped=True)
                 estfilepaths.append(estfilepath)
 
-        print(
-            f"  reading {len(list(estfilepaths))} estimator files from {folderpath.relative_to(Path(folderpath).parent)}"
-        )
+        print(f"  reading {len(estfilepaths)} estimator files from {folderpath.relative_to(Path(folderpath).parent)}")
 
         time_start = time.perf_counter()
 
@@ -359,8 +357,9 @@ def scan_estimators(
     )
     assert bool(parquetfiles)
 
-    pldflazy = pl.concat([pl.scan_parquet(pfile) for pfile in parquetfiles], how="diagonal_relaxed")
-    pldflazy = pldflazy.unique(["timestep", "modelgridindex"], maintain_order=True, keep="first")
+    pldflazy = pl.concat([pl.scan_parquet(pfile) for pfile in parquetfiles], how="diagonal_relaxed").unique(
+        ["timestep", "modelgridindex"], maintain_order=True, keep="first"
+    )
 
     if match_modelgridindex is not None:
         pldflazy = pldflazy.filter(pl.col("modelgridindex").is_in(match_modelgridindex))
@@ -420,8 +419,8 @@ def get_averaged_estimators(
         .collect()
     )
     for k in keys:
-        valuesum = 0
-        tdeltasum = 0
+        valuesum = 0.0
+        tdeltasum = 0.0
         for timestep, tdelta in zip(timesteps, tdeltas):
             value = (
                 estcollect.filter(pl.col("timestep") == timestep)

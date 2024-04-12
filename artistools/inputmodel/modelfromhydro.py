@@ -119,8 +119,7 @@ def read_griddat_file(
     # Get simulation time for ejecta snapshot
     simulation_end_time_geomunits, mergertime_geomunits = get_snapshot_time_geomunits(pathtogriddata)
 
-    griddata = pd.read_csv(griddatfilepath, sep=r"\s+", comment="#", skiprows=3, dtype_backend="pyarrow")
-    griddata = griddata.rename(
+    griddata = pd.read_csv(griddatfilepath, sep=r"\s+", comment="#", skiprows=3, dtype_backend="pyarrow").rename(
         columns={
             "gridindex": "inputcellid",
             "pos_x": "pos_x_min",

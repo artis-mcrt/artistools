@@ -1486,5 +1486,5 @@ def workfunction_tests(modelpath: str | Path, args: argparse.Namespace) -> None:
     axes[-1].legend(frameon=False, loc="upper right")
     outputfilename = "plot.pdf"
     print(f"Saving '{outputfilename}'")
-    fig.savefig(str(outputfilename), format="pdf")
+    fig.savefig(outputfilename, format="pdf")
     plt.close()

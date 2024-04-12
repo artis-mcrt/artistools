@@ -3,6 +3,7 @@
 import argparse
 import math
 import os
+import string
 import typing as t
 from pathlib import Path
 
@@ -195,12 +196,12 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
         species_mass_msun = speciesabund_g / msun_g
 
-        atomic_number = at.get_atomic_number(species.rstrip("0123456789"))
+        atomic_number = at.get_atomic_number(species.rstrip(string.digits))
 
         if species[-1].isdigit():
             # isotopic species
 
-            elname = species.rstrip("0123456789")
+            elname = species.rstrip(string.digits)
             strtotiso = f"{elname}_isosum"
             speciesmasses[strtotiso] = speciesmasses.get(strtotiso, 0.0) + speciesabund_g
             mass_msun_isotopes += species_mass_msun
@@ -280,7 +281,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             if mass_g > elem_mass * (1.0 + 1e-5):
                 strcomment += " ERROR! isotope sum is greater than element abundance"
 
-        zstr = f"{atomic_number}"
+        zstr = str(atomic_number)
         barstr = "-" * int(maxbarchars * (mass_g - mass_g_min) / (mass_g_max - mass_g_min))
         print(f"{zstr:>5} {species:11s} massfrac {massfrac:.3e}   {species_mass_msun:.3e} Msun  {barstr}")
         if strcomment:

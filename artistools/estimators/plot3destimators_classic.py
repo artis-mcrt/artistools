@@ -193,7 +193,6 @@ def main() -> None:
     # # Get mgi of grid cells along axis for 1D plot
     # # readonly_mgi = get_modelgridcells_along_axis(modelpath)
     readonly_mgi = get_modelgridcells_2D_slice(modeldata, modelpath)
-    #
     timestep = 82
     times = at.get_timestep_times(modelpath)
     time = times[timestep]

@@ -139,7 +139,7 @@ for npacketfile in range(nprocs):
                     continue
                 e_rf = row["e_rf"]
                 hist, _ = np.histogram([nu], bins=arr_nu_hz)  # get frequency bin - returns array with 1 in correct bin
-                hist = hist * e_rf  # multiply by packet rf energy to get the energy in the right bin
+                hist *= e_rf  # multiply by packet rf energy to get the energy in the right bin
                 freq_bin_number = np.nonzero(hist)  # the frequency bin number is where hist is non zero
 
                 # add to angle bin in this timestep

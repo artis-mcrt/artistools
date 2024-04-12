@@ -44,9 +44,7 @@ def plot_spherical(
     if tmin_d_valid is None or tmax_d_valid is None:
         print("WARNING! The observer never gets light from the entire ejecta. Plotting all packets anyway")
         timemindays, timemaxdays = (
-            dfpackets.select(pl.col("t_arrive_d").min().alias("tmin"), pl.col("t_arrive_d").max().alias("tmax"))
-            .collect()
-            .to_numpy()[0]
+            dfpackets.select(tmin=pl.col("t_arrive_d").min(), tmax=pl.col("t_arrive_d").max()).collect().to_numpy()[0]
         )
     else:
         if timemindays is None:
@@ -122,7 +120,7 @@ def plot_spherical(
         dfpackets = dfpackets.with_columns(
             (
                 pl.col("em_time")
-                .cut(breaks=list(timebins), labels=[str(x) for x in range(-1, len(timebins))])
+                .cut(breaks=timebins, labels=[str(x) for x in range(-1, len(timebins))])
                 .cast(str)
                 .cast(pl.Int32)
             ).alias("em_timestep")
@@ -159,16 +157,21 @@ def plot_spherical(
         )
 
     aggs.append(pl.len().alias("count"))
-    dfpackets = dfpackets.group_by(["costhetabin", "phibin"]).agg(aggs)
-    dfpackets = dfpackets.select(["costhetabin", "phibin", "count", *plotvars])
+    dfpackets = (
+        dfpackets.group_by(["costhetabin", "phibin"]).agg(aggs).select(["costhetabin", "phibin", "count", *plotvars])
+    )
 
     ndirbins = nphibins * ncosthetabins
-    alldirbinslazy = pl.DataFrame(
-        {"phibin": (d % nphibins for d in range(ndirbins)), "costhetabin": (d // nphibins for d in range(ndirbins))},
-        schema={"phibin": pl.Int32, "costhetabin": pl.Int32},
-    ).lazy()
     alldirbins = (
-        alldirbinslazy.join(
+        pl.DataFrame(
+            {
+                "phibin": (d % nphibins for d in range(ndirbins)),
+                "costhetabin": (d // nphibins for d in range(ndirbins)),
+            },
+            schema={"phibin": pl.Int32, "costhetabin": pl.Int32},
+        )
+        .lazy()
+        .join(
             dfpackets,
             how="left",
             on=["costhetabin", "phibin"],

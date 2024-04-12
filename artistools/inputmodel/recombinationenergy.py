@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
 import argparse
+import string
 import typing as t
 from pathlib import Path
 
@@ -42,7 +43,7 @@ def get_model_recombenergy(dfbinding, args):
             if species[-1].isdigit():  # isotopic species
                 atomic_number = at.get_atomic_number(species)
                 elsymb = at.get_elsymbol(atomic_number)
-                massnumber = int(species.lstrip("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"))
+                massnumber = int(species.lstrip(string.ascii_letters))
                 matchrows = dfbinding.query("Z == @atomic_number")
 
                 binding_en_ev = 0.0 if matchrows.empty else matchrows.iloc[0]["TotBEn"]
@@ -112,10 +113,10 @@ def get_particle_nucenergy_released(traj_root, particleid, tmin_s, time_s_end):
 
 
 def get_particles_recomb_nuc_energy(traj_root, dfbinding):
+    # sourcery skip: use-contextlib-suppress
     dfsnapshot = at.inputmodel.modelfromhydro.read_ejectasnapshot(
         "/Users/luke/Library/Mobile Documents/com~apple~CloudDocs/Archive/Astronomy/Mergers/SFHo_snapshot"
-    )
-    dfsnapshot = dfsnapshot.sort_values("ye")
+    ).sort_values("ye")
 
     dictbinding = dict(dfbinding[["Z", "TotBEn"]].itertuples(index=False))
 

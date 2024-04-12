@@ -63,6 +63,7 @@ def get_from_packets(
     average_over_phi: bool = False,
     average_over_theta: bool = False,
     get_cmf_column: bool = True,
+    directionbins_are_vpkt_observers: bool = False,
 ) -> dict[int, pl.DataFrame]:
     """Get ARTIS luminosity vs time from packets files."""
     if directionbins is None:
@@ -83,9 +84,13 @@ def get_from_packets(
     ncosthetabins = at.get_viewingdirection_costhetabincount()
     ndirbins = at.get_viewingdirectionbincount()
 
-    nprocs_read, dfpackets = at.packets.get_packets_pl(
-        modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type=escape_type
-    )
+    if directionbins_are_vpkt_observers:
+        vpkt_config = at.get_vpkt_config(modelpath)
+        nprocs_read, dfpackets = at.packets.get_virtual_packets_pl(modelpath, maxpacketfiles=maxpacketfiles)
+    else:
+        nprocs_read, dfpackets = at.packets.get_packets_pl(
+            modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type=escape_type
+        )
 
     if get_cmf_column:
         dfpackets = dfpackets.with_columns(
@@ -94,22 +99,45 @@ def get_from_packets(
             ]
         )
 
-    getcols = ["t_arrive_d", "e_rf"]
-    if get_cmf_column:
-        getcols += ["e_cmf", "t_arrive_cmf_d"]
-    if directionbins != [-1]:
-        if average_over_phi:
-            getcols.append("costhetabin")
-        elif average_over_theta:
-            getcols.append("phibin")
-        else:
-            getcols.append("dirbin")
+    getcols = set()
+    if directionbins_are_vpkt_observers:
+        vpkt_config = at.get_vpkt_config(modelpath)
+        for dirbin in directionbins:
+            obsdirindex = dirbin // vpkt_config["nspectraperobs"]
+            opacchoiceindex = dirbin % vpkt_config["nspectraperobs"]
+            getcols |= {
+                f"dir{obsdirindex}_nu_rf",
+                f"dir{obsdirindex}_t_arrive_d",
+                f"dir{obsdirindex}_e_rf_{opacchoiceindex}",
+            }
+    else:
+        getcols |= {"t_arrive_d", "e_rf"}
+        if get_cmf_column:
+            getcols |= {"e_cmf", "t_arrive_cmf_d"}
+        if directionbins != [-1]:
+            if average_over_phi:
+                getcols.add("costhetabin")
+            elif average_over_theta:
+                getcols.add("phibin")
+            else:
+                getcols.add("dirbin")
 
     dfpackets = dfpackets.select(getcols).collect(streaming=True).lazy()
 
+    npkts_selected = dfpackets.select(pl.count("*")).collect().item(0, 0)
+    print(f"  {npkts_selected:.2e} packets")
+
     lcdata = {}
     for dirbin in directionbins:
-        if dirbin == -1:
+        if directionbins_are_vpkt_observers:
+            obsdirindex = dirbin // vpkt_config["nspectraperobs"]
+            opacchoiceindex = dirbin % vpkt_config["nspectraperobs"]
+            pldfpackets_dirbin = dfpackets.with_columns(
+                e_rf=pl.col(f"dir{obsdirindex}_e_rf_{opacchoiceindex}"),
+                t_arrive_d=pl.col(f"dir{obsdirindex}_t_arrive_d"),
+            )
+            solidanglefactor = 4 * math.pi
+        elif dirbin == -1:
             solidanglefactor = 1.0
             pldfpackets_dirbin = dfpackets
         elif average_over_phi:
@@ -130,6 +158,9 @@ def get_from_packets(
             sumcols=["e_rf"],
         )
 
+        npkts_selected = pldfpackets_dirbin.select(pl.count("*")).collect().item(0, 0)
+        print(f"    dirbin {dirbin} contains {npkts_selected:.2e} packets")
+
         unitfactor = float((u.erg / u.day).to("solLum"))
         dftimebinned = dftimebinned.with_columns(
             [
@@ -140,7 +171,7 @@ def get_from_packets(
             ]
         ).drop(["e_rf_sum", "t_arrive_d_bin"])
 
-        lcdata[dirbin] = dftimebinned
+        lcdata[dirbin] = dftimebinned.collect()
 
         if get_cmf_column:
             dftimebinned_cmf = at.packets.bin_and_sum(
@@ -148,12 +179,12 @@ def get_from_packets(
                 bincol="t_arrive_cmf_d",
                 bins=list(timearrayplusend),
                 sumcols=["e_cmf"],
-            )
+            ).collect()
 
             assert escapesurfacegamma is not None
             lcdata[dirbin] = lcdata[dirbin].with_columns(
                 (
-                    dftimebinned_cmf["e_cmf_sum"]
+                    dftimebinned_cmf.get_column("e_cmf_sum").to_numpy()
                     / nprocs_read
                     * solidanglefactor
                     / escapesurfacegamma
@@ -276,7 +307,7 @@ def generate_band_lightcurve_data(
 
 def bolometric_magnitude(
     modelpath: Path,
-    timearray: t.Collection[float],
+    timearray: t.Collection[float | str],
     args: argparse.Namespace,
     angle: int = -1,
     average_over_phi: bool = False,
@@ -287,7 +318,6 @@ def bolometric_magnitude(
 
     for timestep, time in enumerate(timearray):
         time = float(time)
-
         if (args.timemin is None or args.timemin <= time) and (args.timemax is None or args.timemax >= time):
             if angle == -1:
                 spectrum = at.spectra.get_spectrum(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)[-1]

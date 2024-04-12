@@ -255,8 +255,7 @@ def z_reflect(arr: np.ndarray) -> np.ndarray:
     """Flatten an array and add a reflection in z."""
     ngridrcyl, ngridz = arr.shape
     assert ngridz % 2 == 0
-    arr_ref = np.concatenate([np.flip(arr[:, ngridz // 2 :], axis=1), arr[:, ngridz // 2 :]], axis=1)
-    return arr_ref.flatten(order="F")
+    return np.concatenate([np.flip(arr[:, ngridz // 2 :], axis=1), arr[:, ngridz // 2 :]], axis=1).flatten(order="F")
 
 
 # function added by Luke and Gerrit to create the ARTIS model.txt
@@ -308,8 +307,7 @@ def create_ARTIS_modelfile(
     print(f"Number of non-zero nuclides {len(dictabunds)}")
     dfmodel = pd.concat([dfmodel, pd.DataFrame(dictabunds)], axis=1)
 
-    dfabundances = pd.DataFrame(dictelabunds)
-    dfabundances = dfabundances.fillna(0.0)
+    dfabundances = pd.DataFrame(dictelabunds).fillna(0.0)
 
     # create init abundance file
     at.inputmodel.save_initelemabundances(dfelabundances=dfabundances, outpath=outpath)

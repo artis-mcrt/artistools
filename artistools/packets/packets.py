@@ -194,7 +194,7 @@ def add_derived_columns(
     if "em_timestep" in colnames:
         dfpackets["em_timestep"] = dfpackets.apply(em_timestep, axis=1)
 
-    if any(x in colnames for x in ["angle_bin", "dirbin", "costhetabin", "phibin"]):
+    if any(x in colnames for x in ("angle_bin", "dirbin", "costhetabin", "phibin")):
         dfpackets = bin_packet_directions(modelpath, dfpackets)
 
     return dfpackets
@@ -210,24 +210,17 @@ def add_derived_columns_lazy(
     We might as well add everything, since the columns only get calculated when they are actually used (polars LazyFrame).
     """
     dfpackets = dfpackets.lazy().with_columns(
-        [
+        emission_velocity=(
+            (pl.col("em_posx") ** 2 + pl.col("em_posy") ** 2 + pl.col("em_posz") ** 2).sqrt() / pl.col("em_time")
+        ),
+        emission_velocity_lineofsight=(
             (
-                (pl.col("em_posx") ** 2 + pl.col("em_posy") ** 2 + pl.col("em_posz") ** 2).sqrt() / pl.col("em_time")
-            ).alias("emission_velocity")
-        ]
-    )
-
-    dfpackets = dfpackets.with_columns(
-        [
-            (
-                (
-                    (pl.col("em_posx") * pl.col("dirx")) ** 2
-                    + (pl.col("em_posy") * pl.col("diry")) ** 2
-                    + (pl.col("em_posz") * pl.col("dirz")) ** 2
-                ).sqrt()
-                / pl.col("em_time")
-            ).alias("emission_velocity_lineofsight")
-        ]
+                (pl.col("em_posx") * pl.col("dirx")) ** 2
+                + (pl.col("em_posy") * pl.col("diry")) ** 2
+                + (pl.col("em_posz") * pl.col("dirz")) ** 2
+            ).sqrt()
+            / pl.col("em_time")
+        ),
     )
 
     if modelmeta is None:
@@ -241,19 +234,12 @@ def add_derived_columns_lazy(
             vwidthrcyl = modelmeta["wid_init_rcyl"] / t_model_s
             vwidthz = modelmeta["wid_init_z"] / t_model_s
             dfpackets = dfpackets.with_columns(
-                [
-                    ((pl.col("em_posx").pow(2) + pl.col("em_posy").pow(2)).sqrt() / pl.col("em_time") / vwidthrcyl)
-                    .cast(pl.Int32)
-                    .alias("coordpointnumrcyl"),
-                    ((pl.col("em_posz") / pl.col("em_time") + vmax) / vwidthz).cast(pl.Int32).alias("coordpointnumz"),
-                ]
-            )
-            dfpackets = dfpackets.with_columns(
-                [
-                    (pl.col("coordpointnumz") * modelmeta["ncoordgridrcyl"] + pl.col("coordpointnumrcyl")).alias(
-                        "em_modelgridindex"
-                    )
-                ]
+                coordpointnumrcyl=(
+                    (pl.col("em_posx").pow(2) + pl.col("em_posy").pow(2)).sqrt() / pl.col("em_time") / vwidthrcyl
+                ).cast(pl.Int32),
+                coordpointnumz=((pl.col("em_posz") / pl.col("em_time") + vmax) / vwidthz).cast(pl.Int32),
+            ).with_columns(
+                em_modelgridindex=(pl.col("coordpointnumz") * modelmeta["ncoordgridrcyl"] + pl.col("coordpointnumrcyl"))
             )
 
         elif modelmeta["dimensions"] == 3:
@@ -263,28 +249,26 @@ def add_derived_columns_lazy(
                     ((pl.col(f"em_pos{ax}") / pl.col("em_time") + vmax) / vwidth)
                     .cast(pl.Int32)
                     .alias(f"coordpointnum{ax}")
-                    for ax in ["x", "y", "z"]
+                    for ax in ("x", "y", "z")
                 ]
+            ).with_columns(
+                em_modelgridindex=(
+                    pl.col("coordpointnumz") * modelmeta["ncoordgridy"] * modelmeta["ncoordgridx"]
+                    + pl.col("coordpointnumy") * modelmeta["ncoordgridx"]
+                    + pl.col("coordpointnumx")
+                )
             )
-            dfpackets = dfpackets.with_columns(
-                [
-                    (
-                        pl.col("coordpointnumz") * modelmeta["ncoordgridy"] * modelmeta["ncoordgridx"]
-                        + pl.col("coordpointnumy") * modelmeta["ncoordgridx"]
-                        + pl.col("coordpointnumx")
-                    ).alias("em_modelgridindex")
-                ]
-            )
+
     elif modelmeta["dimensions"] == 1:
         assert dfmodel is not None, "dfmodel must be provided for 1D models to set em_modelgridindex"
         velbins = (dfmodel.select("vel_r_max_kmps").lazy().collect()["vel_r_max_kmps"] * 1000.0).to_list()
         dfpackets = dfpackets.with_columns(
-            (
+            em_modelgridindex=(
                 pl.col("emission_velocity")
                 .cut(breaks=list(velbins), labels=[str(x) for x in range(-1, len(velbins))])
                 .cast(str)
                 .cast(pl.Int32)
-            ).alias("em_modelgridindex")
+            )
         )
 
     return dfpackets
@@ -422,10 +406,11 @@ def convert_text_to_parquet(
     packetsfiletext = Path(packetsfiletext)
     packetsfileparquet = at.stripallsuffixes(packetsfiletext).with_suffix(".out.parquet")
 
-    dfpackets = readfile_text(packetsfiletext).lazy()
-    dfpackets = dfpackets.with_columns(
-        [
-            (
+    dfpackets = (
+        readfile_text(packetsfiletext)
+        .lazy()
+        .with_columns(
+            t_arrive_d=(
                 (
                     pl.col("escape_time")
                     - (
@@ -436,10 +421,8 @@ def convert_text_to_parquet(
                     / 29979245800.0
                 )
                 / 86400.0
-            )
-            .cast(pl.Float32)
-            .alias("t_arrive_d"),
-        ]
+            ).cast(pl.Float32)
+        )
     )
 
     syn_dir = next(
@@ -456,8 +439,34 @@ def convert_text_to_parquet(
     return packetsfileparquet
 
 
+def convert_virtual_packets_text_to_parquet(
+    packetsfiletext: Path | str,
+) -> Path:
+    packetsfiletext = Path(packetsfiletext)
+    packetsfileparquet = at.stripallsuffixes(packetsfiletext).with_suffix(".out.parquet")
+
+    dfpackets = pl.read_csv(
+        packetsfiletext,
+        separator=" ",
+        has_header=True,
+        dtypes={
+            "#emissiontype": pl.Int32,
+            "trueemissiontype": pl.Int32,
+            "absorption_type": pl.Int32,
+            "absorption_freq": pl.Float32,
+        },
+    ).rename({"#emissiontype": "emissiontype"})
+
+    print(f"Saving {packetsfileparquet}")
+    dfpackets = dfpackets.sort(by=["dir0_t_arrive_d"])
+
+    dfpackets.write_parquet(packetsfileparquet, compression="zstd", statistics=True, compression_level=6)
+
+    return packetsfileparquet
+
+
 def get_packetsfilepaths(
-    modelpath: str | Path, maxpacketfiles: int | None = None, printwarningsonly: bool = False
+    modelpath: str | Path, maxpacketfiles: int | None = None, printwarningsonly: bool = False, virtual: bool = False
 ) -> list[Path]:
     """Get a list of Paths to parquet-formatted packets files, (which are generated from text files if needed)."""
     nprocs = at.get_nprocs(modelpath)
@@ -471,7 +480,7 @@ def get_packetsfilepaths(
     parquetrequiredfiles = []
 
     for rank in range(nprocs + 1):
-        name_nosuffix = f"packets00_{rank:04d}"
+        name_nosuffix = f"vpackets_{rank:04d}" if virtual else f"packets00_{rank:04d}"
         found_rank = False
 
         for folderpath in searchfolders:
@@ -506,15 +515,16 @@ def get_packetsfilepaths(
         if maxpacketfiles is not None and (len(parquetpacketsfiles) + len(parquetrequiredfiles)) >= maxpacketfiles:
             break
 
+    converter = convert_virtual_packets_text_to_parquet if virtual else convert_text_to_parquet
     if len(parquetrequiredfiles) >= 20 and at.get_config()["num_processes"] > 1:
         with multiprocessing.get_context("spawn").Pool(processes=at.get_config()["num_processes"]) as pool:
-            convertedparquetpacketsfiles = pool.map(convert_text_to_parquet, parquetrequiredfiles)
+            convertedparquetpacketsfiles = pool.map(converter, parquetrequiredfiles)
             pool.close()
             pool.join()
     else:
-        convertedparquetpacketsfiles = [convert_text_to_parquet(p) for p in parquetrequiredfiles]
+        convertedparquetpacketsfiles = [converter(p) for p in parquetrequiredfiles]
 
-    parquetpacketsfiles += list(convertedparquetpacketsfiles)
+    parquetpacketsfiles.extend(convertedparquetpacketsfiles)
 
     if not printwarningsonly:
         if maxpacketfiles is not None and nprocs > maxpacketfiles:
@@ -523,6 +533,22 @@ def get_packetsfilepaths(
             print(f"Reading from {len(parquetpacketsfiles)} packets files")
 
     return parquetpacketsfiles
+
+
+def get_virtual_packets_pl(modelpath: str | Path, maxpacketfiles: int | None = None) -> tuple[int, pl.LazyFrame]:
+    vpacketparquetfiles = get_packetsfilepaths(modelpath, maxpacketfiles=maxpacketfiles, virtual=True)
+
+    # add some extra columns to imitate the real packets
+    dfpackets = pl.scan_parquet(vpacketparquetfiles).with_columns(
+        type_id=type_ids["TYPE_ESCAPE"], escape_type_id=type_ids["TYPE_RPKT"]
+    )
+
+    npkts_total = dfpackets.select(pl.count("*")).collect().item(0, 0)
+    print(
+        f"  files contain {npkts_total:.2e} virtual packet events (that can be further split into directions and opacity choices)"
+    )
+
+    return len(vpacketparquetfiles), dfpackets
 
 
 def get_packets_pl(
@@ -540,7 +566,7 @@ def get_packets_pl(
 
     nprocs_read = len(packetsfiles)
     packetsdatasize_gb = nprocs_read * Path(packetsfiles[0]).stat().st_size / 1024 / 1024 / 1024
-    print(f" data size is {packetsdatasize_gb:.1f} GB ({nprocs_read} * size of {packetsfiles[0].parts[-1]})")
+    print(f"  data size is {packetsdatasize_gb:.1f} GB ({nprocs_read} * size of {packetsfiles[0].parts[-1]})")
 
     pldfpackets = pl.scan_parquet(packetsfiles)
 
@@ -551,6 +577,9 @@ def get_packets_pl(
         )
     elif packet_type is not None and packet_type:
         pldfpackets = pldfpackets.filter(pl.col("type_id") == type_ids[packet_type])
+
+    npkts_total = pldfpackets.select(pl.count("*")).collect().item(0, 0)
+    print(f"  files contain {npkts_total:.2e} packets")
 
     return nprocs_read, pldfpackets
 
@@ -880,17 +909,14 @@ def bin_and_sum(
     bins: list[float | int],
     sumcols: list[str] | None = None,
     getcounts: bool = False,
-) -> pl.DataFrame:
+) -> pl.LazyFrame:
     """Bins is a list of lower edges, and the final upper edge."""
     # Polars method
 
-    df = df.with_columns(
-        (
-            pl.col(bincol)
-            .cut(breaks=list(bins), labels=[str(x) for x in range(-1, len(bins))])
-            .cast(str)
-            .cast(pl.Int32)
-        ).alias(f"{bincol}_bin")
+    df = df.lazy().with_columns(
+        (pl.col(bincol).cut(breaks=bins, labels=[str(x) for x in range(-1, len(bins))]).cast(str).cast(pl.Int32)).alias(
+            f"{bincol}_bin"
+        )
     )
 
     aggs = [pl.col(col).sum().alias(col + "_sum") for col in sumcols] if sumcols is not None else []
@@ -898,8 +924,8 @@ def bin_and_sum(
     if getcounts:
         aggs.append(pl.col(bincol).count().alias("count"))
 
-    wlbins = df.group_by(f"{bincol}_bin").agg(aggs).lazy().collect()
+    wlbins = df.group_by(f"{bincol}_bin").agg(aggs).lazy()
 
     # now we will include the empty bins
-    dfout = pl.DataFrame(pl.Series(name=f"{bincol}_bin", values=np.arange(0, len(bins) - 1), dtype=pl.Int32))
+    dfout = pl.DataFrame(pl.Series(name=f"{bincol}_bin", values=np.arange(0, len(bins) - 1), dtype=pl.Int32)).lazy()
     return dfout.join(wlbins, how="left", on=f"{bincol}_bin").fill_null(0)

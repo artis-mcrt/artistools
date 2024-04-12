@@ -192,7 +192,7 @@ def test_estimator_snapshot_classic_3d(mockplot) -> None:
         for varname, callargs in zip(expectedvals.keys(), mockplot.call_args_list)
     }
 
-    print(dict(yvals))
+    print(yvals)
 
     for varname, expectedval in expectedvals.items():
         assert np.allclose(expectedval, yvals[varname], rtol=0.001), (

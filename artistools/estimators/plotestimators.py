@@ -8,7 +8,10 @@ Examples are temperatures, populations, heating/cooling rates.
 import argparse
 import contextlib
 import math
+import operator
+import string
 import typing as t
+from itertools import chain
 from pathlib import Path
 
 import argcomplete
@@ -70,7 +73,7 @@ def plot_init_abundances(
 
     for speciesstr in specieslist:
         splitvariablename = speciesstr.split("_")
-        elsymbol = splitvariablename[0].strip("0123456789")
+        elsymbol = splitvariablename[0].strip(string.digits)
         atomic_number = at.get_atomic_number(elsymbol)
         if seriestype == "initabundances":
             ax.set_ylim(1e-20, 1.0)
@@ -283,8 +286,8 @@ def plot_levelpop(
 
         ylist = []
         for modelgridindex, timesteps in zip(mgilist, timestepslist):
-            valuesum = 0
-            tdeltasum = 0
+            valuesum = 0.0
+            tdeltasum = 0.0
             # print(f'modelgridindex {modelgridindex} timesteps {timesteps}')
 
             for timestep in timesteps:
@@ -504,8 +507,7 @@ def plot_series(
 
     variablename = colexpr.meta.output_name()
 
-    formattedvariablename = at.estimators.get_varname_formatted(variablename)
-    serieslabel = f"{formattedvariablename}"
+    serieslabel = at.estimators.get_varname_formatted(variablename)
     units_string = at.estimators.get_units_string(variablename)
 
     if showlegend:
@@ -558,7 +560,7 @@ def get_xlist(
     groupbyxvalue: bool,
     args: t.Any,
 ) -> tuple[list[float | int], list[int], list[list[int]], pl.LazyFrame]:
-    estimators = estimators.filter(pl.col("timestep").is_in([ts for tssublist in timestepslist for ts in tssublist]))
+    estimators = estimators.filter(pl.col("timestep").is_in(set(chain.from_iterable(timestepslist))))
 
     if xvariable in {"cellid", "modelgridindex"}:
         estimators = estimators.with_columns(xvalue=pl.col("modelgridindex"), plotpointid=pl.col("modelgridindex"))
@@ -881,7 +883,7 @@ def plot_recombrates(modelpath, estimators, atomic_number, ion_stage_list, **plo
             continue
 
         # sort the pairs by temperature ascending
-        listT_e, list_rrc, list_rrc2 = zip(*sorted(zip(listT_e, list_rrc, list_rrc2), key=lambda x: x[0]))
+        listT_e, list_rrc, list_rrc2 = zip(*sorted(zip(listT_e, list_rrc, list_rrc2), key=operator.itemgetter(0)))
 
         ax.plot(listT_e, list_rrc, linewidth=2, label=f"{ionstr} ARTIS RRC_LTE_Nahar", **plotkwargs)
         ax.plot(listT_e, list_rrc2, linewidth=2, label=f"{ionstr} ARTIS Alpha_R", **plotkwargs)
@@ -918,7 +920,7 @@ def plot_recombrates(modelpath, estimators, atomic_number, ion_stage_list, **plo
 
     # modelname = at.get_model_name(".")
     # plotlabel = f'Timestep {timestep}'
-    # time_days = float(at.get_timestep_time('spec.out', timestep))
+    # time_days = at.get_timestep_time('spec.out', timestep)
     # if time_days >= 0:
     #     plotlabel += f' (t={time_days:.2f}d)'
     # fig.suptitle(plotlabel, fontsize=12)

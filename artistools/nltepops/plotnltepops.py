@@ -40,7 +40,7 @@ def annotate_emission_line(ax: plt.Axes, y: float, upperlevel: int, lowerlevel: 
 
 
 def plot_reference_data(ax, atomic_number: int, ion_stage: int, estimators_celltimestep, dfpopthision, annotatelines):
-    nne, Te, TR, W = (estimators_celltimestep[s] for s in ["nne", "Te", "TR", "W"])
+    nne, Te, TR, W = (estimators_celltimestep[s] for s in ("nne", "Te", "TR", "W"))
     # comparison to Chianti file
     elsym = at.get_elsymbol(atomic_number)
     elsymlower = elsym.lower()
@@ -379,7 +379,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths, args):
 
     ionlevels = args.levels
 
-    Z = int(at.get_atomic_number(args.elements[0]))
+    Z = at.get_atomic_number(args.elements[0])
     ion_stage = int(args.ion_stages[0])
 
     adata = at.atomic.get_levels(args.modelpath[0], get_transitions=True)
@@ -437,9 +437,9 @@ def make_plot_populations_with_time_or_velocity(modelpaths, args):
     if not args.notitle:
         title = f"Z={Z}, ion_stage={ion_stage}"
         if args.x == "time":
-            title = title + f", mgi = {args.modelgridindex[0]}"
+            title += f", mgi = {args.modelgridindex[0]}"
         elif args.x == "velocity":
-            title = title + f", {args.timedays} days"
+            title += f", {args.timedays} days"
         plt.title(title)
 
     at.plottools.set_axis_properties(ax, args)
@@ -490,13 +490,13 @@ def plot_populations_with_time_or_velocity(ax, modelpaths, timedays, ion_stage, 
 
         for ionlevel in ionlevels:
             plottimesteps = np.array([int(ts) for ts, level, mgi in populations if level == ionlevel])
-            timedays = [float(at.get_timestep_time(modelpath, ts)) for ts in plottimesteps]
+            timedays = [at.get_timestep_time(modelpath, ts) for ts in plottimesteps]
             plotpopulations = np.array(
                 [float(populations[ts, level, mgi]) for ts, level, mgi in populations if level == ionlevel]
             )
             # plotpopulationsLTE = np.array([float(populationsLTE[ts, level]) for ts, level in populationsLTE.keys()
             #                             if level == ionlevel])
-            linelabel = rf"{levelconfignames[ionlevel]}"
+            linelabel = str(levelconfignames[ionlevel])
             # linelabel = f'level {ionlevel} {modelname}'
 
             if args.x == "time":
@@ -512,7 +512,7 @@ def make_plot(modelpath, atomic_number, ion_stages_displayed, mgilist, timestep,
     modelname = at.get_model_name(modelpath)
     adata = at.atomic.get_levels(modelpath, get_transitions=args.gettransitions)
 
-    time_days = float(at.get_timestep_time(modelpath, timestep))
+    time_days = at.get_timestep_time(modelpath, timestep)
     modelname = at.get_model_name(modelpath)
 
     dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=mgilist[0]).copy()
@@ -596,14 +596,14 @@ def make_plot(modelpath, atomic_number, ion_stages_displayed, mgilist, timestep,
         nne = estimators[(timestep, modelgridindex)]["nne"]
         W = estimators[(timestep, modelgridindex)]["W"]
 
-        subplot_title = f"{modelname}"
+        subplot_title = str(modelname)
         if len(modelname) > 10:
             subplot_title += "\n"
         velocity = at.inputmodel.get_modeldata_tuple(modelpath)[0]["vel_r_max_kmps"][modelgridindex]
         subplot_title += f" {velocity:.0f} km/s at"
 
         try:
-            time_days = float(at.get_timestep_time(modelpath, timestep))
+            time_days = at.get_timestep_time(modelpath, timestep)
         except FileNotFoundError:
             time_days = 0
             subplot_title += f" timestep {timestep:d}"
