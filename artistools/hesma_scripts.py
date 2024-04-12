@@ -22,7 +22,7 @@ def plot_hesma_spectrum(timeavg, axes):
 
     # Scale distance to 1 Mpc
     dist_mpc = 1e-5  # HESMA specta at 10 pc
-    hesma_spec[closest_time] = hesma_spec[closest_time] * (dist_mpc) ** 2  # refspecditance Mpc / 1 Mpc ** 2
+    hesma_spec[closest_time] *= dist_mpc**2  # refspecditance Mpc / 1 Mpc ** 2
 
     for ax in axes:
         ax.plot(hesma_spec["0.00"], hesma_spec[closest_time], label="HESMA model")
@@ -82,7 +82,7 @@ def make_hesma_vspecfiles(modelpath, outpath=None):
         vspecdata = vspecdata.eval("lambda_angstroms = 2.99792458e+18 / nu")
         for time in timearray:
             vspecdata[time] = vspecdata[time] * vspecdata["nu"] / vspecdata["lambda_angstroms"]
-            vspecdata[time] = vspecdata[time] * (1e5) ** 2  # Scale to 10 pc (1 Mpc/10 pc) ** 2
+            vspecdata[time] *= 100000.0**2  # Scale to 10 pc (1 Mpc/10 pc) ** 2
 
         vspecdata = vspecdata.set_index("lambda_angstroms").reset_index()
         vspecdata = vspecdata.drop(["nu"], axis=1)

@@ -166,7 +166,7 @@ def get_grid() -> tuple:
         dist = np.sqrt((rcyltraj[i] - rcyltraj) ** 2 + (zcyltraj[i] - zcyltraj) ** 2)
         ic = 0
         while cont:
-            ic = ic + 1
+            ic += 1
             h1 = 0.5 * (hl + hr)
             wsph = sphkernel(dist, h1, nu)
             rhos = np.sum(wsph * mtraj)
@@ -241,7 +241,7 @@ def get_grid() -> tuple:
                     # f"{nr} {nz} {temint[nr, nz]} {q_ergperg[nr, nz]} {rhoint[nr, nz]} {dmgrid[nr, nz]} {xint[nr, nz]}"
                     # )
                     wloc = wall[nr, nz, :] * rho2dtraj / rho2dhat
-                    wloc = wloc / np.sum(wloc)
+                    wloc /= np.sum(wloc)
                     pids = np.where(wloc > 1.0e-20)[0]
                     for pid in pids:
                         fgridcontributions.write(

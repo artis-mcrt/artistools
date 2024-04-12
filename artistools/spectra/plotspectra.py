@@ -122,7 +122,7 @@ def plot_reference_spectrum(
     if scale_to_dist_mpc:
         print(f"Scale to {scale_to_dist_mpc} Mpc")
         assert metadata["dist_mpc"] > 0  # we must know the true distance in order to scale to some other distance
-        specdata["f_lambda"] = specdata["f_lambda"] * (metadata["dist_mpc"] / scale_to_dist_mpc) ** 2
+        specdata["f_lambda"] *= (metadata["dist_mpc"] / scale_to_dist_mpc) ** 2
 
     if "label" not in plotkwargs:
         plotkwargs["label"] = metadata.get("label", filename)
@@ -1076,7 +1076,7 @@ def make_plot(args) -> tuple[plt.Figure, list[plt.Axes], pd.DataFrame]:
     if not args.outputfile:
         args.outputfile = defaultoutputfile
     elif not Path(args.outputfile).suffixes:
-        args.outputfile = args.outputfile / defaultoutputfile
+        args.outputfile /= defaultoutputfile
 
     # plt.text(6000, (args.ymax * 0.9), f'{round(args.timemin) + 1} days', fontsize='large')
 

@@ -299,7 +299,7 @@ def lower_dim_and_check_mass_conservation(outputdimensions: int) -> None:
         dfmodel=dfmodel3d_pl, modelmeta=modelmeta_3d, derived_cols=["mass_g"]
     ).collect()
 
-    outpath = outputpath / "test_dimension_reduce_3d_{outputdimensions:d}d"
+    outpath = outputpath / f"test_dimension_reduce_3d_{outputdimensions:d}d"
     outpath.mkdir(exist_ok=True, parents=True)
     (
         dfmodel_lowerd,

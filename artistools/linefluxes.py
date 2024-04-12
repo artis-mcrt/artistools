@@ -438,7 +438,7 @@ def make_flux_ratio_plot(args: argparse.Namespace) -> None:
     if not args.outputfile:
         args.outputfile = defaultoutputfile
     elif not Path(args.outputfile).suffixes:
-        args.outputfile = args.outputfile / defaultoutputfile
+        args.outputfile /= defaultoutputfile
 
     fig.savefig(args.outputfile, format="pdf")
     # plt.show()
@@ -611,7 +611,7 @@ def make_emitting_regions_plot(args):
     if not args.outputfile:
         args.outputfile = defaultoutputfile
     elif not Path(args.outputfile).suffixes:
-        args.outputfile = args.outputfile / defaultoutputfile
+        args.outputfile /= defaultoutputfile
 
     args.modelpath.append(None)
     args.label.append(f"All models: {args.label}")

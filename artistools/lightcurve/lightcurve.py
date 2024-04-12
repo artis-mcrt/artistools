@@ -299,7 +299,7 @@ def generate_band_lightcurve_data(
 
                 # print(time, phot_filtobs_sn)
                 if phot_filtobs_sn != 0.0:
-                    phot_filtobs_sn = phot_filtobs_sn - 25  # Absolute magnitude
+                    phot_filtobs_sn -= 25  # Absolute magnitude
                 filters_dict[filter_name].append((time, phot_filtobs_sn))
 
     return filters_dict

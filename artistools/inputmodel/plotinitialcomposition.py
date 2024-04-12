@@ -296,7 +296,7 @@ def make_3d_plot(modelpath, args):
     xgrid = np.zeros(grid)
 
     surfacearr = np.array(model[coloursurfaceby])
-    vmax = vmax / 2.99792458e10
+    vmax /= 29979245800.0
     i = 0
     for z in range(grid):
         for y in range(grid):

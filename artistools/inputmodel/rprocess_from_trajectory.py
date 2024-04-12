@@ -393,7 +393,7 @@ def filtermissinggridparticlecontributions(traj_root: Path, dfcontribs: pl.DataF
 def save_gridparticlecontributions(dfcontribs: pd.DataFrame | pl.DataFrame, gridcontribpath: Path | str) -> None:
     gridcontribpath = Path(gridcontribpath)
     if gridcontribpath.is_dir():
-        gridcontribpath = gridcontribpath / "gridcontributions.txt"
+        gridcontribpath /= "gridcontributions.txt"
     if gridcontribpath.is_file():
         oldfile = gridcontribpath.rename(gridcontribpath.with_suffix(".bak"))
         print(f"{gridcontribpath} already exists. Renaming existing file to {oldfile}")

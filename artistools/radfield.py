@@ -979,7 +979,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     if not args.outputfile:
         args.outputfile = defaultoutputfile
     elif args.outputfile.is_dir():
-        args.outputfile = args.outputfile / defaultoutputfile
+        args.outputfile /= defaultoutputfile
 
     modelpath = args.modelpath
 

@@ -20,7 +20,7 @@ def make_2d_packets_plot_imshow(modelpath, timestep_min, timestep_max):
     )
 
     grid = round(len(modeldata["inputcellid"]) ** (1.0 / 3.0))
-    vmax_cms = vmax_cms / CLIGHT
+    vmax_cms /= CLIGHT
 
     # # Don't plot empty cells
     # i = 0
@@ -173,8 +173,8 @@ def plot_last_emission_velocities_histogram(
         weights=weights,
     )
     hist = hist / nprocs_read / (timemaxarray[timestep_max] - timeminarray[timestep_min])  # erg/day
-    hist = hist * (u.erg / u.day).to("erg/s")
-    hist = hist / 1e40
+    hist *= (u.erg / u.day).to("erg/s")
+    hist /= 1e40
     width = np.diff(bin_edges)
     center = (bin_edges[:-1] + bin_edges[1:]) / 2
 
