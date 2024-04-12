@@ -473,7 +473,7 @@ def get_packetsfilepaths(
 
     searchfolders = [Path(modelpath, "packets"), Path(modelpath)]
     # in descending priority (based on speed of reading)
-    suffix_priority = [".out.zst", ".out.zst", ".out", ".out.gz", ".out.xz"]
+    suffix_priority = [".out.zst", ".out", ".out.gz", ".out.xz"]
     t_lastschemachange = calendar.timegm(time_parquetschemachange)
 
     parquetpacketsfiles = []
@@ -484,14 +484,23 @@ def get_packetsfilepaths(
         found_rank = False
 
         for folderpath in searchfolders:
-            filepath = (folderpath / name_nosuffix).with_suffix(".out.parquet")
-            if filepath.is_file():
-                if filepath.stat().st_mtime < t_lastschemachange:
-                    filepath.unlink(missing_ok=True)
-                    print(f"{filepath} is out of date.")
+            parquetfilepath = (folderpath / name_nosuffix).with_suffix(".out.parquet")
+            if parquetfilepath.is_file():
+                parquet_mtime = parquetfilepath.stat().st_mtime
+
+                # check if the parquet file is out of date by the presence of a text file updated after the parquet file
+                latest_textfile_mtime = -1.0
+                for suffix in suffix_priority:
+                    textfilepath = (folderpath / name_nosuffix).with_suffix(suffix)
+                    if textfilepath.is_file():
+                        latest_textfile_mtime = max(latest_textfile_mtime, textfilepath.stat().st_mtime)
+
+                if parquet_mtime < latest_textfile_mtime or parquet_mtime < t_lastschemachange:
+                    parquetfilepath.unlink(missing_ok=True)
+                    print(f"{parquetfilepath} is out of date.")
                 else:
                     if rank < nprocs:
-                        parquetpacketsfiles.append(filepath)
+                        parquetpacketsfiles.append(parquetfilepath)
                     found_rank = True
 
         if not found_rank:
