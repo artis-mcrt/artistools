@@ -1316,7 +1316,7 @@ def scale_model_to_time(
     if modelmeta is not None:
         modelmeta["t_model_days"] = targetmodeltime_days
         modelmeta.get("headercommentlines", []).append(
-            "scaled from {t_model_days} to {targetmodeltime_days} (no abund change from decays)"
+            f"scaled from {t_model_days} to {targetmodeltime_days} (no abund change from decays)"
         )
 
     return dfmodel, modelmeta

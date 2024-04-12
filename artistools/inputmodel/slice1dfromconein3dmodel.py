@@ -102,7 +102,7 @@ def make_1d_profile(args):
 
     if args.rhoscale:
         logprint("Scaling density by a factor of:", args.rhoscale)
-        slice1d["rho"] = slice1d["rho"] * args.rhoscale
+        slice1d["rho"] *= args.rhoscale
 
     slice1d["rho"] = slice1d["rho"].apply(lambda x: np.log10(x) if x != 0 else -100)
     # slice1d = slice1d[slice1d['rho_model'] != -100]  # Remove empty cells

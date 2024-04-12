@@ -145,7 +145,7 @@ def read_griddat_file(
     griddata["pos_y_min"] = griddata["pos_y_min"] * factor_position * km_to_cm
     griddata["pos_z_min"] = griddata["pos_z_min"] * factor_position * km_to_cm
 
-    griddata["rho"] = griddata["rho"] * 6.176e17  # convert to g/cm3
+    griddata["rho"] *= 6.176e17  # convert to g/cm3
 
     with griddatfilepath.open(encoding="utf-8") as gridfile:
         ngrid = int(gridfile.readline().split()[0])

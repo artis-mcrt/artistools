@@ -374,14 +374,14 @@ def maptogrid(
                 # how many cells with rho=0?
 
                 if grho[i, j, k] < 1.0e-20:
-                    nzero = nzero + 1
+                    nzero += 1
 
                 gz = z0 + dz * k
 
                 dis = math.sqrt(gx * gx + gy * gy + gz * gz)
 
                 if grho[i, j, k] < 1.0e-20 and dis < rmean:
-                    nzerocentral = nzerocentral + 1
+                    nzerocentral += 1
 
     logprint(f"fraction of total mass on grid {gmass / totmass}")
 
@@ -419,7 +419,7 @@ def maptogrid(
                     )
                     # gridindex2 = ((k - 1) * ncoordgrid + (j - 1)) * ncoordgrid + (i - 1) + 1
 
-                    gridindex = gridindex + 1
+                    gridindex += 1
 
     logprint(f"saved {outputfolderpath / 'grid.dat'}")
 

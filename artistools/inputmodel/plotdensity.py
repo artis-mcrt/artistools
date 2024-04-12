@@ -102,7 +102,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     outfilepath = Path(args.outputpath)
     if outfilepath.is_dir():
-        outfilepath = outfilepath / "densityprofile.pdf"
+        outfilepath /= "densityprofile.pdf"
 
     plt.savefig(outfilepath)
     print(f"Saved {outfilepath}")

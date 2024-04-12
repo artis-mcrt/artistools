@@ -227,6 +227,6 @@ def autoscale(ax=None, axis="y", margin=0.1):
         newlow = min(newlow, low)
         newhigh = max(newhigh, high)
 
-    margin = margin * (newhigh - newlow)
+    margin *= newhigh - newlow
 
     setlim(newlow - margin, newhigh + margin)

@@ -547,7 +547,7 @@ def plot_qdot_abund_modelcells(
             for strnuc, a in zip(arr_strnuc, arr_a):
                 abund = estimtsmgsi[f"nniso_{strnuc}"].item()
                 massfrac = abund * a * MH / estimtsmgsi["rho"].item()
-                massfrac = massfrac + estimtsmgsi[f"X_{strnuc}"].item() * (correction_factors[strnuc] - 1.0)
+                massfrac += estimtsmgsi[f"X_{strnuc}"].item() * (correction_factors[strnuc] - 1.0)
 
                 if mgi not in arr_abund_artis:
                     arr_abund_artis[mgi] = {}

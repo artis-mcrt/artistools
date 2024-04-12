@@ -458,7 +458,7 @@ def plot_populations_with_time_or_velocity(ax, modelpaths, timedays, ion_stage, 
             sys.exit(1)
 
         modelgridindex_list = np.ones_like(timesteps)
-        modelgridindex_list = modelgridindex_list * int(args.modelgridindex[0])
+        modelgridindex_list *= int(args.modelgridindex[0])
 
     if args.x == "velocity":
         modeldata, _ = at.inputmodel.get_modeldata(modelpaths[0])  # TODO: move into modelpath loop
@@ -466,7 +466,7 @@ def plot_populations_with_time_or_velocity(ax, modelpaths, timedays, ion_stage, 
         modelgridindex_list = [mgi for mgi, _ in enumerate(velocity)]
 
         timesteps = np.ones_like(modelgridindex_list)
-        timesteps = timesteps * at.get_timestep_of_timedays(modelpaths[0], timedays)
+        timesteps *= at.get_timestep_of_timedays(modelpaths[0], timedays)
 
     markers = ["o", "x", "^", "s", "8"]
     for modelnumber, modelpath in enumerate(modelpaths):

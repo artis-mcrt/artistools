@@ -94,7 +94,7 @@ def define_heating_rate():
     intergrated_rate = dE / dt
     scale_factor_energy_diff = max(qdot[1:] / intergrated_rate)
     print(np.mean(scale_factor_energy_diff))
-    E_tot = E_tot * scale_factor_energy_diff
+    E_tot *= scale_factor_energy_diff
     # print(f"E_tot after integrated line scaled to match energy of power law: {E_tot}")
 
     dE = np.diff(times_and_rate["rate"] * E_tot)
@@ -195,7 +195,7 @@ def make_energydistribution_weightedbyrho(rho, E_tot_per_gram, Mtot_grams):
     numberofcells = len(rho)
 
     cellenergy = np.array([Etot] * numberofcells)
-    cellenergy = cellenergy * (rho / sum(rho))
+    cellenergy *= rho / sum(rho)
 
     energydistdata = {"cellid": np.arange(1, len(rho) + 1), "cell_energy": cellenergy}
 

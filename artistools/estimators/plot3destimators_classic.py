@@ -103,7 +103,7 @@ def get_Te_vs_velocity_2D(modelpath, modeldata, vmax, estimators, readonly_mgi, 
     grid_Te = np.zeros((grid, grid, grid))  # needs 3D array
     xgrid = np.zeros(grid)
 
-    vmax = vmax / CLIGHT
+    vmax /= CLIGHT
     i = 0
     for z in range(grid):
         for y in range(grid):
