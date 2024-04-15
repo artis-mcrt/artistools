@@ -443,15 +443,15 @@ def convert_virtual_packets_text_to_parquet(
     packetsfiletext: Path | str,
 ) -> Path:
     packetsfiletext = Path(packetsfiletext)
-    packetsfileparquet = at.stripallsuffixes(packetsfiletext).with_suffix(".out.parquet")
+    vpacketsfileparquet = at.stripallsuffixes(packetsfiletext).with_suffix(".out.parquet")
 
-    fpackets = at.zopen(packetsfiletext, mode="rt", encoding="utf-8")
+    fvpackets = at.zopen(packetsfiletext, mode="rt", encoding="utf-8")
 
-    firstline = fpackets.readline()
+    firstline = fvpackets.readline()
     assert firstline.lstrip().startswith("#")
     columns = firstline.lstrip("#").split()
 
-    dfpackets = pl.read_csv(
+    dfvpackets = pl.read_csv(
         packetsfiletext,
         separator=" ",
         has_header=False,
@@ -467,12 +467,12 @@ def convert_virtual_packets_text_to_parquet(
         | {col: pl.Float64 for col in columns if col.endswith("_t_arrive_d")},
     )
 
-    print(f"Saving {packetsfileparquet}")
-    dfpackets = dfpackets.sort(by=["dir0_t_arrive_d"])
+    print(f"Saving {vpacketsfileparquet}")
+    dfvpackets = dfvpackets.sort(by=["dir0_t_arrive_d"])
 
-    dfpackets.write_parquet(packetsfileparquet, compression="zstd", statistics=True, compression_level=6)
+    dfvpackets.write_parquet(vpacketsfileparquet, compression="zstd", statistics=True, compression_level=6)
 
-    return packetsfileparquet
+    return vpacketsfileparquet
 
 
 def get_packetsfilepaths(
