@@ -204,6 +204,7 @@ def get_from_packets(
             nu_conditions.append(pl.col(f"dir{obsdirindex}_nu_rf").is_between(nu_min, nu_max))
         dfpackets = dfpackets.filter(pl.any_horizontal(time_conditions)).filter(pl.any_horizontal(nu_conditions))
         getcols.discard("nu_rf")
+        assert use_time == "arrival"
     else:
         dfpackets = dfpackets.filter(pl.col(nu_column).is_between(nu_min, nu_max))
         if use_time == "arrival":
@@ -896,6 +897,12 @@ def get_flux_contributions_from_packets(
     linelistlazy = at.get_linelist_pldf(modelpath=modelpath, get_ion_str=True)
     bflistlazy = at.get_bflist(modelpath, get_ion_str=True)
 
+    cols = {"e_rf"}
+    cols.add({"arrival": "t_arrive_d", "emission": "em_time", "escape": "escape_time"}[use_time])
+
+    nu_min = 2.99792458e18 / lambda_max
+    nu_max = 2.99792458e18 / lambda_min
+
     if directionbins_are_vpkt_observers:
         vpkt_config = at.get_vpkt_config(modelpath)
         obsdirindex = directionbin // vpkt_config["nspectraperobs"]
@@ -904,24 +911,32 @@ def get_flux_contributions_from_packets(
         lzdfpackets = lzdfpackets.with_columns(
             e_rf=pl.col(f"dir{obsdirindex}_e_rf_{opacchoiceindex}"),
             nu_rf=pl.col(f"dir{obsdirindex}_nu_rf"),
-            t_arrive_d=pl.col(f"dir{obsdirindex}_t_arrive_d"),
-            costhetabin=-1,
-            phibin=-1,
-            dirbin=directionbin,
         )
+
+        cols |= {
+            f"dir{obsdirindex}_nu_rf",
+            f"dir{obsdirindex}_t_arrive_d",
+            f"dir{obsdirindex}_e_rf_{opacchoiceindex}",
+        }
+        lzdfpackets = lzdfpackets.filter(pl.col(f"dir{obsdirindex}_t_arrive_d").is_between(timelowdays, timehighdays))
+        condition_nu_emit = (
+            pl.col(f"dir{obsdirindex}_nu_rf").is_between(nu_min, nu_max) if getemission else pl.lit(False)
+        )
+
     else:
         nprocs_read, lzdfpackets = at.packets.get_packets_pl(
             modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
         )
 
+        lzdfpackets = lzdfpackets.filter(pl.col("t_arrive_d").is_between(timelowdays, timehighdays))
+        condition_nu_emit = pl.col("nu_rf").is_between(nu_min, nu_max) if getemission else pl.lit(False)
+
+    condition_nu_abs = pl.col("absorption_freq").is_between(nu_min, nu_max) if getabsorption else pl.lit(False)
+    lzdfpackets = lzdfpackets.filter(condition_nu_emit | condition_nu_abs)
+
     if emissionvelocitycut is not None:
         lzdfpackets = at.packets.add_derived_columns_lazy(lzdfpackets)
         lzdfpackets = lzdfpackets.filter(pl.col("emission_velocity") > emissionvelocitycut)
-
-    lzdfpackets = lzdfpackets.filter(pl.col("t_arrive_d").is_between(timelowdays, timehighdays))
-
-    cols = {"e_rf"}
-    cols.add({"arrival": "t_arrive_d", "emission": "em_time", "escape": "excape_time"}[use_time])
 
     expr_linelist_to_str = (
         pl.col("ion_str")
@@ -990,16 +1005,7 @@ def get_flux_contributions_from_packets(
     if directionbin != -1:
         cols |= {"costhetabin", "phibin", "dirbin"}
 
-    nu_min = 2.99792458e18 / lambda_max
-    nu_max = 2.99792458e18 / lambda_min
-    condition_nu_emit = pl.col("nu_rf").is_between(nu_min, nu_max) if getemission else pl.lit(False)
-    condition_nu_abs = pl.col("absorption_freq").is_between(nu_min, nu_max) if getabsorption else pl.lit(False)
-
-    dfpackets = (
-        lzdfpackets.filter(condition_nu_emit | condition_nu_abs)
-        .select([col for col in cols if col in lzdfpackets.columns])
-        .collect()
-    )
+    dfpackets = lzdfpackets.select([col for col in cols if col in lzdfpackets.columns]).collect()
 
     npkts_selected = dfpackets.select(pl.count("*")).item(0, 0)
     print(f"  time/frequency selection contains {npkts_selected:.2e} packets")
@@ -1085,6 +1091,7 @@ def get_flux_contributions_from_packets(
                 fnufilterfunc=filterfunc,
                 nprocs_read_dfpackets=(nprocs_read, emissiongroups[groupname]),
                 directionbins=[directionbin],
+                directionbins_are_vpkt_observers=directionbins_are_vpkt_observers,
                 average_over_phi=average_over_phi,
                 average_over_theta=average_over_theta,
             )[directionbin]
@@ -1112,6 +1119,7 @@ def get_flux_contributions_from_packets(
                 fnufilterfunc=filterfunc,
                 nprocs_read_dfpackets=(nprocs_read, absorptiongroups[groupname]),
                 directionbins=[directionbin],
+                directionbins_are_vpkt_observers=directionbins_are_vpkt_observers,
                 average_over_phi=average_over_phi,
                 average_over_theta=average_over_theta,
             )[directionbin]

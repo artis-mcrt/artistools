@@ -445,17 +445,27 @@ def convert_virtual_packets_text_to_parquet(
     packetsfiletext = Path(packetsfiletext)
     packetsfileparquet = at.stripallsuffixes(packetsfiletext).with_suffix(".out.parquet")
 
+    fpackets = at.zopen(packetsfiletext, mode="rt", encoding="utf-8")
+
+    firstline = fpackets.readline()
+    assert firstline.lstrip().startswith("#")
+    columns = firstline.lstrip("#").split()
+
     dfpackets = pl.read_csv(
         packetsfiletext,
         separator=" ",
-        has_header=True,
+        has_header=False,
+        comment_prefix="#",
+        new_columns=columns,
         dtypes={
-            "#emissiontype": pl.Int32,
+            "emissiontype": pl.Int32,
             "trueemissiontype": pl.Int32,
             "absorption_type": pl.Int32,
             "absorption_freq": pl.Float32,
-        },
-    ).rename({"#emissiontype": "emissiontype"})
+        }
+        | {col: pl.Float64 for col in columns if col.endswith("_nu_rf_") or "_e_rf" in col or col == "absorption_freq"}
+        | {col: pl.Float64 for col in columns if col.endswith("_t_arrive_d")},
+    )
 
     print(f"Saving {packetsfileparquet}")
     dfpackets = dfpackets.sort(by=["dir0_t_arrive_d"])
@@ -547,6 +557,10 @@ def get_packetsfilepaths(
 def get_virtual_packets_pl(modelpath: str | Path, maxpacketfiles: int | None = None) -> tuple[int, pl.LazyFrame]:
     vpacketparquetfiles = get_packetsfilepaths(modelpath, maxpacketfiles=maxpacketfiles, virtual=True)
 
+    nprocs_read = len(vpacketparquetfiles)
+    packetsdatasize_gb = nprocs_read * Path(vpacketparquetfiles[0]).stat().st_size / 1024 / 1024 / 1024
+    print(f"  data size is {packetsdatasize_gb:.1f} GB ({nprocs_read} * size of {vpacketparquetfiles[0].parts[-1]})")
+
     # add some extra columns to imitate the real packets
     dfpackets = pl.scan_parquet(vpacketparquetfiles).with_columns(
         type_id=type_ids["TYPE_ESCAPE"], escape_type_id=type_ids["TYPE_RPKT"]
@@ -557,7 +571,7 @@ def get_virtual_packets_pl(modelpath: str | Path, maxpacketfiles: int | None = N
         f"  files contain {npkts_total:.2e} virtual packet events (that can be further split into directions and opacity choices)"
     )
 
-    return len(vpacketparquetfiles), dfpackets
+    return nprocs_read, dfpackets
 
 
 def get_packets_pl(
