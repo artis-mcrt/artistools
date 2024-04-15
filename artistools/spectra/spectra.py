@@ -937,7 +937,7 @@ def get_flux_contributions_from_packets(
 
     if getemission:
         cols |= {"emissiontype_str", "nu_rf"}
-        bflistlazy = bflistlazy.with_columns(emtypecolumn=(-1 - pl.col("bfindex").cast(pl.Int32)))
+        bflistlazy = bflistlazy.with_columns((-1 - pl.col("bfindex").cast(pl.Int32)).alias(emtypecolumn))
         expr_bflist_to_str = (
             pl.col("ion_str") + " bound-free"
             if groupby == "ion"
