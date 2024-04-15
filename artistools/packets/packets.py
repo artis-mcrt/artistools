@@ -461,10 +461,10 @@ def convert_virtual_packets_text_to_parquet(
             "emissiontype": pl.Int32,
             "trueemissiontype": pl.Int32,
             "absorption_type": pl.Int32,
-            "absorption_freq": pl.Float32,
+            "absorption_freq": pl.Float64,
         }
-        | {col: pl.Float64 for col in columns if col.endswith("_nu_rf_") or "_e_rf" in col or col == "absorption_freq"}
-        | {col: pl.Float64 for col in columns if col.endswith("_t_arrive_d")},
+        | {col: pl.Float64 for col in columns if col.endswith("_nu_rf") or "_e_rf" in col}
+        | {col: pl.Float32 for col in columns if col.endswith("_t_arrive_d")},
     )
 
     print(f"Saving {vpacketsfileparquet}")
