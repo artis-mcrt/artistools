@@ -4,7 +4,6 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-import pyvista as pv
 
 import artistools as at
 
@@ -118,6 +117,8 @@ def get_Te_vs_velocity_2D(modelpath, modeldata, vmax, estimators, readonly_mgi, 
 
 
 def make_2d_plot(grid, grid_Te, vmax, modelpath, xgrid, time):
+    import pyvista as pv
+
     pyvista = False
     if pyvista:
         # PYVISTA
