@@ -141,7 +141,7 @@ def get_from_packets(
     average_over_theta: bool = False,
     nu_column: str = "nu_rf",
     fnufilterfunc: t.Callable[[np.ndarray], np.ndarray] | None = None,
-    nprocs_read_dfpackets: tuple[int, pl.DataFrame] | None = None,
+    nprocs_read_dfpackets: tuple[int, pl.DataFrame | pl.LazyFrame] | None = None,
     directionbins_are_vpkt_observers: bool = False,
 ) -> dict[int, pd.DataFrame]:
     """Get a spectrum dataframe using the packets files as input."""
@@ -176,9 +176,10 @@ def get_from_packets(
     ncosthetabins = at.get_viewingdirection_costhetabincount()
     ndirbins = at.get_viewingdirectionbincount()
 
-    dfpackets: pl.DataFrame | pl.LazyFrame
+    dfpackets: pl.LazyFrame
     if nprocs_read_dfpackets:
-        nprocs_read, dfpackets = nprocs_read_dfpackets
+        nprocs_read = nprocs_read_dfpackets[0]
+        dfpackets = nprocs_read_dfpackets[1].lazy()
     elif directionbins_are_vpkt_observers:
         nprocs_read, dfpackets = at.packets.get_virtual_packets_pl(modelpath, maxpacketfiles=maxpacketfiles)
     else:
@@ -240,11 +241,11 @@ def get_from_packets(
             else:
                 getcols.add("dirbin")
 
-    dfpackets = dfpackets.select(getcols).lazy().collect().lazy()
-
     if nprocs_read_dfpackets is None:
         npkts_selected = dfpackets.select(pl.count("*")).collect().item(0, 0)
         print(f"  time/frequency selection contains {npkts_selected:.2e} packets")
+
+    dfpackets = dfpackets.select(getcols).lazy().collect().lazy()
 
     dfdict = {}
     for dirbin in directionbins:

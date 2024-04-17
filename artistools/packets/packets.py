@@ -404,8 +404,10 @@ def convert_text_to_parquet(
 ) -> Path:
     packetsfiletext = Path(packetsfiletext)
     packetsfileparquet = at.stripallsuffixes(packetsfiletext).with_suffix(".out.parquet")
+    packetsfileparquet = Path(*packetsfileparquet.parts[:-1]) / "parquet" / packetsfileparquet.parts[-1]
+    packetsfileparquet.parent.mkdir(parents=True, exist_ok=True)
 
-    print(f"Saving {packetsfiletext} to {packetsfileparquet.name}")
+    print(f"Saving {packetsfiletext} to {packetsfileparquet}")
 
     dfpackets = (
         readfile_text(packetsfiletext)
@@ -441,19 +443,24 @@ def convert_text_to_parquet(
 
 
 def convert_virtual_packets_text_to_parquet(
-    packetsfiletext: Path | str,
+    vpacketsfiletext: Path | str,
 ) -> Path:
-    packetsfiletext = Path(packetsfiletext)
-    vpacketsfileparquet = at.stripallsuffixes(packetsfiletext).with_suffix(".out.parquet")
+    vpacketsfiletext = Path(vpacketsfiletext)
+    vpacketsfileparquet = at.stripallsuffixes(vpacketsfiletext).with_suffix(".out.parquet")
 
-    fvpackets = at.zopen(packetsfiletext, mode="rt", encoding="utf-8")
+    vpacketsfileparquet = Path(*vpacketsfileparquet.parts[:-1]) / "parquet" / vpacketsfileparquet.parts[-1]
+    vpacketsfileparquet.parent.mkdir(parents=True, exist_ok=True)
+
+    print(f"Saving {vpacketsfiletext} to {vpacketsfileparquet}")
+
+    fvpackets = at.zopen(vpacketsfiletext, mode="rt", encoding="utf-8")
 
     firstline = fvpackets.readline()
     assert firstline.lstrip().startswith("#")
     columns = firstline.lstrip("#").split()
 
     dfvpackets = pl.read_csv(
-        packetsfiletext,
+        vpacketsfiletext,
         separator=" ",
         has_header=False,
         comment_prefix="#",
@@ -468,7 +475,6 @@ def convert_virtual_packets_text_to_parquet(
         | {col: pl.Float32 for col in columns if col.endswith("_t_arrive_d")},
     )
 
-    print(f"Saving {vpacketsfileparquet}")
     dfvpackets = dfvpackets.sort(by=["dir0_t_arrive_d"])
 
     dfvpackets.write_parquet(vpacketsfileparquet, compression="zstd", statistics=True, compression_level=6)
@@ -483,6 +489,7 @@ def get_packetsfilepaths(
     nprocs = at.get_nprocs(modelpath)
 
     searchfolders = (
+        Path(modelpath, "vpackets" if virtual else "packets", "parquet"),
         Path(modelpath, "vpackets" if virtual else "packets"),
         Path(modelpath),
         *(p.parent for p in Path().glob("*/vpackets_0000.out*" if virtual else "*/packets00_0000.out*")),
