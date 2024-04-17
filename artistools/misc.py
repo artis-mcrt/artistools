@@ -1398,7 +1398,7 @@ def get_costheta_bins(usedegrees: bool, usepiminustheta: bool = False) -> tuple[
             piminusthetabins_upper = (np.pi - np.arccos(costhetabins_upper)) / np.pi * 180
             piminusthetabins_lower = (np.pi - np.arccos(costhetabins_lower)) / np.pi * 180
             binlabels = [
-                rf"{lower:.0f}° < $\pi$-$\theta$ < {upper:.0f}°"
+                rf"{lower:.0f}° < π-θ < {upper:.0f}°"
                 for lower, upper in zip(piminusthetabins_lower, piminusthetabins_upper)
             ]
         else:
@@ -1430,7 +1430,7 @@ def get_opacity_condition_label(z_exclude: int) -> str:
     return "no-es" if z_exclude == -3 else f"no-{at.get_elsymbol(z_exclude)}"
 
 
-def get_vspec_dir_labels(modelpath: str | Path, viewinganglelabelunits: str = "rad") -> dict[int, str]:
+def get_vspec_dir_labels(modelpath: str | Path, usedegrees: bool = False) -> dict[int, str]:
     vpkt_config = at.get_vpkt_config(modelpath)
     dirlabels = {}
     for dirindex in range(vpkt_config["nobsdirections"]):
@@ -1439,15 +1439,11 @@ def get_vspec_dir_labels(modelpath: str | Path, viewinganglelabelunits: str = "r
             opacity_condition_label = get_opacity_condition_label(int(vpkt_config["z_excludelist"][specindex]))
             ind_comb = vpkt_config["nspectraperobs"] * dirindex + specindex
             cos_theta = vpkt_config["cos_theta"][dirindex]
-            if viewinganglelabelunits == "deg":
+            if usedegrees:
                 theta_degrees = round(math.degrees(math.acos(cos_theta)))
-                dirlabels[ind_comb] = (
-                    rf"v$\theta$ = {theta_degrees}$^\circ$, $\phi$ = {phi_angle}$^\circ$ {specindex} {opacity_condition_label}"
-                )
-            elif viewinganglelabelunits == "rad":
-                dirlabels[ind_comb] = (
-                    rf"cos $\theta$ = {cos_theta}, $\phi$ = {phi_angle}$^\circ$ {opacity_condition_label}"
-                )
+                dirlabels[ind_comb] = rf"θ = {theta_degrees}°, ϕ = {phi_angle}° {specindex} {opacity_condition_label}"
+            else:
+                dirlabels[ind_comb] = rf"cos θ = {cos_theta}, ϕ = {phi_angle}° {opacity_condition_label}"
 
     return dirlabels
 

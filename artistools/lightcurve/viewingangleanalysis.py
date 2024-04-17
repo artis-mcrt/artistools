@@ -173,7 +173,7 @@ def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> 
     dirbin_definition: dict[int, str] = {}
 
     if args.plotvspecpol:
-        dirbin_definition = at.get_vspec_dir_labels(modelpath=modelpath)
+        dirbin_definition = at.get_vspec_dir_labels(modelpath=modelpath, usedegrees=args.usedegrees)
     else:
         dirbin_definition = at.get_dirbin_labels(
             dirbins=dirbins,
