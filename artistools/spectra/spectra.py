@@ -196,13 +196,15 @@ def get_from_packets(
         for dirbin in directionbins:
             obsdirindex = dirbin // vpkt_config["nspectraperobs"]
             opacchoiceindex = dirbin % vpkt_config["nspectraperobs"]
+            dirbin_nu_column = f"dir{obsdirindex}_nu_rf" if nu_column == "nu_rf" else nu_column
             getcols |= {
-                f"dir{obsdirindex}_nu_rf",
+                dirbin_nu_column,
                 f"dir{obsdirindex}_t_arrive_d",
                 f"dir{obsdirindex}_e_rf_{opacchoiceindex}",
             }
             time_conditions.append(pl.col(f"dir{obsdirindex}_t_arrive_d").is_between(timelowdays, timehighdays))
-            nu_conditions.append(pl.col(f"dir{obsdirindex}_nu_rf").is_between(nu_min, nu_max))
+            nu_conditions.append(pl.col(dirbin_nu_column).is_between(nu_min, nu_max))
+
         dfpackets = dfpackets.filter(pl.any_horizontal(time_conditions)).filter(pl.any_horizontal(nu_conditions))
         getcols.discard("nu_rf")
         assert use_time == "arrival"
@@ -227,6 +229,8 @@ def get_from_packets(
             em_time_high = timehighdays * 86400.0 + mean_correction
             dfpackets = dfpackets.filter(pl.col("em_time").is_between(em_time_low, em_time_high))
 
+        dfpackets = dfpackets.filter(pl.col(nu_column).is_between(nu_min, nu_max))
+
     if fnufilterfunc:
         print("Applying filter to ARTIS spectrum")
 
@@ -249,15 +253,17 @@ def get_from_packets(
 
     dfdict = {}
     for dirbin in directionbins:
+        dirbin_nu_column = nu_column
         if directionbins_are_vpkt_observers:
             obsdirindex = dirbin // vpkt_config["nspectraperobs"]
             opacchoiceindex = dirbin % vpkt_config["nspectraperobs"]
+            if nu_column == "nu_rf":
+                dirbin_nu_column = f"dir{obsdirindex}_nu_rf"
             pldfpackets_dirbin_lazy = dfpackets.filter(
                 pl.col(f"dir{obsdirindex}_t_arrive_d").is_between(timelowdays, timehighdays)
-                & pl.col(f"dir{obsdirindex}_nu_rf").is_between(nu_min, nu_max)
+                & pl.col(dirbin_nu_column).is_between(nu_min, nu_max)
             )
             encol = f"dir{obsdirindex}_e_rf_{opacchoiceindex}"
-            nu_column = f"dir{obsdirindex}_nu_rf"
             solidanglefactor = 4 * math.pi
         elif dirbin == -1:
             solidanglefactor = 1.0
@@ -274,7 +280,7 @@ def get_from_packets(
             pldfpackets_dirbin_lazy = dfpackets.filter(pl.col("dirbin") == dirbin)
 
         pldfpackets_dirbin = pldfpackets_dirbin_lazy.with_columns(
-            lambda_angstroms=(2.99792458e18 / pl.col(nu_column))
+            lambda_angstroms=(2.99792458e18 / pl.col(dirbin_nu_column))
         ).select(["lambda_angstroms", encol])
 
         if nprocs_read_dfpackets is None:
@@ -911,27 +917,25 @@ def get_flux_contributions_from_packets(
         nprocs_read, lzdfpackets = at.packets.get_virtual_packets_pl(modelpath, maxpacketfiles=maxpacketfiles)
         lzdfpackets = lzdfpackets.with_columns(
             e_rf=pl.col(f"dir{obsdirindex}_e_rf_{opacchoiceindex}"),
-            nu_rf=pl.col(f"dir{obsdirindex}_nu_rf"),
         )
+        dirbin_nu_column = f"dir{obsdirindex}_nu_rf"
 
         cols |= {
-            f"dir{obsdirindex}_nu_rf",
+            dirbin_nu_column,
             f"dir{obsdirindex}_t_arrive_d",
             f"dir{obsdirindex}_e_rf_{opacchoiceindex}",
         }
         lzdfpackets = lzdfpackets.filter(pl.col(f"dir{obsdirindex}_t_arrive_d").is_between(timelowdays, timehighdays))
-        condition_nu_emit = (
-            pl.col(f"dir{obsdirindex}_nu_rf").is_between(nu_min, nu_max) if getemission else pl.lit(False)
-        )
 
     else:
         nprocs_read, lzdfpackets = at.packets.get_packets_pl(
             modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
         )
+        dirbin_nu_column = "nu_rf"
 
         lzdfpackets = lzdfpackets.filter(pl.col("t_arrive_d").is_between(timelowdays, timehighdays))
-        condition_nu_emit = pl.col("nu_rf").is_between(nu_min, nu_max) if getemission else pl.lit(False)
 
+    condition_nu_emit = pl.col(dirbin_nu_column).is_between(nu_min, nu_max) if getemission else pl.lit(False)
     condition_nu_abs = pl.col("absorption_freq").is_between(nu_min, nu_max) if getabsorption else pl.lit(False)
     lzdfpackets = lzdfpackets.filter(condition_nu_emit | condition_nu_abs)
 
@@ -952,7 +956,7 @@ def get_flux_contributions_from_packets(
     )
 
     if getemission:
-        cols |= {"emissiontype_str", "nu_rf"}
+        cols |= {"emissiontype_str", dirbin_nu_column}
         bflistlazy = bflistlazy.with_columns((-1 - pl.col("bfindex").cast(pl.Int32)).alias(emtypecolumn))
         expr_bflist_to_str = (
             pl.col("ion_str") + " bound-free"
@@ -1012,7 +1016,7 @@ def get_flux_contributions_from_packets(
     print(f"  time/frequency selection contains {npkts_selected:.2e} packets")
 
     emissiongroups = (
-        dict(dfpackets.filter(pl.col("nu_rf").is_between(nu_min, nu_max)).group_by("emissiontype_str"))
+        dict(dfpackets.filter(pl.col(dirbin_nu_column).is_between(nu_min, nu_max)).group_by("emissiontype_str"))
         if getemission
         else {}
     )

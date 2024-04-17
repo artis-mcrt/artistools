@@ -52,6 +52,7 @@ subcommandtree: CommandType = {
     "plottransitions": ("transitions", "main"),
     "plotviewingangles": ("viewing_angles_visualization", "main"),
     "completions": ("commands", "setup_completions"),
+    "spec": ("spectra.plotspectra", "main"),
     "spencerfano": ("nonthermal.solvespencerfanocmd", "main"),
     "writecodecomparisondata": ("writecomparisondata", "main"),
     "writespectra": ("spectra.writespectra", "main"),
