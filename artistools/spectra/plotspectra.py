@@ -266,7 +266,7 @@ def plot_artis_spectrum(
             if not args.hidemodeltime and not args.multispecplot:
                 # TODO: fix this for multispecplot - use args.showtime for now
                 linelabel += f" +{timeavg:.1f}d"
-            if not args.hidemodeltimerange and not args.multispecplot:
+            if not args.hidemodeltimerange and not args.multispecplot and timedelta >= 0.1:
                 linelabel += rf" ($\pm$ {timedelta:.1f}d)"
         # Luke: disabled below because line label has already been formatted with e.g. timeavg values
         # formatting for a second time makes it impossible to use curly braces in line labels (needed for LaTeX math)
@@ -332,7 +332,7 @@ def plot_artis_spectrum(
             )
 
         dirbin_definitions = (
-            at.get_vspec_dir_labels(modelpath=modelpath, viewinganglelabelunits=args.viewinganglelabelunits)
+            at.get_vspec_dir_labels(modelpath=modelpath, usedegrees=usedegrees)
             if args.plotvspecpol
             else at.get_dirbin_labels(
                 dirbins=directionbins,
@@ -1361,10 +1361,6 @@ def addargs(parser) -> None:
     parser.add_argument("-timedayslist", nargs="+", help="List of times in days for time sequence subplots")
 
     parser.add_argument("--showtime", action="store_true", help="Write time on plot")
-
-    parser.add_argument(
-        "-viewinganglelabelunits", type=str, default="deg", help="Choose viewing angle label in deg or rad"
-    )
 
     parser.add_argument(
         "--classicartis", action="store_true", help="Flag to show using output from classic ARTIS branch"
