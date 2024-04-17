@@ -835,28 +835,38 @@ def firstexisting(
     filelist: t.Sequence[str | Path] | str | Path,
     folder: Path | str = Path(),
     tryzipped: bool = True,
+    search_subfolders: bool = True,
 ) -> Path:
     """Return the first existing file in file list. If none exist, raise exception."""
     if isinstance(filelist, str | Path):
         filelist = [filelist]
+
     folder = Path(folder)
+    folders = [folder]
 
     fullpaths = []
     for filename in filelist:
-        fullpaths.append(Path(folder) / filename)
+        if search_subfolders:
+            folders += [
+                p.parent for filename in filelist for p in Path().glob(f"*/{filename}*") if p.parent not in folders
+            ]
 
-        if tryzipped:
-            for ext in (".zst", ".gz", ".xz"):
-                filenameext = str(filename) if str(filename).endswith(ext) else str(filename) + ext
-                if filenameext not in filelist:
-                    fullpaths.append(folder / filenameext)
+        for folder in folders:
+            fullpaths.append(Path(folder) / filename)
+
+            if tryzipped:
+                for ext in (".zst", ".gz", ".xz"):
+                    filenameext = str(filename) if str(filename).endswith(ext) else str(filename) + ext
+                    if filenameext not in filelist:
+                        fullpaths.append(folder / filenameext)
 
     for fullpath in fullpaths:
         if fullpath.exists():
             return fullpath
 
-    filelist = "\n  ".join([str(x.relative_to(folder)) for x in fullpaths])
-    msg = f"None of these files exist in {folder}: \n  {filelist}"
+    strfilelist = "\n  ".join([str(x.relative_to(folder)) for x in fullpaths])
+    orsub = " or subfolders" if search_subfolders else ""
+    msg = f"None of these files exist in {folder}{orsub}: \n  {strfilelist}"
     raise FileNotFoundError(msg)
 
 

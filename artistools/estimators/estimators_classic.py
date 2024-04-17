@@ -1,4 +1,5 @@
 import gzip
+import itertools
 import typing as t
 from pathlib import Path
 
@@ -69,7 +70,9 @@ def read_classic_estimators(
     readonly_mgi: list[int] | None = None,
     readonly_timestep: list[int] | None = None,
 ) -> dict[tuple[int, int], t.Any] | None:
-    estimfiles = list(Path(modelpath).glob("**/estimators_????.out"))
+    estimfiles = list(
+        itertools.chain(Path(modelpath).glob("estimators_????.out"), Path(modelpath).glob("*/estimators_????.out"))
+    )
     if not estimfiles:
         print("No estimator files found")
         return None
