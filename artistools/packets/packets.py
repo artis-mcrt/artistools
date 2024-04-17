@@ -481,9 +481,14 @@ def get_packetsfilepaths(
     """Get a list of Paths to parquet-formatted packets files, (which are generated from text files if needed)."""
     nprocs = at.get_nprocs(modelpath)
 
-    searchfolders = [Path(modelpath, "packets"), Path(modelpath)]
+    searchfolders = (
+        Path(modelpath, "vpackets" if virtual else "packets"),
+        Path(modelpath),
+        *(p.parent for p in Path().glob("*/vpackets_0000.out*" if virtual else "*/packets00_0000.out*")),
+    )
+
     # in descending priority (based on speed of reading)
-    suffix_priority = [".out.zst", ".out", ".out.gz", ".out.xz"]
+    suffix_priority = (".out.zst", ".out", ".out.gz", ".out.xz")
     t_lastschemachange = calendar.timegm(time_parquetschemachange)
 
     parquetpacketsfiles = []
