@@ -276,7 +276,6 @@ def add_derived_columns_lazy(
 
 def readfile_text(packetsfile: Path | str, modelpath: Path = Path()) -> pl.DataFrame:
     """Read a packets*.out(.xz/.zstd) space-separated text file into a polars DataFrame."""
-    print(f"Reading {packetsfile}")
     column_names: list[str] | None = None
     try:
         fpackets = at.zopen(packetsfile, mode="rt", encoding="utf-8")
@@ -406,6 +405,8 @@ def convert_text_to_parquet(
     packetsfiletext = Path(packetsfiletext)
     packetsfileparquet = at.stripallsuffixes(packetsfiletext).with_suffix(".out.parquet")
 
+    print(f"Saving {packetsfiletext} to {packetsfileparquet.name}")
+
     dfpackets = (
         readfile_text(packetsfiletext)
         .lazy()
@@ -494,7 +495,7 @@ def get_packetsfilepaths(
     parquetpacketsfiles = []
     parquetrequiredfiles = []
 
-    for rank in range(nprocs + 1):
+    for rank in range(nprocs + 1):  # go one higher to check if there are more files than nprocs_total
         name_nosuffix = f"vpackets_{rank:04d}" if virtual else f"packets00_{rank:04d}"
         found_rank = False
 
@@ -511,12 +512,12 @@ def get_packetsfilepaths(
                         latest_textfile_mtime = max(latest_textfile_mtime, textfilepath.stat().st_mtime)
 
                 if parquet_mtime < latest_textfile_mtime or parquet_mtime < t_lastschemachange:
-                    parquetfilepath.unlink(missing_ok=True)
-                    print(f"{parquetfilepath} is out of date.")
+                    print(f"{parquetfilepath} is out of date. Will overwrite.")
                 else:
                     if rank < nprocs:
                         parquetpacketsfiles.append(parquetfilepath)
                     found_rank = True
+                    break
 
         if not found_rank:
             for suffix in suffix_priority:
