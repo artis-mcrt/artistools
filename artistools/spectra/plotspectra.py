@@ -132,8 +132,10 @@ def plot_reference_spectrum(
         print(f" Scale from time {metadata['t']} to {scaletoreftime}, factor {timefactor} using Co56 decay law")
         specdata["f_lambda"] *= timefactor
         plotkwargs["label"] += f" * {timefactor:.2f}"
+
     if "scale_factor" in metadata:
         specdata["f_lambda"] *= metadata["scale_factor"]
+
     if metadata.get("mask_telluric", False):
         print("Masking telluric regions")
         z = metadata["z"]
@@ -166,6 +168,7 @@ def plot_reference_spectrum(
     # specdata['f_lambda'] = specdata['f_lambda'].apply(lambda x: max(0, x))
 
     if flambdafilterfunc:
+        print(" applying filter to reference spectrum")
         specdata.loc[:, "f_lambda"] = flambdafilterfunc(specdata["f_lambda"])
 
     if scale_to_peak:
