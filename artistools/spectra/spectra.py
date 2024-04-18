@@ -296,13 +296,17 @@ def get_from_packets(
         ).collect()
 
         array_flambda = (
-            dfbinned.get_column(f"{encol}_sum").to_numpy()
-            / delta_lambda
-            / (timehigh - timelow)
-            / (4 * math.pi)
-            * solidanglefactor
-            / (megaparsec_to_cm**2)
-            / nprocs_read
+            dfbinned.select(
+                pl.col(f"{encol}_sum")
+                / delta_lambda
+                / (timehigh - timelow)
+                / (4 * math.pi)
+                * solidanglefactor
+                / (megaparsec_to_cm**2)
+                / nprocs_read
+            )
+            .get_columns()[0]
+            .to_numpy()
         )
 
         if use_time == "escape":
