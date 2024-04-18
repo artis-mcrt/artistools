@@ -608,12 +608,9 @@ def get_vspecpol_data(
     if specdata is None:
         assert modelpath is not None
         # alternatively use f'vspecpol_averaged-{angle}.out' ?
-        vspecpath = modelpath
-        if (modelpath / "vspecpol").is_dir():
-            vspecpath = modelpath / "vspecpol"
 
         try:
-            specfilename = at.firstexisting(f"vspecpol_total-{vspecangle}.out", folder=vspecpath, tryzipped=True)
+            specfilename = at.firstexisting(f"vspecpol_total-{vspecangle}.out", folder=modelpath, tryzipped=True)
         except FileNotFoundError:
             print(f"vspecpol_total-{vspecangle}.out does not exist. Generating all-rank summed vspec files..")
             specfilename = make_virtual_spectra_summed_file(modelpath=modelpath)
