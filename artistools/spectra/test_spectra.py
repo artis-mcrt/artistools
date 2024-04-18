@@ -191,7 +191,9 @@ def test_spectra_get_spectrum_polar_angles_frompackets() -> None:
     }
 
     for dirbin, i in itertools.product(results_pkts, range(2)):
-        assert np.isclose(results_pkts[dirbin][i], expected_results[dirbin][i], rtol=1e-3)
+        result = results_pkts[dirbin][i]
+        assert isinstance(result, float)
+        assert np.isclose(result, expected_results[dirbin][i], rtol=1e-3)
 
 
 def test_spectra_get_flux_contributions() -> None:
