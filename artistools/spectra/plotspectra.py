@@ -403,11 +403,14 @@ def plot_artis_spectrum(
                 nbins = 5
 
                 for i in np.arange(0, len(wavelengths - nbins), nbins):
-                    new_lambda_angstroms.append(wavelengths[i + nbins // 2])
-                    sum_flux = sum(fluxes[j] for j in range(i, i + nbins))
-                    binned_flux.append(sum_flux / nbins)
+                    i_max = min(i + nbins, len(wavelengths))
+                    ncontribs = i_max - i
+                    sum_lambda = sum(wavelengths[j] for j in range(i, i_max))
+                    new_lambda_angstroms.append(sum_lambda / ncontribs)
+                    sum_flux = sum(fluxes[j] for j in range(i, i_max))
+                    binned_flux.append(sum_flux / ncontribs)
 
-                dfspectrum = pd.DataFrame({"lambda_angstroms": new_lambda_angstroms, ycolumnname: binned_flux})
+                dfspectrum = pl.DataFrame({"lambda_angstroms": new_lambda_angstroms, ycolumnname: binned_flux})
 
             axis.plot(
                 dfspectrum["lambda_angstroms"],
