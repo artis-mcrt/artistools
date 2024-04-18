@@ -271,7 +271,7 @@ def get_from_packets(
         elif average_over_phi:
             assert not average_over_theta
             solidanglefactor = ncosthetabins
-            pldfpackets_dirbin_lazy = dfpackets.filter(pl.col("costhetabin") * 10 == dirbin)
+            pldfpackets_dirbin_lazy = dfpackets.filter(pl.col("costhetabin") * nphibins == dirbin)
         elif average_over_theta:
             solidanglefactor = nphibins
             pldfpackets_dirbin_lazy = dfpackets.filter(pl.col("phibin") == dirbin)
