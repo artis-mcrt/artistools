@@ -656,7 +656,7 @@ def get_vspecpol_spectrum(
     angle: int,
     args: argparse.Namespace,
     fnufilterfunc: t.Callable[[np.ndarray], np.ndarray] | None = None,
-) -> pd.DataFrame:
+) -> pl.DataFrame:
     stokes_params = get_vspecpol_data(vspecangle=angle, modelpath=Path(modelpath))
     if "stokesparam" not in args:
         args.stokesparam = "I"
@@ -678,6 +678,7 @@ def get_vspecpol_spectrum(
     timeupper = match_closest_time(timeavg)
     timestepmin = vspecdata.columns.get_loc(timelower)
     timestepmax = vspecdata.columns.get_loc(timeupper)
+    print(f" vpacket spectrum timesteps {timestepmin} ({timelower}d) to {timestepmax} ({timeupper}d)")
 
     f_nu = stackspectra(
         [
@@ -693,10 +694,10 @@ def get_vspecpol_spectrum(
         f_nu = fnufilterfunc(f_nu)
 
     return (
-        pd.DataFrame({"nu": nu, "f_nu": f_nu})
-        .sort_values(by="nu", ascending=False)
-        .eval("lambda_angstroms = @c / nu", local_dict={"c": 2.99792458e18})
-        .eval("f_lambda = f_nu * nu / lambda_angstroms")
+        pl.DataFrame({"nu": nu, "f_nu": f_nu})
+        .sort(by="nu", descending=True)
+        .with_columns(lambda_angstroms=2.99792458e18 / pl.col("nu"))
+        .with_columns(f_lambda=pl.col("f_nu") * pl.col("nu") / pl.col("lambda_angstroms"))
     )
 
 
