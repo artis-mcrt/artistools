@@ -13,6 +13,7 @@ import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import polars as pl
 from matplotlib import ticker
 from matplotlib.artist import Artist
 
@@ -216,7 +217,7 @@ def plot_artis_spectrum(
     usedegrees: bool = False,
     maxpacketfiles: int | None = None,
     **plotkwargs,
-) -> pd.DataFrame | None:
+) -> pl.DataFrame | None:
     """Plot an ARTIS output spectrum. The data plotted are also returned as a DataFrame."""
     modelpath = Path(modelpath)
     if Path(modelpath).is_file():  # handle e.g. modelpath = 'modelpath/spec.out'
@@ -366,11 +367,9 @@ def plot_artis_spectrum(
                 plotkwargs = plotkwargs.copy()
                 plotkwargs["color"] = None
 
-            dfspectrum_fullrange = viewinganglespectra[dirbin]
-            dfspectrum = dfspectrum_fullrange[
-                (supxmin * 0.9 <= dfspectrum_fullrange["lambda_angstroms"])
-                & (dfspectrum_fullrange["lambda_angstroms"] <= supxmax * 1.1)
-            ].copy()
+            dfspectrum = pl.from_pandas(viewinganglespectra[dirbin]).filter(
+                pl.col("lambda_angstroms").is_between(supxmin * 0.9, supxmax * 1.1)
+            )
 
             linelabel_withdirbin = linelabel
             if dirbin != -1:
@@ -381,14 +380,9 @@ def plot_artis_spectrum(
             at.spectra.print_integrated_flux(dfspectrum["f_lambda"], dfspectrum["lambda_angstroms"])
 
             if scale_to_peak:
-                dfspectrum["f_lambda_scaled"] = dfspectrum["f_lambda"] / dfspectrum["f_lambda"].max() * scale_to_peak
-                if args.plotvspecpol is not None:
-                    for angle in args.plotvspecpol:
-                        viewinganglespectra[angle]["f_lambda_scaled"] = (
-                            viewinganglespectra[angle]["f_lambda"]
-                            / viewinganglespectra[angle]["f_lambda"].max()
-                            * scale_to_peak
-                        )
+                dfspectrum = dfspectrum.with_columns(
+                    f_lambda_scaled=pl.col("f_lambda") / pl.col("f_lambda").max() * scale_to_peak
+                )
 
                 ycolumnname = "f_lambda_scaled"
             else:
