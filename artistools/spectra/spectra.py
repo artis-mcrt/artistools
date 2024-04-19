@@ -1030,9 +1030,6 @@ def get_flux_contributions_from_packets(
 
     dfpackets = lzdfpackets.select([col for col in cols if col in lzdfpackets.columns]).collect()
 
-    npkts_selected = dfpackets.select(pl.count("*")).item(0, 0)
-    print(f"  time/frequency selection contains {npkts_selected:.2e} packets")
-
     emissiongroups = (
         dict(dfpackets.filter(pl.col(dirbin_nu_column).is_between(nu_min, nu_max)).group_by("emissiontype_str"))
         if getemission
