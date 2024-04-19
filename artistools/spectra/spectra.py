@@ -225,9 +225,12 @@ def get_from_packets(
                 .to_numpy()[0][0]
             )
 
-            em_time_low = timelowdays * 86400.0 + mean_correction
-            em_time_high = timehighdays * 86400.0 + mean_correction
-            dfpackets = dfpackets.filter(pl.col("em_time").is_between(em_time_low, em_time_high))
+            dfpackets = dfpackets.filter(
+                pl.col("em_time").is_between(
+                    timelowdays * 86400.0 + mean_correction,
+                    timehighdays * 86400.0 + mean_correction,
+                )
+            )
 
         dfpackets = dfpackets.filter(pl.col(nu_column).is_between(nu_min, nu_max))
 
