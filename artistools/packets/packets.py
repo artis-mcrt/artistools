@@ -950,9 +950,7 @@ def bin_and_sum(
     # Polars method
 
     df = df.lazy().with_columns(
-        (pl.col(bincol).cut(breaks=bins, labels=[str(x) for x in range(-1, len(bins))]).cast(str).cast(pl.Int32)).alias(
-            f"{bincol}_bin"
-        )
+        (pl.col(bincol).cut(breaks=bins, labels=[str(x) for x in range(-1, len(bins))])).alias(f"{bincol}_bin")
     )
 
     aggs = [pl.col(col).sum().alias(col + "_sum") for col in sumcols] if sumcols is not None else []
@@ -960,8 +958,12 @@ def bin_and_sum(
     if getcounts:
         aggs.append(pl.col(bincol).count().alias("count"))
 
-    wlbins = df.group_by(f"{bincol}_bin").agg(aggs).lazy()
+    wlbins = df.group_by(f"{bincol}_bin").agg(aggs).with_columns(pl.col(f"{bincol}_bin").cast(pl.Int32))
 
     # now we will include the empty bins
-    dfout = pl.DataFrame(pl.Series(name=f"{bincol}_bin", values=np.arange(0, len(bins) - 1), dtype=pl.Int32)).lazy()
-    return dfout.join(wlbins, how="left", on=f"{bincol}_bin").fill_null(0)
+    return (
+        pl.DataFrame(pl.Series(name=f"{bincol}_bin", values=np.arange(0, len(bins) - 1), dtype=pl.Int32))
+        .lazy()
+        .join(wlbins, how="left", on=f"{bincol}_bin")
+        .fill_null(0)
+    )
