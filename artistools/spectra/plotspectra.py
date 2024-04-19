@@ -281,7 +281,7 @@ def plot_artis_spectrum(
         )
         print(f" modelpath {modelpath}")
 
-        viewinganglespectra: dict[int, pd.DataFrame | pl.LazyFrame | pl.DataFrame] = {}
+        viewinganglespectra = {}
 
         # have to get the spherical average "bin" if directionbins is None
         dbins_get = list(directionbins).copy()

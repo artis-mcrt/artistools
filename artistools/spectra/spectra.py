@@ -143,19 +143,15 @@ def get_from_packets(
     fnufilterfunc: t.Callable[[np.ndarray], np.ndarray] | None = None,
     nprocs_read_dfpackets: tuple[int, pl.DataFrame | pl.LazyFrame] | None = None,
     directionbins_are_vpkt_observers: bool = False,
-) -> dict[int, pd.DataFrame]:
+) -> dict[int, pl.DataFrame]:
     """Get a spectrum dataframe using the packets files as input."""
     if directionbins is None:
         directionbins = [-1]
 
     assert use_time in {"arrival", "emission", "escape"}
 
-    if use_time == "escape":
-        modeldata, _ = at.inputmodel.get_modeldata(modelpath)
-        vmax_beta = modeldata.iloc[-1].vel_r_max_kmps * 299792.458
-        escapesurfacegamma = math.sqrt(1 - vmax_beta**2)
-    else:
-        escapesurfacegamma = None
+    if nu_column == "absorption_freq":
+        nu_column = "nu_absorbed"
 
     lambda_bin_edges: np.ndarray
     if delta_lambda is not None:
@@ -186,47 +182,75 @@ def get_from_packets(
 
     dfpackets = dfpackets.with_columns(
         [
-            (2.99792458e18 / pl.col(colname)).alias(colname.replace("nu_", "lambda_angstroms_"))
+            (2.99792458e18 / pl.col(colname)).alias(
+                colname.replace("absorption_freq", "nu_absorbed").replace("nu_", "lambda_angstroms_")
+            )
             for colname in dfpackets.columns
-            if "nu_" in colname
+            if "nu_" in colname or colname == "absorption_freq"
         ]
     )
 
-    getcols = {"lambda_angstroms_rf"}
+    dfbinned_lazy: pl.LazyFrame | None = None
 
     if directionbins_are_vpkt_observers:
         vpkt_config = at.get_vpkt_config(modelpath)
-        time_conditions = []
-        nu_conditions = []
         for dirbin in directionbins:
             obsdirindex = dirbin // vpkt_config["nspectraperobs"]
             opacchoiceindex = dirbin % vpkt_config["nspectraperobs"]
-            dirbin_lambda_column = (
+            lambda_column = (
                 f"dir{obsdirindex}_lambda_angstroms_rf"
                 if nu_column == "nu_rf"
-                else nu_column.replace("nu_", "lambda_angstroms_")
+                else nu_column.replace("absorption_freq", "nu_absorbed").replace("nu_", "lambda_angstroms_")
             )
-            getcols |= {
-                dirbin_lambda_column,
-                f"dir{obsdirindex}_t_arrive_d",
-                f"dir{obsdirindex}_e_rf_{opacchoiceindex}",
-            }
-            time_conditions.append(pl.col(f"dir{obsdirindex}_t_arrive_d").is_between(timelowdays, timehighdays))
-            nu_conditions.append(pl.col(dirbin_lambda_column).is_between(lambda_min, lambda_max))
+            energy_column = f"dir{obsdirindex}_e_rf_{opacchoiceindex}"
 
-        dfpackets = dfpackets.filter(pl.any_horizontal(time_conditions)).filter(pl.any_horizontal(nu_conditions))
-        getcols.discard("lambda_angstroms_rf")
+            pldfpackets_dirbin_lazy = dfpackets.filter(pl.col(lambda_column).is_between(lambda_min, lambda_max)).filter(
+                pl.col(f"dir{obsdirindex}_t_arrive_d").is_between(timelowdays, timehighdays)
+            )
+
+            dfbinned_dirbin = at.packets.bin_and_sum(
+                pldfpackets_dirbin_lazy,
+                bincol=lambda_column,
+                bins=list(lambda_bin_edges),
+                sumcols=[energy_column],
+                getcounts=True,
+            ).select(
+                [
+                    pl.col(f"{lambda_column}_bin").alias("lambda_binindex"),
+                    (
+                        pl.col(f"{energy_column}_sum")
+                        / delta_lambda
+                        / (timehigh - timelow)
+                        / (megaparsec_to_cm**2)
+                        / nprocs_read
+                    ).alias(f"f_lambda_dirbin{dirbin}"),
+                    pl.col("count").alias(f"count_dirbin{dirbin}"),
+                ]
+            )
+
+            dfbinned_lazy = (
+                dfbinned_lazy.join(dfbinned_dirbin, on="lambda_binindex", how="left")
+                if dfbinned_lazy is not None
+                else dfbinned_dirbin
+            )
+
         assert use_time == "arrival"
     else:
-        dirbin_lambda_column = nu_column.replace("nu_", "lambda_angstroms_")
-        dfpackets = dfpackets.filter(pl.col(dirbin_lambda_column).is_between(lambda_min, lambda_max))
+        lambda_column = nu_column.replace("nu_", "lambda_angstroms_")
+        energy_column = "e_cmf" if use_time == "escape" else "e_rf"
+
         if use_time == "arrival":
             dfpackets = dfpackets.filter(pl.col("t_arrive_d").is_between(timelowdays, timehighdays))
         elif use_time == "escape":
-            assert escapesurfacegamma is not None
+            modeldata, _ = at.inputmodel.get_modeldata(modelpath)
+            vmax_beta = modeldata.iloc[-1].vel_r_max_kmps * 299792.458
+            escapesurfacegamma = math.sqrt(1 - vmax_beta**2)
+
             dfpackets = dfpackets.filter(
-                pl.col("escape_time").is_between(timelow / escapesurfacegamma, timehigh / escapesurfacegamma)
+                (pl.col("escape_time") * escapesurfacegamma / 86400.0).is_between(timelowdays, timehighdays)
+                for dirbin in directionbins
             )
+
         elif use_time == "emission":
             mean_correction = float(
                 dfpackets.select((pl.col("em_time") - pl.col("t_arrive_d") * 86400.0).mean())
@@ -242,83 +266,70 @@ def get_from_packets(
                 )
             )
 
+        dfpackets = dfpackets.filter(pl.col(lambda_column).is_between(lambda_min, lambda_max))
+
+        for dirbin in directionbins:
+            if dirbin == -1:
+                solidanglefactor = 1.0
+                pldfpackets_dirbin_lazy = dfpackets
+            elif average_over_phi:
+                assert not average_over_theta
+                solidanglefactor = ncosthetabins
+                pldfpackets_dirbin_lazy = dfpackets.filter(pl.col("costhetabin") * nphibins == dirbin)
+            elif average_over_theta:
+                solidanglefactor = nphibins
+                pldfpackets_dirbin_lazy = dfpackets.filter(pl.col("phibin") == dirbin)
+            else:
+                solidanglefactor = ndirbins
+                pldfpackets_dirbin_lazy = dfpackets.filter(pl.col("dirbin") == dirbin)
+
+            dfbinned_dirbin = at.packets.bin_and_sum(
+                pldfpackets_dirbin_lazy,
+                bincol=lambda_column,
+                bins=list(lambda_bin_edges),
+                sumcols=[energy_column],
+                getcounts=True,
+            ).select(
+                [
+                    pl.col(f"{lambda_column}_bin").alias("lambda_binindex"),
+                    (
+                        pl.col(f"{energy_column}_sum")
+                        / delta_lambda
+                        / (timehigh - timelow)
+                        / (4 * math.pi)
+                        * solidanglefactor
+                        / (megaparsec_to_cm**2)
+                        / nprocs_read
+                    ).alias(f"f_lambda_dirbin{dirbin}"),
+                    pl.col("count").alias(f"count_dirbin{dirbin}"),
+                ]
+            )
+
+            if use_time == "escape":
+                assert escapesurfacegamma is not None
+                dfbinned_dirbin = dfbinned_dirbin.with_columns(
+                    pl.col(f"f_lambda_dirbin{dirbin}").mul(1.0 / escapesurfacegamma)
+                )
+
+            dfbinned_lazy = (
+                dfbinned_lazy.join(dfbinned_dirbin, on="lambda_binindex", how="left")
+                if dfbinned_lazy is not None
+                else dfbinned_dirbin
+            )
+
     if fnufilterfunc:
         print("Applying filter to ARTIS spectrum")
 
-    if not directionbins_are_vpkt_observers:
-        encol = "e_cmf" if use_time == "escape" else "e_rf"
-        getcols.add(encol)
-        if directionbins != [-1]:
-            if average_over_phi:
-                getcols.add("costhetabin")
-            elif average_over_theta:
-                getcols.add("phibin")
-            else:
-                getcols.add("dirbin")
-
-    if nprocs_read_dfpackets is None:
-        npkts_selected = dfpackets.select(pl.count("*")).collect().item(0, 0)
-        print(f"  time/frequency selection contains {npkts_selected:.2e} packets")
-
-    dfpackets = dfpackets.select(getcols).lazy().collect().lazy()
+    assert dfbinned_lazy is not None
+    dfbinned = dfbinned_lazy.collect(streaming=True)
+    assert isinstance(dfbinned, pl.DataFrame)
 
     dfdict = {}
     for dirbin in directionbins:
-        dirbin_lambda_column = nu_column.replace("nu_", "lambda_angstroms_")
-        if directionbins_are_vpkt_observers:
-            obsdirindex = dirbin // vpkt_config["nspectraperobs"]
-            opacchoiceindex = dirbin % vpkt_config["nspectraperobs"]
-            if nu_column == "nu_rf":
-                dirbin_lambda_column = f"dir{obsdirindex}_lambda_angstroms_rf"
-            pldfpackets_dirbin_lazy = dfpackets.filter(
-                pl.col(f"dir{obsdirindex}_t_arrive_d").is_between(timelowdays, timehighdays)
-                & pl.col(dirbin_lambda_column).is_between(lambda_min, lambda_max)
-            )
-            encol = f"dir{obsdirindex}_e_rf_{opacchoiceindex}"
-            solidanglefactor = 4 * math.pi
-        elif dirbin == -1:
-            solidanglefactor = 1.0
-            pldfpackets_dirbin_lazy = dfpackets
-        elif average_over_phi:
-            assert not average_over_theta
-            solidanglefactor = ncosthetabins
-            pldfpackets_dirbin_lazy = dfpackets.filter(pl.col("costhetabin") * nphibins == dirbin)
-        elif average_over_theta:
-            solidanglefactor = nphibins
-            pldfpackets_dirbin_lazy = dfpackets.filter(pl.col("phibin") == dirbin)
-        else:
-            solidanglefactor = ndirbins
-            pldfpackets_dirbin_lazy = dfpackets.filter(pl.col("dirbin") == dirbin)
-
         if nprocs_read_dfpackets is None:
-            npkts_selected = pldfpackets_dirbin_lazy.select(pl.count("*")).collect().item(0, 0)
-            print(f"    dirbin {dirbin} contains {npkts_selected:.2e} packets")
-
-        dfbinned = at.packets.bin_and_sum(
-            pldfpackets_dirbin_lazy,
-            bincol=dirbin_lambda_column,
-            bins=list(lambda_bin_edges),
-            sumcols=[encol],
-            getcounts=getpacketcount,
-        ).collect()
-
-        array_flambda = (
-            dfbinned.select(
-                pl.col(f"{encol}_sum")
-                / delta_lambda
-                / (timehigh - timelow)
-                / (4 * math.pi)
-                * solidanglefactor
-                / (megaparsec_to_cm**2)
-                / nprocs_read
-            )
-            .get_columns()[0]
-            .to_numpy()
-        )
-
-        if use_time == "escape":
-            assert escapesurfacegamma is not None
-            array_flambda /= escapesurfacegamma
+            npkts_selected = dfbinned.select(pl.col(f"count_dirbin{dirbin}")).sum().item()
+            print(f"    dirbin {dirbin:2d} plots {npkts_selected:.2e} packets")
+        array_flambda = dfbinned.get_column(f"f_lambda_dirbin{dirbin}")
 
         if fnufilterfunc:
             arr_nu = 2.99792458e18 / lambda_bin_centres
@@ -326,15 +337,13 @@ def get_from_packets(
             array_f_nu = fnufilterfunc(array_f_nu)
             array_flambda = array_f_nu * arr_nu / lambda_bin_centres
 
-        dfdict[dirbin] = pd.DataFrame(
+        dfdict[dirbin] = pl.DataFrame(
             {
                 "lambda_angstroms": lambda_bin_centres,
                 "f_lambda": array_flambda,
             }
+            | ({"packetcount": dfbinned.get_column(f"count_dirbin{dirbin}")} if getpacketcount else {}),
         )
-
-        if getpacketcount:
-            dfdict[dirbin]["packetcount"] = dfbinned.get_column("count")
 
     return dfdict
 

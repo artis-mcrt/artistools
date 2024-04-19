@@ -84,7 +84,7 @@ def test_spectra_get_spectrum() -> None:
     def check_spectrum(dfspectrumpkts) -> None:
         assert math.isclose(max(dfspectrumpkts["f_lambda"]), 2.548532804918824e-13, abs_tol=1e-5)
         assert min(dfspectrumpkts["f_lambda"]) < 1e-9
-        assert math.isclose(np.mean(dfspectrumpkts["f_lambda"]), 1.0314682640070206e-14, abs_tol=1e-5)
+        assert math.isclose(dfspectrumpkts["f_lambda"].mean(), 1.0314682640070206e-14, abs_tol=1e-5)
 
     dfspectrum = at.spectra.get_spectrum(modelpath, 55, 65, fnufilterfunc=None)[-1]
     assert len(dfspectrum["lambda_angstroms"]) == 1000
