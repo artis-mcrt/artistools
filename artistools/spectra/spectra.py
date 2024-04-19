@@ -162,14 +162,12 @@ def get_from_packets(
         lambda_min = lambda_bin_centres[0]
         lambda_max = lambda_bin_centres[-1]
 
-    timelow = timelowdays * 86400.0
-    timehigh = timehighdays * 86400.0
+    delta_time_s = (timehighdays - timelowdays) * 86400.0
 
     nphibins = at.get_viewingdirection_phibincount()
     ncosthetabins = at.get_viewingdirection_costhetabincount()
     ndirbins = at.get_viewingdirectionbincount()
 
-    dfpackets: pl.LazyFrame
     if nprocs_read_dfpackets:
         nprocs_read = nprocs_read_dfpackets[0]
         dfpackets = nprocs_read_dfpackets[1].lazy()
@@ -220,7 +218,7 @@ def get_from_packets(
                     (
                         pl.col(f"{energy_column}_sum")
                         / delta_lambda
-                        / (timehigh - timelow)
+                        / delta_time_s
                         / (megaparsec_to_cm**2)
                         / nprocs_read
                     ).alias(f"f_lambda_dirbin{dirbin}"),
@@ -295,7 +293,7 @@ def get_from_packets(
                     (
                         pl.col(f"{energy_column}_sum")
                         / delta_lambda
-                        / (timehigh - timelow)
+                        / delta_time_s
                         / (4 * math.pi)
                         * solidanglefactor
                         / (megaparsec_to_cm**2)
