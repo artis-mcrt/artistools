@@ -321,7 +321,7 @@ def get_from_packets(
         print("Applying filter to ARTIS spectrum")
 
     assert dfbinned_lazy is not None
-    dfbinned = dfbinned_lazy.collect()
+    dfbinned = dfbinned_lazy.collect(streaming=True)
     assert isinstance(dfbinned, pl.DataFrame)
 
     dfdict = {}
