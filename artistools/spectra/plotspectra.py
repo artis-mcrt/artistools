@@ -239,7 +239,8 @@ def plot_artis_spectrum(
     else:
         use_time = "arrival"
 
-    directionbins = [-1] if directionbins is None else directionbins.copy()
+    if directionbins is None:
+        directionbins = [-1]
 
     if plotpacketcount:
         from_packets = True
