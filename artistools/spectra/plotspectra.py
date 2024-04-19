@@ -239,8 +239,7 @@ def plot_artis_spectrum(
     else:
         use_time = "arrival"
 
-    if directionbins is None:
-        directionbins = [-1]
+    directionbins = [-1] if directionbins is None else directionbins.copy()
 
     if plotpacketcount:
         from_packets = True
@@ -283,11 +282,6 @@ def plot_artis_spectrum(
 
         viewinganglespectra = {}
 
-        # have to get the spherical average "bin" if directionbins is None
-        dbins_get = list(directionbins).copy()
-        if -1 not in dbins_get and not args.plotvspecpol:
-            dbins_get.append(-1)
-
         supxmin, supxmax = axis.get_xlim()
         if from_packets:
             viewinganglespectra = at.spectra.get_from_packets(
@@ -300,7 +294,7 @@ def plot_artis_spectrum(
                 maxpacketfiles=maxpacketfiles,
                 delta_lambda=args.deltalambda,
                 getpacketcount=plotpacketcount,
-                directionbins=dbins_get,
+                directionbins=directionbins,
                 average_over_phi=average_over_phi,
                 average_over_theta=average_over_theta,
                 fnufilterfunc=filterfunc,
@@ -321,13 +315,13 @@ def plot_artis_spectrum(
 
             viewinganglespectra = {
                 dirbin: at.spectra.get_vspecpol_spectrum(modelpath, timeavg, dirbin, args, fnufilterfunc=filterfunc)
-                for dirbin in dbins_get
+                for dirbin in directionbins
                 if dirbin >= 0
             }
         else:
             viewinganglespectra = at.spectra.get_spectrum(
                 modelpath=modelpath,
-                directionbins=dbins_get,
+                directionbins=directionbins,
                 timestepmin=timestepmin,
                 timestepmax=timestepmax,
                 average_over_phi=average_over_phi,
