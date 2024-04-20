@@ -1,4 +1,5 @@
 import argparse
+import functools
 import gzip
 import io
 import math
@@ -962,13 +963,12 @@ def get_filterfunc(args: argparse.Namespace, mode: str = "interp") -> t.Callable
     if dictargs.get("filtersavgol", False):
         import scipy.signal
 
-        window_length, poly_order = (int(x) for x in args.filtersavgol)
-
-        def savgolfilterfunc(ylist: t.Any) -> t.Any:
-            return scipy.signal.savgol_filter(ylist, window_length, poly_order, mode=mode)
+        window_length, polyorder = (int(x) for x in args.filtersavgol)
 
         assert filterfunc is None
-        filterfunc = savgolfilterfunc
+        filterfunc = functools.partial(
+            scipy.signal.savgol_filter, window_length=window_length, polyorder=polyorder, mode=mode
+        )
 
         print("Applying Savitzky-Golay filter")
 
