@@ -453,9 +453,8 @@ def convert_virtual_packets_text_to_parquet(
 
     print(f"Saving {vpacketsfiletext} to {vpacketsfileparquet}")
 
-    fvpackets = at.zopen(vpacketsfiletext, mode="rt", encoding="utf-8")
+    firstline = at.zopen(vpacketsfiletext, mode="rt", encoding="utf-8").readline()
 
-    firstline = fvpackets.readline()
     assert firstline.lstrip().startswith("#")
     columns = firstline.lstrip("#").split()
 
@@ -473,9 +472,7 @@ def convert_virtual_packets_text_to_parquet(
         }
         | {col: pl.Float64 for col in columns if col.endswith("_nu_rf") or "_e_rf" in col}
         | {col: pl.Float32 for col in columns if col.endswith("_t_arrive_d")},
-    )
-
-    dfvpackets = dfvpackets.sort(by=["dir0_t_arrive_d"])
+    ).sort(by=["dir0_t_arrive_d"])
 
     dfvpackets.write_parquet(vpacketsfileparquet, compression="zstd", statistics=True, compression_level=6)
 

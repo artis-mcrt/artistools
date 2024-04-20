@@ -248,9 +248,9 @@ def make_ionsubplot(
         else float(ionpopulation / dfpopthision["n_LTE_T_e"].sum())
     )
 
-    dfpopthision = dfpopthision.eval("n_LTE_T_e_normed = n_LTE_T_e * @x", local_dict={"x": lte_scalefactor})
-
-    dfpopthision = dfpopthision.eval("departure_coeff = n_NLTE / n_LTE_T_e_normed")
+    dfpopthision = dfpopthision.eval("n_LTE_T_e_normed = n_LTE_T_e * @x", local_dict={"x": lte_scalefactor}).eval(
+        "departure_coeff = n_NLTE / n_LTE_T_e_normed"
+    )
 
     pd.set_option("display.max_columns", 150)
     if len(dfpopthision) < 30:
