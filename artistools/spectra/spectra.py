@@ -16,6 +16,7 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import polars as pl
+import polars.selectors as cs
 
 import artistools as at
 
@@ -315,10 +316,26 @@ def get_from_packets(
                 else dfbinned_dirbin
             )
 
+    assert dfbinned_lazy is not None
+
     if fnufilterfunc:
         print("Applying filter to ARTIS spectrum")
+        arr_nu = 2.99792458e18 / lambda_bin_centres
+        dfbinned_lazy = (
+            dfbinned_lazy.with_columns(
+                (cs.starts_with("f_lambda_dirbin") * lambda_bin_centres / arr_nu).name.map(
+                    lambda n: n.replace("f_lambda_dirbin", "f_nu_dirbin")
+                )
+            )
+            .with_columns(cs.starts_with("f_nu_dirbin").map(lambda x: fnufilterfunc(x.to_numpy())))
+            .with_columns(
+                (cs.starts_with("f_nu_dirbin") * arr_nu / lambda_bin_centres).name.map(
+                    lambda n: n.replace("f_nu_dirbin", "f_lambda_dirbin")
+                )
+            )
+            .drop(cs.starts_with("f_nu_dirbin"))
+        )
 
-    assert dfbinned_lazy is not None
     dfbinned = dfbinned_lazy.collect(streaming=True)
     assert isinstance(dfbinned, pl.DataFrame)
 
@@ -328,12 +345,6 @@ def get_from_packets(
             npkts_selected = dfbinned.select(pl.col(f"count_dirbin{dirbin}")).sum().item()
             print(f"    dirbin {dirbin:2d} plots {npkts_selected:.2e} packets")
         array_flambda = dfbinned.get_column(f"f_lambda_dirbin{dirbin}")
-
-        if fnufilterfunc:
-            arr_nu = 2.99792458e18 / lambda_bin_centres
-            array_f_nu = array_flambda * lambda_bin_centres / arr_nu
-            array_f_nu = fnufilterfunc(array_f_nu)
-            array_flambda = array_f_nu * arr_nu / lambda_bin_centres
 
         dfdict[dirbin] = pl.DataFrame(
             {
