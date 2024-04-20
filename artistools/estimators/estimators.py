@@ -49,17 +49,16 @@ def get_variableunits(key: str) -> str | None:
 
 
 def get_variablelongunits(key: str) -> str | None:
-    variablelongunits = {
+    return {
         "heating_dep/total_dep": "",
         "TR": "Temperature [K]",
         "Te": "Temperature [K]",
         "TJ": "Temperature [K]",
-    }
-    return variablelongunits.get(key)
+    }.get(key)
 
 
 def get_varname_formatted(varname: str) -> str:
-    replacements = {
+    return {
         "nne": r"n$_{\rm e}$",
         "lognne": r"Log n$_{\rm e}$",
         "rho": r"$\rho$",
@@ -70,8 +69,7 @@ def get_varname_formatted(varname: str) -> str:
         "gamma_R_bfest": r"$\Gamma_{\rm phot}$ [s$^{-1}$]",
         "heating_dep/total_dep": "Heating fraction",
         **{f"vel_{ax}_mid_on_c": f"$v_{{{ax}}}$" for ax in ["x", "y", "z", "r", "rcyl"]},
-    }
-    return replacements.get(varname, varname)
+    }.get(varname, varname)
 
 
 def apply_filters(
