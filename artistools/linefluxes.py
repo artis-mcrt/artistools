@@ -231,8 +231,9 @@ def get_closelines(
     lowerlevelindex: int | None = None,
     upperlevelindex: int | None = None,
 ):
-    dflinelist = at.get_linelist_dataframe(modelpath)
-    dflinelistclosematches = dflinelist.query("atomic_number == @atomic_number and ion_stage == @ion_stage").copy()
+    dflinelistclosematches = (
+        at.get_linelist_dataframe(modelpath).query("atomic_number == @atomic_number and ion_stage == @ion_stage").copy()
+    )
     if lambdamin is not None:
         dflinelistclosematches = dflinelistclosematches.query("@lambdamin < lambda_angstroms")
     if lambdamax is not None:

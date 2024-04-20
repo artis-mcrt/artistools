@@ -432,11 +432,11 @@ def convert_text_to_parquet(
         (at.get_syn_dir(p) for p in packetsfiletext.parents if Path(p, "syn_dir.txt").is_file()),
         (0.0, 0.0, 1.0),
     )
-    dfpackets = add_packet_directions_lazypolars(dfpackets, syn_dir)
-    dfpackets = bin_packet_directions_lazypolars(dfpackets)
-
     # print(f"Saving {packetsfileparquet}")
-    dfpackets = dfpackets.sort(by=["type_id", "escape_type_id", "t_arrive_d"])
+
+    dfpackets = add_packet_directions_lazypolars(dfpackets, syn_dir)
+    dfpackets = bin_packet_directions_lazypolars(dfpackets).sort(by=["type_id", "escape_type_id", "t_arrive_d"])
+
     dfpackets.collect().write_parquet(packetsfileparquet, compression="zstd", statistics=True, compression_level=6)
 
     return packetsfileparquet

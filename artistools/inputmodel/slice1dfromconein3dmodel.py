@@ -178,8 +178,7 @@ def make_plot(args):
     cone = make_cone(args)
 
     cone = cone.loc[cone["rho_model"] > 0.0002]  # cut low densities (empty cells?) from plot
-    fig = plt.figure()
-    ax = fig.gca(projection="3d")
+    ax = plt.figure().gca(projection="3d")
 
     # print(cone['rho_model'])
 
