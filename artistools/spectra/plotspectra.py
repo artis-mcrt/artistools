@@ -298,7 +298,7 @@ def plot_artis_spectrum(
                 directionbins=directionbins,
                 average_over_phi=average_over_phi,
                 average_over_theta=average_over_theta,
-                fnufilterfunc=filterfunc,
+                fluxfilterfunc=filterfunc,
                 directionbins_are_vpkt_observers=args.plotvspecpol is not None,
             )
 
@@ -315,7 +315,7 @@ def plot_artis_spectrum(
                 sys.exit(1)
 
             viewinganglespectra = {
-                dirbin: at.spectra.get_vspecpol_spectrum(modelpath, timeavg, dirbin, args, fnufilterfunc=filterfunc)
+                dirbin: at.spectra.get_vspecpol_spectrum(modelpath, timeavg, dirbin, args, fluxfilterfunc=filterfunc)
                 for dirbin in directionbins
                 if dirbin >= 0
             }
@@ -327,7 +327,7 @@ def plot_artis_spectrum(
                 timestepmax=timestepmax,
                 average_over_phi=average_over_phi,
                 average_over_theta=average_over_theta,
-                fnufilterfunc=filterfunc,
+                fluxfilterfunc=filterfunc,
             )
 
         dirbin_definitions = (

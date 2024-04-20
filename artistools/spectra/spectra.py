@@ -141,7 +141,7 @@ def get_from_packets(
     average_over_phi: bool = False,
     average_over_theta: bool = False,
     nu_column: str = "nu_rf",
-    fnufilterfunc: t.Callable[[np.ndarray], np.ndarray] | None = None,
+    fluxfilterfunc: t.Callable[[np.ndarray], np.ndarray] | None = None,
     nprocs_read_dfpackets: tuple[int, pl.DataFrame | pl.LazyFrame] | None = None,
     directionbins_are_vpkt_observers: bool = False,
 ) -> dict[int, pl.DataFrame]:
@@ -315,21 +315,10 @@ def get_from_packets(
 
             dfbinned_lazy = dfbinned_lazy.join(dfbinned_dirbin, on="lambda_binindex", how="left")
 
-    if fnufilterfunc:
+    if fluxfilterfunc:
         print("Applying filter to ARTIS spectrum")
-        dfbinned_lazy = (
-            dfbinned_lazy.with_columns(
-                (cs.starts_with("f_lambda_dirbin") * pl.col("lambda_angstroms").pow(2) / 2.99792458e18).name.map(
-                    lambda n: n.replace("f_lambda_dirbin", "f_nu_dirbin")
-                )
-            )
-            .with_columns(cs.starts_with("f_nu_dirbin").map(lambda x: fnufilterfunc(x.to_numpy())))
-            .with_columns(
-                (cs.starts_with("f_nu_dirbin") * 2.99792458e18 / pl.col("lambda_angstroms").pow(2)).name.map(
-                    lambda n: n.replace("f_nu_dirbin", "f_lambda_dirbin")
-                )
-            )
-            .drop(cs.starts_with("f_nu_dirbin"))
+        dfbinned_lazy = dfbinned_lazy.with_columns(
+            cs.starts_with("f_lambda_dirbin").map(lambda x: fluxfilterfunc(x.to_numpy()))
         )
 
     dfbinned = dfbinned_lazy.collect(streaming=True)
@@ -452,7 +441,7 @@ def get_spectrum(
     timestepmin: int,
     timestepmax: int | None = None,
     directionbins: t.Sequence[int] | None = None,
-    fnufilterfunc: t.Callable[[npt.NDArray[np.floating]], npt.NDArray[np.floating]] | None = None,
+    fluxfilterfunc: t.Callable[[npt.NDArray[np.floating]], npt.NDArray[np.floating]] | None = None,
     average_over_theta: bool = False,
     average_over_phi: bool = False,
     stokesparam: t.Literal["I", "Q", "U"] = "I",
@@ -510,12 +499,10 @@ def get_spectrum(
             print(" ERROR: data not available for timestep range")
             return specdataout
 
-        # best to use the filter on this list because it
-        # has regular sampling
-        if fnufilterfunc:
+        if fluxfilterfunc:
             if dirbin == directionbins[0]:
                 print("Applying filter to ARTIS spectrum")
-            arr_f_nu = fnufilterfunc(arr_f_nu)
+            arr_f_nu = fluxfilterfunc(arr_f_nu)
 
         c_ang_per_s = 2.99792458e18
         arr_lambda = c_ang_per_s / arr_nu
@@ -672,7 +659,7 @@ def get_vspecpol_spectrum(
     timeavg: float,
     angle: int,
     args: argparse.Namespace,
-    fnufilterfunc: t.Callable[[np.ndarray], np.ndarray] | None = None,
+    fluxfilterfunc: t.Callable[[np.ndarray], np.ndarray] | None = None,
 ) -> pl.DataFrame:
     stokes_params = get_vspecpol_data(vspecangle=angle, modelpath=Path(modelpath))
     if "stokesparam" not in args:
@@ -704,11 +691,9 @@ def get_vspecpol_spectrum(
         ]
     )
 
-    # best to use the filter on this list because it
-    # has regular sampling
-    if fnufilterfunc:
+    if fluxfilterfunc:
         print("Applying filter to ARTIS spectrum")
-        f_nu = fnufilterfunc(f_nu)
+        f_nu = fluxfilterfunc(f_nu)
 
     return (
         pl.DataFrame({"nu": nu, "f_nu": f_nu})
@@ -859,7 +844,6 @@ def get_flux_contributions(
                 else:
                     array_fnu_absorption = np.zeros_like(arraylambda, dtype=float)
 
-                # best to use the filter on fnu (because it hopefully has regular sampling)
                 if filterfunc:
                     array_fnu_emission = filterfunc(array_fnu_emission)
                     if selectedcolumn <= nelements * maxion:
@@ -1112,7 +1096,7 @@ def get_flux_contributions_from_packets(
                 lambda_max=lambda_max,
                 use_time=use_time,
                 delta_lambda=delta_lambda,
-                fnufilterfunc=filterfunc,
+                fluxfilterfunc=filterfunc,
                 nprocs_read_dfpackets=(nprocs_read, emissiongroups[groupname]),
                 directionbins=[directionbin],
                 directionbins_are_vpkt_observers=directionbins_are_vpkt_observers,
@@ -1140,7 +1124,7 @@ def get_flux_contributions_from_packets(
                 use_time=use_time,
                 delta_lambda=delta_lambda,
                 nu_column="absorption_freq",
-                fnufilterfunc=filterfunc,
+                fluxfilterfunc=filterfunc,
                 nprocs_read_dfpackets=(nprocs_read, absorptiongroups[groupname]),
                 directionbins=[directionbin],
                 directionbins_are_vpkt_observers=directionbins_are_vpkt_observers,
