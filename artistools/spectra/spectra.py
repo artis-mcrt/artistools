@@ -189,7 +189,14 @@ def get_from_packets(
         ]
     )
 
-    dfbinned_lazy: pl.LazyFrame | None = None
+    dfbinned_lazy = (
+        pl.DataFrame(
+            {"lambda_angstroms": lambda_bin_centres, "lambda_binindex": range(len(lambda_bin_centres))},
+            schema_overrides={"lambda_binindex": pl.Int32},
+        )
+        .sort(["lambda_binindex", "lambda_angstroms"])
+        .lazy()
+    )
 
     if directionbins_are_vpkt_observers:
         vpkt_config = at.get_vpkt_config(modelpath)
@@ -227,11 +234,7 @@ def get_from_packets(
                 ]
             )
 
-            dfbinned_lazy = (
-                dfbinned_lazy.join(dfbinned_dirbin, on="lambda_binindex", how="left")
-                if dfbinned_lazy is not None
-                else dfbinned_dirbin
-            )
+            dfbinned_lazy = dfbinned_lazy.join(dfbinned_dirbin, on="lambda_binindex", how="left")
 
         assert use_time == "arrival"
     else:
@@ -310,26 +313,19 @@ def get_from_packets(
                     pl.col(f"f_lambda_dirbin{dirbin}").mul(1.0 / escapesurfacegamma)
                 )
 
-            dfbinned_lazy = (
-                dfbinned_lazy.join(dfbinned_dirbin, on="lambda_binindex", how="left")
-                if dfbinned_lazy is not None
-                else dfbinned_dirbin
-            )
-
-    assert dfbinned_lazy is not None
+            dfbinned_lazy = dfbinned_lazy.join(dfbinned_dirbin, on="lambda_binindex", how="left")
 
     if fnufilterfunc:
         print("Applying filter to ARTIS spectrum")
-        arr_nu = 2.99792458e18 / lambda_bin_centres
         dfbinned_lazy = (
             dfbinned_lazy.with_columns(
-                (cs.starts_with("f_lambda_dirbin") * lambda_bin_centres / arr_nu).name.map(
+                (cs.starts_with("f_lambda_dirbin") * pl.col("lambda_angstroms").pow(2) / 2.99792458e18).name.map(
                     lambda n: n.replace("f_lambda_dirbin", "f_nu_dirbin")
                 )
             )
             .with_columns(cs.starts_with("f_nu_dirbin").map(lambda x: fnufilterfunc(x.to_numpy())))
             .with_columns(
-                (cs.starts_with("f_nu_dirbin") * arr_nu / lambda_bin_centres).name.map(
+                (cs.starts_with("f_nu_dirbin") * 2.99792458e18 / pl.col("lambda_angstroms").pow(2)).name.map(
                     lambda n: n.replace("f_nu_dirbin", "f_lambda_dirbin")
                 )
             )
@@ -344,12 +340,11 @@ def get_from_packets(
         if nprocs_read_dfpackets is None:
             npkts_selected = dfbinned.select(pl.col(f"count_dirbin{dirbin}")).sum().item()
             print(f"    dirbin {dirbin:2d} plots {npkts_selected:.2e} packets")
-        array_flambda = dfbinned.get_column(f"f_lambda_dirbin{dirbin}")
 
         dfdict[dirbin] = pl.DataFrame(
             {
-                "lambda_angstroms": lambda_bin_centres,
-                "f_lambda": array_flambda,
+                "lambda_angstroms": dfbinned.get_column("lambda_angstroms"),
+                "f_lambda": dfbinned.get_column(f"f_lambda_dirbin{dirbin}"),
             }
             | ({"packetcount": dfbinned.get_column(f"count_dirbin{dirbin}")} if getpacketcount else {}),
         )
