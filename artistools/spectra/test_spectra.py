@@ -146,10 +146,12 @@ def test_spectra_get_spectrum_polar_angles() -> None:
     }
 
     for dirbin in spectra:
-        assert isinstance(results[dirbin][0], float)
-        assert np.isclose(results[dirbin][0], expected_results[dirbin][0], rtol=1e-3)
-        assert isinstance(results[dirbin][1], float)
-        assert np.isclose(results[dirbin][1], expected_results[dirbin][1], rtol=1e-3)
+        result_mean = results[dirbin][0]
+        assert isinstance(result_mean, float)
+        assert np.isclose(result_mean, expected_results[dirbin][0], rtol=1e-3)
+        result_std = results[dirbin][1]
+        assert isinstance(result_std, float)
+        assert np.isclose(result_std, expected_results[dirbin][1], rtol=1e-3)
 
 
 def test_spectra_get_spectrum_polar_angles_frompackets() -> None:

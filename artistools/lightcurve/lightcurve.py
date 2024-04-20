@@ -332,7 +332,7 @@ def bolometric_magnitude(
                     timestepmax=timestep,
                     average_over_phi=average_over_phi,
                     average_over_theta=average_over_theta,
-                )[angle]
+                )[angle].to_pandas()
             integrated_flux = np.trapz(spectrum["f_lambda"], spectrum["lambda_angstroms"])
             integrated_luminosity = integrated_flux * 4 * np.pi * np.power(u.Mpc.to("cm"), 2)
             Mbol_sun = 4.74

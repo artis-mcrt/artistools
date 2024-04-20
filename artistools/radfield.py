@@ -264,7 +264,7 @@ def plot_specout(
     elif specfilename.is_file():
         modelpath = Path(specfilename).parent
 
-    dfspectrum = at.spectra.get_spectrum(modelpath=modelpath, timestepmin=timestep)[-1]
+    dfspectrum = at.spectra.get_spectrum(modelpath=modelpath, timestepmin=timestep)[-1].to_pandas()
     label = "Emergent spectrum"
     if scale_factor is not None:
         label += " (scaled)"

@@ -124,7 +124,7 @@ def get_spectrum_at_time(
         timestepmax=timestep,
         average_over_phi=average_over_phi,
         average_over_theta=average_over_theta,
-    )[dirbin]
+    )[dirbin].to_pandas()
 
 
 def get_from_packets(
@@ -445,7 +445,7 @@ def get_spectrum(
     average_over_theta: bool = False,
     average_over_phi: bool = False,
     stokesparam: t.Literal["I", "Q", "U"] = "I",
-) -> dict[int, pd.DataFrame]:
+) -> dict[int, pl.DataFrame]:
     """Return a pandas DataFrame containing an ARTIS emergent spectrum."""
     if timestepmax is None or timestepmax < 0:
         timestepmax = timestepmin
@@ -480,7 +480,7 @@ def get_spectrum(
         else:
             specdata[-1] = get_specpol_data(angle=-1, modelpath=modelpath)[stokesparam]
 
-    specdataout: dict[int, pd.DataFrame] = {}
+    specdataout: dict[int, pl.DataFrame] = {}
     for dirbin in directionbins:
         if dirbin not in specdata:
             print(f"WARNING: Direction bin {dirbin} not found in specdata. Dirbins: {list(specdata.keys())}")
@@ -504,11 +504,10 @@ def get_spectrum(
                 print("Applying filter to ARTIS spectrum")
             arr_f_nu = fluxfilterfunc(arr_f_nu)
 
-        c_ang_per_s = 2.99792458e18
-        arr_lambda = c_ang_per_s / arr_nu
-        arr_f_lambda = arr_f_nu * arr_nu / arr_lambda
-        dfspectrum = pd.DataFrame({"lambda_angstroms": arr_lambda, "f_lambda": arr_f_lambda})
-        dfspectrum = dfspectrum.sort_values(by="lambda_angstroms", ascending=True)
+        arr_lambda = 2.99792458e18 / arr_nu
+        dfspectrum = pl.DataFrame({"lambda_angstroms": arr_lambda, "f_lambda": arr_f_nu * arr_nu / arr_lambda}).sort(
+            by="lambda_angstroms"
+        )
 
         specdataout[dirbin] = dfspectrum
 
