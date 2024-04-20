@@ -739,8 +739,8 @@ def get_flux_contributions(
     else:
         dbinlist = [directionbin]
 
-    emissiondata: dict[int, pd.DataFrame] = {}
-    absorptiondata: dict[int, pd.DataFrame] = {}
+    emissiondata = {}
+    absorptiondata = {}
     maxion: int | None = None
     for dbin in dbinlist:
         if getemission:
