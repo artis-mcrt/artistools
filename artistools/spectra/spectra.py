@@ -136,7 +136,6 @@ def get_from_packets(
     delta_lambda: None | float | np.ndarray = None,
     use_time: t.Literal["arrival", "emission", "escape"] = "arrival",
     maxpacketfiles: int | None = None,
-    getpacketcount: bool = False,
     directionbins: t.Collection[int] | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
@@ -334,7 +333,7 @@ def get_from_packets(
             ]
         )
         if nprocs_read_dfpackets is None:
-            npkts_selected = dfdict[dirbin].select(pl.col(f"count_dirbin{dirbin}")).sum().item()
+            npkts_selected = dfdict[dirbin].get_column("packetcount").sum()
             print(f"    dirbin {dirbin:2d} plots {npkts_selected:.2e} packets")
 
     return dfdict
