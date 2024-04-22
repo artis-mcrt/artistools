@@ -845,7 +845,7 @@ def make_contrib_plot(axes: t.Iterable[plt.Axes], modelpath: Path, densityplotyv
         allnonemptymgilist = list({modelgridindex for ts, modelgridindex in estimators})
 
     assert estimators is not None
-    packetsfiles = at.packets.get_packets_parquet_paths(modelpath, args.maxpacketfiles)
+    packetsfiles = at.packets.get_packets_text_paths(modelpath, args.maxpacketfiles)
     assert args.timemin is not None
     assert args.timemax is not None
     # tdays_min = float(args.timemin)

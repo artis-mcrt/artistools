@@ -245,29 +245,29 @@ def get_rankbatch_parquetfile(
 
         time_start = time.perf_counter()
 
-        pldf_group = None
+        pldf_batch = None
         if at.get_config()["num_processes"] > 1:
             with multiprocessing.get_context("spawn").Pool(processes=at.get_config()["num_processes"]) as pool:
                 for pldf_file in pool.imap(read_estimators_from_file, estfilepaths):
-                    if pldf_group is None:
-                        pldf_group = pldf_file
+                    if pldf_batch is None:
+                        pldf_batch = pldf_file
                     else:
-                        pldf_group = pl.concat([pldf_group, pldf_file], how="diagonal_relaxed")
+                        pldf_batch = pl.concat([pldf_batch, pldf_file], how="diagonal_relaxed")
 
                 pool.close()
                 pool.join()
                 pool.terminate()
         else:
             for pldf_file in (read_estimators_from_file(estfilepath) for estfilepath in estfilepaths):
-                pldf_group = (
-                    pldf_file if pldf_group is None else pl.concat([pldf_group, pldf_file], how="diagonal_relaxed")
+                pldf_batch = (
+                    pldf_file if pldf_batch is None else pl.concat([pldf_batch, pldf_file], how="diagonal_relaxed")
                 )
 
         print(f"    took {time.perf_counter() - time_start:.1f} s")
 
-        assert pldf_group is not None
+        assert pldf_batch is not None
         print(f"  writing {parquetfilepath.relative_to(modelpath.parent)}")
-        pldf_group.write_parquet(parquetfilepath, compression="zstd", statistics=True, compression_level=8)
+        pldf_batch.write_parquet(parquetfilepath, compression="zstd", statistics=True, compression_level=8)
 
     filesize = parquetfilepath.stat().st_size / 1024 / 1024
     print(f"Scanning {parquetfilepath.relative_to(modelpath.parent)} ({filesize:.2f} MiB)")

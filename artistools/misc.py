@@ -876,14 +876,17 @@ def anyexist(
     filelist: t.Sequence[str | Path],
     folder: Path | str = Path(),
     tryzipped: bool = True,
-) -> bool:
+    search_subfolders: bool = True,
+) -> Path | None:
     """Return true if any files in file list exist."""
     try:
-        firstexisting(filelist=filelist, folder=folder, tryzipped=tryzipped)
+        filepath = firstexisting(
+            filelist=filelist, folder=folder, tryzipped=tryzipped, search_subfolders=search_subfolders
+        )
     except FileNotFoundError:
-        return False
+        return None
 
-    return True
+    return filepath
 
 
 def batched(iterable: t.Iterable[t.Any], n: int) -> t.Generator[list, t.Any, None]:

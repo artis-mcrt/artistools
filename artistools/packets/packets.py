@@ -2,6 +2,7 @@ import calendar
 import gzip
 import math
 import multiprocessing
+import time
 import typing as t
 from functools import lru_cache
 from pathlib import Path
@@ -383,7 +384,6 @@ def readfile(
     packetsfile: Path | str,
     packet_type: str | None = None,
     escape_type: t.Literal["TYPE_RPKT", "TYPE_GAMMA"] | None = None,
-    use_pyarrow_extension_array=True,
 ) -> pd.DataFrame:
     """Read a packet file into a Pandas DataFrame."""
     dfpackets = pl.read_parquet(packetsfile)
@@ -396,18 +396,13 @@ def readfile(
     elif packet_type is not None and packet_type:
         dfpackets = dfpackets.filter(pl.col("type_id") == type_ids[packet_type])
 
-    return dfpackets.to_pandas(use_pyarrow_extension_array=use_pyarrow_extension_array)
+    return dfpackets.to_pandas(use_pyarrow_extension_array=True)
 
 
-def convert_text_to_parquet(
+def read_packets_text_file(
     packetsfiletext: Path | str,
-) -> Path:
+) -> pl.DataFrame:
     packetsfiletext = Path(packetsfiletext)
-    packetsfileparquet = at.stripallsuffixes(packetsfiletext).with_suffix(".out.parquet")
-    packetsfileparquet = Path(*packetsfileparquet.parts[:-1]) / "parquet" / packetsfileparquet.parts[-1]
-    packetsfileparquet.parent.mkdir(parents=True, exist_ok=True)
-
-    print(f"Saving {packetsfiletext} to {packetsfileparquet}")
 
     dfpackets = (
         readfile_text(packetsfiletext)
@@ -432,33 +427,24 @@ def convert_text_to_parquet(
         (at.get_syn_dir(p) for p in packetsfiletext.parents if Path(p, "syn_dir.txt").is_file()),
         (0.0, 0.0, 1.0),
     )
-    # print(f"Saving {packetsfileparquet}")
 
     dfpackets = add_packet_directions_lazypolars(dfpackets, syn_dir)
     dfpackets = bin_packet_directions_lazypolars(dfpackets).sort(by=["type_id", "escape_type_id", "t_arrive_d"])
 
-    dfpackets.collect().write_parquet(packetsfileparquet, compression="zstd", statistics=True, compression_level=6)
-
-    return packetsfileparquet
+    return dfpackets.collect()
 
 
-def convert_virtual_packets_text_to_parquet(
+def read_virtual_packets_text_file(
     vpacketsfiletext: Path | str,
-) -> Path:
+) -> pl.DataFrame:
     vpacketsfiletext = Path(vpacketsfiletext)
-    vpacketsfileparquet = at.stripallsuffixes(vpacketsfiletext).with_suffix(".out.parquet")
-
-    vpacketsfileparquet = Path(*vpacketsfileparquet.parts[:-1]) / "parquet" / vpacketsfileparquet.parts[-1]
-    vpacketsfileparquet.parent.mkdir(parents=True, exist_ok=True)
-
-    print(f"Saving {vpacketsfiletext} to {vpacketsfileparquet}")
 
     firstline = at.zopen(vpacketsfiletext, mode="rt", encoding="utf-8").readline()
 
     assert firstline.lstrip().startswith("#")
     columns = firstline.lstrip("#").split()
 
-    dfvpackets = pl.read_csv(
+    return pl.read_csv(
         vpacketsfiletext,
         separator=" ",
         has_header=False,
@@ -474,102 +460,130 @@ def convert_virtual_packets_text_to_parquet(
         | {col: pl.Float32 for col in columns if col.endswith("_t_arrive_d")},
     ).sort(by=["dir0_t_arrive_d"])
 
-    dfvpackets.write_parquet(vpacketsfileparquet, compression="zstd", statistics=True, compression_level=6)
 
-    return vpacketsfileparquet
+def get_packets_text_paths(modelpath: str | Path, maxpacketfiles: int | None = None) -> list[Path]:
+    """Get a list of Paths to packets*.out files."""
+    modelpath = Path(modelpath)
+    nprocs_read = at.get_nprocs(modelpath)
+    if maxpacketfiles is not None:
+        nprocs_read = min(nprocs_read, maxpacketfiles)
+
+    return [
+        at.firstexisting(
+            f"packets00_{rank:04d}.out",
+            folder=modelpath,
+            tryzipped=True,
+            search_subfolders=True,
+        )
+        for rank in range(nprocs_read)
+    ]
 
 
-def get_packets_parquet_paths(
+def get_rankbatch_parquetfile(
+    modelpath: Path | str, batch_mpiranks: t.Sequence[int], batchindex: int, virtual: bool
+) -> Path:
+    """Get the path to a parquet file containing packets for a specific batch of MPI ranks."""
+    modelpath = Path(modelpath)
+    strpacket = "vpackets" if virtual else "packets"
+    parquetdir = Path(modelpath, strpacket, "parquet")
+    parquetdir.mkdir(exist_ok=True, parents=True)
+
+    parquetfilepath = (
+        parquetdir
+        / f"{strpacket}batch{batchindex:02d}_{batch_mpiranks[0]:04d}_{batch_mpiranks[-1]:04d}.out.parquet.tmp"
+    )
+    t_lastschemachange = calendar.timegm(time_parquetschemachange)
+
+    text_file_paths = [
+        at.firstexisting(
+            (f"vpackets_{rank:04d}.out" if virtual else f"packets00_{rank:04d}.out"),
+            folder=modelpath,
+            tryzipped=True,
+            search_subfolders=True,
+        )
+        for rank in batch_mpiranks
+    ]
+
+    conversion_needed = True
+    if parquetfilepath.is_file():
+        parquet_mtime = parquetfilepath.stat().st_mtime
+        latest_textfile_mtime = text_file_paths[-1].stat().st_mtime
+
+        if parquet_mtime > latest_textfile_mtime and parquet_mtime > t_lastschemachange:
+            conversion_needed = False
+        else:
+            print(f"{parquetfilepath} is out of date. Will overwrite.")
+
+    if conversion_needed:
+        print(f"  saving {parquetfilepath.relative_to(modelpath.parent)} from text files")
+
+        reader = read_virtual_packets_text_file if virtual else read_packets_text_file
+
+        time_start = time.perf_counter()
+        pldf_batch: pl.DataFrame | None = None
+        if at.get_config()["num_processes"] > 1:
+            with multiprocessing.get_context("spawn").Pool(processes=at.get_config()["num_processes"]) as pool:
+                for pldf_file in pool.imap(reader, text_file_paths):
+                    pldf_batch = pldf_file if pldf_batch is None else pl.concat([pldf_batch, pldf_file], how="vertical")
+
+                pool.close()
+                pool.join()
+                pool.terminate()
+        else:
+            for pldf_file in (reader(text_file_path) for text_file_path in text_file_paths):
+                pldf_batch = pldf_file if pldf_batch is None else pl.concat([pldf_batch, pldf_file], how="vertical")
+
+        assert pldf_batch is not None
+        if virtual:
+            pldf_batch = pldf_batch.sort(by=["dir0_t_arrive_d"])
+
+        pldf_batch.write_parquet(parquetfilepath, compression="zstd", statistics=True, compression_level=8)
+        print(f"    took {time.perf_counter() - time_start:.1f} s")
+
+    return parquetfilepath
+
+
+def get_packets_batch_parquet_paths(
     modelpath: str | Path, maxpacketfiles: int | None = None, printwarningsonly: bool = False, virtual: bool = False
-) -> list[Path]:
+) -> tuple[int, list[Path]]:
     """Get a list of Paths to parquet-formatted packets files, (which are generated from text files if needed)."""
     nprocs = at.get_nprocs(modelpath)
 
-    searchfolders = (
-        Path(modelpath, "vpackets" if virtual else "packets", "parquet"),
-        Path(modelpath, "vpackets" if virtual else "packets"),
-        Path(modelpath),
-        *(p.parent for p in Path().glob("*/vpackets_0000.out*" if virtual else "*/packets00_0000.out*")),
-    )
+    mpirank_groups_all = list(enumerate(at.misc.batched(range(nprocs), 100)))
+    mpirank_groups = [
+        (batchindex, mpiranks)
+        for batchindex, mpiranks in mpirank_groups_all
+        if maxpacketfiles is None or mpiranks[-1] < maxpacketfiles
+    ]
 
-    # in descending priority (based on speed of reading)
-    suffix_priority = (".out.zst", ".out", ".out.gz", ".out.xz")
-    t_lastschemachange = calendar.timegm(time_parquetschemachange)
-
-    parquetpacketsfiles = []
-    parquetrequiredfiles = []
-
-    for rank in range(nprocs + 1):  # go one higher to check if there are more files than nprocs_total
-        name_nosuffix = f"vpackets_{rank:04d}" if virtual else f"packets00_{rank:04d}"
-        found_rank = False
-
-        for folderpath in searchfolders:
-            parquetfilepath = (folderpath / name_nosuffix).with_suffix(".out.parquet")
-            if parquetfilepath.is_file():
-                parquet_mtime = parquetfilepath.stat().st_mtime
-
-                # check if the parquet file is out of date by the presence of a text file updated after the parquet file
-                latest_textfile_mtime = -1.0
-                for suffix in suffix_priority:
-                    textfilepath = (folderpath / name_nosuffix).with_suffix(suffix)
-                    if textfilepath.is_file():
-                        latest_textfile_mtime = max(latest_textfile_mtime, textfilepath.stat().st_mtime)
-
-                if parquet_mtime < latest_textfile_mtime or parquet_mtime < t_lastschemachange:
-                    print(f"{parquetfilepath} is out of date. Will overwrite.")
-                else:
-                    if rank < nprocs:
-                        parquetpacketsfiles.append(parquetfilepath)
-                    found_rank = True
-                    break
-
-        if not found_rank:
-            for suffix in suffix_priority:
-                for folderpath in searchfolders:
-                    filepath = (folderpath / name_nosuffix).with_suffix(suffix)
-                    if filepath.is_file():
-                        if rank < nprocs:
-                            parquetrequiredfiles.append(filepath)
-                        found_rank = True
-                        break
-
-                if found_rank:
-                    break
-
-        if found_rank and rank >= nprocs:
-            print(f"WARNING: nprocs is {nprocs} but file {filepath} exists")
-        elif not found_rank and rank < nprocs:
-            print(f"WARNING: packets file for rank {rank} was not found.")
-
-        if maxpacketfiles is not None and (len(parquetpacketsfiles) + len(parquetrequiredfiles)) >= maxpacketfiles:
-            break
-
-    converter = convert_virtual_packets_text_to_parquet if virtual else convert_text_to_parquet
-    if len(parquetrequiredfiles) >= 20 and at.get_config()["num_processes"] > 1:
-        with multiprocessing.get_context("spawn").Pool(processes=at.get_config()["num_processes"]) as pool:
-            convertedparquetpacketsfiles = pool.map(converter, parquetrequiredfiles)
-            pool.close()
-            pool.join()
-    else:
-        convertedparquetpacketsfiles = [converter(p) for p in parquetrequiredfiles]
-
-    parquetpacketsfiles.extend(convertedparquetpacketsfiles)
+    if not mpirank_groups:
+        msg = f"No packets batches selected. Set maxpacketfiles to at least {mpirank_groups_all[0][1][-1]+1}"
+        raise ValueError(msg)
 
     if not printwarningsonly:
         if maxpacketfiles is not None and nprocs > maxpacketfiles:
-            print(f"Reading from the first {maxpacketfiles} of {nprocs} packets files")
+            nprocs_read = mpirank_groups[-1][1][-1] + 1
+            print(f"Reading packets from the first {nprocs_read} of {nprocs} ranks")
         else:
-            print(f"Reading from {len(parquetpacketsfiles)} packets files")
+            print(f"Reading packets from {nprocs} ranks")
 
-    return parquetpacketsfiles
+    parquetpacketsfiles = [
+        get_rankbatch_parquetfile(modelpath, mpiranks, batchindex=batchindex, virtual=virtual)
+        for batchindex, mpiranks in mpirank_groups
+    ]
+    assert bool(parquetpacketsfiles)
+    nprocs_read = sum(len(mpiranks) for _, mpiranks in mpirank_groups)
+    return nprocs_read, parquetpacketsfiles
 
 
 def get_virtual_packets_pl(modelpath: str | Path, maxpacketfiles: int | None = None) -> tuple[int, pl.LazyFrame]:
-    vpacketparquetfiles = get_packets_parquet_paths(modelpath, maxpacketfiles=maxpacketfiles, virtual=True)
+    nprocs_read, vpacketparquetfiles = get_packets_batch_parquet_paths(
+        modelpath, maxpacketfiles=maxpacketfiles, virtual=True
+    )
 
-    nprocs_read = len(vpacketparquetfiles)
-    packetsdatasize_gb = nprocs_read * Path(vpacketparquetfiles[0]).stat().st_size / 1024 / 1024 / 1024
-    print(f"  data size is {packetsdatasize_gb:.1f} GB ({nprocs_read} * size of {vpacketparquetfiles[0].parts[-1]})")
+    nbatches_read = len(vpacketparquetfiles)
+    packetsdatasize_gb = nbatches_read * Path(vpacketparquetfiles[0]).stat().st_size / 1024 / 1024 / 1024
+    print(f"  data size is {packetsdatasize_gb:.1f} GB ({nbatches_read} * size of {vpacketparquetfiles[0].parts[-1]})")
 
     # add some extra columns to imitate the real packets
     dfpackets = pl.scan_parquet(vpacketparquetfiles).with_columns(
@@ -595,13 +609,13 @@ def get_packets_pl(
         if packet_type is None:
             packet_type = "TYPE_ESCAPE"
 
-    packetsfiles = get_packets_parquet_paths(modelpath, maxpacketfiles)
+    nprocs_read, packetsparquetfiles = get_packets_batch_parquet_paths(modelpath, maxpacketfiles)
 
-    nprocs_read = len(packetsfiles)
-    packetsdatasize_gb = nprocs_read * Path(packetsfiles[0]).stat().st_size / 1024 / 1024 / 1024
-    print(f"  data size is {packetsdatasize_gb:.1f} GB ({nprocs_read} * size of {packetsfiles[0].parts[-1]})")
+    nbatches_read = len(packetsparquetfiles)
+    packetsdatasize_gb = nbatches_read * Path(packetsparquetfiles[0]).stat().st_size / 1024 / 1024 / 1024
+    print(f"  data size is {packetsdatasize_gb:.1f} GB ({nbatches_read} * size of {packetsparquetfiles[0].parts[-1]})")
 
-    pldfpackets = pl.scan_parquet(packetsfiles)
+    pldfpackets = pl.scan_parquet(packetsparquetfiles)
 
     npkts_total = pldfpackets.select(pl.count("*")).collect().item(0, 0)
     print(f"  files contain {npkts_total:.2e} packets")
@@ -801,7 +815,7 @@ def make_3d_histogram_from_packets(modelpath, timestep_min, timestep_max=None, e
     else:
         print("Binning by packet arrival time")
 
-    packetsfiles = at.packets.get_packets_parquet_paths(modelpath)
+    packetsfiles = at.packets.get_packets_batch_parquet_paths(modelpath)
 
     emission_position3d = [[], [], []]
     e_rf = []
@@ -893,8 +907,7 @@ def make_3d_grid(modeldata, vmax_cms):
 def get_mean_packet_emission_velocity_per_ts(
     modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT", maxpacketfiles=None, escape_angles=None
 ) -> pd.DataFrame:
-    packetsfiles = at.packets.get_packets_parquet_paths(modelpath, maxpacketfiles=maxpacketfiles)
-    nprocs_read = len(packetsfiles)
+    nprocs_read, packetsfiles = at.packets.get_packets_batch_parquet_paths(modelpath, maxpacketfiles=maxpacketfiles)
     assert nprocs_read > 0
 
     timearray = at.get_timestep_times(modelpath=modelpath, loc="mid")
