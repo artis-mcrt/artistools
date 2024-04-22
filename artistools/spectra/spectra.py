@@ -326,17 +326,16 @@ def get_from_packets(
 
     dfdict = {}
     for dirbin in directionbins:
-        if nprocs_read_dfpackets is None:
-            npkts_selected = dfbinned.select(pl.col(f"count_dirbin{dirbin}")).sum().item()
-            print(f"    dirbin {dirbin:2d} plots {npkts_selected:.2e} packets")
-
-        dfdict[dirbin] = pl.DataFrame(
-            {
-                "lambda_angstroms": dfbinned.get_column("lambda_angstroms"),
-                "f_lambda": dfbinned.get_column(f"f_lambda_dirbin{dirbin}"),
-            }
-            | ({"packetcount": dfbinned.get_column(f"count_dirbin{dirbin}")} if getpacketcount else {}),
+        dfdict[dirbin] = dfbinned.select(
+            [
+                "lambda_angstroms",
+                pl.col(f"f_lambda_dirbin{dirbin}").alias("f_lambda"),
+                pl.col(f"count_dirbin{dirbin}").alias("packetcount"),
+            ]
         )
+        if nprocs_read_dfpackets is None:
+            npkts_selected = dfdict[dirbin].select(pl.col(f"count_dirbin{dirbin}")).sum().item()
+            print(f"    dirbin {dirbin:2d} plots {npkts_selected:.2e} packets")
 
     return dfdict
 
