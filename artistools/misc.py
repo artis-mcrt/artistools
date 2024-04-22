@@ -850,7 +850,7 @@ def firstexisting(
     for filename in filelist:
         if search_subfolders:
             folders += [
-                p.parent for filename in filelist for p in Path().glob(f"*/{filename}*") if p.parent not in folders
+                p.parent for filename in filelist for p in folder.glob(f"*/{filename}*") if p.parent not in folders
             ]
 
         for folder in folders:
@@ -868,7 +868,7 @@ def firstexisting(
 
     strfilelist = "\n  ".join([str(x.relative_to(folder)) for x in fullpaths])
     orsub = " or subfolders" if search_subfolders else ""
-    msg = f"None of these files exist in {folders}{orsub}: \n  {strfilelist}"
+    msg = f"None of these files exist in {folder}{orsub}: \n  {strfilelist}"
     raise FileNotFoundError(msg)
 
 
