@@ -603,6 +603,9 @@ def get_packets_pl(
 
     pldfpackets = pl.scan_parquet(packetsfiles)
 
+    npkts_total = pldfpackets.select(pl.count("*")).collect().item(0, 0)
+    print(f"  files contain {npkts_total:.2e} packets")
+
     if escape_type is not None:
         assert packet_type is None or packet_type == "TYPE_ESCAPE"
         pldfpackets = pldfpackets.filter(
@@ -610,9 +613,6 @@ def get_packets_pl(
         )
     elif packet_type is not None and packet_type:
         pldfpackets = pldfpackets.filter(pl.col("type_id") == type_ids[packet_type])
-
-    npkts_total = pldfpackets.select(pl.count("*")).collect().item(0, 0)
-    print(f"  files contain {npkts_total:.2e} packets")
 
     return nprocs_read, pldfpackets
 
