@@ -868,7 +868,7 @@ def firstexisting(
 
     strfilelist = "\n  ".join([str(x.relative_to(folder)) for x in fullpaths])
     orsub = " or subfolders" if search_subfolders else ""
-    msg = f"None of these files exist in {folder}{orsub}: \n  {strfilelist}"
+    msg = f"None of these files exist in {folders}{orsub}: \n  {strfilelist}"
     raise FileNotFoundError(msg)
 
 
