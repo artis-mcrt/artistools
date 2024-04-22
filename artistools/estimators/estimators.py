@@ -6,7 +6,6 @@ Examples are temperatures, populations, and heating/cooling rates.
 
 import argparse
 import contextlib
-import itertools
 import math
 import multiprocessing
 import sys
@@ -223,22 +222,6 @@ def read_estimators_from_file(
     )
 
 
-def batched(iterable, n):  # -> Generator[list, Any, None]:
-    """Batch data into iterators of length n. The last batch may be shorter."""
-    # batched('ABCDEFG', 3) --> ABC DEF G
-    if n < 1:
-        msg = "n must be at least one"
-        raise ValueError(msg)
-    it = iter(iterable)
-    while True:
-        chunk_it = itertools.islice(it, n)
-        try:
-            first_el = next(chunk_it)
-        except StopIteration:
-            return
-        yield list(itertools.chain((first_el,), chunk_it))
-
-
 def get_rankbatch_parquetfile(
     modelpath: Path,
     folderpath: Path,
@@ -342,7 +325,7 @@ def scan_estimators(
     )
     mpirank_groups = [
         (batchindex, mpiranks)
-        for batchindex, mpiranks in enumerate(batched(mpiranklist, 100))
+        for batchindex, mpiranks in enumerate(at.misc.batched(mpiranklist, 100))
         if mpiranks_matched.intersection(mpiranks)
     ]
 
