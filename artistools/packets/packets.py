@@ -479,7 +479,7 @@ def convert_virtual_packets_text_to_parquet(
     return vpacketsfileparquet
 
 
-def get_packetsfilepaths(
+def get_packets_parquet_paths(
     modelpath: str | Path, maxpacketfiles: int | None = None, printwarningsonly: bool = False, virtual: bool = False
 ) -> list[Path]:
     """Get a list of Paths to parquet-formatted packets files, (which are generated from text files if needed)."""
@@ -565,7 +565,7 @@ def get_packetsfilepaths(
 
 
 def get_virtual_packets_pl(modelpath: str | Path, maxpacketfiles: int | None = None) -> tuple[int, pl.LazyFrame]:
-    vpacketparquetfiles = get_packetsfilepaths(modelpath, maxpacketfiles=maxpacketfiles, virtual=True)
+    vpacketparquetfiles = get_packets_parquet_paths(modelpath, maxpacketfiles=maxpacketfiles, virtual=True)
 
     nprocs_read = len(vpacketparquetfiles)
     packetsdatasize_gb = nprocs_read * Path(vpacketparquetfiles[0]).stat().st_size / 1024 / 1024 / 1024
@@ -595,7 +595,7 @@ def get_packets_pl(
         if packet_type is None:
             packet_type = "TYPE_ESCAPE"
 
-    packetsfiles = get_packetsfilepaths(modelpath, maxpacketfiles)
+    packetsfiles = get_packets_parquet_paths(modelpath, maxpacketfiles)
 
     nprocs_read = len(packetsfiles)
     packetsdatasize_gb = nprocs_read * Path(packetsfiles[0]).stat().st_size / 1024 / 1024 / 1024
@@ -801,7 +801,7 @@ def make_3d_histogram_from_packets(modelpath, timestep_min, timestep_max=None, e
     else:
         print("Binning by packet arrival time")
 
-    packetsfiles = at.packets.get_packetsfilepaths(modelpath)
+    packetsfiles = at.packets.get_packets_parquet_paths(modelpath)
 
     emission_position3d = [[], [], []]
     e_rf = []
@@ -893,7 +893,7 @@ def make_3d_grid(modeldata, vmax_cms):
 def get_mean_packet_emission_velocity_per_ts(
     modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT", maxpacketfiles=None, escape_angles=None
 ) -> pd.DataFrame:
-    packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles=maxpacketfiles)
+    packetsfiles = at.packets.get_packets_parquet_paths(modelpath, maxpacketfiles=maxpacketfiles)
     nprocs_read = len(packetsfiles)
     assert nprocs_read > 0
 

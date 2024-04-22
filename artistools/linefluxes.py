@@ -65,7 +65,7 @@ def get_packets_with_emtype_onefile(
 def get_packets_with_emtype(
     modelpath: Path | str, emtypecolumn: str, lineindices: t.Sequence[int], maxpacketfiles: int | None = None
 ):
-    packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles=maxpacketfiles)
+    packetsfiles = at.packets.get_packets_parquet_paths(modelpath, maxpacketfiles=maxpacketfiles)
     nprocs_read = len(packetsfiles)
     assert nprocs_read > 0
 
