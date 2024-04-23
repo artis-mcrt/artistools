@@ -241,7 +241,11 @@ def get_rankbatch_parquetfile(
                 estfilepath = at.firstexisting(f"estimators_{mpirank:04d}.out", folder=folderpath, tryzipped=True)
                 estfilepaths.append(estfilepath)
 
-        print(f"  reading {len(estfilepaths)} estimator files from {folderpath.relative_to(Path(folderpath).parent)}")
+        print(
+            f"  reading {len(estfilepaths)} estimator files from {folderpath.relative_to(Path(folderpath).parent)}...",
+            end="",
+            flush=True,
+        )
 
         time_start = time.perf_counter()
 
@@ -263,14 +267,15 @@ def get_rankbatch_parquetfile(
                     pldf_file if pldf_batch is None else pl.concat([pldf_batch, pldf_file], how="diagonal_relaxed")
                 )
 
-        print(f"    took {time.perf_counter() - time_start:.1f} s")
+        print(
+            f"took {time.perf_counter() - time_start:.1f} s. Writing {parquetfilepath.relative_to(modelpath.parent)}..."
+        )
 
         assert pldf_batch is not None
-        print(f"  writing {parquetfilepath.relative_to(modelpath.parent)}")
         pldf_batch.write_parquet(parquetfilepath, compression="zstd", statistics=True, compression_level=8)
 
     filesize = parquetfilepath.stat().st_size / 1024 / 1024
-    print(f"Scanning {parquetfilepath.relative_to(modelpath.parent)} ({filesize:.2f} MiB)")
+    print(f"  scanning {parquetfilepath.relative_to(modelpath.parent)} ({filesize:.2f} MiB)")
 
     return parquetfilepath
 
