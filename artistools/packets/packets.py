@@ -496,7 +496,7 @@ def get_rankbatch_parquetfile(
 
         pldf_batch: pl.DataFrame | None = None
         if at.get_config()["num_processes"] > 1:
-            with multiprocessing.get_context("fork").Pool(processes=at.get_config()["num_processes"]) as pool:
+            with multiprocessing.Pool(processes=at.get_config()["num_processes"]) as pool:
                 for pldf_file in pool.imap(ftextreader, text_file_paths):
                     pldf_batch = pldf_file if pldf_batch is None else pl.concat([pldf_batch, pldf_file], how="vertical")
 

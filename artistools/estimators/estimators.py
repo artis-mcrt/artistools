@@ -247,7 +247,7 @@ def get_rankbatch_parquetfile(
 
         pldf_batch = None
         if at.get_config()["num_processes"] > 1:
-            with multiprocessing.get_context("spawn").Pool(processes=at.get_config()["num_processes"]) as pool:
+            with multiprocessing.Pool(processes=at.get_config()["num_processes"]) as pool:
                 for pldf_file in pool.imap(read_estimators_from_file, estfilepaths):
                     if pldf_batch is None:
                         pldf_batch = pldf_file
