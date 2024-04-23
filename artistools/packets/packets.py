@@ -320,7 +320,7 @@ def readfile_text(
 ) -> pl.DataFrame:
     """Read a packets*.out(.xz/.zstd) space-separated text file into a polars DataFrame."""
     packetsfiletext = Path(packetsfiletext)
-
+    print(f"  reading {packetsfiletext}")
     dtype_overrides = {
         "absorption_freq": pl.Float32,
         "absorption_type": pl.Int32,
@@ -490,10 +490,9 @@ def get_rankbatch_parquetfile(
         ftextreader = read_virtual_packets_text_file if virtual else readfile_text
 
         pldf_batch = pl.concat(
-            (ftextreader(text_file_path, column_names=column_names) for text_file_path in text_file_paths),
+            (ftextreader(text_file_path, column_names=column_names).lazy() for text_file_path in text_file_paths),
             how="vertical",
-            rechunk=False,
-        ).lazy()
+        )
 
         assert pldf_batch is not None
 
