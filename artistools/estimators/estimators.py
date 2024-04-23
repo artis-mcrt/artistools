@@ -8,6 +8,7 @@ import argparse
 import contextlib
 import math
 import multiprocessing
+import multiprocessing.pool
 import sys
 import time
 import typing as t
@@ -227,13 +228,14 @@ def get_rankbatch_parquetfile(
     folderpath: Path,
     batch_mpiranks: t.Sequence[int],
     batchindex: int,
+    pool: multiprocessing.pool.Pool | None = None,
 ) -> Path:
     parquetfilepath = (
         folderpath / f"estimbatch{batchindex:02d}_{batch_mpiranks[0]:04d}_{batch_mpiranks[-1]:04d}.out.parquet.tmp"
     )
 
     if not parquetfilepath.exists():
-        print(f"{parquetfilepath.relative_to(modelpath.parent)} does not exist")
+        print(f"  generating {parquetfilepath.relative_to(modelpath.parent)}.")
         estfilepaths = []
         for mpirank in batch_mpiranks:
             # not worth printing an error, because ranks with no cells to update do not produce an estimator file
@@ -250,16 +252,13 @@ def get_rankbatch_parquetfile(
         time_start = time.perf_counter()
 
         pldf_batch = None
-        if at.get_config()["num_processes"] > 1:
-            with multiprocessing.Pool(processes=at.get_config()["num_processes"]) as pool:
-                for pldf_file in pool.imap(read_estimators_from_file, estfilepaths):
-                    if pldf_batch is None:
-                        pldf_batch = pldf_file
-                    else:
-                        pldf_batch = pl.concat([pldf_batch, pldf_file], how="diagonal_relaxed")
+        if pool is not None:
+            for pldf_file in pool.imap(read_estimators_from_file, estfilepaths):
+                if pldf_batch is None:
+                    pldf_batch = pldf_file
+                else:
+                    pldf_batch = pl.concat([pldf_batch, pldf_file], how="diagonal_relaxed")
 
-                pool.close()
-                pool.join()
         else:
             for pldf_file in (read_estimators_from_file(estfilepath) for estfilepath in estfilepaths):
                 pldf_batch = (
@@ -335,16 +334,28 @@ def scan_estimators(
 
     runfolders = at.get_runfolders(modelpath, timesteps=match_timestep)
 
-    parquetfiles = (
-        get_rankbatch_parquetfile(modelpath, runfolder, mpiranks, batchindex=batchindex)
-        for runfolder in runfolders
-        for batchindex, mpiranks in mpirank_groups
+    ctx: t.Any = (
+        multiprocessing.Pool(processes=at.get_config()["num_processes"])
+        if at.get_config()["num_processes"] > 1
+        else contextlib.nullcontext()
     )
-    assert bool(parquetfiles)
 
-    pldflazy = pl.concat([pl.scan_parquet(pfile) for pfile in parquetfiles], how="diagonal_relaxed").unique(
-        ["timestep", "modelgridindex"], maintain_order=True, keep="first"
-    )
+    with ctx as pool:
+        parquetfiles = (
+            get_rankbatch_parquetfile(modelpath, runfolder, mpiranks, batchindex=batchindex, pool=pool)
+            for runfolder in runfolders
+            for batchindex, mpiranks in mpirank_groups
+        )
+
+        assert bool(parquetfiles)
+
+        pldflazy = pl.concat([pl.scan_parquet(pfile) for pfile in parquetfiles], how="diagonal_relaxed").unique(
+            ["timestep", "modelgridindex"], maintain_order=True, keep="first"
+        )
+
+        if pool is not None:
+            pool.close()
+            pool.join()
 
     if match_modelgridindex is not None:
         pldflazy = pldflazy.filter(pl.col("modelgridindex").is_in(match_modelgridindex))
