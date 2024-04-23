@@ -260,7 +260,6 @@ def get_rankbatch_parquetfile(
 
                 pool.close()
                 pool.join()
-                pool.terminate()
         else:
             for pldf_file in (read_estimators_from_file(estfilepath) for estfilepath in estfilepaths):
                 pldf_batch = (
