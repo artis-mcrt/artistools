@@ -341,21 +341,20 @@ def scan_estimators(
     )
 
     with ctx as pool:
-        parquetfiles = (
+        parquetfiles = [
             get_rankbatch_parquetfile(modelpath, runfolder, mpiranks, batchindex=batchindex, pool=pool)
             for runfolder in runfolders
             for batchindex, mpiranks in mpirank_groups
-        )
+        ]
 
         assert bool(parquetfiles)
+        if pool is not None:
+            pool.close()
+            pool.join()
 
         pldflazy = pl.concat([pl.scan_parquet(pfile) for pfile in parquetfiles], how="diagonal_relaxed").unique(
             ["timestep", "modelgridindex"], maintain_order=True, keep="first"
         )
-
-        if pool is not None:
-            pool.close()
-            pool.join()
 
     if match_modelgridindex is not None:
         pldflazy = pldflazy.filter(pl.col("modelgridindex").is_in(match_modelgridindex))
