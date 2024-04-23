@@ -540,9 +540,9 @@ def get_packets_batch_parquet_paths(
 
     mpirank_groups_all = list(enumerate(at.misc.batched(range(nprocs), 100)))
     mpirank_groups = [
-        (batchindex, mpiranks)
-        for batchindex, mpiranks in mpirank_groups_all
-        if maxpacketfiles is None or mpiranks[-1] < maxpacketfiles
+        (batchindex, batch_mpiranks)
+        for batchindex, batch_mpiranks in mpirank_groups_all
+        if maxpacketfiles is None or batch_mpiranks[-1] < maxpacketfiles
     ]
 
     if not mpirank_groups:
@@ -557,11 +557,11 @@ def get_packets_batch_parquet_paths(
             print(f"Reading packets from {nprocs} ranks")
 
     parquetpacketsfiles = [
-        get_rankbatch_parquetfile(modelpath, mpiranks, batchindex=batchindex, virtual=virtual)
-        for batchindex, mpiranks in mpirank_groups
+        get_rankbatch_parquetfile(modelpath, batch_mpiranks=batch_mpiranks, batchindex=batchindex, virtual=virtual)
+        for batchindex, batch_mpiranks in mpirank_groups
     ]
     assert bool(parquetpacketsfiles)
-    nprocs_read = sum(len(mpiranks) for _, mpiranks in mpirank_groups)
+    nprocs_read = sum(len(batch_mpiranks) for _, batch_mpiranks in mpirank_groups)
     return nprocs_read, parquetpacketsfiles
 
 
