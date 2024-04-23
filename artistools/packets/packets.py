@@ -559,7 +559,7 @@ def get_packets_batch_parquet_paths(
     ]
 
     if not mpirank_groups:
-        msg = f"No packets batches selected. Set maxpacketfiles to at least {mpirank_groups_all[0][1][-1]+1}"
+        msg = f"No packets batches selected. Set maxpacketfiles to at least {mpirank_groups_all[0][1][-1] + 1}"
         raise ValueError(msg)
 
     if not printwarningsonly:
