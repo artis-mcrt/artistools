@@ -503,8 +503,7 @@ def get_rankbatch_parquetfile(
                 pool.join()
                 pool.terminate()
         else:
-            for pldf_file in (ftextreader(text_file_path) for text_file_path in text_file_paths):
-                pldf_batch = pldf_file if pldf_batch is None else pl.concat([pldf_batch, pldf_file], how="vertical")
+            pldf_batch = pl.concat([ftextreader(text_file_path) for text_file_path in text_file_paths], how="vertical")
 
         assert pldf_batch is not None
 
