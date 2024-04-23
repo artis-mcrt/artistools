@@ -1,5 +1,4 @@
 import calendar
-import functools
 import math
 import time
 import typing as t
@@ -490,13 +489,12 @@ def get_rankbatch_parquetfile(
             else get_packets_text_columns(text_file_paths[0], modelpath=modelpath)
         )
 
-        ftextreader = functools.partial(
-            read_virtual_packets_text_file if virtual else readfile_text,
-            column_names=column_names,
-        )
+        ftextreader = read_virtual_packets_text_file if virtual else readfile_text
 
         pldf_batch = pl.concat(
-            (ftextreader(text_file_path) for text_file_path in text_file_paths), how="vertical", rechunk=False
+            (ftextreader(text_file_path, column_names=column_names) for text_file_path in text_file_paths),
+            how="vertical",
+            rechunk=False,
         ).lazy()
 
         assert pldf_batch is not None
@@ -517,14 +515,12 @@ def get_rankbatch_parquetfile(
                     )
                     / 86400.0
                 ).cast(pl.Float32),
-            )
+            ).sort(by=["type_id", "escape_type_id", "t_arrive_d"])
 
             syn_dir = at.get_syn_dir(modelpath)
 
             pldf_batch = add_packet_directions_lazypolars(pldf_batch, syn_dir)
-            pldf_batch = bin_packet_directions_lazypolars(pldf_batch).sort(
-                by=["type_id", "escape_type_id", "t_arrive_d"]
-            )
+            pldf_batch = bin_packet_directions_lazypolars(pldf_batch)
 
         print(f"took {time.perf_counter() - time_start_load:.1f} seconds. Writing parquet file...", end="", flush=True)
         time_start_write = time.perf_counter()
