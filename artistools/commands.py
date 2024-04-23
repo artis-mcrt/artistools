@@ -34,6 +34,7 @@ subcommandtree: CommandType = {
     "describeinputmodel": ("inputmodel.describeinputmodel", "main"),
     "exportmassfractions": ("estimators.exportmassfractions", "main"),
     "getpath": ("", "get_path"),
+    "lc": ("lightcurve.plotlightcurve", "main"),
     "listtimesteps": ("", "showtimesteptimes"),
     "makeartismodelfromparticlegridmap": ("inputmodel.modelfromhydro", "main"),
     "maptogrid": ("inputmodel.maptogrid", "main"),

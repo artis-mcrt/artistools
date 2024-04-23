@@ -59,8 +59,9 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         derived_cols=["mass_g", "vel_r_mid", "rho"],
     )
 
-    dfmodel = dfmodel.filter(pl.col("rho") > 0.0)
-    dfmodel = dfmodel.drop("X_n")  # don't confuse neutrons with Nitrogen
+    dfmodel = (
+        dfmodel.filter(pl.col("rho") > 0.0).drop("X_n")  # don't confuse neutrons with Nitrogen
+    )
 
     if args.noabund:
         dfmodel = dfmodel.drop(cs.starts_with("X_"))

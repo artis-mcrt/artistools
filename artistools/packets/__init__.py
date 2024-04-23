@@ -7,8 +7,9 @@ from artistools.packets.packets import bin_packet_directions
 from artistools.packets.packets import bin_packet_directions_lazypolars
 from artistools.packets.packets import get_directionbin
 from artistools.packets.packets import get_mean_packet_emission_velocity_per_ts
+from artistools.packets.packets import get_packets_batch_parquet_paths
 from artistools.packets.packets import get_packets_pl
-from artistools.packets.packets import get_packetsfilepaths
+from artistools.packets.packets import get_packets_text_paths
 from artistools.packets.packets import get_virtual_packets_pl
 from artistools.packets.packets import make_3d_grid
 from artistools.packets.packets import make_3d_histogram_from_packets

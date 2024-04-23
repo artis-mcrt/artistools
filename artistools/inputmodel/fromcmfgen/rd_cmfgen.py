@@ -90,7 +90,7 @@ def rd_nuc_decay_data(file, quiet=False):
             aiso_daughter[i] = np.rint(amu_daughter[i])
             edec[i] = float(linearr[5]) * MEV2ERG  # convert to ergs
             seqnum.append(linearr[6])
-            if seqnum[-1] in ["F", "E"]:
+            if seqnum[-1] in ("F", "E"):
                 nchains = nchains + 1
             nlines[i] = int(linearr[7])
         if not quiet:

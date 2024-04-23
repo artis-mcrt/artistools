@@ -124,10 +124,8 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     for _, row in dfsolarabund_undecayed.query("radioactive == True").iterrows():
         rowdict[f"X_{at.get_elsymbol(int(row.Z))}{int(row.A)}"] = row.massfrac
 
-    modeldata = []
-    for mgi, densityrow in dfdensities.iterrows():
-        # print(mgi, densityrow)
-        modeldata.append(
+    modeldata = [
+        (
             {
                 "inputcellid": mgi + 1,
                 "vel_r_max_kmps": densityrow["vel_r_max_kmps"],
@@ -135,7 +133,8 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             }
             | rowdict
         )
-    # print(modeldata)
+        for mgi, densityrow in dfdensities.iterrows()
+    ]
 
     dfmodel = pd.DataFrame(modeldata)
     # print(dfmodel)

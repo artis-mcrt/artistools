@@ -84,9 +84,9 @@ def test_spectra_get_spectrum() -> None:
     def check_spectrum(dfspectrumpkts) -> None:
         assert math.isclose(max(dfspectrumpkts["f_lambda"]), 2.548532804918824e-13, abs_tol=1e-5)
         assert min(dfspectrumpkts["f_lambda"]) < 1e-9
-        assert math.isclose(np.mean(dfspectrumpkts["f_lambda"]), 1.0314682640070206e-14, abs_tol=1e-5)
+        assert math.isclose(dfspectrumpkts["f_lambda"].mean(), 1.0314682640070206e-14, abs_tol=1e-5)
 
-    dfspectrum = at.spectra.get_spectrum(modelpath, 55, 65, fnufilterfunc=None)[-1]
+    dfspectrum = at.spectra.get_spectrum(modelpath, 55, 65, fluxfilterfunc=None)[-1]
     assert len(dfspectrum["lambda_angstroms"]) == 1000
     assert len(dfspectrum["f_lambda"]) == 1000
     assert abs(dfspectrum["lambda_angstroms"].to_numpy()[-1] - 29920.601421214415) < 1e-5
@@ -146,10 +146,12 @@ def test_spectra_get_spectrum_polar_angles() -> None:
     }
 
     for dirbin in spectra:
-        assert isinstance(results[dirbin][0], float)
-        assert np.isclose(results[dirbin][0], expected_results[dirbin][0], rtol=1e-3)
-        assert isinstance(results[dirbin][1], float)
-        assert np.isclose(results[dirbin][1], expected_results[dirbin][1], rtol=1e-3)
+        result_mean = results[dirbin][0]
+        assert isinstance(result_mean, float)
+        assert np.isclose(result_mean, expected_results[dirbin][0], rtol=1e-3)
+        result_std = results[dirbin][1]
+        assert isinstance(result_std, float)
+        assert np.isclose(result_std, expected_results[dirbin][1], rtol=1e-3)
 
 
 def test_spectra_get_spectrum_polar_angles_frompackets() -> None:
@@ -191,14 +193,16 @@ def test_spectra_get_spectrum_polar_angles_frompackets() -> None:
     }
 
     for dirbin, i in itertools.product(results_pkts, range(2)):
-        assert np.isclose(results_pkts[dirbin][i], expected_results[dirbin][i], rtol=1e-3)
+        result = results_pkts[dirbin][i]
+        assert isinstance(result, float)
+        assert np.isclose(result, expected_results[dirbin][i], rtol=1e-3)
 
 
 def test_spectra_get_flux_contributions() -> None:
     timestepmin = 40
     timestepmax = 80
     dfspectrum = at.spectra.get_spectrum(
-        modelpath=modelpath, timestepmin=timestepmin, timestepmax=timestepmax, fnufilterfunc=None
+        modelpath=modelpath, timestepmin=timestepmin, timestepmax=timestepmax, fluxfilterfunc=None
     )[-1]
 
     integrated_flux_specout = np.trapz(dfspectrum["f_lambda"], x=dfspectrum["lambda_angstroms"])

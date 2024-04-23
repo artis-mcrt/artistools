@@ -6,9 +6,9 @@ Examples are temperatures, populations, and heating/cooling rates.
 
 import argparse
 import contextlib
-import itertools
 import math
 import multiprocessing
+import multiprocessing.pool
 import sys
 import time
 import typing as t
@@ -49,17 +49,16 @@ def get_variableunits(key: str) -> str | None:
 
 
 def get_variablelongunits(key: str) -> str | None:
-    variablelongunits = {
+    return {
         "heating_dep/total_dep": "",
         "TR": "Temperature [K]",
         "Te": "Temperature [K]",
         "TJ": "Temperature [K]",
-    }
-    return variablelongunits.get(key)
+    }.get(key)
 
 
 def get_varname_formatted(varname: str) -> str:
-    replacements = {
+    return {
         "nne": r"n$_{\rm e}$",
         "lognne": r"Log n$_{\rm e}$",
         "rho": r"$\rho$",
@@ -70,8 +69,7 @@ def get_varname_formatted(varname: str) -> str:
         "gamma_R_bfest": r"$\Gamma_{\rm phot}$ [s$^{-1}$]",
         "heating_dep/total_dep": "Heating fraction",
         **{f"vel_{ax}_mid_on_c": f"$v_{{{ax}}}$" for ax in ["x", "y", "z", "r", "rcyl"]},
-    }
-    return replacements.get(varname, varname)
+    }.get(varname, varname)
 
 
 def apply_filters(
@@ -225,22 +223,6 @@ def read_estimators_from_file(
     )
 
 
-def batched(iterable, n):  # -> Generator[list, Any, None]:
-    """Batch data into iterators of length n. The last batch may be shorter."""
-    # batched('ABCDEFG', 3) --> ABC DEF G
-    if n < 1:
-        msg = "n must be at least one"
-        raise ValueError(msg)
-    it = iter(iterable)
-    while True:
-        chunk_it = itertools.islice(it, n)
-        try:
-            first_el = next(chunk_it)
-        except StopIteration:
-            return
-        yield list(itertools.chain((first_el,), chunk_it))
-
-
 def get_rankbatch_parquetfile(
     modelpath: Path,
     folderpath: Path,
@@ -252,7 +234,7 @@ def get_rankbatch_parquetfile(
     )
 
     if not parquetfilepath.exists():
-        print(f"{parquetfilepath.relative_to(modelpath.parent)} does not exist")
+        print(f"  generating {parquetfilepath.relative_to(modelpath.parent)}.")
         estfilepaths = []
         for mpirank in batch_mpiranks:
             # not worth printing an error, because ranks with no cells to update do not produce an estimator file
@@ -260,36 +242,34 @@ def get_rankbatch_parquetfile(
                 estfilepath = at.firstexisting(f"estimators_{mpirank:04d}.out", folder=folderpath, tryzipped=True)
                 estfilepaths.append(estfilepath)
 
-        print(f"  reading {len(estfilepaths)} estimator files from {folderpath.relative_to(Path(folderpath).parent)}")
+        print(
+            f"  reading {len(estfilepaths)} estimator files from {folderpath.relative_to(Path(folderpath).parent)}...",
+            end="",
+            flush=True,
+        )
 
         time_start = time.perf_counter()
 
-        pldf_group = None
+        pldf_batch = None
         if at.get_config()["num_processes"] > 1:
-            with multiprocessing.get_context("spawn").Pool(processes=at.get_config()["num_processes"]) as pool:
-                for pldf_file in pool.imap(read_estimators_from_file, estfilepaths):
-                    if pldf_group is None:
-                        pldf_group = pldf_file
-                    else:
-                        pldf_group = pl.concat([pldf_group, pldf_file], how="diagonal_relaxed")
+            with multiprocessing.Pool(processes=at.get_config()["num_processes"]) as pool:
+                pldf_batch = pl.concat(pool.imap(read_estimators_from_file, estfilepaths), how="diagonal_relaxed")
 
                 pool.close()
                 pool.join()
-                pool.terminate()
+
         else:
-            for pldf_file in (read_estimators_from_file(estfilepath) for estfilepath in estfilepaths):
-                pldf_group = (
-                    pldf_file if pldf_group is None else pl.concat([pldf_group, pldf_file], how="diagonal_relaxed")
-                )
+            pldf_batch = pl.concat(map(read_estimators_from_file, estfilepaths), how="diagonal_relaxed")
 
-        print(f"    took {time.perf_counter() - time_start:.1f} s")
+        print(
+            f"took {time.perf_counter() - time_start:.1f} s. Writing {parquetfilepath.relative_to(modelpath.parent)}..."
+        )
 
-        assert pldf_group is not None
-        print(f"  writing {parquetfilepath.relative_to(modelpath.parent)}")
-        pldf_group.write_parquet(parquetfilepath, compression="zstd", statistics=True, compression_level=8)
+        assert pldf_batch is not None
+        pldf_batch.write_parquet(parquetfilepath, compression="zstd", statistics=True, compression_level=8)
 
     filesize = parquetfilepath.stat().st_size / 1024 / 1024
-    print(f"Scanning {parquetfilepath.relative_to(modelpath.parent)} ({filesize:.2f} MiB)")
+    print(f"  scanning {parquetfilepath.relative_to(modelpath.parent)} ({filesize:.2f} MiB)")
 
     return parquetfilepath
 
@@ -344,7 +324,7 @@ def scan_estimators(
     )
     mpirank_groups = [
         (batchindex, mpiranks)
-        for batchindex, mpiranks in enumerate(batched(mpiranklist, 100))
+        for batchindex, mpiranks in enumerate(at.misc.batched(mpiranklist, 100))
         if mpiranks_matched.intersection(mpiranks)
     ]
 
@@ -355,6 +335,7 @@ def scan_estimators(
         for runfolder in runfolders
         for batchindex, mpiranks in mpirank_groups
     )
+
     assert bool(parquetfiles)
 
     pldflazy = pl.concat([pl.scan_parquet(pfile) for pfile in parquetfiles], how="diagonal_relaxed").unique(

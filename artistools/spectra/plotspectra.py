@@ -13,6 +13,7 @@ import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import polars as pl
 from matplotlib import ticker
 from matplotlib.artist import Artist
 
@@ -132,8 +133,10 @@ def plot_reference_spectrum(
         print(f" Scale from time {metadata['t']} to {scaletoreftime}, factor {timefactor} using Co56 decay law")
         specdata["f_lambda"] *= timefactor
         plotkwargs["label"] += f" * {timefactor:.2f}"
+
     if "scale_factor" in metadata:
         specdata["f_lambda"] *= metadata["scale_factor"]
+
     if metadata.get("mask_telluric", False):
         print("Masking telluric regions")
         z = metadata["z"]
@@ -166,6 +169,7 @@ def plot_reference_spectrum(
     # specdata['f_lambda'] = specdata['f_lambda'].apply(lambda x: max(0, x))
 
     if flambdafilterfunc:
+        print(" applying filter to reference spectrum")
         specdata.loc[:, "f_lambda"] = flambdafilterfunc(specdata["f_lambda"])
 
     if scale_to_peak:
@@ -213,7 +217,7 @@ def plot_artis_spectrum(
     usedegrees: bool = False,
     maxpacketfiles: int | None = None,
     **plotkwargs,
-) -> pd.DataFrame | None:
+) -> pl.DataFrame | None:
     """Plot an ARTIS output spectrum. The data plotted are also returned as a DataFrame."""
     modelpath = Path(modelpath)
     if Path(modelpath).is_file():  # handle e.g. modelpath = 'modelpath/spec.out'
@@ -277,12 +281,7 @@ def plot_artis_spectrum(
         )
         print(f" modelpath {modelpath}")
 
-        viewinganglespectra: dict[int, pd.DataFrame] = {}
-
-        # have to get the spherical average "bin" if directionbins is None
-        dbins_get = list(directionbins).copy()
-        if -1 not in dbins_get and not args.plotvspecpol:
-            dbins_get.append(-1)
+        viewinganglespectra = {}
 
         supxmin, supxmax = axis.get_xlim()
         if from_packets:
@@ -295,11 +294,10 @@ def plot_artis_spectrum(
                 use_time=use_time,
                 maxpacketfiles=maxpacketfiles,
                 delta_lambda=args.deltalambda,
-                getpacketcount=plotpacketcount,
-                directionbins=dbins_get,
+                directionbins=directionbins,
                 average_over_phi=average_over_phi,
                 average_over_theta=average_over_theta,
-                fnufilterfunc=filterfunc,
+                fluxfilterfunc=filterfunc,
                 directionbins_are_vpkt_observers=args.plotvspecpol is not None,
             )
 
@@ -316,19 +314,19 @@ def plot_artis_spectrum(
                 sys.exit(1)
 
             viewinganglespectra = {
-                dirbin: at.spectra.get_vspecpol_spectrum(modelpath, timeavg, dirbin, args, fnufilterfunc=filterfunc)
-                for dirbin in dbins_get
+                dirbin: at.spectra.get_vspecpol_spectrum(modelpath, timeavg, dirbin, args, fluxfilterfunc=filterfunc)
+                for dirbin in directionbins
                 if dirbin >= 0
             }
         else:
             viewinganglespectra = at.spectra.get_spectrum(
                 modelpath=modelpath,
-                directionbins=dbins_get,
+                directionbins=directionbins,
                 timestepmin=timestepmin,
                 timestepmax=timestepmax,
                 average_over_phi=average_over_phi,
                 average_over_theta=average_over_theta,
-                fnufilterfunc=filterfunc,
+                fluxfilterfunc=filterfunc,
             )
 
         dirbin_definitions = (
@@ -363,11 +361,12 @@ def plot_artis_spectrum(
                 plotkwargs = plotkwargs.copy()
                 plotkwargs["color"] = None
 
-            dfspectrum_fullrange = viewinganglespectra[dirbin]
-            dfspectrum = dfspectrum_fullrange[
-                (supxmin * 0.9 <= dfspectrum_fullrange["lambda_angstroms"])
-                & (dfspectrum_fullrange["lambda_angstroms"] <= supxmax * 1.1)
-            ].copy()
+            dfspectrum = (
+                pl.from_pandas(viewinganglespectra[dirbin])
+                if isinstance(viewinganglespectra[dirbin], pd.DataFrame)
+                else viewinganglespectra[dirbin].lazy().collect()
+            )
+            dfspectrum = dfspectrum.filter(pl.col("lambda_angstroms").is_between(supxmin * 0.9, supxmax * 1.1))
 
             linelabel_withdirbin = linelabel
             if dirbin != -1:
@@ -378,14 +377,9 @@ def plot_artis_spectrum(
             at.spectra.print_integrated_flux(dfspectrum["f_lambda"], dfspectrum["lambda_angstroms"])
 
             if scale_to_peak:
-                dfspectrum["f_lambda_scaled"] = dfspectrum["f_lambda"] / dfspectrum["f_lambda"].max() * scale_to_peak
-                if args.plotvspecpol is not None:
-                    for angle in args.plotvspecpol:
-                        viewinganglespectra[angle]["f_lambda_scaled"] = (
-                            viewinganglespectra[angle]["f_lambda"]
-                            / viewinganglespectra[angle]["f_lambda"].max()
-                            * scale_to_peak
-                        )
+                dfspectrum = dfspectrum.with_columns(
+                    f_lambda_scaled=pl.col("f_lambda") / pl.col("f_lambda").max() * scale_to_peak
+                )
 
                 ycolumnname = "f_lambda_scaled"
             else:
@@ -403,11 +397,14 @@ def plot_artis_spectrum(
                 nbins = 5
 
                 for i in np.arange(0, len(wavelengths - nbins), nbins):
-                    new_lambda_angstroms.append(wavelengths[i + nbins // 2])
-                    sum_flux = sum(fluxes[j] for j in range(i, i + nbins))
-                    binned_flux.append(sum_flux / nbins)
+                    i_max = min(i + nbins, len(wavelengths))
+                    ncontribs = i_max - i
+                    sum_lambda = sum(wavelengths[j] for j in range(i, i_max))
+                    new_lambda_angstroms.append(sum_lambda / ncontribs)
+                    sum_flux = sum(fluxes[j] for j in range(i, i_max))
+                    binned_flux.append(sum_flux / ncontribs)
 
-                dfspectrum = pd.DataFrame({"lambda_angstroms": new_lambda_angstroms, ycolumnname: binned_flux})
+                dfspectrum = pl.DataFrame({"lambda_angstroms": new_lambda_angstroms, ycolumnname: binned_flux})
 
             axis.plot(
                 dfspectrum["lambda_angstroms"],
@@ -848,7 +845,7 @@ def make_contrib_plot(axes: t.Iterable[plt.Axes], modelpath: Path, densityplotyv
         allnonemptymgilist = list({modelgridindex for ts, modelgridindex in estimators})
 
     assert estimators is not None
-    packetsfiles = at.packets.get_packetsfilepaths(modelpath, args.maxpacketfiles)
+    packetsfiles = at.packets.get_packets_text_paths(modelpath, args.maxpacketfiles)
     assert args.timemin is not None
     assert args.timemax is not None
     # tdays_min = float(args.timemin)

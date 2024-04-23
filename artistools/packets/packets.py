@@ -1,7 +1,6 @@
 import calendar
-import gzip
 import math
-import multiprocessing
+import time
 import typing as t
 from functools import lru_cache
 from pathlib import Path
@@ -11,9 +10,6 @@ import pandas as pd
 import polars as pl
 
 import artistools as at
-
-# for the parquet files
-time_parquetschemachange = (2024, 2, 16, 11, 0, 0)
 
 CLIGHT = 2.99792458e10
 DAY = 86400
@@ -274,13 +270,8 @@ def add_derived_columns_lazy(
     return dfpackets
 
 
-def readfile_text(packetsfile: Path | str, modelpath: Path = Path()) -> pl.DataFrame:
-    """Read a packets*.out(.xz/.zstd) space-separated text file into a polars DataFrame."""
-    column_names: list[str] | None = None
-    try:
-        fpackets = at.zopen(packetsfile, mode="rt", encoding="utf-8")
-
-        datastartpos = fpackets.tell()  # will be updated if this was actually the start of a header
+def get_packets_text_columns(packetsfile: Path | str, modelpath: Path = Path()) -> list[str]:
+    with at.zopen(packetsfile, mode="rt", encoding="utf-8") as fpackets:
         firstline = fpackets.readline()
 
         if firstline.lstrip().startswith("#"):
@@ -288,7 +279,6 @@ def readfile_text(packetsfile: Path | str, modelpath: Path = Path()) -> pl.DataF
             assert column_names is not None
 
             # get the column count from the first data line to check header matched
-            datastartpos = fpackets.tell()
             dataline = fpackets.readline()
             inputcolumncount = len(dataline.split())
             assert inputcolumncount == len(column_names)
@@ -302,12 +292,35 @@ def readfile_text(packetsfile: Path | str, modelpath: Path = Path()) -> pl.DataF
                 assert len(columns_full) >= inputcolumncount
                 column_names = columns_full[:inputcolumncount]
 
-        fpackets.seek(datastartpos)  # go to first data line
+    return column_names
 
-    except gzip.BadGzipFile:
-        print(f"\nBad Gzip File: {packetsfile}")
-        raise
 
+def readfile(
+    packetsfile: Path | str,
+    packet_type: str | None = None,
+    escape_type: t.Literal["TYPE_RPKT", "TYPE_GAMMA"] | None = None,
+) -> pd.DataFrame:
+    """Read a packet file into a Pandas DataFrame."""
+    dfpackets = readfile_text(packetsfile, column_names=get_packets_text_columns(packetsfile))
+
+    if escape_type is not None:
+        assert packet_type is None or packet_type == "TYPE_ESCAPE"
+        dfpackets = dfpackets.filter(
+            (pl.col("type_id") == type_ids["TYPE_ESCAPE"]) & (pl.col("escape_type_id") == type_ids[escape_type])
+        )
+    elif packet_type is not None and packet_type:
+        dfpackets = dfpackets.filter(pl.col("type_id") == type_ids[packet_type])
+
+    return dfpackets.to_pandas(use_pyarrow_extension_array=True)
+
+
+def readfile_text(
+    packetsfiletext: Path | str,
+    column_names: list[str],
+) -> pl.DataFrame:
+    """Read a packets*.out(.xz/.zstd) space-separated text file into a polars DataFrame."""
+    packetsfiletext = Path(packetsfiletext)
+    print(f"  reading {packetsfiletext}")
     dtype_overrides = {
         "absorption_freq": pl.Float32,
         "absorption_type": pl.Int32,
@@ -347,7 +360,7 @@ def readfile_text(packetsfile: Path | str, modelpath: Path = Path()) -> pl.DataF
 
     try:
         dfpackets = pl.read_csv(
-            at.zopenpl(packetsfile),
+            at.zopenpl(packetsfiletext),
             separator=" ",
             has_header=False,
             comment_prefix="#",
@@ -357,18 +370,15 @@ def readfile_text(packetsfile: Path | str, modelpath: Path = Path()) -> pl.DataF
         )
 
     except Exception:
-        print(f"Error occured in file {packetsfile}")
+        print(f"Error occured in file {packetsfiletext}")
         raise
 
-    dfpackets = dfpackets.drop(["next_trans", "last_cross"])
+    mpirank = int(packetsfiletext.name.split("_")[-1].split(".")[0])
+    dfpackets = dfpackets.drop(["next_trans", "last_cross"]).with_columns(mpirank=pl.lit(mpirank, dtype=pl.Int32))
 
     # drop last column of nulls (caused by trailing space on each line)
     if dfpackets[dfpackets.columns[-1]].is_null().all():
         dfpackets = dfpackets.drop(dfpackets.columns[-1])
-
-    if "true_emission_velocity" in dfpackets.columns:
-        # some packets don't have this set, which confused read_csv to mark it as str
-        dfpackets = dfpackets.with_columns([pl.col("true_emission_velocity").cast(pl.Float32)])
 
     if "originated_from_positron" in dfpackets.columns:
         dfpackets = dfpackets.with_columns([pl.col("originated_from_positron").cast(pl.Boolean)])
@@ -379,210 +389,195 @@ def readfile_text(packetsfile: Path | str, modelpath: Path = Path()) -> pl.DataF
     )
 
 
-def readfile(
-    packetsfile: Path | str,
-    packet_type: str | None = None,
-    escape_type: t.Literal["TYPE_RPKT", "TYPE_GAMMA"] | None = None,
-    use_pyarrow_extension_array=True,
-) -> pd.DataFrame:
-    """Read a packet file into a Pandas DataFrame."""
-    dfpackets = pl.read_parquet(packetsfile)
-
-    if escape_type is not None:
-        assert packet_type is None or packet_type == "TYPE_ESCAPE"
-        dfpackets = dfpackets.filter(
-            (pl.col("type_id") == type_ids["TYPE_ESCAPE"]) & (pl.col("escape_type_id") == type_ids[escape_type])
-        )
-    elif packet_type is not None and packet_type:
-        dfpackets = dfpackets.filter(pl.col("type_id") == type_ids[packet_type])
-
-    return dfpackets.to_pandas(use_pyarrow_extension_array=use_pyarrow_extension_array)
-
-
-def convert_text_to_parquet(
-    packetsfiletext: Path | str,
-) -> Path:
-    packetsfiletext = Path(packetsfiletext)
-    packetsfileparquet = at.stripallsuffixes(packetsfiletext).with_suffix(".out.parquet")
-    packetsfileparquet = Path(*packetsfileparquet.parts[:-1]) / "parquet" / packetsfileparquet.parts[-1]
-    packetsfileparquet.parent.mkdir(parents=True, exist_ok=True)
-
-    print(f"Saving {packetsfiletext} to {packetsfileparquet}")
-
-    dfpackets = (
-        readfile_text(packetsfiletext)
-        .lazy()
-        .with_columns(
-            t_arrive_d=(
-                (
-                    pl.col("escape_time")
-                    - (
-                        pl.col("posx") * pl.col("dirx")
-                        + pl.col("posy") * pl.col("diry")
-                        + pl.col("posz") * pl.col("dirz")
-                    )
-                    / 29979245800.0
-                )
-                / 86400.0
-            ).cast(pl.Float32)
-        )
-    )
-
-    syn_dir = next(
-        (at.get_syn_dir(p) for p in packetsfiletext.parents if Path(p, "syn_dir.txt").is_file()),
-        (0.0, 0.0, 1.0),
-    )
-    dfpackets = add_packet_directions_lazypolars(dfpackets, syn_dir)
-    dfpackets = bin_packet_directions_lazypolars(dfpackets)
-
-    # print(f"Saving {packetsfileparquet}")
-    dfpackets = dfpackets.sort(by=["type_id", "escape_type_id", "t_arrive_d"])
-    dfpackets.collect().write_parquet(packetsfileparquet, compression="zstd", statistics=True, compression_level=6)
-
-    return packetsfileparquet
-
-
-def convert_virtual_packets_text_to_parquet(
-    vpacketsfiletext: Path | str,
-) -> Path:
+def read_virtual_packets_text_file(vpacketsfiletext: Path | str, column_names: list[str]) -> pl.DataFrame:
     vpacketsfiletext = Path(vpacketsfiletext)
-    vpacketsfileparquet = at.stripallsuffixes(vpacketsfiletext).with_suffix(".out.parquet")
+    mpirank = int(vpacketsfiletext.name.split("_")[-1].split(".")[0])
 
-    vpacketsfileparquet = Path(*vpacketsfileparquet.parts[:-1]) / "parquet" / vpacketsfileparquet.parts[-1]
-    vpacketsfileparquet.parent.mkdir(parents=True, exist_ok=True)
-
-    print(f"Saving {vpacketsfiletext} to {vpacketsfileparquet}")
-
-    fvpackets = at.zopen(vpacketsfiletext, mode="rt", encoding="utf-8")
-
-    firstline = fvpackets.readline()
-    assert firstline.lstrip().startswith("#")
-    columns = firstline.lstrip("#").split()
-
-    dfvpackets = pl.read_csv(
+    return pl.read_csv(
         vpacketsfiletext,
         separator=" ",
         has_header=False,
         comment_prefix="#",
-        new_columns=columns,
+        new_columns=column_names,
         dtypes={
             "emissiontype": pl.Int32,
             "trueemissiontype": pl.Int32,
             "absorption_type": pl.Int32,
             "absorption_freq": pl.Float64,
         }
-        | {col: pl.Float64 for col in columns if col.endswith("_nu_rf") or "_e_rf" in col}
-        | {col: pl.Float32 for col in columns if col.endswith("_t_arrive_d")},
+        | {col: pl.Float64 for col in column_names if col.endswith("_nu_rf") or "_e_rf" in col}
+        | {col: pl.Float32 for col in column_names if col.endswith("_t_arrive_d")},
+    ).with_columns(mpirank=pl.lit(mpirank, dtype=pl.Int32))
+
+
+def get_packets_text_paths(modelpath: str | Path, maxpacketfiles: int | None = None) -> list[Path]:
+    """Get a list of Paths to packets*.out files."""
+    modelpath = Path(modelpath)
+    nprocs_read = at.get_nprocs(modelpath)
+    if maxpacketfiles is not None:
+        nprocs_read = min(nprocs_read, maxpacketfiles)
+
+    return [
+        at.firstexisting(
+            f"packets00_{rank:04d}.out",
+            folder=modelpath,
+            tryzipped=True,
+            search_subfolders=True,
+        )
+        for rank in range(nprocs_read)
+    ]
+
+
+def get_vpackets_text_columns(vpacketsfiletext: Path) -> list[str]:
+    firstline = at.zopen(vpacketsfiletext, mode="rt", encoding="utf-8").readline()
+
+    assert firstline.lstrip().startswith("#")
+    return firstline.lstrip("#").split()
+
+
+def get_rankbatch_parquetfile(
+    modelpath: Path | str, batch_mpiranks: t.Sequence[int], batchindex: int, virtual: bool
+) -> Path:
+    """Get the path to a parquet file containing packets for a specific batch of MPI ranks. If the file does not exists or is outdated, generate it first from the text files."""
+    modelpath = Path(modelpath)
+    strpacket = "vpackets" if virtual else "packets"
+    packetdir = Path(modelpath, strpacket)
+    packetdir.mkdir(exist_ok=True, parents=True)
+
+    parquetfilepath = (
+        packetdir / f"{strpacket}batch{batchindex:02d}_{batch_mpiranks[0]:04d}_{batch_mpiranks[-1]:04d}.out.parquet.tmp"
     )
 
-    dfvpackets = dfvpackets.sort(by=["dir0_t_arrive_d"])
+    # time when the schema for the parquet files last change (e.g. new computed columns added or data types changed)
+    time_parquetschemachange = (2024, 4, 23, 9, 0, 0)
+    t_lastschemachange = calendar.timegm(time_parquetschemachange)
 
-    dfvpackets.write_parquet(vpacketsfileparquet, compression="zstd", statistics=True, compression_level=6)
+    text_filenames = [
+        (f"vpackets_{rank:04d}.out" if virtual else f"packets00_{rank:04d}.out") for rank in batch_mpiranks
+    ]
 
-    return vpacketsfileparquet
+    conversion_needed = True
+    if parquetfilepath.is_file():
+        parquet_mtime = parquetfilepath.stat().st_mtime
+        last_textfile_mtime = (
+            at.firstexisting(text_filenames[-1], folder=modelpath, tryzipped=True, search_subfolders=True)
+            .stat()
+            .st_mtime
+        )
+
+        if parquet_mtime > last_textfile_mtime and parquet_mtime > t_lastschemachange:
+            conversion_needed = False
+        else:
+            print(f"  outdated file: {parquetfilepath}. Will overwrite")
+
+    if conversion_needed:
+        time_start_load = time.perf_counter()
+        print(
+            f"  generating {parquetfilepath.relative_to(modelpath.parent)}. Reading text files...", end="", flush=True
+        )
+
+        text_file_paths = [
+            at.firstexisting(filename, folder=modelpath, tryzipped=True, search_subfolders=True)
+            for filename in text_filenames
+        ]
+
+        column_names = (
+            get_vpackets_text_columns(text_file_paths[0])
+            if virtual
+            else get_packets_text_columns(text_file_paths[0], modelpath=modelpath)
+        )
+
+        ftextreader = read_virtual_packets_text_file if virtual else readfile_text
+
+        pldf_batch = pl.concat(
+            (ftextreader(text_file_path, column_names=column_names).lazy() for text_file_path in text_file_paths),
+            how="vertical",
+        )
+
+        assert pldf_batch is not None
+
+        if virtual:
+            pldf_batch = pldf_batch.sort(by=["dir0_t_arrive_d"])
+        else:
+            pldf_batch = pldf_batch.with_columns(
+                t_arrive_d=(
+                    (
+                        pl.col("escape_time")
+                        - (
+                            pl.col("posx") * pl.col("dirx")
+                            + pl.col("posy") * pl.col("diry")
+                            + pl.col("posz") * pl.col("dirz")
+                        )
+                        / 29979245800.0
+                    )
+                    / 86400.0
+                ).cast(pl.Float32),
+            ).sort(by=["type_id", "escape_type_id", "t_arrive_d"])
+
+            syn_dir = at.get_syn_dir(modelpath)
+
+            pldf_batch = add_packet_directions_lazypolars(pldf_batch, syn_dir)
+            pldf_batch = bin_packet_directions_lazypolars(pldf_batch)
+
+        print(f"took {time.perf_counter() - time_start_load:.1f} seconds. Writing parquet file...", end="", flush=True)
+        time_start_write = time.perf_counter()
+        pldf_batch.sink_parquet(parquetfilepath, compression="zstd", statistics=True, compression_level=8)
+        print(f"took {time.perf_counter() - time_start_write:.1f} seconds")
+    else:
+        print(f"  scanning {parquetfilepath.relative_to(modelpath)}")
+
+    return parquetfilepath
 
 
-def get_packetsfilepaths(
+def get_packets_batch_parquet_paths(
     modelpath: str | Path, maxpacketfiles: int | None = None, printwarningsonly: bool = False, virtual: bool = False
-) -> list[Path]:
+) -> tuple[int, list[Path]]:
     """Get a list of Paths to parquet-formatted packets files, (which are generated from text files if needed)."""
     nprocs = at.get_nprocs(modelpath)
 
-    searchfolders = (
-        Path(modelpath, "vpackets" if virtual else "packets", "parquet"),
-        Path(modelpath, "vpackets" if virtual else "packets"),
-        Path(modelpath),
-        *(p.parent for p in Path().glob("*/vpackets_0000.out*" if virtual else "*/packets00_0000.out*")),
-    )
+    mpirank_groups_all = list(enumerate(at.misc.batched(range(nprocs), 100)))
+    mpirank_groups = [
+        (batchindex, batch_mpiranks)
+        for batchindex, batch_mpiranks in mpirank_groups_all
+        if maxpacketfiles is None or batch_mpiranks[-1] < maxpacketfiles
+    ]
 
-    # in descending priority (based on speed of reading)
-    suffix_priority = (".out.zst", ".out", ".out.gz", ".out.xz")
-    t_lastschemachange = calendar.timegm(time_parquetschemachange)
-
-    parquetpacketsfiles = []
-    parquetrequiredfiles = []
-
-    for rank in range(nprocs + 1):  # go one higher to check if there are more files than nprocs_total
-        name_nosuffix = f"vpackets_{rank:04d}" if virtual else f"packets00_{rank:04d}"
-        found_rank = False
-
-        for folderpath in searchfolders:
-            parquetfilepath = (folderpath / name_nosuffix).with_suffix(".out.parquet")
-            if parquetfilepath.is_file():
-                parquet_mtime = parquetfilepath.stat().st_mtime
-
-                # check if the parquet file is out of date by the presence of a text file updated after the parquet file
-                latest_textfile_mtime = -1.0
-                for suffix in suffix_priority:
-                    textfilepath = (folderpath / name_nosuffix).with_suffix(suffix)
-                    if textfilepath.is_file():
-                        latest_textfile_mtime = max(latest_textfile_mtime, textfilepath.stat().st_mtime)
-
-                if parquet_mtime < latest_textfile_mtime or parquet_mtime < t_lastschemachange:
-                    print(f"{parquetfilepath} is out of date. Will overwrite.")
-                else:
-                    if rank < nprocs:
-                        parquetpacketsfiles.append(parquetfilepath)
-                    found_rank = True
-                    break
-
-        if not found_rank:
-            for suffix in suffix_priority:
-                for folderpath in searchfolders:
-                    filepath = (folderpath / name_nosuffix).with_suffix(suffix)
-                    if filepath.is_file():
-                        if rank < nprocs:
-                            parquetrequiredfiles.append(filepath)
-                        found_rank = True
-                        break
-
-                if found_rank:
-                    break
-
-        if found_rank and rank >= nprocs:
-            print(f"WARNING: nprocs is {nprocs} but file {filepath} exists")
-        elif not found_rank and rank < nprocs:
-            print(f"WARNING: packets file for rank {rank} was not found.")
-
-        if maxpacketfiles is not None and (len(parquetpacketsfiles) + len(parquetrequiredfiles)) >= maxpacketfiles:
-            break
-
-    converter = convert_virtual_packets_text_to_parquet if virtual else convert_text_to_parquet
-    if len(parquetrequiredfiles) >= 20 and at.get_config()["num_processes"] > 1:
-        with multiprocessing.get_context("spawn").Pool(processes=at.get_config()["num_processes"]) as pool:
-            convertedparquetpacketsfiles = pool.map(converter, parquetrequiredfiles)
-            pool.close()
-            pool.join()
-    else:
-        convertedparquetpacketsfiles = [converter(p) for p in parquetrequiredfiles]
-
-    parquetpacketsfiles.extend(convertedparquetpacketsfiles)
+    if not mpirank_groups:
+        msg = f"No packets batches selected. Set maxpacketfiles to at least {mpirank_groups_all[0][1][-1] + 1}"
+        raise ValueError(msg)
 
     if not printwarningsonly:
         if maxpacketfiles is not None and nprocs > maxpacketfiles:
-            print(f"Reading from the first {maxpacketfiles} of {nprocs} packets files")
+            nprocs_read = mpirank_groups[-1][1][-1] + 1
+            print(f"Reading packets from the first {nprocs_read} of {nprocs} ranks")
         else:
-            print(f"Reading from {len(parquetpacketsfiles)} packets files")
+            print(f"Reading packets from {nprocs} ranks")
 
-    return parquetpacketsfiles
+    parquetpacketsfiles = [
+        get_rankbatch_parquetfile(modelpath, batch_mpiranks=batch_mpiranks, batchindex=batchindex, virtual=virtual)
+        for batchindex, batch_mpiranks in mpirank_groups
+    ]
+    assert bool(parquetpacketsfiles)
+    nprocs_read = sum(len(batch_mpiranks) for _, batch_mpiranks in mpirank_groups)
+    return nprocs_read, parquetpacketsfiles
 
 
 def get_virtual_packets_pl(modelpath: str | Path, maxpacketfiles: int | None = None) -> tuple[int, pl.LazyFrame]:
-    vpacketparquetfiles = get_packetsfilepaths(modelpath, maxpacketfiles=maxpacketfiles, virtual=True)
+    nprocs_read, vpacketparquetfiles = get_packets_batch_parquet_paths(
+        modelpath, maxpacketfiles=maxpacketfiles, virtual=True
+    )
 
-    nprocs_read = len(vpacketparquetfiles)
-    packetsdatasize_gb = nprocs_read * Path(vpacketparquetfiles[0]).stat().st_size / 1024 / 1024 / 1024
-    print(f"  data size is {packetsdatasize_gb:.1f} GB ({nprocs_read} * size of {vpacketparquetfiles[0].parts[-1]})")
+    nbatches_read = len(vpacketparquetfiles)
+    packetsdatasize_gb = nbatches_read * Path(vpacketparquetfiles[0]).stat().st_size / 1024 / 1024 / 1024
+    print(f"  data size is {packetsdatasize_gb:.1f} GB ({nbatches_read} * size of {vpacketparquetfiles[0].parts[-1]})")
 
     # add some extra columns to imitate the real packets
     dfpackets = pl.scan_parquet(vpacketparquetfiles).with_columns(
         type_id=type_ids["TYPE_ESCAPE"], escape_type_id=type_ids["TYPE_RPKT"]
     )
 
-    npkts_total = dfpackets.select(pl.count("*")).collect().item(0, 0)
-    print(
-        f"  files contain {npkts_total:.2e} virtual packet events (that can be further split into directions and opacity choices)"
-    )
+    npkts_total = dfpackets.select(pl.count("dir0_t_arrive_d")).collect().item(0, 0)
+    print(f"  files contain {npkts_total:.2e} virtual packet events (shared among directions and opacity choices)")
 
     return nprocs_read, dfpackets
 
@@ -598,13 +593,16 @@ def get_packets_pl(
         if packet_type is None:
             packet_type = "TYPE_ESCAPE"
 
-    packetsfiles = get_packetsfilepaths(modelpath, maxpacketfiles)
+    nprocs_read, packetsparquetfiles = get_packets_batch_parquet_paths(modelpath, maxpacketfiles)
 
-    nprocs_read = len(packetsfiles)
-    packetsdatasize_gb = nprocs_read * Path(packetsfiles[0]).stat().st_size / 1024 / 1024 / 1024
-    print(f"  data size is {packetsdatasize_gb:.1f} GB ({nprocs_read} * size of {packetsfiles[0].parts[-1]})")
+    nbatches_read = len(packetsparquetfiles)
+    packetsdatasize_gb = nbatches_read * Path(packetsparquetfiles[0]).stat().st_size / 1024 / 1024 / 1024
+    print(f"  data size is {packetsdatasize_gb:.1f} GB ({nbatches_read} * size of {packetsparquetfiles[0].parts[-1]})")
 
-    pldfpackets = pl.scan_parquet(packetsfiles)
+    pldfpackets = pl.scan_parquet(packetsparquetfiles)
+
+    npkts_total = pldfpackets.select(pl.count("e_rf")).collect().item(0, 0)
+    print(f"  files contain {npkts_total:.2e} packets")
 
     if escape_type is not None:
         assert packet_type is None or packet_type == "TYPE_ESCAPE"
@@ -613,9 +611,6 @@ def get_packets_pl(
         )
     elif packet_type is not None and packet_type:
         pldfpackets = pldfpackets.filter(pl.col("type_id") == type_ids[packet_type])
-
-    npkts_total = pldfpackets.select(pl.count("*")).collect().item(0, 0)
-    print(f"  files contain {npkts_total:.2e} packets")
 
     return nprocs_read, pldfpackets
 
@@ -804,7 +799,7 @@ def make_3d_histogram_from_packets(modelpath, timestep_min, timestep_max=None, e
     else:
         print("Binning by packet arrival time")
 
-    packetsfiles = at.packets.get_packetsfilepaths(modelpath)
+    packetsfiles = at.packets.get_packets_batch_parquet_paths(modelpath)
 
     emission_position3d = [[], [], []]
     e_rf = []
@@ -896,8 +891,7 @@ def make_3d_grid(modeldata, vmax_cms):
 def get_mean_packet_emission_velocity_per_ts(
     modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT", maxpacketfiles=None, escape_angles=None
 ) -> pd.DataFrame:
-    packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles=maxpacketfiles)
-    nprocs_read = len(packetsfiles)
+    nprocs_read, packetsfiles = at.packets.get_packets_batch_parquet_paths(modelpath, maxpacketfiles=maxpacketfiles)
     assert nprocs_read > 0
 
     timearray = at.get_timestep_times(modelpath=modelpath, loc="mid")
@@ -950,9 +944,7 @@ def bin_and_sum(
     # Polars method
 
     df = df.lazy().with_columns(
-        (pl.col(bincol).cut(breaks=bins, labels=[str(x) for x in range(-1, len(bins))]).cast(str).cast(pl.Int32)).alias(
-            f"{bincol}_bin"
-        )
+        (pl.col(bincol).cut(breaks=bins, labels=[str(x) for x in range(-1, len(bins))])).alias(f"{bincol}_bin")
     )
 
     aggs = [pl.col(col).sum().alias(col + "_sum") for col in sumcols] if sumcols is not None else []
@@ -960,8 +952,13 @@ def bin_and_sum(
     if getcounts:
         aggs.append(pl.col(bincol).count().alias("count"))
 
-    wlbins = df.group_by(f"{bincol}_bin").agg(aggs).lazy()
+    wlbins = df.group_by(f"{bincol}_bin").agg(aggs).with_columns(pl.col(f"{bincol}_bin").cast(pl.Int32))
 
     # now we will include the empty bins
-    dfout = pl.DataFrame(pl.Series(name=f"{bincol}_bin", values=np.arange(0, len(bins) - 1), dtype=pl.Int32)).lazy()
-    return dfout.join(wlbins, how="left", on=f"{bincol}_bin").fill_null(0)
+    return (
+        pl.DataFrame({f"{bincol}_bin": range(len(bins) - 1)}, schema={f"{bincol}_bin": pl.Int32})
+        .lazy()
+        .join(wlbins, how="left", on=f"{bincol}_bin")
+        .fill_null(0)
+        .sort(by=f"{bincol}_bin")
+    )
