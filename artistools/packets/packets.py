@@ -472,7 +472,7 @@ def get_rankbatch_parquetfile(
         if parquet_mtime > last_textfile_mtime and parquet_mtime > t_lastschemachange:
             conversion_needed = False
         else:
-            print(f"{parquetfilepath} is out of date. Will overwrite.")
+            print(f"  outdated file: {parquetfilepath}. Will overwrite")
 
     if conversion_needed:
         time_start_load = time.perf_counter()
