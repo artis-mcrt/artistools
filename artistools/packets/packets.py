@@ -485,37 +485,39 @@ def get_rankbatch_parquetfile(
     """Get the path to a parquet file containing packets for a specific batch of MPI ranks."""
     modelpath = Path(modelpath)
     strpacket = "vpackets" if virtual else "packets"
-    parquetdir = Path(modelpath, strpacket, "parquet")
-    parquetdir.mkdir(exist_ok=True, parents=True)
+    packetdir = Path(modelpath, strpacket)
+    packetdir.mkdir(exist_ok=True, parents=True)
 
     parquetfilepath = (
-        parquetdir
-        / f"{strpacket}batch{batchindex:02d}_{batch_mpiranks[0]:04d}_{batch_mpiranks[-1]:04d}.out.parquet.tmp"
+        packetdir / f"{strpacket}batch{batchindex:02d}_{batch_mpiranks[0]:04d}_{batch_mpiranks[-1]:04d}.out.parquet.tmp"
     )
     t_lastschemachange = calendar.timegm(time_parquetschemachange)
 
-    text_file_paths = [
-        at.firstexisting(
-            (f"vpackets_{rank:04d}.out" if virtual else f"packets00_{rank:04d}.out"),
-            folder=modelpath,
-            tryzipped=True,
-            search_subfolders=True,
-        )
-        for rank in batch_mpiranks
+    text_filenames = [
+        (f"vpackets_{rank:04d}.out" if virtual else f"packets00_{rank:04d}.out") for rank in batch_mpiranks
     ]
 
     conversion_needed = True
     if parquetfilepath.is_file():
         parquet_mtime = parquetfilepath.stat().st_mtime
-        latest_textfile_mtime = text_file_paths[-1].stat().st_mtime
+        last_textfile_mtime = (
+            at.firstexisting(text_filenames[-1], folder=modelpath, tryzipped=True, search_subfolders=True)
+            .stat()
+            .st_mtime
+        )
 
-        if parquet_mtime > latest_textfile_mtime and parquet_mtime > t_lastschemachange:
+        if parquet_mtime > last_textfile_mtime and parquet_mtime > t_lastschemachange:
             conversion_needed = False
         else:
             print(f"{parquetfilepath} is out of date. Will overwrite.")
 
     if conversion_needed:
         print(f"  saving {parquetfilepath.relative_to(modelpath.parent)} from text files")
+
+        text_file_paths = [
+            at.firstexisting(filename, folder=modelpath, tryzipped=True, search_subfolders=True)
+            for filename in text_filenames
+        ]
 
         reader = read_virtual_packets_text_file if virtual else read_packets_text_file
 
