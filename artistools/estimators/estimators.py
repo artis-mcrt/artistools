@@ -335,7 +335,7 @@ def scan_estimators(
     runfolders = at.get_runfolders(modelpath, timesteps=match_timestep)
 
     ctx: t.Any = (
-        multiprocessing.get_context("fork").Pool(processes=at.get_config()["num_processes"])
+        multiprocessing.get_context("forkserver").Pool(processes=at.get_config()["num_processes"])
         if at.get_config()["num_processes"] > 1
         else contextlib.nullcontext()
     )
