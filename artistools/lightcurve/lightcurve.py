@@ -124,7 +124,7 @@ def get_from_packets(
 
     dfpackets = dfpackets.select(getcols).collect(streaming=True).lazy()
 
-    npkts_selected = dfpackets.select(pl.count("*")).collect().item(0, 0)
+    npkts_selected = dfpackets.select(pl.count("e_rf")).collect().item(0, 0)
     print(f"  {npkts_selected:.2e} packets")
 
     lcdata = {}
@@ -158,7 +158,7 @@ def get_from_packets(
             sumcols=["e_rf"],
         )
 
-        npkts_selected = pldfpackets_dirbin.select(pl.count("*")).collect().item(0, 0)
+        npkts_selected = pldfpackets_dirbin.select(pl.count("e_rf")).collect().item(0, 0)
         print(f"    dirbin {dirbin} contains {npkts_selected:.2e} packets")
 
         unitfactor = float((u.erg / u.day).to("solLum"))

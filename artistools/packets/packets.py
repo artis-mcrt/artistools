@@ -13,9 +13,6 @@ import polars as pl
 
 import artistools as at
 
-# for the parquet files
-time_parquetschemachange = (2024, 2, 16, 11, 0, 0)
-
 CLIGHT = 2.99792458e10
 DAY = 86400
 
@@ -454,6 +451,9 @@ def get_rankbatch_parquetfile(
     parquetfilepath = (
         packetdir / f"{strpacket}batch{batchindex:02d}_{batch_mpiranks[0]:04d}_{batch_mpiranks[-1]:04d}.out.parquet.tmp"
     )
+
+    # time when the schema for the parquet files last change (e.g. new computed columns added or data types changed)
+    time_parquetschemachange = (2024, 4, 23, 11, 0, 0)
     t_lastschemachange = calendar.timegm(time_parquetschemachange)
 
     text_filenames = [
@@ -509,10 +509,10 @@ def get_rankbatch_parquetfile(
 
         assert pldf_batch is not None
 
+        pldf_batch_lazy = pldf_batch.lazy()
         if virtual:
-            pldf_batch = pldf_batch.sort(by=["dir0_t_arrive_d"])
+            pldf_batch_lazy = pldf_batch_lazy.sort(by=["dir0_t_arrive_d"])
         else:
-            pldf_batch_lazy = pldf_batch.lazy()
             pldf_batch_lazy = pldf_batch_lazy.with_columns(
                 t_arrive_d=(
                     (
@@ -534,11 +534,10 @@ def get_rankbatch_parquetfile(
             pldf_batch_lazy = bin_packet_directions_lazypolars(pldf_batch_lazy).sort(
                 by=["type_id", "escape_type_id", "t_arrive_d"]
             )
-            pldf_batch = pldf_batch_lazy.collect()
 
         print(f" took {time.perf_counter() - time_start_load:.1f} seconds. Saving to parquet", end="")
         time_start_write = time.perf_counter()
-        pldf_batch.write_parquet(parquetfilepath, compression="zstd", statistics=True, compression_level=8)
+        pldf_batch_lazy.sink_parquet(parquetfilepath, compression="zstd", statistics=True, compression_level=8)
         print(f" took {time.perf_counter() - time_start_write:.1f} seconds")
     else:
         print(f"  scanning {parquetfilepath.relative_to(modelpath)}")
@@ -593,7 +592,7 @@ def get_virtual_packets_pl(modelpath: str | Path, maxpacketfiles: int | None = N
         type_id=type_ids["TYPE_ESCAPE"], escape_type_id=type_ids["TYPE_RPKT"]
     )
 
-    npkts_total = dfpackets.select(pl.count("*")).collect().item(0, 0)
+    npkts_total = dfpackets.select(pl.count("dir0_t_arrive_d")).collect().item(0, 0)
     print(
         f"  files contain {npkts_total:.2e} virtual packet events (that can be further split into directions and opacity choices)"
     )
@@ -620,7 +619,7 @@ def get_packets_pl(
 
     pldfpackets = pl.scan_parquet(packetsparquetfiles)
 
-    npkts_total = pldfpackets.select(pl.count("*")).collect().item(0, 0)
+    npkts_total = pldfpackets.select(pl.count("e_rf")).collect().item(0, 0)
     print(f"  files contain {npkts_total:.2e} packets")
 
     if escape_type is not None:
