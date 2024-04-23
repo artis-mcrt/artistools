@@ -536,7 +536,9 @@ def get_rankbatch_parquetfile(
 
         print(f" took {time.perf_counter() - time_start_load:.1f} seconds. Saving to parquet", end="")
         time_start_write = time.perf_counter()
-        pldf_batch_lazy.sink_parquet(parquetfilepath, compression="zstd", statistics=True, compression_level=8)
+        pldf_batch_lazy.collect().write_parquet(
+            parquetfilepath, compression="zstd", statistics=True, compression_level=8
+        )
         print(f" took {time.perf_counter() - time_start_write:.1f} seconds")
     else:
         print(f"  scanning {parquetfilepath.relative_to(modelpath)}")
