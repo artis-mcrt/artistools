@@ -438,6 +438,7 @@ def add_abundancecontributions(
             list_traj_nuc_abund = pool.map(trajworker, particleids)
             pool.close()
             pool.join()
+            pool.terminate()
     else:
         list_traj_nuc_abund = [trajworker(particleid) for particleid in particleids]
 
