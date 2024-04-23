@@ -1,6 +1,8 @@
 import argparse
+import functools
 import gzip
 import io
+import itertools
 import math
 import string
 import typing as t
@@ -848,7 +850,7 @@ def firstexisting(
     for filename in filelist:
         if search_subfolders:
             folders += [
-                p.parent for filename in filelist for p in Path().glob(f"*/{filename}*") if p.parent not in folders
+                p.parent for filename in filelist for p in folder.glob(f"*/{filename}*") if p.parent not in folders
             ]
 
         for folder in folders:
@@ -874,14 +876,33 @@ def anyexist(
     filelist: t.Sequence[str | Path],
     folder: Path | str = Path(),
     tryzipped: bool = True,
-) -> bool:
+    search_subfolders: bool = True,
+) -> Path | None:
     """Return true if any files in file list exist."""
     try:
-        firstexisting(filelist=filelist, folder=folder, tryzipped=tryzipped)
+        filepath = firstexisting(
+            filelist=filelist, folder=folder, tryzipped=tryzipped, search_subfolders=search_subfolders
+        )
     except FileNotFoundError:
-        return False
+        return None
 
-    return True
+    return filepath
+
+
+def batched(iterable: t.Iterable[t.Any], n: int) -> t.Generator[list, t.Any, None]:
+    """Batch data into iterators of length n. The last batch may be shorter."""
+    # batched('ABCDEFG', 3) --> ABC DEF G
+    if n < 1:
+        msg = "n must be at least one"
+        raise ValueError(msg)
+    it = iter(iterable)
+    while True:
+        chunk_it = itertools.islice(it, n)
+        try:
+            first_el = next(chunk_it)
+        except StopIteration:
+            return
+        yield list(itertools.chain((first_el,), chunk_it))
 
 
 def stripallsuffixes(f: Path) -> Path:
@@ -962,13 +983,12 @@ def get_filterfunc(args: argparse.Namespace, mode: str = "interp") -> t.Callable
     if dictargs.get("filtersavgol", False):
         import scipy.signal
 
-        window_length, poly_order = (int(x) for x in args.filtersavgol)
-
-        def savgolfilterfunc(ylist: t.Any) -> t.Any:
-            return scipy.signal.savgol_filter(ylist, window_length, poly_order, mode=mode)
+        window_length, polyorder = (int(x) for x in args.filtersavgol)
 
         assert filterfunc is None
-        filterfunc = savgolfilterfunc
+        filterfunc = functools.partial(
+            scipy.signal.savgol_filter, window_length=window_length, polyorder=polyorder, mode=mode
+        )
 
         print("Applying Savitzky-Golay filter")
 

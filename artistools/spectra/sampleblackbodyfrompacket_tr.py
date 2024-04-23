@@ -93,7 +93,7 @@ specpol_res_data_bb = [copy.deepcopy(specpol_data_bb) for _ in range(n_angle_bin
 # need deep copy to make new empty array of same size
 
 
-packetsfiles = at.packets.get_packetsfilepaths(modelpath)
+packetsfiles = at.packets.get_packets_text_paths(modelpath)
 nprocs = at.get_nprocs(modelpath)
 # nprocs = 100
 for npacketfile in range(nprocs):

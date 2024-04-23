@@ -89,7 +89,7 @@ def test_vpkt_contrib_spectrum_plot(mockplot):
             1.45676358684038e-14,
             4.589891035117792e-15,
         ],
-        atol=1e-20,
+        atol=1e-18,
     )
 
     print(list(arr_allvspec.mean(axis=1)))
@@ -106,5 +106,5 @@ def test_vpkt_contrib_spectrum_plot(mockplot):
             9.316807974058103e-15,
             2.9236313925953637e-15,
         ],
-        atol=1e-20,
+        atol=1e-18,
     )

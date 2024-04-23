@@ -301,7 +301,7 @@ def plot_artis_lightcurve(
         print("====> (no series label)")
     else:
         print(f"====> {modelname}")
-    print(f" folder: {modelpath.resolve().parts[-1]}")
+    print(f" modelpath: {modelpath.resolve().parts[-1]}")
 
     if args is not None and args.title:
         axis.set_title(modelname)

@@ -65,7 +65,7 @@ def get_packets_with_emtype_onefile(
 def get_packets_with_emtype(
     modelpath: Path | str, emtypecolumn: str, lineindices: t.Sequence[int], maxpacketfiles: int | None = None
 ):
-    packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles=maxpacketfiles)
+    packetsfiles = at.packets.get_packets_text_paths(modelpath, maxpacketfiles=maxpacketfiles)
     nprocs_read = len(packetsfiles)
     assert nprocs_read > 0
 
@@ -74,7 +74,7 @@ def get_packets_with_emtype(
     processfile = partial(get_packets_with_emtype_onefile, emtypecolumn, lineindices)
     if at.get_config()["num_processes"] > 1:
         print(f"Reading packets files with {at.get_config()['num_processes']} processes")
-        with multiprocessing.get_context("spawn").Pool(processes=at.get_config()["num_processes"]) as pool:
+        with multiprocessing.Pool(processes=at.get_config()["num_processes"]) as pool:
             arr_dfmatchingpackets = pool.map(processfile, packetsfiles)
             pool.close()
             pool.join()
@@ -231,8 +231,9 @@ def get_closelines(
     lowerlevelindex: int | None = None,
     upperlevelindex: int | None = None,
 ):
-    dflinelist = at.get_linelist_dataframe(modelpath)
-    dflinelistclosematches = dflinelist.query("atomic_number == @atomic_number and ion_stage == @ion_stage").copy()
+    dflinelistclosematches = (
+        at.get_linelist_dataframe(modelpath).query("atomic_number == @atomic_number and ion_stage == @ion_stage").copy()
+    )
     if lambdamin is not None:
         dflinelistclosematches = dflinelistclosematches.query("@lambdamin < lambda_angstroms")
     if lambdamax is not None:
