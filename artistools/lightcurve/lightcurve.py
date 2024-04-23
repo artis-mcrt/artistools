@@ -124,9 +124,6 @@ def get_from_packets(
 
     dfpackets = dfpackets.select(getcols).collect(streaming=True).lazy()
 
-    npkts_selected = dfpackets.select(pl.count("e_rf")).collect().item(0, 0)
-    print(f"  {npkts_selected:.2e} packets")
-
     lcdata = {}
     for dirbin in directionbins:
         if directionbins_are_vpkt_observers:
