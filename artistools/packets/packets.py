@@ -1,7 +1,6 @@
 import calendar
 import functools
 import math
-import multiprocessing
 import time
 import typing as t
 from functools import lru_cache
@@ -476,7 +475,9 @@ def get_rankbatch_parquetfile(
 
     if conversion_needed:
         time_start_load = time.perf_counter()
-        print(f"  generating {parquetfilepath.relative_to(modelpath.parent)}. Reading text files", end="")
+        print(
+            f"  generating {parquetfilepath.relative_to(modelpath.parent)}. Reading text files...", end="", flush=True
+        )
 
         text_file_paths = [
             at.firstexisting(filename, folder=modelpath, tryzipped=True, search_subfolders=True)
@@ -494,24 +495,16 @@ def get_rankbatch_parquetfile(
             column_names=column_names,
         )
 
-        pldf_batch: pl.DataFrame | None = None
-        if at.get_config()["num_processes"] > 1:
-            with multiprocessing.Pool(processes=at.get_config()["num_processes"]) as pool:
-                pldf_batch = pl.concat(pool.map(ftextreader, text_file_paths), how="vertical")
-
-                pool.close()
-                pool.join()
-                pool.terminate()
-        else:
-            pldf_batch = pl.concat([ftextreader(text_file_path) for text_file_path in text_file_paths], how="vertical")
+        pldf_batch = pl.concat(
+            (ftextreader(text_file_path) for text_file_path in text_file_paths), how="vertical", rechunk=False
+        ).lazy()
 
         assert pldf_batch is not None
 
-        pldf_batch_lazy = pldf_batch.lazy()
         if virtual:
-            pldf_batch_lazy = pldf_batch_lazy.sort(by=["dir0_t_arrive_d"])
+            pldf_batch = pldf_batch.sort(by=["dir0_t_arrive_d"])
         else:
-            pldf_batch_lazy = pldf_batch_lazy.with_columns(
+            pldf_batch = pldf_batch.with_columns(
                 t_arrive_d=(
                     (
                         pl.col("escape_time")
@@ -528,17 +521,15 @@ def get_rankbatch_parquetfile(
 
             syn_dir = at.get_syn_dir(modelpath)
 
-            pldf_batch_lazy = add_packet_directions_lazypolars(pldf_batch_lazy, syn_dir)
-            pldf_batch_lazy = bin_packet_directions_lazypolars(pldf_batch_lazy).sort(
+            pldf_batch = add_packet_directions_lazypolars(pldf_batch, syn_dir)
+            pldf_batch = bin_packet_directions_lazypolars(pldf_batch).sort(
                 by=["type_id", "escape_type_id", "t_arrive_d"]
             )
 
-        print(f" took {time.perf_counter() - time_start_load:.1f} seconds. Saving to parquet", end="")
+        print(f"took {time.perf_counter() - time_start_load:.1f} seconds. Writing parquet file...", end="", flush=True)
         time_start_write = time.perf_counter()
-        pldf_batch_lazy.collect().write_parquet(
-            parquetfilepath, compression="zstd", statistics=True, compression_level=8
-        )
-        print(f" took {time.perf_counter() - time_start_write:.1f} seconds")
+        pldf_batch.sink_parquet(parquetfilepath, compression="zstd", statistics=True, compression_level=8)
+        print(f"took {time.perf_counter() - time_start_write:.1f} seconds")
     else:
         print(f"  scanning {parquetfilepath.relative_to(modelpath)}")
 
