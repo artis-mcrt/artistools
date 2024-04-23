@@ -271,28 +271,26 @@ def add_derived_columns_lazy(
 
 
 def get_packets_text_columns(packetsfile: Path | str, modelpath: Path = Path()) -> list[str]:
-    column_names: list[str] | None = None
-    fpackets = at.zopen(packetsfile, mode="rt", encoding="utf-8")
+    with at.zopen(packetsfile, mode="rt", encoding="utf-8") as fpackets:
+        firstline = fpackets.readline()
 
-    firstline = fpackets.readline()
+        if firstline.lstrip().startswith("#"):
+            column_names = firstline.lstrip("#").split()
+            assert column_names is not None
 
-    if firstline.lstrip().startswith("#"):
-        column_names = firstline.lstrip("#").split()
-        assert column_names is not None
+            # get the column count from the first data line to check header matched
+            dataline = fpackets.readline()
+            inputcolumncount = len(dataline.split())
+            assert inputcolumncount == len(column_names)
+        else:
+            inputcolumncount = len(firstline.split())
+            column_names = get_column_names_artiscode(modelpath)
+            if column_names:  # found them in the artis code files
+                assert len(column_names) == inputcolumncount
 
-        # get the column count from the first data line to check header matched
-        dataline = fpackets.readline()
-        inputcolumncount = len(dataline.split())
-        assert inputcolumncount == len(column_names)
-    else:
-        inputcolumncount = len(firstline.split())
-        column_names = get_column_names_artiscode(modelpath)
-        if column_names:  # found them in the artis code files
-            assert len(column_names) == inputcolumncount
-
-        else:  # infer from column positions
-            assert len(columns_full) >= inputcolumncount
-            column_names = columns_full[:inputcolumncount]
+            else:  # infer from column positions
+                assert len(columns_full) >= inputcolumncount
+                column_names = columns_full[:inputcolumncount]
 
     return column_names
 
