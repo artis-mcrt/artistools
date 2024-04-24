@@ -1471,7 +1471,7 @@ def get_vspec_dir_labels(modelpath: str | Path, usedegrees: bool = False) -> dic
             cos_theta = vpkt_config["cos_theta"][dirindex]
             if usedegrees:
                 theta_degrees = round(math.degrees(math.acos(cos_theta)))
-                dirlabels[ind_comb] = rf"θ = {theta_degrees}°, ϕ = {phi_angle}° {specindex} {opacity_condition_label}"
+                dirlabels[ind_comb] = rf"θ = {theta_degrees}°, ϕ = {phi_angle}° {opacity_condition_label}"
             else:
                 dirlabels[ind_comb] = rf"cos θ = {cos_theta}, ϕ = {phi_angle}° {opacity_condition_label}"
 
