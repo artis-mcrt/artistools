@@ -437,12 +437,15 @@ def get_time_range(
     timemin: float | None = None,
     timemax: float | None = None,
     timedays_range_str: None | str | float = None,
+    clamp_to_timesteps: bool = True,
 ) -> tuple[int, int, float | None, float | None]:
     """Handle a time range specified in either days or timesteps."""
     # assertions make sure time is specified either by timesteps or times in days, but not both!
     tstarts = get_timestep_times(modelpath, loc="start")
     tmids = get_timestep_times(modelpath, loc="mid")
     tends = get_timestep_times(modelpath, loc="end")
+
+    time_days_lower, time_days_upper = None, None
 
     if timemin and timemin > tends[-1]:
         print(f"{get_model_name(modelpath)}: WARNING timemin {timemin} is after the last timestep at {tends[-1]:.1f}")
@@ -466,6 +469,9 @@ def get_time_range(
         if timedays_range_str is not None:
             if isinstance(timedays_range_str, str) and "-" in timedays_range_str:
                 timemin, timemax = (float(timedays) for timedays in timedays_range_str.split("-"))
+                if not clamp_to_timesteps:
+                    time_days_lower = timemin
+                    time_days_upper = timemax
             else:
                 timeavg = float(timedays_range_str)
                 timestepmin = get_timestep_of_timedays(modelpath, timeavg)
@@ -495,8 +501,10 @@ def get_time_range(
                 timestepmax = timestep
 
         if timestepmax < timestepmin:
-            msg = "Specified time range does not include any full timesteps."
-            raise ValueError(msg)
+            if clamp_to_timesteps:
+                msg = f"Specified time range does not include any full timesteps. {timestepmin=} {timestepmax=}"
+                raise ValueError(msg)
+            timestepmax = timestepmin
     else:
         msg = "Either time or timesteps must be specified."
         raise ValueError(msg)
@@ -505,8 +513,10 @@ def get_time_range(
     if timestepmax is not None and timestepmax > timesteplast:
         print(f"Warning timestepmax {timestepmax} > timesteplast {timesteplast}")
         timestepmax = timesteplast
-    time_days_lower = float(tstarts[timestepmin])
-    time_days_upper = float(tends[timestepmax])
+    if time_days_lower is None:
+        time_days_lower = float(tstarts[timestepmin]) if clamp_to_timesteps else timemin
+    if time_days_upper is None:
+        time_days_upper = float(tends[timestepmax]) if clamp_to_timesteps else timemax
     assert timestepmin is not None
     assert timestepmax is not None
 

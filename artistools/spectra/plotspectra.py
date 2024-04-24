@@ -246,13 +246,19 @@ def plot_artis_spectrum(
         from_packets = True
 
     for axindex, axis in enumerate(axes):
+        clamp_to_timesteps = not args.notimeclamp
         if args.multispecplot:
             (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
-                modelpath, timedays_range_str=args.timedayslist[axindex]
+                modelpath, timedays_range_str=args.timedayslist[axindex], clamp_to_timesteps=clamp_to_timesteps
             )
         else:
             (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
-                modelpath, args.timestep, args.timemin, args.timemax, args.timedays
+                modelpath,
+                args.timestep,
+                args.timemin,
+                args.timemax,
+                args.timedays,
+                clamp_to_timesteps=clamp_to_timesteps,
             )
 
         modelname = at.get_model_name(modelpath)
@@ -277,7 +283,7 @@ def plot_artis_spectrum(
         # else:
         #     linelabel = linelabel.format(**locals())
         print(
-            f"====> '{linelabel}' timesteps {timestepmin} to {timestepmax} ({args.timemin:.3f} to {args.timemax:.3f}d)"
+            f"====> '{linelabel}' timesteps {timestepmin} to {timestepmax} ({args.timemin:.3f} to {args.timemax:.3f}d{'' if clamp_to_timesteps else ' not necessarily clamped to timestep start/end'})"
         )
         print(f" modelpath {modelpath}")
 
@@ -602,9 +608,10 @@ def make_emissionabsorption_plot(
 
     print(f"====> {modelname}")
     arraynu = at.get_nu_grid(modelpath)
+    clamp_to_timesteps = not args.frompackets
 
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
-        modelpath, args.timestep, args.timemin, args.timemax, args.timedays
+        modelpath, args.timestep, args.timemin, args.timemax, args.timedays, clamp_to_timesteps=clamp_to_timesteps
     )
 
     if timestepmin == timestepmax == -1:
@@ -614,7 +621,9 @@ def make_emissionabsorption_plot(
     assert args.timemin is not None
     assert args.timemax is not None
 
-    print(f"Plotting {modelname} timesteps {timestepmin} to {timestepmax} ({args.timemin:.3f} to {args.timemax:.3f}d)")
+    print(
+        f"Plotting {modelname} timesteps {timestepmin} to {timestepmax} ({args.timemin:.3f} to {args.timemax:.3f}d{'' if clamp_to_timesteps else ' not necessarily clamped to timestep start/end'})"
+    )
 
     xmin, xmax = axis.get_xlim()
 
@@ -1183,6 +1192,10 @@ def addargs(parser) -> None:
     parser.add_argument("-timemax", type=float, help="Upper time in days to integrate spectrum")
 
     parser.add_argument(
+        "--notimeclamp", action="store_true", help="When plotting from packets, don't clamp to timestep start/end"
+    )
+
+    parser.add_argument(
         "-xmin", "-lambdamin", dest="xmin", type=int, default=2500, help="Plot range: minimum wavelength in Angstroms"
     )
 
@@ -1457,7 +1470,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
         # plt.minorticks_on()
 
-        fig.savefig(filenameout)
+        fig.savefig(filenameout, dpi=300)
         # plt.show()
         print(f"Saved {filenameout}")
         plt.close()

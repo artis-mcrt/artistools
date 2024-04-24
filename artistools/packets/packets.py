@@ -517,8 +517,9 @@ def get_rankbatch_parquetfile(
             pldf_batch = add_packet_directions_lazypolars(pldf_batch, syn_dir)
             pldf_batch = bin_packet_directions_lazypolars(pldf_batch)
 
-        print(f"  took {time.perf_counter() - time_start_load:.1f} seconds.")
-        print("  writing parquet file...", end="", flush=True)
+        print(
+            f"   took {time.perf_counter() - time_start_load:.1f} seconds. Writing parquet file...", end="", flush=True
+        )
         time_start_write = time.perf_counter()
         pldf_batch.sink_parquet(parquetfilepath, compression="zstd", statistics=True, compression_level=8)
         print(f"took {time.perf_counter() - time_start_write:.1f} seconds")
