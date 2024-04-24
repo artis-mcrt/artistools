@@ -1305,6 +1305,8 @@ def addargs(parser) -> None:
         "-outputfile", "-o", action="store", dest="outputfile", type=Path, help="path/filename for PDF file"
     )
 
+    parser.add_argument("-dpi", type=int, default=250, help="Dots Per Inch for output file")
+
     parser.add_argument(
         "--output_spectra", "--write_spectra", action="store_true", help="Write out all timestep spectra to text files"
     )
@@ -1476,7 +1478,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
         # plt.minorticks_on()
 
-        fig.savefig(filenameout, dpi=300)
+        fig.savefig(filenameout, dpi=args.dpi)
         # plt.show()
         print(f"Saved {filenameout}")
         plt.close()
