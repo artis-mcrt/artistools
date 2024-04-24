@@ -608,7 +608,7 @@ def make_emissionabsorption_plot(
 
     print(f"====> {modelname}")
     arraynu = at.get_nu_grid(modelpath)
-    clamp_to_timesteps = not args.frompackets
+    clamp_to_timesteps = not args.notimeclamp
 
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
         modelpath, args.timestep, args.timemin, args.timemax, args.timedays, clamp_to_timesteps=clamp_to_timesteps
@@ -617,6 +617,10 @@ def make_emissionabsorption_plot(
     if timestepmin == timestepmax == -1:
         print(f"Can't plot {modelname}...skipping")
         return [], [], None
+
+    if args.plotvspecpol and not args.frompackets:
+        args.frompackets = True
+        print("Enabling --frompackets, since --plotvspecpol was specified")
 
     assert args.timemin is not None
     assert args.timemax is not None
@@ -627,10 +631,8 @@ def make_emissionabsorption_plot(
 
     xmin, xmax = axis.get_xlim()
 
+    dirbin = args.plotviewingangle[0] if args.plotviewingangle else args.plotvspecpol[0] if args.plotvspecpol else None
     if args.frompackets:
-        dirbin = (
-            args.plotviewingangle[0] if args.plotviewingangle else args.plotvspecpol[0] if args.plotvspecpol else None
-        )
         (
             contribution_list,
             array_flambda_emission_total,
@@ -666,7 +668,7 @@ def make_emissionabsorption_plot(
             getemission=args.showemission,
             getabsorption=args.showabsorption,
             use_lastemissiontype=not args.use_thermalemissiontype,
-            directionbin=args.plotviewingangle[0] if args.plotviewingangle else None,
+            directionbin=dirbin,
             average_over_phi=args.average_over_phi_angle,
             average_over_theta=args.average_over_theta_angle,
         )
@@ -797,15 +799,19 @@ def make_emissionabsorption_plot(
         plotlabel = args.title
     else:
         plotlabel = f"{modelname}\n{args.timemin:.2f}d to {args.timemax:.2f}d"
-        if args.plotviewingangle:
-            dirbin_definitions = at.get_dirbin_labels(
-                dirbins=args.plotviewingangle,
-                modelpath=modelpath,
-                average_over_phi=args.average_over_phi_angle,
-                average_over_theta=args.average_over_theta_angle,
-                usedegrees=args.usedegrees,
+        if args.plotviewingangle or args.plotvspecpol:
+            dirbin_definitions = (
+                at.get_vspec_dir_labels(modelpath=modelpath, usedegrees=args.usedegrees)
+                if args.plotvspecpol
+                else at.get_dirbin_labels(
+                    dirbins=args.plotviewingangle,
+                    modelpath=modelpath,
+                    average_over_phi=args.average_over_phi_angle,
+                    average_over_theta=args.average_over_theta_angle,
+                    usedegrees=args.usedegrees,
+                )
             )
-            plotlabel += f", directionbin {dirbin_definitions[args.plotviewingangle[0]]}"
+            plotlabel += f", {dirbin_definitions[dirbin]}"
 
     if not args.notitle:
         if args.inset_title:
