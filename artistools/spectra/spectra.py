@@ -902,6 +902,7 @@ def get_flux_contributions_from_packets(
     average_over_phi: bool = False,
     average_over_theta: bool = False,
     directionbins_are_vpkt_observers: bool = False,
+    vpkt_match_emission_exclusion_to_opac: bool = False,
 ) -> tuple[list[fluxcontributiontuple], np.ndarray, np.ndarray]:
     assert groupby in {"ion", "line"}
 
@@ -992,9 +993,20 @@ def get_flux_contributions_from_packets(
                     ]
                 ),
             ],
-        ).with_columns(pl.col("emissiontype_str").cast(pl.Categorical))
+        )
 
         lzdfpackets = lzdfpackets.join(emtypestrings, on=emtypecolumn, how="left")
+        z_exclude = int(vpkt_config["z_excludelist"][opacchoiceindex])
+        if vpkt_match_emission_exclusion_to_opac:
+            if z_exclude == -1:
+                # no bound-bound
+                lzdfpackets = lzdfpackets.filter(pl.col("emissiontype_str").str.contains("bound-free"))
+            elif z_exclude == -2:
+                # no bound-free
+                lzdfpackets = lzdfpackets.filter(pl.col("emissiontype_str").str.contains("bound-free").is_not())
+            elif z_exclude > 0:
+                elsymb = at.get_elsymbol(z_exclude)
+                lzdfpackets = lzdfpackets.filter(pl.col("emissiontype_str").str.starts_with(f"{elsymb} ").is_not())
 
     if getabsorption:
         cols |= {"absorptiontype_str", "absorption_freq"}

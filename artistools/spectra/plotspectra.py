@@ -655,8 +655,10 @@ def make_emissionabsorption_plot(
             average_over_phi=args.average_over_phi_angle,
             average_over_theta=args.average_over_theta_angle,
             directionbins_are_vpkt_observers=args.plotvspecpol is not None,
+            vpkt_match_emission_exclusion_to_opac=args.vpkt_match_emission_exclusion_to_opac,
         )
     else:
+        assert not args.vpkt_match_emission_exclusion_to_opac
         arraylambda_angstroms = 2.99792458e18 / at.get_nu_grid(modelpath)
         contribution_list, array_flambda_emission_total = at.spectra.get_flux_contributions(
             modelpath,
@@ -1387,6 +1389,12 @@ def addargs(parser) -> None:
         "--classicartis", action="store_true", help="Flag to show using output from classic ARTIS branch"
     )
 
+    parser.add_argument(
+        "--vpkt_match_emission_exclusion_to_opac",
+        action="store_true",
+        help="Exclude packets with emission type no-bb/no-bf/no-(element) matching the vpkt opacity exclusion",
+    )
+
 
 def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
     """Plot spectra from ARTIS and reference data."""
@@ -1437,6 +1445,11 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     args.color, args.label, args.linestyle, args.linealpha, args.dashes, args.linewidth = at.trim_or_pad(
         len(args.specpath), args.color, args.label, args.linestyle, args.linealpha, args.dashes, args.linewidth
     )
+
+    if args.vpkt_match_emission_exclusion_to_opac:
+        assert args.showemission
+        assert args.frompackets
+        assert args.plotvspecpol
 
     if args.emissionvelocitycut or args.groupby == "line":
         args.frompackets = True
