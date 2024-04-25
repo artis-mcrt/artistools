@@ -1465,9 +1465,9 @@ def get_vspec_dir_labels(modelpath: str | Path, usedegrees: bool = False) -> dic
     dirlabels = {}
     for dirindex in range(vpkt_config["nobsdirections"]):
         phi_angle = round(vpkt_config["phi"][dirindex])
-        for specindex in range(vpkt_config["nspectraperobs"]):
-            opacity_condition_label = get_opacity_condition_label(int(vpkt_config["z_excludelist"][specindex]))
-            ind_comb = vpkt_config["nspectraperobs"] * dirindex + specindex
+        for opacchoiceindex in range(vpkt_config["nspectraperobs"]):
+            opacity_condition_label = get_opacity_condition_label(int(vpkt_config["z_excludelist"][opacchoiceindex]))
+            ind_comb = vpkt_config["nspectraperobs"] * dirindex + opacchoiceindex
             cos_theta = vpkt_config["cos_theta"][dirindex]
             if usedegrees:
                 theta_degrees = round(math.degrees(math.acos(cos_theta)))
