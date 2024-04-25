@@ -317,7 +317,7 @@ def get_from_packets(
     if fluxfilterfunc:
         print("Applying filter to ARTIS spectrum")
         dfbinned_lazy = dfbinned_lazy.with_columns(
-            cs.starts_with("f_lambda_dirbin").map(lambda x: fluxfilterfunc(x.to_numpy()))
+            cs.starts_with("f_lambda_").map(lambda x: fluxfilterfunc(x.to_numpy()))
         )
 
     dfbinned = dfbinned_lazy.collect(streaming=True)
@@ -450,6 +450,7 @@ def get_spectrum(
 
     if directionbins is None:
         directionbins = [-1]
+
     # keys are direction bins (or -1 for spherical average)
     specdata: dict[int, pl.DataFrame] = {}
 
@@ -470,42 +471,43 @@ def get_spectrum(
         # spherically averaged spectra
         if stokesparam == "I":
             try:
-                specdata[-1] = read_spec(modelpath=modelpath).to_pandas(use_pyarrow_extension_array=True)
+                specdata[-1] = read_spec(modelpath=modelpath)
 
             except FileNotFoundError:
-                specdata[-1] = get_specpol_data(angle=-1, modelpath=modelpath)[stokesparam]
+                specdata[-1] = pl.from_pandas(get_specpol_data(angle=-1, modelpath=modelpath)[stokesparam])
 
         else:
-            specdata[-1] = get_specpol_data(angle=-1, modelpath=modelpath)[stokesparam]
+            specdata[-1] = pl.from_pandas(get_specpol_data(angle=-1, modelpath=modelpath)[stokesparam])
 
     specdataout: dict[int, pl.DataFrame] = {}
     for dirbin in directionbins:
         if dirbin not in specdata:
             print(f"WARNING: Direction bin {dirbin} not found in specdata. Dirbins: {list(specdata.keys())}")
             continue
-        arr_nu = specdata[dirbin]["nu"].to_numpy()
         arr_tdelta = at.get_timestep_times(modelpath, loc="delta")
 
         try:
-            arr_f_nu = stackspectra(
-                [
-                    (specdata[dirbin][specdata[dirbin].columns[timestep + 1]].to_numpy(), arr_tdelta[timestep])
+            arr_f_nu = specdata[dirbin].select(
+                pl.sum_horizontal(
+                    pl.col(specdata[dirbin].columns[timestep + 1]) * arr_tdelta[timestep]
                     for timestep in range(timestepmin, timestepmax + 1)
-                ]
+                )
+                / sum(arr_tdelta[timestepmin : timestepmax + 1])
             )
-        except IndexError:
-            print(" ERROR: data not available for timestep range")
-            return specdataout
+        except IndexError as e:
+            msg = " ERROR: data not available for timestep range"
+            raise ValueError(msg) from e
 
-        if fluxfilterfunc:
-            if dirbin == directionbins[0]:
-                print("Applying filter to ARTIS spectrum")
-            arr_f_nu = fluxfilterfunc(arr_f_nu)
-
+        arr_nu = specdata[dirbin]["nu"]
         arr_lambda = 2.99792458e18 / arr_nu
         dfspectrum = pl.DataFrame({"lambda_angstroms": arr_lambda, "f_lambda": arr_f_nu * arr_nu / arr_lambda}).sort(
             by="lambda_angstroms"
         )
+
+        if fluxfilterfunc:
+            if dirbin == directionbins[0]:
+                print("Applying filter to ARTIS spectrum")
+            dfspectrum = dfspectrum.with_columns(cs.starts_with("f_lambda").map(lambda x: fluxfilterfunc(x.to_numpy())))
 
         specdataout[dirbin] = dfspectrum
 
@@ -661,43 +663,47 @@ def get_vspecpol_spectrum(
     stokes_params = get_vspecpol_data(vspecangle=angle, modelpath=Path(modelpath))
     if "stokesparam" not in args:
         args.stokesparam = "I"
-    vspecdata = stokes_params[args.stokesparam]
+    vspecdata = pl.from_pandas(stokes_params[args.stokesparam])
 
-    nu = vspecdata.loc[:, "nu"].to_numpy()
-
-    arr_tmid = [float(i) for i in vspecdata.columns.to_numpy()[1:]]
+    arr_tmid = [float(i) for i in vspecdata.columns[1:]]
+    vspec_timesteps = range(len(arr_tmid))
     arr_tdelta = [l1 - l2 for l1, l2 in zip(arr_tmid[1:], arr_tmid[:-1])] + [arr_tmid[-1] - arr_tmid[-2]]
 
-    def match_closest_time(reftime: float) -> str:
-        return str(min(arr_tmid, key=lambda x: abs(x - reftime)))
+    def match_closest_time(reftime: float) -> int:
+        return min(vspec_timesteps, key=lambda ts: abs(arr_tmid[ts] - reftime))
 
-    # if 'timemin' and 'timemax' in args:
-    #     timelower = match_closest_time(args.timemin)  # how timemin, timemax are used changed at some point
-    #     timeupper = match_closest_time(args.timemax)  # to average over multiple timesteps needs to fix this
-    # else:
-    timelower = match_closest_time(timeavg)
-    timeupper = match_closest_time(timeavg)
-    timestepmin = vspecdata.columns.get_loc(timelower)
-    timestepmax = vspecdata.columns.get_loc(timeupper)
+    if "timemin" and "timemax" in args:
+        timestepmin = match_closest_time(args.timemin)  # how timemin, timemax are used changed at some point
+        timestepmax = match_closest_time(args.timemax)  # to average over multiple timesteps needs to fix this
+    else:
+        timestepmin = match_closest_time(timeavg)
+        timestepmax = match_closest_time(timeavg)
+
+    timelower = arr_tmid[timestepmin]
+    timeupper = arr_tmid[timestepmax]
     print(f" vpacket spectrum timesteps {timestepmin} ({timelower}d) to {timestepmax} ({timeupper}d)")
 
-    f_nu = stackspectra(
-        [
-            (vspecdata[vspecdata.columns[timestep + 1]].to_numpy(), arr_tdelta[timestep])
-            for timestep in range(timestepmin - 1, timestepmax)
-        ]
+    dfout = (
+        vspecdata.select(
+            f_nu=(
+                pl.sum_horizontal(
+                    pl.col(vspecdata.columns[timestep + 1]) * arr_tdelta[timestep]
+                    for timestep in range(timestepmin, timestepmax + 1)
+                )
+                / sum(arr_tdelta[timestepmin : timestepmax + 1])
+            ),
+            nu=vspecdata["nu"],
+        )
+        .with_columns(lambda_angstroms=2.99792458e18 / pl.col("nu"))
+        .sort(by="lambda_angstroms")
+        .with_columns(f_lambda=pl.col("f_nu") * pl.col("nu") / pl.col("lambda_angstroms"))
     )
 
     if fluxfilterfunc:
         print("Applying filter to ARTIS spectrum")
-        f_nu = fluxfilterfunc(f_nu)
+        dfout = dfout.with_columns(cs.starts_with("f_lambda").map(lambda x: fluxfilterfunc(x.to_numpy())))
 
-    return (
-        pl.DataFrame({"nu": nu, "f_nu": f_nu})
-        .sort(by="nu", descending=True)
-        .with_columns(lambda_angstroms=2.99792458e18 / pl.col("nu"))
-        .with_columns(f_lambda=pl.col("f_nu") * pl.col("nu") / pl.col("lambda_angstroms"))
-    )
+    return dfout
 
 
 @lru_cache(maxsize=4)
@@ -896,6 +902,7 @@ def get_flux_contributions_from_packets(
     average_over_phi: bool = False,
     average_over_theta: bool = False,
     directionbins_are_vpkt_observers: bool = False,
+    vpkt_match_emission_exclusion_to_opac: bool = False,
 ) -> tuple[list[fluxcontributiontuple], np.ndarray, np.ndarray]:
     assert groupby in {"ion", "line"}
 
@@ -986,9 +993,20 @@ def get_flux_contributions_from_packets(
                     ]
                 ),
             ],
-        ).with_columns(pl.col("emissiontype_str").cast(pl.Categorical))
+        )
 
         lzdfpackets = lzdfpackets.join(emtypestrings, on=emtypecolumn, how="left")
+        z_exclude = int(vpkt_config["z_excludelist"][opacchoiceindex])
+        if vpkt_match_emission_exclusion_to_opac:
+            if z_exclude == -1:
+                # no bound-bound
+                lzdfpackets = lzdfpackets.filter(pl.col("emissiontype_str").str.contains("bound-free"))
+            elif z_exclude == -2:
+                # no bound-free
+                lzdfpackets = lzdfpackets.filter(pl.col("emissiontype_str").str.contains("bound-free").is_not())
+            elif z_exclude > 0:
+                elsymb = at.get_elsymbol(z_exclude)
+                lzdfpackets = lzdfpackets.filter(pl.col("emissiontype_str").str.starts_with(f"{elsymb} ").is_not())
 
     if getabsorption:
         cols |= {"absorptiontype_str", "absorption_freq"}
