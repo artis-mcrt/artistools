@@ -607,7 +607,6 @@ def make_emissionabsorption_plot(
     modelname = at.get_model_name(modelpath)
 
     print(f"====> {modelname}")
-    arraynu = at.get_nu_grid(modelpath)
     clamp_to_timesteps = not args.notimeclamp
 
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
@@ -659,7 +658,7 @@ def make_emissionabsorption_plot(
             directionbins_are_vpkt_observers=args.plotvspecpol is not None,
         )
     else:
-        arraylambda_angstroms = 2.99792458e18 / arraynu
+        arraylambda_angstroms = 2.99792458e18 / at.get_nu_grid(modelpath)
         contribution_list, array_flambda_emission_total = at.spectra.get_flux_contributions(
             modelpath,
             filterfunc,
