@@ -367,11 +367,7 @@ def plot_artis_spectrum(
                 plotkwargs = plotkwargs.copy()
                 plotkwargs["color"] = None
 
-            dfspectrum = (
-                pl.from_pandas(viewinganglespectra[dirbin])
-                if isinstance(viewinganglespectra[dirbin], pd.DataFrame)
-                else viewinganglespectra[dirbin].lazy().collect()
-            )
+            dfspectrum = viewinganglespectra[dirbin].lazy().collect()
             dfspectrum = dfspectrum.filter(pl.col("lambda_angstroms").is_between(supxmin * 0.9, supxmax * 1.1))
 
             linelabel_withdirbin = linelabel
