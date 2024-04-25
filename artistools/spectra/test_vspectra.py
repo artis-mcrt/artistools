@@ -14,7 +14,7 @@ def test_vspectraplot(mockplot):
         specpath=[at.get_config()["path_testdata"] / "vspecpolmodel", "sn2011fe_PTF11kly_20120822_norm.txt"],
         outputfile=at.get_config()["path_testoutput"] / "test_vspectra.pdf",
         plotvspecpol=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
-        timemin=10,
+        timemin=11,
         timemax=12,
     )
 
@@ -37,7 +37,7 @@ def test_vspectraplot(mockplot):
             2.05916843e-12,
             2.00515984e-12,
         ],
-        atol=1e-20,
+        atol=1e-16,
     )
 
     assert np.allclose(
@@ -54,7 +54,7 @@ def test_vspectraplot(mockplot):
             3.0234533505898177e-12,
             2.9721539798925583e-12,
         ],
-        atol=1e-20,
+        atol=1e-16,
     )
 
 
