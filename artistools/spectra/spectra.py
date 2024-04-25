@@ -663,43 +663,47 @@ def get_vspecpol_spectrum(
     stokes_params = get_vspecpol_data(vspecangle=angle, modelpath=Path(modelpath))
     if "stokesparam" not in args:
         args.stokesparam = "I"
-    vspecdata = stokes_params[args.stokesparam]
+    vspecdata = pl.from_pandas(stokes_params[args.stokesparam])
 
-    nu = vspecdata.loc[:, "nu"].to_numpy()
-
-    arr_tmid = [float(i) for i in vspecdata.columns.to_numpy()[1:]]
+    arr_tmid = [float(i) for i in vspecdata.columns[1:]]
+    vspec_timesteps = range(len(arr_tmid))
     arr_tdelta = [l1 - l2 for l1, l2 in zip(arr_tmid[1:], arr_tmid[:-1])] + [arr_tmid[-1] - arr_tmid[-2]]
 
-    def match_closest_time(reftime: float) -> str:
-        return str(min(arr_tmid, key=lambda x: abs(x - reftime)))
+    def match_closest_time(reftime: float) -> int:
+        return min(vspec_timesteps, key=lambda ts: abs(arr_tmid[ts] - reftime))
 
-    # if 'timemin' and 'timemax' in args:
-    #     timelower = match_closest_time(args.timemin)  # how timemin, timemax are used changed at some point
-    #     timeupper = match_closest_time(args.timemax)  # to average over multiple timesteps needs to fix this
-    # else:
-    timelower = match_closest_time(timeavg)
-    timeupper = match_closest_time(timeavg)
-    timestepmin = vspecdata.columns.get_loc(timelower)
-    timestepmax = vspecdata.columns.get_loc(timeupper)
+    if "timemin" and "timemax" in args:
+        timestepmin = match_closest_time(args.timemin)  # how timemin, timemax are used changed at some point
+        timestepmax = match_closest_time(args.timemax)  # to average over multiple timesteps needs to fix this
+    else:
+        timestepmin = match_closest_time(timeavg)
+        timestepmax = match_closest_time(timeavg)
+
+    timelower = arr_tmid[timestepmin]
+    timeupper = arr_tmid[timestepmax]
     print(f" vpacket spectrum timesteps {timestepmin} ({timelower}d) to {timestepmax} ({timeupper}d)")
 
-    f_nu = stackspectra(
-        [
-            (vspecdata[vspecdata.columns[timestep + 1]].to_numpy(), arr_tdelta[timestep])
-            for timestep in range(timestepmin - 1, timestepmax)
-        ]
+    dfout = (
+        vspecdata.select(
+            f_nu=(
+                pl.sum_horizontal(
+                    pl.col(vspecdata.columns[timestep + 1]) * arr_tdelta[timestep]
+                    for timestep in range(timestepmin, timestepmax + 1)
+                )
+                / sum(arr_tdelta[timestepmin : timestepmax + 1])
+            ),
+            nu=vspecdata["nu"],
+        )
+        .with_columns(lambda_angstroms=2.99792458e18 / pl.col("nu"))
+        .sort(by="lambda_angstroms")
+        .with_columns(f_lambda=pl.col("f_nu") * pl.col("nu") / pl.col("lambda_angstroms"))
     )
 
     if fluxfilterfunc:
         print("Applying filter to ARTIS spectrum")
-        f_nu = fluxfilterfunc(f_nu)
+        dfout = dfout.with_columns(cs.starts_with("f_lambda").map(lambda x: fluxfilterfunc(x.to_numpy())))
 
-    return (
-        pl.DataFrame({"nu": nu, "f_nu": f_nu})
-        .sort(by="nu", descending=True)
-        .with_columns(lambda_angstroms=2.99792458e18 / pl.col("nu"))
-        .with_columns(f_lambda=pl.col("f_nu") * pl.col("nu") / pl.col("lambda_angstroms"))
-    )
+    return dfout
 
 
 @lru_cache(maxsize=4)
