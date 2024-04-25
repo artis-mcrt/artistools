@@ -367,11 +367,7 @@ def plot_artis_spectrum(
                 plotkwargs = plotkwargs.copy()
                 plotkwargs["color"] = None
 
-            dfspectrum = (
-                pl.from_pandas(viewinganglespectra[dirbin])
-                if isinstance(viewinganglespectra[dirbin], pd.DataFrame)
-                else viewinganglespectra[dirbin].lazy().collect()
-            )
+            dfspectrum = viewinganglespectra[dirbin].lazy().collect()
             dfspectrum = dfspectrum.filter(pl.col("lambda_angstroms").is_between(supxmin * 0.9, supxmax * 1.1))
 
             linelabel_withdirbin = linelabel
@@ -428,9 +424,9 @@ def make_spectrum_plot(
     filterfunc: t.Callable[[np.ndarray], np.ndarray] | None,
     args,
     scale_to_peak: float | None = None,
-) -> pd.DataFrame:
+) -> pl.DataFrame:
     """Plot reference spectra and ARTIS spectra."""
-    dfalldata = pd.DataFrame()
+    dfalldata = pl.DataFrame()
     artisindex = 0
     refspecindex = 0
     seriesindex = 0
@@ -455,7 +451,7 @@ def make_spectrum_plot(
         if args.linewidth[seriesindex]:
             plotkwargs["linewidth"] = args.linewidth[seriesindex]
 
-        seriesdata = pd.DataFrame()
+        seriesdata: pl.DataFrame | None
         if (
             Path(specpath).is_file()
             or Path(at.get_config()["path_artistools_dir"], "data", "refspectra", specpath).is_file()
@@ -534,14 +530,13 @@ def make_spectrum_plot(
                 seriesname = at.get_model_name(specpath)
                 artisindex += 1
 
-        if args.write_data and not seriesdata.empty:
-            if dfalldata.empty:
-                dfalldata = pd.DataFrame(index=seriesdata["lambda_angstroms"].to_numpy())
-                dfalldata.index.name = "lambda_angstroms"
+        if args.write_data and seriesdata is not None:
+            if dfalldata.is_empty():
+                dfalldata = pl.DataFrame({"lambda_angstroms": seriesdata["lambda_angstroms"]})
             else:
                 # make sure we can share the same set of wavelengths for this series
-                assert np.allclose(dfalldata.index.values, seriesdata["lambda_angstroms"].to_numpy())
-            dfalldata[f"f_lambda.{seriesname}"] = seriesdata["f_lambda"].to_numpy()
+                assert np.allclose(dfalldata["lambda_angstroms"], seriesdata["lambda_angstroms"].to_numpy())
+            dfalldata = dfalldata.with_columns(seriesdata["f_lambda"].alias(f"f_lambda.{seriesname}"))
 
     plottedsomething = artisindex > 0 or refspecindex > 0
     assert plottedsomething
@@ -602,12 +597,11 @@ def make_emissionabsorption_plot(
     filterfunc: t.Callable[[np.ndarray], np.ndarray] | None = None,
     args=None,
     scale_to_peak: float | None = None,
-) -> tuple[list[Artist], list[str], pd.DataFrame | None]:
+) -> tuple[list[Artist], list[str], pl.DataFrame | None]:
     """Plot the emission and absorption contribution spectra, grouped by ion/line/term for an ARTIS model."""
     modelname = at.get_model_name(modelpath)
 
     print(f"====> {modelname}")
-    arraynu = at.get_nu_grid(modelpath)
     clamp_to_timesteps = not args.notimeclamp
 
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
@@ -657,9 +651,11 @@ def make_emissionabsorption_plot(
             average_over_phi=args.average_over_phi_angle,
             average_over_theta=args.average_over_theta_angle,
             directionbins_are_vpkt_observers=args.plotvspecpol is not None,
+            vpkt_match_emission_exclusion_to_opac=args.vpkt_match_emission_exclusion_to_opac,
         )
     else:
-        arraylambda_angstroms = 2.99792458e18 / arraynu
+        assert not args.vpkt_match_emission_exclusion_to_opac
+        arraylambda_angstroms = 2.99792458e18 / at.get_nu_grid(modelpath)
         contribution_list, array_flambda_emission_total = at.spectra.get_flux_contributions(
             modelpath,
             filterfunc,
@@ -703,13 +699,16 @@ def make_emissionabsorption_plot(
         )
         plotobjects.append(line)
 
-    dfaxisdata = pd.DataFrame(index=arraylambda_angstroms)
-    dfaxisdata.index.name = "lambda_angstroms"
+    dfaxisdata = pl.DataFrame({"lambda_angstroms": arraylambda_angstroms})
     # dfaxisdata['nu_hz'] = arraynu
     for x in contributions_sorted_reduced:
-        dfaxisdata["emission_flambda." + x.linelabel] = x.array_flambda_emission
+        dfaxisdata = dfaxisdata.with_columns(
+            pl.Series(name="emission_flambda." + x.linelabel, values=x.array_flambda_emission)
+        )
         if args.showabsorption:
-            dfaxisdata["absorption_flambda." + x.linelabel] = x.array_flambda_absorption
+            dfaxisdata = dfaxisdata.with_columns(
+                pl.Series(name="absorption_flambda." + x.linelabel, values=x.array_flambda_absorption)
+            )
 
     if args.nostack:
         for x in contributions_sorted_reduced:
@@ -936,7 +935,7 @@ def make_contrib_plot(axes: t.Iterable[plt.Axes], modelpath: Path, densityplotyv
         # ax.pcolormesh(xi, yi, zi.reshape(xi.shape), shading='gouraud', cmap=plt.cm.BuGn_r)
 
 
-def make_plot(args) -> tuple[plt.Figure, list[plt.Axes], pd.DataFrame]:
+def make_plot(args) -> tuple[plt.Figure, list[plt.Axes], pl.DataFrame]:
     # font = {'size': 16}
     # mpl.rc('font', **font)
 
@@ -969,7 +968,7 @@ def make_plot(args) -> tuple[plt.Figure, list[plt.Axes], pd.DataFrame]:
 
     scale_to_peak = 1.0 if args.normalised else None
 
-    dfalldata = pd.DataFrame()
+    dfalldata: pl.DataFrame | None = pl.DataFrame()
 
     if not args.hideyticklabels:
         if args.multispecplot:
@@ -1109,6 +1108,7 @@ def make_plot(args) -> tuple[plt.Figure, list[plt.Axes], pd.DataFrame]:
             fontsize="x-large",
         )
 
+    assert dfalldata is not None
     return fig, axes, dfalldata
 
 
@@ -1385,6 +1385,12 @@ def addargs(parser) -> None:
         "--classicartis", action="store_true", help="Flag to show using output from classic ARTIS branch"
     )
 
+    parser.add_argument(
+        "--vpkt_match_emission_exclusion_to_opac",
+        action="store_true",
+        help="Exclude packets with emission type no-bb/no-bf/no-(element) matching the vpkt opacity exclusion",
+    )
+
 
 def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
     """Plot spectra from ARTIS and reference data."""
@@ -1436,6 +1442,11 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         len(args.specpath), args.color, args.label, args.linestyle, args.linealpha, args.dashes, args.linewidth
     )
 
+    if args.vpkt_match_emission_exclusion_to_opac:
+        assert args.showemission
+        assert args.frompackets
+        assert args.plotvspecpol
+
     if args.emissionvelocitycut or args.groupby == "line":
         args.frompackets = True
 
@@ -1471,9 +1482,9 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             time_days_min=args.timemin, time_days_max=args.timemax, directionbins=strdirectionbins
         )
 
-        if args.write_data and not dfalldata.empty:
+        if args.write_data and len(dfalldata.columns) > 0:
             datafilenameout = Path(filenameout).with_suffix(".txt")
-            dfalldata.to_csv(datafilenameout)
+            dfalldata.write_csv(datafilenameout, separator=" ")
             print(f"Saved {datafilenameout}")
 
         # plt.minorticks_on()
