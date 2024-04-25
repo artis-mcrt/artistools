@@ -450,6 +450,7 @@ def get_spectrum(
 
     if directionbins is None:
         directionbins = [-1]
+
     # keys are direction bins (or -1 for spherical average)
     specdata: dict[int, pl.DataFrame] = {}
 
@@ -470,13 +471,13 @@ def get_spectrum(
         # spherically averaged spectra
         if stokesparam == "I":
             try:
-                specdata[-1] = read_spec(modelpath=modelpath).to_pandas(use_pyarrow_extension_array=True)
+                specdata[-1] = read_spec(modelpath=modelpath)
 
             except FileNotFoundError:
-                specdata[-1] = get_specpol_data(angle=-1, modelpath=modelpath)[stokesparam]
+                specdata[-1] = pl.from_pandas(get_specpol_data(angle=-1, modelpath=modelpath)[stokesparam])
 
         else:
-            specdata[-1] = get_specpol_data(angle=-1, modelpath=modelpath)[stokesparam]
+            specdata[-1] = pl.from_pandas(get_specpol_data(angle=-1, modelpath=modelpath)[stokesparam])
 
     specdataout: dict[int, pl.DataFrame] = {}
     for dirbin in directionbins:
@@ -486,26 +487,27 @@ def get_spectrum(
         arr_tdelta = at.get_timestep_times(modelpath, loc="delta")
 
         try:
-            arr_f_nu = stackspectra(
-                [
-                    (specdata[dirbin][specdata[dirbin].columns[timestep + 1]].to_numpy(), arr_tdelta[timestep])
+            arr_f_nu = specdata[dirbin].select(
+                pl.sum_horizontal(
+                    pl.col(specdata[dirbin].columns[timestep + 1]) * arr_tdelta[timestep]
                     for timestep in range(timestepmin, timestepmax + 1)
-                ]
+                )
+                / sum(arr_tdelta[timestepmin : timestepmax + 1])
             )
-        except IndexError:
-            print(" ERROR: data not available for timestep range")
-            return specdataout
-
-        if fluxfilterfunc:
-            if dirbin == directionbins[0]:
-                print("Applying filter to ARTIS spectrum")
-            arr_f_nu = fluxfilterfunc(arr_f_nu)
+        except IndexError as e:
+            msg = " ERROR: data not available for timestep range"
+            raise ValueError(msg) from e
 
         arr_nu = specdata[dirbin]["nu"]
         arr_lambda = 2.99792458e18 / arr_nu
         dfspectrum = pl.DataFrame({"lambda_angstroms": arr_lambda, "f_lambda": arr_f_nu * arr_nu / arr_lambda}).sort(
             by="lambda_angstroms"
         )
+
+        if fluxfilterfunc:
+            if dirbin == directionbins[0]:
+                print("Applying filter to ARTIS spectrum")
+            dfspectrum = dfspectrum.with_columns(cs.starts_with("f_lambda").map(lambda x: fluxfilterfunc(x.to_numpy())))
 
         specdataout[dirbin] = dfspectrum
 
