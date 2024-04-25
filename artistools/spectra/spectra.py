@@ -317,7 +317,7 @@ def get_from_packets(
     if fluxfilterfunc:
         print("Applying filter to ARTIS spectrum")
         dfbinned_lazy = dfbinned_lazy.with_columns(
-            cs.starts_with("f_lambda_dirbin").map(lambda x: fluxfilterfunc(x.to_numpy()))
+            cs.starts_with("f_lambda_").map(lambda x: fluxfilterfunc(x.to_numpy()))
         )
 
     dfbinned = dfbinned_lazy.collect(streaming=True)
@@ -483,7 +483,6 @@ def get_spectrum(
         if dirbin not in specdata:
             print(f"WARNING: Direction bin {dirbin} not found in specdata. Dirbins: {list(specdata.keys())}")
             continue
-        arr_nu = specdata[dirbin]["nu"].to_numpy()
         arr_tdelta = at.get_timestep_times(modelpath, loc="delta")
 
         try:
@@ -502,6 +501,7 @@ def get_spectrum(
                 print("Applying filter to ARTIS spectrum")
             arr_f_nu = fluxfilterfunc(arr_f_nu)
 
+        arr_nu = specdata[dirbin]["nu"]
         arr_lambda = 2.99792458e18 / arr_nu
         dfspectrum = pl.DataFrame({"lambda_angstroms": arr_lambda, "f_lambda": arr_f_nu * arr_nu / arr_lambda}).sort(
             by="lambda_angstroms"
