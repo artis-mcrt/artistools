@@ -1060,9 +1060,7 @@ def make_plot(args) -> tuple[plt.Figure, list[plt.Axes], pl.DataFrame]:
         # ax.xaxis.set_major_formatter(plt.NullFormatter())
 
         if "{" in ax.get_ylabel() and not args.logscale:
-            ax.yaxis.set_major_formatter(
-                at.plottools.ExponentLabelFormatter(ax.get_ylabel(), useMathText=True, decimalplaces=1)
-            )
+            ax.yaxis.set_major_formatter(at.plottools.ExponentLabelFormatter(ax.get_ylabel(), decimalplaces=1))
 
         if args.hidexticklabels:
             ax.tick_params(
