@@ -297,7 +297,7 @@ def make_ionsubplot(
 
         ycolumnname = "departure_coeff"
 
-        ax._get_lines.get_next_color()  # skip one color, since T_e is not plotted in departure mode
+        ax._get_lines.get_next_color()  # noqa: SLF001  # skip one color, since T_e is not plotted in departure mode
         if floers_levelnums is not None:
             ax.plot(
                 floers_levelnums,

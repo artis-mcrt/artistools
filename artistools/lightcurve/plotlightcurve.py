@@ -67,8 +67,8 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
     #             'color': color_total,
     #         }))
 
-    color_gamma = axis._get_lines.get_next_color()
-    color_gamma = axis._get_lines.get_next_color()
+    color_gamma = axis._get_lines.get_next_color()  # noqa: SLF001
+    color_gamma = axis._get_lines.get_next_color()  # noqa: SLF001
 
     # axis.plot(depdata['tmid_days'], depdata['eps_gamma_Lsun'] * 3.826e33, **dict(
     #     plotkwargs, **{
@@ -90,7 +90,7 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
         },
     )
 
-    color_beta = axis._get_lines.get_next_color()
+    color_beta = axis._get_lines.get_next_color()  # noqa: SLF001
 
     if "eps_elec_Lsun" in depdata:
         axis.plot(
@@ -848,9 +848,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
         scaledmap = make_colorbar_viewingangles_colormap()
 
     first_band_name = None
-    for modelnumber, modelpath in enumerate(modelpaths):
-        modelpath = Path(modelpath)  # Make sure modelpath is defined as path. May not be necessary
-
+    for modelnumber, modelpath in enumerate(Path(m) for m in modelpaths):
         # check if doing viewing angle stuff, and if so define which data to use
         angles, angle_definition = at.lightcurve.parse_directionbin_args(modelpath, args)
 

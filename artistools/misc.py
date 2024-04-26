@@ -47,6 +47,8 @@ roman_numerals = (
 
 
 class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
+    """Custom argparse formatter to show default values in help text, sorted with dashes last."""
+
     def __init__(self, *args: t.Any, **kwargs: t.Any) -> None:
         kwargs["max_help_position"] = 39
         super().__init__(*args, **kwargs)
@@ -62,6 +64,8 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
 
 
 class AppendPath(argparse.Action):
+    """Append a path to a list of paths."""
+
     def __call__(self, parser, args, values, option_string=None) -> None:  # type: ignore[no-untyped-def] # noqa: ARG002
         # if getattr(args, self.dest) is None:
         #     setattr(args, self.dest, [])
@@ -147,12 +151,11 @@ def get_composition_data_from_outputfile(modelpath: Path) -> pd.DataFrame:
 
 
 def split_dataframe_dirbins(
-    res_df: pl.DataFrame | pd.DataFrame, index_of_repeated_value: int = 0, output_polarsdf: bool = False
+    res_df: pl.DataFrame | pd.DataFrame,
+    index_of_repeated_value: int = 0,  # is the column index to look for repeating eg. time of ts 0. In spec_res files it's 1 , but in lc_res file it's 0.
+    output_polarsdf: bool = False,
 ) -> dict[int, pd.DataFrame | pl.DataFrame]:
-    """Res files repeat output for each angle.
-    index_of_repeated_value is the column index to look for repeating eg. time of ts 0.
-    In spec_res files it's 1 , but in lc_res file it's 0.
-    """
+    """Res (angle-resolved) files include a table for each direction bin."""
     if isinstance(res_df, pd.DataFrame):
         res_df = pl.from_pandas(res_df)
 
@@ -252,9 +255,7 @@ def get_vpkt_config(modelpath: Path | str) -> dict[str, t.Any]:
 
 @lru_cache(maxsize=8)
 def get_grid_mapping(modelpath: Path | str) -> tuple[dict[int, list[int]], dict[int, int]]:
-    """Return dict with the associated propagation cells for each model grid cell and
-    a dict with the associated model grid cell of each propagration cell.
-    """
+    """Return dict with the associated propagation cells for each model grid cell and a dict with the associated model grid cell of each propagration cell."""
     modelpath = Path(modelpath)
     filename = firstexisting("grid.out", tryzipped=True, folder=modelpath) if modelpath.is_dir() else Path(modelpath)
 
@@ -743,13 +744,13 @@ def get_ionstring(
 def set_args_from_dict(parser: argparse.ArgumentParser, kwargs: dict[str, t.Any]) -> None:
     """Set argparse defaults from a dictionary."""
     # set_defaults expects the dest of an argument. Here we allow the option strings to be used as keys
-    for arg in parser._actions:
+    for arg in parser._actions:  # noqa: SLF001
         for optstring in arg.option_strings:
             if optstring.lstrip("-") in kwargs and arg.dest not in kwargs:
                 kwargs[arg.dest] = kwargs.pop(optstring.lstrip("-"))
 
     parser.set_defaults(**kwargs)
-    if unknown := {k: v for k, v in kwargs.items() if k not in (arg.dest for arg in parser._actions)}:
+    if unknown := {k: v for k, v in kwargs.items() if k not in (arg.dest for arg in parser._actions)}:  # noqa: SLF001
         msg = f"Unknown argument names: {unknown}"
         raise ValueError(msg)
 
@@ -1335,8 +1336,10 @@ def get_cellsofmpirank(mpirank: int, modelpath: Path | str) -> t.Iterable[int]:
 def get_dfrankassignments(modelpath: Path | str) -> pd.DataFrame | None:
     filerankassignments = Path(modelpath, "modelgridrankassignments.out")
     if filerankassignments.is_file():
-        df = pd.read_csv(filerankassignments, sep=r"\s+")
-        return df.rename(columns={df.columns[0]: str(df.columns[0]).lstrip("#")})
+        dfrankassignments = pd.read_csv(filerankassignments, sep=r"\s+")
+        return dfrankassignments.rename(
+            columns={dfrankassignments.columns[0]: str(dfrankassignments.columns[0]).lstrip("#")}
+        )
     return None
 
 

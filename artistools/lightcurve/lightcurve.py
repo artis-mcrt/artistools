@@ -266,8 +266,7 @@ def generate_band_lightcurve_data(
             filterdir, filter_name
         )
 
-        for timestep, time in enumerate(timearray):
-            time = float(time)
+        for timestep, time in enumerate(float(time) for time in timearray):
             if (args.timemin is None or args.timemin <= time) and (args.timemax is None or args.timemax >= time):
                 wavelength_from_spectrum, flux = get_spectrum_in_filter_range(
                     modelpath=modelpath,
@@ -313,8 +312,7 @@ def bolometric_magnitude(
     magnitudes = []
     times = []
 
-    for timestep, time in enumerate(timearray):
-        time = float(time)
+    for timestep, time in enumerate(float(time) for time in timearray):
         if (args.timemin is None or args.timemin <= time) and (args.timemax is None or args.timemax >= time):
             if angle == -1:
                 spectrum = at.spectra.get_spectrum(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)[-1]

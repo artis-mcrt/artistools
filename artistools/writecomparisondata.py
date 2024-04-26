@@ -162,16 +162,17 @@ def write_lbol_edep(
     modelpath: str | Path, model_id: str, selected_timesteps: t.Sequence[int], outputpath: Path
 ) -> None:
     # times = at.get_timestep_times(modelpath)
-    dflightcurve = at.lightcurve.readfile(Path(modelpath, "light_curve.out"))[-1].to_pandas()
-    dfdep = at.get_deposition(modelpath)
-
-    df = dflightcurve.merge(dfdep, left_index=True, right_index=True, suffixes=("", "_dep"))
+    dflightcurve = (
+        at.lightcurve.readfile(Path(modelpath, "light_curve.out"))[-1]
+        .to_pandas()
+        .merge(at.get_deposition(modelpath), left_index=True, right_index=True, suffixes=("", "_dep"))
+    )
 
     with outputpath.open("w") as f:
         f.write(f"#NTIMES: {len(selected_timesteps)}\n")
         f.write("#time[d] Lbol[erg/s] Edep[erg/s] \n")
 
-        for timestep, row in df.iterrows():
+        for timestep, row in dflightcurve.iterrows():
             if timestep not in selected_timesteps:
                 continue
             f.write(f"{row.time:.2f} {row.lum * 3.826e33:.2e} {row.total_dep_Lsun * 3.826e33:.2e}\n")

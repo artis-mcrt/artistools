@@ -12,6 +12,7 @@ def make_downscaled_3d_grid(
     modelpath: str | Path, outputgridsize: int = 50, plot: bool = False, outputfolder: Path | str | None = None
 ) -> Path:
     """Get a 3D model with smallgrid^3 cells from a 3D model with grid^3 cells.
+
     Should be same as downscale_3d_grid.pro.
     """
     modelpath = Path(modelpath)

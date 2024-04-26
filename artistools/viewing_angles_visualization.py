@@ -95,8 +95,7 @@ def viewing_angles_visualisation(
     linelength=1.0,
     show_plot=False,
 ):
-    """Tool to generate a 3D visualization of an ARTIS model.
-    Viewing angle bins will get overplottet with an animation.
+    """Tool to generate a 3D visualization of an ARTIS model. Viewing angle bins will get overplotted with an animation.
 
     Parameters
     ----------

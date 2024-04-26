@@ -77,9 +77,7 @@ def get_dfelemabund_from_dfmodel(dfmodel: pl.DataFrame, dfnucabundances: pl.Data
 
 
 def open_tar_file_or_extracted(traj_root: Path, particleid: int, memberfilename: str):
-    """Trajectory files are generally stored as {particleid}.tar.xz, but this is slow
-    to access, so first check for extracted files, or decompressed .tar files,
-    which are much faster to access.
+    """Trajectory files are generally stored as {particleid}.tar.xz, but this is slow to access, so first check for extracted files, or decompressed .tar files, which are much faster to access.
 
     memberfilename: file path within the trajectory tarfile, eg. ./Run_rprocess/evol.dat
     """
@@ -141,9 +139,11 @@ def get_dfevol(traj_root: Path, particleid: int) -> pd.DataFrame:
 def get_closest_network_timestep(
     traj_root: Path, particleid: int, timesec: float, cond: t.Literal["lessthan", "greaterthan", "nearest"] = "nearest"
 ) -> int:
-    """cond:
-    'lessthan': find highest timestep less than time_sec
-    'greaterthan': find lowest timestep greater than time_sec.
+    """Find the closest network timestep to a given time in seconds.
+
+    cond:
+      - 'lessthan': find highest timestep less than time_sec
+      - 'greaterthan': find lowest timestep greater than time_sec.
     """
     dfevol = get_dfevol(traj_root, particleid)
 
@@ -163,9 +163,7 @@ def get_closest_network_timestep(
 def get_trajectory_timestepfile_nuc_abund(
     traj_root: Path, particleid: int, memberfilename: str
 ) -> tuple[pd.DataFrame, float]:
-    """Get the nuclear abundances for a particular trajectory id number and time
-    memberfilename should be something like "./Run_rprocess/tday_nz-plane".
-    """
+    """Get the nuclear abundances for a particular trajectory id number and time memberfilename should be something like "./Run_rprocess/tday_nz-plane"."""
     with open_tar_file_or_extracted(traj_root, particleid, memberfilename) as trajfile:
         try:
             _, str_t_model_init_seconds, _, rho, _, _ = trajfile.readline().split()
@@ -248,12 +246,10 @@ def get_trajectory_abund_q(
     particleid: int,
     traj_root: Path,
     t_model_s: float | None = None,
-    nts: int | None = None,
+    nts: int | None = None,  # GSI network timestep number
     getqdotintegral: bool = False,
 ) -> dict[tuple[int, int] | str, float]:
-    """Get the nuclear mass fractions (and Qdotintegral) for a particle particle number as a given time
-    nts: GSI network timestep number.
-    """
+    """Get the nuclear mass fractions (and Qdotintegral) for a particle particle number as a given time."""
     assert t_model_s is not None or nts is not None
     try:
         if nts is not None:

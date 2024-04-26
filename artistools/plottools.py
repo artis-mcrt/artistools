@@ -172,9 +172,7 @@ def imshow_init_for_artis_grid(ngrid, vmax, plot_variable_3d_array, plot_axes="x
 
 
 def autoscale(ax=None, axis="y", margin=0.1):
-    """Autoscales the x or y axis of a given matplotlib ax object
-    to fit the margins set by manually limits of the other axis,
-    with margins in fraction of the width of the plot.
+    """Autoscales the x or y axis of a given matplotlib ax object to fit the margins set by manually limits of the other axis, with margins in fraction of the width of the plot.
 
     Defaults to current axes object if not specified.
     From https://stackoverflow.com/questions/29461608/matplotlib-fixing-x-axis-scale-and-autoscale-y-axis

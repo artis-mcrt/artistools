@@ -943,7 +943,7 @@ def bin_and_sum(
     """Bins is a list of lower edges, and the final upper edge."""
     # Polars method
 
-    df = df.lazy().with_columns(
+    dfcut = df.lazy().with_columns(
         (pl.col(bincol).cut(breaks=bins, labels=[str(x) for x in range(-1, len(bins))])).alias(f"{bincol}_bin")
     )
 
@@ -952,7 +952,7 @@ def bin_and_sum(
     if getcounts:
         aggs.append(pl.col(bincol).count().alias("count"))
 
-    wlbins = df.group_by(f"{bincol}_bin").agg(aggs).with_columns(pl.col(f"{bincol}_bin").cast(pl.Int32))
+    wlbins = dfcut.group_by(f"{bincol}_bin").agg(aggs).with_columns(pl.col(f"{bincol}_bin").cast(pl.Int32))
 
     # now we will include the empty bins
     return (
