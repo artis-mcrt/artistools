@@ -604,16 +604,20 @@ def make_lightcurve_plot(
     if args.magnitude:
         axis.set_ylabel("Absolute Bolometric Magnitude")
     else:
-        str_units = "$/ \\mathrm{L}_\\odot$" if args.Lsun else " [erg/s]"
+        str_units = r" [{}$\mathrm{{L}}_\odot$]" if args.Lsun else " [{}erg/s]"
         if args.plotdeposition:
-            yvarname = r"$L$ or $\dot{E}$"
+            yvarname = r"$L$ or $\dot{{E}}$"
         elif escape_type == "TYPE_GAMMA":
-            yvarname = r"$\mathrm{L}_\gamma$"
+            yvarname = r"$\mathrm{{L}}_\gamma$"
         elif escape_type == "TYPE_RPKT":
-            yvarname = r"$\mathrm{L}_{\mathrm{UVOIR}}$"
+            yvarname = r"$\mathrm{{L}}_{{\mathrm{{UVOIR}}}}$"
         else:
-            yvarname = r"$\mathrm{L}_{\mathrm{" + escape_type.replace("_", r"\_") + r"}}$"
+            yvarname = r"$\mathrm{{L}}_{{\mathrm{{" + escape_type.replace("_", r"\_") + r"}}}}$"
+
         axis.set_ylabel(yvarname + str_units)
+
+        if "{" in axis.get_ylabel() and not args.logscaley:
+            axis.yaxis.set_major_formatter(at.plottools.ExponentLabelFormatter(axis.get_ylabel(), decimalplaces=1))
 
     if args.colorbarcostheta or args.colorbarphi:
         costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(

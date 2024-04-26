@@ -773,7 +773,7 @@ def plot_celltimestep(modelpath, timestep, outputfile, xmin, xmax, modelgridinde
     axis.set_xlim(left=xmin, right=xmax)
     axis.set_ylim(bottom=0.0, top=ymax)
 
-    axis.yaxis.set_major_formatter(at.plottools.ExponentLabelFormatter(axis.get_ylabel(), useMathText=True))
+    axis.yaxis.set_major_formatter(at.plottools.ExponentLabelFormatter(axis.get_ylabel()))
 
     axis.legend(loc="best", handlelength=2, frameon=False, numpoints=1, fontsize=9)
 

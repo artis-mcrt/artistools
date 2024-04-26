@@ -252,10 +252,10 @@ def plot_levelpop(
 ) -> None:
     if seriestype == "levelpopulation_dn_on_dvel":
         ax.set_ylabel("dN/dV [{}km$^{{-1}}$ s]")
-        ax.yaxis.set_major_formatter(at.plottools.ExponentLabelFormatter(ax.get_ylabel(), useMathText=True))
+        ax.yaxis.set_major_formatter(at.plottools.ExponentLabelFormatter(ax.get_ylabel()))
     elif seriestype == "levelpopulation":
         ax.set_ylabel("X$_{{i}}$ [{}/cm3]")
-        ax.yaxis.set_major_formatter(at.plottools.ExponentLabelFormatter(ax.get_ylabel(), useMathText=True))
+        ax.yaxis.set_major_formatter(at.plottools.ExponentLabelFormatter(ax.get_ylabel()))
     else:
         raise ValueError
 

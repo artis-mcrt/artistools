@@ -244,7 +244,7 @@ def plot_spherical(
         cbar.ax.set_xlabel(colorbartitle)
         cbar.ax.xaxis.set_label_position("top")
         if r"{}" in colorbartitle:
-            cbar.ax.xaxis.set_major_formatter(at.plottools.ExponentLabelFormatter(colorbartitle, useMathText=True))
+            cbar.ax.xaxis.set_major_formatter(at.plottools.ExponentLabelFormatter(colorbartitle))
 
         # ax.set_xlabel("Azimuthal angle")
         # ax.set_ylabel("Polar angle")
