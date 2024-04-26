@@ -62,7 +62,7 @@ subcommandtree: CommandType = {
         "maptogrid": ("inputmodel.maptogrid", "main"),
         "makeartismodelfromparticlegridmap": ("inputmodel.modelfromhydro", "main"),
         "makeartismodel": ("inputmodel.makeartismodel", "main"),
-        "make1dslicefrom3dmodel": ("inputmodel.1dslicefrom3d", "main"),
+        "make1dslicefrom3dmodel": ("inputmodel.make1dslicefrom3d", "main"),
         "makeartismodel1dslicefromcone": ("inputmodel.slice1dfromconein3dmodel", "main"),
         "makeartismodelbotyanski2017": ("inputmodel.botyanski2017", "main"),
         "makeartismodelfromshen2018": ("inputmodel.shen2018", "main"),

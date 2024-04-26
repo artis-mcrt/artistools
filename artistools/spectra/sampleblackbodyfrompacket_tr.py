@@ -157,11 +157,11 @@ for npacketfile in range(nprocs):
                 # packet_contribution_count_res[angle][timedays] += 1
 
 for angle in range(n_angle_bins):
-    df = pd.DataFrame.from_dict(specpol_res_data_bb[angle])
+    dfspec = pd.DataFrame.from_dict(specpol_res_data_bb[angle])
     if angle == 0:
-        df.to_csv(modelpath / "spec_res_bb.out", sep=" ", index=False)  # create file
+        dfspec.to_csv(modelpath / "spec_res_bb.out", sep=" ", index=False)  # create file
     else:
         # append to file
-        df.to_csv(modelpath / "spec_res_bb.out", mode="a", sep=" ", index=False)
+        dfspec.to_csv(modelpath / "spec_res_bb.out", mode="a", sep=" ", index=False)
 
 print("Blackbody spectra written to spec_res_bb.out")
