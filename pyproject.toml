@@ -51,7 +51,7 @@ plotartisviewingangles = 'artistools.viewing_angles_visualization:main'
 
 [tool.black]
 line-length = 120
-target-versions = ["py310", "py311", "py312"]
+target-version = ["py310", "py311", "py312"]
 
 [tool.mypy]
 local_partial_types = true
