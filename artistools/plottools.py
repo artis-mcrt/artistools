@@ -42,7 +42,8 @@ class ExponentLabelFormatter(ticker.ScalarFormatter):
             if self._usetex:
                 self.format = f"${self.format}$"
             elif self._useMathText:
-                self.format = "$%s$" % ("\\mathdefault{%s}" % self.format)
+                self.format = rf"$\mathdefault{{{self.format}}}$"
+
         super().set_locs(locs)
 
         if self.decimalplaces is not None:
@@ -62,7 +63,7 @@ class ExponentLabelFormatter(ticker.ScalarFormatter):
         sigfigs = self.decimalplaces
         self.format = f"%1.{sigfigs}f"
         if self._usetex or self._useMathText:
-            self.format = r"$\mathdefault{%s}$" % self.format
+            self.format = rf"$\mathdefault{{{self.format}}}$"
 
         return None
 

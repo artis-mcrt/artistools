@@ -9,8 +9,6 @@ import artistools as at
 
 
 def read_logfiles(modelpath):
-    modeldata, _ = at.inputmodel.get_modeldata(modelpath)
-
     mpiranklist = at.get_mpiranklist(modelpath)
     # nprocs = at.get_nprocs(modelpath)
 
