@@ -52,9 +52,7 @@ def get_exspec_bins(
 
         # This is not an exact solution for dlognu since we're assuming the bin centre spacing matches the bin edge spacing
         # but it's close enough for our purposes and avoids the difficulty of finding the exact solution (lots more algebra)
-        dlognu = math.log(
-            dfspec.item(1, 0) / dfspec.item(0, 0)  # second nu value divided by the first nu value
-        )
+        dlognu = math.log(dfspec.item(1, 0) / dfspec.item(0, 0))  # second nu value divided by the first nu value
 
         if nu_min_r is None:
             nu_min_r = nu_centre_min / (1 + 0.5 * dlognu)
