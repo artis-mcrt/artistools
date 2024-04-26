@@ -92,7 +92,7 @@ def make_downscaled_3d_grid(
             line = abund_small[x, y, z, :].tolist()  # index 1:30 are abundances
             line[0] = i + 1  # replace index 0 with index id
             i += 1
-            newabundancefile.writelines("%g " % item for item in line)
+            newabundancefile.writelines(f"{item:g} " for item in line)
             newabundancefile.writelines("\n")
 
     print("writing model file")
@@ -113,9 +113,9 @@ def make_downscaled_3d_grid(
                 rho_small[x, y, z],
             ]
             line2 = radioabunds_small[x, y, z, :]
-            newmodelfile.writelines("%g " % item for item in line1)
+            newmodelfile.writelines(f"{item:g} " for item in line1)
             newmodelfile.writelines("\n")
-            newmodelfile.writelines("%g " % item for item in line2)
+            newmodelfile.writelines(f"{item:g} " for item in line2)
             newmodelfile.writelines("\n")
             cellindex += 1
 
