@@ -51,7 +51,7 @@ plotartisviewingangles = 'artistools.viewing_angles_visualization:main'
 
 [tool.black]
 line-length = 120
-target-version = ["py310", "py311", "py312"]
+target-version = ["py310", "py311", "py312", "py313"]
 
 [tool.mypy]
 local_partial_types = true
@@ -234,7 +234,6 @@ ignore = [
 ]
 fixable = ["ALL"]
 unfixable = [
-    "COM812",  # missing-trailing-comma
     "ERA001",  # commented-out-code (will just delete it!)
     "F401",  # unused-import
     "F841",  # unused-variable
