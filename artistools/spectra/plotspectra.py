@@ -491,7 +491,7 @@ def make_spectrum_plot(
             refspecindex += 1
         elif not specpath.exists() and specpath.parts[0] == "codecomparison":
             # timeavg = (args.timemin + args.timemax) / 2.
-            (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
+            (_timestepmin, _timestepmax, args.timemin, args.timemax) = at.get_time_range(
                 specpath, args.timestep, args.timemin, args.timemax, args.timedays
             )
             timeavg = args.timedays
@@ -843,7 +843,7 @@ def make_emissionabsorption_plot(
 
 
 def make_contrib_plot(axes: t.Iterable[plt.Axes], modelpath: Path, densityplotyvars: list[str], args) -> None:
-    (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
+    (_timestepmin, _timestepmax, args.timemin, args.timemax) = at.get_time_range(
         modelpath, args.timestep, args.timemin, args.timemax, args.timedays
     )
 
@@ -1079,7 +1079,7 @@ def make_plot(args) -> tuple[plt.Figure, list[plt.Axes], pl.DataFrame]:
         ax.set_xlabel("")
 
         if args.multispecplot and args.showtime:
-            ymin, ymax = ax.get_ylim()
+            _ymin, ymax = ax.get_ylim()
             ax.text(5500, ymax * 0.9, f"{args.timedayslist[index]} days")  # multispecplot text
 
     if not args.hidexticklabels:
