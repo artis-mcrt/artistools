@@ -1077,6 +1077,9 @@ linetuple = namedtuple("linetuple", "lambda_angstroms atomic_number ion_stage up
 
 def read_linestatfile(filepath: Path | str) -> tuple[int, list[float], list[int], list[int], list[int], list[int]]:
     """Load linestat.out containing transitions wavelength, element, ion, upper and lower levels."""
+    if Path(filepath).is_dir():
+        filepath = firstexisting("linestat.out", folder=filepath, tryzipped=True)
+
     print(f"Reading {filepath}")
 
     data = np.loadtxt(zopen(filepath))
