@@ -274,6 +274,7 @@ def test_save_load_3d_model() -> None:
     dfmodel[75001, "rho"] = 0.5
 
     outpath = outputpath / "test_save_load_3d_model"
+    outpath.mkdir(exist_ok=True, parents=True)
     at.inputmodel.save_modeldata(outpath=outpath, dfmodel=dfmodel, modelmeta=modelmeta)
     dfmodel2, modelmeta2 = at.inputmodel.get_modeldata_polars(modelpath=outpath)
     assert dfmodel.equals(dfmodel2.collect())
