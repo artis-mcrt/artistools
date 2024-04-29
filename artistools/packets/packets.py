@@ -944,7 +944,9 @@ def bin_and_sum(
     # Polars method
 
     dfcut = df.lazy().with_columns(
-        (pl.col(bincol).cut(breaks=bins, labels=[str(x) for x in range(-1, len(bins))])).alias(f"{bincol}_bin")
+        (pl.col(bincol).cut(breaks=bins, labels=[str(x) for x in range(-1, len(bins))]))
+        .alias(f"{bincol}_bin")
+        .cast(pl.Int32)
     )
 
     aggs = [pl.col(col).sum().alias(col + "_sum") for col in sumcols] if sumcols is not None else []
@@ -952,7 +954,7 @@ def bin_and_sum(
     if getcounts:
         aggs.append(pl.col(bincol).count().alias("count"))
 
-    wlbins = dfcut.group_by(f"{bincol}_bin").agg(aggs).with_columns(pl.col(f"{bincol}_bin").cast(pl.Int32))
+    wlbins = dfcut.group_by(f"{bincol}_bin").agg(aggs)
 
     # now we will include the empty bins
     return (
