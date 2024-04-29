@@ -37,11 +37,13 @@ jobs:
               with:
                   python-version: ${{ matrix.python-version }}
 
+            - name: Install uv
+              run: |
+                  curl -LsSf https://astral.sh/uv/install.sh | sh
+
             - name: Install artistools
               run: |
-                  pip install --upgrade pip
-                  pip install --upgrade uv
-                  uv pip install --system --upgrade --editable .
+                  uv pip install --system --upgrade --compile-bytecode --editable  .
 
             - name: Cache test data
               uses: actions/cache@v4
