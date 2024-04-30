@@ -197,9 +197,9 @@ def get_from_packets(
 
     if directionbins_are_vpkt_observers:
         vpkt_config = at.get_vpkt_config(modelpath)
-        for dirbin in directionbins:
-            obsdirindex = dirbin // vpkt_config["nspectraperobs"]
-            opacchoiceindex = dirbin % vpkt_config["nspectraperobs"]
+        for vspecindex in directionbins:
+            obsdirindex = vspecindex // vpkt_config["nspectraperobs"]
+            opacchoiceindex = vspecindex % vpkt_config["nspectraperobs"]
             lambda_column = (
                 f"dir{obsdirindex}_lambda_angstroms_rf"
                 if nu_column == "nu_rf"
@@ -226,8 +226,8 @@ def get_from_packets(
                         / delta_time_s
                         / (megaparsec_to_cm**2)
                         / nprocs_read
-                    ).alias(f"f_lambda_dirbin{dirbin}"),
-                    pl.col("count").alias(f"count_dirbin{dirbin}"),
+                    ).alias(f"f_lambda_dirbin{vspecindex}"),
+                    pl.col("count").alias(f"count_dirbin{vspecindex}"),
                 ]
             )
 
@@ -525,8 +525,7 @@ def make_virtual_spectra_summed_file(modelpath: Path) -> Path:
     )
 
     for mpirank in range(nprocs):
-        vspecpolfilename = f"vspecpol_{mpirank}-0.out"
-        vspecpolpath = at.firstexisting(vspecpolfilename, folder=modelpath, tryzipped=True)
+        vspecpolpath = at.firstexisting(f"vspecpol_{mpirank}-0.out", folder=modelpath, tryzipped=True)
         print(f"Reading rank {mpirank} filename {vspecpolpath}")
 
         vspecpol_data_alldirs = pl.read_csv(vspecpolpath, separator=" ", has_header=False)
@@ -551,9 +550,10 @@ def make_virtual_spectra_summed_file(modelpath: Path) -> Path:
     for spec_index, vspecpol in vspecpol_data_allranks.items():
         # fix the header row, which got summed along with the data
         vspecpol = pl.concat([vspecpol_data[spec_index][0], vspecpol[1:]])
+
         outfile = modelpath / f"vspecpol_total-{spec_index}.out"
-        print(f"Saved {outfile}")
         vspecpol.write_csv(outfile, separator=" ", include_header=False)
+        print(f"Saved {outfile}")
 
     return outfile
 
@@ -603,16 +603,16 @@ def get_specpol_data(
 
 @lru_cache(maxsize=4)
 def get_vspecpol_data(
-    vspecangle: int | None = None, modelpath: Path | None = None, specdata: pd.DataFrame | None = None
+    vspecindex: int | None = None, modelpath: Path | None = None, specdata: pd.DataFrame | None = None
 ) -> dict[str, pd.DataFrame]:
     if specdata is None:
         assert modelpath is not None
         # alternatively use f'vspecpol_averaged-{angle}.out' ?
 
         try:
-            specfilename = at.firstexisting(f"vspecpol_total-{vspecangle}.out", folder=modelpath, tryzipped=True)
+            specfilename = at.firstexisting(f"vspecpol_total-{vspecindex}.out", folder=modelpath, tryzipped=True)
         except FileNotFoundError:
-            print(f"vspecpol_total-{vspecangle}.out does not exist. Generating all-rank summed vspec files..")
+            print(f"vspecpol_total-{vspecindex}.out does not exist. Generating all-rank summed vspec files..")
             specfilename = make_virtual_spectra_summed_file(modelpath=modelpath)
 
         print(f"Reading {specfilename}")
@@ -654,7 +654,7 @@ def get_vspecpol_spectrum(
     args: argparse.Namespace,
     fluxfilterfunc: t.Callable[[np.ndarray], np.ndarray] | None = None,
 ) -> pl.DataFrame:
-    stokes_params = get_vspecpol_data(vspecangle=angle, modelpath=Path(modelpath))
+    stokes_params = get_vspecpol_data(vspecindex=angle, modelpath=Path(modelpath))
     if "stokesparam" not in args:
         args.stokesparam = "I"
     vspecdata = pl.from_pandas(stokes_params[args.stokesparam])
