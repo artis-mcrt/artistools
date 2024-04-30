@@ -54,10 +54,10 @@ def read_modelfile_text(
         numheaderrows += 2
         t_model_init_seconds = modelmeta["t_model_init_days"] * 24 * 60 * 60
 
-        filepos = fmodel.tell()
+        line = fmodel.readline()
         # if the next line is a single float then the model is 2D or 3D (vmax)
         try:
-            modelmeta["vmax_cmps"] = float(fmodel.readline())  # velocity max in cm/s
+            modelmeta["vmax_cmps"] = float(line)  # velocity max in cm/s
             xmax_tmodel = modelmeta["vmax_cmps"] * t_model_init_seconds  # xmax = ymax = zmax
             numheaderrows += 1
             if "dimensions" not in modelmeta:  # not already detected as 2D
@@ -76,6 +76,8 @@ def read_modelfile_text(
                 if not printwarningsonly:
                     print(f"  detected 3D model file with {ncoordgridx}x{ncoordgridy}x{ncoordgridz}={npts_model} cells")
 
+            line = fmodel.readline()
+
         except ValueError:
             assert modelmeta.get("dimensions", -1) != 2, "2D model should have a vmax line here"
             if "dimensions" not in modelmeta:
@@ -84,18 +86,13 @@ def read_modelfile_text(
                 modelmeta["dimensions"] = 1
                 getheadersonly = False  # need to find vmax from the model data
 
-            fmodel.seek(filepos)  # undo the readline() and go back
-
         columns = None
-        filepos = fmodel.tell()
-        line = fmodel.readline()
         if line.startswith("#"):
             numheaderrows += 1
             columns = line.lstrip("#").split()
-        else:
-            fmodel.seek(filepos)  # undo the readline() and go back
+            line = fmodel.readline()
 
-        data_line_even = fmodel.readline()
+        data_line_even = line
         ncols_line_even = len(data_line_even.split())
         data_line_odd = fmodel.readline()
         ncols_line_odd = len(data_line_odd.split())
