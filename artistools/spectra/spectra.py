@@ -365,7 +365,7 @@ def read_spec_res(modelpath: Path) -> dict[int, pl.DataFrame]:
     if res_specdata_in[res_specdata_in.columns[-1]].is_null().all():
         res_specdata_in = res_specdata_in.drop(res_specdata_in.columns[-1])
 
-    res_specdata = at.split_dataframe_dirbins(res_specdata_in, output_polarsdf=True)
+    res_specdata = at.split_multitable_dataframe(res_specdata_in)
 
     prev_dfshape = None
     for dirbin in res_specdata:

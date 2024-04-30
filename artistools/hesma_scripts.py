@@ -44,7 +44,10 @@ def plothesmaresspec(fig, ax):
         #         chunk = specdata.iloc[index_to_split[i]:, :]
         #     res_specdata.append(chunk)
 
-        res_specdata = at.split_dataframe_dirbins(specdata)
+        res_specdata = {
+            dirbin: pldf.to_pandas(use_pyarrow_extension_array=True)
+            for dirbin, pldf in at.split_multitable_dataframe(specdata)
+        }
 
         column_names = res_specdata[0].iloc[0]
         column_names[0] = "lambda"
