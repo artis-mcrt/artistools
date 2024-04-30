@@ -46,7 +46,7 @@ def plothesmaresspec(fig, ax):
 
         res_specdata = {
             dirbin: pldf.to_pandas(use_pyarrow_extension_array=True)
-            for dirbin, pldf in at.split_multitable_dataframe(specdata)
+            for dirbin, pldf in at.split_multitable_dataframe(specdata).items()
         }
 
         column_names = res_specdata[0].iloc[0]
