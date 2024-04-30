@@ -515,49 +515,45 @@ def get_spectrum(
 def make_virtual_spectra_summed_file(modelpath: Path) -> Path:
     nprocs = at.get_nprocs(modelpath)
     print("nprocs", nprocs)
-    vspecpol_data_old: list[
-        pd.DataFrame
-    ] = []  # virtual packet spectra for each observer (all directions and opacity choices)
+    # virtual packet spectra for each observer (all directions and opacity choices)
+    vspecpol_data_allranks: dict[int, pl.DataFrame] = {}
     vpktconfig = at.get_vpkt_config(modelpath)
     nvirtual_spectra = vpktconfig["nobsdirections"] * vpktconfig["nspectraperobs"]
     print(
         f"nobsdirections {vpktconfig['nobsdirections']} nspectraperobs {vpktconfig['nspectraperobs']} (total observers:"
         f" {nvirtual_spectra})"
     )
+
     for mpirank in range(nprocs):
         vspecpolfilename = f"vspecpol_{mpirank}-0.out"
         vspecpolpath = at.firstexisting(vspecpolfilename, folder=modelpath, tryzipped=True)
         print(f"Reading rank {mpirank} filename {vspecpolpath}")
 
-        vspecpolfile = pd.read_csv(vspecpolpath, sep=r"\s+", header=None)
-        # Where times of timesteps are written out a new virtual spectrum starts
-        # Find where the time in row 0, column 1 repeats in any column 1
-        index_of_new_spectrum = vspecpolfile.index[vspecpolfile.iloc[:, 1] == vspecpolfile.iloc[0, 1]]
-        vspecpol_data = []  # list of all predefined vspectra
-        for i, index_spectrum_starts in enumerate(index_of_new_spectrum[:nvirtual_spectra]):
-            # TODO: this is different to at.split_dataframe_dirbins() -- could be made to be same format to not repeat code
-            chunk = (
-                vspecpolfile.iloc[index_spectrum_starts : index_of_new_spectrum[i + 1], :]
-                if index_spectrum_starts != index_of_new_spectrum[-1]
-                else vspecpolfile.iloc[index_spectrum_starts:, :]
-            )
-            vspecpol_data.append(chunk)
+        vspecpol_data_alldirs = pl.read_csv(vspecpolpath, separator=" ", has_header=False)
 
-        if vspecpol_data_old:
-            for i in range(len(vspecpol_data)):
-                dftmp = vspecpol_data[i].copy()  # copy of vspectrum number i in a file
-                # add copy to the same spectrum number from previous file
-                # (don't need to copy row 1 = time or column 1 = freq)
-                dftmp.iloc[1:, 1:] += vspecpol_data_old[i].iloc[1:, 1:]
-                # spectrum i then equals the sum of all previous files spectrum number i
-                vspecpol_data[i] = dftmp
-        # update array containing sum of previous files
-        vspecpol_data_old = vspecpol_data
+        if vspecpol_data_alldirs[vspecpol_data_alldirs.columns[-1]].is_null().all():
+            vspecpol_data_alldirs = vspecpol_data_alldirs.drop(cs.last())
 
-    for spec_index, vspecpol in enumerate(vspecpol_data):
+        vspecpol_data = at.split_multitable_dataframe(vspecpol_data_alldirs)
+        assert len(vspecpol_data) == nvirtual_spectra
+
+        for specindex in vspecpol_data:
+            if specindex not in vspecpol_data_allranks:
+                vspecpol_data_allranks[specindex] = vspecpol_data[specindex]
+            else:
+                vspecpol_data_allranks[specindex] = vspecpol_data_allranks[specindex].with_columns(
+                    [
+                        (pl.col(col) + vspecpol_data[specindex].get_column(col)).alias(col)
+                        for col in vspecpol_data_allranks[specindex].columns[1:]
+                    ]
+                )
+
+    for spec_index, vspecpol in vspecpol_data_allranks.items():
+        # fix the header row, which got summed along with the data
+        vspecpol = pl.concat([vspecpol_data[spec_index][0], vspecpol[1:]])
         outfile = modelpath / f"vspecpol_total-{spec_index}.out"
         print(f"Saved {outfile}")
-        vspecpol.to_csv(outfile, sep=" ", index=False, header=False)
+        vspecpol.write_csv(outfile, separator=" ", include_header=False)
 
     return outfile
 
