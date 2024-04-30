@@ -3,6 +3,7 @@ import functools
 import gzip
 import io
 import itertools
+import lzma
 import math
 import string
 import typing as t
@@ -15,7 +16,6 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import polars as pl
-import xz
 import zstandard as zstd
 from typeguard import typechecked
 
@@ -820,7 +820,7 @@ def flatten_list(listin: list[t.Any]) -> list[t.Any]:
 
 def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None) -> t.Any:
     """Open filename, filename.zst, filename.gz or filename.xz."""
-    ext_fopen: dict[str, t.Callable] = {".zst": zstd.open, ".gz": gzip.open, ".xz": xz.open}
+    ext_fopen: dict[str, t.Callable] = {".zst": zstd.open, ".gz": gzip.open, ".xz": lzma.open}
 
     for ext, fopen in ext_fopen.items():
         file_withext = str(filename) if str(filename).endswith(ext) else str(filename) + ext
@@ -834,7 +834,7 @@ def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None) -
 def zopenpl(filename: Path | str, mode: str = "rt", encoding: str | None = None) -> t.Any | Path:
     """Open filename, filename.zst, filename.gz or filename.xz. If polars.read_csv can read the file directly, return a Path object instead of a file object."""
     mode = "r"
-    ext_fopen: dict[str, t.Callable | None] = {".zst": None, ".gz": None, ".xz": xz.open}
+    ext_fopen: dict[str, t.Callable | None] = {".zst": None, ".gz": None, ".xz": lzma.open}
 
     for ext, fopen in ext_fopen.items():
         file_withext = str(filename) if str(filename).endswith(ext) else str(filename) + ext
