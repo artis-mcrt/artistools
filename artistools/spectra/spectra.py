@@ -512,7 +512,7 @@ def get_spectrum(
     return specdataout
 
 
-def make_virtual_spectra_summed_file(modelpath: Path) -> Path:
+def make_virtual_spectra_summed_file(modelpath: Path) -> None:
     nprocs = at.get_nprocs(modelpath)
     print("nprocs", nprocs)
     # virtual packet spectra for each observer (all directions and opacity choices)
@@ -554,8 +554,6 @@ def make_virtual_spectra_summed_file(modelpath: Path) -> Path:
         outfile = modelpath / f"vspecpol_total-{spec_index}.out"
         vspecpol.write_csv(outfile, separator=" ", include_header=False)
         print(f"Saved {outfile}")
-
-    return outfile
 
 
 def make_averaged_vspecfiles(args: argparse.Namespace) -> None:
@@ -613,7 +611,8 @@ def get_vspecpol_data(
             specfilename = at.firstexisting(f"vspecpol_total-{vspecindex}.out", folder=modelpath, tryzipped=True)
         except FileNotFoundError:
             print(f"vspecpol_total-{vspecindex}.out does not exist. Generating all-rank summed vspec files..")
-            specfilename = make_virtual_spectra_summed_file(modelpath=modelpath)
+            make_virtual_spectra_summed_file(modelpath=modelpath)
+            specfilename = at.firstexisting(f"vspecpol_total-{vspecindex}.out", folder=modelpath, tryzipped=True)
 
         print(f"Reading {specfilename}")
         specdata = pd.read_csv(specfilename, sep=r"\s+")
