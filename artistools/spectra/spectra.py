@@ -511,7 +511,7 @@ def get_spectrum(
     return specdataout
 
 
-def make_virtual_spectra_summed_file(modelpath: Path) -> None:
+def make_virtual_spectra_summed_file(modelpath: Path | str) -> None:
     nprocs = at.get_nprocs(modelpath)
     print("nprocs", nprocs)
     # virtual packet spectra for each observer (all directions and opacity choices)
@@ -550,7 +550,7 @@ def make_virtual_spectra_summed_file(modelpath: Path) -> None:
         # fix the header row, which got summed along with the data
         vspecpol = pl.concat([vspecpol_data[spec_index][0], vspecpol[1:]])
 
-        outfile = modelpath / f"vspecpol_total-{spec_index}.out"
+        outfile = Path(modelpath, f"vspecpol_total-{spec_index}.out")
         vspecpol.write_csv(outfile, separator=" ", include_header=False)
         print(f"Saved {outfile}")
 
@@ -599,22 +599,19 @@ def get_specpol_data(
 
 
 @lru_cache(maxsize=4)
-def get_vspecpol_data(
-    vspecindex: int | None = None, modelpath: Path | None = None, specdata: pd.DataFrame | None = None
-) -> dict[str, pd.DataFrame]:
-    if specdata is None:
-        assert modelpath is not None
-        # alternatively use f'vspecpol_averaged-{angle}.out' ?
+def get_vspecpol_data(vspecindex: int, modelpath: Path | str) -> dict[str, pl.DataFrame]:
+    assert modelpath is not None
+    # alternatively use f'vspecpol_averaged-{angle}.out' ?
 
-        try:
-            specfilename = at.firstexisting(f"vspecpol_total-{vspecindex}.out", folder=modelpath, tryzipped=True)
-        except FileNotFoundError:
-            print(f"vspecpol_total-{vspecindex}.out does not exist. Generating all-rank summed vspec files..")
-            make_virtual_spectra_summed_file(modelpath=modelpath)
-            specfilename = at.firstexisting(f"vspecpol_total-{vspecindex}.out", folder=modelpath, tryzipped=True)
+    try:
+        specfilename = at.firstexisting(f"vspecpol_total-{vspecindex}.out", folder=modelpath, tryzipped=True)
+    except FileNotFoundError:
+        print(f"vspecpol_total-{vspecindex}.out does not exist. Generating all-rank summed vspec files..")
+        make_virtual_spectra_summed_file(modelpath=modelpath)
+        specfilename = at.firstexisting(f"vspecpol_total-{vspecindex}.out", folder=modelpath, tryzipped=True)
 
-        print(f"Reading {specfilename}")
-        specdata = pl.read_csv(specfilename, separator=" ", has_header=True)
+    print(f"Reading {specfilename}")
+    specdata = pl.read_csv(specfilename, separator=" ", has_header=True)
 
     return split_dataframe_stokesparams(specdata)
 
