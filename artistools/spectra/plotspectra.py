@@ -32,7 +32,7 @@ def path_is_artis_model(filepath: str | Path) -> bool:
 
 def plot_polarisation(modelpath: Path, args) -> None:
     angle = args.plotviewingangle[0]
-    stokes_params = at.spectra.get_specpol_data(angle=angle, modelpath=modelpath)
+    stokes_params = {k: v.to_pandas() for k, v in at.spectra.get_specpol_data(angle=angle, modelpath=modelpath).items()}
     stokes_params[args.stokesparam] = stokes_params[args.stokesparam].eval("lambda_angstroms = 2.99792458e18 / nu")
 
     timearray = stokes_params[args.stokesparam].keys()[1:-1]

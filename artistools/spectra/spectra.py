@@ -247,7 +247,6 @@ def get_from_packets(
 
             dfpackets = dfpackets.filter(
                 (pl.col("escape_time") * escapesurfacegamma / 86400.0).is_between(timelowdays, timehighdays)
-                for dirbin in directionbins
             )
 
         elif use_time == "emission":
@@ -472,10 +471,10 @@ def get_spectrum(
                 specdata[-1] = read_spec(modelpath=modelpath)
 
             except FileNotFoundError:
-                specdata[-1] = pl.from_pandas(get_specpol_data(angle=-1, modelpath=modelpath)[stokesparam])
+                specdata[-1] = get_specpol_data(angle=-1, modelpath=modelpath)[stokesparam]
 
         else:
-            specdata[-1] = pl.from_pandas(get_specpol_data(angle=-1, modelpath=modelpath)[stokesparam])
+            specdata[-1] = get_specpol_data(angle=-1, modelpath=modelpath)[stokesparam]
 
     specdataout: dict[int, pl.DataFrame] = {}
     for dirbin in directionbins:
@@ -583,8 +582,8 @@ def make_averaged_vspecfiles(args: argparse.Namespace) -> None:
 
 @lru_cache(maxsize=4)
 def get_specpol_data(
-    angle: int = -1, modelpath: Path | None = None, specdata: pd.DataFrame | None = None
-) -> dict[str, pd.DataFrame]:
+    angle: int = -1, modelpath: Path | None = None, specdata: pl.DataFrame | None = None
+) -> dict[str, pl.DataFrame]:
     if specdata is None:
         assert modelpath is not None
         specfilename = (
@@ -594,7 +593,7 @@ def get_specpol_data(
         )
 
         print(f"Reading {specfilename}")
-        specdata = pd.read_csv(specfilename, sep=r"\s+")
+        specdata = pl.read_csv(specfilename, separator=" ", has_header=True)
 
     return split_dataframe_stokesparams(specdata)
 
@@ -615,34 +614,30 @@ def get_vspecpol_data(
             specfilename = at.firstexisting(f"vspecpol_total-{vspecindex}.out", folder=modelpath, tryzipped=True)
 
         print(f"Reading {specfilename}")
-        specdata = pd.read_csv(specfilename, sep=r"\s+")
+        specdata = pl.read_csv(specfilename, separator=" ", has_header=True)
 
     return split_dataframe_stokesparams(specdata)
 
 
-def split_dataframe_stokesparams(specdata: pd.DataFrame) -> dict[str, pd.DataFrame]:
+def split_dataframe_stokesparams(specdata: pl.DataFrame) -> dict[str, pl.DataFrame]:
     """DataFrames read from specpol*.out and vspecpol*.out are repeated over I, Q, U parameters. Split these into a dictionary of DataFrames."""
-    specdata = specdata.rename({"0": "nu", "0.0": "nu"}, axis="columns")
-    cols_to_split = [i for i, key in enumerate(specdata.keys()) if specdata.keys()[1] in key]
+    specdata = specdata.rename({specdata.columns[0]: "nu"})
     stokes_params = {
-        "I": pd.concat(
-            [
-                specdata["nu"],
-                specdata.iloc[:, cols_to_split[0] : cols_to_split[1]],
-            ],
-            axis="columns",
-        )
+        "I": specdata.select(cs.exclude(cs.contains("_duplicated_"))),
+        "Q": specdata.select(
+            pl.col("nu"), cs.ends_with("_duplicated_0").name.map(lambda x: x.removesuffix("_duplicated_0"))
+        ),
+        "U": specdata.select(
+            pl.col("nu"), cs.ends_with("_duplicated_1").name.map(lambda x: x.removesuffix("_duplicated_1"))
+        ),
     }
-    stokes_params["Q"] = pd.concat(
-        [specdata["nu"], specdata.iloc[:, cols_to_split[1] : cols_to_split[2]]], axis="columns"
-    )
-    stokes_params["U"] = pd.concat([specdata["nu"], specdata.iloc[:, cols_to_split[2] :]], axis="columns")
 
     for param in ("Q", "U"):
-        stokes_params[param].columns = stokes_params["I"].keys()
-        stokes_params[param + "/I"] = pd.concat(
-            [specdata["nu"], stokes_params[param].iloc[:, 1:] / stokes_params["I"].iloc[:, 1:]], axis="columns"
+        stokes_params[param + "/I"] = stokes_params[param].select(
+            pl.col("nu"),
+            *(pl.col(colname) / stokes_params["I"].get_column(colname) for colname in stokes_params[param].columns[1:]),
         )
+
     return stokes_params
 
 
@@ -656,7 +651,7 @@ def get_vspecpol_spectrum(
     stokes_params = get_vspecpol_data(vspecindex=angle, modelpath=Path(modelpath))
     if "stokesparam" not in args:
         args.stokesparam = "I"
-    vspecdata = pl.from_pandas(stokes_params[args.stokesparam])
+    vspecdata = stokes_params[args.stokesparam]
 
     arr_tmid = [float(i) for i in vspecdata.columns[1:]]
     vspec_timesteps = range(len(arr_tmid))
