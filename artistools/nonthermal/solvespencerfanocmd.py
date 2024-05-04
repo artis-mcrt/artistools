@@ -98,10 +98,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="If not using artis composition, specify the electron fraction = N_e / N_ions",
     )
 
-    parser.add_argument(
-        "--workfn", action="store_true", help="Testing related to work functions and high energy limits"
-    )
-
     parser.add_argument("--makeplot", action="store_true", help="Save a plot of the non-thermal spectrum")
 
     parser.add_argument(
@@ -149,12 +145,9 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     if args.plotstats:
         make_ntstats_plot(args.plotstats)
-        return None
+        return
 
     modelpath = Path(args.modelpath)
-
-    if args.workfn:
-        return at.nonthermal.workfunction_tests(modelpath, args)
 
     if Path(args.outputfile).is_dir():
         args.outputfile = Path(args.outputfile, defaultoutputfile)
@@ -358,8 +351,8 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     if args.ostat:
         make_ntstats_plot(args.ostat)
-        return None
-    return None
+        return
+    return
 
 
 if __name__ == "__main__":

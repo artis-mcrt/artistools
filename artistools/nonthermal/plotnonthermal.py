@@ -9,7 +9,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import pynonthermal
+import pynonthermal as pynt
 
 import artistools as at
 
@@ -52,15 +52,15 @@ def read_files(modelpath: Path, timestep: int = -1, modelgridindex: int = -1) ->
 
 
 def make_xs_plot(axis: plt.Axes, nonthermaldata: pd.DataFrame, args: argparse.Namespace) -> None:
-    dfcollion = at.nonthermal.read_colliondata()
+    dfcollion = pynt.collion.read_colliondata()
 
     arr_en = nonthermaldata["energy_ev"].unique()
 
     # arr_xs_old = [xs_fe2_old(en) for en in arr_en]
     # arr_xs_times_y = [xs_fe1(en) * y for en, y in zip(nonthermaldata['energy_ev'], nonthermaldata['y'])]
 
-    axis.plot(arr_en, pynonthermal.collion.get_arxs_array_ion(arr_en, dfcollion, 26, 2), linewidth=2.0, label="Fe II")
-    axis.plot(arr_en, pynonthermal.collion.get_arxs_array_ion(arr_en, dfcollion, 28, 2), linewidth=2.0, label="Ni II")
+    axis.plot(arr_en, pynt.collion.get_arxs_array_ion(arr_en, dfcollion, 26, 2), linewidth=2.0, label="Fe II")
+    axis.plot(arr_en, pynt.collion.get_arxs_array_ion(arr_en, dfcollion, 28, 2), linewidth=2.0, label="Ni II")
 
     axis.set_ylabel(r"cross section (cm2)")
 

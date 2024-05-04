@@ -212,7 +212,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     traj_root = Path(
         Path.home() / "Google Drive/Shared Drives/GSI NSM/Mergers/SFHo_long/Trajectory_SFHo_long-radius-entropy"
     )
-    # get_model_recombenergy(dfbinding, args)
+    get_model_recombenergy(dfbinding, args)
     get_particles_recomb_nuc_energy(traj_root, dfbinding)
 
 

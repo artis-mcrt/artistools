@@ -85,7 +85,6 @@ from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import get_viewingdirectionbincount
 from artistools.misc import get_vpkt_config
 from artistools.misc import get_vspec_dir_labels
-from artistools.misc import get_wid_init_at_tmin
 from artistools.misc import get_wid_init_at_tmodel
 from artistools.misc import get_z_a_nucname
 from artistools.misc import linetuple

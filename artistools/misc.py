@@ -266,20 +266,6 @@ def get_grid_mapping(modelpath: Path | str) -> tuple[dict[int, list[int]], dict[
     return assoc_cells, mgi_of_propcells
 
 
-def get_wid_init_at_tmin(modelpath: Path) -> float:
-    """`Return the Cartesian cell width [cm] at the simulation start time (tmin)."""
-    day_to_sec = 86400
-    tmin = get_timestep_times(modelpath, loc="start")[0] * day_to_sec
-    _, modelmeta = at.get_modeldata(modelpath)
-
-    rmax: float = modelmeta["vmax_cmps"] * tmin
-
-    coordmax0 = rmax
-    ncoordgrid0 = 50
-
-    return 2 * coordmax0 / ncoordgrid0
-
-
 def get_wid_init_at_tmodel(
     modelpath: Path | str | None = None,
     ngridpoints: int | None = None,
