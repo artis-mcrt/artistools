@@ -122,8 +122,8 @@ def make_2d_plot(grid, grid_Te, vmax, modelpath, xgrid, time):
     pyvista = False
     if pyvista:
         # PYVISTA
-        x, y, z = np.meshgrid(xgrid, xgrid, xgrid)
-        mesh = pv.StructuredGrid(x, y, z)
+        arrx, arry, arrz = np.meshgrid(xgrid, xgrid, xgrid)
+        mesh = pv.StructuredGrid(arrx, arry, arrz)
         mesh["Te [K]"] = grid_Te.ravel(order="F")
 
         sargs = {
@@ -159,8 +159,8 @@ def make_2d_plot(grid, grid_Te, vmax, modelpath, xgrid, time):
     imshow = True
     if imshow:
         # imshow
-        extent = {"left": -vmax, "right": vmax, "bottom": vmax, "top": -vmax}
-        extent = extent["left"], extent["right"], extent["bottom"], extent["top"]
+        dextent = {"left": -vmax, "right": vmax, "bottom": vmax, "top": -vmax}
+        extent = dextent["left"], dextent["right"], dextent["bottom"], dextent["top"]
         data = np.zeros((grid, grid))
 
         for z in range(grid):

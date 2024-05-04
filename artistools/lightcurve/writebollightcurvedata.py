@@ -1,3 +1,4 @@
+import typing as t
 from pathlib import Path
 
 import numpy as np
@@ -7,17 +8,16 @@ from astropy import units as u
 import artistools as at
 
 
-def get_bol_lc_from_spec(modelpath):
+def get_bol_lc_from_spec(modelpath) -> pd.DataFrame:
     res_specdata = at.spectra.read_spec_res(modelpath)
-    timearray = res_specdata[0].columns.to_numpy()[1:]
+    timearray = res_specdata[0].columns[1:]
     times = [time for time in timearray if 5 < float(time) < 80]
-    lightcurvedata = {"time": times}
+    lightcurvedata: dict[str, t.Any] = {"time": times}
 
     for angle in range(len(res_specdata)):
         bol_luminosity = []
-        for timestep, time in enumerate(timearray):
-            time = float(time)
-            if 5 < time < 80:
+        for timestep, timestr in enumerate(timearray):
+            if 5 < float(timestr) < 80:
                 spectrum = at.spectra.get_spectrum(
                     modelpath=modelpath, directionbins=[angle], timestepmin=timestep, timestepmax=timestep
                 )[angle]
