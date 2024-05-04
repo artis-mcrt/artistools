@@ -351,8 +351,6 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     if args.ostat:
         make_ntstats_plot(args.ostat)
-        return
-    return
 
 
 if __name__ == "__main__":
