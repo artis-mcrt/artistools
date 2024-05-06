@@ -173,13 +173,13 @@ def get_rprocess_calculation_files(path_to_rprocess_calculation, interpolate_tra
         trajectory_E_tot.append(E_tot)
 
     if interpolate_trajectories:
-        interpolated_trajectories = pd.DataFrame.from_dict(interpolated_trajectories)
-        interpolated_trajectories["mean"] = interpolated_trajectories.iloc[:, 1:].mean(axis=1)
+        dfinterpolated_trajectories = pd.DataFrame.from_dict(interpolated_trajectories)
+        dfinterpolated_trajectories["mean"] = dfinterpolated_trajectories.iloc[:, 1:].mean(axis=1)
 
-        index_time_lessthan = interpolated_trajectories[interpolated_trajectories["time/s"] < 1.1e-1].index
-        interpolated_trajectories = interpolated_trajectories.drop(index_time_lessthan)
+        index_time_lessthan = dfinterpolated_trajectories[dfinterpolated_trajectories["time/s"] < 1.1e-1].index
+        dfinterpolated_trajectories = dfinterpolated_trajectories.drop(index_time_lessthan)
 
-        interpolated_trajectories.to_csv(path_to_rprocess_calculation / "interpolatedQdot.dat", sep=" ", index=False)
+        dfinterpolated_trajectories.to_csv(path_to_rprocess_calculation / "interpolatedQdot.dat", sep=" ", index=False)
     print(f"sum etot {sum(trajectory_E_tot)}")
     trajectory_energy = pd.DataFrame.from_dict({"id": trajectory_ids, "E_tot": trajectory_E_tot}).sort_values(by="id")
 

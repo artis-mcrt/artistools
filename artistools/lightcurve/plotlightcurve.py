@@ -793,7 +793,7 @@ def make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args, fig=Non
     if args.colorbarcostheta:
         # ticklabels = costheta_viewing_angle_bins
         ticklabels = [" -1", " -0.8", " -0.6", " -0.4", " -0.2", " 0", " 0.2", " 0.4", " 0.6", " 0.8", " 1"]
-        ticklocs = np.linspace(0, 9, num=11)
+        ticklocs = list(np.linspace(0, 9, num=11))
         label = "cos θ"
     if args.colorbarphi:
         print("reordered phi bins")
@@ -812,7 +812,7 @@ def make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args, fig=Non
         ]
         ticklabels = phi_viewing_angle_bins_reordered
         # ticklabels = phi_viewing_angle_bins
-        ticklocs = np.linspace(0, 9, num=11)
+        ticklocs = list(np.linspace(0, 9, num=11))
         label = "ϕ bin"
 
     hidecolorbar = False
@@ -821,7 +821,7 @@ def make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args, fig=Non
             # from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
             # cax = plt.axes([0.3, 0.97, 0.45, 0.02])  #2nd and 4th move up and down. 1st left and right. 3rd bar width
-            cax = plt.axes([0.2, 0.98, 0.65, 0.04])
+            cax = plt.axes((0.2, 0.98, 0.65, 0.04))
             cbar = fig.colorbar(scaledmap, cax=cax, orientation="horizontal")
         else:
             cbar = plt.colorbar(scaledmap, ax=ax)
