@@ -524,7 +524,9 @@ def make_virtual_spectra_summed_file(modelpath: Path | str) -> None:
     )
 
     for mpirank in range(nprocs):
-        vspecpolpath = at.firstexisting(f"vspecpol_{mpirank}-0.out", folder=modelpath, tryzipped=True)
+        vspecpolpath = at.firstexisting(
+            [f"vspecpol_{mpirank:04d}.out", f"vspecpol_{mpirank}-0.out"], folder=modelpath, tryzipped=True
+        )
         print(f"Reading rank {mpirank} filename {vspecpolpath}")
 
         vspecpol_data_alldirs = pl.read_csv(vspecpolpath, separator=" ", has_header=False)
@@ -981,8 +983,9 @@ def get_flux_contributions_from_packets(
         )
 
         lzdfpackets = lzdfpackets.join(emtypestrings, on=emtypecolumn, how="left")
-        z_exclude = int(vpkt_config["z_excludelist"][opacchoiceindex])
-        if vpkt_match_emission_exclusion_to_opac:
+
+        if vpkt_match_emission_exclusion_to_opac and directionbins_are_vpkt_observers:
+            z_exclude = int(vpkt_config["z_excludelist"][opacchoiceindex])
             if z_exclude == -1:
                 # no bound-bound
                 lzdfpackets = lzdfpackets.filter(pl.col("emissiontype_str").str.contains("bound-free"))
