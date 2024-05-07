@@ -138,7 +138,7 @@ def get_from_packets(
     average_over_phi: bool = False,
     average_over_theta: bool = False,
     nu_column: str = "nu_rf",
-    fluxfilterfunc: t.Callable[[np.ndarray], np.ndarray] | None = None,
+    fluxfilterfunc: t.Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     nprocs_read_dfpackets: tuple[int, pl.DataFrame | pl.LazyFrame] | None = None,
     directionbins_are_vpkt_observers: bool = False,
 ) -> dict[int, pl.DataFrame]:
@@ -313,11 +313,9 @@ def get_from_packets(
 
     if fluxfilterfunc:
         print("Applying filter to ARTIS spectrum")
-        dfbinned_lazy = dfbinned_lazy.with_columns(
-            cs.starts_with("f_lambda_").map(lambda x: fluxfilterfunc(x.to_numpy()))
-        )
+        dfbinned_lazy = dfbinned_lazy.with_columns(cs.starts_with("f_lambda_").map(lambda x: fluxfilterfunc(x)))
 
-    dfbinned = dfbinned_lazy.collect(streaming=True)
+    dfbinned = dfbinned_lazy.collect()
     assert isinstance(dfbinned, pl.DataFrame)
 
     dfdict = {}
@@ -645,7 +643,7 @@ def get_vspecpol_spectrum(
     timeavg: float,
     angle: int,
     args: argparse.Namespace,
-    fluxfilterfunc: t.Callable[[np.ndarray], np.ndarray] | None = None,
+    fluxfilterfunc: t.Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
 ) -> pl.DataFrame:
     stokes_params = get_vspecpol_data(vspecindex=angle, modelpath=Path(modelpath))
     if "stokesparam" not in args:
@@ -696,7 +694,7 @@ def get_vspecpol_spectrum(
 @lru_cache(maxsize=4)
 def get_flux_contributions(
     modelpath: Path,
-    filterfunc: t.Callable[[np.ndarray], np.ndarray] | None = None,
+    filterfunc: t.Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     timestepmin: int = -1,
     timestepmax: int = -1,
     getemission: bool = True,
@@ -877,7 +875,7 @@ def get_flux_contributions_from_packets(
     getemission: bool = True,
     getabsorption: bool = True,
     maxpacketfiles: int | None = None,
-    filterfunc: t.Callable[[np.ndarray], np.ndarray] | None = None,
+    filterfunc: t.Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     groupby: t.Literal["ion", "line"] = "ion",
     maxseriescount: int | None = None,
     fixedionlist: list[str] | None = None,
