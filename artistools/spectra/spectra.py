@@ -313,7 +313,7 @@ def get_from_packets(
 
     if fluxfilterfunc:
         print("Applying filter to ARTIS spectrum")
-        dfbinned_lazy = dfbinned_lazy.with_columns(cs.starts_with("f_lambda_").map(lambda x: fluxfilterfunc(x)))
+        dfbinned_lazy = dfbinned_lazy.with_columns(cs.starts_with("f_lambda_").map(fluxfilterfunc))
 
     dfbinned = dfbinned_lazy.collect()
     assert isinstance(dfbinned, pl.DataFrame)
