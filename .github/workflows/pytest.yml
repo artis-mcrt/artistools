@@ -18,7 +18,6 @@ jobs:
         strategy:
             fail-fast: false
             matrix:
-                # os: [ubuntu-latest, macos-latest]
                 os: [macos-14]
                 python-version: ['3.10', '3.11', '3.12']
         env:
@@ -80,3 +79,49 @@ jobs:
                   fail_ci_if_error: false
                   # path_to_write_report: ./coverage/codecov_report.txt
                   verbose: true
+
+    codspeed-benchmarks:
+        timeout-minutes: 30
+        runs-on: ubuntu-latest
+        strategy:
+            fail-fast: false
+            matrix:
+                python-version: ['3.12']
+        env:
+            PYTHON: ${{ matrix.python-version }}
+
+        name: codspeed benchmarks python${{ matrix.python-version }}
+        steps:
+            - name: Checkout Code
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+
+            - name: Set up Python ${{ matrix.python-version }}
+              uses: actions/setup-python@v5
+              with:
+                  python-version: ${{ matrix.python-version }}
+
+            - name: Install uv
+              run: |
+                  curl -LsSf https://astral.sh/uv/install.sh | sh
+
+            - name: Install artistools
+              run: |
+                  uv pip install --system --upgrade --compile-bytecode --editable  .
+
+            - name: Cache test data
+              uses: actions/cache@v4
+              with:
+                  path: tests/data/*.tar.xz
+                  key: testdata20231114
+
+            - name: Download/extract test data
+              working-directory: tests/data/
+              run: source ./setuptestdata.sh
+
+            - name: Run benchmarks
+              uses: CodSpeedHQ/action@v2
+              with:
+                  token: ${{ secrets.CODSPEED_TOKEN }}
+                  run: pytest --codspeed

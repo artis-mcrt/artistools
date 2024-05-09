@@ -165,7 +165,7 @@ exclude=['**/node_modules','**/__pycache__','**/.*', 'build', 'dist']
 useLibraryCodeForTypes = false
 
 [tool.pytest.ini_options]
-addopts = " --durations=0 --typeguard-packages=artistools -n auto"
+addopts = " --durations=0 --durations-min=1.0 --typeguard-packages=artistools -n auto"
 
 [tool.refurb]
 ignore = ["FURB120"]

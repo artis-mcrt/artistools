@@ -4,6 +4,7 @@ import typing as t
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 import artistools as at
 
@@ -17,6 +18,7 @@ def test_describeinputmodel() -> None:
     at.inputmodel.describeinputmodel.main(argsraw=[], inputfile=modelpath, isotopes=True)
 
 
+@pytest.mark.benchmark()
 def test_describeinputmodel_3d() -> None:
     at.inputmodel.describeinputmodel.main(argsraw=[], inputfile=modelpath_3d, isotopes=True)
 
@@ -258,12 +260,14 @@ def test_plotdensity() -> None:
     at.inputmodel.plotdensity.main(argsraw=[], modelpath=[modelpath], outputpath=outputpath)
 
 
+@pytest.mark.benchmark()
 def test_plotinitialcomposition() -> None:
     at.inputmodel.plotinitialcomposition.main(
         argsraw=["-modelpath", str(modelpath_3d), "-o", str(outputpath), "rho", "Fe"]
     )
 
 
+@pytest.mark.benchmark()
 def test_save_load_3d_model() -> None:
     lzdfmodel, modelmeta = at.inputmodel.get_empty_3d_model(ncoordgrid=50, vmax=1000, t_model_init_days=1)
     dfmodel = lzdfmodel.collect()
