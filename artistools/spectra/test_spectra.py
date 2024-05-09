@@ -34,7 +34,7 @@ def test_spectraplot(mockplot) -> None:
 
 
 @mock.patch.object(matplotlib.axes.Axes, "plot", side_effect=matplotlib.axes.Axes.plot, autospec=True)
-def test_spectra_frompackets(mockplot) -> None:
+def test_spectra_frompackets(mockplot, benchmark) -> None:
     pytest.mark.benchmark(at.spectra.plot)(
         argsraw=[],
         specpath=modelpath,
@@ -56,7 +56,7 @@ def test_spectra_outputtext() -> None:
     at.spectra.plot(argsraw=[], specpath=modelpath, output_spectra=True)
 
 
-def test_spectraemissionplot() -> None:
+def test_spectraemissionplot(benchmark) -> None:
     pytest.mark.benchmark(at.spectra.plot)(
         argsraw=[],
         specpath=modelpath,
@@ -68,7 +68,7 @@ def test_spectraemissionplot() -> None:
     )
 
 
-def test_spectraemissionplot_nostack() -> None:
+def test_spectraemissionplot_nostack(benchmark) -> None:
     pytest.mark.benchmark(at.spectra.plot)(
         argsraw=[],
         specpath=modelpath,
@@ -81,7 +81,7 @@ def test_spectraemissionplot_nostack() -> None:
     )
 
 
-def test_spectra_get_spectrum() -> None:
+def test_spectra_get_spectrum(benchmark) -> None:
     def check_spectrum(dfspectrumpkts) -> None:
         assert math.isclose(max(dfspectrumpkts["f_lambda"]), 2.548532804918824e-13, abs_tol=1e-5)
         assert min(dfspectrumpkts["f_lambda"]) < 1e-9
@@ -108,7 +108,7 @@ def test_spectra_get_spectrum() -> None:
     check_spectrum(dfspectrumpkts)
 
 
-def test_spectra_get_spectrum_polar_angles() -> None:
+def test_spectra_get_spectrum_polar_angles(benchmark) -> None:
     spectra = pytest.mark.benchmark(at.spectra.get_spectrum)(
         modelpath=modelpath_classic_3d,
         directionbins=[0, 10, 20, 30, 40, 50, 60, 70, 80, 90],
@@ -156,7 +156,7 @@ def test_spectra_get_spectrum_polar_angles() -> None:
         assert np.isclose(result_std, expected_results[dirbin][1], rtol=1e-3)
 
 
-def test_spectra_get_spectrum_polar_angles_frompackets() -> None:
+def test_spectra_get_spectrum_polar_angles_frompackets(benchmark) -> None:
     timelowdays = at.get_timestep_times(modelpath_classic_3d, loc="start")[0]
     timehighdays = at.get_timestep_times(modelpath_classic_3d, loc="end")[25]
 
@@ -200,7 +200,7 @@ def test_spectra_get_spectrum_polar_angles_frompackets() -> None:
         assert np.isclose(result, expected_results[dirbin][i], rtol=1e-3)
 
 
-def test_spectra_get_flux_contributions() -> None:
+def test_spectra_get_flux_contributions(benchmark) -> None:
     timestepmin = 40
     timestepmax = 80
     dfspectrum = pytest.mark.benchmark(at.spectra.get_spectrum)(

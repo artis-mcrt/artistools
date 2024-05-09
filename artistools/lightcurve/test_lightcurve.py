@@ -13,7 +13,7 @@ outputpath = at.get_config()["path_testoutput"]
 
 
 @mock.patch.object(matplotlib.axes.Axes, "plot", side_effect=matplotlib.axes.Axes.plot, autospec=True)
-def test_lightcurve_plot(mockplot) -> None:
+def test_lightcurve_plot(mockplot, benchmark) -> None:
     pytest.mark.benchmark(at.lightcurve.plot)(
         argsraw=[], modelpath=[modelpath], outputfile=outputpath, frompackets=False
     )
@@ -35,7 +35,7 @@ def test_lightcurve_plot(mockplot) -> None:
 
 
 @mock.patch.object(matplotlib.axes.Axes, "plot", side_effect=matplotlib.axes.Axes.plot, autospec=True)
-def test_lightcurve_plot_frompackets(mockplot) -> None:
+def test_lightcurve_plot_frompackets(mockplot, benchmark) -> None:
     pytest.mark.benchmark(at.lightcurve.plot)(
         argsraw=[],
         modelpath=modelpath,

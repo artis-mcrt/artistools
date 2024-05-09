@@ -13,7 +13,7 @@ outputpath = at.get_config()["path_testoutput"]
 
 
 @mock.patch.object(matplotlib.axes.Axes, "plot", side_effect=matplotlib.axes.Axes.plot, autospec=True)
-def test_estimator_snapshot(mockplot) -> None:
+def test_estimator_snapshot(mockplot, benchmark) -> None:
     plotlist = [
         [["initabundances", ["Fe", "Ni_stable", "Ni_56"]]],
         ["nne"],
@@ -83,7 +83,7 @@ def test_estimator_snapshot(mockplot) -> None:
 
 
 @mock.patch.object(matplotlib.axes.Axes, "plot", side_effect=matplotlib.axes.Axes.plot, autospec=True)
-def test_estimator_averaging(mockplot) -> None:
+def test_estimator_averaging(mockplot, benchmark) -> None:
     plotlist = [
         [["initabundances", ["Fe", "Ni_stable", "Ni_56"]]],
         ["nne"],
