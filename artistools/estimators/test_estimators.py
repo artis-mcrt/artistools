@@ -29,8 +29,8 @@ def test_estimator_snapshot(mockplot, benchmark) -> None:
         [(pl.col("heating_coll") - pl.col("cooling_coll")).alias("collisional heating - cooling")],
     ]
 
-    pytest.mark.benchmark(at.estimators.plot)(
-        argsraw=[], modelpath=modelpath, plotlist=plotlist, outputfile=outputpath, timedays=300
+    benchmark(
+        at.estimators.plot, argsraw=[], modelpath=modelpath, plotlist=plotlist, outputfile=outputpath, timedays=300
     )
     xarr = [0.0, 4000.0]
     for x in mockplot.call_args_list:
@@ -99,8 +99,8 @@ def test_estimator_averaging(mockplot, benchmark) -> None:
         [(pl.col("heating_coll") - pl.col("cooling_coll")).alias("collisional heating - cooling")],
     ]
 
-    pytest.mark.benchmark(at.estimators.plot)(
-        argsraw=[], modelpath=modelpath, plotlist=plotlist, outputfile=outputpath, timestep="50-54"
+    benchmark(
+        at.estimators.plot, argsraw=[], modelpath=modelpath, plotlist=plotlist, outputfile=outputpath, timestep="50-54"
     )
     xarr = [0.0, 4000.0]
     for x in mockplot.call_args_list:

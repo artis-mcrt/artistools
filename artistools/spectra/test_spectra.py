@@ -7,7 +7,6 @@ from unittest import mock
 import matplotlib.axes
 import numpy as np
 import pandas as pd
-import pytest
 
 import artistools as at
 
@@ -35,7 +34,8 @@ def test_spectraplot(mockplot) -> None:
 
 @mock.patch.object(matplotlib.axes.Axes, "plot", side_effect=matplotlib.axes.Axes.plot, autospec=True)
 def test_spectra_frompackets(mockplot, benchmark) -> None:
-    pytest.mark.benchmark(at.spectra.plot)(
+    benchmark(
+        at.spectra.plot,
         argsraw=[],
         specpath=modelpath,
         outputfile=Path(outputpath, "spectrum_from_packets.pdf"),
@@ -57,7 +57,8 @@ def test_spectra_outputtext() -> None:
 
 
 def test_spectraemissionplot(benchmark) -> None:
-    pytest.mark.benchmark(at.spectra.plot)(
+    benchmark(
+        at.spectra.plot,
         argsraw=[],
         specpath=modelpath,
         outputfile=outputpath,
@@ -69,7 +70,8 @@ def test_spectraemissionplot(benchmark) -> None:
 
 
 def test_spectraemissionplot_nostack(benchmark) -> None:
-    pytest.mark.benchmark(at.spectra.plot)(
+    benchmark(
+        at.spectra.plot,
         argsraw=[],
         specpath=modelpath,
         outputfile=outputpath,
@@ -87,7 +89,7 @@ def test_spectra_get_spectrum(benchmark) -> None:
         assert min(dfspectrumpkts["f_lambda"]) < 1e-9
         assert math.isclose(dfspectrumpkts["f_lambda"].mean(), 1.0314682640070206e-14, abs_tol=1e-5)
 
-    dfspectrum = pytest.mark.benchmark(at.spectra.get_spectrum)(modelpath, 55, 65, fluxfilterfunc=None)[-1]
+    dfspectrum = benchmark(at.spectra.get_spectrum, modelpath, 55, 65, fluxfilterfunc=None)[-1]
 
     assert len(dfspectrum["lambda_angstroms"]) == 1000
     assert len(dfspectrum["f_lambda"]) == 1000
@@ -109,7 +111,8 @@ def test_spectra_get_spectrum(benchmark) -> None:
 
 
 def test_spectra_get_spectrum_polar_angles(benchmark) -> None:
-    spectra = pytest.mark.benchmark(at.spectra.get_spectrum)(
+    spectra = benchmark(
+        at.spectra.get_spectrum,
         modelpath=modelpath_classic_3d,
         directionbins=[0, 10, 20, 30, 40, 50, 60, 70, 80, 90],
         average_over_phi=True,
@@ -160,7 +163,8 @@ def test_spectra_get_spectrum_polar_angles_frompackets(benchmark) -> None:
     timelowdays = at.get_timestep_times(modelpath_classic_3d, loc="start")[0]
     timehighdays = at.get_timestep_times(modelpath_classic_3d, loc="end")[25]
 
-    spectrafrompkts = pytest.mark.benchmark(at.spectra.get_from_packets)(
+    spectrafrompkts = benchmark(
+        at.spectra.get_from_packets,
         modelpath=modelpath_classic_3d,
         directionbins=[0, 10, 20, 30, 40, 50, 60, 70, 80, 90],
         average_over_phi=True,
@@ -203,8 +207,12 @@ def test_spectra_get_spectrum_polar_angles_frompackets(benchmark) -> None:
 def test_spectra_get_flux_contributions(benchmark) -> None:
     timestepmin = 40
     timestepmax = 80
-    dfspectrum = pytest.mark.benchmark(at.spectra.get_spectrum)(
-        modelpath=modelpath, timestepmin=timestepmin, timestepmax=timestepmax, fluxfilterfunc=None
+    dfspectrum = benchmark(
+        at.spectra.get_spectrum,
+        modelpath=modelpath,
+        timestepmin=timestepmin,
+        timestepmax=timestepmax,
+        fluxfilterfunc=None,
     )[-1]
 
     integrated_flux_specout = np.trapz(dfspectrum["f_lambda"], x=dfspectrum["lambda_angstroms"])
@@ -214,7 +222,8 @@ def test_spectra_get_flux_contributions(benchmark) -> None:
     c_ang_per_s = 2.99792458e18
     arraylambda_angstroms = c_ang_per_s / arraynu
 
-    _contribution_list, array_flambda_emission_total = pytest.mark.benchmark(at.spectra.get_flux_contributions)(
+    _contribution_list, array_flambda_emission_total = benchmark(
+        at.spectra.get_flux_contributions,
         modelpath,
         timestepmin=timestepmin,
         timestepmax=timestepmax,
