@@ -30,7 +30,6 @@ readme = {file = "README.md", content-type='text/markdown'}
 Repository ="https://www.github.com/artis-mcrt/artistools"
 
 [project.scripts]
-#atcompletions = "artistoolscompletions.sh"
 at = 'artistools:main'
 artistools = 'artistools:main'
 makeartismodel1dslicefromcone = 'artistools.inputmodel.slice1dfromconein3dmodel:main'
