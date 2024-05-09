@@ -240,6 +240,7 @@ def get_from_packets(
 
         if use_time == "arrival":
             dfpackets = dfpackets.filter(pl.col("t_arrive_d").is_between(timelowdays, timehighdays))
+
         elif use_time == "escape":
             modeldata, _ = at.inputmodel.get_modeldata(modelpath)
             vmax_beta = modeldata.iloc[-1].vel_r_max_kmps * 299792.458
