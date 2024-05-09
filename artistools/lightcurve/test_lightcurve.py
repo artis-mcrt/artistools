@@ -4,6 +4,7 @@ from unittest import mock
 
 import matplotlib.axes
 import numpy as np
+import pytest
 
 import artistools as at
 
@@ -13,7 +14,9 @@ outputpath = at.get_config()["path_testoutput"]
 
 @mock.patch.object(matplotlib.axes.Axes, "plot", side_effect=matplotlib.axes.Axes.plot, autospec=True)
 def test_lightcurve_plot(mockplot) -> None:
-    at.lightcurve.plot(argsraw=[], modelpath=[modelpath], outputfile=outputpath, frompackets=False)
+    pytest.mark.benchmark(at.lightcurve.plot)(
+        argsraw=[], modelpath=[modelpath], outputfile=outputpath, frompackets=False
+    )
 
     arr_time_d = np.array(mockplot.call_args[0][1])
     arr_lum = np.array(mockplot.call_args[0][2])
@@ -33,7 +36,7 @@ def test_lightcurve_plot(mockplot) -> None:
 
 @mock.patch.object(matplotlib.axes.Axes, "plot", side_effect=matplotlib.axes.Axes.plot, autospec=True)
 def test_lightcurve_plot_frompackets(mockplot) -> None:
-    at.lightcurve.plot(
+    pytest.mark.benchmark(at.lightcurve.plot)(
         argsraw=[],
         modelpath=modelpath,
         frompackets=True,

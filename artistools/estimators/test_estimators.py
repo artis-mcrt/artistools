@@ -3,6 +3,7 @@ from unittest import mock
 import matplotlib.axes
 import numpy as np
 import polars as pl
+import pytest
 
 import artistools as at
 
@@ -28,7 +29,9 @@ def test_estimator_snapshot(mockplot) -> None:
         [(pl.col("heating_coll") - pl.col("cooling_coll")).alias("collisional heating - cooling")],
     ]
 
-    at.estimators.plot(argsraw=[], modelpath=modelpath, plotlist=plotlist, outputfile=outputpath, timedays=300)
+    pytest.mark.benchmark(at.estimators.plot)(
+        argsraw=[], modelpath=modelpath, plotlist=plotlist, outputfile=outputpath, timedays=300
+    )
     xarr = [0.0, 4000.0]
     for x in mockplot.call_args_list:
         assert xarr == x[0][1]
@@ -96,7 +99,9 @@ def test_estimator_averaging(mockplot) -> None:
         [(pl.col("heating_coll") - pl.col("cooling_coll")).alias("collisional heating - cooling")],
     ]
 
-    at.estimators.plot(argsraw=[], modelpath=modelpath, plotlist=plotlist, outputfile=outputpath, timestep="50-54")
+    pytest.mark.benchmark(at.estimators.plot)(
+        argsraw=[], modelpath=modelpath, plotlist=plotlist, outputfile=outputpath, timestep="50-54"
+    )
     xarr = [0.0, 4000.0]
     for x in mockplot.call_args_list:
         assert xarr == x[0][1]
@@ -267,6 +272,7 @@ def test_estimator_snapshot_classic_3d_x_axis(mockplot) -> None:
 
 
 @mock.patch.object(matplotlib.axes.Axes, "plot", side_effect=matplotlib.axes.Axes.plot, autospec=True)
+@pytest.mark.benchmark()
 def test_estimator_timeevolution(mockplot) -> None:
     at.estimators.plot(
         argsraw=[], modelpath=modelpath, outputfile=outputpath, plotlist=[["Te", "nne"]], modelgridindex=0, x="time"

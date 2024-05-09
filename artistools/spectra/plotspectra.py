@@ -109,6 +109,7 @@ def plot_reference_spectrum(
     xmax: float,
     flambdafilterfunc: t.Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     scale_to_peak: float | None = None,
+    offset: float = 0,
     scale_to_dist_mpc: float = 1,
     scaletoreftime: float | None = None,
     **plotkwargs,
@@ -174,7 +175,7 @@ def plot_reference_spectrum(
         specdata.loc[:, "f_lambda"] = flambdafilterfunc(specdata["f_lambda"])
 
     if scale_to_peak:
-        specdata["f_lambda_scaled"] = specdata["f_lambda"] / specdata["f_lambda"].max() * scale_to_peak
+        specdata["f_lambda_scaled"] = specdata["f_lambda"] / specdata["f_lambda"].max() * scale_to_peak + offset
         ycolumnname = "f_lambda_scaled"
     else:
         ycolumnname = "f_lambda"
@@ -279,10 +280,7 @@ def plot_artis_spectrum(
                 linelabel += f" +{timeavg:.1f}d"
             if not args.hidemodeltimerange and not args.multispecplot and timedelta >= 0.1:
                 linelabel += rf" ($\pm$ {timedelta:.1f}d)"
-        # Luke: disabled below because line label has already been formatted with e.g. timeavg values
-        # formatting for a second time makes it impossible to use curly braces in line labels (needed for LaTeX math)
-        # else:
-        #     linelabel = linelabel.format(**locals())
+
         print(
             f"====> '{linelabel}' timesteps {timestepmin} to {timestepmax} ({args.timemin:.3f} to {args.timemax:.3f}d{'' if clamp_to_timesteps else ' not necessarily clamped to timestep start/end'})"
         )
@@ -785,7 +783,8 @@ def make_emissionabsorption_plot(
             supxmin,
             supxmax,
             filterfunc,
-            scale_to_peak,
+            scale_to_peak=scale_to_peak,
+            offset=0.3 if scale_to_peak else 0.0,
             scaletoreftime=args.scaletoreftime,
             **plotkwargs,
         )
@@ -834,7 +833,7 @@ def make_emissionabsorption_plot(
     axis.set_ylim(top=ymax)
 
     if not args.hideyticklabels and scale_to_peak:
-        axis.set_ylabel(r"Scaled F$_\lambda$")
+        axis.set_ylabel(r"Scaled F$_\lambda$ + offset")
 
     if args.showbinedges:
         radfielddata = at.radfield.read_files(modelpath, timestep=timestepmax, modelgridindex=30)
