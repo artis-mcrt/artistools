@@ -13,6 +13,7 @@ outputpath = at.get_config()["path_testoutput"]
 
 
 @mock.patch.object(matplotlib.axes.Axes, "plot", side_effect=matplotlib.axes.Axes.plot, autospec=True)
+@pytest.mark.benchmark()
 def test_estimator_snapshot(mockplot, benchmark) -> None:
     plotlist = [
         [["initabundances", ["Fe", "Ni_stable", "Ni_56"]]],
@@ -29,9 +30,7 @@ def test_estimator_snapshot(mockplot, benchmark) -> None:
         [(pl.col("heating_coll") - pl.col("cooling_coll")).alias("collisional heating - cooling")],
     ]
 
-    benchmark(
-        at.estimators.plot, argsraw=[], modelpath=modelpath, plotlist=plotlist, outputfile=outputpath, timedays=300
-    )
+    at.estimators.plot(argsraw=[], modelpath=modelpath, plotlist=plotlist, outputfile=outputpath, timedays=300)
     xarr = [0.0, 4000.0]
     for x in mockplot.call_args_list:
         assert xarr == x[0][1]
@@ -83,6 +82,7 @@ def test_estimator_snapshot(mockplot, benchmark) -> None:
 
 
 @mock.patch.object(matplotlib.axes.Axes, "plot", side_effect=matplotlib.axes.Axes.plot, autospec=True)
+@pytest.mark.benchmark()
 def test_estimator_averaging(mockplot, benchmark) -> None:
     plotlist = [
         [["initabundances", ["Fe", "Ni_stable", "Ni_56"]]],
@@ -99,9 +99,8 @@ def test_estimator_averaging(mockplot, benchmark) -> None:
         [(pl.col("heating_coll") - pl.col("cooling_coll")).alias("collisional heating - cooling")],
     ]
 
-    benchmark(
-        at.estimators.plot, argsraw=[], modelpath=modelpath, plotlist=plotlist, outputfile=outputpath, timestep="50-54"
-    )
+    at.estimators.plot(argsraw=[], modelpath=modelpath, plotlist=plotlist, outputfile=outputpath, timestep="50-54")
+
     xarr = [0.0, 4000.0]
     for x in mockplot.call_args_list:
         assert xarr == x[0][1]
