@@ -150,35 +150,28 @@ def get_composition_data_from_outputfile(modelpath: Path) -> pd.DataFrame:
     return composition_df
 
 
-def split_dataframe_dirbins(
+def split_multitable_dataframe(
     res_df: pl.DataFrame | pd.DataFrame,
-    index_of_repeated_value: int = 0,  # is the column index to look for repeating eg. time of ts 0. In spec_res files it's 1 , but in lc_res file it's 0.
-    output_polarsdf: bool = False,
-) -> dict[int, pd.DataFrame | pl.DataFrame]:
+) -> dict[int, pl.DataFrame]:
     """Res (angle-resolved) files include a table for each direction bin."""
     if isinstance(res_df, pd.DataFrame):
         res_df = pl.from_pandas(res_df)
 
-    indexes_to_split = pl.arg_where(
-        res_df[:, index_of_repeated_value] == res_df[0, index_of_repeated_value], eager=True
-    )
+    header_row_indices = pl.arg_where(res_df[:, 0] == res_df[0, 0], eager=True)
 
-    res_data: dict[int, pd.DataFrame | pl.DataFrame] = {}
-    prev_dfshape = None
-    for i, index_value in enumerate(indexes_to_split):
-        chunk = (
-            res_df[index_value : indexes_to_split[i + 1], :]
-            if index_value != indexes_to_split[-1]
-            else res_df[index_value:, :]
+    res_data = {
+        tableindex: (
+            res_df[table_row_start : header_row_indices[tableindex + 1], :]
+            if tableindex + 1 < len(header_row_indices)
+            else res_df[table_row_start:, :]
         )
+        for tableindex, table_row_start in enumerate(header_row_indices)
+    }
 
-        # the number of timesteps should match for all direction bins
-        assert prev_dfshape is None or prev_dfshape == chunk.shape
-        prev_dfshape = chunk.shape
+    # the number of timesteps and frequency bins should match for each subtable
+    assert all(df.columns == res_data[0].columns for df in res_data.values())
+    assert all(df.get_column(df.columns[0]).equals(res_data[0].get_column(df.columns[0])) for df in res_data.values())
 
-        res_data[i] = chunk if output_polarsdf else chunk.to_pandas(use_pyarrow_extension_array=True)
-
-    assert len(res_data) == at.get_viewingdirectionbincount()
     return res_data
 
 
@@ -271,20 +264,6 @@ def get_grid_mapping(modelpath: Path | str) -> tuple[dict[int, list[int]], dict[
             mgi_of_propcells[propcellid] = mgi
 
     return assoc_cells, mgi_of_propcells
-
-
-def get_wid_init_at_tmin(modelpath: Path) -> float:
-    """`Return the Cartesian cell width [cm] at the simulation start time (tmin)."""
-    day_to_sec = 86400
-    tmin = get_timestep_times(modelpath, loc="start")[0] * day_to_sec
-    _, modelmeta = at.get_modeldata(modelpath)
-
-    rmax: float = modelmeta["vmax_cmps"] * tmin
-
-    coordmax0 = rmax
-    ncoordgrid0 = 50
-
-    return 2 * coordmax0 / ncoordgrid0
 
 
 def get_wid_init_at_tmodel(

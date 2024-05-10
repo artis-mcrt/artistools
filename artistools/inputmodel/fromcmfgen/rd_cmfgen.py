@@ -1,4 +1,5 @@
 # ruff: noqa
+# mypy: ignore-errors
 """various functions to read/write CMFGEN input/output files:
 
 rd_nuc_decay_data

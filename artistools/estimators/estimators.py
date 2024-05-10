@@ -357,11 +357,15 @@ def read_estimators(
     timestep: None | int | t.Sequence[int] = None,
     keys: t.Collection[str] | None = None,
 ) -> dict[tuple[int, int], dict[str, t.Any]]:
+    """Read ARTIS estimator data into a dictionary keyed by (timestep, modelgridindex).
+
+    This is very slow, and it's almost always better to use scan_estimators instead.
+    """
     if isinstance(keys, str):
         keys = {keys}
-    pldflazy = scan_estimators(modelpath, modelgridindex, timestep)
+    pldfestimators = scan_estimators(modelpath, modelgridindex, timestep).collect()
     estimators: dict[tuple[int, int], dict[str, t.Any]] = {}
-    for estimtsmgi in pldflazy.collect().iter_rows(named=True):
+    for estimtsmgi in pldfestimators.iter_rows(named=True):
         ts, mgi = estimtsmgi["timestep"], estimtsmgi["modelgridindex"]
         estimators[(ts, mgi)] = {
             k: v
@@ -370,53 +374,6 @@ def read_estimators(
         }
 
     return estimators
-
-
-def get_averaged_estimators(
-    modelpath: Path | str,
-    estimators: pl.LazyFrame | pl.DataFrame,
-    timesteps: int | t.Sequence[int],
-    modelgridindex: int | t.Sequence[int],
-    keys: str | list | None,
-) -> dict[str, t.Any]:
-    """Get the average across timsteps for a cell."""
-    assert isinstance(modelgridindex, int)
-    if isinstance(timesteps, int):
-        timesteps = [timesteps]
-
-    if isinstance(keys, str):
-        keys = [keys]
-    elif keys is None or not keys:
-        keys = [c for c in estimators.columns if c not in {"timestep", "modelgridindex"}]
-
-    dictout = {}
-    tdeltas = at.get_timestep_times(modelpath, loc="delta")
-
-    estcollect = (
-        estimators.lazy()
-        .filter(pl.col("timestep").is_in(timesteps))
-        .filter(pl.col("modelgridindex") == modelgridindex)
-        .select({*keys, "timestep", "modelgridindex"})
-        .collect()
-    )
-    for k in keys:
-        valuesum = 0.0
-        tdeltasum = 0.0
-        for timestep, tdelta in zip(timesteps, tdeltas):
-            value = (
-                estcollect.filter(pl.col("timestep") == timestep)
-                .filter(pl.col("modelgridindex") == modelgridindex)[k]
-                .item(0)
-            )
-            if value is None:
-                continue
-
-            valuesum += value * tdelta
-            tdeltasum += tdelta
-
-        dictout[k] = valuesum / tdeltasum if tdeltasum > 0 else math.nan
-
-    return dictout
 
 
 def get_averageexcitation(

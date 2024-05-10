@@ -9,7 +9,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import pynonthermal
+import pynonthermal as pynt
 
 import artistools as at
 
@@ -52,15 +52,15 @@ def read_files(modelpath: Path, timestep: int = -1, modelgridindex: int = -1) ->
 
 
 def make_xs_plot(axis: plt.Axes, nonthermaldata: pd.DataFrame, args: argparse.Namespace) -> None:
-    dfcollion = at.nonthermal.read_colliondata()
+    dfcollion = pynt.collion.read_colliondata()
 
     arr_en = nonthermaldata["energy_ev"].unique()
 
     # arr_xs_old = [xs_fe2_old(en) for en in arr_en]
     # arr_xs_times_y = [xs_fe1(en) * y for en, y in zip(nonthermaldata['energy_ev'], nonthermaldata['y'])]
 
-    axis.plot(arr_en, pynonthermal.collion.get_arxs_array_ion(arr_en, dfcollion, 26, 2), linewidth=2.0, label="Fe II")
-    axis.plot(arr_en, pynonthermal.collion.get_arxs_array_ion(arr_en, dfcollion, 28, 2), linewidth=2.0, label="Ni II")
+    axis.plot(arr_en, pynt.collion.get_arxs_array_ion(arr_en, dfcollion, 26, 2), linewidth=2.0, label="Fe II")
+    axis.plot(arr_en, pynt.collion.get_arxs_array_ion(arr_en, dfcollion, 28, 2), linewidth=2.0, label="Ni II")
 
     axis.set_ylabel(r"cross section (cm2)")
 
@@ -82,7 +82,7 @@ def plot_contributions(axis, modelpath, timestep, modelgridindex, nonthermaldata
 
     frac_ionisation = 0.0
 
-    dfcollion = at.nonthermal.read_colliondata()
+    dfcollion = pynt.collion.read_colliondata()
 
     elementlist = at.get_composition_data(modelpath)
     totalpop = estim_tsmgi["nntot"]
@@ -111,7 +111,7 @@ def plot_contributions(axis, modelpath, timestep, modelgridindex, nonthermaldata
             frac_ionisation_ion = 0.0
 
             for _index, row in dfcollion_thision.iterrows():
-                arr_xs = at.nonthermal.get_arxs_array_shell(arr_enev, row)
+                arr_xs = pynt.collion.get_arxs_array_shell(arr_enev, row)
                 arr_ionisation_shell = ionpop * arr_y * arr_xs * row.ionpot_ev / total_depev
                 arr_ionisation_ion += arr_ionisation_shell
 
@@ -127,7 +127,7 @@ def plot_contributions(axis, modelpath, timestep, modelgridindex, nonthermaldata
             axis.plot(arr_enev, arr_ionisation_element, label=f"Ionisation Z={Z}")
 
     nne = estim_tsmgi["nne"]
-    arr_heating = np.array([at.nonthermal.lossfunction(enev, nne) / total_depev for enev in arr_enev])
+    arr_heating = np.array([pynt.electronlossfunction(enev, nne) / total_depev for enev in arr_enev])
 
     frac_heating = np.trapz(x=arr_enev, y=arr_heating)
 

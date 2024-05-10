@@ -394,7 +394,7 @@ def plot_phi_hist(modelpath):
     heatmap, xedges, yedges = np.histogram2d(
         dfmodel["vel_r_mid"] / CLIGHT,
         dfmodel["phi"],
-        bins=[np.linspace(vmin, vmax, num=nvbins), np.linspace(0, 2 * np.pi, num=nphibins)],
+        bins=(list(np.linspace(vmin, vmax, num=nvbins)), list(np.linspace(0, 2 * np.pi, num=nphibins))),
         weights=weights,
     )
     # heatmap = heatmap / (2 * np.pi) / (vmax - vmin) / nphibins / nvbins
@@ -404,8 +404,8 @@ def plot_phi_hist(modelpath):
     heatmap = np.ma.masked_where(heatmap == 0.0, heatmap)
     # heatmap = np.log10(heatmap)
 
-    fig = plt.figure(figsize=[5, 4])
-    ax = fig.add_axes([0.15, 0.15, 0.75, 0.75], polar=True)
+    fig = plt.figure(figsize=(5, 4))
+    ax = fig.add_axes((0.15, 0.15, 0.75, 0.75), polar=True)
 
     radii = xedges
     z = heatmap

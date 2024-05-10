@@ -8,7 +8,7 @@ import pandas as pd
 import artistools as at
 
 
-def plot_hesma_spectrum(timeavg, axes):
+def plot_hesma_spectrum(timeavg, axes) -> None:
     hesma_file = Path("/Users/ccollins/Downloads/hesma_files/M2a/hesma_specseq.dat")
     hesma_spec = pd.read_csv(hesma_file, comment="#", sep=r"\s+", dtype=float)
     # print(hesma_spec)
@@ -28,7 +28,7 @@ def plot_hesma_spectrum(timeavg, axes):
         ax.plot(hesma_spec["0.00"], hesma_spec[closest_time], label="HESMA model")
 
 
-def plothesmaresspec(fig, ax):
+def plothesmaresspec(fig, ax) -> None:
     # specfiles = ["/Users/ccollins/Downloads/hesma_files/M2a_i55/hesma_specseq_theta.dat"]
     specfiles = ["/Users/ccollins/Downloads/hesma_files/M2a/hesma_virtualspecseq_theta.dat"]
 
@@ -44,7 +44,10 @@ def plothesmaresspec(fig, ax):
         #         chunk = specdata.iloc[index_to_split[i]:, :]
         #     res_specdata.append(chunk)
 
-        res_specdata = at.split_dataframe_dirbins(specdata)
+        res_specdata = {
+            dirbin: pldf.to_pandas(use_pyarrow_extension_array=True)
+            for dirbin, pldf in at.split_multitable_dataframe(specdata).items()
+        }
 
         column_names = res_specdata[0].iloc[0]
         column_names[0] = "lambda"
@@ -63,7 +66,7 @@ def plothesmaresspec(fig, ax):
     # plt.show()
 
 
-def make_hesma_vspecfiles(modelpath, outpath=None):
+def make_hesma_vspecfiles(modelpath: Path, outpath: Path | None = None) -> None:
     if not outpath:
         outpath = modelpath
     modelname = at.get_model_name(modelpath)
@@ -74,8 +77,7 @@ def make_hesma_vspecfiles(modelpath, outpath=None):
     for angle in angles:
         angle_names.append(rf"cos(theta) = {vpkt_config['cos_theta'][angle]}")
         print(rf"cos(theta) = {vpkt_config['cos_theta'][angle]}")
-        vspecdata_all = at.spectra.get_specpol_data(angle=angle, modelpath=modelpath)
-        vspecdata = vspecdata_all["I"]
+        vspecdata = at.spectra.get_specpol_data(angle=angle, modelpath=modelpath)["I"].to_pandas()
 
         timearray = vspecdata.columns.to_numpy()[1:]
         vspecdata = vspecdata.sort_values(by="nu", ascending=False)
@@ -107,9 +109,9 @@ def make_hesma_vspecfiles(modelpath, outpath=None):
         )
 
 
-def make_hesma_bol_lightcurve(modelpath, outpath, timemin, timemax):
+def make_hesma_bol_lightcurve(modelpath, outpath, timemin, timemax) -> None:
     """UVOIR bolometric light curve (angle-averaged)."""
-    lightcurvedataframe = at.lightcurve.writebollightcurvedata.get_bol_lc_from_lightcurveout(modelpath)
+    lightcurvedataframe = at.lightcurve.get_bol_lc_from_lightcurveout(modelpath)
     print(lightcurvedataframe)
     lightcurvedataframe = lightcurvedataframe.query("time > @timemin and time < @timemax")
 
@@ -119,7 +121,9 @@ def make_hesma_bol_lightcurve(modelpath, outpath, timemin, timemax):
     lightcurvedataframe.to_csv(outpath / outfilename, sep=" ", index=False, header=False)
 
 
-def make_hesma_peakmag_dm15_dm40(band, pathtofiles, modelname, outpath, dm40=False):
+def make_hesma_peakmag_dm15_dm40(
+    band: str, pathtofiles: Path, modelname: str, outpath: Path, dm40: bool = False
+) -> None:
     dm15filename = f"{band}band_{modelname}_viewing_angle_data.txt"
     dm15data = pd.read_csv(
         pathtofiles / dm15filename,
@@ -154,7 +158,7 @@ def make_hesma_peakmag_dm15_dm40(band, pathtofiles, modelname, outpath, dm40=Fal
     outdataframe.to_csv(outpath / f"{modelname}_width-luminosity.dat", sep=" ", index=False, header=True)
 
 
-def read_hesma_peakmag_dm15_dm40(pathtofiles):
+def read_hesma_peakmag_dm15_dm40(pathtofiles) -> None:
     data = []
     for filename in os.listdir(pathtofiles):
         print(filename)

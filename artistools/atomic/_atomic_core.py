@@ -119,8 +119,10 @@ def parse_phixsdata(fphixs, ionlist):
 
 
 @lru_cache(maxsize=8)
-def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisations=False, quiet=False):
-    """Return a list of lists of levels."""
+def get_levels(
+    modelpath, ionlist=None, get_transitions: bool = False, get_photoionisations: bool = False, quiet: bool = False
+) -> pd.DataFrame:
+    """Return a pandas DataFrame of energy levels."""
     adatafilename = Path(modelpath, "adata.txt")
 
     transitionsdict = {}
@@ -153,7 +155,7 @@ def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisati
                 phixsdict[(Z, lowerion_stage, lowerionlevel)] = (phixstargetlist, phixstable)
 
     level_lists = []
-    iontuple = namedtuple("ion", "Z ion_stage level_count ion_pot levels transitions")
+    iontuple = namedtuple("iontuple", "Z ion_stage level_count ion_pot levels transitions")
 
     with at.zopen(adatafilename) as fadata:
         if not quiet:
