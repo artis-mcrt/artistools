@@ -119,7 +119,6 @@ def test_plotspherical() -> None:
     at.plotspherical.main(argsraw=[], modelpath=modelpath, outputfile=funcoutpath)
 
 
-@pytest.mark.benchmark()
 def test_plotspherical_gif() -> None:
     at.plotspherical.main(argsraw=[], modelpath=modelpath, makegif=True, timemax=270, outputfile=outputpath)
 
