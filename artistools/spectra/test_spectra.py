@@ -34,9 +34,9 @@ def test_spectraplot(mockplot) -> None:
 
 
 @mock.patch.object(matplotlib.axes.Axes, "plot", side_effect=matplotlib.axes.Axes.plot, autospec=True)
+@pytest.mark.benchmark()
 def test_spectra_frompackets(mockplot, benchmark) -> None:
-    benchmark(
-        at.spectra.plot,
+    at.spectra.plot(
         argsraw=[],
         specpath=modelpath,
         outputfile=Path(outputpath, "spectrum_from_packets.pdf"),
@@ -57,9 +57,9 @@ def test_spectra_outputtext() -> None:
     at.spectra.plot(argsraw=[], specpath=modelpath, output_spectra=True)
 
 
+@pytest.mark.benchmark()
 def test_spectraemissionplot(benchmark) -> None:
-    benchmark(
-        at.spectra.plot,
+    at.spectra.plot(
         argsraw=[],
         specpath=modelpath,
         outputfile=outputpath,
@@ -70,9 +70,9 @@ def test_spectraemissionplot(benchmark) -> None:
     )
 
 
+@pytest.mark.benchmark()
 def test_spectraemissionplot_nostack(benchmark) -> None:
-    benchmark(
-        at.spectra.plot,
+    at.spectra.plot(
         argsraw=[],
         specpath=modelpath,
         outputfile=outputpath,
@@ -111,9 +111,9 @@ def test_spectra_get_spectrum(benchmark) -> None:
     check_spectrum(dfspectrumpkts)
 
 
+@pytest.mark.benchmark()
 def test_spectra_get_spectrum_polar_angles(benchmark) -> None:
-    spectra = benchmark(
-        at.spectra.get_spectrum,
+    spectra = at.spectra.get_spectrum(
         modelpath=modelpath_classic_3d,
         directionbins=[0, 10, 20, 30, 40, 50, 60, 70, 80, 90],
         average_over_phi=True,
@@ -160,6 +160,7 @@ def test_spectra_get_spectrum_polar_angles(benchmark) -> None:
         assert np.isclose(result_std, expected_results[dirbin][1], rtol=1e-3)
 
 
+@pytest.mark.benchmark()
 def test_spectra_get_spectrum_polar_angles_frompackets(benchmark) -> None:
     timelowdays = at.get_timestep_times(modelpath_classic_3d, loc="start")[0]
     timehighdays = at.get_timestep_times(modelpath_classic_3d, loc="end")[25]
@@ -243,6 +244,7 @@ def test_spectra_get_flux_contributions(benchmark) -> None:
     assert max(diff) / integrated_flux_specout < 2e-3
 
 
+@pytest.mark.benchmark()
 def test_spectra_timeseries_subplots() -> None:
     timedayslist = [295, 300]
     at.spectra.plot(
