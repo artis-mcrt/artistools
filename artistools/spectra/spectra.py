@@ -138,7 +138,7 @@ def get_from_packets(
     average_over_phi: bool = False,
     average_over_theta: bool = False,
     nu_column: str = "nu_rf",
-    fluxfilterfunc: t.Callable[[np.ndarray], np.ndarray] | None = None,
+    fluxfilterfunc: t.Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     nprocs_read_dfpackets: tuple[int, pl.DataFrame | pl.LazyFrame] | None = None,
     directionbins_are_vpkt_observers: bool = False,
 ) -> dict[int, pl.DataFrame]:
@@ -197,9 +197,9 @@ def get_from_packets(
 
     if directionbins_are_vpkt_observers:
         vpkt_config = at.get_vpkt_config(modelpath)
-        for dirbin in directionbins:
-            obsdirindex = dirbin // vpkt_config["nspectraperobs"]
-            opacchoiceindex = dirbin % vpkt_config["nspectraperobs"]
+        for vspecindex in directionbins:
+            obsdirindex = vspecindex // vpkt_config["nspectraperobs"]
+            opacchoiceindex = vspecindex % vpkt_config["nspectraperobs"]
             lambda_column = (
                 f"dir{obsdirindex}_lambda_angstroms_rf"
                 if nu_column == "nu_rf"
@@ -226,8 +226,8 @@ def get_from_packets(
                         / delta_time_s
                         / (megaparsec_to_cm**2)
                         / nprocs_read
-                    ).alias(f"f_lambda_dirbin{dirbin}"),
-                    pl.col("count").alias(f"count_dirbin{dirbin}"),
+                    ).alias(f"f_lambda_dirbin{vspecindex}"),
+                    pl.col("count").alias(f"count_dirbin{vspecindex}"),
                 ]
             )
 
@@ -248,7 +248,6 @@ def get_from_packets(
 
             dfpackets = dfpackets.filter(
                 (pl.col("escape_time") * escapesurfacegamma / 86400.0).is_between(timelowdays, timehighdays)
-                for dirbin in directionbins
             )
 
         elif use_time == "emission":
@@ -315,11 +314,9 @@ def get_from_packets(
 
     if fluxfilterfunc:
         print("Applying filter to ARTIS spectrum")
-        dfbinned_lazy = dfbinned_lazy.with_columns(
-            cs.starts_with("f_lambda_").map(lambda x: fluxfilterfunc(x.to_numpy()))
-        )
+        dfbinned_lazy = dfbinned_lazy.with_columns(cs.starts_with("f_lambda_").map(fluxfilterfunc))
 
-    dfbinned = dfbinned_lazy.collect(streaming=True)
+    dfbinned = dfbinned_lazy.collect()
     assert isinstance(dfbinned, pl.DataFrame)
 
     dfdict = {}
@@ -366,7 +363,7 @@ def read_spec_res(modelpath: Path) -> dict[int, pl.DataFrame]:
     if res_specdata_in[res_specdata_in.columns[-1]].is_null().all():
         res_specdata_in = res_specdata_in.drop(res_specdata_in.columns[-1])
 
-    res_specdata = at.split_dataframe_dirbins(res_specdata_in, output_polarsdf=True)
+    res_specdata = at.split_multitable_dataframe(res_specdata_in)
 
     prev_dfshape = None
     for dirbin in res_specdata:
@@ -473,10 +470,10 @@ def get_spectrum(
                 specdata[-1] = read_spec(modelpath=modelpath)
 
             except FileNotFoundError:
-                specdata[-1] = pl.from_pandas(get_specpol_data(angle=-1, modelpath=modelpath)[stokesparam])
+                specdata[-1] = get_specpol_data(angle=-1, modelpath=modelpath)[stokesparam]
 
         else:
-            specdata[-1] = pl.from_pandas(get_specpol_data(angle=-1, modelpath=modelpath)[stokesparam])
+            specdata[-1] = get_specpol_data(angle=-1, modelpath=modelpath)[stokesparam]
 
     specdataout: dict[int, pl.DataFrame] = {}
     for dirbin in directionbins:
@@ -513,54 +510,50 @@ def get_spectrum(
     return specdataout
 
 
-def make_virtual_spectra_summed_file(modelpath: Path) -> Path:
+def make_virtual_spectra_summed_file(modelpath: Path | str) -> None:
     nprocs = at.get_nprocs(modelpath)
     print("nprocs", nprocs)
-    vspecpol_data_old: list[
-        pd.DataFrame
-    ] = []  # virtual packet spectra for each observer (all directions and opacity choices)
+    # virtual packet spectra for each observer (all directions and opacity choices)
+    vspecpol_data_allranks: dict[int, pl.DataFrame] = {}
     vpktconfig = at.get_vpkt_config(modelpath)
     nvirtual_spectra = vpktconfig["nobsdirections"] * vpktconfig["nspectraperobs"]
     print(
         f"nobsdirections {vpktconfig['nobsdirections']} nspectraperobs {vpktconfig['nspectraperobs']} (total observers:"
         f" {nvirtual_spectra})"
     )
+
     for mpirank in range(nprocs):
-        vspecpolfilename = f"vspecpol_{mpirank}-0.out"
-        vspecpolpath = at.firstexisting(vspecpolfilename, folder=modelpath, tryzipped=True)
+        vspecpolpath = at.firstexisting(
+            [f"vspecpol_{mpirank:04d}.out", f"vspecpol_{mpirank}-0.out"], folder=modelpath, tryzipped=True
+        )
         print(f"Reading rank {mpirank} filename {vspecpolpath}")
 
-        vspecpolfile = pd.read_csv(vspecpolpath, sep=r"\s+", header=None)
-        # Where times of timesteps are written out a new virtual spectrum starts
-        # Find where the time in row 0, column 1 repeats in any column 1
-        index_of_new_spectrum = vspecpolfile.index[vspecpolfile.iloc[:, 1] == vspecpolfile.iloc[0, 1]]
-        vspecpol_data = []  # list of all predefined vspectra
-        for i, index_spectrum_starts in enumerate(index_of_new_spectrum[:nvirtual_spectra]):
-            # TODO: this is different to at.split_dataframe_dirbins() -- could be made to be same format to not repeat code
-            chunk = (
-                vspecpolfile.iloc[index_spectrum_starts : index_of_new_spectrum[i + 1], :]
-                if index_spectrum_starts != index_of_new_spectrum[-1]
-                else vspecpolfile.iloc[index_spectrum_starts:, :]
-            )
-            vspecpol_data.append(chunk)
+        vspecpol_data_alldirs = pl.read_csv(vspecpolpath, separator=" ", has_header=False)
 
-        if vspecpol_data_old:
-            for i in range(len(vspecpol_data)):
-                dftmp = vspecpol_data[i].copy()  # copy of vspectrum number i in a file
-                # add copy to the same spectrum number from previous file
-                # (don't need to copy row 1 = time or column 1 = freq)
-                dftmp.iloc[1:, 1:] += vspecpol_data_old[i].iloc[1:, 1:]
-                # spectrum i then equals the sum of all previous files spectrum number i
-                vspecpol_data[i] = dftmp
-        # update array containing sum of previous files
-        vspecpol_data_old = vspecpol_data
+        if vspecpol_data_alldirs[vspecpol_data_alldirs.columns[-1]].is_null().all():
+            vspecpol_data_alldirs = vspecpol_data_alldirs.drop(cs.last())
 
-    for spec_index, vspecpol in enumerate(vspecpol_data):
-        outfile = modelpath / f"vspecpol_total-{spec_index}.out"
+        vspecpol_data = at.split_multitable_dataframe(vspecpol_data_alldirs)
+        assert len(vspecpol_data) == nvirtual_spectra
+
+        for specindex in vspecpol_data:
+            if specindex not in vspecpol_data_allranks:
+                vspecpol_data_allranks[specindex] = vspecpol_data[specindex]
+            else:
+                vspecpol_data_allranks[specindex] = vspecpol_data_allranks[specindex].with_columns(
+                    [
+                        (pl.col(col) + vspecpol_data[specindex].get_column(col)).alias(col)
+                        for col in vspecpol_data_allranks[specindex].columns[1:]
+                    ]
+                )
+
+    for spec_index, vspecpol in vspecpol_data_allranks.items():
+        # fix the header row, which got summed along with the data
+        vspecpol = pl.concat([vspecpol_data[spec_index][0], vspecpol[1:]])
+
+        outfile = Path(modelpath, f"vspecpol_total-{spec_index}.out")
+        vspecpol.write_csv(outfile, separator=" ", include_header=False)
         print(f"Saved {outfile}")
-        vspecpol.to_csv(outfile, sep=" ", index=False, header=False)
-
-    return outfile
 
 
 def make_averaged_vspecfiles(args: argparse.Namespace) -> None:
@@ -590,8 +583,8 @@ def make_averaged_vspecfiles(args: argparse.Namespace) -> None:
 
 @lru_cache(maxsize=4)
 def get_specpol_data(
-    angle: int = -1, modelpath: Path | None = None, specdata: pd.DataFrame | None = None
-) -> dict[str, pd.DataFrame]:
+    angle: int = -1, modelpath: Path | None = None, specdata: pl.DataFrame | None = None
+) -> dict[str, pl.DataFrame]:
     if specdata is None:
         assert modelpath is not None
         specfilename = (
@@ -601,54 +594,48 @@ def get_specpol_data(
         )
 
         print(f"Reading {specfilename}")
-        specdata = pd.read_csv(specfilename, sep=r"\s+")
+        specdata = pl.read_csv(specfilename, separator=" ", has_header=True)
 
     return split_dataframe_stokesparams(specdata)
 
 
 @lru_cache(maxsize=4)
-def get_vspecpol_data(
-    vspecangle: int | None = None, modelpath: Path | None = None, specdata: pd.DataFrame | None = None
-) -> dict[str, pd.DataFrame]:
-    if specdata is None:
-        assert modelpath is not None
-        # alternatively use f'vspecpol_averaged-{angle}.out' ?
+def get_vspecpol_data(vspecindex: int, modelpath: Path | str) -> dict[str, pl.DataFrame]:
+    assert modelpath is not None
+    # alternatively use f'vspecpol_averaged-{angle}.out' ?
 
-        try:
-            specfilename = at.firstexisting(f"vspecpol_total-{vspecangle}.out", folder=modelpath, tryzipped=True)
-        except FileNotFoundError:
-            print(f"vspecpol_total-{vspecangle}.out does not exist. Generating all-rank summed vspec files..")
-            specfilename = make_virtual_spectra_summed_file(modelpath=modelpath)
+    try:
+        specfilename = at.firstexisting(f"vspecpol_total-{vspecindex}.out", folder=modelpath, tryzipped=True)
+    except FileNotFoundError:
+        print(f"vspecpol_total-{vspecindex}.out does not exist. Generating all-rank summed vspec files..")
+        make_virtual_spectra_summed_file(modelpath=modelpath)
+        specfilename = at.firstexisting(f"vspecpol_total-{vspecindex}.out", folder=modelpath, tryzipped=True)
 
-        print(f"Reading {specfilename}")
-        specdata = pd.read_csv(specfilename, sep=r"\s+")
+    print(f"Reading {specfilename}")
+    specdata = pl.read_csv(specfilename, separator=" ", has_header=True)
 
     return split_dataframe_stokesparams(specdata)
 
 
-def split_dataframe_stokesparams(specdata: pd.DataFrame) -> dict[str, pd.DataFrame]:
+def split_dataframe_stokesparams(specdata: pl.DataFrame) -> dict[str, pl.DataFrame]:
     """DataFrames read from specpol*.out and vspecpol*.out are repeated over I, Q, U parameters. Split these into a dictionary of DataFrames."""
-    specdata = specdata.rename({"0": "nu", "0.0": "nu"}, axis="columns")
-    cols_to_split = [i for i, key in enumerate(specdata.keys()) if specdata.keys()[1] in key]
+    specdata = specdata.rename({specdata.columns[0]: "nu"})
     stokes_params = {
-        "I": pd.concat(
-            [
-                specdata["nu"],
-                specdata.iloc[:, cols_to_split[0] : cols_to_split[1]],
-            ],
-            axis="columns",
-        )
+        "I": specdata.select(cs.exclude(cs.contains("_duplicated_"))),
+        "Q": specdata.select(
+            pl.col("nu"), cs.ends_with("_duplicated_0").name.map(lambda x: x.removesuffix("_duplicated_0"))
+        ),
+        "U": specdata.select(
+            pl.col("nu"), cs.ends_with("_duplicated_1").name.map(lambda x: x.removesuffix("_duplicated_1"))
+        ),
     }
-    stokes_params["Q"] = pd.concat(
-        [specdata["nu"], specdata.iloc[:, cols_to_split[1] : cols_to_split[2]]], axis="columns"
-    )
-    stokes_params["U"] = pd.concat([specdata["nu"], specdata.iloc[:, cols_to_split[2] :]], axis="columns")
 
     for param in ("Q", "U"):
-        stokes_params[param].columns = stokes_params["I"].keys()
-        stokes_params[param + "/I"] = pd.concat(
-            [specdata["nu"], stokes_params[param].iloc[:, 1:] / stokes_params["I"].iloc[:, 1:]], axis="columns"
+        stokes_params[param + "/I"] = stokes_params[param].select(
+            pl.col("nu"),
+            *(pl.col(colname) / stokes_params["I"].get_column(colname) for colname in stokes_params[param].columns[1:]),
         )
+
     return stokes_params
 
 
@@ -657,12 +644,12 @@ def get_vspecpol_spectrum(
     timeavg: float,
     angle: int,
     args: argparse.Namespace,
-    fluxfilterfunc: t.Callable[[np.ndarray], np.ndarray] | None = None,
+    fluxfilterfunc: t.Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
 ) -> pl.DataFrame:
-    stokes_params = get_vspecpol_data(vspecangle=angle, modelpath=Path(modelpath))
+    stokes_params = get_vspecpol_data(vspecindex=angle, modelpath=Path(modelpath))
     if "stokesparam" not in args:
         args.stokesparam = "I"
-    vspecdata = pl.from_pandas(stokes_params[args.stokesparam])
+    vspecdata = stokes_params[args.stokesparam]
 
     arr_tmid = [float(i) for i in vspecdata.columns[1:]]
     vspec_timesteps = range(len(arr_tmid))
@@ -708,7 +695,7 @@ def get_vspecpol_spectrum(
 @lru_cache(maxsize=4)
 def get_flux_contributions(
     modelpath: Path,
-    filterfunc: t.Callable[[np.ndarray], np.ndarray] | None = None,
+    filterfunc: t.Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     timestepmin: int = -1,
     timestepmax: int = -1,
     getemission: bool = True,
@@ -889,7 +876,7 @@ def get_flux_contributions_from_packets(
     getemission: bool = True,
     getabsorption: bool = True,
     maxpacketfiles: int | None = None,
-    filterfunc: t.Callable[[np.ndarray], np.ndarray] | None = None,
+    filterfunc: t.Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     groupby: t.Literal["ion", "line"] = "ion",
     maxseriescount: int | None = None,
     fixedionlist: list[str] | None = None,
@@ -995,8 +982,9 @@ def get_flux_contributions_from_packets(
         )
 
         lzdfpackets = lzdfpackets.join(emtypestrings, on=emtypecolumn, how="left")
-        z_exclude = int(vpkt_config["z_excludelist"][opacchoiceindex])
-        if vpkt_match_emission_exclusion_to_opac:
+
+        if vpkt_match_emission_exclusion_to_opac and directionbins_are_vpkt_observers:
+            z_exclude = int(vpkt_config["z_excludelist"][opacchoiceindex])
             if z_exclude == -1:
                 # no bound-bound
                 lzdfpackets = lzdfpackets.filter(pl.col("emissiontype_str").str.contains("bound-free"))

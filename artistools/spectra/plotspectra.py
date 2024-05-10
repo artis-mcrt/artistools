@@ -12,6 +12,7 @@ import argcomplete
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 import polars as pl
 from matplotlib import ticker
@@ -32,7 +33,7 @@ def path_is_artis_model(filepath: str | Path) -> bool:
 
 def plot_polarisation(modelpath: Path, args) -> None:
     angle = args.plotviewingangle[0]
-    stokes_params = at.spectra.get_specpol_data(angle=angle, modelpath=modelpath)
+    stokes_params = {k: v.to_pandas() for k, v in at.spectra.get_specpol_data(angle=angle, modelpath=modelpath).items()}
     stokes_params[args.stokesparam] = stokes_params[args.stokesparam].eval("lambda_angstroms = 2.99792458e18 / nu")
 
     timearray = stokes_params[args.stokesparam].keys()[1:-1]
@@ -106,7 +107,7 @@ def plot_reference_spectrum(
     axis: plt.Axes,
     xmin: float,
     xmax: float,
-    flambdafilterfunc: t.Callable[[np.ndarray], np.ndarray] | None = None,
+    flambdafilterfunc: t.Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     scale_to_peak: float | None = None,
     offset: float = 0,
     scale_to_dist_mpc: float = 1,
@@ -209,7 +210,7 @@ def plot_artis_spectrum(
     args,
     scale_to_peak: float | None = None,
     from_packets: bool = False,
-    filterfunc: t.Callable[[np.ndarray], np.ndarray] | None = None,
+    filterfunc: t.Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     linelabel: str | None = None,
     plotpacketcount: bool = False,
     directionbins: list[int] | None = None,
@@ -419,7 +420,7 @@ def plot_artis_spectrum(
 def make_spectrum_plot(
     speclist: t.Collection[Path | str],
     axes: t.Sequence[plt.Axes],
-    filterfunc: t.Callable[[np.ndarray], np.ndarray] | None,
+    filterfunc: t.Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None,
     args,
     scale_to_peak: float | None = None,
 ) -> pl.DataFrame:
@@ -592,7 +593,7 @@ def make_spectrum_plot(
 def make_emissionabsorption_plot(
     modelpath: Path,
     axis: plt.Axes,
-    filterfunc: t.Callable[[np.ndarray], np.ndarray] | None = None,
+    filterfunc: t.Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     args=None,
     scale_to_peak: float | None = None,
 ) -> tuple[list[Artist], list[str], pl.DataFrame | None]:
@@ -771,7 +772,8 @@ def make_emissionabsorption_plot(
 
         if index < len(args.color):
             plotkwargs["color"] = args.color[index]
-            plotkwargs["label"] = args.label[index]
+            if args.label[index] is not None:
+                plotkwargs["label"] = args.label[index]
             plotkwargs["alpha"] = args.linealpha[index]
 
         supxmin, supxmax = axis.get_xlim()
@@ -1475,8 +1477,13 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             if args.plotviewingangle
             else ""
         )
-        filenameout = str(args.outputfile).format(
-            time_days_min=args.timemin, time_days_max=args.timemax, directionbins=strdirectionbins
+
+        filenameout = (
+            str(args.outputfile).format(
+                time_days_min=args.timemin, time_days_max=args.timemax, directionbins=strdirectionbins
+            )
+            if args.timemin is not None
+            else "plotspec.pdf"
         )
 
         if args.write_data and len(dfalldata.columns) > 0:

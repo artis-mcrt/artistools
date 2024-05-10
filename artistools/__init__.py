@@ -85,7 +85,6 @@ from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import get_viewingdirectionbincount
 from artistools.misc import get_vpkt_config
 from artistools.misc import get_vspec_dir_labels
-from artistools.misc import get_wid_init_at_tmin
 from artistools.misc import get_wid_init_at_tmodel
 from artistools.misc import get_z_a_nucname
 from artistools.misc import linetuple
@@ -100,7 +99,7 @@ from artistools.misc import readnoncommentline
 from artistools.misc import roman_numerals
 from artistools.misc import set_args_from_dict
 from artistools.misc import showtimesteptimes
-from artistools.misc import split_dataframe_dirbins
+from artistools.misc import split_multitable_dataframe
 from artistools.misc import stripallsuffixes
 from artistools.misc import trim_or_pad
 from artistools.misc import vec_len

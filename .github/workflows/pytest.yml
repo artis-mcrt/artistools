@@ -1,5 +1,5 @@
 ---
-name: Installation and pytest
+name: Test and lint
 
 on:
     push:
@@ -12,6 +12,91 @@ on:
         types: [trigger_checks]
 
 jobs:
+    pre-commit:
+        runs-on: macos-14
+        env:
+            RUFF_OUTPUT_FORMAT: 'github'
+        steps:
+            - name: Checkout Code
+              uses: actions/checkout@v4
+
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version-file: .python-version
+
+            - name: Install dependencies
+              run: |
+                  python3 -m pip install --upgrade pip uv
+                  uv pip install --system -r requirements.txt
+
+            - uses: pre-commit/action@v3.0.1
+
+    lint:
+        name: Lint (ruff, mypy, pylint)
+        runs-on: macos-14
+        steps:
+            - name: Checkout Code
+              uses: actions/checkout@v4
+
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version-file: .python-version
+
+            - name: Install dependencies
+              run: |
+                  python3 -m pip install --upgrade pip uv
+                  uv pip install --system --upgrade pylint mypy ruff
+                  uv pip install --system -r requirements.txt
+
+            - name: Run Ruff
+              run: ruff check --output-format=github  --exit-non-zero-on-fix .
+
+            - name: Run Ruff Format
+              run: ruff format --diff .
+
+            - name: Run mypy
+              run: |
+                  mypy --install-types --non-interactive
+
+            - name: Run pylint
+              run: |
+                  pylint artistools
+
+    superlinter:
+        name: Super linter
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout Code
+              uses: actions/checkout@v4
+              with:
+                  # Full git history is needed to get a proper list of changed files within `super-linter`
+                  fetch-depth: 0
+
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version-file: .python-version
+
+            - name: Lint Code Base
+              uses: github/super-linter/slim@v5
+              env:
+                  LINTER_RULES_PATH: ./
+                  LOG_LEVEL: WARN
+                  VALIDATE_GITHUB_ACTIONS: false
+                  VALIDATE_GITLEAKS: false
+                  VALIDATE_JSCPD: false
+                  VALIDATE_PYTHON_BLACK: false
+                  VALIDATE_PYTHON_FLAKE8: false
+                  VALIDATE_PYTHON_ISORT: false
+                  VALIDATE_PYTHON_PYLINT: false
+                  VALIDATE_PYTHON_MYPY: false
+                  YAML_ERROR_ON_WARNING: false
+                  DEFAULT_BRANCH: main
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
     pytest:
         timeout-minutes: 10
         runs-on: ${{ matrix.os }}

@@ -1,3 +1,4 @@
+import typing as t
 from pathlib import Path
 
 import numpy as np
@@ -7,17 +8,16 @@ from astropy import units as u
 import artistools as at
 
 
-def get_bol_lc_from_spec(modelpath):
+def get_bol_lc_from_spec(modelpath) -> pd.DataFrame:
     res_specdata = at.spectra.read_spec_res(modelpath)
-    timearray = res_specdata[0].columns.to_numpy()[1:]
+    timearray = res_specdata[0].columns[1:]
     times = [time for time in timearray if 5 < float(time) < 80]
-    lightcurvedata = {"time": times}
+    lightcurvedata: dict[str, t.Any] = {"time": times}
 
     for angle in range(len(res_specdata)):
         bol_luminosity = []
-        for timestep, time in enumerate(timearray):
-            time = float(time)
-            if 5 < time < 80:
+        for timestep, timestr in enumerate(timearray):
+            if 5 < float(timestr) < 80:
                 spectrum = at.spectra.get_spectrum(
                     modelpath=modelpath, directionbins=[angle], timestepmin=timestep, timestepmax=timestep
                 )[angle]
@@ -37,7 +37,10 @@ def get_bol_lc_from_spec(modelpath):
 def get_bol_lc_from_lightcurveout(modelpath: Path, res: bool = False) -> pd.DataFrame:
     lcfilename = "light_curve_res.out" if res else "light_curve.out"
     lcdata = pd.read_csv(modelpath / lcfilename, sep=r"\s+", header=None, names=["time", "lum", "lum_cmf"])
-    lcdataframes = at.split_dataframe_dirbins(lcdata, index_of_repeated_value=0)
+    lcdataframes = {
+        dirbin: pldf.to_pandas(use_pyarrow_extension_array=True)
+        for dirbin, pldf in at.split_multitable_dataframe(lcdata).items()
+    }
 
     times = lcdataframes[0]["time"]
     lightcurvedata = {"time": times}
@@ -57,27 +60,36 @@ def get_bol_lc_from_lightcurveout(modelpath: Path, res: bool = False) -> pd.Data
     return lightcurvedataframe.replace([np.inf, -np.inf], 0)
 
 
-# modelnames = ['M08_03', 'M08_05', 'M08_10', 'M09_03', 'M09_05', 'M09_10',
-#               'M10_02_end55', 'M10_03', 'M10_05', 'M10_10', 'M11_05_1']
-modelnames = ["M2a"]
+def main():
+    # modelnames = ['M08_03', 'M08_05', 'M08_10', 'M09_03', 'M09_05', 'M09_10',
+    #               'M10_02_end55', 'M10_03', 'M10_05', 'M10_10', 'M11_05_1']
+    modelnames = ["M2a"]
 
-for modelname in modelnames:
-    # modelpath = Path("/Users/ccollins/harddrive4TB/parameterstudy") / Path(modelname)
-    modelpath = Path("/Users/ccollins/harddrive4TB/Gronow2020") / Path(modelname)
-    outfilepath = Path("/Users/ccollins/Desktop/bollightcurvedata")
+    for modelname in modelnames:
+        # modelpath = Path("/Users/ccollins/harddrive4TB/parameterstudy") / Path(modelname)
+        modelpath = Path("/Users/ccollins/harddrive4TB/Gronow2020") / Path(modelname)
+        outfilepath = Path("/Users/ccollins/Desktop/bollightcurvedata")
 
-    # lightcurvedataframe = get_bol_lc_from_spec(modelpath)
-    lightcurvedataframe = get_bol_lc_from_lightcurveout(modelpath)
+        # lightcurvedataframe = get_bol_lc_from_spec(modelpath)
+        lightcurvedataframe = get_bol_lc_from_lightcurveout(modelpath)
 
-    lightcurvedataframe.to_csv(outfilepath / f"bol_lightcurvedata_{modelname}.txt", sep=" ", index=False, header=False)
-
-    with (outfilepath / f"bol_lightcurvedata_{modelname}.txt").open("r+") as f:  # add comment to start of file
-        content = f.read()
-        f.seek(0, 0)
-        f.write(
-            "# 1st col is time in days. Next columns are log10(luminosity) for each model viewing angle".rstrip("\r\n")
-            + "\n"
-            + content
+        lightcurvedataframe.to_csv(
+            outfilepath / f"bol_lightcurvedata_{modelname}.txt", sep=" ", index=False, header=False
         )
 
-    print("done")
+        with (outfilepath / f"bol_lightcurvedata_{modelname}.txt").open("r+") as f:  # add comment to start of file
+            content = f.read()
+            f.seek(0, 0)
+            f.write(
+                "# 1st col is time in days. Next columns are log10(luminosity) for each model viewing angle".rstrip(
+                    "\r\n"
+                )
+                + "\n"
+                + content
+            )
+
+        print("done")
+
+
+if __name__ == "__main__":
+    main()

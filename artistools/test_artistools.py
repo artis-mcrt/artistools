@@ -7,6 +7,8 @@ import math
 import typing as t
 from pathlib import Path
 
+import pytest
+
 import artistools as at
 
 modelpath = at.get_config()["path_testdata"] / "testmodel"
@@ -83,6 +85,7 @@ def test_get_inputparams() -> None:
     assert dicthash == "ce7d04d6944207673a105cba8d2430055d0b53b7f3e92db3964d2dca285a3adb"
 
 
+@pytest.mark.benchmark()
 def test_get_levels() -> None:
     at.atomic.get_levels(modelpath, get_transitions=True, get_photoionisations=True)
 
@@ -91,12 +94,14 @@ def test_macroatom() -> None:
     at.macroatom.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, timestep=10)
 
 
+@pytest.mark.benchmark()
 def test_nltepops() -> None:
     # at.nltepops.plot(modelpath=modelpath, outputfile=outputpath, timedays=300),
     #                    **benchargs)
     at.nltepops.plot(argsraw=[], modelpath=modelpath, outputfile=outputpath, timestep=40)
 
 
+@pytest.mark.benchmark()
 def test_radfield() -> None:
     funcoutpath = outputpath / funcname()
     funcoutpath.mkdir(exist_ok=True, parents=True)
@@ -107,12 +112,14 @@ def test_get_ionrecombratecalibration() -> None:
     at.atomic.get_ionrecombratecalibration(modelpath=modelpath)
 
 
+@pytest.mark.benchmark()
 def test_plotspherical() -> None:
     funcoutpath = outputpath / funcname()
     funcoutpath.mkdir(exist_ok=True, parents=True)
     at.plotspherical.main(argsraw=[], modelpath=modelpath, outputfile=funcoutpath)
 
 
+@pytest.mark.benchmark()
 def test_plotspherical_gif() -> None:
     at.plotspherical.main(argsraw=[], modelpath=modelpath, makegif=True, timemax=270, outputfile=outputpath)
 

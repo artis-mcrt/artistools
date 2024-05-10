@@ -54,15 +54,12 @@ def read_ejectasnapshot(pathtosnapshot):
         "iwasequil(i, 3)",
     ]
 
-    types_dict = {"id": int}
-    types_dict |= {col: float for col in column_names if col not in types_dict}
-
     return pd.read_csv(
         Path(pathtosnapshot) / "ejectasnapshot.dat",
         sep=r"\s+",
         header=None,
         names=column_names,
-        dtype=types_dict,
+        dtype={"id": int} | {col: float for col in column_names if col != "id"},
     )
 
 

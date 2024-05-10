@@ -24,7 +24,7 @@ def readfile(
         lcdata_res = pl.read_csv(
             at.zopenpl(filepath), separator=" ", has_header=False, new_columns=["time", "lum", "lum_cmf"]
         )
-        lcdata = at.split_dataframe_dirbins(lcdata_res, index_of_repeated_value=0, output_polarsdf=True)
+        lcdata = at.split_multitable_dataframe(lcdata_res)
     else:
         dfsphericalaverage = pl.read_csv(
             at.zopenpl(filepath), separator=" ", has_header=False, new_columns=["time", "lum", "lum_cmf"]
@@ -102,9 +102,9 @@ def get_from_packets(
     getcols = set()
     if directionbins_are_vpkt_observers:
         vpkt_config = at.get_vpkt_config(modelpath)
-        for dirbin in directionbins:
-            obsdirindex = dirbin // vpkt_config["nspectraperobs"]
-            opacchoiceindex = dirbin % vpkt_config["nspectraperobs"]
+        for vspecindex in directionbins:
+            obsdirindex = vspecindex // vpkt_config["nspectraperobs"]
+            opacchoiceindex = vspecindex % vpkt_config["nspectraperobs"]
             getcols |= {
                 f"dir{obsdirindex}_nu_rf",
                 f"dir{obsdirindex}_t_arrive_d",
@@ -205,12 +205,12 @@ def generate_band_lightcurve_data(
     if args.plotvspecpol and (modelpath / "vpkt.txt").is_file():
         print("Found vpkt.txt, using virtual packets")
         stokes_params = (
-            at.spectra.get_vspecpol_data(vspecangle=angle, modelpath=modelpath)
+            at.spectra.get_vspecpol_data(vspecindex=angle, modelpath=modelpath)
             if angle >= 0
             else at.spectra.get_specpol_data(angle=angle, modelpath=modelpath)
         )
         vspecdata = stokes_params["I"]
-        timearray = vspecdata.keys()[1:]
+        timearray = vspecdata.columns[1:]
     elif args.plotviewingangle and at.anyexist(["specpol_res.out", "spec_res.out"], folder=modelpath, tryzipped=True):
         specfilename = at.firstexisting(["specpol_res.out", "spec_res.out"], folder=modelpath, tryzipped=True)
         specdataresdata = pd.read_csv(specfilename, sep=r"\s+")
