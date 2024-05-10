@@ -12,7 +12,7 @@ on:
         types: [trigger_checks]
 
 jobs:
-    pre-commit checks:
+    pre-commit:
         runs-on: macos-14
         env:
             RUFF_OUTPUT_FORMAT: 'github'
