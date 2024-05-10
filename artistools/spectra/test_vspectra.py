@@ -3,14 +3,15 @@ from unittest import mock
 
 import matplotlib.axes
 import numpy as np
+import pytest
 
 import artistools as at
 
 
 @mock.patch.object(matplotlib.axes.Axes, "plot", side_effect=matplotlib.axes.Axes.plot, autospec=True)
+@pytest.mark.benchmark()
 def test_vspectraplot(mockplot, benchmark):
-    benchmark(
-        at.spectra.plot,
+    at.spectra.plot(
         argsraw=[],
         specpath=[at.get_config()["path_testdata"] / "vspecpolmodel", "sn2011fe_PTF11kly_20120822_norm.txt"],
         outputfile=at.get_config()["path_testoutput"] / "test_vspectra.pdf",
@@ -60,9 +61,9 @@ def test_vspectraplot(mockplot, benchmark):
 
 
 @mock.patch.object(matplotlib.axes.Axes, "plot", side_effect=matplotlib.axes.Axes.plot, autospec=True)
+@pytest.mark.benchmark()
 def test_vpkt_frompackets_spectrum_plot(mockplot, benchmark):
-    benchmark(
-        at.spectra.plot,
+    at.spectra.plot(
         argsraw=[],
         specpath=[at.get_config()["path_testdata"] / "vpktcontrib"],
         outputfile=at.get_config()["path_testoutput"] / "test_vpktscontrib_spectra.pdf",
