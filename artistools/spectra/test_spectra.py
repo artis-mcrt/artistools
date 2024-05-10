@@ -7,6 +7,7 @@ from unittest import mock
 import matplotlib.axes
 import numpy as np
 import pandas as pd
+import pytest
 
 import artistools as at
 
@@ -204,11 +205,11 @@ def test_spectra_get_spectrum_polar_angles_frompackets(benchmark) -> None:
         assert np.isclose(result, expected_results[dirbin][i], rtol=1e-3)
 
 
+@pytest.mark.benchmark()
 def test_spectra_get_flux_contributions(benchmark) -> None:
     timestepmin = 40
     timestepmax = 80
-    dfspectrum = benchmark(
-        at.spectra.get_spectrum,
+    dfspectrum = at.spectra.get_spectrum(
         modelpath=modelpath,
         timestepmin=timestepmin,
         timestepmax=timestepmax,
@@ -222,8 +223,7 @@ def test_spectra_get_flux_contributions(benchmark) -> None:
     c_ang_per_s = 2.99792458e18
     arraylambda_angstroms = c_ang_per_s / arraynu
 
-    _contribution_list, array_flambda_emission_total = benchmark(
-        at.spectra.get_flux_contributions,
+    _contribution_list, array_flambda_emission_total = at.spectra.get_flux_contributions(
         modelpath,
         timestepmin=timestepmin,
         timestepmax=timestepmax,
