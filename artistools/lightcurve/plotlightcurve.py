@@ -15,8 +15,6 @@ import numpy as np
 import pandas as pd
 import polars as pl
 from astropy import constants as const
-from extinction import apply
-from extinction import ccm89
 
 import artistools as at
 
@@ -1145,6 +1143,9 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
 def plot_lightcurve_from_refdata(
     filter_names, lightcurvefilename, color, marker, filternames_conversion_dict, ax, plotnumber
 ):
+    from extinction import apply
+    from extinction import ccm89
+
     lightcurve_data, metadata = at.lightcurve.read_reflightcurve_band_data(lightcurvefilename)
     linename = metadata["label"] if plotnumber == 0 else None
     filterdir = Path(at.get_config()["path_artistools_dir"], "data/filters/")
@@ -1226,6 +1227,9 @@ def plot_lightcurve_from_refdata(
 def plot_color_evolution_from_data(
     filter_names, lightcurvefilename, color, marker, filternames_conversion_dict, ax, plotnumber, args
 ):
+    from extinction import apply
+    from extinction import ccm89
+
     lightcurve_from_data, metadata = at.lightcurve.read_reflightcurve_band_data(lightcurvefilename)
     filterdir = Path(at.get_config()["path_artistools_dir"], "data/filters/")
 
