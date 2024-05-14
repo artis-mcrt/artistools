@@ -440,7 +440,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-setgrid_fractionrmax",
         type=float,
         default=0.5,
-        help="Setup grid to have max equal to fraction of particle rmax. Default is 50% of rmax.",
+        help="Setup grid to have max equal to fraction of particle rmax.",
     )
     parser.add_argument(
         "-downsamplefactor",
