@@ -252,7 +252,7 @@ def get_rankbatch_parquetfile(
 
         pldf_batch = None
         if at.get_config()["num_processes"] > 1:
-            with multiprocessing.Pool(processes=at.get_config()["num_processes"]) as pool:
+            with multiprocessing.get_context("fork").Pool(processes=at.get_config()["num_processes"]) as pool:
                 pldf_batch = pl.concat(pool.imap(read_estimators_from_file, estfilepaths), how="diagonal_relaxed")
 
                 pool.close()
