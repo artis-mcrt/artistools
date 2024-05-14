@@ -319,31 +319,31 @@ def get_modeldata_polars(
 
     if inputpath.is_dir():
         modelpath = inputpath
-        filename = at.firstexisting("model.txt", folder=inputpath, tryzipped=True)
+        textfilepath = at.firstexisting("model.txt", folder=inputpath, tryzipped=True)
     elif inputpath.is_file():  # passed in a filename instead of the modelpath
-        filename = inputpath
+        textfilepath = inputpath
         modelpath = Path(inputpath).parent
     elif not inputpath.exists() and inputpath.parts[0] == "codecomparison":
         modelpath = inputpath
         _, inputmodel, _ = modelpath.parts
-        filename = Path(at.get_config()["codecomparisonmodelartismodelpath"], inputmodel, "model.txt")
+        textfilepath = Path(at.get_config()["codecomparisonmodelartismodelpath"], inputmodel, "model.txt")
     else:
         raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), inputpath)
 
-    filenameparquet = at.stripallsuffixes(Path(filename)).with_suffix(".txt.parquet")
+    parquetfilepath = at.stripallsuffixes(Path(textfilepath)).with_suffix(".txt.parquet")
 
-    if filenameparquet.exists() and Path(filename).stat().st_mtime > filenameparquet.stat().st_mtime:
-        print(f"{filename} has been modified after {filenameparquet}. Deleting out of date parquet file.")
-        filenameparquet.unlink()
+    if parquetfilepath.exists() and Path(textfilepath).stat().st_mtime > parquetfilepath.stat().st_mtime:
+        print(f"{textfilepath} has been modified after {parquetfilepath}. Deleting out of date parquet file.")
+        parquetfilepath.unlink()
 
     dfmodel: pl.LazyFrame | None | pl.DataFrame = None
-    if not getheadersonly and filenameparquet.is_file():
+    if not getheadersonly and parquetfilepath.is_file():
         if not printwarningsonly:
-            print(f"Reading model table from {filenameparquet}")
+            print(f"Reading model table from {parquetfilepath}")
         try:
-            dfmodel = pl.scan_parquet(filenameparquet)
+            dfmodel = pl.scan_parquet(parquetfilepath)
         except pl.exceptions.ComputeError:
-            print(f"Problem reading {filenameparquet}. Will regenerate and overwite from text source.")
+            print(f"Problem reading {parquetfilepath}. Will regenerate and overwite from text source.")
             dfmodel = None
 
     if dfmodel is not None:
@@ -351,7 +351,7 @@ def get_modeldata_polars(
         getheadersonly = True
 
     dfmodel_textfile, modelmeta = read_modelfile_text(
-        filename=filename,
+        filename=textfilepath,
         printwarningsonly=printwarningsonly,
         getheadersonly=getheadersonly,
     )
@@ -359,17 +359,19 @@ def get_modeldata_polars(
     if dfmodel is None:
         dfmodel = dfmodel_textfile
     elif dfmodel.schema != dfmodel_textfile.schema:
-        print(f"ERROR: parquet schema does not match model.txt. Remove {filenameparquet} and try again.")
+        print(f"ERROR: parquet schema does not match model.txt. Remove {parquetfilepath} and try again.")
         raise AssertionError
 
     mebibyte = 1024 * 1024
-    if isinstance(dfmodel, pl.DataFrame) and filename.stat().st_size > 5 * mebibyte and not getheadersonly:
-        print(f"Saving {filenameparquet}")
-        dfmodel.write_parquet(filenameparquet, compression="zstd")
+    if isinstance(dfmodel, pl.DataFrame) and textfilepath.stat().st_size > 5 * mebibyte and not getheadersonly:
+        print(f"Saving {parquetfilepath}")
+        partialparquetfilepath = at.stripallsuffixes(Path(textfilepath)).with_suffix(".txt.parquet.partial.tmp")
+        dfmodel.write_parquet(partialparquetfilepath, compression="zstd")
+        partialparquetfilepath.rename(parquetfilepath)
         print("  Done.")
         del dfmodel
         gc.collect()
-        dfmodel = pl.scan_parquet(filenameparquet)
+        dfmodel = pl.scan_parquet(parquetfilepath)
 
     if not printwarningsonly:
         print(f"  model is {modelmeta['dimensions']}D with {modelmeta['npts_model']} cells")
@@ -945,27 +947,27 @@ def get_initelemabundances_polars(
     printwarningsonly: bool = False,
 ) -> pl.LazyFrame:
     """Return a table of elemental mass fractions by cell from abundances."""
-    abundancefilepath = at.firstexisting("abundances.txt", folder=modelpath, tryzipped=True)
+    textfilepath = at.firstexisting("abundances.txt", folder=modelpath, tryzipped=True)
 
-    filenameparquet = at.stripallsuffixes(Path(abundancefilepath)).with_suffix(".txt.parquet")
-    if filenameparquet.exists() and Path(abundancefilepath).stat().st_mtime > filenameparquet.stat().st_mtime:
-        print(f"{abundancefilepath} has been modified after {filenameparquet}. Deleting out of date parquet file.")
-        filenameparquet.unlink()
+    parquetfilepath = at.stripallsuffixes(Path(textfilepath)).with_suffix(".txt.parquet")
+    if parquetfilepath.exists() and Path(textfilepath).stat().st_mtime > parquetfilepath.stat().st_mtime:
+        print(f"{textfilepath} has been modified after {parquetfilepath}. Deleting out of date parquet file.")
+        parquetfilepath.unlink()
 
-    if filenameparquet.is_file():
+    if parquetfilepath.is_file():
         if not printwarningsonly:
-            print(f"Reading {filenameparquet}")
+            print(f"Reading {parquetfilepath}")
 
-        abundancedata_lazy = pl.scan_parquet(filenameparquet)
+        abundancedata_lazy = pl.scan_parquet(parquetfilepath)
     else:
         if not printwarningsonly:
-            print(f"Reading {abundancefilepath}")
-        ncols = len(pd.read_csv(abundancefilepath, sep=r"\s+", header=None, comment="#", nrows=1).columns)
+            print(f"Reading {textfilepath}")
+        ncols = len(pd.read_csv(textfilepath, sep=r"\s+", header=None, comment="#", nrows=1).columns)
         colnames = ["inputcellid", *["X_" + at.get_elsymbol(x) for x in range(1, ncols)]]
         dtypes = {col: pl.Float32 if col.startswith("X_") else pl.Int32 for col in colnames}
 
         abundancedata = pl.read_csv(
-            at.zopenpl(abundancefilepath),
+            at.zopenpl(textfilepath),
             has_header=False,
             separator=" ",
             comment_prefix="#",
@@ -981,13 +983,15 @@ def get_initelemabundances_polars(
             {col: colnames[idx] for idx, col in enumerate(abundancedata.columns)}
         ).cast(dtypes)  # type: ignore[arg-type]
 
-        if abundancefilepath.stat().st_size > 5 * 1024 * 1024:
-            print(f"Saving {filenameparquet}")
-            abundancedata.write_parquet(filenameparquet, compression="zstd")
+        if textfilepath.stat().st_size > 5 * 1024 * 1024:
+            print(f"Saving {parquetfilepath}")
+            partialparquetfilepath = at.stripallsuffixes(Path(textfilepath)).with_suffix(".txt.parquet.partial.tmp")
+            abundancedata.write_parquet(partialparquetfilepath, compression="zstd")
+            partialparquetfilepath.rename(parquetfilepath)
             print("  Done.")
             del abundancedata
             gc.collect()
-            abundancedata_lazy = pl.scan_parquet(filenameparquet)
+            abundancedata_lazy = pl.scan_parquet(parquetfilepath)
         else:
             abundancedata_lazy = abundancedata.lazy()
 
