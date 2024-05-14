@@ -449,6 +449,7 @@ def make_spectrum_plot(
             plotkwargs["dashes"] = args.dashes[seriesindex]
         if args.linewidth[seriesindex]:
             plotkwargs["linewidth"] = args.linewidth[seriesindex]
+        seriesname = "UNKNOWN"
 
         seriesdata: pl.DataFrame | None
         if (

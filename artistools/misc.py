@@ -191,6 +191,9 @@ def average_direction_bins(
     elif overangle == "theta":
         ncosthetabins = at.get_viewingdirection_costhetabincount()
         start_bin_range = range(nphibins)
+    else:
+        msg = "overangle must be 'phi' or 'theta'"
+        raise ValueError(msg)
 
     # we will make a copy to ensure that we don't cause side effects from altering the original DataFrames
     # that might be returned again later by an lru_cached function

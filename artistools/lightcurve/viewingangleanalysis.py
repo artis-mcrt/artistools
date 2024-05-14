@@ -296,6 +296,7 @@ def calculate_peak_time_mag_deltam15(time, magnitude, modelname, angle, key, arg
     time_after15days_polyfit = match_closest_time_polyfit(tmax_polyfit + 15)
     if args.include_delta_m40:
         time_after40days_polyfit = match_closest_time_polyfit(tmax_polyfit + 40)
+    index_after_40_days = None
     for ii, xfits in enumerate(xfit):
         if float(xfits) == float(time_after15days_polyfit):
             index_after_15_days = ii
