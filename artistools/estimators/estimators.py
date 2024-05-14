@@ -10,6 +10,7 @@ import math
 import multiprocessing
 import multiprocessing.pool
 import sys
+import tempfile
 import time
 import typing as t
 from collections import namedtuple
@@ -229,9 +230,8 @@ def get_rankbatch_parquetfile(
     batch_mpiranks: t.Sequence[int],
     batchindex: int,
 ) -> Path:
-    parquetfilepath = (
-        folderpath / f"estimbatch{batchindex:02d}_{batch_mpiranks[0]:04d}_{batch_mpiranks[-1]:04d}.out.parquet.tmp"
-    )
+    parquetfilename = f"estimbatch{batchindex:02d}_{batch_mpiranks[0]:04d}_{batch_mpiranks[-1]:04d}.out.parquet.tmp"
+    parquetfilepath = folderpath / parquetfilename
 
     if not parquetfilepath.exists():
         print(f"  generating {parquetfilepath.relative_to(modelpath.parent)}.")
@@ -266,7 +266,11 @@ def get_rankbatch_parquetfile(
         )
 
         assert pldf_batch is not None
-        pldf_batch.write_parquet(parquetfilepath, compression="zstd", statistics=True, compression_level=8)
+        tempdir = Path(tempfile.gettempdir())
+        tempfilepath = tempdir / parquetfilename
+        pldf_batch.write_parquet(tempfilepath, compression="zstd", statistics=True, compression_level=8)
+        tempfilepath.rename(parquetfilepath)
+        tempdir.rmdir()
 
     filesize = parquetfilepath.stat().st_size / 1024 / 1024
     print(f"  scanning {parquetfilepath.relative_to(modelpath.parent)} ({filesize:.2f} MiB)")

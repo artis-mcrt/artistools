@@ -1,5 +1,6 @@
 import calendar
 import math
+import tempfile
 import time
 import typing as t
 from functools import lru_cache
@@ -444,9 +445,10 @@ def get_rankbatch_parquetfile(
     packetdir = Path(modelpath, strpacket)
     packetdir.mkdir(exist_ok=True, parents=True)
 
-    parquetfilepath = (
-        packetdir / f"{strpacket}batch{batchindex:02d}_{batch_mpiranks[0]:04d}_{batch_mpiranks[-1]:04d}.out.parquet.tmp"
+    parquetfilename = (
+        f"{strpacket}batch{batchindex:02d}_{batch_mpiranks[0]:04d}_{batch_mpiranks[-1]:04d}.out.parquet.tmp"
     )
+    parquetfilepath = packetdir / parquetfilename
 
     # time when the schema for the parquet files last change (e.g. new computed columns added or data types changed)
     time_parquetschemachange = (2024, 4, 23, 9, 0, 0)
@@ -521,7 +523,11 @@ def get_rankbatch_parquetfile(
             f"   took {time.perf_counter() - time_start_load:.1f} seconds. Writing parquet file...", end="", flush=True
         )
         time_start_write = time.perf_counter()
-        pldf_batch.sink_parquet(parquetfilepath, compression="zstd", statistics=True, compression_level=8)
+        tempdir = Path(tempfile.gettempdir())
+        tempfilepath = tempdir / parquetfilename
+        pldf_batch.sink_parquet(tempfilepath, compression="zstd", statistics=True, compression_level=8)
+        tempfilepath.rename(parquetfilepath)
+        tempdir.rmdir()
         print(f"took {time.perf_counter() - time_start_write:.1f} seconds")
     else:
         print(f"  scanning {parquetfilepath.relative_to(modelpath)}")
