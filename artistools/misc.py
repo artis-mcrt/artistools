@@ -111,7 +111,7 @@ def get_composition_data(filename: Path | str) -> pd.DataFrame:
     columns = ("Z,nions,lowermost_ion_stage,uppermost_ion_stage,nlevelsmax_readin,abundance,mass,startindex").split(",")
 
     rowdfs = []
-    with filename.open() as fcompdata:
+    with filename.open(encoding="utf-8") as fcompdata:
         nelements = int(fcompdata.readline())
         fcompdata.readline()  # T_preset
         fcompdata.readline()  # homogeneous_abundances
@@ -132,7 +132,7 @@ def get_composition_data_from_outputfile(modelpath: Path) -> pd.DataFrame:
     """Read ion list from output file."""
     atomic_composition = {}
 
-    with (modelpath / "output_0-0.txt").open() as foutput:
+    with (modelpath / "output_0-0.txt").open(encoding="utf-8") as foutput:
         Z: int | None = None
         ioncount = 0
         for row in foutput:
@@ -225,7 +225,7 @@ def match_closest_time(reftime: float, searchtimes: list[t.Any]) -> str:
 def get_vpkt_config(modelpath: Path | str) -> dict[str, t.Any]:
     filename = Path(modelpath, "vpkt.txt")
 
-    with filename.open() as vpkt_txt:
+    with filename.open(encoding="utf-8") as vpkt_txt:
         vpkt_config: dict[str, t.Any] = {
             "nobsdirections": int(vpkt_txt.readline()),
             "cos_theta": [float(x) for x in vpkt_txt.readline().split()],
@@ -299,7 +299,7 @@ def get_syn_dir(modelpath: Path) -> tuple[float, float, float]:
         print(f"{modelpath / 'syn_dir.txt'} does not exist. using x,y,z = 0,0,1")
         return (0.0, 0.0, 1.0)
 
-    with syndirpath.open() as syn_dir_file:
+    with syndirpath.open(encoding="utf-8") as syn_dir_file:
         x, y, z = (float(i) for i in syn_dir_file.readline().split())
         return (x, y, z)
 
@@ -326,7 +326,7 @@ def get_deposition(modelpath: Path | str = ".") -> pd.DataFrame:
 
     ts_mids = get_timestep_times(modelpath, loc="mid")
 
-    with depfilepath.open() as fdep:
+    with depfilepath.open(encoding="utf-8") as fdep:
         filepos = fdep.tell()
         line = fdep.readline()
         if line.startswith("#"):
@@ -566,7 +566,7 @@ def get_model_name(path: Path | str) -> str:
 
     try:
         plotlabelfile = Path(modelpath, "plotlabel.txt")
-        with plotlabelfile.open() as f:
+        with plotlabelfile.open(encoding="utf-8") as f:
             return f.readline().strip()
     except FileNotFoundError:
         return Path(modelpath).name
@@ -941,7 +941,7 @@ def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
     # check if the reference file (e.g. spectrum.txt) has an metadata file (spectrum.txt.meta.yml)
     individualmetafile = filepath.with_suffix(f"{filepath.suffix}.meta.yml")
     if individualmetafile.exists():
-        with individualmetafile.open("r") as yamlfile:
+        with individualmetafile.open("r", encoding="utf-8") as yamlfile:
             metadata = yaml.safe_load(yamlfile)
 
         return add_derived_metadata(metadata)
@@ -949,7 +949,7 @@ def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
     # check if the metadata is in the big combined metadata file (todo: eliminate this file)
     combinedmetafile = Path(filepath.parent.resolve(), "metadata.yml")
     if combinedmetafile.exists():
-        with combinedmetafile.open("r") as yamlfile:
+        with combinedmetafile.open("r", encoding="utf-8") as yamlfile:
             combined_metadata = yaml.safe_load(yamlfile)
         metadata = combined_metadata.get(str(filepath), {})
 
@@ -1185,7 +1185,7 @@ def get_npts_model(modelpath: Path) -> int:
 @lru_cache(maxsize=8)
 def get_nprocs(modelpath: Path) -> int:
     """Return the number of MPI processes specified in input.txt."""
-    return int(Path(modelpath, "input.txt").read_text().split("\n")[21].split("#")[0])
+    return int(Path(modelpath, "input.txt").read_text(encoding="utf-8").split("\n")[21].split("#")[0])
 
 
 @lru_cache(maxsize=8)
@@ -1195,7 +1195,7 @@ def get_inputparams(modelpath: Path) -> dict[str, t.Any]:
     from astropy import units as u
 
     params: dict[str, t.Any] = {}
-    with Path(modelpath, "input.txt").open("r") as inputfile:
+    with Path(modelpath, "input.txt").open("r", encoding="utf-8") as inputfile:
         params["pre_zseed"] = int(readnoncommentline(inputfile).split("#")[0])
 
         # number of time steps

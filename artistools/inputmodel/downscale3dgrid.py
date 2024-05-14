@@ -88,7 +88,7 @@ def make_downscaled_3d_grid(
 
     print("writing abundance file")
     i = 0
-    with (modelpath / smallabundancefile).open("w") as newabundancefile:
+    with (modelpath / smallabundancefile).open("w", encoding="utf-8") as newabundancefile:
         for z, y, x in itertools.product(range(smallgrid), range(smallgrid), range(smallgrid)):
             line = abund_small[x, y, z, :].tolist()  # index 1:30 are abundances
             line[0] = i + 1  # replace index 0 with index id
@@ -99,7 +99,7 @@ def make_downscaled_3d_grid(
     print("writing model file")
     xmax = vmax * t_model_days * 3600 * 24
     cellindex = 0
-    with (modelpath / smallmodelfile).open("w") as newmodelfile:
+    with (modelpath / smallmodelfile).open("w", encoding="utf-8") as newmodelfile:
         gridsize = smallgrid**3
         newmodelfile.write(f"{gridsize}\n")
         newmodelfile.write(f"{t_model_days}\n")

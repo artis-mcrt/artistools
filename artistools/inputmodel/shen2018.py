@@ -25,7 +25,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         at.set_args_from_dict(parser, kwargs)
         args = parser.parse_args([] if kwargs else argsraw)
 
-    with Path(args.inputpath).open() as infile:
+    with Path(args.inputpath).open(encoding="utf-8") as infile:
         columns = infile.readline().split()
 
     atomicnumberofspecies = {}

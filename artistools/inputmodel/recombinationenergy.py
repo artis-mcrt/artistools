@@ -202,7 +202,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         argcomplete.autocomplete(parser)
         args = parser.parse_args([] if kwargs else argsraw)
 
-    with Path(at.get_config()["path_datadir"], "ElBiEn_2007.txt").open() as fbinding:
+    with Path(at.get_config()["path_datadir"], "ElBiEn_2007.txt").open(encoding="utf-8") as fbinding:
         for _ in range(11):
             header = fbinding.readline().lstrip(" #").split()
         # print(header)

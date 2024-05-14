@@ -12,7 +12,7 @@ def get_atomic_composition(modelpath: Path) -> dict[int, int]:
     """Read ion list from output file."""
     atomic_composition = {}
 
-    with (modelpath / "output_0-0.txt").open() as foutput:
+    with (modelpath / "output_0-0.txt").open(encoding="utf-8") as foutput:
         ioncount = 0
         for row in foutput:
             if row.split()[0] == "[input.c]":
@@ -52,7 +52,7 @@ def get_first_ts_in_run_directory(modelpath) -> dict[str, int]:
 
     for folder in folderlist_all:
         if (folder / "output_0-0.txt").is_file():
-            with (folder / "output_0-0.txt").open() as output_0:
+            with (folder / "output_0-0.txt").open(encoding="utf-8") as output_0:
                 timesteps_in_dir = [
                     line.strip("...\n").split(" ")[-1]
                     for line in output_0

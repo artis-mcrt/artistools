@@ -68,7 +68,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     wollager_profilename = "wollager_ejectaprofile_10bins.txt"
     if Path(wollager_profilename).exists():
-        with Path(wollager_profilename).open("rt") as f:
+        with Path(wollager_profilename).open("rt", encoding="utf-8") as f:
             t_model_init_days_in = float(f.readline().strip().removesuffix(" day"))
         dfdensities = pd.read_csv(
             wollager_profilename, sep=r"\s+", skiprows=1, names=["cellid", "vel_r_max_kmps", "rho"]

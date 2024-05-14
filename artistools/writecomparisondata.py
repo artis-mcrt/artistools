@@ -34,7 +34,7 @@ def write_spectra(modelpath: str | Path, model_id: str, selected_timesteps: t.Se
         # 2.99792458e18 is c in Angstrom / second
         lum_lambda[n, :] = fluxes_nu[n, :] * 2.99792458e18 / lambdas[n] / lambdas[n] * area
 
-    with outfilepath.open("w") as outfile:
+    with outfilepath.open("w", encoding="utf-8") as outfile:
         outfile.write(f"#NTIMES: {len(selected_timesteps)}\n")
         outfile.write(f"#NWAVE: {len(lambdas)}\n")
         outfile.write(f'#TIMES[d]: {" ".join([f"{times[ts]:.2f}" for ts in selected_timesteps])}\n')
@@ -58,7 +58,7 @@ def write_ntimes_nvel(outfile: TextIOWrapper, selected_timesteps: t.Sequence[int
 
 def write_single_estimator(modelpath, selected_timesteps, estimators, allnonemptymgilist, outfile, keyname) -> None:
     modeldata, _modelmeta = at.inputmodel.get_modeldata(modelpath, derived_cols=["vel_r_min_kmps"])
-    with Path(outfile).open("w") as f:
+    with Path(outfile).open("w", encoding="utf-8") as f:
         write_ntimes_nvel(f, selected_timesteps, modelpath)
         if keyname == "total_dep":
             f.write("#vel_mid[km/s] Edep_t0[erg/s/cm^3] Edep_t1[erg/s/cm^3] ... Edep_tn[erg/s/cm^3]\n")
@@ -100,7 +100,7 @@ def write_ionfracts(
         nions = elementlist.nions[element]
         pathfileout = Path(outputpath, f"ionfrac_{elsymb.lower()}_{model_id}_artisnebular.txt")
         fileisallzeros = True  # will be changed when a non-zero is encountered
-        with pathfileout.open("w") as f:
+        with pathfileout.open("w", encoding="utf-8") as f:
             f.write(f"#NTIMES: {len(selected_timesteps)}\n")
             f.write(f"#NSTAGES: {nions}\n")
             f.write(f'#TIMES[d]: {" ".join([f"{times[ts]:.2f}" for ts in selected_timesteps])}\n')
@@ -132,7 +132,7 @@ def write_ionfracts(
 def write_phys(modelpath, model_id, selected_timesteps, estimators, allnonemptymgilist, outputpath) -> None:
     times = at.get_timestep_times(modelpath)
     modeldata, modelmeta = at.inputmodel.get_modeldata(modelpath, derived_cols=["vel_r_min_kmps"])
-    with Path(outputpath, f"phys_{model_id}_artisnebular.txt").open("w") as f:
+    with Path(outputpath, f"phys_{model_id}_artisnebular.txt").open("w", encoding="utf-8") as f:
         f.write(f"#NTIMES: {len(selected_timesteps)}\n")
         f.write(f'#TIMES[d]: {" ".join([f"{times[ts]:.2f}" for ts in selected_timesteps])}\n')
         f.write("#\n")
@@ -168,7 +168,7 @@ def write_lbol_edep(
         .merge(at.get_deposition(modelpath), left_index=True, right_index=True, suffixes=("", "_dep"))
     )
 
-    with outputpath.open("w") as f:
+    with outputpath.open("w", encoding="utf-8") as f:
         f.write(f"#NTIMES: {len(selected_timesteps)}\n")
         f.write("#time[d] Lbol[erg/s] Edep[erg/s] \n")
 

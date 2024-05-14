@@ -86,7 +86,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             ]
         },
     }
-    with outputfilepath.open("w") as fileout:
+    with outputfilepath.open("w", encoding="utf-8") as fileout:
         fileout.write("---\n")
         yamldump(dictmeta, fileout, sort_keys=False)
         fileout.write("---\n")

@@ -24,13 +24,13 @@ def main() -> None:
         runfolder = logfilename.parent
 
         timesteptimes: list[str] = []
-        with (runfolder / "light_curve.out").open() as lcfile:
+        with (runfolder / "light_curve.out").open(encoding="utf-8") as lcfile:
             timesteptimes.extend(line.split()[0] for line in lcfile)
         timesteptimes = timesteptimes[: len(timesteptimes) // 2]
 
         stats: list[dict[str, int]] = []
 
-        with logfilename.open() as flog:
+        with logfilename.open(encoding="utf-8") as flog:
             for line in flog:
                 if line.startswith("timestep "):
                     currenttimestep = int(line.split(" ")[1].split(",")[0])

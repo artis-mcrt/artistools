@@ -209,7 +209,7 @@ def main() -> None:
     dm = 4 / 3 * np.pi * (rout**3 - rin**3) * a["dens"] / msun
     print(dm.sum(), dm.sum() / (a["dmass"].sum() / msun))  # Check total mass
 
-    with Path(model, "model.txt").open("w") as f:
+    with Path(model, "model.txt").open("w", encoding="utf-8") as f:
         f.write(str(a["nd"]) + "\n")
         f.write(str(a["time"]) + "\n")
 

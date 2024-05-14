@@ -343,7 +343,7 @@ def bolometric_magnitude(
 
 def get_filter_data(filterdir: Path | str, filter_name: str) -> tuple[float, np.ndarray, np.ndarray, float, float]:
     """Filter data in 'data/filters' taken from https://github.com/cinserra/S3/tree/master/src/s3/metadata."""
-    with Path(filterdir, f"{filter_name}.txt").open("r") as filter_metadata:  # defintion of the file
+    with Path(filterdir, f"{filter_name}.txt").open("r", encoding="utf-8") as filter_metadata:  # defintion of the file
         line_in_filter_metadata = filter_metadata.readlines()  # list of lines
 
     zeropointenergyflux = float(line_in_filter_metadata[0])
@@ -438,7 +438,7 @@ def read_hesma_lightcurve(args: argparse.Namespace) -> pd.DataFrame:
     hesma_modelname = hesma_directory / filename
 
     column_names: list[str] = []
-    with hesma_modelname.open() as f:
+    with hesma_modelname.open(encoding="utf-8") as f:
         first_line = f.readline()
         if "#" in first_line:
             column_names.extend(i for i in first_line if i not in {"#", " ", "\n"})
@@ -489,7 +489,7 @@ def read_bol_reflightcurve_data(lightcurvefilename):
     metadata = at.get_file_metadata(data_path)
 
     # check for possible header line and read table
-    with data_path.open() as flc:
+    with data_path.open(encoding="utf-8") as flc:
         filepos = flc.tell()
         line = flc.readline()
         if line.startswith("#"):

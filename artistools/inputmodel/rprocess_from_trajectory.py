@@ -574,7 +574,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     dfmodel = pd.DataFrame(modeldata)
     # print(dfmodel)
     at.inputmodel.save_modeldata(dfmodel=dfmodel, t_model_init_days=t_model_init_days, filepath=Path(args.outputpath))
-    with Path(args.outputpath, "gridcontributions.txt").open("w") as fcontribs:
+    with Path(args.outputpath, "gridcontributions.txt").open("w", encoding="utf-8") as fcontribs:
         fcontribs.write("particleid cellindex frac_of_cellmass\n")
         for cell in dfmodel.itertuples(index=False):
             fcontribs.write(f"{particleid} {cell.inputcellid} 1.0\n")
@@ -582,7 +582,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
 def get_wollaeger_density_profile(wollaeger_profilename):
     print(f"{wollaeger_profilename} found")
-    with Path(wollaeger_profilename).open("rt") as f:
+    with Path(wollaeger_profilename).open("rt", encoding="utf-8") as f:
         t_model_init_days_in = float(f.readline().strip().removesuffix(" day"))
     result = pd.read_csv(
         wollaeger_profilename,

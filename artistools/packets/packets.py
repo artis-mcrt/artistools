@@ -84,7 +84,7 @@ def get_column_names_artiscode(modelpath: str | Path) -> list[str] | None:
         packet_properties: list[str] = []
         inputfilename = at.firstexisting(["packet_init.cc", "packet_init.c"], folder=modelpath / "artis")
         print(f"found {inputfilename}: getting packet column names from artis code:")
-        with inputfilename.open() as inputfile:
+        with inputfilename.open(encoding="utf-8") as inputfile:
             packet_print_lines = [line.split(",") for line in inputfile if "fprintf(packets_file," in line]
             for line in packet_print_lines:
                 packet_properties.extend(element for element in line if "pkt[i]." in element)
