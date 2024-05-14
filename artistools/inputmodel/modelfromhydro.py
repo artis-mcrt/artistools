@@ -169,7 +169,7 @@ def read_griddat_file(
     )
 
     if targetmodeltime_days is not None:
-        dfmodel, modelmeta = at.inputmodel.scale_model_to_time(
+        griddata, modelmeta = at.inputmodel.scale_model_to_time(
             targetmodeltime_days=targetmodeltime_days, t_model_days=t_model_days, dfmodel=griddata
         )
         t_model_days = targetmodeltime_days
