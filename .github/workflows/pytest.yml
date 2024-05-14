@@ -62,7 +62,7 @@ jobs:
 
             - name: Run pylint
               run: |
-                  pylint artistools
+                  pylint --output-format=github artistools
 
     superlinter:
         name: Super linter
