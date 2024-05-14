@@ -141,6 +141,7 @@ disable = """
     no-member,
     not-an-iterable,
     not-context-manager,
+    possibly-used-before-assignment,
     protected-access,
     redefined-outer-name,
     too-many-arguments,
