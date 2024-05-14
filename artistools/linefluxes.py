@@ -5,7 +5,6 @@ import argparse
 import contextlib
 import json
 import math
-import multiprocessing
 import typing as t
 from collections import namedtuple
 from functools import partial
@@ -74,7 +73,7 @@ def get_packets_with_emtype(
     processfile = partial(get_packets_with_emtype_onefile, emtypecolumn, lineindices)
     if at.get_config()["num_processes"] > 1:
         print(f"Reading packets files with {at.get_config()['num_processes']} processes")
-        with multiprocessing.get_context("forkserver").Pool(processes=at.get_config()["num_processes"]) as pool:
+        with at.get_multiprocessing_pool() as pool:
             arr_dfmatchingpackets = pool.map(processfile, packetsfiles)
             pool.close()
             pool.join()

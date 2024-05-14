@@ -7,8 +7,6 @@ Examples are temperatures, populations, and heating/cooling rates.
 import argparse
 import contextlib
 import math
-import multiprocessing
-import multiprocessing.pool
 import sys
 import time
 import typing as t
@@ -252,7 +250,7 @@ def get_rankbatch_parquetfile(
 
         pldf_batch = None
         if at.get_config()["num_processes"] > 1:
-            with multiprocessing.get_context("forkserver").Pool(processes=at.get_config()["num_processes"]) as pool:
+            with at.get_multiprocessing_pool() as pool:
                 pldf_batch = pl.concat(pool.imap(read_estimators_from_file, estfilepaths), how="diagonal_relaxed")
 
                 pool.close()

@@ -1,7 +1,6 @@
 """Artistools - NLTE population related functions."""
 
 import math
-import multiprocessing
 import re
 import string
 from functools import lru_cache
@@ -210,7 +209,7 @@ def read_files(
         dfquery_full += f"({dfquery})"
 
     if at.get_config()["num_processes"] > 1:
-        with multiprocessing.get_context("forkserver").Pool(processes=at.get_config()["num_processes"]) as pool:
+        with at.get_multiprocessing_pool() as pool:
             arr_dfnltepop = pool.map(
                 partial(read_file_filtered, strquery=dfquery_full, dfqueryvars=dfqueryvars), nltefilepaths
             )
