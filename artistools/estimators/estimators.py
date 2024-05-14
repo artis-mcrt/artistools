@@ -252,7 +252,7 @@ def get_rankbatch_parquetfile(
 
         pldf_batch = None
         if at.get_config()["num_processes"] > 1:
-            with multiprocessing.get_context("forkserver").Pool(processes=at.get_config()["num_processes"]) as pool:
+            with multiprocessing.get_context("spawn").Pool(processes=at.get_config()["num_processes"]) as pool:
                 pldf_batch = pl.concat(pool.imap(read_estimators_from_file, estfilepaths), how="diagonal_relaxed")
 
                 pool.close()
@@ -262,12 +262,16 @@ def get_rankbatch_parquetfile(
             pldf_batch = pl.concat(map(read_estimators_from_file, estfilepaths), how="diagonal_relaxed")
 
         print(
-            f"took {time.perf_counter() - time_start:.1f} s. Writing {parquetfilepath.relative_to(modelpath.parent)}..."
+            f"took {time.perf_counter() - time_start:.1f} s. Writing {parquetfilepath.relative_to(modelpath.parent)}...",
+            end="",
+            flush=True,
         )
+        time_start = time.perf_counter()
 
         assert pldf_batch is not None
         pldf_batch.write_parquet(parquetfilepathpartial, compression="zstd", statistics=True, compression_level=8)
         parquetfilepathpartial.rename(parquetfilepath)
+        print(f"took {time.perf_counter() - time_start:.1f} s.")
 
     filesize = parquetfilepath.stat().st_size / 1024 / 1024
     print(f"  scanning {parquetfilepath.relative_to(modelpath.parent)} ({filesize:.2f} MiB)")
