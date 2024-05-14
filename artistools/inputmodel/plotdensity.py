@@ -104,7 +104,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     if outfilepath.is_dir():
         outfilepath /= "densityprofile.pdf"
 
-    plt.savefig(outfilepath)
+    fig.savefig(outfilepath)
     print(f"Saved {outfilepath}")
 
 
