@@ -66,7 +66,7 @@ def read_ejectasnapshot(pathtosnapshot):
 def get_merger_time_geomunits(pathtogriddata: Path) -> float:
     mergertimefile = pathtogriddata / "tmerger.txt"
     if mergertimefile.exists():
-        with mergertimefile.open("rt") as fmergertimefile:
+        with mergertimefile.open("rt", encoding="utf-8") as fmergertimefile:
             comments = fmergertimefile.readline()
             assert comments.startswith("#")
             mergertime_geomunits = float(fmergertimefile.readline())
@@ -90,7 +90,7 @@ def get_snapshot_time_geomunits(pathtogriddata: Path | str) -> tuple[float, floa
     snapshotinfofile = Path(snapshotinfofiles[0])
 
     if snapshotinfofile.is_file():
-        with snapshotinfofile.open("rt") as fsnapshotinfo:
+        with snapshotinfofile.open("rt", encoding="utf-8") as fsnapshotinfo:
             line1 = fsnapshotinfo.readline()
             simulation_end_time_geomunits = float(line1.split()[2])
             print(
@@ -204,7 +204,7 @@ def read_mattia_grid_data_file(pathtogriddata):
     griddatfilepath = Path(pathtogriddata) / "1D_m0.01_v0.1.txt"
 
     griddata = pd.read_csv(griddatfilepath, sep=r"\s+", comment="#", skiprows=1)
-    with griddatfilepath.open() as gridfile:
+    with griddatfilepath.open(encoding="utf-8") as gridfile:
         t_model = float(gridfile.readline())
         print(f"t_model {t_model} seconds")
     xmax = max(griddata["posx"])

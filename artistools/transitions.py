@@ -28,7 +28,7 @@ def get_kurucz_transitions() -> tuple[pd.DataFrame, list[iontuple]]:
     )
     translist = []
     ionlist = []
-    with Path("gfall.dat").open() as fnist:
+    with Path("gfall.dat").open(encoding="utf-8") as fnist:
         for line in fnist:
             row = line.split()
             if len(row) >= 24:
@@ -66,7 +66,7 @@ def get_nist_transitions(filename: Path | str) -> pd.DataFrame:
         "transitiontuple", "lambda_angstroms A lower_energy_ev upper_energy_ev lower_statweight upper_statweight"
     )
     translist = []
-    with Path(filename).open() as fnist:
+    with Path(filename).open(encoding="utf-8") as fnist:
         for line in fnist:
             row = line.split("|")
             if len(row) == 17 and "-" in row[5]:
@@ -498,7 +498,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             Path(args.outputfile).parent if Path(args.outputfile).suffix else Path(args.outputfile)
         ) / "transitionlines.txt"
         print(f"Writing {outpath}")
-        with outpath.open("w") as f:
+        with outpath.open("w", encoding="utf-8") as f:
             f.write(content)
 
     if from_model:

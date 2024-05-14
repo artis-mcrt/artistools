@@ -47,7 +47,7 @@ def plot_reference_data(ax, atomic_number: int, ion_stage: int, estimators_cellt
     if Path("data", f"{elsymlower}_{ion_stage}-levelmap.txt").exists():
         # ax.set_ylim(bottom=2e-3)
         # ax.set_ylim(top=4)
-        with Path("data", f"{elsymlower}_{ion_stage}-levelmap.txt").open("r") as levelmapfile:
+        with Path("data", f"{elsymlower}_{ion_stage}-levelmap.txt").open("r", encoding="utf-8") as levelmapfile:
             levelnumofconfigterm = {}
             for line in levelmapfile:
                 row = line.split()
@@ -55,7 +55,7 @@ def plot_reference_data(ax, atomic_number: int, ion_stage: int, estimators_cellt
 
         # ax.set_ylim(bottom=5e-4)
         for depfilepath in sorted(Path("data").rglob(f"chianti_{elsym}_{ion_stage}_*.txt")):
-            with depfilepath.open("r") as depfile:
+            with depfilepath.open("r", encoding="utf-8") as depfile:
                 firstline = depfile.readline()
                 file_nne = float(firstline[firstline.find("ne = ") + 5 :].split(",")[0])
                 file_Te = float(firstline[firstline.find("Te = ") + 5 :].split(",")[0])

@@ -39,7 +39,7 @@ str_custom_lambda_ranges = (
 )
 
 new_vpktfile = Path() / "vpkt.txt"
-with new_vpktfile.open("w") as vpktfile:
+with new_vpktfile.open("w", encoding="utf-8") as vpktfile:
     vpktfile.write(
         f"{len(directions_costheta_phi)}\n"
         f"{' '.join(str(costheta) for costheta, _ in directions_costheta_phi)}\n"

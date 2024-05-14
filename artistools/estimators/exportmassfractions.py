@@ -26,7 +26,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     timestep = 14
     elmass = {el.Z: el.mass for _, el in at.get_composition_data(modelpath).iterrows()}
     outfilename = args.outputpath
-    with Path(outfilename).open("w") as fout:
+    with Path(outfilename).open("w", encoding="utf-8") as fout:
         modelgridindexlist = range(10)
         estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindexlist)
         for modelgridindex in modelgridindexlist:

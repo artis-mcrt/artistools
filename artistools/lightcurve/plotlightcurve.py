@@ -878,7 +878,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                     bandoutfile = (
                         Path(f"band_{band_name}_angle_{angle}.txt") if angle != -1 else Path(f"band_{band_name}.txt")
                     )
-                    with bandoutfile.open("w") as f:
+                    with bandoutfile.open("w", encoding="utf-8") as f:
                         f.write(txtout)
                     print(f"Saved {bandoutfile}")
                 if args.print_data:
@@ -1154,7 +1154,7 @@ def plot_lightcurve_from_refdata(
     for plotnumber, filter_name in enumerate(filter_names):
         if filter_name == "bol":
             continue
-        with Path(filterdir / f"{filter_name}.txt").open() as f:
+        with Path(filterdir / f"{filter_name}.txt").open(encoding="utf-8") as f:
             lines = f.readlines()
         lambda0 = float(lines[2])
 
@@ -1235,7 +1235,7 @@ def plot_color_evolution_from_data(
 
     filter_data = []
     for i, filter_name in enumerate(filter_names):
-        with (filterdir / Path(f"{filter_name}.txt")).open() as f:
+        with (filterdir / Path(f"{filter_name}.txt")).open(encoding="utf-8") as f:
             lines = f.readlines()
         lambda0 = float(lines[2])
 

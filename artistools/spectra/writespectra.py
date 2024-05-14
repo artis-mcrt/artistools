@@ -11,7 +11,7 @@ import artistools as at
 
 
 def write_spectrum(dfspectrum: pd.DataFrame, outfilepath: Path) -> None:
-    with outfilepath.open("w") as spec_file:
+    with outfilepath.open("w", encoding="utf-8") as spec_file:
         spec_file.write("#lambda f_lambda_1Mpc\n")
         spec_file.write("#[A] [erg/s/cm2/A]\n")
         dfspectrum = dfspectrum[(dfspectrum.lambda_angstroms > 1500) & (dfspectrum.lambda_angstroms < 60000)]
