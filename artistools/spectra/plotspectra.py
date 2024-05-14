@@ -37,7 +37,7 @@ def plot_polarisation(modelpath: Path, args) -> None:
     stokes_params[args.stokesparam] = stokes_params[args.stokesparam].eval("lambda_angstroms = 2.99792458e18 / nu")
 
     timearray = stokes_params[args.stokesparam].keys()[1:-1]
-    (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
+    (_, _, args.timemin, args.timemax) = at.get_time_range(
         modelpath, args.timestep, args.timemin, args.timemax, args.timedays
     )
     assert args.timemin is not None

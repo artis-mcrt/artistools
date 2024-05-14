@@ -98,7 +98,7 @@ def main_analytical(args: argparse.Namespace | None = None, argsraw: list[str] |
         mco56_init = row["X_Co56"] * (volume_init * rho_init).to("solMass")
         mfe56_init = 0
         # mco56_now = mco56_init * math.exp(- (t_now - t_init) / meanlife_co56)
-        mni56_now, mco56_now, mfe56_now = forward_doubledecay(
+        _mni56_now, mco56_now, _mfe56_now = forward_doubledecay(
             mni56_init, mco56_init, mfe56_init, t_now - t_init, meanlife_ni56, meanlife_co56
         )
 

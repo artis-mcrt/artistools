@@ -165,7 +165,7 @@ def get_trajectory_timestepfile_nuc_abund(
     """Get the nuclear abundances for a particular trajectory id number and time memberfilename should be something like "./Run_rprocess/tday_nz-plane"."""
     with open_tar_file_or_extracted(traj_root, particleid, memberfilename) as trajfile:
         try:
-            _, str_t_model_init_seconds, _, rho, _, _ = trajfile.readline().split()
+            _, str_t_model_init_seconds, _, _, _, _ = trajfile.readline().split()
         except ValueError as exc:
             print(f"Problem with {memberfilename}")
             msg = f"Problem with {memberfilename}"

@@ -426,8 +426,8 @@ def make_plot_populations_with_time_or_velocity(modelpaths, args):
         for plotnumber, axis in enumerate(ax):
             axis.set_yscale("log")
             if args.timedayslist:
-                ymin, ymax = axis.get_ylim()
-                xmin, xmax = axis.get_xlim()
+                ymin, _ = axis.get_ylim()
+                _, xmax = axis.get_xlim()
                 axis.text(xmax * 0.85, ymin * 50, f"{args.timedayslist[plotnumber]} days")
         ax[0].legend(loc="best", frameon=True, fontsize="x-small", ncol=1)
     else:
@@ -751,12 +751,10 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     if args.timedays:
         if "-" in args.timedays:
-            args.timestepmin, args.timestepmax, time_days_lower, time_days_upper = at.get_time_range(
-                modelpath, timedays_range_str=args.timedays
-            )
+            args.timestepmin, args.timestepmax, _, _ = at.get_time_range(modelpath, timedays_range_str=args.timedays)
         else:
-            timestep = at.get_timestep_of_timedays(modelpath, args.timedays)  # TODO: use args.timestep instead
-            args.timestep = at.get_timestep_of_timedays(modelpath, args.timedays)
+            timestep = at.get_timestep_of_timedays(modelpath, args.timedays)
+            args.timestep = timestep
     elif args.timedayslist:
         print(args.timedayslist)
     else:

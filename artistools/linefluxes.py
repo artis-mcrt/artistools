@@ -68,8 +68,6 @@ def get_packets_with_emtype(
     nprocs_read = len(packetsfiles)
     assert nprocs_read > 0
 
-    model, _ = at.inputmodel.get_modeldata(modelpath)
-    # vmax = model.iloc[-1].vel_r_max_kmps * u.km / u.s
     processfile = partial(get_packets_with_emtype_onefile, emtypecolumn, lineindices)
     if at.get_config()["num_processes"] > 1:
         print(f"Reading packets files with {at.get_config()['num_processes']} processes")
@@ -106,10 +104,6 @@ def get_line_fluxes_from_packets(
 
     arr_timedelta = np.array(arr_tend) - np.array(arr_tstart)
     arr_tmid = arr_tend = (np.array(arr_tstart) + np.array(arr_tend)) / 2.0
-
-    model, _ = at.inputmodel.get_modeldata(modelpath)
-    # vmax = model.iloc[-1].vel_r_max_kmps * u.km / u.s
-    # betafactor = math.sqrt(1 - (vmax / const.c).decompose().value ** 2)
 
     timearrayplusend = np.concatenate([arr_tstart, [arr_tend[-1]]])
 
@@ -454,7 +448,7 @@ def get_packets_with_emission_conditions(
 ) -> pd.DataFrame:
     estimators = at.estimators.read_estimators(modelpath)
 
-    modeldata, _ = at.inputmodel.get_modeldata(modelpath)
+    # modeldata, _ = at.inputmodel.get_modeldata(modelpath)
     ts = at.get_timestep_of_timedays(modelpath, tend)
     allnonemptymgilist = list({modelgridindex for estimts, modelgridindex in estimators if estimts == ts})
 

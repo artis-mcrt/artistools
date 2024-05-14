@@ -185,5 +185,5 @@ def plot_last_emission_velocities_histogram(
     ax.set_ylabel(r"Energy rate ($10^{40}$ erg/s)")
 
     outfilename = f"hist_emission_vel_{timeminarray[timestep_min]:.2f}-{timemaxarray[timestep_max]:.2f}d.pdf"
-    plt.savefig(Path(modelpath) / outfilename, format="pdf")
+    fig.savefig(Path(modelpath) / outfilename, format="pdf")
     print(f"Saved {outfilename}")

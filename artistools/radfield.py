@@ -714,7 +714,7 @@ def plot_celltimestep(modelpath, timestep, outputfile, xmin, xmax, modelgridinde
     if not args.nospec:
         plotkwargs = {}
         if not normalised:
-            modeldata, _, t_model_init = at.inputmodel.get_modeldata_tuple(modelpath)
+            modeldata, _, _ = at.inputmodel.get_modeldata_tuple(modelpath)
             # outer velocity
             v_surface = modeldata.loc[int(radfielddata.modelgridindex.max())].vel_r_max_kmps * 1e5
             r_surface = time_days * 864000 * v_surface
@@ -780,7 +780,7 @@ def plot_celltimestep(modelpath, timestep, outputfile, xmin, xmax, modelgridinde
 
 
 def plot_bin_fitted_field_evolution(axis, radfielddata, nu_line, modelgridindex, **plotkwargs):
-    bin_num, _nu_lower, _nu_upper = select_bin(radfielddata, nu=nu_line, modelgridindex=modelgridindex)
+    bin_num, _nu_lower, _nu_upper = select_bin(radfielddata, nu=nu_line, modelgridindex=modelgridindex)  # noqa: F841
     # print(f"Selected bin_num {bin_num} to get a binned radiation field estimator")
 
     radfielddataselected = radfielddata.query(

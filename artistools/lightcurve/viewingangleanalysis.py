@@ -480,9 +480,7 @@ def set_scatterplot_plot_params(args):
     plt.tight_layout()
 
     if args.colorbarcostheta or args.colorbarphi:
-        costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(
-            usedegrees=args.usedegrees
-        )
+        _, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(usedegrees=args.usedegrees)
         scaledmap = at.lightcurve.plotlightcurve.make_colorbar_viewingangles_colormap()
         at.lightcurve.plotlightcurve.make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args)
 
@@ -608,9 +606,8 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(modelnames, key, 
         filename = rf"{key}_band_{modelnames[0]}_dm15_peakmag.pdf"
     if args.make_viewing_angle_peakmag_risetime_scatter_plot:
         filename = rf"{key}_band_{modelnames[0]}_risetime_peakmag.pdf"
-    plt.savefig(filename, format="pdf")
+    fig.savefig(filename, format="pdf")
     print(f"saving {filename}")
-    plt.close()
 
 
 def make_peak_colour_viewing_angle_plot(args):
@@ -665,9 +662,8 @@ def make_peak_colour_viewing_angle_plot(args):
     ax.set_ylabel(f"{bands[0]}max", fontsize=14)
     set_scatterplot_plot_params(args)
     plotname = f"plotviewinganglecolour{bands[0]}-{bands[1]}.pdf"
-    plt.savefig(plotname, format="pdf")
+    fig.savefig(plotname, format="pdf")
     print(f"saving {plotname}")
-    plt.close()
 
 
 def second_band_brightness_at_peak_first_band(data, bands, modelpath, modelnumber, args):
@@ -721,7 +717,7 @@ def peakmag_risetime_declinerate_init(modelpaths, filternames_conversion_dict, a
             lightcurve_data = at.lightcurve.readfile(lcpath)
 
         # check if doing viewing angle stuff, and if so define which data to use
-        angles, angle_definition = parse_directionbin_args(modelpath, args)
+        angles, _ = parse_directionbin_args(modelpath, args)
         if not args.filter and args.plotviewingangle:
             lcdataframes = lightcurve_data
 
@@ -791,8 +787,6 @@ def plot_viewanglebrightness_at_fixed_time(modelpath, args):
         nrows=1, ncols=1, sharey=True, figsize=(8, 5), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0}
     )
 
-    angles, angle_definition = at.lightcurve.parse_directionbin_args(modelpath, args)
-
     costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(usedegrees=args.usedegrees)
     scaledmap = at.lightcurve.plotlightcurve.make_colorbar_viewingangles_colormap()
 
@@ -832,5 +826,5 @@ def plot_viewanglebrightness_at_fixed_time(modelpath, args):
         plt.show()
 
     plotname = f"plotviewinganglebrightnessat{args.timedays}days.pdf"
-    plt.savefig(plotname, format="pdf")
+    fig.savefig(plotname, format="pdf")
     print(f"Saved figure: {plotname}")

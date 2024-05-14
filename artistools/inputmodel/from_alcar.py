@@ -251,7 +251,7 @@ def get_grid() -> tuple:
 
 def z_reflect(arr: np.ndarray) -> np.ndarray:
     """Flatten an array and add a reflection in z."""
-    ngridrcyl, ngridz = arr.shape
+    _ngridrcyl, ngridz = arr.shape
     assert ngridz % 2 == 0
     return np.concatenate([np.flip(arr[:, ngridz // 2 :], axis=1), arr[:, ngridz // 2 :]], axis=1).flatten(order="F")
 
