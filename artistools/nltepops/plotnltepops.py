@@ -736,7 +736,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         args = parser.parse_args([] if kwargs else argsraw)
 
     at.set_mpl_style()
-
+    timestep = -1
     modelpath = args.modelpath
     if args.x in {"time", "velocity"}:
         args.modelpath = [args.modelpath]
