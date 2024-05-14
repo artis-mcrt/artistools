@@ -93,11 +93,9 @@ def get_from_packets(
         )
 
     if get_cmf_column:
-        dfpackets = dfpackets.with_columns(
-            [
-                (pl.col("escape_time") * escapesurfacegamma / 86400.0).alias("t_arrive_cmf_d"),
-            ]
-        )
+        dfpackets = dfpackets.with_columns([
+            (pl.col("escape_time") * escapesurfacegamma / 86400.0).alias("t_arrive_cmf_d"),
+        ])
 
     getcols = set()
     if directionbins_are_vpkt_observers:
@@ -159,14 +157,12 @@ def get_from_packets(
         print(f"    dirbin {dirbin} contains {npkts_selected:.2e} packets")
 
         unitfactor = float((u.erg / u.day).to("solLum"))
-        dftimebinned = dftimebinned.with_columns(
-            [
-                pl.Series(name="time", values=tmidarray),
-                ((pl.col("e_rf_sum") / nprocs_read * solidanglefactor * unitfactor) / pl.Series(arr_timedelta)).alias(
-                    "lum"
-                ),
-            ]
-        ).drop(["e_rf_sum", "t_arrive_d_bin"])
+        dftimebinned = dftimebinned.with_columns([
+            pl.Series(name="time", values=tmidarray),
+            ((pl.col("e_rf_sum") / nprocs_read * solidanglefactor * unitfactor) / pl.Series(arr_timedelta)).alias(
+                "lum"
+            ),
+        ]).drop(["e_rf_sum", "t_arrive_d_bin"])
 
         lcdata[dirbin] = dftimebinned.collect()
 
@@ -401,13 +397,11 @@ def evaluate_magnitudes(flux, transmission, wavelength_from_spectrum, zeropointe
 def get_band_lightcurve(
     band_lightcurve_data: dict[str, t.Sequence[tuple[float, float]]], band_name, args: argparse.Namespace
 ) -> tuple[t.Sequence[float], np.ndarray]:
-    times, brightness_in_mag = zip(
-        *[
-            (time, brightness)
-            for time, brightness in band_lightcurve_data[band_name]
-            if ((args.timemin is None or args.timemin <= time) and (args.timemax is None or args.timemax >= time))
-        ]
-    )
+    times, brightness_in_mag = zip(*[
+        (time, brightness)
+        for time, brightness in band_lightcurve_data[band_name]
+        if ((args.timemin is None or args.timemin <= time) and (args.timemax is None or args.timemax >= time))
+    ])
 
     return times, np.array(brightness_in_mag)
 

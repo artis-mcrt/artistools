@@ -348,26 +348,24 @@ def filtermissinggridparticlecontributions(traj_root: Path, dfcontribs: pl.DataF
 
     dfcontribs = (
         dfcontribs.lazy()
-        .with_columns(
-            [
-                pl.Series(
-                    (
-                        row["frac_of_cellmass"] / cell_frac_sum[row["cellindex"]]
-                        if cell_frac_sum[row["cellindex"]] > 0.0
-                        else 0.0
-                    )
-                    for row in dfcontribs.iter_rows(named=True)
-                ).alias("frac_of_cellmass"),
-                pl.Series(
-                    (
-                        row["frac_of_cellmass_includemissing"] / cell_frac_includemissing_sum[row["cellindex"]]
-                        if cell_frac_includemissing_sum[row["cellindex"]] > 0.0
-                        else 0.0
-                    )
-                    for row in dfcontribs.iter_rows(named=True)
-                ).alias("frac_of_cellmass_includemissing"),
-            ]
-        )
+        .with_columns([
+            pl.Series(
+                (
+                    row["frac_of_cellmass"] / cell_frac_sum[row["cellindex"]]
+                    if cell_frac_sum[row["cellindex"]] > 0.0
+                    else 0.0
+                )
+                for row in dfcontribs.iter_rows(named=True)
+            ).alias("frac_of_cellmass"),
+            pl.Series(
+                (
+                    row["frac_of_cellmass_includemissing"] / cell_frac_includemissing_sum[row["cellindex"]]
+                    if cell_frac_includemissing_sum[row["cellindex"]] > 0.0
+                    else 0.0
+                )
+                for row in dfcontribs.iter_rows(named=True)
+            ).alias("frac_of_cellmass_includemissing"),
+        ])
         .collect()
     )
 
@@ -444,12 +442,10 @@ def add_abundancecontributions(
 
     allkeys = list(set(chain.from_iterable(list_traj_nuc_abund)))
 
-    dfnucabundances = pl.DataFrame(
-        {
-            f"particle_{particleid}": [traj_nuc_abund.get(k, 0.0) for k in allkeys]
-            for particleid, traj_nuc_abund in zip(particleids, list_traj_nuc_abund)
-        }
-    ).with_columns(pl.all().cast(pl.Float64))
+    dfnucabundances = pl.DataFrame({
+        f"particle_{particleid}": [traj_nuc_abund.get(k, 0.0) for k in allkeys]
+        for particleid, traj_nuc_abund in zip(particleids, list_traj_nuc_abund)
+    }).with_columns(pl.all().cast(pl.Float64))
 
     del list_traj_nuc_abund
     gc.collect()
@@ -459,19 +455,13 @@ def add_abundancecontributions(
     timestart = time.perf_counter()
     print("Creating dfnucabundances...", end="", flush=True)
 
-    dfnucabundanceslz = dfnucabundances.lazy().with_columns(
-        [  # type: ignore[misc]
-            pl.sum_horizontal(
-                [
-                    pl.col(f"particle_{particleid}") * pl.lit(frac_of_cellmass)
-                    for particleid, frac_of_cellmass in dfthiscellcontribs[
-                        ["particleid", "frac_of_cellmass"]
-                    ].iter_rows()
-                ]
-            ).alias(str(cellindex))
-            for (cellindex,), dfthiscellcontribs in dfcontribs.group_by(["cellindex"])
-        ]
-    )
+    dfnucabundanceslz = dfnucabundances.lazy().with_columns([  # type: ignore[misc]
+        pl.sum_horizontal([
+            pl.col(f"particle_{particleid}") * pl.lit(frac_of_cellmass)
+            for particleid, frac_of_cellmass in dfthiscellcontribs[["particleid", "frac_of_cellmass"]].iter_rows()
+        ]).alias(str(cellindex))
+        for (cellindex,), dfthiscellcontribs in dfcontribs.group_by(["cellindex"])
+    ])
 
     colnames = [key if isinstance(key, str) else f"X_{at.get_elsymbol(key[0])}{key[0] + key[1]}" for key in allkeys]
 

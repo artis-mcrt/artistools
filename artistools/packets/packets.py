@@ -240,14 +240,10 @@ def add_derived_columns_lazy(
 
         elif modelmeta["dimensions"] == 3:
             vwidth = modelmeta["wid_init"] / t_model_s
-            dfpackets = dfpackets.with_columns(
-                [
-                    ((pl.col(f"em_pos{ax}") / pl.col("em_time") + vmax) / vwidth)
-                    .cast(pl.Int32)
-                    .alias(f"coordpointnum{ax}")
-                    for ax in ("x", "y", "z")
-                ]
-            ).with_columns(
+            dfpackets = dfpackets.with_columns([
+                ((pl.col(f"em_pos{ax}") / pl.col("em_time") + vmax) / vwidth).cast(pl.Int32).alias(f"coordpointnum{ax}")
+                for ax in ("x", "y", "z")
+            ]).with_columns(
                 em_modelgridindex=(
                     pl.col("coordpointnumz") * modelmeta["ncoordgridy"] * modelmeta["ncoordgridx"]
                     + pl.col("coordpointnumy") * modelmeta["ncoordgridx"]
@@ -384,9 +380,10 @@ def readfile_text(
         dfpackets = dfpackets.with_columns([pl.col("originated_from_positron").cast(pl.Boolean)])
 
     # Luke: packet energies in ergs can be huge (>1e39) which is too large for Float32
-    return dfpackets.with_columns(
-        [pl.col(pl.Int64).cast(pl.Int32), pl.col(pl.Float64).exclude(["e_rf", "e_cmf"]).cast(pl.Float32)]
-    )
+    return dfpackets.with_columns([
+        pl.col(pl.Int64).cast(pl.Int32),
+        pl.col(pl.Float64).exclude(["e_rf", "e_cmf"]).cast(pl.Float32),
+    ])
 
 
 def read_virtual_packets_text_file(vpacketsfiletext: Path | str, column_names: list[str]) -> pl.DataFrame:
@@ -900,9 +897,10 @@ def get_mean_packet_emission_velocity_per_ts(
     timearrayplusend = np.concatenate([timearray, [timearray[-1] + arr_timedelta[-1]]])
 
     dfpackets_escape_velocity_and_arrive_time = pd.DataFrame()
-    emission_data = pd.DataFrame(
-        {"t_arrive_d": timearray, "mean_emission_velocity": np.zeros_like(timearray, dtype=float)}
-    )
+    emission_data = pd.DataFrame({
+        "t_arrive_d": timearray,
+        "mean_emission_velocity": np.zeros_like(timearray, dtype=float),
+    })
 
     for i, packetsfile in enumerate(packetsfiles):
         dfpackets = readfile(packetsfile, packet_type=packet_type, escape_type=escape_type)

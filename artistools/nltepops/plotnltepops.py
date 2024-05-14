@@ -491,9 +491,9 @@ def plot_populations_with_time_or_velocity(ax, modelpaths, timedays, ion_stage, 
         for ionlevel in ionlevels:
             plottimesteps = np.array([int(ts) for ts, level, mgi in populations if level == ionlevel])
             timedays = [at.get_timestep_time(modelpath, ts) for ts in plottimesteps]
-            plotpopulations = np.array(
-                [float(populations[ts, level, mgi]) for ts, level, mgi in populations if level == ionlevel]
-            )
+            plotpopulations = np.array([
+                float(populations[ts, level, mgi]) for ts, level, mgi in populations if level == ionlevel
+            ])
             # plotpopulationsLTE = np.array([float(populationsLTE[ts, level]) for ts, level in populationsLTE.keys()
             #                             if level == ionlevel])
             linelabel = str(levelconfignames[ionlevel])
@@ -529,13 +529,11 @@ def make_plot(modelpath, atomic_number, ion_stages_displayed, mgilist, timestep,
     if len(dfpop.query("ion_stage == @max_ion_stage")) == 1:  # single-level ion, so skip it
         max_ion_stage -= 1
 
-    ion_stage_list = sorted(
-        [
-            i
-            for i in dfpop.ion_stage.unique()
-            if i <= max_ion_stage and (ion_stages_displayed is None or i in ion_stages_displayed)
-        ]
-    )
+    ion_stage_list = sorted([
+        i
+        for i in dfpop.ion_stage.unique()
+        if i <= max_ion_stage and (ion_stages_displayed is None or i in ion_stages_displayed)
+    ])
 
     subplotheight = 2.4 / 6 if args.x == "config" else 1.8 / 6
 

@@ -24,20 +24,18 @@ def get_theta_phi(anglebin):
     ]
     theta = np.arccos(cos_theta)
     phi = (
-        np.array(
-            [
-                0.1,
-                0.3,
-                0.5,
-                0.7,
-                0.9,
-                1.9,
-                1.7,
-                1.5,
-                1.3,
-                1.1,
-            ]
-        )
+        np.array([
+            0.1,
+            0.3,
+            0.5,
+            0.7,
+            0.9,
+            1.9,
+            1.7,
+            1.5,
+            1.3,
+            1.1,
+        ])
         * np.pi
     )
 

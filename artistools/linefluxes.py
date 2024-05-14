@@ -394,16 +394,14 @@ def make_flux_ratio_plot(args: argparse.Namespace) -> None:
                 amodels[modelname][1].append(row.NIR_VIS_ratio)
 
         # for amodelname, (xlist, ylist) in amodels.items():
-        for aindex, (amodelname, alabel) in enumerate(
-            [
-                ("w7", "W7"),
-                ("subch", "S0"),
-                # ('subch_shen2018', r'1M$_\odot$'),
-                # ('subch_shen2018_electronlossboost4x', '1M$_\odot$ (Shen+18) 4x e- loss'),
-                # ('subch_shen2018_electronlossboost8x', r'1M$_\odot$ heatboost8'),
-                # ('subch_shen2018_electronlossboost12x', '1M$_\odot$ (Shen+18) 12x e- loss'),
-            ]
-        ):
+        for aindex, (amodelname, alabel) in enumerate([
+            ("w7", "W7"),
+            ("subch", "S0"),
+            # ('subch_shen2018', r'1M$_\odot$'),
+            # ('subch_shen2018_electronlossboost4x', '1M$_\odot$ (Shen+18) 4x e- loss'),
+            # ('subch_shen2018_electronlossboost8x', r'1M$_\odot$ heatboost8'),
+            # ('subch_shen2018_electronlossboost12x', '1M$_\odot$ (Shen+18) 12x e- loss'),
+        ]):
             xlist, ylist = amodels[amodelname]
             color = args.color[aindex] if aindex < len(args.color) else None
             print(amodelname, xlist, ylist)
@@ -717,16 +715,13 @@ def make_emitting_regions_plot(args):
                     for truemodelindex in range(modelindex):
                         emfeatures = get_labelandlineindices(args.modelpath[truemodelindex], args.emfeaturesearch)
 
-                        em_log10nne = np.concatenate(
-                            [
-                                emdata_all[truemodelindex][(tmid, feature.colname)]["em_log10nne"]
-                                for feature in emfeatures
-                            ]
-                        )
+                        em_log10nne = np.concatenate([
+                            emdata_all[truemodelindex][(tmid, feature.colname)]["em_log10nne"] for feature in emfeatures
+                        ])
 
-                        em_Te = np.concatenate(
-                            [emdata_all[truemodelindex][(tmid, feature.colname)]["em_Te"] for feature in emfeatures]
-                        )
+                        em_Te = np.concatenate([
+                            emdata_all[truemodelindex][(tmid, feature.colname)]["em_Te"] for feature in emfeatures
+                        ])
 
                         normtotalpackets = len(em_log10nne) * 8.0  # circles have more area than triangles, so decrease
                         modelcolor = args.color[truemodelindex]
@@ -744,9 +739,9 @@ def make_emitting_regions_plot(args):
                 # featurecolours = ['C0', 'C3']
                 # featurebarcolours = ['blue', 'red']
 
-                normtotalpackets = np.sum(
-                    [len(emdata_all[modelindex][(tmid, feature.colname)]["em_log10nne"]) for feature in emfeatures]
-                )
+                normtotalpackets = np.sum([
+                    len(emdata_all[modelindex][(tmid, feature.colname)]["em_log10nne"]) for feature in emfeatures
+                ])
 
                 axis.scatter(
                     log10nnedata_all[modelindex][tmid],

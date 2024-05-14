@@ -142,13 +142,11 @@ def get_particles_recomb_nuc_energy(traj_root, dfbinding):
             pass
             # print(f' WARNING particle {particleid} not found! ')
 
-    dfrecomb = pd.DataFrame(
-        {
-            "ye": ye_list,
-            "recombenergy_ev_per_gram": elecbinding_en_list,
-            "nuclear_released_ev_per_gram": nuclear_released_en_list,
-        }
-    )
+    dfrecomb = pd.DataFrame({
+        "ye": ye_list,
+        "recombenergy_ev_per_gram": elecbinding_en_list,
+        "nuclear_released_ev_per_gram": nuclear_released_en_list,
+    })
 
     print(dfrecomb)
 

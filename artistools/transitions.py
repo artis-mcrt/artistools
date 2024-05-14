@@ -512,9 +512,9 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
                 for ion_stage in ion_stages
             ]
             ionfracs_str = " ".join([f"{pop:6.0e}" if pop < 0.01 else f"{pop:6.2f}" for pop in est_ionfracs])
-            strions = " ".join(
-                [f"{at.get_elsymbol(atomic_number)}{at.roman_numerals[ion_stage]}".rjust(6) for ion_stage in feions]
-            )
+            strions = " ".join([
+                f"{at.get_elsymbol(atomic_number)}{at.roman_numerals[ion_stage]}".rjust(6) for ion_stage in feions
+            ])
             return strions, ionfracs_str
 
         strfeions, est_fe_ionfracs_str = get_strionfracs(26, [2, 3])

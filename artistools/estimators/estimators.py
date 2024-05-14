@@ -307,16 +307,14 @@ def scan_estimators(
         estimators = at.codecomparison.read_reference_estimators(
             modelpath, timestep=timestep, modelgridindex=modelgridindex
         )
-        return pl.DataFrame(
-            [
-                {
-                    "timestep": ts,
-                    "modelgridindex": mgi,
-                    **estimvals,
-                }
-                for (ts, mgi), estimvals in estimators.items()
-            ]
-        ).lazy()
+        return pl.DataFrame([
+            {
+                "timestep": ts,
+                "modelgridindex": mgi,
+                **estimvals,
+            }
+            for (ts, mgi), estimvals in estimators.items()
+        ]).lazy()
 
     # print(f" matching cells {match_modelgridindex} and timesteps {match_timestep}")
     mpiranklist = at.get_mpiranklist(modelpath, only_ranks_withgridcells=True)

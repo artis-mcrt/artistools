@@ -61,15 +61,13 @@ def parse_transitiondata(ftransitions, ionlist):
             translist = []
             for _ in range(transition_count):
                 row = ftransitions.readline().split()
-                translist.append(
-                    (
-                        int(row[0]) - firstlevelnumber,
-                        int(row[1]) - firstlevelnumber,
-                        float(row[2]),
-                        float(row[3]),
-                        int(row[4]) == 1 if len(row) >= 5 else 0,
-                    )
-                )
+                translist.append((
+                    int(row[0]) - firstlevelnumber,
+                    int(row[1]) - firstlevelnumber,
+                    float(row[2]),
+                    float(row[3]),
+                    int(row[4]) == 1 if len(row) >= 5 else 0,
+                ))
 
             yield Z, ion_stage, pd.DataFrame(translist, columns=["lower", "upper", "A", "collstr", "forbidden"])
         else:
@@ -181,9 +179,11 @@ def parse_recombratefile(frecomb):
             arr_rrc_low_n.append(rrc_low_n)
             arr_rrc_total.append(rrc_total)
 
-        recombdata_thision = pd.DataFrame(
-            {"log10T_e": arr_log10t, "rrc_low_n": arr_rrc_low_n, "rrc_total": arr_rrc_total}
-        )
+        recombdata_thision = pd.DataFrame({
+            "log10T_e": arr_log10t,
+            "rrc_low_n": arr_rrc_low_n,
+            "rrc_total": arr_rrc_total,
+        })
 
         recombdata_thision = recombdata_thision.eval("T_e = 10 ** log10T_e")
 

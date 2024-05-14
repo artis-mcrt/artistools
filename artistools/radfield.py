@@ -529,9 +529,9 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
         radfielddata, modelgridindex=modelgridindex, timestep=timestep, print_bins=True, lambdamin=xmin, lambdamax=xmax
     )
 
-    arr_lambda_fitted, j_lambda_fitted = zip(
-        *[pt for pt in zip(arr_lambda_fitted, j_lambda_fitted) if xmin <= pt[0] <= xmax]
-    )
+    arr_lambda_fitted, j_lambda_fitted = zip(*[
+        pt for pt in zip(arr_lambda_fitted, j_lambda_fitted) if xmin <= pt[0] <= xmax
+    ])
 
     estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
 
@@ -564,12 +564,10 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
         )
 
         for (upperlevelnum, lowerlevelnum), arr_j_emiss_nu_lowerlevel in arr_j_nu_lowerleveldict.items():
-            J_nu_recomb = np.array(
-                [
-                    j_emiss_nu / kappa_bf if j_emiss_nu > 0 else 0.0
-                    for j_emiss_nu, kappa_bf in zip(arr_j_emiss_nu_lowerlevel, array_kappa_bf_nu)
-                ]
-            )
+            J_nu_recomb = np.array([
+                j_emiss_nu / kappa_bf if j_emiss_nu > 0 else 0.0
+                for j_emiss_nu, kappa_bf in zip(arr_j_emiss_nu_lowerlevel, array_kappa_bf_nu)
+            ])
 
             J_contrib = np.abs(np.trapz(J_nu_recomb, x=arr_nu_hz_recomb))
 
@@ -581,12 +579,10 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
             fieldlist += [(arraylambda_angstrom_recomb, J_lambda_recomb_level, fieldlabel)]
 
         # calculate intensity from emission and opacity to (assuming dJ/ds = 0)
-        J_nu_recomb = np.array(
-            [
-                j_emiss_nu / kappa_bf if j_emiss_nu > 0 else 0.0
-                for j_emiss_nu, kappa_bf in zip(j_emiss_nu_recomb, array_kappa_bf_nu)
-            ]
-        )
+        J_nu_recomb = np.array([
+            j_emiss_nu / kappa_bf if j_emiss_nu > 0 else 0.0
+            for j_emiss_nu, kappa_bf in zip(j_emiss_nu_recomb, array_kappa_bf_nu)
+        ])
 
         J_contrib = np.abs(np.trapz(J_nu_recomb, x=arr_nu_hz_recomb))
 

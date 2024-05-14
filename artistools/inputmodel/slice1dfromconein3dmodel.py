@@ -127,12 +127,10 @@ def make_1d_model_files(args):
     slice1d = make_1d_profile(args)
 
     # query_abundances_positions = slice1d.columns.str.startswith("X_")
-    query_abundances_positions = np.array(
-        [
-            (column.startswith("X_") and not (any(i.isdigit() for i in column))) and (len(column) < 5)
-            for column in slice1d.columns
-        ]
-    )
+    query_abundances_positions = np.array([
+        (column.startswith("X_") and not (any(i.isdigit() for i in column))) and (len(column) < 5)
+        for column in slice1d.columns
+    ])
 
     model_df = slice1d.loc[:, ~query_abundances_positions]
     abundances_df = slice1d.loc[:, query_abundances_positions]

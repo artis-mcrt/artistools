@@ -24,13 +24,11 @@ def map_1d_to_3d(dfgriddata, vmax, n_3d_gridcells, data_1d, t_model_1d, wid_init
     vmax_map = 0.25
 
     for n_3d, row in dfgriddata.iterrows():
-        radial_vel_mid = at.vec_len(
-            [
-                row["posx_mid"] / t_model_1d / CLIGHT,
-                row["posy_mid"] / t_model_1d / CLIGHT,
-                row["posz_mid"] / t_model_1d / CLIGHT,
-            ]
-        )
+        radial_vel_mid = at.vec_len([
+            row["posx_mid"] / t_model_1d / CLIGHT,
+            row["posy_mid"] / t_model_1d / CLIGHT,
+            row["posz_mid"] / t_model_1d / CLIGHT,
+        ])
 
         if n_3d % 1000 == 0:
             print(f"mapping cell {n_3d} of {n_3d_gridcells}")
