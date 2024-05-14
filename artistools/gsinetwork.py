@@ -585,7 +585,7 @@ def plot_qdot_abund_modelcells(
     print(f"Reading Qdot/thermo and abundance data for {len(list_particleids_getabund)} particles")
 
     if at.get_config()["num_processes"] > 1:
-        with multiprocessing.Pool(processes=at.get_config()["num_processes"]) as pool:
+        with multiprocessing.get_context("forkserver").Pool(processes=at.get_config()["num_processes"]) as pool:
             list_particledata_withabund = pool.map(fworkerwithabund, list_particleids_getabund)
             pool.close()
             pool.join()
@@ -599,7 +599,7 @@ def plot_qdot_abund_modelcells(
     print(f"Reading for Qdot/thermo data (no abundances needed) for {len(list_particleids_noabund)} particles")
 
     if at.get_config()["num_processes"] > 1:
-        with multiprocessing.Pool(processes=at.get_config()["num_processes"]) as pool:
+        with multiprocessing.get_context("forkserver").Pool(processes=at.get_config()["num_processes"]) as pool:
             list_particledata_noabund = pool.map(fworkernoabund, list_particleids_noabund)
             pool.close()
             pool.join()
