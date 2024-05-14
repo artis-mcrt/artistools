@@ -5,6 +5,7 @@ import io
 import itertools
 import lzma
 import math
+import multiprocessing
 import string
 import typing as t
 from collections import namedtuple
@@ -1516,3 +1517,8 @@ def get_dirbin_labels(
             angle_definitions[dirbin] = f"{costhetabinlabels[costheta_index]}, {phibinlabels[phi_index]}"
 
     return angle_definitions
+
+
+def get_multiprocessing_pool() -> multiprocessing.pool.Pool:
+    """Return a multiprocessing pool that can be used to parallelize tasks."""
+    return multiprocessing.get_context("forkserver").Pool(processes=at.get_config()["num_processes"])

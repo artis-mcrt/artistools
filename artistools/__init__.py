@@ -71,6 +71,7 @@ from artistools.misc import get_linelist_pldf
 from artistools.misc import get_model_name
 from artistools.misc import get_mpiranklist
 from artistools.misc import get_mpirankofcell
+from artistools.misc import get_multiprocessing_pool
 from artistools.misc import get_nprocs
 from artistools.misc import get_nu_grid
 from artistools.misc import get_phi_bins
