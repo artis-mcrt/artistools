@@ -234,7 +234,7 @@ def get_rankbatch_parquetfile(
     parquetfilepathtemp = folderpath / f"{parquetfilename}.tmp"
 
     if not parquetfilepath.exists():
-        print(f"  generating {parquetfilepath.relative_to(modelpath.parent)}.")
+        print(f"  generating {parquetfilepath.relative_to(modelpath.parent)}...")
         estfilepaths = []
         for mpirank in batch_mpiranks:
             # not worth printing an error, because ranks with no cells to update do not produce an estimator file
