@@ -31,6 +31,7 @@ def funcname() -> str:
 def test_commands() -> None:
     commands: dict[str, tuple[str, str]] = {}
 
+    # just skip the test if tomllib is not available (python < 3.11)
     with contextlib.suppress(ImportError):
         import tomllib
 
