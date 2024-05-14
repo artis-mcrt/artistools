@@ -6,6 +6,7 @@ import itertools
 import lzma
 import math
 import multiprocessing
+import multiprocessing.pool
 import string
 import typing as t
 from collections import namedtuple
