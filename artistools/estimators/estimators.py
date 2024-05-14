@@ -230,8 +230,8 @@ def get_rankbatch_parquetfile(
     batchindex: int,
 ) -> Path:
     parquetfilename = f"estimbatch{batchindex:02d}_{batch_mpiranks[0]:04d}_{batch_mpiranks[-1]:04d}.out.parquet"
-    parquetfilepath = folderpath / parquetfilename
-    parquetfilepathtemp = folderpath / f"{parquetfilename}.tmp"
+    parquetfilepath = folderpath / f"{parquetfilename}.tmp"
+    parquetfilepathpartial = folderpath / f"{parquetfilename}.partial.tmp"
 
     if not parquetfilepath.exists():
         print(f"  generating {parquetfilepath.relative_to(modelpath.parent)}...")
@@ -266,8 +266,8 @@ def get_rankbatch_parquetfile(
         )
 
         assert pldf_batch is not None
-        pldf_batch.write_parquet(parquetfilepathtemp, compression="zstd", statistics=True, compression_level=8)
-        parquetfilepathtemp.rename(parquetfilepath)
+        pldf_batch.write_parquet(parquetfilepathpartial, compression="zstd", statistics=True, compression_level=8)
+        parquetfilepathpartial.rename(parquetfilepath)
 
     filesize = parquetfilepath.stat().st_size / 1024 / 1024
     print(f"  scanning {parquetfilepath.relative_to(modelpath.parent)} ({filesize:.2f} MiB)")
