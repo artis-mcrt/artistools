@@ -145,13 +145,11 @@ def get_grid() -> tuple:
     rgridc2d = np.array([pos_rcyl_mid[n_r] for n_r in range(nvr) for n_z in range(nvz)]).reshape(nvr, nvz)
     zgridc2d = np.array([pos_z_mid[n_z] for n_r in range(nvr) for n_z in range(nvz)]).reshape(nvr, nvz)
 
-    volgrid2d = np.array(
-        [
-            wid_init_z * np.pi * (pos_rcyl_max[n_r] ** 2 - pos_rcyl_min[n_r] ** 2)
-            for n_r in range(nvr)
-            for n_z in range(nvz)
-        ]
-    ).reshape(nvr, nvz)
+    volgrid2d = np.array([
+        wid_init_z * np.pi * (pos_rcyl_max[n_r] ** 2 - pos_rcyl_min[n_r] ** 2)
+        for n_r in range(nvr)
+        for n_z in range(nvz)
+    ]).reshape(nvr, nvz)
 
     # compute mass density and smoothing length of each particle
     # by solving Eq. 10 of P2007 where rho is replaced by the
@@ -270,15 +268,13 @@ def create_ARTIS_modelfile(
     # DF_gridcontributions = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(".")
     # pdb.set_trace()
     # print("gridcontributions.txt read...done")
-    dfmodel = pd.DataFrame(
-        {
-            "inputcellid": range(1, numb_cells + 1),
-            "pos_rcyl_mid": (pos_t_s_grid_rad).flatten(order="F"),
-            "pos_z_mid": (pos_t_s_grid_z).flatten(order="F"),
-            "rho": z_reflect(rho_interpol).flatten(order="F"),
-            "q": z_reflect(q_ergperg).flatten(order="F"),
-        }
-    )
+    dfmodel = pd.DataFrame({
+        "inputcellid": range(1, numb_cells + 1),
+        "pos_rcyl_mid": (pos_t_s_grid_rad).flatten(order="F"),
+        "pos_z_mid": (pos_t_s_grid_z).flatten(order="F"),
+        "rho": z_reflect(rho_interpol).flatten(order="F"),
+        "q": z_reflect(q_ergperg).flatten(order="F"),
+    })
 
     # DF_model, DF_el_contribs, DF_contribs = at.inputmodel.rprocess_from_trajectory.add_abundancecontributions(
     #     dfgridcontributions=DF_gridcontributions,

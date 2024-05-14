@@ -217,9 +217,11 @@ def read_modelfile_text(
         if not getheadersonly:
             # check pos_rcyl_mid and pos_z_mid are correct
 
-            for inputcellid, cell_pos_rcyl_mid, cell_pos_z_mid in dfmodel.select(
-                ["inputcellid", "pos_rcyl_mid", "pos_z_mid"]
-            ).iter_rows():
+            for inputcellid, cell_pos_rcyl_mid, cell_pos_z_mid in dfmodel.select([
+                "inputcellid",
+                "pos_rcyl_mid",
+                "pos_z_mid",
+            ]).iter_rows():
                 modelgridindex = inputcellid - 1
                 n_r = modelgridindex % modelmeta["ncoordgridrcyl"]
                 n_z = modelgridindex // modelmeta["ncoordgridrcyl"]
@@ -433,27 +435,23 @@ def get_empty_3d_model(
             schema={"modelgridindex": pl.Int32, "inputcellid": pl.Int32},
         )
         .lazy()
-        .with_columns(
-            [
-                pl.col("modelgridindex").mod(ncoordgrid).alias("n_x"),
-                (pl.col("modelgridindex") // ncoordgrid).mod(ncoordgrid).alias("n_y"),
-                (pl.col("modelgridindex") // (ncoordgrid**2)).mod(ncoordgrid).alias("n_z"),
-            ]
-        )
-        .with_columns(
-            [
-                (-xmax + 2.0 * pl.col("n_x") * xmax / fncoordgrid).cast(pl.Float32).alias("pos_x_min"),
-                (-xmax + 2.0 * pl.col("n_y") * xmax / fncoordgrid).cast(pl.Float32).alias("pos_y_min"),
-                (-xmax + 2.0 * pl.col("n_z") * xmax / fncoordgrid).cast(pl.Float32).alias("pos_z_min"),
-            ]
-        )
+        .with_columns([
+            pl.col("modelgridindex").mod(ncoordgrid).alias("n_x"),
+            (pl.col("modelgridindex") // ncoordgrid).mod(ncoordgrid).alias("n_y"),
+            (pl.col("modelgridindex") // (ncoordgrid**2)).mod(ncoordgrid).alias("n_z"),
+        ])
+        .with_columns([
+            (-xmax + 2.0 * pl.col("n_x") * xmax / fncoordgrid).cast(pl.Float32).alias("pos_x_min"),
+            (-xmax + 2.0 * pl.col("n_y") * xmax / fncoordgrid).cast(pl.Float32).alias("pos_y_min"),
+            (-xmax + 2.0 * pl.col("n_z") * xmax / fncoordgrid).cast(pl.Float32).alias("pos_z_min"),
+        ])
     )
 
     standardcols = get_standard_columns(3, includenico57=includenico57)
 
-    dfmodel = dfmodel.with_columns(
-        [pl.lit(0.0, dtype=pl.Float32).alias(colname) for colname in standardcols if colname not in dfmodel.columns]
-    ).select([*standardcols, "modelgridindex"])
+    dfmodel = dfmodel.with_columns([
+        pl.lit(0.0, dtype=pl.Float32).alias(colname) for colname in standardcols if colname not in dfmodel.columns
+    ]).select([*standardcols, "modelgridindex"])
 
     return dfmodel, modelmeta
 
@@ -525,11 +523,11 @@ def add_derived_cols_to_modeldata(
             assert t_model_init_seconds is not None
             # pos_mid is defined in the input file
             # TODO: get wid_init from modelmeta
-            dfmodel = dfmodel.with_columns(
-                [(pl.col(f"pos_{ax}_mid") - modelmeta[f"wid_init_{ax}"] / 2.0).alias(f"pos_{ax}_min") for ax in axes]
-            ).with_columns(
-                [(pl.col(f"pos_{ax}_mid") + modelmeta[f"wid_init_{ax}"] / 2.0).alias(f"pos_{ax}_max") for ax in axes]
-            )
+            dfmodel = dfmodel.with_columns([
+                (pl.col(f"pos_{ax}_mid") - modelmeta[f"wid_init_{ax}"] / 2.0).alias(f"pos_{ax}_min") for ax in axes
+            ]).with_columns([
+                (pl.col(f"pos_{ax}_mid") + modelmeta[f"wid_init_{ax}"] / 2.0).alias(f"pos_{ax}_max") for ax in axes
+            ])
 
             # add a 3D radius column
             axes.append("r")
@@ -560,15 +558,12 @@ def add_derived_cols_to_modeldata(
                 dfmodel.with_columns(
                     volume=pl.lit(modelmeta["wid_init_x"] * modelmeta["wid_init_y"] * modelmeta["wid_init_z"])
                 )
-                .with_columns(
-                    [
-                        (pl.col(f"pos_{ax}_min") + 0.5 * modelmeta[f"wid_init_{ax}"]).alias(f"pos_{ax}_mid")
-                        for ax in axes
-                    ]
-                )
-                .with_columns(
-                    [(pl.col(f"pos_{ax}_min") + modelmeta[f"wid_init_{ax}"]).alias(f"pos_{ax}_max") for ax in axes]
-                )
+                .with_columns([
+                    (pl.col(f"pos_{ax}_min") + 0.5 * modelmeta[f"wid_init_{ax}"]).alias(f"pos_{ax}_mid") for ax in axes
+                ])
+                .with_columns([
+                    (pl.col(f"pos_{ax}_min") + modelmeta[f"wid_init_{ax}"]).alias(f"pos_{ax}_max") for ax in axes
+                ])
             )
 
             # add a 3D radius column
@@ -601,9 +596,9 @@ def add_derived_cols_to_modeldata(
             rho=(pl.when(pl.col("logrho") > -98).then(10 ** pl.col("logrho")).otherwise(0.0))
         )
 
-    dfmodel = dfmodel.with_columns(mass_g=(pl.col("rho") * pl.col("volume"))).with_columns(
-        [(pl.col(colname) / 29979245800.0).alias(f"{colname}_on_c") for colname in dfmodel.columns]
-    )
+    dfmodel = dfmodel.with_columns(mass_g=(pl.col("rho") * pl.col("volume"))).with_columns([
+        (pl.col(colname) / 29979245800.0).alias(f"{colname}_on_c") for colname in dfmodel.columns
+    ])
 
     if unknown_cols := [
         col
@@ -703,14 +698,12 @@ def get_mean_cell_properties_of_angle_bin(
     mid_velocities = mid_velocities[mid_velocities >= 0]
 
     mean_bin_properties = {
-        bin_number: pd.DataFrame(
-            {
-                "velocity": mid_velocities,
-                "mean_rho": np.zeros_like(mid_velocities, dtype=float),
-                "mean_Ye": np.zeros_like(mid_velocities, dtype=float),
-                "mean_Q": np.zeros_like(mid_velocities, dtype=float),
-            }
-        )
+        bin_number: pd.DataFrame({
+            "velocity": mid_velocities,
+            "mean_rho": np.zeros_like(mid_velocities, dtype=float),
+            "mean_Ye": np.zeros_like(mid_velocities, dtype=float),
+            "mean_Q": np.zeros_like(mid_velocities, dtype=float),
+        })
         for bin_number in range(10)
     }
     # cos_bin_number = 90
@@ -872,9 +865,12 @@ def save_modeldata(
 
         zeroabund = " ".join(["0.0" for _ in abundcols])
         if modelmeta["dimensions"] == 1:
-            for inputcellid, vel_r_max_kmps, logrho, *othercolvals in dfmodel.select(
-                ["inputcellid", "vel_r_max_kmps", "logrho", *abundcols]
-            ).iter_rows():
+            for inputcellid, vel_r_max_kmps, logrho, *othercolvals in dfmodel.select([
+                "inputcellid",
+                "vel_r_max_kmps",
+                "logrho",
+                *abundcols,
+            ]).iter_rows():
                 fmodel.write(f"{inputcellid:d} {vel_r_max_kmps:9.2f} {logrho:10.8f} ")
                 fmodel.write(
                     " ".join([(f"{colvalue:.4e}" if colvalue > 0.0 else "0.0") for colvalue in othercolvals])
@@ -976,12 +972,12 @@ def get_initelemabundances_polars(
 
         # fix up multiple spaces at beginning of lines
         abundancedata = abundancedata.transpose()
-        abundancedata = pl.DataFrame(
-            [abundancedata.to_series(idx).drop_nulls() for idx in range(len(abundancedata.columns))]
-        ).transpose()
-        abundancedata = abundancedata.rename(
-            {col: colnames[idx] for idx, col in enumerate(abundancedata.columns)}
-        ).cast(dtypes)  # type: ignore[arg-type]
+        abundancedata = pl.DataFrame([
+            abundancedata.to_series(idx).drop_nulls() for idx in range(len(abundancedata.columns))
+        ]).transpose()
+        abundancedata = abundancedata.rename({
+            col: colnames[idx] for idx, col in enumerate(abundancedata.columns)
+        }).cast(dtypes)  # type: ignore[arg-type]
 
         if textfilepath.stat().st_size > 5 * 1024 * 1024:
             print(f"Saving {parquetfilepath}")
@@ -1058,11 +1054,9 @@ def save_empty_abundance_file(npts_model: int, outputfilepath: str | Path = Path
         outputfilepath = Path(outputfilepath) / "abundances.txt"
 
     save_initelemabundances(
-        pl.DataFrame(
-            {
-                "inputcellid": range(1, npts_model + 1),
-            }
-        ),
+        pl.DataFrame({
+            "inputcellid": range(1, npts_model + 1),
+        }),
         outpath=outputfilepath,
     )
 
@@ -1135,9 +1129,9 @@ def dimension_reduce_3d_model(
         ncoordgridz = int(ncoordgridx)
 
     if outputdimensions == 2:
-        dfmodel = dfmodel.with_columns(
-            [(pl.col("vel_x_mid") ** 2 + pl.col("vel_y_mid") ** 2).sqrt().alias("vel_rcyl_mid")]
-        )
+        dfmodel = dfmodel.with_columns([
+            (pl.col("vel_x_mid") ** 2 + pl.col("vel_y_mid") ** 2).sqrt().alias("vel_rcyl_mid")
+        ])
         modelmeta_out["ncoordgridz"] = ncoordgridz
         modelmeta_out["ncoordgridrcyl"] = ncoordgridr
         modelmeta_out["wid_init_z"] = 2 * xmax / ncoordgridz

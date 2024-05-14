@@ -176,15 +176,13 @@ def get_from_packets(
             modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
         )
 
-    dfpackets = dfpackets.with_columns(
-        [
-            (2.99792458e18 / pl.col(colname)).alias(
-                colname.replace("absorption_freq", "nu_absorbed").replace("nu_", "lambda_angstroms_")
-            )
-            for colname in dfpackets.columns
-            if "nu_" in colname or colname == "absorption_freq"
-        ]
-    )
+    dfpackets = dfpackets.with_columns([
+        (2.99792458e18 / pl.col(colname)).alias(
+            colname.replace("absorption_freq", "nu_absorbed").replace("nu_", "lambda_angstroms_")
+        )
+        for colname in dfpackets.columns
+        if "nu_" in colname or colname == "absorption_freq"
+    ])
 
     dfbinned_lazy = (
         pl.DataFrame(
@@ -217,19 +215,13 @@ def get_from_packets(
                 bins=list(lambda_bin_edges),
                 sumcols=[energy_column],
                 getcounts=True,
-            ).select(
-                [
-                    pl.col(f"{lambda_column}_bin").alias("lambda_binindex"),
-                    (
-                        pl.col(f"{energy_column}_sum")
-                        / delta_lambda
-                        / delta_time_s
-                        / (megaparsec_to_cm**2)
-                        / nprocs_read
-                    ).alias(f"f_lambda_dirbin{vspecindex}"),
-                    pl.col("count").alias(f"count_dirbin{vspecindex}"),
-                ]
-            )
+            ).select([
+                pl.col(f"{lambda_column}_bin").alias("lambda_binindex"),
+                (
+                    pl.col(f"{energy_column}_sum") / delta_lambda / delta_time_s / (megaparsec_to_cm**2) / nprocs_read
+                ).alias(f"f_lambda_dirbin{vspecindex}"),
+                pl.col("count").alias(f"count_dirbin{vspecindex}"),
+            ])
 
             dfbinned_lazy = dfbinned_lazy.join(dfbinned_dirbin, on="lambda_binindex", how="left")
 
@@ -288,21 +280,19 @@ def get_from_packets(
                 bins=list(lambda_bin_edges),
                 sumcols=[energy_column],
                 getcounts=True,
-            ).select(
-                [
-                    pl.col(f"{lambda_column}_bin").alias("lambda_binindex"),
-                    (
-                        pl.col(f"{energy_column}_sum")
-                        / delta_lambda
-                        / delta_time_s
-                        / (4 * math.pi)
-                        * solidanglefactor
-                        / (megaparsec_to_cm**2)
-                        / nprocs_read
-                    ).alias(f"f_lambda_dirbin{dirbin}"),
-                    pl.col("count").alias(f"count_dirbin{dirbin}"),
-                ]
-            )
+            ).select([
+                pl.col(f"{lambda_column}_bin").alias("lambda_binindex"),
+                (
+                    pl.col(f"{energy_column}_sum")
+                    / delta_lambda
+                    / delta_time_s
+                    / (4 * math.pi)
+                    * solidanglefactor
+                    / (megaparsec_to_cm**2)
+                    / nprocs_read
+                ).alias(f"f_lambda_dirbin{dirbin}"),
+                pl.col("count").alias(f"count_dirbin{dirbin}"),
+            ])
 
             if use_time == "escape":
                 assert escapesurfacegamma is not None
@@ -321,13 +311,11 @@ def get_from_packets(
 
     dfdict = {}
     for dirbin in directionbins:
-        dfdict[dirbin] = dfbinned.select(
-            [
-                "lambda_angstroms",
-                pl.col(f"f_lambda_dirbin{dirbin}").alias("f_lambda"),
-                pl.col(f"count_dirbin{dirbin}").alias("packetcount"),
-            ]
-        )
+        dfdict[dirbin] = dfbinned.select([
+            "lambda_angstroms",
+            pl.col(f"f_lambda_dirbin{dirbin}").alias("f_lambda"),
+            pl.col(f"count_dirbin{dirbin}").alias("packetcount"),
+        ])
         if nprocs_read_dfpackets is None:
             npkts_selected = dfdict[dirbin].get_column("packetcount").sum()
             print(f"    dirbin {dirbin:2d} plots {npkts_selected:.2e} packets")
@@ -540,12 +528,10 @@ def make_virtual_spectra_summed_file(modelpath: Path | str) -> None:
             if specindex not in vspecpol_data_allranks:
                 vspecpol_data_allranks[specindex] = vspecpol_data[specindex]
             else:
-                vspecpol_data_allranks[specindex] = vspecpol_data_allranks[specindex].with_columns(
-                    [
-                        (pl.col(col) + vspecpol_data[specindex].get_column(col)).alias(col)
-                        for col in vspecpol_data_allranks[specindex].columns[1:]
-                    ]
-                )
+                vspecpol_data_allranks[specindex] = vspecpol_data_allranks[specindex].with_columns([
+                    (pl.col(col) + vspecpol_data[specindex].get_column(col)).alias(col)
+                    for col in vspecpol_data_allranks[specindex].columns[1:]
+                ])
 
     for spec_index, vspecpol in vspecpol_data_allranks.items():
         # fix the header row, which got summed along with the data
@@ -806,30 +792,26 @@ def get_flux_contributions(
                 # if linelabel.startswith('Fe ') or linelabel.endswith("-free"):
                 #     continue
                 if getemission:
-                    array_fnu_emission = stackspectra(
-                        [
-                            (
-                                emissiondata[dbin][timestep :: len(arr_tmid), selectedcolumn].to_numpy(),
-                                arr_tdelta[timestep] / len(dbinlist),
-                            )
-                            for timestep in range(timestepmin, timestepmax + 1)
-                            for dbin in dbinlist
-                        ]
-                    )
+                    array_fnu_emission = stackspectra([
+                        (
+                            emissiondata[dbin][timestep :: len(arr_tmid), selectedcolumn].to_numpy(),
+                            arr_tdelta[timestep] / len(dbinlist),
+                        )
+                        for timestep in range(timestepmin, timestepmax + 1)
+                        for dbin in dbinlist
+                    ])
                 else:
                     array_fnu_emission = np.zeros_like(arraylambda, dtype=float)
 
                 if absorptiondata and selectedcolumn < nelements * maxion:  # bound-bound process
-                    array_fnu_absorption = stackspectra(
-                        [
-                            (
-                                absorptiondata[dbin][timestep :: len(arr_tmid), selectedcolumn].to_numpy(),
-                                arr_tdelta[timestep] / len(dbinlist),
-                            )
-                            for timestep in range(timestepmin, timestepmax + 1)
-                            for dbin in dbinlist
-                        ]
-                    )
+                    array_fnu_absorption = stackspectra([
+                        (
+                            absorptiondata[dbin][timestep :: len(arr_tmid), selectedcolumn].to_numpy(),
+                            arr_tdelta[timestep] / len(dbinlist),
+                        )
+                        for timestep in range(timestepmin, timestepmax + 1)
+                        for dbin in dbinlist
+                    ])
                 else:
                     array_fnu_absorption = np.zeros_like(arraylambda, dtype=float)
 
@@ -962,22 +944,18 @@ def get_flux_contributions_from_packets(
 
         emtypestrings = pl.concat(
             [
-                linelistlazy.select(
-                    [
-                        pl.col("lineindex").alias(emtypecolumn),
-                        expr_linelist_to_str.alias("emissiontype_str"),
-                    ]
-                ),
+                linelistlazy.select([
+                    pl.col("lineindex").alias(emtypecolumn),
+                    expr_linelist_to_str.alias("emissiontype_str"),
+                ]),
                 pl.DataFrame(
                     {emtypecolumn: [-9999999], "emissiontype_str": ["free-free"]},
                     schema_overrides={emtypecolumn: pl.Int32, "emissiontype_str": pl.String},
                 ).lazy(),
-                bflistlazy.select(
-                    [
-                        pl.col(emtypecolumn),
-                        expr_bflist_to_str.alias("emissiontype_str"),
-                    ]
-                ),
+                bflistlazy.select([
+                    pl.col(emtypecolumn),
+                    expr_bflist_to_str.alias("emissiontype_str"),
+                ]),
             ],
         )
 
@@ -1000,12 +978,10 @@ def get_flux_contributions_from_packets(
 
         abstypestrings = pl.concat(
             [
-                linelistlazy.select(
-                    [
-                        pl.col("lineindex").alias("absorption_type"),
-                        expr_linelist_to_str.alias("absorptiontype_str"),
-                    ]
-                ),
+                linelistlazy.select([
+                    pl.col("lineindex").alias("absorption_type"),
+                    expr_linelist_to_str.alias("absorptiontype_str"),
+                ]),
                 pl.DataFrame(
                     {"absorption_type": [-1, -2], "absorptiontype_str": ["free-free", "bound-free"]},
                     schema_overrides={"absorption_type": pl.Int32, "absorptiontype_str": pl.String},

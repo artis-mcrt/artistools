@@ -69,9 +69,10 @@ def plot_qdot(
 
         frac_of_cellmass_sum = dfpartcontribthiscell["frac_of_cellmass"].sum()
 
-        for particleid, frac_of_cellmass in dfpartcontribthiscell.select(
-            ["particleid", "frac_of_cellmass"]
-        ).iter_rows():
+        for particleid, frac_of_cellmass in dfpartcontribthiscell.select([
+            "particleid",
+            "frac_of_cellmass",
+        ]).iter_rows():
             thisparticledata = allparticledata[particleid]
             for col in heatcols:
                 arr_heat[col] += thisparticledata[col] * cell_mass_frac * frac_of_cellmass / frac_of_cellmass_sum
@@ -456,12 +457,10 @@ def plot_qdot_abund_modelcells(
         wid_init = at.get_wid_init_at_tmodel(modelpath, propcellcount, modelmeta["t_model_init_days"], xmax_tmodel)
 
         lzdfmodel = lzdfmodel.with_columns(
-            n_assoc_cells=pl.Series(
-                [
-                    len(assoc_cells.get(inputcellid - 1, []))
-                    for (inputcellid,) in lzdfmodel.select("inputcellid").collect().iter_rows()
-                ]
-            )
+            n_assoc_cells=pl.Series([
+                len(assoc_cells.get(inputcellid - 1, []))
+                for (inputcellid,) in lzdfmodel.select("inputcellid").collect().iter_rows()
+            ])
         )
 
         # for spherical models, ARTIS mapping to a cubic grid introduces some errors in the cell volumes
@@ -567,9 +566,10 @@ def plot_qdot_abund_modelcells(
     # times in artis are relative to merger, but NSM simulation time started earlier
     mergertime_geomunits = at.inputmodel.modelfromhydro.get_merger_time_geomunits(griddata_root)
     t_mergertime_s = mergertime_geomunits * 4.926e-6
-    arr_time_gsi_s_incpremerger = np.array(
-        [modelmeta["t_model_init_days"] * 86400 + t_mergertime_s, *arr_time_artis_s_alltimesteps]
-    )
+    arr_time_gsi_s_incpremerger = np.array([
+        modelmeta["t_model_init_days"] * 86400 + t_mergertime_s,
+        *arr_time_artis_s_alltimesteps,
+    ])
     arr_time_gsi_days = list(arr_time_gsi_s / 86400)
 
     dfpartcontrib = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(modelpath).filter(

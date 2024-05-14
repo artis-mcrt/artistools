@@ -187,6 +187,7 @@ target-version = "py310"
 fix = true
 show-fixes = true
 extend-exclude = ["_version.py"]
+format.preview = true
 
 [tool.ruff.lint]
 select = ["ALL"]

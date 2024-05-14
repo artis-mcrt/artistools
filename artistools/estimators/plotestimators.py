@@ -1123,16 +1123,14 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         modeldata, _ = at.inputmodel.get_modeldata(modelpath)
         estimatorsdict = artistools.estimators.estimators_classic.read_classic_estimators(modelpath, modeldata)
         assert estimatorsdict is not None
-        estimators = pl.DataFrame(
-            [
-                {
-                    "timestep": ts,
-                    "modelgridindex": mgi,
-                    **estimvals,
-                }
-                for (ts, mgi), estimvals in estimatorsdict.items()
-            ]
-        ).lazy()
+        estimators = pl.DataFrame([
+            {
+                "timestep": ts,
+                "modelgridindex": mgi,
+                **estimvals,
+            }
+            for (ts, mgi), estimvals in estimatorsdict.items()
+        ]).lazy()
     else:
         estimators = at.estimators.scan_estimators(
             modelpath=modelpath,
