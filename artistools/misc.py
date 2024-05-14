@@ -517,7 +517,7 @@ def get_timestep_time(modelpath: Path | str, timestep: int) -> float:
 def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | None, float | None]:
     """Return the time range for which the entire model can send light signals the observer."""
     modelpath = Path(modelpath)
-    dfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath, printwarningsonly=True, getheadersonly=True)
+    _, modelmeta = at.inputmodel.get_modeldata(modelpath, printwarningsonly=True, getheadersonly=True)
     vmax = modelmeta["vmax_cmps"]
     cornervmax = math.sqrt(3 * vmax**2)
 
@@ -1059,7 +1059,7 @@ def get_bflist(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame
 linetuple = namedtuple("linetuple", "lambda_angstroms atomic_number ion_stage upperlevelindex lowerlevelindex")
 
 
-def read_linestatfile(filepath: Path | str) -> tuple[int, list[float], list[int], list[int], list[int], list[int]]:
+def read_linestatfile(filepath: Path | str) -> tuple[list[float], list[int], list[int], list[int], list[int]]:
     """Load linestat.out containing transitions wavelength, element, ion, upper and lower levels."""
     if Path(filepath).is_dir():
         filepath = firstexisting("linestat.out", folder=filepath, tryzipped=True)
@@ -1083,14 +1083,14 @@ def read_linestatfile(filepath: Path | str) -> tuple[int, list[float], list[int]
     lower_levels = data[4].astype(int)
     assert len(lower_levels) == nlines
 
-    return nlines, lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels
+    return lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels
 
 
 def get_linelist_pldf(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame:
     textfile = at.firstexisting("linestat.out", folder=modelpath)
     parquetfile = Path(modelpath, "linelist.out.parquet")
     if not parquetfile.is_file() or parquetfile.stat().st_mtime < textfile.stat().st_mtime:
-        _, lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels = read_linestatfile(textfile)
+        lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels = read_linestatfile(textfile)
 
         pldf = (
             pl.DataFrame(
@@ -1145,7 +1145,7 @@ def get_linelist_pldf(modelpath: Path | str, get_ion_str: bool = False) -> pl.La
 def get_linelist_dataframe(
     modelpath: Path | str,
 ) -> pd.DataFrame:
-    nlines, lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels = read_linestatfile(
+    lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels = read_linestatfile(
         Path(modelpath, "linestat.out")
     )
 

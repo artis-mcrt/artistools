@@ -18,7 +18,7 @@ from matplotlib import gridspec
 
 import artistools as at
 
-AxisType: t.TypeAlias = t.Literal["x", "y", "z", "r", "rcyl", "z"]
+AxisType: t.TypeAlias = t.Literal["x", "y", "z", "r", "rcyl"]
 
 
 def get_2D_slice_through_3d_model(
@@ -186,7 +186,7 @@ def plot_2d_initial_abundances(modelpath, args=None) -> None:
     for plotvar, ax in zip(args.plotvars, axes):
         colname = plotvar if plotvar in df2dslice.columns else f"X_{plotvar}"
 
-        im, scaledmap = plot_slice_modelcolumn(
+        im, _ = plot_slice_modelcolumn(
             ax, df2dslice, modelmeta, colname, plotaxis1, plotaxis2, modelmeta["t_model_init_days"], args
         )
 
@@ -237,7 +237,7 @@ def get_model_abundances_Msun_1D(modelpath: Path) -> pd.DataFrame:
     merge_dfs = modeldata.merge(abundancedata, how="inner", on="inputcellid")
 
     print("Total mass (Msun):")
-    for key in merge_dfs:
+    for key in list(merge_dfs.keys()):
         if "X_" in key:
             merge_dfs[f"mass_{key}"] = merge_dfs[key] * merge_dfs["mass_shell"] * u.g.to("solMass")
             # get mass of element in each cell
@@ -275,7 +275,7 @@ def make_3d_plot(modelpath, args):
         coloursurfaceby = f"X_{args.plotvars}"
         get_elemabundances = True
 
-    model, t_model, vmax = at.inputmodel.get_modeldata_tuple(modelpath, get_elemabundances=get_elemabundances)
+    model, _, vmax = at.inputmodel.get_modeldata_tuple(modelpath, get_elemabundances=get_elemabundances)
 
     if "cellYe" in args.plotvars and "cellYe" not in model:
         file_contents = np.loadtxt(Path(modelpath) / "Ye.txt", unpack=True, skiprows=1)
@@ -369,7 +369,7 @@ def make_3d_plot(modelpath, args):
 
 
 def plot_phi_hist(modelpath):
-    dfmodel, modelmeta = at.get_modeldata(modelpath, derived_cols=["pos_x_mid", "pos_y_mid", "pos_z_mid", "vel_r_mid"])
+    dfmodel, _ = at.get_modeldata(modelpath, derived_cols=["pos_x_mid", "pos_y_mid", "pos_z_mid", "vel_r_mid"])
     # print(dfmodel.keys())
     # quit()
     at.inputmodel.inputmodel_misc.get_cell_angle(dfmodel, modelpath)

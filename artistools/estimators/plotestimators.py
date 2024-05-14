@@ -1165,7 +1165,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
         return
 
-    assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath)
+    assoc_cells, _ = at.get_grid_mapping(modelpath)
 
     outdir = args.outputfile if (args.outputfile).is_dir() else Path()
     if not args.readonlymgi and (args.modelgridindex is not None or args.x in {"time", "timestep"}):

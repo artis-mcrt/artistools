@@ -30,7 +30,7 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
     #     axistherm.set_ylim(bottom=0.1, top=1.0)
 
     if args.plotthermalisation:
-        dfmodel, modelmeta = at.inputmodel.get_modeldata(
+        dfmodel, _ = at.inputmodel.get_modeldata(
             modelpath,
             derived_cols=["mass_g", "vel_r_mid"],
         )
@@ -618,9 +618,7 @@ def make_lightcurve_plot(
             axis.yaxis.set_major_formatter(at.plottools.ExponentLabelFormatter(axis.get_ylabel(), decimalplaces=1))
 
     if args.colorbarcostheta or args.colorbarphi:
-        costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(
-            usedegrees=args.usedegrees
-        )
+        _, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(usedegrees=args.usedegrees)
         scaledmap = make_colorbar_viewingangles_colormap()
         make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args, ax=axis)
 
@@ -1151,7 +1149,7 @@ def plot_lightcurve_from_refdata(
     filterdir = Path(at.get_config()["path_artistools_dir"], "data/filters/")
 
     filter_data = {}
-    for plotnumber, filter_name in enumerate(filter_names):
+    for axnumber, filter_name in enumerate(filter_names):
         if filter_name == "bol":
             continue
         with Path(filterdir / f"{filter_name}.txt").open(encoding="utf-8") as f:
@@ -1187,7 +1185,7 @@ def plot_lightcurve_from_refdata(
         else:
             print("WARNING: did not correct for reddening")
         if len(filter_names) > 1:
-            ax[plotnumber].plot(
+            ax[axnumber].plot(
                 filter_data[filter_name]["time"],
                 filter_data[filter_name]["magnitude"],
                 marker,

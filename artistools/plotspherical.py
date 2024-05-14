@@ -385,7 +385,7 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
             loc="left",
         )
 
-        defaultfilename = "plotspherical_{timemindays:.2f}-{timemaxdays:.2f}d.{outformat}"
+        defaultfilename = "plotspherical_{timemindays:.2f}-{timemaxdays:.2f}d.{outformat}"  # noqa: RUF027
         outfilename = str(
             args.outputfile
             if (args.outputfile and not Path(args.outputfile).is_dir() and not args.makegif)

@@ -230,7 +230,7 @@ def make_energy_files(rho, Mtot_grams, outputpath=None, modelpath=None, model=No
 
 
 def plot_energy_rate(modelpath):
-    times_and_rate, E_tot = at.inputmodel.energyinputfiles.rprocess_const_and_powerlaw()
+    times_and_rate, _ = at.inputmodel.energyinputfiles.rprocess_const_and_powerlaw()
     model, _ = at.inputmodel.get_modeldata(modelpath)
     Mtot_grams = model["mass_g"].sum()
     plt.plot(

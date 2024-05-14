@@ -67,7 +67,7 @@ def test_directionbins() -> None:
 
 
 def test_get_virtual_packets_pl():
-    nprocs, dfvpkt = at.packets.get_virtual_packets_pl(
+    _, dfvpkt = at.packets.get_virtual_packets_pl(
         modelpath=at.get_config()["path_testdata"] / "vpktcontrib", maxpacketfiles=2
     )
 

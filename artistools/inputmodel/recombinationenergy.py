@@ -20,7 +20,7 @@ def get_model_recombenergy(dfbinding, args):
     )
 
     print(f"Reading {args.inputfile}")
-    dfmodel, t_model_init_days, vmax = at.inputmodel.get_modeldata_tuple(args.inputfile, get_elemabundances=False)
+    dfmodel, t_model_init_days, _ = at.inputmodel.get_modeldata_tuple(args.inputfile, get_elemabundances=False)
 
     t_model_init_seconds = t_model_init_days * 24 * 60 * 60
     print(f"Model is defined at {t_model_init_days} days ({t_model_init_seconds:.4f} seconds)")
@@ -75,7 +75,7 @@ def get_particle_elec_binding_energy_per_gram(traj_root, dictbinding, particleid
     nts = at.inputmodel.rprocess_from_trajectory.get_closest_network_timestep(traj_root, particleid, time_s)
     memberfilename = f"./Run_rprocess/nz-plane{nts:05d}"
 
-    dftrajnucabund, traj_time_s = at.inputmodel.rprocess_from_trajectory.get_trajectory_timestepfile_nuc_abund(
+    dftrajnucabund, _ = at.inputmodel.rprocess_from_trajectory.get_trajectory_timestepfile_nuc_abund(
         traj_root=traj_root, particleid=particleid, memberfilename=memberfilename
     )
 

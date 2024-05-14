@@ -48,7 +48,7 @@ def test_get_modeldata_3d() -> None:
 
 
 def test_get_cell_angle() -> None:
-    modeldata, modelmeta = at.inputmodel.get_modeldata(
+    modeldata, _ = at.inputmodel.get_modeldata(
         modelpath=modelpath_3d, derived_cols=["pos_x_mid", "pos_y_mid", "pos_z_mid"]
     )
     at.inputmodel.inputmodel_misc.get_cell_angle(modeldata, modelpath=modelpath_3d)
@@ -76,7 +76,7 @@ def test_downscale_3dmodel() -> None:
 
 
 def test_get_modeldata_tuple() -> None:
-    dfmodel, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata_tuple(modelpath, get_elemabundances=True)
+    _, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata_tuple(modelpath, get_elemabundances=True)
     assert np.isclose(t_model_init_days, 0.00115740740741, rtol=0.0001)
     assert np.isclose(vmax_cmps, 800000000.0, rtol=0.0001)
 
@@ -181,11 +181,11 @@ def test_makeartismodelfrom_sph_particles() -> None:
                     .rename({"frac_of_cellmass_includemissing": "frac_of_cellmass"})
                 )
             else:
-                dfmodel3lz, modelmeta3 = at.inputmodel.get_modeldata_polars(
+                dfmodel3lz, _ = at.inputmodel.get_modeldata_polars(
                     modelpath=outputpath / f"kilonova_{3:d}d", derived_cols=["mass_g"]
                 )
                 dfmodel3 = dfmodel3lz.collect()
-                dfmodel_lowerdlz, modelmeta_lowerd = at.inputmodel.get_modeldata_polars(
+                dfmodel_lowerdlz, _ = at.inputmodel.get_modeldata_polars(
                     modelpath=outputpath / f"kilonova_{dimensions:d}d", derived_cols=["mass_g"]
                 )
                 dfmodel_lowerd = dfmodel_lowerdlz.collect()
@@ -310,8 +310,8 @@ def lower_dim_and_check_mass_conservation(outputdimensions: int) -> None:
     outpath.mkdir(exist_ok=True, parents=True)
     (
         dfmodel_lowerd,
-        dfabundances_lowerd,
-        dfgridcontributions_lowerd,
+        _,
+        _,
         modelmeta_lowerd,
     ) = at.inputmodel.dimension_reduce_3d_model(
         dfmodel=dfmodel3d_pl, modelmeta=modelmeta_3d, outputdimensions=outputdimensions
