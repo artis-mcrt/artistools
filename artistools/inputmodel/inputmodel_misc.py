@@ -2,6 +2,7 @@ import errno
 import gc
 import math
 import os
+import tempfile
 import time
 import typing as t
 from collections import defaultdict
@@ -335,8 +336,8 @@ def get_modeldata_polars(
     parquetfilepath = at.stripallsuffixes(Path(textfilepath)).with_suffix(".txt.parquet")
 
     if parquetfilepath.exists() and Path(textfilepath).stat().st_mtime > parquetfilepath.stat().st_mtime:
-        print(f"{textfilepath} has been modified after {parquetfilepath}. Deleting out of date parquet file.")
-        parquetfilepath.unlink()
+        msg = f"ERROR: {textfilepath} has been modified after {parquetfilepath}. Delete the out of date parquet file to regenerate."
+        raise AssertionError(msg)
 
     dfmodel: pl.LazyFrame | None | pl.DataFrame = None
     if not getheadersonly and parquetfilepath.is_file():
@@ -345,7 +346,7 @@ def get_modeldata_polars(
         try:
             dfmodel = pl.scan_parquet(parquetfilepath)
         except pl.exceptions.ComputeError:
-            print(f"Problem reading {parquetfilepath}. Will regenerate and overwite from text source.")
+            print(f"Problem reading {parquetfilepath}. Will regenerate and overwrite from text source.")
             dfmodel = None
 
     if dfmodel is not None:
@@ -367,9 +368,11 @@ def get_modeldata_polars(
     mebibyte = 1024 * 1024
     if isinstance(dfmodel, pl.DataFrame) and textfilepath.stat().st_size > 5 * mebibyte and not getheadersonly:
         print(f"Saving {parquetfilepath}")
-        partialparquetfilepath = at.stripallsuffixes(Path(textfilepath)).with_suffix(".txt.parquet.partial.tmp")
-        dfmodel.write_parquet(partialparquetfilepath, compression="zstd")
-        partialparquetfilepath.rename(parquetfilepath)
+        partialparquetfilepath = Path(
+            tempfile.mkstemp(dir=modelpath, prefix=f"{parquetfilepath.name}.", suffix=".tmp")[1]
+        )
+        dfmodel.write_parquet(partialparquetfilepath, compression="zstd", statistics=True)
+        partialparquetfilepath.unlink() if parquetfilepath.exists() else partialparquetfilepath.rename(parquetfilepath)
         print("  Done.")
         del dfmodel
         gc.collect()
@@ -947,8 +950,8 @@ def get_initelemabundances_polars(
 
     parquetfilepath = at.stripallsuffixes(Path(textfilepath)).with_suffix(".txt.parquet")
     if parquetfilepath.exists() and Path(textfilepath).stat().st_mtime > parquetfilepath.stat().st_mtime:
-        print(f"{textfilepath} has been modified after {parquetfilepath}. Deleting out of date parquet file.")
-        parquetfilepath.unlink()
+        msg = f"ERROR: {textfilepath} has been modified after {parquetfilepath}. Delete the out of date parquet file to regenerate."
+        raise AssertionError(msg)
 
     if parquetfilepath.is_file():
         if not printwarningsonly:
@@ -981,9 +984,13 @@ def get_initelemabundances_polars(
 
         if textfilepath.stat().st_size > 5 * 1024 * 1024:
             print(f"Saving {parquetfilepath}")
-            partialparquetfilepath = at.stripallsuffixes(Path(textfilepath)).with_suffix(".txt.parquet.partial.tmp")
-            abundancedata.write_parquet(partialparquetfilepath, compression="zstd")
-            partialparquetfilepath.rename(parquetfilepath)
+            partialparquetfilepath = Path(
+                tempfile.mkstemp(dir=modelpath, prefix=f"{parquetfilepath.name}.", suffix=".tmp")[1]
+            )
+            abundancedata.write_parquet(partialparquetfilepath, compression="zstd", statistics=True)
+            partialparquetfilepath.unlink() if parquetfilepath.exists() else partialparquetfilepath.rename(
+                parquetfilepath
+            )
             print("  Done.")
             del abundancedata
             gc.collect()
