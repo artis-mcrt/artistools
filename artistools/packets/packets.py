@@ -445,7 +445,7 @@ def get_rankbatch_parquetfile(
     parquetfilename = (
         f"{strpacket}batch{batchindex:02d}_{batch_mpiranks[0]:04d}_{batch_mpiranks[-1]:04d}.out.parquet.tmp"
     )
-    parquetfilepath = packetdir / f"{parquetfilename}.tmp"
+    parquetfilepath = packetdir / parquetfilename
 
     # time when the schema for the parquet files last change (e.g. new computed columns added or data types changed)
     time_parquetschemachange = (2024, 4, 23, 9, 0, 0)
