@@ -336,8 +336,8 @@ def get_modeldata_polars(
     parquetfilepath = at.stripallsuffixes(Path(textfilepath)).with_suffix(".txt.parquet")
 
     if parquetfilepath.exists() and Path(textfilepath).stat().st_mtime > parquetfilepath.stat().st_mtime:
-        msg = f"ERROR: {textfilepath} has been modified after {parquetfilepath}. Delete the out of date parquet file to regenerate."
-        raise AssertionError(msg)
+        print(f"{textfilepath} has been modified after {parquetfilepath}. Deleting out of date parquet file.")
+        parquetfilepath.unlink()
 
     dfmodel: pl.LazyFrame | None | pl.DataFrame = None
     if not getheadersonly and parquetfilepath.is_file():
@@ -950,8 +950,8 @@ def get_initelemabundances_polars(
 
     parquetfilepath = at.stripallsuffixes(Path(textfilepath)).with_suffix(".txt.parquet")
     if parquetfilepath.exists() and Path(textfilepath).stat().st_mtime > parquetfilepath.stat().st_mtime:
-        msg = f"ERROR: {textfilepath} has been modified after {parquetfilepath}. Delete the out of date parquet file to regenerate."
-        raise AssertionError(msg)
+        print(f"{textfilepath} has been modified after {parquetfilepath}. Deleting out of date parquet file.")
+        parquetfilepath.unlink()
 
     if parquetfilepath.is_file():
         if not printwarningsonly:
