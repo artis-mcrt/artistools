@@ -372,7 +372,10 @@ def get_modeldata_polars(
             tempfile.mkstemp(dir=modelpath, prefix=f"{parquetfilepath.name}.partial", suffix=".tmp")[1]
         )
         dfmodel.write_parquet(partialparquetfilepath, compression="zstd", statistics=True)
-        partialparquetfilepath.unlink() if parquetfilepath.exists() else partialparquetfilepath.rename(parquetfilepath)
+        if parquetfilepath.exists():
+            partialparquetfilepath.unlink()
+        else:
+            partialparquetfilepath.rename(parquetfilepath)
         print("  Done.")
         del dfmodel
         gc.collect()
@@ -988,9 +991,11 @@ def get_initelemabundances_polars(
                 tempfile.mkstemp(dir=modelpath, prefix=f"{parquetfilepath.name}.partial", suffix=".tmp")[1]
             )
             abundancedata.write_parquet(partialparquetfilepath, compression="zstd", statistics=True)
-            partialparquetfilepath.unlink() if parquetfilepath.exists() else partialparquetfilepath.rename(
-                parquetfilepath
-            )
+            if parquetfilepath.exists():
+                partialparquetfilepath.unlink()
+            else:
+                partialparquetfilepath.rename(parquetfilepath)
+
             print("  Done.")
             del abundancedata
             gc.collect()
