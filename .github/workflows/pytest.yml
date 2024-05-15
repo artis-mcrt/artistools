@@ -66,7 +66,7 @@ jobs:
 
     superlinter:
         name: Super linter
-        runs-on: ubuntu-latest
+        runs-on: ubuntu-24.04
 
         steps:
             - name: Checkout Code
@@ -167,25 +167,19 @@ jobs:
 
     codspeed-benchmarks:
         timeout-minutes: 180
-        runs-on: ubuntu-latest
-        strategy:
-            fail-fast: false
-            matrix:
-                python-version: ['3.12']
-        env:
-            PYTHON: ${{ matrix.python-version }}
+        runs-on: ubuntu-22.04
 
-        name: codspeed benchmarks python${{ matrix.python-version }}
+        name: codspeed benchmarks
         steps:
             - name: Checkout Code
               uses: actions/checkout@v4
               with:
                   fetch-depth: 0
 
-            - name: Set up Python ${{ matrix.python-version }}
+            - name: Set up Python
               uses: actions/setup-python@v5
               with:
-                  python-version: ${{ matrix.python-version }}
+                  python-version: '3.12'
 
             - name: Install uv
               run: |
