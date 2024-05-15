@@ -333,7 +333,7 @@ def get_modeldata_polars(
     else:
         raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), inputpath)
 
-    parquetfilepath = at.stripallsuffixes(Path(textfilepath)).with_suffix(".txt.parquet")
+    parquetfilepath = at.stripallsuffixes(Path(textfilepath)).with_suffix(".txt.parquet.tmp")
 
     if parquetfilepath.exists() and Path(textfilepath).stat().st_mtime > parquetfilepath.stat().st_mtime:
         print(f"{textfilepath} has been modified after {parquetfilepath}. Deleting out of date parquet file.")
@@ -947,8 +947,8 @@ def get_initelemabundances_polars(
 ) -> pl.LazyFrame:
     """Return a table of elemental mass fractions by cell from abundances."""
     textfilepath = at.firstexisting("abundances.txt", folder=modelpath, tryzipped=True)
+    parquetfilepath = at.stripallsuffixes(Path(textfilepath)).with_suffix(".txt.parquet.tmp")
 
-    parquetfilepath = at.stripallsuffixes(Path(textfilepath)).with_suffix(".txt.parquet")
     if parquetfilepath.exists() and Path(textfilepath).stat().st_mtime > parquetfilepath.stat().st_mtime:
         print(f"{textfilepath} has been modified after {parquetfilepath}. Deleting out of date parquet file.")
         parquetfilepath.unlink()
