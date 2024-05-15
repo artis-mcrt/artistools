@@ -1,5 +1,6 @@
 import calendar
 import math
+import tempfile
 import time
 import typing as t
 from functools import lru_cache
@@ -443,7 +444,6 @@ def get_rankbatch_parquetfile(
 
     parquetfilename = f"{strpacket}batch{batchindex:02d}_{batch_mpiranks[0]:04d}_{batch_mpiranks[-1]:04d}.out.parquet"
     parquetfilepath = packetdir / f"{parquetfilename}.tmp"
-    parquetfilepathpartial = packetdir / f"{parquetfilename}.partial.tmp"
 
     # time when the schema for the parquet files last change (e.g. new computed columns added or data types changed)
     time_parquetschemachange = (2024, 4, 23, 9, 0, 0)
@@ -465,7 +465,8 @@ def get_rankbatch_parquetfile(
         if parquet_mtime > last_textfile_mtime and parquet_mtime > t_lastschemachange:
             conversion_needed = False
         else:
-            print(f"  outdated file: {parquetfilepath}. Will overwrite")
+            msg = f"ERROR: outdated file: {parquetfilepath}. Delete it to regenerate."
+            raise AssertionError(msg)
 
     if conversion_needed:
         time_start_load = time.perf_counter()
@@ -518,8 +519,9 @@ def get_rankbatch_parquetfile(
             f"   took {time.perf_counter() - time_start_load:.1f} seconds. Writing parquet file...", end="", flush=True
         )
         time_start_write = time.perf_counter()
-        pldf_batch.sink_parquet(parquetfilepathpartial, compression="zstd", statistics=True, compression_level=8)
-        parquetfilepathpartial.rename(parquetfilepath)
+        tempparquetfilepath = Path(tempfile.mkstemp(dir=packetdir, prefix=f"{parquetfilename}.", suffix=".tmp")[1])
+        pldf_batch.sink_parquet(tempparquetfilepath, compression="zstd", statistics=True, compression_level=8)
+        tempparquetfilepath.unlink() if parquetfilepath.exists() else tempparquetfilepath.rename(parquetfilepath)
         print(f"took {time.perf_counter() - time_start_write:.1f} seconds")
     else:
         print(f"  scanning {parquetfilepath.relative_to(modelpath)}")

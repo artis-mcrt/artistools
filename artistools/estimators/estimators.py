@@ -8,6 +8,7 @@ import argparse
 import contextlib
 import math
 import sys
+import tempfile
 import time
 import typing as t
 from collections import namedtuple
@@ -227,9 +228,8 @@ def get_rankbatch_parquetfile(
     batch_mpiranks: t.Sequence[int],
     batchindex: int,
 ) -> Path:
-    parquetfilename = f"estimbatch{batchindex:02d}_{batch_mpiranks[0]:04d}_{batch_mpiranks[-1]:04d}.out.parquet"
-    parquetfilepath = folderpath / f"{parquetfilename}.tmp"
-    parquetfilepathpartial = folderpath / f"{parquetfilename}.partial.tmp"
+    parquetfilename = f"estimbatch{batchindex:02d}_{batch_mpiranks[0]:04d}_{batch_mpiranks[-1]:04d}.out.parquet.tmp"
+    parquetfilepath = folderpath / parquetfilename
 
     if not parquetfilepath.exists():
         print(f"  generating {parquetfilepath.relative_to(modelpath.parent)}...")
@@ -267,8 +267,10 @@ def get_rankbatch_parquetfile(
         time_start = time.perf_counter()
 
         assert pldf_batch is not None
-        pldf_batch.write_parquet(parquetfilepathpartial, compression="zstd", statistics=True, compression_level=8)
-        parquetfilepathpartial.rename(parquetfilepath)
+        tempparquetfilepath = Path(tempfile.mkstemp(dir=folderpath, prefix=f"{parquetfilename}.", suffix=".partial")[1])
+        pldf_batch.write_parquet(tempparquetfilepath, compression="zstd", statistics=True, compression_level=8)
+        tempparquetfilepath.unlink() if parquetfilepath.exists() else tempparquetfilepath.rename(parquetfilepath)
+
         print(f"took {time.perf_counter() - time_start:.1f} s.")
 
     filesize = parquetfilepath.stat().st_size / 1024 / 1024
