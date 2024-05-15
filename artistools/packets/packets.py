@@ -525,7 +525,10 @@ def get_rankbatch_parquetfile(
             tempfile.mkstemp(dir=packetdir, prefix=f"{parquetfilename}.partial", suffix=".tmp")[1]
         )
         pldf_batch.sink_parquet(tempparquetfilepath, compression="zstd", statistics=True, compression_level=8)
-        tempparquetfilepath.unlink() if parquetfilepath.exists() else tempparquetfilepath.rename(parquetfilepath)
+        if parquetfilepath.exists():
+            tempparquetfilepath.unlink()
+        else:
+            tempparquetfilepath.rename(parquetfilepath)
         print(f"took {time.perf_counter() - time_start_write:.1f} seconds")
     else:
         print(f"  scanning {parquetfilepath.relative_to(modelpath)}")
