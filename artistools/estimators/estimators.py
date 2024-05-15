@@ -267,7 +267,9 @@ def get_rankbatch_parquetfile(
         time_start = time.perf_counter()
 
         assert pldf_batch is not None
-        tempparquetfilepath = Path(tempfile.mkstemp(dir=folderpath, prefix=f"{parquetfilename}.", suffix=".partial")[1])
+        tempparquetfilepath = Path(
+            tempfile.mkstemp(dir=folderpath, prefix=f"{parquetfilename}.partial", suffix=".partial")[1]
+        )
         pldf_batch.write_parquet(tempparquetfilepath, compression="zstd", statistics=True, compression_level=8)
         tempparquetfilepath.unlink() if parquetfilepath.exists() else tempparquetfilepath.rename(parquetfilepath)
 

@@ -369,7 +369,7 @@ def get_modeldata_polars(
     if isinstance(dfmodel, pl.DataFrame) and textfilepath.stat().st_size > 5 * mebibyte and not getheadersonly:
         print(f"Saving {parquetfilepath}")
         partialparquetfilepath = Path(
-            tempfile.mkstemp(dir=modelpath, prefix=f"{parquetfilepath.name}.", suffix=".tmp")[1]
+            tempfile.mkstemp(dir=modelpath, prefix=f"{parquetfilepath.name}.partial", suffix=".tmp")[1]
         )
         dfmodel.write_parquet(partialparquetfilepath, compression="zstd", statistics=True)
         partialparquetfilepath.unlink() if parquetfilepath.exists() else partialparquetfilepath.rename(parquetfilepath)
@@ -985,7 +985,7 @@ def get_initelemabundances_polars(
         if textfilepath.stat().st_size > 5 * 1024 * 1024:
             print(f"Saving {parquetfilepath}")
             partialparquetfilepath = Path(
-                tempfile.mkstemp(dir=modelpath, prefix=f"{parquetfilepath.name}.", suffix=".tmp")[1]
+                tempfile.mkstemp(dir=modelpath, prefix=f"{parquetfilepath.name}.partial", suffix=".tmp")[1]
             )
             abundancedata.write_parquet(partialparquetfilepath, compression="zstd", statistics=True)
             partialparquetfilepath.unlink() if parquetfilepath.exists() else partialparquetfilepath.rename(
