@@ -779,7 +779,7 @@ def get_standard_columns(
             cols = (
                 ["inputcellid", "inputpos_a", "inputpos_b", "inputpos_c", "rho"]
                 if pos_unknown
-                else ["inputcellid", "pos_x_mid", "pos_y_mid", "pos_z_mid", "rho"]
+                else ["inputcellid", "pos_x_min", "pos_y_min", "pos_z_min", "rho"]
             )
 
     if not includeabund:
