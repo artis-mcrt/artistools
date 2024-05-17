@@ -238,25 +238,27 @@ def read_modelfile_text(
 
     elif modelmeta["dimensions"] == 3:
         wid_init_x = 2 * modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridx"]
+        wid_init_y = 2 * modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridy"]
+        wid_init_z = 2 * modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridz"]
         modelmeta["wid_init_x"] = wid_init_x
-        modelmeta["wid_init_y"] = wid_init_x
-        modelmeta["wid_init_z"] = wid_init_x
+        modelmeta["wid_init_y"] = wid_init_z
+        modelmeta["wid_init_z"] = wid_init_z
         modelmeta["wid_init"] = wid_init_x
-        colrenames = {"pos_x": "pos_x_min", "pos_y": "pos_y_min", "pos_z": "pos_z_min"}
-        dfmodel = dfmodel.rename({a: b for a, b in colrenames.items() if a in dfmodel.columns})
         if "pos_x_min" in dfmodel.columns and not printwarningsonly:
             print("  model cell positions are defined in the header")
         elif not getheadersonly:
 
             def vectormatch(vec1: list[float], vec2: list[float]) -> bool:
-                xclose = np.isclose(vec1[0], vec2[0], atol=wid_init_x / 2.0)
-                yclose = np.isclose(vec1[1], vec2[1], atol=wid_init_x / 2.0)
-                zclose = np.isclose(vec1[2], vec2[2], atol=wid_init_x / 2.0)
+                xclose = np.isclose(vec1[0], vec2[0], atol=wid_init_x * 0.05)
+                yclose = np.isclose(vec1[1], vec2[1], atol=wid_init_y * 0.05)
+                zclose = np.isclose(vec1[2], vec2[2], atol=wid_init_z * 0.05)
 
                 return all([xclose, yclose, zclose])
 
-            posmatch_xyz = True
-            posmatch_zyx = True
+            matched_pos_xyz_min = True
+            matched_pos_zyx_min = True
+            matched_pos_xyz_mid = True
+            matched_pos_zyx_mid = True
             # important cell numbers to check for coordinate column order
             indexlist = [
                 0,
@@ -264,32 +266,68 @@ def read_modelfile_text(
                 (ncoordgridx - 1) * (ncoordgridy - 1),
                 (ncoordgridx - 1) * (ncoordgridy - 1) * (ncoordgridz - 1),
             ]
+
             for modelgridindex in indexlist:
                 xindex = modelgridindex % ncoordgridx
                 yindex = (modelgridindex // ncoordgridx) % ncoordgridy
                 zindex = (modelgridindex // (ncoordgridx * ncoordgridy)) % ncoordgridz
-                pos_x_min = -xmax_tmodel + 2 * xindex * xmax_tmodel / ncoordgridx
-                pos_y_min = -xmax_tmodel + 2 * yindex * xmax_tmodel / ncoordgridy
-                pos_z_min = -xmax_tmodel + 2 * zindex * xmax_tmodel / ncoordgridz
+                pos_x_min = -xmax_tmodel + xindex * wid_init_x
+                pos_y_min = -xmax_tmodel + yindex * wid_init_y
+                pos_z_min = -xmax_tmodel + zindex * wid_init_z
+                pos_x_mid = -xmax_tmodel + (xindex + 0.5) * wid_init_x
+                pos_y_mid = -xmax_tmodel + (yindex + 0.5) * wid_init_y
+                pos_z_mid = -xmax_tmodel + (zindex + 0.5) * wid_init_z
 
                 pos3_in = list(dfmodel.select(["inputpos_a", "inputpos_b", "inputpos_c"]).row(modelgridindex))
 
                 if not vectormatch(pos3_in, [pos_x_min, pos_y_min, pos_z_min]):
-                    posmatch_xyz = False
+                    matched_pos_xyz_min = False
 
                 if not vectormatch(pos3_in, [pos_z_min, pos_y_min, pos_x_min]):
-                    posmatch_zyx = False
+                    matched_pos_zyx_min = False
 
-            assert posmatch_xyz != posmatch_zyx  # one option must match
+                if not vectormatch(pos3_in, [pos_x_mid, pos_y_mid, pos_z_mid]):
+                    matched_pos_xyz_mid = False
+
+                if not vectormatch(pos3_in, [pos_z_mid, pos_y_mid, pos_x_mid]):
+                    matched_pos_zyx_mid = False
+
+                print(
+                    pos3_in,
+                    [pos_x_min, pos_y_min, pos_z_min],
+                    [pos_x_mid, pos_y_mid, pos_z_mid],
+                    (matched_pos_xyz_min, matched_pos_zyx_min, matched_pos_xyz_mid, matched_pos_zyx_mid),
+                )
+
+            assert (
+                sum((matched_pos_xyz_min, matched_pos_zyx_min, matched_pos_xyz_mid, matched_pos_zyx_mid)) == 1
+            ), "one option must match uniquely"
+
             colrenames = {}
-            if posmatch_xyz:
-                print("  model cell positions are consistent with x-y-z column order")
+            if matched_pos_xyz_min:
+                print("  model cell positions are consistent with x-y-z min corner columns")
                 colrenames = {"inputpos_a": "pos_x_min", "inputpos_b": "pos_y_min", "inputpos_c": "pos_z_min"}
 
-            if posmatch_zyx:
-                print("  cell positions are consistent with z-y-x column order")
+            if matched_pos_zyx_min:
+                print("  cell positions are consistent with z-y-x min corner columns")
                 colrenames = {"inputpos_a": "pos_z_min", "inputpos_b": "pos_y_min", "inputpos_c": "pos_x_min"}
+
+            if matched_pos_xyz_mid:
+                print("  model cell positions are consistent with x-y-z midpoint columns")
+                colrenames = {"inputpos_a": "pos_x_mid", "inputpos_b": "pos_y_mid", "inputpos_c": "pos_z_mid"}
+
+            if matched_pos_zyx_mid:
+                print("  cell positions are consistent with z-y-x midpoint colums")
+                colrenames = {"inputpos_a": "pos_z_mid", "inputpos_b": "pos_y_mid", "inputpos_c": "pos_x_mid"}
+
             dfmodel = dfmodel.rename({a: b for a, b in colrenames.items() if a in dfmodel.columns})
+
+            if matched_pos_xyz_mid or matched_pos_zyx_mid:
+                dfmodel = dfmodel.with_columns(
+                    pos_x_min=(pl.col("pos_x_mid") - modelmeta["wid_init_x"] / 2.0),
+                    pos_y_min=(pl.col("pos_y_mid") - modelmeta["wid_init_y"] / 2.0),
+                    pos_z_min=(pl.col("pos_z_mid") - modelmeta["wid_init_z"] / 2.0),
+                )
 
     return dfmodel, modelmeta
 
@@ -339,7 +377,7 @@ def get_modeldata_polars(
         print(f"{textfilepath} has been modified after {parquetfilepath}. Deleting out of date parquet file.")
         parquetfilepath.unlink()
 
-    dfmodel: pl.LazyFrame | None | pl.DataFrame = None
+    dfmodel: pl.LazyFrame | None = None
     if not getheadersonly and parquetfilepath.is_file():
         if not printwarningsonly:
             print(f"Reading model table from {parquetfilepath}")
@@ -360,10 +398,11 @@ def get_modeldata_polars(
     )
 
     if dfmodel is None:
-        dfmodel = dfmodel_textfile
+        dfmodel = dfmodel_textfile.lazy()
     elif dfmodel.schema != dfmodel_textfile.schema:
-        print(f"ERROR: parquet schema does not match model.txt. Remove {parquetfilepath} and try again.")
-        raise AssertionError
+        print(f"ERROR: parquet schema does not match model.txt. Deleting {parquetfilepath} and regenerating...")
+        dfmodel = None
+        parquetfilepath.unlink()
 
     mebibyte = 1024 * 1024
     if isinstance(dfmodel, pl.DataFrame) and textfilepath.stat().st_size > 5 * mebibyte and not getheadersonly:
@@ -383,7 +422,8 @@ def get_modeldata_polars(
 
     if not printwarningsonly:
         print(f"  model is {modelmeta['dimensions']}D with {modelmeta['npts_model']} cells")
-    dfmodel = dfmodel.lazy()
+
+    assert dfmodel is not None
 
     if get_elemabundances:
         abundancedata = get_initelemabundances_polars(modelpath, printwarningsonly=printwarningsonly)
@@ -739,7 +779,7 @@ def get_standard_columns(dimensions: int, includenico57: bool = False, includeab
         case 2:
             cols = ["inputcellid", "pos_rcyl_mid", "pos_z_mid", "rho"]
         case 3:
-            cols = ["inputcellid", "pos_x_min", "pos_y_min", "pos_z_min", "rho"]
+            cols = ["inputcellid", "inputpos_a", "inputpos_b", "inputpos_c", "rho"]
 
     if not includeabund:
         return cols
