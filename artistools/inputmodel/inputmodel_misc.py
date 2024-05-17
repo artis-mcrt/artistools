@@ -99,7 +99,7 @@ def read_modelfile_text(
         ncols_line_odd = len(data_line_odd.split())
 
         if columns is None:
-            columns = get_standard_columns(modelmeta["dimensions"], includenico57=True)
+            columns = get_standard_columns(modelmeta["dimensions"], includenico57=True, pos_unknown=True)
             # last two abundances are optional
             assert columns is not None
             if ncols_line_even == ncols_line_odd and (ncols_line_even + ncols_line_odd) > len(columns):
@@ -400,12 +400,12 @@ def get_modeldata_polars(
         parquetfilepath.unlink()
 
     mebibyte = 1024 * 1024
-    if isinstance(dfmodel, pl.DataFrame) and textfilepath.stat().st_size > 5 * mebibyte and not getheadersonly:
+    if isinstance(dfmodel, pl.LazyFrame) and textfilepath.stat().st_size > 5 * mebibyte and not getheadersonly:
         print(f"Saving {parquetfilepath}")
         partialparquetfilepath = Path(
             tempfile.mkstemp(dir=modelpath, prefix=f"{parquetfilepath.name}.partial", suffix=".tmp")[1]
         )
-        dfmodel.write_parquet(partialparquetfilepath, compression="zstd", statistics=True)
+        dfmodel.collect().write_parquet(partialparquetfilepath, compression="zstd", statistics=True)
         if parquetfilepath.exists():
             partialparquetfilepath.unlink()
         else:
@@ -766,7 +766,9 @@ def get_mean_cell_properties_of_angle_bin(
     return mean_bin_properties
 
 
-def get_standard_columns(dimensions: int, includenico57: bool = False, includeabund: bool = True) -> list[str]:
+def get_standard_columns(
+    dimensions: int, includenico57: bool = False, includeabund: bool = True, pos_unknown: bool = False
+) -> list[str]:
     """Get standard (artis classic) columns for modeldata DataFrame."""
     match dimensions:
         case 1:
@@ -774,7 +776,11 @@ def get_standard_columns(dimensions: int, includenico57: bool = False, includeab
         case 2:
             cols = ["inputcellid", "pos_rcyl_mid", "pos_z_mid", "rho"]
         case 3:
-            cols = ["inputcellid", "inputpos_a", "inputpos_b", "inputpos_c", "rho"]
+            cols = (
+                ["inputcellid", "inputpos_a", "inputpos_b", "inputpos_c", "rho"]
+                if pos_unknown
+                else ["inputcellid", "pos_x_mid", "pos_y_mid", "pos_z_mid", "rho"]
+            )
 
     if not includeabund:
         return cols
