@@ -292,13 +292,6 @@ def read_modelfile_text(
                 if not vectormatch(pos3_in, [pos_z_mid, pos_y_mid, pos_x_mid]):
                     matched_pos_zyx_mid = False
 
-                print(
-                    pos3_in,
-                    [pos_x_min, pos_y_min, pos_z_min],
-                    [pos_x_mid, pos_y_mid, pos_z_mid],
-                    (matched_pos_xyz_min, matched_pos_zyx_min, matched_pos_xyz_mid, matched_pos_zyx_mid),
-                )
-
             assert (
                 sum((matched_pos_xyz_min, matched_pos_zyx_min, matched_pos_xyz_mid, matched_pos_zyx_mid)) == 1
             ), "one option must match uniquely"
