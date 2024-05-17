@@ -1,3 +1,4 @@
+import calendar
 import errno
 import gc
 import math
@@ -372,6 +373,12 @@ def get_modeldata_polars(
         print(f"{textfilepath} has been modified after {parquetfilepath}. Deleting out of date parquet file.")
         parquetfilepath.unlink()
 
+    t_lastschemachange = calendar.timegm((2024, 1, 1, 9, 0, 0))
+
+    if parquetfilepath.exists() and Path(textfilepath).stat().st_mtime > t_lastschemachange:
+        print(f"{textfilepath} has been modified after the last schema change. Deleting out of date parquet file.")
+        parquetfilepath.unlink()
+
     dfmodel: pl.LazyFrame | None = None
     if not getheadersonly and parquetfilepath.is_file():
         if not printwarningsonly:
@@ -394,31 +401,25 @@ def get_modeldata_polars(
 
     if dfmodel is None:
         dfmodel = dfmodel_textfile.lazy()
-    elif dfmodel.schema != dfmodel_textfile.schema:
-        print(f"ERROR: parquet schema does not match model.txt. Deleting {parquetfilepath} and regenerating...")
-        dfmodel = None
-        parquetfilepath.unlink()
 
-    mebibyte = 1024 * 1024
-    if isinstance(dfmodel, pl.LazyFrame) and textfilepath.stat().st_size > 5 * mebibyte and not getheadersonly:
-        print(f"Saving {parquetfilepath}")
-        partialparquetfilepath = Path(
-            tempfile.mkstemp(dir=modelpath, prefix=f"{parquetfilepath.name}.partial", suffix=".tmp")[1]
-        )
-        dfmodel.collect().write_parquet(partialparquetfilepath, compression="zstd", statistics=True)
-        if parquetfilepath.exists():
-            partialparquetfilepath.unlink()
-        else:
-            partialparquetfilepath.rename(parquetfilepath)
-        print("  Done.")
-        del dfmodel
-        gc.collect()
-        dfmodel = pl.scan_parquet(parquetfilepath)
+        mebibyte = 1024 * 1024
+        if textfilepath.stat().st_size > 5 * mebibyte and not getheadersonly:
+            print(f"Saving {parquetfilepath}")
+            partialparquetfilepath = Path(
+                tempfile.mkstemp(dir=modelpath, prefix=f"{parquetfilepath.name}.partial", suffix=".tmp")[1]
+            )
+            dfmodel.collect().write_parquet(partialparquetfilepath, compression="zstd", statistics=True)
+            if parquetfilepath.exists():
+                partialparquetfilepath.unlink()
+            else:
+                partialparquetfilepath.rename(parquetfilepath)
+            print("  Done.")
+            del dfmodel
+            gc.collect()
+            dfmodel = pl.scan_parquet(parquetfilepath)
 
     if not printwarningsonly:
         print(f"  model is {modelmeta['dimensions']}D with {modelmeta['npts_model']} cells")
-
-    assert dfmodel is not None
 
     if get_elemabundances:
         abundancedata = get_initelemabundances_polars(modelpath, printwarningsonly=printwarningsonly)
