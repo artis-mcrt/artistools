@@ -263,7 +263,9 @@ def read_modelfile_text(
             indexlist = [
                 0,
                 ncoordgridx - 1,
+                ncoordgridx,
                 (ncoordgridx - 1) * (ncoordgridy - 1),
+                (ncoordgridx - 1) * ncoordgridy,
                 (ncoordgridx - 1) * (ncoordgridy - 1) * (ncoordgridz - 1),
             ]
 
