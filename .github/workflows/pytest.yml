@@ -81,7 +81,7 @@ jobs:
                   python-version-file: .python-version
 
             - name: Lint Code Base
-              uses: github/super-linter/slim@v5
+              uses: github/super-linter/slim@v6
               env:
                   LINTER_RULES_PATH: ./
                   LOG_LEVEL: WARN
