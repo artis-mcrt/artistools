@@ -318,9 +318,10 @@ def add_mass_to_center(griddata, t_model_in_days, vmax, args):
 def makemodelfromgriddata(
     gridfolderpath=Path(),
     outputpath=Path(),
-    targetmodeltime_days=None,
+    targetmodeltime_days: None | float = None,
     traj_root: Path | str | None = None,
-    dimensions=3,
+    dimensions: int = 3,
+    densityscale: float = 1.0,
     args=None,
 ) -> None:
     pddfmodel, t_model_days, t_mergertime_s, vmax, modelmeta = at.inputmodel.modelfromhydro.read_griddat_file(
@@ -344,6 +345,9 @@ def makemodelfromgriddata(
     assert dfmodel["inputcellid"].dtype in pl.INTEGER_DTYPES
     assert isinstance(dfmodel, pl.DataFrame)
     dfmodel = dfmodel.with_columns(pl.col("inputcellid").cast(pl.Int32))  # pylint: disable=no-member
+    if densityscale != 1.0:
+        dfmodel = dfmodel.with_columns(rho=pl.col("rho") * densityscale, mass_g=pl.col("mass_g") * densityscale)
+        print(f"Densities will be scaled by {densityscale}")
 
     if traj_root is not None:
         print(f"Nuclear network abundances from {traj_root} will be used")
@@ -425,6 +429,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-targetmodeltime_days", "-t", type=float, default=0.1, help="Time in days for the output model snapshot"
     )
+    parser.add_argument(
+        "-densityscale", type=float, default=1.0, help="Multiply densities by this factor before writing to model file"
+    )
     parser.add_argument("-outputpath", "-o", default=None, help="Path for output model files")
 
 
@@ -453,6 +460,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         targetmodeltime_days=args.targetmodeltime_days,
         traj_root=args.trajectoryroot,
         dimensions=args.dimensions,
+        densityscale=args.densityscale,
     )
 
 
