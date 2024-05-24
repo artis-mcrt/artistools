@@ -13,6 +13,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import polars as pl
+import polars.selectors as cs
 
 import artistools as at
 
@@ -638,9 +639,10 @@ def add_derived_cols_to_modeldata(
             rho=(pl.when(pl.col("logrho") > -98).then(10 ** pl.col("logrho")).otherwise(0.0))
         )
 
-    dfmodel = dfmodel.with_columns(mass_g=(pl.col("rho") * pl.col("volume"))).with_columns([
-        (pl.col(colname) / 29979245800.0).alias(f"{colname}_on_c") for colname in dfmodel.columns
-    ])
+    # add vel_*_on_c scaled velocities
+    dfmodel = dfmodel.with_columns(mass_g=(pl.col("rho") * pl.col("volume"))).with_columns(
+        (cs.starts_with("vel_") / 29979245800.0).name.suffix("_on_c")
+    )
 
     if unknown_cols := [
         col
