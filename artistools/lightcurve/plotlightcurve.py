@@ -558,6 +558,8 @@ def make_lightcurve_plot(
             )
             plottedsomething = plottedsomething or (lcdataframes is not None)
 
+        print()
+
         if plottedsomething:
             lcindex += 1
 
