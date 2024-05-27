@@ -128,7 +128,8 @@ def read_modelfile_text(
             onelinepercellformat = False
 
     if onelinepercellformat and "  " not in data_line_even and "  " not in data_line_odd and not getheadersonly:
-        print("  using fast method polars.read_csv (requires one line per cell and single space delimiters)")
+        if not printwarningsonly:
+            print("  using fast method polars.read_csv (requires one line per cell and single space delimiters)")
 
         pldtypes = {col: pl.Int32 if col == "inputcellid" else pl.Float32 for col in columns}
 
