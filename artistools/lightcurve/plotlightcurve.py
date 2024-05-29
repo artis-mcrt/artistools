@@ -605,6 +605,8 @@ def make_lightcurve_plot(
         axis.set_ylabel("Absolute Bolometric Magnitude")
     else:
         str_units = r" [{}$\mathrm{{L}}_\odot$]" if args.Lsun else " [{}erg/s]"
+        if args.logscaley:
+            str_units = str_units.replace("{}", "")
         if args.plotdeposition:
             yvarname = r"$L$ or $\dot{{E}}$"
         elif escape_type == "TYPE_GAMMA":
