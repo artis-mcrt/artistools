@@ -223,14 +223,15 @@ def plot_line_estimators(axis, radfielddata, xmin, xmax, modelgridindex=None, ti
     """Plot the Jblue_lu values from the detailed line estimators on a spectrum."""
     ymax = -1
 
-    radfielddataselected = (
-        radfielddata.query(
-            "bin_num < -1"
-            + (" & modelgridindex==@modelgridindex" if modelgridindex else "")
-            + (" & timestep==@timestep" if timestep else "")
-        )[["nu_upper", "J_nu_avg"]]
-        .eval("lambda_angstroms = 2.99792458e18 / nu_upper")
-        .eval("Jb_lambda = J_nu_avg * (nu_upper ** 2) / 2.99792458e18")
+    radfielddataselected = radfielddata.query(
+        "bin_num < -1"
+        + (" & modelgridindex==@modelgridindex" if modelgridindex else "")
+        + (" & timestep==@timestep" if timestep else "")
+    )[["nu_upper", "J_nu_avg"]]
+
+    radfielddataselected["lambda_angstroms"] = 2.99792458e18 / radfielddataselected["nu_upper"]
+    radfielddataselected["Jb_lambda"] = (
+        radfielddataselected["J_nu_avg"] * (radfielddataselected["nu_upper"] ** 2) / 2.99792458e18
     )
 
     ymax = radfielddataselected["Jb_lambda"].max()
