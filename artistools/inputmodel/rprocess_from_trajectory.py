@@ -298,7 +298,7 @@ def get_gridparticlecontributions(gridcontribpath: Path | str) -> pl.DataFrame:
         at.firstexisting("gridcontributions.txt", folder=gridcontribpath, tryzipped=True),
         has_header=True,
         separator=" ",
-        dtypes={
+        schema_overrides={
             "particleid": pl.Int32,
             "cellindex": pl.Int32,
             "frac_of_cellmass": pl.Float32,

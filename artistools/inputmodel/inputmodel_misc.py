@@ -141,7 +141,7 @@ def read_modelfile_text(
             n_rows=npts_model,
             has_header=False,
             skip_rows=numheaderrows,
-            dtypes=pldtypes,
+            schema_overrides=pldtypes,
             truncate_ragged_lines=True,
         )
     else:
