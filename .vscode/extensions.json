@@ -2,6 +2,7 @@
     "recommendations": [
         "ms-python.mypy-type-checker",
         "charliermarsh.ruff",
-        "sourcery.sourcery"
+        "sourcery.sourcery",
+        "usernamehw.errorlens"
     ]
 }
