@@ -1,5 +1,7 @@
 """Artistools - spectra related functions."""
 
-from artistools.nonthermal import solvespencerfanocmd
-from artistools.nonthermal.plotnonthermal import addargs
+__all__ = ["plot"]
+
+from artistools.nonthermal import solvespencerfanocmd as solvespencerfanocmd
+from artistools.nonthermal.plotnonthermal import addargs as addargs
 from artistools.nonthermal.plotnonthermal import main as plot
