@@ -1,2 +1,2 @@
-from artistools.atomic._atomic_core import get_ionrecombratecalibration
-from artistools.atomic._atomic_core import get_levels
+from artistools.atomic._atomic_core import get_ionrecombratecalibration as get_ionrecombratecalibration
+from artistools.atomic._atomic_core import get_levels as get_levels
