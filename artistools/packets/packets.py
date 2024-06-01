@@ -363,7 +363,7 @@ def readfile_text(
             comment_prefix="#",
             new_columns=column_names,
             infer_schema_length=20000,
-            dtypes=dtype_overrides,
+            schema_overrides=dtype_overrides,
         )
 
     except Exception:
@@ -397,7 +397,7 @@ def read_virtual_packets_text_file(vpacketsfiletext: Path | str, column_names: l
         has_header=False,
         comment_prefix="#",
         new_columns=column_names,
-        dtypes={
+        schema_overrides={
             "emissiontype": pl.Int32,
             "trueemissiontype": pl.Int32,
             "absorption_type": pl.Int32,

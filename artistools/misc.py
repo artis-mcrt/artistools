@@ -612,7 +612,7 @@ def get_elsymbols_df() -> pl.DataFrame:
             at.get_config()["path_datadir"] / "elements.csv",
             separator=",",
             has_header=True,
-            dtypes={"Z": pl.Int32},
+            schema_overrides={"Z": pl.Int32},
         )
         .drop("name")
         .rename({"symbol": "elsymbol", "Z": "atomic_number"})
@@ -1013,7 +1013,7 @@ def get_bflist(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame
     compositiondata = get_composition_data(modelpath)
     bflistpath = firstexisting(["bflist.out", "bflist.dat"], folder=modelpath, tryzipped=True)
     print(f"Reading {bflistpath}")
-    dtypes = {
+    schema = {
         "bfindex": pl.Int32,
         "elementindex": pl.Int32,
         "ionindex": pl.Int32,
@@ -1027,10 +1027,10 @@ def get_bflist(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame
             has_header=False,
             separator=" ",
             new_columns=["bfindex", "elementindex", "ionindex", "lowerlevel", "upperionlevel"],
-            dtypes=dtypes,
+            schema_overrides=schema,
         ).lazy()
     except pl.NoDataError:
-        dfboundfree = pl.DataFrame(schema=dtypes).lazy()
+        dfboundfree = pl.DataFrame(schema=schema).lazy()
 
     dfboundfree = dfboundfree.with_columns(
         atomic_number=pl.col("elementindex").map_elements(
