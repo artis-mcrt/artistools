@@ -322,4 +322,3 @@ else
         compdef _python_argcomplete plotartisviewingangles
     fi
 fi
-
