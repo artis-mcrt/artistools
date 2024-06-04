@@ -151,10 +151,14 @@ def get_closest_network_timestep(
         return int(dfevol["nstep"].to_numpy()[idx])
 
     if cond == "greaterthan":
-        return dfevol[dfevol["timesec"] > timesec]["nstep"].min()
+        step = dfevol[dfevol["timesec"] > timesec]["nstep"].min()
+        assert isinstance(step, int)
+        return step
 
     if cond == "lessthan":
-        return dfevol[dfevol["timesec"] < timesec]["nstep"].max()
+        step = dfevol[dfevol["timesec"] < timesec]["nstep"].max()
+        assert isinstance(step, int)
+        return step
 
     raise AssertionError
 

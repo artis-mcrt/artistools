@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 
-
 import argparse
 import typing as t
 from functools import lru_cache
 from pathlib import Path
 
+import matplotlib as mpl
+import matplotlib.axes
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -51,7 +52,7 @@ def read_files(modelpath: Path, timestep: int = -1, modelgridindex: int = -1) ->
     return nonthermaldata
 
 
-def make_xs_plot(axis: plt.Axes, nonthermaldata: pd.DataFrame, args: argparse.Namespace) -> None:
+def make_xs_plot(axis: mpl.axes.Axes, nonthermaldata: pd.DataFrame, args: argparse.Namespace) -> None:
     dfcollion = pynt.collion.read_colliondata()
 
     arr_en = nonthermaldata["energy_ev"].unique()

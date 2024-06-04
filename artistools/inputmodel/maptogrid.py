@@ -10,6 +10,7 @@ from pathlib import Path
 
 import argcomplete
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 import polars as pl
 
@@ -74,7 +75,7 @@ def get_wij() -> np.ndarray:
     return wij
 
 
-def kernelvals2(rij2: float, hmean: float, wij: np.ndarray) -> float:  # ist schnell berechnet aber keine Gradienten
+def kernelvals2(rij2: float, hmean: float, wij: npt.NDArray) -> float:  # ist schnell berechnet aber keine Gradienten
     hmean21 = 1.0 / hmean**2
     hmean31 = hmean21 / hmean
     v2 = rij2 * hmean21
@@ -82,7 +83,9 @@ def kernelvals2(rij2: float, hmean: float, wij: np.ndarray) -> float:  # ist sch
     dxx = v2 - index * dvtable
     index1 = index + 1
     dwdx = (wij[index1] - wij[index]) / dvtable
-    return (wij[index] + dwdx * dxx) * hmean31
+    val = (wij[index] + dwdx * dxx) * hmean31
+    assert isinstance(val, float)
+    return val
 
 
 def maptogrid(

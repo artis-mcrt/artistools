@@ -11,6 +11,7 @@ from functools import partial
 from pathlib import Path
 
 import matplotlib as mpl
+import matplotlib.axes
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
@@ -29,12 +30,14 @@ def print_floers_line_ratio(
         index_low, index_high = (
             int(np.searchsorted(arr_lambda_angstroms, wl, side="left")) for wl in (lambda_low, lambda_high)
         )
-        return abs(
+        lineflux = abs(
             np.trapz(
                 arr_f_lambda[index_low:index_high],
                 x=arr_lambda_angstroms[index_low:index_high],
             )
         )
+        assert isinstance(lineflux, float)
+        return lineflux
 
     f_12570 = get_line_flux(12570 - 200, 12570 + 200, arr_f_lambda, arr_lambda_angstroms)
     f_7155 = get_line_flux(7000, 7350, arr_f_lambda, arr_lambda_angstroms)
@@ -500,7 +503,7 @@ def get_packets_with_emission_conditions(
 
 
 def plot_nne_te_points(
-    axis: plt.Axes,
+    axis: mpl.axes.Axes,
     serieslabel: str,
     em_log10nne: t.Sequence[float],
     em_Te: t.Sequence[float],
