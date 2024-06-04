@@ -42,8 +42,7 @@ def get_bol_lc_from_lightcurveout(modelpath: Path, res: bool = False) -> pd.Data
         for dirbin, pldf in at.split_multitable_dataframe(lcdata).items()
     }
 
-    times = lcdataframes[0]["time"]
-    lightcurvedata = {"time": times}
+    lightcurvedata = {"time": np.array(lcdataframes[0]["time"])}
 
     nangles = len(lcdataframes) if res else 1
     for angle in range(nangles):

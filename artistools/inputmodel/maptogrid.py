@@ -206,8 +206,11 @@ def maptogrid(
 
     totmass = dfsnapshot["pmass"].sum()
     rmean = dfsnapshot["dis"].mean()
+    assert isinstance(rmean, float)
     hmean = dfsnapshot["h"].mean()
+    assert isinstance(hmean, float)
     rmax = dfsnapshot["dis"].max()
+    assert isinstance(rmax, float)
     with Path(outputfolderpath, "ejectapartanalysis.dat").open(mode="w", encoding="utf-8") as fpartanalysis:
         fpartanalysis.writelines(
             f'{part["dis"]} {part["h"]} {part["h"] / part["dis"]} {part["vrad"]} {part["vperp"]} {part["vtot"]}\n'

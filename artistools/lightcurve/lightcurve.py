@@ -378,6 +378,7 @@ def get_spectrum_in_filter_range(
         average_over_phi=average_over_phi,
         average_over_theta=average_over_theta,
     )
+    assert spectrum is not None
 
     wavelength_from_spectrum, flux = [], []
     for wavelength, flambda in zip(spectrum["lambda_angstroms"], spectrum["f_lambda"]):

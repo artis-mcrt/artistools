@@ -1,7 +1,8 @@
 """Artistools - light curve functions."""
 
-__all__ = ["plot"]
+__all__ = ["plot", "plotlightcurve"]
 
+from artistools.lightcurve import plotlightcurve
 from artistools.lightcurve.lightcurve import bolometric_magnitude as bolometric_magnitude
 from artistools.lightcurve.lightcurve import evaluate_magnitudes as evaluate_magnitudes
 from artistools.lightcurve.lightcurve import generate_band_lightcurve_data as generate_band_lightcurve_data

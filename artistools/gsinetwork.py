@@ -13,6 +13,7 @@ from pathlib import Path
 import argcomplete
 import matplotlib.pyplot as plt
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 import polars as pl
 
@@ -299,7 +300,7 @@ def plot_cell_abund_evolution(
 
 
 def get_particledata(
-    arr_time_s: t.Sequence[float],
+    arr_time_s: t.Sequence[float] | npt.NDArray[np.float64],
     arr_strnuc_z_n: list[tuple[str, int, int]],
     traj_root: Path,
     particleid: int,

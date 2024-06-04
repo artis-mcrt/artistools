@@ -27,7 +27,7 @@ from artistools import transitions as transitions
 from artistools import writecomparisondata as writecomparisondata
 from artistools.__main__ import addargs as addargs
 from artistools.__main__ import main as main
-from artistools.configuration import get_config
+from artistools.configuration import get_config as get_config
 from artistools.configuration import set_config as set_config
 from artistools.estimators import read_estimators as read_estimators
 from artistools.inputmodel import add_derived_cols_to_modeldata as add_derived_cols_to_modeldata

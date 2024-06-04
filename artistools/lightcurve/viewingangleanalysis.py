@@ -797,7 +797,7 @@ def plot_viewanglebrightness_at_fixed_time(modelpath, args):
     timetoplot = at.match_closest_time(reftime=args.timedays, searchtimes=lcdataframes[0]["time"])
     print(timetoplot)
 
-    for angleindex, lcdata in enumerate(lcdataframes):
+    for angleindex, lcdata in enumerate(lcdataframes.items()):
         angle = angleindex
         plotkwargs, _ = at.lightcurve.plotlightcurve.get_viewinganglecolor_for_colorbar(
             angle, costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, plotkwargs, args

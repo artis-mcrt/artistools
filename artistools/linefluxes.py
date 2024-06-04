@@ -13,6 +13,7 @@ from pathlib import Path
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 from astropy import units as u
 
@@ -536,7 +537,7 @@ def plot_nne_te_points(
     #           fillstyle='full', color=color_b)
 
 
-def plot_nne_te_bars(axis, serieslabel, em_log10nne, em_Te, color):
+def plot_nne_te_bars(axis, serieslabel, em_log10nne, em_Te, color) -> None:
     if len(em_log10nne) == 0:
         return
     errorbarkwargs = {
@@ -572,18 +573,21 @@ def make_emitting_regions_plot(args):
         "Flörs+2020",
     ]  # , 'Floers CMFGEN', 'Floers Smyth']
     refdatacolors = ["0.0", "C1", "C2", "C4"]
-    refdatakeys = [None for _ in refdatafilenames]
-    refdatatimes = [None for _ in refdatafilenames]
-    refdatapoints = [None for _ in refdatafilenames]
+    refdatakeys: list[list[str] | None] = [None for _ in refdatafilenames]
+    refdatatimes: list[npt.NDArray | None] = [None for _ in refdatafilenames]
+    refdatapoints: list[list[float] | None] = [None for _ in refdatafilenames]
     for refdataindex, refdatafilename in enumerate(refdatafilenames):
+        floers_te_nne: dict[str, t.Any]
         with Path(refdatafilename).open(encoding="utf-8") as data_file:
             floers_te_nne = json.loads(data_file.read())
 
         # give an ordering and index to dict items
-        refdatakeys[refdataindex] = sorted(floers_te_nne.keys(), key=float)  # strings, not floats
-        refdatatimes[refdataindex] = np.array([float(t) for t in refdatakeys[refdataindex]])
-        refdatapoints[refdataindex] = [floers_te_nne[t] for t in refdatakeys[refdataindex]]
-        print(f"{refdatafilename} data available for times: {list(refdatatimes[refdataindex])}")
+        refdatakeys_thisseries = sorted(floers_te_nne.keys(), key=float)  # strings, not floats
+        assert refdatakeys_thisseries is not None
+        refdatakeys[refdataindex] = refdatakeys_thisseries
+        refdatatimes[refdataindex] = np.array([float(t) for t in refdatakeys_thisseries])
+        refdatapoints[refdataindex] = [floers_te_nne[t] for t in refdatakeys_thisseries]
+        print(f"{refdatafilename} data available for times: {list(refdatakeys_thisseries)}")
 
     times_days = (np.array(args.timebins_tstart) + np.array(args.timebins_tend)) / 2.0
 
@@ -594,9 +598,9 @@ def make_emitting_regions_plot(args):
     pd.set_option("display.width", 250)
     pd.options.display.max_rows = 500
 
-    emdata_all = {}
-    log10nnedata_all = {}
-    Tedata_all = {}
+    emdata_all: dict[int, dict[tuple[int, str], dict[str, npt.NDArray]]] = {}
+    log10nnedata_all: dict[int, dict[int, list[float]]] = {}
+    Tedata_all: dict[int, dict[int, list[float]]] = {}
 
     # data is collected, now make plots
     defaultoutputfile = "emittingregions.pdf"
@@ -637,7 +641,10 @@ def make_emitting_regions_plot(args):
                         f"{args.emtypecolumn} in @feature.linelistindices", inplace=False
                     )
                     if dfpackets_selected.empty:
-                        emdata_all[modelindex][(tmid, feature.colname)] = {"em_log10nne": [], "em_Te": []}
+                        emdata_all[modelindex][(tmid, feature.colname)] = {
+                            "em_log10nne": np.array([]),
+                            "em_Te": np.array([]),
+                        }
                     else:
                         emdata_all[modelindex][(tmid, feature.colname)] = {
                             "em_log10nne": dfpackets_selected.em_log10nne.to_numpy(),
@@ -896,6 +903,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     args.emtypecolumn = "emissiontype" if args.use_lastemissiontype else "trueemissiontype"
 
+    assert isinstance(args.label, list)
     for i in range(len(args.label)):
         if args.label[i] is None:
             assert hasattr(args.label, "__setitem__")

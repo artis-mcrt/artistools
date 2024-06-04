@@ -1,3 +1,4 @@
+from pathlib import Path
 from unittest import mock
 
 import matplotlib.axes
@@ -9,7 +10,7 @@ import artistools as at
 
 modelpath = at.get_config()["path_testdata"] / "testmodel"
 modelpath_classic_3d = at.get_config()["path_testdata"] / "test-classicmode_3d"
-outputpath = at.get_config()["path_testoutput"]
+outputpath = Path(at.get_config()["path_testoutput"])
 
 
 @mock.patch.object(matplotlib.axes.Axes, "plot", side_effect=matplotlib.axes.Axes.plot, autospec=True)
@@ -30,7 +31,13 @@ def test_estimator_snapshot(mockplot, benchmark) -> None:
         [(pl.col("heating_coll") - pl.col("cooling_coll")).alias("collisional heating - cooling")],
     ]
 
-    at.estimators.plot(argsraw=[], modelpath=modelpath, plotlist=plotlist, outputfile=outputpath, timedays=300)
+    at.estimators.plot(
+        argsraw=[],
+        modelpath=modelpath,
+        plotlist=plotlist,
+        outputfile=outputpath / "test_estimator_snapshot",
+        timedays=300,
+    )
     xarr = [0.0, 4000.0]
     for x in mockplot.call_args_list:
         assert xarr == x[0][1]
@@ -99,7 +106,13 @@ def test_estimator_averaging(mockplot, benchmark) -> None:
         [(pl.col("heating_coll") - pl.col("cooling_coll")).alias("collisional heating - cooling")],
     ]
 
-    at.estimators.plot(argsraw=[], modelpath=modelpath, plotlist=plotlist, outputfile=outputpath, timestep="50-54")
+    at.estimators.plot(
+        argsraw=[],
+        modelpath=modelpath,
+        plotlist=plotlist,
+        outputfile=outputpath / "test_estimator_averaging",
+        timestep="50-54",
+    )
 
     xarr = [0.0, 4000.0]
     for x in mockplot.call_args_list:
@@ -161,7 +174,13 @@ def test_estimator_snapshot_classic_3d(mockplot) -> None:
         ["cooling_adiabatic", "cooling_coll", "cooling_fb", "cooling_ff", ["_yscale", "linear"]],
     ]
 
-    at.estimators.plot(argsraw=[], modelpath=modelpath_classic_3d, plotlist=plotlist, outputfile=outputpath, timedays=4)
+    at.estimators.plot(
+        argsraw=[],
+        modelpath=modelpath_classic_3d,
+        plotlist=plotlist,
+        outputfile=outputpath / "test_estimator_snapshot_classic_3d",
+        timedays=4,
+    )
 
     # order of keys is important
     expectedvals = {
@@ -224,7 +243,7 @@ def test_estimator_snapshot_classic_3d_x_axis(mockplot) -> None:
         argsraw=[],
         modelpath=modelpath_classic_3d,
         plotlist=plotlist,
-        outputfile=outputpath,
+        outputfile=outputpath / "test_estimator_snapshot_classic_3d_x_axis",
         timedays=4,
         readonlymgi="alongaxis",
         axis="+x",
@@ -274,5 +293,10 @@ def test_estimator_snapshot_classic_3d_x_axis(mockplot) -> None:
 @pytest.mark.benchmark()
 def test_estimator_timeevolution(mockplot) -> None:
     at.estimators.plot(
-        argsraw=[], modelpath=modelpath, outputfile=outputpath, plotlist=[["Te", "nne"]], modelgridindex=0, x="time"
+        argsraw=[],
+        modelpath=modelpath,
+        outputfile=outputpath / "test_estimator_timeevolution",
+        plotlist=[["Te", "nne"]],
+        modelgridindex=0,
+        x="time",
     )

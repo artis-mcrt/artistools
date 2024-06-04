@@ -146,8 +146,8 @@ def plot_2d_initial_abundances(modelpath, args=None) -> None:
         sliceaxis: AxisType = args.sliceaxis
 
         axeschars: list[AxisType] = ["x", "y", "z"]
-        plotaxis1 = next(ax for ax in axeschars if ax != sliceaxis)
-        plotaxis2 = next(ax for ax in axeschars if ax not in {sliceaxis, plotaxis1})
+        plotaxis1: AxisType = next(ax for ax in axeschars if ax != sliceaxis)
+        plotaxis2: AxisType = next(ax for ax in axeschars if ax not in {sliceaxis, plotaxis1})
         print(f"Plotting slice through {sliceaxis}=0, plotting {plotaxis1} vs {plotaxis2}")
 
         df2dslice = get_2D_slice_through_3d_model(
@@ -484,7 +484,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     args.plotvars = ["cellYe" if var == "Ye" else var for var in args.plotvars]
 
     if not args.modelpath:
-        args.modelpath = ["."]
+        args.modelpath = Path()
 
     if args.plot3d:
         make_3d_plot(Path(args.modelpath), args)

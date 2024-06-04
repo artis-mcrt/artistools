@@ -28,6 +28,10 @@ def read_modelfile_text(
     onelinepercellformat = None
 
     modelmeta: dict[str, t.Any] = {"headercommentlines": []}
+    xmax_tmodel: float = 0.0
+    ncoordgridx: int = 0
+    ncoordgridy: int = 0
+    ncoordgridz: int = 0
 
     if not printwarningsonly and not getheadersonly:
         print(f"Reading {filename}")
@@ -735,11 +739,11 @@ def get_mean_cell_properties_of_angle_bin(
 
     dfmodeldata["rho"][dfmodeldata["rho"] == 0] = None
 
-    cell_velocities = np.unique(dfmodeldata["vel_x_min"].values)
+    cell_velocities = np.unique(dfmodeldata["vel_x_min"].to_numpy())
     cell_velocities = cell_velocities[cell_velocities >= 0]
     velocity_bins = np.append(cell_velocities, vmax_cmps)
 
-    mid_velocities = np.unique(dfmodeldata["vel_x_mid"].values)
+    mid_velocities = np.unique(dfmodeldata["vel_x_mid"].to_numpy())
     mid_velocities = mid_velocities[mid_velocities >= 0]
 
     mean_bin_properties = {
@@ -757,7 +761,7 @@ def get_mean_cell_properties_of_angle_bin(
         # get cells with bin number
         dfanglebin = dfmodeldata.query("cos_bin == @cos_bin_number", inplace=False)
 
-        binned = pd.cut(dfanglebin["vel_r_mid"], velocity_bins, labels=False, include_lowest=True)
+        binned = pd.cut(x=dfanglebin["vel_r_mid"], bins=list(velocity_bins), labels=False, include_lowest=True)
         for binindex, mean_rho in dfanglebin.groupby(binned)["rho"].mean().iteritems():
             mean_bin_properties[bin_number]["mean_rho"][binindex] += mean_rho
         if "Ye" in dfmodeldata:
@@ -774,6 +778,7 @@ def get_standard_columns(
     dimensions: int, includenico57: bool = False, includeabund: bool = True, pos_unknown: bool = False
 ) -> list[str]:
     """Get standard (artis classic) columns for modeldata DataFrame."""
+    cols: list[str] = []
     match dimensions:
         case 1:
             cols = ["inputcellid", "vel_r_max_kmps", "logrho"]
@@ -1346,11 +1351,13 @@ def scale_model_to_time(
     targetmodeltime_days: float,
     t_model_days: float | None = None,
     modelmeta: dict[str, t.Any] | None = None,
-) -> tuple[pd.DataFrame, dict[str, t.Any] | None]:
+) -> tuple[pd.DataFrame, dict[str, t.Any]]:
     """Homologously expand model to targetmodeltime_days by reducing densities and adjusting cell positions."""
     if t_model_days is None:
         assert modelmeta is not None
         t_model_days = modelmeta["t_model_days"]
+
+    assert t_model_days is not None
 
     timefactor = targetmodeltime_days / t_model_days
 
@@ -1367,11 +1374,13 @@ def scale_model_to_time(
         elif col == "logrho":
             dfmodel["logrho"] += math.log10(timefactor**-3)
 
-    if modelmeta is not None:
-        modelmeta["t_model_days"] = targetmodeltime_days
-        modelmeta.get("headercommentlines", []).append(
-            f"scaled from {t_model_days} to {targetmodeltime_days} (no abund change from decays)"
-        )
+    if modelmeta is None:
+        modelmeta = {}
+
+    modelmeta["t_model_days"] = targetmodeltime_days
+    modelmeta.get("headercommentlines", []).append(
+        f"scaled from {t_model_days} to {targetmodeltime_days} (no abund change from decays)"
+    )
 
     return dfmodel, modelmeta
 

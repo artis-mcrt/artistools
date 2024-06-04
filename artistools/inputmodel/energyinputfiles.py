@@ -157,7 +157,7 @@ def get_rprocess_calculation_files(path_to_rprocess_calculation, interpolate_tra
         tar = tarfile.open(path_to_rprocess_calculation / file, mode="r:*")
 
         energythermo_file = tar.extractfile(member=energy_thermo_filepath)
-        energy_thermo_data = pd.read_csv(energythermo_file, sep=r"\s+")
+        energy_thermo_data = pd.read_csv(energythermo_file, sep=r"\s+")  # pyright: ignore[reportArgumentType]
         # print(energy_thermo_data['Qdot'])
         # print(energy_thermo_data['time/s'])
 
@@ -202,7 +202,7 @@ def make_energydistribution_weightedbyrho(rho, E_tot_per_gram, Mtot_grams):
     return pd.DataFrame(data=energydistdata)
 
 
-def make_energy_files(rho, Mtot_grams, outputpath=None, modelpath=None, model=None):
+def make_energy_files(rho, Mtot_grams, outputpath: Path | str, modelpath=None, model=None):
     powerlaw = True
     if powerlaw:
         print("Using power law for energy rate")
@@ -225,8 +225,8 @@ def make_energy_files(rho, Mtot_grams, outputpath=None, modelpath=None, model=No
     # else:
     # energydistributiondata = energy_distribution_from_Q_rprocess(modelpath, model)
 
-    write_energydistribution_file(energydistributiondata, outputfilepath=outputpath)
-    write_energyrate_file(times_and_rate, outputfilepath=outputpath)
+    write_energydistribution_file(energydistributiondata, outputfilepath=str(outputpath))
+    write_energyrate_file(times_and_rate, outputfilepath=str(outputpath))
 
 
 def plot_energy_rate(modelpath):

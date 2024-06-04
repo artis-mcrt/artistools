@@ -143,7 +143,7 @@ def plot_last_emission_velocities_histogram(
     nprocs_read, dfpackets = at.packets.get_packets_pl(
         modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
-    dfpackets = at.packets.bin_packet_directions_lazypolars(dfpackets=dfpackets, phibintype="artis_pi_reversal")
+    dfpackets = at.packets.bin_packet_directions_lazypolars(dfpackets=dfpackets)
     dfpackets = at.packets.add_derived_columns_lazy(dfpackets, modelmeta=modelmeta, dfmodel=dfmodel)
     print("read packets data")
 

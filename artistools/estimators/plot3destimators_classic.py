@@ -1,5 +1,5 @@
+import argparse
 import typing as t
-from collections import namedtuple
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -19,10 +19,11 @@ def read_selected_mgi(
     )
 
 
-def get_modelgridcells_along_axis(modelpath, args=None):
-    if not args:
-        ArgsTuple = namedtuple("ArgsTuple", "modelpath sliceaxis other_axis1 other_axis2 positive_axis")
-        args = ArgsTuple(modelpath=modelpath, sliceaxis="x", other_axis1="z", other_axis2="y", positive_axis=True)
+def get_modelgridcells_along_axis(modelpath, args: argparse.Namespace | None = None):
+    if args is None:
+        args = argparse.Namespace(
+            modelpath=modelpath, sliceaxis="x", other_axis1="z", other_axis2="y", positive_axis=True
+        )
     else:
         axes = ["x", "y", "z"]
         axes.remove(args.sliceaxis)

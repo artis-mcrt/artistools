@@ -127,7 +127,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     modeldata = [
         (
             {
-                "inputcellid": mgi + 1,
+                "inputcellid": mgi + 1,  # pyright: ignore[reportOperatorIssue]
                 "vel_r_max_kmps": densityrow["vel_r_max_kmps"],
                 "logrho": math.log10(densityrow["rho"]),
             }

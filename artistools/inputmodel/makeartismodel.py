@@ -110,6 +110,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
                 *modelmeta.get("headercommentlines", []),
                 f"Dimension reduced from {ndim_in}-dimensional model",
             ]
+            assert dfelabundances_out is not None
             at.inputmodel.save_initelemabundances(dfelabundances_out, outpath=outdir)
             at.inputmodel.save_modeldata(
                 dfmodel=dfmodel_out,

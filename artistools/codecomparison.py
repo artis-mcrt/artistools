@@ -16,9 +16,7 @@ import pandas as pd
 import artistools as at
 
 
-def get_timestep_times(
-    modelpath: Path | str, loc: t.Literal["start", "mid", "end", "delta"] = "mid"
-) -> np.ndarray[t.Any, np.dtype[np.float64]]:
+def get_timestep_times(modelpath: Path | str, loc: t.Literal["start", "mid", "end", "delta"] = "mid") -> list[float]:
     modelpath = Path(modelpath)
     _, modelname, codename = modelpath.parts
 
@@ -37,13 +35,14 @@ def get_timestep_times(
     tends[-1] = tmids[-1] + (tmids[-1] - tstarts[-1])
 
     if loc == "mid":
-        return tmids
+        return list(tmids)
     if loc == "start":
-        return tstarts
+        return list(tstarts)
     if loc == "end":
-        return tends
+        return list(tends)
     if loc == "delta":
-        return tends - tstarts
+        return list(tends - tstarts)
+
     msg = "loc must be one of 'mid', 'start', 'end', or 'delta'"
     raise ValueError(msg)
 
