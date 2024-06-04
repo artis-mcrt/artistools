@@ -323,7 +323,7 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
         args = parser.parse_args([] if kwargs else argsraw)
 
     if not args.modelpath:
-        args.modelpath = ["."]
+        args.modelpath = Path()
 
     if args.elem is not None:
         assert args.atomic_number is None

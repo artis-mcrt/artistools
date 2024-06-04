@@ -210,7 +210,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     args.outputpath.mkdir(parents=True, exist_ok=True)
 
     for modelpath in modelpathlist:
-        model_id = str(modelpath.name).split("_")[0]
+        model_id = str(Path(modelpath).name).split("_")[0]
         print(f"{model_id=}")
 
         estimators = at.estimators.read_estimators(modelpath=modelpath)

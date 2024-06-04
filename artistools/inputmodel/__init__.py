@@ -3,6 +3,7 @@ from artistools.inputmodel import describeinputmodel as describeinputmodel
 from artistools.inputmodel import downscale3dgrid as downscale3dgrid
 from artistools.inputmodel import energyinputfiles as energyinputfiles
 from artistools.inputmodel import from_alcar as from_alcar
+from artistools.inputmodel import inputmodel_misc as inputmodel_misc
 from artistools.inputmodel import makeartismodel as makeartismodel
 from artistools.inputmodel import maptogrid as maptogrid
 from artistools.inputmodel import modelfromhydro as modelfromhydro

@@ -280,8 +280,11 @@ def plot_artis_lightcurve(
     average_over_phi: bool = False,
     average_over_theta: bool = False,
     usedegrees: bool = False,
-    args=None,
+    args: argparse.Namespace | None = None,
 ) -> dict[int, pl.DataFrame] | None:
+    if args is None:
+        args = argparse.Namespace()
+
     lcfilename = None
     modelpath = Path(modelpath)
     if Path(modelpath).is_file():  # handle e.g. modelpath = 'modelpath/light_curve.out'
@@ -301,7 +304,7 @@ def plot_artis_lightcurve(
         print(f"====> {modelname}")
     print(f" modelpath: {modelpath.resolve().parts[-1]}")
 
-    if args is not None and args.title:
+    if hasattr(args, "title"):
         axis.set_title(modelname)
 
     if directionbins is None:
@@ -482,9 +485,11 @@ def make_lightcurve_plot(
     frompackets: bool = False,
     escape_type: t.Literal["TYPE_RPKT", "TYPE_GAMMA"] = "TYPE_RPKT",
     maxpacketfiles: int | None = None,
-    args=None,
+    args: argparse.Namespace | None = None,
 ) -> None:
     """Use light_curve.out or light_curve_res.out files to plot light curve."""
+    if args is None:
+        args = argparse.Namespace()
     conffigwidth = float(at.get_config()["figwidth"])
     fig, axis = plt.subplots(
         nrows=1,

@@ -189,7 +189,7 @@ def timeshift_double_decay(
 
 
 def main() -> None:
-    a = rd_sn_hydro_data(snapshot, reverse="true")
+    a = rd_sn_hydro_data(snapshot, reverse=True)
 
     # Mapping of the CMFGEN species to atomic numbers, and masking IGEs
     # For now I include Ba in the IGE mass fraction, but do not include it as a chemical species

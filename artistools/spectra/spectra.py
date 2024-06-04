@@ -108,7 +108,7 @@ def get_spectrum_at_time(
 ) -> pd.DataFrame:
     if dirbin >= 0:
         if args is not None and args.plotvspecpol and (modelpath / "vpkt.txt").is_file():
-            return get_vspecpol_spectrum(modelpath, time, dirbin, args)
+            return get_vspecpol_spectrum(modelpath, time, dirbin, args).to_pandas()
         assert average_over_phi is not None
         assert average_over_theta is not None
     else:
@@ -1267,7 +1267,7 @@ def print_integrated_flux(
     return integrated_flux
 
 
-def get_reference_spectrum(filename: Path | str) -> tuple[pd.DataFrame, dict[t.Any, t.Any]]:
+def get_reference_spectrum(filename: Path | str) -> tuple[pl.DataFrame, dict[t.Any, t.Any]]:
     if Path(filename).is_file():
         filepath = Path(filename)
     else:
@@ -1335,4 +1335,4 @@ def get_reference_spectrum(filename: Path | str) -> tuple[pd.DataFrame, dict[t.A
         print("Correcting for redshift")
         specdata["lambda_angstroms"] /= 1 + metadata["z"]
 
-    return specdata, metadata
+    return pl.from_pandas(specdata), metadata

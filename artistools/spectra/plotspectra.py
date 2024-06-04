@@ -15,6 +15,7 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import polars as pl
+import polars.selectors as cs
 from matplotlib import ticker
 from matplotlib.artist import Artist
 
@@ -107,7 +108,7 @@ def plot_reference_spectrum(
     axis: plt.Axes,
     xmin: float,
     xmax: float,
-    flambdafilterfunc: t.Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
+    fluxfilterfunc: t.Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     scale_to_peak: float | None = None,
     offset: float = 0,
     scale_to_dist_mpc: float = 1,
@@ -125,7 +126,9 @@ def plot_reference_spectrum(
     if scale_to_dist_mpc:
         print(f"Scale to {scale_to_dist_mpc} Mpc")
         assert metadata["dist_mpc"] > 0  # we must know the true distance in order to scale to some other distance
-        specdata["f_lambda"] *= (metadata["dist_mpc"] / scale_to_dist_mpc) ** 2
+        specdata = specdata.with_columns(
+            f_lambda=pl.col("f_lambda") * ((metadata["dist_mpc"] / scale_to_dist_mpc) ** 2)
+        )
 
     if "label" not in plotkwargs:
         plotkwargs["label"] = metadata.get("label", filename)
@@ -133,29 +136,38 @@ def plot_reference_spectrum(
     if scaletoreftime is not None:
         timefactor = at.spectra.timeshift_fluxscale_co56law(scaletoreftime, float(metadata["t"]))
         print(f" Scale from time {metadata['t']} to {scaletoreftime}, factor {timefactor} using Co56 decay law")
-        specdata["f_lambda"] *= timefactor
+        specdata = specdata.with_columns(f_lambda=pl.col("f_lambda") * timefactor)
         plotkwargs["label"] += f" * {timefactor:.2f}"
 
     if "scale_factor" in metadata:
-        specdata["f_lambda"] *= metadata["scale_factor"]
+        specdata = specdata.with_columns(f_lambda=pl.col("f_lambda") * metadata["scale_factor"])
 
     if metadata.get("mask_telluric", False):
         print("Masking telluric regions")
         z = metadata["z"]
         bands = [(1.35e4, 1.44e4), (1.8e4, 1.94e4)]  # [Angstroms]
-        for band_low_rest, band_high_rest in bands:
-            band_low = band_low_rest / (1 + z)
-            band_high = band_high_rest / (1 + z)
-            # specdata = specdata.query("lambda_angstroms < @band_low or lambda_angstroms > @band_high")
-            specdata.loc[
-                (specdata["lambda_angstroms"] >= band_low) & (specdata["lambda_angstroms"] <= band_high), "f_lambda"
-            ] = math.nan
+        bands_rest = [(band_low / (1 + z), band_high / (1 + z)) for band_low, band_high in bands]
+        # for band_low_rest, band_high_rest in bands:
+        #     band_low = band_low_rest / (1 + z)
+        #     band_high = band_high_rest / (1 + z)
+
+        specdata = specdata.with_columns(
+            f_lambda=pl.when(
+                pl.any_horizontal([
+                    pl.col("lambda_angstroms").is_between(band_low_rest, band_high_rest, closed="both")
+                    for band_low_rest, band_high_rest in bands_rest
+                ])
+            )
+            .then(pl.lit(math.nan))
+            .otherwise(pl.col("f_lambda"))
+        )
+
     print(f"Reference spectrum '{plotkwargs['label']}' has {len(specdata)} points in the plot range")
     print(f" file: {filename}")
 
     print(" metadata: " + ", ".join([f"{k}='{v}'" if hasattr(v, "lower") else f"{k}={v}" for k, v in metadata.items()]))
 
-    specdata = specdata[(specdata["lambda_angstroms"] > xmin) & (specdata["lambda_angstroms"] < xmax)]
+    specdata = specdata.filter(pl.col("lambda_angstroms").is_between(xmin, xmax))
 
     at.spectra.print_integrated_flux(
         specdata["f_lambda"], specdata["lambda_angstroms"], distance_megaparsec=metadata["dist_mpc"]
@@ -170,12 +182,14 @@ def plot_reference_spectrum(
     # clamp negative values to zero
     # specdata['f_lambda'] = specdata['f_lambda'].apply(lambda x: max(0, x))
 
-    if flambdafilterfunc:
+    if fluxfilterfunc:
         print(" applying filter to reference spectrum")
-        specdata.loc[:, "f_lambda"] = flambdafilterfunc(specdata["f_lambda"])
+        specdata = specdata.with_columns(cs.starts_with("f_lambda").map(lambda x: fluxfilterfunc(x.to_numpy())))
 
     if scale_to_peak:
-        specdata["f_lambda_scaled"] = specdata["f_lambda"] / specdata["f_lambda"].max() * scale_to_peak + offset
+        specdata = specdata.with_columns(
+            f_lambda_scaled=pl.col("f_lambda") / pl.col("f_lambda").max() * scale_to_peak + offset
+        )
         ycolumnname = "f_lambda_scaled"
     else:
         ycolumnname = "f_lambda"
@@ -594,8 +608,8 @@ def make_spectrum_plot(
 def make_emissionabsorption_plot(
     modelpath: Path,
     axis: plt.Axes,
+    args: argparse.Namespace,
     filterfunc: t.Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
-    args=None,
     scale_to_peak: float | None = None,
 ) -> tuple[list[Artist], list[str], pl.DataFrame | None]:
     """Plot the emission and absorption contribution spectra, grouped by ion/line/term for an ARTIS model."""
@@ -1009,7 +1023,11 @@ def make_plot(args) -> tuple[plt.Figure, list[plt.Axes], pl.DataFrame]:
         defaultoutputfile = Path("plotspecemission_{time_days_min:.1f}d_{time_days_max:.1f}d{directionbins}.pdf")
 
         plotobjects, plotobjectlabels, dfalldata = make_emissionabsorption_plot(
-            Path(args.specpath[0]), axes[-1], filterfunc, args=args, scale_to_peak=scale_to_peak
+            modelpath=Path(args.specpath[0]),
+            axis=axes[-1],
+            filterfunc=filterfunc,
+            args=args,
+            scale_to_peak=scale_to_peak,
         )
     else:
         legendncol = 1

@@ -44,11 +44,16 @@ def write_flambda_spectra(modelpath: Path) -> None:
         write_spectrum(dfspectrum, outfilepath=outdirectory / f"spectrum_ts{timestep:02.0f}_{tmids[timestep]:.2f}d.txt")
 
     for timestep in timesteps:
-        if dfspectrum_polar := at.spectra.get_spectrum(
-            modelpath=modelpath, timestepmin=timestep, timestepmax=timestep, average_over_phi=True, directionbins=[0]
-        ).get(0, None):
+        dfspectra = at.spectra.get_spectrum(
+            modelpath=modelpath,
+            timestepmin=timestep,
+            timestepmax=timestep,
+            average_over_phi=True,
+            directionbins=[0],
+        )
+        if 0 in dfspectra:
             write_spectrum(
-                dfspectrum_polar,
+                dfspectra[0],
                 outfilepath=outdirectory / f"spectrum_polar00_ts{timestep:02.0f}_{tmids[timestep]:.2f}d.txt",
             )
         else:

@@ -735,11 +735,11 @@ def get_mean_cell_properties_of_angle_bin(
 
     dfmodeldata["rho"][dfmodeldata["rho"] == 0] = None
 
-    cell_velocities = np.unique(dfmodeldata["vel_x_min"].values)
+    cell_velocities = np.unique(dfmodeldata["vel_x_min"].to_numpy())
     cell_velocities = cell_velocities[cell_velocities >= 0]
     velocity_bins = np.append(cell_velocities, vmax_cmps)
 
-    mid_velocities = np.unique(dfmodeldata["vel_x_mid"].values)
+    mid_velocities = np.unique(dfmodeldata["vel_x_mid"].to_numpy())
     mid_velocities = mid_velocities[mid_velocities >= 0]
 
     mean_bin_properties = {
@@ -757,7 +757,7 @@ def get_mean_cell_properties_of_angle_bin(
         # get cells with bin number
         dfanglebin = dfmodeldata.query("cos_bin == @cos_bin_number", inplace=False)
 
-        binned = pd.cut(dfanglebin["vel_r_mid"], velocity_bins, labels=False, include_lowest=True)
+        binned = pd.cut(x=dfanglebin["vel_r_mid"], bins=list(velocity_bins), labels=False, include_lowest=True)
         for binindex, mean_rho in dfanglebin.groupby(binned)["rho"].mean().iteritems():
             mean_bin_properties[bin_number]["mean_rho"][binindex] += mean_rho
         if "Ye" in dfmodeldata:

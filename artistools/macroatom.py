@@ -163,8 +163,9 @@ def read_files(
                 else:
                     dfall = pd.concat([dfall, df_thisfile.copy()], ignore_index=True)
 
-        if dfall is None or len(dfall) == 0:
-            print("No data found")
+    if dfall is None or len(dfall) == 0:
+        msg = "No data found"
+        raise AssertionError(msg)
 
     return dfall
 
