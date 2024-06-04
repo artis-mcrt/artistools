@@ -93,7 +93,6 @@ from artistools.misc import linetuple as linetuple
 from artistools.misc import makelist as makelist
 from artistools.misc import match_closest_time as match_closest_time
 from artistools.misc import merge_pdf_files as merge_pdf_files
-from artistools.misc import namedtuple as namedtuple
 from artistools.misc import parse_range as parse_range
 from artistools.misc import parse_range_list as parse_range_list
 from artistools.misc import read_linestatfile as read_linestatfile
@@ -107,7 +106,7 @@ from artistools.misc import trim_or_pad as trim_or_pad
 from artistools.misc import vec_len as vec_len
 from artistools.misc import zopen as zopen
 from artistools.misc import zopenpl as zopenpl
-from artistools.plottools import set_mpl_style
+from artistools.plottools import set_mpl_style as set_mpl_style
 
 
 def get_path(**kwargs: t.Any) -> None:

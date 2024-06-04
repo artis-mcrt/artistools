@@ -1264,6 +1264,7 @@ def print_integrated_flux(
     assert isinstance(lambda_min, int | float)
     assert isinstance(lambda_max, int | float)
     print(f" integrated flux ({lambda_min:.1f} to " f"{lambda_max:.1f} A): {integrated_flux:.3e} erg/s/cm2")
+    assert isinstance(integrated_flux, float)
     return integrated_flux
 
 

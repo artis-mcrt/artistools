@@ -269,6 +269,7 @@ def add_derived_columns_lazy(
 
 
 def get_packets_text_columns(packetsfile: Path | str, modelpath: Path = Path()) -> list[str]:
+    column_names: list[str] = []
     with at.zopen(packetsfile, mode="rt", encoding="utf-8") as fpackets:
         firstline = fpackets.readline()
 
@@ -282,10 +283,10 @@ def get_packets_text_columns(packetsfile: Path | str, modelpath: Path = Path()) 
             assert inputcolumncount == len(column_names)
         else:
             inputcolumncount = len(firstline.split())
-            column_names = get_column_names_artiscode(modelpath)
-            if column_names:  # found them in the artis code files
+            column_names_artis = get_column_names_artiscode(modelpath)
+            if column_names_artis is not None:  # found them in the artis code files
+                column_names = column_names_artis
                 assert len(column_names) == inputcolumncount
-
             else:  # infer from column positions
                 assert len(columns_full) >= inputcolumncount
                 column_names = columns_full[:inputcolumncount]
@@ -428,8 +429,7 @@ def get_packets_text_paths(modelpath: str | Path, maxpacketfiles: int | None = N
 
 
 def get_vpackets_text_columns(vpacketsfiletext: Path) -> list[str]:
-    firstline = at.zopen(vpacketsfiletext, mode="rt", encoding="utf-8").readline()
-
+    firstline: str = at.zopen(vpacketsfiletext, mode="rt", encoding="utf-8").readline()
     assert firstline.lstrip().startswith("#")
     return firstline.lstrip("#").split()
 

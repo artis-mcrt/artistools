@@ -100,11 +100,13 @@ def add_lte_pops(modelpath, dfpop, columntemperature_tuples, noprint=False, maxl
         )
 
         def f_ltepop(x, T_exc: float, gsg: float, gse: float, ionlevels) -> float:
-            return (
+            ltepop = (
                 ionlevels.iloc[int(x.level)].g
                 / gsg
                 * math.exp(-(ionlevels.iloc[int(x.level)].energy_ev - gse) / k_b / T_exc)
             )
+            assert isinstance(ltepop, float)
+            return ltepop
 
         for columnname, T_exc in columntemperature_tuples:
             dfpop.loc[masknotsuperlevel, columnname] = dfpop.loc[masknotsuperlevel].apply(

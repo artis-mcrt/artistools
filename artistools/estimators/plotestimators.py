@@ -15,6 +15,8 @@ from itertools import chain
 from pathlib import Path
 
 import argcomplete
+import matplotlib as mpl
+import matplotlib.axes
 import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
@@ -48,7 +50,7 @@ def get_ylabel(variable: str) -> str:
 
 
 def plot_init_abundances(
-    ax: plt.Axes,
+    ax: mpl.axes.Axes,
     xlist: list[float],
     specieslist: list[str],
     mgilist: t.Sequence[float],
@@ -122,7 +124,7 @@ def plot_init_abundances(
 
 
 def plot_average_ionisation_excitation(
-    ax: plt.Axes,
+    ax: mpl.axes.Axes,
     xlist: list[float],
     seriestype: str,
     params: t.Sequence[str],
@@ -243,7 +245,7 @@ def plot_average_ionisation_excitation(
 
 
 def plot_levelpop(
-    ax: plt.Axes,
+    ax: mpl.axes.Axes,
     xlist: t.Sequence[int | float] | np.ndarray,
     seriestype: str,
     params: t.Sequence[str],
@@ -322,7 +324,7 @@ def plot_levelpop(
 
 
 def plot_multi_ion_series(
-    ax: plt.Axes,
+    ax: mpl.axes.Axes,
     startfromzero: bool,
     seriestype: str,
     ionlist: t.Sequence[str],
@@ -492,7 +494,7 @@ def plot_multi_ion_series(
 
 
 def plot_series(
-    ax: plt.Axes,
+    ax: mpl.axes.Axes,
     startfromzero: bool,
     variable: str | pl.Expr,
     showlegend: bool,
@@ -609,7 +611,7 @@ def get_xlist(
 
 
 def plot_subplot(
-    ax: plt.Axes,
+    ax: mpl.axes.Axes,
     timestepslist: list[list[int]],
     xlist: list[float | int],
     xvariable: str,

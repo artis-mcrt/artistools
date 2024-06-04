@@ -59,7 +59,7 @@ disallow_any_explicit = false
 disallow_any_generics = false
 disallow_any_unimported = false
 disallow_incomplete_defs = false
-disallow_subclassing_any = false
+disallow_subclassing_any = true
 disallow_untyped_calls = false
 disallow_untyped_defs = false
 error_summary = true
@@ -74,7 +74,7 @@ enable_error_code = [
 exclude = "(build)|(dist)|(tests)|(data)"
 ignore_missing_imports = true
 implicit_optional = false
-implicit_reexport = true
+implicit_reexport = false
 packages = "artistools"
 plugins = 'numpy.typing.mypy_plugin'
 pretty = true
@@ -86,6 +86,7 @@ warn_redundant_casts = true
 warn_unreachable = false
 warn_unused_configs = true
 warn_unused_ignores = true
+warn_return_any = true
 
 # a bit more strict here
 [[tool.mypy.overrides]]
@@ -95,7 +96,6 @@ module = [
     "artistools.inputmodel",
     "artistools.lightcurve",
     "artistools.misc",
-    "artistools.plotspherical",
     "artistools.spectra",
 ]
 check_untyped_defs = true
@@ -104,14 +104,13 @@ disallow_incomplete_defs = true
 disallow_untyped_calls = true
 disallow_untyped_defs = true
 disallow_untyped_decorators = true
-disallow_subclassing_any = true
-warn_return_any = false
 
 # full strict mode
 [[tool.mypy.overrides]]
 module = [
     "artistools.commands",
     "artistools.packets",
+    "artistools.plotspherical",
     "*.__init__",
     "*.__main__",
 ]
@@ -120,9 +119,7 @@ disallow_untyped_calls = true
 disallow_untyped_defs = true
 check_untyped_defs = true
 disallow_untyped_decorators = true
-warn_return_any = true
 disallow_any_generics = true
-disallow_subclassing_any = true
 
 [[tool.mypy.overrides]]
 module = "pyvista"
@@ -250,6 +247,7 @@ ignore = [
 fixable = ["ALL"]
 unfixable = [
     "ERA001",  # commented-out-code (will just delete it!)
+    "F401", # unused-import (can be annoying to have improt disappear while editing)
     "F841",  # unused-variable
     "SIM222", # expr-or-true
     "SIM223", # expr-and-false

@@ -9,6 +9,8 @@ import typing as t
 from pathlib import Path
 
 import argcomplete
+import matplotlib as mpl
+import matplotlib.axes
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
@@ -105,7 +107,7 @@ def plot_polarisation(modelpath: Path, args) -> None:
 
 def plot_reference_spectrum(
     filename: Path | str,
-    axis: plt.Axes,
+    axis: mpl.axes.Axes,
     xmin: float,
     xmax: float,
     fluxfilterfunc: t.Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
@@ -200,7 +202,7 @@ def plot_reference_spectrum(
     return lineplot, plotkwargs["label"], ymax
 
 
-def plot_filter_functions(axis: plt.Axes) -> None:
+def plot_filter_functions(axis: mpl.axes.Axes) -> None:
     filter_names = ["U", "B", "V", "I"]
     colours = ["r", "b", "g", "c", "m"]
 
@@ -219,7 +221,7 @@ def plot_filter_functions(axis: plt.Axes) -> None:
 
 
 def plot_artis_spectrum(
-    axes: t.Collection[plt.Axes],
+    axes: t.Collection[mpl.axes.Axes],
     modelpath: Path | str,
     args,
     scale_to_peak: float | None = None,
@@ -433,7 +435,7 @@ def plot_artis_spectrum(
 
 def make_spectrum_plot(
     speclist: t.Collection[Path | str],
-    axes: t.Sequence[plt.Axes],
+    axes: t.Sequence[mpl.axes.Axes],
     filterfunc: t.Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None,
     args,
     scale_to_peak: float | None = None,
@@ -607,7 +609,7 @@ def make_spectrum_plot(
 
 def make_emissionabsorption_plot(
     modelpath: Path,
-    axis: plt.Axes,
+    axis: mpl.axes.Axes,
     args: argparse.Namespace,
     filterfunc: t.Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     scale_to_peak: float | None = None,
@@ -697,7 +699,7 @@ def make_emissionabsorption_plot(
     )
 
     plotobjectlabels: list[str] = []
-    plotobjects: list[plt.Artist] = []
+    plotobjects: list[mpl.artist.Artist] = []
 
     max_flambda_emission_total = max(
         flambda if (xmin < lambda_ang < xmax) else -99.0
@@ -859,7 +861,7 @@ def make_emissionabsorption_plot(
     return plotobjects, plotobjectlabels, dfaxisdata
 
 
-def make_contrib_plot(axes: t.Iterable[plt.Axes], modelpath: Path, densityplotyvars: list[str], args) -> None:
+def make_contrib_plot(axes: t.Iterable[mpl.axes.Axes], modelpath: Path, densityplotyvars: list[str], args) -> None:
     (_timestepmin, _timestepmax, args.timemin, args.timemax) = at.get_time_range(
         modelpath, args.timestep, args.timemin, args.timemax, args.timedays
     )
@@ -952,7 +954,7 @@ def make_contrib_plot(axes: t.Iterable[plt.Axes], modelpath: Path, densityplotyv
         # ax.pcolormesh(xi, yi, zi.reshape(xi.shape), shading='gouraud', cmap=plt.cm.BuGn_r)
 
 
-def make_plot(args) -> tuple[plt.Figure, list[plt.Axes], pl.DataFrame]:
+def make_plot(args) -> tuple[mpl.figure.Figure, list[mpl.axes.Axes], pl.DataFrame]:
     # font = {'size': 16}
     # mpl.rc('font', **font)
 
