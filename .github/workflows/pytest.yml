@@ -12,26 +12,6 @@ on:
         types: [trigger_checks]
 
 jobs:
-    pre-commit:
-        runs-on: macos-14
-        env:
-            RUFF_OUTPUT_FORMAT: 'github'
-        steps:
-            - name: Checkout Code
-              uses: actions/checkout@v4
-
-            - name: Set up Python
-              uses: actions/setup-python@v5
-              with:
-                  python-version-file: .python-version
-
-            - name: Install dependencies
-              run: |
-                  python3 -m pip install --upgrade pip uv
-                  uv pip install --system -r requirements.txt
-
-            - uses: pre-commit/action@v3.0.1
-
     lint:
         name: Format, lint, and type check
         runs-on: macos-14
@@ -64,6 +44,26 @@ jobs:
 
             - name: Run pylint
               run: pylint --output-format=github artistools
+
+    pre-commit:
+        runs-on: macos-14
+        env:
+            RUFF_OUTPUT_FORMAT: 'github'
+        steps:
+            - name: Checkout Code
+              uses: actions/checkout@v4
+
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version-file: .python-version
+
+            - name: Install dependencies
+              run: |
+                  python3 -m pip install --upgrade pip uv
+                  uv pip install --system -r requirements.txt
+
+            - uses: pre-commit/action@v3.0.1
 
     superlinter:
         name: Super linter
