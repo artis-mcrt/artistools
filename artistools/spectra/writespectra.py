@@ -5,18 +5,21 @@ import typing as t
 from pathlib import Path
 
 import argcomplete
-import pandas as pd
+import polars as pl
 
 import artistools as at
 
 
-def write_spectrum(dfspectrum: pd.DataFrame, outfilepath: Path) -> None:
+def write_spectrum(dfspectrum: pl.DataFrame, outfilepath: Path) -> None:
+    dfspectrum = dfspectrum.filter(pl.col("lambda_angstroms").is_between(1500, 60000))
     with outfilepath.open("w", encoding="utf-8") as spec_file:
         spec_file.write("#lambda f_lambda_1Mpc\n")
         spec_file.write("#[A] [erg/s/cm2/A]\n")
-        dfspectrum = dfspectrum[(dfspectrum.lambda_angstroms > 1500) & (dfspectrum.lambda_angstroms < 60000)]
 
-        dfspectrum.to_csv(spec_file, header=False, sep=" ", index=False, columns=["lambda_angstroms", "f_lambda"])
+        dfspectrum.to_pandas().to_csv(
+            spec_file, header=False, sep=" ", index=False, columns=["lambda_angstroms", "f_lambda"]
+        )
+
     print(f"Saved {outfilepath}")
 
 
@@ -39,9 +42,7 @@ def write_flambda_spectra(modelpath: Path) -> None:
     timesteps = [ts for ts in range(tslast + 1) if tmids[ts] >= tmin_d_valid and tmids[ts] <= tmax_d_valid]
 
     for timestep in timesteps:
-        dfspectrum = at.spectra.get_spectrum(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)[
-            -1
-        ].to_pandas()
+        dfspectrum = at.spectra.get_spectrum(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)[-1]
 
         write_spectrum(dfspectrum, outfilepath=outdirectory / f"spectrum_ts{timestep:02.0f}_{tmids[timestep]:.2f}d.txt")
 

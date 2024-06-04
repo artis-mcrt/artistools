@@ -176,7 +176,7 @@ def make_ionsubplot(
     timestep,
     args,
     lastsubplot,
-):
+) -> None:
     """Plot the level populations the specified ion, cell, and timestep."""
     ionstr = at.get_ionstring(atomic_number, ion_stage, style="chargelatex")
 
@@ -186,7 +186,7 @@ def make_ionsubplot(
         inplace=False,
     ).copy()
 
-    lte_columns = [("n_LTE_T_e", T_e)]
+    lte_columns: list[tuple[str, float]] = [("n_LTE_T_e", T_e)]
     if not args.hide_lte_tr:
         lte_columns.append(("n_LTE_T_R", T_R))
 

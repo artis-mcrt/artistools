@@ -502,6 +502,7 @@ def get_time_range(
             if tmid <= float(timemax):
                 timestepmax = timestep
 
+        assert timestepmax is not None
         if timestepmax < timestepmin:
             if clamp_to_timesteps:
                 msg = f"Specified time range does not include any full timesteps. {timestepmin=} {timestepmax=}"
@@ -795,7 +796,7 @@ def makelist(x: None | t.Sequence[t.Any] | str | Path) -> list[t.Any]:
     """If x is not a list (or is a string), make a list containing x."""
     if x is None:
         return []
-    return list(x) if hasattr(x, "__iter__") else [x]
+    return list(x) if isinstance(x, t.Iterable) else [x]
 
 
 def trim_or_pad(requiredlength: int, *listoflistin: t.Any) -> t.Sequence[t.Sequence[t.Any]]:

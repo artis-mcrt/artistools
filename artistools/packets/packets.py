@@ -7,6 +7,7 @@ from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 import polars as pl
 
@@ -790,7 +791,9 @@ def bin_packet_directions(
     return dfpackets
 
 
-def make_3d_histogram_from_packets(modelpath, timestep_min, timestep_max=None, em_time=True):
+def make_3d_histogram_from_packets(
+    modelpath: str | Path, timestep_min: int, timestep_max: int | None = None, em_time: bool = True
+):
     if timestep_max is None:
         timestep_max = timestep_min
     modeldata, _, vmax_cms = at.inputmodel.get_modeldata_tuple(modelpath)
@@ -806,11 +809,10 @@ def make_3d_histogram_from_packets(modelpath, timestep_min, timestep_max=None, e
     else:
         print("Binning by packet arrival time")
 
-    packetsfiles = at.packets.get_packets_batch_parquet_paths(modelpath)
+    _, packetsfiles = at.packets.get_packets_batch_parquet_paths(modelpath)
 
-    emission_position3d = [[], [], []]
-    e_rf = []
-    e_cmf = []
+    emission_position3d_lists: list[list[float]] = [[], [], []]
+    e_cmf: list[float] = []
 
     only_packets_0_scatters = False
     for packetsfile in packetsfiles:
@@ -834,22 +836,15 @@ def make_3d_histogram_from_packets(modelpath, timestep_min, timestep_max=None, e
         else:  # packet arrival time
             dfpackets = dfpackets.query("@timeminarray[@timestep_min] < t_arrive_d < @timemaxarray[@timestep_max]")
 
-        emission_position3d[0].extend(list(dfpackets["em_velx"] / CLIGHT))
-        emission_position3d[1].extend(list(dfpackets["em_vely"] / CLIGHT))
-        emission_position3d[2].extend(list(dfpackets["em_velz"] / CLIGHT))
+        emission_position3d_lists[0].extend(list(dfpackets["em_velx"] / CLIGHT))
+        emission_position3d_lists[1].extend(list(dfpackets["em_vely"] / CLIGHT))
+        emission_position3d_lists[2].extend(list(dfpackets["em_velz"] / CLIGHT))
 
-        e_rf.extend(list(dfpackets["e_rf"]))
         e_cmf.extend(list(dfpackets["e_cmf"]))
 
-    emission_position3d = np.array(emission_position3d)
+    emission_position3d: npt.NDArray = np.array(emission_position3d_lists)
     weight_by_energy = True
-    if weight_by_energy:
-        e_rf = np.array(e_rf)
-        e_cmf = np.array(e_cmf)
-        # weights = e_rf
-        weights = e_cmf
-    else:
-        weights = None
+    weights = np.array(e_cmf) if weight_by_energy else None
 
     print(emission_position3d.shape)
     print(emission_position3d[0].shape)
@@ -896,14 +891,18 @@ def make_3d_grid(modeldata, vmax_cms):
 
 
 def get_mean_packet_emission_velocity_per_ts(
-    modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT", maxpacketfiles=None, escape_angles=None
+    modelpath: str | Path,
+    packet_type="TYPE_ESCAPE",
+    escape_type: t.Literal["TYPE_RPKT", "TYPE_GAMMA"] = "TYPE_RPKT",
+    maxpacketfiles: int | None = None,
+    escape_angles=None,
 ) -> pd.DataFrame:
     nprocs_read, packetsfiles = at.packets.get_packets_batch_parquet_paths(modelpath, maxpacketfiles=maxpacketfiles)
     assert nprocs_read > 0
 
     timearray = at.get_timestep_times(modelpath=modelpath, loc="mid")
     arr_timedelta = at.get_timestep_times(modelpath=modelpath, loc="delta")
-    timearrayplusend = np.concatenate([timearray, [timearray[-1] + arr_timedelta[-1]]])
+    timearrayplusend = [*timearray, timearray[-1] + arr_timedelta[-1]]
 
     dfpackets_escape_velocity_and_arrive_time = pd.DataFrame()
     emission_data = pd.DataFrame({

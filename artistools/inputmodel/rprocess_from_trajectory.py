@@ -455,12 +455,12 @@ def add_abundancecontributions(
     timestart = time.perf_counter()
     print("Creating dfnucabundances...", end="", flush=True)
 
-    dfnucabundanceslz = dfnucabundances.lazy().with_columns([  # type: ignore[misc]
+    dfnucabundanceslz = dfnucabundances.lazy().with_columns([
         pl.sum_horizontal([
             pl.col(f"particle_{particleid}") * pl.lit(frac_of_cellmass)
             for particleid, frac_of_cellmass in dfthiscellcontribs[["particleid", "frac_of_cellmass"]].iter_rows()
         ]).alias(str(cellindex))
-        for (cellindex,), dfthiscellcontribs in dfcontribs.group_by(["cellindex"])
+        for cellindex, dfthiscellcontribs in dfcontribs.group_by("cellindex")
     ])
 
     colnames = [key if isinstance(key, str) else f"X_{at.get_elsymbol(key[0])}{key[0] + key[1]}" for key in allkeys]
@@ -554,7 +554,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     modeldata = [
         {
-            "inputcellid": mgi + 1,
+            "inputcellid": mgi + 1,  # pyright: ignore[reportOperatorIssue]
             "vel_r_max_kmps": densityrow["vel_r_max_kmps"],
             "logrho": math.log10(densityrow["rho"]),
         }

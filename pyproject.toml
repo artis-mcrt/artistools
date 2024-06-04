@@ -164,9 +164,17 @@ disable = """
 ignored-modules = ["astropy", "extinction"]
 
 [tool.pyright]
+analyzeUnannotatedFunctions = false
 exclude=['**/node_modules','**/__pycache__','**/.*', 'build', 'dist']
-useLibraryCodeForTypes = false
+reportAttributeAccessIssue = false
+reportCallIssue = false
+reportMissingImports = false
+reportOptionalMemberAccess = false
+reportPossiblyUnboundVariable = false
 reportPrivateImportUsage = false
+reportUnknownVariableType = false
+typeCheckingMode = "basic"
+useLibraryCodeForTypes = false
 
 [tool.pytest.ini_options]
 addopts = " --durations=0 --durations-min=1.0 --typeguard-packages=artistools -n auto"

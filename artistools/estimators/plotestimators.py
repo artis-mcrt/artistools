@@ -131,9 +131,12 @@ def plot_average_ionisation_excitation(
     estimators: pl.LazyFrame,
     modelpath: Path | str,
     startfromzero: bool,
-    args=None,
+    args: argparse.Namespace | None = None,
     **plotkwargs,
 ) -> None:
+    if args is None:
+        args = argparse.Namespace()
+
     if seriestype == "averageexcitation":
         ax.set_ylabel("Average excitation [eV]")
     elif seriestype == "averageionisation":
@@ -174,10 +177,10 @@ def plot_average_ionisation_excitation(
                     if exc_ev is not None:
                         exc_ev_times_tdelta_sum += exc_ev * arr_tdelta[timestep]
                         tdeltasum += arr_tdelta[timestep]
-            if tdeltasum == 0.0:
-                msg = f"ERROR: No excitation data found for {paramvalue}"
-                raise ValueError(msg)
-            ylist.append(exc_ev_times_tdelta_sum / tdeltasum if tdeltasum > 0 else math.nan)
+                if tdeltasum == 0.0:
+                    msg = f"ERROR: No excitation data found for {paramvalue}"
+                    raise ValueError(msg)
+                ylist.append(exc_ev_times_tdelta_sum / tdeltasum if tdeltasum > 0 else math.nan)
 
         elif seriestype == "averageionisation":
             elsymb = at.get_elsymbol(atomic_number)
