@@ -54,7 +54,7 @@ def plothesmaresspec(fig, ax) -> None:
         print(column_names)
 
         for i in range(len(res_specdata)):
-            res_specdata[i] = res_specdata[i].rename(columns=column_names).drop(res_specdata[i].index[0])
+            res_specdata[i] = res_specdata[i].rename(columns=column_names).drop(res_specdata[i].index[0])  # pyright: ignore[reportArgumentType]
 
         ax.plot(res_specdata[0]["lambda"], res_specdata[0][11.7935] * (1e-5) ** 2, label="hesma 0")
         ax.plot(res_specdata[1]["lambda"], res_specdata[1][11.7935] * (1e-5) ** 2, label="hesma 1")
@@ -143,16 +143,13 @@ def make_hesma_peakmag_dm15_dm40(
             skiprows=1,
         )
 
-    angles = np.arange(0, 100)
-    angle_definition = at.get_dirbin_labels(angles, modelpath=None)
-
     outdata = {
         "peakmag": dm15data["peakmag"],  # dm15 peak mag probably more accurate - shorter time window
         "dm15": dm15data["dm15"],
+        "angle_bin": np.arange(0, 100),
     }
     if dm40:
         outdata["dm40"] = dm40data["dm40"]
-    outdata["angle_bin"] = angle_definition.values()
 
     outdataframe = pd.DataFrame(outdata).round(decimals=4)
     outdataframe.to_csv(outpath / f"{modelname}_width-luminosity.dat", sep=" ", index=False, header=True)

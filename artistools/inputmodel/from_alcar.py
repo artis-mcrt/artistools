@@ -291,7 +291,7 @@ def create_ARTIS_modelfile(
     dictabunds = {}
     dictelabunds = {"inputcellid": range(1, numb_cells + 1)}
     for tuple_idx, isot_tuple in enumerate(isot_table):
-        flat_isoabund = np.nan_to_num(z_reflect(X_cells[tuple_idx]).flatten(order="F"), 0.0)
+        flat_isoabund = np.nan_to_num(z_reflect(X_cells[tuple_idx]).flatten(order="F"), nan=0.0)
         if np.any(flat_isoabund):
             elem_str = f"X_{at.get_elsymbol(isot_tuple[1])}"
             isotope_str = f"{elem_str}{isot_tuple[0] + isot_tuple[1]}"

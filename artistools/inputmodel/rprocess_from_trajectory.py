@@ -65,7 +65,7 @@ def get_dfelemabund_from_dfmodel(dfmodel: pl.DataFrame, dfnucabundances: pl.Data
     # ensure cells with no traj contributions are included
     dfelabundances = (
         pl.DataFrame(pl.Series(name="inputcellid", values=dfmodel["inputcellid"], dtype=pl.Int32))
-        .join(dfelabundances_partial, how="left", left_on="inputcellid", right_on="inputcellid")
+        .join(dfelabundances_partial, how="left", left_on="inputcellid", right_on="inputcellid", coalesce=True)
         .fill_null(0.0)
     )
 
@@ -455,12 +455,12 @@ def add_abundancecontributions(
     timestart = time.perf_counter()
     print("Creating dfnucabundances...", end="", flush=True)
 
-    dfnucabundanceslz = dfnucabundances.lazy().with_columns([  # type: ignore[misc]
+    dfnucabundanceslz = dfnucabundances.lazy().with_columns([
         pl.sum_horizontal([
             pl.col(f"particle_{particleid}") * pl.lit(frac_of_cellmass)
             for particleid, frac_of_cellmass in dfthiscellcontribs[["particleid", "frac_of_cellmass"]].iter_rows()
         ]).alias(str(cellindex))
-        for (cellindex,), dfthiscellcontribs in dfcontribs.group_by(["cellindex"])
+        for cellindex, dfthiscellcontribs in dfcontribs.group_by("cellindex")
     ])
 
     colnames = [key if isinstance(key, str) else f"X_{at.get_elsymbol(key[0])}{key[0] + key[1]}" for key in allkeys]
@@ -477,7 +477,9 @@ def add_abundancecontributions(
 
     timestart = time.perf_counter()
     print("Merging isotopic abundances into dfmodel...", end="", flush=True)
-    dfmodel = dfmodel.join(dfnucabundances, how="left", left_on="inputcellid", right_on="inputcellid").fill_null(0)
+    dfmodel = dfmodel.join(
+        dfnucabundances, how="left", left_on="inputcellid", right_on="inputcellid", coalesce=True
+    ).fill_null(0)
     print(f" took {time.perf_counter() - timestart:.1f} seconds")
 
     return dfmodel, dfelabundances, dfcontribs
@@ -552,7 +554,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     modeldata = [
         {
-            "inputcellid": mgi + 1,
+            "inputcellid": mgi + 1,  # pyright: ignore[reportOperatorIssue]
             "vel_r_max_kmps": densityrow["vel_r_max_kmps"],
             "logrho": math.log10(densityrow["rho"]),
         }

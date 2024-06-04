@@ -83,6 +83,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
         radioabundances = [X_Fegroup, shell.ni56, shell.co56, shell.fe52, shell.cr48, shell.ni57, shell.co57]
 
+        assert isinstance(cellid, int)
         dfmodel.loc[cellid] = [cellid, v_outer, math.log10(rho), *radioabundances]
         dfelabundances.loc[cellid] = [cellid, *abundances[1:31]]
 

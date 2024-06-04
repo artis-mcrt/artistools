@@ -364,6 +364,8 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     dftransitions_all = None
     fe2depcoeff, ni2depcoeff = None, None
     for _, ion in adata.iterrows() if args.atomicdatabase == "artis" else enumerate(ionlist):
+        assert isinstance(ion, pd.Series | iontuple)
+
         ionid = iontuple(ion.Z, ion.ion_stage)
         if ionid not in ionlist:
             continue
@@ -375,6 +377,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         elif args.atomicdatabase == "nist":
             dftransitions = get_nist_transitions(f"nist/nist-{ion.Z:02d}-{ion.ion_stage:02d}.txt")
         else:
+            assert isinstance(ion, pd.Series)
             dftransitions = ion.transitions
 
         print(
@@ -384,10 +387,12 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
         if not args.include_permitted and not dftransitions.empty:
             dftransitions = dftransitions.query("forbidden == True")
+            assert isinstance(ion, pd.Series)
             print(f"  ({len(ion.transitions):6d} forbidden)")
 
         if not dftransitions.empty:
             if args.atomicdatabase == "artis":
+                assert isinstance(ion, pd.Series)
                 dftransitions = dftransitions.eval("upper_energy_ev = @ion.levels.loc[upper].energy_ev.to_numpy()")
                 dftransitions = dftransitions.eval("lower_energy_ev = @ion.levels.loc[lower].energy_ev.to_numpy()")
                 dftransitions = dftransitions.eval("lambda_angstroms = @hc / (upper_energy_ev - lower_energy_ev)")
@@ -403,6 +408,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             print(f"  {len(dftransitions)} plottable transitions")
 
             if args.atomicdatabase == "artis":
+                assert isinstance(ion, pd.Series)
                 dftransitions["lower_statweight"] = [ion.levels.loc[lower].g for lower in dftransitions["lower"]]
                 dftransitions = dftransitions.eval("upper_statweight = @ion.levels.loc[upper].g.to_numpy()")
                 K_B = const.k_B.to("eV / K").value
@@ -452,6 +458,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
                     T_exc = vardict[temperature]
                     popcolumnname = f"upper_pop_lte_{T_exc:.0f}K"
                     if args.atomicdatabase == "artis":
+                        assert isinstance(ion, pd.Series)
                         dftransitions = dftransitions.eval("upper_statweight = @ion.levels.loc[upper].g.to_numpy()")
                         K_B = const.k_B.to("eV / K").value  # noqa: F841
                         ltepartfunc = ion.levels.eval("g * exp(-energy_ev / @K_B / @T_exc)").sum()

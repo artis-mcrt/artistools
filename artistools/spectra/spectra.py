@@ -108,7 +108,7 @@ def get_spectrum_at_time(
 ) -> pd.DataFrame:
     if dirbin >= 0:
         if args is not None and args.plotvspecpol and (modelpath / "vpkt.txt").is_file():
-            return get_vspecpol_spectrum(modelpath, time, dirbin, args)
+            return get_vspecpol_spectrum(modelpath, time, dirbin, args).to_pandas()
         assert average_over_phi is not None
         assert average_over_theta is not None
     else:
@@ -223,7 +223,7 @@ def get_from_packets(
                 pl.col("count").alias(f"count_dirbin{vspecindex}"),
             ])
 
-            dfbinned_lazy = dfbinned_lazy.join(dfbinned_dirbin, on="lambda_binindex", how="left")
+            dfbinned_lazy = dfbinned_lazy.join(dfbinned_dirbin, on="lambda_binindex", how="left", coalesce=True)
 
         assert use_time == "arrival"
     else:
@@ -300,7 +300,7 @@ def get_from_packets(
                     pl.col(f"f_lambda_dirbin{dirbin}").mul(1.0 / escapesurfacegamma)
                 )
 
-            dfbinned_lazy = dfbinned_lazy.join(dfbinned_dirbin, on="lambda_binindex", how="left")
+            dfbinned_lazy = dfbinned_lazy.join(dfbinned_dirbin, on="lambda_binindex", how="left", coalesce=True)
 
     if fluxfilterfunc:
         print("Applying filter to ARTIS spectrum")
@@ -730,7 +730,7 @@ def get_flux_contributions(
             if "pol" in str(emissionfilename):
                 print("This artis run contains polarisation data")
                 # File contains I, Q and U and so times are repeated 3 times
-                arr_tmid = np.tile(np.array(arr_tmid), 3)
+                arr_tmid = list(np.tile(np.array(arr_tmid), 3))
 
             emissiondata[dbin] = read_emission_absorption_file(emissionfilename)
 
@@ -1267,7 +1267,7 @@ def print_integrated_flux(
     return integrated_flux
 
 
-def get_reference_spectrum(filename: Path | str) -> tuple[pd.DataFrame, dict[t.Any, t.Any]]:
+def get_reference_spectrum(filename: Path | str) -> tuple[pl.DataFrame, dict[t.Any, t.Any]]:
     if Path(filename).is_file():
         filepath = Path(filename)
     else:
@@ -1335,4 +1335,4 @@ def get_reference_spectrum(filename: Path | str) -> tuple[pd.DataFrame, dict[t.A
         print("Correcting for redshift")
         specdata["lambda_angstroms"] /= 1 + metadata["z"]
 
-    return specdata, metadata
+    return pl.from_pandas(specdata), metadata

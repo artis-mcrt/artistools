@@ -131,9 +131,12 @@ def plot_average_ionisation_excitation(
     estimators: pl.LazyFrame,
     modelpath: Path | str,
     startfromzero: bool,
-    args=None,
+    args: argparse.Namespace | None = None,
     **plotkwargs,
 ) -> None:
+    if args is None:
+        args = argparse.Namespace()
+
     if seriestype == "averageexcitation":
         ax.set_ylabel("Average excitation [eV]")
     elif seriestype == "averageionisation":
@@ -174,10 +177,10 @@ def plot_average_ionisation_excitation(
                     if exc_ev is not None:
                         exc_ev_times_tdelta_sum += exc_ev * arr_tdelta[timestep]
                         tdeltasum += arr_tdelta[timestep]
-            if tdeltasum == 0.0:
-                msg = f"ERROR: No excitation data found for {paramvalue}"
-                raise ValueError(msg)
-            ylist.append(exc_ev_times_tdelta_sum / tdeltasum if tdeltasum > 0 else math.nan)
+                if tdeltasum == 0.0:
+                    msg = f"ERROR: No excitation data found for {paramvalue}"
+                    raise ValueError(msg)
+                ylist.append(exc_ev_times_tdelta_sum / tdeltasum if tdeltasum > 0 else math.nan)
 
         elif seriestype == "averageionisation":
             elsymb = at.get_elsymbol(atomic_number)
@@ -201,6 +204,7 @@ def plot_average_ionisation_excitation(
                     ),
                     on="timestep",
                     how="left",
+                    coalesce=True,
                 )
             )
             dfselected = dfselected.filter(pl.col(f"nnelement_{elsymb}") > 0.0)
@@ -304,6 +308,7 @@ def plot_levelpop(
                 tdeltasum += arr_tdelta[timestep]
 
             if seriestype == "levelpopulation_dn_on_dvel":
+                assert isinstance(modelgridindex, int)
                 deltav = modeldata.loc[modelgridindex].vel_r_max_kmps - modeldata.loc[modelgridindex].vel_r_min_kmps
                 ylist.append(valuesum / tdeltasum * modeldata.loc[modelgridindex].volume / deltav)
             else:
@@ -385,7 +390,7 @@ def plot_multi_ion_series(
         if seriestype == "populations":
             if ion_stage == "ALL":
                 key = f"nnelement_{elsymbol}"
-            elif hasattr(ion_stage, "lower") and ion_stage.startswith(at.get_elsymbol(atomic_number)):
+            elif isinstance(ion_stage, str) and ion_stage.startswith(at.get_elsymbol(atomic_number)):
                 # not really an ion_stage but an isotope name
                 key = f"nniso_{ion_stage}"
             else:
@@ -428,17 +433,16 @@ def plot_multi_ion_series(
 
         # linestyle = ['-.', '-', '--', (0, (4, 1, 1, 1)), ':'] + [(0, x) for x in dashes_list][ion_stage - 1]
         dashes: tuple[float, ...]
-        if ion_stage == "ALL":
-            dashes = ()
-            linewidth = 1.0
-        else:
-            if hasattr(ion_stage, "lower") and ion_stage.endswith("stable"):
-                index = 8
-            elif hasattr(ion_stage, "lower"):
-                # isotopic abundance, use the mass number
-                index = int(ion_stage.lstrip(at.get_elsymbol(atomic_number)))
+        if isinstance(ion_stage, str):
+            if ion_stage == "ALL":
+                dashes = ()
+                linewidth = 1.0
             else:
-                index = ion_stage
+                # isotopic abundance
+                index = 8 if ion_stage.endswith("stable") else int(ion_stage.lstrip(at.get_elsymbol(atomic_number)))
+        else:
+            assert isinstance(ion_stage, int)
+            index = ion_stage
 
             dashes_list = [(3, 1, 1, 1), (), (1.5, 1.5), (6, 3), (1, 3)]
             dashes = dashes_list[(index - 1) % len(dashes_list)]
@@ -794,7 +798,9 @@ def make_plot(
         args.colorbyion = True
 
     for ax, plotitems in zip(axes, plotlist):
-        ax.set_xlim(left=xmin, right=xmax)
+        if xmin != xmax:
+            ax.set_xlim(left=xmin, right=xmax)
+
         plot_subplot(
             ax=ax,
             timestepslist=timestepslist,
@@ -1145,6 +1151,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         .lazy(),
         on="timestep",
         how="left",
+        coalesce=True,
     )
 
     for ts in reversed(timesteps_included):
@@ -1172,9 +1179,10 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         # plot time evolution in specific cell
         if not args.x:
             args.x = "time"
+        assert isinstance(args.modelgridindex, int)
         mgilist = [args.modelgridindex] * len(timesteps_included)
         timestepslist_unfiltered = [[ts] for ts in timesteps_included]
-        if not assoc_cells.get(args.modelgridindex, []):
+        if not assoc_cells.get(args.modelgridindex):
             msg = f"cell {args.modelgridindex} is empty. no estimators available"
             raise ValueError(msg)
         make_plot(

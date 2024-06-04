@@ -165,7 +165,7 @@ def write_lbol_edep(
     dflightcurve = (
         at.lightcurve.readfile(Path(modelpath, "light_curve.out"))[-1]
         .to_pandas()
-        .merge(at.get_deposition(modelpath), left_index=True, right_index=True, suffixes=("", "_dep"))
+        .merge(at.get_deposition(modelpath).to_pandas(), left_index=True, right_index=True, suffixes=("", "_dep"))
     )
 
     with outputpath.open("w", encoding="utf-8") as f:
@@ -210,7 +210,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     args.outputpath.mkdir(parents=True, exist_ok=True)
 
     for modelpath in modelpathlist:
-        model_id = str(modelpath.name).split("_")[0]
+        model_id = str(Path(modelpath).name).split("_")[0]
         print(f"{model_id=}")
 
         estimators = at.estimators.read_estimators(modelpath=modelpath)
