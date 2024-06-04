@@ -33,7 +33,7 @@ jobs:
             - uses: pre-commit/action@v3.0.1
 
     lint:
-        name: Run ruff, mypy, pyright, pylint
+        name: Format, lint, and type check
         runs-on: macos-14
         steps:
             - name: Checkout Code
@@ -56,11 +56,11 @@ jobs:
             - name: Run Ruff Format
               run: ruff format --diff .
 
-            - name: Run mypy
-              run: mypy --install-types --non-interactive
-
             - name: Run pyright
               uses: jakebailey/pyright-action@v2
+
+            - name: Run mypy
+              run: mypy --install-types --non-interactive
 
             - name: Run pylint
               run: pylint --output-format=github artistools
