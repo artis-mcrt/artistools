@@ -11,6 +11,7 @@ import math
 import operator
 import string
 import typing as t
+import warnings
 from itertools import chain
 from pathlib import Path
 
@@ -201,6 +202,7 @@ def plot_average_ionisation_excitation(
                     ),
                     on="timestep",
                     how="left",
+                    coalesce=True,
                 )
             )
             dfselected = dfselected.filter(pl.col(f"nnelement_{elsymb}") > 0.0)
@@ -794,7 +796,8 @@ def make_plot(
         args.colorbyion = True
 
     for ax, plotitems in zip(axes, plotlist):
-        ax.set_xlim(left=xmin, right=xmax)
+        with warnings.catch_warnings(category=UserWarning):
+            ax.set_xlim(left=xmin, right=xmax)
         plot_subplot(
             ax=ax,
             timestepslist=timestepslist,
@@ -1145,6 +1148,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         .lazy(),
         on="timestep",
         how="left",
+        coalesce=True,
     )
 
     for ts in reversed(timesteps_included):

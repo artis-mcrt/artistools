@@ -311,13 +311,19 @@ def vec_len(vec: t.Sequence[float] | np.ndarray[t.Any, np.dtype[np.float64]]) ->
 @lru_cache(maxsize=16)
 def get_nu_grid(modelpath: Path) -> np.ndarray[t.Any, np.dtype[np.float64]]:
     """Return an array of frequencies at which the ARTIS spectra are binned by exspec."""
-    specfilename = firstexisting(["spec.out", "specpol.out"], folder=modelpath, tryzipped=True)
-    specdata = pd.read_csv(specfilename, sep=r"\s+")
-    return specdata.loc[:, "0"].to_numpy()
+    specdata = pl.read_csv(
+        firstexisting(["spec.out", "specpol.out"], folder=modelpath, tryzipped=True),
+        separator=" ",
+        has_header=False,
+        skip_rows=1,
+        columns=[0],
+        new_columns=["nu"],
+    )
+    return specdata["nu"].to_numpy()
 
 
-def get_deposition(modelpath: Path | str = ".") -> pd.DataFrame:
-    """Return a pandas DataFrame containing the deposition data."""
+def get_deposition(modelpath: Path | str = ".") -> pl.DataFrame:
+    """Return a polars DataFrame containing the deposition data."""
     if Path(modelpath).is_file():
         depfilepath = Path(modelpath)
         modelpath = Path(modelpath).parent
@@ -327,30 +333,35 @@ def get_deposition(modelpath: Path | str = ".") -> pd.DataFrame:
     ts_mids = get_timestep_times(modelpath, loc="mid")
 
     with depfilepath.open(encoding="utf-8") as fdep:
-        filepos = fdep.tell()
         line = fdep.readline()
         if line.startswith("#"):
+            skiprows = 1
             columns = line.lstrip("#").split()
         else:
-            fdep.seek(filepos)  # undo the readline() and go back
+            skiprows = 0
             columns = ["tmid_days", "gammadep_Lsun", "positrondep_Lsun", "total_dep_Lsun"]
 
-        depdata = pd.read_csv(fdep, sep=r"\s+", header=None, names=columns)
+    depdata = pl.read_csv(depfilepath, separator=" ", skip_rows=skiprows, has_header=False, new_columns=columns)
 
-    depdata.index.name = "timestep"
+    if "ts" in depdata.columns:
+        depdata = depdata.rename({"ts": "timestep"})
+
+    if "timestep" not in depdata.columns:
+        depdata = depdata.with_row_index("timestep", offset=0)
+
+    depdata = depdata.with_columns(timestep=pl.col("timestep").cast(pl.Int32))
 
     # no timesteps are given in the old format of deposition.out, so ensure that
     # the times in days match up with the times of our assumed timesteps
-    for timestep, row in depdata.iterrows():
-        assert abs(ts_mids[timestep] / row["tmid_days"] - 1) < 0.01  # deposition times don't match input.txt
+    if not np.allclose(depdata["tmid_days"].to_numpy(), ts_mids, rtol=0.01):
+        msg = "Deposition times do not match the timesteps"
+        raise AssertionError(msg)
 
     return depdata
 
 
 @lru_cache(maxsize=16)
-def get_timestep_times(
-    modelpath: Path | str, loc: t.Literal["mid", "start", "end", "delta"] = "mid"
-) -> np.ndarray[t.Any, np.dtype[np.float64]]:
+def get_timestep_times(modelpath: Path | str, loc: t.Literal["mid", "start", "end", "delta"] = "mid") -> list[float]:
     """Return a list of the times in days of each timestep."""
     modelpath = Path(modelpath)
     # virtual path to code comparison workshop models
@@ -364,32 +375,38 @@ def get_timestep_times(
     # use timestep.out if possible (allowing arbitrary timestep lengths)
     tsfilepath = Path(modelpath, "timesteps.out")
     if tsfilepath.exists():
-        dftimesteps = pd.read_csv(tsfilepath, sep=r"\s+", escapechar="#", index_col="timestep")
+        dftimesteps = (
+            pl.read_csv(tsfilepath, has_header=True, separator=" ")
+            .rename({"#timestep": "timestep"})
+            .with_columns(tend_days=pl.col("tstart_days") + pl.col("twidth_days"))
+        )
+
         if loc == "mid":
-            return dftimesteps.tmid_days.to_numpy()
+            return dftimesteps["tmid_days"].to_list()
         if loc == "start":
-            return dftimesteps.tstart_days.to_numpy()
+            return dftimesteps["tstart_days"].to_list()
         if loc == "end":
-            return dftimesteps.tstart_days.to_numpy() + dftimesteps.twidth_days.to_numpy()
+            return dftimesteps["tend_days"].to_list()
         if loc == "delta":
-            return dftimesteps.twidth_days.to_numpy()
+            return dftimesteps["twidth_days"].to_list()
 
         msg = "loc must be one of 'mid', 'start', 'end', or 'delta'"
         raise ValueError(msg)
 
     # older versions of Artis always used logarithmic timesteps and didn't produce a timesteps.out file
-    inputparams = get_inputparams(modelpath)
+    inputparams = at.get_inputparams(modelpath)
     tmin = inputparams["tmin"]
     dlogt = (math.log(inputparams["tmax"]) - math.log(tmin)) / inputparams["ntstep"]
     timesteps = range(inputparams["ntstep"])
     if loc == "mid":
-        return np.array([tmin * math.exp((ts + 0.5) * dlogt) for ts in timesteps])
+        return [tmin * math.exp((ts + 0.5) * dlogt) for ts in timesteps]
     if loc == "start":
-        return np.array([tmin * math.exp(ts * dlogt) for ts in timesteps])
+        return [tmin * math.exp(ts * dlogt) for ts in timesteps]
     if loc == "end":
-        return np.array([tmin * math.exp((ts + 1) * dlogt) for ts in timesteps])
+        return [tmin * math.exp((ts + 1) * dlogt) for ts in timesteps]
     if loc == "delta":
-        return np.array([tmin * (math.exp((ts + 1) * dlogt) - math.exp(ts * dlogt)) for ts in timesteps])
+        return [tmin * (math.exp((ts + 1) * dlogt) - math.exp(ts * dlogt)) for ts in timesteps]
+
     msg = "loc must be one of 'mid', 'start', 'end', or 'delta'"
     raise ValueError(msg)
 
@@ -499,8 +516,10 @@ def get_time_range(
         print(f"Warning timestepmax {timestepmax} > timesteplast {timesteplast}")
         timestepmax = timesteplast
     if time_days_lower is None:
+        assert timestepmin is not None
         time_days_lower = float(tstarts[timestepmin]) if clamp_to_timesteps else timemin
     if time_days_upper is None:
+        assert timestepmax is not None
         time_days_upper = float(tends[timestepmax]) if clamp_to_timesteps else timemax
     assert timestepmin is not None
     assert timestepmax is not None
@@ -534,15 +553,16 @@ def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | None, 
     # find the last possible escape time and subtract the largest possible travel time (observer time correction)
     try:
         depdata = at.get_deposition(modelpath=modelpath)  # use this file to find the last computed timestep
-        nts_last = int(depdata.ts.max()) if "ts" in depdata.columns else len(depdata) - 1
+        nts_last = depdata["timestep"].max() if "timestep" in depdata.columns else len(depdata) - 1
     except FileNotFoundError:
         print("WARNING: No deposition.out file found. Assuming all timesteps have been computed")
         nts_last = len(t_end) - 1
 
+    assert isinstance(nts_last, int)
     nts_last_tend = t_end[nts_last]
 
     # latest possible valid range is the end of the latest computed timestep plus the longest travel time
-    validrange_end_days = nts_last_tend * (1 - cornervmax / 29979245800)
+    validrange_end_days: float | None = nts_last_tend * (1 - cornervmax / 29979245800)
 
     if validrange_start_days > validrange_end_days:
         validrange_start_days, validrange_end_days = None, None

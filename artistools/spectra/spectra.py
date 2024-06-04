@@ -223,7 +223,7 @@ def get_from_packets(
                 pl.col("count").alias(f"count_dirbin{vspecindex}"),
             ])
 
-            dfbinned_lazy = dfbinned_lazy.join(dfbinned_dirbin, on="lambda_binindex", how="left")
+            dfbinned_lazy = dfbinned_lazy.join(dfbinned_dirbin, on="lambda_binindex", how="left", coalesce=True)
 
         assert use_time == "arrival"
     else:
@@ -300,7 +300,7 @@ def get_from_packets(
                     pl.col(f"f_lambda_dirbin{dirbin}").mul(1.0 / escapesurfacegamma)
                 )
 
-            dfbinned_lazy = dfbinned_lazy.join(dfbinned_dirbin, on="lambda_binindex", how="left")
+            dfbinned_lazy = dfbinned_lazy.join(dfbinned_dirbin, on="lambda_binindex", how="left", coalesce=True)
 
     if fluxfilterfunc:
         print("Applying filter to ARTIS spectrum")
@@ -730,7 +730,7 @@ def get_flux_contributions(
             if "pol" in str(emissionfilename):
                 print("This artis run contains polarisation data")
                 # File contains I, Q and U and so times are repeated 3 times
-                arr_tmid = np.tile(np.array(arr_tmid), 3)
+                arr_tmid = list(np.tile(np.array(arr_tmid), 3))
 
             emissiondata[dbin] = read_emission_absorption_file(emissionfilename)
 

@@ -113,8 +113,7 @@ def plot_spherical(
         )
 
     if "temperature" in plotvars or "temperature_sigma" in plotvars or nnelement_vars:
-        timebins = [
-            *at.get_timestep_times(modelpath, loc="start") * 86400.0,
+        timebins = [tstart * 86400.0 for tstart in at.get_timestep_times(modelpath, loc="start")] + [
             at.get_timestep_times(modelpath, loc="end")[-1] * 86400.0,
         ]
         dfpackets = dfpackets.with_columns(
@@ -175,6 +174,7 @@ def plot_spherical(
             dfpackets,
             how="left",
             on=["costhetabin", "phibin"],
+            coalesce=True,
         )
         .fill_null(0)
         .sort(["costhetabin", "phibin"])
@@ -357,7 +357,7 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
 
     outputfilenames = []
     for tstart, tend, label in time_ranges:
-        if tstart is not None and tend is not None:
+        if tend is not None:
             print(f"Plotting spherical map for {tstart:.2f}-{tend:.2f} days {label}")
         # tstart and tend are requested, but the actual plotted time range may be different
         fig, axes, timemindays, timemaxdays, condition = plot_spherical(

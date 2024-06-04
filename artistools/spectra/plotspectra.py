@@ -826,6 +826,7 @@ def make_emissionabsorption_plot(
                     usedegrees=args.usedegrees,
                 )
             )
+            assert dirbin is not None
             plotlabel += f", {dirbin_definitions[dirbin]}"
 
     if not args.notitle:

@@ -11,5 +11,6 @@
     "python.analysis.typeCheckingMode": "off",
     "files.insertFinalNewline": true,
     "files.eol": "\n",
-    "files.trimFinalNewlines": true
+    "files.trimFinalNewlines": true,
+    "python.analysis.autoImportCompletions": true
 }

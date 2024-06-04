@@ -34,6 +34,8 @@ def write_flambda_spectra(modelpath: Path) -> None:
 
     tslast, tmin_d_valid, tmax_d_valid = at.get_escaped_arrivalrange(modelpath)
 
+    assert tmin_d_valid is not None
+    assert tmax_d_valid is not None
     timesteps = [ts for ts in range(tslast + 1) if tmids[ts] >= tmin_d_valid and tmids[ts] <= tmax_d_valid]
 
     for timestep in timesteps:

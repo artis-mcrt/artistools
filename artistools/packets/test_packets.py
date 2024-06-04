@@ -60,10 +60,15 @@ def test_directionbins() -> None:
     )
 
     for row in pddfpackets.itertuples(index=True):
-        assert np.isclose(row.costheta_defined, row.costheta, rtol=1e-4, atol=1e-4)
-        assert np.isclose(row.phi_defined, row.phi, rtol=1e-4, atol=1e-4)
+        assert isinstance(row.costheta_defined, float)
+        assert isinstance(row.phi_defined, float)
+        assert isinstance(row.costheta, float)
+        assert isinstance(row.phi, float)
+        assert math.isclose(row.costheta_defined, row.costheta, rel_tol=1e-4, abs_tol=1e-4)
+        assert math.isclose(row.phi_defined, row.phi, rel_tol=1e-4, abs_tol=1e-4)
 
-        assert np.isclose(testdirections.item(row[0], "dirbin"), row.dirbin, rtol=1e-4, atol=1e-4)
+        assert isinstance(row.dirbin, int)
+        assert math.isclose(testdirections.item(row[0], "dirbin"), row.dirbin, rel_tol=1e-4, abs_tol=1e-4)
 
 
 def test_get_virtual_packets_pl():
