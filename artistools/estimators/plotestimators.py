@@ -11,7 +11,6 @@ import math
 import operator
 import string
 import typing as t
-import warnings
 from itertools import chain
 from pathlib import Path
 
@@ -796,8 +795,9 @@ def make_plot(
         args.colorbyion = True
 
     for ax, plotitems in zip(axes, plotlist):
-        with warnings.catch_warnings(category=UserWarning):
+        if xmin != xmax:
             ax.set_xlim(left=xmin, right=xmax)
+
         plot_subplot(
             ax=ax,
             timestepslist=timestepslist,
