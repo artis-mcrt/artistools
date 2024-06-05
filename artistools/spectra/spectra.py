@@ -987,7 +987,7 @@ def get_flux_contributions_from_packets(
                     schema_overrides={"absorption_type": pl.Int32, "absorptiontype_str": pl.String},
                 ).lazy(),
             ],
-        ).with_columns(pl.col("absorptiontype_str").cast(pl.Categorical))
+        ).with_columns(pl.col("absorptiontype_str"))
 
         lzdfpackets = lzdfpackets.join(abstypestrings, on="absorption_type", how="left")
 

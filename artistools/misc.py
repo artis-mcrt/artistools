@@ -544,10 +544,10 @@ def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | None, 
     # find the earliest possible escape time and add the largest possible travel time
 
     # for 3D models, the box corners can have non-zero density (allowing packet escape from tmin)
-    # for 1D and 2D, the largest escape radius at tmin is the box side radius
+    # for 1D and 2D, the largest escape radius at tmin is the box side radius (if the prop grid was also 1D or 2D)
     vmax_tmin = cornervmax if modelmeta["dimensions"] == 3 else vmax
 
-    # earliest completely valid time is tmin plus maximum possible travel time from corner to origin
+    # earliest completely valid time is tmin plus maximum possible travel time from the origin to the corner
     validrange_start_days = at.get_timestep_times(modelpath, loc="start")[0] * (1 + vmax_tmin / 29979245800)
 
     t_end = at.get_timestep_times(modelpath, loc="end")
@@ -778,7 +778,7 @@ def parse_range(rng: str, dictvars: dict[str, int]) -> t.Iterable[t.Any]:
     return range(start, end + 1)
 
 
-def parse_range_list(rngs: str | list | int, dictvars: dict | None = None) -> list[t.Any]:
+def parse_range_list(rngs: str | list[str] | int, dictvars: dict[str, int] | None = None) -> list[t.Any]:
     """Parse a string with comma-separated ranges or a list of range strings.
 
     Return a sorted list of integers in any of the ranges.
@@ -825,7 +825,7 @@ def flatten_list(listin: list[t.Any]) -> list[t.Any]:
 
 def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None) -> t.Any:
     """Open filename, filename.zst, filename.gz or filename.xz."""
-    ext_fopen: dict[str, t.Callable] = {".zst": zstd.open, ".gz": gzip.open, ".xz": lzma.open}
+    ext_fopen: dict[str, t.Any] = {".zst": zstd.open, ".gz": gzip.open, ".xz": lzma.open}
 
     for ext, fopen in ext_fopen.items():
         file_withext = str(filename) if str(filename).endswith(ext) else str(filename) + ext
@@ -839,7 +839,7 @@ def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None) -
 def zopenpl(filename: Path | str, mode: str = "rt", encoding: str | None = None) -> t.Any | Path:
     """Open filename, filename.zst, filename.gz or filename.xz. If polars.read_csv can read the file directly, return a Path object instead of a file object."""
     mode = "r"
-    ext_fopen: dict[str, t.Callable | None] = {".zst": None, ".gz": None, ".xz": lzma.open}
+    ext_fopen: dict[str, t.Any | None] = {".zst": None, ".gz": None, ".xz": lzma.open}
 
     for ext, fopen in ext_fopen.items():
         file_withext = str(filename) if str(filename).endswith(ext) else str(filename) + ext
@@ -905,7 +905,7 @@ def anyexist(
     return filepath
 
 
-def batched(iterable: t.Iterable[t.Any], n: int) -> t.Generator[list, t.Any, None]:
+def batched(iterable: t.Iterable[t.Any], n: int) -> t.Generator[list[t.Any], t.Any, None]:
     """Batch data into iterators of length n. The last batch may be shorter."""
     # batched('ABCDEFG', 3) --> ABC DEF G
     if n < 1:
@@ -981,7 +981,7 @@ def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
     return {}
 
 
-def get_filterfunc(args: argparse.Namespace, mode: str = "interp") -> t.Callable | None:
+def get_filterfunc(args: argparse.Namespace, mode: str = "interp") -> t.Callable[[t.Any], t.Any] | None:
     """Use command line arguments to determine the appropriate filter function."""
     filterfunc = None
     dictargs = vars(args)
@@ -1430,7 +1430,9 @@ def get_phi_bins(usedegrees: bool) -> tuple[npt.NDArray[np.float64], npt.NDArray
     return phi_lower, phi_upper, binlabels
 
 
-def get_costheta_bins(usedegrees: bool, usepiminustheta: bool = False) -> tuple[np.ndarray, np.ndarray, list[str]]:
+def get_costheta_bins(
+    usedegrees: bool, usepiminustheta: bool = False
+) -> tuple[tuple[float, ...], tuple[float, ...], list[str]]:
     ncosthetabins = at.get_viewingdirection_costhetabincount()
     costhetabins_lower = np.arange(-1.0, 1.0, 2.0 / ncosthetabins)
     costhetabins_upper = costhetabins_lower + 2.0 / ncosthetabins
@@ -1451,7 +1453,7 @@ def get_costheta_bins(usedegrees: bool, usepiminustheta: bool = False) -> tuple[
         binlabels = [
             f"{lower:.1f} ≤ cos θ < {upper:.1f}" for lower, upper in zip(costhetabins_lower, costhetabins_upper)
         ]
-    return costhetabins_lower, costhetabins_upper, binlabels
+    return tuple(costhetabins_lower), tuple(costhetabins_upper), binlabels
 
 
 def get_costhetabin_phibin_labels(usedegrees: bool) -> tuple[list[str], list[str]]:
