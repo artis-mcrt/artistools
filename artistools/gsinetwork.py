@@ -239,7 +239,7 @@ def plot_cell_abund_evolution(
     axes[-1].set_xlabel("Time [days]")
     axis = axes[0]
     print("nuc gsi_abund artis_abund")
-    for axis, strnuc in zip(axes, arr_strnuc):
+    for axis, strnuc in zip(axes, arr_strnuc, strict=False):
         # print(arr_time_artis_days)
         xmin = min(arr_time_gsi_days) * 0.9
         xmax = xmax or max(arr_time_gsi_days) * 1.03
@@ -420,10 +420,10 @@ def plot_qdot_abund_modelcells(
     print(f"model.txt griddata_root: {griddata_root}")
     assert traj_root.is_dir()
 
-    arr_el, arr_a = zip(*arr_el_a)
+    arr_el, arr_a = zip(*arr_el_a, strict=False)
     arr_strnuc: list[str] = [el + str(a) for el, a in arr_el_a]
     arr_z = [at.get_atomic_number(el) for el in arr_el]
-    arr_n = [a - z for z, a in zip(arr_z, arr_a)]
+    arr_n = [a - z for z, a in zip(arr_z, arr_a, strict=False)]
     arr_strnuc_z_n = list(zip(arr_strnuc, arr_z, arr_n, strict=True))
 
     # arr_z = [at.get_atomic_number(el) for el in arr_el]
@@ -543,7 +543,7 @@ def plot_qdot_abund_modelcells(
             if mgi == first_mgi:
                 arr_time_artis_days.append(time_days)
 
-            for strnuc, a in zip(arr_strnuc, arr_a):
+            for strnuc, a in zip(arr_strnuc, arr_a, strict=False):
                 abund = estimtsmgsi[f"nniso_{strnuc}"].item()
                 massfrac = abund * a * MH / estimtsmgsi["rho"].item()
                 massfrac += estimtsmgsi[f"X_{strnuc}"].item() * (correction_factors[strnuc] - 1.0)

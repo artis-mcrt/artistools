@@ -1214,9 +1214,9 @@ def dimension_reduce_3d_model(
     velocity_bins_r_max = [vmax * n / ncoordgridr for n in range(1, ncoordgridr + 1)]
 
     allmatchedcells = {}
-    for n_z, (vel_z_min, vel_z_max) in enumerate(zip(velocity_bins_z_min, velocity_bins_z_max)):
+    for n_z, (vel_z_min, vel_z_max) in enumerate(zip(velocity_bins_z_min, velocity_bins_z_max, strict=False)):
         # "r" is the cylindrical radius in 2D, or the spherical radius in 1D
-        for n_r, (vel_r_min, vel_r_max) in enumerate(zip(velocity_bins_r_min, velocity_bins_r_max)):
+        for n_r, (vel_r_min, vel_r_max) in enumerate(zip(velocity_bins_r_min, velocity_bins_r_max, strict=False)):
             assert vel_r_max > vel_r_min
             cellindexout = n_z * ncoordgridr + n_r + 1
 

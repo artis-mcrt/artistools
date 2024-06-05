@@ -424,7 +424,7 @@ def get_timestep_of_timedays(modelpath: Path | str, timedays: str | float) -> in
     # to avoid roundoff errors, use the next timestep's tstart at each timestep's tend (t_width is not exact)
     arr_tend[:-1] = arr_tstart[1:]
 
-    for ts, (tstart, tend) in enumerate(zip(arr_tstart, arr_tend)):
+    for ts, (tstart, tend) in enumerate(zip(arr_tstart, arr_tend, strict=False)):
         if tstart <= timedays_float < tend:
             return ts
 
@@ -1442,16 +1442,20 @@ def get_costheta_bins(
             piminusthetabins_lower = (np.pi - np.arccos(costhetabins_lower)) / np.pi * 180
             binlabels = [
                 rf"{lower:.0f}° < π-θ < {upper:.0f}°"
-                for lower, upper in zip(piminusthetabins_lower, piminusthetabins_upper)
+                for lower, upper in zip(piminusthetabins_lower, piminusthetabins_upper, strict=False)
             ]
         else:
             thetabins_upper = np.arccos(costhetabins_lower) / np.pi * 180
             thetabins_lower = np.arccos(costhetabins_upper) / np.pi * 180
 
-            binlabels = [f"{lower:.0f}° < θ < {upper:.0f}°" for lower, upper in zip(thetabins_lower, thetabins_upper)]
+            binlabels = [
+                f"{lower:.0f}° < θ < {upper:.0f}°"
+                for lower, upper in zip(thetabins_lower, thetabins_upper, strict=False)
+            ]
     else:
         binlabels = [
-            f"{lower:.1f} ≤ cos θ < {upper:.1f}" for lower, upper in zip(costhetabins_lower, costhetabins_upper)
+            f"{lower:.1f} ≤ cos θ < {upper:.1f}"
+            for lower, upper in zip(costhetabins_lower, costhetabins_upper, strict=False)
         ]
     return tuple(costhetabins_lower), tuple(costhetabins_upper), binlabels
 

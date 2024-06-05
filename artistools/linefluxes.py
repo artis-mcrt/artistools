@@ -173,7 +173,9 @@ def get_line_fluxes_from_pops(emfeatures, modelpath, arr_tstart=None, arr_tend=N
             timestep = at.get_timestep_of_timedays(modelpath, timedays)
             print(f"{feature.approxlambda}A {timedays}d (ts {timestep})")
 
-            for upperlevelindex, lowerlevelindex in zip(feature.upperlevelindicies, feature.lowerlevelindicies):
+            for upperlevelindex, lowerlevelindex in zip(
+                feature.upperlevelindicies, feature.lowerlevelindicies, strict=False
+            ):
                 unaccounted_shellvol = 0.0  # account for the volume of empty shells
                 unaccounted_shells = []
                 for modelgridindex in modeldata.index:
@@ -322,7 +324,7 @@ def make_flux_ratio_plot(args: argparse.Namespace) -> None:
     pd.set_option("display.width", 150)
     pd.options.display.max_rows = 500
 
-    for modelpath, modellabel, modelcolor in zip(args.modelpath, args.label, args.color):
+    for modelpath, modellabel, modelcolor in zip(args.modelpath, args.label, args.color, strict=False):
         print(f"====> {modellabel}")
 
         emfeatures = get_labelandlineindices(modelpath, tuple(args.emfeaturesearch))
@@ -513,11 +515,11 @@ def plot_nne_te_points(
 ) -> None:
     color_adj = [(c + 0.1) / 1.1 for c in mpl.colors.to_rgb(color)]  # type: ignore[arg-type]
     hitcount: dict[tuple[float, float], int] = {}
-    for log10nne, Te in zip(em_log10nne, em_Te):
+    for log10nne, Te in zip(em_log10nne, em_Te, strict=False):
         hitcount[(log10nne, Te)] = hitcount.get((log10nne, Te), 0) + 1
 
-    arr_log10nne, arr_te = zip(*hitcount.keys()) if hitcount else ([], [])
-    arr_weight = np.array([hitcount[(x, y)] for x, y in zip(arr_log10nne, arr_te)])
+    arr_log10nne, arr_te = zip(*hitcount.keys(), strict=False) if hitcount else ([], [])
+    arr_weight = np.array([hitcount[(x, y)] for x, y in zip(arr_log10nne, arr_te, strict=False)])
     arr_weight = (arr_weight / normtotalpackets) * 500
     arr_size = np.sqrt(arr_weight) * 10
 
@@ -615,7 +617,9 @@ def make_emitting_regions_plot(args):
     args.modelpath.append(None)
     args.label.append(f"All models: {args.label}")
     args.modeltag.append("all")
-    for modelindex, (modelpath, modellabel, modeltag) in enumerate(zip(args.modelpath, args.label, args.modeltag)):
+    for modelindex, (modelpath, modellabel, modeltag) in enumerate(
+        zip(args.modelpath, args.label, args.modeltag, strict=False)
+    ):
         print(f"ARTIS model: '{modellabel}'")
 
         if modelpath is not None:
@@ -629,7 +633,7 @@ def make_emitting_regions_plot(args):
                 lineindex for feature in emfeatures for lineindex in feature.linelistindices
             )
 
-            for tmid, tstart, tend in zip(times_days, args.timebins_tstart, args.timebins_tend):
+            for tmid, tstart, tend in zip(times_days, args.timebins_tstart, args.timebins_tend, strict=False):
                 dfpackets = get_packets_with_emission_conditions(
                     modelpath,
                     args.emtypecolumn,
@@ -658,7 +662,7 @@ def make_emitting_regions_plot(args):
             modeldata, _ = at.inputmodel.get_modeldata(modelpath)
             Tedata_all[modelindex] = {}
             log10nnedata_all[modelindex] = {}
-            for tmid, tstart, tend in zip(times_days, args.timebins_tstart, args.timebins_tend):
+            for tmid, tstart, tend in zip(times_days, args.timebins_tstart, args.timebins_tend, strict=False):
                 Tedata_all[modelindex][tmid] = []
                 log10nnedata_all[modelindex][tmid] = []
                 tstartlist = at.get_timestep_times(modelpath, loc="start")

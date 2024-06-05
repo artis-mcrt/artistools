@@ -61,7 +61,7 @@ def get_model_recombenergy(dfbinding, args):
     def sortkey(item):
         return at.get_atomic_number(item[0])
 
-    for elsymb, binding_en_ev in sorted(model_el_binding_en_ev.items(), key=sortkey):
+    for _elsymb, binding_en_ev in sorted(model_el_binding_en_ev.items(), key=sortkey):
         zstr = f"Z={atomic_number}"
         print(f"{zstr:>5} {binding_en_ev * ev_erg} erg")
 

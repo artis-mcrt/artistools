@@ -72,7 +72,8 @@ def test_timestep_times() -> None:
     assert math.isclose(float(timemidarray[-1]), 349.412, abs_tol=1e-3)
 
     assert all(
-        tstart < tmid < (tstart + tdelta) for tstart, tdelta, tmid in zip(timestartarray, timedeltarray, timemidarray)
+        tstart < tmid < (tstart + tdelta)
+        for tstart, tdelta, tmid in zip(timestartarray, timedeltarray, timemidarray, strict=False)
     )
 
 

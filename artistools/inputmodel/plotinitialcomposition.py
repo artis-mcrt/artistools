@@ -183,7 +183,7 @@ def plot_2d_initial_abundances(modelpath, args=None) -> None:
     #     tight_layout=None,
     # )
 
-    for plotvar, ax in zip(args.plotvars, axes):
+    for plotvar, ax in zip(args.plotvars, axes, strict=False):
         colname = plotvar if plotvar in df2dslice.columns else f"X_{plotvar}"
 
         im, _ = plot_slice_modelcolumn(

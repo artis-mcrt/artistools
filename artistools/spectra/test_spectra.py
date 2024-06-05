@@ -240,7 +240,7 @@ def test_spectra_get_flux_contributions(benchmark) -> None:
     assert math.isclose(integrated_flux_specout, integrated_flux_emission, rel_tol=4e-3)
 
     # check each bin is not out by a large fraction
-    diff = [abs(x - y) for x, y in zip(array_flambda_emission_total, dfspectrum["f_lambda"].to_numpy())]
+    diff = [abs(x - y) for x, y in zip(array_flambda_emission_total, dfspectrum["f_lambda"].to_numpy(), strict=False)]
     print(f"Max f_lambda difference {max(diff) / integrated_flux_specout}")
     assert max(diff) / integrated_flux_specout < 2e-3
 

@@ -219,7 +219,7 @@ def get_fitted_field(
     return arr_lambda, j_lambda_fitted
 
 
-def plot_line_estimators(axis, radfielddata, xmin, xmax, modelgridindex=None, timestep=None, **plotkwargs):
+def plot_line_estimators(axis, radfielddata, modelgridindex=None, timestep=None, **plotkwargs):
     """Plot the Jblue_lu values from the detailed line estimators on a spectrum."""
     ymax = -1
 
@@ -510,7 +510,7 @@ def get_ion_gamma_dnu(modelpath, modelgridindex, timestep, atomic_number, ion_st
     return arr_gamma_dnu
 
 
-def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, timestep, xmin, xmax, ymax, args):
+def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, timestep, xmin, xmax, ymax):
     axes[0].set_ylabel(r"$\sigma$ [cm$^2$]")
 
     # recomblowerionlist = ((26, 1), (26, 2), (26, 3), (26, 4), (27, 2), (27, 3), (28, 2), (28, 3), (28, 4))
@@ -530,9 +530,9 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
         radfielddata, modelgridindex=modelgridindex, timestep=timestep, print_bins=True, lambdamin=xmin, lambdamax=xmax
     )
 
-    arr_lambda_fitted, j_lambda_fitted = zip(*[
-        pt for pt in zip(arr_lambda_fitted, j_lambda_fitted) if xmin <= pt[0] <= xmax
-    ])
+    arr_lambda_fitted, j_lambda_fitted = zip(
+        *[pt for pt in zip(arr_lambda_fitted, j_lambda_fitted, strict=False) if xmin <= pt[0] <= xmax], strict=False
+    )
 
     estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
 
@@ -567,7 +567,7 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
         for (upperlevelnum, lowerlevelnum), arr_j_emiss_nu_lowerlevel in arr_j_nu_lowerleveldict.items():
             J_nu_recomb = np.array([
                 j_emiss_nu / kappa_bf if j_emiss_nu > 0 else 0.0
-                for j_emiss_nu, kappa_bf in zip(arr_j_emiss_nu_lowerlevel, array_kappa_bf_nu)
+                for j_emiss_nu, kappa_bf in zip(arr_j_emiss_nu_lowerlevel, array_kappa_bf_nu, strict=False)
             ])
 
             J_contrib = np.abs(np.trapz(J_nu_recomb, x=arr_nu_hz_recomb))
@@ -582,7 +582,7 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
         # calculate intensity from emission and opacity to (assuming dJ/ds = 0)
         J_nu_recomb = np.array([
             j_emiss_nu / kappa_bf if j_emiss_nu > 0 else 0.0
-            for j_emiss_nu, kappa_bf in zip(j_emiss_nu_recomb, array_kappa_bf_nu)
+            for j_emiss_nu, kappa_bf in zip(j_emiss_nu_recomb, array_kappa_bf_nu, strict=False)
         ])
 
         J_contrib = np.abs(np.trapz(J_nu_recomb, x=arr_nu_hz_recomb))
@@ -692,17 +692,20 @@ def plot_celltimestep(modelpath, timestep, outputfile, xmin, xmax, modelgridinde
     if not args.nobandaverage:
         arr_lambda, yvalues = get_binaverage_field(radfielddata, modelgridindex=modelgridindex, timestep=timestep)
         axis.step(arr_lambda, yvalues, where="pre", label="Band-average field", color="green", linewidth=1.5)
-        ymax = max([ymax] + [point[1] for point in zip(arr_lambda, yvalues) if xmin <= point[0] <= xmax])
+        ymax = max([ymax] + [point[1] for point in zip(arr_lambda, yvalues, strict=False) if xmin <= point[0] <= xmax])
 
     arr_lambda_fitted, j_lambda_fitted = get_fitted_field(
         radfielddata, modelgridindex=modelgridindex, timestep=timestep
     )
-    ymax = max([ymax] + [point[1] for point in zip(arr_lambda_fitted, j_lambda_fitted) if xmin <= point[0] <= xmax])
+    ymax = max(
+        [ymax]
+        + [point[1] for point in zip(arr_lambda_fitted, j_lambda_fitted, strict=False) if xmin <= point[0] <= xmax]
+    )
 
     axis.plot(arr_lambda_fitted, j_lambda_fitted, label="Radiation field model", alpha=0.8, color="blue", linewidth=1.5)
 
     ymax3 = plot_line_estimators(
-        axis, radfielddata, xmin, xmax, modelgridindex=modelgridindex, timestep=timestep, zorder=-2, color="red"
+        axis, radfielddata, modelgridindex=modelgridindex, timestep=timestep, zorder=-2, color="red"
     )
 
     ymax = args.ymax if args.ymax >= 0 else max(ymax, ymax3)
@@ -885,7 +888,7 @@ def plot_timeevolution(modelpath, outputfile, modelgridindex, args):
     print(dftopestimators)
 
     for ax, bin_num_estimator, nu_line in zip(
-        axes, dftopestimators.bin_num.to_numpy(), dftopestimators.nu_upper.to_numpy()
+        axes, dftopestimators.bin_num.to_numpy(), dftopestimators.nu_upper.to_numpy(), strict=False
     ):
         lambda_angstroms = 2.99792458e18 / nu_line
         print(f"Selected line estimator with bin_num {bin_num_estimator}, lambda={lambda_angstroms:.1f}")

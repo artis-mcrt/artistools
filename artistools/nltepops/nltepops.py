@@ -129,7 +129,7 @@ def add_lte_pops(modelpath, dfpop, columntemperature_tuples, noprint=False, maxl
                         f"has a superlevel at level {levelnumber_sl}"
                     )
 
-                for columnname, T_exc in columntemperature_tuples:
+                for columnname, _T_exc in columntemperature_tuples:
                     dfpop.loc[masksuperlevel, columnname] = (
                         ionlevels.iloc[levelnumber_sl:]
                         .eval("g / @gs_g * exp(- (energy_ev - @gs_energy) / @k_b / @T_exc)")

@@ -146,7 +146,7 @@ def read_reference_estimators(
 
                     assert len(row) == nstages + 1
                     assert len(iontuples) == nstages
-                    for (atomic_number, ion_stage), strionfrac in zip(iontuples, row[1:]):
+                    for (atomic_number, ion_stage), strionfrac in zip(iontuples, row[1:], strict=False):
                         elsym = at.get_elsymbol(atomic_number)
                         ionstr = at.get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
                         try:
