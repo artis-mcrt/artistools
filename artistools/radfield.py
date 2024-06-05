@@ -756,7 +756,6 @@ def plot_celltimestep(modelpath, timestep, outputfile, xmin, xmax, modelgridinde
             xmin=xmin,
             xmax=xmax,
             ymax=ymax,
-            args=args,
         )
         axes[0].legend(loc="best", handlelength=2, frameon=False, numpoints=1, fontsize=4)
         axes[1].legend(loc="best", handlelength=2, frameon=False, numpoints=1, fontsize=4)
