@@ -649,7 +649,7 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
     return ymax
 
 
-def get_binedges(radfielddata):
+def get_binedges(radfielddata: pd.DataFrame) -> list[float]:
     return [2.99792458e18 / radfielddata["nu_lower"].iloc[1], *list(2.99792458e18 / radfielddata["nu_upper"][1:])]
 
 
