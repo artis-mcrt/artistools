@@ -703,7 +703,7 @@ def make_emissionabsorption_plot(
 
     max_flambda_emission_total = max(
         flambda if (xmin < lambda_ang < xmax) else -99.0
-        for lambda_ang, flambda in zip(arraylambda_angstroms, array_flambda_emission_total)
+        for lambda_ang, flambda in zip(arraylambda_angstroms, array_flambda_emission_total, strict=False)
     )
 
     scalefactor = scale_to_peak / max_flambda_emission_total if scale_to_peak else 1.0
@@ -931,7 +931,7 @@ def make_contrib_plot(axes: t.Iterable[mpl.axes.Axes], modelpath: Path, densityp
                         list_lambda[v].append(c_ang_s / packet.nu_rf)
                         lists_y[v].append(estimators[k][v])
 
-    for ax, yvar in zip(axes, densityplotyvars):
+    for ax, yvar in zip(axes, densityplotyvars, strict=False):
         # ax.set_ylabel(r'velocity [{} km/s]')
         if not args.hideyticklabels:
             ax.set_ylabel(yvar + " " + at.estimators.get_units_string(yvar))
@@ -1060,7 +1060,7 @@ def make_plot(args) -> tuple[mpl.figure.Figure, list[mpl.axes.Axes], pl.DataFram
         leg.set_zorder(200)
 
         # Luke: I don't know what this code is for
-        for artist, text in zip(leg.legend_handles, leg.get_texts()):
+        for artist, text in zip(leg.legend_handles, leg.get_texts(), strict=False):
             if hasattr(artist, "get_color"):
                 col = artist.get_color()
                 artist.set_linewidth(2.0)

@@ -147,7 +147,8 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
             if "q" in dfmodel.columns:
                 initial_energy_mapped = sum(
-                    mass * float(q[0]) for mass, q in zip(cellmass_mapped, dfmodel.select(["q"]).collect().iter_rows())
+                    mass * float(q[0])
+                    for mass, q in zip(cellmass_mapped, dfmodel.select(["q"]).collect().iter_rows(), strict=False)
                 )
 
                 print(

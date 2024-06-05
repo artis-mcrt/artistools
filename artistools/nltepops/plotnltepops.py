@@ -476,7 +476,7 @@ def plot_populations_with_time_or_velocity(ax, modelpaths, timedays, ion_stage, 
         populations = {}
         # populationsLTE = {}
 
-        for timestep, mgi in zip(timesteps, modelgridindex_list):
+        for timestep, mgi in zip(timesteps, modelgridindex_list, strict=False):
             dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=mgi)
             try:
                 timesteppops = dfpop.loc[(dfpop["Z"] == Z) & (dfpop["ion_stage"] == ion_stage)]
@@ -613,7 +613,7 @@ def make_plot(modelpath, atomic_number, ion_stages_displayed, mgilist, timestep,
         if not args.notitle:
             axes[mgifirstaxindex].set_title(subplot_title, fontsize=10)
 
-        for ax, ion_stage in zip(axes[mgifirstaxindex : mgilastaxindex + 1], ion_stage_list):
+        for ax, ion_stage in zip(axes[mgifirstaxindex : mgilastaxindex + 1], ion_stage_list, strict=False):
             ion_data = adata.query("Z == @atomic_number and ion_stage == @ion_stage").iloc[0]
             lastsubplot = modelgridindex == mgilist[-1] and ion_stage == ion_stage_list[-1]
             make_ionsubplot(

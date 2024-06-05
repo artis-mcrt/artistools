@@ -148,7 +148,7 @@ def read_estimators_from_file(
                 else:
                     # will be TR, Te, W, TJ, nne
                     estimblock = {"timestep": int(row[1]), "modelgridindex": int(row[3])}
-                    for variablename, value in zip(row[4::2], row[5::2]):
+                    for variablename, value in zip(row[4::2], row[5::2], strict=False):
                         estimblock[variablename] = float(value)
 
             elif row[1].startswith("Z="):
@@ -161,7 +161,7 @@ def read_estimators_from_file(
                     startindex = 2
                 elsymbol = at.get_elsymbol(atomic_number)
 
-                for ion_stage_str, value in zip(row[startindex::2], row[startindex + 1 :: 2]):
+                for ion_stage_str, value in zip(row[startindex::2], row[startindex + 1 :: 2], strict=False):
                     ion_stage_str_strip = ion_stage_str.strip()
                     if ion_stage_str_strip == "(or":
                         continue
@@ -200,7 +200,7 @@ def read_estimators_from_file(
                     estimblock["nntot"] += estimblock[f"nnelement_{elsymbol}"]
 
             elif row[0] == "heating:":
-                for heatingtype, value in zip(row[1::2], row[2::2]):
+                for heatingtype, value in zip(row[1::2], row[2::2], strict=False):
                     key = heatingtype if heatingtype.startswith("heating_") else f"heating_{heatingtype}"
                     estimblock[key] = float(value)
 
@@ -210,7 +210,7 @@ def read_estimators_from_file(
                     estimblock["total_dep"] = estimblock["heating_dep"] / estimblock["heating_dep/total_dep"]
 
             elif row[0] == "cooling:":
-                for coolingtype, value in zip(row[1::2], row[2::2]):
+                for coolingtype, value in zip(row[1::2], row[2::2], strict=False):
                     estimblock[f"cooling_{coolingtype}"] = float(value)
 
     # reached the end of file

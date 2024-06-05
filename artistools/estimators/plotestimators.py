@@ -161,7 +161,7 @@ def plot_average_ionisation_excitation(
         ylist = []
         if seriestype == "averageexcitation":
             print("  This will be slow!")
-            for modelgridindex, timesteps in zip(mgilist, timestepslist):
+            for modelgridindex, timesteps in zip(mgilist, timestepslist, strict=False):
                 exc_ev_times_tdelta_sum = 0.0
                 tdeltasum = 0.0
                 for timestep in timesteps:
@@ -217,7 +217,9 @@ def plot_average_ionisation_excitation(
 
             dfselected = dfselected.with_columns(
                 (
-                    pl.sum_horizontal([pl.col(ioncol) * ioncharge for ioncol, ioncharge in zip(ioncols, ioncharges)])
+                    pl.sum_horizontal([
+                        pl.col(ioncol) * ioncharge for ioncol, ioncharge in zip(ioncols, ioncharges, strict=False)
+                    ])
                     / pl.col(f"nnelement_{elsymb}")
                 ).alias(f"averageionisation_{elsymb}")
             )
@@ -291,7 +293,7 @@ def plot_levelpop(
         ).query("level==@levelindex")
 
         ylist = []
-        for modelgridindex, timesteps in zip(mgilist, timestepslist):
+        for modelgridindex, timesteps in zip(mgilist, timestepslist, strict=False):
             valuesum = 0.0
             tdeltasum = 0.0
             # print(f'modelgridindex {modelgridindex} timesteps {timesteps}')
@@ -799,7 +801,7 @@ def make_plot(
         # with no lines, line styles cannot distringuish ions
         args.colorbyion = True
 
-    for ax, plotitems in zip(axes, plotlist):
+    for ax, plotitems in zip(axes, plotlist, strict=False):
         if xmin != xmax:
             ax.set_xlim(left=xmin, right=xmax)
 
@@ -873,7 +875,7 @@ def plot_recombrates(modelpath, estimators, atomic_number, ion_stage_list, **plo
 
     recombcalibrationdata = at.atomic.get_ionrecombratecalibration(modelpath)
 
-    for ax, ion_stage in zip(axes, ion_stage_list):
+    for ax, ion_stage in zip(axes, ion_stage_list, strict=False):
         ionstr = (
             f"{at.get_elsymbol(atomic_number)} {at.roman_numerals[ion_stage]} to {at.roman_numerals[ion_stage - 1]}"
         )
@@ -891,7 +893,9 @@ def plot_recombrates(modelpath, estimators, atomic_number, ion_stage_list, **plo
             continue
 
         # sort the pairs by temperature ascending
-        listT_e, list_rrc, list_rrc2 = zip(*sorted(zip(listT_e, list_rrc, list_rrc2), key=operator.itemgetter(0)))
+        listT_e, list_rrc, list_rrc2 = zip(
+            *sorted(zip(listT_e, list_rrc, list_rrc2, strict=False), key=operator.itemgetter(0)), strict=False
+        )
 
         ax.plot(listT_e, list_rrc, linewidth=2, label=f"{ionstr} ARTIS RRC_LTE_Nahar", **plotkwargs)
         ax.plot(listT_e, list_rrc2, linewidth=2, label=f"{ionstr} ARTIS Alpha_R", **plotkwargs)

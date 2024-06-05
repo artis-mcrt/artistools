@@ -76,7 +76,9 @@ def test_estimator_snapshot(mockplot, benchmark) -> None:
         "collisional heating - cooling": -6.4962990e-10,
     }
     assert len(expectedvals) == len(mockplot.call_args_list)
-    yvals = {varname: callargs[0][2] for varname, callargs in zip(expectedvals.keys(), mockplot.call_args_list)}
+    yvals = {
+        varname: callargs[0][2] for varname, callargs in zip(expectedvals.keys(), mockplot.call_args_list, strict=False)
+    }
 
     print({key: yarr[1] for key, yarr in yvals.items()})
 
@@ -152,7 +154,9 @@ def test_estimator_averaging(mockplot, benchmark) -> None:
         "collisional heating - cooling": -6.782059913668093e-10,
     }
     assert len(expectedvals) == len(mockplot.call_args_list)
-    yvals = {varname: callargs[0][2] for varname, callargs in zip(expectedvals.keys(), mockplot.call_args_list)}
+    yvals = {
+        varname: callargs[0][2] for varname, callargs in zip(expectedvals.keys(), mockplot.call_args_list, strict=False)
+    }
 
     print({key: yarr[1] for key, yarr in yvals.items()})
 
@@ -212,7 +216,7 @@ def test_estimator_snapshot_classic_3d(mockplot) -> None:
     assert len(expectedvals) == len(mockplot.call_args_list)
     yvals = {
         varname: np.array(callargs[0][2]).mean()
-        for varname, callargs in zip(expectedvals.keys(), mockplot.call_args_list)
+        for varname, callargs in zip(expectedvals.keys(), mockplot.call_args_list, strict=False)
     }
 
     print(yvals)
@@ -277,7 +281,9 @@ def test_estimator_snapshot_classic_3d_x_axis(mockplot) -> None:
     }
 
     assert len(expectedvals) == len(mockplot.call_args_list)
-    yvals = {varname: callargs[0][2] for varname, callargs in zip(expectedvals.keys(), mockplot.call_args_list)}
+    yvals = {
+        varname: callargs[0][2] for varname, callargs in zip(expectedvals.keys(), mockplot.call_args_list, strict=False)
+    }
 
     print({key: np.array(yarr).mean() for key, yarr in yvals.items()})
 

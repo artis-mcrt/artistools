@@ -373,7 +373,7 @@ def filtermissinggridparticlecontributions(traj_root: Path, dfcontribs: pl.DataF
         .collect()
     )
 
-    for (cellindex,), dfparticlecontribs in dfcontribs.group_by(["cellindex"]):  # type: ignore[misc]
+    for _, dfparticlecontribs in dfcontribs.group_by("cellindex"):
         frac_sum: float = dfparticlecontribs["frac_of_cellmass"].sum()
         assert frac_sum == 0.0 or np.isclose(frac_sum, 1.0, rtol=0.02)
 
@@ -448,7 +448,7 @@ def add_abundancecontributions(
 
     dfnucabundances = pl.DataFrame({
         f"particle_{particleid}": [traj_nuc_abund.get(k, 0.0) for k in allkeys]
-        for particleid, traj_nuc_abund in zip(particleids, list_traj_nuc_abund)
+        for particleid, traj_nuc_abund in zip(particleids, list_traj_nuc_abund, strict=False)
     }).with_columns(pl.all().cast(pl.Float64))
 
     del list_traj_nuc_abund

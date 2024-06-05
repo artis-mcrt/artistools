@@ -372,7 +372,7 @@ def read_spec_res(modelpath: Path) -> dict[int, pl.DataFrame]:
         res_specdata[dirbin] = (
             res_specdata[dirbin][1:]  # drop the first row that contains time headers
             .with_columns(pl.all().cast(pl.Float64))
-            .rename(dict(zip(oldcolnames, newcolnames)))
+            .rename(dict(zip(oldcolnames, newcolnames, strict=False)))
         )
 
         # the number of timesteps and nu bins should match for all direction bins
@@ -639,7 +639,7 @@ def get_vspecpol_spectrum(
 
     arr_tmid = [float(i) for i in vspecdata.columns[1:]]
     vspec_timesteps = range(len(arr_tmid))
-    arr_tdelta = [l1 - l2 for l1, l2 in zip(arr_tmid[1:], arr_tmid[:-1])] + [arr_tmid[-1] - arr_tmid[-2]]
+    arr_tdelta = [l1 - l2 for l1, l2 in zip(arr_tmid[1:], arr_tmid[:-1], strict=False)] + [arr_tmid[-1] - arr_tmid[-2]]
 
     def match_closest_time(reftime: float) -> int:
         return min(vspec_timesteps, key=lambda ts: abs(arr_tmid[ts] - reftime))
@@ -1053,7 +1053,7 @@ def get_flux_contributions_from_packets(
         if absdfs := [absorptiongroups[groupname] for _, groupname in other_groups if groupname in absorptiongroups]:
             absorptiongroups["Other"] = pl.concat(absdfs)
 
-        for grouptotal, groupname in other_groups:
+        for _grouptotal, groupname in other_groups:
             with contextlib.suppress(KeyError):
                 del emissiongroups[groupname]
                 del absorptiongroups[groupname]

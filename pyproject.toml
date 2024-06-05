@@ -191,8 +191,6 @@ ignore = [
     "ARG001", # ignored because variables in df.eval() are not detected
     "ANN",
     "B005",  # strip-with-multi-characters
-    "B007",  # variable not used in loop body (but sometimes it is with DataFrame.eval)
-    "B905", # zip without explicit strict parameter
     "C901",  # complex-structure
     "COM812",  # missing-trailing-comma
     "CPY001", # missing-copyright-notice
@@ -213,6 +211,7 @@ ignore = [
     "N803",  # Argument name should be lowercase
     "N806",  # non-lowercase-variable-in-function
     "PERF203", # try-except-in-loop
+    "PGH004", # blanket-noqa
     "PLC0414", # useless-import-alias
     "PLC0415", # import-outside-toplevel
     "PLR0914", # too-many-locals

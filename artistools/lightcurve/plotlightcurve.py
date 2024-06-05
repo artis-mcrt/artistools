@@ -879,7 +879,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                         f"# model: {modelname}",
                         "# time_days magnitude",
                     ]
-                    txtlinesout.extend(f"{t_d} {m}" for t_d, m in zip(time, brightness_in_mag))
+                    txtlinesout.extend(f"{t_d} {m}" for t_d, m in zip(time, brightness_in_mag, strict=False))
                     txtout = "\n".join(txtlinesout)
                 if args.write_data:
                     bandoutfile = (

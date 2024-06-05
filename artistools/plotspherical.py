@@ -207,7 +207,7 @@ def plot_spherical(
         axes = (axes,)
 
     # for ax, axcbar, plotvar in zip(axes[::2], axes[1::2], plotvars):
-    for ax, plotvar in zip(axes, plotvars):
+    for ax, plotvar in zip(axes, plotvars, strict=False):
         data = alldirbins.get_column(plotvar).to_numpy().reshape((ncosthetabins, nphibins))
 
         if gaussian_sigma is not None and gaussian_sigma > 0:
@@ -344,7 +344,7 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
     if args.makegif:
         time_ranges = [
             (tstart, tend, f"timestep {ts}")
-            for ts, (tstart, tend) in enumerate(zip(tstarts, tends))
+            for ts, (tstart, tend) in enumerate(zip(tstarts, tends, strict=False))
             if ((args.timemin is None or tstart >= args.timemin) and (args.timemax is None or tend <= args.timemax))
         ]
         outformat = "png"

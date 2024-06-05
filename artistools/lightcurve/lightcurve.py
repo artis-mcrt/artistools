@@ -247,7 +247,7 @@ def generate_band_lightcurve_data(
             )
             filters_dict["bol"] = [
                 (time, bol_magnitude)
-                for time, bol_magnitude in zip(times, bol_magnitudes)
+                for time, bol_magnitude in zip(times, bol_magnitudes, strict=False)
                 if math.isfinite(bol_magnitude)
             ]
         elif filter_name not in filters_dict:
@@ -381,7 +381,7 @@ def get_spectrum_in_filter_range(
     assert spectrum is not None
 
     wavelength_from_spectrum, flux = [], []
-    for wavelength, flambda in zip(spectrum["lambda_angstroms"], spectrum["f_lambda"]):
+    for wavelength, flambda in zip(spectrum["lambda_angstroms"], spectrum["f_lambda"], strict=False):
         if wavefilter_min <= wavelength <= wavefilter_max:  # to match the spectrum wavelengths to those of the filter
             wavelength_from_spectrum.append(wavelength)
             flux.append(flambda)
@@ -400,11 +400,14 @@ def evaluate_magnitudes(flux, transmission, wavelength_from_spectrum, zeropointe
 def get_band_lightcurve(
     band_lightcurve_data: dict[str, t.Sequence[tuple[float, float]]], band_name, args: argparse.Namespace
 ) -> tuple[t.Sequence[float], np.ndarray]:
-    times, brightness_in_mag = zip(*[
-        (time, brightness)
-        for time, brightness in band_lightcurve_data[band_name]
-        if ((args.timemin is None or args.timemin <= time) and (args.timemax is None or args.timemax >= time))
-    ])
+    times, brightness_in_mag = zip(
+        *[
+            (time, brightness)
+            for time, brightness in band_lightcurve_data[band_name]
+            if ((args.timemin is None or args.timemin <= time) and (args.timemax is None or args.timemax >= time))
+        ],
+        strict=False,
+    )
 
     return times, np.array(brightness_in_mag)
 
@@ -416,7 +419,9 @@ def get_colour_delta_mag(band_lightcurve_data, filter_names) -> tuple[list[float
     plot_times = []
     colour_delta_mag = []
 
-    for filter_1, filter_2 in zip(band_lightcurve_data[filter_names[0]], band_lightcurve_data[filter_names[1]]):
+    for filter_1, filter_2 in zip(
+        band_lightcurve_data[filter_names[0]], band_lightcurve_data[filter_names[1]], strict=False
+    ):
         # Make magnitude dictionaries where time is the key
         time_dict_1[float(filter_1[0])] = filter_1[1]
         time_dict_2[float(filter_2[0])] = filter_2[1]

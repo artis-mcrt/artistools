@@ -76,7 +76,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             vupperscoarse = [modelmeta["vmax_cmps"] / ncoarsevelbins * (i + 1) for i in range(ncoarsevelbins)]
 
         vlowerscoarse = [0.0] + vupperscoarse[:-1]
-        for vlower, vupper in zip(vlowerscoarse, vupperscoarse):
+        for vlower, vupper in zip(vlowerscoarse, vupperscoarse, strict=False):
             velbinmass = (
                 dfmodelcollect.filter(pl.col("vel_r_mid").is_between(vlower, vupper, closed="left"))["mass_g"].sum()
                 / 1.989e33

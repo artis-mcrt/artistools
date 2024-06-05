@@ -97,7 +97,7 @@ def make_plot(logfiledict):
         plotvalues = ["update_packets", "update_grid", "write_estimators"]
         for plotvalue in plotvalues:
             # print(logfiledict[plotvalue][timestep])
-            process, timetaken = zip(*logfiledict[plotvalue][timestep].items())
+            process, timetaken = zip(*logfiledict[plotvalue][timestep].items(), strict=False)
             # print(process, timetaken)
             plt.plot(process, timetaken, label=plotvalue)
         plt.xlabel("mpi rank")
