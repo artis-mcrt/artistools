@@ -150,6 +150,7 @@ disable = """
     too-many-statements,
     unbalanced-tuple-unpacking,
     unused-argument,
+    unused-import,
     unused-variable,
     unspecified-encoding,
     unsupported-assignment-operation,
