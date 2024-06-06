@@ -136,7 +136,7 @@ jobs:
                   #   nogil: true # Optional, to select a free-threaded Python build (3.13+ only)
 
             - name: Show python version
-              run: python --version --version && which python
+              run: python3 --version --version && which python3
 
             - name: Install uv
               run: |
@@ -146,9 +146,10 @@ jobs:
             - name: Install pre-release packages for 3.13
               if: ${{ endsWith(matrix.python-version, '-dev') }}
               run: |
+                  python3 -m pip install wrapt
                   python3 -m pip install setuptools meson meson-python==0.13.1
                   python3 -m pip install -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple numpy
-                  python3 -m pip install -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple pandas
+                  python3 -m uv pip install pandas
                   python3 -m pip install -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple matplotlib
                   python3 -m pip install -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple scipy
                   python3 -m pip install -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple pyarrow
