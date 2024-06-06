@@ -136,6 +136,8 @@ jobs:
                   python-version: ${{ matrix.python-version }}
                   #   nogil: true # Optional, to select a free-threaded Python build (3.13+ only)
 
+            - run: python --version --version && which python
+
             - name: Install uv
               run: |
                   curl -LsSf https://astral.sh/uv/install.sh | sh
