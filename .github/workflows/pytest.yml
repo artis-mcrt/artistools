@@ -115,7 +115,6 @@ jobs:
         env:
             OS: ${{ endsWith(matrix.python-version, '-dev') && 'ubuntu-latest' || 'macos-14' }}
             PYTHON: ${{ matrix.python-version }}
-            UV_PRERELEASE: if-necessary-or-explicit
 
         name: pytest python${{ matrix.python-version }}
         steps:
@@ -146,7 +145,7 @@ jobs:
 
             - name: Install artistools
               run: |
-                  python3 -m uv pip install --python python3 --upgrade --compile-bytecode --editable  .
+                  python3 -m uv pip install --python python3 --prerelease=if-necessary-or-explicit --upgrade --compile-bytecode --editable  .
 
             - name: Cache test data
               uses: actions/cache@v4
