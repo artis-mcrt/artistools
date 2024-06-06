@@ -115,6 +115,7 @@ jobs:
         env:
             OS: ${{ endsWith(matrix.python-version, '-dev') && 'ubuntu-latest' || 'macos-14' }}
             PYTHON: ${{ matrix.python-version }}
+            UV_PRERELEASE: if-necessary-or-explicit
 
         name: pytest python${{ matrix.python-version }}
         steps:
