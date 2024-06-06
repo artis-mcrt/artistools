@@ -159,7 +159,7 @@ jobs:
                   #python3 -m pip install --pre -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple pyarrow
                   grep -v -e '^pyvista' -e '^scipy' -e '^pyarrow' requirements.txt > requirements3.13.txt
                   mv requirements3.13.txt requirements.txt
-                  python3 -m uv pip install --python python3 --prerelease=if-necessary-or-explicit -r requirements.txt
+                  python3 -m pip install --pre -r requirements.txt
 
             - name: Install artistools
               run: |
