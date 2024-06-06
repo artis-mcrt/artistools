@@ -159,7 +159,8 @@ jobs:
                   python3 -m uv pip install git+https://github.com/indygreg/python-zstandard.git
                   python3 -m uv pip install --no-build-isolation imageio
                   grep -v -e '^pyvista' -e '^scipy' -e '^pyarrow' requirements.txt > requirements3.13.txt
-                  PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 python3.13 -m uv pip install --no-build-isolation fastparquet extinction
+                  PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 python3.13 -m uv pip install --no-build-isolation fastparquet
+                  python3 -m pip install --no-build-isolation extinction
                   mv requirements3.13.txt requirements.txt
 
             - name: Install artistools
