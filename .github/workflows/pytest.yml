@@ -128,6 +128,7 @@ jobs:
               uses: actions/setup-python@v5
               with:
                   python-version: ${{ matrix.python-version }}
+                  check-latest: true
                   allow-prereleases: true
 
             # - uses: deadsnakes/action@v3.1.0
@@ -153,6 +154,7 @@ jobs:
                   python3 -m uv pip install pandas
                   python3 -m uv pip install git+https://github.com/python-pillow/Pillow.git
                   python3 -m uv pip install matplotlib
+                  sudo apt install libopenblas-dev
                   python3.13 -m uv pip install git+https://github.com/scipy/scipy.git
                   #python3 -m pip install --pre -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple pyarrow
                   grep -v -e '^pyvista' -e '^scipy' -e '^pyarrow' requirements.txt > requirements3.13.txt
