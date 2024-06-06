@@ -114,7 +114,7 @@ jobs:
                 os: [macos-14]
                 python-version: ['3.10', '3.11', '3.12', '3.13-dev']
         env:
-            OS: ${{ matrix.os }}
+            OS: ${{ endsWith(matrix.python-version, '-dev') && 'ubuntu-latest' || 'macos-14' }}
             PYTHON: ${{ matrix.python-version }}
 
         name: pytest python${{ matrix.python-version }}
@@ -136,7 +136,8 @@ jobs:
                   python-version: ${{ matrix.python-version }}
                   #   nogil: true # Optional, to select a free-threaded Python build (3.13+ only)
 
-            - run: python --version --version && which python
+            - name: Show python version
+              run: python --version --version && which python
 
             - name: Install uv
               run: |
