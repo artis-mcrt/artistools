@@ -143,6 +143,14 @@ jobs:
                   #curl -LsSf https://astral.sh/uv/install.sh | sh
                   python3 -m pip install uv
 
+            - name: Install pre-release packagers for 3.13
+              if: ${{ endsWith(matrix.python-version, '-dev') }}
+              run: |
+                  python3 -m pip install -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple numpy pandas matplotlib scipy pyarrow
+                  grep -v '^pyvista' requirements.txt > requirements3.13.txt
+                  mv requirements3.13.txt requirements.txt
+                  python3 -m uv pip install --python python3 --prerelease=if-necessary-or-explicit --upgrade --compile-bytecode --editable -r requirements.txt
+
             - name: Install artistools
               run: |
                   python3 -m uv pip install --python python3 --prerelease=if-necessary-or-explicit --upgrade --compile-bytecode --editable  .
