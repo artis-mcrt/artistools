@@ -143,10 +143,15 @@ jobs:
                   #curl -LsSf https://astral.sh/uv/install.sh | sh
                   python3 -m pip install uv
 
-            - name: Install pre-release packagers for 3.13
+            - name: Install pre-release packages for 3.13
               if: ${{ endsWith(matrix.python-version, '-dev') }}
               run: |
-                  python3 -m pip install -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple numpy pandas matplotlib scipy pyarrow
+                  python3 -m pip install setuptools meson meson-python==0.13.1
+                  python3 -m pip install -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple numpy
+                  python3 -m pip install -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple pandas
+                  python3 -m pip install -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple matplotlib
+                  python3 -m pip install -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple scipy
+                  python3 -m pip install -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple pyarrow
                   grep -v '^pyvista' requirements.txt > requirements3.13.txt
                   mv requirements3.13.txt requirements.txt
                   python3 -m uv pip install --python python3 --prerelease=if-necessary-or-explicit --upgrade --compile-bytecode --editable -r requirements.txt
