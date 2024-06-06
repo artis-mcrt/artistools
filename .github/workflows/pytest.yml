@@ -137,11 +137,12 @@ jobs:
 
             - name: Install uv
               run: |
-                  curl -LsSf https://astral.sh/uv/install.sh | sh
+                  #curl -LsSf https://astral.sh/uv/install.sh | sh
+                  python3 -m pip install uv
 
             - name: Install artistools
               run: |
-                  uv pip install --system --upgrade --compile-bytecode --editable  .
+                  python3 -m uv pip install --system --upgrade --compile-bytecode --editable  .
 
             - name: Cache test data
               uses: actions/cache@v4
