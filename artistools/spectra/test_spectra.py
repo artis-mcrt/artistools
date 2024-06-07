@@ -8,6 +8,7 @@ import matplotlib.axes
 import numpy as np
 import pandas as pd
 import pytest
+from scipy import integrate
 
 import artistools as at
 
@@ -29,7 +30,7 @@ def test_spectraplot(mockplot) -> None:
     arr_lambda = np.array(mockplot.call_args[0][1])
     arr_f_lambda = np.array(mockplot.call_args[0][2])
 
-    integral = np.trapz(y=arr_f_lambda, x=arr_lambda)
+    integral = integrate.trapezoid(y=arr_f_lambda, x=arr_lambda)
     assert np.isclose(integral, 5.870730903198916e-11, atol=1e-14)
 
 
@@ -48,7 +49,7 @@ def test_spectra_frompackets(mockplot, benchmark) -> None:
     arr_lambda = np.array(mockplot.call_args[0][1])
     arr_f_lambda = np.array(mockplot.call_args[0][2])
 
-    integral = np.trapz(y=arr_f_lambda, x=arr_lambda)
+    integral = integrate.trapezoid(y=arr_f_lambda, x=arr_lambda)
 
     assert np.isclose(integral, 7.7888e-12, rtol=1e-3)
 
@@ -216,7 +217,7 @@ def test_spectra_get_flux_contributions(benchmark) -> None:
         fluxfilterfunc=None,
     )[-1]
 
-    integrated_flux_specout = np.trapz(dfspectrum["f_lambda"], x=dfspectrum["lambda_angstroms"])
+    integrated_flux_specout = integrate.trapezoid(dfspectrum["f_lambda"], x=dfspectrum["lambda_angstroms"])
 
     specdata = pd.read_csv(modelpath / "spec.out", sep=r"\s+")
     arraynu = specdata.loc[:, "0"].to_numpy()
@@ -232,7 +233,7 @@ def test_spectra_get_flux_contributions(benchmark) -> None:
         )
     )
 
-    integrated_flux_emission = -np.trapz(array_flambda_emission_total, x=arraylambda_angstroms)
+    integrated_flux_emission = -integrate.trapezoid(array_flambda_emission_total, x=arraylambda_angstroms)
 
     # total spectrum should be equal to the sum of all emission processes
     print(f"Integrated flux from spec.out:     {integrated_flux_specout}")

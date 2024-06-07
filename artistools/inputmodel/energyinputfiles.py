@@ -124,7 +124,7 @@ def energy_from_rprocess_calculation(energy_thermo_data, get_rate=True):
     times = energy_thermo_data["time/s"][skipfirstnrows:]
     qdot = energy_thermo_data["Qdot"][skipfirstnrows:]
 
-    E_tot = np.trapz(y=qdot, x=times)  # erg / g
+    E_tot = integrate.trapezoid(y=qdot, x=times)  # erg / g
 
     if get_rate:
         print(f"E_tot {E_tot} erg/g")

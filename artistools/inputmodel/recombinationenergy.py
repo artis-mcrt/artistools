@@ -9,6 +9,7 @@ import argcomplete
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from scipy import integrate
 
 import artistools as at
 
@@ -108,7 +109,7 @@ def get_particle_nucenergy_released(traj_root, particleid, tmin_s, time_s_end):
         dfthermo = dfthermo.rename(columns={"time/s": "time_s"})
         dfthermo = dfthermo.query("time_s >= @tmin_s")
         dfthermo = dfthermo.query("time_s <= @time_s_end")
-        return np.trapz(y=dfthermo["Qdot"], x=dfthermo["time_s"]) * erg_to_ev
+        return integrate.trapezoid(y=dfthermo["Qdot"], x=dfthermo["time_s"]) * erg_to_ev
         # print(dfthermo)
 
 

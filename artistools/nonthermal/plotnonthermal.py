@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pynonthermal as pynt
+from scipy import integrate
 
 import artistools as at
 
@@ -116,7 +117,7 @@ def plot_contributions(axis, modelpath, timestep, modelgridindex, nonthermaldata
                 arr_ionisation_shell = ionpop * arr_y * arr_xs * row.ionpot_ev / total_depev
                 arr_ionisation_ion += arr_ionisation_shell
 
-                frac_ionisation_shell = np.trapz(x=arr_enev, y=arr_ionisation_shell)
+                frac_ionisation_shell = integrate.trapezoid(x=arr_enev, y=arr_ionisation_shell)
                 frac_ionisation_ion += frac_ionisation_shell
 
             arr_ionisation_element += arr_ionisation_ion
@@ -130,7 +131,7 @@ def plot_contributions(axis, modelpath, timestep, modelgridindex, nonthermaldata
     nne = estim_tsmgi["nne"]
     arr_heating = np.array([pynt.electronlossfunction(enev, nne) / total_depev for enev in arr_enev])
 
-    frac_heating = np.trapz(x=arr_enev, y=arr_heating)
+    frac_heating = integrate.trapezoid(x=arr_enev, y=arr_heating)
 
     print(f"   frac_heating: {frac_heating}")
     print(f"frac_ionisation: {frac_ionisation}")

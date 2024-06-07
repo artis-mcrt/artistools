@@ -17,6 +17,7 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 from astropy import units as u
+from scipy import integrate
 
 import artistools as at
 
@@ -31,7 +32,7 @@ def print_floers_line_ratio(
             int(np.searchsorted(arr_lambda_angstroms, wl, side="left")) for wl in (lambda_low, lambda_high)
         )
         lineflux = abs(
-            np.trapz(
+            integrate.trapezoid(
                 arr_f_lambda[index_low:index_high],
                 x=arr_lambda_angstroms[index_low:index_high],
             )
