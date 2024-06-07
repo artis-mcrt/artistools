@@ -128,13 +128,13 @@ def read_griddat_file(
         },
     )
     # griddata in geom units
-    griddata["rho"] = np.nan_to_num(griddata["rho"], nan=0.0)
+    griddata["rho"] = griddata["rho"].fillna(0.0)
 
     if "cellYe" in griddata:
-        griddata["cellYe"] = np.nan_to_num(griddata["cellYe"], nan=0.0)
+        griddata["cellYe"] = griddata["cellYe"].fillna(0.0)
 
     if "Q" in griddata:
-        griddata["Q"] = np.nan_to_num(griddata["Q"], nan=0.0)
+        griddata["Q"] = griddata["Q"].fillna(0.0)
 
     factor_position = 1.478  # in km
     km_to_cm = 1e5
