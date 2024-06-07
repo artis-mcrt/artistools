@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
+from scipy import integrate
 
 import artistools as at
 
@@ -435,10 +436,10 @@ def get_recombination_emission(
                 * (TWOOVERCLIGHTSQUARED * arr_sigma_bf2 * np.power(arr_nu_hz2, 2) * np.exp(-HOVERKB * arr_nu_hz2 / T_e))
                 * levelpopfrac
             )
-            alpha_level2 = np.abs(np.trapz(arr_alpha_level_dnu2, x=arr_nu_hz2))
+            alpha_level2 = np.abs(integrate.trapezoid(arr_alpha_level_dnu2, x=arr_nu_hz2))
             alpha_ion2 += alpha_level2
 
-            # alpha_level = np.abs(np.trapz(arr_alpha_level_dnu, x=arr_nu_hz))
+            # alpha_level = np.abs(integrate.trapezoid(arr_alpha_level_dnu, x=arr_nu_hz))
             lambda_threshold = 2.99792458e18 / nu_threshold
             print(
                 f" {upperionstr} level {upperlevelnum} -> {lowerionstr} level {levelnum}"
@@ -447,7 +448,7 @@ def get_recombination_emission(
                 f" upperlevelpop {upperion_nltepops[upperlevelnum]:.2e}"
             )
 
-    alpha_ion = np.abs(np.trapz(arr_alpha_dnu, x=arr_nu_hz))
+    alpha_ion = np.abs(integrate.trapezoid(arr_alpha_dnu, x=arr_nu_hz))
     print(f"  {upperionstr} Alpha_R = {alpha_ion:.2e}   Alpha_R*nne = {nne * alpha_ion:.2e}")
     print(f"  {upperionstr} Alpha_R2 = {alpha_ion2:.2e} Alpha_R2*nne = {nne * alpha_ion2:.2e}")
 
@@ -498,7 +499,7 @@ def get_ion_gamma_dnu(modelpath, modelgridindex, timestep, atomic_number, ion_st
 
             arr_gamma_dnu += arr_gamma_level_dnu
 
-            gamma_r_level = np.abs(np.trapz(arr_gamma_level_dnu, x=arr_nu_hz))
+            gamma_r_level = np.abs(integrate.trapezoid(arr_gamma_level_dnu, x=arr_nu_hz))
             lambda_threshold = 2.99792458e18 / nu_threshold
 
             print(
@@ -570,7 +571,7 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
                 for j_emiss_nu, kappa_bf in zip(arr_j_emiss_nu_lowerlevel, array_kappa_bf_nu, strict=False)
             ])
 
-            J_contrib = np.abs(np.trapz(J_nu_recomb, x=arr_nu_hz_recomb))
+            J_contrib = np.abs(integrate.trapezoid(J_nu_recomb, x=arr_nu_hz_recomb))
 
             J_lambda_recomb_level = J_nu_recomb * arr_nu_hz_recomb / arraylambda_angstrom_recomb
             fieldlabel = (
@@ -585,7 +586,7 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
             for j_emiss_nu, kappa_bf in zip(j_emiss_nu_recomb, array_kappa_bf_nu, strict=False)
         ])
 
-        J_contrib = np.abs(np.trapz(J_nu_recomb, x=arr_nu_hz_recomb))
+        J_contrib = np.abs(integrate.trapezoid(J_nu_recomb, x=arr_nu_hz_recomb))
 
         J_lambda_recomb = J_nu_recomb * arr_nu_hz_recomb / arraylambda_angstrom_recomb
 
@@ -640,7 +641,7 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
                 label=r"d$\Gamma_R$(" + ionstr + " due to " + linelabel + r")/d$\lambda$",
             )
 
-            gamma_r_ion = abs(np.trapz(arr_gamma_dlambda, x=arraylambda_angstrom))
+            gamma_r_ion = abs(integrate.trapezoid(arr_gamma_dlambda, x=arraylambda_angstrom))
             print(f"  Gamma_R({ionstr} due to {linelabel}): {gamma_r_ion:.2e}")
 
     axes[0].set_yscale("log")

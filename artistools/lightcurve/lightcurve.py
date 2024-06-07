@@ -9,6 +9,7 @@ import pandas as pd
 import polars as pl
 from astropy import constants as const
 from astropy import units as u
+from scipy import integrate
 
 import artistools as at
 
@@ -324,7 +325,7 @@ def bolometric_magnitude(
                     average_over_phi=average_over_phi,
                     average_over_theta=average_over_theta,
                 )[angle]
-            integrated_flux = np.trapz(spectrum["f_lambda"], spectrum["lambda_angstroms"])
+            integrated_flux = integrate.trapezoid(spectrum["f_lambda"], spectrum["lambda_angstroms"])
             integrated_luminosity = integrated_flux * 4 * np.pi * np.power(u.Mpc.to("cm"), 2)
             Mbol_sun = 4.74
             with np.errstate(divide="ignore"):
@@ -391,7 +392,7 @@ def get_spectrum_in_filter_range(
 
 def evaluate_magnitudes(flux, transmission, wavelength_from_spectrum, zeropointenergyflux: float) -> float:
     cf = flux * transmission
-    flux_obs = abs(np.trapz(cf, wavelength_from_spectrum))  # using trapezoidal rule to integrate
+    flux_obs = abs(integrate.trapezoid(cf, wavelength_from_spectrum))  # using trapezoidal rule to integrate
     val = 0.0 if flux_obs == 0.0 else -2.5 * np.log10(flux_obs / zeropointenergyflux)
     assert isinstance(val, float)
     return val

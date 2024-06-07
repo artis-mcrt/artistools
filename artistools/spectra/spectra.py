@@ -17,6 +17,7 @@ import numpy.typing as npt
 import pandas as pd
 import polars as pl
 import polars.selectors as cs
+from scipy import integrate
 
 import artistools as at
 
@@ -824,8 +825,8 @@ def get_flux_contributions(
                 array_flambda_absorption = array_fnu_absorption * arraynu / arraylambda
 
                 array_flambda_emission_total += array_flambda_emission
-                fluxcontribthisseries = abs(np.trapz(array_fnu_emission, x=arraynu)) + abs(
-                    np.trapz(array_fnu_absorption, x=arraynu)
+                fluxcontribthisseries = abs(integrate.trapezoid(array_fnu_emission, x=arraynu)) + abs(
+                    integrate.trapezoid(array_fnu_absorption, x=arraynu)
                 )
 
                 if emissiontypeclass == "bound-bound":
@@ -1120,8 +1121,8 @@ def get_flux_contributions_from_packets(
         if array_flambda_emission is None:
             array_flambda_emission = np.zeros_like(array_flambda_absorption, dtype=float)
 
-        fluxcontribthisseries = abs(np.trapz(array_flambda_emission, x=array_lambda)) + abs(
-            np.trapz(array_flambda_absorption, x=array_lambda)
+        fluxcontribthisseries = abs(integrate.trapezoid(array_flambda_emission, x=array_lambda)) + abs(
+            integrate.trapezoid(array_flambda_absorption, x=array_lambda)
         )
 
         if fluxcontribthisseries > 0.0:
@@ -1217,8 +1218,8 @@ def sort_and_reduce_flux_contribution_list(
             index += 1
 
         if numotherprinted < maxnumotherprinted and row.linelabel != "Other":
-            integemiss = abs(np.trapz(row.array_flambda_emission, x=arraylambda_angstroms))
-            integabsorp = abs(np.trapz(-row.array_flambda_absorption, x=arraylambda_angstroms))
+            integemiss = abs(integrate.trapezoid(row.array_flambda_emission, x=arraylambda_angstroms))
+            integabsorp = abs(integrate.trapezoid(-row.array_flambda_absorption, x=arraylambda_angstroms))
             if integabsorp > 0.0 and integemiss > 0.0:
                 print(
                     f"{row.fluxcontrib:.1e}, emission {integemiss:.1e}, "
@@ -1258,7 +1259,7 @@ def print_integrated_flux(
     arr_lambda_angstroms: np.ndarray | pd.Series | pl.Series,
     distance_megaparsec: float = 1.0,
 ) -> float:
-    integrated_flux = abs(np.trapz(np.nan_to_num(arr_f_lambda, nan=0.0), x=arr_lambda_angstroms))
+    integrated_flux = abs(integrate.trapezoid(np.nan_to_num(arr_f_lambda, nan=0.0), x=arr_lambda_angstroms))
     lambda_min = arr_lambda_angstroms.min()
     lambda_max = arr_lambda_angstroms.max()
     assert isinstance(lambda_min, int | float)

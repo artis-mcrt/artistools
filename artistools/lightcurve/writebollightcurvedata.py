@@ -4,6 +4,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from astropy import units as u
+from scipy import integrate
 
 import artistools as at
 
@@ -21,7 +22,7 @@ def get_bol_lc_from_spec(modelpath) -> pd.DataFrame:
                 spectrum = at.spectra.get_spectrum(
                     modelpath=modelpath, directionbins=[angle], timestepmin=timestep, timestepmax=timestep
                 )[angle]
-                integrated_flux = np.trapz(spectrum["f_lambda"], spectrum["lambda_angstroms"])
+                integrated_flux = integrate.trapezoid(spectrum["f_lambda"], spectrum["lambda_angstroms"])
                 integrated_luminosity = integrated_flux * 4 * np.pi * np.power(u.Mpc.to("cm"), 2)
                 bol_luminosity.append(integrated_luminosity)
 

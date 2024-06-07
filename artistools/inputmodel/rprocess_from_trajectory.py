@@ -17,6 +17,7 @@ import argcomplete
 import numpy as np
 import pandas as pd
 import polars as pl
+from scipy import integrate
 
 import artistools as at
 
@@ -236,7 +237,7 @@ def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, 
         assert all(dfthermo["Qdot"][startindex : nts_max + 1] > 0.0)
         dfthermo["Qdot_expansionadjusted"] = dfthermo["Qdot"] * dfthermo["time_s"] / t_model_s
 
-        qdotintegral: float = np.trapz(
+        qdotintegral: float = integrate.trapezoid(
             y=dfthermo["Qdot_expansionadjusted"][startindex : nts_max + 1],
             x=dfthermo["time_s"][startindex : nts_max + 1],
         )
