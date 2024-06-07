@@ -158,7 +158,8 @@ jobs:
                   #python3 -m pip install --pre -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple pyarrow
                   python3 -m uv pip install git+https://github.com/indygreg/python-zstandard.git
                   python3 -m uv pip install --no-build-isolation imageio
-                  pip install --extra-index-url https://pypi.fury.io/arrow-nightlies/ --prefer-binary --pre pyarrow
+                  #pip install --extra-index-url https://pypi.fury.io/arrow-nightlies/ --prefer-binary --pre pyarrow
+                  conda install -c arrow-nightlies pyarrow
                   grep -v -e '^extinction' -e '^pyvista' -e '^scipy' -e '^pyarrow' requirements.txt > requirements3.13.txt
                   PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 python3.13 -m uv pip install --no-build-isolation fastparquet
                   python3 -m pip install --no-build-isolation astropy
