@@ -200,7 +200,7 @@ def read_estimators_from_file(
                     estimblock["nntot"] += estimblock[f"nnelement_{elsymbol}"]
 
             elif row[0] == "heating:":
-                for heatingtype, value in zip(row[1::2], row[2::2], strict=False):
+                for heatingtype, value in zip(row[1::2], row[2::2], strict=True):
                     key = heatingtype if heatingtype.startswith("heating_") else f"heating_{heatingtype}"
                     estimblock[key] = float(value)
 
@@ -210,8 +210,12 @@ def read_estimators_from_file(
                     estimblock["total_dep"] = estimblock["heating_dep"] / estimblock["heating_dep/total_dep"]
 
             elif row[0] == "cooling:":
-                for coolingtype, value in zip(row[1::2], row[2::2], strict=False):
+                for coolingtype, value in zip(row[1::2], row[2::2], strict=True):
                     estimblock[f"cooling_{coolingtype}"] = float(value)
+
+            elif row[0] == "deposition:":
+                for deptype, value in zip(row[1::2], row[2::2], strict=True):
+                    estimblock[f"deposition_{deptype}"] = float(value)
 
     # reached the end of file
     if estimblock:
