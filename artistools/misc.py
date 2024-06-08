@@ -353,7 +353,7 @@ def get_deposition(modelpath: Path | str = ".") -> pl.DataFrame:
 
     # no timesteps are given in the old format of deposition.out, so ensure that
     # the times in days match up with the times of our assumed timesteps
-    if not np.allclose(depdata["tmid_days"].to_numpy(), ts_mids, rtol=0.01):
+    if not np.allclose(depdata["tmid_days"].to_numpy(), ts_mids[: len(depdata["tmid_days"])], rtol=0.01):
         msg = "Deposition times do not match the timesteps"
         raise AssertionError(msg)
 
