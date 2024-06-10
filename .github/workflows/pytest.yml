@@ -107,13 +107,13 @@ jobs:
 
     pytest:
         timeout-minutes: 30
-        runs-on: ${{ endsWith(matrix.python-version, '-dev') && 'ubuntu-latest' || 'macos-14' }}
+        runs-on: ${{ endsWith(matrix.python-version, '-dev') && 'ubuntu-24.04' || 'macos-14' }}
         strategy:
             fail-fast: false
             matrix:
                 python-version: ['3.10', '3.11', '3.12', '3.13-dev']
         env:
-            OS: ${{ endsWith(matrix.python-version, '-dev') && 'ubuntu-latest' || 'macos-14' }}
+            OS: ${{ endsWith(matrix.python-version, '-dev') && 'ubuntu-24.04' || 'macos-14' }}
             PYTHON: ${{ matrix.python-version }}
 
         name: pytest python${{ matrix.python-version }}
