@@ -148,7 +148,7 @@ jobs:
             - name: Install pre-release packages for 3.13
               if: ${{ endsWith(matrix.python-version, '-dev') }}
               run: |
-                  python3 -m pip install -U --pre wrapt pip setuptools meson meson-python==0.13.1 maturin setuptools-scm wheel python-dateutil pytz tzdata ninja
+                  python3 -m pip install -U --pre wrapt pip setuptools meson meson-python==0.13.1 maturin setuptools-scm wheel python-dateutil pytz tzdata ninja versioneer
                   python3 -m pip install -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple numpy
                   # python3 -m uv pip install pandas
                   python3 -m pip install --no-build-isolation -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple pandas
