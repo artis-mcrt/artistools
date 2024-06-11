@@ -8,7 +8,7 @@ mypy>=1.10.0
 numexpr>=2.10.0
 numpy>=1.26.0
 pandas[compression,parquet]>=2.2.2
-polars==0.20.31
+polars==1.0a1
 pre-commit>=3.7.1
 pyarrow>=16.1.0
 pynonthermal>=2024.4.29
