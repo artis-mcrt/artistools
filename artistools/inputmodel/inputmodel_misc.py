@@ -248,11 +248,27 @@ def read_modelfile_text(
         wid_init_y = 2 * modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridy"]
         wid_init_z = 2 * modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridz"]
         modelmeta["wid_init_x"] = wid_init_x
-        modelmeta["wid_init_y"] = wid_init_z
+        modelmeta["wid_init_y"] = wid_init_y
         modelmeta["wid_init_z"] = wid_init_z
         modelmeta["wid_init"] = wid_init_x
         if "pos_x_min" in dfmodel.columns and not printwarningsonly:
             print("  model cell positions are defined in the header")
+            if not getheadersonly:
+                firstrow = dfmodel.row(index=0, named=True)
+                expected_positions = (
+                    ("pos_x_min", -xmax_tmodel),
+                    ("pos_y_min", -xmax_tmodel),
+                    ("pos_z_min", -xmax_tmodel),
+                    ("pos_x_mid", -xmax_tmodel + wid_init_x / 2.0),
+                    ("pos_y_mid", -xmax_tmodel + wid_init_y / 2.0),
+                    ("pos_z_mid", -xmax_tmodel + wid_init_z / 2.0),
+                )
+                for col, pos in expected_positions:
+                    if col in firstrow and not math.isclose(firstrow["pos_x_min"], pos, rel_tol=0.01):
+                        print(
+                            f"  WARNING: {col} does not match expected value. Check that vmax is consistent with the cell positions."
+                        )
+
         elif not getheadersonly:
 
             def vectormatch(vec1: list[float], vec2: list[float]) -> bool:

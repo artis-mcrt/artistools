@@ -11,6 +11,7 @@ import argcomplete
 import numpy as np
 import pandas as pd
 import polars as pl
+import polars.selectors as cs
 from astropy import units as u
 from scipy import integrate
 
@@ -322,7 +323,8 @@ def makemodelfromgriddata(
     targetmodeltime_days: None | float = None,
     traj_root: Path | str | None = None,
     dimensions: int = 3,
-    densityscale: float = 1.0,
+    scaledensity: float = 1.0,
+    scalevelocity: float = 1.0,
     args=None,
 ) -> None:
     pddfmodel, t_model_days, t_mergertime_s, vmax, modelmeta = at.inputmodel.modelfromhydro.read_griddat_file(
@@ -346,9 +348,14 @@ def makemodelfromgriddata(
     assert dfmodel["inputcellid"].dtype in pl.INTEGER_DTYPES
     assert isinstance(dfmodel, pl.DataFrame)
     dfmodel = dfmodel.with_columns(pl.col("inputcellid").cast(pl.Int32))  # pylint: disable=no-member
-    if densityscale != 1.0:
-        dfmodel = dfmodel.with_columns(rho=pl.col("rho") * densityscale, mass_g=pl.col("mass_g") * densityscale)
-        print(f"Densities will be scaled by {densityscale}")
+    if scaledensity != 1.0:
+        dfmodel = dfmodel.with_columns(rho=pl.col("rho") * scaledensity, mass_g=pl.col("mass_g") * scaledensity)
+        print(f"Densities will be scaled by {scaledensity}")
+
+    if scalevelocity != 1.0:
+        dfmodel = dfmodel.with_columns(cs.starts_with("pos_") * scalevelocity, rho=pl.col("rho") * (scalevelocity**-3))
+        modelmeta["vmax_cmps"] *= scalevelocity
+        print(f"Velocities will be scaled by {scalevelocity}. vmax/c is now {modelmeta['vmax_cmps'] / 29979245800:.2f}")
 
     if traj_root is not None:
         print(f"Nuclear network abundances from {traj_root} will be used")
@@ -431,7 +438,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-targetmodeltime_days", "-t", type=float, default=0.1, help="Time in days for the output model snapshot"
     )
     parser.add_argument(
-        "-densityscale", type=float, default=1.0, help="Multiply densities by this factor before writing to model file"
+        "-scaledensity", type=float, default=1.0, help="Multiply densities by this factor before writing the model file"
+    )
+    parser.add_argument(
+        "-scalevelocity",
+        type=float,
+        default=1.0,
+        help="Multiply ejecta velocities by this factor (while holding density fixed) before writing the model file",
     )
     parser.add_argument("-outputpath", "-o", default=None, help="Path for output model files")
 
@@ -461,7 +474,8 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         targetmodeltime_days=args.targetmodeltime_days,
         traj_root=args.trajectoryroot,
         dimensions=args.dimensions,
-        densityscale=args.densityscale,
+        scaledensity=args.scaledensity,
+        scalevelocity=args.scalevelocity,
     )
 
 
