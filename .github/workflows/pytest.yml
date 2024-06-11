@@ -168,6 +168,12 @@ jobs:
                   # path_to_write_report: ./coverage/codecov_report.txt
                   verbose: true
 
+            - name: Upload output files
+              uses: actions/upload-artifact@v4
+              with:
+                  name: testoutput-${{ matrix.python-version }}
+                  path: tests/output/
+
     codspeed-benchmarks:
         timeout-minutes: 180
         runs-on: ubuntu-22.04
