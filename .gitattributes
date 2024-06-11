@@ -16,3 +16,6 @@ matplotlib text eol=lf
 *.png binary
 *.jpg binary
 *.gz binary
+*.xz binary
+*.tar binary
+*.zip binary
