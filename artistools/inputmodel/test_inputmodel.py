@@ -107,19 +107,6 @@ def test_makeartismodelfrom_sph_particles() -> None:
 
     config_checksums_3d: list[dict[str, dict[str, t.Any]]] = [
         {
-            "maptogridargs": {"ncoordgrid": 16, "shinglesetal23hbug": True},
-            "maptogrid_sums": {
-                "ejectapartanalysis.dat": "e8694a679515c54c2b4867122122263a375d9ffa144a77310873ea053bb5a8b4",
-                "grid.dat": "ea930d0decca79d2e65ac1df1aaaa1eb427fdf45af965a623ed38240dce89954",
-                "gridcontributions.txt": "a2c09b96d32608db2376f9df61980c2ad1423066b579fbbe744f07e536f2891e",
-            },
-            "makeartismodel_sums": {
-                "gridcontributions.txt": "12f006c43c0c8d1f84c3927b3c80959c1b2cecc01598be92c2f24a130892bc60",
-                "abundances.txt": "5f782005ce879a8c81c43d0a7a791ad9b177eee8630b4771586949bf7fbca28e",
-                "model.txt": "547426e194741e4ab58a65848f165dcd3ef9275de711ba4870b11f32bf7b06d5",
-            },
-        },
-        {
             "maptogridargs": {"ncoordgrid": 16},
             "maptogrid_sums": {
                 "ejectapartanalysis.dat": "e8694a679515c54c2b4867122122263a375d9ffa144a77310873ea053bb5a8b4",
@@ -132,9 +119,22 @@ def test_makeartismodelfrom_sph_particles() -> None:
                 "model.txt": "01c5870c321fa25f07ab080a2c11705b340c7b810748ee2500fc3746479f6286",
             },
         },
+        {
+            "maptogridargs": {"ncoordgrid": 16, "shinglesetal23hbug": True},
+            "maptogrid_sums": {
+                "ejectapartanalysis.dat": "e8694a679515c54c2b4867122122263a375d9ffa144a77310873ea053bb5a8b4",
+                "grid.dat": "ea930d0decca79d2e65ac1df1aaaa1eb427fdf45af965a623ed38240dce89954",
+                "gridcontributions.txt": "a2c09b96d32608db2376f9df61980c2ad1423066b579fbbe744f07e536f2891e",
+            },
+            "makeartismodel_sums": {
+                "gridcontributions.txt": "12f006c43c0c8d1f84c3927b3c80959c1b2cecc01598be92c2f24a130892bc60",
+                "abundances.txt": "5f782005ce879a8c81c43d0a7a791ad9b177eee8630b4771586949bf7fbca28e",
+                "model.txt": "547426e194741e4ab58a65848f165dcd3ef9275de711ba4870b11f32bf7b06d5",
+            },
+        },
     ]
 
-    for config in config_checksums_3d:
+    for tag, config in zip(["", "_shinglesetal23hbug"], config_checksums_3d, strict=False):
         shutil.copytree(
             testdatapath / "kilonova", gridfolderpath, dirs_exist_ok=True, ignore=shutil.ignore_patterns("trajectories")
         )
@@ -151,7 +151,7 @@ def test_makeartismodelfrom_sph_particles() -> None:
 
         dfcontribs = {}
         for dimensions in (3, 2, 1, 0):
-            outpath_kn = outputpath / f"kilonova_{dimensions:d}d"
+            outpath_kn = outputpath / f"kilonova_{dimensions:d}d{tag}"
             outpath_kn.mkdir(exist_ok=True, parents=True)
 
             shutil.copyfile(gridfolderpath / "gridcontributions.txt", outpath_kn / "gridcontributions.txt")
