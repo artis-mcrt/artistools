@@ -957,12 +957,13 @@ def save_modeldata(
             dfmodel = dfmodel.select([*startcols, *abundcols])
             nstartcols = len(startcols)
             for colvals in dfmodel.iter_rows():
-                startvals = colvals[:nstartcols]
-                fmodel.write(" ".join(str(val) for val in startvals))
+                inputcellid = colvals[0]
+                rho = colvals[nstartcols - 1]
+                fmodel.write(f"{inputcellid:d}" + "".join(f" {colvalue:.4e}" for colvalue in colvals[1:nstartcols]))
                 fmodel.write(lineend)
                 fmodel.write(
                     " ".join((f"{colvalue:.4e}" if colvalue > 0.0 else "0.0") for colvalue in colvals[nstartcols:])
-                    if startvals[-1] > 0.0
+                    if rho > 0.0
                     else zeroabund
                 )
                 fmodel.write("\n")
