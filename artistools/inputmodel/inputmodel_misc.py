@@ -928,7 +928,7 @@ def save_modeldata(
         fmodel.write(f"{modelmeta['t_model_init_days']}\n")
 
         if modelmeta["dimensions"] in {2, 3}:
-            fmodel.write(f"{vmax}\n")
+            fmodel.write(f"{vmax:.4e}\n")
 
         if customcols:
             fmodel.write(f'#{" ".join(standardcols)} {" ".join(customcols)}\n')
