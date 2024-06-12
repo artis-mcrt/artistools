@@ -4,6 +4,7 @@ import typing as t
 from pathlib import Path
 
 import numpy as np
+import polars.testing as pltest
 import pytest
 
 import artistools as at
@@ -98,7 +99,7 @@ def verify_file_checksums(checksums_expected: dict, digest: str = "sha256", fold
     for filename, checksum_expected in checksums_expected.items():
         fullpath = Path(folder) / filename
         assert (
-            True or checksums_actual[fullpath] == checksum_expected
+            checksums_actual[fullpath] == checksum_expected
         ), f"{folder}/{filename} checksum mismatch. Expecting {checksum_expected} but calculated {checksums_actual[fullpath]}"
 
 
@@ -114,9 +115,9 @@ def test_makeartismodelfrom_sph_particles() -> None:
                 "gridcontributions.txt": "63e6331666c4928bdc6b7d0f59165e96d6555736243ea8998a779519052a425f",
             },
             "makeartismodel_sums": {
-                "gridcontributions.txt": "6c8186b992e8037f27c249feb19557705dc11db86dc47fa0d1e7257e420fce23",
-                "abundances.txt": "8ce4c5928f6751a76546a3406ef2c0e81844d52dc58e7f97e1bea5e25ae6a66e",
-                "model.txt": "2737b927905fc87d60a446fcacaf69d51d7d33789bc6e8b337cb16d54d14d426",
+                "gridcontributions.txt": "6327d196b4800eedb18faee15097f76af352ecbaa9ee59055161b81378bd4af7",
+                "abundances.txt": "b84fb2542b1872291e1f45385b43fad2e5249f7fccbe7e4cab59b9c3b6c63916",
+                "model.txt": "c268277b78d9053b447396519c183b8f8ad38404b40ed4a820670987a4d2bba2",
             },
         },
         {
@@ -127,9 +128,9 @@ def test_makeartismodelfrom_sph_particles() -> None:
                 "gridcontributions.txt": "a2c09b96d32608db2376f9df61980c2ad1423066b579fbbe744f07e536f2891e",
             },
             "makeartismodel_sums": {
-                "gridcontributions.txt": "12f006c43c0c8d1f84c3927b3c80959c1b2cecc01598be92c2f24a130892bc60",
-                "abundances.txt": "8ce4c5928f6751a76546a3406ef2c0e81844d52dc58e7f97e1bea5e25ae6a66e",
-                "model.txt": "b4e0214f226b09da921972555ae5353e3beb1bee0be6fb8400db8b9390f1638b",
+                "gridcontributions.txt": "c06b4cbbe7f3bf423ed636afd63e3d8e30cc3ffa928d3275ffc3ce13f2e4dbef",
+                "abundances.txt": "b84fb2542b1872291e1f45385b43fad2e5249f7fccbe7e4cab59b9c3b6c63916",
+                "model.txt": "6bca370bf85e759b95707b5819d9acb717840ede8168f9d3d70007d74c8afc23",
             },
         },
     ]
@@ -175,10 +176,13 @@ def test_makeartismodelfrom_sph_particles() -> None:
                 )
                 dfcontrib_source = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(gridfolderpath)
 
-                assert dfcontrib_source.equals(
+                pltest.assert_frame_equal(
+                    dfcontrib_source,
                     dfcontribs[3]
                     .drop("frac_of_cellmass")
-                    .rename({"frac_of_cellmass_includemissing": "frac_of_cellmass"})
+                    .rename({"frac_of_cellmass_includemissing": "frac_of_cellmass"}),
+                    rtol=1e-4,
+                    atol=1e-4,
                 )
             else:
                 dfmodel3lz, _ = at.inputmodel.get_modeldata_polars(

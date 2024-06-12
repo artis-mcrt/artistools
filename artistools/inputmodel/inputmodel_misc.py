@@ -1121,7 +1121,7 @@ def save_initelemabundances(
             fabund.write("\n".join([f"# {line}" for line in headercommentlines]) + "\n")
         for inputcellid, *abundvals in dfelabundances.select(["inputcellid", *elcolnames]).iter_rows():
             fabund.write(f"{inputcellid:} ")
-            fabund.write(" ".join([f"{abund:.6e}" for abund in abundvals]))
+            fabund.write(" ".join([f"{abund:.4e}" for abund in abundvals]))
             fabund.write("\n")
 
     print(f"Saved {abundancefilename} (took {time.perf_counter() - timestart:.1f} seconds)")
