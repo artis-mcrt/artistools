@@ -875,15 +875,18 @@ def save_modeldata(
 
     if modelmeta["dimensions"] == 1:
         print(f" 1D grid radial bins: {len(dfmodel)}")
+
     elif modelmeta["dimensions"] == 2:
         print(f" 2D grid size: {len(dfmodel)} ({modelmeta['ncoordgridrcyl']} x {modelmeta['ncoordgridz']})")
         assert modelmeta["ncoordgridrcyl"] * modelmeta["ncoordgridz"] == len(dfmodel)
+
     elif modelmeta["dimensions"] == 3:
         if "gridindex" in dfmodel.columns:
             dfmodel = dfmodel.rename({"gridindex": "inputcellid"})
         griddimension = int(round(len(dfmodel) ** (1.0 / 3.0)))
         print(f" 3D grid size: {len(dfmodel)} ({griddimension}^3)")
         assert griddimension**3 == len(dfmodel)
+
     else:
         msg = f"dimensions must be 1, 2, or 3, not {modelmeta['dimensions']}"
         raise ValueError(msg)
