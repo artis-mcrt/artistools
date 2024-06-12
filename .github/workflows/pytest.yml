@@ -31,18 +31,23 @@ jobs:
                   uv pip install --system -r requirements.txt
 
             - name: Run Ruff
+              if: always()
               run: ruff check --output-format=github  --exit-non-zero-on-fix .
 
             - name: Run Ruff Format
+              if: always()
               run: ruff format --diff .
 
             - name: Run pyright
+              if: always()
               uses: jakebailey/pyright-action@v2
 
             - name: Run mypy
+              if: always()
               run: mypy --install-types --non-interactive
 
             - name: Run pylint
+              if: always()
               run: pylint --output-format=github artistools
 
     pre-commit:
