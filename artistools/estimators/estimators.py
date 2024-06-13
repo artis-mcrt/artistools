@@ -227,11 +227,13 @@ def read_estimators_from_file(
 
 
 def get_rankbatch_parquetfile(
-    modelpath: Path,
-    folderpath: Path,
+    modelpath: Path | str,
+    folderpath: Path | str,
     batch_mpiranks: t.Sequence[int],
     batchindex: int,
 ) -> Path:
+    modelpath = Path(modelpath)
+    folderpath = Path(folderpath)
     parquetfilename = f"estimbatch{batchindex:02d}_{batch_mpiranks[0]:04d}_{batch_mpiranks[-1]:04d}.out.parquet.tmp"
     parquetfilepath = folderpath / parquetfilename
 

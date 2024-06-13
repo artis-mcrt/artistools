@@ -54,7 +54,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     dfmodel, modelmeta = at.inputmodel.get_modeldata_polars(
         args.inputfile,
-        get_elemabundances=True,
+        get_elemabundances=not args.noabund,
         printwarningsonly=False,
         derived_cols=["mass_g", "vel_r_mid", "rho"],
     )
@@ -126,6 +126,24 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         print(f'  {"initial energy":19s} {initial_energy:.3e} erg')
     else:
         initial_energy = 0.0
+
+    ejecta_ke_erg: float
+    if "vel_r_max_kmps" in dfmodel.columns:
+        # vel_r_min_kmps is in km/s
+        ejecta_ke_erg = (
+            dfmodel.select((0.5 * (pl.col("mass_g") / 1000.0) * (1000 * pl.col("vel_r_max_kmps")) ** 2).sum())
+            .collect()
+            .item()
+        ) * 1e7
+    else:
+        # vel_r_mid is in cm/s
+        ejecta_ke_erg = (
+            dfmodel.select((0.5 * (pl.col("mass_g") / 1000.0) * (pl.col("vel_r_mid") / 100.0) ** 2).sum())
+            .collect()
+            .item()
+        ) * 1e7
+
+    print(f"  kinetic energy: {ejecta_ke_erg:.2e} [erg]")
 
     mass_msun_rho = dfmodel.select(pl.col("mass_g").sum() / msun_g).collect().item()
 
