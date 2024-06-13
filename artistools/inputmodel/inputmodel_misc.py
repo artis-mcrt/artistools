@@ -397,8 +397,8 @@ def get_modeldata_polars(
 
     t_lastschemachange = calendar.timegm((2024, 1, 1, 9, 0, 0))
 
-    if parquetfilepath.exists() and Path(textfilepath).stat().st_mtime < t_lastschemachange:
-        print(f"{textfilepath} has been modified before the last schema change. Deleting out of date parquet file.")
+    if parquetfilepath.exists() and Path(parquetfilepath).stat().st_mtime < t_lastschemachange:
+        print(f"{parquetfilepath} has been modified before the last schema change. Deleting out of date parquet file.")
         parquetfilepath.unlink()
 
     dfmodel: pl.LazyFrame | None = None
