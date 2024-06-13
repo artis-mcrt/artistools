@@ -306,8 +306,8 @@ def get_gridparticlecontributions(gridcontribpath: Path | str) -> pl.DataFrame:
         schema_overrides={
             "particleid": pl.Int32,
             "cellindex": pl.Int32,
-            "frac_of_cellmass": pl.Float32,
-            "frac_of_cellmass_includemissing": pl.Float32,
+            "frac_of_cellmass": pl.Float64,
+            "frac_of_cellmass_includemissing": pl.Float64,
         },
     )
 

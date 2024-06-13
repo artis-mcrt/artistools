@@ -875,15 +875,18 @@ def save_modeldata(
 
     if modelmeta["dimensions"] == 1:
         print(f" 1D grid radial bins: {len(dfmodel)}")
+
     elif modelmeta["dimensions"] == 2:
         print(f" 2D grid size: {len(dfmodel)} ({modelmeta['ncoordgridrcyl']} x {modelmeta['ncoordgridz']})")
         assert modelmeta["ncoordgridrcyl"] * modelmeta["ncoordgridz"] == len(dfmodel)
+
     elif modelmeta["dimensions"] == 3:
         if "gridindex" in dfmodel.columns:
             dfmodel = dfmodel.rename({"gridindex": "inputcellid"})
         griddimension = int(round(len(dfmodel) ** (1.0 / 3.0)))
         print(f" 3D grid size: {len(dfmodel)} ({griddimension}^3)")
         assert griddimension**3 == len(dfmodel)
+
     else:
         msg = f"dimensions must be 1, 2, or 3, not {modelmeta['dimensions']}"
         raise ValueError(msg)
@@ -928,7 +931,7 @@ def save_modeldata(
         fmodel.write(f"{modelmeta['t_model_init_days']}\n")
 
         if modelmeta["dimensions"] in {2, 3}:
-            fmodel.write(f"{vmax}\n")
+            fmodel.write(f"{vmax:.4e}\n")
 
         if customcols:
             fmodel.write(f'#{" ".join(standardcols)} {" ".join(customcols)}\n')
@@ -957,12 +960,13 @@ def save_modeldata(
             dfmodel = dfmodel.select([*startcols, *abundcols])
             nstartcols = len(startcols)
             for colvals in dfmodel.iter_rows():
-                startvals = colvals[:nstartcols]
-                fmodel.write(" ".join(str(val) for val in startvals))
+                inputcellid = colvals[0]
+                rho = colvals[nstartcols - 1]
+                fmodel.write(f"{inputcellid:d}" + "".join(f" {colvalue:.4e}" for colvalue in colvals[1:nstartcols]))
                 fmodel.write(lineend)
                 fmodel.write(
                     " ".join((f"{colvalue:.4e}" if colvalue > 0.0 else "0.0") for colvalue in colvals[nstartcols:])
-                    if startvals[-1] > 0.0
+                    if rho > 0.0
                     else zeroabund
                 )
                 fmodel.write("\n")
@@ -1120,7 +1124,7 @@ def save_initelemabundances(
             fabund.write("\n".join([f"# {line}" for line in headercommentlines]) + "\n")
         for inputcellid, *abundvals in dfelabundances.select(["inputcellid", *elcolnames]).iter_rows():
             fabund.write(f"{inputcellid:} ")
-            fabund.write(" ".join([f"{abund:.6e}" for abund in abundvals]))
+            fabund.write(" ".join([f"{abund:.4e}" for abund in abundvals]))
             fabund.write("\n")
 
     print(f"Saved {abundancefilename} (took {time.perf_counter() - timestart:.1f} seconds)")

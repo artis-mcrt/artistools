@@ -251,6 +251,7 @@ unfixable = [
 "typing" = "t"
 "polars" = "pl"
 "polars.selectors" = "cs"
+"polars.testing" = "pltest"
 "pynonthermal" = "pynt"
 
 [tool.ruff.lint.flake8-tidy-imports]
