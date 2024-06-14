@@ -287,7 +287,10 @@ def get_rankbatch_parquetfile(
         print(f"took {time.perf_counter() - time_start:.1f} s.")
 
     filesize = parquetfilepath.stat().st_size / 1024 / 1024
-    print(f"  scanning {parquetfilepath.relative_to(modelpath.parent)} ({filesize:.2f} MiB)")
+    try:
+        print(f"  scanning {parquetfilepath.relative_to(modelpath.parent)} ({filesize:.2f} MiB)")
+    except ValueError:
+        print(f"  scanning {parquetfilepath} ({filesize:.2f} MiB)")
 
     return parquetfilepath
 
