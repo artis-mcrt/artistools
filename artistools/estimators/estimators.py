@@ -143,9 +143,8 @@ def read_estimators_from_file(
                     estimblocklist.append(estimblock)
 
                 emptycell = row[4] == "EMPTYCELL"
-                if emptycell:
-                    estimblock = {}
-                else:
+                estimblock = {}
+                if not emptycell:
                     # will be timestep, modelgridindex, TR, Te, W, TJ, nne, etc
                     for variablename, value in zip(row[::2], row[1::2], strict=True):
                         estimblock[variablename] = (
