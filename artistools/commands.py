@@ -1,7 +1,10 @@
 import argparse
+import importlib
 import subprocess
 import typing as t
 from pathlib import Path
+
+from artistools.misc import CustomArgHelpFormatter
 
 # top-level commands (one file installed per command)
 # we generally should phase this out except for a couple of main ones like at and artistools
@@ -76,6 +79,41 @@ subcommandtree: CommandType = {
 }
 
 
+def addargs(parser: argparse.ArgumentParser) -> None:
+    pass
+
+
+def addsubparsers(
+    parser: argparse.ArgumentParser, parentcommand: str, subcommandtree: CommandType, depth: int = 1
+) -> None:
+    def func(args: t.Any) -> None:
+        parser.print_help()
+
+    parser.set_defaults(func=func)
+    subparsers = parser.add_subparsers(dest=f"{parentcommand} command", required=False)
+
+    for subcommand, subcommands in subcommandtree.items():
+        strhelp: str | None
+        if isinstance(subcommands, dict):
+            strhelp = "command group"
+            submodule = None
+        else:
+            submodulename, funcname = subcommands
+            namestr = f"artistools.{submodulename.removeprefix('artistools.')}" if submodulename else "artistools"
+            submodule = importlib.import_module(namestr, package="artistools")
+            func = getattr(submodule, funcname)
+            strhelp = func.__doc__
+
+        subparser = subparsers.add_parser(subcommand, help=strhelp, formatter_class=CustomArgHelpFormatter)
+
+        if submodule:
+            submodule.addargs(subparser)
+            subparser.set_defaults(func=func)
+        else:
+            assert not isinstance(subcommands, tuple)
+            addsubparsers(parser=subparser, parentcommand=subcommand, subcommandtree=subcommands, depth=depth + 1)
+
+
 def setup_completions(*args: t.Any, **kwargs: t.Any) -> None:
     # Add the following lines to your .zshrc file to get command completion:
     # autoload -U bashcompinit
@@ -110,7 +148,3 @@ def setup_completions(*args: t.Any, **kwargs: t.Any) -> None:
 
     print("\n.bashrc:")
     print(f"source {completionscriptpath}")
-
-
-def addargs(parser: argparse.ArgumentParser) -> None:
-    pass
