@@ -30,8 +30,8 @@ readme = {file = "README.md", content-type='text/markdown'}
 Repository ="https://www.github.com/artis-mcrt/artistools"
 
 [project.scripts]
-at = 'artistools:main'
-artistools = 'artistools:main'
+at = 'artistools.__main__:main'
+artistools = 'artistools.__main__:main'
 makeartismodel1dslicefromcone = 'artistools.inputmodel.slice1dfromconein3dmodel:main'
 makeartismodel = 'artistools.inputmodel.makeartismodel:main'
 plotartisdensity = 'artistools.inputmodel.plotdensity:main'
