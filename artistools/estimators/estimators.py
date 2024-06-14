@@ -146,10 +146,13 @@ def read_estimators_from_file(
                 if emptycell:
                     estimblock = {}
                 else:
-                    # will be TR, Te, W, TJ, nne
-                    estimblock = {"timestep": int(row[1]), "modelgridindex": int(row[3])}
-                    for variablename, value in zip(row[4::2], row[5::2], strict=False):
-                        estimblock[variablename] = float(value)
+                    # will be timestep, modelgridindex, TR, Te, W, TJ, nne, etc
+                    for variablename, value in zip(row[::2], row[1::2], strict=True):
+                        estimblock[variablename] = (
+                            float(value)
+                            if variablename not in {"timestep", "modelgridindex", "titeration", "thick"}
+                            else int(value)
+                        )
 
             elif row[1].startswith("Z="):
                 variablename = row[0]
@@ -161,7 +164,7 @@ def read_estimators_from_file(
                     startindex = 2
                 elsymbol = at.get_elsymbol(atomic_number)
 
-                for ion_stage_str, value in zip(row[startindex::2], row[startindex + 1 :: 2], strict=False):
+                for ion_stage_str, value in zip(row[startindex::2], row[startindex + 1 :: 2], strict=True):
                     ion_stage_str_strip = ion_stage_str.strip()
                     if ion_stage_str_strip == "(or":
                         continue
