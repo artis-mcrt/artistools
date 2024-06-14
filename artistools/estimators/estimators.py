@@ -229,12 +229,12 @@ def read_estimators_from_file(
 
 
 def get_rankbatch_parquetfile(
-    modelpath: Path | str,
     folderpath: Path | str,
     batch_mpiranks: t.Sequence[int],
     batchindex: int,
+    modelpath: Path | str | None = None,
 ) -> Path:
-    modelpath = Path(modelpath)
+    modelpath = Path(folderpath).parent if modelpath is None else Path(modelpath)
     folderpath = Path(folderpath)
     parquetfilename = f"estimbatch{batchindex:02d}_{batch_mpiranks[0]:04d}_{batch_mpiranks[-1]:04d}.out.parquet.tmp"
     parquetfilepath = folderpath / parquetfilename
@@ -350,7 +350,9 @@ def scan_estimators(
     runfolders = at.get_runfolders(modelpath, timesteps=match_timestep)
 
     parquetfiles = (
-        get_rankbatch_parquetfile(modelpath, runfolder, mpiranks, batchindex=batchindex)
+        get_rankbatch_parquetfile(
+            modelpath=modelpath, folderpath=runfolder, batch_mpiranks=mpiranks, batchindex=batchindex
+        )
         for runfolder in runfolders
         for batchindex, mpiranks in mpirank_groups
     )
