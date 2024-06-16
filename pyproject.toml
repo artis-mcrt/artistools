@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68.2", "setuptools_scm[toml]>=8.0", "wheel>=0.41"]
+requires = ["setuptools>=68.2", "setuptools-rust", "setuptools_scm[toml]>=8.0", "wheel>=0.41"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -18,6 +18,7 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Rust",
     "Framework :: Matplotlib",
     "Intended Audience :: Science/Research",
 ]
@@ -264,6 +265,12 @@ order-by-type = false
 [tool.setuptools]
 include-package-data = true
 license-files = ["LICENSE.txt"]
+
+[[tool.setuptools-rust.ext-modules]]
+target = "artistools.rustext"  # The last part of the name has to match lib.name in Cargo.toml,
+                             # but you can add a prefix to nest it inside of a Python package.
+path = "rust/Cargo.toml"
+binding = "PyO3"
 
 [tool.setuptools.packages.find]
 namespaces = false

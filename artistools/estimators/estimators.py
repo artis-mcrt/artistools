@@ -257,15 +257,16 @@ def get_rankbatch_parquetfile(
         time_start = time.perf_counter()
 
         pldf_batch = None
-        if at.get_config()["num_processes"] > 1:
-            with at.get_multiprocessing_pool() as pool:
-                pldf_batch = pl.concat(pool.imap(read_estimators_from_file, estfilepaths), how="diagonal_relaxed")
+        pldf_batch = at.rustext.estimparse(str(folderpath), min(batch_mpiranks), max(batch_mpiranks))
+        # if at.get_config()["num_processes"] > 1:
+        #     with at.get_multiprocessing_pool() as pool:
+        #         pldf_batch = pl.concat(pool.imap(read_estimators_from_file, estfilepaths), how="diagonal_relaxed")
 
-                pool.close()
-                pool.join()
+        #         pool.close()
+        #         pool.join()
 
-        else:
-            pldf_batch = pl.concat(map(read_estimators_from_file, estfilepaths), how="diagonal_relaxed")
+        # else:
+        #     pldf_batch = pl.concat(map(read_estimators_from_file, estfilepaths), how="diagonal_relaxed")
 
         print(
             f"took {time.perf_counter() - time_start:.1f} s. Writing {parquetfilepath.relative_to(modelpath.parent)}...",

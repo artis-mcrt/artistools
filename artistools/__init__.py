@@ -22,6 +22,7 @@ from artistools import packets as packets
 from artistools import plotspherical as plotspherical
 from artistools import plottools as plottools
 from artistools import radfield as radfield
+from artistools import rustext as rustext  # type:ignore [attr-defined]
 from artistools import spectra as spectra
 from artistools import transitions as transitions
 from artistools import writecomparisondata as writecomparisondata
