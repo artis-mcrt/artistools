@@ -152,13 +152,13 @@ pub fn read_file(folderpath: String, rank: i32) -> DataFrame {
 
     let filename = format!("{}/estimators_{:04}.out", folderpath, rank);
     if Path::new(&filename).is_file() {
-        println!("Reading file: {:?}", filename);
+        // println!("Reading file: {:?}", filename);
         for line in read_lines(filename).unwrap() {
             read_line(&line.unwrap(), &mut coldata, &mut outputrownum);
         }
     } else {
         let filename_zst = filename + ".zst";
-        println!("Reading file: {:?}", filename_zst);
+        // println!("Reading file: {:?}", filename_zst);
         for line in read_lines_zst(filename_zst).unwrap() {
             read_line(&line.unwrap(), &mut coldata, &mut outputrownum);
         }
