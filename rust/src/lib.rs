@@ -29,6 +29,14 @@ const ELSYMBOLS: [&str; 119] = [
 
 const ROMAN: [&str; 10] = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX"];
 
+fn read_lines<P>(filename: P) -> Result<Lines<BufReader<std::fs::File>>, IoError>
+where
+    P: AsRef<Path>,
+{
+    let file = File::open(filename)?;
+    Ok(BufReader::new(file).lines())
+}
+
 fn read_lines_zst<P>(
     filename: P,
 ) -> Result<Lines<BufReader<Decoder<'static, BufReader<File>>>>, IoError>
@@ -49,88 +57,98 @@ fn match_colsizes(coldata: &mut HashMap<String, Vec<f32>>, outputrownum: usize) 
     }
 }
 
-pub fn read_file(folderpath: String, rank: i32) -> DataFrame {
-    let filename = format!("{}/estimators_{:04}.out.zst", folderpath, rank);
-    // print!("Reading file: {:?}\n", filename);
+fn read_line(line: &str, mut coldata: &mut HashMap<String, Vec<f32>>, outputrownum: &mut usize) {
+    let linesplit: Vec<&str> = line.split_whitespace().collect();
+    if linesplit.len() == 0 {
+        return;
+    }
 
+    if linesplit[0] == "timestep" {
+        match_colsizes(&mut coldata, *outputrownum);
+        if linesplit[4] != "EMPTYCELL" {
+            //println!("{:?}", line);
+            // println!("{:?}", linesplit);
+
+            *outputrownum += 1;
+            for i in (0..linesplit.len()).step_by(2) {
+                let colname = linesplit[i].to_string();
+                let colvalue = linesplit[i + 1].parse::<f32>().unwrap();
+
+                if !coldata.contains_key(&colname) {
+                    coldata.insert(colname.clone(), Vec::new());
+                }
+                let singlecoldata = coldata.get_mut(&colname).unwrap();
+
+                for _ in 0..(*outputrownum - singlecoldata.len() - 1) {
+                    singlecoldata.push(f32::NAN);
+                }
+
+                singlecoldata.push(colvalue);
+            }
+        }
+    } else if linesplit[1].starts_with("Z=") {
+        let atomic_number;
+        let startindex;
+        if linesplit[1].ends_with("=") {
+            atomic_number = linesplit[2].parse::<i32>().unwrap();
+            startindex = 3;
+        } else {
+            // there was no space between Z= and the atomic number
+            atomic_number = linesplit[1].replace("Z=", "").parse::<i32>().unwrap();
+            startindex = 2;
+        }
+        let elsym = ELSYMBOLS[atomic_number as usize];
+
+        if linesplit[0] == "populations" {
+            for i in (startindex..linesplit.len()).step_by(2) {
+                let ionstagestr = linesplit[i].replace(":", "");
+
+                let colname: String;
+                if ionstagestr == "SUM" {
+                    colname = format!("nnelement_{elsym}");
+                } else {
+                    let is_ionpop = ionstagestr.chars().next().unwrap().is_numeric();
+                    if is_ionpop {
+                        let ionstageroman = ROMAN[ionstagestr.parse::<usize>().unwrap()];
+                        colname = format!("nnion_{elsym}_{ionstageroman}");
+                    } else {
+                        colname = format!("nniso_{ionstagestr}");
+                    }
+                }
+
+                let colvalue = linesplit[i + 1].parse::<f32>().unwrap();
+
+                if !coldata.contains_key(&colname) {
+                    coldata.insert(colname.clone(), vec![f32::NAN; *outputrownum - 1]);
+                }
+
+                let singlecoldata = coldata.get_mut(&colname).unwrap();
+                singlecoldata.push(colvalue);
+                assert_eq!(singlecoldata.len(), *outputrownum);
+            }
+        }
+    }
+    // println!("{}", line);
+}
+
+pub fn read_file(folderpath: String, rank: i32) -> DataFrame {
     let mut coldata: HashMap<String, Vec<f32>> = HashMap::new();
     let mut outputrownum = 0;
-    let mut linesplit: Vec<&str>;
 
-    for line in read_lines_zst(filename).unwrap() {
-        let lineopt = line.unwrap();
-        linesplit = lineopt.split_whitespace().collect();
-        if linesplit.len() == 0 {
-            continue;
+    let filename = format!("{}/estimators_{:04}.out", folderpath, rank);
+    if Path::new(&filename).is_file() {
+        println!("Reading file: {:?}", filename);
+        for line in read_lines(filename).unwrap() {
+            read_line(&line.unwrap(), &mut coldata, &mut outputrownum);
         }
-
-        if linesplit[0] == "timestep" {
-            match_colsizes(&mut coldata, outputrownum);
-            if linesplit[4] != "EMPTYCELL" {
-                //println!("{:?}", line);
-                // println!("{:?}", linesplit);
-
-                outputrownum += 1;
-                for i in (0..linesplit.len()).step_by(2) {
-                    let colname = linesplit[i].to_string();
-                    let colvalue = linesplit[i + 1].parse::<f32>().unwrap();
-
-                    if !coldata.contains_key(&colname) {
-                        coldata.insert(colname.clone(), Vec::new());
-                    }
-                    let singlecoldata = coldata.get_mut(&colname).unwrap();
-
-                    for _ in 0..(outputrownum - singlecoldata.len() - 1) {
-                        singlecoldata.push(f32::NAN);
-                    }
-
-                    singlecoldata.push(colvalue);
-                }
-            }
-        } else if linesplit[1].starts_with("Z=") {
-            let atomic_number;
-            let startindex;
-            if linesplit[1].ends_with("=") {
-                atomic_number = linesplit[2].parse::<i32>().unwrap();
-                startindex = 3;
-            } else {
-                // there was no space between Z= and the atomic number
-                atomic_number = linesplit[1].replace("Z=", "").parse::<i32>().unwrap();
-                startindex = 2;
-            }
-            let elsym = ELSYMBOLS[atomic_number as usize];
-
-            if linesplit[0] == "populations" {
-                for i in (startindex..linesplit.len()).step_by(2) {
-                    let ionstagestr = linesplit[i].replace(":", "");
-
-                    let colname: String;
-                    if ionstagestr == "SUM" {
-                        colname = format!("nnelement_{elsym}");
-                    } else {
-                        let is_ionpop = ionstagestr.chars().next().unwrap().is_numeric();
-                        if is_ionpop {
-                            let ionstageroman = ROMAN[ionstagestr.parse::<usize>().unwrap()];
-                            colname = format!("nnion_{elsym}_{ionstageroman}");
-                        } else {
-                            colname = format!("nniso_{ionstagestr}");
-                        }
-                    }
-
-                    let colvalue = linesplit[i + 1].parse::<f32>().unwrap();
-
-                    if !coldata.contains_key(&colname) {
-                        coldata.insert(colname.clone(), vec![f32::NAN; outputrownum - 1]);
-                    }
-
-                    let singlecoldata = coldata.get_mut(&colname).unwrap();
-                    singlecoldata.push(colvalue);
-                    assert_eq!(singlecoldata.len(), outputrownum);
-                }
-            }
+    } else {
+        let filename_zst = filename + ".zst";
+        println!("Reading file: {:?}", filename_zst);
+        for line in read_lines_zst(filename_zst).unwrap() {
+            read_line(&line.unwrap(), &mut coldata, &mut outputrownum);
         }
-        // println!("{}", line);
     }
+
     match_colsizes(&mut coldata, outputrownum);
     for singlecolumn in coldata.values() {
         assert_eq!(singlecolumn.len(), outputrownum);
