@@ -150,6 +150,7 @@ disable = """
 
 [tool.pylint.typecheck]
 ignored-modules = ["astropy", "extinction"]
+unsafe-load-any-extension = true
 
 [tool.pyright]
 analyzeUnannotatedFunctions = false
