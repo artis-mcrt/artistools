@@ -26,12 +26,14 @@ jobs:
             - name: Install dependencies
               run: |
                   python3 -m pip install --upgrade pip uv
-                  uv pip install --system --upgrade setuptools setuptools_scm[toml] wheel twine build
+                  uv pip install --system --upgrade setuptools setuptools_scm[toml] wheel twine build auditwheel
 
             - name: Build
               run: |
                   python3 -m setuptools_scm
                   python3 -m build --sdist --outdir dist/ .
+                  python3 -m auditwheel show dist/*.whl
+                  python3 -m auditwheel repair dist/*.whl
                   python3 -m twine check dist/*
 
             - name: Publish to Test PyPI
