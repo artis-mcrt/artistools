@@ -22,7 +22,6 @@ from artistools import packets as packets
 from artistools import plotspherical as plotspherical
 from artistools import plottools as plottools
 from artistools import radfield as radfield
-from artistools import rustext as rustext  # type:ignore [attr-defined]
 from artistools import spectra as spectra
 from artistools import transitions as transitions
 from artistools import writecomparisondata as writecomparisondata
@@ -107,6 +106,7 @@ from artistools.misc import vec_len as vec_len
 from artistools.misc import zopen as zopen
 from artistools.misc import zopenpl as zopenpl
 from artistools.plottools import set_mpl_style as set_mpl_style
+from artistools.rustext import estimparse as estimparse
 
 
 def get_path(**kwargs: t.Any) -> None:
