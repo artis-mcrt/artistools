@@ -6,7 +6,7 @@ imageio>=2.34.1
 matplotlib>=3.9.0
 mypy>=1.10.0
 numexpr>=2.10.0
-numpy>=2.0.0
+numpy>=1.26.0
 pandas[compression,parquet,pyarrow]>=2.2.2
 polars==0.20.31
 pre-commit>=3.7.1
