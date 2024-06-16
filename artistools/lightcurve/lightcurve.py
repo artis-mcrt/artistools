@@ -427,10 +427,9 @@ def get_colour_delta_mag(band_lightcurve_data, filter_names) -> tuple[list[float
         time_dict_1[float(filter_1[0])] = filter_1[1]
         time_dict_2[float(filter_2[0])] = filter_2[1]
 
-    for time in time_dict_1:
-        if time in time_dict_2:  # Test if time has a magnitude for both filters
-            plot_times.append(time)
-            colour_delta_mag.append(time_dict_1[time] - time_dict_2[time])
+    for time in time_dict_1 | time_dict_2:
+        plot_times.append(time)
+        colour_delta_mag.append(time_dict_1[time] - time_dict_2[time])
 
     return plot_times, colour_delta_mag
 
