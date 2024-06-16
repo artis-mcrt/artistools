@@ -29,7 +29,7 @@ const ELSYMBOLS: [&str; 119] = [
 
 const ROMAN: [&str; 10] = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX"];
 
-fn read_lines<P>(
+fn read_lines_zst<P>(
     filename: P,
 ) -> Result<Lines<BufReader<Decoder<'static, BufReader<File>>>>, IoError>
 where
@@ -49,14 +49,15 @@ fn match_colsizes(coldata: &mut HashMap<String, Vec<f32>>, outputrownum: usize) 
     }
 }
 
-pub fn read_file(filename: &str) -> DataFrame {
+pub fn read_file(folderpath: String, rank: i32) -> DataFrame {
+    let filename = format!("{}/estimators_{:04}.out.zst", folderpath, rank);
     // print!("Reading file: {:?}\n", filename);
 
     let mut coldata: HashMap<String, Vec<f32>> = HashMap::new();
     let mut outputrownum = 0;
     let mut linesplit: Vec<&str>;
 
-    for line in read_lines(filename).unwrap() {
+    for line in read_lines_zst(filename).unwrap() {
         let lineopt = line.unwrap();
         linesplit = lineopt.split_whitespace().collect();
         if linesplit.len() == 0 {
@@ -160,7 +161,7 @@ fn estimparse(folderpath: String, rankmin: i32, rankmax: i32) -> PyResult<PyData
     // let folderpath = "/Users/luke/Library/CloudStorage/GoogleDrive-luke@lukeshingles.com/My Drive/artis_runs/kilonova_SFHo_long-radius-entropy/SFHo_long-radius-entropy_3D_lte_20240417_0p10d_20d_KuruczSrYZrfloerscalib_5e7pkt_vpktcontrib_virgo/490968.slurm";
     ranks
         .par_iter() // Convert the iterator to a parallel iterator
-        .map(|&rank| read_file(&format!("{}/estimators_{:04}.out.zst", folderpath, rank)))
+        .map(|&rank| read_file(folderpath.clone(), rank))
         .collect_into_vec(&mut vecdfs);
 
     let dfbatch = polars::functions::concat_df_diagonal(&vecdfs).unwrap();
