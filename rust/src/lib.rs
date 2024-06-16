@@ -127,8 +127,23 @@ fn read_line(line: &str, mut coldata: &mut HashMap<String, Vec<f32>>, outputrown
                 assert_eq!(singlecoldata.len(), *outputrownum);
             }
         }
+    } else if linesplit[0].ends_with(":") {
+        // deposition, heating, cooling
+        for i in (1..linesplit.len()).step_by(2) {
+            let firsttoken = linesplit[0];
+            let colname: String =
+                firsttoken[0..firsttoken.len() - 1].to_string() + "_" + linesplit[i];
+            let colvalue = linesplit[i + 1].parse::<f32>().unwrap();
+
+            if !coldata.contains_key(&colname) {
+                coldata.insert(colname.clone(), vec![f32::NAN; *outputrownum - 1]);
+            }
+
+            let singlecoldata = coldata.get_mut(&colname).unwrap();
+            singlecoldata.push(colvalue);
+            assert_eq!(singlecoldata.len(), *outputrownum);
+        }
     }
-    // println!("{}", line);
 }
 
 pub fn read_file(folderpath: String, rank: i32) -> DataFrame {

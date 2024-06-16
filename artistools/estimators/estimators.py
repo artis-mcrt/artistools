@@ -233,6 +233,7 @@ def get_rankbatch_parquetfile(
     batch_mpiranks: t.Sequence[int],
     batchindex: int,
     modelpath: Path | str | None = None,
+    use_rust: bool = True,
 ) -> Path:
     modelpath = Path(folderpath).parent if modelpath is None else Path(modelpath)
     folderpath = Path(folderpath)
@@ -248,25 +249,26 @@ def get_rankbatch_parquetfile(
                 estfilepath = at.firstexisting(f"estimators_{mpirank:04d}.out", folder=folderpath, tryzipped=True)
                 estfilepaths.append(estfilepath)
 
-        # print(
-        #     f"  reading {len(estfilepaths)} estimator files from {folderpath.relative_to(Path(folderpath).parent)}...",
-        #     end="",
-        #     flush=True,
-        # )
-
         time_start = time.perf_counter()
 
         pldf_batch = None
-        pldf_batch = at.rustext.estimparse(str(folderpath), min(batch_mpiranks), max(batch_mpiranks))
-        # if at.get_config()["num_processes"] > 1:
-        #     with at.get_multiprocessing_pool() as pool:
-        #         pldf_batch = pl.concat(pool.imap(read_estimators_from_file, estfilepaths), how="diagonal_relaxed")
+        if use_rust:
+            pldf_batch = at.rustext.estimparse(str(folderpath), min(batch_mpiranks), max(batch_mpiranks))
+        else:
+            print(
+                f"  reading {len(estfilepaths)} estimator files from {folderpath.relative_to(Path(folderpath).parent)}...",
+                end="",
+                flush=True,
+            )
+            if at.get_config()["num_processes"] > 1:
+                with at.get_multiprocessing_pool() as pool:
+                    pldf_batch = pl.concat(pool.imap(read_estimators_from_file, estfilepaths), how="diagonal_relaxed")
 
-        #         pool.close()
-        #         pool.join()
+                    pool.close()
+                    pool.join()
 
-        # else:
-        #     pldf_batch = pl.concat(map(read_estimators_from_file, estfilepaths), how="diagonal_relaxed")
+            else:
+                pldf_batch = pl.concat(map(read_estimators_from_file, estfilepaths), how="diagonal_relaxed")
 
         print(
             f"took {time.perf_counter() - time_start:.1f} s. Writing {parquetfilepath.relative_to(modelpath.parent)}...",
