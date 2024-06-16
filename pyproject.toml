@@ -271,6 +271,7 @@ target = "artistools.rustext"  # The last part of the name has to match lib.name
                              # but you can add a prefix to nest it inside of a Python package.
 path = "rust/Cargo.toml"
 binding = "PyO3"
+debug = false
 
 [tool.setuptools.packages.find]
 namespaces = false
