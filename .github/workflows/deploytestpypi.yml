@@ -31,12 +31,12 @@ jobs:
             - name: Install setuptools_scm
               if: matrix.os == 'macos-13' || matrix.os == 'macos-14'
               run: |
-                  python3 -m pip install --upgrade --break-system-packages --user setuptools_scm[toml] setuptools-rust
+                  python3 -m pip install --upgrade --break-system-packages --user setuptools setuptools_scm[toml] setuptools-rust
 
             - name: Install setuptools_scm
               if: matrix.os != 'macos-13' && matrix.os != 'macos-14'
               run: |
-                  python3 -m pip install --upgrade setuptools_scm[toml] setuptools-rust
+                  python3 -m pip install --upgrade setuptools setuptools_scm[toml] setuptools-rust
 
             - name: Run setuptools_scm
               run: |
@@ -60,7 +60,7 @@ jobs:
 
             - name: Run setuptools_scm
               run: |
-                  python3 -m pip install --upgrade setuptools_scm[toml] setuptools-rust
+                  python3 -m pip install --upgrade setuptools setuptools_scm[toml] setuptools-rust
                   python3 -m setuptools_scm
 
             - name: Build sdist
@@ -81,6 +81,10 @@ jobs:
         # or, alternatively, upload to PyPI on every tag starting with 'v' (remove on: release above to use this)
         # if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         steps:
+            - uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+
             - uses: actions/download-artifact@v4
               with:
                   # unpacks all CIBW artifacts into dist/
@@ -90,7 +94,7 @@ jobs:
 
             - name: Run setuptools_scm
               run: |
-                  python3 -m pip install --upgrade setuptools_scm[toml]
+                  python3 -m pip install --upgrade setuptools setuptools_scm[toml] setuptools-rust
                   python3 -m setuptools_scm
 
             - name: Publish package to TestPyPI
