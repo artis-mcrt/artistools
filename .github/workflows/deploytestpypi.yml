@@ -26,17 +26,23 @@ jobs:
             - name: Install dependencies
               run: |
                   python3 -m pip install --upgrade pip uv
-                  uv pip install --system --upgrade setuptools setuptools_scm[toml] wheel twine build auditwheel
+                  uv pip install --system --upgrade setuptools setuptools_scm[toml] wheel twine build
 
             - name: Build
               run: |
                   python3 -m setuptools_scm
                   python3 -m build --sdist --outdir dist/ .
                   #python3 -m build --sdist --wheel --outdir dist/ .
-                  #python3 -m auditwheel show dist/*.whl
-                  #python3 -m auditwheel repair dist/*.whl
                   python3 -m twine check dist/*
 
-            - name: Publish to Test PyPI
-              run: |
-                  python3 -m twine upload --skip-existing --verbose -r testpypi -u __token__ -p ${{ secrets.TESTPYPI_TOKEN }} --non-interactive dist/*
+            # - name: Publish to Test PyPI
+            #   run: |
+            #       python3 -m twine upload --skip-existing --verbose -r testpypi -u __token__ -p ${{ secrets.TESTPYPI_TOKEN }} --non-interactive dist/*
+
+            - name: Publish package to TestPyPI
+              uses: pypa/gh-action-pypi-publish@release/v1
+              with:
+                  skip-existing: true
+                  verbose: true
+                  password: ${{ secrets.TESTPYPI_TOKEN }}
+                  repository-url: https://test.pypi.org/legacy/
