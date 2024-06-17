@@ -1,5 +1,5 @@
 ---
-name: Upload Package to TestPyPI
+name: Build wheels and deploy to TestPyPI
 
 on:
     push:
@@ -100,6 +100,6 @@ jobs:
               uses: pypa/gh-action-pypi-publish@release/v1
               with:
                   skip-existing: true
-                  verbose: true
-                  password: ${{ secrets.TESTPYPI_TOKEN }}
+                  verbose: false
+                  #password: ${{ secrets.TESTPYPI_TOKEN }}
                   repository-url: https://test.pypi.org/legacy/

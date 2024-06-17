@@ -243,8 +243,15 @@ def get_rankbatch_parquetfile(
 
         pldf_batch: pl.DataFrame
         if use_rust:
-            pldf_batch = at.rustext.estimparse(str(folderpath), min(batch_mpiranks), max(batch_mpiranks)).with_columns(
-                (cs.by_name("modelgridindex") | cs.by_name("timestep")).cast(pl.Int32)
+            from artistools.rustext import estimparse as rustestimparse
+
+            pldf_batch = rustestimparse(str(folderpath), min(batch_mpiranks), max(batch_mpiranks)).with_columns(
+                (
+                    cs.by_name("modelgridindex")
+                    | cs.by_name("timestep")
+                    | cs.by_name("titeration")
+                    | cs.by_name("thick")
+                ).cast(pl.Int32)
             )
         elif at.get_config()["num_processes"] > 1:
             with at.get_multiprocessing_pool() as pool:

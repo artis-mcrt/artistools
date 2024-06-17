@@ -56,7 +56,6 @@ target-version = ["py310", "py311", "py312", "py313"]
 [tool.cibuildwheel]
 skip = ["*-win32", "*i686"]
 
-
 [tool.mypy]
 check_untyped_defs = false
 disallow_any_explicit = false
