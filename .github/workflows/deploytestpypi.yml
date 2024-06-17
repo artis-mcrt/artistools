@@ -29,6 +29,10 @@ jobs:
                   python3 -m pip install --upgrade setuptools_scm[toml]
                   python3 -m setuptools_scm
 
+            - name: Install Rust
+              run: |
+                  rustup toolchain install stable
+
             - name: Build wheels
               uses: pypa/cibuildwheel@v2.19.1
 
@@ -49,6 +53,10 @@ jobs:
               run: |
                   python3 -m pip install --upgrade setuptools_scm[toml]
                   python3 -m setuptools_scm
+
+            - name: Install Rust
+              run: |
+                  rustup toolchain install stable
 
             - name: Build sdist
               run: pipx run build --sdist
