@@ -57,7 +57,22 @@ fn match_colsizes(coldata: &mut HashMap<String, Vec<f32>>, outputrownum: usize) 
     }
 }
 
-fn read_line(line: &str, mut coldata: &mut HashMap<String, Vec<f32>>, outputrownum: &mut usize) {
+fn append_or_create(
+    coldata: &mut HashMap<String, Vec<f32>>,
+    colname: &String,
+    colvalue: f32,
+    outputrownum: &usize,
+) {
+    if !coldata.contains_key(colname) {
+        coldata.insert(colname.clone(), vec![f32::NAN; *outputrownum - 1]);
+    }
+
+    let singlecoldata = coldata.get_mut(colname).unwrap();
+    singlecoldata.push(colvalue);
+    assert_eq!(singlecoldata.len(), *outputrownum, "colname: {:?}", colname);
+}
+
+fn parse_line(line: &str, mut coldata: &mut HashMap<String, Vec<f32>>, outputrownum: &mut usize) {
     let linesplit: Vec<&str> = line.split_whitespace().collect();
     if linesplit.len() == 0 {
         return;
@@ -74,16 +89,7 @@ fn read_line(line: &str, mut coldata: &mut HashMap<String, Vec<f32>>, outputrown
                 let colname = linesplit[i].to_string();
                 let colvalue = linesplit[i + 1].parse::<f32>().unwrap();
 
-                if !coldata.contains_key(&colname) {
-                    coldata.insert(colname.clone(), Vec::new());
-                }
-                let singlecoldata = coldata.get_mut(&colname).unwrap();
-
-                for _ in 0..(*outputrownum - singlecoldata.len() - 1) {
-                    singlecoldata.push(f32::NAN);
-                }
-
-                singlecoldata.push(colvalue);
+                append_or_create(&mut coldata, &colname, colvalue, outputrownum);
             }
         }
     } else if linesplit[1].starts_with("Z=") {
@@ -99,49 +105,49 @@ fn read_line(line: &str, mut coldata: &mut HashMap<String, Vec<f32>>, outputrown
         }
         let elsym = ELSYMBOLS[atomic_number as usize];
 
-        if linesplit[0] == "populations" {
-            for i in (startindex..linesplit.len()).step_by(2) {
-                let ionstagestr = linesplit[i].replace(":", "");
+        let variablename = linesplit[0];
+        let mut nnelement = 0.0;
+        for i in (startindex..linesplit.len()).step_by(2) {
+            let ionstagestr = linesplit[i].strip_suffix(":").unwrap();
+            let colvalue = linesplit[i + 1].parse::<f32>().unwrap();
 
-                let colname: String;
-                if ionstagestr == "SUM" {
-                    colname = format!("nnelement_{elsym}");
-                } else {
-                    let is_ionpop = ionstagestr.chars().next().unwrap().is_numeric();
-                    if is_ionpop {
+            let outcolname: String;
+            if variablename == "populations" && ionstagestr == "SUM" {
+                nnelement = colvalue;
+            } else {
+                if variablename == "populations" {
+                    if ionstagestr.chars().next().unwrap().is_numeric() {
                         let ionstageroman = ROMAN[ionstagestr.parse::<usize>().unwrap()];
-                        colname = format!("nnion_{elsym}_{ionstageroman}");
+                        outcolname = format!("nnion_{elsym}_{ionstageroman}");
+                        nnelement += colvalue;
                     } else {
-                        colname = format!("nniso_{ionstagestr}");
+                        outcolname = format!("nniso_{ionstagestr}");
                     }
+                } else {
+                    let ionstageroman = ROMAN[ionstagestr.parse::<usize>().unwrap()];
+                    outcolname = format!("{variablename}_{elsym}_{ionstageroman}");
                 }
-
-                let colvalue = linesplit[i + 1].parse::<f32>().unwrap();
-
-                if !coldata.contains_key(&colname) {
-                    coldata.insert(colname.clone(), vec![f32::NAN; *outputrownum - 1]);
-                }
-
-                let singlecoldata = coldata.get_mut(&colname).unwrap();
-                singlecoldata.push(colvalue);
-                assert_eq!(singlecoldata.len(), *outputrownum);
+                append_or_create(&mut coldata, &outcolname, colvalue, outputrownum);
             }
+        }
+
+        if variablename == "populations" {
+            append_or_create(
+                &mut coldata,
+                &format!("nnelement_{elsym}"),
+                nnelement,
+                outputrownum,
+            );
         }
     } else if linesplit[0].ends_with(":") {
         // deposition, heating, cooling
         for i in (1..linesplit.len()).step_by(2) {
             let firsttoken = linesplit[0];
             let colname: String =
-                firsttoken[0..firsttoken.len() - 1].to_string() + "_" + linesplit[i];
+                format!("{}_{}", firsttoken.strip_suffix(":").unwrap(), linesplit[i]);
             let colvalue = linesplit[i + 1].parse::<f32>().unwrap();
 
-            if !coldata.contains_key(&colname) {
-                coldata.insert(colname.clone(), vec![f32::NAN; *outputrownum - 1]);
-            }
-
-            let singlecoldata = coldata.get_mut(&colname).unwrap();
-            singlecoldata.push(colvalue);
-            assert_eq!(singlecoldata.len(), *outputrownum);
+            append_or_create(&mut coldata, &colname, colvalue, outputrownum);
         }
     }
 }
@@ -154,13 +160,13 @@ pub fn read_file(folderpath: String, rank: i32) -> DataFrame {
     if Path::new(&filename).is_file() {
         // println!("Reading file: {:?}", filename);
         for line in read_lines(filename).unwrap() {
-            read_line(&line.unwrap(), &mut coldata, &mut outputrownum);
+            parse_line(&line.unwrap(), &mut coldata, &mut outputrownum);
         }
     } else {
         let filename_zst = filename + ".zst";
         // println!("Reading file: {:?}", filename_zst);
         for line in read_lines_zst(filename_zst).unwrap() {
-            read_line(&line.unwrap(), &mut coldata, &mut outputrownum);
+            parse_line(&line.unwrap(), &mut coldata, &mut outputrownum);
         }
     }
 
@@ -185,20 +191,14 @@ pub fn read_file(folderpath: String, rank: i32) -> DataFrame {
 
 #[pyfunction]
 fn estimparse(folderpath: String, rankmin: i32, rankmax: i32) -> PyResult<PyDataFrame> {
-    println!(
-        "(RUST) Reading files from {:?} for ranks {:?} to {:?}",
-        folderpath, rankmin, rankmax
-    );
     let ranks: Vec<i32> = (rankmin..rankmax + 1).collect();
     let mut vecdfs: Vec<DataFrame> = Vec::new();
-    // let folderpath = "/Users/luke/Library/CloudStorage/GoogleDrive-luke@lukeshingles.com/My Drive/artis_runs/kilonova_SFHo_long-radius-entropy/SFHo_long-radius-entropy_3D_lte_20240417_0p10d_20d_KuruczSrYZrfloerscalib_5e7pkt_vpktcontrib_virgo/490968.slurm";
     ranks
         .par_iter() // Convert the iterator to a parallel iterator
         .map(|&rank| read_file(folderpath.clone(), rank))
         .collect_into_vec(&mut vecdfs);
 
     let dfbatch = polars::functions::concat_df_diagonal(&vecdfs).unwrap();
-    // println!("{}", &dfbatch);
     Ok(PyDataFrame(dfbatch))
 }
 
