@@ -31,6 +31,7 @@ jobs:
                   curl -LsSf https://astral.sh/uv/install.sh | sh
                   uv venv
                   source .venv/bin/activate
+                  echo "$HOME/.cargo/env" >> $GITHUB_PATH
                   uv pip install --upgrade pylint mypy ruff setuptools setuptools_scm[toml]
                   python3 -m setuptools_scm
                   uv pip install .
