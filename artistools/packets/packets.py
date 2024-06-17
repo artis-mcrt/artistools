@@ -761,7 +761,7 @@ def bin_packet_directions(
     xhat = np.array([1.0, 0.0, 0.0])
     vec2 = np.cross(xhat, syn_dir)
 
-    pktdirvecs = dfpackets[["dirx", "diry", "dirz"]].to_numpy()
+    pktdirvecs = dfpackets[["dirx", "diry", "dirz"]].to_numpy().copy()
 
     # normalise. might not be needed
     dirmags = np.linalg.norm(pktdirvecs, axis=1)
