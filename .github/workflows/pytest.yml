@@ -144,7 +144,7 @@ jobs:
                       ~/.cargo/registry/cache/
                       ~/.cargo/git/db/
                       rust/target/
-                  key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+                  key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-python-${{ matrix.python-version }}
 
             - name: Install artistools
               run: |
