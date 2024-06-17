@@ -4,6 +4,7 @@ name: Build wheels and deploy to PyPI
 on:
     release:
         types: [published, edited]
+    workflow_dispatch:
 
 jobs:
     build_wheels:
