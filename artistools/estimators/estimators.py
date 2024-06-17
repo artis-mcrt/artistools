@@ -197,11 +197,6 @@ def read_estimators_from_file(
                         estimblock.setdefault(f"nnelement_{elsymbol}", 0.0)
                         estimblock[f"nnelement_{elsymbol}"] += value_thision
 
-                if variablename == "populations":
-                    # contribute the element population to the total population
-                    estimblock.setdefault("nntot", 0.0)
-                    estimblock["nntot"] += estimblock[f"nnelement_{elsymbol}"]
-
             elif row[0].endswith(":"):
                 # heating, cooling, deposition, etc
                 variablename = row[0].removesuffix(":")
@@ -373,8 +368,10 @@ def scan_estimators(
     if "heating_gamma/gamma_dep" in pldflazy.columns:
         pldflazy = pldflazy.with_columns(gamma_dep=pl.col("heating_gamma") / pl.col("heating_gamma/gamma_dep"))
 
-    if "heating_dep/total_dep" in pldflazy.columns:
-        pldflazy = pldflazy.with_columns(total_dep=pl.col("heating_dep") / pl.col("heating_dep/total_dep"))
+    if "heating_heating_dep/total_dep" in pldflazy.columns:
+        pldflazy = pldflazy.with_columns(total_dep=pl.col("heating_dep") / pl.col("heating_heating_dep/total_dep"))
+
+    pldflazy = pldflazy.with_columns(nntot=pl.sum_horizontal(cs.starts_with("nnelement_")))
 
     return pldflazy.fill_null(0)
 
