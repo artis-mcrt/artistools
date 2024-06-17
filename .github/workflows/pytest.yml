@@ -29,6 +29,7 @@ jobs:
                   python3 -m pip install --upgrade pip uv
                   uv pip install --system --upgrade pylint mypy ruff
                   uv pip install --system -r requirements.txt
+                  uv pip install .
 
             - name: Run Ruff
               if: always()
