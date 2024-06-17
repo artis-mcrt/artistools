@@ -11,6 +11,7 @@ import sys
 import tempfile
 import time
 import typing as t
+import warnings
 from collections import namedtuple
 from pathlib import Path
 
@@ -250,7 +251,7 @@ def get_rankbatch_parquetfile(
         try:
             from artistools.rustext import estimparse as rustestimparse
         except ImportError:
-            print("WARNING: Rust extension not available. Falling back to slow python reader.")
+            warnings.warn("WARNING: Rust extension not available. Falling back to slow python reader.", stacklevel=2)
             use_rust = False
 
         print(
