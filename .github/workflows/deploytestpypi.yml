@@ -11,34 +11,74 @@ on:
         types: [trigger_checks]
 
 jobs:
-    deploy:
-        runs-on: ubuntu-24.04
-        permissions:
-            id-token: write
+    build_wheels:
+        name: Build wheels on ${{ matrix.os }}
+        runs-on: ${{ matrix.os }}
+        strategy:
+            matrix:
+                # macos-13 is an intel runner, macos-14 is apple silicon
+                os: [ubuntu-latest, windows-latest, macos-13, macos-14]
+
         steps:
             - uses: actions/checkout@v4
               with:
                   fetch-depth: 0
 
-            - uses: actions/setup-python@v5
-              with:
-                  python-version-file: .python-version
-
-            - name: Install dependencies
+            - name: Run setuptools_scm
               run: |
-                  python3 -m pip install --upgrade pip uv
-                  uv pip install --system --upgrade setuptools setuptools_scm[toml] wheel twine build
-
-            - name: Build
-              run: |
+                  python3 -m pip install --upgrade pip setuptools setuptools_scm[toml] wheel twine build
                   python3 -m setuptools_scm
-                  python3 -m build --sdist --outdir dist/ .
-                  #python3 -m build --sdist --wheel --outdir dist/ .
-                  python3 -m twine check dist/*
 
-            # - name: Publish to Test PyPI
-            #   run: |
-            #       python3 -m twine upload --skip-existing --verbose -r testpypi -u __token__ -p ${{ secrets.TESTPYPI_TOKEN }} --non-interactive dist/*
+            - name: Build wheels
+              uses: pypa/cibuildwheel@v2.19.1
+
+            - uses: actions/upload-artifact@v4
+              with:
+                  name: cibw-wheels-${{ matrix.os }}-${{ strategy.job-index }}
+                  path: ./wheelhouse/*.whl
+
+    build_sdist:
+        name: Build source distribution
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+
+            - name: Run setuptools_scm
+              run: |
+                  python3 -m pip install --upgrade pip setuptools setuptools_scm[toml] wheel twine build
+                  python3 -m setuptools_scm
+
+            - name: Build sdist
+              run: pipx run build --sdist
+
+            - uses: actions/upload-artifact@v4
+              with:
+                  name: cibw-sdist
+                  path: dist/*.tar.gz
+
+    upload_test_pypi:
+        needs: [build_wheels, build_sdist]
+        runs-on: ubuntu-latest
+        environment: test
+        permissions:
+            id-token: write
+        #if: github.event_name == 'release' && github.event.action == 'published'
+        # or, alternatively, upload to PyPI on every tag starting with 'v' (remove on: release above to use this)
+        # if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        steps:
+            - uses: actions/download-artifact@v4
+              with:
+                  # unpacks all CIBW artifacts into dist/
+                  pattern: cibw-*
+                  path: dist
+                  merge-multiple: true
+
+            - name: Run setuptools_scm
+              run: |
+                  python3 -m pip install --upgrade pip setuptools setuptools_scm[toml] wheel twine build
+                  python3 -m setuptools_scm
 
             - name: Publish package to TestPyPI
               uses: pypa/gh-action-pypi-publish@release/v1

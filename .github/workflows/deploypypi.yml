@@ -9,6 +9,8 @@ jobs:
     deploy:
         runs-on: ubuntu-24.04
         environment: release
+        permissions:
+            id-token: write
 
         steps:
             - uses: actions/checkout@v4
