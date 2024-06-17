@@ -54,7 +54,8 @@ line-length = 120
 target-version = ["py310", "py311", "py312", "py313"]
 
 [tool.cibuildwheel]
-skip = ["*-musllinux_i686"]
+skip = ["*-win32", "*i686"]
+
 
 [tool.mypy]
 check_untyped_defs = false
@@ -276,6 +277,7 @@ target = "artistools.rustext"  # The last part of the name has to match lib.name
 path = "rust/Cargo.toml"
 binding = "PyO3"
 debug = false
+optional = false
 
 [tool.setuptools.packages.find]
 namespaces = false
