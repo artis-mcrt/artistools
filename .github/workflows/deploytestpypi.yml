@@ -19,7 +19,8 @@ jobs:
                 # macos-13 is an intel runner, macos-14 is apple silicon
                 os: [ubuntu-latest, windows-latest, macos-13, macos-14]
             fail-fast: false
-
+        env:
+            CIBW_BEFORE_ALL_LINUX: 'curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain stable -y && yum install -y openssl-devel perl-IPC-Cmd'
         steps:
             - uses: actions/checkout@v4
               with:
