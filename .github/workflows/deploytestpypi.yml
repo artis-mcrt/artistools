@@ -26,8 +26,7 @@ jobs:
 
             - name: Run setuptools_scm
               run: |
-                  python3 -m pip install --upgrade pip uv
-                  python3 -m uv pip install --system --upgrade setuptools_scm[toml]
+                  python3 -m pip install --upgrade setuptools_scm[toml]
                   python3 -m setuptools_scm
 
             - name: Build wheels
@@ -48,8 +47,7 @@ jobs:
 
             - name: Run setuptools_scm
               run: |
-                  python3 -m pip install --upgrade pip uv
-                  python3 -m uv pip install --system --upgrade setuptools_scm[toml]
+                  python3 -m pip install --upgrade setuptools_scm[toml]
                   python3 -m setuptools_scm
 
             - name: Build sdist
@@ -79,8 +77,7 @@ jobs:
 
             - name: Run setuptools_scm
               run: |
-                  python3 -m pip install --upgrade pip uv
-                  python3 -m uv pip install --system --upgrade setuptools_scm[toml]
+                  python3 -m pip install --upgrade setuptools_scm[toml]
                   python3 -m setuptools_scm
 
             - name: Publish package to TestPyPI
