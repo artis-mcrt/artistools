@@ -152,7 +152,7 @@ disable = """
 """
 
 [tool.pylint.typecheck]
-ignored-modules = ["astropy", "extinction"]
+ignored-modules = ["astropy", "extinction", "artistools.rustext"]
 unsafe-load-any-extension = true
 
 [tool.pyright]
