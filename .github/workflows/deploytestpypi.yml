@@ -18,15 +18,18 @@ jobs:
             matrix:
                 # macos-13 is an intel runner, macos-14 is apple silicon
                 os: [ubuntu-latest, windows-latest, macos-13, macos-14]
+            fail-fast: false
 
         steps:
             - uses: actions/checkout@v4
               with:
                   fetch-depth: 0
 
+            - uses: actions-rust-lang/setup-rust-toolchain@v1
+
             - name: Run setuptools_scm
               run: |
-                  python3 -m pip install --upgrade setuptools_scm[toml]
+                  python3 -m pip install --upgrade setuptools_scm[toml] setuptools-rust
                   python3 -m setuptools_scm
 
             - name: Install Rust
@@ -51,7 +54,7 @@ jobs:
 
             - name: Run setuptools_scm
               run: |
-                  python3 -m pip install --upgrade setuptools_scm[toml]
+                  python3 -m pip install --upgrade setuptools_scm[toml] setuptools-rust
                   python3 -m setuptools_scm
 
             - name: Install Rust
