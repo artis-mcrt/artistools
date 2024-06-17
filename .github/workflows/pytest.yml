@@ -135,6 +135,17 @@ jobs:
               run: |
                   curl -LsSf https://astral.sh/uv/install.sh | sh
 
+            - name: Cache rust build cache
+              uses: actions/cache@v4
+              with:
+                  path: |
+                      ~/.cargo/bin/
+                      ~/.cargo/registry/index/
+                      ~/.cargo/registry/cache/
+                      ~/.cargo/git/db/
+                      rust/target/
+                  key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
             - name: Install artistools
               run: |
                   uv pip install --system --upgrade --compile-bytecode --editable  .
