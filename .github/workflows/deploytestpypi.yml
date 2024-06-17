@@ -28,9 +28,18 @@ jobs:
               with:
                   fetch-depth: 0
 
-            - name: Run setuptools_scm
+            - name: Install setuptools_scm
+              if: matrix.os == 'macos-13' || matrix.os == 'macos-14'
               run: |
                   python3 -m pip install --upgrade --break-system-packages --user setuptools_scm[toml] setuptools-rust
+
+            - name: Install setuptools_scm
+              if: matrix.os != 'macos-13' || matrix.os != 'macos-14'
+              run: |
+                  python3 -m pip install --upgrade setuptools_scm[toml] setuptools-rust
+
+            - name: Run setuptools_scm
+              run: |
                   python3 -m setuptools_scm
 
             - name: Build wheels
