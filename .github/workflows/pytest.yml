@@ -18,6 +18,8 @@ jobs:
         steps:
             - name: Checkout Code
               uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
 
             - name: Set up Python
               uses: actions/setup-python@v5
@@ -168,6 +170,17 @@ jobs:
                   python3 -m pip install --no-build-isolation astropy
                   mv requirements3.13.txt requirements.txt
                   cat requirements.txt
+
+            - name: Cache rust build cache
+              uses: actions/cache@v4
+              with:
+                  path: |
+                      ~/.cargo/bin/
+                      ~/.cargo/registry/index/
+                      ~/.cargo/registry/cache/
+                      ~/.cargo/git/db/
+                      rust/target/
+                  key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-python-${{ matrix.python-version }}
 
             - name: Install artistools
               run: |

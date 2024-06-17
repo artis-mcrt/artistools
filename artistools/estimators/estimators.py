@@ -17,6 +17,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import polars as pl
+from polars import selectors as cs
 
 import artistools as at
 
@@ -143,13 +144,15 @@ def read_estimators_from_file(
                     estimblocklist.append(estimblock)
 
                 emptycell = row[4] == "EMPTYCELL"
-                if emptycell:
-                    estimblock = {}
-                else:
-                    # will be TR, Te, W, TJ, nne
-                    estimblock = {"timestep": int(row[1]), "modelgridindex": int(row[3])}
-                    for variablename, value in zip(row[4::2], row[5::2], strict=False):
-                        estimblock[variablename] = float(value)
+                estimblock = {}
+                if not emptycell:
+                    # will be timestep, modelgridindex, TR, Te, W, TJ, nne, etc
+                    for variablename, value in zip(row[::2], row[1::2], strict=True):
+                        estimblock[variablename] = (
+                            float(value)
+                            if variablename not in {"timestep", "modelgridindex", "titeration", "thick"}
+                            else int(value)
+                        )
 
             elif row[1].startswith("Z="):
                 variablename = row[0]
@@ -161,7 +164,7 @@ def read_estimators_from_file(
                     startindex = 2
                 elsymbol = at.get_elsymbol(atomic_number)
 
-                for ion_stage_str, value in zip(row[startindex::2], row[startindex + 1 :: 2], strict=False):
+                for ion_stage_str, value in zip(row[startindex::2], row[startindex + 1 :: 2], strict=True):
                     ion_stage_str_strip = ion_stage_str.strip()
                     if ion_stage_str_strip == "(or":
                         continue
@@ -194,28 +197,11 @@ def read_estimators_from_file(
                         estimblock.setdefault(f"nnelement_{elsymbol}", 0.0)
                         estimblock[f"nnelement_{elsymbol}"] += value_thision
 
-                if variablename == "populations":
-                    # contribute the element population to the total population
-                    estimblock.setdefault("nntot", 0.0)
-                    estimblock["nntot"] += estimblock[f"nnelement_{elsymbol}"]
-
-            elif row[0] == "heating:":
-                for heatingtype, value in zip(row[1::2], row[2::2], strict=True):
-                    key = heatingtype if heatingtype.startswith("heating_") else f"heating_{heatingtype}"
-                    estimblock[key] = float(value)
-
-                if "heating_gamma/gamma_dep" in estimblock and estimblock["heating_gamma/gamma_dep"] > 0:
-                    estimblock["gamma_dep"] = estimblock["heating_gamma"] / estimblock["heating_gamma/gamma_dep"]
-                elif "heating_dep/total_dep" in estimblock and estimblock["heating_dep/total_dep"] > 0:
-                    estimblock["total_dep"] = estimblock["heating_dep"] / estimblock["heating_dep/total_dep"]
-
-            elif row[0] == "cooling:":
+            elif row[0].endswith(":"):
+                # heating, cooling, deposition, etc
+                variablename = row[0].removesuffix(":")
                 for coolingtype, value in zip(row[1::2], row[2::2], strict=True):
-                    estimblock[f"cooling_{coolingtype}"] = float(value)
-
-            elif row[0] == "deposition:":
-                for deptype, value in zip(row[1::2], row[2::2], strict=True):
-                    estimblock[f"deposition_{deptype}"] = float(value)
+                    estimblock[f"{variablename}_{coolingtype}"] = float(value)
 
     # reached the end of file
     if estimblock:
@@ -227,33 +213,60 @@ def read_estimators_from_file(
 
 
 def get_rankbatch_parquetfile(
-    modelpath: Path,
-    folderpath: Path,
+    folderpath: Path | str,
     batch_mpiranks: t.Sequence[int],
     batchindex: int,
+    modelpath: Path | str | None = None,
+    use_rust: bool = True,
 ) -> Path:
+    modelpath = Path(folderpath).parent if modelpath is None else Path(modelpath)
+    folderpath = Path(folderpath)
     parquetfilename = f"estimbatch{batchindex:02d}_{batch_mpiranks[0]:04d}_{batch_mpiranks[-1]:04d}.out.parquet.tmp"
     parquetfilepath = folderpath / parquetfilename
 
     if not parquetfilepath.exists():
+        generate_parquet = True
+    elif next(folderpath.glob("estimators_????.out*")).stat().st_mtime > parquetfilepath.stat().st_mtime:
+        print(
+            f"  {parquetfilepath.relative_to(modelpath.parent)} is older than the estimator text files. File will be deleted and regenerated..."
+        )
+        parquetfilepath.unlink()
+        generate_parquet = True
+    else:
+        generate_parquet = False
+
+    if generate_parquet:
         print(f"  generating {parquetfilepath.relative_to(modelpath.parent)}...")
         estfilepaths = []
         for mpirank in batch_mpiranks:
             # not worth printing an error, because ranks with no cells to update do not produce an estimator file
             with contextlib.suppress(FileNotFoundError):
-                estfilepath = at.firstexisting(f"estimators_{mpirank:04d}.out", folder=folderpath, tryzipped=True)
-                estfilepaths.append(estfilepath)
+                estfilepaths.append(
+                    at.firstexisting(f"estimators_{mpirank:04d}.out", folder=folderpath, tryzipped=True)
+                )
+
+        time_start = time.perf_counter()
+
+        try:
+            from artistools.rustext import estimparse as rustestimparse
+        except ImportError:
+            print("WARNING: Rust extension not available. Falling back to slow python reader.")
+            use_rust = False
 
         print(
-            f"  reading {len(estfilepaths)} estimator files from {folderpath.relative_to(Path(folderpath).parent)}...",
+            f"    reading {len(estfilepaths)} estimator files in {folderpath.relative_to(Path(folderpath).parent)} with {'fast rust reader' if use_rust else 'slow python reader'}...",
             end="",
             flush=True,
         )
 
-        time_start = time.perf_counter()
-
-        pldf_batch = None
-        if at.get_config()["num_processes"] > 1:
+        pldf_batch: pl.DataFrame
+        if use_rust:
+            pldf_batch = rustestimparse(str(folderpath), min(batch_mpiranks), max(batch_mpiranks))
+            pldf_batch = pldf_batch.with_columns(
+                pl.col(c).cast(pl.Int32)
+                for c in {"modelgridindex", "timestep", "titeration", "thick"}.intersection(pldf_batch.columns)
+            )
+        elif at.get_config()["num_processes"] > 1:
             with at.get_multiprocessing_pool() as pool:
                 pldf_batch = pl.concat(pool.imap(read_estimators_from_file, estfilepaths), how="diagonal_relaxed")
 
@@ -263,8 +276,14 @@ def get_rankbatch_parquetfile(
         else:
             pldf_batch = pl.concat(map(read_estimators_from_file, estfilepaths), how="diagonal_relaxed")
 
+        pldf_batch = pldf_batch.select(
+            sorted(
+                pldf_batch.columns,
+                key=lambda col: f"-{col!r}" if col in {"timestep", "modelgridindex", "titer"} else str(col),
+            )
+        )
         print(
-            f"took {time.perf_counter() - time_start:.1f} s. Writing {parquetfilepath.relative_to(modelpath.parent)}...",
+            f"took {time.perf_counter() - time_start:.1f} s. Writing parquet file...",
             end="",
             flush=True,
         )
@@ -283,7 +302,10 @@ def get_rankbatch_parquetfile(
         print(f"took {time.perf_counter() - time_start:.1f} s.")
 
     filesize = parquetfilepath.stat().st_size / 1024 / 1024
-    print(f"  scanning {parquetfilepath.relative_to(modelpath.parent)} ({filesize:.2f} MiB)")
+    try:
+        print(f"  scanning {parquetfilepath.relative_to(modelpath.parent)} ({filesize:.2f} MiB)")
+    except ValueError:
+        print(f"  scanning {parquetfilepath} ({filesize:.2f} MiB)")
 
     return parquetfilepath
 
@@ -343,7 +365,9 @@ def scan_estimators(
     runfolders = at.get_runfolders(modelpath, timesteps=match_timestep)
 
     parquetfiles = (
-        get_rankbatch_parquetfile(modelpath, runfolder, mpiranks, batchindex=batchindex)
+        get_rankbatch_parquetfile(
+            modelpath=modelpath, folderpath=runfolder, batch_mpiranks=mpiranks, batchindex=batchindex
+        )
         for runfolder in runfolders
         for batchindex, mpiranks in mpirank_groups
     )
@@ -359,6 +383,15 @@ def scan_estimators(
 
     if match_timestep is not None:
         pldflazy = pldflazy.filter(pl.col("timestep").is_in(match_timestep))
+
+    # add some derived quantities
+    if "heating_gamma/gamma_dep" in pldflazy.columns:
+        pldflazy = pldflazy.with_columns(gamma_dep=pl.col("heating_gamma") / pl.col("heating_gamma/gamma_dep"))
+
+    if "heating_heating_dep/total_dep" in pldflazy.columns:
+        pldflazy = pldflazy.with_columns(total_dep=pl.col("heating_dep") / pl.col("heating_heating_dep/total_dep"))
+
+    pldflazy = pldflazy.with_columns(nntot=pl.sum_horizontal(cs.starts_with("nnelement_")))
 
     return pldflazy.fill_null(0)
 
