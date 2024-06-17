@@ -17,6 +17,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import polars as pl
+from polars import selectors as cs
 
 import artistools as at
 
@@ -196,28 +197,11 @@ def read_estimators_from_file(
                         estimblock.setdefault(f"nnelement_{elsymbol}", 0.0)
                         estimblock[f"nnelement_{elsymbol}"] += value_thision
 
-                if variablename == "populations":
-                    # contribute the element population to the total population
-                    estimblock.setdefault("nntot", 0.0)
-                    estimblock["nntot"] += estimblock[f"nnelement_{elsymbol}"]
-
-            elif row[0] == "heating:":
-                for heatingtype, value in zip(row[1::2], row[2::2], strict=True):
-                    key = heatingtype if heatingtype.startswith("heating_") else f"heating_{heatingtype}"
-                    estimblock[key] = float(value)
-
-                if "heating_gamma/gamma_dep" in estimblock and estimblock["heating_gamma/gamma_dep"] > 0:
-                    estimblock["gamma_dep"] = estimblock["heating_gamma"] / estimblock["heating_gamma/gamma_dep"]
-                elif "heating_dep/total_dep" in estimblock and estimblock["heating_dep/total_dep"] > 0:
-                    estimblock["total_dep"] = estimblock["heating_dep"] / estimblock["heating_dep/total_dep"]
-
-            elif row[0] == "cooling:":
+            elif row[0].endswith(":"):
+                # heating, cooling, deposition, etc
+                variablename = row[0].removesuffix(":")
                 for coolingtype, value in zip(row[1::2], row[2::2], strict=True):
-                    estimblock[f"cooling_{coolingtype}"] = float(value)
-
-            elif row[0] == "deposition:":
-                for deptype, value in zip(row[1::2], row[2::2], strict=True):
-                    estimblock[f"deposition_{deptype}"] = float(value)
+                    estimblock[f"{variablename}_{coolingtype}"] = float(value)
 
     # reached the end of file
     if estimblock:
@@ -233,6 +217,7 @@ def get_rankbatch_parquetfile(
     batch_mpiranks: t.Sequence[int],
     batchindex: int,
     modelpath: Path | str | None = None,
+    use_rust: bool = True,
 ) -> Path:
     modelpath = Path(folderpath).parent if modelpath is None else Path(modelpath)
     folderpath = Path(folderpath)
@@ -248,16 +233,24 @@ def get_rankbatch_parquetfile(
                 estfilepath = at.firstexisting(f"estimators_{mpirank:04d}.out", folder=folderpath, tryzipped=True)
                 estfilepaths.append(estfilepath)
 
+        time_start = time.perf_counter()
+
         print(
-            f"  reading {len(estfilepaths)} estimator files from {folderpath.relative_to(Path(folderpath).parent)}...",
+            f"  reading {len(estfilepaths)} estimator files from {folderpath.relative_to(Path(folderpath).parent)}{' with rust compiled function' if use_rust else ''}...",
             end="",
             flush=True,
         )
 
-        time_start = time.perf_counter()
+        pldf_batch: pl.DataFrame
+        if use_rust:
+            from artistools.rustext import estimparse as rustestimparse
 
-        pldf_batch = None
-        if at.get_config()["num_processes"] > 1:
+            pldf_batch = rustestimparse(str(folderpath), min(batch_mpiranks), max(batch_mpiranks))
+            pldf_batch = pldf_batch.with_columns(
+                pl.col(c).cast(pl.Int32)
+                for c in {"modelgridindex", "timestep", "titeration", "thick"}.intersection(pldf_batch.columns)
+            )
+        elif at.get_config()["num_processes"] > 1:
             with at.get_multiprocessing_pool() as pool:
                 pldf_batch = pl.concat(pool.imap(read_estimators_from_file, estfilepaths), how="diagonal_relaxed")
 
@@ -267,6 +260,12 @@ def get_rankbatch_parquetfile(
         else:
             pldf_batch = pl.concat(map(read_estimators_from_file, estfilepaths), how="diagonal_relaxed")
 
+        pldf_batch = pldf_batch.select(
+            sorted(
+                pldf_batch.columns,
+                key=lambda col: f"-{col!r}" if col in {"timestep", "modelgridindex", "titer"} else str(col),
+            )
+        )
         print(
             f"took {time.perf_counter() - time_start:.1f} s. Writing {parquetfilepath.relative_to(modelpath.parent)}...",
             end="",
@@ -368,6 +367,15 @@ def scan_estimators(
 
     if match_timestep is not None:
         pldflazy = pldflazy.filter(pl.col("timestep").is_in(match_timestep))
+
+    # add some derived quantities
+    if "heating_gamma/gamma_dep" in pldflazy.columns:
+        pldflazy = pldflazy.with_columns(gamma_dep=pl.col("heating_gamma") / pl.col("heating_gamma/gamma_dep"))
+
+    if "heating_heating_dep/total_dep" in pldflazy.columns:
+        pldflazy = pldflazy.with_columns(total_dep=pl.col("heating_dep") / pl.col("heating_heating_dep/total_dep"))
+
+    pldflazy = pldflazy.with_columns(nntot=pl.sum_horizontal(cs.starts_with("nnelement_")))
 
     return pldflazy.fill_null(0)
 
