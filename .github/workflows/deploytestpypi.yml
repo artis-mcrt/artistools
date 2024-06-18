@@ -33,7 +33,8 @@ jobs:
 
             - name: Install dependencies
               run: |
-                  python3 -m pip install --upgrade setuptools setuptools_scm[toml] uv
+                  python3 -m pip install --upgrade uv
+                  python3 -m uv pip install --upgrade setuptools setuptools_scm[toml] setuptools-rust wheel twine build
                   echo "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS=$(python3 -m setuptools_scm --strip-dev)" >> $GITHUB_ENV
 
             - name: Build wheels
@@ -96,7 +97,8 @@ jobs:
 
             - name: Install dependencies
               run: |
-                  python3 -m pip install --upgrade setuptools setuptools_scm[toml] setuptools-rust wheel twine build
+                  python3 -m pip install --upgrade uv
+                  python3 -m uv pip install --upgrade setuptools setuptools_scm[toml] setuptools-rust wheel twine build
                   echo "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS=$(python3 -m setuptools_scm --strip-dev)" >> $GITHUB_ENV
 
             - name: Publish package to TestPyPI
