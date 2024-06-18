@@ -44,7 +44,7 @@ jobs:
                       .cargocache/
                       .targetcache/
                       rust/target/
-                  key: cibuildwheel-${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-fix3
+                  key: cibuildwheel-${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('**/.cargo/**') }}-${{ hashFiles('**/target/**') }}
 
             - name: show dirs
               run: |
