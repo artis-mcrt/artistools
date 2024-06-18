@@ -20,7 +20,7 @@ jobs:
                 os: [ubuntu-latest, macos-13, macos-14]
             fail-fast: false
         env:
-            CIBW_BEFORE_BUILD: 'python3 -m pip install --upgrade setuptools setuptools_scm[toml] setuptools-rust wheel twine build && python3 -m setuptools_scm --strip-dev'
+            CIBW_BEFORE_BUILD: 'python3 -m pip install --upgrade setuptools setuptools_scm[toml] setuptools-rust wheel twine build && export SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS=$(python3 -m setuptools_scm --strip-dev)'
         steps:
             - uses: actions/checkout@v4
               with:
@@ -52,7 +52,9 @@ jobs:
                   python3 -m setuptools_scm
 
             - name: Build sdist
-              run: python3 -m s run build --sdist
+              run: |
+                  export SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS=$(python3 -m setuptools_scm --strip-dev)
+                  python3 -m build --sdist
 
             - uses: actions/upload-artifact@v4
               with:
@@ -65,7 +67,6 @@ jobs:
         environment: test
         permissions:
             id-token: write
-        #if: github.event_name == 'release' && github.event.action == 'published'
         # or, alternatively, upload to PyPI on every tag starting with 'v' (remove on: release above to use this)
         # if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         steps:
