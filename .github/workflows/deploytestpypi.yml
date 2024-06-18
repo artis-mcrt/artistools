@@ -33,7 +33,7 @@ jobs:
 
             - name: Install dependencies
               run: |
-                  python3 -m pip install --upgrade setuptools setuptools_scm[toml]
+                  python3 -m pip install --upgrade setuptools setuptools_scm[toml] uv
                   echo "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS=$(python3 -m setuptools_scm --strip-dev)" >> $GITHUB_ENV
 
             - name: Build wheels
