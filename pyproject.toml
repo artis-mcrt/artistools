@@ -62,6 +62,9 @@ skip = ["*-win32", "*i686"]
 before-all = "curl -sSf https://sh.rustup.rs | sh -s -- -y"
 environment = { PATH="$HOME/.cargo/bin:$PATH"}
 
+[tool.distutils.bdist_wheel]
+py-limited-api = "cp310"
+
 [tool.mypy]
 check_untyped_defs = false
 disallow_any_explicit = false
