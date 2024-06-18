@@ -20,26 +20,14 @@ jobs:
                 os: [ubuntu-latest, macos-13, macos-14]
             fail-fast: false
         env:
+            CIBW_BEFORE_ALL: 'python3 -m pip install --upgrade setuptools setuptools_scm[toml] setuptools-rust wheel twine build'
+            CIBW_BEFORE_BUILD: 'python3 -m setuptools_scm --strip-dev'
             CIBW_BEFORE_ALL_LINUX: curl -sSf https://sh.rustup.rs | sh -s -- -y
             CIBW_ENVIRONMENT_LINUX: 'PATH=$HOME/.cargo/bin:$PATH'
         steps:
             - uses: actions/checkout@v4
               with:
                   fetch-depth: 0
-
-            - name: Install setuptools_scm
-              if: matrix.os == 'macos-13' || matrix.os == 'macos-14'
-              run: |
-                  python3 -m pip install --upgrade --break-system-packages --user setuptools setuptools_scm[toml] setuptools-rust
-
-            - name: Install setuptools_scm
-              if: matrix.os != 'macos-13' && matrix.os != 'macos-14'
-              run: |
-                  python3 -m pip install --upgrade setuptools setuptools_scm[toml] setuptools-rust
-
-            - name: Run setuptools_scm
-              run: |
-                  python3 -m setuptools_scm
 
             - name: Build wheels
               uses: pypa/cibuildwheel@v2.19.1
@@ -57,13 +45,17 @@ jobs:
               with:
                   fetch-depth: 0
 
-            - name: Run setuptools_scm
+            - uses: actions/setup-python@v5
+              with:
+                  python-version-file: .python-version
+
+            - name: Install dependencies
               run: |
-                  python3 -m pip install --upgrade setuptools setuptools_scm[toml] setuptools-rust
+                  python3 -m pip install --upgrade setuptools setuptools_scm[toml] setuptools-rust wheel twine build
                   python3 -m setuptools_scm
 
             - name: Build sdist
-              run: pipx run build --sdist
+              run: python3 -m s run build --sdist
 
             - uses: actions/upload-artifact@v4
               with:
@@ -84,6 +76,10 @@ jobs:
               with:
                   fetch-depth: 0
 
+            - uses: actions/setup-python@v5
+              with:
+                  python-version-file: .python-version
+
             - uses: actions/download-artifact@v4
               with:
                   # unpacks all CIBW artifacts into dist/
@@ -93,7 +89,7 @@ jobs:
 
             - name: Run setuptools_scm
               run: |
-                  python3 -m pip install --upgrade setuptools setuptools_scm[toml] setuptools-rust
+                  python3 -m pip install --upgrade setuptools setuptools_scm[toml] setuptools-rust wheel twine build
                   python3 -m setuptools_scm
 
             - name: Publish package to TestPyPI
@@ -101,5 +97,4 @@ jobs:
               with:
                   skip-existing: true
                   verbose: false
-                  #password: ${{ secrets.TESTPYPI_TOKEN }}
                   repository-url: https://test.pypi.org/legacy/
