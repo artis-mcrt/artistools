@@ -33,7 +33,7 @@ jobs:
 
             - name: Install dependencies
               run: |
-                  python3 -m pip install --upgrade setuptools setuptools_scm[toml] setuptools-rust wheel twine build
+                  python3 -m pip install --upgrade setuptools setuptools_scm[toml]
                   echo "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS=$(python3 -m setuptools_scm --strip-dev)" >> $GITHUB_ENV
 
             - name: Build wheels
@@ -77,7 +77,6 @@ jobs:
         environment: test
         permissions:
             id-token: write
-        # or, alternatively, upload to PyPI on every tag starting with 'v' (remove on: release above to use this)
         # if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         steps:
             - uses: actions/checkout@v4
