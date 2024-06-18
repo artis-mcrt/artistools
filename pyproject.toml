@@ -63,9 +63,6 @@ before-all = "curl -sSf https://sh.rustup.rs | sh -s -- -y"
 before-build = "mkdir -p /project/rust/target/ || cp -R /project/rust/target/ /host/home/runner/work/artistools/artistools/rust/target/ || cp -R /host/home/runner/work/artistools/artistools/rust/target/ /project/rust/target/ || true"
 environment = { PATH="$HOME/.cargo/bin:$PATH"}
 
-[tool.cibuildwheel.macos]
-before-all = "brew install rustup-init && rustup-init -y"
-
 [tool.distutils.bdist_wheel]
 py-limited-api = "cp310"
 
