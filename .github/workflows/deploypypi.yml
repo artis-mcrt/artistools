@@ -41,10 +41,10 @@ jobs:
                       .cargocache/
                       .targetcache/
                       rust/target/
-                  key: cibuildwheel-${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}
+                  key: cibuildwheel-${{ matrix.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}
                   restore-keys: |
-                      cibuildwheel-${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-
-                      cibuildwheel-${{ runner.os }}-cargo-
+                      cibuildwheel-${{ matrix.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-
+                      cibuildwheel-${{ matrix.os }}-cargo-
 
             - name: Install dependencies
               run: |

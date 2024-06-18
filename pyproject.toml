@@ -63,6 +63,9 @@ before-all = "mkdir -p /project/rust/target/ && mkdir -p /host/home/runner/work/
 environment = { PATH="$HOME/.cargo/bin:$PATH"}
 repair-wheel-command = "auditwheel repair -w {dest_dir} {wheel} && mkdir -p /host/home/runner/work/artistools/artistools/.targetcache/$AUDITWHEEL_PLAT/target && cp -R -p -v /project/rust/target/ /host/home/runner/work/artistools/artistools/.targetcache/$AUDITWHEEL_PLAT/ && mkdir -p /host/home/runner/work/artistools/artistools/.cargocache/$AUDITWHEEL_PLAT/.cargo && cp -R -p -v /root/.cargo/ /host/home/runner/work/artistools/artistools/.cargocache/$AUDITWHEEL_PLAT/"
 
+[tool.cibuildwheel.macos]
+before-all = "curl -sSf https://sh.rustup.rs | sh -s -- -y && rustup update"
+
 [tool.distutils.bdist_wheel]
 py-limited-api = "cp310"
 
