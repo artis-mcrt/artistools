@@ -16,4 +16,4 @@ zstd = "0.13.1"
 
 [dependencies.pyo3]
 version = "0.21.1"
-features = ["abi3-py310"]
+features = ["abi3", "abi3-py310", "experimental-inspect"]
