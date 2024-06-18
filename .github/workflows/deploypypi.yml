@@ -64,7 +64,10 @@ jobs:
             - name: show cache dirs
               run: |
                   pwd
+                  mkdir -p .targetcache
                   find .targetcache/
+                  mkdir -p .cargocache
+                  find .cargocache/
 
             - uses: actions/upload-artifact@v4
               with:
