@@ -37,25 +37,18 @@ jobs:
               uses: actions/cache@v4
               with:
                   path: |
-                      ~/.cargo/bin/
-                      ~/.cargo/registry/index/
-                      ~/.cargo/registry/cache/
-                      ~/.cargo/git/db/
+                      ~/.cargo/
                       .cargocache/
                       .targetcache/
                       rust/target/
-                  key: cibuildwheel-${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('**/.cargo/**') }}-${{ hashFiles('**/target/**') }}
-
-            - name: show dirs
-              run: |
-                  pwd
-                  mkdir -p .targetcache
-                  find .targetcache -type d
-                  mkdir -p .cargocache
-                  find .cargocache -type d
+                  key: cibuildwheel-${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock', '**/.cargo/**', '**/target/**') }}
+                  restore-keys: |
+                      cibuildwheel-${{ runner.os }}-cargo-
 
             - name: Install dependencies
               run: |
+                  mkdir -p .targetcache
+                  mkdir -p .cargocache
                   mkdir -p rust/target
                   python3 -m pip install --upgrade uv
                   python3 -m uv pip install --upgrade setuptools setuptools_scm[toml] setuptools-rust wheel twine build
@@ -63,14 +56,6 @@ jobs:
 
             - name: Build wheels
               uses: pypa/cibuildwheel@v2.19.1
-
-            - name: show cache dirs
-              run: |
-                  pwd
-                  mkdir -p .targetcache
-                  find .targetcache -type d
-                  mkdir -p .cargocache
-                  find .cargocache -type d
 
             - uses: actions/upload-artifact@v4
               with:
@@ -133,7 +118,7 @@ jobs:
                   python3 -m uv pip install --upgrade setuptools setuptools_scm[toml] setuptools-rust wheel twine build
                   #echo "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS=$(python3 -m setuptools_scm --strip-dev)" >> $GITHUB_ENV
 
-            - name: Publish package to PyPI
+            - name: Publish package to TestPyPI
               uses: pypa/gh-action-pypi-publish@release/v1
               with:
                   skip-existing: true
