@@ -20,8 +20,7 @@ jobs:
                 os: [ubuntu-latest, macos-13, macos-14]
             fail-fast: false
         env:
-            CIBW_BEFORE_ALL: 'python3 -m pip install --upgrade setuptools setuptools_scm[toml] setuptools-rust wheel twine build'
-            CIBW_BEFORE_BUILD: 'python3 -m setuptools_scm --strip-dev'
+            CIBW_BEFORE_BUILD: 'python3 -m pip install --upgrade setuptools setuptools_scm[toml] setuptools-rust wheel twine build && python3 -m setuptools_scm --strip-dev'
         steps:
             - uses: actions/checkout@v4
               with:

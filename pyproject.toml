@@ -55,7 +55,6 @@ line-length = 120
 target-version = ["py310", "py311", "py312", "py313"]
 
 [tool.cibuildwheel]
-before-all = "python3 -m pip install --upgrade setuptools setuptools_scm[toml] setuptools-rust wheel twine build"
 skip = ["*-win32", "*i686"]
 
 [tool.cibuildwheel.linux]
