@@ -218,7 +218,7 @@ def get_rankbatch_parquetfile(
     batch_mpiranks: t.Sequence[int],
     batchindex: int,
     modelpath: Path | str | None = None,
-    use_rust: bool = True,
+    use_rust_parser: bool | None = True,
 ) -> Path:
     modelpath = Path(folderpath).parent if modelpath is None else Path(modelpath)
     folderpath = Path(folderpath)
@@ -248,20 +248,29 @@ def get_rankbatch_parquetfile(
 
         time_start = time.perf_counter()
 
-        try:
-            from artistools.rustext import estimparse as rustestimparse
-        except ImportError:
-            warnings.warn("WARNING: Rust extension not available. Falling back to slow python reader.", stacklevel=2)
-            use_rust = False
+        if use_rust_parser is None or use_rust_parser:
+            try:
+                from artistools.rustext import estimparse as rustestimparse
+
+                use_rust_parser = True
+
+            except ImportError as err:
+                warnings.warn(
+                    "WARNING: Rust extension not available. Falling back to slow python reader.", stacklevel=2
+                )
+                if use_rust_parser:
+                    msg = "Rust extension not available"
+                    raise ImportError(msg) from err
+                use_rust_parser = False
 
         print(
-            f"    reading {len(estfilepaths)} estimator files in {folderpath.relative_to(Path(folderpath).parent)} with {'fast rust reader' if use_rust else 'slow python reader'}...",
+            f"    reading {len(estfilepaths)} estimator files in {folderpath.relative_to(Path(folderpath).parent)} with {'fast rust reader' if use_rust_parser else 'slow python reader'}...",
             end="",
             flush=True,
         )
 
         pldf_batch: pl.DataFrame
-        if use_rust:
+        if use_rust_parser:
             pldf_batch = rustestimparse(str(folderpath), min(batch_mpiranks), max(batch_mpiranks))
             pldf_batch = pldf_batch.with_columns(
                 pl.col(c).cast(pl.Int32)
@@ -315,6 +324,7 @@ def scan_estimators(
     modelpath: Path | str = Path(),
     modelgridindex: None | int | t.Sequence[int] = None,
     timestep: None | int | t.Sequence[int] = None,
+    use_rust_parser: bool | None = None,
 ) -> pl.LazyFrame:
     """Read estimator files into a dictionary of (timestep, modelgridindex): estimators.
 
@@ -367,7 +377,11 @@ def scan_estimators(
 
     parquetfiles = (
         get_rankbatch_parquetfile(
-            modelpath=modelpath, folderpath=runfolder, batch_mpiranks=mpiranks, batchindex=batchindex
+            modelpath=modelpath,
+            folderpath=runfolder,
+            batch_mpiranks=mpiranks,
+            batchindex=batchindex,
+            use_rust_parser=use_rust_parser,
         )
         for runfolder in runfolders
         for batchindex, mpiranks in mpirank_groups
