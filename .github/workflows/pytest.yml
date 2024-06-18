@@ -135,7 +135,7 @@ jobs:
               run: |
                   curl -LsSf https://astral.sh/uv/install.sh | sh
 
-            - name: Cache rust build
+            - name: Cache rust
               uses: actions/cache@v4
               with:
                   path: |
