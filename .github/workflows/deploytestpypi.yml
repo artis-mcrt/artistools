@@ -22,8 +22,6 @@ jobs:
         env:
             CIBW_BEFORE_ALL: 'python3 -m pip install --upgrade setuptools setuptools_scm[toml] setuptools-rust wheel twine build'
             CIBW_BEFORE_BUILD: 'python3 -m setuptools_scm --strip-dev'
-            CIBW_BEFORE_ALL_LINUX: curl -sSf https://sh.rustup.rs | sh -s -- -y
-            CIBW_ENVIRONMENT_LINUX: 'PATH=$HOME/.cargo/bin:$PATH'
         steps:
             - uses: actions/checkout@v4
               with:

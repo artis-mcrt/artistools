@@ -29,6 +29,7 @@ readme = {file = "README.md", content-type='text/markdown'}
 
 [project.urls]
 Repository ="https://www.github.com/artis-mcrt/artistools"
+Source = "https://www.github.com/artis-mcrt/artistools"
 
 [project.scripts]
 at = 'artistools.__main__:main'
@@ -54,7 +55,12 @@ line-length = 120
 target-version = ["py310", "py311", "py312", "py313"]
 
 [tool.cibuildwheel]
+before-all = "python3 -m pip install --upgrade setuptools setuptools_scm[toml] setuptools-rust wheel twine build"
 skip = ["*-win32", "*i686"]
+
+[tool.cibuildwheel.linux]
+before-all = "curl -sSf https://sh.rustup.rs | sh -s -- -y"
+environment = { PATH="$HOME/.cargo/bin:$PATH"}
 
 [tool.mypy]
 check_untyped_defs = false
