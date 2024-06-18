@@ -293,7 +293,7 @@ optional = false
 namespaces = true
 where = ["."]
 include = ["*", "**/matplotlibrc", "**/data"]
-exclude = ["tests", "**/dist", "**/lib", "**/build", "*.egg-info", "**/.*"]
+exclude = ["tests", "**/dist", "**/lib", "**/build", "*.egg-info", "**/.*", "**/target"]
 
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
