@@ -41,8 +41,15 @@ jobs:
                       ~/.cargo/registry/index/
                       ~/.cargo/registry/cache/
                       ~/.cargo/git/db/
+                      .cargocache/
+                      .targetcache/
                       rust/target/
-                  key: cibuildwheel-${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('rust/target/**') }}
+                  key: cibuildwheel-${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('rust/target/**') }}-${{ hashFiles('.cargocache**') }}-${{ hashFiles('.targetcache**') }}
+
+            - name: show dirs
+              run: |
+                  pwd
+                  find .
 
             - name: Install dependencies
               run: |

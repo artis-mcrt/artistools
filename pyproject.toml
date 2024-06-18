@@ -60,8 +60,9 @@ skip = ["*-win32", "*i686"]
 
 [tool.cibuildwheel.linux]
 before-all = "curl -sSf https://sh.rustup.rs | sh -s -- -y"
-before-build = "mkdir -p /project/rust/target/ || cp -R /project/rust/target/ /host/home/runner/work/artistools/artistools/rust/target/ || cp -R /host/home/runner/work/artistools/artistools/rust/target/ /project/rust/target/ || true"
+before-build = "mkdir -p /project/rust/target/ || cp -R /host/home/runner/work/targetcache/$AUDITWHEEL_PLAT/target /project/rust/"
 environment = { PATH="$HOME/.cargo/bin:$PATH"}
+repair-wheel-command = "auditwheel repair -w {dest_dir} {wheel} && cp -R /project/rust /host/home/runner/work/targetcache/$AUDITWHEEL_PLAT/"
 
 [tool.distutils.bdist_wheel]
 py-limited-api = "cp310"
