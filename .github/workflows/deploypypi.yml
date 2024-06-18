@@ -1,5 +1,5 @@
 ---
-name: Build and deploy to TestPyPI
+name: Build and deploy to PyPI
 
 on:
     push:
