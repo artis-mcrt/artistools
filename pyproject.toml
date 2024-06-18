@@ -55,7 +55,7 @@ line-length = 120
 target-version = ["py310", "py311", "py312", "py313"]
 
 [tool.cibuildwheel]
-build-frontend = {name="build[uv]", args=["--config-settings=--build-option=--py-limited-api=cp310"]}
+build-frontend = "build[uv]"
 skip = ["*-win32", "*i686"]
 
 [tool.cibuildwheel.linux]
