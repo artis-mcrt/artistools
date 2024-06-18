@@ -49,7 +49,10 @@ jobs:
             - name: show dirs
               run: |
                   pwd
-                  find .
+                  mkdir -p .targetcache
+                  find .targetcache -type d
+                  mkdir -p .cargocache
+                  find .cargocache -type d
 
             - name: Install dependencies
               run: |
@@ -65,9 +68,9 @@ jobs:
               run: |
                   pwd
                   mkdir -p .targetcache
-                  find .targetcache/
+                  find .targetcache -type d
                   mkdir -p .cargocache
-                  find .cargocache/
+                  find .cargocache -type d
 
             - uses: actions/upload-artifact@v4
               with:

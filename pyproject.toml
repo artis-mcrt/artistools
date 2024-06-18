@@ -168,7 +168,7 @@ unsafe-load-any-extension = true
 
 [tool.pyright]
 analyzeUnannotatedFunctions = false
-exclude=['**/node_modules','**/__pycache__','**/.*', 'build', 'dist']
+exclude=['**/node_modules','**/__pycache__','**/.*', 'build', 'dist', 'target']
 reportAttributeAccessIssue = false
 reportCallIssue = false
 reportMissingImports = false
