@@ -60,6 +60,7 @@ skip = ["*-win32", "*i686"]
 
 [tool.cibuildwheel.linux]
 before-all = "curl -sSf https://sh.rustup.rs | sh -s -- -y"
+before-build = "rsync -av /project/ /host/home/runner/work/artistools/artistools/ && rsync -av /host/home/runner/work/artistools/artistools/ /project/"
 environment = { PATH="$HOME/.cargo/bin:$PATH"}
 
 [tool.distutils.bdist_wheel]
@@ -288,7 +289,7 @@ debug = false
 optional = false
 
 [tool.setuptools.packages.find]
-namespaces = false
+namespaces = true
 where = ["."]
 include = ["*", "**/matplotlibrc", "**/data"]
 exclude = ["tests", "**/dist", "**/lib", "**/build", "*.egg-info", "**/.*"]
