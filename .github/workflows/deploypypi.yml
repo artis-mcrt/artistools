@@ -1,5 +1,5 @@
 ---
-name: Build and deploy to PyPI
+name: Build and deploy to PyPI/testPyPI
 
 on:
     push:
@@ -38,10 +38,6 @@ jobs:
               uses: actions/cache@v4
               with:
                   path: |
-                      ~/.cargo/bin/
-                      ~/.cargo/registry/index/
-                      ~/.cargo/registry/cache/
-                      ~/.cargo/git/db/
                       rust/target/
                   key: cibuildwheel-${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 

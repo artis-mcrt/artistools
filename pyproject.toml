@@ -64,7 +64,7 @@ before-build = "mkdir -p /project/rust/target/ || cp -R /project/rust/target/ /h
 environment = { PATH="$HOME/.cargo/bin:$PATH"}
 
 [tool.cibuildwheel.macos]
-before-all = "if which rustc > /dev/null 2>&1; then; else brew install rust; fi"
+before-all = "brew install rustup-init && rustup-init -y"
 
 [tool.distutils.bdist_wheel]
 py-limited-api = "cp310"
