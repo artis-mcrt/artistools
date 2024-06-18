@@ -63,6 +63,9 @@ before-all = "curl -sSf https://sh.rustup.rs | sh -s -- -y"
 before-build = "mdkir -p /project/rust/target/ || cp -r /project/rust/target/ /host/home/runner/work/artistools/artistools/rust/target/ || cp -r /host/home/runner/work/artistools/artistools/rust/target/ /project/rust/target/ || true"
 environment = { PATH="$HOME/.cargo/bin:$PATH"}
 
+[tool.cibuildwheel.macos]
+before-all = "if which rustc > /dev/null 2>&1; then; else brew install rust; fi"
+
 [tool.distutils.bdist_wheel]
 py-limited-api = "cp310"
 
