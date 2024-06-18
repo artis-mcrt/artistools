@@ -59,7 +59,7 @@ build-frontend = "build[uv]"
 skip = ["*-win32", "*i686"]
 
 [tool.cibuildwheel.linux]
-before-all = "curl -sSf https://sh.rustup.rs | sh -s -- -y"
+before-all = "curl -sSf https://sh.rustup.rs | sh -s -- -y || yum install -y rsync || apk add --upgrade rsync || apt-get install rsync"
 before-build = "rsync -av /project/ /host/home/runner/work/artistools/artistools/ && rsync -av /host/home/runner/work/artistools/artistools/ /project/"
 environment = { PATH="$HOME/.cargo/bin:$PATH"}
 
