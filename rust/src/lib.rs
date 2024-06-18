@@ -8,7 +8,7 @@ use polars::chunked_array::ChunkedArray;
 use polars::datatypes::Float32Type;
 use polars::prelude::*;
 use polars::series::IntoSeries;
-use pyo3_polars::{self, PyDataFrame};
+use pyo3_polars::PyDataFrame;
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::fs::File;
@@ -52,7 +52,7 @@ fn match_colsizes(coldata: &mut HashMap<String, Vec<f32>>, outputrownum: usize) 
     for singlecoldata in coldata.values_mut() {
         if singlecoldata.len() < outputrownum {
             assert_eq!(singlecoldata.len(), outputrownum - 1);
-            singlecoldata.push(f32::NAN);
+            singlecoldata.push(0.);
         }
     }
 }
@@ -64,7 +64,7 @@ fn append_or_create(
     outputrownum: &usize,
 ) {
     if !coldata.contains_key(colname) {
-        coldata.insert(colname.clone(), vec![f32::NAN; *outputrownum - 1]);
+        coldata.insert(colname.clone(), vec![0.; *outputrownum - 1]);
     }
 
     let singlecoldata = coldata.get_mut(colname).unwrap();
@@ -126,6 +126,22 @@ fn parse_line(line: &str, mut coldata: &mut HashMap<String, Vec<f32>>, outputrow
                 } else {
                     let ionstageroman = ROMAN[ionstagestr.parse::<usize>().unwrap()];
                     outcolname = format!("{variablename}_{elsym}_{ionstageroman}");
+
+                    if variablename.ends_with("*nne") {
+                        let colname_nonne = format!(
+                            "{}_{}_{}",
+                            variablename.strip_suffix("*nne").unwrap(),
+                            elsym,
+                            ionstageroman
+                        );
+                        let colvalue_nonne = colvalue / coldata["nne"].last().unwrap();
+                        append_or_create(
+                            &mut coldata,
+                            &colname_nonne,
+                            colvalue_nonne,
+                            outputrownum,
+                        );
+                    }
                 }
                 append_or_create(&mut coldata, &outcolname, colvalue, outputrownum);
             }
