@@ -60,9 +60,9 @@ skip = ["*-win32", "*i686"]
 
 [tool.cibuildwheel.linux]
 before-all = "curl -sSf https://sh.rustup.rs | sh -s -- -y"
-before-build = "mkdir -p /project/rust/target/ || cp -R /host/home/runner/work/artistools/artistools/.targetcache/$AUDITWHEEL_PLAT/ {project}/rust/target/"
+before-build = "mkdir -p /project/rust/target/ && cp -R /host/home/runner/work/artistools/artistools/.targetcache/$AUDITWHEEL_PLAT/ /project/rust/target/ && mkdir -p /root/.cargo/ && cp -R /host/home/runner/work/artistools/artistools/.cargocache/$AUDITWHEEL_PLAT/ /root/.cargo/"
 environment = { PATH="$HOME/.cargo/bin:$PATH"}
-repair-wheel-command = "auditwheel repair -w {dest_dir} {wheel} && mkdir -p /host/home/runner/work/artistools/artistools/.targetcache/$AUDITWHEEL_PLAT/ && cp -R {project}/rust/target /host/home/runner/work/artistools/artistools/.targetcache/$AUDITWHEEL_PLAT/"
+repair-wheel-command = "auditwheel repair -w {dest_dir} {wheel} && mkdir -p /host/home/runner/work/artistools/artistools/.targetcache/$AUDITWHEEL_PLAT/ && cp -R /project/rust/target /host/home/runner/work/artistools/artistools/.targetcache/$AUDITWHEEL_PLAT/ && mkdir -p /host/home/runner/work/artistools/artistools/.cargocache/$AUDITWHEEL_PLAT/ && cp -R /root/.cargo/ /host/home/runner/work/artistools/artistools/.cargocache/$AUDITWHEEL_PLAT/"
 
 [tool.distutils.bdist_wheel]
 py-limited-api = "cp310"
