@@ -57,6 +57,7 @@ target-version = ["py310", "py311", "py312", "py313"]
 [tool.cibuildwheel]
 build-frontend = "build[uv]"
 skip = ["*-win32", "*i686"]
+archs = ["native"]
 
 [tool.cibuildwheel.linux]
 before-all = "mkdir -p /project/rust/target/ && mkdir -p /host/home/runner/work/artistools/artistools/.targetcache/$AUDITWHEEL_PLAT/target/ && cp -R -p /host/home/runner/work/artistools/artistools/.targetcache/$AUDITWHEEL_PLAT/target /project/rust/ && mkdir -p /root/.cargo/ && mkdir -p /host/home/runner/work/artistools/artistools/.cargocache/$AUDITWHEEL_PLAT/.cargo && cp -R -p /host/home/runner/work/artistools/artistools/.cargocache/$AUDITWHEEL_PLAT/.cargo /root/ && curl -sSf https://sh.rustup.rs | sh -s -- -y"
@@ -65,9 +66,6 @@ repair-wheel-command = "auditwheel repair -w {dest_dir} {wheel} && mkdir -p /hos
 
 [tool.cibuildwheel.macos]
 before-all = "curl -sSf https://sh.rustup.rs | sh -s -- -y && rustup update"
-
-[tool.distutils.bdist_wheel]
-py-limited-api = "cp310"
 
 [tool.mypy]
 check_untyped_defs = false
