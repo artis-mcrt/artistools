@@ -56,8 +56,7 @@ target-version = ["py310", "py311", "py312", "py313"]
 
 [tool.cibuildwheel]
 build-frontend = "build[uv]"
-skip = ["*-win32", "*i686"]
-archs = ["native"]
+archs = ["auto64"]
 
 [tool.cibuildwheel.linux]
 before-all = "mkdir -p /project/rust/target/ && mkdir -p /host/home/runner/work/artistools/artistools/.targetcache/$AUDITWHEEL_PLAT/target/ && cp -R -p /host/home/runner/work/artistools/artistools/.targetcache/$AUDITWHEEL_PLAT/target /project/rust/ && mkdir -p /root/.cargo/ && mkdir -p /host/home/runner/work/artistools/artistools/.cargocache/$AUDITWHEEL_PLAT/.cargo && cp -R -p /host/home/runner/work/artistools/artistools/.cargocache/$AUDITWHEEL_PLAT/.cargo /root/ && curl -sSf https://sh.rustup.rs | sh -s -- -y"
