@@ -62,17 +62,18 @@ archs = ["auto64"]
 before-all = [
     "echo $AUDITWHEEL_PLAT",
     "find /project -type d",
-    "mkdir -p /root/.cargo",
+    #"mkdir -p /root/.cargo",
     "mkdir -p /project/.cargo/",
-    "cp -R -p /project/.cargo /root/",
+    #"cp -R -p /project/.cargo /root/",
+    "ln -s -F /project/.cargo/ /root/.cargo/",
     "curl -sSf https://sh.rustup.rs | sh -s -- -y",
 ]
 environment = { PATH="$HOME/.cargo/bin:$PATH"}
-repair-wheel-command = [
-    "auditwheel repair -w {dest_dir} {wheel}",
-    "mkdir -p /project/.cargo",
-    "cp -R -p /root/.cargo /project/",
-]
+#repair-wheel-command = [
+#    "auditwheel repair -w {dest_dir} {wheel}",
+#    "mkdir -p /project/.cargo",
+#    "cp -R -p /root/.cargo /project/",
+#]
 
 [tool.cibuildwheel.macos]
 before-all = "curl -sSf https://sh.rustup.rs | sh -s -- -y && rustup update"
