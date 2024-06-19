@@ -15,4 +15,4 @@ def pytest_sessionstart(session) -> None:
             is_descendant
         ), f"Refusing to delete {outputpath.resolve()} as it is not a descendant of the repository {repopath.resolve()}"
         shutil.rmtree(outputpath)
-        outputpath.mkdir(exist_ok=True)
+    outputpath.mkdir(exist_ok=True)
