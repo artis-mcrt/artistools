@@ -62,10 +62,10 @@ archs = ["auto64"]
 before-all = [
     "echo $AUDITWHEEL_PLAT",
     "find /project -type d",
-    #"mkdir -p /root/.cargo",
     "mkdir -p /project/.cargo/",
     #"cp -R -p /project/.cargo /root/",
-    "rm -rf /project/.cargo || true",
+    "mkdir -p /root/.cargo",
+    "rm -rf /root/.cargo",
     "ln -s -f /project/.cargo /root/",
     "curl -sSf https://sh.rustup.rs | sh -s -- -y",
 ]
