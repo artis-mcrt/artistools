@@ -63,19 +63,19 @@ platforms = ["linux", "macos"]
 before-all = [
     "echo $AUDITWHEEL_PLAT",
     "mkdir -p /project/rust/target/"
-    "mkdir -p /host/home/runner/work/artistools/artistools/.targetcache/$AUDITWHEEL_PLAT/target/"
-    "cp -R -p /host/home/runner/work/artistools/artistools/.targetcache/$AUDITWHEEL_PLAT/target /project/rust/"
-    "mkdir -p /root/.cargo/ && mkdir -p /host/home/runner/work/artistools/artistools/.cargocache/$AUDITWHEEL_PLAT/.cargo"
-    "cp -R -p /host/home/runner/work/artistools/artistools/.cargocache/$AUDITWHEEL_PLAT/.cargo /root/"
-    "curl -sSf https://sh.rustup.rs | sh -s -- -y"
+    "mkdir -p /host/home/runner/work/artistools/artistools/.targetcache/$AUDITWHEEL_PLAT/target/",
+    "cp -R -p /host/home/runner/work/artistools/artistools/.targetcache/$AUDITWHEEL_PLAT/target /project/rust/",
+    "mkdir -p /root/.cargo/ && mkdir -p /host/home/runner/work/artistools/artistools/.cargocache/$AUDITWHEEL_PLAT/.cargo",
+    "cp -R -p /host/home/runner/work/artistools/artistools/.cargocache/$AUDITWHEEL_PLAT/.cargo /root/",
+    "curl -sSf https://sh.rustup.rs | sh -s -- -y",
 ]
 environment = { PATH="$HOME/.cargo/bin:$PATH"}
 repair-wheel-command = [
-    "auditwheel repair -w {dest_dir} {wheel}"
-    "mkdir -p /host/home/runner/work/artistools/artistools/.targetcache/$AUDITWHEEL_PLAT/target"
-    "cp -R -p /project/rust/target/ /host/home/runner/work/artistools/artistools/.targetcache/$AUDITWHEEL_PLAT/"
-    "mkdir -p /host/home/runner/work/artistools/artistools/.cargocache/$AUDITWHEEL_PLAT/.cargo"
-    "cp -R -p /root/.cargo/ /host/home/runner/work/artistools/artistools/.cargocache/$AUDITWHEEL_PLAT/"
+    "auditwheel repair -w {dest_dir} {wheel}",
+    "mkdir -p /host/home/runner/work/artistools/artistools/.targetcache/$AUDITWHEEL_PLAT/target",
+    "cp -R -p /project/rust/target/ /host/home/runner/work/artistools/artistools/.targetcache/$AUDITWHEEL_PLAT/",
+    "mkdir -p /host/home/runner/work/artistools/artistools/.cargocache/$AUDITWHEEL_PLAT/.cargo",
+    "cp -R -p /root/.cargo/ /host/home/runner/work/artistools/artistools/.cargocache/$AUDITWHEEL_PLAT/",
 ]
 
 [tool.cibuildwheel.macos]
@@ -275,6 +275,7 @@ unfixable = [
 [tool.ruff.lint.flake8-import-conventions.extend-aliases]
 "artistools" = "at"
 "matplotlib" = "mpl"
+"matplotlib.axes" = "mplax"
 "matplotlib.pyplot" = "plt"
 "matplotlib.typing" = "mplt"
 "numpy.typing" = "npt"
