@@ -60,10 +60,9 @@ archs = ["auto64"]
 
 [tool.cibuildwheel.linux]
 before-all = [
-    "find /project -type d",
-    "mkdir -p /project/rust/target/",
-    "mkdir -p /project/.cargo/",
-    #"cp -R -p /project/.cargo /root/",
+    "mkdir -p /host/home/runner/work/artistools/artistools/rust/target",
+    "mkdir -p /host/home/runner/work/artistools/artistools/.cargo",
+    #"cp -R -p /host/home/runner/work/artistools/artistools/.cargo /root/",
     "mkdir -p /project/rust/target",
     "rm -rf /project/rust/target",
     "ln -s -f /host/home/runner/work/artistools/artistools/rust/target /project/rust/",
