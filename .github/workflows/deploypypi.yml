@@ -23,7 +23,7 @@ jobs:
         runs-on: ${{ startsWith(matrix.os_arch, 'macosx') && 'macos-14' || 'ubuntu-24.04'}}
         env:
             CIBW_ENVIRONMENT_PASS_LINUX: SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS
-            CIBW_BUILD: '*-${{ matrix.os_arch }}'
+            CIBW_BUILD: 'cp3*-${{ matrix.os_arch }}'
 
         steps:
             - uses: actions/checkout@v4
