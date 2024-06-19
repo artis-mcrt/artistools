@@ -18,7 +18,7 @@ jobs:
         name: Build wheels for ${{ matrix.os_arch }}
         strategy:
             matrix:
-                os_arch: [musllinux_x86_64, macosx_arm64]
+                os_arch: [manylinux_x86_64, musllinux_x86_64, macosx_arm64]
             fail-fast: false
         runs-on: ${{ startsWith(matrix.os_arch, 'macosx') && 'macos-14' || 'ubuntu-24.04'}}
         env:
@@ -39,8 +39,8 @@ jobs:
               with:
                   path: |
                       ~/.cargo/
+                      .cargo/
                       rust/target/
-                      .rustcache/
                   key: cibuildwheel-${{ matrix.os_arch }}-cargo-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}
                   restore-keys: |
                       cibuildwheel-${{ matrix.os_arch }}-cargo-${{ hashFiles('**/Cargo.lock') }}-
@@ -82,7 +82,6 @@ jobs:
 
             - name: Build sdist
               run: |
-                  export SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS=$(python3 -m setuptools_scm --strip-dev)
                   python3 -m build --sdist
 
             - uses: actions/upload-artifact@v4
