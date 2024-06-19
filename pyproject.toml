@@ -61,6 +61,7 @@ archs = ["auto64"]
 [tool.cibuildwheel.linux]
 before-all = [
     "echo $AUDITWHEEL_PLAT",
+    "find /project -type d",
     "mkdir -p /project/rust/target/",
     "mkdir -p /host/home/runner/work/artistools/artistools/.targetcache/$AUDITWHEEL_PLAT/target/",
     "cp -R -p /host/home/runner/work/artistools/artistools/.targetcache/$AUDITWHEEL_PLAT/target /project/rust/",
