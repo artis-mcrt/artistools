@@ -9,8 +9,9 @@ import typing as t
 from pathlib import Path
 
 import argcomplete
-import matplotlib as mpl
 import matplotlib.pyplot as plt
+import matplotlibcm as mplcm
+import matplotlibcolors as mplcolors
 import numpy as np
 import pandas as pd
 from astropy import units as u
@@ -68,8 +69,8 @@ def plot_slice_modelcolumn(ax, dfmodelslice, modelmeta, colname, plotaxis1, plot
 
     normalise_between_0_and_1 = False
     if normalise_between_0_and_1:
-        norm = mpl.colors.Normalize(vmin=0, vmax=1)
-        scaledmap = mpl.cm.ScalarMappable(cmap="viridis", norm=norm)
+        norm = mplcolors.Normalize(vmin=0, vmax=1)
+        scaledmap = mplcm.ScalarMappable(cmap="viridis", norm=norm)
         scaledmap.set_array([])
         colorscale = scaledmap.to_rgba(colorscale)  # colorscale fixed between 0 and 1
     else:
@@ -122,7 +123,7 @@ def plot_slice_modelcolumn(ax, dfmodelslice, modelmeta, colname, plotaxis1, plot
     return im, scaledmap
 
 
-def plot_2d_initial_abundances(modelpath, args=None) -> None:
+def plot_2d_initial_abundances(modelpath, args: argparse.Namespace) -> None:
     # if the species ends in a number then we need to also get the nuclear mass fractions (not just element abundances)
     get_elemabundances = any(plotvar[-1] not in string.digits for plotvar in args.plotvars)
     dfmodel, modelmeta = at.get_modeldata(
@@ -251,7 +252,7 @@ def plot_most_abundant(modelpath, args):
     abundances = at.inputmodel.get_initelemabundances(modelpath[0])
 
     merge_dfs = model.merge(abundances, how="inner", on="inputcellid")
-    elements = [x for x in merge_dfs if "X_" in x]
+    elements = [x for x in merge_dfs.columns if "X_" in x]
 
     merge_dfs["max"] = merge_dfs[elements].idxmax(axis=1)
 
@@ -307,7 +308,7 @@ def make_3d_plot(modelpath, args):
 
     x, y, z = np.meshgrid(xgrid, xgrid, xgrid)
 
-    mesh = pv.StructuredGrid(x, y, z)
+    mesh: t.Any = pv.StructuredGrid(x, y, z)
     print(mesh)  # tells you the properties of the mesh
 
     mesh[coloursurfaceby] = surfacecolorscale.ravel(order="F")  # add data to the mesh

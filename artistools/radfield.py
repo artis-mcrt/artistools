@@ -1018,7 +1018,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
                 ):
                     pdf_list.append(outputfile)
         elif args.xaxis == "timestep":
-            outputfile = args.outputfile.format(modelgridindex=modelgridindex)
+            outputfile = str(args.outputfile).format(modelgridindex=modelgridindex)
             plot_timeevolution(modelpath, outputfile, modelgridindex, args)
         else:
             print("Unknown plot type {args.plot}")

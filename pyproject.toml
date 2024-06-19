@@ -93,6 +93,10 @@ error_summary = true
 enable_error_code = [
   "comparison-overlap",
   "ignore-without-code",
+  "no-any-return",
+  "no-any-unimported",
+  "no-untyped-call",
+  #"possibly-undefined",
   "redundant-expr",
   "redundant-self",
   "truthy-bool",
@@ -131,12 +135,15 @@ module = [
     "*.__init__",
     "*.__main__",
 ]
+check_untyped_defs = true
 disallow_any_generics = true
 disallow_incomplete_defs = true
 disallow_untyped_calls = true
 disallow_untyped_defs = true
-check_untyped_defs = true
-
+enable_error_code = [
+  #"possibly-undefined",
+]
+ 
 [[tool.mypy.overrides]]
 module = "pyvista"
 ignore_errors = true
@@ -179,14 +186,14 @@ ignored-modules = ["astropy", "extinction", "artistools.rustext"]
 unsafe-load-any-extension = true
 
 [tool.pyright]
-analyzeUnannotatedFunctions = false
+analyzeUnannotatedFunctions = true
 exclude=['**/node_modules','**/__pycache__','**/.*', 'build', 'dist', 'target']
 reportAttributeAccessIssue = false
 reportCallIssue = false
 reportMissingImports = false
-reportOptionalMemberAccess = false
+reportOptionalMemberAccess = true
 reportPossiblyUnboundVariable = false
-reportPrivateImportUsage = false
+reportPrivateImportUsage = true
 reportUnknownVariableType = false
 typeCheckingMode = "basic"
 useLibraryCodeForTypes = false
@@ -273,7 +280,8 @@ unfixable = [
 [tool.ruff.lint.flake8-import-conventions.extend-aliases]
 "artistools" = "at"
 "matplotlib" = "mpl"
-#"matplotlib.axes" = "mplax"
+"matplotlib.axes" = "mplax"
+"matplotlib.figure" = "mplfig"
 "matplotlib.pyplot" = "plt"
 "matplotlib.typing" = "mplt"
 "numpy.typing" = "npt"

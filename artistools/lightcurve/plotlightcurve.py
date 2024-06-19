@@ -10,7 +10,10 @@ from pathlib import Path
 
 import argcomplete
 import matplotlib as mpl
+import matplotlib.cm as mplcm
+import matplotlib.colors as mplcolors
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mplticker
 import numpy as np
 import pandas as pd
 import polars as pl
@@ -600,6 +603,7 @@ def make_lightcurve_plot(
     if not args.nolegend:
         axis.legend(loc="best", handlelength=2, frameon=args.legendframeon, numpoints=1, prop={"size": 9})
         if args.plotthermalisation:
+            assert axistherm is not None
             axistherm.legend(
                 loc="upper right", handlelength=2, frameon=args.legendframeon, numpoints=1, prop={"size": 9}
             )
@@ -644,6 +648,7 @@ def make_lightcurve_plot(
     print(f"Saved {filenameout}")
 
     if args.plotthermalisation:
+        assert axistherm is not None
         # axistherm.set_xscale('log')
         axistherm.set_ylabel("Thermalisation ratio")
         axistherm.set_xlabel(r"Time [days]")
@@ -769,15 +774,15 @@ def set_lightcurve_plot_labels(fig, ax, filternames_conversion_dict, args, band_
 
 
 def make_colorbar_viewingangles_colormap():
-    norm = mpl.colors.Normalize(vmin=0, vmax=9)
-    scaledmap = mpl.cm.ScalarMappable(cmap="tab10", norm=norm)
+    norm = mplcolors.Normalize(vmin=0, vmax=9)
+    scaledmap = mplcm.ScalarMappable(cmap="tab10", norm=norm)
     scaledmap.set_array([])
     return scaledmap
 
 
 def get_viewinganglecolor_for_colorbar(
     angle: int, costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, plotkwargs, args
-):
+) -> tuple[dict[str, t.Any], int]:
     nphibins = at.get_viewingdirection_phibincount()
     if args.colorbarcostheta:
         costheta_index = angle // nphibins
@@ -832,8 +837,8 @@ def make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args, fig=Non
             cbar = plt.colorbar(scaledmap, ax=ax)
         if label:
             cbar.set_label(label, rotation=0)
-        cbar.locator = mpl.ticker.FixedLocator(ticklocs)
-        cbar.formatter = mpl.ticker.FixedFormatter(ticklabels)
+        cbar.locator = mplticker.FixedLocator(ticklocs)
+        cbar.formatter = mplticker.FixedFormatter(ticklabels)
         cbar.update_ticks()
 
 
