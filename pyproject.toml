@@ -60,7 +60,6 @@ archs = ["auto64"]
 
 [tool.cibuildwheel.linux]
 before-all = [
-    "echo $AUDITWHEEL_PLAT",
     "find /project -type d",
     "mkdir -p /project/.cargo/",
     #"cp -R -p /project/.cargo /root/",
@@ -68,6 +67,7 @@ before-all = [
     "rm -rf /root/.cargo",
     "ln -s -f /project/.cargo /root/",
     "curl -sSf https://sh.rustup.rs | sh -s -- -y",
+    ". root/.cargo/env",
 ]
 environment = { PATH="$HOME/.cargo/bin:$PATH"}
 #repair-wheel-command = [

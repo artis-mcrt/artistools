@@ -55,6 +55,11 @@ jobs:
             - name: Build wheels
               uses: pypa/cibuildwheel@v2.19.1
 
+            - name: inspect dirs
+              run: |
+                  find . -type d
+                  find .cargo
+
             - uses: actions/upload-artifact@v4
               with:
                   name: cibw-wheels-${{ matrix.os_arch }}-${{ strategy.job-index }}
