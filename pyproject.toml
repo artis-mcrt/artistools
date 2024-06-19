@@ -81,6 +81,7 @@ repair-wheel-command = [
 
 [tool.cibuildwheel.macos]
 #before-all = "curl -sSf https://sh.rustup.rs | sh -s -- -y && rustup update"
+before-build = "echo $PYO3_PYTHON"
 repair-wheel-command = [
   "delocate-wheel --require-archs {delocate_archs} -w {dest_dir} -v {wheel}",
   "pipx run abi3audit --strict --report {wheel}",
