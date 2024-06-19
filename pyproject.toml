@@ -303,7 +303,6 @@ license-files = ["LICENSE.txt"]
 
 [[tool.setuptools-rust.ext-modules]]
 target = "artistools.rustext"  # The last part of the name has to match lib.name in Cargo.toml,
-                             # but you can add a prefix to nest it inside of a Python package.
 path = "rust/Cargo.toml"
 binding = "PyO3"
 debug = false
