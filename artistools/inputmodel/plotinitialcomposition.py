@@ -18,7 +18,7 @@ from matplotlib import gridspec
 
 import artistools as at
 
-type AxisType = t.Literal["x", "y", "z", "r", "rcyl"]
+AxisType: t.TypeAlias = t.Literal["x", "y", "z", "r", "rcyl"]
 
 
 def get_2D_slice_through_3d_model(
