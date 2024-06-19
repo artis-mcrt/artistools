@@ -280,7 +280,7 @@ unfixable = [
 [tool.ruff.lint.flake8-import-conventions.extend-aliases]
 "artistools" = "at"
 "matplotlib" = "mpl"
-"matplotlib.axes" = "mplax"
+#"matplotlib.axes" = "mplax"
 "matplotlib.figure" = "mplfig"
 "matplotlib.pyplot" = "plt"
 "matplotlib.typing" = "mplt"

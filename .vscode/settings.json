@@ -8,7 +8,7 @@
         },
          "editor.defaultFormatter": "charliermarsh.ruff"
      },
-    "python.analysis.typeCheckingMode": "basic",
+    "python.analysis.typeCheckingMode": "standard",
     "files.insertFinalNewline": true,
     "files.eol": "\n",
     "files.trimFinalNewlines": true,
