@@ -15,14 +15,15 @@ on:
 
 jobs:
     build_wheels:
-        name: Build wheels on ${{ matrix.os }}
-        runs-on: ${{ matrix.os }}
+        name: Build wheels for ${{ matrix.os_arch }}
         strategy:
             matrix:
-                os: [ubuntu-24.04, macos-14]
+                os_arch: [musllinux_x86_64, macosx_arm64]
             fail-fast: false
+        runs-on: ${{ startsWith(matrix.os_arch, 'macosx') && 'macos-14' || 'ubuntu-24.04'}}
         env:
             CIBW_ENVIRONMENT_PASS_LINUX: SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS
+            CIBW_BUILD: build = ["*-${{ matrix.os_arch }}"]
 
         steps:
             - uses: actions/checkout@v4
@@ -41,10 +42,10 @@ jobs:
                       .cargocache/
                       .targetcache/
                       rust/target/
-                  key: cibuildwheel-${{ matrix.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}
+                  key: cibuildwheel-${{ matrix.os_arch }}-cargo-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}
                   restore-keys: |
-                      cibuildwheel-${{ matrix.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-
-                      cibuildwheel-${{ matrix.os }}-cargo-
+                      cibuildwheel-${{ matrix.os_arch }}-cargo-${{ hashFiles('**/Cargo.lock') }}-
+                      cibuildwheel-${{ matrix.os_arch }}-cargo-
 
             - name: Install dependencies
               run: |
@@ -60,7 +61,7 @@ jobs:
 
             - uses: actions/upload-artifact@v4
               with:
-                  name: cibw-wheels-${{ matrix.os }}-${{ strategy.job-index }}
+                  name: cibw-wheels-${{ matrix.os_arch }}-${{ strategy.job-index }}
                   path: ./wheelhouse/*.whl
 
     build_sdist:
