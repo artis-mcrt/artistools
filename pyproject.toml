@@ -70,7 +70,6 @@ before-all = [
     #"rm -rf /root/.cargo",
     #"ln -s -f /host/home/runner/work/artistools/artistools/.cargo /root/",
     "curl -sSf https://sh.rustup.rs | sh -s -- -y",
-    #". /root/.cargo/env",
 ]
 environment = { PATH="$HOME/.cargo/bin:$PATH"}
 repair-wheel-command = [
