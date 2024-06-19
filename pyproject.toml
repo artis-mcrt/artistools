@@ -65,7 +65,8 @@ before-all = [
     #"mkdir -p /root/.cargo",
     "mkdir -p /project/.cargo/",
     #"cp -R -p /project/.cargo /root/",
-    "ln -s -F /project/.cargo /root/",
+    "rm -rf /project/.cargo || true",
+    "ln -s -f /project/.cargo /root/",
     "curl -sSf https://sh.rustup.rs | sh -s -- -y",
 ]
 environment = { PATH="$HOME/.cargo/bin:$PATH"}
