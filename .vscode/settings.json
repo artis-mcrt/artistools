@@ -12,5 +12,9 @@
     "files.insertFinalNewline": true,
     "files.eol": "\n",
     "files.trimFinalNewlines": true,
-    "python.analysis.autoImportCompletions": true
+    "python.analysis.autoImportCompletions": true,
+    "rust-analyzer.runnables.extraArgs": [
+        "--release"
+    ],
+    "rust-analyzer.diagnostics.styleLints.enable": true
 }
