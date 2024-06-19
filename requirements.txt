@@ -1,12 +1,12 @@
 argcomplete>=3.4.0
-astropy>=6.1.0
+astropy>=6.1.1
 coverage>=7.5.3
 extinction>=0.4.6
 imageio>=2.34.1
 matplotlib>=3.9.0
 mypy>=1.10.0
 numexpr>=2.10.0
-numpy>=1.26.0
+numpy>=2.0.0
 pandas>=2.2.2
 polars==0.20.31
 pre-commit>=3.7.1
@@ -17,7 +17,7 @@ pytest>=8.2.2
 pytest-codspeed>=2.2.1
 pytest-cov>=5.0.0
 pytest-xdist[psutil]>=3.6.1
-pyvista>=0.43.9
+pyvista>=0.43.10
 PyYAML>=6.0.1
 ruff==0.4.9
 scipy>=1.13.1

@@ -293,7 +293,7 @@ def create_ARTIS_modelfile(
     # pdb.set_trace()
 
     dictabunds = {}
-    dictelabunds = {"inputcellid": range(1, numb_cells + 1)}
+    dictelabunds = {"inputcellid": np.array(range(1, numb_cells + 1))}
     for tuple_idx, isot_tuple in enumerate(isot_table):
         flat_isoabund = np.nan_to_num(z_reflect(X_cells[tuple_idx]).flatten(order="F"), nan=0.0)
         if np.any(flat_isoabund):

@@ -9,7 +9,7 @@ import typing as t
 from pathlib import Path
 
 import matplotlib as mpl
-import matplotlib.axes
+import matplotlib.axes as mplax
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -20,7 +20,7 @@ import artistools as at
 defaultoutputfile = "plotnlte_{elsymbol}_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf"
 
 
-def annotate_emission_line(ax: mpl.axes.Axes, y: float, upperlevel: int, lowerlevel: int, label: str) -> None:
+def annotate_emission_line(ax: mplax.Axes, y: float, upperlevel: int, lowerlevel: int, label: str) -> None:
     ax.annotate(
         "",
         xy=(lowerlevel, y),
