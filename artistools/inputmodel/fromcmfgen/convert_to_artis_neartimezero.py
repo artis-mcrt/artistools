@@ -2,6 +2,7 @@
 """Convert a CMFGEN model file to ARTIS format. Original script possibly by Markus Kromer?."""
 
 # from rd_cmfgen import rd_nuc_decay_data
+import typing as t
 from math import exp
 from pathlib import Path
 
@@ -116,8 +117,15 @@ def reverse_doubledecay(
 
 
 def forward_doubledecay(
-    a, indexofatomicnumber, indexofisotope, zparent, numnucleons, tlate, meanlife1_days, meanlife2_days
-):
+    a: dict[str, t.Any],
+    indexofatomicnumber: dict[int, int],
+    indexofisotope: dict[tuple[int, int], int],
+    zparent: int,
+    numnucleons: int,
+    tlate: float,
+    meanlife1_days: float,
+    meanlife2_days: float,
+) -> None:
     # get the abundances at a late time from the time zero abundances
     # e.g. zdaughter=27, numnucleons=56 for Ni56 -> Co56 -> Fe56 decay
     # meanlife1 is the mean lifetime of the parent (e.g. Ni56) and meanlife2 is the mean life of the daughter nucleus (e.g. Co56)

@@ -448,7 +448,7 @@ def get_rankbatch_parquetfile(
     )
     parquetfilepath = packetdir / parquetfilename
 
-    # time when the schema for the parquet files last change (e.g. new computed columns added or data types changed)
+    # time when the schema for the parquet files last changed (e.g. new computed columns added or data types changed)
     time_parquetschemachange = (2024, 4, 23, 9, 0, 0)
     t_lastschemachange = calendar.timegm(time_parquetschemachange)
 

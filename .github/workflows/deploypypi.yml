@@ -1,10 +1,10 @@
 ---
-name: Build and deploy to PyPI
+name: Build and deploy to PyPI/testPyPI
 
 on:
     push:
         branches:
-            - 'main'
+            - '*'
         tags:
             - '*'
     release:
@@ -15,15 +15,15 @@ on:
 
 jobs:
     build_wheels:
-        name: Build wheels on ${{ matrix.os }}
-        runs-on: ${{ matrix.os }}
+        name: Build wheels for ${{ matrix.os_arch }}
         strategy:
             matrix:
-                # macos-13 is an intel runner, macos-14 is apple silicon
-                os: [ubuntu-24.04, macos-13, macos-14]
+                os_arch: [manylinux_x86_64, musllinux_x86_64, macosx_arm64]
             fail-fast: false
+        runs-on: ${{ startsWith(matrix.os_arch, 'macosx') && 'macos-14' || 'ubuntu-24.04'}}
         env:
             CIBW_ENVIRONMENT_PASS_LINUX: SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS
+            CIBW_BUILD: 'cp3*-${{ matrix.os_arch }}'
 
         steps:
             - uses: actions/checkout@v4
@@ -34,6 +34,16 @@ jobs:
               with:
                   python-version-file: .python-version
 
+            - name: Cache rust build
+              uses: actions/cache@v4
+              with:
+                  path: |
+                      rust/target/
+                  key: cibuildwheel-${{ matrix.os_arch }}-cargo-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}
+                  restore-keys: |
+                      cibuildwheel-${{ matrix.os_arch }}-cargo-${{ hashFiles('**/Cargo.lock') }}-
+                      cibuildwheel-${{ matrix.os_arch }}-cargo-
+
             - name: Install dependencies
               run: |
                   python3 -m pip install --upgrade uv
@@ -43,9 +53,13 @@ jobs:
             - name: Build wheels
               uses: pypa/cibuildwheel@v2.19.1
 
+            - name: inspect dirs
+              run: |
+                  find rust/target
+
             - uses: actions/upload-artifact@v4
               with:
-                  name: cibw-wheels-${{ matrix.os }}-${{ strategy.job-index }}
+                  name: cibw-wheels-${{ matrix.os_arch }}-${{ strategy.job-index }}
                   path: ./wheelhouse/*.whl
 
     build_sdist:
@@ -67,7 +81,6 @@ jobs:
 
             - name: Build sdist
               run: |
-                  export SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS=$(python3 -m setuptools_scm --strip-dev)
                   python3 -m build --sdist
 
             - uses: actions/upload-artifact@v4
@@ -75,11 +88,47 @@ jobs:
                   name: cibw-sdist
                   path: dist/*.tar.gz
 
+    testdeploy:
+        name: Test upload to TestPyPI
+        needs: [build_wheels, build_sdist]
+        runs-on: ubuntu-24.04
+        environment: test
+        permissions:
+            id-token: write
+        if: startsWith(github.ref , 'refs/tags/v') != true
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+
+            - uses: actions/setup-python@v5
+              with:
+                  python-version-file: .python-version
+
+            - uses: actions/download-artifact@v4
+              with:
+                  pattern: cibw-*
+                  path: dist
+                  merge-multiple: true
+
+            - name: Install dependencies
+              run: |
+                  python3 -m pip install --upgrade uv
+                  python3 -m uv pip install --upgrade setuptools setuptools_scm[toml] setuptools-rust wheel twine build
+                  #echo "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS=$(python3 -m setuptools_scm --strip-dev)" >> $GITHUB_ENV
+
+            - name: Publish package to TestPyPI
+              uses: pypa/gh-action-pypi-publish@release/v1
+              with:
+                  skip-existing: true
+                  verbose: false
+                  repository-url: https://test.pypi.org/legacy/
+
     deploy:
         name: Upload to PyPI
         needs: [build_wheels, build_sdist]
         runs-on: ubuntu-24.04
-        environment: test
+        environment: release
         permissions:
             id-token: write
         if: startsWith(github.ref, 'refs/tags/v')
@@ -109,3 +158,4 @@ jobs:
               with:
                   skip-existing: true
                   verbose: false
+                  #repository-url: https://test.pypi.org/legacy/

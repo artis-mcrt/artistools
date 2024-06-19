@@ -10,8 +10,7 @@ import typing as t
 from pathlib import Path
 
 import argcomplete
-import matplotlib as mpl
-import matplotlib.figure
+import matplotlib.figure as mplfig
 import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
@@ -37,7 +36,7 @@ def plot_spherical(
     plotvars: list[str] | None = None,
     figscale: float = 1.0,
     cmap: str | None = None,
-) -> tuple[mpl.figure.Figure, t.Any, float, float, str]:
+) -> tuple[mplfig.Figure, t.Any, float, float, str]:
     condition = ""
     if plotvars is None:
         plotvars = ["luminosity", "emvelocityoverc", "emlosvelocityoverc"]

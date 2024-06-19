@@ -184,12 +184,12 @@ def average_direction_bins(
     """Average dict of direction-binned polars DataFrames according to the phi or theta angle."""
     dirbincount = at.get_viewingdirectionbincount()
     nphibins = at.get_viewingdirection_phibincount()
+    ncosthetabins = at.get_viewingdirection_costhetabincount()
 
     assert overangle in {"phi", "theta"}
     if overangle == "phi":
         start_bin_range = range(0, dirbincount, nphibins)
     elif overangle == "theta":
-        ncosthetabins = at.get_viewingdirection_costhetabincount()
         start_bin_range = range(nphibins)
     else:
         msg = "overangle must be 'phi' or 'theta'"
@@ -689,7 +689,8 @@ def get_ion_tuple(ionstr: str) -> tuple[int, int] | int:
     if ionstr in at.get_elsymbolslist():
         return at.get_atomic_number(ionstr)
 
-    elem = None
+    elem = "?"
+    strion_stage = "?"
     if " " in ionstr:
         elem, strion_stage = ionstr.split(" ")
     elif "_" in ionstr:
