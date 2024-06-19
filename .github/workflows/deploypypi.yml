@@ -39,9 +39,8 @@ jobs:
               with:
                   path: |
                       ~/.cargo/
-                      .cargocache/
-                      .targetcache/
                       rust/target/
+                      .rustcache/
                   key: cibuildwheel-${{ matrix.os_arch }}-cargo-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}
                   restore-keys: |
                       cibuildwheel-${{ matrix.os_arch }}-cargo-${{ hashFiles('**/Cargo.lock') }}-
