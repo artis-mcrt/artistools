@@ -61,14 +61,14 @@ archs = ["auto64"]
 [tool.cibuildwheel.linux]
 before-all = [
     "mkdir -p /host/home/runner/work/artistools/artistools/rust/target",
-    "mkdir -p /host/home/runner/work/artistools/artistools/.cargo",
+    #"mkdir -p /host/home/runner/work/artistools/artistools/.cargo",
     #"cp -R -p /host/home/runner/work/artistools/artistools/.cargo /root/",
-    "mkdir -p /project/rust/target",
-    "rm -rf /project/rust/target",
+    #"mkdir -p /project/rust/target",
+    #"rm -rf /project/rust/target",
     "ln -s -f /host/home/runner/work/artistools/artistools/rust/target /project/rust/",
-    "mkdir -p /root/.cargo",
-    "rm -rf /root/.cargo",
-    "ln -s -f /host/home/runner/work/artistools/artistools/.cargo /root/",
+    #"mkdir -p /root/.cargo",
+    #"rm -rf /root/.cargo",
+    #"ln -s -f /host/home/runner/work/artistools/artistools/.cargo /root/",
     "curl -sSf https://sh.rustup.rs | sh -s -- -y",
     ". root/.cargo/env",
 ]
