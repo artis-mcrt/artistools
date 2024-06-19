@@ -456,6 +456,7 @@ def update_plotkwargs_for_viewingangle_colorbar(
     angles = np.arange(0, at.get_viewingdirectionbincount())
     colors = []
     for angle in angles:
+        colorindex: t.Any
         _, colorindex = at.lightcurve.plotlightcurve.get_viewinganglecolor_for_colorbar(
             angle,
             costheta_viewing_angle_bins,
@@ -630,7 +631,9 @@ def make_peak_colour_viewing_angle_plot(args):
             print(f"All 100 angles are not in file {datafilename}. Quitting")
             sys.exit(1)
 
-        second_band_brightness = second_band_brightness_at_peak_first_band(data, bands, modelpath, modelnumber, args)
+        second_band_brightness: t.Any = second_band_brightness_at_peak_first_band(
+            data, bands, modelpath, modelnumber, args
+        )
 
         data[f"{bands[1]}at{bands[0]}max"] = second_band_brightness
 
@@ -725,6 +728,7 @@ def peakmag_risetime_declinerate_init(modelpaths, filternames_conversion_dict, a
             modelname = at.get_model_name(modelpath)
             modelnames.append(modelname)  # save for later
             print(f"Reading spectra: {modelname}")
+            lightcurve_data: t.Any
             if args.filter:
                 lightcurve_data = at.lightcurve.generate_band_lightcurve_data(
                     modelpath, args, angle, modelnumber=modelnumber
@@ -794,7 +798,7 @@ def plot_viewanglebrightness_at_fixed_time(modelpath, args):
 
     plotkwargs = {}
 
-    lcdataframes = at.lightcurve.readfile(modelpath / "light_curve_res.out")
+    lcdataframes: t.Any = at.lightcurve.readfile(modelpath / "light_curve_res.out")
 
     timetoplot = at.match_closest_time(reftime=args.timedays, searchtimes=lcdataframes[0]["time"])
     print(timetoplot)

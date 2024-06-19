@@ -9,9 +9,9 @@ import typing as t
 from pathlib import Path
 
 import argcomplete
+import matplotlib.cm as mplcm
+import matplotlib.colors as mplcolors
 import matplotlib.pyplot as plt
-import matplotlibcm as mplcm
-import matplotlibcolors as mplcolors
 import numpy as np
 import pandas as pd
 from astropy import units as u

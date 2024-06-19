@@ -9,7 +9,7 @@ import typing as t
 from pathlib import Path
 
 import argcomplete
-import matplotlib.artis as mplartist
+import matplotlib.artist as mplartist
 import matplotlib.axes as mplax
 import matplotlib.figure as mplfig
 import matplotlib.patches as mpatches

@@ -65,6 +65,7 @@ def select_bin(radfielddata, nu=None, lambda_angstroms=None, modelgridindex=None
     if lambda_angstroms is not None:
         nu = 2.99792458e18 / lambda_angstroms
     else:
+        assert nu is not None
         lambda_angstroms = 2.99792458e18 / nu
 
     dfselected = radfielddata.query(

@@ -385,7 +385,7 @@ def plot_artis_lightcurve(
         )
         nts_last, validrange_start_days, validrange_end_days = None, -math.inf, math.inf
 
-    colorindex = None
+    colorindex: t.Any = None
     for dirbin in dirbins:
         lcdata = lcdataframes[dirbin]
 

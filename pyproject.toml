@@ -141,7 +141,7 @@ disallow_incomplete_defs = true
 disallow_untyped_calls = true
 disallow_untyped_defs = true
 enable_error_code = [
-  #"possibly-undefined",
+  "possibly-undefined",
 ]
  
 [[tool.mypy.overrides]]
