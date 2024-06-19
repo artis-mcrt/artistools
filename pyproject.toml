@@ -57,7 +57,6 @@ target-version = ["py310", "py311", "py312", "py313"]
 [tool.cibuildwheel]
 build-frontend = "build[uv]"
 archs = ["auto64"]
-platforms = ["linux", "macos"]
 
 [tool.cibuildwheel.linux]
 before-all = [
