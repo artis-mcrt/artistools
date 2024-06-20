@@ -271,6 +271,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     def sortkey(tup_species_mass_g):
         species, mass_g = tup_species_mass_g
+        assert args is not None
         if args.sort == "z":
             # for a species like C_isosum, strmassnumber is "", so use -1 to sort it first
             strmassnumber = species.lstrip("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz").rstrip(
