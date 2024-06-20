@@ -147,7 +147,7 @@ jobs:
                   python3 -m pip install -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple numpy
                   python3 -m pip install --no-build-isolation -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple pandas
                   python3 -m pip install --pre -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple scipy-openblas64
-                  #python3 -m uv pip install git+https://github.com/python-pillow/Pillow.git
+                  python3 -m uv pip install git+https://github.com/python-pillow/Pillow.git
                   python3 -m pip install --upgrade --pre --index-url https://pypi.anaconda.org/scientific-python-nightly-wheels/simple --extra-index-url https://pypi.org/simple matplotlib
                   #python3 -m pip install --pre -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple pyarrow
                   python3 -m uv pip install git+https://github.com/indygreg/python-zstandard.git
