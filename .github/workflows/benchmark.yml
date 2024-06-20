@@ -32,10 +32,10 @@ jobs:
               uses: actions/cache@v4
               with:
                   path: rust/target/
-                  key: rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}
+                  key: codspeed-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}
                   restore-keys: |
-                      rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
-                      rust-target-${{ runner.os }}-
+                      codspeed-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
+                      codspeed-rust-target-${{ runner.os }}-
 
             - name: Install uv
               run: |
