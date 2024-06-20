@@ -80,7 +80,7 @@ repair-wheel-command = [
 ]
 
 [tool.mypy]
-check_untyped_defs = false
+check_untyped_defs = true
 disallow_any_explicit = false
 disallow_any_generics = false
 disallow_any_unimported = false
@@ -135,7 +135,6 @@ module = [
     "*.__init__",
     "*.__main__",
 ]
-check_untyped_defs = true
 disallow_any_generics = true
 disallow_incomplete_defs = true
 disallow_untyped_calls = true
@@ -245,6 +244,7 @@ ignore = [
     "N802",  # Function name should be lowercase
     "N803",  # Argument name should be lowercase
     "N806",  # non-lowercase-variable-in-function
+    "N815", # mixed-case-variable-in-class-scope
     "PERF203", # try-except-in-loop
     "PGH004", # blanket-noqa
     "PLC0414", # useless-import-alias

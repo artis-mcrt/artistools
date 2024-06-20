@@ -276,7 +276,7 @@ def mirror_model_in_axis(griddata):
     return griddata
 
 
-def add_mass_to_center(griddata, t_model_in_days, vmax, args):
+def add_mass_to_center(griddata, t_model_in_days, vmax, args: argparse.Namespace):
     print(griddata)
 
     # Just (2021) Fig. 16 top left panel
@@ -318,15 +318,17 @@ def add_mass_to_center(griddata, t_model_in_days, vmax, args):
 
 
 def makemodelfromgriddata(
-    gridfolderpath=Path(),
-    outputpath=Path(),
+    gridfolderpath: Path | str,
+    outputpath: Path | str,
     targetmodeltime_days: None | float = None,
     traj_root: Path | str | None = None,
     dimensions: int = 3,
     scaledensity: float = 1.0,
     scalevelocity: float = 1.0,
-    args=None,
+    args: argparse.Namespace | None = None,
 ) -> None:
+    if args is None:
+        args = argparse.Namespace()
     pddfmodel, t_model_days, t_mergertime_s, vmax, modelmeta = at.inputmodel.modelfromhydro.read_griddat_file(
         pathtogriddata=gridfolderpath,
         targetmodeltime_days=targetmodeltime_days,

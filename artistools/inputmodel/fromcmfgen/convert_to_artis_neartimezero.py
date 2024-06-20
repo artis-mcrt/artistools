@@ -7,6 +7,7 @@ from math import exp
 from pathlib import Path
 
 import numpy as np
+import numpy.typing as npt
 
 from artistools.inputmodel.fromcmfgen.rd_cmfgen import rd_sn_hydro_data
 
@@ -21,7 +22,13 @@ use_double_decay = (
 )
 
 
-def undecay(a, indexofatomicnumber, indexofisotope, zparent, numnucleons):
+def undecay(
+    a: dict[str, npt.NDArray],
+    indexofatomicnumber: dict[int, int],
+    indexofisotope: dict[tuple[int, int], int],
+    zparent: int,
+    numnucleons: int,
+) -> None:
     # e.g. parent=26, numnucleons=56 to reverse Ni56 -> Co56 decay
     daughterisofracin = a["isofrac"][:, indexofisotope[(zparent - 1, numnucleons)]]
     granddaughterisofracin = a["isofrac"][:, indexofisotope[(zparent - 2, numnucleons)]]
@@ -36,7 +43,14 @@ def undecay(a, indexofatomicnumber, indexofisotope, zparent, numnucleons):
 
 
 def reverse_doubledecay(
-    a, indexofatomicnumber, indexofisotope, zparent, numnucleons, tlate, meanlife1_days, meanlife2_days
+    a: dict[str, npt.NDArray],
+    indexofatomicnumber: dict[int, int],
+    indexofisotope: dict[tuple[int, int], int],
+    zparent: int,
+    numnucleons: int,
+    tlate: float,
+    meanlife1_days: float,
+    meanlife2_days: float,
 ):
     # get the abundances at time zero from the late time abundances
     # e.g. zparent=26, numnucleons=56 to reverse Ni56 -> Co56 -> Fe56 decay
@@ -197,7 +211,7 @@ def timeshift_double_decay(
 
 
 def main() -> None:
-    a = rd_sn_hydro_data(snapshot, reverse=True)
+    a: dict[str, npt.NDArray] = rd_sn_hydro_data(snapshot, reverse=True)
 
     # Mapping of the CMFGEN species to atomic numbers, and masking IGEs
     # For now I include Ba in the IGE mass fraction, but do not include it as a chemical species

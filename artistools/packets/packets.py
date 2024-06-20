@@ -879,8 +879,8 @@ def make_3d_grid(modeldata, vmax_cms):
     i = 0
     for _z in range(grid):
         for _y in range(grid):
-            for x in range(grid):
-                xgrid[x] = -vmax + 2 * x * vmax / grid
+            for nx in range(grid):
+                xgrid[nx] = -vmax + 2 * nx * vmax / grid
                 i += 1
 
     x, y, z = np.meshgrid(xgrid, xgrid, xgrid)

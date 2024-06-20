@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 
-
 import argparse
 import math
 import typing as t
 from functools import lru_cache
 from pathlib import Path
 
+import matplotlib.axes as mplax
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
@@ -251,7 +251,7 @@ def plot_line_estimators(axis, radfielddata, modelgridindex=None, timestep=None,
 
 
 def plot_specout(
-    axis,
+    axis: mplax.Axes,
     specfilename: str | Path,
     timestep: int,
     peak_value: float | None = None,
@@ -282,8 +282,13 @@ def plot_specout(
 
 @lru_cache(maxsize=128)
 def evaluate_phixs(
-    modelpath, atomic_number: int, lower_ion_stage: int, lowerlevelindex: int, nu_threshold: float, arr_nu_hz
-):
+    modelpath: Path | str,
+    atomic_number: int,
+    lower_ion_stage: int,
+    lowerlevelindex: int,
+    nu_threshold: float,
+    arr_nu_hz: t.Iterable[float] | npt.NDArray,
+) -> npt.NDArray:
     adata = at.atomic.get_levels(modelpath, get_photoionisations=True)
     lower_ion_data = adata.query("Z == @atomic_number and ion_stage == @lower_ion_stage").iloc[0]
     lowerlevel = lower_ion_data.levels.iloc[lowerlevelindex]
@@ -314,7 +319,15 @@ def evaluate_phixs(
     return np.array([sigma_bf(nu) for nu in arr_nu_hz])
 
 
-def get_kappa_bf_ion(atomic_number, lower_ion_stage, modelgridindex, timestep, modelpath, arr_nu_hz, max_levels):
+def get_kappa_bf_ion(
+    atomic_number: int,
+    lower_ion_stage: int,
+    modelgridindex: int,
+    timestep: int,
+    modelpath: Path | str,
+    arr_nu_hz: t.Iterable[float] | npt.NDArray,
+    max_levels: int,
+) -> npt.NDArray:
     adata = at.atomic.get_levels(modelpath, get_photoionisations=True)
     estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
     T_e = estimators[(timestep, modelgridindex)]["Te"]
@@ -328,7 +341,7 @@ def get_kappa_bf_ion(atomic_number, lower_ion_stage, modelgridindex, timestep, m
     ion_popfactor_sum = sum(
         level.g * math.exp(-level.energy_ev * EV / KB / T_e) for _, level in ion_data.levels[:max_levels].iterrows()
     )
-    array_kappa_bf_nu_ion = np.zeros_like(arr_nu_hz)
+    array_kappa_bf_nu_ion: npt.NDArray = np.zeros_like(arr_nu_hz)
     for levelnum, lowerlevel in ion_data.levels[:max_levels].iterrows():
         levelpopfrac = lowerlevel.g * math.exp(-lowerlevel.energy_ev * EV / KB / T_e) / ion_popfactor_sum
 
@@ -348,7 +361,14 @@ def get_kappa_bf_ion(atomic_number, lower_ion_stage, modelgridindex, timestep, m
 
 
 def get_recombination_emission(
-    atomic_number, upper_ion_stage, arr_nu_hz, modelgridindex, timestep, modelpath, max_levels, use_lte_pops=False
+    atomic_number: int,
+    upper_ion_stage: int,
+    arr_nu_hz,
+    modelgridindex: int,
+    timestep: int,
+    modelpath: Path | str,
+    max_levels: int,
+    use_lte_pops: bool = False,
 ):
     adata = at.atomic.get_levels(modelpath, get_photoionisations=True)
 
@@ -532,8 +552,11 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
         radfielddata, modelgridindex=modelgridindex, timestep=timestep, print_bins=True, lambdamin=xmin, lambdamax=xmax
     )
 
-    arr_lambda_fitted, j_lambda_fitted = zip(
-        *[pt for pt in zip(arr_lambda_fitted, j_lambda_fitted, strict=False) if xmin <= pt[0] <= xmax], strict=False
+    arr_lambda_fitted, j_lambda_fitted = (
+        list(lst)
+        for lst in zip(
+            *[pt for pt in zip(arr_lambda_fitted, j_lambda_fitted, strict=False) if xmin <= pt[0] <= xmax], strict=False
+        )
     )
 
     estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
@@ -854,7 +877,7 @@ def plot_line_estimator_evolution(
     )
 
 
-def plot_timeevolution(modelpath, outputfile, modelgridindex, args):
+def plot_timeevolution(modelpath, outputfile, modelgridindex, args: argparse.Namespace):
     """Plot a estimator evolution over time for a cell. This is not well tested and should be checked."""
     print(f"Plotting time evolution of cell {modelgridindex:d}")
 

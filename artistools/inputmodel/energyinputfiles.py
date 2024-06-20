@@ -57,9 +57,7 @@ def rprocess_const_and_powerlaw():
         )  # ergs/s/g
         energy_per_gram_cumulative.append(cumulative_integral[0])
 
-    energy_per_gram_cumulative = np.array(energy_per_gram_cumulative)
-
-    rate = energy_per_gram_cumulative / E_tot
+    rate = np.array(energy_per_gram_cumulative) / E_tot
 
     # nuclear_heating_power = [integrand(time, t0, epsilon0, sigma, alpha, thermalisation_factor) for time in times]
 
