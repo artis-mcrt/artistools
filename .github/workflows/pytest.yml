@@ -65,10 +65,19 @@ jobs:
               with:
                   python-version-file: .python-version
 
-            - name: Install dependencies
+            - name: Cache rust build
+              uses: actions/cache@v4
+              with:
+                  path: rust/target/
+                  key: pytest-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}
+                  restore-keys: |
+                      pytest-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
+                      pytest-rust-target-${{ runner.os }}-
+
+            - name: Install artistools
               run: |
-                  python3 -m pip install --upgrade pip uv
-                  uv pip install --system -r requirements.txt
+                  curl -LsSf https://astral.sh/uv/install.sh | sh
+                  uv pip install --system --upgrade --compile-bytecode --editable  .
 
             - uses: pre-commit/action@v3.0.1
 
@@ -131,22 +140,18 @@ jobs:
               with:
                   python-version: ${{ matrix.python-version }}
 
-            - name: Install uv
-              run: |
-                  curl -LsSf https://astral.sh/uv/install.sh | sh
-
             - name: Cache rust build
               uses: actions/cache@v4
               with:
                   path: rust/target/
-                  key: pytest-rust-target-${{ matrix.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ matrix.python-version }}-${{ github.run_id }}
+                  key: pytest-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}
                   restore-keys: |
-                      pytest-rust-target-${{ matrix.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ matrix.python-version }}-
-                      pytest-rust-target-${{ matrix.os }}-${{ hashFiles('**/Cargo.lock') }}-
-                      pytest-rust-target-${{ matrix.os }}-
+                      pytest-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
+                      pytest-rust-target-${{ runner.os }}-
 
             - name: Install artistools
               run: |
+                  curl -LsSf https://astral.sh/uv/install.sh | sh
                   uv pip install --system --upgrade --compile-bytecode --editable  .
 
             - name: Cache test data
