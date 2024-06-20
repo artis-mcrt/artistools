@@ -1151,7 +1151,7 @@ def get_dfmodel_dimensions(dfmodel: pd.DataFrame | pl.DataFrame | pl.LazyFrame) 
     return 2 if "pos_z_mid" in dfmodel.columns else 1
 
 
-def dimension_reduce_3d_model(
+def dimension_reduce_model(
     dfmodel: pl.DataFrame | pl.LazyFrame,
     outputdimensions: int,
     dfelabundances: pl.DataFrame | pl.LazyFrame | None = None,
