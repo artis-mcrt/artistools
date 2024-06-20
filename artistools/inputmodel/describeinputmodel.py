@@ -61,7 +61,9 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         derived_cols=["mass_g", "vel_r_mid", "rho"],
     )
 
-    dfmodel = dfmodel.filter(pl.col("rho") > 0.0).drop("X_n")  # don't confuse neutrons with Nitrogen
+    dfmodel = dfmodel.filter(pl.col("rho") > 0.0).drop(
+        cs.starts_with("X_n")
+    )  # don't confuse neutrons (lowercase 'n') with Nitrogen (N)
 
     if args.noabund:
         dfmodel = dfmodel.drop(cs.starts_with("X_"))
@@ -269,6 +271,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     def sortkey(tup_species_mass_g):
         species, mass_g = tup_species_mass_g
+        assert args is not None
         if args.sort == "z":
             # for a species like C_isosum, strmassnumber is "", so use -1 to sort it first
             strmassnumber = species.lstrip("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz").rstrip(
@@ -296,7 +299,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             if np.isclose(mass_g, elem_mass, rtol=1e-4):
                 # iso sum matches the element mass, so don't show it
                 continue
-            strcomment += f"({mass_g / elem_mass * 100:6.2f}% of {elsymb} element mass from abundances.txt)"
+            strcomment += f"({mass_g / elem_mass * 100 if elem_mass > 0 else math.nan:6.2f}% of {elsymb} element mass from abundances.txt)"
 
             if mass_g > elem_mass * (1.0 + 1e-5):
                 strcomment += " ERROR! isotope sum is greater than element abundance"

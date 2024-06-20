@@ -95,7 +95,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
                 dfelabundances_out,
                 _,
                 modelmeta_out,
-            ) = at.inputmodel.dimension_reduce_3d_model(
+            ) = at.inputmodel.dimension_reduce_model(
                 dfmodel=dfmodel,
                 outputdimensions=ndim_out,
                 dfelabundances=dfelabundances,

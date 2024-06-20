@@ -379,7 +379,7 @@ def makemodelfromgriddata(
         dfelabundances = None
 
     if dimensions < 3:
-        dfmodel, dfelabundances, dfgridcontributions, modelmeta = at.inputmodel.dimension_reduce_3d_model(
+        dfmodel, dfelabundances, dfgridcontributions, modelmeta = at.inputmodel.dimension_reduce_model(
             dfmodel=dfmodel,
             outputdimensions=dimensions,
             dfelabundances=dfelabundances,

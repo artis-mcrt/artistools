@@ -317,7 +317,7 @@ def lower_dim_and_check_mass_conservation(outputdimensions: int) -> None:
         _,
         _,
         modelmeta_lowerd,
-    ) = at.inputmodel.dimension_reduce_3d_model(
+    ) = at.inputmodel.dimension_reduce_model(
         dfmodel=dfmodel3d_pl, modelmeta=modelmeta_3d, outputdimensions=outputdimensions
     )
 
