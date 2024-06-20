@@ -103,12 +103,12 @@ def slice_3dmodel(inputfolder, outputfolder, chosenaxis):
     return dict3dcellidto1dcellid, xlist, ylists
 
 
-def slice_abundance_file(inputfolder, outputfolder, dict3dcellidto1dcellid):
+def slice_abundance_file(inputfolder, outputfolder, dict3dcellidto1dcellid) -> None:
     with (
         Path(inputfolder, "abundances.txt").open(encoding="utf-8") as fabundancesin,
         Path(outputfolder, "abundances.txt").open("w", encoding="utf-8") as fabundancesout,
     ):
-        currentblock = []
+        currentblock: list[t.Any] = []
         keepcurrentblock = False
         for line in fabundancesin:
             linesplit = line.split()

@@ -28,6 +28,7 @@ class ExponentLabelFormatter(ticker.ScalarFormatter):
         if stroffset:
             stroffset = stroffset.replace(r"$\times", "$") + " "
         strnewlabel = self.labeltemplate.format(stroffset)
+        assert self.axis is not None
         self.axis.set_label_text(strnewlabel)
         assert self.offset == 0
         self.axis.offsetText.set_visible(False)
@@ -178,7 +179,7 @@ def autoscale(ax=None, axis="y", margin=0.1):
     From https://stackoverflow.com/questions/29461608/matplotlib-fixing-x-axis-scale-and-autoscale-y-axis
     """
 
-    def calculate_new_limit(fixed, dependent, limit):
+    def calculate_new_limit(fixed, dependent, limit) -> tuple[float, float]:
         """Calculate the min/max of the dependent axis given a fixed axis with limits."""
         if len(fixed) > 2:
             mask = (fixed > limit[0]) & (fixed < limit[1]) & (~np.isnan(dependent)) & (~np.isnan(fixed))
@@ -211,7 +212,7 @@ def autoscale(ax=None, axis="y", margin=0.1):
         ax = plt.gca()
     newlow, newhigh = np.inf, -np.inf
 
-    for artist in ax.collections + ax.lines:
+    for artist in list(ax.collections) + list(ax.lines):
         x, y = get_xy(artist)
         if axis == "y":
             setlim = ax.set_ylim

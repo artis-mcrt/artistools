@@ -171,7 +171,7 @@ jobs:
                   mv requirements3.13.txt requirements.txt
                   cat requirements.txt
 
-            - name: Cache rust build cache
+            - name: Cache rust
               uses: actions/cache@v4
               with:
                   path: |
@@ -180,7 +180,7 @@ jobs:
                       ~/.cargo/registry/cache/
                       ~/.cargo/git/db/
                       rust/target/
-                  key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-python-${{ matrix.python-version }}
+                  key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
             - name: Install artistools
               run: |
@@ -228,43 +228,3 @@ jobs:
               with:
                   name: testoutput-${{ matrix.python-version }}
                   path: tests/output/
-
-    codspeed-benchmarks:
-        timeout-minutes: 180
-        runs-on: ubuntu-22.04
-
-        name: codspeed benchmarks
-        steps:
-            - name: Checkout Code
-              uses: actions/checkout@v4
-              with:
-                  fetch-depth: 0
-
-            - name: Set up Python
-              uses: actions/setup-python@v5
-              with:
-                  python-version: '3.12'
-
-            - name: Install uv
-              run: |
-                  curl -LsSf https://astral.sh/uv/install.sh | sh
-
-            - name: Install artistools
-              run: |
-                  uv pip install --system --upgrade --compile-bytecode --editable  .
-
-            - name: Cache test data
-              uses: actions/cache@v4
-              with:
-                  path: tests/data/*.tar.xz
-                  key: testdata20231114
-
-            - name: Download/extract test data
-              working-directory: tests/data/
-              run: source ./setuptestdata.sh
-
-            - name: Run benchmarks
-              uses: CodSpeedHQ/action@v2
-              with:
-                  token: ${{ secrets.CODSPEED_TOKEN }}
-                  run: pytest --codspeed

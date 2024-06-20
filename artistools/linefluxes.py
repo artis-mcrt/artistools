@@ -11,12 +11,14 @@ from functools import partial
 from pathlib import Path
 
 import matplotlib as mpl
-import matplotlib.axes
+import matplotlib.axes as mplax
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
 from astropy import units as u
+from matplotlib import markers as mplmarkers
+from matplotlib.typing import MarkerType
 from scipy import integrate
 
 import artistools as at
@@ -506,13 +508,13 @@ def get_packets_with_emission_conditions(
 
 
 def plot_nne_te_points(
-    axis: mpl.axes.Axes,
+    axis: mplax.Axes,
     serieslabel: str,
-    em_log10nne: t.Sequence[float],
-    em_Te: t.Sequence[float],
+    em_log10nne: t.Sequence[float] | npt.NDArray,
+    em_Te: t.Sequence[float] | npt.NDArray,
     normtotalpackets: float,
     color: float | str | None,
-    marker: str | None = "o",
+    marker: MarkerType,
 ) -> None:
     color_adj = [(c + 0.1) / 1.1 for c in mpl.colors.to_rgb(color)]  # type: ignore[arg-type]
     hitcount: dict[tuple[float, float], int] = {}
@@ -568,7 +570,7 @@ def plot_nne_te_bars(axis, serieslabel, em_log10nne, em_Te, color) -> None:
     axis.errorbar(np.mean(em_log10nne), np.mean(em_Te), **errorbarkwargs)
 
 
-def make_emitting_regions_plot(args):
+def make_emitting_regions_plot(args: argparse.Namespace) -> None:
     # font = {'size': 16}
     # matplotlib.rc('font', **font)
     # 'floers_te_nne.json',
@@ -579,9 +581,9 @@ def make_emitting_regions_plot(args):
         "Flörs+2020",
     ]  # , 'Floers CMFGEN', 'Floers Smyth']
     refdatacolors = ["0.0", "C1", "C2", "C4"]
-    refdatakeys: list[list[str] | None] = [None for _ in refdatafilenames]
-    refdatatimes: list[npt.NDArray | None] = [None for _ in refdatafilenames]
-    refdatapoints: list[list[float] | None] = [None for _ in refdatafilenames]
+    refdatakeys: list[list[str]] = [[] for _ in refdatafilenames]
+    refdatatimes: list[npt.NDArray] = [np.array([]) for _ in refdatafilenames]
+    refdatapoints: list[list[float]] = [[] for _ in refdatafilenames]
     for refdataindex, refdatafilename in enumerate(refdatafilenames):
         floers_te_nne: dict[str, t.Any]
         with Path(refdatafilename).open(encoding="utf-8") as data_file:
@@ -736,7 +738,9 @@ def make_emitting_regions_plot(args):
                         modelcolor = args.color[truemodelindex]
                         label = args.label[truemodelindex].format(timeavg=tmid, modeltag=modeltag)
                         if not bars:
-                            plot_nne_te_points(axis, label, em_log10nne, em_Te, normtotalpackets, modelcolor)
+                            plot_nne_te_points(
+                                axis, label, em_log10nne, em_Te, normtotalpackets, modelcolor, marker="s"
+                            )
                         else:
                             plot_nne_te_bars(axis, args.label[truemodelindex], em_log10nne, em_Te, modelcolor)
             else:
@@ -744,7 +748,10 @@ def make_emitting_regions_plot(args):
                 emfeatures = get_labelandlineindices(modelpath, tuple(args.emfeaturesearch))
 
                 featurecolours = ["blue", "red"]
-                markers = [10, 11]
+                markers: list[MarkerType] = [
+                    mplmarkers.MarkerStyle(mplmarkers.CARETUPBASE),
+                    mplmarkers.MarkerStyle(mplmarkers.CARETDOWNBASE),
+                ]
                 # featurecolours = ['C0', 'C3']
                 # featurebarcolours = ['blue', 'red']
 

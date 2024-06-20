@@ -30,7 +30,7 @@ readme = {file = "README.md", content-type='text/markdown'}
 
 [project.urls]
 Repository ="https://www.github.com/artis-mcrt/artistools"
-Source ="https://www.github.com/artis-mcrt/artistools"
+Source = "https://www.github.com/artis-mcrt/artistools"
 
 [project.scripts]
 at = 'artistools.__main__:main'
@@ -56,7 +56,29 @@ line-length = 120
 target-version = ["py310", "py311", "py312", "py313"]
 
 [tool.cibuildwheel]
-skip = ["*-win32", "*i686"]
+build-frontend = "build[uv]"
+archs = ["auto64"]
+
+[tool.cibuildwheel.linux]
+before-all = [
+    "mkdir -p /host/home/runner/work/artistools/artistools/rust/target",
+    "mkdir -p /project/rust/target",
+    "rm -rf /project/rust/target",
+    "ln -s -f /host/home/runner/work/artistools/artistools/rust/target /project/rust/",
+    "curl -sSf https://sh.rustup.rs | sh -s -- -y",
+]
+environment = { PATH="$HOME/.cargo/bin:$PATH"}
+repair-wheel-command = [
+    "auditwheel repair -w {dest_dir} {wheel}",
+    "pipx run abi3audit --strict --report {wheel}",
+]
+
+[tool.cibuildwheel.macos]
+repair-wheel-command = [
+  "delocate-wheel --require-archs {delocate_archs} -w {dest_dir} -v {wheel}",
+  "uv pip install abi3audit",
+  "python3 -m abi3audit --strict --report {wheel}",
+]
 
 [tool.mypy]
 check_untyped_defs = false
@@ -72,6 +94,10 @@ error_summary = true
 enable_error_code = [
   "comparison-overlap",
   "ignore-without-code",
+  "no-any-return",
+  "no-any-unimported",
+  "no-untyped-call",
+  #"possibly-undefined",
   "redundant-expr",
   "redundant-self",
   "truthy-bool",
@@ -110,11 +136,14 @@ module = [
     "*.__init__",
     "*.__main__",
 ]
+check_untyped_defs = true
 disallow_any_generics = true
 disallow_incomplete_defs = true
 disallow_untyped_calls = true
 disallow_untyped_defs = true
-check_untyped_defs = true
+enable_error_code = [
+  "possibly-undefined",
+]
 
 [[tool.mypy.overrides]]
 module = "pyvista"
@@ -158,14 +187,14 @@ ignored-modules = ["astropy", "extinction", "artistools.rustext"]
 unsafe-load-any-extension = true
 
 [tool.pyright]
-analyzeUnannotatedFunctions = false
-exclude=['**/node_modules','**/__pycache__','**/.*', 'build', 'dist']
+analyzeUnannotatedFunctions = true
+exclude=['**/node_modules','**/__pycache__','**/.*', 'build', 'dist', 'target']
 reportAttributeAccessIssue = false
 reportCallIssue = false
 reportMissingImports = false
-reportOptionalMemberAccess = false
+reportOptionalMemberAccess = true
 reportPossiblyUnboundVariable = false
-reportPrivateImportUsage = false
+reportPrivateImportUsage = true
 reportUnknownVariableType = false
 typeCheckingMode = "basic"
 useLibraryCodeForTypes = false
@@ -252,6 +281,8 @@ unfixable = [
 [tool.ruff.lint.flake8-import-conventions.extend-aliases]
 "artistools" = "at"
 "matplotlib" = "mpl"
+#"matplotlib.axes" = "mplax"
+"matplotlib.figure" = "mplfig"
 "matplotlib.pyplot" = "plt"
 "matplotlib.typing" = "mplt"
 "numpy.typing" = "npt"
@@ -274,17 +305,16 @@ license-files = ["LICENSE.txt"]
 
 [[tool.setuptools-rust.ext-modules]]
 target = "artistools.rustext"  # The last part of the name has to match lib.name in Cargo.toml,
-                             # but you can add a prefix to nest it inside of a Python package.
 path = "rust/Cargo.toml"
 binding = "PyO3"
 debug = false
 optional = false
 
 [tool.setuptools.packages.find]
-namespaces = false
+namespaces = true
 where = ["."]
 include = ["*", "**/matplotlibrc", "**/data"]
-exclude = ["tests", "**/dist", "**/lib", "**/build", "*.egg-info", "**/.*"]
+exclude = ["tests", "**/dist", "**/lib", "**/build", "*.egg-info", "**/.*", "**/target"]
 
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}

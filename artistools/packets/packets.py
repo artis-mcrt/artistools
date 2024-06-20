@@ -448,7 +448,7 @@ def get_rankbatch_parquetfile(
     )
     parquetfilepath = packetdir / parquetfilename
 
-    # time when the schema for the parquet files last change (e.g. new computed columns added or data types changed)
+    # time when the schema for the parquet files last changed (e.g. new computed columns added or data types changed)
     time_parquetschemachange = (2024, 4, 23, 9, 0, 0)
     t_lastschemachange = calendar.timegm(time_parquetschemachange)
 
@@ -761,7 +761,7 @@ def bin_packet_directions(
     xhat = np.array([1.0, 0.0, 0.0])
     vec2 = np.cross(xhat, syn_dir)
 
-    pktdirvecs = dfpackets[["dirx", "diry", "dirz"]].to_numpy()
+    pktdirvecs = dfpackets[["dirx", "diry", "dirz"]].to_numpy().copy()
 
     # normalise. might not be needed
     dirmags = np.linalg.norm(pktdirvecs, axis=1)

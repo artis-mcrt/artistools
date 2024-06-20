@@ -1,9 +1,11 @@
+import shutil
 from pathlib import Path
 from unittest import mock
 
 import matplotlib.axes
 import numpy as np
 import polars as pl
+import polars.testing as pltest
 import pytest
 
 import artistools as at
@@ -305,4 +307,25 @@ def test_estimator_timeevolution(mockplot) -> None:
         plotlist=[["Te", "nne"]],
         modelgridindex=0,
         x="time",
+    )
+
+
+@pytest.mark.benchmark()
+def test_rust_estimator_parser() -> None:
+    test_outputpath = outputpath / "test_rust_estimator_parser"
+    dfestimators: list[pl.DataFrame] = []
+    for use_rust in [True, False]:
+        if test_outputpath.exists():
+            shutil.rmtree(test_outputpath)
+            test_outputpath.mkdir(exist_ok=True)
+        shutil.copytree(modelpath, test_outputpath, dirs_exist_ok=True, ignore=shutil.ignore_patterns("*parquet*"))
+        dfestimators.append(
+            at.estimators.scan_estimators(modelpath=test_outputpath, use_rust_parser=use_rust).collect()
+        )
+
+    pltest.assert_frame_equal(
+        dfestimators[0],
+        dfestimators[1],
+        rtol=1e-4,
+        atol=1e-4,
     )
