@@ -108,7 +108,7 @@ jobs:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     pytest:
-        timeout-minutes: 10
+        timeout-minutes: 20
         runs-on: ${{ matrix.os }}
         strategy:
             fail-fast: false
@@ -138,12 +138,7 @@ jobs:
             - name: Cache rust
               uses: actions/cache@v4
               with:
-                  path: |
-                      ~/.cargo/bin/
-                      ~/.cargo/registry/index/
-                      ~/.cargo/registry/cache/
-                      ~/.cargo/git/db/
-                      rust/target/
+                  path: rust/target/
                   key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
             - name: Install artistools
