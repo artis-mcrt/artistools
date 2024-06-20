@@ -1208,7 +1208,7 @@ def dimension_reduce_model(
         if ndim_in == 2:
             ncoordgridr = int(modelmeta.get("ncoordgridx", int(round(math.sqrt(ngridpoints / 2.0)))))
         elif ndim_in == 3:
-            ncoordgridr = int(modelmeta.get("ncoordgridx", int(round(math.cbrt(ngridpoints)))) / 2.0)
+            ncoordgridr = int(modelmeta.get("ncoordgridx", int(round(np.cbrt(ngridpoints)))) / 2.0)
         else:
             ncoordgridr = 1
         modelmeta_out["ncoordgridr"] = ncoordgridr
@@ -1218,7 +1218,7 @@ def dimension_reduce_model(
             (pl.col("vel_x_mid") ** 2 + pl.col("vel_y_mid") ** 2).sqrt().alias("vel_rcyl_mid")
         ])
         if ncoordgridz is None:
-            ncoordgridz = int(modelmeta.get("ncoordgridx", int(round(math.cbrt(ngridpoints)))))
+            ncoordgridz = int(modelmeta.get("ncoordgridx", int(round(np.cbrt(ngridpoints)))))
             assert ncoordgridz % 2 == 0
         ncoordgridr = ncoordgridz // 2
         modelmeta_out["ncoordgridz"] = ncoordgridz
