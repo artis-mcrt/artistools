@@ -52,6 +52,8 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         argcomplete.autocomplete(parser)
         args = parser.parse_args([] if kwargs else argsraw)
 
+    assert args is not None
+
     dfmodel, modelmeta = at.inputmodel.get_modeldata_polars(
         args.inputfile,
         get_elemabundances=not args.noabund,
