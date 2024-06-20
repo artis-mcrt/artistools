@@ -1151,7 +1151,7 @@ def get_dfmodel_dimensions(dfmodel: pd.DataFrame | pl.DataFrame | pl.LazyFrame) 
     return 2 if "pos_z_mid" in dfmodel.columns else 1
 
 
-def dimension_reduce_3d_model(
+def dimension_reduce_model(
     dfmodel: pl.DataFrame | pl.LazyFrame,
     outputdimensions: int,
     dfelabundances: pl.DataFrame | pl.LazyFrame | None = None,
@@ -1163,11 +1163,6 @@ def dimension_reduce_3d_model(
 ) -> tuple[pl.DataFrame, pl.DataFrame | None, pl.DataFrame | None, dict[str, t.Any]]:
     """Convert 3D Cartesian grid model to 1D spherical or 2D cylindrical. Particle gridcontributions and an elemental abundance table can optionally be updated to match."""
     assert outputdimensions in {0, 1, 2}
-
-    if outputdimensions == 0:
-        outputdimensions = 1
-        ncoordgridr = 1
-        ncoordgridz = 0
 
     dfmodel = dfmodel.lazy().collect()
 
@@ -1185,12 +1180,12 @@ def dimension_reduce_3d_model(
     t_model_init_seconds = modelmeta["t_model_init_days"] * 24 * 60 * 60
     vmax = modelmeta["vmax_cmps"]
     xmax = vmax * t_model_init_seconds
-    ngridpoints = modelmeta.get("npts_model", len(dfmodel))
-    ncoordgridx = modelmeta.get("ncoordgridx", int(round(ngridpoints ** (1.0 / 3.0))))
 
     ndim_in = modelmeta["dimensions"]
-    assert ndim_in > outputdimensions or (ndim_in == outputdimensions == 1 and ncoordgridr == 1)
-    modelmeta_out["dimensions"] = outputdimensions
+    assert ndim_in > outputdimensions
+    modelmeta_out["dimensions"] = max(outputdimensions, 1)
+
+    ngridpoints = modelmeta.get("npts_model", len(dfmodel))
 
     print(f"Resampling {ndim_in:d}D model with {ngridpoints} cells to {outputdimensions}D...")
     timestart = time.perf_counter()
@@ -1204,23 +1199,35 @@ def dimension_reduce_3d_model(
     }
 
     km_to_cm = 1e5
-    if ncoordgridr is None:
-        ncoordgridr = int(ncoordgridx / 2.0)
 
-    if ncoordgridz is None:
-        ncoordgridz = int(ncoordgridx)
-
-    if outputdimensions == 2:
+    if outputdimensions == 0:
+        ncoordgridr = 1
+        ncoordgridz = 1
+    elif outputdimensions == 1:
+        # make 1D model
+        if ndim_in == 2:
+            ncoordgridr = int(modelmeta.get("ncoordgridx", int(round(math.sqrt(ngridpoints / 2.0)))))
+        elif ndim_in == 3:
+            ncoordgridr = int(modelmeta.get("ncoordgridx", int(round(np.cbrt(ngridpoints)))) / 2.0)
+        else:
+            ncoordgridr = 1
+        modelmeta_out["ncoordgridr"] = ncoordgridr
+        ncoordgridz = 1
+    elif outputdimensions == 2:
         dfmodel = dfmodel.with_columns([
             (pl.col("vel_x_mid") ** 2 + pl.col("vel_y_mid") ** 2).sqrt().alias("vel_rcyl_mid")
         ])
+        if ncoordgridz is None:
+            ncoordgridz = int(modelmeta.get("ncoordgridx", int(round(np.cbrt(ngridpoints)))))
+            assert ncoordgridz % 2 == 0
+        ncoordgridr = ncoordgridz // 2
         modelmeta_out["ncoordgridz"] = ncoordgridz
         modelmeta_out["ncoordgridrcyl"] = ncoordgridr
         modelmeta_out["wid_init_z"] = 2 * xmax / ncoordgridz
         modelmeta_out["wid_init_rcyl"] = xmax / ncoordgridr
     else:
-        # 1D
-        modelmeta_out["ncoordgridr"] = ncoordgridr
+        msg = f"Invalid outputdimensions: {outputdimensions}"
+        raise ValueError(msg)
 
     # velocities in cm/s
     velocity_bins_z_min = (
@@ -1240,7 +1247,7 @@ def dimension_reduce_3d_model(
             assert vel_r_max > vel_r_min
             cellindexout = n_z * ncoordgridr + n_r + 1
 
-            if outputdimensions == 1:
+            if outputdimensions in {0, 1}:
                 matchedcells = dfmodel.filter(
                     pl.col("vel_r_mid").is_between(vel_r_min, vel_r_max, closed="right")
                 ).collect()
@@ -1253,7 +1260,7 @@ def dimension_reduce_3d_model(
             if len(matchedcells) == 0:
                 rho_out = 0
             else:
-                if outputdimensions == 1:
+                if outputdimensions in {0, 1}:
                     shell_volume = (4 * math.pi / 3) * (
                         (vel_r_max * t_model_init_seconds) ** 3 - (vel_r_min * t_model_init_seconds) ** 3
                     )
@@ -1265,7 +1272,7 @@ def dimension_reduce_3d_model(
 
             cellout: dict[str, t.Any] = {"inputcellid": cellindexout, "mass_g": matchedcells["mass_g"].sum()}
 
-            if outputdimensions == 1:
+            if outputdimensions in {0, 1}:
                 cellout |= {
                     "logrho": math.log10(max(1e-99, rho_out)) if rho_out > 0.0 else -99.0,
                     "vel_r_max_kmps": vel_r_max / km_to_cm,
