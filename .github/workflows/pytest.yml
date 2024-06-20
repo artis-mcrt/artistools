@@ -126,18 +126,11 @@ jobs:
                   fetch-depth: 0
 
             - name: Set up Python ${{ matrix.python-version }}
-              if: ${{ !endsWith(matrix.python-version, '-dev') }}
               uses: actions/setup-python@v5
               with:
                   python-version: ${{ matrix.python-version }}
-                  #check-latest: true
-                  #   allow-prereleases: true
-
-            - uses: deadsnakes/action@v3.1.0
-              if: ${{ endsWith(matrix.python-version, '-dev') }}
-              with:
-                  python-version: ${{ matrix.python-version }}
-            #       #   nogil: true # Optional, to select a free-threaded Python build (3.13+ only)
+                  check-latest: true
+                  allow-prereleases: true
 
             - name: Show python version
               run: python3 --version --version && which python3
