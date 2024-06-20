@@ -49,7 +49,9 @@ def get_2D_slice_through_3d_model(
     return slicedf
 
 
-def plot_slice_modelcolumn(ax, dfmodelslice, modelmeta, colname, plotaxis1, plotaxis2, t_model_d, args):
+def plot_slice_modelcolumn(
+    ax, dfmodelslice, modelmeta, colname, plotaxis1, plotaxis2, t_model_d, args: argparse.Namespace
+):
     print(f"plotting {colname}")
     colorscale = (
         dfmodelslice[colname] * dfmodelslice["rho"] if colname.startswith("X_") else dfmodelslice[colname]
@@ -247,7 +249,7 @@ def get_model_abundances_Msun_1D(modelpath: Path) -> pd.DataFrame:
     return merge_dfs
 
 
-def plot_most_abundant(modelpath, args):
+def plot_most_abundant(modelpath, args: argparse.Namespace):
     model, _ = at.inputmodel.get_modeldata(modelpath[0])
     abundances = at.inputmodel.get_initelemabundances(modelpath[0])
 
@@ -260,7 +262,7 @@ def plot_most_abundant(modelpath, args):
     return merge_dfs[merge_dfs["max"] != 1]
 
 
-def make_3d_plot(modelpath, args):
+def make_3d_plot(modelpath, args: argparse.Namespace) -> None:
     import pyvista as pv
 
     pv.set_plot_theme("document")  # set white background
@@ -299,11 +301,11 @@ def make_3d_plot(modelpath, args):
     surfacearr = np.array(model[coloursurfaceby])
     vmax /= 29979245800.0
     i = 0
-    for z in range(grid):
-        for y in range(grid):
-            for x in range(grid):
-                surfacecolorscale[x, y, z] = surfacearr[i]
-                xgrid[x] = -vmax + 2 * x * vmax / grid
+    for nz in range(grid):
+        for ny in range(grid):
+            for nx in range(grid):
+                surfacecolorscale[nx, ny, nz] = surfacearr[i]
+                xgrid[nx] = -vmax + 2 * nx * vmax / grid
                 i += 1
 
     x, y, z = np.meshgrid(xgrid, xgrid, xgrid)

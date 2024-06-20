@@ -10,6 +10,9 @@ from astropy import units as u
 
 import artistools as at
 
+if t.TYPE_CHECKING:
+    from mpl_toolkits.mplot3d import Axes3D
+
 
 def make_cone(args):
     print("Making cone")
@@ -176,7 +179,7 @@ def make_plot(args):
     cone = make_cone(args)
 
     cone = cone.loc[cone["rho_model"] > 0.0002]  # cut low densities (empty cells?) from plot
-    ax = plt.figure().gca(projection="3d")
+    ax: Axes3D = plt.figure().gca(projection="3d")  # type: ignore[call-arg]
 
     # print(cone['rho_model'])
 

@@ -8,7 +8,6 @@ Examples are temperatures, populations, heating/cooling rates.
 import argparse
 import contextlib
 import math
-import operator
 import string
 import typing as t
 from itertools import chain
@@ -861,93 +860,10 @@ def make_plot(
     return outfilename
 
 
-def plot_recombrates(modelpath, estimators, atomic_number, ion_stage_list, **plotkwargs):
-    fig, axes = plt.subplots(
-        nrows=len(ion_stage_list),
-        ncols=1,
-        sharex=True,
-        figsize=(5, 8),
-        tight_layout={"pad": 0.5, "w_pad": 0.0, "h_pad": 0.0},
-    )
-    # ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
-    axes[-1].set_xlabel("T_e in kelvins")
-
-    recombcalibrationdata = at.atomic.get_ionrecombratecalibration(modelpath)
-
-    for ax, ion_stage in zip(axes, ion_stage_list, strict=False):
-        ionstr = (
-            f"{at.get_elsymbol(atomic_number)} {at.roman_numerals[ion_stage]} to {at.roman_numerals[ion_stage - 1]}"
-        )
-
-        listT_e = []
-        list_rrc = []
-        list_rrc2 = []
-        for dicttimestepmodelgrid in estimators.values():
-            if (atomic_number, ion_stage) in dicttimestepmodelgrid["RRC_LTE_Nahar"]:
-                listT_e.append(dicttimestepmodelgrid["Te"])
-                list_rrc.append(dicttimestepmodelgrid["RRC_LTE_Nahar"][(atomic_number, ion_stage)])
-                list_rrc2.append(dicttimestepmodelgrid["Alpha_R"][(atomic_number, ion_stage)])
-
-        if not list_rrc:
-            continue
-
-        # sort the pairs by temperature ascending
-        listT_e, list_rrc, list_rrc2 = zip(
-            *sorted(zip(listT_e, list_rrc, list_rrc2, strict=False), key=operator.itemgetter(0)), strict=False
-        )
-
-        ax.plot(listT_e, list_rrc, linewidth=2, label=f"{ionstr} ARTIS RRC_LTE_Nahar", **plotkwargs)
-        ax.plot(listT_e, list_rrc2, linewidth=2, label=f"{ionstr} ARTIS Alpha_R", **plotkwargs)
-
-        with contextlib.suppress(KeyError):
-            dfrates = recombcalibrationdata[(atomic_number, ion_stage)].query(
-                "T_e > @T_e_min & T_e < @T_e_max", local_dict={"T_e_min": min(listT_e), "T_e_max": max(listT_e)}
-            )
-
-            ax.plot(
-                dfrates.T_e,
-                dfrates.rrc_total,
-                linewidth=2,
-                label=f"{ionstr} (calibration)",
-                markersize=6,
-                marker="s",
-                **plotkwargs,
-            )
-        # rrcfiles = glob.glob(
-        #     f'/Users/lshingles/Library/Mobile Documents/com~apple~CloudDocs/GitHub/'
-        #     f'artis-atomic/atomic-data-nahar/{at.get_elsymbol(atomic_number).lower()}{ion_stage - 1}.rrc*.txt')
-        # if rrcfiles:
-        #     dfrecombrates = get_ionrecombrates_fromfile(rrcfiles[0])
-        #
-        #     dfrecombrates.query("logT > @logT_e_min & logT < @logT_e_max",
-        #                         local_dict={'logT_e_min': math.log10(min(listT_e)),
-        #                                     'logT_e_max': math.log10(max(listT_e))}, inplace=True)
-        #
-        #     listT_e_Nahar = [10 ** x for x in dfrecombrates['logT'].values]
-        #     ax.plot(listT_e_Nahar, dfrecombrates['RRC_total'], linewidth=2,
-        #             label=ionstr + " (Nahar)", markersize=6, marker='s', **plotkwargs)
-
-        ax.legend(loc="best", handlelength=2, frameon=False, numpoints=1, prop={"size": 10})
-
-    # modelname = at.get_model_name(".")
-    # plotlabel = f'Timestep {timestep}'
-    # time_days = at.get_timestep_time('spec.out', timestep)
-    # if time_days >= 0:
-    #     plotlabel += f' (t={time_days:.2f}d)'
-    # fig.suptitle(plotlabel, fontsize=12)
-    elsymbol = at.get_elsymbol(atomic_number)
-    outfilename = f"plotestimators_recombrates_{elsymbol}.pdf"
-    fig.savefig(outfilename)
-    print(f"Saved {outfilename}")
-    plt.close()
-
-
 def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-modelpath", default=".", help="Paths to ARTIS folder (or virtual path e.g. codecomparison/ddc10/cmfgen)"
     )
-
-    parser.add_argument("--recombrates", action="store_true", help="Make a recombination rate plot")
 
     parser.add_argument(
         "-modelgridindex", "-cell", "-mgi", type=int, default=None, help="Modelgridindex for time evolution plot"
@@ -1168,13 +1084,6 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     if not timesteps_included:
         print("No timesteps with data are included")
-        return
-
-    if args.recombrates:
-        plot_recombrates(modelpath, estimators, 26, [2, 3, 4, 5])
-        plot_recombrates(modelpath, estimators, 27, [3, 4])
-        plot_recombrates(modelpath, estimators, 28, [3, 4, 5])
-
         return
 
     assoc_cells, _ = at.get_grid_mapping(modelpath)

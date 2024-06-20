@@ -50,9 +50,9 @@ def get_theta_phi(anglebin):
     return None, None
 
 
-def gen_viewing_angle_df(length):
+def gen_viewing_angle_df(length: int) -> pd.DataFrame:
     # Build viewing angle vector DataFrame
-    viewing_angles = {
+    viewing_angles: dict[str, list[float | str]] = {
         "Angle-bin": [],
         "x_coord": [],
         "y_coord": [],

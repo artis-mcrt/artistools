@@ -24,7 +24,7 @@ import artistools as at
 color_list = list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20)))
 
 
-def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkwargs, args) -> None:
+def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkwargs, args: argparse.Namespace) -> None:
     # if args.logscalex:
     #     axistherm.set_xscale("log")
 
@@ -733,7 +733,7 @@ def get_linelabel(
     return linelabel
 
 
-def set_lightcurveplot_legend(ax, args):
+def set_lightcurveplot_legend(ax, args: argparse.Namespace):
     if not args.nolegend:
         if args.subplots:
             ax[args.legendsubplotnumber].legend(
@@ -1034,7 +1034,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
 #                                       filternames_conversion_dict)
 
 
-def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder, args):
+def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder, args: argparse.Namespace):
     args.labelfontsize = 24  # TODO: make command line arg
     angle_counter = 0
 

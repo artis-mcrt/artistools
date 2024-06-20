@@ -35,7 +35,7 @@ def path_is_artis_model(filepath: str | Path) -> bool:
     return Path(filepath).is_dir()
 
 
-def plot_polarisation(modelpath: Path, args) -> None:
+def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
     angle = args.plotviewingangle[0]
     stokes_params = {k: v.to_pandas() for k, v in at.spectra.get_specpol_data(angle=angle, modelpath=modelpath).items()}
     stokes_params[args.stokesparam] = stokes_params[args.stokesparam].eval("lambda_angstroms = 2.99792458e18 / nu")
@@ -862,7 +862,9 @@ def make_emissionabsorption_plot(
     return plotobjects, plotobjectlabels, dfaxisdata
 
 
-def make_contrib_plot(axes: t.Iterable[mplax.Axes], modelpath: Path, densityplotyvars: list[str], args) -> None:
+def make_contrib_plot(
+    axes: t.Iterable[mplax.Axes], modelpath: Path, densityplotyvars: list[str], args: argparse.Namespace
+) -> None:
     (_timestepmin, _timestepmax, args.timemin, args.timemax) = at.get_time_range(
         modelpath, args.timestep, args.timemin, args.timemax, args.timedays
     )

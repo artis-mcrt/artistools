@@ -88,7 +88,7 @@ def get_nist_transitions(filename: Path | str) -> pd.DataFrame:
     return pd.DataFrame(translist, columns=transitiontuple._fields)
 
 
-def generate_ion_spectrum(transitions, xvalues, popcolumn, plot_resolution, args):
+def generate_ion_spectrum(transitions, xvalues, popcolumn, plot_resolution, args: argparse.Namespace):
     yvalues = np.zeros(len(xvalues))
 
     # iterate over lines
