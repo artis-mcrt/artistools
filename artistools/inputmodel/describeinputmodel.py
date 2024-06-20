@@ -296,7 +296,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             if np.isclose(mass_g, elem_mass, rtol=1e-4):
                 # iso sum matches the element mass, so don't show it
                 continue
-            strcomment += f"({mass_g / elem_mass * 100:6.2f}% of {elsymb} element mass from abundances.txt)"
+            strcomment += f"({mass_g / elem_mass * 100 if elem_mass > 0 else math.nan:6.2f}% of {elsymb} element mass from abundances.txt)"
 
             if mass_g > elem_mass * (1.0 + 1e-5):
                 strcomment += " ERROR! isotope sum is greater than element abundance"
