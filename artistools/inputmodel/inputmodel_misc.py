@@ -978,13 +978,14 @@ def save_modeldata(
                 .otherwise(pl.lit(None))
                 .alias(col)
                 for col in dfmodel.columns
-                if not col.startswith("pos") and col != "inputcellid"
+                if not col.startswith("pos") and col != "inputcellid" and dfmodel.schema[col].is_float()
             )
             fmodel.flush()
             # assert False, dfmodel
             dfmodel.write_csv(
                 fmodel, include_header=False, separator=" ", line_terminator="\n", float_precision=4, null_value="0.0"
             )
+
             # nstartcols = len(startcols)
             # for colvals in dfmodel.iter_rows():
             #     inputcellid = colvals[0]
