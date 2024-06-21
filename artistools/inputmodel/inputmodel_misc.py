@@ -423,6 +423,7 @@ def get_modeldata_polars(
 
     if dfmodel is None:
         dfmodel = dfmodel_textfile.lazy()
+        assert dfmodel is not None
 
         mebibyte = 1024 * 1024
         if textfilepath.stat().st_size > 5 * mebibyte and not getheadersonly:
@@ -847,7 +848,10 @@ def save_modeldata(
     if isinstance(dfmodel, pd.DataFrame):
         dfmodel = pl.from_pandas(dfmodel)
 
-    dfmodel = dfmodel.drop("mass_g").lazy().collect()
+    if "inputcellid" not in dfmodel.columns and "modelgridindex" in dfmodel.columns:
+        dfmodel = dfmodel.with_columns(inputcellid=pl.col("modelgridindex") + 1)
+
+    dfmodel = dfmodel.drop(["mass_g", "modelgridindex"], strict=False).lazy().collect()
 
     if modelmeta is None:
         modelmeta = {}
@@ -955,21 +959,44 @@ def save_modeldata(
                 fmodel.write("\n")
 
         else:
-            lineend = "\n" if twolinespercell else " "
+            # lineend = "\n" if twolinespercell else " "
             startcols = get_standard_columns(modelmeta["dimensions"], includeabund=False)
             dfmodel = dfmodel.select([*startcols, *abundcols])
-            nstartcols = len(startcols)
-            for colvals in dfmodel.iter_rows():
-                inputcellid = colvals[0]
-                rho = colvals[nstartcols - 1]
-                fmodel.write(f"{inputcellid:d}" + "".join(f" {colvalue:.4e}" for colvalue in colvals[1:nstartcols]))
-                fmodel.write(lineend)
-                fmodel.write(
-                    " ".join((f"{colvalue:.4e}" if colvalue > 0.0 else "0.0") for colvalue in colvals[nstartcols:])
-                    if rho > 0.0
-                    else zeroabund
-                )
-                fmodel.write("\n")
+            # dfmodel = dfmodel.select([*startcols, *abundcols]).with_columns(
+            #     pl.when(pl.col("rho") > 0)
+            #     .then(pl.col(col).map_elements(lambda x: f"{x:.4e}", pl.String))
+            #     # .then(pl.col(col).cast(pl.String))
+            #     .otherwise(pl.lit("0.0"))
+            #     .alias(col)
+            #     for col in dfmodel.columns
+            #     if col.startswith("X_")
+            # )
+            dfmodel = dfmodel.select([*startcols, *abundcols]).with_columns(
+                pl.when(pl.col("rho") > 0)
+                .then(pl.col(col))
+                # .then(pl.col(col).cast(pl.String))
+                .otherwise(pl.lit(None))
+                .alias(col)
+                for col in dfmodel.columns
+                if not col.startswith("pos") and col != "inputcellid"
+            )
+            fmodel.flush()
+            # assert False, dfmodel
+            dfmodel.write_csv(
+                fmodel, include_header=False, separator=" ", line_terminator="\n", float_precision=4, null_value="0.0"
+            )
+            # nstartcols = len(startcols)
+            # for colvals in dfmodel.iter_rows():
+            #     inputcellid = colvals[0]
+            #     rho = colvals[nstartcols - 1]
+            #     fmodel.write(f"{inputcellid:d}" + "".join(f" {colvalue:.4e}" for colvalue in colvals[1:nstartcols]))
+            #     fmodel.write(lineend)
+            #     fmodel.write(
+            #         " ".join((f"{colvalue:.4e}" if colvalue > 0.0 else "0.0") for colvalue in colvals[nstartcols:])
+            #         if rho > 0.0
+            #         else zeroabund
+            #     )
+            #     fmodel.write("\n")
 
     print(f"Saved {modelfilepath} (took {time.perf_counter() - timestart:.1f} seconds)")
 
