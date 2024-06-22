@@ -1,6 +1,6 @@
 [package]
 name = "rustext"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Luke Shingles <luke.shingles@gmail.com>"]
 edition = "2021"
 
@@ -9,7 +9,7 @@ name = "rustext"
 crate-type = ["cdylib"]
 
 [dependencies]
-polars = { version = "0.40.0", features = ["diagonal_concat", "performant"] }
+polars = { version = "0.41.0", features = ["diagonal_concat", "performant"] }
 pyo3-polars = "0.14.0"
 rayon = "1.5"
 zstd = "0.13.1"
