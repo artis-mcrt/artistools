@@ -855,7 +855,10 @@ def save_modeldata(
     if isinstance(dfmodel, pd.DataFrame):
         dfmodel = pl.from_pandas(dfmodel)
 
-    dfmodel = dfmodel.drop("mass_g", strict=False).lazy().collect()
+    if "inputcellid" not in dfmodel.columns and "modelgridindex" in dfmodel.columns:
+        dfmodel = dfmodel.with_columns(inputcellid=pl.col("modelgridindex") + 1)
+
+    dfmodel = dfmodel.drop(("mass_g", "modelgridindex"), strict=False).lazy().collect()
 
     if modelmeta is None:
         modelmeta = {}
