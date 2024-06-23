@@ -209,7 +209,7 @@ def read_modelfile_text(
 
         dfmodel = pl.from_pandas(dfmodelpd)
 
-    if "velocity_outer" in dfmodel.collect_schema().names():
+    if "velocity_outer" in dfmodel.columns:
         dfmodel = dfmodel.rename({"velocity_outer": "vel_r_max_kmps"})
 
     if modelmeta["dimensions"] == 1:
@@ -251,7 +251,7 @@ def read_modelfile_text(
         modelmeta["wid_init_y"] = wid_init_y
         modelmeta["wid_init_z"] = wid_init_z
         modelmeta["wid_init"] = wid_init_x
-        if "pos_x_min" in dfmodel.collect_schema().names() and not printwarningsonly:
+        if "pos_x_min" in dfmodel.columns and not printwarningsonly:
             print("  model cell positions are defined in the header")
             if not getheadersonly:
                 firstrow = dfmodel.row(index=0, named=True)
@@ -338,7 +338,7 @@ def read_modelfile_text(
                 print("  cell positions are consistent with z-y-x midpoint colums")
                 colrenames = {"inputpos_a": "pos_z_mid", "inputpos_b": "pos_y_mid", "inputpos_c": "pos_x_mid"}
 
-            dfmodel = dfmodel.rename({a: b for a, b in colrenames.items() if a in dfmodel.collect_schema().names()})
+            dfmodel = dfmodel.rename({a: b for a, b in colrenames.items() if a in dfmodel.columns})
 
             if matched_pos_xyz_mid or matched_pos_zyx_mid:
                 dfmodel = dfmodel.with_columns(
@@ -1402,7 +1402,7 @@ def scale_model_to_time(
         "using homologous expansion of positions and densities"
     )
 
-    for col in dfmodel.collect_schema().names():
+    for col in dfmodel.columns:
         if col.startswith("pos_"):
             dfmodel[col] *= timefactor
         elif col == "rho":
