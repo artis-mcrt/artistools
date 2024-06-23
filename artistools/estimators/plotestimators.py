@@ -68,8 +68,7 @@ def plot_init_abundances(
         raise AssertionError
 
     if startfromzero:
-        xlist = xlist.copy()
-        xlist.insert(0, 0.0)
+        xlist = [0.0, *xlist]
 
     for speciesstr in specieslist:
         splitvariablename = speciesstr.split("_")
@@ -113,7 +112,7 @@ def plot_init_abundances(
         xlist, ylist = at.estimators.apply_filters(xlist, np.array(ylist), args)
 
         if startfromzero:
-            ylist.insert(0, ylist[0])
+            ylist = [ylist[0], *ylist]
 
         ax.plot(xlist, ylist, linewidth=1.5, label=linelabel, linestyle=linestyle, color=color, **plotkwargs)
 
@@ -145,8 +144,7 @@ def plot_average_ionisation_excitation(
         raise ValueError
 
     if startfromzero:
-        xlist = xlist.copy()
-        xlist.insert(0, 0.0)
+        xlist = [0.0, *xlist]
 
     arr_tdelta = at.get_timestep_times(modelpath, loc="delta")
     for paramvalue in params:
@@ -231,7 +229,7 @@ def plot_average_ionisation_excitation(
 
             xlist = series["xvalue"].to_list()
             if startfromzero:
-                xlist.insert(0, 0.0)
+                xlist = [0.0, *xlist]
 
             ylist = series[f"averageionisation_{elsymb}"].to_list()
 
@@ -239,7 +237,7 @@ def plot_average_ionisation_excitation(
 
         xlist, ylist = at.estimators.apply_filters(xlist, ylist, args)
         if startfromzero:
-            ylist.insert(0, ylist[0])
+            ylist = [ylist[0], *ylist]
 
         ax.plot(xlist, ylist, label=paramvalue, color=color, **plotkwargs)
 
@@ -316,7 +314,7 @@ def plot_levelpop(
             else:
                 ylist.append(valuesum / tdeltasum)
 
-        ylist.insert(0, ylist[0])
+        ylist = [ylist[0], *ylist]
 
         xlist, ylist = at.estimators.apply_filters(xlist, np.array(ylist), args)
 
@@ -422,8 +420,8 @@ def plot_multi_ion_series(
         ylist = series[key].to_list()
         if startfromzero:
             # make a line segment from 0 velocity
-            xlist.insert(0, 0.0)
-            ylist.insert(0, ylist[0])
+            xlist = [0.0, *xlist]
+            ylist = [ylist[0], *ylist]
 
         plotlabel = (
             ion_stage
@@ -547,8 +545,8 @@ def plot_series(
 
     if startfromzero:
         # make a line segment from 0 velocity
-        xlist.insert(0, 0.0)
-        ylist.insert(0, ylist[0])
+        xlist = [0.0, *xlist]
+        ylist = [ylist[0], *ylist]
 
     xlist_filtered, ylist_filtered = at.estimators.apply_filters(xlist, ylist, args)
 
