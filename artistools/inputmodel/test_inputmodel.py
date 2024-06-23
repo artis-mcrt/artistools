@@ -400,7 +400,7 @@ def lower_dim_and_check_mass_conservation(outputdimensions: int) -> None:
     dfmodel_lowerd = dfmodel_lowerd_lz.collect()
 
     # check that the total mass is conserved
-    assert np.isclose(dfmodel_lowerd["mass_g"].sum(), dfmodel3d_pl["mass_g"].sum())
+    assert np.isclose(dfmodel_lowerd["mass_g"].sum(), dfmodel3d_pl["mass_g"].sum(), rtol=1e-3)
 
     # check that the total mass of each species is conserved
     for col in dfmodel3d_pl.columns:

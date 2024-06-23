@@ -399,11 +399,12 @@ def scan_estimators(
     if match_timestep is not None:
         pldflazy = pldflazy.filter(pl.col("timestep").is_in(match_timestep))
 
+    colnames = pldflazy.collect_schema().names()
     # add some derived quantities
-    if "heating_gamma/gamma_dep" in pldflazy.columns:
+    if "heating_gamma/gamma_dep" in colnames:
         pldflazy = pldflazy.with_columns(gamma_dep=pl.col("heating_gamma") / pl.col("heating_gamma/gamma_dep"))
 
-    if "heating_heating_dep/total_dep" in pldflazy.columns:
+    if "heating_heating_dep/total_dep" in colnames:
         pldflazy = pldflazy.with_columns(total_dep=pl.col("heating_dep") / pl.col("heating_heating_dep/total_dep"))
 
     pldflazy = pldflazy.with_columns(nntot=pl.sum_horizontal(cs.starts_with("nnelement_")))

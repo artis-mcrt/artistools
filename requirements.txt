@@ -1,14 +1,14 @@
 argcomplete>=3.4.0
 astropy>=6.1.1
-coverage>=7.5.3
+coverage>=7.5.4
 extinction>=0.4.6
 imageio>=2.34.1
 matplotlib>=3.9.0
 mypy>=1.10.0
-numexpr>=2.10.0
+numexpr>=2.10.1
 numpy>=2.0.0
 pandas>=2.2.2
-polars==0.20.31
+polars>=1.0.0rc1
 pre-commit>=3.7.1
 pyarrow>=16.1.0
 pynonthermal>=2024.4.29

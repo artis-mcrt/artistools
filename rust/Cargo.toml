@@ -9,8 +9,8 @@ name = "rustext"
 crate-type = ["cdylib"]
 
 [dependencies]
-polars = { version = "0.40.0", features = ["diagonal_concat", "performant"] }
-pyo3-polars = "0.14.0"
+polars = { version = "0.41.1", features = ["diagonal_concat", "performant"] }
+pyo3-polars = "0.15.0"
 rayon = "1.5"
 zstd = "0.13.1"
 

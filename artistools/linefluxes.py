@@ -70,7 +70,7 @@ def get_packets_with_emtype_onefile(
 
 def get_packets_with_emtype(
     modelpath: Path | str, emtypecolumn: str, lineindices: t.Sequence[int], maxpacketfiles: int | None = None
-):
+) -> tuple[pd.DataFrame, int]:
     packetsfiles = at.packets.get_packets_text_paths(modelpath, maxpacketfiles=maxpacketfiles)
     nprocs_read = len(packetsfiles)
     assert nprocs_read > 0

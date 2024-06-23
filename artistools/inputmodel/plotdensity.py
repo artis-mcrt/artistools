@@ -67,7 +67,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         ]
         axes[0].plot(enclosed_xvals, enclosed_yvals, label=label)
 
-        if "vel_r_max_kmps" in dfmodel.columns:
+        if "vel_r_max_kmps" in dfmodel.collect_schema().names():
             vupperscoarse = vuppers.to_list()
         else:
             ncoarsevelbins = int(

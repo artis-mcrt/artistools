@@ -346,7 +346,7 @@ def filtermissinggridparticlecontributions(traj_root: Path, dfcontribs: pl.DataF
 
     cell_frac_sum: dict[int, float] = {}
     cell_frac_includemissing_sum: dict[int, float] = {}
-    for (cellindex,), dfparticlecontribs in dfcontribs.group_by(["cellindex"]):  # type: ignore[misc]
+    for (cellindex,), dfparticlecontribs in dfcontribs.group_by(["cellindex"]):
         assert isinstance(cellindex, int)
         cell_frac_sum[cellindex] = dfparticlecontribs["frac_of_cellmass"].sum()
         cell_frac_includemissing_sum[cellindex] = dfparticlecontribs["frac_of_cellmass_includemissing"].sum()

@@ -532,7 +532,7 @@ def plot_qdot_abund_modelcells(
         estimators_lazy = estimators_lazy.sort(by=["timestep", "modelgridindex"])
         estimators = estimators_lazy.collect()
 
-        for (nts, mgi), estimtsmgsi in estimators.group_by(["timestep", "modelgridindex"], maintain_order=True):  # type: ignore[misc]
+        for (nts, mgi), estimtsmgsi in estimators.group_by(["timestep", "modelgridindex"], maintain_order=True):
             assert isinstance(nts, int)
             assert isinstance(mgi, int)
 

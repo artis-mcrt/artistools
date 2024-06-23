@@ -656,12 +656,14 @@ def add_packet_directions_lazypolars(
     xhat = np.array([1.0, 0.0, 0.0])
     vec2 = np.cross(xhat, syn_dir)  # -yhat if syn_dir is zhat
 
-    if "dirmag" not in dfpackets.columns:
+    colnames = dfpackets.collect_schema().names()
+
+    if "dirmag" not in colnames:
         dfpackets = dfpackets.with_columns(
             (pl.col("dirx") ** 2 + pl.col("diry") ** 2 + pl.col("dirz") ** 2).sqrt().alias("dirmag"),
         )
 
-    if "costheta" not in dfpackets.columns:
+    if "costheta" not in colnames:
         dfpackets = dfpackets.with_columns(
             (
                 (pl.col("dirx") * syn_dir[0] + pl.col("diry") * syn_dir[1] + pl.col("dirz") * syn_dir[2])
@@ -671,7 +673,7 @@ def add_packet_directions_lazypolars(
             .alias("costheta"),
         )
 
-    if "phi" not in dfpackets.columns:
+    if "phi" not in colnames:
         # vec1 = dir cross syn_dir
         dfpackets = dfpackets.with_columns(
             ((pl.col("diry") * syn_dir[2] - pl.col("dirz") * syn_dir[1]) / pl.col("dirmag")).alias("vec1_x"),

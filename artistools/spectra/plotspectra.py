@@ -187,7 +187,7 @@ def plot_reference_spectrum(
 
     if fluxfilterfunc:
         print(" applying filter to reference spectrum")
-        specdata = specdata.with_columns(cs.starts_with("f_lambda").map(lambda x: fluxfilterfunc(x.to_numpy())))
+        specdata = specdata.with_columns(cs.starts_with("f_lambda").map_batches(fluxfilterfunc))
 
     if scale_to_peak:
         specdata = specdata.with_columns(
