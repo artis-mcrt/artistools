@@ -305,7 +305,7 @@ def get_from_packets(
 
     if fluxfilterfunc:
         print("Applying filter to ARTIS spectrum")
-        dfbinned_lazy = dfbinned_lazy.with_columns(cs.starts_with("f_lambda_").map(fluxfilterfunc))
+        dfbinned_lazy = dfbinned_lazy.with_columns(cs.starts_with("f_lambda_").map_batches(fluxfilterfunc))
 
     dfbinned = dfbinned_lazy.collect()
     assert isinstance(dfbinned, pl.DataFrame)
@@ -424,7 +424,7 @@ def get_spectrum(
     timestepmin: int,
     timestepmax: int | None = None,
     directionbins: t.Sequence[int] | None = None,
-    fluxfilterfunc: t.Callable[[npt.NDArray[np.floating]], npt.NDArray[np.floating]] | None = None,
+    fluxfilterfunc: t.Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     average_over_theta: bool = False,
     average_over_phi: bool = False,
     stokesparam: t.Literal["I", "Q", "U"] = "I",
@@ -492,7 +492,7 @@ def get_spectrum(
         if fluxfilterfunc:
             if dirbin == directionbins[0]:
                 print("Applying filter to ARTIS spectrum")
-            dfspectrum = dfspectrum.with_columns(cs.starts_with("f_lambda").map(lambda x: fluxfilterfunc(x.to_numpy())))
+            dfspectrum = dfspectrum.with_columns(cs.starts_with("f_lambda").map_batches(fluxfilterfunc))
 
         specdataout[dirbin] = dfspectrum
 
@@ -674,7 +674,7 @@ def get_vspecpol_spectrum(
 
     if fluxfilterfunc:
         print("Applying filter to ARTIS spectrum")
-        dfout = dfout.with_columns(cs.starts_with("f_lambda").map(lambda x: fluxfilterfunc(x.to_numpy())))
+        dfout = dfout.with_columns(cs.starts_with("f_lambda").map_batches(fluxfilterfunc))
 
     return dfout
 
@@ -969,10 +969,10 @@ def get_flux_contributions_from_packets(
                 lzdfpackets = lzdfpackets.filter(pl.col("emissiontype_str").str.contains("bound-free"))
             elif z_exclude == -2:
                 # no bound-free
-                lzdfpackets = lzdfpackets.filter(pl.col("emissiontype_str").str.contains("bound-free").is_not())
+                lzdfpackets = lzdfpackets.filter(pl.col("emissiontype_str").str.contains("bound-free").not_())
             elif z_exclude > 0:
                 elsymb = at.get_elsymbol(z_exclude)
-                lzdfpackets = lzdfpackets.filter(pl.col("emissiontype_str").str.starts_with(f"{elsymb} ").is_not())
+                lzdfpackets = lzdfpackets.filter(pl.col("emissiontype_str").str.starts_with(f"{elsymb} ").not_())
 
     if getabsorption:
         cols |= {"absorptiontype_str", "absorption_freq"}
@@ -998,13 +998,23 @@ def get_flux_contributions_from_packets(
     dfpackets = lzdfpackets.select([col for col in cols if col in lzdfpackets.columns]).collect()
 
     emissiongroups = (
-        dict(dfpackets.filter(pl.col(dirbin_nu_column).is_between(nu_min, nu_max)).group_by("emissiontype_str"))
+        {
+            k: v
+            for (k,), v in dfpackets.filter(pl.col(dirbin_nu_column).is_between(nu_min, nu_max)).group_by(
+                "emissiontype_str"
+            )
+        }
         if getemission
         else {}
     )
 
     absorptiongroups = (
-        dict(dfpackets.filter(pl.col("absorption_freq").is_between(nu_min, nu_max)).group_by("absorptiontype_str"))
+        {
+            k: v
+            for (k,), v in dfpackets.filter(pl.col("absorption_freq").is_between(nu_min, nu_max)).group_by(
+                "absorptiontype_str"
+            )
+        }
         if getabsorption
         else {}
     )
