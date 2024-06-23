@@ -851,10 +851,7 @@ def save_modeldata(
     if "inputcellid" not in dfmodel.columns and "modelgridindex" in dfmodel.columns:
         dfmodel = dfmodel.with_columns(inputcellid=pl.col("modelgridindex") + 1)
 
-    if dropcols := {"mass_g", "modelgridindex"}.intersection(dfmodel.columns):
-        dfmodel = dfmodel.drop(dropcols)
-
-    dfmodel = dfmodel.lazy().collect()
+    dfmodel = dfmodel.drop(("mass_g", "modelgridindex"), strict=False).lazy().collect()
 
     if modelmeta is None:
         modelmeta = {}
