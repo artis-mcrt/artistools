@@ -68,8 +68,7 @@ def plot_init_abundances(
         raise AssertionError
 
     if startfromzero:
-        xlist = xlist.copy()
-        xlist.insert(0, 0.0)
+        xlist = [0.0, *xlist]
 
     for speciesstr in specieslist:
         splitvariablename = speciesstr.split("_")
@@ -110,10 +109,10 @@ def plot_init_abundances(
 
         color = get_elemcolor(atomic_number=atomic_number)
 
-        xlist, ylist = at.estimators.apply_filters(xlist, ylist, args)
+        xlist, ylist = at.estimators.apply_filters(xlist, np.array(ylist), args)
 
         if startfromzero:
-            ylist.insert(0, ylist[0])
+            ylist = [ylist[0], *ylist]
 
         ax.plot(xlist, ylist, linewidth=1.5, label=linelabel, linestyle=linestyle, color=color, **plotkwargs)
 
@@ -145,8 +144,7 @@ def plot_average_ionisation_excitation(
         raise ValueError
 
     if startfromzero:
-        xlist = xlist.copy()
-        xlist.insert(0, 0.0)
+        xlist = [0.0, *xlist]
 
     arr_tdelta = at.get_timestep_times(modelpath, loc="delta")
     for paramvalue in params:
@@ -184,7 +182,7 @@ def plot_average_ionisation_excitation(
 
         elif seriestype == "averageionisation":
             elsymb = at.get_elsymbol(atomic_number)
-            if f"nnelement_{elsymb}" not in estimators.columns:
+            if f"nnelement_{elsymb}" not in estimators.collect_schema().names():
                 msg = f"ERROR: No element data found for {paramvalue}"
                 raise ValueError(msg)
             dfselected = (
@@ -231,7 +229,7 @@ def plot_average_ionisation_excitation(
 
             xlist = series["xvalue"].to_list()
             if startfromzero:
-                xlist.insert(0, 0.0)
+                xlist = [0.0, *xlist]
 
             ylist = series[f"averageionisation_{elsymb}"].to_list()
 
@@ -239,7 +237,7 @@ def plot_average_ionisation_excitation(
 
         xlist, ylist = at.estimators.apply_filters(xlist, ylist, args)
         if startfromzero:
-            ylist.insert(0, ylist[0])
+            ylist = [ylist[0], *ylist]
 
         ax.plot(xlist, ylist, label=paramvalue, color=color, **plotkwargs)
 
@@ -316,9 +314,9 @@ def plot_levelpop(
             else:
                 ylist.append(valuesum / tdeltasum)
 
-        ylist.insert(0, ylist[0])
+        ylist = [ylist[0], *ylist]
 
-        xlist, ylist = at.estimators.apply_filters(xlist, ylist, args)
+        xlist, ylist = at.estimators.apply_filters(xlist, np.array(ylist), args)
 
         ax.plot(xlist, ylist, label=label, **plotkwargs)
 
@@ -373,7 +371,7 @@ def plot_multi_ion_series(
         print("WARNING: Could not read an ARTIS compositiondata.txt file to check ion availability")
         for atomic_number, ion_stage in iontuplelist:
             ionstr = at.get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
-            if f"nnion_{ionstr}" not in estimators.columns:
+            if f"nnion_{ionstr}" not in estimators.collect_schema().names():
                 missingions.add((atomic_number, ion_stage))
 
     if missingions:
@@ -422,8 +420,8 @@ def plot_multi_ion_series(
         ylist = series[key].to_list()
         if startfromzero:
             # make a line segment from 0 velocity
-            xlist.insert(0, 0.0)
-            ylist.insert(0, ylist[0])
+            xlist = [0.0, *xlist]
+            ylist = [ylist[0], *ylist]
 
         plotlabel = (
             ion_stage
@@ -508,7 +506,7 @@ def plot_series(
     if isinstance(variable, pl.Expr):
         colexpr = variable
     else:
-        assert variable in estimators.columns
+        assert variable in estimators.collect_schema().names()
         colexpr = pl.col(variable)
 
     variablename = colexpr.meta.output_name()
@@ -547,8 +545,8 @@ def plot_series(
 
     if startfromzero:
         # make a line segment from 0 velocity
-        xlist.insert(0, 0.0)
-        ylist.insert(0, ylist[0])
+        xlist = [0.0, *xlist]
+        ylist = [ylist[0], *ylist]
 
     xlist_filtered, ylist_filtered = at.estimators.apply_filters(xlist, ylist, args)
 
@@ -581,7 +579,7 @@ def get_xlist(
             xvalue=(pl.col(velcolumn) / scalefactor), plotpointid=pl.col("modelgridindex")
         )
     else:
-        assert xvariable in estimators.columns
+        assert xvariable in estimators.collect_schema().names()
         estimators = estimators.with_columns(xvalue=pl.col(xvariable), plotpointid=pl.col("modelgridindex"))
 
     # single valued line plot

@@ -56,7 +56,7 @@ def write_Ye_file(outputfilepath: Path | str, griddata: pd.DataFrame | pl.DataFr
     if isinstance(griddata, pd.DataFrame):
         griddata = pl.from_pandas(griddata)
 
-    assert griddata["inputcellid"].dtype in pl.INTEGER_DTYPES
+    assert griddata["inputcellid"].dtype in {pl.Int8, pl.Int16, pl.Int32, pl.Int64}
 
     with Path(outputfilepath, "Ye.txt").open("w", encoding="utf-8") as fYe:
         fYe.write(f'{len(griddata["inputcellid"])}\n')
