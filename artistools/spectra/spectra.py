@@ -181,7 +181,7 @@ def get_from_packets(
         (2.99792458e18 / pl.col(colname)).alias(
             colname.replace("absorption_freq", "nu_absorbed").replace("nu_", "lambda_angstroms_")
         )
-        for colname in dfpackets.columns
+        for colname in dfpackets.collect_schema().names()
         if "nu_" in colname or colname == "absorption_freq"
     ])
 
