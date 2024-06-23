@@ -847,7 +847,7 @@ def save_modeldata(
     if isinstance(dfmodel, pd.DataFrame):
         dfmodel = pl.from_pandas(dfmodel)
 
-    dfmodel = dfmodel.drop("mass_g").lazy().collect()
+    dfmodel = dfmodel.drop("mass_g", strict=False).lazy().collect()
 
     if modelmeta is None:
         modelmeta = {}
