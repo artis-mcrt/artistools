@@ -110,7 +110,7 @@ def plot_init_abundances(
 
         color = get_elemcolor(atomic_number=atomic_number)
 
-        xlist, ylist = at.estimators.apply_filters(xlist, ylist, args)
+        xlist, ylist = at.estimators.apply_filters(xlist, np.array(ylist), args)
 
         if startfromzero:
             ylist.insert(0, ylist[0])
@@ -318,7 +318,7 @@ def plot_levelpop(
 
         ylist.insert(0, ylist[0])
 
-        xlist, ylist = at.estimators.apply_filters(xlist, ylist, args)
+        xlist, ylist = at.estimators.apply_filters(xlist, np.array(ylist), args)
 
         ax.plot(xlist, ylist, label=label, **plotkwargs)
 
