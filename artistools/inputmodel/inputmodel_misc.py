@@ -209,7 +209,7 @@ def read_modelfile_text(
 
         dfmodel = pl.from_pandas(dfmodelpd)
 
-    if "velocity_outer" in dfmodel.columns:
+    if "velocity_outer" in dfmodel.collect_schema().names():
         dfmodel = dfmodel.rename({"velocity_outer": "vel_r_max_kmps"})
 
     if modelmeta["dimensions"] == 1:
@@ -251,7 +251,7 @@ def read_modelfile_text(
         modelmeta["wid_init_y"] = wid_init_y
         modelmeta["wid_init_z"] = wid_init_z
         modelmeta["wid_init"] = wid_init_x
-        if "pos_x_min" in dfmodel.columns and not printwarningsonly:
+        if "pos_x_min" in dfmodel.collect_schema().names() and not printwarningsonly:
             print("  model cell positions are defined in the header")
             if not getheadersonly:
                 firstrow = dfmodel.row(index=0, named=True)
@@ -338,7 +338,7 @@ def read_modelfile_text(
                 print("  cell positions are consistent with z-y-x midpoint colums")
                 colrenames = {"inputpos_a": "pos_z_mid", "inputpos_b": "pos_y_mid", "inputpos_c": "pos_x_mid"}
 
-            dfmodel = dfmodel.rename({a: b for a, b in colrenames.items() if a in dfmodel.columns})
+            dfmodel = dfmodel.rename({a: b for a, b in colrenames.items() if a in dfmodel.collect_schema().names()})
 
             if matched_pos_xyz_mid or matched_pos_zyx_mid:
                 dfmodel = dfmodel.with_columns(
@@ -514,7 +514,9 @@ def get_empty_3d_model(
     standardcols = get_standard_columns(3, includenico57=includenico57)
 
     dfmodel = dfmodel.with_columns([
-        pl.lit(0.0, dtype=pl.Float32).alias(colname) for colname in standardcols if colname not in dfmodel.columns
+        pl.lit(0.0, dtype=pl.Float32).alias(colname)
+        for colname in standardcols
+        if colname not in dfmodel.collect_schema().names()
     ]).select([*standardcols, "modelgridindex"])
 
     return dfmodel, modelmeta
@@ -551,7 +553,7 @@ def add_derived_cols_to_modeldata(
     """Add columns to modeldata using e.g. derived_cols = ("velocity", "Ye")."""
     # with lazy mode, we can add every column and then drop the ones we don't need
     dfmodel = dfmodel.lazy()
-    original_cols = dfmodel.columns
+    original_cols = dfmodel.collect_schema().names()
 
     t_model_init_seconds = modelmeta["t_model_init_days"] * 86400.0
     keep_all = "ALL" in derived_cols
@@ -648,14 +650,14 @@ def add_derived_cols_to_modeldata(
                 ).sqrt(),
             )
 
-    for col in dfmodel.columns:
+    for col in dfmodel.collect_schema().names():
         if col.startswith("pos_"):
             dfmodel = dfmodel.with_columns((pl.col(col) / t_model_init_seconds).alias(col.replace("pos_", "vel_")))
 
-    if "logrho" not in dfmodel.columns:
+    if "logrho" not in dfmodel.collect_schema().names():
         dfmodel = dfmodel.with_columns(logrho=pl.col("rho").log10())
 
-    if "rho" not in dfmodel.columns:
+    if "rho" not in dfmodel.collect_schema().names():
         dfmodel = dfmodel.with_columns(
             rho=(pl.when(pl.col("logrho") > -98).then(10 ** pl.col("logrho")).otherwise(0.0))
         )
@@ -668,21 +670,27 @@ def add_derived_cols_to_modeldata(
     if unknown_cols := [
         col
         for col in derived_cols
-        if col not in dfmodel.columns and col not in {"pos_min", "pos_max", "ALL", "velocity"}
+        if col not in dfmodel.collect_schema().names() and col not in {"pos_min", "pos_max", "ALL", "velocity"}
     ]:
         print(f"WARNING: Unknown derived columns: {unknown_cols}")
 
     if "pos_min" in derived_cols:
-        derived_cols.extend(col for col in dfmodel.columns if col.startswith("pos_") and col.endswith("_min"))
+        derived_cols.extend(
+            col for col in dfmodel.collect_schema().names() if col.startswith("pos_") and col.endswith("_min")
+        )
 
     if "pos_max" in derived_cols:
-        derived_cols.extend(col for col in dfmodel.columns if col.startswith("pos_") and col.endswith("_max"))
+        derived_cols.extend(
+            col for col in dfmodel.collect_schema().names() if col.startswith("pos_") and col.endswith("_max")
+        )
 
     if "velocity" in derived_cols:
-        derived_cols.extend(col for col in dfmodel.columns if col.startswith("vel_"))
+        derived_cols.extend(col for col in dfmodel.collect_schema().names() if col.startswith("vel_"))
 
     if not keep_all:
-        dfmodel = dfmodel.drop([col for col in dfmodel.columns if col not in original_cols and col not in derived_cols])
+        dfmodel = dfmodel.drop([
+            col for col in dfmodel.collect_schema().names() if col not in original_cols and col not in derived_cols
+        ])
 
     if "angle_bin" in derived_cols:
         assert modelpath is not None
@@ -881,7 +889,7 @@ def save_modeldata(
         assert modelmeta["ncoordgridrcyl"] * modelmeta["ncoordgridz"] == len(dfmodel)
 
     elif modelmeta["dimensions"] == 3:
-        if "gridindex" in dfmodel.columns:
+        if "gridindex" in dfmodel.collect_schema().names():
             dfmodel = dfmodel.rename({"gridindex": "inputcellid"})
         griddimension = int(round(len(dfmodel) ** (1.0 / 3.0)))
         print(f" 3D grid size: {len(dfmodel)} ({griddimension}^3)")
@@ -893,16 +901,17 @@ def save_modeldata(
 
     # the Ni57 and Co57 columns are optional, but position is important and they must appear before any other custom cols
     standardcols = get_standard_columns(
-        modelmeta["dimensions"], includenico57=("X_Ni57" in dfmodel.columns or "X_Co57" in dfmodel.columns)
+        modelmeta["dimensions"],
+        includenico57=("X_Ni57" in dfmodel.collect_schema().names() or "X_Co57" in dfmodel.collect_schema().names()),
     )
 
     # set missing radioabundance columns to zero
     for col in standardcols:
-        if col not in dfmodel.columns and col.startswith("X_"):
+        if col not in dfmodel.collect_schema().names() and col.startswith("X_"):
             dfmodel = dfmodel.with_columns(pl.lit(0.0).alias(col))
 
     dfmodel = dfmodel.with_columns(pl.col("inputcellid").cast(pl.Int32))
-    customcols = [col for col in dfmodel.columns if col not in standardcols]
+    customcols = [col for col in dfmodel.collect_schema().names() if col not in standardcols]
     customcols.sort(
         key=lambda col: at.get_z_a_nucname(col) if col.startswith("X_") else (math.inf, 0)
     )  # sort columns by atomic number, mass number
@@ -1145,10 +1154,10 @@ def save_empty_abundance_file(npts_model: int, outputfilepath: str | Path = Path
 
 def get_dfmodel_dimensions(dfmodel: pd.DataFrame | pl.DataFrame | pl.LazyFrame) -> int:
     """Guess whether the model is 1D, 2D, or 3D based on which columns are present."""
-    if "pos_x_min" in dfmodel.columns:
+    if "pos_x_min" in dfmodel.collect_schema().names():
         return 3
 
-    return 2 if "pos_z_mid" in dfmodel.columns else 1
+    return 2 if "pos_z_mid" in dfmodel.collect_schema().names() else 1
 
 
 def dimension_reduce_model(
@@ -1393,7 +1402,7 @@ def scale_model_to_time(
         "using homologous expansion of positions and densities"
     )
 
-    for col in dfmodel.columns:
+    for col in dfmodel.collect_schema().names():
         if col.startswith("pos_"):
             dfmodel[col] *= timefactor
         elif col == "rho":

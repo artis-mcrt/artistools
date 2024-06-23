@@ -182,7 +182,7 @@ def plot_average_ionisation_excitation(
 
         elif seriestype == "averageionisation":
             elsymb = at.get_elsymbol(atomic_number)
-            if f"nnelement_{elsymb}" not in estimators.columns:
+            if f"nnelement_{elsymb}" not in estimators.collect_schema().names():
                 msg = f"ERROR: No element data found for {paramvalue}"
                 raise ValueError(msg)
             dfselected = (
@@ -371,7 +371,7 @@ def plot_multi_ion_series(
         print("WARNING: Could not read an ARTIS compositiondata.txt file to check ion availability")
         for atomic_number, ion_stage in iontuplelist:
             ionstr = at.get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
-            if f"nnion_{ionstr}" not in estimators.columns:
+            if f"nnion_{ionstr}" not in estimators.collect_schema().names():
                 missingions.add((atomic_number, ion_stage))
 
     if missingions:
@@ -506,7 +506,7 @@ def plot_series(
     if isinstance(variable, pl.Expr):
         colexpr = variable
     else:
-        assert variable in estimators.columns
+        assert variable in estimators.collect_schema().names()
         colexpr = pl.col(variable)
 
     variablename = colexpr.meta.output_name()
@@ -579,7 +579,7 @@ def get_xlist(
             xvalue=(pl.col(velcolumn) / scalefactor), plotpointid=pl.col("modelgridindex")
         )
     else:
-        assert xvariable in estimators.columns
+        assert xvariable in estimators.collect_schema().names()
         estimators = estimators.with_columns(xvalue=pl.col(xvariable), plotpointid=pl.col("modelgridindex"))
 
     # single valued line plot
