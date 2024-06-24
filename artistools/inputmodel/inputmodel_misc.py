@@ -1012,10 +1012,14 @@ def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist: t.Sequenc
     raise AssertionError
 
 
-def get_initelemabundances(
+def get_initelemabundances_pandas(
     modelpath: Path = Path(),
     printwarningsonly: bool = False,
 ) -> pd.DataFrame:
+    """Return a table of elemental mass fractions by cell from abundances.
+
+    Deprecated: Use get_initelemabundances_pandas() instead.
+    """
     return (
         get_initelemabundances_polars(modelpath=modelpath, printwarningsonly=printwarningsonly)
         .with_columns(pl.col("inputcellid").sub(1).alias("modelgridindex"))
