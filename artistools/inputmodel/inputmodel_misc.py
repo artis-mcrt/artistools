@@ -951,8 +951,8 @@ def save_modeldata(
 
         abundandcustomcols = [*[col for col in standardcols if col.startswith("X_")], *customcols]
 
+        strzeroabund = " ".join(["0.0" if dfmodel.schema[col].is_float() else "0" for col in abundandcustomcols])
         if modelmeta["dimensions"] == 1:
-            strzeroabund = " ".join(["0.0" if dfmodel.schema[col].is_float() else "0" for col in abundandcustomcols])
             for inputcellid, vel_r_max_kmps, logrho, *abundandcustomcolvals in dfmodel.select([
                 "inputcellid",
                 "vel_r_max_kmps",
@@ -968,25 +968,41 @@ def save_modeldata(
                 fmodel.write("\n")
 
         else:
-            # lineend = "\n" if twolinespercell else " "
-            startcols = get_standard_columns(modelmeta["dimensions"], includeabund=False)
-
-            # set abundances to null for cells with zero density (so that shorter form "0.0" can be written)
-            dfmodel = dfmodel.select([*startcols, *abundandcustomcols]).with_columns(
-                pl.when(pl.col("rho") > 0).then(pl.col(col)).otherwise(pl.lit(None)).alias(col)
-                for col in dfmodel.columns
-                if not col.startswith("pos") and col != "inputcellid" and dfmodel.schema[col].is_float()
-            )
-            fmodel.flush()
-            dfmodel.write_csv(
-                fmodel,
-                include_header=False,
-                separator=" ",
-                line_terminator="\n",
-                float_scientific=True,
-                float_precision=4,
-                null_value="0.0",
-            )
+            # startcols are the standard ones, but excluding any abundances
+            startcols = [col for col in standardcols if not col.startswith("X_")]
+            dfmodel = dfmodel.select([*startcols, *abundandcustomcols])
+            if twolinespercell:
+                # slow python writer. only needed to create models for classic ARTIS
+                nstartcols = len(startcols)
+                rhocolindex = len(startcols) - 1
+                for colvals in dfmodel.iter_rows():
+                    inputcellid = colvals[0]
+                    fmodel.write(f"{inputcellid:d}" + "".join(f" {colvalue:.4e}" for colvalue in colvals[1:nstartcols]))
+                    fmodel.write("\n")
+                    fmodel.write(
+                        " ".join((f"{colvalue:.4e}" if colvalue > 0.0 else "0.0") for colvalue in colvals[nstartcols:])
+                        if colvals[rhocolindex] > 0.0
+                        else strzeroabund
+                    )
+                    fmodel.write("\n")
+            else:
+                # fast polars writer
+                # set abundances to null for cells with zero density (so that shorter form "0.0" can be written)
+                dfmodel = dfmodel.with_columns(
+                    pl.when(pl.col("rho") > 0).then(pl.col(col)).otherwise(pl.lit(None)).alias(col)
+                    for col in dfmodel.columns
+                    if not col.startswith("pos") and col != "inputcellid" and dfmodel.schema[col].is_float()
+                )
+                fmodel.flush()
+                dfmodel.write_csv(
+                    fmodel,
+                    include_header=False,
+                    separator=" ",
+                    line_terminator="\n",
+                    float_scientific=True,
+                    float_precision=4,
+                    null_value="0.0",
+                )
 
     print(f"Saved {modelfilepath} (took {time.perf_counter() - timestart:.1f} seconds)")
 
