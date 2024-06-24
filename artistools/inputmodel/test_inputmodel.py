@@ -314,7 +314,7 @@ def test_save_load_3d_model() -> None:
 
     # give random abundances to the cells with rho > 0
     dfmodel = dfmodel.with_columns([
-        pl.Series(isocol, rng.random(dfmodel.height), dtype=pl.Float32) for isocol in isocolnames
+        pl.Series(isocol, rng.random(dfmodel.height, dtype=np.float32), dtype=pl.Float32) for isocol in isocolnames
     ])
 
     # abundances don't matter if rho is zero, so we'll set them to zero to match the resulting dataframe that will be loaded
@@ -325,7 +325,7 @@ def test_save_load_3d_model() -> None:
     # sum isotopic abundances to get elemental abundances
     dfelemabundances = dfmodel.select([
         "inputcellid",
-        *[pl.sum_horizontal(cs.starts_with(elcol)).alias(elcol) for elcol in elcolnames],
+        *[pl.sum_horizontal(cs.starts_with(elcol)).cast(pl.Float32).alias(elcol) for elcol in elcolnames],
     ])
 
     outpath = outputpath / "test_save_load_3d_model"
