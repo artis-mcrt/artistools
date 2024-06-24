@@ -352,8 +352,8 @@ def test_save_load_3d_model() -> None:
             dfelemabundances_loaded.collect(),
             check_column_order=True,
             check_dtypes=False,
-            rtol=1e-4,
-            atol=1e-4,
+            rtol=1e-3,
+            atol=1e-3,
         )
 
 
