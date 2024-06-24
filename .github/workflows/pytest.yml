@@ -195,5 +195,5 @@ jobs:
             - name: Upload output files
               uses: actions/upload-artifact@v4
               with:
-                  name: testoutput-${{ matrix.python-version }}
+                  name: testoutput-${{ matrix.os }}-cp${{ matrix.python-version }}
                   path: tests/output/
