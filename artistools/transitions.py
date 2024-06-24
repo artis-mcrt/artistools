@@ -17,10 +17,13 @@ import artistools as at
 
 defaultoutputfile = "plottransitions_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf"
 
-iontuple = namedtuple("iontuple", "Z ion_stage")
+
+class IonTuple(t.NamedTuple):
+    Z: int
+    ion_stage: int
 
 
-def get_kurucz_transitions() -> tuple[pd.DataFrame, list[iontuple]]:
+def get_kurucz_transitions() -> tuple[pd.DataFrame, list[IonTuple]]:
     hc_evcm = (const.h * const.c).to("eV cm").value
     transitiontuple = namedtuple(
         "transitiontuple",
@@ -54,8 +57,8 @@ def get_kurucz_transitions() -> tuple[pd.DataFrame, list[iontuple]]:
                     )
                 )
 
-                if iontuple(Z, ion_stage) not in ionlist:
-                    ionlist.append(iontuple(Z, ion_stage))
+                if IonTuple(Z, ion_stage) not in ionlist:
+                    ionlist.append(IonTuple(Z, ion_stage))
 
     dftransitions = pd.DataFrame(translist, columns=transitiontuple._fields)
     return dftransitions, ionlist
@@ -275,13 +278,13 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     plot_xmax_wide = args.xmax * (1 + args.gaussian_window * args.sigma_v / const.c.to("km / s").value)  # noqa: F841
 
     ionlist = [
-        iontuple(26, 1),
-        iontuple(26, 2),
-        iontuple(26, 3),
-        iontuple(27, 2),
-        iontuple(27, 3),
-        iontuple(28, 2),
-        iontuple(28, 3),
+        IonTuple(26, 1),
+        IonTuple(26, 2),
+        IonTuple(26, 3),
+        IonTuple(27, 2),
+        IonTuple(27, 3),
+        IonTuple(28, 2),
+        IonTuple(28, 3),
         # iontuple(28, 2),
         # iontuple(45, 1),
         # iontuple(54, 1),
@@ -364,9 +367,9 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     dftransitions_all = None
     fe2depcoeff, ni2depcoeff = None, None
     for _, ion in adata.iterrows() if args.atomicdatabase == "artis" else enumerate(ionlist):
-        assert isinstance(ion, pd.Series | iontuple)
+        assert isinstance(ion, pd.Series | IonTuple)
 
-        ionid = iontuple(ion.Z, ion.ion_stage)
+        ionid = IonTuple(ion.Z, ion.ion_stage)
         if ionid not in ionlist:
             continue
 
@@ -379,6 +382,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         else:
             assert isinstance(ion, pd.Series)
             dftransitions = ion.transitions
+            assert isinstance(ion.transitions, pd.DataFrame)
 
         print(
             f"\n======> {at.get_elsymbol(ion.Z)} {at.roman_numerals[ion.ion_stage]:3s} "
