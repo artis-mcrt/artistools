@@ -360,6 +360,8 @@ def test_save_load_3d_model() -> None:
 def lower_dim_and_check_mass_conservation(outputdimensions: int) -> None:
     dfmodel3d_pl_lazy, modelmeta_3d = at.inputmodel.get_empty_3d_model(ncoordgrid=50, vmax=100000, t_model_init_days=1)
     dfmodel3d_pl = dfmodel3d_pl_lazy.collect()
+
+    # it's important that we don't fill cells in the cube corners, as they will be lost when reducing dimensions
     mgi1 = 26 * 26 * 26 + 26 * 26 + 26
     dfmodel3d_pl[mgi1, "rho"] = 2
     dfmodel3d_pl[mgi1, "X_Ni56"] = 0.5
