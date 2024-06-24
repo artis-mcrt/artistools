@@ -287,7 +287,7 @@ def test_save_load_3d_model() -> None:
     rng = np.random.default_rng()
 
     # give a random rho to half of the cells
-    dfmodel[rng.integers(0, dfmodel.height, dfmodel.height // 2), "rho"] = 10.0 * rng.random(dfmodel.height // 2)
+    dfmodel[rng.integers(0, dfmodel.height, dfmodel.height // 2), "rho"] = 10.0 * rng.random(dfmodel.height // 2, dtype=np.float32)
 
     dfelements = (
         at.get_elsymbols_df()
