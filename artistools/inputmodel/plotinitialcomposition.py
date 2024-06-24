@@ -221,7 +221,7 @@ def plot_2d_initial_abundances(modelpath, args: argparse.Namespace) -> None:
 def get_model_abundances_Msun_1D(modelpath: Path) -> pd.DataFrame:
     filename = modelpath / "model.txt"
     modeldata, t_model_init_days, _ = at.inputmodel.get_modeldata_tuple(filename)
-    abundancedata = at.inputmodel.get_initelemabundances(modelpath)
+    abundancedata = at.inputmodel.get_initelemabundances_pandas(modelpath)
 
     t_model_init_seconds = t_model_init_days * 24 * 60 * 60
 
@@ -251,7 +251,7 @@ def get_model_abundances_Msun_1D(modelpath: Path) -> pd.DataFrame:
 
 def plot_most_abundant(modelpath, args: argparse.Namespace):
     model, _ = at.inputmodel.get_modeldata(modelpath[0])
-    abundances = at.inputmodel.get_initelemabundances(modelpath[0])
+    abundances = at.inputmodel.get_initelemabundances_pandas(modelpath[0])
 
     merge_dfs = model.merge(abundances, how="inner", on="inputcellid")
     elements = [x for x in merge_dfs.columns if "X_" in x]

@@ -26,7 +26,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     dfmodel, t_model_init_days, _ = at.inputmodel.get_modeldata_tuple(args.inputpath, derived_cols=["mass_g"])
     print("Read model.txt")
-    dfelabundances = at.inputmodel.get_initelemabundances(args.inputpath)
+    dfelabundances = at.inputmodel.get_initelemabundances_pandas(args.inputpath)
     print("Read abundances.txt")
 
     print(dfmodel)
