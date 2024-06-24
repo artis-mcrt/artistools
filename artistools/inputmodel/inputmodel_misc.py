@@ -949,64 +949,44 @@ def save_modeldata(
         if customcols:
             fmodel.write(f'#{" ".join(standardcols)} {" ".join(customcols)}\n')
 
-        abundcols = [*[col for col in standardcols if col.startswith("X_")], *customcols]
+        abundandcustomcols = [*[col for col in standardcols if col.startswith("X_")], *customcols]
 
-        zeroabund = " ".join(["0.0" for _ in abundcols])
         if modelmeta["dimensions"] == 1:
-            for inputcellid, vel_r_max_kmps, logrho, *othercolvals in dfmodel.select([
+            strzeroabund = " ".join(["0.0" if dfmodel.schema[col].is_float() else "0" for col in abundandcustomcols])
+            for inputcellid, vel_r_max_kmps, logrho, *abundandcustomcolvals in dfmodel.select([
                 "inputcellid",
                 "vel_r_max_kmps",
                 "logrho",
-                *abundcols,
+                *abundandcustomcols,
             ]).iter_rows():
                 fmodel.write(f"{inputcellid:d} {vel_r_max_kmps:9.2f} {logrho:10.8f} ")
                 fmodel.write(
-                    " ".join([(f"{colvalue:.4e}" if colvalue > 0.0 else "0.0") for colvalue in othercolvals])
+                    " ".join([(f"{colvalue:.4e}" if colvalue > 0.0 else "0.0") for colvalue in abundandcustomcolvals])
                     if logrho > -99.0
-                    else zeroabund
+                    else strzeroabund
                 )
                 fmodel.write("\n")
 
         else:
             # lineend = "\n" if twolinespercell else " "
             startcols = get_standard_columns(modelmeta["dimensions"], includeabund=False)
-            dfmodel = dfmodel.select([*startcols, *abundcols])
-            # dfmodel = dfmodel.select([*startcols, *abundcols]).with_columns(
-            #     pl.when(pl.col("rho") > 0)
-            #     .then(pl.col(col).map_elements(lambda x: f"{x:.4e}", pl.String))
-            #     # .then(pl.col(col).cast(pl.String))
-            #     .otherwise(pl.lit("0.0"))
-            #     .alias(col)
-            #     for col in dfmodel.columns
-            #     if col.startswith("X_")
-            # )
-            dfmodel = dfmodel.select([*startcols, *abundcols]).with_columns(
-                pl.when(pl.col("rho") > 0)
-                .then(pl.col(col))
-                # .then(pl.col(col).cast(pl.String))
-                .otherwise(pl.lit(None))
-                .alias(col)
+
+            # set abundances to null for cells with zero density (so that shorter form "0.0" can be written)
+            dfmodel = dfmodel.select([*startcols, *abundandcustomcols]).with_columns(
+                pl.when(pl.col("rho") > 0).then(pl.col(col)).otherwise(pl.lit(None)).alias(col)
                 for col in dfmodel.columns
                 if not col.startswith("pos") and col != "inputcellid" and dfmodel.schema[col].is_float()
             )
             fmodel.flush()
-            # assert False, dfmodel
             dfmodel.write_csv(
-                fmodel, include_header=False, separator=" ", line_terminator="\n", float_precision=4, null_value="0.0"
+                fmodel,
+                include_header=False,
+                separator=" ",
+                line_terminator="\n",
+                float_scientific=True,
+                float_precision=4,
+                null_value="0.0",
             )
-
-            # nstartcols = len(startcols)
-            # for colvals in dfmodel.iter_rows():
-            #     inputcellid = colvals[0]
-            #     rho = colvals[nstartcols - 1]
-            #     fmodel.write(f"{inputcellid:d}" + "".join(f" {colvalue:.4e}" for colvalue in colvals[1:nstartcols]))
-            #     fmodel.write(lineend)
-            #     fmodel.write(
-            #         " ".join((f"{colvalue:.4e}" if colvalue > 0.0 else "0.0") for colvalue in colvals[nstartcols:])
-            #         if rho > 0.0
-            #         else zeroabund
-            #     )
-            #     fmodel.write("\n")
 
     print(f"Saved {modelfilepath} (took {time.perf_counter() - timestart:.1f} seconds)")
 
@@ -1159,14 +1139,19 @@ def save_initelemabundances(
     if abundancefilename.exists():
         oldfile = abundancefilename.rename(abundancefilename.with_suffix(".bak"))
         print(f"{abundancefilename} already exists. Renaming existing file to {oldfile}")
-
     with Path(abundancefilename).open("w", encoding="utf-8") as fabund:
         if headercommentlines is not None:
             fabund.write("\n".join([f"# {line}" for line in headercommentlines]) + "\n")
-        for inputcellid, *abundvals in dfelabundances.select(["inputcellid", *elcolnames]).iter_rows():
-            fabund.write(f"{inputcellid:} ")
-            fabund.write(" ".join([f"{abund:.4e}" for abund in abundvals]))
-            fabund.write("\n")
+        fabund.flush()
+        dfelabundances.write_csv(
+            fabund,
+            include_header=False,
+            separator=" ",
+            line_terminator="\n",
+            float_scientific=True,
+            float_precision=4,
+            null_value="0.0",
+        )
 
     print(f"Saved {abundancefilename} (took {time.perf_counter() - timestart:.1f} seconds)")
 
