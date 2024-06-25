@@ -280,10 +280,10 @@ def test_save_load_3d_model() -> None:
     lzdfmodel, modelmeta = at.inputmodel.get_empty_3d_model(ncoordgrid=10, vmax=1000, t_model_init_days=1)
     dfmodel = lzdfmodel.collect()
 
-    dfmodel[75000, "rho"] = 1
-    dfmodel[75001, "rho"] = 2
-    dfmodel[95200, "rho"] = 3
-    dfmodel[75001, "rho"] = 0.5
+    # dfmodel[75000, "rho"] = 1
+    # dfmodel[75001, "rho"] = 2
+    # dfmodel[95200, "rho"] = 3
+    # dfmodel[75001, "rho"] = 0.5
     rng = np.random.default_rng()
 
     # give a random rho to half of the cells
