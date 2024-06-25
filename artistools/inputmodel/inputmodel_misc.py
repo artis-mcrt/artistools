@@ -952,7 +952,7 @@ def save_modeldata(
 
         strzeroabund = " ".join(["0.0" for _ in abundandcustomcols])
         if modelmeta["dimensions"] == 1:
-            for inputcellid, vel_r_max_kmps, logrho, *othercolvals in dfmodel.select([
+            for inputcellid, vel_r_max_kmps, logrho, *abundandcustomcolvals in dfmodel.select([
                 "inputcellid",
                 "vel_r_max_kmps",
                 "logrho",
@@ -960,7 +960,7 @@ def save_modeldata(
             ]).iter_rows():
                 fmodel.write(f"{inputcellid:d} {vel_r_max_kmps:9.2f} {logrho:10.8f} ")
                 fmodel.write(
-                    " ".join([(f"{colvalue:.4e}" if colvalue > 0.0 else "0.0") for colvalue in othercolvals])
+                    " ".join([(f"{colvalue:.4e}" if colvalue > 0.0 else "0.0") for colvalue in abundandcustomcolvals])
                     if logrho > -99.0
                     else strzeroabund
                 )
