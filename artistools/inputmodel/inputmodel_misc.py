@@ -1102,8 +1102,6 @@ def get_initelemabundances_polars(
                 partialparquetfilepath.rename(parquetfilepath)
 
             print("  Done.")
-            del abundancedata
-            gc.collect()
             abundancedata_lazy = pl.scan_parquet(parquetfilepath)
         else:
             abundancedata_lazy = abundancedata.lazy()
