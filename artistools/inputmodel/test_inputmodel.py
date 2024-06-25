@@ -339,7 +339,8 @@ def test_save_load_3d_model() -> None:
 
     # give random abundances to the cells with rho > 0
     dfmodel = dfmodel.with_columns([
-        pl.Series(isocol, rng.random(dfmodel.height, dtype=np.float32), dtype=pl.Float32) for isocol in isocolnames
+        pl.Series(isocol, list(rng.random(dfmodel.height, dtype=np.float32)), dtype=pl.Float32)
+        for isocol in isocolnames
     ])
 
     # abundances don't matter if rho is zero, so we'll set them to zero to match the resulting dataframe that will be loaded
