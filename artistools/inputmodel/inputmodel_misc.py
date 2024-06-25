@@ -7,7 +7,6 @@ import tempfile
 import time
 import typing as t
 from collections import defaultdict
-from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
@@ -423,6 +422,7 @@ def get_modeldata_polars(
 
     if dfmodel is None:
         dfmodel = dfmodel_textfile.lazy()
+        assert dfmodel is not None
 
         mebibyte = 1024 * 1024
         if textfilepath.stat().st_size > 5 * mebibyte and not getheadersonly:
@@ -948,28 +948,28 @@ def save_modeldata(
         if customcols:
             fmodel.write(f'#{" ".join(standardcols)} {" ".join(customcols)}\n')
 
-        abundcols = [*[col for col in standardcols if col.startswith("X_")], *customcols]
+        abundandcustomcols = [*[col for col in standardcols if col.startswith("X_")], *customcols]
 
-        zeroabund = " ".join(["0.0" for _ in abundcols])
+        strzeroabund = " ".join(["0.0" for _ in abundandcustomcols])
         if modelmeta["dimensions"] == 1:
-            for inputcellid, vel_r_max_kmps, logrho, *othercolvals in dfmodel.select([
+            for inputcellid, vel_r_max_kmps, logrho, *abundandcustomcolvals in dfmodel.select([
                 "inputcellid",
                 "vel_r_max_kmps",
                 "logrho",
-                *abundcols,
+                *abundandcustomcols,
             ]).iter_rows():
                 fmodel.write(f"{inputcellid:d} {vel_r_max_kmps:9.2f} {logrho:10.8f} ")
                 fmodel.write(
-                    " ".join([(f"{colvalue:.4e}" if colvalue > 0.0 else "0.0") for colvalue in othercolvals])
+                    " ".join([(f"{colvalue:.4e}" if colvalue > 0.0 else "0.0") for colvalue in abundandcustomcolvals])
                     if logrho > -99.0
-                    else zeroabund
+                    else strzeroabund
                 )
                 fmodel.write("\n")
 
         else:
             lineend = "\n" if twolinespercell else " "
             startcols = get_standard_columns(modelmeta["dimensions"], includeabund=False)
-            dfmodel = dfmodel.select([*startcols, *abundcols])
+            dfmodel = dfmodel.select([*startcols, *abundandcustomcols])
             nstartcols = len(startcols)
             for colvals in dfmodel.iter_rows():
                 inputcellid = colvals[0]
@@ -979,7 +979,7 @@ def save_modeldata(
                 fmodel.write(
                     " ".join((f"{colvalue:.4e}" if colvalue > 0.0 else "0.0") for colvalue in colvals[nstartcols:])
                     if rho > 0.0
-                    else zeroabund
+                    else strzeroabund
                 )
                 fmodel.write("\n")
 
@@ -1029,7 +1029,6 @@ def get_initelemabundances_pandas(
     )
 
 
-@lru_cache(maxsize=8)
 def get_initelemabundances_polars(
     modelpath: Path = Path(),
     printwarningsonly: bool = False,
@@ -1115,10 +1114,16 @@ def save_initelemabundances(
     if isinstance(dfelabundances, pd.DataFrame):
         dfelabundances = pl.from_pandas(dfelabundances)
 
-    dfelabundances = dfelabundances.clone().lazy().collect().with_columns([pl.col("inputcellid").cast(pl.Int32)])
+    dfelabundances = (
+        dfelabundances.lazy().with_columns([pl.col("inputcellid").cast(pl.Int32)]).sort("inputcellid").collect()
+    )
+
+    assert dfelabundances["inputcellid"].min() == 1
+    assert dfelabundances["inputcellid"].max() == len(dfelabundances)
 
     atomic_numbers = {
-        at.get_atomic_number(colname[2:]) for colname in dfelabundances.select(pl.selectors.starts_with("X_")).columns
+        at.get_atomic_number(colname.removeprefix("X_"))
+        for colname in dfelabundances.select(cs.starts_with("X_")).columns
     }
     max_atomic_number = max([30, *atomic_numbers])
     elcolnames = [f"X_{at.get_elsymbol(Z)}" for Z in range(1, 1 + max_atomic_number)]
@@ -1130,6 +1135,8 @@ def save_initelemabundances(
     for col in elcolnames:
         if col not in dfelabundances.columns:
             dfelabundances[col] = 0.0
+
+    dfelabundances = dfelabundances.select(["inputcellid", *elcolnames])
 
     if abundancefilename.exists():
         oldfile = abundancefilename.rename(abundancefilename.with_suffix(".bak"))

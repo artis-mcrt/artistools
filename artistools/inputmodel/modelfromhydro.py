@@ -347,7 +347,7 @@ def makemodelfromgriddata(
     )
 
     dfmodel = pl.from_pandas(pddfmodel).sort("inputcellid")
-    assert dfmodel["inputcellid"].dtype in {pl.Int8, pl.Int16, pl.Int32, pl.Int64}
+    assert dfmodel.schema["inputcellid"].is_integer()
     assert isinstance(dfmodel, pl.DataFrame)
     dfmodel = dfmodel.with_columns(pl.col("inputcellid").cast(pl.Int32))  # pylint: disable=no-member
     if scaledensity != 1.0:
