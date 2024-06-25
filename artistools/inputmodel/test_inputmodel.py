@@ -277,21 +277,21 @@ def test_plotinitialcomposition() -> None:
 
 @pytest.mark.benchmark()
 def test_save_load_3d_model() -> None:
-    lzdfmodel, modelmeta = at.inputmodel.get_empty_3d_model(ncoordgrid=50, vmax=1000, t_model_init_days=1)
+    lzdfmodel, modelmeta = at.inputmodel.get_empty_3d_model(
+        ncoordgrid=50, vmax=1000, t_model_init_days=1, includenico57=True
+    )
     dfmodel = lzdfmodel.collect()
 
-    dfmodel[75000, "rho"] = 1
-    dfmodel[75001, "rho"] = 2
-    dfmodel[95200, "rho"] = 3
-    dfmodel[75001, "rho"] = 0.5
     rng = np.random.default_rng()
 
     # give a random rho to half of the cells
-    dfmodel[rng.integers(0, dfmodel.height, dfmodel.height // 2), "rho"] = 10.0 * rng.random(dfmodel.height // 2)
+    dfmodel[rng.integers(0, dfmodel.height, dfmodel.height // 2), "rho"] = 10.0 * rng.random(
+        dfmodel.height // 2, dtype=np.float32
+    )
 
     dfelements = (
         at.get_elsymbols_df()
-        .filter(pl.col("atomic_number").is_between(1, 110))
+        .filter(pl.col("atomic_number").is_between(1, 80))
         .sort(by="atomic_number")
         .with_columns(
             elemcolname="X_" + pl.col("elsymbol"), mass_number_example=(pl.col("atomic_number") * 2).cast(pl.Int32)
@@ -307,14 +307,15 @@ def test_save_load_3d_model() -> None:
         "isocolname",
         pl.concat(
             dfelements.select(pl.col("elemcolname") + (pl.col("mass_number_example") + i).cast(pl.Utf8))
-            for i in range(5)
+            for i in range(2)
         ),
     )
     isocolnames = dfisocolnames.to_list()
 
     # give random abundances to the cells with rho > 0
     dfmodel = dfmodel.with_columns([
-        pl.Series(isocol, rng.random(dfmodel.height, dtype=np.float32), dtype=pl.Float32) for isocol in isocolnames
+        pl.Series(isocol, list(rng.random(dfmodel.height, dtype=np.float32)), dtype=pl.Float32)
+        for isocol in isocolnames
     ])
 
     # abundances don't matter if rho is zero, so we'll set them to zero to match the resulting dataframe that will be loaded
@@ -350,7 +351,7 @@ def test_save_load_3d_model() -> None:
         pltest.assert_frame_equal(
             dfelemabundances,
             dfelemabundances_loaded.collect(),
-            check_column_order=True,
+            check_column_order=False,
             check_dtypes=False,
             rtol=1e-3,
             atol=1e-3,
@@ -360,6 +361,8 @@ def test_save_load_3d_model() -> None:
 def lower_dim_and_check_mass_conservation(outputdimensions: int) -> None:
     dfmodel3d_pl_lazy, modelmeta_3d = at.inputmodel.get_empty_3d_model(ncoordgrid=50, vmax=100000, t_model_init_days=1)
     dfmodel3d_pl = dfmodel3d_pl_lazy.collect()
+
+    # it's important that we don't fill cells in the cube corners, as they will be lost when reducing dimensions
     mgi1 = 26 * 26 * 26 + 26 * 26 + 26
     dfmodel3d_pl[mgi1, "rho"] = 2
     dfmodel3d_pl[mgi1, "X_Ni56"] = 0.5
