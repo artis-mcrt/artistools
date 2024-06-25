@@ -159,6 +159,7 @@ jobs:
             - name: Cache test data
               uses: actions/cache@v4
               with:
+                  enableCrossOsArchive: true
                   path: tests/data/*.tar.xz
                   key: testdata20231114
 

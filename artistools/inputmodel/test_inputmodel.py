@@ -118,8 +118,8 @@ def test_makeartismodelfrom_sph_particles() -> None:
             },
             "makeartismodel_sums": {
                 "gridcontributions.txt": "6327d196b4800eedb18faee15097f76af352ecbaa9ee59055161b81378bd4af7",
-                "abundances.txt": "b84fb2542b1872291e1f45385b43fad2e5249f7fccbe7e4cab59b9c3b6c63916",
-                "model.txt": "c268277b78d9053b447396519c183b8f8ad38404b40ed4a820670987a4d2bba2",
+                "abundances.txt": "1dffae45ff2abe72df3055305853e61ffe471913c5c8cc39cc6f67e38b5f5f45",
+                "model.txt": "6a98aba2b541af5c24497362b053dbe7749bba74a49778f494b440a453c735fc",
             },
         },
         {
@@ -131,8 +131,8 @@ def test_makeartismodelfrom_sph_particles() -> None:
             },
             "makeartismodel_sums": {
                 "gridcontributions.txt": "c06b4cbbe7f3bf423ed636afd63e3d8e30cc3ffa928d3275ffc3ce13f2e4dbef",
-                "abundances.txt": "b84fb2542b1872291e1f45385b43fad2e5249f7fccbe7e4cab59b9c3b6c63916",
-                "model.txt": "6bca370bf85e759b95707b5819d9acb717840ede8168f9d3d70007d74c8afc23",
+                "abundances.txt": "1dffae45ff2abe72df3055305853e61ffe471913c5c8cc39cc6f67e38b5f5f45",
+                "model.txt": "f9adee21771c18aa6e10c58c252f5f37e3892d3d6007685d915bc1b9cc961a74",
             },
         },
     ]
