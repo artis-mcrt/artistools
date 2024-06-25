@@ -7,7 +7,6 @@ import tempfile
 import time
 import typing as t
 from collections import defaultdict
-from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
@@ -1050,7 +1049,6 @@ def get_initelemabundances_pandas(
     )
 
 
-@lru_cache(maxsize=8)
 def get_initelemabundances_polars(
     modelpath: Path = Path(),
     printwarningsonly: bool = False,
