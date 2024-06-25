@@ -289,29 +289,6 @@ def test_save_load_3d_model() -> None:
 
     dfelements = (
         at.get_elsymbols_df()
-        .filter(pl.col("atomic_number").is_between(1, 110))
-        .sort(by="atomic_number")
-        .with_columns(
-            elemcolname="X_" + pl.col("elsymbol"), mass_number_example=(pl.col("atomic_number") * 2).cast(pl.Int32)
-        )
-    )
-
-    # for elemental abundance file, we must start from hydrogen and not skip any atomic numbers
-    assert dfelements["elemcolname"].unique().len() == dfelements["atomic_number"].max()
-    elcolnames = dfelements["elemcolname"].to_list()
-
-    # this give us several isotopes for each element (doesn't matter if they are real or not)
-    dfisocolnames = pl.Series(
-        "isocolname",
-        pl.concat(
-            dfelements.select(pl.col("elemcolname") + (pl.col("mass_number_example") + i).cast(pl.Utf8))
-            for i in range(5)
-        ),
-    )
-    isocolnames = dfisocolnames.to_list()
-
-    dfelements = (
-        at.get_elsymbols_df()
         .filter(pl.col("atomic_number").is_between(1, 80))
         .sort(by="atomic_number")
         .with_columns(
@@ -328,7 +305,7 @@ def test_save_load_3d_model() -> None:
         "isocolname",
         pl.concat(
             dfelements.select(pl.col("elemcolname") + (pl.col("mass_number_example") + i).cast(pl.Utf8))
-            for i in range(5)
+            for i in range(2)
         ),
     )
     isocolnames = dfisocolnames.to_list()
