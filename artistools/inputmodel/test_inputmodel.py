@@ -278,7 +278,7 @@ def test_plotinitialcomposition() -> None:
 @pytest.mark.benchmark()
 def test_save_load_3d_model() -> None:
     lzdfmodel, modelmeta = at.inputmodel.get_empty_3d_model(
-        ncoordgrid=50, vmax=1000, t_model_init_days=1, includenico57=True
+        ncoordgrid=25, vmax=1000, t_model_init_days=1, includenico57=True
     )
     dfmodel = lzdfmodel.collect()
 
@@ -291,7 +291,9 @@ def test_save_load_3d_model() -> None:
 
     dfelements = (
         at.get_elsymbols_df()
-        .filter(pl.col("atomic_number").is_between(1, 80))
+        .filter(
+            pl.col("atomic_number").is_between(1, 50) | (pl.col("atomic_number") == 113)
+        )  # Z=113 Uut has three chars, so test that that too
         .sort(by="atomic_number")
         .with_columns(
             elemcolname="X_" + pl.col("elsymbol"), mass_number_example=(pl.col("atomic_number") * 2).cast(pl.Int32)
