@@ -1139,7 +1139,7 @@ def save_initelemabundances(
     dfelabundances = dfelabundances.clone().lazy().collect().with_columns([pl.col("inputcellid").cast(pl.Int32)])
 
     atomic_numbers = {
-        at.get_atomic_number(colname[2:]) for colname in dfelabundances.select(pl.selectors.starts_with("X_")).columns
+        at.get_atomic_number(colname[2:]) for colname in dfelabundances.select(cs.starts_with("X_")).columns
     }
     max_atomic_number = max([30, *atomic_numbers])
     elcolnames = [f"X_{at.get_elsymbol(Z)}" for Z in range(1, 1 + max_atomic_number)]
@@ -1152,9 +1152,12 @@ def save_initelemabundances(
         if col not in dfelabundances.columns:
             dfelabundances[col] = 0.0
 
+    dfelabundances = dfelabundances.select(["inputcellid", *elcolnames])
+
     if abundancefilename.exists():
         oldfile = abundancefilename.rename(abundancefilename.with_suffix(".bak"))
         print(f"{abundancefilename} already exists. Renaming existing file to {oldfile}")
+
     with Path(abundancefilename).open("w", encoding="utf-8") as fabund:
         if headercommentlines is not None:
             fabund.write("\n".join([f"# {line}" for line in headercommentlines]) + "\n")
