@@ -1140,7 +1140,8 @@ def save_initelemabundances(
     assert dfelabundances["inputcellid"].max() == len(dfelabundances)
 
     atomic_numbers = {
-        at.get_atomic_number(colname[2:]) for colname in dfelabundances.select(cs.starts_with("X_")).columns
+        at.get_atomic_number(colname.removeprefix("X_"))
+        for colname in dfelabundances.select(cs.starts_with("X_")).columns
     }
     max_atomic_number = max([30, *atomic_numbers])
     elcolnames = [f"X_{at.get_elsymbol(Z)}" for Z in range(1, 1 + max_atomic_number)]
