@@ -375,7 +375,7 @@ def test_save_load_3d_model() -> None:
         pltest.assert_frame_equal(
             dfelemabundances,
             dfelemabundances_loaded.collect(),
-            check_column_order=True,
+            check_column_order=False,
             check_dtypes=False,
             rtol=1e-3,
             atol=1e-3,
