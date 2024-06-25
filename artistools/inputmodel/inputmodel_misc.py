@@ -1136,7 +1136,12 @@ def save_initelemabundances(
     if isinstance(dfelabundances, pd.DataFrame):
         dfelabundances = pl.from_pandas(dfelabundances)
 
-    dfelabundances = dfelabundances.clone().lazy().collect().with_columns([pl.col("inputcellid").cast(pl.Int32)])
+    dfelabundances = (
+        dfelabundances.lazy().with_columns([pl.col("inputcellid").cast(pl.Int32)]).sort("inputcellid").collect()
+    )
+
+    assert dfelabundances["inputcellid"].min() == 1
+    assert dfelabundances["inputcellid"].max() == len(dfelabundances)
 
     atomic_numbers = {
         at.get_atomic_number(colname[2:]) for colname in dfelabundances.select(cs.starts_with("X_")).columns
