@@ -277,7 +277,9 @@ def test_plotinitialcomposition() -> None:
 
 @pytest.mark.benchmark()
 def test_save_load_3d_model() -> None:
-    lzdfmodel, modelmeta = at.inputmodel.get_empty_3d_model(ncoordgrid=50, vmax=1000, t_model_init_days=1)
+    lzdfmodel, modelmeta = at.inputmodel.get_empty_3d_model(
+        ncoordgrid=50, vmax=1000, t_model_init_days=1, includenico57=True
+    )
     dfmodel = lzdfmodel.collect()
 
     rng = np.random.default_rng()
