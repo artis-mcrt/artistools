@@ -948,28 +948,28 @@ def save_modeldata(
         if customcols:
             fmodel.write(f'#{" ".join(standardcols)} {" ".join(customcols)}\n')
 
-        abundcols = [*[col for col in standardcols if col.startswith("X_")], *customcols]
+        abundandcustomcols = [*[col for col in standardcols if col.startswith("X_")], *customcols]
 
-        zeroabund = " ".join(["0.0" for _ in abundcols])
+        strzeroabund = " ".join(["0.0" for _ in abundandcustomcols])
         if modelmeta["dimensions"] == 1:
             for inputcellid, vel_r_max_kmps, logrho, *othercolvals in dfmodel.select([
                 "inputcellid",
                 "vel_r_max_kmps",
                 "logrho",
-                *abundcols,
+                *abundandcustomcols,
             ]).iter_rows():
                 fmodel.write(f"{inputcellid:d} {vel_r_max_kmps:9.2f} {logrho:10.8f} ")
                 fmodel.write(
                     " ".join([(f"{colvalue:.4e}" if colvalue > 0.0 else "0.0") for colvalue in othercolvals])
                     if logrho > -99.0
-                    else zeroabund
+                    else strzeroabund
                 )
                 fmodel.write("\n")
 
         else:
             lineend = "\n" if twolinespercell else " "
             startcols = get_standard_columns(modelmeta["dimensions"], includeabund=False)
-            dfmodel = dfmodel.select([*startcols, *abundcols])
+            dfmodel = dfmodel.select([*startcols, *abundandcustomcols])
             nstartcols = len(startcols)
             for colvals in dfmodel.iter_rows():
                 inputcellid = colvals[0]
@@ -979,7 +979,7 @@ def save_modeldata(
                 fmodel.write(
                     " ".join((f"{colvalue:.4e}" if colvalue > 0.0 else "0.0") for colvalue in colvals[nstartcols:])
                     if rho > 0.0
-                    else zeroabund
+                    else strzeroabund
                 )
                 fmodel.write("\n")
 
