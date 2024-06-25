@@ -300,8 +300,6 @@ def test_save_load_3d_model() -> None:
         )
     )
 
-    # for elemental abundance file, we must start from hydrogen and not skip any atomic numbers
-    assert dfelements["elemcolname"].unique().len() == dfelements["atomic_number"].max()
     elcolnames = dfelements["elemcolname"].to_list()
 
     # this give us several isotopes for each element (doesn't matter if they are real or not)
@@ -352,7 +350,9 @@ def test_save_load_3d_model() -> None:
         dfelemabundances_loaded = at.inputmodel.get_initelemabundances_polars(outpath)
         pltest.assert_frame_equal(
             dfelemabundances,
-            dfelemabundances_loaded.collect(),
+            dfelemabundances_loaded.select(
+                dfelemabundances.columns  # ignore the extra elements that got added to give contiguous coverage of atomic numbers from min to max
+            ).collect(),
             check_column_order=False,
             check_dtypes=False,
             rtol=1e-3,
