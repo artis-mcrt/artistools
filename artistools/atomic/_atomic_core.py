@@ -1,14 +1,21 @@
+import io
+import typing as t
 from collections import namedtuple
 from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 
 import artistools as at
 
 
-def parse_adata(fadata, phixsdict, ionlist):
+def parse_adata(
+    fadata: io.TextIOBase,
+    phixsdict: dict[tuple[int, int, int], tuple[list[tuple[int, float]], npt.NDArray[np.float64]]],
+    ionlist: t.Sequence[tuple[int, int]] | None,
+) -> t.Generator[tuple[int, int, int, float, pd.DataFrame], None, None]:
     """Generate ions and their level lists from adata.txt."""
     firstlevelnumber = 1
 
@@ -23,14 +30,16 @@ def parse_adata(fadata, phixsdict, ionlist):
         ionisation_energy_ev = float(ionheader[3])
 
         if not ionlist or (Z, ion_stage) in ionlist:
-            level_list = []
+            level_list: list[
+                tuple[float, float, int, str | None, list[tuple[int, float]], npt.NDArray[np.float64]]
+            ] = []
             for levelindex in range(level_count):
                 row = fadata.readline().split()
 
                 levelname = " ".join(row[4:]).strip("'") if len(row) >= 5 else None
                 numberin = int(row[0])
                 assert levelindex == numberin - firstlevelnumber
-                phixstargetlist, phixstable = phixsdict.get((Z, ion_stage, numberin), ([], []))
+                phixstargetlist, phixstable = phixsdict.get((Z, ion_stage, numberin), ([], np.array([])))
 
                 level_list.append((float(row[1]), float(row[2]), int(row[3]), levelname, phixstargetlist, phixstable))
 
@@ -45,7 +54,9 @@ def parse_adata(fadata, phixsdict, ionlist):
                 fadata.readline()
 
 
-def parse_transitiondata(ftransitions, ionlist):
+def parse_transitiondata(
+    ftransitions: io.TextIOBase, ionlist: t.Sequence[tuple[int, int]] | None
+) -> t.Generator[tuple[int, int, pd.DataFrame], None, None]:
     firstlevelnumber = 1
 
     for line in ftransitions:
@@ -75,7 +86,9 @@ def parse_transitiondata(ftransitions, ionlist):
                 ftransitions.readline()
 
 
-def parse_phixsdata(fphixs, ionlist):
+def parse_phixsdata(
+    fphixs: io.TextIOBase, ionlist: t.Sequence[tuple[int, int]] | None = None
+) -> t.Generator[tuple[int, int, int, int, int, list[tuple[int, float]], np.ndarray], None, None]:
     firstlevelnumber = 1
     nphixspoints = int(fphixs.readline())
     phixsnuincrement = float(fphixs.readline())
@@ -118,7 +131,11 @@ def parse_phixsdata(fphixs, ionlist):
 
 @lru_cache(maxsize=8)
 def get_levels(
-    modelpath, ionlist=None, get_transitions: bool = False, get_photoionisations: bool = False, quiet: bool = False
+    modelpath: str | Path,
+    ionlist: t.Sequence[tuple[int, int]] | None = None,
+    get_transitions: bool = False,
+    get_photoionisations: bool = False,
+    quiet: bool = False,
 ) -> pd.DataFrame:
     """Return a pandas DataFrame of energy levels."""
     adatafilename = Path(modelpath, "adata.txt")
@@ -166,7 +183,7 @@ def get_levels(
     return pd.DataFrame(level_lists)
 
 
-def parse_recombratefile(frecomb):
+def parse_recombratefile(frecomb: io.TextIOBase):
     for line in frecomb:
         Z, upper_ion_stage, t_count = (int(x) for x in line.split())
         arr_log10t = []
@@ -191,7 +208,7 @@ def parse_recombratefile(frecomb):
 
 
 @lru_cache(maxsize=4)
-def get_ionrecombratecalibration(modelpath):
+def get_ionrecombratecalibration(modelpath: str | Path):
     """Read recombrates file."""
     recombdata = {}
     with Path(modelpath, "recombrates.txt").open("r", encoding="utf-8") as frecomb:
