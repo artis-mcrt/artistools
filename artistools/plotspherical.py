@@ -238,7 +238,7 @@ def plot_spherical(
                 raise AssertionError(msg)
 
         cbar = fig.colorbar(colormesh, location="bottom", pad=0.03, ax=ax, shrink=0.95)
-        cbar.outline.set_linewidth(0)  # type: ignore[operator]
+        cbar.outline.set_linewidth(0)  # type: ignore[operator] # pyright: ignore[reportCallIssue]
         cbar.ax.tick_params(axis="both", direction="out")
         cbar.ax.xaxis.set_ticks_position("top")
         # cbar.ax.set_title(colorbartitle)

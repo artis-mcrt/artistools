@@ -186,11 +186,13 @@ unsafe-load-any-extension = true
 
 [tool.pyright]
 deprecateTypingAliases = true
+enableTypeIgnoreComments = false  # leave these for mypy to interpret
 exclude=['**/node_modules','**/__pycache__','**/.*', 'build', 'dist', 'target']
 reportAttributeAccessIssue = false
 reportCallIssue = true
 reportMissingImports = false
 reportPossiblyUnboundVariable = false
+reportUnecessaryTypeIgnoreComment = true
 reportUnknownVariableType = false
 typeCheckingMode = "standard"
 useLibraryCodeForTypes = false

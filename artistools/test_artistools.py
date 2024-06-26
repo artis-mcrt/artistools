@@ -22,7 +22,7 @@ REPOPATH = at.get_config("path_artistools_repository")
 def funcname() -> str:
     """Get the name of the calling function."""
     try:
-        return inspect.currentframe().f_back.f_code.co_name  # type: ignore[union-attr]
+        return inspect.currentframe().f_back.f_code.co_name  # type: ignore[union-attr] # pyright: ignore[reportOptionalMemberAccess]
     except AttributeError as e:
         msg = "Could not get the name of the calling function."
         raise RuntimeError(msg) from e

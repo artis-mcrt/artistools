@@ -1071,7 +1071,6 @@ def get_initelemabundances_polars(
             print(f"Reading {textfilepath}")
         ncols = len(pd.read_csv(textfilepath, sep=r"\s+", header=None, comment="#", nrows=1).columns)
         colnames = ["inputcellid", *["X_" + at.get_elsymbol(x) for x in range(1, ncols)]]
-        dtypes = {col: pl.Float32 if col.startswith("X_") else pl.Int32 for col in colnames}
 
         abundancedata = pl.read_csv(
             at.zopenpl(textfilepath),
@@ -1088,7 +1087,7 @@ def get_initelemabundances_polars(
         ]).transpose()
         abundancedata = abundancedata.rename({
             col: colnames[idx] for idx, col in enumerate(abundancedata.columns)
-        }).cast(dtypes)  # type: ignore[arg-type]
+        }).cast({col: pl.Float32 if col.startswith("X_") else pl.Int32 for col in colnames})
 
         if textfilepath.stat().st_size > 5 * 1024 * 1024:
             print(f"Saving {parquetfilepath}")
