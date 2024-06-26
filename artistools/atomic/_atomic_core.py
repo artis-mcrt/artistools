@@ -183,7 +183,8 @@ def get_levels(
     return pd.DataFrame(level_lists)
 
 
-def parse_recombratefile(frecomb: io.TextIOBase):
+def parse_recombratefile(frecomb: io.TextIOBase) -> t.Generator[tuple[int, int, pd.DataFrame], None, None]:
+    """Parse recombrates.txt file."""
     for line in frecomb:
         Z, upper_ion_stage, t_count = (int(x) for x in line.split())
         arr_log10t = []
@@ -208,8 +209,8 @@ def parse_recombratefile(frecomb: io.TextIOBase):
 
 
 @lru_cache(maxsize=4)
-def get_ionrecombratecalibration(modelpath: str | Path):
-    """Read recombrates file."""
+def get_ionrecombratecalibration(modelpath: str | Path) -> dict[tuple[int, int], pd.DataFrame]:
+    """Read recombrates.txt file."""
     recombdata = {}
     with Path(modelpath, "recombrates.txt").open("r", encoding="utf-8") as frecomb:
         for Z, upper_ion_stage, dfrrc in parse_recombratefile(frecomb):
