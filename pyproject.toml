@@ -189,6 +189,7 @@ deprecateTypingAliases = true
 exclude=['**/node_modules','**/__pycache__','**/.*', 'build', 'dist', 'target']
 reportAttributeAccessIssue = false
 reportCallIssue = true
+reportMissingImports = false
 reportPossiblyUnboundVariable = false
 reportUnknownVariableType = false
 typeCheckingMode = "standard"
