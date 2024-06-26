@@ -399,6 +399,7 @@ def save_gridparticlecontributions(dfcontribs: pd.DataFrame | pl.DataFrame, grid
     if isinstance(dfcontribs, pl.DataFrame):
         dfcontribs = dfcontribs.to_pandas(use_pyarrow_extension_array=True)
 
+    assert isinstance(dfcontribs, pd.DataFrame)
     dfcontribs.to_csv(gridcontribpath, sep=" ", index=False, float_format="%.7e")
 
 

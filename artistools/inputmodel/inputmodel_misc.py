@@ -1137,6 +1137,7 @@ def save_initelemabundances(
     dfelabundances = (
         dfelabundances.lazy().with_columns([pl.col("inputcellid").cast(pl.Int32)]).sort("inputcellid").collect()
     )
+    assert isinstance(dfelabundances, pl.DataFrame)
 
     assert dfelabundances["inputcellid"].min() == 1
     assert dfelabundances["inputcellid"].max() == len(dfelabundances)
@@ -1194,10 +1195,11 @@ def save_empty_abundance_file(npts_model: int, outputfilepath: str | Path = Path
 
 def get_dfmodel_dimensions(dfmodel: pd.DataFrame | pl.DataFrame | pl.LazyFrame) -> int:
     """Guess whether the model is 1D, 2D, or 3D based on which columns are present."""
-    if "pos_x_min" in dfmodel.collect_schema().names():
+    columns = dfmodel.columns if isinstance(dfmodel, pd.DataFrame) else dfmodel.collect_schema().names()
+    if "pos_x_min" in columns:
         return 3
 
-    return 2 if "pos_z_mid" in dfmodel.collect_schema().names() else 1
+    return 2 if "pos_z_mid" in columns else 1
 
 
 def dimension_reduce_model(

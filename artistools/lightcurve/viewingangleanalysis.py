@@ -748,6 +748,7 @@ def peakmag_risetime_declinerate_init(
                 if args.filter:
                     time, brightness = at.lightcurve.get_band_lightcurve(lightcurve_data, band_name, args)
                 else:
+                    assert isinstance(lightcurve_data, pd.DataFrame)
                     lightcurve_data = lightcurve_data.loc[
                         (lightcurve_data["time"] > args.timemin) & (lightcurve_data["time"] < args.timemax)
                     ]

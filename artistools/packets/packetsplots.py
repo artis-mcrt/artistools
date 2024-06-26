@@ -83,8 +83,9 @@ def make_2d_packets_plot_pyvista(modelpath, timestep):
         "label_font_size": 25,
     }
 
-    pv.set_plot_theme("document")  # set white background
-    p = pv.Plotter()
+    pv.set_plot_theme("document")  # set white background # pyright: ignore[reportCallIssue]
+    p = pv.Plotter()  # pyright: ignore[reportCallIssue]
+
     p.set_scale(1.5, 1.5, 1.5)
     single_slice = mesh.slice(normal="y")
     # single_slice = mesh.slice(normal='z')
