@@ -179,7 +179,7 @@ def make_plot(args):
     cone = make_cone(args)
 
     cone = cone.loc[cone["rho_model"] > 0.0002]  # cut low densities (empty cells?) from plot
-    ax: Axes3D = plt.figure().gca(projection="3d")  # type: ignore[call-arg]
+    ax: Axes3D = plt.figure().gca(projection="3d")  # type: ignore[call-arg] # pyright: ignore[reportCallIssue]
 
     # print(cone['rho_model'])
 

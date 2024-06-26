@@ -771,15 +771,13 @@ def make_emissionabsorption_plot(
             absstackplot = axis.stackplot(
                 arraylambda_angstroms,
                 [-x.array_flambda_absorption * scalefactor for x in contributions_sorted_reduced],
-                colors=facecolors,  # type: ignore[arg-type]
+                colors=facecolors,  # type: ignore[arg-type] # pyright: ignore[reportArgumentType]
                 linewidth=0,
             )
             if not args.showemission:
                 plotobjects.extend(absstackplot)
 
     plotobjectlabels.extend([x.linelabel for x in contributions_sorted_reduced])
-    # print(plotobjectlabels)
-    # print(len(plotobjectlabels), len(plotobjects))
 
     ymaxrefall = 0.0
     plotkwargs = {}
