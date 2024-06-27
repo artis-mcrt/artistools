@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
+import polars as pl
 
 import artistools as at
 
@@ -56,7 +57,7 @@ def parse_adata(
 
 def parse_transitiondata(
     ftransitions: io.TextIOBase, ionlist: t.Sequence[tuple[int, int]] | None
-) -> t.Generator[tuple[int, int, pd.DataFrame], None, None]:
+) -> t.Generator[tuple[int, int, pl.DataFrame], None, None]:
     firstlevelnumber = 1
 
     for line in ftransitions:
@@ -69,18 +70,31 @@ def parse_transitiondata(
         transition_count = int(ionheader[2])
 
         if not ionlist or (Z, ion_stage) in ionlist:
-            translist = []
-            for _ in range(transition_count):
-                row = ftransitions.readline().split()
-                translist.append((
-                    int(row[0]) - firstlevelnumber,
-                    int(row[1]) - firstlevelnumber,
-                    float(row[2]),
-                    float(row[3]),
-                    int(row[4]) == 1 if len(row) >= 5 else 0,
-                ))
+            list_lower = np.empty(transition_count, dtype=int)
+            list_upper = np.empty(transition_count, dtype=int)
+            list_A = np.empty(transition_count, dtype=float)
+            list_collstr = np.empty(transition_count, dtype=float)
+            list_forbidden = np.empty(transition_count, dtype=int)
 
-            yield Z, ion_stage, pd.DataFrame(translist, columns=["lower", "upper", "A", "collstr", "forbidden"])
+            for index in range(transition_count):
+                row = ftransitions.readline().split()
+                list_lower[index] = int(row[0]) - firstlevelnumber
+                list_upper[index] = int(row[1]) - firstlevelnumber
+                list_A[index] = float(row[2])
+                list_collstr[index] = float(row[3])
+                list_forbidden[index] = int(row[4]) == 1 if len(row) >= 5 else 0
+
+            yield (
+                Z,
+                ion_stage,
+                pl.DataFrame({
+                    "lower": list_lower,
+                    "upper": list_upper,
+                    "A": list_A,
+                    "collstr": list_collstr,
+                    "forbidden": list_forbidden,
+                }),
+            )
         else:
             for _ in range(transition_count):
                 ftransitions.readline()
@@ -109,14 +123,15 @@ def parse_phixsdata(
 
         assert upperion_stage == lowerion_stage + 1
 
+        targetlist: list[tuple[int, float]]
         if upperionlevel >= 0:
             targetlist = [(upperionlevel, 1.0)]
         else:
-            targetlist = []
             ntargets = int(fphixs.readline())
-            for _ in range(ntargets):
+            targetlist = [(-1, 0.0) for _ in range(ntargets)]
+            for phixstargetindex in range(ntargets):
                 level, fraction = fphixs.readline().split()
-                targetlist.append((int(level) - firstlevelnumber, float(fraction)))
+                targetlist[phixstargetindex] = (int(level) - firstlevelnumber, float(fraction))
 
         if not ionlist or (Z, lowerion_stage) in ionlist:
             phixslist = [float(fphixs.readline()) * 1e-18 for _ in range(nphixspoints)]
@@ -147,7 +162,7 @@ def get_levels(
             print(f"Reading {transition_filename.relative_to(Path(modelpath).parent)}")
         with at.zopen(transition_filename) as ftransitions:
             transitionsdict = {
-                (Z, ion_stage): dftransitions
+                (Z, ion_stage): dftransitions.to_pandas(use_pyarrow_extension_array=True)
                 for Z, ion_stage, dftransitions in parse_transitiondata(ftransitions, ionlist)
             }
 
