@@ -187,12 +187,21 @@ def make_plot(
     plt.close()
 
 
-def add_upper_lte_pop(dftransitions, T_exc, ionpop, ltepartfunc, columnname=None) -> pd.DataFrame:
-    K_B = const.k_B.to("eV / K").value  # noqa: F841
-    scalefactor = ionpop / ltepartfunc  # noqa: F841
+def add_upper_lte_pop(
+    dftransitions: pl.DataFrame,
+    T_exc: float,
+    ionpop: float,
+    ltepartfunc: float,
+    columnname: str | None = None,
+) -> pl.DataFrame:
+    K_B = const.k_B.to("eV / K").value
+    scalefactor = ionpop / ltepartfunc
     if columnname is None:
         columnname = f"upper_pop_lte_{T_exc:.0f}K"
-    return dftransitions.eval(f"{columnname} = @scalefactor * upper_statweight * exp(-upper_energy_ev / @K_B / @T_exc)")
+
+    return dftransitions.with_columns(
+        (scalefactor * pl.col("upper_statweight") * (-pl.col("upper_energy_ev") / K_B / T_exc).exp()).alias(columnname)
+    )
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -439,11 +448,10 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
                 flux_factor=(pl.col("upper_energy_ev") - pl.col("lower_energy_ev")) * pl.col("A")
             )
 
-            dftransitions: pd.DataFrame = pldftransitions.to_pandas()
-
-            dftransitions = add_upper_lte_pop(
-                dftransitions, vardict["Te"], ionpopdict[ionid], ltepartfunc, columnname="upper_pop_Te"
+            pldftransitions = add_upper_lte_pop(
+                pldftransitions, vardict["Te"], ionpopdict[ionid], ltepartfunc, columnname="upper_pop_Te"
             )
+            dftransitions: pd.DataFrame = pldftransitions.to_pandas()
 
             for seriesindex, temperature in enumerate(temperature_list):
                 if temperature == "NOTEMPNLTE":
@@ -474,14 +482,13 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
                     T_exc = vardict[temperature]
                     popcolumnname = f"upper_pop_lte_{T_exc:.0f}K"
                     if args.atomicdatabase == "artis":
-                        dftransitions = dftransitions.eval("upper_statweight = @ion.levels.loc[upper].g.to_numpy()")
                         K_B = const.k_B.to("eV / K").value  # noqa: F841
                         ltepartfunc = ion.levels.eval("g * exp(-energy_ev / @K_B / @T_exc)").sum()
                     else:
                         ltepartfunc = 1.0
                     dftransitions = add_upper_lte_pop(
-                        dftransitions, T_exc, ionpopdict[ionid], ltepartfunc, columnname=popcolumnname
-                    )
+                        pl.from_pandas(dftransitions), T_exc, ionpopdict[ionid], ltepartfunc, columnname=popcolumnname
+                    ).to_pandas()
 
                 if args.print_lines:
                     dftransitions = dftransitions.eval(f"flux_factor_{popcolumnname} = flux_factor * {popcolumnname}")
