@@ -40,6 +40,7 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
     stokes_params = {
         k: v.with_columns(lambda_angstroms=2.99792458e18 / pl.col("nu")).to_pandas(use_pyarrow_extension_array=True)
         for k, v in at.spectra.get_specpol_data(angle=angle, modelpath=modelpath).items()
+        if k == args.stokesparam
     }
 
     timearray = stokes_params[args.stokesparam].keys()[1:-1]
