@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-
-
 import argparse
 import math
 import sys
@@ -11,6 +8,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import polars as pl
 from astropy import constants as const
 
 import artistools as at
@@ -397,11 +395,15 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         if not dftransitions.empty:
             if args.atomicdatabase == "artis":
                 assert isinstance(ion, pd.Series)
-                dftransitions = dftransitions.eval("upper_energy_ev = @ion.levels.loc[upper].energy_ev.to_numpy()")
-                dftransitions = dftransitions.eval("lower_energy_ev = @ion.levels.loc[lower].energy_ev.to_numpy()")
-                dftransitions = dftransitions.eval("lambda_angstroms = @hc / (upper_energy_ev - lower_energy_ev)")
-                dftransitions["upper_level"] = [ion.levels.loc[upper].levelname for upper in dftransitions["upper"]]
-                dftransitions["lower_level"] = [ion.levels.loc[lower].levelname for lower in dftransitions["lower"]]
+                dftransitions = (
+                    at.atomic.add_transition_columns(
+                        pl.from_pandas(dftransitions),
+                        ion.levels,
+                        ["lower_energy_ev", "upper_energy_ev", "lambda_angstroms", "lower_level", "upper_level"],
+                    )
+                    .collect()
+                    .to_pandas()
+                )
 
             # dftransitions = dftransitions.query(
             #     "lambda_angstroms >= @plot_xmin_wide & lambda_angstroms <= @plot_xmax_wide"

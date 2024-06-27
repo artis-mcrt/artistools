@@ -93,7 +93,7 @@ def parse_transitiondata(
                     "A": list_A,
                     "collstr": list_collstr,
                     "forbidden": list_forbidden,
-                }).with_row_index("levelindex"),
+                }),
             )
         else:
             for _ in range(transition_count):
@@ -150,23 +150,39 @@ def add_transition_columns(
     """Add columns to a polars DataFrame of transitions."""
     dftransitions = dftransitions.lazy()
     columns_before = dftransitions.collect_schema().names()
-    pldflevels = pl.from_pandas(dflevels[["levelindex", "g", "energy_ev"]]).with_row_index("levelindex").lazy()
-
-    dftransitions.join(
-        pldflevels.select(lower="levelindex", lower_g=pl.col("g"), lower_energy_ev=pl.col("energy_ev")),
-        how="left",
-        on="lower",
-        coalesce=True,
+    pldflevels = (
+        pl.from_pandas(dflevels[["g", "energy_ev", "levelname"]])
+        .lazy()
+        .with_row_index("levelindex")
+        .with_columns(pl.col("levelindex").cast(pl.Int64))
     )
 
-    dftransitions = dftransitions.join(
-        pldflevels.select(upper="levelindex", upper_g=pl.col("g"), upper_energy_ev=pl.col("energy_ev")),
-        how="left",
-        on="upper",
-        coalesce=True,
+    dftransitions = (
+        dftransitions.join(
+            pldflevels.select(
+                lower="levelindex",
+                lower_g=pl.col("g"),
+                lower_energy_ev=pl.col("energy_ev"),
+                lower_level=pl.col("levelname"),
+            ),
+            how="left",
+            on="lower",
+            coalesce=True,
+        )
+        .join(
+            pldflevels.select(
+                upper="levelindex",
+                upper_g=pl.col("g"),
+                upper_energy_ev=pl.col("energy_ev"),
+                upper_level=pl.col("levelname"),
+            ),
+            how="left",
+            on="upper",
+            coalesce=True,
+        )
+        .with_columns(epsilon_trans_ev=pl.col("upper_energy_ev") - pl.col("lower_energy_ev"))
     )
 
-    dftransitions = dftransitions.with_columns(epsilon_trans_ev=pl.col("upper_energy_ev") - pl.col("lower_energy_ev"))
     hc = 12398.419843320025  # h * c in eV * Angstrom
     dftransitions = dftransitions.with_columns(lambda_angstroms=hc / pl.col("epsilon_trans_ev"))
 
@@ -175,7 +191,8 @@ def add_transition_columns(
         col for col in dftransitions.collect_schema().names() if col not in columns_before and col not in columns
     )
 
-    assert all(col in dftransitions.collect_schema().names() for col in columns), "Invalid column name"
+    for col in columns:
+        assert col in dftransitions.collect_schema().names(), f"Invalid column name {col}"
 
     return dftransitions
 
