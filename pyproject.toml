@@ -220,6 +220,9 @@ show-fixes = true
 extend-exclude = ["_version.py"]
 preview = true
 
+[tool.ruff.format]
+skip-magic-trailing-comma = false
+
 [tool.ruff.lint]
 select = ["ALL"]
 ignore = [
