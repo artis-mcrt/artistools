@@ -451,10 +451,10 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             pldftransitions = add_upper_lte_pop(
                 pldftransitions, vardict["Te"], ionpopdict[ionid], ltepartfunc, columnname="upper_pop_Te"
             )
-            dftransitions: pd.DataFrame = pldftransitions.to_pandas()
 
             for seriesindex, temperature in enumerate(temperature_list):
                 if temperature == "NOTEMPNLTE":
+                    dftransitions: pd.DataFrame = pldftransitions.to_pandas(use_pyarrow_extension_array=False)
                     dfnltepops_thision = dfnltepops.query("Z==@ion.Z & ion_stage==@ion.ion_stage")
 
                     nltepopdict = {x.level: x["n_NLTE"] for _, x in dfnltepops_thision.iterrows()}
@@ -487,8 +487,8 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
                     else:
                         ltepartfunc = 1.0
                     dftransitions = add_upper_lte_pop(
-                        pl.from_pandas(dftransitions), T_exc, ionpopdict[ionid], ltepartfunc, columnname=popcolumnname
-                    ).to_pandas()
+                        pldftransitions, T_exc, ionpopdict[ionid], ltepartfunc, columnname=popcolumnname
+                    ).to_pandas(use_pyarrow_extension_array=True)
 
                 if args.print_lines:
                     dftransitions = dftransitions.eval(f"flux_factor_{popcolumnname} = flux_factor * {popcolumnname}")
