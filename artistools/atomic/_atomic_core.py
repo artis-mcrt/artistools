@@ -56,48 +56,48 @@ def parse_adata(
 
 
 def parse_transitiondata(
-    ftransitions: io.TextIOBase, ionlist: t.Sequence[tuple[int, int]] | None
-) -> t.Generator[tuple[int, int, pl.LazyFrame], None, None]:
+    transitions_filename: str | Path, ionlist: t.Sequence[tuple[int, int]] | None
+) -> dict[tuple[int, int], pl.LazyFrame]:
     firstlevelnumber = 1
+    transdict: dict[tuple[int, int], pl.LazyFrame] = {}
+    with at.zopen(transitions_filename) as ftransitions:
+        for line in ftransitions:
+            if not line.strip():
+                continue
 
-    for line in ftransitions:
-        if not line.strip():
-            continue
+            ionheader = line.split()
+            Z = int(ionheader[0])
+            ion_stage = int(ionheader[1])
+            transition_count = int(ionheader[2])
 
-        ionheader = line.split()
-        Z = int(ionheader[0])
-        ion_stage = int(ionheader[1])
-        transition_count = int(ionheader[2])
+            if not ionlist or (Z, ion_stage) in ionlist:
+                list_lower = np.empty(transition_count, dtype=int)
+                list_upper = np.empty(transition_count, dtype=int)
+                list_A = np.empty(transition_count, dtype=float)
+                list_collstr = np.empty(transition_count, dtype=float)
+                list_forbidden = np.empty(transition_count, dtype=int)
 
-        if not ionlist or (Z, ion_stage) in ionlist:
-            list_lower = np.empty(transition_count, dtype=int)
-            list_upper = np.empty(transition_count, dtype=int)
-            list_A = np.empty(transition_count, dtype=float)
-            list_collstr = np.empty(transition_count, dtype=float)
-            list_forbidden = np.empty(transition_count, dtype=int)
+                for index in range(transition_count):
+                    row = ftransitions.readline().split()
+                    list_lower[index] = int(row[0]) - firstlevelnumber
+                    list_upper[index] = int(row[1]) - firstlevelnumber
+                    list_A[index] = float(row[2])
+                    list_collstr[index] = float(row[3])
+                    list_forbidden[index] = int(row[4]) == 1 if len(row) >= 5 else 0
 
-            for index in range(transition_count):
-                row = ftransitions.readline().split()
-                list_lower[index] = int(row[0]) - firstlevelnumber
-                list_upper[index] = int(row[1]) - firstlevelnumber
-                list_A[index] = float(row[2])
-                list_collstr[index] = float(row[3])
-                list_forbidden[index] = int(row[4]) == 1 if len(row) >= 5 else 0
-
-            yield (
-                Z,
-                ion_stage,
-                pl.LazyFrame({
+                transdict[(Z, ion_stage)] = pl.LazyFrame({
                     "lower": list_lower,
                     "upper": list_upper,
                     "A": list_A,
                     "collstr": list_collstr,
                     "forbidden": list_forbidden,
-                }),
-            )
-        else:
-            for _ in range(transition_count):
-                ftransitions.readline()
+                })
+
+            else:
+                for _ in range(transition_count):
+                    ftransitions.readline()
+
+    return transdict
 
 
 def parse_phixsdata(
@@ -214,11 +214,8 @@ def get_levels(
         transition_filename = Path(modelpath, "transitiondata.txt")
         if not quiet:
             print(f"Reading {transition_filename.relative_to(Path(modelpath).parent)}")
-        with at.zopen(transition_filename) as ftransitions:
-            transitionsdict = {
-                (Z, ion_stage): dftransitions
-                for Z, ion_stage, dftransitions in parse_transitiondata(ftransitions, ionlist)
-            }
+
+        transitionsdict = parse_transitiondata(transition_filename, ionlist)
 
     phixsdict = {}
     if get_photoionisations:
