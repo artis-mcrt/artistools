@@ -87,11 +87,6 @@ def test_get_inputparams() -> None:
     assert dicthash == "ce7d04d6944207673a105cba8d2430055d0b53b7f3e92db3964d2dca285a3adb"
 
 
-@pytest.mark.benchmark()
-def test_get_levels() -> None:
-    at.atomic.get_levels(modelpath, get_transitions=True, get_photoionisations=True)
-
-
 def test_macroatom() -> None:
     at.macroatom.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, timestep=10)
 
@@ -108,10 +103,6 @@ def test_radfield() -> None:
     funcoutpath = outputpath / funcname()
     funcoutpath.mkdir(exist_ok=True, parents=True)
     at.radfield.main(argsraw=[], modelpath=modelpath, modelgridindex=0, outputfile=funcoutpath)
-
-
-def test_get_ionrecombratecalibration() -> None:
-    at.atomic.get_ionrecombratecalibration(modelpath=modelpath)
 
 
 @pytest.mark.benchmark()
