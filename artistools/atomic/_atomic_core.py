@@ -57,7 +57,7 @@ def parse_adata(
 
 def parse_transitiondata(
     ftransitions: io.TextIOBase, ionlist: t.Sequence[tuple[int, int]] | None
-) -> t.Generator[tuple[int, int, pl.DataFrame], None, None]:
+) -> t.Generator[tuple[int, int, pl.LazyFrame], None, None]:
     firstlevelnumber = 1
 
     for line in ftransitions:
@@ -87,13 +87,13 @@ def parse_transitiondata(
             yield (
                 Z,
                 ion_stage,
-                pl.DataFrame({
+                pl.LazyFrame({
                     "lower": list_lower,
                     "upper": list_upper,
                     "A": list_A,
                     "collstr": list_collstr,
                     "forbidden": list_forbidden,
-                }),
+                }).with_row_index("levelindex"),
             )
         else:
             for _ in range(transition_count):
@@ -144,6 +144,42 @@ def parse_phixsdata(
                 fphixs.readline()
 
 
+def add_transition_columns(
+    dftransitions: pl.LazyFrame | pl.DataFrame, dflevels: pd.DataFrame, columns: t.Sequence[str]
+) -> pl.LazyFrame:
+    """Add columns to a polars DataFrame of transitions."""
+    dftransitions = dftransitions.lazy()
+    columns_before = dftransitions.collect_schema().names()
+    pldflevels = pl.from_pandas(dflevels[["levelindex", "g", "energy_ev"]]).with_row_index("levelindex").lazy()
+
+    dftransitions.join(
+        pldflevels.select(lower="levelindex", lower_g=pl.col("g"), lower_energy_ev=pl.col("energy_ev")),
+        how="left",
+        on="lower",
+        coalesce=True,
+    )
+
+    dftransitions = dftransitions.join(
+        pldflevels.select(upper="levelindex", upper_g=pl.col("g"), upper_energy_ev=pl.col("energy_ev")),
+        how="left",
+        on="upper",
+        coalesce=True,
+    )
+
+    dftransitions = dftransitions.with_columns(epsilon_trans_ev=pl.col("upper_energy_ev") - pl.col("lower_energy_ev"))
+    hc = 12398.419843320025  # h * c in eV * Angstrom
+    dftransitions = dftransitions.with_columns(lambda_angstroms=hc / pl.col("epsilon_trans_ev"))
+
+    # clean up any columns used for intermediate calculations
+    dftransitions.drop(
+        col for col in dftransitions.collect_schema().names() if col not in columns_before and col not in columns
+    )
+
+    assert all(col in dftransitions.collect_schema().names() for col in columns), "Invalid column name"
+
+    return dftransitions
+
+
 @lru_cache(maxsize=8)
 def get_levels(
     modelpath: str | Path,
@@ -151,6 +187,7 @@ def get_levels(
     get_transitions: bool = False,
     get_photoionisations: bool = False,
     quiet: bool = False,
+    derived_transitions_columns: t.Sequence[str] | None = None,
 ) -> pd.DataFrame:
     """Return a pandas DataFrame of energy levels."""
     adatafilename = Path(modelpath, "adata.txt")
@@ -162,7 +199,7 @@ def get_levels(
             print(f"Reading {transition_filename.relative_to(Path(modelpath).parent)}")
         with at.zopen(transition_filename) as ftransitions:
             transitionsdict = {
-                (Z, ion_stage): dftransitions.to_pandas(use_pyarrow_extension_array=True)
+                (Z, ion_stage): dftransitions
                 for Z, ion_stage, dftransitions in parse_transitiondata(ftransitions, ionlist)
             }
 
@@ -192,8 +229,27 @@ def get_levels(
             print(f"Reading {adatafilename.relative_to(Path(modelpath).parent)}")
 
         for Z, ion_stage, level_count, ionisation_energy_ev, dflevels in parse_adata(fadata, phixsdict, ionlist):
-            translist = transitionsdict.get((Z, ion_stage), pd.DataFrame())
-            level_lists.append(iontuple(Z, ion_stage, level_count, ionisation_energy_ev, dflevels, translist))
+            if (Z, ion_stage) in transitionsdict:
+                dftransitions = transitionsdict[(Z, ion_stage)]
+                if derived_transitions_columns is not None:
+                    dftransitions = add_transition_columns(
+                        dftransitions,
+                        dflevels,
+                        derived_transitions_columns,
+                    )
+            else:
+                dftransitions = pl.LazyFrame()
+
+            level_lists.append(
+                iontuple(
+                    Z,
+                    ion_stage,
+                    level_count,
+                    ionisation_energy_ev,
+                    dflevels,
+                    dftransitions.collect().to_pandas(use_pyarrow_extension_array=True),
+                )
+            )
 
     return pd.DataFrame(level_lists)
 
