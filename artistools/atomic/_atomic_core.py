@@ -237,7 +237,7 @@ def get_levels(
             )
 
         if use_rust_reader:
-            transitionsdict = read_transitiondata_rust(str(transition_filename))
+            transitionsdict = read_transitiondata_rust(str(transition_filename), ionlist=ionlist)
         else:
             transitionsdict = read_transitiondata(transition_filename, ionlist)
 
