@@ -72,7 +72,11 @@ fn append_or_create(
     assert_eq!(singlecoldata.len(), *outputrownum, "colname: {:?}", colname);
 }
 
-fn parse_line(line: &str, mut coldata: &mut HashMap<String, Vec<f32>>, outputrownum: &mut usize) {
+fn parse_estimator_line(
+    line: &str,
+    mut coldata: &mut HashMap<String, Vec<f32>>,
+    outputrownum: &mut usize,
+) {
     let linesplit: Vec<&str> = line.split_whitespace().collect();
     if linesplit.len() == 0 {
         return;
@@ -168,7 +172,7 @@ fn parse_line(line: &str, mut coldata: &mut HashMap<String, Vec<f32>>, outputrow
     }
 }
 
-pub fn read_file(folderpath: String, rank: i32) -> DataFrame {
+pub fn read_estimator_file(folderpath: String, rank: i32) -> DataFrame {
     let mut coldata: HashMap<String, Vec<f32>> = HashMap::new();
     let mut outputrownum = 0;
 
@@ -176,13 +180,13 @@ pub fn read_file(folderpath: String, rank: i32) -> DataFrame {
     if Path::new(&filename).is_file() {
         // println!("Reading file: {:?}", filename);
         for line in read_lines(filename).unwrap() {
-            parse_line(&line.unwrap(), &mut coldata, &mut outputrownum);
+            parse_estimator_line(&line.unwrap(), &mut coldata, &mut outputrownum);
         }
     } else {
         let filename_zst = filename + ".zst";
         // println!("Reading file: {:?}", filename_zst);
         for line in read_lines_zst(filename_zst).unwrap() {
-            parse_line(&line.unwrap(), &mut coldata, &mut outputrownum);
+            parse_estimator_line(&line.unwrap(), &mut coldata, &mut outputrownum);
         }
     }
 
@@ -211,7 +215,7 @@ fn estimparse(folderpath: String, rankmin: i32, rankmax: i32) -> PyResult<PyData
     let mut vecdfs: Vec<DataFrame> = Vec::new();
     ranks
         .par_iter() // Convert the iterator to a parallel iterator
-        .map(|&rank| read_file(folderpath.clone(), rank))
+        .map(|&rank| read_estimator_file(folderpath.clone(), rank))
         .collect_into_vec(&mut vecdfs);
 
     let dfbatch = polars::functions::concat_df_diagonal(&vecdfs).unwrap();
