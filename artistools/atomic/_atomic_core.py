@@ -58,9 +58,9 @@ def parse_adata(
 
 def read_transitiondata(
     transitions_filename: str | Path, ionlist: t.Sequence[tuple[int, int]] | None
-) -> dict[tuple[int, int], pl.LazyFrame]:
+) -> dict[tuple[int, int], pl.DataFrame]:
     firstlevelnumber = 1
-    transdict: dict[tuple[int, int], pl.LazyFrame] = {}
+    transdict: dict[tuple[int, int], pl.DataFrame] = {}
     with at.zopen(transitions_filename) as ftransitions:
         for line in ftransitions:
             if not line.strip():
@@ -86,7 +86,7 @@ def read_transitiondata(
                     list_collstr[index] = float(row[3])
                     list_forbidden[index] = int(row[4]) == 1 if len(row) >= 5 else 0
 
-                transdict[(Z, ion_stage)] = pl.LazyFrame({
+                transdict[(Z, ion_stage)] = pl.DataFrame({
                     "lower": list_lower,
                     "upper": list_upper,
                     "A": list_A,
@@ -248,7 +248,7 @@ def get_levels(
 
         for Z, ion_stage, level_count, ionisation_energy_ev, dflevels in parse_adata(fadata, phixsdict, ionlist):
             if (Z, ion_stage) in transitionsdict:
-                dftransitions = transitionsdict[(Z, ion_stage)]
+                dftransitions = transitionsdict[(Z, ion_stage)].lazy()
                 if derived_transitions_columns is not None:
                     dftransitions = add_transition_columns(
                         dftransitions,
