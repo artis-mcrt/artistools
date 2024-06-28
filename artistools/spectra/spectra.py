@@ -109,7 +109,7 @@ def get_spectrum_at_time(
 ) -> pd.DataFrame:
     if dirbin >= 0:
         if args is not None and args.plotvspecpol and (modelpath / "vpkt.txt").is_file():
-            return get_vspecpol_spectrum(modelpath, time, dirbin, args).to_pandas()
+            return get_vspecpol_spectrum(modelpath, time, dirbin, args).to_pandas(use_pyarrow_extension_array=True)
         assert average_over_phi is not None
         assert average_over_theta is not None
     else:
@@ -123,7 +123,7 @@ def get_spectrum_at_time(
         timestepmax=timestep,
         average_over_phi=average_over_phi,
         average_over_theta=average_over_theta,
-    )[dirbin].to_pandas()
+    )[dirbin].to_pandas(use_pyarrow_extension_array=True)
 
 
 def get_from_packets(

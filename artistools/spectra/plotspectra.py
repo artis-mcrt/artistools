@@ -37,10 +37,13 @@ def path_is_artis_model(filepath: str | Path) -> bool:
 
 def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
     angle = args.plotviewingangle[0]
-    stokes_params = {k: v.to_pandas() for k, v in at.spectra.get_specpol_data(angle=angle, modelpath=modelpath).items()}
-    stokes_params[args.stokesparam] = stokes_params[args.stokesparam].eval("lambda_angstroms = 2.99792458e18 / nu")
+    dfspectrum = (
+        at.spectra.get_specpol_data(angle=angle, modelpath=modelpath)[args.stokesparam]
+        .with_columns(lambda_angstroms=2.99792458e18 / pl.col("nu"))
+        .to_pandas(use_pyarrow_extension_array=True)
+    )
 
-    timearray = stokes_params[args.stokesparam].keys()[1:-1]
+    timearray = dfspectrum.keys()[1:-1]
     (_, _, args.timemin, args.timemax) = at.get_time_range(
         modelpath, args.timestep, args.timemin, args.timemax, args.timedays
     )
@@ -56,7 +59,7 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
     filterfunc = at.get_filterfunc(args)
     if filterfunc is not None:
         print("Applying filter to ARTIS spectrum")
-        stokes_params[args.stokesparam][timeavg] = filterfunc(stokes_params[args.stokesparam][timeavg])
+        dfspectrum[timeavg] = filterfunc(dfspectrum[timeavg])
 
     vpkt_config = at.get_vpkt_config(modelpath)
 
@@ -70,8 +73,8 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
         new_lambda_angstroms = []
         binned_flux = []
 
-        wavelengths = stokes_params[args.stokesparam]["lambda_angstroms"]
-        fluxes = stokes_params[args.stokesparam][timeavg]
+        wavelengths = dfspectrum["lambda_angstroms"]
+        fluxes = dfspectrum[timeavg]
         nbins = 5
 
         for i in np.arange(0, len(wavelengths - nbins), nbins):
@@ -83,7 +86,7 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
 
         plt.plot(new_lambda_angstroms, binned_flux)
     else:
-        stokes_params[args.stokesparam].plot(x="lambda_angstroms", y=timeavg, label=linelabel)
+        dfspectrum.plot(x="lambda_angstroms", y=timeavg, label=linelabel)
 
     if args.ymax is None:
         args.ymax = 0.5
