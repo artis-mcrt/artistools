@@ -1,4 +1,5 @@
 import io
+import time
 import typing as t
 from collections import namedtuple
 from functools import lru_cache
@@ -55,7 +56,7 @@ def parse_adata(
                 fadata.readline()
 
 
-def parse_transitiondata(
+def read_transitiondata(
     transitions_filename: str | Path, ionlist: t.Sequence[tuple[int, int]] | None
 ) -> dict[tuple[int, int], pl.LazyFrame]:
     firstlevelnumber = 1
@@ -213,9 +214,12 @@ def get_levels(
     if get_transitions:
         transition_filename = Path(modelpath, "transitiondata.txt")
         if not quiet:
-            print(f"Reading {transition_filename.relative_to(Path(modelpath).parent)}")
+            time_start = time.perf_counter()
+            print(f"Reading {transition_filename.relative_to(Path(modelpath).parent)}...")
 
-        transitionsdict = parse_transitiondata(transition_filename, ionlist)
+        transitionsdict = read_transitiondata(transition_filename, ionlist)
+        if not quiet:
+            print(f"  took {time.perf_counter() - time_start:.2f} seconds")
 
     phixsdict = {}
     if get_photoionisations:
