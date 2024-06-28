@@ -199,6 +199,7 @@ def add_transition_columns(
     return dftransitions
 
 
+@lru_cache(maxsize=8)
 def get_levels(
     modelpath: str | Path,
     ionlist: t.Sequence[tuple[int, int]] | None = None,
