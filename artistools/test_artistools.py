@@ -116,10 +116,12 @@ def test_plotspherical_gif() -> None:
     at.plotspherical.main(argsraw=[], modelpath=modelpath, makegif=True, timemax=270, outputfile=outputpath)
 
 
+@pytest.mark.benchmark()
 def test_transitions() -> None:
     at.transitions.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, timedays=300)
 
 
+@pytest.mark.benchmark()
 def test_write_comparisondata() -> None:
     at.writecomparisondata.main(
         argsraw=[], modelpath=modelpath, outputpath=outputpath, selected_timesteps=list(range(99))
