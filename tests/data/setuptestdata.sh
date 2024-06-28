@@ -18,4 +18,6 @@ tar -xf test_classicmode_3d.tar.xz
 
 cp grid.out testmodel/
 
+xz -d testmodel/transitiondata.txt.xz
+
 set +x
