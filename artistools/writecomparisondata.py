@@ -164,8 +164,13 @@ def write_lbol_edep(
     # times = at.get_timestep_times(modelpath)
     dflightcurve = (
         at.lightcurve.readfile(Path(modelpath, "light_curve.out"))[-1]
-        .to_pandas()
-        .merge(at.get_deposition(modelpath).to_pandas(), left_index=True, right_index=True, suffixes=("", "_dep"))
+        .to_pandas(use_pyarrow_extension_array=True)
+        .merge(
+            at.get_deposition(modelpath).to_pandas(use_pyarrow_extension_array=True),
+            left_index=True,
+            right_index=True,
+            suffixes=("", "_dep"),
+        )
     )
 
     with outputpath.open("w", encoding="utf-8") as f:

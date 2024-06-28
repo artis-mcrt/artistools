@@ -60,7 +60,7 @@ def write_Ye_file(outputfilepath: Path | str, griddata: pd.DataFrame | pl.DataFr
 
     with Path(outputfilepath, "Ye.txt").open("w", encoding="utf-8") as fYe:
         fYe.write(f'{len(griddata["inputcellid"])}\n')
-        griddata.to_pandas()[["inputcellid", "cellYe"]].to_csv(
+        griddata.to_pandas(use_pyarrow_extension_array=True)[["inputcellid", "cellYe"]].to_csv(
             fYe, sep="\t", index=False, header=False, float_format="%.10f", na_rep="0.0"
         )
 

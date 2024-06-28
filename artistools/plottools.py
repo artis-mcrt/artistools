@@ -66,7 +66,7 @@ class ExponentLabelFormatter(ticker.ScalarFormatter):
 
         self._set_formatted_label_text()
 
-    def _set_format(self, *args, **kwargs):
+    def _set_format(self, *args: t.Any, **kwargs):
         if self.decimalplaces is None:
             return super()._set_format(*args, **kwargs)  # type: ignore[misc]
 

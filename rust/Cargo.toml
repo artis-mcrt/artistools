@@ -9,11 +9,9 @@ name = "rustext"
 crate-type = ["cdylib"]
 
 [dependencies]
+autocompress = { version = "0.6.0", features = ["gzip", "rayon", "xz", "zstd"] }
 polars = { version = "0.41.2", features = ["diagonal_concat", "performant"] }
+pyo3 = { version = "0.21.1", features = ["abi3-py310"] }
 pyo3-polars = "0.15.0"
 rayon = "1.5"
 zstd = "0.13.1"
-
-[dependencies.pyo3]
-version = "0.21.1"
-features = ["abi3-py310"]

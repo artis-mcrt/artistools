@@ -227,7 +227,11 @@ skip-magic-trailing-comma = false
 select = ["ALL"]
 ignore = [
     "ARG001", # ignored because variables in df.eval() are not detected
-    "ANN",
+    "ANN001", # missing-type-function-argument
+    "ANN201", # missing-return-type-undocumented-public-function
+    "ANN003", # missing-type-kwargs
+    "ANN202", # missing-return-type-private-function
+    "ANN401", # any-type
     "B005",  # strip-with-multi-characters
     "C901",  # complex-structure
     "COM812",  # missing-trailing-comma

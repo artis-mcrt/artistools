@@ -1467,7 +1467,7 @@ def savetologfile(outputfolderpath, logfilename="modellog.txt"):
     logfilepath = outputfolderpath / logfilename
     logfilepath.unlink(missing_ok=True)
 
-    def logprint(*args, **kwargs):
+    def logprint(*args: t.Any, **kwargs):
         print(*args, **kwargs)
         with logfilepath.open("a", encoding="utf-8") as logfile:
             logfile.write(" ".join([str(x) for x in args]) + "\n")
