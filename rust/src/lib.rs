@@ -4,6 +4,7 @@ extern crate core;
 extern crate polars;
 extern crate rayon;
 extern crate zstd;
+use autocompress::autodetect_open;
 use core::f32;
 use polars::chunked_array::ChunkedArray;
 use polars::datatypes::Float32Type;
@@ -13,7 +14,7 @@ use pyo3_polars::PyDataFrame;
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Error as IoError, Lines};
+use std::io::{BufRead, BufReader, Error as IoError, Lines, Read};
 use std::path::Path;
 use zstd::stream::read::Decoder;
 
@@ -225,27 +226,35 @@ fn estimparse(folderpath: String, rankmin: i32, rankmax: i32) -> PyResult<PyData
 
 #[pyfunction]
 fn read_transitiondata(py: Python<'_>, transitions_filename: String) -> Py<PyDict> {
-    // let mut transitiondata = HashMap::new();
-    // let transitiondata = PyDict::new_bound(py);
     let mut transitiondata = Vec::new();
-
-    let mut lines = read_lines_zst(transitions_filename).unwrap();
+    // let mut reader = BufReader::new(autodetect_open(transitions_filename).unwrap());
+    let mut filecontent = String::new();
+    autodetect_open(transitions_filename)
+        .unwrap()
+        .read_to_string(&mut filecontent)
+        .unwrap();
+    let mut lines = filecontent.lines();
+    // reader.read_to_end(&mut buf).unwrap();
 
     loop {
-        let maybeline = lines.next();
-        if maybeline.is_none() {
-            break;
+        let line;
+        match lines.next() {
+            Some(l) => line = l.to_owned(),
+            None => break,
         }
-        let line = maybeline.unwrap().unwrap();
+        // let bytes = reader.read_line(&mut line).unwrap();
         // println!("{:?}", line);
-        let linesplit: Vec<&str> = line.split_whitespace().collect();
-        if linesplit.len() == 0 {
-            continue;
-        }
-        let atomic_number = linesplit[0].parse::<i32>().unwrap();
-        let ion_stage = linesplit[1].parse::<i32>().unwrap();
 
-        let transitioncount = linesplit[2].parse::<usize>().unwrap();
+        let mut linesplit = line.split_whitespace();
+        let atomic_number;
+        match linesplit.next() {
+            Some(token) => atomic_number = token.parse::<i32>().unwrap(),
+            _ => continue,
+        }
+
+        let ion_stage = linesplit.next().unwrap().parse::<i32>().unwrap();
+
+        let transitioncount = linesplit.next().unwrap().parse::<usize>().unwrap();
 
         let mut vec_lower = vec![0; transitioncount];
         let mut vec_upper = vec![0; transitioncount];
@@ -253,21 +262,36 @@ fn read_transitiondata(py: Python<'_>, transitions_filename: String) -> Py<PyDic
         let mut vec_collstr = vec![0.; transitioncount];
         let mut vec_forbidden = vec![false; transitioncount];
         for i in 0..transitioncount {
-            let line = lines.next().unwrap().unwrap();
+            // let mut tableline = String::new();
+            // let bytes = reader.read_line(&mut tableline).unwrap();
+            // if bytes == 0 {
+            //     break;
+            // }
+            let tableline;
+            match lines.next() {
+                Some(l) => tableline = l.to_owned(),
+                None => break,
+            }
 
             // println!("{:?}", line);
-            let linesplit: Vec<&str> = line.split_whitespace().collect();
-            vec_lower[i] = linesplit[0].parse::<i32>().unwrap();
-            vec_upper[i] = linesplit[1].parse::<i32>().unwrap();
-            vec_avalue[i] = linesplit[2].parse::<f32>().unwrap();
-            vec_collstr[i] = linesplit[3].parse::<f32>().unwrap();
-            if linesplit.len() > 4 {
-                vec_forbidden[i] = linesplit[4].parse::<i32>().unwrap() != 0;
-            } else {
-                vec_forbidden[i] = false;
+            let mut linesplit = tableline.split_whitespace();
+            vec_lower[i] = linesplit.next().unwrap().parse::<i32>().unwrap();
+            vec_upper[i] = linesplit.next().unwrap().parse::<i32>().unwrap();
+            vec_avalue[i] = linesplit.next().unwrap().parse::<f32>().unwrap();
+            vec_collstr[i] = linesplit.next().unwrap().parse::<f32>().unwrap();
+            match linesplit.next() {
+                Some(f) => vec_forbidden[i] = f.parse::<i32>().unwrap() != 0,
+                _ => vec_forbidden[i] = false,
             }
         }
-        let df = df!("lower" => vec_lower, "upper" => vec_upper, "A" => vec_avalue, "collstr" => vec_collstr, "forbidden" => vec_forbidden).unwrap();
+        let df = df!(
+            "lower" => vec_lower.to_owned(),
+            "upper" => vec_upper.to_owned(),
+            "A" => vec_avalue.to_owned(),
+            "collstr" => vec_collstr.to_owned(),
+            "forbidden" => vec_forbidden.to_owned())
+        .unwrap();
+
         transitiondata.push(((atomic_number, ion_stage), PyDataFrame(df).into_py(py)));
     }
 
