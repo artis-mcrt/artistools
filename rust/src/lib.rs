@@ -236,11 +236,7 @@ fn read_transitiondata(py: Python<'_>, transitions_filename: String) -> Py<PyDic
         if maybeline.is_none() {
             break;
         }
-        let maybeline2 = maybeline.unwrap();
-        if maybeline2.is_err() {
-            break;
-        }
-        let line = maybeline2.unwrap();
+        let line = maybeline.unwrap().unwrap();
         // println!("{:?}", line);
         let linesplit: Vec<&str> = line.split_whitespace().collect();
         if linesplit.len() == 0 {
