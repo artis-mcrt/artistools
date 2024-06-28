@@ -226,15 +226,14 @@ fn estimparse(folderpath: String, rankmin: i32, rankmax: i32) -> PyResult<PyData
 
 #[pyfunction]
 fn read_transitiondata(py: Python<'_>, transitions_filename: String) -> Py<PyDict> {
+    let firstlevelnumber = 1;
     let mut transitiondata = Vec::new();
-    // let mut reader = BufReader::new(autodetect_open(transitions_filename).unwrap());
     let mut filecontent = String::new();
     autodetect_open(transitions_filename)
         .unwrap()
         .read_to_string(&mut filecontent)
         .unwrap();
     let mut lines = filecontent.lines();
-    // reader.read_to_end(&mut buf).unwrap();
 
     loop {
         let line;
@@ -242,8 +241,6 @@ fn read_transitiondata(py: Python<'_>, transitions_filename: String) -> Py<PyDic
             Some(l) => line = l.to_owned(),
             None => break,
         }
-        // let bytes = reader.read_line(&mut line).unwrap();
-        // println!("{:?}", line);
 
         let mut linesplit = line.split_whitespace();
         let atomic_number;
@@ -260,13 +257,8 @@ fn read_transitiondata(py: Python<'_>, transitions_filename: String) -> Py<PyDic
         let mut vec_upper = vec![0; transitioncount];
         let mut vec_avalue = vec![0.; transitioncount];
         let mut vec_collstr = vec![0.; transitioncount];
-        let mut vec_forbidden = vec![false; transitioncount];
+        let mut vec_forbidden = vec![0; transitioncount];
         for i in 0..transitioncount {
-            // let mut tableline = String::new();
-            // let bytes = reader.read_line(&mut tableline).unwrap();
-            // if bytes == 0 {
-            //     break;
-            // }
             let tableline;
             match lines.next() {
                 Some(l) => tableline = l.to_owned(),
@@ -275,13 +267,13 @@ fn read_transitiondata(py: Python<'_>, transitions_filename: String) -> Py<PyDic
 
             // println!("{:?}", line);
             let mut linesplit = tableline.split_whitespace();
-            vec_lower[i] = linesplit.next().unwrap().parse::<i32>().unwrap();
-            vec_upper[i] = linesplit.next().unwrap().parse::<i32>().unwrap();
+            vec_lower[i] = linesplit.next().unwrap().parse::<i32>().unwrap() - firstlevelnumber;
+            vec_upper[i] = linesplit.next().unwrap().parse::<i32>().unwrap() - firstlevelnumber;
             vec_avalue[i] = linesplit.next().unwrap().parse::<f32>().unwrap();
             vec_collstr[i] = linesplit.next().unwrap().parse::<f32>().unwrap();
             match linesplit.next() {
-                Some(f) => vec_forbidden[i] = f.parse::<i32>().unwrap() != 0,
-                _ => vec_forbidden[i] = false,
+                Some(f) => vec_forbidden[i] = f.parse::<i32>().unwrap(),
+                _ => vec_forbidden[i] = 0,
             }
         }
         let df = df!(

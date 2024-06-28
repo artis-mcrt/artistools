@@ -73,10 +73,10 @@ def read_transitiondata(
             transition_count = int(ionheader[2])
 
             if not ionlist or (Z, ion_stage) in ionlist:
-                list_lower = np.empty(transition_count, dtype=int)
-                list_upper = np.empty(transition_count, dtype=int)
-                list_A = np.empty(transition_count, dtype=float)
-                list_collstr = np.empty(transition_count, dtype=float)
+                list_lower = np.empty(transition_count, dtype=np.int32)
+                list_upper = np.empty(transition_count, dtype=np.int32)
+                list_A = np.empty(transition_count, dtype=np.float32)
+                list_collstr = np.empty(transition_count, dtype=np.float32)
                 list_forbidden = np.empty(transition_count, dtype=int)
 
                 for index in range(transition_count):
@@ -156,7 +156,7 @@ def add_transition_columns(
         pl.from_pandas(dflevels[["g", "energy_ev", "levelname"]])
         .lazy()
         .with_row_index("levelindex")
-        .with_columns(pl.col("levelindex").cast(pl.Int64))
+        .with_columns(pl.col("levelindex").cast(pl.Int32))
     )
 
     dftransitions = (
@@ -182,7 +182,7 @@ def add_transition_columns(
             on="upper",
             coalesce=True,
         )
-        .with_columns(epsilon_trans_ev=pl.col("upper_energy_ev") - pl.col("lower_energy_ev"))
+        .with_columns(epsilon_trans_ev=(pl.col("upper_energy_ev") - pl.col("lower_energy_ev")))
     )
 
     hc = 12398.419843320025  # h * c in eV * Angstrom
