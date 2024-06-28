@@ -129,7 +129,6 @@ def parse_phixsdata(
                 fphixs.readline()
 
 
-@lru_cache(maxsize=8)
 def get_levels(
     modelpath: str | Path,
     ionlist: t.Sequence[tuple[int, int]] | None = None,
