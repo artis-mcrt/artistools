@@ -1,6 +1,7 @@
 import io
 import time
 import typing as t
+import warnings
 from collections import namedtuple
 from functools import lru_cache
 from pathlib import Path
@@ -198,7 +199,6 @@ def add_transition_columns(
     return dftransitions
 
 
-@lru_cache(maxsize=8)
 def get_levels(
     modelpath: str | Path,
     ionlist: t.Sequence[tuple[int, int]] | None = None,
@@ -206,18 +206,41 @@ def get_levels(
     get_photoionisations: bool = False,
     quiet: bool = False,
     derived_transitions_columns: t.Sequence[str] | None = None,
+    use_rust_reader: bool | None = None,
 ) -> pd.DataFrame:
     """Return a pandas DataFrame of energy levels."""
     adatafilename = Path(modelpath, "adata.txt")
 
     transitionsdict = {}
     if get_transitions:
-        transition_filename = Path(modelpath, "transitiondata.txt")
+        transition_filename = at.firstexisting("transitiondata.txt", folder=modelpath)
+
+        if use_rust_reader is None or use_rust_reader:
+            try:
+                from artistools.rustext import read_transitiondata as read_transitiondata_rust
+
+                use_rust_reader = True
+
+            except ImportError as err:
+                warnings.warn(
+                    "WARNING: Rust extension not available. Falling back to slow python reader.", stacklevel=2
+                )
+                if use_rust_reader:
+                    msg = "Rust extension not available"
+                    raise ImportError(msg) from err
+                use_rust_reader = False
+
         if not quiet:
             time_start = time.perf_counter()
-            print(f"Reading {transition_filename.relative_to(Path(modelpath).parent)}...")
+            print(
+                f"Reading {transition_filename.relative_to(Path(modelpath).parent)} with {'fast rust reader' if use_rust_reader else 'slow python reader'}..."
+            )
 
-        transitionsdict = read_transitiondata(transition_filename, ionlist)
+        if use_rust_reader:
+            transitionsdict = read_transitiondata_rust(str(transition_filename))
+        else:
+            transitionsdict = read_transitiondata(transition_filename, ionlist)
+
         if not quiet:
             print(f"  took {time.perf_counter() - time_start:.2f} seconds")
 

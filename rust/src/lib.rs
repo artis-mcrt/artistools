@@ -1,4 +1,5 @@
 use pyo3::prelude::*;
+use pyo3::types::{IntoPyDict, PyDict};
 extern crate core;
 extern crate polars;
 extern crate rayon;
@@ -29,7 +30,7 @@ const ELSYMBOLS: [&str; 119] = [
 
 const ROMAN: [&str; 10] = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX"];
 
-fn read_lines<P>(filename: P) -> Result<Lines<BufReader<std::fs::File>>, IoError>
+fn read_lines<P>(filename: P) -> Result<Lines<BufReader<File>>, IoError>
 where
     P: AsRef<Path>,
 {
@@ -222,9 +223,66 @@ fn estimparse(folderpath: String, rankmin: i32, rankmax: i32) -> PyResult<PyData
     Ok(PyDataFrame(dfbatch))
 }
 
+#[pyfunction]
+fn read_transitiondata(py: Python<'_>, transitions_filename: String) -> Py<PyDict> {
+    // let mut transitiondata = HashMap::new();
+    // let transitiondata = PyDict::new_bound(py);
+    let mut transitiondata = Vec::new();
+
+    let mut lines = read_lines_zst(transitions_filename).unwrap();
+
+    loop {
+        let maybeline = lines.next();
+        if maybeline.is_none() {
+            break;
+        }
+        let maybeline2 = maybeline.unwrap();
+        if maybeline2.is_err() {
+            break;
+        }
+        let line = maybeline2.unwrap();
+        // println!("{:?}", line);
+        let linesplit: Vec<&str> = line.split_whitespace().collect();
+        if linesplit.len() == 0 {
+            continue;
+        }
+        let atomic_number = linesplit[0].parse::<i32>().unwrap();
+        let ion_stage = linesplit[1].parse::<i32>().unwrap();
+
+        let transitioncount = linesplit[2].parse::<usize>().unwrap();
+
+        let mut vec_lower = vec![0; transitioncount];
+        let mut vec_upper = vec![0; transitioncount];
+        let mut vec_avalue = vec![0.; transitioncount];
+        let mut vec_collstr = vec![0.; transitioncount];
+        let mut vec_forbidden = vec![false; transitioncount];
+        for i in 0..transitioncount {
+            let line = lines.next().unwrap().unwrap();
+
+            // println!("{:?}", line);
+            let linesplit: Vec<&str> = line.split_whitespace().collect();
+            vec_lower[i] = linesplit[0].parse::<i32>().unwrap();
+            vec_upper[i] = linesplit[1].parse::<i32>().unwrap();
+            vec_avalue[i] = linesplit[2].parse::<f32>().unwrap();
+            vec_collstr[i] = linesplit[3].parse::<f32>().unwrap();
+            if linesplit.len() > 4 {
+                vec_forbidden[i] = linesplit[4].parse::<i32>().unwrap() != 0;
+            } else {
+                vec_forbidden[i] = false;
+            }
+        }
+        let df = df!("lower" => vec_lower, "upper" => vec_upper, "A" => vec_avalue, "collstr" => vec_collstr, "forbidden" => vec_forbidden).unwrap();
+        transitiondata.push(((atomic_number, ion_stage), PyDataFrame(df).into_py(py)));
+    }
+
+    let dict = transitiondata.into_py_dict_bound(py);
+    dict.unbind()
+}
+
 /// A Python module implemented in Rust.
 #[pymodule]
-fn rustext(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn rustext(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(estimparse, m)?)?;
+    m.add_function(wrap_pyfunction!(read_transitiondata, m)?)?;
     Ok(())
 }
