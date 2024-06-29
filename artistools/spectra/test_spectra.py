@@ -130,11 +130,7 @@ def test_spectra_get_spectrum_polar_angles(benchmark) -> None:
     )
 
     results = {
-        dirbin: (
-            dfspecdir["f_lambda"].mean(),
-            dfspecdir["f_lambda"].std(),
-        )
-        for dirbin, dfspecdir in spectra.items()
+        dirbin: (dfspecdir["f_lambda"].mean(), dfspecdir["f_lambda"].std()) for dirbin, dfspecdir in spectra.items()
     }
 
     print(f"expected_results = {results!r}")
@@ -178,10 +174,7 @@ def test_spectra_get_spectrum_polar_angles_frompackets(benchmark) -> None:
     )
 
     results_pkts = {
-        dirbin: (
-            dfspecdir["f_lambda"].mean(),
-            dfspecdir["f_lambda"].std(),
-        )
+        dirbin: (dfspecdir["f_lambda"].mean(), dfspecdir["f_lambda"].std())
         for dirbin, dfspecdir in spectrafrompkts.items()
     }
     print(spectrafrompkts[0]["f_lambda"].max())
@@ -211,10 +204,7 @@ def test_spectra_get_flux_contributions(benchmark) -> None:
     timestepmin = 40
     timestepmax = 80
     dfspectrum = at.spectra.get_spectrum(
-        modelpath=modelpath,
-        timestepmin=timestepmin,
-        timestepmax=timestepmax,
-        fluxfilterfunc=None,
+        modelpath=modelpath, timestepmin=timestepmin, timestepmax=timestepmax, fluxfilterfunc=None
     )[-1]
 
     integrated_flux_specout = integrate.trapezoid(dfspectrum["f_lambda"], x=dfspectrum["lambda_angstroms"])
@@ -226,10 +216,7 @@ def test_spectra_get_flux_contributions(benchmark) -> None:
 
     _contribution_list, array_flambda_emission_total = benchmark(
         lambda: at.spectra.get_flux_contributions(
-            modelpath,
-            timestepmin=timestepmin,
-            timestepmax=timestepmax,
-            use_lastemissiontype=False,
+            modelpath, timestepmin=timestepmin, timestepmax=timestepmax, use_lastemissiontype=False
         )
     )
 

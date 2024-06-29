@@ -53,11 +53,7 @@ def test_directionbins() -> None:
 
     testdirections_pandas = testdirections.to_pandas(use_pyarrow_extension_array=False)
 
-    pddfpackets = at.packets.bin_packet_directions(
-        dfpackets=testdirections_pandas,
-        modelpath=Path(),
-        syn_dir=syn_dir,
-    )
+    pddfpackets = at.packets.bin_packet_directions(dfpackets=testdirections_pandas, modelpath=Path(), syn_dir=syn_dir)
 
     for row in pddfpackets.itertuples(index=True):
         assert isinstance(row.costheta_defined, float)

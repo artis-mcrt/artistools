@@ -128,21 +128,13 @@ def make_hesma_peakmag_dm15_dm40(
 ) -> None:
     dm15filename = f"{band}band_{modelname}_viewing_angle_data.txt"
     dm15data = pd.read_csv(
-        pathtofiles / dm15filename,
-        sep=r"\s+",
-        header=None,
-        names=["peakmag", "risetime", "dm15"],
-        skiprows=1,
+        pathtofiles / dm15filename, sep=r"\s+", header=None, names=["peakmag", "risetime", "dm15"], skiprows=1
     )
 
     if dm40:
         dm40filename = f"{band}band_{modelname}_viewing_angle_data_deltam40.txt"
         dm40data = pd.read_csv(
-            pathtofiles / dm40filename,
-            sep=r"\s+",
-            header=None,
-            names=["peakmag", "risetime", "dm40"],
-            skiprows=1,
+            pathtofiles / dm40filename, sep=r"\s+", header=None, names=["peakmag", "risetime", "dm40"], skiprows=1
         )
 
     outdata = {

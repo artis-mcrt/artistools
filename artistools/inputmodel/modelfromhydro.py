@@ -127,7 +127,7 @@ def read_griddat_file(
             "posx": "pos_x_min",  # for compatibility with fortran maptogrid script
             "posy": "pos_y_min",
             "posz": "pos_z_min",
-        },
+        }
     )
     # griddata in geom units
     griddata["rho"] = griddata["rho"].fillna(0.0)
@@ -330,8 +330,7 @@ def makemodelfromgriddata(
     if args is None:
         args = argparse.Namespace()
     pddfmodel, t_model_days, t_mergertime_s, vmax, modelmeta = at.inputmodel.modelfromhydro.read_griddat_file(
-        pathtogriddata=gridfolderpath,
-        targetmodeltime_days=targetmodeltime_days,
+        pathtogriddata=gridfolderpath, targetmodeltime_days=targetmodeltime_days
     )
 
     if getattr(args, "fillcentralhole", False):
@@ -364,15 +363,13 @@ def makemodelfromgriddata(
         modelmeta["headercommentlines"].append(f"trajfolder: {Path(traj_root).resolve().parts[-1]}")
         t_model_days_incpremerger = t_model_days + (t_mergertime_s / 86400)
         assert dfgridcontributions is not None
-        (
-            dfmodel,
-            dfelabundances,
-            dfgridcontributions,
-        ) = at.inputmodel.rprocess_from_trajectory.add_abundancecontributions(
-            dfgridcontributions=dfgridcontributions,
-            dfmodel=dfmodel,
-            t_model_days_incpremerger=t_model_days_incpremerger,
-            traj_root=traj_root,
+        (dfmodel, dfelabundances, dfgridcontributions) = (
+            at.inputmodel.rprocess_from_trajectory.add_abundancecontributions(
+                dfgridcontributions=dfgridcontributions,
+                dfmodel=dfmodel,
+                t_model_days_incpremerger=t_model_days_incpremerger,
+                traj_root=traj_root,
+            )
         )
     else:
         print("WARNING: No abundances will be set because no nuclear network trajectories folder was specified")
@@ -401,9 +398,7 @@ def makemodelfromgriddata(
     if dfelabundances is not None:
         print(f'Writing to {Path(outputpath) / "abundances.txt"}...')
         at.inputmodel.save_initelemabundances(
-            dfelabundances=dfelabundances,
-            outpath=outputpath,
-            headercommentlines=modelmeta["headercommentlines"],
+            dfelabundances=dfelabundances, outpath=outputpath, headercommentlines=modelmeta["headercommentlines"]
         )
     else:
         at.inputmodel.save_empty_abundance_file(outputfilepath=outputpath, npts_model=len(dfmodel))
@@ -412,11 +407,7 @@ def makemodelfromgriddata(
         dfmodel = dfmodel.with_columns(pl.col("tracercount").cast(pl.Int32))
 
     print(f'Writing to {Path(outputpath) / "model.txt"}...')
-    at.inputmodel.save_modeldata(
-        outpath=outputpath,
-        dfmodel=dfmodel,
-        modelmeta=modelmeta,
-    )
+    at.inputmodel.save_modeldata(outpath=outputpath, dfmodel=dfmodel, modelmeta=modelmeta)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:

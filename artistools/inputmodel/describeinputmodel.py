@@ -24,11 +24,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--noabund", action="store_true", help="Give total masses only, no nuclear or elemental abundances"
     )
 
-    parser.add_argument(
-        "--isotopes",
-        action="store_true",
-        help="Show full set of isotopic abundances",
-    )
+    parser.add_argument("--isotopes", action="store_true", help="Show full set of isotopic abundances")
 
     parser.add_argument(
         "-sort",
@@ -42,10 +38,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
     """Describe an ARTIS input model, such as the mass, velocity structure, and abundances."""
     if args is None:
-        parser = argparse.ArgumentParser(
-            formatter_class=at.CustomArgHelpFormatter,
-            description=__doc__,
-        )
+        parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
 
         addargs(parser)
         at.set_args_from_dict(parser, kwargs)

@@ -25,11 +25,7 @@ import artistools as at
 colors_tab10: list[str] = list(plt.get_cmap("tab10")(np.linspace(0, 1.0, 10)))
 
 # reserve colours for these elements
-elementcolors = {
-    "Fe": colors_tab10[0],
-    "Ni": colors_tab10[1],
-    "Co": colors_tab10[2],
-}
+elementcolors = {"Fe": colors_tab10[0], "Ni": colors_tab10[1], "Co": colors_tab10[2]}
 
 
 def get_elemcolor(atomic_number: int | None = None, elsymbol: str | None = None) -> str | np.ndarray:
@@ -538,7 +534,7 @@ def plot_series(
             ax.set_yscale("log")
 
     dictcolors = {
-        "Te": "red",
+        "Te": "red"
         # 'heating_gamma': 'blue',
         # 'cooling_adiabatic': 'blue'
     }
@@ -676,17 +672,7 @@ def plot_subplot(
 
             elif seriestype == "levelpopulation" or seriestype.startswith("levelpopulation_"):
                 showlegend = True
-                plot_levelpop(
-                    ax,
-                    xlist,
-                    seriestype,
-                    params,
-                    timestepslist,
-                    mgilist,
-                    estimators,
-                    modelpath,
-                    args=args,
-                )
+                plot_levelpop(ax, xlist, seriestype, params, timestepslist, mgilist, estimators, modelpath, args=args)
 
             elif seriestype in {"averageionisation", "averageexcitation"}:
                 showlegend = True
@@ -732,14 +718,7 @@ def plot_subplot(
 
     ax.tick_params(right=True)
     if showlegend and not args.nolegend:
-        ax.legend(
-            loc="upper right",
-            handlelength=2,
-            frameon=False,
-            numpoints=1,
-            **legend_kwargs,
-            markerscale=3,
-        )
+        ax.legend(loc="upper right", handlelength=2, frameon=False, numpoints=1, **legend_kwargs, markerscale=3)
 
 
 def make_plot(
@@ -1049,18 +1028,11 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         estimatorsdict = artistools.estimators.estimators_classic.read_classic_estimators(modelpath, modeldata)
         assert estimatorsdict is not None
         estimators = pl.DataFrame([
-            {
-                "timestep": ts,
-                "modelgridindex": mgi,
-                **estimvals,
-            }
-            for (ts, mgi), estimvals in estimatorsdict.items()
+            {"timestep": ts, "modelgridindex": mgi, **estimvals} for (ts, mgi), estimvals in estimatorsdict.items()
         ]).lazy()
     else:
         estimators = at.estimators.scan_estimators(
-            modelpath=modelpath,
-            modelgridindex=args.modelgridindex,
-            timestep=tuple(timesteps_included),
+            modelpath=modelpath, modelgridindex=args.modelgridindex, timestep=tuple(timesteps_included)
         )
     assert estimators is not None
     tmids = at.get_timestep_times(modelpath, loc="mid")
@@ -1119,8 +1091,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         dfmodel = dfmodel.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"])
         estimators = estimators.join(dfmodel, on="modelgridindex")
         estimators = estimators.with_columns(
-            rho_init=pl.col("rho"),
-            rho=pl.col("rho") * (modelmeta["t_model_init_days"] / pl.col("time_mid")) ** 3,
+            rho_init=pl.col("rho"), rho=pl.col("rho") * (modelmeta["t_model_init_days"] / pl.col("time_mid")) ** 3
         )
 
         if args.readonlymgi:

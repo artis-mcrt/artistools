@@ -224,11 +224,7 @@ def test_estimator_snapshot_classic_3d(mockplot) -> None:
     print(yvals)
 
     for varname, expectedval in expectedvals.items():
-        assert np.allclose(expectedval, yvals[varname], rtol=0.001), (
-            varname,
-            expectedval,
-            yvals[varname],
-        )
+        assert np.allclose(expectedval, yvals[varname], rtol=0.001), (varname, expectedval, yvals[varname])
 
 
 @mock.patch.object(matplotlib.axes.Axes, "plot", side_effect=matplotlib.axes.Axes.plot, autospec=True)
@@ -323,9 +319,4 @@ def test_rust_estimator_parser() -> None:
             at.estimators.scan_estimators(modelpath=test_outputpath, use_rust_parser=use_rust).collect()
         )
 
-    pltest.assert_frame_equal(
-        dfestimators[0],
-        dfestimators[1],
-        rtol=1e-4,
-        atol=1e-4,
-    )
+    pltest.assert_frame_equal(dfestimators[0], dfestimators[1], rtol=1e-4, atol=1e-4)

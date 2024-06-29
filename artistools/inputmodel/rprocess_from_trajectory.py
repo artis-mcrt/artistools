@@ -49,19 +49,17 @@ def get_dfelemabund_from_dfmodel(dfmodel: pl.DataFrame, dfnucabundances: pl.Data
 
     elementsincluded = len(elemisotopes)
 
-    dfelabundances_partial = pl.DataFrame(
-        {
-            "inputcellid": dfnucabundances["inputcellid"],
-            **{
-                f"X_{at.get_elsymbol(atomic_number)}": (
-                    dfnucabundances.select(elemisotopes[atomic_number]).sum_horizontal()
-                    if atomic_number in elemisotopes
-                    else np.zeros(len(dfnucabundances))
-                )
-                for atomic_number in range(1, max(elemisotopes.keys()) + 1)
-            },
+    dfelabundances_partial = pl.DataFrame({
+        "inputcellid": dfnucabundances["inputcellid"],
+        **{
+            f"X_{at.get_elsymbol(atomic_number)}": (
+                dfnucabundances.select(elemisotopes[atomic_number]).sum_horizontal()
+                if atomic_number in elemisotopes
+                else np.zeros(len(dfnucabundances))
+            )
+            for atomic_number in range(1, max(elemisotopes.keys()) + 1)
         },
-    )
+    })
 
     # ensure cells with no traj contributions are included
     dfelabundances = (
@@ -497,10 +495,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
     """Create ARTIS model from single trajectory abundances."""
     if args is None:
-        parser = argparse.ArgumentParser(
-            formatter_class=at.CustomArgHelpFormatter,
-            description=__doc__,
-        )
+        parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
 
         addargs(parser)
         at.set_args_from_dict(parser, kwargs)
@@ -581,12 +576,7 @@ def get_wollaeger_density_profile(wollaeger_profilename):
     print(f"{wollaeger_profilename} found")
     with Path(wollaeger_profilename).open("rt", encoding="utf-8") as f:
         t_model_init_days_in = float(f.readline().strip().removesuffix(" day"))
-    result = pd.read_csv(
-        wollaeger_profilename,
-        sep=r"\s+",
-        skiprows=1,
-        names=["cellid", "vel_r_max_kmps", "rho"],
-    )
+    result = pd.read_csv(wollaeger_profilename, sep=r"\s+", skiprows=1, names=["cellid", "vel_r_max_kmps", "rho"])
     result["cellid"] = result["cellid"].astype(int)
     result["vel_r_min_kmps"] = np.concatenate(([0.0], result["vel_r_max_kmps"].to_numpy()[:-1]))
 

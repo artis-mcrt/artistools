@@ -12,9 +12,7 @@ from artistools.misc import CustomArgHelpFormatter
 def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Parse and run artistools commands."""
     parser = argparse.ArgumentParser(
-        prog="artistools",
-        formatter_class=CustomArgHelpFormatter,
-        description="Artistools base command.",
+        prog="artistools", formatter_class=CustomArgHelpFormatter, description="Artistools base command."
     )
     parser.set_defaults(func=None)
 

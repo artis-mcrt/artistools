@@ -542,10 +542,7 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
 
     recomblowerionlist = ((26, 3),)
     photoionlist = ((26, 2),)
-    kappalowerionlist = (
-        (26, 2),
-        (26, 3),
-    )
+    kappalowerionlist = ((26, 2), (26, 3))
     adata = at.atomic.get_levels(modelpath, get_photoionisations=True)
 
     fieldlist = []

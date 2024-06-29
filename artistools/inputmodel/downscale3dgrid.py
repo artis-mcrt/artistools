@@ -153,10 +153,6 @@ def make_downscaled_3d_grid(
 
         plt.tight_layout()
 
-        fig.savefig(
-            modelpath / "downscaled_density_diagnostic.png",
-            dpi=300,
-            bbox_inches="tight",
-        )
+        fig.savefig(modelpath / "downscaled_density_diagnostic.png", dpi=300, bbox_inches="tight")
 
     return outputfolder

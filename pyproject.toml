@@ -221,7 +221,7 @@ extend-exclude = ["_version.py"]
 preview = true
 
 [tool.ruff.format]
-skip-magic-trailing-comma = false
+skip-magic-trailing-comma = true
 
 [tool.ruff.lint]
 select = ["ALL"]

@@ -34,10 +34,7 @@ def print_floers_line_ratio(
             int(np.searchsorted(arr_lambda_angstroms, wl, side="left")) for wl in (lambda_low, lambda_high)
         )
         lineflux = abs(
-            integrate.trapezoid(
-                arr_f_lambda[index_low:index_high],
-                x=arr_lambda_angstroms[index_low:index_high],
-            )
+            integrate.trapezoid(arr_f_lambda[index_low:index_high], x=arr_lambda_angstroms[index_low:index_high])
         )
         assert isinstance(lineflux, float)
         return lineflux
@@ -334,10 +331,7 @@ def make_flux_ratio_plot(args: argparse.Namespace) -> None:
 
         dflcdata = (
             get_line_fluxes_from_pops(
-                emfeatures,
-                modelpath,
-                arr_tstart=args.timebins_tstart,
-                arr_tend=args.timebins_tend,
+                emfeatures, modelpath, arr_tstart=args.timebins_tstart, arr_tend=args.timebins_tend
             )
             if args.frompops
             else get_line_fluxes_from_packets(
@@ -574,12 +568,8 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
     # font = {'size': 16}
     # matplotlib.rc('font', **font)
     # 'floers_te_nne.json',
-    refdatafilenames = [
-        "floers_te_nne.json",
-    ]  # , 'floers_te_nne_CMFGEN.json', 'floers_te_nne_Smyth.json']
-    refdatalabels = [
-        "Flörs+2020",
-    ]  # , 'Floers CMFGEN', 'Floers Smyth']
+    refdatafilenames = ["floers_te_nne.json"]  # , 'floers_te_nne_CMFGEN.json', 'floers_te_nne_Smyth.json']
+    refdatalabels = ["Flörs+2020"]  # , 'Floers CMFGEN', 'Floers Smyth']
     refdatacolors = ["0.0", "C1", "C2", "C4"]
     refdatakeys: list[list[str]] = [[] for _ in refdatafilenames]
     refdatatimes: list[npt.NDArray] = [np.array([]) for _ in refdatafilenames]
@@ -899,10 +889,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot line fluxe ratios for comparisons to Floers."""
     if args is None:
-        parser = argparse.ArgumentParser(
-            formatter_class=at.CustomArgHelpFormatter,
-            description=(__doc__),
-        )
+        parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=(__doc__))
         addargs(parser)
         at.set_args_from_dict(parser, kwargs)
         args = parser.parse_args([] if kwargs else argsraw)

@@ -16,12 +16,7 @@ import artistools as at
 CLIGHT = 2.99792458e10
 DAY = 86400
 
-types = {
-    10: "TYPE_GAMMA",
-    11: "TYPE_RPKT",
-    20: "TYPE_NTLEPTON",
-    32: "TYPE_ESCAPE",
-}
+types = {10: "TYPE_GAMMA", 11: "TYPE_RPKT", 20: "TYPE_NTLEPTON", 32: "TYPE_ESCAPE"}
 
 type_ids = {v: k for k, v in types.items()}
 
@@ -313,10 +308,7 @@ def readfile(
     return dfpackets.to_pandas(use_pyarrow_extension_array=True)
 
 
-def readfile_text(
-    packetsfiletext: Path | str,
-    column_names: list[str],
-) -> pl.DataFrame:
+def readfile_text(packetsfiletext: Path | str, column_names: list[str]) -> pl.DataFrame:
     """Read a packets*.out(.xz/.zstd) space-separated text file into a polars DataFrame."""
     packetsfiletext = Path(packetsfiletext)
     print(f"  reading {packetsfiletext}")
@@ -418,12 +410,7 @@ def get_packets_text_paths(modelpath: str | Path, maxpacketfiles: int | None = N
         nprocs_read = min(nprocs_read, maxpacketfiles)
 
     return [
-        at.firstexisting(
-            f"packets00_{rank:04d}.out",
-            folder=modelpath,
-            tryzipped=True,
-            search_subfolders=True,
-        )
+        at.firstexisting(f"packets00_{rank:04d}.out", folder=modelpath, tryzipped=True, search_subfolders=True)
         for rank in range(nprocs_read)
     ]
 
@@ -510,7 +497,7 @@ def get_rankbatch_parquetfile(
                         / 29979245800.0
                     )
                     / 86400.0
-                ).cast(pl.Float32),
+                ).cast(pl.Float32)
             ).sort(by=["type_id", "escape_type_id", "t_arrive_d"])
 
             syn_dir = at.get_syn_dir(modelpath)
@@ -660,7 +647,7 @@ def add_packet_directions_lazypolars(
 
     if "dirmag" not in colnames:
         dfpackets = dfpackets.with_columns(
-            (pl.col("dirx") ** 2 + pl.col("diry") ** 2 + pl.col("dirz") ** 2).sqrt().alias("dirmag"),
+            (pl.col("dirx") ** 2 + pl.col("diry") ** 2 + pl.col("dirz") ** 2).sqrt().alias("dirmag")
         )
 
     if "costheta" not in colnames:
@@ -670,7 +657,7 @@ def add_packet_directions_lazypolars(
                 / pl.col("dirmag")
             )
             .cast(pl.Float32)
-            .alias("costheta"),
+            .alias("costheta")
         )
 
     if "phi" not in colnames:
@@ -688,7 +675,7 @@ def add_packet_directions_lazypolars(
                 / float(np.linalg.norm(vec2))
             )
             .cast(pl.Float32)
-            .alias("cosphi"),
+            .alias("cosphi")
         )
 
         vec3 = np.cross(vec2, syn_dir)  # -xhat if syn_dir is zhat
@@ -697,7 +684,7 @@ def add_packet_directions_lazypolars(
         dfpackets = dfpackets.with_columns(
             ((pl.col("vec1_x") * vec3[0] + pl.col("vec1_y") * vec3[1] + pl.col("vec1_z") * vec3[2]) / pl.col("dirmag"))
             .cast(pl.Float32)
-            .alias("testphi"),
+            .alias("testphi")
         )
 
         dfpackets = dfpackets.with_columns(
@@ -707,7 +694,7 @@ def add_packet_directions_lazypolars(
                 .otherwise(pl.col("cosphi").arccos())
             )
             .cast(pl.Float32)
-            .alias("phi"),
+            .alias("phi")
         )
 
     return dfpackets.drop(["dirmag", "vec1_x", "vec1_y", "vec1_z"])
@@ -727,12 +714,12 @@ def bin_packet_directions_lazypolars(
         ncosthetabins = at.get_viewingdirection_costhetabincount()
 
     dfpackets = dfpackets.with_columns(
-        ((pl.col("costheta") + 1) / 2.0 * ncosthetabins).fill_nan(0.0).cast(pl.Int32).alias("costhetabin"),
+        ((pl.col("costheta") + 1) / 2.0 * ncosthetabins).fill_nan(0.0).cast(pl.Int32).alias("costhetabin")
     )
 
     if phibintype == "phiascending":
         dfpackets = dfpackets.with_columns(
-            (pl.col("phi") / 2.0 / math.pi * nphibins).fill_nan(0.0).cast(pl.Int32).alias("phibin"),
+            (pl.col("phi") / 2.0 / math.pi * nphibins).fill_nan(0.0).cast(pl.Int32).alias("phibin")
         )
     else:
         # for historical consistency, this binning method decreases phi angle with increasing bin index
@@ -744,12 +731,10 @@ def bin_packet_directions_lazypolars(
             )
             .fill_nan(0.0)
             .cast(pl.Int32)
-            .alias("phibin"),
+            .alias("phibin")
         )
 
-    return dfpackets.with_columns(
-        (pl.col("costhetabin") * nphibins + pl.col("phibin")).cast(pl.Int32).alias("dirbin"),
-    )
+    return dfpackets.with_columns((pl.col("costhetabin") * nphibins + pl.col("phibin")).cast(pl.Int32).alias("dirbin"))
 
 
 def bin_packet_directions(

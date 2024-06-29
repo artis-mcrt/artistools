@@ -87,11 +87,7 @@ def reverse_doubledecay(
             if iso2fract0[s] < 0.0:
                 iso1fract0[s] += iso2fract0[s]
                 iso2fract0[s] = 0.0
-                print(
-                    "shell",
-                    s,
-                    f" goes fully to top isotope Z={zparent} A={numnucleons} of the chain at time zero",
-                )
+                print("shell", s, f" goes fully to top isotope Z={zparent} A={numnucleons} of the chain at time zero")
             else:
                 print(
                     "shell",

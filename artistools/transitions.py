@@ -188,11 +188,7 @@ def make_plot(
 
 
 def add_upper_lte_pop(
-    dftransitions: pl.DataFrame,
-    T_exc: float,
-    ionpop: float,
-    ltepartfunc: float,
-    columnname: str | None = None,
+    dftransitions: pl.DataFrame, T_exc: float, ionpop: float, ltepartfunc: float, columnname: str | None = None
 ) -> pl.DataFrame:
     K_B = const.k_B.to("eV / K").value
     scalefactor = ionpop / ltepartfunc
@@ -248,10 +244,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
     """Plot estimated spectra from bound-bound transitions."""
     if args is None:
-        parser = argparse.ArgumentParser(
-            formatter_class=at.CustomArgHelpFormatter,
-            description=__doc__,
-        )
+        parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
         addargs(parser)
         at.set_args_from_dict(parser, kwargs)
         args = parser.parse_args([] if kwargs else argsraw)

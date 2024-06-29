@@ -273,11 +273,7 @@ def get_levels(
             if (Z, ion_stage) in transitionsdict:
                 dftransitions = transitionsdict[(Z, ion_stage)].lazy()
                 if derived_transitions_columns is not None:
-                    dftransitions = add_transition_columns(
-                        dftransitions,
-                        dflevels,
-                        derived_transitions_columns,
-                    )
+                    dftransitions = add_transition_columns(dftransitions, dflevels, derived_transitions_columns)
             else:
                 dftransitions = pl.LazyFrame()
 

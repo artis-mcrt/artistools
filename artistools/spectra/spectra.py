@@ -253,8 +253,7 @@ def get_from_packets(
 
             dfpackets = dfpackets.filter(
                 pl.col("em_time").is_between(
-                    timelowdays * 86400.0 + mean_correction,
-                    timehighdays * 86400.0 + mean_correction,
+                    timelowdays * 86400.0 + mean_correction, timehighdays * 86400.0 + mean_correction
                 )
             )
 
@@ -406,9 +405,7 @@ def read_emission_absorption_file(emabsfilename: str | Path) -> pl.DataFrame:
 
 @lru_cache(maxsize=4)
 def get_spec_res(
-    modelpath: Path,
-    average_over_theta: bool = False,
-    average_over_phi: bool = False,
+    modelpath: Path, average_over_theta: bool = False, average_over_phi: bool = False
 ) -> dict[int, pl.DataFrame]:
     res_specdata = read_spec_res(modelpath)
     if average_over_theta:
@@ -443,9 +440,7 @@ def get_spectrum(
         assert stokesparam == "I"
         try:
             specdata |= get_spec_res(
-                modelpath=modelpath,
-                average_over_theta=average_over_theta,
-                average_over_phi=average_over_phi,
+                modelpath=modelpath, average_over_theta=average_over_theta, average_over_phi=average_over_phi
             )
         except FileNotFoundError:
             msg = "WARNING: Direction-resolved spectra not found. Getting only spherically averaged spectra instead."
@@ -894,16 +889,10 @@ def get_flux_contributions_from_packets(
         obsdirindex = directionbin // vpkt_config["nspectraperobs"]
         opacchoiceindex = directionbin % vpkt_config["nspectraperobs"]
         nprocs_read, lzdfpackets = at.packets.get_virtual_packets_pl(modelpath, maxpacketfiles=maxpacketfiles)
-        lzdfpackets = lzdfpackets.with_columns(
-            e_rf=pl.col(f"dir{obsdirindex}_e_rf_{opacchoiceindex}"),
-        )
+        lzdfpackets = lzdfpackets.with_columns(e_rf=pl.col(f"dir{obsdirindex}_e_rf_{opacchoiceindex}"))
         dirbin_nu_column = f"dir{obsdirindex}_nu_rf"
 
-        cols |= {
-            dirbin_nu_column,
-            f"dir{obsdirindex}_t_arrive_d",
-            f"dir{obsdirindex}_e_rf_{opacchoiceindex}",
-        }
+        cols |= {dirbin_nu_column, f"dir{obsdirindex}_t_arrive_d", f"dir{obsdirindex}_e_rf_{opacchoiceindex}"}
         lzdfpackets = lzdfpackets.filter(pl.col(f"dir{obsdirindex}_t_arrive_d").is_between(timelowdays, timehighdays))
 
     else:
@@ -943,22 +932,17 @@ def get_flux_contributions_from_packets(
             else pl.format("{} bound-free {}-{}", pl.col("ion_str"), pl.col("lowerlevel"), pl.col("upperionlevel"))
         )
 
-        emtypestrings = pl.concat(
-            [
-                linelistlazy.select([
-                    pl.col("lineindex").alias(emtypecolumn),
-                    expr_linelist_to_str.alias("emissiontype_str"),
-                ]),
-                pl.DataFrame(
-                    {emtypecolumn: [-9999999], "emissiontype_str": ["free-free"]},
-                    schema_overrides={emtypecolumn: pl.Int32, "emissiontype_str": pl.String},
-                ).lazy(),
-                bflistlazy.select([
-                    pl.col(emtypecolumn),
-                    expr_bflist_to_str.alias("emissiontype_str"),
-                ]),
-            ],
-        )
+        emtypestrings = pl.concat([
+            linelistlazy.select([
+                pl.col("lineindex").alias(emtypecolumn),
+                expr_linelist_to_str.alias("emissiontype_str"),
+            ]),
+            pl.DataFrame(
+                {emtypecolumn: [-9999999], "emissiontype_str": ["free-free"]},
+                schema_overrides={emtypecolumn: pl.Int32, "emissiontype_str": pl.String},
+            ).lazy(),
+            bflistlazy.select([pl.col(emtypecolumn), expr_bflist_to_str.alias("emissiontype_str")]),
+        ])
 
         lzdfpackets = lzdfpackets.join(emtypestrings, on=emtypecolumn, how="left")
 
@@ -977,18 +961,16 @@ def get_flux_contributions_from_packets(
     if getabsorption:
         cols |= {"absorptiontype_str", "absorption_freq"}
 
-        abstypestrings = pl.concat(
-            [
-                linelistlazy.select([
-                    pl.col("lineindex").alias("absorption_type"),
-                    expr_linelist_to_str.alias("absorptiontype_str"),
-                ]),
-                pl.DataFrame(
-                    {"absorption_type": [-1, -2], "absorptiontype_str": ["free-free", "bound-free"]},
-                    schema_overrides={"absorption_type": pl.Int32, "absorptiontype_str": pl.String},
-                ).lazy(),
-            ],
-        ).with_columns(pl.col("absorptiontype_str"))
+        abstypestrings = pl.concat([
+            linelistlazy.select([
+                pl.col("lineindex").alias("absorption_type"),
+                expr_linelist_to_str.alias("absorptiontype_str"),
+            ]),
+            pl.DataFrame(
+                {"absorption_type": [-1, -2], "absorptiontype_str": ["free-free", "bound-free"]},
+                schema_overrides={"absorption_type": pl.Int32, "absorptiontype_str": pl.String},
+            ).lazy(),
+        ]).with_columns(pl.col("absorptiontype_str"))
 
         lzdfpackets = lzdfpackets.join(abstypestrings, on="absorption_type", how="left")
 

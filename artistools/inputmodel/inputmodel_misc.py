@@ -19,9 +19,7 @@ import artistools as at
 
 # @lru_cache(maxsize=3)
 def read_modelfile_text(
-    filename: Path | str,
-    printwarningsonly: bool = False,
-    getheadersonly: bool = False,
+    filename: Path | str, printwarningsonly: bool = False, getheadersonly: bool = False
 ) -> tuple[pl.DataFrame, dict[t.Any, t.Any]]:
     """Read an artis model.txt file containing cell velocities, density, and abundances of radioactive nuclides."""
     onelinepercellformat = None
@@ -111,10 +109,7 @@ def read_modelfile_text(
                 # one line per cell format
                 ncols_line_odd = 0
 
-            assert len(columns) in {
-                ncols_line_even + ncols_line_odd,
-                ncols_line_even + ncols_line_odd + 2,
-            }
+            assert len(columns) in {ncols_line_even + ncols_line_odd, ncols_line_even + ncols_line_odd + 2}
             columns = columns[: ncols_line_even + ncols_line_odd]
 
         assert columns is not None
@@ -415,9 +410,7 @@ def get_modeldata_polars(
         getheadersonly = True
 
     dfmodel_textfile, modelmeta = read_modelfile_text(
-        filename=textfilepath,
-        printwarningsonly=printwarningsonly,
-        getheadersonly=getheadersonly,
+        filename=textfilepath, printwarningsonly=printwarningsonly, getheadersonly=getheadersonly
     )
 
     if dfmodel is None:
@@ -451,10 +444,7 @@ def get_modeldata_polars(
 
     if derived_cols:
         dfmodel = add_derived_cols_to_modeldata(
-            dfmodel=dfmodel,
-            derived_cols=derived_cols,
-            modelmeta=modelmeta,
-            modelpath=modelpath,
+            dfmodel=dfmodel, derived_cols=derived_cols, modelmeta=modelmeta, modelpath=modelpath
         )
 
     return dfmodel, modelmeta
@@ -565,10 +555,7 @@ def add_derived_cols_to_modeldata(
 
             dfmodel = (
                 dfmodel.with_columns(vel_r_min_kmps=pl.col("vel_r_max_kmps").shift(n=1, fill_value=0.0))
-                .with_columns(
-                    vel_r_min=(pl.col("vel_r_min_kmps") * 1e5),
-                    vel_r_max=(pl.col("vel_r_max_kmps") * 1e5),
-                )
+                .with_columns(vel_r_min=(pl.col("vel_r_min_kmps") * 1e5), vel_r_max=(pl.col("vel_r_max_kmps") * 1e5))
                 .with_columns(vel_r_mid=((pl.col("vel_r_max") + pl.col("vel_r_min")) / 2))
                 .with_columns(
                     volume=(
@@ -1032,10 +1019,7 @@ def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist: t.Sequenc
     raise AssertionError
 
 
-def get_initelemabundances_pandas(
-    modelpath: Path = Path(),
-    printwarningsonly: bool = False,
-) -> pd.DataFrame:
+def get_initelemabundances_pandas(modelpath: Path = Path(), printwarningsonly: bool = False) -> pd.DataFrame:
     """Return a table of elemental mass fractions by cell from abundances.
 
     Deprecated: Use get_initelemabundances_pandas() instead.
@@ -1049,10 +1033,7 @@ def get_initelemabundances_pandas(
     )
 
 
-def get_initelemabundances_polars(
-    modelpath: Path = Path(),
-    printwarningsonly: bool = False,
-) -> pl.LazyFrame:
+def get_initelemabundances_polars(modelpath: Path = Path(), printwarningsonly: bool = False) -> pl.LazyFrame:
     """Return a table of elemental mass fractions by cell from abundances."""
     textfilepath = at.firstexisting("abundances.txt", folder=modelpath, tryzipped=True)
     parquetfilepath = at.stripallsuffixes(Path(textfilepath)).with_suffix(".txt.parquet.tmp")
@@ -1073,11 +1054,7 @@ def get_initelemabundances_polars(
         colnames = ["inputcellid", *["X_" + at.get_elsymbol(x) for x in range(1, ncols)]]
 
         abundancedata = pl.read_csv(
-            at.zopenpl(textfilepath),
-            has_header=False,
-            separator=" ",
-            comment_prefix="#",
-            infer_schema_length=0,
+            at.zopenpl(textfilepath), has_header=False, separator=" ", comment_prefix="#", infer_schema_length=0
         )
 
         # fix up multiple spaces at beginning of lines
@@ -1184,12 +1161,7 @@ def save_empty_abundance_file(npts_model: int, outputfilepath: str | Path = Path
     if Path(outputfilepath).is_dir():
         outputfilepath = Path(outputfilepath) / "abundances.txt"
 
-    save_initelemabundances(
-        pl.DataFrame({
-            "inputcellid": range(1, npts_model + 1),
-        }),
-        outpath=outputfilepath,
-    )
+    save_initelemabundances(pl.DataFrame({"inputcellid": range(1, npts_model + 1)}), outpath=outputfilepath)
 
 
 def get_dfmodel_dimensions(dfmodel: pd.DataFrame | pl.DataFrame | pl.LazyFrame) -> int:
@@ -1334,10 +1306,7 @@ def dimension_reduce_model(
                     "pos_z_mid": (vel_z_min + vel_z_max) / 2 * t_model_init_seconds,
                 }
 
-            allmatchedcells[cellindexout] = (
-                cellout,
-                matchedcells,
-            )
+            allmatchedcells[cellindexout] = (cellout, matchedcells)
 
     includemissingcolexists = (
         dfgridcontributions is not None and "frac_of_cellmass_includemissing" in dfgridcontributions.columns
@@ -1415,12 +1384,7 @@ def dimension_reduce_model(
 
     print(f"  took {time.perf_counter() - timestart:.1f} seconds")
 
-    return (
-        dfmodel_out,
-        dfabundances_out,
-        dfgridcontributions_out,
-        modelmeta_out,
-    )
+    return (dfmodel_out, dfabundances_out, dfgridcontributions_out, modelmeta_out)
 
 
 def scale_model_to_time(
