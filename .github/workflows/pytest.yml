@@ -26,11 +26,19 @@ jobs:
               with:
                   python-version-file: .python-version
 
-            - name: Install dependencies
+            - name: Cache rust build
+              uses: actions/cache@v4
+              with:
+                  path: rust/target/
+                  key: pytest-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}
+                  restore-keys: |
+                      pytest-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
+                      pytest-rust-target-${{ runner.os }}-
+
+            - name: Install artistools
               run: |
-                  python3 -m pip install --upgrade pip uv
-                  uv pip install --system --upgrade pylint mypy ruff
-                  uv pip install --system -r requirements.txt
+                  curl -LsSf https://astral.sh/uv/install.sh | sh
+                  uv pip install --system --upgrade --compile-bytecode --editable  .
 
             - name: Run Ruff
               if: always()
