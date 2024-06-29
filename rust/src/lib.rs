@@ -256,8 +256,9 @@ fn read_transitiondata(
         let ion_stage = linesplit.next().unwrap().parse::<i32>().unwrap();
 
         let transitioncount = linesplit.next().unwrap().parse::<usize>().unwrap();
-        let mut keep_ion = false;
+        let mut keep_ion = true;
         if ionlist.is_some() {
+            keep_ion = false;
             for (a, b) in ionlist.as_ref().unwrap() {
                 if atomic_number == *a && ion_stage == *b {
                     keep_ion = true;
