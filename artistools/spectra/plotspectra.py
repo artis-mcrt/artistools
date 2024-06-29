@@ -647,31 +647,29 @@ def make_emissionabsorption_plot(
 
     dirbin = args.plotviewingangle[0] if args.plotviewingangle else args.plotvspecpol[0] if args.plotvspecpol else None
     if args.frompackets:
-        (
-            contribution_list,
-            array_flambda_emission_total,
-            arraylambda_angstroms,
-        ) = at.spectra.get_flux_contributions_from_packets(
-            modelpath,
-            args.timemin,
-            args.timemax,
-            xmin,
-            xmax,
-            getemission=args.showemission,
-            getabsorption=args.showabsorption,
-            maxpacketfiles=args.maxpacketfiles,
-            filterfunc=filterfunc,
-            groupby=args.groupby,
-            fixedionlist=args.fixedionlist,
-            maxseriescount=args.maxseriescount + 20,
-            delta_lambda=args.deltalambda,
-            use_lastemissiontype=not args.use_thermalemissiontype,
-            emissionvelocitycut=args.emissionvelocitycut,
-            directionbin=dirbin,
-            average_over_phi=args.average_over_phi_angle,
-            average_over_theta=args.average_over_theta_angle,
-            directionbins_are_vpkt_observers=args.plotvspecpol is not None,
-            vpkt_match_emission_exclusion_to_opac=args.vpkt_match_emission_exclusion_to_opac,
+        (contribution_list, array_flambda_emission_total, arraylambda_angstroms) = (
+            at.spectra.get_flux_contributions_from_packets(
+                modelpath,
+                args.timemin,
+                args.timemax,
+                xmin,
+                xmax,
+                getemission=args.showemission,
+                getabsorption=args.showabsorption,
+                maxpacketfiles=args.maxpacketfiles,
+                filterfunc=filterfunc,
+                groupby=args.groupby,
+                fixedionlist=args.fixedionlist,
+                maxseriescount=args.maxseriescount + 20,
+                delta_lambda=args.deltalambda,
+                use_lastemissiontype=not args.use_thermalemissiontype,
+                emissionvelocitycut=args.emissionvelocitycut,
+                directionbin=dirbin,
+                average_over_phi=args.average_over_phi_angle,
+                average_over_theta=args.average_over_theta_angle,
+                directionbins_are_vpkt_observers=args.plotvspecpol is not None,
+                vpkt_match_emission_exclusion_to_opac=args.vpkt_match_emission_exclusion_to_opac,
+            )
         )
     else:
         assert not args.vpkt_match_emission_exclusion_to_opac
@@ -743,10 +741,7 @@ def make_emissionabsorption_plot(
 
             if args.showabsorption:
                 (absorptioncomponentplot,) = axis.plot(
-                    arraylambda_angstroms,
-                    -x.array_flambda_absorption * scalefactor,
-                    color=linecolor,
-                    linewidth=1,
+                    arraylambda_angstroms, -x.array_flambda_absorption * scalefactor, color=linecolor, linewidth=1
                 )
                 if not args.showemission:
                     linecolor = absorptioncomponentplot.get_color()
@@ -941,12 +936,7 @@ def make_contrib_plot(
             ax.set_ylabel(yvar + " " + at.estimators.get_units_string(yvar))
         # ax.plot(list_lambda, list_yvar, lw=0, marker='o', markersize=0.5)
         # ax.hexbin(list_lambda[yvar], lists_y[yvar], gridsize=100, cmap=plt.cm.BuGn_r)
-        ax.hist2d(
-            list_lambda[yvar],
-            lists_y[yvar],
-            bins=(50, 30),
-            cmap="Greys",
-        )
+        ax.hist2d(list_lambda[yvar], lists_y[yvar], bins=(50, 30), cmap="Greys")
         # plt.cm.Greys
         # x = np.array(list_lambda[yvar])
         # y = np.array(lists_y[yvar])
@@ -1090,17 +1080,9 @@ def make_plot(args) -> tuple[mplfig.Figure, list[mplax.Axes], pl.DataFrame]:
             ax.yaxis.set_major_formatter(at.plottools.ExponentLabelFormatter(ax.get_ylabel(), decimalplaces=1))
 
         if args.hidexticklabels:
-            ax.tick_params(
-                axis="x",
-                which="both",
-                labelbottom=False,
-            )
+            ax.tick_params(axis="x", which="both", labelbottom=False)
         if args.hideyticklabels:
-            ax.tick_params(
-                axis="y",
-                which="both",
-                labelleft=False,
-            )
+            ax.tick_params(axis="y", which="both", labelleft=False)
         ax.set_xlabel("")
 
         if args.multispecplot and args.showtime:
@@ -1256,11 +1238,7 @@ def addargs(parser) -> None:
         help="Use the time of packet escape to the surface (instead of a plane toward the observer)",
     )
 
-    parser.add_argument(
-        "--use_emissiontime",
-        action="store_true",
-        help="Use the time of packet last emission",
-    )
+    parser.add_argument("--use_emissiontime", action="store_true", help="Use the time of packet last emission")
 
     parser.add_argument(
         "--use_thermalemissiontype",
@@ -1379,10 +1357,7 @@ def addargs(parser) -> None:
     )
 
     # for backwards compatibility with above option
-    parser.add_argument(
-        "--average_every_tenth_viewing_angle",
-        action="store_true",
-    )
+    parser.add_argument("--average_every_tenth_viewing_angle", action="store_true")
 
     parser.add_argument(
         "--average_over_theta_angle",
@@ -1420,10 +1395,7 @@ def addargs(parser) -> None:
 def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
     """Plot spectra from ARTIS and reference data."""
     if args is None:
-        parser = argparse.ArgumentParser(
-            formatter_class=at.CustomArgHelpFormatter,
-            description=__doc__,
-        )
+        parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
         addargs(parser)
         at.set_args_from_dict(parser, kwargs)
         argcomplete.autocomplete(parser)

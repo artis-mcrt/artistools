@@ -33,10 +33,7 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
     #     axistherm.set_ylim(bottom=0.1, top=1.0)
 
     if args.plotthermalisation:
-        dfmodel, _ = at.inputmodel.get_modeldata(
-            modelpath,
-            derived_cols=["mass_g", "vel_r_mid"],
-        )
+        dfmodel, _ = at.inputmodel.get_modeldata(modelpath, derived_cols=["mass_g", "vel_r_mid"])
 
         model_mass_grams = dfmodel.mass_g.sum()
         print(f"  model mass: {model_mass_grams / 1.989e33:.3f} Msun")
@@ -397,12 +394,7 @@ def plot_artis_lightcurve(
                 plotkwargs["label"] = None
                 # Update plotkwargs with viewing angle colour
                 plotkwargs, colorindex = get_viewinganglecolor_for_colorbar(
-                    dirbin,
-                    costheta_viewing_angle_bins,
-                    phi_viewing_angle_bins,
-                    scaledmap,
-                    plotkwargs,
-                    args,
+                    dirbin, costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, plotkwargs, args
                 )
                 if args.average_over_phi_angle:
                     plotkwargs["color"] = "lightgrey"
@@ -708,12 +700,7 @@ def create_axes(args):
 
 
 def get_linelabel(
-    modelpath: Path,
-    modelname: str,
-    modelnumber: int,
-    angle: int | None,
-    angle_definition: dict[int, str] | None,
-    args,
+    modelpath: Path, modelname: str, modelnumber: int, angle: int | None, angle_definition: dict[int, str] | None, args
 ) -> str:
     if angle is not None and angle != -1:
         assert angle_definition is not None
@@ -879,11 +866,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                 time, brightness_in_mag = at.lightcurve.get_band_lightcurve(band_lightcurve_data, band_name, args)
 
                 if args.print_data or args.write_data:
-                    txtlinesout = [
-                        f"# band: {band_name}",
-                        f"# model: {modelname}",
-                        "# time_days magnitude",
-                    ]
+                    txtlinesout = [f"# band: {band_name}", f"# model: {modelname}", "# time_days magnitude"]
                     txtlinesout.extend(f"{t_d} {m}" for t_d, m in zip(time, brightness_in_mag, strict=False))
                     txtout = "\n".join(txtlinesout)
                 if args.write_data:
@@ -956,12 +939,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                     # Update plotkwargs with viewing angle colour
                     plotkwargs["label"] = None
                     plotkwargs, _ = get_viewinganglecolor_for_colorbar(
-                        angle,
-                        costheta_viewing_angle_bins,
-                        phi_viewing_angle_bins,
-                        scaledmap,
-                        plotkwargs,
-                        args,
+                        angle, costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, plotkwargs, args
                     )
 
                 if args.linestyle:
@@ -1536,10 +1514,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     # for backwards compatibility with above option
-    parser.add_argument(
-        "--average_every_tenth_viewing_angle",
-        action="store_true",
-    )
+    parser.add_argument("--average_every_tenth_viewing_angle", action="store_true")
 
     parser.add_argument(
         "--average_over_theta_angle",

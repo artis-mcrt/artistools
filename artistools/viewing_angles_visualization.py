@@ -10,34 +10,9 @@ import artistools as at
 
 def get_theta_phi(anglebin):
     assert isinstance(anglebin, int), "Anglebin has to be int"
-    cos_theta = [
-        -0.9,
-        -0.7,
-        -0.5,
-        -0.3,
-        -0.1,
-        0.1,
-        0.3,
-        0.5,
-        0.7,
-        0.9,
-    ]
+    cos_theta = [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9]
     theta = np.arccos(cos_theta)
-    phi = (
-        np.array([
-            0.1,
-            0.3,
-            0.5,
-            0.7,
-            0.9,
-            1.9,
-            1.7,
-            1.5,
-            1.3,
-            1.1,
-        ])
-        * np.pi
-    )
+    phi = np.array([0.1, 0.3, 0.5, 0.7, 0.9, 1.9, 1.7, 1.5, 1.3, 1.1]) * np.pi
 
     anglenumber = 0
     for t in theta:
@@ -52,12 +27,7 @@ def get_theta_phi(anglebin):
 
 def gen_viewing_angle_df(length: int) -> pd.DataFrame:
     # Build viewing angle vector DataFrame
-    viewing_angles: dict[str, list[float | str]] = {
-        "Angle-bin": [],
-        "x_coord": [],
-        "y_coord": [],
-        "z_coord": [],
-    }
+    viewing_angles: dict[str, list[float | str]] = {"Angle-bin": [], "x_coord": [], "y_coord": [], "z_coord": []}
 
     for i in range(100):
         theta, phi = get_theta_phi(i)
@@ -156,15 +126,7 @@ def viewing_angles_visualisation(
         hover_name="Angle-bin",
     )
     fig.update_traces(line={"width": linewidth})
-    fig.update_layout(
-        legend={
-            "orientation": "h",
-            "yanchor": "bottom",
-            "y": 1.02,
-            "xanchor": "right",
-            "x": 1,
-        }
-    )
+    fig.update_layout(legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "right", "x": 1})
 
     fig = fig.add_trace(
         go.Volume(
@@ -197,55 +159,26 @@ def viewing_angles_visualisation(
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument(
-        "modelfile",
-        help="Path to the ARTIS model.",
-    )
+    parser.add_argument("modelfile", help="Path to the ARTIS model.")
     parser.add_argument(
         "-o",
         "--outfile",
         help="Name of the output file. If it contains 'html', figure will be stored as html including the animation.",
     )
+    parser.add_argument("--isomin", type=float, help="Minimum density for color coding.")
+    parser.add_argument("--isomax", type=float, help="Maximum density for color coding.")
+    parser.add_argument("--opacity", type=float, help="Opacity value. Default: 0.25", default=0.25)
     parser.add_argument(
-        "--isomin",
-        type=float,
-        help="Minimum density for color coding.",
+        "-s", "--surface_count", type=int, help="Number of isosurfaces plotted. Default: 20", default=20
     )
-    parser.add_argument(
-        "--isomax",
-        type=float,
-        help="Maximum density for color coding.",
-    )
-    parser.add_argument(
-        "--opacity",
-        type=float,
-        help="Opacity value. Default: 0.25",
-        default=0.25,
-    )
-    parser.add_argument(
-        "-s",
-        "--surface_count",
-        type=int,
-        help="Number of isosurfaces plotted. Default: 20",
-        default=20,
-    )
-    parser.add_argument(
-        "--linewidth",
-        type=float,
-        help="Width of the viewing angle lines. Default: 2.5",
-        default=2.5,
-    )
+    parser.add_argument("--linewidth", type=float, help="Width of the viewing angle lines. Default: 2.5", default=2.5)
     parser.add_argument(
         "--linelength",
         type=float,
         help="Length of the viewing angle lines in units of the boxsize. Default: 1.0",
         default=1.0,
     )
-    parser.add_argument(
-        "--show_plot",
-        action="store_true",
-        help="If flag is given, plot will be shown after saving.",
-    )
+    parser.add_argument("--show_plot", action="store_true", help="If flag is given, plot will be shown after saving.")
 
 
 def main() -> None:

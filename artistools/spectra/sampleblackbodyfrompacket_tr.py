@@ -36,12 +36,7 @@ arr_lambda = const.c.to("angstrom/s").value / arr_nu_hz
 
 n_angle_bins = 100
 
-types = {
-    10: "TYPE_GAMMA",
-    11: "TYPE_RPKT",
-    20: "TYPE_NTLEPTON",
-    32: "TYPE_ESCAPE",
-}
+types = {10: "TYPE_GAMMA", 11: "TYPE_RPKT", 20: "TYPE_NTLEPTON", 32: "TYPE_ESCAPE"}
 type_ids = {v: k for k, v in types.items()}
 
 

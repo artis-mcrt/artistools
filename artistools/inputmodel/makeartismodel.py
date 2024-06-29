@@ -90,12 +90,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
                 else None
             )
 
-            (
-                dfmodel_out,
-                dfelabundances_out,
-                _,
-                modelmeta_out,
-            ) = at.inputmodel.dimension_reduce_model(
+            (dfmodel_out, dfelabundances_out, _, modelmeta_out) = at.inputmodel.dimension_reduce_model(
                 dfmodel=dfmodel,
                 outputdimensions=ndim_out,
                 dfelabundances=dfelabundances,
@@ -112,11 +107,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             ]
             assert dfelabundances_out is not None
             at.inputmodel.save_initelemabundances(dfelabundances_out, outpath=outdir)
-            at.inputmodel.save_modeldata(
-                dfmodel=dfmodel_out,
-                modelmeta=modelmeta_out,
-                outpath=outdir,
-            )
+            at.inputmodel.save_modeldata(dfmodel=dfmodel_out, modelmeta=modelmeta_out, outpath=outdir)
 
     if args.makemodelfromgriddata:
         print(args)

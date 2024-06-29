@@ -196,10 +196,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
     """Write ARTIS model data out in code comparison workshop format."""
     if args is None:
-        parser = argparse.ArgumentParser(
-            formatter_class=at.CustomArgHelpFormatter,
-            description=__doc__,
-        )
+        parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
         addargs(parser)
         at.set_args_from_dict(parser, kwargs)
         args = parser.parse_args([] if kwargs else argsraw)
@@ -223,19 +220,13 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
         try:
             write_lbol_edep(
-                modelpath,
-                model_id,
-                selected_timesteps,
-                Path(args.outputpath, f"lbol_edep_{model_id}_artisnebular.txt"),
+                modelpath, model_id, selected_timesteps, Path(args.outputpath, f"lbol_edep_{model_id}_artisnebular.txt")
             )
         except FileNotFoundError:
             print("Can't write deposition because files are missing")
 
         write_spectra(
-            modelpath,
-            model_id,
-            selected_timesteps,
-            Path(args.outputpath, f"spectra_{model_id}_artisnebular.txt"),
+            modelpath, model_id, selected_timesteps, Path(args.outputpath, f"spectra_{model_id}_artisnebular.txt")
         )
 
         # write_single_estimator(modelpath, selected_timesteps, estimators, allnonemptymgilist,

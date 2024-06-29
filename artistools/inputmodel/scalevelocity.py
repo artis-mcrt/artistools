@@ -23,17 +23,14 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 def eval_mshell(dfmodel: pd.DataFrame, t_model_init_seconds: float) -> None:
     dfmodel = dfmodel.eval(
         "mass_g = 10 ** logrho * 4. / 3. * @math.pi * (vel_r_max_kmps ** 3 - vel_r_min_kmps ** 3)"
-        "* (1e5 * @t_model_init_seconds) ** 3",
+        "* (1e5 * @t_model_init_seconds) ** 3"
     )
 
 
 def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
     """Scale the velocity of an ARTIS model, keeping mass constant and saving back to ARTIS format."""
     if args is None:
-        parser = argparse.ArgumentParser(
-            formatter_class=at.CustomArgHelpFormatter,
-            description=__doc__,
-        )
+        parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
 
         addargs(parser)
         at.set_args_from_dict(parser, kwargs)
@@ -65,7 +62,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     dfmodel = dfmodel.eval(
         "logrho = log10(mass_g / ("
         "4. / 3. * @math.pi * (vel_r_max_kmps ** 3 - vel_r_min_kmps ** 3)"
-        " * (1e5 * @t_model_init_seconds) ** 3))",
+        " * (1e5 * @t_model_init_seconds) ** 3))"
     )
 
     eval_mshell(dfmodel, t_model_init_seconds)

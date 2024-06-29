@@ -238,11 +238,7 @@ def plot_energy_rate(modelpath):
 
 def get_etot_fromfile(modelpath):
     energydistribution_data = pd.read_csv(
-        Path(modelpath) / "energydistribution.txt",
-        skiprows=1,
-        sep=r"\s+",
-        header=None,
-        names=["cellid", "cell_energy"],
+        Path(modelpath) / "energydistribution.txt", skiprows=1, sep=r"\s+", header=None, names=["cellid", "cell_energy"]
     )
     etot = energydistribution_data["cell_energy"].sum()
     return etot, energydistribution_data

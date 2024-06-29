@@ -93,12 +93,7 @@ def plot_slice_modelcolumn(
         valuegrid,
         cmap="viridis",
         interpolation="nearest",
-        extent=(
-            vmin_ax1,
-            vmax_ax1,
-            vmin_ax2,
-            vmax_ax2,
-        ),
+        extent=(vmin_ax1, vmax_ax1, vmin_ax2, vmax_ax2),
         origin="lower",
         # vmin=0.0,
         # vmax=1.0,
@@ -129,9 +124,7 @@ def plot_2d_initial_abundances(modelpath, args: argparse.Namespace) -> None:
     # if the species ends in a number then we need to also get the nuclear mass fractions (not just element abundances)
     get_elemabundances = any(plotvar[-1] not in string.digits for plotvar in args.plotvars)
     dfmodel, modelmeta = at.get_modeldata(
-        modelpath,
-        get_elemabundances=get_elemabundances,
-        derived_cols=["pos_min", "pos_max"],
+        modelpath, get_elemabundances=get_elemabundances, derived_cols=["pos_min", "pos_max"]
     )
     assert modelmeta["dimensions"] > 1
 
@@ -169,8 +162,7 @@ def plot_2d_initial_abundances(modelpath, args: argparse.Namespace) -> None:
     xfactor = 1 if modelmeta["dimensions"] == 3 else 0.5
     figwidth = at.get_config()["figwidth"]
     fig = plt.figure(
-        figsize=(figwidth * xfactor * ncols, figwidth * nrows),
-        tight_layout={"pad": 1.0, "w_pad": 0.0, "h_pad": 0.0},
+        figsize=(figwidth * xfactor * ncols, figwidth * nrows), tight_layout={"pad": 1.0, "w_pad": 0.0, "h_pad": 0.0}
     )
     gs = gridspec.GridSpec(nrows + 1, ncols, height_ratios=[0.05, 1], width_ratios=[1] * ncols)
 
@@ -430,12 +422,7 @@ def plot_phi_hist(modelpath):
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument(
-        "-modelpath",
-        type=Path,
-        default=Path(),
-        help="Path to ARTIS folder",
-    )
+    parser.add_argument("-modelpath", type=Path, default=Path(), help="Path to ARTIS folder")
 
     parser.add_argument("-o", action="store", dest="outputfile", type=Path, default=None, help="Filename for PDF file")
 

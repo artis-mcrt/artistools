@@ -73,8 +73,7 @@ def test_downscale_3dmodel() -> None:
     abundcols = (x for x in dfmodel.columns if x.startswith("X_"))
     for abundcol in abundcols:
         assert np.isclose(
-            (dfmodel[abundcol] * dfmodel["mass_g"]).sum(),
-            (dfmodel_small[abundcol] * dfmodel_small["mass_g"]).sum(),
+            (dfmodel[abundcol] * dfmodel["mass_g"]).sum(), (dfmodel_small[abundcol] * dfmodel_small["mass_g"]).sum()
         )
 
 
@@ -146,11 +145,7 @@ def test_makeartismodelfrom_sph_particles() -> None:
             argsraw=[], inputpath=gridfolderpath, outputpath=gridfolderpath, **config["maptogridargs"]
         )
 
-        verify_file_checksums(
-            config["maptogrid_sums"],
-            digest="sha256",
-            folder=gridfolderpath,
-        )
+        verify_file_checksums(config["maptogrid_sums"], digest="sha256", folder=gridfolderpath)
 
         dfcontribs = {}
         for dimensions in (3, 2, 1, 0):
@@ -171,11 +166,7 @@ def test_makeartismodelfrom_sph_particles() -> None:
             dfcontribs[dimensions] = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(outpath_kn)
 
             if dimensions == 3:
-                verify_file_checksums(
-                    config["makeartismodel_sums"],
-                    digest="sha256",
-                    folder=outpath_kn,
-                )
+                verify_file_checksums(config["makeartismodel_sums"], digest="sha256", folder=outpath_kn)
                 dfcontrib_source = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(gridfolderpath)
 
                 pltest.assert_frame_equal(
@@ -213,11 +204,7 @@ def test_makeartismodelfrom_fortrangriddat() -> None:
     gridfolderpath = testdatapath / "kilonova"
     outpath_kn = outputpath / "kilonova"
     at.inputmodel.modelfromhydro.main(
-        argsraw=[],
-        gridfolderpath=gridfolderpath,
-        outputpath=outpath_kn,
-        dimensions=3,
-        targetmodeltime_days=0.1,
+        argsraw=[], gridfolderpath=gridfolderpath, outputpath=outpath_kn, dimensions=3, targetmodeltime_days=0.1
     )
 
 
@@ -338,12 +325,7 @@ def test_save_load_3d_model() -> None:
     for _ in (0, 1):
         dfmodel_loaded, modelmeta_loaded = at.inputmodel.get_modeldata_polars(modelpath=outpath)
         pltest.assert_frame_equal(
-            dfmodel,
-            dfmodel_loaded.collect(),
-            check_column_order=False,
-            check_dtypes=False,
-            rtol=1e-4,
-            atol=1e-4,
+            dfmodel, dfmodel_loaded.collect(), check_column_order=False, check_dtypes=False, rtol=1e-4, atol=1e-4
         )
         assert modelmeta == modelmeta_loaded
 
@@ -378,12 +360,7 @@ def lower_dim_and_check_mass_conservation(outputdimensions: int) -> None:
 
     outpath = outputpath / f"test_dimension_reduce_3d_{outputdimensions:d}d"
     outpath.mkdir(exist_ok=True, parents=True)
-    (
-        dfmodel_lowerd,
-        _,
-        _,
-        modelmeta_lowerd,
-    ) = at.inputmodel.dimension_reduce_model(
+    (dfmodel_lowerd, _, _, modelmeta_lowerd) = at.inputmodel.dimension_reduce_model(
         dfmodel=dfmodel3d_pl, modelmeta=modelmeta_3d, outputdimensions=outputdimensions
     )
 
