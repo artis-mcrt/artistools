@@ -405,7 +405,7 @@ def read_estimators(
 ) -> dict[tuple[int, int], dict[str, t.Any]]:
     """Read ARTIS estimator data into a dictionary keyed by (timestep, modelgridindex).
 
-    This is very slow, and it's almost always better to use scan_estimators instead.
+    DEPRECATED: This is very slow, and it's almost always better to use scan_estimators instead.
     """
     if isinstance(keys, str):
         keys = {keys}
