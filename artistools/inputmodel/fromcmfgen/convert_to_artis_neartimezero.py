@@ -17,10 +17,6 @@ model = "DDC25"
 snapshot = "SN_HYDRO_DATA_1.300d"
 # snapshot = 'SN_HYDRO_DATA_203.1d'
 
-use_double_decay = (
-    True  # should undo chains like Ni56 -> Co56 -> Fe56 instead of assuming all Fe56 and Co56 was initially Ni56
-)
-
 
 def undecay(
     a: dict[str, npt.NDArray],
