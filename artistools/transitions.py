@@ -7,6 +7,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 import polars as pl
 from astropy import constants as const
@@ -89,7 +90,9 @@ def get_nist_transitions(filename: Path | str) -> pd.DataFrame:
     return pd.DataFrame(translist, columns=transitiontuple._fields)
 
 
-def generate_ion_spectrum(transitions, xvalues, popcolumn, plot_resolution, args: argparse.Namespace):
+def generate_ion_spectrum(
+    transitions, xvalues, popcolumn, plot_resolution, args: argparse.Namespace
+) -> npt.NDArray[np.float64]:
     yvalues = np.zeros(len(xvalues))
 
     # iterate over lines
@@ -113,7 +116,16 @@ def generate_ion_spectrum(transitions, xvalues, popcolumn, plot_resolution, args
 
 
 def make_plot(
-    xvalues, yvalues, temperature_list, vardict, ionlist, ionpopdict, xmin, xmax, figure_title, outputfilename
+    xvalues,
+    yvalues,
+    temperature_list: list[str],
+    vardict,
+    ionlist: t.Sequence[IonTuple],
+    ionpopdict,
+    xmin: float,
+    xmax: float,
+    figure_title: str,
+    outputfilename: str,
 ):
     # npanels = len(ionlist) + 1
     npanels = len(ionlist)
