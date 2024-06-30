@@ -152,7 +152,7 @@ def plot_average_ionisation_excitation(
             ion_stage = at.decode_roman_numeral(paramvalue.split(" ")[1])
         ylist = []
         if seriestype == "averageexcitation":
-            print("  This will be slow!")
+            print("  This will be slow! TODO: reimplement with polars.")
             for modelgridindex, timesteps in zip(mgilist, timestepslist, strict=False):
                 exc_ev_times_tdelta_sum = 0.0
                 tdeltasum = 0.0
