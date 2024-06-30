@@ -3,7 +3,6 @@ extern crate core;
 extern crate polars;
 extern crate rayon;
 extern crate zstd;
-use core::f32;
 use polars::chunked_array::ChunkedArray;
 use polars::datatypes::Float32Type;
 use polars::prelude::*;
@@ -48,6 +47,11 @@ where
     Ok(BufReader::new(decoder).lines())
 }
 
+/// Ensure that all columns have the same length matching the outputrownum
+///
+/// If a column is shorter than outputrownum, append zeros to it
+/// This is necessary because the estimator files may define different quantities for different
+/// cells (e.g. because zero-abundances ions were skipped)
 fn match_colsizes(coldata: &mut HashMap<String, Vec<f32>>, outputrownum: usize) {
     for singlecoldata in coldata.values_mut() {
         if singlecoldata.len() < outputrownum {
@@ -57,6 +61,7 @@ fn match_colsizes(coldata: &mut HashMap<String, Vec<f32>>, outputrownum: usize) 
     }
 }
 
+/// Append a value to a column, or create the column if it doesn't exist (filling with zeros)
 fn append_or_create(
     coldata: &mut HashMap<String, Vec<f32>>,
     colname: &String,
@@ -72,6 +77,7 @@ fn append_or_create(
     assert_eq!(singlecoldata.len(), *outputrownum, "colname: {:?}", colname);
 }
 
+/// Parse a single line from an estimator file and update the column data
 fn parse_estimator_line(
     line: &str,
     mut coldata: &mut HashMap<String, Vec<f32>>,
@@ -172,6 +178,7 @@ fn parse_estimator_line(
     }
 }
 
+/// Read a single ARTIS estimators*.out[.zst] file and return a DataFrame
 fn read_estimator_file(folderpath: String, rank: i32) -> DataFrame {
     let mut coldata: HashMap<String, Vec<f32>> = HashMap::new();
     let mut outputrownum = 0;
@@ -209,6 +216,7 @@ fn read_estimator_file(folderpath: String, rank: i32) -> DataFrame {
     df
 }
 
+/// Read the estimator files from rankmin to rankmax and concatenate them into a single DataFrame
 #[pyfunction]
 pub fn estimparse(folderpath: String, rankmin: i32, rankmax: i32) -> PyResult<PyDataFrame> {
     let ranks: Vec<i32> = (rankmin..rankmax + 1).collect();

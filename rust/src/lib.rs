@@ -1,18 +1,14 @@
-use pyo3::prelude::*;
-extern crate core;
-extern crate polars;
-extern crate rayon;
-extern crate zstd;
 use crate::estimators::estimparse;
 use crate::transitions::read_transitiondata;
+use pyo3::prelude::*;
 
 mod estimators;
 mod transitions;
 
-/// A Python module implemented in Rust.
+/// This is an artistools submodule consisting of compiled rust functions to improve performance.
 #[pymodule]
-fn rustext(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_function(wrap_pyfunction!(estimparse, m)?)?;
-    m.add_function(wrap_pyfunction!(read_transitiondata, m)?)?;
+fn rustext(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction_bound!(estimparse, m)?)?;
+    m.add_function(wrap_pyfunction_bound!(read_transitiondata, m)?)?;
     Ok(())
 }

@@ -3,13 +3,12 @@ use pyo3::types::{IntoPyDict, PyDict};
 extern crate core;
 extern crate polars;
 extern crate rayon;
-extern crate zstd;
 use autocompress::autodetect_open;
-use core::f32;
 use polars::prelude::*;
 use pyo3_polars::PyDataFrame;
 use std::io::Read;
 
+/// Read an ARTIS transitiondata.txt file and return a dictionary of DataFrames, keyed by (atomic_number, ion_stage).
 #[pyfunction]
 pub fn read_transitiondata(
     py: Python<'_>,
