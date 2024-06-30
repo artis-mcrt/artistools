@@ -69,8 +69,6 @@ subcommandtree: CommandType = {
         "makeartismodel1dslicefromcone": ("inputmodel.slice1dfromconein3dmodel", "main"),
         "makeartismodelbotyanski2017": ("inputmodel.botyanski2017", "main"),
         "makeartismodelfromshen2018": ("inputmodel.shen2018", "main"),
-        "makeartismodelscalevelocity": ("inputmodel.scalevelocity", "main"),
-        "makeartismodelfullymixed": ("inputmodel.fullymixed", "main"),
         "makeartismodelsolar_rprocess": ("inputmodel.rprocess_solar", "main"),
         "makeartismodelfromsingletrajectory": ("inputmodel.rprocess_from_trajectory", "main"),
         "from_alcar": ("inputmodel.from_alcar", "main"),
