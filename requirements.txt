@@ -8,7 +8,7 @@ mypy>=1.10.1
 numexpr>=2.10.1
 numpy>=2.0.0
 pandas>=2.2.2
-polars>=1.0.0rc2
+polars>=1.0.0
 pre-commit>=3.7.1
 pyarrow>=16.1.0
 pynonthermal>=2024.4.29
@@ -19,7 +19,7 @@ pytest-cov>=5.0.0
 pytest-xdist[psutil]>=3.6.1
 pyvista>=0.43.10
 PyYAML>=6.0.1
-ruff==0.5.0
+ruff>=0.5.0
 scipy>=1.14.0
 setuptools_scm[toml]>=8.1.0
 tabulate>=0.9
