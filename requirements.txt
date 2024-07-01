@@ -4,7 +4,7 @@ argcomplete==3.4.0
     # via
     #   -r requirements.in
     #   artistools
-artistools==2024.4.29.1
+artistools==2024.6.17.1
     # via pynonthermal
 astropy==6.1.1
     # via
