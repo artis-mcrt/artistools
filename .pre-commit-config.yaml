@@ -59,8 +59,8 @@ repos:
             types: [python]
             language: python
 
-    - repo: https://github.com/astral-sh/uv-pre-commit
-      rev: 0.2.13
-      hooks:
-          - id: pip-compile
-            args: [requirements.in, -o, requirements.txt]
+    # - repo: https://github.com/astral-sh/uv-pre-commit
+    #   rev: 0.2.13
+    #   hooks:
+    #       - id: pip-compile
+    #         args: [requirements.in, -o, requirements.txt]

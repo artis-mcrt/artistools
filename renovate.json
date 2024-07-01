@@ -6,5 +6,19 @@
   "bumpVersion": "minor",
   "pre-commit": {
     "enabled": true
+  },
+  "pip-compile": {
+    "fileMatch": ["(^|/)requirements\\.txt$"],
+    "lockFileMaintenance": {
+        "enabled": true,
+        "branchTopic": "pip-compile-refresh",
+        "commitMessageAction": "Refresh pip-compile outputs"
+    }
+  },
+  "pip_requirements": {
+    "enabled": false
+  },
+  "pip_setup": {
+    "enabled": false
   }
 }
