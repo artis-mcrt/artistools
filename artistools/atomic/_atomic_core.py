@@ -15,7 +15,7 @@ import artistools as at
 
 def parse_adata(
     fadata: io.TextIOBase,
-    phixsdict: dict[tuple[int, int, int], tuple[pl.DataFrame, pl.DataFrame]],
+    phixsdict: dict[tuple[int, int, int], tuple[list[tuple[int, float]], pl.DataFrame]],
     ionlist: t.Collection[tuple[int, int]] | None,
 ) -> t.Generator[tuple[int, int, int, float, pl.DataFrame], None, None]:
     """Generate ions and their level lists from adata.txt."""
@@ -31,22 +31,22 @@ def parse_adata(
         level_count = int(ionheader[2])
 
         if not ionlist or (Z, ion_stage) in ionlist:
-            level_list: list[tuple[float, float, int, str | None, pl.Series, pl.Series]] = []
+            level_list: list[tuple[float, float, int, str | None, pl.Series | None, pl.Series | None]] = []
             for levelindex in range(level_count):
                 row = fadata.readline().split()
 
                 levelname = " ".join(row[4:]).strip("'") if len(row) >= 5 else None
                 numberin = int(row[0])
                 assert levelindex == numberin - firstlevelnumber
-                phixstargetlist, phixstable = phixsdict.get((Z, ion_stage, numberin), (pl.DataFrame(), pl.DataFrame()))
+                phixstargetlist, phixstable = phixsdict.get((Z, ion_stage, numberin), (None, None))
 
                 level_list.append((
                     float(row[1]),
                     float(row[2]),
                     int(row[3]),
                     levelname,
-                    phixstargetlist.to_struct(),
-                    phixstable.to_struct(),
+                    pl.Series(phixstargetlist, dtype=pl.Struct({"upperionlevel": pl.Int64, "probability": pl.Float64})),
+                    phixstable.to_struct() if phixstable is not None else None,
                 ))
 
             dflevels = (
@@ -120,7 +120,7 @@ def read_transitiondata(
 
 def parse_phixsdata(
     fphixs: io.TextIOBase, ionlist: t.Collection[tuple[int, int]] | None = None
-) -> t.Generator[tuple[int, int, int, int, int, pl.DataFrame, pl.DataFrame], None, None]:
+) -> t.Generator[tuple[int, int, int, int, int, list[tuple[int, float]], pl.DataFrame], None, None]:
     firstlevelnumber = 1
     nphixspoints = int(fphixs.readline())
     phixsnuincrement = float(fphixs.readline())
@@ -151,15 +151,13 @@ def parse_phixsdata(
                 level, fraction = fphixs.readline().split()
                 targetlist[phixstargetindex] = (int(level) - firstlevelnumber, float(fraction))
 
-        dftargetlist = pl.DataFrame(targetlist, schema=[("level", pl.Int64), ("fraction", pl.Float64)], orient="row")
-
         if not ionlist or (Z, lowerion_stage) in ionlist:
             phixstable = pl.DataFrame({
-                "xgrid": xgrid,
-                "crosssection": [float(fphixs.readline()) * 1e-18 for _ in range(nphixspoints)],
+                "nu_over_nuthreshold": xgrid,
+                "crosssection": (float(fphixs.readline()) * 1e-18 for _ in range(nphixspoints)),
             })
 
-            yield Z, upperion_stage, upperionlevel, lowerion_stage, lowerionlevel, dftargetlist, phixstable
+            yield Z, upperion_stage, upperionlevel, lowerion_stage, lowerionlevel, targetlist, phixstable
 
         else:
             for _ in range(nphixspoints):
