@@ -16,7 +16,7 @@ def write_spectrum(dfspectrum: pl.DataFrame, outfilepath: Path) -> None:
         spec_file.write("#lambda f_lambda_1Mpc\n")
         spec_file.write("#[A] [erg/s/cm2/A]\n")
 
-        dfspectrum.to_pandas().to_csv(
+        dfspectrum.to_pandas(use_pyarrow_extension_array=True).to_csv(
             spec_file, header=False, sep=" ", index=False, columns=["lambda_angstroms", "f_lambda"]
         )
 
@@ -48,11 +48,7 @@ def write_flambda_spectra(modelpath: Path) -> None:
 
     for timestep in timesteps:
         dfspectra = at.spectra.get_spectrum(
-            modelpath=modelpath,
-            timestepmin=timestep,
-            timestepmax=timestep,
-            average_over_phi=True,
-            directionbins=[0],
+            modelpath=modelpath, timestepmin=timestep, timestepmax=timestep, average_over_phi=True, directionbins=[0]
         )
         if 0 in dfspectra:
             write_spectrum(
@@ -64,21 +60,13 @@ def write_flambda_spectra(modelpath: Path) -> None:
 
 
 def addargs(parser) -> None:
-    parser.add_argument(
-        "-modelpath",
-        type=Path,
-        default=Path(),
-        help="Path to ARTIS folder",
-    )
+    parser.add_argument("-modelpath", type=Path, default=Path(), help="Path to ARTIS folder")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
     """Plot spectra from ARTIS and reference data."""
     if args is None:
-        parser = argparse.ArgumentParser(
-            formatter_class=at.CustomArgHelpFormatter,
-            description=__doc__,
-        )
+        parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
         addargs(parser)
         at.set_args_from_dict(parser, kwargs)
         argcomplete.autocomplete(parser)

@@ -14,9 +14,7 @@ from scipy import integrate
 import artistools as at
 
 
-def readfile(
-    filepath: str | Path,
-) -> dict[int, pl.DataFrame]:
+def readfile(filepath: str | Path) -> dict[int, pl.DataFrame]:
     """Read an ARTIS light curve file."""
     print(f"Reading {filepath}")
     lcdata: dict[int, pl.DataFrame] = {}
@@ -39,9 +37,7 @@ def readfile(
     return lcdata
 
 
-def read_3d_gammalightcurve(
-    filepath: str | Path,
-) -> dict[int, pd.DataFrame]:
+def read_3d_gammalightcurve(filepath: str | Path) -> dict[int, pd.DataFrame]:
     columns = ["time"]
     columns.extend(np.arange(0, 100))
     lcdata = pd.read_csv(filepath, sep=r"\s+", header=None)
@@ -95,7 +91,7 @@ def get_from_packets(
 
     if get_cmf_column:
         dfpackets = dfpackets.with_columns([
-            (pl.col("escape_time") * escapesurfacegamma / 86400.0).alias("t_arrive_cmf_d"),
+            (pl.col("escape_time") * escapesurfacegamma / 86400.0).alias("t_arrive_cmf_d")
         ])
 
     getcols = set()
@@ -148,10 +144,7 @@ def get_from_packets(
             pldfpackets_dirbin = dfpackets.filter(pl.col("dirbin") == dirbin)
 
         dftimebinned = at.packets.bin_and_sum(
-            pldfpackets_dirbin,
-            bincol="t_arrive_d",
-            bins=list(timearrayplusend),
-            sumcols=["e_rf"],
+            pldfpackets_dirbin, bincol="t_arrive_d", bins=list(timearrayplusend), sumcols=["e_rf"]
         )
 
         npkts_selected = pldfpackets_dirbin.select(pl.count("e_rf")).collect().item(0, 0)
@@ -169,10 +162,7 @@ def get_from_packets(
 
         if get_cmf_column:
             dftimebinned_cmf = at.packets.bin_and_sum(
-                pldfpackets_dirbin,
-                bincol="t_arrive_cmf_d",
-                bins=list(timearrayplusend),
-                sumcols=["e_cmf"],
+                pldfpackets_dirbin, bincol="t_arrive_cmf_d", bins=list(timearrayplusend), sumcols=["e_cmf"]
             ).collect()
 
             assert escapesurfacegamma is not None
@@ -191,10 +181,7 @@ def get_from_packets(
 
 
 def generate_band_lightcurve_data(
-    modelpath: Path,
-    args: argparse.Namespace,
-    angle: int = -1,
-    modelnumber: int | None = None,
+    modelpath: Path, args: argparse.Namespace, angle: int = -1, modelnumber: int | None = None
 ) -> dict[str, t.Any]:
     """Integrate spectra to get band magnitude vs time. Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py."""
     from scipy.interpolate import interp1d
@@ -504,10 +491,7 @@ def read_bol_reflightcurve_data(lightcurvefilename):
 
     if colrenames := {
         k: v
-        for k, v in {
-            dflightcurve.columns[0]: "time_days",
-            dflightcurve.columns[1]: "luminosity_erg/s",
-        }.items()
+        for k, v in {dflightcurve.columns[0]: "time_days", dflightcurve.columns[1]: "luminosity_erg/s"}.items()
         if k != v
     }:
         print(f"{data_path}: renaming columns {colrenames}")

@@ -14,11 +14,11 @@ from artistools.inputmodel import rprocess_from_trajectory as rprocess_from_traj
 from artistools.inputmodel import slice1dfromconein3dmodel as slice1dfromconein3dmodel
 from artistools.inputmodel import to_tardis as to_tardis
 from artistools.inputmodel.inputmodel_misc import add_derived_cols_to_modeldata as add_derived_cols_to_modeldata
-from artistools.inputmodel.inputmodel_misc import dimension_reduce_3d_model as dimension_reduce_3d_model
+from artistools.inputmodel.inputmodel_misc import dimension_reduce_model as dimension_reduce_model
 from artistools.inputmodel.inputmodel_misc import get_cell_angle as get_cell_angle
 from artistools.inputmodel.inputmodel_misc import get_dfmodel_dimensions as get_dfmodel_dimensions
 from artistools.inputmodel.inputmodel_misc import get_empty_3d_model as get_empty_3d_model
-from artistools.inputmodel.inputmodel_misc import get_initelemabundances as get_initelemabundances
+from artistools.inputmodel.inputmodel_misc import get_initelemabundances_pandas as get_initelemabundances_pandas
 from artistools.inputmodel.inputmodel_misc import get_initelemabundances_polars as get_initelemabundances_polars
 from artistools.inputmodel.inputmodel_misc import (
     get_mean_cell_properties_of_angle_bin as get_mean_cell_properties_of_angle_bin,

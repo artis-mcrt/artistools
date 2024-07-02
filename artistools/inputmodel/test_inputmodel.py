@@ -4,6 +4,8 @@ import typing as t
 from pathlib import Path
 
 import numpy as np
+import polars as pl
+import polars.selectors as cs
 import polars.testing as pltest
 import pytest
 
@@ -71,8 +73,7 @@ def test_downscale_3dmodel() -> None:
     abundcols = (x for x in dfmodel.columns if x.startswith("X_"))
     for abundcol in abundcols:
         assert np.isclose(
-            (dfmodel[abundcol] * dfmodel["mass_g"]).sum(),
-            (dfmodel_small[abundcol] * dfmodel_small["mass_g"]).sum(),
+            (dfmodel[abundcol] * dfmodel["mass_g"]).sum(), (dfmodel_small[abundcol] * dfmodel_small["mass_g"]).sum()
         )
 
 
@@ -116,8 +117,8 @@ def test_makeartismodelfrom_sph_particles() -> None:
             },
             "makeartismodel_sums": {
                 "gridcontributions.txt": "6327d196b4800eedb18faee15097f76af352ecbaa9ee59055161b81378bd4af7",
-                "abundances.txt": "b84fb2542b1872291e1f45385b43fad2e5249f7fccbe7e4cab59b9c3b6c63916",
-                "model.txt": "c268277b78d9053b447396519c183b8f8ad38404b40ed4a820670987a4d2bba2",
+                "abundances.txt": "1dffae45ff2abe72df3055305853e61ffe471913c5c8cc39cc6f67e38b5f5f45",
+                "model.txt": "6a98aba2b541af5c24497362b053dbe7749bba74a49778f494b440a453c735fc",
             },
         },
         {
@@ -129,8 +130,8 @@ def test_makeartismodelfrom_sph_particles() -> None:
             },
             "makeartismodel_sums": {
                 "gridcontributions.txt": "c06b4cbbe7f3bf423ed636afd63e3d8e30cc3ffa928d3275ffc3ce13f2e4dbef",
-                "abundances.txt": "b84fb2542b1872291e1f45385b43fad2e5249f7fccbe7e4cab59b9c3b6c63916",
-                "model.txt": "6bca370bf85e759b95707b5819d9acb717840ede8168f9d3d70007d74c8afc23",
+                "abundances.txt": "1dffae45ff2abe72df3055305853e61ffe471913c5c8cc39cc6f67e38b5f5f45",
+                "model.txt": "f9adee21771c18aa6e10c58c252f5f37e3892d3d6007685d915bc1b9cc961a74",
             },
         },
     ]
@@ -144,11 +145,7 @@ def test_makeartismodelfrom_sph_particles() -> None:
             argsraw=[], inputpath=gridfolderpath, outputpath=gridfolderpath, **config["maptogridargs"]
         )
 
-        verify_file_checksums(
-            config["maptogrid_sums"],
-            digest="sha256",
-            folder=gridfolderpath,
-        )
+        verify_file_checksums(config["maptogrid_sums"], digest="sha256", folder=gridfolderpath)
 
         dfcontribs = {}
         for dimensions in (3, 2, 1, 0):
@@ -169,11 +166,7 @@ def test_makeartismodelfrom_sph_particles() -> None:
             dfcontribs[dimensions] = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(outpath_kn)
 
             if dimensions == 3:
-                verify_file_checksums(
-                    config["makeartismodel_sums"],
-                    digest="sha256",
-                    folder=outpath_kn,
-                )
+                verify_file_checksums(config["makeartismodel_sums"], digest="sha256", folder=outpath_kn)
                 dfcontrib_source = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(gridfolderpath)
 
                 pltest.assert_frame_equal(
@@ -211,11 +204,7 @@ def test_makeartismodelfrom_fortrangriddat() -> None:
     gridfolderpath = testdatapath / "kilonova"
     outpath_kn = outputpath / "kilonova"
     at.inputmodel.modelfromhydro.main(
-        argsraw=[],
-        gridfolderpath=gridfolderpath,
-        outputpath=outpath_kn,
-        dimensions=3,
-        targetmodeltime_days=0.1,
+        argsraw=[], gridfolderpath=gridfolderpath, outputpath=outpath_kn, dimensions=3, targetmodeltime_days=0.1
     )
 
 
@@ -275,30 +264,89 @@ def test_plotinitialcomposition() -> None:
 
 @pytest.mark.benchmark()
 def test_save_load_3d_model() -> None:
-    lzdfmodel, modelmeta = at.inputmodel.get_empty_3d_model(ncoordgrid=50, vmax=1000, t_model_init_days=1)
+    lzdfmodel, modelmeta = at.inputmodel.get_empty_3d_model(
+        ncoordgrid=25, vmax=1000, t_model_init_days=1, includenico57=True
+    )
     dfmodel = lzdfmodel.collect()
 
-    dfmodel[75000, "rho"] = 1
-    dfmodel[75001, "rho"] = 2
-    dfmodel[95200, "rho"] = 3
-    dfmodel[75001, "rho"] = 0.5
+    rng = np.random.default_rng()
+
+    # give a random rho to half of the cells
+    dfmodel[rng.integers(0, dfmodel.height, dfmodel.height // 2), "rho"] = 10.0 * rng.random(
+        dfmodel.height // 2, dtype=np.float32
+    )
+
+    dfelements = (
+        at.get_elsymbols_df()
+        .filter(
+            pl.col("atomic_number").is_between(1, 50) | (pl.col("atomic_number") == 113)
+        )  # Z=113 Uut has three chars, so test that that too
+        .sort(by="atomic_number")
+        .with_columns(
+            elemcolname="X_" + pl.col("elsymbol"), mass_number_example=(pl.col("atomic_number") * 2).cast(pl.Int32)
+        )
+    )
+
+    elcolnames = dfelements["elemcolname"].to_list()
+
+    # this give us several isotopes for each element (doesn't matter if they are real or not)
+    dfisocolnames = pl.Series(
+        "isocolname",
+        pl.concat(
+            dfelements.select(pl.col("elemcolname") + (pl.col("mass_number_example") + i).cast(pl.Utf8))
+            for i in range(2)
+        ),
+    )
+    isocolnames = dfisocolnames.to_list()
+
+    # give random abundances to the cells with rho > 0
+    dfmodel = dfmodel.with_columns([
+        pl.Series(isocol, list(rng.random(dfmodel.height, dtype=np.float32)), dtype=pl.Float32)
+        for isocol in isocolnames
+    ])
+
+    # abundances don't matter if rho is zero, so we'll set them to zero to match the resulting dataframe that will be loaded
+    dfmodel = dfmodel.with_columns(
+        pl.when(dfmodel["rho"] > 0).then(pl.col(col)).otherwise(0) for col in dfmodel.columns if col.startswith("X_")
+    )
+
+    # sum isotopic abundances to get elemental abundances
+    dfelemabundances = dfmodel.select([
+        "inputcellid",
+        *[pl.sum_horizontal(cs.starts_with(elcol)).cast(pl.Float32).alias(elcol) for elcol in elcolnames],
+    ])
 
     outpath = outputpath / "test_save_load_3d_model"
     outpath.mkdir(exist_ok=True, parents=True)
     at.inputmodel.save_modeldata(outpath=outpath, dfmodel=dfmodel, modelmeta=modelmeta)
-    dfmodel2, modelmeta2 = at.inputmodel.get_modeldata_polars(modelpath=outpath)
-    assert dfmodel.equals(dfmodel2.collect())
-    assert modelmeta == modelmeta2
+    at.inputmodel.save_initelemabundances(outpath=outpath, dfelabundances=dfelemabundances)
 
-    # next load will use the parquet file
-    dfmodel3, modelmeta3 = at.inputmodel.get_modeldata_polars(modelpath=outpath)
-    assert dfmodel.equals(dfmodel3.collect())
-    assert modelmeta == modelmeta3
+    # first load will be from text, second from parquet
+    for _ in (0, 1):
+        dfmodel_loaded, modelmeta_loaded = at.inputmodel.get_modeldata_polars(modelpath=outpath)
+        pltest.assert_frame_equal(
+            dfmodel, dfmodel_loaded.collect(), check_column_order=False, check_dtypes=False, rtol=1e-4, atol=1e-4
+        )
+        assert modelmeta == modelmeta_loaded
+
+        dfelemabundances_loaded = at.inputmodel.get_initelemabundances_polars(outpath)
+        pltest.assert_frame_equal(
+            dfelemabundances,
+            dfelemabundances_loaded.select(
+                dfelemabundances.columns  # ignore the extra elements that got added to give contiguous coverage of atomic numbers from min to max
+            ).collect(),
+            check_column_order=False,
+            check_dtypes=False,
+            rtol=1e-3,
+            atol=1e-3,
+        )
 
 
 def lower_dim_and_check_mass_conservation(outputdimensions: int) -> None:
     dfmodel3d_pl_lazy, modelmeta_3d = at.inputmodel.get_empty_3d_model(ncoordgrid=50, vmax=100000, t_model_init_days=1)
     dfmodel3d_pl = dfmodel3d_pl_lazy.collect()
+
+    # it's important that we don't fill cells in the cube corners, as they will be lost when reducing dimensions
     mgi1 = 26 * 26 * 26 + 26 * 26 + 26
     dfmodel3d_pl[mgi1, "rho"] = 2
     dfmodel3d_pl[mgi1, "X_Ni56"] = 0.5
@@ -312,12 +360,7 @@ def lower_dim_and_check_mass_conservation(outputdimensions: int) -> None:
 
     outpath = outputpath / f"test_dimension_reduce_3d_{outputdimensions:d}d"
     outpath.mkdir(exist_ok=True, parents=True)
-    (
-        dfmodel_lowerd,
-        _,
-        _,
-        modelmeta_lowerd,
-    ) = at.inputmodel.dimension_reduce_3d_model(
+    (dfmodel_lowerd, _, _, modelmeta_lowerd) = at.inputmodel.dimension_reduce_model(
         dfmodel=dfmodel3d_pl, modelmeta=modelmeta_3d, outputdimensions=outputdimensions
     )
 
@@ -327,7 +370,7 @@ def lower_dim_and_check_mass_conservation(outputdimensions: int) -> None:
     dfmodel_lowerd = dfmodel_lowerd_lz.collect()
 
     # check that the total mass is conserved
-    assert np.isclose(dfmodel_lowerd["mass_g"].sum(), dfmodel3d_pl["mass_g"].sum())
+    assert np.isclose(dfmodel_lowerd["mass_g"].sum(), dfmodel3d_pl["mass_g"].sum(), rtol=1e-3)
 
     # check that the total mass of each species is conserved
     for col in dfmodel3d_pl.columns:

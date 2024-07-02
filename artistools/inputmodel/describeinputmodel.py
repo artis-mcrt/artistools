@@ -24,11 +24,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--noabund", action="store_true", help="Give total masses only, no nuclear or elemental abundances"
     )
 
-    parser.add_argument(
-        "--isotopes",
-        action="store_true",
-        help="Show full set of isotopic abundances",
-    )
+    parser.add_argument("--isotopes", action="store_true", help="Show full set of isotopic abundances")
 
     parser.add_argument(
         "-sort",
@@ -42,15 +38,14 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
     """Describe an ARTIS input model, such as the mass, velocity structure, and abundances."""
     if args is None:
-        parser = argparse.ArgumentParser(
-            formatter_class=at.CustomArgHelpFormatter,
-            description=__doc__,
-        )
+        parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
 
         addargs(parser)
         at.set_args_from_dict(parser, kwargs)
         argcomplete.autocomplete(parser)
         args = parser.parse_args([] if kwargs else argsraw)
+
+    assert args is not None
 
     dfmodel, modelmeta = at.inputmodel.get_modeldata_polars(
         args.inputfile,
@@ -59,7 +54,9 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         derived_cols=["mass_g", "vel_r_mid", "rho"],
     )
 
-    dfmodel = dfmodel.filter(pl.col("rho") > 0.0).drop("X_n")  # don't confuse neutrons with Nitrogen
+    dfmodel = dfmodel.filter(pl.col("rho") > 0.0).drop(
+        cs.starts_with("X_n")
+    )  # don't confuse neutrons (lowercase 'n') with Nitrogen (N)
 
     if args.noabund:
         dfmodel = dfmodel.drop(cs.starts_with("X_"))
@@ -120,7 +117,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         print("  no cell mapping file found")
         assoc_cells, mgi_of_propcells = None, None
 
-    if "q" in dfmodel.columns:
+    if "q" in dfmodel.collect_schema().names():
         initial_energy = dfmodel.select(pl.col("q").dot(pl.col("mass_g"))).collect().item()
         assert initial_energy is not None
         print(f'  {"initial energy":19s} {initial_energy:.3e} erg')
@@ -128,7 +125,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         initial_energy = 0.0
 
     ejecta_ke_erg: float
-    if "vel_r_max_kmps" in dfmodel.columns:
+    if "vel_r_max_kmps" in dfmodel.collect_schema().names():
         # vel_r_min_kmps is in km/s
         ejecta_ke_erg = (
             dfmodel.select((0.5 * (pl.col("mass_g") / 1000.0) * (1000 * pl.col("vel_r_max_kmps")) ** 2).sum())
@@ -163,7 +160,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
                 for modelgridindex, rho in dfmodel.select(["modelgridindex", "rho"]).collect().iter_rows()
             ]
 
-            if "q" in dfmodel.columns:
+            if "q" in dfmodel.collect_schema().names():
                 initial_energy_mapped = sum(
                     mass * float(q[0])
                     for mass, q in zip(cellmass_mapped, dfmodel.select(["q"]).collect().iter_rows(), strict=False)
@@ -205,7 +202,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     mass_msun_actinides = 0.0
     speciesmasses: dict[str, float] = {}
 
-    for column in dfmodel.select(cs.starts_with("X_") - cs.by_name("X_Fegroup")).columns:
+    for column in dfmodel.select(cs.starts_with("X_") - cs.by_name("X_Fegroup")).collect_schema().names():
         species = column.replace("X_", "")
 
         speciesabund_g = dfmodel.select(pl.col(column).dot(pl.col("mass_g"))).collect().item()
@@ -267,6 +264,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     def sortkey(tup_species_mass_g):
         species, mass_g = tup_species_mass_g
+        assert args is not None
         if args.sort == "z":
             # for a species like C_isosum, strmassnumber is "", so use -1 to sort it first
             strmassnumber = species.lstrip("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz").rstrip(
@@ -294,7 +292,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             if np.isclose(mass_g, elem_mass, rtol=1e-4):
                 # iso sum matches the element mass, so don't show it
                 continue
-            strcomment += f"({mass_g / elem_mass * 100:6.2f}% of {elsymb} element mass from abundances.txt)"
+            strcomment += f"({mass_g / elem_mass * 100 if elem_mass > 0 else math.nan:6.2f}% of {elsymb} element mass from abundances.txt)"
 
             if mass_g > elem_mass * (1.0 + 1e-5):
                 strcomment += " ERROR! isotope sum is greater than element abundance"

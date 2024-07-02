@@ -81,7 +81,7 @@ repair-wheel-command = [
 ]
 
 [tool.mypy]
-check_untyped_defs = false
+check_untyped_defs = true
 disallow_any_explicit = false
 disallow_any_generics = false
 disallow_any_unimported = false
@@ -136,7 +136,6 @@ module = [
     "*.__init__",
     "*.__main__",
 ]
-check_untyped_defs = true
 disallow_any_generics = true
 disallow_incomplete_defs = true
 disallow_untyped_calls = true
@@ -187,17 +186,18 @@ ignored-modules = ["astropy", "extinction", "artistools.rustext"]
 unsafe-load-any-extension = true
 
 [tool.pyright]
-analyzeUnannotatedFunctions = true
+deprecateTypingAliases = true
+enableTypeIgnoreComments = false  # leave these for mypy to interpret
 exclude=['**/node_modules','**/__pycache__','**/.*', 'build', 'dist', 'target']
 reportAttributeAccessIssue = false
-reportCallIssue = false
+reportCallIssue = true
 reportMissingImports = false
-reportOptionalMemberAccess = true
 reportPossiblyUnboundVariable = false
-reportPrivateImportUsage = true
+reportUnecessaryTypeIgnoreComment = true
 reportUnknownVariableType = false
-typeCheckingMode = "basic"
+typeCheckingMode = "standard"
 useLibraryCodeForTypes = false
+targetVersion = "3.10"
 
 [tool.pytest.ini_options]
 addopts = " --durations=0 --durations-min=1.0 --typeguard-packages=artistools -n auto"
@@ -221,16 +221,24 @@ show-fixes = true
 extend-exclude = ["_version.py"]
 preview = true
 
+[tool.ruff.format]
+skip-magic-trailing-comma = true
+
 [tool.ruff.lint]
 select = ["ALL"]
 ignore = [
     "ARG001", # ignored because variables in df.eval() are not detected
-    "ANN",
+    "ANN001", # missing-type-function-argument
+    "ANN201", # missing-return-type-undocumented-public-function
+    "ANN003", # missing-type-kwargs
+    "ANN202", # missing-return-type-private-function
+    "ANN401", # any-type
     "B005",  # strip-with-multi-characters
     "C901",  # complex-structure
     "COM812",  # missing-trailing-comma
     "CPY001", # missing-copyright-notice
     "D100",  # undocumented-public-module
+    "D101", # undocumented-public-class
     "D102",  # undocumented-public-method
     "D103",  # undocumented-public-function
     "D104",  # undocumented-public-package
@@ -246,6 +254,7 @@ ignore = [
     "N802",  # Function name should be lowercase
     "N803",  # Argument name should be lowercase
     "N806",  # non-lowercase-variable-in-function
+    "N815", # mixed-case-variable-in-class-scope
     "PERF203", # try-except-in-loop
     "PGH004", # blanket-noqa
     "PLC0414", # useless-import-alias

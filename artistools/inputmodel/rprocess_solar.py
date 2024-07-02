@@ -47,7 +47,9 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     # Andreas uses 90% Fe and the rest solar
     dfsolarabund_undecayed = (
-        dfsolarabund_undecayed.append({"Z": 26, "A": 56, "numberfrac": 0.005, "radioactive": False}, ignore_index=True)
+        dfsolarabund_undecayed.append(  # pyright: ignore[reportCallIssue]
+            {"Z": 26, "A": 56, "numberfrac": 0.005, "radioactive": False}, ignore_index=True
+        )
         .append({"Z": 27, "A": 59, "numberfrac": 0.005, "radioactive": False}, ignore_index=True)
         .append({"Z": 28, "A": 58, "numberfrac": 0.005, "radioactive": False}, ignore_index=True)
     )
@@ -79,7 +81,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         t_model_init_seconds_in = t_model_init_days_in * 24 * 60 * 60  # noqa: F841
         dfdensities = dfdensities.eval(
             "mass_g = rho * 4. / 3. * @math.pi * (vel_r_max_kmps ** 3 - vel_r_min_kmps ** 3)"
-            "* (1e5 * @t_model_init_seconds_in) ** 3",
+            "* (1e5 * @t_model_init_seconds_in) ** 3"
         )
 
         # now replace the density at the input time with the density at required time
@@ -87,7 +89,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         dfdensities = dfdensities.eval(
             "rho = mass_g / ("
             "4. / 3. * @math.pi * (vel_r_max_kmps ** 3 - vel_r_min_kmps ** 3)"
-            " * (1e5 * @t_model_init_seconds) ** 3)",
+            " * (1e5 * @t_model_init_seconds) ** 3)"
         )
     else:
         dfdensities = pd.DataFrame({"rho": 10**-3, "vel_r_max_kmps": 6.0e4}, index=[0])

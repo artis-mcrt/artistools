@@ -152,11 +152,7 @@ def maptogrid(
     snapshot_columns_used = ["id", "h", "x", "y", "z", "vx", "vy", "vz", "pmass", "rho", "p", "rho_rst", "ye"]
 
     dfsnapshot = pd.read_csv(
-        ejectasnapshotpath,
-        names=snapshot_columns,
-        sep=r"\s+",
-        usecols=snapshot_columns_used,
-        dtype_backend="pyarrow",
+        ejectasnapshotpath, names=snapshot_columns, sep=r"\s+", usecols=snapshot_columns_used, dtype_backend="pyarrow"
     )
 
     if downsamplefactor > 1:
@@ -193,7 +189,7 @@ def maptogrid(
         .with_columns(
             vperp=pl.when(pl.col("vtot") > pl.col("vrad"))
             .then((pl.col("vtot") ** 2 - pl.col("vrad") ** 2).sqrt())
-            .otherwise(0.0),
+            .otherwise(0.0)
         )
     )
 
@@ -480,10 +476,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
     """Map tracer particle trajectories to a Cartesian grid."""
     if args is None:
-        parser = argparse.ArgumentParser(
-            formatter_class=at.CustomArgHelpFormatter,
-            description=__doc__,
-        )
+        parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
 
         addargs(parser)
         at.set_args_from_dict(parser, kwargs)

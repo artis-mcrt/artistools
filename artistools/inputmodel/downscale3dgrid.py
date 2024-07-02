@@ -18,7 +18,7 @@ def make_downscaled_3d_grid(
     modelpath = Path(modelpath)
 
     dfmodel, modelmeta = at.get_modeldata(modelpath)
-    dfelemabund = at.inputmodel.get_initelemabundances(modelpath)
+    dfelemabund = at.inputmodel.get_initelemabundances_pandas(modelpath)
 
     inputgridsize = modelmeta["ncoordgridx"]
     grid = int(inputgridsize)
@@ -153,10 +153,6 @@ def make_downscaled_3d_grid(
 
         plt.tight_layout()
 
-        fig.savefig(
-            modelpath / "downscaled_density_diagnostic.png",
-            dpi=300,
-            bbox_inches="tight",
-        )
+        fig.savefig(modelpath / "downscaled_density_diagnostic.png", dpi=300, bbox_inches="tight")
 
     return outputfolder

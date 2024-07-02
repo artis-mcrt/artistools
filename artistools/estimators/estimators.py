@@ -50,12 +50,9 @@ def get_variableunits(key: str) -> str | None:
 
 
 def get_variablelongunits(key: str) -> str | None:
-    return {
-        "heating_dep/total_dep": "",
-        "TR": "Temperature [K]",
-        "Te": "Temperature [K]",
-        "TJ": "Temperature [K]",
-    }.get(key)
+    return {"heating_dep/total_dep": "", "TR": "Temperature [K]", "Te": "Temperature [K]", "TJ": "Temperature [K]"}.get(
+        key
+    )
 
 
 def get_varname_formatted(varname: str) -> str:
@@ -122,10 +119,7 @@ def get_units_string(variable: str) -> str:
     return f" [{units}]" if (units := get_variableunits(variable)) else ""
 
 
-def read_estimators_from_file(
-    estfilepath: Path | str,
-    printfilename: bool = False,
-) -> pl.DataFrame:
+def read_estimators_from_file(estfilepath: Path | str, printfilename: bool = False) -> pl.DataFrame:
     if printfilename:
         estfilepath = Path(estfilepath)
         filesize = estfilepath.stat().st_size / 1024 / 1024
@@ -292,11 +286,7 @@ def get_rankbatch_parquetfile(
                 key=lambda col: f"-{col!r}" if col in {"timestep", "modelgridindex", "titer"} else str(col),
             )
         )
-        print(
-            f"took {time.perf_counter() - time_start:.1f} s. Writing parquet file...",
-            end="",
-            flush=True,
-        )
+        print(f"took {time.perf_counter() - time_start:.1f} s. Writing parquet file...", end="", flush=True)
         time_start = time.perf_counter()
 
         assert pldf_batch is not None
@@ -352,12 +342,7 @@ def scan_estimators(
             modelpath, timestep=timestep, modelgridindex=modelgridindex
         )
         return pl.DataFrame([
-            {
-                "timestep": ts,
-                "modelgridindex": mgi,
-                **estimvals,
-            }
-            for (ts, mgi), estimvals in estimators.items()
+            {"timestep": ts, "modelgridindex": mgi, **estimvals} for (ts, mgi), estimvals in estimators.items()
         ]).lazy()
 
     # print(f" matching cells {match_modelgridindex} and timesteps {match_timestep}")
@@ -399,11 +384,12 @@ def scan_estimators(
     if match_timestep is not None:
         pldflazy = pldflazy.filter(pl.col("timestep").is_in(match_timestep))
 
+    colnames = pldflazy.collect_schema().names()
     # add some derived quantities
-    if "heating_gamma/gamma_dep" in pldflazy.columns:
+    if "heating_gamma/gamma_dep" in colnames:
         pldflazy = pldflazy.with_columns(gamma_dep=pl.col("heating_gamma") / pl.col("heating_gamma/gamma_dep"))
 
-    if "heating_heating_dep/total_dep" in pldflazy.columns:
+    if "heating_heating_dep/total_dep" in colnames:
         pldflazy = pldflazy.with_columns(total_dep=pl.col("heating_dep") / pl.col("heating_heating_dep/total_dep"))
 
     pldflazy = pldflazy.with_columns(nntot=pl.sum_horizontal(cs.starts_with("nnelement_")))
@@ -419,7 +405,7 @@ def read_estimators(
 ) -> dict[tuple[int, int], dict[str, t.Any]]:
     """Read ARTIS estimator data into a dictionary keyed by (timestep, modelgridindex).
 
-    This is very slow, and it's almost always better to use scan_estimators instead.
+    DEPRECATED: This is very slow, and it's almost always better to use scan_estimators instead.
     """
     if isinstance(keys, str):
         keys = {keys}

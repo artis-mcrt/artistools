@@ -33,13 +33,13 @@ repos:
     #       - id: yamlfmt
 
     - repo: https://github.com/astral-sh/ruff-pre-commit
-      rev: v0.4.9
+      rev: v0.5.0
       hooks:
           - id: ruff
             args: [--fix, --exit-non-zero-on-fix]
 
     - repo: https://github.com/astral-sh/ruff-pre-commit
-      rev: v0.4.9
+      rev: v0.5.0
       hooks:
           - id: ruff-format
 
@@ -58,3 +58,9 @@ repos:
             entry: mypy
             types: [python]
             language: python
+
+    # - repo: https://github.com/astral-sh/uv-pre-commit
+    #   rev: 0.2.13
+    #   hooks:
+    #       - id: pip-compile
+    #         args: [requirements.in, -o, requirements.txt]

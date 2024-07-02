@@ -49,7 +49,9 @@ def get_2D_slice_through_3d_model(
     return slicedf
 
 
-def plot_slice_modelcolumn(ax, dfmodelslice, modelmeta, colname, plotaxis1, plotaxis2, t_model_d, args):
+def plot_slice_modelcolumn(
+    ax, dfmodelslice, modelmeta, colname, plotaxis1, plotaxis2, t_model_d, args: argparse.Namespace
+):
     print(f"plotting {colname}")
     colorscale = (
         dfmodelslice[colname] * dfmodelslice["rho"] if colname.startswith("X_") else dfmodelslice[colname]
@@ -91,12 +93,7 @@ def plot_slice_modelcolumn(ax, dfmodelslice, modelmeta, colname, plotaxis1, plot
         valuegrid,
         cmap="viridis",
         interpolation="nearest",
-        extent=(
-            vmin_ax1,
-            vmax_ax1,
-            vmin_ax2,
-            vmax_ax2,
-        ),
+        extent=(vmin_ax1, vmax_ax1, vmin_ax2, vmax_ax2),
         origin="lower",
         # vmin=0.0,
         # vmax=1.0,
@@ -127,9 +124,7 @@ def plot_2d_initial_abundances(modelpath, args: argparse.Namespace) -> None:
     # if the species ends in a number then we need to also get the nuclear mass fractions (not just element abundances)
     get_elemabundances = any(plotvar[-1] not in string.digits for plotvar in args.plotvars)
     dfmodel, modelmeta = at.get_modeldata(
-        modelpath,
-        get_elemabundances=get_elemabundances,
-        derived_cols=["pos_min", "pos_max"],
+        modelpath, get_elemabundances=get_elemabundances, derived_cols=["pos_min", "pos_max"]
     )
     assert modelmeta["dimensions"] > 1
 
@@ -167,8 +162,7 @@ def plot_2d_initial_abundances(modelpath, args: argparse.Namespace) -> None:
     xfactor = 1 if modelmeta["dimensions"] == 3 else 0.5
     figwidth = at.get_config()["figwidth"]
     fig = plt.figure(
-        figsize=(figwidth * xfactor * ncols, figwidth * nrows),
-        tight_layout={"pad": 1.0, "w_pad": 0.0, "h_pad": 0.0},
+        figsize=(figwidth * xfactor * ncols, figwidth * nrows), tight_layout={"pad": 1.0, "w_pad": 0.0, "h_pad": 0.0}
     )
     gs = gridspec.GridSpec(nrows + 1, ncols, height_ratios=[0.05, 1], width_ratios=[1] * ncols)
 
@@ -219,7 +213,7 @@ def plot_2d_initial_abundances(modelpath, args: argparse.Namespace) -> None:
 def get_model_abundances_Msun_1D(modelpath: Path) -> pd.DataFrame:
     filename = modelpath / "model.txt"
     modeldata, t_model_init_days, _ = at.inputmodel.get_modeldata_tuple(filename)
-    abundancedata = at.inputmodel.get_initelemabundances(modelpath)
+    abundancedata = at.inputmodel.get_initelemabundances_pandas(modelpath)
 
     t_model_init_seconds = t_model_init_days * 24 * 60 * 60
 
@@ -247,9 +241,9 @@ def get_model_abundances_Msun_1D(modelpath: Path) -> pd.DataFrame:
     return merge_dfs
 
 
-def plot_most_abundant(modelpath, args):
+def plot_most_abundant(modelpath, args: argparse.Namespace):
     model, _ = at.inputmodel.get_modeldata(modelpath[0])
-    abundances = at.inputmodel.get_initelemabundances(modelpath[0])
+    abundances = at.inputmodel.get_initelemabundances_pandas(modelpath[0])
 
     merge_dfs = model.merge(abundances, how="inner", on="inputcellid")
     elements = [x for x in merge_dfs.columns if "X_" in x]
@@ -260,10 +254,10 @@ def plot_most_abundant(modelpath, args):
     return merge_dfs[merge_dfs["max"] != 1]
 
 
-def make_3d_plot(modelpath, args):
+def make_3d_plot(modelpath, args: argparse.Namespace) -> None:
     import pyvista as pv
 
-    pv.set_plot_theme("document")  # set white background
+    pv.set_plot_theme("document")  # set white background # pyright: ignore[reportCallIssue]
 
     get_elemabundances = False
     # choose what surface will be coloured by
@@ -299,11 +293,11 @@ def make_3d_plot(modelpath, args):
     surfacearr = np.array(model[coloursurfaceby])
     vmax /= 29979245800.0
     i = 0
-    for z in range(grid):
-        for y in range(grid):
-            for x in range(grid):
-                surfacecolorscale[x, y, z] = surfacearr[i]
-                xgrid[x] = -vmax + 2 * x * vmax / grid
+    for nz in range(grid):
+        for ny in range(grid):
+            for nx in range(grid):
+                surfacecolorscale[nx, ny, nz] = surfacearr[i]
+                xgrid[nx] = -vmax + 2 * nx * vmax / grid
                 i += 1
 
     x, y, z = np.meshgrid(xgrid, xgrid, xgrid)
@@ -334,7 +328,7 @@ def make_3d_plot(modelpath, args):
         "label_font_size": 22,
     }
 
-    plotter = pv.Plotter()
+    plotter = pv.Plotter()  # pyright: ignore[reportCallIssue]
     # plotter.add_mesh(mesh.outline(), color="k")
     plotcoloropacity = [0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]  # some choices: 'linear' 'sigmoid'
     # plotter.set_scale(0.95, 0.95, 0.95) # adjusts fig resolution
@@ -428,12 +422,7 @@ def plot_phi_hist(modelpath):
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument(
-        "-modelpath",
-        type=Path,
-        default=Path(),
-        help="Path to ARTIS folder",
-    )
+    parser.add_argument("-modelpath", type=Path, default=Path(), help="Path to ARTIS folder")
 
     parser.add_argument("-o", action="store", dest="outputfile", type=Path, default=None, help="Filename for PDF file")
 

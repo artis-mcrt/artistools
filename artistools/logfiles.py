@@ -30,10 +30,10 @@ def read_logfiles(modelpath):
     return logfilepaths
 
 
-def read_time_taken(logfilepaths):
-    updategrid_dict = {}
-    updatepackets_dict = {}
-    writeestimators_dict = {}
+def read_time_taken(logfilepaths) -> dict[str, dict[int, dict[int, int]]]:
+    updategrid_dict: dict[int, dict[int, int]] = {}
+    updatepackets_dict: dict[int, dict[int, int]] = {}
+    writeestimators_dict: dict[int, dict[int, int]] = {}
 
     for logfilepath in logfilepaths:
         mpi_process = int(str(logfilepath).split("/")[-1].split("-")[0].split("_")[-1])

@@ -152,9 +152,7 @@ def get_composition_data_from_outputfile(modelpath: Path) -> pd.DataFrame:
     return composition_df
 
 
-def split_multitable_dataframe(
-    res_df: pl.DataFrame | pd.DataFrame,
-) -> dict[int, pl.DataFrame]:
+def split_multitable_dataframe(res_df: pl.DataFrame | pd.DataFrame) -> dict[int, pl.DataFrame]:
     """Res (angle-resolved) files include a table for each direction bin."""
     if isinstance(res_df, pd.DataFrame):
         res_df = pl.from_pandas(res_df)
@@ -178,8 +176,7 @@ def split_multitable_dataframe(
 
 
 def average_direction_bins(
-    dirbindataframes: dict[int, pl.DataFrame],
-    overangle: t.Literal["phi", "theta"],
+    dirbindataframes: dict[int, pl.DataFrame], overangle: t.Literal["phi", "theta"]
 ) -> dict[int, pl.DataFrame]:
     """Average dict of direction-binned polars DataFrames according to the phi or theta angle."""
     dirbincount = at.get_viewingdirectionbincount()
@@ -617,12 +614,7 @@ def get_elsymbolslist() -> list[str]:
     """
     return [
         "n",
-        *list(
-            pd.read_csv(
-                at.get_config()["path_datadir"] / "elements.csv",
-                usecols=["symbol"],
-            )["symbol"].to_numpy()
-        ),
+        *list(pd.read_csv(at.get_config()["path_datadir"] / "elements.csv", usecols=["symbol"])["symbol"].to_numpy()),
     ]
 
 
@@ -662,10 +654,7 @@ def decode_roman_numeral(strin: str) -> int:
 def get_ion_stage_roman_numeral_df() -> pl.DataFrame:
     """Return a polars DataFrame of ionisation stage and roman numerals."""
     return pl.DataFrame(
-        {
-            "ion_stage": list(range(1, len(roman_numerals))),
-            "ion_stage_roman": roman_numerals[1:],
-        },
+        {"ion_stage": list(range(1, len(roman_numerals))), "ion_stage_roman": roman_numerals[1:]},
         schema={"ion_stage": pl.Int32, "ion_stage_roman": pl.Utf8},
     )
 
@@ -1014,7 +1003,7 @@ def get_filterfunc(args: argparse.Namespace, mode: str = "interp") -> t.Callable
 
 def merge_pdf_files(pdf_files: list[str]) -> None:
     """Merge a list of PDF files into a single PDF file."""
-    from PyPDF2 import PdfMerger
+    from pypdf import PdfMerger
 
     merger = PdfMerger()
 
@@ -1115,15 +1104,13 @@ def get_linelist_pldf(modelpath: Path | str, get_ion_str: bool = False) -> pl.La
         lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels = read_linestatfile(textfile)
 
         pldf = (
-            pl.DataFrame(
-                {
-                    "lambda_angstroms": lambda_angstroms,
-                    "atomic_number": atomic_numbers,
-                    "ion_stage": ion_stages,
-                    "upper_level": upper_levels,
-                    "lower_level": lower_levels,
-                },
-            )
+            pl.DataFrame({
+                "lambda_angstroms": lambda_angstroms,
+                "atomic_number": atomic_numbers,
+                "ion_stage": ion_stages,
+                "upper_level": upper_levels,
+                "lower_level": lower_levels,
+            })
             .with_row_count(name="lineindex")
             .with_columns(
                 pl.col(pl.UInt32).cast(pl.Int32), pl.col(pl.Int64).cast(pl.Int32), pl.col(pl.Float64).cast(pl.Float32)
@@ -1164,9 +1151,7 @@ def get_linelist_pldf(modelpath: Path | str, get_ion_str: bool = False) -> pl.La
 
 
 @lru_cache(maxsize=8)
-def get_linelist_dataframe(
-    modelpath: Path | str,
-) -> pd.DataFrame:
+def get_linelist_dataframe(modelpath: Path | str) -> pd.DataFrame:
     lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels = read_linestatfile(
         Path(modelpath, "linestat.out")
     )
@@ -1284,9 +1269,7 @@ def get_runfolders(
 
 
 def get_mpiranklist(
-    modelpath: Path | str,
-    modelgridindex: t.Iterable[int] | int | None = None,
-    only_ranks_withgridcells: bool = False,
+    modelpath: Path | str, modelgridindex: t.Iterable[int] | int | None = None, only_ranks_withgridcells: bool = False
 ) -> t.Sequence[int]:
     """Get a list of rank ids.
 

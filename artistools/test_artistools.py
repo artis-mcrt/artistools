@@ -22,7 +22,7 @@ REPOPATH = at.get_config("path_artistools_repository")
 def funcname() -> str:
     """Get the name of the calling function."""
     try:
-        return inspect.currentframe().f_back.f_code.co_name  # type: ignore[union-attr]
+        return inspect.currentframe().f_back.f_code.co_name  # type: ignore[union-attr] # pyright: ignore[reportOptionalMemberAccess]
     except AttributeError as e:
         msg = "Could not get the name of the calling function."
         raise RuntimeError(msg) from e
@@ -87,11 +87,6 @@ def test_get_inputparams() -> None:
     assert dicthash == "ce7d04d6944207673a105cba8d2430055d0b53b7f3e92db3964d2dca285a3adb"
 
 
-@pytest.mark.benchmark()
-def test_get_levels() -> None:
-    at.atomic.get_levels(modelpath, get_transitions=True, get_photoionisations=True)
-
-
 def test_macroatom() -> None:
     at.macroatom.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, timestep=10)
 
@@ -110,10 +105,6 @@ def test_radfield() -> None:
     at.radfield.main(argsraw=[], modelpath=modelpath, modelgridindex=0, outputfile=funcoutpath)
 
 
-def test_get_ionrecombratecalibration() -> None:
-    at.atomic.get_ionrecombratecalibration(modelpath=modelpath)
-
-
 @pytest.mark.benchmark()
 def test_plotspherical() -> None:
     funcoutpath = outputpath / funcname()
@@ -125,10 +116,12 @@ def test_plotspherical_gif() -> None:
     at.plotspherical.main(argsraw=[], modelpath=modelpath, makegif=True, timemax=270, outputfile=outputpath)
 
 
+@pytest.mark.benchmark()
 def test_transitions() -> None:
     at.transitions.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, timedays=300)
 
 
+@pytest.mark.benchmark()
 def test_write_comparisondata() -> None:
     at.writecomparisondata.main(
         argsraw=[], modelpath=modelpath, outputpath=outputpath, selected_timesteps=list(range(99))

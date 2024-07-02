@@ -7,6 +7,7 @@ on:
             - '*'
         tags:
             - '*'
+    merge_group:
     release:
         types: [published, edited]
     repository_dispatch:
@@ -24,6 +25,7 @@ jobs:
         env:
             CIBW_ENVIRONMENT_PASS_LINUX: SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS
             CIBW_BUILD: 'cp3*-${{ matrix.os_arch }}'
+            MACOSX_DEPLOYMENT_TARGET: 14.0
 
         steps:
             - uses: actions/checkout@v4
@@ -37,12 +39,11 @@ jobs:
             - name: Cache rust build
               uses: actions/cache@v4
               with:
-                  path: |
-                      rust/target/
-                  key: cibuildwheel-${{ matrix.os_arch }}-cargo-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}
+                  path: rust/target/
+                  key: cibuildwheel-rust-target-${{ matrix.os_arch }}-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}
                   restore-keys: |
-                      cibuildwheel-${{ matrix.os_arch }}-cargo-${{ hashFiles('**/Cargo.lock') }}-
-                      cibuildwheel-${{ matrix.os_arch }}-cargo-
+                      cibuildwheel-rust-target-${{ matrix.os_arch }}-${{ hashFiles('**/Cargo.lock') }}-
+                      cibuildwheel-rust-target-${{ matrix.os_arch }}-
 
             - name: Install dependencies
               run: |

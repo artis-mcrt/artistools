@@ -10,6 +10,9 @@ from astropy import units as u
 
 import artistools as at
 
+if t.TYPE_CHECKING:
+    from mpl_toolkits.mplot3d import Axes3D
+
 
 def make_cone(args):
     print("Making cone")
@@ -176,7 +179,7 @@ def make_plot(args):
     cone = make_cone(args)
 
     cone = cone.loc[cone["rho_model"] > 0.0002]  # cut low densities (empty cells?) from plot
-    ax = plt.figure().gca(projection="3d")
+    ax: Axes3D = plt.figure().gca(projection="3d")  # type: ignore[call-arg] # pyright: ignore[reportCallIssue]
 
     # print(cone['rho_model'])
 
@@ -228,10 +231,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Make 1D model from cone in 3D model."""
     if args is None:
-        parser = argparse.ArgumentParser(
-            formatter_class=at.CustomArgHelpFormatter,
-            description=__doc__,
-        )
+        parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
         addargs(parser)
         at.set_args_from_dict(parser, kwargs)
         args = parser.parse_args([] if kwargs else argsraw)

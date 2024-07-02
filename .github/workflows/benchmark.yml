@@ -28,6 +28,15 @@ jobs:
               with:
                   python-version-file: .python-version
 
+            - name: Cache rust build
+              uses: actions/cache@v4
+              with:
+                  path: rust/target/
+                  key: codspeed-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}
+                  restore-keys: |
+                      codspeed-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
+                      codspeed-rust-target-${{ runner.os }}-
+
             - name: Install uv
               run: |
                   curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -39,6 +48,7 @@ jobs:
             - name: Cache test data
               uses: actions/cache@v4
               with:
+                  enableCrossOsArchive: true
                   path: tests/data/*.tar.xz
                   key: testdata20231114
 

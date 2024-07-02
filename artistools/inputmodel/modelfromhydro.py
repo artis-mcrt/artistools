@@ -127,7 +127,7 @@ def read_griddat_file(
             "posx": "pos_x_min",  # for compatibility with fortran maptogrid script
             "posy": "pos_y_min",
             "posz": "pos_z_min",
-        },
+        }
     )
     # griddata in geom units
     griddata["rho"] = griddata["rho"].fillna(0.0)
@@ -276,7 +276,7 @@ def mirror_model_in_axis(griddata):
     return griddata
 
 
-def add_mass_to_center(griddata, t_model_in_days, vmax, args):
+def add_mass_to_center(griddata, t_model_in_days, vmax, args: argparse.Namespace):
     print(griddata)
 
     # Just (2021) Fig. 16 top left panel
@@ -318,18 +318,19 @@ def add_mass_to_center(griddata, t_model_in_days, vmax, args):
 
 
 def makemodelfromgriddata(
-    gridfolderpath=Path(),
-    outputpath=Path(),
+    gridfolderpath: Path | str,
+    outputpath: Path | str,
     targetmodeltime_days: None | float = None,
     traj_root: Path | str | None = None,
     dimensions: int = 3,
     scaledensity: float = 1.0,
     scalevelocity: float = 1.0,
-    args=None,
+    args: argparse.Namespace | None = None,
 ) -> None:
+    if args is None:
+        args = argparse.Namespace()
     pddfmodel, t_model_days, t_mergertime_s, vmax, modelmeta = at.inputmodel.modelfromhydro.read_griddat_file(
-        pathtogriddata=gridfolderpath,
-        targetmodeltime_days=targetmodeltime_days,
+        pathtogriddata=gridfolderpath, targetmodeltime_days=targetmodeltime_days
     )
 
     if getattr(args, "fillcentralhole", False):
@@ -345,7 +346,7 @@ def makemodelfromgriddata(
     )
 
     dfmodel = pl.from_pandas(pddfmodel).sort("inputcellid")
-    assert dfmodel["inputcellid"].dtype in pl.INTEGER_DTYPES
+    assert dfmodel.schema["inputcellid"].is_integer()
     assert isinstance(dfmodel, pl.DataFrame)
     dfmodel = dfmodel.with_columns(pl.col("inputcellid").cast(pl.Int32))  # pylint: disable=no-member
     if scaledensity != 1.0:
@@ -362,22 +363,20 @@ def makemodelfromgriddata(
         modelmeta["headercommentlines"].append(f"trajfolder: {Path(traj_root).resolve().parts[-1]}")
         t_model_days_incpremerger = t_model_days + (t_mergertime_s / 86400)
         assert dfgridcontributions is not None
-        (
-            dfmodel,
-            dfelabundances,
-            dfgridcontributions,
-        ) = at.inputmodel.rprocess_from_trajectory.add_abundancecontributions(
-            dfgridcontributions=dfgridcontributions,
-            dfmodel=dfmodel,
-            t_model_days_incpremerger=t_model_days_incpremerger,
-            traj_root=traj_root,
+        (dfmodel, dfelabundances, dfgridcontributions) = (
+            at.inputmodel.rprocess_from_trajectory.add_abundancecontributions(
+                dfgridcontributions=dfgridcontributions,
+                dfmodel=dfmodel,
+                t_model_days_incpremerger=t_model_days_incpremerger,
+                traj_root=traj_root,
+            )
         )
     else:
         print("WARNING: No abundances will be set because no nuclear network trajectories folder was specified")
         dfelabundances = None
 
     if dimensions < 3:
-        dfmodel, dfelabundances, dfgridcontributions, modelmeta = at.inputmodel.dimension_reduce_3d_model(
+        dfmodel, dfelabundances, dfgridcontributions, modelmeta = at.inputmodel.dimension_reduce_model(
             dfmodel=dfmodel,
             outputdimensions=dimensions,
             dfelabundances=dfelabundances,
@@ -399,9 +398,7 @@ def makemodelfromgriddata(
     if dfelabundances is not None:
         print(f'Writing to {Path(outputpath) / "abundances.txt"}...')
         at.inputmodel.save_initelemabundances(
-            dfelabundances=dfelabundances,
-            outpath=outputpath,
-            headercommentlines=modelmeta["headercommentlines"],
+            dfelabundances=dfelabundances, outpath=outputpath, headercommentlines=modelmeta["headercommentlines"]
         )
     else:
         at.inputmodel.save_empty_abundance_file(outputfilepath=outputpath, npts_model=len(dfmodel))
@@ -410,11 +407,7 @@ def makemodelfromgriddata(
         dfmodel = dfmodel.with_columns(pl.col("tracercount").cast(pl.Int32))
 
     print(f'Writing to {Path(outputpath) / "model.txt"}...')
-    at.inputmodel.save_modeldata(
-        outpath=outputpath,
-        dfmodel=dfmodel,
-        modelmeta=modelmeta,
-    )
+    at.inputmodel.save_modeldata(outpath=outputpath, dfmodel=dfmodel, modelmeta=modelmeta)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:

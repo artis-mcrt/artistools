@@ -57,17 +57,15 @@ def rprocess_const_and_powerlaw():
         )  # ergs/s/g
         energy_per_gram_cumulative.append(cumulative_integral[0])
 
-    energy_per_gram_cumulative = np.array(energy_per_gram_cumulative)
-
-    rate = energy_per_gram_cumulative / E_tot
+    rate = np.array(energy_per_gram_cumulative) / E_tot
 
     # nuclear_heating_power = [integrand(time, t0, epsilon0, sigma, alpha, thermalisation_factor) for time in times]
 
     # times_and_rate = {'times': times/DAY, 'rate': rate, 'nuclear_heating_power': nuclear_heating_power}
     times_and_rate = {"times": times / DAY, "rate": rate}
-    times_and_rate = pd.DataFrame(data=times_and_rate)
+    dftimes_and_rate = pd.DataFrame(data=times_and_rate)
 
-    return times_and_rate, E_tot
+    return dftimes_and_rate, E_tot
 
 
 def define_heating_rate():
@@ -86,9 +84,9 @@ def define_heating_rate():
     rate = cumulative_integrated_energy / E_tot
 
     times_and_rate = {"times": times, "rate": rate}
-    times_and_rate = pd.DataFrame(data=times_and_rate)
+    dftimes_and_rate = pd.DataFrame(data=times_and_rate)
 
-    dE = np.diff(times_and_rate["rate"] * E_tot)
+    dE = np.diff(dftimes_and_rate["rate"] * E_tot)
     dt = np.diff(times * 24 * 60 * 60)
 
     intergrated_rate = dE / dt
@@ -97,12 +95,12 @@ def define_heating_rate():
     E_tot *= scale_factor_energy_diff
     # print(f"E_tot after integrated line scaled to match energy of power law: {E_tot}")
 
-    dE = np.diff(times_and_rate["rate"] * E_tot)
+    dE = np.diff(dftimes_and_rate["rate"] * E_tot)
     dt = np.diff(times * 24 * 60 * 60)
 
     # check energy rate is on top of power law line
-    # plt.plot(times_and_rate["times"][1:], (dE / dt) * 0.01 * MSUN)
-    # plt.plot(times_and_rate["times"], qdot * 0.01 * MSUN)
+    # plt.plot(dftimes_and_rate["times"][1:], (dE / dt) * 0.01 * MSUN)
+    # plt.plot(dftimes_and_rate["times"], qdot * 0.01 * MSUN)
     # plt.yscale("log")
     # plt.xscale("log")
 
@@ -112,7 +110,7 @@ def define_heating_rate():
     # # plt.ylim(5e39, 2e41)
     # plt.show()
 
-    return times_and_rate, E_tot
+    return dftimes_and_rate, E_tot
 
 
 def energy_from_rprocess_calculation(energy_thermo_data, get_rate=True):
@@ -135,9 +133,9 @@ def energy_from_rprocess_calculation(energy_thermo_data, get_rate=True):
         rate = cumulative_integrated_energy / E_tot
 
         times_and_rate = {"times": times / DAY, "rate": rate}
-        times_and_rate = pd.DataFrame(data=times_and_rate)
+        dftimes_and_rate = pd.DataFrame(data=times_and_rate)
 
-        return times_and_rate, E_tot
+        return dftimes_and_rate, E_tot
 
     return E_tot
 
@@ -240,11 +238,7 @@ def plot_energy_rate(modelpath):
 
 def get_etot_fromfile(modelpath):
     energydistribution_data = pd.read_csv(
-        Path(modelpath) / "energydistribution.txt",
-        skiprows=1,
-        sep=r"\s+",
-        header=None,
-        names=["cellid", "cell_energy"],
+        Path(modelpath) / "energydistribution.txt", skiprows=1, sep=r"\s+", header=None, names=["cellid", "cell_energy"]
     )
     etot = energydistribution_data["cell_energy"].sum()
     return etot, energydistribution_data

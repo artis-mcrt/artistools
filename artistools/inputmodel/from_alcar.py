@@ -25,11 +25,7 @@ def sphkernel(dist: np.ndarray, hsph: float | np.ndarray, nu: float) -> np.ndarr
     # data
 
     q = dist / hsph
-    w = np.where(
-        q < 1.0,
-        1.0 - 1.5 * q**2 + 0.75 * q**3,
-        np.where(q < 2.0, 0.25 * (2.0 - q) ** 3, 0.0),
-    )
+    w = np.where(q < 1.0, 1.0 - 1.5 * q**2 + 0.75 * q**3, np.where(q < 2.0, 0.25 * (2.0 - q) ** 3, 0.0))
 
     if nu == 3:
         sigma = 1.0 / np.pi
@@ -242,9 +238,7 @@ def get_grid() -> tuple:
                     wloc /= np.sum(wloc)
                     pids = np.where(wloc > 1.0e-20)[0]
                     for pid in pids:
-                        fgridcontributions.write(
-                            f"{pid:<10}  {cellid:<8} {wloc[pid]:25.15e} {wloc[pid]:25.15e}\n",
-                        )
+                        fgridcontributions.write(f"{pid:<10}  {cellid:<8} {wloc[pid]:25.15e} {wloc[pid]:25.15e}\n")
 
     return nvr, nvz, rgridc2d, zgridc2d, rhoint, xint, iso, q_ergperg
 

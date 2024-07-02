@@ -1,9 +1,15 @@
 """Matplotlib-related plotting functions."""
 
+import argparse
+import itertools
 import sys
+import typing as t
 
+import matplotlib.axes as mplax
+import matplotlib.figure as mplfig
 import matplotlib.pyplot as plt
 import numpy as np
+import numpy.typing as npt
 from matplotlib import ticker
 
 from artistools.configuration import get_config
@@ -16,7 +22,10 @@ def set_mpl_style() -> None:
 class ExponentLabelFormatter(ticker.ScalarFormatter):
     """Formatter to move the 'x10^x' offset text into the axis label."""
 
-    def __init__(self, labeltemplate, useMathText=True, decimalplaces=None) -> None:
+    _useMathText: bool
+    _usetex: bool
+
+    def __init__(self, labeltemplate: str, useMathText: bool = True, decimalplaces: int | None = None) -> None:
         self.set_labeltemplate(labeltemplate)
         self.decimalplaces = decimalplaces
         super().__init__(useOffset=True, useMathText=useMathText)
@@ -29,11 +38,11 @@ class ExponentLabelFormatter(ticker.ScalarFormatter):
             stroffset = stroffset.replace(r"$\times", "$") + " "
         strnewlabel = self.labeltemplate.format(stroffset)
         assert self.axis is not None
-        self.axis.set_label_text(strnewlabel)
+        self.axis.set_label_text(strnewlabel)  # type: ignore[union-attr]
         assert self.offset == 0
-        self.axis.offsetText.set_visible(False)
+        self.axis.offsetText.set_visible(False)  # type: ignore[union-attr]
 
-    def set_labeltemplate(self, labeltemplate):
+    def set_labeltemplate(self, labeltemplate: str) -> None:
         assert "{" in labeltemplate
         self.labeltemplate = labeltemplate
 
@@ -57,9 +66,9 @@ class ExponentLabelFormatter(ticker.ScalarFormatter):
 
         self._set_formatted_label_text()
 
-    def _set_format(self, *args, **kwargs):
+    def _set_format(self, *args: t.Any, **kwargs):
         if self.decimalplaces is None:
-            return super()._set_format(*args, **kwargs)
+            return super()._set_format(*args, **kwargs)  # type: ignore[misc]
 
         sigfigs = self.decimalplaces
         self.format = f"%1.{sigfigs}f"
@@ -73,13 +82,13 @@ class ExponentLabelFormatter(ticker.ScalarFormatter):
         self._set_formatted_label_text()
 
 
-def set_axis_properties(ax, args):
+def set_axis_properties(ax: t.Iterable[mplax.Axes] | mplax.Axes, args: argparse.Namespace) -> t.Any:
     if "subplots" not in args:
         args.subplots = False
     if "labelfontsize" not in args:
         args.labelfontsize = 18
 
-    if args.subplots:
+    if isinstance(ax, t.Iterable):
         for axis in ax:
             axis.minorticks_on()
             axis.tick_params(
@@ -140,7 +149,9 @@ def set_axis_properties(ax, args):
     return ax
 
 
-def set_axis_labels(fig, ax, xlabel, ylabel, labelfontsize, args):
+def set_axis_labels(
+    fig: mplfig.Figure, ax: mplax.Axes, xlabel: str, ylabel: str, labelfontsize: int | None, args: argparse.Namespace
+):
     if args.subplots:
         fig.text(0.5, 0.02, xlabel, ha="center", va="center")
         fig.text(0.02, 0.5, ylabel, ha="center", va="center", rotation="vertical")
@@ -149,10 +160,10 @@ def set_axis_labels(fig, ax, xlabel, ylabel, labelfontsize, args):
         ax.set_ylabel(ylabel, fontsize=labelfontsize)
 
 
-def imshow_init_for_artis_grid(ngrid, vmax, plot_variable_3d_array, plot_axes="xy"):
+def imshow_init_for_artis_grid(ngrid: int, vmax: float, plot_variable_3d_array: npt.NDArray, plot_axes: str = "xy"):
     # ngrid = round(len(model['inputcellid']) ** (1./3.))
-    extent = {"left": -vmax, "right": vmax, "bottom": vmax, "top": -vmax}
-    extent = extent["left"], extent["right"], extent["bottom"], extent["top"]
+    extentdict = {"left": -vmax, "right": vmax, "bottom": vmax, "top": -vmax}
+    extent = extentdict["left"], extentdict["right"], extentdict["bottom"], extentdict["top"]
     data = np.zeros((ngrid, ngrid))
 
     plot_axes_choices = ["xy", "xz"]
@@ -160,19 +171,17 @@ def imshow_init_for_artis_grid(ngrid, vmax, plot_variable_3d_array, plot_axes="x
         print(f"Choose plot axes from {plot_axes_choices}")
         sys.exit(1)
 
-    for z in range(ngrid):
-        for y in range(ngrid):
-            for x in range(ngrid):
-                if plot_axes == "xy":
-                    if z == round(ngrid / 2) - 1:
-                        data[y, x] = plot_variable_3d_array[x, y, z]
-                elif plot_axes == "xz" and y == round(ngrid / 2) - 1:
-                    data[z, x] = plot_variable_3d_array[x, y, z]
+    for z, y, x in itertools.product(range(ngrid), range(ngrid), range(ngrid)):
+        if plot_axes == "xy":
+            if z == round(ngrid / 2) - 1:
+                data[y, x] = plot_variable_3d_array[x, y, z]
+        elif plot_axes == "xz" and y == round(ngrid / 2) - 1:
+            data[z, x] = plot_variable_3d_array[x, y, z]
 
     return data, extent
 
 
-def autoscale(ax=None, axis="y", margin=0.1):
+def autoscale(ax: mplax.Axes | None = None, axis: str = "y", margin: float = 0.1) -> None:
     """Autoscales the x or y axis of a given matplotlib ax object to fit the margins set by manually limits of the other axis, with margins in fraction of the width of the plot.
 
     Defaults to current axes object if not specified.
@@ -214,6 +223,7 @@ def autoscale(ax=None, axis="y", margin=0.1):
 
     for artist in list(ax.collections) + list(ax.lines):
         x, y = get_xy(artist)
+        setlim: t.Callable
         if axis == "y":
             setlim = ax.set_ylim
             lim = ax.get_xlim()

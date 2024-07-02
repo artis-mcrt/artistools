@@ -52,9 +52,9 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
 
 def slice_3dmodel(inputfolder, outputfolder, chosenaxis):
-    xlist = []
-    ylists = [[], [], []]
-    listout = []
+    xlist: list[float] = []
+    ylists: list[list] = [[], [], []]
+    listout: list[str] = []
     dict3dcellidto1dcellid = {}
     outcellid = 0
     with Path(inputfolder, "model.txt").open(encoding="utf-8") as fmodelin:
@@ -69,7 +69,7 @@ def slice_3dmodel(inputfolder, outputfolder, chosenaxis):
             if not block[0] or not block[1]:
                 break
 
-            cell = {}
+            cell: dict[str, float | str] = {}
             blocksplit = block[0].split(), block[1].split()
             if len(blocksplit[0]) == 5:
                 (cell["cellid"], cell["pos_x_min"], cell["pos_y_min"], cell["pos_z_min"], cell["rho"]) = blocksplit[0]
@@ -132,7 +132,9 @@ def slice_abundance_file(inputfolder, outputfolder, dict3dcellidto1dcellid) -> N
         print("WARNING: unfinished block")
 
 
-def append_cell_to_output(cell, outcellid, t_model, listout, xlist, ylists):
+def append_cell_to_output(
+    cell, outcellid: int, t_model: str | float, listout: list[str], xlist: list[float], ylists: list[list[float]]
+) -> None:
     dist = math.sqrt(float(cell["pos_x_min"]) ** 2 + float(cell["pos_y_min"]) ** 2 + float(cell["pos_z_min"]) ** 2)
     velocity = float(dist) / float(t_model) / 86400.0 / 1.0e5
 

@@ -7,7 +7,6 @@ import tempfile
 import time
 import typing as t
 from collections import defaultdict
-from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
@@ -20,9 +19,7 @@ import artistools as at
 
 # @lru_cache(maxsize=3)
 def read_modelfile_text(
-    filename: Path | str,
-    printwarningsonly: bool = False,
-    getheadersonly: bool = False,
+    filename: Path | str, printwarningsonly: bool = False, getheadersonly: bool = False
 ) -> tuple[pl.DataFrame, dict[t.Any, t.Any]]:
     """Read an artis model.txt file containing cell velocities, density, and abundances of radioactive nuclides."""
     onelinepercellformat = None
@@ -112,10 +109,7 @@ def read_modelfile_text(
                 # one line per cell format
                 ncols_line_odd = 0
 
-            assert len(columns) in {
-                ncols_line_even + ncols_line_odd,
-                ncols_line_even + ncols_line_odd + 2,
-            }
+            assert len(columns) in {ncols_line_even + ncols_line_odd, ncols_line_even + ncols_line_odd + 2}
             columns = columns[: ncols_line_even + ncols_line_odd]
 
         assert columns is not None
@@ -416,13 +410,12 @@ def get_modeldata_polars(
         getheadersonly = True
 
     dfmodel_textfile, modelmeta = read_modelfile_text(
-        filename=textfilepath,
-        printwarningsonly=printwarningsonly,
-        getheadersonly=getheadersonly,
+        filename=textfilepath, printwarningsonly=printwarningsonly, getheadersonly=getheadersonly
     )
 
     if dfmodel is None:
         dfmodel = dfmodel_textfile.lazy()
+        assert dfmodel is not None
 
         mebibyte = 1024 * 1024
         if textfilepath.stat().st_size > 5 * mebibyte and not getheadersonly:
@@ -451,10 +444,7 @@ def get_modeldata_polars(
 
     if derived_cols:
         dfmodel = add_derived_cols_to_modeldata(
-            dfmodel=dfmodel,
-            derived_cols=derived_cols,
-            modelmeta=modelmeta,
-            modelpath=modelpath,
+            dfmodel=dfmodel, derived_cols=derived_cols, modelmeta=modelmeta, modelpath=modelpath
         )
 
     return dfmodel, modelmeta
@@ -514,7 +504,9 @@ def get_empty_3d_model(
     standardcols = get_standard_columns(3, includenico57=includenico57)
 
     dfmodel = dfmodel.with_columns([
-        pl.lit(0.0, dtype=pl.Float32).alias(colname) for colname in standardcols if colname not in dfmodel.columns
+        pl.lit(0.0, dtype=pl.Float32).alias(colname)
+        for colname in standardcols
+        if colname not in dfmodel.collect_schema().names()
     ]).select([*standardcols, "modelgridindex"])
 
     return dfmodel, modelmeta
@@ -551,7 +543,7 @@ def add_derived_cols_to_modeldata(
     """Add columns to modeldata using e.g. derived_cols = ("velocity", "Ye")."""
     # with lazy mode, we can add every column and then drop the ones we don't need
     dfmodel = dfmodel.lazy()
-    original_cols = dfmodel.columns
+    original_cols = dfmodel.collect_schema().names()
 
     t_model_init_seconds = modelmeta["t_model_init_days"] * 86400.0
     keep_all = "ALL" in derived_cols
@@ -563,10 +555,7 @@ def add_derived_cols_to_modeldata(
 
             dfmodel = (
                 dfmodel.with_columns(vel_r_min_kmps=pl.col("vel_r_max_kmps").shift(n=1, fill_value=0.0))
-                .with_columns(
-                    vel_r_min=(pl.col("vel_r_min_kmps") * 1e5),
-                    vel_r_max=(pl.col("vel_r_max_kmps") * 1e5),
-                )
+                .with_columns(vel_r_min=(pl.col("vel_r_min_kmps") * 1e5), vel_r_max=(pl.col("vel_r_max_kmps") * 1e5))
                 .with_columns(vel_r_mid=((pl.col("vel_r_max") + pl.col("vel_r_min")) / 2))
                 .with_columns(
                     volume=(
@@ -648,14 +637,14 @@ def add_derived_cols_to_modeldata(
                 ).sqrt(),
             )
 
-    for col in dfmodel.columns:
+    for col in dfmodel.collect_schema().names():
         if col.startswith("pos_"):
             dfmodel = dfmodel.with_columns((pl.col(col) / t_model_init_seconds).alias(col.replace("pos_", "vel_")))
 
-    if "logrho" not in dfmodel.columns:
+    if "logrho" not in dfmodel.collect_schema().names():
         dfmodel = dfmodel.with_columns(logrho=pl.col("rho").log10())
 
-    if "rho" not in dfmodel.columns:
+    if "rho" not in dfmodel.collect_schema().names():
         dfmodel = dfmodel.with_columns(
             rho=(pl.when(pl.col("logrho") > -98).then(10 ** pl.col("logrho")).otherwise(0.0))
         )
@@ -668,21 +657,27 @@ def add_derived_cols_to_modeldata(
     if unknown_cols := [
         col
         for col in derived_cols
-        if col not in dfmodel.columns and col not in {"pos_min", "pos_max", "ALL", "velocity"}
+        if col not in dfmodel.collect_schema().names() and col not in {"pos_min", "pos_max", "ALL", "velocity"}
     ]:
         print(f"WARNING: Unknown derived columns: {unknown_cols}")
 
     if "pos_min" in derived_cols:
-        derived_cols.extend(col for col in dfmodel.columns if col.startswith("pos_") and col.endswith("_min"))
+        derived_cols.extend(
+            col for col in dfmodel.collect_schema().names() if col.startswith("pos_") and col.endswith("_min")
+        )
 
     if "pos_max" in derived_cols:
-        derived_cols.extend(col for col in dfmodel.columns if col.startswith("pos_") and col.endswith("_max"))
+        derived_cols.extend(
+            col for col in dfmodel.collect_schema().names() if col.startswith("pos_") and col.endswith("_max")
+        )
 
     if "velocity" in derived_cols:
-        derived_cols.extend(col for col in dfmodel.columns if col.startswith("vel_"))
+        derived_cols.extend(col for col in dfmodel.collect_schema().names() if col.startswith("vel_"))
 
     if not keep_all:
-        dfmodel = dfmodel.drop([col for col in dfmodel.columns if col not in original_cols and col not in derived_cols])
+        dfmodel = dfmodel.drop([
+            col for col in dfmodel.collect_schema().names() if col not in original_cols and col not in derived_cols
+        ])
 
     if "angle_bin" in derived_cols:
         assert modelpath is not None
@@ -847,7 +842,10 @@ def save_modeldata(
     if isinstance(dfmodel, pd.DataFrame):
         dfmodel = pl.from_pandas(dfmodel)
 
-    dfmodel = dfmodel.drop("mass_g").lazy().collect()
+    if "inputcellid" not in dfmodel.columns and "modelgridindex" in dfmodel.columns:
+        dfmodel = dfmodel.with_columns(inputcellid=pl.col("modelgridindex") + 1)
+
+    dfmodel = dfmodel.drop(("mass_g", "modelgridindex"), strict=False).lazy().collect()
 
     if modelmeta is None:
         modelmeta = {}
@@ -881,7 +879,7 @@ def save_modeldata(
         assert modelmeta["ncoordgridrcyl"] * modelmeta["ncoordgridz"] == len(dfmodel)
 
     elif modelmeta["dimensions"] == 3:
-        if "gridindex" in dfmodel.columns:
+        if "gridindex" in dfmodel.collect_schema().names():
             dfmodel = dfmodel.rename({"gridindex": "inputcellid"})
         griddimension = int(round(len(dfmodel) ** (1.0 / 3.0)))
         print(f" 3D grid size: {len(dfmodel)} ({griddimension}^3)")
@@ -893,16 +891,17 @@ def save_modeldata(
 
     # the Ni57 and Co57 columns are optional, but position is important and they must appear before any other custom cols
     standardcols = get_standard_columns(
-        modelmeta["dimensions"], includenico57=("X_Ni57" in dfmodel.columns or "X_Co57" in dfmodel.columns)
+        modelmeta["dimensions"],
+        includenico57=("X_Ni57" in dfmodel.collect_schema().names() or "X_Co57" in dfmodel.collect_schema().names()),
     )
 
     # set missing radioabundance columns to zero
     for col in standardcols:
-        if col not in dfmodel.columns and col.startswith("X_"):
+        if col not in dfmodel.collect_schema().names() and col.startswith("X_"):
             dfmodel = dfmodel.with_columns(pl.lit(0.0).alias(col))
 
     dfmodel = dfmodel.with_columns(pl.col("inputcellid").cast(pl.Int32))
-    customcols = [col for col in dfmodel.columns if col not in standardcols]
+    customcols = [col for col in dfmodel.collect_schema().names() if col not in standardcols]
     customcols.sort(
         key=lambda col: at.get_z_a_nucname(col) if col.startswith("X_") else (math.inf, 0)
     )  # sort columns by atomic number, mass number
@@ -936,40 +935,60 @@ def save_modeldata(
         if customcols:
             fmodel.write(f'#{" ".join(standardcols)} {" ".join(customcols)}\n')
 
-        abundcols = [*[col for col in standardcols if col.startswith("X_")], *customcols]
+        abundandcustomcols = [*[col for col in standardcols if col.startswith("X_")], *customcols]
 
-        zeroabund = " ".join(["0.0" for _ in abundcols])
+        strzeroabund = " ".join(["0.0" if dfmodel.schema[col].is_float() else "0" for col in abundandcustomcols])
         if modelmeta["dimensions"] == 1:
-            for inputcellid, vel_r_max_kmps, logrho, *othercolvals in dfmodel.select([
+            for inputcellid, vel_r_max_kmps, logrho, *abundandcustomcolvals in dfmodel.select([
                 "inputcellid",
                 "vel_r_max_kmps",
                 "logrho",
-                *abundcols,
+                *abundandcustomcols,
             ]).iter_rows():
                 fmodel.write(f"{inputcellid:d} {vel_r_max_kmps:9.2f} {logrho:10.8f} ")
                 fmodel.write(
-                    " ".join([(f"{colvalue:.4e}" if colvalue > 0.0 else "0.0") for colvalue in othercolvals])
+                    " ".join([(f"{colvalue:.4e}" if colvalue > 0.0 else "0.0") for colvalue in abundandcustomcolvals])
                     if logrho > -99.0
-                    else zeroabund
+                    else strzeroabund
                 )
                 fmodel.write("\n")
 
         else:
-            lineend = "\n" if twolinespercell else " "
-            startcols = get_standard_columns(modelmeta["dimensions"], includeabund=False)
-            dfmodel = dfmodel.select([*startcols, *abundcols])
-            nstartcols = len(startcols)
-            for colvals in dfmodel.iter_rows():
-                inputcellid = colvals[0]
-                rho = colvals[nstartcols - 1]
-                fmodel.write(f"{inputcellid:d}" + "".join(f" {colvalue:.4e}" for colvalue in colvals[1:nstartcols]))
-                fmodel.write(lineend)
-                fmodel.write(
-                    " ".join((f"{colvalue:.4e}" if colvalue > 0.0 else "0.0") for colvalue in colvals[nstartcols:])
-                    if rho > 0.0
-                    else zeroabund
+            # startcols are the standard ones, but excluding any abundances
+            startcols = [col for col in standardcols if not col.startswith("X_")]
+            dfmodel = dfmodel.select([*startcols, *abundandcustomcols])
+            if twolinespercell:
+                # slow python writer. only needed to create models for classic ARTIS
+                nstartcols = len(startcols)
+                rhocolindex = len(startcols) - 1
+                for colvals in dfmodel.iter_rows():
+                    inputcellid = colvals[0]
+                    fmodel.write(f"{inputcellid:d}" + "".join(f" {colvalue:.4e}" for colvalue in colvals[1:nstartcols]))
+                    fmodel.write("\n")
+                    fmodel.write(
+                        " ".join((f"{colvalue:.4e}" if colvalue > 0.0 else "0.0") for colvalue in colvals[nstartcols:])
+                        if colvals[rhocolindex] > 0.0
+                        else strzeroabund
+                    )
+                    fmodel.write("\n")
+            else:
+                # fast polars writer
+                # set abundances to null for cells with zero density (so that shorter form "0.0" can be written)
+                dfmodel = dfmodel.with_columns(
+                    pl.when(pl.col("rho") > 0).then(pl.col(col)).otherwise(pl.lit(None)).alias(col)
+                    for col in dfmodel.columns
+                    if not col.startswith("pos") and col != "inputcellid" and dfmodel.schema[col].is_float()
                 )
-                fmodel.write("\n")
+                fmodel.flush()
+                dfmodel.write_csv(
+                    fmodel,
+                    include_header=False,
+                    separator=" ",
+                    line_terminator="\n",
+                    float_scientific=True,
+                    float_precision=4,
+                    null_value="0.0",
+                )
 
     print(f"Saved {modelfilepath} (took {time.perf_counter() - timestart:.1f} seconds)")
 
@@ -1000,10 +1019,11 @@ def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist: t.Sequenc
     raise AssertionError
 
 
-def get_initelemabundances(
-    modelpath: Path = Path(),
-    printwarningsonly: bool = False,
-) -> pd.DataFrame:
+def get_initelemabundances_pandas(modelpath: Path = Path(), printwarningsonly: bool = False) -> pd.DataFrame:
+    """Return a table of elemental mass fractions by cell from abundances.
+
+    Deprecated: Use get_initelemabundances_pandas() instead.
+    """
     return (
         get_initelemabundances_polars(modelpath=modelpath, printwarningsonly=printwarningsonly)
         .with_columns(pl.col("inputcellid").sub(1).alias("modelgridindex"))
@@ -1013,11 +1033,7 @@ def get_initelemabundances(
     )
 
 
-@lru_cache(maxsize=8)
-def get_initelemabundances_polars(
-    modelpath: Path = Path(),
-    printwarningsonly: bool = False,
-) -> pl.LazyFrame:
+def get_initelemabundances_polars(modelpath: Path = Path(), printwarningsonly: bool = False) -> pl.LazyFrame:
     """Return a table of elemental mass fractions by cell from abundances."""
     textfilepath = at.firstexisting("abundances.txt", folder=modelpath, tryzipped=True)
     parquetfilepath = at.stripallsuffixes(Path(textfilepath)).with_suffix(".txt.parquet.tmp")
@@ -1036,14 +1052,9 @@ def get_initelemabundances_polars(
             print(f"Reading {textfilepath}")
         ncols = len(pd.read_csv(textfilepath, sep=r"\s+", header=None, comment="#", nrows=1).columns)
         colnames = ["inputcellid", *["X_" + at.get_elsymbol(x) for x in range(1, ncols)]]
-        dtypes = {col: pl.Float32 if col.startswith("X_") else pl.Int32 for col in colnames}
 
         abundancedata = pl.read_csv(
-            at.zopenpl(textfilepath),
-            has_header=False,
-            separator=" ",
-            comment_prefix="#",
-            infer_schema_length=0,
+            at.zopenpl(textfilepath), has_header=False, separator=" ", comment_prefix="#", infer_schema_length=0
         )
 
         # fix up multiple spaces at beginning of lines
@@ -1053,7 +1064,7 @@ def get_initelemabundances_polars(
         ]).transpose()
         abundancedata = abundancedata.rename({
             col: colnames[idx] for idx, col in enumerate(abundancedata.columns)
-        }).cast(dtypes)  # type: ignore[arg-type]
+        }).cast({col: pl.Float32 if col.startswith("X_") else pl.Int32 for col in colnames})
 
         if textfilepath.stat().st_size > 5 * 1024 * 1024:
             print(f"Saving {parquetfilepath}")
@@ -1099,10 +1110,17 @@ def save_initelemabundances(
     if isinstance(dfelabundances, pd.DataFrame):
         dfelabundances = pl.from_pandas(dfelabundances)
 
-    dfelabundances = dfelabundances.clone().lazy().collect().with_columns([pl.col("inputcellid").cast(pl.Int32)])
+    dfelabundances = (
+        dfelabundances.lazy().with_columns([pl.col("inputcellid").cast(pl.Int32)]).sort("inputcellid").collect()
+    )
+    assert isinstance(dfelabundances, pl.DataFrame)
+
+    assert dfelabundances["inputcellid"].min() == 1
+    assert dfelabundances["inputcellid"].max() == len(dfelabundances)
 
     atomic_numbers = {
-        at.get_atomic_number(colname[2:]) for colname in dfelabundances.select(pl.selectors.starts_with("X_")).columns
+        at.get_atomic_number(colname.removeprefix("X_"))
+        for colname in dfelabundances.select(cs.starts_with("X_")).columns
     }
     max_atomic_number = max([30, *atomic_numbers])
     elcolnames = [f"X_{at.get_elsymbol(Z)}" for Z in range(1, 1 + max_atomic_number)]
@@ -1115,6 +1133,8 @@ def save_initelemabundances(
         if col not in dfelabundances.columns:
             dfelabundances[col] = 0.0
 
+    dfelabundances = dfelabundances.select(["inputcellid", *elcolnames])
+
     if abundancefilename.exists():
         oldfile = abundancefilename.rename(abundancefilename.with_suffix(".bak"))
         print(f"{abundancefilename} already exists. Renaming existing file to {oldfile}")
@@ -1122,10 +1142,16 @@ def save_initelemabundances(
     with Path(abundancefilename).open("w", encoding="utf-8") as fabund:
         if headercommentlines is not None:
             fabund.write("\n".join([f"# {line}" for line in headercommentlines]) + "\n")
-        for inputcellid, *abundvals in dfelabundances.select(["inputcellid", *elcolnames]).iter_rows():
-            fabund.write(f"{inputcellid:} ")
-            fabund.write(" ".join([f"{abund:.4e}" for abund in abundvals]))
-            fabund.write("\n")
+        fabund.flush()
+        dfelabundances.write_csv(
+            fabund,
+            include_header=False,
+            separator=" ",
+            line_terminator="\n",
+            float_scientific=True,
+            float_precision=4,
+            null_value="0.0",
+        )
 
     print(f"Saved {abundancefilename} (took {time.perf_counter() - timestart:.1f} seconds)")
 
@@ -1135,23 +1161,19 @@ def save_empty_abundance_file(npts_model: int, outputfilepath: str | Path = Path
     if Path(outputfilepath).is_dir():
         outputfilepath = Path(outputfilepath) / "abundances.txt"
 
-    save_initelemabundances(
-        pl.DataFrame({
-            "inputcellid": range(1, npts_model + 1),
-        }),
-        outpath=outputfilepath,
-    )
+    save_initelemabundances(pl.DataFrame({"inputcellid": range(1, npts_model + 1)}), outpath=outputfilepath)
 
 
 def get_dfmodel_dimensions(dfmodel: pd.DataFrame | pl.DataFrame | pl.LazyFrame) -> int:
     """Guess whether the model is 1D, 2D, or 3D based on which columns are present."""
-    if "pos_x_min" in dfmodel.columns:
+    columns = dfmodel.columns if isinstance(dfmodel, pd.DataFrame) else dfmodel.collect_schema().names()
+    if "pos_x_min" in columns:
         return 3
 
-    return 2 if "pos_z_mid" in dfmodel.columns else 1
+    return 2 if "pos_z_mid" in columns else 1
 
 
-def dimension_reduce_3d_model(
+def dimension_reduce_model(
     dfmodel: pl.DataFrame | pl.LazyFrame,
     outputdimensions: int,
     dfelabundances: pl.DataFrame | pl.LazyFrame | None = None,
@@ -1163,11 +1185,6 @@ def dimension_reduce_3d_model(
 ) -> tuple[pl.DataFrame, pl.DataFrame | None, pl.DataFrame | None, dict[str, t.Any]]:
     """Convert 3D Cartesian grid model to 1D spherical or 2D cylindrical. Particle gridcontributions and an elemental abundance table can optionally be updated to match."""
     assert outputdimensions in {0, 1, 2}
-
-    if outputdimensions == 0:
-        outputdimensions = 1
-        ncoordgridr = 1
-        ncoordgridz = 0
 
     dfmodel = dfmodel.lazy().collect()
 
@@ -1185,12 +1202,12 @@ def dimension_reduce_3d_model(
     t_model_init_seconds = modelmeta["t_model_init_days"] * 24 * 60 * 60
     vmax = modelmeta["vmax_cmps"]
     xmax = vmax * t_model_init_seconds
-    ngridpoints = modelmeta.get("npts_model", len(dfmodel))
-    ncoordgridx = modelmeta.get("ncoordgridx", int(round(ngridpoints ** (1.0 / 3.0))))
 
     ndim_in = modelmeta["dimensions"]
-    assert ndim_in > outputdimensions or (ndim_in == outputdimensions == 1 and ncoordgridr == 1)
-    modelmeta_out["dimensions"] = outputdimensions
+    assert ndim_in > outputdimensions
+    modelmeta_out["dimensions"] = max(outputdimensions, 1)
+
+    ngridpoints = modelmeta.get("npts_model", len(dfmodel))
 
     print(f"Resampling {ndim_in:d}D model with {ngridpoints} cells to {outputdimensions}D...")
     timestart = time.perf_counter()
@@ -1204,23 +1221,35 @@ def dimension_reduce_3d_model(
     }
 
     km_to_cm = 1e5
-    if ncoordgridr is None:
-        ncoordgridr = int(ncoordgridx / 2.0)
 
-    if ncoordgridz is None:
-        ncoordgridz = int(ncoordgridx)
-
-    if outputdimensions == 2:
+    if outputdimensions == 0:
+        ncoordgridr = 1
+        ncoordgridz = 1
+    elif outputdimensions == 1:
+        # make 1D model
+        if ndim_in == 2:
+            ncoordgridr = int(modelmeta.get("ncoordgridx", int(round(math.sqrt(ngridpoints / 2.0)))))
+        elif ndim_in == 3:
+            ncoordgridr = int(modelmeta.get("ncoordgridx", int(round(np.cbrt(ngridpoints)))) / 2.0)
+        else:
+            ncoordgridr = 1
+        modelmeta_out["ncoordgridr"] = ncoordgridr
+        ncoordgridz = 1
+    elif outputdimensions == 2:
         dfmodel = dfmodel.with_columns([
             (pl.col("vel_x_mid") ** 2 + pl.col("vel_y_mid") ** 2).sqrt().alias("vel_rcyl_mid")
         ])
+        if ncoordgridz is None:
+            ncoordgridz = int(modelmeta.get("ncoordgridx", int(round(np.cbrt(ngridpoints)))))
+            assert ncoordgridz % 2 == 0
+        ncoordgridr = ncoordgridz // 2
         modelmeta_out["ncoordgridz"] = ncoordgridz
         modelmeta_out["ncoordgridrcyl"] = ncoordgridr
         modelmeta_out["wid_init_z"] = 2 * xmax / ncoordgridz
         modelmeta_out["wid_init_rcyl"] = xmax / ncoordgridr
     else:
-        # 1D
-        modelmeta_out["ncoordgridr"] = ncoordgridr
+        msg = f"Invalid outputdimensions: {outputdimensions}"
+        raise ValueError(msg)
 
     # velocities in cm/s
     velocity_bins_z_min = (
@@ -1240,7 +1269,7 @@ def dimension_reduce_3d_model(
             assert vel_r_max > vel_r_min
             cellindexout = n_z * ncoordgridr + n_r + 1
 
-            if outputdimensions == 1:
+            if outputdimensions in {0, 1}:
                 matchedcells = dfmodel.filter(
                     pl.col("vel_r_mid").is_between(vel_r_min, vel_r_max, closed="right")
                 ).collect()
@@ -1253,7 +1282,7 @@ def dimension_reduce_3d_model(
             if len(matchedcells) == 0:
                 rho_out = 0
             else:
-                if outputdimensions == 1:
+                if outputdimensions in {0, 1}:
                     shell_volume = (4 * math.pi / 3) * (
                         (vel_r_max * t_model_init_seconds) ** 3 - (vel_r_min * t_model_init_seconds) ** 3
                     )
@@ -1265,7 +1294,7 @@ def dimension_reduce_3d_model(
 
             cellout: dict[str, t.Any] = {"inputcellid": cellindexout, "mass_g": matchedcells["mass_g"].sum()}
 
-            if outputdimensions == 1:
+            if outputdimensions in {0, 1}:
                 cellout |= {
                     "logrho": math.log10(max(1e-99, rho_out)) if rho_out > 0.0 else -99.0,
                     "vel_r_max_kmps": vel_r_max / km_to_cm,
@@ -1277,10 +1306,7 @@ def dimension_reduce_3d_model(
                     "pos_z_mid": (vel_z_min + vel_z_max) / 2 * t_model_init_seconds,
                 }
 
-            allmatchedcells[cellindexout] = (
-                cellout,
-                matchedcells,
-            )
+            allmatchedcells[cellindexout] = (cellout, matchedcells)
 
     includemissingcolexists = (
         dfgridcontributions is not None and "frac_of_cellmass_includemissing" in dfgridcontributions.columns
@@ -1296,7 +1322,7 @@ def dimension_reduce_3d_model(
         if matchedcellmass > 0.0 and dfgridcontributions is not None:
             dfcellcont = dfgridcontributions.filter(pl.col("cellindex").is_in(matchedcells["inputcellid"]))
 
-            for (particleid,), dfparticlecontribs in dfcellcont.group_by(["particleid"]):  # type: ignore[misc]
+            for (particleid,), dfparticlecontribs in dfcellcont.group_by(["particleid"]):
                 frac_of_cellmass_avg = (
                     sum(
                         row["frac_of_cellmass"] * inputcellmass[row["cellindex"]]
@@ -1358,12 +1384,7 @@ def dimension_reduce_3d_model(
 
     print(f"  took {time.perf_counter() - timestart:.1f} seconds")
 
-    return (
-        dfmodel_out,
-        dfabundances_out,
-        dfgridcontributions_out,
-        modelmeta_out,
-    )
+    return (dfmodel_out, dfabundances_out, dfgridcontributions_out, modelmeta_out)
 
 
 def scale_model_to_time(
@@ -1410,7 +1431,7 @@ def savetologfile(outputfolderpath, logfilename="modellog.txt"):
     logfilepath = outputfolderpath / logfilename
     logfilepath.unlink(missing_ok=True)
 
-    def logprint(*args, **kwargs):
+    def logprint(*args: t.Any, **kwargs):
         print(*args, **kwargs)
         with logfilepath.open("a", encoding="utf-8") as logfile:
             logfile.write(" ".join([str(x) for x in args]) + "\n")

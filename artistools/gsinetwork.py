@@ -275,9 +275,7 @@ def plot_cell_abund_evolution(
                 color="red",
             )
 
-        print(
-            f"{strnuc} {arr_abund_gsi[strnuc][0]:.2e} {arr_abund_artis[strnuc][0]:.2e}",
-        )
+        print(f"{strnuc} {arr_abund_gsi[strnuc][0]:.2e} {arr_abund_artis[strnuc][0]:.2e}")
         if f"X_{strnuc}" in dfcell and not hideinputmodelpoints:
             axis.plot(
                 t_model_init_days,
@@ -482,10 +480,7 @@ def plot_qdot_abund_modelcells(
 
     with contextlib.suppress(FileNotFoundError):
         get_mgi_list = tuple(mgiplotlist)  # all cells if Ye is calculated
-        estimators_lazy = at.estimators.scan_estimators(
-            modelpath=modelpath,
-            modelgridindex=get_mgi_list,
-        )
+        estimators_lazy = at.estimators.scan_estimators(modelpath=modelpath, modelgridindex=get_mgi_list)
         assert estimators_lazy is not None
         estimators_lazy = estimators_lazy.filter(pl.col("timestep") > 0)
 
@@ -520,8 +515,7 @@ def plot_qdot_abund_modelcells(
         )
 
         estimators_lazy = estimators_lazy.with_columns(
-            rho_init=pl.col("rho"),
-            rho=pl.col("rho") * (modelmeta["t_model_init_days"] / pl.col("time_mid")) ** 3,
+            rho_init=pl.col("rho"), rho=pl.col("rho") * (modelmeta["t_model_init_days"] / pl.col("time_mid")) ** 3
         )
         # assert False
 
@@ -532,7 +526,7 @@ def plot_qdot_abund_modelcells(
         estimators_lazy = estimators_lazy.sort(by=["timestep", "modelgridindex"])
         estimators = estimators_lazy.collect()
 
-        for (nts, mgi), estimtsmgsi in estimators.group_by(["timestep", "modelgridindex"], maintain_order=True):  # type: ignore[misc]
+        for (nts, mgi), estimtsmgsi in estimators.group_by(["timestep", "modelgridindex"], maintain_order=True):
             assert isinstance(nts, int)
             assert isinstance(mgi, int)
 

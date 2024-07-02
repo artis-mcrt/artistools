@@ -47,7 +47,7 @@ def read_files(modelpath: Path, timestep: int = -1, modelgridindex: int = -1) ->
                 if timestep >= 0 and modelgridindex >= 0:
                     return nonthermaldata_thisfile
 
-                nonthermaldata = nonthermaldata.append(nonthermaldata_thisfile.copy(), ignore_index=True)
+                nonthermaldata = nonthermaldata.append(nonthermaldata_thisfile.copy(), ignore_index=True)  # pyright: ignore[reportCallIssue]
 
     return nonthermaldata
 
@@ -69,7 +69,7 @@ def make_xs_plot(axis: mplax.Axes, nonthermaldata: pd.DataFrame, args: argparse.
         axis.legend(loc="upper center", handlelength=2, frameon=False, numpoints=1, prop={"size": 13})
 
 
-def plot_contributions(axis, modelpath, timestep, modelgridindex, nonthermaldata, args):
+def plot_contributions(axis, modelpath, timestep, modelgridindex, nonthermaldata, args: argparse.Namespace):
     estim_tsmgi = at.estimators.read_estimators(modelpath, modelgridindex=modelgridindex, timestep=timestep)[
         (timestep, modelgridindex)
     ]

@@ -14,7 +14,7 @@ from scipy import integrate
 import artistools as at
 
 
-def get_model_recombenergy(dfbinding, args):
+def get_model_recombenergy(dfbinding, args: argparse.Namespace):
     args.inputfile = Path(
         "/Users/luke/Library/Mobile"
         " Documents/com~apple~CloudDocs/artis_runs/kilonova_SFHo_1d_0p05day_ufix_betaminusthermdelay_fixinitialye_verylate_redo"
@@ -32,7 +32,7 @@ def get_model_recombenergy(dfbinding, args):
     mass_msun_rho = dfmodel["mass_g"].sum() / msun_g
 
     mass_msun_accounted = 0.0
-    model_el_binding_en_ev = {}
+    model_el_binding_en_ev: dict[str, float] = {}
     model_tot_binding_en_ev = 0.0
     for column in dfmodel.columns:
         if column.startswith("X_"):

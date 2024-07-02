@@ -54,7 +54,7 @@ def plothesmaresspec(fig, ax) -> None:
         print(column_names)
 
         for i in range(len(res_specdata)):
-            res_specdata[i] = res_specdata[i].rename(columns=column_names).drop(res_specdata[i].index[0])  # pyright: ignore[reportArgumentType]
+            res_specdata[i] = res_specdata[i].rename(columns=column_names).drop(res_specdata[i].index[0])  # pyright: ignore[reportArgumentType,reportCallIssue]
 
         ax.plot(res_specdata[0]["lambda"], res_specdata[0][11.7935] * (1e-5) ** 2, label="hesma 0")
         ax.plot(res_specdata[1]["lambda"], res_specdata[1][11.7935] * (1e-5) ** 2, label="hesma 1")
@@ -77,7 +77,9 @@ def make_hesma_vspecfiles(modelpath: Path, outpath: Path | None = None) -> None:
     for angle in angles:
         angle_names.append(rf"cos(theta) = {vpkt_config['cos_theta'][angle]}")
         print(rf"cos(theta) = {vpkt_config['cos_theta'][angle]}")
-        vspecdata = at.spectra.get_specpol_data(angle=angle, modelpath=modelpath)["I"].to_pandas()
+        vspecdata = at.spectra.get_specpol_data(angle=angle, modelpath=modelpath)["I"].to_pandas(
+            use_pyarrow_extension_array=True
+        )
 
         timearray = vspecdata.columns.to_numpy()[1:]
         vspecdata = vspecdata.sort_values(by="nu", ascending=False)
@@ -126,21 +128,13 @@ def make_hesma_peakmag_dm15_dm40(
 ) -> None:
     dm15filename = f"{band}band_{modelname}_viewing_angle_data.txt"
     dm15data = pd.read_csv(
-        pathtofiles / dm15filename,
-        sep=r"\s+",
-        header=None,
-        names=["peakmag", "risetime", "dm15"],
-        skiprows=1,
+        pathtofiles / dm15filename, sep=r"\s+", header=None, names=["peakmag", "risetime", "dm15"], skiprows=1
     )
 
     if dm40:
         dm40filename = f"{band}band_{modelname}_viewing_angle_data_deltam40.txt"
         dm40data = pd.read_csv(
-            pathtofiles / dm40filename,
-            sep=r"\s+",
-            header=None,
-            names=["peakmag", "risetime", "dm40"],
-            skiprows=1,
+            pathtofiles / dm40filename, sep=r"\s+", header=None, names=["peakmag", "risetime", "dm40"], skiprows=1
         )
 
     outdata = {

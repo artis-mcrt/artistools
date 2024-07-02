@@ -109,7 +109,7 @@ def get_spectrum_at_time(
 ) -> pd.DataFrame:
     if dirbin >= 0:
         if args is not None and args.plotvspecpol and (modelpath / "vpkt.txt").is_file():
-            return get_vspecpol_spectrum(modelpath, time, dirbin, args).to_pandas()
+            return get_vspecpol_spectrum(modelpath, time, dirbin, args).to_pandas(use_pyarrow_extension_array=True)
         assert average_over_phi is not None
         assert average_over_theta is not None
     else:
@@ -123,7 +123,7 @@ def get_spectrum_at_time(
         timestepmax=timestep,
         average_over_phi=average_over_phi,
         average_over_theta=average_over_theta,
-    )[dirbin].to_pandas()
+    )[dirbin].to_pandas(use_pyarrow_extension_array=True)
 
 
 def get_from_packets(
@@ -181,7 +181,7 @@ def get_from_packets(
         (2.99792458e18 / pl.col(colname)).alias(
             colname.replace("absorption_freq", "nu_absorbed").replace("nu_", "lambda_angstroms_")
         )
-        for colname in dfpackets.columns
+        for colname in dfpackets.collect_schema().names()
         if "nu_" in colname or colname == "absorption_freq"
     ])
 
@@ -253,8 +253,7 @@ def get_from_packets(
 
             dfpackets = dfpackets.filter(
                 pl.col("em_time").is_between(
-                    timelowdays * 86400.0 + mean_correction,
-                    timehighdays * 86400.0 + mean_correction,
+                    timelowdays * 86400.0 + mean_correction, timehighdays * 86400.0 + mean_correction
                 )
             )
 
@@ -305,7 +304,7 @@ def get_from_packets(
 
     if fluxfilterfunc:
         print("Applying filter to ARTIS spectrum")
-        dfbinned_lazy = dfbinned_lazy.with_columns(cs.starts_with("f_lambda_").map(fluxfilterfunc))
+        dfbinned_lazy = dfbinned_lazy.with_columns(cs.starts_with("f_lambda_").map_batches(fluxfilterfunc))
 
     dfbinned = dfbinned_lazy.collect()
     assert isinstance(dfbinned, pl.DataFrame)
@@ -406,9 +405,7 @@ def read_emission_absorption_file(emabsfilename: str | Path) -> pl.DataFrame:
 
 @lru_cache(maxsize=4)
 def get_spec_res(
-    modelpath: Path,
-    average_over_theta: bool = False,
-    average_over_phi: bool = False,
+    modelpath: Path, average_over_theta: bool = False, average_over_phi: bool = False
 ) -> dict[int, pl.DataFrame]:
     res_specdata = read_spec_res(modelpath)
     if average_over_theta:
@@ -424,7 +421,7 @@ def get_spectrum(
     timestepmin: int,
     timestepmax: int | None = None,
     directionbins: t.Sequence[int] | None = None,
-    fluxfilterfunc: t.Callable[[npt.NDArray[np.floating]], npt.NDArray[np.floating]] | None = None,
+    fluxfilterfunc: t.Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     average_over_theta: bool = False,
     average_over_phi: bool = False,
     stokesparam: t.Literal["I", "Q", "U"] = "I",
@@ -443,9 +440,7 @@ def get_spectrum(
         assert stokesparam == "I"
         try:
             specdata |= get_spec_res(
-                modelpath=modelpath,
-                average_over_theta=average_over_theta,
-                average_over_phi=average_over_phi,
+                modelpath=modelpath, average_over_theta=average_over_theta, average_over_phi=average_over_phi
             )
         except FileNotFoundError:
             msg = "WARNING: Direction-resolved spectra not found. Getting only spherically averaged spectra instead."
@@ -492,7 +487,7 @@ def get_spectrum(
         if fluxfilterfunc:
             if dirbin == directionbins[0]:
                 print("Applying filter to ARTIS spectrum")
-            dfspectrum = dfspectrum.with_columns(cs.starts_with("f_lambda").map(lambda x: fluxfilterfunc(x.to_numpy())))
+            dfspectrum = dfspectrum.with_columns(cs.starts_with("f_lambda").map_batches(fluxfilterfunc))
 
         specdataout[dirbin] = dfspectrum
 
@@ -674,7 +669,7 @@ def get_vspecpol_spectrum(
 
     if fluxfilterfunc:
         print("Applying filter to ARTIS spectrum")
-        dfout = dfout.with_columns(cs.starts_with("f_lambda").map(lambda x: fluxfilterfunc(x.to_numpy())))
+        dfout = dfout.with_columns(cs.starts_with("f_lambda").map_batches(fluxfilterfunc))
 
     return dfout
 
@@ -894,16 +889,10 @@ def get_flux_contributions_from_packets(
         obsdirindex = directionbin // vpkt_config["nspectraperobs"]
         opacchoiceindex = directionbin % vpkt_config["nspectraperobs"]
         nprocs_read, lzdfpackets = at.packets.get_virtual_packets_pl(modelpath, maxpacketfiles=maxpacketfiles)
-        lzdfpackets = lzdfpackets.with_columns(
-            e_rf=pl.col(f"dir{obsdirindex}_e_rf_{opacchoiceindex}"),
-        )
+        lzdfpackets = lzdfpackets.with_columns(e_rf=pl.col(f"dir{obsdirindex}_e_rf_{opacchoiceindex}"))
         dirbin_nu_column = f"dir{obsdirindex}_nu_rf"
 
-        cols |= {
-            dirbin_nu_column,
-            f"dir{obsdirindex}_t_arrive_d",
-            f"dir{obsdirindex}_e_rf_{opacchoiceindex}",
-        }
+        cols |= {dirbin_nu_column, f"dir{obsdirindex}_t_arrive_d", f"dir{obsdirindex}_e_rf_{opacchoiceindex}"}
         lzdfpackets = lzdfpackets.filter(pl.col(f"dir{obsdirindex}_t_arrive_d").is_between(timelowdays, timehighdays))
 
     else:
@@ -943,22 +932,17 @@ def get_flux_contributions_from_packets(
             else pl.format("{} bound-free {}-{}", pl.col("ion_str"), pl.col("lowerlevel"), pl.col("upperionlevel"))
         )
 
-        emtypestrings = pl.concat(
-            [
-                linelistlazy.select([
-                    pl.col("lineindex").alias(emtypecolumn),
-                    expr_linelist_to_str.alias("emissiontype_str"),
-                ]),
-                pl.DataFrame(
-                    {emtypecolumn: [-9999999], "emissiontype_str": ["free-free"]},
-                    schema_overrides={emtypecolumn: pl.Int32, "emissiontype_str": pl.String},
-                ).lazy(),
-                bflistlazy.select([
-                    pl.col(emtypecolumn),
-                    expr_bflist_to_str.alias("emissiontype_str"),
-                ]),
-            ],
-        )
+        emtypestrings = pl.concat([
+            linelistlazy.select([
+                pl.col("lineindex").alias(emtypecolumn),
+                expr_linelist_to_str.alias("emissiontype_str"),
+            ]),
+            pl.DataFrame(
+                {emtypecolumn: [-9999999], "emissiontype_str": ["free-free"]},
+                schema_overrides={emtypecolumn: pl.Int32, "emissiontype_str": pl.String},
+            ).lazy(),
+            bflistlazy.select([pl.col(emtypecolumn), expr_bflist_to_str.alias("emissiontype_str")]),
+        ])
 
         lzdfpackets = lzdfpackets.join(emtypestrings, on=emtypecolumn, how="left")
 
@@ -969,26 +953,24 @@ def get_flux_contributions_from_packets(
                 lzdfpackets = lzdfpackets.filter(pl.col("emissiontype_str").str.contains("bound-free"))
             elif z_exclude == -2:
                 # no bound-free
-                lzdfpackets = lzdfpackets.filter(pl.col("emissiontype_str").str.contains("bound-free").is_not())
+                lzdfpackets = lzdfpackets.filter(pl.col("emissiontype_str").str.contains("bound-free").not_())
             elif z_exclude > 0:
                 elsymb = at.get_elsymbol(z_exclude)
-                lzdfpackets = lzdfpackets.filter(pl.col("emissiontype_str").str.starts_with(f"{elsymb} ").is_not())
+                lzdfpackets = lzdfpackets.filter(pl.col("emissiontype_str").str.starts_with(f"{elsymb} ").not_())
 
     if getabsorption:
         cols |= {"absorptiontype_str", "absorption_freq"}
 
-        abstypestrings = pl.concat(
-            [
-                linelistlazy.select([
-                    pl.col("lineindex").alias("absorption_type"),
-                    expr_linelist_to_str.alias("absorptiontype_str"),
-                ]),
-                pl.DataFrame(
-                    {"absorption_type": [-1, -2], "absorptiontype_str": ["free-free", "bound-free"]},
-                    schema_overrides={"absorption_type": pl.Int32, "absorptiontype_str": pl.String},
-                ).lazy(),
-            ],
-        ).with_columns(pl.col("absorptiontype_str"))
+        abstypestrings = pl.concat([
+            linelistlazy.select([
+                pl.col("lineindex").alias("absorption_type"),
+                expr_linelist_to_str.alias("absorptiontype_str"),
+            ]),
+            pl.DataFrame(
+                {"absorption_type": [-1, -2], "absorptiontype_str": ["free-free", "bound-free"]},
+                schema_overrides={"absorption_type": pl.Int32, "absorptiontype_str": pl.String},
+            ).lazy(),
+        ]).with_columns(pl.col("absorptiontype_str"))
 
         lzdfpackets = lzdfpackets.join(abstypestrings, on="absorption_type", how="left")
 
@@ -998,13 +980,23 @@ def get_flux_contributions_from_packets(
     dfpackets = lzdfpackets.select([col for col in cols if col in lzdfpackets.columns]).collect()
 
     emissiongroups = (
-        dict(dfpackets.filter(pl.col(dirbin_nu_column).is_between(nu_min, nu_max)).group_by("emissiontype_str"))
+        {
+            k: v
+            for (k,), v in dfpackets.filter(pl.col(dirbin_nu_column).is_between(nu_min, nu_max)).group_by(
+                "emissiontype_str"
+            )
+        }
         if getemission
         else {}
     )
 
     absorptiongroups = (
-        dict(dfpackets.filter(pl.col("absorption_freq").is_between(nu_min, nu_max)).group_by("absorptiontype_str"))
+        {
+            k: v
+            for (k,), v in dfpackets.filter(pl.col("absorption_freq").is_between(nu_min, nu_max)).group_by(
+                "absorptiontype_str"
+            )
+        }
         if getabsorption
         else {}
     )

@@ -115,7 +115,7 @@ def plot_spherical(
 
     if "temperature" in plotvars or "temperature_sigma" in plotvars or nnelement_vars:
         timebins = [tstart * 86400.0 for tstart in at.get_timestep_times(modelpath, loc="start")] + [
-            at.get_timestep_times(modelpath, loc="end")[-1] * 86400.0,
+            at.get_timestep_times(modelpath, loc="end")[-1] * 86400.0
         ]
         dfpackets = dfpackets.with_columns(
             (
@@ -171,12 +171,7 @@ def plot_spherical(
             schema={"phibin": pl.Int32, "costhetabin": pl.Int32},
         )
         .lazy()
-        .join(
-            dfpackets,
-            how="left",
-            on=["costhetabin", "phibin"],
-            coalesce=True,
-        )
+        .join(dfpackets, how="left", on=["costhetabin", "phibin"], coalesce=True)
         .fill_null(0)
         .sort(["costhetabin", "phibin"])
     ).collect()
@@ -238,7 +233,7 @@ def plot_spherical(
                 raise AssertionError(msg)
 
         cbar = fig.colorbar(colormesh, location="bottom", pad=0.03, ax=ax, shrink=0.95)
-        cbar.outline.set_linewidth(0)  # type: ignore[operator]
+        cbar.outline.set_linewidth(0)  # type: ignore[operator] # pyright: ignore[reportCallIssue]
         cbar.ax.tick_params(axis="both", direction="out")
         cbar.ax.xaxis.set_ticks_position("top")
         # cbar.ax.set_title(colorbartitle)
@@ -267,12 +262,7 @@ def plot_spherical(
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument(
-        "-modelpath",
-        type=Path,
-        default=Path(),
-        help="Path to ARTIS folder",
-    )
+    parser.add_argument("-modelpath", type=Path, default=Path(), help="Path to ARTIS folder")
     parser.add_argument("-timestep", "-ts", action="store", type=str, default=None, help="Timestep index")
     parser.add_argument("-timemin", "-tmin", action="store", type=float, default=None, help="Time minimum [d]")
     parser.add_argument("-timemax", "-tmax", action="store", type=float, default=None, help="Time maximum [d]")
@@ -303,12 +293,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--makegif", action="store_true", help="Make a gif with time evolution")
 
     parser.add_argument(
-        "-o",
-        action="store",
-        dest="outputfile",
-        type=str,
-        default="",
-        help="Filename for plot output file",
+        "-o", action="store", dest="outputfile", type=str, default="", help="Filename for plot output file"
     )
 
     parser.add_argument("-format", "-f", default="", choices=["pdf", "png"], help="Set format of output plot files")
@@ -382,8 +367,7 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
         )
 
         axes[0].set_title(
-            f"{timemindays:.2f}-{timemaxdays:.2f} days{f' ({condition})' if condition else ''}",
-            loc="left",
+            f"{timemindays:.2f}-{timemaxdays:.2f} days{f' ({condition})' if condition else ''}", loc="left"
         )
 
         defaultfilename = "plotspherical_{timemindays:.2f}-{timemaxdays:.2f}d.{outformat}"  # noqa: RUF027

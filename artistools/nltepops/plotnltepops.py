@@ -24,16 +24,16 @@ def annotate_emission_line(ax: mplax.Axes, y: float, upperlevel: int, lowerlevel
     ax.annotate(
         "",
         xy=(lowerlevel, y),
-        xycoords=("data", "axes fraction"),  # type: ignore[arg-type]
+        xycoords=("data", "axes fraction"),  # type: ignore[arg-type] # pyright: ignore[reportArgumentType]
         xytext=(upperlevel, y),
-        textcoords=("data", "axes fraction"),  # type: ignore[arg-type]
+        textcoords=("data", "axes fraction"),  # type: ignore[arg-type] # pyright: ignore[reportArgumentType]
         arrowprops={"facecolor": "black", "width": 0.1, "headwidth": 6},
     )
 
     ax.annotate(
         label,
         xy=((upperlevel + lowerlevel) / 2, y),
-        xycoords=("data", "axes fraction"),  # type: ignore[arg-type]
+        xycoords=("data", "axes fraction"),  # type: ignore[arg-type] # pyright: ignore[reportArgumentType]
         size=10,
         va="bottom",
         ha="center",
@@ -374,7 +374,7 @@ def make_ionsubplot(
         )
 
 
-def make_plot_populations_with_time_or_velocity(modelpaths, args):
+def make_plot_populations_with_time_or_velocity(modelpaths: list[Path | str], args: argparse.Namespace):
     font = {"size": 18}
     mpl.rc("font", **font)
 
@@ -446,11 +446,13 @@ def make_plot_populations_with_time_or_velocity(modelpaths, args):
     at.plottools.set_axis_properties(ax, args)
 
     figname = f"plotnltelevelpopsZ{Z}.pdf"
-    plt.savefig(modelpaths[0] / figname, format="pdf")
+    plt.savefig(Path(modelpaths[0]) / figname, format="pdf")
     print(f"Saved {figname}")
 
 
-def plot_populations_with_time_or_velocity(ax, modelpaths, timedays, ion_stage, ionlevels, Z, levelconfignames, args):
+def plot_populations_with_time_or_velocity(
+    ax, modelpaths, timedays, ion_stage, ionlevels, Z, levelconfignames, args: argparse.Namespace
+):
     if args.x == "time":
         timesteps = list(range(args.timestepmin, args.timestepmax))
 
@@ -458,16 +460,14 @@ def plot_populations_with_time_or_velocity(ax, modelpaths, timedays, ion_stage, 
             print("Please specify modelgridindex")
             sys.exit(1)
 
-        modelgridindex_list = np.ones_like(timesteps)
-        modelgridindex_list *= int(args.modelgridindex[0])
+        modelgridindex_list = [int(args.modelgridindex[0])] * len(timesteps)
 
     if args.x == "velocity":
         modeldata, _ = at.inputmodel.get_modeldata(modelpaths[0])  # TODO: move into modelpath loop
         velocity = modeldata["vel_r_max_kmps"]
         modelgridindex_list = [mgi for mgi, _ in enumerate(velocity)]
 
-        timesteps = np.ones_like(modelgridindex_list)
-        timesteps *= at.get_timestep_of_timedays(modelpaths[0], timedays)
+        timesteps = [at.get_timestep_of_timedays(modelpaths[0], timedays)] * len(modelgridindex_list)
 
     markers = ["o", "x", "^", "s", "8"]
     for modelnumber, modelpath in enumerate(modelpaths):
@@ -508,7 +508,7 @@ def plot_populations_with_time_or_velocity(ax, modelpaths, timedays, ion_stage, 
             #          label=f'level {ionlevel} {modelname} LTE')
 
 
-def make_plot(modelpath, atomic_number, ion_stages_displayed, mgilist, timestep, args):
+def make_plot(modelpath, atomic_number, ion_stages_displayed, mgilist, timestep, args: argparse.Namespace):
     """Plot level populations for chosens ions of an element in a cell and timestep of an ARTIS model."""
     modelname = at.get_model_name(modelpath)
     adata = at.atomic.get_levels(modelpath, get_transitions=args.gettransitions)
