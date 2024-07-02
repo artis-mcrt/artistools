@@ -472,7 +472,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
                     dftransitions: pd.DataFrame = pldftransitions.to_pandas(use_pyarrow_extension_array=False)
                     dfnltepops_thision = dfnltepops.query("Z==@ionid.Z & ion_stage==@ionid.ion_stage")
 
-                    nltepopdict = {x.level: x["n_NLTE"] for _, x in dfnltepops_thision.iterrows()}
+                    nltepopdict = {row["level"]: row["n_NLTE"] for _, row in dfnltepops_thision.iterrows()}
 
                     assert isinstance(dftransitions, pd.DataFrame)
                     dftransitions["upper_pop_nlte"] = dftransitions.apply(
