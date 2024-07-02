@@ -176,7 +176,7 @@ def add_transition_columns(
     columns_before = dftransitions.collect_schema().names()
 
     if isinstance(dflevels, pd.DataFrame):
-        dflevels = pl.from_pandas(dflevels[["g", "energy_ev", "levelname"]])  # pyright: ignore[reportArgumentType]
+        dflevels = pl.from_pandas(dflevels[["g", "energy_ev", "levelname", "levelindex"]])  # pyright: ignore[reportArgumentType]
 
     dflevels = dflevels.select(["g", "energy_ev", "levelname", "levelindex"]).lazy()
 
