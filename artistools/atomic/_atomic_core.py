@@ -31,7 +31,7 @@ def parse_adata(
         level_count = int(ionheader[2])
 
         if not ionlist or (Z, ion_stage) in ionlist:
-            level_list: list[tuple[float, float, int, str | None, pl.DataFrame, pl.DataFrame]] = []
+            level_list: list[tuple[float, float, int, str | None, pl.Series, pl.Series]] = []
             for levelindex in range(level_count):
                 row = fadata.readline().split()
 
@@ -40,7 +40,14 @@ def parse_adata(
                 assert levelindex == numberin - firstlevelnumber
                 phixstargetlist, phixstable = phixsdict.get((Z, ion_stage, numberin), (pl.DataFrame(), pl.DataFrame()))
 
-                level_list.append((float(row[1]), float(row[2]), int(row[3]), levelname, phixstargetlist, phixstable))
+                level_list.append((
+                    float(row[1]),
+                    float(row[2]),
+                    int(row[3]),
+                    levelname,
+                    phixstargetlist.to_struct(),
+                    phixstable.to_struct(),
+                ))
 
             dflevels = pl.DataFrame(
                 level_list,
