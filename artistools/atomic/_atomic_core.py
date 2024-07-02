@@ -7,7 +7,6 @@ from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
-import numpy.typing as npt
 import pandas as pd
 import polars as pl
 
@@ -16,9 +15,9 @@ import artistools as at
 
 def parse_adata(
     fadata: io.TextIOBase,
-    phixsdict: dict[tuple[int, int, int], tuple[list[tuple[int, float]], npt.NDArray[np.float64]]],
+    phixsdict: dict[tuple[int, int, int], tuple[pl.DataFrame, pl.DataFrame]],
     ionlist: t.Collection[tuple[int, int]] | None,
-) -> t.Generator[tuple[int, int, int, float, pd.DataFrame], None, None]:
+) -> t.Generator[tuple[int, int, int, float, pl.DataFrame], None, None]:
     """Generate ions and their level lists from adata.txt."""
     firstlevelnumber = 1
 
@@ -33,21 +32,27 @@ def parse_adata(
         ionisation_energy_ev = float(ionheader[3])
 
         if not ionlist or (Z, ion_stage) in ionlist:
-            level_list: list[
-                tuple[float, float, int, str | None, list[tuple[int, float]], npt.NDArray[np.float64]]
-            ] = []
+            level_list: list[tuple[float, float, int, str | None, pl.DataFrame, pl.DataFrame]] = []
             for levelindex in range(level_count):
                 row = fadata.readline().split()
 
                 levelname = " ".join(row[4:]).strip("'") if len(row) >= 5 else None
                 numberin = int(row[0])
                 assert levelindex == numberin - firstlevelnumber
-                phixstargetlist, phixstable = phixsdict.get((Z, ion_stage, numberin), ([], np.array([])))
+                phixstargetlist, phixstable = phixsdict.get((Z, ion_stage, numberin), (pl.DataFrame(), pl.DataFrame()))
 
                 level_list.append((float(row[1]), float(row[2]), int(row[3]), levelname, phixstargetlist, phixstable))
 
-            dflevels = pd.DataFrame(
-                level_list, columns=["energy_ev", "g", "transition_count", "levelname", "phixstargetlist", "phixstable"]
+            dflevels = pl.DataFrame(
+                level_list,
+                schema=["energy_ev", "g", "transition_count", "levelname", "phixstargetlist", "phixstable"],
+                schema_overrides={
+                    "energy_ev": pl.Float64,
+                    "g": pl.Float64,
+                    "transition_count": pl.Int64,
+                    "levelname": pl.Utf8,
+                },
+                orient="row",
             )
 
             yield Z, ion_stage, level_count, ionisation_energy_ev, dflevels
@@ -104,12 +109,12 @@ def read_transitiondata(
 
 def parse_phixsdata(
     fphixs: io.TextIOBase, ionlist: t.Collection[tuple[int, int]] | None = None
-) -> t.Generator[tuple[int, int, int, int, int, list[tuple[int, float]], npt.NDArray[np.float64]], None, None]:
+) -> t.Generator[tuple[int, int, int, int, int, pl.DataFrame, pl.DataFrame], None, None]:
     firstlevelnumber = 1
     nphixspoints = int(fphixs.readline())
     phixsnuincrement = float(fphixs.readline())
 
-    xgrid = np.linspace(1.0, 1.0 + phixsnuincrement * (nphixspoints + 1), num=nphixspoints + 1, endpoint=False)
+    xgrid = np.linspace(1.0, 1.0 + phixsnuincrement * (nphixspoints + 1), num=nphixspoints + 1, endpoint=False)[:-1]
 
     for line in fphixs:
         if not line.strip():
@@ -135,11 +140,15 @@ def parse_phixsdata(
                 level, fraction = fphixs.readline().split()
                 targetlist[phixstargetindex] = (int(level) - firstlevelnumber, float(fraction))
 
-        if not ionlist or (Z, lowerion_stage) in ionlist:
-            phixslist = [float(fphixs.readline()) * 1e-18 for _ in range(nphixspoints)]
-            phixstable = np.array(list(zip(xgrid, phixslist, strict=False)))
+        dftargetlist = pl.DataFrame(targetlist, schema=[("level", pl.Int64), ("fraction", pl.Float64)], orient="row")
 
-            yield Z, upperion_stage, upperionlevel, lowerion_stage, lowerionlevel, targetlist, phixstable
+        if not ionlist or (Z, lowerion_stage) in ionlist:
+            phixstable = pl.DataFrame({
+                "xgrid": xgrid,
+                "crosssection": [float(fphixs.readline()) * 1e-18 for _ in range(nphixspoints)],
+            })
+
+            yield Z, upperion_stage, upperionlevel, lowerion_stage, lowerionlevel, dftargetlist, phixstable
 
         else:
             for _ in range(nphixspoints):
@@ -147,13 +156,19 @@ def parse_phixsdata(
 
 
 def add_transition_columns(
-    dftransitions: pl.LazyFrame | pl.DataFrame, dflevels: pd.DataFrame, columns: t.Sequence[str]
+    dftransitions: pl.LazyFrame | pl.DataFrame,
+    dflevels: pd.DataFrame | pl.DataFrame | pl.LazyFrame,
+    columns: t.Sequence[str],
 ) -> pl.LazyFrame:
     """Add columns to a polars DataFrame of transitions."""
     dftransitions = dftransitions.lazy()
     columns_before = dftransitions.collect_schema().names()
-    pldflevels = (
-        pl.from_pandas(dflevels[["g", "energy_ev", "levelname"]])
+
+    if isinstance(dflevels, pd.DataFrame):
+        dflevels = pl.from_pandas(dflevels[["g", "energy_ev", "levelname"]])
+
+    dflevels = (
+        dflevels.select(["g", "energy_ev", "levelname"])
         .lazy()
         .with_row_index("levelindex")
         .with_columns(pl.col("levelindex").cast(pl.Int32))
@@ -161,7 +176,7 @@ def add_transition_columns(
 
     dftransitions = (
         dftransitions.join(
-            pldflevels.select(
+            dflevels.select(
                 lower="levelindex",
                 lower_g=pl.col("g"),
                 lower_energy_ev=pl.col("energy_ev"),
@@ -172,7 +187,7 @@ def add_transition_columns(
             coalesce=True,
         )
         .join(
-            pldflevels.select(
+            dflevels.select(
                 upper="levelindex",
                 upper_g=pl.col("g"),
                 upper_energy_ev=pl.col("energy_ev"),
@@ -239,7 +254,7 @@ def get_transitiondata(
     return transitionsdict
 
 
-def get_levels(
+def get_levels_polars(
     modelpath: str | Path,
     ionlist: t.Collection[tuple[int, int]] | None = None,
     get_transitions: bool = False,
@@ -247,8 +262,8 @@ def get_levels(
     quiet: bool = False,
     derived_transitions_columns: t.Sequence[str] | None = None,
     use_rust_reader: bool | None = None,
-) -> pd.DataFrame:
-    """Return a pandas DataFrame of energy levels."""
+) -> pl.DataFrame:
+    """Return a polars DataFrame of energy levels."""
     adatafilename = Path(modelpath, "adata.txt")
 
     transitionsdict = (
@@ -290,21 +305,41 @@ def get_levels(
             else:
                 dftransitions = pl.LazyFrame()
 
-            level_lists.append(
-                iontuple(
-                    Z,
-                    ion_stage,
-                    level_count,
-                    ionisation_energy_ev,
-                    dflevels,
-                    dftransitions.collect().to_pandas(use_pyarrow_extension_array=True),
-                )
-            )
+            level_lists.append(iontuple(Z, ion_stage, level_count, ionisation_energy_ev, dflevels, dftransitions))
 
-    return pd.DataFrame(level_lists)
+    return pl.DataFrame(level_lists)
 
 
-def parse_recombratefile(frecomb: io.TextIOBase) -> t.Generator[tuple[int, int, pd.DataFrame], None, None]:
+def get_levels(
+    modelpath: str | Path,
+    ionlist: t.Collection[tuple[int, int]] | None = None,
+    get_transitions: bool = False,
+    get_photoionisations: bool = False,
+    quiet: bool = False,
+    derived_transitions_columns: t.Sequence[str] | None = None,
+    use_rust_reader: bool | None = None,
+) -> pd.DataFrame:
+    pldf = get_levels_polars(
+        modelpath,
+        ionlist=ionlist,
+        get_transitions=get_transitions,
+        get_photoionisations=get_photoionisations,
+        quiet=quiet,
+        derived_transitions_columns=derived_transitions_columns,
+        use_rust_reader=use_rust_reader,
+    )
+    pldf = pldf.with_columns(
+        levels=pl.col("levels").map_elements(
+            lambda x: x.to_pandas(use_pyarrow_extension_array=True), return_dtype=pl.Object
+        ),
+        transitions=pl.col("transitions").map_elements(
+            lambda x: x.collect().to_pandas(use_pyarrow_extension_array=True), return_dtype=pl.Object
+        ),
+    )
+    return pldf.to_pandas(use_pyarrow_extension_array=True)
+
+
+def parse_recombratefile(frecomb: io.TextIOBase) -> t.Generator[tuple[int, int, pl.DataFrame], None, None]:
     """Parse recombrates.txt file."""
     for line in frecomb:
         Z, upper_ion_stage, t_count = (int(x) for x in line.split())
@@ -318,19 +353,19 @@ def parse_recombratefile(frecomb: io.TextIOBase) -> t.Generator[tuple[int, int, 
             arr_rrc_low_n.append(rrc_low_n)
             arr_rrc_total.append(rrc_total)
 
-        recombdata_thision = pd.DataFrame({
+        recombdata_thision = pl.DataFrame({
             "log10T_e": arr_log10t,
             "rrc_low_n": arr_rrc_low_n,
             "rrc_total": arr_rrc_total,
         })
 
-        recombdata_thision = recombdata_thision.eval("T_e = 10 ** log10T_e")
+        recombdata_thision = recombdata_thision.with_columns(T_e=10 ** pl.col("log10T_e"))
 
         yield Z, upper_ion_stage, recombdata_thision
 
 
 @lru_cache(maxsize=4)
-def get_ionrecombratecalibration(modelpath: str | Path) -> dict[tuple[int, int], pd.DataFrame]:
+def get_ionrecombratecalibration(modelpath: str | Path) -> dict[tuple[int, int], pl.DataFrame]:
     """Read recombrates.txt file."""
     recombdata = {}
     with Path(modelpath, "recombrates.txt").open("r", encoding="utf-8") as frecomb:
