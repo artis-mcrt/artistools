@@ -55,7 +55,7 @@ def parse_adata(
                     schema=["energy_ev", "g", "transition_count", "levelname", "phixstargetlist", "phixstable"],
                     schema_overrides={
                         "energy_ev": pl.Float64,
-                        "g": pl.Float64,
+                        "g": pl.Float32,
                         "transition_count": pl.Int64,
                         "levelname": pl.Utf8,
                     },
