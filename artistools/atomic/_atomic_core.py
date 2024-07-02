@@ -29,7 +29,6 @@ def parse_adata(
         Z = int(ionheader[0])
         ion_stage = int(ionheader[1])
         level_count = int(ionheader[2])
-        ionisation_energy_ev = float(ionheader[3])
 
         if not ionlist or (Z, ion_stage) in ionlist:
             level_list: list[tuple[float, float, int, str | None, pl.DataFrame, pl.DataFrame]] = []
@@ -55,6 +54,7 @@ def parse_adata(
                 orient="row",
             )
 
+            ionisation_energy_ev = float(ionheader[3])
             yield Z, ion_stage, level_count, ionisation_energy_ev, dflevels
 
         else:
