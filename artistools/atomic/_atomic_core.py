@@ -330,13 +330,13 @@ def get_levels(
     )
     pldf = pldf.with_columns(
         levels=pl.col("levels").map_elements(
-            lambda x: x.to_pandas(use_pyarrow_extension_array=True), return_dtype=pl.Object
+            lambda x: x.to_pandas(use_pyarrow_extension_array=False), return_dtype=pl.Object
         ),
         transitions=pl.col("transitions").map_elements(
             lambda x: x.collect().to_pandas(use_pyarrow_extension_array=True), return_dtype=pl.Object
         ),
     )
-    return pldf.to_pandas(use_pyarrow_extension_array=True)
+    return pldf.to_pandas(use_pyarrow_extension_array=False)
 
 
 def parse_recombratefile(frecomb: io.TextIOBase) -> t.Generator[tuple[int, int, pl.DataFrame], None, None]:
