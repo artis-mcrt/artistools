@@ -526,7 +526,7 @@ def make_plot(modelpath, atomic_number, ion_stages_displayed, mgilist, timestep,
     time_days = at.get_timestep_time(modelpath, timestep)
     modelname = at.get_model_name(modelpath)
 
-    dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=mgilist[0]).copy()
+    dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=mgilist[0])
 
     if dfpop.empty:
         print(f"No NLTE population data for modelgrid cell {mgilist[0]} timestep {timestep}")
