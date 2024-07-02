@@ -6,6 +6,7 @@ extern crate rayon;
 use autocompress::autodetect_open;
 use polars::prelude::*;
 use pyo3_polars::PyDataFrame;
+use std::collections::HashSet;
 use std::io::Read;
 
 /// Read an ARTIS transitiondata.txt file and return a dictionary of DataFrames, keyed by (atomic_number, ion_stage).
@@ -13,7 +14,7 @@ use std::io::Read;
 pub fn read_transitiondata(
     py: Python<'_>,
     transitions_filename: String,
-    ionlist: Option<Vec<(i32, i32)>>,
+    ionlist: Option<HashSet<(i32, i32)>>,
 ) -> Py<PyDict> {
     let firstlevelnumber = 1;
     let mut transitiondata = Vec::new();
@@ -41,23 +42,23 @@ pub fn read_transitiondata(
         let ion_stage = linesplit.next().unwrap().parse::<i32>().unwrap();
 
         let transitioncount = linesplit.next().unwrap().parse::<usize>().unwrap();
-        let mut keep_ion = true;
-        if ionlist.is_some() {
-            keep_ion = false;
-            for (a, b) in ionlist.as_ref().unwrap() {
-                if atomic_number == *a && ion_stage == *b {
-                    keep_ion = true;
-                    break;
-                }
-            }
+        let keep_ion;
+        if ionlist.is_none() {
+            keep_ion = true;
+        } else {
+            keep_ion = ionlist
+                .as_ref()
+                .unwrap()
+                .contains(&(atomic_number, ion_stage));
         }
+
         if keep_ion {
-            let mut vec_lower = vec![0; transitioncount];
-            let mut vec_upper = vec![0; transitioncount];
-            let mut vec_avalue = vec![0.; transitioncount];
-            let mut vec_collstr = vec![0.; transitioncount];
-            let mut vec_forbidden = vec![0; transitioncount];
-            for i in 0..transitioncount {
+            let mut vec_lower = Vec::with_capacity(transitioncount);
+            let mut vec_upper = Vec::with_capacity(transitioncount);
+            let mut vec_avalue = Vec::with_capacity(transitioncount);
+            let mut vec_collstr = Vec::with_capacity(transitioncount);
+            let mut vec_forbidden = Vec::with_capacity(transitioncount);
+            for _ in 0..transitioncount {
                 let tableline;
                 match lines.next() {
                     Some(l) => tableline = l.to_owned(),
@@ -66,24 +67,28 @@ pub fn read_transitiondata(
 
                 // println!("{:?}", line);
                 let mut linesplit = tableline.split_whitespace();
-                vec_lower[i] = linesplit.next().unwrap().parse::<i32>().unwrap() - firstlevelnumber;
-                vec_upper[i] = linesplit.next().unwrap().parse::<i32>().unwrap() - firstlevelnumber;
-                vec_avalue[i] = linesplit.next().unwrap().parse::<f32>().unwrap();
-                vec_collstr[i] = linesplit.next().unwrap().parse::<f32>().unwrap();
+                vec_lower
+                    .push(linesplit.next().unwrap().parse::<i32>().unwrap() - firstlevelnumber);
+                vec_upper
+                    .push(linesplit.next().unwrap().parse::<i32>().unwrap() - firstlevelnumber);
+                vec_avalue.push(linesplit.next().unwrap().parse::<f32>().unwrap());
+                vec_collstr.push(linesplit.next().unwrap().parse::<f32>().unwrap());
                 match linesplit.next() {
-                    Some(f) => vec_forbidden[i] = f.parse::<i32>().unwrap(),
-                    _ => vec_forbidden[i] = 0,
+                    Some(f) => vec_forbidden.push(f.parse::<i32>().unwrap()),
+                    _ => vec_forbidden.push(0),
                 }
             }
-            let df = df!(
+            let pydf = PyDataFrame(
+                df!(
             "lower" => vec_lower.to_owned(),
             "upper" => vec_upper.to_owned(),
             "A" => vec_avalue.to_owned(),
             "collstr" => vec_collstr.to_owned(),
             "forbidden" => vec_forbidden.to_owned())
-            .unwrap();
+                .unwrap(),
+            );
 
-            transitiondata.push(((atomic_number, ion_stage), PyDataFrame(df).into_py(py)));
+            transitiondata.push(((atomic_number, ion_stage), pydf.into_py(py)));
         } else {
             for _ in 0..transitioncount {
                 match lines.next() {

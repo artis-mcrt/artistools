@@ -319,7 +319,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     plot_resolution = max(1, int((args.xmax - args.xmin) / 1000))
 
     if args.atomicdatabase == "artis":
-        adata = at.atomic.get_levels(modelpath, tuple(ionlist), get_transitions=True)
+        adata = at.atomic.get_levels_polars(modelpath, tuple(ionlist), get_transitions=True)
 
     if from_model:
         dfnltepops = at.nltepops.read_files(modelpath, modelgridindex=modelgridindex, timestep=timestep)
@@ -378,10 +378,15 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     yvalues = np.zeros((len(temperature_list) + 1, len(ionlist), len(xvalues)))
     dftransitions_all = None
     fe2depcoeff, ni2depcoeff = None, None
-    for ion in adata.itertuples(index=False, name="IonTuple") if args.atomicdatabase == "artis" else ionlist:
-        assert isinstance(ion.Z, int)
-        assert isinstance(ion.ion_stage, int)
-        ionid = IonTuple(ion.Z, ion.ion_stage)
+    iterdict = (
+        adata.iter_rows(named=True)
+        if args.atomicdatabase == "artis"
+        else ({"Z": Z, "ion_stage": ion_stage} for Z, ion_stage in ionlist)
+    )
+    for ion in iterdict:
+        assert isinstance(ion["Z"], int)
+        assert isinstance(ion["ion_stage"], int)
+        ionid = IonTuple(ion["Z"], ion["ion_stage"])
         if ionid not in ionlist:
             continue
 
@@ -392,10 +397,12 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
                 dftransgfall.query("Z == @ion.Z and ion_stage == @ion.ion_stage", inplace=False)
             )
         elif args.atomicdatabase == "nist":
-            pldftransitions = pl.from_pandas(get_nist_transitions(f"nist/nist-{ion.Z:02d}-{ion.ion_stage:02d}.txt"))
+            pldftransitions = pl.from_pandas(
+                get_nist_transitions(f"nist/nist-{ion['Z']:02d}-{ion['ion_stage']:02d}.txt")
+            )
         else:
-            assert isinstance(ion.transitions, pd.DataFrame)
-            pldftransitions = pl.from_pandas(ion.transitions)
+            assert isinstance(ion["transitions"], pl.DataFrame | pl.LazyFrame)
+            pldftransitions = ion["transitions"].lazy().collect()
 
         print(
             f"\n======> {at.get_elsymbol(ionid.Z)} {at.roman_numerals[ionid.ion_stage]:3s} "
@@ -408,11 +415,11 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
         if not pldftransitions.is_empty():
             if args.atomicdatabase == "artis":
-                assert isinstance(ion.levels, pd.DataFrame)
+                assert isinstance(ion["levels"], pl.DataFrame)
                 pldftransitions = (
                     at.atomic.add_transition_columns(
                         pldftransitions,
-                        ion.levels,
+                        ion["levels"],
                         [
                             "lower_energy_ev",
                             "upper_energy_ev",
@@ -437,12 +444,15 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             if args.atomicdatabase == "artis":
                 K_B = const.k_B.to("eV / K").value
                 T_exc = vardict["Te"]
-                ltepartfunc = ion.levels.eval("g * exp(-energy_ev / @K_B / @T_exc)").sum()
+                ltepartfunc = (
+                    ion["levels"].select(pl.col("g") * (-pl.col("energy_ev") / K_B / T_exc).exp()).sum().item()
+                )
+
             else:
                 ltepartfunc = 1.0
 
             if args.save_lines:
-                pldftransitions = pldftransitions.with_columns(Z=ion.Z, ion_stage=ion.ion_stage)
+                pldftransitions = pldftransitions.with_columns(Z=ion["Z"], ion_stage=ion["ion_stage"])
 
                 if dftransitions_all is None:
                     dftransitions_all = pldftransitions
@@ -460,13 +470,13 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             for seriesindex, temperature in enumerate(temperature_list):
                 if temperature == "NOTEMPNLTE":
                     dftransitions: pd.DataFrame = pldftransitions.to_pandas(use_pyarrow_extension_array=False)
-                    dfnltepops_thision = dfnltepops.query("Z==@ion.Z & ion_stage==@ion.ion_stage")
+                    dfnltepops_thision = dfnltepops.query("Z==@ionid.Z & ion_stage==@ionid.ion_stage")
 
-                    nltepopdict = {x.level: x["n_NLTE"] for _, x in dfnltepops_thision.iterrows()}
+                    nltepopdict = {row["level"]: row["n_NLTE"] for _, row in dfnltepops_thision.iterrows()}
 
                     assert isinstance(dftransitions, pd.DataFrame)
                     dftransitions["upper_pop_nlte"] = dftransitions.apply(
-                        lambda x: nltepopdict.get(x.upper, 0.0),  # noqa: B023 # pylint: disable=cell-var-from-loop
+                        lambda x: nltepopdict.get(x["upper"], 0.0),  # noqa: B023 # pylint: disable=cell-var-from-loop
                         axis=1,
                     )
 
@@ -477,9 +487,9 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
                     dftransitions = dftransitions.eval(f"flux_factor_nlte = flux_factor * {popcolumnname}")
                     dftransitions = dftransitions.eval("upper_departure = upper_pop_nlte / upper_pop_Te")
                     if ionid == (26, 2):
-                        fe2depcoeff = dftransitions.query("upper == 16 and lower == 5").iloc[0].upper_departure
+                        fe2depcoeff = dftransitions.query("upper == 16 and lower == 5").iloc[0]["upper_departure"]
                     elif ionid == (28, 2):
-                        ni2depcoeff = dftransitions.query("upper == 6 and lower == 0").iloc[0].upper_departure
+                        ni2depcoeff = dftransitions.query("upper == 6 and lower == 0").iloc[0]["upper_departure"]
 
                     with pd.option_context("display.width", 200):
                         print(dftransitions.nlargest(1, "flux_factor_nlte"))
@@ -487,8 +497,10 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
                     T_exc = vardict[temperature]
                     popcolumnname = f"upper_pop_lte_{T_exc:.0f}K"
                     if args.atomicdatabase == "artis":
-                        K_B = const.k_B.to("eV / K").value  # noqa: F841
-                        ltepartfunc = ion.levels.eval("g * exp(-energy_ev / @K_B / @T_exc)").sum()
+                        K_B = const.k_B.to("eV / K").value
+                        ltepartfunc = (
+                            ion["levels"].select(pl.col("g") * (-pl.col("energy_ev") / K_B / T_exc).exp()).sum().item()
+                        )
                     else:
                         ltepartfunc = 1.0
                     dftransitions = add_upper_lte_pop(
