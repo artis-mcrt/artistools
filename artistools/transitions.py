@@ -437,7 +437,13 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             if args.atomicdatabase == "artis":
                 K_B = const.k_B.to("eV / K").value
                 T_exc = vardict["Te"]
-                ltepartfunc = ion.levels.eval("g * exp(-energy_ev / @K_B / @T_exc)").sum()
+                ltepartfunc = sum(
+                    g * math.exp(-energy_ev / K_B / T_exc)
+                    for g, energy_ev in ion.levels[["g", "energy_ev"]].itertuples(  # pyright: ignore[reportArgumentType,reportCallIssue,reportIndexIssue]
+                        index=False
+                    )
+                )
+
             else:
                 ltepartfunc = 1.0
 
@@ -487,8 +493,13 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
                     T_exc = vardict[temperature]
                     popcolumnname = f"upper_pop_lte_{T_exc:.0f}K"
                     if args.atomicdatabase == "artis":
-                        K_B = const.k_B.to("eV / K").value  # noqa: F841
-                        ltepartfunc = ion.levels.eval("g * exp(-energy_ev / @K_B / @T_exc)").sum()
+                        K_B = const.k_B.to("eV / K").value
+                        ltepartfunc = sum(
+                            g * math.exp(-energy_ev / K_B / T_exc)
+                            for g, energy_ev in ion.levels[["g", "energy_ev"]].itertuples(  # pyright: ignore[reportArgumentType,reportCallIssue,reportIndexIssue]
+                                index=False
+                            )
+                        )
                     else:
                         ltepartfunc = 1.0
                     dftransitions = add_upper_lte_pop(
