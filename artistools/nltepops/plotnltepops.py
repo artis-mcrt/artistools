@@ -187,7 +187,7 @@ def make_ionsubplot(
         "modelgridindex == @modelgridindex and timestep == @timestep "
         "and Z == @atomic_number and ion_stage == @ion_stage",
         inplace=False,
-    )
+    ).copy()
 
     lte_columns: list[tuple[str, float]] = [("n_LTE_T_e", T_e)]
     if not args.hide_lte_tr:
@@ -526,7 +526,7 @@ def make_plot(modelpath, atomic_number, ion_stages_displayed, mgilist, timestep,
     time_days = at.get_timestep_time(modelpath, timestep)
     modelname = at.get_model_name(modelpath)
 
-    dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=mgilist[0])
+    dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=mgilist[0]).copy()
 
     if dfpop.empty:
         print(f"No NLTE population data for modelgrid cell {mgilist[0]} timestep {timestep}")
@@ -587,7 +587,7 @@ def make_plot(modelpath, atomic_number, ion_stages_displayed, mgilist, timestep,
             T_e = args.exc_temperature
             T_R = args.exc_temperature
 
-        dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=modelgridindex)
+        dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=modelgridindex).copy()
 
         if dfpop.empty:
             print(f"No NLTE population data for modelgrid cell {modelgridindex} timestep {timestep}")
