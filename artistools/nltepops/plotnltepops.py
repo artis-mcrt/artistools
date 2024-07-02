@@ -267,7 +267,7 @@ def make_ionsubplot(
             ].to_string(index=False)
         )
 
-    maxlevel = max(dfpopthision.level)
+    maxlevel = max(dfpopthision["level"])
     dftrans: None | pl.DataFrame = None
     if "upper" in ion_data["transitions"].collect_schema().names():
         dftrans = ion_data["transitions"].filter(pl.col("upper") <= maxlevel).collect()
@@ -275,16 +275,17 @@ def make_ionsubplot(
             dftrans = None
 
     if dftrans is not None:
-        levels = dfpopthision["level"].unique()
+        dftrans = dftrans.join(
+            pl.from_pandas(dfpopthision[["level", "n_NLTE"]]).with_columns(pl.col("level").cast(pl.Int32)),
+            how="left",
+            left_on="upper",
+            right_on="level",
+            coalesce=True,
+        )
         dftrans = dftrans.with_columns(
-            emissionstrength=pl.struct("upper", "A", "epsilon_trans_ev").map_elements(
-                lambda x: dfpopthision[dfpopthision["level"] == int(x["upper"])].iloc[0].n_NLTE
-                * x["A"]
-                * x["epsilon_trans_ev"]
-                if x["upper"] in levels
-                else 0.0,
-                return_dtype=pl.Float64,
-            )
+            emissionstrength=pl.when(pl.col("n_NLTE").is_not_null())
+            .then(pl.col("n_NLTE") * pl.col("A") * pl.col("epsilon_trans_ev"))
+            .otherwise(0)
         )
 
         dftrans = dftrans.sort(by="emissionstrength", descending=True)
