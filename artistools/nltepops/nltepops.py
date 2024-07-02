@@ -221,4 +221,4 @@ def read_files(
     else:
         arr_dfnltepop = [read_file_filtered(f, strquery=dfquery_full, dfqueryvars=dfqueryvars) for f in nltefilepaths]
 
-    return pd.concat(arr_dfnltepop).copy()
+    return pd.concat(arr_dfnltepop)
