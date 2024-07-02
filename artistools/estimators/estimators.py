@@ -429,8 +429,8 @@ def get_averageexcitation(
     if dfnltepops.empty:
         print(f"WARNING: NLTE pops not found for cell {modelgridindex} at timestep {timestep}")
 
-    adata = at.atomic.get_levels(modelpath)
-    ionlevels = adata.query("Z == @atomic_number and ion_stage == @ion_stage").iloc[0].levels
+    adata = at.atomic.get_levels_polars(modelpath)
+    ionlevels = adata.filter((pl.col("Z") == atomic_number) & (pl.col("ion_stage") == ion_stage))["levels"].item()
 
     energypopsum = 0
     ionpopsum = 0
@@ -441,22 +441,28 @@ def get_averageexcitation(
         "modelgridindex==@modelgridindex and timestep==@timestep and Z==@atomic_number & ion_stage==@ion_stage"
     )
 
-    k_b = 8.617333262145179e-05  # eV / K  # noqa: F841
+    k_b = 8.617333262145179e-05  # eV / K
 
     ionpopsum = dfnltepops_ion.n_NLTE.sum()
-    energypopsum = (
-        dfnltepops_ion[dfnltepops_ion.level >= 0].eval("@ionlevels.iloc[level].energy_ev.values * n_NLTE").sum()
+    energypopsum = sum(
+        ionlevels["energy_ev"].item(level) * n_NLTE
+        for level, n_NLTE in dfnltepops_ion[dfnltepops_ion.level >= 0][["level", "n_NLTE"]].itertuples(index=False)
     )
 
-    with contextlib.suppress(IndexError):  # no superlevel with cause IndexError
+    with contextlib.suppress(IndexError):  # no superlevel will cause IndexError
         superlevelrow = dfnltepops_ion[dfnltepops_ion.level < 0].iloc[0]
         levelnumber_sl = dfnltepops_ion.level.max() + 1
 
         energy_boltzfac_sum = (
-            ionlevels.iloc[levelnumber_sl:].eval("energy_ev * g * exp(- energy_ev / @k_b / @T_exc)").sum()
+            ionlevels[levelnumber_sl:]
+            .select(pl.col("energy_ev") * pl.col("g") * (-pl.col("energy_ev") / k_b / T_exc).exp())
+            .sum()
+            .item()
         )
 
-        boltzfac_sum = ionlevels.iloc[levelnumber_sl:].eval("g * exp(- energy_ev / @k_b / @T_exc)").sum()
+        boltzfac_sum = energy_boltzfac_sum = (
+            ionlevels[levelnumber_sl:].select(pl.col("g") * (-pl.col("energy_ev") / k_b / T_exc).exp()).sum().item()
+        )
         # adjust to the actual superlevel population from ARTIS
         energypopsum += energy_boltzfac_sum * superlevelrow.n_NLTE / boltzfac_sum
 
