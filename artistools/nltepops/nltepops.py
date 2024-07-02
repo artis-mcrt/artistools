@@ -8,6 +8,7 @@ from functools import partial
 from pathlib import Path
 
 import pandas as pd
+import polars as pl
 from astropy import constants as const
 
 import artistools as at
@@ -60,7 +61,7 @@ def texifyconfiguration(levelname: str) -> str:
     return strout.replace("#", "").replace("$$", "")
 
 
-def add_lte_pops(modelpath, dfpop, columntemperature_tuples, noprint=False, maxlevel=-1):
+def add_lte_pops(modelpath, dfpop, adata, columntemperature_tuples, noprint=False, maxlevel=-1):
     """Add columns to dfpop with LTE populations.
 
     columntemperature_tuples is a sequence of tuples of column name and temperature, e.g., ('mycolumn', 3000)
@@ -73,10 +74,10 @@ def add_lte_pops(modelpath, dfpop, columntemperature_tuples, noprint=False, maxl
         Z = int(row.Z)
         ion_stage = int(row.ion_stage)
 
-        ionlevels = at.atomic.get_levels(modelpath).query("Z == @Z and ion_stage == @ion_stage").iloc[0].levels
+        ionlevels = adata.filter((pl.col("Z") == Z) & (pl.col("ion_stage") == ion_stage))["levels"].item(0)
 
-        gs_g = ionlevels.iloc[0].g
-        gs_energy = ionlevels.iloc[0].energy_ev
+        gs_g = ionlevels["g"].item(0)
+        gs_energy = ionlevels["energy_ev"].item(0)
 
         # gs_pop = dfpop.query(
         #     "modelgridindex == @modelgridindex and timestep == @timestep "
@@ -101,9 +102,9 @@ def add_lte_pops(modelpath, dfpop, columntemperature_tuples, noprint=False, maxl
 
         def f_ltepop(x, T_exc: float, gsg: float, gse: float, ionlevels) -> float:
             ltepop = (
-                ionlevels.iloc[int(x.level)].g
+                ionlevels["g"].item(int(x.level))
                 / gsg
-                * math.exp(-(ionlevels.iloc[int(x.level)].energy_ev - gse) / k_b / T_exc)
+                * math.exp(-(ionlevels["energy_ev"].item(int(x.level)) - gse) / k_b / T_exc)
             )
             assert isinstance(ltepop, float)
             return ltepop
@@ -129,12 +130,14 @@ def add_lte_pops(modelpath, dfpop, columntemperature_tuples, noprint=False, maxl
                         f"has a superlevel at level {levelnumber_sl}"
                     )
 
-                for columnname, _T_exc in columntemperature_tuples:
-                    dfpop.loc[masksuperlevel, columnname] = (
-                        ionlevels.iloc[levelnumber_sl:]
-                        .eval("g / @gs_g * exp(- (energy_ev - @gs_energy) / @k_b / @T_exc)")
+                for columnname, T_exc in columntemperature_tuples:
+                    superlevelpop = (
+                        ionlevels[levelnumber_sl:]
+                        .select(pl.col("g") / gs_g * (-(pl.col("energy_ev") - gs_energy) / k_b / T_exc).exp())
                         .sum()
+                        .item()
                     )
+                    dfpop.loc[masksuperlevel, columnname] = superlevelpop
 
             dfpop.loc[masksuperlevel, "level"] = levelnumber_sl + 2
 
