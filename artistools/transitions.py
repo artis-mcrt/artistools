@@ -401,8 +401,8 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
                 get_nist_transitions(f"nist/nist-{ion['Z']:02d}-{ion['ion_stage']:02d}.txt")
             )
         else:
-            assert isinstance(ion["transitions"], pl.DataFrame)
-            pldftransitions = ion["transitions"]
+            assert isinstance(ion["transitions"], pl.DataFrame | pl.LazyFrame)
+            pldftransitions = ion["transitions"].lazy().collect()
 
         print(
             f"\n======> {at.get_elsymbol(ionid.Z)} {at.roman_numerals[ionid.ion_stage]:3s} "
@@ -470,13 +470,13 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             for seriesindex, temperature in enumerate(temperature_list):
                 if temperature == "NOTEMPNLTE":
                     dftransitions: pd.DataFrame = pldftransitions.to_pandas(use_pyarrow_extension_array=False)
-                    dfnltepops_thision = dfnltepops.query("Z==@ion.Z & ion_stage==@ion.ion_stage")
+                    dfnltepops_thision = dfnltepops.query("Z==@ionid.Z & ion_stage==@ionid.ion_stage")
 
                     nltepopdict = {x.level: x["n_NLTE"] for _, x in dfnltepops_thision.iterrows()}
 
                     assert isinstance(dftransitions, pd.DataFrame)
                     dftransitions["upper_pop_nlte"] = dftransitions.apply(
-                        lambda x: nltepopdict.get(x.upper, 0.0),  # noqa: B023 # pylint: disable=cell-var-from-loop
+                        lambda x: nltepopdict.get(x["upper"], 0.0),  # noqa: B023 # pylint: disable=cell-var-from-loop
                         axis=1,
                     )
 
@@ -487,9 +487,9 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
                     dftransitions = dftransitions.eval(f"flux_factor_nlte = flux_factor * {popcolumnname}")
                     dftransitions = dftransitions.eval("upper_departure = upper_pop_nlte / upper_pop_Te")
                     if ionid == (26, 2):
-                        fe2depcoeff = dftransitions.query("upper == 16 and lower == 5").iloc[0].upper_departure
+                        fe2depcoeff = dftransitions.query("upper == 16 and lower == 5").iloc[0]["upper_departure"]
                     elif ionid == (28, 2):
-                        ni2depcoeff = dftransitions.query("upper == 6 and lower == 0").iloc[0].upper_departure
+                        ni2depcoeff = dftransitions.query("upper == 6 and lower == 0").iloc[0]["upper_departure"]
 
                     with pd.option_context("display.width", 200):
                         print(dftransitions.nlargest(1, "flux_factor_nlte"))
