@@ -225,7 +225,7 @@ def make_ionsubplot(
 
     if args.x == "config":
         # ax.xaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=100))
-        ax.set_xticks(ion_data.levels.iloc[: max(dfpopthision.level) + 1].index)
+        ax.set_xticks(ion_data["levels"]["levelindex"][: max(dfpopthision.level) + 1])
 
         if not lastsubplot:
             ax.set_xticklabels("" for _ in configtexlist)
@@ -389,19 +389,19 @@ def make_plot_populations_with_time_or_velocity(modelpaths: list[Path | str], ar
     Z = at.get_atomic_number(args.elements[0])
     ion_stage = int(args.ion_stages[0])
 
-    adata = at.atomic.get_levels(args.modelpath[0], get_transitions=True)
+    adata = at.atomic.get_levels(modelpaths[0], get_transitions=True)
     ion_data = adata.query("Z == @Z and ion_stage == @ion_stage").iloc[0]
     levelconfignames = ion_data["levels"]["levelname"]
     # levelconfignames = [at.nltepops.texifyconfiguration(name) for name in levelconfignames]
 
-    if not args.timedayslist:
-        rows = 1
-        timedayslist = [args.timestep]
-        args.subplots = False
-    else:
+    if args.timedayslist:
         rows = len(args.timedayslist)
         timedayslist = args.timedayslist
         args.subplots = True
+    else:
+        rows = 1
+        timedayslist = [at.get_timestep_time(modelpaths[0], ts) for ts in range(args.timestepmin, args.timestepmax)]
+        args.subplots = False
 
     cols = 1
     fig, ax = plt.subplots(
@@ -767,8 +767,11 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             args.timestep = timestep
     elif args.timedayslist:
         print(args.timedayslist)
-    else:
+    elif args.timestep is not None:
         timestep = int(args.timestep)
+    else:
+        print("Please specify time with -timedays or -timestep")
+        sys.exit(1)
 
     if Path(args.outputfile).is_dir():
         args.outputfile = Path(args.outputfile, defaultoutputfile)
