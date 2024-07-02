@@ -13,6 +13,7 @@ import matplotlib.axes as mplax
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import polars as pl
 from matplotlib import ticker
 
 import artistools as at
@@ -169,7 +170,7 @@ def make_ionsubplot(
     atomic_number,
     ion_stage,
     dfpop,
-    ion_data,
+    adata,
     estimators,
     T_e,
     T_R,
@@ -180,6 +181,7 @@ def make_ionsubplot(
 ) -> None:
     """Plot the level populations the specified ion, cell, and timestep."""
     ionstr = at.get_ionstring(atomic_number, ion_stage, style="chargelatex")
+    ion_data = adata.filter((pl.col("Z") == atomic_number) & (pl.col("ion_stage") == ion_stage)).row(0, named=True)
 
     dfpopthision = dfpop.query(
         "modelgridindex == @modelgridindex and timestep == @timestep "
@@ -191,7 +193,9 @@ def make_ionsubplot(
     if not args.hide_lte_tr:
         lte_columns.append(("n_LTE_T_R", T_R))
 
-    dfpopthision = at.nltepops.add_lte_pops(modelpath, dfpopthision, lte_columns, noprint=False, maxlevel=args.maxlevel)
+    dfpopthision = at.nltepops.add_lte_pops(
+        modelpath, dfpopthision, adata, lte_columns, noprint=False, maxlevel=args.maxlevel
+    )
 
     if args.maxlevel >= 0:
         dfpopthision = dfpopthision.query("level <= @args.maxlevel")
@@ -201,11 +205,11 @@ def make_ionsubplot(
     ionpopulation_fromest = estimators[(timestep, modelgridindex)].get(f"nnion_{ionstr}", 0.0)
 
     dfpopthision["parity"] = [
-        1 if (row.level != -1 and ion_data.levels.iloc[int(row.level)].levelname.split("[")[0][-1] == "o") else 0
+        1 if (row.level != -1 and ion_data["levels"]["levelname"].item(int(row.level)).split("[")[0][-1] == "o") else 0
         for _, row in dfpopthision.iterrows()
     ]
 
-    configlist = ion_data.levels.iloc[: max(dfpopthision.level) + 1].levelname
+    configlist = ion_data["levels"]["levelname"][: max(dfpopthision.level) + 1]
 
     configtexlist = [at.nltepops.texifyconfiguration(configlist[0])]
     for i in range(1, len(configlist)):
@@ -263,28 +267,30 @@ def make_ionsubplot(
             ].to_string(index=False)
         )
 
-    if not ion_data.transitions.empty:
-        dftrans = ion_data.transitions.query(
-            "upper <= @maxlevel", local_dict={"maxlevel": max(dfpopthision.level)}
-        ).copy()
+    maxlevel = max(dfpopthision.level)
+    dftrans: None | pl.DataFrame = None
+    if "upper" in ion_data["transitions"].collect_schema().names():
+        dftrans = ion_data["transitions"].filter(pl.col("upper") <= maxlevel).collect()
+        if dftrans is not None and dftrans.is_empty():
+            dftrans = None
 
-        dftrans["energy_trans"] = [
-            (ion_data.levels.iloc[int(trans.upper)].energy_ev - ion_data.levels.iloc[int(trans.lower)].energy_ev)
-            for _, trans in dftrans.iterrows()
-        ]
+    if dftrans is not None:
+        levels = dfpopthision["level"].unique()
+        dftrans = dftrans.with_columns(
+            emissionstrength=pl.struct("upper", "A", "epsilon_trans_ev").map_elements(
+                lambda x: dfpopthision[dfpopthision["level"] == int(x["upper"])].iloc[0].n_NLTE
+                * x["A"]
+                * x["epsilon_trans_ev"]
+                if x["upper"] in levels
+                else 0.0,
+                return_dtype=pl.Float64,
+            )
+        )
 
-        dftrans["emissionstrength"] = [
-            dfpopthision.query("level == @trans.upper").iloc[0].n_NLTE * trans.A * trans.energy_trans
-            for _, trans in dftrans.iterrows()
-        ]
-        hc_evangstrom = 12398.419843320025
-        dftrans["wavelength"] = [round(hc_evangstrom / trans.energy_trans) for _, trans in dftrans.iterrows()]
-
-        dftrans = dftrans.sort_values("emissionstrength", ascending=False)
+        dftrans = dftrans.sort(by="emissionstrength", descending=True)
 
         print("\nTop radiative decays")
-        print(dftrans[:10].to_string(index=False))
-        print(dftrans[:50].to_string(index=False))
+        print(dftrans.head(20))
 
     ax.set_yscale("log")
 
@@ -511,7 +517,11 @@ def plot_populations_with_time_or_velocity(
 def make_plot(modelpath, atomic_number, ion_stages_displayed, mgilist, timestep, args: argparse.Namespace):
     """Plot level populations for chosens ions of an element in a cell and timestep of an ARTIS model."""
     modelname = at.get_model_name(modelpath)
-    adata = at.atomic.get_levels(modelpath, get_transitions=args.gettransitions)
+    adata = at.atomic.get_levels_polars(
+        modelpath,
+        get_transitions=args.gettransitions,
+        derived_transitions_columns=["epsilon_trans_ev", "lambda_angstroms"],
+    )
 
     time_days = at.get_timestep_time(modelpath, timestep)
     modelname = at.get_model_name(modelpath)
@@ -614,7 +624,6 @@ def make_plot(modelpath, atomic_number, ion_stages_displayed, mgilist, timestep,
             axes[mgifirstaxindex].set_title(subplot_title, fontsize=10)
 
         for ax, ion_stage in zip(axes[mgifirstaxindex : mgilastaxindex + 1], ion_stage_list, strict=False):
-            ion_data = adata.query("Z == @atomic_number and ion_stage == @ion_stage").iloc[0]
             lastsubplot = modelgridindex == mgilist[-1] and ion_stage == ion_stage_list[-1]
             make_ionsubplot(
                 ax,
@@ -622,7 +631,7 @@ def make_plot(modelpath, atomic_number, ion_stages_displayed, mgilist, timestep,
                 atomic_number,
                 ion_stage,
                 dfpop,
-                ion_data,
+                adata,
                 estimators,
                 T_e,
                 T_R,
