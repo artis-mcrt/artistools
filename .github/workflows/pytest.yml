@@ -159,7 +159,7 @@ jobs:
             - name: Install uv
               run: |
                   curl -LsSf https://astral.sh/uv/install.sh | sh
-                  #python3 -m pip install uv
+                  python3 -m pip install uv
 
             - name: Install pre-release packages for 3.13
               if: ${{ endsWith(matrix.python-version, '-dev') }}
