@@ -49,16 +49,20 @@ def parse_adata(
                     phixstable.to_struct(),
                 ))
 
-            dflevels = pl.DataFrame(
-                level_list,
-                schema=["energy_ev", "g", "transition_count", "levelname", "phixstargetlist", "phixstable"],
-                schema_overrides={
-                    "energy_ev": pl.Float64,
-                    "g": pl.Float64,
-                    "transition_count": pl.Int64,
-                    "levelname": pl.Utf8,
-                },
-                orient="row",
+            dflevels = (
+                pl.DataFrame(
+                    level_list,
+                    schema=["energy_ev", "g", "transition_count", "levelname", "phixstargetlist", "phixstable"],
+                    schema_overrides={
+                        "energy_ev": pl.Float64,
+                        "g": pl.Float64,
+                        "transition_count": pl.Int64,
+                        "levelname": pl.Utf8,
+                    },
+                    orient="row",
+                )
+                .with_row_index("levelindex")
+                .with_columns(pl.col("levelindex").cast(pl.Int32))
             )
 
             ionisation_energy_ev = float(ionheader[3])
@@ -174,12 +178,7 @@ def add_transition_columns(
     if isinstance(dflevels, pd.DataFrame):
         dflevels = pl.from_pandas(dflevels[["g", "energy_ev", "levelname"]])  # pyright: ignore[reportArgumentType]
 
-    dflevels = (
-        dflevels.select(["g", "energy_ev", "levelname"])
-        .lazy()
-        .with_row_index("levelindex")
-        .with_columns(pl.col("levelindex").cast(pl.Int32))
-    )
+    dflevels = dflevels.select(["g", "energy_ev", "levelname"]).lazy()
 
     dftransitions = (
         dftransitions.join(
@@ -212,7 +211,9 @@ def add_transition_columns(
 
     # clean up any columns used for intermediate calculations
     dftransitions.drop(
-        col for col in dftransitions.collect_schema().names() if col not in columns_before and col not in columns
+        col
+        for col in dftransitions.collect_schema().names()
+        if col not in columns_before and col not in columns and col != "levelindex"
     )
 
     for col in columns:
