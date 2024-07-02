@@ -17,7 +17,7 @@ import artistools as at
 def parse_adata(
     fadata: io.TextIOBase,
     phixsdict: dict[tuple[int, int, int], tuple[list[tuple[int, float]], npt.NDArray[np.float64]]],
-    ionlist: t.Sequence[tuple[int, int]] | None,
+    ionlist: t.Collection[tuple[int, int]] | None,
 ) -> t.Generator[tuple[int, int, int, float, pd.DataFrame], None, None]:
     """Generate ions and their level lists from adata.txt."""
     firstlevelnumber = 1
@@ -58,7 +58,7 @@ def parse_adata(
 
 
 def read_transitiondata(
-    transitions_filename: str | Path, ionlist: t.Sequence[tuple[int, int]] | None
+    transitions_filename: str | Path, ionlist: t.Collection[tuple[int, int]] | None
 ) -> dict[tuple[int, int], pl.DataFrame]:
     firstlevelnumber = 1
     transdict: dict[tuple[int, int], pl.DataFrame] = {}
@@ -103,8 +103,8 @@ def read_transitiondata(
 
 
 def parse_phixsdata(
-    fphixs: io.TextIOBase, ionlist: t.Sequence[tuple[int, int]] | None = None
-) -> t.Generator[tuple[int, int, int, int, int, list[tuple[int, float]], np.ndarray], None, None]:
+    fphixs: io.TextIOBase, ionlist: t.Collection[tuple[int, int]] | None = None
+) -> t.Generator[tuple[int, int, int, int, int, list[tuple[int, float]], npt.NDArray[np.float64]], None, None]:
     firstlevelnumber = 1
     nphixspoints = int(fphixs.readline())
     phixsnuincrement = float(fphixs.readline())
@@ -199,9 +199,49 @@ def add_transition_columns(
     return dftransitions
 
 
+def get_transitiondata(
+    modelpath: str | Path,
+    ionlist: t.Collection[tuple[int, int]] | None = None,
+    quiet: bool = False,
+    use_rust_reader: bool | None = None,
+) -> dict[tuple[int, int], pl.DataFrame]:
+    """Return a dictionary of transitions."""
+    ionlist = set(ionlist) if ionlist else None
+    transition_filename = at.firstexisting("transitiondata.txt", folder=modelpath)
+
+    if use_rust_reader is None or use_rust_reader:
+        try:
+            from artistools.rustext import read_transitiondata as read_transitiondata_rust
+
+            use_rust_reader = True
+
+        except ImportError as err:
+            warnings.warn("WARNING: Rust extension not available. Falling back to slow python reader.", stacklevel=2)
+            if use_rust_reader:
+                msg = "Rust extension not available"
+                raise ImportError(msg) from err
+            use_rust_reader = False
+
+    if not quiet:
+        time_start = time.perf_counter()
+        print(
+            f"Reading {transition_filename.relative_to(Path(modelpath).parent)} with {'fast rust reader' if use_rust_reader else 'slow python reader'}..."
+        )
+
+    if use_rust_reader:
+        transitionsdict = read_transitiondata_rust(str(transition_filename), ionlist=ionlist)
+    else:
+        transitionsdict = read_transitiondata(transition_filename, ionlist)
+
+    if not quiet:
+        print(f"  took {time.perf_counter() - time_start:.2f} seconds")
+
+    return transitionsdict
+
+
 def get_levels(
     modelpath: str | Path,
-    ionlist: t.Sequence[tuple[int, int]] | None = None,
+    ionlist: t.Collection[tuple[int, int]] | None = None,
     get_transitions: bool = False,
     get_photoionisations: bool = False,
     quiet: bool = False,
@@ -211,38 +251,11 @@ def get_levels(
     """Return a pandas DataFrame of energy levels."""
     adatafilename = Path(modelpath, "adata.txt")
 
-    transitionsdict = {}
-    if get_transitions:
-        transition_filename = at.firstexisting("transitiondata.txt", folder=modelpath)
-
-        if use_rust_reader is None or use_rust_reader:
-            try:
-                from artistools.rustext import read_transitiondata as read_transitiondata_rust
-
-                use_rust_reader = True
-
-            except ImportError as err:
-                warnings.warn(
-                    "WARNING: Rust extension not available. Falling back to slow python reader.", stacklevel=2
-                )
-                if use_rust_reader:
-                    msg = "Rust extension not available"
-                    raise ImportError(msg) from err
-                use_rust_reader = False
-
-        if not quiet:
-            time_start = time.perf_counter()
-            print(
-                f"Reading {transition_filename.relative_to(Path(modelpath).parent)} with {'fast rust reader' if use_rust_reader else 'slow python reader'}..."
-            )
-
-        if use_rust_reader:
-            transitionsdict = read_transitiondata_rust(str(transition_filename), ionlist=ionlist)
-        else:
-            transitionsdict = read_transitiondata(transition_filename, ionlist)
-
-        if not quiet:
-            print(f"  took {time.perf_counter() - time_start:.2f} seconds")
+    transitionsdict = (
+        get_transitiondata(modelpath, ionlist=ionlist, quiet=quiet, use_rust_reader=use_rust_reader)
+        if get_transitions
+        else {}
+    )
 
     phixsdict = {}
     if get_photoionisations:
