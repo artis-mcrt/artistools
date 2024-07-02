@@ -138,10 +138,10 @@ pynonthermal==2024.4.29
     #   artistools
 pyparsing==3.1.2
     # via matplotlib
+pypdf==4.2.0
+    # via -r requirements.in
 pypdf2==3.0.1
-    # via
-    #   -r requirements.in
-    #   artistools
+    # via artistools
 pytest==8.2.2
     # via
     #   -r requirements.in
