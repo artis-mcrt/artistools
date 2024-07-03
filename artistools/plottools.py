@@ -140,9 +140,9 @@ def set_axis_properties(ax: t.Iterable[mplax.Axes] | mplax.Axes, args: argparse.
     if "xmin" in args or "xmax" in args:
         plt.xlim(args.xmin, args.xmax)
 
-    if args.logscalex:
+    if getattr(args, "logscalex", False):
         plt.xscale("log")
-    if args.logscaley:
+    if getattr(args, "logscaley", False):
         plt.yscale("log")
 
     plt.minorticks_on()
