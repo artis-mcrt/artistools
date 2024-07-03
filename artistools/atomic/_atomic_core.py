@@ -124,8 +124,7 @@ def parse_phixsdata(
     firstlevelnumber = 1
     nphixspoints = int(fphixs.readline())
     phixsnuincrement = float(fphixs.readline())
-
-    xgrid = np.linspace(1.0, 1.0 + phixsnuincrement * (nphixspoints + 1), num=nphixspoints + 1, endpoint=False)[:-1]
+    xgrid = np.linspace(1.0, 1.0 + phixsnuincrement * nphixspoints, num=nphixspoints, endpoint=False)
 
     for line in fphixs:
         if not line.strip():
