@@ -33,12 +33,12 @@ def parse_adata(
         if not ionlist or (Z, ion_stage) in ionlist:
             level_list: list[tuple[float, float, int, str | None, pl.Series | None, pl.Series | None]] = []
             for levelindex in range(level_count):
-                row = fadata.readline().split()
+                row = fadata.readline().split(maxsplit=4)
 
-                levelname = " ".join(row[4:]).strip("'") if len(row) >= 5 else None
-                numberin = int(row[0])
-                assert levelindex == numberin - firstlevelnumber
-                phixstargetlist, phixstable = phixsdict.get((Z, ion_stage, numberin), (None, None))
+                levelname = (row[4]).strip("'") if len(row) >= 5 else None
+                inputlevelnumber = int(row[0])
+                assert levelindex == inputlevelnumber - firstlevelnumber
+                phixstargetlist, phixstable = phixsdict.get((Z, ion_stage, inputlevelnumber), (None, None))
 
                 level_list.append((
                     float(row[1]),
