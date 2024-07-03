@@ -7,6 +7,7 @@ from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 import polars as pl
 
@@ -15,7 +16,7 @@ import artistools as at
 
 def parse_adata(
     fadata: io.TextIOBase,
-    phixsdict: dict[tuple[int, int, int], tuple[list[tuple[int, float]], pl.DataFrame]],
+    phixsdict: dict[tuple[int, int, int], tuple[npt.NDArray, npt.NDArray]],
     ionlist: t.Collection[tuple[int, int]] | None,
 ) -> t.Generator[tuple[int, int, int, float, pl.DataFrame], None, None]:
     """Generate ions and their level lists from adata.txt."""
@@ -31,7 +32,7 @@ def parse_adata(
         level_count = int(ionheader[2])
 
         if not ionlist or (Z, ion_stage) in ionlist:
-            level_list: list[tuple[float, float, int, str | None, pl.Series | None, pl.Series | None]] = []
+            level_list: list[tuple[float, float, int, str | None, npt.NDArray | None, npt.NDArray | None]] = []
             for levelindex in range(level_count):
                 row = fadata.readline().split(maxsplit=4)
 
@@ -40,25 +41,19 @@ def parse_adata(
                 assert levelindex == inputlevelnumber - firstlevelnumber
                 phixstargetlist, phixstable = phixsdict.get((Z, ion_stage, inputlevelnumber), (None, None))
 
-                level_list.append((
-                    float(row[1]),
-                    float(row[2]),
-                    int(row[3]),
-                    levelname,
-                    pl.Series(phixstargetlist, dtype=pl.Struct({"upperionlevel": pl.Int64, "probability": pl.Float64})),
-                    phixstable.to_struct() if phixstable is not None else None,
-                ))
+                level_list.append((float(row[1]), float(row[2]), int(row[3]), levelname, phixstargetlist, phixstable))
 
             dflevels = (
                 pl.DataFrame(
                     level_list,
-                    schema=["energy_ev", "g", "transition_count", "levelname", "phixstargetlist", "phixstable"],
-                    schema_overrides={
-                        "energy_ev": pl.Float64,
-                        "g": pl.Float32,
-                        "transition_count": pl.Int64,
-                        "levelname": pl.Utf8,
-                    },
+                    schema=[
+                        ("energy_ev", pl.Float64),
+                        ("g", pl.Float32),
+                        ("transition_count", pl.Int32),
+                        ("levelname", pl.Utf8),
+                        ("phixstargetlist", pl.Object),
+                        ("phixstable", pl.Object),
+                    ],
                     orient="row",
                 )
                 .with_row_index("levelindex")
@@ -119,48 +114,49 @@ def read_transitiondata(
 
 
 def parse_phixsdata(
-    fphixs: io.TextIOBase, ionlist: t.Collection[tuple[int, int]] | None = None
-) -> t.Generator[tuple[int, int, int, int, int, list[tuple[int, float]], pl.DataFrame], None, None]:
+    phixs_filename: Path | str, ionlist: t.Collection[tuple[int, int]] | None = None
+) -> dict[tuple[int, int, int], tuple[npt.NDArray, npt.NDArray]]:
     firstlevelnumber = 1
-    nphixspoints = int(fphixs.readline())
-    phixsnuincrement = float(fphixs.readline())
-    xgrid = np.linspace(1.0, 1.0 + phixsnuincrement * nphixspoints, num=nphixspoints, endpoint=False)
+    phixsdict = {}
+    with at.zopen(phixs_filename) as fphixs:
+        nphixspoints = int(fphixs.readline())
+        phixsnuincrement = float(fphixs.readline())
+        xgrid = np.linspace(1.0, 1.0 + phixsnuincrement * nphixspoints, num=nphixspoints, endpoint=False)
+        for line in fphixs:
+            if not line.strip():
+                continue
 
-    for line in fphixs:
-        if not line.strip():
-            continue
+            ionheader = line.split()
+            Z = int(ionheader[0])
+            upperion_stage = int(ionheader[1])
+            upperionlevel = int(ionheader[2]) - firstlevelnumber
+            lowerion_stage = int(ionheader[3])
+            lowerionlevel = int(ionheader[4]) - firstlevelnumber
+            # threshold_ev = float(ionheader[5])
 
-        ionheader = line.split()
-        Z = int(ionheader[0])
-        upperion_stage = int(ionheader[1])
-        upperionlevel = int(ionheader[2]) - firstlevelnumber
-        lowerion_stage = int(ionheader[3])
-        lowerionlevel = int(ionheader[4]) - firstlevelnumber
-        # threshold_ev = float(ionheader[5])
+            assert upperion_stage == lowerion_stage + 1
 
-        assert upperion_stage == lowerion_stage + 1
+            if upperionlevel >= 0:
+                nptargetlist = np.array([(upperionlevel, 1.0)], dtype=[("level", np.int32), ("fraction", np.float32)])
+            else:
+                ntargets = int(fphixs.readline())
+                nptargetlist = np.empty((ntargets, 2), dtype=[("level", np.int32), ("fraction", np.float32)])
+                # targetlist = [(-1, 0.0) for _ in range(ntargets)]
+                for phixstargetindex in range(ntargets):
+                    level, fraction = fphixs.readline().split()
+                    nptargetlist[phixstargetindex, :] = (int(level) - firstlevelnumber, float(fraction))
 
-        targetlist: list[tuple[int, float]]
-        if upperionlevel >= 0:
-            targetlist = [(upperionlevel, 1.0)]
-        else:
-            ntargets = int(fphixs.readline())
-            targetlist = [(-1, 0.0) for _ in range(ntargets)]
-            for phixstargetindex in range(ntargets):
-                level, fraction = fphixs.readline().split()
-                targetlist[phixstargetindex] = (int(level) - firstlevelnumber, float(fraction))
+            if not ionlist or (Z, lowerion_stage) in ionlist:
+                phixslist = [float(fphixs.readline()) * 1e-18 for _ in range(nphixspoints)]
+                phixstable = np.array(list(zip(xgrid, phixslist, strict=False)))
 
-        if not ionlist or (Z, lowerion_stage) in ionlist:
-            phixstable = pl.DataFrame({
-                "nu_over_nuthreshold": xgrid,
-                "crosssection": (float(fphixs.readline()) * 1e-18 for _ in range(nphixspoints)),
-            })
+                phixsdict[(Z, lowerion_stage, lowerionlevel)] = (nptargetlist, phixstable)
 
-            yield Z, upperion_stage, upperionlevel, lowerion_stage, lowerionlevel, targetlist, phixstable
+            else:
+                for _ in range(nphixspoints):
+                    fphixs.readline()
 
-        else:
-            for _ in range(nphixspoints):
-                fphixs.readline()
+    return phixsdict
 
 
 def add_transition_columns(
@@ -283,17 +279,8 @@ def get_levels_polars(
 
         if not quiet:
             print(f"Reading {phixs_filename.relative_to(Path(modelpath).parent)}")
-        with at.zopen(phixs_filename) as fphixs:
-            for (
-                Z,
-                _upperion_stage,
-                _upperionlevel,
-                lowerion_stage,
-                lowerionlevel,
-                phixstargetlist,
-                phixstable,
-            ) in parse_phixsdata(fphixs, ionlist):
-                phixsdict[(Z, lowerion_stage, lowerionlevel)] = (phixstargetlist, phixstable)
+
+        phixsdict = parse_phixsdata(phixs_filename, ionlist)
 
     level_lists = []
     iontuple = namedtuple("iontuple", "Z ion_stage level_count ion_pot levels transitions")
