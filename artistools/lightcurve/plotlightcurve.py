@@ -912,6 +912,7 @@ def make_band_lightcurves_plot(
                 text_key = filternames_conversion_dict.get(band_name, band_name)
 
                 if args.subplots:
+                    assert isinstance(ax, np.ndarray)
                     ax[plotnumber].annotate(
                         text_key,
                         xy=(1.0, 1.0),
@@ -961,8 +962,9 @@ def make_band_lightcurves_plot(
                     plotkwargs["linestyle"] = args.linestyle[modelnumber]
 
                 # if not (args.test_viewing_angle_fit or args.calculate_peak_time_mag_deltam15_bool):
-                curax = ax[plotnumber] if args.subplots else ax
                 if args.subplots:
+                    assert isinstance(ax, np.ndarray)
+                    assert isinstance(ax, np.ndarray)
                     if len(angles) > 1 or (args.plotviewingangle and (modelpath / "specpol_res.out").is_file()):
                         ax[plotnumber].plot(time, brightness_in_mag, linewidth=4, **plotkwargs)
                     # I think this was just to have a different line style for viewing angles....
@@ -972,9 +974,7 @@ def make_band_lightcurves_plot(
                         #     ax[plotnumber].plot(
                         #         cmfgen_mags['time[d]'], cmfgen_mags[key], label='CMFGEN', color='k', linewidth=3)
                 else:
-                    curax.plot(
-                        time, brightness_in_mag, linewidth=3.5, **plotkwargs
-                    )  # color=color, linestyle=linestyle)
+                    ax.plot(time, brightness_in_mag, linewidth=3.5, **plotkwargs)  # color=color, linestyle=linestyle)
 
     at.set_mpl_style()
 
@@ -1090,11 +1090,13 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
                             )
 
                 if args.subplots:
+                    assert isinstance(ax, np.ndarray)
                     ax[plotnumber].plot(plot_times, colour_delta_mag, linewidth=4, **plotkwargs)
                 else:
                     ax.plot(plot_times, colour_delta_mag, linewidth=3, **plotkwargs)
 
-                curax = ax[plotnumber] if args.subplots else ax
+                curax = ax if isinstance(ax, mplax.Axes) else ax[plotnumber]
+                assert isinstance(curax, mplax.Axes)
                 curax.invert_yaxis()
                 curax.annotate(
                     f"{filter_names[0]}-{filter_names[1]}",
