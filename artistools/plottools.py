@@ -150,17 +150,25 @@ def set_axis_properties(ax: t.Iterable[mplax.Axes] | mplax.Axes, args: argparse.
 
 
 def set_axis_labels(
-    fig: mplfig.Figure, ax: mplax.Axes, xlabel: str, ylabel: str, labelfontsize: int | None, args: argparse.Namespace
-):
+    fig: mplfig.Figure,
+    ax: mplax.Axes | np.ndarray,
+    xlabel: str,
+    ylabel: str,
+    labelfontsize: int | None,
+    args: argparse.Namespace,
+) -> None:
     if args.subplots:
         fig.text(0.5, 0.02, xlabel, ha="center", va="center")
         fig.text(0.02, 0.5, ylabel, ha="center", va="center", rotation="vertical")
     else:
+        assert isinstance(ax, mplax.Axes)
         ax.set_xlabel(xlabel, fontsize=labelfontsize)
         ax.set_ylabel(ylabel, fontsize=labelfontsize)
 
 
-def imshow_init_for_artis_grid(ngrid: int, vmax: float, plot_variable_3d_array: npt.NDArray, plot_axes: str = "xy"):
+def imshow_init_for_artis_grid(
+    ngrid: int, vmax: float, plot_variable_3d_array: npt.NDArray, plot_axes: str = "xy"
+) -> tuple[npt.NDArray, tuple[float, float, float, float]]:
     # ngrid = round(len(model['inputcellid']) ** (1./3.))
     extentdict = {"left": -vmax, "right": vmax, "bottom": vmax, "top": -vmax}
     extent = extentdict["left"], extentdict["right"], extentdict["bottom"], extentdict["top"]

@@ -6,6 +6,7 @@ from pathlib import Path
 
 import argcomplete
 import matplotlib.pyplot as plt
+import numpy as np
 import polars as pl
 
 import artistools as at
@@ -40,6 +41,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         figsize=(8, 8),
         tight_layout={"pad": 0.4, "w_pad": 0.0, "h_pad": 0.0},
     )
+    assert isinstance(axes, np.ndarray)
 
     if not args.modelpath:
         args.modelpath = ["."]

@@ -90,8 +90,9 @@ def plot_qdot(
         tight_layout={"pad": 0.4, "w_pad": 0.0, "h_pad": 0.0},
     )
     if nrows == 1:
-        axes = [axes]
+        axes = np.array([axes])
 
+    assert isinstance(axes, np.ndarray)
     axis = axes[0]
 
     # axis.set_ylim(bottom=1e7, top=2e10)
@@ -235,7 +236,7 @@ def plot_cell_abund_evolution(
     )
     fig.subplots_adjust(top=0.8)
     # axis.set_xscale('log')
-
+    assert isinstance(axes, np.ndarray)
     axes[-1].set_xlabel("Time [days]")
     axis = axes[0]
     print("nuc gsi_abund artis_abund")

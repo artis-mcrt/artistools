@@ -129,7 +129,9 @@ def make_downscaled_3d_grid(
             print("matplotlib not found, skipping")
             return outputfolder
 
-        fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, figsize=(6.8 * 1.5, 4.8))
+        fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(6.8 * 1.5, 4.8))
+        assert isinstance(axes, np.ndarray)
+        (ax1, ax2) = axes
 
         middle_ind = int(rho.shape[0] / 2)
         im1 = ax1.imshow(rho[middle_ind, :, :])

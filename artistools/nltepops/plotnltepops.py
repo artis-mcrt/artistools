@@ -413,6 +413,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths: list[Path | str], ar
         figsize=(at.get_config()["figwidth"] * 2 * cols, at.get_config()["figwidth"] * 0.85 * rows),
         tight_layout={"pad": 2.0, "w_pad": 0.2, "h_pad": 0.2},
     )
+    assert isinstance(ax, np.ndarray)
     if args.subplots:
         ax = ax.flatten()
 
@@ -439,6 +440,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths: list[Path | str], ar
                 axis.text(xmax * 0.85, ymin * 50, f"{args.timedayslist[plotnumber]} days")
         ax[0].legend(loc="best", frameon=True, fontsize="x-small", ncol=1)
     else:
+        assert isinstance(ax, mplax.Axes)
         ax.legend(loc="best", frameon=True, fontsize="x-small", ncol=1)
         ax.set_yscale("log")
 
@@ -562,7 +564,9 @@ def make_plot(modelpath, atomic_number, ion_stages_displayed, mgilist, timestep,
     )
 
     if nrows == 1:
-        axes = [axes]
+        axes = np.array([axes])
+
+    assert isinstance(axes, np.ndarray)
 
     prev_ion_stage = -1
     assert len(mgilist) > 0

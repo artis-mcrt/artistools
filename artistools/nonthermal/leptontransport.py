@@ -2,6 +2,7 @@
 import math
 
 import matplotlib.pyplot as plt
+import numpy as np
 
 CONST_EV_IN_J = 1.602176634e-19  # 1 eV [J]
 
@@ -135,6 +136,7 @@ def main() -> None:
     fig, axes = plt.subplots(
         nrows=2, ncols=1, sharex=False, figsize=(5, 8), tight_layout={"pad": 0.5, "w_pad": 0.0, "h_pad": 1.0}
     )
+    assert isinstance(axes, np.ndarray)
     axes[0].plot(arr_dist, arr_energy_ev)
     axes[0].set_xlabel(r"Distance [m]")
     axes[0].set_ylabel(r"Energy [eV]")

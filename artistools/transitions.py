@@ -140,7 +140,9 @@ def make_plot(
     )
 
     if len(ionlist) == 1:
-        axes = [axes]
+        axes = np.array([axes])
+
+    assert isinstance(axes, np.ndarray)
 
     if figure_title:
         print(figure_title)
