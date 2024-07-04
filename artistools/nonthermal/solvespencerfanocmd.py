@@ -302,7 +302,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             adata = None
             dfpops = None
         else:
-            adata = at.atomic.get_levels(modelpath, get_transitions=True, ionlist=tuple(ions))
+            adata = at.atomic.get_levels_polars(modelpath, get_transitions=True, ionlist=tuple(ions))
 
         if step == 0 and args.ostat:
             with Path(args.ostat).open("w", encoding="utf-8") as fstat:
@@ -320,7 +320,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
                 sf.add_ionisation(Z, ion_stage, nnion)
                 if not args.noexcitation:
-                    sf.add_ion_ltepopexcitation(Z, ion_stage, nnion, adata=adata, temperature=T_e)
+                    sf.add_ion_ltepopexcitation(Z, ion_stage, nnion, adata_polars=adata, temperature=T_e)
 
             sf.solve(depositionratedensity_ev=deposition_density_ev)
 
