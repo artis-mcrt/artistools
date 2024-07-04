@@ -311,9 +311,10 @@ def make_flux_ratio_plot(args: argparse.Namespace) -> None:
         ),
         tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
     )
+    assert isinstance(axes, np.ndarray)
 
     if nrows == 1:
-        axes = [axes]
+        axes = np.array([axes])
 
     axis = axes[0]
     axis.set_yscale("log")
@@ -690,6 +691,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
                 ),
                 tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.2},
             )
+            assert isinstance(axis, mplax.Axes)
 
             for refdataindex in range(len(refdatafilenames)):
                 timeindex = np.abs(refdatatimes[refdataindex] - tmid).argmin()

@@ -198,7 +198,9 @@ def plot_spherical(
     )
 
     if len(plotvars) == 1:
-        axes = (axes,)
+        axes = np.array([axes])
+
+    assert isinstance(axes, np.ndarray)
 
     # for ax, axcbar, plotvar in zip(axes[::2], axes[1::2], plotvars):
     for ax, plotvar in zip(axes, plotvars, strict=False):

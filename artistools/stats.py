@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import numpy as np
 
 xminvalue, xmaxvalue = 3500, 7000
 
@@ -19,6 +20,7 @@ def main() -> None:
     fig, axes = plt.subplots(
         nrows=2, ncols=1, sharey=True, figsize=(8, 5), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0}
     )
+    assert isinstance(axes, np.ndarray)
 
     for index, logfilename in enumerate(logfiles):
         runfolder = logfilename.parent

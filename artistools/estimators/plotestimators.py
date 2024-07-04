@@ -745,7 +745,9 @@ def make_plot(
         # tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
     )
     if len(plotlist) == 1:
-        axes = [axes]
+        axes = np.array([axes])
+
+    assert isinstance(axes, np.ndarray)
 
     # ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
     if not args.hidexlabel:

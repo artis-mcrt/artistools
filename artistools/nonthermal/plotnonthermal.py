@@ -158,7 +158,9 @@ def make_plot(modelpaths: list[Path], args: argparse.Namespace) -> None:
     )
 
     if nplots == 1:
-        axes = [axes]
+        axes = np.array([axes])
+
+    assert isinstance(axes, np.ndarray)
 
     if args.kf1992spec:
         kf92spec = pd.read_csv(Path(modelpaths[0], "KF1992spec-fig1.txt"), header=None, names=["e_kev", "log10_y"])

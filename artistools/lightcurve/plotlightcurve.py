@@ -6,10 +6,12 @@ import math
 import sys
 import typing as t
 from collections.abc import Iterable
+from collections.abc import Sequence
 from pathlib import Path
 
 import argcomplete
 import matplotlib as mpl
+import matplotlib.axes as mplax
 import matplotlib.cm as mplcm
 import matplotlib.colors as mplcolors
 import matplotlib.pyplot as plt
@@ -24,7 +26,14 @@ import artistools as at
 color_list = list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20)))
 
 
-def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkwargs, args: argparse.Namespace) -> None:
+def plot_deposition_thermalisation(
+    axis: mplax.Axes,
+    axistherm: mplax.Axes | None,
+    modelpath: str | Path,
+    modelname: str,
+    plotkwargs: dict[str, t.Any],
+    args: argparse.Namespace,
+) -> None:
     # if args.logscalex:
     #     axistherm.set_xscale("log")
 
@@ -65,8 +74,8 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
     #             'color': color_total,
     #         }))
 
-    color_gamma = axis._get_lines.get_next_color()  # noqa: SLF001
-    color_gamma = axis._get_lines.get_next_color()  # noqa: SLF001
+    color_gamma = axis._get_lines.get_next_color()  # type: ignore[attr-defined] # noqa: SLF001
+    color_gamma = axis._get_lines.get_next_color()  # type: ignore[attr-defined] # noqa: SLF001
 
     # axis.plot(depdata['tmid_days'], depdata['eps_gamma_Lsun'] * 3.826e33, **dict(
     #     plotkwargs, **{
@@ -88,7 +97,7 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
         },
     )
 
-    color_beta = axis._get_lines.get_next_color()  # noqa: SLF001
+    color_beta = axis._get_lines.get_next_color()  # type: ignore[attr-defined] # noqa: SLF001
 
     if "eps_elec_Lsun" in depdata:
         axis.plot(
@@ -174,6 +183,7 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
         )
 
     if args.plotthermalisation:
+        assert axistherm is not None
         f_gamma = depdata["gammadep_Lsun"] / depdata["eps_gamma_Lsun"]
         axistherm.plot(
             depdata["tmid_days"],
@@ -276,7 +286,7 @@ def plot_artis_lightcurve(
     frompackets: bool = False,
     maxpacketfiles: int | None = None,
     axistherm=None,
-    directionbins: t.Sequence[int] | None = None,
+    directionbins: Sequence[int] | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
     usedegrees: bool = False,
@@ -475,7 +485,7 @@ def plot_artis_lightcurve(
 
 
 def make_lightcurve_plot(
-    modelpaths: t.Sequence[str | Path],
+    modelpaths: Sequence[str | Path],
     filenameout: str | Path,
     frompackets: bool = False,
     escape_type: t.Literal["TYPE_RPKT", "TYPE_GAMMA"] = "TYPE_RPKT",
@@ -693,7 +703,9 @@ def create_axes(args):
         figsize=(args.figwidth, args.figheight),
         tight_layout={"pad": 3.0, "w_pad": 0.6, "h_pad": 0.6},
     )  # (6.2 * 3, 9.4 * 3)
+
     if args.subplots:
+        assert isinstance(ax, np.ndarray)
         ax = ax.flatten()
 
     return fig, ax
@@ -829,7 +841,9 @@ def make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args, fig=Non
         cbar.update_ticks()
 
 
-def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfolder, args: argparse.Namespace) -> None:
+def make_band_lightcurves_plot(
+    modelpaths: Sequence[str | Path], filternames_conversion_dict: dict, outputfolder, args: argparse.Namespace
+) -> None:
     # angle_names = [0, 45, 90, 180]
     # plt.style.use('dark_background')
 
@@ -916,11 +930,12 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                     if len(angles) > 1 and index > 0:
                         print("already plotted reflightcurve")
                     else:
+                        assert isinstance(ax, mplax.Axes)
                         define_colours_list = args.refspeccolors
                         markers = args.refspecmarkers
                         for i, reflightcurve in enumerate(args.reflightcurves):
                             plot_lightcurve_from_refdata(
-                                band_lightcurve_data.keys(),
+                                list(band_lightcurve_data.keys()),
                                 reflightcurve,
                                 define_colours_list[i],
                                 markers[i],
@@ -1131,13 +1146,20 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
 
 
 def plot_lightcurve_from_refdata(
-    filter_names, lightcurvefilename, color, marker, filternames_conversion_dict, ax, plotnumber
-):
+    filter_names: Sequence[str],
+    lightcurvefilename: Path | str,
+    color,
+    marker,
+    filternames_conversion_dict,
+    ax: np.ndarray | mplax.Axes,
+    plotnumber: int,
+) -> str | None:
     from extinction import apply
     from extinction import ccm89
 
     lightcurve_data, metadata = at.lightcurve.read_reflightcurve_band_data(lightcurvefilename)
     linename = metadata["label"] if plotnumber == 0 else None
+    assert linename is None or isinstance(linename, str)
     filterdir = Path(at.get_config()["path_artistools_dir"], "data/filters/")
 
     filter_data = {}
@@ -1177,6 +1199,7 @@ def plot_lightcurve_from_refdata(
         else:
             print("WARNING: did not correct for reddening")
         if len(filter_names) > 1:
+            assert isinstance(ax, np.ndarray)
             ax[axnumber].plot(
                 filter_data[filter_name]["time"],
                 filter_data[filter_name]["magnitude"],
@@ -1185,6 +1208,7 @@ def plot_lightcurve_from_refdata(
                 color=color,
             )
         else:
+            assert isinstance(ax, mplax.Axes)
             ax.plot(
                 filter_data[filter_name]["time"],
                 filter_data[filter_name]["magnitude"],
@@ -1566,7 +1590,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--legendframeon", action="store_true", help="Frame on in legend")
 
 
-def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs: t.Any) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot ARTIS light curve."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)

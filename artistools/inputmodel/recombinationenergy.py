@@ -175,9 +175,8 @@ def get_particles_recomb_nuc_energy(traj_root, dfbinding):
         marker=".",
     )
     ax.legend(loc="best", handlelength=2, frameon=False, numpoints=1)
-    ax.xlabel("Ye")
-    # ax.ylabel('eV / g')
-    ax.yscale("log")
+    ax.set_xlabel("Ye")
+    ax.set_yscale("log")
     ax.set_ylim(bottom=1e24, top=1e33)
 
     fig.savefig("recomb.pdf", format="pdf")

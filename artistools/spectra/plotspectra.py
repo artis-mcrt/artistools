@@ -439,7 +439,7 @@ def plot_artis_spectrum(
 
 def make_spectrum_plot(
     speclist: t.Collection[Path | str],
-    axes: t.Sequence[mplax.Axes],
+    axes: t.Sequence[mplax.Axes] | np.ndarray,
     filterfunc: t.Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None,
     args,
     scale_to_peak: float | None = None,
@@ -948,7 +948,7 @@ def make_contrib_plot(
         # ax.pcolormesh(xi, yi, zi.reshape(xi.shape), shading='gouraud', cmap=plt.cm.BuGn_r)
 
 
-def make_plot(args) -> tuple[mplfig.Figure, list[mplax.Axes], pl.DataFrame]:
+def make_plot(args) -> tuple[mplfig.Figure, np.ndarray, pl.DataFrame]:
     # font = {'size': 16}
     # mpl.rc('font', **font)
 
@@ -975,7 +975,8 @@ def make_plot(args) -> tuple[mplfig.Figure, list[mplax.Axes], pl.DataFrame]:
         tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
     )
 
-    axes = [axes] if nrows == 1 else list(axes)
+    axes = np.array([axes]) if nrows == 1 else np.array(axes)
+    assert isinstance(axes, np.ndarray)
 
     filterfunc = at.get_filterfunc(args)
 

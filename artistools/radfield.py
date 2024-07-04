@@ -702,7 +702,12 @@ def plot_celltimestep(modelpath, timestep, outputfile, xmin, xmax, modelgridinde
         tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
     )
 
-    axis = axes if nrows == 1 else axes[-1]
+    if isinstance(axes, mplax.Axes):
+        axes = np.array([axes])
+    assert isinstance(axes, np.ndarray)
+    axis = axes[-1]
+
+    assert isinstance(axis, mplax.Axes)
     ymax = 0.0
 
     xlist, yvalues = get_fullspecfittedfield(radfielddata, xmin, xmax, modelgridindex=modelgridindex, timestep=timestep)
@@ -894,6 +899,11 @@ def plot_timeevolution(modelpath, outputfile, modelgridindex, args: argparse.Nam
         ),
         tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
     )
+
+    if isinstance(axes, mplax.Axes):
+        axes = np.array([axes])
+
+    assert isinstance(axes, np.ndarray)
 
     timestep = at.get_timestep_of_timedays(modelpath, 330)
     time_days = at.get_timestep_time(modelpath, timestep)
