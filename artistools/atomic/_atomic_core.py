@@ -16,7 +16,7 @@ import artistools as at
 
 def parse_adata(
     fadata: io.TextIOBase,
-    phixsdict: dict[tuple[int, int, int], tuple[npt.NDArray, npt.NDArray]],
+    phixsdict: dict[tuple[int, int, int], tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]],
     ionlist: t.Collection[tuple[int, int]] | None,
 ) -> t.Generator[tuple[int, int, int, float, pl.DataFrame], None, None]:
     """Generate ions and their level lists from adata.txt."""
@@ -32,7 +32,9 @@ def parse_adata(
         level_count = int(ionheader[2])
 
         if not ionlist or (Z, ion_stage) in ionlist:
-            level_list: list[tuple[float, float, int, str | None, npt.NDArray | None, npt.NDArray | None]] = []
+            level_list: list[
+                tuple[float, float, int, str | None, npt.NDArray[np.float64] | None, npt.NDArray[np.float64] | None]
+            ] = []
             for levelindex in range(level_count):
                 row = fadata.readline().split(maxsplit=4)
 
@@ -115,7 +117,7 @@ def read_transitiondata(
 
 def parse_phixsdata(
     phixs_filename: Path | str, ionlist: t.Collection[tuple[int, int]] | None = None
-) -> dict[tuple[int, int, int], tuple[npt.NDArray, npt.NDArray]]:
+) -> dict[tuple[int, int, int], tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]]:
     firstlevelnumber = 1
     phixsdict = {}
     with at.zopen(phixs_filename) as fphixs:
