@@ -16,7 +16,7 @@ outputpath = Path(at.get_config()["path_testoutput"])
 
 
 @mock.patch.object(matplotlib.axes.Axes, "plot", side_effect=matplotlib.axes.Axes.plot, autospec=True)
-@pytest.mark.benchmark()
+@pytest.mark.benchmark
 def test_estimator_snapshot(mockplot, benchmark) -> None:
     plotlist = [
         [["initabundances", ["Fe", "Ni_stable", "Ni_56"]]],
@@ -93,7 +93,7 @@ def test_estimator_snapshot(mockplot, benchmark) -> None:
 
 
 @mock.patch.object(matplotlib.axes.Axes, "plot", side_effect=matplotlib.axes.Axes.plot, autospec=True)
-@pytest.mark.benchmark()
+@pytest.mark.benchmark
 def test_estimator_averaging(mockplot, benchmark) -> None:
     plotlist = [
         [["initabundances", ["Fe", "Ni_stable", "Ni_56"]]],
@@ -294,7 +294,7 @@ def test_estimator_snapshot_classic_3d_x_axis(mockplot) -> None:
 
 
 @mock.patch.object(matplotlib.axes.Axes, "plot", side_effect=matplotlib.axes.Axes.plot, autospec=True)
-@pytest.mark.benchmark()
+@pytest.mark.benchmark
 def test_estimator_timeevolution(mockplot) -> None:
     at.estimators.plot(
         argsraw=[],
@@ -306,7 +306,7 @@ def test_estimator_timeevolution(mockplot) -> None:
     )
 
 
-@pytest.mark.benchmark()
+@pytest.mark.benchmark
 def test_rust_estimator_parser() -> None:
     test_outputpath = outputpath / "test_rust_estimator_parser"
     dfestimators: list[pl.DataFrame] = []

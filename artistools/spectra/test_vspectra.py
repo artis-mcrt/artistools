@@ -9,7 +9,7 @@ import artistools as at
 
 
 @mock.patch.object(matplotlib.axes.Axes, "plot", side_effect=matplotlib.axes.Axes.plot, autospec=True)
-@pytest.mark.benchmark()
+@pytest.mark.benchmark
 def test_vspectraplot(mockplot, benchmark):
     at.spectra.plot(
         argsraw=[],
@@ -61,7 +61,7 @@ def test_vspectraplot(mockplot, benchmark):
 
 
 @mock.patch.object(matplotlib.axes.Axes, "plot", side_effect=matplotlib.axes.Axes.plot, autospec=True)
-@pytest.mark.benchmark()
+@pytest.mark.benchmark
 def test_vpkt_frompackets_spectrum_plot(mockplot, benchmark):
     at.spectra.plot(
         argsraw=[],
