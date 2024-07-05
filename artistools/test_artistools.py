@@ -91,21 +91,21 @@ def test_macroatom() -> None:
     at.macroatom.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, timestep=10)
 
 
-@pytest.mark.benchmark()
+@pytest.mark.benchmark
 def test_nltepops() -> None:
     # at.nltepops.plot(modelpath=modelpath, outputfile=outputpath, timedays=300),
     #                    **benchargs)
     at.nltepops.plot(argsraw=[], modelpath=modelpath, outputfile=outputpath, timestep=40)
 
 
-@pytest.mark.benchmark()
+@pytest.mark.benchmark
 def test_radfield() -> None:
     funcoutpath = outputpath / funcname()
     funcoutpath.mkdir(exist_ok=True, parents=True)
     at.radfield.main(argsraw=[], modelpath=modelpath, modelgridindex=0, outputfile=funcoutpath)
 
 
-@pytest.mark.benchmark()
+@pytest.mark.benchmark
 def test_plotspherical() -> None:
     funcoutpath = outputpath / funcname()
     funcoutpath.mkdir(exist_ok=True, parents=True)
@@ -116,12 +116,12 @@ def test_plotspherical_gif() -> None:
     at.plotspherical.main(argsraw=[], modelpath=modelpath, makegif=True, timemax=270, outputfile=outputpath)
 
 
-@pytest.mark.benchmark()
+@pytest.mark.benchmark
 def test_transitions() -> None:
     at.transitions.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, timedays=300)
 
 
-@pytest.mark.benchmark()
+@pytest.mark.benchmark
 def test_write_comparisondata() -> None:
     at.writecomparisondata.main(
         argsraw=[], modelpath=modelpath, outputpath=outputpath, selected_timesteps=list(range(99))

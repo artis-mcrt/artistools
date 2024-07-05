@@ -31,6 +31,6 @@ def test_get_levels(benchmark) -> None:
     assert isclose(fe2_levels.iloc[2822]["energy_ev"], 23.048643, abs_tol=1e-6)
 
 
-@pytest.mark.benchmark()
+@pytest.mark.benchmark
 def test_get_ionrecombratecalibration() -> None:
     at.atomic.get_ionrecombratecalibration(modelpath=modelpath)
