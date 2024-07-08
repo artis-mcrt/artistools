@@ -131,7 +131,10 @@ def add_derived_columns(
     colnames: t.Sequence[str],
     allnonemptymgilist: t.Sequence[int] | None = None,
 ) -> pd.DataFrame:
-    """Add columns to a packets DataFrame that are derived from the values that are stored in the packets files."""
+    """Add columns to a packets DataFrame that are derived from the values that are stored in the packets files.
+
+    DEPRECATED: Use add_derived_columns_lazy instead.
+    """
     modelpath = Path(modelpathin)
     cm_to_km = 1e-5
     day_in_s = 86400
