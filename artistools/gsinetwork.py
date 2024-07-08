@@ -21,7 +21,7 @@ import polars as pl
 import artistools as at
 
 
-def strnuc_to_latex(strnuc: str):
+def strnuc_to_latex(strnuc: str) -> str:
     """Convert a string like sr89 to $^{89}$Sr."""
     elsym = strnuc.rstrip(string.digits)
     massnum = strnuc.removeprefix(elsym)
@@ -34,7 +34,7 @@ def plot_qdot(
     dfpartcontrib: pl.DataFrame,
     lzdfmodel: pl.LazyFrame,
     modelmeta: dict[str, t.Any],
-    allparticledata: dict[int, dict[str, np.ndarray]],
+    allparticledata: dict[int, dict[str, npt.NDArray[np.float64]]],
     arr_time_artis_days: Sequence[float],
     arr_time_gsi_days: Sequence[float],
     pdfoutpath: Path | str,
@@ -196,7 +196,7 @@ def plot_qdot(
 def plot_cell_abund_evolution(
     modelpath: Path,
     dfpartcontrib: pl.DataFrame,
-    allparticledata: dict[int, dict[str, np.ndarray]],
+    allparticledata: dict[int, dict[str, npt.NDArray[np.float64]]],
     arr_time_artis_days: Sequence[float],
     arr_time_gsi_days: Sequence[float],
     arr_strnuc: Sequence[str],
@@ -398,7 +398,7 @@ def plot_qdot_abund_modelcells(
     mgiplotlist: Sequence[int],
     arr_el_a: list[tuple[str, int]],
     xmax: None | float = None,
-):
+) -> None:
     # default values, because early model.txt didn't specify this
     griddatafolder: Path = Path("SFHo_snapshot")
     mergermodelfolder: Path = Path("SFHo_short")
@@ -435,6 +435,8 @@ def plot_qdot_abund_modelcells(
 
     # these factors correct for missing mass due to skipped shells, and volume error due to Cartesian grid map
     correction_factors = {}
+    assoc_cells: dict[int, list[int]] = {}
+    mgi_of_propcells: dict[int, int] = {}
     try:
         assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath)
         direct_model_propgrid_map = all(
