@@ -7,6 +7,7 @@ import contextlib
 import math
 import string
 import typing as t
+from collections.abc import Sequence
 from functools import partial
 from pathlib import Path
 
@@ -34,8 +35,8 @@ def plot_qdot(
     lzdfmodel: pl.LazyFrame,
     modelmeta: dict[str, t.Any],
     allparticledata: dict[int, dict[str, np.ndarray]],
-    arr_time_artis_days: t.Sequence[float],
-    arr_time_gsi_days: t.Sequence[float],
+    arr_time_artis_days: Sequence[float],
+    arr_time_gsi_days: Sequence[float],
     pdfoutpath: Path | str,
     xmax: None | float = None,
 ) -> None:
@@ -195,10 +196,10 @@ def plot_qdot(
 def plot_cell_abund_evolution(
     modelpath: Path,
     dfpartcontrib: pl.DataFrame,
-    allparticledata,
-    arr_time_artis_days: t.Sequence[float],
-    arr_time_gsi_days: t.Sequence[float],
-    arr_strnuc: t.Sequence[str],
+    allparticledata: dict[int, dict[str, np.ndarray]],
+    arr_time_artis_days: Sequence[float],
+    arr_time_gsi_days: Sequence[float],
+    arr_strnuc: Sequence[str],
     arr_abund_artis: dict[str, list[float]],
     t_model_init_days: float,
     dfcell: pl.DataFrame,
@@ -299,7 +300,7 @@ def plot_cell_abund_evolution(
 
 
 def get_particledata(
-    arr_time_s: t.Sequence[float] | npt.NDArray[np.float64],
+    arr_time_s: Sequence[float] | npt.NDArray[np.float64],
     arr_strnuc_z_n: list[tuple[str, int, int]],
     traj_root: Path,
     particleid: int,
@@ -394,7 +395,7 @@ def get_particledata(
 def plot_qdot_abund_modelcells(
     modelpath: Path,
     merger_root: Path,
-    mgiplotlist: t.Sequence[int],
+    mgiplotlist: Sequence[int],
     arr_el_a: list[tuple[str, int]],
     xmax: None | float = None,
 ):
@@ -654,7 +655,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs: t.Any) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Compare the energy release and abundances from ARTIS to the GSI Network calculation."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
