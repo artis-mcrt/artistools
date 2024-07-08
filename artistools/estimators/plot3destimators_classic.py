@@ -136,12 +136,13 @@ def make_2d_plot(grid, grid_Te, vmax, modelpath, xgrid, time):
             "label_font_size": 25,
         }
 
-        pv.set_plot_theme("document")  # set white background # pyright: ignore[reportCallIssue]
-        p = pv.Plotter()  # pyright: ignore[reportCallIssue]
-        p.set_scale(1.5, 1.5, 1.5)
+        pv.set_plot_theme("document")  # set white background
+        p = pv.Plotter()
+        p.set_scale(p, xscale=1.5, yscale=1.5, zscale=1.5)
         single_slice = mesh.slice(normal="z")
         p.add_mesh(single_slice, scalar_bar_args=sargs)  # , clim=[100, 60000]
         p.show_bounds(
+            p,
             grid=False,
             xlabel="vx / c",
             ylabel="vy / c",
