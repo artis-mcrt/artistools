@@ -161,28 +161,28 @@ jobs:
                   curl -LsSf https://astral.sh/uv/install.sh | sh
                   python3 -m pip install uv
 
-            - name: Install pre-release packages for 3.13
-              if: ${{ endsWith(matrix.python-version, '-dev') }}
-              run: |
-                  python3 -m pip install -U --pre wrapt pip setuptools meson meson-python==0.13.1 maturin setuptools-scm wheel python-dateutil pytz tzdata ninja versioneer Cython
-                  python3 -m pip install -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple numpy
-                  python3 -m pip install --no-build-isolation -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple pandas
-                  python3 -m pip install --pre -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple scipy-openblas64
-                  python3 -m pip install --upgrade --pre --index-url https://pypi.anaconda.org/scientific-python-nightly-wheels/simple --extra-index-url https://pypi.org/simple matplotlib
-                  #python3 -m pip install --pre -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple pyarrow
-                  python3 -m uv pip install git+https://github.com/indygreg/python-zstandard.git
-                  python3 -m uv pip install --no-build-isolation imageio
-                  #pip install --extra-index-url https://pypi.fury.io/arrow-nightlies/ --prefer-binary --pre pyarrow
-                  #python3.13 -m uv pip install git+https://github.com/scipy/scipy.git
-                  python3 -m pip install --pre -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple --extra-index-url https://pypi.org/simple scipy
-                  #python3 -m pip install --pre scipy
-                  sudo apt install -y -V libarrow-dev
-                  conda install -c arrow-nightlies pyarrow
-                  grep -v -e '^extinction' -e '^pyvista' -e '^scipy' -e '^pyarrow' requirements.txt > requirements3.13.txt
-                  PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 python3.13 -m uv pip install --no-build-isolation fastparquet
-                  python3 -m pip install --no-build-isolation astropy
-                  mv requirements3.13.txt requirements.txt
-                  cat requirements.txt
+            # - name: Install pre-release packages for 3.13
+            #   if: ${{ endsWith(matrix.python-version, '-dev') }}
+            #   run: |
+            #       python3 -m pip install -U --pre wrapt pip setuptools meson meson-python==0.13.1 maturin setuptools-scm wheel python-dateutil pytz tzdata ninja versioneer Cython
+            #       python3 -m pip install -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple numpy
+            #       python3 -m pip install --no-build-isolation -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple pandas
+            #       python3 -m pip install --pre -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple scipy-openblas64
+            #       python3 -m pip install --upgrade --pre --index-url https://pypi.anaconda.org/scientific-python-nightly-wheels/simple --extra-index-url https://pypi.org/simple matplotlib
+            #       #python3 -m pip install --pre -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple pyarrow
+            #       python3 -m uv pip install git+https://github.com/indygreg/python-zstandard.git
+            #       python3 -m uv pip install --no-build-isolation imageio
+            #       #pip install --extra-index-url https://pypi.fury.io/arrow-nightlies/ --prefer-binary --pre pyarrow
+            #       #python3.13 -m uv pip install git+https://github.com/scipy/scipy.git
+            #       python3 -m pip install --pre -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple --extra-index-url https://pypi.org/simple scipy
+            #       #python3 -m pip install --pre scipy
+            #       sudo apt install -y -V libarrow-dev
+            #       conda install -c arrow-nightlies pyarrow
+            #       grep -v -e '^extinction' -e '^pyvista' -e '^scipy' -e '^pyarrow' requirements.txt > requirements3.13.txt
+            #       PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 python3.13 -m uv pip install --no-build-isolation fastparquet
+            #       python3 -m pip install --no-build-isolation astropy
+            #       mv requirements3.13.txt requirements.txt
+            #       cat requirements.txt
 
             - name: Cache rust build
               uses: actions/cache@v4
