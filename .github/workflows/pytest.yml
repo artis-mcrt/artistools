@@ -156,11 +156,6 @@ jobs:
             - name: Show python version
               run: python3 --version --version && which python3
 
-            - name: Install uv
-              run: |
-                  curl -LsSf https://astral.sh/uv/install.sh | sh
-                  python3 -m pip install uv
-
             # - name: Install pre-release packages for 3.13
             #   if: ${{ endsWith(matrix.python-version, '-dev') }}
             #   run: |
@@ -195,8 +190,8 @@ jobs:
 
             - name: Install artistools
               run: |
-                  #curl -LsSf https://astral.sh/uv/install.sh | sh
-                  uv pip install --system --upgrade --compile-bytecode --editable  .
+                  #uv pip install --system --upgrade --compile-bytecode --editable  .
+                  python3 -m pip install --editable  .
 
             - name: Cache test data
               uses: actions/cache@v4
