@@ -187,7 +187,7 @@ def get_spectra(modelpath: str | Path) -> tuple[pd.DataFrame, np.ndarray]:
 
 def plot_spectrum(modelpath: str | Path, timedays: str | float, axis: mplax.Axes, **plotkwargs) -> None:
     dfspectra, arr_timedays = get_spectra(modelpath)
-    timeindex = (np.abs(arr_timedays - float(timedays))).argmin()
+    timeindex = int((np.abs(arr_timedays - float(timedays))).argmin())
     timedays_found = dfspectra.columns[timeindex + 1]
 
     print(f"{modelpath}: requested spectrum at {timedays} days. Closest matching spectrum is at {timedays_found} days")

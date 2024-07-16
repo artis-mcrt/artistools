@@ -21,7 +21,7 @@ def test_describeinputmodel() -> None:
     at.inputmodel.describeinputmodel.main(argsraw=[], inputfile=modelpath, isotopes=True)
 
 
-@pytest.mark.benchmark()
+@pytest.mark.benchmark
 def test_describeinputmodel_3d() -> None:
     at.inputmodel.describeinputmodel.main(argsraw=[], inputfile=modelpath_3d, isotopes=True)
 
@@ -37,7 +37,7 @@ def test_get_modeldata_1d() -> None:
     assert np.isclose(dfmodel.mass_g.sum(), 1.416963e33)
 
 
-@pytest.mark.benchmark()
+@pytest.mark.benchmark
 def test_get_modeldata_3d() -> None:
     for getheadersonly in (False, True):
         dfmodel, modelmeta = at.get_modeldata(modelpath=modelpath_3d, getheadersonly=getheadersonly)
@@ -199,7 +199,7 @@ def test_makeartismodelfrom_sph_particles() -> None:
                         assert np.isclose(lowerd_mass, model3_mass, rtol=5e-2)
 
 
-@pytest.mark.benchmark()
+@pytest.mark.benchmark
 def test_makeartismodelfrom_fortrangriddat() -> None:
     gridfolderpath = testdatapath / "kilonova"
     outpath_kn = outputpath / "kilonova"
@@ -255,14 +255,14 @@ def test_plotdensity() -> None:
     at.inputmodel.plotdensity.main(argsraw=[], modelpath=[modelpath], outputpath=outputpath)
 
 
-@pytest.mark.benchmark()
+@pytest.mark.benchmark
 def test_plotinitialcomposition() -> None:
     at.inputmodel.plotinitialcomposition.main(
         argsraw=["-modelpath", str(modelpath_3d), "-o", str(outputpath), "rho", "Fe"]
     )
 
 
-@pytest.mark.benchmark()
+@pytest.mark.benchmark
 def test_save_load_3d_model() -> None:
     lzdfmodel, modelmeta = at.inputmodel.get_empty_3d_model(
         ncoordgrid=25, vmax=1000, t_model_init_days=1, includenico57=True
@@ -381,16 +381,16 @@ def lower_dim_and_check_mass_conservation(outputdimensions: int) -> None:
             )
 
 
-@pytest.mark.benchmark()
+@pytest.mark.benchmark
 def test_dimension_reduce_3d_2d() -> None:
     lower_dim_and_check_mass_conservation(outputdimensions=2)
 
 
-@pytest.mark.benchmark()
+@pytest.mark.benchmark
 def test_dimension_reduce_3d_1d() -> None:
     lower_dim_and_check_mass_conservation(outputdimensions=1)
 
 
-@pytest.mark.benchmark()
+@pytest.mark.benchmark
 def test_dimension_reduce_3d_0d() -> None:
     lower_dim_and_check_mass_conservation(outputdimensions=0)

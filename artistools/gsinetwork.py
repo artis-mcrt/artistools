@@ -7,6 +7,7 @@ import contextlib
 import math
 import string
 import typing as t
+from collections.abc import Sequence
 from functools import partial
 from pathlib import Path
 
@@ -20,7 +21,7 @@ import polars as pl
 import artistools as at
 
 
-def strnuc_to_latex(strnuc: str):
+def strnuc_to_latex(strnuc: str) -> str:
     """Convert a string like sr89 to $^{89}$Sr."""
     elsym = strnuc.rstrip(string.digits)
     massnum = strnuc.removeprefix(elsym)
@@ -33,9 +34,9 @@ def plot_qdot(
     dfpartcontrib: pl.DataFrame,
     lzdfmodel: pl.LazyFrame,
     modelmeta: dict[str, t.Any],
-    allparticledata: dict[int, dict[str, np.ndarray]],
-    arr_time_artis_days: t.Sequence[float],
-    arr_time_gsi_days: t.Sequence[float],
+    allparticledata: dict[int, dict[str, npt.NDArray[np.float64]]],
+    arr_time_artis_days: Sequence[float],
+    arr_time_gsi_days: Sequence[float],
     pdfoutpath: Path | str,
     xmax: None | float = None,
 ) -> None:
@@ -90,8 +91,9 @@ def plot_qdot(
         tight_layout={"pad": 0.4, "w_pad": 0.0, "h_pad": 0.0},
     )
     if nrows == 1:
-        axes = [axes]
+        axes = np.array([axes])
 
+    assert isinstance(axes, np.ndarray)
     axis = axes[0]
 
     # axis.set_ylim(bottom=1e7, top=2e10)
@@ -194,10 +196,10 @@ def plot_qdot(
 def plot_cell_abund_evolution(
     modelpath: Path,
     dfpartcontrib: pl.DataFrame,
-    allparticledata,
-    arr_time_artis_days: t.Sequence[float],
-    arr_time_gsi_days: t.Sequence[float],
-    arr_strnuc: t.Sequence[str],
+    allparticledata: dict[int, dict[str, npt.NDArray[np.float64]]],
+    arr_time_artis_days: Sequence[float],
+    arr_time_gsi_days: Sequence[float],
+    arr_strnuc: Sequence[str],
     arr_abund_artis: dict[str, list[float]],
     t_model_init_days: float,
     dfcell: pl.DataFrame,
@@ -235,7 +237,7 @@ def plot_cell_abund_evolution(
     )
     fig.subplots_adjust(top=0.8)
     # axis.set_xscale('log')
-
+    assert isinstance(axes, np.ndarray)
     axes[-1].set_xlabel("Time [days]")
     axis = axes[0]
     print("nuc gsi_abund artis_abund")
@@ -298,7 +300,7 @@ def plot_cell_abund_evolution(
 
 
 def get_particledata(
-    arr_time_s: t.Sequence[float] | npt.NDArray[np.float64],
+    arr_time_s: Sequence[float] | npt.NDArray[np.float64],
     arr_strnuc_z_n: list[tuple[str, int, int]],
     traj_root: Path,
     particleid: int,
@@ -393,10 +395,10 @@ def get_particledata(
 def plot_qdot_abund_modelcells(
     modelpath: Path,
     merger_root: Path,
-    mgiplotlist: t.Sequence[int],
+    mgiplotlist: Sequence[int],
     arr_el_a: list[tuple[str, int]],
     xmax: None | float = None,
-):
+) -> None:
     # default values, because early model.txt didn't specify this
     griddatafolder: Path = Path("SFHo_snapshot")
     mergermodelfolder: Path = Path("SFHo_short")
@@ -433,6 +435,8 @@ def plot_qdot_abund_modelcells(
 
     # these factors correct for missing mass due to skipped shells, and volume error due to Cartesian grid map
     correction_factors = {}
+    assoc_cells: dict[int, list[int]] = {}
+    mgi_of_propcells: dict[int, int] = {}
     try:
         assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath)
         direct_model_propgrid_map = all(
@@ -653,7 +657,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs: t.Any) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Compare the energy release and abundances from ARTIS to the GSI Network calculation."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)

@@ -188,27 +188,7 @@ def get_trajectory_timestepfile_nuc_abund(
             dtype_backend="pyarrow",
         )
 
-        # in case the files are inconsistent, switch to an adaptive reader
-        # dfnucabund = pd.read_csv(
-        #     trajfile,
-        #     skip_blank_lines=True,
-        #     skiprows=1,
-        #     sep=r"\s+",
-        #     engine='c',
-        #     names=["N", "Z", "log10abund", "S1n", "S2n"],
-        #     usecols=["N", "Z", "log10abund"],
-        #     dtype={0: int, 1: int, 2: float},
-        # )
-
-    # dfnucabund.eval('abund = 10 ** log10abund', inplace=True)
     dfnucabund["massfrac"] = (dfnucabund["N"] + dfnucabund["Z"]) * (10 ** dfnucabund["log10abund"])
-    # dfnucabund.eval('A = N + Z', inplace=True)
-    # dfnucabund.query('abund > 0.', inplace=True)
-
-    # abund is proportional to number abundance, but needs normalisation
-    # normfactor = dfnucabund.abund.sum()
-    # print(f'abund sum: {normfactor}')
-    # dfnucabund.eval('numberfrac = abund / @normfactor', inplace=True)
 
     return dfnucabund, t_model_init_seconds
 

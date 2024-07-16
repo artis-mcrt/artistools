@@ -35,7 +35,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Describe an ARTIS input model, such as the mass, velocity structure, and abundances."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
@@ -262,7 +262,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         f" ({mass_msun_actinides / mass_msun_rho * 100:6.2f}% of M_tot_rho)"
     )
 
-    def sortkey(tup_species_mass_g):
+    def sortkey(tup_species_mass_g: tuple[str, float]) -> tuple[int, int, str] | tuple[float, str]:
         species, mass_g = tup_species_mass_g
         assert args is not None
         if args.sort == "z":

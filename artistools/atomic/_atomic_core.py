@@ -16,9 +16,9 @@ import artistools as at
 
 def parse_adata(
     fadata: io.TextIOBase,
-    phixsdict: dict[tuple[int, int, int], tuple[list[tuple[int, float]], npt.NDArray[np.float64]]],
-    ionlist: t.Sequence[tuple[int, int]] | None,
-) -> t.Generator[tuple[int, int, int, float, pd.DataFrame], None, None]:
+    phixsdict: dict[tuple[int, int, int], tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]],
+    ionlist: t.Collection[tuple[int, int]] | None,
+) -> t.Generator[tuple[int, int, int, float, pl.DataFrame], None, None]:
     """Generate ions and their level lists from adata.txt."""
     firstlevelnumber = 1
 
@@ -30,26 +30,39 @@ def parse_adata(
         Z = int(ionheader[0])
         ion_stage = int(ionheader[1])
         level_count = int(ionheader[2])
-        ionisation_energy_ev = float(ionheader[3])
 
         if not ionlist or (Z, ion_stage) in ionlist:
             level_list: list[
-                tuple[float, float, int, str | None, list[tuple[int, float]], npt.NDArray[np.float64]]
+                tuple[float, float, int, str | None, npt.NDArray[np.float64] | None, npt.NDArray[np.float64] | None]
             ] = []
             for levelindex in range(level_count):
-                row = fadata.readline().split()
+                row = fadata.readline().split(maxsplit=4)
 
-                levelname = " ".join(row[4:]).strip("'") if len(row) >= 5 else None
-                numberin = int(row[0])
-                assert levelindex == numberin - firstlevelnumber
-                phixstargetlist, phixstable = phixsdict.get((Z, ion_stage, numberin), ([], np.array([])))
+                levelname = (row[4]).strip("'") if len(row) >= 5 else None
+                inputlevelnumber = int(row[0])
+                assert levelindex == inputlevelnumber - firstlevelnumber
+                phixstargetlist, phixstable = phixsdict.get((Z, ion_stage, inputlevelnumber), (None, None))
 
                 level_list.append((float(row[1]), float(row[2]), int(row[3]), levelname, phixstargetlist, phixstable))
 
-            dflevels = pd.DataFrame(
-                level_list, columns=["energy_ev", "g", "transition_count", "levelname", "phixstargetlist", "phixstable"]
+            dflevels = (
+                pl.DataFrame(
+                    level_list,
+                    schema=[
+                        ("energy_ev", pl.Float64),
+                        ("g", pl.Float32),
+                        ("transition_count", pl.Int32),
+                        ("levelname", pl.Utf8),
+                        ("phixstargetlist", pl.Object),
+                        ("phixstable", pl.Object),
+                    ],
+                    orient="row",
+                )
+                .with_row_index("levelindex")
+                .with_columns(pl.col("levelindex").cast(pl.Int32))
             )
 
+            ionisation_energy_ev = float(ionheader[3])
             yield Z, ion_stage, level_count, ionisation_energy_ev, dflevels
 
         else:
@@ -58,7 +71,7 @@ def parse_adata(
 
 
 def read_transitiondata(
-    transitions_filename: str | Path, ionlist: t.Sequence[tuple[int, int]] | None
+    transitions_filename: str | Path, ionlist: t.Collection[tuple[int, int]] | None
 ) -> dict[tuple[int, int], pl.DataFrame]:
     firstlevelnumber = 1
     transdict: dict[tuple[int, int], pl.DataFrame] = {}
@@ -103,65 +116,68 @@ def read_transitiondata(
 
 
 def parse_phixsdata(
-    fphixs: io.TextIOBase, ionlist: t.Sequence[tuple[int, int]] | None = None
-) -> t.Generator[tuple[int, int, int, int, int, list[tuple[int, float]], np.ndarray], None, None]:
+    phixs_filename: Path | str, ionlist: t.Collection[tuple[int, int]] | None = None
+) -> dict[tuple[int, int, int], tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]]:
     firstlevelnumber = 1
-    nphixspoints = int(fphixs.readline())
-    phixsnuincrement = float(fphixs.readline())
+    phixsdict = {}
+    with at.zopen(phixs_filename) as fphixs:
+        nphixspoints = int(fphixs.readline())
+        phixsnuincrement = float(fphixs.readline())
+        xgrid = np.linspace(1.0, 1.0 + phixsnuincrement * nphixspoints, num=nphixspoints, endpoint=False)
+        for line in fphixs:
+            if not line.strip():
+                continue
 
-    xgrid = np.linspace(1.0, 1.0 + phixsnuincrement * (nphixspoints + 1), num=nphixspoints + 1, endpoint=False)
+            ionheader = line.split()
+            Z = int(ionheader[0])
+            upperion_stage = int(ionheader[1])
+            upperionlevel = int(ionheader[2]) - firstlevelnumber
+            lowerion_stage = int(ionheader[3])
+            lowerionlevel = int(ionheader[4]) - firstlevelnumber
+            # threshold_ev = float(ionheader[5])
 
-    for line in fphixs:
-        if not line.strip():
-            continue
+            assert upperion_stage == lowerion_stage + 1
 
-        ionheader = line.split()
-        Z = int(ionheader[0])
-        upperion_stage = int(ionheader[1])
-        upperionlevel = int(ionheader[2]) - firstlevelnumber
-        lowerion_stage = int(ionheader[3])
-        lowerionlevel = int(ionheader[4]) - firstlevelnumber
-        # threshold_ev = float(ionheader[5])
+            if upperionlevel >= 0:
+                nptargetlist = np.array([(upperionlevel, 1.0)], dtype=[("level", np.int32), ("fraction", np.float32)])
+            else:
+                ntargets = int(fphixs.readline())
+                nptargetlist = np.empty((ntargets, 2), dtype=[("level", np.int32), ("fraction", np.float32)])
+                # targetlist = [(-1, 0.0) for _ in range(ntargets)]
+                for phixstargetindex in range(ntargets):
+                    level, fraction = fphixs.readline().split()
+                    nptargetlist[phixstargetindex, :] = (int(level) - firstlevelnumber, float(fraction))
 
-        assert upperion_stage == lowerion_stage + 1
+            if not ionlist or (Z, lowerion_stage) in ionlist:
+                phixslist = [float(fphixs.readline()) * 1e-18 for _ in range(nphixspoints)]
+                phixstable = np.array(list(zip(xgrid, phixslist, strict=False)))
 
-        targetlist: list[tuple[int, float]]
-        if upperionlevel >= 0:
-            targetlist = [(upperionlevel, 1.0)]
-        else:
-            ntargets = int(fphixs.readline())
-            targetlist = [(-1, 0.0) for _ in range(ntargets)]
-            for phixstargetindex in range(ntargets):
-                level, fraction = fphixs.readline().split()
-                targetlist[phixstargetindex] = (int(level) - firstlevelnumber, float(fraction))
+                phixsdict[(Z, lowerion_stage, lowerionlevel)] = (nptargetlist, phixstable)
 
-        if not ionlist or (Z, lowerion_stage) in ionlist:
-            phixslist = [float(fphixs.readline()) * 1e-18 for _ in range(nphixspoints)]
-            phixstable = np.array(list(zip(xgrid, phixslist, strict=False)))
+            else:
+                for _ in range(nphixspoints):
+                    fphixs.readline()
 
-            yield Z, upperion_stage, upperionlevel, lowerion_stage, lowerionlevel, targetlist, phixstable
-
-        else:
-            for _ in range(nphixspoints):
-                fphixs.readline()
+    return phixsdict
 
 
 def add_transition_columns(
-    dftransitions: pl.LazyFrame | pl.DataFrame, dflevels: pd.DataFrame, columns: t.Sequence[str]
+    dftransitions: pl.LazyFrame | pl.DataFrame,
+    dflevels: pd.DataFrame | pl.DataFrame | pl.LazyFrame,
+    columns: t.Sequence[str],
 ) -> pl.LazyFrame:
     """Add columns to a polars DataFrame of transitions."""
     dftransitions = dftransitions.lazy()
     columns_before = dftransitions.collect_schema().names()
-    pldflevels = (
-        pl.from_pandas(dflevels[["g", "energy_ev", "levelname"]])
-        .lazy()
-        .with_row_index("levelindex")
-        .with_columns(pl.col("levelindex").cast(pl.Int32))
-    )
+
+    if isinstance(dflevels, pd.DataFrame):
+        dflevels = pl.from_pandas(dflevels[["g", "energy_ev", "levelname", "levelindex"]])  # pyright: ignore[reportArgumentType]
+
+    dflevels = dflevels.select(["g", "energy_ev", "levelname", "levelindex"]).lazy()
 
     dftransitions = (
         dftransitions.join(
-            pldflevels.select(
+            dflevels.select(
                 lower="levelindex",
                 lower_g=pl.col("g"),
                 lower_energy_ev=pl.col("energy_ev"),
@@ -172,7 +188,7 @@ def add_transition_columns(
             coalesce=True,
         )
         .join(
-            pldflevels.select(
+            dflevels.select(
                 upper="levelindex",
                 upper_g=pl.col("g"),
                 upper_energy_ev=pl.col("energy_ev"),
@@ -190,7 +206,9 @@ def add_transition_columns(
 
     # clean up any columns used for intermediate calculations
     dftransitions.drop(
-        col for col in dftransitions.collect_schema().names() if col not in columns_before and col not in columns
+        col
+        for col in dftransitions.collect_schema().names()
+        if col not in columns_before and col not in columns and col != "levelindex"
     )
 
     for col in columns:
@@ -199,50 +217,63 @@ def add_transition_columns(
     return dftransitions
 
 
-def get_levels(
+def get_transitiondata(
     modelpath: str | Path,
-    ionlist: t.Sequence[tuple[int, int]] | None = None,
+    ionlist: t.Collection[tuple[int, int]] | None = None,
+    quiet: bool = False,
+    use_rust_reader: bool | None = None,
+) -> dict[tuple[int, int], pl.DataFrame]:
+    """Return a dictionary of transitions."""
+    ionlist = set(ionlist) if ionlist else None
+    transition_filename = at.firstexisting("transitiondata.txt", folder=modelpath)
+
+    if use_rust_reader is None or use_rust_reader:
+        try:
+            from artistools.rustext import read_transitiondata as read_transitiondata_rust
+
+            use_rust_reader = True
+
+        except ImportError as err:
+            warnings.warn("WARNING: Rust extension not available. Falling back to slow python reader.", stacklevel=2)
+            if use_rust_reader:
+                msg = "Rust extension not available"
+                raise ImportError(msg) from err
+            use_rust_reader = False
+
+    if not quiet:
+        time_start = time.perf_counter()
+        print(
+            f"Reading {transition_filename.relative_to(Path(modelpath).parent)} with {'fast rust reader' if use_rust_reader else 'slow python reader'}..."
+        )
+
+    if use_rust_reader:
+        transitionsdict = read_transitiondata_rust(str(transition_filename), ionlist=ionlist)
+    else:
+        transitionsdict = read_transitiondata(transition_filename, ionlist)
+
+    if not quiet:
+        print(f"  took {time.perf_counter() - time_start:.2f} seconds")
+
+    return transitionsdict
+
+
+def get_levels_polars(
+    modelpath: str | Path,
+    ionlist: t.Collection[tuple[int, int]] | None = None,
     get_transitions: bool = False,
     get_photoionisations: bool = False,
     quiet: bool = False,
     derived_transitions_columns: t.Sequence[str] | None = None,
     use_rust_reader: bool | None = None,
-) -> pd.DataFrame:
-    """Return a pandas DataFrame of energy levels."""
+) -> pl.DataFrame:
+    """Return a polars DataFrame of energy levels."""
     adatafilename = Path(modelpath, "adata.txt")
 
-    transitionsdict = {}
-    if get_transitions:
-        transition_filename = at.firstexisting("transitiondata.txt", folder=modelpath)
-
-        if use_rust_reader is None or use_rust_reader:
-            try:
-                from artistools.rustext import read_transitiondata as read_transitiondata_rust
-
-                use_rust_reader = True
-
-            except ImportError as err:
-                warnings.warn(
-                    "WARNING: Rust extension not available. Falling back to slow python reader.", stacklevel=2
-                )
-                if use_rust_reader:
-                    msg = "Rust extension not available"
-                    raise ImportError(msg) from err
-                use_rust_reader = False
-
-        if not quiet:
-            time_start = time.perf_counter()
-            print(
-                f"Reading {transition_filename.relative_to(Path(modelpath).parent)} with {'fast rust reader' if use_rust_reader else 'slow python reader'}..."
-            )
-
-        if use_rust_reader:
-            transitionsdict = read_transitiondata_rust(str(transition_filename), ionlist=ionlist)
-        else:
-            transitionsdict = read_transitiondata(transition_filename, ionlist)
-
-        if not quiet:
-            print(f"  took {time.perf_counter() - time_start:.2f} seconds")
+    transitionsdict = (
+        get_transitiondata(modelpath, ionlist=ionlist, quiet=quiet, use_rust_reader=use_rust_reader)
+        if get_transitions
+        else {}
+    )
 
     phixsdict = {}
     if get_photoionisations:
@@ -250,17 +281,8 @@ def get_levels(
 
         if not quiet:
             print(f"Reading {phixs_filename.relative_to(Path(modelpath).parent)}")
-        with at.zopen(phixs_filename) as fphixs:
-            for (
-                Z,
-                _upperion_stage,
-                _upperionlevel,
-                lowerion_stage,
-                lowerionlevel,
-                phixstargetlist,
-                phixstable,
-            ) in parse_phixsdata(fphixs, ionlist):
-                phixsdict[(Z, lowerion_stage, lowerionlevel)] = (phixstargetlist, phixstable)
+
+        phixsdict = parse_phixsdata(phixs_filename, ionlist)
 
     level_lists = []
     iontuple = namedtuple("iontuple", "Z ion_stage level_count ion_pot levels transitions")
@@ -277,21 +299,41 @@ def get_levels(
             else:
                 dftransitions = pl.LazyFrame()
 
-            level_lists.append(
-                iontuple(
-                    Z,
-                    ion_stage,
-                    level_count,
-                    ionisation_energy_ev,
-                    dflevels,
-                    dftransitions.collect().to_pandas(use_pyarrow_extension_array=True),
-                )
-            )
+            level_lists.append(iontuple(Z, ion_stage, level_count, ionisation_energy_ev, dflevels, dftransitions))
 
-    return pd.DataFrame(level_lists)
+    return pl.DataFrame(level_lists)
 
 
-def parse_recombratefile(frecomb: io.TextIOBase) -> t.Generator[tuple[int, int, pd.DataFrame], None, None]:
+def get_levels(
+    modelpath: str | Path,
+    ionlist: t.Collection[tuple[int, int]] | None = None,
+    get_transitions: bool = False,
+    get_photoionisations: bool = False,
+    quiet: bool = False,
+    derived_transitions_columns: t.Sequence[str] | None = None,
+    use_rust_reader: bool | None = None,
+) -> pd.DataFrame:
+    pldf = get_levels_polars(
+        modelpath,
+        ionlist=ionlist,
+        get_transitions=get_transitions,
+        get_photoionisations=get_photoionisations,
+        quiet=quiet,
+        derived_transitions_columns=derived_transitions_columns,
+        use_rust_reader=use_rust_reader,
+    )
+    pldf = pldf.with_columns(
+        levels=pl.col("levels").map_elements(
+            lambda x: x.to_pandas(use_pyarrow_extension_array=True), return_dtype=pl.Object
+        ),
+        transitions=pl.col("transitions").map_elements(
+            lambda x: x.collect().to_pandas(use_pyarrow_extension_array=True), return_dtype=pl.Object
+        ),
+    )
+    return pldf.to_pandas(use_pyarrow_extension_array=True)
+
+
+def parse_recombratefile(frecomb: io.TextIOBase) -> t.Generator[tuple[int, int, pl.DataFrame], None, None]:
     """Parse recombrates.txt file."""
     for line in frecomb:
         Z, upper_ion_stage, t_count = (int(x) for x in line.split())
@@ -305,19 +347,19 @@ def parse_recombratefile(frecomb: io.TextIOBase) -> t.Generator[tuple[int, int, 
             arr_rrc_low_n.append(rrc_low_n)
             arr_rrc_total.append(rrc_total)
 
-        recombdata_thision = pd.DataFrame({
+        recombdata_thision = pl.DataFrame({
             "log10T_e": arr_log10t,
             "rrc_low_n": arr_rrc_low_n,
             "rrc_total": arr_rrc_total,
         })
 
-        recombdata_thision = recombdata_thision.eval("T_e = 10 ** log10T_e")
+        recombdata_thision = recombdata_thision.with_columns(T_e=10 ** pl.col("log10T_e"))
 
         yield Z, upper_ion_stage, recombdata_thision
 
 
 @lru_cache(maxsize=4)
-def get_ionrecombratecalibration(modelpath: str | Path) -> dict[tuple[int, int], pd.DataFrame]:
+def get_ionrecombratecalibration(modelpath: str | Path) -> dict[tuple[int, int], pl.DataFrame]:
     """Read recombrates.txt file."""
     recombdata = {}
     with Path(modelpath, "recombrates.txt").open("r", encoding="utf-8") as frecomb:

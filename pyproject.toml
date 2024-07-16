@@ -103,7 +103,7 @@ enable_error_code = [
   "truthy-bool",
   "unused-awaitable",
 ]
-exclude = "(build)|(dist)|(tests)|(data)"
+exclude = "(build)|(dist)|(tests)|(data)|(test_*)"
 extra_checks = true
 ignore_missing_imports = true
 implicit_optional = false
@@ -144,10 +144,6 @@ enable_error_code = [
   "possibly-undefined",
 ]
 
-[[tool.mypy.overrides]]
-module = "pyvista"
-ignore_errors = true
-
 [tool.pylint.'MESSAGES CONTROL']
 max-line-length = 120
 disable = """
@@ -182,7 +178,7 @@ disable = """
 """
 
 [tool.pylint.typecheck]
-ignored-modules = ["astropy", "extinction", "artistools.rustext"]
+ignored-modules = ["astropy", "extinction"]
 unsafe-load-any-extension = true
 
 [tool.pyright]
