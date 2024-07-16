@@ -173,7 +173,7 @@ jobs:
                   #python3.13 -m uv pip install git+https://github.com/scipy/scipy.git
                   python3 -m pip install --pre -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple --extra-index-url https://pypi.org/simple scipy
                   #python3 -m pip install --pre scipy
-                  grep -v -e '^pyvista' -e '^scipy' requirements.txt > requirements3.13.txt
+                  grep -v -e '^extinction' -e '^pyvista' -e '^scipy' requirements.txt > requirements3.13.txt
                   python3 -m pip install --no-build-isolation astropy
                   mv requirements3.13.txt requirements.txt
                   cat requirements.txt
