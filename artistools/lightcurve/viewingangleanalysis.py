@@ -676,7 +676,8 @@ def second_band_brightness_at_peak_first_band(data, bands, modelpath, modelnumbe
         fxfit, xfit = lightcurve_polyfit(time, brightness_in_mag, args)
 
         closest_list_time_to_first_band_peak = at.match_closest_time(
-            reftime=data[f"time_{bands[0]}max"][anglenumber], searchtimes=xfit
+            reftime=data[f"time_{bands[0]}max"][anglenumber],
+            searchtimes=xfit,  # pyright: ignore[reportArgumentType]
         )
 
         for ii, xfits in enumerate(xfit):
