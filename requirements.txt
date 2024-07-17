@@ -5,6 +5,7 @@ extinction>=0.4.6
 imageio>=2.34.2
 matplotlib>=3.9.1
 mypy>=1.10.1
+numexpr>=2.10.1
 numpy>=2.0.0
 pandas>=2.2.2
 polars>=1.2.0
