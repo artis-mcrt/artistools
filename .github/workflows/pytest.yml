@@ -168,7 +168,6 @@ jobs:
                   echo "ARROW_HOME=$(brew --prefix apache-arrow)" >> $GITHUB_ENV
 
                   python3 -m pip install --pre cffi
-                  #python3 -m pip install --pre -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple scipy-openblas64
                   python3 -m pip install --pre -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple --extra-index-url https://pypi.org/simple scipy
                   grep -v -e '^extinction' -e '^pyvista' requirements.txt > requirements3.13.txt
                   mv requirements3.13.txt requirements.txt
@@ -187,7 +186,6 @@ jobs:
               run: |
                   python3 -m pip install uv
                   python3 -m uv pip install --compile-bytecode --editable .
-                  #python3 -m pip install --editable  .
 
             - name: Cache test data
               uses: actions/cache@v4
