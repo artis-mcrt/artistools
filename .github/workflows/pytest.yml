@@ -135,6 +135,9 @@ jobs:
             matrix:
                 os: [macos-14, ubuntu-24.04]
                 python-version: ['3.10', '3.11', '3.12', '3.13-dev']
+                exclude:
+                    - os: ubuntu-24.04
+                      python-version: '3.13-dev'
         env:
             OS: ${{ matrix.os }}
             PYTHON: ${{ matrix.python-version }}
@@ -167,17 +170,10 @@ jobs:
                   python3 -m uv pip install pandas
                   python3 -m uv pip install matplotlib
                   python3 -m uv pip install numpy
-                  #python3 -m pip install -U --pre wrapt pip setuptools meson meson-python==0.13.1 maturin setuptools-scm wheel python-dateutil pytz tzdata ninja versioneer Cython
-                  #python3 -m pip install -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple numpy
-                  #python3 -m pip install --no-build-isolation -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple pandas
                   python3 -m pip install --pre -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple scipy-openblas64
-                  #python3 -m pip install --upgrade --pre --index-url https://pypi.anaconda.org/scientific-python-nightly-wheels/simple --extra-index-url https://pypi.org/simple matplotlib
-                  #python3 -m uv pip install git+https://github.com/indygreg/python-zstandard.git
                   #python3 -m uv pip install --no-build-isolation imageio
-                  #python3.13 -m uv pip install git+https://github.com/scipy/scipy.git
                   python3 -m pip install --pre -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple --extra-index-url https://pypi.org/simple scipy
-                  #python3 -m pip install --pre scipy
-                  grep -v -e '^extinction' -e '^pyvista' -e '^scipy' requirements.txt > requirements3.13.txt
+                  grep -v -e '^extinction' -e '^pyvista' requirements.txt > requirements3.13.txt
                   mv requirements3.13.txt requirements.txt
                   cat requirements.txt
 
