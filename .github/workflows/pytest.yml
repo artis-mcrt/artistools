@@ -172,8 +172,8 @@ jobs:
                   #python3 -m uv pip install pandas
                   #python3 -m uv pip install matplotlib
                   #python3 -m uv pip install numpy
-                  #python3 -m pip install --pre -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple scipy-openblas64
-                  #python3 -m pip install --pre -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple --extra-index-url https://pypi.org/simple scipy
+                  python3 -m pip install --pre -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple scipy-openblas64
+                  python3 -m pip install --pre -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple --extra-index-url https://pypi.org/simple scipy
                   #python3 -m uv pip install pyarrow
                   grep -v -e '^extinction' -e '^pyvista' requirements.txt > requirements3.13.txt
                   mv requirements3.13.txt requirements.txt
