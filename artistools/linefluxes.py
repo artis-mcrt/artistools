@@ -79,7 +79,6 @@ def get_packets_with_emtype(
             arr_dfmatchingpackets = pool.map(processfile, packetsfiles)
             pool.close()
             pool.join()
-            # pool.terminate()
     else:
         arr_dfmatchingpackets = [processfile(f) for f in packetsfiles]
 

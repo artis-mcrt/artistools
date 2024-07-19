@@ -220,7 +220,6 @@ def read_files(
             )
             pool.close()
             pool.join()
-            pool.terminate()
     else:
         arr_dfnltepop = [read_file_filtered(f, strquery=dfquery_full, dfqueryvars=dfqueryvars) for f in nltefilepaths]
 
