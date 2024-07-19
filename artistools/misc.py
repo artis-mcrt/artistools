@@ -1536,4 +1536,11 @@ def get_dirbin_labels(
 
 def get_multiprocessing_pool() -> multiprocessing.pool.Pool:
     """Return a multiprocessing pool that can be used to parallelize tasks."""
+    # this is a workaround for to keep pytest-cov from crashing
+    try:
+        from pytest_cov.embed import cleanup_on_sigterm
+    except ImportError:
+        pass
+    else:
+        cleanup_on_sigterm()
     return multiprocessing.get_context("forkserver").Pool(processes=at.get_config()["num_processes"])
