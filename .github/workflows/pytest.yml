@@ -162,6 +162,7 @@ jobs:
             - name: Install pre-release packages for 3.13
               if: ${{ endsWith(matrix.python-version, '-dev') }}
               run: |
+                  brew update
                   brew install apache-arrow gcc
                   echo "ARROW_HOME=$(brew --prefix apache-arrow)" >> $GITHUB_ENV
                   echo "CC=gcc-14" >> $GITHUB_ENV
