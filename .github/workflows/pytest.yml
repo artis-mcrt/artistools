@@ -128,13 +128,16 @@ jobs:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     pytest:
-        timeout-minutes: 20
+        timeout-minutes: 30
         runs-on: ${{ matrix.os }}
         strategy:
             fail-fast: false
             matrix:
                 os: [macos-14, ubuntu-24.04]
-                python-version: ['3.10', '3.11', '3.12']
+                python-version: ['3.10', '3.11', '3.12', '3.13-dev']
+                exclude:
+                    - os: ubuntu-24.04
+                      python-version: '3.13-dev'
         env:
             OS: ${{ matrix.os }}
             PYTHON: ${{ matrix.python-version }}
@@ -150,6 +153,25 @@ jobs:
               uses: actions/setup-python@v5
               with:
                   python-version: ${{ matrix.python-version }}
+                  check-latest: true
+                  allow-prereleases: true
+
+            - name: Show python version
+              run: python3 --version --version && which python3
+
+            - name: Install pre-release packages for 3.13
+              if: ${{ endsWith(matrix.python-version, '-dev') }}
+              run: |
+                  # until pyarrow adds wheels for 3.13, we need make apache-arrow lib available for source dist installation
+                  brew update
+                  brew install apache-arrow
+                  echo "ARROW_HOME=$(brew --prefix apache-arrow)" >> $GITHUB_ENV
+
+                  python3 -m pip install --pre cffi
+                  python3 -m pip install --pre -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple --extra-index-url https://pypi.org/simple scipy
+                  grep -v -e '^extinction' -e '^pyvista' requirements.txt > requirements3.13.txt
+                  mv requirements3.13.txt requirements.txt
+                  cat requirements.txt
 
             - name: Cache rust build
               uses: actions/cache@v4
@@ -162,8 +184,8 @@ jobs:
 
             - name: Install artistools
               run: |
-                  curl -LsSf https://astral.sh/uv/install.sh | sh
-                  uv pip install --system --upgrade --compile-bytecode --editable  .
+                  python3 -m pip install uv
+                  python3 -m uv pip install --compile-bytecode --editable .
 
             - name: Cache test data
               uses: actions/cache@v4
