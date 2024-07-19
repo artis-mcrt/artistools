@@ -190,9 +190,9 @@ jobs:
 
             - name: Install artistools
               run: |
-                  python3 -m pip install uv
-                  uv pip install --system --upgrade --compile-bytecode --editable  .
-                  #python3 -m pip install --editable  .
+                  #python3 -m pip install uv
+                  #uv pip install --system --upgrade --compile-bytecode --editable  .
+                  python3 -m pip install --editable  .
 
             - name: Cache test data
               uses: actions/cache@v4
