@@ -186,7 +186,7 @@ jobs:
             - name: Install artistools
               run: |
                   python3 -m pip install uv
-                  python3 -m uv pip install --editable --compile-bytecode .
+                  python3 -m uv pip install --compile-bytecode --editable .
                   #python3 -m pip install --editable  .
 
             - name: Cache test data
