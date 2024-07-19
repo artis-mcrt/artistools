@@ -159,7 +159,11 @@ jobs:
             - name: Install pre-release packages for 3.13
               if: ${{ endsWith(matrix.python-version, '-dev') }}
               run: |
+                  brew install apache-arrow
+                  echo "ARROW_HOME=$(brew --prefix apache-arrow)" >> $GITHUB_ENV
+
                   python3 -m pip install uv
+                  python3 -m uv pip install --pre cffi
                   python3 -m uv pip install pandas
                   python3 -m uv pip install matplotlib
                   python3 -m uv pip install numpy
