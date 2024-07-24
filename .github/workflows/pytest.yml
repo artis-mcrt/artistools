@@ -167,11 +167,13 @@ jobs:
                   brew install apache-arrow
                   echo "ARROW_HOME=$(brew --prefix apache-arrow)" >> $GITHUB_ENV
 
-                  python3 -m pip install --pre cffi
+                  python3 -m pip install --pre cffi pip setuptools setuptools-rust
                   python3 -m pip install --pre -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple --extra-index-url https://pypi.org/simple scipy
                   grep -v -e '^extinction' -e '^pyvista' requirements.txt > requirements3.13.txt
                   mv requirements3.13.txt requirements.txt
                   cat requirements.txt
+                  python3 -m pip install pytest-codspeed
+                  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 
             - name: Cache rust build
               uses: actions/cache@v4
@@ -185,7 +187,8 @@ jobs:
             - name: Install artistools
               run: |
                   python3 -m pip install uv
-                  python3 -m uv pip install --compile-bytecode --editable .
+                  #python3 -m uv pip install --compile-bytecode --pre --editable .
+                  python3 -m pip install  --pre --editable .
 
             - name: Cache test data
               uses: actions/cache@v4
