@@ -172,7 +172,7 @@ jobs:
                   grep -v -e '^extinction' -e '^pyvista' requirements.txt > requirements3.13.txt
                   mv requirements3.13.txt requirements.txt
                   cat requirements.txt
-                  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+                  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -- -y
 
             - name: Cache rust build
               uses: actions/cache@v4
