@@ -238,8 +238,12 @@ def generate_band_lightcurve_data(
         )
 
         for timemin, timemax in zip(timearray, timeendarray, strict=False):
-            if (args.timemin is None or args.timemin <= timemin) and (args.timemax is None or args.timemax >= timemax):
-                timeavg = (float(timemin) + float(timemax)) / 2.0
+            timemin = float(timemin)
+            timemax = float(timemax)
+            if (args.timemin is None or args.timemin <= timemin) and (
+                timemax < float(timearray[-1]) and (args.timemax is None or args.timemax >= timemax)
+            ):
+                timeavg = (timemin + timemax) / 2.0
                 wavelength_from_spectrum, flux = get_spectrum_in_filter_range(
                     modelpath=modelpath,
                     timemin=timemin,
