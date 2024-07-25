@@ -391,8 +391,7 @@ def get_band_lightcurve(
             (time, brightness)
             for time, brightness in band_lightcurve_data[band_name]
             if ((args.timemin is None or args.timemin <= time) and (args.timemax is None or args.timemax >= time))
-        ],
-        strict=False,
+        ]
     )
 
     return times, np.array(brightness_in_mag)
