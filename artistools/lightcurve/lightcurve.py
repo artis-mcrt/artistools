@@ -194,11 +194,11 @@ def generate_band_lightcurve_data(
             else at.spectra.get_specpol_data(angle=angle, modelpath=modelpath)
         )
         vspecdata = stokes_params["I"]
-        timearray = vspecdata.columns[1:]
+        # timearray = vspecdata.columns[1:]
     elif args.plotviewingangle and at.anyexist(["specpol_res.out", "spec_res.out"], folder=modelpath, tryzipped=True):
         specfilename = at.firstexisting(["specpol_res.out", "spec_res.out"], folder=modelpath, tryzipped=True)
         specdataresdata = pd.read_csv(specfilename, sep=r"\s+")
-        timearray = [i for i in specdataresdata.columns.to_numpy()[1:] if i[-2] != "."]
+        # timearray = [i for i in specdataresdata.columns.to_numpy()[1:] if i[-2] != "."]
     # elif Path(modelpath, 'specpol.out').is_file():
     #     specfilename = os.path.join(modelpath, "specpol.out")
     #     specdata = pd.read_csv(specfilename, sep='\s+')
@@ -210,12 +210,14 @@ def generate_band_lightcurve_data(
         specfilename = at.firstexisting(["spec.out", "specpol.out"], folder=modelpath, tryzipped=True)
         specdata = pd.read_csv(specfilename, sep=r"\s+")
 
-        timearray = (
-            # Ignore Q and U values in pol file
-            [i for i in specdata.columns.to_numpy()[1:] if i[-2] != "."]
-            if "specpol.out" in str(specfilename)
-            else specdata.columns.to_numpy()[1:]
-        )
+        # timearray = (
+        #     # Ignore Q and U values in pol file
+        #     [i for i in specdata.columns.to_numpy()[1:] if i[-2] != "."]
+        #     if "specpol.out" in str(specfilename)
+        #     else specdata.columns.to_numpy()[1:]
+        # )
+    timearray = at.get_timestep_times(modelpath=modelpath, loc="start")
+    timeendarray = at.get_timestep_times(modelpath=modelpath, loc="end")
 
     filters_dict = {}
     if not args.filter:
