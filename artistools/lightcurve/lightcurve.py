@@ -252,12 +252,14 @@ def generate_band_lightcurve_data(
             filterdir, filter_name
         )
 
-        for timestep, time in enumerate(float(time) for time in timearray):
-            if (args.timemin is None or args.timemin <= time) and (args.timemax is None or args.timemax >= time):
+
+        for timemin, timemax in zip(timearray, timeendarray):
+            if (args.timemin is None or args.timemin <= timemin) and (args.timemax is None or args.timemax >= timemax):
+                timeavg = (timemin + timemax) / 2.0
                 wavelength_from_spectrum, flux = get_spectrum_in_filter_range(
                     modelpath=modelpath,
-                    timestep=timestep,
-                    time=time,
+                    timemin=timemin,
+                    timemax=timemax,
                     wavefilter_min=wavefilter_min,
                     wavefilter_max=wavefilter_max,
                     angle=angle,
@@ -282,7 +284,7 @@ def generate_band_lightcurve_data(
                 # print(time, phot_filtobs_sn)
                 if phot_filtobs_sn != 0.0:
                     phot_filtobs_sn -= 25  # Absolute magnitude
-                filters_dict[filter_name].append((time, phot_filtobs_sn))
+                filters_dict[filter_name].append((timeavg, phot_filtobs_sn))
 
     return filters_dict
 
@@ -349,8 +351,8 @@ def get_filter_data(filterdir: Path | str, filter_name: str) -> tuple[float, np.
 
 def get_spectrum_in_filter_range(
     modelpath: Path | str,
-    timestep: int,
-    time: float,
+    timemin: float,
+    timemax: float,
     wavefilter_min: float,
     wavefilter_max: float,
     angle: int = -1,
@@ -361,8 +363,8 @@ def get_spectrum_in_filter_range(
 ) -> tuple[np.ndarray, np.ndarray]:
     spectrum = at.spectra.get_spectrum_at_time(
         Path(modelpath),
-        timestep=timestep,
-        time=time,
+        timemin=timemin,
+        timemax=timemax,
         args=args,
         dirbin=angle,
         average_over_phi=average_over_phi,
