@@ -188,16 +188,16 @@ def generate_band_lightcurve_data(
 
     if args.plotvspecpol and (modelpath / "vpkt.txt").is_file():
         print("Found vpkt.txt, using virtual packets")
-        stokes_params = (
-            at.spectra.get_vspecpol_data(vspecindex=angle, modelpath=modelpath)
-            if angle >= 0
-            else at.spectra.get_specpol_data(angle=angle, modelpath=modelpath)
-        )
-        vspecdata = stokes_params["I"]
+        # stokes_params = (
+        #     at.spectra.get_vspecpol_data(vspecindex=angle, modelpath=modelpath)
+        #     if angle >= 0
+        #     else at.spectra.get_specpol_data(angle=angle, modelpath=modelpath)
+        # )
+        # vspecdata = stokes_params["I"]
         # timearray = vspecdata.columns[1:]
     elif args.plotviewingangle and at.anyexist(["specpol_res.out", "spec_res.out"], folder=modelpath, tryzipped=True):
         specfilename = at.firstexisting(["specpol_res.out", "spec_res.out"], folder=modelpath, tryzipped=True)
-        specdataresdata = pd.read_csv(specfilename, sep=r"\s+")
+        # specdataresdata = pd.read_csv(specfilename, sep=r"\s+")
         # timearray = [i for i in specdataresdata.columns.to_numpy()[1:] if i[-2] != "."]
     # elif Path(modelpath, 'specpol.out').is_file():
     #     specfilename = os.path.join(modelpath, "specpol.out")
@@ -208,7 +208,7 @@ def generate_band_lightcurve_data(
             print("WARNING: no direction-resolved spectra available. Using angle-averaged spectra.")
 
         specfilename = at.firstexisting(["spec.out", "specpol.out"], folder=modelpath, tryzipped=True)
-        specdata = pd.read_csv(specfilename, sep=r"\s+")
+        # specdata = pd.read_csv(specfilename, sep=r"\s+")
 
         # timearray = (
         #     # Ignore Q and U values in pol file
@@ -216,6 +216,8 @@ def generate_band_lightcurve_data(
         #     if "specpol.out" in str(specfilename)
         #     else specdata.columns.to_numpy()[1:]
         # )
+    print(f"Using {specfilename}")
+
     timearray = at.get_timestep_times(modelpath=modelpath, loc="start")
     timeendarray = at.get_timestep_times(modelpath=modelpath, loc="end")
 
@@ -230,6 +232,7 @@ def generate_band_lightcurve_data(
             times, bol_magnitudes = bolometric_magnitude(
                 modelpath,
                 timearray,
+                timeendarray,
                 args,
                 angle=angle,
                 average_over_phi=args.average_over_phi_angle,
@@ -252,8 +255,7 @@ def generate_band_lightcurve_data(
             filterdir, filter_name
         )
 
-
-        for timemin, timemax in zip(timearray, timeendarray):
+        for timemin, timemax in zip(timearray, timeendarray, strict=False):
             if (args.timemin is None or args.timemin <= timemin) and (args.timemax is None or args.timemax >= timemax):
                 timeavg = (timemin + timemax) / 2.0
                 wavelength_from_spectrum, flux = get_spectrum_in_filter_range(
@@ -292,6 +294,7 @@ def generate_band_lightcurve_data(
 def bolometric_magnitude(
     modelpath: Path,
     timearray: t.Collection[float | str],
+    timeendarray: t.Collection[float | str],
     args: argparse.Namespace,
     angle: int = -1,
     average_over_phi: bool = False,
@@ -300,19 +303,24 @@ def bolometric_magnitude(
     magnitudes = []
     times = []
 
-    for timestep, time in enumerate(float(time) for time in timearray):
-        if (args.timemin is None or args.timemin <= time) and (args.timemax is None or args.timemax >= time):
+    for timemin, timemax in zip(timearray, timeendarray, strict=False):
+        if (args.timemin is None or args.timemin <= timemin) and (args.timemax is None or args.timemax >= timemax):
+            timestepmin = at.get_timestep_of_timedays(modelpath, timemin)
+            timestepmax = at.get_timestep_of_timedays(modelpath, timemax)
+            timeavg = (timemin + timemax) / 2.0
             if angle == -1:
-                spectrum = at.spectra.get_spectrum(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)[-1]
+                spectrum = at.spectra.get_spectrum(
+                    modelpath=modelpath, timestepmin=timestepmin, timestepmax=timestepmax
+                )[-1]
 
             elif args.plotvspecpol:
-                spectrum = at.spectra.get_vspecpol_spectrum(modelpath, time, angle, args)
+                spectrum = at.spectra.get_vspecpol_spectrum(modelpath, timeavg, angle, args)
             else:
                 spectrum = at.spectra.get_spectrum(
                     modelpath=modelpath,
                     directionbins=[angle],
-                    timestepmin=timestep,
-                    timestepmax=timestep,
+                    timestepmin=timestepmin,
+                    timestepmax=timestepmax,
                     average_over_phi=average_over_phi,
                     average_over_theta=average_over_theta,
                 )[angle]
@@ -322,7 +330,7 @@ def bolometric_magnitude(
             with np.errstate(divide="ignore"):
                 magnitude = Mbol_sun - (2.5 * np.log10(integrated_luminosity / const.L_sun.to("erg/s").value))
             magnitudes.append(magnitude)
-            times.append(time)
+            times.append(timeavg)
             # print(const.L_sun.to('erg/s').value)
             # sys.exit(1)
 
