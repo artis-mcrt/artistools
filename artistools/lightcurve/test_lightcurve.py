@@ -82,7 +82,7 @@ def test_band_lightcurve_subplots() -> None:
         argsraw=[],
         modelpath=modelpath,
         filter=["bol", "B"],
-        label="Test lightcurve",
+        label=["Test bol lightcurve", "Test B band"],
         reflightcurves=["SN2011fe.dat"],
         timemin=4,
         timemax=20,
@@ -92,8 +92,8 @@ def test_band_lightcurve_subplots() -> None:
         legendsubplotnumber=0,
         ncolslegend=1,
         legendposition="lower center",
-        linestyle=[":"],
-        color=["tab:red"],
+        linestyle=[":", "-"],
+        color=["tab:red", "tab:orange"],
         outputfile=outputpath,
     )
 
