@@ -10,8 +10,7 @@ use polars::series::IntoSeries;
 use pyo3_polars::PyDataFrame;
 use rayon::prelude::*;
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::{BufRead, BufReader, Error as IoError, Lines};
+use std::io::{BufRead, BufReader};
 use std::path::Path;
 
 const ELSYMBOLS: [&str; 119] = [
@@ -177,11 +176,12 @@ fn read_estimator_file(folderpath: String, rank: i32) -> DataFrame {
         panic!("No estimator file found for rank {}", rank);
     }
 
-    // println!("Reading file: {:?}", filename);
+    // println!("Reading file: {:?}", filename.unwrap());
     let file = autocompress::autodetect_open(filename.unwrap());
-    for line in BufReader::new(file.unwrap()).lines() {
+
+    BufReader::new(file.unwrap()).lines().for_each(|line| {
         parse_estimator_line(&line.unwrap(), &mut coldata, &mut outputrownum);
-    }
+    });
 
     match_colsizes(&mut coldata, outputrownum);
     for singlecolumn in coldata.values() {
