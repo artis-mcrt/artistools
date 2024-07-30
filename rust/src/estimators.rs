@@ -1,8 +1,8 @@
 use pyo3::prelude::*;
+extern crate autocompress;
 extern crate core;
 extern crate polars;
 extern crate rayon;
-extern crate zstd;
 use polars::chunked_array::ChunkedArray;
 use polars::datatypes::Float32Type;
 use polars::prelude::*;
@@ -13,7 +13,6 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Error as IoError, Lines};
 use std::path::Path;
-use zstd::stream::read::Decoder;
 
 const ELSYMBOLS: [&str; 119] = [
     "n", "H", "He", "Li", "Be", "B", "C", "N", "O", "F", "Ne", "Na", "Mg", "Al", "Si", "P", "S",
@@ -27,25 +26,6 @@ const ELSYMBOLS: [&str; 119] = [
 ];
 
 const ROMAN: [&str; 10] = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX"];
-
-fn read_lines<P>(filename: P) -> Result<Lines<BufReader<File>>, IoError>
-where
-    P: AsRef<Path>,
-{
-    let file = File::open(filename)?;
-    Ok(BufReader::new(file).lines())
-}
-
-fn read_lines_zst<P>(
-    filename: P,
-) -> Result<Lines<BufReader<Decoder<'static, BufReader<File>>>>, IoError>
-where
-    P: AsRef<Path>,
-{
-    let file = File::open(filename)?;
-    let decoder = Decoder::new(file)?;
-    Ok(BufReader::new(decoder).lines())
-}
 
 /// Ensure that all columns have the same length matching the outputrownum
 ///
@@ -183,18 +163,24 @@ fn read_estimator_file(folderpath: String, rank: i32) -> DataFrame {
     let mut coldata: HashMap<String, Vec<f32>> = HashMap::new();
     let mut outputrownum = 0;
 
-    let filename = format!("{}/estimators_{:04}.out", folderpath, rank);
-    if Path::new(&filename).is_file() {
-        // println!("Reading file: {:?}", filename);
-        for line in read_lines(filename).unwrap() {
-            parse_estimator_line(&line.unwrap(), &mut coldata, &mut outputrownum);
+    // let mut filename = format!("{}/estimators_{:04}.out", folderpath, rank);
+    let extensions = vec!["", ".zst", ".gz", ".xz"];
+    let mut filename = None;
+    for ext in extensions {
+        let filenameplusext = format!("{}/estimators_{:04}.out{}", folderpath, rank, ext);
+        if Path::new(&filenameplusext).is_file() {
+            filename = Some(filenameplusext);
+            break;
         }
-    } else {
-        let filename_zst = filename + ".zst";
-        // println!("Reading file: {:?}", filename_zst);
-        for line in read_lines_zst(filename_zst).unwrap() {
-            parse_estimator_line(&line.unwrap(), &mut coldata, &mut outputrownum);
-        }
+    }
+    if filename.is_none() {
+        panic!("No estimator file found for rank {}", rank);
+    }
+
+    // println!("Reading file: {:?}", filename);
+    let file = autocompress::autodetect_open(filename.unwrap());
+    for line in BufReader::new(file.unwrap()).lines() {
+        parse_estimator_line(&line.unwrap(), &mut coldata, &mut outputrownum);
     }
 
     match_colsizes(&mut coldata, outputrownum);
