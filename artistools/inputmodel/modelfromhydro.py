@@ -437,7 +437,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-scalevelocity",
         type=float,
         default=1.0,
-        help="Multiply ejecta velocities by this factor (while holding density fixed) before writing the model file",
+        help="Multiply ejecta velocities by this factor (adjusting density to conserve mass) before writing the model file",
     )
     parser.add_argument("-outputpath", "-o", default=None, help="Path for output model files")
 
