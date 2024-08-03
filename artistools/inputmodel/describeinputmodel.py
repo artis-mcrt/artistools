@@ -54,15 +54,14 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         derived_cols=["mass_g", "vel_r_mid", "rho"],
     )
 
-    dfmodel = dfmodel.filter(pl.col("rho") > 0.0).drop(
-        cs.starts_with("X_n")
-    )  # don't confuse neutrons (lowercase 'n') with Nitrogen (N)
+    # don't confuse neutrons (lowercase 'n') with Nitrogen (N)
+    dfmodel = dfmodel.filter(pl.col("rho") > 0.0).drop(cs.starts_with("X_n"), strict=False)
 
     if args.noabund:
-        dfmodel = dfmodel.drop(cs.starts_with("X_"))
+        dfmodel = dfmodel.drop(cs.starts_with("X_"), strict=False)
 
-    if not args.isotopes:
-        dfmodel = dfmodel.drop(cs.matches("X_[A-z]+[0-9]"))
+    elif not args.isotopes:
+        dfmodel = dfmodel.drop(cs.matches("X_[A-z]+[0-9]"), strict=False)
 
     dfmodel = dfmodel.collect().lazy()
 
