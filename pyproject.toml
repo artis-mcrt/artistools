@@ -242,7 +242,7 @@ ignore = [
     "D203",  # one-blank-line-before-class
     "D213",  # multi-line-summary-second-line
     "D417",  # undocumented-param
-    "DOC202",
+    "DOC201",
     "DOC501", # docstring-missing-exception
     "E501", # Line too long
     "ERA001",  # commented-out-code
