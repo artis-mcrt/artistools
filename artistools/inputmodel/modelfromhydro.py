@@ -351,7 +351,7 @@ def makemodelfromgriddata(
     dfmodel = dfmodel.with_columns(pl.col("inputcellid").cast(pl.Int32))  # pylint: disable=no-member
     if scaledensity != 1.0:
         dfmodel = dfmodel.with_columns(rho=pl.col("rho") * scaledensity, mass_g=pl.col("mass_g") * scaledensity)
-        operationmsg = f"Densities are scaled by factor of {scaledensity}"
+        operationmsg = f"densities are scaled by factor of {scaledensity}"
         print(operationmsg)
         modelmeta["headercommentlines"].append(operationmsg)
 
@@ -359,7 +359,7 @@ def makemodelfromgriddata(
         dfmodel = dfmodel.with_columns(cs.starts_with("pos_") * scalevelocity, rho=pl.col("rho") * (scalevelocity**-3))
         vmax_cmps_old = modelmeta["vmax_cmps"]
         modelmeta["vmax_cmps"] *= scalevelocity
-        operationmsg = f"Velocities are scaled by {scalevelocity} (with density scaled by 1/f^3 to converse mass). vmax/c changed from {vmax_cmps_old / 29979245800:.2f} to {modelmeta['vmax_cmps'] / 29979245800:.2f}"
+        operationmsg = f"velocities are scaled by a factor of {scalevelocity} (with density scaled by 1/f^3 to conserve mass). vmax/c changed from {vmax_cmps_old / 29979245800:.2f} to {modelmeta['vmax_cmps'] / 29979245800:.2f}"
         print(operationmsg)
         modelmeta["headercommentlines"].append(operationmsg)
 
