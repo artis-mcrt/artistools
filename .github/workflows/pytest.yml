@@ -138,10 +138,7 @@ jobs:
             fail-fast: false
             matrix:
                 os: [macos-15, ubuntu-24.04]
-                python-version: ['3.10', '3.11', '3.12']
-                exclude:
-                    - os: ubuntu-24.04
-                      python-version: '3.13-dev'
+                python-version: ['3.10', '3.11', '3.12', '3.13']
         env:
             OS: ${{ matrix.os }}
             PYTHON: ${{ matrix.python-version }}
@@ -163,21 +160,13 @@ jobs:
             - name: Show python version
               run: python3 --version --version && which python3
 
-            - name: Install pre-release packages for 3.13
-              if: ${{ endsWith(matrix.python-version, '-dev') }}
+            - name: Install pyarrow nightly for 3.13
+              if: ${{ startsWith(matrix.python-version, '3.13') }}
               run: |
-                  # until pyarrow adds wheels for 3.13, we need make apache-arrow lib available for source dist installation
-                  brew update
-                  brew install apache-arrow
-                  echo "ARROW_HOME=$(brew --prefix apache-arrow)" >> $GITHUB_ENV
-
-                  python3 -m pip install --pre cffi pip setuptools setuptools-rust
-                  python3 -m pip install --pre -i https://pypi.anaconda.org/scientific-python-nightly-wheels/simple --extra-index-url https://pypi.org/simple scipy
-                  grep -v -e '^extinction' -e '^pyvista' requirements.txt > requirements3.13.txt
-                  mv requirements3.13.txt requirements.txt
-                  cat requirements.txt
-                  python3 -m pip install pytest-codspeed
-                  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+                pip install --extra-index-url https://pypi.fury.io/arrow-nightlies/ --prefer-binary --pre pyarrow
+                grep -v -e '^extinction' requirements.txt > requirements3.13.txt
+                mv requirements3.13.txt requirements.txt
+                cat requirements.txt
 
             - name: Cache rust build
               uses: actions/cache@v4
