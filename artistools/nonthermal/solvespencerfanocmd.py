@@ -168,7 +168,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         )
         assert isinstance(args.timestep, int)
         assert isinstance(args.modelgridindex, int)
-        estim = estimators[(args.timestep, args.modelgridindex)]
+        estim = estimators[args.timestep, args.modelgridindex]
 
         dfpops = at.nltepops.read_files(modelpath, modelgridindex=args.modelgridindex, timestep=args.timestep)
 
@@ -291,8 +291,8 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             dfpops = {}
             T_e = 3000
             assert x_e <= 1.0
-            ionpopdict[(compelement_atomicnumber, 1)] = nntot * (1.0 - x_e)
-            ionpopdict[(compelement_atomicnumber, 2)] = nntot * x_e
+            ionpopdict[compelement_atomicnumber, 1] = nntot * (1.0 - x_e)
+            ionpopdict[compelement_atomicnumber, 2] = nntot * x_e
 
         # keep only the ion populations, not element or total populations
         ions = [key for key in ionpopdict if isinstance(key, tuple) and ionpopdict[key] / nntot >= minionfraction]
@@ -313,7 +313,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
         with pynt.SpencerFanoSolver(emin_ev=emin, emax_ev=emax, npts=npts, verbose=True) as sf:
             for Z, ion_stage in ions:
-                nnion = ionpopdict[(Z, ion_stage)]
+                nnion = ionpopdict[Z, ion_stage]
                 if nnion == 0.0:
                     print(f"   skipping Z={Z} ion_stage {ion_stage} due to nnion={nnion:.1e}")
                     continue
@@ -341,7 +341,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
                         f" {sf.get_frac_heating():6.3f}"
                     )
                     for atomic_number, ion_stage in ions:
-                        nnion = ionpopdict[(atomic_number, ion_stage)]
+                        nnion = ionpopdict[atomic_number, ion_stage]
                         frac_ionis_ion = sf.get_frac_ionisation_ion(atomic_number, ion_stage) if nnion > 0.0 else 0.0
                         strlineout += f" {frac_ionis_ion:.4f}"
                     fstat.write(strlineout + "\n")

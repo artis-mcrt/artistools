@@ -72,7 +72,7 @@ def write_single_estimator(modelpath, selected_timesteps, estimators, allnonempt
             v_mid = (cell["vel_r_min_kmps"] + cell["vel_r_max_kmps"]) / 2.0
             f.write(f"{v_mid:.2f}")
             for timestep in selected_timesteps:
-                cellvalue = estimators[(timestep, modelgridindex)][keyname]
+                cellvalue = estimators[timestep, modelgridindex][keyname]
                 # try:
                 #     cellvalue = estimators[(timestep, modelgridindex)][keyname]
                 # except KeyError:
@@ -114,11 +114,11 @@ def write_ionfracts(
                         continue
                     v_mid = (cell.vel_r_min_kmps + cell.vel_r_max_kmps) / 2.0
                     f.write(f"{v_mid:.2f}")
-                    elabund = estimators[(timestep, modelgridindex)].get(f"nnelement_{elsymb}", 0)
+                    elabund = estimators[timestep, modelgridindex].get(f"nnelement_{elsymb}", 0)
                     for ion in range(nions):
                         ion_stage = ion + elementlist.lowermost_ion_stage[element]
                         ionstr = at.get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
-                        ionabund = estimators[(timestep, modelgridindex)].get(f"nnion_{ionstr}", 0)
+                        ionabund = estimators[timestep, modelgridindex].get(f"nnion_{ionstr}", 0)
                         ionfrac = ionabund / elabund if elabund > 0 else 0
                         if ionfrac > 0.0:
                             fileisallzeros = False
@@ -144,16 +144,16 @@ def write_phys(modelpath, model_id, selected_timesteps, estimators, allnonemptym
                 if modelgridindex not in allnonemptymgilist:
                     continue
 
-                estimators[(timestep, modelgridindex)]["rho"] = (
+                estimators[timestep, modelgridindex]["rho"] = (
                     10**cell.logrho * (modelmeta["t_model_init_days"] / times[timestep]) ** 3
                 )
 
-                estimators[(timestep, modelgridindex)]["nntot"] = estimators[(timestep, modelgridindex)]["nntot"]
+                estimators[timestep, modelgridindex]["nntot"] = estimators[timestep, modelgridindex]["nntot"]
 
                 v_mid = (cell.vel_r_min_kmps + cell.vel_r_max_kmps) / 2.0
                 f.write(f"{v_mid:.2f}")
                 for keyname in ("Te", "rho", "nne", "nntot"):
-                    estvalue = estimators[(timestep, modelgridindex)][keyname]
+                    estvalue = estimators[timestep, modelgridindex][keyname]
                     f.write(f" {estvalue:.4e}")
                 f.write("\n")
 

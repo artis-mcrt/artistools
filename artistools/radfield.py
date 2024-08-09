@@ -332,13 +332,13 @@ def get_kappa_bf_ion(
 ) -> npt.NDArray:
     adata = at.atomic.get_levels(modelpath, get_photoionisations=True)
     estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
-    T_e = estimators[(timestep, modelgridindex)]["Te"]
+    T_e = estimators[timestep, modelgridindex]["Te"]
 
     ion_data = adata.query("Z == @atomic_number and ion_stage == @lower_ion_stage").iloc[0]
     upper_ion_data = adata.query("Z == @atomic_number and ion_stage == (@lower_ion_stage + 1)").iloc[0]
 
     ionstr = at.get_ionstring(atomic_number, lower_ion_stage, sep="_", style="spectral")
-    lowerionpopdensity = estimators[(timestep, modelgridindex)][f"nnion_{ionstr}"]
+    lowerionpopdensity = estimators[timestep, modelgridindex][f"nnion_{ionstr}"]
 
     ion_popfactor_sum = sum(
         level.g * math.exp(-level.energy_ev * EV / KB / T_e) for _, level in ion_data.levels[:max_levels].iterrows()
@@ -381,7 +381,7 @@ def get_recombination_emission(
     lower_ion_data = adata.query("Z == @atomic_number and ion_stage == @lower_ion_stage").iloc[0]
 
     estimtsmgi = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)[
-        (timestep, modelgridindex)
+        timestep, modelgridindex
     ]
 
     upperionstr = at.get_ionstring(atomic_number, upper_ion_stage, sep="_", style="spectral")
@@ -438,7 +438,7 @@ def get_recombination_emission(
                 * levelpopfrac
             )
 
-            arr_j_nu_lowerlevel[(upperlevelnum, levelnum)] = (
+            arr_j_nu_lowerlevel[upperlevelnum, levelnum] = (
                 arr_alpha_level_dnu / 4 / math.pi * H * arr_nu_hz * upperionpopdensity * nne
             )
 
@@ -488,8 +488,8 @@ def get_ion_gamma_dnu(modelpath, modelgridindex, timestep, atomic_number, ion_st
     """Calculate the contribution to the photoionisation rate coefficient per J_nu at each frequency nu for an ion."""
     estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
 
-    T_e = estimators[(timestep, modelgridindex)]["Te"]
-    T_R = estimators[(timestep, modelgridindex)]["TR"]
+    T_e = estimators[timestep, modelgridindex]["Te"]
+    T_R = estimators[timestep, modelgridindex]["TR"]
 
     adata = at.atomic.get_levels(modelpath, get_photoionisations=True)
     ion_data = adata.query("Z == @atomic_number and ion_stage == @ion_stage").iloc[0]
@@ -562,8 +562,8 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
 
     max_levels = 20
 
-    T_e = estimators[(timestep, modelgridindex)]["Te"]
-    nne = estimators[(timestep, modelgridindex)]["nne"]
+    T_e = estimators[timestep, modelgridindex]["Te"]
+    nne = estimators[timestep, modelgridindex]["nne"]
     print(f"T_e {T_e:.1f} K, nne {nne:.1e} /cm3")
 
     arraylambda_angstrom_recomb = np.linspace(xmin, xmax, num=10000)

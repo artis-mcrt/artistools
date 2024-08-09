@@ -53,7 +53,7 @@ def plot_Te_vs_time_lineofsight_3d_model(modelpath, modeldata, estimators, reado
     for mgi in readonly_mgi:
         associated_modeldata_row_for_mgi = modeldata.loc[modeldata["inputcellid"] == assoc_cells[mgi][0]]
 
-        Te = [estimators[(timestep, mgi)]["Te"] for timestep, _ in enumerate(times)]
+        Te = [estimators[timestep, mgi]["Te"] for timestep, _ in enumerate(times)]
         plt.scatter(times, Te, label=f'vel={associated_modeldata_row_for_mgi["vel_y_mid"].to_numpy()[0] / CLIGHT}')
 
     plt.xlabel("time [days]")
@@ -70,7 +70,7 @@ def plot_Te_vs_velocity(modelpath, modeldata, estimators, readonly_mgi):
     timesteps = [50, 55, 60, 65, 70, 75, 80, 90]
 
     for timestep in timesteps:
-        Te = [estimators[(timestep, mgi)]["Te"] for mgi in readonly_mgi]
+        Te = [estimators[timestep, mgi]["Te"] for mgi in readonly_mgi]
 
         associated_modeldata_rows = [
             modeldata.loc[modeldata["inputcellid"] == assoc_cells[mgi][0]] for mgi in readonly_mgi
@@ -97,7 +97,7 @@ def get_Te_vs_velocity_2D(modelpath, modeldata, vmax, estimators, readonly_mgi, 
     Te = np.zeros(ngridcells)
 
     for mgi in readonly_mgi:
-        Te[assoc_cells[mgi][0] - 1] = estimators[(timestep, mgi)]["Te"]
+        Te[assoc_cells[mgi][0] - 1] = estimators[timestep, mgi]["Te"]
 
     grid = round(len(modeldata["inputcellid"]) ** (1.0 / 3.0))
     grid_Te = np.zeros((grid, grid, grid))  # needs 3D array
