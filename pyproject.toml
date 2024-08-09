@@ -178,7 +178,7 @@ disable = """
 """
 
 [tool.pylint.typecheck]
-ignored-modules = ["astropy", "extinction"]
+ignored-modules = ["astropy", "extinction", "pyvista"]
 unsafe-load-any-extension = true
 
 [tool.pyright]
