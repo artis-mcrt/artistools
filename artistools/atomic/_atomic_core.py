@@ -100,7 +100,7 @@ def read_transitiondata(
                     list_collstr[index] = float(row[3])
                     list_forbidden[index] = int(row[4]) == 1 if len(row) >= 5 else 0
 
-                transdict[(Z, ion_stage)] = pl.DataFrame({
+                transdict[Z, ion_stage] = pl.DataFrame({
                     "lower": list_lower,
                     "upper": list_upper,
                     "A": list_A,
@@ -152,7 +152,7 @@ def parse_phixsdata(
                 phixslist = [float(fphixs.readline()) * 1e-18 for _ in range(nphixspoints)]
                 phixstable = np.array(list(zip(xgrid, phixslist, strict=False)))
 
-                phixsdict[(Z, lowerion_stage, lowerionlevel)] = (nptargetlist, phixstable)
+                phixsdict[Z, lowerion_stage, lowerionlevel] = (nptargetlist, phixstable)
 
             else:
                 for _ in range(nphixspoints):
@@ -293,7 +293,7 @@ def get_levels_polars(
 
         for Z, ion_stage, level_count, ionisation_energy_ev, dflevels in parse_adata(fadata, phixsdict, ionlist):
             if (Z, ion_stage) in transitionsdict:
-                dftransitions = transitionsdict[(Z, ion_stage)].lazy()
+                dftransitions = transitionsdict[Z, ion_stage].lazy()
                 if derived_transitions_columns is not None:
                     dftransitions = add_transition_columns(dftransitions, dflevels, derived_transitions_columns)
             else:
@@ -364,6 +364,6 @@ def get_ionrecombratecalibration(modelpath: str | Path) -> dict[tuple[int, int],
     recombdata = {}
     with Path(modelpath, "recombrates.txt").open("r", encoding="utf-8") as frecomb:
         for Z, upper_ion_stage, dfrrc in parse_recombratefile(frecomb):
-            recombdata[(Z, upper_ion_stage)] = dfrrc
+            recombdata[Z, upper_ion_stage] = dfrrc
 
     return recombdata

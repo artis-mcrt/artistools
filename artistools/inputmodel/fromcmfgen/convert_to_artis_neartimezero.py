@@ -26,16 +26,16 @@ def undecay(
     numnucleons: int,
 ) -> None:
     # e.g. parent=26, numnucleons=56 to reverse Ni56 -> Co56 decay
-    daughterisofracin = a["isofrac"][:, indexofisotope[(zparent - 1, numnucleons)]]
-    granddaughterisofracin = a["isofrac"][:, indexofisotope[(zparent - 2, numnucleons)]]
+    daughterisofracin = a["isofrac"][:, indexofisotope[zparent - 1, numnucleons]]
+    granddaughterisofracin = a["isofrac"][:, indexofisotope[zparent - 2, numnucleons]]
 
     a["specfrac"][:, indexofatomicnumber[zparent]] += daughterisofracin + granddaughterisofracin
     a["specfrac"][:, indexofatomicnumber[zparent - 1]] -= daughterisofracin
     a["specfrac"][:, indexofatomicnumber[zparent - 2]] -= granddaughterisofracin
 
-    a["isofrac"][:, indexofisotope[(zparent, numnucleons)]] += daughterisofracin + granddaughterisofracin
-    a["isofrac"][:, indexofisotope[(zparent - 1, numnucleons)]] -= daughterisofracin
-    a["isofrac"][:, indexofisotope[(zparent - 2, numnucleons)]] -= granddaughterisofracin
+    a["isofrac"][:, indexofisotope[zparent, numnucleons]] += daughterisofracin + granddaughterisofracin
+    a["isofrac"][:, indexofisotope[zparent - 1, numnucleons]] -= daughterisofracin
+    a["isofrac"][:, indexofisotope[zparent - 2, numnucleons]] -= granddaughterisofracin
 
 
 def reverse_doubledecay(
@@ -52,9 +52,9 @@ def reverse_doubledecay(
     # e.g. zparent=26, numnucleons=56 to reverse Ni56 -> Co56 -> Fe56 decay
     # meanlife1 is the mean lifetime of the parent (e.g. Ni56) and meanlife2 is the mean life of the daughter nucleus (e.g. Co56)
     assert tlate > 0
-    iso1fraclate = a["isofrac"][:, indexofisotope[(zparent, numnucleons)]]
-    iso2fraclate = a["isofrac"][:, indexofisotope[(zparent - 1, numnucleons)]]
-    iso3fraclate = a["isofrac"][:, indexofisotope[(zparent - 2, numnucleons)]]
+    iso1fraclate = a["isofrac"][:, indexofisotope[zparent, numnucleons]]
+    iso2fraclate = a["isofrac"][:, indexofisotope[zparent - 1, numnucleons]]
+    iso3fraclate = a["isofrac"][:, indexofisotope[zparent - 2, numnucleons]]
 
     lamb1 = 1 / meanlife1_days
     lamb2 = 1 / meanlife2_days
@@ -113,9 +113,9 @@ def reverse_doubledecay(
         assert iso2fract0[s] >= 0.0
         assert iso3fract0[s] >= 0.0
 
-    a["isofrac"][:, indexofisotope[(zparent, numnucleons)]] = iso1fract0
-    a["isofrac"][:, indexofisotope[(zparent - 1, numnucleons)]] = iso2fract0
-    a["isofrac"][:, indexofisotope[(zparent - 2, numnucleons)]] = iso3fract0
+    a["isofrac"][:, indexofisotope[zparent, numnucleons]] = iso1fract0
+    a["isofrac"][:, indexofisotope[zparent - 1, numnucleons]] = iso2fract0
+    a["isofrac"][:, indexofisotope[zparent - 2, numnucleons]] = iso3fract0
 
     a["specfrac"][:, indexofatomicnumber[zparent]] += iso1fract0 - iso1fraclate
     a["specfrac"][:, indexofatomicnumber[zparent - 1]] += iso2fract0 - iso2fraclate
@@ -136,9 +136,9 @@ def forward_doubledecay(
     # e.g. zdaughter=27, numnucleons=56 for Ni56 -> Co56 -> Fe56 decay
     # meanlife1 is the mean lifetime of the parent (e.g. Ni56) and meanlife2 is the mean life of the daughter nucleus (e.g. Co56)
     assert tlate > 0
-    iso1fract0 = a["isofrac"][:, indexofisotope[(zparent, numnucleons)]]
-    iso2fract0 = a["isofrac"][:, indexofisotope[(zparent - 1, numnucleons)]]
-    iso3fract0 = a["isofrac"][:, indexofisotope[(zparent - 2, numnucleons)]]
+    iso1fract0 = a["isofrac"][:, indexofisotope[zparent, numnucleons]]
+    iso2fract0 = a["isofrac"][:, indexofisotope[zparent - 1, numnucleons]]
+    iso3fract0 = a["isofrac"][:, indexofisotope[zparent - 2, numnucleons]]
 
     lamb1 = 1 / meanlife1_days
     lamb2 = 1 / meanlife2_days
@@ -159,9 +159,9 @@ def forward_doubledecay(
 
     iso3fraclate = iso3fract0 + iso3fromdecay
 
-    a["isofrac"][:, indexofisotope[(zparent, numnucleons)]] = iso1fraclate
-    a["isofrac"][:, indexofisotope[(zparent - 1, numnucleons)]] = iso2fraclate
-    a["isofrac"][:, indexofisotope[(zparent - 2, numnucleons)]] = iso3fraclate
+    a["isofrac"][:, indexofisotope[zparent, numnucleons]] = iso1fraclate
+    a["isofrac"][:, indexofisotope[zparent - 1, numnucleons]] = iso2fraclate
+    a["isofrac"][:, indexofisotope[zparent - 2, numnucleons]] = iso3fraclate
 
     a["specfrac"][:, indexofatomicnumber[zparent]] += iso1fraclate - iso1fract0
     a["specfrac"][:, indexofatomicnumber[zparent - 1]] += iso2fraclate - iso2fract0

@@ -416,8 +416,8 @@ def make_flux_ratio_plot(args: argparse.Namespace) -> None:
     m18_tdays = np.array([206, 229, 303, 339])
     m18_pew = {}
     # m18_pew[(26, 2, 12570)] = np.array([2383, 1941, 2798, 6770])
-    m18_pew[(26, 2, 7155)] = np.array([618, 417, 406, 474])
-    m18_pew[(28, 2, 7378)] = np.array([157, 256, 236, 309])
+    m18_pew[26, 2, 7155] = np.array([618, 417, 406, 474])
+    m18_pew[28, 2, 7378] = np.array([157, 256, 236, 309])
     if args.emfeaturesearch[1][:3] in m18_pew and args.emfeaturesearch[0][:3] in m18_pew:
         axis.set_ylim(ymax=12)
         arr_fratio = m18_pew[args.emfeaturesearch[1][:3]] / m18_pew[args.emfeaturesearch[0][:3]]
@@ -488,13 +488,13 @@ def get_packets_with_emission_conditions(
 
         def em_lognne(packet):
             # return interp_log10nne[packet.em_timestep](packet.true_emission_velocity)
-            return math.log10(estimators[(int(packet["em_timestep"]), int(packet[em_mgicolumn]))]["nne"])
+            return math.log10(estimators[int(packet["em_timestep"]), int(packet[em_mgicolumn])]["nne"])
 
         dfpackets_selected["em_log10nne"] = dfpackets_selected.apply(em_lognne, axis=1)
 
         def em_Te(packet):
             # return interp_te[packet.em_timestep](packet.true_emission_velocity)
-            return estimators[(int(packet["em_timestep"]), int(packet[em_mgicolumn]))]["Te"]
+            return estimators[int(packet["em_timestep"]), int(packet[em_mgicolumn])]["Te"]
 
         dfpackets_selected["em_Te"] = dfpackets_selected.apply(em_Te, axis=1)
 
@@ -513,10 +513,10 @@ def plot_nne_te_points(
     color_adj = [(c + 0.1) / 1.1 for c in mpl.colors.to_rgb(color)]  # type: ignore[arg-type]
     hitcount: dict[tuple[float, float], int] = {}
     for log10nne, Te in zip(em_log10nne, em_Te, strict=False):
-        hitcount[(log10nne, Te)] = hitcount.get((log10nne, Te), 0) + 1
+        hitcount[log10nne, Te] = hitcount.get((log10nne, Te), 0) + 1
 
     arr_log10nne, arr_te = zip(*hitcount.keys(), strict=False) if hitcount else ([], [])
-    arr_weight = np.array([hitcount[(x, y)] for x, y in zip(arr_log10nne, arr_te, strict=False)])
+    arr_weight = np.array([hitcount[x, y] for x, y in zip(arr_log10nne, arr_te, strict=False)])
     arr_weight = (arr_weight / normtotalpackets) * 500
     arr_size = np.sqrt(arr_weight) * 10
 
@@ -641,12 +641,12 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
                         f"{args.emtypecolumn} in @feature.linelistindices", inplace=False
                     )
                     if dfpackets_selected.empty:
-                        emdata_all[modelindex][(tmid, feature.colname)] = {
+                        emdata_all[modelindex][tmid, feature.colname] = {
                             "em_log10nne": np.array([]),
                             "em_Te": np.array([]),
                         }
                     else:
-                        emdata_all[modelindex][(tmid, feature.colname)] = {
+                        emdata_all[modelindex][tmid, feature.colname] = {
                             "em_log10nne": dfpackets_selected.em_log10nne.to_numpy(),
                             "em_Te": dfpackets_selected.em_Te.to_numpy(),
                         }
@@ -665,8 +665,8 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
                     for modelgridindex in modeldata.index:
                         Te, log10nne = None, None
                         with contextlib.suppress(KeyError):
-                            Te = estimators[(timestep, modelgridindex)]["Te"]
-                            log10nne = math.log10(estimators[(timestep, modelgridindex)]["nne"])
+                            Te = estimators[timestep, modelgridindex]["Te"]
+                            log10nne = math.log10(estimators[timestep, modelgridindex]["nne"])
 
                         if Te is not None and log10nne is not None:
                             Tedata_all[modelindex][tmid].append(Te)
@@ -718,11 +718,11 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
                         emfeatures = get_labelandlineindices(args.modelpath[truemodelindex], args.emfeaturesearch)
 
                         em_log10nne = np.concatenate([
-                            emdata_all[truemodelindex][(tmid, feature.colname)]["em_log10nne"] for feature in emfeatures
+                            emdata_all[truemodelindex][tmid, feature.colname]["em_log10nne"] for feature in emfeatures
                         ])
 
                         em_Te = np.concatenate([
-                            emdata_all[truemodelindex][(tmid, feature.colname)]["em_Te"] for feature in emfeatures
+                            emdata_all[truemodelindex][tmid, feature.colname]["em_Te"] for feature in emfeatures
                         ])
 
                         normtotalpackets = len(em_log10nne) * 8.0  # circles have more area than triangles, so decrease
@@ -747,7 +747,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
                 # featurebarcolours = ['blue', 'red']
 
                 normtotalpackets = np.sum([
-                    len(emdata_all[modelindex][(tmid, feature.colname)]["em_log10nne"]) for feature in emfeatures
+                    len(emdata_all[modelindex][tmid, feature.colname]["em_log10nne"]) for feature in emfeatures
                 ])
 
                 axis.scatter(
@@ -763,7 +763,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
 
                 for bars in (False,):  # (False, True)
                     for featureindex, feature in enumerate(emfeatures):
-                        emdata = emdata_all[modelindex][(tmid, feature.colname)]
+                        emdata = emdata_all[modelindex][tmid, feature.colname]
 
                         if not bars:
                             print(f'   {len(emdata["em_log10nne"])} points plotted for {feature.featurelabel}')

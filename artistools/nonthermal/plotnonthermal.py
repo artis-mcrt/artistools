@@ -71,7 +71,7 @@ def make_xs_plot(axis: mplax.Axes, nonthermaldata: pd.DataFrame, args: argparse.
 
 def plot_contributions(axis, modelpath, timestep, modelgridindex, nonthermaldata, args: argparse.Namespace):
     estim_tsmgi = at.estimators.read_estimators(modelpath, modelgridindex=modelgridindex, timestep=timestep)[
-        (timestep, modelgridindex)
+        timestep, modelgridindex
     ]
 
     total_depev = estim_tsmgi["total_dep"] * ERG_TO_EV

@@ -1,13 +1,14 @@
-def pytest_sessionstart(session) -> None:
+def pytest_configure(config):
     """Clear the test output of previous runs."""
     import shutil
+    import sys
     from pathlib import Path
 
-    import artistools as at
+    from artistools.configuration import get_config
 
-    outputpath = at.get_config("path_testoutput")
+    outputpath = get_config("path_testoutput")
     assert isinstance(outputpath, Path)
-    repopath = at.get_config("path_artistools_repository")
+    repopath = get_config("path_artistools_repository")
     assert isinstance(repopath, Path)
     if outputpath.exists():
         is_descendant = repopath.resolve() in outputpath.resolve().parents
@@ -16,3 +17,6 @@ def pytest_sessionstart(session) -> None:
         ), f"Refusing to delete {outputpath.resolve()} as it is not a descendant of the repository {repopath.resolve()}"
         shutil.rmtree(outputpath)
     outputpath.mkdir(exist_ok=True)
+
+    # remove the artistools module from sys.modules so that typeguard can be run
+    sys.modules.pop("artistools")
