@@ -413,7 +413,7 @@ def read_estimators(
     estimators: dict[tuple[int, int], dict[str, t.Any]] = {}
     for estimtsmgi in pldfestimators.iter_rows(named=True):
         ts, mgi = estimtsmgi["timestep"], estimtsmgi["modelgridindex"]
-        estimators[(ts, mgi)] = {
+        estimators[ts, mgi] = {
             k: v
             for k, v in estimtsmgi.items()
             if k not in {"timestep", "modelgridindex"} and (keys is None or k in keys) and v is not None

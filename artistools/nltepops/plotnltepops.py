@@ -53,7 +53,7 @@ def plot_reference_data(ax, atomic_number: int, ion_stage: int, estimators_cellt
             levelnumofconfigterm = {}
             for line in levelmapfile:
                 row = line.split()
-                levelnumofconfigterm[(row[0], row[1])] = int(row[2]) - 1
+                levelnumofconfigterm[row[0], row[1]] = int(row[2]) - 1
 
         # ax.set_ylim(bottom=5e-4)
         for depfilepath in sorted(Path("data").rglob(f"chianti_{elsym}_{ion_stage}_*.txt")):
@@ -85,7 +85,7 @@ def plot_reference_data(ax, atomic_number: int, ion_stage: int, estimators_cellt
                     for line in depfile:
                         row = line.split()
                         with contextlib.suppress(KeyError, IndexError, ValueError):
-                            levelnum = levelnumofconfigterm[(row[1], row[2])]
+                            levelnum = levelnumofconfigterm[row[1], row[2]]
                             if levelnum in dfpopthision["level"].to_numpy():
                                 levelnums.append(levelnum)
                                 if firstdep < 0:
@@ -202,7 +202,7 @@ def make_ionsubplot(
 
     ionpopulation = dfpopthision["n_NLTE"].sum()
     ionstr = at.get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
-    ionpopulation_fromest = estimators[(timestep, modelgridindex)].get(f"nnion_{ionstr}", 0.0)
+    ionpopulation_fromest = estimators[timestep, modelgridindex].get(f"nnion_{ionstr}", 0.0)
 
     dfpopthision["parity"] = [
         1 if (row.level != -1 and ion_data["levels"]["levelname"].item(int(row.level)).split("[")[0][-1] == "o") else 0
@@ -377,7 +377,7 @@ def make_ionsubplot(
 
     if args.plotrefdata:
         plot_reference_data(
-            ax, atomic_number, ion_stage, estimators[(timestep, modelgridindex)], dfpopthision, annotatelines=True
+            ax, atomic_number, ion_stage, estimators[timestep, modelgridindex], dfpopthision, annotatelines=True
         )
 
 
@@ -492,7 +492,7 @@ def plot_populations_with_time_or_velocity(
             except KeyError:
                 continue
             for ionlevel in ionlevels:
-                populations[(timestep, ionlevel, mgi)] = timesteppops.loc[timesteppops["level"] == ionlevel][
+                populations[timestep, ionlevel, mgi] = timesteppops.loc[timesteppops["level"] == ionlevel][
                     "n_NLTE"
                 ].to_numpy()[0]
                 # populationsLTE[(timestep, ionlevel)] = (timesteppops.loc[timesteppops['level']
@@ -582,10 +582,10 @@ def make_plot(modelpath, atomic_number, ion_stages_displayed, mgilist, timestep,
         print(f"Z={atomic_number} {elsymbol}")
 
         if estimators:
-            T_e = estimators[(timestep, modelgridindex)]["Te"]
-            T_R = estimators[(timestep, modelgridindex)]["TR"]
-            W = estimators[(timestep, modelgridindex)]["W"]
-            nne = estimators[(timestep, modelgridindex)]["nne"]
+            T_e = estimators[timestep, modelgridindex]["Te"]
+            T_R = estimators[timestep, modelgridindex]["TR"]
+            W = estimators[timestep, modelgridindex]["W"]
+            nne = estimators[timestep, modelgridindex]["nne"]
             print(f"nne = {nne} cm^-3, T_e = {T_e} K, T_R = {T_R} K, W = {W}")
         else:
             print("WARNING: No estimator data. Setting T_e = T_R =  6000 K")
@@ -607,8 +607,8 @@ def make_plot(modelpath, atomic_number, ion_stages_displayed, mgilist, timestep,
             max_ion_stage -= 1
 
         # timearray = at.get_timestep_times(modelpath)
-        nne = estimators[(timestep, modelgridindex)]["nne"]
-        W = estimators[(timestep, modelgridindex)]["W"]
+        nne = estimators[timestep, modelgridindex]["nne"]
+        W = estimators[timestep, modelgridindex]["W"]
 
         subplot_title = str(modelname)
         if len(modelname) > 10:
