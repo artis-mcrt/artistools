@@ -351,12 +351,17 @@ def makemodelfromgriddata(
     dfmodel = dfmodel.with_columns(pl.col("inputcellid").cast(pl.Int32))  # pylint: disable=no-member
     if scaledensity != 1.0:
         dfmodel = dfmodel.with_columns(rho=pl.col("rho") * scaledensity, mass_g=pl.col("mass_g") * scaledensity)
-        print(f"Densities will be scaled by {scaledensity}")
+        operationmsg = f"densities are scaled by factor of {scaledensity}"
+        print(operationmsg)
+        modelmeta["headercommentlines"].append(operationmsg)
 
     if scalevelocity != 1.0:
         dfmodel = dfmodel.with_columns(cs.starts_with("pos_") * scalevelocity, rho=pl.col("rho") * (scalevelocity**-3))
+        vmax_cmps_old = modelmeta["vmax_cmps"]
         modelmeta["vmax_cmps"] *= scalevelocity
-        print(f"Velocities will be scaled by {scalevelocity}. vmax/c is now {modelmeta['vmax_cmps'] / 29979245800:.2f}")
+        operationmsg = f"velocities are scaled by a factor of {scalevelocity} (with density scaled by 1/f^3 to conserve mass). vmax/c changed from {vmax_cmps_old / 29979245800:.2f} to {modelmeta['vmax_cmps'] / 29979245800:.2f}"
+        print(operationmsg)
+        modelmeta["headercommentlines"].append(operationmsg)
 
     if traj_root is not None:
         print(f"Nuclear network abundances from {traj_root} will be used")
@@ -437,7 +442,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-scalevelocity",
         type=float,
         default=1.0,
-        help="Multiply ejecta velocities by this factor (while holding density fixed) before writing the model file",
+        help="Multiply ejecta velocities by this factor (adjusting density to conserve mass) before writing the model file",
     )
     parser.add_argument("-outputpath", "-o", default=None, help="Path for output model files")
 

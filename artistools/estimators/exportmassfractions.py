@@ -30,11 +30,11 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         modelgridindexlist = range(10)
         estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindexlist)
         for modelgridindex in modelgridindexlist:
-            tdays = estimators[(timestep, modelgridindex)]["tdays"]
+            tdays = estimators[timestep, modelgridindex]["tdays"]
 
             numberdens = {}
             totaldens = 0.0  # number density times atomic mass summed over all elements
-            for key, val in estimators[(timestep, modelgridindex)].items():
+            for key, val in estimators[timestep, modelgridindex].items():
                 if key.startswith("nnelement_"):
                     atomic_number = at.get_atomic_number(key.removeprefix("nnelement_"))
                     numberdens[atomic_number] = val

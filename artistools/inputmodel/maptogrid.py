@@ -328,7 +328,7 @@ def maptogrid(
 
                 grho[i, j, k] += grho_contrib
 
-                particle_rho_contribs[(n, i, j, k)] = grho_contrib
+                particle_rho_contribs[n, i, j, k] = grho_contrib
 
                 # mass-weighted electron fraction (needs to be normalised by cell density afterwards)
                 gye[i, j, k] += grho_contrib * Ye[n]

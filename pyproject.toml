@@ -178,7 +178,7 @@ disable = """
 """
 
 [tool.pylint.typecheck]
-ignored-modules = ["astropy", "extinction"]
+ignored-modules = ["astropy", "extinction", "pyvista"]
 unsafe-load-any-extension = true
 
 [tool.pyright]
@@ -242,6 +242,9 @@ ignore = [
     "D203",  # one-blank-line-before-class
     "D213",  # multi-line-summary-second-line
     "D417",  # undocumented-param
+    "DOC201", # docstring-missing-returns
+    "DOC402", # docstring-missing-yields
+    "DOC501", # docstring-missing-exception
     "E501", # Line too long
     "ERA001",  # commented-out-code
     "FBT",

@@ -167,7 +167,7 @@ def make_plot(
             peak_y_value = max(peak_y_value, *yvalues_combined[seriesindex])
 
     axislabels = [
-        f"{at.get_elsymbol(Z)} {at.roman_numerals[ion_stage]}\n(pop={ionpopdict[(Z, ion_stage)]:.1e}/cm3)"
+        f"{at.get_elsymbol(Z)} {at.roman_numerals[ion_stage]}\n(pop={ionpopdict[Z, ion_stage]:.1e}/cm3)"
         for (Z, ion_stage) in ionlist
     ]
     axislabels += ["Total"]
@@ -284,7 +284,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             print("no estimators")
             sys.exit(1)
 
-        estimators = estimators_all[(timestep, modelgridindex)]
+        estimators = estimators_all[timestep, modelgridindex]
 
     # also calculate wavelengths outside the plot range to include lines whose
     # edges pass through the plot range
