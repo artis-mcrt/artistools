@@ -78,24 +78,7 @@ def test_band_lightcurve_peakmag_risetime_plot() -> None:
 
 
 def test_band_lightcurve_subplots() -> None:
-    at.lightcurve.plot(
-        argsraw=[],
-        modelpath=modelpath,
-        filter=["bol", "B"],
-        label=["Test bol lightcurve", "Test B band"],
-        reflightcurves=["SN2011fe.dat"],
-        timemin=4,
-        timemax=20,
-        ymin=-15.5,
-        ymax=-20.2,
-        nolegend=False,
-        legendsubplotnumber=0,
-        ncolslegend=1,
-        legendposition="lower center",
-        linestyle=[":", "-"],
-        color=["tab:red", "tab:orange"],
-        outputfile=outputpath,
-    )
+    at.lightcurve.plot(argsraw=[], modelpath=modelpath, filter=["bol", "B"], outputfile=outputpath)
 
 
 def test_colour_evolution_plot() -> None:
