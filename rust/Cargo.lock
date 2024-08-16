@@ -1404,6 +1404,8 @@ dependencies = [
 [[package]]
 name = "pyo3-polars"
 version = "0.16.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5ffa7f0af4fb0ec561a736c75f4090938dc4c6c01ea235fc70b97fc5512d5688"
 dependencies = [
  "libc",
  "once_cell",
