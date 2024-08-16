@@ -11,6 +11,7 @@ use std::io::Read;
 
 /// Read an ARTIS transitiondata.txt file and return a dictionary of DataFrames, keyed by (atomic_number, ion_stage).
 #[pyfunction]
+#[pyo3(signature = (transitions_filename, ionlist=None))]
 pub fn read_transitiondata(
     py: Python<'_>,
     transitions_filename: String,
