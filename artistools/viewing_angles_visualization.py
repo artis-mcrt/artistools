@@ -38,13 +38,13 @@ def gen_viewing_angle_df(length: int) -> pd.DataFrame:
         z_c = length * np.cos(theta)
 
         # 0 point
-        viewing_angles["Angle-bin"].append("%02d" % i)
+        viewing_angles["Angle-bin"].append(f"{i:02d}")
         viewing_angles["x_coord"].append(0.0)
         viewing_angles["y_coord"].append(0.0)
         viewing_angles["z_coord"].append(0.0)
 
         # end point
-        viewing_angles["Angle-bin"].append("%02d" % i)
+        viewing_angles["Angle-bin"].append(f"{i:02d}")
         viewing_angles["x_coord"].append(x_c)
         viewing_angles["y_coord"].append(y_c)
         viewing_angles["z_coord"].append(z_c)
