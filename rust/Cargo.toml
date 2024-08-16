@@ -10,9 +10,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 autocompress = { version = "0.6.0", features = ["gzip", "rayon", "xz", "zstd"] }
-polars = { version = "0.42", features = ["diagonal_concat"] }
-# "performant" feature is not compatible with pyo3-polars 0.16.0
+polars = { version = "0.42", features = ["diagonal_concat", "performant"] }
 pyo3 = { version = "0.22", features = ["abi3-py310"] }
-pyo3-polars = { version = "0.16", features = ["dtype-struct", "dtype-full"]}
-# enable "dtype-struct" feature if https://github.com/pola-rs/pyo3-polars/pull/99 is merged for compatibility with performant feature.
+pyo3-polars = { version = "0.16.1", features = ["dtype-struct"]}
 rayon = "1.10"
