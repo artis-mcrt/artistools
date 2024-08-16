@@ -1,6 +1,6 @@
 [package]
 name = "rustext"
-version = "0.1.1"
+version = "0.2.0"
 authors = ["Luke Shingles <luke.shingles@gmail.com>"]
 edition = "2021"
 
@@ -10,7 +10,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 autocompress = { version = "0.6.0", features = ["gzip", "rayon", "xz", "zstd"] }
-polars = { version = "0.41.3", features = ["diagonal_concat", "performant"] }
+polars = { version = "0.42.0", features = ["diagonal_concat", "performant"] }
 pyo3 = { version = "0.21.1", features = ["abi3-py310"] }
 pyo3-polars = "0.15.0"
 rayon = "1.10"
