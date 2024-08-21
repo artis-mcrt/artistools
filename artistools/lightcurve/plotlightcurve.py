@@ -314,7 +314,7 @@ def plot_artis_lightcurve(
         print(f"====> {modelname}")
     print(f" modelpath: {modelpath.resolve().parts[-1]}")
 
-    if hasattr(args, "title"):
+    if hasattr(args, "title") and args.title:
         axis.set_title(modelname)
 
     if directionbins is None:
