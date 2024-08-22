@@ -152,10 +152,10 @@ def get_rprocess_calculation_files(path_to_rprocess_calculation, interpolate_tra
     energy_thermo_filepath = "./Run_rprocess/energy_thermo.dat"
     for file in tarfiles:
         trajectory_id = file.split(".")[0]
-        tar = tarfile.open(path_to_rprocess_calculation / file, mode="r:*")
+        with tarfile.open(path_to_rprocess_calculation / file, mode="r:*") as tar:
+            energythermo_file = tar.extractfile(member=energy_thermo_filepath)
+            energy_thermo_data = pd.read_csv(energythermo_file, sep=r"\s+")  # pyright: ignore[reportArgumentType]
 
-        energythermo_file = tar.extractfile(member=energy_thermo_filepath)
-        energy_thermo_data = pd.read_csv(energythermo_file, sep=r"\s+")  # pyright: ignore[reportArgumentType]
         # print(energy_thermo_data['Qdot'])
         # print(energy_thermo_data['time/s'])
 
