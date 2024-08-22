@@ -94,7 +94,8 @@ def open_tar_file_or_extracted(traj_root: Path, particleid: int, memberfilename:
     # and memberfilename.endswith(".dat")
     if not path_extracted_file.is_file() and tarfilepath is not None:
         try:
-            tarfile.open(tarfilepath, "r:*").extract(path=Path(traj_root, str(particleid)), member=memberfilename)
+            with tarfile.open(tarfilepath, "r:*") as tarfilehandle:
+                tarfilehandle.extract(path=Path(traj_root, str(particleid)), member=memberfilename)
         except OSError:
             print(f"Problem extracting file {memberfilename} from {tarfilepath}")
             raise
