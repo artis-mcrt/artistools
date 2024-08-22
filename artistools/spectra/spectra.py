@@ -329,7 +329,7 @@ def read_spec(modelpath: Path, printwarningsonly: bool = False) -> pl.DataFrame:
     print(f"Reading {specfilename}")
 
     return (
-        pl.read_csv(at.zopenpl(specfilename), separator=" ", infer_schema_length=0, truncate_ragged_lines=True)
+        pl.read_csv(at.zopenpl(specfilename), separator=" ", infer_schema=False, truncate_ragged_lines=True)
         .with_columns(pl.all().cast(pl.Float64))
         .rename({"0": "nu"})
     )
@@ -345,7 +345,7 @@ def read_spec_res(modelpath: Path) -> dict[int, pl.DataFrame]:
     )
 
     print(f"Reading {specfilename} (in read_spec_res)")
-    res_specdata_in = pl.read_csv(at.zopenpl(specfilename), separator=" ", has_header=False, infer_schema_length=0)
+    res_specdata_in = pl.read_csv(at.zopenpl(specfilename), separator=" ", has_header=False, infer_schema=False)
 
     # drop last column of nulls (caused by trailing space on each line)
     if res_specdata_in[res_specdata_in.columns[-1]].is_null().all():
@@ -576,7 +576,9 @@ def get_specpol_data(
         )
 
         print(f"Reading {specfilename}")
-        specdata = pl.read_csv(specfilename, separator=" ", has_header=True)
+        specdata = pl.read_csv(specfilename, separator=" ", has_header=True, infer_schema=False).with_columns(
+            pl.all().cast(pl.Float64)
+        )
 
     return split_dataframe_stokesparams(specdata)
 
