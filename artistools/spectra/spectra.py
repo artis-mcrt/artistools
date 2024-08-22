@@ -467,9 +467,6 @@ def get_spectrum(
         arr_tdelta = at.get_timestep_times(modelpath, loc="delta")
 
         try:
-            specdata[dirbin] = specdata[dirbin].with_columns([
-                pl.col(col).cast(pl.Float64) for col in specdata[dirbin].columns
-            ])
             arr_f_nu = specdata[dirbin].select(
                 pl.sum_horizontal(
                     pl.col(specdata[dirbin].columns[timestep + 1]) * arr_tdelta[timestep]
@@ -580,6 +577,7 @@ def get_specpol_data(
 
         print(f"Reading {specfilename}")
         specdata = pl.read_csv(specfilename, separator=" ", has_header=True, infer_schema=False)
+        specdata = specdata.with_columns(pl.all().cast(pl.Float64))
 
     return split_dataframe_stokesparams(specdata)
 
