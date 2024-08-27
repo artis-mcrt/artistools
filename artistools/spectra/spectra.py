@@ -576,9 +576,9 @@ def get_specpol_data(
         )
 
         print(f"Reading {specfilename}")
-        specdata = pl.read_csv(specfilename, separator=" ", has_header=True, infer_schema=False).with_columns(
-            pl.all().cast(pl.Float64)
-        )
+        specdata = pl.read_csv(
+            at.zopenpl(specfilename), separator=" ", has_header=True, infer_schema=False
+        ).with_columns(pl.all().cast(pl.Float64))
 
     return split_dataframe_stokesparams(specdata)
 
