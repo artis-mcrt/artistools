@@ -123,7 +123,7 @@ def plot_reference_spectrum(
 ):
     """Plot a single reference spectrum.
 
-    The filename must be in space separated text formated with the first two
+    The filename must be in space separated text formatted with the first two
     columns being wavelength in Angstroms, and F_lambda
     """
     specdata, metadata = at.spectra.get_reference_spectrum(filename)
@@ -1321,7 +1321,7 @@ def addargs(parser) -> None:
     )
 
     # To get better statistics for polarisation use multiple runs of the same simulation. This will then average the
-    # files produced by makevspecpol for all simualtions.
+    # files produced by makevspecpol for all simulations.
     parser.add_argument(
         "--averagevspecpolfiles", action="store_true", help="Average the vspecpol-total files for multiple simulations"
     )

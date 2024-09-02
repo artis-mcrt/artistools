@@ -89,8 +89,8 @@ def define_heating_rate():
     dE = np.diff(dftimes_and_rate["rate"] * E_tot)
     dt = np.diff(times * 24 * 60 * 60)
 
-    intergrated_rate = dE / dt
-    scale_factor_energy_diff = max(qdot[1:] / intergrated_rate)
+    integrated_rate = dE / dt
+    scale_factor_energy_diff = max(qdot[1:] / integrated_rate)
     print(np.mean(scale_factor_energy_diff))
     E_tot *= scale_factor_energy_diff
     # print(f"E_tot after integrated line scaled to match energy of power law: {E_tot}")

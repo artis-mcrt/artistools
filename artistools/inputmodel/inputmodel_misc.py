@@ -329,7 +329,7 @@ def read_modelfile_text(
                 colrenames = {"inputpos_a": "pos_x_mid", "inputpos_b": "pos_y_mid", "inputpos_c": "pos_z_mid"}
 
             if matched_pos_zyx_mid:
-                print("  cell positions are consistent with z-y-x midpoint colums")
+                print("  cell positions are consistent with z-y-x midpoint columns")
                 colrenames = {"inputpos_a": "pos_z_mid", "inputpos_b": "pos_y_mid", "inputpos_c": "pos_x_mid"}
 
             dfmodel = dfmodel.rename({a: b for a, b in colrenames.items() if a in dfmodel.columns})

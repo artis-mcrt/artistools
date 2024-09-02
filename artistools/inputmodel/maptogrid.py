@@ -289,7 +289,7 @@ def maptogrid(
 
                 # option 1 minimum that no particle is lost
 
-                # option 2 increase smoothing everywhere, i.e. less holes but also less strcuture
+                # option 2 increase smoothing everywhere, i.e. less holes but also less structure
 
                 # option 3 increase smoothing beyond some distance
 

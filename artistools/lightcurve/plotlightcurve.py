@@ -1063,7 +1063,7 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
                         "WARNING: -color argument will not work with viewing angles for colour evolution plots,"
                         "colours are taken from color_list array instead"
                     )
-                    # plotkwargs["color"] = color_list[angle_counter]  # index instaed of angle_counter??
+                    # plotkwargs["color"] = color_list[angle_counter]  # index instead of angle_counter??
                     angle_counter += 1
                 elif args.plotviewingangle:
                     plotkwargs["color"] = color_list[angle_counter]
@@ -1429,7 +1429,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--logscalex", action="store_true", help="Use log scale for horizontal axis")
 
-    parser.add_argument("--logscaley", action="store_true", help="Use log scale for vertial axis")
+    parser.add_argument("--logscaley", action="store_true", help="Use log scale for vertical axis")
 
     parser.add_argument(
         "-reflightcurves",

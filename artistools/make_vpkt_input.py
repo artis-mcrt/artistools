@@ -14,7 +14,7 @@ vspec_tmax_in_days = 1.5
 
 custom_lambda_ranges: list[tuple[float, float]] = [(3500, 18000)]
 
-overrride_thickcell_tau = True  # if overrride_thickcell_tau=1  vpkt are not created when cell optical depth is larger than cell_is_optically_thick_vpkt
+override_thickcell_tau = True  # if override_thickcell_tau=1  vpkt are not created when cell optical depth is larger than cell_is_optically_thick_vpkt
 cell_is_optically_thick_vpkt = 100
 
 # maximum optical depth before vpkt is thrown away
@@ -47,7 +47,7 @@ with new_vpktfile.open("w", encoding="utf-8") as vpktfile:
         f"{bool(opacityexclusions):d} {f'{len(opacityexclusions)} ' + ' '.join(str(x) for x in opacityexclusions) if opacityexclusions else ''}\n"
         f"{override_tminmax} {vspec_tmin_in_days} {vspec_tmax_in_days}\n"
         f"{bool(custom_lambda_ranges):d}{str_custom_lambda_ranges}\n"
-        f"{overrride_thickcell_tau:d} {cell_is_optically_thick_vpkt}\n"
+        f"{override_thickcell_tau:d} {cell_is_optically_thick_vpkt}\n"
         f"{tau_max_vpkt}\n"
         f"{vgrid_on:d}\n"
         f"{tmin_vgrid_in_days} {tmax_vgrid_in_days}\n"

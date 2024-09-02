@@ -282,17 +282,17 @@ def add_mass_to_center(griddata, t_model_in_days, vmax, args: argparse.Namespace
     # Just (2021) Fig. 16 top left panel
     vel_hole = [0, 0.02, 0.05, 0.07, 0.09, 0.095, 0.1]
     mass_hole = [3e-4, 3e-4, 2e-4, 1e-4, 2e-5, 1e-5, 1e-9]
-    mass_intergrated = integrate.trapezoid(y=mass_hole, x=vel_hole)  # Msun
+    mass_integrated = integrate.trapezoid(y=mass_hole, x=vel_hole)  # Msun
 
     # # Just (2021) Fig. 16 4th down, left panel
     # vel_hole = [0, 0.02, 0.05, 0.1, 0.15, 0.16]
     # mass_hole = [4e-3, 2e-3, 1e-3, 1e-4, 6e-6, 1e-9]
-    # mass_intergrated = integrate.trapezoid(y=mass_hole, x=vel_hole)  # Msun
+    # mass_integrated = integrate.trapezoid(y=mass_hole, x=vel_hole)  # Msun
 
     v_outer_hole = 0.1 * CLIGHT  # cm/s
     pos_outer_hole = v_outer_hole * t_model_in_days * (24.0 * 3600)  # cm
     vol_hole = 4 / 3 * np.pi * pos_outer_hole**3  # cm^3
-    density_hole = (mass_intergrated * MSUN) / vol_hole  # g / cm^3
+    density_hole = (mass_integrated * MSUN) / vol_hole  # g / cm^3
     print(density_hole)
 
     for i, cellid in enumerate(griddata["inputcellid"]):

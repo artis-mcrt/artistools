@@ -364,7 +364,7 @@ def readfile_text(packetsfiletext: Path | str, column_names: list[str]) -> pl.Da
         )
 
     except Exception:
-        print(f"Error occured in file {packetsfiletext}")
+        print(f"Error occurred in file {packetsfiletext}")
         raise
 
     mpirank = int(packetsfiletext.name.split("_")[-1].split(".")[0])
