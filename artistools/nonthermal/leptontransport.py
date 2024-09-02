@@ -59,7 +59,7 @@ def calculate_dE_on_dx_ionexc(energy, n_e_bound):
 
     Z = 26
 
-    I_ev = 9.1 * Z * (1 + 1.9 * Z ** (-2 / 3.0))  # mean ionisation potention [eV]
+    I_ev = 9.1 * Z * (1 + 1.9 * Z ** (-2 / 3.0))  # mean ionisation potential [eV]
     # I_ev = 287.8  # [eV]
 
     g = 1 + tau**2 / 8 - (2 * tau + 1) * math.log(2)

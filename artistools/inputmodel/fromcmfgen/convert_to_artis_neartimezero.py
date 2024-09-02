@@ -241,7 +241,7 @@ def main() -> None:
     # Create an array of size n_radial_cells*31 (31=running index + 30 ARTIS species)
     abund = np.zeros((a["nd"], 31))
 
-    # Fill the array with availble mass fractions and the running index
+    # Fill the array with available mass fractions and the running index
     for i in range(a["nspec"] - 1):
         abund[:, spectoz[i]] = a["specfrac"][:, i]
 

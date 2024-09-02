@@ -153,7 +153,7 @@ def get_floers_data(dfpopthision, atomic_number, ion_stage, modelpath, T_e, mode
             dffloers = pd.read_csv(floersmultizonefilename)
             for _, row in dffloers.iterrows():
                 if abs(row["vel_outer"] - vel_outer) < 0.5:
-                    print(f"  ARTIS cell vel_outter: {vel_outer}, Floersfile: {row['vel_outer']}")
+                    print(f"  ARTIS cell vel_outer: {vel_outer}, Floersfile: {row['vel_outer']}")
                     print(f"  ARTIS cell Te: {T_e}, Floersfile: {row['Te']}")
                     floers_levelpops = row.to_numpy()[4:]
                     if len(dfpopthision["level"]) < len(floers_levelpops):

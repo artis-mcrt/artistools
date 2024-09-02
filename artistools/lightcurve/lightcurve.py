@@ -327,7 +327,7 @@ def bolometric_magnitude(
 
 def get_filter_data(filterdir: Path | str, filter_name: str) -> tuple[float, np.ndarray, np.ndarray, float, float]:
     """Filter data in 'data/filters' taken from https://github.com/cinserra/S3/tree/master/src/s3/metadata."""
-    with Path(filterdir, f"{filter_name}.txt").open("r", encoding="utf-8") as filter_metadata:  # defintion of the file
+    with Path(filterdir, f"{filter_name}.txt").open("r", encoding="utf-8") as filter_metadata:  # definition of the file
         line_in_filter_metadata = filter_metadata.readlines()  # list of lines
 
     zeropointenergyflux = float(line_in_filter_metadata[0])
