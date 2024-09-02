@@ -70,7 +70,7 @@ def get_grid() -> tuple:
     dattem = np.load(base / "kilonova_artis_input_138n1a6_rho_energy.npz")
 
     # first re-construct the original post-merger trajectories by merging the
-    # splitted dynamical ejecta trajectories
+    # split dynamical ejecta trajectories
     idx = np.array([int(i) for i in dat.f.idx])
     print(idx)
     isoA = iso[:, 0] + iso[:, 1]  # mass number = neutron number + proton number
