@@ -529,7 +529,8 @@ def get_modeldata(
     )
     dfmodel = pldfmodel.collect().to_pandas(use_pyarrow_extension_array=True)
     if modelmeta["npts_model"] > 100000 and not getheadersonly:
-        dfmodel.info(verbose=False, memory_usage="deep")
+        # dfmodel.info(verbose=False, memory_usage="deep")
+        print("WARNING: Using pandas DataFrame for large model data. Switch to using get_modeldata_polars() instead.")
 
     return dfmodel, modelmeta
 
