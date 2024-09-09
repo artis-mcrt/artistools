@@ -42,9 +42,9 @@ def plot_deposition_thermalisation(
     #     axistherm.set_ylim(bottom=0.1, top=1.0)
 
     if args.plotthermalisation:
-        dfmodel, _ = at.inputmodel.get_modeldata(modelpath, derived_cols=["mass_g", "vel_r_mid"])
+        dfmodel, _ = at.inputmodel.get_modeldata_polars(modelpath, derived_cols=["mass_g", "vel_r_mid"])
 
-        model_mass_grams = dfmodel.mass_g.sum()
+        model_mass_grams = dfmodel.select("mass_g").sum().collect().item()
         print(f"  model mass: {model_mass_grams / 1.989e33:.3f} Msun")
 
     depdata = at.get_deposition(modelpath)
@@ -222,12 +222,20 @@ def plot_deposition_thermalisation(
         )
 
         ejecta_ke: float
-        if "vel_r_mid" in dfmodel.columns:
-            # vel_r_mid is in cm/s
-            ejecta_ke = (0.5 * (dfmodel["mass_g"] / 1000.0) * (dfmodel["vel_r_mid"] / 100.0) ** 2).sum()
-        else:
+        if "vel_r_max_kmps" in dfmodel.collect_schema().names():
             # vel_r_min_kmps is in km/s
-            ejecta_ke = (0.5 * (dfmodel["mass_g"] / 1000.0) * (1000.0 * dfmodel["vel_r_max_kmps"]) ** 2).sum()
+            ejecta_ke = (
+                dfmodel.select((0.5 * (pl.col("mass_g") / 1000.0) * (1000 * pl.col("vel_r_max_kmps")) ** 2).sum())
+                .collect()
+                .item()
+            )
+        else:
+            # vel_r_mid is in cm/s
+            ejecta_ke = (
+                dfmodel.select((0.5 * (pl.col("mass_g") / 1000.0) * (pl.col("vel_r_mid") / 100.0) ** 2).sum())
+                .collect()
+                .item()
+            )
 
         print(f"  ejecta kinetic energy: {ejecta_ke:.2e} [J] = {ejecta_ke * 1e7:.2e} [erg]")
 
@@ -245,7 +253,7 @@ def plot_deposition_thermalisation(
         axistherm.plot(
             depdata["tmid_days"],
             barnes_f_gamma,
-            **{**plotkwargs, "label": r"Barnes+16 $f_\gamma$", "linestyle": "dashed", "color": color_gamma},
+            **{**plotkwargs, "label": r"Barnes+2016 $f_\gamma$", "linestyle": "dashed", "color": color_gamma},
         )
 
         e0_beta_mev = 0.5
@@ -259,7 +267,7 @@ def plot_deposition_thermalisation(
         axistherm.plot(
             depdata["tmid_days"],
             barnes_f_beta,
-            **{**plotkwargs, "label": r"Barnes+16 $f_\beta$", "linestyle": "dashed", "color": color_beta},
+            **{**plotkwargs, "label": r"Barnes+2016 $f_\beta$", "linestyle": "dashed", "color": color_beta},
         )
 
         e0_alpha_mev = 6.0
@@ -273,7 +281,7 @@ def plot_deposition_thermalisation(
         axistherm.plot(
             depdata["tmid_days"],
             barnes_f_alpha,
-            **{**plotkwargs, "label": r"Barnes+16 $f_\alpha$", "linestyle": "dashed", "color": color_alpha},
+            **{**plotkwargs, "label": r"Barnes+2016 $f_\alpha$", "linestyle": "dashed", "color": color_alpha},
         )
 
 
