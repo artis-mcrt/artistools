@@ -1137,7 +1137,7 @@ def get_linelist_pldf(modelpath: Path | str, get_ion_str: bool = False) -> pl.La
         .with_columns(pl.col(pl.Int64).cast(pl.Int32))
     )
 
-    if "ionstage" in linelist_lazy.columns:
+    if "ionstage" in linelist_lazy.collect_schema().names():
         linelist_lazy = linelist_lazy.rename({"ionstage": "ion_stage"})
 
     if get_ion_str:
