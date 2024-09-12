@@ -1620,7 +1620,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if not isinstance(args.modelpath, Iterable):
         args.modelpath = [args.modelpath]
 
+    assert isinstance(args.modelpath, list)
     args.modelpath = at.flatten_list(args.modelpath)
+
     # flatten the list
     modelpaths = []
     for elem in args.modelpath:

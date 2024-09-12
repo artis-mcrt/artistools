@@ -306,7 +306,7 @@ def get_from_packets(
         print("Applying filter to ARTIS spectrum")
         dfbinned_lazy = dfbinned_lazy.with_columns(cs.starts_with("f_lambda_").map_batches(fluxfilterfunc))
 
-    dfbinned = dfbinned_lazy.collect()
+    dfbinned = dfbinned_lazy.collect(projection_pushdown=False)  # projection_pushdown broke in polars 1.17.0
     assert isinstance(dfbinned, pl.DataFrame)
 
     dfdict = {}
@@ -979,7 +979,7 @@ def get_flux_contributions_from_packets(
     if directionbin != -1:
         cols |= {"costhetabin", "phibin", "dirbin"}
 
-    dfpackets = lzdfpackets.select([col for col in cols if col in lzdfpackets.columns]).collect()
+    dfpackets = lzdfpackets.select([col for col in cols if col in lzdfpackets.collect_schema().names()]).collect()
 
     emissiongroups = (
         {
