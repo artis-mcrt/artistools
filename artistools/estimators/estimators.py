@@ -31,14 +31,16 @@ def get_variableunits(key: str) -> str | None:
         "TR": "K",
         "Te": "K",
         "TJ": "K",
-        "nne": "e^-/cm3",
+        "nne": "e$^-$/cm$^3$",
         "nniso": "cm$^{-3}$",
         "nnion": "cm$^{-3}$",
         "nnelement": "cm$^{-3}$",
-        "heating": "erg/s/cm3",
+        "deposition": "erg/s/cm$^3$",
+        "total_dep": "erg/s/cm$^3$",
+        "heating": "erg/s/cm$^3$",
         "heating_dep/total_dep": "Ratio",
-        "cooling": "erg/s/cm3",
-        "rho": "g/cm3",
+        "cooling": "erg/s/cm$^3$",
+        "rho": "g/cm$^3$",
         "velocity": "km/s",
         "beta": "v/c",
         "vel_r_max_kmps": "km/s",
@@ -389,7 +391,11 @@ def scan_estimators(
     if "heating_gamma/gamma_dep" in colnames:
         pldflazy = pldflazy.with_columns(gamma_dep=pl.col("heating_gamma") / pl.col("heating_gamma/gamma_dep"))
 
-    if "heating_heating_dep/total_dep" in colnames:
+    if "deposition_gamma" in colnames:
+        # sum up the gamma, elec, positron, alpha deposition contributions
+        pldflazy = pldflazy.with_columns(total_dep=pl.sum_horizontal(cs.starts_with("deposition_")))
+    elif "heating_heating_dep/total_dep" in colnames:
+        # for older files with no deposition data, take heating part of deposition and heating fraction
         pldflazy = pldflazy.with_columns(total_dep=pl.col("heating_dep") / pl.col("heating_heating_dep/total_dep"))
 
     pldflazy = pldflazy.with_columns(nntot=pl.sum_horizontal(cs.starts_with("nnelement_")))
