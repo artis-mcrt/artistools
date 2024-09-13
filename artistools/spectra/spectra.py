@@ -306,7 +306,7 @@ def get_from_packets(
         print("Applying filter to ARTIS spectrum")
         dfbinned_lazy = dfbinned_lazy.with_columns(cs.starts_with("f_lambda_").map_batches(fluxfilterfunc))
 
-    dfbinned = dfbinned_lazy.collect(projection_pushdown=False)  # projection_pushdown broke in polars 1.17.0
+    dfbinned = dfbinned_lazy.collect()
     assert isinstance(dfbinned, pl.DataFrame)
 
     dfdict = {}

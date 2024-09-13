@@ -174,7 +174,7 @@ def plot_spherical(
         .join(dfpackets, how="left", on=["costhetabin", "phibin"], coalesce=True)
         .fill_null(0)
         .sort(["costhetabin", "phibin"])
-    ).collect(projection_pushdown=False)  # projection_pushdown broke in polars 1.17.0
+    ).collect()
 
     print(f'packets plotted: {alldirbins.select("count").sum().item(0, 0):.1e}')
 
