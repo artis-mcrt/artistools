@@ -640,7 +640,6 @@ def plot_subplot(
             variablename = plotitem.meta.output_name() if isinstance(plotitem, pl.Expr) else plotitem
             assert isinstance(variablename, str)
             showlegend = seriescount > 1 or len(variablename) > 35 or not sameylabel
-            print(f"Plotting {showlegend=} {len(variablename)=} {sameylabel=} {ylabel=}")
             plot_series(
                 ax=ax,
                 startfromzero=startfromzero,
@@ -816,7 +815,7 @@ def make_plot(
             timedays = f"{at.get_timestep_time(modelpath, timestepmin):.2f}d-{at.get_timestep_time(modelpath, timestepmax):.2f}d"
 
         figure_title = f"{modelname}\nTimestep {timestep} ({timedays})"
-        print("Plotting ", figure_title.replace("\n", " "))
+        print("Plotting " + figure_title.replace("\n", " "))
 
         defaultoutputfile = "plotestimators_{timestep}_{timedays}.{format}"
         if Path(args.outputfile).is_dir():
