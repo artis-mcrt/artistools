@@ -15,6 +15,33 @@ import polars.selectors as cs
 import artistools as at
 
 
+def calculate_model_electron_frac(dfmodel: pl.LazyFrame) -> float:
+    """Calculate the electron fraction of the model from the isotopic composition."""
+    MH = 1.67352e-24  # mass of hydrogen atom in grams
+    exprs_protons = []
+    exprs_nucleons = []
+    for column in dfmodel.select(cs.matches("X_[A-z]+[0-9]")).collect_schema().names():
+        species = column.removeprefix("X_")
+        elsymb = species.rstrip(string.digits)
+        atomic_number = at.get_atomic_number(elsymb)
+        if atomic_number == 0:
+            continue
+        mass_number = float(species.removeprefix(elsymb))
+        exprs_protons.append(atomic_number / (mass_number * MH) * pl.col(column) * pl.col("mass_g"))
+        exprs_nucleons.append(1 / MH * pl.col(column) * pl.col("mass_g"))
+
+    dfmodel = dfmodel.with_columns(
+        protons=pl.sum_horizontal(exprs_protons), nucleons=pl.sum_horizontal(exprs_nucleons)
+    ).with_columns(electronfrac=pl.col("protons") / pl.col("nucleons"))
+
+    globalelectronfrac = dfmodel.select(pl.col("protons").sum() / pl.col("nucleons").sum()).collect().item()
+
+    assert globalelectronfrac is not None
+    assert 0.0 <= globalelectronfrac <= 1.0
+    assert isinstance(globalelectronfrac, float)
+    return globalelectronfrac
+
+
 def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-inputfile", "-i", default=Path(), help="Path of input file or folder containing model.txt")
 
@@ -116,6 +143,16 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         print("  no cell mapping file found")
         assoc_cells, mgi_of_propcells = None, None
 
+    if "cellYe" in dfmodel.collect_schema().names():
+        electronfrac = dfmodel.select(pl.col("cellYe").dot(pl.col("mass_g")) / pl.col("mass_g").sum()).collect().item()
+        assert electronfrac is not None
+        print(f'  {"electron frac Ye":19s} {electronfrac:.3f}')
+        if args.isotopes:
+            # currently assumes that all isotopes are specified (i.e. not for Type Ia models)
+            calcelectronfrac = calculate_model_electron_frac(dfmodel)
+            assert calcelectronfrac is not None
+            print(f'  {"snapshot Ye":19s} {calcelectronfrac:.3f}')
+
     if "q" in dfmodel.collect_schema().names():
         initial_energy = dfmodel.select(pl.col("q").dot(pl.col("mass_g"))).collect().item()
         assert initial_energy is not None
@@ -139,7 +176,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             .item()
         ) * 1e7
 
-    print(f"  kinetic energy: {ejecta_ke_erg:.2e} [erg]")
+    print(f'  {"kinetic energy":19s} {ejecta_ke_erg:.2e} [erg]')
 
     mass_msun_rho = dfmodel.select(pl.col("mass_g").sum() / msun_g).collect().item()
 
@@ -173,11 +210,11 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
             mtot_mapped_msun = sum(cellmass_mapped) / msun_g
             print(
-                f'  {"M_tot_rho_map":19s} {mtot_mapped_msun:8.5f} MSun (density * volume when mapped to {ncoordgridx}^3'
+                f'  {"M_tot_rho_map":19s} {mtot_mapped_msun:7.5f} MSun (density * volume when mapped to {ncoordgridx}^3'
                 f" cubic grid, error {100 * (mtot_mapped_msun / mass_msun_rho - 1):.2f}%)"
             )
 
-    print(f'  {"M_tot_rho":19s} {mass_msun_rho:8.5f} MSun (density * volume)')
+    print(f'  {"M_tot_rho":19s} {mass_msun_rho:7.5f} MSun (density * volume)')
 
     if modelmeta["dimensions"] > 1:
         corner_mass = (
@@ -188,7 +225,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             .item()
         ) / msun_g
         print(
-            f'  {"M_corners":19s} {corner_mass:8.5f} MSun ('
+            f'  {"M_corners":19s} {corner_mass:7.5f} MSun ('
             f" {100 * corner_mass / mass_msun_rho:.2f}% of M_tot in cells with v_r_mid > vmax)"
         )
 
@@ -202,7 +239,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     speciesmasses: dict[str, float] = {}
 
     for column in dfmodel.select(cs.starts_with("X_") - cs.by_name("X_Fegroup")).collect_schema().names():
-        species = column.replace("X_", "")
+        species = column.removeprefix("X_")
 
         speciesabund_g = dfmodel.select(pl.col(column).dot(pl.col("mass_g"))).collect().item()
 
@@ -236,28 +273,28 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
                 mass_msun_actinides += species_mass_msun
 
     print(
-        f'  {"M_tot_elem":19s} {mass_msun_elem:8.5f} MSun ({mass_msun_elem / mass_msun_rho * 100:6.2f}% of M_tot_rho)'
+        f'  {"M_tot_elem":19s} {mass_msun_elem:7.5f} MSun ({mass_msun_elem / mass_msun_rho * 100:6.2f}% of M_tot_rho)'
     )
 
     if args.isotopes:
         print(
-            f'  {"M_tot_iso":19s} {mass_msun_isotopes:8.5f} MSun ({mass_msun_isotopes / mass_msun_rho * 100:6.2f}% '
+            f'  {"M_tot_iso":19s} {mass_msun_isotopes:7.5f} MSun ({mass_msun_isotopes / mass_msun_rho * 100:6.2f}% '
             "of M_tot_rho, but can be < 100% if stable isotopes not tracked)"
         )
 
     mass_msun_fegroup = dfmodel.select(pl.col("X_Fegroup").dot(pl.col("mass_g"))).collect().item() / msun_g
     print(
-        f'  {"M_Fegroup":19s} {mass_msun_fegroup:8.5f} MSun'
+        f'  {"M_Fegroup":19s} {mass_msun_fegroup:7.5f} MSun'
         f" ({mass_msun_fegroup / mass_msun_rho * 100:6.2f}% of M_tot_rho)"
     )
 
     print(
-        f'  {"M_lanthanide_isosum":19s} {mass_msun_lanthanides:8.5f} MSun'
+        f'  {"M_lanthanide_isosum":19s} {mass_msun_lanthanides:7.5f} MSun'
         f" ({mass_msun_lanthanides / mass_msun_rho * 100:6.2f}% of M_tot_rho)"
     )
 
     print(
-        f'  {"M_actinide_isosum":19s} {mass_msun_actinides:8.5f} MSun'
+        f'  {"M_actinide_isosum":19s} {mass_msun_actinides:7.5f} MSun'
         f" ({mass_msun_actinides / mass_msun_rho * 100:6.2f}% of M_tot_rho)"
     )
 
@@ -277,7 +314,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     mass_g_min = min(speciesmasses.values())
     mass_g_max = max(speciesmasses.values())
     try:
-        maxbarchars = os.get_terminal_size()[0] - 65
+        maxbarchars = os.get_terminal_size()[0] - 57
     except OSError:
         maxbarchars = 20
     for species, mass_g in sorted(speciesmasses.items(), key=sortkey):
@@ -286,7 +323,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         strcomment = ""
         atomic_number = at.get_atomic_number(species)
         if species.endswith("_isosum"):
-            elsymb = species.replace("_isosum", "")
+            elsymb = species.removeprefix("_isosum")
             elem_mass = speciesmasses.get(elsymb, 0.0)
             if np.isclose(mass_g, elem_mass, rtol=1e-4):
                 # iso sum matches the element mass, so don't show it
@@ -298,7 +335,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
         zstr = str(atomic_number)
         barstr = "-" * int(maxbarchars * (mass_g - mass_g_min) / (mass_g_max - mass_g_min))
-        print(f"{zstr:>5} {species:11s} massfrac {massfrac:.3e}   {species_mass_msun:.3e} Msun  {barstr}")
+        print(f"{zstr:>5} {species:7s} massfrac {massfrac:.3e}   {species_mass_msun:.3e} Msun  {barstr}")
         if strcomment:
             print(f"    {strcomment}")
 
