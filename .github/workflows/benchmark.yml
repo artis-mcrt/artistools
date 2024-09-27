@@ -14,7 +14,7 @@ on:
 jobs:
     codspeed-benchmarks:
         timeout-minutes: 180
-        runs-on: ubuntu-22.04
+        runs-on: ubuntu-24.04
 
         name: codspeed benchmarks
         steps:
