@@ -166,12 +166,11 @@ jobs:
             - name: Install apache-arrow for source build of pyarrow on 3.13
               if: ${{ startsWith(matrix.python-version, '3.13') }}
               run: |
-                python3 -m pip install uv
                 # until pyarrow adds wheels for 3.13, we need make apache-arrow lib available for source dist installation
                 eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)" || true
                 brew install apache-arrow
                 echo "ARROW_HOME=$(brew --prefix apache-arrow)" >> $GITHUB_ENV
-                python3 -m uv pip install --pre pyarrow
+                python3 -m pip install --pre pyarrow
                 grep -v -e '^extinction' requirements.txt > requirements3.13.txt
                 mv requirements3.13.txt requirements.txt
                 cat requirements.txt
