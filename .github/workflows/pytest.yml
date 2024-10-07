@@ -163,15 +163,12 @@ jobs:
             - name: Show python version
               run: python3 --version --version && which python3
 
-            - name: Install Linux homebrew
-              if: startsWith(matrix.os, 'ubuntu')
-              run: eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-
             - name: Install pre-release packages for 3.13
               if: ${{ startsWith(matrix.python-version, '3.13') }}
               run: |
                 python3 -m pip install uv
                 # until pyarrow adds wheels for 3.13, we need make apache-arrow lib available for source dist installation
+                eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)" || true
                 brew install apache-arrow
                 echo "ARROW_HOME=$(brew --prefix apache-arrow)" >> $GITHUB_ENV
                 python3 -m uv pip install --pre pyarrow pandas cffi pip setuptools setuptools-rust
