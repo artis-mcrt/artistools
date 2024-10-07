@@ -168,7 +168,7 @@ jobs:
               run: |
                 # until pyarrow adds wheels for 3.13, we need make apache-arrow lib available for source dist installation
                 eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)" || true
-                brew install apache-arrow
+                brew install apache-arrow brotli
                 echo "ARROW_HOME=$(brew --prefix apache-arrow)" >> $GITHUB_ENV
                 python3 -m pip install --pre pyarrow
                 grep -v -e '^extinction' requirements.txt > requirements3.13.txt
