@@ -163,7 +163,7 @@ jobs:
             - name: Show python version
               run: python3 --version --version && which python3
 
-            - name: Install pre-release packages for 3.13
+            - name: Install apache-arrow for source build of pyarrow on 3.13
               if: ${{ startsWith(matrix.python-version, '3.13') }}
               run: |
                 python3 -m pip install uv
@@ -171,7 +171,7 @@ jobs:
                 eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)" || true
                 brew install apache-arrow
                 echo "ARROW_HOME=$(brew --prefix apache-arrow)" >> $GITHUB_ENV
-                python3 -m uv pip install --pre pyarrow pandas cffi pip setuptools setuptools-rust
+                python3 -m uv pip install --pre pyarrow
                 grep -v -e '^extinction' requirements.txt > requirements3.13.txt
                 mv requirements3.13.txt requirements.txt
                 cat requirements.txt
