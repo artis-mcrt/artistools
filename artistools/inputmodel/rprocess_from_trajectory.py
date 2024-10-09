@@ -109,7 +109,7 @@ def open_tar_file_or_extracted(traj_root: Path, particleid: int, memberfilename:
 
     # print(f"using {tarfilepath} for {memberfilename}")
     # return tarfile.open(tarfilepath, "r:*").extractfile(member=memberfilename)
-    with tarfile.open(tarfilepath, "r|*") as tfile:
+    with tarfile.open(tarfilepath, "r:*") as tfile:
         for tarmember in tfile:
             if tarmember.name == memberfilename:
                 extractedfile = tfile.extractfile(tarmember)
