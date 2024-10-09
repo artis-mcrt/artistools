@@ -100,16 +100,17 @@ def stackspectra(
 
 def get_spectrum_at_time(
     modelpath: Path,
-    timestep: int,
-    time: float,
+    timemin: float,
+    timemax: float,
     args: argparse.Namespace | None,
     dirbin: int = -1,
     average_over_phi: bool | None = None,
     average_over_theta: bool | None = None,
 ) -> pd.DataFrame:
     if dirbin >= 0:
+        timeavg = (timemax + timemin) / 2
         if args is not None and args.plotvspecpol and (modelpath / "vpkt.txt").is_file():
-            return get_vspecpol_spectrum(modelpath, time, dirbin, args).to_pandas(use_pyarrow_extension_array=True)
+            return get_vspecpol_spectrum(modelpath, timeavg, dirbin, args).to_pandas(use_pyarrow_extension_array=True)
         assert average_over_phi is not None
         assert average_over_theta is not None
     else:
@@ -119,8 +120,8 @@ def get_spectrum_at_time(
     return get_spectrum(
         modelpath=modelpath,
         directionbins=[dirbin],
-        timestepmin=timestep,
-        timestepmax=timestep,
+        timestepmin=at.get_timestep_of_timedays(modelpath, timemin),
+        timestepmax=at.get_timestep_of_timedays(modelpath, timemax),
         average_over_phi=average_over_phi,
         average_over_theta=average_over_theta,
     )[dirbin].to_pandas(use_pyarrow_extension_array=True)
