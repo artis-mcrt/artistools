@@ -1543,4 +1543,4 @@ def get_multiprocessing_pool() -> multiprocessing.pool.Pool:
         pass
     else:
         cleanup_on_sigterm()
-    return multiprocessing.get_context("forkserver").Pool(processes=at.get_config()["num_processes"])
+    return multiprocessing.get_context("spawn").Pool(processes=at.get_config()["num_processes"])
