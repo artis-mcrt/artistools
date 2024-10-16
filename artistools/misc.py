@@ -560,10 +560,10 @@ def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | None, 
     nts_last_tend = t_end[nts_last]
 
     # latest possible valid range is the end of the latest computed timestep plus the longest travel time
-    validrange_end_days: float | None = nts_last_tend * (1 - cornervmax / 29979245800)
+    validrange_end_days: float = nts_last_tend * (1 - cornervmax / 29979245800)
 
     if validrange_start_days > validrange_end_days:
-        validrange_start_days, validrange_end_days = None, None
+        return nts_last, None, None
 
     return nts_last, validrange_start_days, validrange_end_days
 
