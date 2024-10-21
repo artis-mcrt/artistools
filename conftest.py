@@ -15,7 +15,7 @@ def pytest_configure(config):
         assert (
             is_descendant
         ), f"Refusing to delete {outputpath.resolve()} as it is not a descendant of the repository {repopath.resolve()}"
-        shutil.rmtree(outputpath)
+        shutil.rmtree(outputpath, ignore_errors=True)
     outputpath.mkdir(exist_ok=True)
 
     # remove the artistools module from sys.modules so that typeguard can be run

@@ -67,7 +67,7 @@ def make_2d_packets_plot_pyvista(modelpath, timestep):
 
     modeldata, _, vmax_cms = at.inputmodel.get_modeldata_tuple(modelpath)
     _, x, y, z = at.packets.make_3d_grid(modeldata, vmax_cms)
-    mesh = pv.StructuredGrid(x, y, z)
+    mesh = pv.StructuredGrid(x, y, z)  # type: ignore[attr-defined] # pyright: ignore[reportCallIssue]
 
     hist = at.packets.make_3d_histogram_from_packets(modelpath, timestep)
 
@@ -83,8 +83,8 @@ def make_2d_packets_plot_pyvista(modelpath, timestep):
         "label_font_size": 25,
     }
 
-    pv.set_plot_theme("document")  # set white background # pyright: ignore[reportCallIssue]
-    p = pv.Plotter()  # pyright: ignore[reportCallIssue]
+    pv.set_plot_theme("document")  # type: ignore[attr-defined] # pyright: ignore[reportPrivateImportUsage]
+    p = pv.Plotter()  # type: ignore[attr-defined] # pyright: ignore[reportCallIssue]
 
     p.set_scale(p, xscale=1.5, yscale=1.5, zscale=1.5)
     single_slice = mesh.slice(normal="y")
