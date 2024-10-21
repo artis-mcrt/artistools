@@ -164,9 +164,6 @@ jobs:
               if: ${{ startsWith(matrix.python-version, '3.13') }}
               run: |
                 pip install --extra-index-url https://pypi.fury.io/arrow-nightlies/ --prefer-binary --pre pyarrow
-                grep -v -e '^extinction' requirements.txt > requirements3.13.txt
-                mv requirements3.13.txt requirements.txt
-                cat requirements.txt
 
             - name: Cache rust build
               uses: actions/cache@v4
