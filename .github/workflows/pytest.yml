@@ -24,7 +24,7 @@ jobs:
             - name: Set up Python
               uses: actions/setup-python@v5
               with:
-                  python-version-file: .python-version
+                  python-version: 3.13
 
             - name: Cache rust build
               uses: actions/cache@v4
@@ -38,6 +38,7 @@ jobs:
             - name: Install artistools
               run: |
                   pip install uv
+                  pip install --extra-index-url https://pypi.fury.io/arrow-nightlies/ --prefer-binary --pre pyarrow
                   uv pip install --system --upgrade pylint mypy ruff
                   uv pip install --system --upgrade --compile-bytecode --editable  .
 
@@ -74,7 +75,7 @@ jobs:
             - name: Set up Python
               uses: actions/setup-python@v5
               with:
-                  python-version-file: .python-version
+                  python-version: 3.13
 
             - name: Cache rust build
               uses: actions/cache@v4
@@ -88,6 +89,7 @@ jobs:
             - name: Install artistools
               run: |
                   pip install uv
+                  pip install --extra-index-url https://pypi.fury.io/arrow-nightlies/ --prefer-binary --pre pyarrow
                   uv pip install --system --upgrade --compile-bytecode --editable  .
 
             - uses: pre-commit/action@v3.0.1
