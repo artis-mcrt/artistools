@@ -38,7 +38,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         ncols=1,
         sharex=True,
         sharey=False,
-        figsize=(8, 8),
+        figsize=(6, 6),
         tight_layout={"pad": 0.4, "w_pad": 0.0, "h_pad": 0.0},
     )
     assert isinstance(axes, np.ndarray)
@@ -51,6 +51,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             modelpath, derived_cols=["vel_r_min", "vel_r_mid", "vel_r_max", "mass_g"]
         )
         label = at.get_model_name(modelpath)
+        print(f"Plotting {label}")
         binned_xvals: list[float] = []
         binned_yvals: list[float] = []
 
@@ -93,7 +94,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     axes[-1].set_xlabel("Velocity [$c$]")
     axes[0].set_ylabel(r"Mass Enclosed [M$_\odot$]")
     axes[1].set_ylabel(r"$\Delta$M/$\Delta v$  [M$_\odot/c$]")
-    axes[0].legend()
+    axes[1].legend(frameon=False)
 
     axes[-1].set_xlim(left=0.0)
     axes[0].set_ylim(bottom=0.0)
