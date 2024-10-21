@@ -25,6 +25,7 @@ jobs:
               uses: actions/setup-python@v5
               with:
                   python-version-file: .python-version
+                  check-latest: true
 
             - name: Cache rust build
               uses: actions/cache@v4
@@ -37,9 +38,11 @@ jobs:
 
             - name: Install artistools
               run: |
-                  pip install uv
-                  uv pip install --system --upgrade pylint mypy ruff
-                  uv pip install --system --upgrade --compile-bytecode --editable  .
+                  python3 -m pip install --extra-index-url https://pypi.fury.io/arrow-nightlies/ --prefer-binary --pre pyarrow
+                  python3 -m pip install uv
+                  python3 -m uv pip install --system --pre --upgrade pylint mypy ruff
+                  python3 -m pip install uv
+                  python3 -m uv pip install --compile-bytecode --pre --editable .
 
             - name: Run Ruff
               if: always()
@@ -75,6 +78,7 @@ jobs:
               uses: actions/setup-python@v5
               with:
                   python-version-file: .python-version
+                  check-latest: true
 
             - name: Cache rust build
               uses: actions/cache@v4
@@ -87,8 +91,10 @@ jobs:
 
             - name: Install artistools
               run: |
-                  pip install uv
-                  uv pip install --system --upgrade --compile-bytecode --editable  .
+                  python3 -m pip install --extra-index-url https://pypi.fury.io/arrow-nightlies/ --prefer-binary --pre pyarrow
+                  python3 -m pip install uv
+                  python3 -m pip install uv
+                  python3 -m uv pip install --compile-bytecode --pre --editable .
 
             - uses: pre-commit/action@v3.0.1
 
@@ -155,7 +161,6 @@ jobs:
               with:
                   python-version: ${{ matrix.python-version }}
                   check-latest: true
-                  allow-prereleases: true
 
             - name: Show python version
               run: python3 --version --version && which python3
@@ -163,10 +168,7 @@ jobs:
             - name: Install pyarrow nightly for 3.13
               if: ${{ startsWith(matrix.python-version, '3.13') }}
               run: |
-                pip install --extra-index-url https://pypi.fury.io/arrow-nightlies/ --prefer-binary --pre pyarrow
-                grep -v -e '^extinction' requirements.txt > requirements3.13.txt
-                mv requirements3.13.txt requirements.txt
-                cat requirements.txt
+                python3 -m pip install --extra-index-url https://pypi.fury.io/arrow-nightlies/ --prefer-binary --pre pyarrow
 
             - name: Cache rust build
               uses: actions/cache@v4
