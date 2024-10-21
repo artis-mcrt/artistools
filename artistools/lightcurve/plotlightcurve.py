@@ -421,7 +421,7 @@ def plot_artis_lightcurve(
                 if dirbin != dirbins[0]:
                     plotkwargs["color"] = None
                 plotkwargs["label"] = (
-                    f"{modelname}\n{angle_definition[dirbin]}" if modelname else angle_definition[dirbin]
+                    f"{modelname} {angle_definition[dirbin]}" if modelname else angle_definition[dirbin]
                 )
 
         filterfunc = at.get_filterfunc(args)
