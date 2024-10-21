@@ -27,6 +27,8 @@ jobs:
               uses: actions/setup-python@v5
               with:
                   python-version-file: .python-version
+                  check-latest: true
+                  allow-prereleases: true
 
             - name: Cache rust build
               uses: actions/cache@v4
@@ -37,13 +39,11 @@ jobs:
                       codspeed-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
                       codspeed-rust-target-${{ runner.os }}-
 
-            - name: Install uv
-              run: |
-                  pip install uv
-
             - name: Install artistools
               run: |
-                  uv pip install --system --upgrade --compile-bytecode --editable  .
+                  pip install --extra-index-url https://pypi.fury.io/arrow-nightlies/ --prefer-binary --pre pyarrow
+                  pip install uv
+                  uv pip install --system --upgrade --pre --compile-bytecode --editable  .
 
             - name: Cache test data
               uses: actions/cache@v4

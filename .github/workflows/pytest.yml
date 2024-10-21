@@ -41,8 +41,9 @@ jobs:
               run: |
                   pip install --extra-index-url https://pypi.fury.io/arrow-nightlies/ --prefer-binary --pre pyarrow
                   pip install uv
-                  uv pip install --system --upgrade pylint mypy ruff
-                  uv pip install --system --upgrade --compile-bytecode --editable  .
+                  uv pip install --system --pre --upgrade pylint mypy ruff
+                  python3 -m pip install uv
+                  python3 -m uv pip install --compile-bytecode --pre --editable .
 
             - name: Run Ruff
               if: always()
@@ -94,7 +95,8 @@ jobs:
               run: |
                   pip install --extra-index-url https://pypi.fury.io/arrow-nightlies/ --prefer-binary --pre pyarrow
                   pip install uv
-                  uv pip install --system --upgrade --compile-bytecode --editable  .
+                  pip install uv
+                  uv pip install --compile-bytecode --pre --editable .
 
             - uses: pre-commit/action@v3.0.1
 
@@ -182,8 +184,8 @@ jobs:
 
             - name: Install artistools
               run: |
-                  python3 -m pip install uv
-                  python3 -m uv pip install --compile-bytecode --pre --editable .
+                  pip install uv
+                  uv pip install --compile-bytecode --pre --editable .
 
             - name: Cache test data
               uses: actions/cache@v4
