@@ -37,7 +37,7 @@ jobs:
 
             - name: Install artistools
               run: |
-                  curl -LsSf https://astral.sh/uv/install.sh | sh
+                  pip install uv
                   uv pip install --system --upgrade pylint mypy ruff
                   uv pip install --system --upgrade --compile-bytecode --editable  .
 
@@ -87,7 +87,7 @@ jobs:
 
             - name: Install artistools
               run: |
-                  curl -LsSf https://astral.sh/uv/install.sh | sh
+                  pip install uv
                   uv pip install --system --upgrade --compile-bytecode --editable  .
 
             - uses: pre-commit/action@v3.0.1
@@ -177,8 +177,7 @@ jobs:
             - name: Install artistools
               run: |
                   python3 -m pip install uv
-                  #python3 -m uv pip install --compile-bytecode --pre --editable .
-                  python3 -m pip install  --pre --editable .
+                  python3 -m uv pip install --compile-bytecode --pre --editable .
 
             - name: Cache test data
               uses: actions/cache@v4
