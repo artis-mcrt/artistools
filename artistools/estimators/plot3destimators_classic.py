@@ -124,7 +124,7 @@ def make_2d_plot(grid, grid_Te, vmax, modelpath, xgrid, time):
     if pyvista:
         # PYVISTA
         arrx, arry, arrz = np.meshgrid(xgrid, xgrid, xgrid)
-        mesh = pv.StructuredGrid(arrx, arry, arrz)  # type: ignore[attr-defined] # pyright: ignore[reportCallIssue]
+        mesh = pv.StructuredGrid(arrx, arry, arrz)
         mesh["Te [K]"] = grid_Te.ravel(order="F")
 
         sargs = {
@@ -137,8 +137,8 @@ def make_2d_plot(grid, grid_Te, vmax, modelpath, xgrid, time):
         }
 
         # set white background
-        pv.set_plot_theme("document")  # type: ignore[attr-defined] # pyright: ignore[reportPrivateImportUsage]
-        p = pv.Plotter()  # type: ignore[attr-defined] # pyright: ignore[reportCallIssue]
+        pv.set_plot_theme("document")
+        p = pv.Plotter()
         p.set_scale(p, xscale=1.5, yscale=1.5, zscale=1.5)
         single_slice = mesh.slice(normal="z")
         p.add_mesh(single_slice, scalar_bar_args=sargs)  # , clim=[100, 60000]
