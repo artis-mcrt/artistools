@@ -258,7 +258,7 @@ def make_3d_plot(modelpath, args: argparse.Namespace) -> None:
     import pyvista as pv
 
     # set white background
-    pv.set_plot_theme("document")  # type: ignore[attr-defined] # pyright: ignore[reportPrivateImportUsage]
+    pv.set_plot_theme("document")
 
     get_elemabundances = False
     # choose what surface will be coloured by
@@ -303,7 +303,7 @@ def make_3d_plot(modelpath, args: argparse.Namespace) -> None:
 
     x, y, z = np.meshgrid(xgrid, xgrid, xgrid)
 
-    mesh: t.Any = pv.StructuredGrid(x, y, z)  # type: ignore[attr-defined] # pyright: ignore[reportCallIssue]
+    mesh: t.Any = pv.StructuredGrid(x, y, z)
     print(mesh)  # tells you the properties of the mesh
 
     mesh[coloursurfaceby] = surfacecolorscale.ravel(order="F")  # add data to the mesh
@@ -329,7 +329,7 @@ def make_3d_plot(modelpath, args: argparse.Namespace) -> None:
         "label_font_size": 22,
     }
 
-    plotter = pv.Plotter()  # type: ignore[attr-defined] # pyright: ignore[reportCallIssue]
+    plotter = pv.Plotter()
     # plotter.add_mesh(mesh.outline(), color="k")
     plotcoloropacity = [0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]  # some choices: 'linear' 'sigmoid'
     # plotter.set_scale(0.95, 0.95, 0.95) # adjusts fig resolution
