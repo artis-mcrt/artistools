@@ -311,9 +311,9 @@ def read_modelfile_text(
                 if not vectormatch(pos3_in, [pos_z_mid, pos_y_mid, pos_x_mid]):
                     matched_pos_zyx_mid = False
 
-            assert (
-                sum((matched_pos_xyz_min, matched_pos_zyx_min, matched_pos_xyz_mid, matched_pos_zyx_mid)) == 1
-            ), "one option must match uniquely"
+            assert sum((matched_pos_xyz_min, matched_pos_zyx_min, matched_pos_xyz_mid, matched_pos_zyx_mid)) == 1, (
+                "one option must match uniquely"
+            )
 
             colrenames = {}
             if matched_pos_xyz_min:
@@ -934,7 +934,7 @@ def save_modeldata(
             fmodel.write(f"{vmax:.4e}\n")
 
         if customcols:
-            fmodel.write(f'#{" ".join(standardcols)} {" ".join(customcols)}\n')
+            fmodel.write(f"#{' '.join(standardcols)} {' '.join(customcols)}\n")
 
         abundandcustomcols = [*[col for col in standardcols if col.startswith("X_")], *customcols]
 

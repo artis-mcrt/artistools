@@ -176,7 +176,7 @@ def plot_spherical(
         .sort(["costhetabin", "phibin"])
     ).collect()
 
-    print(f'packets plotted: {alldirbins.select("count").sum().item(0, 0):.1e}')
+    print(f"packets plotted: {alldirbins.select('count').sum().item(0, 0):.1e}")
 
     # these phi and theta angle ranges are defined differently to artis
     phigrid = np.linspace(-np.pi, np.pi, nphibins + 1, endpoint=True, dtype=np.float64)
