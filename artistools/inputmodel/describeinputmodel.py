@@ -146,17 +146,17 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     if "cellYe" in dfmodel.collect_schema().names():
         electronfrac = dfmodel.select(pl.col("cellYe").dot(pl.col("mass_g")) / pl.col("mass_g").sum()).collect().item()
         assert electronfrac is not None
-        print(f'  {"electron frac Ye":19s} {electronfrac:.3f}')
+        print(f"  {'electron frac Ye':19s} {electronfrac:.3f}")
         if args.isotopes:
             # currently assumes that all isotopes are specified (i.e. not for Type Ia models)
             calcelectronfrac = calculate_model_electron_frac(dfmodel)
             assert calcelectronfrac is not None
-            print(f'  {"snapshot Ye":19s} {calcelectronfrac:.3f}')
+            print(f"  {'snapshot Ye':19s} {calcelectronfrac:.3f}")
 
     if "q" in dfmodel.collect_schema().names():
         initial_energy = dfmodel.select(pl.col("q").dot(pl.col("mass_g"))).collect().item()
         assert initial_energy is not None
-        print(f'  {"initial energy":19s} {initial_energy:.3e} erg')
+        print(f"  {'initial energy':19s} {initial_energy:.3e} erg")
     else:
         initial_energy = 0.0
 
@@ -176,7 +176,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             .item()
         ) * 1e7
 
-    print(f'  {"kinetic energy":19s} {ejecta_ke_erg:.2e} [erg]')
+    print(f"  {'kinetic energy':19s} {ejecta_ke_erg:.2e} [erg]")
 
     mass_msun_rho = dfmodel.select(pl.col("mass_g").sum() / msun_g).collect().item()
 
@@ -203,18 +203,18 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
                 )
 
                 print(
-                    f'  {"initial energy":19s} {initial_energy_mapped:.3e} erg (when mapped to'
+                    f"  {'initial energy':19s} {initial_energy_mapped:.3e} erg (when mapped to"
                     f" {ncoordgridx}^3 cubic grid, error"
                     f" {100 * (initial_energy_mapped / initial_energy - 1):.2f}%)"
                 )
 
             mtot_mapped_msun = sum(cellmass_mapped) / msun_g
             print(
-                f'  {"M_tot_rho_map":19s} {mtot_mapped_msun:7.5f} MSun (density * volume when mapped to {ncoordgridx}^3'
+                f"  {'M_tot_rho_map':19s} {mtot_mapped_msun:7.5f} MSun (density * volume when mapped to {ncoordgridx}^3"
                 f" cubic grid, error {100 * (mtot_mapped_msun / mass_msun_rho - 1):.2f}%)"
             )
 
-    print(f'  {"M_tot_rho":19s} {mass_msun_rho:7.5f} MSun (density * volume)')
+    print(f"  {'M_tot_rho':19s} {mass_msun_rho:7.5f} MSun (density * volume)")
 
     if modelmeta["dimensions"] > 1:
         corner_mass = (
@@ -225,7 +225,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             .item()
         ) / msun_g
         print(
-            f'  {"M_corners":19s} {corner_mass:7.5f} MSun ('
+            f"  {'M_corners':19s} {corner_mass:7.5f} MSun ("
             f" {100 * corner_mass / mass_msun_rho:.2f}% of M_tot in cells with v_r_mid > vmax)"
         )
 
@@ -273,28 +273,28 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
                 mass_msun_actinides += species_mass_msun
 
     print(
-        f'  {"M_tot_elem":19s} {mass_msun_elem:7.5f} MSun ({mass_msun_elem / mass_msun_rho * 100:6.2f}% of M_tot_rho)'
+        f"  {'M_tot_elem':19s} {mass_msun_elem:7.5f} MSun ({mass_msun_elem / mass_msun_rho * 100:6.2f}% of M_tot_rho)"
     )
 
     if args.isotopes:
         print(
-            f'  {"M_tot_iso":19s} {mass_msun_isotopes:7.5f} MSun ({mass_msun_isotopes / mass_msun_rho * 100:6.2f}% '
+            f"  {'M_tot_iso':19s} {mass_msun_isotopes:7.5f} MSun ({mass_msun_isotopes / mass_msun_rho * 100:6.2f}% "
             "of M_tot_rho, but can be < 100% if stable isotopes not tracked)"
         )
 
     mass_msun_fegroup = dfmodel.select(pl.col("X_Fegroup").dot(pl.col("mass_g"))).collect().item() / msun_g
     print(
-        f'  {"M_Fegroup":19s} {mass_msun_fegroup:7.5f} MSun'
+        f"  {'M_Fegroup':19s} {mass_msun_fegroup:7.5f} MSun"
         f" ({mass_msun_fegroup / mass_msun_rho * 100:6.2f}% of M_tot_rho)"
     )
 
     print(
-        f'  {"M_lanthanide_isosum":19s} {mass_msun_lanthanides:7.5f} MSun'
+        f"  {'M_lanthanide_isosum':19s} {mass_msun_lanthanides:7.5f} MSun"
         f" ({mass_msun_lanthanides / mass_msun_rho * 100:6.2f}% of M_tot_rho)"
     )
 
     print(
-        f'  {"M_actinide_isosum":19s} {mass_msun_actinides:7.5f} MSun'
+        f"  {'M_actinide_isosum':19s} {mass_msun_actinides:7.5f} MSun"
         f" ({mass_msun_actinides / mass_msun_rho * 100:6.2f}% of M_tot_rho)"
     )
 

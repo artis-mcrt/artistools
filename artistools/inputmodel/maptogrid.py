@@ -212,7 +212,7 @@ def maptogrid(
     assert isinstance(rmax, float)
     with Path(outputfolderpath, "ejectapartanalysis.dat").open(mode="w", encoding="utf-8") as fpartanalysis:
         fpartanalysis.writelines(
-            f'{part["dis"]} {part["h"]} {part["h"] / part["dis"]} {part["vrad"]} {part["vperp"]} {part["vtot"]}\n'
+            f"{part['dis']} {part['h']} {part['h'] / part['dis']} {part['vrad']} {part['vperp']} {part['vtot']}\n"
             for part in dfsnapshot.select(["dis", "h", "vrad", "vperp", "vtot"]).iter_rows(named=True)
         )
 

@@ -37,7 +37,7 @@ def write_spectra(modelpath: str | Path, model_id: str, selected_timesteps: t.Se
     with outfilepath.open("w", encoding="utf-8") as outfile:
         outfile.write(f"#NTIMES: {len(selected_timesteps)}\n")
         outfile.write(f"#NWAVE: {len(lambdas)}\n")
-        outfile.write(f'#TIMES[d]: {" ".join([f"{times[ts]:.2f}" for ts in selected_timesteps])}\n')
+        outfile.write(f"#TIMES[d]: {' '.join([f'{times[ts]:.2f}' for ts in selected_timesteps])}\n")
         outfile.write("#wavelength[Ang] flux_t0[erg/s/Ang] flux_t1[erg/s/Ang] ... flux_tn[erg/s/Ang]\n")
 
         for n in reversed(range(len(lambdas))):
@@ -53,7 +53,7 @@ def write_ntimes_nvel(outfile: TextIOWrapper, selected_timesteps: t.Sequence[int
     _, modelmeta = at.inputmodel.get_modeldata(modelpath, getheadersonly=True)
     outfile.write(f"#NTIMES: {len(selected_timesteps)}\n")
     outfile.write(f"#NVEL: {modelmeta['npts_model']}\n")
-    outfile.write(f'#TIMES[d]: {" ".join([f"{times[ts]:.2f}" for ts in selected_timesteps])}\n')
+    outfile.write(f"#TIMES[d]: {' '.join([f'{times[ts]:.2f}' for ts in selected_timesteps])}\n")
 
 
 def write_single_estimator(modelpath, selected_timesteps, estimators, allnonemptymgilist, outfile, keyname) -> None:
@@ -103,12 +103,12 @@ def write_ionfracts(
         with pathfileout.open("w", encoding="utf-8") as f:
             f.write(f"#NTIMES: {len(selected_timesteps)}\n")
             f.write(f"#NSTAGES: {nions}\n")
-            f.write(f'#TIMES[d]: {" ".join([f"{times[ts]:.2f}" for ts in selected_timesteps])}\n')
+            f.write(f"#TIMES[d]: {' '.join([f'{times[ts]:.2f}' for ts in selected_timesteps])}\n")
             f.write("#\n")
             for timestep in selected_timesteps:
                 f.write(f"#TIME: {times[timestep]:.2f}\n")
                 f.write(f"#NVEL: {len(allnonemptymgilist)}\n")
-                f.write(f'#vel_mid[km/s] {" ".join([f"{elsymb.lower()}{ion}" for ion in range(nions)])}\n')
+                f.write(f"#vel_mid[km/s] {' '.join([f'{elsymb.lower()}{ion}' for ion in range(nions)])}\n")
                 for modelgridindex, cell in modeldata.iterrows():
                     if modelgridindex not in allnonemptymgilist:
                         continue
@@ -134,7 +134,7 @@ def write_phys(modelpath, model_id, selected_timesteps, estimators, allnonemptym
     modeldata, modelmeta = at.inputmodel.get_modeldata(modelpath, derived_cols=["vel_r_min_kmps"])
     with Path(outputpath, f"phys_{model_id}_artisnebular.txt").open("w", encoding="utf-8") as f:
         f.write(f"#NTIMES: {len(selected_timesteps)}\n")
-        f.write(f'#TIMES[d]: {" ".join([f"{times[ts]:.2f}" for ts in selected_timesteps])}\n')
+        f.write(f"#TIMES[d]: {' '.join([f'{times[ts]:.2f}' for ts in selected_timesteps])}\n")
         f.write("#\n")
         for timestep in selected_timesteps:
             f.write(f"#TIME: {times[timestep]:.2f}\n")

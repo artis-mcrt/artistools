@@ -819,7 +819,7 @@ def make_3d_histogram_from_packets(
         # print(dfpackets[['emission_velocity', 'em_velx', 'em_vely', 'em_velz']])
         # select only type escape and type r-pkt (don't include gamma-rays)
         dfpackets = dfpackets.query(
-            f'type_id == {type_ids["TYPE_ESCAPE"]} and escape_type_id == {type_ids["TYPE_RPKT"]}'
+            f"type_id == {type_ids['TYPE_ESCAPE']} and escape_type_id == {type_ids['TYPE_RPKT']}"
         )
         if em_time:
             dfpackets = dfpackets.query("@timeminarray[@timestep_min] < em_time/@DAY < @timemaxarray[@timestep_max]")

@@ -766,7 +766,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
                         emdata = emdata_all[modelindex][tmid, feature.colname]
 
                         if not bars:
-                            print(f'   {len(emdata["em_log10nne"])} points plotted for {feature.featurelabel}')
+                            print(f"   {len(emdata['em_log10nne'])} points plotted for {feature.featurelabel}")
 
                         serieslabel = (
                             (modellabel + " " + feature.featurelabel)
