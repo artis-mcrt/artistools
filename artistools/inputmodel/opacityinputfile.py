@@ -43,7 +43,7 @@ def opacity_by_Ye(outputfilepath, griddata):
     griddata["opacity"] = cell_opacities
 
     with Path(outputfilepath, "opacity.txt").open("w", encoding="utf-8") as fopacity:
-        fopacity.write(f'{len(griddata["inputcellid"])}\n')
+        fopacity.write(f"{len(griddata['inputcellid'])}\n")
         griddata[["inputcellid", "opacity"]].to_csv(fopacity, sep="\t", index=False, header=False, float_format="%.10f")
 
 
@@ -59,7 +59,7 @@ def write_Ye_file(outputfilepath: Path | str, griddata: pd.DataFrame | pl.DataFr
     assert griddata.schema["inputcellid"].is_integer()
 
     with Path(outputfilepath, "Ye.txt").open("w", encoding="utf-8") as fYe:
-        fYe.write(f'{len(griddata["inputcellid"])}\n')
+        fYe.write(f"{len(griddata['inputcellid'])}\n")
         griddata.to_pandas(use_pyarrow_extension_array=True)[["inputcellid", "cellYe"]].to_csv(
             fYe, sep="\t", index=False, header=False, float_format="%.10f", na_rep="0.0"
         )

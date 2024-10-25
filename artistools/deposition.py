@@ -72,7 +72,7 @@ def main_analytical(args: argparse.Namespace | None = None, argsraw: list[str] |
     # define T52MN   (0.0211395*DAY)
 
     t_now = args.timedays * u.day
-    print(f't_now = {t_now.to("d")}')
+    print(f"t_now = {t_now.to('d')}")
     print("The following assumes that all 56Ni has decayed to 56Co and all energy comes from emitted positrons")
 
     # adata = at.atomic.get_levels(args.modelpath, get_photoionisations=True)
@@ -118,7 +118,7 @@ def main_analytical(args: argparse.Namespace | None = None, argsraw: list[str] |
         #     width = ((v_outer - v_inner) * t_now).to('cm').value
         #     tau = width * phixs * nnlevel
         #     print(f'width: {width:.3e} cm, phixs: {phixs:.3e} cm^2, nnlevel: {nnlevel:.3e} cm^-3, tau: {tau:.3e}')
-    print(f'Global posdep: {global_posdep.to("solLum"):.3e}')
+    print(f"Global posdep: {global_posdep.to('solLum'):.3e}")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = None, **kwargs: t.Any) -> None:

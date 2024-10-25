@@ -53,7 +53,7 @@ def texifyconfiguration(levelname: str) -> str:
         strout = strout.replace(strorbitalocc, strorbitalocctex)
 
     for parentterm in re.findall(r"\([0-9][A-Z][^)]?\)", strout):
-        parentermtex = f'({texifyterm(parentterm.strip("()"))})'
+        parentermtex = f"({texifyterm(parentterm.strip('()'))})"
         strout = strout.replace(parentterm, parentermtex)
     strterm = levelname.split("_")[-1]
     strout += " " + texifyterm(strterm)

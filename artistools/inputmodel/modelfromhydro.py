@@ -401,7 +401,7 @@ def makemodelfromgriddata(
         )
 
     if dfelabundances is not None:
-        print(f'Writing to {Path(outputpath) / "abundances.txt"}...')
+        print(f"Writing to {Path(outputpath) / 'abundances.txt'}...")
         at.inputmodel.save_initelemabundances(
             dfelabundances=dfelabundances, outpath=outputpath, headercommentlines=modelmeta["headercommentlines"]
         )
@@ -411,7 +411,7 @@ def makemodelfromgriddata(
     if "tracercount" in dfmodel:
         dfmodel = dfmodel.with_columns(pl.col("tracercount").cast(pl.Int32))
 
-    print(f'Writing to {Path(outputpath) / "model.txt"}...')
+    print(f"Writing to {Path(outputpath) / 'model.txt'}...")
     at.inputmodel.save_modeldata(outpath=outputpath, dfmodel=dfmodel, modelmeta=modelmeta)
 
 
