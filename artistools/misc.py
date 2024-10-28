@@ -1009,12 +1009,12 @@ def merge_pdf_files(pdf_files: list[str]) -> None:
 
     for pdfpath in pdf_files:
         with Path(pdfpath).open("rb") as pdffile:
-            merger.append(pdffile)  # type: ignore[attr-defined]
+            merger.append(pdffile)
         Path(pdfpath).unlink()
 
     resultfilename = f"{pdf_files[0].replace('.pdf', '')}-{pdf_files[-1].replace('.pdf', '')}"
     with Path(f"{resultfilename}.pdf").open("wb") as resultfile:
-        merger.write(resultfile)  # type: ignore[attr-defined]
+        merger.write(resultfile)
 
     print(f"Files merged and saved to {resultfilename}.pdf")
 
