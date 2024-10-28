@@ -33,9 +33,6 @@ jobs:
                   fetch-depth: 0
 
             - uses: actions/setup-python@v5
-              with:
-                  python-version-file: .python-version
-                  check-latest: true
 
             - name: Cache rust build
               uses: actions/cache@v4
@@ -48,7 +45,6 @@ jobs:
 
             - name: Install dependencies
               run: |
-                  python3 -m pip install --extra-index-url https://pypi.fury.io/arrow-nightlies/ --prefer-binary --pre pyarrow
                   python3 -m pip install --upgrade uv
                   python3 -m uv pip install --upgrade setuptools setuptools_scm[toml] setuptools-rust wheel twine build
                   echo "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS=$(python3 -m setuptools_scm --strip-dev)" >> $GITHUB_ENV
@@ -70,9 +66,6 @@ jobs:
                   fetch-depth: 0
 
             - uses: actions/setup-python@v5
-              with:
-                  python-version-file: .python-version
-                  check-latest: true
 
             - name: Install dependencies
               run: |
@@ -102,9 +95,6 @@ jobs:
                   fetch-depth: 0
 
             - uses: actions/setup-python@v5
-              with:
-                  python-version-file: .python-version
-                  check-latest: true
 
             - uses: actions/download-artifact@v4
               with:
@@ -114,7 +104,6 @@ jobs:
 
             - name: Install dependencies
               run: |
-                  python3 -m pip install --extra-index-url https://pypi.fury.io/arrow-nightlies/ --prefer-binary --pre pyarrow
                   python3 -m pip install --upgrade uv
                   python3 -m uv pip install --upgrade setuptools setuptools_scm[toml] setuptools-rust wheel twine build
 
@@ -139,9 +128,6 @@ jobs:
                   fetch-depth: 0
 
             - uses: actions/setup-python@v5
-              with:
-                  python-version-file: .python-version
-                  check-latest: true
 
             - uses: actions/download-artifact@v4
               with:
@@ -151,7 +137,6 @@ jobs:
 
             - name: Install dependencies
               run: |
-                  python3 -m pip install --extra-index-url https://pypi.fury.io/arrow-nightlies/ --prefer-binary --pre pyarrow
                   python3 -m pip install --upgrade uv
                   python3 -m uv pip install --upgrade setuptools setuptools_scm[toml] setuptools-rust wheel twine build
                   echo "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS=$(python3 -m setuptools_scm --strip-dev)" >> $GITHUB_ENV

@@ -25,9 +25,6 @@ jobs:
 
             - name: Set up Python
               uses: actions/setup-python@v5
-              with:
-                  python-version-file: .python-version
-                  check-latest: true
 
             - name: Cache rust build
               uses: actions/cache@v4
@@ -40,7 +37,6 @@ jobs:
 
             - name: Install artistools
               run: |
-                  python3 -m pip install --extra-index-url https://pypi.fury.io/arrow-nightlies/ --prefer-binary --pre pyarrow
                   python3 -m pip install uv
                   python3 -m uv pip install --compile-bytecode --pre --editable .
 
