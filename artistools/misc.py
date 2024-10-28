@@ -1003,9 +1003,9 @@ def get_filterfunc(args: argparse.Namespace, mode: str = "interp") -> t.Callable
 
 def merge_pdf_files(pdf_files: list[str]) -> None:
     """Merge a list of PDF files into a single PDF file."""
-    from pypdf import PdfMerger
+    from pypdf import PdfWriter
 
-    merger = PdfMerger()
+    merger = PdfWriter()
 
     for pdfpath in pdf_files:
         with Path(pdfpath).open("rb") as pdffile:
