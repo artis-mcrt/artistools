@@ -1003,18 +1003,18 @@ def get_filterfunc(args: argparse.Namespace, mode: str = "interp") -> t.Callable
 
 def merge_pdf_files(pdf_files: list[str]) -> None:
     """Merge a list of PDF files into a single PDF file."""
-    from pypdf import PdfMerger
+    from pypdf import PdfWriter
 
-    merger = PdfMerger()
+    merger = PdfWriter()
 
     for pdfpath in pdf_files:
         with Path(pdfpath).open("rb") as pdffile:
-            merger.append(pdffile)  # type: ignore[attr-defined]
+            merger.append(pdffile)
         Path(pdfpath).unlink()
 
     resultfilename = f"{pdf_files[0].replace('.pdf', '')}-{pdf_files[-1].replace('.pdf', '')}"
     with Path(f"{resultfilename}.pdf").open("wb") as resultfile:
-        merger.write(resultfile)  # type: ignore[attr-defined]
+        merger.write(resultfile)
 
     print(f"Files merged and saved to {resultfilename}.pdf")
 
