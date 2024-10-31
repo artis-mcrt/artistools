@@ -3,10 +3,7 @@ extern crate autocompress;
 extern crate core;
 extern crate polars;
 extern crate rayon;
-use polars::chunked_array::ChunkedArray;
-use polars::datatypes::Float32Type;
 use polars::prelude::*;
-use polars::series::IntoSeries;
 use pyo3_polars::PyDataFrame;
 use rayon::prelude::*;
 use std::collections::HashMap;
@@ -192,8 +189,7 @@ fn read_estimator_file(folderpath: String, rank: i32) -> DataFrame {
         coldata
             .iter()
             .map(|(colname, value)| {
-                let x = ChunkedArray::<Float32Type>::from_vec(colname.into(), value.to_owned())
-                    .into_series();
+                let x = Column::new(colname.into(), value.to_owned());
                 x
             })
             .collect(),
