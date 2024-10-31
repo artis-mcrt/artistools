@@ -155,7 +155,7 @@ fn parse_estimator_line(
 }
 
 /// Read a single ARTIS estimators*.out[.zst] file and return a DataFrame
-fn read_estimator_file(folderpath: String, rank: i32) -> DataFrame {
+fn read_estimator_file(folderpath: String, rank: i32) -> Result<DataFrame, PolarsError> {
     let mut coldata: HashMap<String, Vec<f32>> = HashMap::new();
     let mut outputrownum = 0;
 
@@ -185,7 +185,7 @@ fn read_estimator_file(folderpath: String, rank: i32) -> DataFrame {
         assert_eq!(singlecolumn.len(), outputrownum);
     }
 
-    let df = DataFrame::new(
+    DataFrame::new(
         coldata
             .iter()
             .map(|(colname, values)| {
@@ -194,8 +194,6 @@ fn read_estimator_file(folderpath: String, rank: i32) -> DataFrame {
             })
             .collect(),
     )
-    .unwrap();
-    df
 }
 
 /// Read the estimator files from rankmin to rankmax and concatenate them into a single DataFrame
@@ -205,7 +203,7 @@ pub fn estimparse(folderpath: String, rankmin: i32, rankmax: i32) -> PyResult<Py
     let mut vecdfs: Vec<DataFrame> = Vec::new();
     ranks
         .par_iter() // Convert the iterator to a parallel iterator
-        .map(|&rank| read_estimator_file(folderpath.clone(), rank))
+        .map(|&rank| read_estimator_file(folderpath.clone(), rank).unwrap())
         .collect_into_vec(&mut vecdfs);
 
     let dfbatch = polars::functions::concat_df_diagonal(&vecdfs).unwrap();
