@@ -188,8 +188,8 @@ fn read_estimator_file(folderpath: String, rank: i32) -> DataFrame {
     let df = DataFrame::new(
         coldata
             .iter()
-            .map(|(colname, value)| {
-                let x = Column::new(colname.into(), value.to_owned());
+            .map(|(colname, values)| {
+                let x = Column::new(colname.into(), values.to_owned());
                 x
             })
             .collect(),
