@@ -319,4 +319,12 @@ def test_rust_estimator_parser() -> None:
             at.estimators.scan_estimators(modelpath=test_outputpath, use_rust_parser=use_rust).collect()
         )
 
-    pltest.assert_frame_equal(dfestimators[0], dfestimators[1], rtol=1e-4, atol=1e-4)
+    pltest.assert_frame_equal(
+        dfestimators[0],
+        dfestimators[1],
+        rtol=1e-4,
+        atol=1e-4,
+        check_dtypes=True,
+        check_column_order=True,
+        check_row_order=True,
+    )
