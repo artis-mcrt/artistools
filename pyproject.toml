@@ -281,7 +281,7 @@ ignore = [
 fixable = ["ALL"]
 unfixable = [
     "ERA001",  # commented-out-code (will just delete it!)
-    "F401", # unused-import (can be annoying to have improt disappear while editing)
+    "F401", # unused-import (can be annoying to have import disappear while editing)
     "F841",  # unused-variable
     "SIM222", # expr-or-true
     "SIM223", # expr-and-false

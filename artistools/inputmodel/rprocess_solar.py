@@ -47,9 +47,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     # Andreas uses 90% Fe and the rest solar
     dfsolarabund_undecayed = (
-        dfsolarabund_undecayed.append(  # pyright: ignore[reportCallIssue]
-            {"Z": 26, "A": 56, "numberfrac": 0.005, "radioactive": False}, ignore_index=True
-        )
+        dfsolarabund_undecayed.append({"Z": 26, "A": 56, "numberfrac": 0.005, "radioactive": False}, ignore_index=True)
         .append({"Z": 27, "A": 59, "numberfrac": 0.005, "radioactive": False}, ignore_index=True)
         .append({"Z": 28, "A": 58, "numberfrac": 0.005, "radioactive": False}, ignore_index=True)
     )
@@ -129,7 +127,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     modeldata = [
         (
             {
-                "inputcellid": mgi + 1,  # pyright: ignore[reportOperatorIssue]
+                "inputcellid": mgi + 1,
                 "vel_r_max_kmps": densityrow["vel_r_max_kmps"],
                 "logrho": math.log10(densityrow["rho"]),
             }
