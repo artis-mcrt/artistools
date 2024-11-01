@@ -345,7 +345,7 @@ def make_3d_plot(modelpath, args: argparse.Namespace) -> None:
         font_size=28,
         bold=False,
     )
-    plotter.add_mesh(surf, opacity=plotcoloropacity, scalar_bar_args=sargs, cmap="coolwarm_r")  # pyright: ignore[reportArgumentType]
+    plotter.add_mesh(surf, opacity=plotcoloropacity, scalar_bar_args=sargs, cmap="coolwarm_r")
     # plotter.add_mesh(surf, opacity=plotcoloropacity, use_transparency=True, cmap='coolwarm_r') #magma
 
     # plotter.remove_scalar_bar() # removes colorbar

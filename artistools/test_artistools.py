@@ -38,7 +38,7 @@ def test_commands() -> None:
         assert isinstance(REPOPATH, Path)
         with (REPOPATH / "pyproject.toml").open("rb") as f:
             pyproj = tomllib.load(f)
-        commands = {k: tuple(v.split(":")) for k, v in pyproj["project"]["scripts"].items()}  # pyright: ignore[reportAssignmentType]
+        commands = {k: tuple(v.split(":")) for k, v in pyproj["project"]["scripts"].items()}
 
         # ensure that the commands are pointing to valid submodule.function() targets
         for command, (submodulename, funcname) in commands.items():

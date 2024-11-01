@@ -47,7 +47,7 @@ def read_files(modelpath: Path, timestep: int = -1, modelgridindex: int = -1) ->
                 if timestep >= 0 and modelgridindex >= 0:
                     return nonthermaldata_thisfile
 
-                nonthermaldata = nonthermaldata.append(nonthermaldata_thisfile.copy(), ignore_index=True)  # pyright: ignore[reportCallIssue]
+                nonthermaldata = nonthermaldata.append(nonthermaldata_thisfile.copy(), ignore_index=True)
 
     return nonthermaldata
 

@@ -54,7 +54,7 @@ def read_files(modelpath: Path | str, timestep: int | None = None, modelgridinde
             if not radfielddata_thisfile.empty:
                 if timestep is not None and modelgridindex is not None:
                     return radfielddata_thisfile
-                radfielddata = radfielddata.append(radfielddata_thisfile.copy(), ignore_index=True)  # pyright: ignore[reportCallIssue]
+                radfielddata = radfielddata.append(radfielddata_thisfile.copy(), ignore_index=True)
 
     return radfielddata
 

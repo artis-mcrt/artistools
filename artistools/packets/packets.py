@@ -253,7 +253,7 @@ def add_derived_columns_lazy(
 
     elif modelmeta["dimensions"] == 1:
         assert dfmodel is not None, "dfmodel must be provided for 1D models to set em_modelgridindex"
-        velbins = (dfmodel.select("vel_r_max_kmps").lazy().collect()["vel_r_max_kmps"] * 1000.0).to_list()  # pyright: ignore[reportCallIssue]
+        velbins = (dfmodel.select("vel_r_max_kmps").lazy().collect()["vel_r_max_kmps"] * 1000.0).to_list()
         dfpackets = dfpackets.with_columns(
             em_modelgridindex=(
                 pl.col("emission_velocity")
