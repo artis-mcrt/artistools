@@ -6,6 +6,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import polars as pl
 
 import artistools as at
 
@@ -92,9 +93,9 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     else:
         dfdensities = pd.DataFrame({"rho": 10**-3, "vel_r_max_kmps": 6.0e4}, index=[0])
 
+    dfdensities["inputcellid"] = dfdensities["mgi"] + 1
     # print(dfdensities)
     cellcount = len(dfdensities)
-    # write abundances.txt
 
     dictelemabund = {}
     for atomic_number in range(1, dfsolarabund_undecayed.Z.max() + 1):
@@ -102,16 +103,13 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             "Z == @atomic_number", inplace=False
         ).massfrac.sum()
 
-    dfelabundances = pd.DataFrame([{"inputcellid": mgi + 1} | dictelemabund for mgi in range(cellcount)])
+    dfelabundances = pl.DataFrame([{"inputcellid": mgi + 1} | dictelemabund for mgi in range(cellcount)])
     # print(dfelabundances)
     at.inputmodel.save_initelemabundances(dfelabundances=dfelabundances, outpath=Path(args.outputpath))
 
     # write model.txt
 
     rowdict = {
-        # 'inputcellid': 1,
-        # 'vel_r_max_kmps': 6.e4,
-        # 'logrho': -3.,
         "X_Fegroup": 1.0,
         "X_Ni56": 0.0,
         "X_Co56": 0.0,
@@ -127,7 +125,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     modeldata = [
         (
             {
-                "inputcellid": mgi + 1,
+                "inputcellid": densityrow["inputcellid"],
                 "vel_r_max_kmps": densityrow["vel_r_max_kmps"],
                 "logrho": math.log10(densityrow["rho"]),
             }

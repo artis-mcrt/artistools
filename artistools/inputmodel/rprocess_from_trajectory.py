@@ -504,21 +504,18 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         print(f"{wollaeger_profilename} not found. Using rho {rho} g/cm3")
         dfdensities = pd.DataFrame({"rho": rho, "vel_r_max_kmps": 6.0e4}, index=[0])
 
+    dfdensities["inputcellid"] = dfdensities["mgi"] + 1
     # print(dfdensities)
 
     # write abundances.txt
     dictelemabund = get_elemabund_from_nucabund(dfnucabund)
 
-    dfelabundances = pd.DataFrame([dictelemabund | {"inputcellid": mgi + 1} for mgi in range(len(dfdensities))])
-    # print(dfelabundances)
+    dfelabundances = pl.DataFrame([dictelemabund | {"inputcellid": mgi + 1} for mgi in range(len(dfdensities))])
     at.inputmodel.save_initelemabundances(dfelabundances=dfelabundances, outpath=args.outputpath)
 
     # write model.txt
 
     rowdict = {
-        # 'inputcellid': 1,
-        # 'vel_r_max_kmps': 6.e4,
-        # 'logrho': -3.,
         "X_Fegroup": 1.0,
         "X_Ni56": 0.0,
         "X_Co56": 0.0,
@@ -532,24 +529,21 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         A = row.N + row.Z
         rowdict[f"X_{at.get_elsymbol(row.Z)}{A}"] = row.massfrac
 
-    modeldata = [
+    dfmodel = pl.DataFrame([
         {
-            "inputcellid": mgi + 1,
+            "inputcellid": densityrow["inputcellid"],
             "vel_r_max_kmps": densityrow["vel_r_max_kmps"],
             "logrho": math.log10(densityrow["rho"]),
         }
         | rowdict
         for mgi, densityrow in dfdensities.iterrows()
-    ]
-    # print(modeldata)
-
-    dfmodel = pd.DataFrame(modeldata)
-    # print(dfmodel)
+    ])
     at.inputmodel.save_modeldata(dfmodel=dfmodel, t_model_init_days=t_model_init_days, filepath=Path(args.outputpath))
+
     with Path(args.outputpath, "gridcontributions.txt").open("w", encoding="utf-8") as fcontribs:
         fcontribs.write("particleid cellindex frac_of_cellmass\n")
-        for cell in dfmodel.itertuples(index=False):
-            fcontribs.write(f"{particleid} {cell.inputcellid} 1.0\n")
+        for inputcellid in dfmodel["inputcellid"]:
+            fcontribs.write(f"{particleid} {inputcellid} 1.0\n")
 
 
 def get_wollaeger_density_profile(wollaeger_profilename):

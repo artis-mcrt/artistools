@@ -49,12 +49,16 @@ def plothesmaresspec(fig, ax) -> None:
             for dirbin, pldf in at.split_multitable_dataframe(specdata).items()
         }
 
-        column_names = res_specdata[0].iloc[0]
-        column_names[0] = "lambda"
-        print(column_names)
+        new_column_names = res_specdata[0].iloc[0]
+        new_column_names[0] = "lambda"
+        print(new_column_names)
 
         for i in range(len(res_specdata)):
-            res_specdata[i] = res_specdata[i].rename(columns=column_names).drop(res_specdata[i].index[0])
+            res_specdata[i] = (
+                res_specdata[i]
+                .rename(columns=dict(zip(res_specdata[i].columns, new_column_names, strict=True)))
+                .drop(res_specdata[i].index[0])
+            )
 
         ax.plot(res_specdata[0]["lambda"], res_specdata[0][11.7935] * (1e-5) ** 2, label="hesma 0")
         ax.plot(res_specdata[1]["lambda"], res_specdata[1][11.7935] * (1e-5) ** 2, label="hesma 1")
