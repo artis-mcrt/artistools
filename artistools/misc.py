@@ -108,7 +108,16 @@ def get_composition_data(filename: Path | str) -> pd.DataFrame:
     """Return a pandas DataFrame containing details of included elements and ions."""
     filename = Path(filename, "compositiondata.txt") if Path(filename).is_dir() else Path(filename)
 
-    columns = ("Z,nions,lowermost_ion_stage,uppermost_ion_stage,nlevelsmax_readin,abundance,mass,startindex").split(",")
+    columns = [
+        "Z",
+        "nions",
+        "lowermost_ion_stage",
+        "uppermost_ion_stage",
+        "nlevelsmax_readin",
+        "abundance",
+        "mass",
+        "startindex",
+    ]
 
     rowdfs = []
     with filename.open(encoding="utf-8") as fcompdata:
@@ -823,7 +832,7 @@ def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None) -
             return fopen(file_withext, mode=mode, encoding=encoding)
 
     # open() can raise file not found if this file doesn't exist
-    return Path(filename).open(mode=mode, encoding=encoding)  # noqa: SIM115
+    return Path(filename).open(mode=mode, encoding=encoding)
 
 
 def zopenpl(filename: Path | str, mode: str = "rt", encoding: str | None = None) -> t.Any | Path:
