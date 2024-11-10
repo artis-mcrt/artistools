@@ -5,6 +5,7 @@ Examples are temperatures, populations, and heating/cooling rates.
 """
 
 import argparse
+import collections.abc
 import contextlib
 import math
 import sys
@@ -73,7 +74,9 @@ def get_varname_formatted(varname: str) -> str:
 
 
 def apply_filters(
-    xlist: t.Sequence[float] | np.ndarray, ylist: t.Sequence[float] | np.ndarray, args: argparse.Namespace
+    xlist: collections.abc.Sequence[float] | np.ndarray,
+    ylist: collections.abc.Sequence[float] | np.ndarray,
+    args: argparse.Namespace,
 ) -> tuple[t.Any, t.Any]:
     if (filterfunc := at.get_filterfunc(args)) is not None:
         ylist = filterfunc(ylist)
@@ -211,7 +214,7 @@ def read_estimators_from_file(estfilepath: Path | str, printfilename: bool = Fal
 
 def get_rankbatch_parquetfile(
     folderpath: Path | str,
-    batch_mpiranks: t.Sequence[int],
+    batch_mpiranks: collections.abc.Sequence[int],
     batchindex: int,
     modelpath: Path | str | None = None,
     use_rust_parser: bool | None = True,
@@ -314,8 +317,8 @@ def get_rankbatch_parquetfile(
 
 def scan_estimators(
     modelpath: Path | str = Path(),
-    modelgridindex: None | int | t.Sequence[int] = None,
-    timestep: None | int | t.Sequence[int] = None,
+    modelgridindex: None | int | collections.abc.Sequence[int] = None,
+    timestep: None | int | collections.abc.Sequence[int] = None,
     use_rust_parser: bool | None = None,
 ) -> pl.LazyFrame:
     """Read estimator files into a dictionary of (timestep, modelgridindex): estimators.
@@ -323,7 +326,7 @@ def scan_estimators(
     Selecting particular timesteps or modelgrid cells will using speed this up by reducing the number of files that must be read.
     """
     modelpath = Path(modelpath)
-    match_modelgridindex: None | t.Sequence[int]
+    match_modelgridindex: None | collections.abc.Sequence[int]
     if modelgridindex is None:
         match_modelgridindex = None
     elif isinstance(modelgridindex, int):
@@ -331,7 +334,7 @@ def scan_estimators(
     else:
         match_modelgridindex = tuple(modelgridindex)
 
-    match_timestep: None | t.Sequence[int]
+    match_timestep: None | collections.abc.Sequence[int]
     if timestep is None:
         match_timestep = None
     elif isinstance(timestep, int):
@@ -405,9 +408,9 @@ def scan_estimators(
 
 def read_estimators(
     modelpath: Path | str = Path(),
-    modelgridindex: None | int | t.Sequence[int] = None,
-    timestep: None | int | t.Sequence[int] = None,
-    keys: t.Collection[str] | None = None,
+    modelgridindex: None | int | collections.abc.Sequence[int] = None,
+    timestep: None | int | collections.abc.Sequence[int] = None,
+    keys: collections.abc.Collection[str] | None = None,
 ) -> dict[tuple[int, int], dict[str, t.Any]]:
     """Read ARTIS estimator data into a dictionary keyed by (timestep, modelgridindex).
 

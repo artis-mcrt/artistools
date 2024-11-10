@@ -1,7 +1,6 @@
-#!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
 import argparse
-import typing as t
+import collections.abc
 from pathlib import Path
 
 import argcomplete
@@ -29,7 +28,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-outputpath", "-o", default=".", help="Path of output TARDIS model file")
 
 
-def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
+def main(
+    args: argparse.Namespace | None = None, argsraw: collections.abc.Sequence[str] | None = None, **kwargs
+) -> None:
     """Convert an ARTIS format model to TARDIS format."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)

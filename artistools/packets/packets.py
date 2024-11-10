@@ -1,4 +1,5 @@
 import calendar
+import collections.abc
 import math
 import tempfile
 import time
@@ -128,8 +129,8 @@ def get_column_names_artiscode(modelpath: str | Path) -> list[str] | None:
 def add_derived_columns(
     dfpackets: pd.DataFrame,
     modelpathin: Path | str,
-    colnames: t.Sequence[str],
-    allnonemptymgilist: t.Sequence[int] | None = None,
+    colnames: collections.abc.Sequence[str],
+    allnonemptymgilist: collections.abc.Sequence[int] | None = None,
 ) -> pd.DataFrame:
     """Add columns to a packets DataFrame that are derived from the values that are stored in the packets files.
 
@@ -425,7 +426,7 @@ def get_vpackets_text_columns(vpacketsfiletext: Path) -> list[str]:
 
 
 def get_rankbatch_parquetfile(
-    modelpath: Path | str, batch_mpiranks: t.Sequence[int], batchindex: int, virtual: bool
+    modelpath: Path | str, batch_mpiranks: collections.abc.Sequence[int], batchindex: int, virtual: bool
 ) -> Path:
     """Get the path to a parquet file containing packets for a specific batch of MPI ranks. If the file does not exists or is outdated, generate it first from the text files."""
     modelpath = Path(modelpath)

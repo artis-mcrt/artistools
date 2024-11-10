@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
-
-
 import argparse
+import collections.abc
 import math
 import string
 import typing as t
@@ -458,7 +457,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
+def main(
+    args: argparse.Namespace | None = None, argsraw: collections.abc.Sequence[str] | None = None, **kwargs
+) -> None:
     """Plot ARTIS input model composition."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)

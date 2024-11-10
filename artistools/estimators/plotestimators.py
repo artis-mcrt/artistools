@@ -6,6 +6,7 @@ Examples are temperatures, populations, heating/cooling rates.
 """
 
 import argparse
+import collections.abc
 import contextlib
 import math
 import string
@@ -47,7 +48,7 @@ def plot_init_abundances(
     ax: mplax.Axes,
     xlist: list[float],
     specieslist: list[str],
-    mgilist: t.Sequence[float],
+    mgilist: collections.abc.Sequence[float],
     modelpath: Path,
     seriestype: str,
     startfromzero: bool,
@@ -120,9 +121,9 @@ def plot_average_ionisation_excitation(
     ax: mplax.Axes,
     xlist: list[float],
     seriestype: str,
-    params: t.Sequence[str],
-    timestepslist: t.Sequence[t.Sequence[int]],
-    mgilist: t.Sequence[int],
+    params: collections.abc.Sequence[str],
+    timestepslist: collections.abc.Sequence[collections.abc.Sequence[int]],
+    mgilist: collections.abc.Sequence[int],
     estimators: pl.LazyFrame,
     modelpath: Path | str,
     startfromzero: bool,
@@ -240,11 +241,11 @@ def plot_average_ionisation_excitation(
 
 def plot_levelpop(
     ax: mplax.Axes,
-    xlist: t.Sequence[int | float] | np.ndarray,
+    xlist: collections.abc.Sequence[int | float] | np.ndarray,
     seriestype: str,
-    params: t.Sequence[str],
-    timestepslist: t.Sequence[t.Sequence[int]],
-    mgilist: t.Sequence[int | t.Sequence[int]],
+    params: collections.abc.Sequence[str],
+    timestepslist: collections.abc.Sequence[collections.abc.Sequence[int]],
+    mgilist: collections.abc.Sequence[int | collections.abc.Sequence[int]],
     estimators: pl.LazyFrame | pl.DataFrame,
     modelpath: str | Path,
     args: argparse.Namespace,
@@ -321,7 +322,7 @@ def plot_multi_ion_series(
     ax: mplax.Axes,
     startfromzero: bool,
     seriestype: str,
-    ionlist: t.Sequence[str],
+    ionlist: collections.abc.Sequence[str],
     estimators: pl.LazyFrame | pl.DataFrame,
     modelpath: str | Path,
     args: argparse.Namespace,
@@ -553,7 +554,7 @@ def plot_series(
 
 def get_xlist(
     xvariable: str,
-    allnonemptymgilist: t.Sequence[int],
+    allnonemptymgilist: collections.abc.Sequence[int],
     estimators: pl.LazyFrame,
     timestepslist: t.Any,
     modelpath: str | Path,
@@ -933,7 +934,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
+def main(
+    args: argparse.Namespace | None = None, argsraw: collections.abc.Sequence[str] | None = None, **kwargs
+) -> None:
     """Plot ARTIS estimators."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)

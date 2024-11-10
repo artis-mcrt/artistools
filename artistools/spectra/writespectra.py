@@ -1,7 +1,7 @@
 """Write out ARTIS spectra for each timestep to individual text files."""
 
 import argparse
-import typing as t
+import collections.abc
 from pathlib import Path
 
 import argcomplete
@@ -63,7 +63,9 @@ def addargs(parser) -> None:
     parser.add_argument("-modelpath", type=Path, default=Path(), help="Path to ARTIS folder")
 
 
-def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
+def main(
+    args: argparse.Namespace | None = None, argsraw: collections.abc.Sequence[str] | None = None, **kwargs
+) -> None:
     """Plot spectra from ARTIS and reference data."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)

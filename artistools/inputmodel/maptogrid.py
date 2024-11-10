@@ -4,8 +4,8 @@
 # original Fortran code by Andreas Bauswein
 
 import argparse
+import collections.abc
 import math
-import typing as t
 from pathlib import Path
 
 import argcomplete
@@ -473,7 +473,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")
 
 
-def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
+def main(
+    args: argparse.Namespace | None = None, argsraw: collections.abc.Sequence[str] | None = None, **kwargs
+) -> None:
     """Map tracer particle trajectories to a Cartesian grid."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)

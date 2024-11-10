@@ -1,4 +1,5 @@
 import argparse
+import collections.abc
 import functools
 import gzip
 import io
@@ -310,7 +311,7 @@ def get_syn_dir(modelpath: Path) -> tuple[float, float, float]:
         return (x, y, z)
 
 
-def vec_len(vec: t.Sequence[float] | np.ndarray[t.Any, np.dtype[np.float64]]) -> float:
+def vec_len(vec: collections.abc.Sequence[float] | np.ndarray[t.Any, np.dtype[np.float64]]) -> float:
     return float(np.sqrt(np.dot(vec, vec)))
 
 
@@ -791,14 +792,14 @@ def parse_range_list(rngs: str | list[str] | int, dictvars: dict[str, int] | Non
     return sorted(set(chain.from_iterable([parse_range(rng, dictvars or {}) for rng in rngs.split(",")])))
 
 
-def makelist(x: None | t.Sequence[t.Any] | str | Path) -> list[t.Any]:
+def makelist(x: None | collections.abc.Sequence[t.Any] | str | Path) -> list[t.Any]:
     """If x is not a list (or is a string), make a list containing x."""
     if x is None:
         return []
     return list(x) if isinstance(x, t.Iterable) else [x]
 
 
-def trim_or_pad(requiredlength: int, *listoflistin: t.Any) -> t.Sequence[t.Sequence[t.Any]]:
+def trim_or_pad(requiredlength: int, *listoflistin: t.Any) -> collections.abc.Sequence[collections.abc.Sequence[t.Any]]:
     """Make lists equal in length to requiredlength either by padding with None or truncating."""
     list_sequence = []
     for listin in listoflistin:
@@ -849,7 +850,7 @@ def zopenpl(filename: Path | str, mode: str = "rt", encoding: str | None = None)
 
 
 def firstexisting(
-    filelist: t.Sequence[str | Path] | str | Path,
+    filelist: collections.abc.Sequence[str | Path] | str | Path,
     folder: Path | str = Path(),
     tryzipped: bool = True,
     search_subfolders: bool = True,
@@ -888,7 +889,7 @@ def firstexisting(
 
 
 def anyexist(
-    filelist: t.Sequence[str | Path],
+    filelist: collections.abc.Sequence[str | Path],
     folder: Path | str = Path(),
     tryzipped: bool = True,
     search_subfolders: bool = True,
@@ -1256,8 +1257,8 @@ def get_runfolder_timesteps(folderpath: Path | str) -> tuple[int, ...]:
 
 
 def get_runfolders(
-    modelpath: Path | str, timestep: int | None = None, timesteps: t.Sequence[int] | None = None
-) -> t.Sequence[Path]:
+    modelpath: Path | str, timestep: int | None = None, timesteps: collections.abc.Sequence[int] | None = None
+) -> collections.abc.Sequence[Path]:
     """Get a list of folders containing ARTIS output files from a modelpath, optionally with a timestep restriction.
 
     The folder list may include non-ARTIS folders if a timestep is not specified.
@@ -1279,7 +1280,7 @@ def get_runfolders(
 
 def get_mpiranklist(
     modelpath: Path | str, modelgridindex: t.Iterable[int] | int | None = None, only_ranks_withgridcells: bool = False
-) -> t.Sequence[int]:
+) -> collections.abc.Sequence[int]:
     """Get a list of rank ids.
 
     - modelpath:
@@ -1489,7 +1490,7 @@ def get_vspec_dir_labels(modelpath: str | Path, usedegrees: bool = False) -> dic
 
 
 def get_dirbin_labels(
-    dirbins: npt.NDArray[np.int32] | t.Sequence[int] | None = None,
+    dirbins: npt.NDArray[np.int32] | collections.abc.Sequence[int] | None = None,
     modelpath: Path | str | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,

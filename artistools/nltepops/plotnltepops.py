@@ -2,10 +2,10 @@
 """Artistools - NLTE population related functions."""
 
 import argparse
+import collections.abc
 import contextlib
 import math
 import sys
-import typing as t
 from pathlib import Path
 
 import matplotlib as mpl
@@ -740,7 +740,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-outputfile", "-o", type=Path, default=defaultoutputfile, help="path/filename for PDF file")
 
 
-def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
+def main(
+    args: argparse.Namespace | None = None, argsraw: collections.abc.Sequence[str] | None = None, **kwargs
+) -> None:
     """Plot ARTIS non-LTE populations."""
     if args is None:
         parser = argparse.ArgumentParser(description=__doc__)

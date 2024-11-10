@@ -1,6 +1,7 @@
 """Artistools - spectra related functions."""
 
 import argparse
+import collections.abc
 import contextlib
 import math
 import os
@@ -135,7 +136,7 @@ def get_from_packets(
     delta_lambda: None | float | np.ndarray = None,
     use_time: t.Literal["arrival", "emission", "escape"] = "arrival",
     maxpacketfiles: int | None = None,
-    directionbins: t.Collection[int] | None = None,
+    directionbins: collections.abc.Collection[int] | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
     nu_column: str = "nu_rf",
@@ -420,7 +421,7 @@ def get_spectrum(
     modelpath: Path,
     timestepmin: int,
     timestepmax: int | None = None,
-    directionbins: t.Sequence[int] | None = None,
+    directionbins: collections.abc.Sequence[int] | None = None,
     fluxfilterfunc: t.Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     average_over_theta: bool = False,
     average_over_phi: bool = False,

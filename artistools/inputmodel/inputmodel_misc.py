@@ -1,4 +1,5 @@
 import calendar
+import collections.abc
 import errno
 import gc
 import math
@@ -994,7 +995,9 @@ def save_modeldata(
     print(f"Saved {modelfilepath} (took {time.perf_counter() - timestart:.1f} seconds)")
 
 
-def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist: t.Sequence[int] | None = None) -> int | float:
+def get_mgi_of_velocity_kms(
+    modelpath: Path, velocity: float, mgilist: collections.abc.Sequence[int] | None = None
+) -> int | float:
     """Return the modelgridindex of the cell whose outer velocity is closest to velocity.
 
     If mgilist is given, then chose from these cells only.
@@ -1091,7 +1094,7 @@ def get_initelemabundances_polars(modelpath: Path = Path(), printwarningsonly: b
 def save_initelemabundances(
     dfelabundances: pd.DataFrame | pl.DataFrame | pl.LazyFrame,
     outpath: Path | str | None = None,
-    headercommentlines: t.Sequence[str] | None = None,
+    headercommentlines: collections.abc.Sequence[str] | None = None,
 ) -> None:
     """Save a DataFrame (same format as get_initelemabundances) to abundances.txt.
 

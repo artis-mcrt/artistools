@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import collections.abc
 import math
 import typing as t
 from functools import lru_cache
@@ -105,7 +106,7 @@ def get_binaverage_field(radfielddata, modelgridindex=None, timestep=None):
     return arr_lambda, yvalues
 
 
-def j_nu_dbb(arr_nu_hz: t.Sequence[float] | npt.NDArray, W: float, T: float) -> list[float]:
+def j_nu_dbb(arr_nu_hz: collections.abc.Sequence[float] | npt.NDArray, W: float, T: float) -> list[float]:
     """Calculate the spectral energy density of a dilute blackbody radiation field.
 
     Parameters
@@ -993,7 +994,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-o", action="store", dest="outputfile", type=Path, help="Filename for PDF file")
 
 
-def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs: t.Any) -> None:
+def main(
+    args: argparse.Namespace | None = None, argsraw: collections.abc.Sequence[str] | None = None, **kwargs: t.Any
+) -> None:
     """Plot the radiation field estimators."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
