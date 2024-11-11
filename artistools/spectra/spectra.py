@@ -533,10 +533,10 @@ def make_virtual_spectra_summed_file(modelpath: Path | str) -> None:
 
     for spec_index, vspecpol in vspecpol_data_allranks.items():
         # fix the header row, which got summed along with the data
-        vspecpol = pl.concat([vspecpol_data[spec_index][0], vspecpol[1:]])
+        dfvspecpol = pl.concat([vspecpol_data[spec_index][0], vspecpol[1:]])
 
         outfile = Path(modelpath, f"vspecpol_total-{spec_index}.out")
-        vspecpol.write_csv(outfile, separator=" ", include_header=False)
+        dfvspecpol.write_csv(outfile, separator=" ", include_header=False)
         print(f"Saved {outfile}")
 
 

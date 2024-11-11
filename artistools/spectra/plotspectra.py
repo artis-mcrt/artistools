@@ -7,6 +7,7 @@ import math
 import sys
 import typing as t
 from collections.abc import Collection
+from collections.abc import Iterable
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -861,7 +862,7 @@ def make_emissionabsorption_plot(
 
 
 def make_contrib_plot(
-    axes: t.Iterable[mplax.Axes], modelpath: Path, densityplotyvars: list[str], args: argparse.Namespace
+    axes: Iterable[mplax.Axes], modelpath: Path, densityplotyvars: list[str], args: argparse.Namespace
 ) -> None:
     (_timestepmin, _timestepmax, args.timemin, args.timemax) = at.get_time_range(
         modelpath, args.timestep, args.timemin, args.timemax, args.timedays

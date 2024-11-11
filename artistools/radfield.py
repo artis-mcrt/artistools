@@ -3,6 +3,7 @@
 import argparse
 import math
 import typing as t
+from collections.abc import Iterable
 from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
@@ -290,7 +291,7 @@ def evaluate_phixs(
     lower_ion_stage: int,
     lowerlevelindex: int,
     nu_threshold: float,
-    arr_nu_hz: t.Iterable[float] | npt.NDArray,
+    arr_nu_hz: Iterable[float] | npt.NDArray,
 ) -> npt.NDArray:
     adata = at.atomic.get_levels(modelpath, get_photoionisations=True)
     lower_ion_data = adata.query("Z == @atomic_number and ion_stage == @lower_ion_stage").iloc[0]
@@ -328,7 +329,7 @@ def get_kappa_bf_ion(
     modelgridindex: int,
     timestep: int,
     modelpath: Path | str,
-    arr_nu_hz: t.Iterable[float] | npt.NDArray,
+    arr_nu_hz: Iterable[float] | npt.NDArray,
     max_levels: int,
 ) -> npt.NDArray:
     adata = at.atomic.get_levels(modelpath, get_photoionisations=True)
