@@ -1048,12 +1048,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         coalesce=True,
     )
 
+    tswithdata = estimators.select("timestep").unique().collect().to_series()
     for ts in reversed(timesteps_included):
-        tswithdata = estimators.select("timestep").unique().collect().to_series()
-        for ts in timesteps_included.copy():
-            if ts not in tswithdata and ts in timesteps_included:
-                timesteps_included.remove(ts)
-                print(f"ts {ts} requested but no data found. Removing.")
+        if ts not in tswithdata:
+            timesteps_included.remove(ts)
+            print(f"ts {ts} requested but no data found. Removing.")
 
     if not timesteps_included:
         print("No timesteps with data are included")
