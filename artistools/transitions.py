@@ -1,9 +1,9 @@
 import argparse
-import collections.abc
 import math
 import sys
 import typing as t
 from collections import namedtuple
+from collections.abc import Sequence
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -121,7 +121,7 @@ def make_plot(
     yvalues,
     temperature_list: list[str],
     vardict,
-    ionlist: collections.abc.Sequence[IonTuple],
+    ionlist: Sequence[IonTuple],
     ionpopdict,
     xmin: float,
     xmax: float,
@@ -256,9 +256,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def main(
-    args: argparse.Namespace | None = None, argsraw: collections.abc.Sequence[str] | None = None, **kwargs
-) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs) -> None:
     """Plot estimated spectra from bound-bound transitions."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)

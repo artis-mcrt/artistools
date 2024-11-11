@@ -2,10 +2,10 @@
 # PYTHON_ARGCOMPLETE_OK
 
 import argparse
-import collections.abc
 import math
 import sys
 import typing as t
+from collections.abc import Sequence
 from pathlib import Path
 
 import argcomplete
@@ -448,9 +448,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-outputpath", "-o", default=None, help="Path for output model files")
 
 
-def main(
-    args: argparse.Namespace | None = None, argsraw: collections.abc.Sequence[str] | None = None, **kwargs
-) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs) -> None:
     """Create ARTIS format model from grid.dat."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)

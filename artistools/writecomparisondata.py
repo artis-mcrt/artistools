@@ -2,8 +2,8 @@
 """Tools to get artis output in the required format for the code comparison workshop."""
 
 import argparse
-import collections.abc
 import math
+from collections.abc import Sequence
 from io import TextIOWrapper
 from pathlib import Path
 
@@ -12,9 +12,7 @@ import numpy as np
 import artistools as at
 
 
-def write_spectra(
-    modelpath: str | Path, model_id: str, selected_timesteps: collections.abc.Sequence[int], outfilepath: Path
-) -> None:
+def write_spectra(modelpath: str | Path, model_id: str, selected_timesteps: Sequence[int], outfilepath: Path) -> None:
     spec_data = np.loadtxt(Path(modelpath, "spec.out"))
 
     times = spec_data[0, 1:]
@@ -50,9 +48,7 @@ def write_spectra(
         outfile.close()
 
 
-def write_ntimes_nvel(
-    outfile: TextIOWrapper, selected_timesteps: collections.abc.Sequence[int], modelpath: str | Path
-) -> None:
+def write_ntimes_nvel(outfile: TextIOWrapper, selected_timesteps: Sequence[int], modelpath: str | Path) -> None:
     times = at.get_timestep_times(modelpath)
     _, modelmeta = at.inputmodel.get_modeldata(modelpath, getheadersonly=True)
     outfile.write(f"#NTIMES: {len(selected_timesteps)}\n")
@@ -89,9 +85,9 @@ def write_single_estimator(modelpath, selected_timesteps, estimators, allnonempt
 def write_ionfracts(
     modelpath: Path | str,
     model_id: str,
-    selected_timesteps: collections.abc.Sequence[int],
+    selected_timesteps: Sequence[int],
     estimators: dict,
-    allnonemptymgilist: collections.abc.Sequence[int],
+    allnonemptymgilist: Sequence[int],
     outputpath,
 ) -> None:
     times = at.get_timestep_times(modelpath)
@@ -162,9 +158,7 @@ def write_phys(modelpath, model_id, selected_timesteps, estimators, allnonemptym
                 f.write("\n")
 
 
-def write_lbol_edep(
-    modelpath: str | Path, model_id: str, selected_timesteps: collections.abc.Sequence[int], outputpath: Path
-) -> None:
+def write_lbol_edep(modelpath: str | Path, model_id: str, selected_timesteps: Sequence[int], outputpath: Path) -> None:
     # times = at.get_timestep_times(modelpath)
     dflightcurve = (
         at.lightcurve.readfile(Path(modelpath, "light_curve.out"))[-1]
@@ -197,9 +191,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-outputpath", "-o", action="store", type=Path, default=Path(), help="path for output files")
 
 
-def main(
-    args: argparse.Namespace | None = None, argsraw: collections.abc.Sequence[str] | None = None, **kwargs
-) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs) -> None:
     """Write ARTIS model data out in code comparison workshop format."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)

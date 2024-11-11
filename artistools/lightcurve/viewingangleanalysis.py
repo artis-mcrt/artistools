@@ -1,7 +1,7 @@
 import argparse
-import collections.abc
 import sys
 import typing as t
+from collections.abc import Sequence
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -145,9 +145,7 @@ define_colours_list2 = [
 ]
 
 
-def parse_directionbin_args(
-    modelpath: Path | str, args: argparse.Namespace
-) -> tuple[collections.abc.Sequence[int], dict[int, str]]:
+def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> tuple[Sequence[int], dict[int, str]]:
     modelpath = Path(modelpath)
     viewing_angle_data_exists = args.frompackets or bool(list(modelpath.glob("*_res.out*")))
     if isinstance(args.plotviewingangle, int):

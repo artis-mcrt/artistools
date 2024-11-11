@@ -5,9 +5,9 @@ codecomparison/[modelname]/[codename]
 e.g., codecomparison/DDC10/artisnebular
 """
 
-import collections.abc
 import math
 import typing as t
+from collections.abc import Sequence
 from pathlib import Path
 
 import matplotlib.axes as mplax
@@ -50,8 +50,8 @@ def get_timestep_times(modelpath: Path | str, loc: t.Literal["start", "mid", "en
 
 def read_reference_estimators(
     modelpath: str | Path,
-    modelgridindex: None | int | collections.abc.Sequence[int] = None,
-    timestep: None | int | collections.abc.Sequence[int] = None,
+    modelgridindex: None | int | Sequence[int] = None,
+    timestep: None | int | Sequence[int] = None,
 ) -> dict[tuple[int, int], t.Any]:
     """Read estimators from code comparison workshop file."""
     virtualfolder, inputmodel, codename = Path(modelpath).parts

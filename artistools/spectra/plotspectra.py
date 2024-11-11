@@ -3,10 +3,11 @@
 """Artistools - spectra plotting functions."""
 
 import argparse
-import collections.abc
 import math
 import sys
 import typing as t
+from collections.abc import Collection
+from collections.abc import Sequence
 from pathlib import Path
 
 import argcomplete
@@ -226,7 +227,7 @@ def plot_filter_functions(axis: mplax.Axes) -> None:
 
 
 def plot_artis_spectrum(
-    axes: collections.abc.Collection[mplax.Axes],
+    axes: Collection[mplax.Axes],
     modelpath: Path | str,
     args,
     scale_to_peak: float | None = None,
@@ -439,8 +440,8 @@ def plot_artis_spectrum(
 
 
 def make_spectrum_plot(
-    speclist: collections.abc.Collection[Path | str],
-    axes: collections.abc.Sequence[mplax.Axes] | np.ndarray,
+    speclist: Collection[Path | str],
+    axes: Sequence[mplax.Axes] | np.ndarray,
     filterfunc: t.Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None,
     args,
     scale_to_peak: float | None = None,
@@ -1394,9 +1395,7 @@ def addargs(parser) -> None:
     )
 
 
-def main(
-    args: argparse.Namespace | None = None, argsraw: collections.abc.Sequence[str] | None = None, **kwargs
-) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs) -> None:
     """Plot spectra from ARTIS and reference data."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)

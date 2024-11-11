@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
 import argparse
-import collections.abc
 import gc
 import io
 import math
@@ -9,6 +8,7 @@ import string
 import tarfile
 import time
 import typing as t
+from collections.abc import Sequence
 from functools import lru_cache
 from functools import partial
 from itertools import chain
@@ -473,9 +473,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")
 
 
-def main(
-    args: argparse.Namespace | None = None, argsraw: collections.abc.Sequence[str] | None = None, **kwargs
-) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs) -> None:
     """Create ARTIS model from single trajectory abundances."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)

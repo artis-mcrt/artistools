@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 import argparse
-import collections.abc
 import gc
 import typing as t
+from collections.abc import Sequence
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -229,9 +229,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-rhoscale", "-v", default=None, type=float, help="Density scale factor")
 
 
-def main(
-    args: argparse.Namespace | None = None, argsraw: collections.abc.Sequence[str] | None = None, **kwargs: t.Any
-) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Make 1D model from cone in 3D model."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)

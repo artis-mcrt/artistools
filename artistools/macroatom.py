@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import argparse
-import collections.abc
 import typing as t
+from collections.abc import Sequence
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -26,9 +26,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def main(
-    args: argparse.Namespace | None = None, argsraw: collections.abc.Sequence[str] | None = None, **kwargs: t.Any
-) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot the macroatom transitions."""
     if args is None:
         parser = argparse.ArgumentParser(
@@ -136,7 +134,7 @@ def make_plot(
 
 
 def read_files(
-    files: collections.abc.Sequence[Path | str],
+    files: Sequence[Path | str],
     modelgridindex: int | None = None,
     timestepmin: int | None = None,
     timestepmax: int | None = None,

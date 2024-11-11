@@ -2,12 +2,12 @@
 """Artistools - spectra related functions."""
 
 import argparse
-import collections.abc
 import contextlib
 import json
 import math
 import typing as t
 from collections import namedtuple
+from collections.abc import Sequence
 from functools import partial
 from pathlib import Path
 
@@ -53,7 +53,7 @@ def print_floers_line_ratio(
 
 
 def get_packets_with_emtype_onefile(
-    emtypecolumn: str, lineindices: collections.abc.Sequence[int], packetsfile: Path | str
+    emtypecolumn: str, lineindices: Sequence[int], packetsfile: Path | str
 ) -> pd.DataFrame:
     import gzip
 
@@ -67,10 +67,7 @@ def get_packets_with_emtype_onefile(
 
 
 def get_packets_with_emtype(
-    modelpath: Path | str,
-    emtypecolumn: str,
-    lineindices: collections.abc.Sequence[int],
-    maxpacketfiles: int | None = None,
+    modelpath: Path | str, emtypecolumn: str, lineindices: Sequence[int], maxpacketfiles: int | None = None
 ) -> tuple[pd.DataFrame, int]:
     packetsfiles = at.packets.get_packets_text_paths(modelpath, maxpacketfiles=maxpacketfiles)
     nprocs_read = len(packetsfiles)
@@ -448,7 +445,7 @@ def make_flux_ratio_plot(args: argparse.Namespace) -> None:
 def get_packets_with_emission_conditions(
     modelpath: str | Path,
     emtypecolumn: str,
-    lineindices: collections.abc.Sequence[int],
+    lineindices: Sequence[int],
     tstart: float,
     tend: float,
     maxpacketfiles: int | None = None,
@@ -508,8 +505,8 @@ def get_packets_with_emission_conditions(
 def plot_nne_te_points(
     axis: mplax.Axes,
     serieslabel: str,
-    em_log10nne: collections.abc.Sequence[float] | npt.NDArray,
-    em_Te: collections.abc.Sequence[float] | npt.NDArray,
+    em_log10nne: Sequence[float] | npt.NDArray,
+    em_Te: Sequence[float] | npt.NDArray,
     normtotalpackets: float,
     color: float | str | None,
     marker: MarkerType,
@@ -891,9 +888,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def main(
-    args: argparse.Namespace | None = None, argsraw: collections.abc.Sequence[str] | None = None, **kwargs: t.Any
-) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot line fluxe ratios for comparisons to Floers."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=(__doc__))
