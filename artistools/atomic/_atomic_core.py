@@ -3,6 +3,8 @@ import time
 import typing as t
 import warnings
 from collections import namedtuple
+from collections.abc import Collection
+from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
 
@@ -17,7 +19,7 @@ import artistools as at
 def parse_adata(
     fadata: io.TextIOBase,
     phixsdict: dict[tuple[int, int, int], tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]],
-    ionlist: t.Collection[tuple[int, int]] | None,
+    ionlist: Collection[tuple[int, int]] | None,
 ) -> t.Generator[tuple[int, int, int, float, pl.DataFrame], None, None]:
     """Generate ions and their level lists from adata.txt."""
     firstlevelnumber = 1
@@ -71,7 +73,7 @@ def parse_adata(
 
 
 def read_transitiondata(
-    transitions_filename: str | Path, ionlist: t.Collection[tuple[int, int]] | None
+    transitions_filename: str | Path, ionlist: Collection[tuple[int, int]] | None
 ) -> dict[tuple[int, int], pl.DataFrame]:
     firstlevelnumber = 1
     transdict: dict[tuple[int, int], pl.DataFrame] = {}
@@ -116,7 +118,7 @@ def read_transitiondata(
 
 
 def parse_phixsdata(
-    phixs_filename: Path | str, ionlist: t.Collection[tuple[int, int]] | None = None
+    phixs_filename: Path | str, ionlist: Collection[tuple[int, int]] | None = None
 ) -> dict[tuple[int, int, int], tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]]:
     firstlevelnumber = 1
     phixsdict = {}
@@ -164,14 +166,14 @@ def parse_phixsdata(
 def add_transition_columns(
     dftransitions: pl.LazyFrame | pl.DataFrame,
     dflevels: pd.DataFrame | pl.DataFrame | pl.LazyFrame,
-    columns: t.Sequence[str],
+    columns: Sequence[str],
 ) -> pl.LazyFrame:
     """Add columns to a polars DataFrame of transitions."""
     dftransitions = dftransitions.lazy()
     columns_before = dftransitions.collect_schema().names()
 
     if isinstance(dflevels, pd.DataFrame):
-        dflevels = pl.from_pandas(dflevels[["g", "energy_ev", "levelname", "levelindex"]])  # pyright: ignore[reportArgumentType]
+        dflevels = pl.from_pandas(dflevels[["g", "energy_ev", "levelname", "levelindex"]])
 
     dflevels = dflevels.select(["g", "energy_ev", "levelname", "levelindex"]).lazy()
 
@@ -219,7 +221,7 @@ def add_transition_columns(
 
 def get_transitiondata(
     modelpath: str | Path,
-    ionlist: t.Collection[tuple[int, int]] | None = None,
+    ionlist: Collection[tuple[int, int]] | None = None,
     quiet: bool = False,
     use_rust_reader: bool | None = None,
 ) -> dict[tuple[int, int], pl.DataFrame]:
@@ -259,11 +261,11 @@ def get_transitiondata(
 
 def get_levels_polars(
     modelpath: str | Path,
-    ionlist: t.Collection[tuple[int, int]] | None = None,
+    ionlist: Collection[tuple[int, int]] | None = None,
     get_transitions: bool = False,
     get_photoionisations: bool = False,
     quiet: bool = False,
-    derived_transitions_columns: t.Sequence[str] | None = None,
+    derived_transitions_columns: Sequence[str] | None = None,
     use_rust_reader: bool | None = None,
 ) -> pl.DataFrame:
     """Return a polars DataFrame of energy levels."""
@@ -306,11 +308,11 @@ def get_levels_polars(
 
 def get_levels(
     modelpath: str | Path,
-    ionlist: t.Collection[tuple[int, int]] | None = None,
+    ionlist: Collection[tuple[int, int]] | None = None,
     get_transitions: bool = False,
     get_photoionisations: bool = False,
     quiet: bool = False,
-    derived_transitions_columns: t.Sequence[str] | None = None,
+    derived_transitions_columns: Sequence[str] | None = None,
     use_rust_reader: bool | None = None,
 ) -> pd.DataFrame:
     pldf = get_levels_polars(

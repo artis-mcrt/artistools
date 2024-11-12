@@ -1,6 +1,7 @@
 import argparse
 import sys
 import typing as t
+from collections.abc import Sequence
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -144,7 +145,7 @@ define_colours_list2 = [
 ]
 
 
-def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> tuple[t.Sequence[int], dict[int, str]]:
+def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> tuple[Sequence[int], dict[int, str]]:
     modelpath = Path(modelpath)
     viewing_angle_data_exists = args.frompackets or bool(list(modelpath.glob("*_res.out*")))
     if isinstance(args.plotviewingangle, int):
@@ -633,13 +634,13 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
 
         data[f"{bands[1]}at{bands[0]}max"] = second_band_brightness
 
-        data = pd.DataFrame(data)
-        data["peakcolour"] = data[f"{bands[0]}max"] - data[f"{bands[1]}at{bands[0]}max"]
-        print(data["peakcolour"], data[f"{bands[0]}max"], data[f"{bands[1]}at{bands[0]}max"])
+        dfdata = pd.DataFrame(data)
+        dfdata["peakcolour"] = dfdata[f"{bands[0]}max"] - dfdata[f"{bands[1]}at{bands[0]}max"]
+        print(dfdata["peakcolour"], dfdata[f"{bands[0]}max"], dfdata[f"{bands[1]}at{bands[0]}max"])
 
         plotkwargsviewingangles, _ = set_scatterplot_plotkwargs(modelnumber, args)
         plotkwargsviewingangles["label"] = modelname
-        ax.scatter(data["peakcolour"], data[f"{bands[0]}max"], **plotkwargsviewingangles)
+        ax.scatter(dfdata["peakcolour"], y=dfdata[f"{bands[0]}max"], **plotkwargsviewingangles)
 
     sn_data, label = at.lightcurve.get_phillips_relation_data()
     ax.errorbar(

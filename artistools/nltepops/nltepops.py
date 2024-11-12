@@ -222,5 +222,6 @@ def read_files(
             pool.join()
     else:
         arr_dfnltepop = [read_file_filtered(f, strquery=dfquery_full, dfqueryvars=dfqueryvars) for f in nltefilepaths]
-
-    return pd.concat(arr_dfnltepop)
+    dfconcat = pd.concat(arr_dfnltepop)
+    assert isinstance(dfconcat, pd.DataFrame)
+    return dfconcat

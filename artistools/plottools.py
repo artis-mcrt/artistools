@@ -4,6 +4,7 @@ import argparse
 import itertools
 import sys
 import typing as t
+from collections.abc import Iterable
 
 import matplotlib.axes as mplax
 import matplotlib.figure as mplfig
@@ -82,13 +83,13 @@ class ExponentLabelFormatter(ticker.ScalarFormatter):
         self._set_formatted_label_text()
 
 
-def set_axis_properties(ax: t.Iterable[mplax.Axes] | mplax.Axes, args: argparse.Namespace) -> t.Any:
+def set_axis_properties(ax: Iterable[mplax.Axes] | mplax.Axes, args: argparse.Namespace) -> t.Any:
     if "subplots" not in args:
         args.subplots = False
     if "labelfontsize" not in args:
         args.labelfontsize = 18
 
-    if isinstance(ax, t.Iterable):
+    if isinstance(ax, Iterable):
         for axis in ax:
             axis.minorticks_on()
             axis.tick_params(
