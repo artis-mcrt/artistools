@@ -151,14 +151,14 @@ def maptogrid(
 
     snapshot_columns_used = ["id", "h", "x", "y", "z", "vx", "vy", "vz", "pmass", "rho", "p", "rho_rst", "ye"]
 
-    dfsnapshot = pd.read_csv(
+    pddfsnapshot = pd.read_csv(
         ejectasnapshotpath, names=snapshot_columns, sep=r"\s+", usecols=snapshot_columns_used, dtype_backend="pyarrow"
     )
 
     if downsamplefactor > 1:
-        dfsnapshot = dfsnapshot.sample(len(dfsnapshot) // downsamplefactor)
+        pddfsnapshot = pddfsnapshot.sample(len(pddfsnapshot) // downsamplefactor)
 
-    dfsnapshot = pl.from_pandas(dfsnapshot)
+    dfsnapshot = pl.from_pandas(pddfsnapshot)
 
     logprint(dfsnapshot)
     logprint(f"ncoordgrid: {ncoordgrid}")
