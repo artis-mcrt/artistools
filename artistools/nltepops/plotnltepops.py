@@ -121,11 +121,11 @@ def get_floers_data(dfpopthision, atomic_number, ion_stage, modelpath, T_e, mode
         floersfilename = "andreas_level_populations_fe2.txt" if ion_stage == 2 else "andreas_level_populations_fe3.txt"
         if Path(modelpath / floersfilename).is_file():
             print(f"reading {floersfilename}")
-            floers_levelpops = pd.read_csv(modelpath / floersfilename, comment="#", sep=r"\s+")
+            dffloers_levelpops = pd.read_csv(modelpath / floersfilename, comment="#", sep=r"\s+")
             # floers_levelnums = floers_levelpops['index'].values - 1
-            floers_levelpops = floers_levelpops.sort_values(by="energypercm")
-            floers_levelnums = list(range(len(floers_levelpops)))
-            floers_levelpop_values = floers_levelpops["frac_ionpop"].to_numpy() * dfpopthision["n_NLTE"].sum()
+            dffloers_levelpops = dffloers_levelpops.sort_values(by="energypercm")
+            floers_levelnums = list(range(len(dffloers_levelpops)))
+            floers_levelpop_values = dffloers_levelpops["frac_ionpop"].to_numpy() * dfpopthision["n_NLTE"].sum()
 
         floersmultizonefilename = None
         if modelpath.stem.startswith("w7_"):
