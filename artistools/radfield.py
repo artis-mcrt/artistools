@@ -30,7 +30,7 @@ MEGAPARSEC = 3.0857e24
 @lru_cache(maxsize=4)
 def read_files(modelpath: Path | str, timestep: int | None = None, modelgridindex: int | None = None):
     """Read radiation field data from a list of file paths into a pandas DataFrame."""
-    radfielddata = pd.DataFrame()
+    radfielddata_allfiles: list[pd.DataFrame] = []
     modelpath = Path(modelpath)
 
     mpiranklist = at.get_mpiranklist(modelpath, modelgridindex=modelgridindex)
@@ -56,9 +56,9 @@ def read_files(modelpath: Path | str, timestep: int | None = None, modelgridinde
             if not radfielddata_thisfile.empty:
                 if timestep is not None and modelgridindex is not None:
                     return radfielddata_thisfile
-                radfielddata = radfielddata.append(radfielddata_thisfile.copy(), ignore_index=True)
+                radfielddata_allfiles.append(radfielddata_thisfile)
 
-    return radfielddata
+    return pd.concat(radfielddata_allfiles, ignore_index=True)
 
 
 def select_bin(radfielddata, nu=None, lambda_angstroms=None, modelgridindex=None, timestep=None):

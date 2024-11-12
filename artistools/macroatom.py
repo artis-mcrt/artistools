@@ -158,7 +158,7 @@ def read_files(
             if atomic_number:
                 df_thisfile = df_thisfile[df_thisfile["Z"] == atomic_number]
 
-            if df_thisfile is not None and not df_thisfile.empty:
+            if not df_thisfile.empty:
                 if dfall is None:
                     dfall = df_thisfile.copy()
                 else:

@@ -327,7 +327,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if from_model:
         dfnltepops = at.nltepops.read_files(modelpath, modelgridindex=modelgridindex, timestep=timestep)
 
-        if dfnltepops is None or dfnltepops.empty:
+        if dfnltepops.empty:
             print(f"ERROR: no NLTE populations for cell {modelgridindex} at timestep {timestep}")
             sys.exit(1)
 

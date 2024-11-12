@@ -145,7 +145,7 @@ def read_modelfile_text(
         )
     else:
         nrows_read = 1 if getheadersonly else npts_model
-        skiprows: list[int] | int | None = (
+        skiprows: list[int] | int = (
             numheaderrows
             if onelinepercellformat
             else [

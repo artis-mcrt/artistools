@@ -21,7 +21,7 @@ ERG_TO_EV = 6.242e11
 @lru_cache(maxsize=4)
 def read_files(modelpath: Path, timestep: int = -1, modelgridindex: int = -1) -> pd.DataFrame:
     """Read ARTIS -thermal spectrum data into a pandas DataFrame."""
-    nonthermaldata = pd.DataFrame()
+    nonthermaldata_allfiles: list[pd.DataFrame] = []
 
     mpiranklist = at.get_mpiranklist(modelpath, modelgridindex=modelgridindex)
     for folderpath in at.get_runfolders(modelpath, timestep=timestep):
@@ -47,9 +47,9 @@ def read_files(modelpath: Path, timestep: int = -1, modelgridindex: int = -1) ->
                 if timestep >= 0 and modelgridindex >= 0:
                     return nonthermaldata_thisfile
 
-                nonthermaldata = nonthermaldata.append(nonthermaldata_thisfile.copy(), ignore_index=True)
+                nonthermaldata_allfiles.append(nonthermaldata_thisfile)
 
-    return nonthermaldata
+    return pd.concat(nonthermaldata_allfiles, ignore_index=True)
 
 
 def make_xs_plot(axis: mplax.Axes, nonthermaldata: pd.DataFrame, args: argparse.Namespace) -> None:

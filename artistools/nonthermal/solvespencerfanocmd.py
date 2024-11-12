@@ -25,10 +25,11 @@ def make_ntstats_plot(ntstatfile: str | Path) -> None:
     dfstats = pd.read_csv(ntstatfile, sep=r"\s+", escapechar="#").fillna(0)
 
     norm_frac_sum = False
+    norm_factors: float | np.ndarray
     if norm_frac_sum:
         # scale up (or down) ionisation, excitation, and heating to force frac_sum = 1.0
         dfstats = dfstats.eval("frac_sum = frac_ionization + frac_excitation + frac_heating")
-        norm_factors = 1.0 / dfstats["frac_sum"]
+        norm_factors = 1.0 / dfstats["frac_sum"].to_numpy()
     else:
         norm_factors = 1.0
     pd.options.display.max_rows = 50
@@ -147,7 +148,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if Path(args.outputfile).is_dir():
         args.outputfile = Path(args.outputfile, defaultoutputfile)
-
+    dfpops: pd.DataFrame | None
     ionpopdict: dict[tuple[int, int] | int, float]
     if args.composition == "artis":
         if args.timedays:
@@ -171,7 +172,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         dfpops = at.nltepops.read_files(modelpath, modelgridindex=args.modelgridindex, timestep=args.timestep)
 
-        if dfpops is None or dfpops.empty:
+        if dfpops.empty:
             print(f"ERROR: no NLTE populations for cell {args.modelgridindex} at timestep {args.timestep}")
             raise AssertionError
 
@@ -210,7 +211,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     # ionpopdict = {}
     # # nne = nntot * x_e
     # # nne = .1
-    # dfpops = {}
+    # dfpops = None
 
     # ionpopdict[(at.get_atomic_number('Fe'), 2)] = nntot * 1.
     # ionpopdict[(at.get_atomic_number('Fe'), 3)] = nntot * 0.5
@@ -221,7 +222,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     # deposition_density_ev = 5.e3
     # nntot = 1.
     # ionpopdict = {}
-    # dfpops = {}
+    # dfpops = None
     # ionpopdict[(at.get_atomic_number('O'), 1)] = nntot * (1. - x_e)
     # ionpopdict[(at.get_atomic_number('O'), 2)] = nntot * x_e
 
@@ -232,7 +233,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     # deposition_density_ev = 5.e3
     # nntot = 1.
     # ionpopdict = {}
-    # dfpops = {}
+    # dfpops = None
     # ionpopdict[(at.get_atomic_number('He'), 1)] = nntot * (1. - x_e)
     # ionpopdict[(at.get_atomic_number('He'), 2)] = nntot * x_e
 
@@ -241,7 +242,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     # deposition_density_ev = 5.e3
     # nntot = 1.
     # ionpopdict = {}
-    # dfpops = {}
+    # dfpops = None
     # ionpopdict[(at.get_atomic_number('Fe'), 1)] = nntot * (1. - x_e)
     # ionpopdict[(at.get_atomic_number('Fe'), 2)] = nntot * x_e
 
@@ -287,7 +288,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             nntot = 1.0
             x_e = (args.x_e * 10 ** (0.5 * step)) if args.vary == "x_e" else args.x_e
             ionpopdict = {}
-            dfpops = {}
+            dfpops = None
             T_e = 3000
             assert x_e <= 1.0
             ionpopdict[compelement_atomicnumber, 1] = nntot * (1.0 - x_e)
