@@ -208,6 +208,8 @@ def maptogrid(
     assert isinstance(rmean, float)
     hmean = dfsnapshot["h"].mean()
     assert isinstance(hmean, float)
+    hmin = dfsnapshot["h"].min()
+    assert isinstance(hmin, float)
     rmax = dfsnapshot["dis"].max()
     assert isinstance(rmax, float)
     with Path(outputfolderpath, "ejectapartanalysis.dat").open(mode="w", encoding="utf-8") as fpartanalysis:
@@ -219,7 +221,7 @@ def maptogrid(
     logprint(f"saved {outputfolderpath / 'ejectapartanalysis.dat'}")
 
     logprint(f"total mass of sph particle {totmass} max dist {rmax} mean dist {rmean}")
-    logprint(f"smoothing length min {dfsnapshot['h'].min()} mean {hmean}")
+    logprint(f"smoothing length min {hmin} mean {hmean}")
     logprint("ratio between vrad and vperp mean", dfsnapshot.select(pl.col("vperp") - pl.col("vrad")).mean().item(0, 0))
 
     # check maybe cm and correct by shifting
