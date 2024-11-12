@@ -42,8 +42,7 @@ def readfile(filepath: str | Path) -> dict[int, pl.DataFrame]:
 def read_3d_gammalightcurve(filepath: str | Path) -> dict[int, pd.DataFrame]:
     columns = ["time"]
     columns.extend(np.arange(0, 100))
-    lcdata = pd.read_csv(filepath, sep=r"\s+", header=None)
-    lcdata.columns = columns
+    lcdata = pd.read_csv(filepath, sep=r"\s+", header=None).set_axis(columns, axis=1)
     # lcdata = lcdata.rename(columns={0: 'time', 1: 'lum', 2: 'lum_cmf'})
 
     res_data = {}
@@ -216,7 +215,7 @@ def generate_band_lightcurve_data(
             # Ignore Q and U values in pol file
             [i for i in specdata.columns.to_numpy()[1:] if i[-2] != "."]
             if "specpol.out" in str(specfilename)
-            else specdata.columns.to_numpy()[1:]
+            else specdata.columns.to_list()[1:]
         )
 
     filters_dict = {}
