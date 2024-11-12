@@ -206,6 +206,11 @@ def add_derived_columns_lazy(
 
     We might as well add everything, since the columns only get calculated when they are actually used (polars LazyFrame).
     """
+    if isinstance(dfmodel, pd.DataFrame):
+        dfmodel = pl.from_pandas(dfmodel).lazy()
+
+    assert isinstance(dfmodel, pl.LazyFrame)
+
     dfpackets = dfpackets.lazy().with_columns(
         emission_velocity=(
             (pl.col("em_posx") ** 2 + pl.col("em_posy") ** 2 + pl.col("em_posz") ** 2).sqrt() / pl.col("em_time")
@@ -254,7 +259,8 @@ def add_derived_columns_lazy(
 
     elif modelmeta["dimensions"] == 1:
         assert dfmodel is not None, "dfmodel must be provided for 1D models to set em_modelgridindex"
-        velbins = (dfmodel.select("vel_r_max_kmps").lazy().collect()["vel_r_max_kmps"] * 1000.0).to_list()
+
+        velbins = (dfmodel.select(pl.col("vel_r_max_kmps")).lazy().collect()["vel_r_max_kmps"] * 1000.0).to_list()
         dfpackets = dfpackets.with_columns(
             em_modelgridindex=(
                 pl.col("emission_velocity")
