@@ -577,7 +577,6 @@ def add_derived_cols_to_modeldata(
 
             assert t_model_init_seconds is not None
             # pos_mid is defined in the input file
-            # TODO: get wid_init from modelmeta
             dfmodel = dfmodel.with_columns([
                 (pl.col(f"pos_{ax}_mid") - modelmeta[f"wid_init_{ax}"] / 2.0).alias(f"pos_{ax}_min") for ax in axes
             ]).with_columns([
