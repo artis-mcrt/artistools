@@ -355,8 +355,10 @@ def lower_dim_and_check_mass_conservation(outputdimensions: int) -> None:
     dfmodel3d_pl[mgi1, "X_Ni56"] = 0.75
 
     dfmodel3d_pl = at.inputmodel.add_derived_cols_to_modeldata(
-        dfmodel=dfmodel3d_pl, modelmeta=modelmeta_3d, derived_cols=["mass_g"]
+        dfmodel=dfmodel3d_pl, modelmeta=modelmeta_3d, derived_cols=["mass_g", "kinetic_en_erg"]
     ).collect()
+
+    ejecta_ke_erg: float = dfmodel3d_pl.select("kinetic_en_erg").sum().item()
 
     outpath = outputpath / f"test_dimension_reduce_3d_{outputdimensions:d}d"
     outpath.mkdir(exist_ok=True, parents=True)
@@ -366,11 +368,18 @@ def lower_dim_and_check_mass_conservation(outputdimensions: int) -> None:
 
     at.inputmodel.save_modeldata(outpath=outpath, dfmodel=dfmodel_lowerd, modelmeta=modelmeta_lowerd)
 
-    dfmodel_lowerd_lz, modelmeta_lowerd = at.inputmodel.get_modeldata_polars(modelpath=outpath, derived_cols=["mass_g"])
+    dfmodel_lowerd_lz, modelmeta_lowerd = at.inputmodel.get_modeldata_polars(
+        modelpath=outpath, derived_cols=["mass_g", "kinetic_en_erg"]
+    )
     dfmodel_lowerd = dfmodel_lowerd_lz.collect()
 
     # check that the total mass is conserved
     assert np.isclose(dfmodel_lowerd["mass_g"].sum(), dfmodel3d_pl["mass_g"].sum(), rtol=1e-3)
+
+    lowerd_ejecta_ke_erg: float = dfmodel_lowerd.select("kinetic_en_erg").sum().item()
+
+    # check that kinetic energy very roughly matches (we conserved mass, not kinetic energy)
+    assert np.isclose(lowerd_ejecta_ke_erg, ejecta_ke_erg, rtol=0.10), f"{lowerd_ejecta_ke_erg} {ejecta_ke_erg}"
 
     # check that the total mass of each species is conserved
     for col in dfmodel3d_pl.columns:
