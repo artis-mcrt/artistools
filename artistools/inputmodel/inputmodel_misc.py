@@ -7,6 +7,7 @@ import tempfile
 import time
 import typing as t
 from collections import defaultdict
+from collections.abc import Sequence
 from pathlib import Path
 
 import numpy as np
@@ -144,7 +145,7 @@ def read_modelfile_text(
         )
     else:
         nrows_read = 1 if getheadersonly else npts_model
-        skiprows: list[int] | int | None = (
+        skiprows: list[int] | int = (
             numheaderrows
             if onelinepercellformat
             else [
@@ -576,7 +577,6 @@ def add_derived_cols_to_modeldata(
 
             assert t_model_init_seconds is not None
             # pos_mid is defined in the input file
-            # TODO: get wid_init from modelmeta
             dfmodel = dfmodel.with_columns([
                 (pl.col(f"pos_{ax}_mid") - modelmeta[f"wid_init_{ax}"] / 2.0).alias(f"pos_{ax}_min") for ax in axes
             ]).with_columns([
@@ -994,7 +994,7 @@ def save_modeldata(
     print(f"Saved {modelfilepath} (took {time.perf_counter() - timestart:.1f} seconds)")
 
 
-def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist: t.Sequence[int] | None = None) -> int | float:
+def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist: Sequence[int] | None = None) -> int | float:
     """Return the modelgridindex of the cell whose outer velocity is closest to velocity.
 
     If mgilist is given, then chose from these cells only.
@@ -1091,7 +1091,7 @@ def get_initelemabundances_polars(modelpath: Path = Path(), printwarningsonly: b
 def save_initelemabundances(
     dfelabundances: pd.DataFrame | pl.DataFrame | pl.LazyFrame,
     outpath: Path | str | None = None,
-    headercommentlines: t.Sequence[str] | None = None,
+    headercommentlines: Sequence[str] | None = None,
 ) -> None:
     """Save a DataFrame (same format as get_initelemabundances) to abundances.txt.
 

@@ -1,17 +1,22 @@
 [build-system]
-requires = ["setuptools>=68.2", "setuptools-rust", "setuptools_scm[toml]>=8.0", "wheel>=0.41"]
+requires = [
+    "setuptools>=68.2",
+    "setuptools-rust",
+    "setuptools_scm[toml]>=8.0",
+    "wheel>=0.41",
+]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "artistools"
 authors = [
-    {name = "Luke J. Shingles", email = "luke.shingles@gmail.com"},
-    {name = "Christine E. Collins", email = "c.collins@gsi.de"},
-    {name = "Alexander Holas", email = "alexander.holas@h-its.org"},
-    {name = "Fionntan Callan", email = "fcallan02@qub.ac.uk"},
-    {name = "Stuart Sim", email = "s.sim@qub.ac.uk"},
+    { name = "Luke J. Shingles", email = "luke.shingles@gmail.com" },
+    { name = "Christine E. Collins", email = "c.collins@gsi.de" },
+    { name = "Alexander Holas", email = "alexander.holas@h-its.org" },
+    { name = "Fionntan Callan", email = "fcallan02@qub.ac.uk" },
+    { name = "Stuart Sim", email = "s.sim@qub.ac.uk" },
 ]
-description="Plotting and analysis tools for the ARTIS 3D radiative transfer code for supernovae and kilonovae."
+description = "Plotting and analysis tools for the ARTIS 3D radiative transfer code for supernovae and kilonovae."
 classifiers = [
     "License :: OSI Approved :: MIT License",
     "Development Status :: 3 - Alpha",
@@ -25,11 +30,11 @@ classifiers = [
 ]
 dynamic = ["version", "dependencies"]
 requires-python = ">=3.10"
-license = {text = "MIT"}
-readme = {file = "README.md", content-type='text/markdown'}
+license = { text = "MIT" }
+readme = { file = "README.md", content-type = 'text/markdown' }
 
 [project.urls]
-Repository ="https://www.github.com/artis-mcrt/artistools"
+Repository = "https://www.github.com/artis-mcrt/artistools"
 Source = "https://www.github.com/artis-mcrt/artistools"
 
 [project.scripts]
@@ -51,10 +56,6 @@ plotartistransitions = 'artistools.transitions:main'
 plotartisinitialcomposition = 'artistools.inputmodel.plotinitialcomposition:main'
 plotartisviewingangles = 'artistools.viewing_angles_visualization:main'
 
-[tool.black]
-line-length = 120
-target-version = ["py310", "py311", "py312", "py313"]
-
 [tool.cibuildwheel]
 build-frontend = "build[uv]"
 archs = ["auto64"]
@@ -67,7 +68,7 @@ before-all = [
     "ln -s -f /host/home/runner/work/artistools/artistools/rust/target /project/rust/",
     "curl -sSf https://sh.rustup.rs | sh -s -- -y",
 ]
-environment = { PATH="$HOME/.cargo/bin:$PATH"}
+environment = { PATH = "$HOME/.cargo/bin:$PATH" }
 repair-wheel-command = [
     "auditwheel repair -w {dest_dir} {wheel}",
     "pipx run abi3audit --strict --report {wheel}",
@@ -75,9 +76,9 @@ repair-wheel-command = [
 
 [tool.cibuildwheel.macos]
 repair-wheel-command = [
-  "delocate-wheel --require-archs {delocate_archs} -w {dest_dir} -v {wheel}",
-  "uv pip install abi3audit",
-  "python3 -m abi3audit --strict --report {wheel}",
+    "delocate-wheel --require-archs {delocate_archs} -w {dest_dir} -v {wheel}",
+    "uv pip install abi3audit",
+    "python3 -m abi3audit --strict --report {wheel}",
 ]
 
 [tool.mypy]
@@ -92,16 +93,16 @@ disallow_untyped_decorators = true
 disallow_untyped_defs = false
 error_summary = true
 enable_error_code = [
-  "comparison-overlap",
-  "ignore-without-code",
-  "no-any-return",
-  "no-any-unimported",
-  "no-untyped-call",
-  #"possibly-undefined",
-  "redundant-expr",
-  "redundant-self",
-  "truthy-bool",
-  "unused-awaitable",
+    "comparison-overlap",
+    "ignore-without-code",
+    "no-any-return",
+    "no-any-unimported",
+    "no-untyped-call",
+    #"possibly-undefined",
+    "redundant-expr",
+    "redundant-self",
+    "truthy-bool",
+    "unused-awaitable",
 ]
 exclude = "(build)|(dist)|(tests)|(data)|(test_*)"
 extra_checks = true
@@ -140,9 +141,7 @@ disallow_any_generics = true
 disallow_incomplete_defs = true
 disallow_untyped_calls = true
 disallow_untyped_defs = true
-enable_error_code = [
-  "possibly-undefined",
-]
+enable_error_code = ["possibly-undefined"]
 
 [tool.pylint.'MESSAGES CONTROL']
 max-line-length = 120
@@ -183,8 +182,15 @@ unsafe-load-any-extension = true
 
 [tool.pyright]
 deprecateTypingAliases = true
-enableTypeIgnoreComments = false  # leave these for mypy to interpret
-exclude=['**/node_modules','**/__pycache__','**/.*', 'build', 'dist', 'target']
+enableTypeIgnoreComments = false # leave these for mypy to interpret
+exclude = [
+    '**/node_modules',
+    '**/__pycache__',
+    '**/.*',
+    'build',
+    'dist',
+    'target',
+]
 reportAttributeAccessIssue = false
 reportCallIssue = true
 reportMissingImports = false
@@ -194,7 +200,7 @@ reportUnknownVariableType = false
 typeCheckingMode = "standard"
 useLibraryCodeForTypes = false
 targetVersion = "3.10"
-extraPaths=["../pynonthermal/"]
+extraPaths = ["../pynonthermal/"]
 
 [tool.pytest.ini_options]
 addopts = " --durations=0 --durations-min=1.0 --typeguard-packages=artistools -n auto"
@@ -224,65 +230,65 @@ skip-magic-trailing-comma = true
 [tool.ruff.lint]
 select = ["ALL"]
 ignore = [
-    "ARG001", # ignored because variables in df.eval() are not detected
-    "ANN001", # missing-type-function-argument
-    "ANN201", # missing-return-type-undocumented-public-function
-    "ANN003", # missing-type-kwargs
-    "ANN202", # missing-return-type-private-function
-    "ANN401", # any-type
-    "B005",  # strip-with-multi-characters
-    "C901",  # complex-structure
+    "ARG001",  # ignored because variables in df.eval() are not detected
+    "ANN001",  # missing-type-function-argument
+    "ANN201",  # missing-return-type-undocumented-public-function
+    "ANN003",  # missing-type-kwargs
+    "ANN202",  # missing-return-type-private-function
+    "ANN401",  # any-type
+    "B005",    # strip-with-multi-characters
+    "C901",    # complex-structure
     "COM812",  # missing-trailing-comma
-    "CPY001", # missing-copyright-notice
-    "D100",  # undocumented-public-module
-    "D101", # undocumented-public-class
-    "D102",  # undocumented-public-method
-    "D103",  # undocumented-public-function
-    "D104",  # undocumented-public-package
-    "D107",  # undocumented-public-init
-    "D203",  # one-blank-line-before-class
-    "D213",  # multi-line-summary-second-line
-    "D417",  # undocumented-param
-    "DOC201", # docstring-missing-returns
-    "DOC402", # docstring-missing-yields
-    "DOC501", # docstring-missing-exception
-    "E501", # Line too long
+    "CPY001",  # missing-copyright-notice
+    "D100",    # undocumented-public-module
+    "D101",    # undocumented-public-class
+    "D102",    # undocumented-public-method
+    "D103",    # undocumented-public-function
+    "D104",    # undocumented-public-package
+    "D107",    # undocumented-public-init
+    "D203",    # one-blank-line-before-class
+    "D213",    # multi-line-summary-second-line
+    "D417",    # undocumented-param
+    "DOC201",  # docstring-missing-returns
+    "DOC402",  # docstring-missing-yields
+    "DOC501",  # docstring-missing-exception
+    "E501",    # Line too long
     "ERA001",  # commented-out-code
     "FBT",
     "FIX002",  # line contains TODO
-    "ISC001", # single-line-implicit-string-concatenation
-    "N802",  # Function name should be lowercase
-    "N803",  # Argument name should be lowercase
-    "N806",  # non-lowercase-variable-in-function
-    "N815", # mixed-case-variable-in-class-scope
+    "ISC001",  # single-line-implicit-string-concatenation
+    "N802",    # Function name should be lowercase
+    "N803",    # Argument name should be lowercase
+    "N806",    # non-lowercase-variable-in-function
+    "N815",    # mixed-case-variable-in-class-scope
     "PERF203", # try-except-in-loop
-    "PGH004", # blanket-noqa
+    "PGH004",  # blanket-noqa
     "PLC0414", # useless-import-alias
     "PLC0415", # import-outside-toplevel
     "PLR0914", # too-many-locals
     "PLR0917", # too-many-positional
     "PLR1702", # too-many-nested-blocks
-    "PLR0911",  # too-many-return-statements
-    "PLR0912",  # too-many-branches
-    "PLR0913",  # too-many-arguments
-    "PLR0915",  # too-many-statements
-    "PLR2004",  # magic-value-comparison
-    "PLW2901",  # redefined-loop-name
-    "PYI024", # Use `typing.NamedTuple` instead of `collections.namedtuple`
-    "S101",  # Use of assert detected
-    "S311",  # suspicious-non-cryptographic-random-usage
-    "S404",  # suspicious-subprocess-import
-    "S603",  # subprocess-without-shell-equals-true
-    "S607",  # start-process-with-partial-path
-    "T201",  # print found
-    "TD002",  # missing-todo-author
-    "TD003",  # missing-todo-link
+    "PLR0911", # too-many-return-statements
+    "PLR0912", # too-many-branches
+    "PLR0913", # too-many-arguments
+    "PLR0915", # too-many-statements
+    "PLR2004", # magic-value-comparison
+    "PLW2901", # redefined-loop-name
+    "PYI024",  # Use `typing.NamedTuple` instead of `collections.namedtuple`
+    "S101",    # Use of assert detected
+    "S311",    # suspicious-non-cryptographic-random-usage
+    "S404",    # suspicious-subprocess-import
+    "S603",    # subprocess-without-shell-equals-true
+    "S607",    # start-process-with-partial-path
+    "T201",    # print found
+    "TD002",   # missing-todo-author
+    "TD003",   # missing-todo-link
 ]
 fixable = ["ALL"]
 unfixable = [
-    "ERA001",  # commented-out-code (will just delete it!)
-    "F401", # unused-import (can be annoying to have import disappear while editing)
-    "F841",  # unused-variable
+    "ERA001", # commented-out-code (will just delete it!)
+    "F401",   # unused-import (can be annoying to have import disappear while editing)
+    "F841",   # unused-variable
     "SIM222", # expr-or-true
     "SIM223", # expr-and-false
 ]
@@ -313,7 +319,7 @@ include-package-data = true
 license-files = ["LICENSE.txt"]
 
 [[tool.setuptools-rust.ext-modules]]
-target = "artistools.rustext"  # The last part of the name has to match lib.name in Cargo.toml,
+target = "artistools.rustext" # The last part of the name has to match lib.name in Cargo.toml,
 path = "rust/Cargo.toml"
 binding = "PyO3"
 debug = false
@@ -323,10 +329,18 @@ optional = false
 namespaces = true
 where = ["."]
 include = ["*", "**/matplotlibrc", "**/data"]
-exclude = ["tests", "**/dist", "**/lib", "**/build", "*.egg-info", "**/.*", "**/target"]
+exclude = [
+    "tests",
+    "**/dist",
+    "**/lib",
+    "**/build",
+    "*.egg-info",
+    "**/.*",
+    "**/target",
+]
 
 [tool.setuptools.dynamic]
-dependencies = {file = ["requirements.txt"]}
+dependencies = { file = ["requirements.txt"] }
 
 [tool.setuptools_scm]
 version_file = "_version.py"

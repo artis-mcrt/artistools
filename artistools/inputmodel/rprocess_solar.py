@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import math
-import typing as t
+from collections.abc import Sequence
 from pathlib import Path
 
 import numpy as np
@@ -15,7 +15,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")
 
 
-def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs) -> None:
     """Create solar r-process pattern in ARTIS format."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
@@ -47,10 +47,16 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     dfsolarabund_undecayed["Z"] = dfsolarabund_undecayed.apply(undecayed_z, axis=1)
 
     # Andreas uses 90% Fe and the rest solar
-    dfsolarabund_undecayed = (
-        dfsolarabund_undecayed.append({"Z": 26, "A": 56, "numberfrac": 0.005, "radioactive": False}, ignore_index=True)
-        .append({"Z": 27, "A": 59, "numberfrac": 0.005, "radioactive": False}, ignore_index=True)
-        .append({"Z": 28, "A": 58, "numberfrac": 0.005, "radioactive": False}, ignore_index=True)
+    dfsolarabund_undecayed = pd.concat(
+        [
+            dfsolarabund_undecayed,
+            pd.DataFrame([
+                {"Z": 26, "A": 56, "numberfrac": 0.005, "radioactive": False},
+                {"Z": 27, "A": 59, "numberfrac": 0.005, "radioactive": False},
+                {"Z": 28, "A": 58, "numberfrac": 0.005, "radioactive": False},
+            ]),
+        ],
+        ignore_index=True,
     )
 
     normfactor = (  # noqa: F841
@@ -74,7 +80,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         dfdensities = pd.read_csv(
             wollager_profilename, sep=r"\s+", skiprows=1, names=["cellid", "vel_r_max_kmps", "rho"]
         )
-        dfdensities["cellid"] = dfdensities["cellid"].astype(int)
+        dfdensities["mgi"] = dfdensities["cellid"].astype(int)
         dfdensities["vel_r_min_kmps"] = np.concatenate(([0.0], dfdensities["vel_r_max_kmps"].to_numpy()[:-1]))
 
         t_model_init_seconds_in = t_model_init_days_in * 24 * 60 * 60  # noqa: F841
@@ -91,7 +97,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             " * (1e5 * @t_model_init_seconds) ** 3)"
         )
     else:
-        dfdensities = pd.DataFrame({"rho": 10**-3, "vel_r_max_kmps": 6.0e4}, index=[0])
+        dfdensities = pd.DataFrame([{"rho": 10**-3, "vel_r_max_kmps": 6.0e4, "mgi": 0}])
 
     dfdensities["inputcellid"] = dfdensities["mgi"] + 1
     # print(dfdensities)

@@ -7,6 +7,8 @@ import os
 import re
 import typing as t
 from collections import namedtuple
+from collections.abc import Collection
+from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
 
@@ -135,7 +137,7 @@ def get_from_packets(
     delta_lambda: None | float | np.ndarray = None,
     use_time: t.Literal["arrival", "emission", "escape"] = "arrival",
     maxpacketfiles: int | None = None,
-    directionbins: t.Collection[int] | None = None,
+    directionbins: Collection[int] | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
     nu_column: str = "nu_rf",
@@ -420,7 +422,7 @@ def get_spectrum(
     modelpath: Path,
     timestepmin: int,
     timestepmax: int | None = None,
-    directionbins: t.Sequence[int] | None = None,
+    directionbins: Sequence[int] | None = None,
     fluxfilterfunc: t.Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     average_over_theta: bool = False,
     average_over_phi: bool = False,
@@ -531,10 +533,10 @@ def make_virtual_spectra_summed_file(modelpath: Path | str) -> None:
 
     for spec_index, vspecpol in vspecpol_data_allranks.items():
         # fix the header row, which got summed along with the data
-        vspecpol = pl.concat([vspecpol_data[spec_index][0], vspecpol[1:]])
+        dfvspecpol = pl.concat([vspecpol_data[spec_index][0], vspecpol[1:]])
 
         outfile = Path(modelpath, f"vspecpol_total-{spec_index}.out")
-        vspecpol.write_csv(outfile, separator=" ", include_header=False)
+        dfvspecpol.write_csv(outfile, separator=" ", include_header=False)
         print(f"Saved {outfile}")
 
 

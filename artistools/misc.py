@@ -10,6 +10,8 @@ import multiprocessing.pool
 import string
 import typing as t
 from collections import namedtuple
+from collections.abc import Iterable
+from collections.abc import Sequence
 from functools import lru_cache
 from itertools import chain
 from pathlib import Path
@@ -55,7 +57,7 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
         kwargs["max_help_position"] = 39
         super().__init__(*args, **kwargs)
 
-    def add_arguments(self, actions: t.Iterable[argparse.Action]) -> None:
+    def add_arguments(self, actions: Iterable[argparse.Action]) -> None:
         getinvocation = super()._format_action_invocation
 
         def my_sort(action: argparse.Action) -> str:
@@ -310,7 +312,7 @@ def get_syn_dir(modelpath: Path) -> tuple[float, float, float]:
         return (x, y, z)
 
 
-def vec_len(vec: t.Sequence[float] | np.ndarray[t.Any, np.dtype[np.float64]]) -> float:
+def vec_len(vec: Sequence[float] | np.ndarray[t.Any, np.dtype[np.float64]]) -> float:
     return float(np.sqrt(np.dot(vec, vec)))
 
 
@@ -759,7 +761,7 @@ def set_args_from_dict(parser: argparse.ArgumentParser, kwargs: dict[str, t.Any]
         raise ValueError(msg)
 
 
-def parse_range(rng: str, dictvars: dict[str, int]) -> t.Iterable[t.Any]:
+def parse_range(rng: str, dictvars: dict[str, int]) -> Iterable[t.Any]:
     """Parse a string with an integer range and return a list of numbers, replacing special variables in dictvars."""
     strparts = rng.split("-")
 
@@ -791,20 +793,20 @@ def parse_range_list(rngs: str | list[str] | int, dictvars: dict[str, int] | Non
     return sorted(set(chain.from_iterable([parse_range(rng, dictvars or {}) for rng in rngs.split(",")])))
 
 
-def makelist(x: None | t.Sequence[t.Any] | str | Path) -> list[t.Any]:
+def makelist(x: None | Sequence[t.Any] | str | Path) -> list[t.Any]:
     """If x is not a list (or is a string), make a list containing x."""
     if x is None:
         return []
-    return list(x) if isinstance(x, t.Iterable) else [x]
+    return list(x) if isinstance(x, Iterable) else [x]
 
 
-def trim_or_pad(requiredlength: int, *listoflistin: t.Any) -> t.Sequence[t.Sequence[t.Any]]:
+def trim_or_pad(requiredlength: int, *listoflistin: t.Any) -> Sequence[Sequence[t.Any]]:
     """Make lists equal in length to requiredlength either by padding with None or truncating."""
     list_sequence = []
     for listin in listoflistin:
-        listin = makelist(listin)
+        listin_makelist = makelist(listin)
 
-        listout = [listin[i] if i < len(listin) else None for i in range(requiredlength)]
+        listout = [listin_makelist[i] if i < len(listin_makelist) else None for i in range(requiredlength)]
 
         assert len(listout) == requiredlength
         list_sequence.append(listout)
@@ -849,7 +851,7 @@ def zopenpl(filename: Path | str, mode: str = "rt", encoding: str | None = None)
 
 
 def firstexisting(
-    filelist: t.Sequence[str | Path] | str | Path,
+    filelist: Sequence[str | Path] | str | Path,
     folder: Path | str = Path(),
     tryzipped: bool = True,
     search_subfolders: bool = True,
@@ -888,10 +890,7 @@ def firstexisting(
 
 
 def anyexist(
-    filelist: t.Sequence[str | Path],
-    folder: Path | str = Path(),
-    tryzipped: bool = True,
-    search_subfolders: bool = True,
+    filelist: Sequence[str | Path], folder: Path | str = Path(), tryzipped: bool = True, search_subfolders: bool = True
 ) -> Path | None:
     """Return true if any files in file list exist."""
     try:
@@ -904,7 +903,7 @@ def anyexist(
     return filepath
 
 
-def batched(iterable: t.Iterable[t.Any], n: int) -> t.Generator[list[t.Any], t.Any, None]:
+def batched(iterable: Iterable[t.Any], n: int) -> t.Generator[list[t.Any], t.Any, None]:
     """Batch data into iterators of length n. The last batch may be shorter."""
     # batched('ABCDEFG', 3) --> ABC DEF G
     if n < 1:
@@ -1256,8 +1255,8 @@ def get_runfolder_timesteps(folderpath: Path | str) -> tuple[int, ...]:
 
 
 def get_runfolders(
-    modelpath: Path | str, timestep: int | None = None, timesteps: t.Sequence[int] | None = None
-) -> t.Sequence[Path]:
+    modelpath: Path | str, timestep: int | None = None, timesteps: Sequence[int] | None = None
+) -> Sequence[Path]:
     """Get a list of folders containing ARTIS output files from a modelpath, optionally with a timestep restriction.
 
     The folder list may include non-ARTIS folders if a timestep is not specified.
@@ -1278,8 +1277,8 @@ def get_runfolders(
 
 
 def get_mpiranklist(
-    modelpath: Path | str, modelgridindex: t.Iterable[int] | int | None = None, only_ranks_withgridcells: bool = False
-) -> t.Sequence[int]:
+    modelpath: Path | str, modelgridindex: Iterable[int] | int | None = None, only_ranks_withgridcells: bool = False
+) -> Sequence[int]:
     """Get a list of rank ids.
 
     - modelpath:
@@ -1294,7 +1293,7 @@ def get_mpiranklist(
             return range(min(get_nprocs(modelpath), get_npts_model(modelpath)))
         return range(get_nprocs(modelpath))
 
-    if isinstance(modelgridindex, t.Iterable):
+    if isinstance(modelgridindex, Iterable):
         mpiranklist = set()
         for mgi in modelgridindex:
             if mgi < 0:
@@ -1313,7 +1312,7 @@ def get_mpiranklist(
     return [get_mpirankofcell(modelgridindex, modelpath=modelpath)]
 
 
-def get_cellsofmpirank(mpirank: int, modelpath: Path | str) -> t.Iterable[int]:
+def get_cellsofmpirank(mpirank: int, modelpath: Path | str) -> Iterable[int]:
     """Return an iterable of the cell numbers processed by a given MPI rank."""
     npts_model = get_npts_model(modelpath)
     nprocs = get_nprocs(modelpath)
@@ -1489,7 +1488,7 @@ def get_vspec_dir_labels(modelpath: str | Path, usedegrees: bool = False) -> dic
 
 
 def get_dirbin_labels(
-    dirbins: npt.NDArray[np.int32] | t.Sequence[int] | None = None,
+    dirbins: npt.NDArray[np.int32] | Sequence[int] | None = None,
     modelpath: Path | str | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
@@ -1522,23 +1521,23 @@ def get_dirbin_labels(
 
     angle_definitions: dict[int, str] = {}
     for dirbin in dirbins:
-        dirbin = int(dirbin)
-        if dirbin == -1:
-            angle_definitions[dirbin] = ""
+        dirbin_int = int(dirbin)
+        if dirbin_int == -1:
+            angle_definitions[dirbin_int] = ""
             continue
 
-        costheta_index = dirbin // nphibins
-        phi_index = dirbin % nphibins
+        costheta_index = dirbin_int // nphibins
+        phi_index = dirbin_int % nphibins
 
         if average_over_phi:
-            angle_definitions[dirbin] = costhetabinlabels[costheta_index]
+            angle_definitions[dirbin_int] = costhetabinlabels[costheta_index]
             assert phi_index == 0
             assert not average_over_theta
         elif average_over_theta:
-            angle_definitions[dirbin] = phibinlabels[phi_index]
+            angle_definitions[dirbin_int] = phibinlabels[phi_index]
             assert costheta_index == 0
         else:
-            angle_definitions[dirbin] = f"{costhetabinlabels[costheta_index]}, {phibinlabels[phi_index]}"
+            angle_definitions[dirbin_int] = f"{costhetabinlabels[costheta_index]}, {phibinlabels[phi_index]}"
 
     return angle_definitions
 
