@@ -79,7 +79,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.inputfile,
         get_elemabundances=not args.noabund,
         printwarningsonly=False,
-        derived_cols=["mass_g", "vel_r_mid", "rho"],
+        derived_cols=["mass_g", "vel_r_mid", "kinetic_en_erg", "rho"],
     )
 
     # don't confuse neutrons (lowercase 'n') with Nitrogen (N)
@@ -161,25 +161,17 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     else:
         initial_energy = 0.0
 
-    ejecta_ke_erg: float
-    if "vel_r_max_kmps" in dfmodel.collect_schema().names():
-        # vel_r_min_kmps is in km/s
-        ejecta_ke_erg = (
-            dfmodel.select((0.5 * (pl.col("mass_g") / 1000.0) * (1000 * pl.col("vel_r_max_kmps")) ** 2).sum())
-            .collect()
-            .item()
-        ) * 1e7
-    else:
-        # vel_r_mid is in cm/s
-        ejecta_ke_erg = (
-            dfmodel.select((0.5 * (pl.col("mass_g") / 1000.0) * (pl.col("vel_r_mid") / 100.0) ** 2).sum())
-            .collect()
-            .item()
-        ) * 1e7
+    ejecta_ke_erg: float = dfmodel.select("kinetic_en_erg").sum().collect().item()
 
-    print(f"  {'kinetic energy':19s} {ejecta_ke_erg:.2e} [erg]")
+    print(f"  {'kinetic energy':19s} {ejecta_ke_erg:.2e} erg")
 
-    mass_msun_rho = dfmodel.select(pl.col("mass_g").sum() / msun_g).collect().item()
+    mass_g_rho = dfmodel.select(pl.col("mass_g").sum()).collect().item()
+
+    # velocity derived from ejecta kinetic energy to match Barnes et al. (2016) Section 2.1
+    ejecta_v = np.sqrt(2 * ejecta_ke_erg / mass_g_rho)
+    print(f"  {'v_ej=√(2KE/m)':19s} {ejecta_v / 29979245800:.2f}c")
+
+    mass_msun_rho = mass_g_rho / msun_g
 
     if assoc_cells is not None and mgi_of_propcells is not None:
         direct_model_propgrid_map = all(

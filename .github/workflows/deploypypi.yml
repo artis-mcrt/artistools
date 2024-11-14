@@ -3,10 +3,6 @@ name: Build and deploy to PyPI/testPyPI
 
 on:
     push:
-        branches:
-            - '*'
-        tags:
-            - '*'
     merge_group:
     release:
         types: [published, edited]
