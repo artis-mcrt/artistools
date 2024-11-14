@@ -42,7 +42,9 @@ def plot_deposition_thermalisation(
     #     axistherm.set_ylim(bottom=0.1, top=1.0)
 
     if args.plotthermalisation:
-        dfmodel, _ = at.inputmodel.get_modeldata_polars(modelpath, derived_cols=["mass_g", "vel_r_mid"])
+        dfmodel, _ = at.inputmodel.get_modeldata_polars(
+            modelpath, derived_cols=["mass_g", "vel_r_mid", "kinetic_en_erg"]
+        )
 
         model_mass_grams = dfmodel.select("mass_g").sum().collect().item()
         print(f"  model mass: {model_mass_grams / 1.989e33:.3f} Msun")
@@ -221,29 +223,15 @@ def plot_deposition_thermalisation(
             },
         )
 
-        ejecta_ke: float
-        if "vel_r_max_kmps" in dfmodel.collect_schema().names():
-            # vel_r_min_kmps is in km/s
-            ejecta_ke = (
-                dfmodel.select((0.5 * (pl.col("mass_g") / 1000.0) * (1000 * pl.col("vel_r_max_kmps")) ** 2).sum())
-                .collect()
-                .item()
-            )
-        else:
-            # vel_r_mid is in cm/s
-            ejecta_ke = (
-                dfmodel.select((0.5 * (pl.col("mass_g") / 1000.0) * (pl.col("vel_r_mid") / 100.0) ** 2).sum())
-                .collect()
-                .item()
-            )
+        ejecta_ke_erg: float = dfmodel.select("kinetic_en_erg").sum().collect().item()
 
-        print(f"  ejecta kinetic energy: {ejecta_ke:.2e} [J] = {ejecta_ke * 1e7:.2e} [erg]")
+        print(f"  ejecta kinetic energy: {ejecta_ke_erg / 1e7:.2e} [J] = {ejecta_ke_erg:.2e} [erg]")
 
         # velocity derived from ejecta kinetic energy to match Barnes et al. (2016) Section 2.1
-        ejecta_v = np.sqrt(2 * ejecta_ke / (model_mass_grams * 1e-3))
-        v2 = ejecta_v / (0.2 * 299792458)
-        print(f"  Barnes average ejecta velocity: {ejecta_v / 299792458:.2f}c")
+        ejecta_v = np.sqrt(2 * ejecta_ke_erg / model_mass_grams)
+        print(f"  Barnes average ejecta velocity: {ejecta_v / 29979245800:.2f}c")
         m5 = model_mass_grams / (5e-3 * 1.989e33)  # M / (5e-3 Msun)
+        v2 = ejecta_v / (0.2 * 29979245800)  # ejecta_v / (0.2c)
 
         # Barnes et al (2016) scaling form from equation 17, with fiducial t_ineff_gamma of 1.4 days
         t_ineff_gamma = 1.4 * np.sqrt(m5) / v2

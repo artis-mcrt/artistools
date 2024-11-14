@@ -550,6 +550,14 @@ def add_derived_cols_to_modeldata(
     t_model_init_seconds = modelmeta["t_model_init_days"] * 86400.0
     keep_all = "ALL" in derived_cols
 
+    if "logrho" not in dfmodel.collect_schema().names():
+        dfmodel = dfmodel.with_columns(logrho=pl.col("rho").log10())
+
+    if "rho" not in dfmodel.collect_schema().names():
+        dfmodel = dfmodel.with_columns(
+            rho=(pl.when(pl.col("logrho") > -98).then(10 ** pl.col("logrho")).otherwise(0.0))
+        )
+
     dimensions = modelmeta["dimensions"]
     match dimensions:
         case 1:
@@ -567,8 +575,16 @@ def add_derived_cols_to_modeldata(
                             pl.col("vel_r_max_kmps").cast(pl.Float64).pow(3)
                             - pl.col("vel_r_min_kmps").cast(pl.Float64).pow(3)
                         )
-                        * pl.lit(1e5 * t_model_init_seconds).pow(3)
+                        * (1e5 * t_model_init_seconds) ** 3
                     )
+                )
+                .with_columns(  # 1/2 m v^2 integrated across each spherical shell's vmin to vmax
+                    kinetic_en_erg_r=2.0
+                    / 5.0
+                    * math.pi
+                    * pl.col("rho")
+                    * t_model_init_seconds**3
+                    * (pl.col("vel_r_max").cast(pl.Float64).pow(5) - pl.col("vel_r_min").cast(pl.Float64).pow(5))
                 )
             )
 
@@ -599,6 +615,26 @@ def add_derived_cols_to_modeldata(
                     math.pi
                     * (pl.col("pos_rcyl_max").cast(pl.Float64).pow(2) - pl.col("pos_rcyl_min").cast(pl.Float64).pow(2))
                     * modelmeta["wid_init_z"]
+                ),
+            ).with_columns(
+                # two components of kinetic energy: 1/2 m v^2 in cylindrical and z directions
+                kinetic_en_erg_rcyl=(
+                    1
+                    / 8
+                    * math.pi
+                    * pl.col("rho")
+                    * t_model_init_seconds**-2
+                    * modelmeta["wid_init_z"]
+                    * (pl.col("pos_rcyl_max").cast(pl.Float64).pow(4) - pl.col("pos_rcyl_min").cast(pl.Float64).pow(4))
+                ),
+                kinetic_en_erg_z=(
+                    1
+                    / 6
+                    * pl.col("rho")
+                    * math.pi
+                    * (pl.col("pos_rcyl_max").cast(pl.Float64).pow(2) - pl.col("pos_rcyl_min").cast(pl.Float64).pow(2))
+                    * t_model_init_seconds**-2
+                    * (pl.col("pos_z_max").cast(pl.Float64).pow(3) - pl.col("pos_z_min").cast(pl.Float64).pow(3))
                 ),
             )
 
@@ -636,19 +672,33 @@ def add_derived_cols_to_modeldata(
                     + pl.max_horizontal(pl.col("pos_y_min").abs(), pl.col("pos_y_max").abs()).pow(2)
                     + pl.max_horizontal(pl.col("pos_z_min").abs(), pl.col("pos_z_max").abs()).pow(2)
                 ).sqrt(),
+            ).with_columns(
+                (
+                    1.0
+                    / 6.0
+                    * pl.col("rho")
+                    * modelmeta[f"wid_init_{ax1}"]
+                    * modelmeta[f"wid_init_{ax2}"]
+                    * t_model_init_seconds**-2
+                    * (
+                        pl.col(f"pos_{ax3}_max").cast(pl.Float64).pow(3)
+                        - pl.col(f"pos_{ax3}_min").cast(pl.Float64).pow(3)
+                    )
+                ).alias(f"kinetic_en_erg_{ax3}")
+                for ax1, ax2, ax3 in (("x", "y", "z"), ("y", "z", "x"), ("z", "x", "y"))
             )
+
+    # get total kinetic energy from orthogonal components
+    # all coord system also have a radial component calculated, so ignore this
+    dfmodel = dfmodel.with_columns(
+        kinetic_en_erg=(
+            pl.sum_horizontal(pl.col(f"kinetic_en_erg_{ax}") for ax in axes if (ax != "r" or dimensions == 1))
+        )
+    )
 
     for col in dfmodel.collect_schema().names():
         if col.startswith("pos_"):
             dfmodel = dfmodel.with_columns((pl.col(col) / t_model_init_seconds).alias(col.replace("pos_", "vel_")))
-
-    if "logrho" not in dfmodel.collect_schema().names():
-        dfmodel = dfmodel.with_columns(logrho=pl.col("rho").log10())
-
-    if "rho" not in dfmodel.collect_schema().names():
-        dfmodel = dfmodel.with_columns(
-            rho=(pl.when(pl.col("logrho") > -98).then(10 ** pl.col("logrho")).otherwise(0.0))
-        )
 
     # add vel_*_on_c scaled velocities
     dfmodel = dfmodel.with_columns(mass_g=(pl.col("rho") * pl.col("volume"))).with_columns(
