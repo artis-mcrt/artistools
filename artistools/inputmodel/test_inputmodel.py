@@ -362,7 +362,8 @@ def lower_dim_and_check_mass_conservation(outputdimensions: int) -> None:
 
     outpath = outputpath / f"test_dimension_reduce_3d_{outputdimensions:d}d"
     outpath.mkdir(exist_ok=True, parents=True)
-    (dfmodel_lowerd, _, _, modelmeta_lowerd) = at.inputmodel.dimension_reduce_model(
+
+    (dfmodel_lowerd, _, _, modelmeta_lowerd) = pytest.mark.benchmark(at.inputmodel.dimension_reduce_model)(
         dfmodel=dfmodel3d_pl, modelmeta=modelmeta_3d, outputdimensions=outputdimensions
     )
 
@@ -390,16 +391,13 @@ def lower_dim_and_check_mass_conservation(outputdimensions: int) -> None:
             )
 
 
-@pytest.mark.benchmark
-def test_dimension_reduce_3d_2d() -> None:
+def test_dimension_reduce_3d_2d(benchmark) -> None:
     lower_dim_and_check_mass_conservation(outputdimensions=2)
 
 
-@pytest.mark.benchmark
-def test_dimension_reduce_3d_1d() -> None:
+def test_dimension_reduce_3d_1d(benchmark) -> None:
     lower_dim_and_check_mass_conservation(outputdimensions=1)
 
 
-@pytest.mark.benchmark
-def test_dimension_reduce_3d_0d() -> None:
+def test_dimension_reduce_3d_0d(benchmark) -> None:
     lower_dim_and_check_mass_conservation(outputdimensions=0)
