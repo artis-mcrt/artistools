@@ -342,7 +342,8 @@ def test_save_load_3d_model() -> None:
         )
 
 
-def lower_dim_and_check_mass_conservation(outputdimensions: int) -> None:
+@pytest.mark.parametrize("outputdimensions", [2, 1, 0])
+def test_dimension_reduce(outputdimensions: int, benchmark) -> None:
     dfmodel3d_pl_lazy, modelmeta_3d = at.inputmodel.get_empty_3d_model(ncoordgrid=50, vmax=100000, t_model_init_days=1)
     dfmodel3d_pl = dfmodel3d_pl_lazy.collect()
 
@@ -361,15 +362,17 @@ def lower_dim_and_check_mass_conservation(outputdimensions: int) -> None:
     ejecta_ke_erg: float = dfmodel3d_pl.select("kinetic_en_erg").sum().item()
 
     outpath = outputpath / f"test_dimension_reduce_3d_{outputdimensions:d}d"
+
     outpath.mkdir(exist_ok=True, parents=True)
 
-    (dfmodel_lowerd, _, _, modelmeta_lowerd) = pytest.mark.benchmark(at.inputmodel.dimension_reduce_model)(
-        dfmodel=dfmodel3d_pl, modelmeta=modelmeta_3d, outputdimensions=outputdimensions
-    )
+    @benchmark
+    def run_dimension_reduce():
+        (dfmodel_lowerd, _, _, modelmeta_lowerd) = (at.inputmodel.dimension_reduce_model)(
+            dfmodel=dfmodel3d_pl, modelmeta=modelmeta_3d, outputdimensions=outputdimensions
+        )
+        at.inputmodel.save_modeldata(outpath=outpath, dfmodel=dfmodel_lowerd, modelmeta=modelmeta_lowerd)
 
-    at.inputmodel.save_modeldata(outpath=outpath, dfmodel=dfmodel_lowerd, modelmeta=modelmeta_lowerd)
-
-    dfmodel_lowerd_lz, modelmeta_lowerd = at.inputmodel.get_modeldata_polars(
+    dfmodel_lowerd_lz, _ = at.inputmodel.get_modeldata_polars(
         modelpath=outpath, derived_cols=["mass_g", "kinetic_en_erg"]
     )
     dfmodel_lowerd = dfmodel_lowerd_lz.collect()
@@ -389,15 +392,3 @@ def lower_dim_and_check_mass_conservation(outputdimensions: int) -> None:
                 (dfmodel_lowerd["mass_g"] * dfmodel_lowerd[col]).sum(),
                 (dfmodel3d_pl["mass_g"] * dfmodel3d_pl[col]).sum(),
             )
-
-
-def test_dimension_reduce_3d_2d(benchmark) -> None:
-    lower_dim_and_check_mass_conservation(outputdimensions=2)
-
-
-def test_dimension_reduce_3d_1d(benchmark) -> None:
-    lower_dim_and_check_mass_conservation(outputdimensions=1)
-
-
-def test_dimension_reduce_3d_0d(benchmark) -> None:
-    lower_dim_and_check_mass_conservation(outputdimensions=0)
