@@ -861,6 +861,11 @@ def firstexisting(
         filelist = [filelist]
 
     folder = Path(folder)
+    thispath = Path(folder, filelist[0])
+
+    if thispath.exists():
+        return thispath
+
     folders = [folder]
 
     fullpaths = []
@@ -871,17 +876,20 @@ def firstexisting(
             ]
 
         for folder in folders:
-            fullpaths.append(Path(folder) / filename)
+            thispath = Path(folder, filename)
+            if thispath.exists():
+                return thispath
+
+            fullpaths.append(thispath)
 
             if tryzipped:
                 for ext in (".zst", ".gz", ".xz"):
                     filenameext = str(filename) if str(filename).endswith(ext) else str(filename) + ext
                     if filenameext not in filelist:
-                        fullpaths.append(folder / filenameext)
-
-    for fullpath in fullpaths:
-        if fullpath.exists():
-            return fullpath
+                        thispath = Path(folder, filenameext)
+                        if thispath.exists():
+                            return thispath
+                        fullpaths.append(thispath)
 
     strfilelist = "\n  ".join([str(x.relative_to(folder)) for x in fullpaths])
     orsub = " or subfolders" if search_subfolders else ""
