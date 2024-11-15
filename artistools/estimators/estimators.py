@@ -316,8 +316,8 @@ def get_rankbatch_parquetfile(
 
 def scan_estimators(
     modelpath: Path | str = Path(),
-    modelgridindex: None | int | Sequence[int] = None,
-    timestep: None | int | Sequence[int] = None,
+    modelgridindex: int | Sequence[int] | None = None,
+    timestep: int | Sequence[int] | None = None,
     use_rust_parser: bool | None = None,
 ) -> pl.LazyFrame:
     """Read estimator files into a dictionary of (timestep, modelgridindex): estimators.
@@ -325,7 +325,7 @@ def scan_estimators(
     Selecting particular timesteps or modelgrid cells will using speed this up by reducing the number of files that must be read.
     """
     modelpath = Path(modelpath)
-    match_modelgridindex: None | Sequence[int]
+    match_modelgridindex: Sequence[int] | None
     if modelgridindex is None:
         match_modelgridindex = None
     elif isinstance(modelgridindex, int):
@@ -333,7 +333,7 @@ def scan_estimators(
     else:
         match_modelgridindex = tuple(modelgridindex)
 
-    match_timestep: None | Sequence[int]
+    match_timestep: Sequence[int] | None
     if timestep is None:
         match_timestep = None
     elif isinstance(timestep, int):
@@ -407,8 +407,8 @@ def scan_estimators(
 
 def read_estimators(
     modelpath: Path | str = Path(),
-    modelgridindex: None | int | Sequence[int] = None,
-    timestep: None | int | Sequence[int] = None,
+    modelgridindex: int | Sequence[int] | None = None,
+    timestep: int | Sequence[int] | None = None,
     keys: Collection[str] | None = None,
 ) -> dict[tuple[int, int], dict[str, t.Any]]:
     """Read ARTIS estimator data into a dictionary keyed by (timestep, modelgridindex).

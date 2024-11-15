@@ -50,8 +50,8 @@ def get_timestep_times(modelpath: Path | str, loc: t.Literal["start", "mid", "en
 
 def read_reference_estimators(
     modelpath: str | Path,
-    modelgridindex: None | int | Sequence[int] = None,
-    timestep: None | int | Sequence[int] = None,
+    modelgridindex: int | Sequence[int] | None = None,
+    timestep: int | Sequence[int] | None = None,
 ) -> dict[tuple[int, int], t.Any]:
     """Read estimators from code comparison workshop file."""
     virtualfolder, inputmodel, codename = Path(modelpath).parts

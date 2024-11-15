@@ -446,7 +446,7 @@ def get_time_range(
     timestep_range_str: str | None = None,
     timemin: float | None = None,
     timemax: float | None = None,
-    timedays_range_str: None | str | float = None,
+    timedays_range_str: str | float | None = None,
     clamp_to_timesteps: bool = True,
 ) -> tuple[int, int, float | None, float | None]:
     """Handle a time range specified in either days or timesteps."""
@@ -715,7 +715,7 @@ def get_ion_tuple(ionstr: str) -> tuple[int, int] | int:
 @lru_cache(maxsize=16)
 def get_ionstring(
     atomic_number: int | np.int64,
-    ion_stage: None | int | np.int64 | t.Literal["ALL"],
+    ion_stage: int | np.int64 | t.Literal["ALL"] | None,
     style: t.Literal["spectral", "chargelatex", "charge"] = "spectral",
     sep: str = " ",
 ) -> str:
@@ -793,7 +793,7 @@ def parse_range_list(rngs: str | list[str] | int, dictvars: dict[str, int] | Non
     return sorted(set(chain.from_iterable([parse_range(rng, dictvars or {}) for rng in rngs.split(",")])))
 
 
-def makelist(x: None | Sequence[t.Any] | str | Path) -> list[t.Any]:
+def makelist(x: Sequence[t.Any] | str | Path | None) -> list[t.Any]:
     """If x is not a list (or is a string), make a list containing x."""
     if x is None:
         return []
