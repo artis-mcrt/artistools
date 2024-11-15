@@ -268,7 +268,7 @@ def make_ionsubplot(
         )
 
     maxlevel = max(dfpopthision["level"])
-    dftrans: None | pl.DataFrame = None
+    dftrans: pl.DataFrame | None = None
     if "upper" in ion_data["transitions"].collect_schema().names():
         dftrans = ion_data["transitions"].filter(pl.col("upper") <= maxlevel).collect()
         if dftrans is not None and dftrans.is_empty():
@@ -671,7 +671,7 @@ def make_plot(modelpath, atomic_number, ion_stages_displayed, mgilist, timestep,
     outputfilename = str(args.outputfile).format(
         elsymbol=at.get_elsymbol(atomic_number), cell=mgilist[0], timestep=timestep, time_days=time_days
     )
-    fig.savefig(str(outputfilename), format="pdf")
+    fig.savefig(outputfilename, format="pdf")
     print(f"Saved {outputfilename}")
     plt.close()
 

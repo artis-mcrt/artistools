@@ -112,7 +112,7 @@ def get_snapshot_time_geomunits(pathtogriddata: Path | str) -> tuple[float, floa
 
 
 def read_griddat_file(
-    pathtogriddata: str | Path, targetmodeltime_days: None | float = None
+    pathtogriddata: str | Path, targetmodeltime_days: float | None = None
 ) -> tuple[pd.DataFrame, float, float, float, dict[str, t.Any]]:
     griddatfilepath = Path(pathtogriddata) / "grid.dat"
 
@@ -321,7 +321,7 @@ def add_mass_to_center(griddata, t_model_in_days, vmax, args: argparse.Namespace
 def makemodelfromgriddata(
     gridfolderpath: Path | str,
     outputpath: Path | str,
-    targetmodeltime_days: None | float = None,
+    targetmodeltime_days: float | None = None,
     traj_root: Path | str | None = None,
     dimensions: int = 3,
     scaledensity: float = 1.0,
