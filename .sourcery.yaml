@@ -36,6 +36,7 @@ rule_settings:
         - extract-method
         - extract-duplicate-method
         - code_clarification
+        - low-code-quality
     rule_types:
         - refactoring
         - suggestion

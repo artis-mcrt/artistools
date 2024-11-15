@@ -36,7 +36,7 @@ def plot_qdot(
     arr_time_artis_days: Sequence[float],
     arr_time_gsi_days: Sequence[float],
     pdfoutpath: Path | str,
-    xmax: None | float = None,
+    xmax: float | None = None,
 ) -> None:
     try:
         depdata = at.get_deposition(modelpath=modelpath)
@@ -204,7 +204,7 @@ def plot_cell_abund_evolution(
     pdfoutpath: Path,
     mgi: int,
     hideinputmodelpoints: bool = True,
-    xmax: None | float = None,
+    xmax: float | None = None,
 ) -> None:
     dfpartcontrib_thiscell = dfpartcontrib.filter(
         (pl.col("cellindex") == (mgi + 1)) & (pl.col("particleid").is_in(allparticledata.keys()))
@@ -395,7 +395,7 @@ def plot_qdot_abund_modelcells(
     merger_root: Path,
     mgiplotlist: Sequence[int],
     arr_el_a: list[tuple[str, int]],
-    xmax: None | float = None,
+    xmax: float | None = None,
 ) -> None:
     # default values, because early model.txt didn't specify this
     griddatafolder: Path = Path("SFHo_snapshot")
