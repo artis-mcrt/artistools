@@ -21,7 +21,24 @@ import polars as pl
 import polars.selectors as cs
 from scipy import integrate
 
-import artistools as at
+import artistools.packets as atpackets
+from artistools.configuration import get_config
+from artistools.misc import average_direction_bins
+from artistools.misc import firstexisting
+from artistools.misc import get_bflist
+from artistools.misc import get_elsymbol
+from artistools.misc import get_file_metadata
+from artistools.misc import get_ionstring
+from artistools.misc import get_linelist_pldf
+from artistools.misc import get_nprocs
+from artistools.misc import get_nu_grid
+from artistools.misc import get_timestep_times
+from artistools.misc import get_viewingdirection_costhetabincount
+from artistools.misc import get_viewingdirection_phibincount
+from artistools.misc import get_viewingdirectionbincount
+from artistools.misc import get_vpkt_config
+from artistools.misc import split_multitable_dataframe
+from artistools.misc import zopenpl
 
 fluxcontributiontuple = namedtuple(
     "fluxcontributiontuple", "fluxcontrib linelabel array_flambda_emission array_flambda_absorption color"
@@ -165,17 +182,17 @@ def get_from_packets(
 
     delta_time_s = (timehighdays - timelowdays) * 86400.0
 
-    nphibins = at.get_viewingdirection_phibincount()
-    ncosthetabins = at.get_viewingdirection_costhetabincount()
-    ndirbins = at.get_viewingdirectionbincount()
+    nphibins = get_viewingdirection_phibincount()
+    ncosthetabins = get_viewingdirection_costhetabincount()
+    ndirbins = get_viewingdirectionbincount()
 
     if nprocs_read_dfpackets:
         nprocs_read = nprocs_read_dfpackets[0]
         dfpackets = nprocs_read_dfpackets[1].lazy()
     elif directionbins_are_vpkt_observers:
-        nprocs_read, dfpackets = at.packets.get_virtual_packets_pl(modelpath, maxpacketfiles=maxpacketfiles)
+        nprocs_read, dfpackets = atpackets.get_virtual_packets_pl(modelpath, maxpacketfiles=maxpacketfiles)
     else:
-        nprocs_read, dfpackets = at.packets.get_packets_pl(
+        nprocs_read, dfpackets = atpackets.get_packets_pl(
             modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
         )
 
@@ -197,7 +214,7 @@ def get_from_packets(
     )
 
     if directionbins_are_vpkt_observers:
-        vpkt_config = at.get_vpkt_config(modelpath)
+        vpkt_config = get_vpkt_config(modelpath)
         for vspecindex in directionbins:
             obsdirindex = vspecindex // vpkt_config["nspectraperobs"]
             opacchoiceindex = vspecindex % vpkt_config["nspectraperobs"]
@@ -212,7 +229,7 @@ def get_from_packets(
                 pl.col(f"dir{obsdirindex}_t_arrive_d").is_between(timelowdays, timehighdays)
             )
 
-            dfbinned_dirbin = at.packets.bin_and_sum(
+            dfbinned_dirbin = atpackets.bin_and_sum(
                 pldfpackets_dirbin_lazy,
                 bincol=lambda_column,
                 bins=list(lambda_bin_edges),
@@ -237,7 +254,9 @@ def get_from_packets(
             dfpackets = dfpackets.filter(pl.col("t_arrive_d").is_between(timelowdays, timehighdays))
 
         elif use_time == "escape":
-            modeldata, _ = at.inputmodel.get_modeldata(modelpath)
+            from artistools.inputmodel import get_modeldata
+
+            modeldata, _ = get_modeldata(modelpath)
             vmax_beta = modeldata.iloc[-1].vel_r_max_kmps * 299792.458
             escapesurfacegamma = math.sqrt(1 - vmax_beta**2)
 
@@ -276,7 +295,7 @@ def get_from_packets(
                 solidanglefactor = ndirbins
                 pldfpackets_dirbin_lazy = dfpackets.filter(pl.col("dirbin") == dirbin)
 
-            dfbinned_dirbin = at.packets.bin_and_sum(
+            dfbinned_dirbin = atpackets.bin_and_sum(
                 pldfpackets_dirbin_lazy,
                 bincol=lambda_column,
                 bins=list(lambda_bin_edges),
@@ -327,11 +346,11 @@ def get_from_packets(
 
 @lru_cache(maxsize=16)
 def read_spec(modelpath: Path, printwarningsonly: bool = False) -> pl.DataFrame:
-    specfilename = at.firstexisting("spec.out", folder=modelpath, tryzipped=True)
+    specfilename = firstexisting("spec.out", folder=modelpath, tryzipped=True)
     print(f"Reading {specfilename}")
 
     return (
-        pl.read_csv(at.zopenpl(specfilename), separator=" ", infer_schema=False, truncate_ragged_lines=True)
+        pl.read_csv(zopenpl(specfilename), separator=" ", infer_schema=False, truncate_ragged_lines=True)
         .with_columns(pl.all().cast(pl.Float64))
         .rename({"0": "nu"})
     )
@@ -343,17 +362,17 @@ def read_spec_res(modelpath: Path) -> dict[int, pl.DataFrame]:
     specfilename = (
         modelpath
         if Path(modelpath).is_file()
-        else at.firstexisting(["spec_res.out", "specpol_res.out"], folder=modelpath, tryzipped=True)
+        else firstexisting(["spec_res.out", "specpol_res.out"], folder=modelpath, tryzipped=True)
     )
 
     print(f"Reading {specfilename} (in read_spec_res)")
-    res_specdata_in = pl.read_csv(at.zopenpl(specfilename), separator=" ", has_header=False, infer_schema=False)
+    res_specdata_in = pl.read_csv(zopenpl(specfilename), separator=" ", has_header=False, infer_schema=False)
 
     # drop last column of nulls (caused by trailing space on each line)
     if res_specdata_in[res_specdata_in.columns[-1]].is_null().all():
         res_specdata_in = res_specdata_in.drop(res_specdata_in.columns[-1])
 
-    res_specdata = at.split_multitable_dataframe(res_specdata_in)
+    res_specdata = split_multitable_dataframe(res_specdata_in)
 
     prev_dfshape = None
     for dirbin in res_specdata:
@@ -394,9 +413,9 @@ def read_emission_absorption_file(emabsfilename: str | Path) -> pl.DataFrame:
     except AttributeError:
         print(f" Reading {emabsfilename}")
 
-    dfemabs = pl.read_csv(
-        at.zopenpl(emabsfilename), separator=" ", has_header=False, infer_schema_length=0
-    ).with_columns(pl.all().cast(pl.Float32, strict=False))
+    dfemabs = pl.read_csv(zopenpl(emabsfilename), separator=" ", has_header=False, infer_schema_length=0).with_columns(
+        pl.all().cast(pl.Float32, strict=False)
+    )
 
     # drop last column of nulls (caused by trailing space on each line)
     if dfemabs[dfemabs.columns[-1]].is_null().all():
@@ -411,9 +430,9 @@ def get_spec_res(
 ) -> dict[int, pl.DataFrame]:
     res_specdata = read_spec_res(modelpath)
     if average_over_theta:
-        res_specdata = at.average_direction_bins(res_specdata, overangle="theta")
+        res_specdata = average_direction_bins(res_specdata, overangle="theta")
     if average_over_phi:
-        res_specdata = at.average_direction_bins(res_specdata, overangle="phi")
+        res_specdata = average_direction_bins(res_specdata, overangle="phi")
 
     return res_specdata
 
@@ -466,7 +485,7 @@ def get_spectrum(
         if dirbin not in specdata:
             print(f"WARNING: Direction bin {dirbin} not found in specdata. Dirbins: {list(specdata.keys())}")
             continue
-        arr_tdelta = at.get_timestep_times(modelpath, loc="delta")
+        arr_tdelta = get_timestep_times(modelpath, loc="delta")
 
         try:
             arr_f_nu = specdata[dirbin].select(
@@ -497,11 +516,11 @@ def get_spectrum(
 
 
 def make_virtual_spectra_summed_file(modelpath: Path | str) -> None:
-    nprocs = at.get_nprocs(modelpath)
+    nprocs = get_nprocs(modelpath)
     print("nprocs", nprocs)
     # virtual packet spectra for each observer (all directions and opacity choices)
     vspecpol_data_allranks: dict[int, pl.DataFrame] = {}
-    vpktconfig = at.get_vpkt_config(modelpath)
+    vpktconfig = get_vpkt_config(modelpath)
     nvirtual_spectra = vpktconfig["nobsdirections"] * vpktconfig["nspectraperobs"]
     print(
         f"nobsdirections {vpktconfig['nobsdirections']} nspectraperobs {vpktconfig['nspectraperobs']} (total observers:"
@@ -509,7 +528,7 @@ def make_virtual_spectra_summed_file(modelpath: Path | str) -> None:
     )
 
     for mpirank in range(nprocs):
-        vspecpolpath = at.firstexisting(
+        vspecpolpath = firstexisting(
             [f"vspecpol_{mpirank:04d}.out", f"vspecpol_{mpirank}-0.out"], folder=modelpath, tryzipped=True
         )
         print(f"Reading rank {mpirank} filename {vspecpolpath}")
@@ -519,7 +538,7 @@ def make_virtual_spectra_summed_file(modelpath: Path | str) -> None:
         if vspecpol_data_alldirs[vspecpol_data_alldirs.columns[-1]].is_null().all():
             vspecpol_data_alldirs = vspecpol_data_alldirs.drop(cs.last())
 
-        vspecpol_data = at.split_multitable_dataframe(vspecpol_data_alldirs)
+        vspecpol_data = split_multitable_dataframe(vspecpol_data_alldirs)
         assert len(vspecpol_data) == nvirtual_spectra
 
         for specindex in vspecpol_data:
@@ -572,15 +591,15 @@ def get_specpol_data(
     if specdata is None:
         assert modelpath is not None
         specfilename = (
-            at.firstexisting("specpol.out", folder=modelpath, tryzipped=True)
+            firstexisting("specpol.out", folder=modelpath, tryzipped=True)
             if angle == -1
-            else at.firstexisting(f"specpol_res_{angle}.out", folder=modelpath, tryzipped=True)
+            else firstexisting(f"specpol_res_{angle}.out", folder=modelpath, tryzipped=True)
         )
 
         print(f"Reading {specfilename}")
-        specdata = pl.read_csv(
-            at.zopenpl(specfilename), separator=" ", has_header=True, infer_schema=False
-        ).with_columns(pl.all().cast(pl.Float64))
+        specdata = pl.read_csv(zopenpl(specfilename), separator=" ", has_header=True, infer_schema=False).with_columns(
+            pl.all().cast(pl.Float64)
+        )
 
     return split_dataframe_stokesparams(specdata)
 
@@ -591,11 +610,11 @@ def get_vspecpol_data(vspecindex: int, modelpath: Path | str) -> dict[str, pl.Da
     # alternatively use f'vspecpol_averaged-{angle}.out' ?
 
     try:
-        specfilename = at.firstexisting(f"vspecpol_total-{vspecindex}.out", folder=modelpath, tryzipped=True)
+        specfilename = firstexisting(f"vspecpol_total-{vspecindex}.out", folder=modelpath, tryzipped=True)
     except FileNotFoundError:
         print(f"vspecpol_total-{vspecindex}.out does not exist. Generating all-rank summed vspec files..")
         make_virtual_spectra_summed_file(modelpath=modelpath)
-        specfilename = at.firstexisting(f"vspecpol_total-{vspecindex}.out", folder=modelpath, tryzipped=True)
+        specfilename = firstexisting(f"vspecpol_total-{vspecindex}.out", folder=modelpath, tryzipped=True)
 
     print(f"Reading {specfilename}")
     specdata = pl.read_csv(specfilename, separator=" ", has_header=True)
@@ -691,27 +710,31 @@ def get_flux_contributions(
     average_over_phi: bool = False,
     average_over_theta: bool = False,
 ) -> tuple[list[fluxcontributiontuple], npt.NDArray[np.float64]]:
-    arr_tmid = at.get_timestep_times(modelpath, loc="mid")
-    arr_tdelta = at.get_timestep_times(modelpath, loc="delta")
-    arraynu = at.get_nu_grid(modelpath)
+    arr_tmid = get_timestep_times(modelpath, loc="mid")
+    arr_tdelta = get_timestep_times(modelpath, loc="delta")
+    arraynu = get_nu_grid(modelpath)
     arraylambda = 2.99792458e18 / arraynu
     if not Path(modelpath, "compositiondata.txt").is_file():
         print("WARNING: compositiondata.txt not found. Using output*.txt instead")
-        elementlist = at.get_composition_data_from_outputfile(modelpath)
+        from artistools.misc import get_composition_data_from_outputfile
+
+        elementlist = get_composition_data_from_outputfile(modelpath)
     else:
-        elementlist = at.get_composition_data(modelpath)
+        from artistools.misc import get_composition_data
+
+        elementlist = get_composition_data(modelpath)
     nelements = len(elementlist)
 
     if directionbin is None:
         dbinlist = [-1]
     elif average_over_phi:
         assert not average_over_theta
-        assert directionbin % at.get_viewingdirection_phibincount() == 0
-        dbinlist = list(range(directionbin, directionbin + at.get_viewingdirection_phibincount()))
+        assert directionbin % get_viewingdirection_phibincount() == 0
+        dbinlist = list(range(directionbin, directionbin + get_viewingdirection_phibincount()))
     elif average_over_theta:
         assert not average_over_phi
-        assert directionbin < at.get_viewingdirection_phibincount()
-        dbinlist = list(range(directionbin, at.get_viewingdirectionbincount(), at.get_viewingdirection_phibincount()))
+        assert directionbin < get_viewingdirection_phibincount()
+        dbinlist = list(range(directionbin, get_viewingdirectionbincount(), get_viewingdirection_phibincount()))
     else:
         dbinlist = [directionbin]
 
@@ -725,7 +748,7 @@ def get_flux_contributions(
             if dbin != -1:
                 emissionfilenames = [x.replace(".out", f"_res_{dbin:02d}.out") for x in emissionfilenames]
 
-            emissionfilename = at.firstexisting(emissionfilenames, folder=modelpath, tryzipped=True)
+            emissionfilename = firstexisting(emissionfilenames, folder=modelpath, tryzipped=True)
 
             if "pol" in str(emissionfilename):
                 print("This artis run contains polarisation data")
@@ -753,7 +776,7 @@ def get_flux_contributions(
             if directionbin is not None:
                 absorptionfilenames = [x.replace(".out", f"_res_{dbin:02d}.out") for x in absorptionfilenames]
 
-            absorptionfilename = at.firstexisting(absorptionfilenames, folder=modelpath, tryzipped=True)
+            absorptionfilename = firstexisting(absorptionfilenames, folder=modelpath, tryzipped=True)
 
             absorptiondata[dbin] = read_emission_absorption_file(absorptionfilename)
             absorption_maxion_float = absorptiondata[dbin].shape[1] / nelements
@@ -829,11 +852,11 @@ def get_flux_contributions(
                 )
 
                 if emissiontypeclass == "bound-bound":
-                    linelabel = at.get_ionstring(elementlist.Z[element], ion_stage)
+                    linelabel = get_ionstring(elementlist.Z[element], ion_stage)
                 elif emissiontypeclass == "free-free":
                     linelabel = "free-free"
                 else:
-                    linelabel = f"{at.get_ionstring(elementlist.Z[element], ion_stage)} {emissiontypeclass}"
+                    linelabel = f"{get_ionstring(elementlist.Z[element], ion_stage)} {emissiontypeclass}"
 
                 contribution_list.append(
                     fluxcontributiontuple(
@@ -879,8 +902,8 @@ def get_flux_contributions_from_packets(
 
     emtypecolumn = "emissiontype" if use_lastemissiontype else "trueemissiontype"
 
-    linelistlazy = at.get_linelist_pldf(modelpath=modelpath, get_ion_str=True)
-    bflistlazy = at.get_bflist(modelpath, get_ion_str=True)
+    linelistlazy = get_linelist_pldf(modelpath=modelpath, get_ion_str=True)
+    bflistlazy = get_bflist(modelpath, get_ion_str=True)
 
     cols = {"e_rf"}
     cols.add({"arrival": "t_arrive_d", "emission": "em_time", "escape": "escape_time"}[use_time])
@@ -889,10 +912,10 @@ def get_flux_contributions_from_packets(
     nu_max = 2.99792458e18 / lambda_min
 
     if directionbins_are_vpkt_observers:
-        vpkt_config = at.get_vpkt_config(modelpath)
+        vpkt_config = get_vpkt_config(modelpath)
         obsdirindex = directionbin // vpkt_config["nspectraperobs"]
         opacchoiceindex = directionbin % vpkt_config["nspectraperobs"]
-        nprocs_read, lzdfpackets = at.packets.get_virtual_packets_pl(modelpath, maxpacketfiles=maxpacketfiles)
+        nprocs_read, lzdfpackets = atpackets.get_virtual_packets_pl(modelpath, maxpacketfiles=maxpacketfiles)
         lzdfpackets = lzdfpackets.with_columns(e_rf=pl.col(f"dir{obsdirindex}_e_rf_{opacchoiceindex}"))
         dirbin_nu_column = f"dir{obsdirindex}_nu_rf"
 
@@ -900,7 +923,7 @@ def get_flux_contributions_from_packets(
         lzdfpackets = lzdfpackets.filter(pl.col(f"dir{obsdirindex}_t_arrive_d").is_between(timelowdays, timehighdays))
 
     else:
-        nprocs_read, lzdfpackets = at.packets.get_packets_pl(
+        nprocs_read, lzdfpackets = atpackets.get_packets_pl(
             modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
         )
         dirbin_nu_column = "nu_rf"
@@ -912,7 +935,7 @@ def get_flux_contributions_from_packets(
     lzdfpackets = lzdfpackets.filter(condition_nu_emit | condition_nu_abs)
 
     if emissionvelocitycut is not None:
-        lzdfpackets = at.packets.add_derived_columns_lazy(lzdfpackets)
+        lzdfpackets = atpackets.add_derived_columns_lazy(lzdfpackets)
         lzdfpackets = lzdfpackets.filter(pl.col("emission_velocity") > emissionvelocitycut)
 
     expr_linelist_to_str = (
@@ -959,7 +982,7 @@ def get_flux_contributions_from_packets(
                 # no bound-free
                 lzdfpackets = lzdfpackets.filter(pl.col("emissiontype_str").str.contains("bound-free").not_())
             elif z_exclude > 0:
-                elsymb = at.get_elsymbol(z_exclude)
+                elsymb = get_elsymbol(z_exclude)
                 lzdfpackets = lzdfpackets.filter(pl.col("emissiontype_str").str.starts_with(f"{elsymb} ").not_())
 
     if getabsorption:
@@ -1169,13 +1192,14 @@ def sort_and_reduce_flux_contribution_list(
 
     color_list: list[t.Any]
     if greyscale:
-        hatches = at.spectra.plotspectra.hatches
+        from artistools.spectra.plotspectra import hatchestypes
+
         seriescount = len(fixedionlist) if fixedionlist else maxseriescount
-        colorcount = math.ceil(seriescount / 1.0 / len(hatches))
+        colorcount = math.ceil(seriescount / 1.0 / len(hatchestypes))
         greylist = [str(x) for x in np.linspace(0.4, 0.9, colorcount, endpoint=True)]
         color_list = []
         for c in range(colorcount):
-            for _h in hatches:
+            for _h in hatchestypes:
                 color_list.append(greylist[c])
         # color_list = list(plt.get_cmap('tab20')(np.linspace(0, 1.0, 20)))
         mpl.rcParams["hatch.linewidth"] = 0.1
@@ -1269,7 +1293,7 @@ def get_reference_spectrum(filename: Path | str) -> tuple[pl.DataFrame, dict[t.A
     if Path(filename).is_file():
         filepath = Path(filename)
     else:
-        filepath = Path(at.get_config()["path_artistools_dir"], "data", "refspectra", filename)
+        filepath = Path(get_config()["path_artistools_dir"], "data", "refspectra", filename)
 
         if not filepath.is_file():
             filepathxz = filepath.with_suffix(f"{filepath.suffix}.xz")
@@ -1280,7 +1304,7 @@ def get_reference_spectrum(filename: Path | str) -> tuple[pl.DataFrame, dict[t.A
                 if filepathgz.is_file():
                     filepath = filepathgz
 
-    metadata = at.get_file_metadata(filepath)
+    metadata = get_file_metadata(filepath)
 
     flambdaindex = metadata.get("f_lambda_columnindex", 1)
 
