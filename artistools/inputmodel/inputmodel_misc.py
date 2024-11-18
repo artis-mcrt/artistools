@@ -15,7 +15,16 @@ import pandas as pd
 import polars as pl
 import polars.selectors as cs
 
-import artistools as at
+from artistools.configuration import get_config
+from artistools.misc import firstexisting
+from artistools.misc import get_atomic_number
+from artistools.misc import get_elsymbol
+from artistools.misc import get_syn_dir
+from artistools.misc import get_z_a_nucname
+from artistools.misc import stripallsuffixes
+from artistools.misc import vec_len
+from artistools.misc import zopen
+from artistools.misc import zopenpl
 
 
 # @lru_cache(maxsize=3)
@@ -35,7 +44,7 @@ def read_modelfile_text(
         print(f"Reading {filename}")
 
     numheaderrows = 0
-    with at.zopen(filename) as fmodel:
+    with zopen(filename) as fmodel:
         line = "#"
         while line.startswith("#"):
             line = fmodel.readline()
@@ -133,7 +142,7 @@ def read_modelfile_text(
         pldtypes = {col: pl.Int32 if col == "inputcellid" else pl.Float32 for col in columns}
 
         dfmodel = pl.read_csv(
-            at.zopenpl(filename),
+            zopenpl(filename),
             separator=" ",
             comment_prefix="#",
             new_columns=columns,
@@ -373,18 +382,18 @@ def get_modeldata_polars(
 
     if inputpath.is_dir():
         modelpath = inputpath
-        textfilepath = at.firstexisting("model.txt", folder=inputpath, tryzipped=True)
+        textfilepath = firstexisting("model.txt", folder=inputpath, tryzipped=True)
     elif inputpath.is_file():  # passed in a filename instead of the modelpath
         textfilepath = inputpath
         modelpath = Path(inputpath).parent
     elif not inputpath.exists() and inputpath.parts[0] == "codecomparison":
         modelpath = inputpath
         _, inputmodel, _ = modelpath.parts
-        textfilepath = Path(at.get_config()["codecomparisonmodelartismodelpath"], inputmodel, "model.txt")
+        textfilepath = Path(get_config()["codecomparisonmodelartismodelpath"], inputmodel, "model.txt")
     else:
         raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), inputpath)
 
-    parquetfilepath = at.stripallsuffixes(Path(textfilepath)).with_suffix(".txt.parquet.tmp")
+    parquetfilepath = stripallsuffixes(Path(textfilepath)).with_suffix(".txt.parquet.tmp")
 
     if parquetfilepath.exists() and Path(textfilepath).stat().st_mtime > parquetfilepath.stat().st_mtime:
         print(f"{textfilepath} has been modified after {parquetfilepath}. Deleting out of date parquet file.")
@@ -746,18 +755,18 @@ def add_derived_cols_to_modeldata(
 
 def get_cell_angle(dfmodel: pd.DataFrame, modelpath: Path) -> pd.DataFrame:
     """Get angle between origin to cell midpoint and the syn_dir axis."""
-    syn_dir = at.get_syn_dir(modelpath)
+    syn_dir = get_syn_dir(modelpath)
     xhat = np.array([1.0, 0.0, 0.0])
 
     cos_theta = np.zeros(len(dfmodel))
     phi = np.zeros(len(dfmodel))
     for i, (_, cell) in enumerate(dfmodel.iterrows()):
         mid_point = [cell["pos_x_mid"], cell["pos_y_mid"], cell["pos_z_mid"]]
-        cos_theta[i] = (np.dot(mid_point, syn_dir)) / (at.vec_len(mid_point) * at.vec_len(syn_dir))
+        cos_theta[i] = (np.dot(mid_point, syn_dir)) / (vec_len(mid_point) * vec_len(syn_dir))
 
         vec1 = np.cross(mid_point, syn_dir)
         vec2 = np.cross(xhat, syn_dir)
-        cosphi = np.dot(vec1, vec2) / at.vec_len(vec1) / at.vec_len(vec2)
+        cosphi = np.dot(vec1, vec2) / vec_len(vec1) / vec_len(vec2)
 
         vec3 = np.cross(vec2, syn_dir)
         testphi = np.dot(vec1, vec3)
@@ -920,7 +929,7 @@ def save_modeldata(
 
     timestart = time.perf_counter()
     if modelmeta.get("dimensions") is None:
-        modelmeta["dimensions"] = at.get_dfmodel_dimensions(dfmodel)
+        modelmeta["dimensions"] = get_dfmodel_dimensions(dfmodel)
 
     if modelmeta["dimensions"] == 1:
         print(f" 1D grid radial bins: {len(dfmodel)}")
@@ -954,7 +963,7 @@ def save_modeldata(
     dfmodel = dfmodel.with_columns(pl.col("inputcellid").cast(pl.Int32))
     customcols = [col for col in dfmodel.collect_schema().names() if col not in standardcols]
     customcols.sort(
-        key=lambda col: at.get_z_a_nucname(col) if col.startswith("X_") else (math.inf, 0)
+        key=lambda col: get_z_a_nucname(col) if col.startswith("X_") else (math.inf, 0)
     )  # sort columns by atomic number, mass number
 
     if outpath is None:
@@ -1086,8 +1095,8 @@ def get_initelemabundances_pandas(modelpath: Path = Path(), printwarningsonly: b
 
 def get_initelemabundances_polars(modelpath: Path = Path(), printwarningsonly: bool = False) -> pl.LazyFrame:
     """Return a table of elemental mass fractions by cell from abundances."""
-    textfilepath = at.firstexisting("abundances.txt", folder=modelpath, tryzipped=True)
-    parquetfilepath = at.stripallsuffixes(Path(textfilepath)).with_suffix(".txt.parquet.tmp")
+    textfilepath = firstexisting("abundances.txt", folder=modelpath, tryzipped=True)
+    parquetfilepath = stripallsuffixes(Path(textfilepath)).with_suffix(".txt.parquet.tmp")
 
     if parquetfilepath.exists() and Path(textfilepath).stat().st_mtime > parquetfilepath.stat().st_mtime:
         print(f"{textfilepath} has been modified after {parquetfilepath}. Deleting out of date parquet file.")
@@ -1102,10 +1111,10 @@ def get_initelemabundances_polars(modelpath: Path = Path(), printwarningsonly: b
         if not printwarningsonly:
             print(f"Reading {textfilepath}")
         ncols = len(pd.read_csv(textfilepath, sep=r"\s+", header=None, comment="#", nrows=1).columns)
-        colnames = ["inputcellid", *["X_" + at.get_elsymbol(x) for x in range(1, ncols)]]
+        colnames = ["inputcellid", *["X_" + get_elsymbol(x) for x in range(1, ncols)]]
 
         abundancedata = pl.read_csv(
-            at.zopenpl(textfilepath), has_header=False, separator=" ", comment_prefix="#", infer_schema_length=0
+            zopenpl(textfilepath), has_header=False, separator=" ", comment_prefix="#", infer_schema_length=0
         )
 
         # fix up multiple spaces at beginning of lines
@@ -1170,11 +1179,10 @@ def save_initelemabundances(
     assert dfelabundances["inputcellid"].max() == len(dfelabundances)
 
     atomic_numbers = {
-        at.get_atomic_number(colname.removeprefix("X_"))
-        for colname in dfelabundances.select(cs.starts_with("X_")).columns
+        get_atomic_number(colname.removeprefix("X_")) for colname in dfelabundances.select(cs.starts_with("X_")).columns
     }
     max_atomic_number = max([30, *atomic_numbers])
-    elcolnames = [f"X_{at.get_elsymbol(Z)}" for Z in range(1, 1 + max_atomic_number)]
+    elcolnames = [f"X_{get_elsymbol(Z)}" for Z in range(1, 1 + max_atomic_number)]
     for colname in elcolnames:
         if colname not in dfelabundances.columns:
             dfelabundances = dfelabundances.with_columns(pl.lit(0.0).alias(colname))
@@ -1263,9 +1271,7 @@ def dimension_reduce_model(
     print(f"Resampling {ndim_in:d}D model with {ngridpoints} cells to {outputdimensions}D...")
     timestart = time.perf_counter()
 
-    dfmodel = at.inputmodel.add_derived_cols_to_modeldata(
-        dfmodel, modelmeta=modelmeta, derived_cols=["velocity", "mass_g"]
-    )
+    dfmodel = add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta, derived_cols=["velocity", "mass_g"])
 
     inputcellmass: dict[int, float] = {
         int(cellid): float(rho) for cellid, rho in dfmodel.select(["inputcellid", "mass_g"]).collect().iter_rows()

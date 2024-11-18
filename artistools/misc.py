@@ -23,7 +23,7 @@ import polars as pl
 import zstandard as zstd
 from typeguard import typechecked
 
-import artistools as at
+from artistools.configuration import get_config
 
 roman_numerals = (
     "",
@@ -190,9 +190,9 @@ def average_direction_bins(
     dirbindataframes: dict[int, pl.DataFrame], overangle: t.Literal["phi", "theta"]
 ) -> dict[int, pl.DataFrame]:
     """Average dict of direction-binned polars DataFrames according to the phi or theta angle."""
-    dirbincount = at.get_viewingdirectionbincount()
-    nphibins = at.get_viewingdirection_phibincount()
-    ncosthetabins = at.get_viewingdirection_costhetabincount()
+    dirbincount = get_viewingdirectionbincount()
+    nphibins = get_viewingdirection_phibincount()
+    ncosthetabins = get_viewingdirection_costhetabincount()
 
     assert overangle in {"phi", "theta"}
     if overangle == "phi":
@@ -289,7 +289,9 @@ def get_wid_init_at_tmodel(
     if ngridpoints is None or t_model_days is None or xmax is None:
         # Luke: ngridpoint only equals the number of model cells if the model is 3D
         assert modelpath is not None
-        _, modelmeta = at.get_modeldata(modelpath, getheadersonly=True)
+        from artistools.inputmodel import get_modeldata
+
+        _, modelmeta = get_modeldata(modelpath, getheadersonly=True)
         assert modelmeta["dimensions"] == 3
         ngridpoints = modelmeta["npts_model"]
         xmax = modelmeta["vmax_cmps"] * modelmeta["t_model_init_days"] * 86400.0
@@ -402,7 +404,7 @@ def get_timestep_times(modelpath: Path | str, loc: t.Literal["mid", "start", "en
         raise ValueError(msg)
 
     # older versions of Artis always used logarithmic timesteps and didn't produce a timesteps.out file
-    inputparams = at.get_inputparams(modelpath)
+    inputparams = get_inputparams(modelpath)
     tmin = inputparams["tmin"]
     dlogt = (math.log(inputparams["tmax"]) - math.log(tmin)) / inputparams["ntstep"]
     timesteps = range(inputparams["ntstep"])
@@ -545,7 +547,9 @@ def get_timestep_time(modelpath: Path | str, timestep: int) -> float:
 def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | None, float | None]:
     """Return the time range for which the entire model can send light signals the observer."""
     modelpath = Path(modelpath)
-    _, modelmeta = at.inputmodel.get_modeldata(modelpath, printwarningsonly=True, getheadersonly=True)
+    from artistools.inputmodel import get_modeldata
+
+    _, modelmeta = get_modeldata(modelpath, printwarningsonly=True, getheadersonly=True)
     vmax = modelmeta["vmax_cmps"]
     cornervmax = math.sqrt(3 * vmax**2)
 
@@ -556,12 +560,12 @@ def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | None, 
     vmax_tmin = cornervmax if modelmeta["dimensions"] == 3 else vmax
 
     # earliest completely valid time is tmin plus maximum possible travel time from the origin to the corner
-    validrange_start_days = at.get_timestep_times(modelpath, loc="start")[0] * (1 + vmax_tmin / 29979245800)
+    validrange_start_days = get_timestep_times(modelpath, loc="start")[0] * (1 + vmax_tmin / 29979245800)
 
-    t_end = at.get_timestep_times(modelpath, loc="end")
+    t_end = get_timestep_times(modelpath, loc="end")
     # find the last possible escape time and subtract the largest possible travel time (observer time correction)
     try:
-        depdata = at.get_deposition(modelpath=modelpath)  # use this file to find the last computed timestep
+        depdata = get_deposition(modelpath=modelpath)  # use this file to find the last computed timestep
         nts_last = depdata["timestep"].max() if "timestep" in depdata.columns else len(depdata) - 1
     except FileNotFoundError:
         print("WARNING: No deposition.out file found. Assuming all timesteps have been computed")
@@ -625,7 +629,7 @@ def get_elsymbolslist() -> list[str]:
     """
     return [
         "n",
-        *list(pd.read_csv(at.get_config()["path_datadir"] / "elements.csv", usecols=["symbol"])["symbol"].to_numpy()),
+        *list(pd.read_csv(get_config()["path_datadir"] / "elements.csv", usecols=["symbol"])["symbol"].to_numpy()),
     ]
 
 
@@ -633,7 +637,7 @@ def get_elsymbols_df() -> pl.DataFrame:
     """Return a polars DataFrame of atomic number and element symbols."""
     return (
         pl.read_csv(
-            at.get_config()["path_datadir"] / "elements.csv",
+            get_config()["path_datadir"] / "elements.csv",
             separator=",",
             has_header=True,
             schema_overrides={"Z": pl.Int32},
@@ -686,8 +690,8 @@ def get_ion_tuple(ionstr: str) -> tuple[int, int] | int:
     if ionstr.isdigit():
         return int(ionstr)
 
-    if ionstr in at.get_elsymbolslist():
-        return at.get_atomic_number(ionstr)
+    if ionstr in get_elsymbolslist():
+        return get_atomic_number(ionstr)
 
     elem = "?"
     strion_stage = "?"
@@ -696,7 +700,7 @@ def get_ion_tuple(ionstr: str) -> tuple[int, int] | int:
     elif "_" in ionstr:
         elem, strion_stage = ionstr.split("_")
     else:
-        for elsym in at.get_elsymbolslist():
+        for elsym in get_elsymbolslist():
             if ionstr.startswith(elsym):
                 elem = elsym
                 strion_stage = ionstr.removeprefix(elsym)
@@ -706,8 +710,8 @@ def get_ion_tuple(ionstr: str) -> tuple[int, int] | int:
         msg = f"Could not parse ionstr {ionstr}"
         raise ValueError(msg)
 
-    atomic_number = int(elem) if elem.isdigit() else at.get_atomic_number(elem)
-    ion_stage = int(strion_stage) if strion_stage.isdigit() else at.decode_roman_numeral(strion_stage)
+    atomic_number = int(elem) if elem.isdigit() else get_atomic_number(elem)
+    ion_stage = int(strion_stage) if strion_stage.isdigit() else decode_roman_numeral(strion_stage)
 
     return (atomic_number, ion_stage)
 
@@ -723,7 +727,7 @@ def get_ionstring(
     if ion_stage is None or ion_stage == "ALL":
         return get_elsymbol(atomic_number)
 
-    if isinstance(ion_stage, str) and ion_stage.startswith(at.get_elsymbol(atomic_number)):
+    if isinstance(ion_stage, str) and ion_stage.startswith(get_elsymbol(atomic_number)):
         # nuclides like Sr89 get passed in as atomic_number=38, ion_stage='Sr89'
         return ion_stage
 
@@ -1075,8 +1079,8 @@ def get_bflist(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame
 
     if get_ion_str:
         dfboundfree = (
-            dfboundfree.join(at.get_ion_stage_roman_numeral_df().lazy(), on="ion_stage", how="left")
-            .join(at.get_elsymbols_df().lazy(), on="atomic_number", how="left")
+            dfboundfree.join(get_ion_stage_roman_numeral_df().lazy(), on="ion_stage", how="left")
+            .join(get_elsymbols_df().lazy(), on="atomic_number", how="left")
             .with_columns(ion_str=pl.col("elsymbol") + " " + pl.col("ion_stage_roman"))
         )
 
@@ -1114,7 +1118,7 @@ def read_linestatfile(filepath: Path | str) -> tuple[list[float], list[int], lis
 
 
 def get_linelist_pldf(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame:
-    textfile = at.firstexisting("linestat.out", folder=modelpath)
+    textfile = firstexisting("linestat.out", folder=modelpath)
     parquetfile = Path(modelpath, "linelist.out.parquet")
     if not parquetfile.is_file() or parquetfile.stat().st_mtime < textfile.stat().st_mtime:
         lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels = read_linestatfile(textfile)
@@ -1158,8 +1162,8 @@ def get_linelist_pldf(modelpath: Path | str, get_ion_str: bool = False) -> pl.La
 
     if get_ion_str:
         linelist_lazy = (
-            linelist_lazy.join(at.get_ion_stage_roman_numeral_df().lazy(), on="ion_stage", how="left")
-            .join(at.get_elsymbols_df().lazy(), on="atomic_number", how="left")
+            linelist_lazy.join(get_ion_stage_roman_numeral_df().lazy(), on="ion_stage", how="left")
+            .join(get_elsymbols_df().lazy(), on="atomic_number", how="left")
             .with_columns(ion_str=pl.col("elsymbol") + " " + pl.col("ion_stage_roman"))
         )
 
@@ -1194,9 +1198,7 @@ def get_linelist_dataframe(modelpath: Path | str) -> pd.DataFrame:
 def get_npts_model(modelpath: Path) -> int:
     """Return the number of cell in the model.txt."""
     modelfilepath = (
-        Path(modelpath)
-        if Path(modelpath).is_file()
-        else at.firstexisting("model.txt", folder=modelpath, tryzipped=True)
+        Path(modelpath) if Path(modelpath).is_file() else firstexisting("model.txt", folder=modelpath, tryzipped=True)
     )
     with zopen(modelfilepath) as modelfile:
         nptsline = readnoncommentline(modelfile).split(maxsplit=1)
@@ -1397,7 +1399,7 @@ def get_viewingdirection_costhetabincount() -> int:
 
 
 def get_phi_bins(usedegrees: bool) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], list[str]]:
-    nphibins = at.get_viewingdirection_phibincount()
+    nphibins = get_viewingdirection_phibincount()
     # pi/2 must be an exact boundary because of the change in behaviour there
     assert nphibins % 2 == 0
 
@@ -1433,7 +1435,7 @@ def get_phi_bins(usedegrees: bool) -> tuple[npt.NDArray[np.float64], npt.NDArray
 def get_costheta_bins(
     usedegrees: bool, usepiminustheta: bool = False
 ) -> tuple[tuple[float, ...], tuple[float, ...], list[str]]:
-    ncosthetabins = at.get_viewingdirection_costhetabincount()
+    ncosthetabins = get_viewingdirection_costhetabincount()
     costhetabins_lower = np.arange(-1.0, 1.0, 2.0 / ncosthetabins)
     costhetabins_upper = costhetabins_lower + 2.0 / ncosthetabins
     if usedegrees:
@@ -1474,11 +1476,11 @@ def get_opacity_condition_label(z_exclude: int) -> str:
         return "no-bb"
     if z_exclude == -2:
         return "no-bf"
-    return "no-es" if z_exclude == -3 else f"no-{at.get_elsymbol(z_exclude)}"
+    return "no-es" if z_exclude == -3 else f"no-{get_elsymbol(z_exclude)}"
 
 
 def get_vspec_dir_labels(modelpath: str | Path, usedegrees: bool = False) -> dict[int, str]:
-    vpkt_config = at.get_vpkt_config(modelpath)
+    vpkt_config = get_vpkt_config(modelpath)
     dirlabels = {}
     for dirindex in range(vpkt_config["nobsdirections"]):
         phi_angle = round(vpkt_config["phi"][dirindex])
@@ -1506,7 +1508,7 @@ def get_dirbin_labels(
     """Return a dict of text labels for viewing direction bins."""
     if modelpath:
         modelpath = Path(modelpath)
-        MABINS = at.get_viewingdirectionbincount()
+        MABINS = get_viewingdirectionbincount()
         if list(modelpath.glob("*_res_00.out*")):
             # if the first direction bin file exists, check:
             # check last bin exists
@@ -1517,15 +1519,15 @@ def get_dirbin_labels(
     _, _, costhetabinlabels = get_costheta_bins(usedegrees=usedegrees, usepiminustheta=usepiminustheta)
     _, _, phibinlabels = get_phi_bins(usedegrees=usedegrees)
 
-    nphibins = at.get_viewingdirection_phibincount()
+    nphibins = get_viewingdirection_phibincount()
 
     if dirbins is None:
         if average_over_phi:
-            dirbins = np.arange(at.get_viewingdirection_costhetabincount()) * 10
+            dirbins = np.arange(get_viewingdirection_costhetabincount()) * 10
         elif average_over_theta:
             dirbins = np.arange(nphibins)
         else:
-            dirbins = np.arange(at.get_viewingdirectionbincount())
+            dirbins = np.arange(get_viewingdirectionbincount())
 
     angle_definitions: dict[int, str] = {}
     for dirbin in dirbins:
@@ -1559,4 +1561,4 @@ def get_multiprocessing_pool() -> multiprocessing.pool.Pool:
         pass
     else:
         cleanup_on_sigterm()
-    return multiprocessing.get_context("spawn").Pool(processes=at.get_config()["num_processes"])
+    return multiprocessing.get_context("spawn").Pool(processes=get_config()["num_processes"])

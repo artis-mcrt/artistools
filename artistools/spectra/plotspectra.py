@@ -25,9 +25,25 @@ import polars.selectors as cs
 from matplotlib import ticker
 from matplotlib.artist import Artist
 
-import artistools as at
+import artistools.spectra as atspectra
+from artistools.configuration import get_config
+from artistools.inputmodel import get_modeldata
+from artistools.misc import AppendPath
+from artistools.misc import CustomArgHelpFormatter
+from artistools.misc import flatten_list
+from artistools.misc import get_dirbin_labels
+from artistools.misc import get_filterfunc
+from artistools.misc import get_model_name
+from artistools.misc import get_nu_grid
+from artistools.misc import get_time_range
+from artistools.misc import get_vpkt_config
+from artistools.misc import get_vspec_dir_labels
+from artistools.misc import set_args_from_dict
+from artistools.misc import trim_or_pad
+from artistools.plottools import ExponentLabelFormatter
+from artistools.plottools import set_mpl_style
 
-hatches = ["", "x", "-", "\\", "+", "O", ".", "", "x", "*", "\\", "+", "O", "."]  # ,
+hatchestypes = ["", "x", "-", "\\", "+", "O", ".", "", "x", "*", "\\", "+", "O", "."]  # ,
 
 
 def path_is_artis_model(filepath: str | Path) -> bool:
@@ -41,13 +57,13 @@ def path_is_artis_model(filepath: str | Path) -> bool:
 def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
     angle = args.plotviewingangle[0]
     dfspectrum = (
-        at.spectra.get_specpol_data(angle=angle, modelpath=modelpath)[args.stokesparam]
+        atspectra.get_specpol_data(angle=angle, modelpath=modelpath)[args.stokesparam]
         .with_columns(lambda_angstroms=2.99792458e18 / pl.col("nu"))
         .to_pandas(use_pyarrow_extension_array=True)
     )
 
     timearray = dfspectrum.keys()[1:-1]
-    (_, _, args.timemin, args.timemax) = at.get_time_range(
+    (_, _, args.timemin, args.timemax) = get_time_range(
         modelpath, args.timestep, args.timemin, args.timemax, args.timedays
     )
     assert args.timemin is not None
@@ -59,12 +75,12 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
 
     timeavg = match_closest_time(timeavg)
 
-    filterfunc = at.get_filterfunc(args)
+    filterfunc = get_filterfunc(args)
     if filterfunc is not None:
         print("Applying filter to ARTIS spectrum")
         dfspectrum[timeavg] = filterfunc(dfspectrum[timeavg])
 
-    vpkt_config = at.get_vpkt_config(modelpath)
+    vpkt_config = get_vpkt_config(modelpath)
 
     linelabel = (
         f"{timeavg} days, cos($\\theta$) = {vpkt_config['cos_theta'][angle[0]]}"
@@ -129,7 +145,7 @@ def plot_reference_spectrum(
     The filename must be in space separated text formatted with the first two
     columns being wavelength in Angstroms, and F_lambda
     """
-    specdata, metadata = at.spectra.get_reference_spectrum(filename)
+    specdata, metadata = atspectra.get_reference_spectrum(filename)
 
     # scale to flux at required distance
     if scale_to_dist_mpc:
@@ -143,7 +159,7 @@ def plot_reference_spectrum(
         plotkwargs["label"] = metadata.get("label", filename)
 
     if scaletoreftime is not None:
-        timefactor = at.spectra.timeshift_fluxscale_co56law(scaletoreftime, float(metadata["t"]))
+        timefactor = atspectra.timeshift_fluxscale_co56law(scaletoreftime, float(metadata["t"]))
         print(f" Scale from time {metadata['t']} to {scaletoreftime}, factor {timefactor} using Co56 decay law")
         specdata = specdata.with_columns(f_lambda=pl.col("f_lambda") * timefactor)
         plotkwargs["label"] += f" * {timefactor:.2f}"
@@ -178,7 +194,7 @@ def plot_reference_spectrum(
 
     specdata = specdata.filter(pl.col("lambda_angstroms").is_between(xmin, xmax))
 
-    at.spectra.print_integrated_flux(
+    atspectra.print_integrated_flux(
         specdata["f_lambda"], specdata["lambda_angstroms"], distance_megaparsec=metadata["dist_mpc"]
     )
 
@@ -213,7 +229,7 @@ def plot_filter_functions(axis: mplax.Axes) -> None:
     filter_names = ["U", "B", "V", "I"]
     colours = ["r", "b", "g", "c", "m"]
 
-    filterdir = Path(at.get_config()["path_artistools_dir"], "data/filters/")
+    filterdir = Path(get_config()["path_artistools_dir"], "data/filters/")
     for index, filter_name in enumerate(filter_names):
         filter_data = pd.read_csv(
             filterdir / f"{filter_name}.txt",
@@ -273,11 +289,11 @@ def plot_artis_spectrum(
     for axindex, axis in enumerate(axes):
         clamp_to_timesteps = not args.notimeclamp
         if args.multispecplot:
-            (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
+            (timestepmin, timestepmax, args.timemin, args.timemax) = get_time_range(
                 modelpath, timedays_range_str=args.timedayslist[axindex], clamp_to_timesteps=clamp_to_timesteps
             )
         else:
-            (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
+            (timestepmin, timestepmax, args.timemin, args.timemax) = get_time_range(
                 modelpath,
                 args.timestep,
                 args.timemin,
@@ -286,7 +302,7 @@ def plot_artis_spectrum(
                 clamp_to_timesteps=clamp_to_timesteps,
             )
 
-        modelname = at.get_model_name(modelpath)
+        modelname = get_model_name(modelpath)
         if timestepmin == timestepmax == -1:
             return None
 
@@ -313,7 +329,7 @@ def plot_artis_spectrum(
 
         supxmin, supxmax = axis.get_xlim()
         if from_packets:
-            viewinganglespectra = at.spectra.get_from_packets(
+            viewinganglespectra = atspectra.get_from_packets(
                 modelpath,
                 args.timemin,
                 args.timemax,
@@ -331,7 +347,7 @@ def plot_artis_spectrum(
 
         elif args.plotvspecpol is not None:
             # read virtual packet files (after running plotartisspectrum --makevspecpol)
-            vpkt_config = at.get_vpkt_config(modelpath)
+            vpkt_config = get_vpkt_config(modelpath)
             if vpkt_config["time_limits_enabled"] and (
                 args.timemin < vpkt_config["initial_time"] or args.timemax > vpkt_config["final_time"]
             ):
@@ -342,12 +358,12 @@ def plot_artis_spectrum(
                 sys.exit(1)
 
             viewinganglespectra = {
-                dirbin: at.spectra.get_vspecpol_spectrum(modelpath, timeavg, dirbin, args, fluxfilterfunc=filterfunc)
+                dirbin: atspectra.get_vspecpol_spectrum(modelpath, timeavg, dirbin, args, fluxfilterfunc=filterfunc)
                 for dirbin in directionbins
                 if dirbin >= 0
             }
         else:
-            viewinganglespectra = at.spectra.get_spectrum(
+            viewinganglespectra = atspectra.get_spectrum(
                 modelpath=modelpath,
                 directionbins=directionbins,
                 timestepmin=timestepmin,
@@ -358,9 +374,9 @@ def plot_artis_spectrum(
             )
 
         dirbin_definitions = (
-            at.get_vspec_dir_labels(modelpath=modelpath, usedegrees=usedegrees)
+            get_vspec_dir_labels(modelpath=modelpath, usedegrees=usedegrees)
             if args.plotvspecpol
-            else at.get_dirbin_labels(
+            else get_dirbin_labels(
                 dirbins=directionbins,
                 modelpath=modelpath,
                 average_over_phi=average_over_phi,
@@ -398,7 +414,7 @@ def plot_artis_spectrum(
                 if len(directionbins) > 1 or not linelabel_is_custom:
                     linelabel_withdirbin = linelabel + " " + dirbin_definitions[dirbin]
 
-            at.spectra.print_integrated_flux(dfspectrum["f_lambda"], dfspectrum["lambda_angstroms"])
+            atspectra.print_integrated_flux(dfspectrum["f_lambda"], dfspectrum["lambda_angstroms"])
 
             if scale_to_peak:
                 dfspectrum = dfspectrum.with_columns(
@@ -477,9 +493,9 @@ def make_spectrum_plot(
         seriesdata: pl.DataFrame | None
         if (
             Path(specpath).is_file()
-            or Path(at.get_config()["path_artistools_dir"], "data", "refspectra", specpath).is_file()
-            or Path(at.get_config()["path_artistools_dir"], "data", "refspectra", f"{specpath!s}.xz").is_file()
-            or Path(at.get_config()["path_artistools_dir"], "data", "refspectra", f"{specpath!s}.zstd").is_file()
+            or Path(get_config()["path_artistools_dir"], "data", "refspectra", specpath).is_file()
+            or Path(get_config()["path_artistools_dir"], "data", "refspectra", f"{specpath!s}.xz").is_file()
+            or Path(get_config()["path_artistools_dir"], "data", "refspectra", f"{specpath!s}.zstd").is_file()
         ):
             # reference spectrum
             if "linewidth" not in plotkwargs:
@@ -514,11 +530,13 @@ def make_spectrum_plot(
             refspecindex += 1
         elif not specpath.exists() and specpath.parts[0] == "codecomparison":
             # timeavg = (args.timemin + args.timemax) / 2.
-            (_timestepmin, _timestepmax, args.timemin, args.timemax) = at.get_time_range(
+            (_timestepmin, _timestepmax, args.timemin, args.timemax) = get_time_range(
                 specpath, args.timestep, args.timemin, args.timemax, args.timedays
             )
             timeavg = args.timedays
-            at.codecomparison.plot_spectrum(specpath, timedays=timeavg, ax=axes[0], **plotkwargs)
+            from artistools.codecomparison import plot_spectrum
+
+            plot_spectrum(specpath, timedays=timeavg, ax=axes[0], **plotkwargs)
             refspecindex += 1
         else:
             # ARTIS model spectrum
@@ -550,7 +568,7 @@ def make_spectrum_plot(
                 continue
 
             if seriesdata is not None:
-                seriesname = at.get_model_name(specpath)
+                seriesname = get_model_name(specpath)
                 artisindex += 1
 
         if args.write_data and seriesdata is not None:
@@ -622,12 +640,12 @@ def make_emissionabsorption_plot(
     scale_to_peak: float | None = None,
 ) -> tuple[list[Artist], list[str], pl.DataFrame | None]:
     """Plot the emission and absorption contribution spectra, grouped by ion/line/term for an ARTIS model."""
-    modelname = at.get_model_name(modelpath)
+    modelname = get_model_name(modelpath)
 
     print(f"====> {modelname}")
     clamp_to_timesteps = not args.notimeclamp
 
-    (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
+    (timestepmin, timestepmax, args.timemin, args.timemax) = get_time_range(
         modelpath, args.timestep, args.timemin, args.timemax, args.timedays, clamp_to_timesteps=clamp_to_timesteps
     )
 
@@ -651,7 +669,7 @@ def make_emissionabsorption_plot(
     dirbin = args.plotviewingangle[0] if args.plotviewingangle else args.plotvspecpol[0] if args.plotvspecpol else None
     if args.frompackets:
         (contribution_list, array_flambda_emission_total, arraylambda_angstroms) = (
-            at.spectra.get_flux_contributions_from_packets(
+            atspectra.get_flux_contributions_from_packets(
                 modelpath,
                 args.timemin,
                 args.timemax,
@@ -676,8 +694,8 @@ def make_emissionabsorption_plot(
         )
     else:
         assert not args.vpkt_match_emission_exclusion_to_opac
-        arraylambda_angstroms = 2.99792458e18 / at.get_nu_grid(modelpath)
-        contribution_list, array_flambda_emission_total = at.spectra.get_flux_contributions(
+        arraylambda_angstroms = 2.99792458e18 / get_nu_grid(modelpath)
+        contribution_list, array_flambda_emission_total = atspectra.get_flux_contributions(
             modelpath,
             filterfunc,
             timestepmin,
@@ -690,11 +708,11 @@ def make_emissionabsorption_plot(
             average_over_theta=args.average_over_theta_angle,
         )
 
-    at.spectra.print_integrated_flux(array_flambda_emission_total, arraylambda_angstroms)
+    atspectra.print_integrated_flux(array_flambda_emission_total, arraylambda_angstroms)
 
     # print("\n".join([f"{x[0]}, {x[1]}" for x in contribution_list]))
 
-    contributions_sorted_reduced = at.spectra.sort_and_reduce_flux_contribution_list(
+    contributions_sorted_reduced = atspectra.sort_and_reduce_flux_contribution_list(
         contribution_list,
         args.maxseriescount,
         arraylambda_angstroms,
@@ -761,7 +779,7 @@ def make_emissionabsorption_plot(
             )
             if args.greyscale:
                 for i, stack in enumerate(stackplot):
-                    selectedhatch = hatches[i % len(hatches)]
+                    selectedhatch = hatchestypes[i % len(hatchestypes)]
                     stack.set_hatch(selectedhatch * 7)
             plotobjects.extend(stackplot)
             facecolors = [p.get_facecolor()[0] for p in stackplot]
@@ -818,9 +836,9 @@ def make_emissionabsorption_plot(
         plotlabel = f"{modelname}\n{args.timemin:.2f}d to {args.timemax:.2f}d"
         if args.plotviewingangle or args.plotvspecpol:
             dirbin_definitions = (
-                at.get_vspec_dir_labels(modelpath=modelpath, usedegrees=args.usedegrees)
+                get_vspec_dir_labels(modelpath=modelpath, usedegrees=args.usedegrees)
                 if args.plotvspecpol
-                else at.get_dirbin_labels(
+                else get_dirbin_labels(
                     dirbins=args.plotviewingangle,
                     modelpath=modelpath,
                     average_over_phi=args.average_over_phi_angle,
@@ -854,8 +872,10 @@ def make_emissionabsorption_plot(
         axis.set_ylabel(r"Scaled F$_\lambda$ + offset")
 
     if args.showbinedges:
-        radfielddata = at.radfield.read_files(modelpath, timestep=timestepmax, modelgridindex=30)
-        binedges = at.radfield.get_binedges(radfielddata)
+        import artistools.radfield as atradfield
+
+        radfielddata = atradfield.read_files(modelpath, timestep=timestepmax, modelgridindex=30)
+        binedges = atradfield.get_binedges(radfielddata)
         axis.vlines(binedges, ymin=0.0, ymax=ymax, linewidth=0.5, color="red", label="", zorder=-1, alpha=0.4)
 
     return plotobjects, plotobjectlabels, dfaxisdata
@@ -864,23 +884,25 @@ def make_emissionabsorption_plot(
 def make_contrib_plot(
     axes: Iterable[mplax.Axes], modelpath: Path, densityplotyvars: list[str], args: argparse.Namespace
 ) -> None:
-    (_timestepmin, _timestepmax, args.timemin, args.timemax) = at.get_time_range(
+    (_timestepmin, _timestepmax, args.timemin, args.timemax) = get_time_range(
         modelpath, args.timestep, args.timemin, args.timemax, args.timedays
     )
+    import artistools.estimators as atestimators
+    import artistools.packets as atpackets
 
-    modeldata, _ = at.inputmodel.get_modeldata(modelpath)
+    modeldata, _ = get_modeldata(modelpath)
 
     if args.classicartis:
-        modeldata, _ = at.inputmodel.get_modeldata(modelpath)
-        estimators = at.estimators.estimators_classic.read_classic_estimators(modelpath, modeldata)
+        modeldata, _ = get_modeldata(modelpath)
+        estimators = atestimators.estimators_classic.read_classic_estimators(modelpath, modeldata)
         allnonemptymgilist = list(modeldata.index)
 
     else:
-        estimators = at.estimators.read_estimators(modelpath=modelpath)
+        estimators = atestimators.read_estimators(modelpath=modelpath)
         allnonemptymgilist = list({modelgridindex for ts, modelgridindex in estimators})
 
     assert estimators is not None
-    packetsfiles = at.packets.get_packets_text_paths(modelpath, args.maxpacketfiles)
+    packetsfiles = atpackets.get_packets_text_paths(modelpath, args.maxpacketfiles)
     assert args.timemin is not None
     assert args.timemax is not None
     # tdays_min = float(args.timemin)
@@ -893,14 +915,14 @@ def make_contrib_plot(
     list_lambda: dict[str, list[float]] = {}
     lists_y: dict[str, list[float]] = {}
     for packetsfile in packetsfiles:
-        dfpackets = at.packets.readfile(packetsfile, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
+        dfpackets = atpackets.readfile(packetsfile, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
 
         dfpackets_selected = dfpackets.query(
             "@nu_min <= nu_rf < @nu_max and t_arrive_d >= @tdays_min and t_arrive_d <= @tdays_max", inplace=False
         ).copy()
 
         # TODO: optimize this to avoid calculating unused columns
-        dfpackets_selected = at.packets.add_derived_columns(
+        dfpackets_selected = atpackets.add_derived_columns(
             dfpackets_selected,
             modelpath,
             ["em_timestep", "emtrue_modelgridindex", "emission_velocity"],
@@ -936,7 +958,7 @@ def make_contrib_plot(
     for ax, yvar in zip(axes, densityplotyvars, strict=False):
         # ax.set_ylabel(r'velocity [{} km/s]')
         if not args.hideyticklabels:
-            ax.set_ylabel(yvar + " " + at.estimators.get_units_string(yvar))
+            ax.set_ylabel(yvar + " " + atestimators.get_units_string(yvar))
         # ax.plot(list_lambda, list_yvar, lw=0, marker='o', markersize=0.5)
         # ax.hexbin(list_lambda[yvar], lists_y[yvar], gridsize=100, cmap=plt.cm.BuGn_r)
         ax.hist2d(list_lambda[yvar], lists_y[yvar], bins=(50, 30), cmap="Greys")
@@ -961,8 +983,8 @@ def make_plot(args) -> tuple[mplfig.Figure, np.ndarray, pl.DataFrame]:
 
     nrows = len(args.timedayslist) if args.multispecplot else 1 + len(densityplotyvars)
 
-    figwidth = args.figscale * at.get_config()["figwidth"]
-    figheight = args.figscale * at.get_config()["figwidth"] * (0.25 + nrows * 0.4)
+    figwidth = args.figscale * get_config()["figwidth"]
+    figheight = args.figscale * get_config()["figwidth"] * (0.25 + nrows * 0.4)
     if args.showabsorption:
         figheight *= 1.56
     if args.hidexticklabels:
@@ -981,7 +1003,7 @@ def make_plot(args) -> tuple[mplfig.Figure, np.ndarray, pl.DataFrame]:
     axes = np.array([axes]) if nrows == 1 else np.array(axes)
     assert isinstance(axes, np.ndarray)
 
-    filterfunc = at.get_filterfunc(args)
+    filterfunc = get_filterfunc(args)
 
     scale_to_peak = 1.0 if args.normalised else None
 
@@ -1081,7 +1103,7 @@ def make_plot(args) -> tuple[mplfig.Figure, np.ndarray, pl.DataFrame]:
         # ax.xaxis.set_major_formatter(plt.NullFormatter())
 
         if "{" in ax.get_ylabel() and not args.logscale:
-            ax.yaxis.set_major_formatter(at.plottools.ExponentLabelFormatter(ax.get_ylabel(), decimalplaces=1))
+            ax.yaxis.set_major_formatter(ExponentLabelFormatter(ax.get_ylabel(), decimalplaces=1))
 
         if args.hidexticklabels:
             ax.tick_params(axis="x", which="both", labelbottom=False)
@@ -1128,7 +1150,7 @@ def addargs(parser) -> None:
         "specpath",
         default=[],
         nargs="*",
-        action=at.AppendPath,
+        action=AppendPath,
         help="Paths to ARTIS folders or reference spectra filenames",
     )
 
@@ -1399,16 +1421,16 @@ def addargs(parser) -> None:
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs) -> None:
     """Plot spectra from ARTIS and reference data."""
     if args is None:
-        parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
+        parser = argparse.ArgumentParser(formatter_class=CustomArgHelpFormatter, description=__doc__)
         addargs(parser)
-        at.set_args_from_dict(parser, kwargs)
+        set_args_from_dict(parser, kwargs)
         argcomplete.autocomplete(parser)
         args = parser.parse_args([] if kwargs else argsraw)
         if args.average_every_tenth_viewing_angle:
             print("WARNING: --average_every_tenth_viewing_angle is deprecated. use --average_over_phi_angle instead")
             args.average_over_phi_angle = True
 
-    at.set_mpl_style()
+    set_mpl_style()
 
     assert (
         not args.plotvspecpol or not args.plotviewingangle
@@ -1419,7 +1441,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     elif isinstance(args.specpath, str | Path):  # or not not isinstance(args.specpath, Iterable)
         args.specpath = [args.specpath]
 
-    args.specpath = at.flatten_list(args.specpath)
+    args.specpath = flatten_list(args.specpath)
 
     if args.timedayslist:
         args.multispecplot = True
@@ -1439,7 +1461,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 args.color.append(refspeccolors[refspecnum])
                 refspecnum += 1
 
-    args.color, args.label, args.linestyle, args.linealpha, args.dashes, args.linewidth = at.trim_or_pad(
+    args.color, args.label, args.linestyle, args.linealpha, args.dashes, args.linewidth = trim_or_pad(
         len(args.specpath), args.color, args.label, args.linestyle, args.linealpha, args.dashes, args.linewidth
     )
 
@@ -1452,11 +1474,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.frompackets = True
 
     if args.makevspecpol:
-        at.spectra.make_virtual_spectra_summed_file(args.specpath[0])
+        atspectra.make_virtual_spectra_summed_file(args.specpath[0])
         return
 
     if args.averagevspecpolfiles:
-        at.spectra.make_averaged_vspecfiles(args)
+        atspectra.make_averaged_vspecfiles(args)
         return
 
     if "/" in args.stokesparam:
@@ -1465,7 +1487,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if args.output_spectra:
         for modelpath in args.specpath:
-            at.spectra.write_flambda_spectra(modelpath)
+            atspectra.write_flambda_spectra(modelpath)
 
     else:
         if args.emissionabsorption:
