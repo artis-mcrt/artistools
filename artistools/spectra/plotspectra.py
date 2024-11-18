@@ -19,7 +19,6 @@ import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
-import pandas as pd
 import polars as pl
 import polars.selectors as cs
 from matplotlib import ticker
@@ -226,6 +225,8 @@ def plot_reference_spectrum(
 
 
 def plot_filter_functions(axis: mplax.Axes) -> None:
+    import pandas as pd
+
     filter_names = ["U", "B", "V", "I"]
     colours = ["r", "b", "g", "c", "m"]
 
