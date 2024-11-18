@@ -20,7 +20,6 @@ import pandas as pd
 from astropy import units as u
 from matplotlib import markers as mplmarkers
 from matplotlib.typing import MarkerType
-from scipy import integrate
 
 import artistools as at
 
@@ -28,6 +27,8 @@ import artistools as at
 def print_floers_line_ratio(
     modelpath: Path, timedays: float, arr_f_lambda: np.ndarray, arr_lambda_angstroms: np.ndarray
 ) -> None:
+    from scipy import integrate
+
     def get_line_flux(
         lambda_low: float, lambda_high: float, arr_f_lambda: np.ndarray, arr_lambda_angstroms: np.ndarray
     ) -> float:

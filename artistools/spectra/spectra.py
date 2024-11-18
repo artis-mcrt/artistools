@@ -19,7 +19,6 @@ import numpy.typing as npt
 import pandas as pd
 import polars as pl
 import polars.selectors as cs
-from scipy import integrate
 
 import artistools.packets as atpackets
 from artistools.configuration import get_config
@@ -710,6 +709,8 @@ def get_flux_contributions(
     average_over_phi: bool = False,
     average_over_theta: bool = False,
 ) -> tuple[list[fluxcontributiontuple], npt.NDArray[np.float64]]:
+    from scipy import integrate
+
     arr_tmid = get_timestep_times(modelpath, loc="mid")
     arr_tdelta = get_timestep_times(modelpath, loc="delta")
     arraynu = get_nu_grid(modelpath)
@@ -895,6 +896,8 @@ def get_flux_contributions_from_packets(
     directionbins_are_vpkt_observers: bool = False,
     vpkt_match_emission_exclusion_to_opac: bool = False,
 ) -> tuple[list[fluxcontributiontuple], np.ndarray, np.ndarray]:
+    from scipy import integrate
+
     assert groupby in {"ion", "line"}
 
     if directionbin is None:
@@ -1171,6 +1174,8 @@ def sort_and_reduce_flux_contribution_list(
     hideother: bool = False,
     greyscale: bool = False,
 ) -> list[fluxcontributiontuple]:
+    from scipy import integrate
+
     if fixedionlist:
         if unrecognised_items := [x for x in fixedionlist if x not in [y.linelabel for y in contribution_list_in]]:
             print(f"WARNING: did not understand these items in fixedionlist: {unrecognised_items}")
@@ -1279,6 +1284,8 @@ def print_integrated_flux(
     arr_lambda_angstroms: np.ndarray | pd.Series | pl.Series,
     distance_megaparsec: float = 1.0,
 ) -> float:
+    from scipy import integrate
+
     integrated_flux = abs(integrate.trapezoid(np.nan_to_num(arr_f_lambda, nan=0.0), x=arr_lambda_angstroms))
     lambda_min = arr_lambda_angstroms.min()
     lambda_max = arr_lambda_angstroms.max()

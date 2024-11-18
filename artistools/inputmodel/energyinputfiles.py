@@ -5,7 +5,6 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from scipy import integrate
 
 import artistools as at
 
@@ -69,6 +68,8 @@ def rprocess_const_and_powerlaw():
 
 
 def define_heating_rate():
+    from scipy import integrate
+
     tmin = 0.0001  # days
     tmax = 50
 
@@ -114,6 +115,8 @@ def define_heating_rate():
 
 
 def energy_from_rprocess_calculation(energy_thermo_data, get_rate=True):
+    from scipy import integrate
+
     index_time_greaterthan = energy_thermo_data[energy_thermo_data["time/s"] > 1e7].index  # 1e7 seconds = 116 days
     energy_thermo_data = energy_thermo_data.drop(index_time_greaterthan)
     # print("Dropping times later than 116 days")
