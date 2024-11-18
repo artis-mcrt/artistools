@@ -13,7 +13,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
-from scipy import integrate
 
 import artistools as at
 
@@ -374,6 +373,8 @@ def get_recombination_emission(
     max_levels: int,
     use_lte_pops: bool = False,
 ):
+    from scipy import integrate
+
     adata = at.atomic.get_levels(modelpath, get_photoionisations=True)
 
     lower_ion_stage = upper_ion_stage - 1
@@ -488,6 +489,8 @@ def get_recombination_emission(
 
 def get_ion_gamma_dnu(modelpath, modelgridindex, timestep, atomic_number, ion_stage, arr_nu_hz, J_nu_arr, max_levels):
     """Calculate the contribution to the photoionisation rate coefficient per J_nu at each frequency nu for an ion."""
+    from scipy import integrate
+
     estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
 
     T_e = estimators[timestep, modelgridindex]["Te"]
@@ -537,6 +540,8 @@ def get_ion_gamma_dnu(modelpath, modelgridindex, timestep, atomic_number, ion_st
 
 
 def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, timestep, xmin, xmax, ymax):
+    from scipy import integrate
+
     axes[0].set_ylabel(r"$\sigma$ [cm$^2$]")
 
     # recomblowerionlist = ((26, 1), (26, 2), (26, 3), (26, 4), (27, 2), (27, 3), (28, 2), (28, 3), (28, 4))

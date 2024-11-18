@@ -10,7 +10,6 @@ import argcomplete
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from scipy import integrate
 
 import artistools as at
 
@@ -101,6 +100,8 @@ def get_particle_elec_binding_energy_per_gram(traj_root, dictbinding, particleid
 
 
 def get_particle_nucenergy_released(traj_root, particleid, tmin_s, time_s_end):
+    from scipy import integrate
+
     memberfilename = "./Run_rprocess/energy_thermo.dat"
     erg_to_ev = 6.242e11
     with at.inputmodel.rprocess_from_trajectory.open_tar_file_or_extracted(

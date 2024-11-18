@@ -11,7 +11,6 @@ import pandas as pd
 import polars as pl
 from astropy import constants as const
 from astropy import units as u
-from scipy import integrate
 
 import artistools as at
 
@@ -294,6 +293,8 @@ def bolometric_magnitude(
     average_over_phi: bool = False,
     average_over_theta: bool = False,
 ) -> tuple[list[float], list[float]]:
+    from scipy import integrate
+
     magnitudes = []
     times = []
 
@@ -379,6 +380,8 @@ def get_spectrum_in_filter_range(
 
 
 def evaluate_magnitudes(flux, transmission, wavelength_from_spectrum, zeropointenergyflux: float) -> float:
+    from scipy import integrate
+
     cf = flux * transmission
     flux_obs = abs(integrate.trapezoid(cf, wavelength_from_spectrum))  # using trapezoidal rule to integrate
     val = 0.0 if flux_obs == 0.0 else -2.5 * np.log10(flux_obs / zeropointenergyflux)

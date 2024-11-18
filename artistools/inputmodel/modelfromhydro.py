@@ -14,7 +14,6 @@ import pandas as pd
 import polars as pl
 import polars.selectors as cs
 from astropy import units as u
-from scipy import integrate
 
 import artistools as at
 
@@ -278,6 +277,8 @@ def mirror_model_in_axis(griddata):
 
 
 def add_mass_to_center(griddata, t_model_in_days, vmax, args: argparse.Namespace):
+    from scipy import integrate
+
     print(griddata)
 
     # Just (2021) Fig. 16 top left panel
