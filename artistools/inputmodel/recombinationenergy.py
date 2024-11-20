@@ -142,8 +142,8 @@ def get_particles_recomb_nuc_energy(traj_root, dfbinding):
             nuclear_released_en_list.append(nuc_en_released)
             # print(particleid, ye, elecbinding_en)
         except FileNotFoundError:
-            pass
             # print(f' WARNING particle {particleid} not found! ')
+            pass
 
     dfrecomb = pd.DataFrame({
         "ye": ye_list,

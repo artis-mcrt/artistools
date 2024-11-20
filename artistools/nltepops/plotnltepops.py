@@ -499,7 +499,7 @@ def plot_populations_with_time_or_velocity(
                 #                                                          == ionlevel]['n_LTE'].values[0])
 
         for ionlevel in ionlevels:
-            plottimesteps = np.array([int(ts) for ts, level, mgi in populations if level == ionlevel])
+            plottimesteps = np.array([ts for ts, level, mgi in populations if level == ionlevel])
             timedays = [at.get_timestep_time(modelpath, ts) for ts in plottimesteps]
             plotpopulations = np.array([
                 float(populations[ts, level, mgi]) for ts, level, mgi in populations if level == ionlevel
@@ -610,8 +610,8 @@ def make_plot(modelpath, atomic_number, ion_stages_displayed, mgilist, timestep,
         nne = estimators[timestep, modelgridindex]["nne"]
         W = estimators[timestep, modelgridindex]["W"]
 
-        subplot_title = str(modelname)
-        if len(modelname) > 10:
+        subplot_title = modelname
+        if len(subplot_title) > 10:
             subplot_title += "\n"
         velocity = at.inputmodel.get_modeldata_tuple(modelpath)[0]["vel_r_max_kmps"][modelgridindex]
         subplot_title += f" {velocity:.0f} km/s at"

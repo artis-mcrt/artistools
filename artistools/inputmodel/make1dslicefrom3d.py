@@ -137,7 +137,7 @@ def append_cell_to_output(
     cell, outcellid: int, t_model: str | float, listout: list[str], xlist: list[float], ylists: list[list[float]]
 ) -> None:
     dist = math.sqrt(float(cell["pos_x_min"]) ** 2 + float(cell["pos_y_min"]) ** 2 + float(cell["pos_z_min"]) ** 2)
-    velocity = float(dist) / float(t_model) / 86400.0 / 1.0e5
+    velocity = dist / float(t_model) / 86400.0 / 1.0e5
 
     listout.append(
         f"{outcellid:6d}  {velocity:8.2f}  {math.log10(max(float(cell['rho']), 1e-100)):8.5f}  "

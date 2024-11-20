@@ -17,7 +17,7 @@ def get_theta_phi(anglebin):
     anglenumber = 0
     for t in theta:
         for p in phi:
-            if int(anglenumber) == anglebin:
+            if anglenumber == anglebin:
                 return t, p
 
             anglenumber += 1
