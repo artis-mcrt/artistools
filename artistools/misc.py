@@ -101,7 +101,7 @@ def showtimesteptimes(modelpath: Path | None = None, numberofcolumns: int = 5) -
                 strline += "\t"
             newindex = rownum + colnum * indexendofcolumnone
             if newindex + 1 < len(times):
-                strline += f"{newindex:4d}: {float(times[newindex + 1]):.3f}d"
+                strline += f"{newindex:4d}: {times[newindex + 1]:.3f}d"
         print(strline)
 
 
@@ -528,10 +528,10 @@ def get_time_range(
         timestepmax = timesteplast
     if time_days_lower is None:
         assert timestepmin is not None
-        time_days_lower = float(tstarts[timestepmin]) if clamp_to_timesteps else timemin
+        time_days_lower = tstarts[timestepmin] if clamp_to_timesteps else timemin
     if time_days_upper is None:
         assert timestepmax is not None
-        time_days_upper = float(tends[timestepmax]) if clamp_to_timesteps else timemax
+        time_days_upper = tends[timestepmax] if clamp_to_timesteps else timemax
     assert timestepmin is not None
     assert timestepmax is not None
 
@@ -1348,7 +1348,7 @@ def get_dfrankassignments(modelpath: Path | str) -> pd.DataFrame | None:
     if filerankassignments.is_file():
         dfrankassignments = pd.read_csv(filerankassignments, sep=r"\s+")
         return dfrankassignments.rename(
-            columns={dfrankassignments.columns[0]: str(dfrankassignments.columns[0]).lstrip("#")}
+            columns={dfrankassignments.columns[0]: dfrankassignments.columns[0].lstrip("#")}
         )
     return None
 

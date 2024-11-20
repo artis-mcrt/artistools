@@ -315,24 +315,27 @@ def get_levels(
     derived_transitions_columns: Sequence[str] | None = None,
     use_rust_reader: bool | None = None,
 ) -> pd.DataFrame:
-    pldf = get_levels_polars(
-        modelpath,
-        ionlist=ionlist,
-        get_transitions=get_transitions,
-        get_photoionisations=get_photoionisations,
-        quiet=quiet,
-        derived_transitions_columns=derived_transitions_columns,
-        use_rust_reader=use_rust_reader,
+    """Return a pandas DataFrame of energy levels."""
+    return (
+        get_levels_polars(
+            modelpath,
+            ionlist=ionlist,
+            get_transitions=get_transitions,
+            get_photoionisations=get_photoionisations,
+            quiet=quiet,
+            derived_transitions_columns=derived_transitions_columns,
+            use_rust_reader=use_rust_reader,
+        )
+        .with_columns(
+            levels=pl.col("levels").map_elements(
+                lambda x: x.to_pandas(use_pyarrow_extension_array=True), return_dtype=pl.Object
+            ),
+            transitions=pl.col("transitions").map_elements(
+                lambda x: x.collect().to_pandas(use_pyarrow_extension_array=True), return_dtype=pl.Object
+            ),
+        )
+        .to_pandas(use_pyarrow_extension_array=True)
     )
-    pldf = pldf.with_columns(
-        levels=pl.col("levels").map_elements(
-            lambda x: x.to_pandas(use_pyarrow_extension_array=True), return_dtype=pl.Object
-        ),
-        transitions=pl.col("transitions").map_elements(
-            lambda x: x.collect().to_pandas(use_pyarrow_extension_array=True), return_dtype=pl.Object
-        ),
-    )
-    return pldf.to_pandas(use_pyarrow_extension_array=True)
 
 
 def parse_recombratefile(frecomb: io.TextIOBase) -> t.Generator[tuple[int, int, pl.DataFrame], None, None]:
@@ -342,7 +345,7 @@ def parse_recombratefile(frecomb: io.TextIOBase) -> t.Generator[tuple[int, int, 
         arr_log10t = []
         arr_rrc_low_n = []
         arr_rrc_total = []
-        for _ in range(int(t_count)):
+        for _ in range(t_count):
             log10t, rrc_low_n, rrc_total = (float(x) for x in frecomb.readline().split())
 
             arr_log10t.append(log10t)

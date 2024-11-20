@@ -48,9 +48,7 @@ hatchestypes = ["", "x", "-", "\\", "+", "O", ".", "", "x", "*", "\\", "+", "O",
 def path_is_artis_model(filepath: str | Path) -> bool:
     if Path(filepath).name.endswith(".out.zst"):
         return True
-    if Path(filepath).suffix == ".out":
-        return True
-    return Path(filepath).is_dir()
+    return True if Path(filepath).suffix == ".out" else Path(filepath).is_dir()
 
 
 def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
@@ -413,7 +411,7 @@ def plot_artis_spectrum(
             if dirbin != -1:
                 print(f" direction {dirbin:4d}  {dirbin_definitions[dirbin]}")
                 if len(directionbins) > 1 or not linelabel_is_custom:
-                    linelabel_withdirbin = linelabel + " " + dirbin_definitions[dirbin]
+                    linelabel_withdirbin = f"{linelabel} {dirbin_definitions[dirbin]}"
 
             atspectra.print_integrated_flux(dfspectrum["f_lambda"], dfspectrum["lambda_angstroms"])
 
@@ -743,11 +741,11 @@ def make_emissionabsorption_plot(
     # dfaxisdata['nu_hz'] = arraynu
     for x in contributions_sorted_reduced:
         dfaxisdata = dfaxisdata.with_columns(
-            pl.Series(name="emission_flambda." + x.linelabel, values=x.array_flambda_emission)
+            pl.Series(name=f"emission_flambda.{x.linelabel}", values=x.array_flambda_emission)
         )
         if args.showabsorption:
             dfaxisdata = dfaxisdata.with_columns(
-                pl.Series(name="absorption_flambda." + x.linelabel, values=x.array_flambda_absorption)
+                pl.Series(name=f"absorption_flambda.{x.linelabel}", values=x.array_flambda_absorption)
             )
 
     if args.nostack:
@@ -959,7 +957,7 @@ def make_contrib_plot(
     for ax, yvar in zip(axes, densityplotyvars, strict=False):
         # ax.set_ylabel(r'velocity [{} km/s]')
         if not args.hideyticklabels:
-            ax.set_ylabel(yvar + " " + atestimators.get_units_string(yvar))
+            ax.set_ylabel(f"{yvar} {atestimators.get_units_string(yvar)}")
         # ax.plot(list_lambda, list_yvar, lw=0, marker='o', markersize=0.5)
         # ax.hexbin(list_lambda[yvar], lists_y[yvar], gridsize=100, cmap=plt.cm.BuGn_r)
         ax.hist2d(list_lambda[yvar], lists_y[yvar], bins=(50, 30), cmap="Greys")

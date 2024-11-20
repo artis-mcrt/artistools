@@ -400,9 +400,7 @@ def scan_estimators(
         # for older files with no deposition data, take heating part of deposition and heating fraction
         pldflazy = pldflazy.with_columns(total_dep=pl.col("heating_dep") / pl.col("heating_heating_dep/total_dep"))
 
-    pldflazy = pldflazy.with_columns(nntot=pl.sum_horizontal(cs.starts_with("nnelement_")))
-
-    return pldflazy.fill_null(0)
+    return pldflazy.with_columns(nntot=pl.sum_horizontal(cs.starts_with("nnelement_"))).fill_null(0)
 
 
 def read_estimators(

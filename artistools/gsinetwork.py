@@ -556,7 +556,7 @@ def plot_qdot_abund_modelcells(
     arr_time_artis_s_alltimesteps = np.array([t * 8.640000e04 for t in arr_time_artis_days_alltimesteps])
     # no completed timesteps yet, so display full set of timesteps that artis will compute
     if not arr_time_artis_days:
-        arr_time_artis_days = list(arr_time_artis_days_alltimesteps)
+        arr_time_artis_days = arr_time_artis_days_alltimesteps.copy()
 
     arr_time_gsi_s = np.array([modelmeta["t_model_init_days"] * 86400, *arr_time_artis_s_alltimesteps])
 
