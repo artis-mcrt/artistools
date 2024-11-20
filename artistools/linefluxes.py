@@ -587,7 +587,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
         refdatakeys[refdataindex] = refdatakeys_thisseries
         refdatatimes[refdataindex] = np.array([float(t) for t in refdatakeys_thisseries])
         refdatapoints[refdataindex] = [floers_te_nne[t] for t in refdatakeys_thisseries]
-        print(f"{refdatafilename} data available for times: {list(refdatakeys_thisseries)}")
+        print(f"{refdatafilename} data available for times: {refdatakeys_thisseries}")
 
     times_days = (np.array(args.timebins_tstart) + np.array(args.timebins_tend)) / 2.0
 

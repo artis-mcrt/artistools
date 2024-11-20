@@ -199,7 +199,7 @@ reportUnnecessaryTypeIgnoreComment = true
 reportUnknownVariableType = false
 typeCheckingMode = "standard"
 useLibraryCodeForTypes = false
-targetVersion = "3.10"
+targetVersion = "3.13"
 extraPaths = ["../pynonthermal/"]
 
 [tool.pytest.ini_options]

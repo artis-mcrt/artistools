@@ -618,7 +618,7 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
 
         bands = [args.filter[0], args.filter[1]]
 
-        datafilename = bands[0] + "band_" + str(modelname) + "_viewing_angle_data.txt"
+        datafilename = bands[0] + "band_" + modelname + "_viewing_angle_data.txt"
         viewing_angle_plot_data = pd.read_csv(datafilename, delimiter=" ")
         data = {f"{bands[0]}max": viewing_angle_plot_data["peak_mag_polyfit"].to_numpy()}
         data[f"time_{bands[0]}max"] = viewing_angle_plot_data["risetime_polyfit"].to_numpy()
