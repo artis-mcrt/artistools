@@ -566,7 +566,7 @@ def make_averaged_vspecfiles(args: argparse.Namespace) -> None:
             return int(text) if text.isdigit() else text
 
         def alphanum_key(key: str) -> list[int | str]:
-            return [convert(c) for c in re.split("([0-9]+)", key)]
+            return [convert(c) for c in re.split(r"([0-9]+)", key)]
 
         return sorted(lst, key=alphanum_key)
 
