@@ -19,22 +19,22 @@ def texifyterm(strterm: str) -> str:
     strtermtex = ""
     passed_term_Lchar = False
 
-    for termpiece in re.split("([_A-Za-z])", strterm):
-        if re.match("[0-9]", termpiece) is not None and not passed_term_Lchar:
+    for termpiece in re.split(r"([_A-Za-z])", strterm):
+        if re.match(r"[0-9]", termpiece) is not None and not passed_term_Lchar:
             # 2S + 1 number
             strtermtex += r"$^{" + termpiece + r"}$"
-        elif re.match("[A-Z]", termpiece) is not None:
+        elif re.match(r"[A-Z]", termpiece) is not None:
             # L character - SPDFGH...
             strtermtex += termpiece
             passed_term_Lchar = True
-        elif re.match("[eo]", termpiece) is not None and passed_term_Lchar:
+        elif re.match(r"[eo]", termpiece) is not None and passed_term_Lchar:
             # odd flag, but don't want to confuse it with the energy index (e.g. o4Fo[2])
             if termpiece != "e":  # even is assumed by default (and looks neater with all the 'e's)
                 strtermtex += r"$^{\rm " + termpiece + r"}$"
         elif re.match(r"[0-9]?.*\]", termpiece) is not None:
             # J value
             strtermtex += termpiece.split("[")[0] + r"$_{" + termpiece.lstrip(string.digits).strip("[]") + r"}$"
-        elif re.match("[0-9]", termpiece) is not None and passed_term_Lchar:
+        elif re.match(r"[0-9]", termpiece) is not None and passed_term_Lchar:
             # extra number after S char
             strtermtex += termpiece
 
@@ -46,7 +46,7 @@ def texifyconfiguration(levelname: str) -> str:
     # the underscore gets confused with LaTeX subscript operator, so switch it to the hash symbol
     strout = "#".join(levelname.split("_")[:-1]) + "#"
     for strorbitalocc in re.findall(r"[0-9][a-z][0-9]?[#(]", strout):
-        n, lchar, occ = re.split("([a-z])", strorbitalocc)
+        n, lchar, occ = re.split(r"([a-z])", strorbitalocc)
         lastchar = "(" if occ.endswith("(") else "#"
         occ = occ.rstrip("#(")
         strorbitalocctex = n + lchar + (r"$^{" + occ + r"}$" if occ else "") + lastchar
