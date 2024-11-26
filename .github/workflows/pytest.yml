@@ -36,16 +36,21 @@ jobs:
             - name: Install artistools
               run: |
                   python3 -m pip install uv
-                  python3 -m uv pip install --system --upgrade pylint mypy ruff
+                  python3 -m uv pip install --system --upgrade pylint mypy
                   python3 -m uv pip install --compile-bytecode --editable .
 
             - name: Run Ruff
               if: always()
-              run: ruff check --output-format=github  --exit-non-zero-on-fix .
+              uses: astral-sh/ruff-action@v1
+              with:
+                version: 0.8.0
 
             - name: Run Ruff Format
               if: always()
-              run: ruff format --diff .
+              uses: astral-sh/ruff-action@v1
+              with:
+                args: "format --check"
+                version: 0.8.0
 
             - name: Run pyright
               if: always()
@@ -61,8 +66,6 @@ jobs:
 
     pre-commit:
         runs-on: macos-15
-        env:
-            RUFF_OUTPUT_FORMAT: 'github'
         steps:
             - name: Checkout Code
               uses: actions/checkout@v4
