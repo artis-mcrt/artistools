@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
 import argparse
+import contextlib
 import gc
-import io
 import math
 import string
 import tarfile
@@ -74,10 +74,10 @@ def get_dfelemabund_from_dfmodel(dfmodel: pl.DataFrame, dfnucabundances: pl.Data
     return dfelabundances
 
 
-def open_tar_file_or_extracted(traj_root: Path, particleid: int, memberfilename: str):
+def get_tar_member_extracted_path(traj_root: Path, particleid: int, memberfilename: str) -> Path:
     """Trajectory files are generally stored as {particleid}.tar.xz, but this is slow to access, so first check for extracted files, or decompressed .tar files, which are much faster to access.
 
-    memberfilename: file path within the trajectory tarfile, eg. ./Run_rprocess/evol.dat
+    memberfilename: file path within the trajectory tarfile, eg. ./Run_rprocess/energy_thermo.dat
     """
     path_extracted_file = Path(traj_root, str(particleid), memberfilename)
     tarfilepaths = [
@@ -91,6 +91,15 @@ def open_tar_file_or_extracted(traj_root: Path, particleid: int, memberfilename:
     ]
     tarfilepath = next((tarfilepath for tarfilepath in tarfilepaths if tarfilepath.is_file()), None)
 
+    if path_extracted_file.is_file():
+        if path_extracted_file.stat().st_size > 0:
+            with contextlib.suppress(OSError), path_extracted_file.open(encoding="utf-8") as f:
+                if f.read(1):
+                    return path_extracted_file
+
+        # file is empty, so remove it
+        path_extracted_file.unlink(missing_ok=True)
+
     # and memberfilename.endswith(".dat")
     if not path_extracted_file.is_file() and tarfilepath is not None:
         try:
@@ -99,39 +108,45 @@ def open_tar_file_or_extracted(traj_root: Path, particleid: int, memberfilename:
         except OSError:
             print(f"Problem extracting file {memberfilename} from {tarfilepath}")
             raise
+        except KeyError:
+            print(f"File {memberfilename} not found in {tarfilepath}")
+            raise
 
     if path_extracted_file.is_file():
-        return path_extracted_file.open(encoding="utf-8")
+        return path_extracted_file
 
     if tarfilepath is None:
         print(f"  No network data found for particle {particleid} (so can't access {memberfilename})")
         raise FileNotFoundError
 
-    # print(f"using {tarfilepath} for {memberfilename}")
-    # return tarfile.open(tarfilepath, "r:*").extractfile(member=memberfilename)
-    with tarfile.open(tarfilepath, "r:*") as tfile:
-        for tarmember in tfile:
-            if tarmember.name == memberfilename:
-                extractedfile = tfile.extractfile(tarmember)
-                if extractedfile is not None:
-                    return io.StringIO(extractedfile.read().decode("utf-8"))
-
     print(f"Member {memberfilename} not found in {tarfilepath}")
     raise AssertionError
 
 
+def open_tar_file_or_extracted(traj_root: Path, particleid: int, memberfilename: str):
+    """Trajectory files are generally stored as {particleid}.tar.xz, but this is slow to access, so first check for extracted files, or decompressed .tar files, which are much faster to access.
+
+    memberfilename: file path within the trajectory tarfile, eg. ./Run_rprocess/energy_thermo.dat
+    """
+    return get_tar_member_extracted_path(
+        traj_root=traj_root, particleid=particleid, memberfilename=memberfilename
+    ).open(encoding="utf-8")
+
+
 @lru_cache(maxsize=16)
-def get_dfevol(traj_root: Path, particleid: int) -> pd.DataFrame:
-    with open_tar_file_or_extracted(traj_root, particleid, "./Run_rprocess/evol.dat") as evolfile:
-        return pd.read_csv(
-            evolfile,
-            sep=r"\s+",
-            comment="#",
-            usecols=[0, 1],
-            names=["nstep", "timesec"],
-            engine="c",
-            dtype={0: "int32[pyarrow]", 1: "float32[pyarrow]"},
-            dtype_backend="pyarrow",
+def get_traj_network_timesteps(traj_root: Path, particleid: int) -> pl.DataFrame:
+    with open_tar_file_or_extracted(traj_root, particleid, "./Run_rprocess/energy_thermo.dat") as evolfile:
+        return pl.from_pandas(
+            pd.read_csv(
+                evolfile,
+                sep=r"\s+",
+                comment="#",
+                usecols=[0, 1],
+                names=["nstep", "timesec"],
+                engine="c",
+                dtype={0: "int32[pyarrow]", 1: "float32[pyarrow]"},
+                dtype_backend="pyarrow",
+            )
         )
 
 
@@ -144,19 +159,19 @@ def get_closest_network_timestep(
       - 'lessthan': find highest timestep less than time_sec
       - 'greaterthan': find lowest timestep greater than time_sec.
     """
-    dfevol = get_dfevol(traj_root, particleid)
+    dfevol = get_traj_network_timesteps(traj_root, particleid)
 
     if cond == "nearest":
-        idx = np.abs(dfevol.timesec.to_numpy() - timesec).argmin()
+        idx = np.abs(dfevol["timesec"].to_numpy() - timesec).argmin()
         return int(dfevol["nstep"].to_numpy()[idx])
 
     if cond == "greaterthan":
-        step = dfevol[dfevol["timesec"] > timesec]["nstep"].min()
+        step = dfevol.filter(pl.col("timesec") > timesec).get_column("nstep").min()
         assert isinstance(step, int)
         return step
 
     if cond == "lessthan":
-        step = dfevol[dfevol["timesec"] < timesec]["nstep"].max()
+        step = dfevol.filter(pl.col("timesec") < timesec).get_column("nstep").max()
         assert isinstance(step, int)
         return step
 
@@ -171,8 +186,8 @@ def get_trajectory_timestepfile_nuc_abund(
         try:
             _, str_t_model_init_seconds, _, _, _, _ = trajfile.readline().split()
         except ValueError as exc:
-            print(f"Problem with {memberfilename}")
-            msg = f"Problem with {memberfilename}"
+            msg = f"Problem with {memberfilename} for traj {particleid}"
+            print(msg)
             raise ValueError(msg) from exc
 
         trajfile.seek(0)
