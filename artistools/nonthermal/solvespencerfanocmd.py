@@ -172,7 +172,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         dfpops = at.nltepops.read_files(modelpath, modelgridindex=args.modelgridindex, timestep=args.timestep)
 
-        if dfpops.empty:
+        if dfpops is None or dfpops.empty:
             print(f"ERROR: no NLTE populations for cell {args.modelgridindex} at timestep {args.timestep}")
             raise AssertionError
 
