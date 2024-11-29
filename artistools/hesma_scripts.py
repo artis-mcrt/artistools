@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -155,9 +154,9 @@ def make_hesma_peakmag_dm15_dm40(
 
 def read_hesma_peakmag_dm15_dm40(pathtofiles) -> None:
     data = []
-    for filename in os.listdir(pathtofiles):
-        print(filename)
-        data.append(pd.read_csv(pathtofiles / filename, sep=r"\s+"))
+    for filepath in Path(pathtofiles).iterdir():
+        print(filepath)
+        data.append(pd.read_csv(filepath, sep=r"\s+"))
     print(data[0])
 
     for df in data:

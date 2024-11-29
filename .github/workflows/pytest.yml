@@ -43,14 +43,14 @@ jobs:
               if: always()
               uses: astral-sh/ruff-action@v1
               with:
-                version: 0.8.0
+                version: 0.8.1
 
             - name: Run Ruff Format
               if: always()
               uses: astral-sh/ruff-action@v1
               with:
                 args: "format --check"
-                version: 0.8.0
+                version: 0.8.1
 
             - name: Run pyright
               if: always()

@@ -3,7 +3,6 @@
 import argparse
 import contextlib
 import math
-import os
 import re
 import typing as t
 from collections import namedtuple
@@ -559,7 +558,11 @@ def make_virtual_spectra_summed_file(modelpath: Path | str) -> None:
 
 
 def make_averaged_vspecfiles(args: argparse.Namespace) -> None:
-    filenames = [vspecfile for vspecfile in os.listdir(args.modelpath[0]) if vspecfile.startswith("vspecpol_total-")]
+    filenames = [
+        vspecfile.name
+        for vspecfile in Path(args.modelpath[0]).iterdir()
+        if vspecfile.name.startswith("vspecpol_total-")
+    ]
 
     def sorted_by_number(lst: list) -> list:
         def convert(text: str) -> int | str:
