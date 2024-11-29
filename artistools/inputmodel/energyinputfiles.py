@@ -1,4 +1,3 @@
-import os
 import tarfile
 from pathlib import Path
 
@@ -144,7 +143,7 @@ def energy_from_rprocess_calculation(energy_thermo_data, get_rate=True):
 
 
 def get_rprocess_calculation_files(path_to_rprocess_calculation, interpolate_trajectories=False, thermalisation=False):
-    tarfiles = [file for file in os.listdir(path_to_rprocess_calculation) if file.endswith(".tar.xz")]
+    tarfiles = [file.name for file in Path(path_to_rprocess_calculation).iterdir() if file.name.endswith(".tar.xz")]
 
     trajectory_ids = []
     trajectory_E_tot = []
