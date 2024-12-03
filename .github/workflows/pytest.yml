@@ -41,13 +41,13 @@ jobs:
 
             - name: Run Ruff
               if: always()
-              uses: astral-sh/ruff-action@v1
+              uses: astral-sh/ruff-action@v2
               with:
                 version: 0.8.1
 
             - name: Run Ruff Format
               if: always()
-              uses: astral-sh/ruff-action@v1
+              uses: astral-sh/ruff-action@v2
               with:
                 args: "format --check"
                 version: 0.8.1
