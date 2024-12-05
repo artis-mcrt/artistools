@@ -95,26 +95,32 @@ def chunks(lst, n):
 
 def process_trajectory(nuc_data, traj_root, traj_masses_g, arr_t_day, traj_ID):
     traj_mass_grams = traj_masses_g[traj_ID]
-    dfheating = pl.from_pandas(
-        pd.read_csv(
-            get_tar_member_extracted_path(traj_root, traj_ID, "./Run_rprocess/heating.dat"),
-            sep=r"\s+",
-            usecols=["hbeta", "htot"],
+    dfheatingthermo = (
+        pl.from_pandas(
+            pd.read_csv(
+                get_tar_member_extracted_path(traj_root, traj_ID, "./Run_rprocess/heating.dat"),
+                sep=r"\s+",
+                usecols=["#count", "hbeta", "htot"],
+            )
         )
+        .join(
+            pl.from_pandas(
+                pd.read_csv(
+                    get_tar_member_extracted_path(traj_root, traj_ID, "./Run_rprocess/energy_thermo.dat"),
+                    sep=r"\s+",
+                    usecols=["#count", "time/s", "Qdot"],
+                )
+            ),
+            left_on="#count",
+            coalesce=True,
+        )
+        .rename({"#count": "nstep", "time/s": "timesec"})
     )
 
-    dfthermo = pl.from_pandas(
-        pd.read_csv(
-            get_tar_member_extracted_path(traj_root, traj_ID, "./Run_rprocess/energy_thermo.dat"),
-            sep=r"\s+",
-            usecols=["#count", "time/s", "Qdot"],
-        )
-    ).rename({"#count": "nstep", "time/s": "timesec"})
-
     # get nearest network time to each plotted time
-    arr_networktimedays = dfthermo["timesec"].to_numpy() / 86400
+    arr_networktimedays = dfheatingthermo["timesec"].to_numpy() / 86400
     networktimestepindices = [
-        int(dfthermo["nstep"].item(np.abs(arr_networktimedays - timedays).argmin())) for timedays in arr_t_day
+        int(dfheatingthermo["nstep"].item(np.abs(arr_networktimedays - timedays).argmin())) for timedays in arr_t_day
     ]
     networktimestepindices = [
         nts if np.isclose(arr_networktimedays[nts - 1], plot_time_days, rtol=0.10) else -1
@@ -136,7 +142,7 @@ def process_trajectory(nuc_data, traj_root, traj_masses_g, arr_t_day, traj_ID):
     } | {
         col: (
             np.array([
-                dfheating["hbeta"][networktimestepindex - 1] if networktimestepindex >= 1 else 0.0
+                dfheatingthermo[col][networktimestepindex - 1] if networktimestepindex >= 1 else 0.0
                 for networktimestepindex in networktimestepindices
             ])
             * traj_mass_grams
@@ -173,7 +179,7 @@ def process_trajectory(nuc_data, traj_root, traj_masses_g, arr_t_day, traj_ID):
                 abundweighted_elec=(pl.col("N_dot") * pl.col("Eelec[MeV]") * MeV_to_erg).sum(),
                 abundweighted_gamma=(pl.col("N_dot") * pl.col("Egamma[MeV]") * MeV_to_erg).sum(),
                 abundweighted_Qdot=(pl.col("N_dot") * pl.col("Q[MeV]") * MeV_to_erg).sum(),
-                massfrac_sum=pl.col("massfrac").sum(),
+                # massfrac_sum=pl.col("massfrac").sum(),
             )
             .collect()
         )
@@ -304,7 +310,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             linewidth=2,
             label=f"Traj {labelfull} abund -> beta + gamma + nu",
         )
-        ax1.plot(arr_t_day, decay_powers["abundweighted_Qdot"], linestyle="-", label=f"Traj {labelfull} abund -> Qdot")
+        ax1.plot(
+            arr_t_day, decay_powers["abundweighted_Qdot"], linestyle="-", label=f"Traj {labelfull} abund -> Qdot_beta"
+        )
         ax1.set_ylabel("energy release rate (erg/s)")
         ax1.set_yscale("log")
         ax1.legend()
