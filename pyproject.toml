@@ -274,7 +274,6 @@ ignore = [
     "PLR2004", # magic-value-comparison
     "PLW2901", # redefined-loop-name
     "PYI024",  # Use `typing.NamedTuple` instead of `collections.namedtuple`
-    "PTH208",  # os-listdir
     "S101",    # Use of assert detected
     "S310",    # suspicious-url-open-usage
     "S311",    # suspicious-non-cryptographic-random-usage
