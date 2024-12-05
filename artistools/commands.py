@@ -85,7 +85,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 def addsubparsers(
     parser: argparse.ArgumentParser, parentcommand: str, subcommandtree: CommandType, depth: int = 1
 ) -> None:
-    def func(args: t.Any) -> None:
+    def func(args: t.Any) -> None:  # noqa: ARG001
         parser.print_help()
 
     parser.set_defaults(func=func)
@@ -113,7 +113,7 @@ def addsubparsers(
             addsubparsers(parser=subparser, parentcommand=subcommand, subcommandtree=subcommands, depth=depth + 1)
 
 
-def setup_completions(*args: t.Any, **kwargs: t.Any) -> None:
+def setup_completions(*args: t.Any, **kwargs: t.Any) -> None:  # noqa: ARG001
     path_repo = Path(__file__).absolute().parent.parent
     completionscriptpath = path_repo / "artistoolscompletions.sh"
     with (completionscriptpath).open("w", encoding="utf-8") as f:

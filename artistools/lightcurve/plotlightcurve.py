@@ -722,7 +722,7 @@ def create_axes(args):
 
 
 def get_linelabel(
-    modelpath: Path, modelname: str, modelnumber: int, angle: int | None, angle_definition: dict[int, str] | None, args
+    modelname: str, modelnumber: int, angle: int | None, angle_definition: dict[int, str] | None, args
 ) -> str:
     if angle is not None and angle != -1:
         assert angle_definition is not None
@@ -790,7 +790,12 @@ def make_colorbar_viewingangles_colormap():
 
 
 def get_viewinganglecolor_for_colorbar(
-    angle: int, costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, plotkwargs, args
+    angle: int,
+    costheta_viewing_angle_bins,  # noqa: ARG001
+    phi_viewing_angle_bins,  # noqa: ARG001
+    scaledmap,
+    plotkwargs,
+    args,
 ) -> tuple[dict[str, t.Any], int]:
     nphibins = at.get_viewingdirection_phibincount()
     if args.colorbarcostheta:
@@ -808,7 +813,7 @@ def get_viewinganglecolor_for_colorbar(
     return plotkwargs, colorindex
 
 
-def make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args, fig=None, ax=None):
+def make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args, fig=None, ax=None):  # noqa: ARG001
     if args.colorbarcostheta:
         # ticklabels = costheta_viewing_angle_bins
         ticklabels = [" -1", " -0.8", " -0.6", " -0.4", " -0.2", " 0", " 0.2", " 0.4", " 0.6", " 0.8", " 1"]
@@ -903,7 +908,7 @@ def make_band_lightcurves_plot(
                 if args.print_data:
                     print(txtout)
 
-                plotkwargs["label"] = get_linelabel(modelpath, modelname, modelnumber, angle, angle_definition, args)
+                plotkwargs["label"] = get_linelabel(modelname, modelnumber, angle, angle_definition, args)
                 # plotkwargs['label'] = '\n'.join(wrap(linelabel, 40))  # TODO: could be arg? wraps text in label
 
                 filterfunc = at.get_filterfunc(args)
@@ -1062,7 +1067,7 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
 
                 plot_times, colour_delta_mag = at.lightcurve.get_colour_delta_mag(band_lightcurve_data, filter_names)
 
-                plotkwargs["label"] = get_linelabel(modelpath, modelname, modelnumber, angle, angle_definition, args)
+                plotkwargs["label"] = get_linelabel(modelname, modelnumber, angle, angle_definition, args)
 
                 filterfunc = at.get_filterfunc(args)
                 if filterfunc is not None:

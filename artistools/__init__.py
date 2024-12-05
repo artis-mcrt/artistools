@@ -108,7 +108,7 @@ from artistools.misc import zopenpl as zopenpl
 from artistools.plottools import set_mpl_style as set_mpl_style
 
 
-def get_path(**kwargs: t.Any) -> None:
+def get_path(**kwargs: t.Any) -> None:  # noqa: ARG001
     print(get_config("path_artistools_dir"))
 
 

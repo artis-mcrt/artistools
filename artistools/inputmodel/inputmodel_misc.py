@@ -77,9 +77,9 @@ def read_modelfile_text(
             if "dimensions" not in modelmeta:  # not already detected as 2D
                 modelmeta["dimensions"] = 3
                 # number of grid cell steps along an axis (currently the same for xyz)
-                ncoordgridx = int(round(npts_model ** (1.0 / 3.0)))
-                ncoordgridy = int(round(npts_model ** (1.0 / 3.0)))
-                ncoordgridz = int(round(npts_model ** (1.0 / 3.0)))
+                ncoordgridx = round(npts_model ** (1.0 / 3.0))
+                ncoordgridy = round(npts_model ** (1.0 / 3.0))
+                ncoordgridz = round(npts_model ** (1.0 / 3.0))
                 assert (ncoordgridx * ncoordgridy * ncoordgridz) == npts_model
                 modelmeta["ncoordgridx"] = ncoordgridx
                 modelmeta["ncoordgridy"] = ncoordgridy
@@ -941,7 +941,7 @@ def save_modeldata(
     elif modelmeta["dimensions"] == 3:
         if "gridindex" in dfmodel.collect_schema().names():
             dfmodel = dfmodel.rename({"gridindex": "inputcellid"})
-        griddimension = int(round(len(dfmodel) ** (1.0 / 3.0)))
+        griddimension = round(len(dfmodel) ** (1.0 / 3.0))
         print(f" 3D grid size: {len(dfmodel)} ({griddimension}^3)")
         assert griddimension**3 == len(dfmodel)
 
@@ -1285,9 +1285,9 @@ def dimension_reduce_model(
     elif outputdimensions == 1:
         # make 1D model
         if ndim_in == 2:
-            ncoordgridr = int(modelmeta.get("ncoordgridx", int(round(math.sqrt(ngridpoints / 2.0)))))
+            ncoordgridr = int(modelmeta.get("ncoordgridx", round(math.sqrt(ngridpoints / 2.0))))
         elif ndim_in == 3:
-            ncoordgridr = int(modelmeta.get("ncoordgridx", int(round(np.cbrt(ngridpoints)))) / 2.0)
+            ncoordgridr = int(modelmeta.get("ncoordgridx", round(np.cbrt(ngridpoints))) / 2.0)
         else:
             ncoordgridr = 1
         modelmeta_out["ncoordgridr"] = ncoordgridr
@@ -1297,7 +1297,7 @@ def dimension_reduce_model(
             (pl.col("vel_x_mid") ** 2 + pl.col("vel_y_mid") ** 2).sqrt().alias("vel_rcyl_mid")
         ])
         if ncoordgridz is None:
-            ncoordgridz = int(modelmeta.get("ncoordgridx", int(round(np.cbrt(ngridpoints)))))
+            ncoordgridz = int(modelmeta.get("ncoordgridx", round(np.cbrt(ngridpoints))))
             assert ncoordgridz % 2 == 0
         ncoordgridr = ncoordgridz // 2
         modelmeta_out["ncoordgridz"] = ncoordgridz

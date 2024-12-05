@@ -191,9 +191,7 @@ def plot_reference_spectrum(
 
     specdata = specdata.filter(pl.col("lambda_angstroms").is_between(xmin, xmax))
 
-    atspectra.print_integrated_flux(
-        specdata["f_lambda"], specdata["lambda_angstroms"], distance_megaparsec=metadata["dist_mpc"]
-    )
+    atspectra.print_integrated_flux(specdata["f_lambda"], specdata["lambda_angstroms"])
 
     # if len(specdata) > 5000:
     #     # specdata = scipy.signal.resample(specdata, 10000)

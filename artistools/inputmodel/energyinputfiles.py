@@ -142,7 +142,7 @@ def energy_from_rprocess_calculation(energy_thermo_data, get_rate=True):
     return E_tot
 
 
-def get_rprocess_calculation_files(path_to_rprocess_calculation, interpolate_trajectories=False, thermalisation=False):
+def get_rprocess_calculation_files(path_to_rprocess_calculation, interpolate_trajectories=False, thermalisation=False):  # noqa: ARG001
     tarfiles = [file.name for file in Path(path_to_rprocess_calculation).iterdir() if file.name.endswith(".tar.xz")]
 
     trajectory_ids = []
@@ -203,7 +203,7 @@ def make_energydistribution_weightedbyrho(rho, E_tot_per_gram, Mtot_grams):
     return pd.DataFrame(data=energydistdata)
 
 
-def make_energy_files(rho, Mtot_grams, outputpath: Path | str, modelpath=None, model=None):
+def make_energy_files(rho, Mtot_grams, outputpath: Path | str, modelpath=None, model=None):  # noqa: ARG001
     powerlaw = True
     if powerlaw:
         print("Using power law for energy rate")

@@ -193,9 +193,7 @@ def make_ionsubplot(
     if not args.hide_lte_tr:
         lte_columns.append(("n_LTE_T_R", T_R))
 
-    dfpopthision = at.nltepops.add_lte_pops(
-        modelpath, dfpopthision, adata, lte_columns, noprint=False, maxlevel=args.maxlevel
-    )
+    dfpopthision = at.nltepops.add_lte_pops(dfpopthision, adata, lte_columns, noprint=False, maxlevel=args.maxlevel)
 
     if args.maxlevel >= 0:
         dfpopthision = dfpopthision.query("level <= @args.maxlevel")

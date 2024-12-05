@@ -285,12 +285,7 @@ def plot_specout(
 
 @lru_cache(maxsize=128)
 def evaluate_phixs(
-    modelpath: Path | str,
-    atomic_number: int,
-    lower_ion_stage: int,
-    lowerlevelindex: int,
-    nu_threshold: float,
-    arr_nu_hz: Iterable[float] | npt.NDArray,
+    modelpath: Path | str, lowerlevelindex: int, nu_threshold: float, arr_nu_hz: Iterable[float] | npt.NDArray
 ) -> npt.NDArray:
     adata = at.atomic.get_levels(modelpath, get_photoionisations=True)
     lower_ion_data = adata.query("Z == @atomic_number and ion_stage == @lower_ion_stage").iloc[0]
@@ -353,10 +348,7 @@ def get_kappa_bf_ion(
 
             nu_threshold = ONEOVERH * (ion_data.ion_pot - lowerlevel.energy_ev + upperlevel.energy_ev) * EV
 
-            arr_sigma_bf = (
-                evaluate_phixs(modelpath, atomic_number, lower_ion_stage, levelnum, nu_threshold, tuple(arr_nu_hz))
-                * phixsfrac
-            )
+            arr_sigma_bf = evaluate_phixs(modelpath, levelnum, nu_threshold, tuple(arr_nu_hz)) * phixsfrac
 
             array_kappa_bf_nu_ion += arr_sigma_bf * levelpopfrac * lowerionpopdensity
 
@@ -844,7 +836,7 @@ def plot_bin_fitted_field_evolution(axis, radfielddata, nu_line, modelgridindex,
     )
 
 
-def plot_global_fitted_field_evolution(axis, radfielddata, nu_line, modelgridindex, **plotkwargs):
+def plot_global_fitted_field_evolution(axis, radfielddata, nu_line, modelgridindex, **plotkwargs):  # noqa: ARG001
     radfielddataselected = radfielddata.query("bin_num == -1 and modelgridindex == @modelgridindex").copy()
 
     radfielddataselected["J_nu_fullspec_at_line"] = radfielddataselected.apply(

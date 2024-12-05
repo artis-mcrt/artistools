@@ -61,7 +61,7 @@ def texifyconfiguration(levelname: str) -> str:
     return strout.replace("#", "").replace("$$", "")
 
 
-def add_lte_pops(modelpath, dfpop, adata, columntemperature_tuples, noprint=False, maxlevel=-1):
+def add_lte_pops(dfpop, adata, columntemperature_tuples, noprint=False, maxlevel=-1):
     """Add columns to dfpop with LTE populations.
 
     columntemperature_tuples is a sequence of tuples of column name and temperature, e.g., ('mycolumn', 3000)

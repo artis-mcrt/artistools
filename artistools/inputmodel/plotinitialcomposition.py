@@ -240,7 +240,7 @@ def get_model_abundances_Msun_1D(modelpath: Path) -> pd.DataFrame:
     return merge_dfs
 
 
-def plot_most_abundant(modelpath, args: argparse.Namespace):
+def plot_most_abundant(modelpath, args: argparse.Namespace):  # noqa: ARG001
     model, _ = at.inputmodel.get_modeldata(modelpath[0])
     abundances = at.inputmodel.get_initelemabundances_pandas(modelpath[0])
 

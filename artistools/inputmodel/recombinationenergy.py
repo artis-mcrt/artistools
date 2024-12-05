@@ -99,7 +99,7 @@ def get_particle_elec_binding_energy_per_gram(traj_root, dictbinding, particleid
     return dftrajnucabund["recombenergy_ev_per_gram"].sum()
 
 
-def get_particle_nucenergy_released(traj_root, particleid, tmin_s, time_s_end):
+def get_particle_nucenergy_released(traj_root, particleid, tmin_s, time_s_end):  # noqa: ARG001
     from scipy import integrate
 
     memberfilename = "./Run_rprocess/energy_thermo.dat"
