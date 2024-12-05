@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import polars as pl
+import tqdm.rich
 from tqdm.contrib.concurrent import process_map
 
 import artistools as at
@@ -237,6 +238,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         desc="Processing trajectories",
         unit="traj",
         smoothing=0.0,
+        tqdm_class=tqdm.rich.tqdm,
     )
 
     print()
