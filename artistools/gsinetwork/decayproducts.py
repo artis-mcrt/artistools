@@ -204,17 +204,15 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         )
     ).filter(pl.any_horizontal(pl.col("Ye").is_between(Ye_lower, Ye_upper) for _, Ye_lower, Ye_upper in Ye_bins))
 
-    # traj_summ_data = traj_summ_data.filter(pl.col("Id") == 146174)
     print(traj_summ_data)
 
     traj_ids = traj_summ_data["Id"].to_list()
 
     traj_masses_g = {trajid: mass * M_sol_cgs for trajid, mass in traj_summ_data[["Id", "Mass"]].to_numpy()}
 
-    print("Processing trajectories: ")
     fworker = partial(process_trajectory, nuc_data, args.trajectoryroot, traj_masses_g, arr_t_day)
 
-    alltraj_decay_powers = process_map(fworker, traj_ids, chunksize=3)
+    alltraj_decay_powers = process_map(fworker, traj_ids, chunksize=3, desc="Processing trajectories", unit="traj")
 
     # alltraj_decay_powers = [fworker(traj_id) for traj_id in traj_ids]
 
