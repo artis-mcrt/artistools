@@ -32,7 +32,8 @@ CommandType: t.TypeAlias = dict[str, t.Union[tuple[str, str], "CommandType"]]
 
 # new subparser based list
 subcommandtree: CommandType = {
-    "comparetogsinetwork": ("gsinetwork", "main"),
+    "comparetogsinetwork": ("gsinetwork.plotqdotabund", "main"),
+    "gsinetworkdecayproducts": ("gsinetwork.decayproducts", "main"),
     "deposition": ("deposition", "main_analytical"),
     "describeinputmodel": ("inputmodel.describeinputmodel", "main"),
     "exportmassfractions": ("estimators.exportmassfractions", "main"),
