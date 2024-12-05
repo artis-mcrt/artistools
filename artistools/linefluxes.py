@@ -54,7 +54,9 @@ def print_floers_line_ratio(
 
 
 def get_packets_with_emtype_onefile(
-    emtypecolumn: str, lineindices: Sequence[int], packetsfile: Path | str
+    emtypecolumn: str,
+    lineindices: Sequence[int],  # noqa: ARG001
+    packetsfile: Path | str,
 ) -> pd.DataFrame:
     import gzip
 
@@ -447,7 +449,7 @@ def get_packets_with_emission_conditions(
     modelpath: str | Path,
     emtypecolumn: str,
     lineindices: Sequence[int],
-    tstart: float,
+    tstart: float,  # noqa: ARG001
     tend: float,
     maxpacketfiles: int | None = None,
 ) -> pd.DataFrame:
@@ -541,7 +543,7 @@ def plot_nne_te_points(
     #           fillstyle='full', color=color_b)
 
 
-def plot_nne_te_bars(axis, serieslabel, em_log10nne, em_Te, color) -> None:
+def plot_nne_te_bars(axis, em_log10nne, em_Te, color) -> None:
     if len(em_log10nne) == 0:
         return
     errorbarkwargs = {
@@ -735,7 +737,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
                                 axis, label, em_log10nne, em_Te, normtotalpackets, modelcolor, marker="s"
                             )
                         else:
-                            plot_nne_te_bars(axis, args.label[truemodelindex], em_log10nne, em_Te, modelcolor)
+                            plot_nne_te_bars(axis, em_log10nne, em_Te, modelcolor)
             else:
                 modellabel = args.label[modelindex]
                 emfeatures = get_labelandlineindices(modelpath, tuple(args.emfeaturesearch))
@@ -787,9 +789,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
                                 marker=markers[featureindex],
                             )
                         else:
-                            plot_nne_te_bars(
-                                axis, serieslabel, emdata["em_log10nne"], emdata["em_Te"], featurecolours[featureindex]
-                            )
+                            plot_nne_te_bars(axis, emdata["em_log10nne"], emdata["em_Te"], featurecolours[featureindex])
 
             if tmid == times_days[-1] and not args.nolegend:
                 axis.legend(

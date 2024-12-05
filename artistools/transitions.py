@@ -102,9 +102,9 @@ def generate_ion_spectrum(
 
         # contribute the Gaussian line profile to the discrete flux bins
 
-        centre_index = int(round((line["lambda_angstroms"] - args.xmin) / plot_resolution))
+        centre_index = round((line["lambda_angstroms"] - args.xmin) / plot_resolution)
         sigma_angstroms = line["lambda_angstroms"] * args.sigma_v / const.c.to("km / s").value
-        sigma_gridpoints = int(math.ceil(sigma_angstroms / plot_resolution))
+        sigma_gridpoints = math.ceil(sigma_angstroms / plot_resolution)
         window_left_index = max(int(centre_index - args.gaussian_window * sigma_gridpoints), 0)
         window_right_index = min(int(centre_index + args.gaussian_window * sigma_gridpoints), len(xvalues))
 

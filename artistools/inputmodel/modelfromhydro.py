@@ -276,7 +276,7 @@ def mirror_model_in_axis(griddata):
     return griddata
 
 
-def add_mass_to_center(griddata, t_model_in_days, vmax, args: argparse.Namespace):
+def add_mass_to_center(griddata, t_model_in_days, vmax, args: argparse.Namespace):  # noqa: ARG001
     from scipy import integrate
 
     print(griddata)

@@ -66,7 +66,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     make_plot(
         dfall,
         args.modelpath,
-        str(specfilename),
         timestepmin,
         timestepmax,
         outputfile,
@@ -76,19 +75,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     )
 
 
-def make_plot(
-    dfmacroatom,
-    modelpath,
-    specfilename,
-    timestepmin,
-    timestepmax,
-    outputfile,
-    xmin,
-    xmax,
-    modelgridindex,
-    nospec=False,
-    normalised=False,
-):
+def make_plot(dfmacroatom, modelpath, timestepmin, timestepmax, outputfile, xmin, xmax, modelgridindex):
     time_days_min = at.get_timestep_time(modelpath, timestepmin)
     time_days_max = at.get_timestep_time(modelpath, timestepmax)
 

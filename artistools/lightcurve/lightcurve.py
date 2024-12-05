@@ -181,7 +181,10 @@ def get_from_packets(
 
 
 def generate_band_lightcurve_data(
-    modelpath: Path, args: argparse.Namespace, angle: int = -1, modelnumber: int | None = None
+    modelpath: Path,
+    args: argparse.Namespace,
+    angle: int = -1,
+    modelnumber: int | None = None,  # noqa: ARG001
 ) -> dict[str, t.Any]:
     """Integrate spectra to get band magnitude vs time. Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py."""
     from scipy.interpolate import interp1d
