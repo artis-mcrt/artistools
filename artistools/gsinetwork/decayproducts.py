@@ -107,11 +107,21 @@ def process_trajectory(nuc_data, traj_root, traj_masses_g, arr_t_day, traj_ID):
         pd.read_csv(
             get_tar_member_extracted_path(traj_root, traj_ID, "./Run_rprocess/energy_thermo.dat"),
             sep=r"\s+",
-            usecols=["Qdot"],
+            usecols=["#count", "time/s", "Qdot"],
         )
-    )
+    ).rename({"#count": "nstep", "time/s": "timesec"})
 
-    # now get abundances from single timestep files
+    # get nearest network time to each plotted time
+    arr_networktimedays = dfthermo["timesec"].to_numpy() / 86400
+    networktimestepindices = [
+        int(dfthermo["nstep"].item(np.abs(arr_networktimedays - timedays).argmin())) for timedays in arr_t_day
+    ]
+    networktimestepindices = [
+        nts if np.isclose(arr_networktimedays[nts - 1], plot_time_days, rtol=0.10) else -1
+        for nts, plot_time_days in zip(networktimestepindices, arr_t_day, strict=False)
+    ]
+    assert len(networktimestepindices) == len(arr_t_day)
+
     decay_powers = {
         key: np.zeros(len(arr_t_day))
         for key in (
@@ -123,47 +133,52 @@ def process_trajectory(nuc_data, traj_root, traj_masses_g, arr_t_day, traj_ID):
             "Qdot",
             "abundweighted_Qdot",
         )
+    } | {
+        col: (
+            np.array([
+                dfheating["hbeta"][networktimestepindex - 1] if networktimestepindex >= 1 else 0.0
+                for networktimestepindex in networktimestepindices
+            ])
+            * traj_mass_grams
+        )
+        for col in ("hbeta", "htot", "Qdot")
     }
 
-    for plottimestep, plot_time_day in enumerate(arr_t_day):
-        plot_time_sec = plot_time_day * 86400
-        # returns the 1-indexed timestep, so subtract 1 to get row index
-        networktimestepindex = at.inputmodel.rprocess_from_trajectory.get_closest_network_timestep(
-            traj_root, traj_ID, timesec=plot_time_sec, cond="nearest"
-        )
-
-        dftrajnucabund, networktime = at.inputmodel.rprocess_from_trajectory.get_trajectory_timestepfile_nuc_abund(
-            traj_root=traj_root, particleid=traj_ID, memberfilename=f"./Run_rprocess/nz-plane{networktimestepindex:05d}"
-        )
-        if not np.isclose(networktime, plot_time_sec, rtol=0.10):
-            # print(f"Warning: {traj_ID} networktime {networktime} not close to plot_time_sec {plot_time_sec}")
+    # now get abundances from single timestep files
+    for plottimestep, networktimestepindex in enumerate(networktimestepindices):
+        if networktimestepindex < 1:
             continue
 
-        decay_powers["hbeta"][plottimestep] = dfheating["hbeta"][networktimestepindex - 1] * traj_mass_grams
-        decay_powers["htot"][plottimestep] = dfheating["htot"][networktimestepindex - 1] * traj_mass_grams
-        decay_powers["Qdot"][plottimestep] = dfthermo["Qdot"][networktimestepindex - 1] * traj_mass_grams
+        dftrajnucabund, _networktime = at.inputmodel.rprocess_from_trajectory.get_trajectory_timestepfile_nuc_abund(
+            traj_root=traj_root, particleid=traj_ID, memberfilename=f"./Run_rprocess/nz-plane{networktimestepindex:05d}"
+        )
+
         assert dftrajnucabund.size > 100, dftrajnucabund.size
 
         pldf_abund_decay = (
             (
-                pl.from_pandas(dftrajnucabund, rechunk=True)
-                .filter(pl.col("massfrac") > 0.0)
-                .with_columns(pl.col(pl.Int32).cast(pl.Int64), pl.col(pl.Float32).cast(pl.Float64))
-                .with_columns(A=pl.col("Z") + pl.col("N"))
-                .with_columns(num_nuc=pl.col("massfrac") * traj_mass_grams / (pl.col("A") * amu_g))
+                (
+                    pl.from_pandas(dftrajnucabund)
+                    .lazy()
+                    .filter(pl.col("massfrac") > 0.0)
+                    .with_columns(pl.col(pl.Int32).cast(pl.Int64), pl.col(pl.Float32).cast(pl.Float64))
+                    .with_columns(A=pl.col("Z") + pl.col("N"))
+                    .with_columns(num_nuc=pl.col("massfrac") * traj_mass_grams / (pl.col("A") * amu_g))
+                )
+                .join(nuc_data.lazy(), on=("Z", "A"), how="inner")
+                .with_columns(N_dot=pl.col("num_nuc") / pl.col("tau[s]"))
             )
-            .join(nuc_data, on=("Z", "A"), how="inner")
-            .with_columns(N_dot=pl.col("num_nuc") / pl.col("tau[s]"))
-        ).select(
-            abundweighted_nu=(pl.col("N_dot") * pl.col("Eneutrino[MeV]") * MeV_to_erg).sum(),
-            abundweighted_elec=(pl.col("N_dot") * pl.col("Eelec[MeV]") * MeV_to_erg).sum(),
-            abundweighted_gamma=(pl.col("N_dot") * pl.col("Egamma[MeV]") * MeV_to_erg).sum(),
-            abundweighted_Qdot=(pl.col("N_dot") * pl.col("Q[MeV]") * MeV_to_erg).sum(),
-            massfrac_sum=pl.col("massfrac").sum(),
+            .select(
+                abundweighted_nu=(pl.col("N_dot") * pl.col("Eneutrino[MeV]") * MeV_to_erg).sum(),
+                abundweighted_elec=(pl.col("N_dot") * pl.col("Eelec[MeV]") * MeV_to_erg).sum(),
+                abundweighted_gamma=(pl.col("N_dot") * pl.col("Egamma[MeV]") * MeV_to_erg).sum(),
+                abundweighted_Qdot=(pl.col("N_dot") * pl.col("Q[MeV]") * MeV_to_erg).sum(),
+                massfrac_sum=pl.col("massfrac").sum(),
+            )
+            .collect()
         )
         for col in pldf_abund_decay.columns:
-            if col in decay_powers:
-                decay_powers[col][plottimestep] = float(pldf_abund_decay.get_column(col).item())
+            decay_powers[col][plottimestep] = float(pldf_abund_decay.get_column(col).item())
 
     # if not np.all(np.diff(decay_powers["abundweighted_Qdot"]) <= 0.01 * decay_powers["abundweighted_Qdot"][0]):
     #     print(f"\nTraj {traj_ID} has inconsistent Qdot values. delete {Path(traj_root, str(traj_ID))} and rerun")
@@ -210,11 +225,14 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     traj_masses_g = {trajid: mass * M_sol_cgs for trajid, mass in traj_summ_data[["Id", "Mass"]].to_numpy()}
 
-    fworker = partial(process_trajectory, nuc_data, args.trajectoryroot, traj_masses_g, arr_t_day)
-
-    alltraj_decay_powers = process_map(fworker, traj_ids, chunksize=3, desc="Processing trajectories", unit="traj")
-
-    # alltraj_decay_powers = [fworker(traj_id) for traj_id in traj_ids]
+    alltraj_decay_powers = process_map(
+        partial(process_trajectory, nuc_data, args.trajectoryroot, traj_masses_g, arr_t_day),
+        traj_ids,
+        chunksize=3,
+        desc="Processing trajectories",
+        unit="traj",
+        smoothing=0.0,
+    )
 
     print()
 
