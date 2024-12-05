@@ -61,7 +61,7 @@ def get_exspec_bins(
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Get the wavelength bins for the emergent spectrum."""
     if modelpath is not None:
-        dfspec = read_spec(modelpath, printwarningsonly=True)
+        dfspec = read_spec(modelpath)
         if mnubins is None:
             mnubins = dfspec.height
 
@@ -343,7 +343,7 @@ def get_from_packets(
 
 
 @lru_cache(maxsize=16)
-def read_spec(modelpath: Path, printwarningsonly: bool = False) -> pl.DataFrame:
+def read_spec(modelpath: Path) -> pl.DataFrame:
     specfilename = firstexisting("spec.out", folder=modelpath, tryzipped=True)
     print(f"Reading {specfilename}")
 
@@ -889,7 +889,6 @@ def get_flux_contributions_from_packets(
     groupby: t.Literal["ion", "line"] = "ion",
     maxseriescount: int | None = None,
     fixedionlist: list[str] | None = None,
-    modelgridindex: int | None = None,
     use_time: t.Literal["arrival", "emission", "escape"] = "arrival",
     use_lastemissiontype: bool = True,
     emissionvelocitycut: float | None = None,
@@ -1283,9 +1282,7 @@ def sort_and_reduce_flux_contribution_list(
 
 
 def print_integrated_flux(
-    arr_f_lambda: np.ndarray | pd.Series | pl.Series,
-    arr_lambda_angstroms: np.ndarray | pd.Series | pl.Series,
-    distance_megaparsec: float = 1.0,
+    arr_f_lambda: np.ndarray | pd.Series | pl.Series, arr_lambda_angstroms: np.ndarray | pd.Series | pl.Series
 ) -> float:
     from scipy import integrate
 

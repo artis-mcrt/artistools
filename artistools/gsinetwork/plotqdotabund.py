@@ -33,7 +33,7 @@ def plot_qdot(
     lzdfmodel: pl.LazyFrame,
     modelmeta: dict[str, t.Any],
     allparticledata: dict[int, dict[str, npt.NDArray[np.float64]]],
-    arr_time_artis_days: Sequence[float],
+    arr_time_artis_days: Sequence[float],  # noqa: ARG001
     arr_time_gsi_days: Sequence[float],
     pdfoutpath: Path | str,
     xmax: float | None = None,
@@ -192,7 +192,7 @@ def plot_qdot(
 
 
 def plot_cell_abund_evolution(
-    modelpath: Path,
+    modelpath: Path,  # noqa: ARG001
     dfpartcontrib: pl.DataFrame,
     allparticledata: dict[int, dict[str, npt.NDArray[np.float64]]],
     arr_time_artis_days: Sequence[float],

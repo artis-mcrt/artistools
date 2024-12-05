@@ -230,7 +230,6 @@ skip-magic-trailing-comma = true
 [tool.ruff.lint]
 select = ["ALL"]
 ignore = [
-    "ARG001",  # ignored because variables in df.eval() are not detected
     "ANN001",  # missing-type-function-argument
     "ANN201",  # missing-return-type-undocumented-public-function
     "ANN003",  # missing-type-kwargs
@@ -275,6 +274,7 @@ ignore = [
     "PLR2004", # magic-value-comparison
     "PLW2901", # redefined-loop-name
     "PYI024",  # Use `typing.NamedTuple` instead of `collections.namedtuple`
+    "PTH208",  # os-listdir
     "S101",    # Use of assert detected
     "S310",    # suspicious-url-open-usage
     "S311",    # suspicious-non-cryptographic-random-usage
@@ -293,6 +293,10 @@ unfixable = [
     "SIM222", # expr-or-true
     "SIM223", # expr-and-false
 ]
+
+[tool.ruff.lint.per-file-ignores]
+# Ignore unused arguments in test functions
+"test_*.py" = ["ARG001"]
 
 [tool.ruff.lint.flake8-import-conventions.extend-aliases]
 "artistools" = "at"

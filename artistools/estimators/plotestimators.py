@@ -246,7 +246,6 @@ def plot_levelpop(
     params: Sequence[str],
     timestepslist: Sequence[Sequence[int]],
     mgilist: Sequence[int | Sequence[int]],
-    estimators: pl.LazyFrame | pl.DataFrame,
     modelpath: str | Path,
     args: argparse.Namespace,
     **plotkwargs: t.Any,
@@ -493,7 +492,6 @@ def plot_series(
     startfromzero: bool,
     variable: str | pl.Expr,
     showlegend: bool,
-    modelpath: str | Path,
     estimators: pl.LazyFrame | pl.DataFrame,
     args: argparse.Namespace,
     nounits: bool = False,
@@ -553,13 +551,7 @@ def plot_series(
 
 
 def get_xlist(
-    xvariable: str,
-    allnonemptymgilist: Sequence[int],
-    estimators: pl.LazyFrame,
-    timestepslist: t.Any,
-    modelpath: str | Path,
-    groupbyxvalue: bool,
-    args: t.Any,
+    xvariable: str, estimators: pl.LazyFrame, timestepslist: t.Any, groupbyxvalue: bool, args: t.Any
 ) -> tuple[list[float | int], list[int], list[list[int]], pl.LazyFrame]:
     estimators = estimators.filter(pl.col("timestep").is_in(set(chain.from_iterable(timestepslist))))
 
@@ -610,7 +602,6 @@ def plot_subplot(
     ax: mplax.Axes,
     timestepslist: list[list[int]],
     xlist: list[float | int],
-    xvariable: str,
     startfromzero: bool,
     plotitems: list[t.Any],
     mgilist: list[int],
@@ -647,7 +638,6 @@ def plot_subplot(
                 startfromzero=startfromzero,
                 variable=plotitem,
                 showlegend=showlegend,
-                modelpath=modelpath,
                 estimators=estimators,
                 args=args,
                 nounits=sameylabel,
@@ -673,7 +663,7 @@ def plot_subplot(
 
             elif seriestype == "levelpopulation" or seriestype.startswith("levelpopulation_"):
                 showlegend = True
-                plot_levelpop(ax, xlist, seriestype, params, timestepslist, mgilist, estimators, modelpath, args=args)
+                plot_levelpop(ax, xlist, seriestype, params, timestepslist, mgilist, modelpath, args=args)
 
             elif seriestype in {"averageionisation", "averageexcitation"}:
                 showlegend = True
@@ -725,7 +715,6 @@ def plot_subplot(
 def make_plot(
     modelpath: Path | str,
     timestepslist_unfiltered: list[list[int]],
-    allnonemptymgilist: list[int],
     estimators: pl.LazyFrame,
     xvariable: str,
     plotlist,
@@ -758,10 +747,8 @@ def make_plot(
 
     xlist, mgilist, timestepslist, estimators = get_xlist(
         xvariable=xvariable,
-        allnonemptymgilist=allnonemptymgilist,
         estimators=estimators,
         timestepslist=timestepslist_unfiltered,
-        modelpath=modelpath,
         groupbyxvalue=not args.markersonly,
         args=args,
     )
@@ -786,7 +773,6 @@ def make_plot(
             ax=ax,
             timestepslist=timestepslist,
             xlist=xlist,
-            xvariable=xvariable,
             plotitems=plotitems,
             mgilist=mgilist,
             modelpath=modelpath,
@@ -1066,7 +1052,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         if not args.x:
             args.x = "time"
         assert isinstance(args.modelgridindex, int)
-        mgilist = [args.modelgridindex] * len(timesteps_included)
         timestepslist_unfiltered = [[ts] for ts in timesteps_included]
         if not assoc_cells.get(args.modelgridindex):
             msg = f"cell {args.modelgridindex} is empty. no estimators available"
@@ -1074,7 +1059,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         make_plot(
             modelpath=modelpath,
             timestepslist_unfiltered=timestepslist_unfiltered,
-            allnonemptymgilist=mgilist,
             estimators=estimators,
             xvariable=args.x,
             plotlist=plotlist,
@@ -1134,7 +1118,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             outfilename = make_plot(
                 modelpath=modelpath,
                 timestepslist_unfiltered=timestepslist_unfiltered,
-                allnonemptymgilist=allnonemptymgilist,
                 estimators=estimators,
                 xvariable=args.x,
                 plotlist=plotlist,
