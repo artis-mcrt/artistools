@@ -111,7 +111,8 @@ def process_trajectory(nuc_data, traj_root, traj_masses_g, arr_t_day, traj_ID):
                     usecols=["#count", "time/s", "Qdot"],
                 )
             ),
-            left_on="#count",
+            on="#count",
+            how="left",
             coalesce=True,
         )
         .rename({"#count": "nstep", "time/s": "timesec"})
@@ -120,13 +121,11 @@ def process_trajectory(nuc_data, traj_root, traj_masses_g, arr_t_day, traj_ID):
     # get nearest network time to each plotted time
     arr_networktimedays = dfheatingthermo["timesec"].to_numpy() / 86400
     networktimestepindices = [
-        int(dfheatingthermo["nstep"].item(np.abs(arr_networktimedays - timedays).argmin())) for timedays in arr_t_day
+        int(dfheatingthermo["nstep"].item(np.abs(arr_networktimedays - plottimedays).argmin()))
+        if plottimedays < arr_networktimedays[-1]
+        else -1
+        for plottimedays in arr_t_day
     ]
-    networktimestepindices = [
-        nts if np.isclose(arr_networktimedays[nts - 1], plot_time_days, rtol=0.10) else -1
-        for nts, plot_time_days in zip(networktimestepindices, arr_t_day, strict=False)
-    ]
-    assert len(networktimestepindices) == len(arr_t_day)
 
     decay_powers = {
         key: np.zeros(len(arr_t_day))
