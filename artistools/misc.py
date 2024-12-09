@@ -10,6 +10,7 @@ import multiprocessing.pool
 import string
 import typing as t
 from collections import namedtuple
+from collections.abc import Generator
 from collections.abc import Iterable
 from collections.abc import Sequence
 from functools import lru_cache
@@ -870,17 +871,18 @@ def firstexisting(
     if thispath.exists():
         return thispath
 
-    folders = [folder]
-
     fullpaths = []
-    for filename in filelist:
-        if search_subfolders:
-            folders += [
-                p.parent for filename in filelist for p in folder.glob(f"*/{filename}*") if p.parent not in folders
-            ]
 
-        for folder in folders:
-            thispath = Path(folder, filename)
+    def search_folders() -> Generator[Path]:
+        yield Path(folder)
+        if search_subfolders:
+            for filename in filelist:
+                for p in Path(folder).glob(f"*/{filename}*"):
+                    yield p.parent
+
+    for searchfolder in search_folders():
+        for filename in filelist:
+            thispath = Path(searchfolder, filename)
             if thispath.exists():
                 return thispath
 
@@ -890,7 +892,7 @@ def firstexisting(
                 for ext in (".zst", ".gz", ".xz"):
                     filenameext = str(filename) if str(filename).endswith(ext) else str(filename) + ext
                     if filenameext not in filelist:
-                        thispath = Path(folder, filenameext)
+                        thispath = Path(searchfolder, filenameext)
                         if thispath.exists():
                             return thispath
                         fullpaths.append(thispath)
