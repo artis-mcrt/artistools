@@ -207,6 +207,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     # get beta decay data
     nuc_data = get_nuc_data(nuc_dataset)
+    assert nuc_data.height == nuc_data.unique(("Z", "A")).height
 
     # set timesteps logarithmically
     log_t_compar_min_s = np.log10(t_compar_min_d)
