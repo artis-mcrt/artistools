@@ -226,6 +226,7 @@ preview = true
 
 [tool.ruff.format]
 skip-magic-trailing-comma = true
+preview = true
 
 [tool.ruff.lint]
 select = ["ALL"]
