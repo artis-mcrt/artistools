@@ -100,8 +100,8 @@ def get_exspec_bins(
 
 
 def stackspectra(
-    spectra_and_factors: list[tuple[np.ndarray[t.Any, np.dtype[np.float64]], float]],
-) -> np.ndarray[t.Any, np.dtype[np.float64]]:
+    spectra_and_factors: list[tuple[np.ndarray[t.Any, np.dtype[np.floating[t.Any]]], float]],
+) -> np.ndarray[t.Any, np.dtype[np.floating[t.Any]]]:
     """Add spectra using weighting factors, i.e., specout[nu] = spec1[nu] * factor1 + spec2[nu] * factor2 + ...
 
     spectra_and_factors should be a list of tuples: spectra[], factor.
@@ -711,7 +711,7 @@ def get_flux_contributions(
     directionbin: int | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
-) -> tuple[list[fluxcontributiontuple], npt.NDArray[np.float64]]:
+) -> tuple[list[fluxcontributiontuple], npt.NDArray[np.floating[t.Any]]]:
     from scipy import integrate
 
     arr_tmid = get_timestep_times(modelpath, loc="mid")

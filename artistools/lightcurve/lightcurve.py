@@ -45,7 +45,7 @@ def read_3d_gammalightcurve(filepath: str | Path) -> dict[int, pd.DataFrame]:
     # lcdata = lcdata.rename(columns={0: 'time', 1: 'lum', 2: 'lum_cmf'})
 
     res_data = {}
-    for angle in np.arange(0, 100):
+    for angle in range(100):
         res_data[angle] = lcdata[["time", angle]]
         res_data[angle] = res_data[angle].rename(columns={angle: "lum"})
 
