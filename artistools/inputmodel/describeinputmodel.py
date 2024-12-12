@@ -327,7 +327,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 strcomment += " ERROR! isotope sum is greater than element abundance"
 
         zstr = str(atomic_number)
-        barstr = "-" * int(maxbarchars * (mass_g - mass_g_min) / (mass_g_max - mass_g_min))
+        mass_g_min_lim = max(mass_g_min, mass_g_max * 1e-4)
+        barsize = int(maxbarchars * (math.log(mass_g / mass_g_min_lim)) / (math.log(mass_g_max / mass_g_min_lim)))
+        barstr = "-" * barsize
         print(f"{zstr:>5} {species:7s} massfrac {massfrac:.3e}   {species_mass_msun:.3e} Msun  {barstr}")
         if strcomment:
             print(f"    {strcomment}")
