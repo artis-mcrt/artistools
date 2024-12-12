@@ -154,7 +154,7 @@ def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> 
     if args.plotvspecpol and (modelpath / "vpkt.txt").is_file():
         dirbins = args.plotvspecpol
     elif args.plotviewingangle and args.plotviewingangle[0] == -2 and viewing_angle_data_exists:
-        dirbins = np.arange(0, 100, 1, dtype=int).tolist()
+        dirbins = list(np.arange(0, 100, 1, dtype=int))
         if args.average_over_phi_angle:
             dirbins = [d for d in dirbins if d % at.get_viewingdirection_phibincount() == 0]
         if args.average_over_theta_angle:
@@ -165,7 +165,7 @@ def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> 
         args.calculate_costheta_phi_from_viewing_angle_numbers
         and args.calculate_costheta_phi_from_viewing_angle_numbers[0] == -2
     ):
-        dirbins = np.arange(0, 100, 1, dtype=int).tolist()
+        dirbins = list(np.arange(0, 100, 1, dtype=int))
     elif args.calculate_costheta_phi_from_viewing_angle_numbers:
         dirbins = args.calculate_costheta_phi_from_viewing_angle_numbers
         assert dirbins is not None
@@ -455,7 +455,7 @@ def update_plotkwargs_for_viewingangle_colorbar(
     costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(usedegrees=args.usedegrees)
     scaledmap = at.lightcurve.plotlightcurve.make_colorbar_viewingangles_colormap()
 
-    angles = np.arange(0, at.get_viewingdirectionbincount())
+    angles = np.arange(0, at.get_viewingdirectionbincount(), dtype=int)
     colors = []
     for angle in angles:
         colorindex: t.Any
@@ -741,7 +741,7 @@ def peakmag_risetime_declinerate_init(
                 plottinglist = ["lightcurve"]
 
             for band_name in plottinglist:
-                brightness: npt.NDArray[np.float64] | list[float]
+                brightness: npt.NDArray[np.floating[t.Any]] | list[float]
                 if args.filter:
                     time, brightness = at.lightcurve.get_band_lightcurve(lightcurve_data, band_name, args)
                 else:

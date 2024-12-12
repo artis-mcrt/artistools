@@ -110,7 +110,7 @@ def get_Te_vs_velocity_2D(modelpath, modeldata, vmax, estimators, readonly_mgi, 
             for x in range(grid):
                 grid_Te[x, y, z] = Te[i]
                 if modeldata["rho"][i] == 0.0:
-                    grid_Te[x, y, z] = None
+                    grid_Te[x, y, z] = np.nan
                 xgrid[x] = -vmax + 2 * x * vmax / grid
                 i += 1
 

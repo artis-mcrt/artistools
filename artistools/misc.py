@@ -315,12 +315,12 @@ def get_syn_dir(modelpath: Path) -> tuple[float, float, float]:
         return (x, y, z)
 
 
-def vec_len(vec: Sequence[float] | np.ndarray[t.Any, np.dtype[np.float64]]) -> float:
+def vec_len(vec: Sequence[float] | np.ndarray[t.Any, np.dtype[np.floating[t.Any]]]) -> float:
     return float(np.sqrt(np.dot(vec, vec)))
 
 
 @lru_cache(maxsize=16)
-def get_nu_grid(modelpath: Path) -> np.ndarray[t.Any, np.dtype[np.float64]]:
+def get_nu_grid(modelpath: Path) -> np.ndarray[t.Any, np.dtype[np.floating[t.Any]]]:
     """Return an array of frequencies at which the ARTIS spectra are binned by exspec."""
     specdata = pl.read_csv(
         firstexisting(["spec.out", "specpol.out"], folder=modelpath, tryzipped=True),
@@ -1400,7 +1400,9 @@ def get_viewingdirection_costhetabincount() -> int:
     return 10
 
 
-def get_phi_bins(usedegrees: bool) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], list[str]]:
+def get_phi_bins(
+    usedegrees: bool,
+) -> tuple[npt.NDArray[np.floating[t.Any]], npt.NDArray[np.floating[t.Any]], list[str]]:
     nphibins = get_viewingdirection_phibincount()
     # pi/2 must be an exact boundary because of the change in behaviour there
     assert nphibins % 2 == 0
@@ -1461,7 +1463,7 @@ def get_costheta_bins(
             f"{lower:.1f} ≤ cos θ < {upper:.1f}"
             for lower, upper in zip(costhetabins_lower, costhetabins_upper, strict=False)
         ]
-    return tuple(costhetabins_lower), tuple(costhetabins_upper), binlabels
+    return tuple(float(x) for x in costhetabins_lower), tuple(costhetabins_upper), binlabels
 
 
 def get_costhetabin_phibin_labels(usedegrees: bool) -> tuple[list[str], list[str]]:

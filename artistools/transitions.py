@@ -93,7 +93,7 @@ def get_nist_transitions(filename: Path | str) -> pd.DataFrame:
 
 def generate_ion_spectrum(
     transitions, xvalues, popcolumn, plot_resolution, args: argparse.Namespace
-) -> npt.NDArray[np.float64]:
+) -> npt.NDArray[np.floating[t.Any]]:
     yvalues = np.zeros(len(xvalues))
 
     # iterate over lines
