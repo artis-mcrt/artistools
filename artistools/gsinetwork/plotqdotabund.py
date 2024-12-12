@@ -32,7 +32,7 @@ def plot_qdot(
     dfpartcontrib: pl.DataFrame,
     lzdfmodel: pl.LazyFrame,
     modelmeta: dict[str, t.Any],
-    allparticledata: dict[int, dict[str, npt.NDArray[np.float64]]],
+    allparticledata: dict[int, dict[str, npt.NDArray[np.floating[t.Any]]]],
     arr_time_artis_days: Sequence[float],  # noqa: ARG001
     arr_time_gsi_days: Sequence[float],
     pdfoutpath: Path | str,
@@ -194,7 +194,7 @@ def plot_qdot(
 def plot_cell_abund_evolution(
     modelpath: Path,  # noqa: ARG001
     dfpartcontrib: pl.DataFrame,
-    allparticledata: dict[int, dict[str, npt.NDArray[np.float64]]],
+    allparticledata: dict[int, dict[str, npt.NDArray[np.floating[t.Any]]]],
     arr_time_artis_days: Sequence[float],
     arr_time_gsi_days: Sequence[float],
     arr_strnuc: Sequence[str],
@@ -214,7 +214,7 @@ def plot_cell_abund_evolution(
     # if arr_strnuc[0] != 'Ye':
     #     arr_strnuc.insert(0, 'Ye')
 
-    arr_abund_gsi: dict[str, np.ndarray[t.Any, np.dtype[np.float64]]] = {
+    arr_abund_gsi: dict[str, np.ndarray[t.Any, np.dtype[np.floating[t.Any]]]] = {
         strnuc: np.zeros_like(arr_time_gsi_days) for strnuc in arr_strnuc
     }
 
@@ -298,7 +298,7 @@ def plot_cell_abund_evolution(
 
 
 def get_particledata(
-    arr_time_s: Sequence[float] | npt.NDArray[np.float64],
+    arr_time_s: Sequence[float] | npt.NDArray[np.floating[t.Any]],
     arr_strnuc_z_n: list[tuple[str, int, int]],
     traj_root: Path,
     particleid: int,
@@ -307,10 +307,10 @@ def get_particledata(
     """For an array of times (NSM time including time before merger), interpolate the heating rates of various decay channels and (if arr_strnuc is not empty) the nuclear mass fractions."""
     try:
         nts_min = at.inputmodel.rprocess_from_trajectory.get_closest_network_timestep(
-            traj_root, particleid, timesec=min(arr_time_s), cond="lessthan"
+            traj_root, particleid, timesec=min(float(x) for x in arr_time_s), cond="lessthan"
         )
         nts_max = at.inputmodel.rprocess_from_trajectory.get_closest_network_timestep(
-            traj_root, particleid, timesec=max(arr_time_s), cond="greaterthan"
+            traj_root, particleid, timesec=max(float(x) for x in arr_time_s), cond="greaterthan"
         )
 
     except FileNotFoundError:
@@ -558,7 +558,7 @@ def plot_qdot_abund_modelcells(
     if not arr_time_artis_days:
         arr_time_artis_days = arr_time_artis_days_alltimesteps.copy()
 
-    arr_time_gsi_s = np.array([modelmeta["t_model_init_days"] * 86400, *arr_time_artis_s_alltimesteps])
+    arr_time_gsi_s = np.array([modelmeta["t_model_init_days"] * 86400, *arr_time_artis_s_alltimesteps], dtype=float)
 
     # times in artis are relative to merger, but NSM simulation time started earlier
     mergertime_geomunits = at.inputmodel.modelfromhydro.get_merger_time_geomunits(griddata_root)
@@ -567,7 +567,7 @@ def plot_qdot_abund_modelcells(
         modelmeta["t_model_init_days"] * 86400 + t_mergertime_s,
         *arr_time_artis_s_alltimesteps,
     ])
-    arr_time_gsi_days = list(arr_time_gsi_s / 86400)
+    arr_time_gsi_days = [float(x) / 86400.0 for x in arr_time_gsi_s]
 
     dfpartcontrib = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(modelpath).filter(
         (pl.col("cellindex") <= npts_model) & (pl.col("frac_of_cellmass") > 0)
