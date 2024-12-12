@@ -1,9 +1,8 @@
 # PYTHON_ARGCOMPLETE_OK
-
 import argparse
 import math
 import multiprocessing as mp
-import urllib.request
+import warnings
 from collections.abc import Sequence
 from functools import partial
 from pathlib import Path
@@ -14,17 +13,20 @@ import numpy as np
 import pandas as pd
 import polars as pl
 import tqdm.rich
+from tqdm import TqdmExperimentalWarning
 from tqdm.contrib.concurrent import process_map
 
 import artistools as at
 from artistools.configuration import get_config
 from artistools.inputmodel.rprocess_from_trajectory import get_tar_member_extracted_path
 
+warnings.filterwarnings("ignore", category=TqdmExperimentalWarning)
+
 Ye_bins = [("all", 0.0, float("inf")), ("low", 0.05, 0.15), ("mid", 0.2, 0.3), ("high", 0.35, 0.45)]
 t_compar_min_d = 0.1
 t_compar_max_d = 10
 numb_steps = 50
-nuc_dataset = "Hotokezaka"  # Use "Hotokezaka" (directly from betaminusdecays.txt) or "ENSDF" using the ENSDF database
+nuc_dataset = "ENSDF"  # Use "Hotokezaka" (directly from betaminusdecays.txt) or "ENSDF" using the ENSDF database
 ARTIS_colors = ["r", "g", "b", "m", "c", "orange"]  # reddish colors
 M_sol_cgs = 1.989e33
 amu_g = 1.66e-24
@@ -40,39 +42,47 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def get_nuc_data(nuc_dataset):
-    if nuc_dataset == "Hotokezaka":
-        return (
-            pl.read_csv(
-                get_config()["path_datadir"] / "betaminusdecays.txt",
-                separator=" ",
-                comment_prefix="#",
-                has_header=False,
-                new_columns=["A", "Z", "Q[MeV]", "Egamma[MeV]", "Eelec[MeV]", "Eneutrino[MeV]", "tau[s]"],
-            )
-            .filter(pl.col("Q[MeV]") > 0.0)
-            .with_columns(pl.col(pl.Int32).cast(pl.Int64))
+def get_nuc_data(nuc_dataset: str):
+    assert nuc_dataset in {"Hotokezaka", "ENSDF"}
+    hotokezaka_betaminus = (
+        pl.read_csv(
+            get_config()["path_datadir"] / "betaminusdecays.txt",
+            separator=" ",
+            comment_prefix="#",
+            has_header=False,
+            new_columns=["A", "Z", "Q[MeV]", "Egamma[MeV]", "Eelec[MeV]", "Eneutrino[MeV]", "tau[s]"],
         )
-    print("Collecting ENSDF data...")
-    rows = []
-    for atomic_number, elsymb in enumerate(at.get_elsymbolslist(), 1):
-        print(f"Element: Z={atomic_number} {elsymb}")
-        for A in range(300):
-            print(f"A: {A}")
+        .filter(pl.col("Q[MeV]") > 0.0)
+        .with_columns(pl.col(pl.Int32).cast(pl.Int64))
+    )
+    if nuc_dataset == "Hotokezaka":
+        return hotokezaka_betaminus
+    csvpath = Path(get_config()["path_datadir"], "betaminusdecays_ensdf.txt")
+    if not csvpath.exists():
+        print("Collecting ENSDF data...")
+        rows = []
+        for hrow in hotokezaka_betaminus.iter_rows(named=True):
+            atomic_number = hrow["Z"]
+            A = hrow["A"]
+            elsymb = at.get_elsymbol(atomic_number)
+            print(f"Element: Z={atomic_number} {elsymb} A={A}")
             isot_str = f"{A}{elsymb.lower()}"
-            req = urllib.request.Request(
-                f"https://nds.iaea.org/relnsd/v1/data?fields=decay_rads&nuclides={isot_str}&rad_types=bm"
+            dfnuc = pd.read_csv(
+                f"https://nds.iaea.org/relnsd/v1/data?fields=decay_rads&nuclides={isot_str}&rad_types=bm",
+                storage_options={
+                    "User-Agent": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:77.0) Gecko/20100101 Firefox/77.0"
+                },
             )
-            req.add_header("User-Agent", "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:77.0) Gecko/20100101 Firefox/77.0")
-            dfnuc = pd.read_csv(urllib.request.urlopen(req))
             if len(dfnuc) > 0:
+                tau_s = dfnuc.iloc[0]["half_life_sec"] / math.log(2)
+                # tau_s = hrow["tau[s]"]
                 Q_MeV = dfnuc.iloc[0]["q"] / 1000
-                tau_s = dfnuc.iloc[0]["half_life"] / 1000
                 E_elec = (dfnuc["intensity_beta"] * dfnuc["mean_energy"]).sum() / 100 / 1000
                 E_nu = (dfnuc["intensity_beta"] * dfnuc["anti_nu_mean_energy"]).sum() / 100 / 1000
-                dfnuc["E_gamma"] = (Q_MeV * 1000 - dfnuc["mean_energy"] - dfnuc["anti_nu_mean_energy"]) / 1000
-                E_gamma = (dfnuc["intensity_beta"] * dfnuc["E_gamma"]).sum() / 100 / 1000
-                E_gamma = max(0, E_gamma)
+                # dfnuc["E_gamma"] = (Q_MeV * 1000 - dfnuc["mean_energy"] - dfnuc["anti_nu_mean_energy"]) / 1000
+                # E_gamma = (dfnuc["intensity_beta"] * dfnuc["E_gamma"]).sum() / 1000
+                # E_gamma = max(0, E_gamma)
+                E_gamma = Q_MeV - E_elec - E_nu
                 rows.append({
                     "A": A,
                     "Z": atomic_number,
@@ -81,11 +91,24 @@ def get_nuc_data(nuc_dataset):
                     "Eelec[MeV]": E_elec,
                     "Eneutrino[MeV]": E_nu,
                     "tau[s]": tau_s,
+                    "source": "ENSDF",
                 })
-        ENSDF_df = pd.DataFrame(rows)
-    print("done!")
-    # ENSDF_df.to_csv("ensdf_data.csv", index=False)
-    return pl.from_pandas(ENSDF_df)
+            else:
+                print(f"No ENSDF data found for Z={atomic_number} A={A}")
+                rows.append(hrow | {"source": "Hotokezaka"})
+
+        with csvpath.open("w") as f:
+            f.writelines(("# Data from ENSDF database\n", "#\n# "))
+            pl.DataFrame(rows).write_csv(f, separator=" ", include_header=True, float_precision=5)
+        print("done!")
+
+    return pl.read_csv(
+        csvpath,
+        separator=" ",
+        comment_prefix="#",
+        has_header=False,
+        new_columns=["A", "Z", "Q[MeV]", "Egamma[MeV]", "Eelec[MeV]", "Eneutrino[MeV]", "tau[s]", "source"],
+    )
 
 
 def chunks(lst, n):
