@@ -100,7 +100,7 @@ def get_nuc_data(nuc_dataset: str):
 
         with csvpath.open("w") as f:
             f.writelines(("# Data from ENSDF database\n", "#\n# "))
-            pl.DataFrame(rows).write_csv(f, separator=" ", include_header=True, float_precision=5)
+            pl.DataFrame(rows).write_csv(f, separator=" ", include_header=True)
         print("done!")
 
     return pl.read_csv(
