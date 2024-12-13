@@ -190,9 +190,11 @@ exclude = [
     'build',
     'dist',
     'target',
+    '_version.py',
 ]
 reportAttributeAccessIssue = false
 reportCallIssue = true
+reportDeprecated = "warning"
 reportMissingImports = false
 reportPossiblyUnboundVariable = false
 reportUnnecessaryTypeIgnoreComment = true

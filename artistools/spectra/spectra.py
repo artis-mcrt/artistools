@@ -6,6 +6,7 @@ import math
 import re
 import typing as t
 from collections import namedtuple
+from collections.abc import Callable
 from collections.abc import Collection
 from collections.abc import Sequence
 from functools import lru_cache
@@ -156,7 +157,7 @@ def get_from_packets(
     average_over_phi: bool = False,
     average_over_theta: bool = False,
     nu_column: str = "nu_rf",
-    fluxfilterfunc: t.Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
+    fluxfilterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     nprocs_read_dfpackets: tuple[int, pl.DataFrame | pl.LazyFrame] | None = None,
     directionbins_are_vpkt_observers: bool = False,
 ) -> dict[int, pl.DataFrame]:
@@ -440,7 +441,7 @@ def get_spectrum(
     timestepmin: int,
     timestepmax: int | None = None,
     directionbins: Sequence[int] | None = None,
-    fluxfilterfunc: t.Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
+    fluxfilterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     average_over_theta: bool = False,
     average_over_phi: bool = False,
     stokesparam: t.Literal["I", "Q", "U"] = "I",
@@ -651,7 +652,7 @@ def get_vspecpol_spectrum(
     timeavg: float,
     angle: int,
     args: argparse.Namespace,
-    fluxfilterfunc: t.Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
+    fluxfilterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
 ) -> pl.DataFrame:
     stokes_params = get_vspecpol_data(vspecindex=angle, modelpath=Path(modelpath))
     if "stokesparam" not in args:
@@ -702,7 +703,7 @@ def get_vspecpol_spectrum(
 @lru_cache(maxsize=4)
 def get_flux_contributions(
     modelpath: Path,
-    filterfunc: t.Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
+    filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     timestepmin: int = -1,
     timestepmax: int = -1,
     getemission: bool = True,
@@ -885,7 +886,7 @@ def get_flux_contributions_from_packets(
     getemission: bool = True,
     getabsorption: bool = True,
     maxpacketfiles: int | None = None,
-    filterfunc: t.Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
+    filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     groupby: t.Literal["ion", "line"] = "ion",
     maxseriescount: int | None = None,
     fixedionlist: list[str] | None = None,

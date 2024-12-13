@@ -6,6 +6,7 @@ import argparse
 import math
 import sys
 import typing as t
+from collections.abc import Callable
 from collections.abc import Collection
 from collections.abc import Iterable
 from collections.abc import Sequence
@@ -130,7 +131,7 @@ def plot_reference_spectrum(
     axis: mplax.Axes,
     xmin: float,
     xmax: float,
-    fluxfilterfunc: t.Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
+    fluxfilterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     scale_to_peak: float | None = None,
     offset: float = 0,
     scale_to_dist_mpc: float = 1,
@@ -246,7 +247,7 @@ def plot_artis_spectrum(
     args,
     scale_to_peak: float | None = None,
     from_packets: bool = False,
-    filterfunc: t.Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
+    filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     linelabel: str | None = None,
     plotpacketcount: bool = False,
     directionbins: list[int] | None = None,
@@ -456,7 +457,7 @@ def plot_artis_spectrum(
 def make_spectrum_plot(
     speclist: Collection[Path | str],
     axes: Sequence[mplax.Axes] | np.ndarray,
-    filterfunc: t.Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None,
+    filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None,
     args,
     scale_to_peak: float | None = None,
 ) -> pl.DataFrame:
@@ -633,7 +634,7 @@ def make_emissionabsorption_plot(
     modelpath: Path,
     axis: mplax.Axes,
     args: argparse.Namespace,
-    filterfunc: t.Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
+    filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     scale_to_peak: float | None = None,
 ) -> tuple[list[Artist], list[str], pl.DataFrame | None]:
     """Plot the emission and absorption contribution spectra, grouped by ion/line/term for an ARTIS model."""

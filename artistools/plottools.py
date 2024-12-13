@@ -4,6 +4,7 @@ import argparse
 import itertools
 import sys
 import typing as t
+from collections.abc import Callable
 from collections.abc import Iterable
 
 import matplotlib.axes as mplax
@@ -232,7 +233,7 @@ def autoscale(ax: mplax.Axes | None = None, axis: str = "y", margin: float = 0.1
 
     for artist in list(ax.collections) + list(ax.lines):
         x, y = get_xy(artist)
-        setlim: t.Callable
+        setlim: Callable
         if axis == "y":
             setlim = ax.set_ylim
             lim = ax.get_xlim()

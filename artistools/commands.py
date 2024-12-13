@@ -28,7 +28,7 @@ COMMANDS = [
     "plotartisviewingangles",
 ]
 
-CommandType: t.TypeAlias = dict[str, t.Union[tuple[str, str], "CommandType"]]
+CommandType: t.TypeAlias = dict[str, t.Union[tuple[str, str], "CommandType"]]  # pyright: ignore[reportDeprecated]
 
 # new subparser based list
 subcommandtree: CommandType = {

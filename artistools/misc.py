@@ -10,6 +10,7 @@ import multiprocessing.pool
 import string
 import typing as t
 from collections import namedtuple
+from collections.abc import Callable
 from collections.abc import Generator
 from collections.abc import Iterable
 from collections.abc import Sequence
@@ -917,7 +918,7 @@ def anyexist(
     return filepath
 
 
-def batched(iterable: Iterable[t.Any], n: int) -> t.Generator[list[t.Any], t.Any, None]:
+def batched(iterable: Iterable[t.Any], n: int) -> Generator[list[t.Any], t.Any, None]:
     """Batch data into iterators of length n. The last batch may be shorter."""
     # batched('ABCDEFG', 3) --> ABC DEF G
     if n < 1:
@@ -993,7 +994,7 @@ def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
     return {}
 
 
-def get_filterfunc(args: argparse.Namespace, mode: str = "interp") -> t.Callable[[t.Any], t.Any] | None:
+def get_filterfunc(args: argparse.Namespace, mode: str = "interp") -> Callable[[t.Any], t.Any] | None:
     """Use command line arguments to determine the appropriate filter function."""
     filterfunc = None
     dictargs = vars(args)
