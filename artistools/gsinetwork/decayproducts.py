@@ -74,6 +74,7 @@ def get_nuc_data(nuc_dataset: str):
                 },
             )
             if len(dfnuc) > 0:
+                dfnuc = dfnuc.loc[dfnuc["p_energy"] == 0]
                 tau_s = dfnuc.iloc[0]["half_life_sec"] / math.log(2)
                 # tau_s = hrow["tau[s]"]
                 Q_MeV = dfnuc.iloc[0]["q"] / 1000
