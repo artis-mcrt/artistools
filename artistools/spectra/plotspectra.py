@@ -1114,7 +1114,7 @@ def make_plot(args) -> tuple[mplfig.Figure, np.ndarray, pl.DataFrame]:
             ax.text(5500, ymax * 0.9, f"{args.timedayslist[index]} days")  # multispecplot text
 
     if not args.hidexticklabels:
-        axes[-1].set_xlabel(args.xlabel)
+        axes[-1].set_xlabel(r"Wavelength $\left[\mathrm{{\AA}}\right]$")
 
     if not args.outputfile:
         args.outputfile = defaultoutputfile
@@ -1321,8 +1321,6 @@ def addargs(parser) -> None:
     parser.add_argument("--reverselegendorder", action="store_true", help="Reverse the order of legend items")
 
     parser.add_argument("--hidexticklabels", action="store_true", help="Don't show numbers or a label on the x axis")
-
-    parser.add_argument("-xlabel", default=r"Wavelength $\left[\mathrm{{\AA}}\right]$", help="Label for the x axis")
 
     parser.add_argument("--hideyticklabels", action="store_true", help="Don't show numbers or a label on the y axis")
 
