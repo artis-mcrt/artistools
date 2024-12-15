@@ -1,7 +1,7 @@
 argcomplete>=3.5.1
 astropy>=6.1.4
 coverage>=7.6.4
-extinction>=0.4.6
+extinction>=0.4.7
 george>=0.4.3
 imageio>=2.36.0
 matplotlib>=3.9.2
