@@ -25,16 +25,16 @@ def annotate_emission_line(ax: mplax.Axes, y: float, upperlevel: int, lowerlevel
     ax.annotate(
         "",
         xy=(lowerlevel, y),
-        xycoords=("data", "axes fraction"),  # type: ignore[arg-type] # pyright: ignore[reportArgumentType]
+        xycoords=("data", "axes fraction"),
         xytext=(upperlevel, y),
-        textcoords=("data", "axes fraction"),  # type: ignore[arg-type] # pyright: ignore[reportArgumentType]
+        textcoords=("data", "axes fraction"),
         arrowprops={"facecolor": "black", "width": 0.1, "headwidth": 6},
     )
 
     ax.annotate(
         label,
         xy=((upperlevel + lowerlevel) / 2, y),
-        xycoords=("data", "axes fraction"),  # type: ignore[arg-type] # pyright: ignore[reportArgumentType]
+        xycoords=("data", "axes fraction"),
         size=10,
         va="bottom",
         ha="center",
