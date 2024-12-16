@@ -86,7 +86,7 @@ def make_hesma_vspecfiles(modelpath: Path, outpath: Path | None = None) -> None:
 
         timearray = vspecdata.columns.to_numpy()[1:]
         vspecdata = vspecdata.sort_values(by="nu", ascending=False)
-        vspecdata = vspecdata.eval("lambda_angstroms = 2.99792458e+18 / nu")
+        vspecdata["lambda_angstroms"] = 2.99792458e18 / vspecdata["nu"]
         for time in timearray:
             vspecdata[time] = vspecdata[time] * vspecdata["nu"] / vspecdata["lambda_angstroms"]
             vspecdata[time] *= 100000.0**2  # Scale to 10 pc (1 Mpc/10 pc) ** 2
