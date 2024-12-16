@@ -28,7 +28,7 @@ def make_ntstats_plot(ntstatfile: str | Path) -> None:
     norm_factors: float | np.ndarray
     if norm_frac_sum:
         # scale up (or down) ionisation, excitation, and heating to force frac_sum = 1.0
-        dfstats = dfstats.eval("frac_sum = frac_ionization + frac_excitation + frac_heating")
+        dfstats["frac_sum"] = dfstats["frac_ionization"] + dfstats["frac_excitation"] + dfstats["frac_heating"]
         norm_factors = 1.0 / dfstats["frac_sum"].to_numpy()
     else:
         norm_factors = 1.0
@@ -172,7 +172,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         dfpops = at.nltepops.read_files(modelpath, modelgridindex=args.modelgridindex, timestep=args.timestep)
 
-        if dfpops is None or dfpops.empty:
+        if dfpops.empty:
             print(f"ERROR: no NLTE populations for cell {args.modelgridindex} at timestep {args.timestep}")
             raise AssertionError
 

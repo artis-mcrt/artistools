@@ -487,8 +487,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                     #     lambda x: nltepopdict.get(x.lower, 0.), axis=1)
 
                     popcolumnname = "upper_pop_nlte"
-                    dftransitions = dftransitions.eval(f"flux_factor_nlte = flux_factor * {popcolumnname}")
-                    dftransitions = dftransitions.eval("upper_departure = upper_pop_nlte / upper_pop_Te")
+                    dftransitions["flux_factor_nlte"] = dftransitions["flux_factor"] * dftransitions[popcolumnname]
+                    dftransitions["upper_departure"] = dftransitions["upper_pop_nlte"] / dftransitions["upper_pop_Te"]
                     if ionid == (26, 2):
                         fe2depcoeff = dftransitions.query("upper == 16 and lower == 5").iloc[0]["upper_departure"]
                     elif ionid == (28, 2):
@@ -511,7 +511,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                     ).to_pandas(use_pyarrow_extension_array=True)
 
                 if args.print_lines:
-                    dftransitions = dftransitions.eval(f"flux_factor_{popcolumnname} = flux_factor * {popcolumnname}")
+                    dftransitions[f"flux_factor_{popcolumnname}"] = (
+                        dftransitions["flux_factor"] * dftransitions[popcolumnname]
+                    )
 
                 yvalues[seriesindex][ionindex] = generate_ion_spectrum(
                     dftransitions, xvalues, popcolumnname, plot_resolution, args

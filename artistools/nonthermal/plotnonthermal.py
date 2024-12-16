@@ -166,7 +166,7 @@ def make_plot(modelpaths: list[Path], args: argparse.Namespace) -> None:
     if args.kf1992spec:
         kf92spec = pd.read_csv(Path(modelpaths[0], "KF1992spec-fig1.txt"), header=None, names=["e_kev", "log10_y"])
         kf92spec["energy_ev"] = kf92spec["e_kev"] * 1000.0
-        kf92spec = kf92spec.eval("y = 10 ** log10_y")
+        kf92spec["y"] = 10 ** kf92spec["log10_y"]
         axes[0].plot(
             kf92spec["energy_ev"], kf92spec["log10_y"], linewidth=2.0, color="red", label="Kozma & Fransson (1992)"
         )
