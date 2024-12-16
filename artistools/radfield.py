@@ -813,7 +813,6 @@ def plot_celltimestep(modelpath, timestep, outputfile, xmin, xmax, modelgridinde
 def plot_bin_fitted_field_evolution(axis, radfielddata, nu_line, modelgridindex, **plotkwargs):
     bin_num, _nu_lower, _nu_upper = select_bin(radfielddata, nu=nu_line, modelgridindex=modelgridindex)  # noqa: F841
     # print(f"Selected bin_num {bin_num} to get a binned radiation field estimator")
-
     radfielddataselected = radfielddata.query(
         "bin_num == @bin_num and modelgridindex == @modelgridindex and nu_lower <= @nu_line and nu_upper >= @nu_line"
     ).copy()
@@ -907,15 +906,10 @@ def plot_timeevolution(modelpath, outputfile, modelgridindex, args: argparse.Nam
     timestep = at.get_timestep_of_timedays(modelpath, 330)
     time_days = at.get_timestep_time(modelpath, timestep)
 
-    dftopestimators = (
-        radfielddataselected.query("timestep==@timestep and bin_num < -1")
-        .copy()
-        .eval("lambda_angstroms = 2.99792458e18 / nu_upper")
-        .eval("Jb_lambda = J_nu_avg * (nu_upper ** 2) / 2.99792458e18")
-        .sort_values(by="Jb_lambda", ascending=False)
-        .iloc[:nlinesplotted]
-    )
-
+    dftopestimators = radfielddataselected.query("timestep==@timestep and bin_num < -1").copy()
+    dftopestimators["lambda_angstroms"] = 2.99792458e18 / dftopestimators["nu_upper"]
+    dftopestimators["Jb_lambda"] = dftopestimators["J_nu_avg"] * (dftopestimators["nu_upper"] ** 2) / 2.99792458e18
+    dftopestimators = dftopestimators.sort_values("Jb_lambda", ascending=False, inplace=False).iloc[:nlinesplotted]
     print(f"Top estimators at timestep {timestep} t={time_days:.1f}")
     print(dftopestimators)
 
