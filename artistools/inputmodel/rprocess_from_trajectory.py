@@ -515,11 +515,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     wollaeger_profilename = "wollaeger_ejectaprofile_10bins.txt"
     if Path(wollaeger_profilename).exists():
-        dfdensities = get_wollaeger_density_profile(wollaeger_profilename)
+        dfdensities = get_wollaeger_density_profile(wollaeger_profilename, t_model_init_seconds)
     else:
         rho = 1e-11
         print(f"{wollaeger_profilename} not found. Using rho {rho} g/cm3")
-        dfdensities = pd.DataFrame({"rho": rho, "vel_r_max_kmps": 6.0e4}, index=[0])
+        dfdensities = pl.DataFrame({"mgi": 0, "rho": rho, "vel_r_max_kmps": 6.0e4})
 
     dfdensities["inputcellid"] = dfdensities["mgi"] + 1
     # print(dfdensities)
@@ -553,7 +553,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             "logrho": math.log10(densityrow["rho"]),
         }
         | rowdict
-        for mgi, densityrow in dfdensities.iterrows()
+        for densityrow in dfdensities.iter_rows(named=True)
     ])
     at.inputmodel.save_modeldata(dfmodel=dfmodel, t_model_init_days=t_model_init_days, filepath=Path(args.outputpath))
 
@@ -563,23 +563,38 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             fcontribs.write(f"{particleid} {inputcellid} 1.0\n")
 
 
-def get_wollaeger_density_profile(wollaeger_profilename):
+def get_wollaeger_density_profile(wollaeger_profilename: Path | str, t_model_init_seconds: float) -> pl.DataFrame:
+    wollaeger_profilename = Path(wollaeger_profilename)
     print(f"{wollaeger_profilename} found")
     with Path(wollaeger_profilename).open("rt", encoding="utf-8") as f:
         t_model_init_days_in = float(f.readline().strip().removesuffix(" day"))
-    result = pd.read_csv(wollaeger_profilename, sep=r"\s+", skiprows=1, names=["cellid", "vel_r_max_kmps", "rho"])
-    result["cellid"] = result["cellid"].astype(int)
-    result["vel_r_min_kmps"] = np.concatenate(([0.0], result["vel_r_max_kmps"].to_numpy()[:-1]))
+    t_model_init_seconds_in = t_model_init_days_in * 24 * 60 * 60
 
-    t_model_init_seconds_in = t_model_init_days_in * 24 * 60 * 60  # noqa: F841
-    return result.eval(
-        "mass_g = rho * 4. / 3. * @math.pi * (vel_r_max_kmps ** 3 - vel_r_min_kmps ** 3)"
-        "* (1e5 * @t_model_init_seconds_in) ** 3"
-    ).eval(
-        # now replace the density at the input time with the density at required time
-        "rho = mass_g / ("
-        "4. / 3. * @math.pi * (vel_r_max_kmps ** 3 - vel_r_min_kmps ** 3)"
-        " * (1e5 * @t_model_init_seconds) ** 3)"
+    return (
+        pl.from_pandas(
+            pd.read_csv(wollaeger_profilename, sep=r"\s+", skiprows=1, names=["cellid", "vel_r_max_kmps", "rho"])
+        )
+        .with_columns(pl.col("mgi").cast(pl.Int32))
+        .with_columns(vel_r_min_kmps=pl.col("vel_r_max_kmps").shift(n=1, fill_value=0.0))
+        .with_columns(
+            mass_g=pl.col("rho")
+            * 4.0
+            / 3.0
+            * math.pi
+            * (pl.col("vel_r_max_kmps") ** 3 - pl.col("vel_r_min_kmps") ** 3)
+            * (1e5 * t_model_init_seconds_in) ** 3
+        )
+        .with_columns(
+            # now replace the density at the input time with the density at required time
+            rho=pl.col("mass_g")
+            / (
+                4.0
+                / 3.0
+                * math.pi
+                * (pl.col("vel_r_max_kmps") ** 3 - pl.col("vel_r_min_kmps") ** 3)
+                * (1e5 * t_model_init_seconds) ** 3
+            )
+        )
     )
 
 
