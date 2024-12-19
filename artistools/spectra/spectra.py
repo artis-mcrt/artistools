@@ -607,10 +607,10 @@ def make_virtual_grid_summed_file(modelpath: Path | str) -> None:
         else:
             summed_data += data[:, 2:]
 
-    # Combine velocity and summed data    
+    # Combine velocity and summed data
     valid_data = tuple(array for array in (velocity_columns, summed_data) if array is not None)
     # Perform the horizontal stack
-    final_data = np.hstack(valid_data)    
+    final_data = np.hstack(valid_data)
 
     # Ensure final data has exactly 5 columns
     if final_data.shape[1] > 5:
