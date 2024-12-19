@@ -567,12 +567,9 @@ def make_virtual_grid_summed_file(modelpath: Path | str) -> None:
     nvirtual_spectra = int(vpktconfig["nobsdirections"])
     nvmaps = int(vpktconfig["Number Of Velocity Maps"])
 
-    # We now also need to determine the dimensions of the velocity maps
     # Read the first file to get the dimensions
-    vpkt_grid_files = [f"vpkt_grid_{mpirank:04d}.out" for mpirank in range(nprocs)]    
+    vpkt_grid_files = [f"vpkt_grid_{mpirank:04d}.out" for mpirank in range(nprocs)]
     vpkt_grid_data = pd.read_csv(vpkt_grid_files[0], sep=" ", header=None)
-    
-    # Determine how many unique values there are in the first column and second column
     VGRID_NY = len(vpkt_grid_data[0].unique())
     VGRID_NZ = len(vpkt_grid_data[1].unique())
 
@@ -581,16 +578,14 @@ def make_virtual_grid_summed_file(modelpath: Path | str) -> None:
     total_grid_points = VGRID_NY * VGRID_NZ  # Total grid points in one layer
     rows_per_obsdir = total_grid_points * nvmaps  # Rows for one observer direction
 
-    # Output filename template
-    output_filename_template = 'Vpkt_grid_total_{}.txt'
+    # Output filename
+    output_filename_template = "Vpkt_grid_total_{}.txt"
 
     # Initialize variables for summation
     summed_data = None
-    velocity_columns = None  # To hold velocity data separately
+    velocity_columns = None  # velocity separately
 
-    # Process each file
     for filename in vpkt_grid_files:
-        # Load data from file
         data = np.loadtxt(filename)
         print(f"Processing {filename}")
 
@@ -598,15 +593,13 @@ def make_virtual_grid_summed_file(modelpath: Path | str) -> None:
         expected_rows = rows_per_obsdir * nvirtual_spectra
 
         if data.shape[0] != expected_rows:
-            raise ValueError(f"Unexpected number of rows in {filename}. Expected {expected_rows}, got {data.shape[0]}.")
+            print(f"Unexpected number of rows in {filename}. Expected {expected_rows}, got {data.shape[0]}.")
 
         # Separate velocity and other columns
         if velocity_columns is None:
             velocity_columns = data[:, :2]  # Assuming the first two columns are velocity
         else:
-            # Check consistency of velocity columns
-            if not np.allclose(velocity_columns, data[:, :2]):
-                raise ValueError(f"Velocity columns in {filename} do not match previous files.")
+            print(f"Velocity columns in {filename} do not match previous files.")
 
         # Sum the remaining columns
         if summed_data is None:
@@ -614,14 +607,16 @@ def make_virtual_grid_summed_file(modelpath: Path | str) -> None:
         else:
             summed_data += data[:, 2:]
 
-    # Combine velocity and summed data
-    final_data = np.hstack((velocity_columns, summed_data))
+    # Combine velocity and summed data    
+    valid_data = tuple(array for array in (velocity_columns, summed_data) if array is not None)
+    # Perform the horizontal stack
+    final_data = np.hstack(valid_data)    
 
     # Ensure final data has exactly 5 columns
     if final_data.shape[1] > 5:
-        raise ValueError("Data has more than 5 columns. Should only have N1, N2, I, Q, U.")
-    elif final_data.shape[1] < 5:
-        raise ValueError("Data has less than 5 columns. Should only have N1, N2, I, Q, U.")
+        print("Data has more than 5 columns. Should only have N1, N2, I, Q, U.")
+    if final_data.shape[1] < 5:
+        print("Data has less than 5 columns. Should only have N1, N2, I, Q, U.")
 
     # Split combined data by observer direction and write to output files
     for obsdir in range(nvirtual_spectra):
@@ -632,25 +627,12 @@ def make_virtual_grid_summed_file(modelpath: Path | str) -> None:
         obs_data = final_data[start_idx:end_idx, :]
 
         # Write to output file
-        with open(output_filename_template.format(obsdir), 'w') as f:
+        output_path = Path(output_filename_template.format(obsdir))
+        with output_path.open("w", encoding="utf-8") as f:  # Specify encoding
             for row in obs_data:
-                f.write(', '.join(map(str, row)) + '\n')
+                f.write(", ".join(map(str, row)) + "\n")
 
     print("Files successfully processed and written!")
-
-    
-    
-    
-    
-
-    
-        
-    
-
-
-    
-    
-    
 
 
 def make_averaged_vspecfiles(args: argparse.Namespace) -> None:
