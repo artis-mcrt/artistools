@@ -1476,7 +1476,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if args.makevspecpol:
         atspectra.make_virtual_spectra_summed_file(args.specpath[0])
         return
-    
+
     if args.makevspecgrid:
         atspectra.make_virtual_grid_summed_file(args.specpath[0])
         return
