@@ -558,6 +558,101 @@ def make_virtual_spectra_summed_file(modelpath: Path | str) -> None:
         print(f"Saved {outfile}")
 
 
+def make_virtual_grid_summed_file(modelpath: Path | str) -> None:
+    print("Generating all-rank summed vspec Grid files..")
+    nprocs = get_nprocs(modelpath)
+    print("nprocs", nprocs)
+    vpktconfig = get_vpkt_config(modelpath)
+
+    nvirtual_spectra = int(vpktconfig["nobsdirections"])
+    nvmaps = int(vpktconfig["Number Of Velocity Maps"])
+
+    # We now also need to determine the dimensions of the velocity maps
+    # Read the first file to get the dimensions
+    vpkt_grid_files = [f"vpkt_grid_{mpirank:04d}.out" for mpirank in range(nprocs)]    
+    vpkt_grid_data = pd.read_csv(vpkt_grid_files[0], sep=" ", header=None)
+    
+    # Determine how many unique values there are in the first column and second column
+    VGRID_NY = len(vpkt_grid_data[0].unique())
+    VGRID_NZ = len(vpkt_grid_data[1].unique())
+
+    print(f"VGRID_NY: {VGRID_NY}, VGRID_NZ: {VGRID_NZ}")
+
+    total_grid_points = VGRID_NY * VGRID_NZ  # Total grid points in one layer
+    rows_per_obsdir = total_grid_points * nvmaps  # Rows for one observer direction
+
+    # Output filename template
+    output_filename_template = 'Vpkt_grid_total_{}.txt'
+
+    # Initialize variables for summation
+    summed_data = None
+    velocity_columns = None  # To hold velocity data separately
+
+    # Process each file
+    for filename in vpkt_grid_files:
+        # Load data from file
+        data = np.loadtxt(filename)
+        print(f"Processing {filename}")
+
+        # Validate row count
+        expected_rows = rows_per_obsdir * nvirtual_spectra
+                                
+        if data.shape[0] != expected_rows:
+            raise ValueError(f"Unexpected number of rows in {filename}. Expected {expected_rows}, got {data.shape[0]}.")
+
+        # Separate velocity and other columns
+        if velocity_columns is None:
+            velocity_columns = data[:, :2]  # Assuming the first two columns are velocity
+        else:
+            # Check consistency of velocity columns
+            if not np.allclose(velocity_columns, data[:, :2]):
+                raise ValueError(f"Velocity columns in {filename} do not match previous files.")
+
+        # Sum the remaining columns
+        if summed_data is None:
+            summed_data = data[:, 2:]  # Exclude velocity columns from summation
+        else:
+            summed_data += data[:, 2:]
+
+    # Combine velocity and summed data
+    final_data = np.hstack((velocity_columns, summed_data))
+
+    # Ensure final data has exactly 5 columns
+    if final_data.shape[1] > 5:
+        final_data = final_data[:, :5]  # Trim extra columns
+    elif final_data.shape[1] < 5:
+        raise ValueError("Data has fewer than 5 columns. Ensure the input files contain enough data.")
+
+    # Split combined data by observer direction and write to output files
+    for obsdir in range(nvirtual_spectra):
+        start_idx = obsdir * rows_per_obsdir
+        end_idx = start_idx + rows_per_obsdir
+
+        # Extract data for this observer direction
+        obs_data = final_data[start_idx:end_idx, :]
+
+        # Write to output file
+        with open(output_filename_template.format(obsdir), 'w') as f:
+            for row in obs_data:
+                f.write(', '.join(map(str, row)) + '\n')
+
+    print("Files successfully processed and written!")
+
+    
+    
+    
+    
+
+    
+        
+    
+
+
+    
+    
+    
+
+
 def make_averaged_vspecfiles(args: argparse.Namespace) -> None:
     filenames = [
         vspecfile.name

@@ -258,6 +258,23 @@ def get_vpkt_config(modelpath: Path | str) -> dict[str, t.Any]:
             int(x) for x in vpkt_txt.readline().split()
         )
 
+        # read the next line
+        vpackets_total_active_spectral_region=vpkt_txt.readline().split()
+        
+        optically_thick_cells = vpkt_txt.readline().split()
+
+        optical_depths = vpkt_txt.readline().split()
+
+        velocity_grid_map = vpkt_txt.readline().split()
+
+        velocity_grid_map_active = vpkt_txt.readline().split()
+
+        velocity_grid_map_regions = vpkt_txt.readline().split()
+
+        vpkt_config["Number Of Velocity Maps"] = velocity_grid_map_regions[0]
+
+        vpkt_config["Velocity Map Regions"] = velocity_grid_map_regions[1:]
+        
     return vpkt_config
 
 
