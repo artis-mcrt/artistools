@@ -596,7 +596,7 @@ def make_virtual_grid_summed_file(modelpath: Path | str) -> None:
 
         # Validate row count
         expected_rows = rows_per_obsdir * nvirtual_spectra
-                                
+
         if data.shape[0] != expected_rows:
             raise ValueError(f"Unexpected number of rows in {filename}. Expected {expected_rows}, got {data.shape[0]}.")
 
@@ -619,9 +619,9 @@ def make_virtual_grid_summed_file(modelpath: Path | str) -> None:
 
     # Ensure final data has exactly 5 columns
     if final_data.shape[1] > 5:
-        final_data = final_data[:, :5]  # Trim extra columns
+        raise ValueError("Data has more than 5 columns. Should only have N1, N2, I, Q, U.")
     elif final_data.shape[1] < 5:
-        raise ValueError("Data has fewer than 5 columns. Ensure the input files contain enough data.")
+        raise ValueError("Data has less than 5 columns. Should only have N1, N2, I, Q, U.")
 
     # Split combined data by observer direction and write to output files
     for obsdir in range(nvirtual_spectra):
