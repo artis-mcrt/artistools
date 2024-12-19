@@ -606,7 +606,7 @@ def make_virtual_grid_summed_file(modelpath: Path | str) -> None:
             summed_data = data[:, 2:]  # Exclude velocity columns from summation
         else:
             summed_data += data[:, 2:]
-
+    print("Files successfully processed.")
     # Combine velocity and summed data
     valid_data = tuple(array for array in (velocity_columns, summed_data) if array is not None)
     # Perform the horizontal stack
@@ -632,7 +632,7 @@ def make_virtual_grid_summed_file(modelpath: Path | str) -> None:
             for row in obs_data:
                 f.write(", ".join(map(str, row)) + "\n")
 
-    print("Files successfully processed and written!")
+    print("Velocity Grid successfully Written.")
 
 
 def make_averaged_vspecfiles(args: argparse.Namespace) -> None:
