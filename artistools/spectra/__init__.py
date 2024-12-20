@@ -16,6 +16,7 @@ from artistools.spectra.spectra import get_spectrum_at_time as get_spectrum_at_t
 from artistools.spectra.spectra import get_vspecpol_data as get_vspecpol_data
 from artistools.spectra.spectra import get_vspecpol_spectrum as get_vspecpol_spectrum
 from artistools.spectra.spectra import make_averaged_vspecfiles as make_averaged_vspecfiles
+from artistools.spectra.spectra import make_virtual_grid_summed_file as make_virtual_grid_summed_file
 from artistools.spectra.spectra import make_virtual_spectra_summed_file as make_virtual_spectra_summed_file
 from artistools.spectra.spectra import print_integrated_flux as print_integrated_flux
 from artistools.spectra.spectra import read_spec_res as read_spec_res
