@@ -255,9 +255,11 @@ def plot_artis_spectrum(
     average_over_theta: bool = False,
     usedegrees: bool = False,
     maxpacketfiles: int | None = None,
+    xunit: str = "angstroms",
     **plotkwargs,
 ) -> pl.DataFrame | None:
     """Plot an ARTIS output spectrum. The data plotted are also returned as a DataFrame."""
+    assert xunit in {"angstroms", "kev"}
     modelpath = Path(modelpath)
     if Path(modelpath).is_file():  # handle e.g. modelpath = 'modelpath/spec.out'
         specfilename = Path(modelpath).parts[-1]
@@ -329,8 +331,8 @@ def plot_artis_spectrum(
         if from_packets:
             viewinganglespectra = atspectra.get_from_packets(
                 modelpath,
-                args.timemin,
-                args.timemax,
+                timelowdays=args.timemin,
+                timehighdays=args.timemax,
                 lambda_min=supxmin * 0.9,
                 lambda_max=supxmax * 1.1,
                 use_time=use_time,
@@ -341,6 +343,7 @@ def plot_artis_spectrum(
                 average_over_theta=average_over_theta,
                 fluxfilterfunc=filterfunc,
                 directionbins_are_vpkt_observers=args.plotvspecpol is not None,
+                gamma=args.gamma,
             )
 
         elif args.plotvspecpol is not None:
@@ -369,6 +372,7 @@ def plot_artis_spectrum(
                 average_over_phi=average_over_phi,
                 average_over_theta=average_over_theta,
                 fluxfilterfunc=filterfunc,
+                gamma=args.gamma,
             )
 
         dirbin_definitions = (
@@ -412,26 +416,23 @@ def plot_artis_spectrum(
                 if len(directionbins) > 1 or not linelabel_is_custom:
                     linelabel_withdirbin = f"{linelabel} {dirbin_definitions[dirbin]}"
 
-            atspectra.print_integrated_flux(dfspectrum["f_lambda"], dfspectrum["lambda_angstroms"])
-
-            if scale_to_peak:
-                dfspectrum = dfspectrum.with_columns(
-                    f_lambda_scaled=pl.col("f_lambda") / pl.col("f_lambda").max() * scale_to_peak
-                )
-
-                ycolumnname = "f_lambda_scaled"
-            else:
-                ycolumnname = "f_lambda"
+            # atspectra.print_integrated_flux(dfspectrum["f_lambda"], dfspectrum["lambda_angstroms"])
 
             if plotpacketcount:
-                ycolumnname = "packetcount"
+                dfspectrum = dfspectrum.with_columns(y=pl.col("packetcount"))
+            else:
+                dfspectrum = dfspectrum.with_columns(y=pl.col("f_lambda" if xunit == "angstroms" else "f_nu"))
+                if scale_to_peak:
+                    dfspectrum = dfspectrum.with_columns(
+                        y_scaled=pl.col("y") / pl.col("y").max() * scale_to_peak
+                    ).with_columns(y=pl.col("y_scaled"))
 
             if args.binflux:
                 new_lambda_angstroms = []
                 binned_flux = []
 
                 wavelengths = dfspectrum["lambda_angstroms"]
-                fluxes = dfspectrum[ycolumnname]
+                fluxes = dfspectrum["y"]
                 nbins = 5
 
                 for i in np.arange(0, len(wavelengths - nbins), nbins, dtype=int):
@@ -442,13 +443,18 @@ def plot_artis_spectrum(
                     sum_flux = sum(fluxes[j] for j in range(i, i_max))
                     binned_flux.append(sum_flux / ncontribs)
 
-                dfspectrum = pl.DataFrame({"lambda_angstroms": new_lambda_angstroms, ycolumnname: binned_flux})
+                dfspectrum = pl.DataFrame({"lambda_angstroms": new_lambda_angstroms, "y": binned_flux})
+
+            if args.x == "angstroms":
+                dfspectrum = dfspectrum.with_columns(x=pl.col("lambda_angstroms"))
+            else:
+                h = 4.1356677e-15  # Planck's constant [eV s]
+                c = 2.99792458e18  # speed of light [angstroms/s]
+                dfspectrum = dfspectrum.with_columns(x=h * c / pl.col("lambda_angstroms") / 1000.0, y=pl.col("f_nu"))
+            dfspectrum = dfspectrum.sort("x", maintain_order=True)
 
             axis.plot(
-                dfspectrum["lambda_angstroms"],
-                dfspectrum[ycolumnname],
-                label=linelabel_withdirbin if axindex == 0 else None,
-                **plotkwargs,
+                dfspectrum["x"], dfspectrum["y"], label=linelabel_withdirbin if axindex == 0 else None, **plotkwargs
             )
 
     return dfspectrum[["lambda_angstroms", "f_lambda"]]
@@ -558,6 +564,7 @@ def make_spectrum_plot(
                     average_over_phi=args.average_over_phi_angle,
                     average_over_theta=args.average_over_theta_angle,
                     usedegrees=args.usedegrees,
+                    xunit=args.x,
                     **plotkwargs,
                 )
             except FileNotFoundError as e:
@@ -607,13 +614,15 @@ def make_spectrum_plot(
         #         zorder=-1,
         #     )
 
-        if args.stokesparam == "I":
+        if args.stokesparam == "I" and not args.logscaley:
             axis.set_ylim(bottom=0.0)
-        if args.normalised:
-            axis.set_ylim(top=1.25)
-            axis.set_ylabel(r"Scaled F$_\lambda$")
+
         if args.plotpacketcount:
             axis.set_ylabel(r"Monte Carlo packets per bin")
+        elif args.normalised:
+            axis.set_ylim(top=1.25)
+            axis.set_ylabel(r"Scaled F$_\lambda$")
+
         if not args.notitle and args.title:
             if args.inset_title:
                 axis.annotate(
@@ -1008,33 +1017,46 @@ def make_plot(args) -> tuple[mplfig.Figure, np.ndarray, pl.DataFrame]:
     dfalldata: pl.DataFrame | None = pl.DataFrame()
 
     if not args.hideyticklabels:
+        ylabel = None
+        if args.x == "angstroms":
+            ylabel = r"F$_\lambda$ at 1 Mpc [{}erg/s/cm$^2$/$\mathrm{{\AA}}$]"
+        elif args.x.lower() == "kev":
+            ylabel = r"F$_\nu$ at 1 Mpc [{}erg/s/cm$^2$/Hz]"
+
+        assert ylabel is not None
+        if args.logscaley:
+            # don't include the {} that will be replaced with the power of 10 by the custom formatter
+            ylabel = ylabel.replace("{}", "")
+
         if args.multispecplot:
             for ax in axes:
-                ax.set_ylabel(r"F$_\lambda$ at 1 Mpc [{}erg/s/cm$^2$/$\mathrm{{\AA}}$]")
-
-        elif args.logscale:
-            # don't include the {} that will be replaced with the power of 10 by the custom formatter
-            axes[-1].set_ylabel(r"F$_\lambda$ at 1 Mpc [erg/s/cm$^2$/$\mathrm{{\AA}}$]")
+                ax.set_ylabel(ylabel)
         else:
-            axes[-1].set_ylabel(r"F$_\lambda$ at 1 Mpc [{}erg/s/cm$^2$/$\mathrm{{\AA}}$]")
+            axes[-1].set_ylabel(ylabel)
 
     for axis in axes:
-        if args.logscale:
+        if args.xmin is not None:
+            axis.set_xlim(left=args.xmin)
+        if args.xmax is not None:
+            axis.set_xlim(right=args.xmax)
+        if args.logscalex:
+            axis.set_xscale("log")
+        if args.logscaley:
             axis.set_yscale("log")
-        axis.set_xlim(left=args.xmin, right=args.xmax)
 
-        if (args.xmax - args.xmin) < 2000:
-            axis.xaxis.set_major_locator(ticker.MultipleLocator(base=100))
-            axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=10))
-        elif (args.xmax - args.xmin) < 11000:
-            axis.xaxis.set_major_locator(ticker.MultipleLocator(base=1000))
-            axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
-        elif (args.xmax - args.xmin) < 14000:
-            axis.xaxis.set_major_locator(ticker.MultipleLocator(base=2000))
-            axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=500))
-        else:
-            axis.xaxis.set_major_locator(ticker.MultipleLocator(base=2000))
-            axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=500))
+        if not args.gamma:
+            if (args.xmax - args.xmin) < 2000:
+                axis.xaxis.set_major_locator(ticker.MultipleLocator(base=100))
+                axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=10))
+            elif (args.xmax - args.xmin) < 11000:
+                axis.xaxis.set_major_locator(ticker.MultipleLocator(base=1000))
+                axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
+            elif (args.xmax - args.xmin) < 14000:
+                axis.xaxis.set_major_locator(ticker.MultipleLocator(base=2000))
+                axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=500))
+            else:
+                axis.xaxis.set_major_locator(ticker.MultipleLocator(base=2000))
+                axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=500))
 
     if densityplotyvars:
         make_contrib_plot(axes[:-1], args.specpath[0], densityplotyvars, args)
@@ -1100,7 +1122,7 @@ def make_plot(args) -> tuple[mplfig.Figure, np.ndarray, pl.DataFrame]:
     for index, ax in enumerate(axes):
         # ax.xaxis.set_major_formatter(plt.NullFormatter())
 
-        if "{" in ax.get_ylabel() and not args.logscale:
+        if "{" in ax.get_ylabel() and not args.logscaley:
             ax.yaxis.set_major_formatter(ExponentLabelFormatter(ax.get_ylabel(), decimalplaces=1))
 
         if args.hidexticklabels:
@@ -1114,7 +1136,10 @@ def make_plot(args) -> tuple[mplfig.Figure, np.ndarray, pl.DataFrame]:
             ax.text(5500, ymax * 0.9, f"{args.timedayslist[index]} days")  # multispecplot text
 
     if not args.hidexticklabels:
-        axes[-1].set_xlabel(r"Wavelength $\left[\mathrm{{\AA}}\right]$")
+        if args.x == "angstroms":
+            axes[-1].set_xlabel(r"Wavelength $\left[\mathrm{{\AA}}\right]$")
+        else:
+            axes[-1].set_xlabel(r"Energy $\left[\mathrm{{keV}}\right]$")
 
     if not args.outputfile:
         args.outputfile = defaultoutputfile
@@ -1163,6 +1188,8 @@ def addargs(parser) -> None:
     parser.add_argument("-linealpha", default=[], nargs="*", help="List of line alphas (opacities)")
 
     parser.add_argument("-dashes", default=[], nargs="*", help="Dashes property of lines")
+
+    parser.add_argument("--gamma", action="store_true", help="Make light curve from gamma rays instead of R-packets")
 
     parser.add_argument("--greyscale", action="store_true", help="Plot in greyscale")
 
@@ -1232,12 +1259,14 @@ def addargs(parser) -> None:
         "--notimeclamp", action="store_true", help="When plotting from packets, don't clamp to timestep start/end"
     )
 
+    parser.add_argument("-x", default=None, choices=["angstroms", "kev", "hz"], help="x (horizontal) axis unit")
+
     parser.add_argument(
-        "-xmin", "-lambdamin", dest="xmin", type=int, default=2500, help="Plot range: minimum wavelength in Angstroms"
+        "-xmin", "-lambdamin", dest="xmin", type=float, default=None, help="Plot range: minimum x range"
     )
 
     parser.add_argument(
-        "-xmax", "-lambdamax", dest="xmax", type=int, default=19000, help="Plot range: maximum wavelength in Angstroms"
+        "-xmax", "-lambdamax", dest="xmax", type=float, default=None, help="Plot range: maximum x range"
     )
 
     parser.add_argument(
@@ -1304,7 +1333,9 @@ def addargs(parser) -> None:
         "-figscale", type=float, default=1.8, help="Scale factor for plot area. 1.0 is for single-column"
     )
 
-    parser.add_argument("--logscale", action="store_true", help="Use log scale")
+    parser.add_argument("--logscalex", action="store_true", help="Use log scale for x values")
+
+    parser.add_argument("--logscaley", action="store_true", help="Use log scale for y values")
 
     parser.add_argument("--hidenetspectrum", action="store_true", help="Hide net spectrum")
 
@@ -1425,6 +1456,14 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         if args.average_every_tenth_viewing_angle:
             print("WARNING: --average_every_tenth_viewing_angle is deprecated. use --average_over_phi_angle instead")
             args.average_over_phi_angle = True
+
+    if args.x is None:
+        args.x = "kev" if args.gamma else "angstroms"
+
+    if args.xmin is None and not args.gamma:
+        args.xmin = 2500
+    if args.xmax is None and not args.gamma:
+        args.xmax = 19000
 
     set_mpl_style()
 
