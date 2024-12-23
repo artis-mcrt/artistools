@@ -24,7 +24,7 @@ class IonTuple(t.NamedTuple):
 
 
 def get_kurucz_transitions() -> tuple[pd.DataFrame, list[IonTuple]]:
-    hc_evcm = (const.h * const.c).to("eV cm").value
+    hc_in_ev_cm = 0.0001239841984332003
     transitiontuple = namedtuple(
         "transitiontuple",
         "Z ion_stage lambda_angstroms A lower_energy_ev upper_energy_ev lower_statweight upper_statweight",
@@ -40,7 +40,7 @@ def get_kurucz_transitions() -> tuple[pd.DataFrame, list[IonTuple]]:
                     continue
                 lambda_angstroms = float(line[:12]) * 10
                 loggf = float(line[11:18])
-                lower_energy_ev, upper_energy_ev = hc_evcm * float(line[24:36]), hc_evcm * float(line[52:64])
+                lower_energy_ev, upper_energy_ev = hc_in_ev_cm * float(line[24:36]), hc_in_ev_cm * float(line[52:64])
                 lower_statweight, upper_statweight = 2 * float(line[36:42]) + 1, 2 * float(line[64:70]) + 1
                 fij = (10**loggf) / lower_statweight
                 A = fij / (1.49919e-16 * upper_statweight / lower_statweight * lambda_angstroms**2)
@@ -103,7 +103,7 @@ def generate_ion_spectrum(
         # contribute the Gaussian line profile to the discrete flux bins
 
         centre_index = round((line["lambda_angstroms"] - args.xmin) / plot_resolution)
-        sigma_angstroms = line["lambda_angstroms"] * args.sigma_v / const.c.to("km / s").value
+        sigma_angstroms = line["lambda_angstroms"] * args.sigma_v / 299792.458
         sigma_gridpoints = math.ceil(sigma_angstroms / plot_resolution)
         window_left_index = max(int(centre_index - args.gaussian_window * sigma_gridpoints), 0)
         window_right_index = min(int(centre_index + args.gaussian_window * sigma_gridpoints), len(xvalues))
@@ -205,7 +205,7 @@ def make_plot(
 def add_upper_lte_pop(
     dftransitions: pl.DataFrame, T_exc: float, ionpop: float, ltepartfunc: float, columnname: str | None = None
 ) -> pl.DataFrame:
-    K_B = const.k_B.to("eV / K").value
+    K_B = 8.617333262145179e-05  # eV / K
     scalefactor = ionpop / ltepartfunc
     if columnname is None:
         columnname = f"upper_pop_lte_{T_exc:.0f}K"
@@ -445,7 +445,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             print(f"  {len(pldftransitions)} plottable transitions")
 
             if args.atomicdatabase == "artis":
-                K_B = const.k_B.to("eV / K").value
+                K_B = 8.617333262145179e-05  # eV / K
                 T_exc = vardict["Te"]
                 ltepartfunc = (
                     ion["levels"].select(pl.col("g") * (-pl.col("energy_ev") / K_B / T_exc).exp()).sum().item()
@@ -500,7 +500,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                     T_exc = vardict[temperature]
                     popcolumnname = f"upper_pop_lte_{T_exc:.0f}K"
                     if args.atomicdatabase == "artis":
-                        K_B = const.k_B.to("eV / K").value
+                        K_B = 8.617333262145179e-05  # eV / K
                         ltepartfunc = (
                             ion["levels"].select(pl.col("g") * (-pl.col("energy_ev") / K_B / T_exc).exp()).sum().item()
                         )

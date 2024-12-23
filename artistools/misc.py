@@ -1219,9 +1219,6 @@ def get_nprocs(modelpath: Path) -> int:
 @lru_cache(maxsize=8)
 def get_inputparams(modelpath: Path) -> dict[str, t.Any]:
     """Return parameters specified in input.txt."""
-    from astropy import constants as const
-    from astropy import units as u
-
     params: dict[str, t.Any] = {}
     with Path(modelpath, "input.txt").open("r", encoding="utf-8") as inputfile:
         params["pre_zseed"] = int(readnoncommentline(inputfile).split("#")[0])
@@ -1234,8 +1231,9 @@ def get_inputparams(modelpath: Path) -> dict[str, t.Any]:
 
         params["tmin"], params["tmax"] = (float(x) for x in readnoncommentline(inputfile).split("#")[0].split())
 
+        MeV_in_Hz = 2.417989242084918e20
         params["nusyn_min"], params["nusyn_max"] = (
-            (float(x) * u.MeV / const.h).to("Hz") for x in readnoncommentline(inputfile).split("#")[0].split()
+            float(x) * MeV_in_Hz for x in readnoncommentline(inputfile).split("#")[0].split()
         )
 
         # number of times for synthesis

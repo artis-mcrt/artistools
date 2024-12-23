@@ -9,7 +9,6 @@ from pathlib import Path
 
 import pandas as pd
 import polars as pl
-from astropy import constants as const
 
 import artistools as at
 
@@ -66,7 +65,7 @@ def add_lte_pops(dfpop, adata, columntemperature_tuples, noprint=False, maxlevel
 
     columntemperature_tuples is a sequence of tuples of column name and temperature, e.g., ('mycolumn', 3000)
     """
-    k_b = const.k_B.to("eV / K").value
+    K_B = 8.617333262145179e-05  # eV / K
 
     for _, row in dfpop.drop_duplicates(["modelgridindex", "timestep", "Z", "ion_stage"]).iterrows():
         modelgridindex = int(row.modelgridindex)
@@ -104,7 +103,7 @@ def add_lte_pops(dfpop, adata, columntemperature_tuples, noprint=False, maxlevel
             ltepop = (
                 ionlevels["g"].item(int(x.level))
                 / gsg
-                * math.exp(-(ionlevels["energy_ev"].item(int(x.level)) - gse) / k_b / T_exc)
+                * math.exp(-(ionlevels["energy_ev"].item(int(x.level)) - gse) / K_B / T_exc)
             )
             assert isinstance(ltepop, float)
             return ltepop
@@ -133,7 +132,7 @@ def add_lte_pops(dfpop, adata, columntemperature_tuples, noprint=False, maxlevel
                 for columnname, T_exc in columntemperature_tuples:
                     superlevelpop = (
                         ionlevels[levelnumber_sl:]
-                        .select(pl.col("g") / gs_g * (-(pl.col("energy_ev") - gs_energy) / k_b / T_exc).exp())
+                        .select(pl.col("g") / gs_g * (-(pl.col("energy_ev") - gs_energy) / K_B / T_exc).exp())
                         .sum()
                         .item()
                     )
