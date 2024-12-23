@@ -41,14 +41,14 @@ jobs:
 
             - name: Run Ruff
               if: always()
-              uses: astral-sh/ruff-action@v2
+              uses: astral-sh/ruff-action@v3
               with:
                   version: 0.8.2
                   args: "check --exit-non-zero-on-fix --no-fix"
 
             - name: Run Ruff Format
               if: always()
-              uses: astral-sh/ruff-action@v2
+              uses: astral-sh/ruff-action@v3
               with:
                 version: 0.8.2
                 args: "format --check"
