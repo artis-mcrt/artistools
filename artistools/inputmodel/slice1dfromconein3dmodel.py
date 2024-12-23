@@ -176,7 +176,7 @@ def make_1d_model_files(args):
 # cone = cone.loc[cone['rho_model'] > 0.0]
 
 
-def make_plot(args):
+def make_plot(args) -> None:
     cone = make_cone(args)
 
     cone = cone.loc[cone["rho_model"] > 0.0002]  # cut low densities (empty cells?) from plot

@@ -19,7 +19,6 @@ import matplotlib.ticker as mplticker
 import numpy as np
 import pandas as pd
 import polars as pl
-from astropy import constants as const
 
 import artistools as at
 
@@ -440,7 +439,8 @@ def plot_artis_lightcurve(
 
         if args.magnitude:
             # convert to bol magnitude
-            lcdata["mag"] = 4.74 - (2.5 * np.log10(lcdata["lum"] / const.L_sun.to("erg/s").value))
+            Lsun_to_erg_s = 3.828e33
+            lcdata["mag"] = 4.74 - (2.5 * np.log10(lcdata["lum"] / Lsun_to_erg_s))
             ycolumn = "mag"
         else:
             ycolumn = "lum"
