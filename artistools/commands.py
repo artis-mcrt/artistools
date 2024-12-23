@@ -14,7 +14,6 @@ COMMANDS = [
     "makeartismodel1dslicefromcone",
     "makeartismodel",
     "plotartisdensity",
-    "plotartisdeposition",
     "plotartisestimators",
     "plotartislightcurve",
     "plotartislinefluxes",
@@ -34,7 +33,6 @@ CommandType: t.TypeAlias = dict[str, t.Union[tuple[str, str], "CommandType"]]  #
 subcommandtree: CommandType = {
     "comparetogsinetwork": ("gsinetwork.plotqdotabund", "main"),
     "gsinetworkdecayproducts": ("gsinetwork.decayproducts", "main"),
-    "deposition": ("deposition", "main_analytical"),
     "describeinputmodel": ("inputmodel.describeinputmodel", "main"),
     "exportmassfractions": ("estimators.exportmassfractions", "main"),
     "getpath": ("", "get_path"),
@@ -47,7 +45,6 @@ subcommandtree: CommandType = {
     "plotlightcurves": ("lightcurve.plotlightcurve", "main"),
     "plotlinefluxes": ("linefluxes", "main"),
     "plotdensity": ("inputmodel.plotdensity", "main"),
-    "plotdeposition": ("deposition", "main"),
     "plotmacroatom": ("macroatom", "main"),
     "plotnltepops": ("nltepops.plotnltepops", "main"),
     "plotnonthermal": ("nonthermal.plotnonthermal", "main"),
