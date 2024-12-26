@@ -150,7 +150,6 @@ disable = """
     fixme,
     missing-function-docstring,
     missing-module-docstring,
-    import-error,
     import-outside-toplevel,
     invalid-name,
     line-too-long,
