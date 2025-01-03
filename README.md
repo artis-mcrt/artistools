@@ -14,7 +14,7 @@ artistools can be installed from PyPI using `pip install artistools'. For develo
 ```sh
 git clone https://github.com/artis-mcrt/artistools.git
 cd artistools
-python3 -m pip install -e .
+python3 -m pip install --editable .[dev]
 pre-commit install
 ```
 

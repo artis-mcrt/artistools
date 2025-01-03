@@ -28,10 +28,50 @@ classifiers = [
     "Framework :: Matplotlib",
     "Intended Audience :: Science/Research",
 ]
-dynamic = ["version", "dependencies"]
+dynamic = ["version"]
 requires-python = ">=3.10"
 license = { text = "MIT" }
 readme = { file = "README.md", content-type = 'text/markdown' }
+dependencies = [
+    "argcomplete>=3.5.1",
+    "astropy>=6.1.4",
+    "extinction>=0.4.7",
+    "george>=0.4.3",
+    "imageio>=2.36.0",
+    "matplotlib>=3.9.2",
+    "numexpr>=2.10.1",
+    "numpy>=2.2.0",
+    "pandas>=2.2.3",
+    "plotly>=5.24.1",
+    "polars>=1.18.0",
+    "pyarrow>=18.1.0",
+    "pynonthermal>=2024.7.4",
+    "pypdf>=5.1.0",
+    "PyYAML>=6.0.2",
+    "rich>=13.9.4",
+    "scipy>=1.14.1",
+    "tqdm>=4.67.1",
+    "zstandard>=0.23.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "mypy[faster-cache]>=1.14.1",
+    "pandas-stubs>=2.2.3.241126",
+    "pre-commit>=4.0.1",
+    "pylint>=3.3.3",
+    "pyright>=1.1.387",
+    "pytest>=8.3.3",
+    "pytest-codspeed>=3.0.0",
+    "pytest-cov>=6.0.0",
+    "pytest-xdist[psutil]>=3.6.1",
+    "ruff>=0.8.6",
+    "tabulate>=0.9",
+    "typeguard>=4.4.1",
+    "types-PyYAML>=6.0.12.20240917",
+    "types-tabulate>=0.9.0.20240106",
+]
+pyvista = ["pyvista>=0.44.1"]
 
 [project.urls]
 Repository = "https://www.github.com/artis-mcrt/artistools"
@@ -345,9 +385,6 @@ exclude = [
     "**/.*",
     "**/target",
 ]
-
-[tool.setuptools.dynamic]
-dependencies = { file = ["requirements.txt"] }
 
 [tool.setuptools_scm]
 version_file = "_version.py"
