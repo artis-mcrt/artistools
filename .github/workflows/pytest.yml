@@ -36,21 +36,18 @@ jobs:
             - name: Install artistools
               run: |
                   python3 -m pip install uv
-                  python3 -m uv pip install --system --upgrade pylint mypy
-                  python3 -m uv pip install --compile-bytecode --editable .
+                  python3 -m uv pip install --compile-bytecode --editable .[dev]
 
             - name: Run Ruff
               if: always()
               uses: astral-sh/ruff-action@v3
               with:
-                  version: 0.8.4
-                  args: "check --exit-non-zero-on-fix --no-fix"
+                args: "check --exit-non-zero-on-fix --no-fix"
 
             - name: Run Ruff Format
               if: always()
               uses: astral-sh/ruff-action@v3
               with:
-                version: 0.8.4
                 args: "format --check"
 
             - name: Run pyright
@@ -88,7 +85,7 @@ jobs:
             - name: Install artistools
               run: |
                   python3 -m pip install uv
-                  python3 -m uv pip install --compile-bytecode --editable .
+                  python3 -m uv pip install --compile-bytecode --editable .[dev]
 
             - uses: pre-commit/action@v3.0.1
 
@@ -166,10 +163,22 @@ jobs:
                       pytest-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
                       pytest-rust-target-${{ runner.os }}-
 
-            - name: Install artistools
+            - name: Install artistools (no optional deps)
               run: |
                   python3 -m pip install uv
-                  python3 -m uv pip install --compile-bytecode --editable .
+                  python3 -m uv pip install .
+
+            - name: Check artistools command line tool
+              run: |
+                  artistools --help
+                  artistools completions
+
+            - name: Download/extract test data
+              working-directory: tests/data/
+              run: source ./setuptestdata.sh
+
+            - name: Install artistools[dev]
+              run: python3 -m uv pip install --compile-bytecode --editable .[dev]
 
             - name: Cache test data
               uses: actions/cache@v4
@@ -178,22 +187,11 @@ jobs:
                   path: tests/data/*.tar.xz
                   key: testdata20231114
 
-            - name: Download/extract test data
-              working-directory: tests/data/
-              run: source ./setuptestdata.sh
-
-            - name: Check artistools command line tool
-              run: |
-                  artistools --help
-                  artistools completions
-
             - name: Test with pytest
-              run: |
-                  pytest --cov=./ --cov-report=xml
+              run: python3 -m pytest --cov=./ --cov-report=xml
 
             - name: Report coverage
-              run: |
-                  coverage report
+              run: python3 -m coverage report
 
             - name: Upload coverage to Codecov
               uses: codecov/codecov-action@v5
