@@ -314,7 +314,7 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
         assert args.atomic_number is None
         args.atomic_number = at.get_atomic_number(args.elem)
 
-    dfmodel, modelmeta = at.get_modeldata_polars(modelpath=args.modelpath, getheadersonly=True, printwarningsonly=True)
+    dfmodel, modelmeta = at.get_modeldata(modelpath=args.modelpath, getheadersonly=True, printwarningsonly=True)
     dfestimators = at.estimators.scan_estimators(modelpath=args.modelpath) if "temperature" in args.plotvars else None
 
     nprocs_read, dfpackets = at.packets.get_packets_pl(

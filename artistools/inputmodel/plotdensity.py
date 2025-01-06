@@ -47,9 +47,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.modelpath = ["."]
 
     for modelpath in args.modelpath:
-        dfmodel, modelmeta = at.get_modeldata_polars(
-            modelpath, derived_cols=["vel_r_min", "vel_r_mid", "vel_r_max", "mass_g"]
-        )
+        dfmodel, modelmeta = at.get_modeldata(modelpath, derived_cols=["vel_r_min", "vel_r_mid", "vel_r_max", "mass_g"])
         label = at.get_model_name(modelpath)
         print(f"Plotting {label}")
         binned_xvals: list[float] = []

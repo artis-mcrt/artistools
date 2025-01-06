@@ -58,7 +58,7 @@ def plot_init_abundances(
     assert len(xlist) == len(mgilist)
 
     if seriestype == "initabundances":
-        mergemodelabundata, _ = at.inputmodel.get_modeldata(modelpath, get_elemabundances=True)
+        mergemodelabundata, _ = at.inputmodel.get_modeldata_pandas(modelpath, get_elemabundances=True)
     elif seriestype == "initmasses":
         mergemodelabundata = at.inputmodel.plotinitialcomposition.get_model_abundances_Msun_1D(modelpath)
     else:
@@ -259,7 +259,7 @@ def plot_levelpop(
     else:
         raise ValueError
 
-    modeldata, _ = at.inputmodel.get_modeldata(modelpath, derived_cols=["mass_g", "volume"])
+    modeldata, _ = at.inputmodel.get_modeldata_pandas(modelpath, derived_cols=["mass_g", "volume"])
 
     adata = at.atomic.get_levels(modelpath)
 
@@ -1012,7 +1012,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if args.classicartis:
         import artistools.estimators.estimators_classic
 
-        modeldata, _ = at.inputmodel.get_modeldata(modelpath)
+        modeldata, _ = at.inputmodel.get_modeldata_pandas(modelpath)
         estimatorsdict = artistools.estimators.estimators_classic.read_classic_estimators(modelpath, modeldata)
         assert estimatorsdict is not None
         estimators = pl.DataFrame([
@@ -1070,7 +1070,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         if not args.x:
             args.x = "velocity"
 
-        dfmodel, modelmeta = at.inputmodel.get_modeldata_polars(modelpath, derived_cols=["ALL"])
+        dfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath, derived_cols=["ALL"])
         if args.x == "velocity" and modelmeta["vmax_cmps"] > 0.3 * 29979245800:
             args.x = "beta"
 
@@ -1087,7 +1087,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             estimators = estimators.filter(pl.col("modelgridindex").is_in(args.modelgridindex))
 
         if args.classicartis:
-            modeldata, _ = at.inputmodel.get_modeldata(modelpath)
+            modeldata, _ = at.inputmodel.get_modeldata_pandas(modelpath)
             allnonemptymgilist = [
                 modelgridindex
                 for modelgridindex in modeldata.index

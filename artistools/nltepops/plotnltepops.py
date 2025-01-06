@@ -147,7 +147,7 @@ def get_floers_data(dfpopthision, atomic_number, ion_stage, modelpath, T_e, mode
                 floersmultizonefilename = "level_pops_subch_shen2018-247d.csv"
 
         if floersmultizonefilename and Path(floersmultizonefilename).is_file():
-            modeldata, _ = at.inputmodel.get_modeldata(modelpath)  # TODO: move into modelpath loop
+            modeldata, _ = at.inputmodel.get_modeldata_pandas(modelpath)  # TODO: move into modelpath loop
             vel_outer = modeldata.iloc[modelgridindex].vel_r_max_kmps
             print(f"  reading {floersmultizonefilename}", vel_outer, T_e)
             dffloers = pd.read_csv(floersmultizonefilename)
@@ -470,7 +470,7 @@ def plot_populations_with_time_or_velocity(
         modelgridindex_list = [int(args.modelgridindex[0])] * len(timesteps)
 
     if args.x == "velocity":
-        modeldata, _ = at.inputmodel.get_modeldata(modelpaths[0])  # TODO: move into modelpath loop
+        modeldata, _ = at.inputmodel.get_modeldata_pandas(modelpaths[0])  # TODO: move into modelpath loop
         velocity = modeldata["vel_r_max_kmps"]
         modelgridindex_list = [mgi for mgi, _ in enumerate(velocity)]
 

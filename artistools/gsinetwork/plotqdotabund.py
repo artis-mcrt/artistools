@@ -426,9 +426,7 @@ def plot_qdot_abund_modelcells(
 
     # arr_z = [at.get_atomic_number(el) for el in arr_el]
 
-    lzdfmodel, modelmeta = at.inputmodel.get_modeldata_polars(
-        modelpath, derived_cols=["mass_g", "rho", "logrho", "volume"]
-    )
+    lzdfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath, derived_cols=["mass_g", "rho", "logrho", "volume"])
     npts_model = modelmeta["npts_model"]
 
     # these factors correct for missing mass due to skipped shells, and volume error due to Cartesian grid map

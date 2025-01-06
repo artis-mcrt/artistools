@@ -41,9 +41,7 @@ def plot_deposition_thermalisation(
     #     axistherm.set_ylim(bottom=0.1, top=1.0)
 
     if args.plotthermalisation:
-        dfmodel, _ = at.inputmodel.get_modeldata_polars(
-            modelpath, derived_cols=["mass_g", "vel_r_mid", "kinetic_en_erg"]
-        )
+        dfmodel, _ = at.inputmodel.get_modeldata(modelpath, derived_cols=["mass_g", "vel_r_mid", "kinetic_en_erg"])
 
         model_mass_grams = dfmodel.select("mass_g").sum().collect().item()
         print(f"  model mass: {model_mass_grams / 1.989e33:.3f} Msun")

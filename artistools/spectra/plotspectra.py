@@ -27,7 +27,7 @@ from matplotlib.artist import Artist
 
 import artistools.spectra as atspectra
 from artistools.configuration import get_config
-from artistools.inputmodel import get_modeldata
+from artistools.inputmodel import get_modeldata_pandas
 from artistools.misc import AppendPath
 from artistools.misc import CustomArgHelpFormatter
 from artistools.misc import flatten_list
@@ -888,10 +888,10 @@ def make_contrib_plot(
     import artistools.estimators as atestimators
     import artistools.packets as atpackets
 
-    modeldata, _ = get_modeldata(modelpath)
+    modeldata, _ = get_modeldata_pandas(modelpath)
 
     if args.classicartis:
-        modeldata, _ = get_modeldata(modelpath)
+        modeldata, _ = get_modeldata_pandas(modelpath)
         estimators = atestimators.estimators_classic.read_classic_estimators(modelpath, modeldata)
         allnonemptymgilist = list(modeldata.index)
 
