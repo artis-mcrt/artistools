@@ -253,9 +253,9 @@ def get_from_packets(
             dfpackets = dfpackets.filter(pl.col("t_arrive_d").is_between(timelowdays, timehighdays))
 
         elif use_time == "escape":
-            from artistools.inputmodel import get_modeldata
+            from artistools.inputmodel import get_modeldata_pandas
 
-            modeldata, _ = get_modeldata(modelpath)
+            modeldata, _ = get_modeldata_pandas(modelpath)
             vmax_beta = modeldata.iloc[-1].vel_r_max_kmps * 299792.458
             escapesurfacegamma = math.sqrt(1 - vmax_beta**2)
 

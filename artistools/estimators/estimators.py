@@ -21,6 +21,7 @@ import numpy as np
 import pandas as pd
 import polars as pl
 from polars import selectors as cs
+from typing_extensions import deprecated
 
 import artistools as at
 
@@ -403,6 +404,7 @@ def scan_estimators(
     return pldflazy.with_columns(nntot=pl.sum_horizontal(cs.starts_with("nnelement_"))).fill_null(0)
 
 
+@deprecated("Use scan_estimators instead.")
 def read_estimators(
     modelpath: Path | str = Path(),
     modelgridindex: int | Sequence[int] | None = None,

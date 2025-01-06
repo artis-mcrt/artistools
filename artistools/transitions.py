@@ -279,7 +279,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         timestep = at.get_timestep_of_timedays(modelpath, args.timedays) if args.timedays else args.timestep
 
-        modeldata, _ = at.inputmodel.get_modeldata(Path(modelpath, "model.txt"))
+        modeldata, _ = at.inputmodel.get_modeldata_pandas(Path(modelpath, "model.txt"))
         estimators_all = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
         if not estimators_all:
             print("no estimators")
