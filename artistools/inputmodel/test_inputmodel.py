@@ -28,26 +28,26 @@ def test_describeinputmodel_3d() -> None:
 
 def test_get_modeldata_1d() -> None:
     for getheadersonly in (False, True):
-        dfmodel, modelmeta = at.get_modeldata_pandas(modelpath=modelpath, getheadersonly=getheadersonly)
+        _, modelmeta = at.get_modeldata(modelpath=modelpath, getheadersonly=getheadersonly)
         assert np.isclose(modelmeta["vmax_cmps"], 800000000.0)
         assert modelmeta["dimensions"] == 1
         assert modelmeta["npts_model"] == 1
 
-    dfmodel, modelmeta = at.get_modeldata_pandas(modelpath=modelpath, derived_cols=["mass_g"])
-    assert np.isclose(dfmodel.mass_g.sum(), 1.416963e33)
+    lzdfmodel, modelmeta = at.get_modeldata(modelpath=modelpath, derived_cols=["mass_g"])
+    assert np.isclose(lzdfmodel.select(pl.col("mass_g").sum()).collect().item(), 1.416963e33)
 
 
 @pytest.mark.benchmark
 def test_get_modeldata_3d() -> None:
     for getheadersonly in (False, True):
-        dfmodel, modelmeta = at.get_modeldata_pandas(modelpath=modelpath_3d, getheadersonly=getheadersonly)
+        _, modelmeta = at.get_modeldata(modelpath=modelpath_3d, getheadersonly=getheadersonly)
         assert np.isclose(modelmeta["vmax_cmps"], 2892020000.0)
         assert modelmeta["dimensions"] == 3
         assert modelmeta["npts_model"] == 1000
         assert modelmeta["ncoordgridx"] == 10
 
-    dfmodel, modelmeta = at.get_modeldata_pandas(modelpath=modelpath_3d, derived_cols=["mass_g"])
-    assert np.isclose(dfmodel.mass_g.sum(), 2.7861855e33)
+    lzdfmodel, modelmeta = at.get_modeldata(modelpath=modelpath_3d, derived_cols=["mass_g"])
+    assert np.isclose(lzdfmodel.select(pl.col("mass_g").sum()).collect().item(), 2.7861855e33)
 
 
 def test_get_cell_angle() -> None:
@@ -59,15 +59,15 @@ def test_get_cell_angle() -> None:
 
 
 def test_downscale_3dmodel() -> None:
-    dfmodel, modelmeta = at.get_modeldata_pandas(
-        modelpath=modelpath_3d, get_elemabundances=True, derived_cols=["mass_g"]
-    )
+    lzdfmodel, modelmeta = at.get_modeldata(modelpath=modelpath_3d, get_elemabundances=True, derived_cols=["mass_g"])
     modelpath_3d_small = at.inputmodel.downscale3dgrid.make_downscaled_3d_grid(
         modelpath_3d, outputgridsize=2, outputfolder=outputpath
     )
-    dfmodel_small, modelmeta_small = at.get_modeldata_pandas(
+    dfmodel = lzdfmodel.collect()
+    lzdfmodel_small, modelmeta_small = at.get_modeldata(
         modelpath_3d_small, get_elemabundances=True, derived_cols=["mass_g"]
     )
+    dfmodel_small = lzdfmodel_small.collect()
     assert np.isclose(dfmodel["mass_g"].sum(), dfmodel_small["mass_g"].sum())
     assert np.isclose(modelmeta["vmax_cmps"], modelmeta_small["vmax_cmps"])
     assert np.isclose(modelmeta["t_model_init_days"], modelmeta_small["t_model_init_days"])
