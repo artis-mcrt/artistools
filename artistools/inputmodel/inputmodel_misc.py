@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 import polars as pl
 import polars.selectors as cs
+from typing_extensions import deprecated
 
 from artistools.configuration import get_config
 from artistools.misc import firstexisting
@@ -354,7 +355,7 @@ def read_modelfile_text(
     return dfmodel, modelmeta
 
 
-def get_modeldata_polars(
+def get_modeldata(
     modelpath: Path | str = Path(),
     get_elemabundances: bool = False,
     derived_cols: list[str] | str | None = None,
@@ -460,12 +461,10 @@ def get_modeldata_polars(
     return dfmodel, modelmeta
 
 
+@deprecated("Use get_modeldata() instead.")
 def get_modeldata_tuple(*args: t.Any, **kwargs: t.Any) -> tuple[pd.DataFrame, float, float]:
-    """Get model from model.txt file.
-
-    DEPRECATED: Use get_modeldata() instead.
-    """
-    dfmodel, modelmeta = get_modeldata(*args, **kwargs)
+    """Return tuple of (dfmodel, t_model_init_days, vmax_cmps) from model.txt file."""
+    dfmodel, modelmeta = get_modeldata_pandas(*args, **kwargs)
 
     return dfmodel, modelmeta["t_model_init_days"], modelmeta["vmax_cmps"]
 
@@ -522,15 +521,16 @@ def get_empty_3d_model(
     return dfmodel, modelmeta
 
 
-def get_modeldata(
+@deprecated("Use get_modeldata() instead.")
+def get_modeldata_pandas(
     modelpath: Path | str = Path(),
     get_elemabundances: bool = False,
     derived_cols: list[str] | str | None = None,
     printwarningsonly: bool = False,
     getheadersonly: bool = False,
 ) -> tuple[pd.DataFrame, dict[t.Any, t.Any]]:
-    """Call get_modeldata_polars() and convert to pandas DataFrame."""
-    pldfmodel, modelmeta = get_modeldata_polars(
+    """Like get_modeldata() but convert polars DataFrame to pandas."""
+    pldfmodel, modelmeta = get_modeldata(
         modelpath=modelpath,
         get_elemabundances=get_elemabundances,
         derived_cols=derived_cols,
@@ -540,7 +540,7 @@ def get_modeldata(
     dfmodel = pldfmodel.collect().to_pandas(use_pyarrow_extension_array=True)
     if modelmeta["npts_model"] > 100000 and not getheadersonly:
         # dfmodel.info(verbose=False, memory_usage="deep")
-        print("WARNING: Using pandas DataFrame for large model data. Switch to using get_modeldata_polars() instead.")
+        print("WARNING: Using pandas DataFrame for large model data. Switch to using get_modeldata() instead.")
 
     return dfmodel, modelmeta
 

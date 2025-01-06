@@ -75,7 +75,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     assert args is not None
 
-    dfmodel, modelmeta = at.inputmodel.get_modeldata_polars(
+    dfmodel, modelmeta = at.inputmodel.get_modeldata(
         args.inputfile,
         get_elemabundances=not args.noabund,
         printwarningsonly=False,

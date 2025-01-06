@@ -50,14 +50,14 @@ def write_spectra(modelpath: str | Path, selected_timesteps: Sequence[int], outf
 
 def write_ntimes_nvel(outfile: TextIOWrapper, selected_timesteps: Sequence[int], modelpath: str | Path) -> None:
     times = at.get_timestep_times(modelpath)
-    _, modelmeta = at.inputmodel.get_modeldata(modelpath, getheadersonly=True)
+    _, modelmeta = at.inputmodel.get_modeldata_pandas(modelpath, getheadersonly=True)
     outfile.write(f"#NTIMES: {len(selected_timesteps)}\n")
     outfile.write(f"#NVEL: {modelmeta['npts_model']}\n")
     outfile.write(f"#TIMES[d]: {' '.join([f'{times[ts]:.2f}' for ts in selected_timesteps])}\n")
 
 
 def write_single_estimator(modelpath, selected_timesteps, estimators, allnonemptymgilist, outfile, keyname) -> None:
-    modeldata, _modelmeta = at.inputmodel.get_modeldata(modelpath, derived_cols=["vel_r_min_kmps"])
+    modeldata, _modelmeta = at.inputmodel.get_modeldata_pandas(modelpath, derived_cols=["vel_r_min_kmps"])
     with Path(outfile).open("w", encoding="utf-8") as f:
         write_ntimes_nvel(f, selected_timesteps, modelpath)
         if keyname == "total_dep":
@@ -91,7 +91,7 @@ def write_ionfracts(
     outputpath,
 ) -> None:
     times = at.get_timestep_times(modelpath)
-    modeldata, _modelmeta = at.inputmodel.get_modeldata(modelpath, derived_cols=["vel_r_min_kmps"])
+    modeldata, _modelmeta = at.inputmodel.get_modeldata_pandas(modelpath, derived_cols=["vel_r_min_kmps"])
     elementlist = at.get_composition_data(modelpath)
     nelements = len(elementlist)
     for element in range(nelements):
@@ -131,7 +131,7 @@ def write_ionfracts(
 
 def write_phys(modelpath, model_id, selected_timesteps, estimators, allnonemptymgilist, outputpath) -> None:
     times = at.get_timestep_times(modelpath)
-    modeldata, modelmeta = at.inputmodel.get_modeldata(modelpath, derived_cols=["vel_r_min_kmps"])
+    modeldata, modelmeta = at.inputmodel.get_modeldata_pandas(modelpath, derived_cols=["vel_r_min_kmps"])
     with Path(outputpath, f"phys_{model_id}_artisnebular.txt").open("w", encoding="utf-8") as f:
         f.write(f"#NTIMES: {len(selected_timesteps)}\n")
         f.write(f"#TIMES[d]: {' '.join([f'{times[ts]:.2f}' for ts in selected_timesteps])}\n")

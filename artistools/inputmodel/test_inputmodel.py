@@ -28,30 +28,30 @@ def test_describeinputmodel_3d() -> None:
 
 def test_get_modeldata_1d() -> None:
     for getheadersonly in (False, True):
-        dfmodel, modelmeta = at.get_modeldata(modelpath=modelpath, getheadersonly=getheadersonly)
+        _, modelmeta = at.get_modeldata(modelpath=modelpath, getheadersonly=getheadersonly)
         assert np.isclose(modelmeta["vmax_cmps"], 800000000.0)
         assert modelmeta["dimensions"] == 1
         assert modelmeta["npts_model"] == 1
 
-    dfmodel, modelmeta = at.get_modeldata(modelpath=modelpath, derived_cols=["mass_g"])
-    assert np.isclose(dfmodel.mass_g.sum(), 1.416963e33)
+    lzdfmodel, modelmeta = at.get_modeldata(modelpath=modelpath, derived_cols=["mass_g"])
+    assert np.isclose(lzdfmodel.select(pl.col("mass_g").sum()).collect().item(), 1.416963e33)
 
 
 @pytest.mark.benchmark
 def test_get_modeldata_3d() -> None:
     for getheadersonly in (False, True):
-        dfmodel, modelmeta = at.get_modeldata(modelpath=modelpath_3d, getheadersonly=getheadersonly)
+        _, modelmeta = at.get_modeldata(modelpath=modelpath_3d, getheadersonly=getheadersonly)
         assert np.isclose(modelmeta["vmax_cmps"], 2892020000.0)
         assert modelmeta["dimensions"] == 3
         assert modelmeta["npts_model"] == 1000
         assert modelmeta["ncoordgridx"] == 10
 
-    dfmodel, modelmeta = at.get_modeldata(modelpath=modelpath_3d, derived_cols=["mass_g"])
-    assert np.isclose(dfmodel.mass_g.sum(), 2.7861855e33)
+    lzdfmodel, modelmeta = at.get_modeldata(modelpath=modelpath_3d, derived_cols=["mass_g"])
+    assert np.isclose(lzdfmodel.select(pl.col("mass_g").sum()).collect().item(), 2.7861855e33)
 
 
 def test_get_cell_angle() -> None:
-    modeldata, _ = at.inputmodel.get_modeldata(
+    modeldata, _ = at.inputmodel.get_modeldata_pandas(
         modelpath=modelpath_3d, derived_cols=["pos_x_mid", "pos_y_mid", "pos_z_mid"]
     )
     at.inputmodel.inputmodel_misc.get_cell_angle(modeldata, modelpath=modelpath_3d)
@@ -59,13 +59,15 @@ def test_get_cell_angle() -> None:
 
 
 def test_downscale_3dmodel() -> None:
-    dfmodel, modelmeta = at.get_modeldata(modelpath=modelpath_3d, get_elemabundances=True, derived_cols=["mass_g"])
+    lzdfmodel, modelmeta = at.get_modeldata(modelpath=modelpath_3d, get_elemabundances=True, derived_cols=["mass_g"])
     modelpath_3d_small = at.inputmodel.downscale3dgrid.make_downscaled_3d_grid(
         modelpath_3d, outputgridsize=2, outputfolder=outputpath
     )
-    dfmodel_small, modelmeta_small = at.get_modeldata(
+    dfmodel = lzdfmodel.collect()
+    lzdfmodel_small, modelmeta_small = at.get_modeldata(
         modelpath_3d_small, get_elemabundances=True, derived_cols=["mass_g"]
     )
+    dfmodel_small = lzdfmodel_small.collect()
     assert np.isclose(dfmodel["mass_g"].sum(), dfmodel_small["mass_g"].sum())
     assert np.isclose(modelmeta["vmax_cmps"], modelmeta_small["vmax_cmps"])
     assert np.isclose(modelmeta["t_model_init_days"], modelmeta_small["t_model_init_days"])
@@ -178,11 +180,11 @@ def test_makeartismodelfrom_sph_particles() -> None:
                     atol=1e-4,
                 )
             else:
-                dfmodel3lz, _ = at.inputmodel.get_modeldata_polars(
+                dfmodel3lz, _ = at.inputmodel.get_modeldata(
                     modelpath=outputpath / f"kilonova_{3:d}d", derived_cols=["mass_g"]
                 )
                 dfmodel3 = dfmodel3lz.collect()
-                dfmodel_lowerdlz, _ = at.inputmodel.get_modeldata_polars(
+                dfmodel_lowerdlz, _ = at.inputmodel.get_modeldata(
                     modelpath=outputpath / f"kilonova_{dimensions:d}d", derived_cols=["mass_g"]
                 )
                 dfmodel_lowerd = dfmodel_lowerdlz.collect()
@@ -323,7 +325,7 @@ def test_save_load_3d_model() -> None:
 
     # first load will be from text, second from parquet
     for _ in (0, 1):
-        dfmodel_loaded, modelmeta_loaded = at.inputmodel.get_modeldata_polars(modelpath=outpath)
+        dfmodel_loaded, modelmeta_loaded = at.inputmodel.get_modeldata(modelpath=outpath)
         pltest.assert_frame_equal(
             dfmodel, dfmodel_loaded.collect(), check_column_order=False, check_dtypes=False, rtol=1e-4, atol=1e-4
         )
@@ -372,9 +374,7 @@ def test_dimension_reduce(outputdimensions: int, benchmark) -> None:
         )
         at.inputmodel.save_modeldata(outpath=outpath, dfmodel=dfmodel_lowerd, modelmeta=modelmeta_lowerd)
 
-    dfmodel_lowerd_lz, _ = at.inputmodel.get_modeldata_polars(
-        modelpath=outpath, derived_cols=["mass_g", "kinetic_en_erg"]
-    )
+    dfmodel_lowerd_lz, _ = at.inputmodel.get_modeldata(modelpath=outpath, derived_cols=["mass_g", "kinetic_en_erg"])
     dfmodel_lowerd = dfmodel_lowerd_lz.collect()
 
     # check that the total mass is conserved

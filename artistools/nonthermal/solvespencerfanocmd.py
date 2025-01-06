@@ -157,7 +157,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             print("A time or timestep must be specified.")
             sys.exit()
 
-        modeldata, _ = at.inputmodel.get_modeldata(modelpath)
+        modeldata, _ = at.inputmodel.get_modeldata_pandas(modelpath)
         if args.velocity >= 0.0:
             args.modelgridindex = at.inputmodel.get_mgi_of_velocity_kms(modelpath, args.velocity)
         else:
