@@ -406,18 +406,32 @@ def plot_artis_spectrum(
 
             # atspectra.print_integrated_flux(dfspectrum["f_lambda"], dfspectrum["lambda_angstroms"])
 
+            if args.x.lower() == "angstroms":
+                dfspectrum = dfspectrum.with_columns(x=pl.col("lambda_angstroms"), y=pl.col("f_lambda"))
+            elif args.x.lower() == "hz":
+                dfspectrum = dfspectrum.with_columns(x=pl.col("nu"), y=pl.col("f_nu"))
+            else:
+                assert args.x.lower() == "kev"
+                h = 4.1356677e-15  # Planck's constant [eV s]
+                c = 2.99792458e18  # speed of light [angstroms/s]
+
+                dfspectrum = (
+                    dfspectrum.with_columns(en_kev=h * c / pl.col("lambda_angstroms") / 1000.0)
+                    .with_columns(f_en_kev=pl.col("f_nu") * pl.col("nu") / pl.col("en_kev"))
+                    .with_columns(x=pl.col("en_kev"), y=pl.col("f_en_kev"))
+                )
+
             if plotpacketcount:
                 dfspectrum = dfspectrum.with_columns(y=pl.col("packetcount"))
-            else:
-                dfspectrum = dfspectrum.with_columns(y=pl.col("f_lambda" if xunit == "angstroms" else "f_nu"))
-                if scale_to_peak:
-                    dfspectrum = dfspectrum.with_columns(
-                        y_scaled=pl.col("y") / pl.col("y").max() * scale_to_peak
-                    ).with_columns(y=pl.col("y_scaled"))
+            elif scale_to_peak:
+                dfspectrum = dfspectrum.with_columns(
+                    y_scaled=pl.col("y") / pl.col("y").max() * scale_to_peak
+                ).with_columns(y=pl.col("y_scaled"))
 
             if args.binflux:
                 new_lambda_angstroms = []
                 binned_flux = []
+                assert args.x.lower() == "angstroms"
 
                 wavelengths = dfspectrum["lambda_angstroms"]
                 fluxes = dfspectrum["y"]
@@ -431,14 +445,8 @@ def plot_artis_spectrum(
                     sum_flux = sum(fluxes[j] for j in range(i, i_max))
                     binned_flux.append(sum_flux / ncontribs)
 
-                dfspectrum = pl.DataFrame({"lambda_angstroms": new_lambda_angstroms, "y": binned_flux})
+                dfspectrum = pl.DataFrame({"x": new_lambda_angstroms, "y": binned_flux})
 
-            if args.x == "angstroms":
-                dfspectrum = dfspectrum.with_columns(x=pl.col("lambda_angstroms"))
-            else:
-                h = 4.1356677e-15  # Planck's constant [eV s]
-                c = 2.99792458e18  # speed of light [angstroms/s]
-                dfspectrum = dfspectrum.with_columns(x=h * c / pl.col("lambda_angstroms") / 1000.0, y=pl.col("f_nu"))
             dfspectrum = dfspectrum.sort("x", maintain_order=True)
 
             axis.plot(
@@ -492,6 +500,11 @@ def make_spectrum_plot(
             # reference spectrum
             if "linewidth" not in plotkwargs:
                 plotkwargs["linewidth"] = 1.1
+
+            if args.x.lower() != "angstroms":
+                # other units not implemented yet
+                msg = f"Unit {args.x} not implemented for reference spectra"
+                raise NotImplementedError(msg)
 
             if args.multispecplot:
                 plotkwargs["color"] = "k"
@@ -1006,10 +1019,12 @@ def make_plot(args) -> tuple[mplfig.Figure, np.ndarray, pl.DataFrame]:
 
     if not args.hideyticklabels:
         ylabel = None
-        if args.x == "angstroms":
+        if args.x.lower() == "angstroms":
             ylabel = r"F$_\lambda$ at 1 Mpc [{}erg/s/cm$^2$/$\mathrm{{\AA}}$]"
-        elif args.x.lower() == "kev":
+        elif args.x.lower() == "hz":
             ylabel = r"F$_\nu$ at 1 Mpc [{}erg/s/cm$^2$/Hz]"
+        elif args.x.lower() == "kev":
+            ylabel = r"F$_en_kev$ at 1 Mpc [{}erg/s/cm$^2$/keV]"
 
         assert ylabel is not None
         if args.logscaley:
@@ -1124,10 +1139,13 @@ def make_plot(args) -> tuple[mplfig.Figure, np.ndarray, pl.DataFrame]:
             ax.text(5500, ymax * 0.9, f"{args.timedayslist[index]} days")  # multispecplot text
 
     if not args.hidexticklabels:
-        if args.x == "angstroms":
+        if args.x.lower() == "angstroms":
             axes[-1].set_xlabel(r"Wavelength $\left[\mathrm{{\AA}}\right]$")
-        else:
+        elif args.x.lower() == "kev":
             axes[-1].set_xlabel(r"Energy $\left[\mathrm{{keV}}\right]$")
+        else:
+            msg = f"Unknown x-axis unit {args.x}"
+            raise AssertionError(msg)
 
     if not args.outputfile:
         args.outputfile = defaultoutputfile
