@@ -170,9 +170,6 @@ def plot_reference_spectrum(
         z = metadata["z"]
         bands = [(1.35e4, 1.44e4), (1.8e4, 1.94e4)]  # [Angstroms]
         bands_rest = [(band_low / (1 + z), band_high / (1 + z)) for band_low, band_high in bands]
-        # for band_low_rest, band_high_rest in bands:
-        #     band_low = band_low_rest / (1 + z)
-        #     band_high = band_high_rest / (1 + z)
 
         specdata = specdata.with_columns(
             f_lambda=pl.when(
@@ -194,18 +191,9 @@ def plot_reference_spectrum(
 
     atspectra.print_integrated_flux(specdata["f_lambda"], specdata["lambda_angstroms"])
 
-    # if len(specdata) > 5000:
-    #     # specdata = scipy.signal.resample(specdata, 10000)
-    #     # specdata = specdata.iloc[::3, :].copy()
-    #     print(f" downsampling to {len(specdata)} points")
-    #     specdata = specdata.query("index % 3 == 0")
-
-    # clamp negative values to zero
-    # specdata['f_lambda'] = specdata['f_lambda'].apply(lambda x: max(0, x))
-
     if fluxfilterfunc:
         print(" applying filter to reference spectrum")
-        specdata = specdata.with_columns(cs.starts_with("f_lambda").map_batches(fluxfilterfunc))
+        specdata = specdata.with_columns(cs.starts_with("f_").map_batches(fluxfilterfunc))
 
     if scale_to_peak:
         specdata = specdata.with_columns(
