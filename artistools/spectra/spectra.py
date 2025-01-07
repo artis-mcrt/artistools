@@ -454,7 +454,7 @@ def get_spectrum(
     stokesparam: t.Literal["I", "Q", "U"] = "I",
     gamma: bool = False,
 ) -> dict[int, pl.DataFrame]:
-    """Return a pandas DataFrame containing an ARTIS emergent spectrum."""
+    """Get a polars DataFrame containing an ARTIS emergent spectrum."""
     if timestepmax is None or timestepmax < 0:
         timestepmax = timestepmin
 
@@ -510,13 +510,13 @@ def get_spectrum(
             pl.DataFrame({"nu": specdata[dirbin]["nu"], "f_nu": arr_f_nu})
             .with_columns(lambda_angstroms=2.99792458e18 / pl.col("nu"))
             .with_columns(f_lambda=pl.col("f_nu") * pl.col("nu") / pl.col("lambda_angstroms"))
-            .sort(by="lambda_angstroms")
+            .sort(by="nu" if gamma else "lambda_angstroms")
         )
 
         if fluxfilterfunc:
             if dirbin == directionbins[0]:
                 print("Applying filter to ARTIS spectrum")
-            dfspectrum = dfspectrum.with_columns(cs.starts_with("f_lambda").map_batches(fluxfilterfunc))
+            dfspectrum = dfspectrum.with_columns(cs.starts_with("f_").map_batches(fluxfilterfunc))
 
         specdataout[dirbin] = dfspectrum
 
