@@ -404,8 +404,6 @@ def plot_artis_spectrum(
                 if len(directionbins) > 1 or not linelabel_is_custom:
                     linelabel_withdirbin = f"{linelabel} {dirbin_definitions[dirbin]}"
 
-            # atspectra.print_integrated_flux(dfspectrum["f_lambda"], dfspectrum["lambda_angstroms"])
-
             if args.x.lower() == "angstroms":
                 dfspectrum = dfspectrum.with_columns(x=pl.col("lambda_angstroms"), y=pl.col("f_lambda"))
             elif args.x.lower() == "hz":
@@ -423,7 +421,10 @@ def plot_artis_spectrum(
 
             if plotpacketcount:
                 dfspectrum = dfspectrum.with_columns(y=pl.col("packetcount"))
-            elif scale_to_peak:
+
+            atspectra.print_integrated_flux(dfspectrum["y"], dfspectrum["x"])
+
+            if scale_to_peak:
                 dfspectrum = dfspectrum.with_columns(
                     y_scaled=pl.col("y") / pl.col("y").max() * scale_to_peak
                 ).with_columns(y=pl.col("y_scaled"))
