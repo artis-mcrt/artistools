@@ -259,10 +259,10 @@ def get_from_packets(
             dfpackets = dfpackets.filter(pl.col("t_arrive_d").is_between(timelowdays, timehighdays))
 
         elif use_time == "escape":
-            from artistools.inputmodel import get_modeldata_pandas
+            from artistools.inputmodel import get_modeldata
 
-            modeldata, _ = get_modeldata_pandas(modelpath)
-            vmax_beta = modeldata.iloc[-1].vel_r_max_kmps * 299792.458
+            dfmodel, _ = get_modeldata(modelpath)
+            vmax_beta = dfmodel.select(pl.col("vel_r_max_kmps").max() * 299792.458).collect().item()
             escapesurfacegamma = math.sqrt(1 - vmax_beta**2)
 
             dfpackets = dfpackets.filter(
@@ -704,7 +704,7 @@ def get_vspecpol_spectrum(
 
     if fluxfilterfunc:
         print("Applying filter to ARTIS spectrum")
-        dfout = dfout.with_columns(cs.starts_with("f_lambda").map_batches(fluxfilterfunc))
+        dfout = dfout.with_columns(cs.starts_with("f_").map_batches(fluxfilterfunc))
 
     return dfout
 
