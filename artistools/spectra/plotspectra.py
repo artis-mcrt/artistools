@@ -247,7 +247,7 @@ def plot_artis_spectrum(
     **plotkwargs,
 ) -> pl.DataFrame | None:
     """Plot an ARTIS output spectrum. The data plotted are also returned as a DataFrame."""
-    assert xunit in {"angstroms", "kev"}
+    assert xunit.lower() in {"angstroms", "hz", "kev"}
     modelpath = Path(modelpath)
     if Path(modelpath).is_file():  # handle e.g. modelpath = 'modelpath/spec.out'
         specfilename = Path(modelpath).parts[-1]
@@ -650,6 +650,7 @@ def make_emissionabsorption_plot(
 ) -> tuple[list[Artist], list[str], pl.DataFrame | None]:
     """Plot the emission and absorption contribution spectra, grouped by ion/line/term for an ARTIS model."""
     modelname = get_model_name(modelpath)
+    assert args.x.lower() == "angstroms"
 
     print(f"====> {modelname}")
     clamp_to_timesteps = not args.notimeclamp
