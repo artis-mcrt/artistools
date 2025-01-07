@@ -506,13 +506,12 @@ def get_spectrum(
             msg = " ERROR: data not available for timestep range"
             raise ValueError(msg) from e
 
-        arr_nu = specdata[dirbin]["nu"]
-        arr_lambda = 2.99792458e18 / arr_nu
-        dfspectrum = pl.DataFrame({
-            "lambda_angstroms": arr_lambda,
-            "f_lambda": arr_f_nu * arr_nu / arr_lambda,
-            "f_nu": arr_f_nu,
-        }).sort(by="lambda_angstroms")
+        dfspectrum = (
+            pl.DataFrame({"nu": specdata[dirbin]["nu"], "f_nu": arr_f_nu})
+            .with_columns(lambda_angstroms=2.99792458e18 / pl.col("nu"))
+            .with_columns(f_lambda=pl.col("f_nu") * pl.col("nu") / pl.col("lambda_angstroms"))
+            .sort(by="lambda_angstroms")
+        )
 
         if fluxfilterfunc:
             if dirbin == directionbins[0]:
