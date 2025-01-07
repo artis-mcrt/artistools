@@ -291,9 +291,9 @@ def get_wid_init_at_tmodel(
     if ngridpoints is None or t_model_days is None or xmax is None:
         # Luke: ngridpoint only equals the number of model cells if the model is 3D
         assert modelpath is not None
-        from artistools.inputmodel import get_modeldata_pandas
+        from artistools.inputmodel import get_modeldata
 
-        _, modelmeta = get_modeldata_pandas(modelpath, getheadersonly=True)
+        _, modelmeta = get_modeldata(modelpath, getheadersonly=True)
         assert modelmeta["dimensions"] == 3
         ngridpoints = modelmeta["npts_model"]
         xmax = modelmeta["vmax_cmps"] * modelmeta["t_model_init_days"] * 86400.0
@@ -549,9 +549,9 @@ def get_timestep_time(modelpath: Path | str, timestep: int) -> float:
 def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | None, float | None]:
     """Return the time range for which the entire model can send light signals the observer."""
     modelpath = Path(modelpath)
-    from artistools.inputmodel import get_modeldata_pandas
+    from artistools.inputmodel import get_modeldata
 
-    _, modelmeta = get_modeldata_pandas(modelpath, printwarningsonly=True, getheadersonly=True)
+    _, modelmeta = get_modeldata(modelpath, printwarningsonly=True, getheadersonly=True)
     vmax = modelmeta["vmax_cmps"]
     cornervmax = math.sqrt(3 * vmax**2)
 
