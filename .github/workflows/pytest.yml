@@ -33,10 +33,14 @@ jobs:
                       pytest-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
                       pytest-rust-target-${{ runner.os }}-
 
+            - name: Install the latest version of uv
+              uses: astral-sh/setup-uv@v5
+
             - name: Install artistools
               run: |
-                  python3 -m pip install uv
-                  python3 -m uv pip install --compile-bytecode --editable .[dev]
+                  uv sync --frozen
+                  source .venv/bin/activate
+                  uv pip install --compile-bytecode --editable .[dev]
 
             - name: Run Ruff
               if: always()
@@ -50,17 +54,17 @@ jobs:
               with:
                 args: "format --check"
 
-            - name: Run pyright
-              if: always()
-              uses: jakebailey/pyright-action@v2
-
             - name: Run mypy
               if: always()
-              run: mypy --install-types --non-interactive
+              run: uv run --frozen -- mypy --install-types --non-interactive
+
+            - name: Run pyright
+              if: always()
+              run: uv run --frozen -- pyright
 
             - name: Run pylint
               if: always()
-              run: pylint --output-format=github artistools
+              run: uv run --frozen -- pylint --output-format=github artistools
 
     pre-commit:
         runs-on: macos-15
@@ -82,12 +86,15 @@ jobs:
                       pytest-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
                       pytest-rust-target-${{ runner.os }}-
 
+            - name: Install the latest version of uv
+              uses: astral-sh/setup-uv@v5
+
             - name: Install artistools
               run: |
-                  python3 -m pip install uv
-                  python3 -m uv pip install --compile-bytecode --editable .[dev]
-
-            - uses: pre-commit/action@v3.0.1
+                  uv sync --frozen
+                  source .venv/bin/activate
+                  uv pip install --compile-bytecode --editable .[dev]
+                  uv run --frozen -- pre-commit run --all-files --show-diff-on-failure --color=always
 
     superlinter:
         name: Super linter
@@ -163,22 +170,27 @@ jobs:
                       pytest-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
                       pytest-rust-target-${{ runner.os }}-
 
-            - name: Install artistools (no optional deps)
+            - name: Install the latest version of uv
+              uses: astral-sh/setup-uv@v5
+
+            - name: Install artistools (no dev deps)
               run: |
-                  python3 -m pip install uv
-                  python3 -m uv pip install .
+                  uv sync --frozen --no-dev
+                  uv pip install .
 
             - name: Check artistools command line tool
               run: |
-                  artistools --help
-                  artistools completions
+                  uv run --frozen -- artistools --help
+                  uv run --frozen -- artistools completions
 
             - name: Download/extract test data
               working-directory: tests/data/
               run: source ./setuptestdata.sh
 
             - name: Install artistools[dev]
-              run: python3 -m uv pip install --compile-bytecode --editable .[dev]
+              run: |
+                uv sync --frozen
+                uv pip install --compile-bytecode --editable .[dev]
 
             - name: Cache test data
               uses: actions/cache@v4
@@ -188,10 +200,10 @@ jobs:
                   key: testdata20231114
 
             - name: Test with pytest
-              run: python3 -m pytest --cov=./ --cov-report=xml
+              run: uv run python3 -m pytest --cov=./ --cov-report=xml
 
             - name: Report coverage
-              run: python3 -m coverage report
+              run: uv run python3 -m coverage report
 
             - name: Upload coverage to Codecov
               uses: codecov/codecov-action@v5
