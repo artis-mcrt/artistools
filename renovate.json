@@ -6,5 +6,9 @@
   "bumpVersion": "minor",
   "pre-commit": {
     "enabled": true
-  }
+  },
+  "lockFileMaintenance": {
+    "enabled": true
+  },
+  "rangeStrategy": "update-lockfile"
 }
