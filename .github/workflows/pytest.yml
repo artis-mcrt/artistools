@@ -86,6 +86,11 @@ jobs:
                       pytest-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
                       pytest-rust-target-${{ runner.os }}-
 
+            - uses: actions/cache@v4
+              with:
+                path: ~/.cache/pre-commit
+                key: pre-commit-3|${{ hashFiles('.pre-commit-config.yaml') }}
+
             - name: Install the latest version of uv
               uses: astral-sh/setup-uv@v5
 
