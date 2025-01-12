@@ -171,7 +171,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         estim = estimators[args.timestep, args.modelgridindex]
 
         dfpops = at.nltepops.read_files(modelpath, modelgridindex=args.modelgridindex, timestep=args.timestep)
-        assert dfpops is not None
 
         if dfpops.empty:
             print(f"ERROR: no NLTE populations for cell {args.modelgridindex} at timestep {args.timestep}")
