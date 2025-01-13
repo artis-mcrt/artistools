@@ -35,10 +35,15 @@ jobs:
                       codspeed-rust-target-313-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
                       codspeed-rust-target-313-${{ runner.os }}-
 
+
+            - name: Install the latest version of uv
+              uses: astral-sh/setup-uv@v5
+
             - name: Install artistools
               run: |
-                  python3 -m pip install uv
-                  python3 -m uv pip install --compile-bytecode --editable .[dev]
+                  uv sync --frozen
+                  source .venv/bin/activate
+                  uv pip install --compile-bytecode --editable .[dev]
 
             - name: Cache test data
               uses: actions/cache@v4
@@ -55,4 +60,4 @@ jobs:
               uses: CodSpeedHQ/action@v3
               with:
                   token: ${{ secrets.CODSPEED_TOKEN }}
-                  run: pytest --codspeed
+                  run: uv run pytest --codspeed
