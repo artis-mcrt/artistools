@@ -6,5 +6,16 @@
   "bumpVersion": "minor",
   "pre-commit": {
     "enabled": true
-  }
+  },
+  "lockFileMaintenance": {
+    "enabled": true,
+    "automerge": true,
+    "schedule": [
+      "on wednesday"
+    ]
+  },
+  "rangeStrategy": "update-lockfile",
+  "schedule": [
+    "on wednesday"
+  ]
 }
