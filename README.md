@@ -10,10 +10,26 @@
 ## Installation
 Requires Python >= 3.10
 
-artistools can be installed from PyPI using `pip install artistools'. For development, clone the repository and make an editable install:
+The artistools command be invoked with uvx artistools or pipx artistools. For development (editable install), you will need [the rust compiler](https://www.rust-lang.org/tools/install). First, clone the repository:
 ```sh
 git clone https://github.com/artis-mcrt/artistools.git
 cd artistools
+```
+
+To use a [uv package manager](https://docs.astral.sh/uv/getting-started/installation/) virtual environment with locked dependency versions run:
+```sh
+uv sync --frozen
+uv pip install --editable .[dev]
+pre-commit install
+```
+
+The artistools command will be available after activating the project environment (source artistools/.venv/bin/activate) or can made globally available by adding the following alias to your startup script:
+```sh
+alias artistools="uv run --frozen --project ~/PATH/TO/artistools -- artistools"
+```
+
+Alternatively, to avoid using uv and install into the system environment with pip:
+```sh
 python3 -m pip install --editable .[dev]
 pre-commit install
 ```
