@@ -66,39 +66,15 @@ jobs:
               if: always()
               run: uv run --frozen -- pylint --output-format=github artistools
 
-    pre-commit:
-        runs-on: macos-15
-        steps:
-            - name: Checkout Code
-              uses: actions/checkout@v4
-              with:
-                  fetch-depth: 0
-
-            - name: Set up Python
-              uses: actions/setup-python@v5
-
-            - name: Cache rust build
+            - name: Cache pre-commit
               uses: actions/cache@v4
-              with:
-                  path: rust/target/
-                  key: pytest-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}
-                  restore-keys: |
-                      pytest-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
-                      pytest-rust-target-${{ runner.os }}-
-
-            - uses: actions/cache@v4
               with:
                 path: ~/.cache/pre-commit
                 key: pre-commit-3|${{ hashFiles('.pre-commit-config.yaml') }}
 
-            - name: Install the latest version of uv
-              uses: astral-sh/setup-uv@v5
-
-            - name: Install artistools
+            - name: Run pre-commit
               run: |
-                  uv sync --frozen
                   source .venv/bin/activate
-                  uv pip install --compile-bytecode --editable .[dev]
                   uv run --frozen -- pre-commit run --all-files --show-diff-on-failure --color=always
 
     superlinter:
