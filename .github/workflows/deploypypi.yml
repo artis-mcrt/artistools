@@ -74,10 +74,13 @@ jobs:
 
             - uses: actions/setup-python@v5
 
-            - name: Build sdist
+            - name: Install dependencies
               run: |
                   python3 -m pip install --upgrade setuptools setuptools_scm[toml] setuptools-rust build
                   echo "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS=$(python3 -m setuptools_scm --strip-dev)" >> $GITHUB_ENV
+
+            - name: Build sdist
+              run: |
                   python3 -m build --sdist
 
             - uses: actions/upload-artifact@v4
