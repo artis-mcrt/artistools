@@ -46,6 +46,13 @@ jobs:
                       cibuildwheel-rust-target-${{ matrix.target.os_arch }}-${{ hashFiles('**/Cargo.lock') }}-
                       cibuildwheel-rust-target-${{ matrix.target.os_arch }}-
 
+            - name: Cache test data
+              uses: actions/cache@v4
+              with:
+                  enableCrossOsArchive: true
+                  path: tests/data/*.tar.xz
+                  key: testdata20231114
+
             - name: Strip dev tag from version
               run: |
                   echo "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS=$(python3 -m setuptools_scm --strip-dev)" >> $GITHUB_ENV
