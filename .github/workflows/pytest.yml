@@ -24,10 +24,15 @@ jobs:
             - name: Set up Python
               uses: actions/setup-python@v5
 
-            - name: Cache rust build
+            - name: Cache cargo and rust build
               uses: actions/cache@v4
               with:
-                  path: rust/target/
+                  path: |
+                    ~/.cargo/bin/
+                    ~/.cargo/registry/index/
+                    ~/.cargo/registry/cache/
+                    ~/.cargo/git/db/
+                    rust/target/
                   key: pytest-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}
                   restore-keys: |
                       pytest-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
@@ -142,10 +147,15 @@ jobs:
             - name: Show python version
               run: python3 --version --version && which python3
 
-            - name: Cache rust build
+            - name: Cache cargo and rust build
               uses: actions/cache@v4
               with:
-                  path: rust/target/
+                  path: |
+                    ~/.cargo/bin/
+                    ~/.cargo/registry/index/
+                    ~/.cargo/registry/cache/
+                    ~/.cargo/git/db/
+                    rust/target/
                   key: pytest-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}
                   restore-keys: |
                       pytest-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
