@@ -98,12 +98,6 @@ jobs:
             id-token: write
         if: startsWith(github.ref , 'refs/tags/v') != true
         steps:
-            - uses: actions/checkout@v4
-              with:
-                  fetch-depth: 0
-
-            - uses: actions/setup-python@v5
-
             - uses: actions/download-artifact@v4
               with:
                   pattern: cibw-*
@@ -126,12 +120,6 @@ jobs:
             id-token: write
         if: startsWith(github.ref, 'refs/tags/v')
         steps:
-            - uses: actions/checkout@v4
-              with:
-                  fetch-depth: 0
-
-            - uses: actions/setup-python@v5
-
             - uses: actions/download-artifact@v4
               with:
                   pattern: cibw-*
