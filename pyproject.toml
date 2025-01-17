@@ -102,7 +102,7 @@ build-frontend = "build[uv]"
 archs = ["auto64"]
 #test-requires = "pytest"
 #test-command = "pytest {project}"
-#test-command = "python -m artistools"  # fails on arm64 linux because pyarrow can't be installed yet
+test-command = "python -m artistools"
 
 [tool.cibuildwheel.linux]
 before-all = [
