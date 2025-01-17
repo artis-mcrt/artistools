@@ -43,8 +43,8 @@ dependencies = [
     "numpy>=2.2.0",
     "pandas>=2.2.3",
     "plotly>=5.24.1",
-    "polars>=1.18.0",
-    "pyarrow>=18.1.0",
+    "polars>=1.20.0",
+    "pyarrow>=19.0.0",
     "pynonthermal>=2024.7.4",
     "pypdf>=5.1.0",
     "PyYAML>=6.0.2",
@@ -100,6 +100,9 @@ plotartisviewingangles = 'artistools.viewing_angles_visualization:main'
 [tool.cibuildwheel]
 build-frontend = "build[uv]"
 archs = ["auto64"]
+#test-requires = "pytest"
+#test-command = "pytest {project}"
+test-command = "python -m artistools"
 
 [tool.cibuildwheel.linux]
 before-all = [

@@ -26,17 +26,22 @@ jobs:
             - name: Set up Python
               uses: actions/setup-python@v5
 
-            - name: Cache rust build
+            - name: Cache cargo and rust build
               uses: actions/cache@v4
               with:
-                  path: rust/target/
+                  path: |
+                      ~/.cargo/bin/
+                      ~/.cargo/registry/index/
+                      ~/.cargo/registry/cache/
+                      ~/.cargo/git/db/
+                      rust/target/
                   key: codspeed-rust-target-313-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}
                   restore-keys: |
                       codspeed-rust-target-313-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
                       codspeed-rust-target-313-${{ runner.os }}-
 
 
-            - name: Install the latest version of uv
+            - name: Setup uv
               uses: astral-sh/setup-uv@v5
 
             - name: Install artistools
@@ -60,4 +65,4 @@ jobs:
               uses: CodSpeedHQ/action@v3
               with:
                   token: ${{ secrets.CODSPEED_TOKEN }}
-                  run: uv run pytest --codspeed
+                  run: uv run --frozen -- pytest --codspeed
