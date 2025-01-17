@@ -164,6 +164,13 @@ jobs:
                   uv run --frozen -- artistools --help
                   uv run --frozen -- artistools completions
 
+            - name: Cache test data
+              uses: actions/cache@v4
+              with:
+                  enableCrossOsArchive: true
+                  path: tests/data/*.tar.xz
+                  key: testdata20231114
+
             - name: Download/extract test data
               working-directory: tests/data/
               run: source ./setuptestdata.sh
@@ -172,13 +179,6 @@ jobs:
               run: |
                 uv sync --frozen
                 uv pip install --compile-bytecode --editable .[dev]
-
-            - name: Cache test data
-              uses: actions/cache@v4
-              with:
-                  enableCrossOsArchive: true
-                  path: tests/data/*.tar.xz
-                  key: testdata20231114
 
             - name: Test with pytest
               run: uv run --frozen -- python3 -m pytest --cov=./ --cov-report=xml
