@@ -56,7 +56,8 @@ jobs:
 
             - name: Strip dev tag from version
               run: |
-                  echo "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS=$(uvx --from=setuptools_scm[toml] -- python3 -m setuptools_scm --strip-dev)" >> $GITHUB_ENV
+                  python3 -m pip install --upgrade setuptools_scm[toml]
+                  echo "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS=$(python3 -m setuptools_scm --strip-dev)" >> $GITHUB_ENV
 
             - name: Build wheels
               uses: pypa/cibuildwheel@v2.22.0
@@ -83,7 +84,8 @@ jobs:
               run: |
                   uv sync --frozen
                   source .venv/bin/activate
-                  echo "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS=$(uvx --from=setuptools_scm[toml] -- python3 -m setuptools_scm --strip-dev)" >> $GITHUB_ENV
+                  python3 -m pip install --upgrade setuptools_scm[toml]
+                  echo "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS=$(python3 -m setuptools_scm --strip-dev)" >> $GITHUB_ENV
                   uv build --sdist
 
             - uses: actions/upload-artifact@v4
@@ -142,7 +144,8 @@ jobs:
 
             - name: Ensure dev version suffix is removed
               run: |
-                  echo "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS=$(uvx --from=setuptools_scm[toml] -- python3 -m setuptools_scm --strip-dev)" >> $GITHUB_ENV
+                  python3 -m pip install --upgrade setuptools_scm[toml]
+                  echo "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS=$(python3 -m setuptools_scm --strip-dev)" >> $GITHUB_ENV
 
             - name: Publish package to PyPI
               uses: pypa/gh-action-pypi-publish@release/v1
