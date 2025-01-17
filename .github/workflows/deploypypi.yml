@@ -28,7 +28,7 @@ jobs:
         env:
             CIBW_ENVIRONMENT_PASS_LINUX: SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS
             CIBW_BUILD: 'cp3*-${{ matrix.target.os_arch }}'
-            MACOSX_DEPLOYMENT_TARGET: 14.0
+            MACOSX_DEPLOYMENT_TARGET: 15.0
 
         steps:
             - uses: actions/checkout@v4
@@ -75,14 +75,10 @@ jobs:
             - name: Setup uv
               uses: astral-sh/setup-uv@v5
 
-            - name: Install dependencies
-              run: |
-                  uv pip install --upgrade setuptools setuptools_scm[toml] setuptools-rust wheel twine build
-                  echo "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS=$(python3 -m setuptools_scm --strip-dev)" >> $GITHUB_ENV
-
             - name: Build sdist
               run: |
-                  python3 -m build --sdist
+                  echo "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS=$(python3 -m setuptools_scm --strip-dev)" >> $GITHUB_ENV
+                  uv build --sdist
 
             - uses: actions/upload-artifact@v4
               with:
