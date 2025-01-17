@@ -33,7 +33,7 @@ jobs:
                       pytest-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
                       pytest-rust-target-${{ runner.os }}-
 
-            - name: Install the latest version of uv
+            - name: Setup uv
               uses: astral-sh/setup-uv@v5
 
             - name: Install artistools
@@ -151,7 +151,7 @@ jobs:
                       pytest-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
                       pytest-rust-target-${{ runner.os }}-
 
-            - name: Install the latest version of uv
+            - name: Setup uv
               uses: astral-sh/setup-uv@v5
 
             - name: Install artistools (no dev deps)
@@ -181,10 +181,10 @@ jobs:
                   key: testdata20231114
 
             - name: Test with pytest
-              run: uv run python3 -m pytest --cov=./ --cov-report=xml
+              run: uv run --frozen -- python3 -m pytest --cov=./ --cov-report=xml
 
             - name: Report coverage
-              run: uv run python3 -m coverage report
+              run: uv run --frozen -- python3 -m coverage report
 
             - name: Upload coverage to Codecov
               uses: codecov/codecov-action@v5

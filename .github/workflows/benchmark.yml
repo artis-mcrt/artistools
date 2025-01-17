@@ -36,7 +36,7 @@ jobs:
                       codspeed-rust-target-313-${{ runner.os }}-
 
 
-            - name: Install the latest version of uv
+            - name: Setup uv
               uses: astral-sh/setup-uv@v5
 
             - name: Install artistools
@@ -60,4 +60,4 @@ jobs:
               uses: CodSpeedHQ/action@v3
               with:
                   token: ${{ secrets.CODSPEED_TOKEN }}
-                  run: uv run pytest --codspeed
+                  run: uv run --frozen -- pytest --codspeed
