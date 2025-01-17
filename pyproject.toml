@@ -100,6 +100,8 @@ plotartisviewingangles = 'artistools.viewing_angles_visualization:main'
 [tool.cibuildwheel]
 build-frontend = "build[uv]"
 archs = ["auto64"]
+test-requires = "pytest"
+test-command = "pytest {project}"
 
 [tool.cibuildwheel.linux]
 before-all = [
