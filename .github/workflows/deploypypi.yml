@@ -56,6 +56,7 @@ jobs:
 
             - name: Strip dev tag from version
               run: |
+                  python3 -m pip install --upgrade setuptools_scm[toml]
                   echo "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS=$(python3 -m setuptools_scm --strip-dev)" >> $GITHUB_ENV
 
             - name: Build wheels
@@ -83,6 +84,7 @@ jobs:
               run: |
                   uv sync --frozen
                   source .venv/bin/activate
+                  python3 -m pip install --upgrade setuptools_scm[toml]
                   echo "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS=$(python3 -m setuptools_scm --strip-dev)" >> $GITHUB_ENV
                   uv build --sdist
 
@@ -142,6 +144,7 @@ jobs:
 
             - name: Ensure dev version suffix is removed
               run: |
+                  python3 -m pip install --upgrade setuptools_scm[toml]
                   echo "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS=$(python3 -m setuptools_scm --strip-dev)" >> $GITHUB_ENV
 
             - name: Publish package to PyPI
