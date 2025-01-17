@@ -51,6 +51,8 @@ jobs:
 
             - name: Install dependencies
               run: |
+                  uv sync --frozen
+                  source .venv/bin/activate
                   uv pip install --upgrade setuptools setuptools_scm[toml] setuptools-rust wheel twine build
                   echo "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS=$(python3 -m setuptools_scm --strip-dev)" >> $GITHUB_ENV
 
@@ -77,6 +79,8 @@ jobs:
 
             - name: Build sdist
               run: |
+                  uv sync --frozen
+                  source .venv/bin/activate
                   echo "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS=$(python3 -m setuptools_scm --strip-dev)" >> $GITHUB_ENV
                   uv build --sdist
 
@@ -100,18 +104,11 @@ jobs:
 
             - uses: actions/setup-python@v5
 
-            - name: Setup uv
-              uses: astral-sh/setup-uv@v5
-
             - uses: actions/download-artifact@v4
               with:
                   pattern: cibw-*
                   path: dist
                   merge-multiple: true
-
-            - name: Install dependencies
-              run: |
-                  uv pip install --upgrade setuptools setuptools_scm[toml] setuptools-rust wheel twine build
 
             - name: Publish package to TestPyPI
               uses: pypa/gh-action-pypi-publish@release/v1
@@ -135,18 +132,14 @@ jobs:
 
             - uses: actions/setup-python@v5
 
-            - name: Setup uv
-              uses: astral-sh/setup-uv@v5
-
             - uses: actions/download-artifact@v4
               with:
                   pattern: cibw-*
                   path: dist
                   merge-multiple: true
 
-            - name: Install dependencies
+            - name: Ensure dev version suffix is removed
               run: |
-                  uv pip install --upgrade setuptools setuptools_scm[toml] setuptools-rust wheel twine build
                   echo "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS=$(python3 -m setuptools_scm --strip-dev)" >> $GITHUB_ENV
 
             - name: Publish package to PyPI
