@@ -37,9 +37,6 @@ jobs:
 
             - uses: actions/setup-python@v5
 
-            - name: Setup uv
-              uses: astral-sh/setup-uv@v5
-
             - name: Cache rust build
               uses: actions/cache@v4
               with:
@@ -49,11 +46,8 @@ jobs:
                       cibuildwheel-rust-target-${{ matrix.target.os_arch }}-${{ hashFiles('**/Cargo.lock') }}-
                       cibuildwheel-rust-target-${{ matrix.target.os_arch }}-
 
-            - name: Install dependencies
+            - name: Strip dev tag from version
               run: |
-                  uv sync --frozen
-                  source .venv/bin/activate
-                  uv pip install --upgrade setuptools setuptools_scm[toml] setuptools-rust wheel twine build
                   echo "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS=$(python3 -m setuptools_scm --strip-dev)" >> $GITHUB_ENV
 
             - name: Build wheels
