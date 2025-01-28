@@ -1,36 +1,40 @@
 # Artistools
 
-> Artistools is collection of plotting, analysis, and file format conversion tools for the [ARTIS](https://github.com/artis-mcrt/artis) radiative transfer code.
-
 [![DOI](https://zenodo.org/badge/53433932.svg)](https://zenodo.org/badge/latestdoi/53433932)
+[![Supported Python versions](https://img.shields.io/pypi/pyversions/artistools)](https://pypi.org/project/artistools/)
+[![PyPI - Version](https://img.shields.io/pypi/v/artistools)](https://pypi.org/project/artistools)
 [![Installation and pytest](https://github.com/artis-mcrt/artistools/actions/workflows/pytest.yml/badge.svg)](https://github.com/artis-mcrt/artistools/actions/workflows/pytest.yml)
 [![codecov](https://codecov.io/gh/artis-mcrt/artistools/branch/main/graph/badge.svg?token=XFlarJqeZd)](https://codecov.io/gh/artis-mcrt/artistools)
-![PyPI - Version](https://img.shields.io/pypi/v/artistools)
+[![License](https://img.shields.io/github/license/artis-mcrt/artistools)](https://github.com/artis-mcrt/artistools/blob/main/LICENSE)
+
+Artistools is collection of plotting, analysis, and file format conversion tools for the [ARTIS](https://github.com/artis-mcrt/artis) radiative transfer code.
 
 ## Installation
 Requires Python >= 3.10
 
-The artistools command be invoked with uvx artistools or pipx artistools. For development (editable install), you will need [the rust compiler](https://www.rust-lang.org/tools/install). First, clone the repository:
+The artistools command be invoked with uvx artistools or pipx artistools.
+
+For development, you will need [the rust compiler](https://www.rust-lang.org/tools/install) and a clone of the repository:
 ```sh
 git clone https://github.com/artis-mcrt/artistools.git
 cd artistools
 ```
 
-To use a [uv package manager](https://docs.astral.sh/uv/getting-started/installation/) virtual environment with locked dependency versions run:
+To create a [uv](https://docs.astral.sh/uv/getting-started/installation/) virtual environment with locked dependency versions, run:
 ```sh
 uv sync --frozen
 uv pip install --editable .[dev]
 pre-commit install
 ```
 
-The artistools command will be available after activating the project environment (source artistools/.venv/bin/activate) or can made globally available by adding the following alias to your startup script:
+The artistools command from the project environment can be available by activating the environment (source artistools/.venv/bin/activate) or by adding the following alias to your startup script:
 ```sh
-alias artistools="uv run --frozen --project ~/PATH/TO/artistools -- artistools"
+alias artistools="~/PATH/TO/artistools/.venv/bin/artistools"
 ```
 
-Alternatively, to avoid using uv and install into the system environment with pip:
+Alternatively, to skip using uv and install into the system environment with pip:
 ```sh
-python3 -m pip install --editable .[dev]
+pip install --editable .[dev]
 pre-commit install
 ```
 
