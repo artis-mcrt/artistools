@@ -100,6 +100,5 @@ pub fn read_transitiondata(
         }
     }
 
-    let dict = transitiondata.into_py_dict(py).unwrap();
-    dict.into()
+    transitiondata.into_py_dict(py).unwrap().into()
 }
