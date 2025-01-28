@@ -15,6 +15,8 @@ jobs:
     lint:
         name: Format, lint, and type check
         runs-on: macos-15
+        env:
+            RUFF_OUTPUT_FORMAT: "github"
         steps:
             - name: Checkout Code
               uses: actions/checkout@v4
@@ -49,9 +51,8 @@ jobs:
 
             - name: Run Ruff
               if: always()
-              uses: astral-sh/ruff-action@v3
-              with:
-                args: "check --exit-non-zero-on-fix --no-fix"
+              run:  |
+                 uv run --frozen -- ruff check --exit-non-zero-on-fix --no-fix
 
             - name: Run Ruff Format
               if: always()
