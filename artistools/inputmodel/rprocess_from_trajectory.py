@@ -559,8 +559,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     with Path(args.outputpath, "gridcontributions.txt").open("w", encoding="utf-8") as fcontribs:
         fcontribs.write("particleid cellindex frac_of_cellmass\n")
-        for inputcellid in dfmodel["inputcellid"]:
-            fcontribs.write(f"{particleid} {inputcellid} 1.0\n")
+        fcontribs.writelines(f"{particleid} {inputcellid} 1.0\n" for inputcellid in dfmodel["inputcellid"])
 
 
 def get_wollaeger_density_profile(wollaeger_profilename: Path | str, t_model_init_seconds: float) -> pl.DataFrame:

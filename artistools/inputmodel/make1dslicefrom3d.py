@@ -98,8 +98,7 @@ def slice_3dmodel(inputfolder, outputfolder, chosenaxis):
     with Path(outputfolder, "model.txt").open("w", encoding="utf-8") as fmodelout:
         fmodelout.write(f"{outcellid:7d}\n")
         fmodelout.write(t_model)
-        for line in listout:
-            fmodelout.write(line + "\n")
+        fmodelout.writelines(line + "\n" for line in listout)
 
     return dict3dcellidto1dcellid, xlist, ylists
 
