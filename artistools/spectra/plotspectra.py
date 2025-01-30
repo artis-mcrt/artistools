@@ -1023,7 +1023,7 @@ def make_plot(args) -> tuple[mplfig.Figure, np.ndarray, pl.DataFrame]:
         elif args.x.lower() == "hz":
             ylabel = r"F$_\nu$ at 1 Mpc [{}erg/s/cm$^2$/Hz]"
         elif args.x.lower() == "kev":
-            ylabel = r"F$_en_kev$ at 1 Mpc [{}erg/s/cm$^2$/keV]"
+            ylabel = r"dF/dE at 1 Mpc [{}erg/s/cm$^2$/keV]"
 
         assert ylabel is not None
         if args.logscaley:
