@@ -59,10 +59,11 @@ def get_exspec_bins(
     mnubins: int | None = None,
     nu_min_r: float | None = None,
     nu_max_r: float | None = None,
+    gamma: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Get the wavelength bins for the emergent spectrum."""
     if modelpath is not None:
-        dfspec = read_spec(modelpath)
+        dfspec = read_spec(modelpath, gamma=gamma)
         if mnubins is None:
             mnubins = dfspec.height
 
@@ -160,6 +161,7 @@ def get_from_packets(
     fluxfilterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     nprocs_read_dfpackets: tuple[int, pl.DataFrame | pl.LazyFrame] | None = None,
     directionbins_are_vpkt_observers: bool = False,
+    gamma: bool = False,
 ) -> dict[int, pl.DataFrame]:
     """Get a spectrum dataframe using the packets files as input."""
     if directionbins is None:
@@ -175,7 +177,7 @@ def get_from_packets(
         lambda_bin_edges = np.arange(lambda_min, lambda_max + delta_lambda, delta_lambda)
         lambda_bin_centres = 0.5 * (lambda_bin_edges[:-1] + lambda_bin_edges[1:])  # bin centres
     else:
-        lambda_bin_edges, lambda_bin_centres, delta_lambda = get_exspec_bins(modelpath=modelpath)
+        lambda_bin_edges, lambda_bin_centres, delta_lambda = get_exspec_bins(modelpath=modelpath, gamma=gamma)
         lambda_min = lambda_bin_centres[0]
         lambda_max = lambda_bin_centres[-1]
 
@@ -189,10 +191,14 @@ def get_from_packets(
         nprocs_read = nprocs_read_dfpackets[0]
         dfpackets = nprocs_read_dfpackets[1].lazy()
     elif directionbins_are_vpkt_observers:
+        assert not gamma
         nprocs_read, dfpackets = atpackets.get_virtual_packets_pl(modelpath, maxpacketfiles=maxpacketfiles)
     else:
         nprocs_read, dfpackets = atpackets.get_packets_pl(
-            modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
+            modelpath,
+            maxpacketfiles=maxpacketfiles,
+            packet_type="TYPE_ESCAPE",
+            escape_type="TYPE_GAMMA" if gamma else "TYPE_RPKT",
         )
 
     dfpackets = dfpackets.with_columns([
@@ -253,10 +259,10 @@ def get_from_packets(
             dfpackets = dfpackets.filter(pl.col("t_arrive_d").is_between(timelowdays, timehighdays))
 
         elif use_time == "escape":
-            from artistools.inputmodel import get_modeldata_pandas
+            from artistools.inputmodel import get_modeldata
 
-            modeldata, _ = get_modeldata_pandas(modelpath)
-            vmax_beta = modeldata.iloc[-1].vel_r_max_kmps * 299792.458
+            dfmodel, _ = get_modeldata(modelpath)
+            vmax_beta = dfmodel.select(pl.col("vel_r_max_kmps").max() * 299792.458).collect().item()
             escapesurfacegamma = math.sqrt(1 - vmax_beta**2)
 
             dfpackets = dfpackets.filter(
@@ -335,7 +341,9 @@ def get_from_packets(
             "lambda_angstroms",
             pl.col(f"f_lambda_dirbin{dirbin}").alias("f_lambda"),
             pl.col(f"count_dirbin{dirbin}").alias("packetcount"),
-        ])
+            (299792458.0 / (pl.col("lambda_angstroms") * 1e-10)).alias("nu"),
+        ]).with_columns(f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu")))
+
         if nprocs_read_dfpackets is None:
             npkts_selected = dfdict[dirbin].get_column("packetcount").sum()
             print(f"    dirbin {dirbin:2d} plots {npkts_selected:.2e} packets")
@@ -344,8 +352,8 @@ def get_from_packets(
 
 
 @lru_cache(maxsize=16)
-def read_spec(modelpath: Path) -> pl.DataFrame:
-    specfilename = firstexisting("spec.out", folder=modelpath, tryzipped=True)
+def read_spec(modelpath: Path, gamma: bool = False) -> pl.DataFrame:
+    specfilename = firstexisting("gamma_spec.out" if gamma else "spec.out", folder=modelpath, tryzipped=True)
     print(f"Reading {specfilename}")
 
     return (
@@ -445,8 +453,9 @@ def get_spectrum(
     average_over_theta: bool = False,
     average_over_phi: bool = False,
     stokesparam: t.Literal["I", "Q", "U"] = "I",
+    gamma: bool = False,
 ) -> dict[int, pl.DataFrame]:
-    """Return a pandas DataFrame containing an ARTIS emergent spectrum."""
+    """Get a polars DataFrame containing an ARTIS emergent spectrum."""
     if timestepmax is None or timestepmax < 0:
         timestepmax = timestepmin
 
@@ -471,7 +480,7 @@ def get_spectrum(
         # spherically averaged spectra
         if stokesparam == "I":
             try:
-                specdata[-1] = read_spec(modelpath=modelpath)
+                specdata[-1] = read_spec(modelpath=modelpath, gamma=gamma)
 
             except FileNotFoundError:
                 specdata[-1] = get_specpol_data(angle=-1, modelpath=modelpath)[stokesparam]
@@ -498,18 +507,22 @@ def get_spectrum(
             msg = " ERROR: data not available for timestep range"
             raise ValueError(msg) from e
 
-        arr_nu = specdata[dirbin]["nu"]
-        arr_lambda = 2.99792458e18 / arr_nu
-        dfspectrum = pl.DataFrame({"lambda_angstroms": arr_lambda, "f_lambda": arr_f_nu * arr_nu / arr_lambda}).sort(
-            by="lambda_angstroms"
+        dfspectrum = (
+            pl.DataFrame({"nu": specdata[dirbin]["nu"], "f_nu": arr_f_nu})
+            .lazy()
+            .with_columns(lambda_angstroms=2.99792458e18 / pl.col("nu"))
         )
 
         if fluxfilterfunc:
             if dirbin == directionbins[0]:
                 print("Applying filter to ARTIS spectrum")
-            dfspectrum = dfspectrum.with_columns(cs.starts_with("f_lambda").map_batches(fluxfilterfunc))
+            dfspectrum = dfspectrum.with_columns(cs.starts_with("f_nu").map_batches(fluxfilterfunc))
 
-        specdataout[dirbin] = dfspectrum
+        dfspectrum = dfspectrum.with_columns(f_lambda=pl.col("f_nu") * pl.col("nu") / pl.col("lambda_angstroms")).sort(
+            by="nu" if gamma else "lambda_angstroms"
+        )
+
+        specdataout[dirbin] = dfspectrum.collect()
 
     return specdataout
 
@@ -677,27 +690,24 @@ def get_vspecpol_spectrum(
     timeupper = arr_tmid[timestepmax]
     print(f" vpacket spectrum timesteps {timestepmin} ({timelower}d) to {timestepmax} ({timeupper}d)")
 
-    dfout = (
-        vspecdata.select(
-            f_nu=(
-                pl.sum_horizontal(
-                    pl.col(vspecdata.columns[timestep + 1]) * arr_tdelta[timestep]
-                    for timestep in range(timestepmin, timestepmax + 1)
-                )
-                / sum(arr_tdelta[timestepmin : timestepmax + 1])
-            ),
-            nu=vspecdata["nu"],
-        )
-        .with_columns(lambda_angstroms=2.99792458e18 / pl.col("nu"))
-        .sort(by="lambda_angstroms")
-        .with_columns(f_lambda=pl.col("f_nu") * pl.col("nu") / pl.col("lambda_angstroms"))
-    )
+    dfout = vspecdata.select(
+        f_nu=(
+            pl.sum_horizontal(
+                pl.col(vspecdata.columns[timestep + 1]) * arr_tdelta[timestep]
+                for timestep in range(timestepmin, timestepmax + 1)
+            )
+            / sum(arr_tdelta[timestepmin : timestepmax + 1])
+        ),
+        nu=vspecdata["nu"],
+    ).with_columns(lambda_angstroms=2.99792458e18 / pl.col("nu"))
 
     if fluxfilterfunc:
         print("Applying filter to ARTIS spectrum")
-        dfout = dfout.with_columns(cs.starts_with("f_lambda").map_batches(fluxfilterfunc))
+        dfout = dfout.with_columns(cs.starts_with("f_nu").map_batches(fluxfilterfunc))
 
-    return dfout
+    return dfout.with_columns(f_lambda=pl.col("f_nu") * pl.col("nu") / pl.col("lambda_angstroms")).sort(
+        by="lambda_angstroms"
+    )
 
 
 @lru_cache(maxsize=4)
