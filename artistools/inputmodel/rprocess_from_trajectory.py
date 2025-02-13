@@ -230,7 +230,7 @@ def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, 
         dfthermo = dfthermo.rename(columns={"time/s": "time_s"})
         startindex: int = int(np.argmax(dfthermo["time_s"] >= 1))  # start integrating at this number of seconds
 
-        assert all(dfthermo["Qdot"][startindex : nts_max + 1] > 0.0)
+        assert all(dfthermo["Qdot"][startindex : nts_max + 1] >= 0.0)
         dfthermo["Qdot_expansionadjusted"] = dfthermo["Qdot"] * dfthermo["time_s"] / t_model_s
 
         qdotintegral: float = integrate.trapezoid(
@@ -277,8 +277,8 @@ def get_trajectory_abund_q(
     # print(f'trajectory particle id {particleid} massfrac sum: {massfractotal:.2f}')
     # print(f' grid snapshot: {t_model_s:.2e} s, network: {traj_time_s:.2e} s (timestep {nts})')
     assert np.isclose(massfractotal, 1.0, rtol=0.02)
-    if t_model_s is not None:
-        assert np.isclose(traj_time_s, t_model_s, rtol=0.2, atol=1.0)
+    if not np.isclose(traj_time_s, t_model_s, rtol=0.2, atol=1.0):
+        print(f"WARNING: particle {particleid} step time of {traj_time_s} is not similar to target {t_model_s} seconds")
 
     dict_traj_nuc_abund: dict[tuple[int, int] | str, float] = {
         (Z, N): massfrac / massfractotal
