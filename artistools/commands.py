@@ -32,11 +32,10 @@ CommandType: t.TypeAlias = dict[str, t.Union[tuple[str, str], "CommandType"]]  #
 # new subparser based list
 subcommandtree: CommandType = {
     "comparetogsinetwork": ("gsinetwork.plotqdotabund", "main"),
-    "gsinetworkdecayproducts": ("gsinetwork.decayproducts", "main"),
     "describeinputmodel": ("inputmodel.describeinputmodel", "main"),
-    "yehistogram": ("gsinetwork.yehistogram", "main"),
     "exportmassfractions": ("estimators.exportmassfractions", "main"),
     "getpath": ("", "get_path"),
+    "gsinetworkdecayproducts": ("gsinetwork.decayproducts", "main"),
     "lc": ("lightcurve.plotlightcurve", "main"),
     "listtimesteps": ("", "showtimesteptimes"),
     "makeartismodelfromparticlegridmap": ("inputmodel.modelfromhydro", "main"),
@@ -47,6 +46,7 @@ subcommandtree: CommandType = {
     "plotlinefluxes": ("linefluxes", "main"),
     "plotdensity": ("inputmodel.plotdensity", "main"),
     "plotmacroatom": ("macroatom", "main"),
+    "plotmodelrelease": ("gsinetwork.modelenergyrelease", "main"),
     "plotnltepops": ("nltepops.plotnltepops", "main"),
     "plotnonthermal": ("nonthermal.plotnonthermal", "main"),
     "plotradfield": ("radfield", "main"),
@@ -59,6 +59,7 @@ subcommandtree: CommandType = {
     "spencerfano": ("nonthermal.solvespencerfanocmd", "main"),
     "writecodecomparisondata": ("writecomparisondata", "main"),
     "writespectra": ("spectra.writespectra", "main"),
+    "yehistogram": ("gsinetwork.yehistogram", "main"),
     "inputmodel": {
         "describe": ("inputmodel.describeinputmodel", "main"),
         "maptogrid": ("inputmodel.maptogrid", "main"),
