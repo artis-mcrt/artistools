@@ -34,6 +34,7 @@ subcommandtree: CommandType = {
     "comparetogsinetwork": ("gsinetwork.plotqdotabund", "main"),
     "gsinetworkdecayproducts": ("gsinetwork.decayproducts", "main"),
     "describeinputmodel": ("inputmodel.describeinputmodel", "main"),
+    "yehistogram": ("gsinetwork.yehistogram", "main"),
     "exportmassfractions": ("estimators.exportmassfractions", "main"),
     "getpath": ("", "get_path"),
     "lc": ("lightcurve.plotlightcurve", "main"),
