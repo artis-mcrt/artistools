@@ -185,10 +185,11 @@ def plot_spherical(
 
     meshgrid_phi, meshgrid_theta = np.meshgrid(phigrid, thetagrid)
 
+    xwidth = float(figscale * at.get_config()["figwidth"])
     fig, axes = plt.subplots(
         len(plotvars),
         1,
-        figsize=(figscale * at.get_config()["figwidth"], 3.5 * len(plotvars)),
+        figsize=(xwidth, xwidth * 0.715 * len(plotvars)),
         subplot_kw={"projection": "mollweide"},
         layout="constrained",
         gridspec_kw={"wspace": 0.0, "hspace": 0.0},
@@ -363,7 +364,7 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
         )
 
         axes[0].set_title(
-            f"{timemindays:.2f}-{timemaxdays:.2f} days{f' ({condition})' if condition else ''}", loc="left"
+            f"{timemindays:.2f}-{timemaxdays:.2f} days{f' ({condition})' if condition else ''}", loc="left", pad=0
         )
 
         defaultfilename = "plotspherical_{timemindays:.2f}-{timemaxdays:.2f}d.{outformat}"  # noqa: RUF027
