@@ -393,6 +393,9 @@ exclude = [
 version_file = "_version.py"
 local_scheme = "no-local-version"
 
+[tool.uv.config-settings]
+editable_mode = "strict"
+
 [tool.vulture]
 exclude = [".*", "build/", ".eggs/"]
 #ignore_names = ["visit_*", "do_*"]
