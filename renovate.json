@@ -3,6 +3,8 @@
   "extends": [
     "config:recommended"
   ],
+  "groupName": "all",
+  "prCreation": "not-pending",
   "bumpVersion": "minor",
   "pre-commit": {
     "enabled": true
