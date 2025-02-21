@@ -45,6 +45,7 @@ jobs:
 
             - name: Install artistools
               run: |
+                  rustup update stable
                   uv sync --frozen
                   source .venv/bin/activate
                   uv pip install --compile-bytecode --editable .[dev]
@@ -167,6 +168,7 @@ jobs:
 
             - name: Install artistools (no dev deps)
               run: |
+                  rustup update stable
                   uv sync --frozen --no-dev
                   uv pip install .
 
