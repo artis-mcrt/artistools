@@ -14,3 +14,15 @@ polars = { version = "0.46", features = ["diagonal_concat", "performant"] }
 pyo3 = { version = "0.23", features = ["abi3-py310"] }
 pyo3-polars = { version = "0.20.0", features = ["dtype-struct"] }
 rayon = "1.10"
+
+[profile.dev]
+opt-level = 3
+debug = "full"
+lto = "fat"
+
+[profile.release]
+codegen-units = 1
+debug = "none"
+opt-level = 3
+overflow-checks = false
+lto = "fat"

@@ -118,6 +118,9 @@ repair-wheel-command = [
 ]
 
 [tool.cibuildwheel.macos]
+before-all = [
+    "rustup update stable",
+]
 repair-wheel-command = [
     "delocate-wheel --require-archs {delocate_archs} -w {dest_dir} -v {wheel}",
     "uv pip install abi3audit",
