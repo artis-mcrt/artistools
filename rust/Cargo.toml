@@ -18,11 +18,11 @@ rayon = "1.10"
 [profile.dev]
 opt-level = 3
 debug = "full"
-lto = "fat"
+lto = "thin"
 
 [profile.release]
 codegen-units = 1
 debug = "none"
 opt-level = 3
 overflow-checks = false
-lto = "fat"
+#lto = "fat"
