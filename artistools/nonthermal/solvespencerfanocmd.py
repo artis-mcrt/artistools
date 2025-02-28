@@ -23,6 +23,7 @@ def make_ntstats_plot(ntstatfile: str | Path) -> None:
     )
 
     dfstats = pd.read_csv(ntstatfile, sep=r"\s+", escapechar="#").fillna(0)
+    assert dfstats is not None
 
     norm_frac_sum = False
     norm_factors: float | np.ndarray

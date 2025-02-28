@@ -165,7 +165,7 @@ def read_file(nltefilepath: str | Path) -> pd.DataFrame:
         return pd.DataFrame()
     if "ion_stage" in dfpop.columns:
         dfpop = dfpop.rename(columns={"ion_stage": "ion_stage"})
-
+        assert dfpop is not None
     return dfpop
 
 

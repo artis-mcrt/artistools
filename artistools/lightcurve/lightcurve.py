@@ -475,7 +475,7 @@ def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pd.Dat
     return lightcurve_data, metadata
 
 
-def read_bol_reflightcurve_data(lightcurvefilename):
+def read_bol_reflightcurve_data(lightcurvefilename: str | Path) -> tuple[pd.DataFrame, dict[str, t.Any]]:
     data_path = (
         Path(lightcurvefilename)
         if Path(lightcurvefilename).is_file()
@@ -503,6 +503,7 @@ def read_bol_reflightcurve_data(lightcurvefilename):
     }:
         print(f"{data_path}: renaming columns {colrenames}")
         dflightcurve = dflightcurve.rename(columns=colrenames)
+        assert dflightcurve is not None
 
     return dflightcurve, metadata
 

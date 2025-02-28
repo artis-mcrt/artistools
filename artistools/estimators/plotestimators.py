@@ -1133,9 +1133,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 import imageio.v2 as iio
 
                 gifname = outdir / f"plotestim_evolution_ts{timestepmin:03d}_ts{timestepmax:03d}.gif"
-                with iio.get_writer(gifname, mode="I", duration=1000) as writer:
+                with iio.get_writer(gifname, mode="I", duration=1000) as writer:  # pyright: ignore[reportArgumentType]
                     for filename in outputfiles:
-                        image = iio.imread(filename)
+                        image = iio.imread(filename)  # pyright: ignore[reportArgumentType]
                         writer.append_data(image)  # type: ignore[attr-defined]
                 print(f"Created gif: {gifname}")
             elif args.format == "pdf":

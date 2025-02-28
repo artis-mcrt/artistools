@@ -129,6 +129,7 @@ def read_griddat_file(
             "posz": "pos_z_min",
         }
     )
+    assert griddata is not None
     # griddata in geom units
     griddata["rho"] = griddata["rho"].fillna(0.0)
 

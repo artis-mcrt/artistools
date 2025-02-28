@@ -102,9 +102,11 @@ def make_1d_profile(args):
     slice1d = slice1d.rename(columns={f"pos_{args.sliceaxis}_min": "vel_r_max_kmps"})
     # Convert position to velocity
 
+    assert slice1d is not None
     slice1d = slice1d.drop(
         ["inputcellid", f"pos_{args.other_axis1}_min", f"pos_{args.other_axis2}_min"], axis=1
     )  # Remove columns we don't need
+    assert slice1d is not None
 
     if args.rhoscale:
         logprint("Scaling density by a factor of:", args.rhoscale)
@@ -115,6 +117,7 @@ def make_1d_profile(args):
     # TODO: fix this, -100 probably breaks things if it's not one of the outer cells that gets chopped
     slice1d = slice1d.rename(columns={"rho": "logrho"})
 
+    assert slice1d is not None
     slice1d.index += 1
 
     if not args.positive_axis:

@@ -53,11 +53,13 @@ def plothesmaresspec(fig, ax) -> None:
         print(new_column_names)
 
         for i in range(len(res_specdata)):
-            res_specdata[i] = (
-                res_specdata[i]
-                .rename(columns=dict(zip(res_specdata[i].columns, new_column_names, strict=True)))
-                .drop(res_specdata[i].index[0])
+            res_specdata_rename_drop = res_specdata[i].rename(
+                columns=dict(zip(res_specdata[i].columns, new_column_names, strict=True))
             )
+            assert res_specdata_rename_drop is not None
+            res_specdata_rename_drop = res_specdata_rename_drop.drop(res_specdata[i].index[0])
+            assert res_specdata_rename_drop is not None
+            res_specdata[i] = res_specdata_rename_drop
 
         ax.plot(res_specdata[0]["lambda"], res_specdata[0][11.7935] * (1e-5) ** 2, label="hesma 0")
         ax.plot(res_specdata[1]["lambda"], res_specdata[1][11.7935] * (1e-5) ** 2, label="hesma 1")
@@ -86,15 +88,19 @@ def make_hesma_vspecfiles(modelpath: Path, outpath: Path | None = None) -> None:
 
         timearray = vspecdata.columns.to_numpy()[1:]
         vspecdata = vspecdata.sort_values(by="nu", ascending=False)
+        assert vspecdata is not None
         vspecdata["lambda_angstroms"] = 2.99792458e18 / vspecdata["nu"]
         for time in timearray:
             vspecdata[time] = vspecdata[time] * vspecdata["nu"] / vspecdata["lambda_angstroms"]
             vspecdata[time] *= 100000.0**2  # Scale to 10 pc (1 Mpc/10 pc) ** 2
 
         vspecdata = vspecdata.set_index("lambda_angstroms").reset_index()
+        assert vspecdata is not None
         vspecdata = vspecdata.drop(["nu"], axis=1)
+        assert vspecdata is not None
 
         vspecdata = vspecdata.rename(columns={"lambda_angstroms": "0"})
+        assert vspecdata is not None
 
         outfilename = f"{modelname}_vspec_res.dat"
         if angle == 0:

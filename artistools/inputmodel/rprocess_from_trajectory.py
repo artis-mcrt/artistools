@@ -215,7 +215,7 @@ def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, 
 
     with open_tar_file_or_extracted(traj_root, particleid, "./Run_rprocess/energy_thermo.dat") as enthermofile:
         try:
-            dfthermo: pd.DataFrame = pd.read_csv(
+            dfthermo: pd.DataFrame | None = pd.read_csv(
                 enthermofile,
                 sep=r"\s+",
                 usecols=["time/s", "Qdot"],
@@ -227,7 +227,9 @@ def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, 
             print(f"Problem with file {enthermofile}")
             raise
 
+        assert dfthermo is not None
         dfthermo = dfthermo.rename(columns={"time/s": "time_s"})
+        assert dfthermo is not None
         startindex: int = int(np.argmax(dfthermo["time_s"] >= 1))  # start integrating at this number of seconds
 
         assert all(dfthermo["Qdot"][startindex : nts_max + 1] >= 0.0)

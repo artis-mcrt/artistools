@@ -124,6 +124,7 @@ def get_floers_data(dfpopthision, atomic_number, ion_stage, modelpath, T_e, mode
             dffloers_levelpops = pd.read_csv(modelpath / floersfilename, comment="#", sep=r"\s+")
             # floers_levelnums = floers_levelpops['index'].values - 1
             dffloers_levelpops = dffloers_levelpops.sort_values(by="energypercm")
+            assert dffloers_levelpops is not None
             floers_levelnums = list(range(len(dffloers_levelpops)))
             floers_levelpop_values = dffloers_levelpops["frac_ionpop"].to_numpy() * dfpopthision["n_NLTE"].sum()
 

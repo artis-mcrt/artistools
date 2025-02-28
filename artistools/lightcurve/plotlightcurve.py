@@ -537,6 +537,7 @@ def make_lightcurve_plot(
             bolreflightcurve = Path(modelpath)
 
             dflightcurve, metadata = at.lightcurve.read_bol_reflightcurve_data(bolreflightcurve)
+            assert dflightcurve is not None
             lightcurvelabel = args.label[lcindex] or metadata.get("label", bolreflightcurve)
             color = ["0.0", "0.5", "0.7"][reflightcurveindex]
             plotkwargs = {"label": lightcurvelabel, "color": color, "zorder": 0}

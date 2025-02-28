@@ -817,6 +817,7 @@ def make_3d_histogram_from_packets(
         dfpackets = readfile(packetsfile)
         at.packets.add_derived_columns(dfpackets, modelpath, ["emission_velocity"])
         dfpackets = dfpackets.dropna(subset=["emission_velocity"])  # drop rows where emission_vel is NaN
+        assert dfpackets is not None
 
         if only_packets_0_scatters:
             print("Only using packets with 0 scatters")

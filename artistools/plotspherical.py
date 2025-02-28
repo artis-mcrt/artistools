@@ -389,9 +389,9 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
             if Path(args.outputfile).is_dir()
             else args.outputfile.format(outformat=outformat)
         )
-        with iio.get_writer(gifname, mode="I", duration=(1000 * 1 / 1.5)) as writer:
+        with iio.get_writer(gifname, mode="I", duration=(1000 * 1 / 1.5)) as writer:  # pyright: ignore[reportArgumentType]
             for filename in outputfilenames:
-                image = iio.imread(filename)
+                image = iio.imread(filename)  # pyright: ignore[reportArgumentType]
                 writer.append_data(image)  # type: ignore[attr-defined]
         print(f"Created gif: {gifname}")
 

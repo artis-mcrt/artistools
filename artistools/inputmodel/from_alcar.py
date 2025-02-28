@@ -302,6 +302,7 @@ def create_ARTIS_modelfile(
     dfmodel = pd.concat([dfmodel, pd.DataFrame(dictabunds)], axis=1)
 
     dfabundances = pd.DataFrame(dictelabunds).fillna(0.0)
+    assert dfabundances is not None
 
     # create init abundance file
     at.inputmodel.save_initelemabundances(dfelabundances=dfabundances, outpath=outpath)

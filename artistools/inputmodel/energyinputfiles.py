@@ -180,11 +180,14 @@ def get_rprocess_calculation_files(path_to_rprocess_calculation, interpolate_tra
         index_time_lessthan = dfinterpolated_trajectories[dfinterpolated_trajectories["time/s"] < 1.1e-1].index
         dfinterpolated_trajectories = dfinterpolated_trajectories.drop(index_time_lessthan)
 
+        assert dfinterpolated_trajectories is not None
         dfinterpolated_trajectories.to_csv(path_to_rprocess_calculation / "interpolatedQdot.dat", sep=" ", index=False)
+
     print(f"sum etot {sum(trajectory_E_tot)}")
     trajectory_energy = pd.DataFrame.from_dict({"id": trajectory_ids, "E_tot": trajectory_E_tot}).sort_values(by="id")
 
     print(trajectory_energy)
+    assert trajectory_energy is not None
     trajectory_energy.to_csv(path_to_rprocess_calculation / "trajectoryQ.dat", sep=" ", index=False)
 
 

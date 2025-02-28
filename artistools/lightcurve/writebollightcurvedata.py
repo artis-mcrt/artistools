@@ -8,7 +8,7 @@ from astropy import units as u
 import artistools as at
 
 
-def get_bol_lc_from_spec(modelpath) -> pd.DataFrame:
+def get_bol_lc_from_spec(modelpath: str | Path) -> pd.DataFrame:
     from scipy import integrate
 
     res_specdata = at.spectra.read_spec_res(modelpath)
@@ -21,7 +21,7 @@ def get_bol_lc_from_spec(modelpath) -> pd.DataFrame:
         for timestep, timestr in enumerate(timearray):
             if 5 < float(timestr) < 80:
                 spectrum = at.spectra.get_spectrum(
-                    modelpath=modelpath, directionbins=[angle], timestepmin=timestep, timestepmax=timestep
+                    modelpath=Path(modelpath), directionbins=[angle], timestepmin=timestep, timestepmax=timestep
                 )[angle]
                 integrated_flux = integrate.trapezoid(spectrum["f_lambda"], spectrum["lambda_angstroms"])
                 integrated_luminosity = integrated_flux * 4 * np.pi * np.power(u.Mpc.to("cm"), 2)
@@ -32,6 +32,7 @@ def get_bol_lc_from_spec(modelpath) -> pd.DataFrame:
     lightcurvedataframe = pd.DataFrame(lightcurvedata)
     lightcurvedataframe = lightcurvedataframe.replace([np.inf, -np.inf], 0)
     print(lightcurvedataframe)
+    assert lightcurvedataframe is not None
 
     return lightcurvedataframe
 
@@ -57,8 +58,9 @@ def get_bol_lc_from_lightcurveout(modelpath: Path, res: bool = False) -> pd.Data
             columnname = f"angle={angle}"
         lightcurvedata[columnname] = bol_luminosity
 
-    lightcurvedataframe = pd.DataFrame(lightcurvedata)
-    return lightcurvedataframe.replace([np.inf, -np.inf], 0)
+    lightcurvedataframe = pd.DataFrame(lightcurvedata).replace([np.inf, -np.inf], 0)
+    assert lightcurvedataframe is not None
+    return lightcurvedataframe
 
 
 def main():
