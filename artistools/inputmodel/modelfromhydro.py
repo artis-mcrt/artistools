@@ -325,7 +325,7 @@ def makemodelfromgriddata(
     targetmodeltime_days: float | None = None,
     traj_root: Path | str | None = None,
     dimensions: int = 3,
-    scaledensity: float = 1.0,
+    scalemass: float = 1.0,
     scalevelocity: float = 1.0,
     args: argparse.Namespace | None = None,
 ) -> None:
@@ -351,9 +351,11 @@ def makemodelfromgriddata(
     assert dfmodel.schema["inputcellid"].is_integer()
     assert isinstance(dfmodel, pl.DataFrame)
     dfmodel = dfmodel.with_columns(pl.col("inputcellid").cast(pl.Int32))  # pylint: disable=no-member
-    if scaledensity != 1.0:
-        dfmodel = dfmodel.with_columns(rho=pl.col("rho") * scaledensity, mass_g=pl.col("mass_g") * scaledensity)
-        operationmsg = f"densities are scaled by factor of {scaledensity}"
+    if scalemass != 1.0:
+        origmass_msun = dfmodel["mass_g"].sum() / 2.99792458e33
+        dfmodel = dfmodel.with_columns(rho=pl.col("rho") * scalemass, mass_g=pl.col("mass_g") * scalemass)
+        newmass_msun = dfmodel["mass_g"].sum() / 2.99792458e33
+        operationmsg = f"densities are scaled by factor of {scalemass} to increase total mass from {origmass_msun:.2e} to {newmass_msun:.2e} Msun"
         print(operationmsg)
         modelmeta["headercommentlines"].append(operationmsg)
 
@@ -438,13 +440,16 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-targetmodeltime_days", "-t", type=float, default=0.1, help="Time in days for the output model snapshot"
     )
     parser.add_argument(
-        "-scaledensity", type=float, default=1.0, help="Multiply densities by this factor before writing the model file"
+        "-scalemass",
+        type=float,
+        default=1.0,
+        help="Multiply the total mass by scaling densities by some factor before writing the model file",
     )
     parser.add_argument(
         "-scalevelocity",
         type=float,
         default=1.0,
-        help="Multiply ejecta velocities by this factor (adjusting density to conserve mass) before writing the model file",
+        help="Multiply ejecta velocities by some factor (adjusting density to conserve mass) before writing the model file",
     )
     parser.add_argument("-outputpath", "-o", default=None, help="Path for output model files")
 
@@ -474,7 +479,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         targetmodeltime_days=args.targetmodeltime_days,
         traj_root=args.trajectoryroot,
         dimensions=args.dimensions,
-        scaledensity=args.scaledensity,
+        scalemass=args.scalemass,
         scalevelocity=args.scalevelocity,
     )
 
