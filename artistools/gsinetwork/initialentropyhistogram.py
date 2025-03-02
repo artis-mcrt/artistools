@@ -59,20 +59,23 @@ def main(
     s_0_arr = np.zeros(len(ID_list))
     for idx, traj_id in enumerate(ID_list):
         dfevoldat = pd.read_csv(
-                    get_tar_member_extracted_path(args.trajroot, traj_id, "./Run_rprocess/evol.dat"),
+                    get_tar_member_extracted_path(args.trajectoryroot, traj_id, "./Run_rprocess/evol.dat"),
                     sep=r"\s+",
                     usecols=["#count", "time/s", "T9", "rho(g/cc)", "Ye", "S[k_b]"],
         )
+        dfevoldat = dfevoldat.drop(dfevoldat.index[0])
         closest_row = dfevoldat.iloc[(dfevoldat['T9']-args.temperature).abs().argsort()[:2][1]]
         s_0_arr[idx] = closest_row['S[k_b]'].item()
     
     num_bins = args.numbbins
     s_0_width = max(s_0_arr) / num_bins
-    assert num_bins - (1 / s_0_width) < 1e-20, "Bins not proper" 
+    assert num_bins - (max(s_0_arr) / s_0_width) < 1e-20, "Bins not proper" 
     s_0_values = [(i+1/2)*s_0_width for i in range(num_bins)]
     masses = np.zeros(len(s_0_values))
     for idx in range(len(ID_list)):
         bin_idx = int(s_0_arr[idx] / s_0_width)
+        if bin_idx == num_bins:
+            bin_idx = num_bins - 1
         masses[bin_idx] += masses_list[idx] 
     # pdb.set_trace()
     plt.bar(s_0_values, masses, width=s_0_width, zorder=2)
