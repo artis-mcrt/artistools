@@ -101,7 +101,7 @@ def idx_of_nth_largest_val(data_list, n):
         return np.where(data_list == x)[0]
 
 
-def check_single_trajectories(
+def process_traj_list(
     trajroot, model_type, t_days_min, t_days_max, numb_pts, rosswog_lib, lippuner_lib
 ) -> None:
     # compare fit heating rate to network data for Y_e of 0.05 up to 0.5 in 0.05 bins
@@ -234,32 +234,28 @@ def check_single_trajectories(
                 sep=r"\s+",
                 usecols=["#count", "time/s", "T9", "rho(g/cc)", "Ye", "S[k_b]"],
             )
+            dfevoldat = dfevoldat.drop(0,inplace=False)
+            dfevoldat = dfevoldat.drop_duplicates(subset=['time/s'],keep='first')
+            dfevoldat = dfevoldat.reset_index(drop=True)
 
             T_init = 6.0  # temperature of definition for the "initial" moment in the paper (in GK)
             # closest row
-            idx_closest_row = int(dfevoldat.loc[dfevoldat["T9"] >= T_init].iloc[-1]["#count"]) - 1
-            idx2 = 0
-            closest_row = dfevoldat.iloc[idx_closest_row]
-            # calculate expansion time scale in ms for the Lippuner data file
-            if idx_closest_row > 0:
-                idx2 = idx_closest_row - 1
-                tau_0 = (
-                    1000
-                    * closest_row["rho(g/cc)"].item()
-                    / (
-                        (closest_row["rho(g/cc)"].item() - dfevoldat.iloc[idx2]["rho(g/cc)"].item())
-                        / (dfevoldat.iloc[idx2]["time/s"].item() - closest_row["time/s"].item())
-                    )
-                )
+            NSE_data = dfevoldat.loc[dfevoldat["T9"] >= T_init]
+            if len(NSE_data) > 1:
+                closest_row = NSE_data.iloc[-1]
+                n2_closest_row = NSE_data.iloc[-2]
             else:
-                tau_0 = (
-                    1000
-                    * dfevoldat.iloc[1]["rho(g/cc)"].item()
-                    / (
-                        (dfevoldat.iloc[1]["rho(g/cc)"].item() - dfevoldat.iloc[0]["rho(g/cc)"].item())
-                        / (dfevoldat.iloc[0]["time/s"].item() - dfevoldat.iloc[1]["time/s"].item())
-                    )
+                closest_row = dfevoldat.iloc[1]
+                n2_closest_row = dfevoldat.iloc[0]
+            # calculate expansion time scale in ms for the Lippuner data file
+            tau_0 = (
+                1000
+                * closest_row["rho(g/cc)"].item()
+                / (
+                    (closest_row["rho(g/cc)"].item() - n2_closest_row["rho(g/cc)"].item())
+                    / (n2_closest_row["time/s"].item() - closest_row["time/s"].item())
                 )
+            )
 
             Y_e_0 = closest_row["Ye"].item()
             s_0 = closest_row["S[k_b]"].item()
@@ -296,55 +292,48 @@ def check_single_trajectories(
             ]
             param_distances = -distance.cdist([query_data_point], np.array(all_fit_points_norm), metric="cityblock")
             # breakpoint()
-            fit_param_pt_found = False
-            counter = 0
-            while fit_param_pt_found == False:
-                idx_in_tuple_list = idx_of_nth_largest_val(list(param_distances)[0], counter)
-                fit_point = all_fit_points[int(idx_in_tuple_list)]
+            
+            idx_in_tuple_list = idx_of_nth_largest_val(list(param_distances)[0], 0)
+            fit_point = all_fit_points[int(idx_in_tuple_list)]
 
-                # get absolute values again for calculating the actual Lippuner heating rate
-                Y_e_0_closest = fit_point[0]
-                s_0_closest = fit_point[1]
-                tau_0_closest = fit_point[2]
-                rho_0_closest = fit_point[3]
+            # get absolute values again for calculating the actual Lippuner heating rate
+            Y_e_0_closest = fit_point[0]
+            s_0_closest = fit_point[1]
+            tau_0_closest = fit_point[2]
+            rho_0_closest = fit_point[3]
 
-                row_to_take = lipp_data.loc[
-                    (lipp_data["1"] == Y_e_0_closest)
-                    & (lipp_data["2"] == s_0_closest)
-                    & (lipp_data["3"] == tau_0_closest)
-                    & (lipp_data["4"] == rho_0_closest)
-                ]
-                """
-                print(f"Counter {counter} idx_in_tuple_list {idx_in_tuple_list}")
-                print(f"Trajectory params: Y_e_0 = {Y_e_0}, s_0 = {s_0}, tau_0 = {tau_0}, rho_0 = {rho_0}")
-                print(
-                    f"Fit data for point: Y_e_0 = {Y_e_0_closest}, s_0 = {s_0_closest}, tau_0 = {tau_0_closest}, rho_0 = {rho_0_closest}"
+            row_to_take = lipp_data.loc[
+                (lipp_data["1"] == Y_e_0_closest)
+                & (lipp_data["2"] == s_0_closest)
+                & (lipp_data["3"] == tau_0_closest)
+                & (lipp_data["4"] == rho_0_closest)
+            ]
+            """
+            print(f"Counter {counter} idx_in_tuple_list {idx_in_tuple_list}")
+            print(f"Trajectory params: Y_e_0 = {Y_e_0}, s_0 = {s_0}, tau_0 = {tau_0}, rho_0 = {rho_0}")
+            print(
+                f"Fit data for point: Y_e_0 = {Y_e_0_closest}, s_0 = {s_0_closest}, tau_0 = {tau_0_closest}, rho_0 = {rho_0_closest}"
+            )
+            """
+            A = row_to_take["6"].item()
+            alpha = -row_to_take["7"].item()
+            B_1 = row_to_take["8"].item()
+            beta_1 = max(row_to_take["9"].item(), 1e-50)
+            B_2 = row_to_take["10"].item()
+            beta_2 = max(row_to_take["11"].item(), 1e-50)
+            B_3 = row_to_take["12"].item()
+            beta_3 = max(row_to_take["13"].item(), 1e-50)
+
+            Q_dot_Lippuner = np.zeros(len(t_days_fixed_list))
+            for t_idx, t_d in enumerate(t_days_fixed_list):
+                q_dot = (
+                    A * t_d**alpha
+                    + B_1 * np.exp(-t_d / beta_1)
+                    + B_2 * np.exp(-t_d / beta_2)
+                    + B_3 * np.exp(-t_d / beta_3)
                 )
-                """
-                A = row_to_take["6"].item()
-                alpha = row_to_take["7"].item()
-                B_1 = row_to_take["8"].item()
-                beta_1 = row_to_take["9"].item()
-                B_2 = row_to_take["10"].item()
-                beta_2 = row_to_take["11"].item()
-                B_3 = row_to_take["12"].item()
-                beta_3 = row_to_take["13"].item()
-
-                if beta_1 == 0 or beta_2 == 0 or beta_3 == 0:
-                    # print(f"beta_1: {beta_1} beta_2: {beta_2} beta_3: {beta_3}")
-                    counter += 1
-                else:
-                    Q_dot_Lippuner = np.zeros(len(t_days_fixed_list))
-                    for t_idx, t_d in enumerate(t_days_fixed_list):
-                        q_dot = (
-                            A * t_d**alpha
-                            + B_1 * np.exp(-t_d / beta_1)
-                            + B_2 * np.exp(-t_d / beta_2)
-                            + B_3 * np.exp(-t_d / beta_3)
-                        )
-                        Q_dot_Lippuner[t_idx] = q_dot
-                    ERR_Lippuner_lists.append(Q_dot_Lippuner)
-                    fit_param_pt_found = True
+                Q_dot_Lippuner[t_idx] = q_dot
+            ERR_Lippuner_lists.append(Q_dot_Lippuner)
 
     # step 3) plot the results
     fig, axs = plt.subplots(nrows=5, ncols=2, figsize=(6, 10))
@@ -370,6 +359,11 @@ def check_single_trajectories(
     fig.legend(handles, labels, loc="upper center")
     plt.savefig("Q_dot_tot_single_trajs.pdf")
     plt.clf()
+
+
+def check_single_trajectories(
+    trajroot, model_type, t_days_min, t_days_max, numb_pts, rosswog_lib, lippuner_lib
+) -> None:
 
 
 def plot_model_release(
@@ -439,20 +433,19 @@ def plot_model_release(
 
         # obtain reduced dataframe limited to the plotting time range
         red_heat_DF = dfheatingthermo.loc[
-            (dfheatingthermo["timesec"] >= t_days_min * days_to_s)
-            & (dfheatingthermo["timesec"] <= t_days_max * days_to_s)
+            (dfheatingthermo["timesec"] >= 0.5 * t_days_min * days_to_s)
+            & (dfheatingthermo["timesec"] <= 2 * t_days_max * days_to_s)
         ]
 
         # obtain specific heating rate, includes now neutrinos
-        t_days_lists.append([t / 86400 for t in red_heat_DF["timesec"].to_numpy()])
         q_dot_arr = red_heat_DF["Qdot"].to_numpy()
 
         for t_idx, t_d in enumerate(t_days_fixed_list):
             q_dot_interpol = interp1d(
-                (red_heat_DF["timesec"] * s_to_days).to_numpy(),
-                (red_heat_DF["Qdot"] * s_to_days).to_numpy(),
+                (red_heat_DF["timesec"]).to_numpy(),
+                (red_heat_DF["Qdot"]).to_numpy(),
                 kind="linear",
-            )(t_d)
+            )(t_d * days_to_s)
             ERR_network[t_idx] += q_dot_interpol * M_traj
 
         if rosswog_lib is not None:
@@ -506,38 +499,33 @@ def plot_model_release(
                 sep=r"\s+",
                 usecols=["#count", "time/s", "T9", "rho(g/cc)", "Ye", "S[k_b]"],
             )
+            dfevoldat = dfevoldat.drop(0,inplace=False)
+            dfevoldat = dfevoldat.drop_duplicates(subset=['time/s'],keep='first')
+            dfevoldat = dfevoldat.reset_index(drop=True)
 
             T_init = 6.0  # temperature of definition for the "initial" moment in the paper (in GK)
             # closest row
-            idx_closest_row = int(dfevoldat.loc[dfevoldat["T9"] >= T_init].iloc[-1]["#count"]) - 1
-            idx2 = 0
-            closest_row = dfevoldat.iloc[idx_closest_row]
-            # calculate expansion time scale in ms for the Lippuner data file
-            if idx_closest_row > 0:
-                idx2 = idx_closest_row - 1
-                tau_0 = (
-                    1000
-                    * closest_row["rho(g/cc)"].item()
-                    / (
-                        (closest_row["rho(g/cc)"].item() - dfevoldat.iloc[idx2]["rho(g/cc)"].item())
-                        / (dfevoldat.iloc[idx2]["time/s"].item() - closest_row["time/s"].item())
-                    )
-                )
+            NSE_data = dfevoldat.loc[dfevoldat["T9"] >= T_init]
+            if len(NSE_data) > 1:
+                closest_row = NSE_data.iloc[-1]
+                n2_closest_row = NSE_data.iloc[-2]
             else:
-                tau_0 = (
-                    1000
-                    * dfevoldat.iloc[1]["rho(g/cc)"].item()
-                    / (
-                        (dfevoldat.iloc[1]["rho(g/cc)"].item() - dfevoldat.iloc[0]["rho(g/cc)"].item())
-                        / (dfevoldat.iloc[0]["time/s"].item() - dfevoldat.iloc[1]["time/s"].item())
-                    )
+                closest_row = dfevoldat.iloc[1]
+                n2_closest_row = dfevoldat.iloc[0]
+            # calculate expansion time scale in ms for the Lippuner data file
+            tau_0 = (
+                1000
+                * closest_row["rho(g/cc)"].item()
+                / (
+                    (closest_row["rho(g/cc)"].item() - n2_closest_row["rho(g/cc)"].item())
+                    / (n2_closest_row["time/s"].item() - closest_row["time/s"].item())
                 )
+            )
 
             Y_e_0 = closest_row["Ye"].item()
             s_0 = closest_row["S[k_b]"].item()
             rho_0 = closest_row["rho(g/cc)"].item()
             
-            traj_ye0_list[idx0] = Y_e_0
             traj_s0_list[idx0] = s_0
             traj_tau0_list[idx0] = tau_0
             traj_rho0_list[idx0] = rho_0
@@ -577,7 +565,10 @@ def plot_model_release(
             counter = 0
             while fit_param_pt_found == False:
                 idx_in_tuple_list = idx_of_nth_largest_val(list(param_distances)[0], counter)
-                fit_point = all_fit_points[int(idx_in_tuple_list)]
+                try:
+                    fit_point = all_fit_points[int(idx_in_tuple_list)]
+                except TypeError:
+                    breakpoint()
 
                 # get absolute values again for calculating the actual Lippuner heating rate
                 Y_e_0_closest = fit_point[0]
@@ -656,8 +647,89 @@ def plot_model_release(
             Ye0_mean = (traj_ye0_list * (traj_summ_data['Mass']*M_sol_cgs).to_numpy()) / M_ej
             tau0_mean = (traj_tau0_list * (traj_summ_data['Mass']*M_sol_cgs).to_numpy()) / M_ej
             rho0_mean = (traj_rho0_list * (traj_summ_data['Mass']*M_sol_cgs).to_numpy()) / M_ej
-            
 
+            colnames = [str(i) for i in range(1, 39)]
+            lipp_data = pd.read_csv(
+                Path(lippuner_lib, "hires_sym0_results"),
+                delimiter=r"\s+",
+                skiprows=41,
+                names=colnames,
+                dtype_backend="pyarrow",
+            )
+
+            # now read the Lippuner data
+            Y_e_0_fit_data = lipp_data["1"].unique()
+            s_0_fit_data = lipp_data["2"].unique()
+            tau_0_fit_data = lipp_data["3"].unique()
+            rho_0_fit_data = lipp_data["4"].unique()
+
+            # normalize the fit params
+            Y_e_0_fit_data_max = max(Y_e_0_fit_data)
+            s_0_fit_data_max = max(s_0_fit_data)
+            tau_0_fit_data_max = max(tau_0_fit_data)
+            rho_0_fit_data_max = max(rho_0_fit_data)
+
+            all_fit_points = lipp_data[["1", "2", "3", "4"]].values.tolist()
+
+            all_fit_points_norm = [
+                [
+                    quadruple[0] / Y_e_0_fit_data_max,
+                    quadruple[1] / s_0_fit_data_max,
+                    quadruple[2] / tau_0_fit_data_max,
+                    quadruple[3] / rho_0_fit_data_max,
+                ]
+                for quadruple in lipp_data[["1", "2", "3", "4"]].values.tolist()
+            ]
+            query_data_point = [
+                Ye0_mean / Y_e_0_fit_data_max,
+                s0_mean / s_0_fit_data_max,
+                tau0_mean / tau_0_fit_data_max,
+                rho0_mean / rho_0_fit_data_max,
+            ]
+            param_distances = -distance.cdist([query_data_point], np.array(all_fit_points_norm), metric="cityblock")
+            # breakpoint()
+            fit_param_pt_found = False
+            counter = 0
+            while fit_param_pt_found == False:
+                idx_in_tuple_list = idx_of_nth_largest_val(list(param_distances)[0], counter)
+                fit_point = all_fit_points[int(idx_in_tuple_list)]
+
+                # get absolute values again for calculating the actual Lippuner heating rate
+                Y_e_0_closest = fit_point[0]
+                s_0_closest = fit_point[1]
+                tau_0_closest = fit_point[2]
+                rho_0_closest = fit_point[3]
+
+                row_to_take = lipp_data.loc[
+                    (lipp_data["1"] == Y_e_0_closest)
+                    & (lipp_data["2"] == s_0_closest)
+                    & (lipp_data["3"] == tau_0_closest)
+                    & (lipp_data["4"] == rho_0_closest)
+                ]
+                
+                A = row_to_take["6"].item()
+                alpha = row_to_take["7"].item()
+                B_1 = row_to_take["8"].item()
+                beta_1 = row_to_take["9"].item()
+                B_2 = row_to_take["10"].item()
+                beta_2 = row_to_take["11"].item()
+                B_3 = row_to_take["12"].item()
+                beta_3 = row_to_take["13"].item()
+
+                if beta_1 == 0 or beta_2 == 0 or beta_3 == 0:
+                    # print(f"beta_1: {beta_1} beta_2: {beta_2} beta_3: {beta_3}")
+                    counter += 1
+                else:
+                    for t_idx, t_d in enumerate(t_days_fixed_list):
+                        q_dot = (
+                            A * t_d**alpha
+                            + B_1 * np.exp(-t_d / beta_1)
+                            + B_2 * np.exp(-t_d / beta_2)
+                            + B_3 * np.exp(-t_d / beta_3)
+                        )
+                        ERR_Lippuner_HS[t_idx] = q_dot * M_traj
+                    fit_param_pt_found = True
+            
     # step 4) plot the results
     plt.plot(t_days_fixed_list, ERR_network, label="GSINet")
     if rosswog_lib is not None:
@@ -782,10 +854,6 @@ def scatter_integrated_energy_release(trajroot, model_type, t_days_min, t_days_m
     plt.clf()
 
 
-def make_band_plot() -> None:
-    # make band plot showing bands set by the maximum and minimum ERR per trajectory as function of time
-    pass
-
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs) -> None:
     """Comparison to constant beta decay splitup factors."""
@@ -819,22 +887,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         )
 
     if args.plotmodel:
-        plot_set_of_trajectories(
-            args.trajectoryroot,
-            model_type,
-            args.timemin,
-            args.timemax,
-            args.timesteps,
-            args.rosswogdata,
-            args.lippunerdata,
-        )
-
-    if args.scatterintegral:
-        scatter_integrated_energy_release(
-            args.trajectoryroot, model_type, float(args.timemin), float(args.timemax), args.rosswogdata
-        )
-
-    if args.plotmodel:
         plot_model_release(args.trajectoryroot,
             model_type,
             args.timemin,
@@ -843,6 +895,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             args.rosswogdata,
             args.lippunerdata,
             args.comparehomsphere)
+
+    if args.scatterintegral:
+        scatter_integrated_energy_release(
+            args.trajectoryroot, model_type, float(args.timemin), float(args.timemax), args.rosswogdata
+        )
 
 
 if __name__ == "__main__":
