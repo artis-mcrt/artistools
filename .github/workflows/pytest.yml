@@ -52,14 +52,11 @@ jobs:
 
             - name: Run Ruff
               if: always()
-              run:  |
-                 uv run --frozen -- ruff check --exit-non-zero-on-fix --no-fix
+              run: uv run --frozen -- ruff check --exit-non-zero-on-fix --no-fix
 
             - name: Run Ruff Format
               if: always()
-              uses: astral-sh/ruff-action@v3
-              with:
-                args: "format --check"
+              run: uv run --frozen -- ruff format --check
 
             - name: Run mypy
               if: always()
