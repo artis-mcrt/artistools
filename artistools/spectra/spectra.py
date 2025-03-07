@@ -102,10 +102,10 @@ def get_exspec_bins(
 
 
 def convert_angstroms_to_units(value_angstroms: float, new_units: str) -> float:
-    h = 4.1356677e-15  # Planck's constant [eV s]
     c = 2.99792458e18  # speed of light [angstroms/s]
-    hc_ev_angstroms = h * c  # [eV angstroms]
     if new_units.lower() == "kev":
+        h = 4.1356677e-15  # Planck's constant [eV s]
+        hc_ev_angstroms = h * c  # [eV angstroms]
         return hc_ev_angstroms / value_angstroms / 1e3  # [keV]
     if new_units.lower() == "hz":
         return c / value_angstroms
