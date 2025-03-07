@@ -426,7 +426,9 @@ def plot_artis_spectrum(
             if plotpacketcount:
                 dfspectrum = dfspectrum.with_columns(y=pl.col("packetcount"))
 
-            dfspectrum = dfspectrum.filter(pl.col("x").is_between(supxmin * 0.9, supxmax * 1.1))
+            dfspectrum = dfspectrum.filter(pl.col("x").is_between(supxmin * 0.9, supxmax * 1.1)).sort(
+                "x", maintain_order=True
+            )
 
             atspectra.print_integrated_flux(dfspectrum["y"], dfspectrum["x"])
 
@@ -453,8 +455,6 @@ def plot_artis_spectrum(
                     binned_flux.append(sum_flux / ncontribs)
 
                 dfspectrum = pl.DataFrame({"x": new_lambda_angstroms, "y": binned_flux})
-
-            dfspectrum = dfspectrum.sort("x", maintain_order=True)
 
             axis.plot(
                 dfspectrum["x"], dfspectrum["y"], label=linelabel_withdirbin if axindex == 0 else None, **plotkwargs
