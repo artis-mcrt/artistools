@@ -278,7 +278,8 @@ def get_trajectory_abund_q(
     # print(f' grid snapshot: {t_model_s:.2e} s, network: {traj_time_s:.2e} s (timestep {nts})')
     assert np.isclose(massfractotal, 1.0, rtol=0.02)
     if not np.isclose(traj_time_s, t_model_s, rtol=0.2, atol=1.0):
-        print(f"WARNING: particle {particleid} step time of {traj_time_s} is not similar to target {t_model_s} seconds")
+        msg = f"ERROR: particle {particleid} step time of {traj_time_s} is not similar to target {t_model_s} seconds"
+        raise AssertionError(msg)
 
     dict_traj_nuc_abund: dict[tuple[int, int] | str, float] = {
         (Z, N): massfrac / massfractotal
