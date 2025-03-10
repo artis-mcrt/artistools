@@ -1103,9 +1103,20 @@ def make_plot(args) -> tuple[mplfig.Figure, np.ndarray, pl.DataFrame]:
 
         axis.set_xlabel("")  # remove xlabel (last axis xlabel optionally added later)
 
-        if args.multispecplot and args.showtime:
-            _ymin, ymax = axis.get_ylim()
-            axis.text(5500, ymax * 0.9, f"{args.timedayslist[index]} days")  # multispecplot text
+        if args.showtime:
+            if args.multispecplot:
+                _ymin, ymax = axis.get_ylim()
+                axis.text(5500, ymax * 0.9, f"{args.timedayslist[index]} days")  # multispecplot text
+            else:
+                timeavg = (args.timemin + args.timemax) / 2.0
+                axis.annotate(
+                    f"{timeavg:.2f} days",
+                    xy=(0.03, 0.97),
+                    xycoords="axes fraction",
+                    horizontalalignment="left",
+                    verticalalignment="top",
+                    fontsize="x-large",
+                )
 
     if not args.hidexticklabels:
         axes[-1].set_xlabel(xlabel)
@@ -1172,22 +1183,6 @@ def make_plot(args) -> tuple[mplfig.Figure, np.ndarray, pl.DataFrame]:
         args.outputfile /= defaultoutputfile
 
     # plt.text(6000, (args.ymax * 0.9), f'{round(args.timemin) + 1} days', fontsize='large')
-
-    if args.showtime and not args.multispecplot:
-        if not args.ymax:
-            _ymin, ymax = axis.get_ylim()
-        else:
-            ymax = args.ymax
-
-        timeavg = (args.timemin + args.timemax) / 2.0
-        axis.annotate(
-            f"{timeavg:.2f} days",
-            xy=(0.03, 0.97),
-            xycoords="axes fraction",
-            horizontalalignment="left",
-            verticalalignment="top",
-            fontsize="x-large",
-        )
 
     assert dfalldata is not None
     return fig, axes, dfalldata
