@@ -5,7 +5,7 @@ __all__ = ["plot"]
 from artistools.spectra import plotspectra as plotspectra
 from artistools.spectra import writespectra as writespectra
 from artistools.spectra.plotspectra import main as plot
-from artistools.spectra.spectra import convert_angstroms_to_units as convert_angstroms_to_units
+from artistools.spectra.spectra import convert_angstroms_to_unit as convert_angstroms_to_unit
 from artistools.spectra.spectra import get_exspec_bins as get_exspec_bins
 from artistools.spectra.spectra import get_flux_contributions as get_flux_contributions
 from artistools.spectra.spectra import get_flux_contributions_from_packets as get_flux_contributions_from_packets

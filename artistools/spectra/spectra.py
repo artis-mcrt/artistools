@@ -101,12 +101,14 @@ def get_exspec_bins(
     return lambda_bin_edges, lambda_bin_centres, delta_lambdas
 
 
-def convert_angstroms_to_units(value_angstroms: float, new_units: str) -> float:
+def convert_angstroms_to_unit(value_angstroms: float, new_units: str) -> float:
     c = 2.99792458e18  # speed of light [angstroms/s]
+    h = 4.1356677e-15  # Planck's constant [eV s]
+    hc_ev_angstroms = h * c  # [eV angstroms]
     if new_units.lower() == "kev":
-        h = 4.1356677e-15  # Planck's constant [eV s]
-        hc_ev_angstroms = h * c  # [eV angstroms]
-        return hc_ev_angstroms / value_angstroms / 1e3  # [keV]
+        return hc_ev_angstroms / value_angstroms / 1e3
+    if new_units.lower() == "mev":
+        return hc_ev_angstroms / value_angstroms / 1e6
     if new_units.lower() == "hz":
         return c / value_angstroms
     if new_units.lower() == "angstroms":
