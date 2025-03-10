@@ -811,10 +811,10 @@ def plot_celltimestep(modelpath, timestep, outputfile, xmin, xmax, modelgridinde
 
 
 def plot_bin_fitted_field_evolution(axis, radfielddata, nu_line, modelgridindex, **plotkwargs):
-    bin_num, _nu_lower, _nu_upper = select_bin(radfielddata, nu=nu_line, modelgridindex=modelgridindex)  # noqa: F841
+    bin_num, _nu_lower, _nu_upper = select_bin(radfielddata, nu=nu_line, modelgridindex=modelgridindex)
     # print(f"Selected bin_num {bin_num} to get a binned radiation field estimator")
     radfielddataselected = radfielddata.query(
-        "bin_num == @bin_num and modelgridindex == @modelgridindex and nu_lower <= @nu_line and nu_upper >= @nu_line"
+        f"bin_num == {bin_num} and modelgridindex == @modelgridindex and nu_lower <= @nu_line and nu_upper >= @nu_line"
     ).copy()
 
     radfielddataselected["Jb_nu_at_line"] = radfielddataselected.apply(

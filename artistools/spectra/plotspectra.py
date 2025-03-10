@@ -249,10 +249,6 @@ def plot_artis_spectrum(
     **plotkwargs,
 ) -> pl.DataFrame | None:
     """Plot an ARTIS output spectrum. The data plotted are also returned as a DataFrame."""
-    if xunit.lower() not in {"angstroms", "hz", "kev"}:
-        msg = f"Unit {xunit} not implemented for plot_artis_spectrum()"
-        raise NotImplementedError(msg)
-
     modelpath = Path(modelpath)
     if Path(modelpath).is_file():  # handle e.g. modelpath = 'modelpath/spec.out'
         specfilename = Path(modelpath).parts[-1]
@@ -279,6 +275,8 @@ def plot_artis_spectrum(
     if plotpacketcount:
         from_packets = True
 
+    h = 4.1356677e-15  # Planck's constant [eV s]
+    c = 2.99792458e18  # speed of light [angstroms/s]
     for axindex, axis in enumerate(axes):
         clamp_to_timesteps = not args.notimeclamp
         if args.multispecplot:
@@ -408,20 +406,25 @@ def plot_artis_spectrum(
                 if len(directionbins) > 1 or not linelabel_is_custom:
                     linelabel_withdirbin = f"{linelabel} {dirbin_definitions[dirbin]}"
 
-            if args.xunit.lower() == "angstroms":
+            if xunit.lower() == "angstroms":
                 dfspectrum = dfspectrum.with_columns(x=pl.col("lambda_angstroms"), y=pl.col("f_lambda"))
-            elif args.xunit.lower() == "hz":
+            elif xunit.lower() == "hz":
                 dfspectrum = dfspectrum.with_columns(x=pl.col("nu"), y=pl.col("f_nu"))
-            else:
-                assert args.xunit.lower() == "kev"
-                h = 4.1356677e-15  # Planck's constant [eV s]
-                c = 2.99792458e18  # speed of light [angstroms/s]
-
+            elif xunit.lower() == "kev":
                 dfspectrum = (
                     dfspectrum.with_columns(en_kev=h * c / pl.col("lambda_angstroms") / 1000.0)
                     .with_columns(f_en_kev=pl.col("f_nu") * pl.col("nu") / pl.col("en_kev"))
                     .with_columns(x=pl.col("en_kev"), y=pl.col("f_en_kev"))
                 )
+            elif xunit.lower() == "mev":
+                dfspectrum = (
+                    dfspectrum.with_columns(en_mev=h * c / pl.col("lambda_angstroms") / 1e6)
+                    .with_columns(f_en_mev=pl.col("f_nu") * pl.col("nu") / pl.col("en_mev"))
+                    .with_columns(x=pl.col("en_mev"), y=pl.col("f_en_mev"))
+                )
+            else:
+                msg = f"Unit {xunit} not implemented for plot_artis_spectrum()"
+                raise NotImplementedError(msg)
 
             if plotpacketcount:
                 dfspectrum = dfspectrum.with_columns(y=pl.col("packetcount"))
@@ -1025,6 +1028,20 @@ def make_plot(args) -> tuple[mplfig.Figure, np.ndarray, pl.DataFrame]:
 
     dfalldata: pl.DataFrame | None = pl.DataFrame()
 
+    xlabel = None
+    if not args.hidexticklabels:
+        if args.xunit.lower() == "angstroms":
+            xlabel = r"Wavelength $\left[\mathrm{{\AA}}\right]$"
+        elif args.xunit.lower() == "kev":
+            xlabel = r"Energy $\left[\mathrm{{keV}}\right]$"
+        elif args.xunit.lower() == "mev":
+            xlabel = r"Energy $\left[\mathrm{{MeV}}\right]$"
+        elif args.xunit.lower() == "hz":
+            xlabel = r"Frequency $\left[\mathrm{{Hz}}\right]$"
+        else:
+            msg = f"Unknown x-axis unit {args.xunit}"
+            raise AssertionError(msg)
+
     ylabel = None
     if not args.hideyticklabels:
         if args.xunit.lower() == "angstroms":
@@ -1033,37 +1050,65 @@ def make_plot(args) -> tuple[mplfig.Figure, np.ndarray, pl.DataFrame]:
             ylabel = r"F$_\nu$ at 1 Mpc [{}erg/s/cm$^2$/Hz]"
         elif args.xunit.lower() == "kev":
             ylabel = r"dF/dE at 1 Mpc [{}erg/s/cm$^2$/keV]"
+        elif args.xunit.lower() == "mev":
+            ylabel = r"dF/dE at 1 Mpc [{}erg/s/cm$^2$/MeV]"
+        else:
+            msg = f"Unit {args.xunit} not implemented"
+            raise NotImplementedError(msg)
 
         assert ylabel is not None
         if args.logscaley:
             # don't include the {} that will be replaced with the power of 10 by the custom formatter
             ylabel = ylabel.replace("{}", "")
 
-    for axis in axes:
-        if not args.hideyticklabels:
-            axis.set_ylabel(ylabel)
+    for index, axis in enumerate(axes):
         if args.xmin is not None:
             axis.set_xlim(left=args.xmin)
         if args.xmax is not None:
             axis.set_xlim(right=args.xmax)
+        if args.ymin is not None:
+            axis.set_ylim(bottom=args.ymin)
+        if args.ymax is not None:
+            axis.set_ylim(top=args.ymax)
         if args.logscalex:
             axis.set_xscale("log")
         if args.logscaley:
             axis.set_yscale("log")
 
-        if args.xunit.lower() == "angstoms":
-            if (args.xmax - args.xmin) < 2000:
-                axis.xaxis.set_major_locator(ticker.MultipleLocator(base=100))
-                axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=10))
-            elif (args.xmax - args.xmin) < 11000:
-                axis.xaxis.set_major_locator(ticker.MultipleLocator(base=1000))
-                axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
-            elif (args.xmax - args.xmin) < 14000:
-                axis.xaxis.set_major_locator(ticker.MultipleLocator(base=2000))
-                axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=500))
-            else:
-                axis.xaxis.set_major_locator(ticker.MultipleLocator(base=2000))
-                axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=500))
+        if (args.xmax - args.xmin) < 200:
+            pass
+        elif (args.xmax - args.xmin) < 2000:
+            axis.xaxis.set_major_locator(ticker.MultipleLocator(base=100))
+            axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=10))
+        elif (args.xmax - args.xmin) < 11000:
+            axis.xaxis.set_major_locator(ticker.MultipleLocator(base=1000))
+            axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
+        elif (args.xmax - args.xmin) < 14000:
+            axis.xaxis.set_major_locator(ticker.MultipleLocator(base=2000))
+            axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=500))
+        else:
+            axis.xaxis.set_major_locator(ticker.MultipleLocator(base=2000))
+            axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=500))
+
+        if args.hidexticklabels:
+            axis.tick_params(axis="x", which="both", labelbottom=False)
+
+        if args.hideyticklabels:
+            axis.tick_params(axis="y", which="both", labelleft=False)
+        else:
+            axis.set_ylabel(ylabel)
+
+        if "{" in axis.get_ylabel() and not args.logscaley:
+            axis.yaxis.set_major_formatter(ExponentLabelFormatter(axis.get_ylabel(), decimalplaces=1))
+
+        axis.set_xlabel("")  # remove xlabel (last axis xlabel optionally added later)
+
+        if args.multispecplot and args.showtime:
+            _ymin, ymax = axis.get_ylim()
+            axis.text(5500, ymax * 0.9, f"{args.timedayslist[index]} days")  # multispecplot text
+
+    if not args.hidexticklabels:
+        axes[-1].set_xlabel(xlabel)
 
     if densityplotyvars:
         make_contrib_plot(axes[:-1], args.specpath[0], densityplotyvars, args)
@@ -1120,37 +1165,6 @@ def make_plot(args) -> tuple[mplfig.Figure, np.ndarray, pl.DataFrame]:
             if isinstance(col, np.ndarray):
                 col = col[0]
             text.set_color(col)
-
-    for index, axis in enumerate(axes):
-        if args.ymin is not None:
-            axis.set_ylim(bottom=args.ymin)
-        if args.ymax is not None:
-            axis.set_ylim(top=args.ymax)
-        # ax.xaxis.set_major_formatter(plt.NullFormatter())
-
-        if "{" in axis.get_ylabel() and not args.logscaley:
-            axis.yaxis.set_major_formatter(ExponentLabelFormatter(axis.get_ylabel(), decimalplaces=1))
-
-        if args.hidexticklabels:
-            axis.tick_params(axis="x", which="both", labelbottom=False)
-        if args.hideyticklabels:
-            axis.tick_params(axis="y", which="both", labelleft=False)
-        axis.set_xlabel("")
-
-        if args.multispecplot and args.showtime:
-            _ymin, ymax = axis.get_ylim()
-            axis.text(5500, ymax * 0.9, f"{args.timedayslist[index]} days")  # multispecplot text
-
-    if not args.hidexticklabels:
-        if args.xunit.lower() == "angstroms":
-            axes[-1].set_xlabel(r"Wavelength $\left[\mathrm{{\AA}}\right]$")
-        elif args.xunit.lower() == "kev":
-            axes[-1].set_xlabel(r"Energy $\left[\mathrm{{keV}}\right]$")
-        elif args.xunit.lower() == "hz":
-            axes[-1].set_xlabel(r"Frequency $\left[\mathrm{{Hz}}\right]$")
-        else:
-            msg = f"Unknown x-axis unit {args.xunit}"
-            raise AssertionError(msg)
 
     if not args.outputfile:
         args.outputfile = defaultoutputfile
@@ -1276,7 +1290,8 @@ def addargs(parser) -> None:
         "-x",
         dest="xunit",
         default=None,
-        choices=["angstroms", "kev", "hz"],
+        type=str.lower,
+        choices=["angstroms", "kev", "mev", "hz"],
         help="x (horizontal) axis unit",
     )
 
@@ -1480,9 +1495,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.xunit = "kev" if args.gamma else "angstroms"
 
     if args.xmin is None:
-        args.xmin = atspectra.convert_angstroms_to_units(0.2 if args.gamma else 2500.0, args.xunit)
+        args.xmin = atspectra.convert_angstroms_to_unit(0.2 if args.gamma else 2500.0, args.xunit)
     if args.xmax is None:
-        args.xmax = atspectra.convert_angstroms_to_units(0.004 if args.gamma else 19000.0, args.xunit)
+        args.xmax = atspectra.convert_angstroms_to_unit(0.004 if args.gamma else 19000.0, args.xunit)
 
     args.xmin, args.xmax = sorted([args.xmin, args.xmax])
 
