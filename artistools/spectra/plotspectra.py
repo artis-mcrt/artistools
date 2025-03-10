@@ -1307,7 +1307,7 @@ def addargs(parser) -> None:
     parser.add_argument("-ymax", type=float, default=None, help="Plot range: y-axis")
 
     parser.add_argument(
-        "--hidemodeltimerange", action="store_true", help='Hide the "at t=x to yd" from the line labels'
+        "--hidemodeltimerange", action="store_true", help='Hide the "at (+/- x.xd)" from the line labels'
     )
 
     parser.add_argument("--hidemodeltime", action="store_true", help="Hide the time from the line labels")
