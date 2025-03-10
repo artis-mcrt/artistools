@@ -117,7 +117,7 @@ def get_from_packets(
             else:
                 getcols.add("dirbin")
 
-    dfpackets = dfpackets.select(getcols).collect(streaming=True).lazy()
+    dfpackets = dfpackets.select(getcols).collect().lazy()
 
     lcdata = {}
     for dirbin in directionbins:
