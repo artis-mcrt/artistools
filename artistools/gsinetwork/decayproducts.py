@@ -26,7 +26,7 @@ Ye_bins = [("all", 0.0, float("inf")), ("low", 0.05, 0.15), ("mid", 0.2, 0.3), (
 t_compar_min_d = 0.1
 t_compar_max_d = 10
 numb_steps = 50
-nuc_dataset = "ENSDF"  # Use "Hotokezaka" (directly from betaminusdecays.txt) or "ENSDF" using the ENSDF database
+nuc_dataset = "Hotokezaka"  # Use "Hotokezaka" (directly from betaminusdecays.txt) or "ENSDF" using the ENSDF database
 ARTIS_colors = ["r", "g", "b", "m", "c", "orange"]  # reddish colors
 M_sol_cgs = 1.989e33
 amu_g = 1.66e-24
@@ -34,12 +34,7 @@ MeV_to_erg = 1.60218e-6
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument(
-        "-trajectoryroot",
-        "-trajroot",
-        default=None,
-        help="Path to nuclear network trajectory folder, if abundances are required",
-    )
+    parser.add_argument("-trajectoryroot", "-trajroot", required=True, help="Path to nuclear network trajectory folder")
 
 
 def get_nuc_data(nuc_dataset: str):
@@ -75,6 +70,9 @@ def get_nuc_data(nuc_dataset: str):
             )
             if len(dfnuc) > 0:
                 dfnuc = dfnuc.loc[dfnuc["p_energy"] == 0]
+                if dfnuc.empty:
+                    print(f"No beta decay found for Z={atomic_number} A={A}")
+                    continue
                 tau_s = dfnuc.iloc[0]["half_life_sec"] / math.log(2)
                 # tau_s = hrow["tau[s]"]
                 Q_MeV = dfnuc.iloc[0]["q"] / 1000
@@ -118,7 +116,7 @@ def chunks(lst, n):
         yield lst[i : i + n]
 
 
-def process_trajectory(nuc_data, traj_root, traj_masses_g, arr_t_day, traj_ID):
+def process_trajectory(nuc_data, traj_root, traj_masses_g, arr_t_day, traj_ID: int) -> dict[str, np.ndarray]:
     traj_mass_grams = traj_masses_g[traj_ID]
     dfheatingthermo = (
         pl.from_pandas(
@@ -256,7 +254,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     traj_masses_g = {trajid: mass * M_sol_cgs for trajid, mass in traj_summ_data[["Id", "Mass"]].to_numpy()}
 
-    alltraj_decay_powers = process_map(
+    alltraj_decay_powers: list[dict[str, np.ndarray]] = process_map(
         partial(process_trajectory, nuc_data, args.trajectoryroot, traj_masses_g, arr_t_day),
         traj_ids,
         chunksize=3,
@@ -264,6 +262,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         unit="traj",
         smoothing=0.0,
         tqdm_class=tqdm.rich.tqdm,
+        # max_workers=4,
     )
 
     print()
@@ -271,7 +270,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     for label, Ye_lower, Ye_upper in Ye_bins:
         labelfull = f"Ye [{Ye_lower}, {Ye_upper}]" if math.isfinite(Ye_upper) else "all Ye"
         print(f"Processing Ye bin {label}... Ye: [{Ye_lower}, {Ye_upper}]")
-        decay_powers: dict[str, np.ndarray] = {}
         selected_traj_ids = (
             traj_summ_data.filter(pl.col("Ye").is_between(Ye_lower, Ye_upper))["Id"].to_list() if Ye_lower else traj_ids
         )
@@ -280,14 +278,17 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         if not selected_traj_ids:
             continue
 
-        for traj_id, result in zip(traj_ids, alltraj_decay_powers, strict=False):
-            if traj_id in selected_traj_ids:
-                if decay_powers:
-                    for key in decay_powers:
-                        decay_powers[key] += result[key]
-                else:
-                    decay_powers = result
-
+        decay_powers = {
+            k: sum(
+                trajdata[k]
+                for traj_id, trajdata in zip(traj_ids, alltraj_decay_powers, strict=True)
+                if traj_id in selected_traj_ids
+            )
+            for k in alltraj_decay_powers[0]
+        }
+        assert isinstance(decay_powers["abundweighted_gamma"], np.ndarray)
+        assert isinstance(decay_powers["abundweighted_elec"], np.ndarray)
+        assert isinstance(decay_powers["abundweighted_nu"], np.ndarray)
         decay_powers["abundweighted_gammanuelec"] = (
             decay_powers["abundweighted_gamma"] + decay_powers["abundweighted_nu"] + decay_powers["abundweighted_elec"]
         )
