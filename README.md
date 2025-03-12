@@ -24,7 +24,7 @@ cd artistools
 To create a [uv](https://docs.astral.sh/uv/getting-started/installation/) virtual environment with locked dependency versions, run:
 ```sh
 uv sync --frozen
-uv pip install --editable .[dev]
+uv pip install --editable .[dev,extras]
 pre-commit install
 ```
 
@@ -35,7 +35,7 @@ alias artistools="~/PATH/TO/artistools/.venv/bin/artistools"
 
 Alternatively, to skip using uv and install into the system environment with pip:
 ```sh
-pip install --editable .[dev]
+pip install --editable .[dev,extras]
 pre-commit install
 ```
 
