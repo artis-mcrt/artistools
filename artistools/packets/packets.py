@@ -593,12 +593,16 @@ def get_packets_pl(
     modelpath: str | Path,
     maxpacketfiles: int | None = None,
     packet_type: str | None = None,
-    escape_type: t.Literal["TYPE_RPKT", "TYPE_GAMMA"] | None = None,
+    escape_type: str | None = None,
 ) -> tuple[int, pl.LazyFrame]:
     if escape_type is not None:
         assert packet_type in {None, "TYPE_ESCAPE"}
         if packet_type is None:
             packet_type = "TYPE_ESCAPE"
+
+    if escape_type not in {"TYPE_RPKT", "TYPE_GAMMA"}:
+        msg = f"Unknown escape type {escape_type}"
+        raise ValueError(msg)
 
     nprocs_read, packetsparquetfiles = get_packets_batch_parquet_paths(modelpath, maxpacketfiles)
 

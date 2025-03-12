@@ -289,7 +289,7 @@ def plot_artis_lightcurve(
     axis,
     lcindex: int = 0,
     label: str | None = None,
-    escape_type: t.Literal["TYPE_RPKT", "TYPE_GAMMA"] = "TYPE_RPKT",
+    escape_type: str = "TYPE_RPKT",
     frompackets: bool = False,
     maxpacketfiles: int | None = None,
     axistherm=None,
@@ -301,6 +301,9 @@ def plot_artis_lightcurve(
 ) -> dict[int, pl.DataFrame] | None:
     if args is None:
         args = argparse.Namespace()
+    if escape_type not in {"TYPE_RPKT", "TYPE_GAMMA"}:
+        msg = f"Unknown escape type {escape_type}"
+        raise ValueError(msg)
 
     lcfilename = None
     modelpath = Path(modelpath)
@@ -363,8 +366,8 @@ def plot_artis_lightcurve(
             lcdataframes = at.average_direction_bins(lcdataframes, overangle="theta")
 
     plotkwargs: dict[str, t.Any] = {
-        "label": modelname,
-        "linestyle": args.linestyle[lcindex],
+        "label": rf"{modelname} $\gamma$" if escape_type == "TYPE_GAMMA" else modelname,
+        "linestyle": args.linestyle[lcindex] if escape_type == "TYPE_RPKT" else ":",
         "color": args.color[lcindex],
     }
     if args.dashes[lcindex]:
@@ -496,13 +499,15 @@ def make_lightcurve_plot(
     modelpaths: Sequence[str | Path],
     filenameout: str | Path,
     frompackets: bool = False,
-    escape_type: t.Literal["TYPE_RPKT", "TYPE_GAMMA"] = "TYPE_RPKT",
+    showuvoir: bool = True,
+    showgamma: bool = False,
     maxpacketfiles: int | None = None,
     args: argparse.Namespace | None = None,
 ) -> None:
-    """Use light_curve.out or light_curve_res.out files to plot light curve."""
+    """Plot light curves from light_curve.out, gamma_light_curve.out or light_curve_res.out or packets files."""
     if args is None:
         args = argparse.Namespace()
+
     conffigwidth = float(at.get_config()["figwidth"])
     fig, axis = plt.subplots(
         nrows=1,
@@ -559,21 +564,26 @@ def make_lightcurve_plot(
             plottedsomething = True
         else:
             dirbin = args.plotviewingangle or (args.plotvspecpol or [-1])
-            lcdataframes = plot_artis_lightcurve(
-                modelpath=modelpath,
-                lcindex=lcindex,
-                label=args.label[lcindex],
-                axis=axis,
-                escape_type=escape_type,
-                frompackets=frompackets,
-                maxpacketfiles=maxpacketfiles,
-                axistherm=axistherm,
-                directionbins=dirbin,
-                average_over_phi=args.average_over_phi_angle,
-                average_over_theta=args.average_over_theta_angle,
-                usedegrees=args.usedegrees,
-                args=args,
-            )
+            escape_types = ["TYPE_RPKT"] if showuvoir else []
+            if showgamma:
+                escape_types.append("TYPE_GAMMA")
+
+            for escape_type in escape_types:
+                lcdataframes = plot_artis_lightcurve(
+                    modelpath=modelpath,
+                    lcindex=lcindex,
+                    label=args.label[lcindex],
+                    axis=axis,
+                    escape_type=escape_type,
+                    frompackets=frompackets,
+                    maxpacketfiles=maxpacketfiles,
+                    axistherm=axistherm,
+                    directionbins=dirbin,
+                    average_over_phi=args.average_over_phi_angle,
+                    average_over_theta=args.average_over_theta_angle,
+                    usedegrees=args.usedegrees,
+                    args=args,
+                )
             plottedsomething = plottedsomething or (lcdataframes is not None)
 
         print()
@@ -628,12 +638,12 @@ def make_lightcurve_plot(
             str_units = str_units.replace("{}", "")
         if args.plotdeposition:
             yvarname = r"$L$ or $\dot{{E}}$"
-        elif escape_type == "TYPE_GAMMA":
+        elif showgamma and not showuvoir:
             yvarname = r"$\mathrm{{L}}_\gamma$"
-        elif escape_type == "TYPE_RPKT":
+        elif showuvoir and not showgamma:
             yvarname = r"$\mathrm{{L}}_{{\mathrm{{UVOIR}}}}$"
         else:
-            yvarname = r"$\mathrm{{L}}_{{\mathrm{{" + escape_type.replace("_", r"\_") + r"}}}}$"
+            yvarname = r"$\mathrm{{L}}$"
 
         axis.set_ylabel(yvarname + str_units)
 
@@ -1352,7 +1362,15 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("-maxpacketfiles", type=int, default=None, help="Limit the number of packet files read")
 
-    parser.add_argument("--gamma", action="store_true", help="Make light curve from gamma rays instead of R-packets")
+    parser.add_argument("--gamma", action="store_true", help="Make light curve from gamma rays")
+
+    parser.add_argument(
+        "--rpkt",
+        "--uvoir",
+        dest="rpkt",
+        action="store_true",
+        help="Make light curve from R-packets (default unless --gamma is passed)",
+    )
 
     parser.add_argument("-escape_type", default="TYPE_RPKT", help="Type of escaping packets")
 
@@ -1640,19 +1658,16 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         len(args.modelpath), args.color, args.label, args.linestyle, args.dashes, args.linewidth
     )
 
-    if args.gamma:
-        args.escape_type = "TYPE_GAMMA"
+    if args.rpkt is False and not args.gamma:
+        # if we're not plotting gamma, then we want to plot the R-packets
+        args.rpkt = True
 
     if args.filter:
         defaultoutputfile = "plotlightcurves.pdf"
     elif args.colour_evolution:
         defaultoutputfile = "plot_colour_evolution.pdf"
-    elif args.escape_type == "TYPE_GAMMA":
-        defaultoutputfile = "plotlightcurve_gamma.pdf"
-    elif args.escape_type == "TYPE_RPKT":
-        defaultoutputfile = "plotlightcurve.pdf"
     else:
-        defaultoutputfile = f"plotlightcurve_{args.escape_type}.pdf"
+        defaultoutputfile = "plotlightcurve.pdf"
 
     if not args.outputfile:
         outputfolder = Path()
@@ -1703,7 +1718,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             modelpaths=args.modelpath,
             filenameout=args.outputfile,
             frompackets=args.frompackets,
-            escape_type=args.escape_type,
+            showuvoir=args.rpkt,
+            showgamma=args.gamma,
             maxpacketfiles=args.maxpacketfiles,
             args=args,
         )
