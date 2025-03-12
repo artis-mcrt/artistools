@@ -315,13 +315,13 @@ def plot_artis_lightcurve(
         print(f"\nWARNING: Skipping because {modelpath} does not exist\n")
         return None
 
-    modelname = at.get_model_name(modelpath) if label is None else label
-    if lcfilename is not None:
-        modelname += f" {lcfilename}"
-    if not modelname:
-        print("====> (no series label)")
-    else:
-        print(f"====> {modelname}")
+    modelname = at.get_model_name(modelpath)
+    if label is None:
+        label = modelname
+    if escape_type == "TYPE_GAMMA":
+        label += r" $\gamma$"
+
+    print(f"====> {label}")
     print(f" modelpath: {modelpath.resolve().parts[-1]}")
 
     if hasattr(args, "title") and args.title:
@@ -366,7 +366,7 @@ def plot_artis_lightcurve(
             lcdataframes = at.average_direction_bins(lcdataframes, overangle="theta")
 
     plotkwargs: dict[str, t.Any] = {
-        "label": rf"{modelname} $\gamma$" if escape_type == "TYPE_GAMMA" else modelname,
+        "label": label,
         "linestyle": args.linestyle[lcindex] if escape_type == "TYPE_RPKT" else ":",
         "color": args.color[lcindex],
     }
