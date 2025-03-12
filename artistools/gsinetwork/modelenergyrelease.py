@@ -16,7 +16,7 @@ from scipy import integrate
 from scipy.spatial import distance
 from itertools import product
 import warnings
-
+import sys
 import argcomplete
 import matplotlib.pyplot as plt
 import numpy as np
@@ -601,6 +601,9 @@ def process_traj_list(
             ERR_Lippuner_max,
             ERR_Lippuner_min,
         )
+    print("Unknown task! Abort.")
+    sys.exit()
+    return 0
 
 
 def check_single_trajectories(

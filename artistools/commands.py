@@ -46,6 +46,7 @@ subcommandtree: CommandType = {
     "plotlinefluxes": ("linefluxes", "main"),
     "plotdensity": ("inputmodel.plotdensity", "main"),
     "plotmacroatom": ("macroatom", "main"),
+    "plotmodelhistogram": ("gsinetwork.plotmodelhistogram", "main"),
     "plotmodelrelease": ("gsinetwork.modelenergyrelease", "main"),
     "plotnltepops": ("nltepops.plotnltepops", "main"),
     "plotnonthermal": ("nonthermal.plotnonthermal", "main"),
@@ -59,7 +60,6 @@ subcommandtree: CommandType = {
     "spencerfano": ("nonthermal.solvespencerfanocmd", "main"),
     "writecodecomparisondata": ("writecomparisondata", "main"),
     "writespectra": ("spectra.writespectra", "main"),
-    "yehistogram": ("gsinetwork.yehistogram", "main"),
     "inputmodel": {
         "describe": ("inputmodel.describeinputmodel", "main"),
         "maptogrid": ("inputmodel.maptogrid", "main"),
@@ -72,6 +72,7 @@ subcommandtree: CommandType = {
         "makeartismodelfromsingletrajectory": ("inputmodel.rprocess_from_trajectory", "main"),
         "from_alcar": ("inputmodel.from_alcar", "main"),
         "to_tardis": ("inputmodel.to_tardis", "main"),
+        "updatesummary": ("inputmodel.updatesummaryfile", "main"),
     },
 }
 

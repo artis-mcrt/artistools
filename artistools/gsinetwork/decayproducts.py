@@ -6,6 +6,8 @@ import warnings
 from collections.abc import Sequence
 from functools import partial
 from pathlib import Path
+import os
+import sys
 
 import argcomplete
 import matplotlib.pyplot as plt
@@ -44,71 +46,28 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 def get_nuc_data(nuc_dataset: str):
     assert nuc_dataset in {"Hotokezaka", "ENSDF"}
-    hotokezaka_betaminus = (
+    if nuc_dataset == "Hotokezaka":
+        return (
+            pl.read_csv(
+                get_config()["path_datadir"] / "betaminusdecays.txt",
+                separator=" ",
+                comment_prefix="#",
+                has_header=False,
+                new_columns=["A", "Z", "Q[MeV]", "Egamma[MeV]", "Eelec[MeV]", "Eneutrino[MeV]", "tau[s]"],
+            )
+            .filter(pl.col("Q[MeV]") > 0.0)
+            .with_columns(pl.col(pl.Int32).cast(pl.Int64))
+        )
+    return (
         pl.read_csv(
-            get_config()["path_datadir"] / "betaminusdecays.txt",
-            separator=" ",
+            get_config()["path_datadir"] / "ensdf_df.csv",
+            separator=",",
             comment_prefix="#",
             has_header=False,
-            new_columns=["A", "Z", "Q[MeV]", "Egamma[MeV]", "Eelec[MeV]", "Eneutrino[MeV]", "tau[s]"],
+            new_columns=["idx", "A", "Z", "Q[MeV]", "Egamma[MeV]", "Eelec[MeV]", "Eneutrino[MeV]", "tau[s]"],
         )
         .filter(pl.col("Q[MeV]") > 0.0)
         .with_columns(pl.col(pl.Int32).cast(pl.Int64))
-    )
-    if nuc_dataset == "Hotokezaka":
-        return hotokezaka_betaminus
-    csvpath = Path(get_config()["path_datadir"], "betaminusdecays_ensdf.txt")
-    if not csvpath.exists():
-        print("Collecting ENSDF data...")
-        rows = []
-        for hrow in hotokezaka_betaminus.iter_rows(named=True):
-            atomic_number = hrow["Z"]
-            A = hrow["A"]
-            elsymb = at.get_elsymbol(atomic_number)
-            print(f"Element: Z={atomic_number} {elsymb} A={A}")
-            isot_str = f"{A}{elsymb.lower()}"
-            dfnuc = pd.read_csv(
-                f"https://nds.iaea.org/relnsd/v1/data?fields=decay_rads&nuclides={isot_str}&rad_types=bm",
-                storage_options={
-                    "User-Agent": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:77.0) Gecko/20100101 Firefox/77.0"
-                },
-            )
-            if len(dfnuc) > 0:
-                dfnuc = dfnuc.loc[dfnuc["p_energy"] == 0]
-                tau_s = dfnuc.iloc[0]["half_life_sec"] / math.log(2)
-                # tau_s = hrow["tau[s]"]
-                Q_MeV = dfnuc.iloc[0]["q"] / 1000
-                E_elec = (dfnuc["intensity_beta"] * dfnuc["mean_energy"]).sum() / 100 / 1000
-                E_nu = (dfnuc["intensity_beta"] * dfnuc["anti_nu_mean_energy"]).sum() / 100 / 1000
-                # dfnuc["E_gamma"] = (Q_MeV * 1000 - dfnuc["mean_energy"] - dfnuc["anti_nu_mean_energy"]) / 1000
-                # E_gamma = (dfnuc["intensity_beta"] * dfnuc["E_gamma"]).sum() / 1000
-                # E_gamma = max(0, E_gamma)
-                E_gamma = Q_MeV - E_elec - E_nu
-                rows.append({
-                    "A": A,
-                    "Z": atomic_number,
-                    "Q[MeV]": Q_MeV,
-                    "Egamma[MeV]": E_gamma,
-                    "Eelec[MeV]": E_elec,
-                    "Eneutrino[MeV]": E_nu,
-                    "tau[s]": tau_s,
-                    "source": "ENSDF",
-                })
-            else:
-                print(f"No ENSDF data found for Z={atomic_number} A={A}")
-                rows.append(hrow | {"source": "Hotokezaka"})
-
-        with csvpath.open("w") as f:
-            f.writelines(("# Data from ENSDF database\n", "#\n# "))
-            pl.DataFrame(rows).write_csv(f, separator=" ", include_header=True)
-        print("done!")
-
-    return pl.read_csv(
-        csvpath,
-        separator=" ",
-        comment_prefix="#",
-        has_header=False,
-        new_columns=["A", "Z", "Q[MeV]", "Egamma[MeV]", "Eelec[MeV]", "Eneutrino[MeV]", "tau[s]", "source"],
     )
 
 
@@ -119,6 +78,7 @@ def chunks(lst, n):
 
 
 def process_trajectory(nuc_data, traj_root, traj_masses_g, arr_t_day, traj_ID):
+
     traj_mass_grams = traj_masses_g[traj_ID]
     dfheatingthermo = (
         pl.from_pandas(
@@ -238,8 +198,17 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     log_t_compar_max_s = np.log10(t_compar_max_d)
     arr_t_day = 10 ** (np.linspace(log_t_compar_min_s, log_t_compar_max_s, numb_steps, endpoint=True))
 
+    model_type = (
+        os.getcwd().split("/")[-1].split("_")[0]
+    )  # assumes
+
     # get masses of trajectories
-    colnames0 = ["Id", "Mass", "time", "t9", "Ye", "entropy", "n/seed", "tau", "radius", "velocity", "angle"]
+    if model_type == "sfho":
+        colnames0 = ["Id", "Mass", "time", "t9", "Ye", "entropy", "n/seed", "tau", "radius", "velocity", "angle"]
+    elif model_type == "e2e":
+        colnames0 = ["Id", "Mass", "Ye", "velocity"]
+    else:
+        sys.exit("Unknown model type! Abort.")
     traj_summ_data = pl.from_pandas(
         pd.read_csv(
             Path(args.trajectoryroot, "summary-all.dat"),
