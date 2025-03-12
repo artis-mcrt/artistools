@@ -54,7 +54,7 @@ def read_3d_gammalightcurve(filepath: str | Path) -> dict[int, pd.DataFrame]:
 
 def get_from_packets(
     modelpath: str | Path,
-    escape_type: t.Literal["TYPE_RPKT", "TYPE_GAMMA"] = "TYPE_RPKT",
+    escape_type: str = "TYPE_RPKT",
     maxpacketfiles: int | None = None,
     directionbins: Collection[int] | None = None,
     average_over_phi: bool = False,
@@ -63,6 +63,9 @@ def get_from_packets(
     directionbins_are_vpkt_observers: bool = False,
 ) -> dict[int, pl.DataFrame]:
     """Get ARTIS luminosity vs time from packets files."""
+    if escape_type not in {"TYPE_RPKT", "TYPE_GAMMA"}:
+        msg = f"Unknown escape type {escape_type}"
+        raise ValueError(msg)
     if directionbins is None:
         directionbins = [-1]
     tmidarray = at.get_timestep_times(modelpath=modelpath, loc="mid")
