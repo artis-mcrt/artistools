@@ -17,9 +17,9 @@ authors:
   - family-names: Sim
     given-names: Stuart
 title: artistools
-version: v2023.5.16.3
-date-released: 2023-05-16
-doi: 10.5281/zenodo.7942849
+version: v2025-02-17
+date-released: 2025-02-17
+doi: 10.5281/zenodo.7728326
 license: MIT
 repository-code: 'https://github.com/artis-mcrt/artistools'
 abstract: >-
