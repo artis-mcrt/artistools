@@ -1,5 +1,4 @@
 import math
-from pathlib import Path
 
 import numpy as np
 import polars as pl
@@ -24,7 +23,7 @@ def test_directionbins() -> None:
         dirz=pl.col("costheta_defined"),
     )
 
-    testdirections = at.packets.add_packet_directions_lazypolars(testdirections, syn_dir=syn_dir).collect()
+    testdirections = at.packets.add_packet_directions_lazypolars(testdirections).collect()
     testdirections = at.packets.bin_packet_directions_lazypolars(testdirections).collect()
 
     for pkt in testdirections.iter_rows(named=True):
@@ -53,7 +52,7 @@ def test_directionbins() -> None:
 
     testdirections_pandas = testdirections.to_pandas(use_pyarrow_extension_array=False)
 
-    pddfpackets = at.packets.bin_packet_directions(dfpackets=testdirections_pandas, modelpath=Path(), syn_dir=syn_dir)
+    pddfpackets = at.packets.bin_packet_directions(dfpackets=testdirections_pandas)
 
     for row in pddfpackets.itertuples(index=True):
         assert isinstance(row.costheta_defined, float)

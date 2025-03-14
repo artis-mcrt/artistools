@@ -20,7 +20,6 @@ from artistools.configuration import get_config
 from artistools.misc import firstexisting
 from artistools.misc import get_atomic_number
 from artistools.misc import get_elsymbol
-from artistools.misc import get_syn_dir
 from artistools.misc import get_z_a_nucname
 from artistools.misc import stripallsuffixes
 from artistools.misc import vec_len
@@ -741,9 +740,7 @@ def add_derived_cols_to_modeldata(
 
     if "angle_bin" in derived_cols:
         assert modelpath is not None
-        dfmodel = pl.from_pandas(
-            get_cell_angle(dfmodel.collect().to_pandas(use_pyarrow_extension_array=True), modelpath)
-        ).lazy()
+        dfmodel = pl.from_pandas(get_cell_angle(dfmodel.collect().to_pandas(use_pyarrow_extension_array=True))).lazy()
 
     # if "Ye" in derived_cols and os.path.isfile(modelpath / "Ye.txt"):
     #     dfmodel["Ye"] = at.inputmodel.opacityinputfile.get_Ye_from_file(modelpath)
@@ -753,9 +750,9 @@ def add_derived_cols_to_modeldata(
     return dfmodel
 
 
-def get_cell_angle(dfmodel: pd.DataFrame, modelpath: Path) -> pd.DataFrame:
+def get_cell_angle(dfmodel: pd.DataFrame) -> pd.DataFrame:
     """Get angle between origin to cell midpoint and the syn_dir axis."""
-    syn_dir = get_syn_dir(modelpath)
+    syn_dir = np.array([0.0, 0.0, 1.0])
     xhat = np.array([1.0, 0.0, 0.0])
 
     cos_theta = np.zeros(len(dfmodel))
@@ -802,11 +799,9 @@ def get_cell_angle(dfmodel: pd.DataFrame, modelpath: Path) -> pd.DataFrame:
     return dfmodel
 
 
-def get_mean_cell_properties_of_angle_bin(
-    dfmodeldata: pd.DataFrame, vmax_cmps: float, modelpath: Path
-) -> dict[int, pd.DataFrame]:
+def get_mean_cell_properties_of_angle_bin(dfmodeldata: pd.DataFrame, vmax_cmps: float) -> dict[int, pd.DataFrame]:
     if "cos_bin" not in dfmodeldata:
-        get_cell_angle(dfmodeldata, modelpath)
+        get_cell_angle(dfmodeldata)
 
     dfmodeldata["rho"][dfmodeldata["rho"] == 0] = None
 

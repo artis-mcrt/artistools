@@ -75,7 +75,6 @@ from artistools.misc import get_nprocs as get_nprocs
 from artistools.misc import get_nu_grid as get_nu_grid
 from artistools.misc import get_phi_bins as get_phi_bins
 from artistools.misc import get_runfolders as get_runfolders
-from artistools.misc import get_syn_dir as get_syn_dir
 from artistools.misc import get_time_range as get_time_range
 from artistools.misc import get_timestep_of_timedays as get_timestep_of_timedays
 from artistools.misc import get_timestep_time as get_timestep_time
