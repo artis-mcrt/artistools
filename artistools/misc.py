@@ -304,18 +304,6 @@ def get_wid_init_at_tmodel(
     return 2.0 * xmax / ncoordgridx
 
 
-def get_syn_dir(modelpath: Path) -> tuple[float, float, float]:
-    """Return the direction from which theta angle is measured."""
-    syndirpath = Path(modelpath) / "syn_dir.txt"
-    if not syndirpath.is_file():
-        print(f"{modelpath / 'syn_dir.txt'} does not exist. using x,y,z = 0,0,1")
-        return (0.0, 0.0, 1.0)
-
-    with syndirpath.open(encoding="utf-8") as syn_dir_file:
-        x, y, z = (float(i) for i in syn_dir_file.readline().split())
-        return (x, y, z)
-
-
 def vec_len(vec: Sequence[float] | np.ndarray[t.Any, np.dtype[np.floating[t.Any]]]) -> float:
     return float(np.sqrt(np.dot(vec, vec)))
 

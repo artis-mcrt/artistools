@@ -192,7 +192,7 @@ def add_derived_columns(
         dfpackets["em_timestep"] = dfpackets.apply(em_timestep, axis=1)
 
     if any(x in colnames for x in ("angle_bin", "dirbin", "costhetabin", "phibin")):
-        dfpackets = bin_packet_directions(modelpath, dfpackets)
+        dfpackets = bin_packet_directions(dfpackets)
 
     return dfpackets
 
@@ -524,9 +524,7 @@ def get_rankbatch_parquetfile(
                 ).cast(pl.Float32)
             ).sort(by=["type_id", "escape_type_id", "t_arrive_d"])
 
-            syn_dir = at.get_syn_dir(modelpath)
-
-            pldf_batch = add_packet_directions_lazypolars(pldf_batch, syn_dir)
+            pldf_batch = add_packet_directions_lazypolars(pldf_batch)
             pldf_batch = bin_packet_directions_lazypolars(pldf_batch)
 
         print(
@@ -663,11 +661,9 @@ def get_directionbin(
     return (costhetabin * nphibins) + phibin
 
 
-def add_packet_directions_lazypolars(
-    dfpackets: pl.LazyFrame | pl.DataFrame, syn_dir: tuple[float, float, float]
-) -> pl.LazyFrame:
+def add_packet_directions_lazypolars(dfpackets: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame:
     dfpackets = dfpackets.lazy()
-    assert len(syn_dir) == 3
+    syn_dir = np.array([0.0, 0.0, 1.0])
     xhat = np.array([1.0, 0.0, 0.0])
     vec2 = np.cross(xhat, syn_dir)  # -yhat if syn_dir is zhat
 
@@ -765,14 +761,12 @@ def bin_packet_directions_lazypolars(
     return dfpackets.with_columns((pl.col("costhetabin") * nphibins + pl.col("phibin")).cast(pl.Int32).alias("dirbin"))
 
 
-def bin_packet_directions(
-    modelpath: Path | str, dfpackets: pd.DataFrame, syn_dir: tuple[float, float, float] | None = None
-) -> pd.DataFrame:
+def bin_packet_directions(dfpackets: pd.DataFrame) -> pd.DataFrame:
     """Avoid this slow pandas function and use bin_packet_directions_lazypolars instead for new code."""
     nphibins = at.get_viewingdirection_phibincount()
     ncosthetabins = at.get_viewingdirection_costhetabincount()
 
-    syn_dir = at.get_syn_dir(Path(modelpath)) if syn_dir is None else syn_dir
+    syn_dir = np.array([0.0, 0.0, 1.0])
     xhat = np.array([1.0, 0.0, 0.0])
     vec2 = np.cross(xhat, syn_dir)
 
@@ -929,7 +923,7 @@ def get_mean_packet_emission_velocity_per_ts(
         dfpackets = readfile(packetsfile, packet_type=packet_type, escape_type=escape_type)
         at.packets.add_derived_columns(dfpackets, modelpath, ["emission_velocity"])
         if escape_angles is not None:
-            dfpackets = at.packets.bin_packet_directions(modelpath, dfpackets)
+            dfpackets = at.packets.bin_packet_directions(dfpackets)
             dfpackets = dfpackets.query("dirbin == @escape_angles")
 
         if i == 0:  # make new df
