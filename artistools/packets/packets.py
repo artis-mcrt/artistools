@@ -375,9 +375,21 @@ def readfile_text(packetsfiletext: Path | str, column_names: list[str]) -> pl.Da
         raise
 
     mpirank = int(packetsfiletext.name.split("_")[-1].split(".")[0])
-    dfpackets = dfpackets.drop(["next_trans", "last_cross"], strict=False).with_columns(
-        mpirank=pl.lit(mpirank, dtype=pl.Int32)
-    )
+    dfpackets = dfpackets.drop(
+        [
+            "next_trans",
+            "last_event",
+            "last_cross",
+            "absorptiondirx",
+            "absorptiondiry",
+            "absorptiondirz",
+            "interactions",
+            "pol_dirx",
+            "pol_diry",
+            "pol_dirz",
+        ],
+        strict=False,
+    ).with_columns(mpirank=pl.lit(mpirank, dtype=pl.Int32))
 
     # drop last column of nulls (caused by trailing space on each line)
     if dfpackets[dfpackets.columns[-1]].is_null().all():
