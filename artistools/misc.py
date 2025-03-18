@@ -1030,6 +1030,16 @@ def merge_pdf_files(pdf_files: list[str]) -> None:
     print(f"Files merged and saved to {resultfilename}.pdf")
 
 
+def get_nuclides_df(modelpath: Path | str) -> pl.LazyFrame:
+    """Return LazyFrame with all nuclide indicies and their associated atomic numbers, mass numbers and string names."""
+    return (
+        pl.scan_csv(zopenpl(Path(modelpath, "nuclides.out")), separator=" ", has_header=True)
+        .rename({"#nucindex": "pellet_nucindex", "Z": "atomic_number"})
+        .join(get_elsymbols_df().lazy(), on="atomic_number", how="left")
+        .with_columns(nucname=pl.col("elsymbol") + pl.col("A").cast(pl.String))
+    ).with_columns(pl.col(pl.Int64).cast(pl.Int32))
+
+
 def get_bflist(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame:
     """Return a dict of bound-free transitions from bflist.out."""
     compositiondata = get_composition_data(modelpath)
