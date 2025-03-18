@@ -61,6 +61,7 @@ def get_from_packets(
     average_over_theta: bool = False,
     get_cmf_column: bool = True,
     directionbins_are_vpkt_observers: bool = False,
+    pellet_nucname: str | None = None,
 ) -> dict[int, pl.DataFrame]:
     """Get ARTIS luminosity vs time from packets files."""
     if escape_type not in {"TYPE_RPKT", "TYPE_GAMMA"}:
@@ -98,6 +99,31 @@ def get_from_packets(
         ])
 
     getcols = set()
+    try:
+        dfnuclides = at.get_nuclides_df(modelpath=modelpath)
+        if pellet_nucname is not None:
+            atomic_number = at.get_atomic_number(pellet_nucname)
+            if at.get_elsymbol(atomic_number) == pellet_nucname:
+                expr = pl.col("atomic_number") == atomic_number
+            else:
+                expr = pl.col("nucname") == pellet_nucname
+            dfpackets = dfpackets.filter(
+                pl.col("pellet_nucindex").is_in(
+                    dfnuclides.filter(expr).select(["pellet_nucindex"]).collect().get_column("pellet_nucindex")
+                )
+            )
+            dfpackets = dfpackets.with_columns([(pl.col("tdecay") / 86400).alias("t_arrive_d")])
+        print(
+            dfpackets.group_by("pellet_nucindex")
+            .agg(pl.sum("e_rf").alias("e_rf_sum"))
+            .top_k(by="e_rf_sum", k=20)
+            .join(dfnuclides, on="pellet_nucindex", how="left")
+            .select(["e_rf_sum", "nucname"])
+            .collect()
+        )
+    except FileNotFoundError:
+        assert pellet_nucname is None
+
     if directionbins_are_vpkt_observers:
         vpkt_config = at.get_vpkt_config(modelpath)
         for vspecindex in directionbins:
@@ -122,7 +148,7 @@ def get_from_packets(
 
     dfpackets = dfpackets.select(getcols).collect().lazy()
 
-    lcdata = {}
+    lcdata: dict[int, pl.DataFrame] = {}
     for dirbin in directionbins:
         if directionbins_are_vpkt_observers:
             obsdirindex = dirbin // vpkt_config["nspectraperobs"]

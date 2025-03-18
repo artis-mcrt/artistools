@@ -2,6 +2,7 @@
 
 
 import argparse
+import itertools
 import math
 import sys
 import typing as t
@@ -298,6 +299,7 @@ def plot_artis_lightcurve(
     average_over_theta: bool = False,
     usedegrees: bool = False,
     args: argparse.Namespace | None = None,
+    pellet_nucname: str | None = None,
 ) -> dict[int, pl.DataFrame] | None:
     if args is None:
         args = argparse.Namespace()
@@ -320,6 +322,8 @@ def plot_artis_lightcurve(
         label = modelname
     if escape_type == "TYPE_GAMMA":
         label += r" $\gamma$"
+    if pellet_nucname is not None:
+        label += f" {pellet_nucname}"
 
     print(f"====> {label}")
     print(f" modelpath: {modelpath.resolve().parts[-1]}")
@@ -340,8 +344,10 @@ def plot_artis_lightcurve(
             average_over_theta=average_over_theta,
             get_cmf_column=args.plotcmf,
             directionbins_are_vpkt_observers=args.plotvspecpol is not None,
+            pellet_nucname=pellet_nucname,
         )
     else:
+        assert pellet_nucname is None, "pellet_nucname is only valid with frompackets=True"
         if lcfilename is None:
             lcfilename = (
                 "light_curve_res.out"
@@ -365,11 +371,7 @@ def plot_artis_lightcurve(
         if average_over_theta:
             lcdataframes = at.average_direction_bins(lcdataframes, overangle="theta")
 
-    plotkwargs: dict[str, t.Any] = {
-        "label": label,
-        "linestyle": args.linestyle[lcindex] if escape_type == "TYPE_RPKT" else ":",
-        "color": args.color[lcindex],
-    }
+    plotkwargs: dict[str, t.Any] = {"label": label, "linestyle": args.linestyle[lcindex], "color": args.color[lcindex]}
     if args.dashes[lcindex]:
         plotkwargs["dashes"] = args.dashes[lcindex]
     if args.linewidth[lcindex]:
@@ -425,6 +427,9 @@ def plot_artis_lightcurve(
                 plotkwargs["label"] = (
                     f"{modelname} {angle_definition[dirbin]}" if modelname else angle_definition[dirbin]
                 )
+
+        if pellet_nucname is not None:
+            plotkwargs["color"] = None
 
         filterfunc = at.get_filterfunc(args)
         if filterfunc is not None:
@@ -562,13 +567,16 @@ def make_lightcurve_plot(
             print(f"====> {lightcurvelabel}")
             reflightcurveindex += 1
             plottedsomething = True
+
+            lcindex += 1
         else:
             dirbin = args.plotviewingangle or (args.plotvspecpol or [-1])
             escape_types = ["TYPE_RPKT"] if showuvoir else []
             if showgamma:
                 escape_types.append("TYPE_GAMMA")
 
-            for escape_type in escape_types:
+            pellet_nucnames = [None]
+            for escape_type, pellet_nucname in itertools.product(escape_types, pellet_nucnames):
                 lcdataframes = plot_artis_lightcurve(
                     modelpath=modelpath,
                     lcindex=lcindex,
@@ -583,8 +591,9 @@ def make_lightcurve_plot(
                     average_over_theta=args.average_over_theta_angle,
                     usedegrees=args.usedegrees,
                     args=args,
+                    pellet_nucname=pellet_nucname,
                 )
-            plottedsomething = plottedsomething or (lcdataframes is not None)
+                plottedsomething = plottedsomething or (lcdataframes is not None)
 
         print()
 
