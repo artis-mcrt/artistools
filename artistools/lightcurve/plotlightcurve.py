@@ -299,9 +299,12 @@ def plot_artis_lightcurve(
     usedegrees: bool = False,
     args: argparse.Namespace | None = None,
     pellet_nucname: str | None = None,
+    plotkwargs: dict[str, t.Any] | None = None,
 ) -> dict[int, pl.DataFrame] | None:
     if args is None:
         args = argparse.Namespace()
+    if plotkwargs is None:
+        plotkwargs = {}
     if escape_type not in {"TYPE_RPKT", "TYPE_GAMMA"}:
         msg = f"Unknown escape type {escape_type}"
         raise ValueError(msg)
@@ -316,18 +319,11 @@ def plot_artis_lightcurve(
         print(f"\nWARNING: Skipping because {modelpath} does not exist\n")
         return None
 
-    modelname = at.get_model_name(modelpath)
-    if label is None:
-        label = modelname
-    if escape_type == "TYPE_GAMMA":
-        label += r" $\gamma$"
-    if pellet_nucname is not None:
-        label += f" {pellet_nucname}"
-
     print(f"====> {label}")
     print(f" modelpath: {modelpath.resolve().parts[-1]}")
 
     if hasattr(args, "title") and args.title:
+        modelname = at.get_model_name(modelpath)
         axis.set_title(modelname)
 
     if directionbins is None:
@@ -370,7 +366,10 @@ def plot_artis_lightcurve(
         if average_over_theta:
             lcdataframes = at.average_direction_bins(lcdataframes, overangle="theta")
 
-    plotkwargs: dict[str, t.Any] = {"label": label, "linestyle": args.linestyle[lcindex], "color": args.color[lcindex]}
+    if label is not None:
+        assert "label" not in plotkwargs, "label is already set in plotkwargs"
+        plotkwargs |= {"label": label}
+
     if args.dashes[lcindex]:
         plotkwargs["dashes"] = args.dashes[lcindex]
     if args.linewidth[lcindex]:
@@ -576,10 +575,16 @@ def make_lightcurve_plot(
 
             pellet_nucnames = [None]
             for escape_type, pellet_nucname in itertools.product(escape_types, pellet_nucnames):
+                label = args.label[lcindex]
+                if label is None:
+                    label = at.get_model_name(modelpath)
+                if escape_type == "TYPE_GAMMA":
+                    label += r" $\gamma$"
+
                 lcdataframes = plot_artis_lightcurve(
                     modelpath=modelpath,
                     lcindex=lcindex,
-                    label=args.label[lcindex],
+                    label=label,
                     axis=axis,
                     escape_type=escape_type,
                     frompackets=frompackets,
@@ -591,6 +596,10 @@ def make_lightcurve_plot(
                     usedegrees=args.usedegrees,
                     args=args,
                     pellet_nucname=pellet_nucname,
+                    plotkwargs={
+                        "linestyle": args.linestyle[lcindex] if escape_type == "TYPE_RPKT" else ":",
+                        "color": args.color[lcindex],
+                    },
                 )
                 plottedsomething = plottedsomething or (lcdataframes is not None)
 
