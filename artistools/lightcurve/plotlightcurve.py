@@ -18,7 +18,6 @@ import matplotlib.colors as mplcolors
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mplticker
 import numpy as np
-import pandas as pd
 import polars as pl
 
 import artistools as at
@@ -463,14 +462,14 @@ def plot_artis_lightcurve(
         if validrange_start_days is None or validrange_end_days is None:
             # entire range is invalid
             lcdata_before_valid = lcdata
-            lcdata_after_valid = pl.from_pandas(pd.DataFrame(data=None, columns=lcdata.columns))
-            lcdata_valid = pl.from_pandas(pd.DataFrame(data=None, columns=lcdata.columns))
+            lcdata_after_valid = pl.DataFrame(schema=lcdata.schema)
+            lcdata_valid = pl.DataFrame(schema=lcdata.schema)
         else:
             lcdata_valid = lcdata.filter(pl.col("time").is_between(validrange_start_days, validrange_end_days))
             if lcdata_valid.is_empty():
                 # valid range doesn't contain any data points
                 lcdata_before_valid = lcdata
-                lcdata_after_valid = pl.from_pandas(pd.DataFrame(data=None, columns=lcdata.columns))
+                lcdata_after_valid = pl.DataFrame(schema=lcdata.schema)
             else:
                 lcdata_before_valid = lcdata.filter(pl.col("time") <= lcdata_valid["time"].min())
                 lcdata_after_valid = lcdata.filter(pl.col("time") >= lcdata_valid["time"].max())
