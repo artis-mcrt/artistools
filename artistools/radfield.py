@@ -199,13 +199,12 @@ def get_fitted_field(
             arr_j_lambda_bin = arr_j_nu * arr_nu_hz_bin / arr_lambda_bin
 
             arr_lambda += list(arr_lambda_bin)
-            j_lambda_fitted += list(arr_j_lambda_bin)
         else:
             arr_nu_hz_bin = np.array([nu_lower, nu_upper])
             arr_j_lambda_bin = np.array([0.0, 0.0])
 
             arr_lambda += [2.99792458e18 / nu for nu in arr_nu_hz_bin]
-            j_lambda_fitted += arr_j_lambda_bin
+        j_lambda_fitted += list(arr_j_lambda_bin)
 
         lambda_lower = 2.99792458e18 / row["nu_upper"]
         lambda_upper = 2.99792458e18 / row["nu_lower"]
