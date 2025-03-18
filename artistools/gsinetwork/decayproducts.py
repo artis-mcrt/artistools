@@ -118,6 +118,7 @@ def chunks(lst, n):
 
 def process_trajectory(nuc_data, traj_root, traj_masses_g, arr_t_day, traj_ID: int) -> dict[str, np.ndarray]:
     traj_mass_grams = traj_masses_g[traj_ID]
+
     dfheatingthermo = (
         pl.from_pandas(
             pd.read_csv(
@@ -126,6 +127,7 @@ def process_trajectory(nuc_data, traj_root, traj_masses_g, arr_t_day, traj_ID: i
                 usecols=["#count", "hbeta", "htot"],
             )
         )
+        .with_columns(pl.col("htot").cast(pl.Float64, strict=False))
         .join(
             pl.from_pandas(
                 pd.read_csv(
@@ -237,13 +239,24 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     arr_t_day = 10 ** (np.linspace(log_t_compar_min_s, log_t_compar_max_s, numb_steps, endpoint=True))
 
     # get masses of trajectories
-    colnames0 = ["Id", "Mass", "time", "t9", "Ye", "entropy", "n/seed", "tau", "radius", "velocity", "angle"]
+    colnames = None
+    skiprows = 0
+    with Path(args.trajectoryroot, "summary-all.dat").open("r", encoding="utf-8") as f:
+        possible_header_line = f.readline()
+        if possible_header_line.startswith("#"):
+            colnames = possible_header_line[1:].split()
+            skiprows = 1
+
+    if colnames is None:
+        msg = "ERROR: No header found in summary-all.dat. Please check the file format."
+        raise ValueError(msg)
+
     traj_summ_data = pl.from_pandas(
         pd.read_csv(
             Path(args.trajectoryroot, "summary-all.dat"),
             delimiter=r"\s+",
-            skiprows=1,
-            names=colnames0,
+            skiprows=skiprows,
+            names=colnames,
             dtype_backend="pyarrow",
         )
     ).filter(pl.any_horizontal(pl.col("Ye").is_between(Ye_lower, Ye_upper) for _, Ye_lower, Ye_upper in Ye_bins))
@@ -262,7 +275,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         unit="traj",
         smoothing=0.0,
         tqdm_class=tqdm.rich.tqdm,
-        # max_workers=4,
+        # max_workers=1,
     )
 
     print()
