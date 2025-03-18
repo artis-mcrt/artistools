@@ -163,8 +163,8 @@ def get_fitted_field(
     lambdamax: float | None = None,
 ) -> tuple[list[float], list[float]]:
     """Return the fitted dilute blackbody (list of lambda, list of j_nu) made up of all bins."""
-    arr_lambda = []
-    j_lambda_fitted = []
+    arr_lambda: list[float] = []
+    j_lambda_fitted: list[float] = []
 
     radfielddata_subset = radfielddata.copy().query(
         "bin_num >= 0"
@@ -201,8 +201,8 @@ def get_fitted_field(
             arr_lambda += list(arr_lambda_bin)
             j_lambda_fitted += list(arr_j_lambda_bin)
         else:
-            arr_nu_hz_bin = [nu_lower, nu_upper]
-            arr_j_lambda_bin = [0.0, 0.0]
+            arr_nu_hz_bin = np.array([nu_lower, nu_upper])
+            arr_j_lambda_bin = np.array([0.0, 0.0])
 
             arr_lambda += [2.99792458e18 / nu for nu in arr_nu_hz_bin]
             j_lambda_fitted += arr_j_lambda_bin
