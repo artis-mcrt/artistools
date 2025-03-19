@@ -1061,12 +1061,16 @@ def make_plot(args) -> tuple[mplfig.Figure, np.ndarray, pl.DataFrame]:
     if not args.hidexticklabels:
         if args.xunit.lower() == "angstroms":
             xlabel = r"Wavelength $\left[\mathrm{{\AA}}\right]$"
+        elif args.xunit.lower() == "nm":
+            xlabel = r"Wavelength $\left[\mathrm{{nm}}\right]$"
+        elif args.xunit.lower() == "micron":
+            xlabel = r"Wavelength $\left[\mathrm{{μm}}\right]$"
+        elif args.xunit.lower() == "hz":
+            xlabel = r"Frequency $\left[\mathrm{{Hz}}\right]$"
         elif args.xunit.lower() == "kev":
             xlabel = r"Energy $\left[\mathrm{{keV}}\right]$"
         elif args.xunit.lower() == "mev":
             xlabel = r"Energy $\left[\mathrm{{MeV}}\right]$"
-        elif args.xunit.lower() == "hz":
-            xlabel = r"Frequency $\left[\mathrm{{Hz}}\right]$"
         else:
             msg = f"Unknown x-axis unit {args.xunit}"
             raise AssertionError(msg)
@@ -1075,6 +1079,10 @@ def make_plot(args) -> tuple[mplfig.Figure, np.ndarray, pl.DataFrame]:
     if not args.hideyticklabels:
         if args.xunit.lower() == "angstroms":
             ylabel = r"F$_\lambda$ at 1 Mpc [{}erg/s/cm$^2$/$\mathrm{{\AA}}$]"
+        elif args.xunit.lower() == "nm":
+            ylabel = r"F$_\lambda$ at 1 Mpc [{}erg/s/cm$^2$/nm]"
+        elif args.xunit.lower() == "micron":
+            ylabel = r"F$_\lambda$ at 1 Mpc [{}erg/s/cm$^2$/μm]"
         elif args.xunit.lower() == "hz":
             ylabel = r"F$_\nu$ at 1 Mpc [{}erg/s/cm$^2$/Hz]"
         elif args.xunit.lower() == "kev":
@@ -1314,9 +1322,8 @@ def addargs(parser) -> None:
         "-x",
         dest="xunit",
         default=None,
-        type=str.lower,
-        choices=["angstroms", "kev", "mev", "hz"],
-        help="x (horizontal) axis unit",
+        type=str,
+        help="x (horizontal) axis unit, e.g. angstrom, nm, micron, Hz, keV, MeV",
     )
 
     parser.add_argument(
@@ -1517,6 +1524,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if args.xunit is None:
         args.xunit = "kev" if args.gamma else "angstroms"
+    args.xunit = atspectra.convert_xunit_aliases_to_canonical(args.xunit)
 
     if args.xmin is None:
         args.xmin = atspectra.convert_angstroms_to_unit(0.2 if args.gamma else 2500.0, args.xunit)

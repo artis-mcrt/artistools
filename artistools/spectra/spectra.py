@@ -65,6 +65,10 @@ def get_dfspectrum_x_y_with_units(dfspectrum: pl.DataFrame, xunit: str) -> pl.Da
 
     if xunit.lower() == "angstroms":
         return dfspectrum.with_columns(x=pl.col("lambda_angstroms"), y=pl.col("f_lambda")).sort("x")
+    if xunit.lower() == "nm":
+        return dfspectrum.with_columns(x=pl.col("lambda_angstroms") / 10, y=pl.col("f_lambda") * 10).sort("x")
+    if xunit.lower() == "micron":
+        return dfspectrum.with_columns(x=pl.col("lambda_angstroms") / 10000, y=pl.col("f_lambda") * 10000).sort("x")
     if xunit.lower() == "hz":
         return dfspectrum.with_columns(x=pl.col("nu"), y=pl.col("f_nu")).sort("x")
     if xunit.lower() == "kev":
@@ -130,6 +134,25 @@ def get_exspec_bins(
     return lambda_bin_edges, lambda_bin_centres, delta_lambdas
 
 
+def convert_xunit_aliases_to_canonical(xunit: str) -> str:
+    match xunit.lower():
+        case "kev" | "kiloelectronvolt":
+            return "kev"
+        case "mev" | "megaelectronvolt":
+            return "mev"
+        case "angstroms" | "angstrom" | "a" | "ang":
+            return "angstroms"
+        case "nm" | "nanometer" | "nanometers":
+            return "nm"
+        case "micron" | "microns" | "mu" | "μ" | "μm":
+            return "micron"
+        case "hz":
+            return "hz"
+        case _:
+            msg = f"Unknown xunit {xunit}"
+            raise ValueError(msg)
+
+
 def convert_angstroms_to_unit(value_angstroms: float, new_units: str) -> float:
     c = 2.99792458e18  # speed of light [angstroms/s]
     h = 4.1356677e-15  # Planck's constant [eV s]
@@ -142,6 +165,10 @@ def convert_angstroms_to_unit(value_angstroms: float, new_units: str) -> float:
         return c / value_angstroms
     if new_units.lower() == "angstroms":
         return value_angstroms
+    if new_units.lower() == "nm":
+        return value_angstroms / 10
+    if new_units.lower() == "micron":
+        return value_angstroms / 10000
     msg = f"Unknown xunit {new_units}"
     raise ValueError(msg)
 
@@ -159,6 +186,10 @@ def convert_unit_to_angstroms(value: float, old_units: str) -> float:
         return c / value
     if old_units.lower() == "angstroms":
         return value
+    if old_units.lower() == "nm":
+        return value * 10
+    if old_units.lower() == "micron":
+        return value * 10000
 
     msg = f"Unknown xunit {old_units}"
     raise ValueError(msg)
