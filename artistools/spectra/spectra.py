@@ -31,6 +31,7 @@ from artistools.misc import get_ionstring
 from artistools.misc import get_linelist_pldf
 from artistools.misc import get_nprocs
 from artistools.misc import get_nu_grid
+from artistools.misc import get_nuclides_df
 from artistools.misc import get_timestep_times
 from artistools.misc import get_viewingdirection_costhetabincount
 from artistools.misc import get_viewingdirection_phibincount
@@ -913,29 +914,33 @@ def get_flux_contributions_from_packets(
     getabsorption: bool = True,
     maxpacketfiles: int | None = None,
     filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
-    groupby: t.Literal["ion", "line"] = "ion",
+    groupby: t.Literal["ion", "line", "nuc"] = "ion",
     maxseriescount: int | None = None,
     fixedionlist: list[str] | None = None,
     use_time: t.Literal["arrival", "emission", "escape"] = "arrival",
-    use_lastemissiontype: bool = True,
+    emtypecolumn: str | None = None,
     emissionvelocitycut: float | None = None,
     directionbin: int | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
     directionbins_are_vpkt_observers: bool = False,
     vpkt_match_emission_exclusion_to_opac: bool = False,
+    gamma: bool = False,
 ) -> tuple[list[fluxcontributiontuple], np.ndarray, np.ndarray]:
     from scipy import integrate
 
-    assert groupby in {"ion", "line"}
+    assert groupby in {"ion", "line", "nuc"}
 
     if directionbin is None:
         directionbin = -1
 
-    emtypecolumn = "emissiontype" if use_lastemissiontype else "trueemissiontype"
+    assert emtypecolumn in {"emissiontype", "trueemissiontype", "pellet_nucindex"}
+    if emtypecolumn == "pellet_nucindex":
+        assert groupby == "nuc"
 
-    linelistlazy = get_linelist_pldf(modelpath=modelpath, get_ion_str=True)
-    bflistlazy = get_bflist(modelpath, get_ion_str=True)
+    if groupby != "nuc":
+        linelistlazy = get_linelist_pldf(modelpath=modelpath, get_ion_str=True)
+        bflistlazy = get_bflist(modelpath, get_ion_str=True)
 
     cols = {"e_rf"}
     cols.add({"arrival": "t_arrive_d", "emission": "em_time", "escape": "escape_time"}[use_time])
@@ -956,7 +961,10 @@ def get_flux_contributions_from_packets(
 
     else:
         nprocs_read, lzdfpackets = atpackets.get_packets_pl(
-            modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
+            modelpath,
+            maxpacketfiles=maxpacketfiles,
+            packet_type="TYPE_ESCAPE",
+            escape_type="TYPE_GAMMA" if gamma else "TYPE_RPKT",
         )
         dirbin_nu_column = "nu_rf"
 
@@ -984,24 +992,30 @@ def get_flux_contributions_from_packets(
 
     if getemission:
         cols |= {"emissiontype_str", dirbin_nu_column}
-        bflistlazy = bflistlazy.with_columns((-1 - pl.col("bfindex").cast(pl.Int32)).alias(emtypecolumn))
-        expr_bflist_to_str = (
-            pl.col("ion_str") + " bound-free"
-            if groupby == "ion"
-            else pl.format("{} bound-free {}-{}", pl.col("ion_str"), pl.col("lowerlevel"), pl.col("upperionlevel"))
-        )
+        if groupby == "nuc":
+            emtypestrings = get_nuclides_df(modelpath=modelpath).rename({
+                "pellet_nucindex": emtypecolumn,
+                "nucname": "emissiontype_str",
+            })
+        else:
+            bflistlazy = bflistlazy.with_columns((-1 - pl.col("bfindex").cast(pl.Int32)).alias(emtypecolumn))
+            expr_bflist_to_str = (
+                pl.col("ion_str") + " bound-free"
+                if groupby == "ion"
+                else pl.format("{} bound-free {}-{}", pl.col("ion_str"), pl.col("lowerlevel"), pl.col("upperionlevel"))
+            )
 
-        emtypestrings = pl.concat([
-            linelistlazy.select([
-                pl.col("lineindex").alias(emtypecolumn),
-                expr_linelist_to_str.alias("emissiontype_str"),
-            ]),
-            pl.DataFrame(
-                {emtypecolumn: [-9999999], "emissiontype_str": ["free-free"]},
-                schema_overrides={emtypecolumn: pl.Int32, "emissiontype_str": pl.String},
-            ).lazy(),
-            bflistlazy.select([pl.col(emtypecolumn), expr_bflist_to_str.alias("emissiontype_str")]),
-        ])
+            emtypestrings = pl.concat([
+                linelistlazy.select([
+                    pl.col("lineindex").alias(emtypecolumn),
+                    expr_linelist_to_str.alias("emissiontype_str"),
+                ]),
+                pl.DataFrame(
+                    {emtypecolumn: [-9999999], "emissiontype_str": ["free-free"]},
+                    schema_overrides={emtypecolumn: pl.Int32, "emissiontype_str": pl.String},
+                ).lazy(),
+                bflistlazy.select([pl.col(emtypecolumn), expr_bflist_to_str.alias("emissiontype_str")]),
+            ])
 
         lzdfpackets = lzdfpackets.join(emtypestrings, on=emtypecolumn, how="left")
 

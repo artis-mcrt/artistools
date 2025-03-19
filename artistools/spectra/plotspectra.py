@@ -687,6 +687,12 @@ def make_emissionabsorption_plot(
 
     dirbin = args.plotviewingangle[0] if args.plotviewingangle else args.plotvspecpol[0] if args.plotvspecpol else None
     if args.frompackets:
+        if args.gamma or args.groupby == "nuc":
+            emtypecolumn = "pellet_nucindex"
+        elif args.use_thermalemissiontype:
+            emtypecolumn = "trueemissiontype"
+        else:
+            emtypecolumn = "emissiontype"
         (contribution_list, array_flambda_emission_total, arraylambda_angstroms) = (
             atspectra.get_flux_contributions_from_packets(
                 modelpath,
@@ -702,7 +708,8 @@ def make_emissionabsorption_plot(
                 fixedionlist=args.fixedionlist,
                 maxseriescount=args.maxseriescount + 20,
                 delta_lambda=args.deltalambda,
-                use_lastemissiontype=not args.use_thermalemissiontype,
+                gamma=args.gamma,
+                emtypecolumn=emtypecolumn,
                 emissionvelocitycut=args.emissionvelocitycut,
                 directionbin=dirbin,
                 average_over_phi=args.average_over_phi_angle,
@@ -1332,8 +1339,8 @@ def addargs(parser) -> None:
     parser.add_argument(
         "-groupby",
         default="ion",
-        choices=["ion", "line"],
-        help="Use a different color for each ion or line when using --showemission. groupby='line' implies --frompackets.",
+        choices=["ion", "line", "nuc"],
+        help="Use a different color for each ion or line when using --showemission. groupby='line' or 'nuc' imply --frompackets.",
     )
 
     parser.add_argument(
@@ -1537,7 +1544,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         assert args.frompackets
         assert args.plotvspecpol
 
-    if args.emissionvelocitycut or args.groupby == "line":
+    if args.emissionvelocitycut or args.groupby in {"line", "nuc"}:
         args.frompackets = True
 
     if args.makevspecpol:
