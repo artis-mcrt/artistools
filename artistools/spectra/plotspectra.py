@@ -316,14 +316,19 @@ def plot_artis_spectrum(
 
         viewinganglespectra = {}
 
-        supxmin, supxmax = axis.get_xlim()
+        xmin, xmax = axis.get_xlim()
         if from_packets:
+            lambda_min, lambda_max = sorted([
+                atspectra.convert_unit_to_angstroms(xmin, args.xunit),
+                atspectra.convert_unit_to_angstroms(xmax, args.xunit),
+            ])
+
             viewinganglespectra = atspectra.get_from_packets(
                 modelpath,
                 timelowdays=args.timemin,
                 timehighdays=args.timemax,
-                lambda_min=supxmin * 0.9,
-                lambda_max=supxmax * 1.1,
+                lambda_min=lambda_min * 0.9,
+                lambda_max=lambda_max * 1.1,
                 use_time=use_time,
                 maxpacketfiles=maxpacketfiles,
                 delta_lambda=args.deltalambda,
@@ -409,7 +414,7 @@ def plot_artis_spectrum(
             if plotpacketcount:
                 dfspectrum = dfspectrum.with_columns(y=pl.col("packetcount"))
 
-            dfspectrum = dfspectrum.filter(pl.col("x").is_between(supxmin * 0.9, supxmax * 1.1)).sort(
+            dfspectrum = dfspectrum.filter(pl.col("x").is_between(xmin * 0.9, xmax * 1.1)).sort(
                 "x", maintain_order=True
             )
 
@@ -639,7 +644,6 @@ def make_emissionabsorption_plot(
 ) -> tuple[list[Artist], list[str], pl.DataFrame | None]:
     """Plot the emission and absorption contribution spectra, grouped by ion/line/term for an ARTIS model."""
     modelname = get_model_name(modelpath)
-    assert args.xunit.lower() == "angstroms"
 
     print(f"====> {modelname}")
     clamp_to_timesteps = not args.notimeclamp
@@ -656,6 +660,15 @@ def make_emissionabsorption_plot(
         args.frompackets = True
         print("Enabling --frompackets, since --plotvspecpol was specified")
 
+    if args.gamma and not args.frompackets:
+        args.frompackets = True
+        print("Enabling --frompackets, since --gamma and --showemission were specified")
+
+    if args.gamma:
+        # emission/absorption types are not set for gamma packets (because they didn't do any line interaction)
+        args.groupby = "nuc"
+        assert not args.showabsorption
+
     assert args.timemin is not None
     assert args.timemax is not None
 
@@ -667,19 +680,25 @@ def make_emissionabsorption_plot(
 
     dirbin = args.plotviewingangle[0] if args.plotviewingangle else args.plotvspecpol[0] if args.plotvspecpol else None
     if args.frompackets:
-        if args.gamma or args.groupby == "nuc":
+        if args.groupby == "nuc":
             emtypecolumn = "pellet_nucindex"
         elif args.use_thermalemissiontype:
             emtypecolumn = "trueemissiontype"
         else:
             emtypecolumn = "emissiontype"
+
+        xmin_angstroms, xmax_angstroms = sorted([
+            atspectra.convert_unit_to_angstroms(xmin, args.xunit),
+            atspectra.convert_unit_to_angstroms(xmax, args.xunit),
+        ])
+
         (contribution_list, array_flambda_emission_total, arraylambda_angstroms) = (
             atspectra.get_flux_contributions_from_packets(
                 modelpath,
-                args.timemin,
-                args.timemax,
-                xmin,
-                xmax,
+                timelowdays=args.timemin,
+                timehighdays=args.timemax,
+                lambda_min=xmin_angstroms,
+                lambda_max=xmax_angstroms,
                 getemission=args.showemission,
                 getabsorption=args.showabsorption,
                 maxpacketfiles=args.maxpacketfiles,
@@ -730,22 +749,23 @@ def make_emissionabsorption_plot(
     plotobjectlabels: list[str] = []
     plotobjects: list[mplartist.Artist] = []
 
-    max_flambda_emission_total = max(
-        flambda if (xmin < lambda_ang < xmax) else -99.0
-        for lambda_ang, flambda in zip(arraylambda_angstroms, array_flambda_emission_total, strict=False)
+    dfspectotal = atspectra.get_dfspectrum_x_y_with_units(
+        pl.DataFrame({"f_lambda": array_flambda_emission_total, "lambda_angstroms": arraylambda_angstroms}),
+        xunit=args.xunit,
     )
 
-    scalefactor = scale_to_peak / max_flambda_emission_total if scale_to_peak else 1.0
+    max_f_emission_total = dfspectotal.filter(pl.col("x").is_between(xmin, xmax))["y"].max()
+    assert isinstance(max_f_emission_total, (float, np.floating))
+
+    scalefactor = scale_to_peak / max_f_emission_total if scale_to_peak else 1.0
 
     if not args.hidenetspectrum:
         plotobjectlabels.append("Spectrum")
-        (line,) = axis.plot(
-            arraylambda_angstroms, array_flambda_emission_total * scalefactor, linewidth=1.5, color="black", zorder=100
-        )
+        (line,) = axis.plot(dfspectotal["x"], dfspectotal["y"] * scalefactor, linewidth=1.5, color="black", zorder=100)
         plotobjects.append(line)
 
     dfaxisdata = pl.DataFrame({"lambda_angstroms": arraylambda_angstroms})
-    # dfaxisdata['nu_hz'] = arraynu
+
     for x in contributions_sorted_reduced:
         dfaxisdata = dfaxisdata.with_columns(
             pl.Series(name=f"emission_flambda.{x.linelabel}", values=x.array_flambda_emission)
@@ -758,9 +778,15 @@ def make_emissionabsorption_plot(
     if args.nostack:
         for x in contributions_sorted_reduced:
             if args.showemission:
-                (emissioncomponentplot,) = axis.plot(
-                    arraylambda_angstroms, x.array_flambda_emission * scalefactor, linewidth=1, color=x.color
+                dfspec = atspectra.get_dfspectrum_x_y_with_units(
+                    pl.DataFrame({
+                        "f_lambda": x.array_flambda_emission * scalefactor,
+                        "lambda_angstroms": arraylambda_angstroms,
+                    }),
+                    xunit=args.xunit,
                 )
+
+                (emissioncomponentplot,) = axis.plot(dfspec["x"], dfspec["y"], linewidth=1, color=x.color)
 
                 linecolor = emissioncomponentplot.get_color()
             else:
@@ -872,9 +898,8 @@ def make_emissionabsorption_plot(
     # axis.annotate(plotlabel, xy=(0.97, 0.03), xycoords='axes fraction',
     #               horizontalalignment='right', verticalalignment='bottom', fontsize=7)
 
-    ymax = max(ymaxrefall, scalefactor * max_flambda_emission_total * 1.2)
-    if args.ymax is None:
-        axis.set_ylim(top=ymax)
+    ymax = max(ymaxrefall, scalefactor * max_f_emission_total * 1.2)
+    # axis.set_ylim(top=ymax)
 
     if not args.hideyticklabels and scale_to_peak:
         axis.set_ylabel(r"Scaled F$_\lambda$ + offset")

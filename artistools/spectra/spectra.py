@@ -58,22 +58,27 @@ def timeshift_fluxscale_co56law(scaletoreftime: float | None, spectime: float) -
 def get_dfspectrum_x_y_with_units(dfspectrum: pl.DataFrame, xunit: str) -> pl.DataFrame:
     h = 4.1356677e-15  # Planck's constant [eV s]
     c = 2.99792458e18  # speed of light [angstroms/s]
+    if "nu" not in dfspectrum.columns:
+        dfspectrum = dfspectrum.with_columns((299792458.0 / (pl.col("lambda_angstroms") * 1e-10)).alias("nu"))
+    if "f_nu" not in dfspectrum.columns:
+        dfspectrum = dfspectrum.with_columns(f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu")))
+
     if xunit.lower() == "angstroms":
-        return dfspectrum.with_columns(x=pl.col("lambda_angstroms"), y=pl.col("f_lambda"))
+        return dfspectrum.with_columns(x=pl.col("lambda_angstroms"), y=pl.col("f_lambda")).sort("x")
     if xunit.lower() == "hz":
-        return dfspectrum.with_columns(x=pl.col("nu"), y=pl.col("f_nu"))
+        return dfspectrum.with_columns(x=pl.col("nu"), y=pl.col("f_nu")).sort("x")
     if xunit.lower() == "kev":
         return (
             dfspectrum.with_columns(en_kev=h * c / pl.col("lambda_angstroms") / 1000.0)
             .with_columns(f_en_kev=pl.col("f_nu") * pl.col("nu") / pl.col("en_kev"))
             .with_columns(x=pl.col("en_kev"), y=pl.col("f_en_kev"))
-        )
+        ).sort("x")
     if xunit.lower() == "mev":
         return (
             dfspectrum.with_columns(en_mev=h * c / pl.col("lambda_angstroms") / 1e6)
             .with_columns(f_en_mev=pl.col("f_nu") * pl.col("nu") / pl.col("en_mev"))
             .with_columns(x=pl.col("en_mev"), y=pl.col("f_en_mev"))
-        )
+        ).sort("x")
     msg = f"Unit {xunit} not implemented for plot_artis_spectrum()"
     raise NotImplementedError(msg)
 
@@ -138,6 +143,24 @@ def convert_angstroms_to_unit(value_angstroms: float, new_units: str) -> float:
     if new_units.lower() == "angstroms":
         return value_angstroms
     msg = f"Unknown xunit {new_units}"
+    raise ValueError(msg)
+
+
+def convert_unit_to_angstroms(value: float, old_units: str) -> float:
+    c = 2.99792458e18  # speed of light [angstroms/s]
+    h = 4.1356677e-15  # Planck's constant [eV s]
+    hc_ev_angstroms = h * c  # [eV angstroms]
+
+    if old_units.lower() == "kev":
+        return hc_ev_angstroms / value / 1e3
+    if old_units.lower() == "mev":
+        return hc_ev_angstroms / value / 1e6
+    if old_units.lower() == "hz":
+        return c / value
+    if old_units.lower() == "angstroms":
+        return value
+
+    msg = f"Unknown xunit {old_units}"
     raise ValueError(msg)
 
 
