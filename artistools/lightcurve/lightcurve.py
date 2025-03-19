@@ -113,15 +113,7 @@ def get_from_packets(
                     dfnuclides.filter(expr).select(["pellet_nucindex"]).collect().get_column("pellet_nucindex")
                 )
             )
-            dfpackets = dfpackets.with_columns([(pl.col("tdecay") / 86400).alias("t_arrive_d")])  # TODO: keep this?
-        print(
-            dfpackets.group_by("pellet_nucindex")
-            .agg(pl.sum("e_rf").alias("e_rf_sum"))
-            .top_k(by="e_rf_sum", k=20)
-            .join(dfnuclides, on="pellet_nucindex", how="left")
-            .select(["e_rf_sum", "nucname"])
-            .collect()
-        )
+            # dfpackets = dfpackets.with_columns([(pl.col("tdecay") / 86400).alias("t_arrive_d")])  # TODO: keep this?
     except FileNotFoundError:
         assert pellet_nucname is None
 
