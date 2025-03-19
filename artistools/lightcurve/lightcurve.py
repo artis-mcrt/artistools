@@ -86,6 +86,7 @@ def get_from_packets(
     ndirbins = at.get_viewingdirectionbincount()
 
     if directionbins_are_vpkt_observers:
+        assert pellet_nucname is None  # we don't track which pellet led to vpkts
         vpkt_config = at.get_vpkt_config(modelpath)
         nprocs_read, dfpackets = at.packets.get_virtual_packets_pl(modelpath, maxpacketfiles=maxpacketfiles)
     else:
@@ -112,7 +113,7 @@ def get_from_packets(
                     dfnuclides.filter(expr).select(["pellet_nucindex"]).collect().get_column("pellet_nucindex")
                 )
             )
-            dfpackets = dfpackets.with_columns([(pl.col("tdecay") / 86400).alias("t_arrive_d")])
+            dfpackets = dfpackets.with_columns([(pl.col("tdecay") / 86400).alias("t_arrive_d")])  # TODO: keep this?
         print(
             dfpackets.group_by("pellet_nucindex")
             .agg(pl.sum("e_rf").alias("e_rf_sum"))

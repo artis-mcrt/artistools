@@ -2,7 +2,6 @@
 
 
 import argparse
-import itertools
 import math
 import sys
 import typing as t
@@ -573,35 +572,57 @@ def make_lightcurve_plot(
             if showgamma:
                 escape_types.append("TYPE_GAMMA")
 
-            pellet_nucnames = [None]
-            for escape_type, pellet_nucname in itertools.product(escape_types, pellet_nucnames):
-                label = args.label[lcindex]
-                if label is None:
-                    label = at.get_model_name(modelpath)
-                if escape_type == "TYPE_GAMMA":
-                    label += r" $\gamma$"
+            topnucs = 0
+            for escape_type in escape_types:
+                pellet_nucnames = [None]
+                if topnucs > 0:
+                    try:
+                        dfnuclides = at.get_nuclides_df(modelpath=modelpath)
+                        _, dfpackets = at.packets.get_packets_pl(
+                            modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type=escape_type
+                        )
+                        dfpackets = dfpackets.join(dfnuclides, on="pellet_nucindex", how="left")
+                        top_nuclides = (
+                            dfpackets.group_by("pellet_nucindex")
+                            .agg(pl.sum("e_rf").alias("e_rf_sum"))
+                            .top_k(by="e_rf_sum", k=topnucs)
+                            .select(["e_rf_sum", "nucname", "pellet_nucindex"])
+                            .collect()
+                        )
+                        pellet_nucnames.extend(top_nuclides["nucname"])
+                    except FileNotFoundError:
+                        print("WARNING: no nuclides.out file found, skipping top nuclides")
 
-                lcdataframes = plot_artis_lightcurve(
-                    modelpath=modelpath,
-                    lcindex=lcindex,
-                    label=label,
-                    axis=axis,
-                    escape_type=escape_type,
-                    frompackets=frompackets,
-                    maxpacketfiles=maxpacketfiles,
-                    axistherm=axistherm,
-                    directionbins=dirbin,
-                    average_over_phi=args.average_over_phi_angle,
-                    average_over_theta=args.average_over_theta_angle,
-                    usedegrees=args.usedegrees,
-                    args=args,
-                    pellet_nucname=pellet_nucname,
-                    plotkwargs={
-                        "linestyle": args.linestyle[lcindex] if escape_type == "TYPE_RPKT" else ":",
-                        "color": args.color[lcindex],
-                    },
-                )
-                plottedsomething = plottedsomething or (lcdataframes is not None)
+                for pellet_nucname in pellet_nucnames:
+                    label = args.label[lcindex]
+                    if label is None:
+                        label = at.get_model_name(modelpath)
+                    if escape_type == "TYPE_GAMMA":
+                        label += r" $\gamma$"
+                    if pellet_nucname is not None:
+                        label += f" {pellet_nucname}"
+
+                    lcdataframes = plot_artis_lightcurve(
+                        modelpath=modelpath,
+                        lcindex=lcindex,
+                        label=label,
+                        axis=axis,
+                        escape_type=escape_type,
+                        frompackets=frompackets,
+                        maxpacketfiles=maxpacketfiles,
+                        axistherm=axistherm,
+                        directionbins=dirbin,
+                        average_over_phi=args.average_over_phi_angle,
+                        average_over_theta=args.average_over_theta_angle,
+                        usedegrees=args.usedegrees,
+                        args=args,
+                        pellet_nucname=pellet_nucname,
+                        plotkwargs={
+                            "linestyle": args.linestyle[lcindex] if escape_type == "TYPE_RPKT" else ":",
+                            "color": args.color[lcindex],
+                        },
+                    )
+                    plottedsomething = plottedsomething or (lcdataframes is not None)
 
         print()
 
