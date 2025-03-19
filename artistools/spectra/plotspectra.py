@@ -779,22 +779,23 @@ def make_emissionabsorption_plot(
         for x in contributions_sorted_reduced:
             if args.showemission:
                 dfspec = atspectra.get_dfspectrum_x_y_with_units(
-                    pl.DataFrame({
-                        "f_lambda": x.array_flambda_emission * scalefactor,
-                        "lambda_angstroms": arraylambda_angstroms,
-                    }),
+                    pl.DataFrame({"f_lambda": x.array_flambda_emission, "lambda_angstroms": arraylambda_angstroms}),
                     xunit=args.xunit,
                 )
 
-                (emissioncomponentplot,) = axis.plot(dfspec["x"], dfspec["y"], linewidth=1, color=x.color)
+                (emissioncomponentplot,) = axis.plot(dfspec["x"], dfspec["y"] * scalefactor, linewidth=1, color=x.color)
 
                 linecolor = emissioncomponentplot.get_color()
             else:
                 linecolor = None
 
             if args.showabsorption:
+                dfspec = atspectra.get_dfspectrum_x_y_with_units(
+                    pl.DataFrame({"f_lambda": x.array_flambda_absorption, "lambda_angstroms": arraylambda_angstroms}),
+                    xunit=args.xunit,
+                )
                 (absorptioncomponentplot,) = axis.plot(
-                    arraylambda_angstroms, -x.array_flambda_absorption * scalefactor, color=linecolor, linewidth=1
+                    dfspec["x"], -dfspec["y"] * scalefactor, color=linecolor, linewidth=1
                 )
                 if not args.showemission:
                     linecolor = absorptioncomponentplot.get_color()
@@ -803,9 +804,16 @@ def make_emissionabsorption_plot(
 
     elif contributions_sorted_reduced:
         if args.showemission:
+            dfabsorptionspectra = [
+                atspectra.get_dfspectrum_x_y_with_units(
+                    pl.DataFrame({"f_lambda": x.array_flambda_emission, "lambda_angstroms": arraylambda_angstroms}),
+                    xunit=args.xunit,
+                )
+                for x in contributions_sorted_reduced
+            ]
             stackplot = axis.stackplot(
-                arraylambda_angstroms,
-                [x.array_flambda_emission * scalefactor for x in contributions_sorted_reduced],
+                dfabsorptionspectra[0]["x"],
+                [dfspec["y"] * scalefactor for dfspec in dfabsorptionspectra],
                 colors=[x.color for x in contributions_sorted_reduced],
                 linewidth=0,
             )
@@ -819,9 +827,16 @@ def make_emissionabsorption_plot(
             facecolors = [x.color for x in contributions_sorted_reduced]
 
         if args.showabsorption:
+            dfabsorptionspectra = [
+                atspectra.get_dfspectrum_x_y_with_units(
+                    pl.DataFrame({"f_lambda": x.array_flambda_absorption, "lambda_angstroms": arraylambda_angstroms}),
+                    xunit=args.xunit,
+                )
+                for x in contributions_sorted_reduced
+            ]
             absstackplot = axis.stackplot(
-                arraylambda_angstroms,
-                [-x.array_flambda_absorption * scalefactor for x in contributions_sorted_reduced],
+                dfabsorptionspectra[0]["x"],
+                [-dfspec["y"] * scalefactor for dfspec in dfabsorptionspectra],
                 colors=facecolors,  # type: ignore[arg-type] # pyright: ignore[reportArgumentType]
                 linewidth=0,
             )
