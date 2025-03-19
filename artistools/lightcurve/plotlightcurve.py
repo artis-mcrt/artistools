@@ -298,6 +298,7 @@ def plot_artis_lightcurve(
     usedegrees: bool = False,
     args: argparse.Namespace | None = None,
     pellet_nucname: str | None = None,
+    use_pellet_decay_time: bool = False,
     plotkwargs: dict[str, t.Any] | None = None,
 ) -> dict[int, pl.DataFrame] | None:
     if args is None:
@@ -339,9 +340,11 @@ def plot_artis_lightcurve(
             get_cmf_column=args.plotcmf,
             directionbins_are_vpkt_observers=args.plotvspecpol is not None,
             pellet_nucname=pellet_nucname,
+            use_pellet_decay_time=use_pellet_decay_time,
         )
     else:
         assert pellet_nucname is None, "pellet_nucname is only valid with frompackets=True"
+        assert not use_pellet_decay_time, "use_pellet_decay_time is only valid with frompackets=True"
         if lcfilename is None:
             lcfilename = (
                 "light_curve_res.out"
@@ -618,6 +621,7 @@ def make_lightcurve_plot(
                         usedegrees=args.usedegrees,
                         args=args,
                         pellet_nucname=pellet_nucname,
+                        use_pellet_decay_time=args.use_pellet_decay_time,
                         plotkwargs={
                             "linestyle": args.linestyle[lcindex] if escape_type == "TYPE_RPKT" else ":",
                             "color": args.color[lcindex],
@@ -1438,6 +1442,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument(
         "-topnucs", type=int, default=0, help="Show light curves from top n nuclides energy contributions."
+    )
+
+    parser.add_argument(
+        "--use_pellet_decay_time", action="store_true", help="Use pellet decay time instead of observer arrival time"
     )
 
     parser.add_argument("--magnitude", action="store_true", help="Plot light curves in magnitudes")
