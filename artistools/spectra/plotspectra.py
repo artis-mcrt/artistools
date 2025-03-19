@@ -275,8 +275,6 @@ def plot_artis_spectrum(
     if plotpacketcount:
         from_packets = True
 
-    h = 4.1356677e-15  # Planck's constant [eV s]
-    c = 2.99792458e18  # speed of light [angstroms/s]
     for axindex, axis in enumerate(axes):
         clamp_to_timesteps = not args.notimeclamp
         if args.multispecplot:
@@ -406,25 +404,7 @@ def plot_artis_spectrum(
                 if len(directionbins) > 1 or not linelabel_is_custom:
                     linelabel_withdirbin = f"{linelabel} {dirbin_definitions[dirbin]}"
 
-            if xunit.lower() == "angstroms":
-                dfspectrum = dfspectrum.with_columns(x=pl.col("lambda_angstroms"), y=pl.col("f_lambda"))
-            elif xunit.lower() == "hz":
-                dfspectrum = dfspectrum.with_columns(x=pl.col("nu"), y=pl.col("f_nu"))
-            elif xunit.lower() == "kev":
-                dfspectrum = (
-                    dfspectrum.with_columns(en_kev=h * c / pl.col("lambda_angstroms") / 1000.0)
-                    .with_columns(f_en_kev=pl.col("f_nu") * pl.col("nu") / pl.col("en_kev"))
-                    .with_columns(x=pl.col("en_kev"), y=pl.col("f_en_kev"))
-                )
-            elif xunit.lower() == "mev":
-                dfspectrum = (
-                    dfspectrum.with_columns(en_mev=h * c / pl.col("lambda_angstroms") / 1e6)
-                    .with_columns(f_en_mev=pl.col("f_nu") * pl.col("nu") / pl.col("en_mev"))
-                    .with_columns(x=pl.col("en_mev"), y=pl.col("f_en_mev"))
-                )
-            else:
-                msg = f"Unit {xunit} not implemented for plot_artis_spectrum()"
-                raise NotImplementedError(msg)
+            dfspectrum = atspectra.get_dfspectrum_x_y_with_units(dfspectrum, xunit=xunit)
 
             if plotpacketcount:
                 dfspectrum = dfspectrum.with_columns(y=pl.col("packetcount"))

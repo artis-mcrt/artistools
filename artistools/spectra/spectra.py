@@ -55,6 +55,29 @@ def timeshift_fluxscale_co56law(scaletoreftime: float | None, spectime: float) -
     return 1.0
 
 
+def get_dfspectrum_x_y_with_units(dfspectrum: pl.DataFrame, xunit: str) -> pl.DataFrame:
+    h = 4.1356677e-15  # Planck's constant [eV s]
+    c = 2.99792458e18  # speed of light [angstroms/s]
+    if xunit.lower() == "angstroms":
+        return dfspectrum.with_columns(x=pl.col("lambda_angstroms"), y=pl.col("f_lambda"))
+    if xunit.lower() == "hz":
+        return dfspectrum.with_columns(x=pl.col("nu"), y=pl.col("f_nu"))
+    if xunit.lower() == "kev":
+        return (
+            dfspectrum.with_columns(en_kev=h * c / pl.col("lambda_angstroms") / 1000.0)
+            .with_columns(f_en_kev=pl.col("f_nu") * pl.col("nu") / pl.col("en_kev"))
+            .with_columns(x=pl.col("en_kev"), y=pl.col("f_en_kev"))
+        )
+    if xunit.lower() == "mev":
+        return (
+            dfspectrum.with_columns(en_mev=h * c / pl.col("lambda_angstroms") / 1e6)
+            .with_columns(f_en_mev=pl.col("f_nu") * pl.col("nu") / pl.col("en_mev"))
+            .with_columns(x=pl.col("en_mev"), y=pl.col("f_en_mev"))
+        )
+    msg = f"Unit {xunit} not implemented for plot_artis_spectrum()"
+    raise NotImplementedError(msg)
+
+
 def get_exspec_bins(
     modelpath: str | Path | None = None,
     mnubins: int | None = None,
@@ -205,8 +228,7 @@ def get_from_packets(
     ndirbins = get_viewingdirectionbincount()
 
     if nprocs_read_dfpackets:
-        nprocs_read = nprocs_read_dfpackets[0]
-        dfpackets = nprocs_read_dfpackets[1].lazy()
+        nprocs_read, dfpackets = nprocs_read_dfpackets[0], nprocs_read_dfpackets[1].lazy()
     elif directionbins_are_vpkt_observers:
         assert not gamma
         nprocs_read, dfpackets = atpackets.get_virtual_packets_pl(modelpath, maxpacketfiles=maxpacketfiles)
@@ -1146,6 +1168,7 @@ def get_flux_contributions_from_packets(
                 directionbins_are_vpkt_observers=directionbins_are_vpkt_observers,
                 average_over_phi=average_over_phi,
                 average_over_theta=average_over_theta,
+                gamma=gamma,
             )[directionbin]
 
             if array_lambda is None:
