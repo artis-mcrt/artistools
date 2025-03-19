@@ -960,9 +960,11 @@ def get_flux_contributions_from_packets(
     if emtypecolumn == "pellet_nucindex":
         assert groupby == "nuc"
 
-    if groupby != "nuc":
-        linelistlazy = get_linelist_pldf(modelpath=modelpath, get_ion_str=True)
-        bflistlazy = get_bflist(modelpath, get_ion_str=True)
+    linelistlazy, bflistlazy = (
+        (get_linelist_pldf(modelpath=modelpath, get_ion_str=True), get_bflist(modelpath, get_ion_str=True))
+        if groupby != "nuc"
+        else (None, None)
+    )
 
     cols = {"e_rf"}
     cols.add({"arrival": "t_arrive_d", "emission": "em_time", "escape": "escape_time"}[use_time])
@@ -1020,6 +1022,8 @@ def get_flux_contributions_from_packets(
                 "nucname": "emissiontype_str",
             })
         else:
+            assert linelistlazy is not None
+            assert bflistlazy is not None
             bflistlazy = bflistlazy.with_columns((-1 - pl.col("bfindex").cast(pl.Int32)).alias(emtypecolumn))
             expr_bflist_to_str = (
                 pl.col("ion_str") + " bound-free"
@@ -1055,7 +1059,7 @@ def get_flux_contributions_from_packets(
 
     if getabsorption:
         cols |= {"absorptiontype_str", "absorption_freq"}
-
+        assert linelistlazy is not None
         abstypestrings = pl.concat([
             linelistlazy.select([
                 pl.col("lineindex").alias("absorption_type"),
