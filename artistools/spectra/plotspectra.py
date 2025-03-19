@@ -827,6 +827,7 @@ def make_emissionabsorption_plot(
             scale_to_peak=scale_to_peak,
             offset=0.3 if scale_to_peak else 0.0,
             scaletoreftime=args.scaletoreftime,
+            xunit=args.xunit,
             **plotkwargs,
         )
         ymaxrefall = max(ymaxrefall, ymaxref)
