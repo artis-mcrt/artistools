@@ -914,7 +914,7 @@ def make_emissionabsorption_plot(
     #               horizontalalignment='right', verticalalignment='bottom', fontsize=7)
 
     ymax = max(ymaxrefall, scalefactor * max_f_emission_total * 1.2)
-    # axis.set_ylim(top=ymax)
+    axis.set_ylim(top=ymax)
 
     if not args.hideyticklabels and scale_to_peak:
         axis.set_ylabel(r"Scaled F$_\lambda$ + offset")
