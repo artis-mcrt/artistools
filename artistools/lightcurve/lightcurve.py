@@ -102,7 +102,7 @@ def get_from_packets(
 
     getcols = set()
     try:
-        dfnuclides = at.get_nuclides_df(modelpath=modelpath)
+        dfnuclides = at.get_nuclides(modelpath=modelpath)
         if pellet_nucname is not None:
             atomic_number = at.get_atomic_number(pellet_nucname)
             if at.get_elsymbol(atomic_number) == pellet_nucname:

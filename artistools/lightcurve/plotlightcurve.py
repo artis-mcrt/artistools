@@ -580,7 +580,7 @@ def make_lightcurve_plot(
                 pellet_nucnames = [None]
                 if topnucs > 0:
                     try:
-                        dfnuclides = at.get_nuclides_df(modelpath=modelpath)
+                        dfnuclides = at.get_nuclides(modelpath=modelpath)
                         _, dfpackets = at.packets.get_packets_pl(
                             modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type=escape_type
                         )

@@ -31,7 +31,7 @@ from artistools.misc import get_ionstring
 from artistools.misc import get_linelist_pldf
 from artistools.misc import get_nprocs
 from artistools.misc import get_nu_grid
-from artistools.misc import get_nuclides_df
+from artistools.misc import get_nuclides
 from artistools.misc import get_timestep_times
 from artistools.misc import get_viewingdirection_costhetabincount
 from artistools.misc import get_viewingdirection_phibincount
@@ -1073,7 +1073,7 @@ def get_flux_contributions_from_packets(
     if getemission:
         cols |= {"emissiontype_str", dirbin_nu_column}
         if groupby == "nuc":
-            emtypestrings = get_nuclides_df(modelpath=modelpath).rename({
+            emtypestrings = get_nuclides(modelpath=modelpath).rename({
                 "pellet_nucindex": emtypecolumn,
                 "nucname": "emissiontype_str",
             })

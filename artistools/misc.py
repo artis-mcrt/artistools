@@ -1030,8 +1030,8 @@ def merge_pdf_files(pdf_files: list[str]) -> None:
     print(f"Files merged and saved to {resultfilename}.pdf")
 
 
-def get_nuclides_df(modelpath: Path | str) -> pl.LazyFrame:
-    """Return LazyFrame with: pellet_nucindex atomic_number A nucname."""
+def get_nuclides(modelpath: Path | str) -> pl.LazyFrame:
+    """Return LazyFrame with: pellet_nucindex atomic_number A nucname from nuclides.out file."""
     filepath = Path(modelpath, "nuclides.out")
     if not filepath.is_file():
         msg = f"File {filepath} not found"
