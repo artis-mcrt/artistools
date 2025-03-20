@@ -52,7 +52,9 @@ jobs:
 
             - name: Run Ruff
               if: always()
-              run: uv run --frozen -- ruff check --exit-non-zero-on-fix --no-fix
+              run: |
+                uv run --frozen -- ruff --version
+                uv run --frozen -- ruff check --exit-non-zero-on-fix --no-fix
 
             - name: Run Ruff Format
               if: always()
@@ -125,7 +127,7 @@ jobs:
             fail-fast: false
             matrix:
                 os: [macos-15, ubuntu-24.04]
-                python-version: ['3.10', '3.11', '3.12', '3.13']
+                python-version: ['3.11', '3.12', '3.13']
         env:
             OS: ${{ matrix.os }}
             PYTHON: ${{ matrix.python-version }}

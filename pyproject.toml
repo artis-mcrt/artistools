@@ -20,7 +20,6 @@ description = "Plotting and analysis tools for the ARTIS 3D radiative transfer c
 classifiers = [
     "License :: OSI Approved :: MIT License",
     "Development Status :: 3 - Alpha",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -29,7 +28,7 @@ classifiers = [
     "Intended Audience :: Science/Research",
 ]
 dynamic = ["version"]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = { text = "MIT" }
 readme = { file = "README.md", content-type = 'text/markdown' }
 dependencies = [
@@ -259,7 +258,7 @@ addopts = " --durations=0 --durations-min=1.0 --typeguard-packages=artistools -n
 ignore = ["FURB120"]
 quiet = false
 enable_all = true
-python_version = "3.10"
+python_version = "3.11"
 sort_by = "error"
 
 [[tool.refurb.amend]]
@@ -268,7 +267,7 @@ ignore = ["FURB108"]
 
 [tool.ruff]
 line-length = 120
-target-version = "py310"
+target-version = "py311"
 fix = true
 show-fixes = true
 extend-exclude = ["_version.py"]
