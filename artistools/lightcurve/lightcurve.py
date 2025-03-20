@@ -61,6 +61,8 @@ def get_from_packets(
     average_over_theta: bool = False,
     get_cmf_column: bool = True,
     directionbins_are_vpkt_observers: bool = False,
+    pellet_nucname: str | None = None,
+    use_pellet_decay_time: bool = False,
 ) -> dict[int, pl.DataFrame]:
     """Get ARTIS luminosity vs time from packets files."""
     if escape_type not in {"TYPE_RPKT", "TYPE_GAMMA"}:
@@ -85,6 +87,7 @@ def get_from_packets(
     ndirbins = at.get_viewingdirectionbincount()
 
     if directionbins_are_vpkt_observers:
+        assert pellet_nucname is None  # we don't track which pellet led to vpkts
         vpkt_config = at.get_vpkt_config(modelpath)
         nprocs_read, dfpackets = at.packets.get_virtual_packets_pl(modelpath, maxpacketfiles=maxpacketfiles)
     else:
@@ -98,7 +101,24 @@ def get_from_packets(
         ])
 
     getcols = set()
+    try:
+        dfnuclides = at.get_nuclides(modelpath=modelpath)
+        if pellet_nucname is not None:
+            atomic_number = at.get_atomic_number(pellet_nucname)
+            if at.get_elsymbol(atomic_number) == pellet_nucname:
+                expr = pl.col("atomic_number") == atomic_number
+            else:
+                expr = pl.col("nucname") == pellet_nucname
+            dfpackets = dfpackets.filter(
+                pl.col("pellet_nucindex").is_in(
+                    dfnuclides.filter(expr).select(["pellet_nucindex"]).collect().get_column("pellet_nucindex")
+                )
+            )
+    except FileNotFoundError:
+        assert pellet_nucname is None
+
     if directionbins_are_vpkt_observers:
+        assert not use_pellet_decay_time
         vpkt_config = at.get_vpkt_config(modelpath)
         for vspecindex in directionbins:
             obsdirindex = vspecindex // vpkt_config["nspectraperobs"]
@@ -109,7 +129,12 @@ def get_from_packets(
                 f"dir{obsdirindex}_e_rf_{opacchoiceindex}",
             }
     else:
-        getcols |= {"t_arrive_d", "e_rf"}
+        getcols |= {"e_rf"}
+        if use_pellet_decay_time:
+            dfpackets = dfpackets.with_columns([(pl.col("tdecay") / 86400).alias("tdecay_d")])
+            getcols.add("tdecay_d")
+        else:
+            getcols.add("t_arrive_d")
         if get_cmf_column:
             getcols |= {"e_cmf", "t_arrive_cmf_d"}
         if directionbins != [-1]:
@@ -122,8 +147,9 @@ def get_from_packets(
 
     dfpackets = dfpackets.select(getcols).collect().lazy()
 
-    lcdata = {}
+    lcdata: dict[int, pl.DataFrame] = {}
     for dirbin in directionbins:
+        timecol = "tdecay_d" if use_pellet_decay_time else "t_arrive_d"
         if directionbins_are_vpkt_observers:
             obsdirindex = dirbin // vpkt_config["nspectraperobs"]
             opacchoiceindex = dirbin % vpkt_config["nspectraperobs"]
@@ -147,7 +173,7 @@ def get_from_packets(
             pldfpackets_dirbin = dfpackets.filter(pl.col("dirbin") == dirbin)
 
         dftimebinned = at.packets.bin_and_sum(
-            pldfpackets_dirbin, bincol="t_arrive_d", bins=list(timearrayplusend), sumcols=["e_rf"]
+            pldfpackets_dirbin, bincol=timecol, bins=list(timearrayplusend), sumcols=["e_rf"]
         )
 
         npkts_selected = pldfpackets_dirbin.select(pl.count("e_rf")).collect().item(0, 0)
@@ -159,7 +185,7 @@ def get_from_packets(
             ((pl.col("e_rf_sum") / nprocs_read * solidanglefactor * unitfactor) / pl.Series(arr_timedelta)).alias(
                 "lum"
             ),
-        ]).drop(["e_rf_sum", "t_arrive_d_bin"])
+        ]).drop(["e_rf_sum", f"{timecol}_bin"])
 
         lcdata[dirbin] = dftimebinned.collect()
 

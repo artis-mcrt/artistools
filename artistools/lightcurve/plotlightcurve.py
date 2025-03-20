@@ -17,7 +17,6 @@ import matplotlib.colors as mplcolors
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mplticker
 import numpy as np
-import pandas as pd
 import polars as pl
 
 import artistools as at
@@ -298,9 +297,14 @@ def plot_artis_lightcurve(
     average_over_theta: bool = False,
     usedegrees: bool = False,
     args: argparse.Namespace | None = None,
+    pellet_nucname: str | None = None,
+    use_pellet_decay_time: bool = False,
+    plotkwargs: dict[str, t.Any] | None = None,
 ) -> dict[int, pl.DataFrame] | None:
     if args is None:
         args = argparse.Namespace()
+    if plotkwargs is None:
+        plotkwargs = {}
     if escape_type not in {"TYPE_RPKT", "TYPE_GAMMA"}:
         msg = f"Unknown escape type {escape_type}"
         raise ValueError(msg)
@@ -315,16 +319,11 @@ def plot_artis_lightcurve(
         print(f"\nWARNING: Skipping because {modelpath} does not exist\n")
         return None
 
-    modelname = at.get_model_name(modelpath)
-    if label is None:
-        label = modelname
-    if escape_type == "TYPE_GAMMA":
-        label += r" $\gamma$"
-
     print(f"====> {label}")
     print(f" modelpath: {modelpath.resolve().parts[-1]}")
 
     if hasattr(args, "title") and args.title:
+        modelname = at.get_model_name(modelpath)
         axis.set_title(modelname)
 
     if directionbins is None:
@@ -340,8 +339,12 @@ def plot_artis_lightcurve(
             average_over_theta=average_over_theta,
             get_cmf_column=args.plotcmf,
             directionbins_are_vpkt_observers=args.plotvspecpol is not None,
+            pellet_nucname=pellet_nucname,
+            use_pellet_decay_time=use_pellet_decay_time,
         )
     else:
+        assert pellet_nucname is None, "pellet_nucname is only valid with frompackets=True"
+        assert not use_pellet_decay_time, "use_pellet_decay_time is only valid with frompackets=True"
         if lcfilename is None:
             lcfilename = (
                 "light_curve_res.out"
@@ -365,11 +368,10 @@ def plot_artis_lightcurve(
         if average_over_theta:
             lcdataframes = at.average_direction_bins(lcdataframes, overangle="theta")
 
-    plotkwargs: dict[str, t.Any] = {
-        "label": label,
-        "linestyle": args.linestyle[lcindex] if escape_type == "TYPE_RPKT" else ":",
-        "color": args.color[lcindex],
-    }
+    if label is not None:
+        assert "label" not in plotkwargs, "label is already set in plotkwargs"
+        plotkwargs |= {"label": label}
+
     if args.dashes[lcindex]:
         plotkwargs["dashes"] = args.dashes[lcindex]
     if args.linewidth[lcindex]:
@@ -426,6 +428,9 @@ def plot_artis_lightcurve(
                     f"{modelname} {angle_definition[dirbin]}" if modelname else angle_definition[dirbin]
                 )
 
+        if pellet_nucname is not None:
+            plotkwargs["color"] = None
+
         filterfunc = at.get_filterfunc(args)
         if filterfunc is not None:
             lcdata = lcdata.with_columns(
@@ -458,14 +463,14 @@ def plot_artis_lightcurve(
         if validrange_start_days is None or validrange_end_days is None:
             # entire range is invalid
             lcdata_before_valid = lcdata
-            lcdata_after_valid = pl.from_pandas(pd.DataFrame(data=None, columns=lcdata.columns))
-            lcdata_valid = pl.from_pandas(pd.DataFrame(data=None, columns=lcdata.columns))
+            lcdata_after_valid = pl.DataFrame(schema=lcdata.schema)
+            lcdata_valid = pl.DataFrame(schema=lcdata.schema)
         else:
             lcdata_valid = lcdata.filter(pl.col("time").is_between(validrange_start_days, validrange_end_days))
             if lcdata_valid.is_empty():
                 # valid range doesn't contain any data points
                 lcdata_before_valid = lcdata
-                lcdata_after_valid = pl.from_pandas(pd.DataFrame(data=None, columns=lcdata.columns))
+                lcdata_after_valid = pl.DataFrame(schema=lcdata.schema)
             else:
                 lcdata_before_valid = lcdata.filter(pl.col("time") <= lcdata_valid["time"].min())
                 lcdata_after_valid = lcdata.filter(pl.col("time") >= lcdata_valid["time"].max())
@@ -562,29 +567,67 @@ def make_lightcurve_plot(
             print(f"====> {lightcurvelabel}")
             reflightcurveindex += 1
             plottedsomething = True
+
+            lcindex += 1
         else:
             dirbin = args.plotviewingangle or (args.plotvspecpol or [-1])
             escape_types = ["TYPE_RPKT"] if showuvoir else []
             if showgamma:
                 escape_types.append("TYPE_GAMMA")
 
+            topnucs = args.topnucs
             for escape_type in escape_types:
-                lcdataframes = plot_artis_lightcurve(
-                    modelpath=modelpath,
-                    lcindex=lcindex,
-                    label=args.label[lcindex],
-                    axis=axis,
-                    escape_type=escape_type,
-                    frompackets=frompackets,
-                    maxpacketfiles=maxpacketfiles,
-                    axistherm=axistherm,
-                    directionbins=dirbin,
-                    average_over_phi=args.average_over_phi_angle,
-                    average_over_theta=args.average_over_theta_angle,
-                    usedegrees=args.usedegrees,
-                    args=args,
-                )
-            plottedsomething = plottedsomething or (lcdataframes is not None)
+                pellet_nucnames = [None]
+                if topnucs > 0:
+                    try:
+                        dfnuclides = at.get_nuclides(modelpath=modelpath)
+                        _, dfpackets = at.packets.get_packets_pl(
+                            modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type=escape_type
+                        )
+                        top_nuclides = (
+                            dfpackets.group_by("pellet_nucindex")
+                            .agg(pl.sum("e_rf").alias("e_rf_sum"))
+                            .top_k(by="e_rf_sum", k=topnucs)
+                            .join(dfnuclides, on="pellet_nucindex", how="left")
+                            .select(["e_rf_sum", "nucname", "pellet_nucindex"])
+                            .collect()
+                        )
+                        print(top_nuclides)
+                        pellet_nucnames.extend(top_nuclides["nucname"])
+                    except FileNotFoundError:
+                        print("WARNING: no nuclides.out file found, skipping top nuclides")
+
+                for pellet_nucname in pellet_nucnames:
+                    label = args.label[lcindex]
+                    if label is None:
+                        label = at.get_model_name(modelpath)
+                    if escape_type == "TYPE_GAMMA":
+                        label += r" $\gamma$"
+                    if pellet_nucname is not None:
+                        label += f" {pellet_nucname}"
+
+                    lcdataframes = plot_artis_lightcurve(
+                        modelpath=modelpath,
+                        lcindex=lcindex,
+                        label=label,
+                        axis=axis,
+                        escape_type=escape_type,
+                        frompackets=frompackets,
+                        maxpacketfiles=maxpacketfiles,
+                        axistherm=axistherm,
+                        directionbins=dirbin,
+                        average_over_phi=args.average_over_phi_angle,
+                        average_over_theta=args.average_over_theta_angle,
+                        usedegrees=args.usedegrees,
+                        args=args,
+                        pellet_nucname=pellet_nucname,
+                        use_pellet_decay_time=args.use_pellet_decay_time,
+                        plotkwargs={
+                            "linestyle": args.linestyle[lcindex] if escape_type == "TYPE_RPKT" else ":",
+                            "color": args.color[lcindex],
+                        },
+                    )
+                    plottedsomething = plottedsomething or (lcdataframes is not None)
 
         print()
 
@@ -1397,6 +1440,14 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--plotthermalisation", action="store_true", help="Plot thermalisation rates (in separate plot)"
     )
 
+    parser.add_argument(
+        "-topnucs", type=int, default=0, help="Show light curves from top n nuclides energy contributions."
+    )
+
+    parser.add_argument(
+        "--use_pellet_decay_time", action="store_true", help="Use pellet decay time instead of observer arrival time"
+    )
+
     parser.add_argument("--magnitude", action="store_true", help="Plot light curves in magnitudes")
 
     parser.add_argument("--Lsun", action="store_true", help="Plot light curves in units of Lsun")
@@ -1659,8 +1710,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     )
 
     if args.rpkt is False and not args.gamma:
-        # if we're not plotting gamma, then we want to plot the R-packets
+        # if we're not plotting gamma, then we want to plot the r-packets by default
         args.rpkt = True
+    if args.topnucs > 0:
+        print("Enabling --frompackets because topnucs > 0")
+        args.frompackets = True
 
     if args.filter:
         defaultoutputfile = "plotlightcurves.pdf"
