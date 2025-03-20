@@ -31,6 +31,7 @@ from artistools.misc import get_ionstring
 from artistools.misc import get_linelist_pldf
 from artistools.misc import get_nprocs
 from artistools.misc import get_nu_grid
+from artistools.misc import get_nuclides
 from artistools.misc import get_timestep_times
 from artistools.misc import get_viewingdirection_costhetabincount
 from artistools.misc import get_viewingdirection_phibincount
@@ -52,6 +53,38 @@ def timeshift_fluxscale_co56law(scaletoreftime: float | None, spectime: float) -
         return math.exp(spectime / 113.7) / math.exp(scaletoreftime / 113.7)
 
     return 1.0
+
+
+def get_dfspectrum_x_y_with_units(dfspectrum: pl.DataFrame, xunit: str) -> pl.DataFrame:
+    h = 4.1356677e-15  # Planck's constant [eV s]
+    c = 2.99792458e18  # speed of light [angstroms/s]
+    if "nu" not in dfspectrum.columns:
+        dfspectrum = dfspectrum.with_columns((299792458.0 / (pl.col("lambda_angstroms") * 1e-10)).alias("nu"))
+    if "f_nu" not in dfspectrum.columns:
+        dfspectrum = dfspectrum.with_columns(f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu")))
+
+    if xunit.lower() == "angstroms":
+        return dfspectrum.with_columns(x=pl.col("lambda_angstroms"), y=pl.col("f_lambda")).sort("x")
+    if xunit.lower() == "nm":
+        return dfspectrum.with_columns(x=pl.col("lambda_angstroms") / 10, y=pl.col("f_lambda") * 10).sort("x")
+    if xunit.lower() == "micron":
+        return dfspectrum.with_columns(x=pl.col("lambda_angstroms") / 10000, y=pl.col("f_lambda") * 10000).sort("x")
+    if xunit.lower() == "hz":
+        return dfspectrum.with_columns(x=pl.col("nu"), y=pl.col("f_nu")).sort("x")
+    if xunit.lower() == "kev":
+        return (
+            dfspectrum.with_columns(en_kev=h * c / pl.col("lambda_angstroms") / 1000.0)
+            .with_columns(f_en_kev=pl.col("f_nu") * pl.col("nu") / pl.col("en_kev"))
+            .with_columns(x=pl.col("en_kev"), y=pl.col("f_en_kev"))
+        ).sort("x")
+    if xunit.lower() == "mev":
+        return (
+            dfspectrum.with_columns(en_mev=h * c / pl.col("lambda_angstroms") / 1e6)
+            .with_columns(f_en_mev=pl.col("f_nu") * pl.col("nu") / pl.col("en_mev"))
+            .with_columns(x=pl.col("en_mev"), y=pl.col("f_en_mev"))
+        ).sort("x")
+    msg = f"Unit {xunit} not implemented for plot_artis_spectrum()"
+    raise NotImplementedError(msg)
 
 
 def get_exspec_bins(
@@ -101,7 +134,27 @@ def get_exspec_bins(
     return lambda_bin_edges, lambda_bin_centres, delta_lambdas
 
 
+def convert_xunit_aliases_to_canonical(xunit: str) -> str:
+    match xunit.lower():
+        case "kev" | "kiloelectronvolt":
+            return "kev"
+        case "mev" | "megaelectronvolt":
+            return "mev"
+        case "angstroms" | "angstrom" | "a" | "ang":
+            return "angstroms"
+        case "nm" | "nanometer" | "nanometers":
+            return "nm"
+        case "micron" | "microns" | "mu" | "μ" | "μm":
+            return "micron"
+        case "hz":
+            return "hz"
+        case _:
+            msg = f"Unknown xunit {xunit}"
+            raise ValueError(msg)
+
+
 def convert_angstroms_to_unit(value_angstroms: float, new_units: str) -> float:
+    """Convert a wavelength in angstroms to a different unit, either length, frequency, or energy."""
     c = 2.99792458e18  # speed of light [angstroms/s]
     h = 4.1356677e-15  # Planck's constant [eV s]
     hc_ev_angstroms = h * c  # [eV angstroms]
@@ -113,7 +166,34 @@ def convert_angstroms_to_unit(value_angstroms: float, new_units: str) -> float:
         return c / value_angstroms
     if new_units.lower() == "angstroms":
         return value_angstroms
+    if new_units.lower() == "nm":
+        return value_angstroms / 10
+    if new_units.lower() == "micron":
+        return value_angstroms / 10000
     msg = f"Unknown xunit {new_units}"
+    raise ValueError(msg)
+
+
+def convert_unit_to_angstroms(value: float, old_units: str) -> float:
+    """Convert a wavelength, frequency, or energy to wavelength angstroms."""
+    c = 2.99792458e18  # speed of light [angstroms/s]
+    h = 4.1356677e-15  # Planck's constant [eV s]
+    hc_ev_angstroms = h * c  # [eV angstroms]
+
+    if old_units.lower() == "kev":
+        return hc_ev_angstroms / value / 1e3
+    if old_units.lower() == "mev":
+        return hc_ev_angstroms / value / 1e6
+    if old_units.lower() == "hz":
+        return c / value
+    if old_units.lower() == "angstroms":
+        return value
+    if old_units.lower() == "nm":
+        return value * 10
+    if old_units.lower() == "micron":
+        return value * 10000
+
+    msg = f"Unknown xunit {old_units}"
     raise ValueError(msg)
 
 
@@ -204,8 +284,7 @@ def get_from_packets(
     ndirbins = get_viewingdirectionbincount()
 
     if nprocs_read_dfpackets:
-        nprocs_read = nprocs_read_dfpackets[0]
-        dfpackets = nprocs_read_dfpackets[1].lazy()
+        nprocs_read, dfpackets = nprocs_read_dfpackets[0], nprocs_read_dfpackets[1].lazy()
     elif directionbins_are_vpkt_observers:
         assert not gamma
         nprocs_read, dfpackets = atpackets.get_virtual_packets_pl(modelpath, maxpacketfiles=maxpacketfiles)
@@ -913,29 +992,35 @@ def get_flux_contributions_from_packets(
     getabsorption: bool = True,
     maxpacketfiles: int | None = None,
     filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
-    groupby: t.Literal["ion", "line"] = "ion",
+    groupby: t.Literal["ion", "line", "nuc"] = "ion",
     maxseriescount: int | None = None,
     fixedionlist: list[str] | None = None,
     use_time: t.Literal["arrival", "emission", "escape"] = "arrival",
-    use_lastemissiontype: bool = True,
+    emtypecolumn: str | None = None,
     emissionvelocitycut: float | None = None,
     directionbin: int | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
     directionbins_are_vpkt_observers: bool = False,
     vpkt_match_emission_exclusion_to_opac: bool = False,
+    gamma: bool = False,
 ) -> tuple[list[fluxcontributiontuple], np.ndarray, np.ndarray]:
     from scipy import integrate
 
-    assert groupby in {"ion", "line"}
+    assert groupby in {"ion", "line", "nuc"}
 
     if directionbin is None:
         directionbin = -1
 
-    emtypecolumn = "emissiontype" if use_lastemissiontype else "trueemissiontype"
+    assert emtypecolumn in {"emissiontype", "trueemissiontype", "pellet_nucindex"}
+    if emtypecolumn == "pellet_nucindex":
+        assert groupby == "nuc"
 
-    linelistlazy = get_linelist_pldf(modelpath=modelpath, get_ion_str=True)
-    bflistlazy = get_bflist(modelpath, get_ion_str=True)
+    linelistlazy, bflistlazy = (
+        (get_linelist_pldf(modelpath=modelpath, get_ion_str=True), get_bflist(modelpath, get_ion_str=True))
+        if groupby != "nuc"
+        else (None, None)
+    )
 
     cols = {"e_rf"}
     cols.add({"arrival": "t_arrive_d", "emission": "em_time", "escape": "escape_time"}[use_time])
@@ -956,7 +1041,10 @@ def get_flux_contributions_from_packets(
 
     else:
         nprocs_read, lzdfpackets = atpackets.get_packets_pl(
-            modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
+            modelpath,
+            maxpacketfiles=maxpacketfiles,
+            packet_type="TYPE_ESCAPE",
+            escape_type="TYPE_GAMMA" if gamma else "TYPE_RPKT",
         )
         dirbin_nu_column = "nu_rf"
 
@@ -984,24 +1072,32 @@ def get_flux_contributions_from_packets(
 
     if getemission:
         cols |= {"emissiontype_str", dirbin_nu_column}
-        bflistlazy = bflistlazy.with_columns((-1 - pl.col("bfindex").cast(pl.Int32)).alias(emtypecolumn))
-        expr_bflist_to_str = (
-            pl.col("ion_str") + " bound-free"
-            if groupby == "ion"
-            else pl.format("{} bound-free {}-{}", pl.col("ion_str"), pl.col("lowerlevel"), pl.col("upperionlevel"))
-        )
+        if groupby == "nuc":
+            emtypestrings = get_nuclides(modelpath=modelpath).rename({
+                "pellet_nucindex": emtypecolumn,
+                "nucname": "emissiontype_str",
+            })
+        else:
+            assert linelistlazy is not None
+            assert bflistlazy is not None
+            bflistlazy = bflistlazy.with_columns((-1 - pl.col("bfindex").cast(pl.Int32)).alias(emtypecolumn))
+            expr_bflist_to_str = (
+                pl.col("ion_str") + " bound-free"
+                if groupby == "ion"
+                else pl.format("{} bound-free {}-{}", pl.col("ion_str"), pl.col("lowerlevel"), pl.col("upperionlevel"))
+            )
 
-        emtypestrings = pl.concat([
-            linelistlazy.select([
-                pl.col("lineindex").alias(emtypecolumn),
-                expr_linelist_to_str.alias("emissiontype_str"),
-            ]),
-            pl.DataFrame(
-                {emtypecolumn: [-9999999], "emissiontype_str": ["free-free"]},
-                schema_overrides={emtypecolumn: pl.Int32, "emissiontype_str": pl.String},
-            ).lazy(),
-            bflistlazy.select([pl.col(emtypecolumn), expr_bflist_to_str.alias("emissiontype_str")]),
-        ])
+            emtypestrings = pl.concat([
+                linelistlazy.select([
+                    pl.col("lineindex").alias(emtypecolumn),
+                    expr_linelist_to_str.alias("emissiontype_str"),
+                ]),
+                pl.DataFrame(
+                    {emtypecolumn: [-9999999], "emissiontype_str": ["free-free"]},
+                    schema_overrides={emtypecolumn: pl.Int32, "emissiontype_str": pl.String},
+                ).lazy(),
+                bflistlazy.select([pl.col(emtypecolumn), expr_bflist_to_str.alias("emissiontype_str")]),
+            ])
 
         lzdfpackets = lzdfpackets.join(emtypestrings, on=emtypecolumn, how="left")
 
@@ -1019,7 +1115,7 @@ def get_flux_contributions_from_packets(
 
     if getabsorption:
         cols |= {"absorptiontype_str", "absorption_freq"}
-
+        assert linelistlazy is not None
         abstypestrings = pl.concat([
             linelistlazy.select([
                 pl.col("lineindex").alias("absorption_type"),
@@ -1132,6 +1228,7 @@ def get_flux_contributions_from_packets(
                 directionbins_are_vpkt_observers=directionbins_are_vpkt_observers,
                 average_over_phi=average_over_phi,
                 average_over_theta=average_over_theta,
+                gamma=gamma,
             )[directionbin]
 
             if array_lambda is None:

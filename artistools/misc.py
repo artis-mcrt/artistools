@@ -1030,6 +1030,38 @@ def merge_pdf_files(pdf_files: list[str]) -> None:
     print(f"Files merged and saved to {resultfilename}.pdf")
 
 
+def get_nuclides(modelpath: Path | str) -> pl.LazyFrame:
+    """Return LazyFrame with: pellet_nucindex atomic_number A nucname from nuclides.out file."""
+    filepath = Path(modelpath, "nuclides.out")
+    if not filepath.is_file():
+        msg = f"File {filepath} not found"
+        raise FileNotFoundError(msg)
+
+    dfnuclides = (
+        pl.scan_csv(filepath, separator=" ", has_header=True)
+        .rename({"#nucindex": "pellet_nucindex", "Z": "atomic_number"})
+        .join(get_elsymbols_df().lazy(), on="atomic_number", how="left")
+        .with_columns(nucname=pl.col("elsymbol") + pl.col("A").cast(pl.String))
+    ).with_columns(pl.col(pl.Int64).cast(pl.Int32))
+
+    return pl.concat(
+        [
+            pl.LazyFrame(
+                {
+                    "pellet_nucindex": -1,
+                    "atomic_number": -1,
+                    "A": -1,
+                    "elsymbol": "initial energy",
+                    "nucname": "initial energy",
+                },
+                schema=dfnuclides.collect_schema(),
+            ),
+            dfnuclides,
+        ],
+        how="vertical",
+    )
+
+
 def get_bflist(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame:
     """Return a dict of bound-free transitions from bflist.out."""
     compositiondata = get_composition_data(modelpath)
