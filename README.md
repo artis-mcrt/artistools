@@ -11,7 +11,7 @@
 Artistools is collection of plotting, analysis, and file format conversion tools for the [ARTIS](https://github.com/artis-mcrt/artis) radiative transfer code.
 
 ## Installation
-Requires Python >= 3.10
+Requires Python >= 3.11
 
 The artistools command be invoked with uvx artistools or pipx artistools.
 
