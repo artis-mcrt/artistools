@@ -7,6 +7,7 @@ import json
 import math
 import typing as t
 from collections import namedtuple
+from collections.abc import Sequence
 from functools import partial
 from pathlib import Path
 
@@ -19,7 +20,6 @@ import pandas as pd
 from astropy import units as u
 from matplotlib import markers as mplmarkers
 from matplotlib.typing import MarkerType
-from scipy import integrate
 
 import artistools as at
 
@@ -27,6 +27,8 @@ import artistools as at
 def print_floers_line_ratio(
     modelpath: Path, timedays: float, arr_f_lambda: np.ndarray, arr_lambda_angstroms: np.ndarray
 ) -> None:
+    from scipy import integrate
+
     def get_line_flux(
         lambda_low: float, lambda_high: float, arr_f_lambda: np.ndarray, arr_lambda_angstroms: np.ndarray
     ) -> float:
@@ -52,7 +54,9 @@ def print_floers_line_ratio(
 
 
 def get_packets_with_emtype_onefile(
-    emtypecolumn: str, lineindices: t.Sequence[int], packetsfile: Path | str
+    emtypecolumn: str,
+    lineindices: Sequence[int],  # noqa: ARG001
+    packetsfile: Path | str,
 ) -> pd.DataFrame:
     import gzip
 
@@ -66,7 +70,7 @@ def get_packets_with_emtype_onefile(
 
 
 def get_packets_with_emtype(
-    modelpath: Path | str, emtypecolumn: str, lineindices: t.Sequence[int], maxpacketfiles: int | None = None
+    modelpath: Path | str, emtypecolumn: str, lineindices: Sequence[int], maxpacketfiles: int | None = None
 ) -> tuple[pd.DataFrame, int]:
     packetsfiles = at.packets.get_packets_text_paths(modelpath, maxpacketfiles=maxpacketfiles)
     nprocs_read = len(packetsfiles)
@@ -144,7 +148,7 @@ def get_line_fluxes_from_pops(emfeatures, modelpath, arr_tstart=None, arr_tend=N
     # arr_timedelta = np.array(arr_tend) - np.array(arr_tstart)
     arr_tmid = arr_tend = (np.array(arr_tstart) + np.array(arr_tend)) / 2.0
 
-    modeldata, _ = at.inputmodel.get_modeldata(modelpath)
+    modeldata, _ = at.inputmodel.get_modeldata_pandas(modelpath)
 
     ionlist = [(feature.atomic_number, feature.ion_stage) for feature in emfeatures]
     adata = at.atomic.get_levels(modelpath, ionlist=tuple(ionlist), get_transitions=True, get_photoionisations=False)
@@ -343,7 +347,7 @@ def make_flux_ratio_plot(args: argparse.Namespace) -> None:
                 arr_tend=args.timebins_tend,
             )
         )
-        dflcdata = dflcdata.eval(f"fratio = {emfeatures[1].colname} / {emfeatures[0].colname}")
+        dflcdata["fratio"] = emfeatures[1].colname / emfeatures[0].colname
         axis.set_ylabel(
             r"F$_{\mathrm{" + emfeatures[1].featurelabel + r"}}$ / F$_{\mathrm{" + emfeatures[0].featurelabel + r"}}$"
         )
@@ -444,8 +448,8 @@ def make_flux_ratio_plot(args: argparse.Namespace) -> None:
 def get_packets_with_emission_conditions(
     modelpath: str | Path,
     emtypecolumn: str,
-    lineindices: t.Sequence[int],
-    tstart: float,
+    lineindices: Sequence[int],
+    tstart: float,  # noqa: ARG001
     tend: float,
     maxpacketfiles: int | None = None,
 ) -> pd.DataFrame:
@@ -504,8 +508,8 @@ def get_packets_with_emission_conditions(
 def plot_nne_te_points(
     axis: mplax.Axes,
     serieslabel: str,
-    em_log10nne: t.Sequence[float] | npt.NDArray,
-    em_Te: t.Sequence[float] | npt.NDArray,
+    em_log10nne: Sequence[float] | npt.NDArray,
+    em_Te: Sequence[float] | npt.NDArray,
     normtotalpackets: float,
     color: float | str | None,
     marker: MarkerType,
@@ -539,7 +543,7 @@ def plot_nne_te_points(
     #           fillstyle='full', color=color_b)
 
 
-def plot_nne_te_bars(axis, serieslabel, em_log10nne, em_Te, color) -> None:
+def plot_nne_te_bars(axis, em_log10nne, em_Te, color) -> None:
     if len(em_log10nne) == 0:
         return
     errorbarkwargs = {
@@ -585,7 +589,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
         refdatakeys[refdataindex] = refdatakeys_thisseries
         refdatatimes[refdataindex] = np.array([float(t) for t in refdatakeys_thisseries])
         refdatapoints[refdataindex] = [floers_te_nne[t] for t in refdatakeys_thisseries]
-        print(f"{refdatafilename} data available for times: {list(refdatakeys_thisseries)}")
+        print(f"{refdatafilename} data available for times: {refdatakeys_thisseries}")
 
     times_days = (np.array(args.timebins_tstart) + np.array(args.timebins_tend)) / 2.0
 
@@ -652,7 +656,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
                         }
 
             estimators = at.estimators.read_estimators(modelpath)
-            modeldata, _ = at.inputmodel.get_modeldata(modelpath)
+            modeldata, _ = at.inputmodel.get_modeldata_pandas(modelpath)
             Tedata_all[modelindex] = {}
             log10nnedata_all[modelindex] = {}
             for tmid, tstart, tend in zip(times_days, args.timebins_tstart, args.timebins_tend, strict=False):
@@ -733,7 +737,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
                                 axis, label, em_log10nne, em_Te, normtotalpackets, modelcolor, marker="s"
                             )
                         else:
-                            plot_nne_te_bars(axis, args.label[truemodelindex], em_log10nne, em_Te, modelcolor)
+                            plot_nne_te_bars(axis, em_log10nne, em_Te, modelcolor)
             else:
                 modellabel = args.label[modelindex]
                 emfeatures = get_labelandlineindices(modelpath, tuple(args.emfeaturesearch))
@@ -785,9 +789,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
                                 marker=markers[featureindex],
                             )
                         else:
-                            plot_nne_te_bars(
-                                axis, serieslabel, emdata["em_log10nne"], emdata["em_Te"], featurecolours[featureindex]
-                            )
+                            plot_nne_te_bars(axis, emdata["em_log10nne"], emdata["em_Te"], featurecolours[featureindex])
 
             if tmid == times_days[-1] and not args.nolegend:
                 axis.legend(
@@ -887,7 +889,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs: t.Any) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot line fluxe ratios for comparisons to Floers."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=(__doc__))

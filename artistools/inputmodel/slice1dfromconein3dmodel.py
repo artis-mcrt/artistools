@@ -2,6 +2,7 @@
 import argparse
 import gc
 import typing as t
+from collections.abc import Sequence
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -21,7 +22,7 @@ def make_cone(args):
 
     theta = np.radians([angle_of_cone / 2])  # angle between line of sight and edge is half angle of cone
 
-    dfmodel, modelmeta = at.get_modeldata(modelpath=args.modelpath[0], get_elemabundances=True)
+    dfmodel, modelmeta = at.get_modeldata_pandas(modelpath=args.modelpath[0], get_elemabundances=True)
     args.t_model = modelmeta["t_model_init_days"]
 
     if args.positive_axis:
@@ -53,7 +54,9 @@ def get_profile_along_axis(args: argparse.Namespace, modeldata=None, derived_col
 
     # merge_dfs, args.t_model, args.vmax = at.inputmodel.get_modeldata_tuple(args.modelpath, dimensions=3, get_elemabundances=True)
     if modeldata is None:
-        modeldata, _ = at.inputmodel.get_modeldata(args.modelpath, get_elemabundances=True, derived_cols=derived_cols)
+        modeldata, _ = at.inputmodel.get_modeldata_pandas(
+            args.modelpath, get_elemabundances=True, derived_cols=derived_cols
+        )
 
     position_closest_to_axis = modeldata.iloc[(modeldata[f"pos_{args.other_axis2}_min"]).abs().argsort()][:1][
         f"pos_{args.other_axis2}_min"
@@ -175,7 +178,7 @@ def make_1d_model_files(args):
 # cone = cone.loc[cone['rho_model'] > 0.0]
 
 
-def make_plot(args):
+def make_plot(args) -> None:
     cone = make_cone(args)
 
     cone = cone.loc[cone["rho_model"] > 0.0002]  # cut low densities (empty cells?) from plot
@@ -228,7 +231,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-rhoscale", "-v", default=None, type=float, help="Density scale factor")
 
 
-def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs: t.Any) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Make 1D model from cone in 3D model."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)

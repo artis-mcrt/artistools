@@ -5,7 +5,7 @@
 
 import argparse
 import math
-import typing as t
+from collections.abc import Sequence
 from pathlib import Path
 
 import argcomplete
@@ -151,14 +151,14 @@ def maptogrid(
 
     snapshot_columns_used = ["id", "h", "x", "y", "z", "vx", "vy", "vz", "pmass", "rho", "p", "rho_rst", "ye"]
 
-    dfsnapshot = pd.read_csv(
+    pddfsnapshot = pd.read_csv(
         ejectasnapshotpath, names=snapshot_columns, sep=r"\s+", usecols=snapshot_columns_used, dtype_backend="pyarrow"
     )
 
     if downsamplefactor > 1:
-        dfsnapshot = dfsnapshot.sample(len(dfsnapshot) // downsamplefactor)
+        pddfsnapshot = pddfsnapshot.sample(len(pddfsnapshot) // downsamplefactor)
 
-    dfsnapshot = pl.from_pandas(dfsnapshot)
+    dfsnapshot = pl.from_pandas(pddfsnapshot)
 
     logprint(dfsnapshot)
     logprint(f"ncoordgrid: {ncoordgrid}")
@@ -208,6 +208,8 @@ def maptogrid(
     assert isinstance(rmean, float)
     hmean = dfsnapshot["h"].mean()
     assert isinstance(hmean, float)
+    hmin = dfsnapshot["h"].min()
+    assert isinstance(hmin, float)
     rmax = dfsnapshot["dis"].max()
     assert isinstance(rmax, float)
     with Path(outputfolderpath, "ejectapartanalysis.dat").open(mode="w", encoding="utf-8") as fpartanalysis:
@@ -219,7 +221,7 @@ def maptogrid(
     logprint(f"saved {outputfolderpath / 'ejectapartanalysis.dat'}")
 
     logprint(f"total mass of sph particle {totmass} max dist {rmax} mean dist {rmean}")
-    logprint(f"smoothing length min {dfsnapshot['h'].min()} mean {hmean}")
+    logprint(f"smoothing length min {hmin} mean {hmean}")
     logprint("ratio between vrad and vperp mean", dfsnapshot.select(pl.col("vperp") - pl.col("vrad")).mean().item(0, 0))
 
     # check maybe cm and correct by shifting
@@ -352,7 +354,7 @@ def maptogrid(
         logprint(f"particle {n} is totally unused but located in cell {loc_i} {loc_j} {loc_k}")
 
     with np.errstate(divide="ignore", invalid="ignore"):
-        gye = np.divide(gye, grho)
+        gye = np.divide(gye, grho)  # type: ignore[assignment]
 
         with Path(outputfolderpath, "gridcontributions.txt").open("w", encoding="utf-8") as fcontribs:
             fcontribs.write("particleid cellindex frac_of_cellmass\n")
@@ -473,7 +475,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")
 
 
-def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs) -> None:
     """Map tracer particle trajectories to a Cartesian grid."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)

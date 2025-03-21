@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import typing as t
+from collections.abc import Sequence
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -25,7 +26,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs: t.Any) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot the macroatom transitions."""
     if args is None:
         parser = argparse.ArgumentParser(
@@ -65,7 +66,6 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     make_plot(
         dfall,
         args.modelpath,
-        str(specfilename),
         timestepmin,
         timestepmax,
         outputfile,
@@ -75,19 +75,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     )
 
 
-def make_plot(
-    dfmacroatom,
-    modelpath,
-    specfilename,
-    timestepmin,
-    timestepmax,
-    outputfile,
-    xmin,
-    xmax,
-    modelgridindex,
-    nospec=False,
-    normalised=False,
-):
+def make_plot(dfmacroatom, modelpath, timestepmin, timestepmax, outputfile, xmin, xmax, modelgridindex):
     time_days_min = at.get_timestep_time(modelpath, timestepmin)
     time_days_max = at.get_timestep_time(modelpath, timestepmax)
 
@@ -133,7 +121,7 @@ def make_plot(
 
 
 def read_files(
-    files: t.Sequence[Path | str],
+    files: Sequence[Path | str],
     modelgridindex: int | None = None,
     timestepmin: int | None = None,
     timestepmax: int | None = None,
@@ -157,7 +145,7 @@ def read_files(
             if atomic_number:
                 df_thisfile = df_thisfile[df_thisfile["Z"] == atomic_number]
 
-            if df_thisfile is not None and not df_thisfile.empty:
+            if not df_thisfile.empty:
                 if dfall is None:
                     dfall = df_thisfile.copy()
                 else:

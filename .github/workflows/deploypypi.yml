@@ -3,10 +3,6 @@ name: Build and deploy to PyPI/testPyPI
 
 on:
     push:
-        branches:
-            - '*'
-        tags:
-            - '*'
     merge_group:
     release:
         types: [published, edited]
@@ -16,16 +12,24 @@ on:
 
 jobs:
     build_wheels:
-        name: Build wheels for ${{ matrix.os_arch }}
+        name: Build wheels for ${{ matrix.target.os_arch }}
         strategy:
             matrix:
-                os_arch: [manylinux_x86_64, musllinux_x86_64, macosx_arm64]
+                target:
+                  [
+                    {os_arch: "manylinux_x86_64", runs-on: "ubuntu-24.04"},
+                    {os_arch: "manylinux_aarch64", runs-on: "ubuntu-24.04-arm"},
+                    # uncomment when pyarrow supplies wheels for musllinux
+                    # {os_arch: "musllinux_x86_64", runs-on: "ubuntu-24.04"},
+                    # {os_arch: "musllinux_aarch64", runs-on: "ubuntu-24.04-arm"},
+                    {os_arch: "macosx_arm64", runs-on: "macos-15"},
+                  ]
             fail-fast: false
-        runs-on: ${{ startsWith(matrix.os_arch, 'macosx') && 'macos-14' || 'ubuntu-24.04'}}
+        runs-on: ${{ matrix.target.runs-on }}
         env:
             CIBW_ENVIRONMENT_PASS_LINUX: SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS
-            CIBW_BUILD: 'cp3*-${{ matrix.os_arch }}'
-            MACOSX_DEPLOYMENT_TARGET: 14.0
+            CIBW_BUILD: 'cp3*-${{ matrix.target.os_arch }}'
+            MACOSX_DEPLOYMENT_TARGET: 15.0
 
         steps:
             - uses: actions/checkout@v4
@@ -34,27 +38,31 @@ jobs:
 
             - uses: actions/setup-python@v5
 
-            - name: Cache rust build
+            - name: Cache cargo and rust build
               uses: actions/cache@v4
               with:
-                  path: rust/target/
-                  key: cibuildwheel-rust-target-${{ matrix.os_arch }}-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}
+                  path: |
+                      ~/.cargo/bin/
+                      ~/.cargo/registry/index/
+                      ~/.cargo/registry/cache/
+                      ~/.cargo/git/db/
+                      rust/target/
+                  key: cibuildwheel-rust-target-${{ matrix.target.os_arch }}-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}
                   restore-keys: |
-                      cibuildwheel-rust-target-${{ matrix.os_arch }}-${{ hashFiles('**/Cargo.lock') }}-
-                      cibuildwheel-rust-target-${{ matrix.os_arch }}-
+                      cibuildwheel-rust-target-${{ matrix.target.os_arch }}-${{ hashFiles('**/Cargo.lock') }}-
+                      cibuildwheel-rust-target-${{ matrix.target.os_arch }}-
 
-            - name: Install dependencies
+            - name: Strip dev tag from version
               run: |
-                  python3 -m pip install --upgrade uv
-                  python3 -m uv pip install --upgrade setuptools setuptools_scm[toml] setuptools-rust wheel twine build
+                  python3 -m pip install --upgrade uv setuptools_scm[toml]
                   echo "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS=$(python3 -m setuptools_scm --strip-dev)" >> $GITHUB_ENV
 
             - name: Build wheels
-              uses: pypa/cibuildwheel@v2.21.3
+              uses: pypa/cibuildwheel@v2.23.1
 
             - uses: actions/upload-artifact@v4
               with:
-                  name: cibw-wheels-${{ matrix.os_arch }}-${{ strategy.job-index }}
+                  name: cibw-wheels-${{ matrix.target.os_arch }}-${{ strategy.job-index }}
                   path: ./wheelhouse/*.whl
 
     build_sdist:
@@ -69,12 +77,12 @@ jobs:
 
             - name: Install dependencies
               run: |
-                  python3 -m pip install --upgrade setuptools setuptools_scm[toml] setuptools-rust wheel twine build
+                  python3 -m pip install --upgrade uv setuptools_scm[toml]
                   echo "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS=$(python3 -m setuptools_scm --strip-dev)" >> $GITHUB_ENV
 
             - name: Build sdist
               run: |
-                  python3 -m build --sdist
+                  uv build --sdist
 
             - uses: actions/upload-artifact@v4
               with:
@@ -90,22 +98,11 @@ jobs:
             id-token: write
         if: startsWith(github.ref , 'refs/tags/v') != true
         steps:
-            - uses: actions/checkout@v4
-              with:
-                  fetch-depth: 0
-
-            - uses: actions/setup-python@v5
-
             - uses: actions/download-artifact@v4
               with:
                   pattern: cibw-*
                   path: dist
                   merge-multiple: true
-
-            - name: Install dependencies
-              run: |
-                  python3 -m pip install --upgrade uv
-                  python3 -m uv pip install --upgrade setuptools setuptools_scm[toml] setuptools-rust wheel twine build
 
             - name: Publish package to TestPyPI
               uses: pypa/gh-action-pypi-publish@release/v1
@@ -123,27 +120,14 @@ jobs:
             id-token: write
         if: startsWith(github.ref, 'refs/tags/v')
         steps:
-            - uses: actions/checkout@v4
-              with:
-                  fetch-depth: 0
-
-            - uses: actions/setup-python@v5
-
             - uses: actions/download-artifact@v4
               with:
                   pattern: cibw-*
                   path: dist
                   merge-multiple: true
 
-            - name: Install dependencies
-              run: |
-                  python3 -m pip install --upgrade uv
-                  python3 -m uv pip install --upgrade setuptools setuptools_scm[toml] setuptools-rust wheel twine build
-                  echo "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS=$(python3 -m setuptools_scm --strip-dev)" >> $GITHUB_ENV
-
             - name: Publish package to PyPI
               uses: pypa/gh-action-pypi-publish@release/v1
               with:
                   skip-existing: true
                   verbose: false
-                  #repository-url: https://test.pypi.org/legacy/

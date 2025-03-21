@@ -3,6 +3,7 @@ import argparse
 import math
 import sys
 import typing as t
+from collections.abc import Sequence
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -24,7 +25,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-opdf", action="store", dest="pdfoutputfile", help="Path/filename for PDF plot.")
 
 
-def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs: t.Any) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:  # noqa: ARG001
     if args is None:
         parser = argparse.ArgumentParser(
             formatter_class=at.CustomArgHelpFormatter,
@@ -97,8 +98,7 @@ def slice_3dmodel(inputfolder, outputfolder, chosenaxis):
     with Path(outputfolder, "model.txt").open("w", encoding="utf-8") as fmodelout:
         fmodelout.write(f"{outcellid:7d}\n")
         fmodelout.write(t_model)
-        for line in listout:
-            fmodelout.write(line + "\n")
+        fmodelout.writelines(line + "\n" for line in listout)
 
     return dict3dcellidto1dcellid, xlist, ylists
 
@@ -136,7 +136,7 @@ def append_cell_to_output(
     cell, outcellid: int, t_model: str | float, listout: list[str], xlist: list[float], ylists: list[list[float]]
 ) -> None:
     dist = math.sqrt(float(cell["pos_x_min"]) ** 2 + float(cell["pos_y_min"]) ** 2 + float(cell["pos_z_min"]) ** 2)
-    velocity = float(dist) / float(t_model) / 86400.0 / 1.0e5
+    velocity = dist / float(t_model) / 86400.0 / 1.0e5
 
     listout.append(
         f"{outcellid:6d}  {velocity:8.2f}  {math.log10(max(float(cell['rho']), 1e-100)):8.5f}  "

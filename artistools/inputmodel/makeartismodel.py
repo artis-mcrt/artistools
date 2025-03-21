@@ -2,6 +2,7 @@
 # PYTHON_ARGCOMPLETE_OK
 import argparse
 import typing as t
+from collections.abc import Sequence
 from pathlib import Path
 
 import argcomplete
@@ -51,7 +52,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-outputpath", "-o", default=".", help="Folder for output")
 
 
-def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs: t.Any) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Tools to create an ARTIS input model."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
@@ -77,7 +78,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         ndim_out = args.dimensionreduce
         assert ndim_out in {0, 1, 2}
         for modelpath in args.modelpath:
-            dfmodel, modelmeta = at.inputmodel.get_modeldata_polars(modelpath, derived_cols=["mass_g"])
+            dfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath, derived_cols=["mass_g"])
             ndim_in = modelmeta["dimensions"]
             if ndim_in <= ndim_out:
                 msg = f"Cannot reduce {ndim_in}D model to {ndim_out}D"
@@ -116,7 +117,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         )
 
     if args.makeenergyinputfiles:
-        model, modelmeta = at.inputmodel.get_modeldata(args.modelpath[0], derived_cols=["mass_g"])
+        model, modelmeta = at.inputmodel.get_modeldata_pandas(args.modelpath[0], derived_cols=["mass_g"])
         rho = 10 ** model["logrho"] if modelmeta["dimensions"] == 1 else model["rho"]
         Mtot_grams = model["mass_g"].sum()
 

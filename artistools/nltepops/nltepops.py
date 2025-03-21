@@ -9,7 +9,6 @@ from pathlib import Path
 
 import pandas as pd
 import polars as pl
-from astropy import constants as const
 
 import artistools as at
 
@@ -19,22 +18,22 @@ def texifyterm(strterm: str) -> str:
     strtermtex = ""
     passed_term_Lchar = False
 
-    for termpiece in re.split("([_A-Za-z])", strterm):
-        if re.match("[0-9]", termpiece) is not None and not passed_term_Lchar:
+    for termpiece in re.split(r"([_A-Za-z])", strterm):
+        if re.match(r"[0-9]", termpiece) is not None and not passed_term_Lchar:
             # 2S + 1 number
             strtermtex += r"$^{" + termpiece + r"}$"
-        elif re.match("[A-Z]", termpiece) is not None:
+        elif re.match(r"[A-Z]", termpiece) is not None:
             # L character - SPDFGH...
             strtermtex += termpiece
             passed_term_Lchar = True
-        elif re.match("[eo]", termpiece) is not None and passed_term_Lchar:
+        elif re.match(r"[eo]", termpiece) is not None and passed_term_Lchar:
             # odd flag, but don't want to confuse it with the energy index (e.g. o4Fo[2])
             if termpiece != "e":  # even is assumed by default (and looks neater with all the 'e's)
                 strtermtex += r"$^{\rm " + termpiece + r"}$"
         elif re.match(r"[0-9]?.*\]", termpiece) is not None:
             # J value
             strtermtex += termpiece.split("[")[0] + r"$_{" + termpiece.lstrip(string.digits).strip("[]") + r"}$"
-        elif re.match("[0-9]", termpiece) is not None and passed_term_Lchar:
+        elif re.match(r"[0-9]", termpiece) is not None and passed_term_Lchar:
             # extra number after S char
             strtermtex += termpiece
 
@@ -46,7 +45,7 @@ def texifyconfiguration(levelname: str) -> str:
     # the underscore gets confused with LaTeX subscript operator, so switch it to the hash symbol
     strout = "#".join(levelname.split("_")[:-1]) + "#"
     for strorbitalocc in re.findall(r"[0-9][a-z][0-9]?[#(]", strout):
-        n, lchar, occ = re.split("([a-z])", strorbitalocc)
+        n, lchar, occ = re.split(r"([a-z])", strorbitalocc)
         lastchar = "(" if occ.endswith("(") else "#"
         occ = occ.rstrip("#(")
         strorbitalocctex = n + lchar + (r"$^{" + occ + r"}$" if occ else "") + lastchar
@@ -61,12 +60,12 @@ def texifyconfiguration(levelname: str) -> str:
     return strout.replace("#", "").replace("$$", "")
 
 
-def add_lte_pops(modelpath, dfpop, adata, columntemperature_tuples, noprint=False, maxlevel=-1):
+def add_lte_pops(dfpop, adata, columntemperature_tuples, noprint=False, maxlevel=-1):
     """Add columns to dfpop with LTE populations.
 
     columntemperature_tuples is a sequence of tuples of column name and temperature, e.g., ('mycolumn', 3000)
     """
-    k_b = const.k_B.to("eV / K").value
+    K_B = 8.617333262145179e-05  # eV / K
 
     for _, row in dfpop.drop_duplicates(["modelgridindex", "timestep", "Z", "ion_stage"]).iterrows():
         modelgridindex = int(row.modelgridindex)
@@ -104,7 +103,7 @@ def add_lte_pops(modelpath, dfpop, adata, columntemperature_tuples, noprint=Fals
             ltepop = (
                 ionlevels["g"].item(int(x.level))
                 / gsg
-                * math.exp(-(ionlevels["energy_ev"].item(int(x.level)) - gse) / k_b / T_exc)
+                * math.exp(-(ionlevels["energy_ev"].item(int(x.level)) - gse) / K_B / T_exc)
             )
             assert isinstance(ltepop, float)
             return ltepop
@@ -133,7 +132,7 @@ def add_lte_pops(modelpath, dfpop, adata, columntemperature_tuples, noprint=Fals
                 for columnname, T_exc in columntemperature_tuples:
                     superlevelpop = (
                         ionlevels[levelnumber_sl:]
-                        .select(pl.col("g") / gs_g * (-(pl.col("energy_ev") - gs_energy) / k_b / T_exc).exp())
+                        .select(pl.col("g") / gs_g * (-(pl.col("energy_ev") - gs_energy) / K_B / T_exc).exp())
                         .sum()
                         .item()
                     )
@@ -222,5 +221,6 @@ def read_files(
             pool.join()
     else:
         arr_dfnltepop = [read_file_filtered(f, strquery=dfquery_full, dfqueryvars=dfqueryvars) for f in nltefilepaths]
-
-    return pd.concat(arr_dfnltepop)
+    dfconcat = pd.concat(arr_dfnltepop)
+    assert isinstance(dfconcat, pd.DataFrame)
+    return dfconcat

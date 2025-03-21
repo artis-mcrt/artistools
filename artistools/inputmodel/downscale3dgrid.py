@@ -17,7 +17,7 @@ def make_downscaled_3d_grid(
     """
     modelpath = Path(modelpath)
 
-    dfmodel, modelmeta = at.get_modeldata(modelpath)
+    dfmodel, modelmeta = at.get_modeldata_pandas(modelpath)
     dfelemabund = at.inputmodel.get_initelemabundances_pandas(modelpath)
 
     inputgridsize = modelmeta["ncoordgridx"]
@@ -90,11 +90,11 @@ def make_downscaled_3d_grid(
     i = 0
     with (modelpath / smallabundancefile).open("w", encoding="utf-8") as newabundancefile:
         for z, y, x in itertools.product(range(smallgrid), range(smallgrid), range(smallgrid)):
-            line = abund_small[x, y, z, :].tolist()  # index 1:30 are abundances
-            line[0] = i + 1  # replace index 0 with index id
-            i += 1
+            line = abund_small[x, y, z, :][1:31]  # index 1:30 are abundances
+            newabundancefile.writelines(f"{i + 1} ")
             newabundancefile.writelines(f"{item:g} " for item in line)
             newabundancefile.writelines("\n")
+            i += 1
 
     print("writing model file")
     xmax = vmax * t_model_days * 3600 * 24

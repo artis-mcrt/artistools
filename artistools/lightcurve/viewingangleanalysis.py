@@ -1,6 +1,7 @@
 import argparse
 import sys
 import typing as t
+from collections.abc import Sequence
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -144,7 +145,7 @@ define_colours_list2 = [
 ]
 
 
-def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> tuple[t.Sequence[int], dict[int, str]]:
+def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> tuple[Sequence[int], dict[int, str]]:
     modelpath = Path(modelpath)
     viewing_angle_data_exists = args.frompackets or bool(list(modelpath.glob("*_res.out*")))
     if isinstance(args.plotviewingangle, int):
@@ -153,7 +154,7 @@ def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> 
     if args.plotvspecpol and (modelpath / "vpkt.txt").is_file():
         dirbins = args.plotvspecpol
     elif args.plotviewingangle and args.plotviewingangle[0] == -2 and viewing_angle_data_exists:
-        dirbins = np.arange(0, 100, 1, dtype=int).tolist()
+        dirbins = list(np.arange(0, 100, 1, dtype=int))
         if args.average_over_phi_angle:
             dirbins = [d for d in dirbins if d % at.get_viewingdirection_phibincount() == 0]
         if args.average_over_theta_angle:
@@ -164,7 +165,7 @@ def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> 
         args.calculate_costheta_phi_from_viewing_angle_numbers
         and args.calculate_costheta_phi_from_viewing_angle_numbers[0] == -2
     ):
-        dirbins = np.arange(0, 100, 1, dtype=int).tolist()
+        dirbins = list(np.arange(0, 100, 1, dtype=int))
     elif args.calculate_costheta_phi_from_viewing_angle_numbers:
         dirbins = args.calculate_costheta_phi_from_viewing_angle_numbers
         assert dirbins is not None
@@ -454,7 +455,7 @@ def update_plotkwargs_for_viewingangle_colorbar(
     costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(usedegrees=args.usedegrees)
     scaledmap = at.lightcurve.plotlightcurve.make_colorbar_viewingangles_colormap()
 
-    angles = np.arange(0, at.get_viewingdirectionbincount())
+    angles = np.arange(0, at.get_viewingdirectionbincount(), dtype=int)
     colors = []
     for angle in angles:
         colorindex: t.Any
@@ -617,7 +618,7 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
 
         bands = [args.filter[0], args.filter[1]]
 
-        datafilename = bands[0] + "band_" + str(modelname) + "_viewing_angle_data.txt"
+        datafilename = bands[0] + "band_" + modelname + "_viewing_angle_data.txt"
         viewing_angle_plot_data = pd.read_csv(datafilename, delimiter=" ")
         data = {f"{bands[0]}max": viewing_angle_plot_data["peak_mag_polyfit"].to_numpy()}
         data[f"time_{bands[0]}max"] = viewing_angle_plot_data["risetime_polyfit"].to_numpy()
@@ -633,13 +634,13 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
 
         data[f"{bands[1]}at{bands[0]}max"] = second_band_brightness
 
-        data = pd.DataFrame(data)
-        data["peakcolour"] = data[f"{bands[0]}max"] - data[f"{bands[1]}at{bands[0]}max"]
-        print(data["peakcolour"], data[f"{bands[0]}max"], data[f"{bands[1]}at{bands[0]}max"])
+        dfdata = pd.DataFrame(data)
+        dfdata["peakcolour"] = dfdata[f"{bands[0]}max"] - dfdata[f"{bands[1]}at{bands[0]}max"]
+        print(dfdata["peakcolour"], dfdata[f"{bands[0]}max"], dfdata[f"{bands[1]}at{bands[0]}max"])
 
         plotkwargsviewingangles, _ = set_scatterplot_plotkwargs(modelnumber, args)
         plotkwargsviewingangles["label"] = modelname
-        ax.scatter(data["peakcolour"], data[f"{bands[0]}max"], **plotkwargsviewingangles)
+        ax.scatter(dfdata["peakcolour"], y=dfdata[f"{bands[0]}max"], **plotkwargsviewingangles)
 
     sn_data, label = at.lightcurve.get_phillips_relation_data()
     ax.errorbar(
@@ -740,7 +741,7 @@ def peakmag_risetime_declinerate_init(
                 plottinglist = ["lightcurve"]
 
             for band_name in plottinglist:
-                brightness: npt.NDArray[np.float64] | list[float]
+                brightness: npt.NDArray[np.floating[t.Any]] | list[float]
                 if args.filter:
                     time, brightness = at.lightcurve.get_band_lightcurve(lightcurve_data, band_name, args)
                 else:

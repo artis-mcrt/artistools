@@ -17,9 +17,7 @@ import matplotlib.colors as mplcolors
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mplticker
 import numpy as np
-import pandas as pd
 import polars as pl
-from astropy import constants as const
 
 import artistools as at
 
@@ -42,7 +40,7 @@ def plot_deposition_thermalisation(
     #     axistherm.set_ylim(bottom=0.1, top=1.0)
 
     if args.plotthermalisation:
-        dfmodel, _ = at.inputmodel.get_modeldata_polars(modelpath, derived_cols=["mass_g", "vel_r_mid"])
+        dfmodel, _ = at.inputmodel.get_modeldata(modelpath, derived_cols=["mass_g", "vel_r_mid", "kinetic_en_erg"])
 
         model_mass_grams = dfmodel.select("mass_g").sum().collect().item()
         print(f"  model mass: {model_mass_grams / 1.989e33:.3f} Msun")
@@ -89,12 +87,10 @@ def plot_deposition_thermalisation(
     axis.plot(
         depdata["tmid_days"],
         gammadep_lsun * 3.826e33,
-        **{
-            **plotkwargs,
-            "label": plotkwargs["label"] + r" $\dot{E}_{dep,\gamma}$",
-            "linestyle": "dashed",
-            "color": color_gamma,
-        },
+        **(
+            plotkwargs
+            | {"label": plotkwargs["label"] + r" $\dot{E}_{dep,\gamma}$", "linestyle": "dashed", "color": color_gamma}
+        ),
     )
 
     color_beta = axis._get_lines.get_next_color()  # type: ignore[attr-defined] # noqa: SLF001
@@ -103,24 +99,28 @@ def plot_deposition_thermalisation(
         axis.plot(
             depdata["tmid_days"],
             depdata["eps_elec_Lsun"] * 3.826e33,
-            **{
-                **plotkwargs,
-                "label": plotkwargs["label"] + r" $\dot{E}_{rad,\beta^-}$",
-                "linestyle": "dotted",
-                "color": color_beta,
-            },
+            **(
+                plotkwargs
+                | {
+                    "label": plotkwargs["label"] + r" $\dot{E}_{rad,\beta^-}$",
+                    "linestyle": "dotted",
+                    "color": color_beta,
+                }
+            ),
         )
 
     if "elecdep_Lsun" in depdata:
         axis.plot(
             depdata["tmid_days"],
             depdata["elecdep_Lsun"] * 3.826e33,
-            **{
-                **plotkwargs,
-                "label": plotkwargs["label"] + r" $\dot{E}_{dep,\beta^-}$",
-                "linestyle": "dashed",
-                "color": color_beta,
-            },
+            **(
+                plotkwargs
+                | {
+                    "label": plotkwargs["label"] + r" $\dot{E}_{dep,\beta^-}$",
+                    "linestyle": "dashed",
+                    "color": color_beta,
+                }
+            ),
         )
 
     # c23modelpath = Path(
@@ -151,35 +151,41 @@ def plot_deposition_thermalisation(
             axis.plot(
                 depdata["tmid_days"],
                 depdata["eps_alpha_ana_Lsun"] * 3.826e33,
-                **{
-                    **plotkwargs,
-                    "label": plotkwargs["label"] + r" $\dot{E}_{rad,\alpha}$ analytical",
-                    "linestyle": "solid",
-                    "color": color_alpha,
-                },
+                **(
+                    plotkwargs
+                    | {
+                        "label": plotkwargs["label"] + r" $\dot{E}_{rad,\alpha}$ analytical",
+                        "linestyle": "solid",
+                        "color": color_alpha,
+                    }
+                ),
             )
 
         if "eps_alpha_Lsun" in depdata:
             axis.plot(
                 depdata["tmid_days"],
                 depdata["eps_alpha_Lsun"] * 3.826e33,
-                **{
-                    **plotkwargs,
-                    "label": plotkwargs["label"] + r" $\dot{E}_{rad,\alpha}$",
-                    "linestyle": "dashed",
-                    "color": color_alpha,
-                },
+                **(
+                    plotkwargs
+                    | {
+                        "label": plotkwargs["label"] + r" $\dot{E}_{rad,\alpha}$",
+                        "linestyle": "dashed",
+                        "color": color_alpha,
+                    }
+                ),
             )
 
         axis.plot(
             depdata["tmid_days"],
             depdata["alphadep_Lsun"] * 3.826e33,
-            **{
-                **plotkwargs,
-                "label": plotkwargs["label"] + r" $\dot{E}_{dep,\alpha}$",
-                "linestyle": "dotted",
-                "color": color_alpha,
-            },
+            **(
+                plotkwargs
+                | {
+                    "label": plotkwargs["label"] + r" $\dot{E}_{dep,\alpha}$",
+                    "linestyle": "dotted",
+                    "color": color_alpha,
+                }
+            ),
         )
 
     if args.plotthermalisation:
@@ -188,24 +194,28 @@ def plot_deposition_thermalisation(
         axistherm.plot(
             depdata["tmid_days"],
             f_gamma,
-            **{
-                **plotkwargs,
-                "label": modelname + r" $\left(\dot{E}_{dep,\gamma} \middle/ \dot{E}_{rad,\gamma}\right)$",
-                "linestyle": "solid",
-                "color": color_gamma,
-            },
+            **(
+                plotkwargs
+                | {
+                    "label": modelname + r" $\left(\dot{E}_{dep,\gamma} \middle/ \dot{E}_{rad,\gamma}\right)$",
+                    "linestyle": "solid",
+                    "color": color_gamma,
+                }
+            ),
         )
 
         f_beta = depdata["elecdep_Lsun"] / depdata["eps_elec_Lsun"]
         axistherm.plot(
             depdata["tmid_days"],
             f_beta,
-            **{
-                **plotkwargs,
-                "label": modelname + r" $\left(\dot{E}_{dep,\beta^-} \middle/ \dot{E}_{rad,\beta^-}\right)$",
-                "linestyle": "solid",
-                "color": color_beta,
-            },
+            **(
+                plotkwargs
+                | {
+                    "label": modelname + r" $\left(\dot{E}_{dep,\beta^-} \middle/ \dot{E}_{rad,\beta^-}\right)$",
+                    "linestyle": "solid",
+                    "color": color_beta,
+                }
+            ),
         )
 
         f_alpha = depdata["alphadep_Lsun"] / depdata["eps_alpha_Lsun"]
@@ -213,37 +223,25 @@ def plot_deposition_thermalisation(
         axistherm.plot(
             depdata["tmid_days"],
             f_alpha,
-            **{
-                **plotkwargs,
-                "label": modelname + r" $\left(\dot{E}_{dep,\alpha} \middle/ \dot{E}_{rad,\alpha}\right)$",
-                "linestyle": "solid",
-                "color": color_alpha,
-            },
+            **(
+                plotkwargs
+                | {
+                    "label": modelname + r" $\left(\dot{E}_{dep,\alpha} \middle/ \dot{E}_{rad,\alpha}\right)$",
+                    "linestyle": "solid",
+                    "color": color_alpha,
+                }
+            ),
         )
 
-        ejecta_ke: float
-        if "vel_r_max_kmps" in dfmodel.collect_schema().names():
-            # vel_r_min_kmps is in km/s
-            ejecta_ke = (
-                dfmodel.select((0.5 * (pl.col("mass_g") / 1000.0) * (1000 * pl.col("vel_r_max_kmps")) ** 2).sum())
-                .collect()
-                .item()
-            )
-        else:
-            # vel_r_mid is in cm/s
-            ejecta_ke = (
-                dfmodel.select((0.5 * (pl.col("mass_g") / 1000.0) * (pl.col("vel_r_mid") / 100.0) ** 2).sum())
-                .collect()
-                .item()
-            )
+        ejecta_ke_erg: float = dfmodel.select("kinetic_en_erg").sum().collect().item()
 
-        print(f"  ejecta kinetic energy: {ejecta_ke:.2e} [J] = {ejecta_ke * 1e7:.2e} [erg]")
+        print(f"  ejecta kinetic energy: {ejecta_ke_erg / 1e7:.2e} [J] = {ejecta_ke_erg:.2e} [erg]")
 
         # velocity derived from ejecta kinetic energy to match Barnes et al. (2016) Section 2.1
-        ejecta_v = np.sqrt(2 * ejecta_ke / (model_mass_grams * 1e-3))
-        v2 = ejecta_v / (0.2 * 299792458)
-        print(f"  Barnes average ejecta velocity: {ejecta_v / 299792458:.2f}c")
+        ejecta_v = np.sqrt(2 * ejecta_ke_erg / model_mass_grams)
+        print(f"  Barnes average ejecta velocity: {ejecta_v / 29979245800:.2f}c")
         m5 = model_mass_grams / (5e-3 * 1.989e33)  # M / (5e-3 Msun)
+        v2 = ejecta_v / (0.2 * 29979245800)  # ejecta_v / (0.2c)
 
         # Barnes et al (2016) scaling form from equation 17, with fiducial t_ineff_gamma of 1.4 days
         t_ineff_gamma = 1.4 * np.sqrt(m5) / v2
@@ -253,7 +251,7 @@ def plot_deposition_thermalisation(
         axistherm.plot(
             depdata["tmid_days"],
             barnes_f_gamma,
-            **{**plotkwargs, "label": r"Barnes+2016 $f_\gamma$", "linestyle": "dashed", "color": color_gamma},
+            **(plotkwargs | {"label": r"Barnes+2016 $f_\gamma$", "linestyle": "dashed", "color": color_gamma}),
         )
 
         e0_beta_mev = 0.5
@@ -267,7 +265,7 @@ def plot_deposition_thermalisation(
         axistherm.plot(
             depdata["tmid_days"],
             barnes_f_beta,
-            **{**plotkwargs, "label": r"Barnes+2016 $f_\beta$", "linestyle": "dashed", "color": color_beta},
+            **(plotkwargs | {"label": r"Barnes+2016 $f_\beta$", "linestyle": "dashed", "color": color_beta}),
         )
 
         e0_alpha_mev = 6.0
@@ -281,7 +279,7 @@ def plot_deposition_thermalisation(
         axistherm.plot(
             depdata["tmid_days"],
             barnes_f_alpha,
-            **{**plotkwargs, "label": r"Barnes+2016 $f_\alpha$", "linestyle": "dashed", "color": color_alpha},
+            **(plotkwargs | {"label": r"Barnes+2016 $f_\alpha$", "linestyle": "dashed", "color": color_alpha}),
         )
 
 
@@ -290,7 +288,7 @@ def plot_artis_lightcurve(
     axis,
     lcindex: int = 0,
     label: str | None = None,
-    escape_type: t.Literal["TYPE_RPKT", "TYPE_GAMMA"] = "TYPE_RPKT",
+    escape_type: str = "TYPE_RPKT",
     frompackets: bool = False,
     maxpacketfiles: int | None = None,
     axistherm=None,
@@ -299,9 +297,17 @@ def plot_artis_lightcurve(
     average_over_theta: bool = False,
     usedegrees: bool = False,
     args: argparse.Namespace | None = None,
+    pellet_nucname: str | None = None,
+    use_pellet_decay_time: bool = False,
+    plotkwargs: dict[str, t.Any] | None = None,
 ) -> dict[int, pl.DataFrame] | None:
     if args is None:
         args = argparse.Namespace()
+    if plotkwargs is None:
+        plotkwargs = {}
+    if escape_type not in {"TYPE_RPKT", "TYPE_GAMMA"}:
+        msg = f"Unknown escape type {escape_type}"
+        raise ValueError(msg)
 
     lcfilename = None
     modelpath = Path(modelpath)
@@ -313,16 +319,11 @@ def plot_artis_lightcurve(
         print(f"\nWARNING: Skipping because {modelpath} does not exist\n")
         return None
 
-    modelname = at.get_model_name(modelpath) if label is None else label
-    if lcfilename is not None:
-        modelname += f" {lcfilename}"
-    if not modelname:
-        print("====> (no series label)")
-    else:
-        print(f"====> {modelname}")
+    print(f"====> {label}")
     print(f" modelpath: {modelpath.resolve().parts[-1]}")
 
     if hasattr(args, "title") and args.title:
+        modelname = at.get_model_name(modelpath)
         axis.set_title(modelname)
 
     if directionbins is None:
@@ -338,8 +339,12 @@ def plot_artis_lightcurve(
             average_over_theta=average_over_theta,
             get_cmf_column=args.plotcmf,
             directionbins_are_vpkt_observers=args.plotvspecpol is not None,
+            pellet_nucname=pellet_nucname,
+            use_pellet_decay_time=use_pellet_decay_time,
         )
     else:
+        assert pellet_nucname is None, "pellet_nucname is only valid with frompackets=True"
+        assert not use_pellet_decay_time, "use_pellet_decay_time is only valid with frompackets=True"
         if lcfilename is None:
             lcfilename = (
                 "light_curve_res.out"
@@ -363,11 +368,10 @@ def plot_artis_lightcurve(
         if average_over_theta:
             lcdataframes = at.average_direction_bins(lcdataframes, overangle="theta")
 
-    plotkwargs: dict[str, t.Any] = {
-        "label": modelname,
-        "linestyle": args.linestyle[lcindex],
-        "color": args.color[lcindex],
-    }
+    if label is not None:
+        assert "label" not in plotkwargs, "label is already set in plotkwargs"
+        plotkwargs |= {"label": label}
+
     if args.dashes[lcindex]:
         plotkwargs["dashes"] = args.dashes[lcindex]
     if args.linewidth[lcindex]:
@@ -424,6 +428,9 @@ def plot_artis_lightcurve(
                     f"{modelname} {angle_definition[dirbin]}" if modelname else angle_definition[dirbin]
                 )
 
+        if pellet_nucname is not None:
+            plotkwargs["color"] = None
+
         filterfunc = at.get_filterfunc(args)
         if filterfunc is not None:
             lcdata = lcdata.with_columns(
@@ -438,7 +445,8 @@ def plot_artis_lightcurve(
 
         if args.magnitude:
             # convert to bol magnitude
-            lcdata["mag"] = 4.74 - (2.5 * np.log10(lcdata["lum"] / const.L_sun.to("erg/s").value))
+            Lsun_to_erg_s = 3.828e33
+            lcdata["mag"] = 4.74 - (2.5 * np.log10(lcdata["lum"] / Lsun_to_erg_s))
             ycolumn = "mag"
         else:
             ycolumn = "lum"
@@ -455,14 +463,14 @@ def plot_artis_lightcurve(
         if validrange_start_days is None or validrange_end_days is None:
             # entire range is invalid
             lcdata_before_valid = lcdata
-            lcdata_after_valid = pl.from_pandas(pd.DataFrame(data=None, columns=lcdata.columns))
-            lcdata_valid = pl.from_pandas(pd.DataFrame(data=None, columns=lcdata.columns))
+            lcdata_after_valid = pl.DataFrame(schema=lcdata.schema)
+            lcdata_valid = pl.DataFrame(schema=lcdata.schema)
         else:
             lcdata_valid = lcdata.filter(pl.col("time").is_between(validrange_start_days, validrange_end_days))
             if lcdata_valid.is_empty():
                 # valid range doesn't contain any data points
                 lcdata_before_valid = lcdata
-                lcdata_after_valid = pl.from_pandas(pd.DataFrame(data=None, columns=lcdata.columns))
+                lcdata_after_valid = pl.DataFrame(schema=lcdata.schema)
             else:
                 lcdata_before_valid = lcdata.filter(pl.col("time") <= lcdata_valid["time"].min())
                 lcdata_after_valid = lcdata.filter(pl.col("time") >= lcdata_valid["time"].max())
@@ -496,13 +504,15 @@ def make_lightcurve_plot(
     modelpaths: Sequence[str | Path],
     filenameout: str | Path,
     frompackets: bool = False,
-    escape_type: t.Literal["TYPE_RPKT", "TYPE_GAMMA"] = "TYPE_RPKT",
+    showuvoir: bool = True,
+    showgamma: bool = False,
     maxpacketfiles: int | None = None,
     args: argparse.Namespace | None = None,
 ) -> None:
-    """Use light_curve.out or light_curve_res.out files to plot light curve."""
+    """Plot light curves from light_curve.out, gamma_light_curve.out or light_curve_res.out or packets files."""
     if args is None:
         args = argparse.Namespace()
+
     conffigwidth = float(at.get_config()["figwidth"])
     fig, axis = plt.subplots(
         nrows=1,
@@ -557,24 +567,67 @@ def make_lightcurve_plot(
             print(f"====> {lightcurvelabel}")
             reflightcurveindex += 1
             plottedsomething = True
+
+            lcindex += 1
         else:
             dirbin = args.plotviewingangle or (args.plotvspecpol or [-1])
-            lcdataframes = plot_artis_lightcurve(
-                modelpath=modelpath,
-                lcindex=lcindex,
-                label=args.label[lcindex],
-                axis=axis,
-                escape_type=escape_type,
-                frompackets=frompackets,
-                maxpacketfiles=maxpacketfiles,
-                axistherm=axistherm,
-                directionbins=dirbin,
-                average_over_phi=args.average_over_phi_angle,
-                average_over_theta=args.average_over_theta_angle,
-                usedegrees=args.usedegrees,
-                args=args,
-            )
-            plottedsomething = plottedsomething or (lcdataframes is not None)
+            escape_types = ["TYPE_RPKT"] if showuvoir else []
+            if showgamma:
+                escape_types.append("TYPE_GAMMA")
+
+            topnucs = args.topnucs
+            for escape_type in escape_types:
+                pellet_nucnames = [None]
+                if topnucs > 0:
+                    try:
+                        dfnuclides = at.get_nuclides(modelpath=modelpath)
+                        _, dfpackets = at.packets.get_packets_pl(
+                            modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type=escape_type
+                        )
+                        top_nuclides = (
+                            dfpackets.group_by("pellet_nucindex")
+                            .agg(pl.sum("e_rf").alias("e_rf_sum"))
+                            .top_k(by="e_rf_sum", k=topnucs)
+                            .join(dfnuclides, on="pellet_nucindex", how="left")
+                            .select(["e_rf_sum", "nucname", "pellet_nucindex"])
+                            .collect()
+                        )
+                        print(top_nuclides)
+                        pellet_nucnames.extend(top_nuclides["nucname"])
+                    except FileNotFoundError:
+                        print("WARNING: no nuclides.out file found, skipping top nuclides")
+
+                for pellet_nucname in pellet_nucnames:
+                    label = args.label[lcindex]
+                    if label is None:
+                        label = at.get_model_name(modelpath)
+                    if escape_type == "TYPE_GAMMA":
+                        label += r" $\gamma$"
+                    if pellet_nucname is not None:
+                        label += f" {pellet_nucname}"
+
+                    lcdataframes = plot_artis_lightcurve(
+                        modelpath=modelpath,
+                        lcindex=lcindex,
+                        label=label,
+                        axis=axis,
+                        escape_type=escape_type,
+                        frompackets=frompackets,
+                        maxpacketfiles=maxpacketfiles,
+                        axistherm=axistherm,
+                        directionbins=dirbin,
+                        average_over_phi=args.average_over_phi_angle,
+                        average_over_theta=args.average_over_theta_angle,
+                        usedegrees=args.usedegrees,
+                        args=args,
+                        pellet_nucname=pellet_nucname,
+                        use_pellet_decay_time=args.use_pellet_decay_time,
+                        plotkwargs={
+                            "linestyle": args.linestyle[lcindex] if escape_type == "TYPE_RPKT" else ":",
+                            "color": args.color[lcindex],
+                        },
+                    )
+                    plottedsomething = plottedsomething or (lcdataframes is not None)
 
         print()
 
@@ -628,12 +681,12 @@ def make_lightcurve_plot(
             str_units = str_units.replace("{}", "")
         if args.plotdeposition:
             yvarname = r"$L$ or $\dot{{E}}$"
-        elif escape_type == "TYPE_GAMMA":
+        elif showgamma and not showuvoir:
             yvarname = r"$\mathrm{{L}}_\gamma$"
-        elif escape_type == "TYPE_RPKT":
+        elif showuvoir and not showgamma:
             yvarname = r"$\mathrm{{L}}_{{\mathrm{{UVOIR}}}}$"
         else:
-            yvarname = r"$\mathrm{{L}}_{{\mathrm{{" + escape_type.replace("_", r"\_") + r"}}}}$"
+            yvarname = r"$\mathrm{{L}}$"
 
         axis.set_ylabel(yvarname + str_units)
 
@@ -720,7 +773,7 @@ def create_axes(args):
 
 
 def get_linelabel(
-    modelpath: Path, modelname: str, modelnumber: int, angle: int | None, angle_definition: dict[int, str] | None, args
+    modelname: str, modelnumber: int, angle: int | None, angle_definition: dict[int, str] | None, args
 ) -> str:
     if angle is not None and angle != -1:
         assert angle_definition is not None
@@ -788,7 +841,12 @@ def make_colorbar_viewingangles_colormap():
 
 
 def get_viewinganglecolor_for_colorbar(
-    angle: int, costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, plotkwargs, args
+    angle: int,
+    costheta_viewing_angle_bins,  # noqa: ARG001
+    phi_viewing_angle_bins,  # noqa: ARG001
+    scaledmap,
+    plotkwargs,
+    args,
 ) -> tuple[dict[str, t.Any], int]:
     nphibins = at.get_viewingdirection_phibincount()
     if args.colorbarcostheta:
@@ -806,11 +864,11 @@ def get_viewinganglecolor_for_colorbar(
     return plotkwargs, colorindex
 
 
-def make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args, fig=None, ax=None):
+def make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args, fig=None, ax=None):  # noqa: ARG001
     if args.colorbarcostheta:
         # ticklabels = costheta_viewing_angle_bins
         ticklabels = [" -1", " -0.8", " -0.6", " -0.4", " -0.2", " 0", " 0.2", " 0.4", " 0.6", " 0.8", " 1"]
-        ticklocs = list(np.linspace(0, 9, num=11))
+        ticklocs = list(np.linspace(0, 9, num=11, dtype=float))
         label = "cos θ"
     if args.colorbarphi:
         print("reordered phi bins")
@@ -829,7 +887,7 @@ def make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args, fig=Non
         ]
         ticklabels = phi_viewing_angle_bins_reordered
         # ticklabels = phi_viewing_angle_bins
-        ticklocs = list(np.linspace(0, 9, num=11))
+        ticklocs = list(np.linspace(0, 9, num=11, dtype=float))
         label = "ϕ bin"
 
     hidecolorbar = False
@@ -901,7 +959,7 @@ def make_band_lightcurves_plot(
                 if args.print_data:
                     print(txtout)
 
-                plotkwargs["label"] = get_linelabel(modelpath, modelname, modelnumber, angle, angle_definition, args)
+                plotkwargs["label"] = get_linelabel(modelname, modelnumber, angle, angle_definition, args)
                 # plotkwargs['label'] = '\n'.join(wrap(linelabel, 40))  # TODO: could be arg? wraps text in label
 
                 filterfunc = at.get_filterfunc(args)
@@ -1060,7 +1118,7 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
 
                 plot_times, colour_delta_mag = at.lightcurve.get_colour_delta_mag(band_lightcurve_data, filter_names)
 
-                plotkwargs["label"] = get_linelabel(modelpath, modelname, modelnumber, angle, angle_definition, args)
+                plotkwargs["label"] = get_linelabel(modelname, modelnumber, angle, angle_definition, args)
 
                 filterfunc = at.get_filterfunc(args)
                 if filterfunc is not None:
@@ -1347,7 +1405,15 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("-maxpacketfiles", type=int, default=None, help="Limit the number of packet files read")
 
-    parser.add_argument("--gamma", action="store_true", help="Make light curve from gamma rays instead of R-packets")
+    parser.add_argument("--gamma", action="store_true", help="Make light curve from gamma rays")
+
+    parser.add_argument(
+        "--rpkt",
+        "--uvoir",
+        dest="rpkt",
+        action="store_true",
+        help="Make light curve from R-packets (default unless --gamma is passed)",
+    )
 
     parser.add_argument("-escape_type", default="TYPE_RPKT", help="Type of escaping packets")
 
@@ -1372,6 +1438,14 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument(
         "--plotthermalisation", action="store_true", help="Plot thermalisation rates (in separate plot)"
+    )
+
+    parser.add_argument(
+        "-topnucs", type=int, default=0, help="Show light curves from top n nuclides energy contributions."
+    )
+
+    parser.add_argument(
+        "--use_pellet_decay_time", action="store_true", help="Use pellet decay time instead of observer arrival time"
     )
 
     parser.add_argument("--magnitude", action="store_true", help="Plot light curves in magnitudes")
@@ -1635,19 +1709,19 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         len(args.modelpath), args.color, args.label, args.linestyle, args.dashes, args.linewidth
     )
 
-    if args.gamma:
-        args.escape_type = "TYPE_GAMMA"
+    if args.rpkt is False and not args.gamma:
+        # if we're not plotting gamma, then we want to plot the r-packets by default
+        args.rpkt = True
+    if args.topnucs > 0:
+        print("Enabling --frompackets because topnucs > 0")
+        args.frompackets = True
 
     if args.filter:
         defaultoutputfile = "plotlightcurves.pdf"
     elif args.colour_evolution:
         defaultoutputfile = "plot_colour_evolution.pdf"
-    elif args.escape_type == "TYPE_GAMMA":
-        defaultoutputfile = "plotlightcurve_gamma.pdf"
-    elif args.escape_type == "TYPE_RPKT":
-        defaultoutputfile = "plotlightcurve.pdf"
     else:
-        defaultoutputfile = f"plotlightcurve_{args.escape_type}.pdf"
+        defaultoutputfile = "plotlightcurve.pdf"
 
     if not args.outputfile:
         outputfolder = Path()
@@ -1698,7 +1772,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             modelpaths=args.modelpath,
             filenameout=args.outputfile,
             frompackets=args.frompackets,
-            escape_type=args.escape_type,
+            showuvoir=args.rpkt,
+            showgamma=args.gamma,
             maxpacketfiles=args.maxpacketfiles,
             args=args,
         )

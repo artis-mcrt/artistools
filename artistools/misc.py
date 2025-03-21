@@ -10,6 +10,10 @@ import multiprocessing.pool
 import string
 import typing as t
 from collections import namedtuple
+from collections.abc import Callable
+from collections.abc import Generator
+from collections.abc import Iterable
+from collections.abc import Sequence
 from functools import lru_cache
 from itertools import chain
 from pathlib import Path
@@ -21,7 +25,7 @@ import polars as pl
 import zstandard as zstd
 from typeguard import typechecked
 
-import artistools as at
+from artistools.configuration import get_config
 
 roman_numerals = (
     "",
@@ -55,7 +59,7 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
         kwargs["max_help_position"] = 39
         super().__init__(*args, **kwargs)
 
-    def add_arguments(self, actions: t.Iterable[argparse.Action]) -> None:
+    def add_arguments(self, actions: Iterable[argparse.Action]) -> None:
         getinvocation = super()._format_action_invocation
 
         def my_sort(action: argparse.Action) -> str:
@@ -99,7 +103,7 @@ def showtimesteptimes(modelpath: Path | None = None, numberofcolumns: int = 5) -
                 strline += "\t"
             newindex = rownum + colnum * indexendofcolumnone
             if newindex + 1 < len(times):
-                strline += f"{newindex:4d}: {float(times[newindex + 1]):.3f}d"
+                strline += f"{newindex:4d}: {times[newindex + 1]:.3f}d"
         print(strline)
 
 
@@ -108,7 +112,16 @@ def get_composition_data(filename: Path | str) -> pd.DataFrame:
     """Return a pandas DataFrame containing details of included elements and ions."""
     filename = Path(filename, "compositiondata.txt") if Path(filename).is_dir() else Path(filename)
 
-    columns = ("Z,nions,lowermost_ion_stage,uppermost_ion_stage,nlevelsmax_readin,abundance,mass,startindex").split(",")
+    columns = [
+        "Z",
+        "nions",
+        "lowermost_ion_stage",
+        "uppermost_ion_stage",
+        "nlevelsmax_readin",
+        "abundance",
+        "mass",
+        "startindex",
+    ]
 
     rowdfs = []
     with filename.open(encoding="utf-8") as fcompdata:
@@ -179,9 +192,9 @@ def average_direction_bins(
     dirbindataframes: dict[int, pl.DataFrame], overangle: t.Literal["phi", "theta"]
 ) -> dict[int, pl.DataFrame]:
     """Average dict of direction-binned polars DataFrames according to the phi or theta angle."""
-    dirbincount = at.get_viewingdirectionbincount()
-    nphibins = at.get_viewingdirection_phibincount()
-    ncosthetabins = at.get_viewingdirection_costhetabincount()
+    dirbincount = get_viewingdirectionbincount()
+    nphibins = get_viewingdirection_phibincount()
+    ncosthetabins = get_viewingdirection_costhetabincount()
 
     assert overangle in {"phi", "theta"}
     if overangle == "phi":
@@ -278,7 +291,9 @@ def get_wid_init_at_tmodel(
     if ngridpoints is None or t_model_days is None or xmax is None:
         # Luke: ngridpoint only equals the number of model cells if the model is 3D
         assert modelpath is not None
-        _, modelmeta = at.get_modeldata(modelpath, getheadersonly=True)
+        from artistools.inputmodel import get_modeldata
+
+        _, modelmeta = get_modeldata(modelpath, getheadersonly=True)
         assert modelmeta["dimensions"] == 3
         ngridpoints = modelmeta["npts_model"]
         xmax = modelmeta["vmax_cmps"] * modelmeta["t_model_init_days"] * 86400.0
@@ -289,24 +304,12 @@ def get_wid_init_at_tmodel(
     return 2.0 * xmax / ncoordgridx
 
 
-def get_syn_dir(modelpath: Path) -> tuple[float, float, float]:
-    """Return the direction from which theta angle is measured."""
-    syndirpath = Path(modelpath) / "syn_dir.txt"
-    if not syndirpath.is_file():
-        print(f"{modelpath / 'syn_dir.txt'} does not exist. using x,y,z = 0,0,1")
-        return (0.0, 0.0, 1.0)
-
-    with syndirpath.open(encoding="utf-8") as syn_dir_file:
-        x, y, z = (float(i) for i in syn_dir_file.readline().split())
-        return (x, y, z)
-
-
-def vec_len(vec: t.Sequence[float] | np.ndarray[t.Any, np.dtype[np.float64]]) -> float:
+def vec_len(vec: Sequence[float] | np.ndarray[t.Any, np.dtype[np.floating[t.Any]]]) -> float:
     return float(np.sqrt(np.dot(vec, vec)))
 
 
 @lru_cache(maxsize=16)
-def get_nu_grid(modelpath: Path) -> np.ndarray[t.Any, np.dtype[np.float64]]:
+def get_nu_grid(modelpath: Path) -> np.ndarray[t.Any, np.dtype[np.floating[t.Any]]]:
     """Return an array of frequencies at which the ARTIS spectra are binned by exspec."""
     specdata = pl.read_csv(
         firstexisting(["spec.out", "specpol.out"], folder=modelpath, tryzipped=True),
@@ -391,7 +394,7 @@ def get_timestep_times(modelpath: Path | str, loc: t.Literal["mid", "start", "en
         raise ValueError(msg)
 
     # older versions of Artis always used logarithmic timesteps and didn't produce a timesteps.out file
-    inputparams = at.get_inputparams(modelpath)
+    inputparams = get_inputparams(modelpath)
     tmin = inputparams["tmin"]
     dlogt = (math.log(inputparams["tmax"]) - math.log(tmin)) / inputparams["ntstep"]
     timesteps = range(inputparams["ntstep"])
@@ -435,7 +438,7 @@ def get_time_range(
     timestep_range_str: str | None = None,
     timemin: float | None = None,
     timemax: float | None = None,
-    timedays_range_str: None | str | float = None,
+    timedays_range_str: str | float | None = None,
     clamp_to_timesteps: bool = True,
 ) -> tuple[int, int, float | None, float | None]:
     """Handle a time range specified in either days or timesteps."""
@@ -515,10 +518,10 @@ def get_time_range(
         timestepmax = timesteplast
     if time_days_lower is None:
         assert timestepmin is not None
-        time_days_lower = float(tstarts[timestepmin]) if clamp_to_timesteps else timemin
+        time_days_lower = tstarts[timestepmin] if clamp_to_timesteps else timemin
     if time_days_upper is None:
         assert timestepmax is not None
-        time_days_upper = float(tends[timestepmax]) if clamp_to_timesteps else timemax
+        time_days_upper = tends[timestepmax] if clamp_to_timesteps else timemax
     assert timestepmin is not None
     assert timestepmax is not None
 
@@ -534,7 +537,9 @@ def get_timestep_time(modelpath: Path | str, timestep: int) -> float:
 def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | None, float | None]:
     """Return the time range for which the entire model can send light signals the observer."""
     modelpath = Path(modelpath)
-    _, modelmeta = at.inputmodel.get_modeldata(modelpath, printwarningsonly=True, getheadersonly=True)
+    from artistools.inputmodel import get_modeldata
+
+    _, modelmeta = get_modeldata(modelpath, printwarningsonly=True, getheadersonly=True)
     vmax = modelmeta["vmax_cmps"]
     cornervmax = math.sqrt(3 * vmax**2)
 
@@ -545,12 +550,12 @@ def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | None, 
     vmax_tmin = cornervmax if modelmeta["dimensions"] == 3 else vmax
 
     # earliest completely valid time is tmin plus maximum possible travel time from the origin to the corner
-    validrange_start_days = at.get_timestep_times(modelpath, loc="start")[0] * (1 + vmax_tmin / 29979245800)
+    validrange_start_days = get_timestep_times(modelpath, loc="start")[0] * (1 + vmax_tmin / 29979245800)
 
-    t_end = at.get_timestep_times(modelpath, loc="end")
+    t_end = get_timestep_times(modelpath, loc="end")
     # find the last possible escape time and subtract the largest possible travel time (observer time correction)
     try:
-        depdata = at.get_deposition(modelpath=modelpath)  # use this file to find the last computed timestep
+        depdata = get_deposition(modelpath=modelpath)  # use this file to find the last computed timestep
         nts_last = depdata["timestep"].max() if "timestep" in depdata.columns else len(depdata) - 1
     except FileNotFoundError:
         print("WARNING: No deposition.out file found. Assuming all timesteps have been computed")
@@ -614,7 +619,7 @@ def get_elsymbolslist() -> list[str]:
     """
     return [
         "n",
-        *list(pd.read_csv(at.get_config()["path_datadir"] / "elements.csv", usecols=["symbol"])["symbol"].to_numpy()),
+        *list(pd.read_csv(get_config()["path_datadir"] / "elements.csv", usecols=["symbol"])["symbol"].to_numpy()),
     ]
 
 
@@ -622,7 +627,7 @@ def get_elsymbols_df() -> pl.DataFrame:
     """Return a polars DataFrame of atomic number and element symbols."""
     return (
         pl.read_csv(
-            at.get_config()["path_datadir"] / "elements.csv",
+            get_config()["path_datadir"] / "elements.csv",
             separator=",",
             has_header=True,
             schema_overrides={"Z": pl.Int32},
@@ -675,8 +680,8 @@ def get_ion_tuple(ionstr: str) -> tuple[int, int] | int:
     if ionstr.isdigit():
         return int(ionstr)
 
-    if ionstr in at.get_elsymbolslist():
-        return at.get_atomic_number(ionstr)
+    if ionstr in get_elsymbolslist():
+        return get_atomic_number(ionstr)
 
     elem = "?"
     strion_stage = "?"
@@ -685,7 +690,7 @@ def get_ion_tuple(ionstr: str) -> tuple[int, int] | int:
     elif "_" in ionstr:
         elem, strion_stage = ionstr.split("_")
     else:
-        for elsym in at.get_elsymbolslist():
+        for elsym in get_elsymbolslist():
             if ionstr.startswith(elsym):
                 elem = elsym
                 strion_stage = ionstr.removeprefix(elsym)
@@ -695,8 +700,8 @@ def get_ion_tuple(ionstr: str) -> tuple[int, int] | int:
         msg = f"Could not parse ionstr {ionstr}"
         raise ValueError(msg)
 
-    atomic_number = int(elem) if elem.isdigit() else at.get_atomic_number(elem)
-    ion_stage = int(strion_stage) if strion_stage.isdigit() else at.decode_roman_numeral(strion_stage)
+    atomic_number = int(elem) if elem.isdigit() else get_atomic_number(elem)
+    ion_stage = int(strion_stage) if strion_stage.isdigit() else decode_roman_numeral(strion_stage)
 
     return (atomic_number, ion_stage)
 
@@ -704,7 +709,7 @@ def get_ion_tuple(ionstr: str) -> tuple[int, int] | int:
 @lru_cache(maxsize=16)
 def get_ionstring(
     atomic_number: int | np.int64,
-    ion_stage: None | int | np.int64 | t.Literal["ALL"],
+    ion_stage: int | np.int64 | t.Literal["ALL"] | None,
     style: t.Literal["spectral", "chargelatex", "charge"] = "spectral",
     sep: str = " ",
 ) -> str:
@@ -712,7 +717,7 @@ def get_ionstring(
     if ion_stage is None or ion_stage == "ALL":
         return get_elsymbol(atomic_number)
 
-    if isinstance(ion_stage, str) and ion_stage.startswith(at.get_elsymbol(atomic_number)):
+    if isinstance(ion_stage, str) and ion_stage.startswith(get_elsymbol(atomic_number)):
         # nuclides like Sr89 get passed in as atomic_number=38, ion_stage='Sr89'
         return ion_stage
 
@@ -750,7 +755,7 @@ def set_args_from_dict(parser: argparse.ArgumentParser, kwargs: dict[str, t.Any]
         raise ValueError(msg)
 
 
-def parse_range(rng: str, dictvars: dict[str, int]) -> t.Iterable[t.Any]:
+def parse_range(rng: str, dictvars: dict[str, int]) -> Iterable[t.Any]:
     """Parse a string with an integer range and return a list of numbers, replacing special variables in dictvars."""
     strparts = rng.split("-")
 
@@ -782,20 +787,20 @@ def parse_range_list(rngs: str | list[str] | int, dictvars: dict[str, int] | Non
     return sorted(set(chain.from_iterable([parse_range(rng, dictvars or {}) for rng in rngs.split(",")])))
 
 
-def makelist(x: None | t.Sequence[t.Any] | str | Path) -> list[t.Any]:
+def makelist(x: Sequence[t.Any] | str | Path | None) -> list[t.Any]:
     """If x is not a list (or is a string), make a list containing x."""
     if x is None:
         return []
-    return list(x) if isinstance(x, t.Iterable) else [x]
+    return list(x) if isinstance(x, Iterable) else [x]
 
 
-def trim_or_pad(requiredlength: int, *listoflistin: t.Any) -> t.Sequence[t.Sequence[t.Any]]:
+def trim_or_pad(requiredlength: int, *listoflistin: t.Any) -> Sequence[Sequence[t.Any]]:
     """Make lists equal in length to requiredlength either by padding with None or truncating."""
     list_sequence = []
     for listin in listoflistin:
-        listin = makelist(listin)
+        listin_makelist = makelist(listin)
 
-        listout = [listin[i] if i < len(listin) else None for i in range(requiredlength)]
+        listout = [listin_makelist[i] if i < len(listin_makelist) else None for i in range(requiredlength)]
 
         assert len(listout) == requiredlength
         list_sequence.append(listout)
@@ -823,7 +828,7 @@ def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None) -
             return fopen(file_withext, mode=mode, encoding=encoding)
 
     # open() can raise file not found if this file doesn't exist
-    return Path(filename).open(mode=mode, encoding=encoding)  # noqa: SIM115
+    return Path(filename).open(mode=mode, encoding=encoding)
 
 
 def zopenpl(filename: Path | str, mode: str = "rt", encoding: str | None = None) -> t.Any | Path:
@@ -840,7 +845,7 @@ def zopenpl(filename: Path | str, mode: str = "rt", encoding: str | None = None)
 
 
 def firstexisting(
-    filelist: t.Sequence[str | Path] | str | Path,
+    filelist: Sequence[str | Path] | str | Path,
     folder: Path | str = Path(),
     tryzipped: bool = True,
     search_subfolders: bool = True,
@@ -850,27 +855,36 @@ def firstexisting(
         filelist = [filelist]
 
     folder = Path(folder)
-    folders = [folder]
+    thispath = Path(folder, filelist[0])
+
+    if thispath.exists():
+        return thispath
 
     fullpaths = []
-    for filename in filelist:
-        if search_subfolders:
-            folders += [
-                p.parent for filename in filelist for p in folder.glob(f"*/{filename}*") if p.parent not in folders
-            ]
 
-        for folder in folders:
-            fullpaths.append(Path(folder) / filename)
+    def search_folders() -> Generator[Path]:
+        yield Path(folder)
+        if search_subfolders:
+            for filename in filelist:
+                for p in Path(folder).glob(f"*/{filename}*"):
+                    yield p.parent
+
+    for searchfolder in search_folders():
+        for filename in filelist:
+            thispath = Path(searchfolder, filename)
+            if thispath.exists():
+                return thispath
+
+            fullpaths.append(thispath)
 
             if tryzipped:
                 for ext in (".zst", ".gz", ".xz"):
                     filenameext = str(filename) if str(filename).endswith(ext) else str(filename) + ext
                     if filenameext not in filelist:
-                        fullpaths.append(folder / filenameext)
-
-    for fullpath in fullpaths:
-        if fullpath.exists():
-            return fullpath
+                        thispath = Path(searchfolder, filenameext)
+                        if thispath.exists():
+                            return thispath
+                        fullpaths.append(thispath)
 
     strfilelist = "\n  ".join([str(x.relative_to(folder)) for x in fullpaths])
     orsub = " or subfolders" if search_subfolders else ""
@@ -879,10 +893,7 @@ def firstexisting(
 
 
 def anyexist(
-    filelist: t.Sequence[str | Path],
-    folder: Path | str = Path(),
-    tryzipped: bool = True,
-    search_subfolders: bool = True,
+    filelist: Sequence[str | Path], folder: Path | str = Path(), tryzipped: bool = True, search_subfolders: bool = True
 ) -> Path | None:
     """Return true if any files in file list exist."""
     try:
@@ -895,7 +906,7 @@ def anyexist(
     return filepath
 
 
-def batched(iterable: t.Iterable[t.Any], n: int) -> t.Generator[list[t.Any], t.Any, None]:
+def batched(iterable: Iterable[t.Any], n: int) -> Generator[list[t.Any], t.Any, None]:
     """Batch data into iterators of length n. The last batch may be shorter."""
     # batched('ABCDEFG', 3) --> ABC DEF G
     if n < 1:
@@ -971,7 +982,7 @@ def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
     return {}
 
 
-def get_filterfunc(args: argparse.Namespace, mode: str = "interp") -> t.Callable[[t.Any], t.Any] | None:
+def get_filterfunc(args: argparse.Namespace, mode: str = "interp") -> Callable[[t.Any], t.Any] | None:
     """Use command line arguments to determine the appropriate filter function."""
     filterfunc = None
     dictargs = vars(args)
@@ -1019,6 +1030,38 @@ def merge_pdf_files(pdf_files: list[str]) -> None:
     print(f"Files merged and saved to {resultfilename}.pdf")
 
 
+def get_nuclides(modelpath: Path | str) -> pl.LazyFrame:
+    """Return LazyFrame with: pellet_nucindex atomic_number A nucname from nuclides.out file."""
+    filepath = Path(modelpath, "nuclides.out")
+    if not filepath.is_file():
+        msg = f"File {filepath} not found"
+        raise FileNotFoundError(msg)
+
+    dfnuclides = (
+        pl.scan_csv(filepath, separator=" ", has_header=True)
+        .rename({"#nucindex": "pellet_nucindex", "Z": "atomic_number"})
+        .join(get_elsymbols_df().lazy(), on="atomic_number", how="left")
+        .with_columns(nucname=pl.col("elsymbol") + pl.col("A").cast(pl.String))
+    ).with_columns(pl.col(pl.Int64).cast(pl.Int32))
+
+    return pl.concat(
+        [
+            pl.LazyFrame(
+                {
+                    "pellet_nucindex": -1,
+                    "atomic_number": -1,
+                    "A": -1,
+                    "elsymbol": "initial energy",
+                    "nucname": "initial energy",
+                },
+                schema=dfnuclides.collect_schema(),
+            ),
+            dfnuclides,
+        ],
+        how="vertical",
+    )
+
+
 def get_bflist(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame:
     """Return a dict of bound-free transitions from bflist.out."""
     compositiondata = get_composition_data(modelpath)
@@ -1059,8 +1102,8 @@ def get_bflist(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame
 
     if get_ion_str:
         dfboundfree = (
-            dfboundfree.join(at.get_ion_stage_roman_numeral_df().lazy(), on="ion_stage", how="left")
-            .join(at.get_elsymbols_df().lazy(), on="atomic_number", how="left")
+            dfboundfree.join(get_ion_stage_roman_numeral_df().lazy(), on="ion_stage", how="left")
+            .join(get_elsymbols_df().lazy(), on="atomic_number", how="left")
             .with_columns(ion_str=pl.col("elsymbol") + " " + pl.col("ion_stage_roman"))
         )
 
@@ -1098,7 +1141,7 @@ def read_linestatfile(filepath: Path | str) -> tuple[list[float], list[int], lis
 
 
 def get_linelist_pldf(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame:
-    textfile = at.firstexisting("linestat.out", folder=modelpath)
+    textfile = firstexisting("linestat.out", folder=modelpath)
     parquetfile = Path(modelpath, "linelist.out.parquet")
     if not parquetfile.is_file() or parquetfile.stat().st_mtime < textfile.stat().st_mtime:
         lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels = read_linestatfile(textfile)
@@ -1142,8 +1185,8 @@ def get_linelist_pldf(modelpath: Path | str, get_ion_str: bool = False) -> pl.La
 
     if get_ion_str:
         linelist_lazy = (
-            linelist_lazy.join(at.get_ion_stage_roman_numeral_df().lazy(), on="ion_stage", how="left")
-            .join(at.get_elsymbols_df().lazy(), on="atomic_number", how="left")
+            linelist_lazy.join(get_ion_stage_roman_numeral_df().lazy(), on="ion_stage", how="left")
+            .join(get_elsymbols_df().lazy(), on="atomic_number", how="left")
             .with_columns(ion_str=pl.col("elsymbol") + " " + pl.col("ion_stage_roman"))
         )
 
@@ -1178,9 +1221,7 @@ def get_linelist_dataframe(modelpath: Path | str) -> pd.DataFrame:
 def get_npts_model(modelpath: Path) -> int:
     """Return the number of cell in the model.txt."""
     modelfilepath = (
-        Path(modelpath)
-        if Path(modelpath).is_file()
-        else at.firstexisting("model.txt", folder=modelpath, tryzipped=True)
+        Path(modelpath) if Path(modelpath).is_file() else firstexisting("model.txt", folder=modelpath, tryzipped=True)
     )
     with zopen(modelfilepath) as modelfile:
         nptsline = readnoncommentline(modelfile).split(maxsplit=1)
@@ -1198,9 +1239,6 @@ def get_nprocs(modelpath: Path) -> int:
 @lru_cache(maxsize=8)
 def get_inputparams(modelpath: Path) -> dict[str, t.Any]:
     """Return parameters specified in input.txt."""
-    from astropy import constants as const
-    from astropy import units as u
-
     params: dict[str, t.Any] = {}
     with Path(modelpath, "input.txt").open("r", encoding="utf-8") as inputfile:
         params["pre_zseed"] = int(readnoncommentline(inputfile).split("#")[0])
@@ -1213,8 +1251,9 @@ def get_inputparams(modelpath: Path) -> dict[str, t.Any]:
 
         params["tmin"], params["tmax"] = (float(x) for x in readnoncommentline(inputfile).split("#")[0].split())
 
+        MeV_in_Hz = 2.417989242084918e20
         params["nusyn_min"], params["nusyn_max"] = (
-            (float(x) * u.MeV / const.h).to("Hz") for x in readnoncommentline(inputfile).split("#")[0].split()
+            float(x) * MeV_in_Hz for x in readnoncommentline(inputfile).split("#")[0].split()
         )
 
         # number of times for synthesis
@@ -1247,8 +1286,8 @@ def get_runfolder_timesteps(folderpath: Path | str) -> tuple[int, ...]:
 
 
 def get_runfolders(
-    modelpath: Path | str, timestep: int | None = None, timesteps: t.Sequence[int] | None = None
-) -> t.Sequence[Path]:
+    modelpath: Path | str, timestep: int | None = None, timesteps: Sequence[int] | None = None
+) -> Sequence[Path]:
     """Get a list of folders containing ARTIS output files from a modelpath, optionally with a timestep restriction.
 
     The folder list may include non-ARTIS folders if a timestep is not specified.
@@ -1269,8 +1308,8 @@ def get_runfolders(
 
 
 def get_mpiranklist(
-    modelpath: Path | str, modelgridindex: t.Iterable[int] | int | None = None, only_ranks_withgridcells: bool = False
-) -> t.Sequence[int]:
+    modelpath: Path | str, modelgridindex: Iterable[int] | int | None = None, only_ranks_withgridcells: bool = False
+) -> Sequence[int]:
     """Get a list of rank ids.
 
     - modelpath:
@@ -1285,7 +1324,7 @@ def get_mpiranklist(
             return range(min(get_nprocs(modelpath), get_npts_model(modelpath)))
         return range(get_nprocs(modelpath))
 
-    if isinstance(modelgridindex, t.Iterable):
+    if isinstance(modelgridindex, Iterable):
         mpiranklist = set()
         for mgi in modelgridindex:
             if mgi < 0:
@@ -1304,7 +1343,7 @@ def get_mpiranklist(
     return [get_mpirankofcell(modelgridindex, modelpath=modelpath)]
 
 
-def get_cellsofmpirank(mpirank: int, modelpath: Path | str) -> t.Iterable[int]:
+def get_cellsofmpirank(mpirank: int, modelpath: Path | str) -> Iterable[int]:
     """Return an iterable of the cell numbers processed by a given MPI rank."""
     npts_model = get_npts_model(modelpath)
     nprocs = get_nprocs(modelpath)
@@ -1330,7 +1369,7 @@ def get_dfrankassignments(modelpath: Path | str) -> pd.DataFrame | None:
     if filerankassignments.is_file():
         dfrankassignments = pd.read_csv(filerankassignments, sep=r"\s+")
         return dfrankassignments.rename(
-            columns={dfrankassignments.columns[0]: str(dfrankassignments.columns[0]).lstrip("#")}
+            columns={dfrankassignments.columns[0]: dfrankassignments.columns[0].lstrip("#")}
         )
     return None
 
@@ -1380,8 +1419,10 @@ def get_viewingdirection_costhetabincount() -> int:
     return 10
 
 
-def get_phi_bins(usedegrees: bool) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], list[str]]:
-    nphibins = at.get_viewingdirection_phibincount()
+def get_phi_bins(
+    usedegrees: bool,
+) -> tuple[npt.NDArray[np.floating[t.Any]], npt.NDArray[np.floating[t.Any]], list[str]]:
+    nphibins = get_viewingdirection_phibincount()
     # pi/2 must be an exact boundary because of the change in behaviour there
     assert nphibins % 2 == 0
 
@@ -1417,7 +1458,7 @@ def get_phi_bins(usedegrees: bool) -> tuple[npt.NDArray[np.float64], npt.NDArray
 def get_costheta_bins(
     usedegrees: bool, usepiminustheta: bool = False
 ) -> tuple[tuple[float, ...], tuple[float, ...], list[str]]:
-    ncosthetabins = at.get_viewingdirection_costhetabincount()
+    ncosthetabins = get_viewingdirection_costhetabincount()
     costhetabins_lower = np.arange(-1.0, 1.0, 2.0 / ncosthetabins)
     costhetabins_upper = costhetabins_lower + 2.0 / ncosthetabins
     if usedegrees:
@@ -1441,7 +1482,7 @@ def get_costheta_bins(
             f"{lower:.1f} ≤ cos θ < {upper:.1f}"
             for lower, upper in zip(costhetabins_lower, costhetabins_upper, strict=False)
         ]
-    return tuple(costhetabins_lower), tuple(costhetabins_upper), binlabels
+    return tuple(float(x) for x in costhetabins_lower), tuple(costhetabins_upper), binlabels
 
 
 def get_costhetabin_phibin_labels(usedegrees: bool) -> tuple[list[str], list[str]]:
@@ -1458,11 +1499,11 @@ def get_opacity_condition_label(z_exclude: int) -> str:
         return "no-bb"
     if z_exclude == -2:
         return "no-bf"
-    return "no-es" if z_exclude == -3 else f"no-{at.get_elsymbol(z_exclude)}"
+    return "no-es" if z_exclude == -3 else f"no-{get_elsymbol(z_exclude)}"
 
 
 def get_vspec_dir_labels(modelpath: str | Path, usedegrees: bool = False) -> dict[int, str]:
-    vpkt_config = at.get_vpkt_config(modelpath)
+    vpkt_config = get_vpkt_config(modelpath)
     dirlabels = {}
     for dirindex in range(vpkt_config["nobsdirections"]):
         phi_angle = round(vpkt_config["phi"][dirindex])
@@ -1480,7 +1521,7 @@ def get_vspec_dir_labels(modelpath: str | Path, usedegrees: bool = False) -> dic
 
 
 def get_dirbin_labels(
-    dirbins: npt.NDArray[np.int32] | t.Sequence[int] | None = None,
+    dirbins: npt.NDArray[np.int32] | Sequence[int] | None = None,
     modelpath: Path | str | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
@@ -1490,7 +1531,7 @@ def get_dirbin_labels(
     """Return a dict of text labels for viewing direction bins."""
     if modelpath:
         modelpath = Path(modelpath)
-        MABINS = at.get_viewingdirectionbincount()
+        MABINS = get_viewingdirectionbincount()
         if list(modelpath.glob("*_res_00.out*")):
             # if the first direction bin file exists, check:
             # check last bin exists
@@ -1501,35 +1542,35 @@ def get_dirbin_labels(
     _, _, costhetabinlabels = get_costheta_bins(usedegrees=usedegrees, usepiminustheta=usepiminustheta)
     _, _, phibinlabels = get_phi_bins(usedegrees=usedegrees)
 
-    nphibins = at.get_viewingdirection_phibincount()
+    nphibins = get_viewingdirection_phibincount()
 
     if dirbins is None:
         if average_over_phi:
-            dirbins = np.arange(at.get_viewingdirection_costhetabincount()) * 10
+            dirbins = np.arange(get_viewingdirection_costhetabincount()) * 10
         elif average_over_theta:
             dirbins = np.arange(nphibins)
         else:
-            dirbins = np.arange(at.get_viewingdirectionbincount())
+            dirbins = np.arange(get_viewingdirectionbincount())
 
     angle_definitions: dict[int, str] = {}
     for dirbin in dirbins:
-        dirbin = int(dirbin)
-        if dirbin == -1:
-            angle_definitions[dirbin] = ""
+        dirbin_int = int(dirbin)
+        if dirbin_int == -1:
+            angle_definitions[dirbin_int] = ""
             continue
 
-        costheta_index = dirbin // nphibins
-        phi_index = dirbin % nphibins
+        costheta_index = dirbin_int // nphibins
+        phi_index = dirbin_int % nphibins
 
         if average_over_phi:
-            angle_definitions[dirbin] = costhetabinlabels[costheta_index]
+            angle_definitions[dirbin_int] = costhetabinlabels[costheta_index]
             assert phi_index == 0
             assert not average_over_theta
         elif average_over_theta:
-            angle_definitions[dirbin] = phibinlabels[phi_index]
+            angle_definitions[dirbin_int] = phibinlabels[phi_index]
             assert costheta_index == 0
         else:
-            angle_definitions[dirbin] = f"{costhetabinlabels[costheta_index]}, {phibinlabels[phi_index]}"
+            angle_definitions[dirbin_int] = f"{costhetabinlabels[costheta_index]}, {phibinlabels[phi_index]}"
 
     return angle_definitions
 
@@ -1543,4 +1584,4 @@ def get_multiprocessing_pool() -> multiprocessing.pool.Pool:
         pass
     else:
         cleanup_on_sigterm()
-    return multiprocessing.get_context("spawn").Pool(processes=at.get_config()["num_processes"])
+    return multiprocessing.get_context("spawn").Pool(processes=get_config()["num_processes"])

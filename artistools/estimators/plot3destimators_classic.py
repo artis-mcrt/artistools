@@ -11,9 +11,9 @@ CLIGHT = 2.99792458e10
 
 
 def read_selected_mgi(
-    modelpath: Path, readonly_mgi: None | list[int] = None, readonly_timestep: None | list[int] = None
+    modelpath: Path, readonly_mgi: list[int] | None = None, readonly_timestep: list[int] | None = None
 ) -> dict[tuple[int, int], t.Any] | None:
-    modeldata, _ = at.inputmodel.get_modeldata(modelpath)
+    modeldata, _ = at.inputmodel.get_modeldata_pandas(modelpath)
     return at.estimators.estimators_classic.read_classic_estimators(
         modelpath, modeldata, readonly_mgi=readonly_mgi, readonly_timestep=readonly_timestep
     )
@@ -53,7 +53,7 @@ def plot_Te_vs_time_lineofsight_3d_model(modelpath, modeldata, estimators, reado
     for mgi in readonly_mgi:
         associated_modeldata_row_for_mgi = modeldata.loc[modeldata["inputcellid"] == assoc_cells[mgi][0]]
 
-        Te = [estimators[timestep, mgi]["Te"] for timestep, _ in enumerate(times)]
+        Te = [estimators[timestep, mgi]["Te"] for timestep in range(len(times))]
         plt.scatter(times, Te, label=f"vel={associated_modeldata_row_for_mgi['vel_y_mid'].to_numpy()[0] / CLIGHT}")
 
     plt.xlabel("time [days]")
@@ -110,7 +110,7 @@ def get_Te_vs_velocity_2D(modelpath, modeldata, vmax, estimators, readonly_mgi, 
             for x in range(grid):
                 grid_Te[x, y, z] = Te[i]
                 if modeldata["rho"][i] == 0.0:
-                    grid_Te[x, y, z] = None
+                    grid_Te[x, y, z] = np.nan
                 xgrid[x] = -vmax + 2 * x * vmax / grid
                 i += 1
 

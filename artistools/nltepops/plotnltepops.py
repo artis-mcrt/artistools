@@ -5,7 +5,7 @@ import argparse
 import contextlib
 import math
 import sys
-import typing as t
+from collections.abc import Sequence
 from pathlib import Path
 
 import matplotlib as mpl
@@ -25,16 +25,16 @@ def annotate_emission_line(ax: mplax.Axes, y: float, upperlevel: int, lowerlevel
     ax.annotate(
         "",
         xy=(lowerlevel, y),
-        xycoords=("data", "axes fraction"),  # type: ignore[arg-type] # pyright: ignore[reportArgumentType]
+        xycoords=("data", "axes fraction"),
         xytext=(upperlevel, y),
-        textcoords=("data", "axes fraction"),  # type: ignore[arg-type] # pyright: ignore[reportArgumentType]
+        textcoords=("data", "axes fraction"),
         arrowprops={"facecolor": "black", "width": 0.1, "headwidth": 6},
     )
 
     ax.annotate(
         label,
         xy=((upperlevel + lowerlevel) / 2, y),
-        xycoords=("data", "axes fraction"),  # type: ignore[arg-type] # pyright: ignore[reportArgumentType]
+        xycoords=("data", "axes fraction"),
         size=10,
         va="bottom",
         ha="center",
@@ -121,11 +121,11 @@ def get_floers_data(dfpopthision, atomic_number, ion_stage, modelpath, T_e, mode
         floersfilename = "andreas_level_populations_fe2.txt" if ion_stage == 2 else "andreas_level_populations_fe3.txt"
         if Path(modelpath / floersfilename).is_file():
             print(f"reading {floersfilename}")
-            floers_levelpops = pd.read_csv(modelpath / floersfilename, comment="#", sep=r"\s+")
+            dffloers_levelpops = pd.read_csv(modelpath / floersfilename, comment="#", sep=r"\s+")
             # floers_levelnums = floers_levelpops['index'].values - 1
-            floers_levelpops = floers_levelpops.sort_values(by="energypercm")
-            floers_levelnums = list(range(len(floers_levelpops)))
-            floers_levelpop_values = floers_levelpops["frac_ionpop"].to_numpy() * dfpopthision["n_NLTE"].sum()
+            dffloers_levelpops = dffloers_levelpops.sort_values(by="energypercm")
+            floers_levelnums = list(range(len(dffloers_levelpops)))
+            floers_levelpop_values = dffloers_levelpops["frac_ionpop"].to_numpy() * dfpopthision["n_NLTE"].sum()
 
         floersmultizonefilename = None
         if modelpath.stem.startswith("w7_"):
@@ -147,7 +147,7 @@ def get_floers_data(dfpopthision, atomic_number, ion_stage, modelpath, T_e, mode
                 floersmultizonefilename = "level_pops_subch_shen2018-247d.csv"
 
         if floersmultizonefilename and Path(floersmultizonefilename).is_file():
-            modeldata, _ = at.inputmodel.get_modeldata(modelpath)  # TODO: move into modelpath loop
+            modeldata, _ = at.inputmodel.get_modeldata_pandas(modelpath)  # TODO: move into modelpath loop
             vel_outer = modeldata.iloc[modelgridindex].vel_r_max_kmps
             print(f"  reading {floersmultizonefilename}", vel_outer, T_e)
             dffloers = pd.read_csv(floersmultizonefilename)
@@ -193,9 +193,7 @@ def make_ionsubplot(
     if not args.hide_lte_tr:
         lte_columns.append(("n_LTE_T_R", T_R))
 
-    dfpopthision = at.nltepops.add_lte_pops(
-        modelpath, dfpopthision, adata, lte_columns, noprint=False, maxlevel=args.maxlevel
-    )
+    dfpopthision = at.nltepops.add_lte_pops(dfpopthision, adata, lte_columns, noprint=False, maxlevel=args.maxlevel)
 
     if args.maxlevel >= 0:
         dfpopthision = dfpopthision.query("level <= @args.maxlevel")
@@ -268,7 +266,7 @@ def make_ionsubplot(
         )
 
     maxlevel = max(dfpopthision["level"])
-    dftrans: None | pl.DataFrame = None
+    dftrans: pl.DataFrame | None = None
     if "upper" in ion_data["transitions"].collect_schema().names():
         dftrans = ion_data["transitions"].filter(pl.col("upper") <= maxlevel).collect()
         if dftrans is not None and dftrans.is_empty():
@@ -472,7 +470,7 @@ def plot_populations_with_time_or_velocity(
         modelgridindex_list = [int(args.modelgridindex[0])] * len(timesteps)
 
     if args.x == "velocity":
-        modeldata, _ = at.inputmodel.get_modeldata(modelpaths[0])  # TODO: move into modelpath loop
+        modeldata, _ = at.inputmodel.get_modeldata_pandas(modelpaths[0])  # TODO: move into modelpath loop
         velocity = modeldata["vel_r_max_kmps"]
         modelgridindex_list = [mgi for mgi, _ in enumerate(velocity)]
 
@@ -499,7 +497,7 @@ def plot_populations_with_time_or_velocity(
                 #                                                          == ionlevel]['n_LTE'].values[0])
 
         for ionlevel in ionlevels:
-            plottimesteps = np.array([int(ts) for ts, level, mgi in populations if level == ionlevel])
+            plottimesteps = np.array([ts for ts, level, mgi in populations if level == ionlevel])
             timedays = [at.get_timestep_time(modelpath, ts) for ts in plottimesteps]
             plotpopulations = np.array([
                 float(populations[ts, level, mgi]) for ts, level, mgi in populations if level == ionlevel
@@ -610,8 +608,8 @@ def make_plot(modelpath, atomic_number, ion_stages_displayed, mgilist, timestep,
         nne = estimators[timestep, modelgridindex]["nne"]
         W = estimators[timestep, modelgridindex]["W"]
 
-        subplot_title = str(modelname)
-        if len(modelname) > 10:
+        subplot_title = modelname
+        if len(subplot_title) > 10:
             subplot_title += "\n"
         velocity = at.inputmodel.get_modeldata_tuple(modelpath)[0]["vel_r_max_kmps"][modelgridindex]
         subplot_title += f" {velocity:.0f} km/s at"
@@ -671,7 +669,7 @@ def make_plot(modelpath, atomic_number, ion_stages_displayed, mgilist, timestep,
     outputfilename = str(args.outputfile).format(
         elsymbol=at.get_elsymbol(atomic_number), cell=mgilist[0], timestep=timestep, time_days=time_days
     )
-    fig.savefig(str(outputfilename), format="pdf")
+    fig.savefig(outputfilename, format="pdf")
     print(f"Saved {outputfilename}")
     plt.close()
 
@@ -740,7 +738,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-outputfile", "-o", type=Path, default=defaultoutputfile, help="path/filename for PDF file")
 
 
-def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs) -> None:
     """Plot ARTIS non-LTE populations."""
     if args is None:
         parser = argparse.ArgumentParser(description=__doc__)

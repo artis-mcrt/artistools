@@ -3,7 +3,7 @@
 
 import argparse
 import math
-import typing as t
+from collections.abc import Sequence
 from io import TextIOWrapper
 from pathlib import Path
 
@@ -12,7 +12,7 @@ import numpy as np
 import artistools as at
 
 
-def write_spectra(modelpath: str | Path, model_id: str, selected_timesteps: t.Sequence[int], outfilepath: Path) -> None:
+def write_spectra(modelpath: str | Path, selected_timesteps: Sequence[int], outfilepath: Path) -> None:
     spec_data = np.loadtxt(Path(modelpath, "spec.out"))
 
     times = spec_data[0, 1:]
@@ -48,16 +48,16 @@ def write_spectra(modelpath: str | Path, model_id: str, selected_timesteps: t.Se
         outfile.close()
 
 
-def write_ntimes_nvel(outfile: TextIOWrapper, selected_timesteps: t.Sequence[int], modelpath: str | Path) -> None:
+def write_ntimes_nvel(outfile: TextIOWrapper, selected_timesteps: Sequence[int], modelpath: str | Path) -> None:
     times = at.get_timestep_times(modelpath)
-    _, modelmeta = at.inputmodel.get_modeldata(modelpath, getheadersonly=True)
+    _, modelmeta = at.inputmodel.get_modeldata_pandas(modelpath, getheadersonly=True)
     outfile.write(f"#NTIMES: {len(selected_timesteps)}\n")
     outfile.write(f"#NVEL: {modelmeta['npts_model']}\n")
     outfile.write(f"#TIMES[d]: {' '.join([f'{times[ts]:.2f}' for ts in selected_timesteps])}\n")
 
 
 def write_single_estimator(modelpath, selected_timesteps, estimators, allnonemptymgilist, outfile, keyname) -> None:
-    modeldata, _modelmeta = at.inputmodel.get_modeldata(modelpath, derived_cols=["vel_r_min_kmps"])
+    modeldata, _modelmeta = at.inputmodel.get_modeldata_pandas(modelpath, derived_cols=["vel_r_min_kmps"])
     with Path(outfile).open("w", encoding="utf-8") as f:
         write_ntimes_nvel(f, selected_timesteps, modelpath)
         if keyname == "total_dep":
@@ -85,13 +85,13 @@ def write_single_estimator(modelpath, selected_timesteps, estimators, allnonempt
 def write_ionfracts(
     modelpath: Path | str,
     model_id: str,
-    selected_timesteps: t.Sequence[int],
+    selected_timesteps: Sequence[int],
     estimators: dict,
-    allnonemptymgilist: t.Sequence[int],
+    allnonemptymgilist: Sequence[int],
     outputpath,
 ) -> None:
     times = at.get_timestep_times(modelpath)
-    modeldata, _modelmeta = at.inputmodel.get_modeldata(modelpath, derived_cols=["vel_r_min_kmps"])
+    modeldata, _modelmeta = at.inputmodel.get_modeldata_pandas(modelpath, derived_cols=["vel_r_min_kmps"])
     elementlist = at.get_composition_data(modelpath)
     nelements = len(elementlist)
     for element in range(nelements):
@@ -131,7 +131,7 @@ def write_ionfracts(
 
 def write_phys(modelpath, model_id, selected_timesteps, estimators, allnonemptymgilist, outputpath) -> None:
     times = at.get_timestep_times(modelpath)
-    modeldata, modelmeta = at.inputmodel.get_modeldata(modelpath, derived_cols=["vel_r_min_kmps"])
+    modeldata, modelmeta = at.inputmodel.get_modeldata_pandas(modelpath, derived_cols=["vel_r_min_kmps"])
     with Path(outputpath, f"phys_{model_id}_artisnebular.txt").open("w", encoding="utf-8") as f:
         f.write(f"#NTIMES: {len(selected_timesteps)}\n")
         f.write(f"#TIMES[d]: {' '.join([f'{times[ts]:.2f}' for ts in selected_timesteps])}\n")
@@ -158,9 +158,7 @@ def write_phys(modelpath, model_id, selected_timesteps, estimators, allnonemptym
                 f.write("\n")
 
 
-def write_lbol_edep(
-    modelpath: str | Path, model_id: str, selected_timesteps: t.Sequence[int], outputpath: Path
-) -> None:
+def write_lbol_edep(modelpath: str | Path, selected_timesteps: Sequence[int], outputpath: Path) -> None:
     # times = at.get_timestep_times(modelpath)
     dflightcurve = (
         at.lightcurve.readfile(Path(modelpath, "light_curve.out"))[-1]
@@ -193,7 +191,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-outputpath", "-o", action="store", type=Path, default=Path(), help="path for output files")
 
 
-def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs) -> None:
     """Write ARTIS model data out in code comparison workshop format."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
@@ -220,14 +218,12 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
         try:
             write_lbol_edep(
-                modelpath, model_id, selected_timesteps, Path(args.outputpath, f"lbol_edep_{model_id}_artisnebular.txt")
+                modelpath, selected_timesteps, Path(args.outputpath, f"lbol_edep_{model_id}_artisnebular.txt")
             )
         except FileNotFoundError:
             print("Can't write deposition because files are missing")
 
-        write_spectra(
-            modelpath, model_id, selected_timesteps, Path(args.outputpath, f"spectra_{model_id}_artisnebular.txt")
-        )
+        write_spectra(modelpath, selected_timesteps, Path(args.outputpath, f"spectra_{model_id}_artisnebular.txt"))
 
         # write_single_estimator(modelpath, selected_timesteps, estimators, allnonemptymgilist,
         #                        Path(args.outputpath, "eden_" + model_id + "_artisnebular.txt"), keyname='nne')

@@ -1,11 +1,9 @@
-import os
 import tarfile
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from scipy import integrate
 
 import artistools as at
 
@@ -69,6 +67,8 @@ def rprocess_const_and_powerlaw():
 
 
 def define_heating_rate():
+    from scipy import integrate
+
     tmin = 0.0001  # days
     tmax = 50
 
@@ -114,6 +114,8 @@ def define_heating_rate():
 
 
 def energy_from_rprocess_calculation(energy_thermo_data, get_rate=True):
+    from scipy import integrate
+
     index_time_greaterthan = energy_thermo_data[energy_thermo_data["time/s"] > 1e7].index  # 1e7 seconds = 116 days
     energy_thermo_data = energy_thermo_data.drop(index_time_greaterthan)
     # print("Dropping times later than 116 days")
@@ -140,8 +142,8 @@ def energy_from_rprocess_calculation(energy_thermo_data, get_rate=True):
     return E_tot
 
 
-def get_rprocess_calculation_files(path_to_rprocess_calculation, interpolate_trajectories=False, thermalisation=False):
-    tarfiles = [file for file in os.listdir(path_to_rprocess_calculation) if file.endswith(".tar.xz")]
+def get_rprocess_calculation_files(path_to_rprocess_calculation, interpolate_trajectories=False, thermalisation=False):  # noqa: ARG001
+    tarfiles = [file.name for file in Path(path_to_rprocess_calculation).iterdir() if file.name.endswith(".tar.xz")]
 
     trajectory_ids = []
     trajectory_E_tot = []
@@ -154,7 +156,8 @@ def get_rprocess_calculation_files(path_to_rprocess_calculation, interpolate_tra
         trajectory_id = file.split(".")[0]
         with tarfile.open(path_to_rprocess_calculation / file, mode="r:*") as tar:
             energythermo_file = tar.extractfile(member=energy_thermo_filepath)
-            energy_thermo_data = pd.read_csv(energythermo_file, sep=r"\s+")  # pyright: ignore[reportArgumentType]
+            assert energythermo_file is not None
+            energy_thermo_data = pd.read_csv(energythermo_file, sep=r"\s+")
 
         # print(energy_thermo_data['Qdot'])
         # print(energy_thermo_data['time/s'])
@@ -200,7 +203,7 @@ def make_energydistribution_weightedbyrho(rho, E_tot_per_gram, Mtot_grams):
     return pd.DataFrame(data=energydistdata)
 
 
-def make_energy_files(rho, Mtot_grams, outputpath: Path | str, modelpath=None, model=None):
+def make_energy_files(rho, Mtot_grams, outputpath: Path | str, modelpath=None, model=None):  # noqa: ARG001
     powerlaw = True
     if powerlaw:
         print("Using power law for energy rate")
@@ -229,7 +232,8 @@ def make_energy_files(rho, Mtot_grams, outputpath: Path | str, modelpath=None, m
 
 def plot_energy_rate(modelpath):
     times_and_rate, _ = at.inputmodel.energyinputfiles.rprocess_const_and_powerlaw()
-    model, _ = at.inputmodel.get_modeldata(modelpath)
+    lzmodel, _ = at.inputmodel.get_modeldata(modelpath)
+    model = lzmodel.collect()
     Mtot_grams = model["mass_g"].sum()
     plt.plot(
         times_and_rate["times"], np.array(times_and_rate["nuclear_heating_power"]) * Mtot_grams, color="k", zorder=10

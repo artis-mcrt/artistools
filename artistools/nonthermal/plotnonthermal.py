@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
-import typing as t
+from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
 
@@ -10,7 +10,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pynonthermal as pynt
-from scipy import integrate
 
 import artistools as at
 
@@ -21,7 +20,7 @@ ERG_TO_EV = 6.242e11
 @lru_cache(maxsize=4)
 def read_files(modelpath: Path, timestep: int = -1, modelgridindex: int = -1) -> pd.DataFrame:
     """Read ARTIS -thermal spectrum data into a pandas DataFrame."""
-    nonthermaldata = pd.DataFrame()
+    nonthermaldata_allfiles: list[pd.DataFrame] = []
 
     mpiranklist = at.get_mpiranklist(modelpath, modelgridindex=modelgridindex)
     for folderpath in at.get_runfolders(modelpath, timestep=timestep):
@@ -47,9 +46,9 @@ def read_files(modelpath: Path, timestep: int = -1, modelgridindex: int = -1) ->
                 if timestep >= 0 and modelgridindex >= 0:
                     return nonthermaldata_thisfile
 
-                nonthermaldata = nonthermaldata.append(nonthermaldata_thisfile.copy(), ignore_index=True)  # pyright: ignore[reportCallIssue]
+                nonthermaldata_allfiles.append(nonthermaldata_thisfile)
 
-    return nonthermaldata
+    return pd.concat(nonthermaldata_allfiles, ignore_index=True)
 
 
 def make_xs_plot(axis: mplax.Axes, nonthermaldata: pd.DataFrame, args: argparse.Namespace) -> None:
@@ -69,7 +68,9 @@ def make_xs_plot(axis: mplax.Axes, nonthermaldata: pd.DataFrame, args: argparse.
         axis.legend(loc="upper center", handlelength=2, frameon=False, numpoints=1, prop={"size": 13})
 
 
-def plot_contributions(axis, modelpath, timestep, modelgridindex, nonthermaldata, args: argparse.Namespace):
+def plot_contributions(axis, modelpath, timestep, modelgridindex, nonthermaldata):
+    from scipy import integrate
+
     estim_tsmgi = at.estimators.read_estimators(modelpath, modelgridindex=modelgridindex, timestep=timestep)[
         timestep, modelgridindex
     ]
@@ -165,7 +166,7 @@ def make_plot(modelpaths: list[Path], args: argparse.Namespace) -> None:
     if args.kf1992spec:
         kf92spec = pd.read_csv(Path(modelpaths[0], "KF1992spec-fig1.txt"), header=None, names=["e_kev", "log10_y"])
         kf92spec["energy_ev"] = kf92spec["e_kev"] * 1000.0
-        kf92spec = kf92spec.eval("y = 10 ** log10_y")
+        kf92spec["y"] = 10 ** kf92spec["log10_y"]
         axes[0].plot(
             kf92spec["energy_ev"], kf92spec["log10_y"], linewidth=2.0, color="red", label="Kozma & Fransson (1992)"
         )
@@ -216,7 +217,7 @@ def make_plot(modelpaths: list[Path], args: argparse.Namespace) -> None:
         axes[0].set_ylabel(r"log [y (e$^-$ / cm$^2$ / s / eV)]")
 
         if args.showcontributions:
-            plot_contributions(axes[1], modelpath, timestep, modelgridindex, nonthermaldata, args)
+            plot_contributions(axes[1], modelpath, timestep, modelgridindex, nonthermaldata)
 
         if args.xsplot:
             make_xs_plot(axes[-1], nonthermaldata, args)
@@ -288,7 +289,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs) -> None:
     """Plot ARTIS non-thermal electron energy spectrum."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)

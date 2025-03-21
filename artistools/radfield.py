@@ -3,6 +3,8 @@
 import argparse
 import math
 import typing as t
+from collections.abc import Iterable
+from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
 
@@ -11,7 +13,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
-from scipy import integrate
 
 import artistools as at
 
@@ -28,7 +29,7 @@ MEGAPARSEC = 3.0857e24
 @lru_cache(maxsize=4)
 def read_files(modelpath: Path | str, timestep: int | None = None, modelgridindex: int | None = None):
     """Read radiation field data from a list of file paths into a pandas DataFrame."""
-    radfielddata = pd.DataFrame()
+    radfielddata_allfiles: list[pd.DataFrame] = []
     modelpath = Path(modelpath)
 
     mpiranklist = at.get_mpiranklist(modelpath, modelgridindex=modelgridindex)
@@ -54,9 +55,9 @@ def read_files(modelpath: Path | str, timestep: int | None = None, modelgridinde
             if not radfielddata_thisfile.empty:
                 if timestep is not None and modelgridindex is not None:
                     return radfielddata_thisfile
-                radfielddata = radfielddata.append(radfielddata_thisfile.copy(), ignore_index=True)  # pyright: ignore[reportCallIssue]
+                radfielddata_allfiles.append(radfielddata_thisfile)
 
-    return radfielddata
+    return pd.concat(radfielddata_allfiles, ignore_index=True)
 
 
 def select_bin(radfielddata, nu=None, lambda_angstroms=None, modelgridindex=None, timestep=None):
@@ -105,7 +106,7 @@ def get_binaverage_field(radfielddata, modelgridindex=None, timestep=None):
     return arr_lambda, yvalues
 
 
-def j_nu_dbb(arr_nu_hz: t.Sequence[float] | npt.NDArray, W: float, T: float) -> list[float]:
+def j_nu_dbb(arr_nu_hz: Sequence[float] | npt.NDArray, W: float, T: float) -> list[float]:
     """Calculate the spectral energy density of a dilute blackbody radiation field.
 
     Parameters
@@ -162,8 +163,8 @@ def get_fitted_field(
     lambdamax: float | None = None,
 ) -> tuple[list[float], list[float]]:
     """Return the fitted dilute blackbody (list of lambda, list of j_nu) made up of all bins."""
-    arr_lambda = []
-    j_lambda_fitted = []
+    arr_lambda: list[float] = []
+    j_lambda_fitted: list[float] = []
 
     radfielddata_subset = radfielddata.copy().query(
         "bin_num >= 0"
@@ -198,13 +199,12 @@ def get_fitted_field(
             arr_j_lambda_bin = arr_j_nu * arr_nu_hz_bin / arr_lambda_bin
 
             arr_lambda += list(arr_lambda_bin)
-            j_lambda_fitted += list(arr_j_lambda_bin)
         else:
-            arr_nu_hz_bin = [nu_lower, nu_upper]
-            arr_j_lambda_bin = [0.0, 0.0]
+            arr_nu_hz_bin = np.array([nu_lower, nu_upper])
+            arr_j_lambda_bin = np.array([0.0, 0.0])
 
             arr_lambda += [2.99792458e18 / nu for nu in arr_nu_hz_bin]
-            j_lambda_fitted += arr_j_lambda_bin
+        j_lambda_fitted += list(arr_j_lambda_bin)
 
         lambda_lower = 2.99792458e18 / row["nu_upper"]
         lambda_upper = 2.99792458e18 / row["nu_lower"]
@@ -284,12 +284,7 @@ def plot_specout(
 
 @lru_cache(maxsize=128)
 def evaluate_phixs(
-    modelpath: Path | str,
-    atomic_number: int,
-    lower_ion_stage: int,
-    lowerlevelindex: int,
-    nu_threshold: float,
-    arr_nu_hz: t.Iterable[float] | npt.NDArray,
+    modelpath: Path | str, lowerlevelindex: int, nu_threshold: float, arr_nu_hz: Iterable[float] | npt.NDArray
 ) -> npt.NDArray:
     adata = at.atomic.get_levels(modelpath, get_photoionisations=True)
     lower_ion_data = adata.query("Z == @atomic_number and ion_stage == @lower_ion_stage").iloc[0]
@@ -327,7 +322,7 @@ def get_kappa_bf_ion(
     modelgridindex: int,
     timestep: int,
     modelpath: Path | str,
-    arr_nu_hz: t.Iterable[float] | npt.NDArray,
+    arr_nu_hz: Iterable[float] | npt.NDArray,
     max_levels: int,
 ) -> npt.NDArray:
     adata = at.atomic.get_levels(modelpath, get_photoionisations=True)
@@ -352,10 +347,7 @@ def get_kappa_bf_ion(
 
             nu_threshold = ONEOVERH * (ion_data.ion_pot - lowerlevel.energy_ev + upperlevel.energy_ev) * EV
 
-            arr_sigma_bf = (
-                evaluate_phixs(modelpath, atomic_number, lower_ion_stage, levelnum, nu_threshold, tuple(arr_nu_hz))
-                * phixsfrac
-            )
+            arr_sigma_bf = evaluate_phixs(modelpath, levelnum, nu_threshold, tuple(arr_nu_hz)) * phixsfrac
 
             array_kappa_bf_nu_ion += arr_sigma_bf * levelpopfrac * lowerionpopdensity
 
@@ -372,6 +364,8 @@ def get_recombination_emission(
     max_levels: int,
     use_lte_pops: bool = False,
 ):
+    from scipy import integrate
+
     adata = at.atomic.get_levels(modelpath, get_photoionisations=True)
 
     lower_ion_stage = upper_ion_stage - 1
@@ -486,6 +480,8 @@ def get_recombination_emission(
 
 def get_ion_gamma_dnu(modelpath, modelgridindex, timestep, atomic_number, ion_stage, arr_nu_hz, J_nu_arr, max_levels):
     """Calculate the contribution to the photoionisation rate coefficient per J_nu at each frequency nu for an ion."""
+    from scipy import integrate
+
     estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
 
     T_e = estimators[timestep, modelgridindex]["Te"]
@@ -535,6 +531,8 @@ def get_ion_gamma_dnu(modelpath, modelgridindex, timestep, atomic_number, ion_st
 
 
 def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, timestep, xmin, xmax, ymax):
+    from scipy import integrate
+
     axes[0].set_ylabel(r"$\sigma$ [cm$^2$]")
 
     # recomblowerionlist = ((26, 1), (26, 2), (26, 3), (26, 4), (27, 2), (27, 3), (28, 2), (28, 3), (28, 4))
@@ -812,11 +810,10 @@ def plot_celltimestep(modelpath, timestep, outputfile, xmin, xmax, modelgridinde
 
 
 def plot_bin_fitted_field_evolution(axis, radfielddata, nu_line, modelgridindex, **plotkwargs):
-    bin_num, _nu_lower, _nu_upper = select_bin(radfielddata, nu=nu_line, modelgridindex=modelgridindex)  # noqa: F841
+    bin_num, _nu_lower, _nu_upper = select_bin(radfielddata, nu=nu_line, modelgridindex=modelgridindex)
     # print(f"Selected bin_num {bin_num} to get a binned radiation field estimator")
-
     radfielddataselected = radfielddata.query(
-        "bin_num == @bin_num and modelgridindex == @modelgridindex and nu_lower <= @nu_line and nu_upper >= @nu_line"
+        f"bin_num == {bin_num} and modelgridindex == @modelgridindex and nu_lower <= @nu_line and nu_upper >= @nu_line"
     ).copy()
 
     radfielddataselected["Jb_nu_at_line"] = radfielddataselected.apply(
@@ -837,7 +834,7 @@ def plot_bin_fitted_field_evolution(axis, radfielddata, nu_line, modelgridindex,
     )
 
 
-def plot_global_fitted_field_evolution(axis, radfielddata, nu_line, modelgridindex, **plotkwargs):
+def plot_global_fitted_field_evolution(axis, radfielddata, nu_line, modelgridindex, **plotkwargs):  # noqa: ARG001
     radfielddataselected = radfielddata.query("bin_num == -1 and modelgridindex == @modelgridindex").copy()
 
     radfielddataselected["J_nu_fullspec_at_line"] = radfielddataselected.apply(
@@ -908,15 +905,10 @@ def plot_timeevolution(modelpath, outputfile, modelgridindex, args: argparse.Nam
     timestep = at.get_timestep_of_timedays(modelpath, 330)
     time_days = at.get_timestep_time(modelpath, timestep)
 
-    dftopestimators = (
-        radfielddataselected.query("timestep==@timestep and bin_num < -1")
-        .copy()
-        .eval("lambda_angstroms = 2.99792458e18 / nu_upper")
-        .eval("Jb_lambda = J_nu_avg * (nu_upper ** 2) / 2.99792458e18")
-        .sort_values(by="Jb_lambda", ascending=False)
-        .iloc[:nlinesplotted]
-    )
-
+    dftopestimators = radfielddataselected.query("timestep==@timestep and bin_num < -1").copy()
+    dftopestimators["lambda_angstroms"] = 2.99792458e18 / dftopestimators["nu_upper"]
+    dftopestimators["Jb_lambda"] = dftopestimators["J_nu_avg"] * (dftopestimators["nu_upper"] ** 2) / 2.99792458e18
+    dftopestimators = dftopestimators.sort_values("Jb_lambda", ascending=False, inplace=False).iloc[:nlinesplotted]
     print(f"Top estimators at timestep {timestep} t={time_days:.1f}")
     print(dftopestimators)
 
@@ -993,7 +985,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-o", action="store", dest="outputfile", type=Path, help="Filename for PDF file")
 
 
-def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs: t.Any) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot the radiation field estimators."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)

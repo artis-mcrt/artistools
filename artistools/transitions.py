@@ -3,6 +3,7 @@ import math
 import sys
 import typing as t
 from collections import namedtuple
+from collections.abc import Sequence
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -23,7 +24,7 @@ class IonTuple(t.NamedTuple):
 
 
 def get_kurucz_transitions() -> tuple[pd.DataFrame, list[IonTuple]]:
-    hc_evcm = (const.h * const.c).to("eV cm").value
+    hc_in_ev_cm = 0.0001239841984332003
     transitiontuple = namedtuple(
         "transitiontuple",
         "Z ion_stage lambda_angstroms A lower_energy_ev upper_energy_ev lower_statweight upper_statweight",
@@ -39,7 +40,7 @@ def get_kurucz_transitions() -> tuple[pd.DataFrame, list[IonTuple]]:
                     continue
                 lambda_angstroms = float(line[:12]) * 10
                 loggf = float(line[11:18])
-                lower_energy_ev, upper_energy_ev = hc_evcm * float(line[24:36]), hc_evcm * float(line[52:64])
+                lower_energy_ev, upper_energy_ev = hc_in_ev_cm * float(line[24:36]), hc_in_ev_cm * float(line[52:64])
                 lower_statweight, upper_statweight = 2 * float(line[36:42]) + 1, 2 * float(line[64:70]) + 1
                 fij = (10**loggf) / lower_statweight
                 A = fij / (1.49919e-16 * upper_statweight / lower_statweight * lambda_angstroms**2)
@@ -92,7 +93,7 @@ def get_nist_transitions(filename: Path | str) -> pd.DataFrame:
 
 def generate_ion_spectrum(
     transitions, xvalues, popcolumn, plot_resolution, args: argparse.Namespace
-) -> npt.NDArray[np.float64]:
+) -> npt.NDArray[np.floating[t.Any]]:
     yvalues = np.zeros(len(xvalues))
 
     # iterate over lines
@@ -101,9 +102,9 @@ def generate_ion_spectrum(
 
         # contribute the Gaussian line profile to the discrete flux bins
 
-        centre_index = int(round((line["lambda_angstroms"] - args.xmin) / plot_resolution))
-        sigma_angstroms = line["lambda_angstroms"] * args.sigma_v / const.c.to("km / s").value
-        sigma_gridpoints = int(math.ceil(sigma_angstroms / plot_resolution))
+        centre_index = round((line["lambda_angstroms"] - args.xmin) / plot_resolution)
+        sigma_angstroms = line["lambda_angstroms"] * args.sigma_v / 299792.458
+        sigma_gridpoints = math.ceil(sigma_angstroms / plot_resolution)
         window_left_index = max(int(centre_index - args.gaussian_window * sigma_gridpoints), 0)
         window_right_index = min(int(centre_index + args.gaussian_window * sigma_gridpoints), len(xvalues))
 
@@ -120,7 +121,7 @@ def make_plot(
     yvalues,
     temperature_list: list[str],
     vardict,
-    ionlist: t.Sequence[IonTuple],
+    ionlist: Sequence[IonTuple],
     ionpopdict,
     xmin: float,
     xmax: float,
@@ -204,7 +205,7 @@ def make_plot(
 def add_upper_lte_pop(
     dftransitions: pl.DataFrame, T_exc: float, ionpop: float, ltepartfunc: float, columnname: str | None = None
 ) -> pl.DataFrame:
-    K_B = const.k_B.to("eV / K").value
+    K_B = 8.617333262145179e-05  # eV / K
     scalefactor = ionpop / ltepartfunc
     if columnname is None:
         columnname = f"upper_pop_lte_{T_exc:.0f}K"
@@ -255,7 +256,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs) -> None:
     """Plot estimated spectra from bound-bound transitions."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
@@ -278,7 +279,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
         timestep = at.get_timestep_of_timedays(modelpath, args.timedays) if args.timedays else args.timestep
 
-        modeldata, _ = at.inputmodel.get_modeldata(Path(modelpath, "model.txt"))
+        modeldata, _ = at.inputmodel.get_modeldata_pandas(Path(modelpath, "model.txt"))
         estimators_all = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
         if not estimators_all:
             print("no estimators")
@@ -326,7 +327,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     if from_model:
         dfnltepops = at.nltepops.read_files(modelpath, modelgridindex=modelgridindex, timestep=timestep)
 
-        if dfnltepops is None or dfnltepops.empty:
+        if dfnltepops.empty:
             print(f"ERROR: no NLTE populations for cell {modelgridindex} at timestep {timestep}")
             sys.exit(1)
 
@@ -444,7 +445,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             print(f"  {len(pldftransitions)} plottable transitions")
 
             if args.atomicdatabase == "artis":
-                K_B = const.k_B.to("eV / K").value
+                K_B = 8.617333262145179e-05  # eV / K
                 T_exc = vardict["Te"]
                 ltepartfunc = (
                     ion["levels"].select(pl.col("g") * (-pl.col("energy_ev") / K_B / T_exc).exp()).sum().item()
@@ -486,8 +487,8 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
                     #     lambda x: nltepopdict.get(x.lower, 0.), axis=1)
 
                     popcolumnname = "upper_pop_nlte"
-                    dftransitions = dftransitions.eval(f"flux_factor_nlte = flux_factor * {popcolumnname}")
-                    dftransitions = dftransitions.eval("upper_departure = upper_pop_nlte / upper_pop_Te")
+                    dftransitions["flux_factor_nlte"] = dftransitions["flux_factor"] * dftransitions[popcolumnname]
+                    dftransitions["upper_departure"] = dftransitions["upper_pop_nlte"] / dftransitions["upper_pop_Te"]
                     if ionid == (26, 2):
                         fe2depcoeff = dftransitions.query("upper == 16 and lower == 5").iloc[0]["upper_departure"]
                     elif ionid == (28, 2):
@@ -499,7 +500,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
                     T_exc = vardict[temperature]
                     popcolumnname = f"upper_pop_lte_{T_exc:.0f}K"
                     if args.atomicdatabase == "artis":
-                        K_B = const.k_B.to("eV / K").value
+                        K_B = 8.617333262145179e-05  # eV / K
                         ltepartfunc = (
                             ion["levels"].select(pl.col("g") * (-pl.col("energy_ev") / K_B / T_exc).exp()).sum().item()
                         )
@@ -510,7 +511,9 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
                     ).to_pandas(use_pyarrow_extension_array=True)
 
                 if args.print_lines:
-                    dftransitions = dftransitions.eval(f"flux_factor_{popcolumnname} = flux_factor * {popcolumnname}")
+                    dftransitions[f"flux_factor_{popcolumnname}"] = (
+                        dftransitions["flux_factor"] * dftransitions[popcolumnname]
+                    )
 
                 yvalues[seriesindex][ionindex] = generate_ion_spectrum(
                     dftransitions, xvalues, popcolumnname, plot_resolution, args
@@ -536,7 +539,19 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         dftransitions_all["lambda_angstroms"] /= 1.0003
         dftransitions_all = dftransitions_all.sort(by=["Z", "ion_stage", "lower", "upper"], descending=False)
         dftransitions_all = dftransitions_all[
-            "lambda_angstroms A            Z   ion_stage lower_energy_Ev   lower_statweight  forbidden  lower_level               upper_level               upper_statweight  upper_energy_Ev".split()
+            [
+                "lambda_angstroms",
+                "A",
+                "Z",
+                "ion_stage",
+                "lower_energy_Ev",
+                "lower_statweight",
+                "forbidden",
+                "lower_level",
+                "upper_level",
+                "upper_statweight",
+                "upper_energy_Ev",
+            ]
         ]
         print(dftransitions_all)
         # dftransitions_all.to_csv("transitions.txt", index=False, sep=" ")

@@ -33,7 +33,7 @@ repos:
     #       - id: yamlfmt
 
     - repo: https://github.com/astral-sh/ruff-pre-commit
-      rev: v0.7.1
+      rev: v0.11.1
       hooks:
         # Run the linter.
           - id: ruff
@@ -57,8 +57,8 @@ repos:
             types: [python]
             language: python
 
-    # - repo: https://github.com/astral-sh/uv-pre-commit
-    #   rev: 0.2.13
-    #   hooks:
-    #       - id: pip-compile
-    #         args: [requirements.in, -o, requirements.txt]
+          - id: pyright
+            name: pyright
+            entry: pyright
+            types: [python]
+            language: system

@@ -1,5 +1,5 @@
-use pyo3::prelude::*;
 use pyo3::types::{IntoPyDict, PyDict};
+use pyo3::{prelude::*, IntoPyObject};
 extern crate core;
 extern crate polars;
 extern crate rayon;
@@ -89,7 +89,7 @@ pub fn read_transitiondata(
                 .unwrap(),
             );
 
-            transitiondata.push(((atomic_number, ion_stage), pydf.into_py(py)));
+            transitiondata.push(((atomic_number, ion_stage), pydf.into_pyobject(py).unwrap()));
         } else {
             for _ in 0..transitioncount {
                 match lines.next() {
@@ -100,6 +100,5 @@ pub fn read_transitiondata(
         }
     }
 
-    let dict = transitiondata.into_py_dict_bound(py);
-    dict.unbind()
+    transitiondata.into_py_dict(py).unwrap().into()
 }

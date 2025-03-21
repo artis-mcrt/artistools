@@ -9,7 +9,6 @@ import typing as t
 from artistools import atomic as atomic
 from artistools import codecomparison as codecomparison
 from artistools import commands as commands
-from artistools import deposition as deposition
 from artistools import estimators as estimators
 from artistools import gsinetwork as gsinetwork
 from artistools import inputmodel as inputmodel
@@ -35,7 +34,7 @@ from artistools.inputmodel import get_dfmodel_dimensions as get_dfmodel_dimensio
 from artistools.inputmodel import get_mean_cell_properties_of_angle_bin as get_mean_cell_properties_of_angle_bin
 from artistools.inputmodel import get_mgi_of_velocity_kms as get_mgi_of_velocity_kms
 from artistools.inputmodel import get_modeldata as get_modeldata
-from artistools.inputmodel import get_modeldata_polars as get_modeldata_polars
+from artistools.inputmodel import get_modeldata_pandas as get_modeldata_pandas
 from artistools.inputmodel import get_modeldata_tuple as get_modeldata_tuple
 from artistools.inputmodel import save_initelemabundances as save_initelemabundances
 from artistools.inputmodel import save_modeldata as save_modeldata
@@ -74,9 +73,9 @@ from artistools.misc import get_mpirankofcell as get_mpirankofcell
 from artistools.misc import get_multiprocessing_pool as get_multiprocessing_pool
 from artistools.misc import get_nprocs as get_nprocs
 from artistools.misc import get_nu_grid as get_nu_grid
+from artistools.misc import get_nuclides as get_nuclides
 from artistools.misc import get_phi_bins as get_phi_bins
 from artistools.misc import get_runfolders as get_runfolders
-from artistools.misc import get_syn_dir as get_syn_dir
 from artistools.misc import get_time_range as get_time_range
 from artistools.misc import get_timestep_of_timedays as get_timestep_of_timedays
 from artistools.misc import get_timestep_time as get_timestep_time
@@ -108,7 +107,7 @@ from artistools.misc import zopenpl as zopenpl
 from artistools.plottools import set_mpl_style as set_mpl_style
 
 
-def get_path(**kwargs: t.Any) -> None:
+def get_path(**kwargs: t.Any) -> None:  # noqa: ARG001
     print(get_config("path_artistools_dir"))
 
 

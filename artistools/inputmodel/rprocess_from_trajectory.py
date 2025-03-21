@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
 import argparse
+import contextlib
 import gc
-import io
 import math
 import string
 import tarfile
 import time
 import typing as t
+from collections.abc import Sequence
 from functools import lru_cache
 from functools import partial
 from itertools import chain
@@ -17,7 +18,6 @@ import argcomplete
 import numpy as np
 import pandas as pd
 import polars as pl
-from scipy import integrate
 
 import artistools as at
 
@@ -74,10 +74,10 @@ def get_dfelemabund_from_dfmodel(dfmodel: pl.DataFrame, dfnucabundances: pl.Data
     return dfelabundances
 
 
-def open_tar_file_or_extracted(traj_root: Path, particleid: int, memberfilename: str):
+def get_tar_member_extracted_path(traj_root: Path, particleid: int, memberfilename: str) -> Path:
     """Trajectory files are generally stored as {particleid}.tar.xz, but this is slow to access, so first check for extracted files, or decompressed .tar files, which are much faster to access.
 
-    memberfilename: file path within the trajectory tarfile, eg. ./Run_rprocess/evol.dat
+    memberfilename: file path within the trajectory tarfile, eg. ./Run_rprocess/energy_thermo.dat
     """
     path_extracted_file = Path(traj_root, str(particleid), memberfilename)
     tarfilepaths = [
@@ -91,6 +91,15 @@ def open_tar_file_or_extracted(traj_root: Path, particleid: int, memberfilename:
     ]
     tarfilepath = next((tarfilepath for tarfilepath in tarfilepaths if tarfilepath.is_file()), None)
 
+    if path_extracted_file.is_file():
+        if path_extracted_file.stat().st_size > 0:
+            with contextlib.suppress(OSError), path_extracted_file.open(encoding="utf-8") as f:
+                if f.read(1):
+                    return path_extracted_file
+
+        # file is empty, so remove it
+        path_extracted_file.unlink(missing_ok=True)
+
     # and memberfilename.endswith(".dat")
     if not path_extracted_file.is_file() and tarfilepath is not None:
         try:
@@ -99,39 +108,45 @@ def open_tar_file_or_extracted(traj_root: Path, particleid: int, memberfilename:
         except OSError:
             print(f"Problem extracting file {memberfilename} from {tarfilepath}")
             raise
+        except KeyError:
+            print(f"File {memberfilename} not found in {tarfilepath}")
+            raise
 
     if path_extracted_file.is_file():
-        return path_extracted_file.open(encoding="utf-8")
+        return path_extracted_file
 
     if tarfilepath is None:
         print(f"  No network data found for particle {particleid} (so can't access {memberfilename})")
         raise FileNotFoundError
 
-    # print(f"using {tarfilepath} for {memberfilename}")
-    # return tarfile.open(tarfilepath, "r:*").extractfile(member=memberfilename)
-    with tarfile.open(tarfilepath, "r:*") as tfile:
-        for tarmember in tfile:
-            if tarmember.name == memberfilename:
-                extractedfile = tfile.extractfile(tarmember)
-                if extractedfile is not None:
-                    return io.StringIO(extractedfile.read().decode("utf-8"))
-
     print(f"Member {memberfilename} not found in {tarfilepath}")
     raise AssertionError
 
 
+def open_tar_file_or_extracted(traj_root: Path, particleid: int, memberfilename: str):
+    """Trajectory files are generally stored as {particleid}.tar.xz, but this is slow to access, so first check for extracted files, or decompressed .tar files, which are much faster to access.
+
+    memberfilename: file path within the trajectory tarfile, eg. ./Run_rprocess/energy_thermo.dat
+    """
+    return get_tar_member_extracted_path(
+        traj_root=traj_root, particleid=particleid, memberfilename=memberfilename
+    ).open(encoding="utf-8")
+
+
 @lru_cache(maxsize=16)
-def get_dfevol(traj_root: Path, particleid: int) -> pd.DataFrame:
-    with open_tar_file_or_extracted(traj_root, particleid, "./Run_rprocess/evol.dat") as evolfile:
-        return pd.read_csv(
-            evolfile,
-            sep=r"\s+",
-            comment="#",
-            usecols=[0, 1],
-            names=["nstep", "timesec"],
-            engine="c",
-            dtype={0: "int32[pyarrow]", 1: "float32[pyarrow]"},
-            dtype_backend="pyarrow",
+def get_traj_network_timesteps(traj_root: Path, particleid: int) -> pl.DataFrame:
+    with open_tar_file_or_extracted(traj_root, particleid, "./Run_rprocess/energy_thermo.dat") as evolfile:
+        return pl.from_pandas(
+            pd.read_csv(
+                evolfile,
+                sep=r"\s+",
+                comment="#",
+                usecols=[0, 1],
+                names=["nstep", "timesec"],
+                engine="c",
+                dtype={0: "int32[pyarrow]", 1: "float32[pyarrow]"},
+                dtype_backend="pyarrow",
+            )
         )
 
 
@@ -144,19 +159,19 @@ def get_closest_network_timestep(
       - 'lessthan': find highest timestep less than time_sec
       - 'greaterthan': find lowest timestep greater than time_sec.
     """
-    dfevol = get_dfevol(traj_root, particleid)
+    dfevol = get_traj_network_timesteps(traj_root, particleid)
 
     if cond == "nearest":
-        idx = np.abs(dfevol.timesec.to_numpy() - timesec).argmin()
+        idx = np.abs(dfevol["timesec"].to_numpy() - timesec).argmin()
         return int(dfevol["nstep"].to_numpy()[idx])
 
     if cond == "greaterthan":
-        step = dfevol[dfevol["timesec"] > timesec]["nstep"].min()
+        step = dfevol.filter(pl.col("timesec") > timesec).get_column("nstep").min()
         assert isinstance(step, int)
         return step
 
     if cond == "lessthan":
-        step = dfevol[dfevol["timesec"] < timesec]["nstep"].max()
+        step = dfevol.filter(pl.col("timesec") < timesec).get_column("nstep").max()
         assert isinstance(step, int)
         return step
 
@@ -171,8 +186,8 @@ def get_trajectory_timestepfile_nuc_abund(
         try:
             _, str_t_model_init_seconds, _, _, _, _ = trajfile.readline().split()
         except ValueError as exc:
-            print(f"Problem with {memberfilename}")
-            msg = f"Problem with {memberfilename}"
+            msg = f"Problem with {memberfilename} for traj {particleid}"
+            print(msg)
             raise ValueError(msg) from exc
 
         trajfile.seek(0)
@@ -196,6 +211,8 @@ def get_trajectory_timestepfile_nuc_abund(
 
 def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, t_model_s: float) -> float:
     """Calculate initial cell energy [erg/g] from reactions t < t_model_s (reduced by work done)."""
+    from scipy import integrate
+
     with open_tar_file_or_extracted(traj_root, particleid, "./Run_rprocess/energy_thermo.dat") as enthermofile:
         try:
             dfthermo: pd.DataFrame = pd.read_csv(
@@ -213,7 +230,7 @@ def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, 
         dfthermo = dfthermo.rename(columns={"time/s": "time_s"})
         startindex: int = int(np.argmax(dfthermo["time_s"] >= 1))  # start integrating at this number of seconds
 
-        assert all(dfthermo["Qdot"][startindex : nts_max + 1] > 0.0)
+        assert all(dfthermo["Qdot"][startindex : nts_max + 1] >= 0.0)
         dfthermo["Qdot_expansionadjusted"] = dfthermo["Qdot"] * dfthermo["time_s"] / t_model_s
 
         qdotintegral: float = integrate.trapezoid(
@@ -260,8 +277,9 @@ def get_trajectory_abund_q(
     # print(f'trajectory particle id {particleid} massfrac sum: {massfractotal:.2f}')
     # print(f' grid snapshot: {t_model_s:.2e} s, network: {traj_time_s:.2e} s (timestep {nts})')
     assert np.isclose(massfractotal, 1.0, rtol=0.02)
-    if t_model_s is not None:
-        assert np.isclose(traj_time_s, t_model_s, rtol=0.2, atol=1.0)
+    if not np.isclose(traj_time_s, t_model_s, rtol=0.2, atol=1.0):
+        msg = f"ERROR: particle {particleid} step time of {traj_time_s} is not similar to target {t_model_s} seconds"
+        raise AssertionError(msg)
 
     dict_traj_nuc_abund: dict[tuple[int, int] | str, float] = {
         (Z, N): massfrac / massfractotal
@@ -472,7 +490,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")
 
 
-def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs) -> None:
     """Create ARTIS model from single trajectory abundances."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
@@ -498,27 +516,24 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     wollaeger_profilename = "wollaeger_ejectaprofile_10bins.txt"
     if Path(wollaeger_profilename).exists():
-        dfdensities = get_wollaeger_density_profile(wollaeger_profilename)
+        dfdensities = get_wollaeger_density_profile(wollaeger_profilename, t_model_init_seconds)
     else:
         rho = 1e-11
         print(f"{wollaeger_profilename} not found. Using rho {rho} g/cm3")
-        dfdensities = pd.DataFrame({"rho": rho, "vel_r_max_kmps": 6.0e4}, index=[0])
+        dfdensities = pl.DataFrame({"mgi": 0, "rho": rho, "vel_r_max_kmps": 6.0e4})
 
+    dfdensities["inputcellid"] = dfdensities["mgi"] + 1
     # print(dfdensities)
 
     # write abundances.txt
     dictelemabund = get_elemabund_from_nucabund(dfnucabund)
 
-    dfelabundances = pd.DataFrame([dictelemabund | {"inputcellid": mgi + 1} for mgi in range(len(dfdensities))])
-    # print(dfelabundances)
+    dfelabundances = pl.DataFrame([dictelemabund | {"inputcellid": mgi + 1} for mgi in range(len(dfdensities))])
     at.inputmodel.save_initelemabundances(dfelabundances=dfelabundances, outpath=args.outputpath)
 
     # write model.txt
 
     rowdict = {
-        # 'inputcellid': 1,
-        # 'vel_r_max_kmps': 6.e4,
-        # 'logrho': -3.,
         "X_Fegroup": 1.0,
         "X_Ni56": 0.0,
         "X_Co56": 0.0,
@@ -532,43 +547,54 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         A = row.N + row.Z
         rowdict[f"X_{at.get_elsymbol(row.Z)}{A}"] = row.massfrac
 
-    modeldata = [
+    dfmodel = pl.DataFrame([
         {
-            "inputcellid": mgi + 1,  # pyright: ignore[reportOperatorIssue]
+            "inputcellid": densityrow["inputcellid"],
             "vel_r_max_kmps": densityrow["vel_r_max_kmps"],
             "logrho": math.log10(densityrow["rho"]),
         }
         | rowdict
-        for mgi, densityrow in dfdensities.iterrows()
-    ]
-    # print(modeldata)
-
-    dfmodel = pd.DataFrame(modeldata)
-    # print(dfmodel)
+        for densityrow in dfdensities.iter_rows(named=True)
+    ])
     at.inputmodel.save_modeldata(dfmodel=dfmodel, t_model_init_days=t_model_init_days, filepath=Path(args.outputpath))
+
     with Path(args.outputpath, "gridcontributions.txt").open("w", encoding="utf-8") as fcontribs:
         fcontribs.write("particleid cellindex frac_of_cellmass\n")
-        for cell in dfmodel.itertuples(index=False):
-            fcontribs.write(f"{particleid} {cell.inputcellid} 1.0\n")
+        fcontribs.writelines(f"{particleid} {inputcellid} 1.0\n" for inputcellid in dfmodel["inputcellid"])
 
 
-def get_wollaeger_density_profile(wollaeger_profilename):
+def get_wollaeger_density_profile(wollaeger_profilename: Path | str, t_model_init_seconds: float) -> pl.DataFrame:
+    wollaeger_profilename = Path(wollaeger_profilename)
     print(f"{wollaeger_profilename} found")
     with Path(wollaeger_profilename).open("rt", encoding="utf-8") as f:
         t_model_init_days_in = float(f.readline().strip().removesuffix(" day"))
-    result = pd.read_csv(wollaeger_profilename, sep=r"\s+", skiprows=1, names=["cellid", "vel_r_max_kmps", "rho"])
-    result["cellid"] = result["cellid"].astype(int)
-    result["vel_r_min_kmps"] = np.concatenate(([0.0], result["vel_r_max_kmps"].to_numpy()[:-1]))
+    t_model_init_seconds_in = t_model_init_days_in * 24 * 60 * 60
 
-    t_model_init_seconds_in = t_model_init_days_in * 24 * 60 * 60  # noqa: F841
-    return result.eval(
-        "mass_g = rho * 4. / 3. * @math.pi * (vel_r_max_kmps ** 3 - vel_r_min_kmps ** 3)"
-        "* (1e5 * @t_model_init_seconds_in) ** 3"
-    ).eval(
-        # now replace the density at the input time with the density at required time
-        "rho = mass_g / ("
-        "4. / 3. * @math.pi * (vel_r_max_kmps ** 3 - vel_r_min_kmps ** 3)"
-        " * (1e5 * @t_model_init_seconds) ** 3)"
+    return (
+        pl.from_pandas(
+            pd.read_csv(wollaeger_profilename, sep=r"\s+", skiprows=1, names=["cellid", "vel_r_max_kmps", "rho"])
+        )
+        .with_columns(pl.col("mgi").cast(pl.Int32))
+        .with_columns(vel_r_min_kmps=pl.col("vel_r_max_kmps").shift(n=1, fill_value=0.0))
+        .with_columns(
+            mass_g=pl.col("rho")
+            * 4.0
+            / 3.0
+            * math.pi
+            * (pl.col("vel_r_max_kmps") ** 3 - pl.col("vel_r_min_kmps") ** 3)
+            * (1e5 * t_model_init_seconds_in) ** 3
+        )
+        .with_columns(
+            # now replace the density at the input time with the density at required time
+            rho=pl.col("mass_g")
+            / (
+                4.0
+                / 3.0
+                * math.pi
+                * (pl.col("vel_r_max_kmps") ** 3 - pl.col("vel_r_min_kmps") ** 3)
+                * (1e5 * t_model_init_seconds) ** 3
+            )
+        )
     )
 
 

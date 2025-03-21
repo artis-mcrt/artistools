@@ -4,12 +4,13 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from astropy import units as u
-from scipy import integrate
 
 import artistools as at
 
 
 def get_bol_lc_from_spec(modelpath) -> pd.DataFrame:
+    from scipy import integrate
+
     res_specdata = at.spectra.read_spec_res(modelpath)
     timearray = res_specdata[0].columns[1:]
     times = [time for time in timearray if 5 < float(time) < 80]

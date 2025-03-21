@@ -15,6 +15,8 @@ jobs:
     lint:
         name: Format, lint, and type check
         runs-on: macos-15
+        env:
+            RUFF_OUTPUT_FORMAT: "github"
         steps:
             - name: Checkout Code
               uses: actions/checkout@v4
@@ -24,69 +26,62 @@ jobs:
             - name: Set up Python
               uses: actions/setup-python@v5
 
-            - name: Cache rust build
+            - name: Cache cargo and rust build
               uses: actions/cache@v4
               with:
-                  path: rust/target/
+                  path: |
+                      ~/.cargo/bin/
+                      ~/.cargo/registry/index/
+                      ~/.cargo/registry/cache/
+                      ~/.cargo/git/db/
+                      rust/target/
                   key: pytest-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}
                   restore-keys: |
                       pytest-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
                       pytest-rust-target-${{ runner.os }}-
 
+            - name: Setup uv
+              uses: astral-sh/setup-uv@v5
+
             - name: Install artistools
               run: |
-                  python3 -m pip install uv
-                  python3 -m uv pip install --system --pre --upgrade pylint mypy ruff
-                  python3 -m uv pip install --compile-bytecode --pre --editable .
+                  rustup update stable
+                  uv sync --frozen
+                  source .venv/bin/activate
+                  uv pip install --compile-bytecode --editable .[dev]
 
             - name: Run Ruff
               if: always()
-              run: ruff check --output-format=github  --exit-non-zero-on-fix .
+              run: |
+                uv run --frozen -- ruff --version
+                uv run --frozen -- ruff check --exit-non-zero-on-fix --no-fix
 
             - name: Run Ruff Format
               if: always()
-              run: ruff format --diff .
-
-            - name: Run pyright
-              if: always()
-              uses: jakebailey/pyright-action@v2
+              run: uv run --frozen -- ruff format --check
 
             - name: Run mypy
               if: always()
-              run: mypy --install-types --non-interactive
+              run: uv run --frozen -- mypy --install-types --non-interactive
+
+            - name: Run pyright
+              if: always()
+              run: uv run --frozen -- pyright
 
             - name: Run pylint
               if: always()
-              run: pylint --output-format=github artistools
+              run: uv run --frozen -- pylint --output-format=github artistools
 
-    pre-commit:
-        runs-on: macos-15
-        env:
-            RUFF_OUTPUT_FORMAT: 'github'
-        steps:
-            - name: Checkout Code
-              uses: actions/checkout@v4
-              with:
-                  fetch-depth: 0
-
-            - name: Set up Python
-              uses: actions/setup-python@v5
-
-            - name: Cache rust build
+            - name: Cache pre-commit
               uses: actions/cache@v4
               with:
-                  path: rust/target/
-                  key: pytest-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}
-                  restore-keys: |
-                      pytest-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
-                      pytest-rust-target-${{ runner.os }}-
+                path: ~/.cache/pre-commit
+                key: pre-commit-3|${{ hashFiles('.pre-commit-config.yaml') }}
 
-            - name: Install artistools
+            - name: Run pre-commit
               run: |
-                  python3 -m pip install uv
-                  python3 -m uv pip install --compile-bytecode --pre --editable .
-
-            - uses: pre-commit/action@v3.0.1
+                  source .venv/bin/activate
+                  uv run --frozen -- pre-commit run --all-files --show-diff-on-failure --color=always
 
     superlinter:
         name: Super linter
@@ -132,7 +127,7 @@ jobs:
             fail-fast: false
             matrix:
                 os: [macos-15, ubuntu-24.04]
-                python-version: ['3.10', '3.11', '3.12', '3.13']
+                python-version: ['3.11', '3.12', '3.13']
         env:
             OS: ${{ matrix.os }}
             PYTHON: ${{ matrix.python-version }}
@@ -153,19 +148,33 @@ jobs:
             - name: Show python version
               run: python3 --version --version && which python3
 
-            - name: Cache rust build
+            - name: Cache cargo and rust build
               uses: actions/cache@v4
               with:
-                  path: rust/target/
+                  path: |
+                      ~/.cargo/bin/
+                      ~/.cargo/registry/index/
+                      ~/.cargo/registry/cache/
+                      ~/.cargo/git/db/
+                      rust/target/
                   key: pytest-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}
                   restore-keys: |
                       pytest-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
                       pytest-rust-target-${{ runner.os }}-
 
-            - name: Install artistools
+            - name: Setup uv
+              uses: astral-sh/setup-uv@v5
+
+            - name: Install artistools (no dev deps)
               run: |
-                  python3 -m pip install uv
-                  python3 -m uv pip install --compile-bytecode --pre --editable .
+                  rustup update stable
+                  uv sync --frozen --no-dev
+                  uv pip install .
+
+            - name: Check artistools command line tool
+              run: |
+                  uv run --frozen -- artistools --help
+                  uv run --frozen -- artistools completions
 
             - name: Cache test data
               uses: actions/cache@v4
@@ -178,21 +187,19 @@ jobs:
               working-directory: tests/data/
               run: source ./setuptestdata.sh
 
-            - name: Check artistools command line tool
+            - name: Install artistools[dev]
               run: |
-                  artistools --help
-                  artistools completions
+                uv sync --frozen
+                uv pip install --compile-bytecode --editable .[dev]
 
             - name: Test with pytest
-              run: |
-                  pytest --cov=./ --cov-report=xml
+              run: uv run --frozen -- python3 -m pytest --cov=./ --cov-report=xml
 
             - name: Report coverage
-              run: |
-                  coverage report
+              run: uv run --frozen -- python3 -m coverage report
 
             - name: Upload coverage to Codecov
-              uses: codecov/codecov-action@v4
+              uses: codecov/codecov-action@v5
               with:
                   token: ${{ secrets.CODECOV_TOKEN }}
                   files: ./coverage.xml

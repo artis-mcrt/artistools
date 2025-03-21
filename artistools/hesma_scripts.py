@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -49,12 +48,16 @@ def plothesmaresspec(fig, ax) -> None:
             for dirbin, pldf in at.split_multitable_dataframe(specdata).items()
         }
 
-        column_names = res_specdata[0].iloc[0]
-        column_names[0] = "lambda"
-        print(column_names)
+        new_column_names = res_specdata[0].iloc[0]
+        new_column_names[0] = "lambda"
+        print(new_column_names)
 
         for i in range(len(res_specdata)):
-            res_specdata[i] = res_specdata[i].rename(columns=column_names).drop(res_specdata[i].index[0])  # pyright: ignore[reportArgumentType,reportCallIssue]
+            res_specdata[i] = (
+                res_specdata[i]
+                .rename(columns=dict(zip(res_specdata[i].columns, new_column_names, strict=True)))
+                .drop(res_specdata[i].index[0])
+            )
 
         ax.plot(res_specdata[0]["lambda"], res_specdata[0][11.7935] * (1e-5) ** 2, label="hesma 0")
         ax.plot(res_specdata[1]["lambda"], res_specdata[1][11.7935] * (1e-5) ** 2, label="hesma 1")
@@ -83,7 +86,7 @@ def make_hesma_vspecfiles(modelpath: Path, outpath: Path | None = None) -> None:
 
         timearray = vspecdata.columns.to_numpy()[1:]
         vspecdata = vspecdata.sort_values(by="nu", ascending=False)
-        vspecdata = vspecdata.eval("lambda_angstroms = 2.99792458e+18 / nu")
+        vspecdata["lambda_angstroms"] = 2.99792458e18 / vspecdata["nu"]
         for time in timearray:
             vspecdata[time] = vspecdata[time] * vspecdata["nu"] / vspecdata["lambda_angstroms"]
             vspecdata[time] *= 100000.0**2  # Scale to 10 pc (1 Mpc/10 pc) ** 2
@@ -111,7 +114,7 @@ def make_hesma_vspecfiles(modelpath: Path, outpath: Path | None = None) -> None:
         )
 
 
-def make_hesma_bol_lightcurve(modelpath, outpath, timemin, timemax) -> None:
+def make_hesma_bol_lightcurve(modelpath, outpath, timemin, timemax) -> None:  # noqa: ARG001
     """UVOIR bolometric light curve (angle-averaged)."""
     lightcurvedataframe = at.lightcurve.get_bol_lc_from_lightcurveout(modelpath)
     print(lightcurvedataframe)
@@ -151,9 +154,9 @@ def make_hesma_peakmag_dm15_dm40(
 
 def read_hesma_peakmag_dm15_dm40(pathtofiles) -> None:
     data = []
-    for filename in os.listdir(pathtofiles):
-        print(filename)
-        data.append(pd.read_csv(pathtofiles / filename, sep=r"\s+"))
+    for filepath in Path(pathtofiles).iterdir():
+        print(filepath)
+        data.append(pd.read_csv(filepath, sep=r"\s+"))
     print(data[0])
 
     for df in data:

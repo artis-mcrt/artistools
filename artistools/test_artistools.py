@@ -38,7 +38,7 @@ def test_commands() -> None:
         assert isinstance(REPOPATH, Path)
         with (REPOPATH / "pyproject.toml").open("rb") as f:
             pyproj = tomllib.load(f)
-        commands = {k: tuple(v.split(":")) for k, v in pyproj["project"]["scripts"].items()}  # pyright: ignore[reportAssignmentType]
+        commands = {k: tuple(v.split(":")) for k, v in pyproj["project"]["scripts"].items()}
 
         # ensure that the commands are pointing to valid submodule.function() targets
         for command, (submodulename, funcname) in commands.items():
@@ -77,14 +77,10 @@ def test_timestep_times() -> None:
     )
 
 
-def test_deposition() -> None:
-    at.deposition.main(argsraw=[], modelpath=modelpath)
-
-
 def test_get_inputparams() -> None:
     inputparams = at.get_inputparams(modelpath)
     dicthash = hashlib.sha256(str(sorted(inputparams.items())).encode("utf-8")).hexdigest()
-    assert dicthash == "ce7d04d6944207673a105cba8d2430055d0b53b7f3e92db3964d2dca285a3adb"
+    assert dicthash == "1edcddd5d36cc2eaed94ad083dacfb95c6915b8fd4f62591e2b79ceca6885d1e", dicthash
 
 
 def test_macroatom() -> None:

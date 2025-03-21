@@ -26,10 +26,7 @@ def plot_spherical(
     timemaxdays: float | None,
     nphibins: int,
     ncosthetabins: int,
-    dfmodel: pl.LazyFrame | None = None,
-    modelmeta: dict[str, t.Any] | None = None,
     dfestimators: pl.LazyFrame | None = None,
-    maxpacketfiles: int | None = None,
     atomic_number: int | None = None,
     ion_stage: int | None = None,
     gaussian_sigma: int | None = None,
@@ -188,10 +185,11 @@ def plot_spherical(
 
     meshgrid_phi, meshgrid_theta = np.meshgrid(phigrid, thetagrid)
 
+    xwidth = float(figscale * at.get_config()["figwidth"])
     fig, axes = plt.subplots(
         len(plotvars),
         1,
-        figsize=(figscale * at.get_config()["figwidth"], 3.5 * len(plotvars)),
+        figsize=(xwidth, xwidth * 0.715 * len(plotvars)),
         subplot_kw={"projection": "mollweide"},
         layout="constrained",
         gridspec_kw={"wspace": 0.0, "hspace": 0.0},
@@ -317,7 +315,7 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
         assert args.atomic_number is None
         args.atomic_number = at.get_atomic_number(args.elem)
 
-    dfmodel, modelmeta = at.get_modeldata_polars(modelpath=args.modelpath, getheadersonly=True, printwarningsonly=True)
+    dfmodel, modelmeta = at.get_modeldata(modelpath=args.modelpath, getheadersonly=True, printwarningsonly=True)
     dfestimators = at.estimators.scan_estimators(modelpath=args.modelpath) if "temperature" in args.plotvars else None
 
     nprocs_read, dfpackets = at.packets.get_packets_pl(
@@ -352,14 +350,11 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
             modelpath=args.modelpath,
             dfpackets=dfpackets,
             dfestimators=dfestimators,
-            dfmodel=dfmodel,
-            modelmeta=modelmeta,
             nprocs_read=nprocs_read,
             timemindays=tstart,
             timemaxdays=tend,
             nphibins=args.nphibins,
             ncosthetabins=args.ncosthetabins,
-            maxpacketfiles=args.maxpacketfiles,
             gaussian_sigma=args.gaussian_sigma,
             atomic_number=args.atomic_number,
             ion_stage=args.ion_stage,
@@ -369,7 +364,7 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
         )
 
         axes[0].set_title(
-            f"{timemindays:.2f}-{timemaxdays:.2f} days{f' ({condition})' if condition else ''}", loc="left"
+            f"{timemindays:.2f}-{timemaxdays:.2f} days{f' ({condition})' if condition else ''}", loc="left", pad=0
         )
 
         defaultfilename = "plotspherical_{timemindays:.2f}-{timemaxdays:.2f}d.{outformat}"  # noqa: RUF027

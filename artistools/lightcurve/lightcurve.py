@@ -1,6 +1,8 @@
 import argparse
 import math
 import typing as t
+from collections.abc import Collection
+from collections.abc import Sequence
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -9,7 +11,6 @@ import pandas as pd
 import polars as pl
 from astropy import constants as const
 from astropy import units as u
-from scipy import integrate
 
 import artistools as at
 
@@ -40,12 +41,11 @@ def readfile(filepath: str | Path) -> dict[int, pl.DataFrame]:
 def read_3d_gammalightcurve(filepath: str | Path) -> dict[int, pd.DataFrame]:
     columns = ["time"]
     columns.extend(np.arange(0, 100))
-    lcdata = pd.read_csv(filepath, sep=r"\s+", header=None)
-    lcdata.columns = columns
+    lcdata = pd.read_csv(filepath, sep=r"\s+", header=None).set_axis(columns, axis=1)
     # lcdata = lcdata.rename(columns={0: 'time', 1: 'lum', 2: 'lum_cmf'})
 
     res_data = {}
-    for angle in np.arange(0, 100):
+    for angle in range(100):
         res_data[angle] = lcdata[["time", angle]]
         res_data[angle] = res_data[angle].rename(columns={angle: "lum"})
 
@@ -54,15 +54,20 @@ def read_3d_gammalightcurve(filepath: str | Path) -> dict[int, pd.DataFrame]:
 
 def get_from_packets(
     modelpath: str | Path,
-    escape_type: t.Literal["TYPE_RPKT", "TYPE_GAMMA"] = "TYPE_RPKT",
+    escape_type: str = "TYPE_RPKT",
     maxpacketfiles: int | None = None,
-    directionbins: t.Collection[int] | None = None,
+    directionbins: Collection[int] | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
     get_cmf_column: bool = True,
     directionbins_are_vpkt_observers: bool = False,
+    pellet_nucname: str | None = None,
+    use_pellet_decay_time: bool = False,
 ) -> dict[int, pl.DataFrame]:
     """Get ARTIS luminosity vs time from packets files."""
+    if escape_type not in {"TYPE_RPKT", "TYPE_GAMMA"}:
+        msg = f"Unknown escape type {escape_type}"
+        raise ValueError(msg)
     if directionbins is None:
         directionbins = [-1]
     tmidarray = at.get_timestep_times(modelpath=modelpath, loc="mid")
@@ -82,6 +87,7 @@ def get_from_packets(
     ndirbins = at.get_viewingdirectionbincount()
 
     if directionbins_are_vpkt_observers:
+        assert pellet_nucname is None  # we don't track which pellet led to vpkts
         vpkt_config = at.get_vpkt_config(modelpath)
         nprocs_read, dfpackets = at.packets.get_virtual_packets_pl(modelpath, maxpacketfiles=maxpacketfiles)
     else:
@@ -95,7 +101,24 @@ def get_from_packets(
         ])
 
     getcols = set()
+    try:
+        dfnuclides = at.get_nuclides(modelpath=modelpath)
+        if pellet_nucname is not None:
+            atomic_number = at.get_atomic_number(pellet_nucname)
+            if at.get_elsymbol(atomic_number) == pellet_nucname:
+                expr = pl.col("atomic_number") == atomic_number
+            else:
+                expr = pl.col("nucname") == pellet_nucname
+            dfpackets = dfpackets.filter(
+                pl.col("pellet_nucindex").is_in(
+                    dfnuclides.filter(expr).select(["pellet_nucindex"]).collect().get_column("pellet_nucindex")
+                )
+            )
+    except FileNotFoundError:
+        assert pellet_nucname is None
+
     if directionbins_are_vpkt_observers:
+        assert not use_pellet_decay_time
         vpkt_config = at.get_vpkt_config(modelpath)
         for vspecindex in directionbins:
             obsdirindex = vspecindex // vpkt_config["nspectraperobs"]
@@ -106,7 +129,12 @@ def get_from_packets(
                 f"dir{obsdirindex}_e_rf_{opacchoiceindex}",
             }
     else:
-        getcols |= {"t_arrive_d", "e_rf"}
+        getcols |= {"e_rf"}
+        if use_pellet_decay_time:
+            dfpackets = dfpackets.with_columns([(pl.col("tdecay") / 86400).alias("tdecay_d")])
+            getcols.add("tdecay_d")
+        else:
+            getcols.add("t_arrive_d")
         if get_cmf_column:
             getcols |= {"e_cmf", "t_arrive_cmf_d"}
         if directionbins != [-1]:
@@ -117,10 +145,11 @@ def get_from_packets(
             else:
                 getcols.add("dirbin")
 
-    dfpackets = dfpackets.select(getcols).collect(streaming=True).lazy()
+    dfpackets = dfpackets.select(getcols).collect().lazy()
 
-    lcdata = {}
+    lcdata: dict[int, pl.DataFrame] = {}
     for dirbin in directionbins:
+        timecol = "tdecay_d" if use_pellet_decay_time else "t_arrive_d"
         if directionbins_are_vpkt_observers:
             obsdirindex = dirbin // vpkt_config["nspectraperobs"]
             opacchoiceindex = dirbin % vpkt_config["nspectraperobs"]
@@ -144,7 +173,7 @@ def get_from_packets(
             pldfpackets_dirbin = dfpackets.filter(pl.col("dirbin") == dirbin)
 
         dftimebinned = at.packets.bin_and_sum(
-            pldfpackets_dirbin, bincol="t_arrive_d", bins=list(timearrayplusend), sumcols=["e_rf"]
+            pldfpackets_dirbin, bincol=timecol, bins=list(timearrayplusend), sumcols=["e_rf"]
         )
 
         npkts_selected = pldfpackets_dirbin.select(pl.count("e_rf")).collect().item(0, 0)
@@ -156,7 +185,7 @@ def get_from_packets(
             ((pl.col("e_rf_sum") / nprocs_read * solidanglefactor * unitfactor) / pl.Series(arr_timedelta)).alias(
                 "lum"
             ),
-        ]).drop(["e_rf_sum", "t_arrive_d_bin"])
+        ]).drop(["e_rf_sum", f"{timecol}_bin"])
 
         lcdata[dirbin] = dftimebinned.collect()
 
@@ -260,7 +289,10 @@ def generate_band_lightcurve_data(modelpath: Path, filters_list=["U", "B", "V", 
 
 
 def generate_band_lightcurve_data_deprecated(
-    modelpath: Path, args: argparse.Namespace, angle: int = -1, modelnumber: int | None = None
+    modelpath: Path,
+    args: argparse.Namespace,
+    angle: int = -1,
+    modelnumber: int | None = None,  # noqa: ARG001
 ) -> dict[str, t.Any]:
     """Integrate spectra to get band magnitude vs time. Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py."""
     from scipy.interpolate import interp1d
@@ -293,7 +325,7 @@ def generate_band_lightcurve_data_deprecated(
             # Ignore Q and U values in pol file
             [i for i in specdata.columns.to_numpy()[1:] if i[-2] != "."]
             if "specpol.out" in str(specfilename)
-            else specdata.columns.to_numpy()[1:]
+            else specdata.columns.to_list()[1:]
         )
 
     filters_dict = {}
@@ -366,12 +398,14 @@ def generate_band_lightcurve_data_deprecated(
 
 def bolometric_magnitude(
     modelpath: Path,
-    timearray: t.Collection[float | str],
+    timearray: Collection[float | str],
     args: argparse.Namespace,
     angle: int = -1,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
 ) -> tuple[list[float], list[float]]:
+    from scipy import integrate
+
     magnitudes = []
     times = []
 
@@ -457,6 +491,8 @@ def get_spectrum_in_filter_range(
 
 
 def evaluate_magnitudes(flux, transmission, wavelength_from_spectrum, zeropointenergyflux: float) -> float:
+    from scipy import integrate
+
     cf = flux * transmission
     flux_obs = abs(integrate.trapezoid(cf, wavelength_from_spectrum))  # using trapezoidal rule to integrate
     val = 0.0 if flux_obs == 0.0 else -2.5 * np.log10(flux_obs / zeropointenergyflux)
@@ -465,8 +501,8 @@ def evaluate_magnitudes(flux, transmission, wavelength_from_spectrum, zeropointe
 
 
 def get_band_lightcurve(
-    band_lightcurve_data: dict[str, t.Sequence[tuple[float, float]]], band_name, args: argparse.Namespace
-) -> tuple[t.Sequence[float], np.ndarray]:
+    band_lightcurve_data: dict[str, Sequence[tuple[float, float]]], band_name, args: argparse.Namespace
+) -> tuple[Sequence[float], np.ndarray]:
     times, brightness_in_mag = zip(
         *[
             (time, brightness)

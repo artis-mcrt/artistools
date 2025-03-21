@@ -17,7 +17,7 @@ def get_theta_phi(anglebin):
     anglenumber = 0
     for t in theta:
         for p in phi:
-            if int(anglenumber) == anglebin:
+            if anglenumber == anglebin:
                 return t, p
 
             anglenumber += 1
@@ -102,7 +102,7 @@ def viewing_angles_visualisation(
         sys.exit()
 
     # Load model contents
-    dfmodel, _modelmeta = at.get_modeldata(modelfile, derived_cols=["pos_mid"])
+    dfmodel, _modelmeta = at.get_modeldata_pandas(modelfile, derived_cols=["pos_mid"])
     x, y, z = (dfmodel[f"pos_{ax}_mid"].to_numpy() for ax in ("x", "y", "z"))
     rho = dfmodel["rho"].to_numpy()
 

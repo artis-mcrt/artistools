@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
-
-
 import argparse
 import math
 import string
 import typing as t
+from collections.abc import Sequence
 from pathlib import Path
 
 import argcomplete
@@ -123,7 +122,7 @@ def plot_slice_modelcolumn(
 def plot_2d_initial_abundances(modelpath, args: argparse.Namespace) -> None:
     # if the species ends in a number then we need to also get the nuclear mass fractions (not just element abundances)
     get_elemabundances = any(plotvar[-1] not in string.digits for plotvar in args.plotvars)
-    dfmodel, modelmeta = at.get_modeldata(
+    dfmodel, modelmeta = at.get_modeldata_pandas(
         modelpath, get_elemabundances=get_elemabundances, derived_cols=["pos_min", "pos_max"]
     )
     assert modelmeta["dimensions"] > 1
@@ -241,8 +240,8 @@ def get_model_abundances_Msun_1D(modelpath: Path) -> pd.DataFrame:
     return merge_dfs
 
 
-def plot_most_abundant(modelpath, args: argparse.Namespace):
-    model, _ = at.inputmodel.get_modeldata(modelpath[0])
+def plot_most_abundant(modelpath, args: argparse.Namespace):  # noqa: ARG001
+    model, _ = at.inputmodel.get_modeldata_pandas(modelpath[0])
     abundances = at.inputmodel.get_initelemabundances_pandas(modelpath[0])
 
     merge_dfs = model.merge(abundances, how="inner", on="inputcellid")
@@ -345,7 +344,7 @@ def make_3d_plot(modelpath, args: argparse.Namespace) -> None:
         font_size=28,
         bold=False,
     )
-    plotter.add_mesh(surf, opacity=plotcoloropacity, scalar_bar_args=sargs, cmap="coolwarm_r")  # pyright: ignore[reportArgumentType]
+    plotter.add_mesh(surf, opacity=plotcoloropacity, scalar_bar_args=sargs, cmap="coolwarm_r")
     # plotter.add_mesh(surf, opacity=plotcoloropacity, use_transparency=True, cmap='coolwarm_r') #magma
 
     # plotter.remove_scalar_bar() # removes colorbar
@@ -365,10 +364,10 @@ def make_3d_plot(modelpath, args: argparse.Namespace) -> None:
 
 
 def plot_phi_hist(modelpath):
-    dfmodel, _ = at.get_modeldata(modelpath, derived_cols=["pos_x_mid", "pos_y_mid", "pos_z_mid", "vel_r_mid"])
+    dfmodel, _ = at.get_modeldata_pandas(modelpath, derived_cols=["pos_x_mid", "pos_y_mid", "pos_z_mid", "vel_r_mid"])
     # print(dfmodel.keys())
     # quit()
-    at.inputmodel.inputmodel_misc.get_cell_angle(dfmodel, modelpath)
+    at.inputmodel.inputmodel_misc.get_cell_angle(dfmodel)
     CLIGHT = 2.99792458e10
     # MSUN = 1.989e33
 
@@ -458,7 +457,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs) -> None:
     """Plot ARTIS input model composition."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)

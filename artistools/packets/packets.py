@@ -3,6 +3,7 @@ import math
 import tempfile
 import time
 import typing as t
+from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
 
@@ -128,8 +129,8 @@ def get_column_names_artiscode(modelpath: str | Path) -> list[str] | None:
 def add_derived_columns(
     dfpackets: pd.DataFrame,
     modelpathin: Path | str,
-    colnames: t.Sequence[str],
-    allnonemptymgilist: t.Sequence[int] | None = None,
+    colnames: Sequence[str],
+    allnonemptymgilist: Sequence[int] | None = None,
 ) -> pd.DataFrame:
     """Add columns to a packets DataFrame that are derived from the values that are stored in the packets files.
 
@@ -191,7 +192,7 @@ def add_derived_columns(
         dfpackets["em_timestep"] = dfpackets.apply(em_timestep, axis=1)
 
     if any(x in colnames for x in ("angle_bin", "dirbin", "costhetabin", "phibin")):
-        dfpackets = bin_packet_directions(modelpath, dfpackets)
+        dfpackets = bin_packet_directions(dfpackets)
 
     return dfpackets
 
@@ -205,6 +206,11 @@ def add_derived_columns_lazy(
 
     We might as well add everything, since the columns only get calculated when they are actually used (polars LazyFrame).
     """
+    if isinstance(dfmodel, pd.DataFrame):
+        dfmodel = pl.from_pandas(dfmodel).lazy()
+
+    assert isinstance(dfmodel, pl.LazyFrame)
+
     dfpackets = dfpackets.lazy().with_columns(
         emission_velocity=(
             (pl.col("em_posx") ** 2 + pl.col("em_posy") ** 2 + pl.col("em_posz") ** 2).sqrt() / pl.col("em_time")
@@ -253,11 +259,12 @@ def add_derived_columns_lazy(
 
     elif modelmeta["dimensions"] == 1:
         assert dfmodel is not None, "dfmodel must be provided for 1D models to set em_modelgridindex"
-        velbins = (dfmodel.select("vel_r_max_kmps").lazy().collect()["vel_r_max_kmps"] * 1000.0).to_list()  # pyright: ignore[reportCallIssue]
+
+        velbins = (dfmodel.select(pl.col("vel_r_max_kmps")).lazy().collect()["vel_r_max_kmps"] * 1000.0).to_list()
         dfpackets = dfpackets.with_columns(
             em_modelgridindex=(
                 pl.col("emission_velocity")
-                .cut(breaks=list(velbins), labels=[str(x) for x in range(-1, len(velbins))])
+                .cut(breaks=velbins, labels=[str(x) for x in range(-1, len(velbins))])
                 .cast(str)
                 .cast(pl.Int32)
             )
@@ -368,7 +375,21 @@ def readfile_text(packetsfiletext: Path | str, column_names: list[str]) -> pl.Da
         raise
 
     mpirank = int(packetsfiletext.name.split("_")[-1].split(".")[0])
-    dfpackets = dfpackets.drop(["next_trans", "last_cross"]).with_columns(mpirank=pl.lit(mpirank, dtype=pl.Int32))
+    dfpackets = dfpackets.drop(
+        [
+            "next_trans",
+            "last_event",
+            "last_cross",
+            "absorptiondirx",
+            "absorptiondiry",
+            "absorptiondirz",
+            "interactions",
+            "pol_dirx",
+            "pol_diry",
+            "pol_dirz",
+        ],
+        strict=False,
+    ).with_columns(mpirank=pl.lit(mpirank, dtype=pl.Int32))
 
     # drop last column of nulls (caused by trailing space on each line)
     if dfpackets[dfpackets.columns[-1]].is_null().all():
@@ -425,7 +446,7 @@ def get_vpackets_text_columns(vpacketsfiletext: Path) -> list[str]:
 
 
 def get_rankbatch_parquetfile(
-    modelpath: Path | str, batch_mpiranks: t.Sequence[int], batchindex: int, virtual: bool
+    modelpath: Path | str, batch_mpiranks: Sequence[int], batchindex: int, virtual: bool
 ) -> Path:
     """Get the path to a parquet file containing packets for a specific batch of MPI ranks. If the file does not exists or is outdated, generate it first from the text files."""
     modelpath = Path(modelpath)
@@ -503,9 +524,7 @@ def get_rankbatch_parquetfile(
                 ).cast(pl.Float32)
             ).sort(by=["type_id", "escape_type_id", "t_arrive_d"])
 
-            syn_dir = at.get_syn_dir(modelpath)
-
-            pldf_batch = add_packet_directions_lazypolars(pldf_batch, syn_dir)
+            pldf_batch = add_packet_directions_lazypolars(pldf_batch)
             pldf_batch = bin_packet_directions_lazypolars(pldf_batch)
 
         print(
@@ -584,12 +603,16 @@ def get_packets_pl(
     modelpath: str | Path,
     maxpacketfiles: int | None = None,
     packet_type: str | None = None,
-    escape_type: t.Literal["TYPE_RPKT", "TYPE_GAMMA"] | None = None,
+    escape_type: str | None = None,
 ) -> tuple[int, pl.LazyFrame]:
     if escape_type is not None:
         assert packet_type in {None, "TYPE_ESCAPE"}
         if packet_type is None:
             packet_type = "TYPE_ESCAPE"
+
+    if escape_type not in {"TYPE_RPKT", "TYPE_GAMMA"}:
+        msg = f"Unknown escape type {escape_type}"
+        raise ValueError(msg)
 
     nprocs_read, packetsparquetfiles = get_packets_batch_parquet_paths(modelpath, maxpacketfiles)
 
@@ -638,11 +661,9 @@ def get_directionbin(
     return (costhetabin * nphibins) + phibin
 
 
-def add_packet_directions_lazypolars(
-    dfpackets: pl.LazyFrame | pl.DataFrame, syn_dir: tuple[float, float, float]
-) -> pl.LazyFrame:
+def add_packet_directions_lazypolars(dfpackets: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame:
     dfpackets = dfpackets.lazy()
-    assert len(syn_dir) == 3
+    syn_dir = np.array([0.0, 0.0, 1.0])
     xhat = np.array([1.0, 0.0, 0.0])
     vec2 = np.cross(xhat, syn_dir)  # -yhat if syn_dir is zhat
 
@@ -740,14 +761,12 @@ def bin_packet_directions_lazypolars(
     return dfpackets.with_columns((pl.col("costhetabin") * nphibins + pl.col("phibin")).cast(pl.Int32).alias("dirbin"))
 
 
-def bin_packet_directions(
-    modelpath: Path | str, dfpackets: pd.DataFrame, syn_dir: tuple[float, float, float] | None = None
-) -> pd.DataFrame:
+def bin_packet_directions(dfpackets: pd.DataFrame) -> pd.DataFrame:
     """Avoid this slow pandas function and use bin_packet_directions_lazypolars instead for new code."""
     nphibins = at.get_viewingdirection_phibincount()
     ncosthetabins = at.get_viewingdirection_costhetabincount()
 
-    syn_dir = at.get_syn_dir(Path(modelpath)) if syn_dir is None else syn_dir
+    syn_dir = np.array([0.0, 0.0, 1.0])
     xhat = np.array([1.0, 0.0, 0.0])
     vec2 = np.cross(xhat, syn_dir)
 
@@ -904,7 +923,7 @@ def get_mean_packet_emission_velocity_per_ts(
         dfpackets = readfile(packetsfile, packet_type=packet_type, escape_type=escape_type)
         at.packets.add_derived_columns(dfpackets, modelpath, ["emission_velocity"])
         if escape_angles is not None:
-            dfpackets = at.packets.bin_packet_directions(modelpath, dfpackets)
+            dfpackets = at.packets.bin_packet_directions(dfpackets)
             dfpackets = dfpackets.query("dirbin == @escape_angles")
 
         if i == 0:  # make new df

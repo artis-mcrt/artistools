@@ -1,32 +1,57 @@
-# Artistools
-
-> Artistools is collection of plotting, analysis, and file format conversion tools for the [ARTIS](https://github.com/artis-mcrt/artis) radiative transfer code.
+# artistools
 
 [![DOI](https://zenodo.org/badge/53433932.svg)](https://zenodo.org/badge/latestdoi/53433932)
+[![PyPI - Version](https://img.shields.io/pypi/v/artistools)](https://pypi.org/project/artistools)
+[![License](https://img.shields.io/github/license/artis-mcrt/artistools)](https://github.com/artis-mcrt/artistools/blob/main/LICENSE)
+
+[![Supported Python versions](https://img.shields.io/pypi/pyversions/artistools)](https://pypi.org/project/artistools/)
 [![Installation and pytest](https://github.com/artis-mcrt/artistools/actions/workflows/pytest.yml/badge.svg)](https://github.com/artis-mcrt/artistools/actions/workflows/pytest.yml)
 [![codecov](https://codecov.io/gh/artis-mcrt/artistools/branch/main/graph/badge.svg?token=XFlarJqeZd)](https://codecov.io/gh/artis-mcrt/artistools)
-![PyPI - Version](https://img.shields.io/pypi/v/artistools)
+
+Artistools is collection of plotting, analysis, and file format conversion tools for the [ARTIS](https://github.com/artis-mcrt/artis) radiative transfer code.
 
 ## Installation
-Requires Python >= 3.10
+Requires Python >= 3.11
 
-artistools can be installed from PyPI using `pip install artistools'. For development, clone the repository and make an editable install:
+The artistools command be invoked with uvx artistools or pipx artistools.
+
+For development, you will need [the rust compiler](https://www.rust-lang.org/tools/install) and a clone of the repository:
 ```sh
 git clone https://github.com/artis-mcrt/artistools.git
 cd artistools
-python3 -m pip install -e .
+```
+
+To create a [uv](https://docs.astral.sh/uv/getting-started/installation/) virtual environment with locked dependency versions, run:
+```sh
+uv sync --frozen
+uv pip install --editable .[dev,extras]
 pre-commit install
 ```
 
+The artistools command from the project environment can be available by activating the environment (source artistools/.venv/bin/activate) or by adding the following alias to your startup script:
+```sh
+alias artistools="~/PATH/TO/artistools/.venv/bin/artistools"
+```
+
+Alternatively, to skip using uv and install into the system environment with pip:
+```sh
+pip install --editable .[dev,extras]
+pre-commit install
+```
+
+## Citing artistools
+
+If you artistools for a paper or presentation, please cite it. For details, see [https://zenodo.org/badge/latestdoi/53433932](https://zenodo.org/badge/latestdoi/53433932).
+
 ## Usage
-Type "artistools" at the command-line to get a full list of commands. The most frequently used commands are:
+Run "artistools" at the command-line to get a full list of subcommands. Some common commands are:
 - artistools plotspectra
 - artistools plotlightcurve
 - artistools plotestimators
 - artistools plotnltepops
 - artistools describeinputmodel
 
-Use the -h option to get a list of command-line arguments for each command. Most of these commands would usually be run from within an ARTIS simulation folder.
+Use the -h option to get a list of command-line arguments for each subcommand. Most of these commands should be run either within an ARTIS simulation folder or by passing the folder path as the last argument.
 
 ## Example output
 
@@ -38,8 +63,3 @@ Use the -h option to get a list of command-line arguments for each command. Most
 Distributed under the MIT license. See [LICENSE](https://github.com/artis-mcrt/artistools/blob/main/LICENSE.txt) for more information.
 
 [https://github.com/artis-mcrt/artistools](https://github.com/artis-mcrt/artistools)
-
-
-## Citing Artistools
-
-If you artistools for a paper or presentation, please cite it. For details, see [https://zenodo.org/badge/latestdoi/53433932](https://zenodo.org/badge/latestdoi/53433932).
