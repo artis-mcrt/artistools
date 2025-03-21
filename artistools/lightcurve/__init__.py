@@ -5,6 +5,9 @@ __all__ = ["plot", "plotlightcurve"]
 from artistools.lightcurve import plotlightcurve
 from artistools.lightcurve.lightcurve import bolometric_magnitude as bolometric_magnitude
 from artistools.lightcurve.lightcurve import evaluate_magnitudes as evaluate_magnitudes
+from artistools.lightcurve.lightcurve import (
+    generate_band_lightcurve_data_deprecated as generate_band_lightcurve_data_deprecated,
+)
 from artistools.lightcurve.lightcurve import generate_band_lightcurve_data as generate_band_lightcurve_data
 from artistools.lightcurve.lightcurve import get_band_lightcurve as get_band_lightcurve
 from artistools.lightcurve.lightcurve import get_colour_delta_mag as get_colour_delta_mag

@@ -180,7 +180,86 @@ def get_from_packets(
     return lcdata
 
 
-def generate_band_lightcurve_data(
+def generate_band_lightcurve_data(modelpath: Path, filters_list=["U", "B", "V", "R", "I"], angles=[-1]):
+    """Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py"""
+    from scipy.interpolate import interp1d
+
+    bandlightcurves = {}
+
+    lightcurves_parquet_dir = modelpath / "_lightcurves"
+    if lightcurves_parquet_dir.exists():
+        print(f"Directory exists: {lightcurves_parquet_dir}")
+        for angle in angles:
+            filepath = lightcurves_parquet_dir / f"bandlightcurves_{angle}.parquet"
+            if not filepath.exists():
+                print("Missing angle data. Calculating")
+                break
+            bandlightcurves[angle] = pd.read_parquet(filepath, engine="pyarrow")
+            if [f for f in filters_list if f not in bandlightcurves[angle].columns]:
+                print("Missing band data from parquet files. Recalculating")
+                break
+        return bandlightcurves
+
+    timearray = at.get_timestep_times(modelpath, loc="start")
+
+    filterdir = Path(at.get_config()["path_artistools_dir"], "data/filters/")
+
+    for angle in angles:
+        if angle == -1:
+            directionbins = None
+        else:
+            directionbins = [angle]
+        lightcurvedata = {}
+        lightcurvedata["time"] = [float(time) for time in timearray]
+
+        for filter_name in filters_list:
+            bandlightcurve = []
+            zeropointenergyflux, wavefilter, transmission, wavefilter_min, wavefilter_max = get_filter_data(
+                filterdir, filter_name
+            )
+
+            for timestep, time in enumerate(timearray):
+                specdataout = at.spectra.get_spectrum(modelpath, timestepmin=timestep, directionbins=directionbins)
+
+                specdataout[angle] = specdataout[angle].filter(
+                    (specdataout[angle]["lambda_angstroms"] >= wavefilter_min)
+                    & (specdataout[angle]["lambda_angstroms"] <= wavefilter_max)
+                )
+
+                wavelength_from_spectrum = specdataout[angle]["lambda_angstroms"]
+                flux = specdataout[angle]["f_lambda"]
+
+                if len(wavelength_from_spectrum) > len(wavefilter):
+                    interpolate_fn = interp1d(wavefilter, transmission, bounds_error=False, fill_value=0.0)
+                    wavefilter = np.linspace(
+                        min(wavelength_from_spectrum), int(max(wavelength_from_spectrum)), len(wavelength_from_spectrum)
+                    )
+                    transmission = interpolate_fn(wavefilter)
+                else:
+                    interpolate_fn = interp1d(wavelength_from_spectrum, flux, bounds_error=False, fill_value=0.0)
+                    wavelength_from_spectrum = np.linspace(wavefilter_min, wavefilter_max, len(wavefilter))
+                    flux = interpolate_fn(wavelength_from_spectrum)
+
+                phot_filtobs_sn = evaluate_magnitudes(flux, transmission, wavelength_from_spectrum, zeropointenergyflux)
+
+                if phot_filtobs_sn != 0.0:
+                    phot_filtobs_sn = phot_filtobs_sn - 25  # Absolute magnitude
+                bandlightcurve.append(phot_filtobs_sn)  # accumulate light curve points
+
+            lightcurvedata[filter_name] = bandlightcurve  # store light curve for this filter band for this angle
+
+        bandlightcurves[angle] = pd.DataFrame.from_dict(lightcurvedata)
+
+    for angle, df in bandlightcurves.items():
+        filepath = modelpath / f"_lightcurves/bandlightcurves_{angle}.parquet"
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+        df.to_parquet(filepath, engine="pyarrow")  # or engine="fastparquet"
+        print(f"Saved {filepath}")
+
+    return bandlightcurves
+
+
+def generate_band_lightcurve_data_deprecated(
     modelpath: Path, args: argparse.Namespace, angle: int = -1, modelnumber: int | None = None
 ) -> dict[str, t.Any]:
     """Integrate spectra to get band magnitude vs time. Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py."""
@@ -447,6 +526,9 @@ def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pd.Dat
     if len(lightcurve_data.keys()) == 1:
         lightcurve_data = pd.read_csv(data_path, comment="#", sep=r"\s+")
 
+    lightcurve_data = lightcurve_data[
+        lightcurve_data["magnitude"].str.contains(">") == False
+    ]  # drop rows that are limits
     lightcurve_data["magnitude"] = pd.to_numeric(lightcurve_data["magnitude"])  # force column to be float
 
     lightcurve_data["time"] = lightcurve_data["time"].apply(lambda x: x - (metadata["timecorrection"]))

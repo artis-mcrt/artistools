@@ -668,7 +668,7 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
 def second_band_brightness_at_peak_first_band(data, bands, modelpath, modelnumber, args: argparse.Namespace):
     second_band_brightness = []
     for anglenumber, time in enumerate(data[f"time_{bands[0]}max"]):
-        lightcurve_data = at.lightcurve.generate_band_lightcurve_data(
+        lightcurve_data = at.lightcurve.generate_band_lightcurve_data_deprecated(
             modelpath, args, anglenumber, modelnumber=modelnumber
         )
         time, brightness_in_mag = at.lightcurve.get_band_lightcurve(lightcurve_data, bands[1], args)
@@ -730,7 +730,7 @@ def peakmag_risetime_declinerate_init(
             modelnames.append(modelname)  # save for later
             print(f"Reading spectra: {modelname}")
             if args.filter:
-                lightcurve_data = at.lightcurve.generate_band_lightcurve_data(
+                lightcurve_data = at.lightcurve.generate_band_lightcurve_data_deprecated(
                     modelpath, args, angle, modelnumber=modelnumber
                 )
                 plottinglist = args.filter
