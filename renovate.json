@@ -12,11 +12,11 @@
     "enabled": true,
     "automerge": true,
     "schedule": [
-      "every weekday"
+      "* 9 * * 2"
     ]
   },
   "rangeStrategy": "update-lockfile",
   "schedule": [
-    "every weekday"
+    "* 9 * * 2"
   ]
 }
