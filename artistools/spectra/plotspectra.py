@@ -52,6 +52,79 @@ def path_is_artis_model(filepath: str | Path) -> bool:
     return True if Path(filepath).suffix == ".out" else Path(filepath).is_dir()
 
 
+def get_axis_labels(args: argparse.Namespace) -> tuple[str | None, str | None]:
+    """Get the x-axis and y-axis labels based on the arguments."""
+    match args.xunit.lower():
+        case "angstroms":
+            xtype = "Wavelength"
+            str_xunit = "Å"
+        case "nm":
+            xtype = "Wavelength"
+            str_xunit = "nm"
+        case "micron":
+            xtype = "Wavelength"
+            str_xunit = "μm"
+        case "hz":
+            xtype = "Frequency"
+            str_xunit = "Hz"
+        case "ev":
+            xtype = "Energy"
+            str_xunit = "eV"
+        case "kev":
+            xtype = "Energy"
+            str_xunit = "keV"
+        case "mev":
+            xtype = "Energy"
+            str_xunit = "MeV"
+        case _:
+            msg = f"Unknown x-axis unit {args.xunit}"
+            raise AssertionError(msg)
+
+    xlabel = None if args.hidexticklabels else f"{xtype} " + r"$\left[\mathrm{{" + str_xunit + r"}}\right]$"
+
+    if args.hideyticklabels:
+        ylabel = None
+    else:
+        if args.normalised:
+            match args.yvariable:
+                case "flux":
+                    ylabel = r"Scaled F$_\lambda$"
+                case "packetcount":
+                    ylabel = r"Scaled Monte Carlo packets"
+                case "photoncount":
+                    ylabel = f"Scaled photons/{str_xunit}"
+                case _:
+                    msg = f"Unknown y-variable {args.yvariable}"
+                    raise AssertionError(msg)
+
+            if args.groupby is not None:
+                # emission plots add an offset to the reference spectra
+                ylabel += " + offset"
+        else:
+            match args.yvariable:
+                case "flux":
+                    if xtype == "Wavelength":
+                        ylabel = r"F$_\lambda$ at 1 Mpc [{}erg/s/cm$^2$/" + str_xunit + "]"
+                    elif xtype == "Frequency":
+                        ylabel = r"F$_\nu$ at 1 Mpc [{}erg/s/cm$^2$/" + str_xunit + "]"
+                    elif xtype == "Energy":
+                        ylabel = r"dF/dE at 1 Mpc [{}erg/s/cm$^2$/" + str_xunit + "]"
+                case "packetcount":
+                    ylabel = r"{}Monte Carlo packets per bin"
+                case "photoncount":
+                    ylabel = r"{}photons/cm$^2$/" + str_xunit + " at 1 Mpc"
+                case _:
+                    msg = f"Unknown y-variable {args.yvariable}"
+                    raise AssertionError(msg)
+
+        assert ylabel is not None
+        if args.logscaley:
+            # don't include the {} that will be replaced with the power of 10 by the custom formatter
+            ylabel = ylabel.replace("{}", "")
+
+    return xlabel, ylabel
+
+
 def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
     angle = args.plotviewingangle[0]
     dfspectrum = (
@@ -239,7 +312,7 @@ def plot_artis_spectrum(
     from_packets: bool = False,
     filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     linelabel: str | None = None,
-    plotpacketcount: bool = False,
+    yvariable: str = "flux",
     directionbins: list[int] | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
@@ -272,7 +345,7 @@ def plot_artis_spectrum(
     if directionbins is None:
         directionbins = [-1]
 
-    if plotpacketcount:
+    if yvariable == "packetcount":
         from_packets = True
 
     for axindex, axis in enumerate(axes):
@@ -409,16 +482,13 @@ def plot_artis_spectrum(
                 if len(directionbins) > 1 or not linelabel_is_custom:
                     linelabel_withdirbin = f"{linelabel} {dirbin_definitions[dirbin]}"
 
-            dfspectrum = atspectra.get_dfspectrum_x_y_with_units(dfspectrum, xunit=xunit)
-
-            if plotpacketcount:
-                dfspectrum = dfspectrum.with_columns(y=pl.col("packetcount"))
+            dfspectrum = atspectra.get_dfspectrum_x_y_with_units(dfspectrum, xunit=xunit, yvariable=yvariable)
 
             dfspectrum = dfspectrum.filter(pl.col("x").is_between(xmin * 0.9, xmax * 1.1)).sort(
                 "x", maintain_order=True
             )
 
-            atspectra.print_integrated_flux(dfspectrum["y"], dfspectrum["x"])
+            atspectra.print_integrated_flux(dfspectrum["yflux"], dfspectrum["x"])
 
             if scale_to_peak:
                 dfspectrum = dfspectrum.with_columns(
@@ -555,7 +625,7 @@ def make_spectrum_plot(
                     from_packets=args.frompackets,
                     maxpacketfiles=args.maxpacketfiles,
                     filterfunc=filterfunc,
-                    plotpacketcount=args.plotpacketcount,
+                    yvariable=args.yvariable,
                     directionbins=args.plotvspecpol or args.plotviewingangle,
                     average_over_phi=args.average_over_phi_angle,
                     average_over_theta=args.average_over_theta_angle,
@@ -612,12 +682,6 @@ def make_spectrum_plot(
 
         if args.stokesparam == "I" and not args.logscaley:
             axis.set_ylim(bottom=0.0)
-
-        if args.plotpacketcount:
-            axis.set_ylabel(r"Monte Carlo packets per bin")
-        elif args.normalised:
-            axis.set_ylim(top=1.25)
-            axis.set_ylabel(r"Scaled F$_\lambda$")
 
         if not args.notitle and args.title:
             if args.inset_title:
@@ -750,6 +814,7 @@ def make_emissionabsorption_plot(
     dfspectotal = atspectra.get_dfspectrum_x_y_with_units(
         pl.DataFrame({"f_lambda": array_flambda_emission_total, "lambda_angstroms": arraylambda_angstroms}),
         xunit=args.xunit,
+        yvariable=args.yvariable,
     )
 
     max_f_emission_total = dfspectotal.filter(pl.col("x").is_between(xmin, xmax))["y"].max()
@@ -779,6 +844,7 @@ def make_emissionabsorption_plot(
                 dfspec = atspectra.get_dfspectrum_x_y_with_units(
                     pl.DataFrame({"f_lambda": x.array_flambda_emission, "lambda_angstroms": arraylambda_angstroms}),
                     xunit=args.xunit,
+                    yvariable=args.yvariable,
                 )
 
                 (emissioncomponentplot,) = axis.plot(dfspec["x"], dfspec["y"] * scalefactor, linewidth=1, color=x.color)
@@ -791,6 +857,7 @@ def make_emissionabsorption_plot(
                 dfspec = atspectra.get_dfspectrum_x_y_with_units(
                     pl.DataFrame({"f_lambda": x.array_flambda_absorption, "lambda_angstroms": arraylambda_angstroms}),
                     xunit=args.xunit,
+                    yvariable=args.yvariable,
                 )
                 (absorptioncomponentplot,) = axis.plot(
                     dfspec["x"], -dfspec["y"] * scalefactor, color=linecolor, linewidth=1
@@ -806,6 +873,7 @@ def make_emissionabsorption_plot(
                 atspectra.get_dfspectrum_x_y_with_units(
                     pl.DataFrame({"f_lambda": x.array_flambda_emission, "lambda_angstroms": arraylambda_angstroms}),
                     xunit=args.xunit,
+                    yvariable=args.yvariable,
                 )
                 for x in contributions_sorted_reduced
             ]
@@ -829,6 +897,7 @@ def make_emissionabsorption_plot(
                 atspectra.get_dfspectrum_x_y_with_units(
                     pl.DataFrame({"f_lambda": x.array_flambda_absorption, "lambda_angstroms": arraylambda_angstroms}),
                     xunit=args.xunit,
+                    yvariable=args.yvariable,
                 )
                 for x in contributions_sorted_reduced
             ]
@@ -914,9 +983,6 @@ def make_emissionabsorption_plot(
     ymax = max(ymaxrefall, scalefactor * max_f_emission_total * 1.2)
     if args.ymax is None:
         axis.set_ylim(top=ymax)
-
-    if not args.hideyticklabels and scale_to_peak:
-        axis.set_ylabel(r"Scaled F$_\lambda$ + offset")
 
     if args.showbinedges:
         import artistools.radfield as atradfield
@@ -1056,47 +1122,10 @@ def make_plot(args) -> tuple[mplfig.Figure, np.ndarray, pl.DataFrame]:
 
     dfalldata: pl.DataFrame | None = pl.DataFrame()
 
-    xlabel = None
-    if not args.hidexticklabels:
-        if args.xunit.lower() == "angstroms":
-            xlabel = r"Wavelength $\left[\mathrm{{\AA}}\right]$"
-        elif args.xunit.lower() == "nm":
-            xlabel = r"Wavelength $\left[\mathrm{{nm}}\right]$"
-        elif args.xunit.lower() == "micron":
-            xlabel = r"Wavelength $\left[\mathrm{{μm}}\right]$"
-        elif args.xunit.lower() == "hz":
-            xlabel = r"Frequency $\left[\mathrm{{Hz}}\right]$"
-        elif args.xunit.lower() == "kev":
-            xlabel = r"Energy $\left[\mathrm{{keV}}\right]$"
-        elif args.xunit.lower() == "mev":
-            xlabel = r"Energy $\left[\mathrm{{MeV}}\right]$"
-        else:
-            msg = f"Unknown x-axis unit {args.xunit}"
-            raise AssertionError(msg)
+    xlabel, ylabel = get_axis_labels(args)
 
-    ylabel = None
-    if not args.hideyticklabels:
-        if args.xunit.lower() == "angstroms":
-            ylabel = r"F$_\lambda$ at 1 Mpc [{}erg/s/cm$^2$/$\mathrm{{\AA}}$]"
-        elif args.xunit.lower() == "nm":
-            ylabel = r"F$_\lambda$ at 1 Mpc [{}erg/s/cm$^2$/nm]"
-        elif args.xunit.lower() == "micron":
-            ylabel = r"F$_\lambda$ at 1 Mpc [{}erg/s/cm$^2$/μm]"
-        elif args.xunit.lower() == "hz":
-            ylabel = r"F$_\nu$ at 1 Mpc [{}erg/s/cm$^2$/Hz]"
-        elif args.xunit.lower() == "kev":
-            ylabel = r"dF/dE at 1 Mpc [{}erg/s/cm$^2$/keV]"
-        elif args.xunit.lower() == "mev":
-            ylabel = r"dF/dE at 1 Mpc [{}erg/s/cm$^2$/MeV]"
-        else:
-            msg = f"Unit {args.xunit} not implemented"
-            raise NotImplementedError(msg)
-
-        assert ylabel is not None
-        if args.logscaley:
-            # don't include the {} that will be replaced with the power of 10 by the custom formatter
-            ylabel = ylabel.replace("{}", "")
-
+    if args.normalised and args.ymax is None:
+        args.ymax = 1.20
     for index, axis in enumerate(axes):
         if args.xmin is not None:
             axis.set_xlim(left=args.xmin)
@@ -1271,7 +1300,13 @@ def addargs(parser) -> None:
     )
 
     parser.add_argument(
-        "--plotpacketcount", action="store_true", help="Plot bin packet counts instead of specific intensity"
+        "-yvariable",
+        "-yvar",
+        "-y",
+        type=str,
+        default="flux",
+        choices=["flux", "packetcount", "photoncount"],
+        help="Specify the y-axis variable for the plot (e.g., 'flux', 'packetcount', 'photoncount')",
     )
 
     parser.add_argument(

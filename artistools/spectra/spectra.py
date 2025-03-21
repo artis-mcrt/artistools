@@ -55,36 +55,66 @@ def timeshift_fluxscale_co56law(scaletoreftime: float | None, spectime: float) -
     return 1.0
 
 
-def get_dfspectrum_x_y_with_units(dfspectrum: pl.DataFrame, xunit: str) -> pl.DataFrame:
+def get_dfspectrum_x_y_with_units(dfspectrum: pl.DataFrame, xunit: str, yvariable: str = "flux") -> pl.DataFrame:
     h = 4.1356677e-15  # Planck's constant [eV s]
     c = 2.99792458e18  # speed of light [angstroms/s]
+
     if "nu" not in dfspectrum.columns:
         dfspectrum = dfspectrum.with_columns((299792458.0 / (pl.col("lambda_angstroms") * 1e-10)).alias("nu"))
     if "f_nu" not in dfspectrum.columns:
         dfspectrum = dfspectrum.with_columns(f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu")))
 
-    if xunit.lower() == "angstroms":
-        return dfspectrum.with_columns(x=pl.col("lambda_angstroms"), y=pl.col("f_lambda")).sort("x")
-    if xunit.lower() == "nm":
-        return dfspectrum.with_columns(x=pl.col("lambda_angstroms") / 10, y=pl.col("f_lambda") * 10).sort("x")
-    if xunit.lower() == "micron":
-        return dfspectrum.with_columns(x=pl.col("lambda_angstroms") / 10000, y=pl.col("f_lambda") * 10000).sort("x")
-    if xunit.lower() == "hz":
-        return dfspectrum.with_columns(x=pl.col("nu"), y=pl.col("f_nu")).sort("x")
-    if xunit.lower() == "kev":
-        return (
-            dfspectrum.with_columns(en_kev=h * c / pl.col("lambda_angstroms") / 1000.0)
-            .with_columns(f_en_kev=pl.col("f_nu") * pl.col("nu") / pl.col("en_kev"))
-            .with_columns(x=pl.col("en_kev"), y=pl.col("f_en_kev"))
-        ).sort("x")
-    if xunit.lower() == "mev":
-        return (
-            dfspectrum.with_columns(en_mev=h * c / pl.col("lambda_angstroms") / 1e6)
-            .with_columns(f_en_mev=pl.col("f_nu") * pl.col("nu") / pl.col("en_mev"))
-            .with_columns(x=pl.col("en_mev"), y=pl.col("f_en_mev"))
-        ).sort("x")
-    msg = f"Unit {xunit} not implemented for plot_artis_spectrum()"
-    raise NotImplementedError(msg)
+    match xunit.lower():
+        case "angstroms":
+            dfspectrum = dfspectrum.with_columns(x=pl.col("lambda_angstroms"), yflux=pl.col("f_lambda"))
+
+        case "nm":
+            dfspectrum = dfspectrum.with_columns(x=pl.col("lambda_angstroms") / 10, yflux=pl.col("f_lambda") * 10)
+
+        case "micron":
+            dfspectrum = dfspectrum.with_columns(x=pl.col("lambda_angstroms") / 10000, yflux=pl.col("f_lambda") * 10000)
+
+        case "hz":
+            dfspectrum = dfspectrum.with_columns(x=pl.col("nu"), yflux=pl.col("f_nu"))
+
+        case "ev":
+            dfspectrum = (
+                dfspectrum.with_columns(en_ev=h * c / pl.col("lambda_angstroms"))
+                .with_columns(f_en_kev=pl.col("f_nu") * pl.col("nu") / pl.col("en_ev"))
+                .with_columns(x=pl.col("en_ev"), yflux=pl.col("f_en_kev"))
+            )
+
+        case "kev":
+            dfspectrum = (
+                dfspectrum.with_columns(en_kev=h * c / pl.col("lambda_angstroms") / 1000.0)
+                .with_columns(f_en_kev=pl.col("f_nu") * pl.col("nu") / pl.col("en_kev"))
+                .with_columns(x=pl.col("en_kev"), yflux=pl.col("f_en_kev"))
+            )
+
+        case "mev":
+            dfspectrum = (
+                dfspectrum.with_columns(en_mev=h * c / pl.col("lambda_angstroms") / 1e6)
+                .with_columns(f_en_mev=pl.col("f_nu") * pl.col("nu") / pl.col("en_mev"))
+                .with_columns(x=pl.col("en_mev"), yflux=pl.col("f_en_mev"))
+            )
+
+        case _:
+            msg = f"Unit {xunit} not implemented for plot_artis_spectrum()"
+            raise NotImplementedError(msg)
+
+    ev_to_erg = 1.60218e-12
+    dfspectrum = dfspectrum.with_columns(
+        yphotoncount=pl.col("yflux") / pl.col("lambda_angstroms") / (h * c / ev_to_erg)
+    )
+    if yvariable == "photoncount":
+        dfspectrum = dfspectrum.with_columns(y=pl.col("yphotoncount"))
+    elif yvariable == "packetcount":
+        dfspectrum = dfspectrum.with_columns(y=pl.col("packetcount"))
+    else:
+        assert yvariable == "flux"
+        dfspectrum = dfspectrum.with_columns(y=pl.col("yflux"))
+
+    return dfspectrum.sort("x")
 
 
 def get_exspec_bins(
@@ -136,11 +166,13 @@ def get_exspec_bins(
 
 def convert_xunit_aliases_to_canonical(xunit: str) -> str:
     match xunit.lower():
+        case "ev" | "electronvolt":
+            return "ev"
         case "kev" | "kiloelectronvolt":
             return "kev"
         case "mev" | "megaelectronvolt":
             return "mev"
-        case "angstroms" | "angstrom" | "a" | "ang":
+        case "angstroms" | "angstrom" | "a" | "ang" | "å" | "ångström":
             return "angstroms"
         case "nm" | "nanometer" | "nanometers":
             return "nm"
@@ -158,18 +190,21 @@ def convert_angstroms_to_unit(value_angstroms: float, new_units: str) -> float:
     c = 2.99792458e18  # speed of light [angstroms/s]
     h = 4.1356677e-15  # Planck's constant [eV s]
     hc_ev_angstroms = h * c  # [eV angstroms]
-    if new_units.lower() == "kev":
-        return hc_ev_angstroms / value_angstroms / 1e3
-    if new_units.lower() == "mev":
-        return hc_ev_angstroms / value_angstroms / 1e6
-    if new_units.lower() == "hz":
-        return c / value_angstroms
-    if new_units.lower() == "angstroms":
-        return value_angstroms
-    if new_units.lower() == "nm":
-        return value_angstroms / 10
-    if new_units.lower() == "micron":
-        return value_angstroms / 10000
+    match new_units.lower():
+        case "ev":
+            return hc_ev_angstroms / value_angstroms
+        case "kev":
+            return hc_ev_angstroms / value_angstroms / 1e3
+        case "mev":
+            return hc_ev_angstroms / value_angstroms / 1e6
+        case "hz":
+            return c / value_angstroms
+        case "angstroms":
+            return value_angstroms
+        case "nm":
+            return value_angstroms / 10
+        case "micron":
+            return value_angstroms / 10000
     msg = f"Unknown xunit {new_units}"
     raise ValueError(msg)
 
@@ -180,16 +215,19 @@ def convert_unit_to_angstroms(value: float, old_units: str) -> float:
     h = 4.1356677e-15  # Planck's constant [eV s]
     hc_ev_angstroms = h * c  # [eV angstroms]
 
-    if old_units.lower() == "kev":
-        return hc_ev_angstroms / value / 1e3
-    if old_units.lower() == "mev":
-        return hc_ev_angstroms / value / 1e6
-    if old_units.lower() == "hz":
-        return c / value
-    if old_units.lower() == "angstroms":
-        return value
-    if old_units.lower() == "nm":
-        return value * 10
+    match old_units.lower():
+        case "ev":
+            return hc_ev_angstroms / value
+        case "kev":
+            return hc_ev_angstroms / value / 1e3
+        case "mev":
+            return hc_ev_angstroms / value / 1e6
+        case "hz":
+            return c / value
+        case "angstroms":
+            return value
+        case "nm":
+            return value * 10
     if old_units.lower() == "micron":
         return value * 10000
 
@@ -1419,6 +1457,7 @@ def print_integrated_flux(
     x_max = arr_x.max()
     assert isinstance(x_min, int | float)
     assert isinstance(x_max, int | float)
+
     print(f" integrated flux (x={x_min:.1f} to x={x_max:.1f}): {integrated_flux:.3e} erg/s/cm2 at 1 Mpc")
     assert isinstance(integrated_flux, float)
     return integrated_flux
