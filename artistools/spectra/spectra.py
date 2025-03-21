@@ -992,7 +992,7 @@ def get_flux_contributions_from_packets(
     getabsorption: bool = True,
     maxpacketfiles: int | None = None,
     filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
-    groupby: t.Literal["ion", "line", "nuc"] = "ion",
+    groupby: str = "ion",
     maxseriescount: int | None = None,
     fixedionlist: list[str] | None = None,
     use_time: t.Literal["arrival", "emission", "escape"] = "arrival",
@@ -1007,14 +1007,15 @@ def get_flux_contributions_from_packets(
 ) -> tuple[list[fluxcontributiontuple], np.ndarray, np.ndarray]:
     from scipy import integrate
 
-    assert groupby in {"ion", "line", "nuc"}
+    assert groupby in {"ion", "line", "nuc", "nucmass"}
+    assert emtypecolumn in {"emissiontype", "trueemissiontype", "pellet_nucindex"}
+
+    if gamma:
+        assert groupby in {"nuc", "nucmass"}
+        assert emtypecolumn == "pellet_nucindex"
 
     if directionbin is None:
         directionbin = -1
-
-    assert emtypecolumn in {"emissiontype", "trueemissiontype", "pellet_nucindex"}
-    if emtypecolumn == "pellet_nucindex":
-        assert groupby == "nuc"
 
     linelistlazy, bflistlazy = (
         (get_linelist_pldf(modelpath=modelpath, get_ion_str=True), get_bflist(modelpath, get_ion_str=True))
@@ -1073,10 +1074,13 @@ def get_flux_contributions_from_packets(
     if getemission:
         cols |= {"emissiontype_str", dirbin_nu_column}
         if groupby == "nuc":
-            emtypestrings = get_nuclides(modelpath=modelpath).rename({
-                "pellet_nucindex": emtypecolumn,
-                "nucname": "emissiontype_str",
-            })
+            emtypestrings = get_nuclides(modelpath=modelpath).rename({"nucname": "emissiontype_str"})
+        elif groupby == "nucmass":
+            emtypestrings = get_nuclides(modelpath=modelpath).with_columns(
+                (
+                    pl.when(pl.col("pellet_nucindex") == -1).then("nucname").otherwise(pl.format("A={}", pl.col("A")))
+                ).alias("emissiontype_str")
+            )
         else:
             assert linelistlazy is not None
             assert bflistlazy is not None

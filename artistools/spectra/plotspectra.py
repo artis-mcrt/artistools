@@ -664,10 +664,8 @@ def make_emissionabsorption_plot(
         args.frompackets = True
         print("Enabling --frompackets, since --gamma and --showemission were specified")
 
-    if args.gamma:
-        # emission/absorption types are not set for gamma packets (because they didn't do any line interaction)
-        args.groupby = "nuc"
-        assert not args.showabsorption
+    if args.groupby is None:
+        args.groupby = "nuc" if args.gamma else "ion"
 
     assert args.timemin is not None
     assert args.timemax is not None
@@ -680,7 +678,7 @@ def make_emissionabsorption_plot(
 
     dirbin = args.plotviewingangle[0] if args.plotviewingangle else args.plotvspecpol[0] if args.plotvspecpol else None
     if args.frompackets:
-        if args.groupby == "nuc":
+        if args.groupby in {"nuc", "nucmass"}:
             emtypecolumn = "pellet_nucindex"
         elif args.use_thermalemissiontype:
             emtypecolumn = "trueemissiontype"
@@ -1367,9 +1365,9 @@ def addargs(parser) -> None:
 
     parser.add_argument(
         "-groupby",
-        default="ion",
-        choices=["ion", "line", "nuc"],
-        help="Use a different color for each ion or line when using --showemission. groupby='line' or 'nuc' imply --frompackets.",
+        default=None,
+        choices=["ion", "line", "nuc", "nucmass"],
+        help="Use a different color for each ion or line when using --showemission. groupby='line', 'nuc', 'nucmass' imply --frompackets.",
     )
 
     parser.add_argument(
@@ -1574,7 +1572,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         assert args.frompackets
         assert args.plotvspecpol
 
-    if args.emissionvelocitycut or args.groupby in {"line", "nuc"}:
+    if args.groupby is not None:
+        args.showemission = True
+
+    if args.emissionvelocitycut or args.groupby in {"line", "nuc", "nucmass"}:
         args.frompackets = True
 
     if args.makevspecpol:
