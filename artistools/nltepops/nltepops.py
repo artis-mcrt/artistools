@@ -145,16 +145,11 @@ def add_lte_pops(dfpop, adata, columntemperature_tuples, noprint=False, maxlevel
 
 def read_file(nltefilepath: str | Path) -> pd.DataFrame:
     """Read NLTE populations from one file."""
-    if not Path(nltefilepath).is_file():
-        nltefilepathgz = Path(f"{nltefilepath!s}.gz")
-        nltefilepathxz = Path(f"{nltefilepath!s}.xz")
-        if nltefilepathxz.is_file():
-            nltefilepath = nltefilepathxz
-        elif nltefilepathgz.is_file():
-            nltefilepath = nltefilepathgz
-        else:
-            # print(f'Warning: Could not find {nltefilepath}')
-            return pd.DataFrame()
+    try:
+        nltefilepath = at.firstexisting(nltefilepath, tryzipped=True)
+    except FileNotFoundError:
+        # print(f"Warning: Could not find {nltefilepath}")
+        return pd.DataFrame()
 
     filesize = Path(nltefilepath).stat().st_size / 1024 / 1024
     print(f"Reading {nltefilepath} ({filesize:.2f} MiB)")
@@ -163,10 +158,8 @@ def read_file(nltefilepath: str | Path) -> pd.DataFrame:
         dfpop = pd.read_csv(nltefilepath, sep=r"\s+")
     except pd.errors.EmptyDataError:
         return pd.DataFrame()
-    if "ion_stage" in dfpop.columns:
-        dfpop = dfpop.rename(columns={"ion_stage": "ion_stage"})
 
-    return dfpop
+    return dfpop.rename(columns={"ionstage": "ion_stage"}, errors="ignore")
 
 
 def read_file_filtered(nltefilepath, strquery=None, dfqueryvars=None):
