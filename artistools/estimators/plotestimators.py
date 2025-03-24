@@ -19,7 +19,6 @@ import matplotlib.axes as mplax
 import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
-import polars.selectors as cs
 
 import artistools as at
 
@@ -46,72 +45,80 @@ def get_ylabel(variable: str) -> str:
 
 def plot_init_abundances(
     ax: mplax.Axes,
-    xlist: list[float],
     specieslist: list[str],
-    mgilist: Sequence[float],
-    modelpath: Path,
+    estimators: pl.LazyFrame,
     seriestype: str,
     startfromzero: bool,
     args: argparse.Namespace,
     **plotkwargs,
 ) -> None:
-    assert len(xlist) == len(mgilist)
-
-    if seriestype == "initabundances":
-        mergemodelabundata, _ = at.inputmodel.get_modeldata_pandas(modelpath, get_elemabundances=True)
-    elif seriestype == "initmasses":
-        mergemodelabundata = at.inputmodel.plotinitialcomposition.get_model_abundances_Msun_1D(modelpath)
+    if seriestype == "initmasses":
+        estimators = estimators.with_columns(
+            (pl.col(massfraccol) * pl.col("mass_g") / 1.989e33).alias(
+                f"init_mass_{massfraccol.removeprefix('init_X_')}"
+            )
+            for massfraccol in estimators.collect_schema().names()
+            if massfraccol.startswith("init_X_")
+        )
+        ax.set_ylabel(r"Initial mass per x point [M$_\odot$]")
+        valuetype = "init_mass_"
     else:
-        raise AssertionError
-
-    if startfromzero:
-        xlist = [0.0, *xlist]
+        assert seriestype == "initabundances"
+        ax.set_ylim(1e-20, 1.0)
+        ax.set_ylabel("Initial mass fraction")
+        valuetype = "init_X_"
 
     for speciesstr in specieslist:
         splitvariablename = speciesstr.split("_")
         elsymbol = splitvariablename[0].strip(string.digits)
         atomic_number = at.get_atomic_number(elsymbol)
-        if seriestype == "initabundances":
-            ax.set_ylim(1e-20, 1.0)
-            ax.set_ylabel("Initial mass fraction")
-            valuetype = "X_"
-        elif seriestype == "initmasses":
-            ax.set_ylabel(r"Initial mass [M$_\odot$]")
-            valuetype = "mass_X_"
-        else:
-            raise AssertionError
 
         ylist = []
-        linelabel = speciesstr
         linestyle = "-"
-        for modelgridindex in mgilist:
-            if speciesstr.lower() in {"ni_56", "ni56", "56ni"}:
-                yvalue = mergemodelabundata.loc[modelgridindex][f"{valuetype}Ni56"]
-                linelabel = "$^{56}$Ni"
-                linestyle = "--"
-            elif speciesstr.lower() in {"ni_stb", "ni_stable"}:
-                yvalue = (
-                    mergemodelabundata.loc[modelgridindex][f"{valuetype}{elsymbol}"]
-                    - mergemodelabundata.loc[modelgridindex]["X_Ni56"]
-                )
-                linelabel = "Stable Ni"
-            elif speciesstr.lower() in {"co_56", "co56", "56co"}:
-                yvalue = mergemodelabundata.loc[modelgridindex][f"{valuetype}Co56"]
-                linelabel = "$^{56}$Co"
-            elif speciesstr.lower() in {"fegrp", "ffegroup"}:
-                yvalue = mergemodelabundata.loc[modelgridindex][f"{valuetype}Fegroup"]
-            else:
-                yvalue = mergemodelabundata.loc[modelgridindex][f"{valuetype}{elsymbol}"]
-            ylist.append(yvalue)
+        if speciesstr.lower() in {"ni_56", "ni56", "56ni"}:
+            yvalue = pl.col(f"{valuetype}Ni56")
+            linelabel = "$^{56}$Ni"
+            linestyle = "--"
+        elif speciesstr.lower() in {"ni_stb", "ni_stable"}:
+            yvalue = pl.col(f"{valuetype}{elsymbol}") - pl.col(f"{valuetype}Ni56")
+            linelabel = "Stable Ni"
+        elif speciesstr.lower() in {"co_56", "co56", "56co"}:
+            yvalue = pl.col(f"{valuetype}Co56")
+            linelabel = "$^{56}$Co"
+        elif speciesstr.lower() in {"fegrp", "ffegroup"}:
+            yvalue = pl.col(f"{valuetype}Fegroup")
+        else:
+            linelabel = speciesstr
+            yvalue = pl.col(f"{valuetype}{elsymbol}")
 
         color = get_elemcolor(atomic_number=atomic_number)
 
-        xlist, ylist = at.estimators.apply_filters(xlist, np.array(ylist), args)
+        series = (
+            estimators.group_by("plotpointid", maintain_order=True)
+            .agg(yvalue=(yvalue * pl.col("mass_g")).sum() / (pl.col("mass_g")).sum(), xvalue=pl.col("xvalue").mean())
+            .sort("xvalue")
+            .collect()
+        )
+
+        ylist = series["yvalue"].to_list()
+        xlist = series["xvalue"].to_list()
 
         if startfromzero:
+            # make a line segment from 0 velocity
+            xlist = [0.0, *xlist]
             ylist = [ylist[0], *ylist]
 
-        ax.plot(xlist, ylist, linewidth=1.5, label=linelabel, linestyle=linestyle, color=color, **plotkwargs)
+        xlist_filtered, ylist_filtered = at.estimators.apply_filters(xlist, ylist, args)
+
+        ax.plot(
+            xlist_filtered,
+            ylist_filtered,
+            linewidth=1.5,
+            label=linelabel,
+            linestyle=linestyle,
+            color=color,
+            **plotkwargs,
+        )
 
         # if args.yscale == 'log':
         #     ax.set_yscale('log')
@@ -182,44 +189,29 @@ def plot_average_ionisation_excitation(
             if f"nnelement_{elsymb}" not in estimators.collect_schema().names():
                 msg = f"ERROR: No element data found for {paramvalue}"
                 raise ValueError(msg)
-            dfselected = (
-                estimators.select(
-                    cs.starts_with(f"nnion_{elsymb}_")
-                    | cs.by_name(f"nnelement_{elsymb}")
-                    | cs.by_name("modelgridindex")
-                    | cs.by_name("timestep")
-                    | cs.by_name("xvalue")
-                    | cs.by_name("plotpointid")
-                )
-                .with_columns(pl.col(pl.Float32).fill_null(0.0))
-                .collect()
-                .join(
-                    pl.DataFrame({"timestep": range(len(arr_tdelta)), "tdelta": arr_tdelta}).with_columns(
-                        pl.col("timestep").cast(pl.Int32)
-                    ),
-                    on="timestep",
-                    how="left",
-                    coalesce=True,
-                )
-            )
-            dfselected = dfselected.filter(pl.col(f"nnelement_{elsymb}") > 0.0)
 
-            ioncols = [col for col in dfselected.columns if col.startswith(f"nnion_{elsymb}_")]
+            ioncols = [col for col in estimators.collect_schema().names() if col.startswith(f"nnion_{elsymb}_")]
             ioncharges = [at.decode_roman_numeral(col.removeprefix(f"nnion_{elsymb}_")) - 1 for col in ioncols]
             ax.set_ylim(0.0, max(ioncharges) + 0.1)
 
-            dfselected = dfselected.with_columns(
-                (
-                    pl.sum_horizontal([
-                        pl.col(ioncol) * ioncharge for ioncol, ioncharge in zip(ioncols, ioncharges, strict=False)
-                    ])
-                    / pl.col(f"nnelement_{elsymb}")
-                ).alias(f"averageionisation_{elsymb}")
-            )
-
             series = (
-                dfselected.group_by("plotpointid", maintain_order=True)
-                .agg(pl.col(f"averageionisation_{elsymb}").mean(), pl.col("xvalue").mean())
+                estimators.filter(pl.col(f"nnelement_{elsymb}") > 0.0)
+                .group_by("plotpointid", maintain_order=True)
+                .agg(
+                    (
+                        (
+                            pl.sum_horizontal([
+                                ioncharge * pl.col(ioncol)
+                                for ioncol, ioncharge in zip(ioncols, ioncharges, strict=True)
+                            ])
+                            * pl.col("volume")
+                            * pl.col("tdelta")
+                        ).sum()
+                        / (pl.col(f"nnelement_{elsymb}") * pl.col("volume") * pl.col("tdelta")).sum()
+                    ).alias(f"averageionisation_{elsymb}"),
+                    pl.col("xvalue").mean(),
+                )
+                .sort("xvalue")
                 .lazy()
                 .collect()
             )
@@ -322,7 +314,7 @@ def plot_multi_ion_series(
     startfromzero: bool,
     seriestype: str,
     ionlist: Sequence[str],
-    estimators: pl.LazyFrame | pl.DataFrame,
+    estimators: pl.LazyFrame,
     modelpath: str | Path,
     args: argparse.Namespace,
     **plotkwargs: t.Any,
@@ -374,41 +366,55 @@ def plot_multi_ion_series(
         print(f" Warning: Can't plot {seriestype} for {missingions} because these ions are not in compositiondata.txt")
 
     iontuplelist = [iontuple for iontuple in iontuplelist if iontuple not in missingions]
-    for seriesindex, (atomic_number, ion_stage) in enumerate(iontuplelist):
+    lazyframes = []
+    for atomic_number, ion_stage in iontuplelist:
         elsymbol = at.get_elsymbol(atomic_number)
 
         ionstr = at.get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
         if seriestype == "populations":
             if ion_stage == "ALL":
-                key = f"nnelement_{elsymbol}"
+                expr_yvals = pl.col(f"nnelement_{elsymbol}")
             elif isinstance(ion_stage, str) and ion_stage.startswith(at.get_elsymbol(atomic_number)):
                 # not really an ion_stage but an isotope name
-                key = f"nniso_{ion_stage}"
+                expr_yvals = pl.col(f"nniso_{ion_stage}")
             else:
-                key = f"nnion_{ionstr}"
+                expr_yvals = pl.col(f"nnion_{ionstr}")
         else:
-            key = f"{seriestype}_{ionstr}"
+            expr_yvals = pl.col(f"{seriestype}_{ionstr}")
 
         print(f"Plotting {seriestype} {ionstr.replace('_', ' ')}")
 
         if seriestype != "populations" or args.poptype == "absolute":
-            scalefactor = pl.lit(1)
+            expr_normfactor = pl.lit(1)
         elif args.poptype == "elpop":
-            scalefactor = pl.col(f"nnelement_{elsymbol}").mean()
+            expr_normfactor = pl.col(f"nnelement_{elsymbol}")
         elif args.poptype == "totalpop":
-            scalefactor = pl.col("nntot").mean()
+            expr_normfactor = pl.col("nntot")
+        elif args.poptype == "radiallineardensity":
+            expr_normfactor = 1 / (4 * math.pi * pl.col("vel_r_mid").mean().pow(2))
+        elif args.poptype == "cumulative":
+            expr_normfactor = pl.lit(1) / pl.col("volume")
         else:
             raise AssertionError
 
-        series = (
+        expr_yvals = (expr_yvals * pl.col("volume") * pl.col("tdelta")).sum() / (
+            expr_normfactor * pl.col("volume") * pl.col("tdelta")
+        ).sum()
+
+        series_lazy = (
             estimators.group_by("plotpointid", maintain_order=True)
-            .agg(pl.col(key).mean() / scalefactor, pl.col("xvalue").mean())
-            .lazy()
-            .collect()
+            .agg(yvalue=expr_yvals, xvalue=pl.col("xvalue").mean())
             .sort("xvalue")
         )
-        xlist = series["xvalue"].to_list()
-        ylist = series[key].to_list()
+        lazyframes.append(series_lazy)
+
+    series_dataframes = pl.collect_all(lazyframes)
+    for seriesindex, (iontuple, series) in enumerate(zip(iontuplelist, series_dataframes, strict=True)):
+        atomic_number, ion_stage = iontuple
+        xlist = series.get_column("xvalue").to_list()
+        ylist = (
+            series.get_column("yvalue").cum_sum() if args.poptype == "cumulative" else series.get_column("yvalue")
+        ).to_list()
         if startfromzero:
             # make a line segment from 0 velocity
             xlist = [0.0, *xlist]
@@ -460,6 +466,10 @@ def plot_multi_ion_series(
             ax.set_ylabel(r"X$_{i}$/X$_{\rm element}$")
         elif args.poptype == "totalpop":
             ax.set_ylabel(r"X$_{i}$/X$_{rm tot}$")
+        elif args.poptype == "radiallineardensity":
+            ax.set_ylabel(r"Radial linear density $\left[\rm{cm}^{-1}\right]$")
+        elif args.poptype == "cumulative":
+            ax.set_ylabel(r"Cumulative particle count")
         else:
             raise AssertionError
     else:
@@ -482,7 +492,7 @@ def plot_series(
     startfromzero: bool,
     variable: str | pl.Expr,
     showlegend: bool,
-    estimators: pl.LazyFrame | pl.DataFrame,
+    estimators: pl.LazyFrame,
     args: argparse.Namespace,
     nounits: bool = False,
     **plotkwargs: t.Any,
@@ -510,12 +520,15 @@ def plot_series(
 
     series = (
         estimators.group_by("plotpointid", maintain_order=True)
-        .agg(colexpr.mean(), pl.col("xvalue").mean())
-        .lazy()
+        .agg(
+            yvalue=(colexpr * pl.col("volume") * pl.col("tdelta")).sum() / (pl.col("volume") * pl.col("tdelta")).sum(),
+            xvalue=pl.col("xvalue").mean(),
+        )
+        .sort("xvalue")
         .collect()
     )
 
-    ylist = series[variablename].to_list()
+    ylist = series["yvalue"].to_list()
     xlist = series["xvalue"].to_list()
 
     with contextlib.suppress(ValueError):
@@ -642,10 +655,8 @@ def plot_subplot(
                 showlegend = True
                 plot_init_abundances(
                     ax=ax,
-                    xlist=xlist,
                     specieslist=params,
-                    mgilist=mgilist,
-                    modelpath=Path(modelpath),
+                    estimators=estimators,
                     seriestype=seriestype,
                     startfromzero=startfromzero,
                     args=args,
@@ -699,7 +710,7 @@ def plot_subplot(
 
     ax.tick_params(right=True)
     if showlegend and not args.nolegend:
-        ax.legend(loc="upper right", handlelength=2, frameon=False, numpoints=1, **legend_kwargs, markerscale=3)
+        ax.legend(loc="best", handlelength=2, frameon=False, numpoints=1, **legend_kwargs, markerscale=3)
 
 
 def make_plot(
@@ -747,10 +758,7 @@ def make_plot(
     xmax = args.xmax if args.xmax > 0 else max(xlist)
 
     if args.markersonly:
-        plotkwargs["linestyle"] = "None"
-        plotkwargs["marker"] = "."
-        plotkwargs["markersize"] = 3
-        plotkwargs["alpha"] = 0.5
+        plotkwargs |= {"linestyle": "None", "marker": ".", "markersize": 4, "alpha": 0.7, "markeredgewidth": 0}
 
         # with no lines, line styles cannot distinguish ions
         args.colorbyion = True
@@ -804,7 +812,7 @@ def make_plot(
     if not args.notitle:
         axes[0].set_title(figure_title, fontsize=10)
 
-    print(f"Saving {outfilename} ...")
+    print(f"Saving {outfilename}")
     fig.savefig(outfilename, dpi=300)
 
     if args.show:
@@ -871,7 +879,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-poptype",
         dest="poptype",
         default="elpop",
-        choices=["absolute", "totalpop", "elpop"],
+        choices=["absolute", "totalpop", "elpop", "radiallineardensity", "cumulative"],
         help="Plot absolute ion populations, or ion populations as a fraction of total or element population",
     )
 
@@ -1017,13 +1025,25 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     assert estimators is not None
     tmids = at.get_timestep_times(modelpath, loc="mid")
+    arr_tdelta = at.get_timestep_times(modelpath, loc="delta")
     estimators = estimators.join(
-        pl.DataFrame({"timestep": range(len(tmids)), "time_mid": tmids})
+        pl.DataFrame({"timestep": range(len(tmids)), "time_mid": tmids, "tdelta": arr_tdelta})
         .with_columns(pl.col("timestep").cast(pl.Int32))
         .lazy(),
         on="timestep",
         how="left",
         coalesce=True,
+    )
+    dfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath, derived_cols=["ALL"], get_elemabundances=True)
+
+    dfmodel = dfmodel.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"]).rename({
+        colname: f"init_{colname}"
+        for colname in dfmodel.collect_schema().names()
+        if not colname.startswith("vel_") and colname not in {"inputcellid", "modelgridindex", "mass_g"}
+    })
+    estimators = estimators.join(dfmodel, on="modelgridindex", suffix="_initmodel").with_columns(
+        rho=pl.col("init_rho") * (modelmeta["t_model_init_days"] / pl.col("time_mid")) ** 3,
+        volume=pl.col("init_volume") * (pl.col("time_mid") / modelmeta["t_model_init_days"]) ** 3,
     )
 
     tswithdata = estimators.select("timestep").unique().collect().to_series()
@@ -1039,6 +1059,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     assoc_cells, _ = at.get_grid_mapping(modelpath)
 
     outdir = args.outputfile if (args.outputfile).is_dir() else Path()
+
     if not args.readonlymgi and (args.modelgridindex is not None or args.x in {"time", "timestep"}):
         # plot time evolution in specific cell
         if not args.x:
@@ -1062,18 +1083,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         if not args.x:
             args.x = "velocity"
 
-        dfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath, derived_cols=["ALL"])
         if args.x == "velocity" and modelmeta["vmax_cmps"] > 0.3 * 29979245800:
             args.x = "beta"
-
-        dfmodel = dfmodel.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"]).rename({
-            colname: f"init_{colname}"
-            for colname in dfmodel.collect_schema().names()
-            if not colname.startswith("vel_") and colname not in {"inputcellid", "modelgridindex", "mass_g"}
-        })
-        estimators = estimators.join(dfmodel, on="modelgridindex", suffix="_initmodel").with_columns(
-            rho=pl.col("init_rho") * (modelmeta["t_model_init_days"] / pl.col("time_mid")) ** 3
-        )
 
         if args.readonlymgi:
             estimators = estimators.filter(pl.col("modelgridindex").is_in(args.modelgridindex))
