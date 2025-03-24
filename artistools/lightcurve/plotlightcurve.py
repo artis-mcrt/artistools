@@ -322,8 +322,8 @@ def plot_artis_lightcurve(
     print(f"====> {label}")
     print(f" modelpath: {modelpath.resolve().parts[-1]}")
 
+    modelname = at.get_model_name(modelpath)
     if hasattr(args, "title") and args.title:
-        modelname = at.get_model_name(modelpath)
         axis.set_title(modelname)
 
     if directionbins is None:
