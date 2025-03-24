@@ -374,12 +374,7 @@ def plot_multi_ion_series(
         print(f" Warning: Can't plot {seriestype} for {missingions} because these ions are not in compositiondata.txt")
 
     iontuplelist = [iontuple for iontuple in iontuplelist if iontuple not in missingions]
-    prev_atomic_number = iontuplelist[0][0]
-    colorindex = 0
-    for atomic_number, ion_stage in iontuplelist:
-        if atomic_number != prev_atomic_number:
-            colorindex += 1
-
+    for seriesindex, (atomic_number, ion_stage) in enumerate(iontuplelist):
         elsymbol = at.get_elsymbol(atomic_number)
 
         ionstr = at.get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
@@ -428,38 +423,33 @@ def plot_multi_ion_series(
         color = get_elemcolor(atomic_number=atomic_number)
 
         # linestyle = ['-.', '-', '--', (0, (4, 1, 1, 1)), ':'] + [(0, x) for x in dashes_list][ion_stage - 1]
-        dashes: tuple[float, ...]
+        dashes: tuple[float, ...] = ()
+        styleindex = 0
         if isinstance(ion_stage, str):
-            if ion_stage == "ALL":
-                dashes = ()
-                linewidth = 1.0
-            else:
+            if ion_stage != "ALL":
                 # isotopic abundance
-                index = 8 if ion_stage.endswith("stable") else int(ion_stage.lstrip(at.get_elsymbol(atomic_number)))
+                if args.colorbyion:
+                    color = f"C{seriesindex % 10}"
+                else:
+                    styleindex = seriesindex
         else:
             assert isinstance(ion_stage, int)
-            index = ion_stage
-
-            dashes_list = [(3, 1, 1, 1), (), (1.5, 1.5), (6, 3), (1, 3)]
-            dashes = dashes_list[(index - 1) % len(dashes_list)]
-            linewidth_list = [1.0, 1.0, 1.0, 0.7, 0.7]
-            linewidth = linewidth_list[(index - 1) % len(linewidth_list)]
-            # color = ['blue', 'green', 'red', 'cyan', 'purple', 'grey', 'brown', 'orange'][index - 1]
-
             if args.colorbyion:
-                color = f"C{index - 1 % 10}"
-                # plotlabel = f'{at.get_elsymbol(atomic_number)} {at.roman_numerals[ion_stage]}'
-                dashes = ()
+                color = f"C{(ion_stage - 1) % 10}"
+            else:
+                styleindex = ion_stage - 1
 
-        # assert colorindex < 10
-        # color = f'C{colorindex}'
-        # or ax.step(where='pre', )
+        dashes_list = [(3, 1, 1, 1), (), (1.5, 1.5), (6, 3), (1, 3)]
+        dashes = dashes_list[styleindex % len(dashes_list)]
+
+        linewidth_list = [1.0, 1.0, 1.0, 0.7, 0.7]
+        linewidth = linewidth_list[styleindex % len(linewidth_list)]
 
         xlist, ylist = at.estimators.apply_filters(xlist, ylist, args)
         if plotkwargs.get("linestyle", "solid") != "None":
             plotkwargs["dashes"] = dashes
+
         ax.plot(xlist, ylist, linewidth=linewidth, label=plotlabel, color=color, **plotkwargs)
-        prev_atomic_number = atomic_number
         plotted_something = True
 
     if seriestype == "populations":
@@ -762,7 +752,7 @@ def make_plot(
         plotkwargs["markersize"] = 3
         plotkwargs["alpha"] = 0.5
 
-        # with no lines, line styles cannot distringuish ions
+        # with no lines, line styles cannot distinguish ions
         args.colorbyion = True
 
     for ax, plotitems in zip(axes, plotlist, strict=False):
