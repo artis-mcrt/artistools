@@ -182,7 +182,7 @@ def plot_average_ionisation_excitation(
                 msg = f"ERROR: No element data found for {paramvalue}"
                 raise ValueError(msg)
 
-            ioncols = [col for col in estimators.columns if col.startswith(f"nnion_{elsymb}_")]
+            ioncols = [col for col in estimators.collect_schema().names() if col.startswith(f"nnion_{elsymb}_")]
             ioncharges = [at.decode_roman_numeral(col.removeprefix(f"nnion_{elsymb}_")) - 1 for col in ioncols]
             ax.set_ylim(0.0, max(ioncharges) + 0.1)
 
