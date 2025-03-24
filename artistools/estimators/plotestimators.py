@@ -60,7 +60,7 @@ def plot_init_abundances(
             for massfraccol in estimators.collect_schema().names()
             if massfraccol.startswith("init_X_")
         )
-        ax.set_ylabel(r"Initial mass per point [M$_\odot$]")
+        ax.set_ylabel(r"Initial mass per x point [M$_\odot$]")
         valuetype = "init_mass_"
     else:
         assert seriestype == "initabundances"
