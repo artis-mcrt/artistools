@@ -53,7 +53,6 @@ def plot_init_abundances(
     **plotkwargs,
 ) -> None:
     if seriestype == "initmasses":
-        print("Total mass (Msun):")
         estimators = estimators.with_columns(
             (pl.col(massfraccol) * pl.col("mass_g") / 1.989e33).alias(
                 f"init_mass_{massfraccol.removeprefix('init_X_')}"
@@ -61,9 +60,6 @@ def plot_init_abundances(
             for massfraccol in estimators.collect_schema().names()
             if massfraccol.startswith("init_X_")
         )
-        print(estimators.collect_schema())
-        for species in [col for col in estimators.collect_schema().names() if col.startswith("init_mass_")]:
-            print(f"{species}: {estimators.select(pl.col(species).sum()).collect().item():.3e} Msun")
     else:
         assert seriestype == "initabundances"
 
