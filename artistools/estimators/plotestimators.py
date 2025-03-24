@@ -45,26 +45,20 @@ def get_ylabel(variable: str) -> str:
 
 def plot_init_abundances(
     ax: mplax.Axes,
-    xlist: list[float],
     specieslist: list[str],
-    mgilist: Sequence[float],
+    estimators: pl.LazyFrame,
     modelpath: Path,
     seriestype: str,
     startfromzero: bool,
     args: argparse.Namespace,
     **plotkwargs,
 ) -> None:
-    assert len(xlist) == len(mgilist)
-
-    if seriestype == "initabundances":
-        dfmodel, _ = at.inputmodel.get_modeldata(modelpath, get_elemabundances=True)
-    elif seriestype == "initmasses":
-        dfmodel = at.inputmodel.plotinitialcomposition.get_model_abundances_Msun_1D(modelpath)
+    if seriestype == "initmasses":
+        estimators = estimators.join(
+            at.inputmodel.plotinitialcomposition.get_model_abundances_Msun_1D(modelpath), on="inputcellid"
+        )
     else:
-        raise AssertionError
-
-    if startfromzero:
-        xlist = [0.0, *xlist]
+        assert seriestype == "initabundances"
 
     for speciesstr in specieslist:
         splitvariablename = speciesstr.split("_")
@@ -73,7 +67,7 @@ def plot_init_abundances(
         if seriestype == "initabundances":
             ax.set_ylim(1e-20, 1.0)
             ax.set_ylabel("Initial mass fraction")
-            valuetype = "X_"
+            valuetype = "init_X_"
         elif seriestype == "initmasses":
             ax.set_ylabel(r"Initial mass [M$_\odot$]")
             valuetype = "mass_X_"
@@ -83,31 +77,49 @@ def plot_init_abundances(
         ylist = []
         linelabel = speciesstr
         linestyle = "-"
-        for modelgridindex in mgilist:
-            if speciesstr.lower() in {"ni_56", "ni56", "56ni"}:
-                yvalue = pl.col(f"{valuetype}Ni56")
-                linelabel = "$^{56}$Ni"
-                linestyle = "--"
-            elif speciesstr.lower() in {"ni_stb", "ni_stable"}:
-                yvalue = pl.col(f"{valuetype}{elsymbol}") - pl.col("X_Ni56")
-                linelabel = "Stable Ni"
-            elif speciesstr.lower() in {"co_56", "co56", "56co"}:
-                yvalue = pl.col(f"{valuetype}Co56")
-                linelabel = "$^{56}$Co"
-            elif speciesstr.lower() in {"fegrp", "ffegroup"}:
-                yvalue = pl.col(f"{valuetype}Fegroup")
-            else:
-                yvalue = pl.col(f"{valuetype}{elsymbol}")
-            ylist.append(dfmodel.filter(pl.col("modelgridindex") == modelgridindex).select(yvalue).collect().item())
+        if speciesstr.lower() in {"ni_56", "ni56", "56ni"}:
+            yvalue = pl.col(f"{valuetype}Ni56")
+            linelabel = "$^{56}$Ni"
+            linestyle = "--"
+        elif speciesstr.lower() in {"ni_stb", "ni_stable"}:
+            yvalue = pl.col(f"{valuetype}{elsymbol}") - pl.col(f"{valuetype}Ni56")
+            linelabel = "Stable Ni"
+        elif speciesstr.lower() in {"co_56", "co56", "56co"}:
+            yvalue = pl.col(f"{valuetype}Co56")
+            linelabel = "$^{56}$Co"
+        elif speciesstr.lower() in {"fegrp", "ffegroup"}:
+            yvalue = pl.col(f"{valuetype}Fegroup")
+        else:
+            yvalue = pl.col(f"{valuetype}{elsymbol}")
 
         color = get_elemcolor(atomic_number=atomic_number)
 
-        xlist, ylist = at.estimators.apply_filters(xlist, np.array(ylist), args)
+        series = (
+            estimators.group_by("plotpointid", maintain_order=True)
+            .agg(yvalue=(yvalue * pl.col("mass_g")).sum() / (pl.col("mass_g")).sum(), xvalue=pl.col("xvalue").mean())
+            .sort("xvalue")
+            .collect()
+        )
+
+        ylist = series["yvalue"].to_list()
+        xlist = series["xvalue"].to_list()
 
         if startfromzero:
+            # make a line segment from 0 velocity
+            xlist = [0.0, *xlist]
             ylist = [ylist[0], *ylist]
 
-        ax.plot(xlist, ylist, linewidth=1.5, label=linelabel, linestyle=linestyle, color=color, **plotkwargs)
+        xlist_filtered, ylist_filtered = at.estimators.apply_filters(xlist, ylist, args)
+
+        ax.plot(
+            xlist_filtered,
+            ylist_filtered,
+            linewidth=1.5,
+            label=linelabel,
+            linestyle=linestyle,
+            color=color,
+            **plotkwargs,
+        )
 
         # if args.yscale == 'log':
         #     ax.set_yscale('log')
@@ -644,9 +656,8 @@ def plot_subplot(
                 showlegend = True
                 plot_init_abundances(
                     ax=ax,
-                    xlist=xlist,
                     specieslist=params,
-                    mgilist=mgilist,
+                    estimators=estimators,
                     modelpath=Path(modelpath),
                     seriestype=seriestype,
                     startfromzero=startfromzero,
@@ -1025,7 +1036,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         how="left",
         coalesce=True,
     )
-    dfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath, derived_cols=["ALL"])
+    dfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath, derived_cols=["ALL"], get_elemabundances=True)
 
     dfmodel = dfmodel.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"]).rename({
         colname: f"init_{colname}"
