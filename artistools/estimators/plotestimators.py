@@ -57,9 +57,9 @@ def plot_init_abundances(
     assert len(xlist) == len(mgilist)
 
     if seriestype == "initabundances":
-        mergemodelabundata, _ = at.inputmodel.get_modeldata_pandas(modelpath, get_elemabundances=True)
+        dfmodel, _ = at.inputmodel.get_modeldata(modelpath, get_elemabundances=True)
     elif seriestype == "initmasses":
-        mergemodelabundata = at.inputmodel.plotinitialcomposition.get_model_abundances_Msun_1D(modelpath)
+        dfmodel = at.inputmodel.plotinitialcomposition.get_model_abundances_Msun_1D(modelpath)
     else:
         raise AssertionError
 
@@ -85,23 +85,20 @@ def plot_init_abundances(
         linestyle = "-"
         for modelgridindex in mgilist:
             if speciesstr.lower() in {"ni_56", "ni56", "56ni"}:
-                yvalue = mergemodelabundata.loc[modelgridindex][f"{valuetype}Ni56"]
+                yvalue = pl.col(f"{valuetype}Ni56")
                 linelabel = "$^{56}$Ni"
                 linestyle = "--"
             elif speciesstr.lower() in {"ni_stb", "ni_stable"}:
-                yvalue = (
-                    mergemodelabundata.loc[modelgridindex][f"{valuetype}{elsymbol}"]
-                    - mergemodelabundata.loc[modelgridindex]["X_Ni56"]
-                )
+                yvalue = pl.col(f"{valuetype}{elsymbol}") - pl.col("X_Ni56")
                 linelabel = "Stable Ni"
             elif speciesstr.lower() in {"co_56", "co56", "56co"}:
-                yvalue = mergemodelabundata.loc[modelgridindex][f"{valuetype}Co56"]
+                yvalue = pl.col(f"{valuetype}Co56")
                 linelabel = "$^{56}$Co"
             elif speciesstr.lower() in {"fegrp", "ffegroup"}:
-                yvalue = mergemodelabundata.loc[modelgridindex][f"{valuetype}Fegroup"]
+                yvalue = pl.col(f"{valuetype}Fegroup")
             else:
-                yvalue = mergemodelabundata.loc[modelgridindex][f"{valuetype}{elsymbol}"]
-            ylist.append(yvalue)
+                yvalue = pl.col(f"{valuetype}{elsymbol}")
+            ylist.append(dfmodel.filter(pl.col("modelgridindex") == modelgridindex).select(yvalue).collect().item())
 
         color = get_elemcolor(atomic_number=atomic_number)
 

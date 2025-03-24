@@ -13,6 +13,7 @@ import matplotlib.colors as mplcolors
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import polars as pl
 from astropy import units as u
 from matplotlib import gridspec
 
@@ -209,35 +210,21 @@ def plot_2d_initial_abundances(modelpath, args: argparse.Namespace) -> None:
     print(f"Saved {outfilename}")
 
 
-def get_model_abundances_Msun_1D(modelpath: Path) -> pd.DataFrame:
+def get_model_abundances_Msun_1D(modelpath: Path) -> pl.LazyFrame:
     filename = modelpath / "model.txt"
-    modeldata, t_model_init_days, _ = at.inputmodel.get_modeldata_tuple(filename)
-    abundancedata = at.inputmodel.get_initelemabundances_pandas(modelpath)
-
-    t_model_init_seconds = t_model_init_days * 24 * 60 * 60
-
-    modeldata["volume_shell"] = (
-        4
-        / 3
-        * math.pi
-        * (
-            (modeldata["vel_r_max_kmps"] * 1e5 * t_model_init_seconds) ** 3
-            - (modeldata["vel_r_min_kmps"] * 1e5 * t_model_init_seconds) ** 3
-        )
+    modeldata, _ = at.inputmodel.get_modeldata(
+        filename, derived_cols=["vel_r_min_kmps", "vel_r_max_kmps", "mass_g"], get_elemabundances=True
     )
 
-    modeldata["mass_shell"] = (10 ** modeldata["logrho"]) * modeldata["volume_shell"]
-
-    merge_dfs = modeldata.merge(abundancedata, how="inner", on="inputcellid")
-
     print("Total mass (Msun):")
-    for key in list(merge_dfs.keys()):
-        if "X_" in key:
-            merge_dfs[f"mass_{key}"] = merge_dfs[key] * merge_dfs["mass_shell"] * u.g.to("solMass")
-            # get mass of element in each cell
-            print(key, merge_dfs[f"mass_{key}"].sum())  # print total mass of element in solmass
-
-    return merge_dfs
+    modeldata = modeldata.with_columns(
+        (pl.col(species) * pl.col("mass_g") * u.g.to("solMass")).alias(f"mass_{species}")
+        for species in modeldata.columns
+        if "X_" in species
+    )
+    for species in [col for col in modeldata.columns if "mass_X_" in col]:
+        print(f"{species}: {modeldata.select(pl.col(species).sum()).collect().item():.3e} Msun")
+    return modeldata
 
 
 def plot_most_abundant(modelpath, args: argparse.Namespace):  # noqa: ARG001
