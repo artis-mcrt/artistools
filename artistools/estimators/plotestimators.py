@@ -391,11 +391,11 @@ def plot_multi_ion_series(
 
         print(f"Plotting {seriestype} {ionstr.replace('_', ' ')}")
 
-        if seriestype != "populations" or args.ionpoptype == "absolute":
+        if seriestype != "populations" or args.poptype == "absolute":
             scalefactor = pl.lit(1)
-        elif args.ionpoptype == "elpop":
+        elif args.poptype == "elpop":
             scalefactor = pl.col(f"nnelement_{elsymbol}").mean()
-        elif args.ionpoptype == "totalpop":
+        elif args.poptype == "totalpop":
             scalefactor = pl.col("nntot").mean()
         else:
             raise AssertionError
@@ -453,12 +453,12 @@ def plot_multi_ion_series(
         plotted_something = True
 
     if seriestype == "populations":
-        if args.ionpoptype == "absolute":
+        if args.poptype == "absolute":
             ax.set_ylabel(r"Number density $\left[\rm{cm}^{-3}\right]$")
-        elif args.ionpoptype == "elpop":
+        elif args.poptype == "elpop":
             # elsym = at.get_elsymbol(atomic_number)
             ax.set_ylabel(r"X$_{i}$/X$_{\rm element}$")
-        elif args.ionpoptype == "totalpop":
+        elif args.poptype == "totalpop":
             ax.set_ylabel(r"X$_{i}$/X$_{rm tot}$")
         else:
             raise AssertionError
@@ -868,6 +868,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument(
         "-ionpoptype",
+        "-poptype",
+        dest="poptype",
         default="elpop",
         choices=["absolute", "totalpop", "elpop"],
         help="Plot absolute ion populations, or ion populations as a fraction of total or element population",
