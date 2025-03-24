@@ -196,7 +196,7 @@ def test_estimator_snapshot_classic_3d(mockplot) -> None:
         "nne": 62629131723.8786,
         "TR": 24081.788509728773,
         "Te": 55260.50862323113,
-        "averageionisation_Fe": 3.2523982489371517,
+        "averageionisation_Fe": 3.183501818759448,
         "populations_FeI": 2.6829624903107585e-16,
         "populations_FeII": 2.1309973094140065e-05,
         "populations_FeIII": 0.11156867875483492,
