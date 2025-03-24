@@ -60,22 +60,18 @@ def plot_init_abundances(
             for massfraccol in estimators.collect_schema().names()
             if massfraccol.startswith("init_X_")
         )
+        ax.set_ylabel(r"Initial mass per point [M$_\odot$]")
+        valuetype = "init_mass_"
     else:
         assert seriestype == "initabundances"
+        ax.set_ylim(1e-20, 1.0)
+        ax.set_ylabel("Initial mass fraction")
+        valuetype = "init_X_"
 
     for speciesstr in specieslist:
         splitvariablename = speciesstr.split("_")
         elsymbol = splitvariablename[0].strip(string.digits)
         atomic_number = at.get_atomic_number(elsymbol)
-        if seriestype == "initabundances":
-            ax.set_ylim(1e-20, 1.0)
-            ax.set_ylabel("Initial mass fraction")
-            valuetype = "init_X_"
-        elif seriestype == "initmasses":
-            ax.set_ylabel(r"Initial mass per point [M$_\odot$]")
-            valuetype = "init_mass_"
-        else:
-            raise AssertionError
 
         ylist = []
         linestyle = "-"
