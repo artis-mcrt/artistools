@@ -13,8 +13,6 @@ import matplotlib.colors as mplcolors
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import polars as pl
-from astropy import units as u
 from matplotlib import gridspec
 
 import artistools as at
@@ -208,23 +206,6 @@ def plot_2d_initial_abundances(modelpath, args: argparse.Namespace) -> None:
     plt.savefig(outfilename, format="pdf")
 
     print(f"Saved {outfilename}")
-
-
-def get_model_abundances_Msun_1D(modelpath: Path) -> pl.LazyFrame:
-    filename = modelpath / "model.txt"
-    modeldata, _ = at.inputmodel.get_modeldata(
-        filename, derived_cols=["vel_r_min_kmps", "vel_r_max_kmps", "mass_g"], get_elemabundances=True
-    )
-
-    print("Total mass (Msun):")
-    modeldata = modeldata.with_columns(
-        (pl.col(species) * pl.col("mass_g") * u.g.to("solMass")).alias(f"mass_{species}")
-        for species in modeldata.columns
-        if "X_" in species
-    )
-    for species in [col for col in modeldata.columns if "mass_X_" in col]:
-        print(f"{species}: {modeldata.select(pl.col(species).sum()).collect().item():.3e} Msun")
-    return modeldata
 
 
 def plot_most_abundant(modelpath, args: argparse.Namespace):  # noqa: ARG001

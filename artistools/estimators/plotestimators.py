@@ -47,16 +47,23 @@ def plot_init_abundances(
     ax: mplax.Axes,
     specieslist: list[str],
     estimators: pl.LazyFrame,
-    modelpath: Path,
     seriestype: str,
     startfromzero: bool,
     args: argparse.Namespace,
     **plotkwargs,
 ) -> None:
     if seriestype == "initmasses":
-        estimators = estimators.join(
-            at.inputmodel.plotinitialcomposition.get_model_abundances_Msun_1D(modelpath), on="inputcellid"
+        print("Total mass (Msun):")
+        estimators = estimators.with_columns(
+            (pl.col(massfraccol) * pl.col("mass_g") / 1.989e33).alias(
+                f"init_mass_{massfraccol.removeprefix('init_X_')}"
+            )
+            for massfraccol in estimators.collect_schema().names()
+            if massfraccol.startswith("init_X_")
         )
+        print(estimators.collect_schema())
+        for species in [col for col in estimators.collect_schema().names() if col.startswith("init_mass_")]:
+            print(f"{species}: {estimators.select(pl.col(species).sum()).collect().item():.3e} Msun")
     else:
         assert seriestype == "initabundances"
 
@@ -69,13 +76,12 @@ def plot_init_abundances(
             ax.set_ylabel("Initial mass fraction")
             valuetype = "init_X_"
         elif seriestype == "initmasses":
-            ax.set_ylabel(r"Initial mass [M$_\odot$]")
-            valuetype = "mass_X_"
+            ax.set_ylabel(r"Initial mass per point [M$_\odot$]")
+            valuetype = "init_mass_"
         else:
             raise AssertionError
 
         ylist = []
-        linelabel = speciesstr
         linestyle = "-"
         if speciesstr.lower() in {"ni_56", "ni56", "56ni"}:
             yvalue = pl.col(f"{valuetype}Ni56")
@@ -90,6 +96,7 @@ def plot_init_abundances(
         elif speciesstr.lower() in {"fegrp", "ffegroup"}:
             yvalue = pl.col(f"{valuetype}Fegroup")
         else:
+            linelabel = speciesstr
             yvalue = pl.col(f"{valuetype}{elsymbol}")
 
         color = get_elemcolor(atomic_number=atomic_number)
@@ -658,7 +665,6 @@ def plot_subplot(
                     ax=ax,
                     specieslist=params,
                     estimators=estimators,
-                    modelpath=Path(modelpath),
                     seriestype=seriestype,
                     startfromzero=startfromzero,
                     args=args,
