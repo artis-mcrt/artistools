@@ -11,7 +11,6 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import polars as pl
-from astropy import constants as const
 
 import artistools as at
 
@@ -289,8 +288,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     # also calculate wavelengths outside the plot range to include lines whose
     # edges pass through the plot range
-    plot_xmin_wide = args.xmin * (1 - args.gaussian_window * args.sigma_v / const.c.to("km / s").value)  # noqa: F841
-    plot_xmax_wide = args.xmax * (1 + args.gaussian_window * args.sigma_v / const.c.to("km / s").value)  # noqa: F841
+    c_in_km_per_s = 299792.458
+    plot_xmin_wide = args.xmin * (1 - args.gaussian_window * args.sigma_v / c_in_km_per_s)  # noqa: F841
+    plot_xmax_wide = args.xmax * (1 + args.gaussian_window * args.sigma_v / c_in_km_per_s)  # noqa: F841
 
     ionlist = [
         IonTuple(26, 1),
@@ -374,8 +374,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         #     (28, 2): 1.0e-2,
         # }
         ionpopdict = dict.fromkeys(ionlist, 1)
-
-    hc = (const.h * const.c).to("eV Angstrom").value  # noqa: F841
 
     xvalues = np.arange(args.xmin, args.xmax, step=plot_resolution)
     yvalues = np.zeros((len(temperature_list) + 1, len(ionlist), len(xvalues)))

@@ -6,7 +6,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from astropy import units as u
 
 import artistools as at
 
@@ -50,6 +49,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     rho_0 = 4.9e-17 * (e_k**-1.5) * (m_ej**2.5) * (t200**-3)  # g cm^-3
 
     print(f"v_transition = {v_transition:.3f}")
+    from astropy import units as u
 
     # composition transition from Ni56-rich to IME-rich
     mni56 = 0.6 * u.solMass

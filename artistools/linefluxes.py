@@ -17,7 +17,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
-from astropy import units as u
 from matplotlib import markers as mplmarkers
 from matplotlib.typing import MarkerType
 
@@ -140,6 +139,8 @@ def get_line_fluxes_from_packets(
 
 
 def get_line_fluxes_from_pops(emfeatures, modelpath, arr_tstart=None, arr_tend=None) -> pd.DataFrame:
+    from astropy import units as u
+
     if arr_tstart is None:
         arr_tstart = at.get_timestep_times(modelpath, loc="start")
     if arr_tend is None:
