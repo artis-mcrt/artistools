@@ -3,7 +3,6 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
-from astropy import units as u
 
 import artistools as at
 
@@ -174,8 +173,8 @@ def plot_last_emission_velocities_histogram(
         bins=28,
         weights=weights,
     )
-    hist = hist / nprocs_read / (timemaxarray[timestep_max] - timeminarray[timestep_min])  # erg/day
-    hist *= (u.erg / u.day).to("erg/s")
+    hist = hist / nprocs_read / (timemaxarray[timestep_max] - timeminarray[timestep_min]) / 86400  # erg/s
+
     hist /= 1e40
     width = np.diff(bin_edges)
     center = (bin_edges[:-1] + bin_edges[1:]) / 2

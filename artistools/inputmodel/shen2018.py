@@ -6,7 +6,6 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import pandas as pd
-from astropy import units as u
 
 import artistools as at
 
@@ -61,8 +60,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     v_inner = 0.0  # velocity at inner boundary of cell
     m_enc_inner = 0.0  # mass enclosed at inner boundary
     tot_ni56mass = 0.0
+    Msun_to_g = 1.989e33
     for cellid, shell in datain.iterrows():
-        m_enc_outer = float(shell["m"]) * u.solMass.to("g")  # convert Solar masses to grams
+        m_enc_outer = float(shell["m"]) * Msun_to_g  # convert Solar masses to grams
         v_outer = float(shell["v"]) * 1e-5  # convert cm/s to km/s
 
         m_shell_grams = m_enc_outer - m_enc_inner
@@ -89,9 +89,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         v_inner = v_outer
         m_enc_inner = m_enc_outer
-
-    print(f"M_tot  = {m_enc_outer / u.solMass.to('g'):.3f} solMass")
-    print(f"M_Ni56 = {tot_ni56mass / u.solMass.to('g'):.3f} solMass")
+    print(f"M_tot  = {m_enc_outer / Msun_to_g:.3f} solMass")
+    print(f"M_Ni56 = {tot_ni56mass / Msun_to_g:.3f} solMass")
 
     at.save_modeldata(dfmodel=dfmodel, t_model_init_days=t_model_init_days, outpath=args.outputpath)
     at.inputmodel.save_initelemabundances(dfelabundances, outpath=args.outputpath)

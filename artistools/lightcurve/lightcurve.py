@@ -118,9 +118,11 @@ def get_from_packets(
         assert not directionbins_are_vpkt_observers
         dfpackets = dfpackets.with_columns([(pl.col("tdecay") / 86400).alias("tdecay_d")])
 
+    timecol = "tdecay_d" if use_pellet_decay_time else "t_arrive_d"
+    erg_per_day_to_Lsun = 3.023530322380897e-39
+
     lazyframes = []
     for dirbin in directionbins:
-        timecol = "tdecay_d" if use_pellet_decay_time else "t_arrive_d"
         if directionbins_are_vpkt_observers:
             obsdirindex = dirbin // vpkt_config["nspectraperobs"]
             opacchoiceindex = dirbin % vpkt_config["nspectraperobs"]
@@ -147,7 +149,6 @@ def get_from_packets(
             pldfpackets_dirbin, bincol=timecol, bins=list(timearrayplusend), sumcols=["e_rf"], getcounts=True
         )
 
-        erg_per_day_to_Lsun = 3.023530322380897e-39
         dftimebinned = dftimebinned.with_columns([
             pl.Series(name="time", values=tmidarray),
             (
@@ -518,7 +519,7 @@ def get_sn_sample_bol():
 
     print(sn_data)
     bol_luminosity = sn_data["Lmax"].astype(float)
-    Lsun_to_erg_per_s = 3.828e33
+    Lsun_to_erg_per_s = 3.826e33
     bol_magnitude = 4.74 - (2.5 * np.log10((10**bol_luminosity) / Lsun_to_erg_per_s))  # Mbol,sun = 4.74
 
     bol_magnitude_error_upper = bol_magnitude - (

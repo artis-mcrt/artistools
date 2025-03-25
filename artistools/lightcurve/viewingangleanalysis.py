@@ -8,7 +8,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
-from astropy import constants as const
 from matplotlib.legend_handler import HandlerTuple
 
 import artistools as at
@@ -750,9 +749,7 @@ def peakmag_risetime_declinerate_init(
                         (lightcurve_data["time"] > args.timemin) & (lightcurve_data["time"] < args.timemax)
                     ]
 
-                    lightcurve_data["mag"] = 4.74 - (
-                        2.5 * np.log10((lightcurve_data["lum"] * 3.826e33) / const.L_sun.to("erg/s").value)
-                    )
+                    lightcurve_data["mag"] = 4.74 - (2.5 * np.log10(lightcurve_data["lum"]))
 
                     lightcurve_data = lightcurve_data.replace([np.inf, -np.inf], 0)
                     brightness = [mag for mag in lightcurve_data["mag"] if mag != 0]  # drop times with 0 brightness
