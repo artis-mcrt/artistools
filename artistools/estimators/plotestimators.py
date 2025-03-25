@@ -408,8 +408,7 @@ def plot_multi_ion_series(
         )
         lazyframes.append(series_lazy)
 
-    series_dataframes = pl.collect_all(lazyframes)
-    for seriesindex, (iontuple, series) in enumerate(zip(iontuplelist, series_dataframes, strict=True)):
+    for seriesindex, (iontuple, series) in enumerate(zip(iontuplelist, pl.collect_all(lazyframes), strict=True)):
         atomic_number, ion_stage = iontuple
         xlist = series.get_column("xvalue").to_list()
         ylist = (
