@@ -3,7 +3,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from astropy import units as u
 
 import artistools as at
 
@@ -15,7 +14,7 @@ def get_bol_lc_from_spec(modelpath) -> pd.DataFrame:
     timearray = res_specdata[0].columns[1:]
     times = [time for time in timearray if 5 < float(time) < 80]
     lightcurvedata: dict[str, t.Any] = {"time": times}
-
+    Mpc_to_cm = 3.085677581491367e24
     for angle in range(len(res_specdata)):
         bol_luminosity = []
         for timestep, timestr in enumerate(timearray):
@@ -24,7 +23,7 @@ def get_bol_lc_from_spec(modelpath) -> pd.DataFrame:
                     modelpath=modelpath, directionbins=[angle], timestepmin=timestep, timestepmax=timestep
                 )[angle]
                 integrated_flux = integrate.trapezoid(spectrum["f_lambda"], spectrum["lambda_angstroms"])
-                integrated_luminosity = integrated_flux * 4 * np.pi * np.power(u.Mpc.to("cm"), 2)
+                integrated_luminosity = integrated_flux * 4 * np.pi * Mpc_to_cm**2
                 bol_luminosity.append(integrated_luminosity)
 
         lightcurvedata[f"angle={angle}"] = np.log10(bol_luminosity)
