@@ -171,11 +171,8 @@ def get_from_packets(
             pldfpackets_dirbin = dfpackets.filter(pl.col("dirbin") == dirbin)
 
         dftimebinned = at.packets.bin_and_sum(
-            pldfpackets_dirbin, bincol=timecol, bins=list(timearrayplusend), sumcols=["e_rf"]
+            pldfpackets_dirbin, bincol=timecol, bins=list(timearrayplusend), sumcols=["e_rf"], getcounts=True
         )
-
-        npkts_selected = pldfpackets_dirbin.select(pl.count("e_rf")).collect().item(0, 0)
-        print(f"    dirbin {dirbin} contains {npkts_selected:.2e} packets")
 
         unitfactor = float((u.erg / u.day).to("solLum"))
         dftimebinned = dftimebinned.with_columns([
@@ -208,7 +205,12 @@ def get_from_packets(
 
         lazyframes.append(dftimebinned)
 
-    return dict(zip(directionbins, pl.collect_all(lazyframes), strict=True))
+    lcdata = dict(zip(directionbins, pl.collect_all(lazyframes), strict=True))
+    for dirbin, df in lcdata.items():
+        npkts_selected = df.select(pl.col("count").sum()).item()
+        print(f"    dirbin {dirbin} plotting {npkts_selected:.2e} packets")
+
+    return lcdata
 
 
 def generate_band_lightcurve_data(
