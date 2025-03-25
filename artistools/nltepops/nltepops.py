@@ -43,6 +43,7 @@ def texifyterm(strterm: str) -> str:
 def texifyconfiguration(levelname: str) -> str:
     """Replace a level configuration with the formatted LaTeX equivalent."""
     # the underscore gets confused with LaTeX subscript operator, so switch it to the hash symbol
+    levelname = levelname.strip()
     strout = "#".join(levelname.split("_")[:-1]) + "#"
     for strorbitalocc in re.findall(r"[0-9][a-z][0-9]?[#(]", strout):
         n, lchar, occ = re.split(r"([a-z])", strorbitalocc)
