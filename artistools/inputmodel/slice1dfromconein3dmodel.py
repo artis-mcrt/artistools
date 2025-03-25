@@ -7,7 +7,6 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-from astropy import units as u
 
 import artistools as at
 
@@ -79,6 +78,8 @@ def get_profile_along_axis(args: argparse.Namespace, modeldata=None, derived_col
 
 
 def make_1d_profile(args):
+    from astropy import units as u
+
     logprint = at.inputmodel.inputmodel_misc.savetologfile(
         outputfolderpath=Path(args.outputpath), logfilename="make1dmodellog.txt"
     )
@@ -185,6 +186,7 @@ def make_plot(args) -> None:
     ax: Axes3D = plt.figure().gca(projection="3d")  # type: ignore[call-arg] # pyright: ignore[reportCallIssue]
 
     # print(cone['rho_model'])
+    from astropy import units as u
 
     # set up for big model. For scaled down artis input model switch x and z
     x = cone["pos_z_min"].apply(lambda x: x / args.t_model * (u.cm / u.day).to("km/s")) / 1e3
