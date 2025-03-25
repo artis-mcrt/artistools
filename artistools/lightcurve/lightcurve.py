@@ -100,7 +100,6 @@ def get_from_packets(
             (pl.col("escape_time") * escapesurfacegamma / 86400.0).alias("t_arrive_cmf_d")
         ])
 
-    getcols = set()
     try:
         dfnuclides = at.get_nuclides(modelpath=modelpath)
         if pellet_nucname is not None:
@@ -123,27 +122,8 @@ def get_from_packets(
         for vspecindex in directionbins:
             obsdirindex = vspecindex // vpkt_config["nspectraperobs"]
             opacchoiceindex = vspecindex % vpkt_config["nspectraperobs"]
-            getcols |= {
-                f"dir{obsdirindex}_nu_rf",
-                f"dir{obsdirindex}_t_arrive_d",
-                f"dir{obsdirindex}_e_rf_{opacchoiceindex}",
-            }
     else:
-        getcols |= {"e_rf"}
-        if use_pellet_decay_time:
-            dfpackets = dfpackets.with_columns([(pl.col("tdecay") / 86400).alias("tdecay_d")])
-            getcols.add("tdecay_d")
-        else:
-            getcols.add("t_arrive_d")
-        if get_cmf_column:
-            getcols |= {"e_cmf", "t_arrive_cmf_d"}
-        if directionbins != [-1]:
-            if average_over_phi:
-                getcols.add("costhetabin")
-            elif average_over_theta:
-                getcols.add("phibin")
-            else:
-                getcols.add("dirbin")
+        dfpackets = dfpackets.with_columns([(pl.col("tdecay") / 86400).alias("tdecay_d")])
 
     lazyframes = []
     for dirbin in directionbins:
