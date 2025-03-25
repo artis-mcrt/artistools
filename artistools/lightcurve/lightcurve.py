@@ -116,13 +116,8 @@ def get_from_packets(
     except FileNotFoundError:
         assert pellet_nucname is None
 
-    if directionbins_are_vpkt_observers:
-        assert not use_pellet_decay_time
-        vpkt_config = at.get_vpkt_config(modelpath)
-        for vspecindex in directionbins:
-            obsdirindex = vspecindex // vpkt_config["nspectraperobs"]
-            opacchoiceindex = vspecindex % vpkt_config["nspectraperobs"]
-    else:
+    if use_pellet_decay_time:
+        assert not directionbins_are_vpkt_observers
         dfpackets = dfpackets.with_columns([(pl.col("tdecay") / 86400).alias("tdecay_d")])
 
     lazyframes = []
