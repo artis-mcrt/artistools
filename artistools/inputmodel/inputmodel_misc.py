@@ -1,6 +1,7 @@
 import calendar
 import errno
 import gc
+import itertools
 import math
 import os
 import tempfile
@@ -1304,61 +1305,63 @@ def dimension_reduce_model(
         raise ValueError(msg)
 
     # velocities in cm/s
-    velocity_bins_z_min = (
-        [-vmax + 2 * vmax * n / ncoordgridz for n in range(ncoordgridz)] if outputdimensions == 2 else [-vmax]
-    )
-    velocity_bins_z_max = (
-        [-vmax + 2 * vmax * n / ncoordgridz for n in range(1, ncoordgridz + 1)] if outputdimensions == 2 else [vmax]
-    )
+    vel_z_min_max = [
+        (-vmax + 2 * vmax * n / ncoordgridz, -vmax + 2 * vmax * (n + 1) / ncoordgridz) for n in range(ncoordgridz)
+    ]
 
-    velocity_bins_r_min = [vmax * n / ncoordgridr for n in range(ncoordgridr)]
-    velocity_bins_r_max = [vmax * n / ncoordgridr for n in range(1, ncoordgridr + 1)]
+    # "r" is the cylindrical radius in 2D, or the spherical radius in 1D
+    vel_r_min_max = [(vmax * n / ncoordgridr, vmax * (n + 1) / ncoordgridr) for n in range(ncoordgridr)]
+
+    if outputdimensions == 2:
+        lazyframes_matched_cells = [
+            dfmodel.filter(
+                pl.col("vel_z_mid").is_between(*cell_vel_z_min_max, closed="right")
+                & pl.col("vel_rcyl_mid").is_between(*cell_vel_r_min_max, closed="right")
+            )
+            for cell_vel_z_min_max, cell_vel_r_min_max in itertools.product(vel_z_min_max, vel_r_min_max)
+        ]
+    else:
+        assert outputdimensions in {0, 1}
+        lazyframes_matched_cells = [
+            dfmodel.filter(pl.col("vel_r_mid").is_between(*cell_vel_r_min_max, closed="right"))
+            for cell_vel_r_min_max in vel_r_min_max
+        ]
+
+    dataframes_matchedcells = pl.collect_all(lazyframes_matched_cells)
 
     allmatchedcells = {}
-    for n_z, (vel_z_min, vel_z_max) in enumerate(zip(velocity_bins_z_min, velocity_bins_z_max, strict=False)):
-        # "r" is the cylindrical radius in 2D, or the spherical radius in 1D
-        for n_r, (vel_r_min, vel_r_max) in enumerate(zip(velocity_bins_r_min, velocity_bins_r_max, strict=False)):
-            assert vel_r_max > vel_r_min
-            cellindexout = n_z * ncoordgridr + n_r + 1
-
+    for mgiout, ((vel_z_min, vel_z_max), (vel_r_min, vel_r_max)) in enumerate(
+        itertools.product(vel_z_min_max, vel_r_min_max)
+    ):
+        matchedcells = dataframes_matchedcells[mgiout]
+        if len(matchedcells) == 0:
+            rho_out = 0
+        else:
             if outputdimensions in {0, 1}:
-                matchedcells = dfmodel.filter(
-                    pl.col("vel_r_mid").is_between(vel_r_min, vel_r_max, closed="right")
-                ).collect()
+                shell_volume = (4 * math.pi / 3) * (
+                    (vel_r_max * t_model_init_seconds) ** 3 - (vel_r_min * t_model_init_seconds) ** 3
+                )
             elif outputdimensions == 2:
-                matchedcells = dfmodel.filter(
-                    pl.col("vel_rcyl_mid").is_between(vel_r_min, vel_r_max, closed="right")
-                    & pl.col("vel_z_mid").is_between(vel_z_min, vel_z_max, closed="right")
-                ).collect()
+                shell_volume = (
+                    math.pi * (vel_r_max**2 - vel_r_min**2) * (vel_z_max - vel_z_min) * t_model_init_seconds**3
+                )
+            rho_out = matchedcells["mass_g"].sum() / shell_volume
 
-            if len(matchedcells) == 0:
-                rho_out = 0
-            else:
-                if outputdimensions in {0, 1}:
-                    shell_volume = (4 * math.pi / 3) * (
-                        (vel_r_max * t_model_init_seconds) ** 3 - (vel_r_min * t_model_init_seconds) ** 3
-                    )
-                elif outputdimensions == 2:
-                    shell_volume = (
-                        math.pi * (vel_r_max**2 - vel_r_min**2) * (vel_z_max - vel_z_min) * t_model_init_seconds**3
-                    )
-                rho_out = matchedcells["mass_g"].sum() / shell_volume
+        cellout: dict[str, t.Any] = {"inputcellid": mgiout + 1, "mass_g": matchedcells["mass_g"].sum()}
 
-            cellout: dict[str, t.Any] = {"inputcellid": cellindexout, "mass_g": matchedcells["mass_g"].sum()}
+        if outputdimensions in {0, 1}:
+            cellout |= {
+                "logrho": math.log10(max(1e-99, rho_out)) if rho_out > 0.0 else -99.0,
+                "vel_r_max_kmps": vel_r_max / km_to_cm,
+            }
+        elif outputdimensions == 2:
+            cellout |= {
+                "rho": rho_out,
+                "pos_rcyl_mid": (vel_r_min + vel_r_max) / 2 * t_model_init_seconds,
+                "pos_z_mid": (vel_z_min + vel_z_max) / 2 * t_model_init_seconds,
+            }
 
-            if outputdimensions in {0, 1}:
-                cellout |= {
-                    "logrho": math.log10(max(1e-99, rho_out)) if rho_out > 0.0 else -99.0,
-                    "vel_r_max_kmps": vel_r_max / km_to_cm,
-                }
-            elif outputdimensions == 2:
-                cellout |= {
-                    "rho": rho_out,
-                    "pos_rcyl_mid": (vel_r_min + vel_r_max) / 2 * t_model_init_seconds,
-                    "pos_z_mid": (vel_z_min + vel_z_max) / 2 * t_model_init_seconds,
-                }
-
-            allmatchedcells[cellindexout] = (cellout, matchedcells)
+        allmatchedcells[mgiout] = (cellout, matchedcells)
 
     includemissingcolexists = (
         dfgridcontributions is not None and "frac_of_cellmass_includemissing" in dfgridcontributions.columns
@@ -1368,7 +1371,7 @@ def dimension_reduce_model(
     outcellabundances = []
     outgridcontributions = []
 
-    for cellindexout, (dictcell, matchedcells) in allmatchedcells.items():
+    for mgiout, (dictcell, matchedcells) in allmatchedcells.items():
         matchedcellmass = matchedcells["mass_g"].sum()
         nonempty = matchedcellmass > 0.0
         if matchedcellmass > 0.0 and dfgridcontributions is not None:
@@ -1385,7 +1388,7 @@ def dimension_reduce_model(
 
                 contriboutrow = {
                     "particleid": particleid,
-                    "cellindex": cellindexout,
+                    "cellindex": mgiout + 1,
                     "frac_of_cellmass": frac_of_cellmass_avg,
                 }
 
@@ -1417,7 +1420,7 @@ def dimension_reduce_model(
             abund_matchedcells = (
                 dfelabundances.filter(pl.col("inputcellid").is_in(matchedcells["inputcellid"])).lazy().collect()
             )
-            dictcellabundances: dict[str, int | float] = {"inputcellid": cellindexout}
+            dictcellabundances: dict[str, int | float] = {"inputcellid": mgiout + 1}
             for column in dfelabundances.columns:
                 if column.startswith("X_"):
                     dotprod = abund_matchedcells[column].dot(matchedcells["mass_g"]) if nonempty else 0.0
