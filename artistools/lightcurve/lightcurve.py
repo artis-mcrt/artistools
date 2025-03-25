@@ -188,19 +188,18 @@ def get_from_packets(
             ).collect()
 
             assert escapesurfacegamma is not None
-            dftimebinned = dftimebinned.with_row_index().join(
-                pl.LazyFrame({
-                    "lum_cmf": (
+            dftimebinned = dftimebinned.with_columns(
+                pl.Series(
+                    name="lum_cmf",
+                    values=(
                         dftimebinned_cmf.get_column("e_cmf_sum").to_numpy()
                         / nprocs_read
                         * solidanglefactor
                         / escapesurfacegamma
                         * (u.erg / u.day).to("solLum")
                         / arr_timedelta
-                    )
-                }).with_row_index(),
-                on="index",
-                how="left",
+                    ),
+                )
             )
 
         lazyframes.append(dftimebinned)
