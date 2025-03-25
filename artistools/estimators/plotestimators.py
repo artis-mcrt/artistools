@@ -239,6 +239,7 @@ def plot_levelpop(
     timestepslist: Sequence[Sequence[int]],
     mgilist: Sequence[int | Sequence[int]],
     modelpath: str | Path,
+    startfromzero: bool,
     args: argparse.Namespace,
     **plotkwargs: t.Any,
 ) -> None:
@@ -302,7 +303,10 @@ def plot_levelpop(
             else:
                 ylist.append(valuesum / tdeltasum)
 
-        ylist = [ylist[0], *ylist]
+        if startfromzero:
+            # make a line segment from 0 velocity
+            xlist = [0.0, *xlist]
+            ylist = [ylist[0], *ylist]
 
         xlist, ylist = at.estimators.apply_filters(xlist, np.array(ylist), args)
 
@@ -663,7 +667,17 @@ def plot_subplot(
 
             elif seriestype == "levelpopulation" or seriestype.startswith("levelpopulation_"):
                 showlegend = True
-                plot_levelpop(ax, xlist, seriestype, params, timestepslist, mgilist, modelpath, args=args)
+                plot_levelpop(
+                    ax,
+                    xlist,
+                    seriestype,
+                    params,
+                    timestepslist,
+                    mgilist,
+                    modelpath,
+                    startfromzero=startfromzero,
+                    args=args,
+                )
 
             elif seriestype in {"averageionisation", "averageexcitation"}:
                 showlegend = True
