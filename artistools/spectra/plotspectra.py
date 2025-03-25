@@ -1613,6 +1613,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if args.emissionvelocitycut or args.groupby in {"line", "nuc", "nucmass"}:
         args.frompackets = True
 
+    if args.gamma and args.plotviewingangle:
+        # exspec does not generate angle-resolved gamma spectra files,
+        # so we need to use the packets instead
+        args.frompackets = True
+
     if args.makevspecpol:
         atspectra.make_virtual_spectra_summed_file(args.specpath[0])
         return
