@@ -100,7 +100,6 @@ def get_from_packets(
             (pl.col("escape_time") * escapesurfacegamma / 86400.0).alias("t_arrive_cmf_d")
         ])
 
-    getcols = set()
     try:
         dfnuclides = at.get_nuclides(modelpath=modelpath)
         if pellet_nucname is not None:
@@ -117,37 +116,11 @@ def get_from_packets(
     except FileNotFoundError:
         assert pellet_nucname is None
 
-    if directionbins_are_vpkt_observers:
-        assert not use_pellet_decay_time
-        vpkt_config = at.get_vpkt_config(modelpath)
-        for vspecindex in directionbins:
-            obsdirindex = vspecindex // vpkt_config["nspectraperobs"]
-            opacchoiceindex = vspecindex % vpkt_config["nspectraperobs"]
-            getcols |= {
-                f"dir{obsdirindex}_nu_rf",
-                f"dir{obsdirindex}_t_arrive_d",
-                f"dir{obsdirindex}_e_rf_{opacchoiceindex}",
-            }
-    else:
-        getcols |= {"e_rf"}
-        if use_pellet_decay_time:
-            dfpackets = dfpackets.with_columns([(pl.col("tdecay") / 86400).alias("tdecay_d")])
-            getcols.add("tdecay_d")
-        else:
-            getcols.add("t_arrive_d")
-        if get_cmf_column:
-            getcols |= {"e_cmf", "t_arrive_cmf_d"}
-        if directionbins != [-1]:
-            if average_over_phi:
-                getcols.add("costhetabin")
-            elif average_over_theta:
-                getcols.add("phibin")
-            else:
-                getcols.add("dirbin")
+    if use_pellet_decay_time:
+        assert not directionbins_are_vpkt_observers
+        dfpackets = dfpackets.with_columns([(pl.col("tdecay") / 86400).alias("tdecay_d")])
 
-    dfpackets = dfpackets.select(getcols).collect().lazy()
-
-    lcdata: dict[int, pl.DataFrame] = {}
+    lazyframes = []
     for dirbin in directionbins:
         timecol = "tdecay_d" if use_pellet_decay_time else "t_arrive_d"
         if directionbins_are_vpkt_observers:
@@ -173,11 +146,8 @@ def get_from_packets(
             pldfpackets_dirbin = dfpackets.filter(pl.col("dirbin") == dirbin)
 
         dftimebinned = at.packets.bin_and_sum(
-            pldfpackets_dirbin, bincol=timecol, bins=list(timearrayplusend), sumcols=["e_rf"]
+            pldfpackets_dirbin, bincol=timecol, bins=list(timearrayplusend), sumcols=["e_rf"], getcounts=True
         )
-
-        npkts_selected = pldfpackets_dirbin.select(pl.count("e_rf")).collect().item(0, 0)
-        print(f"    dirbin {dirbin} contains {npkts_selected:.2e} packets")
 
         unitfactor = float((u.erg / u.day).to("solLum"))
         dftimebinned = dftimebinned.with_columns([
@@ -187,24 +157,32 @@ def get_from_packets(
             ),
         ]).drop(["e_rf_sum", f"{timecol}_bin"])
 
-        lcdata[dirbin] = dftimebinned.collect()
-
         if get_cmf_column:
             dftimebinned_cmf = at.packets.bin_and_sum(
                 pldfpackets_dirbin, bincol="t_arrive_cmf_d", bins=list(timearrayplusend), sumcols=["e_cmf"]
             ).collect()
 
             assert escapesurfacegamma is not None
-            lcdata[dirbin] = lcdata[dirbin].with_columns(
-                (
-                    dftimebinned_cmf.get_column("e_cmf_sum").to_numpy()
-                    / nprocs_read
-                    * solidanglefactor
-                    / escapesurfacegamma
-                    * (u.erg / u.day).to("solLum")
-                    / arr_timedelta
-                ).alias("lum_cmf")
+            dftimebinned = dftimebinned.with_columns(
+                pl.Series(
+                    name="lum_cmf",
+                    values=(
+                        dftimebinned_cmf.get_column("e_cmf_sum").to_numpy()
+                        / nprocs_read
+                        * solidanglefactor
+                        / escapesurfacegamma
+                        * (u.erg / u.day).to("solLum")
+                        / arr_timedelta
+                    ),
+                )
             )
+
+        lazyframes.append(dftimebinned)
+
+    lcdata = dict(zip(directionbins, pl.collect_all(lazyframes), strict=True))
+    for dirbin, df in lcdata.items():
+        npkts_selected = df.select(pl.col("count").sum()).item()
+        print(f"    dirbin {dirbin} plotting {npkts_selected:.2e} packets")
 
     return lcdata
 
