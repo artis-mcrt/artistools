@@ -145,9 +145,7 @@ def get_from_packets(
             else:
                 getcols.add("dirbin")
 
-    dfpackets = dfpackets.select(getcols).collect().lazy()
-
-    lcdata: dict[int, pl.DataFrame] = {}
+    lazyframes = []
     for dirbin in directionbins:
         timecol = "tdecay_d" if use_pellet_decay_time else "t_arrive_d"
         if directionbins_are_vpkt_observers:
@@ -187,26 +185,30 @@ def get_from_packets(
             ),
         ]).drop(["e_rf_sum", f"{timecol}_bin"])
 
-        lcdata[dirbin] = dftimebinned.collect()
-
         if get_cmf_column:
             dftimebinned_cmf = at.packets.bin_and_sum(
                 pldfpackets_dirbin, bincol="t_arrive_cmf_d", bins=list(timearrayplusend), sumcols=["e_cmf"]
             ).collect()
 
             assert escapesurfacegamma is not None
-            lcdata[dirbin] = lcdata[dirbin].with_columns(
-                (
-                    dftimebinned_cmf.get_column("e_cmf_sum").to_numpy()
-                    / nprocs_read
-                    * solidanglefactor
-                    / escapesurfacegamma
-                    * (u.erg / u.day).to("solLum")
-                    / arr_timedelta
-                ).alias("lum_cmf")
+            dftimebinned = dftimebinned.with_row_index().join(
+                pl.LazyFrame({
+                    "lum_cmf": (
+                        dftimebinned_cmf.get_column("e_cmf_sum").to_numpy()
+                        / nprocs_read
+                        * solidanglefactor
+                        / escapesurfacegamma
+                        * (u.erg / u.day).to("solLum")
+                        / arr_timedelta
+                    )
+                }).with_row_index(),
+                on="index",
+                how="left",
             )
 
-    return lcdata
+        lazyframes.append(dftimebinned)
+
+    return dict(zip(directionbins, pl.collect_all(lazyframes), strict=True))
 
 
 def generate_band_lightcurve_data(
