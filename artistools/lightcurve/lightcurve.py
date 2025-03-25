@@ -9,8 +9,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import polars as pl
-from astropy import constants as const
-from astropy import units as u
 
 import artistools as at
 
@@ -149,12 +147,12 @@ def get_from_packets(
             pldfpackets_dirbin, bincol=timecol, bins=list(timearrayplusend), sumcols=["e_rf"], getcounts=True
         )
 
-        unitfactor = float((u.erg / u.day).to("solLum"))
+        erg_per_day_to_Lsun = 3.023530322380897e-39
         dftimebinned = dftimebinned.with_columns([
             pl.Series(name="time", values=tmidarray),
-            ((pl.col("e_rf_sum") / nprocs_read * solidanglefactor * unitfactor) / pl.Series(arr_timedelta)).alias(
-                "lum"
-            ),
+            (
+                (pl.col("e_rf_sum") / nprocs_read * solidanglefactor * erg_per_day_to_Lsun) / pl.Series(arr_timedelta)
+            ).alias("lum"),
         ]).drop(["e_rf_sum", f"{timecol}_bin"])
 
         if get_cmf_column:
@@ -171,7 +169,7 @@ def get_from_packets(
                         / nprocs_read
                         * solidanglefactor
                         / escapesurfacegamma
-                        * (u.erg / u.day).to("solLum")
+                        * erg_per_day_to_Lsun
                         / arr_timedelta
                     ),
                 )
@@ -308,6 +306,8 @@ def bolometric_magnitude(
     magnitudes = []
     times = []
 
+    Mpc_to_cm = 3.085677581491367e24
+    Lsun_to_erg_per_s = 3.828e33
     for timestep, time in enumerate(float(time) for time in timearray):
         if (args.timemin is None or args.timemin <= time) and (args.timemax is None or args.timemax >= time):
             if angle == -1:
@@ -325,14 +325,12 @@ def bolometric_magnitude(
                     average_over_theta=average_over_theta,
                 )[angle]
             integrated_flux = integrate.trapezoid(spectrum["f_lambda"], spectrum["lambda_angstroms"])
-            integrated_luminosity = integrated_flux * 4 * np.pi * np.power(u.Mpc.to("cm"), 2)
+            integrated_luminosity = integrated_flux * 4 * np.pi * np.power(Mpc_to_cm, 2)
             Mbol_sun = 4.74
             with np.errstate(divide="ignore"):
-                magnitude = Mbol_sun - (2.5 * np.log10(integrated_luminosity / const.L_sun.to("erg/s").value))
+                magnitude = Mbol_sun - (2.5 * np.log10(integrated_luminosity / Lsun_to_erg_per_s))
             magnitudes.append(magnitude)
             times.append(time)
-            # print(const.L_sun.to('erg/s').value)
-            # sys.exit(1)
 
     return times, magnitudes
 
@@ -520,14 +518,14 @@ def get_sn_sample_bol():
 
     print(sn_data)
     bol_luminosity = sn_data["Lmax"].astype(float)
-    bol_magnitude = 4.74 - (2.5 * np.log10((10**bol_luminosity) / const.L_sun.to("erg/s").value))  # Mbol,sun = 4.74
+    Lsun_to_erg_per_s = 3.828e33
+    bol_magnitude = 4.74 - (2.5 * np.log10((10**bol_luminosity) / Lsun_to_erg_per_s))  # Mbol,sun = 4.74
 
     bol_magnitude_error_upper = bol_magnitude - (
-        4.74
-        - (2.5 * np.log10((10 ** (bol_luminosity + sn_data["+/-.2"].astype(float))) / const.L_sun.to("erg/s").value))
+        4.74 - (2.5 * np.log10((10 ** (bol_luminosity + sn_data["+/-.2"].astype(float))) / Lsun_to_erg_per_s))
     )
     # bol_magnitude_error_lower = (4.74 - (2.5 * np.log10
-    #     10**(bol_luminosity - sn_data['+/-.2'].astype(float))) / const.L_sun.to('erg/s').value))) - bol_magnitude
+    #     10**(bol_luminosity - sn_data['+/-.2'].astype(float))) / Lsun_in_erg_per_s))) - bol_magnitude
     # print(bol_magnitude_error_upper, "============")
     # print(bol_magnitude_error_lower, "============")
     # print(bol_magnitude_error_upper == bol_magnitude_error_lower)
