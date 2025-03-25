@@ -13,7 +13,6 @@ import numpy as np
 import pandas as pd
 import polars as pl
 import polars.selectors as cs
-from astropy import units as u
 
 import artistools as at
 
@@ -153,7 +152,7 @@ def read_griddat_file(
             sys.exit(1)
         extratime_geomunits = float(gridfile.readline().split()[0])
         xmax = abs(float(gridfile.readline().split()[0]))
-        xmax = (xmax * factor_position) * (u.km).to(u.cm)
+        xmax = (xmax * factor_position) * km_to_cm
 
     t_model_sec = (
         (simulation_end_time_geomunits - mergertime_geomunits) + extratime_geomunits
