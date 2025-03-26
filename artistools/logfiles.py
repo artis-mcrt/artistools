@@ -94,7 +94,7 @@ def read_time_taken(logfilepaths: Iterable[Path | str]) -> dict[str, dict[int, d
     }
 
 
-def make_plot(logfiledict):
+def make_plot(logfiledict: dict[str, dict[int, t.Any]]) -> None:
     for timestep in range(55):
         plotvalues = ["update_packets", "update_grid", "write_estimators"]
         for plotvalue in plotvalues:

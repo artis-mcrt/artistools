@@ -69,7 +69,9 @@ def make_xs_plot(axis: mplax.Axes, nonthermaldata: pd.DataFrame, args: argparse.
         axis.legend(loc="upper center", handlelength=2, frameon=False, numpoints=1, prop={"size": 13})
 
 
-def plot_contributions(axis, modelpath, timestep, modelgridindex, nonthermaldata):
+def plot_contributions(
+    axis: mplax.Axes, modelpath: Path | str, timestep: int, modelgridindex: int, nonthermaldata: pd.DataFrame
+) -> None:
     from scipy import integrate
 
     estim_tsmgi = at.estimators.read_estimators(modelpath, modelgridindex=modelgridindex, timestep=timestep)[
@@ -218,6 +220,7 @@ def make_plot(modelpaths: list[Path], args: argparse.Namespace) -> None:
         axes[0].set_ylabel(r"log [y (e$^-$ / cm$^2$ / s / eV)]")
 
         if args.showcontributions:
+            assert isinstance(modelgridindex, int)
             plot_contributions(axes[1], modelpath, timestep, modelgridindex, nonthermaldata)
 
         if args.xsplot:

@@ -8,6 +8,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import argcomplete
+import matplotlib.axes as mplax
 import matplotlib.cm as mplcm
 import matplotlib.colors as mplcolors
 import matplotlib.pyplot as plt
@@ -48,7 +49,14 @@ def get_2D_slice_through_3d_model(
 
 
 def plot_slice_modelcolumn(
-    ax, dfmodelslice, modelmeta, colname, plotaxis1, plotaxis2, t_model_d, args: argparse.Namespace
+    ax: mplax.Axes,
+    dfmodelslice: pd.DataFrame,
+    modelmeta: dict[str, t.Any],
+    colname: str,
+    plotaxis1: str,
+    plotaxis2: str,
+    t_model_d,
+    args: argparse.Namespace,
 ):
     print(f"plotting {colname}")
     colorscale = (
@@ -62,7 +70,7 @@ def plot_slice_modelcolumn(
     if args.logcolorscale:
         # logscale for colormap
         if args.floorval:
-            colorscale = [args.floorval if x < args.floorval or not math.isfinite(x) else x for x in colorscale]
+            colorscale = np.array(args.floorval if x < args.floorval or not math.isfinite(x) else x for x in colorscale)
         with np.errstate(divide="ignore"):
             colorscale = np.log10(colorscale)
         # np.nan_to_num(colorscale, posinf=-99, neginf=-99)

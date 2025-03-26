@@ -50,7 +50,9 @@ def make_cone(args: argparse.Namespace) -> pd.DataFrame:
     return cone
 
 
-def get_profile_along_axis(args: argparse.Namespace, modeldata=None, derived_cols=None):
+def get_profile_along_axis(
+    args: argparse.Namespace, modeldata: pd.DataFrame | None = None, derived_cols: Sequence[str] | None = None
+) -> pd.DataFrame:
     print("Getting profile along axis")
 
     # merge_dfs, args.t_model, args.vmax = at.inputmodel.get_modeldata_tuple(args.modelpath, dimensions=3, get_elemabundances=True)
@@ -76,7 +78,9 @@ def get_profile_along_axis(args: argparse.Namespace, modeldata=None, derived_col
             & (modeldata[f"pos_{args.sliceaxis}_min"] < 0)
         ]
 
-    return profile1d.reset_index(drop=True)
+    profile1d = profile1d.reset_index(drop=True)
+    assert isinstance(profile1d, pd.DataFrame)
+    return profile1d
 
 
 def make_1d_profile(args: argparse.Namespace) -> pd.DataFrame:

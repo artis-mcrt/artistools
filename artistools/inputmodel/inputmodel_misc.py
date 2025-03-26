@@ -359,7 +359,7 @@ def read_modelfile_text(
 def get_modeldata(
     modelpath: Path | str = Path(),
     get_elemabundances: bool = False,
-    derived_cols: list[str] | str | None = None,
+    derived_cols: Sequence[str] | str | None = None,
     printwarningsonly: bool = False,
     getheadersonly: bool = False,
 ) -> tuple[pl.LazyFrame, dict[t.Any, t.Any]]:
@@ -526,7 +526,7 @@ def get_empty_3d_model(
 def get_modeldata_pandas(
     modelpath: Path | str = Path(),
     get_elemabundances: bool = False,
-    derived_cols: list[str] | str | None = None,
+    derived_cols: Sequence[str] | str | None = None,
     printwarningsonly: bool = False,
     getheadersonly: bool = False,
 ) -> tuple[pd.DataFrame, dict[t.Any, t.Any]]:
@@ -548,7 +548,7 @@ def get_modeldata_pandas(
 
 def add_derived_cols_to_modeldata(
     dfmodel: pl.DataFrame | pl.LazyFrame,
-    derived_cols: list[str],
+    derived_cols: Sequence[str],
     modelmeta: dict[str, t.Any],
     modelpath: Path | None = None,
 ) -> pl.LazyFrame:
@@ -556,6 +556,7 @@ def add_derived_cols_to_modeldata(
     # with lazy mode, we can add every column and then drop the ones we don't need
     dfmodel = dfmodel.lazy()
     original_cols = dfmodel.collect_schema().names()
+    derived_cols = list(derived_cols)
 
     t_model_init_seconds = modelmeta["t_model_init_days"] * 86400.0
     keep_all = "ALL" in derived_cols

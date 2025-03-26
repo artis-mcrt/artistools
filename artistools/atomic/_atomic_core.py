@@ -250,8 +250,8 @@ def get_transitiondata(
                 raise ImportError(msg) from err
             use_rust_reader = False
 
+    time_start = time.perf_counter()
     if not quiet:
-        time_start = time.perf_counter()
         print(
             f"Reading {transition_filename.relative_to(Path(modelpath).parent)} with {'fast rust reader' if use_rust_reader else 'slow python reader'}..."
         )

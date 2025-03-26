@@ -273,7 +273,7 @@ def get_rankbatch_parquetfile(
 
         pldf_batch: pl.DataFrame
         if use_rust_parser:
-            pldf_batch = rustestimparse(str(folderpath), min(batch_mpiranks), max(batch_mpiranks))  # type: ignore[possibly-undefined]
+            pldf_batch = rustestimparse(str(folderpath), min(batch_mpiranks), max(batch_mpiranks))
             pldf_batch = pldf_batch.with_columns(
                 pl.col(c).cast(pl.Int32)
                 for c in {"modelgridindex", "timestep", "titeration", "thick"}.intersection(pldf_batch.columns)

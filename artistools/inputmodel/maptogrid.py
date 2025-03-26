@@ -28,7 +28,7 @@ dvtable = v2max / itable
 i1 = int(1.0 // dvtable)
 
 
-def get_wij() -> npt.NDArray:
+def get_wij() -> npt.NDArray[np.floating]:
     igphi = 0
     #
     # --normalisation constant
@@ -76,7 +76,9 @@ def get_wij() -> npt.NDArray:
     return wij
 
 
-def kernelvals2(rij2: float, hmean: float, wij: npt.NDArray) -> float:  # ist schnell berechnet aber keine Gradienten
+def kernelvals2(
+    rij2: float, hmean: float, wij: npt.NDArray[np.floating]
+) -> float:  # ist schnell berechnet aber keine Gradienten
     hmean21 = 1.0 / hmean**2
     hmean31 = hmean21 / hmean
     v2 = rij2 * hmean21

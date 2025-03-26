@@ -132,13 +132,13 @@ repair-wheel-command = [
 [tool.mypy]
 check_untyped_defs = true
 disallow_any_explicit = false
-disallow_any_generics = false
+disallow_any_generics = true
 disallow_any_unimported = false
-disallow_incomplete_defs = false
+disallow_incomplete_defs = true
 disallow_subclassing_any = true
-disallow_untyped_calls = false
+disallow_untyped_calls = true
 disallow_untyped_decorators = true
-disallow_untyped_defs = false
+disallow_untyped_defs = true
 error_summary = true
 enable_error_code = [
     "comparison-overlap",
@@ -146,7 +146,6 @@ enable_error_code = [
     "no-any-return",
     "no-any-unimported",
     "no-untyped-call",
-    #"possibly-undefined",
     "redundant-expr",
     "redundant-self",
     "truthy-bool",
@@ -170,41 +169,42 @@ warn_unused_configs = true
 warn_unused_ignores = true
 warn_return_any = true
 
-# strict mode
+# these files need detailed type annotations added
 [[tool.mypy.overrides]]
 module = [
-    "artistools",
-    "artistools.atomic",
-    "artistools.estimators",
-    "artistools.estimators.estimators",
-    "artistools.estimators.plotestimators",
-    "artistools.commands",
-    "artistools.configuration",
-    "artistools.gsinetwork",
-    "artistools.gsinetwork.*",
-    "artistools.inputmodel",
-    "artistools.inputmodel.describeinputmodel",
-    "artistools.inputmodel.inputmodel_misc",
-    "artistools.inputmodel.rprocess_from_trajectory",
-    "artistools.inputmodel.plotdensity",
-    "artistools.inputmodel.makeartismodel",
-    "artistools.lightcurve",
-    "artistools.lightcurve.lightcurve",
-    "artistools.misc",
-    "artistools.nltepops",
-    "artistools.packets",
-    "artistools.plotspherical",
-    "artistools.spectra.plotspectra",
-    "artistools.spectra.spectra",
-    "artistools.spectra.writespectra",
-    "*.__init__",
-    "*.__main__",
+    "artistools.estimators.plot3destimators_classic",
+    "artistools.hesma_scripts",
+    "artistools.inputmodel.fromcmfgen.convert_to_artis_neartimezero",
+    "artistools.inputmodel.energyinputfiles",
+    "artistools.inputmodel.from_alcar",
+    "artistools.inputmodel.make1dslicefrom3d",
+    "artistools.inputmodel.map_1d_to_3d_grid",
+    "artistools.inputmodel.modelfromhydro",
+    "artistools.inputmodel.opacityinputfile",
+    "artistools.inputmodel.plotinitialcomposition",
+    "artistools.inputmodel.slice1dfromconein3dmodel",
+    "artistools.lightcurve.plotlightcurve",
+    "artistools.lightcurve.viewingangleanalysis",
+    "artistools.linefluxes",
+    "artistools.macroatom",
+    "artistools.packets.packets",
+    "artistools.packets.packetsplots",
+    "artistools.plottools",
+    "artistools.nltepops.plotnltepops",
+    "artistools.nltepops.nltepops",
+    "artistools.nonthermal.solvespencerfanocmd",
+    "artistools.nonthermal.leptontransport",
+    "artistools.radfield",
+    "artistools.spectra.sampleblackbodyfrompacket_tr",
+    "artistools.transitions",
+    "artistools.viewing_angles_visualization",
+    "artistools.writecomparisondata",
 ]
-disallow_any_generics = true
-disallow_incomplete_defs = true
-disallow_untyped_calls = true
-disallow_untyped_defs = true
-enable_error_code = ["possibly-undefined"]
+disallow_any_generics = false
+disallow_incomplete_defs = false
+disallow_untyped_calls = false
+disallow_untyped_defs = false
+disable_error_code = ["possibly-undefined"]
 
 [tool.pylint.'MESSAGES CONTROL']
 max-line-length = 120
