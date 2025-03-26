@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import typing as t
+from collections.abc import Iterable
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -9,7 +10,7 @@ import matplotlib.pyplot as plt
 import artistools as at
 
 
-def read_logfiles(modelpath):
+def read_logfiles(modelpath: Path | str) -> list[Path]:
     mpiranklist = at.get_mpiranklist(modelpath)
     # nprocs = at.get_nprocs(modelpath)
 
@@ -31,7 +32,7 @@ def read_logfiles(modelpath):
     return logfilepaths
 
 
-def read_time_taken(logfilepaths) -> dict[str, dict[int, dict[int, int]]]:
+def read_time_taken(logfilepaths: Iterable[Path | str]) -> dict[str, dict[int, dict[int, int]]]:
     updategrid_dict: dict[int, dict[int, int]] = {}
     updatepackets_dict: dict[int, dict[int, int]] = {}
     writeestimators_dict: dict[int, dict[int, int]] = {}

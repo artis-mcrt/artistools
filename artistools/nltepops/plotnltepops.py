@@ -5,6 +5,7 @@ import argparse
 import contextlib
 import math
 import sys
+import typing as t
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -41,7 +42,14 @@ def annotate_emission_line(ax: mplax.Axes, y: float, upperlevel: int, lowerlevel
     )
 
 
-def plot_reference_data(ax, atomic_number: int, ion_stage: int, estimators_celltimestep, dfpopthision, annotatelines):
+def plot_reference_data(
+    ax: mplax.Axes,
+    atomic_number: int,
+    ion_stage: int,
+    estimators_celltimestep: dict[str, t.Any],
+    dfpopthision: pd.DataFrame,
+    annotatelines: bool,
+) -> None:
     nne, Te, TR, W = (estimators_celltimestep[s] for s in ("nne", "Te", "TR", "W"))
     # comparison to Chianti file
     elsym = at.get_elsymbol(atomic_number)
@@ -113,7 +121,9 @@ def plot_reference_data(ax, atomic_number: int, ion_stage: int, estimators_cellt
         annotate_emission_line(ax=ax, y=0.53, upperlevel=16, lowerlevel=5, label=r"7155$~\mathrm{{\AA}}$")
 
 
-def get_floers_data(dfpopthision, atomic_number, ion_stage, modelpath, T_e, modelgridindex):
+def get_floers_data(
+    dfpopthision: pd.DataFrame, atomic_number: int, ion_stage: int, modelpath, T_e: float, modelgridindex: int
+) -> tuple[list[int] | None, list[float] | None]:
     floers_levelnums, floers_levelpop_values = None, None
 
     # comparison to Andeas Floers's NLTE pops for Shingles et al. (2022)
@@ -738,7 +748,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-outputfile", "-o", type=Path, default=defaultoutputfile, help="path/filename for PDF file")
 
 
-def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot ARTIS non-LTE populations."""
     if args is None:
         parser = argparse.ArgumentParser(description=__doc__)

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import typing as t
 from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
@@ -289,7 +290,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot ARTIS non-thermal electron energy spectrum."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)

@@ -11,6 +11,7 @@ import typing as t
 from collections.abc import Sequence
 from functools import lru_cache
 from functools import partial
+from io import TextIOWrapper
 from itertools import chain
 from pathlib import Path
 
@@ -123,7 +124,7 @@ def get_tar_member_extracted_path(traj_root: Path | str, particleid: int, member
     raise AssertionError
 
 
-def open_tar_file_or_extracted(traj_root: Path, particleid: int, memberfilename: str):
+def open_tar_file_or_extracted(traj_root: Path, particleid: int, memberfilename: str) -> TextIOWrapper:
     """Trajectory files are generally stored as {particleid}.tar.xz, but this is slow to access, so first check for extracted files, or decompressed .tar files, which are much faster to access.
 
     memberfilename: file path within the trajectory tarfile, eg. ./Run_rprocess/energy_thermo.dat
@@ -135,7 +136,9 @@ def open_tar_file_or_extracted(traj_root: Path, particleid: int, memberfilename:
 
 @lru_cache(maxsize=16)
 def get_traj_network_timesteps(traj_root: Path, particleid: int) -> pl.DataFrame:
-    with open_tar_file_or_extracted(traj_root, particleid, "./Run_rprocess/energy_thermo.dat") as evolfile:
+    with get_tar_member_extracted_path(
+        traj_root=traj_root, particleid=particleid, memberfilename="./Run_rprocess/energy_thermo.dat"
+    ).open(encoding="utf-8") as evolfile:
         return pl.from_pandas(
             pd.read_csv(
                 evolfile,

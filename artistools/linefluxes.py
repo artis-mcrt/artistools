@@ -475,16 +475,13 @@ def get_packets_with_emission_conditions(
     )
 
     if not dfpackets_selected.empty:
+        dfpackets_selected["em_log10nne"] = dfpackets_selected.apply(
+            lambda packet: math.log10(estimators[int(packet["em_timestep"]), int(packet[em_mgicolumn])]["nne"]), axis=1
+        )
 
-        def em_lognne(packet):
-            return math.log10(estimators[int(packet["em_timestep"]), int(packet[em_mgicolumn])]["nne"])
-
-        dfpackets_selected["em_log10nne"] = dfpackets_selected.apply(em_lognne, axis=1)
-
-        def em_Te(packet):
-            return estimators[int(packet["em_timestep"]), int(packet[em_mgicolumn])]["Te"]
-
-        dfpackets_selected["em_Te"] = dfpackets_selected.apply(em_Te, axis=1)
+        dfpackets_selected["em_Te"] = dfpackets_selected.apply(
+            lambda packet: estimators[int(packet["em_timestep"]), int(packet[em_mgicolumn])]["Te"], axis=1
+        )
 
     return dfpackets_selected
 
