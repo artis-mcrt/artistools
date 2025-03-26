@@ -200,7 +200,7 @@ def make_plot(args: argparse.Namespace) -> None:
     y = cone["pos_y_min"].apply(lambda x: x / args.t_model * (u.cm / u.day).to("km/s")) / 1e3
     z = cone["pos_x_min"].apply(lambda x: x / args.t_model * (u.cm / u.day).to("km/s")) / 1e3
 
-    _surf = ax.scatter3D(x, y, z, c=-cone["fni"], cmap=plt.get_cmap("viridis"))
+    _surf = ax.scatter3D(x, y, z, c=-cone["fni"], cmap=plt.get_cmap("viridis"))  # pyright: ignore[reportArgumentType]
 
     # fig.colorbar(_surf, shrink=0.5, aspect=5)
 
