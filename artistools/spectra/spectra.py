@@ -5,7 +5,6 @@ import contextlib
 import math
 import re
 import typing as t
-from collections import namedtuple
 from collections.abc import Callable
 from collections.abc import Collection
 from collections.abc import Sequence
@@ -40,9 +39,15 @@ from artistools.misc import get_vpkt_config
 from artistools.misc import split_multitable_dataframe
 from artistools.misc import zopenpl
 
-fluxcontributiontuple = namedtuple(
-    "fluxcontributiontuple", "fluxcontrib linelabel array_flambda_emission array_flambda_absorption color"
-)
+
+class FluxContributionTuple(t.NamedTuple):
+    fluxcontrib: float
+    linelabel: str
+    array_flambda_emission: npt.NDArray[np.floating]
+    array_flambda_absorption: npt.NDArray[np.floating]
+    color: t.Any
+
+
 megaparsec_to_cm = 3.0856e24
 
 
@@ -870,7 +875,7 @@ def get_flux_contributions(
     directionbin: int | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
-) -> tuple[list[fluxcontributiontuple], npt.NDArray[np.floating[t.Any]]]:
+) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating[t.Any]]]:
     from scipy import integrate
 
     arr_tmid = get_timestep_times(modelpath, loc="mid")
@@ -1022,7 +1027,7 @@ def get_flux_contributions(
                     linelabel = f"{get_ionstring(elementlist.Z[element], ion_stage)} {emissiontypeclass}"
 
                 contribution_list.append(
-                    fluxcontributiontuple(
+                    FluxContributionTuple(
                         fluxcontrib=fluxcontribthisseries,
                         linelabel=linelabel,
                         array_flambda_emission=array_flambda_emission,
@@ -1057,7 +1062,7 @@ def get_flux_contributions_from_packets(
     directionbins_are_vpkt_observers: bool = False,
     vpkt_match_emission_exclusion_to_opac: bool = False,
     gamma: bool = False,
-) -> tuple[list[fluxcontributiontuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
+) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     from scipy import integrate
 
     assert groupby in {"ion", "line", "nuc", "nucmass"}
@@ -1336,7 +1341,7 @@ def get_flux_contributions_from_packets(
 
         if fluxcontribthisseries > 0.0:
             contribution_list.append(
-                fluxcontributiontuple(
+                FluxContributionTuple(
                     fluxcontrib=fluxcontribthisseries,
                     linelabel=str(groupname),
                     array_flambda_emission=array_flambda_emission,
@@ -1354,13 +1359,13 @@ def get_flux_contributions_from_packets(
 
 
 def sort_and_reduce_flux_contribution_list(
-    contribution_list_in: list[fluxcontributiontuple],
+    contribution_list_in: list[FluxContributionTuple],
     maxseriescount: int,
     arraylambda_angstroms: npt.NDArray[np.floating],
     fixedionlist: list[str] | None = None,
     hideother: bool = False,
     greyscale: bool = False,
-) -> list[fluxcontributiontuple]:
+) -> list[FluxContributionTuple]:
     from scipy import integrate
 
     if fixedionlist:
@@ -1368,7 +1373,7 @@ def sort_and_reduce_flux_contribution_list(
             print(f"WARNING: did not understand these items in fixedionlist: {unrecognised_items}")
 
         # sort in manual order
-        def sortkey(x: fluxcontributiontuple) -> tuple[int, float]:
+        def sortkey(x: FluxContributionTuple) -> tuple[int, float]:
             assert fixedionlist is not None
             return (
                 fixedionlist.index(x.linelabel) if x.linelabel in fixedionlist else len(fixedionlist) + 1,
@@ -1377,7 +1382,7 @@ def sort_and_reduce_flux_contribution_list(
 
     else:
         # sort descending by flux contribution
-        def sortkey(x: fluxcontributiontuple) -> tuple[int, float]:
+        def sortkey(x: FluxContributionTuple) -> tuple[int, float]:
             return (0, -x.fluxcontrib)
 
     contribution_list = sorted(contribution_list_in, key=sortkey)
@@ -1403,7 +1408,7 @@ def sort_and_reduce_flux_contribution_list(
     # combine the items past maxseriescount or not in manual list into a single item
     remainder_flambda_emission = np.zeros_like(arraylambda_angstroms, dtype=float)
     remainder_flambda_absorption = np.zeros_like(arraylambda_angstroms, dtype=float)
-    remainder_fluxcontrib = 0
+    remainder_fluxcontrib = 0.0
 
     contribution_list_out = []
     numotherprinted = 0
@@ -1454,7 +1459,7 @@ def sort_and_reduce_flux_contribution_list(
 
     if remainder_fluxcontrib > 0.0 and not hideother:
         contribution_list_out.append(
-            fluxcontributiontuple(
+            FluxContributionTuple(
                 fluxcontrib=remainder_fluxcontrib,
                 linelabel="Other",
                 array_flambda_emission=remainder_flambda_emission,
