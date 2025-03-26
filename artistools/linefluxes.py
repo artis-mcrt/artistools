@@ -456,29 +456,8 @@ def get_packets_with_emission_conditions(
 ) -> pd.DataFrame:
     estimators = at.estimators.read_estimators(modelpath)
 
-    # modeldata, _ = at.inputmodel.get_modeldata(modelpath)
     ts = at.get_timestep_of_timedays(modelpath, tend)
     allnonemptymgilist = list({modelgridindex for estimts, modelgridindex in estimators if estimts == ts})
-
-    # model_tmids = at.get_timestep_times(modelpath, loc='mid')
-    # arr_velocity_mid = tuple(list([(float(v1) + float(v2)) * 0.5 for v1, v2 in zip(
-    #     modeldata['vel_r_min_kmps'].to_numpy(), modeldata['vel_r_max_kmps'].to_numpy())]))
-
-    # from scipy.interpolate import interp1d
-    # interp_log10nne, interp_te = {}, {}
-    # for ts in range(len(model_tmids)):
-    #     arr_v = np.zeros_like(allnonemptymgilist, dtype='float')
-    #     arr_log10nne = np.zeros_like(allnonemptymgilist, dtype='float')
-    #     arr_te = np.zeros_like(allnonemptymgilist, dtype='float')
-    #     for i, mgi in enumerate(allnonemptymgilist):
-    #         arr_v[i] = arr_velocity_mid[mgi]
-    #         arr_log10nne[i] = math.log10(float(estimators[(ts, mgi)]['nne']))
-    #         arr_te[i] = estimators[(ts, mgi)]['Te']
-    #
-    #     interp_log10nne[ts] =interp1d(arr_v.copy(), arr_log10nne.copy(),
-    #                                                kind='linear', fill_value='extrapolate')
-    #     interp_te[ts] = interp1d(arr_v.copy(), arr_te.copy(), kind='linear', fill_value='extrapolate')
-
     em_mgicolumn = "em_modelgridindex" if emtypecolumn == "emissiontype" else "emtrue_modelgridindex"
 
     dfpackets_selected, _ = get_packets_with_emtype(modelpath, emtypecolumn, lineindices, maxpacketfiles=maxpacketfiles)
@@ -492,13 +471,11 @@ def get_packets_with_emission_conditions(
     if not dfpackets_selected.empty:
 
         def em_lognne(packet):
-            # return interp_log10nne[packet.em_timestep](packet.true_emission_velocity)
             return math.log10(estimators[int(packet["em_timestep"]), int(packet[em_mgicolumn])]["nne"])
 
         dfpackets_selected["em_log10nne"] = dfpackets_selected.apply(em_lognne, axis=1)
 
         def em_Te(packet):
-            # return interp_te[packet.em_timestep](packet.true_emission_velocity)
             return estimators[int(packet["em_timestep"]), int(packet[em_mgicolumn])]["Te"]
 
         dfpackets_selected["em_Te"] = dfpackets_selected.apply(em_Te, axis=1)
@@ -544,7 +521,7 @@ def plot_nne_te_points(
     #           fillstyle='full', color=color_b)
 
 
-def plot_nne_te_bars(axis, em_log10nne, em_Te, color) -> None:
+def plot_nne_te_bars(axis: mplax.Axes, em_log10nne, em_Te, color: t.Any) -> None:
     if len(em_log10nne) == 0:
         return
     errorbarkwargs = {
