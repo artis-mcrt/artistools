@@ -114,7 +114,8 @@ def get_nuc_data(nuc_dataset: str) -> pl.DataFrame:
 
 def process_trajectory(
     nuc_data: pl.DataFrame, traj_root: Path | str, traj_masses_g: dict[int, float], arr_t_day: npt.NDArray, traj_ID: int
-) -> dict[str, np.ndarray]:
+) -> dict[str, npt.NDArray]:
+    """Process a single trajectory to extract decay powers."""
     traj_mass_grams = traj_masses_g[traj_ID]
     traj_root = Path(traj_root)
 

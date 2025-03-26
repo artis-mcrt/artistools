@@ -28,7 +28,7 @@ dvtable = v2max / itable
 i1 = int(1.0 // dvtable)
 
 
-def get_wij() -> np.ndarray:
+def get_wij() -> npt.NDArray:
     igphi = 0
     #
     # --normalisation constant

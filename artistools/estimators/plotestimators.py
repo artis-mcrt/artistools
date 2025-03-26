@@ -18,6 +18,7 @@ import argcomplete
 import matplotlib.axes as mplax
 import matplotlib.pyplot as plt
 import numpy as np
+import numpy.typing as npt
 import polars as pl
 
 import artistools as at
@@ -28,7 +29,7 @@ colors_tab10: list[str] = list(plt.get_cmap("tab10")(np.linspace(0, 1.0, 10)))
 elementcolors = {"Fe": colors_tab10[0], "Ni": colors_tab10[1], "Co": colors_tab10[2]}
 
 
-def get_elemcolor(atomic_number: int | None = None, elsymbol: str | None = None) -> str | np.ndarray:
+def get_elemcolor(atomic_number: int | None = None, elsymbol: str | None = None) -> str | npt.NDArray:
     """Get the colour of an element from the reserved color list (reserving a new one if needed)."""
     assert (atomic_number is None) != (elsymbol is None)
     if atomic_number is not None:
@@ -233,7 +234,7 @@ def plot_average_ionisation_excitation(
 
 def plot_levelpop(
     ax: mplax.Axes,
-    xlist: Sequence[int | float] | np.ndarray,
+    xlist: Sequence[int | float] | npt.NDArray[np.floating],
     seriestype: str,
     params: Sequence[str],
     timestepslist: Sequence[Sequence[int]],

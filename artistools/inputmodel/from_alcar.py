@@ -22,7 +22,7 @@ tsnap = 0.1 * day
 vmax = 0.5  # maximum velocity in units of c
 
 
-def sphkernel(dist: npt.NDArray, hsph: float | np.ndarray, nu: float) -> np.ndarray:
+def sphkernel(dist: npt.NDArray, hsph: float | npt.NDArray[np.floating], nu: float) -> npt.NDArray:
     # smoothing kernel for SPH-like interpolation of particle
     # data
 
@@ -40,7 +40,7 @@ def sphkernel(dist: npt.NDArray, hsph: float | np.ndarray, nu: float) -> np.ndar
 # *******************************************************************
 
 
-def f1corr(rcyl: npt.NDArray, hsph: npt.NDArray) -> np.ndarray:
+def f1corr(rcyl: npt.NDArray, hsph: npt.NDArray) -> npt.NDArray:
     # correction factor to improve behavior near the axis
     # see Garcia-Senz et al Mon. Not. R. Astron. Soc. 392, 346-360 (2009)
 
@@ -245,7 +245,7 @@ def get_grid() -> tuple:
     return nvr, nvz, rgridc2d, zgridc2d, rhoint, xint, iso, q_ergperg
 
 
-def z_reflect(arr: npt.NDArray) -> np.ndarray:
+def z_reflect(arr: npt.NDArray) -> npt.NDArray:
     """Flatten an array and add a reflection in z."""
     _ngridrcyl, ngridz = arr.shape
     assert ngridz % 2 == 0
