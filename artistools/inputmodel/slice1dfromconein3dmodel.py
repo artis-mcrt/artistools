@@ -7,6 +7,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 
 import artistools as at
 
@@ -14,7 +15,7 @@ if t.TYPE_CHECKING:
     from mpl_toolkits.mplot3d import Axes3D
 
 
-def make_cone(args):
+def make_cone(args: argparse.Namespace) -> pd.DataFrame:
     print("Making cone")
 
     angle_of_cone = 30  # in deg
@@ -24,6 +25,7 @@ def make_cone(args):
     dfmodel, modelmeta = at.get_modeldata_pandas(modelpath=args.modelpath[0], get_elemabundances=True)
     args.t_model = modelmeta["t_model_init_days"]
 
+    cone: pd.DataFrame
     if args.positive_axis:
         print("using positive axis")
         cone = dfmodel.loc[
@@ -77,7 +79,8 @@ def get_profile_along_axis(args: argparse.Namespace, modeldata=None, derived_col
     return profile1d.reset_index(drop=True)
 
 
-def make_1d_profile(args):
+def make_1d_profile(args: argparse.Namespace) -> pd.DataFrame:
+    """Make 1D model from 3D model."""
     from astropy import units as u
 
     logprint = at.inputmodel.inputmodel_misc.savetologfile(
@@ -121,7 +124,7 @@ def make_1d_profile(args):
     if not args.positive_axis:
         # Invert rows and *velocity by -1 to make velocities positive for slice on negative axis
         slice1d.iloc[:] = slice1d.iloc[::-1].to_numpy()
-        slice1d["vel_r_max_kmps"] = slice1d["vel_r_max_kmps"].apply(lambda x: x * -1)
+        slice1d["vel_r_max_kmps"] *= -1
 
     # with pd.option_context('display.max_rows', None, 'display.max_columns', None):
     #     print(slice1d)
@@ -130,7 +133,7 @@ def make_1d_profile(args):
     return slice1d
 
 
-def make_1d_model_files(args):
+def make_1d_model_files(args: argparse.Namespace) -> None:
     slice1d = make_1d_profile(args)
 
     # query_abundances_positions = slice1d.columns.str.startswith("X_")
@@ -179,7 +182,7 @@ def make_1d_model_files(args):
 # cone = cone.loc[cone['rho_model'] > 0.0]
 
 
-def make_plot(args) -> None:
+def make_plot(args: argparse.Namespace) -> None:
     cone = make_cone(args)
 
     cone = cone.loc[cone["rho_model"] > 0.0002]  # cut low densities (empty cells?) from plot
