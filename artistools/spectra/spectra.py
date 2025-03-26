@@ -123,7 +123,7 @@ def get_exspec_bins(
     nu_min_r: float | None = None,
     nu_max_r: float | None = None,
     gamma: bool = False,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     """Get the wavelength bins for the emergent spectrum."""
     if modelpath is not None:
         dfspec = read_spec(modelpath, gamma=gamma)
@@ -285,7 +285,7 @@ def get_from_packets(
     timehighdays: float,
     lambda_min: float,
     lambda_max: float,
-    delta_lambda: float | np.ndarray | None = None,
+    delta_lambda: float | None = None,
     use_time: t.Literal["arrival", "emission", "escape"] = "arrival",
     maxpacketfiles: int | None = None,
     directionbins: Collection[int] | None = None,
@@ -306,14 +306,18 @@ def get_from_packets(
     if nu_column == "absorption_freq":
         nu_column = "nu_absorbed"
 
-    lambda_bin_edges: npt.NDArray
-    if delta_lambda is not None:
+    lambda_bin_edges: npt.NDArray[np.floating]
+    lambda_bin_centres: npt.NDArray[np.floating]
+    pl_delta_lambda: pl.Series | pl.Expr
+    if isinstance(delta_lambda, float | int):
         lambda_bin_edges = np.arange(lambda_min, lambda_max + delta_lambda, delta_lambda)
         lambda_bin_centres = 0.5 * (lambda_bin_edges[:-1] + lambda_bin_edges[1:])  # bin centres
+        pl_delta_lambda = pl.lit(delta_lambda)
     else:
-        lambda_bin_edges, lambda_bin_centres, delta_lambda = get_exspec_bins(modelpath=modelpath, gamma=gamma)
+        lambda_bin_edges, lambda_bin_centres, arr_delta_lambda = get_exspec_bins(modelpath=modelpath, gamma=gamma)
         lambda_min = lambda_bin_centres[0]
         lambda_max = lambda_bin_centres[-1]
+        pl_delta_lambda = pl.Series(arr_delta_lambda)
 
     delta_time_s = (timehighdays - timelowdays) * 86400.0
 
@@ -350,7 +354,7 @@ def get_from_packets(
         .sort(["lambda_binindex", "lambda_angstroms"])
         .lazy()
     )
-
+    escapesurfacegamma: float | None = None
     if directionbins_are_vpkt_observers:
         vpkt_config = get_vpkt_config(modelpath)
         for vspecindex in directionbins:
@@ -376,7 +380,11 @@ def get_from_packets(
             ).select([
                 pl.col(f"{lambda_column}_bin").alias("lambda_binindex"),
                 (
-                    pl.col(f"{energy_column}_sum") / delta_lambda / delta_time_s / (megaparsec_to_cm**2) / nprocs_read
+                    pl.col(f"{energy_column}_sum")
+                    / pl_delta_lambda
+                    / delta_time_s
+                    / (megaparsec_to_cm**2)
+                    / nprocs_read
                 ).alias(f"f_lambda_dirbin{vspecindex}"),
                 pl.col("count").alias(f"count_dirbin{vspecindex}"),
             ])
@@ -443,7 +451,7 @@ def get_from_packets(
                 pl.col(f"{lambda_column}_bin").alias("lambda_binindex"),
                 (
                     pl.col(f"{energy_column}_sum")
-                    / delta_lambda
+                    / pl_delta_lambda
                     / delta_time_s
                     / (4 * math.pi)
                     * solidanglefactor
@@ -671,7 +679,7 @@ def make_virtual_spectra_summed_file(modelpath: Path | str) -> None:
         f"nobsdirections {vpktconfig['nobsdirections']} nspectraperobs {vpktconfig['nspectraperobs']} (total observers:"
         f" {nvirtual_spectra})"
     )
-
+    vspecpol_data = None
     for mpirank in range(nprocs):
         vspecpolpath = firstexisting(
             [f"vspecpol_{mpirank:04d}.out", f"vspecpol_{mpirank}-0.out"], folder=modelpath, tryzipped=True
@@ -695,6 +703,7 @@ def make_virtual_spectra_summed_file(modelpath: Path | str) -> None:
                     for col in vspecpol_data_allranks[specindex].columns[1:]
                 ])
 
+    assert vspecpol_data is not None
     for spec_index, vspecpol in vspecpol_data_allranks.items():
         # fix the header row, which got summed along with the data
         dfvspecpol = pl.concat([vspecpol_data[spec_index][0], vspecpol[1:]])
@@ -711,7 +720,7 @@ def make_averaged_vspecfiles(args: argparse.Namespace) -> None:
         if vspecfile.name.startswith("vspecpol_total-")
     ]
 
-    def sorted_by_number(lst: list) -> list:
+    def sorted_by_number(lst: list[str]) -> list[str]:
         def convert(text: str) -> int | str:
             return int(text) if text.isdigit() else text
 
@@ -1025,7 +1034,7 @@ def get_flux_contributions_from_packets(
     timehighdays: float,
     lambda_min: float,
     lambda_max: float,
-    delta_lambda: float | np.ndarray | None = None,
+    delta_lambda: float | None = None,
     getemission: bool = True,
     getabsorption: bool = True,
     maxpacketfiles: int | None = None,
@@ -1042,7 +1051,7 @@ def get_flux_contributions_from_packets(
     directionbins_are_vpkt_observers: bool = False,
     vpkt_match_emission_exclusion_to_opac: bool = False,
     gamma: bool = False,
-) -> tuple[list[fluxcontributiontuple], np.ndarray, np.ndarray]:
+) -> tuple[list[fluxcontributiontuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     from scipy import integrate
 
     assert groupby in {"ion", "line", "nuc", "nucmass"}
@@ -1067,6 +1076,8 @@ def get_flux_contributions_from_packets(
     nu_min = 2.99792458e18 / lambda_max
     nu_max = 2.99792458e18 / lambda_min
 
+    vpkt_config = None
+    opacchoiceindex = None
     if directionbins_are_vpkt_observers:
         vpkt_config = get_vpkt_config(modelpath)
         obsdirindex = directionbin // vpkt_config["nspectraperobs"]
@@ -1144,6 +1155,8 @@ def get_flux_contributions_from_packets(
         lzdfpackets = lzdfpackets.join(emtypestrings, on=emtypecolumn, how="left")
 
         if vpkt_match_emission_exclusion_to_opac and directionbins_are_vpkt_observers:
+            assert vpkt_config is not None
+            assert opacchoiceindex is not None
             z_exclude = int(vpkt_config["z_excludelist"][opacchoiceindex])
             if z_exclude == -1:
                 # no bound-bound
@@ -1337,7 +1350,7 @@ def get_flux_contributions_from_packets(
 def sort_and_reduce_flux_contribution_list(
     contribution_list_in: list[fluxcontributiontuple],
     maxseriescount: int,
-    arraylambda_angstroms: npt.NDArray,
+    arraylambda_angstroms: npt.NDArray[np.floating],
     fixedionlist: list[str] | None = None,
     hideother: bool = False,
     greyscale: bool = False,
@@ -1448,7 +1461,7 @@ def sort_and_reduce_flux_contribution_list(
 
 
 def print_integrated_flux(
-    arr_df_on_dx: npt.NDArray | pd.Series | pl.Series, arr_x: npt.NDArray | pd.Series | pl.Series
+    arr_df_on_dx: npt.NDArray[np.floating] | pl.Series, arr_x: npt.NDArray[np.floating] | pl.Series
 ) -> float:
     from scipy import integrate
 

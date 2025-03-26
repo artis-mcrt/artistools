@@ -60,7 +60,7 @@ def write_flambda_spectra(modelpath: Path) -> None:
             break
 
 
-def addargs(parser) -> None:
+def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-modelpath", type=Path, default=Path(), help="Path to ARTIS folder")
 
 

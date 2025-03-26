@@ -189,6 +189,8 @@ module = [
     "artistools.packets",
     "artistools.plotspherical",
     "artistools.spectra",
+    "artistools.spectra.spectra",
+    "artistools.spectra.writespectra",
     "*.__init__",
     "*.__main__",
 ]
