@@ -179,6 +179,7 @@ module = [
     "artistools.commands",
     "artistools.configuration",
     "artistools.gsinetwork",
+    "artistools.gsinetwork.*",
     "artistools.inputmodel",
     "artistools.inputmodel.inputmodel_misc",
     "artistools.lightcurve",

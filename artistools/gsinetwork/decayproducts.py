@@ -113,8 +113,12 @@ def get_nuc_data(nuc_dataset: str) -> pl.DataFrame:
 
 
 def process_trajectory(
-    nuc_data: pl.DataFrame, traj_root: Path | str, traj_masses_g: dict[int, float], arr_t_day: npt.NDArray, traj_ID: int
-) -> dict[str, npt.NDArray]:
+    nuc_data: pl.DataFrame,
+    traj_root: Path | str,
+    traj_masses_g: dict[int, float],
+    arr_t_day: npt.NDArray[np.floating],
+    traj_ID: int,
+) -> dict[str, npt.NDArray[np.floating]]:
     """Process a single trajectory to extract decay powers."""
     traj_mass_grams = traj_masses_g[traj_ID]
     traj_root = Path(traj_root)
@@ -156,6 +160,7 @@ def process_trajectory(
         for plottimedays in arr_t_day
     ]
 
+    decay_powers: dict[str, npt.NDArray[np.floating]]
     decay_powers = {
         key: np.zeros(len(arr_t_day))
         for key in (
@@ -167,7 +172,8 @@ def process_trajectory(
             "Qdot",
             "abundweighted_Qdot",
         )
-    } | {
+    }
+    decay_powers |= {
         col: (
             np.array([
                 dfheatingthermo[col][networktimestepindex - 1] if networktimestepindex >= 1 else 0.0
@@ -271,7 +277,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     traj_masses_g = {trajid: mass * M_sol_cgs for trajid, mass in traj_summ_data[["Id", "Mass"]].to_numpy()}
 
-    alltraj_decay_powers: list[dict[str, np.ndarray]] = process_map(
+    alltraj_decay_powers: list[dict[str, npt.NDArray[np.floating]]] = process_map(
         partial(process_trajectory, nuc_data, args.trajectoryroot, traj_masses_g, arr_t_day),
         traj_ids,
         chunksize=3,

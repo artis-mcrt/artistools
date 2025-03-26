@@ -304,7 +304,7 @@ def get_particledata(
     traj_root: Path,
     particleid: int,
     verbose: bool = False,
-) -> tuple[int, dict[str, np.ndarray]]:
+) -> tuple[int, dict[str, npt.NDArray[np.floating]]]:
     """For an array of times (NSM time including time before merger), interpolate the heating rates of various decay channels and (if arr_strnuc is not empty) the nuclear mass fractions."""
     try:
         nts_min = at.inputmodel.rprocess_from_trajectory.get_closest_network_timestep(
