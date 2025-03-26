@@ -52,6 +52,26 @@ def path_is_artis_model(filepath: str | Path) -> bool:
     return True if Path(filepath).suffix == ".out" else Path(filepath).is_dir()
 
 
+def get_lambda_range_binsize(
+    xmin: float, xmax: float, args: argparse.Namespace
+) -> tuple[float, float, float | npt.NDArray[np.floating]]:
+    lambda_min, lambda_max = sorted([
+        atspectra.convert_unit_to_angstroms(xmin, args.xunit),
+        atspectra.convert_unit_to_angstroms(xmax, args.xunit),
+    ])
+    if args.deltax is not None:
+        x_bin_edges = np.arange(xmin, xmax + args.deltax, args.deltax)
+        lambda_bin_edges = np.array(
+            sorted(atspectra.convert_unit_to_angstroms(float(x), args.xunit) for x in x_bin_edges)
+        )
+        delta_lambda = np.array([
+            (lambda_bin_edges[i + 1] - lambda_bin_edges[i]) for i in range(len(lambda_bin_edges) - 1)
+        ])
+    else:
+        delta_lambda = args.deltalambda
+    return lambda_min, lambda_max, delta_lambda
+
+
 def get_axis_labels(args: argparse.Namespace) -> tuple[str | None, str | None]:
     """Get the x-axis and y-axis labels based on the arguments."""
     match args.xunit.lower():
@@ -386,10 +406,7 @@ def plot_artis_spectrum(
 
         xmin, xmax = axis.get_xlim()
         if from_packets:
-            lambda_min, lambda_max = sorted([
-                atspectra.convert_unit_to_angstroms(xmin, args.xunit),
-                atspectra.convert_unit_to_angstroms(xmax, args.xunit),
-            ])
+            lambda_min, lambda_max, delta_lambda = get_lambda_range_binsize(xmin, xmax, args)
 
             viewinganglespectra = atspectra.get_from_packets(
                 modelpath,
@@ -399,7 +416,7 @@ def plot_artis_spectrum(
                 lambda_max=lambda_max * 1.1,
                 use_time=use_time,
                 maxpacketfiles=maxpacketfiles,
-                delta_lambda=args.deltalambda,
+                delta_lambda=delta_lambda,
                 directionbins=directionbins,
                 average_over_phi=average_over_phi,
                 average_over_theta=average_over_theta,
@@ -744,18 +761,16 @@ def make_emissionabsorption_plot(
         else:
             emtypecolumn = "emissiontype"
 
-        xmin_angstroms, xmax_angstroms = sorted([
-            atspectra.convert_unit_to_angstroms(xmin, args.xunit),
-            atspectra.convert_unit_to_angstroms(xmax, args.xunit),
-        ])
+        lambda_min, lambda_max, delta_lambda = get_lambda_range_binsize(xmin, xmax, args)
 
         (contribution_list, array_flambda_emission_total, arraylambda_angstroms) = (
             atspectra.get_flux_contributions_from_packets(
                 modelpath,
                 timelowdays=args.timemin,
                 timehighdays=args.timemax,
-                lambda_min=xmin_angstroms,
-                lambda_max=xmax_angstroms,
+                lambda_min=lambda_min,
+                lambda_max=lambda_max,
+                delta_lambda=delta_lambda,
                 getemission=args.showemission,
                 getabsorption=args.showabsorption,
                 maxpacketfiles=args.maxpacketfiles,
@@ -763,7 +778,6 @@ def make_emissionabsorption_plot(
                 groupby=args.groupby,
                 fixedionlist=args.fixedionlist,
                 maxseriescount=args.maxseriescount + 20,
-                delta_lambda=args.deltalambda,
                 gamma=args.gamma,
                 emtypecolumn=emtypecolumn,
                 emissionvelocitycut=args.emissionvelocitycut,
@@ -1364,7 +1378,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "-deltalambda", type=int, default=None, help="Lambda bin size in Angstroms (applies to from_packets only)"
+        "-deltalambda", type=float, default=None, help="Lambda bin size in Angstroms (applies to from_packets only)"
+    )
+
+    parser.add_argument(
+        "-deltax", "-dx", type=float, default=None, help="Horizontal bin size in x-unit (applies to from_packets only)"
     )
 
     parser.add_argument("-ymin", type=float, default=None, help="Plot range: y-axis")

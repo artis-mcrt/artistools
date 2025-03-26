@@ -285,7 +285,7 @@ def get_from_packets(
     timehighdays: float,
     lambda_min: float,
     lambda_max: float,
-    delta_lambda: float | None = None,
+    delta_lambda: float | npt.NDArray[np.floating] | None = None,
     use_time: t.Literal["arrival", "emission", "escape"] = "arrival",
     maxpacketfiles: int | None = None,
     directionbins: Collection[int] | None = None,
@@ -306,18 +306,23 @@ def get_from_packets(
     if nu_column == "absorption_freq":
         nu_column = "nu_absorbed"
 
-    lambda_bin_edges: npt.NDArray[np.floating]
-    lambda_bin_centres: npt.NDArray[np.floating]
     pl_delta_lambda: pl.Series | pl.Expr
-    if isinstance(delta_lambda, float | int):
+    if delta_lambda is None:
+        lambda_bin_edges, lambda_bin_centres, delta_lambda = get_exspec_bins(modelpath=modelpath, gamma=gamma)
+        lambda_min = lambda_bin_centres[0]
+        lambda_max = lambda_bin_centres[-1]
+        pl_delta_lambda = pl.Series(delta_lambda)
+    elif isinstance(delta_lambda, float | int):
         lambda_bin_edges = np.arange(lambda_min, lambda_max + delta_lambda, delta_lambda)
         lambda_bin_centres = 0.5 * (lambda_bin_edges[:-1] + lambda_bin_edges[1:])  # bin centres
         pl_delta_lambda = pl.lit(delta_lambda)
+    elif isinstance(delta_lambda, np.ndarray):
+        lambda_bin_edges = np.array([lambda_min + (delta_lambda[:i]).sum() for i in range(len(delta_lambda) + 1)])
+        lambda_bin_centres = 0.5 * (lambda_bin_edges[:-1] + lambda_bin_edges[1:])
+        pl_delta_lambda = pl.Series(delta_lambda)
     else:
-        lambda_bin_edges, lambda_bin_centres, arr_delta_lambda = get_exspec_bins(modelpath=modelpath, gamma=gamma)
-        lambda_min = lambda_bin_centres[0]
-        lambda_max = lambda_bin_centres[-1]
-        pl_delta_lambda = pl.Series(arr_delta_lambda)
+        msg = f"Invalid delta_lambda type: {type(delta_lambda)}"
+        raise ValueError(msg)
 
     delta_time_s = (timehighdays - timelowdays) * 86400.0
 
@@ -1034,7 +1039,7 @@ def get_flux_contributions_from_packets(
     timehighdays: float,
     lambda_min: float,
     lambda_max: float,
-    delta_lambda: float | None = None,
+    delta_lambda: float | npt.NDArray[np.floating] | None = None,
     getemission: bool = True,
     getabsorption: bool = True,
     maxpacketfiles: int | None = None,
