@@ -285,7 +285,7 @@ def get_from_packets(
     timehighdays: float,
     lambda_min: float,
     lambda_max: float,
-    delta_lambda: float | np.ndarray | None = None,
+    delta_lambda: float | npt.NDArray[np.floating] | None = None,
     use_time: t.Literal["arrival", "emission", "escape"] = "arrival",
     maxpacketfiles: int | None = None,
     directionbins: Collection[int] | None = None,
@@ -307,13 +307,23 @@ def get_from_packets(
         nu_column = "nu_absorbed"
 
     lambda_bin_edges: np.ndarray
-    if delta_lambda is not None:
-        lambda_bin_edges = np.arange(lambda_min, lambda_max + delta_lambda, delta_lambda)
-        lambda_bin_centres = 0.5 * (lambda_bin_edges[:-1] + lambda_bin_edges[1:])  # bin centres
-    else:
+    pl_delta_lambda: pl.Series | pl.Expr
+    if delta_lambda is None:
         lambda_bin_edges, lambda_bin_centres, delta_lambda = get_exspec_bins(modelpath=modelpath, gamma=gamma)
         lambda_min = lambda_bin_centres[0]
         lambda_max = lambda_bin_centres[-1]
+        pl_delta_lambda = pl.Series(delta_lambda)
+    elif isinstance(delta_lambda, float | int):
+        lambda_bin_edges = np.arange(lambda_min, lambda_max + delta_lambda, delta_lambda)
+        lambda_bin_centres = 0.5 * (lambda_bin_edges[:-1] + lambda_bin_edges[1:])  # bin centres
+        pl_delta_lambda = pl.lit(delta_lambda)
+    elif isinstance(delta_lambda, np.ndarray):
+        lambda_bin_edges = np.array([lambda_min + (delta_lambda[:i]).sum() for i in range(len(delta_lambda) + 1)])
+        lambda_bin_centres = 0.5 * (lambda_bin_edges[:-1] + lambda_bin_edges[1:])
+        pl_delta_lambda = pl.Series(delta_lambda)
+    else:
+        msg = f"Invalid delta_lambda type: {type(delta_lambda)}"
+        raise ValueError(msg)
 
     delta_time_s = (timehighdays - timelowdays) * 86400.0
 
@@ -376,7 +386,11 @@ def get_from_packets(
             ).select([
                 pl.col(f"{lambda_column}_bin").alias("lambda_binindex"),
                 (
-                    pl.col(f"{energy_column}_sum") / delta_lambda / delta_time_s / (megaparsec_to_cm**2) / nprocs_read
+                    pl.col(f"{energy_column}_sum")
+                    / pl_delta_lambda
+                    / delta_time_s
+                    / (megaparsec_to_cm**2)
+                    / nprocs_read
                 ).alias(f"f_lambda_dirbin{vspecindex}"),
                 pl.col("count").alias(f"count_dirbin{vspecindex}"),
             ])
@@ -443,7 +457,7 @@ def get_from_packets(
                 pl.col(f"{lambda_column}_bin").alias("lambda_binindex"),
                 (
                     pl.col(f"{energy_column}_sum")
-                    / delta_lambda
+                    / pl_delta_lambda
                     / delta_time_s
                     / (4 * math.pi)
                     * solidanglefactor
@@ -1025,7 +1039,7 @@ def get_flux_contributions_from_packets(
     timehighdays: float,
     lambda_min: float,
     lambda_max: float,
-    delta_lambda: float | np.ndarray | None = None,
+    delta_lambda: float | npt.NDArray[np.floating] | None = None,
     getemission: bool = True,
     getabsorption: bool = True,
     maxpacketfiles: int | None = None,
