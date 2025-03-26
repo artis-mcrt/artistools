@@ -196,7 +196,6 @@ def average_direction_bins(
     nphibins = get_viewingdirection_phibincount()
     ncosthetabins = get_viewingdirection_costhetabincount()
 
-    assert overangle in {"phi", "theta"}
     if overangle == "phi":
         start_bin_range = range(0, dirbincount, nphibins)
     elif overangle == "theta":
