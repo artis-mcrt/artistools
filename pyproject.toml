@@ -188,7 +188,7 @@ module = [
     "artistools.nltepops",
     "artistools.packets",
     "artistools.plotspherical",
-    "artistools.spectra",
+    "artistools.spectra.plotspectra",
     "artistools.spectra.spectra",
     "artistools.spectra.writespectra",
     "*.__init__",

@@ -7,7 +7,6 @@ import math
 import sys
 import typing as t
 from collections.abc import Callable
-from collections.abc import Collection
 from collections.abc import Iterable
 from collections.abc import Sequence
 from pathlib import Path
@@ -83,9 +82,8 @@ def get_axis_labels(args: argparse.Namespace) -> tuple[str | None, str | None]:
 
     xlabel = None if args.hidexticklabels else f"{xtype} " + r"$\left[\mathrm{{" + str_xunit + r"}}\right]$"
 
-    if args.hideyticklabels:
-        ylabel = None
-    else:
+    ylabel = None
+    if not args.hideyticklabels:
         if args.normalised:
             match args.yvariable:
                 case "flux":
@@ -302,7 +300,7 @@ def plot_filter_functions(axis: mplax.Axes) -> None:
 
 
 def plot_artis_spectrum(
-    axes: Collection[mplax.Axes],
+    axes: npt.NDArray[t.Any] | Sequence[mplax.Axes],
     modelpath: Path | str,
     args: argparse.Namespace,
     scale_to_peak: float | None = None,
@@ -316,7 +314,7 @@ def plot_artis_spectrum(
     usedegrees: bool = False,
     maxpacketfiles: int | None = None,
     xunit: str = "angstroms",
-    **plotkwargs,
+    **plotkwargs: t.Any,
 ) -> pl.DataFrame | None:
     """Plot an ARTIS output spectrum. The data plotted are also returned as a DataFrame."""
     modelpath = Path(modelpath)
@@ -328,7 +326,7 @@ def plot_artis_spectrum(
     if not modelpath.is_dir():
         print(f"\nWARNING: Skipping because {modelpath} does not exist\n")
         return None
-
+    dfspectrum = None
     use_time: t.Literal["escape", "emission", "arrival"]
     if args.use_escapetime:
         use_time = "escape"
@@ -515,12 +513,12 @@ def plot_artis_spectrum(
                 dfspectrum["x"], dfspectrum["y"], label=linelabel_withdirbin if axindex == 0 else None, **plotkwargs
             )
 
-    return dfspectrum[["lambda_angstroms", "f_lambda"]]
+    return dfspectrum[["lambda_angstroms", "f_lambda"]] if dfspectrum is not None else None
 
 
 def make_spectrum_plot(
-    speclist: Collection[Path | str],
-    axes: Sequence[mplax.Axes] | np.ndarray,
+    speclist: Sequence[Path | str],
+    axes: npt.NDArray[t.Any] | Sequence[mplax.Axes],
     filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None,
     args: argparse.Namespace,
     scale_to_peak: float | None = None,
@@ -1083,7 +1081,7 @@ def make_contrib_plot(
         # ax.pcolormesh(xi, yi, zi.reshape(xi.shape), shading='gouraud', cmap=plt.cm.BuGn_r)
 
 
-def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, np.ndarray, pl.DataFrame]:
+def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[t.Any], pl.DataFrame]:
     # font = {'size': 16}
     # mpl.rc('font', **font)
 
