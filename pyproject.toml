@@ -174,11 +174,17 @@ warn_return_any = true
 [[tool.mypy.overrides]]
 module = [
     "artistools",
+    "artistools.atomic",
     "artistools.estimators",
     "artistools.commands",
+    "artistools.configuration",
+    "artistools.gsinetwork",
     "artistools.inputmodel",
+    "artistools.inputmodel.inputmodel_misc",
     "artistools.lightcurve",
     "artistools.misc",
+    "artistools.nonthermal",
+    "artistools.nltepops",
     "artistools.packets",
     "artistools.plotspherical",
     "artistools.spectra",

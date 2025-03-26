@@ -567,7 +567,7 @@ def add_derived_cols_to_modeldata(
         dfmodel = dfmodel.with_columns(
             rho=(pl.when(pl.col("logrho") > -98).then(10 ** pl.col("logrho")).otherwise(0.0))
         )
-
+    axes: list[str] = []
     dimensions = modelmeta["dimensions"]
     match dimensions:
         case 1:
@@ -698,6 +698,7 @@ def add_derived_cols_to_modeldata(
                 for ax1, ax2, ax3 in (("x", "y", "z"), ("y", "z", "x"), ("z", "x", "y"))
             )
 
+    assert axes
     # get total kinetic energy from orthogonal components
     # all coord system also have a radial component calculated, so ignore this
     dfmodel = dfmodel.with_columns(
@@ -1344,7 +1345,8 @@ def dimension_reduce_model(
                 shell_volume = (4 * math.pi / 3) * (
                     (vel_r_max * t_model_init_seconds) ** 3 - (vel_r_min * t_model_init_seconds) ** 3
                 )
-            elif outputdimensions == 2:
+            else:
+                # outputdimensions == 2
                 shell_volume = (
                     math.pi * (vel_r_max**2 - vel_r_min**2) * (vel_z_max - vel_z_min) * t_model_init_seconds**3
                 )

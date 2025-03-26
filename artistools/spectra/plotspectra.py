@@ -140,12 +140,9 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
     )
     assert args.timemin is not None
     assert args.timemax is not None
-    timeavg = (args.timemin + args.timemax) / 2.0
 
-    def match_closest_time(reftime):
-        return f"{min((float(x) for x in timearray), key=lambda x: abs(x - reftime)):.4f}"
-
-    timeavg = match_closest_time(timeavg)
+    timeavg_float = (args.timemin + args.timemax) / 2.0
+    timeavg = f"{min((float(x) for x in timearray), key=lambda x: abs(x - timeavg_float)):.4f}"
 
     filterfunc = get_filterfunc(args)
     if filterfunc is not None:
@@ -169,10 +166,8 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
         nbins = 5
 
         for i in np.arange(0, len(wavelengths - nbins), nbins, dtype=int):
-            new_lambda_angstroms.append(wavelengths[i + int(nbins / 2)])
-            sum_flux = 0
-            for j in range(i, i + nbins):
-                sum_flux += fluxes[j]
+            new_lambda_angstroms.append(wavelengths[i + nbins // 2])
+            sum_flux = sum(fluxes[j] for j in range(i, i + nbins))
             binned_flux.append(sum_flux / nbins)
 
         plt.plot(new_lambda_angstroms, binned_flux)
