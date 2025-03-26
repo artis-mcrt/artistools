@@ -17,6 +17,7 @@ import matplotlib.colors as mplcolors
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mplticker
 import numpy as np
+import numpy.typing as npt
 import polars as pl
 
 import artistools as at
@@ -1219,7 +1220,7 @@ def plot_lightcurve_from_refdata(
     color,
     marker,
     filternames_conversion_dict,
-    ax: np.ndarray | mplax.Axes,
+    ax: npt.NDArray | mplax.Axes,
     plotnumber: int,
 ) -> str | None:
     from extinction import apply

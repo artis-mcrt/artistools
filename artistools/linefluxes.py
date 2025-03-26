@@ -41,12 +41,12 @@ featuretuple = namedtuple(
 
 
 def print_floers_line_ratio(
-    modelpath: Path, timedays: float, arr_f_lambda: np.ndarray, arr_lambda_angstroms: np.ndarray
+    modelpath: Path, timedays: float, arr_f_lambda: npt.NDArray, arr_lambda_angstroms: npt.NDArray
 ) -> None:
     from scipy import integrate
 
     def get_line_flux(
-        lambda_low: float, lambda_high: float, arr_f_lambda: np.ndarray, arr_lambda_angstroms: np.ndarray
+        lambda_low: float, lambda_high: float, arr_f_lambda: npt.NDArray, arr_lambda_angstroms: npt.NDArray
     ) -> float:
         index_low, index_high = (
             int(np.searchsorted(arr_lambda_angstroms, wl, side="left")) for wl in (lambda_low, lambda_high)

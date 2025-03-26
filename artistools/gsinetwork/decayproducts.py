@@ -11,6 +11,7 @@ from pathlib import Path
 import argcomplete
 import matplotlib.pyplot as plt
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 import polars as pl
 import tqdm.rich
@@ -112,7 +113,7 @@ def get_nuc_data(nuc_dataset: str) -> pl.DataFrame:
 
 
 def process_trajectory(
-    nuc_data: pl.DataFrame, traj_root: Path | str, traj_masses_g: dict[int, float], arr_t_day: np.ndarray, traj_ID: int
+    nuc_data: pl.DataFrame, traj_root: Path | str, traj_masses_g: dict[int, float], arr_t_day: npt.NDArray, traj_ID: int
 ) -> dict[str, np.ndarray]:
     traj_mass_grams = traj_masses_g[traj_ID]
     traj_root = Path(traj_root)

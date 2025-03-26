@@ -306,7 +306,7 @@ def get_from_packets(
     if nu_column == "absorption_freq":
         nu_column = "nu_absorbed"
 
-    lambda_bin_edges: np.ndarray
+    lambda_bin_edges: npt.NDArray
     if delta_lambda is not None:
         lambda_bin_edges = np.arange(lambda_min, lambda_max + delta_lambda, delta_lambda)
         lambda_bin_centres = 0.5 * (lambda_bin_edges[:-1] + lambda_bin_edges[1:])  # bin centres
@@ -1337,7 +1337,7 @@ def get_flux_contributions_from_packets(
 def sort_and_reduce_flux_contribution_list(
     contribution_list_in: list[fluxcontributiontuple],
     maxseriescount: int,
-    arraylambda_angstroms: np.ndarray,
+    arraylambda_angstroms: npt.NDArray,
     fixedionlist: list[str] | None = None,
     hideother: bool = False,
     greyscale: bool = False,
@@ -1448,7 +1448,7 @@ def sort_and_reduce_flux_contribution_list(
 
 
 def print_integrated_flux(
-    arr_df_on_dx: np.ndarray | pd.Series | pl.Series, arr_x: np.ndarray | pd.Series | pl.Series
+    arr_df_on_dx: npt.NDArray | pd.Series | pl.Series, arr_x: npt.NDArray | pd.Series | pl.Series
 ) -> float:
     from scipy import integrate
 

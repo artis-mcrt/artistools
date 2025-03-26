@@ -8,6 +8,7 @@ from pathlib import Path
 
 import argcomplete
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 
 import artistools as at
@@ -21,7 +22,7 @@ tsnap = 0.1 * day
 vmax = 0.5  # maximum velocity in units of c
 
 
-def sphkernel(dist: np.ndarray, hsph: float | np.ndarray, nu: float) -> np.ndarray:
+def sphkernel(dist: npt.NDArray, hsph: float | np.ndarray, nu: float) -> np.ndarray:
     # smoothing kernel for SPH-like interpolation of particle
     # data
 
@@ -39,7 +40,7 @@ def sphkernel(dist: np.ndarray, hsph: float | np.ndarray, nu: float) -> np.ndarr
 # *******************************************************************
 
 
-def f1corr(rcyl: np.ndarray, hsph: np.ndarray) -> np.ndarray:
+def f1corr(rcyl: npt.NDArray, hsph: npt.NDArray) -> np.ndarray:
     # correction factor to improve behavior near the axis
     # see Garcia-Senz et al Mon. Not. R. Astron. Soc. 392, 346-360 (2009)
 
@@ -244,7 +245,7 @@ def get_grid() -> tuple:
     return nvr, nvz, rgridc2d, zgridc2d, rhoint, xint, iso, q_ergperg
 
 
-def z_reflect(arr: np.ndarray) -> np.ndarray:
+def z_reflect(arr: npt.NDArray) -> np.ndarray:
     """Flatten an array and add a reflection in z."""
     _ngridrcyl, ngridz = arr.shape
     assert ngridz % 2 == 0
@@ -259,12 +260,12 @@ def z_reflect(arr: np.ndarray) -> np.ndarray:
 def create_ARTIS_modelfile(
     ngridrcyl: int,
     ngridz: int,
-    pos_t_s_grid_rad: np.ndarray,
-    pos_t_s_grid_z: np.ndarray,
-    rho_interpol: np.ndarray,
-    X_cells: np.ndarray,
+    pos_t_s_grid_rad: npt.NDArray,
+    pos_t_s_grid_z: npt.NDArray,
+    rho_interpol: npt.NDArray,
+    X_cells: npt.NDArray,
     isot_table: list,
-    q_ergperg: np.ndarray,
+    q_ergperg: npt.NDArray,
     outpath: Path,
 ) -> None:
     assert pos_t_s_grid_rad.shape == (ngridrcyl, ngridz)
