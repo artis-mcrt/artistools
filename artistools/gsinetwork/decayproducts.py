@@ -2,6 +2,7 @@
 import argparse
 import math
 import multiprocessing as mp
+import typing as t
 import warnings
 from collections.abc import Sequence
 from functools import partial
@@ -37,7 +38,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-trajectoryroot", "-trajroot", required=True, help="Path to nuclear network trajectory folder")
 
 
-def get_nuc_data(nuc_dataset: str):
+def get_nuc_data(nuc_dataset: str) -> pl.DataFrame:
     assert nuc_dataset in {"Hotokezaka", "ENSDF"}
     hotokezaka_betaminus = (
         pl.read_csv(
@@ -110,14 +111,11 @@ def get_nuc_data(nuc_dataset: str):
     )
 
 
-def chunks(lst, n):
-    """Yield successive n-sized chunks from lst."""
-    for i in range(0, len(lst), n):
-        yield lst[i : i + n]
-
-
-def process_trajectory(nuc_data, traj_root, traj_masses_g, arr_t_day, traj_ID: int) -> dict[str, np.ndarray]:
+def process_trajectory(
+    nuc_data: pl.DataFrame, traj_root: Path | str, traj_masses_g: dict[int, float], arr_t_day: np.ndarray, traj_ID: int
+) -> dict[str, np.ndarray]:
     traj_mass_grams = traj_masses_g[traj_ID]
+    traj_root = Path(traj_root)
 
     dfheatingthermo = (
         pl.from_pandas(
@@ -219,7 +217,7 @@ def process_trajectory(nuc_data, traj_root, traj_masses_g, arr_t_day, traj_ID: i
     return decay_powers
 
 
-def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Comparison to constant beta decay splitup factors."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)

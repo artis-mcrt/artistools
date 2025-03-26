@@ -8,6 +8,7 @@ import tempfile
 import time
 import typing as t
 from collections import defaultdict
+from collections.abc import Callable
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -1263,6 +1264,8 @@ def dimension_reduce_model(
     modelmeta_out["dimensions"] = max(outputdimensions, 1)
 
     ngridpoints = modelmeta.get("npts_model", len(dfmodel))
+    assert isinstance(ngridpoints, int)
+    assert ngridpoints > 0
 
     print(f"Resampling {ndim_in:d}D model with {ngridpoints} cells to {outputdimensions}D...")
     timestart = time.perf_counter()
@@ -1281,9 +1284,9 @@ def dimension_reduce_model(
     elif outputdimensions == 1:
         # make 1D model
         if ndim_in == 2:
-            ncoordgridr = int(modelmeta.get("ncoordgridx", round(math.sqrt(ngridpoints / 2.0))))
+            ncoordgridr = int(modelmeta.get("ncoordgridrcyl", round(math.sqrt(ngridpoints / 2.0))))
         elif ndim_in == 3:
-            ncoordgridr = int(modelmeta.get("ncoordgridx", round(np.cbrt(ngridpoints))) / 2.0)
+            ncoordgridr = int(modelmeta.get("ncoordgridx", round(math.cbrt(ngridpoints))) / 2.0)
         else:
             ncoordgridr = 1
         modelmeta_out["ncoordgridr"] = ncoordgridr
@@ -1293,7 +1296,7 @@ def dimension_reduce_model(
             (pl.col("vel_x_mid") ** 2 + pl.col("vel_y_mid") ** 2).sqrt().alias("vel_rcyl_mid")
         ])
         if ncoordgridz is None:
-            ncoordgridz = int(modelmeta.get("ncoordgridx", round(np.cbrt(ngridpoints))))
+            ncoordgridz = int(modelmeta.get("ncoordgridx", round(math.cbrt(ngridpoints))))
             assert ncoordgridz % 2 == 0
         ncoordgridr = ncoordgridz // 2
         modelmeta_out["ncoordgridz"] = ncoordgridz
@@ -1481,12 +1484,12 @@ def scale_model_to_time(
     return dfmodel, modelmeta
 
 
-def savetologfile(outputfolderpath, logfilename="modellog.txt"):
+def savetologfile(outputfolderpath: Path, logfilename: str = "modellog.txt") -> Callable[..., None]:
     # save the printed output to a log file
     logfilepath = outputfolderpath / logfilename
     logfilepath.unlink(missing_ok=True)
 
-    def logprint(*args: t.Any, **kwargs):
+    def logprint(*args: t.Any, **kwargs: t.Any) -> None:
         print(*args, **kwargs)
         with logfilepath.open("a", encoding="utf-8") as logfile:
             logfile.write(" ".join([str(x) for x in args]) + "\n")

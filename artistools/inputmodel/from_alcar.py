@@ -2,6 +2,7 @@
 
 # PYTHON_ARGCOMPLETE_OK
 import argparse
+import typing as t
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -256,8 +257,16 @@ def z_reflect(arr: np.ndarray) -> np.ndarray:
 
 # function added by Luke and Gerrit to create the ARTIS model.txt
 def create_ARTIS_modelfile(
-    ngridrcyl, ngridz, pos_t_s_grid_rad, pos_t_s_grid_z, rho_interpol, X_cells, isot_table, q_ergperg, outpath
-):
+    ngridrcyl: int,
+    ngridz: int,
+    pos_t_s_grid_rad: np.ndarray,
+    pos_t_s_grid_z: np.ndarray,
+    rho_interpol: np.ndarray,
+    X_cells: np.ndarray,
+    isot_table: list,
+    q_ergperg: np.ndarray,
+    outpath: Path,
+) -> None:
     assert pos_t_s_grid_rad.shape == (ngridrcyl, ngridz)
     assert pos_t_s_grid_z.shape == (ngridrcyl, ngridz)
     assert rho_interpol.shape == (ngridrcyl, ngridz)
@@ -324,7 +333,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-outputpath", "-o", default=".", help="Path of output ARTIS model file")
 
 
-def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
 

@@ -133,7 +133,9 @@ def j_nu_dbb(arr_nu_hz: Sequence[float] | npt.NDArray, W: float, T: float) -> li
     return [0.0 for _ in arr_nu_hz]
 
 
-def get_fullspecfittedfield(radfielddata, xmin, xmax, modelgridindex: int | None = None, timestep: int | None = None):
+def get_fullspecfittedfield(
+    radfielddata: pd.DataFrame, xmin: float, xmax: float, modelgridindex: int | None = None, timestep: int | None = None
+) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     row = (
         radfielddata.query(
             "bin_num == -1"
@@ -221,7 +223,13 @@ def get_fitted_field(
     return arr_lambda, j_lambda_fitted
 
 
-def plot_line_estimators(axis, radfielddata, modelgridindex=None, timestep=None, **plotkwargs):
+def plot_line_estimators(
+    axis: mplax.Axes,
+    radfielddata: pd.DataFrame,
+    modelgridindex: int | None = None,
+    timestep: int | None = None,
+    **plotkwargs: t.Any,
+) -> float:
     """Plot the Jblue_lu values from the detailed line estimators on a spectrum."""
     ymax = -1
 
@@ -237,6 +245,7 @@ def plot_line_estimators(axis, radfielddata, modelgridindex=None, timestep=None,
     )
 
     ymax = radfielddataselected["Jb_lambda"].max()
+    assert isinstance(ymax, float)
 
     if not radfielddataselected.empty:
         axis.scatter(
@@ -246,7 +255,6 @@ def plot_line_estimators(axis, radfielddata, modelgridindex=None, timestep=None,
             s=0.2,
             **plotkwargs,
         )
-
     return ymax
 
 
@@ -714,19 +722,21 @@ def plot_celltimestep(modelpath, timestep, outputfile, xmin, xmax, modelgridinde
     # label += r'(T$_{\mathrm{R}}$'
     # label += f'= {row["T_R"]} K)')
     axis.plot(xlist, yvalues, label=label, color="purple", linewidth=1.5)
-    ymax = max(yvalues)
+    ymax = float(np.max(yvalues))
 
     if not args.nobandaverage:
         arr_lambda, yvalues = get_binaverage_field(radfielddata, modelgridindex=modelgridindex, timestep=timestep)
         axis.step(arr_lambda, yvalues, where="pre", label="Band-average field", color="green", linewidth=1.5)
-        ymax = max([ymax] + [point[1] for point in zip(arr_lambda, yvalues, strict=False) if xmin <= point[0] <= xmax])
+        ymax = np.max(
+            [ymax] + [float(yval) for xval, yval in zip(arr_lambda, yvalues, strict=True) if xmin <= xval <= xmax]
+        )
 
     arr_lambda_fitted, j_lambda_fitted = get_fitted_field(
         radfielddata, modelgridindex=modelgridindex, timestep=timestep
     )
     ymax = max(
         [ymax]
-        + [point[1] for point in zip(arr_lambda_fitted, j_lambda_fitted, strict=False) if xmin <= point[0] <= xmax]
+        + [float(yval) for xval, yval in zip(arr_lambda_fitted, j_lambda_fitted, strict=True) if xmin <= xval <= xmax]
     )
 
     axis.plot(arr_lambda_fitted, j_lambda_fitted, label="Radiation field model", alpha=0.8, color="blue", linewidth=1.5)

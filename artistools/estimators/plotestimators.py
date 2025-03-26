@@ -50,7 +50,7 @@ def plot_init_abundances(
     seriestype: str,
     startfromzero: bool,
     args: argparse.Namespace,
-    **plotkwargs,
+    **plotkwargs: t.Any,
 ) -> None:
     if seriestype == "initmasses":
         estimators = estimators.with_columns(
@@ -329,7 +329,7 @@ def plot_multi_ion_series(
 
     plotted_something = False
 
-    def get_iontuple(ionstr):
+    def get_iontuple(ionstr: str) -> tuple[int, str | int]:
         if ionstr in at.get_elsymbolslist():
             return (at.get_atomic_number(ionstr), "ALL")
         if " " in ionstr:
@@ -345,7 +345,7 @@ def plot_multi_ion_series(
     iontuplelist.sort()
     print(f"Subplot with ions: {iontuplelist}")
 
-    missingions = set()
+    missingions: set[tuple[int, str | int]] = set()
     try:
         if not args.classicartis:
             compositiondata = at.get_composition_data(modelpath)
@@ -731,7 +731,7 @@ def make_plot(
     timestepslist_unfiltered: list[list[int]],
     estimators: pl.LazyFrame,
     xvariable: str,
-    plotlist,
+    plotlist: list[list[t.Any]],
     args: t.Any,
     **plotkwargs: t.Any,
 ) -> str:

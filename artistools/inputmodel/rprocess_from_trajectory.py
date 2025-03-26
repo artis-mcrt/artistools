@@ -74,7 +74,7 @@ def get_dfelemabund_from_dfmodel(dfmodel: pl.DataFrame, dfnucabundances: pl.Data
     return dfelabundances
 
 
-def get_tar_member_extracted_path(traj_root: Path, particleid: int, memberfilename: str) -> Path:
+def get_tar_member_extracted_path(traj_root: Path | str, particleid: int, memberfilename: str) -> Path:
     """Trajectory files are generally stored as {particleid}.tar.xz, but this is slow to access, so first check for extracted files, or decompressed .tar files, which are much faster to access.
 
     memberfilename: file path within the trajectory tarfile, eg. ./Run_rprocess/energy_thermo.dat
@@ -490,7 +490,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")
 
 
-def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Create ARTIS model from single trajectory abundances."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)

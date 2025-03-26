@@ -20,7 +20,7 @@ MSUN = 1.989e33
 CLIGHT = 2.99792458e10
 
 
-def read_ejectasnapshot(pathtosnapshot):
+def read_ejectasnapshot(pathtosnapshot: str | Path) -> pd.DataFrame:
     column_names = [
         "id",
         "h",

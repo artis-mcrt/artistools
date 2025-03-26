@@ -24,6 +24,7 @@ import polars as pl
 import polars.selectors as cs
 from matplotlib import ticker
 from matplotlib.artist import Artist
+from matplotlib.lines import Line2D
 
 import artistools.spectra as atspectra
 from artistools.configuration import get_config
@@ -210,14 +211,17 @@ def plot_reference_spectrum(
     scale_to_dist_mpc: float = 1,
     scaletoreftime: float | None = None,
     xunit: str = "angstroms",
-    **plotkwargs,
-):
+    **plotkwargs: t.Any,
+) -> tuple[Line2D, str, float]:
     """Plot a single reference spectrum.
 
     The filename must be in space separated text formatted with the first two
     columns being wavelength in Angstroms, and F_lambda
     """
     specdata, metadata = atspectra.get_reference_spectrum(filename)
+    label = plotkwargs.get("label", metadata.get("label", filename))
+    assert isinstance(label, str)
+    plotkwargs.pop("label", None)
 
     # scale to flux at required distance
     if scale_to_dist_mpc:
@@ -227,14 +231,11 @@ def plot_reference_spectrum(
             f_lambda=pl.col("f_lambda") * ((metadata["dist_mpc"] / scale_to_dist_mpc) ** 2)
         )
 
-    if "label" not in plotkwargs:
-        plotkwargs["label"] = metadata.get("label", filename)
-
     if scaletoreftime is not None:
         timefactor = atspectra.timeshift_fluxscale_co56law(scaletoreftime, float(metadata["t"]))
         print(f" Scale from time {metadata['t']} to {scaletoreftime}, factor {timefactor} using Co56 decay law")
         specdata = specdata.with_columns(f_lambda=pl.col("f_lambda") * timefactor)
-        plotkwargs["label"] += f" * {timefactor:.2f}"
+        label += f" * {timefactor:.2f}"
 
     if "scale_factor" in metadata:
         specdata = specdata.with_columns(f_lambda=pl.col("f_lambda") * metadata["scale_factor"])
@@ -253,7 +254,7 @@ def plot_reference_spectrum(
         )
         specdata = specdata.with_columns(f_lambda=expr_masked.then(pl.lit(math.nan)).otherwise(pl.col("f_lambda")))
 
-    print(f"Reference spectrum '{plotkwargs['label']}' has {len(specdata)} points in the plot range")
+    print(f"Reference spectrum '{label}' has {len(specdata)} points in the plot range")
     print(f" file: {filename}")
 
     print(" metadata: " + ", ".join([f"{k}='{v}'" if hasattr(v, "lower") else f"{k}={v}" for k, v in metadata.items()]))
@@ -279,9 +280,10 @@ def plot_reference_spectrum(
         ycolumnname = "f_lambda"
 
     ymax = max(specdata[ycolumnname])
+    assert isinstance(ymax, float)
     (lineplot,) = axis.plot(specdata["lambda_angstroms"], specdata[ycolumnname], **plotkwargs)
 
-    return lineplot, plotkwargs["label"], ymax
+    return lineplot, label, ymax
 
 
 def plot_filter_functions(axis: mplax.Axes) -> None:
@@ -307,7 +309,7 @@ def plot_filter_functions(axis: mplax.Axes) -> None:
 def plot_artis_spectrum(
     axes: Collection[mplax.Axes],
     modelpath: Path | str,
-    args,
+    args: argparse.Namespace,
     scale_to_peak: float | None = None,
     from_packets: bool = False,
     filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
@@ -525,7 +527,7 @@ def make_spectrum_plot(
     speclist: Collection[Path | str],
     axes: Sequence[mplax.Axes] | np.ndarray,
     filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None,
-    args,
+    args: argparse.Namespace,
     scale_to_peak: float | None = None,
 ) -> pl.DataFrame:
     """Plot reference spectra and ARTIS spectra."""
@@ -1086,7 +1088,7 @@ def make_contrib_plot(
         # ax.pcolormesh(xi, yi, zi.reshape(xi.shape), shading='gouraud', cmap=plt.cm.BuGn_r)
 
 
-def make_plot(args) -> tuple[mplfig.Figure, np.ndarray, pl.DataFrame]:
+def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, np.ndarray, pl.DataFrame]:
     # font = {'size': 16}
     # mpl.rc('font', **font)
 
@@ -1253,7 +1255,7 @@ def make_plot(args) -> tuple[mplfig.Figure, np.ndarray, pl.DataFrame]:
     return fig, axes, dfalldata
 
 
-def addargs(parser) -> None:
+def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "specpath",
         default=[],

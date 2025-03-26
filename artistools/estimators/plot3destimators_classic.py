@@ -4,6 +4,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 
 import artistools as at
 
@@ -11,15 +12,15 @@ CLIGHT = 2.99792458e10
 
 
 def read_selected_mgi(
-    modelpath: Path, readonly_mgi: list[int] | None = None, readonly_timestep: list[int] | None = None
+    modelpath: Path | str, readonly_mgi: list[int] | None = None, readonly_timestep: list[int] | None = None
 ) -> dict[tuple[int, int], t.Any] | None:
     modeldata, _ = at.inputmodel.get_modeldata_pandas(modelpath)
     return at.estimators.estimators_classic.read_classic_estimators(
-        modelpath, modeldata, readonly_mgi=readonly_mgi, readonly_timestep=readonly_timestep
+        Path(modelpath), modeldata, readonly_mgi=readonly_mgi, readonly_timestep=readonly_timestep
     )
 
 
-def get_modelgridcells_along_axis(modelpath, args: argparse.Namespace | None = None):
+def get_modelgridcells_along_axis(modelpath: Path | str, args: argparse.Namespace | None = None) -> list[int]:
     if args is None:
         args = argparse.Namespace(
             modelpath=modelpath, sliceaxis="x", other_axis1="z", other_axis2="y", positive_axis=True
@@ -41,12 +42,12 @@ def get_modelgridcells_2D_slice(modeldata, modelpath) -> list[int]:
     return get_mgi_of_modeldata(slicedata, modelpath)
 
 
-def get_mgi_of_modeldata(modeldata, modelpath) -> list[int]:
+def get_mgi_of_modeldata(modeldata: pd.DataFrame, modelpath: Path | str) -> list[int]:
     _, mgi_of_propcells = at.get_grid_mapping(modelpath=modelpath)
     return [mgi_of_propcells[int(row["inputcellid"]) - 1] for _index, row in modeldata.iterrows() if row["rho"] > 0]
 
 
-def plot_Te_vs_time_lineofsight_3d_model(modelpath, modeldata, estimators, readonly_mgi):
+def plot_Te_vs_time_lineofsight_3d_model(modelpath, modeldata, estimators, readonly_mgi) -> None:
     assoc_cells, _ = at.get_grid_mapping(modelpath=modelpath)
     times = at.get_timestep_times(modelpath)
 
@@ -64,7 +65,7 @@ def plot_Te_vs_time_lineofsight_3d_model(modelpath, modeldata, estimators, reado
     plt.show()
 
 
-def plot_Te_vs_velocity(modelpath, modeldata, estimators, readonly_mgi):
+def plot_Te_vs_velocity(modelpath, modeldata, estimators, readonly_mgi) -> None:
     assoc_cells, _ = at.get_grid_mapping(modelpath=modelpath)
     times = at.get_timestep_times(modelpath)
     timesteps = [50, 55, 60, 65, 70, 75, 80, 90]

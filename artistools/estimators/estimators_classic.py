@@ -45,7 +45,7 @@ def parse_ion_row_classic(row: list[str], outdict: dict[str, t.Any], atomic_comp
             outdict["nntot"] = totalpop + value_thision
 
 
-def get_first_ts_in_run_directory(modelpath) -> dict[str, int]:
+def get_first_ts_in_run_directory(modelpath: str | Path) -> dict[str, int]:
     folderlist_all = (*sorted([child for child in Path(modelpath).iterdir() if child.is_dir()]), Path(modelpath))
 
     first_timesteps_in_dir = {}
