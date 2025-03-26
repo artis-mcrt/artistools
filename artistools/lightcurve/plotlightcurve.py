@@ -578,7 +578,7 @@ def make_lightcurve_plot(
 
             topnucs = args.topnucs
             for escape_type in escape_types:
-                pellet_nucnames = [None]
+                pellet_nucnames: list[str | None] = [None]
                 if topnucs > 0:
                     try:
                         dfnuclides = at.get_nuclides(modelpath=modelpath)
