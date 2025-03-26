@@ -6,7 +6,6 @@ import contextlib
 import json
 import math
 import typing as t
-from collections import namedtuple
 from collections.abc import Iterable
 from collections.abc import Sequence
 from functools import partial
@@ -23,21 +22,18 @@ from matplotlib.typing import MarkerType
 
 import artistools as at
 
-featuretuple = namedtuple(
-    "featuretuple",
-    [
-        "colname",
-        "featurelabel",
-        "approxlambda",
-        "linelistindices",
-        "lowestlambda",
-        "highestlambda",
-        "atomic_number",
-        "ion_stage",
-        "upperlevelindicies",
-        "lowerlevelindicies",
-    ],
-)
+
+class FeatureTuple(t.NamedTuple):
+    colname: str
+    featurelabel: str
+    approxlambda: float | str
+    linelistindices: Sequence[int]
+    lowestlambda: float
+    highestlambda: float
+    atomic_number: int
+    ion_stage: int
+    upperlevelindicies: Sequence[int]
+    lowerlevelindicies: Sequence[int]
 
 
 def print_floers_line_ratio(
@@ -156,7 +152,7 @@ def get_line_fluxes_from_packets(
 
 
 def get_line_fluxes_from_pops(
-    emfeatures: Iterable[featuretuple],
+    emfeatures: Iterable[FeatureTuple],
     modelpath: Path | str,
     arr_tstart: Iterable[float] | None = None,
     arr_tend: Iterable[float] | None = None,
@@ -291,10 +287,10 @@ def get_closelines(
     )
 
 
-def get_labelandlineindices(modelpath: Path | str, emfeaturesearch: tuple) -> list[featuretuple]:
+def get_labelandlineindices(modelpath: Path | str, emfeaturesearch: tuple) -> list[FeatureTuple]:
     labelandlineindices = []
     for params in emfeaturesearch:
-        feature = featuretuple(*get_closelines(modelpath, *params))
+        feature = FeatureTuple(*get_closelines(modelpath, *params))
         print(
             f"{feature.featurelabel} includes {len(feature.linelistindices)} lines "
             f"[{feature.lowestlambda:.1f} Å, {feature.highestlambda:.1f} Å]"
@@ -354,7 +350,7 @@ def make_flux_ratio_plot(args: argparse.Namespace) -> None:
                 arr_tend=args.timebins_tend,
             )
         )
-        dflcdata["fratio"] = emfeatures[1].colname / emfeatures[0].colname
+        dflcdata["fratio"] = dflcdata[emfeatures[1].colname] / dflcdata[emfeatures[0].colname]
         axis.set_ylabel(
             r"F$_{\mathrm{" + emfeatures[1].featurelabel + r"}}$ / F$_{\mathrm{" + emfeatures[0].featurelabel + r"}}$"
         )
