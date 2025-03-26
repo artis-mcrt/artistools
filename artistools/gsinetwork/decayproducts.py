@@ -120,7 +120,9 @@ def process_trajectory(
     dfheatingthermo = (
         pl.from_pandas(
             pd.read_csv(
-                get_tar_member_extracted_path(traj_root, traj_ID, "./Run_rprocess/heating.dat"),
+                get_tar_member_extracted_path(
+                    traj_root=traj_root, particleid=traj_ID, memberfilename="./Run_rprocess/heating.dat"
+                ),
                 sep=r"\s+",
                 usecols=["#count", "hbeta", "htot"],
             )
@@ -129,7 +131,9 @@ def process_trajectory(
         .join(
             pl.from_pandas(
                 pd.read_csv(
-                    get_tar_member_extracted_path(traj_root, traj_ID, "./Run_rprocess/energy_thermo.dat"),
+                    get_tar_member_extracted_path(
+                        traj_root=traj_root, particleid=traj_ID, memberfilename="./Run_rprocess/energy_thermo.dat"
+                    ),
                     sep=r"\s+",
                     usecols=["#count", "time/s", "Qdot"],
                 )

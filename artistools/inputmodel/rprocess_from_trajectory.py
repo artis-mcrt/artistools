@@ -11,7 +11,6 @@ import typing as t
 from collections.abc import Sequence
 from functools import lru_cache
 from functools import partial
-from io import TextIOWrapper
 from itertools import chain
 from pathlib import Path
 
@@ -124,16 +123,6 @@ def get_tar_member_extracted_path(traj_root: Path | str, particleid: int, member
     raise AssertionError
 
 
-def open_tar_file_or_extracted(traj_root: Path, particleid: int, memberfilename: str) -> TextIOWrapper:
-    """Trajectory files are generally stored as {particleid}.tar.xz, but this is slow to access, so first check for extracted files, or decompressed .tar files, which are much faster to access.
-
-    memberfilename: file path within the trajectory tarfile, eg. ./Run_rprocess/energy_thermo.dat
-    """
-    return get_tar_member_extracted_path(
-        traj_root=traj_root, particleid=particleid, memberfilename=memberfilename
-    ).open(encoding="utf-8")
-
-
 @lru_cache(maxsize=16)
 def get_traj_network_timesteps(traj_root: Path, particleid: int) -> pl.DataFrame:
     with get_tar_member_extracted_path(
@@ -185,7 +174,9 @@ def get_trajectory_timestepfile_nuc_abund(
     traj_root: Path, particleid: int, memberfilename: str
 ) -> tuple[pd.DataFrame, float]:
     """Get the nuclear abundances for a particular trajectory id number and time memberfilename should be something like "./Run_rprocess/tday_nz-plane"."""
-    with open_tar_file_or_extracted(traj_root, particleid, memberfilename) as trajfile:
+    with get_tar_member_extracted_path(traj_root=traj_root, particleid=particleid, memberfilename=memberfilename).open(
+        encoding="utf-8"
+    ) as trajfile:
         try:
             _, str_t_model_init_seconds, _, _, _, _ = trajfile.readline().split()
         except ValueError as exc:
@@ -216,7 +207,9 @@ def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, 
     """Calculate initial cell energy [erg/g] from reactions t < t_model_s (reduced by work done)."""
     from scipy import integrate
 
-    with open_tar_file_or_extracted(traj_root, particleid, "./Run_rprocess/energy_thermo.dat") as enthermofile:
+    with get_tar_member_extracted_path(
+        traj_root=traj_root, particleid=particleid, memberfilename="./Run_rprocess/energy_thermo.dat"
+    ).open(encoding="utf-8") as enthermofile:
         try:
             dfthermo: pd.DataFrame = pd.read_csv(
                 enthermofile,
