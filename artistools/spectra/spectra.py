@@ -280,7 +280,7 @@ def get_spectrum_at_time(
 
 
 def get_from_packets(
-    modelpath: Path,
+    modelpath: Path | str,
     timelowdays: float,
     timehighdays: float,
     lambda_min: float,
@@ -493,7 +493,7 @@ def get_from_packets(
 
 
 @lru_cache(maxsize=16)
-def read_spec(modelpath: Path, gamma: bool = False) -> pl.DataFrame:
+def read_spec(modelpath: Path | str, gamma: bool = False) -> pl.DataFrame:
     specfilename = firstexisting("gamma_spec.out" if gamma else "spec.out", folder=modelpath, tryzipped=True)
     print(f"Reading {specfilename}")
 
@@ -505,7 +505,7 @@ def read_spec(modelpath: Path, gamma: bool = False) -> pl.DataFrame:
 
 
 @lru_cache(maxsize=16)
-def read_spec_res(modelpath: Path) -> dict[int, pl.DataFrame]:
+def read_spec_res(modelpath: Path | str) -> dict[int, pl.DataFrame]:
     """Return a dataframe of time-series spectra for every viewing direction."""
     specfilename = (
         modelpath

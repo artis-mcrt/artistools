@@ -7,7 +7,7 @@ import pandas as pd
 import artistools as at
 
 
-def get_bol_lc_from_spec(modelpath) -> pd.DataFrame:
+def get_bol_lc_from_spec(modelpath: Path) -> pd.DataFrame:
     from scipy import integrate
 
     res_specdata = at.spectra.read_spec_res(modelpath)

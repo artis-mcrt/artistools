@@ -189,6 +189,7 @@ module = [
     "artistools.inputmodel.plotdensity",
     "artistools.inputmodel.makeartismodel",
     "artistools.lightcurve",
+    "artistools.lightcurve.lightcurve",
     "artistools.misc",
     "artistools.nltepops",
     "artistools.packets",

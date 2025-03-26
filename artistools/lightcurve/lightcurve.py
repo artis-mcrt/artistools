@@ -2,11 +2,14 @@ import argparse
 import math
 import typing as t
 from collections.abc import Collection
+from collections.abc import Iterable
 from collections.abc import Sequence
 from pathlib import Path
 
+import matplotlib.container as mplcontainer
 import matplotlib.pyplot as plt
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 import polars as pl
 
@@ -84,6 +87,7 @@ def get_from_packets(
     ncosthetabins = at.get_viewingdirection_costhetabincount()
     ndirbins = at.get_viewingdirectionbincount()
 
+    vpkt_config = None
     if directionbins_are_vpkt_observers:
         assert pellet_nucname is None  # we don't track which pellet led to vpkts
         vpkt_config = at.get_vpkt_config(modelpath)
@@ -124,6 +128,7 @@ def get_from_packets(
     lazyframes = []
     for dirbin in directionbins:
         if directionbins_are_vpkt_observers:
+            assert vpkt_config is not None
             obsdirindex = dirbin // vpkt_config["nspectraperobs"]
             opacchoiceindex = dirbin % vpkt_config["nspectraperobs"]
             pldfpackets_dirbin = dfpackets.with_columns(
@@ -276,7 +281,9 @@ def generate_band_lightcurve_data(
                 if len(wavelength_from_spectrum) > len(wavefilter):
                     interpolate_fn = interp1d(wavefilter, transmission, bounds_error=False, fill_value=0.0)
                     wavefilter = np.linspace(
-                        min(wavelength_from_spectrum), int(max(wavelength_from_spectrum)), len(wavelength_from_spectrum)
+                        np.min(wavelength_from_spectrum),
+                        int(np.max(wavelength_from_spectrum)),
+                        len(wavelength_from_spectrum),
                     )
                     transmission = interpolate_fn(wavefilter)
                 else:
@@ -336,7 +343,9 @@ def bolometric_magnitude(
     return times, magnitudes
 
 
-def get_filter_data(filterdir: Path | str, filter_name: str) -> tuple[float, np.ndarray, np.ndarray, float, float]:
+def get_filter_data(
+    filterdir: Path | str, filter_name: str
+) -> tuple[float, npt.NDArray[np.floating], npt.NDArray[np.floating], float, float]:
     """Filter data in 'data/filters' taken from https://github.com/cinserra/S3/tree/master/src/s3/metadata."""
     with Path(filterdir, f"{filter_name}.txt").open("r", encoding="utf-8") as filter_metadata:  # definition of the file
         line_in_filter_metadata = filter_metadata.readlines()  # list of lines
@@ -367,7 +376,7 @@ def get_spectrum_in_filter_range(
     args: argparse.Namespace | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
-) -> tuple[np.ndarray, np.ndarray]:
+) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     spectrum = at.spectra.get_spectrum_at_time(
         Path(modelpath),
         timestep=timestep,
@@ -380,7 +389,7 @@ def get_spectrum_in_filter_range(
     assert spectrum is not None
 
     wavelength_from_spectrum, flux = [], []
-    for wavelength, flambda in zip(spectrum["lambda_angstroms"], spectrum["f_lambda"], strict=False):
+    for wavelength, flambda in zip(spectrum["lambda_angstroms"], spectrum["f_lambda"], strict=True):
         if wavefilter_min <= wavelength <= wavefilter_max:  # to match the spectrum wavelengths to those of the filter
             wavelength_from_spectrum.append(wavelength)
             flux.append(flambda)
@@ -388,7 +397,12 @@ def get_spectrum_in_filter_range(
     return np.array(wavelength_from_spectrum), np.array(flux)
 
 
-def evaluate_magnitudes(flux, transmission, wavelength_from_spectrum, zeropointenergyflux: float) -> float:
+def evaluate_magnitudes(
+    flux: npt.NDArray[np.floating],
+    transmission: npt.NDArray[np.floating],
+    wavelength_from_spectrum: npt.NDArray[np.floating],
+    zeropointenergyflux: float,
+) -> float:
     from scipy import integrate
 
     cf = flux * transmission
@@ -399,8 +413,8 @@ def evaluate_magnitudes(flux, transmission, wavelength_from_spectrum, zeropointe
 
 
 def get_band_lightcurve(
-    band_lightcurve_data: dict[str, Sequence[tuple[float, float]]], band_name, args: argparse.Namespace
-) -> tuple[Sequence[float], np.ndarray]:
+    band_lightcurve_data: dict[str, Sequence[tuple[float, float]]], band_name: str, args: argparse.Namespace
+) -> tuple[Sequence[float], npt.NDArray[np.floating]]:
     times, brightness_in_mag = zip(
         *[
             (time, brightness)
@@ -413,7 +427,9 @@ def get_band_lightcurve(
     return times, np.array(brightness_in_mag)
 
 
-def get_colour_delta_mag(band_lightcurve_data, filter_names) -> tuple[list[float], list[float]]:
+def get_colour_delta_mag(
+    band_lightcurve_data: dict[str, Iterable[t.Any]], filter_names: Sequence[str]
+) -> tuple[list[float], list[float]]:
     time_dict_1 = {}
     time_dict_2 = {}
 
@@ -421,7 +437,7 @@ def get_colour_delta_mag(band_lightcurve_data, filter_names) -> tuple[list[float
     colour_delta_mag = []
 
     for filter_1, filter_2 in zip(
-        band_lightcurve_data[filter_names[0]], band_lightcurve_data[filter_names[1]], strict=False
+        band_lightcurve_data[filter_names[0]], band_lightcurve_data[filter_names[1]], strict=True
     ):
         # Make magnitude dictionaries where time is the key
         time_dict_1[float(filter_1[0])] = filter_1[1]
@@ -481,7 +497,7 @@ def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pd.Dat
     return lightcurve_data, metadata
 
 
-def read_bol_reflightcurve_data(lightcurvefilename):
+def read_bol_reflightcurve_data(lightcurvefilename: str | Path) -> tuple[pd.DataFrame, dict[str, t.Any]]:
     data_path = (
         Path(lightcurvefilename)
         if Path(lightcurvefilename).is_file()
@@ -513,7 +529,7 @@ def read_bol_reflightcurve_data(lightcurvefilename):
     return dflightcurve, metadata
 
 
-def get_sn_sample_bol():
+def get_sn_sample_bol() -> tuple[t.Any, str]:
     datafilepath = Path(at.get_config()["path_artistools_dir"], "data", "lightcurves", "SNsample", "bololc.txt")
     sn_data = pd.read_csv(datafilepath, sep=r"\s+", comment="#")
 
@@ -560,7 +576,7 @@ def get_sn_sample_bol():
     return a0, label
 
 
-def get_phillips_relation_data():
+def get_phillips_relation_data() -> tuple[pd.DataFrame, str]:
     datafilepath = Path(at.get_config()["path_artistools_dir"], "data", "lightcurves", "SNsample", "CfA3_Phillips.dat")
     sn_data = pd.read_csv(datafilepath, sep=r"\s+", comment="#")
     print(sn_data)
@@ -568,11 +584,10 @@ def get_phillips_relation_data():
     sn_data["dm15(B)"] = sn_data["dm15(B)"].astype(float)
     sn_data["MB"] = sn_data["MB"].astype(float)
 
-    label = "Observed (Hicken et al. 2009)"
-    return sn_data, label
+    return sn_data, "Observed (Hicken et al. 2009)"
 
 
-def plot_phillips_relation_data():
+def plot_phillips_relation_data() -> tuple[mplcontainer.ErrorbarContainer, str]:
     sn_data, label = get_phillips_relation_data()
 
     # a0 = plt.scatter(deltam_15B, M_B, s=80, color='grey', marker='o', label=label)
