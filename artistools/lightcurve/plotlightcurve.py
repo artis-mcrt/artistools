@@ -30,8 +30,8 @@ def plot_deposition_thermalisation(
     axistherm: mplax.Axes | None,
     modelpath: str | Path,
     modelname: str,
-    plotkwargs: dict[str, t.Any],
     args: argparse.Namespace,
+    **plotkwargs: t.Any,
 ) -> None:
     # if args.logscalex:
     #     axistherm.set_xscale("log")
@@ -496,7 +496,7 @@ def plot_artis_lightcurve(
             axis.plot(lcdata["time"], lcdata["lum_cmf"], **plotkwargs)
 
     if args.plotdeposition or args.plotthermalisation:
-        plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkwargs, args)
+        plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, args, **plotkwargs)
 
     return lcdataframes
 

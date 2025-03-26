@@ -145,19 +145,23 @@ def add_derived_columns(
     colnames = at.makelist(colnames)
     dimensions = at.get_inputparams(modelpath)["n_dimensions"]
 
-    def em_modelgridindex(packet) -> int | float:
+    def em_modelgridindex(packet) -> int:
         assert dimensions == 1
 
-        return at.inputmodel.get_mgi_of_velocity_kms(
+        mgi = at.inputmodel.get_mgi_of_velocity_kms(
             modelpath, packet.emission_velocity * cm_to_km, mgilist=allnonemptymgilist
         )
+        assert mgi is not None
+        return mgi
 
-    def emtrue_modelgridindex(packet) -> int | float:
+    def emtrue_modelgridindex(packet) -> int:
         assert dimensions == 1
 
-        return at.inputmodel.get_mgi_of_velocity_kms(
+        mgi = at.inputmodel.get_mgi_of_velocity_kms(
             modelpath, packet.true_emission_velocity * cm_to_km, mgilist=allnonemptymgilist
         )
+        assert mgi is not None
+        return mgi
 
     def em_timestep(packet) -> int:
         return at.get_timestep_of_timedays(modelpath, packet.em_time / day_in_s)

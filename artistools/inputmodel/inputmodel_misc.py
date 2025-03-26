@@ -1050,7 +1050,7 @@ def save_modeldata(
     print(f"Saved {modelfilepath} (took {time.perf_counter() - timestart:.1f} seconds)")
 
 
-def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist: Sequence[int] | None = None) -> int | float:
+def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist: Sequence[int] | None = None) -> int | None:
     """Return the modelgridindex of the cell whose outer velocity is closest to velocity.
 
     If mgilist is given, then chose from these cells only.
@@ -1070,7 +1070,7 @@ def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist: Sequence[
     if velocity < arr_vouter[index_closestvouter + 1]:
         return mgilist[index_closestvouter + 1]
     if np.isnan(velocity):
-        return math.nan
+        return None
 
     print(f"Can't find cell with velocity of {velocity}. Velocity list: {arr_vouter}")
     raise AssertionError

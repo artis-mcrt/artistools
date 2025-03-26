@@ -819,7 +819,7 @@ def plot_celltimestep(modelpath, timestep, outputfile, xmin, xmax, modelgridinde
     return True
 
 
-def plot_bin_fitted_field_evolution(axis, radfielddata, nu_line, modelgridindex, **plotkwargs):
+def plot_bin_fitted_field_evolution(axis, radfielddata, nu_line, modelgridindex, **plotkwargs: dict[str, t.Any | None]):
     bin_num, _nu_lower, _nu_upper = select_bin(radfielddata, nu=nu_line, modelgridindex=modelgridindex)
     # print(f"Selected bin_num {bin_num} to get a binned radiation field estimator")
     radfielddataselected = radfielddata.query(
@@ -844,15 +844,21 @@ def plot_bin_fitted_field_evolution(axis, radfielddata, nu_line, modelgridindex,
     )
 
 
-def plot_global_fitted_field_evolution(axis, radfielddata, nu_line, modelgridindex, **plotkwargs):  # noqa: ARG001
+def plot_global_fitted_field_evolution(
+    axis: mplax.Axes,
+    radfielddata: pd.DataFrame,
+    nu_line: float,
+    modelgridindex: int,  # noqa: ARG001
+    **plotkwargs: t.Any,
+) -> None:
     radfielddataselected = radfielddata.query("bin_num == -1 and modelgridindex == @modelgridindex").copy()
 
     radfielddataselected["J_nu_fullspec_at_line"] = radfielddataselected.apply(
         lambda x: j_nu_dbb([nu_line], x.W, x.T_R)[0], axis=1
     )
 
-    radfielddataselected = radfielddataselected.eval(
-        "J_lambda_fullspec_at_line = J_nu_fullspec_at_line * (@nu_line ** 2) / 2.99792458e18"
+    radfielddataselected["J_lambda_fullspec_at_line"] = (
+        radfielddataselected["J_nu_fullspec_at_line"] * (nu_line**2) / 2.99792458e18
     )
     lambda_angstroms = 2.99792458e18 / nu_line
 
@@ -866,8 +872,14 @@ def plot_global_fitted_field_evolution(axis, radfielddata, nu_line, modelgridind
 
 
 def plot_line_estimator_evolution(
-    axis, radfielddata, bin_num, modelgridindex=None, timestep_min=None, timestep_max=None, **plotkwargs
-):
+    axis: mplax.Axes,
+    radfielddata,
+    bin_num: int,
+    modelgridindex: int | None = None,
+    timestep_min: int | None = None,
+    timestep_max: int | None = None,
+    **plotkwargs: t.Any,
+) -> None:
     """Plot the Jblue_lu values over time for a detailed line estimators."""
     radfielddataselected = (
         radfielddata.query(
@@ -888,7 +900,7 @@ def plot_line_estimator_evolution(
     )
 
 
-def plot_timeevolution(modelpath, outputfile, modelgridindex, args: argparse.Namespace):
+def plot_timeevolution(modelpath: Path | str, outputfile: Path | str, modelgridindex: int, args: argparse.Namespace):
     """Plot a estimator evolution over time for a cell. This is not well tested and should be checked."""
     print(f"Plotting time evolution of cell {modelgridindex:d}")
 
@@ -1054,6 +1066,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                     pdf_list.append(outputfile)
         elif args.xaxis == "timestep":
             outputfile = str(args.outputfile).format(modelgridindex=modelgridindex)
+            assert modelgridindex is not None
             plot_timeevolution(modelpath, outputfile, modelgridindex, args)
         else:
             print("Unknown plot type {args.plot}")

@@ -800,7 +800,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if isinstance(args.velocity, float | int):
         args.velocity = [args.velocity]
 
-    mgilist: list[int | float] = [int(mgi) for mgi in args.modelgridindex]
+    mgilist: list[int | None] = [int(mgi) for mgi in args.modelgridindex]
     mgilist.extend(at.inputmodel.get_mgi_of_velocity_kms(modelpath, vel) for vel in args.velocity)
     if not mgilist:
         mgilist.append(0)
