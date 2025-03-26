@@ -29,7 +29,7 @@ colors_tab10: list[str] = list(plt.get_cmap("tab10")(np.linspace(0, 1.0, 10)))
 elementcolors = {"Fe": colors_tab10[0], "Ni": colors_tab10[1], "Co": colors_tab10[2]}
 
 
-def get_elemcolor(atomic_number: int | None = None, elsymbol: str | None = None) -> str | npt.NDArray:
+def get_elemcolor(atomic_number: int | None = None, elsymbol: str | None = None) -> str | npt.NDArray[t.Any]:
     """Get the colour of an element from the reserved color list (reserving a new one if needed)."""
     assert (atomic_number is None) != (elsymbol is None)
     if atomic_number is not None:
@@ -88,6 +88,7 @@ def plot_init_abundances(
             linelabel = "$^{56}$Co"
         elif speciesstr.lower() in {"fegrp", "ffegroup"}:
             yvalue = pl.col(f"{valuetype}Fegroup")
+            linelabel = "Fe group"
         else:
             linelabel = speciesstr
             yvalue = pl.col(f"{valuetype}{elsymbol}")
@@ -136,7 +137,7 @@ def plot_average_ionisation_excitation(
     modelpath: Path | str,
     startfromzero: bool,
     args: argparse.Namespace | None = None,
-    **plotkwargs,
+    **plotkwargs: t.Any,
 ) -> None:
     if args is None:
         args = argparse.Namespace()
@@ -156,12 +157,14 @@ def plot_average_ionisation_excitation(
         print(f"Plotting {seriestype} {paramvalue}")
         if seriestype == "averageionisation":
             atomic_number = at.get_atomic_number(paramvalue)
+            ion_stage = None
         else:
             atomic_number = at.get_atomic_number(paramvalue.split(" ")[0])
             ion_stage = at.decode_roman_numeral(paramvalue.split(" ")[1])
         ylist = []
         if seriestype == "averageexcitation":
             print("  This will be slow! TODO: reimplement with polars.")
+            assert ion_stage is not None
             for modelgridindex, timesteps in zip(mgilist, timestepslist, strict=False):
                 exc_ev_times_tdelta_sum = 0.0
                 tdeltasum = 0.0
