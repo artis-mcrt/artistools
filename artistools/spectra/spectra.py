@@ -306,6 +306,7 @@ def get_from_packets(
     if nu_column == "absorption_freq":
         nu_column = "nu_absorbed"
 
+    lambda_bin_edges: npt.NDArray[np.floating]
     pl_delta_lambda: pl.Series | pl.Expr
     if delta_lambda is None:
         lambda_bin_edges, lambda_bin_centres, delta_lambda = get_exspec_bins(modelpath=modelpath, gamma=gamma)
