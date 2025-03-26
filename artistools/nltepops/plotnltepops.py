@@ -427,6 +427,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths: list[Path | str], ar
 
     for plotnumber, timedays in enumerate(timedayslist):
         axis = ax[plotnumber] if args.subplots else ax
+        assert isinstance(axis, mplax.Axes)
         plot_populations_with_time_or_velocity(
             axis, modelpaths, timedays, ion_stage, ionlevels, Z, levelconfignames, args
         )
@@ -468,7 +469,14 @@ def make_plot_populations_with_time_or_velocity(modelpaths: list[Path | str], ar
 
 
 def plot_populations_with_time_or_velocity(
-    ax, modelpaths, timedays, ion_stage, ionlevels, Z, levelconfignames, args: argparse.Namespace
+    ax: mplax.Axes,
+    modelpaths: list[Path | str],
+    timedays: float,
+    ion_stage: int,
+    ionlevels,
+    Z: int,
+    levelconfignames,
+    args: argparse.Namespace,
 ):
     if args.x == "time":
         timesteps = list(range(args.timestepmin, args.timestepmax))
@@ -508,7 +516,7 @@ def plot_populations_with_time_or_velocity(
 
         for ionlevel in ionlevels:
             plottimesteps = np.array([ts for ts, level, mgi in populations if level == ionlevel])
-            timedays = [at.get_timestep_time(modelpath, ts) for ts in plottimesteps]
+            timedayslist = [at.get_timestep_time(modelpath, ts) for ts in plottimesteps]
             plotpopulations = np.array([
                 float(populations[ts, level, mgi]) for ts, level, mgi in populations if level == ionlevel
             ])
@@ -518,10 +526,10 @@ def plot_populations_with_time_or_velocity(
             # linelabel = f'level {ionlevel} {modelname}'
 
             if args.x == "time":
-                ax.plot(timedays, plotpopulations, marker=markers[modelnumber], label=linelabel)
+                ax.plot(timedayslist, plotpopulations, marker=markers[modelnumber], label=linelabel)
             elif args.x == "velocity":
                 ax.plot(velocity, plotpopulations, marker=markers[modelnumber], label=linelabel)
-            # plt.plot(timedays, plotpopulationsLTE, marker=markers[modelnumber+1],
+            # plt.plot(timedayslist, plotpopulationsLTE, marker=markers[modelnumber+1],
             #          label=f'level {ionlevel} {modelname} LTE')
 
 

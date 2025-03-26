@@ -732,7 +732,7 @@ def make_lightcurve_plot(
     plt.close()
 
 
-def create_axes(args):
+def create_axes(args: argparse.Namespace) -> tuple[mpl.figure.Figure, npt.NDArray[t.Any] | mplax.Axes]:
     if "labelfontsize" in args:
         font = {"size": args.labelfontsize}
         mpl.rc("font", **font)
@@ -794,43 +794,59 @@ def get_linelabel(
     return linelabel
 
 
-def set_lightcurveplot_legend(ax, args: argparse.Namespace):
-    if not args.nolegend:
-        if args.subplots:
-            ax[args.legendsubplotnumber].legend(
-                loc=args.legendposition, frameon=args.legendframeon, fontsize="x-small", ncol=args.ncolslegend
-            )
-        else:
-            ax.legend(
-                loc=args.legendposition,
-                frameon=args.legendframeon,
-                fontsize="small",
-                ncol=args.ncolslegend,
-                handlelength=0.7,
-            )
+def set_lightcurveplot_legend(ax: mplax.Axes | npt.NDArray[t.Any], args: argparse.Namespace):
+    if args.nolegend:
+        return
+
+    if args.subplots:
+        assert isinstance(ax, np.ndarray)
+        ax[args.legendsubplotnumber].legend(
+            loc=args.legendposition, frameon=args.legendframeon, fontsize="x-small", ncol=args.ncolslegend
+        )
+    else:
+        assert isinstance(ax, mplax.Axes)
+        ax.legend(
+            loc=args.legendposition,
+            frameon=args.legendframeon,
+            fontsize="small",
+            ncol=args.ncolslegend,
+            handlelength=0.7,
+        )
 
 
-def set_lightcurve_plot_labels(fig, ax, filternames_conversion_dict, args, band_name=None):
+def set_lightcurve_plot_labels(
+    fig: mpl.figure.Figure,
+    ax: mplax.Axes | npt.NDArray[t.Any],
+    filternames_conversion_dict: dict[str, str],
+    args: argparse.Namespace,
+    band_name: str | None = None,
+) -> tuple[mpl.figure.Figure, mplax.Axes | npt.NDArray[t.Any]]:
     ylabel = None
     if args.subplots:
         if args.filter:
             ylabel = "Absolute Magnitude"
-        if args.colour_evolution:
+        elif args.colour_evolution:
             ylabel = r"$\Delta$m"
+        else:
+            msg = "No filter or colour evolution specified"
+            raise AssertionError(msg)
         fig.text(0.5, 0.025, "Time Since Explosion [days]", ha="center", va="center")
         fig.text(0.02, 0.5, ylabel, ha="center", va="center", rotation="vertical")
     else:
+        assert isinstance(ax, mplax.Axes)
         if args.filter and band_name in filternames_conversion_dict:
             ylabel = f"{filternames_conversion_dict[band_name]} Magnitude"
         elif args.filter:
             ylabel = f"{band_name} Magnitude"
         elif args.colour_evolution:
             ylabel = r"$\Delta$m"
+        else:
+            msg = "No filter or colour evolution specified"
+            raise AssertionError(msg)
+
         ax.set_ylabel(ylabel, fontsize=args.labelfontsize)  # r'M$_{\mathrm{bol}}$'
         ax.set_xlabel("Time Since Explosion [days]", fontsize=args.labelfontsize)
-    if ylabel is None:
-        print("failed to set ylabel")
-        sys.exit(1)
+
     return fig, ax
 
 
@@ -843,11 +859,11 @@ def make_colorbar_viewingangles_colormap():
 
 def get_viewinganglecolor_for_colorbar(
     angle: int,
-    costheta_viewing_angle_bins,  # noqa: ARG001
-    phi_viewing_angle_bins,  # noqa: ARG001
-    scaledmap,
-    plotkwargs,
-    args,
+    costheta_viewing_angle_bins: list[str],  # noqa: ARG001
+    phi_viewing_angle_bins: list[str],  # noqa: ARG001
+    scaledmap: t.Any,
+    plotkwargs: dict[str, t.Any],
+    args: argparse.Namespace,
 ) -> tuple[dict[str, t.Any], int]:
     nphibins = at.get_viewingdirection_phibincount()
     if args.colorbarcostheta:
@@ -865,7 +881,13 @@ def get_viewinganglecolor_for_colorbar(
     return plotkwargs, colorindex
 
 
-def make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args, fig=None, ax=None):  # noqa: ARG001
+def make_colorbar_viewingangles(
+    phi_viewing_angle_bins: list[str],  # noqa: ARG001
+    scaledmap: t.Any,
+    args: argparse.Namespace,
+    fig: mpl.figure.Figure | None = None,
+    ax: mplax.Axes | Iterable[mplax.Axes] | None = None,
+):
     if args.colorbarcostheta:
         # ticklabels = costheta_viewing_angle_bins
         ticklabels = [" -1", " -0.8", " -0.6", " -0.4", " -0.2", " 0", " 0.2", " 0.4", " 0.6", " 0.8", " 1"]
@@ -909,7 +931,10 @@ def make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args, fig=Non
 
 
 def make_band_lightcurves_plot(
-    modelpaths: Sequence[str | Path], filternames_conversion_dict: dict, outputfolder, args: argparse.Namespace
+    modelpaths: Sequence[str | Path],
+    filternames_conversion_dict: dict[str, str],
+    outputfolder: Path | str,
+    args: argparse.Namespace,
 ) -> None:
     # angle_names = [0, 45, 90, 180]
     # plt.style.use('dark_background')
@@ -973,6 +998,7 @@ def make_band_lightcurves_plot(
                 #     plt.plot(time, brightness_in_mag, label=modelname, color=define_colours_list[angle], linewidth=3)
 
                 if modelnumber == 0 and args.plot_hesma_model and band_name in hesma_model:  # TODO: see if this works
+                    assert isinstance(ax, mplax.Axes)
                     ax.plot(hesma_model.t, hesma_model[band_name], color="black")
 
                 # axarr[plotnumber].axis([0, 60, -16, -19.5])
@@ -1041,6 +1067,7 @@ def make_band_lightcurves_plot(
                         #     ax[plotnumber].plot(
                         #         cmfgen_mags['time[d]'], cmfgen_mags[key], label='CMFGEN', color='k', linewidth=3)
                 else:
+                    assert isinstance(ax, mplax.Axes)
                     ax.plot(time, brightness_in_mag, linewidth=3.5, **plotkwargs)  # color=color, linestyle=linestyle)
 
     at.set_mpl_style()
@@ -1057,9 +1084,11 @@ def make_band_lightcurves_plot(
     if args.show:
         plt.show()
 
-    ymin, ymax = (ax[0] if args.subplots else ax).get_ylim()
+    firstaxis = ax[0] if isinstance(ax, np.ndarray) else ax
+    assert isinstance(firstaxis, mplax.Axes)
+    ymin, ymax = firstaxis.get_ylim()
     if ymin < ymax:
-        (ax[0] if args.subplots else ax).invert_yaxis()
+        firstaxis.invert_yaxis()
 
     plt.savefig(args.outputfile, format="pdf")
     print(f"Saved figure: {args.outputfile}")
@@ -1094,13 +1123,15 @@ def make_band_lightcurves_plot(
 #                                       filternames_conversion_dict)
 
 
-def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder, args: argparse.Namespace):
+def colour_evolution_plot(
+    modelpaths, filternames_conversion_dict: dict[str, str], outputfolder, args: argparse.Namespace
+):
     args.labelfontsize = 24  # TODO: make command line arg
     angle_counter = 0
 
     fig, ax = create_axes(args)
 
-    plotkwargs = {}
+    plotkwargs: dict[str, t.Any] = {}
 
     for modelnumber, modelpath in enumerate(modelpaths):
         modelpath = Path(modelpath)
@@ -1160,6 +1191,7 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
                     assert isinstance(ax, np.ndarray)
                     ax[plotnumber].plot(plot_times, colour_delta_mag, linewidth=4, **plotkwargs)
                 else:
+                    assert isinstance(ax, mplax.Axes)
                     ax.plot(plot_times, colour_delta_mag, linewidth=3, **plotkwargs)
 
                 curax = ax if isinstance(ax, mplax.Axes) else ax[plotnumber]
