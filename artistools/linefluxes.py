@@ -7,6 +7,7 @@ import json
 import math
 import typing as t
 from collections import namedtuple
+from collections.abc import Iterable
 from collections.abc import Sequence
 from functools import partial
 from pathlib import Path
@@ -21,6 +22,22 @@ from matplotlib import markers as mplmarkers
 from matplotlib.typing import MarkerType
 
 import artistools as at
+
+featuretuple = namedtuple(
+    "featuretuple",
+    [
+        "colname",
+        "featurelabel",
+        "approxlambda",
+        "linelistindices",
+        "lowestlambda",
+        "highestlambda",
+        "atomic_number",
+        "ion_stage",
+        "upperlevelindicies",
+        "lowerlevelindicies",
+    ],
+)
 
 
 def print_floers_line_ratio(
@@ -138,7 +155,12 @@ def get_line_fluxes_from_packets(
     return pd.DataFrame(dictlcdata)
 
 
-def get_line_fluxes_from_pops(emfeatures, modelpath, arr_tstart=None, arr_tend=None) -> pd.DataFrame:
+def get_line_fluxes_from_pops(
+    emfeatures: Iterable[featuretuple],
+    modelpath: Path | str,
+    arr_tstart: Iterable[float] | None = None,
+    arr_tend: Iterable[float] | None = None,
+) -> pd.DataFrame:
     from astropy import units as u
 
     if arr_tstart is None:
@@ -225,7 +247,7 @@ def get_line_fluxes_from_pops(emfeatures, modelpath, arr_tstart=None, arr_tend=N
 
 
 def get_closelines(
-    modelpath,
+    modelpath: Path | str,
     atomic_number: int,
     ion_stage: int,
     approxlambdalabel: str | int,
@@ -233,7 +255,7 @@ def get_closelines(
     lambdamax: float | None = None,
     lowerlevelindex: int | None = None,
     upperlevelindex: int | None = None,
-):
+) -> tuple[str, str, str | int, tuple[int], float, float, int, int, tuple[int], tuple[int]]:
     dflinelistclosematches = (
         at.get_linelist_dataframe(modelpath).query("atomic_number == @atomic_number and ion_stage == @ion_stage").copy()
     )
@@ -251,7 +273,7 @@ def get_closelines(
     upperlevelindicies = tuple(dflinelistclosematches.upperlevelindex.to_numpy())
     lowerlevelindicies = tuple(dflinelistclosematches.lowerlevelindex.to_numpy())
     lowestlambda = dflinelistclosematches.lambda_angstroms.min()
-    highestlamba = dflinelistclosematches.lambda_angstroms.max()
+    highestlambda = dflinelistclosematches.lambda_angstroms.max()
     colname = f"flux_{at.get_ionstring(atomic_number, ion_stage, sep='')}_{approxlambdalabel}"
     featurelabel = f"{at.get_ionstring(atomic_number, ion_stage)} {approxlambdalabel} Å"
 
@@ -261,7 +283,7 @@ def get_closelines(
         approxlambdalabel,
         linelistindices,
         lowestlambda,
-        highestlamba,
+        highestlambda,
         atomic_number,
         ion_stage,
         upperlevelindicies,
@@ -269,29 +291,13 @@ def get_closelines(
     )
 
 
-def get_labelandlineindices(modelpath, emfeaturesearch):
-    featuretuple = namedtuple(
-        "featuretuple",
-        [
-            "colname",
-            "featurelabel",
-            "approxlambda",
-            "linelistindices",
-            "lowestlambda",
-            "highestlamba",
-            "atomic_number",
-            "ion_stage",
-            "upperlevelindicies",
-            "lowerlevelindicies",
-        ],
-    )
-
+def get_labelandlineindices(modelpath: Path | str, emfeaturesearch: tuple) -> list[featuretuple]:
     labelandlineindices = []
     for params in emfeaturesearch:
         feature = featuretuple(*get_closelines(modelpath, *params))
         print(
             f"{feature.featurelabel} includes {len(feature.linelistindices)} lines "
-            f"[{feature.lowestlambda:.1f} Å, {feature.highestlamba:.1f} Å]"
+            f"[{feature.lowestlambda:.1f} Å, {feature.highestlambda:.1f} Å]"
         )
         labelandlineindices.append(feature)
     # labelandlineindices.append(featuretuple(*get_closelines(dflinelist, 26, 2, 7155, 7150, 7160)))
