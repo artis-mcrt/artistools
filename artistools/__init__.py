@@ -93,6 +93,7 @@ from artistools.misc import match_closest_time as match_closest_time
 from artistools.misc import merge_pdf_files as merge_pdf_files
 from artistools.misc import parse_range as parse_range
 from artistools.misc import parse_range_list as parse_range_list
+from artistools.misc import print_theta_phi_definitions as print_theta_phi_definitions
 from artistools.misc import read_linestatfile as read_linestatfile
 from artistools.misc import readnoncommentline as readnoncommentline
 from artistools.misc import roman_numerals as roman_numerals

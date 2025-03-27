@@ -21,6 +21,7 @@ import numpy.typing as npt
 import polars as pl
 
 import artistools as at
+from artistools.misc import print_theta_phi_definitions
 
 color_list = list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20)))
 
@@ -404,6 +405,9 @@ def plot_artis_lightcurve(
             "(requires deposition.out, input.txt, model.txt)"
         )
         nts_last, validrange_start_days, validrange_end_days = None, -math.inf, math.inf
+
+    if any(dirbin != -1 for dirbin in dirbins):
+        print_theta_phi_definitions()
 
     colorindex: t.Any = None
     for dirbin in dirbins:

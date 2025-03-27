@@ -12,6 +12,7 @@ import numpy as np
 import polars as pl
 
 import artistools as at
+from artistools.misc import print_theta_phi_definitions
 
 
 def plot_spherical(
@@ -68,7 +69,7 @@ def plot_spherical(
     # y=math.sin(-phi)
 
     dfpackets = at.packets.bin_packet_directions_lazypolars(
-        dfpackets=dfpackets, nphibins=nphibins, ncosthetabins=ncosthetabins, phibintype="phiascending"
+        dfpackets=dfpackets, nphibins=nphibins, ncosthetabins=ncosthetabins, phibintype="phibinmonotonicasc"
     )
 
     # for figuring out where the axes are on the plot, make a cut
@@ -151,22 +152,24 @@ def plot_spherical(
 
     aggs.append(pl.len().alias("count"))
     dfpackets = (
-        dfpackets.group_by(["costhetabin", "phibin"]).agg(aggs).select(["costhetabin", "phibin", "count", *plotvars])
+        dfpackets.group_by(["costhetabin", "phibinmonotonicasc"])
+        .agg(aggs)
+        .select(["costhetabin", "phibinmonotonicasc", "count", *plotvars])
     )
 
     ndirbins = nphibins * ncosthetabins
     alldirbins = (
         pl.DataFrame(
             {
-                "phibin": (d % nphibins for d in range(ndirbins)),
+                "phibinmonotonicasc": (d % nphibins for d in range(ndirbins)),
                 "costhetabin": (d // nphibins for d in range(ndirbins)),
             },
-            schema={"phibin": pl.Int32, "costhetabin": pl.Int32},
+            schema={"phibinmonotonicasc": pl.Int32, "costhetabin": pl.Int32},
         )
         .lazy()
-        .join(dfpackets, how="left", on=["costhetabin", "phibin"], coalesce=True)
+        .join(dfpackets, how="left", on=["costhetabin", "phibinmonotonicasc"], coalesce=True)
         .fill_null(0)
-        .sort(["costhetabin", "phibin"])
+        .sort(["costhetabin", "phibinmonotonicasc"])
     ).collect()
 
     print(f"packets plotted: {alldirbins.select('count').sum().item(0, 0):.1e}")
@@ -337,6 +340,7 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
         time_ranges = [(args.timemin, args.timemax, "")]
         outformat = args.format or "pdf"
 
+    print_theta_phi_definitions()
     outputfilenames = []
     for tstart, tend, label in time_ranges:
         if tend is not None:
