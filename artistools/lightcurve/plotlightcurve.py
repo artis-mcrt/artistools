@@ -386,10 +386,10 @@ def plot_artis_lightcurve(
         costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(usedegrees=usedegrees)
         scaledmap = make_colorbar_viewingangles_colormap()
 
-    lctimemin, lctimemax = (
-        float(lcdataframes[dirbins[0]]["time"].to_numpy().min()),
-        float(lcdataframes[dirbins[0]]["time"].to_numpy().max()),
-    )
+    lctimemin = lcdataframes[dirbins[0]]["time"].min()
+    lctimemax = lcdataframes[dirbins[0]]["time"].max()
+    assert isinstance(lctimemin, float)
+    assert isinstance(lctimemax, float)
 
     print(f" range of light curve: {lctimemin:.2f} to {lctimemax:.2f} days")
     try:
