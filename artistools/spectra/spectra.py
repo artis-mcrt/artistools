@@ -430,13 +430,10 @@ def get_from_packets(
             )
 
         elif use_time == "emission":
+            # We bin packets according to the emission time, but we shift times so we're still centered around the observer arrival time.
+            # This makes easier to directly compare specta between emission time (no relative light travel time effects) and the standard arrival time
             col_emit_time = "tdecay" if gamma else "em_time"
-            mean_correction = float(
-                dfpackets.select((pl.col(col_emit_time) - pl.col("t_arrive_d") * 86400.0).mean())
-                .lazy()
-                .collect()
-                .to_numpy()[0][0]
-            )
+            mean_correction = (pl.col(col_emit_time) - pl.col("t_arrive_d") * 86400.0).mean()
 
             dfpackets = dfpackets.filter(
                 pl.col(col_emit_time).is_between(
