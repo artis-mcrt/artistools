@@ -115,7 +115,7 @@ def get_dfspectrum_x_y_with_units(
         case "eflux":
             erg_to_angstrom = 1.986454e-8
             erg_to_xunit = convert_angstroms_to_unit(erg_to_angstrom, xunit.lower())
-            dfspectrum = dfspectrum.with_columns(y=(pl.col("yflux") / fluxdistance_mpc**2).pow(2) * erg_to_xunit)
+            dfspectrum = dfspectrum.with_columns(y=(pl.col("yflux") * erg_to_xunit * fluxdistance_mpc**2).pow(2))
         case "photoncount":
             ev_to_erg = 1.60218e-12
             dfspectrum = dfspectrum.with_columns(
