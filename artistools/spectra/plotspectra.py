@@ -59,8 +59,18 @@ def get_lambda_range_binsize(
         atspectra.convert_unit_to_angstroms(xmin, args.xunit),
         atspectra.convert_unit_to_angstroms(xmax, args.xunit),
     ])
-    if args.deltax is not None:
-        x_bin_edges = np.arange(xmin, xmax + args.deltax, args.deltax)
+    if args.deltax is not None or args.deltalogx is not None:
+        if args.deltalogx is not None:
+            x = xmin
+            list_x_bin_edges = [xmin]
+            steps = 0
+            while x <= xmax:
+                x *= 1 + args.deltalogx
+                list_x_bin_edges.append(x)
+                steps += 1
+            x_bin_edges = np.array(list_x_bin_edges)
+        else:
+            x_bin_edges = np.arange(xmin, xmax + args.deltax, args.deltax)
         lambda_bin_edges = np.array(
             sorted(atspectra.convert_unit_to_angstroms(float(x), args.xunit) for x in x_bin_edges)
         )
@@ -1378,12 +1388,22 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-xmax", "-lambdamax", dest="xmax", type=float, default=None, help="Plot range: maximum x range"
     )
 
-    parser.add_argument(
+    xbinsizegroup = parser.add_mutually_exclusive_group()
+
+    xbinsizegroup.add_argument(
         "-deltalambda", type=float, default=None, help="Lambda bin size in Angstroms (applies to from_packets only)"
     )
 
-    parser.add_argument(
+    xbinsizegroup.add_argument(
         "-deltax", "-dx", type=float, default=None, help="Horizontal bin size in x-unit (applies to from_packets only)"
+    )
+
+    xbinsizegroup.add_argument(
+        "-deltalogx",
+        "-dlogx",
+        type=float,
+        default=None,
+        help="Horizontal bin size factor x[1] = x[0] * (1 + dlogx) (applies to from_packets only)",
     )
 
     parser.add_argument("-ymin", type=float, default=None, help="Plot range: y-axis")
