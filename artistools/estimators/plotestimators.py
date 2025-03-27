@@ -399,9 +399,11 @@ def plot_multi_ion_series(
             expr_normfactor = pl.col(f"nnelement_{elsymbol}")
         elif args.poptype == "totalpop":
             expr_normfactor = pl.col("nntot")
-        elif args.poptype == "radialdensity":
-            expr_normfactor = 1 / (4 * math.pi * pl.col("vel_r_mid").mean().pow(2))
+        elif args.poptype in {"radialdensity", "cylradialdensity"}:
+            # get the volumetric number density to later be multiplied by the surface area of a sphere or cylinder
+            expr_normfactor = pl.lit(1)
         elif args.poptype == "cumulative":
+            # multiply by volume to get number of particles
             expr_normfactor = pl.lit(1) / pl.col("volume")
         else:
             raise AssertionError
@@ -409,6 +411,12 @@ def plot_multi_ion_series(
         expr_yvals = (expr_yvals * pl.col("volume") * pl.col("tdelta")).sum() / (
             expr_normfactor * pl.col("volume") * pl.col("tdelta")
         ).sum()
+
+        # convert volumetric number density to radial density
+        if args.poptype == "radialdensity":
+            expr_yvals *= 4 * math.pi * pl.col("vel_r_mid").mean().pow(2)
+        elif args.poptype == "cylradialdensity":
+            expr_yvals *= 2 * math.pi * pl.col("vel_rcyl_mid").mean()
 
         series_lazy = (
             estimators.group_by("plotpointid", maintain_order=True)
@@ -476,6 +484,8 @@ def plot_multi_ion_series(
             ax.set_ylabel(r"X$_{i}$/X$_{rm tot}$")
         elif args.poptype == "radialdensity":
             ax.set_ylabel(r"Radial density dN/dr $\left[\rm{cm}^{-1}\right]$")
+        elif args.poptype == "cylradialdensity":
+            ax.set_ylabel(r"Cylindrical radial density dN/drcyl $\left[\rm{cm}^{-1}\right]$")
         elif args.poptype == "cumulative":
             ax.set_ylabel(r"Cumulative particle count")
         else:
@@ -899,7 +909,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-poptype",
         dest="poptype",
         default="elpop",
-        choices=["absolute", "totalpop", "elpop", "radialdensity", "cumulative"],
+        choices=["absolute", "totalpop", "elpop", "radialdensity", "cylradialdensity", "cumulative"],
         help="Plot absolute ion populations, or ion populations as a fraction of total or element population",
     )
 
