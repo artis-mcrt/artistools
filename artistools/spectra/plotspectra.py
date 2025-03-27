@@ -1422,13 +1422,15 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--normalised", action="store_true", help="Normalise all spectra to their peak values")
 
-    parser.add_argument(
+    timegroup = parser.add_mutually_exclusive_group()
+
+    timegroup.add_argument(
         "--use_escapetime",
         action="store_true",
         help="Use the time of packet escape to the surface (instead of a plane toward the observer)",
     )
 
-    parser.add_argument("--use_emissiontime", action="store_true", help="Use the time of packet last emission")
+    timegroup.add_argument("--use_emissiontime", action="store_true", help="Use the time of packet last emission")
 
     parser.add_argument(
         "--use_thermalemissiontype",
@@ -1653,6 +1655,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if args.gamma and args.plotviewingangle:
         # exspec does not generate angle-resolved gamma spectra files,
+        # so we need to use the packets instead
+        args.frompackets = True
+
+    if args.use_emissiontime or args.use_escapetime:
+        # exspec spectra are binned by arrivine time at the observer
         # so we need to use the packets instead
         args.frompackets = True
 
