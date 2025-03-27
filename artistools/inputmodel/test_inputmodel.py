@@ -29,6 +29,7 @@ def test_describeinputmodel_3d() -> None:
 def test_get_modeldata_1d() -> None:
     for getheadersonly in (False, True):
         _, modelmeta = at.get_modeldata(modelpath=modelpath, getheadersonly=getheadersonly)
+        assert np.isclose(modelmeta["t_model_init_days"], 0.00115740740741, rtol=0.0001)
         assert np.isclose(modelmeta["vmax_cmps"], 800000000.0)
         assert modelmeta["dimensions"] == 1
         assert modelmeta["npts_model"] == 1
