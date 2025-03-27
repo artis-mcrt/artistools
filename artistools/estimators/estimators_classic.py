@@ -14,6 +14,7 @@ def get_atomic_composition(modelpath: Path) -> dict[int, int]:
 
     with (modelpath / "output_0-0.txt").open(encoding="utf-8") as foutput:
         ioncount = 0
+        Z = None
         for row in foutput:
             if row.split()[0] == "[input.c]":
                 split_row = row.split()
@@ -22,6 +23,7 @@ def get_atomic_composition(modelpath: Path) -> dict[int, int]:
                     ioncount = 0
                 elif split_row[1] == "ion":
                     ioncount += 1
+                    assert Z is not None, "Z should be set before ioncount"
                     atomic_composition[Z] = ioncount
     return atomic_composition
 
@@ -45,7 +47,7 @@ def parse_ion_row_classic(row: list[str], outdict: dict[str, t.Any], atomic_comp
             outdict["nntot"] = totalpop + value_thision
 
 
-def get_first_ts_in_run_directory(modelpath) -> dict[str, int]:
+def get_first_ts_in_run_directory(modelpath: str | Path) -> dict[str, int]:
     folderlist_all = (*sorted([child for child in Path(modelpath).iterdir() if child.is_dir()]), Path(modelpath))
 
     first_timesteps_in_dir = {}

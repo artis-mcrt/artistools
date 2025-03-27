@@ -7,6 +7,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 
 import artistools as at
 
@@ -14,7 +15,7 @@ if t.TYPE_CHECKING:
     from mpl_toolkits.mplot3d import Axes3D
 
 
-def make_cone(args):
+def make_cone(args: argparse.Namespace) -> pd.DataFrame:
     print("Making cone")
 
     angle_of_cone = 30  # in deg
@@ -24,6 +25,7 @@ def make_cone(args):
     dfmodel, modelmeta = at.get_modeldata_pandas(modelpath=args.modelpath[0], get_elemabundances=True)
     args.t_model = modelmeta["t_model_init_days"]
 
+    cone: pd.DataFrame
     if args.positive_axis:
         print("using positive axis")
         cone = dfmodel.loc[
@@ -48,7 +50,9 @@ def make_cone(args):
     return cone
 
 
-def get_profile_along_axis(args: argparse.Namespace, modeldata=None, derived_cols=None):
+def get_profile_along_axis(
+    args: argparse.Namespace, modeldata: pd.DataFrame | None = None, derived_cols: Sequence[str] | None = None
+) -> pd.DataFrame:
     print("Getting profile along axis")
 
     # merge_dfs, args.t_model, args.vmax = at.inputmodel.get_modeldata_tuple(args.modelpath, dimensions=3, get_elemabundances=True)
@@ -74,10 +78,13 @@ def get_profile_along_axis(args: argparse.Namespace, modeldata=None, derived_col
             & (modeldata[f"pos_{args.sliceaxis}_min"] < 0)
         ]
 
-    return profile1d.reset_index(drop=True)
+    profile1d = profile1d.reset_index(drop=True)
+    assert isinstance(profile1d, pd.DataFrame)
+    return profile1d
 
 
-def make_1d_profile(args):
+def make_1d_profile(args: argparse.Namespace) -> pd.DataFrame:
+    """Make 1D model from 3D model."""
     from astropy import units as u
 
     logprint = at.inputmodel.inputmodel_misc.savetologfile(
@@ -121,7 +128,7 @@ def make_1d_profile(args):
     if not args.positive_axis:
         # Invert rows and *velocity by -1 to make velocities positive for slice on negative axis
         slice1d.iloc[:] = slice1d.iloc[::-1].to_numpy()
-        slice1d["vel_r_max_kmps"] = slice1d["vel_r_max_kmps"].apply(lambda x: x * -1)
+        slice1d["vel_r_max_kmps"] *= -1
 
     # with pd.option_context('display.max_rows', None, 'display.max_columns', None):
     #     print(slice1d)
@@ -130,7 +137,7 @@ def make_1d_profile(args):
     return slice1d
 
 
-def make_1d_model_files(args):
+def make_1d_model_files(args: argparse.Namespace) -> None:
     slice1d = make_1d_profile(args)
 
     # query_abundances_positions = slice1d.columns.str.startswith("X_")
@@ -179,7 +186,7 @@ def make_1d_model_files(args):
 # cone = cone.loc[cone['rho_model'] > 0.0]
 
 
-def make_plot(args) -> None:
+def make_plot(args: argparse.Namespace) -> None:
     cone = make_cone(args)
 
     cone = cone.loc[cone["rho_model"] > 0.0002]  # cut low densities (empty cells?) from plot
@@ -193,7 +200,7 @@ def make_plot(args) -> None:
     y = cone["pos_y_min"].apply(lambda x: x / args.t_model * (u.cm / u.day).to("km/s")) / 1e3
     z = cone["pos_x_min"].apply(lambda x: x / args.t_model * (u.cm / u.day).to("km/s")) / 1e3
 
-    _surf = ax.scatter3D(x, y, z, c=-cone["fni"], cmap=plt.get_cmap("viridis"))
+    _surf = ax.scatter3D(x, y, z, c=-cone["fni"], cmap=plt.get_cmap("viridis"))  # pyright: ignore[reportArgumentType]
 
     # fig.colorbar(_surf, shrink=0.5, aspect=5)
 

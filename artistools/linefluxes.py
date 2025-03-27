@@ -6,7 +6,7 @@ import contextlib
 import json
 import math
 import typing as t
-from collections import namedtuple
+from collections.abc import Iterable
 from collections.abc import Sequence
 from functools import partial
 from pathlib import Path
@@ -23,13 +23,26 @@ from matplotlib.typing import MarkerType
 import artistools as at
 
 
+class FeatureTuple(t.NamedTuple):
+    colname: str
+    featurelabel: str
+    approxlambda: float | str
+    linelistindices: Sequence[int]
+    lowestlambda: float
+    highestlambda: float
+    atomic_number: int
+    ion_stage: int
+    upperlevelindicies: Sequence[int]
+    lowerlevelindicies: Sequence[int]
+
+
 def print_floers_line_ratio(
-    modelpath: Path, timedays: float, arr_f_lambda: np.ndarray, arr_lambda_angstroms: np.ndarray
+    modelpath: Path, timedays: float, arr_f_lambda: npt.NDArray, arr_lambda_angstroms: npt.NDArray
 ) -> None:
     from scipy import integrate
 
     def get_line_flux(
-        lambda_low: float, lambda_high: float, arr_f_lambda: np.ndarray, arr_lambda_angstroms: np.ndarray
+        lambda_low: float, lambda_high: float, arr_f_lambda: npt.NDArray, arr_lambda_angstroms: npt.NDArray
     ) -> float:
         index_low, index_high = (
             int(np.searchsorted(arr_lambda_angstroms, wl, side="left")) for wl in (lambda_low, lambda_high)
@@ -138,7 +151,12 @@ def get_line_fluxes_from_packets(
     return pd.DataFrame(dictlcdata)
 
 
-def get_line_fluxes_from_pops(emfeatures, modelpath, arr_tstart=None, arr_tend=None) -> pd.DataFrame:
+def get_line_fluxes_from_pops(
+    emfeatures: Iterable[FeatureTuple],
+    modelpath: Path | str,
+    arr_tstart: Iterable[float] | None = None,
+    arr_tend: Iterable[float] | None = None,
+) -> pd.DataFrame:
     from astropy import units as u
 
     if arr_tstart is None:
@@ -225,7 +243,7 @@ def get_line_fluxes_from_pops(emfeatures, modelpath, arr_tstart=None, arr_tend=N
 
 
 def get_closelines(
-    modelpath,
+    modelpath: Path | str,
     atomic_number: int,
     ion_stage: int,
     approxlambdalabel: str | int,
@@ -233,7 +251,7 @@ def get_closelines(
     lambdamax: float | None = None,
     lowerlevelindex: int | None = None,
     upperlevelindex: int | None = None,
-):
+) -> tuple[str, str, str | int, tuple[int], float, float, int, int, tuple[int], tuple[int]]:
     dflinelistclosematches = (
         at.get_linelist_dataframe(modelpath).query("atomic_number == @atomic_number and ion_stage == @ion_stage").copy()
     )
@@ -251,7 +269,7 @@ def get_closelines(
     upperlevelindicies = tuple(dflinelistclosematches.upperlevelindex.to_numpy())
     lowerlevelindicies = tuple(dflinelistclosematches.lowerlevelindex.to_numpy())
     lowestlambda = dflinelistclosematches.lambda_angstroms.min()
-    highestlamba = dflinelistclosematches.lambda_angstroms.max()
+    highestlambda = dflinelistclosematches.lambda_angstroms.max()
     colname = f"flux_{at.get_ionstring(atomic_number, ion_stage, sep='')}_{approxlambdalabel}"
     featurelabel = f"{at.get_ionstring(atomic_number, ion_stage)} {approxlambdalabel} Å"
 
@@ -261,7 +279,7 @@ def get_closelines(
         approxlambdalabel,
         linelistindices,
         lowestlambda,
-        highestlamba,
+        highestlambda,
         atomic_number,
         ion_stage,
         upperlevelindicies,
@@ -269,29 +287,13 @@ def get_closelines(
     )
 
 
-def get_labelandlineindices(modelpath, emfeaturesearch):
-    featuretuple = namedtuple(
-        "featuretuple",
-        [
-            "colname",
-            "featurelabel",
-            "approxlambda",
-            "linelistindices",
-            "lowestlambda",
-            "highestlamba",
-            "atomic_number",
-            "ion_stage",
-            "upperlevelindicies",
-            "lowerlevelindicies",
-        ],
-    )
-
+def get_labelandlineindices(modelpath: Path | str, emfeaturesearch: tuple) -> list[FeatureTuple]:
     labelandlineindices = []
     for params in emfeaturesearch:
-        feature = featuretuple(*get_closelines(modelpath, *params))
+        feature = FeatureTuple(*get_closelines(modelpath, *params))
         print(
             f"{feature.featurelabel} includes {len(feature.linelistindices)} lines "
-            f"[{feature.lowestlambda:.1f} Å, {feature.highestlamba:.1f} Å]"
+            f"[{feature.lowestlambda:.1f} Å, {feature.highestlambda:.1f} Å]"
         )
         labelandlineindices.append(feature)
     # labelandlineindices.append(featuretuple(*get_closelines(dflinelist, 26, 2, 7155, 7150, 7160)))
@@ -348,7 +350,7 @@ def make_flux_ratio_plot(args: argparse.Namespace) -> None:
                 arr_tend=args.timebins_tend,
             )
         )
-        dflcdata["fratio"] = emfeatures[1].colname / emfeatures[0].colname
+        dflcdata["fratio"] = dflcdata[emfeatures[1].colname] / dflcdata[emfeatures[0].colname]
         axis.set_ylabel(
             r"F$_{\mathrm{" + emfeatures[1].featurelabel + r"}}$ / F$_{\mathrm{" + emfeatures[0].featurelabel + r"}}$"
         )
@@ -456,29 +458,8 @@ def get_packets_with_emission_conditions(
 ) -> pd.DataFrame:
     estimators = at.estimators.read_estimators(modelpath)
 
-    # modeldata, _ = at.inputmodel.get_modeldata(modelpath)
     ts = at.get_timestep_of_timedays(modelpath, tend)
     allnonemptymgilist = list({modelgridindex for estimts, modelgridindex in estimators if estimts == ts})
-
-    # model_tmids = at.get_timestep_times(modelpath, loc='mid')
-    # arr_velocity_mid = tuple(list([(float(v1) + float(v2)) * 0.5 for v1, v2 in zip(
-    #     modeldata['vel_r_min_kmps'].to_numpy(), modeldata['vel_r_max_kmps'].to_numpy())]))
-
-    # from scipy.interpolate import interp1d
-    # interp_log10nne, interp_te = {}, {}
-    # for ts in range(len(model_tmids)):
-    #     arr_v = np.zeros_like(allnonemptymgilist, dtype='float')
-    #     arr_log10nne = np.zeros_like(allnonemptymgilist, dtype='float')
-    #     arr_te = np.zeros_like(allnonemptymgilist, dtype='float')
-    #     for i, mgi in enumerate(allnonemptymgilist):
-    #         arr_v[i] = arr_velocity_mid[mgi]
-    #         arr_log10nne[i] = math.log10(float(estimators[(ts, mgi)]['nne']))
-    #         arr_te[i] = estimators[(ts, mgi)]['Te']
-    #
-    #     interp_log10nne[ts] =interp1d(arr_v.copy(), arr_log10nne.copy(),
-    #                                                kind='linear', fill_value='extrapolate')
-    #     interp_te[ts] = interp1d(arr_v.copy(), arr_te.copy(), kind='linear', fill_value='extrapolate')
-
     em_mgicolumn = "em_modelgridindex" if emtypecolumn == "emissiontype" else "emtrue_modelgridindex"
 
     dfpackets_selected, _ = get_packets_with_emtype(modelpath, emtypecolumn, lineindices, maxpacketfiles=maxpacketfiles)
@@ -490,18 +471,13 @@ def get_packets_with_emission_conditions(
     )
 
     if not dfpackets_selected.empty:
+        dfpackets_selected["em_log10nne"] = dfpackets_selected.apply(
+            lambda packet: math.log10(estimators[int(packet["em_timestep"]), int(packet[em_mgicolumn])]["nne"]), axis=1
+        )
 
-        def em_lognne(packet):
-            # return interp_log10nne[packet.em_timestep](packet.true_emission_velocity)
-            return math.log10(estimators[int(packet["em_timestep"]), int(packet[em_mgicolumn])]["nne"])
-
-        dfpackets_selected["em_log10nne"] = dfpackets_selected.apply(em_lognne, axis=1)
-
-        def em_Te(packet):
-            # return interp_te[packet.em_timestep](packet.true_emission_velocity)
-            return estimators[int(packet["em_timestep"]), int(packet[em_mgicolumn])]["Te"]
-
-        dfpackets_selected["em_Te"] = dfpackets_selected.apply(em_Te, axis=1)
+        dfpackets_selected["em_Te"] = dfpackets_selected.apply(
+            lambda packet: estimators[int(packet["em_timestep"]), int(packet[em_mgicolumn])]["Te"], axis=1
+        )
 
     return dfpackets_selected
 
@@ -544,7 +520,7 @@ def plot_nne_te_points(
     #           fillstyle='full', color=color_b)
 
 
-def plot_nne_te_bars(axis, em_log10nne, em_Te, color) -> None:
+def plot_nne_te_bars(axis: mplax.Axes, em_log10nne, em_Te, color: t.Any) -> None:
     if len(em_log10nne) == 0:
         return
     errorbarkwargs = {

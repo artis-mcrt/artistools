@@ -5,6 +5,7 @@ import argparse
 import contextlib
 import math
 import sys
+import typing as t
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -41,7 +42,14 @@ def annotate_emission_line(ax: mplax.Axes, y: float, upperlevel: int, lowerlevel
     )
 
 
-def plot_reference_data(ax, atomic_number: int, ion_stage: int, estimators_celltimestep, dfpopthision, annotatelines):
+def plot_reference_data(
+    ax: mplax.Axes,
+    atomic_number: int,
+    ion_stage: int,
+    estimators_celltimestep: dict[str, t.Any],
+    dfpopthision: pd.DataFrame,
+    annotatelines: bool,
+) -> None:
     nne, Te, TR, W = (estimators_celltimestep[s] for s in ("nne", "Te", "TR", "W"))
     # comparison to Chianti file
     elsym = at.get_elsymbol(atomic_number)
@@ -113,7 +121,9 @@ def plot_reference_data(ax, atomic_number: int, ion_stage: int, estimators_cellt
         annotate_emission_line(ax=ax, y=0.53, upperlevel=16, lowerlevel=5, label=r"7155$~\mathrm{{\AA}}$")
 
 
-def get_floers_data(dfpopthision, atomic_number, ion_stage, modelpath, T_e, modelgridindex):
+def get_floers_data(
+    dfpopthision: pd.DataFrame, atomic_number: int, ion_stage: int, modelpath, T_e: float, modelgridindex: int
+) -> tuple[list[int] | None, list[float] | None]:
     floers_levelnums, floers_levelpop_values = None, None
 
     # comparison to Andeas Floers's NLTE pops for Shingles et al. (2022)
@@ -417,6 +427,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths: list[Path | str], ar
 
     for plotnumber, timedays in enumerate(timedayslist):
         axis = ax[plotnumber] if args.subplots else ax
+        assert isinstance(axis, mplax.Axes)
         plot_populations_with_time_or_velocity(
             axis, modelpaths, timedays, ion_stage, ionlevels, Z, levelconfignames, args
         )
@@ -458,7 +469,14 @@ def make_plot_populations_with_time_or_velocity(modelpaths: list[Path | str], ar
 
 
 def plot_populations_with_time_or_velocity(
-    ax, modelpaths, timedays, ion_stage, ionlevels, Z, levelconfignames, args: argparse.Namespace
+    ax: mplax.Axes,
+    modelpaths: list[Path | str],
+    timedays: float,
+    ion_stage: int,
+    ionlevels,
+    Z: int,
+    levelconfignames,
+    args: argparse.Namespace,
 ):
     if args.x == "time":
         timesteps = list(range(args.timestepmin, args.timestepmax))
@@ -498,7 +516,7 @@ def plot_populations_with_time_or_velocity(
 
         for ionlevel in ionlevels:
             plottimesteps = np.array([ts for ts, level, mgi in populations if level == ionlevel])
-            timedays = [at.get_timestep_time(modelpath, ts) for ts in plottimesteps]
+            timedayslist = [at.get_timestep_time(modelpath, ts) for ts in plottimesteps]
             plotpopulations = np.array([
                 float(populations[ts, level, mgi]) for ts, level, mgi in populations if level == ionlevel
             ])
@@ -508,10 +526,10 @@ def plot_populations_with_time_or_velocity(
             # linelabel = f'level {ionlevel} {modelname}'
 
             if args.x == "time":
-                ax.plot(timedays, plotpopulations, marker=markers[modelnumber], label=linelabel)
+                ax.plot(timedayslist, plotpopulations, marker=markers[modelnumber], label=linelabel)
             elif args.x == "velocity":
                 ax.plot(velocity, plotpopulations, marker=markers[modelnumber], label=linelabel)
-            # plt.plot(timedays, plotpopulationsLTE, marker=markers[modelnumber+1],
+            # plt.plot(timedayslist, plotpopulationsLTE, marker=markers[modelnumber+1],
             #          label=f'level {ionlevel} {modelname} LTE')
 
 
@@ -738,7 +756,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-outputfile", "-o", type=Path, default=defaultoutputfile, help="path/filename for PDF file")
 
 
-def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot ARTIS non-LTE populations."""
     if args is None:
         parser = argparse.ArgumentParser(description=__doc__)
@@ -790,7 +808,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if isinstance(args.velocity, float | int):
         args.velocity = [args.velocity]
 
-    mgilist: list[int | float] = [int(mgi) for mgi in args.modelgridindex]
+    mgilist: list[int | None] = [int(mgi) for mgi in args.modelgridindex]
     mgilist.extend(at.inputmodel.get_mgi_of_velocity_kms(modelpath, vel) for vel in args.velocity)
     if not mgilist:
         mgilist.append(0)

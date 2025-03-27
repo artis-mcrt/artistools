@@ -3,6 +3,7 @@
 
 import argparse
 import math
+import typing as t
 from collections.abc import Sequence
 from io import TextIOWrapper
 from pathlib import Path
@@ -191,7 +192,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-outputpath", "-o", action="store", type=Path, default=Path(), help="path for output files")
 
 
-def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Write ARTIS model data out in code comparison workshop format."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)

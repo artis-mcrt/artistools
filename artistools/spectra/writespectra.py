@@ -1,6 +1,7 @@
 """Write out ARTIS spectra for each timestep to individual text files."""
 
 import argparse
+import typing as t
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -59,11 +60,11 @@ def write_flambda_spectra(modelpath: Path) -> None:
             break
 
 
-def addargs(parser) -> None:
+def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-modelpath", type=Path, default=Path(), help="Path to ARTIS folder")
 
 
-def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot spectra from ARTIS and reference data."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)

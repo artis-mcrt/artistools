@@ -2,6 +2,7 @@
 
 import argparse
 import sys
+import typing as t
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -132,7 +133,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Solve Spencer-Fano equation using data from ARTIS cell at some timestep."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)

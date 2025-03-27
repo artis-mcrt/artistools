@@ -12,6 +12,7 @@ from pathlib import Path
 
 import matplotlib.axes as mplax
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 
 import artistools as at
@@ -166,7 +167,7 @@ def read_reference_estimators(
     return estimators
 
 
-def get_spectra(modelpath: str | Path) -> tuple[pd.DataFrame, np.ndarray]:
+def get_spectra(modelpath: str | Path) -> tuple[pd.DataFrame, npt.NDArray[np.floating]]:
     modelpath = Path(modelpath)
     virtualfolder, inputmodel, codename = modelpath.parts
     assert virtualfolder == "codecomparison"
@@ -186,7 +187,7 @@ def get_spectra(modelpath: str | Path) -> tuple[pd.DataFrame, np.ndarray]:
     return dfspectra, arr_timedays
 
 
-def plot_spectrum(modelpath: str | Path, timedays: str | float, axis: mplax.Axes, **plotkwargs) -> None:
+def plot_spectrum(modelpath: str | Path, timedays: str | float, axis: mplax.Axes, **plotkwargs: t.Any) -> None:
     dfspectra, arr_timedays = get_spectra(modelpath)
     timeindex = int((np.abs(arr_timedays - float(timedays))).argmin())
     timedays_found = dfspectra.columns[timeindex + 1]

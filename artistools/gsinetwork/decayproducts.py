@@ -2,6 +2,7 @@
 import argparse
 import math
 import multiprocessing as mp
+import typing as t
 import warnings
 from collections.abc import Sequence
 from functools import partial
@@ -10,6 +11,7 @@ from pathlib import Path
 import argcomplete
 import matplotlib.pyplot as plt
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 import polars as pl
 import tqdm.rich
@@ -37,7 +39,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-trajectoryroot", "-trajroot", required=True, help="Path to nuclear network trajectory folder")
 
 
-def get_nuc_data(nuc_dataset: str):
+def get_nuc_data(nuc_dataset: str) -> pl.DataFrame:
     assert nuc_dataset in {"Hotokezaka", "ENSDF"}
     hotokezaka_betaminus = (
         pl.read_csv(
@@ -110,19 +112,23 @@ def get_nuc_data(nuc_dataset: str):
     )
 
 
-def chunks(lst, n):
-    """Yield successive n-sized chunks from lst."""
-    for i in range(0, len(lst), n):
-        yield lst[i : i + n]
-
-
-def process_trajectory(nuc_data, traj_root, traj_masses_g, arr_t_day, traj_ID: int) -> dict[str, np.ndarray]:
+def process_trajectory(
+    nuc_data: pl.DataFrame,
+    traj_root: Path | str,
+    traj_masses_g: dict[int, float],
+    arr_t_day: npt.NDArray[np.floating],
+    traj_ID: int,
+) -> dict[str, npt.NDArray[np.floating]]:
+    """Process a single trajectory to extract decay powers."""
     traj_mass_grams = traj_masses_g[traj_ID]
+    traj_root = Path(traj_root)
 
     dfheatingthermo = (
         pl.from_pandas(
             pd.read_csv(
-                get_tar_member_extracted_path(traj_root, traj_ID, "./Run_rprocess/heating.dat"),
+                get_tar_member_extracted_path(
+                    traj_root=traj_root, particleid=traj_ID, memberfilename="./Run_rprocess/heating.dat"
+                ),
                 sep=r"\s+",
                 usecols=["#count", "hbeta", "htot"],
             )
@@ -131,7 +137,9 @@ def process_trajectory(nuc_data, traj_root, traj_masses_g, arr_t_day, traj_ID: i
         .join(
             pl.from_pandas(
                 pd.read_csv(
-                    get_tar_member_extracted_path(traj_root, traj_ID, "./Run_rprocess/energy_thermo.dat"),
+                    get_tar_member_extracted_path(
+                        traj_root=traj_root, particleid=traj_ID, memberfilename="./Run_rprocess/energy_thermo.dat"
+                    ),
                     sep=r"\s+",
                     usecols=["#count", "time/s", "Qdot"],
                 )
@@ -152,6 +160,7 @@ def process_trajectory(nuc_data, traj_root, traj_masses_g, arr_t_day, traj_ID: i
         for plottimedays in arr_t_day
     ]
 
+    decay_powers: dict[str, npt.NDArray[np.floating]]
     decay_powers = {
         key: np.zeros(len(arr_t_day))
         for key in (
@@ -163,7 +172,8 @@ def process_trajectory(nuc_data, traj_root, traj_masses_g, arr_t_day, traj_ID: i
             "Qdot",
             "abundweighted_Qdot",
         )
-    } | {
+    }
+    decay_powers |= {
         col: (
             np.array([
                 dfheatingthermo[col][networktimestepindex - 1] if networktimestepindex >= 1 else 0.0
@@ -219,7 +229,7 @@ def process_trajectory(nuc_data, traj_root, traj_masses_g, arr_t_day, traj_ID: i
     return decay_powers
 
 
-def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Comparison to constant beta decay splitup factors."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
@@ -267,7 +277,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     traj_masses_g = {trajid: mass * M_sol_cgs for trajid, mass in traj_summ_data[["Id", "Mass"]].to_numpy()}
 
-    alltraj_decay_powers: list[dict[str, np.ndarray]] = process_map(
+    alltraj_decay_powers: list[dict[str, npt.NDArray[np.floating]]] = process_map(
         partial(process_trajectory, nuc_data, args.trajectoryroot, traj_masses_g, arr_t_day),
         traj_ids,
         chunksize=3,

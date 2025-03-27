@@ -7,7 +7,6 @@ import math
 import sys
 import typing as t
 from collections.abc import Callable
-from collections.abc import Collection
 from collections.abc import Iterable
 from collections.abc import Sequence
 from pathlib import Path
@@ -24,6 +23,7 @@ import polars as pl
 import polars.selectors as cs
 from matplotlib import ticker
 from matplotlib.artist import Artist
+from matplotlib.lines import Line2D
 
 import artistools.spectra as atspectra
 from artistools.configuration import get_config
@@ -102,9 +102,8 @@ def get_axis_labels(args: argparse.Namespace) -> tuple[str | None, str | None]:
 
     xlabel = None if args.hidexticklabels else f"{xtype} " + r"$\left[\mathrm{{" + str_xunit + r"}}\right]$"
 
-    if args.hideyticklabels:
-        ylabel = None
-    else:
+    ylabel = None
+    if not args.hideyticklabels:
         if args.normalised:
             match args.yvariable:
                 case "flux":
@@ -123,7 +122,7 @@ def get_axis_labels(args: argparse.Namespace) -> tuple[str | None, str | None]:
                 # emission plots add an offset to the reference spectra
                 ylabel += " + offset"
         else:
-            strdist = f"{args.distmpc} Mpc"
+            strdist = str(args.distmpc).removesuffix(".0") + " Mpc"
             match args.yvariable:
                 case "flux":
                     if xtype == "Wavelength":
@@ -131,7 +130,7 @@ def get_axis_labels(args: argparse.Namespace) -> tuple[str | None, str | None]:
                     elif xtype == "Frequency":
                         ylabel = r"F$_\nu$ at " + strdist + " [{}erg/s/cm$^2$/" + str_xunit + "]"
                     elif xtype == "Energy":
-                        ylabel = r"dF/dE at " + strdist + " [{}erg/s/cm$^2$/" + str_xunit + "]"
+                        ylabel = f"dF/dE at {strdist}" + " [{}erg/s/cm$^2$/" + str_xunit + "]"
                 case "packetcount":
                     ylabel = r"{}Monte Carlo packets per bin"
                 case "eflux":
@@ -164,12 +163,9 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
     )
     assert args.timemin is not None
     assert args.timemax is not None
-    timeavg = (args.timemin + args.timemax) / 2.0
 
-    def match_closest_time(reftime):
-        return f"{min((float(x) for x in timearray), key=lambda x: abs(x - reftime)):.4f}"
-
-    timeavg = match_closest_time(timeavg)
+    timeavg_float = (args.timemin + args.timemax) / 2.0
+    timeavg = f"{min((float(x) for x in timearray), key=lambda x: abs(x - timeavg_float)):.4f}"
 
     filterfunc = get_filterfunc(args)
     if filterfunc is not None:
@@ -193,10 +189,8 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
         nbins = 5
 
         for i in np.arange(0, len(wavelengths - nbins), nbins, dtype=int):
-            new_lambda_angstroms.append(wavelengths[i + int(nbins / 2)])
-            sum_flux = 0
-            for j in range(i, i + nbins):
-                sum_flux += fluxes[j]
+            new_lambda_angstroms.append(wavelengths[i + nbins // 2])
+            sum_flux = sum(fluxes[j] for j in range(i, i + nbins))
             binned_flux.append(sum_flux / nbins)
 
         plt.plot(new_lambda_angstroms, binned_flux)
@@ -235,14 +229,17 @@ def plot_reference_spectrum(
     scale_to_dist_mpc: float = 1,
     scaletoreftime: float | None = None,
     xunit: str = "angstroms",
-    **plotkwargs,
-):
+    **plotkwargs: t.Any,
+) -> tuple[Line2D, str, float]:
     """Plot a single reference spectrum.
 
     The filename must be in space separated text formatted with the first two
     columns being wavelength in Angstroms, and F_lambda
     """
     specdata, metadata = atspectra.get_reference_spectrum(filename)
+    label = plotkwargs.get("label", metadata.get("label", filename))
+    assert isinstance(label, str)
+    plotkwargs.pop("label", None)
 
     # scale to flux at required distance
     if scale_to_dist_mpc:
@@ -252,14 +249,11 @@ def plot_reference_spectrum(
             f_lambda=pl.col("f_lambda") * ((metadata["dist_mpc"] / scale_to_dist_mpc) ** 2)
         )
 
-    if "label" not in plotkwargs:
-        plotkwargs["label"] = metadata.get("label", filename)
-
     if scaletoreftime is not None:
         timefactor = atspectra.timeshift_fluxscale_co56law(scaletoreftime, float(metadata["t"]))
         print(f" Scale from time {metadata['t']} to {scaletoreftime}, factor {timefactor} using Co56 decay law")
         specdata = specdata.with_columns(f_lambda=pl.col("f_lambda") * timefactor)
-        plotkwargs["label"] += f" * {timefactor:.2f}"
+        label += f" * {timefactor:.2f}"
 
     if "scale_factor" in metadata:
         specdata = specdata.with_columns(f_lambda=pl.col("f_lambda") * metadata["scale_factor"])
@@ -278,7 +272,7 @@ def plot_reference_spectrum(
         )
         specdata = specdata.with_columns(f_lambda=expr_masked.then(pl.lit(math.nan)).otherwise(pl.col("f_lambda")))
 
-    print(f"Reference spectrum '{plotkwargs['label']}' has {len(specdata)} points in the plot range")
+    print(f"Reference spectrum '{label}' has {len(specdata)} points in the plot range")
     print(f" file: {filename}")
 
     print(" metadata: " + ", ".join([f"{k}='{v}'" if hasattr(v, "lower") else f"{k}={v}" for k, v in metadata.items()]))
@@ -304,9 +298,10 @@ def plot_reference_spectrum(
         ycolumnname = "f_lambda"
 
     ymax = max(specdata[ycolumnname])
+    assert isinstance(ymax, float)
     (lineplot,) = axis.plot(specdata["lambda_angstroms"], specdata[ycolumnname], **plotkwargs)
 
-    return lineplot, plotkwargs["label"], ymax
+    return lineplot, label, ymax
 
 
 def plot_filter_functions(axis: mplax.Axes) -> None:
@@ -330,9 +325,9 @@ def plot_filter_functions(axis: mplax.Axes) -> None:
 
 
 def plot_artis_spectrum(
-    axes: Collection[mplax.Axes],
+    axes: npt.NDArray[t.Any] | Sequence[mplax.Axes],
     modelpath: Path | str,
-    args,
+    args: argparse.Namespace,
     scale_to_peak: float | None = None,
     from_packets: bool = False,
     filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
@@ -344,7 +339,7 @@ def plot_artis_spectrum(
     usedegrees: bool = False,
     maxpacketfiles: int | None = None,
     xunit: str = "angstroms",
-    **plotkwargs,
+    **plotkwargs: t.Any,
 ) -> pl.DataFrame | None:
     """Plot an ARTIS output spectrum. The data plotted are also returned as a DataFrame."""
     modelpath = Path(modelpath)
@@ -356,7 +351,7 @@ def plot_artis_spectrum(
     if not modelpath.is_dir():
         print(f"\nWARNING: Skipping because {modelpath} does not exist\n")
         return None
-
+    dfspectrum = None
     use_time: t.Literal["escape", "emission", "arrival"]
     if args.use_escapetime:
         use_time = "escape"
@@ -542,14 +537,14 @@ def plot_artis_spectrum(
                 dfspectrum["x"], dfspectrum["y"], label=linelabel_withdirbin if axindex == 0 else None, **plotkwargs
             )
 
-    return dfspectrum[["lambda_angstroms", "f_lambda"]]
+    return dfspectrum[["lambda_angstroms", "f_lambda"]] if dfspectrum is not None else None
 
 
 def make_spectrum_plot(
-    speclist: Collection[Path | str],
-    axes: Sequence[mplax.Axes] | np.ndarray,
+    speclist: Sequence[Path | str],
+    axes: npt.NDArray[t.Any] | Sequence[mplax.Axes],
     filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None,
-    args,
+    args: argparse.Namespace,
     scale_to_peak: float | None = None,
 ) -> pl.DataFrame:
     """Plot reference spectra and ARTIS spectra."""
@@ -1112,7 +1107,7 @@ def make_contrib_plot(
         # ax.pcolormesh(xi, yi, zi.reshape(xi.shape), shading='gouraud', cmap=plt.cm.BuGn_r)
 
 
-def make_plot(args) -> tuple[mplfig.Figure, np.ndarray, pl.DataFrame]:
+def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[t.Any], pl.DataFrame]:
     # font = {'size': 16}
     # mpl.rc('font', **font)
 
@@ -1276,7 +1271,7 @@ def make_plot(args) -> tuple[mplfig.Figure, np.ndarray, pl.DataFrame]:
     return fig, axes, dfalldata
 
 
-def addargs(parser) -> None:
+def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "specpath",
         default=[],
@@ -1571,7 +1566,7 @@ def addargs(parser) -> None:
     )
 
 
-def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot spectra from ARTIS and reference data."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=CustomArgHelpFormatter, description=__doc__)

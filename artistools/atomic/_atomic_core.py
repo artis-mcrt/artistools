@@ -2,7 +2,6 @@ import io
 import time
 import typing as t
 import warnings
-from collections import namedtuple
 from collections.abc import Collection
 from collections.abc import Generator
 from collections.abc import Sequence
@@ -250,8 +249,8 @@ def get_transitiondata(
                 raise ImportError(msg) from err
             use_rust_reader = False
 
+    time_start = time.perf_counter()
     if not quiet:
-        time_start = time.perf_counter()
         print(
             f"Reading {transition_filename.relative_to(Path(modelpath).parent)} with {'fast rust reader' if use_rust_reader else 'slow python reader'}..."
         )
@@ -295,7 +294,14 @@ def get_levels_polars(
         phixsdict = parse_phixsdata(phixs_filename, ionlist)
 
     level_lists = []
-    iontuple = namedtuple("iontuple", "Z ion_stage level_count ion_pot levels transitions")
+
+    class IonTuple(t.NamedTuple):
+        Z: int
+        ion_stage: int
+        level_count: int
+        ion_pot: float
+        levels: pl.DataFrame
+        transitions: pl.LazyFrame
 
     with at.zopen(adatafilename) as fadata:
         if not quiet:
@@ -309,7 +315,7 @@ def get_levels_polars(
             else:
                 dftransitions = pl.LazyFrame()
 
-            level_lists.append(iontuple(Z, ion_stage, level_count, ionisation_energy_ev, dflevels, dftransitions))
+            level_lists.append(IonTuple(Z, ion_stage, level_count, ionisation_energy_ev, dflevels, dftransitions))
 
     return pl.DataFrame(level_lists)
 

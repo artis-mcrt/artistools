@@ -8,6 +8,7 @@ import tempfile
 import time
 import typing as t
 from collections import defaultdict
+from collections.abc import Callable
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -358,7 +359,7 @@ def read_modelfile_text(
 def get_modeldata(
     modelpath: Path | str = Path(),
     get_elemabundances: bool = False,
-    derived_cols: list[str] | str | None = None,
+    derived_cols: Sequence[str] | str | None = None,
     printwarningsonly: bool = False,
     getheadersonly: bool = False,
 ) -> tuple[pl.LazyFrame, dict[t.Any, t.Any]]:
@@ -525,7 +526,7 @@ def get_empty_3d_model(
 def get_modeldata_pandas(
     modelpath: Path | str = Path(),
     get_elemabundances: bool = False,
-    derived_cols: list[str] | str | None = None,
+    derived_cols: Sequence[str] | str | None = None,
     printwarningsonly: bool = False,
     getheadersonly: bool = False,
 ) -> tuple[pd.DataFrame, dict[t.Any, t.Any]]:
@@ -547,7 +548,7 @@ def get_modeldata_pandas(
 
 def add_derived_cols_to_modeldata(
     dfmodel: pl.DataFrame | pl.LazyFrame,
-    derived_cols: list[str],
+    derived_cols: Sequence[str],
     modelmeta: dict[str, t.Any],
     modelpath: Path | None = None,
 ) -> pl.LazyFrame:
@@ -555,6 +556,7 @@ def add_derived_cols_to_modeldata(
     # with lazy mode, we can add every column and then drop the ones we don't need
     dfmodel = dfmodel.lazy()
     original_cols = dfmodel.collect_schema().names()
+    derived_cols = list(derived_cols)
 
     t_model_init_seconds = modelmeta["t_model_init_days"] * 86400.0
     keep_all = "ALL" in derived_cols
@@ -566,7 +568,7 @@ def add_derived_cols_to_modeldata(
         dfmodel = dfmodel.with_columns(
             rho=(pl.when(pl.col("logrho") > -98).then(10 ** pl.col("logrho")).otherwise(0.0))
         )
-
+    axes: list[str] = []
     dimensions = modelmeta["dimensions"]
     match dimensions:
         case 1:
@@ -697,6 +699,7 @@ def add_derived_cols_to_modeldata(
                 for ax1, ax2, ax3 in (("x", "y", "z"), ("y", "z", "x"), ("z", "x", "y"))
             )
 
+    assert axes
     # get total kinetic energy from orthogonal components
     # all coord system also have a radial component calculated, so ignore this
     dfmodel = dfmodel.with_columns(
@@ -1049,7 +1052,7 @@ def save_modeldata(
     print(f"Saved {modelfilepath} (took {time.perf_counter() - timestart:.1f} seconds)")
 
 
-def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist: Sequence[int] | None = None) -> int | float:
+def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist: Sequence[int] | None = None) -> int | None:
     """Return the modelgridindex of the cell whose outer velocity is closest to velocity.
 
     If mgilist is given, then chose from these cells only.
@@ -1069,7 +1072,7 @@ def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist: Sequence[
     if velocity < arr_vouter[index_closestvouter + 1]:
         return mgilist[index_closestvouter + 1]
     if np.isnan(velocity):
-        return math.nan
+        return None
 
     print(f"Can't find cell with velocity of {velocity}. Velocity list: {arr_vouter}")
     raise AssertionError
@@ -1263,6 +1266,8 @@ def dimension_reduce_model(
     modelmeta_out["dimensions"] = max(outputdimensions, 1)
 
     ngridpoints = modelmeta.get("npts_model", len(dfmodel))
+    assert isinstance(ngridpoints, int)
+    assert ngridpoints > 0
 
     print(f"Resampling {ndim_in:d}D model with {ngridpoints} cells to {outputdimensions}D...")
     timestart = time.perf_counter()
@@ -1281,9 +1286,9 @@ def dimension_reduce_model(
     elif outputdimensions == 1:
         # make 1D model
         if ndim_in == 2:
-            ncoordgridr = int(modelmeta.get("ncoordgridx", round(math.sqrt(ngridpoints / 2.0))))
+            ncoordgridr = int(modelmeta.get("ncoordgridrcyl", round(math.sqrt(ngridpoints / 2.0))))
         elif ndim_in == 3:
-            ncoordgridr = int(modelmeta.get("ncoordgridx", round(np.cbrt(ngridpoints))) / 2.0)
+            ncoordgridr = int(modelmeta.get("ncoordgridx", round(math.cbrt(ngridpoints))) / 2.0)
         else:
             ncoordgridr = 1
         modelmeta_out["ncoordgridr"] = ncoordgridr
@@ -1293,7 +1298,7 @@ def dimension_reduce_model(
             (pl.col("vel_x_mid") ** 2 + pl.col("vel_y_mid") ** 2).sqrt().alias("vel_rcyl_mid")
         ])
         if ncoordgridz is None:
-            ncoordgridz = int(modelmeta.get("ncoordgridx", round(np.cbrt(ngridpoints))))
+            ncoordgridz = int(modelmeta.get("ncoordgridx", round(math.cbrt(ngridpoints))))
             assert ncoordgridz % 2 == 0
         ncoordgridr = ncoordgridz // 2
         modelmeta_out["ncoordgridz"] = ncoordgridz
@@ -1341,7 +1346,8 @@ def dimension_reduce_model(
                 shell_volume = (4 * math.pi / 3) * (
                     (vel_r_max * t_model_init_seconds) ** 3 - (vel_r_min * t_model_init_seconds) ** 3
                 )
-            elif outputdimensions == 2:
+            else:
+                # outputdimensions == 2
                 shell_volume = (
                     math.pi * (vel_r_max**2 - vel_r_min**2) * (vel_z_max - vel_z_min) * t_model_init_seconds**3
                 )
@@ -1481,12 +1487,12 @@ def scale_model_to_time(
     return dfmodel, modelmeta
 
 
-def savetologfile(outputfolderpath, logfilename="modellog.txt"):
+def savetologfile(outputfolderpath: Path, logfilename: str = "modellog.txt") -> Callable[..., None]:
     # save the printed output to a log file
     logfilepath = outputfolderpath / logfilename
     logfilepath.unlink(missing_ok=True)
 
-    def logprint(*args: t.Any, **kwargs):
+    def logprint(*args: t.Any, **kwargs: t.Any) -> None:
         print(*args, **kwargs)
         with logfilepath.open("a", encoding="utf-8") as logfile:
             logfile.write(" ".join([str(x) for x in args]) + "\n")

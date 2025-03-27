@@ -2,11 +2,13 @@
 
 # PYTHON_ARGCOMPLETE_OK
 import argparse
+import typing as t
 from collections.abc import Sequence
 from pathlib import Path
 
 import argcomplete
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 
 import artistools as at
@@ -20,7 +22,7 @@ tsnap = 0.1 * day
 vmax = 0.5  # maximum velocity in units of c
 
 
-def sphkernel(dist: np.ndarray, hsph: float | np.ndarray, nu: float) -> np.ndarray:
+def sphkernel(dist: npt.NDArray, hsph: float | npt.NDArray[np.floating], nu: float) -> npt.NDArray:
     # smoothing kernel for SPH-like interpolation of particle
     # data
 
@@ -38,7 +40,7 @@ def sphkernel(dist: np.ndarray, hsph: float | np.ndarray, nu: float) -> np.ndarr
 # *******************************************************************
 
 
-def f1corr(rcyl: np.ndarray, hsph: np.ndarray) -> np.ndarray:
+def f1corr(rcyl: npt.NDArray, hsph: npt.NDArray) -> npt.NDArray:
     # correction factor to improve behavior near the axis
     # see Garcia-Senz et al Mon. Not. R. Astron. Soc. 392, 346-360 (2009)
 
@@ -243,7 +245,7 @@ def get_grid() -> tuple:
     return nvr, nvz, rgridc2d, zgridc2d, rhoint, xint, iso, q_ergperg
 
 
-def z_reflect(arr: np.ndarray) -> np.ndarray:
+def z_reflect(arr: npt.NDArray) -> npt.NDArray:
     """Flatten an array and add a reflection in z."""
     _ngridrcyl, ngridz = arr.shape
     assert ngridz % 2 == 0
@@ -256,8 +258,16 @@ def z_reflect(arr: np.ndarray) -> np.ndarray:
 
 # function added by Luke and Gerrit to create the ARTIS model.txt
 def create_ARTIS_modelfile(
-    ngridrcyl, ngridz, pos_t_s_grid_rad, pos_t_s_grid_z, rho_interpol, X_cells, isot_table, q_ergperg, outpath
-):
+    ngridrcyl: int,
+    ngridz: int,
+    pos_t_s_grid_rad: npt.NDArray,
+    pos_t_s_grid_z: npt.NDArray,
+    rho_interpol: npt.NDArray,
+    X_cells: npt.NDArray,
+    isot_table: list,
+    q_ergperg: npt.NDArray,
+    outpath: Path,
+) -> None:
     assert pos_t_s_grid_rad.shape == (ngridrcyl, ngridz)
     assert pos_t_s_grid_z.shape == (ngridrcyl, ngridz)
     assert rho_interpol.shape == (ngridrcyl, ngridz)
@@ -324,7 +334,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-outputpath", "-o", default=".", help="Path of output ARTIS model file")
 
 
-def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
 

@@ -20,7 +20,7 @@ MSUN = 1.989e33
 CLIGHT = 2.99792458e10
 
 
-def read_ejectasnapshot(pathtosnapshot):
+def read_ejectasnapshot(pathtosnapshot: str | Path) -> pd.DataFrame:
     column_names = [
         "id",
         "h",
@@ -453,7 +453,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-outputpath", "-o", default=None, help="Path for output model files")
 
 
-def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Create ARTIS format model from grid.dat."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
