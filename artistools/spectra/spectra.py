@@ -430,15 +430,16 @@ def get_from_packets(
             )
 
         elif use_time == "emission":
+            col_emit_time = "tdecay" if gamma else "em_time"
             mean_correction = float(
-                dfpackets.select((pl.col("em_time") - pl.col("t_arrive_d") * 86400.0).mean())
+                dfpackets.select((pl.col(col_emit_time) - pl.col("t_arrive_d") * 86400.0).mean())
                 .lazy()
                 .collect()
                 .to_numpy()[0][0]
             )
 
             dfpackets = dfpackets.filter(
-                pl.col("em_time").is_between(
+                pl.col(col_emit_time).is_between(
                     timelowdays * 86400.0 + mean_correction, timehighdays * 86400.0 + mean_correction
                 )
             )
