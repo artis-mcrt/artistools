@@ -113,7 +113,7 @@ def get_axis_labels(args: argparse.Namespace) -> tuple[str | None, str | None]:
                 case "photoncount":
                     ylabel = f"Scaled photons/{str_xunit}"
                 case "eflux":
-                    ylabel = f"Scaled E^2 flux /{str_xunit}"
+                    ylabel = "Scaled E$^2$ flux"
                 case _:
                     msg = f"Unknown y-variable {args.yvariable}"
                     raise AssertionError(msg)
@@ -126,17 +126,17 @@ def get_axis_labels(args: argparse.Namespace) -> tuple[str | None, str | None]:
             match args.yvariable:
                 case "flux":
                     if xtype == "Wavelength":
-                        ylabel = r"F$_\lambda$ at " + strdist + " [{}erg/s/cm$^2$/" + str_xunit + "]"
+                        ylabel = rf"F$_\lambda$ at {strdist} [{{}}erg/s/cm$^2$/{str_xunit}]"
                     elif xtype == "Frequency":
-                        ylabel = r"F$_\nu$ at " + strdist + " [{}erg/s/cm$^2$/" + str_xunit + "]"
+                        ylabel = rf"F$_\nu$ at {strdist} [{{}}erg/s/cm$^2$/{str_xunit}]"
                     elif xtype == "Energy":
-                        ylabel = f"dF/dE at {strdist}" + " [{}erg/s/cm$^2$/" + str_xunit + "]"
+                        ylabel = f"dF/dE at {strdist} [{{}}erg/s/cm$^2$/{str_xunit}]"
                 case "packetcount":
                     ylabel = r"{}Monte Carlo packets per bin"
                 case "eflux":
-                    ylabel = r"E$^2$ flux {}" + str_xunit + "/s/cm$^2$ at " + strdist
+                    ylabel = f"E$^2$ flux at {strdist} [{{}}{str_xunit}/s/cm$^2$]"
                 case "photoncount":
-                    ylabel = r"{}photons/cm$^2$/" + str_xunit + " at " + strdist
+                    ylabel = f"Photon flux at {strdist} [{{}}/s/cm$^2$/{str_xunit}]"
                 case _:
                     msg = f"Unknown y-variable {args.yvariable}"
                     raise AssertionError(msg)
@@ -1146,7 +1146,7 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[t.An
     xlabel, ylabel = get_axis_labels(args)
 
     if args.normalised and args.ymax is None:
-        args.ymax = 1.20
+        args.ymax = 1.10
     for index, axis in enumerate(axes):
         if args.xmin is not None:
             axis.set_xlim(left=args.xmin)
