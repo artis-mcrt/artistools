@@ -38,6 +38,7 @@ from artistools.misc import get_nu_grid
 from artistools.misc import get_time_range
 from artistools.misc import get_vpkt_config
 from artistools.misc import get_vspec_dir_labels
+from artistools.misc import print_theta_phi_definitions
 from artistools.misc import set_args_from_dict
 from artistools.misc import trim_or_pad
 from artistools.plottools import ExponentLabelFormatter
@@ -493,6 +494,9 @@ def plot_artis_spectrum(
             else:
                 print("No data to plot")
                 return None
+
+        if any(dirbin != -1 for dirbin in directionbins):
+            print_theta_phi_definitions()
 
         for dirbin in directionbins:
             if len(directionbins) > 1 and dirbin != directionbins[0]:
