@@ -470,7 +470,7 @@ def plot_multi_ion_series(
         elif args.poptype == "totalpop":
             ax.set_ylabel(r"X$_{i}$/X$_{rm tot}$")
         elif args.poptype == "radiallineardensity":
-            ax.set_ylabel(r"Radial linear density $\left[\rm{cm}^{-1}\right]$")
+            ax.set_ylabel(r"Radial linear density dN/dr=N 4pi r^2 $\left[\rm{cm}^{-1}\right]$")
         elif args.poptype == "cumulative":
             ax.set_ylabel(r"Cumulative particle count")
         else:

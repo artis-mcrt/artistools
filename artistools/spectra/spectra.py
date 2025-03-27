@@ -55,9 +55,10 @@ def timeshift_fluxscale_co56law(scaletoreftime: float | None, spectime: float) -
     return 1.0
 
 
-def get_dfspectrum_x_y_with_units(dfspectrum: pl.DataFrame, xunit: str, yvariable: str = "flux") -> pl.DataFrame:
+def get_dfspectrum_x_y_with_units(
+    dfspectrum: pl.DataFrame, xunit: str, yvariable: str, fluxdistance_mpc: float
+) -> pl.DataFrame:
     h = 4.1356677e-15  # Planck's constant [eV s]
-    c = 2.99792458e18  # speed of light [angstroms/s]
 
     if "nu" not in dfspectrum.columns:
         dfspectrum = dfspectrum.with_columns((299792458.0 / (pl.col("lambda_angstroms") * 1e-10)).alias("nu"))
@@ -79,40 +80,47 @@ def get_dfspectrum_x_y_with_units(dfspectrum: pl.DataFrame, xunit: str, yvariabl
 
         case "ev":
             dfspectrum = (
-                dfspectrum.with_columns(en_ev=h * c / pl.col("lambda_angstroms"))
+                dfspectrum.with_columns(en_ev=h * pl.col("nu"))
                 .with_columns(f_en_kev=pl.col("f_nu") * pl.col("nu") / pl.col("en_ev"))
                 .with_columns(x=pl.col("en_ev"), yflux=pl.col("f_en_kev"))
             )
 
         case "kev":
             dfspectrum = (
-                dfspectrum.with_columns(en_kev=h * c / pl.col("lambda_angstroms") / 1000.0)
+                dfspectrum.with_columns(en_kev=h * pl.col("nu") / 1000.0)
                 .with_columns(f_en_kev=pl.col("f_nu") * pl.col("nu") / pl.col("en_kev"))
                 .with_columns(x=pl.col("en_kev"), yflux=pl.col("f_en_kev"))
             )
 
         case "mev":
             dfspectrum = (
-                dfspectrum.with_columns(en_mev=h * c / pl.col("lambda_angstroms") / 1e6)
+                dfspectrum.with_columns(en_mev=h * pl.col("nu") / 1e6)
                 .with_columns(f_en_mev=pl.col("f_nu") * pl.col("nu") / pl.col("en_mev"))
                 .with_columns(x=pl.col("en_mev"), yflux=pl.col("f_en_mev"))
             )
 
         case _:
-            msg = f"Unit {xunit} not implemented for plot_artis_spectrum()"
+            msg = f"Unit {xunit} not implemented"
             raise NotImplementedError(msg)
 
-    ev_to_erg = 1.60218e-12
-    dfspectrum = dfspectrum.with_columns(
-        yphotoncount=pl.col("yflux") / pl.col("lambda_angstroms") / (h * c / ev_to_erg)
-    )
-    if yvariable == "photoncount":
-        dfspectrum = dfspectrum.with_columns(y=pl.col("yphotoncount"))
-    elif yvariable == "packetcount":
-        dfspectrum = dfspectrum.with_columns(y=pl.col("packetcount"))
-    else:
-        assert yvariable == "flux"
-        dfspectrum = dfspectrum.with_columns(y=pl.col("yflux"))
+    match yvariable.lower():
+        case "flux":
+            assert yvariable == "flux"
+            dfspectrum = dfspectrum.with_columns(y=pl.col("yflux") / fluxdistance_mpc**2)
+        case "eflux":
+            erg_to_angstrom = 1.986454e-8
+            erg_to_xunit = convert_angstroms_to_unit(erg_to_angstrom, xunit.lower())
+            dfspectrum = dfspectrum.with_columns(y=(pl.col("yflux") / fluxdistance_mpc**2).pow(2) * erg_to_xunit)
+        case "photoncount":
+            ev_to_erg = 1.60218e-12
+            dfspectrum = dfspectrum.with_columns(
+                y=pl.col("yflux") / fluxdistance_mpc**2 / (h * pl.col("nu") * ev_to_erg)
+            )
+        case "packetcount":
+            dfspectrum = dfspectrum.with_columns(y=pl.col("packetcount"))
+        case _:
+            msg = f"Unit {yvariable} not implemented"
+            raise NotImplementedError(msg)
 
     return dfspectrum.sort("x")
 
