@@ -1161,17 +1161,8 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[t.An
         if args.logscaley:
             axis.set_yscale("log")
 
-        if (args.xmax - args.xmin) < 200 or args.logscalex:
-            pass
-        elif (args.xmax - args.xmin) < 2000:
-            axis.xaxis.set_major_locator(ticker.MultipleLocator(base=100))
-            axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=10))
-        elif (args.xmax - args.xmin) < 11000:
-            axis.xaxis.set_major_locator(ticker.MultipleLocator(base=1000))
-            axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
-        elif (args.xmax - args.xmin) < 14000:
-            axis.xaxis.set_major_locator(ticker.MultipleLocator(base=2000))
-            axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=500))
+        if not args.logscalex:
+            axis.xaxis.set_minor_locator(ticker.AutoMinorLocator())
 
         if args.hidexticklabels:
             axis.tick_params(axis="x", which="both", labelbottom=False)
@@ -1183,6 +1174,7 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[t.An
 
         if "{" in axis.get_ylabel() and not args.logscaley:
             axis.yaxis.set_major_formatter(ExponentLabelFormatter(axis.get_ylabel(), decimalplaces=1))
+            axis.yaxis.set_minor_locator(ticker.AutoMinorLocator())
 
         axis.set_xlabel("")  # remove xlabel (last axis xlabel optionally added later)
 
