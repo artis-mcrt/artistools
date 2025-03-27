@@ -122,7 +122,7 @@ def get_axis_labels(args: argparse.Namespace) -> tuple[str | None, str | None]:
                 # emission plots add an offset to the reference spectra
                 ylabel += " + offset"
         else:
-            strdist = f"{args.distmpc} Mpc"
+            strdist = str(args.distmpc).removesuffix(".0") + " Mpc"
             match args.yvariable:
                 case "flux":
                     if xtype == "Wavelength":
@@ -130,7 +130,7 @@ def get_axis_labels(args: argparse.Namespace) -> tuple[str | None, str | None]:
                     elif xtype == "Frequency":
                         ylabel = r"F$_\nu$ at " + strdist + " [{}erg/s/cm$^2$/" + str_xunit + "]"
                     elif xtype == "Energy":
-                        ylabel = r"dF/dE at " + strdist + " [{}erg/s/cm$^2$/" + str_xunit + "]"
+                        ylabel = f"dF/dE at {strdist}" + " [{}erg/s/cm$^2$/" + str_xunit + "]"
                 case "packetcount":
                     ylabel = r"{}Monte Carlo packets per bin"
                 case "eflux":
