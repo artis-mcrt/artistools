@@ -17,6 +17,7 @@ import pandas as pd
 import polars as pl
 
 import artistools as at
+from artistools.inputmodel.rprocess_from_trajectory import get_tar_member_extracted_path
 
 
 def strnuc_to_latex(strnuc: str) -> str:
@@ -303,7 +304,7 @@ def get_particledata(
     traj_root: Path,
     particleid: int,
     verbose: bool = False,
-) -> tuple[int, dict[str, np.ndarray]]:
+) -> tuple[int, dict[str, npt.NDArray[np.floating]]]:
     """For an array of times (NSM time including time before merger), interpolate the heating rates of various decay channels and (if arr_strnuc is not empty) the nuclear mass fractions."""
     try:
         nts_min = at.inputmodel.rprocess_from_trajectory.get_closest_network_timestep(
@@ -329,9 +330,9 @@ def get_particledata(
 
     particledata = {}
     nstep_timesec = {}
-    with at.inputmodel.rprocess_from_trajectory.open_tar_file_or_extracted(
-        traj_root, particleid, "./Run_rprocess/heating.dat"
-    ) as f:
+    with get_tar_member_extracted_path(
+        traj_root=traj_root, particleid=particleid, memberfilename="./Run_rprocess/heating.dat"
+    ).open(encoding="utf-8") as f:
         dfheating = pd.read_csv(f, sep=r"\s+", usecols=["#count", "time/s", "hbeta", "halpha", "hbfis", "hspof"])
         heatcols = ["hbeta", "halpha", "hbfis", "hspof"]
 
@@ -349,9 +350,9 @@ def get_particledata(
         for col in heatcols:
             particledata[col] = np.array(np.interp(arr_time_s, arr_time_s_source, heatrates_in[col]))
 
-    with at.inputmodel.rprocess_from_trajectory.open_tar_file_or_extracted(
-        traj_root, particleid, "./Run_rprocess/energy_thermo.dat"
-    ) as f:
+    with get_tar_member_extracted_path(
+        traj_root=traj_root, particleid=particleid, memberfilename="./Run_rprocess/energy_thermo.dat"
+    ).open(encoding="utf-8") as f:
         storecols = ["Qdot", "Ye"]
 
         dfthermo = pd.read_csv(f, sep=r"\s+", usecols=["#count", "time/s", *storecols])

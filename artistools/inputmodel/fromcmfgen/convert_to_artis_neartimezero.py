@@ -19,7 +19,7 @@ snapshot = "SN_HYDRO_DATA_1.300d"
 
 
 def undecay(
-    a: dict[str, npt.NDArray],
+    a: dict[str, npt.NDArray[np.floating]],
     indexofatomicnumber: dict[int, int],
     indexofisotope: dict[tuple[int, int], int],
     zparent: int,
@@ -47,7 +47,7 @@ def reverse_doubledecay(
     tlate: float,
     meanlife1_days: float,
     meanlife2_days: float,
-):
+) -> None:
     # get the abundances at time zero from the late time abundances
     # e.g. zparent=26, numnucleons=56 to reverse Ni56 -> Co56 -> Fe56 decay
     # meanlife1 is the mean lifetime of the parent (e.g. Ni56) and meanlife2 is the mean life of the daughter nucleus (e.g. Co56)

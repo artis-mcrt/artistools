@@ -5,6 +5,7 @@
 
 import argparse
 import math
+import typing as t
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -27,7 +28,7 @@ dvtable = v2max / itable
 i1 = int(1.0 // dvtable)
 
 
-def get_wij() -> np.ndarray:
+def get_wij() -> npt.NDArray[np.floating]:
     igphi = 0
     #
     # --normalisation constant
@@ -75,7 +76,9 @@ def get_wij() -> np.ndarray:
     return wij
 
 
-def kernelvals2(rij2: float, hmean: float, wij: npt.NDArray) -> float:  # ist schnell berechnet aber keine Gradienten
+def kernelvals2(
+    rij2: float, hmean: float, wij: npt.NDArray[np.floating]
+) -> float:  # ist schnell berechnet aber keine Gradienten
     hmean21 = 1.0 / hmean**2
     hmean31 = hmean21 / hmean
     v2 = rij2 * hmean21
@@ -475,7 +478,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")
 
 
-def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Map tracer particle trajectories to a Cartesian grid."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)

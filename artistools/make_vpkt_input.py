@@ -1,7 +1,7 @@
 from pathlib import Path
 
 
-def main():
+def main() -> None:
     directions_costheta_phi = [(1, 0), (0, 0), (-1, 0)]
 
     # Nspectra opacity choices (i.e. Nspectra spectra for each observer)

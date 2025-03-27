@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import typing as t
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -12,7 +13,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-outputpath", "-o", default="massfracs.txt", help="Path to output file of mass fractions")
 
 
-def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     if args is None:
         parser = argparse.ArgumentParser(
             formatter_class=at.CustomArgHelpFormatter, description="Create solar r-process pattern in ARTIS format."

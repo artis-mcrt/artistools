@@ -33,7 +33,7 @@ class ExponentLabelFormatter(ticker.ScalarFormatter):
         super().__init__(useOffset=True, useMathText=useMathText)
         # ticker.ScalarFormatter.__init__(self, useOffset=useOffset, useMathText=useMathText)
 
-    def _set_formatted_label_text(self):
+    def _set_formatted_label_text(self) -> None:
         # or use self.orderOfMagnitude
         stroffset = self.get_offset()
         if stroffset:

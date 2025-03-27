@@ -367,8 +367,8 @@ def test_dimension_reduce(outputdimensions: int, benchmark) -> None:
 
     outpath.mkdir(exist_ok=True, parents=True)
 
-    @benchmark
-    def run_dimension_reduce():
+    @benchmark  # type: ignore[misc]
+    def run_dimension_reduce() -> None:
         (dfmodel_lowerd, _, _, modelmeta_lowerd) = (at.inputmodel.dimension_reduce_model)(
             dfmodel=dfmodel3d_pl, modelmeta=modelmeta_3d, outputdimensions=outputdimensions
         )

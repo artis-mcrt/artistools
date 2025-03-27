@@ -74,7 +74,7 @@ def get_dfelemabund_from_dfmodel(dfmodel: pl.DataFrame, dfnucabundances: pl.Data
     return dfelabundances
 
 
-def get_tar_member_extracted_path(traj_root: Path, particleid: int, memberfilename: str) -> Path:
+def get_tar_member_extracted_path(traj_root: Path | str, particleid: int, memberfilename: str) -> Path:
     """Trajectory files are generally stored as {particleid}.tar.xz, but this is slow to access, so first check for extracted files, or decompressed .tar files, which are much faster to access.
 
     memberfilename: file path within the trajectory tarfile, eg. ./Run_rprocess/energy_thermo.dat
@@ -123,19 +123,11 @@ def get_tar_member_extracted_path(traj_root: Path, particleid: int, memberfilena
     raise AssertionError
 
 
-def open_tar_file_or_extracted(traj_root: Path, particleid: int, memberfilename: str):
-    """Trajectory files are generally stored as {particleid}.tar.xz, but this is slow to access, so first check for extracted files, or decompressed .tar files, which are much faster to access.
-
-    memberfilename: file path within the trajectory tarfile, eg. ./Run_rprocess/energy_thermo.dat
-    """
-    return get_tar_member_extracted_path(
-        traj_root=traj_root, particleid=particleid, memberfilename=memberfilename
-    ).open(encoding="utf-8")
-
-
 @lru_cache(maxsize=16)
 def get_traj_network_timesteps(traj_root: Path, particleid: int) -> pl.DataFrame:
-    with open_tar_file_or_extracted(traj_root, particleid, "./Run_rprocess/energy_thermo.dat") as evolfile:
+    with get_tar_member_extracted_path(
+        traj_root=traj_root, particleid=particleid, memberfilename="./Run_rprocess/energy_thermo.dat"
+    ).open(encoding="utf-8") as evolfile:
         return pl.from_pandas(
             pd.read_csv(
                 evolfile,
@@ -182,7 +174,9 @@ def get_trajectory_timestepfile_nuc_abund(
     traj_root: Path, particleid: int, memberfilename: str
 ) -> tuple[pd.DataFrame, float]:
     """Get the nuclear abundances for a particular trajectory id number and time memberfilename should be something like "./Run_rprocess/tday_nz-plane"."""
-    with open_tar_file_or_extracted(traj_root, particleid, memberfilename) as trajfile:
+    with get_tar_member_extracted_path(traj_root=traj_root, particleid=particleid, memberfilename=memberfilename).open(
+        encoding="utf-8"
+    ) as trajfile:
         try:
             _, str_t_model_init_seconds, _, _, _, _ = trajfile.readline().split()
         except ValueError as exc:
@@ -213,7 +207,9 @@ def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, 
     """Calculate initial cell energy [erg/g] from reactions t < t_model_s (reduced by work done)."""
     from scipy import integrate
 
-    with open_tar_file_or_extracted(traj_root, particleid, "./Run_rprocess/energy_thermo.dat") as enthermofile:
+    with get_tar_member_extracted_path(
+        traj_root=traj_root, particleid=particleid, memberfilename="./Run_rprocess/energy_thermo.dat"
+    ).open(encoding="utf-8") as enthermofile:
         try:
             dfthermo: pd.DataFrame = pd.read_csv(
                 enthermofile,
@@ -490,7 +486,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")
 
 
-def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Create ARTIS model from single trajectory abundances."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)

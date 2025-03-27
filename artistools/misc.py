@@ -196,7 +196,6 @@ def average_direction_bins(
     nphibins = get_viewingdirection_phibincount()
     ncosthetabins = get_viewingdirection_costhetabincount()
 
-    assert overangle in {"phi", "theta"}
     if overangle == "phi":
         start_bin_range = range(0, dirbincount, nphibins)
     elif overangle == "theta":
@@ -304,12 +303,12 @@ def get_wid_init_at_tmodel(
     return 2.0 * xmax / ncoordgridx
 
 
-def vec_len(vec: Sequence[float] | np.ndarray[t.Any, np.dtype[np.floating[t.Any]]]) -> float:
+def vec_len(vec: Sequence[float] | npt.NDArray[np.floating]) -> float:
     return float(np.sqrt(np.dot(vec, vec)))
 
 
 @lru_cache(maxsize=16)
-def get_nu_grid(modelpath: Path) -> np.ndarray[t.Any, np.dtype[np.floating[t.Any]]]:
+def get_nu_grid(modelpath: Path) -> npt.NDArray[np.floating]:
     """Return an array of frequencies at which the ARTIS spectra are binned by exspec."""
     specdata = pl.read_csv(
         firstexisting(["spec.out", "specpol.out"], folder=modelpath, tryzipped=True),

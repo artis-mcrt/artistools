@@ -7,7 +7,7 @@ import pandas as pd
 import artistools as at
 
 
-def get_bol_lc_from_spec(modelpath) -> pd.DataFrame:
+def get_bol_lc_from_spec(modelpath: Path) -> pd.DataFrame:
     from scipy import integrate
 
     res_specdata = at.spectra.read_spec_res(modelpath)
@@ -60,7 +60,7 @@ def get_bol_lc_from_lightcurveout(modelpath: Path, res: bool = False) -> pd.Data
     return lightcurvedataframe.replace([np.inf, -np.inf], 0)
 
 
-def main():
+def main() -> None:
     # modelnames = ['M08_03', 'M08_05', 'M08_10', 'M09_03', 'M09_05', 'M09_10',
     #               'M10_02_end55', 'M10_03', 'M10_05', 'M10_10', 'M11_05_1']
     modelnames = ["M2a"]

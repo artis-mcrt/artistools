@@ -114,7 +114,7 @@ def make_hesma_vspecfiles(modelpath: Path, outpath: Path | None = None) -> None:
         )
 
 
-def make_hesma_bol_lightcurve(modelpath, outpath, timemin, timemax) -> None:  # noqa: ARG001
+def make_hesma_bol_lightcurve(modelpath: Path, outpath: Path, timemin: float, timemax: float) -> None:  # noqa: ARG001
     """UVOIR bolometric light curve (angle-averaged)."""
     lightcurvedataframe = at.lightcurve.get_bol_lc_from_lightcurveout(modelpath)
     print(lightcurvedataframe)

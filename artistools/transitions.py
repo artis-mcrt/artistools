@@ -2,7 +2,6 @@ import argparse
 import math
 import sys
 import typing as t
-from collections import namedtuple
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -24,10 +23,17 @@ class IonTuple(t.NamedTuple):
 
 def get_kurucz_transitions() -> tuple[pd.DataFrame, list[IonTuple]]:
     hc_in_ev_cm = 0.0001239841984332003
-    transitiontuple = namedtuple(
-        "transitiontuple",
-        "Z ion_stage lambda_angstroms A lower_energy_ev upper_energy_ev lower_statweight upper_statweight",
-    )
+
+    class KuruczTransitionTuple(t.NamedTuple):
+        Z: int
+        ion_stage: int
+        lambda_angstroms: float
+        A: float
+        lower_energy_ev: float
+        upper_energy_ev: float
+        lower_statweight: float
+        upper_statweight: float
+
     translist = []
     ionlist = []
     with Path("gfall.dat").open(encoding="utf-8") as fnist:
@@ -44,7 +50,7 @@ def get_kurucz_transitions() -> tuple[pd.DataFrame, list[IonTuple]]:
                 fij = (10**loggf) / lower_statweight
                 A = fij / (1.49919e-16 * upper_statweight / lower_statweight * lambda_angstroms**2)
                 translist.append(
-                    transitiontuple(
+                    KuruczTransitionTuple(
                         Z,
                         ion_stage,
                         lambda_angstroms,
@@ -59,14 +65,19 @@ def get_kurucz_transitions() -> tuple[pd.DataFrame, list[IonTuple]]:
                 if IonTuple(Z, ion_stage) not in ionlist:
                     ionlist.append(IonTuple(Z, ion_stage))
 
-    dftransitions = pd.DataFrame(translist, columns=transitiontuple._fields)
+    dftransitions = pd.DataFrame(translist, columns=KuruczTransitionTuple._fields)
     return dftransitions, ionlist
 
 
 def get_nist_transitions(filename: Path | str) -> pd.DataFrame:
-    transitiontuple = namedtuple(
-        "transitiontuple", "lambda_angstroms A lower_energy_ev upper_energy_ev lower_statweight upper_statweight"
-    )
+    class NISTTransitionTuple(t.NamedTuple):
+        lambda_angstroms: float
+        A: float
+        lower_energy_ev: float
+        upper_energy_ev: float
+        lower_statweight: float
+        upper_statweight: float
+
     translist = []
     with Path(filename).open(encoding="utf-8") as fnist:
         for line in fnist:
@@ -82,12 +93,12 @@ def get_nist_transitions(filename: Path | str) -> pd.DataFrame:
                 lower_energy_ev, upper_energy_ev = (float(x.strip(" []")) for x in row[5].split("-"))
                 lower_statweight, upper_statweight = (float(x.strip()) for x in row[12].split("-"))
                 translist.append(
-                    transitiontuple(
+                    NISTTransitionTuple(
                         lambda_angstroms, A, lower_energy_ev, upper_energy_ev, lower_statweight, upper_statweight
                     )
                 )
 
-    return pd.DataFrame(translist, columns=transitiontuple._fields)
+    return pd.DataFrame(translist, columns=NISTTransitionTuple._fields)
 
 
 def generate_ion_spectrum(
@@ -255,7 +266,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot estimated spectra from bound-bound transitions."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)

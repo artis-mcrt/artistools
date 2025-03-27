@@ -2,6 +2,7 @@
 import argparse
 import math
 import string
+import typing as t
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -15,7 +16,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")
 
 
-def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Convert Shen et al. 2018 models to ARTIS format."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)

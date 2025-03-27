@@ -18,6 +18,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 import polars as pl
 from polars import selectors as cs
@@ -76,7 +77,9 @@ def get_varname_formatted(varname: str) -> str:
 
 
 def apply_filters(
-    xlist: Sequence[float] | np.ndarray, ylist: Sequence[float] | np.ndarray, args: argparse.Namespace
+    xlist: Sequence[float] | npt.NDArray[np.floating],
+    ylist: Sequence[float] | npt.NDArray[np.floating],
+    args: argparse.Namespace,
 ) -> tuple[t.Any, t.Any]:
     if (filterfunc := at.get_filterfunc(args)) is not None:
         ylist = filterfunc(ylist)

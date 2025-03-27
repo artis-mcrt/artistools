@@ -66,7 +66,7 @@ def test_directionbins() -> None:
         assert math.isclose(testdirections.item(row[0], "dirbin"), row.dirbin, rel_tol=1e-4, abs_tol=1e-4)
 
 
-def test_get_virtual_packets_pl():
+def test_get_virtual_packets_pl() -> None:
     _, dfvpkt = at.packets.get_virtual_packets_pl(
         modelpath=at.get_config()["path_testdata"] / "vpktcontrib", maxpacketfiles=2
     )
