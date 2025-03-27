@@ -398,7 +398,7 @@ def plot_multi_ion_series(
             expr_normfactor = pl.col(f"nnelement_{elsymbol}")
         elif args.poptype == "totalpop":
             expr_normfactor = pl.col("nntot")
-        elif args.poptype == "radiallineardensity":
+        elif args.poptype == "radialdensity":
             expr_normfactor = 1 / (4 * math.pi * pl.col("vel_r_mid").mean().pow(2))
         elif args.poptype == "cumulative":
             expr_normfactor = pl.lit(1) / pl.col("volume")
@@ -473,8 +473,8 @@ def plot_multi_ion_series(
             ax.set_ylabel(r"X$_{i}$/X$_{\rm element}$")
         elif args.poptype == "totalpop":
             ax.set_ylabel(r"X$_{i}$/X$_{rm tot}$")
-        elif args.poptype == "radiallineardensity":
-            ax.set_ylabel(r"Radial linear density dN/dr=N 4pi r^2 $\left[\rm{cm}^{-1}\right]$")
+        elif args.poptype == "radialdensity":
+            ax.set_ylabel(r"Radial density dN/dr $\left[\rm{cm}^{-1}\right]$")
         elif args.poptype == "cumulative":
             ax.set_ylabel(r"Cumulative particle count")
         else:
@@ -896,7 +896,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-poptype",
         dest="poptype",
         default="elpop",
-        choices=["absolute", "totalpop", "elpop", "radiallineardensity", "cumulative"],
+        choices=["absolute", "totalpop", "elpop", "radialdensity", "cumulative"],
         help="Plot absolute ion populations, or ion populations as a fraction of total or element population",
     )
 
