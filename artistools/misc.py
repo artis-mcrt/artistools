@@ -1418,6 +1418,12 @@ def get_viewingdirection_costhetabincount() -> int:
     return 10
 
 
+def print_theta_phi_definitions() -> None:
+    print(
+        "Spherical polar: x = r sinθ cosϕ, y = r sinθ sinϕ, z = r cosθ -> θ=0 is +Z and θ=π is -Z. At Z=0, ϕ=0 is +X and ϕ=π/2 is +Y"
+    )
+
+
 def get_phi_bins(
     usedegrees: bool,
 ) -> tuple[npt.NDArray[np.floating[t.Any]], npt.NDArray[np.floating[t.Any]], list[str]]:
@@ -1425,31 +1431,45 @@ def get_phi_bins(
     # pi/2 must be an exact boundary because of the change in behaviour there
     assert nphibins % 2 == 0
 
-    # for historical reasons, phi bins ordered by ascending phi are
-    # [0, 1, 2, 3, 4, 9, 8, 7, 6, 5] for nphibins == 10
-
-    # convert phibin number to what the number would be if things were sane
+    # for historical reasons, phi bins are descending and include a flip at half way
+    # phisteps = [0, 1, 2, 3, 4, 9, 8, 7, 6, 5] for nphibins == 10
     phisteps = list(range(nphibins // 2)) + list(reversed(range(nphibins // 2, nphibins)))
 
+    # set up monotonic descending phi bin boundaries
     phi_lower = np.array([2 * math.pi * (1 - (step + 1) / nphibins) for step in phisteps])
     phi_upper = np.array([2 * math.pi * (1 - step / nphibins) for step in phisteps])
 
     binlabels = ["" for _ in range(nphibins)]
-    for phibin, step in enumerate(phisteps):
+    for phibin, phibinmonotonicdesc in enumerate(phisteps):
         if usedegrees:
-            str_phi_lower = f"{phi_lower[step] / math.pi * 180:.0f}°"
-            str_phi_upper = f"{phi_upper[step] / math.pi * 180:.0f}°"
+            str_phi_lower = f"{phi_lower[phibinmonotonicdesc] / math.pi * 180:3.0f}°"
+            str_phi_upper = f"{phi_upper[phibinmonotonicdesc] / math.pi * 180:3.0f}°"
         else:
-            coeff_lower = phi_lower[step] / (2 * math.pi) * nphibins
+            coeff_lower = phi_lower[phibinmonotonicdesc] / (2 * math.pi) * nphibins
             assert np.isclose(coeff_lower, round(coeff_lower), rtol=0.01), coeff_lower
-            str_phi_lower = f"{round(coeff_lower)}π/{nphibins // 2}" if phi_lower[step] > 0.0 else "0"
-            coeff_upper = phi_upper[step] / (2 * math.pi) * nphibins
+            str_phi_lower = f"{round(coeff_lower)}π/{nphibins // 2}" if phi_lower[phibinmonotonicdesc] > 0.0 else "0"
+            coeff_upper = phi_upper[phibinmonotonicdesc] / (2 * math.pi) * nphibins
             assert np.isclose(coeff_upper, round(coeff_upper), rtol=0.01)
-            str_phi_upper = f"{round(coeff_upper)}π/{nphibins // 2}" if phi_upper[step] < 2 * math.pi else "2π"
+            str_phi_upper = (
+                f"{round(coeff_upper)}π/{nphibins // 2}" if phi_upper[phibinmonotonicdesc] < 2 * math.pi else "2π"
+            )
 
         lower_compare = "≤" if phibin < (nphibins // 2) else "<"
         upper_compare = "≤" if phibin > (nphibins // 2) else "<"
-        binlabels[step] = f"{str_phi_lower} {lower_compare} ϕ {upper_compare} {str_phi_upper}"
+        binlabels[phibinmonotonicdesc] = f"{str_phi_lower} {lower_compare} ϕ {upper_compare} {str_phi_upper}"
+
+    # if nphibins == 10, then binlabels = [
+    #     "9π/5 ≤ ϕ < 2π",
+    #     "8π/5 ≤ ϕ < 9π/5",
+    #     "7π/5 ≤ ϕ < 8π/5",
+    #     "6π/5 ≤ ϕ < 7π/5",
+    #     "5π/5 ≤ ϕ < 6π/5",
+    #     "0 < ϕ ≤ 1π/5",
+    #     "1π/5 < ϕ ≤ 2π/5",
+    #     "2π/5 < ϕ ≤ 3π/5",
+    #     "3π/5 < ϕ ≤ 4π/5",
+    #     "4π/5 < ϕ < 5π/5",
+    # ]
 
     return phi_lower, phi_upper, binlabels
 
@@ -1458,6 +1478,9 @@ def get_costheta_bins(
     usedegrees: bool, usepiminustheta: bool = False
 ) -> tuple[tuple[float, ...], tuple[float, ...], list[str]]:
     ncosthetabins = get_viewingdirection_costhetabincount()
+    # the costheta bins are ordered by ascending cos θ from -1. to 1.,
+    # which means that they are in descending order of theta from π to 0
+    # i.e. costhetabins[0] is the θ=π or -Z axis direction
     costhetabins_lower = np.arange(-1.0, 1.0, 2.0 / ncosthetabins)
     costhetabins_upper = costhetabins_lower + 2.0 / ncosthetabins
     if usedegrees:

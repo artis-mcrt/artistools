@@ -527,7 +527,9 @@ def get_rankbatch_parquetfile(
             ).sort(by=["type_id", "escape_type_id", "t_arrive_d"])
 
             pldf_batch = add_packet_directions_lazypolars(pldf_batch)
-            pldf_batch = bin_packet_directions_lazypolars(pldf_batch)
+            pldf_batch = bin_packet_directions_lazypolars(
+                pldf_batch, nphibins=10, ncosthetabins=10, phibintype="phibinhistoricaldescendingdiscont"
+            )
 
         print(
             f"   took {time.perf_counter() - time_start_load:.1f} seconds. Writing parquet file...", end="", flush=True
@@ -730,7 +732,9 @@ def bin_packet_directions_lazypolars(
     dfpackets: pl.LazyFrame | pl.DataFrame,
     nphibins: int | None = None,
     ncosthetabins: int | None = None,
-    phibintype: t.Literal["phidescending", "phiascending"] = "phidescending",
+    phibintype: t.Literal[
+        "phibinhistoricaldescendingdiscont", "phibinmonotonicasc"
+    ] = "phibinhistoricaldescendingdiscont",
 ) -> pl.LazyFrame:
     dfpackets = dfpackets.lazy()
     if nphibins is None:
@@ -743,9 +747,9 @@ def bin_packet_directions_lazypolars(
         ((pl.col("costheta") + 1) / 2.0 * ncosthetabins).fill_nan(0.0).cast(pl.Int32).alias("costhetabin")
     )
 
-    if phibintype == "phiascending":
+    if phibintype == "phibinmonotonicasc":
         dfpackets = dfpackets.with_columns(
-            (pl.col("phi") / 2.0 / math.pi * nphibins).fill_nan(0.0).cast(pl.Int32).alias("phibin")
+            (pl.col("phi") / 2.0 / math.pi * nphibins).fill_nan(0.0).cast(pl.Int32).alias("phibinmonotonicasc")
         )
     else:
         # for historical consistency, this binning method decreases phi angle with increasing bin index
@@ -758,9 +762,9 @@ def bin_packet_directions_lazypolars(
             .fill_nan(0.0)
             .cast(pl.Int32)
             .alias("phibin")
-        )
+        ).with_columns((pl.col("costhetabin") * nphibins + pl.col("phibin")).cast(pl.Int32).alias("dirbin"))
 
-    return dfpackets.with_columns((pl.col("costhetabin") * nphibins + pl.col("phibin")).cast(pl.Int32).alias("dirbin"))
+    return dfpackets
 
 
 def bin_packet_directions(dfpackets: pd.DataFrame) -> pd.DataFrame:
