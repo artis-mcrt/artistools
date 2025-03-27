@@ -112,6 +112,8 @@ def get_axis_labels(args: argparse.Namespace) -> tuple[str | None, str | None]:
                     ylabel = r"Scaled Monte Carlo packets"
                 case "photoncount":
                     ylabel = f"Scaled photons/{str_xunit}"
+                case "eflux":
+                    ylabel = f"Scaled E^2 flux /{str_xunit}"
                 case _:
                     msg = f"Unknown y-variable {args.yvariable}"
                     raise AssertionError(msg)
@@ -120,18 +122,21 @@ def get_axis_labels(args: argparse.Namespace) -> tuple[str | None, str | None]:
                 # emission plots add an offset to the reference spectra
                 ylabel += " + offset"
         else:
+            strdist = f"{args.distmpc} Mpc"
             match args.yvariable:
                 case "flux":
                     if xtype == "Wavelength":
-                        ylabel = r"F$_\lambda$ at 1 Mpc [{}erg/s/cm$^2$/" + str_xunit + "]"
+                        ylabel = r"F$_\lambda$ at " + strdist + " [{}erg/s/cm$^2$/" + str_xunit + "]"
                     elif xtype == "Frequency":
-                        ylabel = r"F$_\nu$ at 1 Mpc [{}erg/s/cm$^2$/" + str_xunit + "]"
+                        ylabel = r"F$_\nu$ at " + strdist + " [{}erg/s/cm$^2$/" + str_xunit + "]"
                     elif xtype == "Energy":
-                        ylabel = r"dF/dE at 1 Mpc [{}erg/s/cm$^2$/" + str_xunit + "]"
+                        ylabel = r"dF/dE at " + strdist + " [{}erg/s/cm$^2$/" + str_xunit + "]"
                 case "packetcount":
                     ylabel = r"{}Monte Carlo packets per bin"
+                case "eflux":
+                    ylabel = r"E$^2$ flux {}" + str_xunit + "/s/cm$^2$ at " + strdist
                 case "photoncount":
-                    ylabel = r"{}photons/cm$^2$/" + str_xunit + " at 1 Mpc"
+                    ylabel = r"{}photons/cm$^2$/" + str_xunit + " at " + strdist
                 case _:
                     msg = f"Unknown y-variable {args.yvariable}"
                     raise AssertionError(msg)
@@ -494,7 +499,9 @@ def plot_artis_spectrum(
                 if len(directionbins) > 1 or not linelabel_is_custom:
                     linelabel_withdirbin = f"{linelabel} {dirbin_definitions[dirbin]}"
 
-            dfspectrum = atspectra.get_dfspectrum_x_y_with_units(dfspectrum, xunit=xunit, yvariable=yvariable)
+            dfspectrum = atspectra.get_dfspectrum_x_y_with_units(
+                dfspectrum, xunit=xunit, yvariable=yvariable, fluxdistance_mpc=args.distmpc
+            )
 
             dfspectrum = dfspectrum.filter(pl.col("x").is_between(xmin * 0.9, xmax * 1.1)).sort(
                 "x", maintain_order=True
@@ -824,6 +831,7 @@ def make_emissionabsorption_plot(
         pl.DataFrame({"f_lambda": array_flambda_emission_total, "lambda_angstroms": arraylambda_angstroms}),
         xunit=args.xunit,
         yvariable=args.yvariable,
+        fluxdistance_mpc=args.distmpc,
     )
 
     max_f_emission_total = dfspectotal.filter(pl.col("x").is_between(xmin, xmax))["y"].max()
@@ -854,6 +862,7 @@ def make_emissionabsorption_plot(
                     pl.DataFrame({"f_lambda": x.array_flambda_emission, "lambda_angstroms": arraylambda_angstroms}),
                     xunit=args.xunit,
                     yvariable=args.yvariable,
+                    fluxdistance_mpc=args.distmpc,
                 )
 
                 (emissioncomponentplot,) = axis.plot(dfspec["x"], dfspec["y"] * scalefactor, linewidth=1, color=x.color)
@@ -867,6 +876,7 @@ def make_emissionabsorption_plot(
                     pl.DataFrame({"f_lambda": x.array_flambda_absorption, "lambda_angstroms": arraylambda_angstroms}),
                     xunit=args.xunit,
                     yvariable=args.yvariable,
+                    fluxdistance_mpc=args.distmpc,
                 )
                 (absorptioncomponentplot,) = axis.plot(
                     dfspec["x"], -dfspec["y"] * scalefactor, color=linecolor, linewidth=1
@@ -883,6 +893,7 @@ def make_emissionabsorption_plot(
                     pl.DataFrame({"f_lambda": x.array_flambda_emission, "lambda_angstroms": arraylambda_angstroms}),
                     xunit=args.xunit,
                     yvariable=args.yvariable,
+                    fluxdistance_mpc=args.distmpc,
                 )
                 for x in contributions_sorted_reduced
             ]
@@ -907,6 +918,7 @@ def make_emissionabsorption_plot(
                     pl.DataFrame({"f_lambda": x.array_flambda_absorption, "lambda_angstroms": arraylambda_angstroms}),
                     xunit=args.xunit,
                     yvariable=args.yvariable,
+                    fluxdistance_mpc=args.distmpc,
                 )
                 for x in contributions_sorted_reduced
             ]
@@ -1149,7 +1161,7 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[t.An
         if args.logscaley:
             axis.set_yscale("log")
 
-        if (args.xmax - args.xmin) < 200:
+        if (args.xmax - args.xmin) < 200 or args.logscalex:
             pass
         elif (args.xmax - args.xmin) < 2000:
             axis.xaxis.set_major_locator(ticker.MultipleLocator(base=100))
@@ -1158,9 +1170,6 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[t.An
             axis.xaxis.set_major_locator(ticker.MultipleLocator(base=1000))
             axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
         elif (args.xmax - args.xmin) < 14000:
-            axis.xaxis.set_major_locator(ticker.MultipleLocator(base=2000))
-            axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=500))
-        else:
             axis.xaxis.set_major_locator(ticker.MultipleLocator(base=2000))
             axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=500))
 
@@ -1314,8 +1323,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-y",
         type=str,
         default="flux",
-        choices=["flux", "packetcount", "photoncount"],
-        help="Specify the y-axis variable for the plot (e.g., 'flux', 'packetcount', 'photoncount')",
+        choices=["flux", "packetcount", "photoncount", "eflux"],
+        help="Specify the y-axis variable for the plot",
     )
 
     parser.add_argument(
@@ -1427,12 +1436,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
+        "-distmpc",
+        "-dist",
         "-fluxdistmpc",
         type=float,
-        help=(
-            "Plot flux at this distance in megaparsec. Default is the distance to "
-            "first reference spectrum if this is known, or otherwise 1 Mpc"
-        ),
+        default=1.0,
+        help="Distance in megaparsec when calculating fluxes (default: 1 Mpc)",
     )
 
     parser.add_argument(
