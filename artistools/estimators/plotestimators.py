@@ -20,6 +20,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import polars as pl
+from matplotlib import ticker
 
 import artistools as at
 
@@ -757,6 +758,8 @@ def make_plot(
 
     assert isinstance(axes, np.ndarray)
 
+    for ax in axes:
+        ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
     # ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
     if not args.hidexlabel:
         axes[-1].set_xlabel(
