@@ -1434,7 +1434,7 @@ def get_phi_bins(
     phi_lower = np.array([2 * math.pi * (1 - (step + 1) / nphibins) for step in phisteps])
     phi_upper = np.array([2 * math.pi * (1 - step / nphibins) for step in phisteps])
 
-    binlabels = []
+    binlabels = ["" for _ in range(nphibins)]
     for phibin, step in enumerate(phisteps):
         if usedegrees:
             str_phi_lower = f"{phi_lower[step] / math.pi * 180:.0f}°"
@@ -1449,7 +1449,7 @@ def get_phi_bins(
 
         lower_compare = "≤" if phibin < (nphibins // 2) else "<"
         upper_compare = "≤" if phibin > (nphibins // 2) else "<"
-        binlabels.append(f"{str_phi_lower} {lower_compare} ϕ {upper_compare} {str_phi_upper}")
+        binlabels[step] = f"{str_phi_lower} {lower_compare} ϕ {upper_compare} {str_phi_upper}"
 
     return phi_lower, phi_upper, binlabels
 
