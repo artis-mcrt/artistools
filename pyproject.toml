@@ -178,7 +178,6 @@ module = [
     "artistools.estimators.test_estimators",
     "artistools.hesma_scripts",
     "artistools.inputmodel.fromcmfgen.convert_to_artis_neartimezero",
-    "artistools.inputmodel.from_alcar",
     "artistools.inputmodel.make1dslicefrom3d",
     "artistools.inputmodel.map_1d_to_3d_grid",
     "artistools.inputmodel.plotinitialcomposition",
@@ -197,11 +196,9 @@ module = [
     "artistools.transitions",
     "artistools.viewing_angles_visualization",
 ]
-disallow_any_generics = false
 disallow_incomplete_defs = false
 disallow_untyped_calls = false
 disallow_untyped_defs = false
-disable_error_code = ["possibly-undefined"]
 
 [tool.pylint.'MESSAGES CONTROL']
 max-line-length = 120
