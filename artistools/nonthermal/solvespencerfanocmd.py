@@ -8,6 +8,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 import pynonthermal as pynt
 
@@ -26,7 +27,7 @@ def make_ntstats_plot(ntstatfile: str | Path) -> None:
     dfstats = pd.read_csv(ntstatfile, sep=r"\s+", escapechar="#").fillna(0)
 
     norm_frac_sum = False
-    norm_factors: float | np.ndarray
+    norm_factors: float | npt.NDArray[np.float64]
     if norm_frac_sum:
         # scale up (or down) ionisation, excitation, and heating to force frac_sum = 1.0
         dfstats["frac_sum"] = dfstats["frac_ionization"] + dfstats["frac_excitation"] + dfstats["frac_heating"]

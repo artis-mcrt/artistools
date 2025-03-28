@@ -75,7 +75,16 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     )
 
 
-def make_plot(dfmacroatom, modelpath, timestepmin, timestepmax, outputfile, xmin, xmax, modelgridindex):
+def make_plot(
+    dfmacroatom: pd.DataFrame,
+    modelpath: str,
+    timestepmin: int,
+    timestepmax: int,
+    outputfile: str,
+    xmin: int,
+    xmax: int,
+    modelgridindex: int,
+) -> None:
     time_days_min = at.get_timestep_time(modelpath, timestepmin)
     time_days_max = at.get_timestep_time(modelpath, timestepmax)
 

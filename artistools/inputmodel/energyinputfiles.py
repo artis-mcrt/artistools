@@ -3,6 +3,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 
 import artistools as at
@@ -11,25 +12,27 @@ DAY = 86400  # day in seconds
 MSUN = 1.989e33  # solar mass in grams
 
 
-def write_energydistribution_file(energydistdata, outputfilepath="."):
+def write_energydistribution_file(energydistdata: pd.DataFrame, outputfilepath: str | Path = ".") -> None:
     print("Writing energydistribution.txt")
     with Path(outputfilepath, "energydistribution.txt").open("w", encoding="utf-8") as fmodel:
         fmodel.write(f"{len(energydistdata['cell_energy'])}\n")  # write number of points
         energydistdata.to_csv(fmodel, header=False, sep="\t", index=False, float_format="%g")
 
 
-def write_energyrate_file(energy_rate_data, outputfilepath="."):
+def write_energyrate_file(energy_rate_data: pd.DataFrame, outputfilepath: str | Path = ".") -> None:
     print("Writing energyrate.txt")
     with Path(outputfilepath, "energyrate.txt").open("w", encoding="utf-8") as fmodel:
         fmodel.write(f"{len(energy_rate_data['times'])}\n")  # write number of points
         energy_rate_data.to_csv(fmodel, sep="\t", index=False, header=False, float_format="%.10f")
 
 
-def rprocess_const_and_powerlaw():
+def rprocess_const_and_powerlaw() -> tuple[pd.DataFrame, float]:
     """Following eqn 4 Korobkin 2012."""
 
-    def integrand(t_days, t0, epsilon0, sigma, alpha, thermalisation_factor):
-        return (epsilon0 * ((1 / 2) - (1 / np.pi * np.arctan((t_days - t0) / sigma))) ** alpha) * (
+    def integrand(
+        t_days: float, t0: float, epsilon0: float, sigma: float, alpha: float, thermalisation_factor: float
+    ) -> float:
+        return float(epsilon0 * ((1 / 2) - (1 / np.pi * np.arctan((t_days - t0) / sigma))) ** alpha) * (
             thermalisation_factor / 0.5
         )
 
@@ -66,7 +69,7 @@ def rprocess_const_and_powerlaw():
     return dftimes_and_rate, E_tot
 
 
-def define_heating_rate():
+def define_heating_rate() -> tuple[pd.DataFrame, float]:
     from scipy import integrate
 
     tmin = 0.0001  # days
@@ -113,7 +116,9 @@ def define_heating_rate():
     return dftimes_and_rate, E_tot
 
 
-def energy_from_rprocess_calculation(energy_thermo_data, get_rate=True):
+def energy_from_rprocess_calculation(
+    energy_thermo_data: pd.DataFrame, get_rate: bool = True
+) -> float | tuple[pd.DataFrame, float]:
     from scipy import integrate
 
     index_time_greaterthan = energy_thermo_data[energy_thermo_data["time/s"] > 1e7].index  # 1e7 seconds = 116 days
@@ -124,7 +129,7 @@ def energy_from_rprocess_calculation(energy_thermo_data, get_rate=True):
     times = energy_thermo_data["time/s"][skipfirstnrows:]
     qdot = energy_thermo_data["Qdot"][skipfirstnrows:]
 
-    E_tot = integrate.trapezoid(y=qdot, x=times)  # erg / g
+    E_tot = float(integrate.trapezoid(y=qdot, x=times))  # erg / g
 
     if get_rate:
         print(f"E_tot {E_tot} erg/g")
@@ -142,7 +147,11 @@ def energy_from_rprocess_calculation(energy_thermo_data, get_rate=True):
     return E_tot
 
 
-def get_rprocess_calculation_files(path_to_rprocess_calculation, interpolate_trajectories=False, thermalisation=False):  # noqa: ARG001
+def get_rprocess_calculation_files(
+    path_to_rprocess_calculation: Path | str,
+    interpolate_trajectories: bool = False,
+    thermalisation: bool = False,  # noqa: ARG001
+) -> None:
     tarfiles = [file.name for file in Path(path_to_rprocess_calculation).iterdir() if file.name.endswith(".tar.xz")]
 
     trajectory_ids = []
@@ -154,7 +163,7 @@ def get_rprocess_calculation_files(path_to_rprocess_calculation, interpolate_tra
     energy_thermo_filepath = "./Run_rprocess/energy_thermo.dat"
     for file in tarfiles:
         trajectory_id = file.split(".")[0]
-        with tarfile.open(path_to_rprocess_calculation / file, mode="r:*") as tar:
+        with tarfile.open(Path(path_to_rprocess_calculation, file), mode="r:*") as tar:
             energythermo_file = tar.extractfile(member=energy_thermo_filepath)
             assert energythermo_file is not None
             energy_thermo_data = pd.read_csv(energythermo_file, sep=r"\s+")
@@ -169,6 +178,7 @@ def get_rprocess_calculation_files(path_to_rprocess_calculation, interpolate_tra
             interpolated_trajectories[trajectory_id] = qdotinterp
 
         E_tot = energy_from_rprocess_calculation(energy_thermo_data, get_rate=False)
+        assert isinstance(E_tot, float)
 
         trajectory_ids.append(float(trajectory_id))
         trajectory_E_tot.append(E_tot)
@@ -180,15 +190,19 @@ def get_rprocess_calculation_files(path_to_rprocess_calculation, interpolate_tra
         index_time_lessthan = dfinterpolated_trajectories[dfinterpolated_trajectories["time/s"] < 1.1e-1].index
         dfinterpolated_trajectories = dfinterpolated_trajectories.drop(index_time_lessthan)
 
-        dfinterpolated_trajectories.to_csv(path_to_rprocess_calculation / "interpolatedQdot.dat", sep=" ", index=False)
+        dfinterpolated_trajectories.to_csv(
+            Path(path_to_rprocess_calculation, "interpolatedQdot.dat"), sep=" ", index=False
+        )
     print(f"sum etot {sum(trajectory_E_tot)}")
     trajectory_energy = pd.DataFrame.from_dict({"id": trajectory_ids, "E_tot": trajectory_E_tot}).sort_values(by="id")
 
     print(trajectory_energy)
-    trajectory_energy.to_csv(path_to_rprocess_calculation / "trajectoryQ.dat", sep=" ", index=False)
+    trajectory_energy.to_csv(Path(path_to_rprocess_calculation, "trajectoryQ.dat"), sep=" ", index=False)
 
 
-def make_energydistribution_weightedbyrho(rho, E_tot_per_gram, Mtot_grams):
+def make_energydistribution_weightedbyrho(
+    rho: npt.NDArray[np.floating], E_tot_per_gram: float, Mtot_grams: float
+) -> pd.DataFrame:
     print(f"energy distribution weighted by rho (E_tot per gram {E_tot_per_gram})")
     Etot = E_tot_per_gram * Mtot_grams
     print("Etot", Etot)
@@ -203,7 +217,13 @@ def make_energydistribution_weightedbyrho(rho, E_tot_per_gram, Mtot_grams):
     return pd.DataFrame(data=energydistdata)
 
 
-def make_energy_files(rho, Mtot_grams, outputpath: Path | str, modelpath=None, model=None):  # noqa: ARG001
+def make_energy_files(
+    rho: npt.NDArray[np.floating],
+    Mtot_grams: float,
+    outputpath: Path | str,
+    modelpath: str | Path | None = None,  # noqa: ARG001
+    model: pd.DataFrame | None = None,  # noqa: ARG001
+) -> None:
     powerlaw = True
     if powerlaw:
         print("Using power law for energy rate")
@@ -230,7 +250,7 @@ def make_energy_files(rho, Mtot_grams, outputpath: Path | str, modelpath=None, m
     write_energyrate_file(times_and_rate, outputfilepath=str(outputpath))
 
 
-def plot_energy_rate(modelpath):
+def plot_energy_rate(modelpath: str | Path) -> None:
     times_and_rate, _ = at.inputmodel.energyinputfiles.rprocess_const_and_powerlaw()
     lzmodel, _ = at.inputmodel.get_modeldata(modelpath)
     model = lzmodel.collect()
@@ -240,7 +260,7 @@ def plot_energy_rate(modelpath):
     )
 
 
-def get_etot_fromfile(modelpath):
+def get_etot_fromfile(modelpath: str | Path) -> tuple[float, pd.DataFrame]:
     energydistribution_data = pd.read_csv(
         Path(modelpath) / "energydistribution.txt", skiprows=1, sep=r"\s+", header=None, names=["cellid", "cell_energy"]
     )
@@ -248,5 +268,5 @@ def get_etot_fromfile(modelpath):
     return etot, energydistribution_data
 
 
-def get_energy_rate_fromfile(modelpath):
+def get_energy_rate_fromfile(modelpath: str | Path) -> pd.DataFrame:
     return pd.read_csv(Path(modelpath) / "energyrate.txt", skiprows=1, sep=r"\s+", header=None, names=["times", "rate"])

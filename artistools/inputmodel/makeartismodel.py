@@ -118,7 +118,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if args.makeenergyinputfiles:
         model, modelmeta = at.inputmodel.get_modeldata_pandas(args.modelpath[0], derived_cols=["mass_g"])
-        rho = 10 ** model["logrho"] if modelmeta["dimensions"] == 1 else model["rho"]
+        rho = (10 ** model["logrho"] if modelmeta["dimensions"] == 1 else model["rho"]).to_numpy()
         Mtot_grams = model["mass_g"].sum()
 
         print(f"total mass {Mtot_grams / 1.989e33} Msun")

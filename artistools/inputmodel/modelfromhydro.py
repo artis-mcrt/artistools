@@ -200,7 +200,7 @@ def read_griddat_file(
     return griddata, t_model_days, t_mergertime_s, vmax, modelmeta
 
 
-def read_mattia_grid_data_file(pathtogriddata):
+def read_mattia_grid_data_file(pathtogriddata: Path | str) -> tuple[pd.DataFrame, float, float]:
     # griddatfilepath = Path(pathtogriddata) / "q90_m0.01_v0.1.txt"
     griddatfilepath = Path(pathtogriddata) / "1D_m0.01_v0.1.txt"
 
@@ -220,7 +220,7 @@ def read_mattia_grid_data_file(pathtogriddata):
     return griddata, t_model, vmax
 
 
-def mirror_model_in_axis(griddata):
+def mirror_model_in_axis(griddata: pd.DataFrame) -> pd.DataFrame:
     grid = round(len(griddata) ** (1.0 / 3.0))
 
     rho = np.zeros((grid, grid, grid))
@@ -275,7 +275,12 @@ def mirror_model_in_axis(griddata):
     return griddata
 
 
-def add_mass_to_center(griddata, t_model_in_days, vmax, args: argparse.Namespace):  # noqa: ARG001
+def add_mass_to_center(
+    griddata: pd.DataFrame,
+    t_model_in_days: float,
+    vmax: float,  # noqa: ARG001
+    args: argparse.Namespace,  # noqa: ARG001
+) -> pd.DataFrame:
     from scipy import integrate
 
     print(griddata)

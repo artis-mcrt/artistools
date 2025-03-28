@@ -4,6 +4,7 @@ import typing as t
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import polars as pl
 import polars.selectors as cs
 import polars.testing as pltest
@@ -246,11 +247,11 @@ def test_make_empty_abundance_file() -> None:
 
 
 def test_opacity_by_Ye_file() -> None:
-    griddata = {
+    griddata = pd.DataFrame({
         "cellYe": [0, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.5],
         "rho": [0, 99, 99, 99, 99, 99, 99, 99],
         "inputcellid": range(1, 9),
-    }
+    })
     at.inputmodel.opacityinputfile.opacity_by_Ye(outputpath, griddata=griddata)
 
 
