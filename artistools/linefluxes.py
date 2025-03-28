@@ -37,12 +37,18 @@ class FeatureTuple(t.NamedTuple):
 
 
 def print_floers_line_ratio(
-    modelpath: Path, timedays: float, arr_f_lambda: npt.NDArray, arr_lambda_angstroms: npt.NDArray
+    modelpath: Path,
+    timedays: float,
+    arr_f_lambda: npt.NDArray[np.floating],
+    arr_lambda_angstroms: npt.NDArray[np.floating],
 ) -> None:
     from scipy import integrate
 
     def get_line_flux(
-        lambda_low: float, lambda_high: float, arr_f_lambda: npt.NDArray, arr_lambda_angstroms: npt.NDArray
+        lambda_low: float,
+        lambda_high: float,
+        arr_f_lambda: npt.NDArray[np.floating],
+        arr_lambda_angstroms: npt.NDArray[np.floating],
     ) -> float:
         index_low, index_high = (
             int(np.searchsorted(arr_lambda_angstroms, wl, side="left")) for wl in (lambda_low, lambda_high)
@@ -287,7 +293,7 @@ def get_closelines(
     )
 
 
-def get_labelandlineindices(modelpath: Path | str, emfeaturesearch: tuple) -> list[FeatureTuple]:
+def get_labelandlineindices(modelpath: Path | str, emfeaturesearch: Iterable[t.Any]) -> list[FeatureTuple]:
     labelandlineindices = []
     for params in emfeaturesearch:
         feature = FeatureTuple(*get_closelines(modelpath, *params))
@@ -388,7 +394,7 @@ def make_flux_ratio_plot(args: argparse.Namespace) -> None:
             "generateplots/floers_model_NIR_VIS_ratio_20201126.csv"
         )
 
-        amodels: dict[str, tuple[list, list]] = {}
+        amodels: dict[str, tuple[list[int], list[float]]] = {}
         for _index, row in femis.iterrows():
             modelname = row.file.replace("fig-nne_Te_allcells-", "").replace(f"-{row.epoch}d.txt", "")
             if modelname not in amodels:
@@ -485,15 +491,17 @@ def get_packets_with_emission_conditions(
 def plot_nne_te_points(
     axis: mplax.Axes,
     serieslabel: str,
-    em_log10nne: Sequence[float] | npt.NDArray,
-    em_Te: Sequence[float] | npt.NDArray,
+    em_log10nne: Sequence[float] | npt.NDArray[np.floating],
+    em_Te: Sequence[float] | npt.NDArray[np.floating],
     normtotalpackets: float,
     color: float | str | None,
     marker: MarkerType,
 ) -> None:
     color_adj = [(c + 0.1) / 1.1 for c in mpl.colors.to_rgb(color)]  # type: ignore[arg-type]
     hitcount: dict[tuple[float, float], int] = {}
-    for log10nne, Te in zip(em_log10nne, em_Te, strict=False):
+    for log10nne, Te in zip(em_log10nne, em_Te, strict=True):
+        assert isinstance(log10nne, float)
+        assert isinstance(Te, float)
         hitcount[log10nne, Te] = hitcount.get((log10nne, Te), 0) + 1
 
     arr_log10nne, arr_te = zip(*hitcount.keys(), strict=False) if hitcount else ([], [])
@@ -553,7 +561,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
     refdatalabels = ["Flörs+2020"]  # , 'Floers CMFGEN', 'Floers Smyth']
     refdatacolors = ["0.0", "C1", "C2", "C4"]
     refdatakeys: list[list[str]] = [[] for _ in refdatafilenames]
-    refdatatimes: list[npt.NDArray] = [np.array([]) for _ in refdatafilenames]
+    refdatatimes = [np.array([], dtype=np.float64) for _ in refdatafilenames]
     refdatapoints: list[list[float]] = [[] for _ in refdatafilenames]
     for refdataindex, refdatafilename in enumerate(refdatafilenames):
         floers_te_nne: dict[str, t.Any]
@@ -577,7 +585,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
     pd.set_option("display.width", 250)
     pd.options.display.max_rows = 500
 
-    emdata_all: dict[int, dict[tuple[int, str], dict[str, npt.NDArray]]] = {}
+    emdata_all: dict[int, dict[tuple[int, str], dict[str, npt.NDArray[np.floating]]]] = {}
     log10nnedata_all: dict[int, dict[int, list[float]]] = {}
     Tedata_all: dict[int, dict[int, list[float]]] = {}
 

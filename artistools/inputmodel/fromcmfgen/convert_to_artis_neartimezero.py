@@ -7,7 +7,6 @@ from math import exp
 from pathlib import Path
 
 import numpy as np
-import numpy.typing as npt
 
 from artistools.inputmodel.fromcmfgen.rd_cmfgen import rd_sn_hydro_data
 
@@ -19,7 +18,7 @@ snapshot = "SN_HYDRO_DATA_1.300d"
 
 
 def undecay(
-    a: dict[str, npt.NDArray[np.floating]],
+    a: dict[str, t.Any],
     indexofatomicnumber: dict[int, int],
     indexofisotope: dict[tuple[int, int], int],
     zparent: int,
@@ -39,7 +38,7 @@ def undecay(
 
 
 def reverse_doubledecay(
-    a: dict[str, npt.NDArray],
+    a: dict[str, t.Any],
     indexofatomicnumber: dict[int, int],
     indexofisotope: dict[tuple[int, int], int],
     zparent: int,
@@ -203,7 +202,7 @@ def timeshift_double_decay(
 
 
 def main() -> None:
-    a: dict[str, npt.NDArray] = rd_sn_hydro_data(snapshot, reverse=True)
+    a: dict[str, t.Any] = rd_sn_hydro_data(snapshot, reverse=True)
 
     # Mapping of the CMFGEN species to atomic numbers, and masking IGEs
     # For now I include Ba in the IGE mass fraction, but do not include it as a chemical species
