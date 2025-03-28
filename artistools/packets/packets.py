@@ -145,7 +145,7 @@ def add_derived_columns(
     colnames = at.makelist(colnames)
     dimensions = at.get_inputparams(modelpath)["n_dimensions"]
 
-    def em_modelgridindex(packet) -> int | float:
+    def em_modelgridindex(packet: t.Any) -> int | float:
         assert dimensions == 1
 
         mgi = at.inputmodel.get_mgi_of_velocity_kms(
@@ -153,7 +153,7 @@ def add_derived_columns(
         )
         return math.nan if mgi is None else mgi
 
-    def emtrue_modelgridindex(packet) -> int | float:
+    def emtrue_modelgridindex(packet: t.Any) -> int | float:
         assert dimensions == 1
 
         mgi = at.inputmodel.get_mgi_of_velocity_kms(
@@ -161,10 +161,10 @@ def add_derived_columns(
         )
         return math.nan if mgi is None else mgi
 
-    def em_timestep(packet) -> int:
+    def em_timestep(packet: t.Any) -> int:
         return at.get_timestep_of_timedays(modelpath, packet.em_time / day_in_s)
 
-    def emtrue_timestep(packet) -> int:
+    def emtrue_timestep(packet: t.Any) -> int:
         return at.get_timestep_of_timedays(modelpath, packet.trueem_time / day_in_s)
 
     if "emission_velocity" in colnames:
@@ -808,7 +808,7 @@ def bin_packet_directions(dfpackets: pd.DataFrame) -> pd.DataFrame:
 
 def make_3d_histogram_from_packets(
     modelpath: str | Path, timestep_min: int, timestep_max: int | None = None, em_time: bool = True
-):
+) -> npt.NDArray[np.floating]:
     if timestep_max is None:
         timestep_max = timestep_min
     modeldata, _, vmax_cms = at.inputmodel.get_modeldata_tuple(modelpath)
@@ -857,7 +857,7 @@ def make_3d_histogram_from_packets(
 
         e_cmf.extend(list(dfpackets["e_cmf"]))
 
-    emission_position3d: npt.NDArray = np.array(emission_position3d_lists)
+    emission_position3d = np.array(emission_position3d_lists)
     weight_by_energy = True
     weights = np.array(e_cmf) if weight_by_energy else None
 
@@ -883,10 +883,12 @@ def make_3d_histogram_from_packets(
     # for i, j, k in zip(*coords):
     #     print(f'({grid_3d[0][i]}, {grid_3d[1][j]}, {grid_3d[2][k]}): {hist[i][j][k]}')
 
-    return hist
+    return np.array(hist, dtype=np.float64)
 
 
-def make_3d_grid(modeldata, vmax_cms):
+def make_3d_grid(
+    modeldata: pd.DataFrame, vmax_cms: float
+) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     # modeldata, _, vmax_cms = at.inputmodel.get_modeldata_tuple(modelpath)
     grid = round(len(modeldata["inputcellid"]) ** (1.0 / 3.0))
     xgrid = np.zeros(grid)
@@ -907,10 +909,10 @@ def make_3d_grid(modeldata, vmax_cms):
 
 def get_mean_packet_emission_velocity_per_ts(
     modelpath: str | Path,
-    packet_type="TYPE_ESCAPE",
+    packet_type: str = "TYPE_ESCAPE",
     escape_type: t.Literal["TYPE_RPKT", "TYPE_GAMMA"] = "TYPE_RPKT",
     maxpacketfiles: int | None = None,
-    escape_angles=None,
+    escape_angles: int | None = None,
 ) -> pd.DataFrame:
     nprocs_read, packetsfiles = at.packets.get_packets_batch_parquet_paths(modelpath, maxpacketfiles=maxpacketfiles)
     assert nprocs_read > 0
