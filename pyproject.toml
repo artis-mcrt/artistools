@@ -187,7 +187,6 @@ module = [
     "artistools.lightcurve.test_lightcurve",
     "artistools.lightcurve.viewingangleanalysis",
     "artistools.linefluxes",
-    "artistools.packets.packets",
     "artistools.packets.packetsplots",
     "artistools.plottools",
     "artistools.nltepops.plotnltepops",
