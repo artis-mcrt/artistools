@@ -287,13 +287,13 @@ def plot_deposition_thermalisation(
 
 def plot_artis_lightcurve(
     modelpath: str | Path,
-    axis,
+    axis: mplax.Axes,
     lcindex: int = 0,
     label: str | None = None,
     escape_type: str = "TYPE_RPKT",
     frompackets: bool = False,
     maxpacketfiles: int | None = None,
-    axistherm=None,
+    axistherm: mplax.Axes | None = None,
     directionbins: Sequence[int] | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
@@ -778,7 +778,11 @@ def create_axes(args: argparse.Namespace) -> tuple[mpl.figure.Figure, npt.NDArra
 
 
 def get_linelabel(
-    modelname: str, modelnumber: int, angle: int | None, angle_definition: dict[int, str] | None, args
+    modelname: str,
+    modelnumber: int,
+    angle: int | None,
+    angle_definition: dict[int, str] | None,
+    args: argparse.Namespace,
 ) -> str:
     if angle is not None and angle != -1:
         assert angle_definition is not None
@@ -798,7 +802,7 @@ def get_linelabel(
     return linelabel
 
 
-def set_lightcurveplot_legend(ax: mplax.Axes | npt.NDArray[t.Any], args: argparse.Namespace):
+def set_lightcurveplot_legend(ax: mplax.Axes | npt.NDArray[t.Any], args: argparse.Namespace) -> None:
     if args.nolegend:
         return
 
@@ -854,7 +858,7 @@ def set_lightcurve_plot_labels(
     return fig, ax
 
 
-def make_colorbar_viewingangles_colormap():
+def make_colorbar_viewingangles_colormap() -> t.Any:
     norm = mplcolors.Normalize(vmin=0, vmax=9)
     scaledmap = mplcm.ScalarMappable(cmap="tab10", norm=norm)
     scaledmap.set_array([])
@@ -891,7 +895,7 @@ def make_colorbar_viewingangles(
     args: argparse.Namespace,
     fig: mpl.figure.Figure | None = None,
     ax: mplax.Axes | Iterable[mplax.Axes] | None = None,
-):
+) -> None:
     if args.colorbarcostheta:
         # ticklabels = costheta_viewing_angle_bins
         ticklabels = [" -1", " -0.8", " -0.6", " -0.4", " -0.2", " 0", " 0.2", " 0.4", " 0.6", " 0.8", " 1"]
@@ -1128,8 +1132,11 @@ def make_band_lightcurves_plot(
 
 
 def colour_evolution_plot(
-    modelpaths, filternames_conversion_dict: dict[str, str], outputfolder, args: argparse.Namespace
-):
+    modelpaths: Sequence[str | Path],
+    filternames_conversion_dict: dict[str, str],
+    outputfolder: str | Path,
+    args: argparse.Namespace,
+) -> None:
     args.labelfontsize = 24  # TODO: make command line arg
     angle_counter = 0
 
@@ -1253,10 +1260,10 @@ def colour_evolution_plot(
 def plot_lightcurve_from_refdata(
     filter_names: Sequence[str],
     lightcurvefilename: Path | str,
-    color,
-    marker,
-    filternames_conversion_dict,
-    ax: npt.NDArray | mplax.Axes,
+    color: t.Any,
+    marker: t.Any,
+    filternames_conversion_dict: dict[str, str],
+    ax: npt.NDArray[t.Any] | mplax.Axes,
     plotnumber: int,
 ) -> str | None:
     from extinction import apply
@@ -1344,8 +1351,15 @@ def plot_lightcurve_from_refdata(
 
 
 def plot_color_evolution_from_data(
-    filter_names, lightcurvefilename, color, marker, filternames_conversion_dict, ax, plotnumber, args
-):
+    filter_names: Iterable[str],
+    lightcurvefilename: Path | str,
+    color: t.Any,
+    marker: t.Any,
+    filternames_conversion_dict: dict[str, str],
+    ax: npt.NDArray[t.Any] | mplax.Axes,
+    plotnumber: int,
+    args: argparse.Namespace,
+) -> None:
     from extinction import apply
     from extinction import ccm89
 
@@ -1393,6 +1407,7 @@ def plot_color_evolution_from_data(
 
     merge_dataframes = filter_data[0].merge(filter_data[1], how="inner", on=["time"])
     if args.subplots:
+        assert isinstance(ax, np.ndarray)
         ax[plotnumber].plot(
             merge_dataframes["time"],
             merge_dataframes["magnitude_x"] - merge_dataframes["magnitude_y"],
@@ -1402,6 +1417,7 @@ def plot_color_evolution_from_data(
             linewidth=4,
         )
     else:
+        assert isinstance(ax, mplax.Axes)
         ax.plot(
             merge_dataframes["time"],
             merge_dataframes["magnitude_x"] - merge_dataframes["magnitude_y"],

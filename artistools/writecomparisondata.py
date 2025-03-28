@@ -46,8 +46,6 @@ def write_spectra(modelpath: str | Path, selected_timesteps: Sequence[int], outf
                 f"{lambdas[n]:.2f} " + " ".join([f"{lum_lambda[n, ts]:.2e}" for ts in selected_timesteps]) + "\n"
             )
 
-        outfile.close()
-
 
 def write_ntimes_nvel(outfile: TextIOWrapper, selected_timesteps: Sequence[int], modelpath: str | Path) -> None:
     times = at.get_timestep_times(modelpath)
@@ -57,7 +55,14 @@ def write_ntimes_nvel(outfile: TextIOWrapper, selected_timesteps: Sequence[int],
     outfile.write(f"#TIMES[d]: {' '.join([f'{times[ts]:.2f}' for ts in selected_timesteps])}\n")
 
 
-def write_single_estimator(modelpath, selected_timesteps, estimators, allnonemptymgilist, outfile, keyname) -> None:
+def write_single_estimator(
+    modelpath: str | Path,
+    selected_timesteps: Sequence[int],
+    estimators: dict[tuple[int, int], dict[str, t.Any]],
+    allnonemptymgilist: Sequence[int],
+    outfile: Path,
+    keyname: str,
+) -> None:
     modeldata, _modelmeta = at.inputmodel.get_modeldata_pandas(modelpath, derived_cols=["vel_r_min_kmps"])
     with Path(outfile).open("w", encoding="utf-8") as f:
         write_ntimes_nvel(f, selected_timesteps, modelpath)
@@ -70,6 +75,7 @@ def write_single_estimator(modelpath, selected_timesteps, estimators, allnonempt
         for modelgridindex, cell in modeldata.iterrows():
             if modelgridindex not in allnonemptymgilist:
                 continue
+            assert isinstance(modelgridindex, int)
             v_mid = (cell["vel_r_min_kmps"] + cell["vel_r_max_kmps"]) / 2.0
             f.write(f"{v_mid:.2f}")
             for timestep in selected_timesteps:
@@ -87,9 +93,9 @@ def write_ionfracts(
     modelpath: Path | str,
     model_id: str,
     selected_timesteps: Sequence[int],
-    estimators: dict,
+    estimators: dict[tuple[int, int], dict[str, t.Any]],
     allnonemptymgilist: Sequence[int],
-    outputpath,
+    outputpath: Path,
 ) -> None:
     times = at.get_timestep_times(modelpath)
     modeldata, _modelmeta = at.inputmodel.get_modeldata_pandas(modelpath, derived_cols=["vel_r_min_kmps"])
@@ -113,6 +119,7 @@ def write_ionfracts(
                 for modelgridindex, cell in modeldata.iterrows():
                     if modelgridindex not in allnonemptymgilist:
                         continue
+                    assert isinstance(modelgridindex, int)
                     v_mid = (cell.vel_r_min_kmps + cell.vel_r_max_kmps) / 2.0
                     f.write(f"{v_mid:.2f}")
                     elabund = estimators[timestep, modelgridindex].get(f"nnelement_{elsymb}", 0)
@@ -130,7 +137,14 @@ def write_ionfracts(
             pathfileout.unlink()
 
 
-def write_phys(modelpath, model_id, selected_timesteps, estimators, allnonemptymgilist, outputpath) -> None:
+def write_phys(
+    modelpath: str | Path,
+    model_id: str,
+    selected_timesteps: Sequence[int],
+    estimators: dict[tuple[int, int], dict[str, t.Any]],
+    allnonemptymgilist: Sequence[int],
+    outputpath: Path,
+) -> None:
     times = at.get_timestep_times(modelpath)
     modeldata, modelmeta = at.inputmodel.get_modeldata_pandas(modelpath, derived_cols=["vel_r_min_kmps"])
     with Path(outputpath, f"phys_{model_id}_artisnebular.txt").open("w", encoding="utf-8") as f:
@@ -144,6 +158,7 @@ def write_phys(modelpath, model_id, selected_timesteps, estimators, allnonemptym
             for modelgridindex, cell in modeldata.iterrows():
                 if modelgridindex not in allnonemptymgilist:
                     continue
+                assert isinstance(modelgridindex, int)
 
                 estimators[timestep, modelgridindex]["rho"] = (
                     10**cell.logrho * (modelmeta["t_model_init_days"] / times[timestep]) ** 3
@@ -180,8 +195,6 @@ def write_lbol_edep(modelpath: str | Path, selected_timesteps: Sequence[int], ou
             if timestep not in selected_timesteps:
                 continue
             f.write(f"{row.time:.2f} {row.lum * 3.826e33:.2e} {row.total_dep_Lsun * 3.826e33:.2e}\n")
-
-    f.close()
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
