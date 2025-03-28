@@ -199,7 +199,6 @@ module = [
     "artistools.nltepops.nltepops",
     "artistools.nonthermal.solvespencerfanocmd",
     "artistools.nonthermal.leptontransport",
-    "artistools.radfield",
     "artistools.spectra.sampleblackbodyfrompacket_tr",
     "artistools.spectra.test_spectra",
     "artistools.spectra.test_vspectra",

@@ -3,7 +3,6 @@
 import argparse
 import math
 import typing as t
-from collections.abc import Iterable
 from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
@@ -18,16 +17,10 @@ import artistools as at
 
 H = 6.6260755e-27  # Planck constant [erg s]
 KB = 1.38064852e-16  # Boltzmann constant [erg/K]
-EV = 1.6021772e-12  # eV to ergs [eV/erg]
-ONEOVERH = 1.509188961e26
-HOVERKB = 4.799243681748932e-11
-TWOOVERCLIGHTSQUARED = 2.2253001e-21
-SAHACONST = 2.0706659e-16
-MEGAPARSEC = 3.0857e24
 
 
 @lru_cache(maxsize=4)
-def read_files(modelpath: Path | str, timestep: int | None = None, modelgridindex: int | None = None):
+def read_files(modelpath: Path | str, timestep: int | None = None, modelgridindex: int | None = None) -> pd.DataFrame:
     """Read radiation field data from a list of file paths into a pandas DataFrame."""
     radfielddata_allfiles: list[pd.DataFrame] = []
     modelpath = Path(modelpath)
@@ -60,7 +53,13 @@ def read_files(modelpath: Path | str, timestep: int | None = None, modelgridinde
     return pd.concat(radfielddata_allfiles, ignore_index=True)
 
 
-def select_bin(radfielddata, nu=None, lambda_angstroms=None, modelgridindex=None, timestep=None):
+def select_bin(
+    radfielddata: pd.DataFrame,
+    nu: float | None = None,
+    lambda_angstroms: float | None = None,
+    modelgridindex: int | None = None,
+    timestep: int | None = None,
+) -> tuple[int, float, float]:
     assert nu is None or lambda_angstroms is None
 
     if lambda_angstroms is not None:
@@ -79,7 +78,9 @@ def select_bin(radfielddata, nu=None, lambda_angstroms=None, modelgridindex=None
     return dfselected.iloc[0].bin_num, dfselected.iloc[0].nu_lower, dfselected.iloc[0].nu_upper
 
 
-def get_binaverage_field(radfielddata, modelgridindex=None, timestep=None):
+def get_binaverage_field(
+    radfielddata: pd.DataFrame, modelgridindex: int | None = None, timestep: int | None = None
+) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     """Get the dJ/dlambda constant average estimators of each bin."""
     # exclude the global fit parameters and detailed lines with negative "bin_num"
     bindata = radfielddata.copy().query(
@@ -106,7 +107,7 @@ def get_binaverage_field(radfielddata, modelgridindex=None, timestep=None):
     return arr_lambda, yvalues
 
 
-def j_nu_dbb(arr_nu_hz: Sequence[float] | npt.NDArray, W: float, T: float) -> list[float]:
+def j_nu_dbb(arr_nu_hz: Sequence[float] | npt.NDArray[np.floating], W: float, T: float) -> list[float]:
     """Calculate the spectral energy density of a dilute blackbody radiation field.
 
     Parameters
@@ -157,7 +158,7 @@ def get_fullspecfittedfield(
 
 
 def get_fitted_field(
-    radfielddata,
+    radfielddata: pd.DataFrame,
     modelgridindex: int | None = None,
     timestep: int | None = None,
     print_bins: bool = False,
@@ -264,7 +265,7 @@ def plot_specout(
     timestep: int,
     peak_value: float | None = None,
     scale_factor: float | None = None,
-    **plotkwargs,
+    **plotkwargs: t.Any,
 ) -> None:
     """Plot the ARTIS spectrum."""
     print(f"Plotting {specfilename}")
@@ -290,400 +291,20 @@ def plot_specout(
     dfspectrum.plot(x="lambda_angstroms", y="f_lambda", ax=axis, label=label, **plotkwargs)
 
 
-@lru_cache(maxsize=128)
-def evaluate_phixs(
-    modelpath: Path | str, lowerlevelindex: int, nu_threshold: float, arr_nu_hz: Iterable[float] | npt.NDArray
-) -> npt.NDArray:
-    adata = at.atomic.get_levels(modelpath, get_photoionisations=True)
-    lower_ion_data = adata.query("Z == @atomic_number and ion_stage == @lower_ion_stage").iloc[0]
-    lowerlevel = lower_ion_data.levels.iloc[lowerlevelindex]
-
-    from scipy.interpolate import interp1d
-
-    phixstable = lowerlevel.phixstable
-    interp_sigma_bf = interp1d(
-        phixstable[:, 0] * nu_threshold,
-        phixstable[:, 1],
-        kind="linear",
-        bounds_error=True,
-        fill_value=0.0,
-        assume_sorted=True,
-    )
-
-    def sigma_bf(nu):
-        nu_factor = nu / nu_threshold
-        if nu_factor < phixstable[0, 0]:
-            return 0.0
-        if nu_factor > phixstable[-1, 0]:
-            # return 0.
-            return phixstable[-1, 1] * math.pow(phixstable[-1, 0] / nu_factor, 3)
-
-        # return interp(nu_factor, phixstable[:, 0], phixstable[:, 1], left=0.)
-        return interp_sigma_bf(nu)
-
-    return np.array([sigma_bf(nu) for nu in arr_nu_hz])
-
-
-def get_kappa_bf_ion(
-    atomic_number: int,
-    lower_ion_stage: int,
-    modelgridindex: int,
-    timestep: int,
-    modelpath: Path | str,
-    arr_nu_hz: Iterable[float] | npt.NDArray,
-    max_levels: int,
-) -> npt.NDArray:
-    adata = at.atomic.get_levels(modelpath, get_photoionisations=True)
-    estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
-    T_e = estimators[timestep, modelgridindex]["Te"]
-
-    ion_data = adata.query("Z == @atomic_number and ion_stage == @lower_ion_stage").iloc[0]
-    upper_ion_data = adata.query("Z == @atomic_number and ion_stage == (@lower_ion_stage + 1)").iloc[0]
-
-    ionstr = at.get_ionstring(atomic_number, lower_ion_stage, sep="_", style="spectral")
-    lowerionpopdensity = estimators[timestep, modelgridindex][f"nnion_{ionstr}"]
-
-    ion_popfactor_sum = sum(
-        level.g * math.exp(-level.energy_ev * EV / KB / T_e) for _, level in ion_data.levels[:max_levels].iterrows()
-    )
-    array_kappa_bf_nu_ion: npt.NDArray = np.zeros_like(arr_nu_hz)
-    for levelnum, lowerlevel in ion_data.levels[:max_levels].iterrows():
-        levelpopfrac = lowerlevel.g * math.exp(-lowerlevel.energy_ev * EV / KB / T_e) / ion_popfactor_sum
-
-        for upperlevelnum, phixsfrac in lowerlevel.phixstargetlist:
-            upperlevel = upper_ion_data.levels.iloc[upperlevelnum]
-
-            nu_threshold = ONEOVERH * (ion_data.ion_pot - lowerlevel.energy_ev + upperlevel.energy_ev) * EV
-
-            arr_sigma_bf = evaluate_phixs(modelpath, levelnum, nu_threshold, tuple(arr_nu_hz)) * phixsfrac
-
-            array_kappa_bf_nu_ion += arr_sigma_bf * levelpopfrac * lowerionpopdensity
-
-    return array_kappa_bf_nu_ion
-
-
-def get_recombination_emission(
-    atomic_number: int,
-    upper_ion_stage: int,
-    arr_nu_hz,
-    modelgridindex: int,
-    timestep: int,
-    modelpath: Path | str,
-    max_levels: int,
-    use_lte_pops: bool = False,
-):
-    from scipy import integrate
-
-    adata = at.atomic.get_levels(modelpath, get_photoionisations=True)
-
-    lower_ion_stage = upper_ion_stage - 1
-    upperionstr = at.get_ionstring(atomic_number, upper_ion_stage)
-    lowerionstr = at.get_ionstring(atomic_number, lower_ion_stage)
-    upper_ion_data = adata.query("Z == @atomic_number and ion_stage == @upper_ion_stage").iloc[0]
-    lower_ion_data = adata.query("Z == @atomic_number and ion_stage == @lower_ion_stage").iloc[0]
-
-    estimtsmgi = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)[
-        timestep, modelgridindex
-    ]
-
-    upperionstr = at.get_ionstring(atomic_number, upper_ion_stage, sep="_", style="spectral")
-    upperionpopdensity = estimtsmgi[f"nnion_{upperionstr}"]
-
-    T_e = estimtsmgi["Te"]
-    nne = estimtsmgi["nne"]
-
-    print(f"Recombination from {upperionstr} -> {lowerionstr} ({upperionstr} pop = {upperionpopdensity:.1e}/cm3)")
-
-    if use_lte_pops:
-        upper_level_popfactor_sum = sum(
-            upperlevel.g * math.exp(-upperlevel.energy_ev * EV / KB / T_e)
-            for _upperlevelnum, upperlevel in lower_ion_data.levels[:200].iterrows()
-        )
-    else:
-        dfnltepops = at.nltepops.read_files(modelpath, modelgridindex=modelgridindex, timestep=timestep)
-        dfnltepops_upperion = dfnltepops.query("Z==@atomic_number & ion_stage==@upper_ion_stage")
-        upperion_nltepops = {x.level: x["n_NLTE"] for _, x in dfnltepops_upperion.iterrows()}
-
-    arr_j_nu_lowerlevel = {}
-    arr_alpha_dnu = np.zeros_like(arr_nu_hz)
-    alpha_ion2 = 0.0
-    nnionfrac = 0.0
-    for levelnum, lowerlevel in lower_ion_data.levels[:max_levels].iterrows():
-        for upperlevelnum, phixsfrac in lowerlevel.phixstargetlist:
-            upperlevel = upper_ion_data.levels.iloc[upperlevelnum]
-
-            if use_lte_pops:
-                levelpopfrac = (
-                    upperlevel.g * math.exp(-upperlevel.energy_ev * EV / KB / T_e) / upper_level_popfactor_sum
-                )
-            elif len(upperion_nltepops) == 1:  # top ion has only one level
-                levelpopfrac = upperion_nltepops[0] / upperionpopdensity
-            else:
-                levelpopfrac = upperion_nltepops[upperlevelnum] / upperionpopdensity
-
-            nu_threshold = ONEOVERH * (lower_ion_data.ion_pot - lowerlevel.energy_ev + upperlevel.energy_ev) * EV
-
-            arr_sigma_bf = (
-                evaluate_phixs(modelpath, atomic_number, lower_ion_stage, levelnum, nu_threshold, tuple(arr_nu_hz))
-                * phixsfrac
-            )
-
-            sfac = (
-                SAHACONST * lowerlevel.g / upperlevel.g * math.pow(T_e, -1.5) * math.exp(HOVERKB * nu_threshold / T_e)
-            )
-
-            arr_alpha_level_dnu = (
-                4.0
-                * math.pi
-                * sfac
-                * (TWOOVERCLIGHTSQUARED * arr_sigma_bf * np.power(arr_nu_hz, 2) * np.exp(-HOVERKB * arr_nu_hz / T_e))
-                * levelpopfrac
-            )
-
-            arr_j_nu_lowerlevel[upperlevelnum, levelnum] = (
-                arr_alpha_level_dnu / 4 / math.pi * H * arr_nu_hz * upperionpopdensity * nne
-            )
-
-            arr_alpha_dnu += arr_alpha_level_dnu
-
-            nnionfrac += levelpopfrac
-
-            # arr_nu_hz2 = nu_threshold * lowerlevel.phixstable[:, 0]
-            arr_nu_hz2 = nu_threshold * np.linspace(1.0, 1.0 + 0.03 * (100 + 1), num=3 * 100 + 1, endpoint=False)
-            arr_sigma_bf2 = (
-                evaluate_phixs(modelpath, atomic_number, lower_ion_stage, levelnum, nu_threshold, tuple(arr_nu_hz2))
-                * phixsfrac
-            )
-            arr_alpha_level_dnu2 = (
-                4.0
-                * math.pi
-                * sfac
-                * (TWOOVERCLIGHTSQUARED * arr_sigma_bf2 * np.power(arr_nu_hz2, 2) * np.exp(-HOVERKB * arr_nu_hz2 / T_e))
-                * levelpopfrac
-            )
-            alpha_level2 = np.abs(integrate.trapezoid(arr_alpha_level_dnu2, x=arr_nu_hz2))
-            alpha_ion2 += alpha_level2
-
-            # alpha_level = np.abs(integrate.trapezoid(arr_alpha_level_dnu, x=arr_nu_hz))
-            lambda_threshold = 2.99792458e18 / nu_threshold
-            print(
-                f" {upperionstr} level {upperlevelnum} -> {lowerionstr} level {levelnum}"
-                f" threshold {lambda_threshold:7.1f} Å"
-                f" Alpha_R_contrib {alpha_level2:.2e} {lowerlevel.levelname}"
-                f" upperlevelpop {upperion_nltepops[upperlevelnum]:.2e}"
-            )
-
-    alpha_ion = np.abs(integrate.trapezoid(arr_alpha_dnu, x=arr_nu_hz))
-    print(f"  {upperionstr} Alpha_R = {alpha_ion:.2e}   Alpha_R*nne = {nne * alpha_ion:.2e}")
-    print(f"  {upperionstr} Alpha_R2 = {alpha_ion2:.2e} Alpha_R2*nne = {nne * alpha_ion2:.2e}")
-
-    # vmax = at.inputmodel.get_modeldata_tuple(modelpath)[0]['vel_r_max_kmps'].iloc[-1] * 1e5
-    # t_seconds = at.get_timestep_times(modelpath, loc="start")[timestep] * 86400.0
-
-    # mean_free_path = vmax * t_seconds
-
-    arr_j_nu = arr_alpha_dnu / 4 / math.pi * H * arr_nu_hz * upperionpopdensity * nne
-    return arr_j_nu, arr_j_nu_lowerlevel
-
-
-def get_ion_gamma_dnu(modelpath, modelgridindex, timestep, atomic_number, ion_stage, arr_nu_hz, J_nu_arr, max_levels):
-    """Calculate the contribution to the photoionisation rate coefficient per J_nu at each frequency nu for an ion."""
-    from scipy import integrate
-
-    estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
-
-    T_e = estimators[timestep, modelgridindex]["Te"]
-    T_R = estimators[timestep, modelgridindex]["TR"]
-
-    adata = at.atomic.get_levels(modelpath, get_photoionisations=True)
-    ion_data = adata.query("Z == @atomic_number and ion_stage == @ion_stage").iloc[0]
-    upper_ion_data = adata.query("Z == @atomic_number and ion_stage == (@ion_stage + 1)").iloc[0]
-    ionstr = at.get_ionstring(atomic_number, ion_stage)
-
-    ion_popfactor_sum = sum(
-        level.g * math.exp(-level.energy_ev * EV / KB / T_e) for _, level in ion_data.levels[:max_levels].iterrows()
-    )
-    arr_gamma_dnu = np.zeros_like(arr_nu_hz)
-    for levelnum, level in ion_data.levels[:max_levels].iterrows():
-        levelpopfrac = level.g * math.exp(-level.energy_ev * EV / KB / T_e) / ion_popfactor_sum
-
-        for upperlevelnum, phixsfrac in level.phixstargetlist:
-            upperlevel = upper_ion_data.levels.iloc[upperlevelnum]
-            nu_threshold = ONEOVERH * (ion_data.ion_pot - level.energy_ev + upperlevel.energy_ev) * EV
-
-            arr_sigma_bf = (
-                evaluate_phixs(modelpath, atomic_number, ion_stage, levelnum, nu_threshold, tuple(arr_nu_hz))
-                * phixsfrac
-            )
-
-            arr_corrfactors = 1 - np.exp(-HOVERKB * arr_nu_hz / T_R)
-            assert min(arr_corrfactors) > 0.50
-            assert max(arr_corrfactors) <= 1.0
-
-            arr_gamma_level_dnu = (
-                4 * math.pi * ONEOVERH * arr_sigma_bf / arr_nu_hz * J_nu_arr * arr_corrfactors * levelpopfrac
-            )
-
-            arr_gamma_dnu += arr_gamma_level_dnu
-
-            gamma_r_level = np.abs(integrate.trapezoid(arr_gamma_level_dnu, x=arr_nu_hz))
-            lambda_threshold = 2.99792458e18 / nu_threshold
-
-            print(
-                f"  level {levelnum} pop_frac {levelpopfrac:.2f} upperlevel {upperlevelnum}"
-                f" threshold {lambda_threshold:.1f} Å "
-                f" gamma_R_level({ionstr}) {gamma_r_level:.2e} {level.levelname}"
-            )
-
-    return arr_gamma_dnu
-
-
-def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, timestep, xmin, xmax, ymax):
-    from scipy import integrate
-
-    axes[0].set_ylabel(r"$\sigma$ [cm$^2$]")
-
-    # recomblowerionlist = ((26, 1), (26, 2), (26, 3), (26, 4), (27, 2), (27, 3), (28, 2), (28, 3), (28, 4))
-    # photoionlist = ((26, 2), (28, 2))
-
-    recomblowerionlist = ((26, 3),)
-    photoionlist = ((26, 2),)
-    kappalowerionlist = ((26, 2), (26, 3))
-    adata = at.atomic.get_levels(modelpath, get_photoionisations=True)
-
-    fieldlist = []
-
-    arr_lambda_fitted, j_lambda_fitted = get_fitted_field(
-        radfielddata, modelgridindex=modelgridindex, timestep=timestep, print_bins=True, lambdamin=xmin, lambdamax=xmax
-    )
-
-    arr_lambda_fitted, j_lambda_fitted = (
-        list(lst)
-        for lst in zip(
-            *[pt for pt in zip(arr_lambda_fitted, j_lambda_fitted, strict=False) if xmin <= pt[0] <= xmax], strict=False
-        )
-    )
-
-    estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
-
-    max_levels = 20
-
-    T_e = estimators[timestep, modelgridindex]["Te"]
-    nne = estimators[timestep, modelgridindex]["nne"]
-    print(f"T_e {T_e:.1f} K, nne {nne:.1e} /cm3")
-
-    arraylambda_angstrom_recomb = np.linspace(xmin, xmax, num=10000)
-    arr_nu_hz_recomb = 2.99792458e18 / np.array(arraylambda_angstrom_recomb)
-
-    # calculate bound-free opacity
-    array_kappa_bf_nu = np.zeros_like(arr_nu_hz_recomb)
-    for atomic_number, lower_ion_stage in kappalowerionlist:
-        array_kappa_bf_nu += get_kappa_bf_ion(
-            atomic_number, lower_ion_stage, modelgridindex, timestep, modelpath, arr_nu_hz_recomb, max_levels
-        )
-
-    # calculate recombination emission
-    J_lambda_recomb_total = np.zeros_like(arraylambda_angstrom_recomb)
-
-    lw = 1.0
-    for atomic_number, lower_ion_stage in recomblowerionlist:
-        # lw -= 0.1
-        upperionstr = at.get_ionstring(atomic_number, lower_ion_stage + 1)
-
-        j_emiss_nu_recomb, arr_j_nu_lowerleveldict = get_recombination_emission(
-            atomic_number, lower_ion_stage + 1, arr_nu_hz_recomb, modelgridindex, timestep, modelpath, max_levels
-        )
-
-        for (upperlevelnum, lowerlevelnum), arr_j_emiss_nu_lowerlevel in arr_j_nu_lowerleveldict.items():
-            J_nu_recomb = np.array([
-                j_emiss_nu / kappa_bf if j_emiss_nu > 0 else 0.0
-                for j_emiss_nu, kappa_bf in zip(arr_j_emiss_nu_lowerlevel, array_kappa_bf_nu, strict=False)
-            ])
-
-            J_contrib = np.abs(integrate.trapezoid(J_nu_recomb, x=arr_nu_hz_recomb))
-
-            J_lambda_recomb_level = J_nu_recomb * arr_nu_hz_recomb / arraylambda_angstrom_recomb
-            fieldlabel = (
-                f"{upperionstr} level {upperlevelnum} -> {at.roman_numerals[lower_ion_stage]} level {lowerlevelnum}"
-            )
-            axes[2].plot(arraylambda_angstrom_recomb, J_lambda_recomb_level, label=fieldlabel, lw=lw)
-            fieldlist += [(arraylambda_angstrom_recomb, J_lambda_recomb_level, fieldlabel)]
-
-        # calculate intensity from emission and opacity to (assuming dJ/ds = 0)
-        J_nu_recomb = np.array([
-            j_emiss_nu / kappa_bf if j_emiss_nu > 0 else 0.0
-            for j_emiss_nu, kappa_bf in zip(j_emiss_nu_recomb, array_kappa_bf_nu, strict=False)
-        ])
-
-        J_contrib = np.abs(integrate.trapezoid(J_nu_recomb, x=arr_nu_hz_recomb))
-
-        J_lambda_recomb = J_nu_recomb * arr_nu_hz_recomb / arraylambda_angstrom_recomb
-
-        print(f"  Contribution to J = {J_contrib:.1e} ergs/s/cm2")
-
-        J_lambda_recomb_total += J_lambda_recomb
-
-        # contribution of all levels of the ion
-        fieldlabel = f"{upperionstr} -> {at.roman_numerals[lower_ion_stage]} recombination"
-        axes[2].plot(arraylambda_angstrom_recomb, J_lambda_recomb, label=fieldlabel, lw=lw)
-        fieldlist += [(arraylambda_angstrom_recomb, J_lambda_recomb, fieldlabel)]
-
-    # fieldlabel = f'Summed recombination'
-    # axes[2].plot(arraylambda_angstrom_recomb, J_lambda_recomb_total, label=fieldlabel)
-    # fieldlist += [(arraylambda_angstrom_recomb, J_lambda_recomb_total, fieldlabel)]
-    ymax = max(ymax, J_lambda_recomb_total)
-
-    lw = 1.0
-    # fieldlist += [(arr_lambda_fitted, j_lambda_fitted, 'binned field')]
-
-    for atomic_number, ion_stage in photoionlist:
-        ionstr = at.get_ionstring(atomic_number, ion_stage)
-        ion_data = adata.query("Z == @atomic_number and ion_stage == @ion_stage").iloc[0]
-
-        for levelnum, level in ion_data.levels[:max_levels].iterrows():
-            nu_threshold = ONEOVERH * (ion_data.ion_pot - level.energy_ev) * EV
-            arr_sigma_bf = evaluate_phixs(
-                modelpath, atomic_number, ion_stage, levelnum, nu_threshold, tuple(arr_nu_hz_recomb)
-            )
-            if levelnum < 5:
-                axes[0].plot(
-                    arraylambda_angstrom_recomb, arr_sigma_bf, label=rf"$\sigma_{{bf}}$({ionstr} {level.levelname})"
-                )
-
-        for arraylambda_angstrom, J_lambda_arr, linelabel in fieldlist:
-            # lw -= 0.4
-            arr_nu_hz = 2.99792458e18 / np.array(arraylambda_angstrom)
-            print(f"{ionstr} photoionisation rate coeffs using radiation field due to {linelabel}")
-            J_nu_arr = np.array(J_lambda_arr) * arraylambda_angstrom / arr_nu_hz
-
-            arr_gamma_dnu = get_ion_gamma_dnu(
-                modelpath, modelgridindex, timestep, atomic_number, ion_stage, arr_nu_hz, J_nu_arr, max_levels
-            )
-
-            # xlist = arr_lambda_fitted
-            arr_gamma_dlambda = arr_gamma_dnu * arr_nu_hz / arraylambda_angstrom
-
-            axes[1].plot(
-                arraylambda_angstrom,
-                arr_gamma_dlambda,
-                lw=lw,
-                label=r"d$\Gamma_R$(" + ionstr + " due to " + linelabel + r")/d$\lambda$",
-            )
-
-            gamma_r_ion = abs(integrate.trapezoid(arr_gamma_dlambda, x=arraylambda_angstrom))
-            print(f"  Gamma_R({ionstr} due to {linelabel}): {gamma_r_ion:.2e}")
-
-    axes[0].set_yscale("log")
-    # axes[1].set_yscale('log')
-    # axes[2].set_yscale('log')
-    return ymax
-
-
 def get_binedges(radfielddata: pd.DataFrame) -> list[float]:
     return [2.99792458e18 / radfielddata["nu_lower"].iloc[1], *list(2.99792458e18 / radfielddata["nu_upper"][1:])]
 
 
-def plot_celltimestep(modelpath, timestep, outputfile, xmin, xmax, modelgridindex, args, normalised=False):
+def plot_celltimestep(
+    modelpath: Path | str,
+    timestep: int,
+    outputfile: Path | str,
+    xmin: float,
+    xmax: float,
+    modelgridindex: int,
+    args: argparse.Namespace,
+    normalised: bool = False,
+) -> bool:
     """Plot a cell at a timestep things like the bin edges, fitted field, and emergent spectrum (from all cells)."""
     radfielddata = read_files(modelpath, timestep=timestep, modelgridindex=modelgridindex)
     if radfielddata.empty:
@@ -696,24 +317,19 @@ def plot_celltimestep(modelpath, timestep, outputfile, xmin, xmax, modelgridinde
     T_R = radfielddata.query("bin_num == -1").iloc[0].T_R
     print(f"T_R = {T_R}")
 
-    nrows = 3 if args.photoionrates else 1
-    fig, axes = plt.subplots(
-        nrows=nrows,
+    fig, axis = plt.subplots(
+        nrows=1,
         ncols=1,
         sharex=True,
         figsize=(
             args.figscale * at.get_config()["figwidth"],
-            args.figscale * at.get_config()["figwidth"] * (0.25 + nrows * 0.4),
+            args.figscale * at.get_config()["figwidth"] * (0.25 + 0.4),
         ),
         tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
     )
 
-    if isinstance(axes, mplax.Axes):
-        axes = np.array([axes])
-    assert isinstance(axes, np.ndarray)
-    axis = axes[-1]
-
     assert isinstance(axis, mplax.Axes)
+
     ymax = 0.0
 
     xlist, yvalues = get_fullspecfittedfield(radfielddata, xmin, xmax, modelgridindex=modelgridindex, timestep=timestep)
@@ -753,13 +369,13 @@ def plot_celltimestep(modelpath, timestep, outputfile, xmin, xmax, modelgridinde
         args.nospec = True
 
     if not args.nospec:
-        plotkwargs = {}
+        plotkwargs: dict[str, t.Any] = {}
         if not normalised:
             modeldata, _, _ = at.inputmodel.get_modeldata_tuple(modelpath)
             # outer velocity
             v_surface = modeldata.loc[int(radfielddata.modelgridindex.max())].vel_r_max_kmps * 1e5
             r_surface = time_days * 864000 * v_surface
-            r_observer = MEGAPARSEC
+            r_observer = 3.0857e24
             scale_factor = (r_observer / r_surface) ** 2 / (2 * math.pi)
             print(
                 "Scaling emergent spectrum flux at 1 Mpc to specific intensity "
@@ -783,20 +399,6 @@ def plot_celltimestep(modelpath, timestep, outputfile, xmin, xmax, modelgridinde
     if not args.notitle:
         axis.set_title(figure_title, fontsize=11)
 
-    if args.photoionrates:
-        ymax = calculate_photoionrates(
-            axes,
-            modelpath,
-            radfielddata,
-            modelgridindex=modelgridindex,
-            timestep=timestep,
-            xmin=xmin,
-            xmax=xmax,
-            ymax=ymax,
-        )
-        axes[0].legend(loc="best", handlelength=2, frameon=False, numpoints=1, fontsize=4)
-        axes[1].legend(loc="best", handlelength=2, frameon=False, numpoints=1, fontsize=4)
-
     # axis.annotate(figure_title,
     #               xy=(0.02, 0.96), xycoords='axes fraction',
     #               horizontalalignment='left', verticalalignment='top', fontsize=8)
@@ -819,10 +421,16 @@ def plot_celltimestep(modelpath, timestep, outputfile, xmin, xmax, modelgridinde
     return True
 
 
-def plot_bin_fitted_field_evolution(axis, radfielddata, nu_line, modelgridindex, **plotkwargs: dict[str, t.Any | None]):
+def plot_bin_fitted_field_evolution(
+    axis: mplax.Axes,
+    radfielddata: pd.DataFrame,
+    nu_line: float,
+    modelgridindex: int,
+    **plotkwargs: dict[str, t.Any | None],
+) -> None:
     bin_num, _nu_lower, _nu_upper = select_bin(radfielddata, nu=nu_line, modelgridindex=modelgridindex)
     # print(f"Selected bin_num {bin_num} to get a binned radiation field estimator")
-    radfielddataselected = radfielddata.query(
+    radfielddataselected: t.Any = radfielddata.query(
         f"bin_num == {bin_num} and modelgridindex == @modelgridindex and nu_lower <= @nu_line and nu_upper >= @nu_line"
     ).copy()
 
@@ -873,7 +481,7 @@ def plot_global_fitted_field_evolution(
 
 def plot_line_estimator_evolution(
     axis: mplax.Axes,
-    radfielddata,
+    radfielddata: pd.DataFrame,
     bin_num: int,
     modelgridindex: int | None = None,
     timestep_min: int | None = None,
@@ -881,16 +489,16 @@ def plot_line_estimator_evolution(
     **plotkwargs: t.Any,
 ) -> None:
     """Plot the Jblue_lu values over time for a detailed line estimators."""
-    radfielddataselected = (
-        radfielddata.query(
-            "bin_num == @bin_num"
-            + (" & modelgridindex == @modelgridindex" if modelgridindex else "")
-            + (" & timestep >= @timestep_min" if timestep_min else "")
-            + (" & timestep <= @timestep_max" if timestep_max else "")
-        )[["timestep", "nu_upper", "J_nu_avg"]]
-        .eval("lambda_angstroms = 2.99792458e18 / nu_upper")
-        .eval("Jb_lambda = J_nu_avg * (nu_upper ** 2) / 2.99792458e18")
-    )
+    radfielddataselected: t.Any = radfielddata.query(
+        "bin_num == @bin_num"
+        + (" & modelgridindex == @modelgridindex" if modelgridindex else "")
+        + (" & timestep >= @timestep_min" if timestep_min else "")
+        + (" & timestep <= @timestep_max" if timestep_max else "")
+    )[["timestep", "nu_upper", "J_nu_avg"]]
+    assert isinstance(radfielddataselected, pd.DataFrame)
+    radfielddataselected = radfielddataselected.eval("lambda_angstroms = 2.99792458e18 / nu_upper")
+    assert isinstance(radfielddataselected, pd.DataFrame)
+    radfielddataselected = radfielddataselected.eval("Jb_lambda = J_nu_avg * (nu_upper ** 2) / 2.99792458e18")
 
     axis.plot(
         radfielddataselected["timestep"],
@@ -900,7 +508,9 @@ def plot_line_estimator_evolution(
     )
 
 
-def plot_timeevolution(modelpath: Path | str, outputfile: Path | str, modelgridindex: int, args: argparse.Namespace):
+def plot_timeevolution(
+    modelpath: Path | str, outputfile: Path | str, modelgridindex: int, args: argparse.Namespace
+) -> None:
     """Plot a estimator evolution over time for a cell. This is not well tested and should be checked."""
     print(f"Plotting time evolution of cell {modelgridindex:d}")
 
@@ -998,8 +608,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--nobandaverage", action="store_true", help="Suppress the band-average line")
 
-    parser.add_argument("--photoionrates", action="store_true", help="Suppress the band-average line")
-
     parser.add_argument(
         "-figscale", type=float, default=1.0, help="Scale factor for plot area. 1.0 is for single-column"
     )
@@ -1050,6 +658,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         timesteplist = [timesteplast]
 
     for modelgridindex in modelgridindexlist:
+        assert modelgridindex is not None
         if args.xaxis == "lambda":
             for timestep in timesteplist:
                 outputfile = str(args.outputfile).format(modelgridindex=modelgridindex, timestep=timestep)

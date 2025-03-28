@@ -118,7 +118,7 @@ def test_transitions() -> None:
 
 
 @pytest.mark.benchmark
-def test_write_comparisondata() -> None:
+def test_writecomparisondata() -> None:
     at.writecomparisondata.main(
         argsraw=[], modelpath=modelpath, outputpath=outputpath, selected_timesteps=list(range(99))
     )
