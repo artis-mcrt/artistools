@@ -22,7 +22,9 @@ tsnap = 0.1 * day
 vmax = 0.5  # maximum velocity in units of c
 
 
-def sphkernel(dist: npt.NDArray, hsph: float | npt.NDArray[np.floating], nu: float) -> npt.NDArray:
+def sphkernel(
+    dist: npt.NDArray[np.floating], hsph: float | npt.NDArray[np.floating], nu: float
+) -> npt.NDArray[np.floating]:
     # smoothing kernel for SPH-like interpolation of particle
     # data
 
@@ -40,7 +42,7 @@ def sphkernel(dist: npt.NDArray, hsph: float | npt.NDArray[np.floating], nu: flo
 # *******************************************************************
 
 
-def f1corr(rcyl: npt.NDArray, hsph: npt.NDArray) -> npt.NDArray:
+def f1corr(rcyl: npt.NDArray[np.floating], hsph: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
     # correction factor to improve behavior near the axis
     # see Garcia-Senz et al Mon. Not. R. Astron. Soc. 392, 346-360 (2009)
 
@@ -64,7 +66,16 @@ def f1corr(rcyl: npt.NDArray, hsph: npt.NDArray) -> npt.NDArray:
     )
 
 
-def get_grid() -> tuple:
+def get_grid() -> tuple[
+    int,
+    int,
+    npt.NDArray[np.floating],
+    npt.NDArray[np.floating],
+    npt.NDArray[np.floating],
+    npt.NDArray[np.floating],
+    npt.NDArray[np.floating],
+    npt.NDArray[np.floating],
+]:
     # base = Path('/the/ojust/lustredata/luke/hmnskn_2023/138n1a6/')
     base = Path()
     dat = np.load(base / "kilonova_artis_input_138n1a6.npz")
@@ -245,7 +256,7 @@ def get_grid() -> tuple:
     return nvr, nvz, rgridc2d, zgridc2d, rhoint, xint, iso, q_ergperg
 
 
-def z_reflect(arr: npt.NDArray) -> npt.NDArray:
+def z_reflect(arr: npt.NDArray[np.floating | np.integer]) -> npt.NDArray[np.floating | np.integer]:
     """Flatten an array and add a reflection in z."""
     _ngridrcyl, ngridz = arr.shape
     assert ngridz % 2 == 0
@@ -260,12 +271,12 @@ def z_reflect(arr: npt.NDArray) -> npt.NDArray:
 def create_ARTIS_modelfile(
     ngridrcyl: int,
     ngridz: int,
-    pos_t_s_grid_rad: npt.NDArray,
-    pos_t_s_grid_z: npt.NDArray,
-    rho_interpol: npt.NDArray,
-    X_cells: npt.NDArray,
-    isot_table: list,
-    q_ergperg: npt.NDArray,
+    pos_t_s_grid_rad: npt.NDArray[np.floating],
+    pos_t_s_grid_z: npt.NDArray[np.floating],
+    rho_interpol: npt.NDArray[np.floating],
+    X_cells: npt.NDArray[np.floating],
+    isot_table: npt.NDArray[t.Any],
+    q_ergperg: npt.NDArray[np.floating],
     outpath: Path,
 ) -> None:
     assert pos_t_s_grid_rad.shape == (ngridrcyl, ngridz)

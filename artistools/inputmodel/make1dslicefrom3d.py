@@ -54,7 +54,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
 def slice_3dmodel(inputfolder, outputfolder, chosenaxis):
     xlist: list[float] = []
-    ylists: list[list] = [[], [], []]
+    ylists: list[list[float]] = [[], [], []]
     listout: list[str] = []
     dict3dcellidto1dcellid = {}
     outcellid = 0
@@ -149,7 +149,7 @@ def append_cell_to_output(
     ylists[2].append(cell["fco"])
 
 
-def make_plot(xlist, ylists, pdfoutputfile):
+def make_plot(xlist: list[float], ylists: list[list[float]], pdfoutputfile: str) -> None:
     fig, axis = plt.subplots(
         nrows=1, ncols=1, sharey=True, figsize=(6, 4), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0}
     )

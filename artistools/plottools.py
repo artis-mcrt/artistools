@@ -4,7 +4,6 @@ import argparse
 import itertools
 import sys
 import typing as t
-from collections.abc import Callable
 from collections.abc import Iterable
 
 import matplotlib.axes as mplax
@@ -153,7 +152,7 @@ def set_axis_properties(ax: Iterable[mplax.Axes] | mplax.Axes, args: argparse.Na
 
 def set_axis_labels(
     fig: mplfig.Figure,
-    ax: mplax.Axes | np.ndarray,
+    ax: mplax.Axes | npt.ArrayLike,
     xlabel: str,
     ylabel: str,
     labelfontsize: int | None,
@@ -169,8 +168,8 @@ def set_axis_labels(
 
 
 def imshow_init_for_artis_grid(
-    ngrid: int, vmax: float, plot_variable_3d_array: npt.NDArray, plot_axes: str = "xy"
-) -> tuple[npt.NDArray, tuple[float, float, float, float]]:
+    ngrid: int, vmax: float, plot_variable_3d_array: npt.NDArray[t.Any], plot_axes: str = "xy"
+) -> tuple[npt.NDArray[t.Any], tuple[float, float, float, float]]:
     # ngrid = round(len(model['inputcellid']) ** (1./3.))
     extentdict = {"left": -vmax, "right": vmax, "bottom": vmax, "top": -vmax}
     extent = extentdict["left"], extentdict["right"], extentdict["bottom"], extentdict["top"]
@@ -233,13 +232,10 @@ def autoscale(ax: mplax.Axes | None = None, axis: str = "y", margin: float = 0.1
 
     for artist in list(ax.collections) + list(ax.lines):
         x, y = get_xy(artist)
-        setlim: Callable
         if axis == "y":
-            setlim = ax.set_ylim
             lim = ax.get_xlim()
             fixed, dependent = x, y
         else:
-            setlim = ax.set_xlim
             lim = ax.get_ylim()
             fixed, dependent = y, x
 
@@ -248,5 +244,8 @@ def autoscale(ax: mplax.Axes | None = None, axis: str = "y", margin: float = 0.1
         newhigh = max(newhigh, high)
 
     margin *= newhigh - newlow
-
-    setlim(newlow - margin, newhigh + margin)
+    limargs = (newlow - margin, newhigh + margin)
+    if axis == "y":
+        ax.set_ylim(limargs)
+    else:
+        ax.set_xlim(limargs)

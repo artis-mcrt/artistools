@@ -3,6 +3,7 @@
 import math
 import re
 import string
+import typing as t
 from functools import lru_cache
 from functools import partial
 from pathlib import Path
@@ -178,7 +179,7 @@ def read_files(
     timestep: int = -1,
     modelgridindex: int = -1,
     dfquery: str | None = None,
-    dfqueryvars: dict | None = None,
+    dfqueryvars: dict[str, t.Any] | None = None,
 ) -> pd.DataFrame:
     """Read in NLTE populations from a model for a particular timestep and grid cell."""
     if dfqueryvars is None:
