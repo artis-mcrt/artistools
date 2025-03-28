@@ -87,7 +87,9 @@ def test_get_modeldata_tuple() -> None:
     assert np.isclose(vmax_cmps, 800000000.0, rtol=0.0001)
 
 
-def verify_file_checksums(checksums_expected: dict, digest: str = "sha256", folder: Path | str = Path()) -> None:
+def verify_file_checksums(
+    checksums_expected: dict[t.Any, t.Any], digest: str = "sha256", folder: Path | str = Path()
+) -> None:
     checksums_actual = {}
 
     for filename, checksum_expected in checksums_expected.items():
