@@ -22,7 +22,6 @@ import numpy.typing as npt
 import pandas as pd
 import polars as pl
 from polars import selectors as cs
-from typing_extensions import deprecated
 
 import artistools as at
 
@@ -407,7 +406,6 @@ def scan_estimators(
     return pldflazy.with_columns(nntot=pl.sum_horizontal(cs.starts_with("nnelement_"))).fill_null(0)
 
 
-@deprecated("Use scan_estimators instead.")
 def read_estimators(
     modelpath: Path | str = Path(),
     modelgridindex: int | Sequence[int] | None = None,
@@ -416,11 +414,23 @@ def read_estimators(
 ) -> dict[tuple[int, int], dict[str, t.Any]]:
     """Read ARTIS estimator data into a dictionary keyed by (timestep, modelgridindex).
 
-    DEPRECATED: This is very slow, and it's almost always better to use scan_estimators instead.
+    When collecting many cells and timesteps, this is very slow, and it's almost always better to use scan_estimators instead.
     """
     if isinstance(keys, str):
         keys = {keys}
-    pldfestimators = scan_estimators(modelpath, modelgridindex, timestep).collect()
+    lzpldfestimators = scan_estimators(modelpath, modelgridindex, timestep)
+
+    if isinstance(modelgridindex, int):
+        lzpldfestimators = lzpldfestimators.filter(pl.col("modelgridindex") == modelgridindex)
+    elif isinstance(modelgridindex, Sequence):
+        lzpldfestimators = lzpldfestimators.filter(pl.col("modelgridindex").is_in(modelgridindex))
+    if isinstance(timestep, int):
+        lzpldfestimators = lzpldfestimators.filter(pl.col("timestep") == timestep)
+    elif isinstance(timestep, Sequence):
+        lzpldfestimators = lzpldfestimators.filter(pl.col("timestep").is_in(timestep))
+
+    pldfestimators = lzpldfestimators.collect()
+
     estimators: dict[tuple[int, int], dict[str, t.Any]] = {}
     for estimtsmgi in pldfestimators.iter_rows(named=True):
         ts, mgi = estimtsmgi["timestep"], estimtsmgi["modelgridindex"]
