@@ -27,18 +27,16 @@ repos:
           - id: requirements-txt-fixer
           - id: trailing-whitespace
 
-    # - repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
-    #   rev: 0.2.3
-    #   hooks:
-    #       - id: yamlfmt
+    - repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
+      rev: 0.2.3
+      hooks:
+          - id: yamlfmt
 
     - repo: https://github.com/astral-sh/ruff-pre-commit
       rev: v0.11.2
       hooks:
-        # Run the linter.
           - id: ruff
             args: [--fix]
-        # Run the formatter.
           - id: ruff-format
 
     # - repo: https://github.com/pre-commit/mirrors-mypy

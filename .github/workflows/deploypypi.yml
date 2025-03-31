@@ -15,20 +15,16 @@ jobs:
         name: Build wheels for ${{ matrix.target.os_arch }}
         strategy:
             matrix:
-                target:
-                  [
-                    {os_arch: "manylinux_x86_64", runs-on: "ubuntu-24.04"},
-                    {os_arch: "manylinux_aarch64", runs-on: "ubuntu-24.04-arm"},
+                target: [{os_arch: manylinux_x86_64, runs-on: ubuntu-24.04}, {os_arch: manylinux_aarch64, runs-on: ubuntu-24.04-arm},
                     # uncomment when pyarrow supplies wheels for musllinux
                     # {os_arch: "musllinux_x86_64", runs-on: "ubuntu-24.04"},
                     # {os_arch: "musllinux_aarch64", runs-on: "ubuntu-24.04-arm"},
-                    {os_arch: "macosx_arm64", runs-on: "macos-15"},
-                  ]
+                     {os_arch: macosx_arm64, runs-on: macos-15}]
             fail-fast: false
         runs-on: ${{ matrix.target.runs-on }}
         env:
             CIBW_ENVIRONMENT_PASS_LINUX: SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS
-            CIBW_BUILD: 'cp3*-${{ matrix.target.os_arch }}'
+            CIBW_BUILD: cp3*-${{ matrix.target.os_arch }}
             MACOSX_DEPLOYMENT_TARGET: 15.0
 
         steps:
