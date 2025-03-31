@@ -5,7 +5,7 @@ on:
     push:
     merge_group:
     schedule:
-        - cron: '0 10 * * 2'
+        - cron: 0 10 * * 2
     #pull_request:
     workflow_dispatch:
     repository_dispatch:
@@ -16,7 +16,7 @@ jobs:
         name: Format, lint, and type check
         runs-on: macos-15
         env:
-            RUFF_OUTPUT_FORMAT: "github"
+            RUFF_OUTPUT_FORMAT: github
         steps:
             - name: Checkout Code
               uses: actions/checkout@v4
@@ -53,8 +53,8 @@ jobs:
             - name: Run Ruff
               if: always()
               run: |
-                uv run --frozen -- ruff --version
-                uv run --frozen -- ruff check --exit-non-zero-on-fix --no-fix
+                  uv run --frozen -- ruff --version
+                  uv run --frozen -- ruff check --exit-non-zero-on-fix --no-fix
 
             - name: Run Ruff Format
               if: always()
@@ -75,8 +75,8 @@ jobs:
             - name: Cache pre-commit
               uses: actions/cache@v4
               with:
-                path: ~/.cache/pre-commit
-                key: pre-commit-3|${{ hashFiles('.pre-commit-config.yaml') }}
+                  path: ~/.cache/pre-commit
+                  key: pre-commit-3|${{ hashFiles('.pre-commit-config.yaml') }}
 
             - name: Run pre-commit
               run: |
@@ -189,8 +189,8 @@ jobs:
 
             - name: Install artistools[dev]
               run: |
-                uv sync --frozen
-                uv pip install --compile-bytecode --editable .[dev]
+                  uv sync --frozen
+                  uv pip install --compile-bytecode --editable .[dev]
 
             - name: Test with pytest
               run: uv run --frozen -- python3 -m pytest --cov=./ --cov-report=xml
