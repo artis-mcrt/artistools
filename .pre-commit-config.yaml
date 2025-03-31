@@ -39,14 +39,6 @@ repos:
             args: [--fix]
           - id: ruff-format
 
-    # - repo: https://github.com/pre-commit/mirrors-mypy
-    #   rev: v1.6.1
-    #   hooks:
-    #       - id: mypy
-    #         additional_dependencies: [numpy, types-PyYAML, pandas>=2.0.3, polars>=0.18.10]
-    #         types: [python]
-    #         require_serial: true
-
     - repo: local
       hooks:
           - id: mypy
