@@ -2,12 +2,10 @@ import itertools
 from pathlib import Path
 
 import numpy as np
-from typeguard import typechecked
 
 import artistools as at
 
 
-@typechecked
 def make_downscaled_3d_grid(
     modelpath: str | Path, outputgridsize: int = 50, plot: bool = False, outputfolder: Path | str | None = None
 ) -> Path:
