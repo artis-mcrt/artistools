@@ -10,7 +10,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
-import pynonthermal as pynt
 
 import artistools as at
 
@@ -312,6 +311,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 for atomic_number, ion_stage in ions:
                     strheader += " frac_ionization_" + at.get_ionstring(atomic_number, ion_stage, sep="")
                 fstat.write(strheader + "\n")
+
+        import pynonthermal as pynt
 
         with pynt.SpencerFanoSolver(emin_ev=emin, emax_ev=emax, npts=npts, verbose=True) as sf:
             for Z, ion_stage in ions:

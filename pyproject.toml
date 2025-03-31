@@ -42,7 +42,6 @@ dependencies = [
     "pandas>=2.2.3",
     "polars>=1.20.0",
     "pyarrow>=19.0.0",
-    "pynonthermal>=2024.7.4",
     "pypdf>=5.1.0",
     "PyYAML>=6.0.2",
     "rich>=13.9.4",
@@ -60,6 +59,7 @@ dev = [
     "pre-commit>=4.0.1",
     "pylint>=3.3.3",
     "pyright>=1.1.387",
+    "pynonthermal>=2024.7.4",
     "pytest>=8.3.3",
     "pytest-codspeed>=3.0.0",
     "pytest-cov>=6.0.0",
@@ -73,6 +73,7 @@ dev = [
 extras = [
     "pyvista>=0.44.1",
     "plotly>=5.24.1",
+    "pynonthermal>=2024.7.4",
     "george>=0.4.3",
 ]
 

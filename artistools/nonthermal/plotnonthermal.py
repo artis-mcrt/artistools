@@ -10,7 +10,6 @@ import matplotlib.axes as mplax
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import pynonthermal as pynt
 
 import artistools as at
 
@@ -53,6 +52,8 @@ def read_files(modelpath: Path, timestep: int = -1, modelgridindex: int = -1) ->
 
 
 def make_xs_plot(axis: mplax.Axes, nonthermaldata: pd.DataFrame, args: argparse.Namespace) -> None:
+    import pynonthermal as pynt
+
     dfcollion = pynt.collion.read_colliondata()
 
     arr_en = nonthermaldata["energy_ev"].unique()
@@ -86,6 +87,8 @@ def plot_contributions(
     arr_y = nonthermaldata["y"].to_numpy()
 
     frac_ionisation = 0.0
+
+    import pynonthermal as pynt
 
     dfcollion = pynt.collion.read_colliondata()
 
