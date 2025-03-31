@@ -33,7 +33,6 @@ license = { text = "MIT" }
 readme = { file = "README.md", content-type = 'text/markdown' }
 dependencies = [
     "argcomplete>=3.5.1",
-    "astropy>=6.1.4",
     "extinction>=0.4.7",
     "imageio>=2.36.0",
     "matplotlib>=3.9.2",
@@ -71,6 +70,7 @@ dev = [
     "types-tabulate>=0.9.0.20240106",
 ]
 extras = [
+    "astropy>=6.1.4",
     "pyvista>=0.44.1",
     "plotly>=5.24.1",
     "pynonthermal>=2024.7.4",

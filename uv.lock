@@ -20,7 +20,6 @@ name = "artistools"
 source = { editable = "." }
 dependencies = [
     { name = "argcomplete" },
-    { name = "astropy" },
     { name = "extinction" },
     { name = "imageio" },
     { name = "matplotlib" },
@@ -58,6 +57,7 @@ dev = [
     { name = "types-tabulate" },
 ]
 extras = [
+    { name = "astropy" },
     { name = "george" },
     { name = "plotly" },
     { name = "pynonthermal" },
@@ -67,7 +67,7 @@ extras = [
 [package.metadata]
 requires-dist = [
     { name = "argcomplete", specifier = ">=3.5.1" },
-    { name = "astropy", specifier = ">=6.1.4" },
+    { name = "astropy", marker = "extra == 'extras'", specifier = ">=6.1.4" },
     { name = "extinction", specifier = ">=0.4.7" },
     { name = "george", marker = "extra == 'extras'", specifier = ">=0.4.3" },
     { name = "imageio", specifier = ">=2.36.0" },
