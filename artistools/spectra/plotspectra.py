@@ -1663,6 +1663,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         # so we need to use the packets instead
         args.frompackets = True
 
+    if not args.frompackets and any(x is not None for x in (args.deltax, args.deltalogx, args.deltalambda)):
+        args.frompackets = True
+        print("Enabling --frompackets, since custom bin width was specified")
+
     if args.makevspecpol:
         atspectra.make_virtual_spectra_summed_file(args.specpath[0])
         return
