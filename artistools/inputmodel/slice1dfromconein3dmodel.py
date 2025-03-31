@@ -85,8 +85,6 @@ def get_profile_along_axis(
 
 def make_1d_profile(args: argparse.Namespace) -> pd.DataFrame:
     """Make 1D model from 3D model."""
-    from astropy import units as u
-
     logprint = at.inputmodel.inputmodel_misc.savetologfile(
         outputfolderpath=Path(args.outputpath), logfilename="make1dmodellog.txt"
     )
@@ -105,7 +103,7 @@ def make_1d_profile(args: argparse.Namespace) -> pd.DataFrame:
     logprint("using axis:", args.axis)
 
     slice1d[f"pos_{args.sliceaxis}_min"] = slice1d[f"pos_{args.sliceaxis}_min"].apply(
-        lambda x: x / args.t_model * (u.cm / u.day).to("km/s")  # pyright: ignore[reportAttributeAccessIssue]
+        lambda x: x / 1e5 / (args.t_model * 86400)
     )  # Convert positions to velocities
     slice1d = slice1d.rename(columns={f"pos_{args.sliceaxis}_min": "vel_r_max_kmps"})
     # Convert position to velocity
@@ -193,12 +191,11 @@ def make_plot(args: argparse.Namespace) -> None:
     ax: Axes3D = plt.figure().gca(projection="3d")  # type: ignore[call-arg] # pyright: ignore[reportCallIssue]
 
     # print(cone['rho_model'])
-    from astropy import units as u
 
     # set up for big model. For scaled down artis input model switch x and z
-    x = cone["pos_z_min"].apply(lambda x: x / args.t_model * (u.cm / u.day).to("km/s")) / 1e3  # pyright: ignore[reportAttributeAccessIssue]
-    y = cone["pos_y_min"].apply(lambda x: x / args.t_model * (u.cm / u.day).to("km/s")) / 1e3  # pyright: ignore[reportAttributeAccessIssue]
-    z = cone["pos_x_min"].apply(lambda x: x / args.t_model * (u.cm / u.day).to("km/s")) / 1e3  # pyright: ignore[reportAttributeAccessIssue]
+    x = cone["pos_z_min"].apply(lambda x: x / 1e5 / (args.t_model * 86400)) / 1e3
+    y = cone["pos_y_min"].apply(lambda x: x / 1e5 / (args.t_model * 86400)) / 1e3
+    z = cone["pos_x_min"].apply(lambda x: x / 1e5 / (args.t_model * 86400)) / 1e3
 
     _surf = ax.scatter3D(x, y, z, c=-cone["fni"], cmap=plt.get_cmap("viridis"))  # pyright: ignore[reportArgumentType]
 
