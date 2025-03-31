@@ -58,11 +58,11 @@ jobs:
 
             - name: Run Ruff Format
               if: always()
-              run: uv run --frozen -- ruff format --check
+              run: uv run --frozen -- ruff format --check --exit-non-zero-on-format
 
             - name: Run mypy
               if: always()
-              run: uv run --frozen -- mypy --install-types --non-interactive
+              run: uv run --frozen -- mypy
 
             - name: Run pyright
               if: always()
