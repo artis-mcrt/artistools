@@ -2,7 +2,7 @@ import shutil
 from pathlib import Path
 from unittest import mock
 
-import matplotlib.axes
+import matplotlib.axes as mplax
 import numpy as np
 import polars as pl
 import polars.testing as pltest
@@ -15,7 +15,7 @@ modelpath_classic_3d = at.get_config()["path_testdata"] / "test-classicmode_3d"
 outputpath = Path(at.get_config()["path_testoutput"])
 
 
-@mock.patch.object(matplotlib.axes.Axes, "plot", side_effect=matplotlib.axes.Axes.plot, autospec=True)
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
 def test_estimator_snapshot(mockplot, benchmark) -> None:
     plotlist = [
@@ -92,7 +92,7 @@ def test_estimator_snapshot(mockplot, benchmark) -> None:
         )
 
 
-@mock.patch.object(matplotlib.axes.Axes, "plot", side_effect=matplotlib.axes.Axes.plot, autospec=True)
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
 def test_estimator_averaging(mockplot, benchmark) -> None:
     plotlist = [
@@ -166,7 +166,7 @@ def test_estimator_averaging(mockplot, benchmark) -> None:
         assert np.allclose([expectedval, expectedval], yvals[varname], rtol=0.001, equal_nan=True)
 
 
-@mock.patch.object(matplotlib.axes.Axes, "plot", side_effect=matplotlib.axes.Axes.plot, autospec=True)
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_estimator_snapshot_classic_3d(mockplot) -> None:
     plotlist = [
         [["initabundances", ["Fe", "Ni_stable", "Ni_56"]]],
@@ -227,7 +227,7 @@ def test_estimator_snapshot_classic_3d(mockplot) -> None:
         assert np.allclose(expectedval, yvals[varname], rtol=0.001), (varname, expectedval, yvals[varname])
 
 
-@mock.patch.object(matplotlib.axes.Axes, "plot", side_effect=matplotlib.axes.Axes.plot, autospec=True)
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_estimator_snapshot_classic_3d_x_axis(mockplot) -> None:
     plotlist = [
         [["initabundances", ["Fe", "Ni_stable", "Ni_56"]]],
@@ -293,7 +293,7 @@ def test_estimator_snapshot_classic_3d_x_axis(mockplot) -> None:
         )
 
 
-@mock.patch.object(matplotlib.axes.Axes, "plot", side_effect=matplotlib.axes.Axes.plot, autospec=True)
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
 def test_estimator_timeevolution(mockplot) -> None:
     at.estimators.plot(

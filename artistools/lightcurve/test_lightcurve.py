@@ -2,7 +2,7 @@
 from pathlib import Path
 from unittest import mock
 
-import matplotlib.axes
+import matplotlib.axes as mplax
 import numpy as np
 from scipy import integrate
 
@@ -12,7 +12,7 @@ modelpath = at.get_config()["path_testdata"] / "testmodel"
 outputpath = at.get_config()["path_testoutput"]
 
 
-@mock.patch.object(matplotlib.axes.Axes, "plot", side_effect=matplotlib.axes.Axes.plot, autospec=True)
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_lightcurve_plot(mockplot, benchmark) -> None:
     benchmark(at.lightcurve.plot, argsraw=[], modelpath=[modelpath], outputfile=outputpath, frompackets=False)
 
@@ -32,7 +32,7 @@ def test_lightcurve_plot(mockplot, benchmark) -> None:
     assert np.isclose(arr_lum.std(), 7.2115e39, rtol=1e-4)
 
 
-@mock.patch.object(matplotlib.axes.Axes, "plot", side_effect=matplotlib.axes.Axes.plot, autospec=True)
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_lightcurve_plot_frompackets(mockplot, benchmark) -> None:
     benchmark(
         at.lightcurve.plot,
