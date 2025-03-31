@@ -1180,7 +1180,7 @@ wheels = [
 
 [[package]]
 name = "pynonthermal"
-version = "2025.1.22"
+version = "2025.3.31"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "artistools" },
@@ -1190,9 +1190,9 @@ dependencies = [
     { name = "polars" },
     { name = "scipy" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/27/60/ee6b1bf86381b5fac104f2cefc7d812e27f3895733dfad2c180f5bbe813c/pynonthermal-2025.1.22.tar.gz", hash = "sha256:89ccc2be7b1803bf91af3e77502b81ab5389512b28156ace2653f726356aab95", size = 5636351 }
+sdist = { url = "https://files.pythonhosted.org/packages/15/78/78a0247b393e700d1ce388b0a61170dfd0e6d1a0463ae39996c96447125f/pynonthermal-2025.3.31.tar.gz", hash = "sha256:00dfee7326fb4e93898bf8c6899b1485d696b83b54fee8465a27b0dcff6bb29a", size = 5615638 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/93/1f/515131814c895cf4d7fac926a83e3c2e5ca4d93cc2c9b16ac22cff25caa9/pynonthermal-2025.1.22-py3-none-any.whl", hash = "sha256:16caa5c6225a0580830a4e0a9bedee019d15712fa04e52bd36d901ffb56ba24c", size = 5514532 },
+    { url = "https://files.pythonhosted.org/packages/96/d3/00ef28ea5697cc73c8561bc2369bcdf9ec1904ec98e25c00b05baffc49b7/pynonthermal-2025.3.31-py3-none-any.whl", hash = "sha256:7df84c9432a93298d652b65fbc197ba34ebd3e84916b75711f1d9531c6ee12b4", size = 5515001 },
 ]
 
 [[package]]
