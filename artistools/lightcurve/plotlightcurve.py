@@ -14,6 +14,7 @@ import matplotlib as mpl
 import matplotlib.axes as mplax
 import matplotlib.cm as mplcm
 import matplotlib.colors as mplcolors
+import matplotlib.figure as mplfig
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mplticker
 import numpy as np
@@ -74,8 +75,8 @@ def plot_deposition_thermalisation(
     #             'color': color_total,
     #         }))
 
-    color_gamma = axis._get_lines.get_next_color()  # type: ignore[attr-defined] # noqa: SLF001
-    color_gamma = axis._get_lines.get_next_color()  # type: ignore[attr-defined] # noqa: SLF001
+    color_gamma = axis._get_lines.get_next_color()  # type: ignore[attr-defined] # noqa: SLF001 # pyright: ignore[reportAttributeAccessIssue]
+    color_gamma = axis._get_lines.get_next_color()  # type: ignore[attr-defined] # noqa: SLF001 # pyright: ignore[reportAttributeAccessIssue]
 
     # axis.plot(depdata['tmid_days'], depdata['eps_gamma_Lsun'] * 3.826e33, **dict(
     #     plotkwargs, **{
@@ -95,7 +96,7 @@ def plot_deposition_thermalisation(
         ),
     )
 
-    color_beta = axis._get_lines.get_next_color()  # type: ignore[attr-defined] # noqa: SLF001
+    color_beta = axis._get_lines.get_next_color()  # type: ignore[attr-defined] # noqa: SLF001 # pyright: ignore[reportAttributeAccessIssue]
 
     if "eps_elec_Lsun" in depdata:
         axis.plot(
@@ -736,7 +737,7 @@ def make_lightcurve_plot(
     plt.close()
 
 
-def create_axes(args: argparse.Namespace) -> tuple[mpl.figure.Figure, npt.NDArray[t.Any] | mplax.Axes]:
+def create_axes(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[t.Any] | mplax.Axes]:
     if "labelfontsize" in args:
         font = {"size": args.labelfontsize}
         mpl.rc("font", **font)
@@ -808,9 +809,9 @@ def set_lightcurveplot_legend(ax: mplax.Axes | npt.NDArray[t.Any], args: argpars
 
     if args.subplots:
         assert isinstance(ax, np.ndarray)
-        ax[args.legendsubplotnumber].legend(
-            loc=args.legendposition, frameon=args.legendframeon, fontsize="x-small", ncol=args.ncolslegend
-        )
+        axis = ax[args.legendsubplotnumber]
+        assert isinstance(axis, mplax.Axes)
+        axis.legend(loc=args.legendposition, frameon=args.legendframeon, fontsize="x-small", ncol=args.ncolslegend)
     else:
         assert isinstance(ax, mplax.Axes)
         ax.legend(
@@ -823,12 +824,12 @@ def set_lightcurveplot_legend(ax: mplax.Axes | npt.NDArray[t.Any], args: argpars
 
 
 def set_lightcurve_plot_labels(
-    fig: mpl.figure.Figure,
+    fig: mplfig.Figure,
     ax: mplax.Axes | npt.NDArray[t.Any],
     filternames_conversion_dict: dict[str, str],
     args: argparse.Namespace,
     band_name: str | None = None,
-) -> tuple[mpl.figure.Figure, mplax.Axes | npt.NDArray[t.Any]]:
+) -> tuple[mplfig.Figure, mplax.Axes | npt.NDArray[t.Any]]:
     ylabel = None
     if args.subplots:
         if args.filter:
@@ -893,7 +894,7 @@ def make_colorbar_viewingangles(
     phi_viewing_angle_bins: list[str],  # noqa: ARG001
     scaledmap: t.Any,
     args: argparse.Namespace,
-    fig: mpl.figure.Figure | None = None,
+    fig: mplfig.Figure | None = None,
     ax: mplax.Axes | Iterable[mplax.Axes] | None = None,
 ) -> None:
     if args.colorbarcostheta:

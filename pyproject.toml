@@ -250,7 +250,7 @@ exclude = [
     'target',
     '_version.py',
 ]
-reportAttributeAccessIssue = false
+reportAttributeAccessIssue = true
 reportCallIssue = true
 reportDeprecated = "warning"
 reportMissingImports = false

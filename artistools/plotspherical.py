@@ -392,7 +392,7 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
         with iio.get_writer(gifname, mode="I", duration=(1000 * 1 / 1.5)) as writer:
             for filename in outputfilenames:
                 image = iio.imread(filename)
-                writer.append_data(image)  # type: ignore[attr-defined]
+                writer.append_data(image)  # type: ignore[attr-defined] # pyright: ignore[reportAttributeAccessIssue]
         print(f"Created gif: {gifname}")
 
 

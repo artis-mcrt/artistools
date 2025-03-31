@@ -105,7 +105,7 @@ def make_1d_profile(args: argparse.Namespace) -> pd.DataFrame:
     logprint("using axis:", args.axis)
 
     slice1d[f"pos_{args.sliceaxis}_min"] = slice1d[f"pos_{args.sliceaxis}_min"].apply(
-        lambda x: x / args.t_model * (u.cm / u.day).to("km/s")
+        lambda x: x / args.t_model * (u.cm / u.day).to("km/s")  # pyright: ignore[reportAttributeAccessIssue]
     )  # Convert positions to velocities
     slice1d = slice1d.rename(columns={f"pos_{args.sliceaxis}_min": "vel_r_max_kmps"})
     # Convert position to velocity
@@ -196,9 +196,9 @@ def make_plot(args: argparse.Namespace) -> None:
     from astropy import units as u
 
     # set up for big model. For scaled down artis input model switch x and z
-    x = cone["pos_z_min"].apply(lambda x: x / args.t_model * (u.cm / u.day).to("km/s")) / 1e3
-    y = cone["pos_y_min"].apply(lambda x: x / args.t_model * (u.cm / u.day).to("km/s")) / 1e3
-    z = cone["pos_x_min"].apply(lambda x: x / args.t_model * (u.cm / u.day).to("km/s")) / 1e3
+    x = cone["pos_z_min"].apply(lambda x: x / args.t_model * (u.cm / u.day).to("km/s")) / 1e3  # pyright: ignore[reportAttributeAccessIssue]
+    y = cone["pos_y_min"].apply(lambda x: x / args.t_model * (u.cm / u.day).to("km/s")) / 1e3  # pyright: ignore[reportAttributeAccessIssue]
+    z = cone["pos_x_min"].apply(lambda x: x / args.t_model * (u.cm / u.day).to("km/s")) / 1e3  # pyright: ignore[reportAttributeAccessIssue]
 
     _surf = ax.scatter3D(x, y, z, c=-cone["fni"], cmap=plt.get_cmap("viridis"))  # pyright: ignore[reportArgumentType]
 

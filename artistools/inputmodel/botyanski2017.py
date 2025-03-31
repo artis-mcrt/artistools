@@ -54,13 +54,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     from astropy import units as u
 
     # composition transition from Ni56-rich to IME-rich
-    mni56 = 0.6 * u.solMass
-    volni56 = (mni56 / ((1 - x_stb) * rho_0 * u.g * u.cm**-3)).to("cm3")
+    mni56 = 0.6 * u.solMass  # pyright: ignore[reportAttributeAccessIssue]
+    volni56 = (mni56 / ((1 - x_stb) * rho_0 * u.g * u.cm**-3)).to("cm3")  # pyright: ignore[reportAttributeAccessIssue]
     rni56 = (3 / 4 / math.pi * volni56) ** (1 / 3.0)
-    v_ni56 = (rni56 / (200 * t200 * u.day)).to("km/s").value
+    v_ni56 = (rni56 / (200 * t200 * u.day)).to("km/s").value  # pyright: ignore[reportAttributeAccessIssue]
 
-    r = (v_ni56 * (u.km / u.s) * 200 * t200 * u.day).to("cm")
-    m = (4 * math.pi / 3 * (r**3) * (rho_0 * u.g * u.cm**-3)).to("solMass")
+    r = (v_ni56 * (u.km / u.s) * 200 * t200 * u.day).to("cm")  # pyright: ignore[reportAttributeAccessIssue]
+    m = (4 * math.pi / 3 * (r**3) * (rho_0 * u.g * u.cm**-3)).to("solMass")  # pyright: ignore[reportAttributeAccessIssue]
     print(f"Ni56 region outer velocity = {v_ni56:.3f}, M={m:.3f}")
 
     dfmodel = pd.DataFrame(
@@ -93,10 +93,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         dfmodel.loc[cellid] = [cellid + 1, v_outer, math.log10(rho), *radioabundances]
         dfelabundances.loc[cellid] = [cellid + 1, *abundances[1:31]]
-        r_inner, r_outer = ((v * u.km / u.s * t200 * 200 * u.day).to("cm").value for v in (v_inner, v_outer))
+        r_inner, r_outer = ((v * u.km / u.s * t200 * 200 * u.day).to("cm").value for v in (v_inner, v_outer))  # pyright: ignore[reportAttributeAccessIssue]
 
         vol_shell = 4 * math.pi / 3 * (r_outer**3 - r_inner**3)
-        m_shell = rho * vol_shell / u.solMass.to("g")
+        m_shell = rho * vol_shell / u.solMass.to("g")  # pyright: ignore[reportAttributeAccessIssue]
         m_tot += m_shell
 
         v_inner = v_outer
