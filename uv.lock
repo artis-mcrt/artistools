@@ -82,8 +82,8 @@ requires-dist = [
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=4.0.1" },
     { name = "pyarrow", specifier = ">=19.0.0" },
     { name = "pylint", marker = "extra == 'dev'", specifier = ">=3.3.3" },
-    { name = "pynonthermal", marker = "extra == 'dev'", specifier = ">=2024.7.4" },
-    { name = "pynonthermal", marker = "extra == 'extras'", specifier = ">=2024.7.4" },
+    { name = "pynonthermal", marker = "extra == 'dev'", specifier = ">=2025.3.31.2" },
+    { name = "pynonthermal", marker = "extra == 'extras'", specifier = ">=2025.3.31.2" },
     { name = "pypdf", specifier = ">=5.1.0" },
     { name = "pyright", marker = "extra == 'dev'", specifier = ">=1.1.387" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.3" },
@@ -742,11 +742,11 @@ wheels = [
 
 [[package]]
 name = "narwhals"
-version = "1.32.0"
+version = "1.33.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/c1/e5/aa97891440bf6bc4239e9b918d89fea58eb87dff1d8d14a69b45ef677e66/narwhals-1.32.0.tar.gz", hash = "sha256:bd0aa41434737adb4b26f8593f3559abc7d938730ece010fe727b58bc363580d", size = 258915 }
+sdist = { url = "https://files.pythonhosted.org/packages/85/fd/484aa8bb557f97a1781f38c78b79f795a2fa320e4165c4230f679937d1e8/narwhals-1.33.0.tar.gz", hash = "sha256:6233d2457debf4b5fe4a1da54530c6fe2d84326f4a8e3bca35bbbff580a347cb", size = 262554 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e9/96/79a6168dc7a5098066e097c01a45d01608c8df6552dfb92a2676ce623186/narwhals-1.32.0-py3-none-any.whl", hash = "sha256:8bdbf3f76155887412eea04b0b06303856ac1aa3d9e8bda5b5e54612855fa560", size = 320073 },
+    { url = "https://files.pythonhosted.org/packages/41/c1/e9bc6b67c774e7c1f939c91ea535f18f7644fedc61b20d6baa861ad52b34/narwhals-1.33.0-py3-none-any.whl", hash = "sha256:f653319112fd121a1f1c18a40cf70dada773cdacfd53e62c2aa0afae43c17129", size = 322750 },
 ]
 
 [[package]]
@@ -1180,19 +1180,18 @@ wheels = [
 
 [[package]]
 name = "pynonthermal"
-version = "2025.3.31"
+version = "2025.3.31.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "artistools" },
     { name = "matplotlib" },
     { name = "numpy" },
-    { name = "pandas" },
     { name = "polars" },
     { name = "scipy" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/15/78/78a0247b393e700d1ce388b0a61170dfd0e6d1a0463ae39996c96447125f/pynonthermal-2025.3.31.tar.gz", hash = "sha256:00dfee7326fb4e93898bf8c6899b1485d696b83b54fee8465a27b0dcff6bb29a", size = 5615638 }
+sdist = { url = "https://files.pythonhosted.org/packages/f2/79/b2ff8ef93f58d64ecca820d51202b47525ff7cb2b2dd75071c189d4168b0/pynonthermal-2025.3.31.2.tar.gz", hash = "sha256:4ed35c2eec75b9fef9a9f2238cc4ec675bf2e2b4af4941d24c21397adc14291f", size = 5615809 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/96/d3/00ef28ea5697cc73c8561bc2369bcdf9ec1904ec98e25c00b05baffc49b7/pynonthermal-2025.3.31-py3-none-any.whl", hash = "sha256:7df84c9432a93298d652b65fbc197ba34ebd3e84916b75711f1d9531c6ee12b4", size = 5515001 },
+    { url = "https://files.pythonhosted.org/packages/34/0f/4ba9a8d6013ad1cd24d259163ed6a053044c4efb6621444d22703b6dd9c1/pynonthermal-2025.3.31.2-py3-none-any.whl", hash = "sha256:21a5326d83fedb72b6636f2b5d6ac873aef4a7cd1a6aad0dce1da1d268dc69c3", size = 5514511 },
 ]
 
 [[package]]
@@ -1630,16 +1629,16 @@ wheels = [
 
 [[package]]
 name = "virtualenv"
-version = "20.29.3"
+version = "20.30.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "distlib" },
     { name = "filelock" },
     { name = "platformdirs" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c7/9c/57d19fa093bcf5ac61a48087dd44d00655f85421d1aa9722f8befbf3f40a/virtualenv-20.29.3.tar.gz", hash = "sha256:95e39403fcf3940ac45bc717597dba16110b74506131845d9b687d5e73d947ac", size = 4320280 }
+sdist = { url = "https://files.pythonhosted.org/packages/38/e0/633e369b91bbc664df47dcb5454b6c7cf441e8f5b9d0c250ce9f0546401e/virtualenv-20.30.0.tar.gz", hash = "sha256:800863162bcaa5450a6e4d721049730e7f2dae07720e0902b0e4040bd6f9ada8", size = 4346945 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c2/eb/c6db6e3001d58c6a9e67c74bb7b4206767caa3ccc28c6b9eaf4c23fb4e34/virtualenv-20.29.3-py3-none-any.whl", hash = "sha256:3e3d00f5807e83b234dfb6122bf37cfadf4be216c53a49ac059d02414f819170", size = 4301458 },
+    { url = "https://files.pythonhosted.org/packages/4c/ed/3cfeb48175f0671ec430ede81f628f9fb2b1084c9064ca67ebe8c0ed6a05/virtualenv-20.30.0-py3-none-any.whl", hash = "sha256:e34302959180fca3af42d1800df014b35019490b119eba981af27f2fa486e5d6", size = 4329461 },
 ]
 
 [[package]]
