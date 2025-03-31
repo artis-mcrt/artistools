@@ -9,6 +9,7 @@ from io import TextIOWrapper
 from pathlib import Path
 
 import numpy as np
+import polars as pl
 
 import artistools as at
 
@@ -49,7 +50,7 @@ def write_spectra(modelpath: str | Path, selected_timesteps: Sequence[int], outf
 
 def write_ntimes_nvel(outfile: TextIOWrapper, selected_timesteps: Sequence[int], modelpath: str | Path) -> None:
     times = at.get_timestep_times(modelpath)
-    _, modelmeta = at.inputmodel.get_modeldata_pandas(modelpath, getheadersonly=True)
+    _, modelmeta = at.inputmodel.get_modeldata(modelpath, getheadersonly=True)
     outfile.write(f"#NTIMES: {len(selected_timesteps)}\n")
     outfile.write(f"#NVEL: {modelmeta['npts_model']}\n")
     outfile.write(f"#TIMES[d]: {' '.join([f'{times[ts]:.2f}' for ts in selected_timesteps])}\n")
@@ -63,7 +64,8 @@ def write_single_estimator(
     outfile: Path,
     keyname: str,
 ) -> None:
-    modeldata, _modelmeta = at.inputmodel.get_modeldata_pandas(modelpath, derived_cols=["vel_r_min_kmps"])
+    lzmodeldata, _modelmeta = at.inputmodel.get_modeldata(modelpath, derived_cols=["vel_r_mid"])
+    lzmodeldata = lzmodeldata.filter(pl.col("modelgridindex").is_in(allnonemptymgilist))
     with Path(outfile).open("w", encoding="utf-8") as f:
         write_ntimes_nvel(f, selected_timesteps, modelpath)
         if keyname == "total_dep":
@@ -72,12 +74,8 @@ def write_single_estimator(
             f.write("#vel_mid[km/s] ne_t0[/cm^3] ne_t1[/cm^3] … ne_tn[/cm^3]\n")
         elif keyname == "Te":
             f.write("#vel_mid[km/s] Tgas_t0[K] Tgas_t1[K] ... Tgas_tn[K]\n")
-        for modelgridindex, cell in modeldata.iterrows():
-            if modelgridindex not in allnonemptymgilist:
-                continue
-            assert isinstance(modelgridindex, int)
-            v_mid = (cell["vel_r_min_kmps"] + cell["vel_r_max_kmps"]) / 2.0
-            f.write(f"{v_mid:.2f}")
+        for modelgridindex, vel_r_mid in lzmodeldata.select(["modelgridindex", "vel_r_mid"]).collect().iter_rows():
+            f.write(f"{vel_r_mid / 1e5:.2f}")
             for timestep in selected_timesteps:
                 cellvalue = estimators[timestep, modelgridindex][keyname]
                 # try:
@@ -98,7 +96,8 @@ def write_ionfracts(
     outputpath: Path,
 ) -> None:
     times = at.get_timestep_times(modelpath)
-    modeldata, _modelmeta = at.inputmodel.get_modeldata_pandas(modelpath, derived_cols=["vel_r_min_kmps"])
+    lzmodeldata, _modelmeta = at.inputmodel.get_modeldata(modelpath, derived_cols=["vel_r_mid"])
+    lzmodeldata = lzmodeldata.filter(pl.col("modelgridindex").is_in(allnonemptymgilist))
     elementlist = at.get_composition_data(modelpath)
     nelements = len(elementlist)
     for element in range(nelements):
@@ -116,12 +115,10 @@ def write_ionfracts(
                 f.write(f"#TIME: {times[timestep]:.2f}\n")
                 f.write(f"#NVEL: {len(allnonemptymgilist)}\n")
                 f.write(f"#vel_mid[km/s] {' '.join([f'{elsymb.lower()}{ion}' for ion in range(nions)])}\n")
-                for modelgridindex, cell in modeldata.iterrows():
-                    if modelgridindex not in allnonemptymgilist:
-                        continue
-                    assert isinstance(modelgridindex, int)
-                    v_mid = (cell.vel_r_min_kmps + cell.vel_r_max_kmps) / 2.0
-                    f.write(f"{v_mid:.2f}")
+                for modelgridindex, vel_r_mid in (
+                    lzmodeldata.select(["modelgridindex", "vel_r_mid"]).collect().iter_rows()
+                ):
+                    f.write(f"{vel_r_mid / 1e5:.2f}")
                     elabund = estimators[timestep, modelgridindex].get(f"nnelement_{elsymb}", 0)
                     for ion in range(nions):
                         ion_stage = ion + elementlist.lowermost_ion_stage[element]
@@ -146,7 +143,8 @@ def write_phys(
     outputpath: Path,
 ) -> None:
     times = at.get_timestep_times(modelpath)
-    modeldata, modelmeta = at.inputmodel.get_modeldata_pandas(modelpath, derived_cols=["vel_r_min_kmps"])
+    lzmodeldata, modelmeta = at.inputmodel.get_modeldata(modelpath, derived_cols=["vel_r_mid"])
+    modeldata = lzmodeldata.filter(pl.col("modelgridindex").is_in(allnonemptymgilist)).collect()
     with Path(outputpath, f"phys_{model_id}_artisnebular.txt").open("w", encoding="utf-8") as f:
         f.write(f"#NTIMES: {len(selected_timesteps)}\n")
         f.write(f"#TIMES[d]: {' '.join([f'{times[ts]:.2f}' for ts in selected_timesteps])}\n")
@@ -155,19 +153,16 @@ def write_phys(
             f.write(f"#TIME: {times[timestep]:.2f}\n")
             f.write(f"#NVEL: {len(modeldata)}\n")
             f.write("#vel_mid[km/s] temp[K] rho[gcc] ne[/cm^3] natom[/cm^3]\n")
-            for modelgridindex, cell in modeldata.iterrows():
-                if modelgridindex not in allnonemptymgilist:
-                    continue
-                assert isinstance(modelgridindex, int)
+            for cell in modeldata.iter_rows(named=True):
+                modelgridindex = cell["modelgridindex"]
 
                 estimators[timestep, modelgridindex]["rho"] = (
-                    10**cell.logrho * (modelmeta["t_model_init_days"] / times[timestep]) ** 3
+                    10 ** cell["logrho"] * (modelmeta["t_model_init_days"] / times[timestep]) ** 3
                 )
 
                 estimators[timestep, modelgridindex]["nntot"] = estimators[timestep, modelgridindex]["nntot"]
 
-                v_mid = (cell.vel_r_min_kmps + cell.vel_r_max_kmps) / 2.0
-                f.write(f"{v_mid:.2f}")
+                f.write(f"{cell['vel_r_mid'] / 1e5:.2f}")
                 for keyname in ("Te", "rho", "nne", "nntot"):
                     estvalue = estimators[timestep, modelgridindex][keyname]
                     f.write(f" {estvalue:.4e}")
