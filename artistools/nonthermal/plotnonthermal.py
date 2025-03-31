@@ -10,6 +10,7 @@ import matplotlib.axes as mplax
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import polars as pl
 
 import artistools as at
 
@@ -111,16 +112,16 @@ def plot_contributions(
             ionstr = at.get_ionstring(Z, ion_stage, sep="_", style="spectral")
             ionpop = estim_tsmgi[f"nnion_{ionstr}"]
 
-            dfcollion_thision = dfcollion.query("Z == @Z and ion_stage == @ion_stage")
+            dfcollion_thision = dfcollion.filter(pl.col("Z") == Z).filter(pl.col("ion_stage") == ion_stage)
 
             # print(at.get_ionstring(Z, ion_stage), ionpop)
 
             arr_ionisation_ion = np.zeros(len(arr_enev), dtype=float)
             frac_ionisation_ion = 0.0
 
-            for _index, row in dfcollion_thision.iterrows():
+            for row in dfcollion_thision.iter_rows(named=True):
                 arr_xs = pynt.collion.get_arxs_array_shell(arr_enev, row)
-                arr_ionisation_shell = ionpop * arr_y * arr_xs * row.ionpot_ev / total_depev
+                arr_ionisation_shell = ionpop * arr_y * arr_xs * row["ionpot_ev"] / total_depev
                 arr_ionisation_ion += arr_ionisation_shell
 
                 frac_ionisation_shell = integrate.trapezoid(x=arr_enev, y=arr_ionisation_shell)

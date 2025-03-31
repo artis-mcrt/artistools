@@ -57,7 +57,7 @@ dev = [
     "pre-commit>=4.0.1",
     "pylint>=3.3.3",
     "pyright>=1.1.387",
-    "pynonthermal>=2024.7.4",
+    "pynonthermal>=2025.3.31.2",
     "pytest>=8.3.3",
     "pytest-codspeed>=3.0.0",
     "pytest-cov>=6.0.0",
@@ -73,7 +73,7 @@ extras = [
     "astropy>=6.1.4",
     "pyvista>=0.44.1",
     "plotly>=5.24.1",
-    "pynonthermal>=2024.7.4",
+    "pynonthermal>=2025.3.31.2",
     "george>=0.4.3",
 ]
 
