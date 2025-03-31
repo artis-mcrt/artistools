@@ -4,7 +4,7 @@ import math
 from pathlib import Path
 from unittest import mock
 
-import matplotlib.axes
+import matplotlib.axes as mplax
 import numpy as np
 import pandas as pd
 import pytest
@@ -17,7 +17,7 @@ outputpath = at.get_config()["path_testoutput"]
 modelpath_classic_3d = at.get_config()["path_testdata"] / "test-classicmode_3d"
 
 
-@mock.patch.object(matplotlib.axes.Axes, "plot", side_effect=matplotlib.axes.Axes.plot, autospec=True)
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_spectraplot(mockplot) -> None:
     at.spectra.plot(
         argsraw=[],
@@ -34,7 +34,7 @@ def test_spectraplot(mockplot) -> None:
     assert np.isclose(integral, 5.870730903198916e-11, atol=1e-14)
 
 
-@mock.patch.object(matplotlib.axes.Axes, "plot", side_effect=matplotlib.axes.Axes.plot, autospec=True)
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
 def test_spectra_frompackets(mockplot, benchmark) -> None:
     at.spectra.plot(
