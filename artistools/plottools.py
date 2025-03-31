@@ -39,9 +39,9 @@ class ExponentLabelFormatter(ticker.ScalarFormatter):
             stroffset = stroffset.replace(r"$\times", "$") + " "
         strnewlabel = self.labeltemplate.format(stroffset)
         assert self.axis is not None
-        self.axis.set_label_text(strnewlabel)  # type: ignore[union-attr]
+        self.axis.set_label_text(strnewlabel)  # type: ignore[union-attr] # pyright: ignore[reportAttributeAccessIssue]
         assert self.offset == 0
-        self.axis.offsetText.set_visible(False)  # type: ignore[union-attr]
+        self.axis.offsetText.set_visible(False)  # type: ignore[union-attr] # pyright: ignore[reportAttributeAccessIssue]
 
     def set_labeltemplate(self, labeltemplate: str) -> None:
         assert "{" in labeltemplate
@@ -69,7 +69,7 @@ class ExponentLabelFormatter(ticker.ScalarFormatter):
 
     def _set_format(self, *args: t.Any, **kwargs):
         if self.decimalplaces is None:
-            return super()._set_format(*args, **kwargs)  # type: ignore[misc]
+            return super()._set_format(*args, **kwargs)  # type: ignore[misc] # pyright: ignore[reportAttributeAccessIssue]
 
         sigfigs = self.decimalplaces
         self.format = f"%1.{sigfigs}f"

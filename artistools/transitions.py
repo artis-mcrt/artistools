@@ -393,7 +393,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     iterdict = (
         adata.iter_rows(named=True)
         if args.atomicdatabase == "artis"
-        else ({"Z": Z, "ion_stage": ion_stage} for Z, ion_stage in ionlist)
+        else ({"Z": Z, "ion_stage": ion_stage, "levels": None} for Z, ion_stage in ionlist)
     )
     for ion in iterdict:
         assert isinstance(ion["Z"], int)

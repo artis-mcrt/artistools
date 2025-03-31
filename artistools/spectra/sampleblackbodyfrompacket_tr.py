@@ -5,7 +5,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from astropy import constants as const
-from astropy import units as u
 
 import artistools as at
 
@@ -13,8 +12,8 @@ DAY = 86400
 TWOHOVERCLIGHTSQUARED = 1.4745007e-47
 HOVERKB = 4.799243681748932e-11
 PARSEC = 3.0857e18
-c_cgs = const.c.to("cm/s").value
-c_ang_s = const.c.to("angstrom/s").value
+c_cgs = const.c.to("cm/s").value  # pyright: ignore[reportAttributeAccessIssue]
+c_ang_s = const.c.to("angstrom/s").value  # pyright: ignore[reportAttributeAccessIssue]
 
 modelpath = Path()
 
@@ -23,16 +22,15 @@ xmax = 30000
 n_nu_bins = 500  # number of frequency bins
 delta_lambda = xmax - xmin
 
-nu_lower = const.c.to("angstrom/s").value / xmin
-nu_upper = const.c.to("angstrom/s").value / xmax
+nu_lower = c_ang_s / xmin
+nu_upper = c_ang_s / xmax
 delta_nu = nu_lower - nu_upper
-# arr_nu_hz = np.linspace(nu_lower, nu_upper, num=n_nu_bins)
 arr_nu_hz = np.linspace(nu_upper, nu_lower, num=n_nu_bins)
 arr_min_nu_hz = arr_nu_hz[:-1]
 arr_max_nu_hz = arr_nu_hz[1:]
 arr_delta_nu_hz = arr_max_nu_hz - arr_min_nu_hz
 
-arr_lambda = const.c.to("angstrom/s").value / arr_nu_hz
+arr_lambda = c_ang_s / arr_nu_hz
 
 n_angle_bins = 100
 
@@ -75,8 +73,8 @@ arr_tend = at.get_timestep_times(modelpath, loc="end")
 column_names = np.append(arr_tstart, arr_tend[-1])
 column_names = np.insert(column_names, 0, 0.0, axis=0)
 
-timemin_seconds = column_names[1] * u.day.to("s")
-timemax_seconds = arr_tend[-1] * u.day.to("s")
+timemin_seconds = column_names[1] * 86400
+timemax_seconds = arr_tend[-1] * 86400
 
 specpol_data_bb = {column_names[0]: arr_min_nu_hz}
 packet_contribution_count = {}
@@ -103,8 +101,8 @@ for npacketfile in range(nprocs):
         # print('ts', timestep, timedays, 'days')
 
         # get packets escaping within timestep
-        timelow = column_names[timestep] * u.day.to("s")
-        timehigh = arr_tend[timestep] * u.day.to("s")
+        timelow = column_names[timestep] * 86400
+        timehigh = arr_tend[timestep] * 86400
         # timelow = float(arr_tstart[timestep])
         # timehigh = float(arr_tend[timestep])
         # print('ts', timestep, 'low', timelow, 'high', timehigh)
