@@ -629,8 +629,11 @@ def make_plot(modelpath, atomic_number, ion_stages_displayed, mgilist, timestep,
         subplot_title = modelname
         if len(subplot_title) > 10:
             subplot_title += "\n"
-        velocity = at.inputmodel.get_modeldata_tuple(modelpath)[0]["vel_r_max_kmps"][modelgridindex]
-        subplot_title += f" {velocity:.0f} km/s at"
+        modeldata, _ = at.inputmodel.get_modeldata(modelpath, derived_cols="vel_r_mid")
+        velocity_kmps = (
+            modeldata.filter(pl.col("modelgridindex") == modelgridindex).select("vel_r_mid").collect().item() / 1e5
+        )
+        subplot_title += f" {velocity_kmps:.0f} km/s at"
 
         try:
             time_days = at.get_timestep_time(modelpath, timestep)

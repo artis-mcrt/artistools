@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
+import polars as pl
 
 import artistools as at
 
@@ -371,9 +372,9 @@ def plot_celltimestep(
     if not args.nospec:
         plotkwargs: dict[str, t.Any] = {}
         if not normalised:
-            modeldata, _, _ = at.inputmodel.get_modeldata_tuple(modelpath)
+            _, modelmeta = at.inputmodel.get_modeldata(modelpath, getheadersonly=True)
             # outer velocity
-            v_surface = modeldata.loc[int(radfielddata.modelgridindex.max())].vel_r_max_kmps * 1e5
+            v_surface = modelmeta["vmax_cmps"]
             r_surface = time_days * 864000 * v_surface
             r_observer = 3.0857e24
             scale_factor = (r_observer / r_surface) ** 2 / (2 * math.pi)
@@ -391,9 +392,12 @@ def plot_celltimestep(
         binedges = get_binedges(radfielddata)
         axis.vlines(binedges, ymin=0.0, ymax=ymax, linewidth=0.5, color="red", label="", zorder=-1, alpha=0.4)
 
-    velocity = at.inputmodel.get_modeldata_tuple(modelpath)[0]["vel_r_max_kmps"][modelgridindex]
+    modeldata, _ = at.inputmodel.get_modeldata(modelpath, derived_cols="vel_r_mid")
+    velocity_kmps = (
+        modeldata.filter(pl.col("modelgridindex") == modelgridindex).select("vel_r_mid").collect().item() / 1e5
+    )
 
-    figure_title = f"{modelname} {velocity:.0f} km/s at {time_days:.0f}d"
+    figure_title = f"{modelname} {velocity_kmps:.0f} km/s at {time_days:.0f}d"
     # figure_title += '\ncell {modelgridindex} timestep {timestep}'
 
     if not args.notitle:
