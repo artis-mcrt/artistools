@@ -51,17 +51,17 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     rho_0 = 4.9e-17 * (e_k**-1.5) * (m_ej**2.5) * (t200**-3)  # g cm^-3
 
     print(f"v_transition = {v_transition:.3f}")
-    from astropy import units as u
 
     # composition transition from Ni56-rich to IME-rich
-    mni56 = 0.6 * u.solMass  # pyright: ignore[reportAttributeAccessIssue]
-    volni56 = (mni56 / ((1 - x_stb) * rho_0 * u.g * u.cm**-3)).to("cm3")  # pyright: ignore[reportAttributeAccessIssue]
+    msun_g = 1.988409870698051e33
+    mni56 = 0.6 * msun_g
+    volni56 = mni56 / ((1 - x_stb) * rho_0)
     rni56 = (3 / 4 / math.pi * volni56) ** (1 / 3.0)
-    v_ni56 = (rni56 / (200 * t200 * u.day)).to("km/s").value  # pyright: ignore[reportAttributeAccessIssue]
+    vel_kmpersec_ni56 = rni56 / 1e5 / (200 * 86400 * t200)
 
-    r = (v_ni56 * (u.km / u.s) * 200 * t200 * u.day).to("cm")  # pyright: ignore[reportAttributeAccessIssue]
-    m = (4 * math.pi / 3 * (r**3) * (rho_0 * u.g * u.cm**-3)).to("solMass")  # pyright: ignore[reportAttributeAccessIssue]
-    print(f"Ni56 region outer velocity = {v_ni56:.3f}, M={m:.3f}")
+    r = vel_kmpersec_ni56 * 1e5 * 200 * 86400 * t200
+    m = (4 * math.pi / 3 * (r**3) * rho_0) / msun_g
+    print(f"Ni56 region outer velocity = {vel_kmpersec_ni56:.3f} kms, M={m:.3f} Msun")
 
     dfmodel = pd.DataFrame(
         columns=["inputcellid", "vel_r_max_kmps", "logrho", "X_Fegroup", "X_Ni56", "X_Co56", "X_Fe52", "X_Cr48"]
@@ -70,16 +70,16 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     dfelabundances = pd.DataFrame(columns=["inputcellid", *["X_" + at.get_elsymbol(x) for x in range(1, 31)]])
     dfelabundances.index.name = "cellid"
 
-    fixed_points = [v_transition, v_ni56]
+    fixed_points = [v_transition, vel_kmpersec_ni56]
     regular_points = [v for v in np.arange(0, 14500, 1000)[1:] if min_dist(fixed_points, v) > 200]
     vlist = sorted([*fixed_points, *regular_points])
 
     v_inner = 0.0  # velocity at inner boundary of cell
-    m_tot = 0.0
+    m_tot_msun = 0.0
     for cellid, v_outer in enumerate(vlist):  # km / s
         rho = rho_0 * (0.5 * (v_inner + v_outer) / v_transition) ** -(delta if v_outer <= v_transition else n)
         abundances = [0.0 for _ in range(31)]
-        if v_outer <= v_ni56:
+        if v_outer <= vel_kmpersec_ni56:
             # Ni56-rich zone
             radioabundances = [1.0, 0.95, 0.0, 0.0, 0.0]
             abundances[26] = 0.025
@@ -93,14 +93,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         dfmodel.loc[cellid] = [cellid + 1, v_outer, math.log10(rho), *radioabundances]
         dfelabundances.loc[cellid] = [cellid + 1, *abundances[1:31]]
-        r_inner, r_outer = ((v * u.km / u.s * t200 * 200 * u.day).to("cm").value for v in (v_inner, v_outer))  # pyright: ignore[reportAttributeAccessIssue]
+        r_inner, r_outer = (v * 1e5 * t200 * 200 * 86400 for v in (v_inner, v_outer))
 
         vol_shell = 4 * math.pi / 3 * (r_outer**3 - r_inner**3)
-        m_shell = rho * vol_shell / u.solMass.to("g")  # pyright: ignore[reportAttributeAccessIssue]
-        m_tot += m_shell
+        m_tot_msun += rho * vol_shell / msun_g
 
         v_inner = v_outer
-    print(f"M_tot = {m_tot:.3f} solMass")
+    print(f"M_tot = {m_tot_msun:.3f} solMass")
 
     at.inputmodel.save_modeldata(
         dfmodel=dfmodel, t_model_init_days=t_model_init_days, outpath=Path(args.outputpath, "model.txt")

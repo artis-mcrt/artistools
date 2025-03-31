@@ -20,7 +20,6 @@ name = "artistools"
 source = { editable = "." }
 dependencies = [
     { name = "argcomplete" },
-    { name = "astropy" },
     { name = "extinction" },
     { name = "imageio" },
     { name = "matplotlib" },
@@ -34,7 +33,6 @@ dependencies = [
     { name = "rich" },
     { name = "scipy" },
     { name = "tqdm" },
-    { name = "typeguard" },
     { name = "typing-extensions" },
     { name = "zstandard" },
 ]
@@ -53,11 +51,13 @@ dev = [
     { name = "pytest-xdist", extra = ["psutil"] },
     { name = "ruff" },
     { name = "tabulate" },
+    { name = "typeguard" },
     { name = "types-python-dateutil" },
     { name = "types-pyyaml" },
     { name = "types-tabulate" },
 ]
 extras = [
+    { name = "astropy" },
     { name = "george" },
     { name = "plotly" },
     { name = "pynonthermal" },
@@ -67,7 +67,7 @@ extras = [
 [package.metadata]
 requires-dist = [
     { name = "argcomplete", specifier = ">=3.5.1" },
-    { name = "astropy", specifier = ">=6.1.4" },
+    { name = "astropy", marker = "extra == 'extras'", specifier = ">=6.1.4" },
     { name = "extinction", specifier = ">=0.4.7" },
     { name = "george", marker = "extra == 'extras'", specifier = ">=0.4.3" },
     { name = "imageio", specifier = ">=2.36.0" },
@@ -97,7 +97,7 @@ requires-dist = [
     { name = "scipy", specifier = ">=1.14.1" },
     { name = "tabulate", marker = "extra == 'dev'", specifier = ">=0.9" },
     { name = "tqdm", specifier = ">=4.67.1" },
-    { name = "typeguard", specifier = ">=4.4.1" },
+    { name = "typeguard", marker = "extra == 'dev'", specifier = ">=4.4.1" },
     { name = "types-python-dateutil", marker = "extra == 'dev'", specifier = ">=2.9.0.20241206" },
     { name = "types-pyyaml", marker = "extra == 'dev'", specifier = ">=6.0.12.20240917" },
     { name = "types-tabulate", marker = "extra == 'dev'", specifier = ">=0.9.0.20240106" },

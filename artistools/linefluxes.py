@@ -163,8 +163,6 @@ def get_line_fluxes_from_pops(
     arr_tstart: Iterable[float] | None = None,
     arr_tend: Iterable[float] | None = None,
 ) -> pd.DataFrame:
-    from astropy import units as u
-
     if arr_tstart is None:
         arr_tstart = at.get_timestep_times(modelpath, loc="start")
     if arr_tend is None:
@@ -181,7 +179,7 @@ def get_line_fluxes_from_pops(
     # timearrayplusend = np.concatenate([arr_tstart, [arr_tend[-1]]])
 
     dictlcdata = {"time": arr_tmid}
-
+    ev_to_erg = 1.60218e-12
     for feature in emfeatures:
         fluxdata = np.zeros_like(arr_tmid, dtype=float)
 
@@ -192,11 +190,11 @@ def get_line_fluxes_from_pops(
         ion = adata.query("Z == @feature.atomic_number and ion_stage == @feature.ion_stage").iloc[0]
 
         for timeindex, timedays in enumerate(arr_tmid):
-            v_inner = modeldata.vel_r_min_kmps.to_numpy() * u.km / u.s  # pyright: ignore[reportAttributeAccessIssue]
-            v_outer = modeldata.vel_r_max_kmps.to_numpy() * u.km / u.s  # pyright: ignore[reportAttributeAccessIssue]
+            v_inner = modeldata.vel_r_min_kmps.to_numpy() * 1e5
+            v_outer = modeldata.vel_r_max_kmps.to_numpy() * 1e5
 
-            t_sec = timedays * u.day  # pyright: ignore[reportAttributeAccessIssue]
-            shell_volumes = ((4 * math.pi / 3) * ((v_outer * t_sec) ** 3 - (v_inner * t_sec) ** 3)).to("cm3").value
+            t_sec = timedays * 86400
+            shell_volumes = (4 * math.pi / 3) * ((v_outer * t_sec) ** 3 - (v_inner * t_sec) ** 3)
 
             timestep = at.get_timestep_of_timedays(modelpath, timedays)
             print(f"{feature.approxlambda}A {timedays}d (ts {timestep})")
@@ -223,7 +221,7 @@ def get_line_fluxes_from_pops(
 
                         delta_ergs = (
                             ion.levels.iloc[upperlevelindex].energy_ev - ion.levels.iloc[lowerlevelindex].energy_ev
-                        ) * u.eV.to("erg")  # pyright: ignore[reportAttributeAccessIssue]
+                        ) * ev_to_erg
 
                         # l = delta_ergs * A_val * levelpop * (shell_volumes[modelgridindex] + unaccounted_shellvol)
                         # print(f'  {modelgridindex} outer_velocity {modeldata.vel_r_max_kmps.to_numpy()[modelgridindex]}'
