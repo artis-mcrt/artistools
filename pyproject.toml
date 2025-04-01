@@ -1,9 +1,9 @@
 [build-system]
 requires = [
-    "setuptools>=68.2",
-    "setuptools-rust",
-    "setuptools_scm[toml]>=8.0",
-    "wheel>=0.41",
+    "setuptools>=77.0",
+    "setuptools-rust>=1.11",
+    "setuptools_scm[toml]>=8.2",
+    "wheel>=0.45.1",
 ]
 build-backend = "setuptools.build_meta"
 
@@ -34,17 +34,16 @@ readme = { file = "README.md", content-type = 'text/markdown' }
 dependencies = [
     "argcomplete>=3.5.1",
     "extinction>=0.4.7",
-    "imageio>=2.36.0",
-    "matplotlib>=3.9.2",
+    "matplotlib>=3.10.1",
     "numexpr>=2.10.1",
     "numpy>=2.2.0",
     "pandas>=2.2.3",
-    "polars>=1.20.0",
+    "polars>=1.24.0",
     "pyarrow>=19.0.0",
     "pypdf>=5.1.0",
     "PyYAML>=6.0.2",
     "rich>=13.9.4",
-    "scipy>=1.14.1",
+    "scipy>=1.15.2",
     "tqdm>=4.67.1",
     "typing_extensions>=4.12.2",
     "zstandard>=0.23.0",
@@ -52,6 +51,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "imageio>=2.37.0",
     "mypy[faster-cache]>=1.14.1",
     "pandas-stubs>=2.2.3.241126",
     "pre-commit>=4.0.1",
@@ -71,6 +71,7 @@ dev = [
 ]
 extras = [
     "astropy>=6.1.4",
+    "imageio>=2.37.0",
     "pyvista>=0.44.1",
     "plotly>=5.24.1",
     "pynonthermal>=2025.3.31.2",
