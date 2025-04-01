@@ -18,7 +18,6 @@ authors = [
 ]
 description = "Plotting and analysis tools for the ARTIS 3D radiative transfer code for supernovae and kilonovae."
 classifiers = [
-    "License :: OSI Approved :: MIT License",
     "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -29,7 +28,8 @@ classifiers = [
 ]
 dynamic = ["version"]
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license =  "MIT"
+license-files = ["LICEN[CS]E*"]
 readme = { file = "README.md", content-type = 'text/markdown' }
 dependencies = [
     "argcomplete>=3.5.1",
@@ -381,7 +381,6 @@ order-by-type = false
 
 [tool.setuptools]
 include-package-data = true
-license-files = ["LICENSE.txt"]
 
 [[tool.setuptools-rust.ext-modules]]
 target = "artistools.rustext" # The last part of the name has to match lib.name in Cargo.toml,
