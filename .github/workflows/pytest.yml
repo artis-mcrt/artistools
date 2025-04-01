@@ -48,7 +48,7 @@ jobs:
                   rustup update stable
                   uv sync --frozen
                   source .venv/bin/activate
-                  uv pip install --compile-bytecode --editable .[dev]
+                  uv pip install --compile-bytecode --editable .[dev,extras]
 
             - name: Run Ruff
               if: always()
@@ -187,10 +187,10 @@ jobs:
               working-directory: tests/data/
               run: source ./setuptestdata.sh
 
-            - name: Install artistools[dev]
+            - name: Install artistools[dev,extras]
               run: |
                   uv sync --frozen
-                  uv pip install --compile-bytecode --editable .[dev]
+                  uv pip install --compile-bytecode --editable .[dev,extras]
 
             - name: Test with pytest
               run: uv run --frozen -- python3 -m pytest --cov=./ --cov-report=xml
