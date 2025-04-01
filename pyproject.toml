@@ -153,7 +153,7 @@ enable_error_code = [
     "truthy-bool",
     "unused-awaitable",
 ]
-exclude = "(build)|(dist)|(tests)|(data)|(test_*)"
+exclude = "(build)|(dist)|(tests)|(data)|(.venv)|(venv)|(_version.py)"
 extra_checks = true
 ignore_missing_imports = true
 implicit_optional = false
@@ -250,6 +250,7 @@ exclude = [
     'dist',
     'target',
     '_version.py',
+    '.venv',
 ]
 reportAttributeAccessIssue = true
 reportCallIssue = true
@@ -402,6 +403,8 @@ exclude = [
     "*.egg-info",
     "**/.*",
     "**/target",
+    "**/.venv",
+    "**/venv",
 ]
 
 [tool.setuptools_scm]
