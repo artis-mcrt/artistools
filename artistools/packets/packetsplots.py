@@ -10,7 +10,7 @@ CLIGHT = 2.99792458e10
 DAY = 86400
 
 
-def make_2d_packets_plot_imshow(modelpath, timestep_min, timestep_max):
+def make_2d_packets_plot_imshow(modelpath, timestep_min, timestep_max) -> None:
     modeldata, _, vmax_cms = at.inputmodel.get_modeldata_tuple(modelpath)
     em_time = True  # False for arrive time
 
@@ -61,7 +61,7 @@ def make_2d_packets_plot_imshow(modelpath, timestep_min, timestep_max):
         plt.clf()
 
 
-def make_2d_packets_plot_pyvista(modelpath, timestep):
+def make_2d_packets_plot_pyvista(modelpath, timestep) -> None:
     import pyvista as pv
 
     modeldata, _, vmax_cms = at.inputmodel.get_modeldata_tuple(modelpath)
@@ -112,7 +112,7 @@ def make_2d_packets_plot_pyvista(modelpath, timestep):
     p.show(screenshot=modelpath / f"3Dplot_pktsemitted{time:.1f}days_disk.png")
 
 
-def plot_packet_mean_emission_velocity(modelpath, write_emission_data=True):
+def plot_packet_mean_emission_velocity(modelpath, write_emission_data=True) -> None:
     emission_data = at.packets.get_mean_packet_emission_velocity_per_ts(modelpath)
 
     plt.plot(emission_data["t_arrive_d"], emission_data["mean_emission_velocity"])
@@ -134,7 +134,7 @@ def plot_packet_mean_emission_velocity(modelpath, write_emission_data=True):
 
 def plot_last_emission_velocities_histogram(
     modelpath, timestep_min, timestep_max, costhetabin=None, maxpacketfiles=None
-):
+) -> None:
     fig, ax = plt.subplots(
         nrows=1, ncols=1, figsize=(5, 4), tight_layout={"pad": 1.0, "w_pad": 0.0, "h_pad": 0.5}, sharex=True
     )

@@ -47,7 +47,7 @@ class ExponentLabelFormatter(ticker.ScalarFormatter):
         assert "{" in labeltemplate
         self.labeltemplate = labeltemplate
 
-    def set_locs(self, locs):
+    def set_locs(self, locs) -> None:
         if self.decimalplaces is not None:
             self.format = f"%1.{self.decimalplaces!s}f"
             if self._usetex:
@@ -78,7 +78,7 @@ class ExponentLabelFormatter(ticker.ScalarFormatter):
 
         return None
 
-    def set_axis(self, axis):
+    def set_axis(self, axis) -> None:
         super().set_axis(axis)
         self._set_formatted_label_text()
 

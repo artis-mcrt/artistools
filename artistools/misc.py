@@ -9,7 +9,6 @@ import multiprocessing
 import multiprocessing.pool
 import string
 import typing as t
-from collections import namedtuple
 from collections.abc import Callable
 from collections.abc import Generator
 from collections.abc import Iterable
@@ -1107,7 +1106,14 @@ def get_bflist(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame
     return dfboundfree
 
 
-linetuple = namedtuple("linetuple", "lambda_angstroms atomic_number ion_stage upperlevelindex lowerlevelindex")
+class LineTuple(t.NamedTuple):
+    """Named tuple for a line in linestat.out."""
+
+    lambda_angstroms: float
+    atomic_number: int
+    ion_stage: int
+    upperlevelindex: int
+    lowerlevelindex: int
 
 
 def read_linestatfile(filepath: Path | str) -> tuple[list[float], list[int], list[int], list[int], list[int]]:

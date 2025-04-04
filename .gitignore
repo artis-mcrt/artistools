@@ -3,7 +3,7 @@
 .ropeproject
 
 .cache
-.coverage
+.coverage*
 coverage.xml
 *.pyc
 *.swp

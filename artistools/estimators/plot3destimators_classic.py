@@ -118,7 +118,7 @@ def get_Te_vs_velocity_2D(modelpath, modeldata, vmax, estimators, readonly_mgi, 
     return grid_Te, xgrid
 
 
-def make_2d_plot(grid, grid_Te, vmax, modelpath, xgrid, time):
+def make_2d_plot(grid, grid_Te, vmax, modelpath, xgrid, time) -> None:
     import pyvista as pv
 
     pyvista = False

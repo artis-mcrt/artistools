@@ -1,4 +1,4 @@
-def pytest_configure(config):  # noqa: ARG001
+def pytest_configure(config) -> None:  # noqa: ARG001
     """Clear the test output of previous runs."""
     import shutil
     import sys

@@ -32,7 +32,6 @@ rule_settings:
         - gpsg-standard-import-alias
     disable:
         - inline-variable
-        - missing-dict-items
         - extract-method
         - extract-duplicate-method
         - code_clarification

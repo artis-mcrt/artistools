@@ -137,7 +137,7 @@ def make_plot(
     xmax: float,
     figure_title: str,
     outputfilename: str,
-):
+) -> None:
     # npanels = len(ionlist) + 1
     npanels = len(ionlist)
 
@@ -178,7 +178,7 @@ def make_plot(
             peak_y_value = max(peak_y_value, *yvalues_combined[seriesindex])
 
     axislabels = [
-        f"{at.get_elsymbol(Z)} {at.roman_numerals[ion_stage]}\n(pop={ionpopdict[Z, ion_stage]:.1e}/cm3)"
+        f"{at.get_elsymbol(Z)} {at.roman_numerals[ion_stage]}\n(pop={ionpopdict[Z, ion_stage]:.1e}/cm³)"
         for (Z, ion_stage) in ionlist
     ]
     axislabels += ["Total"]

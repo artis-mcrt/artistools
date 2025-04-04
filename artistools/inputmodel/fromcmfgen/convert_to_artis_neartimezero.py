@@ -169,7 +169,7 @@ def forward_doubledecay(
 
 def timeshift_double_decay(
     a, indexofatomicnumber, indexofisotope, zparent, numnucleons, timeold, timenew, meanlife1_days, meanlife2_days
-):
+) -> None:
     # take abundances back to time zero and then forward to the selected model time
     elfracsum_before = sum(a["specfrac"][:, indexofatomicnumber[zparent - i]] for i in range(3))
     # isofracsum_before = sum(a["isofrac"][:, indexofisotope[(zparent - i, numnucleons)]] for i in range(3))

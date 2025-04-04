@@ -10,7 +10,7 @@ import artistools as at
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
-def test_vspectraplot(mockplot, benchmark):
+def test_vspectraplot(mockplot, benchmark) -> None:
     at.spectra.plot(
         argsraw=[],
         specpath=[at.get_config()["path_testdata"] / "vspecpolmodel", "sn2011fe_PTF11kly_20120822_norm.txt"],
@@ -62,7 +62,7 @@ def test_vspectraplot(mockplot, benchmark):
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
-def test_vpkt_frompackets_spectrum_plot(mockplot, benchmark):
+def test_vpkt_frompackets_spectrum_plot(mockplot, benchmark) -> None:
     at.spectra.plot(
         argsraw=[],
         specpath=[at.get_config()["path_testdata"] / "vpktcontrib"],
