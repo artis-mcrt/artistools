@@ -1,4 +1,5 @@
 import copy
+import math
 import random
 from pathlib import Path
 
@@ -37,9 +38,9 @@ types = {10: "TYPE_GAMMA", 11: "TYPE_RPKT", 20: "TYPE_NTLEPTON", 32: "TYPE_ESCAP
 type_ids = {v: k for k, v in types.items()}
 
 
-def sample_planck(temperature, nu_max_r, nu_min_r):
-    def planck(nu, temperature):
-        return TWOHOVERCLIGHTSQUARED * pow(nu, 3) / (np.exp(HOVERKB * nu / temperature) - 1)
+def sample_planck(temperature: float, nu_max_r: float, nu_min_r: float) -> float:
+    def planck(nu: float, temperature: float) -> float:
+        return TWOHOVERCLIGHTSQUARED * pow(nu, 3) / (math.exp(HOVERKB * nu / temperature) - 1)
 
     nu_peak = 5.879e10 * temperature
     # if nu_peak > nu_max_r or nu_peak < nu_min_r:

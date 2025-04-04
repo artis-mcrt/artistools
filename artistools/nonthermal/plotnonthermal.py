@@ -82,7 +82,7 @@ def plot_contributions(
 
     total_depev = estim_tsmgi["total_dep"] * ERG_TO_EV
 
-    print(f"Deposition: {total_depev:.1f} [eV/cm3/s]")
+    print(f"Deposition: {total_depev:.1f} [eV/cm³/s]")
 
     arr_enev = nonthermaldata["energy_ev"].to_numpy()
     arr_y = nonthermaldata["y"].to_numpy()

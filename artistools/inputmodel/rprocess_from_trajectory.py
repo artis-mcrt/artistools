@@ -515,7 +515,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         dfdensities = get_wollaeger_density_profile(wollaeger_profilename, t_model_init_seconds)
     else:
         rho = 1e-11
-        print(f"{wollaeger_profilename} not found. Using rho {rho} g/cm3")
+        print(f"{wollaeger_profilename} not found. Using rho {rho} g/cm³")
         dfdensities = pl.DataFrame({"mgi": 0, "rho": rho, "vel_r_max_kmps": 6.0e4})
 
     dfdensities["inputcellid"] = dfdensities["mgi"] + 1

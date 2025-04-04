@@ -195,7 +195,7 @@ def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> 
     return dirbins, dirbin_definition
 
 
-def save_viewing_angle_data_for_plotting(band_name, modelname, args: argparse.Namespace):
+def save_viewing_angle_data_for_plotting(band_name, modelname, args: argparse.Namespace) -> None:
     if args.save_viewing_angle_peakmag_risetime_delta_m15_to_file:
         outputfolder = Path(args.outputfile) if Path(args.outputfile).is_dir() else Path(args.outputfile).parent
         if args.include_delta_m40:
@@ -243,7 +243,7 @@ def save_viewing_angle_data_for_plotting(band_name, modelname, args: argparse.Na
     #     plt.plot(time, magnitude, label=modelname, color=colours[modelnumber], linewidth=3)
 
 
-def write_viewing_angle_data(band_name, modelnames, args: argparse.Namespace):
+def write_viewing_angle_data(band_name, modelnames, args: argparse.Namespace) -> None:
     if (
         args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
         or args.make_viewing_angle_peakmag_risetime_scatter_plot
@@ -270,7 +270,9 @@ def write_viewing_angle_data(band_name, modelnames, args: argparse.Namespace):
         )
 
 
-def calculate_peak_time_mag_deltam15(time, magnitude, modelname, angle, key, args, filternames_conversion_dict=None):
+def calculate_peak_time_mag_deltam15(
+    time, magnitude, modelname, angle, key, args, filternames_conversion_dict=None
+) -> None:
     """Calculate band peak time, peak magnitude and delta m15."""
     if args.timemin is None or args.timemax is None:
         print(
@@ -401,7 +403,7 @@ def make_plot_test_viewing_angle_fit(
     modelname,
     angle,
     args,
-):
+) -> None:
     plt.plot(time, magnitude)
     plt.plot(xfit, fxfit)
 
@@ -426,7 +428,7 @@ def make_plot_test_viewing_angle_fit(
     plt.close()
 
 
-def set_scatterplot_plotkwargs(modelnumber, args: argparse.Namespace):
+def set_scatterplot_plotkwargs(modelnumber: int, args: argparse.Namespace) -> tuple[dict[str, t.Any], dict[str, t.Any]]:
     plotkwargsviewingangles = {"marker": "x", "zorder": 0, "alpha": 0.8}
     if args.colorbarcostheta or args.colorbarphi:
         update_plotkwargs_for_viewingangle_colorbar(plotkwargsviewingangles, args)
@@ -466,7 +468,7 @@ def update_plotkwargs_for_viewingangle_colorbar(
     return plotkwargsviewingangles
 
 
-def set_scatterplot_plot_params(args):
+def set_scatterplot_plot_params(args) -> None:
     if not args.colouratpeak:
         plt.gca().invert_yaxis()
     plt.xlim(args.xmin, args.xmax)
@@ -523,7 +525,7 @@ def set_scatterplot_plot_params(args):
 #     plt.close()
 
 
-def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(modelnames, key, args: argparse.Namespace):
+def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(modelnames, key, args: argparse.Namespace) -> None:
     fig, ax = plt.subplots(
         nrows=1, ncols=1, sharex=True, figsize=(8, 6), tight_layout={"pad": 0.5, "w_pad": 1.5, "h_pad": 0.3}
     )

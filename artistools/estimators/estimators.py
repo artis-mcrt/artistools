@@ -12,7 +12,6 @@ import tempfile
 import time
 import typing as t
 import warnings
-from collections import namedtuple
 from collections.abc import Collection
 from collections.abc import Sequence
 from pathlib import Path
@@ -108,7 +107,11 @@ def get_ionrecombrates_fromfile(filename: Path | str) -> pd.DataFrame:
         index_low_n = header_row.index("RRC(low-n)")
         index_tot = header_row.index("RRC(total)")
 
-        recomb_tuple = namedtuple("recomb_tuple", ["logT", "RRC_low_n", "RRC_total"])
+        class RecombTuple(t.NamedTuple):
+            logT: float
+            RRC_low_n: float
+            RRC_total: float
+
         records = []
         for line in filein:
             if row := line.split():
@@ -117,9 +120,9 @@ def get_ionrecombrates_fromfile(filename: Path | str) -> pd.DataFrame:
                     print(header_row)
                     print(row)
                     sys.exit()
-                records.append(recomb_tuple(*[float(row[index]) for index in (index_logt, index_low_n, index_tot)]))
+                records.append(RecombTuple(*[float(row[index]) for index in (index_logt, index_low_n, index_tot)]))
 
-    return pd.DataFrame.from_records(records, columns=recomb_tuple._fields)
+    return pd.DataFrame.from_records(records, columns=RecombTuple._fields)
 
 
 def get_units_string(variable: str) -> str:

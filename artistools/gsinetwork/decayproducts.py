@@ -335,14 +335,14 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             decay_powers["abundweighted_elec"] / decay_powers["abundweighted_gammanuelec"],
             color=ARTIS_colors[0],
             linestyle="-",
-            label=f"Traj {labelfull} " r"$e^{-}$",
+            label=rf"Traj {labelfull} $e^{{-}}$",
         )
         ax0.plot(
             arr_t_day,
             decay_powers["abundweighted_nu"] / decay_powers["abundweighted_gammanuelec"],
             color=ARTIS_colors[1],
             linestyle="-",
-            label=f"Traj {labelfull} " r"$\nu$",
+            label=rf"Traj {labelfull} $\nu$",
         )
         ax0.set_ylim(0.15, 0.55)
         ax0.set_ylabel("energy release rate / Qdot")

@@ -389,7 +389,7 @@ def make_ionsubplot(
         )
 
 
-def make_plot_populations_with_time_or_velocity(modelpaths: list[Path | str], args: argparse.Namespace):
+def make_plot_populations_with_time_or_velocity(modelpaths: list[Path | str], args: argparse.Namespace) -> None:
     font = {"size": 18}
     mpl.rc("font", **font)
 
@@ -477,7 +477,7 @@ def plot_populations_with_time_or_velocity(
     Z: int,
     levelconfignames,
     args: argparse.Namespace,
-):
+) -> None:
     if args.x == "time":
         timesteps = list(range(args.timestepmin, args.timestepmax))
 
@@ -533,7 +533,7 @@ def plot_populations_with_time_or_velocity(
             #          label=f'level {ionlevel} {modelname} LTE')
 
 
-def make_plot(modelpath, atomic_number, ion_stages_displayed, mgilist, timestep, args: argparse.Namespace):
+def make_plot(modelpath, atomic_number, ion_stages_displayed, mgilist, timestep, args: argparse.Namespace) -> None:
     """Plot level populations for chosens ions of an element in a cell and timestep of an ARTIS model."""
     modelname = at.get_model_name(modelpath)
     adata = at.atomic.get_levels_polars(

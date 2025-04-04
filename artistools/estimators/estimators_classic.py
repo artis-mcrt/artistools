@@ -56,7 +56,7 @@ def get_first_ts_in_run_directory(modelpath: str | Path) -> dict[str, int]:
         if (folder / "output_0-0.txt").is_file():
             with (folder / "output_0-0.txt").open(encoding="utf-8") as output_0:
                 timesteps_in_dir = [
-                    line.strip("...\n").split(" ")[-1]
+                    line.strip(".\n").split(" ")[-1]
                     for line in output_0
                     if "[debug] update_packets: updating packet 0 for timestep" in line
                 ]

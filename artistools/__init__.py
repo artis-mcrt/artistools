@@ -87,7 +87,7 @@ from artistools.misc import get_vpkt_config as get_vpkt_config
 from artistools.misc import get_vspec_dir_labels as get_vspec_dir_labels
 from artistools.misc import get_wid_init_at_tmodel as get_wid_init_at_tmodel
 from artistools.misc import get_z_a_nucname as get_z_a_nucname
-from artistools.misc import linetuple as linetuple
+from artistools.misc import LineTuple as LineTuple
 from artistools.misc import makelist as makelist
 from artistools.misc import match_closest_time as match_closest_time
 from artistools.misc import merge_pdf_files as merge_pdf_files

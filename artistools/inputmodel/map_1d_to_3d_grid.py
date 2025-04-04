@@ -16,7 +16,7 @@ def change_cell_positions_to_new_time(dfgriddata, t_model_1d):
     return dfgriddata, wid_init
 
 
-def map_1d_to_3d(dfgriddata, vmax, n_3d_gridcells, data_1d, t_model_1d, wid_init):
+def map_1d_to_3d(dfgriddata, vmax, n_3d_gridcells, data_1d, t_model_1d, wid_init) -> None:
     modelgridindex = np.zeros(n_3d_gridcells)
     modelgrid_rho_3d = np.zeros(n_3d_gridcells)
     modelgrid_mid_vel = np.zeros(n_3d_gridcells)

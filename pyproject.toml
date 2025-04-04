@@ -294,11 +294,10 @@ preview = true
 select = ["ALL"]
 ignore = [
     "ANN001",  # missing-type-function-argument
-    "ANN201",  # missing-return-type-undocumented-public-function
     "ANN003",  # missing-type-kwargs
+    "ANN201",  # missing-return-type-undocumented-public-function
     "ANN202",  # missing-return-type-private-function
     "ANN401",  # any-type
-    "B005",    # strip-with-multi-characters
     "C901",    # complex-structure
     "COM812",  # missing-trailing-comma
     "CPY001",  # missing-copyright-notice
@@ -318,7 +317,6 @@ ignore = [
     "ERA001",  # commented-out-code
     "FBT",
     "FIX002",  # line contains TODO
-    "ISC001",  # single-line-implicit-string-concatenation
     "N802",    # Function name should be lowercase
     "N803",    # Argument name should be lowercase
     "N806",    # non-lowercase-variable-in-function
@@ -336,7 +334,6 @@ ignore = [
     "PLR0915", # too-many-statements
     "PLR2004", # magic-value-comparison
     "PLW2901", # redefined-loop-name
-    "PYI024",  # Use `typing.NamedTuple` instead of `collections.namedtuple`
     "S101",    # Use of assert detected
     "S310",    # suspicious-url-open-usage
     "S311",    # suspicious-non-cryptographic-random-usage

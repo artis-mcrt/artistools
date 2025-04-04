@@ -199,7 +199,7 @@ def plot_2d_initial_abundances(modelpath, args: argparse.Namespace) -> None:
     axes[0].set_ylabel(ylabel)
 
     if "cellYe" not in args.plotvars and "tracercount" not in args.plotvars:
-        cbar.set_label(r"log10($\rho$ [g/cm3])" if args.logcolorscale else r"$\rho$ [g/cm3]")
+        cbar.set_label(r"log10($\rho$ [g/cm³])" if args.logcolorscale else r"$\rho$ [g/cm³]")
     else:
         cbar.set_label("Ye" if "cellYe" in args.plotvars else "tracercount")
 
@@ -339,7 +339,7 @@ def make_3d_plot(modelpath, args: argparse.Namespace) -> None:
     # plotter.close()
 
 
-def plot_phi_hist(modelpath):
+def plot_phi_hist(modelpath) -> None:
     dfmodel, _ = at.get_modeldata_pandas(modelpath, derived_cols=["pos_x_mid", "pos_y_mid", "pos_z_mid", "vel_r_mid"])
     # print(dfmodel.keys())
     # quit()
