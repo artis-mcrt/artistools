@@ -231,7 +231,6 @@ def match_closest_time(reftime: float, searchtimes: list[t.Any]) -> str:
 
 def get_vpkt_config(modelpath: Path | str) -> dict[str, t.Any]:
     filename = Path(modelpath, "vpkt.txt")
-
     with filename.open(encoding="utf-8") as vpkt_txt:
         vpkt_config: dict[str, t.Any] = {
             "nobsdirections": int(vpkt_txt.readline()),
@@ -240,20 +239,31 @@ def get_vpkt_config(modelpath: Path | str) -> dict[str, t.Any]:
         }
         assert vpkt_config["nobsdirections"] == len(vpkt_config["cos_theta"])
         assert len(vpkt_config["cos_theta"]) == len(vpkt_config["phi"])
-
         speclistline = vpkt_txt.readline().split()
         nspecflag = int(speclistline[0])
-
         if nspecflag == 1:
             vpkt_config["nspectraperobs"] = int(speclistline[1])
             vpkt_config["z_excludelist"] = [int(x) for x in speclistline[2:]]
         else:
             vpkt_config["nspectraperobs"] = 1
             vpkt_config["z_excludelist"] = [0]
-
         vpkt_config["time_limits_enabled"], vpkt_config["initial_time"], vpkt_config["final_time"] = (
             int(x) for x in vpkt_txt.readline().split()
         )
+
+        vpkt_config["vpackets_total_active_spectral_region"] = vpkt_txt.readline().split()
+
+        vpkt_config["override_thickcell_tau"], vpkt_config["cell_is_optically_thick_vpkt"] = vpkt_txt.readline().split()
+
+        vpkt_config["cell_optical_depths"] = vpkt_txt.readline().split()
+
+        vpkt_config["velocity_grid_map"] = vpkt_txt.readline().split()
+
+        vpkt_config["velocity_grid_map_active"] = vpkt_txt.readline().split()
+
+        velocity_grid_map_regions = vpkt_txt.readline().split()
+        vpkt_config["n_velocity_maps"] = int(velocity_grid_map_regions[0])
+        vpkt_config["velocity_map_regions"] = velocity_grid_map_regions[1:]
 
     return vpkt_config
 
