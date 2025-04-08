@@ -344,7 +344,6 @@ def plot_artis_spectrum(
             )
 
         elif args.plotvspecpol is not None:
-            # read virtual packet files (after running plotartisspectrum --makevspecpol)
             vpkt_config = get_vpkt_config(modelpath)
             if vpkt_config["time_limits_enabled"] and (
                 args.timemin < vpkt_config["initial_time"] or args.timemax > vpkt_config["final_time"]
@@ -1342,11 +1341,9 @@ def addargs(parser) -> None:
     )
 
     parser.add_argument(
-        "--makevspecgrid", action="store_true", help="Make file summing the virtual packet grid from all ranks"
+        "--makevspecvelgrid", action="store_true", help="Make file summing the virtual packet grid from all ranks"
     )
 
-    # To get better statistics for polarisation use multiple runs of the same simulation. This will then average the
-    # files produced by makevspecpol for all simulations.
     parser.add_argument(
         "--averagevspecpolfiles", action="store_true", help="Average the vspecpol-total files for multiple simulations"
     )
@@ -1477,7 +1474,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         atspectra.make_virtual_spectra_summed_file(args.specpath[0])
         return
 
-    if args.makevspecgrid:
+    if args.makevspecvelgrid:
         atspectra.make_virtual_grid_summed_file(args.specpath[0])
         return
 
