@@ -258,26 +258,19 @@ def get_vpkt_config(modelpath: Path | str) -> dict[str, t.Any]:
             int(x) for x in vpkt_txt.readline().split()
         )
 
-        # read the next line
-        vpackets_total_active_spectral_region = vpkt_txt.readline().split()
-        vpkt_config["vpackets total active spectral region"] = vpackets_total_active_spectral_region
+        vpkt_config["vpackets_total_active_spectral_region"] = vpkt_txt.readline().split()
 
-        optically_thick_cells = vpkt_txt.readline().split()
-        vpkt_config["optically thick cells"] = optically_thick_cells
+        vpkt_config["override_thickcell_tau"], vpkt_config["cell_is_optically_thick_vpkt"] = vpkt_txt.readline().split()
 
-        optical_depths = vpkt_txt.readline().split()
-        vpkt_config["optical depths"] = optical_depths
+        vpkt_config["cell_optical_depths"] = vpkt_txt.readline().split()
 
-        velocity_grid_map = vpkt_txt.readline().split()
-        vpkt_config["velocity grid map"] = velocity_grid_map
+        vpkt_config["velocity_grid_map"] = vpkt_txt.readline().split()
 
-        velocity_grid_map_active = vpkt_txt.readline().split()
-        vpkt_config["velocity grid map active"] = velocity_grid_map_active
+        vpkt_config["velocity_grid_map_active"] = vpkt_txt.readline().split()
 
         velocity_grid_map_regions = vpkt_txt.readline().split()
-        vpkt_config["Number Of Velocity Maps"] = velocity_grid_map_regions[0]
-
-        vpkt_config["Velocity Map Regions"] = velocity_grid_map_regions[1:]
+        vpkt_config["n_velocity_maps"] = int(velocity_grid_map_regions[0])
+        vpkt_config["velocity_map_regions"] = velocity_grid_map_regions[1:]
 
     return vpkt_config
 
@@ -1240,6 +1233,9 @@ def get_nprocs(modelpath: Path) -> int:
 @lru_cache(maxsize=8)
 def get_inputparams(modelpath: Path) -> dict[str, t.Any]:
     """Return parameters specified in input.txt."""
+    from astropy import constants as const
+    from astropy import units as u
+
     params: dict[str, t.Any] = {}
     with Path(modelpath, "input.txt").open("r", encoding="utf-8") as inputfile:
         params["pre_zseed"] = int(readnoncommentline(inputfile).split("#")[0])
@@ -1252,9 +1248,8 @@ def get_inputparams(modelpath: Path) -> dict[str, t.Any]:
 
         params["tmin"], params["tmax"] = (float(x) for x in readnoncommentline(inputfile).split("#")[0].split())
 
-        MeV_in_Hz = 2.417989242084918e20
         params["nusyn_min"], params["nusyn_max"] = (
-            float(x) * MeV_in_Hz for x in readnoncommentline(inputfile).split("#")[0].split()
+            (float(x) * u.MeV / const.h).to("Hz") for x in readnoncommentline(inputfile).split("#")[0].split()
         )
 
         # number of times for synthesis
