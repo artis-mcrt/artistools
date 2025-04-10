@@ -310,7 +310,7 @@ def plot_reference_spectrum(
 
     ymax = max(specdata[ycolumnname])
     assert isinstance(ymax, float)
-    (lineplot,) = axis.plot(specdata["lambda_angstroms"], specdata[ycolumnname], **plotkwargs)
+    (lineplot,) = axis.plot(specdata["lambda_angstroms"], specdata[ycolumnname], label=label, **plotkwargs)
 
     return lineplot, label, ymax
 
@@ -618,6 +618,8 @@ def make_spectrum_plot(
                     **plotkwargs,
                 )
             else:
+                if args.label[seriesindex]:
+                    plotkwargs["label"] = args.label[seriesindex]
                 for axis in axes:
                     supxmin, supxmax = axis.get_xlim()
                     plot_reference_spectrum(
