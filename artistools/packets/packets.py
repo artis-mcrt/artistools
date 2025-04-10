@@ -624,7 +624,9 @@ def get_packets_pl(
     packetsdatasize_gb = nbatches_read * Path(packetsparquetfiles[0]).stat().st_size / 1024 / 1024 / 1024
     print(f"  data size is {packetsdatasize_gb:.1f} GB ({nbatches_read} * size of {packetsparquetfiles[0].parts[-1]})")
 
-    pldfpackets = pl.scan_parquet(packetsparquetfiles)
+    pldfpackets = pl.scan_parquet(packetsparquetfiles).rename(
+        {"originated_from_positron": "originated_from_particlenotgamma"}, strict=False
+    )
 
     npkts_total = pldfpackets.select(pl.count("e_rf")).collect().item(0, 0)
     print(f"  files contain {npkts_total:.2e} packets")
