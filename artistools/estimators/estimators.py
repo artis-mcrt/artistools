@@ -223,7 +223,9 @@ def get_rankbatch_parquetfile(
     batchindex: int,
     modelpath: Path | str | None = None,
     use_rust_parser: bool | None = True,
+    verbose: bool = True,
 ) -> Path:
+    printornot = print if verbose else lambda _: None
     modelpath = Path(folderpath).parent if modelpath is None else Path(modelpath)
     folderpath = Path(folderpath)
     parquetfilename = f"estimbatch{batchindex:02d}_{batch_mpiranks[0]:04d}_{batch_mpiranks[-1]:04d}.out.parquet.tmp"
@@ -313,18 +315,50 @@ def get_rankbatch_parquetfile(
 
     filesize = parquetfilepath.stat().st_size / 1024 / 1024
     try:
-        print(f"  scanning {parquetfilepath.relative_to(modelpath.parent)} ({filesize:.2f} MiB)")
+        printornot(f"  scanning {parquetfilepath.relative_to(modelpath.parent)} ({filesize:.2f} MiB)")
     except ValueError:
-        print(f"  scanning {parquetfilepath} ({filesize:.2f} MiB)")
+        printornot(f"  scanning {parquetfilepath} ({filesize:.2f} MiB)")
 
     return parquetfilepath
+
+
+def join_cell_modeldata(
+    estimators: pl.LazyFrame, modelpath: Path | str, verbose: bool = False
+) -> tuple[pl.LazyFrame, dict[str, t.Any]]:
+    """Join the estimator data with data from model.txt and derived quantities, e.g. density, volume, etc."""
+    assert estimators is not None
+    tmids = at.get_timestep_times(modelpath, loc="mid")
+    arr_tdelta = at.get_timestep_times(modelpath, loc="delta")
+    estimators = estimators.join(
+        pl.DataFrame({"timestep": range(len(tmids)), "time_mid": tmids, "tdelta": arr_tdelta})
+        .with_columns(pl.col("timestep").cast(pl.Int32))
+        .lazy(),
+        on="timestep",
+        how="left",
+        coalesce=True,
+    )
+    dfmodel, modelmeta = at.inputmodel.get_modeldata(
+        modelpath, derived_cols=["ALL"], get_elemabundances=True, printwarningsonly=not verbose
+    )
+
+    dfmodel = dfmodel.rename({
+        colname: f"init_{colname}"
+        for colname in dfmodel.collect_schema().names()
+        if not colname.startswith("vel_") and colname not in {"inputcellid", "modelgridindex", "mass_g"}
+    })
+    return estimators.join(dfmodel, on="modelgridindex", suffix="_initmodel").with_columns(
+        rho=pl.col("init_rho") * (modelmeta["t_model_init_days"] / pl.col("time_mid")) ** 3,
+        volume=pl.col("init_volume") * (pl.col("time_mid") / modelmeta["t_model_init_days"]) ** 3,
+    ), modelmeta
 
 
 def scan_estimators(
     modelpath: Path | str = Path(),
     modelgridindex: int | Sequence[int] | None = None,
     timestep: int | Sequence[int] | None = None,
+    join_modeldata: bool = False,
     use_rust_parser: bool | None = None,
+    verbose: bool = True,
 ) -> pl.LazyFrame:
     """Read estimator files into a dictionary of (timestep, modelgridindex): estimators.
 
@@ -377,6 +411,7 @@ def scan_estimators(
             batch_mpiranks=mpiranks,
             batchindex=batchindex,
             use_rust_parser=use_rust_parser,
+            verbose=verbose,
         )
         for runfolder in runfolders
         for batchindex, mpiranks in mpirank_groups
@@ -406,7 +441,11 @@ def scan_estimators(
         # for older files with no deposition data, take heating part of deposition and heating fraction
         pldflazy = pldflazy.with_columns(total_dep=pl.col("heating_dep") / pl.col("heating_heating_dep/total_dep"))
 
-    return pldflazy.with_columns(nntot=pl.sum_horizontal(cs.starts_with("nnelement_"))).fill_null(0)
+    pldflazy = pldflazy.with_columns(nntot=pl.sum_horizontal(cs.starts_with("nnelement_"))).fill_null(0)
+    if join_modeldata:
+        pldflazy, _ = join_cell_modeldata(estimators=pldflazy, modelpath=modelpath, verbose=verbose)
+
+    return pldflazy
 
 
 def read_estimators(

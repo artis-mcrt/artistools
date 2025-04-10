@@ -1053,29 +1053,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             modelpath=modelpath, modelgridindex=args.modelgridindex, timestep=tuple(timesteps_included)
         )
 
-    assert estimators is not None
-    tmids = at.get_timestep_times(modelpath, loc="mid")
-    arr_tdelta = at.get_timestep_times(modelpath, loc="delta")
-    estimators = estimators.join(
-        pl.DataFrame({"timestep": range(len(tmids)), "time_mid": tmids, "tdelta": arr_tdelta})
-        .with_columns(pl.col("timestep").cast(pl.Int32))
-        .lazy(),
-        on="timestep",
-        how="left",
-        coalesce=True,
-    )
-    dfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath, derived_cols=["ALL"], get_elemabundances=True)
-
-    dfmodel = dfmodel.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"]).rename({
-        colname: f"init_{colname}"
-        for colname in dfmodel.collect_schema().names()
-        if not colname.startswith("vel_") and colname not in {"inputcellid", "modelgridindex", "mass_g"}
-    })
-    estimators = estimators.join(dfmodel, on="modelgridindex", suffix="_initmodel").with_columns(
-        rho=pl.col("init_rho") * (modelmeta["t_model_init_days"] / pl.col("time_mid")) ** 3,
-        volume=pl.col("init_volume") * (pl.col("time_mid") / modelmeta["t_model_init_days"]) ** 3,
-    )
-
+    estimators, modelmeta = at.estimators.join_cell_modeldata(estimators=estimators, modelpath=modelpath, verbose=False)
+    estimators = estimators.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"])
     tswithdata = estimators.select("timestep").unique().collect().to_series()
     for ts in reversed(timesteps_included):
         if ts not in tswithdata:
