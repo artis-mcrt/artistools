@@ -1411,14 +1411,14 @@ def dimension_reduce_model(
                 outgridcontributions.append(contriboutrow)
 
         for column in matchedcells.columns:
-            if column.startswith("X_") or column in {"cellYe", "q"}:
+            if column.startswith("X_") or column in {"Ye", "cellYe", "q"}:
                 # take mass-weighted average mass fraction
                 dotprod = matchedcells[column].dot(matchedcells["mass_g"])
                 assert isinstance(dotprod, float)
                 massfrac = dotprod / matchedcellmass if nonempty else 0.0
                 dictcell[column] = massfrac
             elif column == "tracercount":
-                dictcell["tracercount"] = matchedcells["tracercount"].sum()
+                dictcell[column] = matchedcells[column].sum()
 
         outcells.append(dictcell)
 
