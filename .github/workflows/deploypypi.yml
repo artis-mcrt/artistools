@@ -25,7 +25,7 @@ jobs:
         env:
             CIBW_ENVIRONMENT_PASS_LINUX: SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS
             CIBW_BUILD: cp3*-${{ matrix.target.os_arch }}
-            MACOSX_DEPLOYMENT_TARGET: 15.0
+            MACOSX_DEPLOYMENT_TARGET: 13.0
 
         steps:
             - uses: actions/checkout@v4
