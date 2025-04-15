@@ -924,7 +924,14 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--show", action="store_true", help="Show plot before quitting")
 
     parser.add_argument(
-        "-o", action="store", dest="outputfile", type=Path, default=Path(), help="Filename for PDF file"
+        "-outputfile",
+        "-outputpath",
+        "-o",
+        action="store",
+        dest="outputfile",
+        type=Path,
+        default=Path(),
+        help="Filename for PDF file",
     )
 
     parser.add_argument(
@@ -1067,7 +1074,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     assoc_cells, _ = at.get_grid_mapping(modelpath)
 
-    outdir = args.outputfile if (args.outputfile).is_dir() else Path()
+    outdir = Path(args.outputfile) if Path(args.outputfile).is_dir() else Path()
 
     if not args.readonlymgi and (args.modelgridindex is not None or args.x in {"time", "timestep"}):
         # plot time evolution in specific cell
