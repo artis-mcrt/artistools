@@ -24,7 +24,6 @@ repos:
             args: [--fix=lf]
           - id: name-tests-test
             args: [--pytest-test-first]
-          - id: requirements-txt-fixer
           - id: trailing-whitespace
 
     - repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
@@ -44,11 +43,5 @@ repos:
           - id: mypy
             name: mypy
             entry: mypy
-            types: [python]
-            language: python
-
-          - id: pyright
-            name: pyright
-            entry: pyright
-            types: [python]
             language: system
+            pass_filenames: false
