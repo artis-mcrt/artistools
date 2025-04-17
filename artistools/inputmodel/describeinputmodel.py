@@ -5,6 +5,7 @@ import math
 import os
 import string
 import typing as t
+from collections.abc import Iterable
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -43,40 +44,11 @@ def calculate_model_electron_frac(dfmodel: pl.LazyFrame) -> float:
     return globalelectronfrac
 
 
-def addargs(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("-inputfile", "-i", default=Path(), help="Path of input file or folder containing model.txt")
-
-    parser.add_argument("-cell", "-mgi", default=None, help="Focus on particular cell number (0-indexed)")
-
-    parser.add_argument(
-        "--noabund", action="store_true", help="Give total masses only, no nuclear or elemental abundances"
-    )
-
-    parser.add_argument("--isotopes", action="store_true", help="Show full set of isotopic abundances")
-
-    parser.add_argument(
-        "-sort",
-        default="z",
-        choices=["z", "mass"],
-        nargs="+",
-        help="Sort order for abundances (z = atomic number, mass = mass fraction)",
-    )
-
-
-def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
-    """Describe an ARTIS input model, such as the mass, velocity structure, and abundances."""
-    if args is None:
-        parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
-
-        addargs(parser)
-        at.set_args_from_dict(parser, kwargs)
-        argcomplete.autocomplete(parser)
-        args = parser.parse_args([] if kwargs else argsraw)
-
-    assert args is not None
-
+def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
+    """Describe the ARTIS input model, such as the mass, velocity structure, and abundances."""
+    print(f"====> {modelpath}")
     dfmodel, modelmeta = at.inputmodel.get_modeldata(
-        args.inputfile,
+        modelpath,
         get_elemabundances=not args.noabund,
         printwarningsonly=False,
         derived_cols=["mass_g", "vel_r_mid", "kinetic_en_erg", "rho"],
@@ -138,7 +110,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             print(dfmodel)
 
     try:
-        assoc_cells, mgi_of_propcells = at.get_grid_mapping(args.inputfile)
+        assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath)
         print(f"  {len(assoc_cells)} model cells have associated prop cells")
     except FileNotFoundError:
         print("  no cell mapping file found")
@@ -333,6 +305,53 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         print(f"{zstr:>5} {species:7s} massfrac {massfrac:.3e}   {species_mass_msun:.3e} Msun  {barstr}")
         if strcomment:
             print(f"    {strcomment}")
+
+
+def addargs(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "modelpath",
+        default=[],
+        nargs="*",
+        action=at.AppendPath,
+        help="Path of input file or folder containing model.txt",
+    )
+
+    parser.add_argument("-cell", "-mgi", default=None, help="Focus on particular cell number (0-indexed)")
+
+    parser.add_argument(
+        "--noabund", action="store_true", help="Give total masses only, no nuclear or elemental abundances"
+    )
+
+    parser.add_argument("--isotopes", action="store_true", help="Show full set of isotopic abundances")
+
+    parser.add_argument(
+        "-sort",
+        default="z",
+        choices=["z", "mass"],
+        nargs="+",
+        help="Sort order for abundances (z = atomic number, mass = mass fraction)",
+    )
+
+
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
+    """Describe an ARTIS input model, such as the mass, velocity structure, and abundances."""
+    if args is None:
+        parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
+
+        addargs(parser)
+        at.set_args_from_dict(parser, kwargs)
+        argcomplete.autocomplete(parser)
+        args = parser.parse_args([] if kwargs else argsraw)
+
+    assert args is not None
+    if not args.modelpath:
+        args.modelpath = [Path()]
+    if not isinstance(args.modelpath, Iterable):
+        args.modelpath = [args.modelpath]
+
+    for modelpath in args.modelpath:
+        describe_model(modelpath, args)
+        print()
 
 
 if __name__ == "__main__":

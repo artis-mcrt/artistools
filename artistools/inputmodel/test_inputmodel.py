@@ -19,12 +19,12 @@ testdatapath = at.get_config()["path_testdata"]
 
 
 def test_describeinputmodel() -> None:
-    at.inputmodel.describeinputmodel.main(argsraw=[], inputfile=modelpath, isotopes=True)
+    at.inputmodel.describeinputmodel.main(argsraw=[], modelpath=[modelpath], isotopes=True)
 
 
 @pytest.mark.benchmark
 def test_describeinputmodel_3d() -> None:
-    at.inputmodel.describeinputmodel.main(argsraw=[], inputfile=modelpath_3d, isotopes=True)
+    at.inputmodel.describeinputmodel.main(argsraw=[], modelpath=modelpath_3d, isotopes=True)
 
 
 def test_get_modeldata_1d() -> None:
