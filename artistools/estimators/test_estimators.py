@@ -310,7 +310,7 @@ def test_estimator_timeevolution(mockplot) -> None:
 def test_rust_estimator_parser() -> None:
     test_outputpath = outputpath / "test_rust_estimator_parser"
     dfestimators: list[pl.DataFrame] = []
-    for use_rust in [True, False]:
+    for use_rust in (True, False):
         if test_outputpath.exists():
             shutil.rmtree(test_outputpath)
             test_outputpath.mkdir(exist_ok=True)
