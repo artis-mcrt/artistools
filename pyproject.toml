@@ -262,7 +262,6 @@ reportUnknownVariableType = false
 typeCheckingMode = "standard"
 useLibraryCodeForTypes = true
 targetVersion = "3.13"
-extraPaths = ["../pynonthermal/"]
 
 [tool.pytest.ini_options]
 addopts = " --durations=0 --durations-min=1.0 --typeguard-packages=artistools -n auto"
