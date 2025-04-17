@@ -34,10 +34,7 @@ def get_2D_slice_through_3d_model(
         sliceposition: float = dfmodel.iloc[(dfmodel["pos_x_min"]).abs().argsort()][:1]["pos_x_min"].item()
         # Choose position to slice. This gets minimum absolute value as the closest to 0
     else:
-        cell_boundaries = []
-        for x in dfmodel[f"pos_{sliceaxis}_min"]:
-            if x not in cell_boundaries:
-                cell_boundaries.append(x)
+        cell_boundaries = list(dfmodel[f"pos_{sliceaxis}_min"].unique())
         sliceposition = cell_boundaries[sliceindex]
 
     slicedf = dfmodel.loc[dfmodel[f"pos_{sliceaxis}_min"] == sliceposition]

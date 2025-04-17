@@ -68,8 +68,8 @@ def test_timestep_times() -> None:
     timedeltarray = at.get_timestep_times(modelpath, loc="delta")
     timemidarray = at.get_timestep_times(modelpath, loc="mid")
     assert len(timestartarray) == 100
-    assert math.isclose(float(timemidarray[0]), 250.421, abs_tol=1e-3)
-    assert math.isclose(float(timemidarray[-1]), 349.412, abs_tol=1e-3)
+    assert math.isclose(timemidarray[0], 250.421, abs_tol=1e-3)
+    assert math.isclose(timemidarray[-1], 349.412, abs_tol=1e-3)
 
     assert all(
         tstart < tmid < (tstart + tdelta)

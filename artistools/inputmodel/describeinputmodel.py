@@ -32,11 +32,13 @@ def calculate_model_electron_frac(dfmodel: pl.LazyFrame) -> float:
         exprs_protons.append(atomic_number / (mass_number * MH) * pl.col(column) * pl.col("mass_g"))
         exprs_nucleons.append(1 / MH * pl.col(column) * pl.col("mass_g"))
 
-    dfmodel = dfmodel.with_columns(
-        protons=pl.sum_horizontal(exprs_protons), nucleons=pl.sum_horizontal(exprs_nucleons)
-    ).with_columns(electronfrac=pl.col("protons") / pl.col("nucleons"))
-
-    globalelectronfrac = dfmodel.select(pl.col("protons").sum() / pl.col("nucleons").sum()).collect().item()
+    globalelectronfrac = (
+        dfmodel.with_columns(protons=pl.sum_horizontal(exprs_protons), nucleons=pl.sum_horizontal(exprs_nucleons))
+        .with_columns(electronfrac=pl.col("protons") / pl.col("nucleons"))
+        .select(pl.col("protons").sum() / pl.col("nucleons").sum())
+        .collect()
+        .item()
+    )
 
     assert globalelectronfrac is not None
     assert 0.0 <= globalelectronfrac <= 1.0

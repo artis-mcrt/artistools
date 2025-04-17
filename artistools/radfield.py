@@ -352,8 +352,7 @@ def plot_celltimestep(
         radfielddata, modelgridindex=modelgridindex, timestep=timestep
     )
     ymax = max(
-        [ymax]
-        + [float(yval) for xval, yval in zip(arr_lambda_fitted, j_lambda_fitted, strict=True) if xmin <= xval <= xmax]
+        [ymax] + [yval for xval, yval in zip(arr_lambda_fitted, j_lambda_fitted, strict=True) if xmin <= xval <= xmax]
     )
 
     axis.plot(arr_lambda_fitted, j_lambda_fitted, label="Radiation field model", alpha=0.8, color="blue", linewidth=1.5)

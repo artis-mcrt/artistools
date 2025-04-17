@@ -296,14 +296,12 @@ def test_save_load_3d_model() -> None:
     elcolnames = dfelements["elemcolname"].to_list()
 
     # this give us several isotopes for each element (doesn't matter if they are real or not)
-    dfisocolnames = pl.Series(
-        "isocolname",
-        pl.concat(
-            dfelements.select(pl.col("elemcolname") + (pl.col("mass_number_example") + i).cast(pl.Utf8))
-            for i in range(2)
-        ),
-    )
-    isocolnames = dfisocolnames.to_list()
+    isocolnames = pl.concat(
+        dfelements.select(
+            (pl.col("elemcolname") + (pl.col("mass_number_example") + i).cast(pl.Utf8)).alias("isocolname")
+        )
+        for i in range(2)
+    ).get_column("isocolname")
 
     # give random abundances to the cells with rho > 0
     dfmodel = dfmodel.with_columns([
