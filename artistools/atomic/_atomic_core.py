@@ -20,7 +20,7 @@ def parse_adata(
     fadata: io.TextIOBase,
     phixsdict: dict[tuple[int, int, int], tuple[npt.NDArray[np.floating[t.Any]], npt.NDArray[np.floating[t.Any]]]],
     ionlist: Collection[tuple[int, int]] | None,
-) -> Generator[tuple[int, int, int, float, pl.DataFrame], None, None]:
+) -> Generator[tuple[int, int, int, float, pl.DataFrame]]:
     """Generate ions and their level lists from adata.txt."""
     firstlevelnumber = 1
 
@@ -352,7 +352,7 @@ def get_levels(
     )
 
 
-def parse_recombratefile(frecomb: io.TextIOBase) -> Generator[tuple[int, int, pl.DataFrame], None, None]:
+def parse_recombratefile(frecomb: io.TextIOBase) -> Generator[tuple[int, int, pl.DataFrame]]:
     """Parse recombrates.txt file."""
     for line in frecomb:
         Z, upper_ion_stage, t_count = (int(x) for x in line.split())

@@ -902,7 +902,7 @@ def anyexist(
     return filepath
 
 
-def batched(iterable: Iterable[t.Any], n: int) -> Generator[list[t.Any], t.Any, None]:
+def batched(iterable: Iterable[t.Any], n: int) -> Generator[list[t.Any], t.Any]:
     """Batch data into iterators of length n. The last batch may be shorter."""
     # batched('ABCDEFG', 3) --> ABC DEF G
     if n < 1:
