@@ -70,7 +70,7 @@ def make_2d_packets_plot_pyvista(modelpath, timestep) -> None:
 
     hist = at.packets.make_3d_histogram_from_packets(modelpath, timestep)
 
-    mesh["energy [erg/s]"] = hist.ravel(order="F")
+    mesh["energy [erg/s]"] = hist.ravel(order="F")  # type: ignore[assignment]
     # print(max(mesh['energy [erg/s]']))
 
     sargs = {

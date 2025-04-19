@@ -323,6 +323,7 @@ def make_3d_plot(modelpath, args: argparse.Namespace) -> None:
     # plotter.remove_scalar_bar() # removes colorbar
 
     plotter.camera_position = "xz"
+    assert plotter.camera is not None
     plotter.camera.azimuth = 45.0
     plotter.camera.elevation = 10.0
     # plotter.camera.azimuth = 15
