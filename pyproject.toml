@@ -32,14 +32,14 @@ license =  "MIT"
 license-files = ["LICEN[CS]E*"]
 readme = { file = "README.md", content-type = 'text/markdown' }
 dependencies = [
-    "argcomplete>=3.5.1",
+    "argcomplete>=3.6.2",
     "extinction>=0.4.7",
     "matplotlib>=3.10.1",
     "numexpr>=2.10.1",
-    "numpy>=2.2.0",
+    "numpy>=2.2.4",
     "pandas>=2.2.3",
-    "polars>=1.24.0",
-    "pyarrow>=19.0.0",
+    "polars>=1.25.0",
+    "pyarrow>=19.0.1",
     "pypdf>=5.1.0",
     "PyYAML>=6.0.2",
     "rich>=13.9.4",
@@ -52,7 +52,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "imageio>=2.37.0",
-    "mypy[faster-cache]>=1.14.1",
+    "mypy[faster-cache]>=1.15.0",
     "pandas-stubs>=2.2.3.241126",
     "pre-commit>=4.0.1",
     "pylint>=3.3.3",
@@ -62,20 +62,20 @@ dev = [
     "pytest-codspeed>=3.0.0",
     "pytest-cov>=6.0.0",
     "pytest-xdist[psutil]>=3.6.1",
-    "ruff>=0.9.9",
-    "tabulate>=0.9",
+    "ruff>=0.11.6",
     "typeguard>=4.4.1",
     "types-python-dateutil>=2.9.0.20241206",
     "types-PyYAML>=6.0.12.20240917",
-    "types-tabulate>=0.9.0.20240106",
 ]
 extras = [
-    "astropy>=6.1.4",
+    "astropy>=7.0.1",
+    "george>=0.4.4",
     "imageio>=2.37.0",
-    "pyvista>=0.44.1",
-    "plotly>=5.24.1",
-    "pynonthermal>=2025.3.31.2",
-    "george>=0.4.3",
+    "plotly>=6.0.1",
+    "pynonthermal>=2025.4.8",
+    "pyvista>=0.45",
+    "tabulate>=0.9",
+    "types-tabulate>=0.9.0.20240106",
 ]
 
 [project.urls]
