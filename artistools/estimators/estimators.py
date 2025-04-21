@@ -403,6 +403,7 @@ def scan_estimators(
     ]
 
     runfolders = at.get_runfolders(modelpath, timesteps=match_timestep)
+    assert runfolders
 
     parquetfiles = (
         get_rankbatch_parquetfile(
