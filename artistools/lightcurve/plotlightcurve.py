@@ -290,7 +290,7 @@ def plot_artis_lightcurve(
     modelpath: str | Path,
     axis: mplax.Axes,
     lcindex: int = 0,
-    label: str | None = None,
+    linelabel: str | None = None,
     escape_type: str = "TYPE_RPKT",
     frompackets: bool = False,
     maxpacketfiles: int | None = None,
@@ -302,7 +302,7 @@ def plot_artis_lightcurve(
     args: argparse.Namespace | None = None,
     pellet_nucname: str | None = None,
     use_pellet_decay_time: bool = False,
-    plotkwargs: dict[str, t.Any] | None = None,
+    **plotkwargs: t.Any,
 ) -> dict[int, pl.DataFrame] | None:
     if args is None:
         args = argparse.Namespace()
@@ -322,12 +322,20 @@ def plot_artis_lightcurve(
         print(f"\nWARNING: Skipping because {modelpath} does not exist\n")
         return None
 
-    print(f"====> {label}")
+    linelabel_is_custom = linelabel is not None
+    assert "label" not in plotkwargs, "label is already set in plotkwargs"
+    linelabel = linelabel or at.get_model_name(modelpath)
+    assert linelabel is not None
+    if escape_type == "TYPE_GAMMA":
+        linelabel += r" $\gamma$"
+    if pellet_nucname is not None:
+        linelabel += f" {pellet_nucname}"
+
+    print(f"====> {linelabel}")
     print(f" modelpath: {modelpath.resolve().parts[-1]}")
 
-    modelname = at.get_model_name(modelpath)
     if hasattr(args, "title") and args.title:
-        axis.set_title(modelname)
+        axis.set_title(linelabel)
 
     if directionbins is None:
         directionbins = [-1]
@@ -360,7 +368,7 @@ def plot_artis_lightcurve(
         try:
             lcpath = at.firstexisting(lcfilename, folder=modelpath, tryzipped=True)
         except FileNotFoundError:
-            print(f"WARNING: Skipping {modelname} because {lcfilename} does not exist")
+            print(f"WARNING: Skipping because {lcfilename} does not exist")
             return None
 
         lcdataframes = at.lightcurve.readfile(lcpath)
@@ -370,10 +378,6 @@ def plot_artis_lightcurve(
 
         if average_over_theta:
             lcdataframes = at.average_direction_bins(lcdataframes, overangle="theta")
-
-    if label is not None:
-        assert "label" not in plotkwargs, "label is already set in plotkwargs"
-        plotkwargs |= {"label": label}
 
     if args.dashes[lcindex]:
         plotkwargs["dashes"] = args.dashes[lcindex]
@@ -414,12 +418,14 @@ def plot_artis_lightcurve(
     for dirbin in dirbins:
         lcdata = lcdataframes[dirbin]
 
+        label_with_tags: str | None = linelabel
         if dirbin != -1:
             print(f" directionbin {dirbin:4d}  {angle_definition[dirbin]}")
 
             if args.colorbarcostheta or args.colorbarphi:
                 plotkwargs["alpha"] = 0.75
-                plotkwargs["label"] = None
+                if not linelabel_is_custom:
+                    label_with_tags = None
                 # Update plotkwargs with viewing angle colour
                 plotkwargs, colorindex = get_viewinganglecolor_for_colorbar(
                     dirbin, costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, plotkwargs, args
@@ -430,9 +436,9 @@ def plot_artis_lightcurve(
                 # the first dirbin should use the color argument (which has been removed from the color cycle)
                 if dirbin != dirbins[0]:
                     plotkwargs["color"] = None
-                plotkwargs["label"] = (
-                    f"{modelname} {angle_definition[dirbin]}" if modelname else angle_definition[dirbin]
-                )
+                if len(dirbins) > 1 or not linelabel_is_custom:
+                    assert label_with_tags is not None
+                    label_with_tags += f" {angle_definition[dirbin]}"
 
         if pellet_nucname is not None:
             plotkwargs["color"] = None
@@ -489,19 +495,21 @@ def plot_artis_lightcurve(
         elif lcdata_valid.is_empty():
             print("  WARNING: No data points in valid range")
 
-        axis.plot(lcdata_valid["time"], lcdata_valid[ycolumn], **plotkwargs)
+        axis.plot(lcdata_valid["time"], lcdata_valid[ycolumn], label=label_with_tags, **plotkwargs)
         if args.print_data:
             print(lcdata[["time", ycolumn, "lum_cmf"]])
 
         if args.plotcmf:
             plotkwargs["linewidth"] = 1
-            plotkwargs["label"] += " (cmf)"
+            if not linelabel_is_custom:
+                assert label_with_tags is not None
+                label_with_tags += " (cmf)"
             plotkwargs["linestyle"] = "dashed"
             # plotkwargs['color'] = 'tab:orange'
-            axis.plot(lcdata["time"], lcdata["lum_cmf"], **plotkwargs)
+            axis.plot(lcdata["time"], lcdata["lum_cmf"], label=label_with_tags, **plotkwargs)
 
     if args.plotdeposition or args.plotthermalisation:
-        plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, args, **plotkwargs)
+        plot_deposition_thermalisation(axis, axistherm, modelpath, label=linelabel, args=args, **plotkwargs)
 
     return lcdataframes
 
@@ -604,18 +612,9 @@ def make_lightcurve_plot(
                         print("WARNING: no nuclides.out file found, skipping top nuclides")
 
                 for pellet_nucname in pellet_nucnames:
-                    label = args.label[lcindex]
-                    if label is None:
-                        label = at.get_model_name(modelpath)
-                    if escape_type == "TYPE_GAMMA":
-                        label += r" $\gamma$"
-                    if pellet_nucname is not None:
-                        label += f" {pellet_nucname}"
-
                     lcdataframes = plot_artis_lightcurve(
                         modelpath=modelpath,
                         lcindex=lcindex,
-                        label=label,
                         axis=axis,
                         escape_type=escape_type,
                         frompackets=frompackets,
@@ -628,10 +627,9 @@ def make_lightcurve_plot(
                         args=args,
                         pellet_nucname=pellet_nucname,
                         use_pellet_decay_time=args.use_pellet_decay_time,
-                        plotkwargs={
-                            "linestyle": args.linestyle[lcindex] if escape_type == "TYPE_RPKT" else ":",
-                            "color": args.color[lcindex],
-                        },
+                        linestyle=args.linestyle[lcindex] if escape_type == "TYPE_RPKT" else ":",
+                        color=args.color[lcindex],
+                        linelabel=args.label[lcindex],
                     )
                     plottedsomething = plottedsomething or (lcdataframes is not None)
 
