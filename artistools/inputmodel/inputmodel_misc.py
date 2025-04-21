@@ -32,7 +32,7 @@ from artistools.misc import zopenpl
 # @lru_cache(maxsize=3)
 def read_modelfile_text(
     filename: Path | str, printwarningsonly: bool = False, getheadersonly: bool = False
-) -> tuple[pl.DataFrame, dict[t.Any, t.Any]]:
+) -> tuple[pl.LazyFrame, dict[t.Any, t.Any]]:
     """Read an artis model.txt file containing cell velocities, density, and abundances of radioactive nuclides."""
     onelinepercellformat = None
 
@@ -141,8 +141,6 @@ def read_modelfile_text(
         if not printwarningsonly:
             print("  using fast method polars.read_csv (requires one line per cell and single space delimiters)")
 
-        pldtypes = {col: pl.Int32 if col == "inputcellid" else pl.Float32 for col in columns}
-
         dfmodel = pl.read_csv(
             zopenpl(filename),
             separator=" ",
@@ -151,9 +149,9 @@ def read_modelfile_text(
             n_rows=npts_model,
             has_header=False,
             skip_rows=numheaderrows,
-            schema_overrides=pldtypes,
+            schema={col: pl.Int32 if col == "inputcellid" else pl.Float32 for col in columns},
             truncate_ragged_lines=True,
-        )
+        ).lazy()
     else:
         nrows_read = 1 if getheadersonly else npts_model
         skiprows: list[int] | int = (
@@ -213,13 +211,13 @@ def read_modelfile_text(
 
         dfmodelpd.index.name = "cellid"
 
-        dfmodel = pl.from_pandas(dfmodelpd)
+        dfmodel = pl.from_pandas(dfmodelpd).lazy()
 
-    if "velocity_outer" in dfmodel.columns:
+    if "velocity_outer" in dfmodel.collect_schema().names():
         dfmodel = dfmodel.rename({"velocity_outer": "vel_r_max_kmps"})
 
     if modelmeta["dimensions"] == 1:
-        vmax_kmps = dfmodel["vel_r_max_kmps"].max()
+        vmax_kmps = dfmodel.select(pl.col("vel_r_max_kmps").max()).collect().item()
         assert isinstance(vmax_kmps, float)
         modelmeta["vmax_cmps"] = vmax_kmps * 1.0e5
 
@@ -231,11 +229,9 @@ def read_modelfile_text(
         if not getheadersonly:
             # check pos_rcyl_mid and pos_z_mid are correct
 
-            for inputcellid, cell_pos_rcyl_mid, cell_pos_z_mid in dfmodel.select([
-                "inputcellid",
-                "pos_rcyl_mid",
-                "pos_z_mid",
-            ]).iter_rows():
+            for inputcellid, cell_pos_rcyl_mid, cell_pos_z_mid in (
+                dfmodel.select(["inputcellid", "pos_rcyl_mid", "pos_z_mid"]).collect().iter_rows()
+            ):
                 modelgridindex = inputcellid - 1
                 n_r = modelgridindex % modelmeta["ncoordgridrcyl"]
                 n_z = modelgridindex // modelmeta["ncoordgridrcyl"]
@@ -257,10 +253,10 @@ def read_modelfile_text(
         modelmeta["wid_init_y"] = wid_init_y
         modelmeta["wid_init_z"] = wid_init_z
         modelmeta["wid_init"] = wid_init_x
-        if "pos_x_min" in dfmodel.columns and not printwarningsonly:
+        if "pos_x_min" in dfmodel.collect_schema().names() and not printwarningsonly:
             print("  model cell positions are defined in the header")
             if not getheadersonly:
-                firstrow = dfmodel.row(index=0, named=True)
+                firstrow = dfmodel.select(cs.starts_with("pos_")).first().collect().row(index=0, named=True)
                 expected_positions = (
                     ("pos_x_min", -xmax_tmodel),
                     ("pos_y_min", -xmax_tmodel),
@@ -309,7 +305,7 @@ def read_modelfile_text(
                 pos_y_mid = -xmax_tmodel + (yindex + 0.5) * wid_init_y
                 pos_z_mid = -xmax_tmodel + (zindex + 0.5) * wid_init_z
 
-                pos3_in = list(dfmodel.select(["inputpos_a", "inputpos_b", "inputpos_c"]).row(modelgridindex))
+                pos3_in = list(dfmodel.select(["inputpos_a", "inputpos_b", "inputpos_c"]).collect().row(modelgridindex))
 
                 if not vectormatch(pos3_in, [pos_x_min, pos_y_min, pos_z_min]):
                     matched_pos_xyz_min = False
@@ -426,7 +422,7 @@ def get_modeldata(
     )
 
     if dfmodel is None:
-        dfmodel = dfmodel_textfile.lazy()
+        dfmodel = dfmodel_textfile
         assert dfmodel is not None
 
         mebibyte = 1024 * 1024
