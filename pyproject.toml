@@ -50,23 +50,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = [
-    "imageio>=2.37.0",
-    "mypy[faster-cache]>=1.15.0",
-    "pandas-stubs>=2.2.3.241126",
-    "pre-commit>=4.0.1",
-    "pylint>=3.3.3",
-    "pyright>=1.1.387",
-    "pynonthermal>=2025.3.31.2",
-    "pytest>=8.3.3",
-    "pytest-codspeed>=3.0.0",
-    "pytest-cov>=6.0.0",
-    "pytest-xdist[psutil]>=3.6.1",
-    "ruff>=0.11.6",
-    "typeguard>=4.4.1",
-    "types-python-dateutil>=2.9.0.20241206",
-    "types-PyYAML>=6.0.12.20240917",
-]
 extras = [
     "astropy>=7.0.1",
     "george>=0.4.4",
@@ -76,6 +59,25 @@ extras = [
     "pyvista>=0.45",
     "tabulate>=0.9",
     "types-tabulate>=0.9.0.20240106",
+]
+
+[dependency-groups]
+dev = [
+    "imageio>=2.37.0",
+    "mypy[faster-cache]>=1.15.0",
+    "pandas-stubs>=2.2.3.241126",
+    "pre-commit>=4.0.1",
+    "pylint>=3.3.3",
+    "pyright>=1.1.400",
+    "pynonthermal>=2025.3.31.2",
+    "pytest>=8.3.3",
+    "pytest-codspeed>=3.0.0",
+    "pytest-cov>=6.0.0",
+    "pytest-xdist[psutil]>=3.6.1",
+    "ruff>=0.11.7",
+    "typeguard>=4.4.1",
+    "types-python-dateutil>=2.9.0.20241206",
+    "types-PyYAML>=6.0.12.20240917",
 ]
 
 [project.urls]
