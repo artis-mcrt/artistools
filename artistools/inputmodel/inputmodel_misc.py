@@ -253,8 +253,9 @@ def read_modelfile_text(
         modelmeta["wid_init_y"] = wid_init_y
         modelmeta["wid_init_z"] = wid_init_z
         modelmeta["wid_init"] = wid_init_x
-        if "pos_x_min" in dfmodel.collect_schema().names() and not printwarningsonly:
-            print("  model cell positions are defined in the header")
+        if "pos_x_min" in dfmodel.collect_schema().names():
+            if not printwarningsonly:
+                print("  model cell positions are defined in the header")
             if not getheadersonly:
                 firstrow = dfmodel.select(cs.starts_with("pos_")).first().collect().row(index=0, named=True)
                 expected_positions = (
