@@ -341,7 +341,7 @@ def read_modelfile_text(
                 print("  cell positions are consistent with z-y-x midpoint columns")
                 colrenames = {"inputpos_a": "pos_z_mid", "inputpos_b": "pos_y_mid", "inputpos_c": "pos_x_mid"}
 
-            dfmodel = dfmodel.rename({a: b for a, b in colrenames.items() if a in dfmodel.columns})
+            dfmodel = dfmodel.rename(colrenames, strict=False)
 
             if matched_pos_xyz_mid or matched_pos_zyx_mid:
                 dfmodel = dfmodel.with_columns(
@@ -1378,7 +1378,9 @@ def dimension_reduce_model(
         matchedcellmass = matchedcells["mass_g"].sum()
         nonempty = matchedcellmass > 0.0
         if matchedcellmass > 0.0 and dfgridcontributions is not None:
-            dfcellcont = dfgridcontributions.filter(pl.col("cellindex").is_in(matchedcells["inputcellid"]))
+            dfcellcont = dfgridcontributions.filter(
+                pl.col("cellindex").is_in(matchedcells.get_column("inputcellid").to_list())
+            )
 
             for (particleid,), dfparticlecontribs in dfcellcont.group_by(["particleid"]):
                 frac_of_cellmass_avg = (
@@ -1421,7 +1423,9 @@ def dimension_reduce_model(
 
         if dfelabundances is not None:
             abund_matchedcells = (
-                dfelabundances.filter(pl.col("inputcellid").is_in(matchedcells["inputcellid"])).lazy().collect()
+                dfelabundances.filter(pl.col("inputcellid").is_in(matchedcells.get_column("inputcellid").to_list()))
+                .lazy()
+                .collect()
             )
             dictcellabundances: dict[str, int | float] = {"inputcellid": mgiout + 1}
             for column in dfelabundances.columns:
