@@ -374,7 +374,7 @@ def get_timestep_times(modelpath: Path | str, loc: t.Literal["mid", "start", "en
     if tsfilepath.exists():
         dftimesteps = (
             pl.read_csv(tsfilepath, has_header=True, separator=" ")
-            .rename({"#timestep": "timestep"})
+            .rename(lambda column_name: column_name.removeprefix("#"))
             .with_columns(tend_days=pl.col("tstart_days") + pl.col("twidth_days"))
         )
 
@@ -1371,9 +1371,7 @@ def get_dfrankassignments(modelpath: Path | str) -> pd.DataFrame | None:
     filerankassignments = Path(modelpath, "modelgridrankassignments.out")
     if filerankassignments.is_file():
         dfrankassignments = pd.read_csv(filerankassignments, sep=r"\s+")
-        return dfrankassignments.rename(
-            columns={dfrankassignments.columns[0]: dfrankassignments.columns[0].lstrip("#")}
-        )
+        return dfrankassignments.rename(lambda column_name: column_name.removeprefix("#"))
     return None
 
 
