@@ -240,6 +240,7 @@ def plot_reference_spectrum(
     scale_to_dist_mpc: float = 1,
     scaletoreftime: float | None = None,
     xunit: str = "angstroms",
+    yvariable: str = "flux",
     **plotkwargs: t.Any,
 ) -> tuple[Line2D, str, float]:
     """Plot a single reference spectrum.
@@ -254,11 +255,10 @@ def plot_reference_spectrum(
 
     # scale to flux at required distance
     if scale_to_dist_mpc:
+        # scale to 1 Mpc and let get_dfspectrum_x_y_with_units scale to scale_to_dist_mpc later
         print(f"Scale to {scale_to_dist_mpc} Mpc")
         assert metadata["dist_mpc"] > 0  # we must know the true distance in order to scale to some other distance
-        specdata = specdata.with_columns(
-            f_lambda=pl.col("f_lambda") * ((metadata["dist_mpc"] / scale_to_dist_mpc) ** 2)
-        )
+        specdata = specdata.with_columns(f_lambda=pl.col("f_lambda") * ((metadata["dist_mpc"]) ** 2))
 
     if scaletoreftime is not None:
         timefactor = atspectra.timeshift_fluxscale_co56law(scaletoreftime, float(metadata["t"]))
@@ -288,11 +288,13 @@ def plot_reference_spectrum(
 
     print(" metadata: " + ", ".join([f"{k}='{v}'" if hasattr(v, "lower") else f"{k}={v}" for k, v in metadata.items()]))
 
-    if xunit.lower() != "angstroms":
-        msg = f"Unit {xunit} not implemented for reference spectra"
-        raise NotImplementedError(msg)
+    lambda_min, lambda_max = sorted([
+        atspectra.convert_unit_to_angstroms(xmin, xunit),
+        atspectra.convert_unit_to_angstroms(xmax, xunit),
+    ])
+    print(f" lambda_min {lambda_min:.1f} lambda_max {lambda_max:.1f}")
 
-    specdata = specdata.filter(pl.col("lambda_angstroms").is_between(xmin, xmax))
+    specdata = specdata.filter(pl.col("lambda_angstroms").is_between(lambda_min, lambda_max))
 
     atspectra.print_integrated_flux(specdata["f_lambda"], specdata["lambda_angstroms"])
 
@@ -300,17 +302,20 @@ def plot_reference_spectrum(
         print(" applying filter to reference spectrum")
         specdata = specdata.with_columns(cs.starts_with("f_lambda").map_batches(fluxfilterfunc))
 
+    specdata = atspectra.get_dfspectrum_x_y_with_units(
+        specdata, xunit=xunit, yvariable=yvariable, fluxdistance_mpc=scale_to_dist_mpc
+    )
+
     if scale_to_peak:
         specdata = specdata.with_columns(
-            f_lambda_scaled=pl.col("f_lambda") / pl.col("f_lambda").max() * scale_to_peak + offset
-        )
-        ycolumnname = "f_lambda_scaled"
+            y_scaled=pl.col("y") / pl.col("y").max() * scale_to_peak + offset
+        ).with_columns(y=pl.col("y_scaled"))
     else:
-        ycolumnname = "f_lambda"
+        assert offset == 0
 
-    ymax = max(specdata[ycolumnname])
+    ymax = specdata["y"].max()
     assert isinstance(ymax, float)
-    (lineplot,) = axis.plot(specdata["lambda_angstroms"], specdata[ycolumnname], label=label, **plotkwargs)
+    (lineplot,) = axis.plot(specdata["x"], specdata["y"], label=label, **plotkwargs)
 
     return lineplot, label, ymax
 
@@ -599,21 +604,19 @@ def make_spectrum_plot(
             if "linewidth" not in plotkwargs:
                 plotkwargs["linewidth"] = 1.1
 
-            if args.xunit.lower() != "angstroms":
-                # other units not implemented yet
-                msg = f"Unit {args.x} not implemented for reference spectra"
-                raise NotImplementedError(msg)
-
             if args.multispecplot:
                 plotkwargs["color"] = "k"
                 supxmin, supxmax = axes[refspecindex].get_xlim()
                 plot_reference_spectrum(
-                    specpath,
-                    axes[refspecindex],
-                    supxmin,
-                    supxmax,
-                    filterfunc,
-                    scale_to_peak,
+                    filename=specpath,
+                    axis=axes[refspecindex],
+                    xmin=supxmin,
+                    xmax=supxmax,
+                    xunit=args.xunit,
+                    yvariable=args.yvariable,
+                    fluxfilterfunc=filterfunc,
+                    scale_to_peak=scale_to_peak,
+                    scale_to_dist_mpc=args.distmpc,
                     scaletoreftime=args.scaletoreftime,
                     **plotkwargs,
                 )
@@ -623,12 +626,15 @@ def make_spectrum_plot(
                 for axis in axes:
                     supxmin, supxmax = axis.get_xlim()
                     plot_reference_spectrum(
-                        specpath,
-                        axis,
-                        supxmin,
-                        supxmax,
-                        filterfunc,
-                        scale_to_peak,
+                        filename=specpath,
+                        axis=axis,
+                        xmin=supxmin,
+                        xmax=supxmax,
+                        xunit=args.xunit,
+                        yvariable=args.yvariable,
+                        fluxfilterfunc=filterfunc,
+                        scale_to_peak=scale_to_peak,
+                        scale_to_dist_mpc=args.distmpc,
                         scaletoreftime=args.scaletoreftime,
                         **plotkwargs,
                     )
@@ -966,13 +972,15 @@ def make_emissionabsorption_plot(
         plotobj, serieslabel, ymaxref = plot_reference_spectrum(
             filepath,
             axis,
-            supxmin,
-            supxmax,
-            filterfunc,
+            xmin=supxmin,
+            xmax=supxmax,
+            fluxfilterfunc=filterfunc,
             scale_to_peak=scale_to_peak,
+            scale_to_dist_mpc=args.distmpc,
             offset=0.3 if scale_to_peak else 0.0,
             scaletoreftime=args.scaletoreftime,
             xunit=args.xunit,
+            yvariable=args.yvariable,
             **plotkwargs,
         )
         ymaxrefall = max(ymaxrefall, ymaxref)
@@ -1457,6 +1465,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument(
         "-distmpc",
+        "-dist_mpc",
         "-dist",
         "-fluxdistmpc",
         type=float,
