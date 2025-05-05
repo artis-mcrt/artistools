@@ -1367,11 +1367,12 @@ def get_cellsofmpirank(mpirank: int, modelpath: Path | str) -> Iterable[int]:
 
 
 @lru_cache(maxsize=16)
-def get_dfrankassignments(modelpath: Path | str) -> pd.DataFrame | None:
+def get_dfrankassignments(modelpath: Path | str) -> pl.DataFrame | None:
     filerankassignments = Path(modelpath, "modelgridrankassignments.out")
     if filerankassignments.is_file():
-        dfrankassignments = pd.read_csv(filerankassignments, sep=r"\s+")
-        return dfrankassignments.rename(lambda column_name: column_name.removeprefix("#"))
+        return pl.read_csv(filerankassignments, has_header=True, separator=" ").rename(
+            lambda column_name: column_name.removeprefix("#")
+        )
     return None
 
 
@@ -1383,11 +1384,13 @@ def get_mpirankofcell(modelgridindex: int, modelpath: Path | str) -> int:
 
     dfrankassignments = get_dfrankassignments(modelpath)
     if dfrankassignments is not None:
-        dfselected = dfrankassignments.query(
-            "ndo > 0 and nstart <= @modelgridindex and (nstart + ndo - 1) >= @modelgridindex"
+        dfselected = dfrankassignments.filter(
+            (pl.col("ndo") > 0)
+            & (pl.col("nstart") <= modelgridindex)
+            & ((pl.col("nstart") + pl.col("ndo") - 1) >= modelgridindex)
         )
-        assert len(dfselected) == 1
-        return int(dfselected.iloc[0]["rank"])
+        assert dfselected.height == 1
+        return int(dfselected["rank"].item())
 
     nprocs = get_nprocs(modelpath)
 
