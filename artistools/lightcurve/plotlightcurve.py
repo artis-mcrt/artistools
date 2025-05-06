@@ -965,7 +965,7 @@ def make_band_lightcurves_plot(
         for index, angle in enumerate(angles):
             modelname = at.get_model_name(modelpath)
             print(f"Reading spectra: {modelname} (angle {angle})")
-            band_lightcurve_data = at.lightcurve.generate_band_lightcurve_data(
+            band_lightcurve_data = at.lightcurve.generate_band_lightcurve_data_deprecated(
                 modelpath, args, angle, modelnumber=modelnumber
             )
 
@@ -1154,7 +1154,7 @@ def colour_evolution_plot(
             for plotnumber, filters in enumerate(args.colour_evolution):
                 filter_names = filters.split("-")
                 args.filter = filter_names
-                band_lightcurve_data = at.lightcurve.generate_band_lightcurve_data(
+                band_lightcurve_data = at.lightcurve.generate_band_lightcurve_data_deprecated(
                     modelpath, args, angle=angle, modelnumber=modelnumber
                 )
 
