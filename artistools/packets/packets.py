@@ -472,17 +472,16 @@ def get_rankbatch_parquetfile(
     conversion_needed = True
     if parquetfilepath.is_file():
         parquet_mtime = parquetfilepath.stat().st_mtime
-        last_textfile_mtime = (
-            at.firstexisting(text_filenames[-1], folder=modelpath, tryzipped=True, search_subfolders=True)
-            .stat()
-            .st_mtime
-        )
+        if text_filepath := at.anyexist(text_filenames[-1], folder=modelpath, tryzipped=True, search_subfolders=True):
+            last_textfile_mtime = text_filepath.stat().st_mtime
 
-        if parquet_mtime > last_textfile_mtime and parquet_mtime > t_lastschemachange:
-            conversion_needed = False
+            if parquet_mtime > last_textfile_mtime and parquet_mtime > t_lastschemachange:
+                conversion_needed = False
+            else:
+                msg = f"ERROR: outdated file: {parquetfilepath}. Delete it to regenerate."
+                raise AssertionError(msg)
         else:
-            msg = f"ERROR: outdated file: {parquetfilepath}. Delete it to regenerate."
-            raise AssertionError(msg)
+            conversion_needed = False
 
     if conversion_needed:
         time_start_load = time.perf_counter()
