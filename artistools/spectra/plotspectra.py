@@ -1141,7 +1141,7 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[t.An
 
     nrows = len(args.timedayslist) if args.multispecplot else 1 + len(densityplotyvars)
 
-    figwidth = args.figscale * get_config()["figwidth"]
+    figwidth = args.figscale * get_config()["figwidth"] * args.figwidthscale
     figheight = args.figscale * get_config()["figwidth"] * (0.25 + nrows * 0.4)
     if args.showabsorption:
         figheight *= 1.56
@@ -1226,7 +1226,6 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[t.An
     if args.showemission or args.showabsorption:
         legendncol = 2
         defaultoutputfile = Path("plotspecemission_{time_days_min:.1f}d_{time_days_max:.1f}d{directionbins}.pdf")
-
         plotobjects, plotobjectlabels, dfalldata = make_emissionabsorption_plot(
             modelpath=Path(args.specpath[0]),
             axis=axes[-1],
@@ -1482,6 +1481,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-figscale", type=float, default=1.8, help="Scale factor for plot area. 1.0 is for single-column"
     )
+
+    parser.add_argument("-figwidthscale", type=float, default=1.0, help="Scale factor for plot width")
 
     parser.add_argument("--logscalex", action="store_true", help="Use log scale for x values")
 
