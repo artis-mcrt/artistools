@@ -367,8 +367,6 @@ def get_timestep_times(modelpath: Path | str, loc: t.Literal["mid", "start", "en
 
         return artistools.codecomparison.get_timestep_times(modelpath=modelpath, loc=loc)
 
-    modelpath = modelpath if modelpath.is_dir() else modelpath.parent
-
     # use timestep.out if possible (allowing arbitrary timestep lengths)
     tsfilepath = Path(modelpath, "timesteps.out")
     if tsfilepath.exists():
