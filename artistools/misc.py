@@ -258,22 +258,25 @@ def get_vpkt_config(modelpath: Path | str) -> dict[str, t.Any]:
     return vpkt_config
 
 
-@lru_cache(maxsize=8)
 def get_grid_mapping(modelpath: Path | str) -> tuple[dict[int, list[int]], dict[int, int]]:
     """Return dict with the associated propagation cells for each model grid cell and a dict with the associated model grid cell of each propagration cell."""
     modelpath = Path(modelpath)
-    filename = firstexisting("grid.out", tryzipped=True, folder=modelpath) if modelpath.is_dir() else Path(modelpath)
+    filename = firstexisting("grid.out", tryzipped=True, folder=modelpath)
+    dfgrid = pl.read_csv(
+        zopenpl(filename),
+        separator=" ",
+        has_header=False,
+        comment_prefix="#",
+        schema={"cellindex": pl.Int32, "modelgridindex": pl.Int32},
+    )
+    assoc_cells = dict(
+        dfgrid.group_by("modelgridindex")
+        .agg(pl.col("cellindex").implode())
+        .select([pl.col("modelgridindex"), pl.col("cellindex")])
+        .iter_rows()
+    )
 
-    assoc_cells: dict[int, list[int]] = {}
-    mgi_of_propcells: dict[int, int] = {}
-    with zopen(filename) as fgrid:
-        for line in fgrid:
-            row = line.split()
-            propcellid, mgi = int(row[0]), int(row[1])
-            if mgi not in assoc_cells:
-                assoc_cells[mgi] = []
-            assoc_cells[mgi].append(propcellid)
-            mgi_of_propcells[propcellid] = mgi
+    mgi_of_propcells = dict(dfgrid.select([pl.col("cellindex"), pl.col("modelgridindex")]).iter_rows())
 
     return assoc_cells, mgi_of_propcells
 
