@@ -409,6 +409,9 @@ exclude = [
 version_file = "_version.py"
 local_scheme = "no-local-version"
 
+[tool.ty.rules]
+unresolved-import = "ignore"
+
 [tool.vulture]
 exclude = [".*", "build/", ".eggs/"]
 paths = ["artistools"]
