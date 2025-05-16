@@ -109,6 +109,7 @@ def read_reference_estimators(
 
             cur_timestep = -1
             cur_modelgridindex = -1
+            iontuples: list[tuple[int, int]] = []
             for line in fions:
                 row = line.split()
 
