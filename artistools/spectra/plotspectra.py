@@ -647,7 +647,7 @@ def make_spectrum_plot(
             timeavg = args.timedays
             from artistools.codecomparison import plot_spectrum
 
-            plot_spectrum(specpath, timedays=timeavg, ax=axes[0], **plotkwargs)
+            plot_spectrum(specpath, timedays=timeavg, axis=axes[0], **plotkwargs)
             refspecindex += 1
         else:
             # ARTIS model spectrum
