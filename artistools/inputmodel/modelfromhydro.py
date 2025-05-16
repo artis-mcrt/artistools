@@ -74,8 +74,8 @@ def get_merger_time_geomunits(pathtogriddata: Path) -> float:
             print(f"Found simulation merger time to be {mergertime_geomunits} ({mergertime_geomunits * 4.926e-6} s) ")
         return mergertime_geomunits
 
-    print('Make file "tmerger.txt" with time of merger in geom units')
-    sys.exit(1)
+    msg = 'Make file "tmerger.txt" with time of merger in geom units'
+    raise FileNotFoundError(msg)
 
 
 def get_snapshot_time_geomunits(pathtogriddata: Path | str) -> tuple[float, float]:
