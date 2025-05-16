@@ -732,7 +732,7 @@ def peakmag_risetime_declinerate_init(
             modelnames.append(modelname)  # save for later
             print(f"Reading spectra: {modelname}")
             if args.filter:
-                lightcurve_data = at.lightcurve.generate_band_lightcurve_data(
+                lightcurve_data_filters = at.lightcurve.generate_band_lightcurve_data(
                     modelpath, args, angle, modelnumber=modelnumber
                 )
                 plottinglist = args.filter
@@ -744,7 +744,7 @@ def peakmag_risetime_declinerate_init(
             for band_name in plottinglist:
                 brightness: npt.NDArray[np.floating[t.Any]] | list[float]
                 if args.filter:
-                    time, brightness = at.lightcurve.get_band_lightcurve(lightcurve_data, band_name, args)
+                    time, brightness = at.lightcurve.get_band_lightcurve(lightcurve_data_filters, band_name, args)
                 else:
                     assert isinstance(lightcurve_data, pd.DataFrame)
                     lightcurve_data = lightcurve_data.loc[
@@ -802,7 +802,7 @@ def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Names
 
     lcdataframes: t.Any = at.lightcurve.readfile(modelpath / "light_curve_res.out")
 
-    timetoplot = at.match_closest_time(reftime=args.timedays, searchtimes=lcdataframes[0]["time"])
+    timetoplot = at.match_closest_time(reftime=args.timedays, searchtimes=lcdataframes[0]["time"].to_list())
     print(timetoplot)
 
     for angleindex, lcdata in enumerate(lcdataframes.items()):
