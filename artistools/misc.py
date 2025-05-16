@@ -849,7 +849,10 @@ def firstexisting(
 ) -> Path:
     """Return the first existing file in file list. If none exist, raise exception."""
     if isinstance(filelist, str | Path):
-        filelist = [filelist]
+        filelist = [Path(filelist)]
+    else:
+        assert isinstance(filelist, Iterable)
+        filelist = [Path(x) for x in filelist]
 
     folder = Path(folder)
     thispath = Path(folder, filelist[0])
@@ -876,9 +879,9 @@ def firstexisting(
 
             if tryzipped:
                 for ext in (".zst", ".gz", ".xz"):
-                    filenameext = str(filename) if str(filename).endswith(ext) else str(filename) + ext
-                    if filenameext not in filelist:
-                        thispath = Path(searchfolder, filenameext)
+                    filename_withext = Path(str(filename) if str(filename).endswith(ext) else str(filename) + ext)
+                    if filename_withext not in filelist:
+                        thispath = Path(searchfolder, filename_withext)
                         if thispath.exists():
                             return thispath
                         fullpaths.append(thispath)
@@ -1056,7 +1059,7 @@ def get_nuclides(modelpath: Path | str) -> pl.LazyFrame:
             dfnuclides,
         ],
         how="vertical",
-    )
+    ).lazy()
 
 
 def get_bflist(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame:
@@ -1080,7 +1083,7 @@ def get_bflist(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame
             new_columns=["bfindex", "elementindex", "ionindex", "lowerlevel", "upperionlevel"],
             schema_overrides=schema,
         ).lazy()
-    except pl.NoDataError:
+    except pl.exceptions.NoDataError:
         dfboundfree = pl.DataFrame(schema=schema).lazy()
 
     dfboundfree = dfboundfree.with_columns(
