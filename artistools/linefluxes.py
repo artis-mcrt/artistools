@@ -294,7 +294,7 @@ def get_closelines(
 def get_labelandlineindices(modelpath: Path | str, emfeaturesearch: Iterable[t.Any]) -> list[FeatureTuple]:
     labelandlineindices = []
     for params in emfeaturesearch:
-        feature = get_closelines(modelpath, *params)
+        feature = get_closelines(modelpath, params[0], params[1], params[2], *params[3:])
         print(
             f"{feature.featurelabel} includes {len(feature.linelistindices)} lines "
             f"[{feature.lowestlambda:.1f} Å, {feature.highestlambda:.1f} Å]"

@@ -24,6 +24,7 @@ coverage.xml
 
 # Distribution / packaging
 .Python
+.venv/
 env/
 venv/
 build/

@@ -159,6 +159,7 @@ def read_files(
                     dfall = df_thisfile.copy()
                 else:
                     dfall = pd.concat([dfall, df_thisfile.copy()], ignore_index=True)
+                assert isinstance(dfall, pd.DataFrame)
 
     if dfall is None or len(dfall) == 0:
         msg = "No data found"
