@@ -509,7 +509,9 @@ def plot_artis_lightcurve(
             axis.plot(lcdata["time"], lcdata["lum_cmf"], label=label_with_tags, **plotkwargs)
 
     if args.plotdeposition or args.plotthermalisation:
-        plot_deposition_thermalisation(axis, axistherm, modelpath, label=linelabel, args=args, **plotkwargs)
+        plot_deposition_thermalisation(
+            axis, axistherm, modelpath, label=linelabel, args=args, modelname=plotkwargs["modelname"], **plotkwargs
+        )
 
     return lcdataframes
 

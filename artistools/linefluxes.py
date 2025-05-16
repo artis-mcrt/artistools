@@ -255,7 +255,7 @@ def get_closelines(
     lambdamax: float | None = None,
     lowerlevelindex: int | None = None,
     upperlevelindex: int | None = None,
-) -> tuple[str, str, str | int, tuple[int], float, float, int, int, tuple[int], tuple[int]]:
+) -> FeatureTuple:
     dflinelistclosematches = (
         at.get_linelist_dataframe(modelpath).query("atomic_number == @atomic_number and ion_stage == @ion_stage").copy()
     )
@@ -277,7 +277,7 @@ def get_closelines(
     colname = f"flux_{at.get_ionstring(atomic_number, ion_stage, sep='')}_{approxlambdalabel}"
     featurelabel = f"{at.get_ionstring(atomic_number, ion_stage)} {approxlambdalabel} Å"
 
-    return (
+    return FeatureTuple(
         colname,
         featurelabel,
         approxlambdalabel,
@@ -294,7 +294,7 @@ def get_closelines(
 def get_labelandlineindices(modelpath: Path | str, emfeaturesearch: Iterable[t.Any]) -> list[FeatureTuple]:
     labelandlineindices = []
     for params in emfeaturesearch:
-        feature = FeatureTuple(*get_closelines(modelpath, *params))
+        feature = get_closelines(modelpath, *params)
         print(
             f"{feature.featurelabel} includes {len(feature.linelistindices)} lines "
             f"[{feature.lowestlambda:.1f} Å, {feature.highestlambda:.1f} Å]"
