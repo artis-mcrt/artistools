@@ -1,8 +1,8 @@
-from artistools.nonthermal import plotnonthermal
+from artistools.nonthermal import solvespencerfanocmd
 
 
 def main() -> None:
-    plotnonthermal.main()
+    solvespencerfanocmd.main()
 
 
 if __name__ == "__main__":
