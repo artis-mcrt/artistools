@@ -1325,7 +1325,12 @@ def get_mpiranklist(
     """
     if modelgridindex is None or modelgridindex == []:
         if only_ranks_withgridcells:
-            return range(min(get_nprocs(modelpath), get_npts_model(modelpath)))
+            return range(
+                min(
+                    get_nprocs(modelpath),
+                    get_mpirankofcell(modelpath=modelpath, modelgridindex=get_npts_model(modelpath) - 1) + 1,
+                )
+            )
         return range(get_nprocs(modelpath))
 
     if isinstance(modelgridindex, Iterable):
@@ -1333,7 +1338,12 @@ def get_mpiranklist(
         for mgi in modelgridindex:
             if mgi < 0:
                 if only_ranks_withgridcells:
-                    return range(min(get_nprocs(modelpath), get_npts_model(modelpath)))
+                    return range(
+                        min(
+                            get_nprocs(modelpath),
+                            get_mpirankofcell(modelpath=modelpath, modelgridindex=get_npts_model(modelpath) - 1) + 1,
+                        )
+                    )
                 return range(get_nprocs(modelpath))
 
             mpiranklist.add(get_mpirankofcell(mgi, modelpath=modelpath))
