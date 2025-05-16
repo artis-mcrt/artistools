@@ -7,7 +7,6 @@ Examples are temperatures, populations, and heating/cooling rates.
 import argparse
 import contextlib
 import math
-import sys
 import tempfile
 import time
 import typing as t
@@ -18,7 +17,6 @@ from pathlib import Path
 
 import numpy as np
 import numpy.typing as npt
-import pandas as pd
 import polars as pl
 from polars import selectors as cs
 
@@ -83,46 +81,6 @@ def apply_filters(
         ylist = filterfunc(ylist)
 
     return xlist, ylist
-
-
-def get_ionrecombrates_fromfile(filename: Path | str) -> pd.DataFrame:
-    """WARNING: copy pasted from artis-atomic! replace with a package import soon ion_stage is the lower ion stage."""
-    print(f"Reading {filename}")
-
-    header_row = []
-    with Path(filename).open(encoding="utf-8") as filein:
-        while True:
-            line = filein.readline()
-            if line.strip().startswith("TOTAL RECOMBINATION RATE"):
-                line = filein.readline()
-                line = filein.readline()
-                header_row = filein.readline().strip().replace(" n)", "-n)").split()
-                break
-
-        if not header_row:
-            print("ERROR: no header found")
-            sys.exit()
-
-        index_logt = header_row.index("log(T)")
-        index_low_n = header_row.index("RRC(low-n)")
-        index_tot = header_row.index("RRC(total)")
-
-        class RecombTuple(t.NamedTuple):
-            logT: float
-            RRC_low_n: float
-            RRC_total: float
-
-        records = []
-        for line in filein:
-            if row := line.split():
-                if len(row) != len(header_row):
-                    print("Row contains wrong number of items for header:")
-                    print(header_row)
-                    print(row)
-                    sys.exit()
-                records.append(RecombTuple(*[float(row[index]) for index in (index_logt, index_low_n, index_tot)]))
-
-    return pd.DataFrame.from_records(records, columns=RecombTuple._fields)
 
 
 def get_units_string(variable: str) -> str:
