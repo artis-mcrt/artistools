@@ -522,6 +522,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     # print(dfdensities)
 
     # write abundances.txt
+    assert isinstance(dfnucabund, pd.DataFrame)
     dictelemabund = get_elemabund_from_nucabund(dfnucabund)
 
     dfelabundances = pl.DataFrame([dictelemabund | {"inputcellid": mgi + 1} for mgi in range(len(dfdensities))])
