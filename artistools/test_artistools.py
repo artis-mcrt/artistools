@@ -4,7 +4,6 @@ import hashlib
 import importlib
 import inspect
 import math
-import typing as t
 from pathlib import Path
 
 import pytest
@@ -47,7 +46,7 @@ def test_commands() -> None:
                 funcname == "main" and hasattr(importlib.import_module(f"{submodulename}.__main__"), funcname)
             ), f"{submodulename}.{funcname} not found for command {command}"
 
-    def recursive_check(dictcmd: dict[str, t.Any]) -> None:
+    def recursive_check(dictcmd: at.commands.CommandType) -> None:
         for cmdtarget in dictcmd.values():
             if isinstance(cmdtarget, dict):
                 recursive_check(cmdtarget)
