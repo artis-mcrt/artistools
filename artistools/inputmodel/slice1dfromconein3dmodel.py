@@ -158,12 +158,12 @@ def make_1d_model_files(args: argparse.Namespace) -> None:
     inputcellid = np.arange(1, npts_model + 1)
     model_df.loc[:, ["inputcellid"]] = inputcellid
     abundances_df.loc[:, ["inputcellid"]] = inputcellid
-
+    assert isinstance(model_df, pd.DataFrame)
     at.inputmodel.save_modeldata(
         dfmodel=model_df, t_model_init_days=args.t_model, outpath=Path(args.outputpath, "model_1d.txt")
     )
 
-    # abundances_df.to_csv(args.modelpath[0] / "abundances_1d.txt", sep=" ", header=False)  # write abundances.txt
+    assert isinstance(abundances_df, pd.DataFrame)
     at.inputmodel.save_initelemabundances(abundances_df, outpath=Path(args.outputpath, "abundances_1d.txt"))
 
     # with Path(args.modelpath[0], "model_1d.txt").open("r+") as f:  # add number of cells and tmodel to start of file

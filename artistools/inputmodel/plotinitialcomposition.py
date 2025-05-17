@@ -38,6 +38,7 @@ def get_2D_slice_through_3d_model(
         sliceposition = cell_boundaries[sliceindex]
 
     slicedf = dfmodel.loc[dfmodel[f"pos_{sliceaxis}_min"] == sliceposition]
+    assert isinstance(slicedf, pd.DataFrame)
 
     if modelmeta is not None and plotaxis1 is not None and plotaxis2 is not None:
         assert slicedf.shape[0] == modelmeta[f"ncoordgrid{plotaxis1}"] * modelmeta[f"ncoordgrid{plotaxis2}"]
