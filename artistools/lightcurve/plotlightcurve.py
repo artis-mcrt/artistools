@@ -977,6 +977,8 @@ def make_band_lightcurves_plot(
                 plotkwargs["label"] = str(args.plot_hesma_model).split("_")[:3]
 
             for plotnumber, band_name in enumerate(band_lightcurve_data):
+                axis = ax[plotnumber] if isinstance(ax, np.ndarray) else ax
+                assert isinstance(axis, mplax.Axes)
                 if first_band_name is None:
                     first_band_name = band_name
                 time, brightness_in_mag = at.lightcurve.get_band_lightcurve(band_lightcurve_data, band_name, args)
@@ -1015,8 +1017,8 @@ def make_band_lightcurves_plot(
                 text_key = filternames_conversion_dict.get(band_name, band_name)
 
                 if args.subplots:
-                    assert isinstance(ax, np.ndarray)
-                    ax[plotnumber].annotate(
+                    assert isinstance(text_key, str)
+                    axis.annotate(
                         text_key,
                         xy=(1.0, 1.0),
                         xycoords="axes fraction",
@@ -1065,12 +1067,7 @@ def make_band_lightcurves_plot(
                     plotkwargs["linestyle"] = args.linestyle[modelnumber]
 
                 # if not (args.test_viewing_angle_fit or args.calculate_peak_time_mag_deltam15_bool):
-                if args.subplots:
-                    assert isinstance(ax, np.ndarray)
-                    ax[plotnumber].plot(time, brightness_in_mag, linewidth=4, **plotkwargs)
-                else:
-                    assert isinstance(ax, mplax.Axes)
-                    ax.plot(time, brightness_in_mag, linewidth=3.5, **plotkwargs)  # color=color, linestyle=linestyle)
+                axis.plot(time, brightness_in_mag, linewidth=4 if args.subplots else 3.5, **plotkwargs)
 
     at.set_mpl_style()
 
@@ -1192,14 +1189,9 @@ def colour_evolution_plot(
                                 args,
                             )
 
-                if args.subplots:
-                    assert isinstance(ax, np.ndarray)
-                    ax[plotnumber].plot(plot_times, colour_delta_mag, linewidth=4, **plotkwargs)
-                else:
-                    assert isinstance(ax, mplax.Axes)
-                    ax.plot(plot_times, colour_delta_mag, linewidth=3, **plotkwargs)
-
                 curax = ax if isinstance(ax, mplax.Axes) else ax[plotnumber]
+                curax.plot(plot_times, colour_delta_mag, linewidth=4 if args.subplots else 3, **plotkwargs)
+
                 assert isinstance(curax, mplax.Axes)
                 curax.invert_yaxis()
                 curax.annotate(
@@ -1270,6 +1262,8 @@ def plot_lightcurve_from_refdata(
 
     filter_data = {}
     for axnumber, filter_name in enumerate(filter_names):
+        axis = ax[axnumber] if isinstance(ax, np.ndarray) else ax
+        assert isinstance(axis, mplax.Axes)
         if filter_name == "bol":
             continue
         with Path(filterdir / f"{filter_name}.txt").open(encoding="utf-8") as f:
@@ -1304,25 +1298,15 @@ def plot_lightcurve_from_refdata(
             )
         else:
             print("WARNING: did not correct for reddening")
-        if len(filter_names) > 1:
-            assert isinstance(ax, np.ndarray)
-            ax[axnumber].plot(
-                filter_data[filter_name]["time"],
-                filter_data[filter_name]["magnitude"],
-                marker,
-                label=linename,
-                color=color,
-            )
-        else:
-            assert isinstance(ax, mplax.Axes)
-            ax.plot(
-                filter_data[filter_name]["time"],
-                filter_data[filter_name]["magnitude"],
-                marker,
-                label=linename,
-                color=color,
-                linewidth=4,
-            )
+
+        axis.plot(
+            filter_data[filter_name]["time"],
+            filter_data[filter_name]["magnitude"],
+            marker,
+            label=linename,
+            color=color,
+            linewidth=4 if len(filter_names) == 1 else None,
+        )
 
         # if linename == 'SN 2018byg':
         #     x_values = []
@@ -1400,25 +1384,16 @@ def plot_color_evolution_from_data(
     #         filter_data[i]['time'] = filter_data[i]['time'].apply(lambda x: round(float(x)))  # round to nearest day
 
     merge_dataframes = filter_data[0].merge(filter_data[1], how="inner", on=["time"])
-    if args.subplots:
-        assert isinstance(ax, np.ndarray)
-        ax[plotnumber].plot(
-            merge_dataframes["time"],
-            merge_dataframes["magnitude_x"] - merge_dataframes["magnitude_y"],
-            marker,
-            label=metadata["label"],
-            color=color,
-            linewidth=4,
-        )
-    else:
-        assert isinstance(ax, mplax.Axes)
-        ax.plot(
-            merge_dataframes["time"],
-            merge_dataframes["magnitude_x"] - merge_dataframes["magnitude_y"],
-            marker,
-            label=metadata["label"],
-            color=color,
-        )
+    axis = ax[plotnumber] if isinstance(ax, np.ndarray) else ax
+    assert isinstance(axis, mplax.Axes)
+    axis.plot(
+        merge_dataframes["time"],
+        merge_dataframes["magnitude_x"] - merge_dataframes["magnitude_y"],
+        marker,
+        label=metadata["label"],
+        color=color,
+        linewidth=4 if args.subplots else None,
+    )
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
