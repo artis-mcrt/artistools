@@ -3,6 +3,12 @@ name = "artistools-rust"
 version = "0.20250222.0"
 authors = ["Luke Shingles <luke.shingles@gmail.com>"]
 edition = "2024"
+rust-version = "1.85.1"
+description = "Rust functions used to speed up the artistools python package"
+license = "MIT"
+homepage = "https://github.com/artis-mcrt/artistools"
+repository = "https://github.com/artis-mcrt/artistools"
+readme = "../README.md"
 
 [lib]
 name = "rustext"
