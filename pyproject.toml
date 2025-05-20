@@ -405,6 +405,9 @@ exclude = [
     "**/venv",
 ]
 
+[tool.distutils.bdist_wheel]
+py_limited_api="cp311"
+
 [tool.setuptools_scm]
 version_file = "_version.py"
 local_scheme = "no-local-version"
