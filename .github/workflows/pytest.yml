@@ -41,14 +41,13 @@ jobs:
                       pytest-rust-target-${{ runner.os }}-
 
             - name: Setup uv
-              uses: astral-sh/setup-uv@v5
+              uses: astral-sh/setup-uv@v6
 
             - name: Install artistools[extras]
               run: |
-                  rustup update stable
                   uv sync --frozen
                   source .venv/bin/activate
-                  uv pip install --compile-bytecode --editable .[extras]
+                  uv pip install --editable .[extras]
 
             - name: Run Ruff
               if: always()
@@ -66,7 +65,7 @@ jobs:
 
             - name: Run pyright
               if: always()
-              run: uv run --frozen -- pyright
+              run: uv run --frozen -- pyright --warnings
 
             - name: Run pylint
               if: always()
@@ -163,7 +162,7 @@ jobs:
                       pytest-rust-target-${{ runner.os }}-
 
             - name: Setup uv
-              uses: astral-sh/setup-uv@v5
+              uses: astral-sh/setup-uv@v6
 
             - name: Install artistools (no dev deps)
               run: |
