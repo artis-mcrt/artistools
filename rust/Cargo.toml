@@ -1,6 +1,6 @@
 [package]
 name = "artistools-rust"
-version = "0.20250222.0"
+version = "0.20250223.0"
 authors = ["Luke Shingles <luke.shingles@gmail.com>"]
 edition = "2024"
 rust-version = "1.85.1"
@@ -17,7 +17,7 @@ crate-type = ["cdylib"]
 [dependencies]
 autocompress = { version = "0.6.0", features = ["gzip", "rayon", "xz", "zstd"] }
 polars = { version = "0.46", features = ["diagonal_concat", "performant"] }
-pyo3 = { version = "0.23", features = ["abi3-py311"] }
+pyo3 = { version = "0.24", features = ["abi3-py311"] }
 pyo3-polars = { version = "0.20.0", features = ["dtype-struct"] }
 rayon = "1.10"
 
