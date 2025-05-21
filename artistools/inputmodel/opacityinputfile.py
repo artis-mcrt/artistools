@@ -15,8 +15,10 @@ def all_cells_same_opacity(modelpath: str | Path, ngrid: int) -> None:
         fopacity.writelines(f"{cellid + 1}    {opacity}\n" for cellid, opacity in enumerate(cell_opacities))
 
 
-def opacity_by_Ye(outputfilepath: Path | str, griddata: pd.DataFrame) -> None:
+def opacity_by_Ye(outputfilepath: Path | str, griddata: pd.DataFrame | pl.DataFrame) -> None:
     """Opacities from Table 1 Tanaka 2020."""
+    if isinstance(griddata, pl.DataFrame):
+        griddata = griddata.to_pandas()
     griddata = pd.DataFrame(griddata)
     print("Getting opacity kappa from Ye")
 
