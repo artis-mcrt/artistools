@@ -118,8 +118,8 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
         print("  no cell mapping file found")
         assoc_cells, mgi_of_propcells = None, None
 
-    if "cellYe" in dfmodel.collect_schema().names():
-        electronfrac = dfmodel.select(pl.col("cellYe").dot(pl.col("mass_g")) / pl.col("mass_g").sum()).collect().item()
+    if "Ye" in dfmodel.collect_schema().names():
+        electronfrac = dfmodel.select(pl.col("Ye").dot(pl.col("mass_g")) / pl.col("mass_g").sum()).collect().item()
         assert electronfrac is not None
         print(f"  {'electron frac Ye':19s} {electronfrac:.3f}")
         if args.isotopes:
