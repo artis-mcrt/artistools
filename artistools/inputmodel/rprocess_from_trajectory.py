@@ -212,23 +212,26 @@ def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, 
         traj_root=traj_root, particleid=particleid, memberfilename="./Run_rprocess/energy_thermo.dat"
     ).open(encoding="utf-8") as enthermofile:
         try:
-            dfthermo: pd.DataFrame = pd.read_csv(
-                enthermofile,
-                sep=r"\s+",
-                usecols=["time/s", "Qdot"],
-                engine="c",
-                dtype={0: "float32[pyarrow]", 1: "float32[pyarrow]"},
-                dtype_backend="pyarrow",
+            dfthermo = pl.from_pandas(
+                pd.read_csv(
+                    enthermofile,
+                    sep=r"\s+",
+                    usecols=["time/s", "Qdot"],
+                    engine="c",
+                    dtype={0: "float32[pyarrow]", 1: "float32[pyarrow]"},
+                    dtype_backend="pyarrow",
+                )
             )
         except pd.errors.EmptyDataError:
             print(f"Problem with file {enthermofile}")
             raise
 
-        dfthermo = dfthermo.rename(columns={"time/s": "time_s"})
+        dfthermo = dfthermo.rename({"time/s": "time_s"})
         startindex: int = int(np.argmax(dfthermo["time_s"] >= 1))  # start integrating at this number of seconds
 
         assert all(dfthermo["Qdot"][startindex : nts_max + 1] >= 0.0)
-        dfthermo["Qdot_expansionadjusted"] = dfthermo["Qdot"] * dfthermo["time_s"] / t_model_s
+
+        dfthermo = dfthermo.with_columns(Qdot_expansionadjusted=pl.col("Qdot") * pl.col("time_s") / t_model_s)
 
         qdotintegral: float = integrate.trapezoid(
             y=dfthermo["Qdot_expansionadjusted"][startindex : nts_max + 1],
