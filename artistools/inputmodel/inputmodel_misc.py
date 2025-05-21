@@ -214,7 +214,10 @@ def read_modelfile_text(
         dfmodel = pl.from_pandas(dfmodelpd).lazy()
 
     if "velocity_outer" in dfmodel.collect_schema().names():
-        dfmodel = dfmodel.rename({"velocity_outer": "vel_r_max_kmps"})
+        dfmodel = dfmodel.rename({"velocity_outer": "vel_r_max_kmps"}, strict=False)
+
+    if "cellYe" in dfmodel.collect_schema().names():
+        dfmodel = dfmodel.rename({"cellYe": "Ye"}, strict=False)
 
     if modelmeta["dimensions"] == 1:
         vmax_kmps = dfmodel.select(pl.col("vel_r_max_kmps").max()).collect().item()
@@ -450,6 +453,9 @@ def get_modeldata(
         dfmodel = dfmodel.join(abundancedata, how="inner", on="inputcellid")
 
     dfmodel = dfmodel.with_columns(pl.col("inputcellid").sub(1).alias("modelgridindex"))
+
+    if "cellYe" in dfmodel.collect_schema().names() and "Ye" not in dfmodel.collect_schema().names():
+        dfmodel = dfmodel.rename({"cellYe": "Ye"}, strict=False)
 
     if derived_cols:
         dfmodel = add_derived_cols_to_modeldata(
@@ -935,8 +941,7 @@ def save_modeldata(
         assert modelmeta["ncoordgridrcyl"] * modelmeta["ncoordgridz"] == len(dfmodel)
 
     elif modelmeta["dimensions"] == 3:
-        if "gridindex" in dfmodel.collect_schema().names():
-            dfmodel = dfmodel.rename({"gridindex": "inputcellid"})
+        dfmodel = dfmodel.rename({"gridindex": "inputcellid"}, strict=False)
         griddimension = round(len(dfmodel) ** (1.0 / 3.0))
         print(f" 3D grid size: {len(dfmodel)} ({griddimension}^3)")
         assert griddimension**3 == len(dfmodel)

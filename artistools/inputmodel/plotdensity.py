@@ -44,7 +44,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args = parser.parse_args([] if kwargs else argsraw)
 
     fig, axes = plt.subplots(
-        nrows=2,
+        nrows=3,
         ncols=1,
         sharex=True,
         sharey=False,
@@ -64,16 +64,20 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     max_vmax_on_c = float("-inf")
     for color, label, modelpath in zip(args.color, args.label, args.modelpath, strict=True):
+        print(f"Plotting {label}")
         dfmodel, modelmeta = at.get_modeldata(modelpath, derived_cols=["vel_r_min", "vel_r_mid", "vel_r_max", "mass_g"])
 
-        print(f"Plotting {label}")
-        binned_xvals: list[float] = []
-        binned_yvals: list[float] = []
+        vmax_on_c = modelmeta["vmax_cmps"] / 29979245800
+        max_vmax_on_c = max(vmax_on_c, max_vmax_on_c)
 
         # total_mass = dfmodel.mass_g.sum() / 1.989e33
         dfmodel = dfmodel.sort(by="vel_r_mid")
 
-        dfmodelcollect = dfmodel.select(["modelgridindex", "vel_r_min", "vel_r_mid", "vel_r_max", "mass_g"]).collect()
+        cols = ["modelgridindex", "vel_r_min", "vel_r_mid", "vel_r_max", "mass_g"]
+        if "Ye" in dfmodel.collect_schema().names():
+            cols.append("Ye")
+
+        dfmodelcollect = dfmodel.select(cols).collect()
 
         vuppers = dfmodelcollect["vel_r_max"].unique().sort()
         enclosed_xvals = [0.0, *(vuppers / 29979245800).to_list(), 29979245800]
@@ -91,8 +95,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             )
             vupperscoarse = [modelmeta["vmax_cmps"] / ncoarsevelbins * (i + 1) for i in range(ncoarsevelbins)]
 
+        binned_xvals: list[float] = []
+        binned_yvals: list[float] = []
         vlowerscoarse = [0.0, *vupperscoarse[:-1]]
-        for vlower, vupper in zip(vlowerscoarse, vupperscoarse, strict=False):
+        for vlower, vupper in zip(vlowerscoarse, vupperscoarse, strict=True):
             velbinmass = (
                 dfmodelcollect.filter(pl.col("vel_r_mid").is_between(vlower, vupper, closed="left"))["mass_g"].sum()
                 / 1.989e33
@@ -104,8 +110,25 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             binned_yvals.extend((yval, yval))
 
         axes[1].plot(binned_xvals, binned_yvals, label=label, color=color)
-        vmax_on_c = modelmeta["vmax_cmps"] / 29979245800
-        max_vmax_on_c = max(vmax_on_c, max_vmax_on_c)
+        if "Ye" in dfmodelcollect.collect_schema().names():
+            binned_xvals = []
+            binned_yvals = []
+            vlowerscoarse = [0.0, *vupperscoarse[:-1]]
+            for vlower, vupper in zip(vlowerscoarse, vupperscoarse, strict=True):
+                yval = (
+                    dfmodelcollect.filter(pl.col("vel_r_mid").is_between(vlower, vupper, closed="left"))
+                    .select(pl.col("Ye").dot(pl.col("mass_g")) / pl.col("mass_g").sum())
+                    .item()
+                )
+                binned_xvals.extend((vlower / 29979245800, vupper / 29979245800))
+                binned_yvals.extend((yval, yval))
+
+            axes[2].plot(binned_xvals, binned_yvals, label=label, color=color)
+
+    if args.xmin is not None:
+        axes[0].set_xlim(left=args.xmin)
+    else:
+        axes[0].set_xlim(left=0.0)
 
     if args.xmax is not None:
         axes[0].set_xlim(right=args.xmax)
@@ -115,9 +138,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     axes[-1].set_xlabel("Velocity [$c$]")
     axes[0].set_ylabel(r"Mass Enclosed [M$_\odot$]")
     axes[1].set_ylabel(r"$\Delta$M/$\Delta v$  [M$_\odot/c$]")
+    axes[2].set_ylabel(r"Electron fraction Ye")
     axes[1].legend(frameon=False)
 
-    axes[-1].set_xlim(left=0.0)
     axes[0].set_ylim(bottom=0.0)
     axes[1].set_ylim(bottom=0.0)
 
