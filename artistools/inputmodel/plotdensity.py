@@ -76,10 +76,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         dfmodelcollect = dfmodel.select(["modelgridindex", "vel_r_min", "vel_r_mid", "vel_r_max", "mass_g"]).collect()
 
         vuppers = dfmodelcollect["vel_r_max"].unique().sort()
-        enclosed_xvals = [0.0, *(vuppers / 29979245800).to_list()]
+        enclosed_xvals = [0.0, *(vuppers / 29979245800).to_list(), 29979245800]
         enclosed_yvals = [0.0] + [
             dfmodelcollect.filter(pl.col("vel_r_mid") <= vupper)["mass_g"].sum() / 1.989e33 for vupper in vuppers
         ]
+        enclosed_yvals.append(dfmodelcollect["mass_g"].sum() / 1.989e33)
         axes[0].plot(enclosed_xvals, enclosed_yvals, label=label, color=color)
 
         if "vel_r_max_kmps" in dfmodel.collect_schema().names():
