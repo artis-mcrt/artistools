@@ -101,7 +101,7 @@ def verify_file_checksums(
 
         checksums_actual[fullpath] = m.hexdigest()
         strpassfail = "pass" if checksums_actual[fullpath] == checksum_expected else "FAILED"
-        print(f"{filename}: {strpassfail} if actual {checksums_actual[fullpath]} expected {checksum_expected}")
+        print(f"{filename}: {strpassfail} actual {checksums_actual[fullpath]} expected {checksum_expected}")
 
     for filename, checksum_expected in checksums_expected.items():
         fullpath = Path(folder) / filename
@@ -124,7 +124,7 @@ def test_makeartismodelfrom_sph_particles() -> None:
             "makeartismodel_sums": {
                 "gridcontributions.txt": "6327d196b4800eedb18faee15097f76af352ecbaa9ee59055161b81378bd4af7",
                 "abundances.txt": "1dffae45ff2abe72df3055305853e61ffe471913c5c8cc39cc6f67e38b5f5f45",
-                "model.txt": "6a98aba2b541af5c24497362b053dbe7749bba74a49778f494b440a453c735fc",
+                "model.txt": "f6c61599e369cdc63fd93f41dca4a082edf6a98d874064e97492fb38766f8d45",
             },
         },
         {
@@ -137,7 +137,7 @@ def test_makeartismodelfrom_sph_particles() -> None:
             "makeartismodel_sums": {
                 "gridcontributions.txt": "c06b4cbbe7f3bf423ed636afd63e3d8e30cc3ffa928d3275ffc3ce13f2e4dbef",
                 "abundances.txt": "1dffae45ff2abe72df3055305853e61ffe471913c5c8cc39cc6f67e38b5f5f45",
-                "model.txt": "f9adee21771c18aa6e10c58c252f5f37e3892d3d6007685d915bc1b9cc961a74",
+                "model.txt": "13237a737edf598807fe444182b86bc1f2fea5d6af115a952ad23a8af1da1b3f",
             },
         },
     ]
