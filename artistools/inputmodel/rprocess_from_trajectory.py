@@ -193,7 +193,7 @@ def get_trajectory_timestepfile_nuc_abund(
             .select(
                 pl.col("data").str.slice(0, 4).str.strip_chars().cast(pl.Int32).alias("N"),
                 pl.col("data").str.slice(4, 4).str.strip_chars().cast(pl.Int32).alias("Z"),
-                pl.col("data").str.slice(8, 13).str.strip_chars().cast(pl.Float32).alias("log10abund"),
+                pl.col("data").str.slice(8, 13).str.strip_chars().cast(pl.Float64).alias("log10abund"),
             )
             .with_columns(massfrac=(pl.col("N") + pl.col("Z")) * (10 ** pl.col("log10abund")))
         )
