@@ -384,7 +384,7 @@ def filtermissinggridparticlecontributions(traj_root: Path, dfcontribs: pl.DataF
     return dfcontribs
 
 
-def save_gridparticlecontributions(dfcontribs: pd.DataFrame | pl.DataFrame, gridcontribpath: Path | str) -> None:
+def save_gridparticlecontributions(dfcontribs: pl.DataFrame, gridcontribpath: Path | str) -> None:
     gridcontribpath = Path(gridcontribpath)
     if gridcontribpath.is_dir():
         gridcontribpath /= "gridcontributions.txt"
@@ -392,11 +392,7 @@ def save_gridparticlecontributions(dfcontribs: pd.DataFrame | pl.DataFrame, grid
         oldfile = gridcontribpath.rename(gridcontribpath.with_suffix(".bak"))
         print(f"{gridcontribpath} already exists. Renaming existing file to {oldfile}")
 
-    if isinstance(dfcontribs, pl.DataFrame):
-        dfcontribs = dfcontribs.to_pandas(use_pyarrow_extension_array=True)
-
-    assert isinstance(dfcontribs, pd.DataFrame)
-    dfcontribs.to_csv(gridcontribpath, sep=" ", index=False, float_format="%.7e")
+    dfcontribs.write_csv(gridcontribpath, separator=" ", float_scientific=True, float_precision=7)
 
 
 def add_abundancecontributions(
