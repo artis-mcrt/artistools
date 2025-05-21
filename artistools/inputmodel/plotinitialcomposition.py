@@ -125,17 +125,18 @@ def plot_slice_modelcolumn(
 
 
 def plot_2d_initial_abundances(modelpath, args: argparse.Namespace) -> None:
-    # if the species ends in a number then we need to also get the nuclear mass fractions (not just element abundances)
+    # if the species doesn't end in a number (isotope, e.g. Sr92) then we need to also get element abundances (e.g., Sr)
     get_elemabundances = any(plotvar[-1] not in string.digits for plotvar in args.plotvars)
-    dfmodel, modelmeta = at.get_modeldata_pandas(
+    lzdfmodel, modelmeta = at.get_modeldata(
         modelpath, get_elemabundances=get_elemabundances, derived_cols=["pos_min", "pos_max"]
     )
     assert modelmeta["dimensions"] > 1
+    dfmodel = lzdfmodel.collect().to_pandas()
 
     targetmodeltime_days = None
     if targetmodeltime_days is not None:
         print(
-            f"Scaling modeldata to {targetmodeltime_days} days. \nWARNING: abundances not scaled for radioactive decays"
+            f"Scaling positions/densities to {targetmodeltime_days} days. \nWARNING: abundances not updated for radioactive decays"
         )
 
         dfmodel, modelmeta = at.inputmodel.scale_model_to_time(
@@ -183,7 +184,7 @@ def plot_2d_initial_abundances(modelpath, args: argparse.Namespace) -> None:
     # )
 
     for plotvar, ax in zip(args.plotvars, axes, strict=False):
-        colname = plotvar if plotvar in df2dslice.columns else f"X_{plotvar}"
+        colname = plotvar if plotvar in df2dslice.columns else f"X_{plotvar.title()}"
 
         im, _ = plot_slice_modelcolumn(
             ax, df2dslice, modelmeta, colname, plotaxis1, plotaxis2, modelmeta["t_model_init_days"], args
@@ -201,7 +202,7 @@ def plot_2d_initial_abundances(modelpath, args: argparse.Namespace) -> None:
     else:
         cbar.set_label("Ye" if "cellYe" in args.plotvars else "tracercount")
 
-    defaultfilename = Path(modelpath) / f"plotcomposition_{','.join(args.plotvars)}.pdf"
+    defaultfilename = Path(modelpath) / f"plotcomposition_{','.join(v.lower() for v in args.plotvars)}.pdf"
     if args.outputfile and Path(args.outputfile).is_dir():
         outfilename = Path(modelpath) / defaultfilename
     elif args.outputfile:
