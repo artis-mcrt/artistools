@@ -190,12 +190,15 @@ def get_trajectory_timestepfile_nuc_abund(
         trajfile.seek(0)
         dfnucabund = (
             pl.read_csv(trajfile, separator="\n", skip_rows=1, has_header=False, new_columns=["data"], n_threads=1)
+            .lazy()
             .select(
                 pl.col("data").str.slice(0, 4).str.strip_chars().cast(pl.Int32).alias("N"),
                 pl.col("data").str.slice(4, 4).str.strip_chars().cast(pl.Int32).alias("Z"),
                 pl.col("data").str.slice(8, 13).str.strip_chars().cast(pl.Float64).alias("log10abund"),
             )
             .with_columns(massfrac=(pl.col("N") + pl.col("Z")) * (10 ** pl.col("log10abund")))
+            .drop("log10abund")
+            .collect()
         )
 
     return dfnucabund, t_model_init_seconds
