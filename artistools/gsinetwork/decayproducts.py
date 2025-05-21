@@ -193,13 +193,12 @@ def process_trajectory(
             traj_root=traj_root, particleid=traj_ID, memberfilename=f"./Run_rprocess/nz-plane{networktimestepindex:05d}"
         )
 
-        assert dftrajnucabund.size > 100, dftrajnucabund.size
+        assert dftrajnucabund.height > 100, dftrajnucabund.height
 
         pldf_abund_decay = (
             (
                 (
-                    pl.from_pandas(dftrajnucabund)
-                    .lazy()
+                    dftrajnucabund.lazy()
                     .filter(pl.col("massfrac") > 0.0)
                     .with_columns(pl.col(pl.Int32).cast(pl.Int64), pl.col(pl.Float32).cast(pl.Float64))
                     .with_columns(A=pl.col("Z") + pl.col("N"))

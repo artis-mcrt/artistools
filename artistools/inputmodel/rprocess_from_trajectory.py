@@ -172,7 +172,7 @@ def get_closest_network_timestep(
 
 def get_trajectory_timestepfile_nuc_abund(
     traj_root: Path, particleid: int, memberfilename: str
-) -> tuple[pd.DataFrame, float]:
+) -> tuple[pl.DataFrame, float]:
     """Get the nuclear abundances for a particular trajectory id number and time memberfilename should be something like "./Run_rprocess/tday_nz-plane"."""
     with get_tar_member_extracted_path(traj_root=traj_root, particleid=particleid, memberfilename=memberfilename).open(
         encoding="utf-8"
@@ -184,21 +184,22 @@ def get_trajectory_timestepfile_nuc_abund(
             print(msg)
             raise ValueError(msg) from exc
 
-        trajfile.seek(0)
         t_model_init_seconds = float(str_t_model_init_seconds)
+        trajfile.seek(0)
 
-        dfnucabund = pd.read_fwf(
-            trajfile,
-            skip_blank_lines=True,
-            skiprows=1,
-            colspecs=[(0, 4), (4, 8), (8, 21)],
-            engine="c",
-            names=["N", "Z", "log10abund"],
-            dtype={0: "int32[pyarrow]", 1: "int32[pyarrow]", 2: "float32[pyarrow]"},
-            dtype_backend="pyarrow",
+        trajfile.seek(0)
+        dfnucabund = (
+            pl.read_csv(trajfile, separator="\n", skip_rows=1, has_header=False, new_columns=["data"], n_threads=1)
+            .lazy()
+            .select(
+                pl.col("data").str.slice(0, 4).str.strip_chars().cast(pl.Int32).alias("N"),
+                pl.col("data").str.slice(4, 4).str.strip_chars().cast(pl.Int32).alias("Z"),
+                pl.col("data").str.slice(8, 13).str.strip_chars().cast(pl.Float64).alias("log10abund"),
+            )
+            .with_columns(massfrac=(pl.col("N") + pl.col("Z")) * (10 ** pl.col("log10abund")))
+            .drop("log10abund")
+            .collect()
         )
-
-    dfnucabund["massfrac"] = (dfnucabund["N"] + dfnucabund["Z"]) * (10 ** dfnucabund["log10abund"])
 
     return dfnucabund, t_model_init_seconds
 
@@ -211,23 +212,26 @@ def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, 
         traj_root=traj_root, particleid=particleid, memberfilename="./Run_rprocess/energy_thermo.dat"
     ).open(encoding="utf-8") as enthermofile:
         try:
-            dfthermo: pd.DataFrame = pd.read_csv(
-                enthermofile,
-                sep=r"\s+",
-                usecols=["time/s", "Qdot"],
-                engine="c",
-                dtype={0: "float32[pyarrow]", 1: "float32[pyarrow]"},
-                dtype_backend="pyarrow",
+            dfthermo = pl.from_pandas(
+                pd.read_csv(
+                    enthermofile,
+                    sep=r"\s+",
+                    usecols=["time/s", "Qdot"],
+                    engine="c",
+                    dtype={0: "float32[pyarrow]", 1: "float32[pyarrow]"},
+                    dtype_backend="pyarrow",
+                )
             )
         except pd.errors.EmptyDataError:
             print(f"Problem with file {enthermofile}")
             raise
 
-        dfthermo = dfthermo.rename(columns={"time/s": "time_s"})
+        dfthermo = dfthermo.rename({"time/s": "time_s"})
         startindex: int = int(np.argmax(dfthermo["time_s"] >= 1))  # start integrating at this number of seconds
 
         assert all(dfthermo["Qdot"][startindex : nts_max + 1] >= 0.0)
-        dfthermo["Qdot_expansionadjusted"] = dfthermo["Qdot"] * dfthermo["time_s"] / t_model_s
+
+        dfthermo = dfthermo.with_columns(Qdot_expansionadjusted=pl.col("Qdot") * pl.col("time_s") / t_model_s)
 
         qdotintegral: float = integrate.trapezoid(
             y=dfthermo["Qdot_expansionadjusted"][startindex : nts_max + 1],
@@ -267,8 +271,8 @@ def get_trajectory_abund_q(
         # print(f" WARNING {particleid}.tar.xz file not found! ")
         return {}
 
-    massfractotal = dftrajnucabund.massfrac.sum()
-    dftrajnucabund = dftrajnucabund.loc[dftrajnucabund["Z"] >= 1]
+    massfractotal = dftrajnucabund["massfrac"].sum()
+    dftrajnucabund = dftrajnucabund.filter(pl.col("Z") >= 1)
 
     # print(f'trajectory particle id {particleid} massfrac sum: {massfractotal:.2f}')
     # print(f' grid snapshot: {t_model_s:.2e} s, network: {traj_time_s:.2e} s (timestep {nts})')
@@ -278,8 +282,7 @@ def get_trajectory_abund_q(
         raise AssertionError(msg)
 
     dict_traj_nuc_abund: dict[tuple[int, int] | str, float] = {
-        (Z, N): massfrac / massfractotal
-        for Z, N, massfrac in dftrajnucabund[["Z", "N", "massfrac"]].itertuples(index=False)
+        (Z, N): massfrac / massfractotal for Z, N, massfrac in dftrajnucabund[["Z", "N", "massfrac"]].iter_rows()
     }
 
     if getqdotintegral:
@@ -381,7 +384,7 @@ def filtermissinggridparticlecontributions(traj_root: Path, dfcontribs: pl.DataF
     return dfcontribs
 
 
-def save_gridparticlecontributions(dfcontribs: pd.DataFrame | pl.DataFrame, gridcontribpath: Path | str) -> None:
+def save_gridparticlecontributions(dfcontribs: pl.DataFrame, gridcontribpath: Path | str) -> None:
     gridcontribpath = Path(gridcontribpath)
     if gridcontribpath.is_dir():
         gridcontribpath /= "gridcontributions.txt"
@@ -389,11 +392,7 @@ def save_gridparticlecontributions(dfcontribs: pd.DataFrame | pl.DataFrame, grid
         oldfile = gridcontribpath.rename(gridcontribpath.with_suffix(".bak"))
         print(f"{gridcontribpath} already exists. Renaming existing file to {oldfile}")
 
-    if isinstance(dfcontribs, pl.DataFrame):
-        dfcontribs = dfcontribs.to_pandas(use_pyarrow_extension_array=True)
-
-    assert isinstance(dfcontribs, pd.DataFrame)
-    dfcontribs.to_csv(gridcontribpath, sep=" ", index=False, float_format="%.7e")
+    dfcontribs.write_csv(gridcontribpath, separator=" ", float_scientific=True, float_precision=7)
 
 
 def add_abundancecontributions(
@@ -505,7 +504,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     dfnucabund, t_model_init_seconds = get_trajectory_timestepfile_nuc_abund(
         traj_root, particleid, "./Run_rprocess/tday_nz-plane"
     )
-    dfnucabund = dfnucabund.iloc[dfnucabund["Z"] >= 1]
+    dfnucabund = dfnucabund.filter(pl.col("Z") >= 1)
     dfnucabund["radioactive"] = True
 
     t_model_init_days = t_model_init_seconds / (24 * 60 * 60)

@@ -4,7 +4,6 @@ import typing as t
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 import polars as pl
 import polars.selectors as cs
 import polars.testing as pltest
@@ -101,7 +100,7 @@ def verify_file_checksums(
 
         checksums_actual[fullpath] = m.hexdigest()
         strpassfail = "pass" if checksums_actual[fullpath] == checksum_expected else "FAILED"
-        print(f"{filename}: {strpassfail} if actual {checksums_actual[fullpath]} expected {checksum_expected}")
+        print(f"{filename}: {strpassfail} expected {checksum_expected} actual {checksums_actual[fullpath]}")
 
     for filename, checksum_expected in checksums_expected.items():
         fullpath = Path(folder) / filename
@@ -122,9 +121,9 @@ def test_makeartismodelfrom_sph_particles() -> None:
                 "gridcontributions.txt": "63e6331666c4928bdc6b7d0f59165e96d6555736243ea8998a779519052a425f",
             },
             "makeartismodel_sums": {
-                "gridcontributions.txt": "6327d196b4800eedb18faee15097f76af352ecbaa9ee59055161b81378bd4af7",
-                "abundances.txt": "1dffae45ff2abe72df3055305853e61ffe471913c5c8cc39cc6f67e38b5f5f45",
-                "model.txt": "6a98aba2b541af5c24497362b053dbe7749bba74a49778f494b440a453c735fc",
+                "gridcontributions.txt": "f7ddda0c8789a642ad2399e2ae67acc15e2fac519bbddfcdaa65b93d32e3edeb",
+                "abundances.txt": "1ec73f89579a1fc2a9004f2fb6e3ac034143f48527f9a4a4d73d131bc777c25d",
+                "model.txt": "e0deb71db1854a63ac126fba8de37cb195ec0fef9e419b84352c39e663f92327",
             },
         },
         {
@@ -135,9 +134,9 @@ def test_makeartismodelfrom_sph_particles() -> None:
                 "gridcontributions.txt": "a2c09b96d32608db2376f9df61980c2ad1423066b579fbbe744f07e536f2891e",
             },
             "makeartismodel_sums": {
-                "gridcontributions.txt": "c06b4cbbe7f3bf423ed636afd63e3d8e30cc3ffa928d3275ffc3ce13f2e4dbef",
-                "abundances.txt": "1dffae45ff2abe72df3055305853e61ffe471913c5c8cc39cc6f67e38b5f5f45",
-                "model.txt": "f9adee21771c18aa6e10c58c252f5f37e3892d3d6007685d915bc1b9cc961a74",
+                "gridcontributions.txt": "c2fc01d2b7ff07f49a321ba6cc1957e0d303191c2bc6b28cd3f2df7cc0cf5b60",
+                "abundances.txt": "1ec73f89579a1fc2a9004f2fb6e3ac034143f48527f9a4a4d73d131bc777c25d",
+                "model.txt": "542b5ae858210c0401556bc327873c29f997365ee066f66cf9b7cd5dec5a252d",
             },
         },
     ]
@@ -249,9 +248,9 @@ def test_make_empty_abundance_file() -> None:
 
 
 def test_opacity_by_Ye_file() -> None:
-    griddata = pd.DataFrame({
-        "cellYe": [0, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.5],
-        "rho": [0, 99, 99, 99, 99, 99, 99, 99],
+    griddata = pl.DataFrame({
+        "cellYe": [0.0, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.5],
+        "rho": [0.0, 99.0, 99.0, 99.0, 99.0, 99.0, 99.0, 99.0],
         "inputcellid": range(1, 9),
     })
     at.inputmodel.opacityinputfile.opacity_by_Ye(outputpath, griddata=griddata)
