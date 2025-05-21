@@ -22,11 +22,13 @@ import polars as pl
 import artistools as at
 
 
-def get_elemabund_from_nucabund(dfnucabund: pd.DataFrame) -> dict[str, float]:
+def get_elemabund_from_nucabund(dfnucabund: pl.DataFrame) -> dict[str, float]:
     """Return a dictionary of elemental abundances from nuclear abundance DataFrame."""
+    ZMAX = dfnucabund["Z"].max()
+    assert isinstance(ZMAX, int)
     dictelemabund: dict[str, float] = {
-        f"X_{at.get_elsymbol(atomic_number)}": dfnucabund[dfnucabund["Z"] == atomic_number]["massfrac"].sum()
-        for atomic_number in range(1, dfnucabund.Z.max() + 1)
+        f"X_{at.get_elsymbol(atomic_number)}": dfnucabund.filter(pl.col("Z") == atomic_number)["massfrac"].sum()
+        for atomic_number in range(1, ZMAX + 1)
     }
     return dictelemabund
 
@@ -521,7 +523,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     # print(dfdensities)
 
     # write abundances.txt
-    assert isinstance(dfnucabund, pd.DataFrame)
     dictelemabund = get_elemabund_from_nucabund(dfnucabund)
 
     dfelabundances = pl.DataFrame([dictelemabund | {"inputcellid": mgi + 1} for mgi in range(len(dfdensities))])
@@ -539,9 +540,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         "X_Co57": 0.0,
     }
 
-    for _, row in dfnucabund.query("radioactive == True").iterrows():
-        A = row.N + row.Z
-        rowdict[f"X_{at.get_elsymbol(row.Z)}{A}"] = row.massfrac
+    for row in dfnucabund.filter(pl.col("radioactive")).iter_rows(named=True):
+        A = row["N"] + row["Z"]
+        rowdict[f"X_{at.get_elsymbol(row['Z'])}{A}"] = row["massfrac"]
 
     dfmodel = pl.DataFrame([
         {
