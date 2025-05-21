@@ -21,6 +21,15 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         action=at.AppendPath,
         help="Path(s) to model.txt file(s) or folders containing model.txt)",
     )
+
+    parser.add_argument("-label", default=[], nargs="*", help="List of series label overrides")
+
+    parser.add_argument("-color", default=[f"C{i}" for i in range(10)], nargs="*", help="List of line colors")
+
+    parser.add_argument("-xmax", type=float, default=None, help="Plot range: x-axis")
+
+    parser.add_argument("-xmin", type=float, default=None, help="Plot range: x-axis")
+
     parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")
 
 
@@ -47,9 +56,16 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if not args.modelpath:
         args.modelpath = ["."]
 
-    for modelpath in args.modelpath:
+    args.color, args.label = at.trim_or_pad(len(args.modelpath), args.color, args.label)
+    args.label = [
+        at.get_model_name(modelpath) if label is None else label
+        for modelpath, label in zip(args.modelpath, args.label, strict=True)
+    ]
+
+    max_vmax_on_c = float("-inf")
+    for color, label, modelpath in zip(args.color, args.label, args.modelpath, strict=True):
         dfmodel, modelmeta = at.get_modeldata(modelpath, derived_cols=["vel_r_min", "vel_r_mid", "vel_r_max", "mass_g"])
-        label = at.get_model_name(modelpath)
+
         print(f"Plotting {label}")
         binned_xvals: list[float] = []
         binned_yvals: list[float] = []
@@ -64,7 +80,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         enclosed_yvals = [0.0] + [
             dfmodelcollect.filter(pl.col("vel_r_mid") <= vupper)["mass_g"].sum() / 1.989e33 for vupper in vuppers
         ]
-        axes[0].plot(enclosed_xvals, enclosed_yvals, label=label)
+        axes[0].plot(enclosed_xvals, enclosed_yvals, label=label, color=color)
 
         if "vel_r_max_kmps" in dfmodel.collect_schema().names():
             vupperscoarse = vuppers.to_list()
@@ -86,9 +102,14 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             yval = velbinmass / delta_beta
             binned_yvals.extend((yval, yval))
 
-        axes[1].plot(binned_xvals, binned_yvals, label=label)
+        axes[1].plot(binned_xvals, binned_yvals, label=label, color=color)
         vmax_on_c = modelmeta["vmax_cmps"] / 29979245800
-        axes[0].set_xlim(right=vmax_on_c)
+        max_vmax_on_c = max(vmax_on_c, max_vmax_on_c)
+
+    if args.xmax is not None:
+        axes[0].set_xlim(right=args.xmax)
+    else:
+        axes[0].set_xlim(right=max_vmax_on_c)
 
     axes[-1].set_xlabel("Velocity [$c$]")
     axes[0].set_ylabel(r"Mass Enclosed [M$_\odot$]")
