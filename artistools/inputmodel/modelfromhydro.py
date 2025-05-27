@@ -60,7 +60,7 @@ def read_ejectasnapshot(pathtosnapshot: str | Path) -> pd.DataFrame:
         sep=r"\s+",
         header=None,
         names=column_names,
-        dtype={"id": int} | {col: float for col in column_names if col != "id"},
+        dtype={"id": int, **{col: float for col in column_names if col != "id"}},
     )
 
 
