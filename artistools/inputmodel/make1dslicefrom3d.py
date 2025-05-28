@@ -52,7 +52,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         make_plot(xlist, ylists, args.pdfoutputfile)
 
 
-def slice_3dmodel(inputfolder, outputfolder, chosenaxis):
+def slice_3dmodel(inputfolder, outputfolder, chosenaxis) -> tuple[dict[int, int], list[float], list[list[float]]]:  # noqa: ANN001
     xlist: list[float] = []
     ylists: list[list[float]] = [[], [], []]
     listout: list[str] = []
@@ -103,7 +103,7 @@ def slice_3dmodel(inputfolder, outputfolder, chosenaxis):
     return dict3dcellidto1dcellid, xlist, ylists
 
 
-def slice_abundance_file(inputfolder, outputfolder, dict3dcellidto1dcellid) -> None:
+def slice_abundance_file(inputfolder, outputfolder, dict3dcellidto1dcellid) -> None:  # noqa: ANN001
     with (
         Path(inputfolder, "abundances.txt").open(encoding="utf-8") as fabundancesin,
         Path(outputfolder, "abundances.txt").open("w", encoding="utf-8") as fabundancesout,
@@ -133,7 +133,12 @@ def slice_abundance_file(inputfolder, outputfolder, dict3dcellidto1dcellid) -> N
 
 
 def append_cell_to_output(
-    cell, outcellid: int, t_model: str | float, listout: list[str], xlist: list[float], ylists: list[list[float]]
+    cell,  # noqa: ANN001
+    outcellid: int,
+    t_model: str | float,
+    listout: list[str],
+    xlist: list[float],
+    ylists: list[list[float]],
 ) -> None:
     dist = math.sqrt(float(cell["pos_x_min"]) ** 2 + float(cell["pos_y_min"]) ** 2 + float(cell["pos_z_min"]) ** 2)
     velocity = dist / float(t_model) / 86400.0 / 1.0e5

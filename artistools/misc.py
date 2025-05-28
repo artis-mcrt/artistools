@@ -70,7 +70,7 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
 class AppendPath(argparse.Action):
     """Append a path to a list of paths."""
 
-    def __call__(self, parser, args, values, option_string=None) -> None:  # type: ignore[no-untyped-def] # noqa: ARG002
+    def __call__(self, parser, args, values, option_string=None) -> None:  # type: ignore[no-untyped-def] # noqa: ANN001,ARG002
         # if getattr(args, self.dest) is None:
         #     setattr(args, self.dest, [])
         if hasattr(values, "__iter__"):

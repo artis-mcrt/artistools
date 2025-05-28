@@ -4,6 +4,7 @@ import math
 import re
 import string
 import typing as t
+from collections.abc import Sequence
 from functools import lru_cache
 from functools import partial
 from pathlib import Path
@@ -62,7 +63,13 @@ def texifyconfiguration(levelname: str) -> str:
     return strout.replace("#", "").replace("$$", "")
 
 
-def add_lte_pops(dfpop, adata, columntemperature_tuples, noprint=False, maxlevel=-1):
+def add_lte_pops(
+    dfpop: pd.DataFrame,
+    adata: pl.DataFrame,
+    columntemperature_tuples: Sequence[tuple[str, float | int]],
+    noprint: bool = False,
+    maxlevel: int = -1,
+) -> pd.DataFrame:
     """Add columns to dfpop with LTE populations.
 
     columntemperature_tuples is a sequence of tuples of column name and temperature, e.g., ('mycolumn', 3000)
@@ -101,7 +108,7 @@ def add_lte_pops(dfpop, adata, columntemperature_tuples, noprint=False, maxlevel
             & (dfpop["level"] != -1)
         )
 
-        def f_ltepop(x, T_exc: float, gsg: float, gse: float, ionlevels) -> float:
+        def f_ltepop(x, T_exc: float, gsg: float, gse: float, ionlevels) -> float:  # noqa: ANN001
             ltepop = (
                 ionlevels["g"].item(int(x.level))
                 / gsg
@@ -164,7 +171,9 @@ def read_file(nltefilepath: str | Path) -> pd.DataFrame:
     return dfpop.rename(columns={"ionstage": "ion_stage"}, errors="ignore")
 
 
-def read_file_filtered(nltefilepath, strquery=None, dfqueryvars=None):
+def read_file_filtered(
+    nltefilepath: str | Path, strquery: str | None = None, dfqueryvars: dict[str, t.Any] | None = None
+) -> pd.DataFrame:
     dfpopfile = read_file(nltefilepath)
 
     if strquery and not dfpopfile.empty:

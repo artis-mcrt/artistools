@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib import gridspec
+from matplotlib.image import AxesImage
 
 import artistools as at
 
@@ -53,9 +54,9 @@ def plot_slice_modelcolumn(
     colname: str,
     plotaxis1: str,
     plotaxis2: str,
-    t_model_d,
+    t_model_d,  # noqa: ANN001
     args: argparse.Namespace,
-):
+) -> tuple[AxesImage, mplcm.ScalarMappable | None]:
     print(f"plotting {colname}")
     colorscale = (
         dfmodelslice[colname] * dfmodelslice["rho"] if colname.startswith("X_") else dfmodelslice[colname]
@@ -124,7 +125,7 @@ def plot_slice_modelcolumn(
     return im, scaledmap
 
 
-def plot_2d_initial_abundances(modelpath, args: argparse.Namespace) -> None:
+def plot_2d_initial_abundances(modelpath, args: argparse.Namespace) -> None:  # noqa: ANN001
     # if the species doesn't end in a number (isotope, e.g. Sr92) then we need to also get element abundances (e.g., Sr)
     get_elemabundances = any(plotvar[-1] not in string.digits for plotvar in args.plotvars)
     lzdfmodel, modelmeta = at.get_modeldata(
@@ -215,20 +216,7 @@ def plot_2d_initial_abundances(modelpath, args: argparse.Namespace) -> None:
     print(f"Saved {outfilename}")
 
 
-def plot_most_abundant(modelpath, args: argparse.Namespace):  # noqa: ARG001
-    model, _ = at.inputmodel.get_modeldata_pandas(modelpath[0])
-    abundances = at.inputmodel.get_initelemabundances_pandas(modelpath[0])
-
-    merge_dfs = model.merge(abundances, how="inner", on="inputcellid")
-    elements = [x for x in merge_dfs.columns if "X_" in x]
-
-    merge_dfs["max"] = merge_dfs[elements].idxmax(axis=1)
-
-    merge_dfs["max"] = merge_dfs["max"].apply(lambda x: at.get_atomic_number(x[2:]))
-    return merge_dfs[merge_dfs["max"] != 1]
-
-
-def make_3d_plot(modelpath, args: argparse.Namespace) -> None:
+def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
     import pyvista as pv
 
     # set white background
@@ -329,7 +317,7 @@ def make_3d_plot(modelpath, args: argparse.Namespace) -> None:
     plotter.camera.azimuth = 45.0
     plotter.camera.elevation = 10.0
     # plotter.camera.azimuth = 15
-    plotter.show(screenshot=modelpath / "3Dplot.png", auto_close=False)
+    plotter.show(screenshot=modelpath / "3Dplot.png", auto_close=False)  # pyright: ignore[reportArgumentType]
 
     # Make gif:
     # # viewup = [0.5, 0.5, 1]
@@ -339,7 +327,7 @@ def make_3d_plot(modelpath, args: argparse.Namespace) -> None:
     # plotter.close()
 
 
-def plot_phi_hist(modelpath) -> None:
+def plot_phi_hist(modelpath) -> None:  # noqa: ANN001
     dfmodel, _ = at.get_modeldata_pandas(modelpath, derived_cols=["pos_x_mid", "pos_y_mid", "pos_z_mid", "vel_r_mid"])
     # print(dfmodel.keys())
     # quit()

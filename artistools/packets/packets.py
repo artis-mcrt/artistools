@@ -6,6 +6,7 @@ import typing as t
 from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
+from warnings import deprecated
 
 import numpy as np
 import numpy.typing as npt
@@ -768,6 +769,9 @@ def bin_packet_directions_lazypolars(
     return dfpackets
 
 
+@deprecated(
+    "bin_packet_directions is deprecated and will be removed in a future version. Use bin_packet_directions_lazypolars instead."
+)
 def bin_packet_directions(dfpackets: pd.DataFrame) -> pd.DataFrame:
     """Avoid this slow pandas function and use bin_packet_directions_lazypolars instead for new code."""
     nphibins = at.get_viewingdirection_phibincount()

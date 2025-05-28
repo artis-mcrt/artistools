@@ -1542,16 +1542,17 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument(
         "-plotviewingangle",
+        "-dirbin",
         type=int,
         metavar="n",
         nargs="+",
-        help="Plot viewing angles. Expects int for direction bin in specpol_res.out",
+        help="Plot viewing directions. Expects int for direction bin in specpol_res.out",
     )
 
     parser.add_argument(
         "--usedegrees",
         action="store_true",
-        help="Use degrees instead of radians for viewing angles. Only works with -plotviewingangle",
+        help="Use degrees instead of radians for direction angles. Only works with -plotviewingangle",
     )
 
     parser.add_argument(
@@ -1671,7 +1672,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.frompackets = True
 
     if args.use_emissiontime or args.use_escapetime:
-        # exspec spectra are binned by arrivine time at the observer
+        # exspec spectra are binned by arrival time at the observer
         # so we need to use the packets instead
         args.frompackets = True
 

@@ -47,7 +47,7 @@ class ExponentLabelFormatter(ticker.ScalarFormatter):
         assert "{" in labeltemplate
         self.labeltemplate = labeltemplate
 
-    def set_locs(self, locs) -> None:
+    def set_locs(self, locs) -> None:  # noqa: ANN001
         if self.decimalplaces is not None:
             self.format = f"%1.{self.decimalplaces!s}f"
             if self._usetex:
@@ -76,7 +76,7 @@ class ExponentLabelFormatter(ticker.ScalarFormatter):
             if self._usetex or self._useMathText:
                 self.format = rf"$\mathdefault{{{self.format}}}$"
 
-    def set_axis(self, axis) -> None:
+    def set_axis(self, axis) -> None:  # noqa: ANN001
         super().set_axis(axis)
         self._set_formatted_label_text()
 
@@ -195,7 +195,7 @@ def autoscale(ax: mplax.Axes | None = None, axis: str = "y", margin: float = 0.1
     From https://stackoverflow.com/questions/29461608/matplotlib-fixing-x-axis-scale-and-autoscale-y-axis
     """
 
-    def calculate_new_limit(fixed, dependent, limit) -> tuple[float, float]:
+    def calculate_new_limit(fixed, dependent, limit) -> tuple[float, float]:  # noqa: ANN001
         """Calculate the min/max of the dependent axis given a fixed axis with limits."""
         if len(fixed) > 2:
             mask = (fixed > limit[0]) & (fixed < limit[1]) & (~np.isnan(dependent)) & (~np.isnan(fixed))
@@ -213,7 +213,7 @@ def autoscale(ax: mplax.Axes | None = None, axis: str = "y", margin: float = 0.1
                 high = -np.inf
         return low, high
 
-    def get_xy(artist):
+    def get_xy(artist) -> tuple[npt.NDArray[t.Any], npt.NDArray[t.Any]]:  # noqa: ANN001
         """Get the xy coordinates of a given artist."""
         if "Collection" in str(artist):
             x, y = artist.get_offsets().T

@@ -828,11 +828,12 @@ def get_mean_cell_properties_of_angle_bin(dfmodeldata: pd.DataFrame, vmax_cmps: 
         })
         for bin_number in range(10)
     }
-    # cos_bin_number = 90
+
     for bin_number in range(10):
-        cos_bin_number = bin_number * 10  # noqa: F841
         # get cells with bin number
-        dfanglebin = dfmodeldata.query("cos_bin == @cos_bin_number", inplace=False)
+        dfanglebin = dfmodeldata.query(
+            "cos_bin == @cos_bin_number", inplace=False, local_dict={"cos_bin_number": bin_number * 10}
+        )
 
         binned = pd.cut(x=dfanglebin["vel_r_mid"], bins=list(velocity_bins), labels=False, include_lowest=True)
         for binindex, mean_rho in dfanglebin.groupby(binned)["rho"].mean().iteritems():

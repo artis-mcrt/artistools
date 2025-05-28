@@ -102,7 +102,11 @@ def get_nist_transitions(filename: Path | str) -> pd.DataFrame:
 
 
 def generate_ion_spectrum(
-    transitions, xvalues, popcolumn, plot_resolution, args: argparse.Namespace
+    transitions,  # noqa: ANN001
+    xvalues,  # noqa: ANN001
+    popcolumn,  # noqa: ANN001
+    plot_resolution,  # noqa: ANN001
+    args: argparse.Namespace,
 ) -> npt.NDArray[np.floating[t.Any]]:
     yvalues = np.zeros(len(xvalues))
 
@@ -127,12 +131,12 @@ def generate_ion_spectrum(
 
 
 def make_plot(
-    xvalues,
-    yvalues,
+    xvalues,  # noqa: ANN001
+    yvalues,  # noqa: ANN001
     temperature_list: list[str],
-    vardict,
+    vardict,  # noqa: ANN001
     ionlist: Sequence[IonTuple],
-    ionpopdict,
+    ionpopdict,  # noqa: ANN001
     xmin: float,
     xmax: float,
     figure_title: str,
@@ -297,12 +301,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         estimators = estimators_all[timestep, modelgridindex]
 
-    # also calculate wavelengths outside the plot range to include lines whose
-    # edges pass through the plot range
-    c_in_km_per_s = 299792.458
-    plot_xmin_wide = args.xmin * (1 - args.gaussian_window * args.sigma_v / c_in_km_per_s)  # noqa: F841
-    plot_xmax_wide = args.xmax * (1 + args.gaussian_window * args.sigma_v / c_in_km_per_s)  # noqa: F841
-
     ionlist = [
         IonTuple(26, 1),
         IonTuple(26, 2),
@@ -445,9 +443,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                     .rename({"lower_g": "lower_statweight", "upper_g": "upper_statweight"})
                     .collect()
                 )
-            # dftransitions = dftransitions.query(
-            #     "lambda_angstroms >= @plot_xmin_wide & lambda_angstroms <= @plot_xmax_wide"
-            # )
 
             pldftransitions = pldftransitions.sort(by="lambda_angstroms")
 
@@ -577,7 +572,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if from_model:
         feions = [2, 3]
 
-        def get_strionfracs(atomic_number, ion_stages):
+        def get_strionfracs(atomic_number: int, ion_stages: Sequence[int]) -> tuple[str, str]:
             elsym = at.get_elsymbol(atomic_number)
             est_ionfracs = [
                 estimators[f"nnion_{at.get_ionstring(atomic_number, ion_stage, sep='_', style='spectral')}"]
