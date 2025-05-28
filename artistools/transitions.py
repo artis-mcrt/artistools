@@ -297,12 +297,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         estimators = estimators_all[timestep, modelgridindex]
 
-    # also calculate wavelengths outside the plot range to include lines whose
-    # edges pass through the plot range
-    c_in_km_per_s = 299792.458
-    plot_xmin_wide = args.xmin * (1 - args.gaussian_window * args.sigma_v / c_in_km_per_s)  # noqa: F841
-    plot_xmax_wide = args.xmax * (1 + args.gaussian_window * args.sigma_v / c_in_km_per_s)  # noqa: F841
-
     ionlist = [
         IonTuple(26, 1),
         IonTuple(26, 2),
@@ -445,9 +439,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                     .rename({"lower_g": "lower_statweight", "upper_g": "upper_statweight"})
                     .collect()
                 )
-            # dftransitions = dftransitions.query(
-            #     "lambda_angstroms >= @plot_xmin_wide & lambda_angstroms <= @plot_xmax_wide"
-            # )
 
             pldftransitions = pldftransitions.sort(by="lambda_angstroms")
 
