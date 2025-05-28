@@ -348,6 +348,7 @@ unfixable = [
 [tool.ruff.lint.per-file-ignores]
 # Ignore unused or untyped arguments in test functions
 "test_*.py" = ["ANN001", "ARG001"]
+"rd_cmfgen.py" = ["PGH004"]
 
 [tool.ruff.lint.flake8-import-conventions.extend-aliases]
 "artistools" = "at"
