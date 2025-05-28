@@ -36,7 +36,7 @@ def get_modelgridcells_along_axis(modelpath: Path | str, args: argparse.Namespac
     return get_mgi_of_modeldata(profile1d, modelpath)
 
 
-def get_modelgridcells_2D_slice(modeldata, modelpath) -> list[int]:
+def get_modelgridcells_2D_slice(modeldata, modelpath) -> list[int]:  # noqa: ANN001
     sliceaxis: t.Literal["x", "y", "z"] = "x"
 
     slicedata = at.inputmodel.plotinitialcomposition.get_2D_slice_through_3d_model(modeldata, sliceaxis)
@@ -48,7 +48,7 @@ def get_mgi_of_modeldata(modeldata: pd.DataFrame, modelpath: Path | str) -> list
     return [mgi_of_propcells[int(row["inputcellid"]) - 1] for _index, row in modeldata.iterrows() if row["rho"] > 0]
 
 
-def plot_Te_vs_time_lineofsight_3d_model(modelpath, modeldata, estimators, readonly_mgi) -> None:
+def plot_Te_vs_time_lineofsight_3d_model(modelpath, modeldata, estimators, readonly_mgi) -> None:  # noqa: ANN001
     assoc_cells, _ = at.get_grid_mapping(modelpath=modelpath)
     times = at.get_timestep_times(modelpath)
 
@@ -66,7 +66,7 @@ def plot_Te_vs_time_lineofsight_3d_model(modelpath, modeldata, estimators, reado
     plt.show()
 
 
-def plot_Te_vs_velocity(modelpath, modeldata, estimators, readonly_mgi) -> None:
+def plot_Te_vs_velocity(modelpath, modeldata, estimators, readonly_mgi) -> None:  # noqa: ANN001
     assoc_cells, _ = at.get_grid_mapping(modelpath=modelpath)
     times = at.get_timestep_times(modelpath)
     timesteps = [50, 55, 60, 65, 70, 75, 80, 90]
@@ -89,7 +89,12 @@ def plot_Te_vs_velocity(modelpath, modeldata, estimators, readonly_mgi) -> None:
 
 
 def get_Te_vs_velocity_2D(
-    modelpath, modeldata, vmax, estimators, readonly_mgi, timestep
+    modelpath,  # noqa: ANN001
+    modeldata,  # noqa: ANN001
+    vmax,  # noqa: ANN001
+    estimators,  # noqa: ANN001
+    readonly_mgi,  # noqa: ANN001
+    timestep,  # noqa: ANN001
 ) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     assoc_cells, _ = at.get_grid_mapping(modelpath=modelpath)
     times = at.get_timestep_times(modelpath)
@@ -121,7 +126,7 @@ def get_Te_vs_velocity_2D(
     return grid_Te, xgrid
 
 
-def make_2d_plot(grid, grid_Te, vmax, modelpath, xgrid, time) -> None:
+def make_2d_plot(grid, grid_Te, vmax, modelpath, xgrid, time) -> None:  # noqa: ANN001
     import pyvista as pv
 
     pyvista = False

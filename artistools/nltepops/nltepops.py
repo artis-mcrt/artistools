@@ -108,7 +108,7 @@ def add_lte_pops(
             & (dfpop["level"] != -1)
         )
 
-        def f_ltepop(x, T_exc: float, gsg: float, gse: float, ionlevels) -> float:
+        def f_ltepop(x, T_exc: float, gsg: float, gse: float, ionlevels) -> float:  # noqa: ANN001
             ltepop = (
                 ionlevels["g"].item(int(x.level))
                 / gsg

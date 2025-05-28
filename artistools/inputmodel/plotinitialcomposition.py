@@ -54,7 +54,7 @@ def plot_slice_modelcolumn(
     colname: str,
     plotaxis1: str,
     plotaxis2: str,
-    t_model_d,
+    t_model_d,  # noqa: ANN001
     args: argparse.Namespace,
 ) -> tuple[AxesImage, mplcm.ScalarMappable | None]:
     print(f"plotting {colname}")
@@ -125,7 +125,7 @@ def plot_slice_modelcolumn(
     return im, scaledmap
 
 
-def plot_2d_initial_abundances(modelpath, args: argparse.Namespace) -> None:
+def plot_2d_initial_abundances(modelpath, args: argparse.Namespace) -> None:  # noqa: ANN001
     # if the species doesn't end in a number (isotope, e.g. Sr92) then we need to also get element abundances (e.g., Sr)
     get_elemabundances = any(plotvar[-1] not in string.digits for plotvar in args.plotvars)
     lzdfmodel, modelmeta = at.get_modeldata(
@@ -327,7 +327,7 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
     # plotter.close()
 
 
-def plot_phi_hist(modelpath) -> None:
+def plot_phi_hist(modelpath) -> None:  # noqa: ANN001
     dfmodel, _ = at.get_modeldata_pandas(modelpath, derived_cols=["pos_x_mid", "pos_y_mid", "pos_z_mid", "vel_r_mid"])
     # print(dfmodel.keys())
     # quit()

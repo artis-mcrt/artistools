@@ -122,7 +122,12 @@ def calculate_timebinned_packet_sum(
 
 
 def get_line_fluxes_from_packets(
-    emtypecolumn, emfeatures, modelpath, maxpacketfiles=None, arr_tstart=None, arr_tend=None
+    emtypecolumn,  # noqa: ANN001
+    emfeatures,  # noqa: ANN001
+    modelpath,  # noqa: ANN001
+    maxpacketfiles=None,  # noqa: ANN001
+    arr_tstart=None,  # noqa: ANN001
+    arr_tend=None,  # noqa: ANN001
 ) -> pd.DataFrame:
     if arr_tstart is None:
         arr_tstart = at.get_timestep_times(modelpath, loc="start")
@@ -528,7 +533,7 @@ def plot_nne_te_points(
     #           fillstyle='full', color=color_b)
 
 
-def plot_nne_te_bars(axis: mplax.Axes, em_log10nne, em_Te, color: t.Any) -> None:
+def plot_nne_te_bars(axis: mplax.Axes, em_log10nne, em_Te, color: t.Any) -> None:  # noqa: ANN001
     if len(em_log10nne) == 0:
         return
     errorbarkwargs = {

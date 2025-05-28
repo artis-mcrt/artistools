@@ -293,7 +293,6 @@ preview = true
 [tool.ruff.lint]
 select = ["ALL"]
 ignore = [
-    "ANN001",  # missing-type-function-argument
     "ANN401",  # any-type
     "C901",    # complex-structure
     "COM812",  # missing-trailing-comma
@@ -347,8 +346,8 @@ unfixable = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-# Ignore unused arguments in test functions
-"test_*.py" = ["ARG001"]
+# Ignore unused or untyped arguments in test functions
+"test_*.py" = ["ANN001", "ARG001"]
 
 [tool.ruff.lint.flake8-import-conventions.extend-aliases]
 "artistools" = "at"

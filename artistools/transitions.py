@@ -102,7 +102,11 @@ def get_nist_transitions(filename: Path | str) -> pd.DataFrame:
 
 
 def generate_ion_spectrum(
-    transitions, xvalues, popcolumn, plot_resolution, args: argparse.Namespace
+    transitions,  # noqa: ANN001
+    xvalues,  # noqa: ANN001
+    popcolumn,  # noqa: ANN001
+    plot_resolution,  # noqa: ANN001
+    args: argparse.Namespace,
 ) -> npt.NDArray[np.floating[t.Any]]:
     yvalues = np.zeros(len(xvalues))
 
@@ -127,12 +131,12 @@ def generate_ion_spectrum(
 
 
 def make_plot(
-    xvalues,
-    yvalues,
+    xvalues,  # noqa: ANN001
+    yvalues,  # noqa: ANN001
     temperature_list: list[str],
-    vardict,
+    vardict,  # noqa: ANN001
     ionlist: Sequence[IonTuple],
-    ionpopdict,
+    ionpopdict,  # noqa: ANN001
     xmin: float,
     xmax: float,
     figure_title: str,

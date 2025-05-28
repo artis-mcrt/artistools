@@ -195,7 +195,7 @@ def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> 
     return dirbins, dirbin_definition
 
 
-def save_viewing_angle_data_for_plotting(band_name, modelname, args: argparse.Namespace) -> None:
+def save_viewing_angle_data_for_plotting(band_name, modelname, args: argparse.Namespace) -> None:  # noqa: ANN001
     if args.save_viewing_angle_peakmag_risetime_delta_m15_to_file:
         outputfolder = Path(args.outputfile) if Path(args.outputfile).is_dir() else Path(args.outputfile).parent
         if args.include_delta_m40:
@@ -243,7 +243,7 @@ def save_viewing_angle_data_for_plotting(band_name, modelname, args: argparse.Na
     #     plt.plot(time, magnitude, label=modelname, color=colours[modelnumber], linewidth=3)
 
 
-def write_viewing_angle_data(band_name, modelnames, args: argparse.Namespace) -> None:
+def write_viewing_angle_data(band_name, modelnames, args: argparse.Namespace) -> None:  # noqa: ANN001
     if (
         args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
         or args.make_viewing_angle_peakmag_risetime_scatter_plot
@@ -271,7 +271,13 @@ def write_viewing_angle_data(band_name, modelnames, args: argparse.Namespace) ->
 
 
 def calculate_peak_time_mag_deltam15(
-    time, magnitude, modelname, angle, key, args, filternames_conversion_dict=None
+    time,  # noqa: ANN001
+    magnitude,  # noqa: ANN001
+    modelname,  # noqa: ANN001
+    angle,  # noqa: ANN001
+    key,  # noqa: ANN001
+    args,  # noqa: ANN001
+    filternames_conversion_dict=None,  # noqa: ANN001
 ) -> None:
     """Calculate band peak time, peak magnitude and delta m15."""
     if args.timemin is None or args.timemax is None:
@@ -291,7 +297,7 @@ def calculate_peak_time_mag_deltam15(
     )
     fxfit, xfit = lightcurve_polyfit(time, magnitude, args)
 
-    def match_closest_time_polyfit(reftime_polyfit) -> str:
+    def match_closest_time_polyfit(reftime_polyfit) -> str:  # noqa: ANN001
         return str(min((float(x) for x in xfit), key=lambda x: abs(x - reftime_polyfit)))
 
     index_min = np.argmin(fxfit)
@@ -338,7 +344,7 @@ def calculate_peak_time_mag_deltam15(
         )
 
 
-def lightcurve_polyfit(time, magnitude, args, deg=10, kernel_scale=10, lc_error=0.01) -> tuple[t.Any, t.Any]:
+def lightcurve_polyfit(time, magnitude, args, deg=10, kernel_scale=10, lc_error=0.01) -> tuple[t.Any, t.Any]:  # noqa: ANN001
     try:
         import george
         import scipy.optimize as op
@@ -348,13 +354,13 @@ def lightcurve_polyfit(time, magnitude, args, deg=10, kernel_scale=10, lc_error=
         gp = george.GP(kernel)
 
         # Define the objective function (negative log-likelihood in this case).
-        def nll(p) -> float:
+        def nll(p) -> float:  # noqa: ANN001
             gp.set_parameter_vector(p)
             ll = gp.log_likelihood(magnitude, quiet=True)
             return -ll if np.isfinite(ll) else 1e25
 
         # And the gradient of the objective function.
-        def grad_nll(p) -> t.Any:
+        def grad_nll(p) -> t.Any:  # noqa: ANN001
             gp.set_parameter_vector(p)
             return -gp.grad_log_likelihood(magnitude, quiet=True)
 
@@ -391,18 +397,18 @@ def lightcurve_polyfit(time, magnitude, args, deg=10, kernel_scale=10, lc_error=
 
 
 def make_plot_test_viewing_angle_fit(
-    time,
-    magnitude,
-    xfit,
-    fxfit,
-    filternames_conversion_dict,
-    key,
-    mag_after15days_polyfit,
-    tmax_polyfit,
-    time_after15days_polyfit,
-    modelname,
-    angle,
-    args,
+    time,  # noqa: ANN001
+    magnitude,  # noqa: ANN001
+    xfit,  # noqa: ANN001
+    fxfit,  # noqa: ANN001
+    filternames_conversion_dict: dict[str, str],
+    key,  # noqa: ANN001
+    mag_after15days_polyfit,  # noqa: ANN001
+    tmax_polyfit,  # noqa: ANN001
+    time_after15days_polyfit,  # noqa: ANN001
+    modelname,  # noqa: ANN001
+    angle,  # noqa: ANN001
+    args,  # noqa: ANN001
 ) -> None:
     plt.plot(time, magnitude)
     plt.plot(xfit, fxfit)
@@ -468,7 +474,7 @@ def update_plotkwargs_for_viewingangle_colorbar(
     return plotkwargsviewingangles
 
 
-def set_scatterplot_plot_params(args) -> None:
+def set_scatterplot_plot_params(args: argparse.Namespace) -> None:
     if not args.colouratpeak:
         plt.gca().invert_yaxis()
     plt.xlim(args.xmin, args.xmax)
@@ -525,7 +531,7 @@ def set_scatterplot_plot_params(args) -> None:
 #     plt.close()
 
 
-def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(modelnames, key, args: argparse.Namespace) -> None:
+def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(modelnames, key, args: argparse.Namespace) -> None:  # noqa: ANN001
     fig, ax = plt.subplots(
         nrows=1, ncols=1, sharex=True, figsize=(8, 6), tight_layout={"pad": 0.5, "w_pad": 1.5, "h_pad": 0.3}
     )
@@ -668,7 +674,11 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
 
 
 def second_band_brightness_at_peak_first_band(
-    data, bands, modelpath, modelnumber, args: argparse.Namespace
+    data,  # noqa: ANN001
+    bands,  # noqa: ANN001
+    modelpath,  # noqa: ANN001
+    modelnumber: int,
+    args: argparse.Namespace,
 ) -> list[float]:
     second_band_brightness = []
     for anglenumber, time in enumerate(data[f"time_{bands[0]}max"]):
@@ -696,7 +706,9 @@ def second_band_brightness_at_peak_first_band(
 
 
 def peakmag_risetime_declinerate_init(
-    modelpaths: list[str | Path], filternames_conversion_dict, args: argparse.Namespace
+    modelpaths: list[str | Path],
+    filternames_conversion_dict,  # noqa: ANN001
+    args: argparse.Namespace,
 ) -> None:
     # if args.calculate_peak_time_mag_deltam15_bool:  # If there's viewing angle scatter plot stuff define some arrays
     args.plotvalues = []  # a0 and p0 values for viewing angle scatter plots
