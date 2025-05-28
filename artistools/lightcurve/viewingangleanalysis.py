@@ -277,7 +277,7 @@ def calculate_peak_time_mag_deltam15(
     angle,  # noqa: ANN001
     key,  # noqa: ANN001
     args,  # noqa: ANN001
-    filternames_conversion_dict=None,  # noqa: ANN001
+    filternames_conversion_dict: dict[str, str],
 ) -> None:
     """Calculate band peak time, peak magnitude and delta m15."""
     if args.timemin is None or args.timemax is None:
