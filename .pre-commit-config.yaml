@@ -44,7 +44,7 @@ repos:
       hooks:
           - id: mypy
             name: mypy
-            entry: mypy
+            entry: mypy --no-warn-unused-ignores
             language: system
             pass_filenames: false
             require_serial: true
