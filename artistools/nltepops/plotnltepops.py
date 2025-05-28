@@ -122,7 +122,7 @@ def plot_reference_data(
 
 
 def get_floers_data(
-    dfpopthision: pd.DataFrame, atomic_number: int, ion_stage: int, modelpath, T_e: float, modelgridindex: int
+    dfpopthision: pd.DataFrame, atomic_number: int, ion_stage: int, modelpath: Path, T_e: float, modelgridindex: int
 ) -> tuple[list[int] | None, list[float] | None]:
     floers_levelnums, floers_levelpop_values = None, None
 
@@ -175,25 +175,25 @@ def get_floers_data(
 
 
 def make_ionsubplot(
-    ax,
-    modelpath,
-    atomic_number,
-    ion_stage,
-    dfpop,
-    adata,
-    estimators,
-    T_e,
-    T_R,
-    modelgridindex,
-    timestep,
-    args,
-    lastsubplot,
+    ax: mplax.Axes,
+    modelpath: Path,
+    atomic_number: int,
+    ion_stage: int,
+    dfpop: pd.DataFrame,
+    adata: pl.DataFrame,
+    estimators: dict[tuple[int, int], dict[str, t.Any]],
+    T_e: float,
+    T_R: float,
+    modelgridindex: int,
+    timestep: int,
+    args: argparse.Namespace,
+    lastsubplot,  # noqa: ANN001
 ) -> None:
     """Plot the level populations the specified ion, cell, and timestep."""
     ionstr = at.get_ionstring(atomic_number, ion_stage, style="chargelatex")
     ion_data = adata.filter((pl.col("Z") == atomic_number) & (pl.col("ion_stage") == ion_stage)).row(0, named=True)
 
-    dfpopthision = dfpop.query(
+    dfpopthision: t.Any = dfpop.query(
         "modelgridindex == @modelgridindex and timestep == @timestep "
         "and Z == @atomic_number and ion_stage == @ion_stage",
         inplace=False,
@@ -261,9 +261,10 @@ def make_ionsubplot(
         else float(ionpopulation / dfpopthision["n_LTE_T_e"].sum())
     )
 
-    dfpopthision = dfpopthision.eval("n_LTE_T_e_normed = n_LTE_T_e * @x", local_dict={"x": lte_scalefactor}).eval(
-        "departure_coeff = n_NLTE / n_LTE_T_e_normed"
-    )
+    dfpopthision = dfpopthision.eval("n_LTE_T_e_normed = n_LTE_T_e * @x", local_dict={"x": lte_scalefactor})
+    assert isinstance(dfpopthision, pd.DataFrame)
+    dfpopthision = dfpopthision.eval("departure_coeff = n_NLTE / n_LTE_T_e_normed")
+    assert isinstance(dfpopthision, pd.DataFrame)
 
     pd.set_option("display.max_columns", 150)
     if len(dfpopthision) < 30:
@@ -313,8 +314,10 @@ def make_ionsubplot(
 
         ycolumnname = "departure_coeff"
 
-        ax._get_lines.get_next_color()  # noqa: SLF001  # skip one color, since T_e is not plotted in departure mode
-        if floers_levelnums is not None:
+        # skip one color, since T_e is not plotted in departure mode
+        ax._get_lines.get_next_color()  # type: ignore[attr-defined] # noqa: SLF001 # pyright: ignore[reportAttributeAccessIssue] # ty: ignore[unresolved-attribute]
+        if floers_levelpop_values is not None:
+            assert floers_levelnums is not None
             ax.plot(
                 floers_levelnums,
                 floers_levelpop_values / dfpopthision["n_LTE_T_e_normed"],
@@ -338,6 +341,7 @@ def make_ionsubplot(
         )
 
         if floers_levelnums is not None:
+            assert floers_levelpop_values is not None
             ax.plot(
                 floers_levelnums,
                 floers_levelpop_values,
@@ -350,6 +354,7 @@ def make_ionsubplot(
         if not args.hide_lte_tr:
             lte_scalefactor = float(ionpopulation / dfpopthision["n_LTE_T_R"].sum())
             dfpopthision = dfpopthision.eval("n_LTE_T_R_normed = n_LTE_T_R * @lte_scalefactor")
+            assert isinstance(dfpopthision, pd.DataFrame)
             ax.plot(
                 dfpopthision["level"],
                 dfpopthision["n_LTE_T_R_normed"],
@@ -473,9 +478,9 @@ def plot_populations_with_time_or_velocity(
     modelpaths: list[Path | str],
     timedays: float,
     ion_stage: int,
-    ionlevels,
+    ionlevels,  # noqa: ANN001
     Z: int,
-    levelconfignames,
+    levelconfignames,  # noqa: ANN001
     args: argparse.Namespace,
 ) -> None:
     if args.x == "time":
@@ -533,7 +538,7 @@ def plot_populations_with_time_or_velocity(
             #          label=f'level {ionlevel} {modelname} LTE')
 
 
-def make_plot(modelpath, atomic_number, ion_stages_displayed, mgilist, timestep, args: argparse.Namespace) -> None:
+def make_plot(modelpath, atomic_number, ion_stages_displayed, mgilist, timestep, args: argparse.Namespace) -> None:  # noqa: ANN001
     """Plot level populations for chosens ions of an element in a cell and timestep of an ARTIS model."""
     modelname = at.get_model_name(modelpath)
     adata = at.atomic.get_levels_polars(

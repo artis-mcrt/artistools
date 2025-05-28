@@ -109,7 +109,9 @@ def get_packets_with_emtype(
     return dfmatchingpackets, nprocs_read
 
 
-def calculate_timebinned_packet_sum(dfpackets, timearrayplusend):
+def calculate_timebinned_packet_sum(
+    dfpackets: pd.DataFrame, timearrayplusend: Sequence[float]
+) -> npt.NDArray[np.floating]:
     binned = pd.cut(dfpackets["t_arrive_d"], timearrayplusend, labels=False, include_lowest=True)
 
     binnedenergysums = np.zeros_like(timearrayplusend[:-1], dtype=float)
@@ -120,7 +122,12 @@ def calculate_timebinned_packet_sum(dfpackets, timearrayplusend):
 
 
 def get_line_fluxes_from_packets(
-    emtypecolumn, emfeatures, modelpath, maxpacketfiles=None, arr_tstart=None, arr_tend=None
+    emtypecolumn,  # noqa: ANN001
+    emfeatures,  # noqa: ANN001
+    modelpath,  # noqa: ANN001
+    maxpacketfiles=None,  # noqa: ANN001
+    arr_tstart=None,  # noqa: ANN001
+    arr_tend=None,  # noqa: ANN001
 ) -> pd.DataFrame:
     if arr_tstart is None:
         arr_tstart = at.get_timestep_times(modelpath, loc="start")
@@ -130,7 +137,7 @@ def get_line_fluxes_from_packets(
     arr_timedelta = np.array(arr_tend) - np.array(arr_tstart)
     arr_tmid = arr_tend = (np.array(arr_tstart) + np.array(arr_tend)) / 2.0
 
-    timearrayplusend = np.concatenate([arr_tstart, [arr_tend[-1]]])
+    timearrayplusend = np.concatenate([arr_tstart, [arr_tend[-1]]]).tolist()
 
     dictlcdata = {"time": arr_tmid}
 
@@ -526,7 +533,7 @@ def plot_nne_te_points(
     #           fillstyle='full', color=color_b)
 
 
-def plot_nne_te_bars(axis: mplax.Axes, em_log10nne, em_Te, color: t.Any) -> None:
+def plot_nne_te_bars(axis: mplax.Axes, em_log10nne, em_Te, color: t.Any) -> None:  # noqa: ANN001
     if len(em_log10nne) == 0:
         return
     errorbarkwargs = {
