@@ -67,16 +67,14 @@ class ExponentLabelFormatter(ticker.ScalarFormatter):
 
         self._set_formatted_label_text()
 
-    def _set_format(self, *args: t.Any, **kwargs):
+    def _set_format(self, *args: t.Any, **kwargs: t.Any) -> None:
         if self.decimalplaces is None:
-            return super()._set_format(*args, **kwargs)  # type: ignore[misc] # pyright: ignore[reportAttributeAccessIssue]
-
-        sigfigs = self.decimalplaces
-        self.format = f"%1.{sigfigs}f"
-        if self._usetex or self._useMathText:
-            self.format = rf"$\mathdefault{{{self.format}}}$"
-
-        return None
+            super()._set_format(*args, **kwargs)  # type: ignore[misc] # pyright: ignore[reportAttributeAccessIssue]
+        else:
+            sigfigs = self.decimalplaces
+            self.format = f"%1.{sigfigs}f"
+            if self._usetex or self._useMathText:
+                self.format = rf"$\mathdefault{{{self.format}}}$"
 
     def set_axis(self, axis) -> None:
         super().set_axis(axis)
