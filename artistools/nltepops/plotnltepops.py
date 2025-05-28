@@ -261,9 +261,10 @@ def make_ionsubplot(
         else float(ionpopulation / dfpopthision["n_LTE_T_e"].sum())
     )
 
-    dfpopthision = dfpopthision.eval("n_LTE_T_e_normed = n_LTE_T_e * @x", local_dict={"x": lte_scalefactor}).eval(
-        "departure_coeff = n_NLTE / n_LTE_T_e_normed"
-    )
+    dfpopthision = dfpopthision.eval("n_LTE_T_e_normed = n_LTE_T_e * @x", local_dict={"x": lte_scalefactor})
+    assert isinstance(dfpopthision, pd.DataFrame)
+    dfpopthision = dfpopthision.eval("departure_coeff = n_NLTE / n_LTE_T_e_normed")
+    assert isinstance(dfpopthision, pd.DataFrame)
 
     pd.set_option("display.max_columns", 150)
     if len(dfpopthision) < 30:
@@ -314,7 +315,7 @@ def make_ionsubplot(
         ycolumnname = "departure_coeff"
 
         ax._get_lines.get_next_color()  # noqa: SLF001  # skip one color, since T_e is not plotted in departure mode
-        if floers_levelnums is not None:
+        if floers_levelpop_values is not None:
             ax.plot(
                 floers_levelnums,
                 floers_levelpop_values / dfpopthision["n_LTE_T_e_normed"],
@@ -350,6 +351,7 @@ def make_ionsubplot(
         if not args.hide_lte_tr:
             lte_scalefactor = float(ionpopulation / dfpopthision["n_LTE_T_R"].sum())
             dfpopthision = dfpopthision.eval("n_LTE_T_R_normed = n_LTE_T_R * @lte_scalefactor")
+            assert isinstance(dfpopthision, pd.DataFrame)
             ax.plot(
                 dfpopthision["level"],
                 dfpopthision["n_LTE_T_R_normed"],

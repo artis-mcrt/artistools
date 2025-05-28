@@ -296,9 +296,6 @@ preview = true
 select = ["ALL"]
 ignore = [
     "ANN001",  # missing-type-function-argument
-    "ANN003",  # missing-type-kwargs
-    "ANN201",  # missing-return-type-undocumented-public-function
-    "ANN202",  # missing-return-type-private-function
     "ANN401",  # any-type
     "C901",    # complex-structure
     "COM812",  # missing-trailing-comma
@@ -323,8 +320,6 @@ ignore = [
     "N803",    # Argument name should be lowercase
     "N806",    # non-lowercase-variable-in-function
     "N815",    # mixed-case-variable-in-class-scope
-    "PERF203", # try-except-in-loop
-    "PGH004",  # blanket-noqa
     "PLC0414", # useless-import-alias
     "PLC0415", # import-outside-toplevel
     "PLR0914", # too-many-locals
@@ -337,10 +332,8 @@ ignore = [
     "PLR2004", # magic-value-comparison
     "PLW2901", # redefined-loop-name
     "S101",    # Use of assert detected
-    "S310",    # suspicious-url-open-usage
     "S311",    # suspicious-non-cryptographic-random-usage
     "S404",    # suspicious-subprocess-import
-    "S603",    # subprocess-without-shell-equals-true
     "S607",    # start-process-with-partial-path
     "T201",    # print found
     "TD002",   # missing-todo-author

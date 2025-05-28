@@ -577,7 +577,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if from_model:
         feions = [2, 3]
 
-        def get_strionfracs(atomic_number, ion_stages):
+        def get_strionfracs(atomic_number: int, ion_stages: Sequence[int]) -> tuple[str, str]:
             elsym = at.get_elsymbol(atomic_number)
             est_ionfracs = [
                 estimators[f"nnion_{at.get_ionstring(atomic_number, ion_stage, sep='_', style='spectral')}"]

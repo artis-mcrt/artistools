@@ -52,7 +52,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         make_plot(xlist, ylists, args.pdfoutputfile)
 
 
-def slice_3dmodel(inputfolder, outputfolder, chosenaxis):
+def slice_3dmodel(inputfolder, outputfolder, chosenaxis) -> tuple[dict[int, int], list[float], list[list[float]]]:
     xlist: list[float] = []
     ylists: list[list[float]] = [[], [], []]
     listout: list[str] = []

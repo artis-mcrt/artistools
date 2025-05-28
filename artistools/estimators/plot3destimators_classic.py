@@ -4,6 +4,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 
 import artistools as at
@@ -87,7 +88,9 @@ def plot_Te_vs_velocity(modelpath, modeldata, estimators, readonly_mgi) -> None:
     plt.show()
 
 
-def get_Te_vs_velocity_2D(modelpath, modeldata, vmax, estimators, readonly_mgi, timestep):
+def get_Te_vs_velocity_2D(
+    modelpath, modeldata, vmax, estimators, readonly_mgi, timestep
+) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     assoc_cells, _ = at.get_grid_mapping(modelpath=modelpath)
     times = at.get_timestep_times(modelpath)
     print(list(enumerate(times)))

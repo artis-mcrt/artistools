@@ -109,7 +109,9 @@ def get_packets_with_emtype(
     return dfmatchingpackets, nprocs_read
 
 
-def calculate_timebinned_packet_sum(dfpackets, timearrayplusend):
+def calculate_timebinned_packet_sum(
+    dfpackets: pd.DataFrame, timearrayplusend: Sequence[float]
+) -> npt.NDArray[np.floating]:
     binned = pd.cut(dfpackets["t_arrive_d"], timearrayplusend, labels=False, include_lowest=True)
 
     binnedenergysums = np.zeros_like(timearrayplusend[:-1], dtype=float)
@@ -130,7 +132,7 @@ def get_line_fluxes_from_packets(
     arr_timedelta = np.array(arr_tend) - np.array(arr_tstart)
     arr_tmid = arr_tend = (np.array(arr_tstart) + np.array(arr_tend)) / 2.0
 
-    timearrayplusend = np.concatenate([arr_tstart, [arr_tend[-1]]])
+    timearrayplusend = np.concatenate([arr_tstart, [arr_tend[-1]]]).tolist()
 
     dictlcdata = {"time": arr_tmid}
 

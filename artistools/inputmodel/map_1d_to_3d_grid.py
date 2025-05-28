@@ -1,11 +1,12 @@
 import numpy as np
+import pandas as pd
 
 import artistools as at
 
 CLIGHT = 2.99792458e10
 
 
-def change_cell_positions_to_new_time(dfgriddata, t_model_1d):
+def change_cell_positions_to_new_time(dfgriddata: pd.DataFrame, t_model_1d: float) -> tuple[pd.DataFrame, float]:
     dfgriddata["pos_x_min"] = dfgriddata["vel_x_min"] * t_model_1d
     dfgriddata["pos_y_min"] = dfgriddata["vel_y_min"] * t_model_1d
     dfgriddata["pos_z_min"] = dfgriddata["vel_z_min"] * t_model_1d
@@ -16,7 +17,14 @@ def change_cell_positions_to_new_time(dfgriddata, t_model_1d):
     return dfgriddata, wid_init
 
 
-def map_1d_to_3d(dfgriddata, vmax, n_3d_gridcells, data_1d, t_model_1d, wid_init) -> None:
+def map_1d_to_3d(
+    dfgriddata: pd.DataFrame,
+    vmax: float,
+    n_3d_gridcells: int,
+    data_1d: pd.DataFrame,
+    t_model_1d: float,
+    wid_init: float,
+) -> None:
     modelgridindex = np.zeros(n_3d_gridcells)
     modelgrid_rho_3d = np.zeros(n_3d_gridcells)
     modelgrid_mid_vel = np.zeros(n_3d_gridcells)
@@ -29,7 +37,7 @@ def map_1d_to_3d(dfgriddata, vmax, n_3d_gridcells, data_1d, t_model_1d, wid_init
             row["posy_mid"] / t_model_1d / CLIGHT,
             row["posz_mid"] / t_model_1d / CLIGHT,
         ])
-
+        assert isinstance(n_3d, int)
         if n_3d % 1000 == 0:
             print(f"mapping cell {n_3d} of {n_3d_gridcells}")
 

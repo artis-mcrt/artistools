@@ -213,7 +213,7 @@ def autoscale(ax: mplax.Axes | None = None, axis: str = "y", margin: float = 0.1
                 high = -np.inf
         return low, high
 
-    def get_xy(artist):
+    def get_xy(artist) -> tuple[npt.NDArray[t.Any], npt.NDArray[t.Any]]:
         """Get the xy coordinates of a given artist."""
         if "Collection" in str(artist):
             x, y = artist.get_offsets().T

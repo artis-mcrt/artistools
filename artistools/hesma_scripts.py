@@ -12,7 +12,7 @@ def plot_hesma_spectrum(timeavg, axes) -> None:
     hesma_spec = pd.read_csv(hesma_file, comment="#", sep=r"\s+", dtype=float)
     # print(hesma_spec)
 
-    def match_closest_time(reftime):
+    def match_closest_time(reftime) -> str:
         return str(min((float(x) for x in hesma_spec.keys()[1:]), key=lambda x: abs(x - reftime)))
 
     closest_time = match_closest_time(timeavg)

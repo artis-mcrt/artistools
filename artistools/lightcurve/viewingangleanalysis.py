@@ -291,7 +291,7 @@ def calculate_peak_time_mag_deltam15(
     )
     fxfit, xfit = lightcurve_polyfit(time, magnitude, args)
 
-    def match_closest_time_polyfit(reftime_polyfit):
+    def match_closest_time_polyfit(reftime_polyfit) -> str:
         return str(min((float(x) for x in xfit), key=lambda x: abs(x - reftime_polyfit)))
 
     index_min = np.argmin(fxfit)
@@ -338,7 +338,7 @@ def calculate_peak_time_mag_deltam15(
         )
 
 
-def lightcurve_polyfit(time, magnitude, args, deg=10, kernel_scale=10, lc_error=0.01):
+def lightcurve_polyfit(time, magnitude, args, deg=10, kernel_scale=10, lc_error=0.01) -> tuple[t.Any, t.Any]:
     try:
         import george
         import scipy.optimize as op
@@ -348,13 +348,13 @@ def lightcurve_polyfit(time, magnitude, args, deg=10, kernel_scale=10, lc_error=
         gp = george.GP(kernel)
 
         # Define the objective function (negative log-likelihood in this case).
-        def nll(p):
+        def nll(p) -> float:
             gp.set_parameter_vector(p)
             ll = gp.log_likelihood(magnitude, quiet=True)
             return -ll if np.isfinite(ll) else 1e25
 
         # And the gradient of the objective function.
-        def grad_nll(p):
+        def grad_nll(p) -> t.Any:
             gp.set_parameter_vector(p)
             return -gp.grad_log_likelihood(magnitude, quiet=True)
 
@@ -667,7 +667,9 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
     print(f"saving {plotname}")
 
 
-def second_band_brightness_at_peak_first_band(data, bands, modelpath, modelnumber, args: argparse.Namespace):
+def second_band_brightness_at_peak_first_band(
+    data, bands, modelpath, modelnumber, args: argparse.Namespace
+) -> list[float]:
     second_band_brightness = []
     for anglenumber, time in enumerate(data[f"time_{bands[0]}max"]):
         lightcurve_data = at.lightcurve.generate_band_lightcurve_data(
@@ -678,8 +680,7 @@ def second_band_brightness_at_peak_first_band(data, bands, modelpath, modelnumbe
         fxfit, xfit = lightcurve_polyfit(time, brightness_in_mag, args)
 
         closest_list_time_to_first_band_peak = at.match_closest_time(
-            reftime=data[f"time_{bands[0]}max"][anglenumber],
-            searchtimes=xfit,  # pyright: ignore[reportArgumentType]
+            reftime=data[f"time_{bands[0]}max"][anglenumber], searchtimes=xfit
         )
 
         for ii, xfits in enumerate(xfit):
