@@ -34,7 +34,7 @@ repos:
     - repo: https://github.com/astral-sh/ruff-pre-commit
       rev: v0.11.11
       hooks:
-          - id: ruff
+          - id: ruff-check
             args: [--fix]
             types_or: [python, pyi]
             require_serial: true
