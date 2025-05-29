@@ -48,7 +48,7 @@ def get_variableunits(key: str) -> str | None:
         **{f"vel_{ax}_mid_on_c": "c" for ax in ["x", "y", "z", "r", "rcyl"]},
     }
 
-    return variableunits.get(key) or variableunits.get(key.split("_")[0])
+    return variableunits.get(key) or variableunits.get(key.split("_", maxsplit=1)[0])
 
 
 def get_variablelongunits(key: str) -> str | None:
@@ -466,10 +466,12 @@ def get_averageexcitation(
     k_b = 8.617333262145179e-05  # eV / K
 
     ionpopsum = dfnltepops_ion.n_NLTE.sum()
+    assert isinstance(ionpopsum, float)
     energypopsum = sum(
         ionlevels["energy_ev"].item(level) * n_NLTE
         for level, n_NLTE in dfnltepops_ion[dfnltepops_ion.level >= 0][["level", "n_NLTE"]].itertuples(index=False)
     )
+    assert isinstance(energypopsum, float)
 
     with contextlib.suppress(IndexError):  # no superlevel will cause IndexError
         superlevelrow = dfnltepops_ion[dfnltepops_ion.level < 0].iloc[0]

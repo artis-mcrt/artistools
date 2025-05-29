@@ -510,7 +510,7 @@ def get_time_range(
         raise ValueError(msg)
 
     timesteplast = len(tmids) - 1
-    if timestepmax is not None and timestepmax > timesteplast:
+    if timestepmax > timesteplast:
         print(f"Warning timestepmax {timestepmax} > timesteplast {timesteplast}")
         timestepmax = timesteplast
     if time_days_lower is None:

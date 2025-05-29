@@ -108,7 +108,7 @@ def slice_abundance_file(inputfolder, outputfolder, dict3dcellidto1dcellid) -> N
         Path(inputfolder, "abundances.txt").open(encoding="utf-8") as fabundancesin,
         Path(outputfolder, "abundances.txt").open("w", encoding="utf-8") as fabundancesout,
     ):
-        currentblock: list[t.Any] = []
+        currentblock: list[str] = []
         keepcurrentblock = False
         for line in fabundancesin:
             linesplit = line.split()
@@ -126,7 +126,7 @@ def slice_abundance_file(inputfolder, outputfolder, dict3dcellidto1dcellid) -> N
                     currentblock[0] = f"{outcellid:6d}"
                     keepcurrentblock = True
             else:
-                currentblock.append(linesplit)
+                currentblock.append(*linesplit)
 
     if keepcurrentblock:
         print("WARNING: unfinished block")

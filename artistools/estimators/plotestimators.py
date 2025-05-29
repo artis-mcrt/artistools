@@ -338,11 +338,14 @@ def plot_multi_ion_series(
         if ionstr in at.get_elsymbolslist():
             return (at.get_atomic_number(ionstr), "ALL")
         if " " in ionstr:
-            return (at.get_atomic_number(ionstr.split(" ")[0]), at.decode_roman_numeral(ionstr.split(" ")[1]))
+            return (
+                at.get_atomic_number(ionstr.split(" ", maxsplit=1)[0]),
+                at.decode_roman_numeral(ionstr.split(" ")[1]),
+            )
         if ionstr.rstrip("-0123456789") in at.get_elsymbolslist():
             atomic_number = at.get_atomic_number(ionstr.rstrip("-0123456789"))
             return (atomic_number, ionstr)
-        atomic_number = at.get_atomic_number(ionstr.split("_")[0])
+        atomic_number = at.get_atomic_number(ionstr.split("_", maxsplit=1)[0])
         return (atomic_number, ionstr)
 
     # decoded into atomic number and parameter, e.g., [(26, 1), (26, 2), (26, 'ALL'), (26, 'Fe56')]
