@@ -140,9 +140,9 @@ def get_grid(
     # ... dynamical ejecta
     for i1 in dynid:
         i += 1  # index in the new list accounting for unprocessed trajs.
-        i2 = int(np.where(dynidall == i1)[0])  # indices in Zeweis extended list of trajs.
-        mtraj[i] = np.sum(dat.f.mass[i2]) * msol
-        qtraj[i] = np.sum(np.sum(dat.f.qdot[i2][:closest_idx]))
+        i3 = np.where(dynidall == i1)[0]  # indices in Zeweis extended list of trajs.
+        mtraj[i] = np.sum(dat.f.mass[i3]) * msol
+        qtraj[i] = np.sum(np.sum(dat.f.qdot[i3][:closest_idx]))
     if nodynej:
         # exclude dynamical ejecta
         mtraj[np.where(state == -1)] = 1e-15
@@ -162,17 +162,17 @@ def get_grid(
     # ... dynamical ejecta
     for i1 in dynid:  # index of my original list
         i += 1  # index in the new list accounting for unprocessed trajs.
-        i2 = int(np.where(dynidall == i1)[0])  # indices in Zeweis extended list of trajs.
+        i4 = np.where(dynidall == i1)[0]  # indices in Zeweis extended list of trajs.
         # if len(i2)<nsplit:
         #     print('missing dyn ejecta at i=',i,len(i2))
-        weights = dat.f.mass[i2] * msol / (np.sum(dat.f.mass[i2]) * msol)
-        xtraj[i, :] = np.sum(weights * xiso0[i2, :].T, axis=1)
+        weights = dat.f.mass[i4] * msol / (np.sum(dat.f.mass[i2]) * msol)
+        xtraj[i, :] = np.sum(weights * xiso0[i4, :].T, axis=1)
         # ttraj[i] = sum(weights * dattem.f.T9[i2] * 1e9)
-        qtraj[i] = np.sum(dat.f.qdot[i2]) * msol
+        qtraj[i] = np.sum(dat.f.qdot[i4]) * msol
         # yetraj[i] = np.sum(weights * ye_summ_file[int(i1)])
-        yetraj[i] = np.sum(weights * dat.f.t5out[i2, 4])
-        vtraj[i] = np.sum(weights * dat.f.pos[i2, 0])
-        atraj[i] = np.sum(weights * dat.f.pos[i2, 1])
+        yetraj[i] = np.sum(weights * dat.f.t5out[i4, 4])
+        vtraj[i] = np.sum(weights * dat.f.pos[i4, 0])
+        atraj[i] = np.sum(weights * dat.f.pos[i4, 1])
 
     # now do the mapping using an SPH like interpolation
     # (see e.g. Price 2007, http://adsabs.harvard.edu/abs/2007PASA...24..159P,
