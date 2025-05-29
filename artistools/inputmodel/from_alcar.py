@@ -16,10 +16,7 @@ import artistools as at
 cl = 29979245800.0
 day = 86400.0
 msol = 1.989e33  # solar mass in g
-
-# time of this snapshot
-tsnap = 0.1 * day
-vmax = 0.5  # maximum velocity in units of c
+tsnap = 0.1 * day  # snapshot time is fixed by the npz files
 
 
 def sphkernel(
@@ -66,61 +63,116 @@ def f1corr(rcyl: npt.NDArray[np.floating], hsph: npt.NDArray[np.floating]) -> np
     )
 
 
-def get_grid() -> tuple[
+def get_grid(
+    dat_path: Path,
+    iso_path: Path,
+    vmax: float,
+    numb_cells_ARTIS_radial: int,
+    numb_cells_ARTIS_z: int,
+    nodynej: bool,
+    nohmns: bool,
+    notorus: bool,
+    outputpath: Path,
+) -> tuple[
+    npt.NDArray[np.floating],
+    npt.NDArray[np.floating],
+    npt.NDArray[np.floating],
+    npt.NDArray[np.floating],
+    npt.NDArray[np.floating],
+    npt.NDArray[np.floating],
+    npt.NDArray[np.floating],
     int,
-    int,
-    npt.NDArray[np.floating],
-    npt.NDArray[np.floating],
-    npt.NDArray[np.floating],
-    npt.NDArray[np.floating],
-    npt.NDArray[np.floating],
-    npt.NDArray[np.floating],
 ]:
-    # base = Path('/the/ojust/lustredata/luke/hmnskn_2023/138n1a6/')
-    base = Path()
-    dat = np.load(base / "kilonova_artis_input_138n1a6.npz")
-    iso = np.load(base / "iso_table.npy")
-    dattem = np.load(base / "kilonova_artis_input_138n1a6_rho_energy.npz")
+    dat = np.load(dat_path)
+    iso = np.load(iso_path)
+
+    # assume equatorial symmetry? (1=no, 2=yes)
+    # determine whether the model assumes equatorial symmetry. Criterion: if the input npz files contains
+    # tracer particles only in the upper half space (z > 0 or angle < pi/2), equatorial symmetry is assumed
+    # and the reflection w.r.t. the z-axis for the final model.txt has to be done
+    eqsymfac = 2 if np.amax(dat.f.pos[:, 1]) < np.pi / 2.0 else 1
 
     # first re-construct the original post-merger trajectories by merging the
-    # split dynamical ejecta trajectories
-    idx = np.array([int(i) for i in dat.f.idx])
-    print(idx)
-    isoA = iso[:, 0] + iso[:, 1]  # mass number = neutron number + proton number
-    xiso0 = dat.f.nz[:, :] * isoA[:]
-    state = np.array([round(i) for i in dat.f.state])
+    # splitted dynamical ejecta trajectories
+    idx = np.array([round(i) for i in dat.f.idx])  # unique particle ID of all trajectories
+    state = np.array([round(i) for i in dat.f.state])  # == -1,0,1 for dynamical, NS-torus, BH-torus
     dyncond = state == -1
-    ndyn0 = np.sum(dyncond)
-    ndyn = int(ndyn0 / 5.0)
-    ntraj0 = len(idx)
-    ntraj = ntraj0 - ndyn0 + ndyn
+    dynidall = np.array([i % 10000 for i in idx])
+    dynid = {i % 10000 for i in idx[dyncond]}  # original IDs of dynamical ejecta
+    ndyn = len(dynid)
+    nodid = {i % 10000 for i in idx[~dyncond]}  # IDs of other ejecta trajs.
+    nnod = len(nodid)
+    ntraj = ndyn + nnod
     mtraj = np.zeros(ntraj)  # final trajectory mass
+    isoA0 = iso[:, 0] + iso[:, 1]  # mass number = neutron number + proton number
+    xiso0 = dat.f.nz[:, :] * isoA0[:]  # number fraction -> mass fraction
     ncomp = len(xiso0[0, :])  # number of isotopes
     xtraj = np.zeros((ntraj, ncomp))  # final mass fractions for each isotope at t = tsnap
-    ttraj = np.zeros(ntraj)  # final temperature in Kelvin
     vtraj = np.zeros(ntraj)  # final radial velocity
     atraj = np.zeros(ntraj)  # final polar angle
-    dynid0 = idx[dyncond & (idx < 1e4)]
-    nsplit = 5
+    qtraj = np.zeros(ntraj)  # integrated energy release up to snapshot
+    yetraj = np.zeros(ntraj)  # initial electron fraction
 
-    # ... first fill arrays with all data from non-dynamical ejecta
-    i1: int | list[int]
-    for i, i1 in ((i, np.nonzero(idx == i)[0][0]) for i in range(ntraj) if not np.isin(i, dynid0)):
-        mtraj[i] = dat.f.mass[i1] * msol
-        xtraj[i, :] = xiso0[i1, :]
-        ttraj[i] = dattem.f.T9[i1] * 1e9
-        vtraj[i] = dat.f.pos[i1, 0]
-        atraj[i] = dat.f.pos[i1, 1]
+    time_s = dat.f.time
+    closest_idx = (np.abs(time_s - tsnap)).argmin()
+    i = -1
 
-    # ... now dynamical ejecta
-    for i in dynid0:
-        i1 = [np.nonzero(idx == int(i + n * 1e4))[0][0] for n in range(nsplit)]
-        mtraj[i] = np.sum(dat.f.mass[i1]) * msol
-        weights = dat.f.mass[i1] * msol / mtraj[i]
-        xtraj[i, :] = np.sum(weights * xiso0[i1, :].T, 1)
-        ttraj[i] = np.sum(weights * dattem.f.T9[i1] * 1e9)
-        vtraj[i] = np.sum(weights * dat.f.pos[i1, 0])
-        atraj[i] = np.sum(weights * dat.f.pos[i1, 1])
+    # first get masses and see if they have to be set to zero if the corresponding ejecta types shall be excluded
+    # also set to integrated energy release up to snapshot time to zero
+
+    # ... non-dynamical ejecta
+    for i1 in nodid:  # index of Oli Just's original list
+        i += 1  # index in the new list accounting for unprocessed trajs.
+        i2 = list(dynidall).index(i1)  # index in Zeweis extended list of trajs.
+        mtraj[i] = dat.f.mass[i2] * msol
+        qtraj[i] = np.sum(
+            dat.f.qdot[i2][:closest_idx]
+        )  # no multiplication with mass to keep it a specific energy release
+    if nohmns:
+        # exclude HMNS ejecta
+        mtraj[np.where(state == 0)] = 1e-15
+        qtraj[np.where(state == 0)] = 1e-15
+    if notorus:
+        # exclude torus ejecta
+        mtraj[np.where(state == 1)] = 1e-15
+        qtraj[np.where(state == 1)] = 1e-15
+
+    # ... dynamical ejecta
+    for i1 in dynid:
+        i += 1  # index in the new list accounting for unprocessed trajs.
+        i3 = np.where(dynidall == i1)[0]  # indices in Zeweis extended list of trajs.
+        mtraj[i] = np.sum(dat.f.mass[i3]) * msol
+        qtraj[i] = np.sum(np.sum(dat.f.qdot[i3][:closest_idx]))
+    if nodynej:
+        # exclude dynamical ejecta
+        mtraj[np.where(state == -1)] = 1e-15
+        qtraj[np.where(state == -1)] = 1e-15
+
+    i = -1
+    # ... non-dynamical ejecta
+    for i1 in nodid:  # index of my original list
+        i += 1  # index in the new list accounting for unprocessed trajs.
+        i2 = list(dynidall).index(i1)  # index in Zeweis extended list of trajs.
+        xtraj[i, :] = xiso0[i2, :]
+        # ttraj[i] = dattem.f.T9[i2] * 1e9
+        qtraj[i] = np.sum(dat.f.qdot[i2]) * msol
+        yetraj[i] = dat.f.t5out[i2, 4]
+        vtraj[i] = dat.f.pos[i2, 0]
+        atraj[i] = dat.f.pos[i2, 1]
+    # ... dynamical ejecta
+    for i1 in dynid:  # index of my original list
+        i += 1  # index in the new list accounting for unprocessed trajs.
+        i4 = np.where(dynidall == i1)[0]  # indices in Zeweis extended list of trajs.
+        # if len(i2)<nsplit:
+        #     print('missing dyn ejecta at i=',i,len(i2))
+        weights = dat.f.mass[i4] * msol / (np.sum(dat.f.mass[i2]) * msol)
+        xtraj[i, :] = np.sum(weights * xiso0[i4, :].T, axis=1)
+        # ttraj[i] = sum(weights * dattem.f.T9[i2] * 1e9)
+        qtraj[i] = np.sum(dat.f.qdot[i4]) * msol
+        # yetraj[i] = np.sum(weights * ye_summ_file[int(i1)])
+        yetraj[i] = np.sum(weights * dat.f.t5out[i4, 4])
+        vtraj[i] = np.sum(weights * dat.f.pos[i4, 0])
+        atraj[i] = np.sum(weights * dat.f.pos[i4, 1])
 
     # now do the mapping using an SPH like interpolation
     # (see e.g. Price 2007, http://adsabs.harvard.edu/abs/2007PASA...24..159P,
@@ -132,14 +184,16 @@ def get_grid() -> tuple[
     nu = 2
     # ... cylindrical coordinates of the particle positions
     rcyltraj, zcyltraj = np.zeros(ntraj), np.zeros(ntraj)
-    for i in np.arange(ntraj):
+    for i in [int(j) for j in np.arange(ntraj)]:
         rcyltraj[i] = vtraj[i] * np.sin(atraj[i]) * cl * tsnap
         zcyltraj[i] = vtraj[i] * np.cos(atraj[i]) * cl * tsnap
 
     # ... cylindrical coordinates of the grid onto which we want to map
-    vmax_cmps = vmax * 29979245800.0
-    nvr = 25
-    nvz = 50
+    vmax_cmps = vmax * cl
+    nvr = numb_cells_ARTIS_radial
+    nvz = int(
+        numb_cells_ARTIS_z / eqsymfac
+    )  # number of mapping grid cells in z direction depends on equatorial symmetry
 
     wid_init_rcyl = vmax_cmps * tsnap / nvr
     pos_rcyl_min = np.array([vmax_cmps * tsnap / nvr * nr for nr in range(nvr)])
@@ -164,10 +218,11 @@ def get_grid() -> tuple[
     # by solving Eq. 10 of P2007 where rho is replaced by the
     # 2D density rho_2D = rho_3D/(2 \pi R) = \sum_i m_i W_2D
     # with particle masses m_i and 2D interpolation kernel W_2D
-    print(f"computing particle densities...{ntraj} trajectories")
+    print("computing particle densities...")
     rho2dtraj = np.zeros(ntraj)  # this is the 2D density!!!
     hsmooth = np.zeros(ntraj)
-    for i in np.arange(ntraj):
+    for i in [int(j) for j in np.arange(ntraj)]:
+        # print(i)
         cont = True
         hl, hr = 0.00001 * cl * tsnap, 1.0 * cl * tsnap
         dist = np.sqrt((rcyltraj[i] - rcyltraj) ** 2 + (zcyltraj[i] - zcyltraj) ** 2)
@@ -198,7 +253,7 @@ def get_grid() -> tuple[
 
     # cross check: count number of neighbors within smoothing length
     neinum = np.zeros(ntraj)
-    for i in np.arange(ntraj):
+    for i in [int(j) for j in np.arange(ntraj)]:
         dist = np.sqrt((rcyltraj[i] - rcyltraj) ** 2 + (zcyltraj[i] - zcyltraj) ** 2)
         neinum[i] = np.sum(np.where(dist / hsmooth < 2.0, 1.0, 0.0))
     neinumavg = np.sum(neinum * mtraj) / np.sum(mtraj)
@@ -219,26 +274,50 @@ def get_grid() -> tuple[
         2.0 * np.pi * np.clip(rgridc2d, 0.5 * hint, None)
     )  # limiting to 0.5*h seems to prevent artefacts near the axis
     # ... mass fractions
-    xint = np.tensordot(xtraj.T, wall * mtraj, axes=(1, 2)) / np.sum(wall * mtraj, axis=2)
-    # pdb.set_trace()
+    xint = np.tensordot(xtraj.T, wall * mtraj, axes=(1, 2)) / (np.sum(wall * mtraj, axis=2) + 1e-100)
+    xin2 = np.tensordot(xtraj.T, weinor, axes=(1, 2))  # for testing
     # ... temperature
-    temint = np.sum(weinor * ttraj, axis=2)
+    qinterpol = np.sum(weinor * qtraj, axis=2)
+    yeinterpol = np.sum(weinor * yetraj, axis=2)
 
     # renormalize so that interpolated mass = sum of particle masses
     dmgrid = rhoint * volgrid2d
-    print("mass after interpolation  :", np.sum(dmgrid) / msol)
-    dmgrid = dmgrid / np.sum(dmgrid) * np.sum(mtraj)
+    print("total mass after interpolation (but BEFORE renormalization):", np.sum(dmgrid) / msol * eqsymfac)
+    rescfac = np.sum(mtraj) / np.sum(dmgrid)
+    dmgrid *= rescfac
     mtot = np.sum(dmgrid)
-    print("mass after renormalization:", mtot / msol)
 
-    CLIGHT = 2.99792458e10  # Speed of light [cm/s]
-    STEBO = 5.670400e-5  # Stefan-Boltzmann constant [erg cm^-2 s^-1 K^-4.]
-    # Luke: get the energy per gram in the cell from the temperature by working backwards from:
-    # T_initial = pow(CLIGHT / 4 / STEBO * rho_tmin * q_ergperg, 1. / 4.);
-    q_ergperg = temint**4 * 4 * STEBO / CLIGHT / rhoint
+    # test outputs
+    print("===> mapped data")
+    print("total mass                :", mtot / msol * eqsymfac)
+    print("total element mass He Z=2 :", np.sum(np.sum(xint[iso[:, 1] == 2, :, :], axis=0) * dmgrid) * eqsymfac / msol)
+    print("total element mass Zr Z=40:", np.sum(np.sum(xint[iso[:, 1] == 40, :, :], axis=0) * dmgrid) * eqsymfac / msol)
+    print("total element mass Sn Z=50:", np.sum(np.sum(xint[iso[:, 1] == 50, :, :], axis=0) * dmgrid) * eqsymfac / msol)
+    print("total element mass Te Z=52:", np.sum(np.sum(xint[iso[:, 1] == 52, :, :], axis=0) * dmgrid) * eqsymfac / msol)
+    print("total element mass Xe Z=54:", np.sum(np.sum(xint[iso[:, 1] == 54, :, :], axis=0) * dmgrid) * eqsymfac / msol)
+    print("total element mass W  Z=74:", np.sum(np.sum(xint[iso[:, 1] == 74, :, :], axis=0) * dmgrid) * eqsymfac / msol)
+    print("total element mass Pt Z=78:", np.sum(np.sum(xint[iso[:, 1] == 78, :, :], axis=0) * dmgrid) * eqsymfac / msol)
+
+    print("===> tracer data")
+    print("total mass                :", np.sum(dat.f.mass) * eqsymfac)
+    print("total element mass He Z=2 :", np.sum(np.sum(xiso0[:, iso[:, 1] == 2], axis=1) * dat.f.mass) * eqsymfac)
+    print("total element mass Zr Z=40:", np.sum(np.sum(xiso0[:, iso[:, 1] == 40], axis=1) * dat.f.mass) * eqsymfac)
+    print("total element mass Sn Z=50:", np.sum(np.sum(xiso0[:, iso[:, 1] == 50], axis=1) * dat.f.mass) * eqsymfac)
+    print("total element mass Te Z=52:", np.sum(np.sum(xiso0[:, iso[:, 1] == 52], axis=1) * dat.f.mass) * eqsymfac)
+    print("total element mass Xe Z=54:", np.sum(np.sum(xiso0[:, iso[:, 1] == 54], axis=1) * dat.f.mass) * eqsymfac)
+    print("total element mass W  Z=74:", np.sum(np.sum(xiso0[:, iso[:, 1] == 74], axis=1) * dat.f.mass) * eqsymfac)
+    print("total element mass Pt Z=78:", np.sum(np.sum(xiso0[:, iso[:, 1] == 78], axis=1) * dat.f.mass) * eqsymfac)
+
+    test = np.sum(xint, axis=0) - 1.0
+    test = np.where(test > -1, test, 0.0)
+    print("(X-1)_max over 2D grid    :", np.amax(np.where(test > -1, abs(test), 0.0)))
+
+    test = np.sum(xin2, axis=0) - 1.0
+    test = np.where(test > -1, test, 0.0)
+    print("(X-1)_max over 2D grid 2  :", np.amax(np.where(test > -1, abs(test), 0.0)))
 
     # write file containing the contribution of each trajectory to each interpolated grid cell
-    with (base / "gridcontributions.txt").open("w", encoding="utf-8") as fgridcontributions:
+    with (outputpath / Path("gridcontributions.txt")).open("w", encoding="utf-8") as fgridcontributions:
         fgridcontributions.write("particleid cellindex frac_of_cellmass frac_of_cellmass_includemissing" + "\n")
         for nz in np.arange(nvz):
             for nr in np.arange(nvr):
@@ -253,16 +332,13 @@ def get_grid() -> tuple[
                     for pid in pids:
                         fgridcontributions.write(f"{pid:<10}  {cellid:<8} {wloc[pid]:25.15e} {wloc[pid]:25.15e}\n")
 
-    return nvr, nvz, rgridc2d, zgridc2d, rhoint, xint, iso, q_ergperg
+    return rgridc2d, zgridc2d, rhoint, xint, iso, qinterpol, yeinterpol, eqsymfac
 
 
-def z_reflect(arr: npt.NDArray[np.floating | np.integer]) -> npt.NDArray[np.floating | np.integer]:
+def z_reflect(arr: npt.NDArray[np.floating | np.integer], sign: int = 1) -> npt.NDArray[np.floating | np.integer]:
     """Flatten an array and add a reflection in z."""
-    _ngridrcyl, ngridz = arr.shape
-    assert ngridz % 2 == 0
-    reflected = np.concatenate([np.flip(arr[:, ngridz // 2 :], axis=1), arr[:, ngridz // 2 :]], axis=1).flatten(
-        order="F"
-    )
+    _ngridrcyl = arr.shape[0]
+    reflected = np.concatenate([sign * np.flip(arr[:, :], axis=1), arr[:, :]], axis=1)
     assert isinstance(reflected, np.ndarray)
     return reflected
 
@@ -271,29 +347,49 @@ def z_reflect(arr: npt.NDArray[np.floating | np.integer]) -> npt.NDArray[np.floa
 def create_ARTIS_modelfile(
     ngridrcyl: int,
     ngridz: int,
-    pos_t_s_grid_rad: npt.NDArray[np.floating],
-    pos_t_s_grid_z: npt.NDArray[np.floating],
-    rho_interpol: npt.NDArray[np.floating],
-    X_cells: npt.NDArray[np.floating],
+    vmax: float,
+    pos_t_s_grid_rad: npt.NDArray[np.floating | np.integer],
+    pos_t_s_grid_z: npt.NDArray[np.floating | np.integer],
+    rho_interpol: npt.NDArray[np.floating | np.integer],
+    X_cells: npt.NDArray[np.floating | np.integer],
     isot_table: npt.NDArray[t.Any],
-    q_ergperg: npt.NDArray[np.floating],
-    outpath: Path,
+    q_ergperg: npt.NDArray[np.floating | np.integer],
+    ye_traj: npt.NDArray[np.floating | np.integer],
+    eqsymfac: int,
+    outputpath: Path,
 ) -> None:
+    numb_cells = ngridrcyl * ngridz
+
+    # now reflect the arrays if equatorial symmetry is assumed or otherwise not
+    if eqsymfac == 1:
+        dfmodel = pd.DataFrame({
+            "inputcellid": range(1, numb_cells + 1),
+            "pos_rcyl_mid": (pos_t_s_grid_rad).flatten(order="F"),
+            "pos_z_mid": (pos_t_s_grid_z).flatten(order="F"),
+            "rho": (rho_interpol).flatten(order="F"),
+            "q": (q_ergperg).flatten(order="F"),
+            # "cellYe": z_reflect(ye).flatten(order="F"),
+        })
+    else:
+        # equatorial symmetry -> have to reflect
+        pos_t_s_grid_rad = z_reflect(pos_t_s_grid_rad)
+        pos_t_s_grid_z = z_reflect(pos_t_s_grid_z, sign=-1)
+        rho_interpol = z_reflect(rho_interpol)
+        q_ergperg = z_reflect(q_ergperg)
+        ye_traj = z_reflect(ye_traj)
+        dfmodel = pd.DataFrame({
+            "inputcellid": range(1, numb_cells + 1),
+            "pos_rcyl_mid": (pos_t_s_grid_rad).flatten(order="F"),
+            "pos_z_mid": (pos_t_s_grid_z).flatten(order="F"),
+            "rho": (rho_interpol).flatten(order="F"),
+            "q": (q_ergperg).flatten(order="F"),
+            "cellYe": (ye_traj).flatten(order="F"),
+        })
+
     assert pos_t_s_grid_rad.shape == (ngridrcyl, ngridz)
     assert pos_t_s_grid_z.shape == (ngridrcyl, ngridz)
     assert rho_interpol.shape == (ngridrcyl, ngridz)
     assert q_ergperg.shape == (ngridrcyl, ngridz)
-    numb_cells = ngridrcyl * ngridz
-    # DF_gridcontributions = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(".")
-    # pdb.set_trace()
-    # print("gridcontributions.txt read...done")
-    dfmodel = pd.DataFrame({
-        "inputcellid": range(1, numb_cells + 1),
-        "pos_rcyl_mid": (pos_t_s_grid_rad).flatten(order="F"),
-        "pos_z_mid": (pos_t_s_grid_z).flatten(order="F"),
-        "rho": z_reflect(rho_interpol).flatten(order="F"),
-        "q": z_reflect(q_ergperg).flatten(order="F"),
-    })
 
     # DF_model, DF_el_contribs, DF_contribs = at.inputmodel.rprocess_from_trajectory.add_abundancecontributions(
     #     dfgridcontributions=DF_gridcontributions,
@@ -310,7 +406,10 @@ def create_ARTIS_modelfile(
     dictabunds = {}
     dictelabunds = {"inputcellid": np.array(range(1, numb_cells + 1))}
     for tuple_idx, isot_tuple in enumerate(isot_table):
-        flat_isoabund = np.nan_to_num(z_reflect(X_cells[tuple_idx]).flatten(order="F"), nan=0.0)
+        if eqsymfac == 1:
+            flat_isoabund = np.nan_to_num((X_cells[tuple_idx]).flatten(order="F"), nan=0.0)
+        else:
+            flat_isoabund = np.nan_to_num(z_reflect(X_cells[tuple_idx]).flatten(order="F"), nan=0.0)
         if np.any(flat_isoabund):
             elem_str = f"X_{at.get_elsymbol(isot_tuple[1])}"
             isotope_str = f"{elem_str}{isot_tuple[0] + isot_tuple[1]}"
@@ -325,7 +424,7 @@ def create_ARTIS_modelfile(
     dfabundances = pd.DataFrame(dictelabunds).fillna(0.0)
 
     # create init abundance file
-    at.inputmodel.save_initelemabundances(dfelabundances=dfabundances, outpath=outpath)
+    at.inputmodel.save_initelemabundances(dfelabundances=dfabundances, outpath=outputpath)
 
     # create modelmeta dictionary
     modelmeta = {
@@ -333,16 +432,40 @@ def create_ARTIS_modelfile(
         "ncoordgridrcyl": ngridrcyl,
         "ncoordgridz": ngridz,
         "t_model_init_days": tsnap / day,
-        "vmax_cmps": vmax * 29979245800.0,
+        "vmax_cmps": vmax * cl,
     }
 
     # create model.txt
-    at.inputmodel.save_modeldata(dfmodel=dfmodel, modelmeta=modelmeta, outpath=outpath)
+    at.inputmodel.save_modeldata(dfmodel=dfmodel, modelmeta=modelmeta, outpath=outputpath)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("-inputpath", "-i", default=".", help="Path of snapshot files")
     parser.add_argument("-outputpath", "-o", default=".", help="Path of output ARTIS model file")
+
+    parser.add_argument("-npz", required=True, help="Path to the model npz file")
+
+    parser.add_argument("-iso", required=True, help="Path to the nuclide information npy (!) file")
+
+    parser.add_argument(
+        "-vmax",
+        required=True,
+        default=0.5,
+        help="Maximum one-direction velocity in units of c the ARTIS model shall have",
+    )
+
+    parser.add_argument(
+        "-Ncell_r", required=True, default=25, help="Number of cells in radial direction the ARTIS model shall have"
+    )
+
+    parser.add_argument(
+        "-Ncell_z", required=True, default=50, help="Number of cells in z direction the ARTIS model shall have"
+    )
+
+    parser.add_argument("--nodyn", action="store_true", help="Exclude dynamical ejecta from the model")
+
+    parser.add_argument("--nohmns", action="store_true", help="Exclude neutrino wind ejecta from the model")
+
+    parser.add_argument("--notorus", action="store_true", help="Exclude torus ejecta from the model")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -354,18 +477,33 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         argcomplete.autocomplete(parser)
         args = parser.parse_args([] if kwargs else argsraw)
 
-    ngridrcyl, ngridz, pos_t_s_grid_rad, pos_t_s_grid_z, rho_interpol, X_cells, isot_table, q_ergperg = get_grid()
+    numb_cells_ARTIS_radial = int(args.Ncell_r)
+    numb_cells_ARTIS_z = int(args.Ncell_z)
+    pos_t_s_grid_rad, pos_t_s_grid_z, rho_interpol, X_cells, isot_table, q_ergperg, ye_traj, eqsymfac = get_grid(
+        args.npz,
+        args.iso,
+        float(args.vmax),
+        numb_cells_ARTIS_radial,
+        numb_cells_ARTIS_z,
+        args.nodyn,
+        args.nohmns,
+        args.notorus,
+        args.outputpath,
+    )
 
     create_ARTIS_modelfile(
-        ngridrcyl,
-        ngridz,
+        numb_cells_ARTIS_radial,
+        numb_cells_ARTIS_z,
+        float(args.vmax),
         pos_t_s_grid_rad,
         pos_t_s_grid_z,
         rho_interpol,
         X_cells,
         isot_table,
         q_ergperg,
-        outpath=args.outputpath,
+        ye_traj,
+        eqsymfac,
+        args.outputpath,
     )
 
 
