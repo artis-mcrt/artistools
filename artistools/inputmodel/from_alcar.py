@@ -282,7 +282,7 @@ def get_grid(
 
     # renormalize so that interpolated mass = sum of particle masses
     dmgrid = rhoint * volgrid2d
-    print("total mass after interpolation  :", np.sum(dmgrid) / msol * eqsymfac)
+    print("total mass after interpolation (but BEFORE renormalization):", np.sum(dmgrid) / msol * eqsymfac)
     rescfac = np.sum(mtraj) / np.sum(dmgrid)
     dmgrid *= rescfac
     mtot = np.sum(dmgrid)
