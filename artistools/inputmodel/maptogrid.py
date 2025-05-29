@@ -357,7 +357,7 @@ def maptogrid(
         logprint(f"particle {n} is totally unused but located in cell {loc_i} {loc_j} {loc_k}")
 
     with np.errstate(divide="ignore", invalid="ignore"):
-        gye = np.divide(gye, grho)  # type: ignore[assignment]
+        gye = np.divide(gye, grho)
 
         with Path(outputfolderpath, "gridcontributions.txt").open("w", encoding="utf-8") as fcontribs:
             fcontribs.write("particleid cellindex frac_of_cellmass\n")
