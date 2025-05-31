@@ -510,6 +510,7 @@ def get_time_range(
         raise ValueError(msg)
 
     timesteplast = len(tmids) - 1
+    assert isinstance(timestepmax, int), "timestepmax is no integer!"
     if timestepmax > timesteplast:
         print(f"Warning timestepmax {timestepmax} > timesteplast {timesteplast}")
         timestepmax = timesteplast

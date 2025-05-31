@@ -41,6 +41,7 @@ subcommandtree: CommandType = {
     "makeartismodelfromparticlegridmap": ("inputmodel.modelfromhydro", "main"),
     "maptogrid": ("inputmodel.maptogrid", "main"),
     "plotestimators": ("estimators.plotestimators", "main"),
+    "plotgammaopacity": ("opacity.plotgammaopacity", "main"),
     "plotinitialcomposition": ("inputmodel.plotinitialcomposition", "main"),
     "plotlightcurves": ("lightcurve.plotlightcurve", "main"),
     "plotlinefluxes": ("linefluxes", "main"),
