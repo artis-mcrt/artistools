@@ -39,7 +39,8 @@ def read_gamma_opacity(path: Path) -> npt.NDArray[np.floating | np.integer]:
         opac_data[idx, 10] = float(line.split("|||")[3].split()[6])  # E_avg_abs
 
     # truncate weird data points
-    return np.array([data_pt for data_pt in opac_data if data_pt[1:8].all() < opac_thr])
+    mask = np.all(opac_data[:, 1:8] < opac_thr, axis=1)
+    return opac_data[mask]
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
