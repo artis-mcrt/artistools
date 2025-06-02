@@ -1161,7 +1161,7 @@ def get_linelist_pldf(modelpath: Path | str, get_ion_str: bool = False) -> pl.La
                 "upper_level": upper_levels,
                 "lower_level": lower_levels,
             })
-            .with_row_count(name="lineindex")
+            .with_row_index(name="lineindex")
             .with_columns(
                 pl.col(pl.UInt32).cast(pl.Int32), pl.col(pl.Int64).cast(pl.Int32), pl.col(pl.Float64).cast(pl.Float32)
             )
