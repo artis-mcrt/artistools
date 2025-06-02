@@ -67,7 +67,7 @@ subcommandtree: CommandType = {
         "makeartismodelbotyanski2017": ("inputmodel.botyanski2017", "main"),
         "makeartismodelfromshen2018": ("inputmodel.shen2018", "main"),
         "makeartismodelfromsingletrajectory": ("inputmodel.rprocess_from_trajectory", "main"),
-        "from_alcar": ("inputmodel.from_alcar", "main"),
+        "from_e2e": ("inputmodel.from_e2e_model", "main"),
         "to_tardis": ("inputmodel.to_tardis", "main"),
     },
 }
