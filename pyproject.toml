@@ -34,7 +34,7 @@ readme = { file = "README.md", content-type = 'text/markdown' }
 dependencies = [
     "argcomplete>=3.6.2",
     "extinction>=0.4.7",
-    "matplotlib>=3.10.1",
+    "matplotlib>=3.10.3",
     "numexpr>=2.10.1",
     "numpy>=2.2.4",
     "pandas>=2.2.3",
@@ -45,7 +45,7 @@ dependencies = [
     "rich>=13.9.4",
     "scipy>=1.15.2",
     "tqdm>=4.67.1",
-    "typing_extensions>=4.12.2",
+    "typing_extensions>=4.13.2",
     "zstandard>=0.23.0",
 ]
 
