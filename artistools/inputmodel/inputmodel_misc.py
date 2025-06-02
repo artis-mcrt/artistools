@@ -11,12 +11,12 @@ from collections import defaultdict
 from collections.abc import Callable
 from collections.abc import Sequence
 from pathlib import Path
-from warnings import deprecated
 
 import numpy as np
 import pandas as pd
 import polars as pl
 import polars.selectors as cs
+from typing_extensions import deprecated
 
 from artistools.configuration import get_config
 from artistools.misc import firstexisting

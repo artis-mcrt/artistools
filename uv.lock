@@ -74,7 +74,7 @@ requires-dist = [
     { name = "extinction", specifier = ">=0.4.7" },
     { name = "george", marker = "extra == 'extras'", specifier = ">=0.4.4" },
     { name = "imageio", marker = "extra == 'extras'", specifier = ">=2.37.0" },
-    { name = "matplotlib", specifier = ">=3.10.1" },
+    { name = "matplotlib", specifier = ">=3.10.3" },
     { name = "numexpr", specifier = ">=2.10.1" },
     { name = "numpy", specifier = ">=2.2.4" },
     { name = "pandas", specifier = ">=2.2.3" },
@@ -89,7 +89,7 @@ requires-dist = [
     { name = "scipy", specifier = ">=1.15.2" },
     { name = "tabulate", marker = "extra == 'extras'", specifier = ">=0.9" },
     { name = "tqdm", specifier = ">=4.67.1" },
-    { name = "typing-extensions", specifier = ">=4.12.2" },
+    { name = "typing-extensions", specifier = ">=4.13.2" },
     { name = "zstandard", specifier = ">=0.23.0" },
 ]
 provides-extras = ["extras"]
@@ -161,11 +161,11 @@ wheels = [
 
 [[package]]
 name = "astropy-iers-data"
-version = "0.2025.5.26.0.37.21"
+version = "0.2025.6.2.0.38.23"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/da/3f/7749919e44f6d6a918a7a6b73d280893f0b842f9c713f0864de9f5f30764/astropy_iers_data-0.2025.5.26.0.37.21.tar.gz", hash = "sha256:a910ed22a46e5b1961aaabfa085da77c9772284a5b982379623f441f8b9856fc", size = 1902689, upload-time = "2025-05-26T00:37:59.029Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/82/ac/1074ca3847fba5eb27e1fce6d525ced46853a6f4f19e2c3a7338742197a5/astropy_iers_data-0.2025.6.2.0.38.23.tar.gz", hash = "sha256:b78895b0d1137ce0800ff8e90f2a58123687d2965d58297065356f2e1d4f3cbe", size = 1903192, upload-time = "2025-06-02T00:39:05.176Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/54/90/5c99b2926b5813e9f31e29ff4c7bd044d9ace3db5e65c847b8cdcac96866/astropy_iers_data-0.2025.5.26.0.37.21-py3-none-any.whl", hash = "sha256:0a725f7f84f44f6718347518a2a559bc5464aa53fa2f335d47188d1467a9926b", size = 1955875, upload-time = "2025-05-26T00:37:57.618Z" },
+    { url = "https://files.pythonhosted.org/packages/ba/f2/8ba8fe09601f0186dee97b72f2bf03dc5c203d9b35dee25fcfb52ce0bcb0/astropy_iers_data-0.2025.6.2.0.38.23-py3-none-any.whl", hash = "sha256:55893f9bc1d7acb364bc683707104cc9de00b588b5a386e3cdedc38a05f26460", size = 1956406, upload-time = "2025-06-02T00:39:03.024Z" },
 ]
 
 [[package]]
@@ -1254,11 +1254,11 @@ wheels = [
 
 [[package]]
 name = "pypdf"
-version = "5.5.0"
+version = "5.6.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/e0/c8/543f8ae1cd9e182e9f979d9ab1df18e3445350471abadbdabc0166ae5741/pypdf-5.5.0.tar.gz", hash = "sha256:8ce6a18389f7394fd09a1d4b7a34b097b11c19088a23cfd09e5008f85893e254", size = 5021690, upload-time = "2025-05-11T14:00:42.043Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/40/46/67de1d7a65412aa1c896e6b280829b70b57d203fadae6859b690006b8e0a/pypdf-5.6.0.tar.gz", hash = "sha256:a4b6538b77fc796622000db7127e4e58039ec5e6afd292f8e9bf42e2e985a749", size = 5023749, upload-time = "2025-06-01T12:19:40.101Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a1/4e/931b90b51e3ebc69699be926b3d5bfdabae2d9c84337fd0c9fb98adbf70c/pypdf-5.5.0-py3-none-any.whl", hash = "sha256:2f61f2d32dde00471cd70b8977f98960c64e84dd5ba0d070e953fcb4da0b2a73", size = 303371, upload-time = "2025-05-11T14:00:40.064Z" },
+    { url = "https://files.pythonhosted.org/packages/71/8b/dc3a72d98c22be7a4cbd664ad14c5a3e6295c2dbdf572865ed61e24b5e38/pypdf-5.6.0-py3-none-any.whl", hash = "sha256:ca6bf446bfb0a2d8d71d6d6bb860798d864c36a29b3d9ae8d7fc7958c59f88e7", size = 304208, upload-time = "2025-06-01T12:19:38.003Z" },
 ]
 
 [[package]]

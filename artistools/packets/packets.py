@@ -6,12 +6,12 @@ import typing as t
 from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
-from warnings import deprecated
 
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import polars as pl
+from typing_extensions import deprecated
 
 import artistools as at
 
