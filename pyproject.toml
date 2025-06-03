@@ -181,7 +181,6 @@ module = [
     "conftest",
     "artistools.estimators.plot3destimators_classic",
     "artistools.hesma_scripts",
-    "artistools.inputmodel.fromcmfgen.convert_to_artis_neartimezero",
     "artistools.inputmodel.make1dslicefrom3d",
     "artistools.inputmodel.map_1d_to_3d_grid",
     "artistools.inputmodel.slice1dfromconein3dmodel",
