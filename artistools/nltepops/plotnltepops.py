@@ -597,7 +597,7 @@ def make_plot(
     assert isinstance(axes, np.ndarray)
 
     prev_ion_stage = -1
-    assert len(mgilist) > 0
+    assert mgilist
     for mgilistindex, modelgridindex in enumerate(mgilist):
         mgifirstaxindex = mgilistindex
         mgilastaxindex = mgilistindex + len(ion_stage_list) - 1
