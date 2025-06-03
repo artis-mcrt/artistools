@@ -259,13 +259,7 @@ def write_viewing_angle_data(band_name: str, modelnames: list[str], args: argpar
             ],
             delimiter=" ",
             fmt="%s",
-            header="object "
-            + str(band_name)
-            + "_band_risetime "
-            + str(band_name)
-            + "_band_peakmag "
-            + str(band_name)
-            + "_band_deltam15 ",
+            header=f"object {band_name}_band_risetime {band_name}_band_peakmag {band_name}_band_deltam15 ",
             comments="",
         )
 
