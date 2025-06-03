@@ -108,11 +108,12 @@ def add_lte_pops(
             & (dfpop["level"] != -1)
         )
 
-        def f_ltepop(x, T_exc: float, gsg: float, gse: float, ionlevels) -> float:  # noqa: ANN001
+        def f_ltepop(x: t.Any, T_exc: float, gsg: float, gse: float, ionlevels: t.Any) -> float:
+            levelindex = int(x["level"])
             ltepop = (
-                ionlevels["g"].item(int(x.level))
+                ionlevels["g"].item(levelindex)
                 / gsg
-                * math.exp(-(ionlevels["energy_ev"].item(int(x.level)) - gse) / K_B / T_exc)
+                * math.exp(-(ionlevels["energy_ev"].item(levelindex) - gse) / K_B / T_exc)
             )
             assert isinstance(ltepop, float)
             return ltepop

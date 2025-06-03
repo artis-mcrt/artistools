@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
+import typing as t
 from unittest import mock
 
 import matplotlib.axes as mplax
 import numpy as np
 import pytest
+from pytest_codspeed.plugin import BenchmarkFixture
 
 import artistools as at
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
-def test_vspectraplot(mockplot, benchmark) -> None:
+def test_vspectraplot(mockplot: t.Any, benchmark: BenchmarkFixture) -> None:
     at.spectra.plot(
         argsraw=[],
         specpath=[at.get_config()["path_testdata"] / "vspecpolmodel", "sn2011fe_PTF11kly_20120822_norm.txt"],
@@ -62,7 +64,7 @@ def test_vspectraplot(mockplot, benchmark) -> None:
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
-def test_vpkt_frompackets_spectrum_plot(mockplot, benchmark) -> None:
+def test_vpkt_frompackets_spectrum_plot(mockplot: t.Any, benchmark: BenchmarkFixture) -> None:
     at.spectra.plot(
         argsraw=[],
         specpath=[at.get_config()["path_testdata"] / "vpktcontrib"],

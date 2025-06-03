@@ -54,7 +54,7 @@ def plot_slice_modelcolumn(
     colname: str,
     plotaxis1: str,
     plotaxis2: str,
-    t_model_d,  # noqa: ANN001
+    t_model_d: float,
     args: argparse.Namespace,
 ) -> tuple[AxesImage, mplcm.ScalarMappable | None]:
     print(f"plotting {colname}")
@@ -64,7 +64,7 @@ def plot_slice_modelcolumn(
 
     if args.hideemptycells:
         # Don't plot empty cells:
-        colorscale = np.ma.masked_where(colorscale == 0.0, colorscale)
+        colorscale = np.ma.masked_where(colorscale == 0.0, colorscale)  # type: ignore[no-untyped-call]
 
     if args.logcolorscale:
         # logscale for colormap
@@ -125,7 +125,7 @@ def plot_slice_modelcolumn(
     return im, scaledmap
 
 
-def plot_2d_initial_abundances(modelpath, args: argparse.Namespace) -> None:  # noqa: ANN001
+def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) -> None:
     # if the species doesn't end in a number (isotope, e.g. Sr92) then we need to also get element abundances (e.g., Sr)
     get_elemabundances = any(plotvar[-1] not in string.digits for plotvar in args.plotvars)
     lzdfmodel, modelmeta = at.get_modeldata(
@@ -220,7 +220,7 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
     import pyvista as pv
 
     # set white background
-    pv.set_plot_theme("document")
+    pv.set_plot_theme("document")  # type: ignore[no-untyped-call]
 
     get_elemabundances = False
     # choose what surface will be coloured by
@@ -291,7 +291,7 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
         "label_font_size": 22,
     }
 
-    plotter = pv.Plotter()
+    plotter = pv.Plotter()  # type: ignore[no-untyped-call]
     # plotter.add_mesh(mesh.outline(), color="k")
     plotcoloropacity = [0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]  # some choices: 'linear' 'sigmoid'
     # plotter.set_scale(0.95, 0.95, 0.95) # adjusts fig resolution
@@ -317,7 +317,7 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
     plotter.camera.azimuth = 45.0
     plotter.camera.elevation = 10.0
     # plotter.camera.azimuth = 15
-    plotter.show(screenshot=modelpath / "3Dplot.png", auto_close=False)  # pyright: ignore[reportArgumentType]
+    plotter.show(screenshot=modelpath / "3Dplot.png", auto_close=False)  # type: ignore[no-untyped-call] # pyright: ignore[reportArgumentType]
 
     # Make gif:
     # # viewup = [0.5, 0.5, 1]
@@ -327,7 +327,7 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
     # plotter.close()
 
 
-def plot_phi_hist(modelpath) -> None:  # noqa: ANN001
+def plot_phi_hist(modelpath: Path | str) -> None:
     dfmodel, _ = at.get_modeldata_pandas(modelpath, derived_cols=["pos_x_mid", "pos_y_mid", "pos_z_mid", "vel_r_mid"])
     # print(dfmodel.keys())
     # quit()
@@ -360,7 +360,7 @@ def plot_phi_hist(modelpath) -> None:  # noqa: ANN001
     print("WARNING: histogram not normalised")
     plt.clf()
 
-    heatmap = np.ma.masked_where(heatmap == 0.0, heatmap)
+    heatmap = np.ma.masked_where(heatmap == 0.0, heatmap)  # type: ignore[no-untyped-call]
     # heatmap = np.log10(heatmap)
 
     fig = plt.figure(figsize=(5, 4))

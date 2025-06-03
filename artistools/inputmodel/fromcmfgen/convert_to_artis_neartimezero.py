@@ -168,15 +168,15 @@ def forward_doubledecay(
 
 
 def timeshift_double_decay(
-    a,  # noqa: ANN001
-    indexofatomicnumber,  # noqa: ANN001
-    indexofisotope,  # noqa: ANN001
-    zparent,  # noqa: ANN001
-    numnucleons,  # noqa: ANN001
-    timeold,  # noqa: ANN001
-    timenew,  # noqa: ANN001
-    meanlife1_days,  # noqa: ANN001
-    meanlife2_days,  # noqa: ANN001
+    a: dict[str, t.Any],
+    indexofatomicnumber: dict[int, int],
+    indexofisotope: dict[tuple[int, int], int],
+    zparent: int,
+    numnucleons: int,
+    timeold: float,
+    timenew: float,
+    meanlife1_days: float,
+    meanlife2_days: float,
 ) -> None:
     # take abundances back to time zero and then forward to the selected model time
     elfracsum_before = sum(a["specfrac"][:, indexofatomicnumber[zparent - i]] for i in range(3))
@@ -210,7 +210,7 @@ def timeshift_double_decay(
 
 
 def main() -> None:
-    a: dict[str, t.Any] = rd_sn_hydro_data(snapshot, reverse=True)
+    a: dict[str, t.Any] = rd_sn_hydro_data(snapshot, reverse=True)  # type: ignore[no-untyped-call]
 
     # Mapping of the CMFGEN species to atomic numbers, and masking IGEs
     # For now I include Ba in the IGE mass fraction, but do not include it as a chemical species

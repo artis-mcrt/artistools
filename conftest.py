@@ -1,6 +1,5 @@
 def pytest_configure(config) -> None:  # noqa: ARG001,ANN001
     """Clear the test output of previous runs."""
-    import shutil
     import sys
     from pathlib import Path
 
@@ -10,12 +9,16 @@ def pytest_configure(config) -> None:  # noqa: ARG001,ANN001
     assert isinstance(outputpath, Path)
     repopath = get_config("path_artistools_repository")
     assert isinstance(repopath, Path)
+
     if outputpath.exists():
-        is_descendant = repopath.resolve() in outputpath.resolve().parents
-        assert is_descendant, (
-            f"Refusing to delete {outputpath.resolve()} as it is not a descendant of the repository {repopath.resolve()}"
-        )
-        shutil.rmtree(outputpath, ignore_errors=True)
+        for file in outputpath.glob("*.*"):
+            if repopath.resolve() not in outputpath.resolve().parents:
+                print(
+                    f"Refusing to delete {outputpath.resolve()} as it is not a descendant of the repository {repopath.resolve()}"
+                )
+            elif not file.stem.startswith("."):
+                file.unlink(missing_ok=True)
+
     outputpath.mkdir(exist_ok=True)
 
     # remove the artistools module from sys.modules so that typeguard can be run

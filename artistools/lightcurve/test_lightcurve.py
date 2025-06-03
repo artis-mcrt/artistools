@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
+import typing as t
 from pathlib import Path
 from unittest import mock
 
 import matplotlib.axes as mplax
 import numpy as np
+from pytest_codspeed.plugin import BenchmarkFixture
 from scipy import integrate
 
 import artistools as at
@@ -13,7 +15,7 @@ outputpath = at.get_config()["path_testoutput"]
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_lightcurve_plot(mockplot, benchmark) -> None:
+def test_lightcurve_plot(mockplot: t.Any, benchmark: BenchmarkFixture) -> None:
     benchmark(at.lightcurve.plot, argsraw=[], modelpath=[modelpath], outputfile=outputpath, frompackets=False)
 
     arr_time_d = np.array(mockplot.call_args[0][1])
@@ -33,7 +35,7 @@ def test_lightcurve_plot(mockplot, benchmark) -> None:
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_lightcurve_plot_frompackets(mockplot, benchmark) -> None:
+def test_lightcurve_plot_frompackets(mockplot: t.Any, benchmark: BenchmarkFixture) -> None:
     benchmark(
         at.lightcurve.plot,
         argsraw=[],
