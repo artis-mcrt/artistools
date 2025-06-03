@@ -12,9 +12,9 @@ def pytest_configure(config) -> None:  # noqa: ARG001,ANN001
 
     if outputpath.exists():
         for file in outputpath.glob("*.*"):
-            if repopath.resolve() not in outputpath.resolve().parents:
+            if repopath.resolve() not in file.resolve().parents:
                 print(
-                    f"Refusing to delete {outputpath.resolve()} as it is not a descendant of the repository {repopath.resolve()}"
+                    f"Refusing to delete {file.resolve()} as it is not a descendant of the repository {repopath.resolve()}"
                 )
             elif not file.stem.startswith("."):
                 file.unlink(missing_ok=True)
