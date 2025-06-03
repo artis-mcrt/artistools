@@ -53,7 +53,7 @@ def path_is_artis_model(filepath: str | Path) -> bool:
 
 def get_lambda_range_binsize(
     xmin: float, xmax: float, args: argparse.Namespace
-) -> tuple[float, float, float | npt.NDArray[np.floating]]:
+) -> tuple[float, float, float | npt.NDArray[np.floating] | None]:
     lambda_min, lambda_max = sorted([
         atspectra.convert_unit_to_angstroms(xmin, args.xunit),
         atspectra.convert_unit_to_angstroms(xmax, args.xunit),
@@ -73,11 +73,13 @@ def get_lambda_range_binsize(
         lambda_bin_edges = np.array(
             sorted(atspectra.convert_unit_to_angstroms(float(x), args.xunit) for x in x_bin_edges)
         )
-        delta_lambda = np.array([
-            (lambda_bin_edges[i + 1] - lambda_bin_edges[i]) for i in range(len(lambda_bin_edges) - 1)
-        ])
+        delta_lambda = np.array(
+            [(lambda_bin_edges[i + 1] - lambda_bin_edges[i]) for i in range(len(lambda_bin_edges) - 1)],
+            dtype=np.float64,
+        )
     else:
         delta_lambda = args.deltalambda
+
     return lambda_min, lambda_max, delta_lambda
 
 

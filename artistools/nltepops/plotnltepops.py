@@ -187,7 +187,7 @@ def make_ionsubplot(
     modelgridindex: int,
     timestep: int,
     args: argparse.Namespace,
-    lastsubplot: bool,
+    lastsubplot: bool | np.bool,
 ) -> None:
     """Plot the level populations the specified ion, cell, and timestep."""
     ionstr = at.get_ionstring(atomic_number, ion_stage, style="chargelatex")
@@ -665,7 +665,7 @@ def make_plot(
                 ax,
                 modelpath,
                 atomic_number,
-                ion_stage,
+                int(ion_stage),
                 dfpop,
                 adata,
                 estimators,

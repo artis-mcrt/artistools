@@ -77,7 +77,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
 def make_plot(
     dfmacroatom: pd.DataFrame,
-    modelpath: str,
+    modelpath: str | Path,
     timestepmin: int,
     timestepmax: int,
     outputfile: str,
