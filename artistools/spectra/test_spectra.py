@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 import itertools
 import math
+import typing as t
 from pathlib import Path
 from unittest import mock
 
 import matplotlib.axes as mplax
 import numpy as np
-import pandas as pd
+import polars as pl
 import pytest
 from pytest_codspeed.plugin import BenchmarkFixture
 from scipy import integrate
@@ -19,7 +20,7 @@ modelpath_classic_3d = at.get_config()["path_testdata"] / "test-classicmode_3d"
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_spectraplot(mockplot) -> None:
+def test_spectraplot(mockplot: t.Any) -> None:
     at.spectra.plot(
         argsraw=[],
         specpath=[modelpath, "sn2011fe_PTF11kly_20120822_norm.txt"],
@@ -37,7 +38,7 @@ def test_spectraplot(mockplot) -> None:
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
-def test_spectra_frompackets(mockplot, benchmark: BenchmarkFixture) -> None:
+def test_spectra_frompackets(mockplot: t.Any, benchmark: BenchmarkFixture) -> None:
     at.spectra.plot(
         argsraw=[],
         specpath=modelpath,
@@ -87,10 +88,12 @@ def test_spectraemissionplot_nostack(benchmark: BenchmarkFixture) -> None:
 
 
 def test_spectra_get_spectrum(benchmark: BenchmarkFixture) -> None:
-    def check_spectrum(dfspectrumpkts) -> None:
+    def check_spectrum(dfspectrumpkts: pl.DataFrame) -> None:
         assert math.isclose(max(dfspectrumpkts["f_lambda"]), 2.548532804918824e-13, abs_tol=1e-5)
         assert min(dfspectrumpkts["f_lambda"]) < 1e-9
-        assert math.isclose(dfspectrumpkts["f_lambda"].mean(), 1.0314682640070206e-14, abs_tol=1e-5)
+        flambdamean = dfspectrumpkts["f_lambda"].mean()
+        assert isinstance(flambdamean, float)
+        assert math.isclose(flambdamean, 1.0314682640070206e-14, abs_tol=1e-5)
 
     dfspectrum = benchmark(at.spectra.get_spectrum, modelpath, 55, 65, fluxfilterfunc=None)[-1]
 
@@ -210,12 +213,7 @@ def test_spectra_get_flux_contributions(benchmark: BenchmarkFixture) -> None:
 
     integrated_flux_specout = integrate.trapezoid(dfspectrum["f_lambda"], x=dfspectrum["lambda_angstroms"])
 
-    specdata = pd.read_csv(modelpath / "spec.out", sep=r"\s+")
-    arraynu = specdata.loc[:, "0"].to_numpy()
-    c_ang_per_s = 2.99792458e18
-    arraylambda_angstroms = c_ang_per_s / arraynu
-
-    _contribution_list, array_flambda_emission_total = benchmark(
+    _contribution_list, array_flambda_emission_total, arraylambda_angstroms = benchmark(
         lambda: at.spectra.get_flux_contributions(
             modelpath, timestepmin=timestepmin, timestepmax=timestepmax, use_lastemissiontype=False
         )

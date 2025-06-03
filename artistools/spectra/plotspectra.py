@@ -27,14 +27,12 @@ from matplotlib.lines import Line2D
 
 import artistools.spectra as atspectra
 from artistools.configuration import get_config
-from artistools.inputmodel import get_modeldata_pandas
 from artistools.misc import AppendPath
 from artistools.misc import CustomArgHelpFormatter
 from artistools.misc import flatten_list
 from artistools.misc import get_dirbin_labels
 from artistools.misc import get_filterfunc
 from artistools.misc import get_model_name
-from artistools.misc import get_nu_grid
 from artistools.misc import get_time_range
 from artistools.misc import get_vpkt_config
 from artistools.misc import get_vspec_dir_labels
@@ -819,8 +817,7 @@ def make_emissionabsorption_plot(
         )
     else:
         assert not args.vpkt_match_emission_exclusion_to_opac
-        arraylambda_angstroms = 2.99792458e18 / get_nu_grid(modelpath)
-        contribution_list, array_flambda_emission_total = atspectra.get_flux_contributions(
+        contribution_list, array_flambda_emission_total, arraylambda_angstroms = atspectra.get_flux_contributions(
             modelpath,
             filterfunc,
             timestepmin,
@@ -1047,6 +1044,7 @@ def make_contrib_plot(
     )
     import artistools.estimators as atestimators
     import artistools.packets as atpackets
+    from artistools.inputmodel import get_modeldata_pandas
 
     modeldata, _ = get_modeldata_pandas(modelpath)
 
