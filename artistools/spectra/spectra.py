@@ -881,7 +881,7 @@ def get_flux_contributions(
     directionbin: int | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
-) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating[t.Any]]]:
+) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     from scipy import integrate
 
     arr_tmid = get_timestep_times(modelpath, loc="mid")
@@ -1042,7 +1042,7 @@ def get_flux_contributions(
                     )
                 )
 
-    return contribution_list, array_flambda_emission_total
+    return contribution_list, array_flambda_emission_total, arraylambda
 
 
 def get_flux_contributions_from_packets(

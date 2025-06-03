@@ -27,14 +27,12 @@ from matplotlib.lines import Line2D
 
 import artistools.spectra as atspectra
 from artistools.configuration import get_config
-from artistools.inputmodel import get_modeldata_pandas
 from artistools.misc import AppendPath
 from artistools.misc import CustomArgHelpFormatter
 from artistools.misc import flatten_list
 from artistools.misc import get_dirbin_labels
 from artistools.misc import get_filterfunc
 from artistools.misc import get_model_name
-from artistools.misc import get_nu_grid
 from artistools.misc import get_time_range
 from artistools.misc import get_vpkt_config
 from artistools.misc import get_vspec_dir_labels
@@ -55,7 +53,7 @@ def path_is_artis_model(filepath: str | Path) -> bool:
 
 def get_lambda_range_binsize(
     xmin: float, xmax: float, args: argparse.Namespace
-) -> tuple[float, float, float | npt.NDArray[np.floating]]:
+) -> tuple[float, float, float | npt.NDArray[np.floating] | None]:
     lambda_min, lambda_max = sorted([
         atspectra.convert_unit_to_angstroms(xmin, args.xunit),
         atspectra.convert_unit_to_angstroms(xmax, args.xunit),
@@ -75,11 +73,13 @@ def get_lambda_range_binsize(
         lambda_bin_edges = np.array(
             sorted(atspectra.convert_unit_to_angstroms(float(x), args.xunit) for x in x_bin_edges)
         )
-        delta_lambda = np.array([
-            (lambda_bin_edges[i + 1] - lambda_bin_edges[i]) for i in range(len(lambda_bin_edges) - 1)
-        ])
+        delta_lambda = np.array(
+            [(lambda_bin_edges[i + 1] - lambda_bin_edges[i]) for i in range(len(lambda_bin_edges) - 1)],
+            dtype=np.float64,
+        )
     else:
         delta_lambda = args.deltalambda
+
     return lambda_min, lambda_max, delta_lambda
 
 
@@ -819,8 +819,7 @@ def make_emissionabsorption_plot(
         )
     else:
         assert not args.vpkt_match_emission_exclusion_to_opac
-        arraylambda_angstroms = 2.99792458e18 / get_nu_grid(modelpath)
-        contribution_list, array_flambda_emission_total = atspectra.get_flux_contributions(
+        contribution_list, array_flambda_emission_total, arraylambda_angstroms = atspectra.get_flux_contributions(
             modelpath,
             filterfunc,
             timestepmin,
@@ -1047,6 +1046,7 @@ def make_contrib_plot(
     )
     import artistools.estimators as atestimators
     import artistools.packets as atpackets
+    from artistools.inputmodel import get_modeldata_pandas
 
     modeldata, _ = get_modeldata_pandas(modelpath)
 

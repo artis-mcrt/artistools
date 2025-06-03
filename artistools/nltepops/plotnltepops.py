@@ -187,7 +187,7 @@ def make_ionsubplot(
     modelgridindex: int,
     timestep: int,
     args: argparse.Namespace,
-    lastsubplot,  # noqa: ANN001
+    lastsubplot: bool | np.bool,
 ) -> None:
     """Plot the level populations the specified ion, cell, and timestep."""
     ionstr = at.get_ionstring(atomic_number, ion_stage, style="chargelatex")
@@ -478,9 +478,9 @@ def plot_populations_with_time_or_velocity(
     modelpaths: list[Path | str],
     timedays: float,
     ion_stage: int,
-    ionlevels,  # noqa: ANN001
+    ionlevels: list[int],
     Z: int,
-    levelconfignames,  # noqa: ANN001
+    levelconfignames: list[int],
     args: argparse.Namespace,
 ) -> None:
     if args.x == "time":
@@ -538,7 +538,14 @@ def plot_populations_with_time_or_velocity(
             #          label=f'level {ionlevel} {modelname} LTE')
 
 
-def make_plot(modelpath, atomic_number, ion_stages_displayed, mgilist, timestep, args: argparse.Namespace) -> None:  # noqa: ANN001
+def make_plot(
+    modelpath: Path,
+    atomic_number: int,
+    ion_stages_displayed: list[int] | None,
+    mgilist: Sequence[int],
+    timestep: int,
+    args: argparse.Namespace,
+) -> None:
     """Plot level populations for chosens ions of an element in a cell and timestep of an ARTIS model."""
     modelname = at.get_model_name(modelpath)
     adata = at.atomic.get_levels_polars(
@@ -658,7 +665,7 @@ def make_plot(modelpath, atomic_number, ion_stages_displayed, mgilist, timestep,
                 ax,
                 modelpath,
                 atomic_number,
-                ion_stage,
+                int(ion_stage),
                 dfpop,
                 adata,
                 estimators,
@@ -816,8 +823,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if isinstance(args.velocity, float | int):
         args.velocity = [args.velocity]
 
-    mgilist: list[int | None] = [int(mgi) for mgi in args.modelgridindex]
-    mgilist.extend(at.inputmodel.get_mgi_of_velocity_kms(modelpath, vel) for vel in args.velocity)
+    mgilist = [int(mgi) for mgi in args.modelgridindex]
+    mgilist.extend(
+        mgi
+        for mgi in [at.inputmodel.get_mgi_of_velocity_kms(modelpath, vel) for vel in args.velocity]
+        if mgi is not None
+    )
     if not mgilist:
         mgilist.append(0)
 

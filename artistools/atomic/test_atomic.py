@@ -3,6 +3,7 @@ from pathlib import Path
 
 import polars as pl
 import pytest
+from pytest_codspeed.plugin import BenchmarkFixture
 
 import artistools as at
 
@@ -11,7 +12,7 @@ modelpath_classic_3d = at.get_config()["path_testdata"] / "test-classicmode_3d"
 outputpath = Path(at.get_config()["path_testoutput"])
 
 
-def test_get_levels_polars(benchmark) -> None:
+def test_get_levels_polars(benchmark: BenchmarkFixture) -> None:
     dflevels = benchmark(
         lambda: at.atomic.get_levels_polars(modelpath, get_transitions=True, get_photoionisations=True)
     )
@@ -22,7 +23,7 @@ def test_get_levels_polars(benchmark) -> None:
     assert isclose(fe2_levels.item(2822, "energy_ev"), 23.048643, abs_tol=1e-6)
 
 
-def test_get_levels(benchmark) -> None:
+def test_get_levels(benchmark: BenchmarkFixture) -> None:
     dflevels = benchmark(lambda: at.atomic.get_levels(modelpath, get_transitions=True, get_photoionisations=True))
     assert len(dflevels) == 12
     fe2_levels = dflevels[(dflevels["Z"] == 26) & (dflevels["ion_stage"] == 2)].iloc[0]["levels"]

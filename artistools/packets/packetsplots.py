@@ -10,7 +10,7 @@ CLIGHT = 2.99792458e10
 DAY = 86400
 
 
-def make_2d_packets_plot_imshow(modelpath, timestep_min, timestep_max) -> None:  # noqa: ANN001
+def make_2d_packets_plot_imshow(modelpath: Path, timestep_min: int, timestep_max: int) -> None:
     modeldata, _, vmax_cms = at.inputmodel.get_modeldata_tuple(modelpath)
     em_time = True  # False for arrive time
 
@@ -61,7 +61,7 @@ def make_2d_packets_plot_imshow(modelpath, timestep_min, timestep_max) -> None: 
         plt.clf()
 
 
-def make_2d_packets_plot_pyvista(modelpath, timestep) -> None:  # noqa: ANN001
+def make_2d_packets_plot_pyvista(modelpath: Path, timestep: int) -> None:
     import pyvista as pv
 
     modeldata, _, vmax_cms = at.inputmodel.get_modeldata_tuple(modelpath)
@@ -82,8 +82,8 @@ def make_2d_packets_plot_pyvista(modelpath, timestep) -> None:  # noqa: ANN001
         "label_font_size": 25,
     }
 
-    pv.set_plot_theme("document")
-    p = pv.Plotter()
+    pv.set_plot_theme("document")  # type: ignore[no-untyped-call]
+    p = pv.Plotter()  # type: ignore[no-untyped-call]
 
     p.set_scale(p, xscale=1.5, yscale=1.5, zscale=1.5)
     single_slice = mesh.slice(normal="y")
@@ -109,10 +109,10 @@ def make_2d_packets_plot_pyvista(modelpath, timestep) -> None:  # noqa: ANN001
     p.add_title(f"{time:.2f} - {timeminarray[timestep + 1]:.2f} days")
     print(pv.global_theme)
 
-    p.show(screenshot=modelpath / f"3Dplot_pktsemitted{time:.1f}days_disk.png")
+    p.show(screenshot=modelpath / f"3Dplot_pktsemitted{time:.1f}days_disk.png")  # type: ignore[no-untyped-call]  # pyright: ignore[reportArgumentType]
 
 
-def plot_packet_mean_emission_velocity(modelpath, write_emission_data=True) -> None:  # noqa: ANN001
+def plot_packet_mean_emission_velocity(modelpath: str | Path, write_emission_data: bool = True) -> None:
     emission_data = at.packets.get_mean_packet_emission_velocity_per_ts(modelpath)
 
     plt.plot(emission_data["t_arrive_d"], emission_data["mean_emission_velocity"])
@@ -133,11 +133,11 @@ def plot_packet_mean_emission_velocity(modelpath, write_emission_data=True) -> N
 
 
 def plot_last_emission_velocities_histogram(
-    modelpath,  # noqa: ANN001
-    timestep_min,  # noqa: ANN001
-    timestep_max,  # noqa: ANN001
-    costhetabin=None,  # noqa: ANN001
-    maxpacketfiles=None,  # noqa: ANN001
+    modelpath: Path,
+    timestep_min: int,
+    timestep_max: int,
+    costhetabin: int | None = None,
+    maxpacketfiles: int | None = None,
 ) -> None:
     fig, ax = plt.subplots(
         nrows=1, ncols=1, figsize=(5, 4), tight_layout={"pad": 1.0, "w_pad": 0.0, "h_pad": 0.5}, sharex=True
