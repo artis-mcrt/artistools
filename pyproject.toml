@@ -184,7 +184,6 @@ module = [
     "artistools.inputmodel.make1dslicefrom3d",
     "artistools.inputmodel.map_1d_to_3d_grid",
     "artistools.inputmodel.slice1dfromconein3dmodel",
-    "artistools.lightcurve.viewingangleanalysis",
     "artistools.linefluxes",
     "artistools.packets.packetsplots",
     "artistools.plottools",
