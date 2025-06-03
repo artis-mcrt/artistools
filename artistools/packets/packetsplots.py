@@ -109,7 +109,7 @@ def make_2d_packets_plot_pyvista(modelpath: Path, timestep: int) -> None:
     p.add_title(f"{time:.2f} - {timeminarray[timestep + 1]:.2f} days")
     print(pv.global_theme)
 
-    p.show(screenshot=modelpath / f"3Dplot_pktsemitted{time:.1f}days_disk.png")  # type: ignore[no-untyped-call]
+    p.show(screenshot=modelpath / f"3Dplot_pktsemitted{time:.1f}days_disk.png")  # type: ignore[no-untyped-call]  # pyright: ignore[reportArgumentType]
 
 
 def plot_packet_mean_emission_velocity(modelpath: str | Path, write_emission_data: bool = True) -> None:
