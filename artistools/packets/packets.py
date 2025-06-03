@@ -769,9 +769,7 @@ def bin_packet_directions_lazypolars(
     return dfpackets
 
 
-@deprecated(
-    "bin_packet_directions is deprecated and will be removed in a future version. Use bin_packet_directions_lazypolars instead."
-)
+@deprecated("Use bin_packet_directions_lazypolars instead.")
 def bin_packet_directions(dfpackets: pd.DataFrame) -> pd.DataFrame:
     """Avoid this slow pandas function and use bin_packet_directions_lazypolars instead for new code."""
     nphibins = at.get_viewingdirection_phibincount()
