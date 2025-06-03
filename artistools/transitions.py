@@ -102,10 +102,10 @@ def get_nist_transitions(filename: Path | str) -> pd.DataFrame:
 
 
 def generate_ion_spectrum(
-    transitions,  # noqa: ANN001
-    xvalues,  # noqa: ANN001
-    popcolumn,  # noqa: ANN001
-    plot_resolution,  # noqa: ANN001
+    transitions: pd.DataFrame,
+    xvalues: npt.NDArray[np.floating],
+    popcolumn: str,
+    plot_resolution: float,
     args: argparse.Namespace,
 ) -> npt.NDArray[np.floating[t.Any]]:
     yvalues = np.zeros(len(xvalues))
@@ -131,18 +131,17 @@ def generate_ion_spectrum(
 
 
 def make_plot(
-    xvalues,  # noqa: ANN001
-    yvalues,  # noqa: ANN001
+    xvalues: npt.NDArray[np.floating],
+    yvalues: npt.NDArray[np.floating],
     temperature_list: list[str],
-    vardict,  # noqa: ANN001
+    vardict: dict[str, float],
     ionlist: Sequence[IonTuple],
-    ionpopdict,  # noqa: ANN001
+    ionpopdict: dict[IonTuple, float],
     xmin: float,
     xmax: float,
     figure_title: str,
     outputfilename: str,
 ) -> None:
-    # npanels = len(ionlist) + 1
     npanels = len(ionlist)
 
     fig, axes = plt.subplots(
@@ -182,7 +181,7 @@ def make_plot(
             peak_y_value = max([peak_y_value] + yvalues_combined[seriesindex])
 
     axislabels = [
-        f"{at.get_elsymbol(Z)} {at.roman_numerals[ion_stage]}\n(pop={ionpopdict[Z, ion_stage]:.1e}/cm³)"
+        f"{at.get_elsymbol(Z)} {at.roman_numerals[ion_stage]}\n(pop={ionpopdict[IonTuple(Z, ion_stage)]:.1e}/cm³)"
         for (Z, ion_stage) in ionlist
     ]
     axislabels += ["Total"]
@@ -341,7 +340,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             sys.exit(1)
 
         ionpopdict = {
-            (Z, ion_stage): dfnltepops.query("Z==@Z and ion_stage==@ion_stage")["n_NLTE"].sum()
+            IonTuple(Z, ion_stage): dfnltepops.query("Z==@Z and ion_stage==@ion_stage")["n_NLTE"].sum()
             for Z, ion_stage in ionlist
         }
 
@@ -382,7 +381,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         #     (26, 3): Fe3overFe2 / (1 + Fe3overFe2),
         #     (28, 2): 1.0e-2,
         # }
-        ionpopdict = dict.fromkeys(ionlist, 1)
+        ionpopdict = dict.fromkeys(ionlist, 1.0)
 
     xvalues = np.arange(args.xmin, args.xmax, step=plot_resolution)
     yvalues = np.zeros((len(temperature_list) + 1, len(ionlist), len(xvalues)))

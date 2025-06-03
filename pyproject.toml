@@ -191,7 +191,6 @@ module = [
     "artistools.packets.packetsplots",
     "artistools.plottools",
     "artistools.spectra.sampleblackbodyfrompacket_tr",
-    "artistools.transitions",
     "artistools.viewing_angles_visualization",
 ]
 disallow_incomplete_defs = false
