@@ -184,7 +184,6 @@ module = [
     "artistools.inputmodel.fromcmfgen.convert_to_artis_neartimezero",
     "artistools.inputmodel.make1dslicefrom3d",
     "artistools.inputmodel.map_1d_to_3d_grid",
-    "artistools.inputmodel.plotinitialcomposition",
     "artistools.inputmodel.slice1dfromconein3dmodel",
     "artistools.lightcurve.viewingangleanalysis",
     "artistools.linefluxes",
