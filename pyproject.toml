@@ -191,7 +191,6 @@ module = [
     "artistools.packets.packetsplots",
     "artistools.plottools",
     "artistools.nltepops.plotnltepops",
-    "artistools.nltepops.nltepops",
     "artistools.spectra.sampleblackbodyfrompacket_tr",
     "artistools.transitions",
     "artistools.viewing_angles_visualization",
