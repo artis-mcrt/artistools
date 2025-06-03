@@ -447,18 +447,15 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-iso", required=True, help="Path to the nuclide information npy (!) file")
 
     parser.add_argument(
-        "-vmax",
-        required=True,
-        default=0.5,
-        help="Maximum one-direction velocity in units of c the ARTIS model shall have",
+        "-vmax", type=float, default=0.5, help="Maximum one-direction velocity in units of c the ARTIS model shall have"
     )
 
     parser.add_argument(
-        "-Ncell_r", required=True, default=25, help="Number of cells in radial direction the ARTIS model shall have"
+        "-ngridrcyl", type=int, default=25, help="Number of cells in radial direction the ARTIS model shall have"
     )
 
     parser.add_argument(
-        "-Ncell_z", required=True, default=50, help="Number of cells in z direction the ARTIS model shall have"
+        "-ngridz", type=int, default=50, help="Number of cells in z direction the ARTIS model shall have"
     )
 
     parser.add_argument("--nodyn", action="store_true", help="Exclude dynamical ejecta from the model")
@@ -477,8 +474,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         argcomplete.autocomplete(parser)
         args = parser.parse_args([] if kwargs else argsraw)
 
-    numb_cells_ARTIS_radial = int(args.Ncell_r)
-    numb_cells_ARTIS_z = int(args.Ncell_z)
+    numb_cells_ARTIS_radial = int(args.ngridrcyl)
+    numb_cells_ARTIS_z = int(args.ngridz)
     pos_t_s_grid_rad, pos_t_s_grid_z, rho_interpol, X_cells, isot_table, q_ergperg, ye_traj, eqsymfac = get_grid(
         args.npz,
         args.iso,
