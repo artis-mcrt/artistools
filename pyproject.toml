@@ -182,13 +182,9 @@ module = [
     "artistools.estimators.plot3destimators_classic",
     "artistools.hesma_scripts",
     "artistools.inputmodel.make1dslicefrom3d",
-    "artistools.inputmodel.map_1d_to_3d_grid",
-    "artistools.inputmodel.slice1dfromconein3dmodel",
     "artistools.linefluxes",
     "artistools.packets.packetsplots",
     "artistools.plottools",
-    "artistools.spectra.sampleblackbodyfrompacket_tr",
-    "artistools.viewing_angles_visualization",
 ]
 disallow_incomplete_defs = false
 disallow_untyped_calls = false
