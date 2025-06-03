@@ -70,7 +70,7 @@ dev = [
     "pyright>=1.1.400",
     "pynonthermal>=2025.3.31.2",
     "pytest>=8.3.3",
-    "pytest-codspeed>=3.0.0",
+    "pytest-codspeed>=3.2.0",
     "pytest-cov>=6.0.0",
     "pytest-xdist[psutil]>=3.6.1",
     "ruff>=0.11.12",
@@ -178,18 +178,14 @@ warn_return_any = true
 # these files need detailed type annotations added
 [[tool.mypy.overrides]]
 module = [
-    "artistools.atomic.test_atomic",
     "conftest",
     "artistools.estimators.plot3destimators_classic",
-    "artistools.estimators.test_estimators",
     "artistools.hesma_scripts",
     "artistools.inputmodel.fromcmfgen.convert_to_artis_neartimezero",
     "artistools.inputmodel.make1dslicefrom3d",
     "artistools.inputmodel.map_1d_to_3d_grid",
     "artistools.inputmodel.plotinitialcomposition",
     "artistools.inputmodel.slice1dfromconein3dmodel",
-    "artistools.inputmodel.test_inputmodel",
-    "artistools.lightcurve.test_lightcurve",
     "artistools.lightcurve.viewingangleanalysis",
     "artistools.linefluxes",
     "artistools.packets.packetsplots",
@@ -197,8 +193,6 @@ module = [
     "artistools.nltepops.plotnltepops",
     "artistools.nltepops.nltepops",
     "artistools.spectra.sampleblackbodyfrompacket_tr",
-    "artistools.spectra.test_spectra",
-    "artistools.spectra.test_vspectra",
     "artistools.transitions",
     "artistools.viewing_angles_visualization",
 ]
@@ -347,8 +341,7 @@ unfixable = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-# Ignore unused or untyped arguments in test functions
-"test_*.py" = ["ANN001", "ARG001"]
+"test_*.py" = ["ARG001"]  # unused-argument for pytest fixtures
 "rd_cmfgen.py" = ["PGH004"]
 
 [tool.ruff.lint.flake8-import-conventions.extend-aliases]
