@@ -8,6 +8,7 @@ import polars as pl
 import polars.selectors as cs
 import polars.testing as pltest
 import pytest
+from pytest_codspeed.plugin import BenchmarkFixture
 
 import artistools as at
 
@@ -347,7 +348,7 @@ def test_save_load_3d_model() -> None:
 
 
 @pytest.mark.parametrize("outputdimensions", [2, 1, 0])
-def test_dimension_reduce(outputdimensions: int, benchmark) -> None:
+def test_dimension_reduce(outputdimensions: int, benchmark: BenchmarkFixture) -> None:
     dfmodel3d_pl_lazy, modelmeta_3d = at.inputmodel.get_empty_3d_model(ncoordgrid=50, vmax=100000, t_model_init_days=1)
     dfmodel3d_pl = dfmodel3d_pl_lazy.collect()
 

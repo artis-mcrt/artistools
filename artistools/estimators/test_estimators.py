@@ -7,6 +7,7 @@ import numpy as np
 import polars as pl
 import polars.testing as pltest
 import pytest
+from pytest_codspeed.plugin import BenchmarkFixture
 
 import artistools as at
 
@@ -17,7 +18,7 @@ outputpath = Path(at.get_config()["path_testoutput"])
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
-def test_estimator_snapshot(mockplot, benchmark) -> None:
+def test_estimator_snapshot(mockplot, benchmark: BenchmarkFixture) -> None:
     plotlist = [
         [["initabundances", ["Fe", "Ni_stable", "Ni_56"]]],
         ["nne"],
@@ -94,7 +95,7 @@ def test_estimator_snapshot(mockplot, benchmark) -> None:
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
-def test_estimator_averaging(mockplot, benchmark) -> None:
+def test_estimator_averaging(mockplot, benchmark: BenchmarkFixture) -> None:
     plotlist = [
         [["initabundances", ["Fe", "Ni_stable", "Ni_56"]]],
         ["nne"],
