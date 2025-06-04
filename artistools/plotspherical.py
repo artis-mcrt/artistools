@@ -291,6 +291,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--makegif", action="store_true", help="Make a gif with time evolution")
 
+    parser.add_argument("--notitle", action="store_true", help="Suppress the top title from the plot")
+
     parser.add_argument(
         "-o", action="store", dest="outputfile", type=str, default="", help="Filename for plot output file"
     )
@@ -363,9 +365,10 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
             figscale=args.figscale,
         )
 
-        axes[0].set_title(
-            f"{timemindays:.2f}-{timemaxdays:.2f} days{f' ({condition})' if condition else ''}", loc="left", pad=0
-        )
+        if not args.notitle:
+            axes[0].set_title(
+                f"{timemindays:.2f}-{timemaxdays:.2f} days{f' ({condition})' if condition else ''}", loc="left", pad=0
+            )
 
         defaultfilename = "plotspherical_{timemindays:.2f}-{timemaxdays:.2f}d.{outformat}"  # noqa: RUF027
         outfilename = str(
