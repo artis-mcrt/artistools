@@ -33,7 +33,7 @@ dependencies = [
     { name = "scipy" },
     { name = "tqdm" },
     { name = "typing-extensions" },
-    { name = "zstandard" },
+    { name = "zstandard", marker = "python_full_version < '3.14'" },
 ]
 
 [package.optional-dependencies]
@@ -74,7 +74,7 @@ requires-dist = [
     { name = "extinction", specifier = ">=0.4.7" },
     { name = "george", marker = "extra == 'extras'", specifier = ">=0.4.4" },
     { name = "imageio", marker = "extra == 'extras'", specifier = ">=2.37.0" },
-    { name = "matplotlib", specifier = ">=3.10.3" },
+    { name = "matplotlib", specifier = ">=3.10.1" },
     { name = "numexpr", specifier = ">=2.10.1" },
     { name = "numpy", specifier = ">=2.2.4" },
     { name = "pandas", specifier = ">=2.2.3" },
@@ -90,7 +90,7 @@ requires-dist = [
     { name = "tabulate", marker = "extra == 'extras'", specifier = ">=0.9" },
     { name = "tqdm", specifier = ">=4.67.1" },
     { name = "typing-extensions", specifier = ">=4.14" },
-    { name = "zstandard", specifier = ">=0.23.0" },
+    { name = "zstandard", marker = "python_full_version < '3.14'", specifier = ">=0.23.0" },
 ]
 provides-extras = ["extras"]
 

@@ -1,9 +1,8 @@
 [build-system]
 requires = [
-    "setuptools>=77.0",
-    "setuptools-rust>=1.11",
-    "setuptools_scm[toml]>=8.2",
-    "wheel>=0.45.1",
+    "setuptools>=80.9.0",
+    "setuptools-rust>=1.11.1",
+    "setuptools_scm[toml]>=8.3.1",
 ]
 build-backend = "setuptools.build_meta"
 
@@ -34,7 +33,7 @@ readme = { file = "README.md", content-type = 'text/markdown' }
 dependencies = [
     "argcomplete>=3.6.2",
     "extinction>=0.4.7",
-    "matplotlib>=3.10.3",
+    "matplotlib>=3.10.1",
     "numexpr>=2.10.1",
     "numpy>=2.2.4",
     "pandas>=2.2.3",
@@ -46,7 +45,7 @@ dependencies = [
     "scipy>=1.15.2",
     "tqdm>=4.67.1",
     "typing_extensions>=4.14",
-    "zstandard>=0.23.0",
+    "zstandard>=0.23.0;python_version<'3.14'",
 ]
 
 [project.optional-dependencies]
