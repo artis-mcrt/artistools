@@ -25,7 +25,6 @@ def make_cone(args: argparse.Namespace) -> pd.DataFrame:
     dfmodel, modelmeta = at.get_modeldata_pandas(modelpath=args.modelpath[0], get_elemabundances=True)
     args.t_model = modelmeta["t_model_init_days"]
 
-    cone: pd.DataFrame
     if args.positive_axis:
         print("using positive axis")
         cone = dfmodel.loc[
@@ -43,10 +42,10 @@ def make_cone(args: argparse.Namespace) -> pd.DataFrame:
             * np.sqrt((dfmodel[f"pos_{args.other_axis2}_min"]) ** 2 + (dfmodel[f"pos_{args.other_axis1}_min"]) ** 2)
         ]  # negative axis
     # print(cone.loc[:, :[f'pos_{slice_on_axis}']])
-
     del dfmodel  # merge_dfs not needed anymore so free memory
     gc.collect()
 
+    assert isinstance(cone, pd.DataFrame)
     return cone
 
 
