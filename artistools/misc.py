@@ -1,9 +1,7 @@
 import argparse
 import functools
-import gzip
 import io
 import itertools
-import lzma
 import math
 import multiprocessing
 import multiprocessing.pool
@@ -21,7 +19,6 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import polars as pl
-import zstandard as zstd
 
 from artistools.configuration import get_config
 
@@ -817,6 +814,18 @@ def flatten_list(listin: list[t.Any]) -> list[t.Any]:
 
 def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None) -> t.Any:
     """Open filename, filename.zst, filename.gz or filename.xz."""
+    try:
+        # only available in Python 3.14+
+        from compression import gzip
+        from compression import lzma
+        from compression import zstd
+
+    except ModuleNotFoundError:
+        import gzip
+        import lzma
+
+        import zstandard as zstd
+
     ext_fopen: dict[str, t.Any] = {".zst": zstd.open, ".gz": gzip.open, ".xz": lzma.open}
 
     for ext, fopen in ext_fopen.items():
@@ -828,9 +837,14 @@ def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None) -
     return Path(filename).open(mode=mode, encoding=encoding)
 
 
-def zopenpl(filename: Path | str, mode: str = "rt", encoding: str | None = None) -> t.Any | Path:
+def zopenpl(filename: Path | str, mode: str = "r", encoding: str | None = None) -> t.Any | Path:
     """Open filename, filename.zst, filename.gz or filename.xz. If polars.read_csv can read the file directly, return a Path object instead of a file object."""
-    mode = "r"
+    try:
+        from compression import lzma  # only available in Python 3.14+
+
+    except ModuleNotFoundError:
+        import lzma
+
     ext_fopen: dict[str, t.Any | None] = {".zst": None, ".gz": None, ".xz": lzma.open}
 
     for ext, fopen in ext_fopen.items():
