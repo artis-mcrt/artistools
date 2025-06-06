@@ -820,7 +820,7 @@ def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None) -
         from compression import lzma
         from compression import zstd
 
-    except ImportError:
+    except ModuleNotFoundError:
         import gzip
         import lzma
 
