@@ -963,7 +963,7 @@ def get_mean_packet_emission_velocity_per_ts(
 def bin_and_sum(
     df: pl.DataFrame | pl.LazyFrame,
     bincol: str,
-    bins: list[float | int],
+    bins: Sequence[float | int],
     sumcols: list[str] | None = None,
     getcounts: bool = False,
 ) -> pl.LazyFrame:

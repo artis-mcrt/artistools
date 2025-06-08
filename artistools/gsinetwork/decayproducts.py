@@ -154,7 +154,7 @@ def process_trajectory(
     # get nearest network time to each plotted time
     arr_networktimedays = dfheatingthermo["timesec"].to_numpy() / 86400
     networktimestepindices = [
-        int(dfheatingthermo["nstep"].item(np.abs(arr_networktimedays - plottimedays).argmin()))
+        int(dfheatingthermo["nstep"].item(int(np.abs(arr_networktimedays - plottimedays).argmin())))
         if plottimedays < arr_networktimedays[-1]
         else -1
         for plottimedays in arr_t_day

@@ -393,7 +393,7 @@ def get_from_packets(
             dfbinned_dirbin = atpackets.bin_and_sum(
                 pldfpackets_dirbin_lazy,
                 bincol=lambda_column,
-                bins=list(lambda_bin_edges),
+                bins=lambda_bin_edges.tolist(),
                 sumcols=[energy_column],
                 getcounts=True,
             ).select([
@@ -461,7 +461,7 @@ def get_from_packets(
             dfbinned_dirbin = atpackets.bin_and_sum(
                 pldfpackets_dirbin_lazy,
                 bincol=lambda_column,
-                bins=list(lambda_bin_edges),
+                bins=lambda_bin_edges.tolist(),
                 sumcols=[energy_column],
                 getcounts=True,
             ).select([
