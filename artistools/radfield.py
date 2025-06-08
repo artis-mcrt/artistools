@@ -128,7 +128,10 @@ def j_nu_dbb(arr_nu_hz: Sequence[float] | npt.NDArray[np.floating], W: float, T:
     """
     if W > 0.0:
         try:
-            return [W * 1.4745007e-47 * pow(nu_hz, 3) * 1.0 / (math.expm1(H * nu_hz / T / KB)) for nu_hz in arr_nu_hz]
+            return [
+                W * 1.4745007e-47 * pow(nu_hz, 3) * 1.0 / (math.expm1(H * nu_hz / T / KB))
+                for nu_hz in (arr_nu_hz.tolist() if isinstance(arr_nu_hz, np.ndarray) else arr_nu_hz)
+            ]
         except OverflowError:
             print(f"WARNING: overflow error W {W}, T {T} (Did this happen in ARTIS too?)")
 
@@ -149,7 +152,7 @@ def get_fullspecfittedfield(
     )
     nu_lower = 2.99792458e18 / xmin
     nu_upper = 2.99792458e18 / xmax
-    arr_nu_hz = np.linspace(nu_lower, nu_upper, num=500)
+    arr_nu_hz = np.linspace(nu_lower, nu_upper, num=500, dtype=np.float64)
     arr_j_nu = j_nu_dbb(arr_nu_hz, row["W"], row["T_R"])
 
     arr_lambda = 2.99792458e18 / arr_nu_hz
@@ -202,13 +205,13 @@ def get_fitted_field(
             arr_lambda_bin = 2.99792458e18 / arr_nu_hz_bin
             arr_j_lambda_bin = arr_j_nu * arr_nu_hz_bin / arr_lambda_bin
 
-            arr_lambda += list(arr_lambda_bin)
+            arr_lambda += arr_lambda_bin.tolist()
         else:
             arr_nu_hz_bin = np.array([nu_lower, nu_upper])
             arr_j_lambda_bin = np.array([0.0, 0.0])
 
             arr_lambda += [2.99792458e18 / nu for nu in arr_nu_hz_bin]
-        j_lambda_fitted += list(arr_j_lambda_bin)
+        j_lambda_fitted += arr_j_lambda_bin.tolist()
 
         lambda_lower = 2.99792458e18 / row["nu_upper"]
         lambda_upper = 2.99792458e18 / row["nu_lower"]

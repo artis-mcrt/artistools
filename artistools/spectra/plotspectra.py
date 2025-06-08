@@ -385,6 +385,7 @@ def plot_artis_spectrum(
         from_packets = True
 
     for axindex, axis in enumerate(axes):
+        assert isinstance(axis, mplax.Axes)
         clamp_to_timesteps = not args.notimeclamp
         if args.multispecplot:
             (timestepmin, timestepmax, args.timemin, args.timemax) = get_time_range(

@@ -26,6 +26,13 @@ repos:
             args: [--pytest-test-first]
           - id: trailing-whitespace
 
+    - repo: https://github.com/astral-sh/uv-pre-commit
+      rev: 0.7.12
+      hooks:
+          - id: uv-lock
+          - id: uv-sync
+            args: [--locked, --all-extras]
+
     - repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
       rev: 0.2.3
       hooks:
@@ -44,7 +51,7 @@ repos:
       hooks:
           - id: mypy
             name: mypy
-            entry: mypy --no-warn-unused-ignores
+            entry: uv run --frozen -- mypy --no-warn-unused-ignores
             language: system
             pass_filenames: false
             require_serial: true
