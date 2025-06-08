@@ -310,7 +310,7 @@ def plot_levelpop(
 
         if startfromzero:
             # make a line segment from 0 velocity
-            xlist = [0.0, *xlist]
+            xlist = np.array([0.0, *xlist])
             ylist = [ylist[0], *ylist]
 
         xlist, ylist = at.estimators.apply_filters(xlist, np.array(ylist), args)

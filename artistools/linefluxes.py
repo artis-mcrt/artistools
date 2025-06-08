@@ -203,7 +203,7 @@ def get_line_fluxes_from_pops(
             t_sec = timedays * 86400
             shell_volumes = (4 * math.pi / 3) * ((v_outer * t_sec) ** 3 - (v_inner * t_sec) ** 3)
 
-            timestep = at.get_timestep_of_timedays(modelpath, timedays)
+            timestep = at.get_timestep_of_timedays(modelpath, float(timedays))
             print(f"{feature.approxlambda}A {timedays}d (ts {timestep})")
 
             for upperlevelindex, lowerlevelindex in zip(
@@ -580,7 +580,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
         refdatapoints[refdataindex] = [floers_te_nne[t] for t in refdatakeys_thisseries]
         print(f"{refdatafilename} data available for times: {refdatakeys_thisseries}")
 
-    times_days = (np.array(args.timebins_tstart) + np.array(args.timebins_tend)) / 2.0
+    times_days = ((np.array(args.timebins_tstart) + np.array(args.timebins_tend)) / 2.0).tolist()
 
     print(f"Chosen times: {times_days}")
 
@@ -589,7 +589,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
     pd.set_option("display.width", 250)
     pd.options.display.max_rows = 500
 
-    emdata_all: dict[int, dict[tuple[int, str], dict[str, npt.NDArray[np.floating]]]] = {}
+    emdata_all: dict[int, dict[tuple[float, str], dict[str, npt.NDArray[np.floating]]]] = {}
     log10nnedata_all: dict[int, dict[int, list[float]]] = {}
     Tedata_all: dict[int, dict[int, list[float]]] = {}
 

@@ -71,7 +71,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     dfelabundances.index.name = "cellid"
 
     fixed_points = [v_transition, vel_kmpersec_ni56]
-    regular_points = [v for v in np.arange(0, 14500, 1000)[1:] if min_dist(fixed_points, v) > 200]
+    regular_points = [float(v) for v in np.arange(0, 14500, 1000)[1:] if min_dist(fixed_points, v) > 200]
     vlist = sorted([*fixed_points, *regular_points])
 
     v_inner = 0.0  # velocity at inner boundary of cell

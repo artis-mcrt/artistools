@@ -162,7 +162,6 @@ implicit_optional = false
 implicit_reexport = false
 local_partial_types = true
 packages = "artistools"
-plugins = 'numpy.typing.mypy_plugin'
 pretty = true
 python_version = '3.13'
 scripts_are_modules = true
