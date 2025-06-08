@@ -30,6 +30,7 @@ def plot_spherical(
     plotvars: list[str] | None = None,
     figscale: float = 1.0,
     cmap: str | None = None,
+    phireverse: bool = False,
 ) -> tuple[mplfig.Figure, t.Any, float, float, str]:
     condition = ""
     if plotvars is None:
@@ -176,6 +177,8 @@ def plot_spherical(
 
     # these phi and theta angle ranges are defined differently to artis
     phigrid = np.linspace(-np.pi, np.pi, nphibins + 1, endpoint=True, dtype=np.float64)
+    if phireverse:
+        phigrid = -phigrid  # reverse the phi direction
 
     # costhetabin zero is (0,0,-1) so theta angle
     costhetagrid = np.linspace(-1, 1, ncosthetabins + 1, endpoint=True, dtype=np.float64)
@@ -293,6 +296,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--notitle", action="store_true", help="Suppress the top title from the plot")
 
+    parser.add_argument("--phireverse", action="store_true", help="Reverse the phi direction")
+
     parser.add_argument(
         "-o", action="store", dest="outputfile", type=str, default="", help="Filename for plot output file"
     )
@@ -363,6 +368,7 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
             plotvars=args.plotvars,
             cmap=args.cmap,
             figscale=args.figscale,
+            phireverse=args.phireverse,
         )
 
         if not args.notitle:
