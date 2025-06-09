@@ -12,13 +12,20 @@ authors:
     email: c.collins@gsi.de
   - family-names: Holas
     given-names: Alexander
+    orcid: https://orcid.org/0000-0001-5184-6928
   - family-names: Callan
     given-names: Fionntan
+    orcid: https://orcid.org/0000-0002-7975-8185
   - family-names: Sim
     given-names: Stuart
+  - family-names: Pollin
+    given-names: Joshua
+    orcid: https://orcid.org/0009-0005-6989-3198
+  - family-names: Leck
+    given-names: Gerrit
 title: artistools
-version: v2025-02-17
-date-released: 2025-02-17
+version: v2025-06-08
+date-released: 2025-06-08
 doi: 10.5281/zenodo.7728326
 license: MIT
 repository-code: 'https://github.com/artis-mcrt/artistools'
