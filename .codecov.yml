@@ -19,4 +19,4 @@ coverage:
     #     if_ci_failed: ignore #success, failure, error, ignore
     #     informational: true
     #     only_pulls: false
-comment: false
+comment: true
