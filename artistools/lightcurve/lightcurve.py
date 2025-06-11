@@ -483,8 +483,10 @@ def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pd.Dat
     if "dist_mpc" not in metadata and "z" in metadata:
         from astropy import cosmology
 
-        cosmo = cosmology.FlatLambdaCDM(H0=70, Om0=0.3)
-        metadata["dist_mpc"] = cosmo.luminosity_distance(metadata["z"]).value
+        cosmo = (
+            cosmology.FlatLambdaCDM(H0=70, Om0=0.3)  # ty: ignore[unknown-argument] # pyright: ignore[reportCallIssue]
+        )
+        metadata["dist_mpc"] = cosmo.luminosity_distance(metadata["z"]).value  # pyright: ignore[reportAttributeAccessIssue]
         print(f"luminosity distance from redshift = {metadata['dist_mpc']} for {metadata['label']}")
 
     if "dist_mpc" in metadata:
