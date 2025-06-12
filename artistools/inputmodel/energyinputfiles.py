@@ -51,7 +51,7 @@ def rprocess_const_and_powerlaw() -> tuple[pd.DataFrame, float]:
     E_tot = E_tot[0]
 
     times = np.logspace(np.log10(tmin), np.log10(tmax), num=200)
-    energy_per_gram_cumulative = [0]
+    energy_per_gram_cumulative = [0.0]
     for time in times[1:]:
         cumulative_integral = quad(
             integrand, tmin, time, args=(t0, epsilon0, sigma, alpha, thermalisation_factor)
@@ -79,6 +79,7 @@ def define_heating_rate() -> tuple[pd.DataFrame, float]:
     qdot = 5e9 * (times) ** (-1.3)  # define energy power law (5e9*t^-1.3)
 
     E_tot = integrate.trapezoid(y=qdot, x=times)  # ergs/s/g
+    assert isinstance(E_tot, float)
     # print("Etot per gram", E_tot, E_tot*1.989e33*0.01)
 
     cumulative_integrated_energy = integrate.cumulative_trapezoid(y=qdot, x=times)

@@ -1344,6 +1344,7 @@ def get_flux_contributions_from_packets(
         fluxcontribthisseries = abs(integrate.trapezoid(array_flambda_emission, x=array_lambda)) + abs(
             integrate.trapezoid(array_flambda_absorption, x=array_lambda)
         )
+        assert isinstance(fluxcontribthisseries, float)
 
         if fluxcontribthisseries > 0.0:
             contribution_list.append(

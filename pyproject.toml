@@ -245,6 +245,7 @@ reportMissingImports = false
 reportPossiblyUnboundVariable = false
 reportUnnecessaryTypeIgnoreComment = true
 reportUnknownVariableType = false
+reportUnreachable = false
 typeCheckingMode = "standard"
 useLibraryCodeForTypes = true
 targetVersion = "3.13"
