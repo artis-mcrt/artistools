@@ -235,9 +235,11 @@ def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, 
 
         dfthermo = dfthermo.with_columns(Qdot_expansionadjusted=pl.col("Qdot") * pl.col("time_s") / t_model_s)
 
-        qdotintegral: float = integrate.trapezoid(
-            y=dfthermo["Qdot_expansionadjusted"][startindex : nts_max + 1],
-            x=dfthermo["time_s"][startindex : nts_max + 1],
+        qdotintegral = float(
+            integrate.trapezoid(
+                y=dfthermo["Qdot_expansionadjusted"][startindex : nts_max + 1],
+                x=dfthermo["time_s"][startindex : nts_max + 1],
+            )
         )
         assert qdotintegral >= 0.0
 
