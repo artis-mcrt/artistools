@@ -126,7 +126,7 @@ jobs:
             fail-fast: false
             matrix:
                 os: [{name: macos, version: '15'}, {name: ubuntu, version: '24.04'}]
-                python-version: ['3.12', '3.13']
+                python-version: ['3.12', '3.13', '3.14']
         env:
             OS: ${{ matrix.os.name }}-${{ matrix.os.version }}
             PYTHON: ${{ matrix.python-version }}
@@ -143,6 +143,7 @@ jobs:
               with:
                   python-version: ${{ matrix.python-version }}
                   check-latest: true
+                  allow-prereleases: true
 
             - name: Show python version
               run: python3 --version --version && which python3
