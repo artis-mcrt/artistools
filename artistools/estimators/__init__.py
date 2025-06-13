@@ -14,7 +14,6 @@ from artistools.estimators.estimators import get_variableunits as get_variableun
 from artistools.estimators.estimators import get_varname_formatted as get_varname_formatted
 from artistools.estimators.estimators import join_cell_modeldata as join_cell_modeldata
 from artistools.estimators.estimators import read_estimators as read_estimators
-from artistools.estimators.estimators import read_estimators_from_file as read_estimators_from_file
 from artistools.estimators.estimators import scan_estimators as scan_estimators
 from artistools.estimators.plotestimators import addargs as addargs
 from artistools.estimators.plotestimators import main as plot
