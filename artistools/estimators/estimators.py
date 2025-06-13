@@ -6,11 +6,9 @@ Examples are temperatures, populations, and heating/cooling rates.
 
 import argparse
 import contextlib
-import math
 import tempfile
 import time
 import typing as t
-import warnings
 from collections.abc import Collection
 from collections.abc import Sequence
 from pathlib import Path
@@ -87,100 +85,11 @@ def get_units_string(variable: str) -> str:
     return f" [{units}]" if (units := get_variableunits(variable)) else ""
 
 
-def read_estimators_from_file(estfilepath: Path | str, printfilename: bool = False) -> pl.DataFrame:
-    if printfilename:
-        estfilepath = Path(estfilepath)
-        filesize = estfilepath.stat().st_size / 1024 / 1024
-        print(f"  Reading {estfilepath.relative_to(estfilepath.parent.parent)} ({filesize:.2f} MiB)")
-
-    estimblocklist: list[dict[str, t.Any]] = []
-    estimblock: dict[str, t.Any] = {}
-    with at.zopen(estfilepath) as estimfile:
-        for line in estimfile:
-            row: list[str] = line.split()
-            if not row:
-                continue
-
-            if row[0] == "timestep":
-                # yield the previous block before starting a new one
-                if estimblock:
-                    estimblocklist.append(estimblock)
-
-                emptycell = row[4] == "EMPTYCELL"
-                estimblock = {}
-                if not emptycell:
-                    # will be timestep, modelgridindex, TR, Te, W, TJ, nne, etc
-                    for variablename, value in zip(row[::2], row[1::2], strict=True):
-                        estimblock[variablename] = (
-                            float(value)
-                            if variablename not in {"timestep", "modelgridindex", "titeration", "thick"}
-                            else int(value)
-                        )
-
-            elif row[1].startswith("Z="):
-                variablename = row[0]
-                if row[1].endswith("="):
-                    atomic_number = int(row[2])
-                    startindex = 3
-                else:
-                    atomic_number = int(row[1].split("=")[1])
-                    startindex = 2
-                elsymbol = at.get_elsymbol(atomic_number)
-
-                for ion_stage_str, value in zip(row[startindex::2], row[startindex + 1 :: 2], strict=True):
-                    ion_stage_str_strip = ion_stage_str.strip()
-                    if ion_stage_str_strip == "(or":
-                        continue
-
-                    value_thision = float(value.rstrip(","))
-
-                    if ion_stage_str_strip == "SUM:":
-                        estimblock[f"nnelement_{elsymbol}"] = value_thision
-                        continue
-
-                    try:
-                        ion_stage = int(ion_stage_str.rstrip(":"))
-                    except ValueError:
-                        if variablename == "populations" and ion_stage_str.startswith(elsymbol):
-                            estimblock[f"nniso_{ion_stage_str.rstrip(':')}"] = float(value)
-                        else:
-                            print(ion_stage_str, elsymbol)
-                            print(f"Cannot parse row: {row}")
-                        continue
-
-                    ionstr = at.get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
-                    estimblock[f"{'nnion' if variablename == 'populations' else variablename}_{ionstr}"] = value_thision
-
-                    if variablename in {"Alpha_R*nne", "AlphaR*nne"}:
-                        estimblock[f"Alpha_R_{ionstr}"] = (
-                            value_thision / estimblock["nne"] if estimblock["nne"] > 0.0 else math.inf
-                        )
-
-                    elif variablename == "populations":
-                        estimblock.setdefault(f"nnelement_{elsymbol}", 0.0)
-                        estimblock[f"nnelement_{elsymbol}"] += value_thision
-
-            elif row[0].endswith(":"):
-                # heating, cooling, deposition, etc
-                variablename = row[0].removesuffix(":")
-                for coolingtype, value in zip(row[1::2], row[2::2], strict=True):
-                    estimblock[f"{variablename}_{coolingtype}"] = float(value)
-
-    # reached the end of file
-    if estimblock:
-        estimblocklist.append(estimblock)
-
-    return pl.DataFrame(estimblocklist).with_columns(
-        pl.col(pl.Int64).cast(pl.Int32), pl.col(pl.Float64).cast(pl.Float32)
-    )
-
-
 def get_rankbatch_parquetfile(
     folderpath: Path | str,
     batch_mpiranks: Sequence[int],
     batchindex: int,
     modelpath: Path | str | None = None,
-    use_rust_parser: bool | None = True,
     verbose: bool = True,
 ) -> Path:
     printornot = print if verbose else lambda _: None
@@ -212,43 +121,17 @@ def get_rankbatch_parquetfile(
 
         time_start = time.perf_counter()
 
-        if use_rust_parser is None or use_rust_parser:
-            try:
-                from artistools.rustext import estimparse as rustestimparse
-
-                use_rust_parser = True
-
-            except ImportError as err:
-                warnings.warn(
-                    "WARNING: Rust extension not available. Falling back to slow python reader.", stacklevel=2
-                )
-                if use_rust_parser:
-                    msg = "Rust extension not available"
-                    raise ImportError(msg) from err
-                use_rust_parser = False
-
         print(
-            f"    reading {len(estfilepaths)} estimator files in {folderpath.relative_to(Path(folderpath).parent)} with {'fast rust reader' if use_rust_parser else 'slow python reader'}...",
+            f"    reading {len(estfilepaths)} estimator files in {folderpath.relative_to(Path(folderpath).parent)}...",
             end="",
             flush=True,
         )
 
-        pldf_batch: pl.DataFrame
-        if use_rust_parser:
-            pldf_batch = rustestimparse(str(folderpath), min(batch_mpiranks), max(batch_mpiranks))
-            pldf_batch = pldf_batch.with_columns(
-                pl.col(c).cast(pl.Int32)
-                for c in {"modelgridindex", "timestep", "titeration", "thick"}.intersection(pldf_batch.columns)
-            )
-        elif at.get_config()["num_processes"] > 1:
-            with at.get_multiprocessing_pool() as pool:
-                pldf_batch = pl.concat(pool.imap(read_estimators_from_file, estfilepaths), how="diagonal_relaxed")
-
-                pool.close()
-                pool.join()
-
-        else:
-            pldf_batch = pl.concat(map(read_estimators_from_file, estfilepaths), how="diagonal_relaxed")
+        pldf_batch = at.rustext.estimparse(str(folderpath), min(batch_mpiranks), max(batch_mpiranks))
+        pldf_batch = pldf_batch.with_columns(
+            pl.col(c).cast(pl.Int32)
+            for c in {"modelgridindex", "timestep", "titeration", "thick"}.intersection(pldf_batch.columns)
+        )
 
         pldf_batch = pldf_batch.select(
             sorted(
@@ -315,7 +198,6 @@ def scan_estimators(
     modelgridindex: int | Sequence[int] | None = None,
     timestep: int | Sequence[int] | None = None,
     join_modeldata: bool = False,
-    use_rust_parser: bool | None = None,
     verbose: bool = True,
 ) -> pl.LazyFrame:
     """Read estimator files into a dictionary of (timestep, modelgridindex): estimators.
@@ -365,12 +247,7 @@ def scan_estimators(
 
     parquetfiles = (
         get_rankbatch_parquetfile(
-            modelpath=modelpath,
-            folderpath=runfolder,
-            batch_mpiranks=mpiranks,
-            batchindex=batchindex,
-            use_rust_parser=use_rust_parser,
-            verbose=verbose,
+            modelpath=modelpath, folderpath=runfolder, batch_mpiranks=mpiranks, batchindex=batchindex, verbose=verbose
         )
         for runfolder in runfolders
         for batchindex, mpiranks in mpirank_groups
