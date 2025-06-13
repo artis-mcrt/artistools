@@ -19,7 +19,6 @@ import polars as pl
 from polars import selectors as cs
 
 import artistools as at
-from artistools.rustext import estimparse
 
 
 def get_variableunits(key: str) -> str | None:
@@ -128,7 +127,7 @@ def get_rankbatch_parquetfile(
             flush=True,
         )
 
-        pldf_batch = estimparse(str(folderpath), min(batch_mpiranks), max(batch_mpiranks))
+        pldf_batch = at.rustext.estimparse(str(folderpath), min(batch_mpiranks), max(batch_mpiranks))
         pldf_batch = pldf_batch.with_columns(
             pl.col(c).cast(pl.Int32)
             for c in {"modelgridindex", "timestep", "titeration", "thick"}.intersection(pldf_batch.columns)
