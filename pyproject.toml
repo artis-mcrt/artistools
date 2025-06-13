@@ -65,7 +65,7 @@ extras = [
 [dependency-groups]
 dev = [
     "imageio>=2.37.0",
-    "mypy[faster-cache]>=1.16.0",
+    "mypy>=1.16.0",
     "pandas-stubs>=2.2.3.250527",
     "pre-commit>=4.2.0",
     "pylint>=3.3.3",
