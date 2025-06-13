@@ -166,7 +166,6 @@ implicit_reexport = false
 local_partial_types = true
 packages = "artistools"
 pretty = true
-python_version = '3.13'
 scripts_are_modules = true
 strict = true
 strict_equality = true
