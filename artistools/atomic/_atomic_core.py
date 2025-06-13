@@ -1,7 +1,6 @@
 import io
 import time
 import typing as t
-import warnings
 from collections.abc import Collection
 from collections.abc import Generator
 from collections.abc import Sequence
@@ -14,6 +13,7 @@ import pandas as pd
 import polars as pl
 
 import artistools as at
+from artistools.rustext import read_transitiondata
 
 
 def parse_adata(
@@ -77,51 +77,6 @@ def parse_adata(
         else:
             for _ in range(level_count):
                 fadata.readline()
-
-
-def read_transitiondata(
-    transitions_filename: str | Path, ionlist: Collection[tuple[int, int]] | None
-) -> dict[tuple[int, int], pl.DataFrame]:
-    firstlevelnumber = 1
-    transdict: dict[tuple[int, int], pl.DataFrame] = {}
-    with at.zopen(transitions_filename) as ftransitions:
-        for line in ftransitions:
-            if not line.strip():
-                continue
-
-            ionheader = line.split()
-            Z = int(ionheader[0])
-            ion_stage = int(ionheader[1])
-            transition_count = int(ionheader[2])
-
-            if not ionlist or (Z, ion_stage) in ionlist:
-                list_lower = np.empty(transition_count, dtype=np.int32)
-                list_upper = np.empty(transition_count, dtype=np.int32)
-                list_A = np.empty(transition_count, dtype=np.float32)
-                list_collstr = np.empty(transition_count, dtype=np.float32)
-                list_forbidden = np.empty(transition_count, dtype=int)
-
-                for index in range(transition_count):
-                    row = ftransitions.readline().split()
-                    list_lower[index] = int(row[0]) - firstlevelnumber
-                    list_upper[index] = int(row[1]) - firstlevelnumber
-                    list_A[index] = float(row[2])
-                    list_collstr[index] = float(row[3])
-                    list_forbidden[index] = int(row[4]) == 1 if len(row) >= 5 else 0
-
-                transdict[Z, ion_stage] = pl.DataFrame({
-                    "lower": list_lower,
-                    "upper": list_upper,
-                    "A": list_A,
-                    "collstr": list_collstr,
-                    "forbidden": list_forbidden,
-                })
-
-            else:
-                for _ in range(transition_count):
-                    ftransitions.readline()
-
-    return transdict
 
 
 def parse_phixsdata(
@@ -227,38 +182,17 @@ def add_transition_columns(
 
 
 def get_transitiondata(
-    modelpath: str | Path,
-    ionlist: Collection[tuple[int, int]] | None = None,
-    quiet: bool = False,
-    use_rust_reader: bool | None = None,
+    modelpath: str | Path, ionlist: Collection[tuple[int, int]] | None = None, quiet: bool = False
 ) -> dict[tuple[int, int], pl.DataFrame]:
     """Return a dictionary of transitions."""
     ionlist = set(ionlist) if ionlist else None
     transition_filename = at.firstexisting("transitiondata.txt", folder=modelpath)
 
-    if use_rust_reader is None or use_rust_reader:
-        try:
-            from artistools.rustext import read_transitiondata as read_transitiondata_rust
-
-            use_rust_reader = True
-
-        except ImportError as err:
-            warnings.warn("WARNING: Rust extension not available. Falling back to slow python reader.", stacklevel=2)
-            if use_rust_reader:
-                msg = "Rust extension not available"
-                raise ImportError(msg) from err
-            use_rust_reader = False
-
     time_start = time.perf_counter()
     if not quiet:
-        print(
-            f"Reading {transition_filename.relative_to(Path(modelpath).parent)} with {'fast rust reader' if use_rust_reader else 'slow python reader'}..."
-        )
+        print(f"Reading {transition_filename.relative_to(Path(modelpath).parent)}...")
 
-    if use_rust_reader:
-        transitionsdict = read_transitiondata_rust(str(transition_filename), ionlist=ionlist)
-    else:
-        transitionsdict = read_transitiondata(transition_filename, ionlist)
+    transitionsdict = read_transitiondata(str(transition_filename), ionlist=ionlist)
 
     if not quiet:
         print(f"  took {time.perf_counter() - time_start:.2f} seconds")
@@ -273,16 +207,11 @@ def get_levels_polars(
     get_photoionisations: bool = False,
     quiet: bool = False,
     derived_transitions_columns: Sequence[str] | None = None,
-    use_rust_reader: bool | None = None,
 ) -> pl.DataFrame:
     """Return a polars DataFrame of energy levels."""
     adatafilename = Path(modelpath, "adata.txt")
 
-    transitionsdict = (
-        get_transitiondata(modelpath, ionlist=ionlist, quiet=quiet, use_rust_reader=use_rust_reader)
-        if get_transitions
-        else {}
-    )
+    transitionsdict = get_transitiondata(modelpath, ionlist=ionlist, quiet=quiet) if get_transitions else {}
 
     phixsdict = {}
     if get_photoionisations:
@@ -327,7 +256,6 @@ def get_levels(
     get_photoionisations: bool = False,
     quiet: bool = False,
     derived_transitions_columns: Sequence[str] | None = None,
-    use_rust_reader: bool | None = None,
 ) -> pd.DataFrame:
     """Return a pandas DataFrame of energy levels."""
     return (
@@ -338,7 +266,6 @@ def get_levels(
             get_photoionisations=get_photoionisations,
             quiet=quiet,
             derived_transitions_columns=derived_transitions_columns,
-            use_rust_reader=use_rust_reader,
         )
         .with_columns(
             levels=pl.col("levels").map_elements(
