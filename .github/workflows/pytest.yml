@@ -121,17 +121,17 @@ jobs:
 
     pytest:
         timeout-minutes: 30
-        runs-on: ${{ matrix.os }}
+        runs-on: ${{ matrix.os.name }}-${{ matrix.os.version }}
         strategy:
             fail-fast: false
             matrix:
-                os: [macos-15, ubuntu-24.04]
-                python-version: ['3.11', '3.12', '3.13']
+                os: [{name: macos, version: '15'}, {name: ubuntu, version: '24.04'}]
+                python-version: ['3.12', '3.13']
         env:
-            OS: ${{ matrix.os }}
+            OS: ${{ matrix.os.name }}-${{ matrix.os.version }}
             PYTHON: ${{ matrix.python-version }}
 
-        name: pytest ${{ matrix.os }} python ${{ matrix.python-version }}
+        name: pytest ${{ matrix.os.name }} python ${{ matrix.python-version }}
         steps:
             - name: Checkout Code
               uses: actions/checkout@v4
@@ -213,5 +213,5 @@ jobs:
             - name: Upload output files
               uses: actions/upload-artifact@v4
               with:
-                  name: testoutput-${{ matrix.os }}-py${{ matrix.python-version }}
+                  name: testoutput-${{ matrix.os.name }}-${{ matrix.os.version }}-py${{ matrix.python-version }}
                   path: tests/output/
