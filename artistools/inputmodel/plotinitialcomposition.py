@@ -19,7 +19,7 @@ from matplotlib.image import AxesImage
 
 import artistools as at
 
-AxisType: t.TypeAlias = t.Literal["x", "y", "z", "r", "rcyl"]
+type AxisType = t.Literal["x", "y", "z", "r", "rcyl"]
 
 
 def get_2D_slice_through_3d_model(

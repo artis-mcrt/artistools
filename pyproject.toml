@@ -21,7 +21,6 @@ authors = [
 description = "Plotting and analysis tools for the ARTIS 3D radiative transfer code for supernovae and kilonovae."
 classifiers = [
     "Development Status :: 3 - Alpha",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Rust",
@@ -29,7 +28,7 @@ classifiers = [
     "Intended Audience :: Science/Research",
 ]
 dynamic = ["version"]
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license =  "MIT"
 license-files = ["LICEN[CS]E*"]
 readme = { file = "README.md", content-type = 'text/markdown' }
@@ -247,7 +246,7 @@ reportUnknownVariableType = false
 reportUnreachable = false
 typeCheckingMode = "standard"
 useLibraryCodeForTypes = true
-targetVersion = "3.13"
+targetVersion = "3.12"
 
 [tool.pytest.ini_options]
 addopts = " --durations=0 --durations-min=1.0 --typeguard-packages=artistools -n auto"
@@ -256,7 +255,7 @@ addopts = " --durations=0 --durations-min=1.0 --typeguard-packages=artistools -n
 ignore = ["FURB120"]
 quiet = false
 enable_all = true
-python_version = "3.11"
+python_version = "3.12"
 sort_by = "error"
 
 [[tool.refurb.amend]]
@@ -265,7 +264,7 @@ ignore = ["FURB108"]
 
 [tool.ruff]
 line-length = 120
-target-version = "py311"
+target-version = "py312"
 fix = true
 show-fixes = true
 extend-exclude = ["_version.py"]
@@ -382,7 +381,7 @@ exclude = [
 ]
 
 [tool.distutils.bdist_wheel]
-py_limited_api="cp311"
+py_limited_api="cp312"
 
 [tool.setuptools_scm]
 version_file = "_version.py"
