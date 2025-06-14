@@ -11,6 +11,7 @@ import pytest
 from pytest_codspeed.plugin import BenchmarkFixture
 
 import artistools as at
+from artistools.inputmodel.rprocess_from_trajectory import get_elemabund_from_nucabund, get_trajectory_abund_q
 
 modelpath = at.get_config()["path_testdata"] / "testmodel"
 modelpath_3d = at.get_config()["path_testdata"] / "testmodel_3d_10^3"
@@ -255,6 +256,83 @@ def test_opacity_by_Ye_file() -> None:
         "inputcellid": range(1, 9),
     })
     at.inputmodel.opacityinputfile.opacity_by_Ye(outputpath, griddata=griddata)
+
+
+def test_get_elemabund_from_nucabund() -> None:
+    dfnucabund = pl.DataFrame({
+        "Z": [26, 26, 28, 28, 1, 1],  # Fe, Fe, Ni, Ni, H, H
+        "N": [30, 32, 30, 32, 0, 1],   # Corresponds to A = 56, 58, 58, 60, 1, 2
+        "massfrac": [0.1, 0.2, 0.3, 0.4, 0.05, 0.05],
+    })
+
+    expected_abunds = {
+        "X_H": 0.05 + 0.05,
+        "X_Fe": 0.1 + 0.2,
+        "X_Ni": 0.3 + 0.4,
+    }
+
+    # Determine the maximum Z in the input to generate all element symbols up to it
+    max_z = dfnucabund["Z"].max()
+    if max_z is None: # Should not happen with the sample data
+        max_z = 0
+
+    # Populate expected_abunds with all elements up to max_Z, defaulting to 0.0
+    all_expected_abunds = {}
+    for z_val in range(1, int(max_z) + 1):
+        el_sym = at.get_elsymbol(z_val)
+        all_expected_abunds[f"X_{el_sym}"] = expected_abunds.get(f"X_{el_sym}", 0.0)
+
+    result_abunds = get_elemabund_from_nucabund(dfnucabund)
+
+    assert result_abunds == all_expected_abunds
+
+
+def test_get_trajectory_abund_q() -> None:
+    # Ensure that the testdatapath is correctly defined as in other tests
+    # modelpath = at.get_config()["path_testdata"] / "testmodel" implies testdatapath is at.get_config()["path_testdata"]
+    # In this file, testdatapath is defined globally: testdatapath = at.get_config()["path_testdata"]
+
+    particleid = 1  # This should match the tar file name, e.g., 1.tar
+    t_model_s = 0.2
+
+    abund_out, q_integ = get_trajectory_abund_q(
+        particleid=particleid, traj_root=testdatapath, t_model_s=t_model_s, getqdotintegral=True, nts_max=None
+    )
+
+    # Expected values based on the plan:
+    # Files:
+    # temp_staging/Run_rprocess/energy_thermo.dat
+    # # nstep time/s Qdot
+    # 1 0.1 1.0e10
+    # 2 0.2 2.0e10
+    # 3 0.5 5.0e10
+    #
+    # temp_staging/Run_rprocess/nz-plane00002 (timestep 2 corresponds to t=0.2s)
+    # H 0.2000000000E+00 0 0 0 0
+    #  30  26  -1.04575749  # Fe56, A=56, X_unnorm = 56 * 10^-1.04575749 = 5.039999...
+    #  32  26  -1.34678751  # Fe58, A=58, X_unnorm = 58 * 10^-1.34678751 = 2.500000...
+    #  30  28  -1.54095891  # Ni58, A=58, X_unnorm = 58 * 10^-1.54095891 = 2.000000...
+
+    # Sum of unnormalized mass fractions:
+    # sum_X_unnorm = (56 * (10**-1.04575749)) + (58 * (10**-1.34678751)) + (58 * (10**-1.54095891))
+    # sum_X_unnorm = 5.039999996018958 + 2.5000000002335673 + 2.000000000152986
+    sum_X_unnorm = 9.540000001005512  # More precise sum
+
+    expected_abunds = {
+        (26, 30): (56 * (10**-1.04575749)) / sum_X_unnorm,  # Fe56
+        (26, 32): (58 * (10**-1.34678751)) / sum_X_unnorm,  # Fe58
+        (28, 30): (58 * (10**-1.54095891)) / sum_X_unnorm,  # Ni58
+    }
+
+    # q_integ calculation:
+    # t_model_s = 0.2
+    # Qdot_adj for t=0.1: 1e10 * 0.1 / 0.2 = 0.5e10
+    # Qdot_adj for t=0.2: 2e10 * 0.2 / 0.2 = 2.0e10
+    # trapezoid(y=[0.5e10, 2.0e10], x=[0.1, 0.2]) = (0.5e10 + 2.0e10) * (0.2 - 0.1) / 2 = 2.5e10 * 0.1 / 2 = 1.25e9
+    expected_q_integ = 1.25e9
+
+    assert abund_out == pytest.approx(expected_abunds)
+    assert q_integ == pytest.approx(expected_q_integ)
 
 
 def test_plotdensity() -> None:
