@@ -267,7 +267,7 @@ line-length = 120
 target-version = "py312"
 fix = true
 show-fixes = true
-extend-exclude = ["_version.py"]
+extend-exclude = ["_version.py", "artistools/inputmodel/fromcmfgen/rd_cmfgen.py", ".venv/**"]
 preview = true
 
 [tool.ruff.format]
@@ -389,6 +389,9 @@ local_scheme = "no-local-version"
 
 [tool.ty.rules]
 unresolved-import = "ignore"
+
+[tool.ty.src]
+exclude = ["artistools/inputmodel/fromcmfgen/rd_cmfgen.py", ".venv/**"]
 
 [tool.vulture]
 exclude = [".*", "build/", ".eggs/"]
