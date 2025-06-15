@@ -70,6 +70,37 @@ def get_dfspectrum_x_y_with_units(
     if "f_nu" not in dfspectrum.columns:
         dfspectrum = dfspectrum.with_columns(f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu")))
 
+    dfspectrum = _apply_xunit_conversion(dfspectrum, xunit, h)
+    dfspectrum = _apply_yvariable_conversion(dfspectrum, yvariable, fluxdistance_mpc, xunit, h)
+
+    return dfspectrum.sort("x")
+
+
+def _apply_yvariable_conversion(
+    dfspectrum: pl.DataFrame, yvariable: str, fluxdistance_mpc: float, xunit: str, h: float
+) -> pl.DataFrame:
+    match yvariable.lower():
+        case "flux":
+            assert yvariable == "flux"
+            dfspectrum = dfspectrum.with_columns(y=pl.col("yflux") / fluxdistance_mpc**2)
+        case "eflux":
+            erg_to_angstrom = 1.986454e-8
+            erg_to_xunit = convert_angstroms_to_unit(erg_to_angstrom, xunit.lower())
+            dfspectrum = dfspectrum.with_columns(y=(pl.col("yflux") / fluxdistance_mpc**2 * erg_to_xunit) * pl.col("x"))
+        case "photoncount":
+            ev_to_erg = 1.60218e-12
+            dfspectrum = dfspectrum.with_columns(
+                y=pl.col("yflux") / fluxdistance_mpc**2 / (h * pl.col("nu") * ev_to_erg)
+            )
+        case "packetcount":
+            dfspectrum = dfspectrum.with_columns(y=pl.col("packetcount"))
+        case _:
+            msg = f"Unit {yvariable} not implemented"
+            raise NotImplementedError(msg)
+    return dfspectrum
+
+
+def _apply_xunit_conversion(dfspectrum: pl.DataFrame, xunit: str, h: float) -> pl.DataFrame:
     match xunit.lower():
         case "angstroms":
             dfspectrum = dfspectrum.with_columns(x=pl.col("lambda_angstroms"), yflux=pl.col("f_lambda"))
@@ -107,27 +138,7 @@ def get_dfspectrum_x_y_with_units(
         case _:
             msg = f"Unit {xunit} not implemented"
             raise NotImplementedError(msg)
-
-    match yvariable.lower():
-        case "flux":
-            assert yvariable == "flux"
-            dfspectrum = dfspectrum.with_columns(y=pl.col("yflux") / fluxdistance_mpc**2)
-        case "eflux":
-            erg_to_angstrom = 1.986454e-8
-            erg_to_xunit = convert_angstroms_to_unit(erg_to_angstrom, xunit.lower())
-            dfspectrum = dfspectrum.with_columns(y=(pl.col("yflux") / fluxdistance_mpc**2 * erg_to_xunit) * pl.col("x"))
-        case "photoncount":
-            ev_to_erg = 1.60218e-12
-            dfspectrum = dfspectrum.with_columns(
-                y=pl.col("yflux") / fluxdistance_mpc**2 / (h * pl.col("nu") * ev_to_erg)
-            )
-        case "packetcount":
-            dfspectrum = dfspectrum.with_columns(y=pl.col("packetcount"))
-        case _:
-            msg = f"Unit {yvariable} not implemented"
-            raise NotImplementedError(msg)
-
-    return dfspectrum.sort("x")
+    return dfspectrum
 
 
 def get_exspec_bins(
@@ -319,24 +330,9 @@ def get_from_packets(
     if nu_column == "absorption_freq":
         nu_column = "nu_absorbed"
 
-    lambda_bin_edges: npt.NDArray[np.floating]
-    pl_delta_lambda: pl.Series | pl.Expr
-    if delta_lambda is None:
-        lambda_bin_edges, lambda_bin_centres, delta_lambda = get_exspec_bins(modelpath=modelpath, gamma=gamma)
-        lambda_min = lambda_bin_centres[0]
-        lambda_max = lambda_bin_centres[-1]
-        pl_delta_lambda = pl.Series(delta_lambda)
-    elif isinstance(delta_lambda, float | int):
-        lambda_bin_edges = np.arange(lambda_min, lambda_max + delta_lambda, delta_lambda)
-        lambda_bin_centres = 0.5 * (lambda_bin_edges[:-1] + lambda_bin_edges[1:])  # bin centres
-        pl_delta_lambda = pl.lit(delta_lambda)
-    elif isinstance(delta_lambda, np.ndarray):
-        lambda_bin_edges = np.array([lambda_min + (delta_lambda[:i]).sum() for i in range(len(delta_lambda) + 1)])
-        lambda_bin_centres = 0.5 * (lambda_bin_edges[:-1] + lambda_bin_edges[1:])
-        pl_delta_lambda = pl.Series(delta_lambda)
-    else:
-        msg = f"Invalid delta_lambda type: {type(delta_lambda)}"
-        raise ValueError(msg)
+    lambda_bin_edges, lambda_bin_centres, pl_delta_lambda, lambda_min, lambda_max = _calculate_lambda_bins(
+        modelpath, lambda_min, lambda_max, delta_lambda, gamma
+    )
 
     delta_time_s = (timehighdays - timelowdays) * 86400.0
 
@@ -375,116 +371,46 @@ def get_from_packets(
     )
     escapesurfacegamma: float | None = None
     if directionbins_are_vpkt_observers:
-        vpkt_config = get_vpkt_config(modelpath)
-        for vspecindex in directionbins:
-            obsdirindex = vspecindex // vpkt_config["nspectraperobs"]
-            opacchoiceindex = vspecindex % vpkt_config["nspectraperobs"]
-            lambda_column = (
-                f"dir{obsdirindex}_lambda_angstroms_rf"
-                if nu_column == "nu_rf"
-                else nu_column.replace("absorption_freq", "nu_absorbed").replace("nu_", "lambda_angstroms_")
-            )
-            energy_column = f"dir{obsdirindex}_e_rf_{opacchoiceindex}"
-
-            pldfpackets_dirbin_lazy = dfpackets.filter(pl.col(lambda_column).is_between(lambda_min, lambda_max)).filter(
-                pl.col(f"dir{obsdirindex}_t_arrive_d").is_between(timelowdays, timehighdays)
-            )
-
-            dfbinned_dirbin = atpackets.bin_and_sum(
-                pldfpackets_dirbin_lazy,
-                bincol=lambda_column,
-                bins=lambda_bin_edges.tolist(),
-                sumcols=[energy_column],
-                getcounts=True,
-            ).select([
-                pl.col(f"{lambda_column}_bin").alias("lambda_binindex"),
-                (
-                    pl.col(f"{energy_column}_sum")
-                    / pl_delta_lambda
-                    / delta_time_s
-                    / (megaparsec_to_cm**2)
-                    / nprocs_read
-                ).alias(f"f_lambda_dirbin{vspecindex}"),
-                pl.col("count").alias(f"count_dirbin{vspecindex}"),
-            ])
-
-            dfbinned_lazy = dfbinned_lazy.join(dfbinned_dirbin, on="lambda_binindex", how="left", coalesce=True)
-
         assert use_time == "arrival"
+        dfbinned_lazy = _process_vpkt_observers(
+            modelpath=modelpath,
+            directionbins=directionbins,
+            dfpackets=dfpackets,
+            dfbinned_lazy=dfbinned_lazy,
+            nu_column=nu_column,
+            lambda_min=lambda_min,
+            lambda_max=lambda_max,
+            timelowdays=timelowdays,
+            timehighdays=timehighdays,
+            lambda_bin_edges=lambda_bin_edges,
+            pl_delta_lambda=pl_delta_lambda,
+            delta_time_s=delta_time_s,
+            nprocs_read=nprocs_read,
+        )
     else:
-        lambda_column = nu_column.replace("nu_", "lambda_angstroms_")
-        energy_column = "e_cmf" if use_time == "escape" else "e_rf"
-
-        if use_time == "arrival":
-            dfpackets = dfpackets.filter(pl.col("t_arrive_d").is_between(timelowdays, timehighdays))
-
-        elif use_time == "escape":
-            from artistools.inputmodel import get_modeldata
-
-            dfmodel, _ = get_modeldata(modelpath)
-            vmax_beta = dfmodel.select(pl.col("vel_r_max_kmps").max() * 299792.458).collect().item()
-            escapesurfacegamma = math.sqrt(1 - vmax_beta**2)
-
-            dfpackets = dfpackets.filter(
-                (pl.col("escape_time") * escapesurfacegamma / 86400.0).is_between(timelowdays, timehighdays)
-            )
-
-        elif use_time == "emission":
-            # We bin packets according to the emission time, but we shift times so we're still centered around the observer arrival time.
-            # This makes easier to directly compare specta between emission time (no relative light travel time effects) and the standard arrival time
-            col_emit_time = "tdecay" if gamma else "em_time"
-            mean_correction = (pl.col(col_emit_time) - pl.col("t_arrive_d") * 86400.0).mean()
-
-            dfpackets = dfpackets.filter(
-                pl.col(col_emit_time).is_between(
-                    timelowdays * 86400.0 + mean_correction, timehighdays * 86400.0 + mean_correction
-                )
-            )
-
-        dfpackets = dfpackets.filter(pl.col(lambda_column).is_between(lambda_min, lambda_max))
-
-        for dirbin in directionbins:
-            if dirbin == -1:
-                solidanglefactor = 1.0
-                pldfpackets_dirbin_lazy = dfpackets
-            elif average_over_phi:
-                assert not average_over_theta
-                solidanglefactor = ncosthetabins
-                pldfpackets_dirbin_lazy = dfpackets.filter(pl.col("costhetabin") * nphibins == dirbin)
-            elif average_over_theta:
-                solidanglefactor = nphibins
-                pldfpackets_dirbin_lazy = dfpackets.filter(pl.col("phibin") == dirbin)
-            else:
-                solidanglefactor = ndirbins
-                pldfpackets_dirbin_lazy = dfpackets.filter(pl.col("dirbin") == dirbin)
-
-            dfbinned_dirbin = atpackets.bin_and_sum(
-                pldfpackets_dirbin_lazy,
-                bincol=lambda_column,
-                bins=lambda_bin_edges.tolist(),
-                sumcols=[energy_column],
-                getcounts=True,
-            ).select([
-                pl.col(f"{lambda_column}_bin").alias("lambda_binindex"),
-                (
-                    pl.col(f"{energy_column}_sum")
-                    / pl_delta_lambda
-                    / delta_time_s
-                    / (4 * math.pi)
-                    * solidanglefactor
-                    / (megaparsec_to_cm**2)
-                    / nprocs_read
-                ).alias(f"f_lambda_dirbin{dirbin}"),
-                pl.col("count").alias(f"count_dirbin{dirbin}"),
-            ])
-
-            if use_time == "escape":
-                assert escapesurfacegamma is not None
-                dfbinned_dirbin = dfbinned_dirbin.with_columns(
-                    pl.col(f"f_lambda_dirbin{dirbin}").mul(1.0 / escapesurfacegamma)
-                )
-
-            dfbinned_lazy = dfbinned_lazy.join(dfbinned_dirbin, on="lambda_binindex", how="left", coalesce=True)
+        dfbinned_lazy, escapesurfacegamma = _process_non_vpkt_observers(
+            modelpath=modelpath,
+            directionbins=directionbins,
+            dfpackets=dfpackets,
+            dfbinned_lazy=dfbinned_lazy,
+            nu_column=nu_column,
+            lambda_min=lambda_min,
+            lambda_max=lambda_max,
+            timelowdays=timelowdays,
+            timehighdays=timehighdays,
+            lambda_bin_edges=lambda_bin_edges,
+            pl_delta_lambda=pl_delta_lambda,
+            delta_time_s=delta_time_s,
+            nprocs_read=nprocs_read,
+            use_time=use_time,
+            average_over_phi=average_over_phi,
+            average_over_theta=average_over_theta,
+            gamma=gamma,
+            nphibins=nphibins,
+            ncosthetabins=ncosthetabins,
+            ndirbins=ndirbins,
+            escapesurfacegamma=escapesurfacegamma,
+        )
 
     if fluxfilterfunc:
         print("Applying filter to ARTIS spectrum")
@@ -507,6 +433,185 @@ def get_from_packets(
             print(f"    dirbin {dirbin:2d} plots {npkts_selected:.2e} packets")
 
     return dfdict
+
+
+def _process_vpkt_observers(
+    modelpath: Path | str,
+    directionbins: Collection[int],
+    dfpackets: pl.LazyFrame,
+    dfbinned_lazy: pl.LazyFrame,
+    nu_column: str,
+    lambda_min: float,
+    lambda_max: float,
+    timelowdays: float,
+    timehighdays: float,
+    lambda_bin_edges: npt.NDArray[np.floating],
+    pl_delta_lambda: pl.Series | pl.Expr,
+    delta_time_s: float,
+    nprocs_read: int,
+) -> pl.LazyFrame:
+    vpkt_config = get_vpkt_config(modelpath)
+    for vspecindex in directionbins:
+        obsdirindex = vspecindex // vpkt_config["nspectraperobs"]
+        opacchoiceindex = vspecindex % vpkt_config["nspectraperobs"]
+        lambda_column = (
+            f"dir{obsdirindex}_lambda_angstroms_rf"
+            if nu_column == "nu_rf"
+            else nu_column.replace("absorption_freq", "nu_absorbed").replace("nu_", "lambda_angstroms_")
+        )
+        energy_column = f"dir{obsdirindex}_e_rf_{opacchoiceindex}"
+
+        pldfpackets_dirbin_lazy = dfpackets.filter(pl.col(lambda_column).is_between(lambda_min, lambda_max)).filter(
+            pl.col(f"dir{obsdirindex}_t_arrive_d").is_between(timelowdays, timehighdays)
+        )
+
+        dfbinned_dirbin = atpackets.bin_and_sum(
+            pldfpackets_dirbin_lazy,
+            bincol=lambda_column,
+            bins=lambda_bin_edges.tolist(),
+            sumcols=[energy_column],
+            getcounts=True,
+        ).select([
+            pl.col(f"{lambda_column}_bin").alias("lambda_binindex"),
+            (
+                pl.col(f"{energy_column}_sum")
+                / pl_delta_lambda
+                / delta_time_s
+                / (megaparsec_to_cm**2)
+                / nprocs_read
+            ).alias(f"f_lambda_dirbin{vspecindex}"),
+            pl.col("count").alias(f"count_dirbin{vspecindex}"),
+        ])
+
+        dfbinned_lazy = dfbinned_lazy.join(dfbinned_dirbin, on="lambda_binindex", how="left", coalesce=True)
+    return dfbinned_lazy
+
+
+def _process_non_vpkt_observers(
+    modelpath: Path | str,
+    directionbins: Collection[int],
+    dfpackets: pl.LazyFrame,
+    dfbinned_lazy: pl.LazyFrame,
+    nu_column: str,
+    lambda_min: float,
+    lambda_max: float,
+    timelowdays: float,
+    timehighdays: float,
+    lambda_bin_edges: npt.NDArray[np.floating],
+    pl_delta_lambda: pl.Series | pl.Expr,
+    delta_time_s: float,
+    nprocs_read: int,
+    use_time: t.Literal["arrival", "emission", "escape"],
+    average_over_phi: bool,
+    average_over_theta: bool,
+    gamma: bool,
+    nphibins: int,
+    ncosthetabins: int,
+    ndirbins: int,
+    escapesurfacegamma: float | None,
+) -> tuple[pl.LazyFrame, float | None]:
+    lambda_column = nu_column.replace("nu_", "lambda_angstroms_")
+    energy_column = "e_cmf" if use_time == "escape" else "e_rf"
+
+    if use_time == "arrival":
+        dfpackets = dfpackets.filter(pl.col("t_arrive_d").is_between(timelowdays, timehighdays))
+
+    elif use_time == "escape":
+        from artistools.inputmodel import get_modeldata
+
+        dfmodel, _ = get_modeldata(modelpath)
+        vmax_beta = dfmodel.select(pl.col("vel_r_max_kmps").max() * 299792.458).collect().item()
+        escapesurfacegamma = math.sqrt(1 - vmax_beta**2)
+
+        dfpackets = dfpackets.filter(
+            (pl.col("escape_time") * escapesurfacegamma / 86400.0).is_between(timelowdays, timehighdays)
+        )
+
+    elif use_time == "emission":
+        # We bin packets according to the emission time, but we shift times so we're still centered around the observer arrival time.
+        # This makes easier to directly compare specta between emission time (no relative light travel time effects) and the standard arrival time
+        col_emit_time = "tdecay" if gamma else "em_time"
+        mean_correction = (pl.col(col_emit_time) - pl.col("t_arrive_d") * 86400.0).mean()
+
+        dfpackets = dfpackets.filter(
+            pl.col(col_emit_time).is_between(
+                timelowdays * 86400.0 + mean_correction, timehighdays * 86400.0 + mean_correction
+            )
+        )
+
+    dfpackets = dfpackets.filter(pl.col(lambda_column).is_between(lambda_min, lambda_max))
+
+    for dirbin in directionbins:
+        if dirbin == -1:
+            solidanglefactor = 1.0
+            pldfpackets_dirbin_lazy = dfpackets
+        elif average_over_phi:
+            assert not average_over_theta
+            solidanglefactor = ncosthetabins
+            pldfpackets_dirbin_lazy = dfpackets.filter(pl.col("costhetabin") * nphibins == dirbin)
+        elif average_over_theta:
+            solidanglefactor = nphibins
+            pldfpackets_dirbin_lazy = dfpackets.filter(pl.col("phibin") == dirbin)
+        else:
+            solidanglefactor = ndirbins
+            pldfpackets_dirbin_lazy = dfpackets.filter(pl.col("dirbin") == dirbin)
+
+        dfbinned_dirbin = atpackets.bin_and_sum(
+            pldfpackets_dirbin_lazy,
+            bincol=lambda_column,
+            bins=lambda_bin_edges.tolist(),
+            sumcols=[energy_column],
+            getcounts=True,
+        ).select([
+            pl.col(f"{lambda_column}_bin").alias("lambda_binindex"),
+            (
+                pl.col(f"{energy_column}_sum")
+                / pl_delta_lambda
+                / delta_time_s
+                / (4 * math.pi)
+                * solidanglefactor
+                / (megaparsec_to_cm**2)
+                / nprocs_read
+            ).alias(f"f_lambda_dirbin{dirbin}"),
+            pl.col("count").alias(f"count_dirbin{dirbin}"),
+        ])
+
+        if use_time == "escape":
+            assert escapesurfacegamma is not None
+            dfbinned_dirbin = dfbinned_dirbin.with_columns(
+                pl.col(f"f_lambda_dirbin{dirbin}").mul(1.0 / escapesurfacegamma)
+            )
+
+        dfbinned_lazy = dfbinned_lazy.join(dfbinned_dirbin, on="lambda_binindex", how="left", coalesce=True)
+    return dfbinned_lazy, escapesurfacegamma
+
+
+def _calculate_lambda_bins(
+    modelpath: Path | str,
+    lambda_min: float,
+    lambda_max: float,
+    delta_lambda: float | npt.NDArray[np.floating] | None,
+    gamma: bool,
+) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating], pl.Series | pl.Expr, float, float]:
+    lambda_bin_edges: npt.NDArray[np.floating]
+    pl_delta_lambda: pl.Series | pl.Expr
+    if delta_lambda is None:
+        lambda_bin_edges, lambda_bin_centres, delta_lambda_np = get_exspec_bins(modelpath=modelpath, gamma=gamma)
+        lambda_min = lambda_bin_centres[0]
+        lambda_max = lambda_bin_centres[-1]
+        pl_delta_lambda = pl.Series(delta_lambda_np)
+    elif isinstance(delta_lambda, float | int):
+        lambda_bin_edges = np.arange(lambda_min, lambda_max + delta_lambda, delta_lambda)
+        lambda_bin_centres = 0.5 * (lambda_bin_edges[:-1] + lambda_bin_edges[1:])  # bin centres
+        pl_delta_lambda = pl.lit(delta_lambda)
+    elif isinstance(delta_lambda, np.ndarray):
+        lambda_bin_edges = np.array([lambda_min + (delta_lambda[:i]).sum() for i in range(len(delta_lambda) + 1)])
+        lambda_bin_centres = 0.5 * (lambda_bin_edges[:-1] + lambda_bin_edges[1:])
+        pl_delta_lambda = pl.Series(delta_lambda)
+    else:
+        msg = f"Invalid delta_lambda type: {type(delta_lambda)}"
+        raise ValueError(msg)
+    return lambda_bin_edges, lambda_bin_centres, pl_delta_lambda, lambda_min, lambda_max
 
 
 @lru_cache(maxsize=16)
@@ -884,7 +989,7 @@ def get_flux_contributions(
 ) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     from scipy import integrate
 
-    arr_tmid = get_timestep_times(modelpath, loc="mid")
+    arr_tmid_in = get_timestep_times(modelpath, loc="mid")
     arr_tdelta = get_timestep_times(modelpath, loc="delta")
     arraynu = get_nu_grid(modelpath)
     arraylambda = 2.99792458e18 / arraynu
@@ -912,135 +1017,35 @@ def get_flux_contributions(
     else:
         dbinlist = [directionbin]
 
-    emissiondata = {}
-    absorptiondata = {}
-    maxion: int | None = None
-    for dbin in dbinlist:
-        if getemission:
-            emissionfilenames = ["emission.out", "emissionpol.out"] if use_lastemissiontype else ["emissiontrue.out"]
+    emissiondata, absorptiondata, maxion, arr_tmid = _read_emission_absorption_data(
+        modelpath=modelpath,
+        dbinlist=dbinlist,
+        getemission=getemission,
+        getabsorption=getabsorption,
+        use_lastemissiontype=use_lastemissiontype,
+        nelements=nelements,
+        arraynu=arraynu,
+        arr_tmid_in=arr_tmid_in,
+        directionbin=directionbin,  # Pass directionbin, not dbin
+    )
 
-            if dbin != -1:
-                emissionfilenames = [x.replace(".out", f"_res_{dbin:02d}.out") for x in emissionfilenames]
-
-            emissionfilename = firstexisting(emissionfilenames, folder=modelpath, tryzipped=True)
-
-            if "pol" in str(emissionfilename):
-                print("This artis run contains polarisation data")
-                # File contains I, Q and U and so times are repeated 3 times
-                arr_tmid = list(np.tile(np.array(arr_tmid), 3))
-
-            emissiondata[dbin] = read_emission_absorption_file(emissionfilename)
-
-            maxion_float = (emissiondata[dbin].shape[1] - 1) / 2 / nelements  # also known as MIONS in ARTIS sn3d.h
-            assert maxion_float.is_integer()
-            if maxion is None:
-                maxion = int(maxion_float)
-                print(
-                    f" inferred MAXION = {maxion} from emission file using nlements = {nelements} from"
-                    " compositiondata.txt"
-                )
-            else:
-                assert maxion == int(maxion_float)
-
-            # check that the row count is product of timesteps and frequency bins found in spec.out
-            assert emissiondata[dbin].shape[0] == len(arraynu) * len(arr_tmid)
-
-        if getabsorption:
-            absorptionfilenames = ["absorption.out", "absorptionpol.out"]
-            if directionbin is not None:
-                absorptionfilenames = [x.replace(".out", f"_res_{dbin:02d}.out") for x in absorptionfilenames]
-
-            absorptionfilename = firstexisting(absorptionfilenames, folder=modelpath, tryzipped=True)
-
-            absorptiondata[dbin] = read_emission_absorption_file(absorptionfilename)
-            absorption_maxion_float = absorptiondata[dbin].shape[1] / nelements
-            assert absorption_maxion_float.is_integer()
-            absorption_maxion = int(absorption_maxion_float)
-            if maxion is None:
-                maxion = absorption_maxion
-                print(
-                    f" inferred MAXION = {maxion} from absorption file using nlements = {nelements}from"
-                    " compositiondata.txt"
-                )
-            else:
-                assert absorption_maxion == maxion
-            assert absorptiondata[dbin].shape[0] == len(arraynu) * len(arr_tmid)
-
-    array_flambda_emission_total = np.zeros_like(arraylambda, dtype=float)
-    contribution_list = []
-    if filterfunc:
-        print("Applying filter to ARTIS spectrum")
-
-    assert maxion is not None
-    for element in range(nelements):
-        nions = elementlist.nions[element]
-        # nions = elementlist.iloc[element].uppermost_ion_stage - elementlist.iloc[element].lowermost_ion_stage + 1
-        for ion in range(nions):
-            ion_stage = ion + elementlist.lowermost_ion_stage[element]
-            ionserieslist: list[tuple[int, str]] = [
-                (element * maxion + ion, "bound-bound"),
-                (nelements * maxion + element * maxion + ion, "bound-free"),
-            ]
-
-            if element == ion == 0:
-                ionserieslist.append((2 * nelements * maxion, "free-free"))
-
-            for selectedcolumn, emissiontypeclass in ionserieslist:
-                # if linelabel.startswith('Fe ') or linelabel.endswith("-free"):
-                #     continue
-                if getemission:
-                    array_fnu_emission = stackspectra([
-                        (
-                            emissiondata[dbin][timestep :: len(arr_tmid), selectedcolumn].to_numpy(),
-                            arr_tdelta[timestep] / len(dbinlist),
-                        )
-                        for timestep in range(timestepmin, timestepmax + 1)
-                        for dbin in dbinlist
-                    ])
-                else:
-                    array_fnu_emission = np.zeros_like(arraylambda, dtype=float)
-
-                if absorptiondata and selectedcolumn < nelements * maxion:  # bound-bound process
-                    array_fnu_absorption = stackspectra([
-                        (
-                            absorptiondata[dbin][timestep :: len(arr_tmid), selectedcolumn].to_numpy(),
-                            arr_tdelta[timestep] / len(dbinlist),
-                        )
-                        for timestep in range(timestepmin, timestepmax + 1)
-                        for dbin in dbinlist
-                    ])
-                else:
-                    array_fnu_absorption = np.zeros_like(arraylambda, dtype=float)
-
-                if filterfunc:
-                    array_fnu_emission = filterfunc(array_fnu_emission)
-                    if selectedcolumn <= nelements * maxion:
-                        array_fnu_absorption = filterfunc(array_fnu_absorption)
-
-                array_flambda_emission = array_fnu_emission * arraynu / arraylambda
-                array_flambda_absorption = array_fnu_absorption * arraynu / arraylambda
-
-                array_flambda_emission_total += array_flambda_emission
-                fluxcontribthisseries = abs(integrate.trapezoid(array_fnu_emission, x=arraynu)) + abs(
-                    integrate.trapezoid(array_fnu_absorption, x=arraynu)
-                )
-
-                if emissiontypeclass == "bound-bound":
-                    linelabel = get_ionstring(elementlist.Z[element], ion_stage)
-                elif emissiontypeclass == "free-free":
-                    linelabel = "free-free"
-                else:
-                    linelabel = f"{get_ionstring(elementlist.Z[element], ion_stage)} {emissiontypeclass}"
-
-                contribution_list.append(
-                    FluxContributionTuple(
-                        fluxcontrib=fluxcontribthisseries,
-                        linelabel=linelabel,
-                        array_flambda_emission=array_flambda_emission,
-                        array_flambda_absorption=array_flambda_absorption,
-                        color=None,
-                    )
-                )
+    contribution_list, array_flambda_emission_total = _calculate_contributions_for_elements_ions(
+        elementlist=elementlist,
+        nelements=nelements,
+        maxion=maxion,
+        getemission=getemission,
+        absorptiondata=absorptiondata,
+        emissiondata=emissiondata,
+        arr_tmid=arr_tmid,
+        arr_tdelta=arr_tdelta,
+        dbinlist=dbinlist,
+        filterfunc=filterfunc,
+        arraynu=arraynu,
+        arraylambda=arraylambda,
+        timestepmin=timestepmin,
+        timestepmax=timestepmax,
+        integrate_module=integrate,
+    )
 
     return contribution_list, array_flambda_emission_total, arraylambda
 
@@ -1139,73 +1144,310 @@ def get_flux_contributions_from_packets(
 
     if getemission:
         cols |= {"emissiontype_str", dirbin_nu_column}
-        if groupby == "nuc":
-            emtypestrings = get_nuclides(modelpath=modelpath).rename({"nucname": "emissiontype_str"})
-        elif groupby == "nucmass":
-            emtypestrings = get_nuclides(modelpath=modelpath).with_columns(
-                (
-                    pl.when(pl.col("pellet_nucindex") == -1).then("nucname").otherwise(pl.format("A={}", pl.col("A")))
-                ).alias("emissiontype_str")
-            )
-        else:
-            assert linelistlazy is not None
-            assert bflistlazy is not None
-            bflistlazy = bflistlazy.with_columns((-1 - pl.col("bfindex").cast(pl.Int32)).alias(emtypecolumn))
-            expr_bflist_to_str = (
-                pl.col("ion_str") + " bound-free"
-                if groupby == "ion"
-                else pl.format("{} bound-free {}-{}", pl.col("ion_str"), pl.col("lowerlevel"), pl.col("upperionlevel"))
-            )
-
-            emtypestrings = pl.concat([
-                linelistlazy.select([
-                    pl.col("lineindex").alias(emtypecolumn),
-                    expr_linelist_to_str.alias("emissiontype_str"),
-                ]),
-                pl.DataFrame(
-                    {emtypecolumn: [-9999999], "emissiontype_str": ["free-free"]},
-                    schema_overrides={emtypecolumn: pl.Int32, "emissiontype_str": pl.String},
-                ).lazy(),
-                bflistlazy.select([pl.col(emtypecolumn), expr_bflist_to_str.alias("emissiontype_str")]),
-            ])
-
-        lzdfpackets = lzdfpackets.join(emtypestrings, on=emtypecolumn, how="left")
-
-        if vpkt_match_emission_exclusion_to_opac and directionbins_are_vpkt_observers:
-            assert vpkt_config is not None
-            assert opacchoiceindex is not None
-            z_exclude = int(vpkt_config["z_excludelist"][opacchoiceindex])
-            if z_exclude == -1:
-                # no bound-bound
-                lzdfpackets = lzdfpackets.filter(pl.col("emissiontype_str").str.contains("bound-free"))
-            elif z_exclude == -2:
-                # no bound-free
-                lzdfpackets = lzdfpackets.filter(pl.col("emissiontype_str").str.contains("bound-free").not_())
-            elif z_exclude > 0:
-                elsymb = get_elsymbol(z_exclude)
-                lzdfpackets = lzdfpackets.filter(pl.col("emissiontype_str").str.starts_with(f"{elsymb} ").not_())
+        lzdfpackets, vpkt_config = _prepare_emission_type_strings(
+            lzdfpackets=lzdfpackets,
+            groupby=groupby,
+            modelpath=modelpath,
+            linelistlazy=linelistlazy,
+            bflistlazy=bflistlazy,
+            emtypecolumn=emtypecolumn,
+            expr_linelist_to_str=expr_linelist_to_str,
+            vpkt_match_emission_exclusion_to_opac=vpkt_match_emission_exclusion_to_opac,
+            directionbins_are_vpkt_observers=directionbins_are_vpkt_observers,
+            vpkt_config=vpkt_config,
+            opacchoiceindex=opacchoiceindex,
+        )
 
     if getabsorption:
         cols |= {"absorptiontype_str", "absorption_freq"}
-        assert linelistlazy is not None
-        abstypestrings = pl.concat([
-            linelistlazy.select([
-                pl.col("lineindex").alias("absorption_type"),
-                expr_linelist_to_str.alias("absorptiontype_str"),
-            ]),
-            pl.DataFrame(
-                {"absorption_type": [-1, -2], "absorptiontype_str": ["free-free", "bound-free"]},
-                schema_overrides={"absorption_type": pl.Int32, "absorptiontype_str": pl.String},
-            ).lazy(),
-        ]).with_columns(pl.col("absorptiontype_str"))
-
-        lzdfpackets = lzdfpackets.join(abstypestrings, on="absorption_type", how="left")
+        lzdfpackets = _prepare_absorption_type_strings(lzdfpackets, linelistlazy, expr_linelist_to_str)
 
     if directionbin != -1:
         cols |= {"costhetabin", "phibin", "dirbin"}
 
     dfpackets = lzdfpackets.select([col for col in cols if col in lzdfpackets.collect_schema().names()]).collect()
 
+    emissiongroups, absorptiongroups, allgroupnames = _group_and_sort_packet_contributions(
+        dfpackets=dfpackets,
+        dirbin_nu_column=dirbin_nu_column,
+        nu_min=nu_min,
+        nu_max=nu_max,
+        getemission=getemission,
+        getabsorption=getabsorption,
+        maxseriescount=maxseriescount,
+        fixedionlist=fixedionlist,
+    )
+
+    contribution_list, array_flambda_emission_total, array_lambda = _calculate_flux_contributions_for_groups(
+        allgroupnames=allgroupnames,
+        emissiongroups=emissiongroups,
+        absorptiongroups=absorptiongroups,
+        modelpath=modelpath,
+        timelowdays=timelowdays,
+        timehighdays=timehighdays,
+        lambda_min=lambda_min,
+        lambda_max=lambda_max,
+        use_time=use_time,
+        delta_lambda=delta_lambda,
+        fluxfilterfunc=filterfunc,
+        nprocs_read=nprocs_read,
+        directionbin=directionbin,
+        directionbins_are_vpkt_observers=directionbins_are_vpkt_observers,
+        average_over_phi=average_over_phi,
+        average_over_theta=average_over_theta,
+        gamma=gamma,
+        integrate_module=integrate,  # Pass integrate module
+    )
+
+    return contribution_list, array_flambda_emission_total, array_lambda
+
+
+def _read_emission_absorption_data(
+    modelpath: Path,
+    dbinlist: list[int],
+    getemission: bool,
+    getabsorption: bool,
+    use_lastemissiontype: bool,
+    nelements: int,
+    arraynu: npt.NDArray[np.floating],
+    arr_tmid_in: npt.NDArray[np.floating],
+    directionbin: int | None,
+) -> tuple[dict[int, pl.DataFrame], dict[int, pl.DataFrame], int | None, list[t.Any] | npt.NDArray[np.floating]]:
+    emissiondata: dict[int, pl.DataFrame] = {}
+    absorptiondata: dict[int, pl.DataFrame] = {}
+    maxion: int | None = None
+    arr_tmid: list[t.Any] | npt.NDArray[np.floating] = arr_tmid_in
+
+    for dbin in dbinlist:
+        if getemission:
+            emissionfilenames = ["emission.out", "emissionpol.out"] if use_lastemissiontype else ["emissiontrue.out"]
+            if dbin != -1:
+                emissionfilenames = [x.replace(".out", f"_res_{dbin:02d}.out") for x in emissionfilenames]
+            emissionfilename = firstexisting(emissionfilenames, folder=modelpath, tryzipped=True)
+
+            if "pol" in str(emissionfilename):
+                print("This artis run contains polarisation data")
+                arr_tmid = list(np.tile(np.array(arr_tmid_in), 3))
+
+            emissiondata[dbin] = read_emission_absorption_file(emissionfilename)
+            maxion_float = (emissiondata[dbin].shape[1] - 1) / 2 / nelements
+            assert maxion_float.is_integer()
+            if maxion is None:
+                maxion = int(maxion_float)
+                print(
+                    f" inferred MAXION = {maxion} from emission file using nlements = {nelements} from"
+                    " compositiondata.txt"
+                )
+            else:
+                assert maxion == int(maxion_float)
+            assert emissiondata[dbin].shape[0] == len(arraynu) * len(arr_tmid)
+
+        if getabsorption:
+            absorptionfilenames = ["absorption.out", "absorptionpol.out"]
+            # Use directionbin for selecting res files, not dbin from the loop
+            if directionbin is not None and dbin != -1:  # Check dbin to match original logic more closely
+                absorptionfilenames = [x.replace(".out", f"_res_{dbin:02d}.out") for x in absorptionfilenames]
+            absorptionfilename = firstexisting(absorptionfilenames, folder=modelpath, tryzipped=True)
+
+            absorptiondata[dbin] = read_emission_absorption_file(absorptionfilename)
+            absorption_maxion_float = absorptiondata[dbin].shape[1] / nelements
+            assert absorption_maxion_float.is_integer()
+            absorption_maxion_val = int(absorption_maxion_float)
+            if maxion is None:
+                maxion = absorption_maxion_val
+                print(
+                    f" inferred MAXION = {maxion} from absorption file using nlements = {nelements}from"
+                    " compositiondata.txt"
+                )
+            else:
+                assert absorption_maxion_val == maxion
+            assert absorptiondata[dbin].shape[0] == len(arraynu) * len(arr_tmid)
+    return emissiondata, absorptiondata, maxion, arr_tmid
+
+
+def _calculate_contributions_for_elements_ions(
+    elementlist: pd.DataFrame,
+    nelements: int,
+    maxion: int | None,
+    getemission: bool,
+    absorptiondata: dict[int, pl.DataFrame],
+    emissiondata: dict[int, pl.DataFrame],
+    arr_tmid: list[t.Any] | npt.NDArray[np.floating],
+    arr_tdelta: npt.NDArray[np.floating],
+    dbinlist: list[int],
+    filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None,
+    arraynu: npt.NDArray[np.floating],
+    arraylambda: npt.NDArray[np.floating],
+    timestepmin: int,
+    timestepmax: int,
+    integrate_module: t.Any,
+) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating]]:
+    array_flambda_emission_total = np.zeros_like(arraylambda, dtype=float)
+    contribution_list = []
+    if filterfunc:
+        print("Applying filter to ARTIS spectrum")
+
+    assert maxion is not None
+    for element in range(nelements):
+        nions = elementlist.nions[element]
+        for ion in range(nions):
+            ion_stage = ion + elementlist.lowermost_ion_stage[element]
+            ionserieslist: list[tuple[int, str]] = [
+                (element * maxion + ion, "bound-bound"),
+                (nelements * maxion + element * maxion + ion, "bound-free"),
+            ]
+
+            if element == ion == 0:
+                ionserieslist.append((2 * nelements * maxion, "free-free"))
+
+            for selectedcolumn, emissiontypeclass in ionserieslist:
+                if getemission:
+                    array_fnu_emission = stackspectra([
+                        (
+                            emissiondata[dbin][timestep :: len(arr_tmid), selectedcolumn].to_numpy(),
+                            arr_tdelta[timestep] / len(dbinlist),
+                        )
+                        for timestep in range(timestepmin, timestepmax + 1)
+                        for dbin in dbinlist
+                    ])
+                else:
+                    array_fnu_emission = np.zeros_like(arraylambda, dtype=float)
+
+                if absorptiondata and selectedcolumn < nelements * maxion:  # bound-bound process
+                    array_fnu_absorption = stackspectra([
+                        (
+                            absorptiondata[dbin][timestep :: len(arr_tmid), selectedcolumn].to_numpy(),
+                            arr_tdelta[timestep] / len(dbinlist),
+                        )
+                        for timestep in range(timestepmin, timestepmax + 1)
+                        for dbin in dbinlist
+                    ])
+                else:
+                    array_fnu_absorption = np.zeros_like(arraylambda, dtype=float)
+
+                if filterfunc:
+                    array_fnu_emission = filterfunc(array_fnu_emission)
+                    if selectedcolumn <= nelements * maxion:
+                        array_fnu_absorption = filterfunc(array_fnu_absorption)
+
+                array_flambda_emission = array_fnu_emission * arraynu / arraylambda
+                array_flambda_absorption = array_fnu_absorption * arraynu / arraylambda
+
+                array_flambda_emission_total += array_flambda_emission
+                fluxcontribthisseries = abs(integrate_module.trapezoid(array_fnu_emission, x=arraynu)) + abs(
+                    integrate_module.trapezoid(array_fnu_absorption, x=arraynu)
+                )
+
+                if emissiontypeclass == "bound-bound":
+                    linelabel = get_ionstring(elementlist.Z[element], ion_stage)
+                elif emissiontypeclass == "free-free":
+                    linelabel = "free-free"
+                else:
+                    linelabel = f"{get_ionstring(elementlist.Z[element], ion_stage)} {emissiontypeclass}"
+
+                contribution_list.append(
+                    FluxContributionTuple(
+                        fluxcontrib=fluxcontribthisseries,
+                        linelabel=linelabel,
+                        array_flambda_emission=array_flambda_emission,
+                        array_flambda_absorption=array_flambda_absorption,
+                        color=None,
+                    )
+                )
+    return contribution_list, array_flambda_emission_total
+
+
+def _prepare_emission_type_strings(
+    lzdfpackets: pl.LazyFrame,
+    groupby: str,
+    modelpath: Path,
+    linelistlazy: pl.LazyFrame | None,
+    bflistlazy: pl.LazyFrame | None,
+    emtypecolumn: str | None,
+    expr_linelist_to_str: pl.Expr,
+    vpkt_match_emission_exclusion_to_opac: bool,
+    directionbins_are_vpkt_observers: bool,
+    vpkt_config: t.Any,
+    opacchoiceindex: int | None,
+) -> tuple[pl.LazyFrame, t.Any]:
+    if groupby == "nuc":
+        emtypestrings = get_nuclides(modelpath=modelpath).rename({"nucname": "emissiontype_str"})
+    elif groupby == "nucmass":
+        emtypestrings = get_nuclides(modelpath=modelpath).with_columns(
+            (pl.when(pl.col("pellet_nucindex") == -1).then("nucname").otherwise(pl.format("A={}", pl.col("A")))).alias(
+                "emissiontype_str"
+            )
+        )
+    else:
+        assert linelistlazy is not None
+        assert bflistlazy is not None
+        assert emtypecolumn is not None
+        bflistlazy = bflistlazy.with_columns((-1 - pl.col("bfindex").cast(pl.Int32)).alias(emtypecolumn))
+        expr_bflist_to_str = (
+            pl.col("ion_str") + " bound-free"
+            if groupby == "ion"
+            else pl.format("{} bound-free {}-{}", pl.col("ion_str"), pl.col("lowerlevel"), pl.col("upperionlevel"))
+        )
+
+        emtypestrings = pl.concat([
+            linelistlazy.select([
+                pl.col("lineindex").alias(emtypecolumn),
+                expr_linelist_to_str.alias("emissiontype_str"),
+            ]),
+            pl.DataFrame(
+                {emtypecolumn: [-9999999], "emissiontype_str": ["free-free"]},
+                schema_overrides={emtypecolumn: pl.Int32, "emissiontype_str": pl.String},
+            ).lazy(),
+            bflistlazy.select([pl.col(emtypecolumn), expr_bflist_to_str.alias("emissiontype_str")]),
+        ])
+
+    lzdfpackets = lzdfpackets.join(emtypestrings, on=emtypecolumn, how="left")
+
+    if vpkt_match_emission_exclusion_to_opac and directionbins_are_vpkt_observers:
+        assert vpkt_config is not None
+        assert opacchoiceindex is not None
+        z_exclude = int(vpkt_config["z_excludelist"][opacchoiceindex])
+        if z_exclude == -1:
+            # no bound-bound
+            lzdfpackets = lzdfpackets.filter(pl.col("emissiontype_str").str.contains("bound-free"))
+        elif z_exclude == -2:
+            # no bound-free
+            lzdfpackets = lzdfpackets.filter(pl.col("emissiontype_str").str.contains("bound-free").not_())
+        elif z_exclude > 0:
+            elsymb = get_elsymbol(z_exclude)
+            lzdfpackets = lzdfpackets.filter(pl.col("emissiontype_str").str.starts_with(f"{elsymb} ").not_())
+    return lzdfpackets, vpkt_config
+
+
+def _prepare_absorption_type_strings(
+    lzdfpackets: pl.LazyFrame, linelistlazy: pl.LazyFrame | None, expr_linelist_to_str: pl.Expr
+) -> pl.LazyFrame:
+    assert linelistlazy is not None
+    abstypestrings = pl.concat([
+        linelistlazy.select([
+            pl.col("lineindex").alias("absorption_type"),
+            expr_linelist_to_str.alias("absorptiontype_str"),
+        ]),
+        pl.DataFrame(
+            {"absorption_type": [-1, -2], "absorptiontype_str": ["free-free", "bound-free"]},
+            schema_overrides={"absorption_type": pl.Int32, "absorptiontype_str": pl.String},
+        ).lazy(),
+    ]).with_columns(pl.col("absorptiontype_str"))
+
+    lzdfpackets = lzdfpackets.join(abstypestrings, on="absorption_type", how="left")
+    return lzdfpackets
+
+
+def _group_and_sort_packet_contributions(
+    dfpackets: pl.DataFrame,
+    dirbin_nu_column: str,
+    nu_min: float,
+    nu_max: float,
+    getemission: bool,
+    getabsorption: bool,
+    maxseriescount: int | None,
+    fixedionlist: list[str] | None,
+) -> tuple[dict[str, pl.DataFrame], dict[str, pl.DataFrame], set[str]]:
     emissiongroups = (
         {
             k: v
@@ -1278,14 +1520,38 @@ def get_flux_contributions_from_packets(
                 del emissiongroups[groupname]
                 del absorptiongroups[groupname]
             allgroupnames.remove(groupname)
+    return emissiongroups, absorptiongroups, allgroupnames
 
-    array_flambda_emission_total = None
-    contribution_list = []
-    array_lambda = None
+
+def _calculate_flux_contributions_for_groups(
+    allgroupnames: set[str],
+    emissiongroups: dict[str, pl.DataFrame],
+    absorptiongroups: dict[str, pl.DataFrame],
+    modelpath: Path,
+    timelowdays: float,
+    timehighdays: float,
+    lambda_min: float,
+    lambda_max: float,
+    use_time: t.Literal["arrival", "emission", "escape"],
+    delta_lambda: float | npt.NDArray[np.floating] | None,
+    fluxfilterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None,
+    nprocs_read: int,
+    directionbin: int | None,
+    directionbins_are_vpkt_observers: bool,
+    average_over_phi: bool,
+    average_over_theta: bool,
+    gamma: bool,
+    integrate_module: t.Any,
+) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating] | None, npt.NDArray[np.floating] | None]:
+    array_flambda_emission_total: npt.NDArray[np.floating] | None = None
+    contribution_list: list[FluxContributionTuple] = []
+    array_lambda: npt.NDArray[np.floating] | None = None
+
     for groupname in allgroupnames:
-        array_flambda_emission = None
+        array_flambda_emission: npt.NDArray[np.floating] | None = None
 
         if groupname in emissiongroups:
+            # TODO: avoid circular dependency get_from_packets calls get_flux_contributions_from_packets
             spec_group = get_from_packets(
                 modelpath=modelpath,
                 timelowdays=timelowdays,
@@ -1294,14 +1560,14 @@ def get_flux_contributions_from_packets(
                 lambda_max=lambda_max,
                 use_time=use_time,
                 delta_lambda=delta_lambda,
-                fluxfilterfunc=filterfunc,
+                fluxfilterfunc=fluxfilterfunc,
                 nprocs_read_dfpackets=(nprocs_read, emissiongroups[groupname]),
-                directionbins=[directionbin],
+                directionbins=[directionbin] if directionbin is not None else None,
                 directionbins_are_vpkt_observers=directionbins_are_vpkt_observers,
                 average_over_phi=average_over_phi,
                 average_over_theta=average_over_theta,
                 gamma=gamma,
-            )[directionbin]
+            )[directionbin]  # type: ignore[index]
 
             if array_lambda is None:
                 array_lambda = spec_group["lambda_angstroms"].to_numpy()
@@ -1313,7 +1579,9 @@ def get_flux_contributions_from_packets(
 
             array_flambda_emission_total += array_flambda_emission
 
+        array_flambda_absorption: npt.NDArray[np.floating] | None = None
         if groupname in absorptiongroups:
+            # TODO: avoid circular dependency get_from_packets calls get_flux_contributions_from_packets
             spec_group = get_from_packets(
                 modelpath=modelpath,
                 timelowdays=timelowdays,
@@ -1323,44 +1591,44 @@ def get_flux_contributions_from_packets(
                 use_time=use_time,
                 delta_lambda=delta_lambda,
                 nu_column="absorption_freq",
-                fluxfilterfunc=filterfunc,
+                fluxfilterfunc=fluxfilterfunc,
                 nprocs_read_dfpackets=(nprocs_read, absorptiongroups[groupname]),
-                directionbins=[directionbin],
+                directionbins=[directionbin] if directionbin is not None else None,
                 directionbins_are_vpkt_observers=directionbins_are_vpkt_observers,
                 average_over_phi=average_over_phi,
                 average_over_theta=average_over_theta,
-            )[directionbin]
+            )[directionbin]  # type: ignore[index]
 
             if array_lambda is None:
                 array_lambda = spec_group["lambda_angstroms"].to_numpy()
-
             array_flambda_absorption = spec_group["f_lambda"].to_numpy()
-        else:
+        elif array_lambda is not None and array_flambda_emission is not None:
             array_flambda_absorption = np.zeros_like(array_flambda_emission, dtype=float)
 
-        if array_flambda_emission is None:
-            array_flambda_emission = np.zeros_like(array_flambda_absorption, dtype=float)
+        if array_lambda is not None:
+            if array_flambda_emission is None and array_flambda_absorption is not None:
+                array_flambda_emission = np.zeros_like(array_flambda_absorption, dtype=float)
+            assert array_flambda_emission is not None
+            assert array_flambda_absorption is not None
 
-        fluxcontribthisseries = abs(integrate.trapezoid(array_flambda_emission, x=array_lambda)) + abs(
-            integrate.trapezoid(array_flambda_absorption, x=array_lambda)
-        )
-        assert isinstance(fluxcontribthisseries, float)
+            fluxcontribthisseries = abs(
+                integrate_module.trapezoid(array_flambda_emission, x=array_lambda)
+            ) + abs(integrate_module.trapezoid(array_flambda_absorption, x=array_lambda))
+            assert isinstance(fluxcontribthisseries, float)
 
-        if fluxcontribthisseries > 0.0:
-            contribution_list.append(
-                FluxContributionTuple(
-                    fluxcontrib=fluxcontribthisseries,
-                    linelabel=str(groupname),
-                    array_flambda_emission=array_flambda_emission,
-                    array_flambda_absorption=array_flambda_absorption,
-                    color=None,
+            if fluxcontribthisseries > 0.0:
+                contribution_list.append(
+                    FluxContributionTuple(
+                        fluxcontrib=fluxcontribthisseries,
+                        linelabel=str(groupname),
+                        array_flambda_emission=array_flambda_emission,
+                        array_flambda_absorption=array_flambda_absorption,
+                        color=None,
+                    )
                 )
-            )
 
-    if array_flambda_emission_total is None:
+    if array_flambda_emission_total is None and array_lambda is not None:
         array_flambda_emission_total = np.zeros_like(array_lambda, dtype=float)
-
-    assert array_lambda is not None
 
     return contribution_list, array_flambda_emission_total, array_lambda
 
@@ -1435,34 +1703,22 @@ def sort_and_reduce_flux_contribution_list(
             remainder_flambda_emission += row.array_flambda_emission
             remainder_flambda_absorption += row.array_flambda_absorption
             if row.linelabel != "Other" and not entered_other:
-                print(f"  Other (top {maxnumotherprinted}):")
-                entered_other = True
+                # print(f"  Other (top {maxnumotherprinted}):")  # Covered by _print_flux_contribution_info
+                entered_other = True  # Still needed to track if we've started accumulating "Other"
 
         if row.linelabel != "Other":
             index += 1
 
-        if numotherprinted < maxnumotherprinted and row.linelabel != "Other":
-            integemiss = abs(integrate.trapezoid(row.array_flambda_emission, x=arraylambda_angstroms))
-            integabsorp = abs(integrate.trapezoid(-row.array_flambda_absorption, x=arraylambda_angstroms))
-            if integabsorp > 0.0 and integemiss > 0.0:
-                print(
-                    f"{row.fluxcontrib:.1e}, emission {integemiss:.1e}, "
-                    f"absorption {integabsorp:.1e} [erg/s/cm^2]: '{row.linelabel}'"
-                )
-            elif integemiss > 0.0:
-                print(f"  emission {integemiss:.1e} [erg/s/cm^2]: '{row.linelabel}'")
-            else:
-                print(f"absorption {integabsorp:.1e} [erg/s/cm^2]: '{row.linelabel}'")
-
-            if entered_other:
-                numotherprinted += 1
-
-    if not fixedionlist:
-        cmdarg = "'" + "' '".join(plotted_ion_list) + "'"
-        print("To reuse this ion/process contribution list, pass the following command-line argument: ")
-        print(f"     -fixedionlist {cmdarg}")
-        print("Or in python: ")
-        print(f"     fixedionlist={plotted_ion_list}")
+    # Printing moved to a separate function
+    _print_flux_contribution_info(
+        contribution_list_to_print=contribution_list,  # Pass the original sorted list for printing all items
+        fixedionlist=fixedionlist,
+        plotted_ion_list=plotted_ion_list,
+        arraylambda_angstroms=arraylambda_angstroms,
+        integrate_module=integrate,
+        maxnumotherprinted=maxnumotherprinted,
+        maxseriescount=maxseriescount,  # Pass this to know which items were grouped into "Other"
+    )
 
     if remainder_fluxcontrib > 0.0 and not hideother:
         contribution_list_out.append(
@@ -1476,6 +1732,50 @@ def sort_and_reduce_flux_contribution_list(
         )
 
     return contribution_list_out
+
+
+def _print_flux_contribution_info(
+    contribution_list_to_print: list[FluxContributionTuple],
+    fixedionlist: list[str] | None,
+    plotted_ion_list: list[str],
+    arraylambda_angstroms: npt.NDArray[np.floating],
+    integrate_module: t.Any,
+    maxnumotherprinted: int,
+    maxseriescount: int,
+) -> None:
+    numotherprinted = 0
+    entered_other_heading = False
+    for i, row in enumerate(contribution_list_to_print):
+        is_actually_plotted = (fixedionlist and row.linelabel in fixedionlist) or (
+            not fixedionlist and i < maxseriescount
+        )
+
+        if not is_actually_plotted and not entered_other_heading:
+            print(f"  Other contributions (top {maxnumotherprinted} of these shown):")
+            entered_other_heading = True
+
+        if numotherprinted < maxnumotherprinted or is_actually_plotted:
+            integemiss = abs(integrate_module.trapezoid(row.array_flambda_emission, x=arraylambda_angstroms))
+            integabsorp = abs(integrate_module.trapezoid(-row.array_flambda_absorption, x=arraylambda_angstroms))
+            if integabsorp > 0.0 and integemiss > 0.0:
+                print(
+                    f"{row.fluxcontrib:.1e}, emission {integemiss:.1e}, "
+                    f"absorption {integabsorp:.1e} [erg/s/cm^2]: '{row.linelabel}'"
+                )
+            elif integemiss > 0.0:
+                print(f"  emission {integemiss:.1e} [erg/s/cm^2]: '{row.linelabel}'")
+            else:
+                print(f"absorption {integabsorp:.1e} [erg/s/cm^2]: '{row.linelabel}'")
+
+            if not is_actually_plotted:
+                numotherprinted += 1
+
+    if not fixedionlist:
+        cmdarg = "'" + "' '".join(plotted_ion_list) + "'"
+        print("To reuse this ion/process contribution list, pass the following command-line argument: ")
+        print(f"     -fixedionlist {cmdarg}")
+        print("Or in python: ")
+        print(f"     fixedionlist={plotted_ion_list}")
 
 
 def print_integrated_flux(

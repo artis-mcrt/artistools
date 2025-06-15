@@ -27,7 +27,9 @@ COMMANDS = [
     "plotartisviewingangles",
 ]
 
-type CommandType = dict[str, tuple[str, str] | "CommandType"]
+# type CommandType = dict[str, tuple[str, str] | "CommandType"] # Python 3.12+
+CommandType = t.Dict[str, t.Union[t.Tuple[str, str], "CommandType"]]
+
 
 # new subparser based list
 subcommandtree: CommandType = {

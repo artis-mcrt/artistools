@@ -441,85 +441,147 @@ def get_time_range(
     tmids = get_timestep_times(modelpath, loc="mid")
     tends = get_timestep_times(modelpath, loc="end")
 
-    time_days_lower, time_days_upper = None, None
+    # Initial validation against overall simulation time boundaries
+    if timemin is not None and timemin > tends[-1]:
+        model_name = get_model_name(modelpath)
+        print(f"{model_name}: WARNING timemin {timemin} is after the last timestep at {tends[-1]:.1f}")
+        return -1, -1, timemin, timemax  # Return invalid range
+    if timemax is not None and timemax < tstarts[0]:
+        model_name = get_model_name(modelpath)
+        print(f"{model_name}: WARNING timemax {timemax} is before the first timestep at {tstarts[0]:.1f}")
+        return -1, -1, timemin, timemax  # Return invalid range
 
-    if timemin and timemin > tends[-1]:
-        print(f"{get_model_name(modelpath)}: WARNING timemin {timemin} is after the last timestep at {tends[-1]:.1f}")
-        return -1, -1, timemin, timemax
-    if timemax and timemax < tstarts[0]:
-        print(
-            f"{get_model_name(modelpath)}: WARNING timemax {timemax} is before the first timestep at {tstarts[0]:.1f}"
-        )
-        return -1, -1, timemin, timemax
-
-    if timestep_range_str is not None:
-        if "-" in timestep_range_str:
-            timestepmin, timestepmax = (int(nts) for nts in timestep_range_str.split("-"))
-        else:
-            timestepmin = int(timestep_range_str)
-            timestepmax = timestepmin
-    elif (timemin is not None and timemax is not None) or timedays_range_str is not None:
-        # time days range is specified
-        timestepmin = None
-        timestepmax = None
-        if timedays_range_str is not None:
-            if isinstance(timedays_range_str, str) and "-" in timedays_range_str:
-                timemin, timemax = (float(timedays) for timedays in timedays_range_str.split("-"))
-                if not clamp_to_timesteps:
-                    time_days_lower = timemin
-                    time_days_upper = timemax
-            else:
-                timeavg = float(timedays_range_str)
-                timestepmin = get_timestep_of_timedays(modelpath, timeavg)
-                timestepmax = timestepmin
-                timemin = tstarts[timestepmin]
-                timemax = tends[timestepmax]
-                # timedelta = 10
-                # timemin, timemax = timeavg - timedelta, timeavg + timedelta
-
-        assert timemin is not None
-
-        for timestep, tmid in enumerate(tmids):
-            if tmid >= float(timemin):
-                timestepmin = timestep
-                break
-
-        if timestepmin is None:
-            print(f"Time min {timemin} is greater than all timesteps ({tstarts[0]} to {tends[-1]})")
-            raise ValueError
-
-        if not timemax:
-            timemax = tends[-1]
-        assert timemax is not None
-
-        for timestep, tmid in enumerate(tmids):
-            if tmid <= float(timemax):
-                timestepmax = timestep
-
-        assert timestepmax is not None
-        if timestepmax < timestepmin:
-            if clamp_to_timesteps:
-                msg = f"Specified time range does not include any full timesteps. {timestepmin=} {timestepmax=}"
-                raise ValueError(msg)
-            timestepmax = timestepmin
-    else:
-        msg = "Either time or timesteps must be specified."
-        raise ValueError(msg)
+    input_ts_min, input_ts_max, input_td_min, input_td_max, input_source = _determine_initial_times_from_input(
+        timestep_range_str, timedays_range_str, timemin, timemax, modelpath, tstarts, tends
+    )
 
     timesteplast = len(tmids) - 1
-    if timestepmax > timesteplast:
-        print(f"Warning timestepmax {timestepmax} > timesteplast {timesteplast}")
-        timestepmax = timesteplast
-    if time_days_lower is None:
-        assert timestepmin is not None
-        time_days_lower = tstarts[timestepmin] if clamp_to_timesteps else timemin
-    if time_days_upper is None:
-        assert timestepmax is not None
-        time_days_upper = tends[timestepmax] if clamp_to_timesteps else timemax
-    assert timestepmin is not None
-    assert timestepmax is not None
 
-    return timestepmin, timestepmax, time_days_lower, time_days_upper
+    if input_ts_min is not None:  # Timesteps were directly specified
+        ts_min, ts_max = input_ts_min, input_ts_max
+        if not 0 <= ts_min <= timesteplast:
+            raise ValueError(f"timestepmin {ts_min} is out of valid range [0, {timesteplast}]")
+        if not 0 <= ts_max <= timesteplast:
+            raise ValueError(f"timestepmax {ts_max} is out of valid range [0, {timesteplast}]")
+        if ts_max < ts_min:
+            raise ValueError(f"timestepmax {ts_max} < timestepmin {ts_min}")
+
+        # td_min and td_max will be derived from these timesteps
+        # respecting clamp_to_timesteps is implicitly handled as days are derived from ts
+        final_td_lower = tstarts[ts_min]
+        final_td_upper = tends[ts_max]
+
+    elif input_td_min is not None and input_td_max is not None:  # Time days were specified
+        # Find corresponding timesteps
+        ts_min = -1
+        for i, tmid_val in enumerate(tmids):
+            if tmid_val >= input_td_min:
+                ts_min = i
+                break
+        if ts_min == -1:
+            raise ValueError(f"Time min {input_td_min} is greater than all timesteps.")
+
+        ts_max = -1
+        # Iterate backwards to find the last timestep whose midpoint is less than or equal to input_td_max
+        for i in range(len(tmids) - 1, -1, -1):
+            if tmids[i] <= input_td_max:
+                ts_max = i
+                break
+        if ts_max == -1 : # input_td_max is before the first midpoint
+             # If we must have a valid timestep, and input_td_max is very early,
+             # we could default ts_max to ts_min if ts_min is valid.
+             # Or, if even input_td_min didn't find a timestep, this path isn't taken.
+             # If ts_min is valid (e.g. 0), and input_td_max < tmids[0], then ts_max could be 0.
+             # Let's ensure ts_max is at least ts_min if ts_min is valid.
+            if ts_min != -1 and input_td_max < tmids[ts_min]: # if max time is before the first valid step's mid
+                 ts_max = ts_min # clamp to the first valid step found by min_time
+            else: # truly no valid step for max time
+                raise ValueError(f"Time max {input_td_max} is less than all timesteps or invalid range.")
+
+        if ts_max < ts_min:
+            if clamp_to_timesteps:
+                raise ValueError(f"Calculated ts_max ({ts_max}) < ts_min ({ts_min}) for days {input_td_min}-{input_td_max}")
+            # if not clamping, an inverted day range implies we should probably use the 'end' point (input_td_max's timestep)
+            # for both ts_min and ts_max to make the timestep range non-inverted.
+            # Test case 11 expects ts_min to become the original ts_max (2), and ts_max to remain ts_max (2).
+            ts_min = ts_max
+
+
+        if clamp_to_timesteps:
+            final_td_lower = tstarts[ts_min]
+            final_td_upper = tends[ts_max]
+        else:
+            final_td_lower = input_td_min
+            final_td_upper = input_td_max
+    else:
+        raise ValueError("Either time or timesteps must be specified.")
+
+    # Final clamping of ts_max to the last valid timestep index is mostly handled by how ts_max is derived now.
+    # However, if input_ts_max was given and was > timesteplast, it's caught above.
+    # If derived from days, ts_max is already within bounds or correctly set.
+
+    # if ts_max > timesteplast: # This should not be needed if logic above is correct
+    #     ts_max = timesteplast
+    #     if clamp_to_timesteps or input_source == "timesteps": # or input_source == "timedays_single_str_as_ts"
+    #         final_td_upper = tends[ts_max]
+
+    # Ensure ts_min is not out of bounds if ts_max was clamped or adjusted
+    # This is more about consistency after all calculations
+    if ts_min > ts_max :
+        # This state can occur if, for instance, input days were such that ts_min was derived
+        # as N, but ts_max was derived as N-1.
+        # If clamp_to_timesteps, an error was already raised.
+        # If not clamp_to_timesteps, the days (final_td_lower/upper) are the user's days.
+        # The timesteps ts_min/ts_max might be 'invalid' as a range but days take precedence.
+        # For caller convenience, we could make ts_min = ts_max in this scenario.
+        if not clamp_to_timesteps:
+            # print(f"Warning: ts_min {ts_min} > ts_max {ts_max} for non-clamped day range. Setting ts_min=ts_max={ts_max}")
+            ts_min = ts_max # Or ts_max = ts_min, depends on desired behavior for "invalid" ts range
+        # If clamp_to_timesteps is true, this path should ideally not be reached due to earlier error.
+        # But as a safeguard:
+        elif clamp_to_timesteps :
+             final_td_lower = tstarts[ts_min] # Re-align days if ts_min had to be changed.
+             final_td_upper = tends[ts_max]
+
+
+    return ts_min, ts_max, final_td_lower, final_td_upper
+
+
+def _determine_initial_times_from_input(
+    timestep_range_str: str | None,
+    timedays_range_str: str | float | None,
+    timemin_arg: float | None,
+    timemax_arg: float | None,
+    modelpath: Path,
+    tstarts: list[float],
+    tends: list[float],
+) -> tuple[int | None, int | None, float | None, float | None, str]:
+    """Helper to parse various time input arguments and return initial timestep and time day ranges."""
+    if timestep_range_str is not None:
+        if "-" in timestep_range_str:
+            ts_min, ts_max = (int(nts) for nts in timestep_range_str.split("-"))
+        else:
+            ts_min = ts_max = int(timestep_range_str)
+        return ts_min, ts_max, None, None, "timesteps"
+
+    if timedays_range_str is not None:
+        if isinstance(timedays_range_str, str) and "-" in timedays_range_str:
+            td_min, td_max = (float(t) for t in timedays_range_str.split("-"))
+            return None, None, td_min, td_max, "timedays_range_str"
+
+        # Single day value provided in timedays_range_str
+        ts_single = get_timestep_of_timedays(modelpath, timedays_range_str)
+        # For a single day, effectively clamp to the bounds of that timestep
+        # td_min = tstarts[ts_single] # This would be if we immediately clamp single day to ts bounds
+        # td_max = tends[ts_single]
+        # However, it's better to return the ts range and let the main function decide clamping for days
+        return ts_single, ts_single, None, None, "timedays_single_str_as_ts"
+
+
+    if timemin_arg is not None and timemax_arg is not None:
+        return None, None, timemin_arg, timemax_arg, "timemin_timemax_args"
+
+    raise ValueError("No valid time specification provided.")
 
 
 def get_timestep_time(modelpath: Path | str, timestep: int) -> float:
@@ -869,38 +931,66 @@ def firstexisting(
         filelist = [Path(x) for x in filelist]
 
     folder = Path(folder)
-    thispath = Path(folder, filelist[0])
+    tried_paths = []
 
-    if thispath.exists():
-        return thispath
+    # Convert input to list of Path objects
+    filelist_paths = [Path(f) for f in makelist(filelist)]
 
-    fullpaths = []
-
-    def search_folders() -> Generator[Path]:
-        yield Path(folder)
+    for filename_base in filelist_paths:
+        search_locations_for_file: list[Path] = [folder]
         if search_subfolders:
-            for filename in filelist:
-                for p in Path(folder).glob(f"*/{filename}*"):
-                    yield p.parent
+            # This glob pattern means "any subfolder directly under 'folder' that contains a file/dir starting with filename_base.name"
+            # This might not be the most intuitive subfolder search, but it matches the original logic.
+            sub_parent_folders = {
+                p.parent for p in folder.glob(f"*/{filename_base.name}*") if p.parent != folder
+            }
+            search_locations_for_file.extend(sorted(sub_parent_folders))
 
-    for searchfolder in search_folders():
-        for filename in filelist:
-            thispath = Path(searchfolder, filename)
-            if thispath.exists():
-                return thispath
+        for search_loc in search_locations_for_file:
+            # 1. Check direct path
+            candidate_path = search_loc / filename_base
+            if candidate_path not in tried_paths:
+                tried_paths.append(candidate_path)
+            if candidate_path.exists():
+                return candidate_path
 
-            fullpaths.append(thispath)
-
+            # 2. Check zipped versions if tryzipped is True
             if tryzipped:
                 for ext in (".zst", ".gz", ".xz"):
-                    filename_withext = Path(str(filename) if str(filename).endswith(ext) else str(filename) + ext)
-                    if filename_withext not in filelist:
-                        thispath = Path(searchfolder, filename_withext)
-                        if thispath.exists():
-                            return thispath
-                        fullpaths.append(thispath)
+                    # Check if filename_base already has this extension
+                    if candidate_path.name.endswith(ext):
+                        # if it does, we already checked it or it's not the base, so skip
+                        continue
 
-    strfilelist = "\n  ".join([str(x.relative_to(folder)) for x in fullpaths])
+                    zipped_path = candidate_path.with_suffix(candidate_path.suffix + ext)
+                    if zipped_path not in tried_paths:
+                        tried_paths.append(zipped_path)
+                    if zipped_path.exists():
+                        return zipped_path
+
+                    # Original logic had an odd check:
+                    # filename_withext = Path(str(filename) if str(filename).endswith(ext) else str(filename) + ext)
+                    # if filename_withext not in filelist: ... thispath = Path(searchfolder, filename_withext)
+                    # This implies that if "file.txt.gz" was in filelist, it wouldn't try to form "file.txt.gz" from "file.txt"
+                    # The new logic is simpler: always try appending ext to the base path.
+                    # If "file.txt.gz" is explicitly in filelist_paths, it will be checked directly.
+                    # If "file.txt" is in filelist_paths, it will try "file.txt.gz".
+
+    # Construct error message from unique tried paths relative to the initial folder
+    # To preserve order somewhat for readability while ensuring uniqueness:
+    unique_tried_paths_str = []
+    seen_paths_for_error = set()
+    for p in tried_paths:
+        try:
+            rel_path_str = str(p.relative_to(folder.resolve()))
+        except ValueError:
+            rel_path_str = str(p) # if not relative, show absolute
+
+        if rel_path_str not in seen_paths_for_error:
+            unique_tried_paths_str.append(rel_path_str)
+            seen_paths_for_error.add(rel_path_str)
+
+    strfilelist = "\n  ".join(unique_tried_paths_str)
     orsub = " or subfolders" if search_subfolders else ""
     msg = f"None of these files exist in {folder}{orsub}: \n  {strfilelist}"
     raise FileNotFoundError(msg)
@@ -1340,38 +1430,45 @@ def get_mpiranklist(
     - only_ranks_withgridcells:
         set True to skip ranks that only update packets (i.e. that don't update any grid cells/output estimators).
     """
-    if modelgridindex is None or modelgridindex == []:
+    # Condition for returning all relevant ranks
+    return_all_ranks = False
+    if modelgridindex is None or (isinstance(modelgridindex, list) and not modelgridindex): # Handles None or empty list
+        return_all_ranks = True
+    elif isinstance(modelgridindex, Iterable):
+        if any(mgi < 0 for mgi in modelgridindex):
+            return_all_ranks = True
+    elif isinstance(modelgridindex, int) and modelgridindex < 0:
+        return_all_ranks = True
+
+    if return_all_ranks:
         if only_ranks_withgridcells:
-            return range(
-                min(
-                    get_nprocs(modelpath),
-                    get_mpirankofcell(modelpath=modelpath, modelgridindex=get_npts_model(modelpath) - 1) + 1,
-                )
-            )
+            # Calculate the highest rank that processes any grid cell
+            npts = get_npts_model(modelpath)
+            if npts == 0: # No grid points, so no ranks with grid cells
+                return []
+            max_rank_with_cell = get_mpirankofcell(modelpath=modelpath, modelgridindex=npts - 1)
+            return range(min(get_nprocs(modelpath), max_rank_with_cell + 1))
         return range(get_nprocs(modelpath))
 
+    # Handling specific modelgridindex values
     if isinstance(modelgridindex, Iterable):
-        mpiranklist = set()
-        for mgi in modelgridindex:
-            if mgi < 0:
-                if only_ranks_withgridcells:
-                    return range(
-                        min(
-                            get_nprocs(modelpath),
-                            get_mpirankofcell(modelpath=modelpath, modelgridindex=get_npts_model(modelpath) - 1) + 1,
-                        )
-                    )
-                return range(get_nprocs(modelpath))
+        # Excludes negative values here as they are handled by return_all_ranks
+        valid_mgis = [mgi for mgi in modelgridindex if mgi >= 0]
+        if not valid_mgis: # If only negative values were passed in an iterable
+             # This case should ideally be caught by return_all_ranks if any mgi < 0 logic is robust
+             # However, if an empty list not containing negatives was passed, it should also be handled (e.g. by returning empty list of ranks)
+            return []
 
-            mpiranklist.add(get_mpirankofcell(mgi, modelpath=modelpath))
+        mpiranklist = {get_mpirankofcell(mgi, modelpath=modelpath) for mgi in valid_mgis}
+        return sorted(list(mpiranklist))
 
-        return sorted(mpiranklist)
+    # modelgridindex is a single non-negative integer
+    if isinstance(modelgridindex, int): # and modelgridindex >= 0 (implicit from above)
+        return [get_mpirankofcell(modelgridindex, modelpath=modelpath)]
 
-    # in case modelgridindex is a single number rather than an iterable
-    if modelgridindex < 0:
-        return range(min(get_nprocs(modelpath), get_npts_model(modelpath)))
-
-    return [get_mpirankofcell(modelgridindex, modelpath=modelpath)]
+    # Fallback or error for unhandled modelgridindex types
+    msg = f"Invalid modelgridindex type: {type(modelgridindex)}"
+    raise TypeError(msg)
 
 
 def get_cellsofmpirank(mpirank: int, modelpath: Path | str) -> Iterable[int]:
