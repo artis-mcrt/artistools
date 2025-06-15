@@ -87,64 +87,57 @@ def set_axis_properties(ax: Iterable[mplax.Axes] | mplax.Axes, args: argparse.Na
     if "labelfontsize" not in args:
         args.labelfontsize = 18
 
-    if isinstance(ax, Iterable):
-        for axis in ax:
-            axis.minorticks_on()
-            axis.tick_params(
-                axis="both",
-                which="minor",
-                top=True,
-                right=True,
-                length=5,
-                width=2,
-                labelsize=args.labelfontsize,
-                direction="in",
-            )
-            axis.tick_params(
-                axis="both",
-                which="major",
-                top=True,
-                right=True,
-                length=8,
-                width=2,
-                labelsize=args.labelfontsize,
-                direction="in",
-            )
-
-    else:
-        ax.minorticks_on()
-        ax.tick_params(
+    def _apply_params_to_axis(axis_obj: mplax.Axes, args_namespace: argparse.Namespace) -> None:
+        axis_obj.minorticks_on()
+        axis_obj.tick_params(
             axis="both",
             which="minor",
             top=True,
             right=True,
             length=5,
             width=2,
-            labelsize=args.labelfontsize,
+            labelsize=args_namespace.labelfontsize,
             direction="in",
         )
-        ax.tick_params(
+        axis_obj.tick_params(
             axis="both",
             which="major",
             top=True,
             right=True,
             length=8,
             width=2,
-            labelsize=args.labelfontsize,
+            labelsize=args_namespace.labelfontsize,
             direction="in",
         )
 
-    if "ymin" in args or "ymax" in args:
-        plt.ylim(args.ymin, args.ymax)
-    if "xmin" in args or "xmax" in args:
-        plt.xlim(args.xmin, args.xmax)
+        if hasattr(args_namespace, "ymin") and hasattr(args_namespace, "ymax") and \
+           (args_namespace.ymin is not None or args_namespace.ymax is not None):
+            axis_obj.set_ylim(args_namespace.ymin, args_namespace.ymax)
 
-    if getattr(args, "logscalex", False):
-        plt.xscale("log")
-    if getattr(args, "logscaley", False):
-        plt.yscale("log")
+        if hasattr(args_namespace, "xmin") and hasattr(args_namespace, "xmax") and \
+           (args_namespace.xmin is not None or args_namespace.xmax is not None):
+            axis_obj.set_xlim(args_namespace.xmin, args_namespace.xmax)
 
-    plt.minorticks_on()
+        if getattr(args_namespace, "logscalex", False):
+            axis_obj.set_xscale("log")
+        if getattr(args_namespace, "logscaley", False):
+            axis_obj.set_yscale("log")
+
+        # axis_obj.minorticks_on() # Already called at the beginning of this helper
+
+    if isinstance(ax, Iterable):
+        for single_ax in ax:
+            _apply_params_to_axis(single_ax, args)
+    else:
+        _apply_params_to_axis(ax, args)
+
+    # The global plt.minorticks_on() might be redundant now or could be removed if all axes are handled.
+    # For safety, if ax was not an iterable and thus plt was the main interface, it might still be relevant.
+    # However, best practice is to operate on axis objects.
+    # If ax is a single axis, _apply_params_to_axis already called minorticks_on.
+    # If ax is an iterable, all its elements had minorticks_on called.
+    # So, the final global plt.minorticks_on() is likely not needed.
+    # plt.minorticks_on()
     return ax
 
 
