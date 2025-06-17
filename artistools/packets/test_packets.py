@@ -13,7 +13,7 @@ def test_directionbins() -> None:
     phibinlowers, phibinuppers, _ = at.get_phi_bins(usedegrees=False)
 
     testdirections = pl.DataFrame({"phi_defined": np.linspace(0.1, 2 * math.pi, nphibins * 2, endpoint=False)}).join(
-        pl.DataFrame({"costheta_defined": np.linspace(0.0, 1.0, ncosthetabins * 2, endpoint=False)}), how="cross"
+        pl.DataFrame({"costheta_defined": np.linspace(0.0, 1.0, ncosthetabins * 2, endpoint=True)}), how="cross"
     )
 
     syn_dir = (0, 0, 1)
@@ -30,8 +30,9 @@ def test_directionbins() -> None:
         assert np.isclose(pkt["dirx"] ** 2 + pkt["diry"] ** 2 + pkt["dirz"] ** 2, 1.0, rtol=0.001)
 
         assert np.isclose(pkt["costheta_defined"], pkt["costheta"], rtol=1e-4, atol=1e-4)
+        pktdir_plusminus_z = np.isclose(pkt["dirz"], 1.0) or np.isclose(pkt["dirz"], -1.0)
 
-        assert np.isclose(pkt["phi_defined"], pkt["phi"], rtol=1e-4, atol=1e-4)
+        assert np.isclose(pkt["phi_defined"], pkt["phi"], rtol=1e-4, atol=1e-4) or pktdir_plusminus_z
 
         dirbin2 = at.packets.get_directionbin(
             pkt["dirx"], pkt["diry"], pkt["dirz"], nphibins=nphibins, ncosthetabins=ncosthetabins, syn_dir=syn_dir
@@ -39,14 +40,14 @@ def test_directionbins() -> None:
 
         assert dirbin2 == pkt["dirbin"]
 
-        assert pkt["costhetabin"] == dirbin2 // nphibins
-        assert pkt["phibin"] == dirbin2 % nphibins
-
         assert costhetabinlowers[pkt["costhetabin"]] <= pkt["costheta_defined"] * 1.01
         assert costhetabinuppers[pkt["costhetabin"]] > pkt["costheta_defined"] * 0.99
 
-        assert phibinlowers[pkt["phibin"]] <= pkt["phi_defined"]
-        assert phibinuppers[pkt["phibin"]] >= pkt["phi_defined"]
+        assert pkt["costhetabin"] == dirbin2 // nphibins
+        assert pkt["phibin"] == dirbin2 % nphibins
+
+        assert phibinlowers[pkt["phibin"]] <= pkt["phi_defined"] or pktdir_plusminus_z
+        assert phibinuppers[pkt["phibin"]] >= pkt["phi_defined"] or pktdir_plusminus_z
 
         # print(dirx, diry, dirz, dirbin, costhetabin, phibin)
 
@@ -59,11 +60,14 @@ def test_directionbins() -> None:
         assert isinstance(row.phi_defined, float)
         assert isinstance(row.costheta, float)
         assert isinstance(row.phi, float)
+        assert isinstance(row.dirz, float)
+        pktdir_plusminus_z = np.isclose(row.dirz, 1.0) or np.isclose(row.dirz, -1.0)
         assert math.isclose(row.costheta_defined, row.costheta, rel_tol=1e-4, abs_tol=1e-4)
-        assert math.isclose(row.phi_defined, row.phi, rel_tol=1e-4, abs_tol=1e-4)
+        assert math.isclose(row.phi_defined, row.phi, rel_tol=1e-4, abs_tol=1e-4) or pktdir_plusminus_z
 
         assert isinstance(row.dirbin, int)
-        assert math.isclose(testdirections.item(row[0], "dirbin"), row.dirbin, rel_tol=1e-4, abs_tol=1e-4)
+        expected_dirbin = testdirections.item(row[0], "dirbin")
+        assert expected_dirbin == row.dirbin, f"Expected {expected_dirbin}, got {row.dirbin}"
 
 
 def test_get_virtual_packets_pl() -> None:
