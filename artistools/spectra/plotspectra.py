@@ -1047,11 +1047,10 @@ def make_contrib_plot(
     )
     import artistools.estimators as atestimators
     import artistools.packets as atpackets
-    from artistools.inputmodel import get_modeldata_pandas
-
-    modeldata, _ = get_modeldata_pandas(modelpath)
 
     if args.classicartis:
+        from artistools.inputmodel import get_modeldata_pandas
+
         modeldata, _ = get_modeldata_pandas(modelpath)
         estimators = atestimators.estimators_classic.read_classic_estimators(modelpath, modeldata)
         allnonemptymgilist = list(modeldata.index)
@@ -1280,8 +1279,6 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[t.An
         args.outputfile = defaultoutputfile
     elif not Path(args.outputfile).suffixes:
         args.outputfile /= defaultoutputfile
-
-    # plt.text(6000, (args.ymax * 0.9), f'{round(args.timemin) + 1} days', fontsize='large')
 
     assert dfalldata is not None
     return fig, axes, dfalldata
