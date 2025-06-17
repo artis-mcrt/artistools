@@ -648,21 +648,25 @@ def get_directionbin(
     dirmag = np.sqrt(dirx**2 + diry**2 + dirz**2)
     pkt_dir = [dirx / dirmag, diry / dirmag, dirz / dirmag]
     costheta = np.dot(pkt_dir, syn_dir)
-    costhetabin = int((costheta + 1.0) / 2.0 * ncosthetabins)
+    costhetabin = min(int((costheta + 1.0) / 2.0 * ncosthetabins), ncosthetabins - 1)
 
-    xhat = np.array([1.0, 0.0, 0.0])
     vec1 = np.cross(pkt_dir, syn_dir)
-    vec2 = np.cross(xhat, syn_dir)
-    cosphi = np.dot(vec1, vec2) / at.vec_len(vec1) / at.vec_len(vec2)
+    if at.vec_len(vec1) == 0.0:
+        # if the direction is parallel to the syn_dir, we cannot determine phi
+        phibin = 0
+    else:
+        xhat = np.array([1.0, 0.0, 0.0])
+        vec2 = np.cross(xhat, syn_dir)
+        cosphi = np.dot(vec1, vec2) / at.vec_len(vec1) / at.vec_len(vec2)
 
-    vec3 = np.cross(vec2, syn_dir)
-    testphi = np.dot(vec1, vec3)
+        vec3 = np.cross(vec2, syn_dir)
+        testphi = np.dot(vec1, vec3)
 
-    phibin = (
-        int(math.acos(cosphi) / 2.0 / math.pi * nphibins)
-        if testphi > 0
-        else int((math.acos(cosphi) + math.pi) / 2.0 / math.pi * nphibins)
-    )
+        phibin = (
+            int(math.acos(cosphi) / 2.0 / math.pi * nphibins)
+            if testphi > 0
+            else int((math.acos(cosphi) + math.pi) / 2.0 / math.pi * nphibins)
+        )
 
     return (costhetabin * nphibins) + phibin
 
@@ -746,7 +750,9 @@ def bin_packet_directions_lazypolars(
         ncosthetabins = at.get_viewingdirection_costhetabincount()
 
     dfpackets = dfpackets.with_columns(
-        ((pl.col("costheta") + 1) / 2.0 * ncosthetabins).fill_nan(0.0).cast(pl.Int32).alias("costhetabin")
+        pl.min_horizontal(
+            ((pl.col("costheta") + 1) / 2.0 * ncosthetabins).fill_nan(0).cast(pl.Int32), ncosthetabins - 1
+        ).alias("costhetabin")
     )
 
     if phibintype == "phibinmonotonicasc":
@@ -761,7 +767,7 @@ def bin_packet_directions_lazypolars(
                 .then(pl.col("cosphi").arccos() / (2 * math.pi) * nphibins)
                 .otherwise((pl.col("cosphi").arccos() + math.pi) / (2 * math.pi) * nphibins)
             )
-            .fill_nan(0.0)
+            .fill_nan(0)
             .cast(pl.Int32)
             .alias("phibin")
         ).with_columns((pl.col("costhetabin") * nphibins + pl.col("phibin")).cast(pl.Int32).alias("dirbin"))
@@ -786,7 +792,7 @@ def bin_packet_directions(dfpackets: pd.DataFrame) -> pd.DataFrame:
     pktdirvecs /= np.array([dirmags, dirmags, dirmags]).transpose()
 
     costheta = np.dot(pktdirvecs, syn_dir)
-    arr_costhetabin = ((costheta + 1) / 2.0 * ncosthetabins).astype(int)
+    arr_costhetabin = np.clip(((costheta + 1) / 2.0 * ncosthetabins).astype(int), 0, ncosthetabins - 1)
     dfpackets["costhetabin"] = arr_costhetabin
 
     arr_vec1 = np.cross(pktdirvecs, syn_dir)
@@ -799,12 +805,18 @@ def bin_packet_directions(dfpackets: pd.DataFrame) -> pd.DataFrame:
     arr_phibin[filta] = np.arccos(arr_cosphi[filta]) / 2.0 / math.pi * nphibins
     filtb = np.invert(filta)
     arr_phibin[filtb] = (np.arccos(arr_cosphi[filtb]) + math.pi) / 2.0 / math.pi * nphibins
+    arr_phibin = np.clip(arr_phibin, 0, nphibins - 1)
     dfpackets["phibin"] = arr_phibin
     dfpackets["arccoscosphi"] = np.arccos(arr_cosphi)
 
     dfpackets["dirbin"] = (arr_costhetabin * nphibins) + arr_phibin
 
-    assert np.all(dfpackets["dirbin"] < at.get_viewingdirectionbincount())
+    assert np.all(dfpackets["costhetabin"] >= 0)
+    assert np.all(dfpackets["costhetabin"] < ncosthetabins)
+    assert np.all(dfpackets["phibin"] >= 0)
+    assert np.all(dfpackets["phibin"] < nphibins)
+    assert np.all(dfpackets["dirbin"] >= 0)
+    assert np.all(dfpackets["dirbin"] < (nphibins * ncosthetabins))
 
     return dfpackets
 
