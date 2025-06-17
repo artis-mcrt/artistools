@@ -434,7 +434,7 @@ def get_time_range(
     timemax: float | None = None,
     timedays_range_str: str | float | None = None,
     clamp_to_timesteps: bool = True,
-) -> tuple[int, int, float | None, float | None]:
+) -> tuple[int, int, float, float]:
     """Handle a time range specified in either days or timesteps."""
     # assertions make sure time is specified either by timesteps or times in days, but not both!
     tstarts = get_timestep_times(modelpath, loc="start")
@@ -445,12 +445,12 @@ def get_time_range(
 
     if timemin and timemin > tends[-1]:
         print(f"{get_model_name(modelpath)}: WARNING timemin {timemin} is after the last timestep at {tends[-1]:.1f}")
-        return -1, -1, timemin, timemax
+        return -1, -1, -math.inf, -math.inf
     if timemax and timemax < tstarts[0]:
         print(
             f"{get_model_name(modelpath)}: WARNING timemax {timemax} is before the first timestep at {tstarts[0]:.1f}"
         )
-        return -1, -1, timemin, timemax
+        return -1, -1, -math.inf, -math.inf
 
     if timestep_range_str is not None:
         if "-" in timestep_range_str:
@@ -518,6 +518,8 @@ def get_time_range(
         time_days_upper = tends[timestepmax] if clamp_to_timesteps else timemax
     assert timestepmin is not None
     assert timestepmax is not None
+    assert time_days_lower is not None
+    assert time_days_upper is not None
 
     return timestepmin, timestepmax, time_days_lower, time_days_upper
 

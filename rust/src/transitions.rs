@@ -1,5 +1,5 @@
 use pyo3::types::{IntoPyDict, PyDict};
-use pyo3::{prelude::*, IntoPyObject};
+use pyo3::{IntoPyObject, prelude::*};
 extern crate core;
 extern crate polars;
 extern crate rayon;
