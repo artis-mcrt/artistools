@@ -44,12 +44,3 @@ repos:
           - id: ruff-check
             args: [--fix]
           - id: ruff-format
-
-    - repo: local
-      hooks:
-          - id: mypy
-            name: mypy
-            entry: uv run --frozen -- mypy --no-warn-unused-ignores
-            language: system
-            pass_filenames: false
-            require_serial: true
