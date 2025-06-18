@@ -86,7 +86,9 @@ def parse_phixsdata(
     with at.zopen(phixs_filename) as fphixs:
         nphixspoints = int(fphixs.readline())
         phixsnuincrement = float(fphixs.readline())
-        xgrid = np.linspace(1.0, 1.0 + phixsnuincrement * nphixspoints, num=nphixspoints, endpoint=False)
+        xgrid = np.linspace(
+            1.0, 1.0 + phixsnuincrement * nphixspoints, num=nphixspoints, endpoint=False, dtype=np.float64
+        )
         for line in fphixs:
             if not line.strip():
                 continue
@@ -113,7 +115,9 @@ def parse_phixsdata(
 
             if not ionlist or (Z, lowerion_stage) in ionlist:
                 phixslist = [float(fphixs.readline()) * 1e-18 for _ in range(nphixspoints)]
-                phixstable = np.array(list(zip(xgrid, phixslist, strict=False)))
+                phixstable = np.array(
+                    zip(xgrid, phixslist, strict=True), dtype=[("x", np.float64), ("sigma_cm2", np.float32)]
+                )
 
                 phixsdict[Z, lowerion_stage, lowerionlevel] = (nptargetlist, phixstable)
 
