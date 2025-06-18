@@ -116,7 +116,7 @@ def parse_phixsdata(
             if not ionlist or (Z, lowerion_stage) in ionlist:
                 phixslist = [float(fphixs.readline()) * 1e-18 for _ in range(nphixspoints)]
                 phixstable = np.array(
-                    zip(xgrid, phixslist, strict=True), dtype=[("x", np.float64), ("sigma_cm2", np.float32)]
+                    list(zip(xgrid, phixslist, strict=True)), dtype=[("x", np.float64), ("sigma_cm2", np.float32)]
                 )
 
                 phixsdict[Z, lowerion_stage, lowerionlevel] = (nptargetlist, phixstable)
