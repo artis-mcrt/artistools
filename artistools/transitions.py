@@ -186,7 +186,7 @@ def make_plot(
     ]
     axislabels += ["Total"]
 
-    for axis, axislabel in zip(axes, axislabels, strict=False):
+    for axis, axislabel in zip(axes, axislabels, strict=True):
         axis.annotate(
             axislabel,
             xy=(0.99, 0.96),
