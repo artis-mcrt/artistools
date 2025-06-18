@@ -5,7 +5,6 @@ on:
     push:
         branches:
             - main
-    merge_group:
     pull_request:
     workflow_dispatch:
     repository_dispatch:
