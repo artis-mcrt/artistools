@@ -1,7 +1,6 @@
 import argparse
 import functools
 import io
-import itertools
 import math
 import multiprocessing
 import multiprocessing.pool
@@ -920,22 +919,6 @@ def anyexist(
         return None
 
     return filepath
-
-
-def batched(iterable: Iterable[t.Any], n: int) -> Generator[list[t.Any], t.Any]:
-    """Batch data into iterators of length n. The last batch may be shorter."""
-    # batched('ABCDEFG', 3) --> ABC DEF G
-    if n < 1:
-        msg = "n must be at least one"
-        raise ValueError(msg)
-    it = iter(iterable)
-    while True:
-        chunk_it = itertools.islice(it, n)
-        try:
-            first_el = next(chunk_it)
-        except StopIteration:
-            return
-        yield list(itertools.chain((first_el,), chunk_it))
 
 
 def stripallsuffixes(f: Path) -> Path:
