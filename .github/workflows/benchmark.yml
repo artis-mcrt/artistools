@@ -14,9 +14,7 @@ jobs:
     codspeed-benchmarks:
         timeout-minutes: 180
         runs-on: ubuntu-24.04
-        strategy:
-            matrix:
-                shard: [1, 2, 3, 4, 5]
+
         name: codspeed benchmarks
         steps:
             - name: Checkout Code
@@ -66,4 +64,4 @@ jobs:
               uses: CodSpeedHQ/action@v3
               with:
                   token: ${{ secrets.CODSPEED_TOKEN }}
-                  run: uv run --frozen -- pytest --codspeed --test-group=${{ matrix.shard }} --test-group-count=5
+                  run: uv run --frozen -- pytest --codspeed
