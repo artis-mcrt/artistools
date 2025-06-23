@@ -165,7 +165,7 @@ def get_grid(
         i4 = np.where(dynidall == i1)[0]  # indices in Zeweis extended list of trajs.
         # if len(i2)<nsplit:
         #     print('missing dyn ejecta at i=',i,len(i2))
-        weights = dat.f.mass[i4] * msol / (np.sum(dat.f.mass[i2]) * msol)
+        weights = dat.f.mass[i4] * msol / (np.sum(dat.f.mass[i4]) * msol)
         xtraj[i, :] = np.sum(weights * xiso0[i4, :].T, axis=1)
         # ttraj[i] = sum(weights * dattem.f.T9[i2] * 1e9)
         qtraj[i] = np.sum(dat.f.qdot[i4]) * msol
@@ -200,12 +200,16 @@ def get_grid(
     pos_rcyl_mid = pos_rcyl_min + 0.5 * wid_init_rcyl
     pos_rcyl_max = pos_rcyl_min + wid_init_rcyl
 
-    wid_init_z = 2 * vmax_cmps * tsnap / nvz
-    pos_z_min = np.array([-vmax_cmps * tsnap + 2.0 * vmax_cmps * tsnap / nvz * nz for nz in range(nvz)])
+    wid_init_z = (2.0 / eqsymfac) * vmax_cmps * tsnap / nvz
+    if eqsymfac == 1:
+        pos_z_min = np.array([-vmax_cmps * tsnap + 2.0 * vmax_cmps * tsnap / nvz * nz for nz in range(nvz)])
+    else:
+        pos_z_min = np.array([vmax_cmps * tsnap / nvz * nz for nz in range(nvz)])
     pos_z_mid = pos_z_min + 0.5 * wid_init_z
     # pos_z_max = pos_z_min + wid_init_z
 
     rgridc2d = np.array([pos_rcyl_mid[n_r] for n_r in range(nvr) for n_z in range(nvz)]).reshape(nvr, nvz)
+    # the z-grid has to be shifted to starting from zero to keep consistency with Oli's script
     zgridc2d = np.array([pos_z_mid[n_z] for n_r in range(nvr) for n_z in range(nvz)]).reshape(nvr, nvz)
 
     volgrid2d = np.array([
