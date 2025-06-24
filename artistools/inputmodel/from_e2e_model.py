@@ -114,20 +114,26 @@ def get_grid(
     yetraj = np.zeros(ntraj)  # initial electron fraction
 
     time_s = dat.f.time
+    starting_idx = (np.abs(time_s - 0.1)).argmin()
     closest_idx = (np.abs(time_s - tsnap)).argmin()
     i = -1
+    tot_Q_rel = 0
 
     # first get masses and see if they have to be set to zero if the corresponding ejecta types shall be excluded
     # also set to integrated energy release up to snapshot time to zero
 
     # ... non-dynamical ejecta
-    for i1 in nodid:  # index of Oli Just's original list
+    for i1 in nodid:  # index of Oli's original list
         i += 1  # index in the new list accounting for unprocessed trajs.
         i2 = list(dynidall).index(i1)  # index in Zeweis extended list of trajs.
         mtraj[i] = dat.f.mass[i2] * msol
-        qtraj[i] = np.sum(
-            dat.f.qdot[i2][:closest_idx]
-        )  # no multiplication with mass to keep it a specific energy release
+        # no multiplication with mass to keep it a specific energy release
+        time_by_t_snap = time_s / tsnap
+        qtraj[i] = np.trapezoid(
+            time_by_t_snap[starting_idx:closest_idx] * dat.f.qdot[i2][starting_idx:closest_idx],
+            time_s[starting_idx:closest_idx],
+        )
+        tot_Q_rel += mtraj[i] * qtraj[i]
     if nohmns:
         # exclude HMNS ejecta
         mtraj[np.where(state == 0)] = 1e-15
@@ -142,20 +148,24 @@ def get_grid(
         i += 1  # index in the new list accounting for unprocessed trajs.
         i3 = np.where(dynidall == i1)[0]  # indices in Zeweis extended list of trajs.
         mtraj[i] = np.sum(dat.f.mass[i3]) * msol
-        qtraj[i] = np.sum(np.sum(dat.f.qdot[i3][:closest_idx]))
+        time_by_t_snap = time_s / tsnap
+        qtraj[i] = np.trapezoid(
+            time_by_t_snap[starting_idx:closest_idx] * np.sum(dat.f.qdot[i3], axis=0)[starting_idx:closest_idx],
+            time_s[starting_idx:closest_idx],
+        )
+        tot_Q_rel += mtraj[i] * qtraj[i]
     if nodynej:
         # exclude dynamical ejecta
         mtraj[np.where(state == -1)] = 1e-15
         qtraj[np.where(state == -1)] = 1e-15
-
+    print(f"tot_Q_rel: {tot_Q_rel}")
     i = -1
     # ... non-dynamical ejecta
-    for i1 in nodid:  # index of my original list
+    for i1 in nodid:  # index of Oli's original list
         i += 1  # index in the new list accounting for unprocessed trajs.
         i2 = list(dynidall).index(i1)  # index in Zeweis extended list of trajs.
         xtraj[i, :] = xiso0[i2, :]
         # ttraj[i] = dattem.f.T9[i2] * 1e9
-        qtraj[i] = np.sum(dat.f.qdot[i2]) * msol
         yetraj[i] = dat.f.t5out[i2, 4]
         vtraj[i] = dat.f.pos[i2, 0]
         atraj[i] = dat.f.pos[i2, 1]
@@ -168,7 +178,6 @@ def get_grid(
         weights = dat.f.mass[i4] * msol / (np.sum(dat.f.mass[i4]) * msol)
         xtraj[i, :] = np.sum(weights * xiso0[i4, :].T, axis=1)
         # ttraj[i] = sum(weights * dattem.f.T9[i2] * 1e9)
-        qtraj[i] = np.sum(dat.f.qdot[i4]) * msol
         # yetraj[i] = np.sum(weights * ye_summ_file[int(i1)])
         yetraj[i] = np.sum(weights * dat.f.t5out[i4, 4])
         vtraj[i] = np.sum(weights * dat.f.pos[i4, 0])
