@@ -137,7 +137,8 @@ def read_modelfile_text(
             assert (ncols_line_even + ncols_line_odd) == len(columns)
             onelinepercellformat = False
 
-    if onelinepercellformat and "  " not in data_line_even and "  " not in data_line_odd and not getheadersonly:
+    nrows_read = 1 if getheadersonly else npts_model
+    if onelinepercellformat and "  " not in data_line_even and "  " not in data_line_odd:
         if not printwarningsonly:
             print("  using fast method polars.read_csv (requires one line per cell and single space delimiters)")
 
@@ -146,14 +147,14 @@ def read_modelfile_text(
             separator=" ",
             comment_prefix="#",
             new_columns=columns,
-            n_rows=npts_model,
+            n_rows=nrows_read,
             has_header=False,
             skip_rows=numheaderrows,
             schema={col: pl.Int32 if col == "inputcellid" else pl.Float32 for col in columns},
             truncate_ragged_lines=True,
         ).lazy()
+
     else:
-        nrows_read = 1 if getheadersonly else npts_model
         skiprows: list[int] | int = (
             numheaderrows
             if onelinepercellformat
@@ -169,7 +170,7 @@ def read_modelfile_text(
 
         # each cell takes up two lines in the model file
         dfmodelpd = pd.read_csv(
-            filename,
+            zopen(filename, mode="r"),
             sep=r"\s+",
             engine="c",
             header=None,
@@ -179,7 +180,6 @@ def read_modelfile_text(
             nrows=nrows_read,
             dtype=dtypes,
             dtype_backend="pyarrow",
-            memory_map=True,
         )
 
         if ncols_line_odd > 0 and not onelinepercellformat:
