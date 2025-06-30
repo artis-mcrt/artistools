@@ -6,6 +6,7 @@ Examples are temperatures, populations, and heating/cooling rates.
 
 import argparse
 import contextlib
+import datetime
 import itertools
 import tempfile
 import time
@@ -98,10 +99,15 @@ def get_rankbatch_parquetfile(
     folderpath = Path(folderpath)
     parquetfilename = f"estimbatch{batchindex:02d}_{batch_mpiranks[0]:04d}_{batch_mpiranks[-1]:04d}.out.parquet.tmp"
     parquetfilepath = folderpath / parquetfilename
+    textsource_mtime = next(folderpath.glob("estimators_????.out*")).stat().st_mtime
+    assert len(batch_mpiranks) == max(batch_mpiranks) - min(batch_mpiranks) + 1, (
+        "batch_mpiranks must be a contiguous range of ranks"
+    )
+    assert len(set(batch_mpiranks)) == len(batch_mpiranks), "batch_mpiranks must not contain duplicates"
 
     if not parquetfilepath.exists():
         generate_parquet = True
-    elif next(folderpath.glob("estimators_????.out*")).stat().st_mtime > parquetfilepath.stat().st_mtime:
+    elif textsource_mtime > parquetfilepath.stat().st_mtime:
         print(
             f"  {parquetfilepath.relative_to(modelpath.parent)} is older than the estimator text files. File will be deleted and regenerated..."
         )
@@ -112,26 +118,18 @@ def get_rankbatch_parquetfile(
 
     if generate_parquet:
         print(f"  generating {parquetfilepath.relative_to(modelpath.parent)}...")
-        estfilepaths = []
-        for mpirank in batch_mpiranks:
-            # not worth printing an error, because ranks with no cells to update do not produce an estimator file
-            with contextlib.suppress(FileNotFoundError):
-                estfilepaths.append(
-                    at.firstexisting(f"estimators_{mpirank:04d}.out", folder=folderpath, tryzipped=True)
-                )
 
         time_start = time.perf_counter()
 
         print(
-            f"    reading {len(estfilepaths)} estimator files in {folderpath.relative_to(Path(folderpath).parent)}...",
+            f"    reading {len(batch_mpiranks)} estimator files in {folderpath.relative_to(Path(folderpath).parent)}...",
             end="",
             flush=True,
         )
 
         pldf_batch = at.rustext.estimparse(str(folderpath), min(batch_mpiranks), max(batch_mpiranks))
         pldf_batch = pldf_batch.with_columns(
-            pl.col(c).cast(pl.Int32)
-            for c in {"modelgridindex", "timestep", "titeration", "thick"}.intersection(pldf_batch.columns)
+            cs.by_name("titeration", "timestep", "modelgridindex", require_all=False).cast(pl.Int32)
         )
 
         pldf_batch = pldf_batch.select(
@@ -147,7 +145,19 @@ def get_rankbatch_parquetfile(
         partialparquetfilepath = Path(
             tempfile.mkstemp(dir=folderpath, prefix=f"{parquetfilename}.partial", suffix=".partial")[1]
         )
-        pldf_batch.write_parquet(partialparquetfilepath, compression="zstd", statistics=True, compression_level=8)
+        pldf_batch.write_parquet(
+            partialparquetfilepath,
+            compression="zstd",
+            statistics=True,
+            compression_level=8,
+            metadata={
+                "creationtimeutc": str(datetime.datetime.now(datetime.UTC)),
+                "textsource_mtime": str(textsource_mtime),
+                "batch_rank_min": str(min(batch_mpiranks)),
+                "batch_rank_max": str(max(batch_mpiranks)),
+                "batchindex": str(batchindex),
+            },
+        )
         if parquetfilepath.exists():
             partialparquetfilepath.unlink()
         else:
