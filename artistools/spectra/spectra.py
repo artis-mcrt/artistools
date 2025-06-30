@@ -1522,44 +1522,18 @@ def get_reference_spectrum(filename: Path | str) -> tuple[pl.DataFrame, dict[t.A
         usecols=[0, flambdaindex],
     )
 
-    # new_lambda_angstroms = []
-    # binned_flux = []
-    #
-    # wavelengths = specdata['lambda_angstroms']
-    # fluxes = specdata['f_lambda']
-    # nbins = 10
-    #
-    # for i in np.arange(start=0, stop=len(wavelengths) - nbins, step=nbins):
-    #     new_lambda_angstroms.append(wavelengths[i + int(nbins / 2)])
-    #     sum_flux = 0
-    #     for j in range(i, i + nbins):
-    #
-    #         if not math.isnan(fluxes[j]):
-    #             print(fluxes[j])
-    #             sum_flux += fluxes[j]
-    #     binned_flux.append(sum_flux / nbins)
-    #
-    # filtered_specdata = pd.DataFrame(new_lambda_angstroms, columns=['lambda_angstroms'])
-    # filtered_specdata['f_lamba'] = binned_flux
-    # print(filtered_specdata)
-    # plt.plot(specdata['lambda_angstroms'], specdata['f_lambda'])
-    # plt.plot(new_lambda_angstroms, binned_flux)
-    #
-    # filtered_specdata.to_csv('/Users/ccollins/artis_nebular/artistools/artistools/data/refspectra/' + name,
-    #                          index=False, header=False, sep=' ')
-
     if "a_v" in metadata or "e_bminusv" in metadata:
         print("Correcting for reddening")
         from extinction import apply
         from extinction import ccm89
 
-        specdata["f_lambda"] = apply(
+        specdata.loc[:, "f_lambda"] = apply(
             ccm89(specdata["lambda_angstroms"].to_numpy(), a_v=-metadata["a_v"], r_v=metadata["r_v"], unit="aa"),
             specdata["f_lambda"].to_numpy(),
         )
 
     if "z" in metadata:
         print("Correcting for redshift")
-        specdata["lambda_angstroms"] /= 1 + metadata["z"]
+        specdata.loc[:, "lambda_angstroms"] /= 1 + metadata["z"]
 
     return pl.from_pandas(specdata), metadata
