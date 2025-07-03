@@ -1476,11 +1476,11 @@ def scale_model_to_time(
 
     for col in dfmodel.columns:
         if col.startswith("pos_"):
-            dfmodel[col] *= timefactor
+            dfmodel.loc[:, col] *= timefactor
         elif col == "rho":
-            dfmodel["rho"] *= timefactor**-3
+            dfmodel.loc[:, "rho"] *= timefactor**-3
         elif col == "logrho":
-            dfmodel["logrho"] += math.log10(timefactor**-3)
+            dfmodel.loc[:, "logrho"] += math.log10(timefactor**-3)
 
     if modelmeta is None:
         modelmeta = {}

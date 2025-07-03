@@ -129,21 +129,21 @@ def read_griddat_file(
         }
     )
     # griddata in geom units
-    griddata["rho"] = griddata["rho"].fillna(0.0)
+    griddata.loc[:, "rho"] = griddata["rho"].fillna(0.0)
 
     if "cellYe" in griddata:
-        griddata["cellYe"] = griddata["cellYe"].fillna(0.0)
+        griddata.loc[:, "cellYe"] = griddata["cellYe"].fillna(0.0)
 
     if "Q" in griddata:
-        griddata["Q"] = griddata["Q"].fillna(0.0)
+        griddata.loc[:, "Q"] = griddata["Q"].fillna(0.0)
 
     factor_position = 1.478  # in km
     km_to_cm = 1e5
-    griddata["pos_x_min"] = griddata["pos_x_min"] * factor_position * km_to_cm
-    griddata["pos_y_min"] = griddata["pos_y_min"] * factor_position * km_to_cm
-    griddata["pos_z_min"] = griddata["pos_z_min"] * factor_position * km_to_cm
+    griddata.loc[:, "pos_x_min"] = griddata["pos_x_min"] * factor_position * km_to_cm
+    griddata.loc[:, "pos_y_min"] = griddata["pos_y_min"] * factor_position * km_to_cm
+    griddata.loc[:, "pos_z_min"] = griddata["pos_z_min"] * factor_position * km_to_cm
 
-    griddata["rho"] *= 6.176e17  # convert to g/cm³
+    griddata.loc[:, "rho"] *= 6.176e17  # convert to g/cm³
 
     with griddatfilepath.open(encoding="utf-8") as gridfile:
         ngrid = int(gridfile.readline().split()[0])
@@ -180,7 +180,7 @@ def read_griddat_file(
     assert ncoordgridx**3 == len(griddata)
     wid_init = 2 * xmax / ncoordgridx
     print(f"Grid model is {ncoordgridx} x {ncoordgridx} x {ncoordgridx} = {len(griddata)} cells")
-    griddata["mass_g"] = griddata["rho"] * wid_init**3
+    griddata.loc[:, "mass_g"] = griddata["rho"] * wid_init**3
 
     print(f"Max tracers in a cell {max(griddata['tracercount'])}")
 
