@@ -190,7 +190,7 @@ def read_modelfile_text(
                 if x < numheaderrows or (x - numheaderrows - 1) % 2 == 1
             ]
             dfmodeloddlines = pd.read_csv(
-                filename,
+                zopen(filename, mode="r"),
                 sep=r"\s+",
                 engine="c",
                 header=None,
@@ -1110,8 +1110,6 @@ def get_initelemabundances_polars(modelpath: Path = Path(), printwarningsonly: b
     else:
         if not printwarningsonly:
             print(f"Reading {textfilepath}")
-        ncols = len(pd.read_csv(textfilepath, sep=r"\s+", header=None, comment="#", nrows=1).columns)
-        colnames = ["inputcellid", *["X_" + get_elsymbol(x) for x in range(1, ncols)]]
 
         abundancedata = pl.read_csv(
             zopenpl(textfilepath), has_header=False, separator=" ", comment_prefix="#", infer_schema_length=0
@@ -1122,9 +1120,11 @@ def get_initelemabundances_polars(modelpath: Path = Path(), printwarningsonly: b
         abundancedata = pl.DataFrame([
             abundancedata.to_series(idx).drop_nulls() for idx in range(len(abundancedata.columns))
         ]).transpose()
+
+        colnames = ["inputcellid", *["X_" + get_elsymbol(x) for x in range(1, len(abundancedata.columns))]]
         abundancedata = abundancedata.rename({
             col: colnames[idx] for idx, col in enumerate(abundancedata.columns)
-        }).cast({col: pl.Float32 if col.startswith("X_") else pl.Int32 for col in colnames})
+        }).with_columns(cs.starts_with("X_").cast(pl.Float32), (~cs.starts_with("X_")).cast(pl.Int32))
 
         if textfilepath.stat().st_size > 5 * 1024 * 1024:
             print(f"Saving {parquetfilepath}")
