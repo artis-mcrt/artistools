@@ -122,42 +122,46 @@ def get_grid(
     # first get masses and see if they have to be set to zero if the corresponding ejecta types shall be excluded
     # also set to integrated energy release up to snapshot time to zero
 
+    mass_arr = dat.f.mass.copy()
+    qdot_arr = dat.f.qdot.copy()
+
     # ... non-dynamical ejecta
+    if nohmns:
+        # exclude HMNS ejecta
+        mass_arr[np.where(state == 0)] = 1e-30
+        qdot_arr[np.where(state == 0)] = 1e-30
+    if notorus:
+        # exclude torus ejecta
+        mass_arr[np.where(state == 1)] = 1e-30
+        qdot_arr[np.where(state == 1)] = 1e-30
     for i1 in nodid:  # index of Oli's original list
         i += 1  # index in the new list accounting for unprocessed trajs.
         i2 = list(dynidall).index(i1)  # index in Zeweis extended list of trajs.
-        mtraj[i] = dat.f.mass[i2] * msol
+        mtraj[i] = mass_arr[i2] * msol
         # no multiplication with mass to keep it a specific energy release
         time_by_t_snap = time_s / tsnap
         qtraj[i] = np.trapezoid(
-            time_by_t_snap[starting_idx:closest_idx] * dat.f.qdot[i2][starting_idx:closest_idx],
+            time_by_t_snap[starting_idx:closest_idx] * qdot_arr[i2][starting_idx:closest_idx],
             time_s[starting_idx:closest_idx],
         )
         tot_Q_rel += mtraj[i] * qtraj[i]
-    if nohmns:
-        # exclude HMNS ejecta
-        mtraj[np.where(state == 0)] = 1e-15
-        qtraj[np.where(state == 0)] = 1e-15
-    if notorus:
-        # exclude torus ejecta
-        mtraj[np.where(state == 1)] = 1e-15
-        qtraj[np.where(state == 1)] = 1e-15
 
     # ... dynamical ejecta
+
+    if nodynej:
+        # exclude dynamical ejecta
+        mass_arr[np.where(state == -1)] = 1e-30
+        qdot_arr[np.where(state == -1)] = 1e-30
     for i1 in dynid:
         i += 1  # index in the new list accounting for unprocessed trajs.
         i3 = np.where(dynidall == i1)[0]  # indices in Zeweis extended list of trajs.
-        mtraj[i] = np.sum(dat.f.mass[i3]) * msol
+        mtraj[i] = np.sum(mass_arr[i3]) * msol
         time_by_t_snap = time_s / tsnap
         qtraj[i] = np.trapezoid(
-            time_by_t_snap[starting_idx:closest_idx] * np.sum(dat.f.qdot[i3], axis=0)[starting_idx:closest_idx],
+            time_by_t_snap[starting_idx:closest_idx] * np.sum(qdot_arr[i3], axis=0)[starting_idx:closest_idx],
             time_s[starting_idx:closest_idx],
         )
         tot_Q_rel += mtraj[i] * qtraj[i]
-    if nodynej:
-        # exclude dynamical ejecta
-        mtraj[np.where(state == -1)] = 1e-15
-        qtraj[np.where(state == -1)] = 1e-15
     print(f"tot_Q_rel: {tot_Q_rel}")
     i = -1
     # ... non-dynamical ejecta
