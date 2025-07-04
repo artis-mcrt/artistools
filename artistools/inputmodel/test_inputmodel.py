@@ -197,11 +197,11 @@ def test_makeartismodelfrom_sph_particles() -> None:
                 assert np.isclose(dfmodel_lowerd["mass_g"].sum(), dfmodel3["mass_g"].sum(), rtol=5e-2)
                 assert np.isclose(dfmodel_lowerd["tracercount"].sum(), dfmodel3["tracercount"].sum(), rtol=1e-1)
 
-                # check that the total mass of each species is conserved
+                # check that the total mass of each species and total internal energy are conserved
                 for col in dfmodel3.columns:
-                    if col.startswith("X_"):
-                        lowerd_mass = (dfmodel_lowerd["mass_g"] * dfmodel_lowerd[col]).sum()
-                        model3_mass = (dfmodel3["mass_g"] * dfmodel3[col]).sum()
+                    if col.startswith("X_") or col == "q":
+                        lowerd_mass = dfmodel_lowerd.select(pl.col("mass_g").dot(pl.col(col))).item()
+                        model3_mass = dfmodel3.select(pl.col("mass_g").dot(pl.col(col))).item()
                         assert np.isclose(lowerd_mass, model3_mass, rtol=5e-2)
 
 
