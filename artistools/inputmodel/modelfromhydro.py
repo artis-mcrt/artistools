@@ -357,16 +357,21 @@ def makemodelfromgriddata(
     dfmodel = dfmodel.with_columns(pl.col("inputcellid").cast(pl.Int32))  # pylint: disable=no-member
     if scalemass != 1.0:
         origmass_msun = dfmodel["mass_g"].sum() / 2.99792458e33
-        dfmodel = dfmodel.with_columns(rho=pl.col("rho") * scalemass, mass_g=pl.col("mass_g") * scalemass)
+        dfmodel = dfmodel.with_columns(cs.by_name("rho", "mass_g", require_all=False) * scalemass)
         newmass_msun = dfmodel["mass_g"].sum() / 2.99792458e33
         operationmsg = f"densities are scaled by factor of {scalemass} to increase total mass from {origmass_msun:.2e} to {newmass_msun:.2e} Msun"
         print(operationmsg)
         modelmeta["headercommentlines"].append(operationmsg)
 
     if scalevelocity != 1.0:
-        dfmodel = dfmodel.with_columns(cs.starts_with("pos_") * scalevelocity, rho=pl.col("rho") * (scalevelocity**-3))
+        dfmodel = dfmodel.with_columns(
+            cs.starts_with("pos_", "vel_") * scalevelocity,
+            cs.by_name("rho", "mass_g", require_all=False) * (scalevelocity**-3),
+        )
         vmax_cmps_old = modelmeta["vmax_cmps"]
-        modelmeta["vmax_cmps"] *= scalevelocity
+        for key in modelmeta:
+            if key == "vmax_cmps" or key.startswith("wid_init_"):
+                modelmeta[key] *= scalevelocity
         operationmsg = f"velocities are scaled by a factor of {scalevelocity} (with density scaled by 1/f^3 to conserve mass). vmax/c changed from {vmax_cmps_old / 29979245800:.2f} to {modelmeta['vmax_cmps'] / 29979245800:.2f}"
         print(operationmsg)
         modelmeta["headercommentlines"].append(operationmsg)
