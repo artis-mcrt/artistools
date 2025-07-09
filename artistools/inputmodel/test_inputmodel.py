@@ -1583,7 +1583,7 @@ def test_dimension_reduce(outputdimensions: int, benchmark: BenchmarkFixture) ->
     lowerd_ejecta_ke_erg: float = dfmodel_lowerd.select("kinetic_en_erg").sum().item()
 
     # check that kinetic energy very roughly matches (we conserved mass, not kinetic energy)
-    assert np.isclose(lowerd_ejecta_ke_erg, ejecta_ke_erg, rtol=0.10), f"{lowerd_ejecta_ke_erg} {ejecta_ke_erg}"
+    assert np.isclose(lowerd_ejecta_ke_erg, ejecta_ke_erg, rtol=0.04), f"{lowerd_ejecta_ke_erg} {ejecta_ke_erg}"
 
     # check that the total mass of each species is conserved
     for col in dfmodel3d_pl.columns:
