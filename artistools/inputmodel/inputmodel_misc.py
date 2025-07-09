@@ -632,7 +632,7 @@ def add_derived_cols_to_modeldata(
                 # two components of kinetic energy: 1/2 m v^2 in cylindrical and z directions
                 kinetic_en_erg_rcyl=(
                     1
-                    / 8
+                    / 4
                     * math.pi
                     * pl.col("rho")
                     * t_model_init_seconds**-2
