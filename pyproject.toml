@@ -108,6 +108,7 @@ plotartisviewingangles = 'artistools.viewing_angles_visualization:main'
 [tool.cibuildwheel]
 build-frontend = "build[uv]"
 archs = ["auto64"]
+enable = ["cpython-freethreading"]
 # installing dependencies on Linux arm64 takes ~20 minutes
 #test-command = "python -m artistools"
 
@@ -380,8 +381,8 @@ exclude = [
     "**/venv",
 ]
 
-[tool.distutils.bdist_wheel]
-py_limited_api="cp312"
+#[tool.distutils.bdist_wheel]
+#py_limited_api="cp312"
 
 [tool.setuptools_scm]
 version_file = "_version.py"
