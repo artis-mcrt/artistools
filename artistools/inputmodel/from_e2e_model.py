@@ -456,6 +456,124 @@ def create_ARTIS_modelfile(
     at.inputmodel.save_modeldata(dfmodel=dfmodel, modelmeta=modelmeta, outpath=outputpath)
 
 
+def get_old_cell_indices(red_fact: int, new_r: int, new_z: int, N_cell_r_old: int) -> list[int]:
+    # function to get old grid indices for a given new grid index
+    indices = []
+    for j in range(red_fact):
+        for i in range(red_fact):
+            einer = 1 + red_fact * (new_r - 1) + i
+            hunderter = red_fact * N_cell_r_old * (new_z - 1) + j * N_cell_r_old
+            indices.append(einer + hunderter)
+    return indices
+
+
+def remap_mass_weighted_quantity(
+    im_ARTIS_old: pd.DataFrame,
+    fieldname: str,
+    red_fact: int,
+    N_cell_r_new: int,
+    N_cell_z_new: int,
+    N_cell_r_old: int,
+    Delta_r: float,
+    Delta_z: float,
+) -> npt.NDArray[np.float64]:
+    # function that remaps any mass-weighted quantity
+    new_numb_cells = N_cell_r_new * N_cell_z_new
+    new_field = np.zeros(new_numb_cells)
+    for new_z in range(1, N_cell_z_new + 1):
+        for new_r in range(1, N_cell_r_new + 1):
+            new_cell_idx = new_r + N_cell_r_new * (new_z - 1)
+            old_idxs = get_old_cell_indices(red_fact, new_r, new_z, N_cell_r_old)
+            masses = np.array([im_ARTIS_old.iloc[i - 1]["mass_g"] for i in old_idxs])
+            values = np.array([im_ARTIS_old.iloc[i - 1][fieldname] for i in old_idxs])
+            if fieldname == "mass_g":
+                r_i = (new_r - 1) * Delta_r
+                r_o = new_r * Delta_r
+                V_new = np.pi * (r_o**2 - r_i**2) * Delta_z
+                new_field[new_cell_idx - 1] = masses.sum() / V_new
+            else:
+                new_field[new_cell_idx - 1] = np.average(values, weights=masses)
+    return new_field
+
+
+def merge_ARTIS_cells(red_fact: int, N_r: int, N_z: int, v_max: float, outputpath: Path) -> None:
+    """red_fact: number of cells to be merged."""
+    im_ARTIS_old = at.inputmodel.get_modeldata_pandas(modelpath=Path(), derived_cols=["mass_g"])[0]
+    N_cell_r_old, N_cell_z_old = N_r, N_z
+    N_cell_r_new, N_cell_z_new = int(N_cell_r_old / red_fact), int(N_cell_z_old / red_fact)
+    new_numb_cells = N_cell_r_new * N_cell_z_new
+    r_max_snap = v_max * cl * tsnap * day
+
+    # create new grid
+    Delta_r = r_max_snap / N_cell_r_new
+    Delta_z = 2 * r_max_snap / N_cell_z_new  # account for positive and negative z-values
+    r_mid_grid = np.array([(i + 0.5) * Delta_r for i in range(N_cell_r_new)])
+    z_mid_grid = np.array([-r_max_snap + (i + 0.5) * Delta_z for i in range(N_cell_z_new)])
+
+    # remap density, integrated energy release and Y_e
+    new_rho_arr = remap_mass_weighted_quantity(
+        im_ARTIS_old, "mass_g", red_fact, N_cell_r_new, N_cell_z_new, N_r, Delta_r, Delta_z
+    )
+    new_q_arr = remap_mass_weighted_quantity(
+        im_ARTIS_old, "q", red_fact, N_cell_r_new, N_cell_z_new, N_r, Delta_r, Delta_z
+    )
+    new_ye_arr = remap_mass_weighted_quantity(
+        im_ARTIS_old, "cellYe", red_fact, N_cell_r_new, N_cell_z_new, N_r, Delta_r, Delta_z
+    )
+
+    # new model data frame
+    dfmodel = pd.DataFrame({
+        "inputcellid": range(1, new_numb_cells + 1),
+        "pos_rcyl_mid": np.tile(r_mid_grid, N_cell_z_new),
+        "pos_z_mid": np.repeat(z_mid_grid, N_cell_r_new),
+        "rho": new_rho_arr,
+        "q": new_q_arr,
+        "cellYe": new_ye_arr,
+    })
+
+    # now map the abundances
+    dictabunds = {}
+    element_abbrevs_list = [...]  # Keep full list as in your code
+    element_abbrevs_list_titled = [abbrev.title() for abbrev in element_abbrevs_list]
+    el_mass_fracs = np.zeros((len(element_abbrevs_list), new_numb_cells))
+    dictelabunds = {"inputcellid": np.array(range(1, new_numb_cells + 1))}
+
+    nuclide_columns = [col for col in im_ARTIS_old.columns if col.startswith("X_")][1:]
+
+    for nuclide in nuclide_columns:
+        new_X_arr = np.zeros(new_numb_cells)
+        for new_z in range(1, N_cell_z_new + 1):
+            for new_r in range(1, N_cell_r_new + 1):
+                new_cell_idx = new_r + N_cell_r_new * (new_z - 1)
+                old_idxs = get_old_cell_indices(new_r, new_z)
+                masses = np.array([im_ARTIS_old.iloc[i - 1]["mass_g"] for i in old_idxs])
+                abunds = np.array([im_ARTIS_old.iloc[i - 1][nuclide] for i in old_idxs])
+                new_X_arr[new_cell_idx - 1] = np.average(abunds, weights=masses)
+        dictabunds[nuclide[2:]] = new_X_arr
+        el = "".join([i for i in nuclide[2:] if not i.isdigit()])
+        if el in element_abbrevs_list_titled:
+            el_idx = element_abbrevs_list_titled.index(el)
+            el_mass_fracs[el_idx] += new_X_arr
+
+    for i, el in enumerate(element_abbrevs_list_titled):
+        dictelabunds[f"X_{el}"] = el_mass_fracs[i]
+
+    dfmodel = pd.concat([dfmodel, pd.DataFrame(dictabunds)], axis=1)
+    dfabundances = pd.DataFrame(dictelabunds).fillna(0.0)
+
+    at.inputmodel.save_initelemabundances(dfelabundances=dfabundances, outpath=outputpath)
+    modelmeta = {
+        "dimensions": 2,
+        "ncoordgridrcyl": N_cell_r_new,
+        "ncoordgridz": N_cell_z_new,
+        "t_model_init_days": tsnap,
+        "vmax_cmps": 0.5 * cl,
+    }
+
+    at.inputmodel.save_modeldata(dfmodel=dfmodel, modelmeta=modelmeta, outpath=outputpath)
+    print(f"Successfully remapped model to {N_cell_r_new}x{N_cell_z_new} grid.")
+
+
 def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-outputpath", "-o", default=".", help="Path of output ARTIS model file")
 
@@ -480,6 +598,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--nohmns", action="store_true", help="Exclude neutrino wind ejecta from the model")
 
     parser.add_argument("--notorus", action="store_true", help="Exclude torus ejecta from the model")
+
+    parser.add_argument(
+        "-mergecells",
+        type=int,
+        default=None,
+        help="Merge specified number of cells in postprocessing to keep precision in the mass fractions",
+    )
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -519,6 +644,22 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         eqsymfac,
         args.outputpath,
     )
+
+    if args.mergecells is not None:
+        # bunch of checks to assure proper cell merging
+        assert isinstance(args.mergecells, int), "Number of cells to merge is not an integer!"
+        # check if the number is a square number
+        assert np.sqrt(args.mergecells).is_integer(), "Number of cells to merge is not a square number!"
+        # check if the current number of cells is a multiple of the cells to merge
+        assert (numb_cells_ARTIS_z / np.sqrt(args.mergecells)).is_integer(), (
+            "Number of merged cells in z direction is no integer!"
+        )
+        assert (numb_cells_ARTIS_radial / np.sqrt(args.mergecells)).is_integer(), (
+            "Number of merged cells in r direction is no integer!"
+        )
+        merge_ARTIS_cells(
+            args.mergecells, numb_cells_ARTIS_radial, numb_cells_ARTIS_z, float(args.vmax), args.outputpath
+        )
 
 
 if __name__ == "__main__":
