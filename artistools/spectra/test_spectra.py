@@ -95,7 +95,7 @@ def test_spectra_get_spectrum(benchmark: BenchmarkFixture) -> None:
         assert isinstance(flambdamean, float)
         assert math.isclose(flambdamean, 1.0314682640070206e-14, abs_tol=1e-5)
 
-    dfspectrum = benchmark(at.spectra.get_spectrum, modelpath, 55, 65, fluxfilterfunc=None)[-1]
+    dfspectrum = benchmark(lambda: at.spectra.get_spectrum(modelpath, 55, 65, fluxfilterfunc=None))[-1]
 
     assert len(dfspectrum["lambda_angstroms"]) == 1000
     assert len(dfspectrum["f_lambda"]) == 1000
@@ -167,14 +167,15 @@ def test_spectra_get_spectrum_polar_angles_frompackets(benchmark: BenchmarkFixtu
     timehighdays = at.get_timestep_times(modelpath_classic_3d, loc="end")[25]
 
     spectrafrompkts = benchmark(
-        at.spectra.get_from_packets,
-        modelpath=modelpath_classic_3d,
-        directionbins=[0, 10, 20, 30, 40, 50, 60, 70, 80, 90],
-        average_over_phi=True,
-        timelowdays=timelowdays,
-        timehighdays=timehighdays,
-        lambda_min=100,
-        lambda_max=50000,
+        lambda: at.spectra.get_from_packets(
+            modelpath=modelpath_classic_3d,
+            directionbins=[0, 10, 20, 30, 40, 50, 60, 70, 80, 90],
+            average_over_phi=True,
+            timelowdays=timelowdays,
+            timehighdays=timehighdays,
+            lambda_min=100,
+            lambda_max=50000,
+        )
     )
 
     results_pkts = {
