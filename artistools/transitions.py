@@ -481,7 +481,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                     nltepopdict = {row["level"]: row["n_NLTE"] for _, row in dfnltepops_thision.iterrows()}
 
                     assert isinstance(dftransitions, pd.DataFrame)
-                    dftransitions["upper_pop_nlte"] = dftransitions.apply(
+                    dftransitions.loc[:, "upper_pop_nlte"] = dftransitions.apply(
                         lambda x: nltepopdict.get(x["upper"], 0.0),  # noqa: B023 # pylint: disable=cell-var-from-loop
                         axis=1,
                     )
@@ -490,8 +490,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                     #     lambda x: nltepopdict.get(x.lower, 0.), axis=1)
 
                     popcolumnname = "upper_pop_nlte"
-                    dftransitions["flux_factor_nlte"] = dftransitions["flux_factor"] * dftransitions[popcolumnname]
-                    dftransitions["upper_departure"] = dftransitions["upper_pop_nlte"] / dftransitions["upper_pop_Te"]
+                    dftransitions.loc[:, "flux_factor_nlte"] = (
+                        dftransitions["flux_factor"] * dftransitions[popcolumnname]
+                    )
+                    dftransitions.loc[:, "upper_departure"] = (
+                        dftransitions["upper_pop_nlte"] / dftransitions["upper_pop_Te"]
+                    )
                     if ionid == (26, 2):
                         fe2depcoeff = dftransitions.query("upper == 16 and lower == 5").iloc[0]["upper_departure"]
                     elif ionid == (28, 2):
