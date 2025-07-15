@@ -302,6 +302,7 @@ def get_grid(
     print("total mass after interpolation (but BEFORE renormalization):", np.sum(dmgrid) / msol * eqsymfac)
     rescfac = np.sum(mtraj) / np.sum(dmgrid)
     dmgrid *= rescfac
+    rhoint *= rescfac  # the densities are returned by means of rhoint
     mtot = np.sum(dmgrid)
 
     # test outputs
