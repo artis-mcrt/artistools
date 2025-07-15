@@ -16,7 +16,7 @@ outputpath = at.get_config()["path_testoutput"]
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_lightcurve_plot(mockplot: t.Any, benchmark: BenchmarkFixture) -> None:
-    benchmark(at.lightcurve.plot, argsraw=[], modelpath=[modelpath], outputfile=outputpath, frompackets=False)
+    benchmark(lambda: at.lightcurve.plot(argsraw=[], modelpath=[modelpath], outputfile=outputpath, frompackets=False))
 
     arr_time_d = np.array(mockplot.call_args[0][1])
     arr_lum = np.array(mockplot.call_args[0][2])
@@ -37,11 +37,12 @@ def test_lightcurve_plot(mockplot: t.Any, benchmark: BenchmarkFixture) -> None:
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_lightcurve_plot_frompackets(mockplot: t.Any, benchmark: BenchmarkFixture) -> None:
     benchmark(
-        at.lightcurve.plot,
-        argsraw=[],
-        modelpath=modelpath,
-        frompackets=True,
-        outputfile=Path(outputpath, "lightcurve_from_packets.pdf"),
+        lambda: at.lightcurve.plot(
+            argsraw=[],
+            modelpath=modelpath,
+            frompackets=True,
+            outputfile=Path(outputpath, "lightcurve_from_packets.pdf"),
+        )
     )
 
     arr_time_d = np.array(mockplot.call_args[0][1])

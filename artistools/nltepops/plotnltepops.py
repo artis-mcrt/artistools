@@ -212,7 +212,7 @@ def make_ionsubplot(
     ionstr = at.get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
     ionpopulation_fromest = estimators[timestep, modelgridindex].get(f"nnion_{ionstr}", 0.0)
 
-    dfpopthision["parity"] = [
+    dfpopthision.loc[:, "parity"] = [
         1 if (row.level != -1 and ion_data["levels"]["levelname"].item(int(row.level)).split("[")[0][-1] == "o") else 0
         for _, row in dfpopthision.iterrows()
     ]
@@ -228,8 +228,8 @@ def make_ionsubplot(
         else:
             configtexlist.append(at.nltepops.texifyconfiguration(configlist[i]))
 
-    dfpopthision["config"] = [configlist[level] for level in dfpopthision.level]
-    dfpopthision["texname"] = [configtexlist[level] for level in dfpopthision.level]
+    dfpopthision.loc[:, "config"] = [configlist[level] for level in dfpopthision.level]
+    dfpopthision.loc[:, "texname"] = [configtexlist[level] for level in dfpopthision.level]
 
     if args.x == "config":
         # ax.xaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=100))
