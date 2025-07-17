@@ -98,7 +98,7 @@ def get_nuc_data(nuc_dataset: str) -> pl.DataFrame:
                 print(f"No ENSDF data found for Z={atomic_number} A={A}")
                 rows.append(hrow | {"source": "Hotokezaka"})
 
-        with csvpath.open("w") as f:
+        with csvpath.open("w", encoding="utf-8") as f:
             f.writelines(("# Data from ENSDF database\n", "#\n# "))
             pl.DataFrame(rows).write_csv(f, separator=" ", include_header=True)
         print("done!")
