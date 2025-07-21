@@ -877,14 +877,14 @@ def firstexisting(
 
     fullpaths = []
 
-    def search_folders() -> Generator[Path]:
+    def search_folders(filelist: list[str | Path] | list[Path]) -> Generator[Path]:
         yield Path(folder)
         if search_subfolders:
             for filename in filelist:
                 for p in Path(folder).glob(f"*/{filename}*"):
                     yield p.parent
 
-    for searchfolder in search_folders():
+    for searchfolder in search_folders(filelist):
         for filename in filelist:
             thispath = Path(searchfolder, filename)
             if thispath.exists():
