@@ -457,7 +457,7 @@ def create_ARTIS_modelfile(
     at.inputmodel.save_modeldata(dfmodel=dfmodel, modelmeta=modelmeta, outpath=outputpath)
 
 
-def get_old_cell_indices(red_fact: int, new_r: int, new_z: int, N_cell_r_old: int) -> list[t.Any]:
+def get_old_cell_indices(red_fact: int, new_r: int, new_z: int, N_cell_r_old: int) -> list[np.int64]:
     # function to get old grid indices for a given new grid index
     old_r_indices = np.arange(red_fact * (new_r - 1) + 1, red_fact * new_r + 1)
     old_z_indices = np.arange(red_fact * (new_z - 1), red_fact * new_z) * N_cell_r_old
