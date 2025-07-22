@@ -108,6 +108,7 @@ plotartisviewingangles = 'artistools.viewing_angles_visualization:main'
 [tool.cibuildwheel]
 build-frontend = "build[uv]"
 archs = ["auto64"]
+enable = ["cpython-freethreading"]
 # installing dependencies on Linux arm64 takes ~20 minutes
 #test-command = "python -m artistools"
 
@@ -120,20 +121,20 @@ before-all = [
     "curl -sSf https://sh.rustup.rs | sh -s -- -y",
 ]
 environment = { PATH = "$HOME/.cargo/bin:$PATH" }
-repair-wheel-command = [
-    "auditwheel repair -w {dest_dir} {wheel}",
-    "pipx run abi3audit --strict --report {wheel}",
-]
+# repair-wheel-command = [
+#     "auditwheel repair -w {dest_dir} {wheel}",
+#     "pipx run abi3audit --strict --report {wheel}",
+# ]
 
 [tool.cibuildwheel.macos]
 before-all = [
     "rustup update stable",
 ]
-repair-wheel-command = [
-    "delocate-wheel --require-archs {delocate_archs} -w {dest_dir} -v {wheel}",
-    "uv pip install abi3audit",
-    "python3 -m abi3audit --strict --report {wheel}",
-]
+# repair-wheel-command = [
+#     "delocate-wheel --require-archs {delocate_archs} -w {dest_dir} -v {wheel}",
+#     "uv pip install abi3audit",
+#     "python3 -m abi3audit --strict --report {wheel}",
+# ]
 
 [tool.mypy]
 check_untyped_defs = true
@@ -380,8 +381,8 @@ exclude = [
     "**/venv",
 ]
 
-[tool.distutils.bdist_wheel]
-py_limited_api="cp312"
+#[tool.distutils.bdist_wheel]
+#py_limited_api="cp312"
 
 [tool.setuptools_scm]
 version_file = "_version.py"
