@@ -106,7 +106,7 @@ jobs:
               uses: pypa/gh-action-pypi-publish@release/v1
               with:
                   skip-existing: true
-                  verbose: false
+                  verbose: true
                   repository-url: https://test.pypi.org/legacy/
 
     deploy:
