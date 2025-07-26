@@ -390,6 +390,7 @@ local_scheme = "no-local-version"
 
 [tool.ty.rules]
 unresolved-import = "ignore"
+deprecated = "ignore"
 
 [tool.ty.src]
 exclude = ["artistools/inputmodel/fromcmfgen/rd_cmfgen.py", ".venv/**"]
