@@ -985,8 +985,9 @@ def bin_and_sum(
 
     dfcut = df.lazy().with_columns(
         (pl.col(bincol).cut(breaks=bins, labels=[str(x) for x in range(-1, len(bins))]))
-        .alias(f"{bincol}_bin")
+        .cast(pl.Utf8)
         .cast(pl.Int32)
+        .alias(f"{bincol}_bin")
     )
 
     aggs = [pl.col(col).sum().alias(col + "_sum") for col in sumcols] if sumcols is not None else []
