@@ -42,7 +42,7 @@ def opacity_by_Ye(outputfilepath: Path | str, griddata: pd.DataFrame | pl.DataFr
         else:
             cell_opacities[index] = 0.96
 
-    griddata["opacity"] = cell_opacities
+    griddata.loc[:, "opacity"] = cell_opacities
 
     with Path(outputfilepath, "opacity.txt").open("w", encoding="utf-8") as fopacity:
         fopacity.write(f"{len(griddata['inputcellid'])}\n")

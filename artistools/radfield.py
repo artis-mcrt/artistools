@@ -92,7 +92,9 @@ def get_binaverage_field(
 
     arr_lambda = 2.99792458e18 / bindata["nu_upper"].to_numpy()
 
-    bindata["dlambda"] = bindata.apply(lambda row: 2.99792458e18 * (1 / row["nu_lower"] - 1 / row["nu_upper"]), axis=1)
+    bindata.loc[:, "dlambda"] = bindata.apply(
+        lambda row: 2.99792458e18 * (1 / row["nu_lower"] - 1 / row["nu_upper"]), axis=1
+    )
 
     yvalues = bindata.apply(
         lambda row: (
@@ -244,8 +246,8 @@ def plot_line_estimators(
         + (" & timestep==@timestep" if timestep else "")
     )[["nu_upper", "J_nu_avg"]]
 
-    radfielddataselected["lambda_angstroms"] = 2.99792458e18 / radfielddataselected["nu_upper"]
-    radfielddataselected["Jb_lambda"] = (
+    radfielddataselected.loc[:, "lambda_angstroms"] = 2.99792458e18 / radfielddataselected["nu_upper"]
+    radfielddataselected.loc[:, "Jb_lambda"] = (
         radfielddataselected["J_nu_avg"] * (radfielddataselected["nu_upper"] ** 2) / 2.99792458e18
     )
 
@@ -286,11 +288,11 @@ def plot_specout(
     label = "Emergent spectrum"
     if scale_factor is not None:
         label += " (scaled)"
-        dfspectrum["f_lambda"] *= scale_factor
+        dfspectrum.loc[:, "f_lambda"] *= scale_factor
 
     if peak_value is not None:
         label += " (normalised)"
-        dfspectrum["f_lambda"] = dfspectrum["f_lambda"] / dfspectrum["f_lambda"].max() * peak_value
+        dfspectrum.loc[:, "f_lambda"] = dfspectrum["f_lambda"] / dfspectrum["f_lambda"].max() * peak_value
 
     dfspectrum.plot(x="lambda_angstroms", y="f_lambda", ax=axis, label=label, **plotkwargs)
 
