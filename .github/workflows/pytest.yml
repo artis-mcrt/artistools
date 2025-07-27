@@ -17,14 +17,12 @@ jobs:
         runs-on: macos-15
         env:
             RUFF_OUTPUT_FORMAT: github
+            UV_FROZEN: 1
         steps:
             - name: Checkout Code
               uses: actions/checkout@v4
               with:
                   fetch-depth: 0
-
-            - name: Set up Python
-              uses: actions/setup-python@v5
 
             - name: Cache cargo and rust build
               uses: actions/cache@v4
@@ -42,34 +40,36 @@ jobs:
 
             - name: Setup uv
               uses: astral-sh/setup-uv@v6
+              with:
+                  activate-environment: true
 
             - name: Install artistools[extras]
               run: |
-                  uv sync --frozen
+                  uv sync
                   source .venv/bin/activate
                   uv pip install --editable .[extras]
 
             - name: Run Ruff
               if: always()
               run: |
-                  uv run --frozen -- ruff --version
-                  uv run --frozen -- ruff check --exit-non-zero-on-fix --no-fix
+                  uv run -- ruff --version
+                  uv run -- ruff check --exit-non-zero-on-fix --no-fix
 
             - name: Run Ruff Format
               if: always()
-              run: uv run --frozen -- ruff format --check --exit-non-zero-on-format
+              run: uv run -- ruff format --check --exit-non-zero-on-format
 
             - name: Run mypy
               if: always()
-              run: uv run --frozen -- mypy
+              run: uv run -- mypy
 
             - name: Run pyright
               if: always()
-              run: uv run --frozen -- pyright --warnings
+              run: uv run -- pyright --warnings
 
             - name: Run pylint
               if: always()
-              run: uv run --frozen -- pylint --output-format=github artistools
+              run: uv run -- pylint --output-format=github artistools
 
             - name: Cache pre-commit
               uses: actions/cache@v4
@@ -80,7 +80,7 @@ jobs:
             - name: Run pre-commit
               run: |
                   source .venv/bin/activate
-                  uv run --frozen -- pre-commit run --all-files --show-diff-on-failure --color=always
+                  uv run -- pre-commit run --all-files --show-diff-on-failure --color=always
 
     superlinter:
         name: Super linter
@@ -120,17 +120,23 @@ jobs:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     pytest:
-        timeout-minutes: 30
+        timeout-minutes: 120
         runs-on: ${{ matrix.os.name }}-${{ matrix.os.version }}
         strategy:
             fail-fast: false
             matrix:
                 os: [{name: macos, version: '15'}, {name: ubuntu, version: '24.04'}]
                 python-version: ['3.12', '3.13', '3.14', 3.14t]
+                exclude:
+                    - os: {name: ubuntu, version: '24.04'}
+                      python-version: 3.14
+                    - os: {name: ubuntu, version: '24.04'}
+                      python-version: 3.14t
         env:
             OS: ${{ matrix.os.name }}-${{ matrix.os.version }}
             PYTHON: ${{ matrix.python-version }}
             PYTHON_GIL: ${{ endsWith(matrix.python-version, 't') && '0' || '1' }}
+            UV_FROZEN: 1
 
         name: pytest ${{ matrix.os.name }} python ${{ matrix.python-version }}
         steps:
@@ -138,16 +144,6 @@ jobs:
               uses: actions/checkout@v4
               with:
                   fetch-depth: 0
-
-            - name: Set up Python ${{ matrix.python-version }}
-              uses: actions/setup-python@v5
-              with:
-                  python-version: ${{ matrix.python-version }}
-                  check-latest: true
-                  allow-prereleases: true
-
-            - name: Show python version
-              run: python3 --version --version && which python3
 
             - name: Cache cargo and rust build
               uses: actions/cache@v4
@@ -165,17 +161,35 @@ jobs:
 
             - name: Setup uv
               uses: astral-sh/setup-uv@v6
+              with:
+                  activate-environment: true
+                  python-version: ${{ matrix.python-version }}
+
+            - name: install apache-arrow
+              if: matrix.os.name == 'macos' && startsWith(matrix.python-version, '3.14')
+              run: |
+                  brew update
+                  brew install apache-arrow gcc openblas
+                  brew link --force openblas
+                  echo "LIBRARY_PATH=/opt/homebrew/opt/lib" >> $GITHUB_ENV
+                  echo "LD_LIBRARY_PATH=/opt/homebrew/opt/lib" >> $GITHUB_ENV
+                  echo "CPATH=$HOMEBREW_PREFIX/include:$CPATH" >> $GITHUB_ENV
+                  echo "ARROW_HOME=$(brew --prefix apache-arrow)" >> $GITHUB_ENV
+                  CC=gcc-15 CXX=g++-15 uv pip install numexpr
+                  uv pip install pyarrow
 
             - name: Install artistools (no dev deps)
               run: |
                   rustup update stable
-                  uv sync --frozen --no-dev
+                  uv sync --no-dev
+                  uv run -- python --version
                   uv pip install .
 
             - name: Check artistools command line tool
               run: |
-                  uv run --frozen -- artistools --help
-                  uv run --frozen -- artistools completions
+                  uv run -- python --version
+                  uv run -- artistools --help
+                  uv run -- artistools completions
 
             - name: Cache test data
               uses: actions/cache@v4
@@ -190,14 +204,21 @@ jobs:
 
             - name: Install artistools
               run: |
-                  uv sync --frozen
+                  uv sync --python ${{ matrix.python-version }}
                   uv pip install --compile-bytecode --editable .
 
+            - name: install matplotlib nightly
+              if: matrix.os.name == 'macos' && startsWith(matrix.python-version, '3.14')
+              run: |
+                  uv pip install pip
+                  python -m pip install --upgrade --pre --index-url https://pypi.anaconda.org/scientific-python-nightly-wheels/simple --extra-index-url https://pypi.org/simple matplotlib
+                  uv run --no-sync -- artistools --help
+
             - name: Test with pytest
-              run: uv run --frozen -- python3 -m pytest --cov=./ --cov-report=xml
+              run: uv run --no-sync -- python -m pytest --cov=./ --cov-report=xml
 
             - name: Report coverage
-              run: uv run --frozen -- python3 -m coverage report
+              run: uv run -- python -m coverage report
 
             - name: Upload coverage to Codecov
               uses: codecov/codecov-action@v5
