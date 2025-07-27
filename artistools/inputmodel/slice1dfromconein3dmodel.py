@@ -101,7 +101,7 @@ def make_1d_profile(args: argparse.Namespace) -> pd.DataFrame:
         slice1d = get_profile_along_axis(args)
     logprint("using axis:", args.axis)
 
-    slice1d[f"pos_{args.sliceaxis}_min"] = slice1d[f"pos_{args.sliceaxis}_min"].apply(
+    slice1d.loc[:, f"pos_{args.sliceaxis}_min"] = slice1d[f"pos_{args.sliceaxis}_min"].apply(
         lambda x: x / 1e5 / (args.t_model * 86400)
     )  # Convert positions to velocities
     slice1d = slice1d.rename(columns={f"pos_{args.sliceaxis}_min": "vel_r_max_kmps"})
@@ -113,9 +113,9 @@ def make_1d_profile(args: argparse.Namespace) -> pd.DataFrame:
 
     if args.rhoscale:
         logprint("Scaling density by a factor of:", args.rhoscale)
-        slice1d["rho"] *= args.rhoscale
+        slice1d.loc[:, "rho"] *= args.rhoscale
 
-    slice1d["rho"] = slice1d["rho"].apply(lambda x: np.log10(x) if x != 0 else -100)
+    slice1d.loc[:, "rho"] = slice1d["rho"].apply(lambda x: np.log10(x) if x != 0 else -100)
     # slice1d = slice1d[slice1d['rho_model'] != -100]  # Remove empty cells
     # TODO: fix this, -100 probably breaks things if it's not one of the outer cells that gets chopped
     slice1d = slice1d.rename(columns={"rho": "logrho"})
@@ -125,7 +125,7 @@ def make_1d_profile(args: argparse.Namespace) -> pd.DataFrame:
     if not args.positive_axis:
         # Invert rows and *velocity by -1 to make velocities positive for slice on negative axis
         slice1d.iloc[:] = slice1d.iloc[::-1].to_numpy()
-        slice1d["vel_r_max_kmps"] *= -1
+        slice1d.loc[:, "vel_r_max_kmps"] *= -1
 
     # with pd.option_context('display.max_rows', None, 'display.max_columns', None):
     #     print(slice1d)

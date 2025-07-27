@@ -774,13 +774,13 @@ def get_cell_angle(dfmodel: pd.DataFrame) -> pd.DataFrame:
         testphi = np.dot(vec1, vec3)
         phi[i] = math.acos(cosphi) if testphi > 0 else (math.acos(-cosphi) + np.pi)
 
-    dfmodel["cos_theta"] = cos_theta
-    dfmodel["phi"] = phi
+    dfmodel.loc[:, "cos_theta"] = cos_theta
+    dfmodel.loc[:, "phi"] = phi
     cos_bins = [-1, -0.8, -0.6, -0.4, -0.2, 0, 0.2, 0.4, 0.6, 0.8, 1]  # including end bin
     labels = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90]
     # assert at.get_viewingdirection_costhetabincount() == 10
     # assert at.get_viewingdirection_phibincount() == 10
-    dfmodel["cos_bin"] = pd.cut(dfmodel["cos_theta"], cos_bins, labels=labels)
+    dfmodel.loc[:, "cos_bin"] = pd.cut(dfmodel["cos_theta"], cos_bins, labels=labels)
     # dfmodel['cos_bin'] = np.searchsorted(cos_bins, dfmodel['cos_theta'].values) -1
 
     # phibins = ["0", "π/5", "2π/5", "3π/5", "4π/5", "π", "6π/5", "7π/5", "8π/5", "9π/5", "2π"]
@@ -799,7 +799,7 @@ def get_cell_angle(dfmodel: pd.DataFrame) -> pd.DataFrame:
     ]
     # reorderphibins = {5: 9, 6: 8, 7: 7, 8: 6, 9: 5}
     labels = [0, 1, 2, 3, 4, 9, 8, 7, 6, 5]
-    dfmodel["phi_bin"] = pd.cut(dfmodel["phi"], phibins, labels=labels)
+    dfmodel.loc[:, "phi_bin"] = pd.cut(dfmodel["phi"], phibins, labels=labels)
 
     return dfmodel
 

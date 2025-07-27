@@ -879,7 +879,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
-    """Plot line fluxe ratios for comparisons to Floers."""
+    """Plot line flux ratios for comparisons to Floers."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=(__doc__))
         addargs(parser)
