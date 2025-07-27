@@ -1,10 +1,12 @@
 import argparse
+import contextlib
 import functools
 import io
 import math
 import multiprocessing
 import multiprocessing.pool
 import string
+import sys
 import typing as t
 from collections.abc import Callable
 from collections.abc import Generator
@@ -1617,6 +1619,10 @@ def get_dirbin_labels(
 
 def get_multiprocessing_pool() -> multiprocessing.pool.Pool:
     """Return a multiprocessing pool that can be used to parallelize tasks."""
+    with contextlib.suppress(AttributeError):
+        if not sys._is_gil_enabled():  # noqa: SLF001
+            # return a thread pool if we have no GIL (free threading)
+            return multiprocessing.pool.ThreadPool()
     # this is a workaround for to keep pytest-cov from crashing
     try:
         from pytest_cov.embed import cleanup_on_sigterm
