@@ -126,10 +126,11 @@ jobs:
             fail-fast: false
             matrix:
                 os: [{name: macos, version: '15'}, {name: ubuntu, version: '24.04'}]
-                python-version: ['3.12', '3.13', '3.14']
+                python-version: ['3.12', '3.13', '3.14', 3.14t]
         env:
             OS: ${{ matrix.os.name }}-${{ matrix.os.version }}
             PYTHON: ${{ matrix.python-version }}
+            PYTHON_GIL: ${{ endsWith(matrix.python-version, 't') && '0' || '1' }}
 
         name: pytest ${{ matrix.os.name }} python ${{ matrix.python-version }}
         steps:
