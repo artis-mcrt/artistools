@@ -53,6 +53,7 @@ subcommandtree: CommandType = {
     "plottransitions": ("transitions", "main"),
     "plotviewingangles": ("viewing_angles_visualization", "main"),
     "completions": ("commands", "setup_completions"),
+    "version": ("commands", "show_version"),
     "spec": ("spectra.plotspectra", "main"),
     "spencerfano": ("nonthermal.solvespencerfanocmd", "main"),
     "writecodecomparisondata": ("writecomparisondata", "main"),
@@ -139,3 +140,9 @@ def setup_completions(*args: t.Any, **kwargs: t.Any) -> None:  # noqa: ARG001
 
     print("\n.bashrc:")
     print(f"source {completionscriptpath}")
+
+
+def show_version(*args: t.Any, **kwargs: t.Any) -> None:  # noqa: ARG001
+    from artistools.version import version
+
+    print(f"artistools {version}")
