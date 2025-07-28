@@ -386,7 +386,7 @@ exclude = [
 #py_limited_api="cp312"
 
 [tool.setuptools_scm]
-version_file = "_version.py"
+version_file = "artistools/version.py"
 local_scheme = "no-local-version"
 
 [tool.ty.rules]

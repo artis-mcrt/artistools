@@ -61,7 +61,7 @@ artistools/data/lightcurves/SNsample/*.txt
 plottingscripts/*
 plottingscripts/
 
-_version.py
+version.py
 
 .dmypy.json
 target
