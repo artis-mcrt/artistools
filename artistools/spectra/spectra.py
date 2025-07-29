@@ -1513,13 +1513,16 @@ def get_reference_spectrum(filename: Path | str) -> tuple[pl.DataFrame, dict[t.A
 
     flambdaindex = metadata.get("f_lambda_columnindex", 1)
 
-    specdata = pd.read_csv(
-        filepath,
-        sep=r"\s+",
-        header=None,
-        comment="#",
-        names=["lambda_angstroms", "f_lambda"],
-        usecols=[0, flambdaindex],
+    specdata = pl.from_pandas(
+        pd.read_csv(
+            filepath,
+            sep=r"\s+",
+            header=None,
+            comment="#",
+            names=["lambda_angstroms", "f_lambda"],
+            usecols=[0, flambdaindex],
+            dtype_backend="pyarrow",
+        )
     )
 
     if "a_v" in metadata or "e_bminusv" in metadata:
@@ -1527,15 +1530,20 @@ def get_reference_spectrum(filename: Path | str) -> tuple[pl.DataFrame, dict[t.A
         from extinction import apply
         from extinction import ccm89
 
-        specdata.loc[:, "f_lambda"] = apply(
-            ccm89(
-                specdata["lambda_angstroms"].to_numpy(copy=True), a_v=-metadata["a_v"], r_v=metadata["r_v"], unit="aa"
-            ),
-            specdata["f_lambda"].to_numpy(),
+        specdata = specdata.with_columns(
+            f_lambda=apply(
+                ccm89(
+                    specdata["lambda_angstroms"].to_numpy(writable=True),
+                    a_v=-metadata["a_v"],
+                    r_v=metadata["r_v"],
+                    unit="aa",
+                ),
+                specdata["f_lambda"].to_numpy(),
+            )
         )
 
     if "z" in metadata:
         print("Correcting for redshift")
-        specdata.loc[:, "lambda_angstroms"] /= 1 + metadata["z"]
+        specdata = specdata.with_columns(lambda_angstroms=pl.col("lambda_angstroms") / (1 + metadata["z"]))
 
-    return pl.from_pandas(specdata), metadata
+    return specdata, metadata
