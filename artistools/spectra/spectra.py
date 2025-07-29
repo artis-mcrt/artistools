@@ -1528,7 +1528,9 @@ def get_reference_spectrum(filename: Path | str) -> tuple[pl.DataFrame, dict[t.A
         from extinction import ccm89
 
         specdata.loc[:, "f_lambda"] = apply(
-            ccm89(specdata["lambda_angstroms"].to_numpy(), a_v=-metadata["a_v"], r_v=metadata["r_v"], unit="aa"),
+            ccm89(
+                specdata["lambda_angstroms"].to_numpy(copy=True), a_v=-metadata["a_v"], r_v=metadata["r_v"], unit="aa"
+            ),
             specdata["f_lambda"].to_numpy(),
         )
 
