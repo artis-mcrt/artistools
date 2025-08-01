@@ -69,7 +69,7 @@ def plot_spherical(
     # x=math.cos(-phi)
     # y=math.sin(-phi)
 
-    dfpackets = at.packets.bin_packet_directions_lazypolars(
+    dfpackets = at.packets.bin_packet_directions_polars(
         dfpackets=dfpackets, nphibins=nphibins, ncosthetabins=ncosthetabins, phibintype="phibinmonotonicasc"
     )
 

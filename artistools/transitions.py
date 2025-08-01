@@ -410,17 +410,16 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 get_nist_transitions(f"nist/nist-{ion['Z']:02d}-{ion['ion_stage']:02d}.txt")
             )
         else:
-            assert isinstance(ion["transitions"], pl.DataFrame | pl.LazyFrame)
             pldftransitions = ion["transitions"].lazy().collect()
 
         print(
             f"\n======> {at.get_elsymbol(ionid.Z)} {at.roman_numerals[ionid.ion_stage]:3s} "
-            f"(pop={ionpopdict[ionid]:.2e} / cm3, {len(pldftransitions):6d} transitions)"
+            f"(pop={ionpopdict[ionid]:.2e} / cm3, {pldftransitions.height:6d} transitions)"
         )
 
         if not args.include_permitted and not pldftransitions.is_empty():
             pldftransitions = pldftransitions.filter(pl.col("forbidden") != 0)
-            print(f"  ({len(pldftransitions):6d} forbidden)")
+            print(f"  ({pldftransitions.height:6d} forbidden)")
 
         if not pldftransitions.is_empty():
             if args.atomicdatabase == "artis":
@@ -445,7 +444,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
             pldftransitions = pldftransitions.sort(by="lambda_angstroms")
 
-            print(f"  {len(pldftransitions)} plottable transitions")
+            print(f"  {pldftransitions.height} plottable transitions")
 
             if args.atomicdatabase == "artis":
                 K_B = 8.617333262145179e-05  # eV / K
