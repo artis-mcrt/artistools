@@ -528,7 +528,7 @@ def get_rankbatch_parquetfile(
             ).sort(by=["type_id", "escape_type_id", "t_arrive_d"])
 
             pldf_batch = add_packet_directions_lazypolars(pldf_batch)
-            pldf_batch = bin_packet_directions_lazypolars(
+            pldf_batch = bin_packet_directions_polars(
                 pldf_batch, nphibins=10, ncosthetabins=10, phibintype="phibinhistoricaldescendingdiscont"
             )
 
@@ -735,7 +735,7 @@ def add_packet_directions_lazypolars(dfpackets: pl.LazyFrame | pl.DataFrame) -> 
     return dfpackets.drop(["dirmag", "vec1_x", "vec1_y", "vec1_z"])
 
 
-def bin_packet_directions_lazypolars(
+def bin_packet_directions_polars(
     dfpackets: pl.LazyFrame | pl.DataFrame,
     nphibins: int | None = None,
     ncosthetabins: int | None = None,
@@ -776,9 +776,9 @@ def bin_packet_directions_lazypolars(
     return dfpackets
 
 
-@deprecated("Use bin_packet_directions_lazypolars instead.")
+@deprecated("Use bin_packet_directions_polars instead.")
 def bin_packet_directions(dfpackets: pd.DataFrame) -> pd.DataFrame:
-    """Avoid this slow pandas function and use bin_packet_directions_lazypolars instead for new code."""
+    """Avoid this slow pandas function and use bin_packet_directions_polars instead for new code."""
     nphibins = at.get_viewingdirection_phibincount()
     ncosthetabins = at.get_viewingdirection_costhetabincount()
 

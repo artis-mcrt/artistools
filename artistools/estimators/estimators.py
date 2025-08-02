@@ -127,7 +127,8 @@ def get_rankbatch_parquetfile(
             flush=True,
         )
 
-        pldf_batch = at.rustext.estimparse(str(folderpath), min(batch_mpiranks), max(batch_mpiranks))
+        pldf_batch = pl.DataFrame(at.rustext.estimparse(str(folderpath), min(batch_mpiranks), max(batch_mpiranks)))
+
         pldf_batch = pldf_batch.with_columns(
             cs.by_name("titeration", "timestep", "modelgridindex", require_all=False).cast(pl.Int32)
         )

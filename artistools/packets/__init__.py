@@ -3,7 +3,7 @@ from artistools.packets.packets import add_derived_columns_lazy as add_derived_c
 from artistools.packets.packets import add_packet_directions_lazypolars as add_packet_directions_lazypolars
 from artistools.packets.packets import bin_and_sum as bin_and_sum
 from artistools.packets.packets import bin_packet_directions as bin_packet_directions
-from artistools.packets.packets import bin_packet_directions_lazypolars as bin_packet_directions_lazypolars
+from artistools.packets.packets import bin_packet_directions_polars as bin_packet_directions_polars
 from artistools.packets.packets import get_directionbin as get_directionbin
 from artistools.packets.packets import (
     get_mean_packet_emission_velocity_per_ts as get_mean_packet_emission_velocity_per_ts,

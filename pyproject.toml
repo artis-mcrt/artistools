@@ -41,7 +41,7 @@ dependencies = [
     "numexpr>=2.10.1",
     "numpy>=2.3.1",
     "pandas>=2.2.3",
-    "polars>=1.31.0",
+    "polars>=1.32.0",
     "pyarrow>=19.0.1",
     "pypdf>=5.1.0",
     "pyyaml>=6.0.2",
@@ -236,7 +236,7 @@ exclude = [
     'build',
     'dist',
     'target',
-    '_version.py',
+    '**/version.py',
     '.venv',
 ]
 reportAttributeAccessIssue = true

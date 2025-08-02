@@ -47,7 +47,7 @@ jobs:
               run: |
                   uv sync
                   source .venv/bin/activate
-                  uv pip install --editable .[extras]
+                  uv pip install .[extras]
 
             - name: Run Ruff
               if: always()
@@ -205,7 +205,7 @@ jobs:
             - name: Install artistools
               run: |
                   uv sync --python ${{ matrix.python-version }}
-                  uv pip install --compile-bytecode --editable .
+                  uv pip install --compile-bytecode .
 
             - name: install matplotlib nightly
               if: matrix.os.name == 'macos' && startsWith(matrix.python-version, '3.14')

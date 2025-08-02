@@ -1,9 +1,5 @@
-use pyo3::prelude::*;
-extern crate autocompress;
-extern crate core;
-extern crate polars;
-extern crate rayon;
 use polars::prelude::*;
+use pyo3::prelude::*;
 use pyo3_polars::PyDataFrame;
 use rayon::prelude::*;
 use std::collections::HashMap;

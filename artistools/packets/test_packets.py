@@ -24,7 +24,7 @@ def test_directionbins() -> None:
     )
 
     testdirections = at.packets.add_packet_directions_lazypolars(testdirections).collect()
-    testdirections = at.packets.bin_packet_directions_lazypolars(testdirections).collect()
+    testdirections = at.packets.bin_packet_directions_polars(testdirections).collect()
 
     for pkt in testdirections.iter_rows(named=True):
         assert np.isclose(pkt["dirx"] ** 2 + pkt["diry"] ** 2 + pkt["dirz"] ** 2, 1.0, rtol=0.001)
