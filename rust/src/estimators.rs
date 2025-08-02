@@ -1,10 +1,6 @@
-use pyo3::prelude::*;
-extern crate autocompress;
-extern crate core;
-extern crate polars;
-extern crate rayon;
 use polars::prelude::*;
-use pyo3_polars::PyDataFrame;
+use polars_python::PyDataFrame;
+use pyo3::prelude::*;
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
@@ -207,5 +203,5 @@ pub fn estimparse(folderpath: String, rankmin: i32, rankmax: i32) -> PyResult<Py
         .collect_into_vec(&mut vecdfs);
 
     let dfbatch = polars::functions::concat_df_diagonal(&vecdfs).unwrap();
-    Ok(PyDataFrame(dfbatch))
+    Ok(PyDataFrame::from(dfbatch))
 }
