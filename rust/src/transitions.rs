@@ -1,10 +1,7 @@
-use pyo3::types::{IntoPyDict, PyDict};
-use pyo3::{IntoPyObject, prelude::*};
-extern crate core;
-extern crate polars;
-extern crate rayon;
 use autocompress::autodetect_open;
 use polars::prelude::*;
+use pyo3::types::{IntoPyDict, PyDict};
+use pyo3::{IntoPyObject, prelude::*};
 use pyo3_polars::PyDataFrame;
 use std::collections::HashSet;
 use std::io::Read;
