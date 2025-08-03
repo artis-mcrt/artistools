@@ -1,8 +1,8 @@
 use autocompress::autodetect_open;
 use polars::prelude::*;
+use polars_python::PyDataFrame;
+use pyo3::prelude::*;
 use pyo3::types::{IntoPyDict, PyDict};
-use pyo3::{IntoPyObject, prelude::*};
-use pyo3_polars::PyDataFrame;
 use std::collections::HashSet;
 use std::io::Read;
 
@@ -76,13 +76,14 @@ pub fn read_transitiondata(
                     _ => vec_forbidden.push(0),
                 }
             }
-            let pydf = PyDataFrame(
+            let pydf = PyDataFrame::from(
                 df!(
-            "lower" => vec_lower.to_owned(),
-            "upper" => vec_upper.to_owned(),
-            "A" => vec_avalue.to_owned(),
-            "collstr" => vec_collstr.to_owned(),
-            "forbidden" => vec_forbidden.to_owned())
+                    "lower" => vec_lower.to_owned(),
+                    "upper" => vec_upper.to_owned(),
+                    "A" => vec_avalue.to_owned(),
+                    "collstr" => vec_collstr.to_owned(),
+                    "forbidden" => vec_forbidden.to_owned()
+                )
                 .unwrap(),
             );
 
