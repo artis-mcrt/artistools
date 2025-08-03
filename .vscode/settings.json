@@ -11,6 +11,7 @@
     "files.insertFinalNewline": true,
     "files.eol": "\n",
     "files.trimFinalNewlines": true,
-    "rust-analyzer.runnables.extraArgs": ["--release"],
-    "rust-analyzer.diagnostics.styleLints.enable": true
+    "rust-analyzer.cargo.targetDir": true,
+    "rust-analyzer.diagnostics.styleLints.enable": true,
+    "rust-analyzer.runnables.extraArgs": ["--release"]
 }
