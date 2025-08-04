@@ -204,13 +204,6 @@ jobs:
                   uv sync --python ${{ matrix.python-version }}
                   uv pip install --compile-bytecode .
 
-            - name: install matplotlib nightly
-              if: matrix.os.name == 'macos' && startsWith(matrix.python-version, '3.14')
-              run: |
-                  uv pip install pip
-                  python -m pip install --upgrade --pre --index-url https://pypi.anaconda.org/scientific-python-nightly-wheels/simple --extra-index-url https://pypi.org/simple matplotlib
-                  uv run --no-sync -- artistools --help
-
             - name: Test with pytest
               run: uv run --no-sync -- python -m pytest --cov=./ --cov-report=xml
 
