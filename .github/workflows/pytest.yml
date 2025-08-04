@@ -14,7 +14,7 @@ on:
 jobs:
     lint:
         name: Format, lint, and type check
-        runs-on: macos-15
+        runs-on: ubuntu-24.04
         env:
             RUFF_OUTPUT_FORMAT: github
             UV_FROZEN: 1
@@ -46,7 +46,6 @@ jobs:
             - name: Install artistools[extras]
               run: |
                   uv sync
-                  source .venv/bin/activate
                   uv pip install .[extras]
 
             - name: Run Ruff
@@ -79,13 +78,12 @@ jobs:
 
             - name: Run pre-commit
               run: |
-                  source .venv/bin/activate
-                  uv run -- pre-commit run --all-files --show-diff-on-failure --color=always
+                  pre-commit install
+                  pre-commit run --all-files --show-diff-on-failure --color=always
 
     superlinter:
         name: Super linter
         runs-on: ubuntu-24.04
-
         steps:
             - name: Checkout Code
               uses: actions/checkout@v4
@@ -137,7 +135,6 @@ jobs:
             PYTHON: ${{ matrix.python-version }}
             PYTHON_GIL: ${{ endsWith(matrix.python-version, 't') && '0' || '1' }}
             UV_FROZEN: 1
-
         name: pytest ${{ matrix.os.name }} python ${{ matrix.python-version }}
         steps:
             - name: Checkout Code
