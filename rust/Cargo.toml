@@ -1,6 +1,6 @@
 [package]
-name = "artistools-rust"
-version = "0.20250222.0"
+name = "artistools"
+version = "0.20250805.0"
 authors = ["Luke Shingles <luke.shingles@gmail.com>"]
 edition = "2024"
 rust-version = "1.86"
@@ -13,6 +13,7 @@ readme = "../README.md"
 [lib]
 name = "rustext"
 crate-type = ["cdylib"]
+path = "src/lib.rs"
 
 [dependencies]
 autocompress = { version = "0.6.0", features = ["gzip", "rayon", "xz", "zstd"] }
