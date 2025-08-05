@@ -50,7 +50,7 @@ def write_spectra(modelpath: str | Path, selected_timesteps: Sequence[int], outf
 
 def write_ntimes_nvel(outfile: TextIOWrapper, selected_timesteps: Sequence[int], modelpath: str | Path) -> None:
     times = at.get_timestep_times(modelpath)
-    _, modelmeta = at.inputmodel.get_modeldata(modelpath, getheadersonly=True)
+    _, modelmeta = at.inputmodel.get_modeldata(modelpath)
     outfile.write(f"#NTIMES: {len(selected_timesteps)}\n")
     outfile.write(f"#NVEL: {modelmeta['npts_model']}\n")
     outfile.write(f"#TIMES[d]: {' '.join([f'{times[ts]:.2f}' for ts in selected_timesteps])}\n")

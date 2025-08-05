@@ -376,7 +376,7 @@ def plot_celltimestep(
     if not args.nospec:
         plotkwargs: dict[str, t.Any] = {}
         if not normalised:
-            _, modelmeta = at.inputmodel.get_modeldata(modelpath, getheadersonly=True)
+            _, modelmeta = at.inputmodel.get_modeldata(modelpath)
             # outer velocity
             v_surface = modelmeta["vmax_cmps"]
             r_surface = time_days * 864000 * v_surface

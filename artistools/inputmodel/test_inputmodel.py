@@ -28,12 +28,11 @@ def test_describeinputmodel_3d() -> None:
 
 
 def test_get_modeldata_1d() -> None:
-    for getheadersonly in (False, True):
-        _, modelmeta = at.get_modeldata(modelpath=modelpath, getheadersonly=getheadersonly)
-        assert np.isclose(modelmeta["t_model_init_days"], 0.00115740740741, rtol=0.0001)
-        assert np.isclose(modelmeta["vmax_cmps"], 800000000.0)
-        assert modelmeta["dimensions"] == 1
-        assert modelmeta["npts_model"] == 1
+    _, modelmeta = at.get_modeldata(modelpath=modelpath)
+    assert np.isclose(modelmeta["t_model_init_days"], 0.00115740740741, rtol=0.0001)
+    assert np.isclose(modelmeta["vmax_cmps"], 800000000.0)
+    assert modelmeta["dimensions"] == 1
+    assert modelmeta["npts_model"] == 1
 
     lzdfmodel, modelmeta = at.get_modeldata(modelpath=modelpath, derived_cols=["mass_g"])
     assert np.isclose(lzdfmodel.select(pl.col("mass_g").sum()).collect().item(), 1.416963e33)
@@ -41,12 +40,11 @@ def test_get_modeldata_1d() -> None:
 
 @pytest.mark.benchmark
 def test_get_modeldata_3d() -> None:
-    for getheadersonly in (False, True):
-        _, modelmeta = at.get_modeldata(modelpath=modelpath_3d, getheadersonly=getheadersonly)
-        assert np.isclose(modelmeta["vmax_cmps"], 2892020000.0)
-        assert modelmeta["dimensions"] == 3
-        assert modelmeta["npts_model"] == 1000
-        assert modelmeta["ncoordgridx"] == 10
+    _, modelmeta = at.get_modeldata(modelpath=modelpath_3d)
+    assert np.isclose(modelmeta["vmax_cmps"], 2892020000.0)
+    assert modelmeta["dimensions"] == 3
+    assert modelmeta["npts_model"] == 1000
+    assert modelmeta["ncoordgridx"] == 10
 
     lzdfmodel, modelmeta = at.get_modeldata(modelpath=modelpath_3d, derived_cols=["mass_g"])
     assert np.isclose(lzdfmodel.select(pl.col("mass_g").sum()).collect().item(), 2.7861855e33)
