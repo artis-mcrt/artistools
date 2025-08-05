@@ -323,7 +323,7 @@ def readfile(
 
 
 def readfile_text(packetsfiletext: Path | str, column_names: list[str]) -> pl.DataFrame:
-    """Read a packets*.out(.xz/.zstd) space-separated text file into a polars DataFrame."""
+    """Read a packets*.out(.xz/.zst) space-separated text file into a polars DataFrame."""
     packetsfiletext = Path(packetsfiletext)
     print(f"  reading {packetsfiletext}")
     dtype_overrides = {
