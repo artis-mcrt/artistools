@@ -1,9 +1,11 @@
 [build-system]
 requires = [
+    # "maturin>=1.9.3",
     "setuptools>=80.9.0",
     "setuptools-rust>=1.11.1",
     "setuptools_scm[toml]>=8.3.1",
 ]
+# build-backend = "maturin"
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -136,6 +138,13 @@ before-all = [
 #     "uv pip install abi3audit",
 #     "python3 -m abi3audit --strict --report {wheel}",
 # ]
+
+[tool.maturin]
+bindings = "pyo3"
+profile = "release"
+manifest-path = "rust/Cargo.toml"
+features = ["pyo3/extension-module"]
+module-name = "artistools.rustext"
 
 [tool.mypy]
 check_untyped_defs = true
