@@ -36,41 +36,6 @@ class FeatureTuple(t.NamedTuple):
     lowerlevelindicies: Sequence[int]
 
 
-def print_floers_line_ratio(
-    modelpath: Path,
-    timedays: float,
-    arr_f_lambda: npt.NDArray[np.floating],
-    arr_lambda_angstroms: npt.NDArray[np.floating],
-) -> None:
-    from scipy import integrate
-
-    def get_line_flux(
-        lambda_low: float,
-        lambda_high: float,
-        arr_f_lambda: npt.NDArray[np.floating],
-        arr_lambda_angstroms: npt.NDArray[np.floating],
-    ) -> float:
-        index_low, index_high = (
-            int(np.searchsorted(arr_lambda_angstroms, wl, side="left")) for wl in (lambda_low, lambda_high)
-        )
-        lineflux = abs(
-            integrate.trapezoid(arr_f_lambda[index_low:index_high], x=arr_lambda_angstroms[index_low:index_high])
-        )
-        assert isinstance(lineflux, float)
-        return lineflux
-
-    f_12570 = get_line_flux(12570 - 200, 12570 + 200, arr_f_lambda, arr_lambda_angstroms)
-    f_7155 = get_line_flux(7000, 7350, arr_f_lambda, arr_lambda_angstroms)
-    print(f"f_12570 {f_12570:.2e} f_7155 {f_7155:.2e}")
-    if f_7155 > 0 and f_12570 > 0:
-        fratio = f_12570 / f_7155
-        print(f"f_12570/f_7122 = {fratio:.2e} (log10 is {math.log10(fratio):.2e})")
-        outfilename = Path(f"fe2_nir_vis_ratio_{modelpath.name}.txt")
-        print(f" saved to {outfilename}")
-        with outfilename.open("a+", encoding="utf-8") as f:
-            f.write(f"{timedays:.1f} {fratio:.3e}\n")
-
-
 def get_packets_with_emtype_onefile(
     emtypecolumn: str,
     lineindices: Sequence[int],  # noqa: ARG001
