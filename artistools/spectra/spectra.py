@@ -1163,7 +1163,7 @@ def get_flux_contributions_from_packets(
                     expr_linelist_to_str.alias("emissiontype_str"),
                 ]),
                 pl.DataFrame(
-                    {emtypecolumn: [-9999999], "emissiontype_str": ["free-free"]},
+                    {emtypecolumn: [-9999999, -9999000], "emissiontype_str": ["free-free", "NOT SET"]},
                     schema_overrides={emtypecolumn: pl.Int32, "emissiontype_str": pl.String},
                 ).lazy(),
                 bflistlazy.select([pl.col(emtypecolumn), expr_bflist_to_str.alias("emissiontype_str")]),
