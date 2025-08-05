@@ -23,9 +23,6 @@ types = {10: "TYPE_GAMMA", 11: "TYPE_RPKT", 20: "TYPE_NTLEPTON", 32: "TYPE_ESCAP
 
 type_ids = {v: k for k, v in types.items()}
 
-EMTYPE_NOTSET = -9999000
-EMTYPE_FREEFREE = -9999999
-
 # new artis added extra columns to the end of this list, but they may be absent in older versions
 # the packets file may have a truncated set of columns, but we assume that they
 # are only truncated, i.e. the columns with the same index have the same meaning
