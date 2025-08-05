@@ -127,11 +127,11 @@ def setup_completions(*args: t.Any, **kwargs: t.Any) -> None:  # noqa: ARG001
 
         f.write(strfunctiondefs)
         f.write(strsplit)
-        f.write("\n\n")
+        f.write("\n")
 
         for command in COMMANDS:
             completecommand = strcommandregister.replace("__MY_COMMAND__", command)
-            f.write(completecommand + "\n")
+            f.write(f"\n{completecommand}")
 
     print("To enable completions, add these lines to your .zshrc or .bashrc file:")
     print("\n.zshrc:")
