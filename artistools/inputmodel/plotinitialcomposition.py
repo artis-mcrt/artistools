@@ -291,7 +291,7 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
         "label_font_size": 22,
     }
 
-    plotter = pv.Plotter()  # type: ignore[no-untyped-call]
+    plotter = pv.Plotter()
     # plotter.add_mesh(mesh.outline(), color="k")
     plotcoloropacity = [0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]  # some choices: 'linear' 'sigmoid'
     # plotter.set_scale(0.95, 0.95, 0.95) # adjusts fig resolution
@@ -307,7 +307,7 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
         font_size=28,
         bold=False,
     )
-    plotter.add_mesh(surf, opacity=plotcoloropacity, scalar_bar_args=sargs, cmap="coolwarm_r")
+    plotter.add_mesh(surf, opacity=plotcoloropacity, scalar_bar_args=sargs, cmap="coolwarm_r")  # type: ignore[arg-type] # pyright: ignore[reportArgumentType]
     # plotter.add_mesh(surf, opacity=plotcoloropacity, use_transparency=True, cmap='coolwarm_r') #magma
 
     # plotter.remove_scalar_bar() # removes colorbar
@@ -317,7 +317,7 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
     plotter.camera.azimuth = 45.0
     plotter.camera.elevation = 10.0
     # plotter.camera.azimuth = 15
-    plotter.show(screenshot=modelpath / "3Dplot.png", auto_close=False)  # type: ignore[no-untyped-call] # pyright: ignore[reportArgumentType]
+    plotter.show(screenshot=modelpath / "3Dplot.png", auto_close=False)
 
     # Make gif:
     # # viewup = [0.5, 0.5, 1]

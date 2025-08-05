@@ -83,12 +83,12 @@ def make_2d_packets_plot_pyvista(modelpath: Path, timestep: int) -> None:
     }
 
     pv.set_plot_theme("document")  # type: ignore[no-untyped-call]
-    p = pv.Plotter()  # type: ignore[no-untyped-call]
+    p = pv.Plotter()
 
     p.set_scale(p, xscale=1.5, yscale=1.5, zscale=1.5)
     single_slice = mesh.slice(normal="y")
     # single_slice = mesh.slice(normal='z')
-    p.add_mesh(single_slice, scalar_bar_args=sargs)
+    p.add_mesh(single_slice, scalar_bar_args=sargs)  # type: ignore[arg-type]# pyright: ignore[reportArgumentType]
     p.show_bounds(
         p,
         grid=False,
@@ -109,7 +109,7 @@ def make_2d_packets_plot_pyvista(modelpath: Path, timestep: int) -> None:
     p.add_title(f"{time:.2f} - {timeminarray[timestep + 1]:.2f} days")
     print(pv.global_theme)
 
-    p.show(screenshot=modelpath / f"3Dplot_pktsemitted{time:.1f}days_disk.png")  # type: ignore[no-untyped-call]  # pyright: ignore[reportArgumentType]
+    p.show(screenshot=modelpath / f"3Dplot_pktsemitted{time:.1f}days_disk.png")
 
 
 def plot_packet_mean_emission_velocity(modelpath: str | Path, write_emission_data: bool = True) -> None:
