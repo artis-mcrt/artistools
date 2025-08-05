@@ -1,7 +1,9 @@
 import calendar
+import datetime
 import errno
 import gc
 import itertools
+import json
 import math
 import os
 import tempfile
@@ -31,7 +33,7 @@ from artistools.misc import zopenpl
 
 # @lru_cache(maxsize=3)
 def read_modelfile_text(
-    filename: Path | str, printwarningsonly: bool = False, getheadersonly: bool = False
+    filename: Path | str, printwarningsonly: bool = False
 ) -> tuple[pl.LazyFrame, dict[t.Any, t.Any]]:
     """Read an artis model.txt file containing cell velocities, density, and abundances of radioactive nuclides."""
     onelinepercellformat = None
@@ -42,7 +44,7 @@ def read_modelfile_text(
     ncoordgridy: int = 0
     ncoordgridz: int = 0
 
-    if not printwarningsonly and not getheadersonly:
+    if not printwarningsonly:
         print(f"Reading {filename}")
 
     numheaderrows = 0
@@ -100,7 +102,6 @@ def read_modelfile_text(
                 if not printwarningsonly:
                     print(f"  detected 1D model file with {npts_model} radial zones")
                 modelmeta["dimensions"] = 1
-                getheadersonly = False  # need to find vmax from the model data
 
         columns = None
         if line.startswith("#"):
@@ -126,7 +127,7 @@ def read_modelfile_text(
 
         assert columns is not None
         if ncols_line_even == len(columns):
-            if not printwarningsonly and not getheadersonly:
+            if not printwarningsonly:
                 print("  model file is one line per cell")
             ncols_line_odd = 0
             onelinepercellformat = True
@@ -137,7 +138,6 @@ def read_modelfile_text(
             assert (ncols_line_even + ncols_line_odd) == len(columns)
             onelinepercellformat = False
 
-    nrows_read = 1 if getheadersonly else npts_model
     if onelinepercellformat and "  " not in data_line_even and "  " not in data_line_odd:
         if not printwarningsonly:
             print("  using fast method polars.read_csv (requires one line per cell and single space delimiters)")
@@ -147,7 +147,7 @@ def read_modelfile_text(
             separator=" ",
             comment_prefix="#",
             new_columns=columns,
-            n_rows=nrows_read,
+            n_rows=npts_model,
             has_header=False,
             skip_rows=numheaderrows,
             schema={col: pl.Int32 if col == "inputcellid" else pl.Float32 for col in columns},
@@ -177,7 +177,7 @@ def read_modelfile_text(
             skiprows=skiprows,
             names=columns[:ncols_line_even],
             usecols=columns[:ncols_line_even],
-            nrows=nrows_read,
+            nrows=npts_model,
             dtype=dtypes,
             dtype_backend="pyarrow",
         )
@@ -196,7 +196,7 @@ def read_modelfile_text(
                 header=None,
                 skiprows=skipevenrows,
                 names=columns[ncols_line_even:],
-                nrows=nrows_read,
+                nrows=npts_model,
                 dtype=dtypes,
                 dtype_backend="pyarrow",
             )
@@ -207,7 +207,7 @@ def read_modelfile_text(
         if len(dfmodelpd) > npts_model:
             dfmodelpd = dfmodelpd.iloc[:npts_model]
 
-        assert len(dfmodelpd) == npts_model or getheadersonly
+        assert len(dfmodelpd) == npts_model
 
         dfmodelpd.index.name = "cellid"
 
@@ -227,24 +227,23 @@ def read_modelfile_text(
         wid_init_z = 2 * modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridz"]
         modelmeta["wid_init_rcyl"] = wid_init_rcyl
         modelmeta["wid_init_z"] = wid_init_z
-        if not getheadersonly:
-            # check pos_rcyl_mid and pos_z_mid are correct
 
-            for inputcellid, cell_pos_rcyl_mid, cell_pos_z_mid in (
-                dfmodel.select(["inputcellid", "pos_rcyl_mid", "pos_z_mid"]).collect().iter_rows()
-            ):
-                modelgridindex = inputcellid - 1
-                n_r = modelgridindex % modelmeta["ncoordgridrcyl"]
-                n_z = modelgridindex // modelmeta["ncoordgridrcyl"]
-                pos_rcyl_min = modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridrcyl"] * n_r
-                pos_z_min = (
-                    -modelmeta["vmax_cmps"] * t_model_init_seconds
-                    + 2.0 * modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridz"] * n_z
-                )
-                pos_rcyl_mid = pos_rcyl_min + 0.5 * wid_init_rcyl
-                pos_z_mid = pos_z_min + 0.5 * wid_init_z
-                assert np.isclose(cell_pos_rcyl_mid, pos_rcyl_mid, atol=wid_init_rcyl / 2.0)
-                assert np.isclose(cell_pos_z_mid, pos_z_mid, atol=wid_init_z / 2.0)
+        # check pos_rcyl_mid and pos_z_mid are correct
+        for inputcellid, cell_pos_rcyl_mid, cell_pos_z_mid in (
+            dfmodel.select(["inputcellid", "pos_rcyl_mid", "pos_z_mid"]).collect().iter_rows()
+        ):
+            modelgridindex = inputcellid - 1
+            n_r = modelgridindex % modelmeta["ncoordgridrcyl"]
+            n_z = modelgridindex // modelmeta["ncoordgridrcyl"]
+            pos_rcyl_min = modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridrcyl"] * n_r
+            pos_z_min = (
+                -modelmeta["vmax_cmps"] * t_model_init_seconds
+                + 2.0 * modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridz"] * n_z
+            )
+            pos_rcyl_mid = pos_rcyl_min + 0.5 * wid_init_rcyl
+            pos_z_mid = pos_z_min + 0.5 * wid_init_z
+            assert np.isclose(cell_pos_rcyl_mid, pos_rcyl_mid, atol=wid_init_rcyl / 2.0)
+            assert np.isclose(cell_pos_z_mid, pos_z_mid, atol=wid_init_z / 2.0)
 
     elif modelmeta["dimensions"] == 3:
         wid_init_x = 2 * modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridx"]
@@ -257,23 +256,22 @@ def read_modelfile_text(
         if "pos_x_min" in dfmodel.collect_schema().names():
             if not printwarningsonly:
                 print("  model cell positions are defined in the header")
-            if not getheadersonly:
-                firstrow = dfmodel.select(cs.starts_with("pos_")).first().collect().row(index=0, named=True)
-                expected_positions = (
-                    ("pos_x_min", -xmax_tmodel),
-                    ("pos_y_min", -xmax_tmodel),
-                    ("pos_z_min", -xmax_tmodel),
-                    ("pos_x_mid", -xmax_tmodel + wid_init_x / 2.0),
-                    ("pos_y_mid", -xmax_tmodel + wid_init_y / 2.0),
-                    ("pos_z_mid", -xmax_tmodel + wid_init_z / 2.0),
-                )
-                for col, pos in expected_positions:
-                    if col in firstrow and not math.isclose(firstrow["pos_x_min"], pos, rel_tol=0.01):
-                        print(
-                            f"  WARNING: {col} does not match expected value. Check that vmax is consistent with the cell positions."
-                        )
+            firstrow = dfmodel.select(cs.starts_with("pos_")).first().collect().row(index=0, named=True)
+            expected_positions = (
+                ("pos_x_min", -xmax_tmodel),
+                ("pos_y_min", -xmax_tmodel),
+                ("pos_z_min", -xmax_tmodel),
+                ("pos_x_mid", -xmax_tmodel + wid_init_x / 2.0),
+                ("pos_y_mid", -xmax_tmodel + wid_init_y / 2.0),
+                ("pos_z_mid", -xmax_tmodel + wid_init_z / 2.0),
+            )
+            for col, pos in expected_positions:
+                if col in firstrow and not math.isclose(firstrow["pos_x_min"], pos, rel_tol=0.01):
+                    print(
+                        f"  WARNING: {col} does not match expected value. Check that vmax is consistent with the cell positions."
+                    )
 
-        elif not getheadersonly:
+        else:
 
             def vectormatch(vec1: list[float], vec2: list[float]) -> bool:
                 xclose = np.isclose(vec1[0], vec2[0], atol=wid_init_x * 0.05)
@@ -359,7 +357,6 @@ def get_modeldata(
     get_elemabundances: bool = False,
     derived_cols: Sequence[str] | str | None = None,
     printwarningsonly: bool = False,
-    getheadersonly: bool = False,
 ) -> tuple[pl.LazyFrame, dict[t.Any, t.Any]]:
     """Read an artis model.txt file containing cell velocities, densities, and mass fraction abundances of radioactive nuclides.
 
@@ -395,45 +392,54 @@ def get_modeldata(
 
     parquetfilepath = stripallsuffixes(Path(textfilepath)).with_suffix(".txt.parquet.tmp")
 
-    if parquetfilepath.exists() and Path(textfilepath).stat().st_mtime > parquetfilepath.stat().st_mtime:
+    textsource_mtime = Path(textfilepath).stat().st_mtime
+    if parquetfilepath.exists() and textsource_mtime > parquetfilepath.stat().st_mtime:
         print(f"{textfilepath} has been modified after {parquetfilepath}. Deleting out of date parquet file.")
         parquetfilepath.unlink()
 
-    t_lastschemachange = calendar.timegm((2024, 1, 1, 9, 0, 0))
+    t_lastschemachange = calendar.timegm((2025, 8, 5, 9, 0, 0))
 
     if parquetfilepath.exists() and Path(parquetfilepath).stat().st_mtime < t_lastschemachange:
         print(f"{parquetfilepath} has been modified before the last schema change. Deleting out of date parquet file.")
         parquetfilepath.unlink()
 
     dfmodel: pl.LazyFrame | None = None
-    if not getheadersonly and parquetfilepath.is_file():
+    if parquetfilepath.is_file():
         if not printwarningsonly:
             print(f"Reading model table from {parquetfilepath}")
         try:
             dfmodel = pl.scan_parquet(parquetfilepath)
+            modelmeta = json.loads(pl.read_parquet_metadata(parquetfilepath)["modelmeta_json"])
+
         except pl.exceptions.ComputeError:
             print(f"Problem reading {parquetfilepath}. Will regenerate and overwrite from text source.")
             dfmodel = None
 
-    if dfmodel is not None:
-        # already read in the model data, just need to get the metadata
-        getheadersonly = True
-
-    dfmodel_textfile, modelmeta = read_modelfile_text(
-        filename=textfilepath, printwarningsonly=printwarningsonly, getheadersonly=getheadersonly
-    )
-
     if dfmodel is None:
+        # already read in the model data, just need to get the metadata
+
+        dfmodel_textfile, modelmeta = read_modelfile_text(filename=textfilepath, printwarningsonly=printwarningsonly)
+
         dfmodel = dfmodel_textfile
         assert dfmodel is not None
 
         mebibyte = 1024 * 1024
-        if textfilepath.stat().st_size > 5 * mebibyte and not getheadersonly:
+        if textfilepath.stat().st_size > 2 * mebibyte:
             print(f"Saving {parquetfilepath}")
             partialparquetfilepath = Path(
                 tempfile.mkstemp(dir=modelpath, prefix=f"{parquetfilepath.name}.partial", suffix=".tmp")[1]
             )
-            dfmodel.collect().write_parquet(partialparquetfilepath, compression="zstd", statistics=True)
+            modelmeta_json = json.dumps(modelmeta)
+            dfmodel.collect().write_parquet(
+                partialparquetfilepath,
+                compression="zstd",
+                statistics=True,
+                metadata={
+                    "creationtimeutc": str(datetime.datetime.now(datetime.UTC)),
+                    "textsource_mtime": str(textsource_mtime),
+                    "modelmeta_json": modelmeta_json,
+                },
+            )
             if parquetfilepath.exists():
                 partialparquetfilepath.unlink()
             else:
@@ -529,7 +535,6 @@ def get_modeldata_pandas(
     get_elemabundances: bool = False,
     derived_cols: Sequence[str] | str | None = None,
     printwarningsonly: bool = False,
-    getheadersonly: bool = False,
 ) -> tuple[pd.DataFrame, dict[t.Any, t.Any]]:
     """Like get_modeldata() but convert polars DataFrame to pandas."""
     pldfmodel, modelmeta = get_modeldata(
@@ -537,10 +542,9 @@ def get_modeldata_pandas(
         get_elemabundances=get_elemabundances,
         derived_cols=derived_cols,
         printwarningsonly=printwarningsonly,
-        getheadersonly=getheadersonly,
     )
     dfmodel = pldfmodel.collect().to_pandas(use_pyarrow_extension_array=True)
-    if modelmeta["npts_model"] > 100000 and not getheadersonly:
+    if modelmeta["npts_model"] > 100000:
         # dfmodel.info(verbose=False, memory_usage="deep")
         print("WARNING: Using pandas DataFrame for large model data. Switch to using get_modeldata() instead.")
 
@@ -1126,7 +1130,8 @@ def get_initelemabundances_polars(modelpath: Path = Path(), printwarningsonly: b
             col: colnames[idx] for idx, col in enumerate(abundancedata.columns)
         }).with_columns(cs.starts_with("X_").cast(pl.Float32), (~cs.starts_with("X_")).cast(pl.Int32))
 
-        if textfilepath.stat().st_size > 5 * 1024 * 1024:
+        mebibyte = 1024 * 1024
+        if textfilepath.stat().st_size > 2 * mebibyte:
             print(f"Saving {parquetfilepath}")
             partialparquetfilepath = Path(
                 tempfile.mkstemp(dir=modelpath, prefix=f"{parquetfilepath.name}.partial", suffix=".tmp")[1]

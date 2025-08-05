@@ -291,7 +291,7 @@ def get_wid_init_at_tmodel(
         assert modelpath is not None
         from artistools.inputmodel import get_modeldata
 
-        _, modelmeta = get_modeldata(modelpath, getheadersonly=True)
+        _, modelmeta = get_modeldata(modelpath)
         assert modelmeta["dimensions"] == 3
         ngridpoints = modelmeta["npts_model"]
         xmax = modelmeta["vmax_cmps"] * modelmeta["t_model_init_days"] * 86400.0
@@ -536,7 +536,7 @@ def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | None, 
     modelpath = Path(modelpath)
     from artistools.inputmodel import get_modeldata
 
-    _, modelmeta = get_modeldata(modelpath, printwarningsonly=True, getheadersonly=True)
+    _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
     vmax = modelmeta["vmax_cmps"]
     cornervmax = math.sqrt(3 * vmax**2)
 
