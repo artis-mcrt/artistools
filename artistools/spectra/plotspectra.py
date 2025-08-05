@@ -599,7 +599,7 @@ def make_spectrum_plot(
             Path(specpath).is_file()
             or Path(get_config()["path_artistools_dir"], "data", "refspectra", specpath).is_file()
             or Path(get_config()["path_artistools_dir"], "data", "refspectra", f"{specpath!s}.xz").is_file()
-            or Path(get_config()["path_artistools_dir"], "data", "refspectra", f"{specpath!s}.zstd").is_file()
+            or Path(get_config()["path_artistools_dir"], "data", "refspectra", f"{specpath!s}.zst").is_file()
         ):
             # reference spectrum
             if "linewidth" not in plotkwargs:
