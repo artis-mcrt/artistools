@@ -390,37 +390,35 @@ def get_modeldata(
     else:
         raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), inputpath)
 
-    parquetfilepath = stripallsuffixes(Path(textfilepath)).with_suffix(".txt.parquet.tmp")
-
     textsource_mtime = Path(textfilepath).stat().st_mtime
-    if parquetfilepath.exists() and textsource_mtime > parquetfilepath.stat().st_mtime:
-        print(f"{textfilepath} has been modified after {parquetfilepath}. Deleting out of date parquet file.")
-        parquetfilepath.unlink()
-
     t_lastschemachange = calendar.timegm((2025, 8, 5, 9, 0, 0))
-
-    if parquetfilepath.exists() and Path(parquetfilepath).stat().st_mtime < t_lastschemachange:
-        print(f"{parquetfilepath} has been modified before the last schema change. Deleting out of date parquet file.")
-        parquetfilepath.unlink()
-
+    parquetfilepath = stripallsuffixes(Path(textfilepath)).with_suffix(".txt.parquet.tmp")
     dfmodel: pl.LazyFrame | None = None
-    if parquetfilepath.is_file():
-        if not printwarningsonly:
-            print(f"Reading model table from {parquetfilepath}")
-        try:
-            dfmodel = pl.scan_parquet(parquetfilepath)
-            modelmeta = json.loads(pl.read_parquet_metadata(parquetfilepath)["modelmeta_json"])
+    if parquetfilepath.exists():
+        if textsource_mtime > parquetfilepath.stat().st_mtime:
+            print(f"{textfilepath} has been modified after {parquetfilepath}. Will regenerate.")
+        elif Path(parquetfilepath).stat().st_mtime < t_lastschemachange:
+            print(f"{parquetfilepath} was generated before the last schema change. Will regenerate.")
+        else:
+            if not printwarningsonly:
+                print(f"Reading model table from {parquetfilepath}")
+            pqmetadata = pl.read_parquet_metadata(parquetfilepath)
+            if str(pqmetadata["textsource_mtime"]) != str(textsource_mtime):
+                print(
+                    f"Modification time of text source ({textsource_mtime!s}) does not match parquet metadata ({pqmetadata['textsource_mtime']!s}). Will regenerate."
+                )
+            else:
+                try:
+                    modelmeta = json.loads(pqmetadata["modelmeta_json"])
+                    dfmodel = pl.scan_parquet(parquetfilepath)
 
-        except pl.exceptions.ComputeError:
-            print(f"Problem reading {parquetfilepath}. Will regenerate and overwrite from text source.")
-            dfmodel = None
+                except pl.exceptions.ComputeError:
+                    print(f"Problem reading {parquetfilepath}. Will regenerate and overwrite from text source.")
 
     if dfmodel is None:
-        # already read in the model data, just need to get the metadata
+        # read from text file
+        dfmodel, modelmeta = read_modelfile_text(filename=textfilepath, printwarningsonly=printwarningsonly)
 
-        dfmodel_textfile, modelmeta = read_modelfile_text(filename=textfilepath, printwarningsonly=printwarningsonly)
-
-        dfmodel = dfmodel_textfile
         assert dfmodel is not None
 
         mebibyte = 1024 * 1024
@@ -440,10 +438,7 @@ def get_modeldata(
                     "modelmeta_json": modelmeta_json,
                 },
             )
-            if parquetfilepath.exists():
-                partialparquetfilepath.unlink()
-            else:
-                partialparquetfilepath.rename(parquetfilepath)
+            partialparquetfilepath.rename(parquetfilepath)
             print("  Done.")
             del dfmodel
             gc.collect()
