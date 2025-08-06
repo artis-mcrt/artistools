@@ -100,7 +100,11 @@ def get_rankbatch_parquetfile(
     folderpath = Path(folderpath)
     parquetfilename = f"estimbatch{batchindex:02d}_{batch_mpiranks[0]:04d}_{batch_mpiranks[-1]:04d}.out.parquet.tmp"
     parquetfilepath = folderpath / parquetfilename
-    textsource_mtime = next(folderpath.glob("estimators_????.out*")).stat().st_mtime
+
+    textsource_mtime: float | None = None
+    with contextlib.suppress(StopIteration):
+        textsource_mtime = next(folderpath.glob("estimators_????.out*")).stat().st_mtime
+
     assert len(batch_mpiranks) == max(batch_mpiranks) - min(batch_mpiranks) + 1, (
         "batch_mpiranks must be a contiguous range of ranks"
     )
@@ -108,7 +112,7 @@ def get_rankbatch_parquetfile(
 
     if not parquetfilepath.exists():
         generate_parquet = True
-    elif textsource_mtime > parquetfilepath.stat().st_mtime:
+    elif textsource_mtime and textsource_mtime > parquetfilepath.stat().st_mtime:
         print(
             f"  {parquetfilepath.relative_to(modelpath.parent)} is older than the estimator text files. File will be deleted and regenerated..."
         )
