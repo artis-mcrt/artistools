@@ -1282,15 +1282,24 @@ def get_inputparams(modelpath: Path) -> dict[str, t.Any]:
 @lru_cache(maxsize=16)
 def get_runfolder_timesteps(folderpath: Path | str) -> tuple[int, ...]:
     """Get the set of timesteps covered by the output files in an ARTIS run folder."""
-    estimfiles = sorted(Path(folderpath).glob("estimators_*.out*"))
-    if not estimfiles:
-        return ()
-
-    with zopen(estimfiles[0]) as estfile:
-        timesteps_contained = sorted({int(line.split()[1]) for line in estfile if line.startswith("timestep ")})
+    if estimparquetfiles := sorted(Path(folderpath).glob("estimbatch*.out.parquet*")):
+        # if there are estimators in parquet format, read the timesteps from there
+        dfestfile = pl.scan_parquet(estimparquetfiles[0])
+        timesteps_contained = (
+            dfestfile.select(pl.col("timestep")).unique().sort("timestep").collect().to_series().to_list()
+        )
         # the first timestep of a restarted run is duplicate and should be ignored
         restart_timestep = None if 0 in timesteps_contained else timesteps_contained[0]
         return tuple(ts for ts in timesteps_contained if ts != restart_timestep)
+
+    if estimfiles := sorted(Path(folderpath).glob("estimators_*.out*")):
+        with zopen(estimfiles[0]) as estfile:
+            timesteps_contained = sorted({int(line.split()[1]) for line in estfile if line.startswith("timestep ")})
+            # the first timestep of a restarted run is duplicate and should be ignored
+            restart_timestep = None if 0 in timesteps_contained else timesteps_contained[0]
+            return tuple(ts for ts in timesteps_contained if ts != restart_timestep)
+
+    return ()
 
 
 def get_runfolders(
@@ -1306,7 +1315,7 @@ def get_runfolders(
         for folderpath in folderlist_all:
             folder_timesteps = get_runfolder_timesteps(folderpath)
             if timesteps is None and timestep is not None and timestep in folder_timesteps:
-                return (folderpath,)
+                return (folderpath,)  # return a single folder if only one timestep is specified
             if timesteps is not None and any(ts in folder_timesteps for ts in timesteps):
                 folder_list_matching.append(folderpath)
 
