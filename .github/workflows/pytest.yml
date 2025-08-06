@@ -74,7 +74,9 @@ jobs:
               uses: actions/cache@v4
               with:
                   path: ~/.cache/pre-commit
-                  key: pre-commit-3|${{ hashFiles('.pre-commit-config.yaml') }}
+                  key: pre-commit-3-${{ runner.os }}--${{ hashFiles('.pre-commit-config.yaml') }}-${{ github.run_id }}
+                  restore-keys: |
+                      pre-commit-3-${{ runner.os }}--${{ hashFiles('.pre-commit-config.yaml') }}-
 
             - name: Run pre-commit
               run: |
