@@ -18,7 +18,7 @@ authors = [
     { name = "Fionntan Callan", email = "fcallan02@qub.ac.uk" },
     { name = "Stuart Sim", email = "s.sim@qub.ac.uk" },
     { name = "Joshua Pollin", email = "jpollin02@qub.ac.uk" },
-    { name = "Gerrit Leck" },
+    { name = "Gerrit Leck", email = "g.leck@gsi.de" }
 ]
 description = "Plotting and analysis tools for the ARTIS 3D radiative transfer code for supernovae and kilonovae."
 classifiers = [
