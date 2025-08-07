@@ -26,11 +26,15 @@ COMMANDS = [
     "plotartisinitialcomposition",
     "plotartisviewingangles",
 ]
-
-type CommandType = dict[str, tuple[str, str] | "CommandType"]
+# fully recursive python >= 3.12
+# type CommandType = dict[str, tuple[str, str] | "CommandType"]
+# fully recursive python >= 3.11
+# CommandType: t.TypeAlias = dict[str, t.Union[tuple[str, str], "CommandType"]]
+# one level deep python >= 3.11
+CommandType: t.TypeAlias = dict[str, tuple[str, str] | dict[str, tuple[str, str]]] | dict[str, tuple[str, str]]
 
 # new subparser based list
-subcommandtree: CommandType = {
+subcommandtree: CommandType = {  # type: ignore[assignment]
     "comparetogsinetwork": ("gsinetwork.plotqdotabund", "main"),
     "gsinetworkdecayproducts": ("gsinetwork.decayproducts", "main"),
     "describeinputmodel": ("inputmodel.describeinputmodel", "main"),
@@ -91,22 +95,20 @@ def addsubparsers(
         strhelp: str | None
         if isinstance(subcommands, dict):
             strhelp = "command group"
-            submodule = None
+            subparser = subparsers.add_parser(subcommand, help=strhelp, formatter_class=CustomArgHelpFormatter)
+            addsubparsers(parser=subparser, parentcommand=subcommand, subcommandtree=subcommands, depth=depth + 1)
         else:
             submodulename, funcname = subcommands
             namestr = f"artistools.{submodulename.removeprefix('artistools.')}" if submodulename else "artistools"
             submodule = importlib.import_module(namestr, package="artistools")
             func = getattr(submodule, funcname)
             strhelp = func.__doc__
+            subparser = subparsers.add_parser(subcommand, help=strhelp, formatter_class=CustomArgHelpFormatter)
 
-        subparser = subparsers.add_parser(subcommand, help=strhelp, formatter_class=CustomArgHelpFormatter)
-
-        if submodule:
+            assert hasattr(submodule, "addargs")
+            assert callable(submodule.addargs)
             submodule.addargs(subparser)
             subparser.set_defaults(func=func)
-        else:
-            assert not isinstance(subcommands, tuple)
-            addsubparsers(parser=subparser, parentcommand=subcommand, subcommandtree=subcommands, depth=depth + 1)
 
 
 def setup_completions(*args: t.Any, **kwargs: t.Any) -> None:  # noqa: ARG001

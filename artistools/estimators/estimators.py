@@ -7,7 +7,6 @@ Examples are temperatures, populations, and heating/cooling rates.
 import argparse
 import contextlib
 import datetime
-import itertools
 import tempfile
 import time
 import typing as t
@@ -255,7 +254,7 @@ def scan_estimators(
     )
     mpirank_groups = [
         (batchindex, mpiranks)
-        for batchindex, mpiranks in enumerate(itertools.batched(mpiranklist, 100))
+        for batchindex, mpiranks in enumerate(at.misc.batched(mpiranklist, 100))
         if mpiranks_matched.intersection(mpiranks)
     ]
 

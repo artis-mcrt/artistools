@@ -300,7 +300,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         estimators = estimators_all[timestep, modelgridindex]
 
-    ionlist = [
+    ionlist: list[IonTuple] = [
         IonTuple(26, 1),
         IonTuple(26, 2),
         IonTuple(26, 3),
@@ -331,7 +331,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if args.atomicdatabase == "artis":
         adata = at.atomic.get_levels_polars(modelpath, tuple(ionlist), get_transitions=True)
-
+    ionpopdict: dict[IonTuple, float] = {}
     if from_model:
         dfnltepops = at.nltepops.read_files(modelpath, modelgridindex=modelgridindex, timestep=timestep)
 
@@ -377,11 +377,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         # Fe3overFe2 = 8  # number ratio
         # ionpopdict = {
-        #     (26, 2): 1 / (1 + Fe3overFe2),
-        #     (26, 3): Fe3overFe2 / (1 + Fe3overFe2),
-        #     (28, 2): 1.0e-2,
+        #     IonTuple(26, 2): 1 / (1 + Fe3overFe2),
+        #     IonTuple(26, 3): Fe3overFe2 / (1 + Fe3overFe2),
+        #     IonTuple(28, 2): 1.0e-2,
         # }
-        ionpopdict = dict.fromkeys(ionlist, 1.0)
+        ionpopdict = {IonTuple(Z, ionstage): 1.0 for Z, ionstage in ionlist}
 
     xvalues = np.arange(args.xmin, args.xmax, step=plot_resolution)
     yvalues = np.zeros((len(temperature_list) + 1, len(ionlist), len(xvalues)))

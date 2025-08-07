@@ -126,7 +126,7 @@ jobs:
             fail-fast: false
             matrix:
                 os: [{name: macos, version: '15'}, {name: ubuntu, version: '24.04'}]
-                python-version: ['3.12', '3.13', '3.14', 3.14t]
+                python-version: ['3.11', '3.12', '3.13', '3.14', 3.14t]
                 exclude:
                     - os: {name: ubuntu, version: '24.04'}
                       python-version: 3.14
