@@ -2,6 +2,7 @@ import argparse
 import contextlib
 import functools
 import io
+import itertools
 import math
 import multiprocessing
 import multiprocessing.pool
@@ -13,7 +14,6 @@ from collections.abc import Generator
 from collections.abc import Iterable
 from collections.abc import Sequence
 from functools import lru_cache
-from itertools import chain
 from pathlib import Path
 
 import numpy as np
@@ -781,7 +781,18 @@ def parse_range_list(rngs: str | list[str] | int, dictvars: dict[str, int] | Non
         return [rngs]
 
     assert isinstance(rngs, str)
-    return sorted(set(chain.from_iterable([parse_range(rng, dictvars or {}) for rng in rngs.split(",")])))
+    return sorted(set(itertools.chain.from_iterable([parse_range(rng, dictvars or {}) for rng in rngs.split(",")])))
+
+
+def batched(iterable: Iterable[t.Any], n: int) -> Iterable[Sequence[int]]:
+    """Yield successive n-sized chunks from iterable."""
+    # when python 3.12 becomes the minimum version, use itertools.batched instead
+    assert n > 0, "n must be at least one"
+    it = iter(iterable)
+    batches = []
+    while batch := tuple(itertools.islice(it, n)):
+        batches.append(batch)
+    return batches
 
 
 def makelist(x: Sequence[t.Any] | str | Path | None) -> list[t.Any]:
@@ -817,13 +828,13 @@ def flatten_list(listin: list[t.Any]) -> list[t.Any]:
 
 def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None) -> t.Any:
     """Open filename, filename.zst, filename.gz or filename.xz."""
-    try:
+    if sys.version_info >= (3, 14):
         # only available in Python 3.14+
         from compression import gzip
         from compression import lzma
         from compression import zstd
 
-    except ModuleNotFoundError:
+    else:
         import gzip
         import lzma
 
@@ -1628,10 +1639,11 @@ def get_dirbin_labels(
 
 def get_multiprocessing_pool() -> multiprocessing.pool.Pool:
     """Return a multiprocessing pool that can be used to parallelize tasks."""
-    with contextlib.suppress(AttributeError):
-        if not sys._is_gil_enabled():  # noqa: SLF001
-            # return a thread pool if we have no GIL (free threading)
-            return multiprocessing.pool.ThreadPool()
+    if sys.version_info >= (3, 13):
+        with contextlib.suppress(AttributeError):
+            if not sys._is_gil_enabled():  # noqa: SLF001
+                # return a thread pool if we have no GIL (free threading)
+                return multiprocessing.pool.ThreadPool()
     # this is a workaround for to keep pytest-cov from crashing
     try:
         from pytest_cov.embed import cleanup_on_sigterm

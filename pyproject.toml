@@ -23,6 +23,7 @@ authors = [
 description = "Plotting and analysis tools for the ARTIS 3D radiative transfer code for supernovae and kilonovae."
 classifiers = [
     "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
@@ -32,7 +33,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Physics",
 ]
 dynamic = ["version"]
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 license =  "MIT"
 license-files = ["LICEN[CS]E*"]
 readme = { file = "README.md", content-type = 'text/markdown' }
@@ -258,7 +259,7 @@ reportUnknownVariableType = false
 reportUnreachable = false
 typeCheckingMode = "standard"
 useLibraryCodeForTypes = true
-targetVersion = "3.12"
+targetVersion = "3.11"
 
 [tool.pytest.ini_options]
 addopts = " --durations=0 --durations-min=1.0 --typeguard-packages=artistools -n auto"
@@ -267,7 +268,7 @@ addopts = " --durations=0 --durations-min=1.0 --typeguard-packages=artistools -n
 ignore = ["FURB120"]
 quiet = false
 enable_all = true
-python_version = "3.12"
+python_version = "3.11"
 sort_by = "error"
 
 [[tool.refurb.amend]]
