@@ -45,7 +45,7 @@ jobs:
 
             - name: Install artistools[extras]
               run: |
-                  uv sync --extra extras
+                  uv sync --all-extras
                   uv pip install .[extras]
 
             - name: Run Ruff
