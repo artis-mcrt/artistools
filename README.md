@@ -24,7 +24,7 @@ cd artistools
 
 To create a [uv](https://docs.astral.sh/uv/getting-started/installation/) virtual environment with locked dependency versions, run:
 ```sh
-uv sync --extra extras
+uv sync --extra extras --frozen
 uv tool install --editable .[extras]
 pre-commit install
 ```
