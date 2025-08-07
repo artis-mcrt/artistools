@@ -11,11 +11,12 @@
 Artistools is collection of plotting, analysis, and file format conversion tools for the [ARTIS](https://github.com/artis-mcrt/artis) radiative transfer code.
 
 ## Installation
-Requires Python >= 3.12
+Requires Python >= 3.11
 
-The artistools command be invoked with uvx artistools or pipx artistools.
+The artistools command be invoked with uvx artistools (after installing [uv](https://docs.astral.sh/uv/getting-started/installation/)).
 
-For development, you will need [the rust compiler](https://www.rust-lang.org/tools/install) and a clone of the repository:
+## Development (editable installation)
+For development, you will need [a rust compiler](https://www.rust-lang.org/tools/install) and a clone of the repository:
 ```sh
 git clone https://github.com/artis-mcrt/artistools.git
 cd artistools
@@ -23,14 +24,9 @@ cd artistools
 
 To create a [uv](https://docs.astral.sh/uv/getting-started/installation/) virtual environment with locked dependency versions, run:
 ```sh
-uv sync --frozen
-uv pip install --group dev --editable .[extras]
+uv sync --extra extras --frozen
+uv tool install --editable .[extras]
 pre-commit install
-```
-
-The artistools command from the project environment can be available by activating the environment (source artistools/.venv/bin/activate) or by adding the following alias to your startup script:
-```sh
-alias artistools="~/PATH/TO/artistools/.venv/bin/artistools"
 ```
 
 Alternatively, to avoid uv and install into the system environment with pip:
