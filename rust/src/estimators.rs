@@ -3,7 +3,7 @@ use pyo3::prelude::*;
 use pyo3_polars::PyDataFrame;
 use rayon::prelude::*;
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead as _, BufReader};
 use std::path::Path;
 
 const ELSYMBOLS: [&str; 119] = [
@@ -38,46 +38,46 @@ fn append_or_create(
     coldata: &mut HashMap<String, Vec<f32>>,
     colname: &String,
     colvalue: f32,
-    outputrownum: &usize,
+    outputrownum: usize,
 ) {
     if !coldata.contains_key(colname) {
-        coldata.insert(colname.clone(), vec![0.; *outputrownum - 1]);
+        coldata.insert(colname.clone(), vec![0.; outputrownum - 1]);
     }
 
     let singlecoldata = coldata.get_mut(colname).unwrap();
     singlecoldata.push(colvalue);
-    assert_eq!(singlecoldata.len(), *outputrownum, "colname: {:?}", colname);
+    assert_eq!(singlecoldata.len(), outputrownum, "colname: {colname:?}");
 }
 
 /// Parse a single line from an estimator file and update the column data
 fn parse_estimator_line(
     line: &str,
-    mut coldata: &mut HashMap<String, Vec<f32>>,
+    coldata: &mut HashMap<String, Vec<f32>>,
     outputrownum: &mut usize,
 ) {
     let linesplit: Vec<&str> = line.split_whitespace().collect();
-    if linesplit.len() == 0 {
+    if linesplit.is_empty() {
         return;
     }
 
     if linesplit[0] == "timestep" {
-        match_colsizes(&mut coldata, *outputrownum);
+        match_colsizes(coldata, *outputrownum);
         if linesplit[4] != "EMPTYCELL" {
             //println!("{:?}", line);
             // println!("{:?}", linesplit);
 
             *outputrownum += 1;
             for i in (0..linesplit.len()).step_by(2) {
-                let colname = linesplit[i].to_string();
+                let colname = linesplit[i].to_owned();
                 let colvalue = linesplit[i + 1].parse::<f32>().unwrap();
 
-                append_or_create(&mut coldata, &colname, colvalue, outputrownum);
+                append_or_create(coldata, &colname, colvalue, *outputrownum);
             }
         }
     } else if linesplit[1].starts_with("Z=") {
         let atomic_number;
         let startindex;
-        if linesplit[1].ends_with("=") {
+        if linesplit[1].ends_with('=') {
             atomic_number = linesplit[2].parse::<i32>().unwrap();
             startindex = 3;
         } else {
@@ -85,7 +85,8 @@ fn parse_estimator_line(
             atomic_number = linesplit[1].replace("Z=", "").parse::<i32>().unwrap();
             startindex = 2;
         }
-        let elsym = ELSYMBOLS[atomic_number as usize];
+
+        let elsym = ELSYMBOLS[usize::try_from(atomic_number).unwrap()];
 
         let variablename = linesplit[0];
         let mut nnelement = 0.0;
@@ -117,27 +118,22 @@ fn parse_estimator_line(
                             ionstageroman
                         );
                         let colvalue_nonne = colvalue / coldata["nne"].last().unwrap();
-                        append_or_create(
-                            &mut coldata,
-                            &colname_nonne,
-                            colvalue_nonne,
-                            outputrownum,
-                        );
+                        append_or_create(coldata, &colname_nonne, colvalue_nonne, *outputrownum);
                     }
                 }
-                append_or_create(&mut coldata, &outcolname, colvalue, outputrownum);
+                append_or_create(coldata, &outcolname, colvalue, *outputrownum);
             }
         }
 
         if variablename == "populations" {
             append_or_create(
-                &mut coldata,
+                coldata,
                 &format!("nnelement_{elsym}"),
                 nnelement,
-                outputrownum,
+                *outputrownum,
             );
         }
-    } else if linesplit[0].ends_with(":") {
+    } else if linesplit[0].ends_with(':') {
         // deposition, heating, cooling
         for i in (1..linesplit.len()).step_by(2) {
             let firsttoken = linesplit[0];
@@ -145,13 +141,13 @@ fn parse_estimator_line(
                 format!("{}_{}", firsttoken.strip_suffix(":").unwrap(), linesplit[i]);
             let colvalue = linesplit[i + 1].parse::<f32>().unwrap();
 
-            append_or_create(&mut coldata, &colname, colvalue, outputrownum);
+            append_or_create(coldata, &colname, colvalue, *outputrownum);
         }
     }
 }
 
-/// Read a single ARTIS estimators*.out[.zst] file and return a DataFrame
-fn read_estimator_file(folderpath: String, rank: i32) -> Result<DataFrame, PolarsError> {
+/// Read a single ARTIS estimators*.out[.zst] file and return a `DataFrame`
+fn read_estimator_file(folderpath: &str, rank: i32) -> Result<DataFrame, PolarsError> {
     let mut coldata: HashMap<String, Vec<f32>> = HashMap::new();
     let mut outputrownum = 0;
 
@@ -159,15 +155,16 @@ fn read_estimator_file(folderpath: String, rank: i32) -> Result<DataFrame, Polar
     let extensions = vec!["", ".zst", ".gz", ".xz"];
     let mut filename = None;
     for ext in extensions {
-        let filenameplusext = format!("{}/estimators_{:04}.out{}", folderpath, rank, ext);
+        let filenameplusext = format!("{folderpath}/estimators_{rank:04}.out{ext}");
         if Path::new(&filenameplusext).is_file() {
             filename = Some(filenameplusext);
             break;
         }
     }
-    if filename.is_none() {
-        panic!("No estimator file found for rank {}", rank);
-    }
+    assert!(
+        filename.is_some(),
+        "No estimator file found for rank {rank}"
+    );
 
     // println!("Reading file: {:?}", filename.unwrap());
     let file = autocompress::autodetect_open(filename.unwrap());
@@ -184,24 +181,21 @@ fn read_estimator_file(folderpath: String, rank: i32) -> Result<DataFrame, Polar
     DataFrame::new(
         coldata
             .iter()
-            .map(|(colname, values)| {
-                let x = Column::new(colname.into(), values.to_owned());
-                x
-            })
+            .map(|(colname, values)| Column::new(colname.into(), values.to_owned()))
             .collect(),
     )
 }
 
-/// Read the estimator files from rankmin to rankmax and concatenate them into a single DataFrame
+/// Read the estimator files from rankmin to rankmax and concatenate them into a single `DataFrame`
 #[pyfunction]
-pub fn estimparse(folderpath: String, rankmin: i32, rankmax: i32) -> PyResult<PyDataFrame> {
-    let ranks: Vec<i32> = (rankmin..rankmax + 1).collect();
+pub fn estimparse(folderpath: &str, rankmin: i32, rankmax: i32) -> pyo3_polars::PyDataFrame {
+    let ranks: Vec<i32> = (rankmin..=rankmax).collect();
     let mut vecdfs: Vec<DataFrame> = Vec::new();
     ranks
         .par_iter() // Convert the iterator to a parallel iterator
-        .map(|&rank| read_estimator_file(folderpath.clone(), rank).unwrap())
+        .map(|&rank| read_estimator_file(folderpath, rank).unwrap())
         .collect_into_vec(&mut vecdfs);
 
     let dfbatch = polars::functions::concat_df_diagonal(&vecdfs).unwrap();
-    Ok(PyDataFrame(dfbatch))
+    PyDataFrame(dfbatch)
 }
