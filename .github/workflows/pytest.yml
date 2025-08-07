@@ -83,6 +83,13 @@ jobs:
                   pre-commit install
                   pre-commit run --all-files --show-diff-on-failure --color=always
 
+            - name: Run rust clippy
+              if: always()
+              working-directory: rust/
+              run: |
+                  rustup component add clippy
+                  cargo clippy --all-features -- -D warnings -D clippy::pedantic
+
     superlinter:
         name: Super linter
         runs-on: ubuntu-24.04
