@@ -241,11 +241,11 @@ def convert_unit_to_angstroms(value: float, old_units: str) -> float:
             return value
         case "nm":
             return value * 10
-    if old_units.lower() == "micron":
-        return value * 10000
-
-    msg = f"Unknown xunit {old_units}"
-    raise ValueError(msg)
+        case "micron":
+            return value * 10000
+        case _:
+            msg = f"Unknown xunit {old_units}"
+            raise ValueError(msg)
 
 
 def stackspectra(
