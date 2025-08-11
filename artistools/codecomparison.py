@@ -13,7 +13,7 @@ from pathlib import Path
 import matplotlib.axes as mplax
 import numpy as np
 import numpy.typing as npt
-import pandas as pd
+import polars as pl
 
 import artistools as at
 
@@ -168,7 +168,7 @@ def read_reference_estimators(
     return estimators
 
 
-def get_spectra(modelpath: str | Path) -> tuple[pd.DataFrame, npt.NDArray[np.floating]]:
+def get_spectra(modelpath: str | Path) -> tuple[pl.DataFrame, npt.NDArray[np.floating]]:
     modelpath = Path(modelpath)
     virtualfolder, inputmodel, codename = modelpath.parts
     assert virtualfolder == "codecomparison"
@@ -183,7 +183,14 @@ def get_spectra(modelpath: str | Path) -> tuple[pd.DataFrame, npt.NDArray[np.flo
         arr_timedays = np.array([float(x) for x in fspec.readline().split()[1:]])
         assert len(arr_timedays) == ntimes
 
-        dfspectra = pd.read_csv(fspec, sep=r"\s+", header=None, names=["lambda", *list(arr_timedays)], comment="#")
+        # Read with polars and set appropriate column names
+        dfspectra = pl.read_csv(
+            fspec, 
+            separator=r"\s+", 
+            has_header=False, 
+            new_columns=["lambda", *[str(timeday) for timeday in arr_timedays]], 
+            comment_prefix="#"
+        )
 
     return dfspectra, arr_timedays
 
@@ -199,6 +206,6 @@ def plot_spectrum(modelpath: str | Path, timedays: str | float, axis: mplax.Axes
     label = str(modelpath).lstrip("_") + f" {timedays_found}d"
 
     megaparsec_to_cm = 3.085677581491367e24
-    arr_flux = dfspectra[dfspectra.columns[timeindex + 1]] / 4 / math.pi / (megaparsec_to_cm**2)
+    arr_flux = dfspectra.get_column(dfspectra.columns[timeindex + 1]).to_numpy() / 4 / math.pi / (megaparsec_to_cm**2)
 
-    axis.plot(dfspectra["lambda"], arr_flux, label=label, **plotkwargs)
+    axis.plot(dfspectra.get_column("lambda").to_numpy(), arr_flux, label=label, **plotkwargs)

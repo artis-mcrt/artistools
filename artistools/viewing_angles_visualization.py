@@ -3,7 +3,7 @@ import argparse
 import sys
 
 import numpy as np
-import pandas as pd
+import polars as pl
 
 import artistools as at
 
@@ -26,7 +26,7 @@ def get_theta_phi(anglebin: int) -> tuple[float | None, float | None]:
     return None, None
 
 
-def gen_viewing_angle_df(length: int) -> pd.DataFrame:
+def gen_viewing_angle_df(length: int) -> pl.DataFrame:
     # Build viewing angle vector DataFrame
     viewing_angles: dict[str, list[float | str]] = {"Angle-bin": [], "x_coord": [], "y_coord": [], "z_coord": []}
 
@@ -50,7 +50,7 @@ def gen_viewing_angle_df(length: int) -> pd.DataFrame:
         viewing_angles["y_coord"].append(y_c)
         viewing_angles["z_coord"].append(z_c)
 
-    return pd.DataFrame(viewing_angles)
+    return pl.DataFrame(viewing_angles)
 
 
 def viewing_angles_visualisation(
@@ -103,7 +103,7 @@ def viewing_angles_visualisation(
         sys.exit()
 
     # Load model contents
-    dfmodel, _modelmeta = at.get_modeldata_pandas(modelfile, derived_cols=["pos_mid"])
+    dfmodel, _modelmeta = at.get_modeldata(modelfile, derived_cols=["pos_mid"])
     x, y, z = (dfmodel[f"pos_{ax}_mid"].to_numpy() for ax in ("x", "y", "z"))
     rho = dfmodel["rho"].to_numpy()
 
@@ -121,7 +121,7 @@ def viewing_angles_visualisation(
 
     # Create plot
     fig = px.line_3d(
-        va,
+        va.to_pandas(),  # Convert polars DataFrame to pandas for plotly
         x="x_coord",
         y="y_coord",
         z="z_coord",
