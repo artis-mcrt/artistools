@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
+import polars as pl
 
 import artistools as at
 
@@ -23,7 +24,7 @@ def make_ntstats_plot(ntstatfile: str | Path) -> None:
         nrows=1, ncols=1, sharex=True, figsize=(4, 3), tight_layout={"pad": 0.5, "w_pad": 0.3, "h_pad": 0.3}
     )
 
-    dfstats = pd.read_csv(ntstatfile, sep=r"\s+", escapechar="#").fillna(0)
+    dfstats = pl.read_csv(ntstatfile, separator=r"\s+", comment_prefix="#").fill_null(0).to_pandas()
 
     norm_frac_sum = False
     norm_factors: float | npt.NDArray[np.float64]
