@@ -313,7 +313,6 @@ ignore = [
     "N803",    # Argument name should be lowercase
     "N806",    # non-lowercase-variable-in-function
     "N815",    # mixed-case-variable-in-class-scope
-    "PLC0414", # useless-import-alias
     "PLC0415", # import-outside-toplevel
     "PLR0914", # too-many-locals
     "PLR0917", # too-many-positional
@@ -323,7 +322,6 @@ ignore = [
     "PLR0913", # too-many-arguments
     "PLR0915", # too-many-statements
     "PLR2004", # magic-value-comparison
-    "PLW2901", # redefined-loop-name
     "S101",    # Use of assert detected
     "S311",    # suspicious-non-cryptographic-random-usage
     "S404",    # suspicious-subprocess-import

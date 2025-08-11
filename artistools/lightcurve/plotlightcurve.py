@@ -1136,7 +1136,6 @@ def colour_evolution_plot(
     plotkwargs: dict[str, t.Any] = {}
 
     for modelnumber, modelpath in enumerate(modelpaths):
-        modelpath = Path(modelpath)
         modelname = at.get_model_name(modelpath)
         print(f"Reading spectra: {modelname}")
 
@@ -1219,9 +1218,7 @@ def colour_evolution_plot(
     set_lightcurveplot_legend(ax, args)
 
     args.outputfile = Path(outputfolder, f"plotcolorevolution{filter_names[0]}-{filter_names[1]}.pdf")
-    for i in range(2):
-        if filter_names[i] in filternames_conversion_dict:
-            filter_names[i] = filternames_conversion_dict[filter_names[i]]
+    filter_names = [filternames_conversion_dict.get(name, name) for name in filter_names]
     # plt.text(10, args.ymax - 0.5, f'{filter_names[0]}-{filter_names[1]}', fontsize='x-large')
 
     if args.show:
@@ -1261,19 +1258,18 @@ def plot_lightcurve_from_refdata(
     filterdir = Path(at.get_config()["path_artistools_dir"], "data/filters/")
 
     filter_data = {}
-    for axnumber, filter_name in enumerate(filter_names):
+    for axnumber, filter_name_raw in enumerate(filter_names):
         axis = ax[axnumber] if isinstance(ax, np.ndarray) else ax
         assert isinstance(axis, mplax.Axes)
-        if filter_name == "bol":
+        if filter_name_raw == "bol":
             continue
-        with Path(filterdir / f"{filter_name}.txt").open(encoding="utf-8") as f:
+        with Path(filterdir / f"{filter_name_raw}.txt").open(encoding="utf-8") as f:
             lines = f.readlines()
         lambda0 = float(lines[2])
 
-        if filter_name == "bol":
+        if filter_name_raw == "bol":
             continue
-        if filter_name in filternames_conversion_dict:
-            filter_name = filternames_conversion_dict[filter_name]
+        filter_name = filternames_conversion_dict.get(filter_name_raw, filter_name_raw)
         filter_data[filter_name] = lightcurve_data.loc[lightcurve_data["band"] == filter_name]
         # plt.plot(limits_x, limits_y, 'v', label=None, color=color)
         # else:
@@ -1345,13 +1341,12 @@ def plot_color_evolution_from_data(
     filterdir = Path(at.get_config()["path_artistools_dir"], "data/filters/")
 
     filter_data = []
-    for i, filter_name in enumerate(filter_names):
-        with (filterdir / Path(f"{filter_name}.txt")).open(encoding="utf-8") as f:
+    for i, filter_name_raw in enumerate(filter_names):
+        with (filterdir / Path(f"{filter_name_raw}.txt")).open(encoding="utf-8") as f:
             lines = f.readlines()
         lambda0 = float(lines[2])
 
-        if filter_name in filternames_conversion_dict:
-            filter_name = filternames_conversion_dict[filter_name]
+        filter_name = filternames_conversion_dict.get(filter_name_raw, filter_name_raw)
         filter_data.append(lightcurve_from_data.loc[lightcurve_from_data["band"] == filter_name])
 
         if "a_v" in metadata or "e_bminusv" in metadata:

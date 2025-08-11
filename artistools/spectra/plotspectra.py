@@ -581,7 +581,6 @@ def make_spectrum_plot(
         axis.set_prop_cycle(color=colors)
 
     for seriesindex, specpath in enumerate(speclist):
-        specpath = Path(specpath)
         plotkwargs: dict[str, t.Any] = {
             "alpha": args.linealpha[seriesindex],
             "linestyle": args.linestyle[seriesindex],
@@ -640,7 +639,7 @@ def make_spectrum_plot(
                         **plotkwargs,
                     )
             refspecindex += 1
-        elif not specpath.exists() and specpath.parts[0] == "codecomparison":
+        elif not Path(specpath).exists() and Path(specpath).parts[0] == "codecomparison":
             # timeavg = (args.timemin + args.timemax) / 2.
             (_timestepmin, _timestepmax, args.timemin, args.timemax) = get_time_range(
                 specpath, args.timestep, args.timemin, args.timemax, args.timedays
@@ -958,7 +957,6 @@ def make_emissionabsorption_plot(
     ymaxrefall = 0.0
     plotkwargs = {}
     for index, filepath in enumerate(args.specpath):
-        filepath = Path(filepath)
         if path_is_artis_model(filepath):
             continue
 
