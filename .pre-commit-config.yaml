@@ -1,7 +1,7 @@
 ---
 repos:
     - repo: https://github.com/pre-commit/pre-commit-hooks
-      rev: v5.0.0
+      rev: v6.0.0
       hooks:
           - id: check-added-large-files
             args: [--maxkb=800]
@@ -32,13 +32,13 @@ repos:
           - id: yamlfmt
 
     - repo: https://github.com/astral-sh/uv-pre-commit
-      rev: 0.8.5
+      rev: 0.8.8
       hooks:
           - id: uv-sync
             args: [--locked, --all-extras]
 
     - repo: https://github.com/astral-sh/ruff-pre-commit
-      rev: v0.12.7
+      rev: v0.12.8
       hooks:
           - id: ruff-check
             args: [--fix]
