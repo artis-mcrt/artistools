@@ -153,29 +153,36 @@ def add_lte_pops(
     return dfpop
 
 
-def read_file(nltefilepath: str | Path) -> pd.DataFrame:
+def read_file(nltefilepath: str | Path) -> pl.DataFrame:
     """Read NLTE populations from one file."""
     try:
         nltefilepath = at.firstexisting(nltefilepath, tryzipped=True)
     except FileNotFoundError:
         # print(f"Warning: Could not find {nltefilepath}")
-        return pd.DataFrame()
+        return pl.DataFrame()
 
     filesize = Path(nltefilepath).stat().st_size / 1024 / 1024
     print(f"Reading {nltefilepath} ({filesize:.2f} MiB)")
 
     try:
-        dfpop = pd.read_csv(nltefilepath, sep=r"\s+")
-    except pd.errors.EmptyDataError:
-        return pd.DataFrame()
+        dfpop = pl.read_csv(nltefilepath, separator=r"\s+")
+    except pl.exceptions.NoDataError:
+        return pl.DataFrame()
 
-    return dfpop.rename(columns={"ionstage": "ion_stage"}, errors="ignore")
+    # Rename column if it exists
+    if "ionstage" in dfpop.columns:
+        dfpop = dfpop.rename({"ionstage": "ion_stage"})
+    
+    return dfpop
 
 
 def read_file_filtered(
     nltefilepath: str | Path, strquery: str | None = None, dfqueryvars: dict[str, t.Any] | None = None
 ) -> pd.DataFrame:
     dfpopfile = read_file(nltefilepath)
+    
+    # Convert polars to pandas for query functionality
+    dfpopfile = dfpopfile.to_pandas()
 
     if strquery and not dfpopfile.empty:
         dfpopfile = dfpopfile.query(strquery, local_dict=dfqueryvars)
