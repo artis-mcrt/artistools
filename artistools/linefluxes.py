@@ -693,7 +693,6 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
                         else:
                             plot_nne_te_bars(axis, em_log10nne, em_Te, modelcolor)
             else:
-                modellabel = args.label[modelindex]
                 emfeatures = get_labelandlineindices(modelpath, tuple(args.emfeaturesearch))
 
                 featurecolours = ["blue", "red"]

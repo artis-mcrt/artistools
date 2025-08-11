@@ -429,7 +429,7 @@ def get_timestep_of_timedays(modelpath: Path | str, timedays: str | float) -> in
 
 
 def get_time_range(
-    modelpath: Path,
+    modelpath: Path | str,
     timestep_range_str: str | None = None,
     timemin: float | None = None,
     timemax: float | None = None,

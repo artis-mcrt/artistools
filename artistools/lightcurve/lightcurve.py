@@ -192,7 +192,7 @@ def get_from_packets(
 
 
 def generate_band_lightcurve_data(
-    modelpath: Path,
+    modelpath: Path | str,
     args: argparse.Namespace,
     angle: int = -1,
     modelnumber: int | None = None,  # noqa: ARG001
@@ -200,7 +200,7 @@ def generate_band_lightcurve_data(
     """Integrate spectra to get band magnitude vs time. Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py."""
     from scipy.interpolate import interp1d
 
-    if args.plotvspecpol and (modelpath / "vpkt.txt").is_file():
+    if args.plotvspecpol and Path(modelpath, "vpkt.txt").is_file():
         print("Found vpkt.txt, using virtual packets")
         stokes_params = (
             at.spectra.get_vspecpol_data(vspecindex=angle, modelpath=modelpath)
@@ -240,7 +240,7 @@ def generate_band_lightcurve_data(
     for filter_name in filters_list:
         if filter_name == "bol":
             times, bol_magnitudes = bolometric_magnitude(
-                modelpath,
+                Path(modelpath),
                 timearray,
                 args,
                 angle=angle,

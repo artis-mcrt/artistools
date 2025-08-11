@@ -684,7 +684,7 @@ def second_band_brightness_at_peak_first_band(
     args: argparse.Namespace,
 ) -> list[float]:
     second_band_brightness = []
-    for anglenumber, time in enumerate(data[f"time_{bands[0]}max"]):
+    for anglenumber, _ in enumerate(data[f"time_{bands[0]}max"]):
         lightcurve_data = at.lightcurve.generate_band_lightcurve_data(
             modelpath, args, anglenumber, modelnumber=modelnumber
         )
@@ -727,8 +727,6 @@ def peakmag_risetime_declinerate_init(
     modelnames = []  # save names of models
 
     for modelnumber, modelpath in enumerate(modelpaths):
-        modelpath = Path(modelpath)
-
         lightcurve_data: t.Any
 
         if not args.filter:
