@@ -15,6 +15,7 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import polars as pl
+from polars import selectors as cs
 
 import artistools as at
 from artistools.inputmodel.rprocess_from_trajectory import get_tar_member_extracted_path
@@ -58,7 +59,7 @@ def plot_qdot(
 
     print("Calculating global heating rates from the individual particle heating rates...")
     dfpartcontrib_nomissing = dfpartcontrib.filter(pl.col("particleid").is_in(allparticledata.keys()))
-    for cellindex, dfpartcontribthiscell in dfpartcontrib_nomissing.group_by("cellindex"):
+    for (cellindex,), dfpartcontribthiscell in dfpartcontrib_nomissing.group_by("cellindex"):
         assert isinstance(cellindex, int)
         mgi = cellindex - 1
         if mgi >= modelmeta["npts_model"]:
@@ -221,8 +222,6 @@ def plot_cell_abund_evolution(
 
     # calculate the GSI values from the particles contributing to this cell
     for particleid, frac_of_cellmass in dfpartcontrib_thiscell.select(["particleid", "frac_of_cellmass"]).iter_rows():
-        frac_of_cellmass = dfpartcontrib_thiscell.filter(pl.col("particleid") == particleid)["frac_of_cellmass"].sum()
-
         for strnuc in arr_strnuc:
             arr_abund_gsi[strnuc] += allparticledata[particleid][strnuc] * frac_of_cellmass / frac_of_cellmass_sum
 
@@ -489,17 +488,13 @@ def plot_qdot_abund_modelcells(
         estimators_lazy = estimators_lazy.filter(pl.col("modelgridindex").is_in(mgiplotlist))
 
         estimators_lazy = estimators_lazy.select(
-            "modelgridindex",
-            "timestep",
-            *[f"nniso_{strnuc}" for strnuc in arr_strnuc if f"nniso_{strnuc}" in estimators_lazy.columns],
+            "modelgridindex", "timestep", cs.by_name([f"nniso_{strnuc}" for strnuc in arr_strnuc], require_all=False)
         )
 
         estimators_lazy = (
             estimators_lazy.join(
                 lzdfmodel.select(
-                    "modelgridindex",
-                    "rho",
-                    *[f"X_{strnuc}" for strnuc in arr_strnuc if f"X_{strnuc}" in lzdfmodel.columns],
+                    "modelgridindex", "rho", cs.by_name([f"X_{strnuc}" for strnuc in arr_strnuc], require_all=False)
                 ),
                 on="modelgridindex",
             )
