@@ -108,6 +108,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             delta_beta = (vupper - vlower) / 29979245800
             yval = velbinmass / delta_beta
             binned_yvals.extend((yval, yval))
+        binned_xvals.extend((vupper / 29979245800, 29979245800))
+        binned_yvals.extend((0.0, 0.0))
 
         axes[1].plot(binned_xvals, binned_yvals, label=label, color=color)
         if "Ye" in dfmodelcollect.collect_schema().names():
