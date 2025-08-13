@@ -3,8 +3,9 @@
   "extends": [
     "config:recommended"
   ],
+  "rebaseWhen": "conflicted",
   "labels": ["dependencies"],
-  "bumpVersion": "minor",
+  "bumpVersion": "major",
   "pre-commit": {
     "enabled": true
   },
