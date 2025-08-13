@@ -131,6 +131,10 @@ jobs:
                 os: [{name: macos, version: '15'}, {name: ubuntu, version: '24.04'}]
                 python-version: ['3.11', '3.12', '3.13', '3.14', 3.14t]
                 exclude:
+                    - os: {name: macos, version: '15'}
+                      python-version: 3.11
+                    - os: {name: macos, version: '15'}
+                      python-version: 3.12
                     - os: {name: ubuntu, version: '24.04'}
                       python-version: 3.14
                     - os: {name: ubuntu, version: '24.04'}
