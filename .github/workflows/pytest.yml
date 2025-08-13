@@ -66,10 +66,6 @@ jobs:
               if: always()
               run: uv run -- pyright --warnings
 
-            - name: Run pylint
-              if: always()
-              run: uv run -- pylint --output-format=github artistools
-
             - name: Cache pre-commit
               uses: actions/cache@v4
               with:

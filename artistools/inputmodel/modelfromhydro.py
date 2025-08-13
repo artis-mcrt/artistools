@@ -354,7 +354,7 @@ def makemodelfromgriddata(
     dfmodel = pl.from_pandas(pddfmodel).sort("inputcellid")
     assert dfmodel.schema["inputcellid"].is_integer()
     assert isinstance(dfmodel, pl.DataFrame)
-    dfmodel = dfmodel.with_columns(pl.col("inputcellid").cast(pl.Int32))  # pylint: disable=no-member
+    dfmodel = dfmodel.with_columns(pl.col("inputcellid").cast(pl.Int32))
     if scalemass != 1.0:
         origmass_msun = dfmodel["mass_g"].sum() / 2.99792458e33
         dfmodel = dfmodel.with_columns(cs.by_name("rho", "mass_g", require_all=False) * scalemass)
