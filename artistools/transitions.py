@@ -481,7 +481,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
                     assert isinstance(dftransitions, pd.DataFrame)
                     dftransitions.loc[:, "upper_pop_nlte"] = dftransitions.apply(
-                        lambda x: nltepopdict.get(x["upper"], 0.0),  # noqa: B023 # pylint: disable=cell-var-from-loop
+                        lambda x: nltepopdict.get(x["upper"], 0.0),  # noqa: B023
                         axis=1,
                     )
 
