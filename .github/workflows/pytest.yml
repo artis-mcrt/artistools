@@ -181,7 +181,6 @@ jobs:
                   echo "LD_LIBRARY_PATH=/opt/homebrew/opt/lib" >> $GITHUB_ENV
                   echo "CPATH=$HOMEBREW_PREFIX/include:$CPATH" >> $GITHUB_ENV
                   echo "ARROW_HOME=$(brew --prefix apache-arrow)" >> $GITHUB_ENV
-                  CC=gcc-15 CXX=g++-15 uv pip install numexpr
                   uv pip install pyarrow
 
             - name: Install artistools (no dev deps)
