@@ -41,7 +41,6 @@ dependencies = [
     "argcomplete>=3.6.2",
     "extinction>=0.4.7",
     "matplotlib>=3.10.1",
-    "numexpr>=2.10.1",
     "numpy>=2.3.1",
     "pandas>=2.2.3",
     "polars>=1.32.0",
