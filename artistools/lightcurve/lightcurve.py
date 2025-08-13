@@ -87,10 +87,9 @@ def get_from_packets(
     ncosthetabins = at.get_viewingdirection_costhetabincount()
     ndirbins = at.get_viewingdirectionbincount()
 
-    vpkt_config = None
+    vpkt_config = at.get_vpkt_config(modelpath) if directionbins_are_vpkt_observers else None
+    assert not directionbins_are_vpkt_observers or pellet_nucname is None  # we don't track which pellet led to vpkts
     if directionbins_are_vpkt_observers:
-        assert pellet_nucname is None  # we don't track which pellet led to vpkts
-        vpkt_config = at.get_vpkt_config(modelpath)
         nprocs_read, dfpackets = at.packets.get_virtual_packets_pl(modelpath, maxpacketfiles=maxpacketfiles)
     else:
         nprocs_read, dfpackets = at.packets.get_packets_pl(
