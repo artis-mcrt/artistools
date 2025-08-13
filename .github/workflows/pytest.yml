@@ -20,7 +20,7 @@ jobs:
             UV_FROZEN: 1
         steps:
             - name: Checkout Code
-              uses: actions/checkout@v4
+              uses: actions/checkout@v5
               with:
                   fetch-depth: 0
 
@@ -91,7 +91,7 @@ jobs:
         runs-on: ubuntu-24.04
         steps:
             - name: Checkout Code
-              uses: actions/checkout@v4
+              uses: actions/checkout@v5
               with:
                   # Full git history is needed to get a proper list of changed files within `super-linter`
                   fetch-depth: 0
@@ -147,7 +147,7 @@ jobs:
         name: pytest ${{ matrix.os.name }} python ${{ matrix.python-version }}
         steps:
             - name: Checkout Code
-              uses: actions/checkout@v4
+              uses: actions/checkout@v5
               with:
                   fetch-depth: 0
 
