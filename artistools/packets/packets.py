@@ -541,8 +541,6 @@ def get_rankbatch_parquetfile(
         else:
             tempparquetfilepath.rename(parquetfilepath)
         print(f"took {time.perf_counter() - time_start_write:.1f} seconds")
-    else:
-        print(f"  scanning {parquetfilepath.relative_to(modelpath)}")
 
     return parquetfilepath
 
@@ -587,7 +585,9 @@ def get_virtual_packets_pl(modelpath: str | Path, maxpacketfiles: int | None = N
 
     nbatches_read = len(vpacketparquetfiles)
     packetsdatasize_gb = nbatches_read * Path(vpacketparquetfiles[0]).stat().st_size / 1024 / 1024 / 1024
-    print(f"  data size is {packetsdatasize_gb:.1f} GB ({nbatches_read} * size of {vpacketparquetfiles[0].parts[-1]})")
+    print(
+        f"  data size is {packetsdatasize_gb:.1f} GB ({nbatches_read} batches * size of {vpacketparquetfiles[0].parts[-1]})"
+    )
 
     # add some extra columns to imitate the real packets
     dfpackets = pl.scan_parquet(vpacketparquetfiles).with_columns(
@@ -618,14 +618,14 @@ def get_packets_pl(
     nprocs_read, packetsparquetfiles = get_packets_batch_parquet_paths(modelpath, maxpacketfiles)
 
     nbatches_read = len(packetsparquetfiles)
-    packetsdatasize_gb = nbatches_read * Path(packetsparquetfiles[0]).stat().st_size / 1024 / 1024 / 1024
-    print(f"  data size is {packetsdatasize_gb:.1f} GB ({nbatches_read} * size of {packetsparquetfiles[0].parts[-1]})")
+    packetsdatasize_gb = sum(Path(f).stat().st_size for f in packetsparquetfiles) / 1024 / 1024 / 1024
+    print(f"  total parquet size is {packetsdatasize_gb:.1f} GB (from {nbatches_read} batches)")
 
     pldfpackets = pl.scan_parquet(packetsparquetfiles).rename(
         {"originated_from_positron": "originated_from_particlenotgamma"}, strict=False
     )
 
-    npkts_total = pldfpackets.select(pl.count("e_rf")).collect().item(0, 0)
+    npkts_total = pldfpackets.select(pl.count("e_rf")).collect().item()
     print(f"  files contain {npkts_total:.2e} packets")
 
     if escape_type is not None:
