@@ -823,7 +823,9 @@ def make_3d_histogram_from_packets(
 ) -> npt.NDArray[np.floating]:
     if timestep_max is None:
         timestep_max = timestep_min
-    modeldata, _, vmax_cms = at.inputmodel.get_modeldata_tuple(modelpath)
+    plmodeldata, modelmeta = at.inputmodel.get_modeldata(modelpath)
+    vmax_cms = modelmeta["vmax_cmps"]
+    modeldata = plmodeldata.collect().to_pandas(use_pyarrow_extension_array=True)
 
     timeminarray = at.get_timestep_times(modelpath=modelpath, loc="start")
     # timedeltaarray = at.get_timestep_times(modelpath=modelpath, loc="delta")
@@ -901,7 +903,6 @@ def make_3d_histogram_from_packets(
 def make_3d_grid(
     modeldata: pd.DataFrame, vmax_cms: float
 ) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
-    # modeldata, _, vmax_cms = at.inputmodel.get_modeldata_tuple(modelpath)
     grid = round(len(modeldata["inputcellid"]) ** (1.0 / 3.0))
     xgrid = np.zeros(grid)
     vmax = vmax_cms / CLIGHT

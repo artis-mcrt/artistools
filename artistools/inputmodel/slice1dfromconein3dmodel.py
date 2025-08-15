@@ -22,7 +22,8 @@ def make_cone(args: argparse.Namespace) -> pd.DataFrame:
 
     theta = np.radians([angle_of_cone / 2])  # angle between line of sight and edge is half angle of cone
 
-    dfmodel, modelmeta = at.get_modeldata_pandas(modelpath=args.modelpath[0], get_elemabundances=True)
+    pldfmodel, modelmeta = at.get_modeldata(modelpath=args.modelpath[0], get_elemabundances=True)
+    dfmodel = pldfmodel.collect().to_pandas(use_pyarrow_extension_array=True)
     args.t_model = modelmeta["t_model_init_days"]
 
     if args.positive_axis:
@@ -54,10 +55,11 @@ def get_profile_along_axis(
 ) -> pd.DataFrame:
     print("Getting profile along axis")
 
-    # merge_dfs, args.t_model, args.vmax = at.inputmodel.get_modeldata_tuple(args.modelpath, dimensions=3, get_elemabundances=True)
     if modeldata is None:
-        modeldata, _ = at.inputmodel.get_modeldata_pandas(
-            args.modelpath, get_elemabundances=True, derived_cols=derived_cols
+        modeldata = (
+            at.inputmodel.get_modeldata(args.modelpath, get_elemabundances=True, derived_cols=derived_cols)[0]
+            .collect()
+            .to_pandas(use_pyarrow_extension_array=True)
         )
 
     position_closest_to_axis = modeldata.iloc[(modeldata[f"pos_{args.other_axis2}_min"]).abs().argsort()][:1][

@@ -27,6 +27,7 @@ from matplotlib.lines import Line2D
 
 import artistools.spectra as atspectra
 from artistools.configuration import get_config
+from artistools.inputmodel import get_modeldata
 from artistools.misc import AppendPath
 from artistools.misc import CustomArgHelpFormatter
 from artistools.misc import flatten_list
@@ -1047,12 +1048,9 @@ def make_contrib_plot(
     import artistools.packets as atpackets
 
     if args.classicartis:
-        from artistools.inputmodel import get_modeldata_pandas
-
-        modeldata, _ = get_modeldata_pandas(modelpath)
+        modeldata = get_modeldata(modelpath)[0].collect().to_pandas(use_pyarrow_extension_array=True)
         estimators = atestimators.estimators_classic.read_classic_estimators(modelpath, modeldata)
         allnonemptymgilist = list(modeldata.index)
-
     else:
         estimators = atestimators.read_estimators(modelpath=modelpath)
         allnonemptymgilist = list({modelgridindex for ts, modelgridindex in estimators})

@@ -117,7 +117,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         )
 
     if args.makeenergyinputfiles:
-        model, modelmeta = at.inputmodel.get_modeldata_pandas(args.modelpath[0], derived_cols=["mass_g", "rho"])
+        plmodel, modelmeta = at.inputmodel.get_modeldata(args.modelpath[0], derived_cols=["mass_g", "rho"])
+        model = plmodel.collect().to_pandas(use_pyarrow_extension_array=True)
         rho = model["rho"].to_numpy()
         Mtot_grams = model["mass_g"].sum()
 

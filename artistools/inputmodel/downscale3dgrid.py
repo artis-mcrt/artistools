@@ -15,7 +15,8 @@ def make_downscaled_3d_grid(
     """
     modelpath = Path(modelpath)
 
-    dfmodel, modelmeta = at.get_modeldata_pandas(modelpath)
+    pldfmodel, modelmeta = at.get_modeldata(modelpath)
+    dfmodel = pldfmodel.collect().to_pandas(use_pyarrow_extension_array=True)
     dfelemabund = at.inputmodel.get_initelemabundances_pandas(modelpath)
 
     inputgridsize = modelmeta["ncoordgridx"]

@@ -257,7 +257,11 @@ def plot_levelpop(
     else:
         raise ValueError
 
-    modeldata, _ = at.inputmodel.get_modeldata_pandas(modelpath, derived_cols=["mass_g", "volume"])
+    modeldata = (
+        at.inputmodel.get_modeldata(modelpath, derived_cols=["mass_g", "volume"])[0]
+        .collect()
+        .to_pandas(use_pyarrow_extension_array=True)
+    )
 
     adata = at.atomic.get_levels(modelpath)
 
@@ -1052,7 +1056,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if args.classicartis:
         import artistools.estimators.estimators_classic
 
-        modeldata, _ = at.inputmodel.get_modeldata_pandas(modelpath)
+        modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect().to_pandas(use_pyarrow_extension_array=True)
         estimatorsdict = artistools.estimators.estimators_classic.read_classic_estimators(modelpath, modeldata)
         assert estimatorsdict is not None
         estimators = pl.DataFrame([
@@ -1109,7 +1113,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             estimators = estimators.filter(pl.col("modelgridindex").is_in(args.modelgridindex))
 
         if args.classicartis:
-            modeldata, _ = at.inputmodel.get_modeldata_pandas(modelpath)
+            modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect().to_pandas(use_pyarrow_extension_array=True)
             allnonemptymgilist = [
                 modelgridindex
                 for modelgridindex in modeldata.index
