@@ -124,16 +124,14 @@ def get_column_names_artiscode(modelpath: str | Path) -> list[str] | None:
     return None
 
 
+@deprecated("Use add_derived_columns_lazy instead.")
 def add_derived_columns(
     dfpackets: pd.DataFrame,
     modelpathin: Path | str,
     colnames: Sequence[str],
     allnonemptymgilist: Sequence[int] | None = None,
 ) -> pd.DataFrame:
-    """Add columns to a packets DataFrame that are derived from the values that are stored in the packets files.
-
-    DEPRECATED: Use add_derived_columns_lazy instead.
-    """
+    """Add columns to a packets DataFrame that are derived from the values that are stored in the packets files."""
     modelpath = Path(modelpathin)
     cm_to_km = 1e-5
     day_in_s = 86400
@@ -793,7 +791,13 @@ def bin_packet_directions(dfpackets: pd.DataFrame) -> pd.DataFrame:
     dfpackets["costhetabin"] = arr_costhetabin
 
     arr_vec1 = np.cross(pktdirvecs, syn_dir)
-    arr_cosphi = np.dot(arr_vec1, vec2) / np.linalg.norm(arr_vec1, axis=1) / np.linalg.norm(vec2)
+
+    norms = np.linalg.norm(arr_vec1, axis=1)
+    # replace zero norms to a small number to avoid division by zero
+    norms[norms == 0] = 1e-20
+    inverse_norms = 1 / norms
+
+    arr_cosphi = np.dot(arr_vec1, vec2) * inverse_norms / np.linalg.norm(vec2)
     vec3 = np.cross(vec2, syn_dir)
     arr_testphi = np.dot(arr_vec1, vec3)
 
