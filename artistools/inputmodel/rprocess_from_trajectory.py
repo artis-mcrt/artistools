@@ -106,7 +106,7 @@ def get_tar_member_extracted_path(traj_root: Path | str, particleid: int, member
     if not path_extracted_file.is_file() and tarfilepath is not None:
         try:
             with tarfile.open(tarfilepath, "r:*") as tarfilehandle:
-                tarfilehandle.extract(path=Path(traj_root, str(particleid)), member=memberfilename)
+                tarfilehandle.extract(path=Path(traj_root, str(particleid)), member=memberfilename, filter="data")
         except OSError:
             print(f"Problem extracting file {memberfilename} from {tarfilepath}")
             raise

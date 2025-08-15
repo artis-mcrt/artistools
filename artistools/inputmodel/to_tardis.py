@@ -44,10 +44,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     modelpath = Path(args.inputpath)
 
-    dfmodel, t_model_init_days, _ = at.inputmodel.get_modeldata_tuple(
-        modelpath, get_elemabundances=(args.abundtype == "elemental")
-    )
+    pldfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath, get_elemabundances=(args.abundtype == "elemental"))
+    t_model_init_days = modelmeta["t_model_init_days"]
 
+    dfmodel = pldfmodel.collect().to_pandas(use_pyarrow_extension_array=True)
     dfmodel.loc[:, "rho"] = 10 ** dfmodel["logrho"]
 
     if args.abundtype == "nuclear":

@@ -51,8 +51,10 @@ def test_get_modeldata_3d() -> None:
 
 
 def test_get_cell_angle() -> None:
-    modeldata, _ = at.inputmodel.get_modeldata_pandas(
-        modelpath=modelpath_3d, derived_cols=["pos_x_mid", "pos_y_mid", "pos_z_mid"]
+    modeldata = (
+        at.inputmodel.get_modeldata(modelpath=modelpath_3d, derived_cols=["pos_x_mid", "pos_y_mid", "pos_z_mid"])[0]
+        .collect()
+        .to_pandas(use_pyarrow_extension_array=True)
     )
     at.inputmodel.inputmodel_misc.get_cell_angle(modeldata)
     assert "cos_bin" in modeldata
@@ -77,12 +79,6 @@ def test_downscale_3dmodel() -> None:
         assert np.isclose(
             (dfmodel[abundcol] * dfmodel["mass_g"]).sum(), (dfmodel_small[abundcol] * dfmodel_small["mass_g"]).sum()
         )
-
-
-def test_get_modeldata_tuple() -> None:
-    _, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata_tuple(modelpath, get_elemabundances=True)
-    assert np.isclose(t_model_init_days, 0.00115740740741, rtol=0.0001)
-    assert np.isclose(vmax_cmps, 800000000.0, rtol=0.0001)
 
 
 def verify_file_checksums(

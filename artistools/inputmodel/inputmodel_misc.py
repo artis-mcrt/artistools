@@ -18,7 +18,6 @@ import numpy as np
 import pandas as pd
 import polars as pl
 import polars.selectors as cs
-from typing_extensions import deprecated
 
 from artistools.configuration import get_config
 from artistools.misc import firstexisting
@@ -464,14 +463,6 @@ def get_modeldata(
     return dfmodel, modelmeta
 
 
-@deprecated("Use get_modeldata() instead.")
-def get_modeldata_tuple(*args: t.Any, **kwargs: t.Any) -> tuple[pd.DataFrame, float, float]:
-    """Return tuple of (dfmodel, t_model_init_days, vmax_cmps) from model.txt file."""
-    dfmodel, modelmeta = get_modeldata_pandas(*args, **kwargs)
-
-    return dfmodel, modelmeta["t_model_init_days"], modelmeta["vmax_cmps"]
-
-
 def get_empty_3d_model(
     ncoordgrid: int, vmax: float, t_model_init_days: float, includenico57: bool = False
 ) -> tuple[pl.LazyFrame, dict[str, t.Any]]:
@@ -520,28 +511,6 @@ def get_empty_3d_model(
         for colname in standardcols
         if colname not in dfmodel.collect_schema().names()
     ]).select([*standardcols, "modelgridindex"])
-
-    return dfmodel, modelmeta
-
-
-@deprecated("Use get_modeldata() instead.")
-def get_modeldata_pandas(
-    modelpath: Path | str = Path(),
-    get_elemabundances: bool = False,
-    derived_cols: Sequence[str] | str | None = None,
-    printwarningsonly: bool = False,
-) -> tuple[pd.DataFrame, dict[t.Any, t.Any]]:
-    """Like get_modeldata() but convert polars DataFrame to pandas."""
-    pldfmodel, modelmeta = get_modeldata(
-        modelpath=modelpath,
-        get_elemabundances=get_elemabundances,
-        derived_cols=derived_cols,
-        printwarningsonly=printwarningsonly,
-    )
-    dfmodel = pldfmodel.collect().to_pandas(use_pyarrow_extension_array=True)
-    if modelmeta["npts_model"] > 100000:
-        # dfmodel.info(verbose=False, memory_usage="deep")
-        print("WARNING: Using pandas DataFrame for large model data. Switch to using get_modeldata() instead.")
 
     return dfmodel, modelmeta
 
@@ -1057,7 +1026,7 @@ def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist: Sequence[
 
     If mgilist is given, then chose from these cells only.
     """
-    modeldata, _, _ = get_modeldata_tuple(modelpath)
+    modeldata = get_modeldata(modelpath)[0].collect().to_pandas(use_pyarrow_extension_array=True)
 
     if not mgilist:
         mgilist = list(modeldata.index)

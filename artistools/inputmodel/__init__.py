@@ -25,8 +25,6 @@ from artistools.inputmodel.inputmodel_misc import (
 )
 from artistools.inputmodel.inputmodel_misc import get_mgi_of_velocity_kms as get_mgi_of_velocity_kms
 from artistools.inputmodel.inputmodel_misc import get_modeldata as get_modeldata
-from artistools.inputmodel.inputmodel_misc import get_modeldata_pandas as get_modeldata_pandas
-from artistools.inputmodel.inputmodel_misc import get_modeldata_tuple as get_modeldata_tuple
 from artistools.inputmodel.inputmodel_misc import save_empty_abundance_file as save_empty_abundance_file
 from artistools.inputmodel.inputmodel_misc import save_initelemabundances as save_initelemabundances
 from artistools.inputmodel.inputmodel_misc import save_modeldata as save_modeldata

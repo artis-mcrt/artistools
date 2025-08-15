@@ -507,7 +507,7 @@ def remap_mass_weighted_quantity(
 def merge_ARTIS_cells(red_fact: int, N_r: int, N_z: int, v_max: float, outputpath: Path) -> None:
     """red_fact: number of cells to be merged."""
     red_fact_1D = int(np.sqrt(red_fact))
-    im_ARTIS_old = at.inputmodel.get_modeldata_pandas(modelpath=Path(), derived_cols=["mass_g"])[0]
+    im_ARTIS_old = at.inputmodel.get_modeldata(modelpath=Path(), derived_cols=["mass_g"])[0].collect().to_pandas()
     N_cell_r_old, N_cell_z_old = N_r, N_z
     N_cell_r_new, N_cell_z_new = int(N_cell_r_old / red_fact_1D), int(N_cell_z_old / red_fact_1D)
     new_numb_cells = N_cell_r_new * N_cell_z_new

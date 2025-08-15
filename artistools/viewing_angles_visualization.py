@@ -103,7 +103,9 @@ def viewing_angles_visualisation(
         sys.exit()
 
     # Load model contents
-    dfmodel, _modelmeta = at.get_modeldata_pandas(modelfile, derived_cols=["pos_mid"])
+    dfmodel = (
+        at.get_modeldata(modelfile, derived_cols=["pos_mid"])[0].collect().to_pandas(use_pyarrow_extension_array=True)
+    )
     x, y, z = (dfmodel[f"pos_{ax}_mid"].to_numpy() for ax in ("x", "y", "z"))
     rho = dfmodel["rho"].to_numpy()
 

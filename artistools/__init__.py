@@ -35,8 +35,6 @@ from artistools.inputmodel import get_dfmodel_dimensions as get_dfmodel_dimensio
 from artistools.inputmodel import get_mean_cell_properties_of_angle_bin as get_mean_cell_properties_of_angle_bin
 from artistools.inputmodel import get_mgi_of_velocity_kms as get_mgi_of_velocity_kms
 from artistools.inputmodel import get_modeldata as get_modeldata
-from artistools.inputmodel import get_modeldata_pandas as get_modeldata_pandas
-from artistools.inputmodel import get_modeldata_tuple as get_modeldata_tuple
 from artistools.inputmodel import save_initelemabundances as save_initelemabundances
 from artistools.inputmodel import save_modeldata as save_modeldata
 from artistools.misc import anyexist as anyexist

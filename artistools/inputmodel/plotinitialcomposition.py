@@ -233,7 +233,9 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
         coloursurfaceby = f"X_{args.plotvars}"
         get_elemabundances = True
 
-    model, _, vmax = at.inputmodel.get_modeldata_tuple(modelpath, get_elemabundances=get_elemabundances)
+    plmodel, modelmeta = at.inputmodel.get_modeldata(modelpath, get_elemabundances=get_elemabundances)
+    vmax = modelmeta["vmax_cmps"]
+    model = plmodel.collect().to_pandas(use_pyarrow_extension_array=True)
 
     if "cellYe" in args.plotvars and "cellYe" not in model:
         file_contents = np.loadtxt(Path(modelpath) / "Ye.txt", unpack=True, skiprows=1)
@@ -328,7 +330,11 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
 
 
 def plot_phi_hist(modelpath: Path | str) -> None:
-    dfmodel, _ = at.get_modeldata_pandas(modelpath, derived_cols=["pos_x_mid", "pos_y_mid", "pos_z_mid", "vel_r_mid"])
+    dfmodel = (
+        at.get_modeldata(modelpath, derived_cols=["pos_x_mid", "pos_y_mid", "pos_z_mid", "vel_r_mid"])[0]
+        .collect()
+        .to_pandas(use_pyarrow_extension_array=True)
+    )
     # print(dfmodel.keys())
     # quit()
     at.inputmodel.inputmodel_misc.get_cell_angle(dfmodel)

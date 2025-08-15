@@ -143,7 +143,7 @@ def get_line_fluxes_from_pops(
     # arr_timedelta = np.array(arr_tend) - np.array(arr_tstart)
     arr_tmid = arr_tend = (np.array(arr_tstart) + np.array(arr_tend)) / 2.0
 
-    modeldata, _ = at.inputmodel.get_modeldata_pandas(modelpath)
+    modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect().to_pandas(use_pyarrow_extension_array=True)
 
     ionlist = [(feature.atomic_number, feature.ion_stage) for feature in emfeatures]
     adata = at.atomic.get_levels(modelpath, ionlist=tuple(ionlist), get_transitions=True, get_photoionisations=False)
@@ -610,7 +610,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
                         }
 
             estimators = at.estimators.read_estimators(modelpath)
-            modeldata, _ = at.inputmodel.get_modeldata_pandas(modelpath)
+            modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect().to_pandas(use_pyarrow_extension_array=True)
             Tedata_all[modelindex] = {}
             log10nnedata_all[modelindex] = {}
             for tmid, tstart, tend in zip(times_days, args.timebins_tstart, args.timebins_tend, strict=False):
