@@ -348,7 +348,6 @@ def get_iontuple(ionstr: str) -> tuple[int, str | int]:
 
 
 def get_column_name(seriestype: str, atomic_number: int, ion_stage: str | int) -> tuple[str, str]:
-    print(atomic_number, ion_stage, seriestype)
     ionstr = at.get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
     if seriestype == "populations":
         if ion_stage == "ALL":
