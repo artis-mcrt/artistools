@@ -204,9 +204,7 @@ def get_grid(
     # ... cylindrical coordinates of the grid onto which we want to map
     vmax_cmps = vmax * cl
     nvr = numb_cells_ARTIS_radial
-    nvz = int(
-        numb_cells_ARTIS_z / eqsymfac
-    )  # number of mapping grid cells in z direction depends on equatorial symmetry
+    nvz = numb_cells_ARTIS_z // eqsymfac  # number of mapping grid cells in z direction depends on equatorial symmetry
 
     wid_init_rcyl = vmax_cmps * tsnap / nvr
     pos_rcyl_min = np.array([vmax_cmps * tsnap / nvr * nr for nr in range(nvr)])
