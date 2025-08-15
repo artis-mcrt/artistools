@@ -30,9 +30,9 @@ def test_directionbins() -> None:
         assert np.isclose(pkt["dirx"] ** 2 + pkt["diry"] ** 2 + pkt["dirz"] ** 2, 1.0, rtol=0.001)
 
         assert np.isclose(pkt["costheta_defined"], pkt["costheta"], rtol=1e-4, atol=1e-4)
-        pktdir_plusminus_z = np.isclose(pkt["dirz"], 1.0) or np.isclose(pkt["dirz"], -1.0)
+        pktdir_is_along_zaxis = np.isclose(pkt["dirz"], 1.0) or np.isclose(pkt["dirz"], -1.0)
 
-        assert np.isclose(pkt["phi_defined"], pkt["phi"], rtol=1e-4, atol=1e-4) or pktdir_plusminus_z
+        assert np.isclose(pkt["phi_defined"], pkt["phi"], rtol=1e-4, atol=1e-4) or pktdir_is_along_zaxis
 
         dirbin2 = at.packets.get_directionbin(
             pkt["dirx"], pkt["diry"], pkt["dirz"], nphibins=nphibins, ncosthetabins=ncosthetabins, syn_dir=syn_dir
@@ -46,8 +46,8 @@ def test_directionbins() -> None:
         assert pkt["costhetabin"] == dirbin2 // nphibins
         assert pkt["phibin"] == dirbin2 % nphibins
 
-        assert phibinlowers[pkt["phibin"]] <= pkt["phi_defined"] or pktdir_plusminus_z
-        assert phibinuppers[pkt["phibin"]] >= pkt["phi_defined"] or pktdir_plusminus_z
+        assert phibinlowers[pkt["phibin"]] <= pkt["phi_defined"] or pktdir_is_along_zaxis
+        assert phibinuppers[pkt["phibin"]] >= pkt["phi_defined"] or pktdir_is_along_zaxis
 
         # print(dirx, diry, dirz, dirbin, costhetabin, phibin)
 
@@ -61,13 +61,21 @@ def test_directionbins() -> None:
         assert isinstance(row.costheta, float)
         assert isinstance(row.phi, float)
         assert isinstance(row.dirz, float)
-        pktdir_plusminus_z = np.isclose(row.dirz, 1.0) or np.isclose(row.dirz, -1.0)
+        pktdir_is_along_zaxis = np.isclose(row.dirz, 1.0) or np.isclose(row.dirz, -1.0)
         assert math.isclose(row.costheta_defined, row.costheta, rel_tol=1e-4, abs_tol=1e-4)
-        assert math.isclose(row.phi_defined, row.phi, rel_tol=1e-4, abs_tol=1e-4) or pktdir_plusminus_z
+        assert math.isclose(row.phi_defined, row.phi, rel_tol=1e-4, abs_tol=1e-4) or pktdir_is_along_zaxis
+
+        assert isinstance(row.costhetabin, int)
+        expected_costhetabin = testdirections.item(row[0], "costhetabin")
+        assert expected_costhetabin == row.costhetabin, f"Expected {expected_costhetabin}, got {row.costhetabin}"
+
+        assert isinstance(row.phibin, int)
+        expected_phibin = testdirections.item(row[0], "phibin")
+        assert expected_phibin == row.phibin or pktdir_is_along_zaxis, f"Expected {expected_phibin}, got {row.phibin}"
 
         assert isinstance(row.dirbin, int)
         expected_dirbin = testdirections.item(row[0], "dirbin")
-        assert expected_dirbin == row.dirbin, f"Expected {expected_dirbin}, got {row.dirbin}"
+        assert expected_dirbin == row.dirbin or pktdir_is_along_zaxis, f"Expected {expected_dirbin}, got {row.dirbin}"
 
 
 def test_get_virtual_packets_pl() -> None:
