@@ -921,7 +921,15 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--notitle", action="store_true", help="Suppress the top title from the plot")
 
-    parser.add_argument("-plotlist", "-plot", "-p", nargs="*", type=str, action="append", help="Plot list")
+    parser.add_argument(
+        "-plotlist",
+        "-plot",
+        "-p",
+        nargs="*",
+        type=str,
+        action="append",
+        help="List of plots to generate. Specify estimator names or population types. Examples: -plot Te TR -plot nne -plot SrI 'Sr II'",
+    )
 
     parser.add_argument(
         "-ionpoptype",
