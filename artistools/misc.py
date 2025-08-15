@@ -730,10 +730,14 @@ def get_ionstring(
             strcharge = r"$^{" + str(ion_stage - 1) + r"{+}}$"
         elif ion_stage == 2:
             strcharge = r"$^{+}$"
+        elif ion_stage == 1:
+            strcharge = r"$^{0}$"
     elif ion_stage > 2:
         strcharge = f"{ion_stage - 1}+"
     elif ion_stage == 2:
         strcharge = "+"
+    elif ion_stage == 1:
+        strcharge = "0"
 
     return f"{get_elsymbol(atomic_number)}{strcharge}"
 

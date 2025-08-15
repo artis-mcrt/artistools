@@ -38,6 +38,7 @@ subcommandtree: CommandType = {  # type: ignore[assignment]
     "comparetogsinetwork": ("gsinetwork.plotqdotabund", "main"),
     "gsinetworkdecayproducts": ("gsinetwork.decayproducts", "main"),
     "describeinputmodel": ("inputmodel.describeinputmodel", "main"),
+    "estimators": ("estimators.plotestimators", "main"),
     "exportmassfractions": ("estimators.exportmassfractions", "main"),
     "getpath": ("", "get_path"),
     "lc": ("lightcurve.plotlightcurve", "main"),
