@@ -62,13 +62,13 @@ jobs:
               if: always()
               run: uv run -- ty check
 
-            - name: Run mypy
-              if: always()
-              run: uv run -- mypy
-
             - name: Run pyright
               if: always()
               run: uv run -- pyright --warnings
+
+            - name: Run mypy
+              if: always()
+              run: uv run -- mypy
 
             - name: Cache pre-commit
               uses: actions/cache@v4

@@ -178,8 +178,8 @@ def test_makeartismodelfrom_sph_particles() -> None:
                     dfcontribs[3]
                     .drop("frac_of_cellmass")
                     .rename({"frac_of_cellmass_includemissing": "frac_of_cellmass"}),
-                    rtol=1e-4,
-                    atol=1e-4,
+                    rel_tol=1e-4,
+                    abs_tol=1e-4,
                 )
             else:
                 dfmodel3lz, _ = at.inputmodel.get_modeldata(
@@ -1525,7 +1525,7 @@ def test_save_load_3d_model() -> None:
     for _ in (0, 1):
         dfmodel_loaded, modelmeta_loaded = at.inputmodel.get_modeldata(modelpath=outpath)
         pltest.assert_frame_equal(
-            dfmodel, dfmodel_loaded.collect(), check_column_order=False, check_dtypes=False, rtol=1e-4, atol=1e-4
+            dfmodel, dfmodel_loaded.collect(), check_column_order=False, check_dtypes=False, rel_tol=1e-4, abs_tol=1e-4
         )
         assert modelmeta == modelmeta_loaded
 
@@ -1537,8 +1537,8 @@ def test_save_load_3d_model() -> None:
             ).collect(),
             check_column_order=False,
             check_dtypes=False,
-            rtol=1e-3,
-            atol=1e-3,
+            rel_tol=1e-3,
+            abs_tol=1e-3,
         )
 
 
