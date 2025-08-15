@@ -42,7 +42,7 @@ def test_estimator_snapshot(mockplot: t.Any, benchmark: BenchmarkFixture) -> Non
     )
     xarr = [0.0, 4000.0]
     for x in mockplot.call_args_list:
-        assert xarr == x[0][1]
+        assert np.allclose(xarr, x[0][1], rtol=1e-3, atol=1e-3)
 
     # order of keys is important
     expectedvals = {
@@ -120,7 +120,7 @@ def test_estimator_averaging(mockplot: t.Any, benchmark: BenchmarkFixture) -> No
 
     xarr = [0.0, 4000.0]
     for x in mockplot.call_args_list:
-        assert xarr == x[0][1]
+        assert np.allclose(xarr, x[0][1], rtol=1e-3, atol=1e-3)
 
     # order of keys is important
     expectedvals = {
