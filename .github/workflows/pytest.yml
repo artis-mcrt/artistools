@@ -179,8 +179,7 @@ jobs:
               if: matrix.os.name == 'macos' && startsWith(matrix.python-version, '3.14')
               run: |
                   brew update
-                  brew install apache-arrow openblas
-                  brew link --force openblas
+                  brew install apache-arrow
                   echo "LIBRARY_PATH=/opt/homebrew/opt/lib" >> $GITHUB_ENV
                   echo "LD_LIBRARY_PATH=/opt/homebrew/opt/lib" >> $GITHUB_ENV
                   echo "CPATH=$HOMEBREW_PREFIX/include:$CPATH" >> $GITHUB_ENV
