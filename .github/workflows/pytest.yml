@@ -180,8 +180,6 @@ jobs:
               run: |
                   brew update
                   brew install apache-arrow
-                  echo "LIBRARY_PATH=/opt/homebrew/opt/lib" >> $GITHUB_ENV
-                  echo "LD_LIBRARY_PATH=/opt/homebrew/opt/lib" >> $GITHUB_ENV
                   echo "ARROW_HOME=$(brew --prefix apache-arrow)" >> $GITHUB_ENV
                   uv pip install pyarrow
 
