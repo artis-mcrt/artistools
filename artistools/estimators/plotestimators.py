@@ -322,6 +322,44 @@ def plot_levelpop(
         ax.plot(xlist, ylist, label=label, **plotkwargs)
 
 
+def get_iontuple(ionstr: str) -> tuple[int, str | int]:
+    """Decode into atomic number and parameter, e.g., [(26, 1), (26, 2), (26, 'ALL'), (26, 'Fe56')]."""
+    if ionstr in at.get_elsymbolslist():
+        return (at.get_atomic_number(ionstr), "ALL")
+
+    # a space separates the element symbol from the ionstage, e.g. Fe II
+    if " " in ionstr:
+        return (at.get_atomic_number(ionstr.split(" ", maxsplit=1)[0]), at.decode_roman_numeral(ionstr.split(" ")[1]))
+
+    # for element symbol with a mass number after it, e.g. Fe56
+    if ionstr.rstrip("-0123456789") in at.get_elsymbolslist():
+        atomic_number = at.get_atomic_number(ionstr.rstrip("-0123456789"))
+        return (atomic_number, ionstr)
+
+    # for element and ionstage without a space, e.g. FeII
+    for elsymb in at.get_elsymbolslist():
+        if ionstr.startswith(elsymb):
+            possible_roman = at.decode_roman_numeral(ionstr.removeprefix(elsymb))
+            if possible_roman > 0:
+                return (at.get_atomic_number(elsymb), possible_roman)
+
+    atomic_number = at.get_atomic_number(ionstr.split("_", maxsplit=1)[0])
+    return (atomic_number, ionstr)
+
+
+def get_column_name(seriestype: str, atomic_number: int, ion_stage: str | int) -> tuple[str, str]:
+    ionstr = at.get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
+    if seriestype == "populations":
+        if ion_stage == "ALL":
+            elsymbol = at.get_elsymbol(atomic_number)
+            return f"nnelement_{elsymbol}", ionstr
+        if isinstance(ion_stage, str) and ion_stage.startswith(at.get_elsymbol(atomic_number)):
+            # not really an ion_stage but an isotope name
+            return f"nniso_{ion_stage}", ionstr
+        return f"nnion_{ionstr}", ionstr
+    return f"{seriestype}_{ionstr}", ionstr
+
+
 def plot_multi_ion_series(
     ax: mplax.Axes,
     startfromzero: bool,
@@ -338,21 +376,6 @@ def plot_multi_ion_series(
 
     plotted_something = False
 
-    def get_iontuple(ionstr: str) -> tuple[int, str | int]:
-        if ionstr in at.get_elsymbolslist():
-            return (at.get_atomic_number(ionstr), "ALL")
-        if " " in ionstr:
-            return (
-                at.get_atomic_number(ionstr.split(" ", maxsplit=1)[0]),
-                at.decode_roman_numeral(ionstr.split(" ")[1]),
-            )
-        if ionstr.rstrip("-0123456789") in at.get_elsymbolslist():
-            atomic_number = at.get_atomic_number(ionstr.rstrip("-0123456789"))
-            return (atomic_number, ionstr)
-        atomic_number = at.get_atomic_number(ionstr.split("_", maxsplit=1)[0])
-        return (atomic_number, ionstr)
-
-    # decoded into atomic number and parameter, e.g., [(26, 1), (26, 2), (26, 'ALL'), (26, 'Fe56')]
     iontuplelist = [get_iontuple(ionstr) for ionstr in ionlist]
     iontuplelist.sort()
     print(f"Subplot with ions: {iontuplelist}")
@@ -384,25 +407,14 @@ def plot_multi_ion_series(
     iontuplelist = [iontuple for iontuple in iontuplelist if iontuple not in missingions]
     lazyframes = []
     for atomic_number, ion_stage in iontuplelist:
-        elsymbol = at.get_elsymbol(atomic_number)
-
-        ionstr = at.get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
-        if seriestype == "populations":
-            if ion_stage == "ALL":
-                expr_yvals = pl.col(f"nnelement_{elsymbol}")
-            elif isinstance(ion_stage, str) and ion_stage.startswith(at.get_elsymbol(atomic_number)):
-                # not really an ion_stage but an isotope name
-                expr_yvals = pl.col(f"nniso_{ion_stage}")
-            else:
-                expr_yvals = pl.col(f"nnion_{ionstr}")
-        else:
-            expr_yvals = pl.col(f"{seriestype}_{ionstr}")
-
+        colname, ionstr = get_column_name(seriestype, atomic_number, ion_stage)
+        expr_yvals = pl.col(colname)
         print(f"Plotting {seriestype} {ionstr.replace('_', ' ')}")
 
         if seriestype != "populations" or args.poptype == "absolute":
             expr_normfactor = pl.lit(1)
         elif args.poptype == "elpop":
+            elsymbol = at.get_elsymbol(atomic_number)
             expr_normfactor = pl.col(f"nnelement_{elsymbol}")
         elif args.poptype == "totalpop":
             expr_normfactor = pl.col("nntot")
@@ -909,7 +921,15 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--notitle", action="store_true", help="Suppress the top title from the plot")
 
-    parser.add_argument("-plotlist", type=list, default=[], help="Plot list (when calling from Python only)")
+    parser.add_argument(
+        "-plotlist",
+        "-plot",
+        "-p",
+        nargs="*",
+        type=str,
+        action="append",
+        help="List of plots to generate. Specify estimator names or population types. Examples: -plot Te TR -plot nne -plot SrI 'Sr II'",
+    )
 
     parser.add_argument(
         "-ionpoptype",
@@ -999,45 +1019,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         f"({args.timemin:.1f} to {args.timemax:.1f}d)"
     )
 
-    plotlist = args.plotlist or [
-        # [["initabundances", ["Fe", "Ni_stable", "Ni_56"]]],
-        # ['heating_dep', 'heating_coll', 'heating_bf', 'heating_ff',
-        #  ['_yscale', 'linear']],
-        # ['cooling_adiabatic', 'cooling_coll', 'cooling_fb', 'cooling_ff',
-        #  ['_yscale', 'linear']],
-        # [
-        #     (pl.col("heating_coll") - pl.col("cooling_coll")).alias("collisional heating - cooling"),
-        #     ["_yscale", "linear"],
-        # ],
-        # [['initmasses', ['Ni_56', 'He', 'C', 'Mg']]],
-        # ['heating_gamma/gamma_dep'],
-        # ["nne", ["_ymin", 1e5], ["_ymax", 1e10]],
-        ["rho", ["_yscale", "log"], ["_ymin", 1e-16]],
-        ["TR", ["_yscale", "linear"]],  # , ["_ymin", 1000], ["_ymax", 15000]
-        # ["Te"],
-        # ["Te", "TR"],
-        [["averageionisation", ["Sr"]]],
-        # [["averageexcitation", ["Fe II", "Fe III"]]],
-        # [["populations", ["Sr90", "Sr91", "Sr92", "Sr94"]]],
-        [["populations", ["Sr I", "Sr II", "Sr III", "Sr IV"]]],
-        # [['populations', ['He I', 'He II', 'He III']]],
-        # [['populations', ['C I', 'C II', 'C III', 'C IV', 'C V']]],
-        # [['populations', ['O I', 'O II', 'O III', 'O IV']]],
-        # [['populations', ['Ne I', 'Ne II', 'Ne III', 'Ne IV', 'Ne V']]],
-        # [['populations', ['Si I', 'Si II', 'Si III', 'Si IV', 'Si V']]],
-        # [['populations', ['Cr I', 'Cr II', 'Cr III', 'Cr IV', 'Cr V']]],
-        # [['populations', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Fe VI', 'Fe VII', 'Fe VIII']]],
-        # [['populations', ['Co I', 'Co II', 'Co III', 'Co IV', 'Co V', 'Co VI', 'Co VII']]],
-        # [['populations', ['Ni I', 'Ni II', 'Ni III', 'Ni IV', 'Ni V', 'Ni VI', 'Ni VII']]],
-        # [['populations', ['Fe II', 'Fe III', 'Co II', 'Co III', 'Ni II', 'Ni III']]],
-        # [['populations', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II']]],
-        # [['RRC_LTE_Nahar', ['Fe II', 'Fe III', 'Fe IV', 'Fe V']]],
-        # [['RRC_LTE_Nahar', ['Co II', 'Co III', 'Co IV', 'Co V']]],
-        # [['RRC_LTE_Nahar', ['Ni I', 'Ni II', 'Ni III', 'Ni IV', 'Ni V', 'Ni VI', 'Ni VII']]],
-        # [['Alpha_R / RRC_LTE_Nahar', ['Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni III']]],
-        # [['gamma_NT', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II']]],
-    ]
-
     if args.readonlymgi:
         if args.readonlymgi == "alongaxis":
             print(f"Getting mgi along {args.axis} axis")
@@ -1080,6 +1061,80 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         return
 
     assoc_cells, _ = at.get_grid_mapping(modelpath)
+
+    plotlist = args.plotlist or [
+        # [["initabundances", ["Fe", "Ni_stable", "Ni_56"]]],
+        # ['heating_dep', 'heating_coll', 'heating_bf', 'heating_ff',
+        #  ['_yscale', 'linear']],
+        # ['cooling_adiabatic', 'cooling_coll', 'cooling_fb', 'cooling_ff',
+        #  ['_yscale', 'linear']],
+        # [
+        #     (pl.col("heating_coll") - pl.col("cooling_coll")).alias("collisional heating - cooling"),
+        #     ["_yscale", "linear"],
+        # ],
+        # [['initmasses', ['Ni_56', 'He', 'C', 'Mg']]],
+        # ['heating_gamma/gamma_dep'],
+        # ["nne", ["_ymin", 1e5], ["_ymax", 1e10]],
+        ["rho", ["_yscale", "log"], ["_ymin", 1e-16]],
+        ["TR", ["_yscale", "linear"]],  # , ["_ymin", 1000], ["_ymax", 15000]
+        # ["Te"],
+        # ["Te", "TR"],
+        [["averageionisation", ["Sr"]]],
+        # [["averageexcitation", ["Fe II", "Fe III"]]],
+        # [["populations", ["Sr90", "Sr91", "Sr92", "Sr94"]]],
+        [["populations", ["Sr I", "Sr II", "Sr III", "Sr IV"]]],
+        # [['populations', ['He I', 'He II', 'He III']]],
+        # [['populations', ['C I', 'C II', 'C III', 'C IV', 'C V']]],
+        # [['populations', ['O I', 'O II', 'O III', 'O IV']]],
+        # [['populations', ['Ne I', 'Ne II', 'Ne III', 'Ne IV', 'Ne V']]],
+        # [['populations', ['Si I', 'Si II', 'Si III', 'Si IV', 'Si V']]],
+        # [['populations', ['Cr I', 'Cr II', 'Cr III', 'Cr IV', 'Cr V']]],
+        # [['populations', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Fe VI', 'Fe VII', 'Fe VIII']]],
+        # [['populations', ['Co I', 'Co II', 'Co III', 'Co IV', 'Co V', 'Co VI', 'Co VII']]],
+        # [['populations', ['Ni I', 'Ni II', 'Ni III', 'Ni IV', 'Ni V', 'Ni VI', 'Ni VII']]],
+        # [['populations', ['Fe II', 'Fe III', 'Co II', 'Co III', 'Ni II', 'Ni III']]],
+        # [['populations', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II']]],
+        # [['gamma_NT', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II']]],
+    ]
+
+    estimatorcolumns = estimators.collect_schema().names()
+
+    # detect a list of populations and convert to the correct form
+    # e.g. ["Sr I", "Sr II"] is re-written to [['populations', ['Sr I', 'Sr II']]]
+    for i in range(len(plotlist)):
+        plot_directives = []
+        if isinstance(plotlist[i], list):
+            plot_directives = [
+                plotvar.split("=", maxsplit=1)
+                for plotvar in plotlist[i]
+                if isinstance(plotvar, str) and plotvar.startswith("_") and "=" in plotvar
+            ]
+            plotlist[i] = [
+                plotvar
+                for plotvar in plotlist[i]
+                if not isinstance(plotvar, str) or not plotvar.startswith("_") or "=" not in plotvar
+            ]
+        if isinstance(plotlist[i], list) and isinstance(plotlist[i][0], str) and plotlist[i][0] not in estimatorcolumns:
+            # this is going to cause an error, so attempt to interpret it as populations
+            rewrite_is_valid = False
+            for plotvar in plotlist[i]:
+                if isinstance(plotvar, list):
+                    continue
+                if not isinstance(plotvar, str):
+                    break
+                if plotvar.startswith("_"):
+                    continue
+                atomic_number, ionstage = get_iontuple(plotvar)
+                if get_column_name("populations", atomic_number, ionstage)[0] not in estimatorcolumns:
+                    break
+            else:
+                rewrite_is_valid = True
+            if rewrite_is_valid:
+                new_plotvars = [["populations", plotlist[i]]]
+                print(f"Rewriting plotlist {plotlist[i]} to {new_plotvars}")
+                plotlist[i] = new_plotvars
+        if plot_directives:
+            plotlist[i].extend(plot_directives)
 
     outdir = Path(args.outputfile) if Path(args.outputfile).is_dir() else Path()
 
