@@ -598,9 +598,13 @@ def get_xlist(
     if xvariable in {"cellid", "modelgridindex"}:
         estimators = estimators.with_columns(xvalue=pl.col("modelgridindex"), plotpointid=pl.col("modelgridindex"))
     elif xvariable == "timestep":
-        estimators = estimators.with_columns(xvalue=pl.col("timestep"), plotpointid=pl.col("timestep"))
+        estimators = estimators.with_columns(
+            xvalue=pl.col("timestep"), plotpointid=pl.struct(pl.col("timestep"), pl.col("modelgridindex"))
+        )
     elif xvariable == "time":
-        estimators = estimators.with_columns(xvalue=pl.col("time_mid"), plotpointid=pl.col("timestep"))
+        estimators = estimators.with_columns(
+            xvalue=pl.col("time_mid"), plotpointid=pl.struct(pl.col("timestep"), pl.col("modelgridindex"))
+        )
     elif xvariable in {"velocity", "beta"}:
         velcolumn = "vel_r_mid"
         scalefactor = 1e5 if xvariable == "velocity" else 29979245800
@@ -802,6 +806,7 @@ def make_plot(
         groupbyxvalue=not args.markersonly,
         args=args,
     )
+
     startfromzero = (xvariable.startswith("velocity") or xvariable == "beta") and not args.markersonly
     xmin = args.xmin if args.xmin >= 0 else min(xlist)
     xmax = args.xmax if args.xmax > 0 else max(xlist)
@@ -997,7 +1002,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     modelname = at.get_model_name(modelpath)
 
-    if not args.timedays and not args.timestep and args.modelgridindex is not None:
+    if not args.timedays and not args.timestep and (args.modelgridindex is not None or args.x in {"time", "timestep"}):
         args.timestep = f"0-{len(at.get_timestep_times(modelpath)) - 1}"
 
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
@@ -1051,16 +1056,25 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     estimators, modelmeta = at.estimators.join_cell_modeldata(estimators=estimators, modelpath=modelpath, verbose=False)
     estimators = estimators.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"])
     tswithdata = estimators.select("timestep").unique().collect().to_series()
+
+    assoc_cells, _ = at.get_grid_mapping(modelpath)
+    if args.modelgridindex is not None:
+        assert isinstance(args.modelgridindex, int)
+        if (
+            not assoc_cells.get(args.modelgridindex)
+            or estimators.filter(pl.col("modelgridindex") == args.modelgridindex).collect().is_empty()
+        ):
+            msg = f"cell {args.modelgridindex} is empty. no estimators available"
+            raise ValueError(msg)
+
+    if not set(timesteps_included).intersection(tswithdata):
+        print("No data was found for the requested timesteps/cells.")
+        return
+
     for ts in reversed(timesteps_included):
         if ts not in tswithdata:
             timesteps_included.remove(ts)
             print(f"ts {ts} requested but no data found. Removing.")
-
-    if not timesteps_included:
-        print("No timesteps with data are included")
-        return
-
-    assoc_cells, _ = at.get_grid_mapping(modelpath)
 
     plotlist = args.plotlist or [
         # [["initabundances", ["Fe", "Ni_stable", "Ni_56"]]],
@@ -1139,14 +1153,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     outdir = Path(args.outputfile) if Path(args.outputfile).is_dir() else Path()
 
     if not args.readonlymgi and (args.modelgridindex is not None or args.x in {"time", "timestep"}):
-        # plot time evolution in specific cell
+        # plot time evolution
         if not args.x:
             args.x = "time"
-        assert isinstance(args.modelgridindex, int)
         timestepslist_unfiltered = [[ts] for ts in timesteps_included]
-        if not assoc_cells.get(args.modelgridindex):
-            msg = f"cell {args.modelgridindex} is empty. no estimators available"
-            raise ValueError(msg)
         make_plot(
             modelpath=modelpath,
             timestepslist_unfiltered=timestepslist_unfiltered,
