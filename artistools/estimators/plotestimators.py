@@ -622,7 +622,7 @@ def get_xlist(
         estimators = estimators.with_columns(plotpointid=pl.col("xvalue"))
 
     if args.xmin is not None:
-        estimators = estimators.filter(pl.col("xvalue") <= args.xmin)
+        estimators = estimators.filter(pl.col("xvalue") >= args.xmin)
 
     if args.xmax is not None:
         estimators = estimators.filter(pl.col("xvalue") <= args.xmax)
