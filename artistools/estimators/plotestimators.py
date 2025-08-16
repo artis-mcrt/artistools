@@ -1184,7 +1184,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             args.x = "beta"
 
         if args.readonlymgi:
-            assert isinstance(args.modelgridindex, list)
+            if not isinstance(args.modelgridindex, list):
+                args.modelgridindex = [args.modelgridindex] if args.modelgridindex is not None else []
             estimators = estimators.filter(pl.col("modelgridindex").is_in(args.modelgridindex))
 
         if args.classicartis:
