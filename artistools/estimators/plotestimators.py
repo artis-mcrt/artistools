@@ -1137,7 +1137,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             if isinstance(plotvar, str) and plotvar.startswith("_") and "=" in plotvar
         ]
         plotlist[i] = [
-            VARIABLE_ALIASES.get(plotvar, plotvar)
+            VARIABLE_ALIASES.get(plotvar, plotvar) if isinstance(plotvar, str) else plotvar
             for plotvar in plotlist[i]
             if not isinstance(plotvar, str) or not plotvar.startswith("_") or "=" not in plotvar
         ]
