@@ -848,8 +848,8 @@ def make_plot(
             timestep = f"ts{timestepslist[0][0]:02d}"
             timedays = f"{at.get_timestep_time(modelpath, timestepslist[0][0]):.2f}d"
         else:
-            timestepmin = min(timestepslist[0])
-            timestepmax = max(timestepslist[0])
+            timestepmin = min(t[0] for t in timestepslist)
+            timestepmax = max(t[0] for t in timestepslist)
             timestep = f"ts{timestepmin:02d}-ts{timestepmax:02d}"
             timedays = f"{at.get_timestep_time(modelpath, timestepmin):.2f}d-{at.get_timestep_time(modelpath, timestepmax):.2f}d"
 
