@@ -29,6 +29,8 @@ colors_tab10: list[str] = list(plt.get_cmap("tab10")(np.linspace(0, 1.0, 10)))
 # reserve colours for these elements
 elementcolors = {"Fe": colors_tab10[0], "Ni": colors_tab10[1], "Co": colors_tab10[2]}
 
+VARIABLE_ALIASES = {"T_e": "Te", "n_e": "nne", "T_R": "TR", "T_J": "TJ"}
+
 
 def get_elemcolor(atomic_number: int | None = None, elsymbol: str | None = None) -> str | npt.NDArray[t.Any]:
     """Get the colour of an element from the reserved color list (reserving a new one if needed)."""
@@ -598,9 +600,13 @@ def get_xlist(
     if xvariable in {"cellid", "modelgridindex"}:
         estimators = estimators.with_columns(xvalue=pl.col("modelgridindex"), plotpointid=pl.col("modelgridindex"))
     elif xvariable == "timestep":
-        estimators = estimators.with_columns(xvalue=pl.col("timestep"), plotpointid=pl.col("timestep"))
+        estimators = estimators.with_columns(
+            xvalue=pl.col("timestep"), plotpointid=pl.struct(pl.col("timestep"), pl.col("modelgridindex"))
+        )
     elif xvariable == "time":
-        estimators = estimators.with_columns(xvalue=pl.col("time_mid"), plotpointid=pl.col("timestep"))
+        estimators = estimators.with_columns(
+            xvalue=pl.col("time_mid"), plotpointid=pl.struct(pl.col("timestep"), pl.col("modelgridindex"))
+        )
     elif xvariable in {"velocity", "beta"}:
         velcolumn = "vel_r_mid"
         scalefactor = 1e5 if xvariable == "velocity" else 29979245800
@@ -615,7 +621,10 @@ def get_xlist(
     if groupbyxvalue:
         estimators = estimators.with_columns(plotpointid=pl.col("xvalue"))
 
-    if args.xmax > 0:
+    if args.xmin is not None:
+        estimators = estimators.filter(pl.col("xvalue") >= args.xmin)
+
+    if args.xmax is not None:
         estimators = estimators.filter(pl.col("xvalue") <= args.xmax)
 
     estimators = estimators.sort("plotpointid")
@@ -623,7 +632,7 @@ def get_xlist(
         (
             estimators.select(["plotpointid", "xvalue", "modelgridindex", "timestep"])
             .group_by("plotpointid", maintain_order=True)
-            .agg(pl.col("xvalue").first(), pl.col("modelgridindex").first(), pl.col("timestep").unique())
+            .agg(pl.col("xvalue").first(), pl.col("modelgridindex").unique(), pl.col("timestep").unique())
         )
         .lazy()
         .collect()
@@ -632,7 +641,7 @@ def get_xlist(
 
     return (
         pointgroups["xvalue"].to_list(),
-        pointgroups["modelgridindex"].to_list(),
+        at.flatten_list(pointgroups["modelgridindex"].to_list()),
         pointgroups["timestep"].to_list(),
         estimators,
     )
@@ -802,9 +811,10 @@ def make_plot(
         groupbyxvalue=not args.markersonly,
         args=args,
     )
+
     startfromzero = (xvariable.startswith("velocity") or xvariable == "beta") and not args.markersonly
-    xmin = args.xmin if args.xmin >= 0 else min(xlist)
-    xmax = args.xmax if args.xmax > 0 else max(xlist)
+    xmin = args.xmin if args.xmin is not None else min(xlist)
+    xmax = args.xmax if args.xmax is not None else max(xlist)
 
     if args.markersonly:
         plotkwargs |= {"linestyle": "None", "marker": ".", "markersize": 4, "alpha": 0.7, "markeredgewidth": 0}
@@ -843,8 +853,10 @@ def make_plot(
             timestep = f"ts{timestepslist[0][0]:02d}"
             timedays = f"{at.get_timestep_time(modelpath, timestepslist[0][0]):.2f}d"
         else:
-            timestepmin = min(timestepslist[0])
-            timestepmax = max(timestepslist[0])
+            timesteps_flat = at.flatten_list(timestepslist)
+            timestepmin = min(timesteps_flat)
+            timestepmax = max(timesteps_flat)
+
             timestep = f"ts{timestepmin:02d}-ts{timestepmax:02d}"
             timedays = f"{at.get_timestep_time(modelpath, timestepmin):.2f}d-{at.get_timestep_time(modelpath, timestepmax):.2f}d"
 
@@ -893,9 +905,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("-x", help="Horizontal axis variable, e.g. cellid, velocity, timestep, or time")
 
-    parser.add_argument("-xmin", type=float, default=-1, help="Plot range: minimum x value")
+    parser.add_argument("-xmin", type=float, default=None, help="Plot range: minimum x value")
 
-    parser.add_argument("-xmax", type=float, default=-1, help="Plot range: maximum x value")
+    parser.add_argument("-xmax", type=float, default=None, help="Plot range: maximum x value")
 
     parser.add_argument(
         "-yscale", default="log", choices=["log", "linear"], help="Set yscale to log or linear (default log)"
@@ -997,7 +1009,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     modelname = at.get_model_name(modelpath)
 
-    if not args.timedays and not args.timestep and args.modelgridindex is not None:
+    should_use_all_timesteps = (
+        not args.timedays and not args.timestep and (args.modelgridindex is not None or args.x in {"time", "timestep"})
+    )
+    if should_use_all_timesteps:
         args.timestep = f"0-{len(at.get_timestep_times(modelpath)) - 1}"
 
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
@@ -1051,16 +1066,27 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     estimators, modelmeta = at.estimators.join_cell_modeldata(estimators=estimators, modelpath=modelpath, verbose=False)
     estimators = estimators.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"])
     tswithdata = estimators.select("timestep").unique().collect().to_series()
+
+    assoc_cells, _ = at.get_grid_mapping(modelpath)
+    if (
+        args.modelgridindex is not None
+        and isinstance(args.modelgridindex, int)
+        and (
+            not assoc_cells.get(args.modelgridindex)
+            or estimators.filter(pl.col("modelgridindex") == args.modelgridindex).collect().is_empty()
+        )
+    ):
+        msg = f"cell {args.modelgridindex} is empty. no estimators available"
+        raise ValueError(msg)
+
+    if not set(timesteps_included).intersection(tswithdata):
+        print("No data was found for the requested timesteps/cells.")
+        return
+
     for ts in reversed(timesteps_included):
         if ts not in tswithdata:
             timesteps_included.remove(ts)
             print(f"ts {ts} requested but no data found. Removing.")
-
-    if not timesteps_included:
-        print("No timesteps with data are included")
-        return
-
-    assoc_cells, _ = at.get_grid_mapping(modelpath)
 
     plotlist = args.plotlist or [
         # [["initabundances", ["Fe", "Ni_stable", "Ni_56"]]],
@@ -1102,19 +1128,20 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     # detect a list of populations and convert to the correct form
     # e.g. ["Sr I", "Sr II"] is re-written to [['populations', ['Sr I', 'Sr II']]]
     for i in range(len(plotlist)):
-        plot_directives = []
-        if isinstance(plotlist[i], list):
-            plot_directives = [
-                plotvar.split("=", maxsplit=1)
-                for plotvar in plotlist[i]
-                if isinstance(plotvar, str) and plotvar.startswith("_") and "=" in plotvar
-            ]
-            plotlist[i] = [
-                plotvar
-                for plotvar in plotlist[i]
-                if not isinstance(plotvar, str) or not plotvar.startswith("_") or "=" not in plotvar
-            ]
-        if isinstance(plotlist[i], list) and isinstance(plotlist[i][0], str) and plotlist[i][0] not in estimatorcolumns:
+        if isinstance(plotlist[i], str):
+            plotlist[i] = [plotlist[i]]
+        assert isinstance(plotlist[i], list)
+        plot_directives = [
+            plotvar.split("=", maxsplit=1)
+            for plotvar in plotlist[i]
+            if isinstance(plotvar, str) and plotvar.startswith("_") and "=" in plotvar
+        ]
+        plotlist[i] = [
+            VARIABLE_ALIASES.get(plotvar, plotvar) if isinstance(plotvar, str) else plotvar
+            for plotvar in plotlist[i]
+            if not isinstance(plotvar, str) or not plotvar.startswith("_") or "=" not in plotvar
+        ]
+        if isinstance(plotlist[i][0], str) and plotlist[i][0] not in estimatorcolumns:
             # this is going to cause an error, so attempt to interpret it as populations
             rewrite_is_valid = False
             for plotvar in plotlist[i]:
@@ -1139,14 +1166,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     outdir = Path(args.outputfile) if Path(args.outputfile).is_dir() else Path()
 
     if not args.readonlymgi and (args.modelgridindex is not None or args.x in {"time", "timestep"}):
-        # plot time evolution in specific cell
+        # plot time evolution
         if not args.x:
             args.x = "time"
-        assert isinstance(args.modelgridindex, int)
         timestepslist_unfiltered = [[ts] for ts in timesteps_included]
-        if not assoc_cells.get(args.modelgridindex):
-            msg = f"cell {args.modelgridindex} is empty. no estimators available"
-            raise ValueError(msg)
         make_plot(
             modelpath=modelpath,
             timestepslist_unfiltered=timestepslist_unfiltered,
@@ -1165,6 +1188,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             args.x = "beta"
 
         if args.readonlymgi:
+            if not isinstance(args.modelgridindex, list):
+                args.modelgridindex = [args.modelgridindex] if args.modelgridindex is not None else []
             estimators = estimators.filter(pl.col("modelgridindex").is_in(args.modelgridindex))
 
         if args.classicartis:
