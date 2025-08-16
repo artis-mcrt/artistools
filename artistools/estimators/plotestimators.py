@@ -632,7 +632,7 @@ def get_xlist(
         (
             estimators.select(["plotpointid", "xvalue", "modelgridindex", "timestep"])
             .group_by("plotpointid", maintain_order=True)
-            .agg(pl.col("xvalue").first(), pl.col("modelgridindex").first(), pl.col("timestep").unique())
+            .agg(pl.col("xvalue").first(), pl.col("modelgridindex").unique(), pl.col("timestep").unique())
         )
         .lazy()
         .collect()
@@ -641,7 +641,7 @@ def get_xlist(
 
     return (
         pointgroups["xvalue"].to_list(),
-        pointgroups["modelgridindex"].to_list(),
+        at.flatten_list(pointgroups["modelgridindex"].to_list()),
         pointgroups["timestep"].to_list(),
         estimators,
     )
