@@ -29,6 +29,8 @@ colors_tab10: list[str] = list(plt.get_cmap("tab10")(np.linspace(0, 1.0, 10)))
 # reserve colours for these elements
 elementcolors = {"Fe": colors_tab10[0], "Ni": colors_tab10[1], "Co": colors_tab10[2]}
 
+VARIABLE_ALIASES = {"T_e": "Te", "n_e": "nne", "T_R": "TR", "T_J": "TJ"}
+
 
 def get_elemcolor(atomic_number: int | None = None, elsymbol: str | None = None) -> str | npt.NDArray[t.Any]:
     """Get the colour of an element from the reserved color list (reserving a new one if needed)."""
@@ -1126,19 +1128,20 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     # detect a list of populations and convert to the correct form
     # e.g. ["Sr I", "Sr II"] is re-written to [['populations', ['Sr I', 'Sr II']]]
     for i in range(len(plotlist)):
-        plot_directives = []
-        if isinstance(plotlist[i], list):
-            plot_directives = [
-                plotvar.split("=", maxsplit=1)
-                for plotvar in plotlist[i]
-                if isinstance(plotvar, str) and plotvar.startswith("_") and "=" in plotvar
-            ]
-            plotlist[i] = [
-                plotvar
-                for plotvar in plotlist[i]
-                if not isinstance(plotvar, str) or not plotvar.startswith("_") or "=" not in plotvar
-            ]
-        if isinstance(plotlist[i], list) and isinstance(plotlist[i][0], str) and plotlist[i][0] not in estimatorcolumns:
+        if isinstance(plotlist[i], str):
+            plotlist[i] = [plotlist[i]]
+        assert isinstance(plotlist[i], list)
+        plot_directives = [
+            plotvar.split("=", maxsplit=1)
+            for plotvar in plotlist[i]
+            if isinstance(plotvar, str) and plotvar.startswith("_") and "=" in plotvar
+        ]
+        plotlist[i] = [
+            VARIABLE_ALIASES.get(plotvar, plotvar)
+            for plotvar in plotlist[i]
+            if not isinstance(plotvar, str) or not plotvar.startswith("_") or "=" not in plotvar
+        ]
+        if isinstance(plotlist[i][0], str) and plotlist[i][0] not in estimatorcolumns:
             # this is going to cause an error, so attempt to interpret it as populations
             rewrite_is_valid = False
             for plotvar in plotlist[i]:
