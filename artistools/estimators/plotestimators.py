@@ -1005,9 +1005,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     modelname = at.get_model_name(modelpath)
 
     should_use_all_timesteps = (
-        not args.timedays
-        and not args.timestep
-        and (args.modelgridindex is not None or args.x in {"time", "timestep"})
+        not args.timedays and not args.timestep and (args.modelgridindex is not None or args.x in {"time", "timestep"})
     )
     if should_use_all_timesteps:
         args.timestep = f"0-{len(at.get_timestep_times(modelpath)) - 1}"
