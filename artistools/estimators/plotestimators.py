@@ -1060,14 +1060,16 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     tswithdata = estimators.select("timestep").unique().collect().to_series()
 
     assoc_cells, _ = at.get_grid_mapping(modelpath)
-    if args.modelgridindex is not None:
-        assert isinstance(args.modelgridindex, int)
-        if (
+    if (
+        args.modelgridindex is not None
+        and isinstance(args.modelgridindex, int)
+        and (
             not assoc_cells.get(args.modelgridindex)
             or estimators.filter(pl.col("modelgridindex") == args.modelgridindex).collect().is_empty()
-        ):
-            msg = f"cell {args.modelgridindex} is empty. no estimators available"
-            raise ValueError(msg)
+        )
+    ):
+        msg = f"cell {args.modelgridindex} is empty. no estimators available"
+        raise ValueError(msg)
 
     if not set(timesteps_included).intersection(tswithdata):
         print("No data was found for the requested timesteps/cells.")
@@ -1177,6 +1179,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             args.x = "beta"
 
         if args.readonlymgi:
+            assert isinstance(args.modelgridindex, list)
             estimators = estimators.filter(pl.col("modelgridindex").is_in(args.modelgridindex))
 
         if args.classicartis:
