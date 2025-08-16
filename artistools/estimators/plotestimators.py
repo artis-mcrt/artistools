@@ -619,7 +619,10 @@ def get_xlist(
     if groupbyxvalue:
         estimators = estimators.with_columns(plotpointid=pl.col("xvalue"))
 
-    if args.xmax > 0:
+    if args.xmin is not None:
+        estimators = estimators.filter(pl.col("xvalue") <= args.xmin)
+
+    if args.xmax is not None:
         estimators = estimators.filter(pl.col("xvalue") <= args.xmax)
 
     estimators = estimators.sort("plotpointid")
@@ -808,8 +811,8 @@ def make_plot(
     )
 
     startfromzero = (xvariable.startswith("velocity") or xvariable == "beta") and not args.markersonly
-    xmin = args.xmin if args.xmin >= 0 else min(xlist)
-    xmax = args.xmax if args.xmax > 0 else max(xlist)
+    xmin = args.xmin if args.xmin is not None else min(xlist)
+    xmax = args.xmax if args.xmax is not None else max(xlist)
 
     if args.markersonly:
         plotkwargs |= {"linestyle": "None", "marker": ".", "markersize": 4, "alpha": 0.7, "markeredgewidth": 0}
@@ -900,9 +903,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("-x", help="Horizontal axis variable, e.g. cellid, velocity, timestep, or time")
 
-    parser.add_argument("-xmin", type=float, default=-1, help="Plot range: minimum x value")
+    parser.add_argument("-xmin", type=float, default=None, help="Plot range: minimum x value")
 
-    parser.add_argument("-xmax", type=float, default=-1, help="Plot range: maximum x value")
+    parser.add_argument("-xmax", type=float, default=None, help="Plot range: maximum x value")
 
     parser.add_argument(
         "-yscale", default="log", choices=["log", "linear"], help="Set yscale to log or linear (default log)"
