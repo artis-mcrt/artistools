@@ -10,8 +10,8 @@ import contextlib
 import math
 import string
 import typing as t
+from collections.abc import Collection
 from collections.abc import Sequence
-from itertools import chain
 from pathlib import Path
 
 import argcomplete
@@ -114,7 +114,6 @@ def plot_init_abundances(
             ylist = [ylist[0], *ylist]
 
         xlist_filtered, ylist_filtered = at.estimators.apply_filters(xlist, ylist, args)
-
         ax.plot(
             xlist_filtered,
             ylist_filtered,
@@ -134,7 +133,7 @@ def plot_average_ionisation_excitation(
     xlist: list[float],
     seriestype: str,
     params: Sequence[str],
-    timestepslist: Sequence[Sequence[int]],
+    timestepslist: Sequence[int],
     mgilist: Sequence[int],
     estimators: pl.LazyFrame,
     modelpath: Path | str,
@@ -168,10 +167,10 @@ def plot_average_ionisation_excitation(
         if seriestype == "averageexcitation":
             print("  This will be slow! TODO: reimplement with polars.")
             assert ion_stage is not None
-            for modelgridindex, timesteps in zip(mgilist, timestepslist, strict=False):
+            for modelgridindex in mgilist:
                 exc_ev_times_tdelta_sum = 0.0
                 tdeltasum = 0.0
-                for timestep in timesteps:
+                for timestep in timestepslist:
                     T_exc = (
                         estimators.filter(pl.col("timestep") == timestep)
                         .filter(pl.col("modelgridindex") == modelgridindex)
@@ -243,7 +242,7 @@ def plot_levelpop(
     xlist: Sequence[int | float] | npt.NDArray[np.floating],
     seriestype: str,
     params: Sequence[str],
-    timestepslist: Sequence[Sequence[int]],
+    timestepslist: Sequence[int],
     mgilist: Sequence[int | Sequence[int]],
     modelpath: str | Path,
     startfromzero: bool,
@@ -289,12 +288,12 @@ def plot_levelpop(
         ).query("level==@levelindex")
 
         ylist = []
-        for modelgridindex, timesteps in zip(mgilist, timestepslist, strict=False):
+        for modelgridindex in mgilist:
             valuesum = 0.0
             tdeltasum = 0.0
             # print(f'modelgridindex {modelgridindex} timesteps {timesteps}')
 
-            for timestep in timesteps:
+            for timestep in timestepslist:
                 levelpop = (
                     dfnltepops.query(
                         "modelgridindex==@modelgridindex and timestep==@timestep and Z==@atomic_number"
@@ -555,7 +554,6 @@ def plot_series(
     else:
         ax.set_ylabel(serieslabel + units_string)
         linelabel = None
-    print(f"Plotting {variablename}")
 
     series = (
         estimators.group_by("plotpointid", maintain_order=True)
@@ -587,15 +585,17 @@ def plot_series(
 
     xlist_filtered, ylist_filtered = at.estimators.apply_filters(xlist, ylist, args)
 
+    print(f"Plotting {variablename} ({len(xlist_filtered)} points)")
     ax.plot(
         xlist_filtered, ylist_filtered, linewidth=1.5, label=linelabel, color=dictcolors.get(variablename), **plotkwargs
     )
 
 
 def get_xlist(
-    xvariable: str, estimators: pl.LazyFrame, timestepslist: t.Any, groupbyxvalue: bool, args: t.Any
-) -> tuple[list[float | int], list[int], list[list[int]], pl.LazyFrame]:
-    estimators = estimators.filter(pl.col("timestep").is_in(set(chain.from_iterable(timestepslist))))
+    xvariable: str, estimators: pl.LazyFrame, timestepslist: Collection[int] | None, groupbyxvalue: bool, args: t.Any
+) -> tuple[list[float | int], list[int], list[int], pl.LazyFrame]:
+    if timestepslist is not None:
+        estimators = estimators.filter(pl.col("timestep").is_in(timestepslist))
 
     if xvariable in {"cellid", "modelgridindex"}:
         estimators = estimators.with_columns(xvalue=pl.col("modelgridindex"), plotpointid=pl.col("modelgridindex"))
@@ -628,28 +628,24 @@ def get_xlist(
         estimators = estimators.filter(pl.col("xvalue") <= args.xmax)
 
     estimators = estimators.sort("plotpointid")
-    pointgroups = (
-        (
-            estimators.select(["plotpointid", "xvalue", "modelgridindex", "timestep"])
-            .group_by("plotpointid", maintain_order=True)
-            .agg(pl.col("xvalue").first(), pl.col("modelgridindex").unique(), pl.col("timestep").unique())
-        )
-        .lazy()
+    xvalues = (
+        (estimators.group_by("plotpointid", maintain_order=True).agg(pl.col("xvalue").first()))
         .collect()
+        .get_column("xvalue")
     )
-    assert len(pointgroups) > 0, "No data found for x-axis variable"
+    assert len(xvalues) > 0, "No data found for x-axis variable"
 
     return (
-        pointgroups["xvalue"].to_list(),
-        at.flatten_list(pointgroups["modelgridindex"].to_list()),
-        pointgroups["timestep"].to_list(),
+        xvalues.to_list(),
+        estimators.select(pl.col("modelgridindex").unique()).collect()["modelgridindex"].to_list(),
+        estimators.select(pl.col("timestep").unique()).collect()["timestep"].to_list(),
         estimators,
     )
 
 
 def plot_subplot(
     ax: mplax.Axes,
-    timestepslist: list[list[int]],
+    timestepslist: list[int],
     xlist: list[float | int],
     startfromzero: bool,
     plotitems: list[t.Any],
@@ -771,7 +767,7 @@ def plot_subplot(
 
 def make_plot(
     modelpath: Path | str,
-    timestepslist_unfiltered: list[list[int]],
+    timestepslist: Collection[int] | None,
     estimators: pl.LazyFrame,
     xvariable: str,
     plotlist: list[list[t.Any]],
@@ -807,7 +803,7 @@ def make_plot(
     xlist, mgilist, timestepslist, estimators = get_xlist(
         xvariable=xvariable,
         estimators=estimators,
-        timestepslist=timestepslist_unfiltered,
+        timestepslist=timestepslist,
         groupbyxvalue=not args.markersonly,
         args=args,
     )
@@ -839,7 +835,7 @@ def make_plot(
             **plotkwargs,
         )
 
-    if len(set(mgilist)) == 1 and len(timestepslist[0]) > 1:  # single grid cell versus time plot
+    if len(set(mgilist)) == 1 and len(timestepslist) > 1:  # single grid cell versus time plot
         figure_title = f"{modelname}\nCell {mgilist[0]}"
 
         defaultoutputfile = "plotestimators_cell{modelgridindex:03d}.{format}"
@@ -850,8 +846,8 @@ def make_plot(
 
     else:
         if args.multiplot:
-            timestep = f"ts{timestepslist[0][0]:02d}"
-            timedays = f"{at.get_timestep_time(modelpath, timestepslist[0][0]):.2f}d"
+            timestep = f"ts{timestepslist[0]:02d}"
+            timedays = f"{at.get_timestep_time(modelpath, timestepslist[0]):.2f}d"
         else:
             timesteps_flat = at.flatten_list(timestepslist)
             timestepmin = min(timesteps_flat)
@@ -867,7 +863,7 @@ def make_plot(
         if Path(args.outputfile).is_dir():
             args.outputfile = str(Path(args.outputfile) / defaultoutputfile)
 
-        assert isinstance(timestepslist[0], list)
+        assert isinstance(timestepslist, list)
         outfilename = str(args.outputfile).format(timestep=timestep, timedays=timedays, format=args.format)
 
     if not args.notitle:
@@ -1169,10 +1165,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         # plot time evolution
         if not args.x:
             args.x = "time"
-        timestepslist_unfiltered = [[ts] for ts in timesteps_included]
         make_plot(
             modelpath=modelpath,
-            timestepslist_unfiltered=timestepslist_unfiltered,
+            timestepslist=timesteps_included,
             estimators=estimators,
             xvariable=args.x,
             plotlist=plotlist,
@@ -1220,10 +1215,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         outputfiles = []
         for timesteps_included in frames_timesteps_included:
-            timestepslist_unfiltered = [timesteps_included] * len(allnonemptymgilist)
             outfilename = make_plot(
                 modelpath=modelpath,
-                timestepslist_unfiltered=timestepslist_unfiltered,
+                timestepslist=timesteps_included,
                 estimators=estimators,
                 xvariable=args.x,
                 plotlist=plotlist,
