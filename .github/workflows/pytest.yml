@@ -178,10 +178,7 @@ jobs:
             - name: install apache-arrow
               if: matrix.os.name == 'macos' && startsWith(matrix.python-version, '3.14')
               run: |
-                  brew update
-                  brew install apache-arrow
-                  echo "ARROW_HOME=$(brew --prefix apache-arrow)" >> $GITHUB_ENV
-                  uv pip install pyarrow
+                  uv pip install pyarrow || (brew update && brew install apache-arrow && echo "ARROW_HOME=$(brew --prefix apache-arrow)" >> $GITHUB_ENV && uv pip install pyarrow)
 
             - name: Install artistools (no dev deps)
               run: |
