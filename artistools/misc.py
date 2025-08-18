@@ -205,19 +205,20 @@ def average_direction_bins(
     dirbindataframesout: dict[int, pl.DataFrame] = {}
 
     for start_bin in start_bin_range:
-        dirbindataframesout[start_bin] = dirbindataframes[start_bin]
-
-        contribbins = (
-            range(start_bin + 1, start_bin + nphibins)
+        contribbins = list(
+            range(start_bin, start_bin + nphibins)
             if overangle == "phi"
-            else range(start_bin + ncosthetabins, dirbincount, ncosthetabins)
+            else range(start_bin, dirbincount, ncosthetabins)
         )
 
-        for dirbin_contrib in contribbins:
-            dirbindataframesout[start_bin] += dirbindataframes[dirbin_contrib]
-
-        dirbindataframesout[start_bin] /= 1 + len(contribbins)  # every nth bin is the average of n bins
-        print(f"bin number {start_bin} = the average of bins {[start_bin, *list(contribbins)]}")
+        dirbindataframesout[start_bin] = pl.DataFrame().with_columns(
+            (
+                pl.sum_horizontal([dirbindataframes[dirbin_contrib][colname] for dirbin_contrib in contribbins])
+                / len(contribbins)
+            ).alias(colname)
+            for colname in dirbindataframes[start_bin].collect_schema().names()
+        )
+        print(f"bin number {start_bin:2d} = the average of bins {contribbins}")
 
     return dirbindataframesout
 
