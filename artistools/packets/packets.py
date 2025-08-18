@@ -598,21 +598,8 @@ def get_virtual_packets_pl(modelpath: str | Path, maxpacketfiles: int | None = N
     return nprocs_read, dfpackets
 
 
-def get_packets_pl(
-    modelpath: str | Path,
-    maxpacketfiles: int | None = None,
-    packet_type: str | None = None,
-    escape_type: str | None = None,
-) -> tuple[int, pl.LazyFrame]:
-    if escape_type is not None:
-        assert packet_type in {None, "TYPE_ESCAPE"}
-        if packet_type is None:
-            packet_type = "TYPE_ESCAPE"
-
-    if escape_type not in {"TYPE_RPKT", "TYPE_GAMMA"}:
-        msg = f"Unknown escape type {escape_type}"
-        raise ValueError(msg)
-
+@lru_cache
+def get_packets_pl_before_filter(modelpath: Path, maxpacketfiles: int | None = None) -> tuple[int, pl.LazyFrame]:
     nprocs_read, packetsparquetfiles = get_packets_batch_parquet_paths(modelpath, maxpacketfiles)
 
     nbatches_read = len(packetsparquetfiles)
@@ -625,6 +612,25 @@ def get_packets_pl(
 
     npkts_total = pldfpackets.select(pl.count("e_rf")).collect().item()
     print(f"  files contain {npkts_total:.2e} packets")
+
+    return nprocs_read, pldfpackets
+
+
+def get_packets_pl(
+    modelpath: str | Path,
+    maxpacketfiles: int | None = None,
+    packet_type: str | None = None,
+    escape_type: str | None = None,
+) -> tuple[int, pl.LazyFrame]:
+    if escape_type is not None:
+        assert packet_type in {None, "TYPE_ESCAPE"}
+        if packet_type is None:
+            packet_type = "TYPE_ESCAPE"
+    nprocs_read, pldfpackets = get_packets_pl_before_filter(Path(modelpath), maxpacketfiles)
+
+    if escape_type not in {"TYPE_RPKT", "TYPE_GAMMA"}:
+        msg = f"Unknown escape type {escape_type}"
+        raise ValueError(msg)
 
     if escape_type is not None:
         assert packet_type is None or packet_type == "TYPE_ESCAPE"
