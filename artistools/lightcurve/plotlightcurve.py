@@ -445,9 +445,7 @@ def plot_artis_lightcurve(
 
         filterfunc = at.get_filterfunc(args)
         if filterfunc is not None:
-            lcdata = lcdata.with_columns(
-                pl.from_numpy(filterfunc(lcdata["lum"].to_numpy()), schema=["lum"]).get_column("lum")
-            )
+            lcdata = lcdata.with_columns(pl.col("lum").map_batches(filterfunc, return_dtype=pl.self_dtype()))
 
         if not args.Lsun or args.magnitude:
             # convert luminosity from Lsun to erg/s
