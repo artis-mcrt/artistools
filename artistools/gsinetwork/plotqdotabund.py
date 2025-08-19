@@ -503,7 +503,7 @@ def plot_qdot_abund_modelcells(
         )
 
         estimators_lazy = estimators_lazy.join(
-            pl.DataFrame({"timestep": range(len(tmids)), "time_mid": tmids})
+            pl.DataFrame({"timestep": range(len(tmids)), "tmid_days": tmids})
             .with_columns(pl.col("timestep").cast(pl.Int32))
             .lazy(),
             on="timestep",
@@ -511,12 +511,12 @@ def plot_qdot_abund_modelcells(
         )
 
         estimators_lazy = estimators_lazy.with_columns(
-            rho_init=pl.col("rho"), rho=pl.col("rho") * (modelmeta["t_model_init_days"] / pl.col("time_mid")) ** 3
+            rho_init=pl.col("rho"), rho=pl.col("rho") * (modelmeta["t_model_init_days"] / pl.col("tmid_days")) ** 3
         )
         # assert False
 
         # estimators_lazy = estimators_lazy.with_columns(
-        #     rho=pl.col("rho") * (modelmeta["t_model_init_days"] / pl.col("time_mid")) ** 3
+        #     rho=pl.col("rho") * (modelmeta["t_model_init_days"] / pl.col("tmid_days")) ** 3
         # )
 
         estimators_lazy = estimators_lazy.sort(by=["timestep", "modelgridindex"])
@@ -528,7 +528,7 @@ def plot_qdot_abund_modelcells(
 
             if first_mgi is None:
                 first_mgi = mgi
-            time_days = estimtsmgsi["time_mid"].item()
+            time_days = estimtsmgsi["tmid_days"].item()
 
             if mgi == first_mgi:
                 arr_time_artis_days.append(time_days)

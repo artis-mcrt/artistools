@@ -184,12 +184,8 @@ def join_cell_modeldata(
 ) -> tuple[pl.LazyFrame, dict[str, t.Any]]:
     """Join the estimator data with data from model.txt and derived quantities, e.g. density, volume, etc."""
     assert estimators is not None
-    tmids = at.get_timestep_times(modelpath, loc="mid")
-    arr_tdelta = at.get_timestep_times(modelpath, loc="delta")
     estimators = estimators.join(
-        pl.DataFrame({"timestep": range(len(tmids)), "time_mid": tmids, "tdelta": arr_tdelta})
-        .with_columns(pl.col("timestep").cast(pl.Int32))
-        .lazy(),
+        at.get_timesteps_df(modelpath).select("timestep", "tmid_days", "twidth_days"),
         on="timestep",
         how="left",
         coalesce=True,
@@ -204,8 +200,8 @@ def join_cell_modeldata(
         if not colname.startswith("vel_") and colname not in {"inputcellid", "modelgridindex", "mass_g"}
     })
     return estimators.join(dfmodel, on="modelgridindex", suffix="_initmodel").with_columns(
-        rho=pl.col("init_rho") * (modelmeta["t_model_init_days"] / pl.col("time_mid")) ** 3,
-        volume=pl.col("init_volume") * (pl.col("time_mid") / modelmeta["t_model_init_days"]) ** 3,
+        rho=pl.col("init_rho") * (modelmeta["t_model_init_days"] / pl.col("tmid_days")) ** 3,
+        volume=pl.col("init_volume") * (pl.col("tmid_days") / modelmeta["t_model_init_days"]) ** 3,
     ), modelmeta
 
 
