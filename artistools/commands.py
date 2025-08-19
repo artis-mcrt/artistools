@@ -42,7 +42,6 @@ subcommandtree: CommandType = {  # type: ignore[assignment]
     "exportmassfractions": ("estimators.exportmassfractions", "main"),
     "getpath": ("", "get_path"),
     "lc": ("lightcurve.plotlightcurve", "main"),
-    "listtimesteps": ("", "showtimesteptimes"),
     "makeartismodelfromparticlegridmap": ("inputmodel.modelfromhydro", "main"),
     "maptogrid": ("inputmodel.maptogrid", "main"),
     "plotestimators": ("estimators.plotestimators", "main"),
