@@ -60,11 +60,10 @@ def get_from_packets(
     directionbins: Collection[int] | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
-    get_cmf_column: bool = True,
     directionbins_are_vpkt_observers: bool = False,
     pellet_nucname: str | None = None,
     use_pellet_decay_time: bool = False,
-) -> dict[int, pl.DataFrame]:
+) -> dict[int, pl.LazyFrame]:
     """Get ARTIS luminosity vs time from packets files."""
     if escape_type not in {"TYPE_RPKT", "TYPE_GAMMA"}:
         msg = f"Unknown escape type {escape_type}"
@@ -74,12 +73,9 @@ def get_from_packets(
     tmidarray = at.get_timestep_times(modelpath=modelpath, loc="mid")
     timearray = at.get_timestep_times(modelpath=modelpath, loc="start")
     arr_timedelta = at.get_timestep_times(modelpath=modelpath, loc="delta")
-    # timearray = np.arange(250, 350, 0.1)
-    if get_cmf_column:
-        _, modelmeta = at.inputmodel.get_modeldata(modelpath, printwarningsonly=True)
-        escapesurfacegamma = math.sqrt(1 - (modelmeta["vmax_cmps"] / 29979245800) ** 2)
-    else:
-        escapesurfacegamma = None
+
+    _, modelmeta = at.inputmodel.get_modeldata(modelpath, printwarningsonly=True)
+    escapesurfacegamma = math.sqrt(1 - (modelmeta["vmax_cmps"] / 29979245800) ** 2)
 
     timearrayplusend = np.concatenate([timearray, [timearray[-1] + arr_timedelta[-1]]])
 
@@ -96,10 +92,7 @@ def get_from_packets(
             modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type=escape_type
         )
 
-    if get_cmf_column:
-        dfpackets = dfpackets.with_columns([
-            (pl.col("escape_time") * escapesurfacegamma / 86400.0).alias("t_arrive_cmf_d")
-        ])
+    dfpackets = dfpackets.with_columns([(pl.col("escape_time") * escapesurfacegamma / 86400.0).alias("t_arrive_cmf_d")])
 
     try:
         dfnuclides = at.get_nuclides(modelpath=modelpath)
@@ -124,7 +117,7 @@ def get_from_packets(
     timecol = "tdecay_d" if use_pellet_decay_time else "t_arrive_d"
     erg_per_day_to_Lsun = 3.023530322380897e-39
 
-    lazyframes = []
+    lcdata: dict[int, pl.LazyFrame] = {}
     for dirbin in directionbins:
         if directionbins_are_vpkt_observers:
             assert vpkt_config is not None
@@ -149,42 +142,47 @@ def get_from_packets(
             solidanglefactor = ndirbins
             pldfpackets_dirbin = dfpackets.filter(pl.col("dirbin") == dirbin)
 
-        dftimebinned = at.packets.bin_and_sum(
-            pldfpackets_dirbin, bincol=timecol, bins=list(timearrayplusend), sumcols=["e_rf"], getcounts=True
-        )
-
-        dftimebinned = dftimebinned.with_columns([
-            pl.Series(name="time", values=tmidarray),
-            (
-                (pl.col("e_rf_sum") / nprocs_read * solidanglefactor * erg_per_day_to_Lsun) / pl.Series(arr_timedelta)
-            ).alias("lum"),
-        ]).drop(["e_rf_sum", f"{timecol}_bin"])
-
-        if get_cmf_column:
-            dftimebinned_cmf = at.packets.bin_and_sum(
-                pldfpackets_dirbin, bincol="t_arrive_cmf_d", bins=list(timearrayplusend), sumcols=["e_cmf"]
-            ).collect()
-
-            assert escapesurfacegamma is not None
-            dftimebinned = dftimebinned.with_columns(
-                pl.Series(
-                    name="lum_cmf",
-                    values=(
-                        dftimebinned_cmf.get_column("e_cmf_sum").to_numpy()
-                        / nprocs_read
-                        * solidanglefactor
-                        / escapesurfacegamma
-                        * erg_per_day_to_Lsun
-                        / arr_timedelta
-                    ),
+        dftimebinned = (
+            at.packets.bin_and_sum(
+                pldfpackets_dirbin, bincol=timecol, bins=list(timearrayplusend), sumcols=["e_rf"], getcounts=True
+            )
+            .rename({f"{timecol}_bin": "timestep"})
+            .join(
+                pl.LazyFrame({"timestep": range(len(tmidarray)), "time": tmidarray, "timestep_delta": arr_timedelta}),
+                how="left",
+                on="timestep",
+            )
+            .with_columns(
+                lum=(
+                    pl.col("e_rf_sum") / nprocs_read * solidanglefactor * erg_per_day_to_Lsun / pl.col("timestep_delta")
                 )
             )
+            .drop("e_rf_sum")
+        )
 
-        lazyframes.append(dftimebinned)
+        dftimebinned = (
+            dftimebinned.join(
+                at.packets.bin_and_sum(
+                    pldfpackets_dirbin, bincol="t_arrive_cmf_d", bins=list(timearrayplusend), sumcols=["e_cmf"]
+                ).rename({"t_arrive_cmf_d_bin": "timestep"}),
+                how="left",
+                on="timestep",
+            )
+            .with_columns(
+                lum_cmf=pl.col("e_cmf_sum")
+                / nprocs_read
+                * solidanglefactor
+                / escapesurfacegamma
+                * erg_per_day_to_Lsun
+                / pl.col("timestep_delta")
+            )
+            .drop("e_cmf_sum")
+        )
 
-    lcdata = dict(zip(directionbins, pl.collect_all(lazyframes), strict=True))
+        lcdata[dirbin] = dftimebinned
+
     for dirbin, df in lcdata.items():
-        npkts_selected = df.select(pl.col("count").sum()).item()
+        npkts_selected = df.select(pl.col("count").sum()).collect().item()
         print(f"    dirbin {dirbin} plotting {npkts_selected:.2e} packets")
 
     return lcdata

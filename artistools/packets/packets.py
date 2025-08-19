@@ -1006,8 +1006,7 @@ def bin_and_sum(
 
     # now we will include the empty bins
     return (
-        pl.DataFrame({f"{bincol}_bin": range(len(bins) - 1)}, schema={f"{bincol}_bin": pl.Int32})
-        .lazy()
+        pl.LazyFrame({f"{bincol}_bin": range(len(bins) - 1)}, schema={f"{bincol}_bin": pl.Int32})
         .join(wlbins, how="left", on=f"{bincol}_bin", coalesce=True)
         .fill_null(0)
         .sort(by=f"{bincol}_bin")

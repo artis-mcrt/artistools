@@ -20,6 +20,7 @@ import matplotlib.ticker as mplticker
 import numpy as np
 import numpy.typing as npt
 import polars as pl
+from polars import selectors as cs
 
 import artistools as at
 from artistools.misc import print_theta_phi_definitions
@@ -348,7 +349,6 @@ def plot_artis_lightcurve(
             directionbins=directionbins,
             average_over_phi=average_over_phi,
             average_over_theta=average_over_theta,
-            get_cmf_column=args.plotcmf,
             directionbins_are_vpkt_observers=args.plotvspecpol is not None,
             pellet_nucname=pellet_nucname,
             use_pellet_decay_time=use_pellet_decay_time,
@@ -391,8 +391,19 @@ def plot_artis_lightcurve(
         costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(usedegrees=usedegrees)
         scaledmap = make_colorbar_viewingangles_colormap()
 
-    lctimemin = lcdataframes[dirbins[0]]["time"].min()
-    lctimemax = lcdataframes[dirbins[0]]["time"].max()
+    lcdataframes = dict(
+        zip(
+            dirbins,
+            pl.collect_all(
+                lcdataframes[dirbin].lazy().select(cs.by_name(["time", "lum"] + (["lum_cmf"] if args.plotcmf else [])))
+                for dirbin in dirbins
+            ),
+            strict=True,
+        )
+    )
+
+    lctimemin = lcdataframes[dirbins[0]].select(pl.min("time")).item()
+    lctimemax = lcdataframes[dirbins[0]].select(pl.max("time")).item()
     assert isinstance(lctimemin, float)
     assert isinstance(lctimemax, float)
 
