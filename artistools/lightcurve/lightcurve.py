@@ -70,14 +70,14 @@ def get_from_packets(
         raise ValueError(msg)
     if directionbins is None:
         directionbins = [-1]
-    tmidarray = at.get_timestep_times(modelpath=modelpath, loc="mid")
-    timearray = at.get_timestep_times(modelpath=modelpath, loc="start")
+    arr_tmid = at.get_timestep_times(modelpath=modelpath, loc="mid")
+    arr_tstart = at.get_timestep_times(modelpath=modelpath, loc="start")
     arr_timedelta = at.get_timestep_times(modelpath=modelpath, loc="delta")
 
     _, modelmeta = at.inputmodel.get_modeldata(modelpath, printwarningsonly=True)
     escapesurfacegamma = math.sqrt(1 - (modelmeta["vmax_cmps"] / 29979245800) ** 2)
 
-    timearrayplusend = np.concatenate([timearray, [timearray[-1] + arr_timedelta[-1]]])
+    timebinstarts_plusend = [*arr_tstart, arr_tstart[-1] + arr_timedelta[-1]]
 
     nphibins = at.get_viewingdirection_phibincount()
     ncosthetabins = at.get_viewingdirection_costhetabincount()
@@ -144,11 +144,11 @@ def get_from_packets(
 
         dftimebinned = (
             at.packets.bin_and_sum(
-                pldfpackets_dirbin, bincol=timecol, bins=list(timearrayplusend), sumcols=["e_rf"], getcounts=True
+                pldfpackets_dirbin, bincol=timecol, bins=timebinstarts_plusend, sumcols=["e_rf"], getcounts=True
             )
             .rename({f"{timecol}_bin": "timestep"})
             .join(
-                pl.LazyFrame({"timestep": range(len(tmidarray)), "time": tmidarray, "timestep_delta": arr_timedelta}),
+                pl.LazyFrame({"timestep": range(len(arr_tmid)), "time": arr_tmid, "timestep_delta": arr_timedelta}),
                 how="left",
                 on="timestep",
             )
@@ -163,7 +163,7 @@ def get_from_packets(
         dftimebinned = (
             dftimebinned.join(
                 at.packets.bin_and_sum(
-                    pldfpackets_dirbin, bincol="t_arrive_cmf_d", bins=list(timearrayplusend), sumcols=["e_cmf"]
+                    pldfpackets_dirbin, bincol="t_arrive_cmf_d", bins=timebinstarts_plusend, sumcols=["e_cmf"]
                 ).rename({"t_arrive_cmf_d_bin": "timestep"}),
                 how="left",
                 on="timestep",
