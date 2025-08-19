@@ -593,7 +593,7 @@ def plot_series(
 
 
 def get_xlist(
-    xvariable: str, estimators: pl.LazyFrame, timestepslist: Collection[int] | None, groupbyxvalue: bool, args: t.Any
+    xvariable: str, estimators: pl.LazyFrame, timestepslist: Collection[int] | None, args: t.Any
 ) -> tuple[list[float | int], list[int], list[int], pl.LazyFrame]:
     if timestepslist is not None:
         estimators = estimators.filter(pl.col("timestep").is_in(timestepslist))
@@ -618,8 +618,12 @@ def get_xlist(
         assert xvariable in estimators.collect_schema().names()
         estimators = estimators.with_columns(xvalue=pl.col(xvariable), plotpointid=pl.col("modelgridindex"))
 
+    # if estimators.select(pl.n_unique("xvalue") < pl.n_unique("plotpointid")).collect().item():
+    #     print("Enabling --markersonly because there are multiple plot points per x value")
+    #     args.markersonly = True
+
     # single valued line plot
-    if groupbyxvalue:
+    if not args.markersonly:
         estimators = estimators.with_columns(plotpointid=pl.col("xvalue"))
 
     if args.xmin is not None:
@@ -736,10 +740,10 @@ def plot_subplot(
                 )
 
             elif seriestype == "_ymin":
-                ax.set_ylim(bottom=params)
+                ax.set_ylim(bottom=float(params) if isinstance(params, str) else params)
 
             elif seriestype == "_ymax":
-                ax.set_ylim(top=params)
+                ax.set_ylim(top=float(params) if isinstance(params, str) else params)
 
             elif seriestype == "_yscale":
                 ax.set_yscale(params)
@@ -802,11 +806,7 @@ def make_figure(
         )
 
     xlist, mgilist, timestepslist, estimators = get_xlist(
-        xvariable=xvariable,
-        estimators=estimators,
-        timestepslist=timestepslist,
-        groupbyxvalue=not args.markersonly,
-        args=args,
+        xvariable=xvariable, estimators=estimators, timestepslist=timestepslist, args=args
     )
 
     startfromzero = (xvariable.startswith("velocity") or xvariable == "beta") and not args.markersonly
@@ -870,7 +870,7 @@ def make_figure(
     if not args.notitle:
         axes[0].set_title(figure_title, fontsize=10)
 
-    print(f"Saving {outfilename}")
+    print(f"open {outfilename}")
     fig.savefig(outfilename, dpi=300)
 
     if args.show:

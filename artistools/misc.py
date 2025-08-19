@@ -348,13 +348,10 @@ def get_timesteps(modelpath: Path | str) -> pl.LazyFrame:
 
         return (
             pl.LazyFrame({
-                col: cc_get_times(modelpath=modelpath, loc=loc)
-                for col, loc in [
-                    ("tmid_days", t.Literal["mid"]),
-                    ("tstart_days", t.Literal["start"]),
-                    ("tend_days", t.Literal["end"]),
-                    ("twidth_days", t.Literal["delta"]),
-                ]
+                "tmid_days": cc_get_times(modelpath=modelpath, loc="mid"),
+                "tstart_days": cc_get_times(modelpath=modelpath, loc="start"),
+                "tend_days": cc_get_times(modelpath=modelpath, loc="end"),
+                "twidth_days": cc_get_times(modelpath=modelpath, loc="delta"),
             })
             .with_row_index("timestep", offset=0)
             .with_columns(pl.col("timestep").cast(pl.Int32))
