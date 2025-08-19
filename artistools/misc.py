@@ -359,50 +359,60 @@ def get_deposition(modelpath: Path | str = ".") -> pl.DataFrame:
     return depdata
 
 
-@lru_cache(maxsize=16)
-def get_timestep_times(modelpath: Path | str, loc: t.Literal["mid", "start", "end", "delta"] = "mid") -> list[float]:
-    """Return a list of the times in days of each timestep."""
+def get_timesteps_df(modelpath: Path | str) -> pl.LazyFrame:
+    """Return a DataFrame containing the timestep indicies, starts, mids, ends, deltas."""
     modelpath = Path(modelpath)
     # virtual path to code comparison workshop models
     if not modelpath.exists() and modelpath.parts[0] == "codecomparison":
-        import artistools.codecomparison
+        from artistools.codecomparison import get_timestep_times as cc_get_times
 
-        return artistools.codecomparison.get_timestep_times(modelpath=modelpath, loc=loc)
+        return (
+            pl.LazyFrame({
+                "tmid_days": cc_get_times(modelpath=modelpath, loc="mid"),
+                "tstart_days": cc_get_times(modelpath=modelpath, loc="start"),
+                "tend_days": cc_get_times(modelpath=modelpath, loc="end"),
+                "twidth_days": cc_get_times(modelpath=modelpath, loc="delta"),
+            })
+            .with_row_index("timestep", offset=0)
+            .with_columns(pl.col("timestep").cast(pl.Int32))
+        )
 
     # use timestep.out if possible (allowing arbitrary timestep lengths)
     tsfilepath = Path(modelpath, "timesteps.out")
     if tsfilepath.exists():
-        dftimesteps = (
-            pl.read_csv(tsfilepath, has_header=True, separator=" ")
+        return (
+            pl.scan_csv(tsfilepath, has_header=True, separator=" ")
             .rename(lambda column_name: column_name.removeprefix("#"))
             .with_columns(tend_days=pl.col("tstart_days") + pl.col("twidth_days"))
         )
-
-        if loc == "mid":
-            return dftimesteps["tmid_days"].to_list()
-        if loc == "start":
-            return dftimesteps["tstart_days"].to_list()
-        if loc == "end":
-            return dftimesteps["tend_days"].to_list()
-        if loc == "delta":
-            return dftimesteps["twidth_days"].to_list()
-
-        msg = "loc must be one of 'mid', 'start', 'end', or 'delta'"
-        raise ValueError(msg)
 
     # older versions of Artis always used logarithmic timesteps and didn't produce a timesteps.out file
     inputparams = get_inputparams(modelpath)
     tmin = inputparams["tmin"]
     dlogt = (math.log(inputparams["tmax"]) - math.log(tmin)) / inputparams["ntstep"]
     timesteps = range(inputparams["ntstep"])
+
+    return pl.LazyFrame({"timestep": list(timesteps)}, schema={"timestep": pl.Int32}).with_columns(
+        tmid_days=tmin * pl.lit(math.e).pow((pl.col("timestep") + 0.5) * dlogt),
+        tstart_days=tmin * pl.lit(math.e).pow(pl.col("timestep") * dlogt),
+        tend_days=tmin * pl.lit(math.e).pow((pl.col("timestep") + 1) * dlogt),
+        twidth_days=pl.col("tend_days") - pl.col("tstart_days"),
+    )
+
+
+@lru_cache(maxsize=16)
+def get_timestep_times(modelpath: Path | str, loc: t.Literal["mid", "start", "end", "delta"] = "mid") -> list[float]:
+    """Return a list of the times in days of each timestep."""
+    dftimesteps = get_timesteps_df(modelpath).collect()
+
     if loc == "mid":
-        return [tmin * math.exp((ts + 0.5) * dlogt) for ts in timesteps]
+        return dftimesteps["tmid_days"].to_list()
     if loc == "start":
-        return [tmin * math.exp(ts * dlogt) for ts in timesteps]
+        return dftimesteps["tstart_days"].to_list()
     if loc == "end":
-        return [tmin * math.exp((ts + 1) * dlogt) for ts in timesteps]
+        return dftimesteps["tend_days"].to_list()
     if loc == "delta":
-        return [tmin * (math.exp((ts + 1) * dlogt) - math.exp(ts * dlogt)) for ts in timesteps]
+        return dftimesteps["twidth_days"].to_list()
 
     msg = "loc must be one of 'mid', 'start', 'end', or 'delta'"
     raise ValueError(msg)
