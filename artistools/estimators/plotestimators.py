@@ -211,9 +211,9 @@ def plot_average_ionisation_excitation(
                                 for ioncol, ioncharge in zip(ioncols, ioncharges, strict=True)
                             ])
                             * pl.col("volume")
-                            * pl.col("tdelta")
+                            * pl.col("twidth_days")
                         ).sum()
-                        / (pl.col(f"nnelement_{elsymb}") * pl.col("volume") * pl.col("tdelta")).sum()
+                        / (pl.col(f"nnelement_{elsymb}") * pl.col("volume") * pl.col("twidth_days")).sum()
                     ).alias(f"averageionisation_{elsymb}"),
                     pl.col("xvalue").mean(),
                 )
@@ -428,8 +428,8 @@ def plot_multi_ion_series(
         else:
             raise AssertionError
 
-        expr_yvals = (expr_yvals * pl.col("volume") * pl.col("tdelta")).sum() / (
-            expr_normfactor * pl.col("volume") * pl.col("tdelta")
+        expr_yvals = (expr_yvals * pl.col("volume") * pl.col("twidth_days")).sum() / (
+            expr_normfactor * pl.col("volume") * pl.col("twidth_days")
         ).sum()
 
         # convert volumetric number density to radial density
@@ -558,7 +558,8 @@ def plot_series(
     series = (
         estimators.group_by("plotpointid", maintain_order=True)
         .agg(
-            yvalue=(colexpr * pl.col("volume") * pl.col("tdelta")).sum() / (pl.col("volume") * pl.col("tdelta")).sum(),
+            yvalue=(colexpr * pl.col("volume") * pl.col("twidth_days")).sum()
+            / (pl.col("volume") * pl.col("twidth_days")).sum(),
             xvalue=pl.col("xvalue").mean(),
         )
         .sort("xvalue")
@@ -605,7 +606,7 @@ def get_xlist(
         )
     elif xvariable == "time":
         estimators = estimators.with_columns(
-            xvalue=pl.col("time_mid"), plotpointid=pl.struct(pl.col("timestep"), pl.col("modelgridindex"))
+            xvalue=pl.col("tmid_days"), plotpointid=pl.struct(pl.col("timestep"), pl.col("modelgridindex"))
         )
     elif xvariable in {"velocity", "beta"}:
         velcolumn = "vel_r_mid"
@@ -664,7 +665,7 @@ def plot_subplot(
     sameylabel = True
     seriesvars = [var for var in plotitems if isinstance(var, str | pl.Expr)]
     seriescount = len(seriesvars)
-    print(f"Subplot: {seriesvars}")
+    print(f"Subplot: {plotitems}")
     for variable in seriesvars:
         variablename = variable.meta.output_name() if isinstance(variable, pl.Expr) else variable
         if ylabel is None:
