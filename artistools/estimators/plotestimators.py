@@ -156,7 +156,7 @@ def plot_average_ionisation_excitation(
 
     arr_tdelta = at.get_timestep_times(modelpath, loc="delta")
     for paramvalue in params:
-        print(f"Plotting {seriestype} {paramvalue}")
+        print(f"  plotting {seriestype} {paramvalue}")
         if seriestype == "averageionisation":
             atomic_number = at.get_atomic_number(paramvalue)
             ion_stage = None
@@ -410,7 +410,7 @@ def plot_multi_ion_series(
     for atomic_number, ion_stage in iontuplelist:
         colname, ionstr = get_column_name(seriestype, atomic_number, ion_stage)
         expr_yvals = pl.col(colname)
-        print(f"Plotting {seriestype} {ionstr.replace('_', ' ')}")
+        print(f"  plotting {seriestype} {ionstr.replace('_', ' ')}")
 
         if seriestype != "populations" or args.poptype == "absolute":
             expr_normfactor = pl.lit(1)
@@ -585,7 +585,7 @@ def plot_series(
 
     xlist_filtered, ylist_filtered = at.estimators.apply_filters(xlist, ylist, args)
 
-    print(f"Plotting {variablename} ({len(xlist_filtered)} points)")
+    print(f"  plotting {variablename} ({len(xlist_filtered)} points)")
     ax.plot(
         xlist_filtered, ylist_filtered, linewidth=1.5, label=linelabel, color=dictcolors.get(variablename), **plotkwargs
     )
@@ -664,7 +664,7 @@ def plot_subplot(
     sameylabel = True
     seriesvars = [var for var in plotitems if isinstance(var, str | pl.Expr)]
     seriescount = len(seriesvars)
-
+    print(f"Subplot: {seriesvars}")
     for variable in seriesvars:
         variablename = variable.meta.output_name() if isinstance(variable, pl.Expr) else variable
         if ylabel is None:
@@ -765,7 +765,7 @@ def plot_subplot(
         ax.legend(loc="best", handlelength=2, frameon=False, numpoints=1, **legend_kwargs, markerscale=3)
 
 
-def make_plot(
+def make_figure(
     modelpath: Path | str,
     timestepslist: Collection[int] | None,
     estimators: pl.LazyFrame,
@@ -857,7 +857,7 @@ def make_plot(
             timedays = f"{at.get_timestep_time(modelpath, timestepmin):.2f}d-{at.get_timestep_time(modelpath, timestepmax):.2f}d"
 
         figure_title = f"{modelname}\nTimestep {timestep} ({timedays})"
-        print("Plotting " + figure_title.replace("\n", " "))
+        print("  plotting " + figure_title.replace("\n", " "))
 
         defaultoutputfile = "plotestimators_{timestep}_{timedays}.{format}"
         if Path(args.outputfile).is_dir():
@@ -1165,7 +1165,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         # plot time evolution
         if not args.x:
             args.x = "time"
-        make_plot(
+        make_figure(
             modelpath=modelpath,
             timestepslist=timesteps_included,
             estimators=estimators,
@@ -1215,7 +1215,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         outputfiles = []
         for timesteps_included in frames_timesteps_included:
-            outfilename = make_plot(
+            outfilename = make_figure(
                 modelpath=modelpath,
                 timestepslist=timesteps_included,
                 estimators=estimators,
