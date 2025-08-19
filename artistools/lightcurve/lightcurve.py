@@ -70,9 +70,10 @@ def get_from_packets(
         raise ValueError(msg)
     if directionbins is None:
         directionbins = [-1]
-    arr_tmid = at.get_timestep_times(modelpath=modelpath, loc="mid")
-    arr_tstart = at.get_timestep_times(modelpath=modelpath, loc="start")
-    arr_timedelta = at.get_timestep_times(modelpath=modelpath, loc="delta")
+
+    timesteps_df = at.get_timesteps_df(modelpath).collect()
+    arr_tstart = timesteps_df["tstart_days"].to_list()
+    arr_timedelta = timesteps_df["twidth_days"].to_list()
 
     _, modelmeta = at.inputmodel.get_modeldata(modelpath, printwarningsonly=True)
     escapesurfacegamma = math.sqrt(1 - (modelmeta["vmax_cmps"] / 29979245800) ** 2)
@@ -142,26 +143,21 @@ def get_from_packets(
             solidanglefactor = ndirbins
             pldfpackets_dirbin = dfpackets.filter(pl.col("dirbin") == dirbin)
 
-        dftimebinned = (
+        lcdata[dirbin] = (
             at.packets.bin_and_sum(
                 pldfpackets_dirbin, bincol=timecol, bins=timebinstarts_plusend, sumcols=["e_rf"], getcounts=True
             )
             .rename({f"{timecol}_bin": "timestep"})
-            .join(
-                pl.LazyFrame({"timestep": range(len(arr_tmid)), "time": arr_tmid, "timestep_delta": arr_timedelta}),
-                how="left",
-                on="timestep",
-            )
+            .join(timesteps_df.select("timestep", "twidth_days", "tmid_days").lazy(), how="left", on="timestep")
             .with_columns(
-                lum=(
-                    pl.col("e_rf_sum") / nprocs_read * solidanglefactor * erg_per_day_to_Lsun / pl.col("timestep_delta")
-                )
+                lum=(pl.col("e_rf_sum") / nprocs_read * solidanglefactor * erg_per_day_to_Lsun / pl.col("twidth_days"))
             )
             .drop("e_rf_sum")
         )
 
-        dftimebinned = (
-            dftimebinned.join(
+        lcdata[dirbin] = (
+            lcdata[dirbin]
+            .join(
                 at.packets.bin_and_sum(
                     pldfpackets_dirbin, bincol="t_arrive_cmf_d", bins=timebinstarts_plusend, sumcols=["e_cmf"]
                 ).rename({"t_arrive_cmf_d_bin": "timestep"}),
@@ -174,12 +170,12 @@ def get_from_packets(
                 * solidanglefactor
                 / escapesurfacegamma
                 * erg_per_day_to_Lsun
-                / pl.col("timestep_delta")
+                / pl.col("twidth_days")
             )
             .drop("e_cmf_sum")
         )
 
-        lcdata[dirbin] = dftimebinned
+        lcdata[dirbin] = lcdata[dirbin].rename({"tmid_days": "time"}).drop("twidth_days")
 
     for dirbin, df in lcdata.items():
         npkts_selected = df.select(pl.col("count").sum()).collect().item()

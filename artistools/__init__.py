@@ -79,6 +79,7 @@ from artistools.misc import get_time_range as get_time_range
 from artistools.misc import get_timestep_of_timedays as get_timestep_of_timedays
 from artistools.misc import get_timestep_time as get_timestep_time
 from artistools.misc import get_timestep_times as get_timestep_times
+from artistools.misc import get_timesteps_df as get_timesteps_df
 from artistools.misc import get_viewingdirection_costhetabincount as get_viewingdirection_costhetabincount
 from artistools.misc import get_viewingdirection_phibincount as get_viewingdirection_phibincount
 from artistools.misc import get_viewingdirectionbincount as get_viewingdirectionbincount
