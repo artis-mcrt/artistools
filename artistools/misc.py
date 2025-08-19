@@ -392,11 +392,14 @@ def get_timesteps_df(modelpath: Path | str) -> pl.LazyFrame:
     dlogt = (math.log(inputparams["tmax"]) - math.log(tmin)) / inputparams["ntstep"]
     timesteps = range(inputparams["ntstep"])
 
-    return pl.LazyFrame({"timestep": list(timesteps)}, schema={"timestep": pl.Int32}).with_columns(
-        tmid_days=tmin * pl.lit(math.e).pow((pl.col("timestep") + 0.5) * dlogt),
-        tstart_days=tmin * pl.lit(math.e).pow(pl.col("timestep") * dlogt),
-        tend_days=tmin * pl.lit(math.e).pow((pl.col("timestep") + 1) * dlogt),
-        twidth_days=pl.col("tend_days") - pl.col("tstart_days"),
+    return (
+        pl.LazyFrame({"timestep": list(timesteps)}, schema={"timestep": pl.Int32})
+        .with_columns(
+            tmid_days=tmin * pl.lit(math.e).pow((pl.col("timestep") + 0.5) * dlogt),
+            tstart_days=tmin * pl.lit(math.e).pow(pl.col("timestep") * dlogt),
+            tend_days=tmin * pl.lit(math.e).pow((pl.col("timestep") + 1) * dlogt),
+        )
+        .with_columns(twidth_days=pl.col("tend_days") - pl.col("tstart_days"))
     )
 
 
