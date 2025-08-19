@@ -185,7 +185,7 @@ def join_cell_modeldata(
     """Join the estimator data with data from model.txt and derived quantities, e.g. density, volume, etc."""
     assert estimators is not None
     estimators = estimators.join(
-        at.get_timesteps_df(modelpath).select("timestep", "tmid_days", "twidth_days"),
+        at.get_timesteps(modelpath).select("timestep", "tmid_days", "twidth_days"),
         on="timestep",
         how="left",
         coalesce=True,

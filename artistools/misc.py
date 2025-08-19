@@ -83,26 +83,6 @@ class AppendPath(argparse.Action):
             setattr(args, self.dest, Path(values))
 
 
-def showtimesteptimes(modelpath: Path | None = None, numberofcolumns: int = 5) -> None:
-    """Print a table showing the timesteps and their corresponding times."""
-    if modelpath is None:
-        modelpath = Path()
-
-    print("Timesteps and midpoint times in days:\n")
-
-    times = get_timestep_times(modelpath, loc="mid")
-    indexendofcolumnone = math.ceil((len(times) - 1) / numberofcolumns)
-    for rownum in range(indexendofcolumnone):
-        strline = ""
-        for colnum in range(numberofcolumns):
-            if colnum > 0:
-                strline += "\t"
-            newindex = rownum + colnum * indexendofcolumnone
-            if newindex + 1 < len(times):
-                strline += f"{newindex:4d}: {times[newindex + 1]:.3f}d"
-        print(strline)
-
-
 @lru_cache(maxsize=8)
 def get_composition_data(filename: Path | str) -> pd.DataFrame:
     """Return a pandas DataFrame containing details of included elements and ions."""
@@ -359,7 +339,7 @@ def get_deposition(modelpath: Path | str = ".") -> pl.DataFrame:
     return depdata
 
 
-def get_timesteps_df(modelpath: Path | str) -> pl.LazyFrame:
+def get_timesteps(modelpath: Path | str) -> pl.LazyFrame:
     """Return a DataFrame containing the timestep indicies, starts, mids, ends, deltas."""
     modelpath = Path(modelpath)
     # virtual path to code comparison workshop models
@@ -368,10 +348,13 @@ def get_timesteps_df(modelpath: Path | str) -> pl.LazyFrame:
 
         return (
             pl.LazyFrame({
-                "tmid_days": cc_get_times(modelpath=modelpath, loc="mid"),
-                "tstart_days": cc_get_times(modelpath=modelpath, loc="start"),
-                "tend_days": cc_get_times(modelpath=modelpath, loc="end"),
-                "twidth_days": cc_get_times(modelpath=modelpath, loc="delta"),
+                col: cc_get_times(modelpath=modelpath, loc=loc)
+                for col, loc in [
+                    ("tmid_days", t.Literal["mid"]),
+                    ("tstart_days", t.Literal["start"]),
+                    ("tend_days", t.Literal["end"]),
+                    ("twidth_days", t.Literal["delta"]),
+                ]
             })
             .with_row_index("timestep", offset=0)
             .with_columns(pl.col("timestep").cast(pl.Int32))
@@ -406,16 +389,10 @@ def get_timesteps_df(modelpath: Path | str) -> pl.LazyFrame:
 @lru_cache(maxsize=16)
 def get_timestep_times(modelpath: Path | str, loc: t.Literal["mid", "start", "end", "delta"] = "mid") -> list[float]:
     """Return a list of the times in days of each timestep."""
-    dftimesteps = get_timesteps_df(modelpath).collect()
+    colname_of_loc = {"mid": "tmid_days", "start": "tstart_days", "end": "tend_days", "delta": "twidth_days"}
 
-    if loc == "mid":
-        return dftimesteps["tmid_days"].to_list()
-    if loc == "start":
-        return dftimesteps["tstart_days"].to_list()
-    if loc == "end":
-        return dftimesteps["tend_days"].to_list()
-    if loc == "delta":
-        return dftimesteps["twidth_days"].to_list()
+    if colname := colname_of_loc.get(loc):
+        return get_timesteps(modelpath).select(colname).collect().get_column(colname).to_list()
 
     msg = "loc must be one of 'mid', 'start', 'end', or 'delta'"
     raise ValueError(msg)

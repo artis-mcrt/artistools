@@ -71,7 +71,7 @@ def get_from_packets(
     if directionbins is None:
         directionbins = [-1]
 
-    timesteps_df = at.get_timesteps_df(modelpath).collect()
+    timesteps_df = at.get_timesteps(modelpath).collect()
     arr_tstart = timesteps_df["tstart_days"].to_list()
     arr_timedelta = timesteps_df["twidth_days"].to_list()
 

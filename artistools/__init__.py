@@ -79,7 +79,7 @@ from artistools.misc import get_time_range as get_time_range
 from artistools.misc import get_timestep_of_timedays as get_timestep_of_timedays
 from artistools.misc import get_timestep_time as get_timestep_time
 from artistools.misc import get_timestep_times as get_timestep_times
-from artistools.misc import get_timesteps_df as get_timesteps_df
+from artistools.misc import get_timesteps as get_timesteps
 from artistools.misc import get_viewingdirection_costhetabincount as get_viewingdirection_costhetabincount
 from artistools.misc import get_viewingdirection_phibincount as get_viewingdirection_phibincount
 from artistools.misc import get_viewingdirectionbincount as get_viewingdirectionbincount
@@ -98,7 +98,6 @@ from artistools.misc import read_linestatfile as read_linestatfile
 from artistools.misc import readnoncommentline as readnoncommentline
 from artistools.misc import roman_numerals as roman_numerals
 from artistools.misc import set_args_from_dict as set_args_from_dict
-from artistools.misc import showtimesteptimes as showtimesteptimes
 from artistools.misc import split_multitable_dataframe as split_multitable_dataframe
 from artistools.misc import stripallsuffixes as stripallsuffixes
 from artistools.misc import trim_or_pad as trim_or_pad
