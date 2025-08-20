@@ -506,13 +506,15 @@ def plot_artis_spectrum(
             print_theta_phi_definitions()
 
         for dirbin in directionbins:
+            dfspectrum = viewinganglespectra[dirbin].lazy().collect()
+            if "packetcount" in dfspectrum.collect_schema().names():
+                npkts_selected = dfspectrum.select(pl.col("packetcount").sum()).item()
+                print(f"    dirbin {dirbin:2d} plots {npkts_selected:.2e} packets")
             if len(directionbins) > 1 and dirbin != directionbins[0]:
                 # only one colour was specified, but we have multiple direction bins
                 # to zero out all but the first one
                 plotkwargs = plotkwargs.copy()
                 plotkwargs["color"] = None
-
-            dfspectrum = viewinganglespectra[dirbin].lazy().collect()
 
             linelabel_withdirbin = linelabel
             if dirbin != -1:

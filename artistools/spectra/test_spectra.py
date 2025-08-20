@@ -111,7 +111,7 @@ def test_spectra_get_spectrum(benchmark: BenchmarkFixture) -> None:
 
     dfspectrumpkts = at.spectra.get_from_packets(
         modelpath, timelowdays=timelowdays, timehighdays=timehighdays, lambda_min=lambda_min, lambda_max=lambda_max
-    )[-1]
+    )[-1].collect()
 
     check_spectrum(dfspectrumpkts)
 
@@ -179,12 +179,15 @@ def test_spectra_get_spectrum_polar_angles_frompackets(benchmark: BenchmarkFixtu
     )
 
     results_pkts = {
-        dirbin: (dfspecdir["f_lambda"].mean(), dfspecdir["f_lambda"].std())
+        dirbin: (
+            dfspecdir.select(pl.col("f_lambda").mean()).collect().item(),
+            dfspecdir.select(pl.col("f_lambda").std()).collect().item(),
+        )
         for dirbin, dfspecdir in spectrafrompkts.items()
     }
-    print(spectrafrompkts[0]["f_lambda"].max())
+    print(spectrafrompkts[0].select(pl.col("f_lambda").max()).collect().item())
 
-    print(f"expected_results = {results_pkts!r}")
+    print(f"result = {results_pkts!r}")
 
     expected_results = {
         0: (4.353162807671065e-12, 1.0314585154204157e-11),
