@@ -1204,9 +1204,7 @@ def get_flux_contributions_from_packets(
     if directionbin != -1:
         cols |= {"costhetabin", "phibin", "dirbin"}
 
-    dfpackets = lzdfpackets.select([col for col in cols if col in lzdfpackets.collect_schema().names()]).collect(
-        engine="streaming"
-    )
+    dfpackets = lzdfpackets.select(cs.by_name(cols, require_all=False)).collect(engine="streaming")
     dfemnufiltered = dfpackets.filter(pl.col(dirbin_nu_column).is_between(nu_min, nu_max))
     dfpacketsabsnufiltered = dfpackets.filter(pl.col("absorption_freq").is_between(nu_min, nu_max))
     del dfpackets
