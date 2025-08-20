@@ -626,7 +626,7 @@ def get_xlist(
         estimators = (
             estimators.with_columns(
                 pl.col("xvalue")
-                .cut(breaks=xbinedges, labels=[str(x) for x in range(-1, len(xbinedges))])
+                .cut(breaks=list(xbinedges), labels=[str(x) for x in range(-1, len(xbinedges))])
                 .cast(pl.Utf8)
                 .cast(pl.Int32)
                 .alias("xbinindex")
