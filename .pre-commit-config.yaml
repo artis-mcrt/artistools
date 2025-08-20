@@ -32,7 +32,7 @@ repos:
           - id: yamlfmt
 
     - repo: https://github.com/astral-sh/uv-pre-commit
-      rev: 0.8.11
+      rev: 0.8.12
       hooks:
           - id: uv-sync
             args: [--locked, --all-extras]
