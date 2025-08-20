@@ -1,0 +1,8 @@
+---
+dist_mpc: 40
+label: AT2017gfo +5.40d
+t: 4.40
+e_bminusv: 0.11 # smartt 2017
+r_v: 3.1
+z: 0.009727
+mask_telluric: true
