@@ -321,6 +321,7 @@ ignore = [
     "PLR0913", # too-many-arguments
     "PLR0915", # too-many-statements
     "PLR2004", # magic-value-comparison
+    "PLW2901", # redefined-loop-name
     "S101",    # Use of assert detected
     "S311",    # suspicious-non-cryptographic-random-usage
     "S404",    # suspicious-subprocess-import

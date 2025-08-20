@@ -1610,7 +1610,7 @@ def get_dirbin_labels(
     for dirbin in dirbins:
         dirbin_int = int(dirbin)
         if dirbin_int == -1:
-            angle_definitions[dirbin_int] = ""
+            angle_definitions[dirbin_int] = "all directions"
             continue
 
         costheta_index = dirbin_int // nphibins
