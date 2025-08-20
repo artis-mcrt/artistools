@@ -61,13 +61,14 @@ def timeshift_fluxscale_co56law(scaletoreftime: float | None, spectime: float) -
 
 
 def get_dfspectrum_x_y_with_units(
-    dfspectrum: pl.DataFrame, xunit: str, yvariable: str, fluxdistance_mpc: float
-) -> pl.DataFrame:
+    dfspectrum: pl.DataFrame | pl.LazyFrame, xunit: str, yvariable: str, fluxdistance_mpc: float
+) -> pl.LazyFrame:
     h = 4.1356677e-15  # Planck's constant [eV s]
+    dfspectrum = dfspectrum.lazy()
 
-    if "nu" not in dfspectrum.columns:
+    if "nu" not in dfspectrum.collect_schema().names():
         dfspectrum = dfspectrum.with_columns((299792458.0 / (pl.col("lambda_angstroms") * 1e-10)).alias("nu"))
-    if "f_nu" not in dfspectrum.columns:
+    if "f_nu" not in dfspectrum.collect_schema().names():
         dfspectrum = dfspectrum.with_columns(f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu")))
 
     match xunit.lower():
@@ -490,16 +491,21 @@ def get_from_packets(
         print("Applying filter to ARTIS spectrum")
         dfbinned_lazy = dfbinned_lazy.with_columns(cs.starts_with("f_lambda_").map_batches(fluxfilterfunc))
 
-    dfdict = {}
-    for dirbin in directionbins:
-        dfdict[dirbin] = dfbinned_lazy.select([
-            "lambda_angstroms",
-            pl.col(f"f_lambda_dirbin{dirbin}").alias("f_lambda"),
-            pl.col(f"count_dirbin{dirbin}").alias("packetcount"),
-            (299792458.0 / (pl.col("lambda_angstroms") * 1e-10)).alias("nu"),
-        ]).with_columns(f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu")))
-
-    return dfdict
+    return dict(
+        zip(
+            directionbins,
+            (
+                dfbinned_lazy.select([
+                    "lambda_angstroms",
+                    pl.col(f"f_lambda_dirbin{dirbin}").alias("f_lambda"),
+                    pl.col(f"count_dirbin{dirbin}").alias("packetcount"),
+                    (299792458.0 / (pl.col("lambda_angstroms") * 1e-10)).alias("nu"),
+                ]).with_columns(f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu")))
+                for dirbin in directionbins
+            ),
+            strict=True,
+        )
+    )
 
 
 @lru_cache(maxsize=16)

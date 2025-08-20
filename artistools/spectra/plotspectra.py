@@ -305,7 +305,7 @@ def plot_reference_spectrum(
 
     specdata = atspectra.get_dfspectrum_x_y_with_units(
         specdata, xunit=xunit, yvariable=yvariable, fluxdistance_mpc=scale_to_dist_mpc
-    )
+    ).collect()
 
     if scale_to_peak:
         specdata = specdata.with_columns(
@@ -313,7 +313,6 @@ def plot_reference_spectrum(
         ).with_columns(y=pl.col("y_scaled"))
     else:
         assert offset == 0
-
     ymax = specdata["y"].max()
     assert isinstance(ymax, float)
     (lineplot,) = axis.plot(specdata["x"], specdata["y"], label=label, **plotkwargs)
@@ -505,11 +504,22 @@ def plot_artis_spectrum(
         if any(dirbin != -1 for dirbin in directionbins):
             print_theta_phi_definitions()
 
-        for dirbin in directionbins:
-            dfspectrum = viewinganglespectra[dirbin].lazy().collect()
-            if "packetcount" in dfspectrum.collect_schema().names():
-                npkts_selected = dfspectrum.select(pl.col("packetcount").sum()).item()
-                print(f"    dirbin {dirbin:2d} plots {npkts_selected:.2e} packets")
+        dirbin_dfspec = zip(
+            directionbins,
+            pl.collect_all(
+                (
+                    atspectra.get_dfspectrum_x_y_with_units(
+                        viewinganglespectra[dirbin], xunit=xunit, yvariable=yvariable, fluxdistance_mpc=args.distmpc
+                    )
+                    .filter(pl.col("x").is_between(xmin * 0.9, xmax * 1.1))
+                    .sort("x", maintain_order=True)
+                    for dirbin in directionbins
+                ),
+                engine="streaming",
+            ),
+            strict=True,
+        )
+        for dirbin, dfspectrum in dirbin_dfspec:
             if len(directionbins) > 1 and dirbin != directionbins[0]:
                 # only one colour was specified, but we have multiple direction bins
                 # to zero out all but the first one
@@ -517,18 +527,15 @@ def plot_artis_spectrum(
                 plotkwargs["color"] = None
 
             linelabel_withdirbin = linelabel
-            if dirbin != -1:
-                print(f" direction {dirbin:4d}  {dirbin_definitions[dirbin]}")
-                if len(directionbins) > 1 or not linelabel_is_custom:
-                    linelabel_withdirbin = f"{linelabel} {dirbin_definitions[dirbin]}"
+            print(f" direction {dirbin:4d}  {dirbin_definitions[dirbin]}", end="")
+            if "packetcount" in dfspectrum.collect_schema().names():
+                npkts_selected = dfspectrum.select(pl.col("packetcount").sum()).item()
+                print(f"\t({npkts_selected:.2e} packets)")
+            else:
+                print()
 
-            dfspectrum = atspectra.get_dfspectrum_x_y_with_units(
-                dfspectrum, xunit=xunit, yvariable=yvariable, fluxdistance_mpc=args.distmpc
-            )
-
-            dfspectrum = dfspectrum.filter(pl.col("x").is_between(xmin * 0.9, xmax * 1.1)).sort(
-                "x", maintain_order=True
-            )
+            if dirbin != -1 and (len(directionbins) > 1 or not linelabel_is_custom):
+                linelabel_withdirbin = f"{linelabel} {dirbin_definitions[dirbin]}"
 
             atspectra.print_integrated_flux(dfspectrum["yflux"], dfspectrum["x"])
 
@@ -856,7 +863,7 @@ def make_emissionabsorption_plot(
         xunit=args.xunit,
         yvariable=args.yvariable,
         fluxdistance_mpc=args.distmpc,
-    )
+    ).collect()
 
     max_f_emission_total = dfspectotal.filter(pl.col("x").is_between(xmin, xmax))["y"].max()
     assert isinstance(max_f_emission_total, (float, np.floating))
@@ -887,7 +894,7 @@ def make_emissionabsorption_plot(
                     xunit=args.xunit,
                     yvariable=args.yvariable,
                     fluxdistance_mpc=args.distmpc,
-                )
+                ).collect()
 
                 (emissioncomponentplot,) = axis.plot(dfspec["x"], dfspec["y"] * scalefactor, linewidth=1, color=x.color)
 
@@ -901,7 +908,7 @@ def make_emissionabsorption_plot(
                     xunit=args.xunit,
                     yvariable=args.yvariable,
                     fluxdistance_mpc=args.distmpc,
-                )
+                ).collect()
                 (absorptioncomponentplot,) = axis.plot(
                     dfspec["x"], -dfspec["y"] * scalefactor, color=linecolor, linewidth=1
                 )
@@ -912,7 +919,7 @@ def make_emissionabsorption_plot(
 
     elif contributions_sorted_reduced:
         if args.showemission:
-            dfabsorptionspectra = [
+            dfabsorptionspectra = pl.collect_all([
                 atspectra.get_dfspectrum_x_y_with_units(
                     pl.DataFrame({"f_lambda": x.array_flambda_emission, "lambda_angstroms": arraylambda_angstroms}),
                     xunit=args.xunit,
@@ -920,7 +927,7 @@ def make_emissionabsorption_plot(
                     fluxdistance_mpc=args.distmpc,
                 )
                 for x in contributions_sorted_reduced
-            ]
+            ])
             stackplot = axis.stackplot(
                 dfabsorptionspectra[0]["x"],
                 [dfspec["y"] * scalefactor for dfspec in dfabsorptionspectra],
@@ -937,7 +944,7 @@ def make_emissionabsorption_plot(
             facecolors = [x.color for x in contributions_sorted_reduced]
 
         if args.showabsorption:
-            dfabsorptionspectra = [
+            dfabsorptionspectra = pl.collect_all([
                 atspectra.get_dfspectrum_x_y_with_units(
                     pl.DataFrame({"f_lambda": x.array_flambda_absorption, "lambda_angstroms": arraylambda_angstroms}),
                     xunit=args.xunit,
@@ -945,7 +952,7 @@ def make_emissionabsorption_plot(
                     fluxdistance_mpc=args.distmpc,
                 )
                 for x in contributions_sorted_reduced
-            ]
+            ])
             absstackplot = axis.stackplot(
                 dfabsorptionspectra[0]["x"],
                 [-dfspec["y"] * scalefactor for dfspec in dfabsorptionspectra],
@@ -1722,7 +1729,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         fig.savefig(filenameout, dpi=args.dpi)
         # plt.show()
-        print(f"Saved {filenameout}")
+        print(f"open {filenameout}")
         plt.close()
 
 
