@@ -189,42 +189,76 @@ def test_estimator_snapshot_classic_3d(mockplot: t.Any) -> None:
     )
 
     # order of keys is important
-    expectedvals = {
-        "init_fe": 0.039081018094319186,
-        "init_nistable": 0.026971354386497073,
-        "init_ni56": 0.1741285660514124,
-        "nne": 62629131723.8786,
-        "TR": 24081.788509728773,
-        "Te": 55260.50862323113,
-        "averageionisation_Fe": 3.183501818759448,
-        "populations_FeI": 2.6829624903107585e-16,
-        "populations_FeII": 2.1309973094140065e-05,
-        "populations_FeIII": 0.11156867875483492,
-        "populations_FeIV": 0.5932461437623715,
-        "populations_FeV": 0.29515117944382513,
-        "populations_CoII": 0.19311608717270304,
-        "populations_CoIII": 0.17864127106393107,
-        "populations_CoIV": 0.6282359982199368,
-        "heating_dep": 2.281243040310174e-06,
-        "heating_coll": 0.000179854801522111,
-        "heating_bf": 1.8349749858387718e-06,
-        "heating_ff": 4.5324851021111127e-10,
-        "cooling_adiabatic": 1.1138047075438075e-10,
-        "cooling_coll": 3.687992746609425e-05,
-        "cooling_fb": 8.13701682676968e-08,
-        "cooling_ff": 5.604801913020247e-10,
+    expected_yvals_mean = {
+        "init_fe": 0.0158143120149385,
+        "init_nistable": 0.009671554499267782,
+        "init_ni56": 0.05111707578637089,
+        "nne": 14852513100.433994,
+        "TR": 19079.784339735244,
+        "Te": 71268.35864076967,
+        "averageionisation_Fe": 3.055755031831655,
+        "populations_FeI": 5.362183140852601e-16,
+        "populations_FeII": 0.00019352461074175688,
+        "populations_FeIII": 0.06814975391081575,
+        "populations_FeIV": 0.8073020624301706,
+        "populations_FeV": 0.12433895472009603,
+        "populations_CoII": 0.16990604721796168,
+        "populations_CoIII": 0.24916805418700844,
+        "populations_CoIV": 0.5809222634054445,
+        "heating_dep": 2.559115013945374e-06,
+        "heating_coll": 0.00021182897897368226,
+        "heating_bf": 2.1746407480448304e-06,
+        "heating_ff": 5.58769247608382e-10,
+        "cooling_adiabatic": 1.2879886096317952e-10,
+        "cooling_coll": 4.3519983202307406e-05,
+        "cooling_fb": 9.605032219254008e-08,
+        "cooling_ff": 6.669354708218202e-10,
     }
 
-    assert len(expectedvals) == len(mockplot.call_args_list)
-    yvals = {
-        varname: np.array(callargs[0][2]).mean()
-        for varname, callargs in zip(expectedvals.keys(), mockplot.call_args_list, strict=False)
+    expected_yvals_std = {
+        "init_fe": 0.03864092363074494,
+        "init_nistable": 0.0245318237219884,
+        "init_ni56": 0.13668807807395486,
+        "nne": 54105764830.790764,
+        "TR": 8786.430933187814,
+        "Te": 53253.18563238727,
+        "averageionisation_Fe": 0.36672845223208933,
+        "populations_FeI": 1.0549459114516364e-14,
+        "populations_FeII": 0.003963927962373676,
+        "populations_FeIII": 0.22042479123325878,
+        "populations_FeIV": 0.31659457250903567,
+        "populations_FeV": 0.2611747334195758,
+        "populations_CoII": 0.368403054302235,
+        "populations_CoIII": 0.3846695608564221,
+        "populations_CoIV": 0.45783056031765657,
+        "heating_dep": 2.4407727400567926e-05,
+        "heating_coll": 0.004782144675055231,
+        "heating_bf": 4.842305588498566e-05,
+        "heating_ff": 3.5524865990710362e-09,
+        "cooling_adiabatic": 1.2144276845831258e-09,
+        "cooling_coll": 0.0009417610247237612,
+        "cooling_fb": 2.1269753993513636e-06,
+        "cooling_ff": 7.287984018219307e-09,
     }
 
-    print(yvals)
+    assert len(expected_yvals_mean) == len(mockplot.call_args_list)
 
-    for varname, expectedval in expectedvals.items():
-        assert np.allclose(expectedval, yvals[varname], rtol=0.001), (varname, expectedval, yvals[varname])
+    yvals_mean = {
+        varname: float(np.array(callargs[0][2]).mean())
+        for varname, callargs in zip(expected_yvals_mean.keys(), mockplot.call_args_list, strict=False)
+    }
+    print(yvals_mean)
+
+    yvals_std = {
+        varname: float(np.array(callargs[0][2]).std())
+        for varname, callargs in zip(expected_yvals_std.keys(), mockplot.call_args_list, strict=False)
+    }
+    print(yvals_std)
+
+    for varname, expectedmean in expected_yvals_mean.items():
+        assert np.allclose(expectedmean, yvals_mean[varname], rtol=0.001), (varname, expectedmean, yvals_mean[varname])
+    for varname, expectedstd in expected_yvals_std.items():
+        assert np.allclose(expectedstd, yvals_std[varname], rtol=0.001), (varname, expectedstd, yvals_std[varname])
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)

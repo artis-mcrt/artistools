@@ -114,15 +114,9 @@ def plot_init_abundances(
             ylist = [ylist[0], *ylist]
 
         xlist_filtered, ylist_filtered = at.estimators.apply_filters(xlist, ylist, args)
-        ax.plot(
-            xlist_filtered,
-            ylist_filtered,
-            linewidth=1.5,
-            label=linelabel,
-            linestyle=linestyle,
-            color=color,
-            **plotkwargs,
-        )
+        if "linestyle" not in plotkwargs:
+            plotkwargs["linestyle"] = linestyle
+        ax.plot(xlist_filtered, ylist_filtered, linewidth=1.5, label=linelabel, color=color, **plotkwargs)
 
         # if args.yscale == 'log':
         #     ax.set_yscale('log')
@@ -643,6 +637,11 @@ def get_xlist(
             .drop("xbinindex")
             .with_columns(plotpointid=pl.col("xvalue"))
         )
+    elif (
+        not args.markersonly and estimators.select(pl.n_unique("xvalue") < pl.n_unique("plotpointid")).collect().item()
+    ):
+        print("Enabling --markersonly because there are multiple plot points per x value")
+        args.markersonly = True
 
     # single valued line plot
     if not args.markersonly:
@@ -729,6 +728,7 @@ def plot_subplot(
                     seriestype=seriestype,
                     startfromzero=startfromzero,
                     args=args,
+                    **plotkwargs,
                 )
 
             elif seriestype == "levelpopulation" or seriestype.startswith("levelpopulation_"):
