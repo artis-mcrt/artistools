@@ -1250,10 +1250,7 @@ def get_flux_contributions_from_packets(
 
         return (fixedionlist.index(groupname), 0) if groupname in fixedionlist else (len(fixedionlist) + 1, -grouptotal)
 
-    sorted_grouptotals = sorted(grouptotals, key=sortkey)
-    other_groups = sorted_grouptotals[maxseriescount:]
-
-    if other_groups:
+    if other_groups := sorted(grouptotals, key=sortkey)[maxseriescount:]:
         allgroupnames.add("Other")
 
         if emdfs := [emissiongroups[groupname] for _, groupname in other_groups if groupname in emissiongroups]:
