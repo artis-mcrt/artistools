@@ -618,9 +618,31 @@ def get_xlist(
         assert xvariable in estimators.collect_schema().names()
         estimators = estimators.with_columns(xvalue=pl.col(xvariable), plotpointid=pl.col("modelgridindex"))
 
-    # if estimators.select(pl.n_unique("xvalue") < pl.n_unique("plotpointid")).collect().item():
-    #     print("Enabling --markersonly because there are multiple plot points per x value")
-    #     args.markersonly = True
+    if args.xbins is not None:
+        xmin = estimators.select(pl.col("xvalue").min()).collect().item() if args.xmin is None else args.xmin
+        xmax = estimators.select(pl.col("xvalue").max()).collect().item() if args.xmax is None else args.xmax
+        if args.xbins < 0:
+            xdeltamax = estimators.select(pl.col("xvalue").sort().diff().max()).collect().item()
+            args.xbins = int((xmax - xmin) / xdeltamax)
+            print(f"Setting xbins to {args.xbins} based on data range and largest x interval of {xdeltamax}")
+        xbinedges = np.linspace(xmin, xmax, args.xbins)
+        xlower = xbinedges[:-1]
+        xupper = xbinedges[1:]
+        xmids = (xlower + xupper) / 2
+        estimators = (
+            estimators.with_columns(
+                pl.col("xvalue")
+                .cut(breaks=xbinedges, labels=[str(x) for x in range(-1, len(xbinedges))])
+                .cast(pl.Utf8)
+                .cast(pl.Int32)
+                .alias("xbinindex")
+            )
+            .drop("xvalue")
+            .filter(pl.col("xbinindex").is_between(0, len(xmids) - 1, closed="both"))
+            .join(pl.LazyFrame({"xvalue": xmids}).with_row_index("xbinindex"), on="xbinindex", how="left")
+            .drop("xbinindex")
+            .with_columns(plotpointid=pl.col("xvalue"))
+        )
 
     # single valued line plot
     if not args.markersonly:
@@ -905,6 +927,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-xmin", type=float, default=None, help="Plot range: minimum x value")
 
     parser.add_argument("-xmax", type=float, default=None, help="Plot range: maximum x value")
+
+    parser.add_argument(
+        "-xbins", type=int, default=None, help="Number of x bins between xmax and xmin (or -1 for automatic bin size)"
+    )
 
     parser.add_argument(
         "-yscale", default="log", choices=["log", "linear"], help="Set yscale to log or linear (default log)"
