@@ -88,12 +88,20 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         axes[0].plot(enclosed_xvals, enclosed_yvals, label=label, color=color)
 
         if "vel_r_max_kmps" in dfmodel.collect_schema().names():
+            # 1D spherical has a radial velocity specified
             vupperscoarse = vuppers.to_list()
         else:
-            ncoarsevelbins = int(
-                modelmeta["ncoordgridrcyl"] if "ncoordgridrcyl" in modelmeta else modelmeta["ncoordgridx"] / 2.0
-            )
-            vupperscoarse = [modelmeta["vmax_cmps"] / ncoarsevelbins * (i + 1) for i in range(ncoarsevelbins)]
+            # 2D cylindrical or 3D Cartesian will have variable spacing in v_rad
+            # so use the largest difference to set the bin size
+            xmin = dfmodelcollect.select(pl.col("vel_r_mid").min()).item()
+            # if we want to include the corners, then use this
+            xmax = dfmodelcollect.select(pl.col("vel_r_mid").max()).item()
+            # to exclude the corners:
+            # xmax = modelmeta["vmax_cmps"]
+            xdeltamax = dfmodelcollect.select(pl.col("vel_r_mid").sort().diff().max()).item()
+            ncoarsevelbins = int((xmax - xmin) / xdeltamax)
+            print(f"Using {ncoarsevelbins} velocity bins from {xmin} to {xmax} with max delta {xdeltamax}")
+            vupperscoarse = [xmin + xdeltamax * (i + 1) for i in range(ncoarsevelbins)]
 
         binned_xvals: list[float] = []
         binned_yvals: list[float] = []
@@ -124,7 +132,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 )
                 binned_xvals.extend((vlower / 29979245800, vupper / 29979245800))
                 binned_yvals.extend((yval, yval))
-
             axes[2].plot(binned_xvals, binned_yvals, label=label, color=color)
 
     if args.xmin is not None:
