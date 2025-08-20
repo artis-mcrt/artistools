@@ -395,7 +395,13 @@ def plot_artis_lightcurve(
         zip(
             dirbins,
             pl.collect_all(
-                lcdataframes[dirbin].lazy().select(cs.by_name(["time", "lum"] + (["lum_cmf"] if args.plotcmf else [])))
+                lcdataframes[dirbin]
+                .lazy()
+                .select(
+                    cs.by_name(["time", "lum"], require_all=True)
+                    | cs.by_name("packetcount", require_all=False)
+                    | cs.by_name(["lum_cmf"] if args.plotcmf else [])
+                )
                 for dirbin in dirbins
             ),
             strict=True,
@@ -429,10 +435,16 @@ def plot_artis_lightcurve(
     for dirbin in dirbins:
         lcdata = lcdataframes[dirbin]
 
+        print(f" directionbin {dirbin:4d}  {angle_definition[dirbin]}", end="")
+
+        if "packetcount" in lcdata.collect_schema().names():
+            npkts_selected = lcdata.select(pl.col("packetcount").sum()).item()
+            print(f"   \t{npkts_selected:.2e} packets")
+        else:
+            print()
+
         label_with_tags: str | None = linelabel
         if dirbin != -1:
-            print(f" directionbin {dirbin:4d}  {angle_definition[dirbin]}")
-
             if args.colorbarcostheta or args.colorbarphi:
                 plotkwargs["alpha"] = 0.75
                 if not linelabel_is_custom:

@@ -147,7 +147,7 @@ def get_from_packets(
             at.packets.bin_and_sum(
                 pldfpackets_dirbin, bincol=timecol, bins=timebinstarts_plusend, sumcols=["e_rf"], getcounts=True
             )
-            .rename({f"{timecol}_bin": "timestep"})
+            .rename({f"{timecol}_bin": "timestep", "count": "packetcount"})
             .join(timesteps_df.select("timestep", "twidth_days", "tmid_days").lazy(), how="left", on="timestep")
             .with_columns(
                 lum=(pl.col("e_rf_sum") / nprocs_read * solidanglefactor * erg_per_day_to_Lsun / pl.col("twidth_days"))
@@ -176,10 +176,6 @@ def get_from_packets(
         )
 
         lcdata[dirbin] = lcdata[dirbin].rename({"tmid_days": "time"}).drop("twidth_days")
-
-    for dirbin, df in lcdata.items():
-        npkts_selected = df.select(pl.col("count").sum()).collect().item()
-        print(f"    dirbin {dirbin} plotting {npkts_selected:.2e} packets")
 
     return lcdata
 
