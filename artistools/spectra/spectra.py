@@ -309,7 +309,7 @@ def get_from_packets(
     nprocs_read_dfpackets: tuple[int, pl.DataFrame | pl.LazyFrame] | None = None,
     directionbins_are_vpkt_observers: bool = False,
     gamma: bool = False,
-) -> dict[int, pl.DataFrame]:
+) -> dict[int, pl.LazyFrame]:
     """Get a spectrum dataframe using the packets files as input."""
     if directionbins is None:
         directionbins = [-1]
@@ -490,21 +490,14 @@ def get_from_packets(
         print("Applying filter to ARTIS spectrum")
         dfbinned_lazy = dfbinned_lazy.with_columns(cs.starts_with("f_lambda_").map_batches(fluxfilterfunc))
 
-    dfbinned = dfbinned_lazy.collect()
-    assert isinstance(dfbinned, pl.DataFrame)
-
     dfdict = {}
     for dirbin in directionbins:
-        dfdict[dirbin] = dfbinned.select([
+        dfdict[dirbin] = dfbinned_lazy.select([
             "lambda_angstroms",
             pl.col(f"f_lambda_dirbin{dirbin}").alias("f_lambda"),
             pl.col(f"count_dirbin{dirbin}").alias("packetcount"),
             (299792458.0 / (pl.col("lambda_angstroms") * 1e-10)).alias("nu"),
         ]).with_columns(f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu")))
-
-        if nprocs_read_dfpackets is None:
-            npkts_selected = dfdict[dirbin].get_column("packetcount").sum()
-            print(f"    dirbin {dirbin:2d} plots {npkts_selected:.2e} packets")
 
     return dfdict
 
@@ -1204,7 +1197,13 @@ def get_flux_contributions_from_packets(
     if directionbin != -1:
         cols |= {"costhetabin", "phibin", "dirbin"}
 
-    dfpackets = lzdfpackets.select(cs.by_name(cols, require_all=False)).collect(engine="streaming")
+    dfpackets = (
+        lzdfpackets.select(cs.by_name(cols, require_all=False))
+        .filter(
+            pl.col(dirbin_nu_column).is_between(nu_min, nu_max) | pl.col("absorption_freq").is_between(nu_min, nu_max)
+        )
+        .collect(engine="streaming")
+    )
     dfemnufiltered = dfpackets.filter(pl.col(dirbin_nu_column).is_between(nu_min, nu_max))
     dfpacketsabsnufiltered = dfpackets.filter(pl.col("absorption_freq").is_between(nu_min, nu_max))
     del dfpackets
@@ -1287,7 +1286,7 @@ def get_flux_contributions_from_packets(
                 average_over_phi=average_over_phi,
                 average_over_theta=average_over_theta,
                 gamma=gamma,
-            )[directionbin]
+            )[directionbin].collect()
 
             if array_lambda is None:
                 array_lambda = spec_group["lambda_angstroms"].to_numpy()
@@ -1315,7 +1314,7 @@ def get_flux_contributions_from_packets(
                 directionbins_are_vpkt_observers=directionbins_are_vpkt_observers,
                 average_over_phi=average_over_phi,
                 average_over_theta=average_over_theta,
-            )[directionbin]
+            )[directionbin].collect()
 
             if array_lambda is None:
                 array_lambda = spec_group["lambda_angstroms"].to_numpy()
