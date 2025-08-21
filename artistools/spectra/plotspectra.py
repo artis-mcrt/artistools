@@ -758,7 +758,7 @@ def make_emissionabsorption_plot(
     scale_to_peak: float | None = None,
 ) -> tuple[list[Artist], list[str], pl.DataFrame | None]:
     """Plot the emission and absorption contribution spectra, grouped by ion/line/term for an ARTIS model."""
-    modelname = args.label[0] if args.label else get_model_name(modelpath)
+    modelname = args.label[0] if args.label and args.label[0] is not None else get_model_name(modelpath)
 
     print(f"====> {modelname}")
     clamp_to_timesteps = not args.notimeclamp
