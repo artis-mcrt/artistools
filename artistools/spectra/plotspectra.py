@@ -900,7 +900,7 @@ def make_emissionabsorption_plot(
 
                 linecolor = emissioncomponentplot.get_color()
             else:
-                linecolor = None
+                linecolor = x.color
 
             if args.showabsorption:
                 dfspec = atspectra.get_dfspectrum_x_y_with_units(
