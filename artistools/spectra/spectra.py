@@ -1163,7 +1163,7 @@ def get_flux_contributions_from_packets(
                 ]),
                 pl.DataFrame(
                     {emtypecolumn: [-9999999, -9999000], "emissiontype_str": ["free-free", "NOT SET"]},
-                    schema_overrides={emtypecolumn: pl.Int32, "emissiontype_str": pl.String},
+                    schema={emtypecolumn: pl.Int32, "emissiontype_str": pl.String},
                 ).lazy(),
                 bflistlazy.select([pl.col(emtypecolumn), expr_bflist_to_str.alias("emissiontype_str")]),
             ])
@@ -1188,139 +1188,169 @@ def get_flux_contributions_from_packets(
         cols |= {"absorptiontype_str", "absorption_freq"}
         assert linelistlazy is not None
         abstypestrings = pl.concat([
-            linelistlazy.select([
-                pl.col("lineindex").alias("absorption_type"),
-                expr_linelist_to_str.alias("absorptiontype_str"),
-            ]),
+            linelistlazy.select(absorption_type=pl.col("lineindex"), absorptiontype_str=expr_linelist_to_str),
             pl.DataFrame(
                 {"absorption_type": [-1, -2], "absorptiontype_str": ["free-free", "bound-free"]},
-                schema_overrides={"absorption_type": pl.Int32, "absorptiontype_str": pl.String},
+                schema={"absorption_type": pl.Int32, "absorptiontype_str": pl.String},
             ).lazy(),
         ]).with_columns(pl.col("absorptiontype_str"))
 
         lzdfpackets = lzdfpackets.join(abstypestrings, on="absorption_type", how="left")
 
     if directionbin != -1:
-        cols |= {"costhetabin", "phibin", "dirbin"}
+        if average_over_phi:
+            cols.add("costhetabin")
+        elif average_over_theta:
+            cols.add("phibin")
+        else:
+            cols.add("dirbin")
 
-    dfpackets = (
-        lzdfpackets.select(cs.by_name(cols, require_all=False))
-        .filter(
-            pl.col(dirbin_nu_column).is_between(nu_min, nu_max) | pl.col("absorption_freq").is_between(nu_min, nu_max)
+    dfpackets = lzdfpackets.select(cs.by_name(cols, require_all=False)).collect(engine="streaming")
+    if getemission:
+        empackets = (
+            dfpackets.drop("absorptiontype_str", "absorption_freq", strict=False)
+            .filter(pl.col(dirbin_nu_column).is_between(nu_min, nu_max))
+            .drop_nulls("emissiontype_str")
         )
-        .collect(engine="streaming")
-    )
-    dfemnufiltered = dfpackets.filter(pl.col(dirbin_nu_column).is_between(nu_min, nu_max))
-    dfpacketsabsnufiltered = dfpackets.filter(pl.col("absorption_freq").is_between(nu_min, nu_max))
-    del dfpackets
-    emissiongroups = {k: v for (k,), v in dfemnufiltered.group_by("emissiontype_str")} if getemission else {}
-    absorptiongroups = (
-        {k: v for (k,), v in dfpacketsabsnufiltered.group_by("absorptiontype_str")} if getabsorption else {}
-    )
+        emissiongroups = {k: v.drop(cs.by_dtype(pl.Utf8)) for (k,), v in empackets.group_by("emissiontype_str")}
+        emission_e_rf_sum = dict(
+            empackets.group_by("emissiontype_str").agg(pl.col("e_rf").sum().alias("e_rf")).iter_rows()
+        )
+    else:
+        emissiongroups = {}
+        emission_e_rf_sum = {}
 
-    allgroupnames = set(emissiongroups.keys()) | set(absorptiongroups.keys())
+    if getabsorption:
+        abspackets = (
+            dfpackets.drop(dirbin_nu_column, "emissiontype_str", strict=False)
+            .filter(pl.col("absorption_freq").is_between(nu_min, nu_max))
+            .drop_nulls("absorptiontype_str")
+        )
+        absorptiongroups = {k: v.drop(cs.by_dtype(pl.Utf8)) for (k,), v in abspackets.group_by("absorptiontype_str")}
+        absorption_e_rf_sum = dict(
+            abspackets.group_by("absorptiontype_str").agg(pl.col("e_rf").sum().alias("e_rf")).iter_rows()
+        )
+    else:
+        absorptiongroups = {}
+        absorption_e_rf_sum = {}
+
+    del dfpackets
+
+    allgroupnames = list(
+        pl.concat(
+            ([empackets.get_column("emissiontype_str").unique()] if getemission else [])
+            + ([abspackets.get_column("absorptiontype_str").unique()] if getabsorption else [])
+        ).unique()
+    )
 
     if maxseriescount is None:
         maxseriescount = len(allgroupnames)
 
-    # group small contributions together to avoid the cost of binning individual spectra for them
-    grouptotals: list[tuple[float, str]] = []
-    for groupname in allgroupnames:
-        groupemiss = (
-            emissiongroups[groupname].select(pl.col("e_rf").sum()).item() if groupname in emissiongroups else 0.0
-        )
-        groupabs = (
-            absorptiongroups[groupname].select(pl.col("e_rf").sum()).item() if groupname in absorptiongroups else 0.0
-        )
-        grouptotal = groupemiss + groupabs
-
-        if groupname is not None:
-            assert isinstance(groupname, str)
-            grouptotals.append((grouptotal, groupname))
-        else:
-            with contextlib.suppress(KeyError):
-                del emissiongroups[groupname]
-                del absorptiongroups[groupname]
-
-    allgroupnames = set(emissiongroups.keys()) | set(absorptiongroups.keys())
-
     if fixedionlist is not None and (unrecognised_items := [x for x in fixedionlist if x not in allgroupnames]):
         print(f"WARNING: (packets) did not find {len(unrecognised_items)} items in fixedionlist: {unrecognised_items}")
 
-    def sortkey(x: tuple[float, str]) -> tuple[int, float]:
-        (grouptotal, groupname) = x
+    def sortkey(groupname: str) -> tuple[int, float]:
+        grouptotal = emission_e_rf_sum.get(groupname, 0.0) + absorption_e_rf_sum.get(groupname, 0.0)
 
         if fixedionlist is None:
             return (0, -grouptotal)
 
         return (fixedionlist.index(groupname), 0) if groupname in fixedionlist else (len(fixedionlist) + 1, -grouptotal)
 
-    if other_groups := sorted(grouptotals, key=sortkey)[maxseriescount:]:
-        allgroupnames.add("Other")
+    # group small contributions together to avoid the cost of binning individual spectra for them
 
-        if emdfs := [emissiongroups[groupname] for _, groupname in other_groups if groupname in emissiongroups]:
-            emissiongroups["Other"] = pl.concat(emdfs)
+    allgroupnames.sort(key=sortkey)
+    if len(allgroupnames) > maxseriescount:
+        other_groupnames = allgroupnames[maxseriescount:]
+        allgroupnames = [*allgroupnames[:maxseriescount], "Other"]
 
-        if absdfs := [absorptiongroups[groupname] for _, groupname in other_groups if groupname in absorptiongroups]:
-            absorptiongroups["Other"] = pl.concat(absdfs)
+        if getemission:
+            emissiongroups["Other"] = pl.concat(
+                (emissiongroups[groupname] for groupname in other_groupnames if groupname in emissiongroups),
+                rechunk=False,
+            )
 
-        for _grouptotal, groupname in other_groups:
+        if getabsorption:
+            absorptiongroups["Other"] = pl.concat(
+                (absorptiongroups[groupname] for groupname in other_groupnames if groupname in absorptiongroups),
+                rechunk=False,
+            )
+
+        for groupname in other_groupnames:
             with contextlib.suppress(KeyError):
                 del emissiongroups[groupname]
                 del absorptiongroups[groupname]
-            allgroupnames.remove(groupname)
 
     array_flambda_emission_total = None
     contribution_list = []
     array_lambda = None
+    group_em_specs = dict(
+        zip(
+            emissiongroups.keys(),
+            pl.collect_all([
+                get_from_packets(
+                    modelpath=modelpath,
+                    timelowdays=timelowdays,
+                    timehighdays=timehighdays,
+                    lambda_min=lambda_min,
+                    lambda_max=lambda_max,
+                    use_time=use_time,
+                    delta_lambda=delta_lambda,
+                    fluxfilterfunc=filterfunc,
+                    nprocs_read_dfpackets=(nprocs_read, dfpkts),
+                    directionbins=[directionbin],
+                    directionbins_are_vpkt_observers=directionbins_are_vpkt_observers,
+                    average_over_phi=average_over_phi,
+                    average_over_theta=average_over_theta,
+                    gamma=gamma,
+                )[directionbin].select("lambda_angstroms", "f_lambda")
+                for dfpkts in emissiongroups.values()
+            ]),
+            strict=True,
+        )
+    )
+    group_abs_specs = dict(
+        zip(
+            absorptiongroups.keys(),
+            pl.collect_all([
+                get_from_packets(
+                    modelpath=modelpath,
+                    timelowdays=timelowdays,
+                    timehighdays=timehighdays,
+                    lambda_min=lambda_min,
+                    lambda_max=lambda_max,
+                    use_time=use_time,
+                    delta_lambda=delta_lambda,
+                    nu_column="absorption_freq",
+                    fluxfilterfunc=filterfunc,
+                    nprocs_read_dfpackets=(nprocs_read, dfpkts),
+                    directionbins=[directionbin],
+                    directionbins_are_vpkt_observers=directionbins_are_vpkt_observers,
+                    average_over_phi=average_over_phi,
+                    average_over_theta=average_over_theta,
+                )[directionbin].select("lambda_angstroms", "f_lambda")
+                for dfpkts in absorptiongroups.values()
+            ]),
+            strict=True,
+        )
+    )
     for groupname in allgroupnames:
         array_flambda_emission = None
 
-        if groupname in emissiongroups:
-            spec_group = get_from_packets(
-                modelpath=modelpath,
-                timelowdays=timelowdays,
-                timehighdays=timehighdays,
-                lambda_min=lambda_min,
-                lambda_max=lambda_max,
-                use_time=use_time,
-                delta_lambda=delta_lambda,
-                fluxfilterfunc=filterfunc,
-                nprocs_read_dfpackets=(nprocs_read, emissiongroups[groupname]),
-                directionbins=[directionbin],
-                directionbins_are_vpkt_observers=directionbins_are_vpkt_observers,
-                average_over_phi=average_over_phi,
-                average_over_theta=average_over_theta,
-                gamma=gamma,
-            )[directionbin].collect()
-
+        if groupname in group_em_specs:
+            spec_group = group_em_specs[groupname]
             if array_lambda is None:
                 array_lambda = spec_group["lambda_angstroms"].to_numpy()
 
             array_flambda_emission = spec_group["f_lambda"].to_numpy()
 
             if array_flambda_emission_total is None:
-                array_flambda_emission_total = np.zeros_like(array_flambda_emission, dtype=float)
+                array_flambda_emission_total = array_flambda_emission.copy()
+            else:
+                array_flambda_emission_total += array_flambda_emission
 
-            array_flambda_emission_total += array_flambda_emission
-
-        if groupname in absorptiongroups:
-            spec_group = get_from_packets(
-                modelpath=modelpath,
-                timelowdays=timelowdays,
-                timehighdays=timehighdays,
-                lambda_min=lambda_min,
-                lambda_max=lambda_max,
-                use_time=use_time,
-                delta_lambda=delta_lambda,
-                nu_column="absorption_freq",
-                fluxfilterfunc=filterfunc,
-                nprocs_read_dfpackets=(nprocs_read, absorptiongroups[groupname]),
-                directionbins=[directionbin],
-                directionbins_are_vpkt_observers=directionbins_are_vpkt_observers,
-                average_over_phi=average_over_phi,
-                average_over_theta=average_over_theta,
-            )[directionbin].collect()
+        if groupname in group_abs_specs:
+            spec_group = group_abs_specs[groupname]
 
             if array_lambda is None:
                 array_lambda = spec_group["lambda_angstroms"].to_numpy()
