@@ -18,6 +18,7 @@ import argcomplete
 import numpy as np
 import pandas as pd
 import polars as pl
+from polars import selectors as cs
 
 import artistools as at
 
@@ -468,7 +469,7 @@ def add_abundancecontributions(
     colnames = [key if isinstance(key, str) else f"X_{at.get_elsymbol(key[0])}{key[0] + key[1]}" for key in allkeys]
 
     dfnucabundances = (
-        dfnucabundanceslz.drop([col for col in dfnucabundances.columns if col.startswith("particle_")])
+        dfnucabundanceslz.drop(cs.starts_with("particle_"))
         .collect()
         .transpose(include_header=True, column_names=colnames, header_name="inputcellid")
         .with_columns(pl.col("inputcellid").cast(pl.Int32))
