@@ -330,7 +330,7 @@ def plot_artis_lightcurve(
     if escape_type == "TYPE_GAMMA":
         linelabel += r" $\gamma$"
     if pellet_nucname is not None:
-        linelabel += f" {pellet_nucname}"
+        linelabel = rf"$\;$ {pellet_nucname}"
 
     print(f"====> {linelabel}")
     print(f" modelpath: {modelpath.resolve().parts[-1]}")
