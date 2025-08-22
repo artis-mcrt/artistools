@@ -592,7 +592,7 @@ def get_virtual_packets_pl(modelpath: str | Path, maxpacketfiles: int | None = N
         type_id=type_ids["TYPE_ESCAPE"], escape_type_id=type_ids["TYPE_RPKT"]
     )
 
-    npkts_total = dfpackets.select(pl.count("dir0_t_arrive_d")).collect().item(0, 0)
+    npkts_total = dfpackets.select(pl.len()).collect().item()
     print(f"  files contain {npkts_total:.2e} virtual packet events (shared among directions and opacity choices)")
 
     return nprocs_read, dfpackets
@@ -610,7 +610,7 @@ def get_packets_pl_before_filter(modelpath: Path, maxpacketfiles: int | None = N
         {"originated_from_positron": "originated_from_particlenotgamma"}, strict=False
     )
 
-    npkts_total = pldfpackets.select(pl.count("e_rf")).collect().item()
+    npkts_total = pldfpackets.select(pl.len()).collect().item()
     print(f"  files contain {npkts_total:.2e} packets")
 
     return nprocs_read, pldfpackets
