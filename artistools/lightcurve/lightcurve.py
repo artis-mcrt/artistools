@@ -96,7 +96,6 @@ def get_from_packets(
     dfpackets = dfpackets.with_columns([(pl.col("escape_time") * escapesurfacegamma / 86400.0).alias("t_arrive_cmf_d")])
 
     try:
-        dfnuclides = at.get_nuclides(modelpath=modelpath)
         if pellet_nucname is not None:
             atomic_number = at.get_atomic_number(pellet_nucname)
             if at.get_elsymbol(atomic_number) == pellet_nucname:
@@ -105,7 +104,7 @@ def get_from_packets(
                 expr = pl.col("nucname") == pellet_nucname
             dfpackets = dfpackets.filter(
                 pl.col("pellet_nucindex").is_in(
-                    dfnuclides.filter(expr).select(["pellet_nucindex"]).collect().get_column("pellet_nucindex")
+                    at.get_nuclides(modelpath=modelpath).filter(expr).select("pellet_nucindex").collect().to_series()
                 )
             )
     except FileNotFoundError:
