@@ -83,5 +83,5 @@ def test_get_virtual_packets_pl() -> None:
         modelpath=at.get_config()["path_testdata"] / "vpktcontrib", maxpacketfiles=2
     )
 
-    npkts_total = dfvpkt.select(pl.count("dir0_t_arrive_d")).collect().item(0, 0)
+    npkts_total = dfvpkt.select(pl.len()).collect().item()
     assert npkts_total == 13783
