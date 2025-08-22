@@ -611,7 +611,7 @@ def get_packets_pl_before_filter(modelpath: Path, maxpacketfiles: int | None = N
     )
 
     npkts_total = pldfpackets.select(pl.len()).collect().item()
-    print(f"  files contain {npkts_total:.2e} packets")
+    print(f"  files contain {npkts_total:.2e} packets from {nprocs_read} ranks")
 
     return nprocs_read, pldfpackets
 

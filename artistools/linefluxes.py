@@ -795,7 +795,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("-dashes", default=[], nargs="*", help="Dashes property of lines")
 
-    parser.add_argument("-maxpacketfiles", type=int, default=None, help="Limit the number of packet files read")
+    parser.add_argument(
+        "-maxpacketfiles", "-maxpacketsfiles", type=int, default=None, help="Limit the number of packet files read"
+    )
 
     parser.add_argument("-emfeaturesearch", default=[], nargs="*", help="List of tuples (TODO explain)")
 
