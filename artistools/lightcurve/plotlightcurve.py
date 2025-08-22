@@ -531,7 +531,7 @@ def plot_artis_lightcurve(
 
     if args.plotdeposition or args.plotthermalisation:
         plot_deposition_thermalisation(
-            axis, axistherm, modelpath, label=linelabel, args=args, modelname=plotkwargs["modelname"], **plotkwargs
+            axis, axistherm, modelpath, label=linelabel, args=args, modelname=linelabel, **plotkwargs
         )
 
     return lcdataframes
