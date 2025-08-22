@@ -1116,6 +1116,16 @@ def get_flux_contributions_from_packets(
 
         lzdfpackets = lzdfpackets.filter(pl.col("t_arrive_d").is_between(timelowdays, timehighdays))
 
+        if directionbin != -1:
+            if average_over_phi:
+                assert not average_over_theta
+                nphibins = get_viewingdirection_phibincount()
+                lzdfpackets = lzdfpackets.filter(pl.col("costhetabin") * nphibins == directionbin)
+            elif average_over_theta:
+                lzdfpackets = lzdfpackets.filter(pl.col("phibin") == directionbin)
+            else:
+                lzdfpackets = lzdfpackets.filter(pl.col("dirbin") == directionbin)
+
     condition_nu_emit = pl.col(dirbin_nu_column).is_between(nu_min, nu_max) if getemission else pl.lit(False)
     condition_nu_abs = pl.col("absorption_freq").is_between(nu_min, nu_max) if getabsorption else pl.lit(False)
     lzdfpackets = lzdfpackets.filter(condition_nu_emit | condition_nu_abs)
