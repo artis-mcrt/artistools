@@ -1441,7 +1441,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--frompackets", action="store_true", help="Read packets files instead of light_curve.out")
 
-    parser.add_argument("-maxpacketfiles", type=int, default=None, help="Limit the number of packet files read")
+    parser.add_argument(
+        "-maxpacketfiles", "-maxpacketsfiles", type=int, default=None, help="Limit the number of packet files read"
+    )
 
     parser.add_argument("--gamma", action="store_true", help="Make light curve from gamma rays")
 

@@ -1318,7 +1318,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--frompackets", action="store_true", help="Read packets files directly instead of exspec results"
     )
 
-    parser.add_argument("-maxpacketfiles", type=int, default=None, help="Limit the number of packet files read")
+    parser.add_argument(
+        "-maxpacketfiles", "-maxpacketsfiles", type=int, default=None, help="Limit the number of packet files read"
+    )
 
     parser.add_argument("--emissionabsorption", action="store_true", help="Implies --showemission and --showabsorption")
 

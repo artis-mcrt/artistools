@@ -270,7 +270,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-timemax", "-tmax", action="store", type=float, default=None, help="Time maximum [d]")
     parser.add_argument("-nphibins", action="store", type=int, default=64, help="Number of azimuthal bins")
     parser.add_argument("-ncosthetabins", action="store", type=int, default=32, help="Number of polar angle bins")
-    parser.add_argument("-maxpacketfiles", type=int, default=None, help="Limit the number of packet files read")
+    parser.add_argument(
+        "-maxpacketfiles", "-maxpacketsfiles", type=int, default=None, help="Limit the number of packet files read"
+    )
     parser.add_argument("-gaussian_sigma", type=int, default=None, help="Apply Gaussian filter")
     parser.add_argument(
         "-plotvars",
