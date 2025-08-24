@@ -193,7 +193,7 @@ def write_lbol_edep(modelpath: str | Path, selected_timesteps: Sequence[int], ou
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("-modelpath", default=[], nargs="*", action=at.AppendPath, help="Paths to ARTIS folders")
+    parser.add_argument("-modelpath", default=[], nargs="*", type=Path, help="Paths to ARTIS folders")
 
     parser.add_argument("-selected_timesteps", default=[], nargs="*", type=int, help="Selected ARTIS timesteps")
 

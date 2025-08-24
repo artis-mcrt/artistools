@@ -1417,7 +1417,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "modelpath",
         default=[],
         nargs="*",
-        action=at.AppendPath,
+        type=Path,
         help="Path(s) to ARTIS folders with light_curve.out or packets files (may include wildcards such as * and **)",
     )
 

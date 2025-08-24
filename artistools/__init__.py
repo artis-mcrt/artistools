@@ -38,7 +38,6 @@ from artistools.inputmodel import get_modeldata as get_modeldata
 from artistools.inputmodel import save_initelemabundances as save_initelemabundances
 from artistools.inputmodel import save_modeldata as save_modeldata
 from artistools.misc import anyexist as anyexist
-from artistools.misc import AppendPath as AppendPath
 from artistools.misc import average_direction_bins as average_direction_bins
 from artistools.misc import CustomArgHelpFormatter as CustomArgHelpFormatter
 from artistools.misc import decode_roman_numeral as decode_roman_numeral

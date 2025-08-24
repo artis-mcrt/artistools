@@ -774,11 +774,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
-        "-modelpath",
-        default=[],
-        nargs="*",
-        action=at.AppendPath,
-        help="Paths to ARTIS folders with spec.out or packets files",
+        "-modelpath", default=[], nargs="*", type=Path, help="Paths to ARTIS folders with spec.out or packets files"
     )
 
     parser.add_argument("-label", default=[], nargs="*", help="List of series label overrides")

@@ -311,11 +311,7 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
-        "modelpath",
-        default=[],
-        nargs="*",
-        action=at.AppendPath,
-        help="Path of input file or folder containing model.txt",
+        "modelpath", default=[], nargs="*", type=Path, help="Path of input file or folder containing model.txt"
     )
 
     parser.add_argument("-cell", "-mgi", default=None, help="Focus on particular cell number (0-indexed)")
