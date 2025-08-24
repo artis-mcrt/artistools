@@ -18,7 +18,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "modelpath",
         default=[],
         nargs="*",
-        action=at.AppendPath,
+        type=Path,
         help="Path(s) to model.txt file(s) or folders containing model.txt)",
     )
 

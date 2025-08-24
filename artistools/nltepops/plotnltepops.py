@@ -713,7 +713,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-modelpath", default=Path(), type=Path, help="Path to ARTIS folder")
 
     # arg to give multiple model paths - can use for x axis = time but breaks other plots
-    # parser.add_argument('-modelpath', default=[Path('.')], nargs='*', action=at.AppendPath,
+    # parser.add_argument('-modelpath', default=[Path('.')], nargs='*', type=Path,
     #                     help='Paths to ARTIS folders')
 
     timegroup = parser.add_mutually_exclusive_group()

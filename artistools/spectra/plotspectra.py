@@ -28,7 +28,6 @@ from matplotlib.lines import Line2D
 import artistools.spectra as atspectra
 from artistools.configuration import get_config
 from artistools.inputmodel import get_modeldata
-from artistools.misc import AppendPath
 from artistools.misc import CustomArgHelpFormatter
 from artistools.misc import flatten_list
 from artistools.misc import get_dirbin_labels
@@ -1291,11 +1290,7 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[t.An
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
-        "specpath",
-        default=[],
-        nargs="*",
-        action=AppendPath,
-        help="Paths to ARTIS folders or reference spectra filenames",
+        "specpath", default=[], nargs="*", type=Path, help="Paths to ARTIS folders or reference spectra filenames"
     )
 
     parser.add_argument("-label", default=[], nargs="*", help="List of series label overrides")

@@ -65,24 +65,6 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
         super().add_arguments(actions)
 
 
-class AppendPath(argparse.Action):
-    """Append a path to a list of paths."""
-
-    def __call__(self, parser, args, values, option_string=None) -> None:  # type: ignore[no-untyped-def] # noqa: ANN001,ARG002
-        # if getattr(args, self.dest) is None:
-        #     setattr(args, self.dest, [])
-        if hasattr(values, "__iter__"):
-            pathlist = getattr(args, self.dest)
-            # not pathlist avoids repeated appending of the same items when called from Python
-            # instead of from the command line
-            if not pathlist:
-                for pathstr in values:
-                    # if Path(pathstr) not in pathlist:
-                    pathlist.append(Path(pathstr))
-        else:
-            setattr(args, self.dest, Path(values))
-
-
 @lru_cache(maxsize=8)
 def get_composition_data(filename: Path | str) -> pd.DataFrame:
     """Return a pandas DataFrame containing details of included elements and ions."""

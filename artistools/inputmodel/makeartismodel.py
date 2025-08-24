@@ -11,7 +11,7 @@ import artistools as at
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("-modelpath", default=[], nargs="*", action=at.AppendPath, help="Path to input model file")
+    parser.add_argument("-modelpath", default=[], nargs="*", type=Path, help="Path to input model file")
 
     parser.add_argument(
         "--downscale3dgrid", action="store_true", help="Downscale a 3D ARTIS model to smaller grid size"

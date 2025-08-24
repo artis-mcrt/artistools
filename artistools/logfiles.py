@@ -119,7 +119,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-modelpath",
         default=[],
         nargs="*",
-        action=at.AppendPath,
+        type=Path,
         help="Path to ARTIS model folders with model.txt and abundances.txt",
     )
 
