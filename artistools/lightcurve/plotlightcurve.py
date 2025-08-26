@@ -585,7 +585,7 @@ def make_lightcurve_plot(
 
             dflightcurve, metadata = at.lightcurve.read_bol_reflightcurve_data(bolreflightcurve)
             lightcurvelabel = args.label[lcindex] or metadata.get("label", bolreflightcurve)
-            color = ["0.0", "0.5", "0.7"][reflightcurveindex]
+            color = args.color[lcindex] or ["0.0", "0.5", "0.7"][reflightcurveindex]
             plotkwargs = {"label": lightcurvelabel, "color": color, "zorder": 0}
             if (
                 "luminosity_errminus_erg/s" in dflightcurve.columns
@@ -605,7 +605,6 @@ def make_lightcurve_plot(
             reflightcurveindex += 1
             plottedsomething = True
 
-            lcindex += 1
         else:
             dirbin = args.plotviewingangle or (args.plotvspecpol or [-1])
             escape_types = ["TYPE_RPKT"] if showuvoir else []
