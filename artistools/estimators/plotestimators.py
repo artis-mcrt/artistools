@@ -102,6 +102,7 @@ def plot_init_abundances(
             estimators.group_by("plotpointid", maintain_order=True)
             .agg(yvalue=(yvalue * pl.col("mass_g")).sum() / (pl.col("mass_g")).sum(), xvalue=pl.col("xvalue").mean())
             .sort("xvalue")
+            .drop_nans(["xvalue", "yvalue"])
             .collect()
         )
 
@@ -195,7 +196,8 @@ def plot_average_ionisation_excitation(
             ax.set_ylim(0.0, max(ioncharges) + 0.1)
 
             series = (
-                estimators.filter(pl.col(f"nnelement_{elsymb}") > 0.0)
+                estimators.lazy()
+                .filter(pl.col(f"nnelement_{elsymb}") > 0.0)
                 .group_by("plotpointid", maintain_order=True)
                 .agg(
                     (
@@ -212,7 +214,7 @@ def plot_average_ionisation_excitation(
                     pl.col("xvalue").mean(),
                 )
                 .sort("xvalue")
-                .lazy()
+                .drop_nans(["xvalue", "yvalue"])
                 .collect()
             )
 
@@ -436,7 +438,8 @@ def plot_multi_ion_series(
             estimators.group_by("plotpointid", maintain_order=True)
             .agg(yvalue=expr_yvals, xvalue=pl.col("xvalue").mean())
             .sort("xvalue")
-        ).drop_nans(["xvalue", "yvalue"])
+            .drop_nans(["xvalue", "yvalue"])
+        )
         lazyframes.append(series_lazy)
 
     for seriesindex, (iontuple, series) in enumerate(zip(iontuplelist, pl.collect_all(lazyframes), strict=True)):
@@ -557,11 +560,12 @@ def plot_series(
             xvalue=pl.col("xvalue").mean(),
         )
         .sort("xvalue")
+        .drop_nans(["xvalue", "yvalue"])
         .collect()
     )
 
-    ylist = series["yvalue"].to_list()
-    xlist = series["xvalue"].to_list()
+    ylist = series["yvalue"].to_numpy()
+    xlist = series["xvalue"].to_numpy()
 
     with contextlib.suppress(ValueError):
         if min(ylist) == 0 or math.log10(max(ylist) / min(ylist)) > 2:
