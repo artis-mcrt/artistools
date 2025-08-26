@@ -96,7 +96,8 @@ def plot_init_abundances(
             linelabel = speciesstr
             yvalue = pl.col(f"{valuetype}{elsymbol}")
 
-        color = get_elemcolor(atomic_number=atomic_number)
+        plotkwargs["color"] = get_elemcolor(atomic_number=atomic_number)
+        plotkwargs.setdefault("linewidth", 1.5)
 
         series = (
             estimators.group_by("plotpointid", maintain_order=True)
@@ -117,7 +118,7 @@ def plot_init_abundances(
         xlist_filtered, ylist_filtered = at.estimators.apply_filters(xlist, ylist, args)
         if "linestyle" not in plotkwargs:
             plotkwargs["linestyle"] = linestyle
-        ax.plot(xlist_filtered, ylist_filtered, linewidth=1.5, label=linelabel, color=color, **plotkwargs)
+        ax.plot(xlist_filtered, ylist_filtered, label=linelabel, **plotkwargs)
 
         # if args.yscale == 'log':
         #     ax.set_yscale('log')
