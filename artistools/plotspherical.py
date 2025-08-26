@@ -116,7 +116,7 @@ def plot_spherical(
             (
                 pl.col("em_time")
                 .cut(breaks=timebins, labels=[str(x) for x in range(-1, len(timebins))])
-                .cast(str)
+                .cast(pl.Utf8)
                 .cast(pl.Int32)
             ).alias("em_timestep")
         )

@@ -263,7 +263,7 @@ def add_derived_columns_lazy(
             em_modelgridindex=(
                 pl.col("emission_velocity")
                 .cut(breaks=velbins, labels=[str(x) for x in range(-1, len(velbins))])
-                .cast(str)
+                .cast(pl.Utf8)
                 .cast(pl.Int32)
             )
         )
