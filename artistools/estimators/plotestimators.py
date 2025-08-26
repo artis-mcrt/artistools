@@ -436,7 +436,7 @@ def plot_multi_ion_series(
             estimators.group_by("plotpointid", maintain_order=True)
             .agg(yvalue=expr_yvals, xvalue=pl.col("xvalue").mean())
             .sort("xvalue")
-        )
+        ).drop_nans(["xvalue", "yvalue"])
         lazyframes.append(series_lazy)
 
     for seriesindex, (iontuple, series) in enumerate(zip(iontuplelist, pl.collect_all(lazyframes), strict=True)):
