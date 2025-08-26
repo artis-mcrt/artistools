@@ -16,6 +16,7 @@ from pathlib import Path
 
 import argcomplete
 import matplotlib.axes as mplax
+import matplotlib.colors as mplcolors
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
@@ -45,6 +46,32 @@ def get_elemcolor(atomic_number: int | None = None, elsymbol: str | None = None)
 
 def get_ylabel(variable: str) -> str:
     return at.estimators.get_variablelongunits(variable) or at.estimators.get_units_string(variable)
+
+
+def plot_data(
+    xlist: npt.NDArray[t.Any],
+    ylist: npt.NDArray[t.Any],
+    ax: mplax.Axes,
+    label: str | None,
+    args: argparse.Namespace,
+    ymin: float | None = None,
+    ymax: float | None = None,
+    **plotkwargs: t.Any,
+) -> None:
+    if args.xbins and args.ybins:
+        xbins = args.xbins or 50
+        if ymin is None:
+            ymin = min(y for y in ylist if y > 0) if ax.get_yscale() == "log" else min(ylist)
+
+        if ymax is None:
+            ymax = max(ylist)
+
+        y_space = np.logspace(np.log10(ymin * 0.9), np.log10(ymax * 1.1), xbins // 2, endpoint=True)
+        hist = ax.hist2d(xlist, ylist, bins=[xbins, y_space], norm=mplcolors.LogNorm(clip=True), rasterized=True)
+        plt.colorbar(hist[3], ax=ax, location="right", use_gridspec=False, label=label)
+    else:
+        plotkwargs = plotkwargs.copy()
+        ax.plot(xlist, ylist, label=label, **plotkwargs)
 
 
 def plot_init_abundances(
@@ -366,6 +393,8 @@ def plot_multi_ion_series(
     estimators: pl.LazyFrame,
     modelpath: str | Path,
     args: argparse.Namespace,
+    ymin: float | None = None,
+    ymax: float | None = None,
     **plotkwargs: t.Any,
 ) -> None:
     """Plot an ion-specific property, e.g., populations."""
@@ -489,7 +518,18 @@ def plot_multi_ion_series(
         if plotkwargs.get("linestyle", "solid") != "None":
             plotkwargs["dashes"] = dashes
 
-        ax.plot(xlist, ylist, linewidth=linewidth, label=plotlabel, color=color, **plotkwargs)
+        plot_data(
+            xlist,
+            ylist,
+            linewidth=linewidth,
+            label=plotlabel,
+            ax=ax,
+            args=args,
+            ymin=ymin,
+            ymax=ymax,
+            color=color,
+            **plotkwargs,
+        )
         plotted_something = True
 
     if seriestype == "populations":
@@ -511,16 +551,14 @@ def plot_multi_ion_series(
     else:
         ax.set_ylabel(at.estimators.get_varname_formatted(seriestype))
 
-    if plotted_something:
-        ax.set_yscale(args.yscale)
-        if args.yscale == "log":
-            ymin, ymax = ax.get_ylim()
-            ymin = max(ymin, ymax / 1e10)
-            ax.set_ylim(bottom=ymin)
-            # make space for the legend
-            new_ymax = ymax * 10 ** (0.1 * math.log10(ymax / ymin))
-            if ymin > 0 and new_ymax > ymin and np.isfinite(new_ymax):
-                ax.set_ylim(top=new_ymax)
+    if plotted_something and args.yscale == "log":
+        ymin, ymax = ax.get_ylim()
+        ymin = max(ymin, ymax / 1e10)
+        ax.set_ylim(bottom=ymin)
+        # make space for the legend
+        new_ymax = ymax * 10 ** (0.1 * math.log10(ymax / ymin))
+        if ymin > 0 and new_ymax > ymin and np.isfinite(new_ymax):
+            ax.set_ylim(top=new_ymax)
 
 
 def plot_series(
@@ -531,6 +569,8 @@ def plot_series(
     estimators: pl.LazyFrame,
     args: argparse.Namespace,
     nounits: bool = False,
+    ymin: float | None = None,
+    ymax: float | None = None,
     **plotkwargs: t.Any,
 ) -> None:
     """Plot something like Te or TR."""
@@ -572,11 +612,9 @@ def plot_series(
         if min(ylist) == 0 or math.log10(max(ylist) / min(ylist)) > 2:
             ax.set_yscale("log")
 
-    dictcolors = {
-        "Te": "red"
-        # 'heating_gamma': 'blue',
-        # 'cooling_adiabatic': 'blue'
-    }
+    if variablename in (dictcolors := {"Te": "red", "heating_gamma": "blue", "cooling_adiabatic": "blue"}):
+        plotkwargs.setdefault("color", dictcolors[variablename])
+    plotkwargs.setdefault("linewidth", 1.5)
 
     if startfromzero:
         # make a line segment from 0 velocity
@@ -586,9 +624,7 @@ def plot_series(
     xlist_filtered, ylist_filtered = at.estimators.apply_filters(xlist, ylist, args)
 
     print(f"  plotting {variablename} ({len(xlist_filtered)} points)")
-    ax.plot(
-        xlist_filtered, ylist_filtered, linewidth=1.5, label=linelabel, color=dictcolors.get(variablename), **plotkwargs
-    )
+    plot_data(xlist_filtered, ylist_filtered, ax=ax, label=linelabel, args=args, ymin=ymin, ymax=ymax, **plotkwargs)
 
 
 def get_xlist(
@@ -617,7 +653,10 @@ def get_xlist(
         assert xvariable in estimators.collect_schema().names()
         estimators = estimators.with_columns(xvalue=pl.col(xvariable), plotpointid=pl.col("modelgridindex"))
 
-    if args.xbins is not None:
+    if args.ybins:
+        assert args.xbins, "ybins require x bins"
+
+    if args.xbins is not None and args.ybins is None:
         xmin = estimators.select(pl.col("xvalue").min()).collect().item() if args.xmin is None else args.xmin
         xmax = estimators.select(pl.col("xvalue").max()).collect().item() if args.xmax is None else args.xmax
         if args.xbins < 0:
@@ -645,9 +684,10 @@ def get_xlist(
     elif (
         not args.markersonly and estimators.select(pl.n_unique("xvalue") < pl.n_unique("plotpointid")).collect().item()
     ):
-        print(
-            "Enabling --markersonly because there are multiple plot points per x value. Try using -xbins [NUMBER] to keep a line plot"
-        )
+        if args.xbins is None or args.ybins is None:
+            print(
+                "Enabling --markersonly because there are multiple plot points per x value. Try using -xbins [NUMBER] to keep a line plot"
+            )
         args.markersonly = True
 
     # single valued line plot
@@ -705,6 +745,21 @@ def plot_subplot(
         elif ylabel != get_ylabel(variablename):
             sameylabel = False
             break
+    ymin, ymax = None, None
+    for plotitem in plotitems:
+        if isinstance(plotitem, str | pl.Expr):
+            continue
+        seriestype, params = plotitem
+        if seriestype == "_ymin":
+            ymin = float(params) if isinstance(params, str) else params
+            ax.set_ylim(bottom=ymin)
+
+        elif seriestype == "_ymax":
+            ymax = float(params) if isinstance(params, str) else params
+            ax.set_ylim(top=ymax)
+
+        elif seriestype == "_yscale":
+            ax.set_yscale(params)
 
     for plotitem in plotitems:
         if isinstance(plotitem, str | pl.Expr):
@@ -719,15 +774,20 @@ def plot_subplot(
                 estimators=estimators,
                 args=args,
                 nounits=sameylabel,
+                ymin=ymin,
+                ymax=ymax,
                 **plotkwargs,
             )
             if showlegend and sameylabel and ylabel is not None:
                 ax.set_ylabel(ylabel)
         else:  # it's a sequence of values
             seriestype, params = plotitem
+            showlegend = True
+            if isinstance(params, str) and seriestype.startswith("_"):
+                continue
 
             if seriestype in {"initabundances", "initmasses"}:
-                showlegend = True
+                assert isinstance(params, (list, tuple))
                 plot_init_abundances(
                     ax=ax,
                     specieslist=params,
@@ -739,7 +799,6 @@ def plot_subplot(
                 )
 
             elif seriestype == "levelpopulation" or seriestype.startswith("levelpopulation_"):
-                showlegend = True
                 plot_levelpop(
                     ax,
                     xlist,
@@ -753,7 +812,6 @@ def plot_subplot(
                 )
 
             elif seriestype in {"averageionisation", "averageexcitation"}:
-                showlegend = True
                 plot_average_ionisation_excitation(
                     ax,
                     xlist,
@@ -768,20 +826,11 @@ def plot_subplot(
                     **plotkwargs,
                 )
 
-            elif seriestype == "_ymin":
-                ax.set_ylim(bottom=float(params) if isinstance(params, str) else params)
-
-            elif seriestype == "_ymax":
-                ax.set_ylim(top=float(params) if isinstance(params, str) else params)
-
-            elif seriestype == "_yscale":
-                ax.set_yscale(params)
-
             else:
-                showlegend = True
                 seriestype, ionlist = plotitem
                 if seriestype == "populations" and len(ionlist) > 2 and args.yscale == "log":
                     legend_kwargs["ncol"] = 2
+                ax.set_yscale(args.yscale)
 
                 plot_multi_ion_series(
                     ax=ax,
@@ -791,6 +840,8 @@ def plot_subplot(
                     estimators=estimators,
                     modelpath=modelpath,
                     args=args,
+                    ymin=ymin,
+                    ymax=ymax,
                     **plotkwargs,
                 )
 
@@ -937,6 +988,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument(
         "-xbins", type=int, default=None, help="Number of x bins between xmax and xmin (or -1 for automatic bin size)"
+    )
+
+    parser.add_argument(
+        "-ybins", type=int, default=None, help="Number of y bins between ymax and ymin (or -1 for automatic bin size)"
     )
 
     parser.add_argument(
