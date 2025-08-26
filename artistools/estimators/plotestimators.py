@@ -640,7 +640,9 @@ def get_xlist(
     elif (
         not args.markersonly and estimators.select(pl.n_unique("xvalue") < pl.n_unique("plotpointid")).collect().item()
     ):
-        print("Enabling --markersonly because there are multiple plot points per x value")
+        print(
+            "Enabling --markersonly because there are multiple plot points per x value. Try using -xbins [NUMBER] to keep a line plot"
+        )
         args.markersonly = True
 
     # single valued line plot
