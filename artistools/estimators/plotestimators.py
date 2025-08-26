@@ -450,7 +450,7 @@ def plot_multi_ion_series(
             xlist = [0.0, *xlist]
             ylist = [ylist[0], *ylist]
 
-        plotlabel = (
+        plotlabel = str(
             ion_stage
             if hasattr(ion_stage, "lower") and ion_stage != "ALL"
             else at.get_ionstring(atomic_number, ion_stage, style="chargelatex")
