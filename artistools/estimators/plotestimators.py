@@ -242,15 +242,15 @@ def plot_average_ionisation_excitation(
                     pl.col("xvalue").mean(),
                 )
                 .sort("xvalue")
-                .drop_nans(["xvalue", "yvalue"])
+                .drop_nans(["xvalue", f"averageionisation_{elsymb}"])
                 .collect()
             )
 
-            xlist = series["xvalue"].to_list()
+            xlist = series["xvalue"].to_numpy()
             if startfromzero:
                 xlist = [0.0, *xlist]
 
-            ylist = series[f"averageionisation_{elsymb}"].to_list()
+            ylist = series[f"averageionisation_{elsymb}"].to_numpy()
 
         color = get_elemcolor(atomic_number=atomic_number)
 
@@ -828,6 +828,8 @@ def plot_subplot(
 
             else:
                 seriestype, ionlist = plotitem
+                if seriestype.startswith("_"):
+                    continue
                 if seriestype == "populations" and len(ionlist) > 2 and args.yscale == "log":
                     legend_kwargs["ncol"] = 2
                 ax.set_yscale(args.yscale)
