@@ -59,7 +59,6 @@ def plot_data(
     **plotkwargs: t.Any,
 ) -> None:
     if args.xbins and args.ybins:
-        xbins = args.xbins or 50
         if ymin is None:
             ymin = min(y for y in ylist if y > 0) if ax.get_yscale() == "log" else min(ylist)
         assert ymin is not None
@@ -68,8 +67,15 @@ def plot_data(
             ymax = max(ylist)
         assert ymax is not None
 
-        y_space = np.logspace(np.log10(ymin * 0.9), np.log10(ymax * 1.1), xbins // 2, endpoint=True)
-        hist = ax.hist2d(xlist, ylist, bins=[xbins, y_space], norm=mplcolors.LogNorm(clip=True), rasterized=True)
+        x_binedges = np.linspace(min(xlist), max(xlist), args.xbins + 1, endpoint=True)
+        y_binedges = (
+            np.logspace(np.log10(ymin * 0.9), np.log10(ymax * 1.1), args.ybins + 1, endpoint=True)
+            if ax.get_yscale() == "log"
+            else np.linspace(ymin * 0.9, ymax * 1.1, args.ybins + 1, endpoint=True)
+        )
+        hist = ax.hist2d(
+            xlist, ylist, bins=(x_binedges, y_binedges), norm=mplcolors.LogNorm(clip=True), rasterized=True
+        )
         plt.colorbar(hist[3], ax=ax, location="right", use_gridspec=False, label=label)
     else:
         plotkwargs = plotkwargs.copy()
@@ -931,17 +937,26 @@ def make_figure(
 
     else:
         if args.multiplot:
-            timestep = f"ts{timestepslist[0]:02d}"
-            timedays = f"{at.get_timestep_time(modelpath, timestepslist[0]):.2f}d"
+            strtimestep = f"ts{timestepslist[0]:02d}"
+            strtimedays = f"{at.get_timestep_time(modelpath, timestepslist[0]):.2f}d"
         else:
             timesteps_flat = at.flatten_list(timestepslist)
             timestepmin = min(timesteps_flat)
             timestepmax = max(timesteps_flat)
 
-            timestep = f"ts{timestepmin:02d}-ts{timestepmax:02d}"
-            timedays = f"{at.get_timestep_time(modelpath, timestepmin):.2f}d-{at.get_timestep_time(modelpath, timestepmax):.2f}d"
+            strtimestep = (
+                f"ts{timestepmin:02d}-ts{timestepmax:02d}" if timestepmax != timestepmin else f"ts{timestepmin:02d}"
+            )
+            dftimesteps = at.get_timesteps(modelpath)
+            timelow_days = (
+                dftimesteps.filter(pl.col("timestep") == timestepmin).select(pl.col("tstart_days")).collect().item()
+            )
+            timehigh_days = (
+                dftimesteps.filter(pl.col("timestep") == timestepmax).select(pl.col("tend_days")).collect().item()
+            )
+            strtimedays = f"{timelow_days:.2f}d-{timehigh_days:.2f}d"
 
-        figure_title = f"{modelname}\nTimestep {timestep} ({timedays})"
+        figure_title = f"{modelname}\nTimestep {strtimestep} ({strtimedays})"
         print("  plotting " + figure_title.replace("\n", " "))
 
         defaultoutputfile = "plotestimators_{timestep}_{timedays}.{format}"
@@ -949,7 +964,7 @@ def make_figure(
             args.outputfile = str(Path(args.outputfile) / defaultoutputfile)
 
         assert isinstance(timestepslist, list)
-        outfilename = str(args.outputfile).format(timestep=timestep, timedays=timedays, format=args.format)
+        outfilename = str(args.outputfile).format(timestep=strtimestep, timedays=strtimedays, format=args.format)
 
     if not args.notitle:
         axes[0].set_title(figure_title, fontsize=10)
