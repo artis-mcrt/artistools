@@ -62,9 +62,11 @@ def plot_data(
         xbins = args.xbins or 50
         if ymin is None:
             ymin = min(y for y in ylist if y > 0) if ax.get_yscale() == "log" else min(ylist)
+        assert ymin is not None
 
         if ymax is None:
             ymax = max(ylist)
+        assert ymax is not None
 
         y_space = np.logspace(np.log10(ymin * 0.9), np.log10(ymax * 1.1), xbins // 2, endpoint=True)
         hist = ax.hist2d(xlist, ylist, bins=[xbins, y_space], norm=mplcolors.LogNorm(clip=True), rasterized=True)
@@ -246,7 +248,7 @@ def plot_average_ionisation_excitation(
                 .collect()
             )
 
-            xlist = series["xvalue"].to_numpy()
+            xlist = series["xvalue"].to_list()
             if startfromzero:
                 xlist = [0.0, *xlist]
 
@@ -787,7 +789,7 @@ def plot_subplot(
                 continue
 
             if seriestype in {"initabundances", "initmasses"}:
-                assert isinstance(params, (list, tuple))
+                assert isinstance(params, list)
                 plot_init_abundances(
                     ax=ax,
                     specieslist=params,
