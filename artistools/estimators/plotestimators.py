@@ -74,7 +74,7 @@ def plot_data(
                     "xvalue": [0.0],
                     **{
                         col: [seriesdata.select(pl.col(col).head(1)).collect().item()]
-                        for col in seriesdata.columns
+                        for col in seriesdata.collect_schema().names()
                         if col not in {"xvalue", "plotpointid"}
                     },
                 },
