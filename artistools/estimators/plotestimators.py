@@ -48,7 +48,7 @@ def get_ylabel(variable: str) -> str:
 
 
 def plot_data(
-    seriesdata: pl.DataFrame | pl.Lazyframe,
+    seriesdata: pl.DataFrame | pl.LazyFrame,
     ax: mplax.Axes,
     label: str | None,
     args: argparse.Namespace,
