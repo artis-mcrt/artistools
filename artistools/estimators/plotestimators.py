@@ -102,7 +102,8 @@ def plot_data(
                 seriesdata = seriesdata.with_columns(yvalue_min=pl.col("yvalue"))
             if "yvalue_max" not in seriesdata.collect_schema().names():
                 seriesdata = seriesdata.with_columns(yvalue_max=pl.col("yvalue"))
-            if not np.allclose(seriesdata["yvalue_min"], seriesdata["yvalue_max"], atol=min(seriesdata["yvalue"])):
+
+            if seriesdata.select((pl.col("yvalue_max") - pl.col("yvalue_min")).abs().max() > 0.0).item():
                 ax.fill_between(
                     seriesdata["xvalue"],
                     seriesdata["yvalue_min"],
