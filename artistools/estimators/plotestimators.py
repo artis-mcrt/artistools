@@ -199,9 +199,6 @@ def plot_average_ionisation_excitation(
     else:
         raise ValueError
 
-    if startfromzero:
-        xlist = [0.0, *xlist]
-
     arr_tdelta = at.get_timestep_times(modelpath, loc="delta")
     for paramvalue in params:
         print(f"  plotting {seriestype} {paramvalue}")
@@ -240,10 +237,15 @@ def plot_average_ionisation_excitation(
                     raise ValueError(msg)
                 ylist.append(exc_ev_times_tdelta_sum / tdeltasum if tdeltasum > 0 else math.nan)
 
-            if startfromzero:
-                ylist = [ylist[0], *ylist]
-
-            ax.plot(xlist, ylist, label=paramvalue, color=color, **plotkwargs)
+            plot_data(
+                pl.DataFrame({"xvalue": xlist, "yvalue": ylist}),
+                ax=ax,
+                args=args,
+                startfromzero=startfromzero,
+                label=paramvalue,
+                color=color,
+                **plotkwargs,
+            )
         elif seriestype == "averageionisation":
             elsymb = at.get_elsymbol(atomic_number)
             if f"nnelement_{elsymb}" not in estimators.collect_schema().names():
@@ -360,11 +362,6 @@ def plot_levelpop(
                 ylist.append(valuesum / tdeltasum * modeldata.loc[modelgridindex].volume / deltav)
             else:
                 ylist.append(valuesum / tdeltasum)
-
-        if startfromzero:
-            # make a line segment from 0 velocity
-            xlist = np.array([0.0, *xlist])
-            ylist = [ylist[0], *ylist]
 
         plot_data(
             pl.DataFrame({"xvalue": xlist, "yvalue": ylist}),
