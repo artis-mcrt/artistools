@@ -4,7 +4,6 @@
 Examples are temperatures, populations, and heating/cooling rates.
 """
 
-import argparse
 import contextlib
 import datetime
 import tempfile
@@ -14,8 +13,6 @@ from collections.abc import Collection
 from collections.abc import Sequence
 from pathlib import Path
 
-import numpy as np
-import numpy.typing as npt
 import polars as pl
 from polars import selectors as cs
 
@@ -70,17 +67,6 @@ def get_varname_formatted(varname: str) -> str:
         **{f"vel_{ax}_mid": f"$v_{{{ax}}}$" for ax in ["x", "y", "z", "r", "rcyl"]},
         **{f"vel_{ax}_mid_on_c": f"$v_{{{ax}}}$" for ax in ["x", "y", "z", "r", "rcyl"]},
     }.get(varname, varname)
-
-
-def apply_filters(
-    xlist: Sequence[float] | npt.NDArray[np.floating],
-    ylist: Sequence[float] | npt.NDArray[np.floating],
-    args: argparse.Namespace,
-) -> tuple[t.Any, t.Any]:
-    if (filterfunc := at.get_filterfunc(args)) is not None:
-        ylist = filterfunc(ylist)
-
-    return xlist, ylist
 
 
 def get_units_string(variable: str) -> str:
