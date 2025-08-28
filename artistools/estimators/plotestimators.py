@@ -6,7 +6,6 @@ Examples are temperatures, populations, heating/cooling rates.
 """
 
 import argparse
-import contextlib
 import math
 import string
 import typing as t
@@ -49,15 +48,30 @@ def get_ylabel(variable: str) -> str:
 
 
 def plot_data(
-    xlist: npt.NDArray[t.Any],
-    ylist: npt.NDArray[t.Any],
+    seriesdata: pl.DataFrame | pl.Lazyframe,
     ax: mplax.Axes,
     label: str | None,
     args: argparse.Namespace,
     ymin: float | None = None,
     ymax: float | None = None,
+    startfromzero: bool = False,
     **plotkwargs: t.Any,
 ) -> None:
+    seriesdata = seriesdata.lazy().collect()
+
+    xlist = seriesdata["xvalue"].to_list()
+    ylist = seriesdata["yvalue"].to_list()
+    yvalue_min = seriesdata["yvalue_min"].to_list() if "yvalue_min" in seriesdata.collect_schema().names() else None
+    yvalue_max = seriesdata["yvalue_max"].to_list() if "yvalue_max" in seriesdata.collect_schema().names() else None
+    if startfromzero:
+        # make a line segment from 0 velocity
+        xlist = [0.0, *xlist]
+        ylist = [ylist[0], *ylist]
+        yvalue_min = [yvalue_min[0], *yvalue_min] if yvalue_min is not None else None
+        yvalue_max = [yvalue_max[0], *yvalue_max] if yvalue_max is not None else None
+
+    xlist, ylist = at.estimators.apply_filters(xlist, ylist, args)
+
     if args.xbins and args.ybins:
         if ymin is None:
             ymin = min(y for y in ylist if y > 0) if ax.get_yscale() == "log" else min(ylist)
@@ -78,7 +92,12 @@ def plot_data(
         )
         plt.colorbar(hist[3], ax=ax, location="right", use_gridspec=False, label=label)
     else:
-        plotkwargs = plotkwargs.copy()
+        if yvalue_min is not None or yvalue_max is not None:
+            if yvalue_min is None:
+                yvalue_min = ylist
+            if yvalue_max is None:
+                yvalue_max = ylist
+            ax.fill_between(xlist, yvalue_min, yvalue_max, alpha=0.2)
         ax.plot(xlist, ylist, label=label, **plotkwargs)
 
 
@@ -155,9 +174,6 @@ def plot_init_abundances(
             plotkwargs["linestyle"] = linestyle
         ax.plot(xlist_filtered, ylist_filtered, label=linelabel, **plotkwargs)
 
-        # if args.yscale == 'log':
-        #     ax.set_yscale('log')
-
 
 def plot_average_ionisation_excitation(
     ax: mplax.Axes,
@@ -194,10 +210,12 @@ def plot_average_ionisation_excitation(
         else:
             atomic_number = at.get_atomic_number(paramvalue.split(" ")[0])
             ion_stage = at.decode_roman_numeral(paramvalue.split(" ")[1])
-        ylist = []
+
+        color = get_elemcolor(atomic_number=atomic_number)
         if seriestype == "averageexcitation":
             print("  This will be slow! TODO: reimplement with polars.")
             assert ion_stage is not None
+            ylist = []
             for modelgridindex in mgilist:
                 exc_ev_times_tdelta_sum = 0.0
                 tdeltasum = 0.0
@@ -221,6 +239,11 @@ def plot_average_ionisation_excitation(
                     raise ValueError(msg)
                 ylist.append(exc_ev_times_tdelta_sum / tdeltasum if tdeltasum > 0 else math.nan)
 
+            xlist, ylist = at.estimators.apply_filters(xlist, ylist, args)
+            if startfromzero:
+                ylist = [ylist[0], *ylist]
+
+            ax.plot(xlist, ylist, label=paramvalue, color=color, **plotkwargs)
         elif seriestype == "averageionisation":
             elsymb = at.get_elsymbol(atomic_number)
             if f"nnelement_{elsymb}" not in estimators.collect_schema().names():
@@ -230,43 +253,36 @@ def plot_average_ionisation_excitation(
             ioncols = [col for col in estimators.collect_schema().names() if col.startswith(f"nnion_{elsymb}_")]
             ioncharges = [at.decode_roman_numeral(col.removeprefix(f"nnion_{elsymb}_")) - 1 for col in ioncols]
             ax.set_ylim(0.0, max(ioncharges) + 0.1)
-
+            expr_charge_density = pl.sum_horizontal([
+                ioncharge * pl.col(ioncol) for ioncol, ioncharge in zip(ioncols, ioncharges, strict=True)
+            ])
             series = (
                 estimators.lazy()
                 .filter(pl.col(f"nnelement_{elsymb}") > 0.0)
                 .group_by("plotpointid", maintain_order=True)
                 .agg(
-                    (
-                        (
-                            pl.sum_horizontal([
-                                ioncharge * pl.col(ioncol)
-                                for ioncol, ioncharge in zip(ioncols, ioncharges, strict=True)
-                            ])
-                            * pl.col("volume")
-                            * pl.col("twidth_days")
-                        ).sum()
+                    xvalue=pl.col("xvalue").mean(),
+                    yvalue=(
+                        (expr_charge_density * pl.col("volume") * pl.col("twidth_days")).sum()
                         / (pl.col(f"nnelement_{elsymb}") * pl.col("volume") * pl.col("twidth_days")).sum()
-                    ).alias(f"averageionisation_{elsymb}"),
-                    pl.col("xvalue").mean(),
+                    ),
+                    yvalue_min=(expr_charge_density / pl.col(f"nnelement_{elsymb}")).min(),
+                    yvalue_max=(expr_charge_density / pl.col(f"nnelement_{elsymb}")).max(),
                 )
                 .sort("xvalue")
-                .drop_nans(["xvalue", f"averageionisation_{elsymb}"])
+                .drop_nans(["xvalue", "yvalue"])
                 .collect()
             )
 
-            xlist = series["xvalue"].to_list()
-            if startfromzero:
-                xlist = [0.0, *xlist]
-
-            ylist = series[f"averageionisation_{elsymb}"].to_numpy()
-
-        color = get_elemcolor(atomic_number=atomic_number)
-
-        xlist, ylist = at.estimators.apply_filters(xlist, ylist, args)
-        if startfromzero:
-            ylist = [ylist[0], *ylist]
-
-        ax.plot(xlist, ylist, label=paramvalue, color=color, **plotkwargs)
+            plot_data(
+                seriesdata=series,
+                ax=ax,
+                args=args,
+                startfromzero=startfromzero,
+                label=paramvalue,
+                color=color,
+                **plotkwargs,
+            )
 
 
 def plot_levelpop(
@@ -462,35 +478,37 @@ def plot_multi_ion_series(
         else:
             raise AssertionError
 
-        expr_yvals = (expr_yvals * pl.col("volume") * pl.col("twidth_days")).sum() / (
+        expr_yvals_mean = (expr_yvals * pl.col("volume") * pl.col("twidth_days")).sum() / (
             expr_normfactor * pl.col("volume") * pl.col("twidth_days")
         ).sum()
 
         # convert volumetric number density to radial density
         if args.poptype == "radialdensity":
-            expr_yvals *= 4 * math.pi * pl.col("vel_r_mid").mean().pow(2)
+            expr_yvals_mean *= 4 * math.pi * pl.col("vel_r_mid").mean().pow(2)
         elif args.poptype == "cylradialdensity":
-            expr_yvals *= 2 * math.pi * pl.col("vel_rcyl_mid").mean()
+            expr_yvals_mean *= 2 * math.pi * pl.col("vel_rcyl_mid").mean()
+
+        if args.poptype == "cumulative":
+            expr_yvals_mean = expr_yvals_mean.cum_sum()
 
         series_lazy = (
             estimators.group_by("plotpointid", maintain_order=True)
-            .agg(yvalue=expr_yvals, xvalue=pl.col("xvalue").mean())
+            .agg(
+                yvalue=expr_yvals_mean,
+                xvalue=pl.col("xvalue").mean(),
+                yvalue_min=(expr_yvals / expr_normfactor).min(),
+                yvalue_max=(expr_yvals / expr_normfactor).max(),
+            )
             .sort("xvalue")
             .drop_nans(["xvalue", "yvalue"])
         )
+        if args.poptype in {"radialdensity", "cylradialdensity", "cumulative"}:
+            # don't try to plot a y range for these pop types
+            series_lazy = series_lazy.drop(["yvalue_min", "yvalue_max"])
         lazyframes.append(series_lazy)
 
-    for seriesindex, (iontuple, series) in enumerate(zip(iontuplelist, pl.collect_all(lazyframes), strict=True)):
+    for seriesindex, (iontuple, dfseries) in enumerate(zip(iontuplelist, pl.collect_all(lazyframes), strict=True)):
         atomic_number, ion_stage = iontuple
-        xlist = series.get_column("xvalue").to_list()
-        ylist = (
-            series.get_column("yvalue").cum_sum() if args.poptype == "cumulative" else series.get_column("yvalue")
-        ).to_list()
-        if startfromzero:
-            # make a line segment from 0 velocity
-            xlist = [0.0, *xlist]
-            ylist = [ylist[0], *ylist]
-
         plotlabel = str(
             ion_stage
             if hasattr(ion_stage, "lower") and ion_stage != "ALL"
@@ -522,19 +540,18 @@ def plot_multi_ion_series(
         linewidth_list = [1.0, 1.0, 1.0, 0.7, 0.7]
         linewidth = linewidth_list[styleindex % len(linewidth_list)]
 
-        xlist, ylist = at.estimators.apply_filters(xlist, ylist, args)
         if plotkwargs.get("linestyle", "solid") != "None":
             plotkwargs["dashes"] = dashes
 
         plot_data(
-            xlist,
-            ylist,
+            dfseries,
             linewidth=linewidth,
             label=plotlabel,
             ax=ax,
             args=args,
             ymin=ymin,
             ymax=ymax,
+            startfromzero=startfromzero,
             color=color,
             **plotkwargs,
         )
@@ -559,7 +576,7 @@ def plot_multi_ion_series(
     else:
         ax.set_ylabel(at.estimators.get_varname_formatted(seriestype))
 
-    if plotted_something and args.yscale == "log":
+    if plotted_something and ax.get_yscale() == "log":
         ymin, ymax = ax.get_ylim()
         ymin = max(ymin, ymax / 1e10)
         ax.set_ylim(bottom=ymin)
@@ -601,38 +618,29 @@ def plot_series(
         ax.set_ylabel(serieslabel + units_string)
         linelabel = None
 
+    estimators = estimators.with_columns(deltav_deltat=pl.col("volume") * pl.col("twidth_days"))
     series = (
         estimators.group_by("plotpointid", maintain_order=True)
         .agg(
-            yvalue=(colexpr * pl.col("volume") * pl.col("twidth_days")).sum()
-            / (pl.col("volume") * pl.col("twidth_days")).sum(),
             xvalue=pl.col("xvalue").mean(),
+            yvalue=(colexpr * pl.col("deltav_deltat")).sum() / pl.col("deltav_deltat").sum(),
+            yvalue_std=colexpr.std(),
+            yvalue_min=colexpr.min(),
+            yvalue_max=colexpr.max(),
         )
         .sort("xvalue")
         .drop_nans(["xvalue", "yvalue"])
         .collect()
     )
 
-    ylist = series["yvalue"].to_numpy()
-    xlist = series["xvalue"].to_numpy()
-
-    with contextlib.suppress(ValueError):
-        if min(ylist) == 0 or math.log10(max(ylist) / min(ylist)) > 2:
-            ax.set_yscale("log")
-
     if variablename in (dictcolors := {"Te": "red", "heating_gamma": "blue", "cooling_adiabatic": "blue"}):
         plotkwargs.setdefault("color", dictcolors[variablename])
     plotkwargs.setdefault("linewidth", 1.5)
 
-    if startfromzero:
-        # make a line segment from 0 velocity
-        xlist = [0.0, *xlist]
-        ylist = [ylist[0], *ylist]
-
-    xlist_filtered, ylist_filtered = at.estimators.apply_filters(xlist, ylist, args)
-
-    print(f"  plotting {variablename} ({len(xlist_filtered)} points)")
-    plot_data(xlist_filtered, ylist_filtered, ax=ax, label=linelabel, args=args, ymin=ymin, ymax=ymax, **plotkwargs)
+    print(f"  plotting {variablename} ({len(series)} points)")
+    plot_data(
+        series, ax=ax, label=linelabel, args=args, ymin=ymin, ymax=ymax, startfromzero=startfromzero, **plotkwargs
+    )
 
 
 def get_xlist(
@@ -664,13 +672,15 @@ def get_xlist(
     if args.ybins:
         assert args.xbins, "ybins require x bins"
 
+    xmin = estimators.select(pl.col("xvalue").min()).collect().item() if args.xmin is None else args.xmin
+    xmax = estimators.select(pl.col("xvalue").max()).collect().item() if args.xmax is None else args.xmax
+
+    if args.xbins is not None and args.xbins < 0:
+        xdeltamax = estimators.select(pl.col("xvalue").sort().diff().max()).collect().item()
+        args.xbins = int((xmax - xmin) / xdeltamax)
+        print(f"Setting xbins to {args.xbins} based on data range and largest x interval of {xdeltamax}")
+
     if args.xbins is not None and args.ybins is None:
-        xmin = estimators.select(pl.col("xvalue").min()).collect().item() if args.xmin is None else args.xmin
-        xmax = estimators.select(pl.col("xvalue").max()).collect().item() if args.xmax is None else args.xmax
-        if args.xbins < 0:
-            xdeltamax = estimators.select(pl.col("xvalue").sort().diff().max()).collect().item()
-            args.xbins = int((xmax - xmin) / xdeltamax)
-            print(f"Setting xbins to {args.xbins} based on data range and largest x interval of {xdeltamax}")
         xbinedges = np.linspace(xmin, xmax, args.xbins)
         xlower = xbinedges[:-1]
         xupper = xbinedges[1:]
@@ -790,7 +800,7 @@ def plot_subplot(
                 ax.set_ylabel(ylabel)
         else:  # it's a sequence of values
             seriestype, params = plotitem
-            showlegend = True
+            # showlegend = args.xbins is None or args.ybins is None
             if isinstance(params, str) and seriestype.startswith("_"):
                 continue
 
@@ -838,9 +848,9 @@ def plot_subplot(
                 seriestype, ionlist = plotitem
                 if seriestype.startswith("_"):
                     continue
-                if seriestype == "populations" and len(ionlist) > 2 and args.yscale == "log":
+                ax.set_yscale("log")
+                if seriestype == "populations" and len(ionlist) > 2 and ax.get_yscale() == "log":
                     legend_kwargs["ncol"] = 2
-                ax.set_yscale(args.yscale)
 
                 plot_multi_ion_series(
                     ax=ax,
@@ -1011,10 +1021,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument(
         "-ybins", type=int, default=None, help="Number of y bins between ymax and ymin (or -1 for automatic bin size)"
-    )
-
-    parser.add_argument(
-        "-yscale", default="log", choices=["log", "linear"], help="Set yscale to log or linear (default log)"
     )
 
     parser.add_argument("--hidexlabel", action="store_true", help="Hide the bottom horizontal axis label")
