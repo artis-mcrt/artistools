@@ -21,6 +21,7 @@ import numpy as np
 import numpy.typing as npt
 import polars as pl
 from matplotlib import ticker
+from polars import selectors as cs
 
 import artistools as at
 
@@ -63,20 +64,20 @@ def plot_data(
     if filterfunc is not None:
         seriesdata = seriesdata.with_columns(pl.col("yvalue").map_batches(filterfunc, return_dtype=pl.self_dtype()))
 
+    if startfromzero:
+        print(seriesdata.collect().head())
+        seriesdata = seriesdata.with_columns(
+            pl.col("xvalue").shift(n=1, fill_value=0.0),
+            pl.col("plotpointid").shift(n=1, fill_value=pl.col("plotpointid").min() - 1.0),
+            (~cs.by_name("xvalue", "plotpointid")).shift(n=1).fill_null(strategy="backward"),
+        )
+        print(seriesdata.collect().head())
+
     seriesdata = seriesdata.lazy().collect()
 
-    xlist = seriesdata["xvalue"].to_list()
-    ylist = seriesdata["yvalue"].to_list()
-    yvalue_min = seriesdata["yvalue_min"].to_list() if "yvalue_min" in seriesdata.collect_schema().names() else None
-    yvalue_max = seriesdata["yvalue_max"].to_list() if "yvalue_max" in seriesdata.collect_schema().names() else None
-    if startfromzero:
-        # make a line segment from 0 velocity
-        xlist = [0.0, *xlist]
-        ylist = [ylist[0], *ylist]
-        yvalue_min = [yvalue_min[0], *yvalue_min] if yvalue_min is not None else None
-        yvalue_max = [yvalue_max[0], *yvalue_max] if yvalue_max is not None else None
-
     if args.xbins and args.ybins:
+        xlist = seriesdata["xvalue"].to_numpy()
+        ylist = seriesdata["yvalue"].to_numpy()
         if ymin is None:
             ymin = min(y for y in ylist if y > 0) if ax.get_yscale() == "log" else min(ylist)
         assert ymin is not None
@@ -96,14 +97,23 @@ def plot_data(
         )
         plt.colorbar(hist[3], ax=ax, location="right", use_gridspec=False, label=label)
     else:
-        if (yvalue_min is not None or yvalue_max is not None) and not args.markersonly:
-            if yvalue_min is None:
-                yvalue_min = ylist
-            if yvalue_max is None:
-                yvalue_max = ylist
-            if not np.allclose(yvalue_min, yvalue_max):
-                ax.fill_between(xlist, yvalue_min, yvalue_max, alpha=0.2, color=plotkwargs.get("color"))
-        ax.plot(xlist, ylist, label=label, **plotkwargs)
+        if (
+            "yvalue_min" in seriesdata.collect_schema().names() or "yvalue_max" in seriesdata.collect_schema().names()
+        ) and not args.markersonly:
+            if "yvalue_min" not in seriesdata.collect_schema().names():
+                seriesdata = seriesdata.with_columns(yvalue_min=pl.col("yvalue"))
+            if "yvalue_max" not in seriesdata.collect_schema().names():
+                seriesdata = seriesdata.with_columns(yvalue_max=pl.col("yvalue"))
+            if not np.allclose(seriesdata["yvalue_min"], seriesdata["yvalue_max"], atol=min(seriesdata["yvalue"])):
+                ax.fill_between(
+                    seriesdata["xvalue"],
+                    seriesdata["yvalue_min"],
+                    seriesdata["yvalue_max"],
+                    alpha=0.2,
+                    color=plotkwargs.get("color"),
+                    linewidth=0,
+                )
+        ax.plot(seriesdata["xvalue"], seriesdata["yvalue"], label=label, **plotkwargs)
 
 
 def plot_init_abundances(
