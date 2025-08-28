@@ -57,6 +57,12 @@ def plot_data(
     startfromzero: bool = False,
     **plotkwargs: t.Any,
 ) -> None:
+    seriesdata = seriesdata.lazy()
+
+    filterfunc = at.get_filterfunc(args)
+    if filterfunc is not None:
+        seriesdata = seriesdata.with_columns(pl.col("yvalue").map_batches(filterfunc, return_dtype=pl.self_dtype()))
+
     seriesdata = seriesdata.lazy().collect()
 
     xlist = seriesdata["xvalue"].to_list()
@@ -69,8 +75,6 @@ def plot_data(
         ylist = [ylist[0], *ylist]
         yvalue_min = [yvalue_min[0], *yvalue_min] if yvalue_min is not None else None
         yvalue_max = [yvalue_max[0], *yvalue_max] if yvalue_max is not None else None
-
-    xlist, ylist = at.estimators.apply_filters(xlist, ylist, args)
 
     if args.xbins and args.ybins:
         if ymin is None:
@@ -92,12 +96,13 @@ def plot_data(
         )
         plt.colorbar(hist[3], ax=ax, location="right", use_gridspec=False, label=label)
     else:
-        if yvalue_min is not None or yvalue_max is not None:
+        if (yvalue_min is not None or yvalue_max is not None) and not args.markersonly:
             if yvalue_min is None:
                 yvalue_min = ylist
             if yvalue_max is None:
                 yvalue_max = ylist
-            ax.fill_between(xlist, yvalue_min, yvalue_max, alpha=0.2)
+            if not np.allclose(yvalue_min, yvalue_max):
+                ax.fill_between(xlist, yvalue_min, yvalue_max, alpha=0.2, color=plotkwargs.get("color"))
         ax.plot(xlist, ylist, label=label, **plotkwargs)
 
 
@@ -131,7 +136,6 @@ def plot_init_abundances(
         elsymbol = splitvariablename[0].strip(string.digits)
         atomic_number = at.get_atomic_number(elsymbol)
 
-        ylist = []
         linestyle = "-"
         if speciesstr.lower() in {"ni_56", "ni56", "56ni"}:
             yvalue = pl.col(f"{valuetype}Ni56")
@@ -161,18 +165,10 @@ def plot_init_abundances(
             .collect()
         )
 
-        ylist = series["yvalue"].to_list()
-        xlist = series["xvalue"].to_list()
-
-        if startfromzero:
-            # make a line segment from 0 velocity
-            xlist = [0.0, *xlist]
-            ylist = [ylist[0], *ylist]
-
-        xlist_filtered, ylist_filtered = at.estimators.apply_filters(xlist, ylist, args)
         if "linestyle" not in plotkwargs:
             plotkwargs["linestyle"] = linestyle
-        ax.plot(xlist_filtered, ylist_filtered, label=linelabel, **plotkwargs)
+
+        plot_data(series, ax=ax, args=args, startfromzero=startfromzero, label=linelabel, **plotkwargs)
 
 
 def plot_average_ionisation_excitation(
@@ -239,7 +235,6 @@ def plot_average_ionisation_excitation(
                     raise ValueError(msg)
                 ylist.append(exc_ev_times_tdelta_sum / tdeltasum if tdeltasum > 0 else math.nan)
 
-            xlist, ylist = at.estimators.apply_filters(xlist, ylist, args)
             if startfromzero:
                 ylist = [ylist[0], *ylist]
 
@@ -263,8 +258,8 @@ def plot_average_ionisation_excitation(
                 .agg(
                     xvalue=pl.col("xvalue").mean(),
                     yvalue=(
-                        (expr_charge_density * pl.col("volume") * pl.col("twidth_days")).sum()
-                        / (pl.col(f"nnelement_{elsymb}") * pl.col("volume") * pl.col("twidth_days")).sum()
+                        (expr_charge_density * pl.col("deltavol_deltat")).sum()
+                        / (pl.col(f"nnelement_{elsymb}") * pl.col("deltavol_deltat")).sum()
                     ),
                     yvalue_min=(expr_charge_density / pl.col(f"nnelement_{elsymb}")).min(),
                     yvalue_max=(expr_charge_density / pl.col(f"nnelement_{elsymb}")).max(),
@@ -366,9 +361,14 @@ def plot_levelpop(
             xlist = np.array([0.0, *xlist])
             ylist = [ylist[0], *ylist]
 
-        xlist, ylist = at.estimators.apply_filters(xlist, np.array(ylist), args)
-
-        ax.plot(xlist, ylist, label=label, **plotkwargs)
+        plot_data(
+            pl.DataFrame({"xvalue": xlist, "yvalue": ylist}),
+            ax=ax,
+            args=args,
+            startfromzero=startfromzero,
+            label=label,
+            **plotkwargs,
+        )
 
 
 def get_iontuple(ionstr: str) -> tuple[int, str | int]:
@@ -478,8 +478,8 @@ def plot_multi_ion_series(
         else:
             raise AssertionError
 
-        expr_yvals_mean = (expr_yvals * pl.col("volume") * pl.col("twidth_days")).sum() / (
-            expr_normfactor * pl.col("volume") * pl.col("twidth_days")
+        expr_yvals_mean = (expr_yvals * pl.col("deltavol_deltat")).sum() / (
+            expr_normfactor * pl.col("deltavol_deltat")
         ).sum()
 
         # convert volumetric number density to radial density
@@ -494,8 +494,8 @@ def plot_multi_ion_series(
         series_lazy = (
             estimators.group_by("plotpointid", maintain_order=True)
             .agg(
-                yvalue=expr_yvals_mean,
                 xvalue=pl.col("xvalue").mean(),
+                yvalue=expr_yvals_mean,
                 yvalue_min=(expr_yvals / expr_normfactor).min(),
                 yvalue_max=(expr_yvals / expr_normfactor).max(),
             )
@@ -618,13 +618,11 @@ def plot_series(
         ax.set_ylabel(serieslabel + units_string)
         linelabel = None
 
-    estimators = estimators.with_columns(deltav_deltat=pl.col("volume") * pl.col("twidth_days"))
     series = (
         estimators.group_by("plotpointid", maintain_order=True)
         .agg(
             xvalue=pl.col("xvalue").mean(),
-            yvalue=(colexpr * pl.col("deltav_deltat")).sum() / pl.col("deltav_deltat").sum(),
-            yvalue_std=colexpr.std(),
+            yvalue=(colexpr * pl.col("deltavol_deltat")).sum() / pl.col("deltavol_deltat").sum(),
             yvalue_min=colexpr.min(),
             yvalue_max=colexpr.max(),
         )
@@ -699,14 +697,6 @@ def get_xlist(
             .drop("xbinindex")
             .with_columns(plotpointid=pl.col("xvalue"))
         )
-    elif (
-        not args.markersonly and estimators.select(pl.n_unique("xvalue") < pl.n_unique("plotpointid")).collect().item()
-    ):
-        if args.xbins is None or args.ybins is None:
-            print(
-                "Enabling --markersonly because there are multiple plot points per x value. Try using -xbins [NUMBER] to keep a line plot"
-            )
-        args.markersonly = True
 
     # single valued line plot
     if not args.markersonly:
@@ -800,7 +790,7 @@ def plot_subplot(
                 ax.set_ylabel(ylabel)
         else:  # it's a sequence of values
             seriestype, params = plotitem
-            # showlegend = args.xbins is None or args.ybins is None
+            showlegend = args.xbins is None or args.ybins is None
             if isinstance(params, str) and seriestype.startswith("_"):
                 continue
 
@@ -1176,6 +1166,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     estimators, modelmeta = at.estimators.join_cell_modeldata(estimators=estimators, modelpath=modelpath, verbose=False)
     estimators = estimators.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"])
     tswithdata = estimators.select("timestep").unique().collect().to_series()
+    estimators = estimators.with_columns(deltavol_deltat=pl.col("volume") * pl.col("twidth_days"))
 
     assoc_cells, _ = at.get_grid_mapping(modelpath)
     if (
