@@ -5,7 +5,6 @@ __all__ = ["plot"]
 from artistools.estimators import estimators_classic as estimators_classic
 from artistools.estimators import plot3destimators_classic as plot3destimators_classic
 from artistools.estimators import plotestimators as plotestimators
-from artistools.estimators.estimators import apply_filters as apply_filters
 from artistools.estimators.estimators import get_averageexcitation as get_averageexcitation
 from artistools.estimators.estimators import get_rankbatch_parquetfile as get_rankbatch_parquetfile
 from artistools.estimators.estimators import get_units_string as get_units_string

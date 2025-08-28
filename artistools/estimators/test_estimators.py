@@ -184,7 +184,8 @@ def test_estimator_snapshot_classic_3d(mockplot: t.Any) -> None:
         argsraw=[],
         modelpath=modelpath_classic_3d,
         plotlist=plotlist,
-        outputfile=outputpath / "test_estimator_snapshot_classic_3d",
+        markersonly=True,
+        outputfile=outputpath / "test_estimator_snapshot_classic_3d.pdf",
         timedays=4,
     )
 
@@ -279,7 +280,7 @@ def test_estimator_snapshot_classic_3d_x_axis(mockplot: t.Any) -> None:
         argsraw=[],
         modelpath=modelpath_classic_3d,
         plotlist=plotlist,
-        outputfile=outputpath / "test_estimator_snapshot_classic_3d_x_axis",
+        outputfile=outputpath / "test_estimator_snapshot_classic_3d_x_axis.pdf",
         timedays=4,
         readonlymgi="alongaxis",
         axis="+x",
