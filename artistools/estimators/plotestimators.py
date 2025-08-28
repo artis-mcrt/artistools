@@ -21,7 +21,6 @@ import numpy as np
 import numpy.typing as npt
 import polars as pl
 from matplotlib import ticker
-from polars import selectors as cs
 
 import artistools as at
 
@@ -65,11 +64,24 @@ def plot_data(
         seriesdata = seriesdata.with_columns(pl.col("yvalue").map_batches(filterfunc, return_dtype=pl.self_dtype()))
 
     if startfromzero:
-        seriesdata = seriesdata.with_columns(
-            pl.col("xvalue").shift(n=1, fill_value=0.0),
-            pl.col("plotpointid").shift(n=1, fill_value=pl.col("plotpointid").min() - 1.0),
-            (~cs.by_name("xvalue", "plotpointid")).shift(n=1).fill_null(strategy="backward"),
-        )
+        if "plotpointid" not in seriesdata.collect_schema().names():
+            seriesdata = seriesdata.with_columns(plotpointid=pl.col("xvalue"))
+
+        seriesdata = pl.concat([
+            pl.LazyFrame(
+                {
+                    "plotpointid": [seriesdata.select(pl.col("plotpointid").min() - 1.0).collect().item()],
+                    "xvalue": [0.0],
+                    **{
+                        col: [seriesdata.select(pl.col(col).head(1)).collect().item()]
+                        for col in seriesdata.columns
+                        if col not in {"xvalue", "plotpointid"}
+                    },
+                },
+                schema=seriesdata.collect_schema(),
+            ),
+            seriesdata,
+        ])
 
     seriesdata = seriesdata.lazy().collect()
 
@@ -169,7 +181,6 @@ def plot_init_abundances(
             estimators.group_by("plotpointid", maintain_order=True)
             .agg(
                 xvalue=pl.col("xvalue").mean(),
-                test=expr_yvalue.implode(),
                 yvalue=(expr_yvalue * pl.col("mass_g")).sum() / (pl.col("mass_g")).sum(),
                 yvalue_min=expr_yvalue.min(),
                 yvalue_max=expr_yvalue.max(),
