@@ -185,7 +185,6 @@ def test_estimator_snapshot_classic_3d(mockplot: t.Any) -> None:
         modelpath=modelpath_classic_3d,
         plotlist=plotlist,
         outputfile=outputpath / "test_estimator_snapshot_classic_3d",
-        xbins=-1,
         timedays=4,
     )
 
