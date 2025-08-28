@@ -184,7 +184,7 @@ def test_estimator_snapshot_classic_3d(mockplot: t.Any) -> None:
         argsraw=[],
         modelpath=modelpath_classic_3d,
         plotlist=plotlist,
-        markersonly=False,
+        markersonly=True,
         outputfile=outputpath / "test_estimator_snapshot_classic_3d.pdf",
         timedays=4,
     )
