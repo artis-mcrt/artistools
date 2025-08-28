@@ -65,13 +65,11 @@ def plot_data(
         seriesdata = seriesdata.with_columns(pl.col("yvalue").map_batches(filterfunc, return_dtype=pl.self_dtype()))
 
     if startfromzero:
-        print(seriesdata.collect().head())
         seriesdata = seriesdata.with_columns(
             pl.col("xvalue").shift(n=1, fill_value=0.0),
             pl.col("plotpointid").shift(n=1, fill_value=pl.col("plotpointid").min() - 1.0),
             (~cs.by_name("xvalue", "plotpointid")).shift(n=1).fill_null(strategy="backward"),
         )
-        print(seriesdata.collect().head())
 
     seriesdata = seriesdata.lazy().collect()
 
