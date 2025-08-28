@@ -138,28 +138,33 @@ def plot_init_abundances(
 
         linestyle = "-"
         if speciesstr.lower() in {"ni_56", "ni56", "56ni"}:
-            yvalue = pl.col(f"{valuetype}Ni56")
+            expr_yvalue = pl.col(f"{valuetype}Ni56")
             linelabel = "$^{56}$Ni"
             linestyle = "--"
         elif speciesstr.lower() in {"ni_stb", "ni_stable"}:
-            yvalue = pl.col(f"{valuetype}{elsymbol}") - pl.col(f"{valuetype}Ni56")
+            expr_yvalue = pl.col(f"{valuetype}{elsymbol}") - pl.col(f"{valuetype}Ni56")
             linelabel = "Stable Ni"
         elif speciesstr.lower() in {"co_56", "co56", "56co"}:
-            yvalue = pl.col(f"{valuetype}Co56")
+            expr_yvalue = pl.col(f"{valuetype}Co56")
             linelabel = "$^{56}$Co"
         elif speciesstr.lower() in {"fegrp", "ffegroup"}:
-            yvalue = pl.col(f"{valuetype}Fegroup")
+            expr_yvalue = pl.col(f"{valuetype}Fegroup")
             linelabel = "Fe group"
         else:
             linelabel = speciesstr
-            yvalue = pl.col(f"{valuetype}{elsymbol}")
+            expr_yvalue = pl.col(f"{valuetype}{elsymbol}")
 
         plotkwargs["color"] = get_elemcolor(atomic_number=atomic_number)
         plotkwargs.setdefault("linewidth", 1.5)
-
         series = (
             estimators.group_by("plotpointid", maintain_order=True)
-            .agg(yvalue=(yvalue * pl.col("mass_g")).sum() / (pl.col("mass_g")).sum(), xvalue=pl.col("xvalue").mean())
+            .agg(
+                xvalue=pl.col("xvalue").mean(),
+                test=expr_yvalue.implode(),
+                yvalue=(expr_yvalue * pl.col("mass_g")).sum() / (pl.col("mass_g")).sum(),
+                yvalue_min=expr_yvalue.min(),
+                yvalue_max=expr_yvalue.max(),
+            )
             .sort("xvalue")
             .drop_nans(["xvalue", "yvalue"])
             .collect()
@@ -1162,7 +1167,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         estimators = at.estimators.scan_estimators(
             modelpath=modelpath, modelgridindex=args.modelgridindex, timestep=tuple(timesteps_included)
         )
-
     estimators, modelmeta = at.estimators.join_cell_modeldata(estimators=estimators, modelpath=modelpath, verbose=False)
     estimators = estimators.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"])
     tswithdata = estimators.select("timestep").unique().collect().to_series()
