@@ -579,7 +579,10 @@ def get_xlist(
     xmin = estimators.select(pl.col("xvalue").min()).collect().item() if args.xmin is None else args.xmin
     xmax = estimators.select(pl.col("xvalue").max()).collect().item() if args.xmax is None else args.xmax
 
-    if args.xbins is None and estimators.select(pl.n_unique("xvalue") < pl.len()).collect().item():
+    if (
+        args.xbins is None
+        and estimators.select(pl.n_unique("xvalue") * pl.n_unique("timestep") < pl.len()).collect().item()
+    ):
         print("There are multiple plot points per x value. Using automatic bins (use -xbins N to change this)")
         args.xbins = -1
         args.colorbyion = True
@@ -616,7 +619,7 @@ def get_xlist(
         estimators = estimators.filter(pl.col("xvalue") <= args.xmax)
 
     estimators = estimators.sort("xvalue")
-    xvalues = estimators.select("xvalue").collect().get_column("xvalue")
+    xvalues = estimators.select("xvalue").unique().collect().get_column("xvalue")
     assert len(xvalues) > 0, "No data found for x-axis variable"
 
     return (
