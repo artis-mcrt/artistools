@@ -178,10 +178,11 @@ def plot_init_abundances(
         plotkwargs["color"] = get_elemcolor(atomic_number=atomic_number)
         plotkwargs.setdefault("linewidth", 1.5)
         series = (
-            estimators.group_by("plotpointid", maintain_order=True)
+            estimators.with_columns(celltsweight=pl.col("rho") * pl.col("deltavol_deltat"))
+            .group_by("plotpointid", maintain_order=True)
             .agg(
                 xvalue=pl.col("xvalue").mean(),
-                yvalue=(expr_yvalue * pl.col("mass_g")).sum() / (pl.col("mass_g")).sum(),
+                yvalue=(expr_yvalue * pl.col("celltsweight")).sum() / (pl.col("celltsweight")).sum(),
                 yvalue_min=expr_yvalue.min(),
                 yvalue_max=expr_yvalue.max(),
             )
@@ -275,21 +276,18 @@ def plot_average_ionisation_excitation(
             ioncols = [col for col in estimators.collect_schema().names() if col.startswith(f"nnion_{elsymb}_")]
             ioncharges = [at.decode_roman_numeral(col.removeprefix(f"nnion_{elsymb}_")) - 1 for col in ioncols]
             ax.set_ylim(0.0, max(ioncharges) + 0.1)
-            expr_charge_density = pl.sum_horizontal([
+            expr_charge_per_nuc = pl.sum_horizontal([
                 ioncharge * pl.col(ioncol) for ioncol, ioncharge in zip(ioncols, ioncharges, strict=True)
-            ])
+            ]) / pl.col(f"nnelement_{elsymb}")
             series = (
-                estimators.lazy()
+                estimators.with_columns(celltsweight=pl.col(f"nnelement_{elsymb}") * pl.col("deltavol_deltat"))
                 .filter(pl.col(f"nnelement_{elsymb}") > 0.0)
                 .group_by("plotpointid", maintain_order=True)
                 .agg(
                     xvalue=pl.col("xvalue").mean(),
-                    yvalue=(
-                        (expr_charge_density * pl.col("deltavol_deltat")).sum()
-                        / (pl.col(f"nnelement_{elsymb}") * pl.col("deltavol_deltat")).sum()
-                    ),
-                    yvalue_min=(expr_charge_density / pl.col(f"nnelement_{elsymb}")).min(),
-                    yvalue_max=(expr_charge_density / pl.col(f"nnelement_{elsymb}")).max(),
+                    yvalue=((expr_charge_per_nuc * pl.col("celltsweight")).sum() / pl.col("celltsweight").sum()),
+                    yvalue_min=(expr_charge_per_nuc).min(),
+                    yvalue_max=(expr_charge_per_nuc).max(),
                 )
                 .sort("xvalue")
                 .drop_nans(["xvalue", "yvalue"])
@@ -514,7 +512,8 @@ def plot_multi_ion_series(
             expr_yvals_mean = expr_yvals_mean.cum_sum()
 
         series_lazy = (
-            estimators.group_by("plotpointid", maintain_order=True)
+            estimators.with_columns(celltsweight=pl.col("deltavol_deltat"))
+            .group_by("plotpointid", maintain_order=True)
             .agg(
                 xvalue=pl.col("xvalue").mean(),
                 yvalue=expr_yvals_mean,
@@ -719,6 +718,11 @@ def get_xlist(
             .drop("xbinindex")
             .with_columns(plotpointid=pl.col("xvalue"))
         )
+    elif (
+        not args.markersonly and estimators.select(pl.n_unique("xvalue") < pl.n_unique("plotpointid")).collect().item()
+    ):
+        if args.xbins is None or args.ybins is None:
+            print("There are multiple plot points per x value. Try using -xbins [NUMBER] to keep a line plot")
 
     # single valued line plot
     if not args.markersonly:
