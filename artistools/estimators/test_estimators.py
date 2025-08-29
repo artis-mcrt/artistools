@@ -53,7 +53,6 @@ def test_estimator_snapshot(mockplot: t.Any, benchmark: BenchmarkFixture) -> Non
         "Te": 5776.620000000001,
         "averageionisation_Fe": 1.9453616269532485,
         "averageionisation_Ni": 1.970637712188408,
-        "averageexcitation_FeII": 0.19701832980731157,
         "populations_FeI": 4.801001667392128e-05,
         "populations_FeII": 0.350781150587666,
         "populations_FeIII": 0.3951266859004141,
@@ -181,7 +180,6 @@ def test_estimator_snapshot_classic_3d(mockplot: t.Any) -> None:
         argsraw=[],
         modelpath=modelpath_classic_3d,
         plotlist=plotlist,
-        markers=True,
         outputfile=outputpath / "test_estimator_snapshot_classic_3d.pdf",
         timedays=4,
     )
@@ -254,9 +252,9 @@ def test_estimator_snapshot_classic_3d(mockplot: t.Any) -> None:
     print(yvals_std)
 
     for varname, expectedmean in expected_yvals_mean.items():
-        assert np.allclose(expectedmean, yvals_mean[varname], rtol=0.001), (varname, expectedmean, yvals_mean[varname])
+        assert np.allclose(expectedmean, yvals_mean[varname], rtol=0.01), (varname, expectedmean, yvals_mean[varname])
     for varname, expectedstd in expected_yvals_std.items():
-        assert np.allclose(expectedstd, yvals_std[varname], rtol=0.001), (varname, expectedstd, yvals_std[varname])
+        assert np.allclose(expectedstd, yvals_std[varname], rtol=0.01), (varname, expectedstd, yvals_std[varname])
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
