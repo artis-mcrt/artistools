@@ -179,6 +179,7 @@ def test_estimator_snapshot_classic_3d(mockplot: t.Any) -> None:
     at.estimators.plot(
         argsraw=[],
         modelpath=modelpath_classic_3d,
+        markers=True,
         plotlist=plotlist,
         outputfile=outputpath / "test_estimator_snapshot_classic_3d.pdf",
         timedays=4,
@@ -237,7 +238,7 @@ def test_estimator_snapshot_classic_3d(mockplot: t.Any) -> None:
         "cooling_ff": 7.287984018219307e-09,
     }
 
-    assert len(expected_yvals_mean) == len(mockplot.call_args_list)
+    assert len(expected_yvals_mean) * 2 == len(mockplot.call_args_list)
 
     yvals_mean = {
         varname: float(np.array(callargs[0][2]).mean())
