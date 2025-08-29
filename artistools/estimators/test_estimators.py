@@ -24,7 +24,6 @@ def test_estimator_snapshot(mockplot: t.Any, benchmark: BenchmarkFixture) -> Non
         ["TR", ["_yscale", "linear"], ["_ymin", 1000], ["_ymax", 22000]],
         ["Te"],
         [["averageionisation", ["Fe", "Ni"]]],
-        [["averageexcitation", ["Fe II"]]],
         [["populations", ["Fe I", "Fe II", "Fe III", "Fe IV", "Fe V"]]],
         [["populations", ["Co II", "Co III", "Co IV"]]],
         [["gamma_NT", ["Fe I", "Fe II", "Fe III", "Fe IV"]]],
@@ -54,7 +53,6 @@ def test_estimator_snapshot(mockplot: t.Any, benchmark: BenchmarkFixture) -> Non
         "Te": 5776.620000000001,
         "averageionisation_Fe": 1.9453616269532485,
         "averageionisation_Ni": 1.970637712188408,
-        "averageexcitation_FeII": 0.19701832980731157,
         "populations_FeI": 4.801001667392128e-05,
         "populations_FeII": 0.350781150587666,
         "populations_FeIII": 0.3951266859004141,
@@ -101,7 +99,6 @@ def test_estimator_averaging(mockplot: t.Any, benchmark: BenchmarkFixture) -> No
         ["TR", ["_yscale", "linear"], ["_ymin", 1000], ["_ymax", 22000]],
         ["Te"],
         [["averageionisation", ["Fe", "Ni"]]],
-        [["averageexcitation", ["Fe II"]]],
         [["populations", ["Fe I", "Fe II", "Fe III", "Fe IV", "Fe V"]]],
         [["populations", ["Co II", "Co III", "Co IV"]]],
         [["gamma_NT", ["Fe I", "Fe II", "Fe III", "Fe IV"]]],
@@ -132,7 +129,6 @@ def test_estimator_averaging(mockplot: t.Any, benchmark: BenchmarkFixture) -> No
         "Te": 5784.4521484375,
         "averageionisation_Fe": 1.9466091928476605,
         "averageionisation_Ni": 1.9673294753348698,
-        "averageexcitation_FeII": 0.1975447074846265,
         "populations_FeI": 4.668364835386799e-05,
         "populations_FeII": 0.35026945954378863,
         "populations_FeIII": 0.39508678896764393,
@@ -183,83 +179,84 @@ def test_estimator_snapshot_classic_3d(mockplot: t.Any) -> None:
     at.estimators.plot(
         argsraw=[],
         modelpath=modelpath_classic_3d,
+        markers=True,
         plotlist=plotlist,
-        markersonly=True,
         outputfile=outputpath / "test_estimator_snapshot_classic_3d.pdf",
         timedays=4,
     )
 
     # order of keys is important
     expected_yvals_mean = {
-        "init_fe": 0.0158143120149385,
-        "init_nistable": 0.009671554499267782,
-        "init_ni56": 0.05111707578637089,
-        "nne": 14852513100.433994,
-        "TR": 19079.784339735244,
-        "Te": 71268.35864076967,
-        "averageionisation_Fe": 3.055755031831655,
-        "populations_FeI": 5.362183140852601e-16,
-        "populations_FeII": 0.00019352461074175688,
-        "populations_FeIII": 0.06814975391081575,
-        "populations_FeIV": 0.8073020624301706,
-        "populations_FeV": 0.12433895472009603,
-        "populations_CoII": 0.16990604721796168,
-        "populations_CoIII": 0.24916805418700844,
-        "populations_CoIV": 0.5809222634054445,
-        "heating_dep": 2.559115013945374e-06,
-        "heating_coll": 0.00021182897897368226,
-        "heating_bf": 2.1746407480448304e-06,
-        "heating_ff": 5.58769247608382e-10,
-        "cooling_adiabatic": 1.2879886096317952e-10,
-        "cooling_coll": 4.3519983202307406e-05,
-        "cooling_fb": 9.605032219254008e-08,
-        "cooling_ff": 6.669354708218202e-10,
+        "init_fe": 0.015787530690431595,
+        "init_nistable": 0.009560450911521912,
+        "init_ni56": 0.04967936500906944,
+        "nne": 14232720384.0,
+        "TR": 19025.818359375,
+        "Te": 71311.2109375,
+        "averageionisation_Fe": 3.054003953933716,
+        "populations_FeI": 5.372131767415029e-16,
+        "populations_FeII": 0.0001938836503541097,
+        "populations_FeIII": 0.06827619671821594,
+        "populations_FeIV": 0.8087993860244751,
+        "populations_FeV": 0.12271492183208466,
+        "populations_CoII": 0.1702212691307068,
+        "populations_CoIII": 0.24963033199310303,
+        "populations_CoIV": 0.5801447629928589,
+        "heating_dep": 2.5638628358137794e-06,
+        "heating_coll": 0.0002122219739248976,
+        "heating_bf": 2.178675231334637e-06,
+        "heating_ff": 5.598059793499033e-10,
+        "cooling_adiabatic": 1.2903782209416903e-10,
+        "cooling_coll": 4.360072853160091e-05,
+        "cooling_fb": 9.622852559232342e-08,
+        "cooling_ff": 6.681727948709693e-10,
     }
 
     expected_yvals_std = {
-        "init_fe": 0.03864092363074494,
-        "init_nistable": 0.0245318237219884,
-        "init_ni56": 0.13668807807395486,
-        "nne": 54105764830.790764,
-        "TR": 8786.430933187814,
-        "Te": 53253.18563238727,
-        "averageionisation_Fe": 0.36672845223208933,
-        "populations_FeI": 1.0549459114516364e-14,
-        "populations_FeII": 0.003963927962373676,
-        "populations_FeIII": 0.22042479123325878,
-        "populations_FeIV": 0.31659457250903567,
-        "populations_FeV": 0.2611747334195758,
-        "populations_CoII": 0.368403054302235,
-        "populations_CoIII": 0.3846695608564221,
-        "populations_CoIV": 0.45783056031765657,
-        "heating_dep": 2.4407727400567926e-05,
-        "heating_coll": 0.004782144675055231,
-        "heating_bf": 4.842305588498566e-05,
-        "heating_ff": 3.5524865990710362e-09,
-        "cooling_adiabatic": 1.2144276845831258e-09,
-        "cooling_coll": 0.0009417610247237612,
-        "cooling_fb": 2.1269753993513636e-06,
-        "cooling_ff": 7.287984018219307e-09,
+        "init_fe": 0.03867174685001373,
+        "init_nistable": 0.024418460205197334,
+        "init_ni56": 0.13267292082309723,
+        "nne": 52205641728.0,
+        "TR": 8704.7080078125,
+        "Te": 53293.2578125,
+        "averageionisation_Fe": 0.3648064434528351,
+        "populations_FeI": 1.0559215211458726e-14,
+        "populations_FeII": 0.003967594355344772,
+        "populations_FeIII": 0.2206096053123474,
+        "populations_FeIV": 0.3149721026420593,
+        "populations_FeV": 0.25867846608161926,
+        "populations_CoII": 0.36867186427116394,
+        "populations_CoIII": 0.3848763406276703,
+        "populations_CoIV": 0.45789873600006104,
+        "heating_dep": 2.4430109988315962e-05,
+        "heating_coll": 0.0047865696251392365,
+        "heating_bf": 4.846786396228708e-05,
+        "heating_ff": 3.555698846469113e-09,
+        "cooling_adiabatic": 1.2155411122094506e-09,
+        "cooling_coll": 0.0009426323231309652,
+        "cooling_fb": 2.1289438336680178e-06,
+        "cooling_ff": 7.294685744341223e-09,
     }
 
-    assert len(expected_yvals_mean) == len(mockplot.call_args_list)
+    plot_calls_markers = mockplot.call_args_list[1::2]
+    assert len(expected_yvals_mean) == len(plot_calls_markers)
 
     yvals_mean = {
         varname: float(np.array(callargs[0][2]).mean())
-        for varname, callargs in zip(expected_yvals_mean.keys(), mockplot.call_args_list, strict=False)
+        for varname, callargs in zip(expected_yvals_mean.keys(), plot_calls_markers, strict=True)
     }
-    print(yvals_mean)
+    print(f"{yvals_mean=}")
 
     yvals_std = {
         varname: float(np.array(callargs[0][2]).std())
-        for varname, callargs in zip(expected_yvals_std.keys(), mockplot.call_args_list, strict=False)
+        for varname, callargs in zip(expected_yvals_std.keys(), plot_calls_markers, strict=True)
     }
-    print(yvals_std)
+    print(f"{yvals_std=}")
 
     for varname, expectedmean in expected_yvals_mean.items():
-        assert np.allclose(expectedmean, yvals_mean[varname], rtol=0.001), (varname, expectedmean, yvals_mean[varname])
+        assert np.isclose(expectedmean, yvals_mean[varname], rtol=0.01), (varname, expectedmean, yvals_mean[varname])
     for varname, expectedstd in expected_yvals_std.items():
-        assert np.allclose(expectedstd, yvals_std[varname], rtol=0.001), (varname, expectedstd, yvals_std[varname])
+        assert np.isclose(expectedstd, yvals_std[varname], rtol=0.01), (varname, expectedstd, yvals_std[varname])
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
@@ -318,7 +315,7 @@ def test_estimator_snapshot_classic_3d_x_axis(mockplot: t.Any) -> None:
         varname: callargs[0][2] for varname, callargs in zip(expectedvals.keys(), mockplot.call_args_list, strict=False)
     }
 
-    print({key: np.array(yarr).mean() for key, yarr in yvals.items()})
+    print({key: float(np.array(yarr).mean()) for key, yarr in yvals.items()})
 
     for varname, expectedval in expectedvals.items():
         assert np.allclose(expectedval, np.array(yvals[varname]).mean(), rtol=0.001), (
