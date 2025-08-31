@@ -30,6 +30,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("-xmin", type=float, default=None, help="Plot range: x-axis")
 
+    parser.add_argument("--plotye", action="store_true", help="Plot electron fraction versus velocity")
+
     parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")
 
 
@@ -44,7 +46,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args = parser.parse_args([] if kwargs else argsraw)
 
     fig, axes = plt.subplots(
-        nrows=3,
+        nrows=3 if args.plotye else 2,
         ncols=1,
         sharex=True,
         sharey=False,
@@ -120,7 +122,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         binned_yvals.extend((0.0, 0.0))
 
         axes[1].plot(binned_xvals, binned_yvals, label=label, color=color)
-        if "Ye" in dfmodelcollect.collect_schema().names():
+        if args.plotye and "Ye" in dfmodelcollect.collect_schema().names():
             binned_xvals = []
             binned_yvals = []
             vlowerscoarse = [0.0, *vupperscoarse[:-1]]
@@ -147,7 +149,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     axes[-1].set_xlabel("Velocity [$c$]")
     axes[0].set_ylabel(r"Mass Enclosed [M$_\odot$]")
     axes[1].set_ylabel(r"$\Delta$M/$\Delta v$  [M$_\odot/c$]")
-    axes[2].set_ylabel(r"Electron fraction Ye")
+    if args.plotye:
+        axes[2].set_ylabel(r"Electron fraction Ye")
     axes[1].legend(frameon=False)
 
     axes[0].set_ylim(bottom=0.0)
