@@ -2,7 +2,7 @@
 requires = [
     # "maturin>=1.9.3",
     "setuptools>=80.9.0",
-    "setuptools-rust>=1.11.1",
+    "setuptools-rust>=1.12",
     "setuptools_scm>=8.3.1",
 ]
 # build-backend = "maturin"
