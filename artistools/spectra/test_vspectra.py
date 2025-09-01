@@ -94,7 +94,7 @@ def test_vpkt_frompackets_spectrum_plot(mockplot: t.Any, benchmark: BenchmarkFix
             1.45676358684038e-14,
             4.589891035117792e-15,
         ],
-        atol=1e-18,
+        rtol=0.0001,
     )
 
     print(list(arr_allvspec.mean(axis=1)))
@@ -111,5 +111,5 @@ def test_vpkt_frompackets_spectrum_plot(mockplot: t.Any, benchmark: BenchmarkFix
             9.316807974058103e-15,
             2.9236313925953637e-15,
         ],
-        atol=1e-18,
+        rtol=0.0001,
     )
