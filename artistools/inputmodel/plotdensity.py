@@ -50,7 +50,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         ncols=1,
         sharex=True,
         sharey=False,
-        figsize=(6, 6),
+        figsize=(4, 4),
         tight_layout={"pad": 0.4, "w_pad": 0.0, "h_pad": 0.0},
     )
     assert isinstance(axes, np.ndarray)
