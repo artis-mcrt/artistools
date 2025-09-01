@@ -109,21 +109,15 @@ def plot_data(
     (plotobj,) = ax.plot(xvalues_binned, yvalues_binned, label=label, **plotkwargs)
     color = plotobj.get_color()
 
-    xmin = xvalues_binned.min()
-    assert isinstance(xmin, float)
-    xmax = xvalues_binned.max()
-    assert isinstance(xmax, float)
-    ax.set_xlim(left=xmin, right=xmax)
-
     if args.markers:
         plotkwargs_markers = plotkwargs | {
             "linestyle": "None",
             "marker": ".",
-            "markersize": 3,
+            "markersize": 5,
             "color": adjust_lightness(color, 1.5),
             # "alpha": 0.4,
             "markeredgewidth": 0,
-            "zorder": -2,
+            "zorder": -1,
         }
         plotkwargs_markers.pop("dashes", None)
         plotkwargs_markers.pop("label", None)
@@ -230,12 +224,12 @@ def plot_average_ionisation(
             ioncharge * pl.col(ioncol) for ioncol, ioncharge in zip(ioncols, ioncharges, strict=True)
         ]) / pl.col(f"nnelement_{elsymb}")
 
-        series = estimators.with_columns(
+        dfplotdata = estimators.with_columns(
             celltsweight=pl.col(f"nnelement_{elsymb}") * pl.col("deltavol_deltat"), yvalue=expr_charge_per_nuc
         ).filter(pl.col(f"nnelement_{elsymb}") > 0.0)
 
         plot_data(
-            dfplotdata=series,
+            dfplotdata=dfplotdata,
             ax=ax,
             args=args,
             startfromzero=startfromzero,
@@ -477,12 +471,12 @@ def plot_multi_ion_series(
                 color = f"C{(ion_stage - 1) % 10}"
             else:
                 styleindex = ion_stage - 1
-
-        dashes_list = [(3, 1, 1, 1), (), (1.5, 1.5), (6, 3), (1, 3)]
+        print(styleindex)
+        dashes_list = [(), (3, 1, 1, 1), (1.5, 1.5), (6, 3), (1, 3)]
         dashes = dashes_list[styleindex % len(dashes_list)]
 
         linewidth_list = [1.0, 1.0, 1.0, 0.7, 0.7]
-        linewidth = linewidth_list[styleindex % len(linewidth_list)]
+        linewidth = linewidth_list[styleindex % len(linewidth_list)] * 1.5
 
         if plotkwargs.get("linestyle", "solid") != "None":
             plotkwargs["dashes"] = dashes
@@ -602,7 +596,12 @@ def get_xlist(
     if args.xbins is not None and args.xbins < 0:
         xdeltamax = estimators.select(pl.col("xvalue").sort().diff().max()).collect().item()
         args.xbins = int((xmax - xmin) / xdeltamax)
-        print(f"Setting xbins to {args.xbins} based on data range and largest x interval of {xdeltamax}")
+        print(
+            f"Setting xbins to {args.xbins} based on data range [{xmin}, {xmax}] and largest x interval of {xdeltamax}"
+        )
+        if args.xbins <= 3:
+            print(f"  would have only {args.xbins} bins. Replacing with 25")
+            args.xbins = 25
 
     if args.xbins is not None:
         xbinedges = np.linspace(xmin, xmax, args.xbins)
