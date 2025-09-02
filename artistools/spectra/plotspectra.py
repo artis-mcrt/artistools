@@ -1444,7 +1444,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--use_thermalemissiontype",
         action="store_true",
-        help="Tag packets by their thermal emission type rather than last scattering process",
+        help="Tag packets by their last thermal emission type rather than their last emission process",
     )
 
     parser.add_argument(
