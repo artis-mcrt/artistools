@@ -61,7 +61,8 @@ jobs:
               run: source ./setuptestdata.sh
 
             - name: Run benchmarks
-              uses: CodSpeedHQ/action@v3
+              uses: CodSpeedHQ/action@v4
               with:
+                  mode: instrumentation
                   token: ${{ secrets.CODSPEED_TOKEN }}
                   run: uv run --frozen -- pytest --codspeed
