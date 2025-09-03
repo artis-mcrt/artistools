@@ -386,7 +386,7 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
         ).format(timemindays=timemindays, timemaxdays=timemaxdays, outformat=outformat)
 
         fig.savefig(outfilename, format=outformat, dpi=300, pad_inches=0.0)
-        print(f"Saved {outfilename}")
+        print(f"open {outfilename}")
         plt.close()
         plt.clf()
 

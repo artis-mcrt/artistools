@@ -161,7 +161,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         outfilepath /= "densityprofile.pdf"
 
     fig.savefig(outfilepath)
-    print(f"Saved {outfilepath}")
+    print(f"open {outfilepath}")
 
 
 if __name__ == "__main__":

@@ -190,7 +190,7 @@ def plot_qdot(
     # fig.suptitle(f'{at.get_model_name(modelpath)}', fontsize=10)
     at.plottools.autoscale(axis, margin=0.0)
     fig.savefig(pdfoutpath, format="pdf")
-    print(f"Saved {pdfoutpath}")
+    print(f"open {pdfoutpath}")
 
 
 def plot_cell_abund_evolution(
@@ -294,7 +294,7 @@ def plot_cell_abund_evolution(
     # fig.suptitle(f"{at.get_model_name(modelpath)} cell {mgi}", y=0.995, fontsize=10)
     at.plottools.autoscale(axis, margin=0.05)
     fig.savefig(pdfoutpath, format="pdf")
-    print(f"Saved {pdfoutpath}")
+    print(f"open {pdfoutpath}")
 
 
 def get_particledata(

@@ -226,7 +226,7 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
     plt.xlabel(r"Wavelength ($\mathrm{{\AA}}$)")
     figname = f"plotpol_{timeavg}_days_{args.stokesparam.split('/')[0]}_{args.stokesparam.split('/')[1]}.pdf"
     plt.savefig(modelpath / figname, format="pdf")
-    print(f"Saved {figname}")
+    print(f"open {figname}")
 
 
 def plot_reference_spectrum(
@@ -1720,7 +1720,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         if args.write_data and len(dfalldata.columns) > 0:
             datafilenameout = Path(filenameout).with_suffix(".txt")
             dfalldata.write_csv(datafilenameout, separator=" ")
-            print(f"Saved {datafilenameout}")
+            print(f"open {datafilenameout}")
 
         # plt.minorticks_on()
 

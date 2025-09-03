@@ -105,7 +105,7 @@ dev = [
     { name = "pytest-cov", specifier = ">=6.0.0" },
     { name = "pytest-xdist", extras = ["psutil"], specifier = ">=3.6.1" },
     { name = "ruff", specifier = ">=0.12.4" },
-    { name = "ty", specifier = ">=0.0.1a18" },
+    { name = "ty", specifier = ">=0.0.1a20" },
     { name = "typeguard", specifier = ">=4.4.4" },
     { name = "types-python-dateutil", specifier = ">=2.9.0.20241206" },
     { name = "types-pyyaml", specifier = ">=6.0.12.20240917" },

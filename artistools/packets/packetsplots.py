@@ -59,7 +59,7 @@ def make_2d_packets_plot_imshow(modelpath: Path, timestep_min: int, timestep_max
         # plt.show()
         outfilename = f"packets_hist_{time_lower:.2f}d_{plot_axes}_{escapetitle}.pdf"
         plt.savefig(Path(modelpath) / outfilename, format="pdf")
-        print(f"Saved {outfilename}")
+        print(f"open {outfilename}")
         plt.clf()
 
 
@@ -133,7 +133,7 @@ def plot_packet_mean_emission_velocity(modelpath: str | Path, write_emission_dat
 
     outfilename = "meanemissionvelocity.pdf"
     plt.savefig(Path(modelpath) / outfilename, format="pdf")
-    print(f"Saved {outfilename}")
+    print(f"open {outfilename}")
 
 
 def plot_last_emission_velocities_histogram(
@@ -195,4 +195,4 @@ def plot_last_emission_velocities_histogram(
 
     outfilename = f"hist_emission_vel_{timeminarray[timestep_min]:.2f}-{timemaxarray[timestep_max]:.2f}d.pdf"
     fig.savefig(Path(modelpath) / outfilename, format="pdf")
-    print(f"Saved {outfilename}")
+    print(f"open {outfilename}")

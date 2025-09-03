@@ -21,7 +21,7 @@ def write_spectrum(dfspectrum: pl.DataFrame, outfilepath: Path) -> None:
             spec_file, header=False, sep=" ", index=False, columns=["lambda_angstroms", "f_lambda"]
         )
 
-    print(f"Saved {outfilepath}")
+    print(f"open {outfilepath}")
 
 
 def write_flambda_spectra(modelpath: Path) -> None:

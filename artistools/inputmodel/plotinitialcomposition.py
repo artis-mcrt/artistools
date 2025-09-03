@@ -213,7 +213,7 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
 
     plt.savefig(outfilename, format="pdf")
 
-    print(f"Saved {outfilename}")
+    print(f"open {outfilename}")
 
 
 def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
@@ -387,7 +387,7 @@ def plot_phi_hist(modelpath: Path | str) -> None:
 
     outfilename = f"model{weightby}phi.pdf"
     plt.savefig(Path(modelpath) / outfilename, format="pdf")
-    print(f"Saved {outfilename}")
+    print(f"open {outfilename}")
     plt.close()
 
 
