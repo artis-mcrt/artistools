@@ -253,8 +253,10 @@ def scan_estimators(
 
     assert bool(parquetfiles)
 
-    pldflazy = pl.concat([pl.scan_parquet(pfile) for pfile in parquetfiles], how="diagonal_relaxed").unique(
-        ["timestep", "modelgridindex"], maintain_order=True, keep="first"
+    pldflazy = (
+        pl.concat([pl.scan_parquet(pfile) for pfile in parquetfiles], how="diagonal_relaxed")
+        .unique(["timestep", "modelgridindex"], maintain_order=True, keep="first")
+        .lazy()
     )
 
     if match_modelgridindex is not None:
