@@ -199,7 +199,7 @@ def make_2d_plot(grid, grid_Te, vmax, modelpath, xgrid, time) -> None:  # noqa: 
         plt.ylim(-vmax, vmax)
         outfilename = "plotestim.pdf"
         plt.savefig(Path(modelpath) / outfilename, format="pdf")
-        print(f"Saved {outfilename}")
+        print(f"open {outfilename}")
 
 
 def main() -> None:

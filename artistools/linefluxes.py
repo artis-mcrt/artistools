@@ -420,7 +420,7 @@ def make_flux_ratio_plot(args: argparse.Namespace) -> None:
 
     fig.savefig(args.outputfile, format="pdf")
     # plt.show()
-    print(f"Saved {args.outputfile}")
+    print(f"open {args.outputfile}")
     plt.close()
 
 

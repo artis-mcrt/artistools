@@ -1153,7 +1153,7 @@ def get_linelist_pldf(modelpath: Path | str, get_ion_str: bool = False) -> pl.La
             )
         )
         pldf.write_parquet(parquetfile, compression="zstd")
-        print(f"Saved {parquetfile}")
+        print(f"open {parquetfile}")
     else:
         print(f"Reading {parquetfile}")
 

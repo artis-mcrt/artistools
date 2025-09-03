@@ -470,7 +470,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths: list[Path | str], ar
 
     figname = f"plotnltelevelpopsZ{Z}.pdf"
     plt.savefig(Path(modelpaths[0]) / figname, format="pdf")
-    print(f"Saved {figname}")
+    print(f"open {figname}")
 
 
 def plot_populations_with_time_or_velocity(
@@ -703,7 +703,7 @@ def make_plot(
         elsymbol=at.get_elsymbol(atomic_number), cell=mgilist[0], timestep=timestep, time_days=time_days
     )
     fig.savefig(outputfilename, format="pdf")
-    print(f"Saved {outputfilename}")
+    print(f"open {outputfilename}")
     plt.close()
 
 

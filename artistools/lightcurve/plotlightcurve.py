@@ -734,7 +734,7 @@ def make_lightcurve_plot(
         plt.show()
 
     fig.savefig(str(filenameout), format="pdf")
-    print(f"Saved {filenameout}")
+    print(f"open {filenameout}")
 
     if args.plotthermalisation:
         assert axistherm is not None
@@ -752,7 +752,7 @@ def make_lightcurve_plot(
         # filenameout2 = "plotthermalisation.pdf"
         filenameout2 = str(filenameout).replace(".pdf", "_thermalisation.pdf")
         figtherm.savefig(filenameout2, format="pdf")
-        print(f"Saved {filenameout2}")
+        print(f"open {filenameout2}")
 
     plt.close()
 
@@ -1013,7 +1013,7 @@ def make_band_lightcurves_plot(
                     )
                     with bandoutfile.open("w", encoding="utf-8") as f:
                         f.write(txtout)
-                    print(f"Saved {bandoutfile}")
+                    print(f"open {bandoutfile}")
                 if args.print_data:
                     print(txtout)
 

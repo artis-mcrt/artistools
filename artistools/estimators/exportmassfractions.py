@@ -53,7 +53,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
             assert np.isclose(massfracsum, 1.0)
 
-    print(f"Saved {outfilename}")
+    print(f"open {outfilename}")
 
 
 if __name__ == "__main__":
