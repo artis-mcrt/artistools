@@ -896,7 +896,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--multiplot", action="store_true", help="Make multiple plots for timesteps in range")
 
-    parser.add_argument("-x", help="Horizontal axis variable, e.g. cellid, velocity, timestep, or time")
+    parser.add_argument("-x", default=None, help="Horizontal axis variable, e.g. velocity, timestep, or time")
 
     parser.add_argument("-xmin", type=float, default=None, help="Plot range: minimum x value")
 
@@ -1001,10 +1001,19 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     modelname = at.get_model_name(modelpath)
 
     should_use_all_timesteps = (
-        not args.timedays and not args.timestep and (args.modelgridindex is not None or args.x in {"time", "timestep"})
+        not args.timedays
+        and not args.timestep
+        and (args.modelgridindex is not None or args.x in {None, "time", "timestep"})
     )
+
     if should_use_all_timesteps:
         args.timestep = f"0-{len(at.get_timestep_times(modelpath)) - 1}"
+        if args.x is None:
+            args.x = "time"
+            print(f"Setting x variable to {args.x}")
+    elif args.x is None:
+        args.x = "velocity"
+        print(f"Setting x variable to {args.x}")
 
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
         modelpath, args.timestep, args.timemin, args.timemax, args.timedays
@@ -1053,31 +1062,21 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         estimators = at.estimators.scan_estimators(
             modelpath=modelpath, modelgridindex=args.modelgridindex, timestep=tuple(timesteps_included)
         )
+
     estimators, modelmeta = at.estimators.join_cell_modeldata(estimators=estimators, modelpath=modelpath, verbose=False)
-    estimators = estimators.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"])
-    tswithdata = estimators.select("timestep").unique().collect().to_series()
-    estimators = estimators.with_columns(deltavol_deltat=pl.col("volume") * pl.col("twidth_days"))
-
-    assoc_cells, _ = at.get_grid_mapping(modelpath)
-    if (
-        args.modelgridindex is not None
-        and isinstance(args.modelgridindex, int)
-        and (
-            not assoc_cells.get(args.modelgridindex)
-            or estimators.filter(pl.col("modelgridindex") == args.modelgridindex).collect().is_empty()
-        )
-    ):
-        msg = f"cell {args.modelgridindex} is empty. no estimators available"
-        raise ValueError(msg)
-
-    if not set(timesteps_included).intersection(tswithdata):
+    if estimators.select(pl.len() == 0).collect().item():
         print("No data was found for the requested timesteps/cells.")
+        estimators = at.estimators.scan_estimators(modelpath=modelpath)
+        print("Cells with data: ")
+        print(estimators.select(pl.col("modelgridindex").unique().sort()).collect().to_series().to_list())
+        print("Timesteps with data: ")
+        print(estimators.select(pl.col("timestep").unique().sort()).collect().to_series().to_list())
         return
 
-    for ts in reversed(timesteps_included):
-        if ts not in tswithdata:
-            timesteps_included.remove(ts)
-            print(f"ts {ts} requested but no data found. Removing.")
+    if args.modelgridindex is None:
+        estimators = estimators.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"])
+
+    estimators = estimators.with_columns(deltavol_deltat=pl.col("volume") * pl.col("twidth_days"))
 
     plotlist = args.plotlist or [
         # [["initabundances", ["Fe", "Ni_stable", "Ni_56"]]],
@@ -1155,11 +1154,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             plotlist[i].extend(plot_directives)
 
     outdir = Path(args.outputfile) if Path(args.outputfile).is_dir() else Path()
-
-    if not args.readonlymgi and (args.modelgridindex is not None or args.x in {"time", "timestep"}):
+    assert args.x is not None
+    if args.x in {"time", "timestep"}:
         # plot time evolution
-        if not args.x:
-            args.x = "time"
         make_figure(
             modelpath=modelpath,
             timestepslist=timesteps_included,
@@ -1171,9 +1168,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     else:
         # plot a range of cells in a time snapshot showing internal structure
 
-        if not args.x:
-            args.x = "velocity"
-
         if args.x == "velocity" and modelmeta["vmax_cmps"] > 0.3 * 29979245800:
             args.x = "beta"
 
@@ -1181,24 +1175,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             if not isinstance(args.modelgridindex, list):
                 args.modelgridindex = [args.modelgridindex] if args.modelgridindex is not None else []
             estimators = estimators.filter(pl.col("modelgridindex").is_in(args.modelgridindex))
-
-        if args.classicartis:
-            modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect().to_pandas(use_pyarrow_extension_array=True)
-            allnonemptymgilist = [
-                modelgridindex
-                for modelgridindex in modeldata.index
-                if not estimators.filter(pl.col("modelgridindex") == modelgridindex)
-                .select("modelgridindex")
-                .lazy()
-                .collect()
-                .is_empty()
-            ]
-        else:
-            allnonemptymgilist = [mgi for mgi, assocpropcells in assoc_cells.items() if assocpropcells]
-
-        estimators = estimators.filter(pl.col("modelgridindex").is_in(allnonemptymgilist)).filter(
-            pl.col("timestep").is_in(timesteps_included)
-        )
 
         frames_timesteps_included = (
             [[ts] for ts in range(timestepmin, timestepmax + 1)] if args.multiplot else [timesteps_included]
