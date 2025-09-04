@@ -121,6 +121,8 @@ def plot_data(
         }
         plotkwargs_markers.pop("dashes", None)
         plotkwargs_markers.pop("label", None)
+        if dfplotdata.select(pl.len() > 10000).collect().item():
+            plotkwargs_markers["rasterized"] = True
         # plot the markers first
         ax.plot(
             dfplotdata.select("xvalue").collect().to_series(),
@@ -867,7 +869,7 @@ def make_figure(
         axes[0].set_title(figure_title, fontsize=10)
 
     print(f"open {outfilename}")
-    fig.savefig(outfilename, dpi=300)
+    fig.savefig(outfilename, dpi=600)
 
     if args.show:
         plt.show()
