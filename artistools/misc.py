@@ -541,7 +541,7 @@ def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | None, 
 
 
 @lru_cache(maxsize=8)
-def get_model_name(path: Path | str) -> str:
+def get_model_name(path: Path | str, maxlen: int | None = 50) -> str:
     """Get the name of an ARTIS model from the path to any file inside it.
 
     Name will be either from a special plotlabel.txt file if it exists or the enclosing directory name
@@ -559,7 +559,8 @@ def get_model_name(path: Path | str) -> str:
         with plotlabelfile.open(encoding="utf-8") as f:
             return f.readline().strip()
     except FileNotFoundError:
-        return Path(modelpath).name
+        foldername = Path(modelpath).name
+        return foldername if (maxlen is None or len(foldername) <= maxlen) else f"...{foldername[-maxlen:]}"
 
 
 def get_z_a_nucname(nucname: str) -> tuple[int, int]:
