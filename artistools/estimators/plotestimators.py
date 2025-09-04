@@ -1066,7 +1066,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         )
 
     estimators, modelmeta = at.estimators.join_cell_modeldata(estimators=estimators, modelpath=modelpath, verbose=False)
-    if estimators.select(pl.len() == 0).collect().item():
+    if estimators.select(pl.len()).collect().item() == 0:
         print("No data was found for the requested timesteps/cells.")
         estimators = at.estimators.scan_estimators(modelpath=modelpath)
         print("Cells with data: ")
