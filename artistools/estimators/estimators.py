@@ -241,23 +241,33 @@ def scan_estimators(
     ]
 
     runfolders = at.get_runfolders(modelpath, timesteps=match_timestep)
-    assert runfolders
-
-    parquetfiles = (
-        get_rankbatch_parquetfile(
-            modelpath=modelpath, folderpath=runfolder, batch_mpiranks=mpiranks, batchindex=batchindex, verbose=verbose
+    if runfolders:
+        parquetfiles = (
+            get_rankbatch_parquetfile(
+                modelpath=modelpath,
+                folderpath=runfolder,
+                batch_mpiranks=mpiranks,
+                batchindex=batchindex,
+                verbose=verbose,
+            )
+            for runfolder in runfolders
+            for batchindex, mpiranks in mpirank_groups
         )
-        for runfolder in runfolders
-        for batchindex, mpiranks in mpirank_groups
-    )
 
-    assert bool(parquetfiles)
+        assert bool(parquetfiles)
 
-    pldflazy = (
-        pl.concat([pl.scan_parquet(pfile) for pfile in parquetfiles], how="diagonal_relaxed")
-        .unique(["timestep", "modelgridindex"], maintain_order=True, keep="first")
-        .lazy()
-    )
+        pldflazy = (
+            pl.concat([pl.scan_parquet(pfile) for pfile in parquetfiles], how="diagonal_relaxed")
+            .unique(["timestep", "modelgridindex"], maintain_order=True, keep="first")
+            .lazy()
+        )
+    else:
+        print(f"WARNING: No run folders found in {modelpath}. Enabling fallback to cross join of all cells/timesteps.")
+        pldflazy = (
+            at.get_timesteps(modelpath)
+            .select("timestep", "tmid_days", "twidth_days")
+            .join(at.inputmodel.get_modeldata(modelpath)[0].select("modelgridindex"), how="cross")
+        )
 
     if match_modelgridindex is not None:
         pldflazy = pldflazy.filter(pl.col("modelgridindex").is_in(match_modelgridindex))
