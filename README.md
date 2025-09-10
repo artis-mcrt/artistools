@@ -26,13 +26,13 @@ To create a [uv](https://docs.astral.sh/uv/getting-started/installation/) virtua
 ```sh
 uv sync --extra extras --frozen
 uv tool install --editable .[extras]
-pre-commit install
+prek install
 ```
 
 Alternatively, to avoid uv and install into the system environment with pip:
 ```sh
 pip install --group dev --editable .[extras]
-pre-commit install
+prek install
 ```
 
 To learn how to enable command-line autocompletions, run:
