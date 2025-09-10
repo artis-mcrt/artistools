@@ -70,18 +70,18 @@ jobs:
               if: always()
               run: uv run -- mypy
 
-            - name: Cache pre-commit
+            - name: Cache prek
               uses: actions/cache@v4
               with:
-                  path: ~/.cache/pre-commit
-                  key: pre-commit-3-${{ runner.os }}--${{ hashFiles('.pre-commit-config.yaml') }}-${{ github.run_id }}
+                  path: ~/.cache/prek
+                  key: prek-3-${{ runner.os }}--${{ hashFiles('.pre-commit-config.yaml') }}-${{ github.run_id }}
                   restore-keys: |
-                      pre-commit-3-${{ runner.os }}--${{ hashFiles('.pre-commit-config.yaml') }}-
+                      prek-3-${{ runner.os }}--${{ hashFiles('.pre-commit-config.yaml') }}-
 
-            - name: Run pre-commit
+            - name: Run prek pre-commit checks
               run: |
-                  pre-commit install
-                  pre-commit run --all-files --show-diff-on-failure --color=always
+                  prek install
+                  prek run --all-files --show-diff-on-failure --color=always
 
             - name: Run rust clippy
               if: always()
