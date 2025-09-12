@@ -828,10 +828,9 @@ def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None) -
 
 def zopenpl(filename: Path | str, mode: str = "r", encoding: str | None = None) -> t.Any | Path:
     """Open filename, filename.zst, filename.gz or filename.xz. If polars.read_csv can read the file directly, return a Path object instead of a file object."""
-    try:
-        from compression import lzma  # only available in Python 3.14+
-
-    except ModuleNotFoundError:
+    if sys.version_info >= (3, 14):
+        from compression import lzma
+    else:
         import lzma
 
     ext_fopen: dict[str, t.Any | None] = {".zst": None, ".gz": None, ".xz": lzma.open}
