@@ -2,7 +2,6 @@ import calendar
 import datetime
 import errno
 import gc
-import itertools
 import json
 import math
 import os
@@ -1242,10 +1241,11 @@ def dimension_reduce_model(
     print(f"Resampling {ndim_in:d}D model with {ngridpoints} cells to {outputdimensions}D...")
     timestart = time.perf_counter()
 
-    dfmodel = add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta, derived_cols=["velocity", "mass_g"])
+    dfmodel = add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta, derived_cols=["velocity", "mass_g"]).collect()
 
     inputcellmass: dict[int, float] = {
-        int(cellid): float(rho) for cellid, rho in dfmodel.select(["inputcellid", "mass_g"]).collect().iter_rows()
+        int(cellid): float(rho)
+        for cellid, rho in dfmodel.select(["inputcellid", "mass_g"]).lazy().collect().iter_rows()
     }
 
     km_to_cm = 1e5
@@ -1284,32 +1284,47 @@ def dimension_reduce_model(
     vel_z_min_max = [
         (-vmax + 2 * vmax * n / ncoordgridz, -vmax + 2 * vmax * (n + 1) / ncoordgridz) for n in range(ncoordgridz)
     ]
+    vel_z_bins = [-vmax + 2 * vmax * n / ncoordgridz for n in range(ncoordgridz + 1)]
 
     # "r" is the cylindrical radius in 2D, or the spherical radius in 1D
     vel_r_min_max = [(vmax * n / ncoordgridr, vmax * (n + 1) / ncoordgridr) for n in range(ncoordgridr)]
+    vel_r_bins = [vmax * n / ncoordgridr for n in range(ncoordgridr + 1)]
+
+    dfmodel = dfmodel.with_columns(
+        (
+            (pl.col("vel_rcyl_mid") if outputdimensions == 2 else pl.col("vel_r_mid"))
+            .cut(breaks=vel_r_bins, labels=[str(x) for x in range(-1, len(vel_r_bins))])
+            .cast(pl.Utf8)
+            .cast(pl.Int32)
+        ).alias("out_n_r")
+    ).filter(pl.col("out_n_r").is_between(0, ncoordgridr - 1))
 
     if outputdimensions == 2:
-        lazyframes_matched_cells = [
-            dfmodel.filter(
-                pl.col("vel_z_mid").is_between(cell_vel_z_min_max[0], cell_vel_z_min_max[1], closed="right")
-                & pl.col("vel_rcyl_mid").is_between(cell_vel_r_min_max[0], cell_vel_r_min_max[1], closed="right")
+        dfmodel = (
+            dfmodel.with_columns(
+                (
+                    pl.col("vel_z_mid")
+                    .cut(breaks=vel_z_bins, labels=[str(x) for x in range(-1, len(vel_z_bins))])
+                    .cast(pl.Utf8)
+                    .cast(pl.Int32)
+                ).alias("out_n_z")
             )
-            for cell_vel_z_min_max, cell_vel_r_min_max in itertools.product(vel_z_min_max, vel_r_min_max)
-        ]
+            .filter(
+                pl.col("out_n_r").is_between(0, ncoordgridr - 1) & (pl.col("out_n_z").is_between(0, ncoordgridz - 1))
+            )
+            .with_columns(mgiout=pl.col("out_n_z") * ncoordgridr + pl.col("out_n_r"))
+        )
     else:
         assert outputdimensions in {0, 1}
-        lazyframes_matched_cells = [
-            dfmodel.filter(pl.col("vel_r_mid").is_between(cell_vel_r_min_max[0], cell_vel_r_min_max[1], closed="right"))
-            for cell_vel_r_min_max in vel_r_min_max
-        ]
+        dfmodel = dfmodel.with_columns(mgiout=pl.col("out_n_r"))
 
-    dataframes_matchedcells = pl.collect_all(lazyframes_matched_cells)
+    dfmodel = dfmodel.sort("mgiout")
 
     allmatchedcells = {}
-    for mgiout, ((vel_z_min, vel_z_max), (vel_r_min, vel_r_max)) in enumerate(
-        itertools.product(vel_z_min_max, vel_r_min_max)
-    ):
-        matchedcells = dataframes_matchedcells[mgiout]
+    for (mgiout,), matchedcells in dfmodel.group_by("mgiout", maintain_order=True):
+        vel_r_min, vel_r_max = vel_r_min_max[mgiout % ncoordgridr]
+
+        # matchedcells = dataframes_matchedcells[mgiout]
         if len(matchedcells) == 0:
             rho_out = 0
         else:
@@ -1319,6 +1334,7 @@ def dimension_reduce_model(
                 )
             else:
                 # outputdimensions == 2
+                vel_z_min, vel_z_max = vel_z_min_max[mgiout // ncoordgridr]
                 shell_volume = (
                     math.pi * (vel_r_max**2 - vel_r_min**2) * (vel_z_max - vel_z_min) * t_model_init_seconds**3
                 )
