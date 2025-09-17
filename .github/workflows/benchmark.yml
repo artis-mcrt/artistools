@@ -38,16 +38,16 @@ jobs:
               uses: actions/cache@v4
               with:
                   path: |
-                      ~/.cargo/bin/
                       ~/.cargo/registry/index/
                       ~/.cargo/registry/cache/
                       ~/.cargo/git/db/
                       rust/target/
-                  key: cargo-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-python3.${{ env.PYTHON_MINOR_VERSION }}-${{ github.run_id }}
+                  key: cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python3.${{ env.PYTHON_MINOR_VERSION }}-${{ hashFiles('**/Cargo.lock') }}-${{
+                      github.run_id }}
                   restore-keys: |
-                      cargo-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-python3.${{ env.PYTHON_MINOR_VERSION }}
-                      cargo-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
-                      cargo-rust-target-${{ runner.os }}-
+                      cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python3.${{ env.PYTHON_MINOR_VERSION }}-${{ hashFiles('**/Cargo.lock') }}-
+                      cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python3.${{ env.PYTHON_MINOR_VERSION }}-
+                      cargo-rust-target-${{ runner.os }}${{ runner.arch }}-
 
             - name: Install artistools
               run: |
