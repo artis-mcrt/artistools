@@ -435,6 +435,10 @@ def plot_qdot_abund_modelcells(
     mgi_of_propcells: dict[int, int] = {}
     try:
         assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath)
+        for mgi in mgiplotlist:
+            assert assoc_cells.get(mgi, []), (
+                f"No propagation grid cells associated with model cell {mgi}, cannot plot abundances!"
+            )
         direct_model_propgrid_map = all(
             len(propcells) == 1 and mgi == propcells[0] for mgi, propcells in assoc_cells.items()
         )
@@ -638,7 +642,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")
 
-    parser.add_argument("-xmax", default=None, type=int, help="Maximum time in days to plot")
+    parser.add_argument("-xmax", default=None, type=float, help="Maximum time in days to plot")
 
     parser.add_argument(
         "-modelgridindex",
