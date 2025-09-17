@@ -39,16 +39,16 @@ jobs:
               uses: actions/cache@v4
               with:
                   path: |
-                      ~/.cargo/bin/
                       ~/.cargo/registry/index/
                       ~/.cargo/registry/cache/
                       ~/.cargo/git/db/
                       rust/target/
-                  key: cargo-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-python3.${{ env.PYTHON_MINOR_VERSION }}-${{ github.run_id }}
+                  key: cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python3.${{ env.PYTHON_MINOR_VERSION }}-${{ hashFiles('**/Cargo.lock') }}-${{
+                      github.run_id }}
                   restore-keys: |
-                      cargo-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-python3.${{ env.PYTHON_MINOR_VERSION }}
-                      cargo-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
-                      cargo-rust-target-${{ runner.os }}-
+                      cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python3.${{ env.PYTHON_MINOR_VERSION }}-${{ hashFiles('**/Cargo.lock') }}-
+                      cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python3.${{ env.PYTHON_MINOR_VERSION }}-
+                      cargo-rust-target-${{ runner.os }}${{ runner.arch }}-
 
             - name: Install artistools[extras]
               run: |
@@ -81,10 +81,10 @@ jobs:
               uses: actions/cache@v4
               with:
                   path: ~/.cache/prek
-                  key: prek-3-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}-${{ github.run_id }}
+                  key: prek-3-${{ runner.os }}${{ runner.arch }}-${{ hashFiles('.pre-commit-config.yaml') }}-${{ github.run_id }}
                   restore-keys: |
-                      prek-3-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}-
-                      prek-3-${{ runner.os }}-
+                      prek-3-${{ runner.os }}${{ runner.arch }}-${{ hashFiles('.pre-commit-config.yaml') }}-
+                      prek-3-${{ runner.os }}${{ runner.arch }}-
 
             - name: Run prek pre-commit checks
               run: |
@@ -174,17 +174,16 @@ jobs:
               uses: actions/cache@v4
               with:
                   path: |
-                      ~/.cargo/bin/
                       ~/.cargo/registry/index/
                       ~/.cargo/registry/cache/
                       ~/.cargo/git/db/
                       rust/target/
-                  key: cargo-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-python3.${{ matrix.python-minor-version }}-${{ github.run_id
-                      }}
+                  key: cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python3.${{ matrix.python-minor-version }}-${{ hashFiles('**/Cargo.lock') }}-${{
+                      github.run_id }}
                   restore-keys: |
-                      cargo-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-python3.${{ matrix.python-minor-version }}
-                      cargo-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
-                      cargo-rust-target-${{ runner.os }}-
+                      cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python3.${{ matrix.python-minor-version }}-${{ hashFiles('**/Cargo.lock') }}
+                      cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python3.${{ matrix.python-minor-version }}-
+                      cargo-rust-target-${{ runner.os }}${{ runner.arch }}-
 
             - name: install apache-arrow
               if: matrix.os.name == 'macos' && startsWith(matrix.python-minor-version, '14')
