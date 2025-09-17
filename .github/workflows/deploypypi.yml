@@ -12,7 +12,7 @@ on:
 
 jobs:
     build_wheels:
-        name: Build wheels for ${{ matrix.target.os_arch }}
+        name: Build cp3${{ matrix.python-minor-version }}-${{ matrix.target.os_arch }}
         strategy:
             matrix:
                 target: [{os_arch: manylinux_x86_64, runs-on: ubuntu-24.04}, {os_arch: manylinux_aarch64, runs-on: ubuntu-24.04-arm},
@@ -20,19 +20,18 @@ jobs:
                     # {os_arch: "musllinux_x86_64", runs-on: "ubuntu-24.04"},
                     # {os_arch: "musllinux_aarch64", runs-on: "ubuntu-24.04-arm"},
                      {os_arch: macosx_arm64, runs-on: macos-15}]
+                python-minor-version: ['11', '12', '13', '14', 14t]
             fail-fast: false
         runs-on: ${{ matrix.target.runs-on }}
         env:
             CIBW_ENVIRONMENT_PASS_LINUX: SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS
-            CIBW_BUILD: cp3*-${{ matrix.target.os_arch }}
+            CIBW_BUILD: cp3${{ matrix.python-minor-version }}-${{ matrix.target.os_arch }}
             MACOSX_DEPLOYMENT_TARGET: 13.0
 
         steps:
             - uses: actions/checkout@v5
               with:
                   fetch-depth: 0
-
-            - uses: actions/setup-python@v5
 
             - name: Cache cargo and rust build
               uses: actions/cache@v4
@@ -43,10 +42,18 @@ jobs:
                       ~/.cargo/registry/cache/
                       ~/.cargo/git/db/
                       rust/target/
-                  key: cibuildwheel-rust-target-${{ matrix.target.os_arch }}-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}
+                  key: cargo-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-python3.${{ matrix.python-minor-version }}-${{ github.run_id
+                      }}
                   restore-keys: |
-                      cibuildwheel-rust-target-${{ matrix.target.os_arch }}-${{ hashFiles('**/Cargo.lock') }}-
-                      cibuildwheel-rust-target-${{ matrix.target.os_arch }}-
+                      cargo-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-python3.${{ matrix.python-minor-version }}
+                      cargo-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+                      cargo-rust-target-${{ runner.os }}-
+
+            - uses: actions/setup-python@v5
+              with:
+                  python-version: 3.${{ matrix.python-minor-version }}
+                  allow-prereleases: true
+                  check-latest: true
 
             - name: Strip dev tag from version
               run: |

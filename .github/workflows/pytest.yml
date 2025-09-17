@@ -24,6 +24,17 @@ jobs:
               with:
                   fetch-depth: 0
 
+            - name: Setup uv
+              uses: astral-sh/setup-uv@v6
+              id: setup-uv
+              with:
+                  activate-environment: true
+
+            - name: Get python minor version
+              run: |
+                  echo "PYTHON_MINOR_VERSION=$(uv run -- python -c 'import platform; print(platform.python_version_tuple()[1])')" >> $GITHUB_ENV
+                  echo "PYO3_PYTHON=3.$(uv run -- python -c 'import platform; print(platform.python_version_tuple()[1])')" >> $GITHUB_ENV
+
             - name: Cache cargo and rust build
               uses: actions/cache@v4
               with:
@@ -33,15 +44,11 @@ jobs:
                       ~/.cargo/registry/cache/
                       ~/.cargo/git/db/
                       rust/target/
-                  key: pytest-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}
+                  key: cargo-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-python3.${{ env.PYTHON_MINOR_VERSION }}-${{ github.run_id }}
                   restore-keys: |
-                      pytest-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
-                      pytest-rust-target-${{ runner.os }}-
-
-            - name: Setup uv
-              uses: astral-sh/setup-uv@v6
-              with:
-                  activate-environment: true
+                      cargo-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-python3.${{ env.PYTHON_MINOR_VERSION }}
+                      cargo-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+                      cargo-rust-target-${{ runner.os }}-
 
             - name: Install artistools[extras]
               run: |
@@ -75,9 +82,10 @@ jobs:
               uses: actions/cache@v4
               with:
                   path: ~/.cache/prek
-                  key: prek-3-${{ runner.os }}--${{ hashFiles('.pre-commit-config.yaml') }}-${{ github.run_id }}
+                  key: prek-3-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}-${{ github.run_id }}
                   restore-keys: |
-                      prek-3-${{ runner.os }}--${{ hashFiles('.pre-commit-config.yaml') }}-
+                      prek-3-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}-
+                      prek-3-${{ runner.os }}-
 
             - name: Run prek pre-commit checks
               run: |
@@ -134,27 +142,34 @@ jobs:
             fail-fast: false
             matrix:
                 os: [{name: macos, version: '15'}, {name: ubuntu, version: '24.04'}]
-                python-version: ['3.11', '3.12', '3.13', '3.14', 3.14t]
+                python-minor-version: ['11', '12', '13', '14', 14t]
                 exclude:
                     - os: {name: macos, version: '15'}
-                      python-version: 3.11
+                      python-minor-version: 3.11
                     - os: {name: macos, version: '15'}
-                      python-version: 3.12
+                      python-minor-version: 3.12
                     - os: {name: ubuntu, version: '24.04'}
-                      python-version: 3.14
+                      python-minor-version: 3.14
                     - os: {name: ubuntu, version: '24.04'}
-                      python-version: 3.14t
+                      python-minor-version: 3.14t
         env:
             OS: ${{ matrix.os.name }}-${{ matrix.os.version }}
-            PYTHON: ${{ matrix.python-version }}
-            PYTHON_GIL: ${{ endsWith(matrix.python-version, 't') && '0' || '1' }}
+            PYTHON: 3.${{ matrix.python-minor-version }}
+            PYTHON_GIL: ${{ endsWith(matrix.python-minor-version, 't') && '0' || '1' }}
             UV_FROZEN: 1
-        name: pytest ${{ matrix.os.name }} python ${{ matrix.python-version }}
+            PYO3_PYTHON: python3.${{ matrix.python-minor-version }}
+        name: pytest ${{ matrix.os.name }} python 3.${{ matrix.python-minor-version }}
         steps:
             - name: Checkout Code
               uses: actions/checkout@v5
               with:
                   fetch-depth: 0
+
+            - name: Setup uv
+              uses: astral-sh/setup-uv@v6
+              with:
+                  activate-environment: true
+                  python-version: 3.${{ matrix.python-minor-version }}
 
             - name: Cache cargo and rust build
               uses: actions/cache@v4
@@ -165,19 +180,15 @@ jobs:
                       ~/.cargo/registry/cache/
                       ~/.cargo/git/db/
                       rust/target/
-                  key: pytest-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}
+                  key: cargo-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-python3.${{ matrix.python-minor-version }}-${{ github.run_id
+                      }}
                   restore-keys: |
-                      pytest-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
-                      pytest-rust-target-${{ runner.os }}-
-
-            - name: Setup uv
-              uses: astral-sh/setup-uv@v6
-              with:
-                  activate-environment: true
-                  python-version: ${{ matrix.python-version }}
+                      cargo-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-python3.${{ matrix.python-minor-version }}
+                      cargo-rust-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+                      cargo-rust-target-${{ runner.os }}-
 
             - name: install apache-arrow
-              if: matrix.os.name == 'macos' && startsWith(matrix.python-version, '3.14')
+              if: matrix.os.name == 'macos' && startsWith(matrix.python-minor-version, '14')
               run: |
                   brew update
                   brew install apache-arrow
@@ -211,7 +222,7 @@ jobs:
 
             - name: Install artistools
               run: |
-                  uv sync --python ${{ matrix.python-version }}
+                  uv sync --python 3.${{ matrix.python-minor-version }}
                   uv pip install pip
                   pip install .
 
@@ -237,5 +248,5 @@ jobs:
             - name: Upload output files
               uses: actions/upload-artifact@v4
               with:
-                  name: testoutput-${{ matrix.os.name }}-${{ matrix.os.version }}-py${{ matrix.python-version }}
+                  name: testoutput-${{ matrix.os.name }}-${{ matrix.os.version }}-py3${{ matrix.python-minor-version }}
                   path: tests/output/
