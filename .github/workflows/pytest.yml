@@ -145,13 +145,13 @@ jobs:
                 python-minor-version: ['11', '12', '13', '14', 14t]
                 exclude:
                     - os: {name: macos, version: '15'}
-                      python-minor-version: 3.11
+                      python-minor-version: 11
                     - os: {name: macos, version: '15'}
-                      python-minor-version: 3.12
+                      python-minor-version: 12
                     - os: {name: ubuntu, version: '24.04'}
-                      python-minor-version: 3.14
+                      python-minor-version: 14
                     - os: {name: ubuntu, version: '24.04'}
-                      python-minor-version: 3.14t
+                      python-minor-version: 14t
         env:
             OS: ${{ matrix.os.name }}-${{ matrix.os.version }}
             PYTHON: 3.${{ matrix.python-minor-version }}
