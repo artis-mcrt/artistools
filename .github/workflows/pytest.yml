@@ -53,8 +53,7 @@ jobs:
             - name: Install artistools[extras]
               run: |
                   uv sync --all-extras
-                  uv pip install pip
-                  pip install .[extras]
+                  uv pip install .[extras]
 
             - name: Run Ruff
               if: always()
@@ -200,8 +199,7 @@ jobs:
                   rustup update stable
                   uv sync --no-dev
                   uv run -- python --version
-                  uv pip install pip
-                  pip install .
+                  uv pip install .
 
             - name: Check artistools command line tool
               run: |
@@ -223,8 +221,7 @@ jobs:
             - name: Install artistools
               run: |
                   uv sync --python 3.${{ matrix.python-minor-version }}
-                  uv pip install pip
-                  pip install .
+                  uv pip install --compile-bytecode .
 
             - name: Test with pytest
               run: uv run --no-sync -- python -m pytest --cov=./ --cov-report=xml
