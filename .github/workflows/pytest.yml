@@ -33,7 +33,7 @@ jobs:
             - name: Get python minor version
               run: |
                   echo "PYTHON_MINOR_VERSION=$(uv run -- python -c 'import platform; print(platform.python_version_tuple()[1])')" >> $GITHUB_ENV
-                  echo "PYO3_PYTHON=3.$(uv run -- python -c 'import platform; print(platform.python_version_tuple()[1])')" >> $GITHUB_ENV
+                  echo "PYO3_PYTHON=python3.$(uv run -- python -c 'import platform; print(platform.python_version_tuple()[1])')" >> $GITHUB_ENV
 
             - name: Cache cargo and rust build
               uses: actions/cache@v4
