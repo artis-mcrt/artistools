@@ -92,7 +92,7 @@ jobs:
                   path: dist/*.tar.gz
 
     testdeploy:
-        name: Test upload to TestPyPI
+        name: Test upload to TestPyPI (workflow dispatch only)
         needs: [build_wheels, build_sdist]
         runs-on: ubuntu-24.04
         environment:
@@ -100,7 +100,7 @@ jobs:
             url: https://test.pypi.org/project/artistools/
         permissions:
             id-token: write
-        if: startsWith(github.ref , 'refs/tags/v') != true
+        if: startsWith(github.ref , 'refs/tags/v') != true && github.event_name == 'workflow_dispatch'
         steps:
             - uses: actions/download-artifact@v5
               with:
