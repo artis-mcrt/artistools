@@ -53,8 +53,7 @@ jobs:
               run: |
                   rustup update stable
                   uv sync --frozen
-                  uv pip install pip
-                  pip install .
+                  uv pip install --compile-bytecode .
 
             - name: Cache test data
               uses: actions/cache@v4
