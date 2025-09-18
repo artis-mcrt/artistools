@@ -1331,7 +1331,6 @@ def dimension_reduce_model(
         vel_r_min, vel_r_max = vel_r_min_max[mgiout % ncoordgridr]
         vel_z_min, vel_z_max = vel_z_min_max[mgiout // ncoordgridr] if outputdimensions == 2 else 0.0, 0.0
 
-        # matchedcells = dataframes_matchedcells[mgiout]
         if len(matchedcells) == 0:
             rho_out = 0
         else:
