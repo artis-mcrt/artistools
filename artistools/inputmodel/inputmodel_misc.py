@@ -1412,12 +1412,11 @@ def dimension_reduce_model(
                 .collect()
             )
             dictcellabundances: dict[str, int | float] = {"inputcellid": mgiout + 1}
-            for column in dfelabundances.columns:
-                if column.startswith("X_"):
-                    dotprod = abund_matchedcells[column].dot(matchedcells["mass_g"]) if nonempty else 0.0
-                    assert isinstance(dotprod, float)
-                    massfrac = dotprod / matchedcellmass if nonempty else 0.0
-                    dictcellabundances[column] = massfrac
+            for column in (col for col in dfelabundances.columns if column.startswith("X_")):
+                dotprod = abund_matchedcells[column].dot(matchedcells["mass_g"]) if nonempty else 0.0
+                assert isinstance(dotprod, float)
+                massfrac = dotprod / matchedcellmass if nonempty else 0.0
+                dictcellabundances[column] = massfrac
 
             outcellabundances.append(dictcellabundances)
 
