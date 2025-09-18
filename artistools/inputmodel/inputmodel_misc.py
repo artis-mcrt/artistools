@@ -1379,6 +1379,10 @@ def dimension_reduce_model(
         ).explode("inputcellid", "mass_g")
     ).collect()
 
+    dfmodel_out = dfmodel_out.drop(["inputcellid_list", "mass_g_list"], strict=False)
+    if other_cols := dfmodel_out.select(cs.by_dtype(pl.List)).collect_schema().names():
+        assert not other_cols, f"Not sure how to combine column values: {other_cols}"
+
     if dfelabundances is not None:
         dfelabundances_out = (
             dfelabundances.lazy()
@@ -1420,10 +1424,6 @@ def dimension_reduce_model(
         )
     else:
         dfgridcontributions_out = None
-
-    dfmodel_out = dfmodel_out.drop(["inputcellid_list", "mass_g_list"], strict=False)
-    if other_cols := dfmodel_out.select(cs.by_dtype(pl.List)).collect_schema().names():
-        assert not other_cols, f"Not sure how to combine column values: {other_cols}"
 
     print(f"  took {time.perf_counter() - timestart:.1f} seconds")
 
