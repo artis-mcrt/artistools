@@ -1318,16 +1318,23 @@ def dimension_reduce_model(
         .agg(
             pl.when(pl.col("mass_g").sum() > 0)
             .then(
-                (cs.starts_with("X_") | cs.by_name(["Ye", "cellYe", "q"], require_all=False)).dot(pl.col("mass_g"))
+                (cs.starts_with("X_") | cs.by_name(["Ye", "cellYe"], require_all=False)).dot(pl.col("mass_g"))
                 / pl.col("mass_g").sum()
             )
+            .otherwise(0.0),
+            cs.by_name("tracercount", require_all=False).sum(),
+            pl.when(pl.col("mass_g").sum() > 0)
+            .then((cs.by_name(["q"], require_all=False)).dot(pl.col("mass_g")) / pl.col("mass_g").sum())
             .otherwise(0.0),
             pl.col("mass_g").sum().alias("out_mass_g"),
             pl.col("inputcellid").implode().alias("inputcellid_list"),
             pl.col("mass_g").implode().alias("mass_g_list"),
             (
                 ~(
-                    cs.by_name(["mass_g", "inputcellid", "modelgridindex", "Ye", "cellYe", "q"], require_all=False)
+                    cs.by_name(
+                        ["mass_g", "inputcellid", "modelgridindex", "Ye", "cellYe", "q", "tracercount"],
+                        require_all=False,
+                    )
                     | cs.starts_with("X_")
                     | cs.starts_with("pos_")
                     | cs.starts_with("vel_")
@@ -1339,9 +1346,6 @@ def dimension_reduce_model(
         .with_columns(rho=pl.lit(None).cast(pl.Float32), inputcellid=pl.col("inputcellid").cast(pl.Int64))
         .sort("inputcellid")
     )
-
-    if "tracercount" in dfmodel_out.collect_schema().names():
-        dfmodel_out = dfmodel_out.with_columns(tracercount=pl.col("tracercount").list.sum())
 
     if outputdimensions == 2:
         dfmodel_out = dfmodel_out.with_columns(
