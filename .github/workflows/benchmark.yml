@@ -51,6 +51,8 @@ jobs:
 
             - name: Install artistools
               run: |
+                  echo $PYO3_PYTHON
+                  echo $PYTHON_MINOR_VERSION
                   rustup update stable
                   uv sync --frozen
                   uv pip install --compile-bytecode .
