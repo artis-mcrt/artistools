@@ -1318,6 +1318,7 @@ def dimension_reduce_model(
         assert outputdimensions in {0, 1}
         dfmodel = dfmodel.with_columns(mgiout=pl.col("out_n_r"))
 
+    dfmodel = dfmodel.sort("mgiout")
     allmatchedcells = {}
     for (mgiout,), matchedcells in dfmodel.group_by("mgiout", maintain_order=True):
         vel_r_min, vel_r_max = vel_r_min_max[mgiout % ncoordgridr]
