@@ -17,7 +17,6 @@ import numpy as np
 import pandas as pd
 import polars as pl
 import polars.selectors as cs
-import polars.testing as pltest
 
 from artistools.configuration import get_config
 from artistools.misc import firstexisting
@@ -1346,7 +1345,8 @@ def dimension_reduce_model(
         .with_columns(rho=pl.lit(None).cast(pl.Float32), inputcellid=pl.col("inputcellid").cast(pl.Int64))
         .sort("inputcellid")
     )
-    if "tracercount" in dfmodel.columns:
+
+    if "tracercount" in dfmodel.collect_schema().names():
         dfmodel = dfmodel.with_columns(tracercount=pl.col("tracercount").list.sum())
 
     if outputdimensions == 2:
@@ -1377,102 +1377,80 @@ def dimension_reduce_model(
 
     if dfelabundances is not None:
         dfelabundances = (
-            dfelabundances.lazy()
-            .with_columns(pl.col("inputcellid").cast(pl.Int32))
-            .join(dfmodel.lazy().select(["inputcellid", "mass_g"]), on="inputcellid", how="left")
-        )
-
-        dfelabundances2 = (
             (
-                dfelabundances.lazy()
-                .with_columns(pl.col("inputcellid").cast(pl.Int32))
-                .join(
-                    dfmodel.lazy()
-                    .select(
-                        out_inputcellid=pl.col("inputcellid"),
-                        inputcellid=pl.col("inputcellid_list"),
-                        mass_g=pl.col("mass_g_list"),
+                (
+                    dfelabundances.lazy()
+                    .with_columns(pl.col("inputcellid").cast(pl.Int32))
+                    .join(
+                        dfmodel.lazy()
+                        .select(
+                            out_inputcellid=pl.col("inputcellid"),
+                            inputcellid=pl.col("inputcellid_list"),
+                            mass_g=pl.col("mass_g_list"),
+                        )
+                        .explode("inputcellid", "mass_g"),
+                        on="inputcellid",
+                        how="left",
                     )
-                    .explode("inputcellid", "mass_g"),
-                    on="inputcellid",
-                    how="left",
                 )
                 .drop("inputcellid")
                 .group_by("out_inputcellid")
-                .agg((cs.starts_with("X_").dot(pl.col("mass_g")) / pl.col("mass_g").sum()).fill_nan(0.0))
+                .agg(
+                    (cs.starts_with("X_").dot(pl.col("mass_g")) / pl.col("mass_g").sum()).fill_nan(0.0),
+                    cs.by_name("mass_g").sum(),
+                )
                 .rename({"out_inputcellid": "inputcellid"})
             )
             .drop_nulls("inputcellid")
             .sort("inputcellid")
-        )
+        ).collect()
 
-    outcellabundances = []
     outgridcontributions = []
 
-    for cellidout, matching_inputcellids, outcellmass in (
-        dfmodel.select("inputcellid", "inputcellid_list", "mass_g").collect().iter_rows()
-    ):
-        mgiout = cellidout - 1
-        nonempty = outcellmass > 0.0
-        if outcellmass > 0.0 and dfgridcontributions is not None:
-            dfcellcont = dfgridcontributions.filter(pl.col("cellindex").is_in(matching_inputcellids))
+    if dfgridcontributions is not None:
+        for cellidout, matching_inputcellids, outcellmass in (
+            dfmodel.select("inputcellid", "inputcellid_list", "mass_g").collect().iter_rows()
+        ):
+            mgiout = cellidout - 1
+            if outcellmass > 0.0:
+                dfcellcont = dfgridcontributions.filter(pl.col("cellindex").is_in(matching_inputcellids))
 
-            for (particleid,), dfparticlecontribs in dfcellcont.group_by(["particleid"]):
-                frac_of_cellmass_avg = (
-                    sum(
-                        row["frac_of_cellmass"] * inputcellmass[row["cellindex"]]
-                        for row in dfparticlecontribs.iter_rows(named=True)
-                    )
-                    / outcellmass
-                )
-
-                contriboutrow = {
-                    "particleid": particleid,
-                    "cellindex": mgiout + 1,
-                    "frac_of_cellmass": frac_of_cellmass_avg,
-                }
-
-                if includemissingcolexists:
-                    frac_of_cellmass_includemissing_avg = (
+                for (particleid,), dfparticlecontribs in dfcellcont.group_by(["particleid"]):
+                    frac_of_cellmass_avg = (
                         sum(
-                            row["frac_of_cellmass_includemissing"] * inputcellmass[row["cellindex"]]
+                            row["frac_of_cellmass"] * inputcellmass[row["cellindex"]]
                             for row in dfparticlecontribs.iter_rows(named=True)
                         )
                         / outcellmass
                     )
-                    contriboutrow["frac_of_cellmass_includemissing"] = frac_of_cellmass_includemissing_avg
 
-                outgridcontributions.append(contriboutrow)
+                    contriboutrow = {
+                        "particleid": particleid,
+                        "cellindex": mgiout + 1,
+                        "frac_of_cellmass": frac_of_cellmass_avg,
+                    }
 
-        if dfelabundances is not None:
-            abund_matchedcells = (
-                dfelabundances.filter(pl.col("inputcellid").is_in(matching_inputcellids)).lazy().collect()
-            )
-            dictcellabundances: dict[str, int | float] = {"inputcellid": mgiout + 1}
-            for column in (col for col in dfelabundances.columns if col.startswith("X_")):
-                dotprod = abund_matchedcells.select(pl.col(column).dot(pl.col("mass_g"))).item() if nonempty else 0.0
-                assert isinstance(dotprod, float)
-                massfrac = dotprod / outcellmass if nonempty else 0.0
-                dictcellabundances[column] = massfrac
+                    if includemissingcolexists:
+                        frac_of_cellmass_includemissing_avg = (
+                            sum(
+                                row["frac_of_cellmass_includemissing"] * inputcellmass[row["cellindex"]]
+                                for row in dfparticlecontribs.iter_rows(named=True)
+                            )
+                            / outcellmass
+                        )
+                        contriboutrow["frac_of_cellmass_includemissing"] = frac_of_cellmass_includemissing_avg
 
-            outcellabundances.append(dictcellabundances)
+                    outgridcontributions.append(contriboutrow)
 
     dfmodel = dfmodel.drop(["inputcellid_list", "mass_g_list"], strict=False)
     if other_cols := dfmodel.select(cs.by_dtype(pl.List)).collect_schema().names():
         assert not other_cols, f"Not sure how to combine column values: {other_cols}"
 
-    dfabundances_out = pl.DataFrame(outcellabundances) if outcellabundances else None
-    pl.Config.set_tbl_rows(200)
-    pl.Config.set_tbl_cols(200)
-    print(dfabundances_out)
-    print(dfelabundances2.collect())
-    pltest.assert_frame_equal(dfelabundances2.collect(), dfabundances_out)
-
     dfgridcontributions_out = pl.DataFrame(outgridcontributions) if outgridcontributions else None
 
     print(f"  took {time.perf_counter() - timestart:.1f} seconds")
 
-    return (dfmodel.collect(), dfabundances_out, dfgridcontributions_out, modelmeta_out)
+    return (dfmodel.collect(), dfelabundances, dfgridcontributions_out, modelmeta_out)
 
 
 def scale_model_to_time(
