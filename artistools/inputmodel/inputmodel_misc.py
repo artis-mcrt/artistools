@@ -1215,7 +1215,7 @@ def dimension_reduce_model(
     """Convert 3D Cartesian grid model to 1D spherical or 2D cylindrical. Particle gridcontributions and an elemental abundance table can optionally be updated to match."""
     assert outputdimensions in {0, 1, 2}
 
-    dfmodel = dfmodel.lazy().collect()
+    dfmodel = dfmodel.lazy().collect().lazy()
 
     if modelmeta is None:
         modelmeta = {}
@@ -1236,14 +1236,16 @@ def dimension_reduce_model(
     assert ndim_in > outputdimensions
     modelmeta_out["dimensions"] = max(outputdimensions, 1)
 
-    ngridpoints = modelmeta.get("npts_model", len(dfmodel))
-    assert isinstance(ngridpoints, int)
-    assert ngridpoints > 0
+    in_ngridpoints = modelmeta.get("npts_model", dfmodel.select(pl.len()).collect().item())
+    assert isinstance(in_ngridpoints, int)
+    assert in_ngridpoints > 0
 
-    print(f"Resampling {ndim_in:d}D model with {ngridpoints} cells to {outputdimensions}D...")
+    print(f"Resampling {ndim_in:d}D model with {in_ngridpoints} cells to {outputdimensions}D...")
     timestart = time.perf_counter()
 
-    dfmodel = add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta, derived_cols=["velocity", "mass_g"]).collect()
+    dfmodel_out = add_derived_cols_to_modeldata(
+        dfmodel.lazy(), modelmeta=modelmeta, derived_cols=["velocity", "mass_g"]
+    )
 
     if outputdimensions == 0:
         ncoordgridr = 1
@@ -1251,20 +1253,20 @@ def dimension_reduce_model(
     elif outputdimensions == 1:
         # make 1D model
         if ndim_in == 2:
-            ncoordgridr = int(modelmeta.get("ncoordgridrcyl", round(math.sqrt(ngridpoints / 2.0))))
+            ncoordgridr = int(modelmeta.get("ncoordgridrcyl", round(math.sqrt(in_ngridpoints / 2.0))))
         elif ndim_in == 3:
-            ncoordgridx = int(modelmeta.get("ncoordgridx", round(math.cbrt(ngridpoints))))
+            ncoordgridx = int(modelmeta.get("ncoordgridx", round(math.cbrt(in_ngridpoints))))
             ncoordgridr = int(ncoordgridx / 2.0)
         else:
             ncoordgridr = 1
         modelmeta_out["ncoordgridr"] = ncoordgridr
         ncoordgridz = 1
     elif outputdimensions == 2:
-        dfmodel = dfmodel.with_columns([
+        dfmodel_out = dfmodel_out.with_columns([
             (pl.col("vel_x_mid") ** 2 + pl.col("vel_y_mid") ** 2).sqrt().alias("vel_rcyl_mid")
         ])
         if ncoordgridz is None:
-            ncoordgridz = int(modelmeta.get("ncoordgridx", round(math.cbrt(ngridpoints))))
+            ncoordgridz = int(modelmeta.get("ncoordgridx", round(math.cbrt(in_ngridpoints))))
             assert ncoordgridz % 2 == 0
         ncoordgridr = ncoordgridz // 2
         modelmeta_out["ncoordgridz"] = ncoordgridz
@@ -1281,7 +1283,7 @@ def dimension_reduce_model(
     # "r" is the cylindrical radius in 2D, or the spherical radius in 1D
     vel_r_bins = [vmax * n / ncoordgridr for n in range(ncoordgridr + 1)]
 
-    dfmodel = dfmodel.with_columns(
+    dfmodel_out = dfmodel_out.with_columns(
         (
             (pl.col("vel_rcyl_mid") if outputdimensions == 2 else pl.col("vel_r_mid"))
             .cut(breaks=vel_r_bins, labels=[str(x) for x in range(-1, len(vel_r_bins))])
@@ -1291,8 +1293,8 @@ def dimension_reduce_model(
     ).filter(pl.col("out_n_r").is_between(0, ncoordgridr - 1))
 
     if outputdimensions == 2:
-        dfmodel = (
-            dfmodel.with_columns(
+        dfmodel_out = (
+            dfmodel_out.with_columns(
                 (
                     pl.col("vel_z_mid")
                     .cut(breaks=vel_z_bins, labels=[str(x) for x in range(-1, len(vel_z_bins))])
@@ -1307,12 +1309,12 @@ def dimension_reduce_model(
         )
     else:
         assert outputdimensions in {0, 1}
-        dfmodel = dfmodel.with_columns(mgiout=pl.col("out_n_r"))
+        dfmodel_out = dfmodel_out.with_columns(mgiout=pl.col("out_n_r"))
 
-    dfmodel = dfmodel.sort("mgiout")
+    dfmodel_out = dfmodel_out.sort("mgiout")
 
-    dfmodel = (
-        dfmodel.lazy()
+    dfmodel_out = (
+        dfmodel_out.lazy()
         .group_by("mgiout", cs.starts_with("out_n_"))
         .agg(
             pl.when(pl.col("mass_g").sum() > 0)
@@ -1339,34 +1341,34 @@ def dimension_reduce_model(
         .sort("inputcellid")
     )
 
-    if "tracercount" in dfmodel.collect_schema().names():
-        dfmodel = dfmodel.with_columns(tracercount=pl.col("tracercount").list.sum())
+    if "tracercount" in dfmodel_out.collect_schema().names():
+        dfmodel_out = dfmodel_out.with_columns(tracercount=pl.col("tracercount").list.sum())
 
     if outputdimensions == 2:
-        dfmodel = dfmodel.with_columns(
+        dfmodel_out = dfmodel_out.with_columns(
             pos_rcyl_mid=(pl.col("out_n_r") + 0.5) * (xmax / ncoordgridr),
             pos_z_mid=(pl.col("out_n_z") + 0.5) * (2 * xmax / ncoordgridz) - xmax,
         )
     else:
         km_to_cm = 1e5
-        dfmodel = dfmodel.with_columns(vel_r_max_kmps=(pl.col("out_n_r") + 1) * (vmax / ncoordgridr) / km_to_cm)
+        dfmodel_out = dfmodel_out.with_columns(vel_r_max_kmps=(pl.col("out_n_r") + 1) * (vmax / ncoordgridr) / km_to_cm)
 
-    dfmodel = (
-        add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta_out, derived_cols=["volume"])
+    dfmodel_out = (
+        add_derived_cols_to_modeldata(dfmodel_out, modelmeta=modelmeta_out, derived_cols=["volume"])
         .with_columns(rho=pl.col("mass_g_sum") / pl.col("volume"))
         .drop("volume", cs.starts_with("out_n_"))
         .rename({"mass_g_sum": "mass_g"})
     )
     if outputdimensions < 2:
-        dfmodel = dfmodel.with_columns(
+        dfmodel_out = dfmodel_out.with_columns(
             logrho=pl.when(pl.col("rho") > 0).then(pl.max_horizontal(-99, pl.col("rho").log10())).otherwise(-99.0)
         ).drop("rho")
 
-    modelmeta_out["npts_model"] = dfmodel.select(pl.len()).collect().item()
+    modelmeta_out["npts_model"] = dfmodel_out.select(pl.len()).collect().item()
     assert modelmeta_out["npts_model"] == ncoordgridr * ncoordgridz
 
     dfoutcell_inputcells_masses = (
-        dfmodel.lazy()
+        dfmodel_out.lazy()
         .select(
             out_inputcellid=pl.col("inputcellid"),
             inputcellid=pl.col("inputcellid_list"),
@@ -1377,7 +1379,7 @@ def dimension_reduce_model(
     ).collect()
 
     if dfelabundances is not None:
-        dfelabundances = (
+        dfelabundances_out = (
             (
                 dfelabundances.lazy()
                 .with_columns(pl.col("inputcellid").cast(pl.Int32))
@@ -1393,7 +1395,9 @@ def dimension_reduce_model(
             .drop_nulls("inputcellid")
             .sort("inputcellid")
         ).collect()
-        assert modelmeta_out["npts_model"] == dfelabundances.select(pl.len()).item()
+        assert modelmeta_out["npts_model"] == dfelabundances_out.select(pl.len()).item()
+    else:
+        dfelabundances_out = None
 
     if dfgridcontributions is not None:
         dfgridcontributions_out = (
@@ -1419,14 +1423,16 @@ def dimension_reduce_model(
             )
             .collect()
         )
+    else:
+        dfgridcontributions_out = None
 
-    dfmodel = dfmodel.drop(["inputcellid_list", "mass_g_list"], strict=False)
-    if other_cols := dfmodel.select(cs.by_dtype(pl.List)).collect_schema().names():
+    dfmodel_out = dfmodel_out.drop(["inputcellid_list", "mass_g_list"], strict=False)
+    if other_cols := dfmodel_out.select(cs.by_dtype(pl.List)).collect_schema().names():
         assert not other_cols, f"Not sure how to combine column values: {other_cols}"
 
     print(f"  took {time.perf_counter() - timestart:.1f} seconds")
 
-    return (dfmodel.collect(), dfelabundances, dfgridcontributions_out, modelmeta_out)
+    return (dfmodel_out.collect(), dfelabundances_out, dfgridcontributions_out, modelmeta_out)
 
 
 def scale_model_to_time(
