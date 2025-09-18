@@ -181,7 +181,7 @@ jobs:
                   key: cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python3.${{ matrix.python-minor-version }}-${{ hashFiles('**/Cargo.lock') }}-${{
                       github.run_id }}
                   restore-keys: |
-                      cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python3.${{ matrix.python-minor-version }}-${{ hashFiles('**/Cargo.lock') }}
+                      cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python3.${{ matrix.python-minor-version }}-${{ hashFiles('**/Cargo.lock') }}-
                       cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python3.${{ matrix.python-minor-version }}-
                       cargo-rust-target-${{ runner.os }}${{ runner.arch }}-
 
@@ -201,7 +201,6 @@ jobs:
 
             - name: Check artistools command line tool
               run: |
-                  uv run -- python --version
                   uv run -- artistools --help
                   uv run -- artistools completions
 
@@ -217,8 +216,7 @@ jobs:
               run: source ./setuptestdata.sh
 
             - name: Install dev deps
-              run: |
-                  uv sync
+              run: uv sync
 
             - name: Test with pytest
               run: uv run --no-sync -- python -m pytest --cov=./ --cov-report=xml
