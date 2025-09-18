@@ -55,7 +55,7 @@ jobs:
                   echo $PYTHON_MINOR_VERSION
                   rustup update stable
                   uv sync --frozen
-                  uv pip install --compile-bytecode .
+                  uv pip install --compile-bytecode -v .
 
             - name: Cache test data
               uses: actions/cache@v4

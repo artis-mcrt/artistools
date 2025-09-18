@@ -197,7 +197,6 @@ jobs:
               run: |
                   rustup update stable
                   uv sync --no-dev
-                  uv run -- python --version
                   uv pip install .
 
             - name: Check artistools command line tool
@@ -219,8 +218,8 @@ jobs:
 
             - name: Install artistools
               run: |
-                  uv sync --python 3.${{ matrix.python-minor-version }}
-                  uv pip install --compile-bytecode .
+                  uv sync
+                  uv pip install --compile-bytecode -v .
 
             - name: Test with pytest
               run: uv run --no-sync -- python -m pytest --cov=./ --cov-report=xml
