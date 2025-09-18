@@ -1314,8 +1314,7 @@ def dimension_reduce_model(
     dfmodel_out = dfmodel_out.sort("mgiout")
 
     dfmodel_out = (
-        dfmodel_out.lazy()
-        .group_by("mgiout", cs.starts_with("out_n_"))
+        dfmodel_out.group_by("mgiout", cs.starts_with("out_n_"))
         .agg(
             pl.when(pl.col("mass_g").sum() > 0)
             .then(
@@ -1323,7 +1322,7 @@ def dimension_reduce_model(
                 / pl.col("mass_g").sum()
             )
             .otherwise(0.0),
-            pl.col("mass_g").sum().alias("mass_g_sum"),
+            pl.col("mass_g").sum().alias("out_mass_g"),
             pl.col("inputcellid").implode().alias("inputcellid_list"),
             pl.col("mass_g").implode().alias("mass_g_list"),
             (
@@ -1355,9 +1354,9 @@ def dimension_reduce_model(
 
     dfmodel_out = (
         add_derived_cols_to_modeldata(dfmodel_out, modelmeta=modelmeta_out, derived_cols=["volume"])
-        .with_columns(rho=pl.col("mass_g_sum") / pl.col("volume"))
+        .with_columns(rho=pl.col("out_mass_g") / pl.col("volume"))
         .drop("volume", cs.starts_with("out_n_"))
-        .rename({"mass_g_sum": "mass_g"})
+        .rename({"out_mass_g": "mass_g"})
     )
     if outputdimensions < 2:
         dfmodel_out = dfmodel_out.with_columns(
@@ -1368,30 +1367,26 @@ def dimension_reduce_model(
     assert modelmeta_out["npts_model"] == ncoordgridr * ncoordgridz
 
     dfoutcell_inputcells_masses = (
-        dfmodel_out.lazy()
-        .select(
+        dfmodel_out.select(
             out_inputcellid=pl.col("inputcellid"),
             inputcellid=pl.col("inputcellid_list"),
             mass_g=pl.col("mass_g_list"),
             out_mass_g=pl.col("mass_g_list").list.sum(),
-        )
-        .explode("inputcellid", "mass_g")
+        ).explode("inputcellid", "mass_g")
     ).collect()
 
     if dfelabundances is not None:
         dfelabundances_out = (
-            (
-                dfelabundances.lazy()
-                .with_columns(pl.col("inputcellid").cast(pl.Int32))
-                .join(dfoutcell_inputcells_masses.lazy(), on="inputcellid", how="left")
-                .drop("inputcellid")
-                .group_by("out_inputcellid")
-                .agg(
-                    (cs.starts_with("X_").dot(pl.col("mass_g")) / pl.col("mass_g").sum()).fill_nan(0.0),
-                    cs.by_name("mass_g").sum(),
-                )
-                .rename({"out_inputcellid": "inputcellid"})
+            dfelabundances.lazy()
+            .with_columns(pl.col("inputcellid").cast(pl.Int32))
+            .join(dfoutcell_inputcells_masses.lazy(), on="inputcellid", how="left")
+            .drop("inputcellid")
+            .group_by("out_inputcellid")
+            .agg(
+                (cs.starts_with("X_").dot(pl.col("mass_g")) / pl.col("mass_g").sum()).fill_nan(0.0),
+                cs.by_name("mass_g").sum(),
             )
+            .rename({"out_inputcellid": "inputcellid"})
             .drop_nulls("inputcellid")
             .sort("inputcellid")
         ).collect()
