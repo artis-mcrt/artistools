@@ -53,7 +53,7 @@ jobs:
             - name: Install artistools[extras]
               run: |
                   uv sync --all-extras
-                  uv pip install .[extras]
+                  uv pip install --compile-bytecode .[extras]
 
             - name: Run Ruff
               if: always()
@@ -181,7 +181,7 @@ jobs:
                   key: cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python3.${{ matrix.python-minor-version }}-${{ hashFiles('**/Cargo.lock') }}-${{
                       github.run_id }}
                   restore-keys: |
-                      cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python3.${{ matrix.python-minor-version }}-${{ hashFiles('**/Cargo.lock') }}
+                      cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python3.${{ matrix.python-minor-version }}-${{ hashFiles('**/Cargo.lock') }}-
                       cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python3.${{ matrix.python-minor-version }}-
                       cargo-rust-target-${{ runner.os }}${{ runner.arch }}-
 
@@ -197,12 +197,10 @@ jobs:
               run: |
                   rustup update stable
                   uv sync --no-dev
-                  uv run -- python --version
-                  uv pip install .
+                  uv pip install --compile-bytecode .
 
             - name: Check artistools command line tool
               run: |
-                  uv run -- python --version
                   uv run -- artistools --help
                   uv run -- artistools completions
 
@@ -217,10 +215,8 @@ jobs:
               working-directory: tests/data/
               run: source ./setuptestdata.sh
 
-            - name: Install artistools
-              run: |
-                  uv sync --python 3.${{ matrix.python-minor-version }}
-                  uv pip install --compile-bytecode .
+            - name: Install dev deps
+              run: uv sync
 
             - name: Test with pytest
               run: uv run --no-sync -- python -m pytest --cov=./ --cov-report=xml
