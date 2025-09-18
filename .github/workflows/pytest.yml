@@ -216,10 +216,9 @@ jobs:
               working-directory: tests/data/
               run: source ./setuptestdata.sh
 
-            - name: Install artistools
+            - name: Install dev deps
               run: |
                   uv sync
-                  uv pip install --compile-bytecode -v .
 
             - name: Test with pytest
               run: uv run --no-sync -- python -m pytest --cov=./ --cov-report=xml
