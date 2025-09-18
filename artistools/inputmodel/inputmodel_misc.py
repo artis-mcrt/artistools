@@ -1378,20 +1378,18 @@ def dimension_reduce_model(
     if dfelabundances is not None:
         dfelabundances = (
             (
-                (
-                    dfelabundances.lazy()
-                    .with_columns(pl.col("inputcellid").cast(pl.Int32))
-                    .join(
-                        dfmodel.lazy()
-                        .select(
-                            out_inputcellid=pl.col("inputcellid"),
-                            inputcellid=pl.col("inputcellid_list"),
-                            mass_g=pl.col("mass_g_list"),
-                        )
-                        .explode("inputcellid", "mass_g"),
-                        on="inputcellid",
-                        how="left",
+                dfelabundances.lazy()
+                .with_columns(pl.col("inputcellid").cast(pl.Int32))
+                .join(
+                    dfmodel.lazy()
+                    .select(
+                        out_inputcellid=pl.col("inputcellid"),
+                        inputcellid=pl.col("inputcellid_list"),
+                        mass_g=pl.col("mass_g_list"),
                     )
+                    .explode("inputcellid", "mass_g"),
+                    on="inputcellid",
+                    how="left",
                 )
                 .drop("inputcellid")
                 .group_by("out_inputcellid")
@@ -1404,6 +1402,7 @@ def dimension_reduce_model(
             .drop_nulls("inputcellid")
             .sort("inputcellid")
         ).collect()
+        assert modelmeta_out["npts_model"] == dfelabundances.select(pl.len()).item()
 
     outgridcontributions = []
 
