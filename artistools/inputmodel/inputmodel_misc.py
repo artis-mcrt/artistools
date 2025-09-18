@@ -529,13 +529,14 @@ def add_derived_cols_to_modeldata(
     t_model_init_seconds = modelmeta["t_model_init_days"] * 86400.0
     keep_all = "ALL" in derived_cols
 
-    if "logrho" not in dfmodel.collect_schema().names():
+    if "logrho" not in dfmodel.collect_schema().names() and "rho" in dfmodel.collect_schema().names():
         dfmodel = dfmodel.with_columns(logrho=pl.col("rho").log10())
 
-    if "rho" not in dfmodel.collect_schema().names():
+    if "rho" not in dfmodel.collect_schema().names() and "logrho" in dfmodel.collect_schema().names():
         dfmodel = dfmodel.with_columns(
             rho=(pl.when(pl.col("logrho") > -98).then(10 ** pl.col("logrho")).otherwise(0.0))
         )
+
     axes: list[str] = []
     dimensions = modelmeta["dimensions"]
     match dimensions:
@@ -680,10 +681,11 @@ def add_derived_cols_to_modeldata(
         if col.startswith("pos_"):
             dfmodel = dfmodel.with_columns((pl.col(col) / t_model_init_seconds).alias(col.replace("pos_", "vel_")))
 
+    if "rho" in dfmodel.collect_schema().names() and "volume" in dfmodel.collect_schema().names():
+        dfmodel = dfmodel.with_columns(mass_g=(pl.col("rho") * pl.col("volume")))
+
     # add vel_*_on_c scaled velocities
-    dfmodel = dfmodel.with_columns(mass_g=(pl.col("rho") * pl.col("volume"))).with_columns(
-        (cs.starts_with("vel_") / 29979245800.0).name.suffix("_on_c")
-    )
+    dfmodel = dfmodel.with_columns((cs.starts_with("vel_") / 29979245800.0).name.suffix("_on_c"))
 
     if unknown_cols := [
         col
