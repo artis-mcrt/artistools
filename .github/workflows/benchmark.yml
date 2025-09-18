@@ -52,7 +52,7 @@ jobs:
             - name: Install artistools
               run: |
                   rustup update stable
-                  uv sync --frozen
+                  uv sync
                   uv pip install --compile-bytecode .
 
             - name: Cache test data
