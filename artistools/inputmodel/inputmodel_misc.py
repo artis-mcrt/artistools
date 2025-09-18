@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 import polars as pl
 import polars.selectors as cs
+import polars.testing as pltest
 
 from artistools.configuration import get_config
 from artistools.misc import firstexisting
@@ -1288,13 +1289,6 @@ def dimension_reduce_model(
     # "r" is the cylindrical radius in 2D, or the spherical radius in 1D
     vel_r_bins = [vmax * n / ncoordgridr for n in range(ncoordgridr + 1)]
 
-    if dfelabundances is not None:
-        dfelabundances = (
-            dfelabundances.lazy()
-            .with_columns(pl.col("inputcellid").cast(pl.Int32))
-            .join(dfmodel.lazy().select(["inputcellid", "mass_g"]), on="inputcellid", how="left")
-        )
-
     dfmodel = dfmodel.with_columns(
         (
             (pl.col("vel_rcyl_mid") if outputdimensions == 2 else pl.col("vel_r_mid"))
@@ -1337,6 +1331,7 @@ def dimension_reduce_model(
             .otherwise(0.0),
             pl.col("mass_g").sum().alias("mass_g_sum"),
             pl.col("inputcellid").implode().alias("inputcellid_list"),
+            pl.col("mass_g").implode().alias("mass_g_list"),
             (
                 ~(
                     cs.by_name(["mass_g", "inputcellid", "modelgridindex", "Ye", "cellYe", "q"], require_all=False)
@@ -1373,12 +1368,43 @@ def dimension_reduce_model(
             logrho=pl.when(pl.col("rho") > 0).then(pl.max_horizontal(-99, pl.col("rho").log10())).otherwise(-99.0)
         ).drop("rho")
 
-    modelmeta_out["npts_model"] = dfmodel.select(pl.count()).collect().item()
+    modelmeta_out["npts_model"] = dfmodel.select(pl.len()).collect().item()
     assert modelmeta_out["npts_model"] == ncoordgridr * ncoordgridz
 
     includemissingcolexists = (
         dfgridcontributions is not None and "frac_of_cellmass_includemissing" in dfgridcontributions.columns
     )
+
+    if dfelabundances is not None:
+        dfelabundances = (
+            dfelabundances.lazy()
+            .with_columns(pl.col("inputcellid").cast(pl.Int32))
+            .join(dfmodel.lazy().select(["inputcellid", "mass_g"]), on="inputcellid", how="left")
+        )
+
+        dfelabundances2 = (
+            (
+                dfelabundances.lazy()
+                .with_columns(pl.col("inputcellid").cast(pl.Int32))
+                .join(
+                    dfmodel.lazy()
+                    .select(
+                        out_inputcellid=pl.col("inputcellid"),
+                        inputcellid=pl.col("inputcellid_list"),
+                        mass_g=pl.col("mass_g_list"),
+                    )
+                    .explode("inputcellid", "mass_g"),
+                    on="inputcellid",
+                    how="left",
+                )
+                .drop("inputcellid")
+                .group_by("out_inputcellid")
+                .agg((cs.starts_with("X_").dot(pl.col("mass_g")) / pl.col("mass_g").sum()).fill_nan(0.0))
+                .rename({"out_inputcellid": "inputcellid"})
+            )
+            .drop_nulls("inputcellid")
+            .sort("inputcellid")
+        )
 
     outcellabundances = []
     outgridcontributions = []
@@ -1431,11 +1457,16 @@ def dimension_reduce_model(
 
             outcellabundances.append(dictcellabundances)
 
-    dfmodel = dfmodel.drop(["inputcellid_list"], strict=False)
+    dfmodel = dfmodel.drop(["inputcellid_list", "mass_g_list"], strict=False)
     if other_cols := dfmodel.select(cs.by_dtype(pl.List)).collect_schema().names():
         assert not other_cols, f"Not sure how to combine column values: {other_cols}"
 
     dfabundances_out = pl.DataFrame(outcellabundances) if outcellabundances else None
+    pl.Config.set_tbl_rows(200)
+    pl.Config.set_tbl_cols(200)
+    print(dfabundances_out)
+    print(dfelabundances2.collect())
+    pltest.assert_frame_equal(dfelabundances2.collect(), dfabundances_out)
 
     dfgridcontributions_out = pl.DataFrame(outgridcontributions) if outgridcontributions else None
 
