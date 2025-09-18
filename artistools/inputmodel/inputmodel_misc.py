@@ -1211,7 +1211,7 @@ def dimension_reduce_model(
     ncoordgridz: int | None = None,
     modelmeta: dict[str, t.Any] | None = None,
     **kwargs: t.Any,
-) -> tuple[pl.DataFrame, pl.DataFrame | None, pl.DataFrame | None, dict[str, t.Any]]:
+) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame, dict[str, t.Any]]:
     """Convert 3D Cartesian grid model to 1D spherical or 2D cylindrical. Particle gridcontributions and an elemental abundance table can optionally be updated to match."""
     assert outputdimensions in {0, 1, 2}
 
@@ -1370,26 +1370,22 @@ def dimension_reduce_model(
     modelmeta_out["npts_model"] = dfmodel_out.select(pl.len()).collect().item()
     assert modelmeta_out["npts_model"] == ncoordgridr * ncoordgridz
 
-    dfoutcell_inputcells_masses = (
-        dfmodel_out.select(
-            out_inputcellid=pl.col("inputcellid"),
-            inputcellid=pl.col("inputcellid_list"),
-            mass_g=pl.col("mass_g_list"),
-            out_mass_g=pl.col("mass_g_list").list.sum(),
-        ).explode("inputcellid", "mass_g")
-    ).collect()
+    dfoutcell_inputcells_masses = dfmodel_out.select(
+        out_inputcellid=pl.col("inputcellid"),
+        inputcellid=pl.col("inputcellid_list"),
+        mass_g=pl.col("mass_g_list"),
+        out_mass_g=pl.col("mass_g_list").list.sum(),
+    ).explode("inputcellid", "mass_g")
 
     dfmodel_out = dfmodel_out.drop(["inputcellid_list", "mass_g_list"], strict=False)
     if other_cols := dfmodel_out.select(cs.by_dtype(pl.List)).collect_schema().names():
         assert not other_cols, f"Not sure how to combine column values: {other_cols}"
 
-    dfmodel_out = dfmodel_out.collect()
-
-    if dfelabundances is not None:
-        dfelabundances_out = (
+    dfelabundances_out = (
+        (
             dfelabundances.lazy()
             .with_columns(pl.col("inputcellid").cast(pl.Int32))
-            .join(dfoutcell_inputcells_masses.lazy(), on="inputcellid", how="left")
+            .join(dfoutcell_inputcells_masses, on="inputcellid", how="left")
             .drop("inputcellid")
             .group_by("out_inputcellid")
             .agg(
@@ -1399,13 +1395,13 @@ def dimension_reduce_model(
             .rename({"out_inputcellid": "inputcellid"})
             .drop_nulls("inputcellid")
             .sort("inputcellid")
-        ).collect()
-        assert modelmeta_out["npts_model"] == dfelabundances_out.select(pl.len()).item()
-    else:
-        dfelabundances_out = None
+        )
+        if dfelabundances is not None
+        else pl.LazyFrame()
+    )
 
-    if dfgridcontributions is not None:
-        dfgridcontributions_out = (
+    dfgridcontributions_out = (
+        (
             dfgridcontributions.lazy()
             .with_columns(pl.col("cellindex").cast(pl.Int32))
             .rename({"cellindex": "inputcellid"})
@@ -1422,10 +1418,19 @@ def dimension_reduce_model(
                 "frac_of_cellmass",
                 cs.by_name("frac_of_cellmass_includemissing", require_all=False),
             )
-            .collect()
         )
-    else:
-        dfgridcontributions_out = None
+        if dfgridcontributions is not None
+        else pl.LazyFrame()
+    )
+
+    dfmodel_out, dfelabundances_out, dfgridcontributions_out = pl.collect_all((
+        dfmodel_out,
+        dfelabundances_out,
+        dfgridcontributions_out,
+    ))
+
+    if dfelabundances is not None:
+        assert modelmeta_out["npts_model"] == dfelabundances_out.select(pl.len()).item()
 
     print(f"  took {time.perf_counter() - timestart:.1f} seconds")
 
