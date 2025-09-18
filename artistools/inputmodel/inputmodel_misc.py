@@ -1215,7 +1215,7 @@ def dimension_reduce_model(
     """Convert 3D Cartesian grid model to 1D spherical or 2D cylindrical. Particle gridcontributions and an elemental abundance table can optionally be updated to match."""
     assert outputdimensions in {0, 1, 2}
 
-    dfmodel = dfmodel.lazy().collect().lazy()
+    dfmodel = dfmodel.lazy()
 
     if modelmeta is None:
         modelmeta = {}
