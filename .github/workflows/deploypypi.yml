@@ -3,7 +3,8 @@ name: Build and deploy to PyPI/testPyPI
 
 on:
     push:
-    merge_group:
+        tags:
+            - v*
     release:
         types: [published, edited]
     repository_dispatch:
@@ -13,7 +14,6 @@ on:
 jobs:
     build_wheels:
         name: Build cp3${{ matrix.python-minor-version }}-${{ matrix.target.os_arch }}
-        if: startsWith(github.ref , 'refs/tags/v') || github.event_name == 'workflow_dispatch'
         strategy:
             matrix:
                 target: [{os_arch: manylinux_x86_64, runs-on: ubuntu-24.04}, {os_arch: manylinux_aarch64, runs-on: ubuntu-24.04-arm},
