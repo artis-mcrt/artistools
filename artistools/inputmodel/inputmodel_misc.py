@@ -1318,11 +1318,10 @@ def dimension_reduce_model(
         assert outputdimensions in {0, 1}
         dfmodel = dfmodel.with_columns(mgiout=pl.col("out_n_r"))
 
-    dfmodel = dfmodel.sort("mgiout")
-
     allmatchedcells = {}
     for (mgiout,), matchedcells in dfmodel.group_by("mgiout", maintain_order=True):
         vel_r_min, vel_r_max = vel_r_min_max[mgiout % ncoordgridr]
+        vel_z_min, vel_z_max = vel_z_min_max[mgiout // ncoordgridr] if outputdimensions == 2 else 0.0, 0.0
 
         # matchedcells = dataframes_matchedcells[mgiout]
         if len(matchedcells) == 0:
@@ -1332,8 +1331,7 @@ def dimension_reduce_model(
                 shell_volume = (4 * math.pi / 3) * (
                     (vel_r_max * t_model_init_seconds) ** 3 - (vel_r_min * t_model_init_seconds) ** 3
                 )
-            else:
-                # outputdimensions == 2
+            elif outputdimensions == 2:
                 vel_z_min, vel_z_max = vel_z_min_max[mgiout // ncoordgridr]
                 shell_volume = (
                     math.pi * (vel_r_max**2 - vel_r_min**2) * (vel_z_max - vel_z_min) * t_model_init_seconds**3
