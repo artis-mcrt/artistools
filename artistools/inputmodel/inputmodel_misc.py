@@ -1383,6 +1383,8 @@ def dimension_reduce_model(
     if other_cols := dfmodel_out.select(cs.by_dtype(pl.List)).collect_schema().names():
         assert not other_cols, f"Not sure how to combine column values: {other_cols}"
 
+    dfmodel_out = dfmodel_out.collect()
+
     if dfelabundances is not None:
         dfelabundances_out = (
             dfelabundances.lazy()
@@ -1427,7 +1429,7 @@ def dimension_reduce_model(
 
     print(f"  took {time.perf_counter() - timestart:.1f} seconds")
 
-    return (dfmodel_out.collect(), dfelabundances_out, dfgridcontributions_out, modelmeta_out)
+    return (dfmodel_out, dfelabundances_out, dfgridcontributions_out, modelmeta_out)
 
 
 def scale_model_to_time(
