@@ -53,7 +53,7 @@ jobs:
             - name: Install artistools[extras]
               run: |
                   uv sync --all-extras
-                  uv pip install .[extras]
+                  uv pip install --compile-bytecode .[extras]
 
             - name: Run Ruff
               if: always()
@@ -197,7 +197,7 @@ jobs:
               run: |
                   rustup update stable
                   uv sync --no-dev
-                  uv pip install .
+                  uv pip install --compile-bytecode .
 
             - name: Check artistools command line tool
               run: |
