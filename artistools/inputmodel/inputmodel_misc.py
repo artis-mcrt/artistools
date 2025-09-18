@@ -17,7 +17,6 @@ import numpy as np
 import pandas as pd
 import polars as pl
 import polars.selectors as cs
-import polars.testing as pltest
 
 from artistools.configuration import get_config
 from artistools.misc import firstexisting
@@ -1284,13 +1283,9 @@ def dimension_reduce_model(
         raise ValueError(msg)
 
     # velocities in cm/s
-    vel_z_min_max = [
-        (-vmax + 2 * vmax * n / ncoordgridz, -vmax + 2 * vmax * (n + 1) / ncoordgridz) for n in range(ncoordgridz)
-    ]
     vel_z_bins = [-vmax + 2 * vmax * n / ncoordgridz for n in range(ncoordgridz + 1)]
 
     # "r" is the cylindrical radius in 2D, or the spherical radius in 1D
-    vel_r_min_max = [(vmax * n / ncoordgridr, vmax * (n + 1) / ncoordgridr) for n in range(ncoordgridr)]
     vel_r_bins = [vmax * n / ncoordgridr for n in range(ncoordgridr + 1)]
 
     dfmodel = dfmodel.with_columns(
@@ -1325,39 +1320,11 @@ def dimension_reduce_model(
         dfgridcontributions is not None and "frac_of_cellmass_includemissing" in dfgridcontributions.columns
     )
 
-    outcells = []
     outcellabundances = []
     outgridcontributions = []
 
     dfmodel = dfmodel.sort("mgiout")
     for (mgiout,), matchedcells in dfmodel.group_by("mgiout", maintain_order=True):
-        vel_r_min, vel_r_max = vel_r_min_max[mgiout % ncoordgridr]
-        vel_z_min, vel_z_max = vel_z_min_max[mgiout // ncoordgridr] if outputdimensions == 2 else 0.0, 0.0
-
-        if len(matchedcells) == 0:
-            rho_out = 0
-        else:
-            if outputdimensions in {0, 1}:
-                shell_volume = (4 * math.pi / 3) * (
-                    (vel_r_max * t_model_init_seconds) ** 3 - (vel_r_min * t_model_init_seconds) ** 3
-                )
-            elif outputdimensions == 2:
-                vel_z_min, vel_z_max = vel_z_min_max[mgiout // ncoordgridr]
-                shell_volume = (
-                    math.pi * (vel_r_max**2 - vel_r_min**2) * (vel_z_max - vel_z_min) * t_model_init_seconds**3
-                )
-            rho_out = matchedcells["mass_g"].sum() / shell_volume
-
-        cellout: dict[str, t.Any] = {"inputcellid": mgiout + 1, "mass_g": matchedcells["mass_g"].sum()}
-
-        if outputdimensions in {0, 1}:
-            cellout |= {"rho": rho_out, "vel_r_max_kmps": vel_r_max / km_to_cm}
-        elif outputdimensions == 2:
-            cellout |= {
-                "rho": rho_out,
-                "pos_rcyl_mid": (vel_r_min + vel_r_max) / 2 * t_model_init_seconds,
-                "pos_z_mid": (vel_z_min + vel_z_max) / 2 * t_model_init_seconds,
-            }
         matching_inputcellids = matchedcells.get_column("inputcellid").to_list()
         matchedcellmass = matchedcells["mass_g"].sum()
         nonempty = matchedcellmass > 0.0
@@ -1391,24 +1358,12 @@ def dimension_reduce_model(
 
                 outgridcontributions.append(contriboutrow)
 
-        for column in matchedcells.columns:
-            if column.startswith("X_") or column in {"Ye", "cellYe", "q"}:
-                # take mass-weighted average mass fraction
-                dotprod = matchedcells[column].dot(matchedcells["mass_g"])
-                assert isinstance(dotprod, float)
-                massfrac = dotprod / matchedcellmass if nonempty else 0.0
-                cellout[column] = massfrac
-            elif column == "tracercount":
-                cellout[column] = matchedcells[column].sum()
-
-        outcells.append(cellout)
-
         if dfelabundances is not None:
             abund_matchedcells = (
                 dfelabundances.filter(pl.col("inputcellid").is_in(matching_inputcellids)).lazy().collect()
             )
             dictcellabundances: dict[str, int | float] = {"inputcellid": mgiout + 1}
-            for column in (col for col in dfelabundances.columns if column.startswith("X_")):
+            for column in (col for col in dfelabundances.columns if col.startswith("X_")):
                 dotprod = abund_matchedcells[column].dot(matchedcells["mass_g"]) if nonempty else 0.0
                 assert isinstance(dotprod, float)
                 massfrac = dotprod / matchedcellmass if nonempty else 0.0
@@ -1416,15 +1371,6 @@ def dimension_reduce_model(
 
             outcellabundances.append(dictcellabundances)
 
-    dfmodel_out = pl.DataFrame(outcells)
-    if outputdimensions < 2:
-        dfmodel_out = dfmodel_out.with_columns(
-            logrho=pl.when(pl.col("rho") > 0).then(pl.max_horizontal(-99, pl.col("rho").log10())).otherwise(-99.0)
-        ).drop("rho")
-    pl.Config.set_tbl_cols(50)
-    pl.Config.set_tbl_rows(100)
-    modelmeta_out["npts_model"] = len(dfmodel_out)
-    print(dfmodel_out)
     dfmodel_out2 = (
         dfmodel.lazy()
         .group_by("mgiout", cs.starts_with("out_n_"))
@@ -1474,11 +1420,8 @@ def dimension_reduce_model(
         dfmodel_out2 = dfmodel_out2.with_columns(
             logrho=pl.when(pl.col("rho") > 0).then(pl.max_horizontal(-99, pl.col("rho").log10())).otherwise(-99.0)
         ).drop("rho")
-    dfmodel_out2 = dfmodel_out2.collect()
-    print(dfmodel_out2.collect_schema())
-    coldiff = set(dfmodel_out.columns).symmetric_difference(set(dfmodel_out2.columns))
-    pltest.assert_frame_equal(dfmodel_out, dfmodel_out2, check_column_order=False)
-    assert not coldiff, coldiff
+
+    modelmeta_out["npts_model"] = dfmodel_out2.select(pl.count()).collect().item()
 
     dfabundances_out = pl.DataFrame(outcellabundances) if outcellabundances else None
 
@@ -1486,7 +1429,7 @@ def dimension_reduce_model(
 
     print(f"  took {time.perf_counter() - timestart:.1f} seconds")
 
-    return (dfmodel_out2, dfabundances_out, dfgridcontributions_out, modelmeta_out)
+    return (dfmodel_out2.collect(), dfabundances_out, dfgridcontributions_out, modelmeta_out)
 
 
 def scale_model_to_time(
