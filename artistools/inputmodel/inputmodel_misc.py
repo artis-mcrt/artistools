@@ -1401,20 +1401,16 @@ def dimension_reduce_model(
 
     if dfgridcontributions is not None:
         dfgridcontributions_out = (
-            (
-                (
-                    dfgridcontributions.lazy()
-                    .with_columns(pl.col("cellindex").cast(pl.Int32))
-                    .rename({"cellindex": "inputcellid"})
-                    .join(dfoutcell_inputcells_masses.lazy(), on="inputcellid", how="left")
-                    .drop("inputcellid")
-                    .group_by("out_inputcellid", "particleid")
-                    .agg((cs.starts_with("frac_").dot(pl.col("mass_g")) / pl.col("out_mass_g").first()).fill_nan(0.0))
-                    .rename({"out_inputcellid": "cellindex"})
-                )
-                .drop_nulls("cellindex")
-                .sort("cellindex", "particleid")
-            )
+            dfgridcontributions.lazy()
+            .with_columns(pl.col("cellindex").cast(pl.Int32))
+            .rename({"cellindex": "inputcellid"})
+            .join(dfoutcell_inputcells_masses.lazy(), on="inputcellid", how="left")
+            .drop("inputcellid")
+            .group_by("out_inputcellid", "particleid")
+            .agg((cs.starts_with("frac_").dot(pl.col("mass_g")) / pl.col("out_mass_g").first()).fill_nan(0.0))
+            .rename({"out_inputcellid": "cellindex"})
+            .drop_nulls("cellindex")
+            .sort("cellindex", "particleid")
             .select(
                 "particleid",
                 "cellindex",
