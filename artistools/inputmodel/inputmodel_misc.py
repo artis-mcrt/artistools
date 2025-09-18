@@ -1318,8 +1318,15 @@ def dimension_reduce_model(
         assert outputdimensions in {0, 1}
         dfmodel = dfmodel.with_columns(mgiout=pl.col("out_n_r"))
 
+    includemissingcolexists = (
+        dfgridcontributions is not None and "frac_of_cellmass_includemissing" in dfgridcontributions.columns
+    )
+
+    outcells = []
+    outcellabundances = []
+    outgridcontributions = []
+
     dfmodel = dfmodel.sort("mgiout")
-    allmatchedcells = {}
     for (mgiout,), matchedcells in dfmodel.group_by("mgiout", maintain_order=True):
         vel_r_min, vel_r_max = vel_r_min_max[mgiout % ncoordgridr]
         vel_z_min, vel_z_max = vel_z_min_max[mgiout // ncoordgridr] if outputdimensions == 2 else 0.0, 0.0
@@ -1353,17 +1360,6 @@ def dimension_reduce_model(
                 "pos_z_mid": (vel_z_min + vel_z_max) / 2 * t_model_init_seconds,
             }
 
-        allmatchedcells[mgiout] = (cellout, matchedcells)
-
-    includemissingcolexists = (
-        dfgridcontributions is not None and "frac_of_cellmass_includemissing" in dfgridcontributions.columns
-    )
-
-    outcells = []
-    outcellabundances = []
-    outgridcontributions = []
-
-    for mgiout, (dictcell, matchedcells) in allmatchedcells.items():
         matchedcellmass = matchedcells["mass_g"].sum()
         nonempty = matchedcellmass > 0.0
         if matchedcellmass > 0.0 and dfgridcontributions is not None:
@@ -1404,11 +1400,11 @@ def dimension_reduce_model(
                 dotprod = matchedcells[column].dot(matchedcells["mass_g"])
                 assert isinstance(dotprod, float)
                 massfrac = dotprod / matchedcellmass if nonempty else 0.0
-                dictcell[column] = massfrac
+                cellout[column] = massfrac
             elif column == "tracercount":
-                dictcell[column] = matchedcells[column].sum()
+                cellout[column] = matchedcells[column].sum()
 
-        outcells.append(dictcell)
+        outcells.append(cellout)
 
         if dfelabundances is not None:
             abund_matchedcells = (
