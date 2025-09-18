@@ -2,7 +2,6 @@ import calendar
 import datetime
 import errno
 import gc
-import itertools
 import json
 import math
 import os
@@ -530,13 +529,14 @@ def add_derived_cols_to_modeldata(
     t_model_init_seconds = modelmeta["t_model_init_days"] * 86400.0
     keep_all = "ALL" in derived_cols
 
-    if "logrho" not in dfmodel.collect_schema().names():
+    if "logrho" not in dfmodel.collect_schema().names() and "rho" in dfmodel.collect_schema().names():
         dfmodel = dfmodel.with_columns(logrho=pl.col("rho").log10())
 
-    if "rho" not in dfmodel.collect_schema().names():
+    if "rho" not in dfmodel.collect_schema().names() and "logrho" in dfmodel.collect_schema().names():
         dfmodel = dfmodel.with_columns(
             rho=(pl.when(pl.col("logrho") > -98).then(10 ** pl.col("logrho")).otherwise(0.0))
         )
+
     axes: list[str] = []
     dimensions = modelmeta["dimensions"]
     match dimensions:
@@ -681,10 +681,11 @@ def add_derived_cols_to_modeldata(
         if col.startswith("pos_"):
             dfmodel = dfmodel.with_columns((pl.col(col) / t_model_init_seconds).alias(col.replace("pos_", "vel_")))
 
+    if "rho" in dfmodel.collect_schema().names() and "volume" in dfmodel.collect_schema().names():
+        dfmodel = dfmodel.with_columns(mass_g=(pl.col("rho") * pl.col("volume")))
+
     # add vel_*_on_c scaled velocities
-    dfmodel = dfmodel.with_columns(mass_g=(pl.col("rho") * pl.col("volume"))).with_columns(
-        (cs.starts_with("vel_") / 29979245800.0).name.suffix("_on_c")
-    )
+    dfmodel = dfmodel.with_columns((cs.starts_with("vel_") / 29979245800.0).name.suffix("_on_c"))
 
     if unknown_cols := [
         col
@@ -1210,11 +1211,11 @@ def dimension_reduce_model(
     ncoordgridz: int | None = None,
     modelmeta: dict[str, t.Any] | None = None,
     **kwargs: t.Any,
-) -> tuple[pl.DataFrame, pl.DataFrame | None, pl.DataFrame | None, dict[str, t.Any]]:
+) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame, dict[str, t.Any]]:
     """Convert 3D Cartesian grid model to 1D spherical or 2D cylindrical. Particle gridcontributions and an elemental abundance table can optionally be updated to match."""
     assert outputdimensions in {0, 1, 2}
 
-    dfmodel = dfmodel.lazy().collect()
+    dfmodel = dfmodel.lazy()
 
     if modelmeta is None:
         modelmeta = {}
@@ -1235,20 +1236,14 @@ def dimension_reduce_model(
     assert ndim_in > outputdimensions
     modelmeta_out["dimensions"] = max(outputdimensions, 1)
 
-    ngridpoints = modelmeta.get("npts_model", len(dfmodel))
-    assert isinstance(ngridpoints, int)
-    assert ngridpoints > 0
+    in_ngridpoints = modelmeta.get("npts_model", dfmodel.select(pl.len()).collect().item())
+    assert isinstance(in_ngridpoints, int)
+    assert in_ngridpoints > 0
 
-    print(f"Resampling {ndim_in:d}D model with {ngridpoints} cells to {outputdimensions}D...")
+    print(f"Resampling {ndim_in:d}D model with {in_ngridpoints} cells to {outputdimensions}D...")
     timestart = time.perf_counter()
 
-    dfmodel = add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta, derived_cols=["velocity", "mass_g"])
-
-    inputcellmass: dict[int, float] = {
-        int(cellid): float(rho) for cellid, rho in dfmodel.select(["inputcellid", "mass_g"]).collect().iter_rows()
-    }
-
-    km_to_cm = 1e5
+    dfmodel_out = add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta, derived_cols=["velocity", "mass_g"])
 
     if outputdimensions == 0:
         ncoordgridr = 1
@@ -1256,20 +1251,20 @@ def dimension_reduce_model(
     elif outputdimensions == 1:
         # make 1D model
         if ndim_in == 2:
-            ncoordgridr = int(modelmeta.get("ncoordgridrcyl", round(math.sqrt(ngridpoints / 2.0))))
+            ncoordgridr = int(modelmeta.get("ncoordgridrcyl", round(math.sqrt(in_ngridpoints / 2.0))))
         elif ndim_in == 3:
-            ncoordgridx = int(modelmeta.get("ncoordgridx", round(math.cbrt(ngridpoints))))
+            ncoordgridx = int(modelmeta.get("ncoordgridx", round(math.cbrt(in_ngridpoints))))
             ncoordgridr = int(ncoordgridx / 2.0)
         else:
             ncoordgridr = 1
         modelmeta_out["ncoordgridr"] = ncoordgridr
         ncoordgridz = 1
     elif outputdimensions == 2:
-        dfmodel = dfmodel.with_columns([
+        dfmodel_out = dfmodel_out.with_columns([
             (pl.col("vel_x_mid") ** 2 + pl.col("vel_y_mid") ** 2).sqrt().alias("vel_rcyl_mid")
         ])
         if ncoordgridz is None:
-            ncoordgridz = int(modelmeta.get("ncoordgridx", round(math.cbrt(ngridpoints))))
+            ncoordgridz = int(modelmeta.get("ncoordgridx", round(math.cbrt(in_ngridpoints))))
             assert ncoordgridz % 2 == 0
         ncoordgridr = ncoordgridz // 2
         modelmeta_out["ncoordgridz"] = ncoordgridz
@@ -1281,146 +1276,163 @@ def dimension_reduce_model(
         raise ValueError(msg)
 
     # velocities in cm/s
-    vel_z_min_max = [
-        (-vmax + 2 * vmax * n / ncoordgridz, -vmax + 2 * vmax * (n + 1) / ncoordgridz) for n in range(ncoordgridz)
-    ]
+    vel_z_bins = [-vmax + 2 * vmax * n / ncoordgridz for n in range(ncoordgridz + 1)]
 
     # "r" is the cylindrical radius in 2D, or the spherical radius in 1D
-    vel_r_min_max = [(vmax * n / ncoordgridr, vmax * (n + 1) / ncoordgridr) for n in range(ncoordgridr)]
+    vel_r_bins = [vmax * n / ncoordgridr for n in range(ncoordgridr + 1)]
+
+    dfmodel_out = dfmodel_out.with_columns(
+        (
+            (pl.col("vel_rcyl_mid") if outputdimensions == 2 else pl.col("vel_r_mid"))
+            .cut(breaks=vel_r_bins, labels=[str(x) for x in range(-1, len(vel_r_bins))])
+            .cast(pl.Utf8)
+            .cast(pl.Int32)
+        ).alias("out_n_r")
+    ).filter(pl.col("out_n_r").is_between(0, ncoordgridr - 1))
 
     if outputdimensions == 2:
-        lazyframes_matched_cells = [
-            dfmodel.filter(
-                pl.col("vel_z_mid").is_between(cell_vel_z_min_max[0], cell_vel_z_min_max[1], closed="right")
-                & pl.col("vel_rcyl_mid").is_between(cell_vel_r_min_max[0], cell_vel_r_min_max[1], closed="right")
+        dfmodel_out = (
+            dfmodel_out.with_columns(
+                (
+                    pl.col("vel_z_mid")
+                    .cut(breaks=vel_z_bins, labels=[str(x) for x in range(-1, len(vel_z_bins))])
+                    .cast(pl.Utf8)
+                    .cast(pl.Int32)
+                ).alias("out_n_z")
             )
-            for cell_vel_z_min_max, cell_vel_r_min_max in itertools.product(vel_z_min_max, vel_r_min_max)
-        ]
+            .filter(
+                pl.col("out_n_r").is_between(0, ncoordgridr - 1) & (pl.col("out_n_z").is_between(0, ncoordgridz - 1))
+            )
+            .with_columns(mgiout=pl.col("out_n_z") * ncoordgridr + pl.col("out_n_r"))
+        )
     else:
         assert outputdimensions in {0, 1}
-        lazyframes_matched_cells = [
-            dfmodel.filter(pl.col("vel_r_mid").is_between(cell_vel_r_min_max[0], cell_vel_r_min_max[1], closed="right"))
-            for cell_vel_r_min_max in vel_r_min_max
-        ]
+        dfmodel_out = dfmodel_out.with_columns(mgiout=pl.col("out_n_r"))
 
-    dataframes_matchedcells = pl.collect_all(lazyframes_matched_cells)
+    dfmodel_out = dfmodel_out.sort("mgiout")
 
-    allmatchedcells = {}
-    for mgiout, ((vel_z_min, vel_z_max), (vel_r_min, vel_r_max)) in enumerate(
-        itertools.product(vel_z_min_max, vel_r_min_max)
-    ):
-        matchedcells = dataframes_matchedcells[mgiout]
-        if len(matchedcells) == 0:
-            rho_out = 0
-        else:
-            if outputdimensions in {0, 1}:
-                shell_volume = (4 * math.pi / 3) * (
-                    (vel_r_max * t_model_init_seconds) ** 3 - (vel_r_min * t_model_init_seconds) ** 3
+    dfmodel_out = (
+        dfmodel_out.group_by("mgiout", cs.starts_with("out_n_"))
+        .agg(
+            pl.when(pl.col("mass_g").sum() > 0)
+            .then(
+                (cs.starts_with("X_") | cs.by_name(["Ye", "cellYe"], require_all=False)).dot(pl.col("mass_g"))
+                / pl.col("mass_g").sum()
+            )
+            .otherwise(0.0),
+            cs.by_name("tracercount", require_all=False).sum(),
+            pl.when(pl.col("mass_g").sum() > 0)
+            .then((cs.by_name(["q"], require_all=False)).dot(pl.col("mass_g")) / pl.col("mass_g").sum())
+            .otherwise(0.0),
+            pl.col("mass_g").sum().alias("out_mass_g"),
+            pl.col("inputcellid").implode().alias("inputcellid_list"),
+            pl.col("mass_g").implode().alias("mass_g_list"),
+            (
+                ~(
+                    cs.by_name(
+                        ["mass_g", "inputcellid", "modelgridindex", "Ye", "cellYe", "q", "tracercount"],
+                        require_all=False,
+                    )
+                    | cs.starts_with("X_")
+                    | cs.starts_with("pos_")
+                    | cs.starts_with("vel_")
                 )
-            else:
-                # outputdimensions == 2
-                shell_volume = (
-                    math.pi * (vel_r_max**2 - vel_r_min**2) * (vel_z_max - vel_z_min) * t_model_init_seconds**3
-                )
-            rho_out = matchedcells["mass_g"].sum() / shell_volume
-
-        cellout: dict[str, t.Any] = {"inputcellid": mgiout + 1, "mass_g": matchedcells["mass_g"].sum()}
-
-        if outputdimensions in {0, 1}:
-            cellout |= {
-                "logrho": math.log10(max(1e-99, rho_out)) if rho_out > 0.0 else -99.0,
-                "vel_r_max_kmps": vel_r_max / km_to_cm,
-            }
-        elif outputdimensions == 2:
-            cellout |= {
-                "rho": rho_out,
-                "pos_rcyl_mid": (vel_r_min + vel_r_max) / 2 * t_model_init_seconds,
-                "pos_z_mid": (vel_z_min + vel_z_max) / 2 * t_model_init_seconds,
-            }
-
-        allmatchedcells[mgiout] = (cellout, matchedcells)
-
-    includemissingcolexists = (
-        dfgridcontributions is not None and "frac_of_cellmass_includemissing" in dfgridcontributions.columns
+            ).implode(),
+        )
+        .select((pl.col("mgiout") + 1).alias("inputcellid"), cs.all().exclude("mgiout"))
+        .join(pl.LazyFrame({"inputcellid": range(ncoordgridr * ncoordgridz)}), on="inputcellid", how="left")
+        .with_columns(rho=pl.lit(None).cast(pl.Float32), inputcellid=pl.col("inputcellid").cast(pl.Int64))
+        .sort("inputcellid")
     )
 
-    outcells = []
-    outcellabundances = []
-    outgridcontributions = []
+    if outputdimensions == 2:
+        dfmodel_out = dfmodel_out.with_columns(
+            pos_rcyl_mid=(pl.col("out_n_r") + 0.5) * (xmax / ncoordgridr),
+            pos_z_mid=(pl.col("out_n_z") + 0.5) * (2 * xmax / ncoordgridz) - xmax,
+        )
+    else:
+        km_to_cm = 1e5
+        dfmodel_out = dfmodel_out.with_columns(vel_r_max_kmps=(pl.col("out_n_r") + 1) * (vmax / ncoordgridr) / km_to_cm)
 
-    for mgiout, (dictcell, matchedcells) in allmatchedcells.items():
-        matchedcellmass = matchedcells["mass_g"].sum()
-        nonempty = matchedcellmass > 0.0
-        if matchedcellmass > 0.0 and dfgridcontributions is not None:
-            dfcellcont = dfgridcontributions.filter(
-                pl.col("cellindex").is_in(matchedcells.get_column("inputcellid").to_list())
+    dfmodel_out = (
+        add_derived_cols_to_modeldata(dfmodel_out, modelmeta=modelmeta_out, derived_cols=["volume"])
+        .with_columns(rho=pl.col("out_mass_g") / pl.col("volume"))
+        .drop("volume", cs.starts_with("out_n_"))
+        .rename({"out_mass_g": "mass_g"})
+    )
+    if outputdimensions < 2:
+        dfmodel_out = dfmodel_out.with_columns(
+            logrho=pl.when(pl.col("rho") > 0).then(pl.max_horizontal(-99, pl.col("rho").log10())).otherwise(-99.0)
+        ).drop("rho")
+
+    modelmeta_out["npts_model"] = dfmodel_out.select(pl.len()).collect().item()
+    assert modelmeta_out["npts_model"] == ncoordgridr * ncoordgridz
+
+    dfoutcell_inputcells_masses = dfmodel_out.select(
+        out_inputcellid=pl.col("inputcellid"),
+        inputcellid=pl.col("inputcellid_list"),
+        mass_g=pl.col("mass_g_list"),
+        out_mass_g=pl.col("mass_g_list").list.sum(),
+    ).explode("inputcellid", "mass_g")
+
+    dfmodel_out = dfmodel_out.drop(["inputcellid_list", "mass_g_list"], strict=False)
+    if other_cols := dfmodel_out.select(cs.by_dtype(pl.List)).collect_schema().names():
+        assert not other_cols, f"Not sure how to combine column values: {other_cols}"
+
+    dfelabundances_out = (
+        (
+            dfelabundances.lazy()
+            .with_columns(pl.col("inputcellid").cast(pl.Int32))
+            .join(dfoutcell_inputcells_masses, on="inputcellid", how="left")
+            .drop("inputcellid")
+            .group_by("out_inputcellid")
+            .agg(
+                (cs.starts_with("X_").dot(pl.col("mass_g")) / pl.col("mass_g").sum()).fill_nan(0.0),
+                cs.by_name("mass_g").sum(),
             )
+            .rename({"out_inputcellid": "inputcellid"})
+            .drop_nulls("inputcellid")
+            .sort("inputcellid")
+        )
+        if dfelabundances is not None
+        else pl.LazyFrame()
+    )
 
-            for (particleid,), dfparticlecontribs in dfcellcont.group_by(["particleid"]):
-                frac_of_cellmass_avg = (
-                    sum(
-                        row["frac_of_cellmass"] * inputcellmass[row["cellindex"]]
-                        for row in dfparticlecontribs.iter_rows(named=True)
-                    )
-                    / matchedcellmass
-                )
-
-                contriboutrow = {
-                    "particleid": particleid,
-                    "cellindex": mgiout + 1,
-                    "frac_of_cellmass": frac_of_cellmass_avg,
-                }
-
-                if includemissingcolexists:
-                    frac_of_cellmass_includemissing_avg = (
-                        sum(
-                            row["frac_of_cellmass_includemissing"] * inputcellmass[row["cellindex"]]
-                            for row in dfparticlecontribs.iter_rows(named=True)
-                        )
-                        / matchedcellmass
-                    )
-                    contriboutrow["frac_of_cellmass_includemissing"] = frac_of_cellmass_includemissing_avg
-
-                outgridcontributions.append(contriboutrow)
-
-        for column in matchedcells.columns:
-            if column.startswith("X_") or column in {"Ye", "cellYe", "q"}:
-                # take mass-weighted average mass fraction
-                dotprod = matchedcells[column].dot(matchedcells["mass_g"])
-                assert isinstance(dotprod, float)
-                massfrac = dotprod / matchedcellmass if nonempty else 0.0
-                dictcell[column] = massfrac
-            elif column == "tracercount":
-                dictcell[column] = matchedcells[column].sum()
-
-        outcells.append(dictcell)
-
-        if dfelabundances is not None:
-            abund_matchedcells = (
-                dfelabundances.filter(pl.col("inputcellid").is_in(matchedcells.get_column("inputcellid").to_list()))
-                .lazy()
-                .collect()
+    dfgridcontributions_out = (
+        (
+            dfgridcontributions.lazy()
+            .with_columns(pl.col("cellindex").cast(pl.Int32))
+            .rename({"cellindex": "inputcellid"})
+            .join(dfoutcell_inputcells_masses.lazy(), on="inputcellid", how="left")
+            .drop("inputcellid")
+            .group_by("out_inputcellid", "particleid")
+            .agg((cs.starts_with("frac_").dot(pl.col("mass_g")) / pl.col("out_mass_g").first()).fill_nan(0.0))
+            .rename({"out_inputcellid": "cellindex"})
+            .drop_nulls("cellindex")
+            .sort("cellindex", "particleid")
+            .select(
+                "particleid",
+                "cellindex",
+                "frac_of_cellmass",
+                cs.by_name("frac_of_cellmass_includemissing", require_all=False),
             )
-            dictcellabundances: dict[str, int | float] = {"inputcellid": mgiout + 1}
-            for column in dfelabundances.columns:
-                if column.startswith("X_"):
-                    dotprod = abund_matchedcells[column].dot(matchedcells["mass_g"]) if nonempty else 0.0
-                    assert isinstance(dotprod, float)
-                    massfrac = dotprod / matchedcellmass if nonempty else 0.0
-                    dictcellabundances[column] = massfrac
+        )
+        if dfgridcontributions is not None
+        else pl.LazyFrame()
+    )
 
-            outcellabundances.append(dictcellabundances)
+    dfmodel_out, dfelabundances_out, dfgridcontributions_out = pl.collect_all((
+        dfmodel_out,
+        dfelabundances_out,
+        dfgridcontributions_out,
+    ))
 
-    dfmodel_out = pl.DataFrame(outcells)
-    modelmeta_out["npts_model"] = len(dfmodel_out)
-
-    dfabundances_out = pl.DataFrame(outcellabundances) if outcellabundances else None
-
-    dfgridcontributions_out = pl.DataFrame(outgridcontributions) if outgridcontributions else None
+    if dfelabundances is not None:
+        assert modelmeta_out["npts_model"] == dfelabundances_out.select(pl.len()).item()
 
     print(f"  took {time.perf_counter() - timestart:.1f} seconds")
 
-    return (dfmodel_out, dfabundances_out, dfgridcontributions_out, modelmeta_out)
+    return (dfmodel_out, dfelabundances_out, dfgridcontributions_out, modelmeta_out)
 
 
 def scale_model_to_time(
