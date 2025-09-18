@@ -1243,9 +1243,7 @@ def dimension_reduce_model(
     print(f"Resampling {ndim_in:d}D model with {in_ngridpoints} cells to {outputdimensions}D...")
     timestart = time.perf_counter()
 
-    dfmodel_out = add_derived_cols_to_modeldata(
-        dfmodel.lazy(), modelmeta=modelmeta, derived_cols=["velocity", "mass_g"]
-    )
+    dfmodel_out = add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta, derived_cols=["velocity", "mass_g"])
 
     if outputdimensions == 0:
         ncoordgridr = 1
