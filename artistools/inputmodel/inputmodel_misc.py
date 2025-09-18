@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 import polars as pl
 import polars.selectors as cs
+import polars.testing as pltest
 
 from artistools.configuration import get_config
 from artistools.misc import firstexisting
@@ -1350,23 +1351,18 @@ def dimension_reduce_model(
         cellout: dict[str, t.Any] = {"inputcellid": mgiout + 1, "mass_g": matchedcells["mass_g"].sum()}
 
         if outputdimensions in {0, 1}:
-            cellout |= {
-                "logrho": math.log10(max(1e-99, rho_out)) if rho_out > 0.0 else -99.0,
-                "vel_r_max_kmps": vel_r_max / km_to_cm,
-            }
+            cellout |= {"rho": rho_out, "vel_r_max_kmps": vel_r_max / km_to_cm}
         elif outputdimensions == 2:
             cellout |= {
                 "rho": rho_out,
                 "pos_rcyl_mid": (vel_r_min + vel_r_max) / 2 * t_model_init_seconds,
                 "pos_z_mid": (vel_z_min + vel_z_max) / 2 * t_model_init_seconds,
             }
-
+        matching_inputcellids = matchedcells.get_column("inputcellid").to_list()
         matchedcellmass = matchedcells["mass_g"].sum()
         nonempty = matchedcellmass > 0.0
         if matchedcellmass > 0.0 and dfgridcontributions is not None:
-            dfcellcont = dfgridcontributions.filter(
-                pl.col("cellindex").is_in(matchedcells.get_column("inputcellid").to_list())
-            )
+            dfcellcont = dfgridcontributions.filter(pl.col("cellindex").is_in(matching_inputcellids))
 
             for (particleid,), dfparticlecontribs in dfcellcont.group_by(["particleid"]):
                 frac_of_cellmass_avg = (
@@ -1409,9 +1405,7 @@ def dimension_reduce_model(
 
         if dfelabundances is not None:
             abund_matchedcells = (
-                dfelabundances.filter(pl.col("inputcellid").is_in(matchedcells.get_column("inputcellid").to_list()))
-                .lazy()
-                .collect()
+                dfelabundances.filter(pl.col("inputcellid").is_in(matching_inputcellids)).lazy().collect()
             )
             dictcellabundances: dict[str, int | float] = {"inputcellid": mgiout + 1}
             for column in (col for col in dfelabundances.columns if column.startswith("X_")):
@@ -1423,7 +1417,68 @@ def dimension_reduce_model(
             outcellabundances.append(dictcellabundances)
 
     dfmodel_out = pl.DataFrame(outcells)
+    if outputdimensions < 2:
+        dfmodel_out = dfmodel_out.with_columns(
+            logrho=pl.when(pl.col("rho") > 0).then(pl.max_horizontal(-99, pl.col("rho").log10())).otherwise(-99.0)
+        ).drop("rho")
+    pl.Config.set_tbl_cols(50)
+    pl.Config.set_tbl_rows(100)
     modelmeta_out["npts_model"] = len(dfmodel_out)
+    print(dfmodel_out)
+    dfmodel_out2 = (
+        dfmodel.lazy()
+        .group_by("mgiout", cs.starts_with("out_n_"))
+        .agg(
+            pl.when(pl.col("mass_g").sum() > 0)
+            .then(
+                (cs.starts_with("X_") | cs.by_name(["Ye", "cellYe", "q"], require_all=False)).dot(pl.col("mass_g"))
+                / pl.col("mass_g").sum()
+            )
+            .otherwise(0.0),
+            pl.col("mass_g").sum().alias("mass_g_sum"),
+            pl.col("inputcellid").implode().alias("inputcellid_list"),
+            (
+                ~(
+                    cs.by_name(["mass_g", "inputcellid", "modelgridindex", "Ye", "cellYe", "q"], require_all=False)
+                    | cs.starts_with("X_")
+                    | cs.starts_with("pos_")
+                    | cs.starts_with("vel_")
+                )
+            ).implode(),
+        )
+        .select((pl.col("mgiout") + 1).alias("inputcellid"), cs.all().exclude("mgiout"))
+        .join(pl.LazyFrame({"inputcellid": range(ncoordgridr * ncoordgridz)}), on="inputcellid", how="left")
+        .with_columns(rho=pl.lit(None).cast(pl.Float32), inputcellid=pl.col("inputcellid").cast(pl.Int64))
+        .sort("inputcellid")
+        .collect()
+    )
+    if "tracercount" in dfmodel_out2.columns:
+        dfmodel_out2 = dfmodel_out2.with_columns(tracercount=pl.col("tracercount").list.sum())
+
+    if outputdimensions == 2:
+        dfmodel_out2 = dfmodel_out2.with_columns(
+            pos_rcyl_mid=(pl.col("out_n_r") + 0.5) * (xmax / ncoordgridr),
+            pos_z_mid=(pl.col("out_n_z") + 0.5) * (2 * xmax / ncoordgridz) - xmax,
+        )
+    else:
+        dfmodel_out2 = dfmodel_out2.with_columns(
+            vel_r_max_kmps=(pl.col("out_n_r") + 1) * (vmax / ncoordgridr) / km_to_cm
+        )
+    dfmodel_out2 = (
+        add_derived_cols_to_modeldata(dfmodel_out2.lazy(), modelmeta=modelmeta_out, derived_cols=["volume"])
+        .with_columns(rho=pl.col("mass_g_sum") / pl.col("volume"))
+        .drop("volume", cs.starts_with("out_n_"), "inputcellid_list")
+        .rename({"mass_g_sum": "mass_g"})
+    )
+    if outputdimensions < 2:
+        dfmodel_out2 = dfmodel_out2.with_columns(
+            logrho=pl.when(pl.col("rho") > 0).then(pl.max_horizontal(-99, pl.col("rho").log10())).otherwise(-99.0)
+        ).drop("rho")
+    dfmodel_out2 = dfmodel_out2.collect()
+    print(dfmodel_out2.collect_schema())
+    coldiff = set(dfmodel_out.columns).symmetric_difference(set(dfmodel_out2.columns))
+    pltest.assert_frame_equal(dfmodel_out, dfmodel_out2, check_column_order=False)
+    assert not coldiff, coldiff
 
     dfabundances_out = pl.DataFrame(outcellabundances) if outcellabundances else None
 
@@ -1431,7 +1486,7 @@ def dimension_reduce_model(
 
     print(f"  took {time.perf_counter() - timestart:.1f} seconds")
 
-    return (dfmodel_out, dfabundances_out, dfgridcontributions_out, modelmeta_out)
+    return (dfmodel_out2, dfabundances_out, dfgridcontributions_out, modelmeta_out)
 
 
 def scale_model_to_time(
