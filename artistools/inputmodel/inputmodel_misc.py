@@ -1371,7 +1371,7 @@ def dimension_reduce_model(
 
             outcellabundances.append(dictcellabundances)
 
-    dfmodel_out2 = (
+    dfmodel_out = (
         dfmodel.lazy()
         .group_by("mgiout", cs.starts_with("out_n_"))
         .agg(
@@ -1396,32 +1396,30 @@ def dimension_reduce_model(
         .join(pl.LazyFrame({"inputcellid": range(ncoordgridr * ncoordgridz)}), on="inputcellid", how="left")
         .with_columns(rho=pl.lit(None).cast(pl.Float32), inputcellid=pl.col("inputcellid").cast(pl.Int64))
         .sort("inputcellid")
-        .collect()
     )
-    if "tracercount" in dfmodel_out2.columns:
-        dfmodel_out2 = dfmodel_out2.with_columns(tracercount=pl.col("tracercount").list.sum())
+    if "tracercount" in dfmodel_out.columns:
+        dfmodel_out = dfmodel_out.with_columns(tracercount=pl.col("tracercount").list.sum())
 
     if outputdimensions == 2:
-        dfmodel_out2 = dfmodel_out2.with_columns(
+        dfmodel_out = dfmodel_out.with_columns(
             pos_rcyl_mid=(pl.col("out_n_r") + 0.5) * (xmax / ncoordgridr),
             pos_z_mid=(pl.col("out_n_z") + 0.5) * (2 * xmax / ncoordgridz) - xmax,
         )
     else:
-        dfmodel_out2 = dfmodel_out2.with_columns(
-            vel_r_max_kmps=(pl.col("out_n_r") + 1) * (vmax / ncoordgridr) / km_to_cm
-        )
-    dfmodel_out2 = (
-        add_derived_cols_to_modeldata(dfmodel_out2.lazy(), modelmeta=modelmeta_out, derived_cols=["volume"])
+        dfmodel_out = dfmodel_out.with_columns(vel_r_max_kmps=(pl.col("out_n_r") + 1) * (vmax / ncoordgridr) / km_to_cm)
+
+    dfmodel_out = (
+        add_derived_cols_to_modeldata(dfmodel_out, modelmeta=modelmeta_out, derived_cols=["volume"])
         .with_columns(rho=pl.col("mass_g_sum") / pl.col("volume"))
         .drop("volume", cs.starts_with("out_n_"), "inputcellid_list")
         .rename({"mass_g_sum": "mass_g"})
     )
     if outputdimensions < 2:
-        dfmodel_out2 = dfmodel_out2.with_columns(
+        dfmodel_out = dfmodel_out.with_columns(
             logrho=pl.when(pl.col("rho") > 0).then(pl.max_horizontal(-99, pl.col("rho").log10())).otherwise(-99.0)
         ).drop("rho")
 
-    modelmeta_out["npts_model"] = dfmodel_out2.select(pl.count()).collect().item()
+    modelmeta_out["npts_model"] = dfmodel_out.select(pl.count()).collect().item()
 
     dfabundances_out = pl.DataFrame(outcellabundances) if outcellabundances else None
 
@@ -1429,7 +1427,7 @@ def dimension_reduce_model(
 
     print(f"  took {time.perf_counter() - timestart:.1f} seconds")
 
-    return (dfmodel_out2.collect(), dfabundances_out, dfgridcontributions_out, modelmeta_out)
+    return (dfmodel_out.collect(), dfabundances_out, dfgridcontributions_out, modelmeta_out)
 
 
 def scale_model_to_time(
