@@ -1375,22 +1375,20 @@ def dimension_reduce_model(
         dfgridcontributions is not None and "frac_of_cellmass_includemissing" in dfgridcontributions.columns
     )
 
+    dfoutcell_inputcells_masses = (
+        dfmodel.lazy()
+        .select(
+            out_inputcellid=pl.col("inputcellid"), inputcellid=pl.col("inputcellid_list"), mass_g=pl.col("mass_g_list")
+        )
+        .explode("inputcellid", "mass_g")
+    ).collect()
+
     if dfelabundances is not None:
         dfelabundances = (
             (
                 dfelabundances.lazy()
                 .with_columns(pl.col("inputcellid").cast(pl.Int32))
-                .join(
-                    dfmodel.lazy()
-                    .select(
-                        out_inputcellid=pl.col("inputcellid"),
-                        inputcellid=pl.col("inputcellid_list"),
-                        mass_g=pl.col("mass_g_list"),
-                    )
-                    .explode("inputcellid", "mass_g"),
-                    on="inputcellid",
-                    how="left",
-                )
+                .join(dfoutcell_inputcells_masses.lazy(), on="inputcellid", how="left")
                 .drop("inputcellid")
                 .group_by("out_inputcellid")
                 .agg(
