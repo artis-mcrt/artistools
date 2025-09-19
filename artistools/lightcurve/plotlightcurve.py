@@ -392,12 +392,15 @@ def plot_artis_lightcurve(
         costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(usedegrees=usedegrees)
         scaledmap = make_colorbar_viewingangles_colormap()
 
+    xmin, xmax = args.xmin, args.xmax
     lcdataframes = dict(
         zip(
             dirbins,
             pl.collect_all(
                 lcdataframes[dirbin]
                 .lazy()
+                .filter(pl.lit(True) if xmin is None else (pl.col("time") >= xmin * 0.9))
+                .filter(pl.lit(True) if xmax is None else (pl.col("time") <= xmax * 1.1))
                 .select(
                     cs.by_name(["time", "lum"], require_all=True)
                     | cs.by_name("packetcount", require_all=False)
@@ -584,6 +587,18 @@ def make_lightcurve_plot(
         tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
     )
 
+    if args.magnitude:
+        axis.invert_yaxis()
+
+    if args.xmin is not None:
+        axis.set_xlim(left=args.xmin)
+    if args.xmax is not None:
+        axis.set_xlim(right=args.xmax)
+    if args.ymin is not None:
+        axis.set_ylim(bottom=args.ymin)
+    if args.ymax is not None:
+        axis.set_ylim(top=args.ymax)
+
     if args.plotthermalisation:
         figtherm, axistherm = plt.subplots(
             nrows=1,
@@ -592,6 +607,17 @@ def make_lightcurve_plot(
             figsize=(args.figscale * conffigwidth, args.figscale * conffigwidth / 1.6),
             tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
         )
+
+        # axistherm.set_xscale('log')
+        axistherm.set_ylabel("Thermalisation ratio")
+        axistherm.set_xlabel(r"Time [days]")
+        # axistherm.set_xlim(left=0., args.xmax)
+        if args.xmin is not None:
+            axistherm.set_xlim(left=args.xmin)
+        if args.xmax is not None:
+            axistherm.set_xlim(right=args.xmax)
+        axistherm.set_ylim(bottom=0.0)
+        # axistherm.set_ylim(top=1.05)
     else:
         axistherm = None
 
@@ -701,19 +727,6 @@ def make_lightcurve_plot(
 
     assert plottedsomething
 
-    if args.magnitude:
-        axis.invert_yaxis()
-
-    if args.xmin is not None:
-        axis.set_xlim(left=args.xmin)
-    if args.xmax is not None:
-        axis.set_xlim(right=args.xmax)
-    if args.ymin is not None:
-        axis.set_ylim(bottom=args.ymin)
-    if args.ymax is not None:
-        axis.set_ylim(top=args.ymax)
-    # axis.set_ylim(bottom=-0.1, top=1.3)
-
     if not args.nolegend:
         axis.legend(loc="best", handlelength=2, frameon=args.legendframeon, numpoints=1, prop={"size": 9})
         if args.plotthermalisation:
@@ -762,17 +775,7 @@ def make_lightcurve_plot(
     print(f"open {filenameout}")
 
     if args.plotthermalisation:
-        assert axistherm is not None
-        # axistherm.set_xscale('log')
-        axistherm.set_ylabel("Thermalisation ratio")
-        axistherm.set_xlabel(r"Time [days]")
-        # axistherm.set_xlim(left=0., args.xmax)
-        if args.xmin is not None:
-            axistherm.set_xlim(left=args.xmin)
-        if args.xmax is not None:
-            axistherm.set_xlim(right=args.xmax)
-        axistherm.set_ylim(bottom=0.0)
-        # axistherm.set_ylim(top=1.05)
+        assert figtherm is not None
 
         # filenameout2 = "plotthermalisation.pdf"
         filenameout2 = str(filenameout).replace(".pdf", "_thermalisation.pdf")
