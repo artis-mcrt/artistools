@@ -20,14 +20,11 @@ jobs:
             RUFF_OUTPUT_FORMAT: github
             UV_FROZEN: 1
         steps:
-            - name: Checkout Code
-              uses: actions/checkout@v5
+            - uses: actions/checkout@v5
               with:
                   fetch-depth: 0
 
-            - name: Setup uv
-              uses: astral-sh/setup-uv@v6
-              id: setup-uv
+            - uses: astral-sh/setup-uv@v6
               with:
                   activate-environment: true
 
@@ -103,17 +100,14 @@ jobs:
         name: Super linter
         runs-on: ubuntu-24.04
         steps:
-            - name: Checkout Code
-              uses: actions/checkout@v5
+            - uses: actions/checkout@v5
               with:
                   # Full git history is needed to get a proper list of changed files within `super-linter`
                   fetch-depth: 0
 
-            - name: Set up Python
-              uses: actions/setup-python@v5
+            - uses: actions/setup-python@v5
 
-            - name: Lint Code Base
-              uses: github/super-linter/slim@v7
+            - uses: github/super-linter/slim@v7
               env:
                   LINTER_RULES_PATH: ./
                   LOG_LEVEL: WARN
@@ -165,8 +159,7 @@ jobs:
               with:
                   fetch-depth: 0
 
-            - name: Setup uv
-              uses: astral-sh/setup-uv@v6
+            - uses: astral-sh/setup-uv@v6
               with:
                   activate-environment: true
                   python-version: 3.${{ matrix.python-minor-version }}
@@ -225,8 +218,7 @@ jobs:
             - name: Report coverage
               run: uv run -- python -m coverage report
 
-            - name: Upload coverage to Codecov
-              uses: codecov/codecov-action@v5
+            - uses: codecov/codecov-action@v5
               with:
                   token: ${{ secrets.CODECOV_TOKEN }}
                   files: ./coverage.xml
