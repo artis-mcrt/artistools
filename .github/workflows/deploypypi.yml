@@ -6,8 +6,8 @@ on:
     push:
         tags:
             - v*
-    release:
-        types: [published, edited]
+    # release:
+    #     types: [published, edited]
     repository_dispatch:
         types: [trigger_checks]
     workflow_dispatch:
