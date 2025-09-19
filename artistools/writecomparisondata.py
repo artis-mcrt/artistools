@@ -189,7 +189,9 @@ def write_lbol_edep(modelpath: str | Path, selected_timesteps: Sequence[int], ou
         for timestep, row in dflightcurve.iterrows():
             if timestep not in selected_timesteps:
                 continue
-            f.write(f"{row.time:.2f} {row.lum * 3.826e33:.2e} {row.total_dep_Lsun * 3.826e33:.2e}\n")
+            f.write(
+                f"{row.time:.2f} {row.lum * at.constants.Lsun_to_erg_per_s:.2e} {row.total_dep_Lsun * at.constants.Lsun_to_erg_per_s:.2e}\n"
+            )
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:

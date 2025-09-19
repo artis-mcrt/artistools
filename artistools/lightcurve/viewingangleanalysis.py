@@ -825,7 +825,7 @@ def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Names
         )
 
         rowattime = lcdata.loc[lcdata["time"] == float(timetoplot)]
-        brightness = (rowattime["lum"].item()) * 3.826e33
+        brightness = (rowattime["lum"].item()) * at.constants.Lsun_to_erg_per_s
         if args.colorbarphi:
             xvalues = int(angleindex / 10)
             xlabels = costheta_viewing_angle_bins
