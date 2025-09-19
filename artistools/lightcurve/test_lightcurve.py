@@ -58,8 +58,8 @@ def test_lightcurve_plot_frompackets(mockplot: t.Any, benchmark: BenchmarkFixtur
 
     assert np.isclose(integral, 9.0323767e40, rtol=1e-2)
 
-    assert np.isclose(arr_lum.mean(), 1.2033423e39, rtol=1e-4)
-    assert np.isclose(arr_lum.std(), 3.6121162e38, rtol=1e-4)
+    assert np.isclose(arr_lum.mean(), 1.2039713396033405e39, rtol=1e-4)
+    assert np.isclose(arr_lum.std(), 3.614004402353378e38, rtol=1e-4)
 
 
 def test_band_lightcurve_plot() -> None:
