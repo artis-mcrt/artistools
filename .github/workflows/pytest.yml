@@ -1,6 +1,7 @@
 ---
 name: Test and lint
-
+permissions:
+    contents: read
 on:
     push:
     merge_group:

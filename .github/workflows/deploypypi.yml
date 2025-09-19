@@ -1,6 +1,7 @@
 ---
 name: Build and deploy to PyPI/testPyPI
-
+permissions:
+    contents: read
 on:
     push:
         tags:

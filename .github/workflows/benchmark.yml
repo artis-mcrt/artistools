@@ -1,6 +1,7 @@
 ---
 name: Benchmark with CodSpeed
-
+permissions:
+    contents: read
 on:
     push:
         branches:
