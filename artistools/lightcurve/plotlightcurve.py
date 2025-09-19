@@ -527,22 +527,23 @@ def plot_artis_lightcurve(
         )
         lcdatamin = lcdata_valid.select(pl.min("time")).item()
         lcdatamax = lcdata_valid.select(pl.max("time")).item()
-
-        print(f" UVOIR energy (time {lcdatamin:.1f} to {lcdatamax:.1f} days): {energy_released:.3e} erg")
-        if args.xmin is not None or args.xmax is not None:
-            lcdata_valid_selected = lcdata_valid.filter(
-                pl.col("time") >= args.xmin if args.xmin else pl.lit(True)
-            ).filter(pl.col("time") <= args.xmax if args.xmax else pl.lit(True))
-            energy_released_timeselected = abs(
-                integrate.trapezoid(
-                    np.nan_to_num(lcdata_valid_selected["lum"], nan=0.0), x=lcdata_valid_selected["time"] * 86400
-                )
-            )
-            lcdatamin = lcdata_valid_selected.select(pl.min("time")).item()
-            lcdatamax = lcdata_valid_selected.select(pl.max("time")).item()
-            print(
-                f" UVOIR energy (time {lcdatamin:.1f} to {lcdatamax:.1f} days): {energy_released_timeselected:.3e} erg"
-            )
+        if not lcdata_valid.is_empty():
+            print(f" UVOIR energy (time {lcdatamin:.1f} to {lcdatamax:.1f} days): {energy_released:.3e} erg")
+            if args.xmin is not None or args.xmax is not None:
+                lcdata_valid_xminmax = lcdata_valid.filter(
+                    pl.col("time") >= args.xmin if args.xmin else pl.lit(True)
+                ).filter(pl.col("time") <= args.xmax if args.xmax else pl.lit(True))
+                if not lcdata_valid_xminmax.is_empty():
+                    lcdatamin = lcdata_valid_xminmax.select(pl.min("time")).item()
+                    lcdatamax = lcdata_valid_xminmax.select(pl.max("time")).item()
+                    energy_released_timeselected = abs(
+                        integrate.trapezoid(
+                            np.nan_to_num(lcdata_valid_xminmax["lum"], nan=0.0), x=lcdata_valid_xminmax["time"] * 86400
+                        )
+                    )
+                    print(
+                        f" UVOIR energy (time {lcdatamin:.1f} to {lcdatamax:.1f} days): {energy_released_timeselected:.3e} erg"
+                    )
 
         axis.plot(lcdata_valid["time"], lcdata_valid[ycolumn], label=label_with_tags, **plotkwargs)
         if args.print_data:
