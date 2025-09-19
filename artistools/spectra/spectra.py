@@ -21,6 +21,7 @@ import polars.selectors as cs
 
 import artistools.packets as atpackets
 from artistools.configuration import get_config
+from artistools.constants import megaparsec_to_cm
 from artistools.misc import average_direction_bins
 from artistools.misc import firstexisting
 from artistools.misc import get_bflist
@@ -46,9 +47,6 @@ class FluxContributionTuple(t.NamedTuple):
     array_flambda_emission: npt.NDArray[np.floating]
     array_flambda_absorption: npt.NDArray[np.floating]
     color: t.Any
-
-
-megaparsec_to_cm = 3.0856e24
 
 
 def timeshift_fluxscale_co56law(scaletoreftime: float | None, spectime: float) -> float:

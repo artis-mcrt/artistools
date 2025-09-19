@@ -14,6 +14,7 @@ import pandas as pd
 import polars as pl
 
 import artistools as at
+from artistools.constants import Lsun_to_erg_per_s
 
 
 def readfile(filepath: str | Path) -> dict[int, pl.DataFrame]:
@@ -115,7 +116,6 @@ def get_from_packets(
         dfpackets = dfpackets.with_columns([(pl.col("tdecay") / 86400).alias("tdecay_d")])
 
     timecol = "tdecay_d" if use_pellet_decay_time else "t_arrive_d"
-    erg_per_day_to_Lsun = 3.023530322380897e-39
 
     lcdata: dict[int, pl.LazyFrame] = {}
     for dirbin in directionbins:
@@ -149,7 +149,13 @@ def get_from_packets(
             .rename({f"{timecol}_bin": "timestep", "count": "packetcount"})
             .join(timesteps_df.select("timestep", "twidth_days", "tmid_days").lazy(), how="left", on="timestep")
             .with_columns(
-                lum=(pl.col("e_rf_sum") / nprocs_read * solidanglefactor * erg_per_day_to_Lsun / pl.col("twidth_days"))
+                lum=(
+                    pl.col("e_rf_sum")
+                    / nprocs_read
+                    * solidanglefactor
+                    / (pl.col("twidth_days") * 86400)
+                    / Lsun_to_erg_per_s
+                )
             )
             .drop("e_rf_sum")
         )
@@ -168,8 +174,8 @@ def get_from_packets(
                 / nprocs_read
                 * solidanglefactor
                 / escapesurfacegamma
-                * erg_per_day_to_Lsun
-                / pl.col("twidth_days")
+                / (pl.col("twidth_days") * 86400)
+                / Lsun_to_erg_per_s
             )
             .drop("e_cmf_sum")
         )
@@ -303,7 +309,6 @@ def bolometric_magnitude(
     times = []
 
     Mpc_to_cm = 3.085677581491367e24
-    Lsun_to_erg_per_s = 3.828e33
     for timestep, time in enumerate(float(time) for time in timearray):
         if (args.timemin is None or args.timemin <= time) and (args.timemax is None or args.timemax >= time):
             if angle == -1:
@@ -525,7 +530,6 @@ def get_sn_sample_bol() -> tuple[t.Any, str]:
 
     print(sn_data)
     bol_luminosity = sn_data["Lmax"].astype(float)
-    Lsun_to_erg_per_s = 3.826e33
     bol_magnitude = 4.74 - (2.5 * np.log10((10**bol_luminosity) / Lsun_to_erg_per_s))  # Mbol,sun = 4.74
 
     bol_magnitude_error_upper = bol_magnitude - (

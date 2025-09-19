@@ -48,7 +48,7 @@ def get_bol_lc_from_lightcurveout(modelpath: Path, res: bool = False) -> pd.Data
     nangles = len(lcdataframes) if res else 1
     for angle in range(nangles):
         lcdata = lcdataframes[angle]
-        bol_luminosity = np.array(lcdata["lum"]) * 3.826e33  # Luminosity in erg/s
+        bol_luminosity = np.array(lcdata["lum"]) * at.constants.Lsun_to_erg_per_s  # Luminosity in erg/s
 
         # lightcurvedata[f'angle={angle}'] = np.log10(bol_luminosity)
         columnname = "lum (erg/s)"

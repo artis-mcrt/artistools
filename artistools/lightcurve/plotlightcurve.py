@@ -23,6 +23,7 @@ import polars as pl
 from polars import selectors as cs
 
 import artistools as at
+from artistools.constants import Lsun_to_erg_per_s
 from artistools.misc import print_theta_phi_definitions
 
 color_list = list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20)))
@@ -60,7 +61,7 @@ def plot_deposition_thermalisation(
     #         'color': color_total,
     #     }))
 
-    # axis.plot(depdata['tmid_days'], depdata['total_dep_Lsun'] * 3.826e33, **dict(
+    # axis.plot(depdata['tmid_days'], depdata['total_dep_Lsun'] * Lsun_to_erg_per_s, **dict(
     #     plotkwargs, **{
     #         'label': plotkwargs['label'] + r' $\dot{E}_{dep,\alpha\beta^\pm\gamma}$',
     #         'linestyle': 'dotted',
@@ -68,7 +69,7 @@ def plot_deposition_thermalisation(
     #     }))
     # if args.plotthermalisation:
     #     # f = depdata['eps_erg/s/g'] / depdata['Qdot_ana_erg/s/g']
-    #     f = depdata['total_dep_Lsun'] * 3.826e33 / (depdata['eps_erg/s/g'] * model_mass_grams)
+    #     f = depdata['total_dep_Lsun'] * Lsun_to_erg_per_s / (depdata['eps_erg/s/g'] * model_mass_grams)
     #     axistherm.plot(depdata['tmid_days'], f, **dict(
     #         plotkwargs, **{
     #             'label': plotkwargs['label'] + r' $\dot{E}_{dep}/\dot{E}_{rad}$',
@@ -79,7 +80,7 @@ def plot_deposition_thermalisation(
     color_gamma = axis._get_lines.get_next_color()  # type: ignore[attr-defined] # noqa: SLF001 # pyright: ignore[reportAttributeAccessIssue]
     color_gamma = axis._get_lines.get_next_color()  # type: ignore[attr-defined] # noqa: SLF001 # pyright: ignore[reportAttributeAccessIssue]
 
-    # axis.plot(depdata['tmid_days'], depdata['eps_gamma_Lsun'] * 3.826e33, **dict(
+    # axis.plot(depdata['tmid_days'], depdata['eps_gamma_Lsun'] * Lsun_to_erg_per_s, **dict(
     #     plotkwargs, **{
     #         'label': plotkwargs['label'] + r' $\dot{E}_{rad,\gamma}$',
     #         'linestyle': 'dashed',
@@ -90,7 +91,7 @@ def plot_deposition_thermalisation(
 
     axis.plot(
         depdata["tmid_days"],
-        gammadep_lsun * 3.826e33,
+        gammadep_lsun * Lsun_to_erg_per_s,
         **(
             plotkwargs
             | {"label": plotkwargs["label"] + r" $\dot{E}_{dep,\gamma}$", "linestyle": "dashed", "color": color_gamma}
@@ -102,7 +103,7 @@ def plot_deposition_thermalisation(
     if "eps_elec_Lsun" in depdata:
         axis.plot(
             depdata["tmid_days"],
-            depdata["eps_elec_Lsun"] * 3.826e33,
+            depdata["eps_elec_Lsun"] * Lsun_to_erg_per_s,
             **(
                 plotkwargs
                 | {
@@ -116,7 +117,7 @@ def plot_deposition_thermalisation(
     if "elecdep_Lsun" in depdata:
         axis.plot(
             depdata["tmid_days"],
-            depdata["elecdep_Lsun"] * 3.826e33,
+            depdata["elecdep_Lsun"] * Lsun_to_erg_per_s,
             **(
                 plotkwargs
                 | {
@@ -154,7 +155,7 @@ def plot_deposition_thermalisation(
         if "eps_alpha_ana_Lsun" in depdata:
             axis.plot(
                 depdata["tmid_days"],
-                depdata["eps_alpha_ana_Lsun"] * 3.826e33,
+                depdata["eps_alpha_ana_Lsun"] * Lsun_to_erg_per_s,
                 **(
                     plotkwargs
                     | {
@@ -168,7 +169,7 @@ def plot_deposition_thermalisation(
         if "eps_alpha_Lsun" in depdata:
             axis.plot(
                 depdata["tmid_days"],
-                depdata["eps_alpha_Lsun"] * 3.826e33,
+                depdata["eps_alpha_Lsun"] * Lsun_to_erg_per_s,
                 **(
                     plotkwargs
                     | {
@@ -181,7 +182,7 @@ def plot_deposition_thermalisation(
 
         axis.plot(
             depdata["tmid_days"],
-            depdata["alphadep_Lsun"] * 3.826e33,
+            depdata["alphadep_Lsun"] * Lsun_to_erg_per_s,
             **(
                 plotkwargs
                 | {
@@ -472,14 +473,13 @@ def plot_artis_lightcurve(
 
         if not args.Lsun or args.magnitude:
             # convert luminosity from Lsun to erg/s
-            lcdata = lcdata.with_columns(pl.col("lum") * 3.826e33)
+            lcdata = lcdata.with_columns(pl.col("lum") * Lsun_to_erg_per_s)
             if "lum_cmf" in lcdata.columns:
-                lcdata = lcdata.with_columns(pl.col("lum_cmf") * 3.826e33)
+                lcdata = lcdata.with_columns(pl.col("lum_cmf") * Lsun_to_erg_per_s)
 
         if args.magnitude:
             # convert to bol magnitude
-            Lsun_to_erg_s = 3.828e33
-            lcdata["mag"] = 4.74 - (2.5 * np.log10(lcdata["lum"] / Lsun_to_erg_s))
+            lcdata["mag"] = 4.74 - (2.5 * np.log10(lcdata["lum"] / Lsun_to_erg_per_s))
             ycolumn = "mag"
         else:
             ycolumn = "lum"
@@ -538,7 +538,7 @@ def plot_artis_lightcurve(
             lcdatamin = lcdata_valid_selected.select(pl.min("time")).item()
             lcdatamax = lcdata_valid_selected.select(pl.max("time")).item()
             print(
-                f"  UVOIR energy (time {lcdatamin:.1f} to {lcdatamax:.1f} days): {energy_released_timeselected:.3e} erg"
+                f" UVOIR energy (time {lcdatamin:.1f} to {lcdatamax:.1f} days): {energy_released_timeselected:.3e} erg"
             )
 
         axis.plot(lcdata_valid["time"], lcdata_valid[ycolumn], label=label_with_tags, **plotkwargs)

@@ -29,12 +29,10 @@ COMMANDS = [
 # fully recursive python >= 3.12
 # type CommandType = dict[str, tuple[str, str] | "CommandType"]
 # fully recursive python >= 3.11
-# CommandType: t.TypeAlias = dict[str, t.Union[tuple[str, str], "CommandType"]]
-# one level deep python >= 3.11
-CommandType: t.TypeAlias = dict[str, tuple[str, str] | dict[str, tuple[str, str]]] | dict[str, tuple[str, str]]
+CommandType: t.TypeAlias = dict[str, t.Union[tuple[str, str], "CommandType"]]  # pyright: ignore[reportDeprecated]
 
 # new subparser based list
-subcommandtree: CommandType = {  # type: ignore[assignment]
+subcommandtree: CommandType = {
     "comparetogsinetwork": ("gsinetwork.plotqdotabund", "main"),
     "gsinetworkdecayproducts": ("gsinetwork.decayproducts", "main"),
     "describeinputmodel": ("inputmodel.describeinputmodel", "main"),
