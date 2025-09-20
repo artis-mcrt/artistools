@@ -531,7 +531,7 @@ def plot_artis_lightcurve(
         )
         lcdatamin = lcdata_valid.select(pl.min("time")).item()
         lcdatamax = lcdata_valid.select(pl.max("time")).item()
-        print(f" UVOIR energy (time {lcdatamin:.1f} to {lcdatamax:.1f} days): {energy_released:.3e} erg")
+        print(f" Integrated luminosity ({lcdatamin:.1f} to {lcdatamax:.1f} days): {energy_released:.3e} [erg]")
 
         axis.plot(lcdata_valid["time"], lcdata_valid[ycolumn], label=label_with_tags, **plotkwargs)
         if args.print_data:
