@@ -392,7 +392,7 @@ def plot_artis_lightcurve(
         costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(usedegrees=usedegrees)
         scaledmap = make_colorbar_viewingangles_colormap()
 
-    xmin, xmax = args.xmin, args.xmax
+    xmin, xmax = args.timemin, args.timemax
     lcdataframes = dict(
         zip(
             dirbins,
@@ -529,10 +529,10 @@ def plot_artis_lightcurve(
         lcdatamax = lcdata_valid.select(pl.max("time")).item()
         if not lcdata_valid.is_empty():
             print(f" UVOIR energy (time {lcdatamin:.1f} to {lcdatamax:.1f} days): {energy_released:.3e} erg")
-            if args.xmin is not None or args.xmax is not None:
+            if args.timemin is not None or args.timemax is not None:
                 lcdata_valid_xminmax = lcdata_valid.filter(
-                    pl.col("time") >= args.xmin if args.xmin else pl.lit(True)
-                ).filter(pl.col("time") <= args.xmax if args.xmax else pl.lit(True))
+                    pl.col("time") >= args.timemin if args.timemin else pl.lit(True)
+                ).filter(pl.col("time") <= args.timemax if args.timemax else pl.lit(True))
                 if not lcdata_valid_xminmax.is_empty():
                     lcdatamin = lcdata_valid_xminmax.select(pl.min("time")).item()
                     lcdatamax = lcdata_valid_xminmax.select(pl.max("time")).item()
@@ -591,10 +591,10 @@ def make_lightcurve_plot(
     if args.magnitude:
         axis.invert_yaxis()
 
-    if args.xmin is not None:
-        axis.set_xlim(left=args.xmin)
-    if args.xmax is not None:
-        axis.set_xlim(right=args.xmax)
+    if args.timemin is not None:
+        axis.set_xlim(left=args.timemin)
+    if args.timemax is not None:
+        axis.set_xlim(right=args.timemax)
     if args.ymin is not None:
         axis.set_ylim(bottom=args.ymin)
     if args.ymax is not None:
@@ -612,11 +612,11 @@ def make_lightcurve_plot(
         # axistherm.set_xscale('log')
         axistherm.set_ylabel("Thermalisation ratio")
         axistherm.set_xlabel(r"Time [days]")
-        # axistherm.set_xlim(left=0., args.xmax)
-        if args.xmin is not None:
-            axistherm.set_xlim(left=args.xmin)
-        if args.xmax is not None:
-            axistherm.set_xlim(right=args.xmax)
+        # axistherm.set_xlim(left=0., args.timemax)
+        if args.timemin is not None:
+            axistherm.set_xlim(left=args.timemin)
+        if args.timemax is not None:
+            axistherm.set_xlim(right=args.timemax)
         axistherm.set_ylim(bottom=0.0)
         # axistherm.set_ylim(top=1.05)
     else:
@@ -1077,7 +1077,7 @@ def make_band_lightcurves_plot(
                         verticalalignment="top",
                     )
                 # else:
-                #     ax.text(args.xmax * 0.75, args.ymax * 0.95, text_key)
+                #     ax.text(args.timemax * 0.75, args.ymax * 0.95, text_key)
 
                 # if not args.calculate_peak_time_mag_deltam15_bool:
 
@@ -1570,13 +1570,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("-ymin", type=float, default=None, help="Plot range: y-axis")
 
-    parser.add_argument("-xmax", type=float, default=None, help="Plot range: x-axis")
+    parser.add_argument(
+        "-timemin", "-timedaysmin", "-xmin", type=float, default=None, help="Plot range: x-axis minimum"
+    )
 
-    parser.add_argument("-xmin", type=float, default=None, help="Plot range: x-axis")
-
-    parser.add_argument("-timemax", type=float, default=None, help="Time max to plot")
-
-    parser.add_argument("-timemin", type=float, default=None, help="Time min to plot")
+    parser.add_argument(
+        "-timemax", "-timedaysmax", "-xmax", type=float, default=None, help="Plot range: x-axis maximum"
+    )
 
     parser.add_argument("--logscalex", action="store_true", help="Use log scale for horizontal axis")
 
