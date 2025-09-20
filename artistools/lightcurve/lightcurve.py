@@ -64,6 +64,8 @@ def get_from_packets(
     directionbins_are_vpkt_observers: bool = False,
     pellet_nucname: str | None = None,
     use_pellet_decay_time: bool = False,
+    timedaysmin: float | None = None,
+    timedaysmax: float | None = None,
 ) -> dict[int, pl.LazyFrame]:
     """Get ARTIS luminosity vs time from packets files."""
     if escape_type not in {"TYPE_RPKT", "TYPE_GAMMA"}:
@@ -72,7 +74,9 @@ def get_from_packets(
     if directionbins is None:
         directionbins = [-1]
 
-    timesteps_df = at.get_timesteps(modelpath).collect()
+    timesteps_df = at.misc.df_filter_keeping_exterior_points(
+        at.get_timesteps(modelpath), "tmid_days", timedaysmin, timedaysmax, method="expand"
+    ).collect()
     arr_tstart = timesteps_df["tstart_days"].to_list()
     arr_timedelta = timesteps_df["twidth_days"].to_list()
 
@@ -146,7 +150,8 @@ def get_from_packets(
             at.packets.bin_and_sum(
                 pldfpackets_dirbin, bincol=timecol, bins=timebinstarts_plusend, sumcols=["e_rf"], getcounts=True
             )
-            .rename({f"{timecol}_bin": "timestep", "count": "packetcount"})
+            .with_columns(timestep=pl.col(f"{timecol}_bin").cast(pl.Int32) + timesteps_df["timestep"].min())
+            .rename({"count": "packetcount"})
             .join(timesteps_df.select("timestep", "twidth_days", "tmid_days").lazy(), how="left", on="timestep")
             .with_columns(
                 lum=(
@@ -157,7 +162,7 @@ def get_from_packets(
                     / Lsun_to_erg_per_s
                 )
             )
-            .drop("e_rf_sum")
+            .drop("e_rf_sum", f"{timecol}_bin")
         )
 
         lcdata[dirbin] = (

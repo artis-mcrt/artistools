@@ -353,6 +353,8 @@ def plot_artis_lightcurve(
             directionbins_are_vpkt_observers=args.plotvspecpol is not None,
             pellet_nucname=pellet_nucname,
             use_pellet_decay_time=use_pellet_decay_time,
+            timedaysmin=args.timemin,
+            timedaysmax=args.timemax,
         )
     else:
         assert pellet_nucname is None, "pellet_nucname is only valid with frompackets=True"
@@ -392,26 +394,28 @@ def plot_artis_lightcurve(
         costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(usedegrees=usedegrees)
         scaledmap = make_colorbar_viewingangles_colormap()
 
-    xmin, xmax = args.timemin, args.timemax
     lcdataframes = dict(
         zip(
             dirbins,
             pl.collect_all(
-                lcdataframes[dirbin]
-                .lazy()
-                .filter(pl.lit(True) if xmin is None else (pl.col("time") >= xmin * 0.9))
-                .filter(pl.lit(True) if xmax is None else (pl.col("time") <= xmax * 1.1))
-                .select(
-                    cs.by_name(["time", "lum"], require_all=True)
-                    | cs.by_name("packetcount", require_all=False)
-                    | cs.by_name(["lum_cmf"] if args.plotcmf else [])
+                at.misc.df_filter_keeping_exterior_points(
+                    lcdataframes[dirbin]
+                    .lazy()
+                    .select(
+                        cs.by_name(["time", "lum"], require_all=True)
+                        | cs.by_name("packetcount", require_all=False)
+                        | cs.by_name(["lum_cmf"] if args.plotcmf else [])
+                    ),
+                    colname="time",
+                    minval=args.timemin,
+                    maxval=args.timemax,
+                    method="interpolate",
                 )
                 for dirbin in dirbins
             ),
             strict=True,
         )
     )
-
     lctimemin = lcdataframes[dirbins[0]].select(pl.min("time")).item()
     lctimemax = lcdataframes[dirbins[0]].select(pl.max("time")).item()
     assert isinstance(lctimemin, float)
@@ -527,23 +531,7 @@ def plot_artis_lightcurve(
         )
         lcdatamin = lcdata_valid.select(pl.min("time")).item()
         lcdatamax = lcdata_valid.select(pl.max("time")).item()
-        if not lcdata_valid.is_empty():
-            print(f" UVOIR energy (time {lcdatamin:.1f} to {lcdatamax:.1f} days): {energy_released:.3e} erg")
-            if args.timemin is not None or args.timemax is not None:
-                lcdata_valid_xminmax = lcdata_valid.filter(
-                    pl.col("time") >= args.timemin if args.timemin else pl.lit(True)
-                ).filter(pl.col("time") <= args.timemax if args.timemax else pl.lit(True))
-                if not lcdata_valid_xminmax.is_empty():
-                    lcdatamin = lcdata_valid_xminmax.select(pl.min("time")).item()
-                    lcdatamax = lcdata_valid_xminmax.select(pl.max("time")).item()
-                    energy_released_timeselected = abs(
-                        integrate.trapezoid(
-                            np.nan_to_num(lcdata_valid_xminmax["lum"], nan=0.0), x=lcdata_valid_xminmax["time"] * 86400
-                        )
-                    )
-                    print(
-                        f" UVOIR energy (time {lcdatamin:.1f} to {lcdatamax:.1f} days): {energy_released_timeselected:.3e} erg"
-                    )
+        print(f" UVOIR energy (time {lcdatamin:.1f} to {lcdatamax:.1f} days): {energy_released:.3e} erg")
 
         axis.plot(lcdata_valid["time"], lcdata_valid[ycolumn], label=label_with_tags, **plotkwargs)
         if args.print_data:
@@ -587,18 +575,18 @@ def make_lightcurve_plot(
         figsize=(args.figscale * conffigwidth, args.figscale * conffigwidth / 1.6),
         tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
     )
-
+    axis.margins(0.0, 0.0)
     if args.magnitude:
         axis.invert_yaxis()
 
     if args.timemin is not None:
-        axis.set_xlim(left=args.timemin)
+        axis.set_xlim(xmin=args.timemin)
     if args.timemax is not None:
-        axis.set_xlim(right=args.timemax)
+        axis.set_xlim(xmax=args.timemax)
     if args.ymin is not None:
-        axis.set_ylim(bottom=args.ymin)
+        axis.set_ylim(ymin=args.ymin)
     if args.ymax is not None:
-        axis.set_ylim(top=args.ymax)
+        axis.set_ylim(ymax=args.ymax)
 
     if args.plotthermalisation:
         figtherm, axistherm = plt.subplots(
