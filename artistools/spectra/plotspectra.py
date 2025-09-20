@@ -29,6 +29,7 @@ import artistools.spectra as atspectra
 from artistools.configuration import get_config
 from artistools.inputmodel import get_modeldata
 from artistools.misc import CustomArgHelpFormatter
+from artistools.misc import df_filter_keeping_exterior_points
 from artistools.misc import flatten_list
 from artistools.misc import get_dirbin_labels
 from artistools.misc import get_filterfunc
@@ -507,11 +508,15 @@ def plot_artis_spectrum(
             directionbins,
             pl.collect_all(
                 (
-                    atspectra.get_dfspectrum_x_y_with_units(
-                        viewinganglespectra[dirbin], xunit=xunit, yvariable=yvariable, fluxdistance_mpc=args.distmpc
+                    df_filter_keeping_exterior_points(
+                        atspectra.get_dfspectrum_x_y_with_units(
+                            viewinganglespectra[dirbin], xunit=xunit, yvariable=yvariable, fluxdistance_mpc=args.distmpc
+                        ).sort("x"),
+                        colname="x",
+                        minval=xmin,
+                        maxval=xmax,
+                        method="expand",
                     )
-                    .filter(pl.col("x").is_between(xmin * 0.9, xmax * 1.1))
-                    .sort("x", maintain_order=True)
                     for dirbin in directionbins
                 ),
                 engine="streaming",
@@ -588,6 +593,7 @@ def make_spectrum_plot(
     ]
     for axis in axes:
         axis.set_prop_cycle(color=colors)
+        axis.margins(0.0, 0.0)
 
     for seriesindex, specpath in enumerate(speclist):
         plotkwargs: dict[str, t.Any] = {
