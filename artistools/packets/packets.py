@@ -990,11 +990,15 @@ def bin_and_sum(
     """Bins is a list of lower edges, and the final upper edge."""
     # Polars method
 
-    dfcut = df.lazy().with_columns(
-        (pl.col(bincol).cut(breaks=bins, labels=[str(x) for x in range(-1, len(bins))]))
-        .cast(pl.Utf8)
-        .cast(pl.Int32)
-        .alias(f"{bincol}_bin")
+    dfcut = (
+        df.lazy()
+        .filter(pl.col(bincol).is_between(bins[0], bins[-1], closed="both"))
+        .with_columns(
+            (pl.col(bincol).cut(breaks=bins, labels=[str(x) for x in range(-1, len(bins))]))
+            .cast(pl.Utf8)
+            .cast(pl.Int32)
+            .alias(f"{bincol}_bin")
+        )
     )
 
     aggs = [pl.col(col).sum().alias(col + "_sum") for col in sumcols] if sumcols is not None else []
