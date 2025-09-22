@@ -41,7 +41,7 @@ def plot_qdot(
     xmax: float | None = None,
 ) -> None:
     try:
-        depdata = at.get_deposition(modelpath=modelpath)
+        depdata = at.get_deposition(modelpath=modelpath).collect()
 
     except FileNotFoundError:
         print("Can't do qdot plot because no deposition.out file")

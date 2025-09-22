@@ -50,7 +50,7 @@ def plot_deposition_thermalisation(
         model_mass_grams = dfmodel.select("mass_g").sum().collect().item()
         print(f"  model mass: {model_mass_grams / 1.989e33:.3f} Msun")
 
-    depdata = at.get_deposition(modelpath)
+    depdata = at.get_deposition(modelpath).collect()
 
     # color_total = axis._get_lines.get_next_color()
 

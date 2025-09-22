@@ -305,7 +305,7 @@ def get_nu_grid(modelpath: Path) -> npt.NDArray[np.floating]:
     return specdata["nu"].to_numpy()
 
 
-def get_deposition(modelpath: Path | str = ".") -> pl.DataFrame:
+def get_deposition(modelpath: Path | str = ".") -> pl.LazyFrame:
     """Return a polars DataFrame containing the deposition data."""
     if Path(modelpath).is_file():
         depfilepath = Path(modelpath)
@@ -324,7 +324,7 @@ def get_deposition(modelpath: Path | str = ".") -> pl.DataFrame:
             skiprows = 0
             columns = ["tmid_days", "gammadep_Lsun", "positrondep_Lsun", "total_dep_Lsun"]
 
-    depdata = pl.read_csv(depfilepath, separator=" ", skip_rows=skiprows, has_header=False, new_columns=columns)
+    depdata = pl.scan_csv(depfilepath, separator=" ", skip_rows=skiprows, has_header=False, new_columns=columns)
 
     if "ts" in depdata.columns:
         depdata = depdata.rename({"ts": "timestep"})
@@ -336,7 +336,8 @@ def get_deposition(modelpath: Path | str = ".") -> pl.DataFrame:
 
     # no timesteps are given in the old format of deposition.out, so ensure that
     # the times in days match up with the times of our assumed timesteps
-    if not np.allclose(depdata["tmid_days"].to_numpy(), ts_mids[: len(depdata["tmid_days"])], rtol=0.01):
+    t_mid_days = depdata.select("tmid_days").collect().to_series().to_numpy()
+    if not np.allclose(t_mid_days, ts_mids[: len(t_mid_days)], rtol=0.01):
         msg = "Deposition times do not match the timesteps"
         raise AssertionError(msg)
 
@@ -545,7 +546,13 @@ def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | None, 
     # find the last possible escape time and subtract the largest possible travel time (observer time correction)
     try:
         depdata = get_deposition(modelpath=modelpath)  # use this file to find the last computed timestep
-        nts_last = depdata["timestep"].max() if "timestep" in depdata.columns else len(depdata) - 1
+        nts_last = (
+            depdata.select(
+                pl.col("timestep").max() if "timestep" in depdata.collect_schema().names() else (pl.len() - 1)
+            )
+            .collect()
+            .item()
+        )
     except FileNotFoundError:
         print("WARNING: No deposition.out file found. Assuming all timesteps have been computed")
         nts_last = len(t_end) - 1
@@ -613,10 +620,10 @@ def get_elsymbolslist() -> list[str]:
     ]
 
 
-def get_elsymbols_df() -> pl.DataFrame:
+def get_elsymbols_df() -> pl.LazyFrame:
     """Return a polars DataFrame of atomic number and element symbols."""
     return (
-        pl.read_csv(
+        pl.scan_csv(
             get_config()["path_datadir"] / "elements.csv",
             separator=",",
             has_header=True,
@@ -1083,14 +1090,14 @@ def get_bflist(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame
         "upperionlevel": pl.Int32,
     }
     try:
-        dfboundfree = pl.read_csv(
+        dfboundfree = pl.scan_csv(
             bflistpath,
             skip_rows=1,
             has_header=False,
             separator=" ",
             new_columns=["bfindex", "elementindex", "ionindex", "lowerlevel", "upperionlevel"],
             schema_overrides=schema,
-        ).lazy()
+        )
     except pl.exceptions.NoDataError:
         dfboundfree = pl.DataFrame(schema=schema).lazy()
 
@@ -1398,10 +1405,10 @@ def get_cellsofmpirank(mpirank: int, modelpath: Path | str) -> Iterable[int]:
 
 
 @lru_cache(maxsize=16)
-def get_dfrankassignments(modelpath: Path | str) -> pl.DataFrame | None:
+def get_dfrankassignments(modelpath: Path | str) -> pl.LazyFrame | None:
     filerankassignments = Path(modelpath, "modelgridrankassignments.out")
     if filerankassignments.is_file():
-        return pl.read_csv(filerankassignments, has_header=True, separator=" ").rename(
+        return pl.scan_csv(filerankassignments, has_header=True, separator=" ").rename(
             lambda column_name: column_name.removeprefix("#")
         )
     return None
@@ -1419,7 +1426,7 @@ def get_mpirankofcell(modelgridindex: int, modelpath: Path | str) -> int:
             (pl.col("ndo") > 0)
             & (pl.col("nstart") <= modelgridindex)
             & ((pl.col("nstart") + pl.col("ndo") - 1) >= modelgridindex)
-        )
+        ).collect()
         assert dfselected.height == 1
         return int(dfselected["rank"].item())
 

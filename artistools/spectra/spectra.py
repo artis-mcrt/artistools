@@ -138,7 +138,7 @@ def get_exspec_bins(
 ) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     """Get the wavelength bins for the emergent spectrum."""
     if modelpath is not None:
-        dfspec = read_spec(modelpath, gamma=gamma)
+        dfspec = read_spec(modelpath, gamma=gamma).collect()
         if mnubins is None:
             mnubins = dfspec.height
 
@@ -507,12 +507,12 @@ def get_from_packets(
 
 
 @lru_cache(maxsize=16)
-def read_spec(modelpath: Path | str, gamma: bool = False) -> pl.DataFrame:
+def read_spec(modelpath: Path | str, gamma: bool = False) -> pl.LazyFrame:
     specfilename = firstexisting("gamma_spec.out" if gamma else "spec.out", folder=modelpath, tryzipped=True)
     print(f"Reading {specfilename}")
 
     return (
-        pl.read_csv(zopenpl(specfilename), separator=" ", infer_schema=False, truncate_ragged_lines=True)
+        pl.scan_csv(zopenpl(specfilename), separator=" ", infer_schema=False, truncate_ragged_lines=True)
         .with_columns(pl.all().cast(pl.Float64))
         .rename({"0": "nu"})
     )
@@ -635,7 +635,7 @@ def get_spectrum(
         # spherically averaged spectra
         if stokesparam == "I":
             try:
-                specdata[-1] = read_spec(modelpath=modelpath, gamma=gamma)
+                specdata[-1] = read_spec(modelpath=modelpath, gamma=gamma).collect()
 
             except FileNotFoundError:
                 specdata[-1] = get_specpol_data(angle=-1, modelpath=modelpath)[stokesparam]
