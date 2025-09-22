@@ -135,12 +135,12 @@ jobs:
         strategy:
             fail-fast: false
             matrix:
-                os: [{name: macos, version: '15'}, {name: ubuntu, version: '24.04'}]
+                os: [{name: macos, version: '26'}, {name: ubuntu, version: '24.04'}]
                 python-minor-version: ['11', '12', '13', '14', 14t]
                 exclude:
-                    - os: {name: macos, version: '15'}
+                    - os: {name: macos, version: '26'}
                       python-minor-version: 11
-                    - os: {name: macos, version: '15'}
+                    - os: {name: macos, version: '26'}
                       python-minor-version: 12
                     - os: {name: ubuntu, version: '24.04'}
                       python-minor-version: 14
