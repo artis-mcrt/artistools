@@ -566,7 +566,7 @@ def read_spec_res(modelpath: Path | str) -> dict[int, pl.DataFrame]:
 
 
 @lru_cache(maxsize=200)
-def read_emission_absorption_file(emabsfilename: str | Path) -> pl.DataFrame:
+def read_emission_absorption_file(emabsfilename: str | Path) -> pl.LazyFrame:
     """Read into a DataFrame one of: emission.out. emissionpol.out, emissiontrue.out, absorption.out."""
     try:
         emissionfilesize = Path(emabsfilename).stat().st_size / 1024 / 1024
@@ -575,13 +575,14 @@ def read_emission_absorption_file(emabsfilename: str | Path) -> pl.DataFrame:
     except AttributeError:
         print(f" Reading {emabsfilename}")
 
-    dfemabs = pl.read_csv(zopenpl(emabsfilename), separator=" ", has_header=False, infer_schema_length=0).with_columns(
+    dfemabs = pl.scan_csv(zopenpl(emabsfilename), separator=" ", has_header=False, infer_schema_length=0).with_columns(
         pl.all().cast(pl.Float32, strict=False)
     )
 
     # drop last column of nulls (caused by trailing space on each line)
-    if dfemabs[dfemabs.columns[-1]].is_null().all():
-        dfemabs = dfemabs.drop(dfemabs.columns[-1])
+    last_colname = dfemabs.collect_schema().names()[-1]
+    if dfemabs.select(pl.col(last_colname).is_null().all()).collect().item():
+        dfemabs = dfemabs.drop(last_colname)
 
     return dfemabs
 
@@ -926,9 +927,11 @@ def get_flux_contributions(
                 # File contains I, Q and U and so times are repeated 3 times
                 arr_tmid = list(np.tile(np.array(arr_tmid), 3))
 
-            emissiondata[dbin] = read_emission_absorption_file(emissionfilename)
+            emissiondata[dbin] = read_emission_absorption_file(emissionfilename).collect()
 
-            maxion_float = (emissiondata[dbin].shape[1] - 1) / 2 / nelements  # also known as MIONS in ARTIS sn3d.h
+            maxion_float = float(
+                (len(emissiondata[dbin].collect_schema().names()) - 1) / 2.0 / nelements
+            )  # also known as MIONS in ARTIS sn3d.h
             assert maxion_float.is_integer()
             if maxion is None:
                 maxion = int(maxion_float)
@@ -940,7 +943,7 @@ def get_flux_contributions(
                 assert maxion == int(maxion_float)
 
             # check that the row count is product of timesteps and frequency bins found in spec.out
-            assert emissiondata[dbin].shape[0] == len(arraynu) * len(arr_tmid)
+            assert emissiondata[dbin].select(pl.len()).item() == len(arraynu) * len(arr_tmid)
 
         if getabsorption:
             absorptionfilenames = ["absorption.out", "absorptionpol.out"]
@@ -949,8 +952,8 @@ def get_flux_contributions(
 
             absorptionfilename = firstexisting(absorptionfilenames, folder=modelpath, tryzipped=True)
 
-            absorptiondata[dbin] = read_emission_absorption_file(absorptionfilename)
-            absorption_maxion_float = absorptiondata[dbin].shape[1] / nelements
+            absorptiondata[dbin] = read_emission_absorption_file(absorptionfilename).collect()
+            absorption_maxion_float = float(len(absorptiondata[dbin].collect_schema().names()) / nelements)
             assert absorption_maxion_float.is_integer()
             absorption_maxion = int(absorption_maxion_float)
             if maxion is None:
@@ -961,7 +964,7 @@ def get_flux_contributions(
                 )
             else:
                 assert absorption_maxion == maxion
-            assert absorptiondata[dbin].shape[0] == len(arraynu) * len(arr_tmid)
+            assert absorptiondata[dbin].select(pl.len()).item() == len(arraynu) * len(arr_tmid)
 
     array_flambda_emission_total = np.zeros_like(arraylambda, dtype=float)
     contribution_list = []
