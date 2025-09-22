@@ -1482,6 +1482,7 @@ def test_save_load_3d_model() -> None:
         .with_columns(
             elemcolname="X_" + pl.col("elsymbol"), mass_number_example=(pl.col("atomic_number") * 2).cast(pl.Int32)
         )
+        .collect()
     )
 
     elcolnames = dfelements["elemcolname"].to_list()
