@@ -398,7 +398,7 @@ def plot_artis_lightcurve(
         zip(
             dirbins,
             pl.collect_all(
-                at.misc.df_filter_keeping_exterior_points(
+                at.misc.df_filter_minmax_bounded(
                     lcdataframes[dirbin]
                     .lazy()
                     .select(
@@ -409,7 +409,6 @@ def plot_artis_lightcurve(
                     colname="time",
                     minval=args.timemin,
                     maxval=args.timemax,
-                    method="interpolate",
                 )
                 for dirbin in dirbins
             ),

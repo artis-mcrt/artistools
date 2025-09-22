@@ -146,52 +146,24 @@ def split_multitable_dataframe(res_df: pl.DataFrame | pd.DataFrame) -> dict[int,
     return res_data
 
 
-def df_filter_keeping_exterior_points(
-    df: pl.LazyFrame,
-    colname: str,
-    minval: float | None,
-    maxval: float | None,
-    method: t.Literal["expand", "interpolate"] = "expand",
+def df_filter_minmax_bounded(
+    df: pl.LazyFrame, colname: str, minval: float | None, maxval: float | None
 ) -> pl.LazyFrame:
+    """Filter a DataFrame to selects rows where the value in colname is between minval and maxval, and also include the closest exterior rows if xmin/xmax are between two rows. This enables linear interpolation at xmin and xmax (if the surrounding values existed in the DataFrame)."""
     if minval is None and maxval is None:
         return df
 
-    match method:
-        case "expand":
-            if minval is not None:
-                df = df.filter(
-                    (pl.col(colname).min() >= minval)
-                    | (pl.col(colname) >= pl.col(colname).filter(pl.col(colname) <= minval).max())
-                )
+    if minval is not None:
+        df = df.filter(
+            (pl.col(colname).min() >= minval)
+            | (pl.col(colname) >= pl.col(colname).filter(pl.col(colname) <= minval).max())
+        )
 
-            if maxval is not None:
-                df = df.filter(
-                    (pl.col(colname).max() <= maxval)
-                    | (pl.col(colname) <= pl.col(colname).filter(pl.col(colname) >= maxval).min())
-                )
-
-        case "interpolate":
-            if minval is not None:
-                df = pl.concat(
-                    [df, pl.LazyFrame({colname: [minval]}, schema={colname: df.collect_schema()[colname]})],
-                    how="diagonal",
-                )
-
-            if maxval is not None:
-                df = pl.concat(
-                    [df, pl.LazyFrame({colname: [maxval]}, schema={colname: df.collect_schema()[colname]})],
-                    how="diagonal",
-                )
-
-            df = (
-                df.sort(colname)
-                .interpolate()
-                .filter(pl.lit(True) if minval is None else (pl.col(colname) >= minval))
-                .filter(pl.lit(True) if maxval is None else (pl.col(colname) <= maxval))
-            )
-        case _:
-            msg = f"Unknown method {method}"
-            raise ValueError(msg)
+    if maxval is not None:
+        df = df.filter(
+            (pl.col(colname).max() <= maxval)
+            | (pl.col(colname) <= pl.col(colname).filter(pl.col(colname) >= maxval).min())
+        )
 
     return df
 
