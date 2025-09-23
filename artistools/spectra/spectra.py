@@ -534,9 +534,8 @@ def read_spec_res(modelpath: Path | str) -> dict[int, pl.LazyFrame]:
     res_specdata_in = pl.read_csv(zopenpl(specfilename), separator=" ", has_header=False, infer_schema=False).lazy()
 
     # drop last column of nulls (caused by trailing space on each line)
-    last_colname = res_specdata_in.collect_schema().names()[-1]
-    if res_specdata_in.select(pl.col(last_colname).is_null().all()).collect().item():
-        res_specdata_in = res_specdata_in.drop(last_colname)
+    if res_specdata_in.select(cs.by_index(-1).is_null().all()).collect().item():
+        res_specdata_in = res_specdata_in.drop(cs.by_index(-1))
 
     res_specdata = split_multitable_dataframe(res_specdata_in)
 
@@ -581,9 +580,8 @@ def read_emission_absorption_file(emabsfilename: str | Path) -> pl.LazyFrame:
     )
 
     # drop last column of nulls (caused by trailing space on each line)
-    last_colname = dfemabs.collect_schema().names()[-1]
-    if dfemabs.select(pl.col(last_colname).is_null().all()).collect().item():
-        dfemabs = dfemabs.drop(last_colname)
+    if dfemabs.select(cs.by_index(-1).is_null().all()).collect().item():
+        dfemabs = dfemabs.drop(cs.by_index(-1))
 
     return dfemabs
 

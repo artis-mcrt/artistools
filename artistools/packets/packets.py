@@ -11,6 +11,7 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import polars as pl
+import polars.selectors as cs
 from typing_extensions import deprecated
 
 import artistools as at
@@ -390,15 +391,15 @@ def readfile_text(packetsfiletext: Path | str, column_names: list[str]) -> pl.Da
     ).with_columns(mpirank=pl.lit(mpirank, dtype=pl.Int32))
 
     # drop last column of nulls (caused by trailing space on each line)
-    if dfpackets[dfpackets.columns[-1]].is_null().all():
-        dfpackets = dfpackets.drop(dfpackets.columns[-1])
+    if dfpackets.select(cs.by_index(-1).is_null().all()).item():
+        dfpackets = dfpackets.drop(cs.by_index(-1))
 
     if "originated_from_positron" in dfpackets.columns:
         dfpackets = dfpackets.with_columns([pl.col("originated_from_positron").cast(pl.Boolean)])
 
     # Luke: packet energies in ergs can be huge (>1e39) which is too large for Float32
     return dfpackets.with_columns([
-        pl.col(pl.Int64).cast(pl.Int32),
+        pl.col(pl.Int64).cast(pl.Int32, strict=True),
         pl.col(pl.Float64).exclude(["e_rf", "e_cmf"]).cast(pl.Float32, strict=True),
     ])
 
