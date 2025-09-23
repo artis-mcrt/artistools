@@ -281,14 +281,18 @@ def get_spectrum_at_time(
         average_over_phi = False
         average_over_theta = False
 
-    return get_spectrum(
-        modelpath=modelpath,
-        directionbins=[dirbin],
-        timestepmin=timestep,
-        timestepmax=timestep,
-        average_over_phi=average_over_phi,
-        average_over_theta=average_over_theta,
-    )[dirbin].to_pandas(use_pyarrow_extension_array=True)
+    return (
+        get_spectrum(
+            modelpath=modelpath,
+            directionbins=[dirbin],
+            timestepmin=timestep,
+            timestepmax=timestep,
+            average_over_phi=average_over_phi,
+            average_over_theta=average_over_theta,
+        )[dirbin]
+        .collect()
+        .to_pandas(use_pyarrow_extension_array=True)
+    )
 
 
 def get_from_packets(
@@ -590,14 +594,14 @@ def read_emission_absorption_file(emabsfilename: str | Path) -> pl.LazyFrame:
 @lru_cache(maxsize=4)
 def get_spec_res(
     modelpath: Path, average_over_theta: bool = False, average_over_phi: bool = False
-) -> dict[int, pl.DataFrame]:
+) -> dict[int, pl.LazyFrame]:
     res_specdata = read_spec_res(modelpath)
     if average_over_theta:
         res_specdata = average_direction_bins(res_specdata, overangle="theta")
     if average_over_phi:
         res_specdata = average_direction_bins(res_specdata, overangle="phi")
 
-    return res_specdata
+    return {k: v.lazy() for k, v in res_specdata.items()}
 
 
 def get_spectrum(
@@ -610,7 +614,7 @@ def get_spectrum(
     average_over_phi: bool = False,
     stokesparam: t.Literal["I", "Q", "U"] = "I",
     gamma: bool = False,
-) -> dict[int, pl.DataFrame]:
+) -> dict[int, pl.LazyFrame]:
     """Get a polars DataFrame containing an ARTIS emergent spectrum."""
     if timestepmax is None or timestepmax < 0:
         timestepmax = timestepmin
@@ -619,7 +623,7 @@ def get_spectrum(
         directionbins = [-1]
 
     # keys are direction bins (or -1 for spherical average)
-    specdata: dict[int, pl.DataFrame] = {}
+    specdata: dict[int, pl.LazyFrame] = {}
 
     if any(dirbin != -1 for dirbin in directionbins):
         assert stokesparam == "I"
@@ -636,7 +640,7 @@ def get_spectrum(
         # spherically averaged spectra
         if stokesparam == "I":
             try:
-                specdata[-1] = read_spec(modelpath=modelpath, gamma=gamma).collect()
+                specdata[-1] = read_spec(modelpath=modelpath, gamma=gamma)
 
             except FileNotFoundError:
                 specdata[-1] = get_specpol_data(angle=-1, modelpath=modelpath)[stokesparam]
@@ -644,28 +648,25 @@ def get_spectrum(
         else:
             specdata[-1] = get_specpol_data(angle=-1, modelpath=modelpath)[stokesparam]
 
-    specdataout: dict[int, pl.DataFrame] = {}
+    specdataout: dict[int, pl.LazyFrame] = {}
     for dirbin in directionbins:
         if dirbin not in specdata:
             print(f"WARNING: Direction bin {dirbin} not found in specdata. Dirbins: {list(specdata.keys())}")
             continue
         arr_tdelta = get_timestep_times(modelpath, loc="delta")
 
-        try:
-            arr_f_nu = specdata[dirbin].select(
-                pl.sum_horizontal(
-                    pl.col(specdata[dirbin].columns[timestep + 1]) * arr_tdelta[timestep]
-                    for timestep in range(timestepmin, timestepmax + 1)
-                )
-                / sum(arr_tdelta[timestepmin : timestepmax + 1])
-            )
-        except IndexError as e:
-            msg = " ERROR: data not available for timestep range"
-            raise ValueError(msg) from e
-
         dfspectrum = (
-            pl.DataFrame({"nu": specdata[dirbin]["nu"], "f_nu": arr_f_nu})
-            .lazy()
+            specdata[dirbin]
+            .select(
+                pl.col("nu"),
+                (
+                    pl.sum_horizontal(
+                        cs.by_index(timestep + 1) * arr_tdelta[timestep]
+                        for timestep in range(timestepmin, timestepmax + 1)
+                    )
+                    / sum(arr_tdelta[timestepmin : timestepmax + 1])
+                ).alias("f_nu"),
+            )
             .with_columns(lambda_angstroms=2.99792458e18 / pl.col("nu"))
         )
 
@@ -674,11 +675,9 @@ def get_spectrum(
                 print("Applying filter to ARTIS spectrum")
             dfspectrum = dfspectrum.with_columns(cs.starts_with("f_nu").map_batches(fluxfilterfunc))
 
-        dfspectrum = dfspectrum.with_columns(f_lambda=pl.col("f_nu") * pl.col("nu") / pl.col("lambda_angstroms")).sort(
-            by="nu" if gamma else "lambda_angstroms"
-        )
-
-        specdataout[dirbin] = dfspectrum.collect()
+        specdataout[dirbin] = dfspectrum.with_columns(
+            f_lambda=pl.col("f_nu") * pl.col("nu") / pl.col("lambda_angstroms")
+        ).sort(by="nu" if gamma else "lambda_angstroms")
 
     return specdataout
 
@@ -759,8 +758,8 @@ def make_averaged_vspecfiles(args: argparse.Namespace) -> None:
 
 @lru_cache(maxsize=4)
 def get_specpol_data(
-    angle: int = -1, modelpath: Path | None = None, specdata: pl.DataFrame | None = None
-) -> dict[str, pl.DataFrame]:
+    angle: int = -1, modelpath: Path | None = None, specdata: pl.LazyFrame | None = None
+) -> dict[str, pl.LazyFrame]:
     if specdata is None:
         assert modelpath is not None
         specfilename = (
@@ -770,7 +769,7 @@ def get_specpol_data(
         )
 
         print(f"Reading {specfilename}")
-        specdata = pl.read_csv(zopenpl(specfilename), separator=" ", has_header=True, infer_schema=False).with_columns(
+        specdata = pl.scan_csv(zopenpl(specfilename), separator=" ", has_header=True, infer_schema=False).with_columns(
             pl.all().cast(pl.Float64)
         )
 
@@ -778,7 +777,7 @@ def get_specpol_data(
 
 
 @lru_cache(maxsize=4)
-def get_vspecpol_data(vspecindex: int, modelpath: Path | str) -> dict[str, pl.DataFrame]:
+def get_vspecpol_data(vspecindex: int, modelpath: Path | str) -> dict[str, pl.LazyFrame]:
     assert modelpath is not None
     # alternatively use f'vspecpol_averaged-{angle}.out' ?
 
@@ -795,9 +794,9 @@ def get_vspecpol_data(vspecindex: int, modelpath: Path | str) -> dict[str, pl.Da
     return split_dataframe_stokesparams(specdata)
 
 
-def split_dataframe_stokesparams(specdata: pl.DataFrame) -> dict[str, pl.DataFrame]:
+def split_dataframe_stokesparams(specdata: pl.DataFrame | pl.LazyFrame) -> dict[str, pl.LazyFrame]:
     """DataFrames read from specpol*.out and vspecpol*.out are repeated over I, Q, U parameters. Split these into a dictionary of DataFrames."""
-    specdata = specdata.rename({specdata.columns[0]: "nu"})
+    specdata = specdata.rename({specdata.columns[0]: "nu"}).lazy()
     stokes_params = {
         "I": specdata.select(cs.exclude(cs.contains("_duplicated_"))),
         "Q": specdata.select(
@@ -808,11 +807,19 @@ def split_dataframe_stokesparams(specdata: pl.DataFrame) -> dict[str, pl.DataFra
         ),
     }
 
-    for param in ("Q", "U"):
-        stokes_params[param + "/I"] = stokes_params[param].select(
-            pl.col("nu"),
-            *(pl.col(colname) / stokes_params["I"].get_column(colname) for colname in stokes_params[param].columns[1:]),
+    stokes_params |= {
+        f"{param}/I": stokes_params[param]
+        .join(stokes_params["I"], on="nu", how="left", suffix="_I")
+        .select(
+            cs.by_name("nu"),
+            *(
+                pl.col(col) / pl.col(f"{col}_I")
+                for col in stokes_params["I"].collect_schema().names()
+                if col != "nu" and not col.endswith("_I")
+            ),
         )
+        for param in ("Q", "U")
+    }
 
     return stokes_params
 
@@ -827,7 +834,7 @@ def get_vspecpol_spectrum(
     stokes_params = get_vspecpol_data(vspecindex=angle, modelpath=Path(modelpath))
     if "stokesparam" not in args:
         args.stokesparam = "I"
-    vspecdata = stokes_params[args.stokesparam]
+    vspecdata = stokes_params[args.stokesparam].collect()
 
     arr_tmid = [float(i) for i in vspecdata.columns[1:]]
     vspec_timesteps = range(len(arr_tmid))

@@ -166,6 +166,7 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
     dfspectrum = (
         atspectra.get_specpol_data(angle=angle, modelpath=modelpath)[args.stokesparam]
         .with_columns(lambda_angstroms=2.99792458e18 / pl.col("nu"))
+        .collect()
         .to_pandas(use_pyarrow_extension_array=True)
     )
 

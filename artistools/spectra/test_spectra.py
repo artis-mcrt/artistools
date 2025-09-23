@@ -95,7 +95,7 @@ def test_spectra_get_spectrum(benchmark: BenchmarkFixture) -> None:
         assert isinstance(flambdamean, float)
         assert math.isclose(flambdamean, 1.0314682640070206e-14, abs_tol=1e-5)
 
-    dfspectrum = benchmark(lambda: at.spectra.get_spectrum(modelpath, 55, 65, fluxfilterfunc=None))[-1]
+    dfspectrum = benchmark(lambda: at.spectra.get_spectrum(modelpath, 55, 65, fluxfilterfunc=None))[-1].collect()
 
     assert len(dfspectrum["lambda_angstroms"]) == 1000
     assert len(dfspectrum["f_lambda"]) == 1000
@@ -127,14 +127,17 @@ def test_spectra_get_spectrum_polar_angles(benchmark: BenchmarkFixture) -> None:
     )
 
     assert all(
-        np.isclose(dirspec["lambda_angstroms"].to_numpy().mean(), 7510.074, rtol=1e-3) for dirspec in spectra.values()
+        np.isclose(dirspec.collect()["lambda_angstroms"].to_numpy().mean(), 7510.074, rtol=1e-3)
+        for dirspec in spectra.values()
     )
     assert all(
-        np.isclose(dirspec["lambda_angstroms"].to_numpy().std(), 7647.317, rtol=1e-3) for dirspec in spectra.values()
+        np.isclose(dirspec.collect()["lambda_angstroms"].to_numpy().std(), 7647.317, rtol=1e-3)
+        for dirspec in spectra.values()
     )
 
     results = {
-        dirbin: (dfspecdir["f_lambda"].mean(), dfspecdir["f_lambda"].std()) for dirbin, dfspecdir in spectra.items()
+        dirbin: (dfspecdir.collect()["f_lambda"].mean(), dfspecdir.collect()["f_lambda"].std())
+        for dirbin, dfspecdir in spectra.items()
     }
 
     print(f"expected_results = {results!r}")
@@ -213,7 +216,7 @@ def test_spectra_get_flux_contributions(benchmark: BenchmarkFixture) -> None:
     timestepmax = 80
     dfspectrum = at.spectra.get_spectrum(
         modelpath=modelpath, timestepmin=timestepmin, timestepmax=timestepmax, fluxfilterfunc=None
-    )[-1]
+    )[-1].collect()
 
     integrated_flux_specout = integrate.trapezoid(dfspectrum["f_lambda"], x=dfspectrum["lambda_angstroms"])
 
