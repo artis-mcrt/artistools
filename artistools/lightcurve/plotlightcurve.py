@@ -921,7 +921,7 @@ def get_viewinganglecolor_for_colorbar(
         assert nphibins == 10
         reorderphibins = {5: 9, 6: 8, 7: 7, 8: 6, 9: 5}
         print("Reordering phi bins")
-        colorindex = reorderphibins.get(colorindex, phi_index)
+        colorindex = reorderphibins.get(phi_index, phi_index)
         plotkwargs["color"] = scaledmap.to_rgba(colorindex)
 
     return plotkwargs, colorindex
@@ -962,11 +962,7 @@ def make_colorbar_viewingangles(
     hidecolorbar = False
     if not hidecolorbar:
         if fig:
-            # from mpl_toolkits.axes_grid1.inset_locator import inset_axes
-
-            # cax = plt.axes([0.3, 0.97, 0.45, 0.02])  #2nd and 4th move up and down. 1st left and right. 3rd bar width
-            cax = plt.axes((0.2, 0.98, 0.65, 0.04))
-            cbar = fig.colorbar(scaledmap, cax=cax, orientation="horizontal")
+            cbar = fig.colorbar(scaledmap, orientation="horizontal", location="top", pad=0.10, ax=ax, shrink=0.95)
         else:
             cbar = plt.colorbar(scaledmap, ax=ax)
         if label:
