@@ -80,8 +80,10 @@ def make_hesma_vspecfiles(modelpath: Path, outpath: Path | None = None) -> None:
     for angle in angles:
         angle_names.append(rf"cos(theta) = {vpkt_config['cos_theta'][angle]}")
         print(rf"cos(theta) = {vpkt_config['cos_theta'][angle]}")
-        vspecdata = at.spectra.get_specpol_data(angle=angle, modelpath=modelpath)["I"].to_pandas(
-            use_pyarrow_extension_array=True
+        vspecdata = (
+            at.spectra.get_specpol_data(angle=angle, modelpath=modelpath)["I"]
+            .collect()
+            .to_pandas(use_pyarrow_extension_array=True)
         )
 
         timearray = vspecdata.columns.to_numpy()[1:]

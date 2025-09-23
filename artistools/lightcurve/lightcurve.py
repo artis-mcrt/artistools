@@ -317,7 +317,9 @@ def bolometric_magnitude(
     for timestep, time in enumerate(float(time) for time in timearray):
         if (args.timemin is None or args.timemin <= time) and (args.timemax is None or args.timemax >= time):
             if angle == -1:
-                spectrum = at.spectra.get_spectrum(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)[-1]
+                spectrum = at.spectra.get_spectrum(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)[
+                    -1
+                ].collect()
 
             elif args.plotvspecpol:
                 spectrum = at.spectra.get_vspecpol_spectrum(modelpath, time, angle, args)
@@ -329,7 +331,7 @@ def bolometric_magnitude(
                     timestepmax=timestep,
                     average_over_phi=average_over_phi,
                     average_over_theta=average_over_theta,
-                )[angle]
+                )[angle].collect()
             integrated_flux = integrate.trapezoid(spectrum["f_lambda"], spectrum["lambda_angstroms"])
             integrated_luminosity = integrated_flux * 4 * np.pi * np.power(Mpc_to_cm, 2)
             Mbol_sun = 4.74
