@@ -662,9 +662,8 @@ def decode_roman_numeral(strin: str) -> int:
 
 def get_ion_stage_roman_numeral_df() -> pl.DataFrame:
     """Return a polars DataFrame of ionisation stage and roman numerals."""
-    return pl.DataFrame(
-        {"ion_stage": list(range(1, len(roman_numerals))), "ion_stage_roman": roman_numerals[1:]},
-        schema={"ion_stage": pl.Int32, "ion_stage_roman": pl.Utf8},
+    return pl.DataFrame({"ion_stage_roman": roman_numerals[1:]}, schema={"ion_stage_roman": pl.Utf8}).with_row_index(
+        "ion_stage", offset=1
     )
 
 
