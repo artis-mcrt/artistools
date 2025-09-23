@@ -39,7 +39,7 @@ def get_bol_lc_from_lightcurveout(modelpath: Path, res: bool = False) -> pd.Data
     lcfilename = "light_curve_res.out" if res else "light_curve.out"
     lcdata = pd.read_csv(modelpath / lcfilename, sep=r"\s+", header=None, names=["time", "lum", "lum_cmf"])
     lcdataframes = {
-        dirbin: pldf.to_pandas(use_pyarrow_extension_array=True)
+        dirbin: pldf.collect().to_pandas(use_pyarrow_extension_array=True)
         for dirbin, pldf in at.split_multitable_dataframe(lcdata).items()
     }
 

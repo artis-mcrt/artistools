@@ -44,7 +44,7 @@ def plothesmaresspec(fig, ax) -> None:  # noqa: ANN001
         #     res_specdata.append(chunk)
 
         res_specdata = {
-            dirbin: pldf.to_pandas(use_pyarrow_extension_array=True)
+            dirbin: pldf.collect().to_pandas(use_pyarrow_extension_array=True)
             for dirbin, pldf in at.split_multitable_dataframe(specdata).items()
         }
 

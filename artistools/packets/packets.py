@@ -399,7 +399,7 @@ def readfile_text(packetsfiletext: Path | str, column_names: list[str]) -> pl.Da
     # Luke: packet energies in ergs can be huge (>1e39) which is too large for Float32
     return dfpackets.with_columns([
         pl.col(pl.Int64).cast(pl.Int32),
-        pl.col(pl.Float64).exclude(["e_rf", "e_cmf"]).cast(pl.Float32),
+        pl.col(pl.Float64).exclude(["e_rf", "e_cmf"]).cast(pl.Float32, strict=True),
     ])
 
 

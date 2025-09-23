@@ -522,8 +522,7 @@ def read_spec(modelpath: Path | str, gamma: bool = False) -> pl.LazyFrame:
     )
 
 
-@lru_cache(maxsize=16)
-def read_spec_res(modelpath: Path | str) -> dict[int, pl.DataFrame]:
+def read_spec_res(modelpath: Path | str) -> dict[int, pl.LazyFrame]:
     """Return a dataframe of time-series spectra for every viewing direction."""
     specfilename = (
         modelpath
@@ -532,22 +531,22 @@ def read_spec_res(modelpath: Path | str) -> dict[int, pl.DataFrame]:
     )
 
     print(f"Reading {specfilename} (in read_spec_res)")
-    res_specdata_in = pl.read_csv(zopenpl(specfilename), separator=" ", has_header=False, infer_schema=False)
+    res_specdata_in = pl.read_csv(zopenpl(specfilename), separator=" ", has_header=False, infer_schema=False).lazy()
 
     # drop last column of nulls (caused by trailing space on each line)
-    if res_specdata_in[res_specdata_in.columns[-1]].is_null().all():
-        res_specdata_in = res_specdata_in.drop(res_specdata_in.columns[-1])
+    last_colname = res_specdata_in.collect_schema().names()[-1]
+    if res_specdata_in.select(pl.col(last_colname).is_null().all()).collect().item():
+        res_specdata_in = res_specdata_in.drop(last_colname)
 
     res_specdata = split_multitable_dataframe(res_specdata_in)
 
-    prev_dfshape = None
     for dirbin in res_specdata:
-        assert isinstance(res_specdata[dirbin], pl.DataFrame)
-        newcolnames = [str(x) for x in res_specdata[dirbin][0, :].to_numpy()[0]]
+        # the column names are not stored as dataframe.columns yet, but exist in the first row of the DataFrame
+        newcolnames = [str(x) for x in res_specdata[dirbin].select(pl.all().slice(0, 1)).collect().row(0)]
         newcolnames[0] = "nu"
 
         newcolnames_unique = set(newcolnames)
-        oldcolnames = res_specdata[dirbin].columns
+        oldcolnames = res_specdata[dirbin].collect_schema().names()
         if len(newcolnames) > len(newcolnames_unique):
             # for POL_ON, the time columns repeat for Q, U, and V stokes params.
             # here, we keep the first set (I) and drop the rest of the columns
@@ -557,19 +556,15 @@ def read_spec_res(modelpath: Path | str) -> dict[int, pl.DataFrame]:
             res_specdata[dirbin] = res_specdata[dirbin].select(oldcolnames)
 
         res_specdata[dirbin] = (
-            res_specdata[dirbin][1:]  # drop the first row that contains time headers
+            res_specdata[dirbin]
+            .select(pl.all().slice(offset=1))  # drop the first row that contains time headers
             .with_columns(pl.all().cast(pl.Float64))
-            .rename(dict(zip(oldcolnames, newcolnames, strict=False)))
+            .rename(dict(zip(oldcolnames, newcolnames, strict=True)))
         )
-
-        # the number of timesteps and nu bins should match for all direction bins
-        assert prev_dfshape is None or prev_dfshape == res_specdata[dirbin].shape
-        prev_dfshape = res_specdata[dirbin].shape
 
     return res_specdata
 
 
-@lru_cache(maxsize=200)
 def read_emission_absorption_file(emabsfilename: str | Path) -> pl.LazyFrame:
     """Read into a DataFrame one of: emission.out. emissionpol.out, emissiontrue.out, absorption.out."""
     try:
@@ -579,8 +574,10 @@ def read_emission_absorption_file(emabsfilename: str | Path) -> pl.LazyFrame:
     except AttributeError:
         print(f" Reading {emabsfilename}")
 
-    dfemabs = pl.scan_csv(zopenpl(emabsfilename), separator=" ", has_header=False, infer_schema_length=0).with_columns(
-        pl.all().cast(pl.Float32, strict=False)
+    dfemabs = (
+        pl.read_csv(zopenpl(emabsfilename), separator=" ", has_header=False, infer_schema_length=0)
+        .lazy()
+        .with_columns(pl.all().cast(pl.Float32, strict=True))
     )
 
     # drop last column of nulls (caused by trailing space on each line)
@@ -601,7 +598,7 @@ def get_spec_res(
     if average_over_phi:
         res_specdata = average_direction_bins(res_specdata, overangle="phi")
 
-    return {k: v.lazy() for k, v in res_specdata.items()}
+    return res_specdata
 
 
 def get_spectrum(
@@ -705,7 +702,7 @@ def make_virtual_spectra_summed_file(modelpath: Path | str) -> None:
         if vspecpol_data_alldirs[vspecpol_data_alldirs.columns[-1]].is_null().all():
             vspecpol_data_alldirs = vspecpol_data_alldirs.drop(cs.last())
 
-        vspecpol_data = split_multitable_dataframe(vspecpol_data_alldirs)
+        vspecpol_data = {k: v.collect() for k, v in split_multitable_dataframe(vspecpol_data_alldirs).items()}
         assert len(vspecpol_data) == nvirtual_spectra
 
         for specindex in vspecpol_data:

@@ -17,25 +17,24 @@ import artistools as at
 from artistools.constants import Lsun_to_erg_per_s
 
 
-def readfile(filepath: str | Path) -> dict[int, pl.DataFrame]:
+def readfile(filepath: str | Path) -> dict[int, pl.LazyFrame]:
     """Read an ARTIS light curve file."""
     print(f"Reading {filepath}")
-    lcdata: dict[int, pl.DataFrame] = {}
+    lcdata: dict[int, pl.LazyFrame] = {}
     if "_res" in str(Path(filepath).stem):
         # get a dict of dfs with light curves at each viewing direction bin
-        lcdata_res = pl.read_csv(
+        lcdata_res = pl.scan_csv(
             at.zopenpl(filepath), separator=" ", has_header=False, new_columns=["time", "lum", "lum_cmf"]
         )
         lcdata = at.split_multitable_dataframe(lcdata_res)
     else:
-        dfsphericalaverage = pl.read_csv(
+        lcdata[-1] = pl.scan_csv(
             at.zopenpl(filepath), separator=" ", has_header=False, new_columns=["time", "lum", "lum_cmf"]
         )
 
-        if list(dfsphericalaverage["time"].to_numpy()) != sorted(dfsphericalaverage["time"].to_numpy()):
-            # the light_curve.out file repeats x values, so keep the first half only
-            dfsphericalaverage = dfsphericalaverage[: dfsphericalaverage.height // 2]
-        lcdata[-1] = dfsphericalaverage
+        # if the light_curve.out file repeats x values, keep the first half only
+        if lcdata[-1].select(pl.col("time").n_unique() < pl.len()).collect().item():
+            lcdata[-1] = lcdata[-1].select(pl.all().slice(0, pl.len() // 2))
 
     return lcdata
 

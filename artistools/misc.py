@@ -20,6 +20,7 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import polars as pl
+import polars.selectors as cs
 
 from artistools.configuration import get_config
 
@@ -123,27 +124,20 @@ def get_composition_data_from_outputfile(modelpath: Path) -> pd.DataFrame:
     return composition_df
 
 
-def split_multitable_dataframe(res_df: pl.DataFrame | pd.DataFrame) -> dict[int, pl.DataFrame]:
+def split_multitable_dataframe(res_df: pl.DataFrame | pl.LazyFrame | pd.DataFrame) -> dict[int, pl.LazyFrame]:
     """Res (angle-resolved) files include a table for each direction bin."""
     if isinstance(res_df, pd.DataFrame):
         res_df = pl.from_pandas(res_df)
+    res_df = res_df.lazy()
+    rowcount = res_df.select(pl.len()).collect().item()
+    nu_points = res_df.select(cs.by_index(0).n_unique()).collect().item()
+    assert rowcount % nu_points == 0
+    tablecount = rowcount // nu_points
 
-    header_row_indices = pl.arg_where(res_df[:, 0] == res_df[0, 0], eager=True)
-
-    res_data = {
-        tableindex: (
-            res_df[table_row_start : header_row_indices[tableindex + 1], :]
-            if tableindex + 1 < len(header_row_indices)
-            else res_df[table_row_start:, :]
-        )
-        for tableindex, table_row_start in enumerate(header_row_indices)
+    return {
+        tableindex: (res_df.select(pl.all().slice(tableindex * nu_points, nu_points)))
+        for tableindex in range(tablecount)
     }
-
-    # the number of timesteps and frequency bins should match for each subtable
-    assert all(df.columns == res_data[0].columns for df in res_data.values())
-    assert all(df.get_column(df.columns[0]).equals(res_data[0].get_column(df.columns[0])) for df in res_data.values())
-
-    return res_data
 
 
 def df_filter_minmax_bounded(
@@ -169,8 +163,8 @@ def df_filter_minmax_bounded(
 
 
 def average_direction_bins(
-    dirbindataframes: dict[int, pl.DataFrame], overangle: t.Literal["phi", "theta"]
-) -> dict[int, pl.DataFrame]:
+    dirbindataframes: dict[int, pl.DataFrame] | dict[int, pl.LazyFrame], overangle: t.Literal["phi", "theta"]
+) -> dict[int, pl.LazyFrame]:
     """Average dict of direction-binned polars DataFrames according to the phi or theta angle."""
     dirbincount = get_viewingdirectionbincount()
     nphibins = get_viewingdirection_phibincount()
@@ -186,7 +180,7 @@ def average_direction_bins(
 
     # we will make a copy to ensure that we don't cause side effects from altering the original DataFrames
     # that might be returned again later by an lru_cached function
-    dirbindataframesout: dict[int, pl.DataFrame] = {}
+    dirbindataframesout: dict[int, pl.LazyFrame] = {}
 
     for start_bin in start_bin_range:
         contribbins = list(
@@ -195,13 +189,26 @@ def average_direction_bins(
             else range(start_bin, dirbincount, ncosthetabins)
         )
 
-        dirbindataframesout[start_bin] = pl.DataFrame().with_columns(
-            (
-                pl.sum_horizontal([dirbindataframes[dirbin_contrib][colname] for dirbin_contrib in contribbins])
-                / len(contribbins)
-            ).alias(colname)
-            for colname in dirbindataframes[start_bin].collect_schema().names()
+        dirbindataframesout[start_bin] = dirbindataframes[start_bin].lazy()
+        for dirbin in contribbins[1:]:
+            dirbindataframesout[start_bin] = (
+                dirbindataframesout[start_bin]
+                .lazy()
+                .join(dirbindataframes[dirbin].lazy(), on="nu", how="left", suffix=f"_dirbin{dirbin}")
+            )
+
+        dirbindataframesout[start_bin] = dirbindataframesout[start_bin].select(
+            pl.col("nu"),
+            *[
+                (
+                    pl.sum_horizontal([pl.col(col), *[pl.col(f"{col}_dirbin{dirbin}") for dirbin in contribbins[1:]]])
+                    / len(contribbins)
+                ).alias(col)
+                for col in dirbindataframes[start_bin].collect_schema().names()
+                if col != "nu"
+            ],
         )
+
         print(f"bin number {start_bin:2d} = the average of bins {contribbins}")
 
     return dirbindataframesout
@@ -1213,30 +1220,6 @@ def get_linelist_pldf(modelpath: Path | str, get_ion_str: bool = False) -> pl.La
         )
 
     return linelist_lazy
-
-
-@lru_cache(maxsize=8)
-def get_linelist_dataframe(modelpath: Path | str) -> pd.DataFrame:
-    lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels = read_linestatfile(
-        Path(modelpath, "linestat.out")
-    )
-
-    return pd.DataFrame(
-        {
-            "lambda_angstroms": lambda_angstroms,
-            "atomic_number": atomic_numbers,
-            "ion_stage": ion_stages,
-            "upperlevelindex": upper_levels,
-            "lowerlevelindex": lower_levels,
-        },
-        dtype={
-            "lambda_angstroms": float,
-            "atomic_number": int,
-            "ion_stage": int,
-            "upperlevelindex": int,
-            "lowerlevelindex": int,
-        },
-    )
 
 
 @lru_cache(maxsize=8)
