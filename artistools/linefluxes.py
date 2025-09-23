@@ -17,6 +17,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
+import polars as pl
 from matplotlib import markers as mplmarkers
 from matplotlib.typing import MarkerType
 
@@ -218,6 +219,15 @@ def get_line_fluxes_from_pops(
     return pd.DataFrame(dictlcdata)
 
 
+def get_linelist_dataframe(modelpath: Path | str) -> pd.DataFrame:
+    return (
+        at.misc.get_linelist_pldf(modelpath)
+        .with_columns(upper_level=pl.col("upperlevelindex") + 1, lower_level=pl.col("lowerlevelindex") + 1)
+        .collect()
+        .to_pandas(use_pyarrow_extension_array=True)
+    )
+
+
 def get_closelines(
     modelpath: Path | str,
     atomic_number: int,
@@ -229,7 +239,7 @@ def get_closelines(
     upperlevelindex: int | None = None,
 ) -> FeatureTuple:
     dflinelistclosematches = (
-        at.get_linelist_dataframe(modelpath).query("atomic_number == @atomic_number and ion_stage == @ion_stage").copy()
+        get_linelist_dataframe(modelpath).query("atomic_number == @atomic_number and ion_stage == @ion_stage").copy()
     )
     if lambdamin is not None:
         dflinelistclosematches = dflinelistclosematches.query("@lambdamin < lambda_angstroms")

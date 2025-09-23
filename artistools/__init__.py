@@ -64,7 +64,6 @@ from artistools.misc import get_inputparams as get_inputparams
 from artistools.misc import get_ion_stage_roman_numeral_df as get_ion_stage_roman_numeral_df
 from artistools.misc import get_ion_tuple as get_ion_tuple
 from artistools.misc import get_ionstring as get_ionstring
-from artistools.misc import get_linelist_dataframe as get_linelist_dataframe
 from artistools.misc import get_linelist_pldf as get_linelist_pldf
 from artistools.misc import get_model_name as get_model_name
 from artistools.misc import get_mpiranklist as get_mpiranklist
