@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
+import polars as pl
 from matplotlib.legend_handler import HandlerTuple
 
 import artistools as at
@@ -813,19 +814,19 @@ def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Names
 
     plotkwargs: dict[str, t.Any] = {}
 
-    lcdataframes: t.Any = at.lightcurve.readfile(modelpath / "light_curve_res.out")
+    lcdataframes = at.lightcurve.readfile(modelpath / "light_curve_res.out")
 
-    timetoplot = at.match_closest_time(reftime=args.timedays, searchtimes=lcdataframes[0]["time"].to_list())
+    timetoplot = at.match_closest_time(reftime=args.timedays, searchtimes=lcdataframes[0].collect()["time"].to_list())
     print(timetoplot)
 
-    for angleindex, lcdata in enumerate(lcdataframes.items()):
+    for angleindex, lcdata in lcdataframes.items():
         angle = angleindex
         plotkwargs, _ = at.lightcurve.plotlightcurve.get_viewinganglecolor_for_colorbar(
             angle, costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, plotkwargs, args
         )
 
-        rowattime = lcdata.loc[lcdata["time"] == float(timetoplot)]
-        brightness = (rowattime["lum"].item()) * at.constants.Lsun_to_erg_per_s
+        lumattime = lcdata.filter(pl.col("time") == float(timetoplot)).select("lum").collect().item(0, 0)
+        brightness = lumattime * at.constants.Lsun_to_erg_per_s
         if args.colorbarphi:
             xvalues = int(angleindex / 10)
             xlabels = costheta_viewing_angle_bins
@@ -836,7 +837,7 @@ def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Names
         axis.scatter(xvalues, brightness, **plotkwargs)
         plt.xticks(ticks=np.arange(0, 10), labels=xlabels, rotation=30, ha="right")
 
-    at.lightcurve.plotlightcurve.make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args)
+    at.lightcurve.plotlightcurve.make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args, fig, axis)
 
     axis.set_xlabel("Angle bin")
     axis.set_ylabel("erg/s")
