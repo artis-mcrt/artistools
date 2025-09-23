@@ -1019,7 +1019,7 @@ def save_modeldata(
                     null_value="0.0",
                 )
 
-    print(f"open {modelfilepath} (took {time.perf_counter() - timestart:.1f} seconds)")
+    print(f"Wrote {modelfilepath} (took {time.perf_counter() - timestart:.1f} seconds)")
 
 
 def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist: Sequence[int] | None = None) -> int | None:
@@ -1182,7 +1182,7 @@ def save_initelemabundances(
             null_value="0.0",
         )
 
-    print(f"open {abundancefilename} (took {time.perf_counter() - timestart:.1f} seconds)")
+    print(f"wrote {abundancefilename} (took {time.perf_counter() - timestart:.1f} seconds)")
 
 
 def save_empty_abundance_file(npts_model: int, outputfilepath: str | Path = Path()) -> None:
