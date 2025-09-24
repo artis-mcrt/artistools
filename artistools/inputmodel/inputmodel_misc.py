@@ -211,9 +211,7 @@ def read_modelfile_text(
 
         dfmodel = pl.from_pandas(dfmodelpd).lazy()
 
-    dfmodel = dfmodel.rename({"velocity_outer": "vel_r_max_kmps"}, strict=False)
-
-    dfmodel = dfmodel.rename({"cellYe": "Ye"}, strict=False)
+    dfmodel = dfmodel.rename({"velocity_outer": "vel_r_max_kmps", "cellYe": "Ye"}, strict=False)
 
     if modelmeta["dimensions"] == 1:
         vmax_kmps = dfmodel.select(pl.col("vel_r_max_kmps").max()).collect().item()
