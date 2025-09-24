@@ -333,10 +333,10 @@ def get_deposition(modelpath: Path | str = ".") -> pl.LazyFrame:
 
     depdata = pl.scan_csv(depfilepath, separator=" ", skip_rows=skiprows, has_header=False, new_columns=columns)
 
-    if "ts" in depdata.columns:
+    if "ts" in depdata.collect_schema().names():
         depdata = depdata.rename({"ts": "timestep"})
 
-    if "timestep" not in depdata.columns:
+    if "timestep" not in depdata.collect_schema().names():
         depdata = depdata.with_row_index("timestep", offset=0)
 
     depdata = depdata.with_columns(timestep=pl.col("timestep").cast(pl.Int32))
