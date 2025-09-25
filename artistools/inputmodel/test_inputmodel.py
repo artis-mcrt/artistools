@@ -107,96 +107,78 @@ def verify_file_checksums(
 def test_makeartismodelfrom_sph_particles() -> None:
     gridfolderpath = outputpath / "kilonova"
 
-    config_checksums_3d: list[dict[str, dict[str, t.Any]]] = [
-        {
-            "maptogridargs": {"ncoordgrid": 16},
-            "maptogrid_sums": {
-                "ejectapartanalysis.dat": "e8694a679515c54c2b4867122122263a375d9ffa144a77310873ea053bb5a8b4",
-                "grid.dat": "b179427dc76e3b465d83fb303c866812fa9cb775114d1b8c45411dd36bf295b2",
-                "gridcontributions.txt": "63e6331666c4928bdc6b7d0f59165e96d6555736243ea8998a779519052a425f",
-            },
-            "makeartismodel_sums": {
-                "gridcontributions.txt": "f7ddda0c8789a642ad2399e2ae67acc15e2fac519bbddfcdaa65b93d32e3edeb",
-                "abundances.txt": "1ec73f89579a1fc2a9004f2fb6e3ac034143f48527f9a4a4d73d131bc777c25d",
-                "model.txt": "e0deb71db1854a63ac126fba8de37cb195ec0fef9e419b84352c39e663f92327",
-            },
+    config: dict[str, dict[str, t.Any]] = {
+        "maptogridargs": {"ncoordgrid": 16},
+        "maptogrid_sums": {
+            "ejectapartanalysis.dat": "e8694a679515c54c2b4867122122263a375d9ffa144a77310873ea053bb5a8b4",
+            "grid.dat": "b179427dc76e3b465d83fb303c866812fa9cb775114d1b8c45411dd36bf295b2",
+            "gridcontributions.txt": "63e6331666c4928bdc6b7d0f59165e96d6555736243ea8998a779519052a425f",
         },
-        {
-            "maptogridargs": {"ncoordgrid": 16, "shinglesetal23hbug": True},
-            "maptogrid_sums": {
-                "ejectapartanalysis.dat": "e8694a679515c54c2b4867122122263a375d9ffa144a77310873ea053bb5a8b4",
-                "grid.dat": "ea930d0decca79d2e65ac1df1aaaa1eb427fdf45af965a623ed38240dce89954",
-                "gridcontributions.txt": "a2c09b96d32608db2376f9df61980c2ad1423066b579fbbe744f07e536f2891e",
-            },
-            "makeartismodel_sums": {
-                "gridcontributions.txt": "c2fc01d2b7ff07f49a321ba6cc1957e0d303191c2bc6b28cd3f2df7cc0cf5b60",
-                "abundances.txt": "1ec73f89579a1fc2a9004f2fb6e3ac034143f48527f9a4a4d73d131bc777c25d",
-                "model.txt": "542b5ae858210c0401556bc327873c29f997365ee066f66cf9b7cd5dec5a252d",
-            },
+        "makeartismodel_sums": {
+            "gridcontributions.txt": "f7ddda0c8789a642ad2399e2ae67acc15e2fac519bbddfcdaa65b93d32e3edeb",
+            "abundances.txt": "1ec73f89579a1fc2a9004f2fb6e3ac034143f48527f9a4a4d73d131bc777c25d",
+            "model.txt": "e0deb71db1854a63ac126fba8de37cb195ec0fef9e419b84352c39e663f92327",
         },
-    ]
+    }
 
-    for tag, config in zip(["", "_shinglesetal23hbug"], config_checksums_3d, strict=False):
-        shutil.copytree(
-            testdatapath / "kilonova", gridfolderpath, dirs_exist_ok=True, ignore=shutil.ignore_patterns("trajectories")
+    shutil.copytree(
+        testdatapath / "kilonova", gridfolderpath, dirs_exist_ok=True, ignore=shutil.ignore_patterns("trajectories")
+    )
+
+    at.inputmodel.maptogrid.main(
+        argsraw=[], inputpath=gridfolderpath, outputpath=gridfolderpath, **config["maptogridargs"]
+    )
+
+    verify_file_checksums(config["maptogrid_sums"], digest="sha256", folder=gridfolderpath)
+
+    dfcontribs = {}
+    for dimensions in (3, 2, 1, 0):
+        outpath_kn = outputpath / f"kilonova_{dimensions:d}d"
+        outpath_kn.mkdir(exist_ok=True, parents=True)
+
+        shutil.copyfile(gridfolderpath / "gridcontributions.txt", outpath_kn / "gridcontributions.txt")
+
+        at.inputmodel.modelfromhydro.main(
+            argsraw=[],
+            gridfolderpath=gridfolderpath,
+            trajectoryroot=testdatapath / "kilonova" / "trajectories",
+            outputpath=outpath_kn,
+            dimensions=dimensions,
+            targetmodeltime_days=0.1,
         )
 
-        at.inputmodel.maptogrid.main(
-            argsraw=[], inputpath=gridfolderpath, outputpath=gridfolderpath, **config["maptogridargs"]
-        )
+        dfcontribs[dimensions] = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(outpath_kn)
 
-        verify_file_checksums(config["maptogrid_sums"], digest="sha256", folder=gridfolderpath)
+        if dimensions == 3:
+            verify_file_checksums(config["makeartismodel_sums"], digest="sha256", folder=outpath_kn)
+            dfcontrib_source = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(gridfolderpath)
 
-        dfcontribs = {}
-        for dimensions in (3, 2, 1, 0):
-            outpath_kn = outputpath / f"kilonova_{dimensions:d}d{tag}"
-            outpath_kn.mkdir(exist_ok=True, parents=True)
-
-            shutil.copyfile(gridfolderpath / "gridcontributions.txt", outpath_kn / "gridcontributions.txt")
-
-            at.inputmodel.modelfromhydro.main(
-                argsraw=[],
-                gridfolderpath=gridfolderpath,
-                trajectoryroot=testdatapath / "kilonova" / "trajectories",
-                outputpath=outpath_kn,
-                dimensions=dimensions,
-                targetmodeltime_days=0.1,
+            pltest.assert_frame_equal(
+                dfcontrib_source,
+                dfcontribs[3].drop("frac_of_cellmass").rename({"frac_of_cellmass_includemissing": "frac_of_cellmass"}),
+                rel_tol=1e-4,
+                abs_tol=1e-4,
             )
+        else:
+            dfmodel3lz, _ = at.inputmodel.get_modeldata(
+                modelpath=outputpath / f"kilonova_{3:d}d", derived_cols=["mass_g"]
+            )
+            dfmodel3 = dfmodel3lz.collect()
+            dfmodel_lowerdlz, _ = at.inputmodel.get_modeldata(
+                modelpath=outputpath / f"kilonova_{dimensions:d}d", derived_cols=["mass_g"]
+            )
+            dfmodel_lowerd = dfmodel_lowerdlz.collect()
 
-            dfcontribs[dimensions] = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(outpath_kn)
+            # check that the total mass is conserved
+            assert np.isclose(dfmodel_lowerd["mass_g"].sum(), dfmodel3["mass_g"].sum(), rtol=5e-2)
+            assert np.isclose(dfmodel_lowerd["tracercount"].sum(), dfmodel3["tracercount"].sum(), rtol=1e-1)
 
-            if dimensions == 3:
-                verify_file_checksums(config["makeartismodel_sums"], digest="sha256", folder=outpath_kn)
-                dfcontrib_source = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(gridfolderpath)
-
-                pltest.assert_frame_equal(
-                    dfcontrib_source,
-                    dfcontribs[3]
-                    .drop("frac_of_cellmass")
-                    .rename({"frac_of_cellmass_includemissing": "frac_of_cellmass"}),
-                    rel_tol=1e-4,
-                    abs_tol=1e-4,
-                )
-            else:
-                dfmodel3lz, _ = at.inputmodel.get_modeldata(
-                    modelpath=outputpath / f"kilonova_{3:d}d", derived_cols=["mass_g"]
-                )
-                dfmodel3 = dfmodel3lz.collect()
-                dfmodel_lowerdlz, _ = at.inputmodel.get_modeldata(
-                    modelpath=outputpath / f"kilonova_{dimensions:d}d", derived_cols=["mass_g"]
-                )
-                dfmodel_lowerd = dfmodel_lowerdlz.collect()
-
-                # check that the total mass is conserved
-                assert np.isclose(dfmodel_lowerd["mass_g"].sum(), dfmodel3["mass_g"].sum(), rtol=5e-2)
-                assert np.isclose(dfmodel_lowerd["tracercount"].sum(), dfmodel3["tracercount"].sum(), rtol=1e-1)
-
-                # check that the total mass of each species and total internal energy are conserved
-                for col in dfmodel3.columns:
-                    if col.startswith("X_") or col == "q":
-                        lowerd_mass = dfmodel_lowerd.select(pl.col("mass_g").dot(pl.col(col))).item()
-                        model3_mass = dfmodel3.select(pl.col("mass_g").dot(pl.col(col))).item()
-                        assert np.isclose(lowerd_mass, model3_mass, rtol=5e-2)
+            # check that the total mass of each species and total internal energy are conserved
+            for col in dfmodel3.columns:
+                if col.startswith("X_") or col == "q":
+                    lowerd_mass = dfmodel_lowerd.select(pl.col("mass_g").dot(pl.col(col))).item()
+                    model3_mass = dfmodel3.select(pl.col("mass_g").dot(pl.col(col))).item()
+                    assert np.isclose(lowerd_mass, model3_mass, rtol=5e-2)
 
 
 @pytest.mark.benchmark
