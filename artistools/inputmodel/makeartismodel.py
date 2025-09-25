@@ -84,7 +84,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 msg = f"Cannot reduce {ndim_in}D model to {ndim_out}D"
                 raise ValueError(msg)
 
-            dfelabundances = at.inputmodel.get_initelemabundances_polars(modelpath)
+            dfelabundances = at.inputmodel.get_initelemabundances(modelpath)
             dfgridcontributions = (
                 at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(modelpath)
                 if Path(modelpath, "gridcontributions.txt").is_file()

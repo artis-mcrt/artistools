@@ -446,7 +446,7 @@ def get_modeldata(
         print(f"  model is {modelmeta['dimensions']}D with {modelmeta['npts_model']} cells")
 
     if get_elemabundances:
-        abundancedata = get_initelemabundances_polars(modelpath, printwarningsonly=printwarningsonly)
+        abundancedata = get_initelemabundances(modelpath, printwarningsonly=printwarningsonly)
         dfmodel = dfmodel.join(abundancedata, how="inner", on="inputcellid")
 
     dfmodel = dfmodel.with_columns(pl.col("inputcellid").sub(1).alias("modelgridindex"))
@@ -1048,21 +1048,7 @@ def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist: Sequence[
     raise AssertionError
 
 
-def get_initelemabundances_pandas(modelpath: Path = Path(), printwarningsonly: bool = False) -> pd.DataFrame:
-    """Return a table of elemental mass fractions by cell from abundances.
-
-    Deprecated: Use get_initelemabundances_pandas() instead.
-    """
-    return (
-        get_initelemabundances_polars(modelpath=modelpath, printwarningsonly=printwarningsonly)
-        .with_columns(pl.col("inputcellid").sub(1).alias("modelgridindex"))
-        .collect()
-        .to_pandas(use_pyarrow_extension_array=True)
-        .set_index("modelgridindex")
-    )
-
-
-def get_initelemabundances_polars(modelpath: Path = Path(), printwarningsonly: bool = False) -> pl.LazyFrame:
+def get_initelemabundances(modelpath: Path = Path(), printwarningsonly: bool = False) -> pl.LazyFrame:
     """Return a table of elemental mass fractions by cell from abundances."""
     textfilepath = firstexisting("abundances.txt", folder=modelpath, tryzipped=True)
     parquetfilepath = stripallsuffixes(Path(textfilepath)).with_suffix(".txt.parquet.tmp")

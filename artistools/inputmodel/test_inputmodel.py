@@ -1502,7 +1502,7 @@ def test_save_load_3d_model() -> None:
         )
         assert modelmeta == modelmeta_loaded
 
-        dfelemabundances_loaded = at.inputmodel.get_initelemabundances_polars(outpath)
+        dfelemabundances_loaded = at.inputmodel.get_initelemabundances(outpath)
         pltest.assert_frame_equal(
             dfelemabundances,
             dfelemabundances_loaded.select(
