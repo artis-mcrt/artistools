@@ -5,8 +5,6 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-xminvalue, xmaxvalue = 3500, 7000
-
 h = 6.62607004e-34  # m^2 kg / s
 c = 299792458  # m / s
 

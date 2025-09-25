@@ -20,7 +20,9 @@ MSUN = 1.989e33
 CLIGHT = 2.99792458e10
 
 
-def read_ejectasnapshot(pathtosnapshot: str | Path) -> pd.DataFrame:
+def read_ejectasnapshot(
+    pathtosnapshot: str | Path, usecols: list[str] | None, downsamplefactor: int | None
+) -> pl.DataFrame:
     column_names = [
         "id",
         "h",
@@ -39,7 +41,7 @@ def read_ejectasnapshot(pathtosnapshot: str | Path) -> pd.DataFrame:
         "pmass",
         "rho",
         "p",
-        "rst",
+        "rho_rst",
         "tau",
         "av",
         "ye",
@@ -55,13 +57,22 @@ def read_ejectasnapshot(pathtosnapshot: str | Path) -> pd.DataFrame:
         "iwasequil(i, 3)",
     ]
 
-    return pd.read_csv(
-        Path(pathtosnapshot) / "ejectasnapshot.dat",
-        sep=r"\s+",
-        header=None,
-        names=column_names,
-        dtype={"id": int, **{col: float for col in column_names if col != "id"}},
+    dfsnapshot = pl.from_pandas(
+        pd.read_csv(
+            Path(pathtosnapshot) / "ejectasnapshot.dat" if Path(pathtosnapshot).is_dir() else pathtosnapshot,
+            sep=r"\s+",
+            header=None,
+            names=column_names,
+            usecols=usecols,
+            dtype={"id": "int64[pyarrow]", **{col: "float64[pyarrow]" for col in column_names if col != "id"}},
+            dtype_backend="pyarrow",
+        )
     )
+
+    if downsamplefactor is not None and downsamplefactor > 1:
+        dfsnapshot = dfsnapshot.sample(len(dfsnapshot) // downsamplefactor)
+
+    return dfsnapshot
 
 
 def get_merger_time_geomunits(pathtogriddata: Path) -> float:

@@ -12,7 +12,6 @@ from pathlib import Path
 import argcomplete
 import numpy as np
 import numpy.typing as npt
-import pandas as pd
 import polars as pl
 
 import artistools as at
@@ -118,50 +117,11 @@ def maptogrid(
 
     assert ncoordgrid % 2 == 0
 
-    snapshot_columns = [
-        "id",
-        "h",
-        "x",
-        "y",
-        "z",
-        "vx",
-        "vy",
-        "vz",
-        "vstx",
-        "vsty",
-        "vstz",
-        "u",
-        "psi",
-        "alpha",
-        "pmass",
-        "rho",
-        "p",
-        "rho_rst",
-        "tau",
-        "av",
-        "ye",
-        "temp",
-        "prev_rho(i)",
-        "ynue(i)",
-        "yanue(i)",
-        "enuetrap(i)",
-        "eanuetrap(i)",
-        "enuxtrap(i)",
-        "iwasequil(i, 1)",
-        "iwasequil(i, 2)",
-        "iwasequil(i, 3)",
-    ]
-
     snapshot_columns_used = ["id", "h", "x", "y", "z", "vx", "vy", "vz", "pmass", "rho", "p", "rho_rst", "ye"]
 
-    pddfsnapshot = pd.read_csv(
-        ejectasnapshotpath, names=snapshot_columns, sep=r"\s+", usecols=snapshot_columns_used, dtype_backend="pyarrow"
+    dfsnapshot = at.inputmodel.modelfromhydro.read_ejectasnapshot(
+        ejectasnapshotpath, usecols=snapshot_columns_used, downsamplefactor=downsamplefactor
     )
-
-    if downsamplefactor > 1:
-        pddfsnapshot = pddfsnapshot.sample(len(pddfsnapshot) // downsamplefactor)
-
-    dfsnapshot = pl.from_pandas(pddfsnapshot)
 
     logprint(dfsnapshot)
     logprint(f"ncoordgrid: {ncoordgrid}")

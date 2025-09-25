@@ -313,9 +313,8 @@ def make_flux_ratio_plot(args: argparse.Namespace) -> None:
     # axis.set_ylabel(r'log$_1$$_0$ F$_\lambda$ at 1 Mpc [erg/s/cm$^2$/$\mathrm{{\AA}}$]')
 
     # axis.set_xlim(left=supxmin, right=supxmax)
-    pd.set_option("display.max_rows", 3500)
+    pd.set_option("display.max_rows", 500)
     pd.set_option("display.width", 150)
-    pd.options.display.max_rows = 500
 
     for modelpath, modellabel, modelcolor in zip(args.modelpath, args.label, args.color, strict=False):
         print(f"====> {modellabel}")
@@ -560,9 +559,8 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
     print(f"Chosen times: {times_days}")
 
     # axis.set_xlim(left=supxmin, right=supxmax)
-    # pd.set_option('display.max_rows', 50)
+    pd.set_option("display.max_rows", 500)
     pd.set_option("display.width", 250)
-    pd.options.display.max_rows = 500
 
     emdata_all: dict[int, dict[tuple[float, str], dict[str, npt.NDArray[np.floating]]]] = {}
     log10nnedata_all: dict[int, dict[int, list[float]]] = {}
