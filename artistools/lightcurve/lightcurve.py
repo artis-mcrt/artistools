@@ -40,6 +40,8 @@ def readfile(filepath: str | Path) -> dict[int, pl.LazyFrame]:
 
 
 def read_3d_gammalightcurve(filepath: str | Path) -> dict[int, pd.DataFrame]:
+    import pandas as pd
+
     columns = ["time"]
     columns.extend(np.arange(0, 100))
     lcdata = pd.read_csv(filepath, sep=r"\s+", header=None).set_axis(columns, axis=1)
@@ -196,6 +198,7 @@ def generate_band_lightcurve_data(
     modelnumber: int | None = None,  # noqa: ARG001
 ) -> dict[str, t.Any]:
     """Integrate spectra to get band magnitude vs time. Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py."""
+    import pandas as pd
     from scipy.interpolate import interp1d
 
     if args.plotvspecpol and Path(modelpath, "vpkt.txt").is_file():
@@ -450,6 +453,8 @@ def get_colour_delta_mag(
 
 
 def read_hesma_lightcurve(args: argparse.Namespace) -> pd.DataFrame:
+    import pandas as pd
+
     hesma_directory = Path(at.get_config()["path_artistools_dir"], "data/hesma")
     filename = args.plot_hesma_model
     hesma_modelname = hesma_directory / filename
@@ -467,6 +472,8 @@ def read_hesma_lightcurve(args: argparse.Namespace) -> pd.DataFrame:
 
 
 def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pd.DataFrame, dict[str, t.Any]]:
+    import pandas as pd
+
     filepath = Path(at.get_config()["path_artistools_dir"], "data", "lightcurves", lightcurvefilename)
     metadata = at.get_file_metadata(filepath)
 
@@ -499,6 +506,8 @@ def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pd.Dat
 
 
 def read_bol_reflightcurve_data(lightcurvefilename: str | Path) -> tuple[pd.DataFrame, dict[str, t.Any]]:
+    import pandas as pd
+
     data_path = (
         Path(lightcurvefilename)
         if Path(lightcurvefilename).is_file()
@@ -531,6 +540,8 @@ def read_bol_reflightcurve_data(lightcurvefilename: str | Path) -> tuple[pd.Data
 
 
 def get_sn_sample_bol() -> tuple[t.Any, str]:
+    import pandas as pd
+
     datafilepath = Path(at.get_config()["path_artistools_dir"], "data", "lightcurves", "SNsample", "bololc.txt")
     sn_data = pd.read_csv(datafilepath, sep=r"\s+", comment="#")
 
@@ -577,6 +588,8 @@ def get_sn_sample_bol() -> tuple[t.Any, str]:
 
 
 def get_phillips_relation_data() -> tuple[pd.DataFrame, str]:
+    import pandas as pd
+
     datafilepath = Path(at.get_config()["path_artistools_dir"], "data", "lightcurves", "SNsample", "CfA3_Phillips.dat")
     sn_data = pd.read_csv(datafilepath, sep=r"\s+", comment="#")
     print(sn_data)

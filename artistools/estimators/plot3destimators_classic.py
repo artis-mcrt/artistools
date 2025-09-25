@@ -15,9 +15,8 @@ CLIGHT = 2.99792458e10
 def read_selected_mgi(
     modelpath: Path | str, readonly_mgi: list[int] | None = None, readonly_timestep: list[int] | None = None
 ) -> dict[tuple[int, int], t.Any] | None:
-    modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect().to_pandas(use_pyarrow_extension_array=True)
     return at.estimators.estimators_classic.read_classic_estimators(
-        Path(modelpath), modeldata, readonly_mgi=readonly_mgi, readonly_timestep=readonly_timestep
+        Path(modelpath), readonly_mgi=readonly_mgi, readonly_timestep=readonly_timestep
     )
 
 

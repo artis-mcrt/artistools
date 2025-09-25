@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import polars as pl
 
 import artistools as at
 
@@ -52,8 +53,9 @@ def map_1d_to_3d(
 
     dfgriddata["rho"] = modelgrid_rho_3d
     dfgriddata["vel_mid"] = modelgrid_mid_vel
-    # pd.set_option("display.max_rows", None, "display.max_columns", None)
     print(dfgriddata)
     print(sum(modelgrid_rho_3d * (wid_init**3)) / CLIGHT)
 
-    at.inputmodel.save_modeldata(dfmodel=dfgriddata, t_model_init_days=t_model_1d / (24 * 60 * 60), vmax=vmax * CLIGHT)
+    at.inputmodel.save_modeldata(
+        dfmodel=pl.from_pandas(dfgriddata), t_model_init_days=t_model_1d / (24 * 60 * 60), vmax=vmax * CLIGHT
+    )

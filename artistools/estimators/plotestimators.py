@@ -268,7 +268,15 @@ def plot_levelpop(
         .to_pandas(use_pyarrow_extension_array=True)
     )
 
-    adata = at.atomic.get_levels(modelpath)
+    adata = (
+        at.atomic.get_levels_polars(modelpath)
+        .with_columns(
+            levels=pl.col("levels").map_elements(
+                lambda x: x.to_pandas(use_pyarrow_extension_array=True), return_dtype=pl.Object
+            )
+        )
+        .to_pandas(use_pyarrow_extension_array=True)
+    )
 
     arr_tdelta = at.get_timestep_times(modelpath, loc="delta")
     for paramvalue in params:
@@ -395,9 +403,11 @@ def plot_multi_ion_series(
                 if (
                     not hasattr(ion_stage, "lower")
                     and not args.classicartis
-                    and compositiondata.query(
-                        "Z == @atomic_number & lowermost_ion_stage <= @ion_stage & uppermost_ion_stage >= @ion_stage"
-                    ).empty
+                    and compositiondata.filter(
+                        (pl.col("Z") == atomic_number)
+                        & (pl.col("lowermost_ion_stage") <= ion_stage)
+                        & (pl.col("uppermost_ion_stage") >= ion_stage)
+                    ).is_empty()
                 ):
                     missingions.add((atomic_number, ion_stage))
 
@@ -1054,8 +1064,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if args.classicartis:
         import artistools.estimators.estimators_classic
 
-        modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect().to_pandas(use_pyarrow_extension_array=True)
-        estimatorsdict = artistools.estimators.estimators_classic.read_classic_estimators(modelpath, modeldata)
+        estimatorsdict = artistools.estimators.estimators_classic.read_classic_estimators(modelpath)
         assert estimatorsdict is not None
         estimators = pl.DataFrame([
             {"timestep": ts, "modelgridindex": mgi, **estimvals} for (ts, mgi), estimvals in estimatorsdict.items()

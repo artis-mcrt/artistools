@@ -2,6 +2,7 @@
 
 # PYTHON_ARGCOMPLETE_OK
 import argparse
+import itertools
 import typing as t
 from collections.abc import Sequence
 from pathlib import Path
@@ -9,7 +10,7 @@ from pathlib import Path
 import argcomplete
 import numpy as np
 import numpy.typing as npt
-import pandas as pd
+import polars as pl
 
 import artistools as at
 
@@ -375,6 +376,7 @@ def create_ARTIS_modelfile(
     outputpath: Path,
 ) -> None:
     numb_cells = ngridrcyl * ngridz
+    import pandas as pd
 
     # now reflect the arrays if equatorial symmetry is assumed or otherwise not
     if eqsymfac == 1:
@@ -440,7 +442,7 @@ def create_ARTIS_modelfile(
     dfabundances = pd.DataFrame(dictelabunds).fillna(0.0)
 
     # create init abundance file
-    at.inputmodel.save_initelemabundances(dfelabundances=dfabundances, outpath=outputpath)
+    at.inputmodel.save_initelemabundances(dfelabundances=pl.from_pandas(dfabundances), outpath=outputpath)
 
     # create modelmeta dictionary
     modelmeta = {
@@ -452,7 +454,7 @@ def create_ARTIS_modelfile(
     }
 
     # create model.txt
-    at.inputmodel.save_modeldata(dfmodel=dfmodel, modelmeta=modelmeta, outpath=outputpath)
+    at.inputmodel.save_modeldata(dfmodel=pl.from_pandas(dfmodel), modelmeta=modelmeta, outpath=outputpath)
 
 
 def get_old_cell_indices(red_fact: int, new_r: int, new_z: int, N_cell_r_old: int) -> list[int]:
@@ -464,7 +466,7 @@ def get_old_cell_indices(red_fact: int, new_r: int, new_z: int, N_cell_r_old: in
 
 
 def remap_mass_weighted_quantity(
-    im_ARTIS_old: pd.DataFrame,
+    im_ARTIS_old: pl.DataFrame,
     fieldname: str,
     red_fact: int,
     N_cell_r_new: int,
@@ -481,31 +483,32 @@ def remap_mass_weighted_quantity(
     mass_arr = im_ARTIS_old["mass_g"].to_numpy()
     field_arr = im_ARTIS_old[fieldname].to_numpy()
 
-    for new_z in range(1, N_cell_z_new + 1):
-        for new_r in range(1, N_cell_r_new + 1):
-            new_cell_idx = new_r + N_cell_r_new * (new_z - 1)
+    for new_z, new_r in itertools.product(range(1, N_cell_z_new + 1), range(1, N_cell_r_new + 1)):
+        new_cell_idx = new_r + N_cell_r_new * (new_z - 1)
 
-            old_idxs = get_old_cell_indices(red_fact, new_r, new_z, N_cell_r_old)
-            old_idxs_np = np.array(old_idxs) - 1
+        old_idxs = get_old_cell_indices(red_fact, new_r, new_z, N_cell_r_old)
+        old_idxs_np = np.array(old_idxs) - 1
 
-            masses = mass_arr[old_idxs_np]
-            values = field_arr[old_idxs_np]
+        masses = mass_arr[old_idxs_np]
+        values = field_arr[old_idxs_np]
 
-            if fieldname == "mass_g":
-                r_i = (new_r - 1) * Delta_r
-                r_o = new_r * Delta_r
-                V_new = np.pi * (r_o**2 - r_i**2) * Delta_z
-                new_field[new_cell_idx - 1] = masses.sum() / V_new
-            else:
-                new_field[new_cell_idx - 1] = np.average(values, weights=masses)
+        if fieldname == "mass_g":
+            r_i = (new_r - 1) * Delta_r
+            r_o = new_r * Delta_r
+            V_new = np.pi * (r_o**2 - r_i**2) * Delta_z
+            new_field[new_cell_idx - 1] = masses.sum() / V_new
+        else:
+            new_field[new_cell_idx - 1] = np.average(values, weights=masses)
 
     return new_field
 
 
 def merge_ARTIS_cells(red_fact: int, N_r: int, N_z: int, v_max: float, outputpath: Path) -> None:
     """red_fact: number of cells to be merged."""
+    import pandas as pd
+
     red_fact_1D = int(np.sqrt(red_fact))
-    im_ARTIS_old = at.inputmodel.get_modeldata(modelpath=Path(), derived_cols=["mass_g"])[0].collect().to_pandas()
+    im_ARTIS_old = at.inputmodel.get_modeldata(modelpath=Path(), derived_cols=["mass_g"])[0].collect()
     N_cell_r_old, N_cell_z_old = N_r, N_z
     N_cell_r_new, N_cell_z_new = int(N_cell_r_old / red_fact_1D), int(N_cell_z_old / red_fact_1D)
     new_numb_cells = N_cell_r_new * N_cell_z_new
@@ -577,7 +580,7 @@ def merge_ARTIS_cells(red_fact: int, N_r: int, N_z: int, v_max: float, outputpat
     dfmodel = pd.concat([dfmodel, pd.DataFrame(dictabunds)], axis=1)
     dfabundances = pd.DataFrame(dictelabunds).fillna(0.0)
 
-    at.inputmodel.save_initelemabundances(dfelabundances=dfabundances, outpath=outputpath)
+    at.inputmodel.save_initelemabundances(dfelabundances=pl.from_pandas(dfabundances), outpath=outputpath)
     modelmeta = {
         "dimensions": 2,
         "ncoordgridrcyl": N_cell_r_new,
@@ -586,7 +589,7 @@ def merge_ARTIS_cells(red_fact: int, N_r: int, N_z: int, v_max: float, outputpat
         "vmax_cmps": v_max * cl,
     }
 
-    at.inputmodel.save_modeldata(dfmodel=dfmodel, modelmeta=modelmeta, outpath=outputpath)
+    at.inputmodel.save_modeldata(dfmodel=pl.from_pandas(dfmodel), modelmeta=modelmeta, outpath=outputpath)
     print(f"Successfully remapped model to {N_cell_r_new}x{N_cell_z_new} grid.")
 
 

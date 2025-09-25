@@ -7,7 +7,6 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
-import pandas as pd
 import polars as pl
 from matplotlib.legend_handler import HandlerTuple
 
@@ -536,6 +535,8 @@ def set_scatterplot_plot_params(args: argparse.Namespace) -> None:
 def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
     modelnames: Sequence[str], key: str, args: argparse.Namespace
 ) -> None:
+    import pandas as pd
+
     fig, ax = plt.subplots(
         nrows=1, ncols=1, sharex=True, figsize=(8, 6), tight_layout={"pad": 0.5, "w_pad": 1.5, "h_pad": 0.3}
     )
@@ -620,6 +621,8 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
 
 
 def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
+    import pandas as pd
+
     fig, ax = plt.subplots(
         nrows=1, ncols=1, sharex=True, figsize=(8, 6), tight_layout={"pad": 0.5, "w_pad": 1.5, "h_pad": 0.3}
     )
@@ -629,7 +632,7 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
 
         bands = [args.filter[0], args.filter[1]]
 
-        datafilename = bands[0] + "band_" + modelname + "_viewing_angle_data.txt"
+        datafilename = f"{bands[0]}band_{modelname}_viewing_angle_data.txt"
         viewing_angle_plot_data = pd.read_csv(datafilename, delimiter=" ")
         data = {f"{bands[0]}max": viewing_angle_plot_data["peak_mag_polyfit"].to_numpy()}
         data[f"time_{bands[0]}max"] = viewing_angle_plot_data["risetime_polyfit"].to_numpy()
@@ -712,6 +715,8 @@ def second_band_brightness_at_peak_first_band(
 def peakmag_risetime_declinerate_init(
     modelpaths: list[str | Path], filternames_conversion_dict: dict[str, str], args: argparse.Namespace
 ) -> None:
+    import pandas as pd
+
     # if args.calculate_peak_time_mag_deltam15_bool:  # If there's viewing angle scatter plot stuff define some arrays
     args.plotvalues = []  # a0 and p0 values for viewing angle scatter plots
 

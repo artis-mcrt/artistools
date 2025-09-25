@@ -9,7 +9,6 @@ from pathlib import Path
 
 import numpy as np
 import numpy.typing as npt
-import pandas as pd
 import polars as pl
 
 import artistools as at
@@ -129,16 +128,11 @@ def parse_phixsdata(
 
 
 def add_transition_columns(
-    dftransitions: pl.LazyFrame | pl.DataFrame,
-    dflevels: pd.DataFrame | pl.DataFrame | pl.LazyFrame,
-    columns: Sequence[str],
+    dftransitions: pl.LazyFrame | pl.DataFrame, dflevels: pl.DataFrame | pl.LazyFrame, columns: Sequence[str]
 ) -> pl.LazyFrame:
     """Add columns to a polars DataFrame of transitions."""
     dftransitions = dftransitions.lazy()
     columns_before = dftransitions.collect_schema().names()
-
-    if isinstance(dflevels, pd.DataFrame):
-        dflevels = pl.from_pandas(dflevels).select(["g", "energy_ev", "levelname", "levelindex"])
 
     dflevels = dflevels.select(["g", "energy_ev", "levelname", "levelindex"]).lazy()
 
@@ -253,36 +247,6 @@ def get_levels_polars(
             level_lists.append(IonTuple(Z, ion_stage, level_count, ionisation_energy_ev, dflevels, dftransitions))
 
     return pl.DataFrame(level_lists)
-
-
-def get_levels(
-    modelpath: str | Path,
-    ionlist: Collection[tuple[int, int]] | None = None,
-    get_transitions: bool = False,
-    get_photoionisations: bool = False,
-    quiet: bool = False,
-    derived_transitions_columns: Sequence[str] | None = None,
-) -> pd.DataFrame:
-    """Return a pandas DataFrame of energy levels."""
-    return (
-        get_levels_polars(
-            modelpath,
-            ionlist=ionlist,
-            get_transitions=get_transitions,
-            get_photoionisations=get_photoionisations,
-            quiet=quiet,
-            derived_transitions_columns=derived_transitions_columns,
-        )
-        .with_columns(
-            levels=pl.col("levels").map_elements(
-                lambda x: x.to_pandas(use_pyarrow_extension_array=True), return_dtype=pl.Object
-            ),
-            transitions=pl.col("transitions").map_elements(
-                lambda x: x.collect().to_pandas(use_pyarrow_extension_array=True), return_dtype=pl.Object
-            ),
-        )
-        .to_pandas(use_pyarrow_extension_array=True)
-    )
 
 
 def parse_recombratefile(frecomb: io.TextIOBase) -> Generator[tuple[int, int, pl.DataFrame]]:

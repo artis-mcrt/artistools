@@ -6,7 +6,7 @@ import typing as t
 from collections.abc import Sequence
 from pathlib import Path
 
-import pandas as pd
+import polars as pl
 
 import artistools as at
 
@@ -24,6 +24,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         addargs(parser)
         at.set_args_from_dict(parser, kwargs)
         args = parser.parse_args([] if kwargs else argsraw)
+
+    import pandas as pd
 
     with Path(args.inputpath).open(encoding="utf-8") as infile:
         columns = infile.readline().split()
@@ -93,8 +95,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     print(f"M_tot  = {m_enc_outer / Msun_to_g:.3f} solMass")
     print(f"M_Ni56 = {tot_ni56mass / Msun_to_g:.3f} solMass")
 
-    at.save_modeldata(dfmodel=dfmodel, t_model_init_days=t_model_init_days, outpath=args.outputpath)
-    at.inputmodel.save_initelemabundances(dfelabundances, outpath=args.outputpath)
+    at.save_modeldata(dfmodel=pl.from_pandas(dfmodel), t_model_init_days=t_model_init_days, outpath=args.outputpath)
+    at.inputmodel.save_initelemabundances(dfelabundances=pl.from_pandas(dfelabundances), outpath=args.outputpath)
 
 
 if __name__ == "__main__":

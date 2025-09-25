@@ -3,8 +3,6 @@ import itertools
 import typing as t
 from pathlib import Path
 
-import pandas as pd
-
 import artistools as at
 
 
@@ -67,11 +65,9 @@ def get_first_ts_in_run_directory(modelpath: str | Path) -> dict[str, int]:
 
 
 def read_classic_estimators(
-    modelpath: Path,
-    modeldata: pd.DataFrame,
-    readonly_mgi: list[int] | None = None,
-    readonly_timestep: list[int] | None = None,
+    modelpath: Path, readonly_mgi: list[int] | None = None, readonly_timestep: list[int] | None = None
 ) -> dict[tuple[int, int], t.Any] | None:
+    modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect().to_pandas(use_pyarrow_extension_array=True)
     estimfiles = list(
         itertools.chain(Path(modelpath).glob("estimators_????.out"), Path(modelpath).glob("*/estimators_????.out"))
     )

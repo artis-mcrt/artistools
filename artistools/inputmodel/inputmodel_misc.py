@@ -167,6 +167,8 @@ def read_modelfile_text(
         dtypes["inputcellid"] = "int32[pyarrow]"
 
         # each cell takes up two lines in the model file
+        import pandas as pd
+
         dfmodelpd = pd.read_csv(
             zopen(filename, mode="r"),
             sep=r"\s+",
@@ -724,6 +726,8 @@ def add_derived_cols_to_modeldata(
 
 def get_cell_angle(dfmodel: pd.DataFrame) -> pd.DataFrame:
     """Get angle between origin to cell midpoint and the syn_dir axis."""
+    import pandas as pd
+
     syn_dir = np.array([0.0, 0.0, 1.0])
     xhat = np.array([1.0, 0.0, 0.0])
 
@@ -842,7 +846,7 @@ def get_standard_columns(
 
 
 def save_modeldata(
-    dfmodel: pd.DataFrame | pl.LazyFrame | pl.DataFrame,
+    dfmodel: pl.LazyFrame | pl.DataFrame,
     outpath: Path | str | None = None,
     vmax: float | None = None,
     headercommentlines: list[str] | None = None,
@@ -867,13 +871,11 @@ def save_modeldata(
     dfmodel must contain columns: inputcellid, pos_x_min, pos_y_min, pos_z_min, rho, X_Fegroup, X_Ni56, X_Co56", X_Fe52, X_Cr48
     modelmeta must define: vmax, ncoordgridr and ncoordgridz
     """
-    if isinstance(dfmodel, pd.DataFrame):
-        dfmodel = pl.from_pandas(dfmodel)
-
+    assert isinstance(dfmodel, (pl.LazyFrame, pl.DataFrame))
     if "inputcellid" not in dfmodel.columns and "modelgridindex" in dfmodel.columns:
         dfmodel = dfmodel.with_columns(inputcellid=pl.col("modelgridindex") + 1)
 
-    dfmodel = dfmodel.drop(("mass_g", "modelgridindex"), strict=False).lazy().collect()
+    dfmodel = dfmodel.drop("mass_g", "modelgridindex", strict=False).lazy().collect()
 
     if modelmeta is None:
         modelmeta = {}
@@ -1088,7 +1090,7 @@ def get_initelemabundances_polars(modelpath: Path = Path(), printwarningsonly: b
             abundancedata.to_series(idx).drop_nulls() for idx in range(len(abundancedata.columns))
         ]).transpose()
 
-        colnames = ["inputcellid", *["X_" + get_elsymbol(x) for x in range(1, len(abundancedata.columns))]]
+        colnames = ["inputcellid", *[f"X_{get_elsymbol(x)}" for x in range(1, len(abundancedata.columns))]]
         abundancedata = abundancedata.rename({
             col: colnames[idx] for idx, col in enumerate(abundancedata.columns)
         }).with_columns(cs.starts_with("X_").cast(pl.Float32), (~cs.starts_with("X_")).cast(pl.Int32))
@@ -1116,7 +1118,7 @@ def get_initelemabundances_polars(modelpath: Path = Path(), printwarningsonly: b
 
 
 def save_initelemabundances(
-    dfelabundances: pd.DataFrame | pl.DataFrame | pl.LazyFrame,
+    dfelabundances: pl.DataFrame | pl.LazyFrame,
     outpath: Path | str | None = None,
     headercommentlines: Sequence[str] | None = None,
 ) -> None:
@@ -1134,9 +1136,6 @@ def save_initelemabundances(
         abundancefilename = Path(outpath) / "abundances.txt"
     else:
         abundancefilename = Path(outpath)
-
-    if isinstance(dfelabundances, pd.DataFrame):
-        dfelabundances = pl.from_pandas(dfelabundances)
 
     dfelabundances = (
         dfelabundances.lazy().with_columns([pl.col("inputcellid").cast(pl.Int32)]).sort("inputcellid").collect()
@@ -1191,9 +1190,9 @@ def save_empty_abundance_file(npts_model: int, outputfilepath: str | Path = Path
     save_initelemabundances(pl.DataFrame({"inputcellid": range(1, npts_model + 1)}), outpath=outputfilepath)
 
 
-def get_dfmodel_dimensions(dfmodel: pd.DataFrame | pl.DataFrame | pl.LazyFrame) -> int:
+def get_dfmodel_dimensions(dfmodel: pl.DataFrame | pl.LazyFrame) -> int:
     """Guess whether the model is 1D, 2D, or 3D based on which columns are present."""
-    columns = dfmodel.columns if isinstance(dfmodel, pd.DataFrame) else dfmodel.collect_schema().names()
+    columns = dfmodel.collect_schema().names()
     if "pos_x_min" in columns:
         return 3
 

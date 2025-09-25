@@ -25,7 +25,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     modelpath: Path = Path()
     timestep = 14
-    elmass = {el.Z: el.mass for _, el in at.get_composition_data(modelpath).iterrows()}
+    elmass = dict(at.get_composition_data(modelpath).select("Z", "mass").iter_rows())
     outfilename = args.outputpath
     with Path(outfilename).open("w", encoding="utf-8") as fout:
         modelgridindexlist = range(10)

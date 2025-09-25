@@ -18,7 +18,6 @@ from pathlib import Path
 
 import numpy as np
 import numpy.typing as npt
-import pandas as pd
 import polars as pl
 import polars.selectors as cs
 
@@ -67,67 +66,76 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
 
 
 @lru_cache(maxsize=8)
-def get_composition_data(filename: Path | str) -> pd.DataFrame:
+def get_composition_data(filename: Path | str) -> pl.DataFrame:
     """Return a pandas DataFrame containing details of included elements and ions."""
     filename = Path(filename, "compositiondata.txt") if Path(filename).is_dir() else Path(filename)
 
-    columns = [
-        "Z",
-        "nions",
-        "lowermost_ion_stage",
-        "uppermost_ion_stage",
-        "nlevelsmax_readin",
-        "abundance",
-        "mass",
-        "startindex",
-    ]
-
-    rowdfs = []
+    rows = []
     with filename.open(encoding="utf-8") as fcompdata:
         nelements = int(fcompdata.readline())
         fcompdata.readline()  # T_preset
         fcompdata.readline()  # homogeneous_abundances
-        startindex = 0
         for _ in range(nelements):
             line = fcompdata.readline()
             linesplit = line.split()
-            row_list = [int(x) for x in linesplit[:5]] + [float(x) for x in linesplit[5:]] + [startindex]
+            row = [int(x) for x in linesplit[:5]] + [float(x) for x in linesplit[5:]]
 
-            rowdfs.append(pd.DataFrame([row_list], columns=columns))
+            rows.append(row)
 
-            startindex += int(rowdfs[-1].iloc[0]["nions"])
+    return pl.DataFrame(
+        rows,
+        schema=[
+            ("Z", pl.Int32),
+            ("nions", pl.Int32),
+            ("lowermost_ion_stage", pl.Int32),
+            ("uppermost_ion_stage", pl.Int32),
+            ("nlevelsmax_readin", pl.Int32),
+            ("abundance", pl.Float64),
+            ("mass", pl.Float64),
+        ],
+        orient="row",
+    )
 
-    return pd.concat(rowdfs, ignore_index=True)
 
-
-def get_composition_data_from_outputfile(modelpath: Path) -> pd.DataFrame:
+def get_composition_data_from_outputfile(modelpath: Path | str) -> pl.DataFrame:
     """Read ion list from output file."""
-    atomic_composition = {}
+    element_Z = []
+    lowermost_ion_stage: list[int | None] = []
+    uppermost_ion_stage: list[int | None] = []
 
-    with (modelpath / "output_0-0.txt").open(encoding="utf-8") as foutput:
+    with Path(modelpath, "output_0-0.txt").open(encoding="utf-8") as foutput:
         Z: int | None = None
-        ioncount = 0
+        elementindex = -1
         for row in foutput:
             if row.split()[0] == "[input.c]":
                 split_row = row.split()
                 if split_row[1] == "element":
                     Z = int(split_row[4])
-                    ioncount = 0
+                    elementindex += 1
+                    element_Z.append(Z)
+                    lowermost_ion_stage.append(None)
+                    uppermost_ion_stage.append(None)
                 elif split_row[1] == "ion":
-                    ioncount += 1
                     assert Z is not None
-                    atomic_composition[Z] = ioncount
+                    ion_stage = int(split_row[2])
+                    if lowermost_ion_stage[-1] is None:
+                        lowermost_ion_stage[-1] = ion_stage
+                    else:
+                        lowermost_ion_stage[-1] = min(lowermost_ion_stage[-1], ion_stage)
+                    if uppermost_ion_stage[-1] is None:
+                        uppermost_ion_stage[-1] = ion_stage
+                    else:
+                        uppermost_ion_stage[-1] = max(uppermost_ion_stage[-1], ion_stage)
 
-    composition_df = pd.DataFrame([(Z, atomic_composition[Z]) for Z in atomic_composition], columns=["Z", "nions"])
-    composition_df["lowermost_ion_stage"] = [1] * composition_df.shape[0]
-    composition_df["uppermost_ion_stage"] = composition_df["nions"]
-    return composition_df
+    return pl.DataFrame(
+        zip(element_Z, lowermost_ion_stage, uppermost_ion_stage, strict=True),
+        schema=[("Z", pl.Int32), ("lowermost_ion_stage", pl.Int32), ("uppermost_ion_stage", pl.Int32)],
+        orient="row",
+    ).with_columns(nions=pl.col("uppermost_ion_stage") - pl.col("lowermost_ion_stage") + 1)
 
 
-def split_multitable_dataframe(res_df: pl.DataFrame | pl.LazyFrame | pd.DataFrame) -> dict[int, pl.LazyFrame]:
+def split_multitable_dataframe(res_df: pl.DataFrame | pl.LazyFrame) -> dict[int, pl.LazyFrame]:
     """Res (angle-resolved) files include a table for each direction bin."""
-    if isinstance(res_df, pd.DataFrame):
-        res_df = pl.from_pandas(res_df)
     res_df = res_df.lazy()
     rowcount = res_df.select(pl.len()).collect().item()
     nu_points = res_df.select(cs.by_index(0).n_unique()).collect().item()
@@ -621,6 +629,8 @@ def get_elsymbolslist() -> list[str]:
     elsymbolslist()[26] = 'Fe'.
 
     """
+    import pandas as pd
+
     return [
         "n",
         *list(pd.read_csv(get_config()["path_datadir"] / "elements.csv", usecols=["symbol"])["symbol"].to_numpy()),
