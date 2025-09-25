@@ -974,17 +974,16 @@ def get_flux_contributions(
         print("Applying filter to ARTIS spectrum")
 
     assert maxion is not None
-    for element in range(nelements):
-        nions = elementlist.nions[element]
-        # nions = elementlist.iloc[element].uppermost_ion_stage - elementlist.iloc[element].lowermost_ion_stage + 1
+    for elementindex in range(nelements):
+        nions = elementlist["nions"][elementindex]
         for ion in range(nions):
-            ion_stage = ion + elementlist.lowermost_ion_stage[element]
+            ion_stage = ion + elementlist["lowermost_ion_stage"][elementindex]
             ionserieslist: list[tuple[int, str]] = [
-                (element * maxion + ion, "bound-bound"),
-                (nelements * maxion + element * maxion + ion, "bound-free"),
+                (elementindex * maxion + ion, "bound-bound"),
+                (nelements * maxion + elementindex * maxion + ion, "bound-free"),
             ]
 
-            if element == ion == 0:
+            if elementindex == ion == 0:
                 ionserieslist.append((2 * nelements * maxion, "free-free"))
 
             for selectedcolumn, emissiontypeclass in ionserieslist:
@@ -1028,11 +1027,11 @@ def get_flux_contributions(
                 )
 
                 if emissiontypeclass == "bound-bound":
-                    linelabel = get_ionstring(elementlist.Z[element], ion_stage)
+                    linelabel = get_ionstring(elementlist["Z"][elementindex], ion_stage)
                 elif emissiontypeclass == "free-free":
                     linelabel = "free-free"
                 else:
-                    linelabel = f"{get_ionstring(elementlist.Z[element], ion_stage)} {emissiontypeclass}"
+                    linelabel = f"{get_ionstring(elementlist['Z'][elementindex], ion_stage)} {emissiontypeclass}"
 
                 contribution_list.append(
                     FluxContributionTuple(

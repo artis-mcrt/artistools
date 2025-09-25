@@ -147,7 +147,18 @@ def get_line_fluxes_from_pops(
     modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect().to_pandas(use_pyarrow_extension_array=True)
 
     ionlist = [(feature.atomic_number, feature.ion_stage) for feature in emfeatures]
-    adata = at.atomic.get_levels(modelpath, ionlist=tuple(ionlist), get_transitions=True, get_photoionisations=False)
+    adata = (
+        at.atomic.get_levels_polars(modelpath, ionlist=tuple(ionlist), get_transitions=True, get_photoionisations=False)
+        .with_columns(
+            levels=pl.col("levels").map_elements(
+                lambda x: x.to_pandas(use_pyarrow_extension_array=True), return_dtype=pl.Object
+            ),
+            transitions=pl.col("transitions").map_elements(
+                lambda x: x.collect().to_pandas(use_pyarrow_extension_array=True), return_dtype=pl.Object
+            ),
+        )
+        .to_pandas(use_pyarrow_extension_array=True)
+    )
 
     # timearrayplusend = np.concatenate([arr_tstart, [arr_tend[-1]]])
 

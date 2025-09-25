@@ -13,7 +13,6 @@ import argcomplete
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
-import pandas as pd
 import polars as pl
 from polars import selectors as cs
 
@@ -305,6 +304,8 @@ def get_particledata(
     verbose: bool = False,
 ) -> tuple[int, dict[str, npt.NDArray[np.floating]]]:
     """For an array of times (NSM time including time before merger), interpolate the heating rates of various decay channels and (if arr_strnuc is not empty) the nuclear mass fractions."""
+    import pandas as pd
+
     try:
         nts_min = at.inputmodel.rprocess_from_trajectory.get_closest_network_timestep(
             traj_root, particleid, timesec=min(float(x) for x in arr_time_s), cond="lessthan"

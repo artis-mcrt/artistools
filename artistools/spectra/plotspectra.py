@@ -27,7 +27,6 @@ from matplotlib.lines import Line2D
 
 import artistools.spectra as atspectra
 from artistools.configuration import get_config
-from artistools.inputmodel import get_modeldata
 from artistools.misc import CustomArgHelpFormatter
 from artistools.misc import df_filter_minmax_bounded
 from artistools.misc import flatten_list
@@ -1062,12 +1061,11 @@ def make_contrib_plot(
     import artistools.packets as atpackets
 
     if args.classicartis:
-        modeldata = get_modeldata(modelpath)[0].collect().to_pandas(use_pyarrow_extension_array=True)
-        estimators = atestimators.estimators_classic.read_classic_estimators(modelpath, modeldata)
-        allnonemptymgilist = list(modeldata.index)
+        estimators = atestimators.estimators_classic.read_classic_estimators(modelpath)
+        assert estimators is not None
     else:
         estimators = atestimators.read_estimators(modelpath=modelpath)
-        allnonemptymgilist = list({modelgridindex for ts, modelgridindex in estimators})
+    allnonemptymgilist = list({modelgridindex for ts, modelgridindex in estimators})
 
     assert estimators is not None
     packetsfiles = atpackets.get_packets_text_paths(modelpath, args.maxpacketfiles)

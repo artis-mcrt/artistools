@@ -6,7 +6,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
+import polars as pl
 
 import artistools as at
 
@@ -54,8 +54,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         print("No macroatom files found")
         raise FileNotFoundError
 
-    dfall = read_files(input_files, args.modelgridindex, timestepmin, timestepmax, atomic_number)
-
     specfilename = Path(args.modelpath, "spec.out")
 
     if not specfilename.is_file():
@@ -63,31 +61,14 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         raise FileNotFoundError
 
     outputfile = args.outputfile.format(args.modelgridindex, timestepmin, timestepmax)
-    make_plot(
-        dfall,
-        args.modelpath,
-        timestepmin,
-        timestepmax,
-        outputfile,
-        xmin=args.xmin,
-        xmax=args.xmax,
-        modelgridindex=args.modelgridindex,
-    )
-
-
-def make_plot(
-    dfmacroatom: pd.DataFrame,
-    modelpath: str | Path,
-    timestepmin: int,
-    timestepmax: int,
-    outputfile: str,
-    xmin: int,
-    xmax: int,
-    modelgridindex: int,
-) -> None:
+    modelpath = args.modelpath
+    xmin = args.xmin
+    xmax = args.xmax
+    modelgridindex = args.modelgridindex
     time_days_min = at.get_timestep_time(modelpath, timestepmin)
     time_days_max = at.get_timestep_time(modelpath, timestepmax)
 
+    dfmacroatom = read_files(input_files, args.modelgridindex, timestepmin, timestepmax, atomic_number)
     print(f"Plotting {len(dfmacroatom)} transitions")
 
     fig, axis = plt.subplots(
@@ -135,7 +116,9 @@ def read_files(
     timestepmin: int | None = None,
     timestepmax: int | None = None,
     atomic_number: int | None = None,
-) -> pd.DataFrame:
+) -> pl.DataFrame:
+    import pandas as pd
+
     dfall = None
     if not files:
         print("No files")
@@ -165,7 +148,7 @@ def read_files(
         msg = "No data found"
         raise AssertionError(msg)
 
-    return dfall
+    return pl.from_pandas(dfall)
 
 
 if __name__ == "__main__":

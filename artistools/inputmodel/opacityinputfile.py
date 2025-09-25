@@ -19,6 +19,8 @@ def opacity_by_Ye(outputfilepath: Path | str, griddata: pd.DataFrame | pl.DataFr
     """Opacities from Table 1 Tanaka 2020."""
     if isinstance(griddata, pl.DataFrame):
         griddata = griddata.to_pandas()
+    import pandas as pd
+
     griddata = pd.DataFrame(griddata)
     print("Getting opacity kappa from Ye")
 
@@ -55,10 +57,7 @@ def get_opacity_from_file(modelpath: Path | str) -> npt.NDArray[np.float64]:
     return opacity_file_contents[1]
 
 
-def write_Ye_file(outputfilepath: Path | str, griddata: pd.DataFrame | pl.DataFrame) -> None:
-    if isinstance(griddata, pd.DataFrame):
-        griddata = pl.from_pandas(griddata)
-
+def write_Ye_file(outputfilepath: Path | str, griddata: pl.DataFrame) -> None:
     assert griddata.schema["inputcellid"].is_integer()
 
     with Path(outputfilepath, "Ye.txt").open("w", encoding="utf-8") as fYe:

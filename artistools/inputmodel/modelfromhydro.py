@@ -56,6 +56,7 @@ def read_ejectasnapshot(
         "iwasequil(i, 2)",
         "iwasequil(i, 3)",
     ]
+    import pandas as pd
 
     dfsnapshot = pl.from_pandas(
         pd.read_csv(
@@ -123,6 +124,8 @@ def get_snapshot_time_geomunits(pathtogriddata: Path | str) -> tuple[float, floa
 def read_griddat_file(
     pathtogriddata: str | Path, targetmodeltime_days: float | None = None
 ) -> tuple[pd.DataFrame, float, float, float, dict[str, t.Any]]:
+    import pandas as pd
+
     griddatfilepath = Path(pathtogriddata) / "grid.dat"
 
     # Get simulation time for ejecta snapshot

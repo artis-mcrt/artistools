@@ -403,7 +403,19 @@ def make_plot_populations_with_time_or_velocity(modelpaths: list[Path | str], ar
     Z = at.get_atomic_number(args.elements[0])
     ion_stage = int(args.ion_stages[0])
 
-    adata = at.atomic.get_levels(modelpaths[0], get_transitions=True)
+    adata = (
+        at.atomic.get_levels_polars(modelpaths[0], get_transitions=True)
+        .with_columns(
+            levels=pl.col("levels").map_elements(
+                lambda x: x.to_pandas(use_pyarrow_extension_array=True), return_dtype=pl.Object
+            ),
+            transitions=pl.col("transitions").map_elements(
+                lambda x: x.collect().to_pandas(use_pyarrow_extension_array=True), return_dtype=pl.Object
+            ),
+        )
+        .to_pandas(use_pyarrow_extension_array=True)
+    )
+
     ion_data = adata.query("Z == @Z and ion_stage == @ion_stage").iloc[0]
     levelconfignames = ion_data["levels"]["levelname"]
     # levelconfignames = [at.nltepops.texifyconfiguration(name) for name in levelconfignames]

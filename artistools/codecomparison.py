@@ -13,7 +13,7 @@ from pathlib import Path
 import matplotlib.axes as mplax
 import numpy as np
 import numpy.typing as npt
-import pandas as pd
+import polars as pl
 
 import artistools as at
 
@@ -168,7 +168,7 @@ def read_reference_estimators(
     return estimators
 
 
-def get_spectra(modelpath: str | Path) -> tuple[pd.DataFrame, npt.NDArray[np.floating]]:
+def get_spectra(modelpath: str | Path) -> tuple[pl.DataFrame, npt.NDArray[np.floating]]:
     modelpath = Path(modelpath)
     virtualfolder, inputmodel, codename = modelpath.parts
     assert virtualfolder == "codecomparison"
@@ -176,6 +176,7 @@ def get_spectra(modelpath: str | Path) -> tuple[pd.DataFrame, npt.NDArray[np.flo
     inputmodelfolder = Path(at.get_config()["codecomparisondata1path"], inputmodel)
 
     specfilepath = Path(inputmodelfolder, f"spectra_{inputmodel}_{codename}.txt")
+    import pandas as pd
 
     with specfilepath.open(encoding="utf-8") as fspec:
         ntimes = int(fspec.readline().replace("#NTIMES:", ""))
@@ -183,7 +184,9 @@ def get_spectra(modelpath: str | Path) -> tuple[pd.DataFrame, npt.NDArray[np.flo
         arr_timedays = np.array([float(x) for x in fspec.readline().split()[1:]])
         assert len(arr_timedays) == ntimes
 
-        dfspectra = pd.read_csv(fspec, sep=r"\s+", header=None, names=["lambda", *list(arr_timedays)], comment="#")
+        dfspectra = pl.from_pandas(
+            pd.read_csv(fspec, sep=r"\s+", header=None, names=["lambda", *list(arr_timedays)], comment="#")
+        )
 
     return dfspectra, arr_timedays
 

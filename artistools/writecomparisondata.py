@@ -100,10 +100,10 @@ def write_ionfracts(
     lzmodeldata = lzmodeldata.filter(pl.col("modelgridindex").is_in(allnonemptymgilist))
     elementlist = at.get_composition_data(modelpath)
     nelements = len(elementlist)
-    for element in range(nelements):
-        atomic_number = elementlist.Z[element]
+    for elementindex in range(nelements):
+        atomic_number = elementlist["Z"][elementindex]
         elsymb = at.get_elsymbol(atomic_number)
-        nions = elementlist.nions[element]
+        nions = elementlist["nions"][elementindex]
         pathfileout = Path(outputpath, f"ionfrac_{elsymb.lower()}_{model_id}_artisnebular.txt")
         fileisallzeros = True  # will be changed when a non-zero is encountered
         with pathfileout.open("w", encoding="utf-8") as f:
@@ -121,7 +121,7 @@ def write_ionfracts(
                     f.write(f"{vel_r_mid / 1e5:.2f}")
                     elabund = estimators[timestep, modelgridindex].get(f"nnelement_{elsymb}", 0)
                     for ion in range(nions):
-                        ion_stage = ion + elementlist.lowermost_ion_stage[element]
+                        ion_stage = ion + elementlist["lowermost_ion_stage"][elementindex]
                         ionstr = at.get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
                         ionabund = estimators[timestep, modelgridindex].get(f"nnion_{ionstr}", 0)
                         ionfrac = ionabund / elabund if elabund > 0 else 0

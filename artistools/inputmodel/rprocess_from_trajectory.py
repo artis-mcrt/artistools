@@ -16,7 +16,6 @@ from pathlib import Path
 
 import argcomplete
 import numpy as np
-import pandas as pd
 import polars as pl
 
 import artistools as at
@@ -112,6 +111,8 @@ def get_tar_member_extracted_path(traj_root: Path | str, particleid: int, member
 
 @lru_cache(maxsize=16)
 def get_traj_network_timesteps(traj_root: Path, particleid: int) -> pl.DataFrame:
+    import pandas as pd
+
     with get_tar_member_extracted_path(
         traj_root=traj_root, particleid=particleid, memberfilename="./Run_rprocess/energy_thermo.dat"
     ).open(encoding="utf-8") as evolfile:
@@ -193,6 +194,7 @@ def get_trajectory_timestepfile_nuc_abund(
 
 def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, t_model_s: float) -> float:
     """Calculate initial cell energy [erg/g] from reactions t < t_model_s (reduced by work done)."""
+    import pandas as pd
     from scipy import integrate
 
     with get_tar_member_extracted_path(
@@ -525,6 +527,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
 
 def get_wollaeger_density_profile(wollaeger_profilename: Path | str, t_model_init_seconds: float) -> pl.DataFrame:
+    import pandas as pd
+
     wollaeger_profilename = Path(wollaeger_profilename)
     print(f"{wollaeger_profilename} found")
     with Path(wollaeger_profilename).open("rt", encoding="utf-8") as f:

@@ -1,4 +1,3 @@
-from artistools.inputmodel import botyanski2017 as botyanski2017
 from artistools.inputmodel import describeinputmodel as describeinputmodel
 from artistools.inputmodel import downscale3dgrid as downscale3dgrid
 from artistools.inputmodel import energyinputfiles as energyinputfiles

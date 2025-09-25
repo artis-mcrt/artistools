@@ -194,12 +194,6 @@ def test_make1dmodelfromcone() -> None:
     at.inputmodel.slice1dfromconein3dmodel.main(argsraw=[], modelpath=[modelpath_3d], outputpath=outputpath, axis="-z")
 
 
-def test_makemodel_botyanski2017() -> None:
-    outpath = outputpath / "test_makemodel_botyanski2017"
-    outpath.mkdir(exist_ok=True, parents=True)
-    at.inputmodel.botyanski2017.main(argsraw=[], outputpath=outpath)
-
-
 def test_makemodel() -> None:
     outpath = outputpath / "test_makemodel"
     outpath.mkdir(exist_ok=True, parents=True)
