@@ -302,7 +302,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             adata = None
             dfpops = None
         else:
-            adata = at.atomic.get_levels_polars(modelpath, get_transitions=True, ionlist=tuple(ions))
+            adata = at.atomic.get_levels(modelpath, get_transitions=True, ionlist=tuple(ions))
 
         if step == 0 and args.ostat:
             with Path(args.ostat).open("w", encoding="utf-8") as fstat:

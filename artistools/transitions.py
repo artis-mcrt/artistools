@@ -334,7 +334,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     plot_resolution = max(1, int((args.xmax - args.xmin) / 1000))
 
     if args.atomicdatabase == "artis":
-        adata = at.atomic.get_levels_polars(modelpath, tuple(ionlist), get_transitions=True)
+        adata = at.atomic.get_levels(modelpath, tuple(ionlist), get_transitions=True)
     ionpopdict: dict[IonTuple, float] = {}
     if from_model:
         dfnltepops = at.nltepops.read_files(modelpath, modelgridindex=modelgridindex, timestep=timestep)

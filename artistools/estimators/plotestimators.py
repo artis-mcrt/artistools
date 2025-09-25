@@ -269,7 +269,7 @@ def plot_levelpop(
     )
 
     adata = (
-        at.atomic.get_levels_polars(modelpath)
+        at.atomic.get_levels(modelpath)
         .with_columns(
             levels=pl.col("levels").map_elements(
                 lambda x: x.to_pandas(use_pyarrow_extension_array=True), return_dtype=pl.Object

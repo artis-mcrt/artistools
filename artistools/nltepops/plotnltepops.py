@@ -404,7 +404,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths: list[Path | str], ar
     ion_stage = int(args.ion_stages[0])
 
     adata = (
-        at.atomic.get_levels_polars(modelpaths[0], get_transitions=True)
+        at.atomic.get_levels(modelpaths[0], get_transitions=True)
         .with_columns(
             levels=pl.col("levels").map_elements(
                 lambda x: x.to_pandas(use_pyarrow_extension_array=True), return_dtype=pl.Object
@@ -560,7 +560,7 @@ def make_plot(
 ) -> None:
     """Plot level populations for chosens ions of an element in a cell and timestep of an ARTIS model."""
     modelname = at.get_model_name(modelpath)
-    adata = at.atomic.get_levels_polars(
+    adata = at.atomic.get_levels(
         modelpath,
         get_transitions=args.gettransitions,
         derived_transitions_columns=["epsilon_trans_ev", "lambda_angstroms"],

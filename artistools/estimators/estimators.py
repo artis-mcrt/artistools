@@ -340,7 +340,7 @@ def get_averageexcitation(
     if dfnltepops.empty:
         print(f"WARNING: NLTE pops not found for cell {modelgridindex} at timestep {timestep}")
 
-    adata = at.atomic.get_levels_polars(modelpath)
+    adata = at.atomic.get_levels(modelpath)
     ionlevels = adata.filter((pl.col("Z") == atomic_number) & (pl.col("ion_stage") == ion_stage))["levels"].item()
 
     energypopsum = 0
