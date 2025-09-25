@@ -200,7 +200,7 @@ def get_transitiondata(
     return transitionsdict
 
 
-def get_levels_polars(
+def get_levels(
     modelpath: str | Path,
     ionlist: Collection[tuple[int, int]] | None = None,
     get_transitions: bool = False,

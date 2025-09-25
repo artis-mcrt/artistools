@@ -12,10 +12,8 @@ modelpath_classic_3d = at.get_config()["path_testdata"] / "test-classicmode_3d"
 outputpath = Path(at.get_config()["path_testoutput"])
 
 
-def test_get_levels_polars(benchmark: BenchmarkFixture) -> None:
-    dflevels = benchmark(
-        lambda: at.atomic.get_levels_polars(modelpath, get_transitions=True, get_photoionisations=True)
-    )
+def test_get_levels(benchmark: BenchmarkFixture) -> None:
+    dflevels = benchmark(lambda: at.atomic.get_levels(modelpath, get_transitions=True, get_photoionisations=True))
     assert len(dflevels) == 12
     fe2_levels = dflevels.filter((pl.col("Z") == 26) & (pl.col("ion_stage") == 2)).row(0, named=True)["levels"]
     assert len(fe2_levels) == 2823
