@@ -2,6 +2,7 @@ import itertools
 from pathlib import Path
 
 import numpy as np
+import polars as pl
 
 import artistools as at
 
@@ -17,7 +18,13 @@ def make_downscaled_3d_grid(
 
     pldfmodel, modelmeta = at.get_modeldata(modelpath)
     dfmodel = pldfmodel.collect().to_pandas(use_pyarrow_extension_array=True)
-    dfelemabund = at.inputmodel.get_initelemabundances_pandas(modelpath)
+    dfelemabund = (
+        at.inputmodel.get_initelemabundances(modelpath=modelpath)
+        .with_columns(pl.col("inputcellid").sub(1).alias("modelgridindex"))
+        .collect()
+        .to_pandas(use_pyarrow_extension_array=True)
+        .set_index("modelgridindex")
+    )
 
     inputgridsize = modelmeta["ncoordgridx"]
     grid = int(inputgridsize)
