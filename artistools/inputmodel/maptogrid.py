@@ -98,7 +98,6 @@ def maptogrid(
     dtextra_seconds: float = 0.5,
     setgrid_fractionrmax: float = 0.5,
     modifysmoothinglength: str = "option4",
-    shinglesetal23hbug: bool = False,
 ) -> None:
     if not ejectasnapshotpath.is_file():
         print(f"{ejectasnapshotpath} not found")
@@ -221,8 +220,6 @@ def maptogrid(
     particlesinsidegrid = set()
 
     logprint(f"modifysmoothinglength: {modifysmoothinglength}")
-    if shinglesetal23hbug:
-        logprint("WARNING: including shinglesetal23hbug")
 
     for n in range(npart):
         maxdist = 2.0 * h[n]
@@ -276,8 +273,7 @@ def maptogrid(
                 if modifysmoothinglength == "option4" and dis > rmean:
                     h[n] = max(h[n], hmean * 1.5)
 
-                if not shinglesetal23hbug:
-                    maxdist2 = (2.0 * h[n]) ** 2
+                maxdist2 = (2.0 * h[n]) ** 2
                 # -------------------------------
 
                 # or via neighbors  - not yet implemented
@@ -429,12 +425,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "Default modifies h. Set to False for no modifications to h.",
     )
 
-    parser.add_argument(
-        "--shinglesetal23hbug",
-        action="store_true",
-        help="Reproduce Shingles et al. 2023 method with a bug that increased h in outer regions but did not update the maximum distance from particle to cell midpoints",
-    )
-
     parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")
 
 
@@ -458,7 +448,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         dtextra_seconds=args.dtextra_seconds,
         setgrid_fractionrmax=args.setgrid_fractionrmax,
         modifysmoothinglength=args.modifysmoothinglength,
-        shinglesetal23hbug=args.shinglesetal23hbug,
     )
 
 
