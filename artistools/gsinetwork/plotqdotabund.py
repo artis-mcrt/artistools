@@ -454,9 +454,9 @@ def plot_qdot_abund_modelcells(
 
         lzdfmodel = lzdfmodel.with_columns(n_assoc_cells=pl.lit(1.0))
     else:
-        ncoordgridx = math.ceil(np.cbrt(max(mgi_of_propcells.keys())))
-        propcellcount = int(math.ceil(ncoordgridx ** (1 / 3.0)) ** 3)
-        assert propcellcount**3 == ncoordgridx
+        ncoordgridx = math.ceil(np.cbrt(max(mgi_of_propcells.keys()) + 1))
+        propcellcount = ncoordgridx**3
+        print(f" inferring {propcellcount} propagation grid cells from grid mapping file")
         xmax_tmodel = modelmeta["vmax_cmps"] * modelmeta["t_model_init_days"] * 86400
         wid_init = at.get_wid_init_at_tmodel(modelpath, propcellcount, modelmeta["t_model_init_days"], xmax_tmodel)
 
