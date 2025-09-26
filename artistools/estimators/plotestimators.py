@@ -483,7 +483,7 @@ def plot_multi_ion_series(
                 color = f"C{(ion_stage - 1) % 10}"
             else:
                 styleindex = ion_stage - 1
-        print(styleindex)
+
         dashes_list = [(), (3, 1, 1, 1), (1.5, 1.5), (6, 3), (1, 3)]
         dashes = dashes_list[styleindex % len(dashes_list)]
 
