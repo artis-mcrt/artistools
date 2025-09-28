@@ -575,7 +575,7 @@ def make_lightcurve_plot(
         figsize=(args.figscale * conffigwidth, args.figscale * conffigwidth / 1.6),
         tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
     )
-    axis.margins(0.0, 0.0)
+    axis.margins(x=0.0)
     if args.magnitude:
         axis.invert_yaxis()
 
