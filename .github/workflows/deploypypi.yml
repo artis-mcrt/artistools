@@ -26,6 +26,7 @@ jobs:
             CIBW_ENVIRONMENT_PASS_LINUX: SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS
             CIBW_BUILD: cp3${{ matrix.python-minor-version }}-${{ matrix.target.os_arch }}
             MACOSX_DEPLOYMENT_TARGET: 13.0
+            PYO3_PYTHON: python3.${{ matrix.python-minor-version }}
 
         steps:
             - uses: actions/checkout@v5
