@@ -32,13 +32,13 @@ repos:
           - id: yamlfmt
 
     - repo: https://github.com/astral-sh/uv-pre-commit
-      rev: 0.8.18
+      rev: 0.8.22
       hooks:
           - id: uv-sync
             args: [--locked, --all-extras]
 
     - repo: https://github.com/astral-sh/ruff-pre-commit
-      rev: v0.13.1
+      rev: v0.13.2
       hooks:
           - id: ruff-check
             args: [--fix]

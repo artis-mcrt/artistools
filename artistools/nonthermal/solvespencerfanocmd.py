@@ -30,7 +30,7 @@ def make_ntstats_plot(ntstatfile: str | Path) -> None:
     if norm_frac_sum:
         # scale up (or down) ionisation, excitation, and heating to force frac_sum = 1.0
         dfstats["frac_sum"] = dfstats["frac_ionization"] + dfstats["frac_excitation"] + dfstats["frac_heating"]
-        norm_factors = 1.0 / dfstats["frac_sum"].to_numpy()
+        norm_factors = 1.0 / dfstats["frac_sum"].to_numpy(dtype=float)
     else:
         norm_factors = 1.0
     pd.set_option("display.width", 250)

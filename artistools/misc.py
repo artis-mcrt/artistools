@@ -629,11 +629,9 @@ def get_elsymbolslist() -> list[str]:
     elsymbolslist()[26] = 'Fe'.
 
     """
-    import pandas as pd
-
     return [
         "n",
-        *list(pd.read_csv(get_config()["path_datadir"] / "elements.csv", usecols=["symbol"])["symbol"].to_numpy()),
+        *pl.read_csv(get_config()["path_datadir"] / "elements.csv", has_header=True, separator=",")["symbol"].to_list(),
     ]
 
 
