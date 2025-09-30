@@ -119,7 +119,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if args.makeenergyinputfiles:
         plmodel, modelmeta = at.inputmodel.get_modeldata(args.modelpath[0], derived_cols=["mass_g", "rho"])
         model = plmodel.collect().to_pandas(use_pyarrow_extension_array=True)
-        rho = model["rho"].to_numpy()
+        rho = model["rho"].to_numpy(dtype=float)
         Mtot_grams = model["mass_g"].sum()
 
         print(f"total mass {Mtot_grams / 1.989e33} Msun")

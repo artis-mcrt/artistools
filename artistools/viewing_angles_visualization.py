@@ -106,8 +106,8 @@ def viewing_angles_visualisation(
     dfmodel = (
         at.get_modeldata(modelfile, derived_cols=["pos_mid"])[0].collect().to_pandas(use_pyarrow_extension_array=True)
     )
-    x, y, z = (dfmodel[f"pos_{ax}_mid"].to_numpy() for ax in ("x", "y", "z"))
-    rho = dfmodel["rho"].to_numpy()
+    x, y, z = (dfmodel[f"pos_{ax}_mid"].to_numpy(dtype=float) for ax in ("x", "y", "z"))
+    rho = dfmodel["rho"].to_numpy(dtype=float)
 
     if isomin is None:
         isomin = min(rho.flatten())

@@ -90,7 +90,7 @@ def get_binaverage_field(
         + (" & timestep==@timestep" if timestep else "")
     )
 
-    arr_lambda = 2.99792458e18 / bindata["nu_upper"].to_numpy()
+    arr_lambda = 2.99792458e18 / bindata["nu_upper"].to_numpy(dtype=float)
 
     bindata.loc[:, "dlambda"] = bindata.apply(
         lambda row: 2.99792458e18 * (1 / row["nu_lower"] - 1 / row["nu_upper"]), axis=1
@@ -101,7 +101,7 @@ def get_binaverage_field(
             row["J"] / row["dlambda"] if (not math.isnan(row["J"] / row["dlambda"]) and row["T_R"] >= 0) else 0.0
         ),
         axis=1,
-    ).to_numpy()
+    ).to_numpy(dtype=float)
 
     # add the starting point
     arr_lambda = np.insert(arr_lambda, 0, 2.99792458e18 / bindata["nu_lower"].iloc[0])
@@ -555,7 +555,7 @@ def plot_timeevolution(
     print(dftopestimators)
 
     for ax, bin_num_estimator, nu_line in zip(
-        axes, dftopestimators.bin_num.to_numpy(), dftopestimators.nu_upper.to_numpy(), strict=False
+        axes, dftopestimators.bin_num.to_numpy(dtype=float), dftopestimators.nu_upper.to_numpy(dtype=float), strict=True
     ):
         lambda_angstroms = 2.99792458e18 / nu_line
         print(f"Selected line estimator with bin_num {bin_num_estimator}, lambda={lambda_angstroms:.1f}")

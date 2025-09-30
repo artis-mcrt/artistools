@@ -781,11 +781,11 @@ def get_mean_cell_properties_of_angle_bin(dfmodeldata: pd.DataFrame, vmax_cmps: 
 
     dfmodeldata["rho"][dfmodeldata["rho"] == 0] = None
 
-    cell_velocities = np.unique(dfmodeldata["vel_x_min"].to_numpy())
+    cell_velocities = np.unique(dfmodeldata["vel_x_min"].to_numpy(dtype=float))
     cell_velocities = cell_velocities[cell_velocities >= 0]
     velocity_bins = np.append(cell_velocities, vmax_cmps)
 
-    mid_velocities = np.unique(dfmodeldata["vel_x_mid"].to_numpy())
+    mid_velocities = np.unique(dfmodeldata["vel_x_mid"].to_numpy(dtype=float))
     mid_velocities = mid_velocities[mid_velocities >= 0]
 
     mean_bin_properties = {
@@ -1031,7 +1031,7 @@ def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist: Sequence[
 
     if not mgilist:
         mgilist = list(modeldata.index)
-        arr_vouter = modeldata["vel_r_max_kmps"].to_numpy()
+        arr_vouter = modeldata["vel_r_max_kmps"].to_numpy(dtype=float)
     else:
         arr_vouter = np.array([modeldata["vel_r_max_kmps"][mgi] for mgi in mgilist])
 
