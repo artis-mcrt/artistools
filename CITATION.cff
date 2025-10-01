@@ -1,7 +1,6 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 authors:
-  - name: ARTIS Collaboration
   - family-names: Shingles
     given-names: Luke J.
     orcid: https://orcid.org/0000-0002-5738-1612
@@ -24,8 +23,8 @@ authors:
   - family-names: Leck
     given-names: Gerrit
 title: artistools
-version: v2025-06-08
-date-released: 2025-06-08
+version: v2025-09-27
+date-released: 2025-09-27
 doi: 10.5281/zenodo.7728326
 license: MIT
 repository-code: 'https://github.com/artis-mcrt/artistools'
