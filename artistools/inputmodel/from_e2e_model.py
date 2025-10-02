@@ -566,7 +566,7 @@ def merge_ARTIS_cells(red_fact: int, N_r: int, N_z: int, v_max: float, outputpat
                 abunds = abunds_all[nuclide][old_idxs_np]
                 new_X_arr[new_cell_idx - 1] = np.average(abunds, weights=masses)
         dictabunds[nuclide] = new_X_arr
-        el = "".join([i for i in nuclide[2:] if not i.isdigit()])
+        el = "".join([i for i in nuclide if not i.isdigit()])
         if el in element_abbrevs_list_titled:
             el_idx = element_abbrevs_list_titled.index(el)
             el_mass_fracs[el_idx] += new_X_arr

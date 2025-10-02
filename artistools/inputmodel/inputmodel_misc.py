@@ -14,6 +14,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 import polars as pl
 import polars.selectors as cs
@@ -1416,6 +1417,240 @@ def dimension_reduce_model(
     print(f"  took {time.perf_counter() - timestart:.1f} seconds")
 
     return (dfmodel_out, dfelabundances_out, dfgridcontributions_out, modelmeta_out)
+
+
+def cyl_fraction_in_cube(
+    x_min: float,
+    y_min: float,
+    z_min: float,
+    cell_width: float,
+    r_inner: float,
+    r_outer: float,
+    z_min_cyl: float,
+    z_max_cyl: float,
+    samples: int = 8000,
+) -> float:
+    """Calculate the fraction of the volume of a 2D cell (<-> hollow cylinder) inside a 3D cube. Use Monte Carlo sampling for now. 8000 sampled chosen based on a test with analytical solution."""
+    # sample random positions and check boundaries
+    rng = np.random.default_rng()
+    r = np.sqrt(rng.uniform(r_inner**2, r_outer**2, samples))
+    theta = rng.uniform(0, 2 * np.pi, samples)
+    x = r * np.cos(theta)
+    y = r * np.sin(theta)
+    z = rng.uniform(z_min_cyl, z_max_cyl, samples)
+
+    inside = (
+        (x_min <= x)
+        & (x <= x_min + cell_width)
+        & (y_min <= y)
+        & (y <= y_min + cell_width)
+        & (z_min <= z)
+        & (z <= z_min + cell_width)
+    )
+
+    return inside.mean()
+
+
+def map_single_quantity(
+    Q: npt.NDArray[np.float64], M: npt.NDArray[np.float64], W: npt.NDArray[np.float64]
+) -> npt.NDArray[np.float64]:
+    eff_weights = M[:, None] * W
+
+    numerator = (Q[:, None] * eff_weights).sum(axis=0)
+    denominator = eff_weights.sum(axis=0)
+
+    return np.divide(numerator, denominator, out=np.zeros_like(numerator), where=denominator != 0)
+
+
+def map_multiple_quantities(
+    Q: npt.NDArray[np.float64], M: npt.NDArray[np.float64], W: npt.NDArray[np.float64]
+) -> npt.NDArray[np.float64]:
+    """Key expression: Q_avg = Q * diag(M) * W / (1^T diag(M) * W) where 1^T denotes a matrix containing ones in ALL entries."""
+    # Apply masses to weights: (n_i, n_f)
+    MW = M[:, None] * W
+
+    # Numerator: (n_q, n_f)
+    numerator = Q @ MW
+
+    # Denominator: (n_f,)
+    denominator = MW.sum(axis=0)
+
+    # Normalize along each final cell
+    return np.divide(numerator, denominator, out=np.zeros_like(numerator), where=denominator != 0)
+
+
+def dimension_increase_model(
+    dfmodel: pl.DataFrame | pl.LazyFrame, outputdimensions: int, modelmeta: dict[str, t.Any] | None = None
+) -> tuple[pl.DataFrame, pl.DataFrame | None, pl.DataFrame | None, dict[str, t.Any]]:
+    """Convert a 2D cylindrical to 3D cartesian model (assuming azimuthal symmetry). Assumes that the 2D cells are quadratic and the final grid cells cubic."""
+    assert outputdimensions == 3, "Outputdim 1 or 2 not implemented yet. Abort."
+
+    # final grid length
+    N_r_old = modelmeta["ncoordgridrcyl"]
+    N_z_old = modelmeta["ncoordgridz"]
+    N_cells_old = N_r_old * N_z_old
+    N_x_fg = 2 * N_r_old
+    N_y_fg = N_x_fg
+    N_z_fg = modelmeta["ncoordgridz"]
+    N_cells_fg = N_x_fg * N_y_fg * N_z_fg
+
+    # construct final grid
+    z_mid_values = dfmodel.collect()["pos_z_mid"].to_numpy()
+    Delta_z_half = min(np.abs(z) for z in z_mid_values)
+    z_min = min(z for z in z_mid_values) - Delta_z_half
+    z_min_old_grid = z_mid_values - Delta_z_half
+    z_max_old_grid = z_mid_values + Delta_z_half
+    z_min_values = np.array([z_min + i * 2 * Delta_z_half for i in range(N_z_fg)])
+
+    r_mid_values = dfmodel.collect()["pos_rcyl_mid"].to_numpy()
+    Delta_r_half = min(r for r in r_mid_values)
+    r_min_values_old_grid = r_mid_values - Delta_r_half
+    r_max_values_old_grid = r_mid_values + Delta_r_half
+    r_min = -max(r for r in r_mid_values) - Delta_r_half
+
+    x_min = r_min
+    y_min = r_min
+    x_values = np.array([x_min + i * 2 * Delta_r_half for i in range(N_x_fg)])
+    y_values = np.array([y_min + i * 2 * Delta_r_half for i in range(N_y_fg)])
+
+    x_cellmin = np.array([x_values.flatten() for j in range(N_y_fg * N_z_fg)]).flatten()
+    y_cellmin = np.array([y_values[n_y] for n_z in range(N_z_fg) for n_y in range(N_y_fg) for n_x in range(N_x_fg)])
+    z_cellmin = np.array([np.array([z for i in range(N_x_fg * N_y_fg)]).flatten() for z in z_min_values]).flatten()
+
+    dfmodel_out = pl.DataFrame({
+        "inputcellid": np.arange(1, N_cells_fg + 1),
+        "pos_x_min": x_cellmin,
+        "pos_y_min": y_cellmin,
+        "pos_z_min": z_cellmin,
+    }).lazy()
+
+    print("  calculating weights...")
+    # use the fact that Delta_z_2D = Delta_z_3D and Delta_r_2D = Delta_x_3D = Delta_y_3D -> only calculate one slice
+    weights_slice = np.array([
+        [
+            cyl_fraction_in_cube(x_cellmin, y_cellmin, z_cellmin, 2 * Delta_r_half, r_min, r_max, z_min, z_max)
+            for (r_min, r_max, z_min, z_max) in zip(
+                r_min_values_old_grid[:(N_cells_old)],
+                r_max_values_old_grid[:(N_cells_old)],
+                z_min_old_grid[:(N_cells_old)],
+                z_max_old_grid[:(N_cells_old)],
+                strict=False,
+            )
+        ]
+        for (x_cellmin, y_cellmin, z_cellmin) in zip(
+            x_cellmin[: (N_x_fg * N_y_fg)], y_cellmin[: (N_x_fg * N_y_fg)], z_cellmin[: (N_x_fg * N_y_fg)], strict=False
+        )
+    ])
+    weights = weights_slice
+    for i in range(1, N_z_old):
+        weights = np.concatenate((weights, np.roll(weights_slice, shift=i * N_r_old, axis=1)), axis=0)
+    assert weights.shape == (N_cells_fg, N_cells_old), (
+        f"Weights have wrong shape. Is {weights.shape}, but should be {(N_cells_fg, N_cells_old)}"
+    )
+
+    # obtain initial masses
+    dfmodel = dfmodel.with_columns(
+        (
+            pl.lit(float(np.pi)).cast(pl.Float64)
+            * 2.0
+            * pl.lit(float(Delta_z_half)).cast(pl.Float64)
+            * (
+                (pl.col("pos_rcyl_mid").cast(pl.Float64) + pl.lit(float(Delta_r_half)).cast(pl.Float64)) ** 2
+                - (pl.col("pos_rcyl_mid").cast(pl.Float64) - pl.lit(float(Delta_r_half)).cast(pl.Float64)) ** 2
+            )
+        ).alias("volume")
+    )
+    dfmodel = dfmodel.with_columns((pl.col("rho").cast(pl.Float64) * pl.col("volume")).cast(pl.Float32).alias("mass_g"))
+
+    print("  mapping masses to new grid...")
+    masses_fg = weights @ dfmodel.select(pl.col("mass_g").cast(pl.Float32)).collect().to_series().to_numpy()
+    # check mass conservation
+    M_model = sum(dfmodel.select(pl.col("mass_g").cast(pl.Float32)).collect().to_series().to_numpy())
+    M_fg = sum(masses_fg)
+    assert math.isclose(M_model, M_fg, rel_tol=0.01), "Model mass and mapped mass differ more than 0.1 %"
+
+    # map quantities to final grid
+    # rho
+    print("  mapping density...")
+    rho_fg = masses_fg / np.array([8 * Delta_z_half * Delta_r_half**2 for i in range(N_cells_fg)])
+    dfmodel_out = dfmodel_out.with_columns(pl.Series("rho", rho_fg))
+
+    # X_Fegroup
+    print("  mapping X_Fegroup...")
+    model_masses = dfmodel.select(pl.col("mass_g").cast(pl.Float32)).collect().to_series().to_numpy()
+    model_xfe = dfmodel.select(pl.col("X_Fegroup").cast(pl.Float32)).collect().to_series().to_numpy()
+    xfe_fg = map_single_quantity(model_xfe, model_masses, weights.T)
+    dfmodel_out = dfmodel_out.with_columns(pl.Series("X_Fegroup", xfe_fg))
+
+    # Ye
+    print("  mapping Ye...")
+    model_ye = dfmodel.select(pl.col("Ye").cast(pl.Float32)).collect().to_series().to_numpy()
+    ye_fg = map_single_quantity(model_ye, model_masses, weights.T)
+    dfmodel_out = dfmodel_out.with_columns(pl.Series("cellYe", ye_fg))
+
+    # q
+    print("  mapping q...")
+    model_q = dfmodel.select(pl.col("q").cast(pl.Float32)).collect().to_series().to_numpy()
+    q_fg = map_single_quantity(model_q, model_masses, weights.T)
+    dfmodel_out = dfmodel_out.with_columns(pl.Series("q", q_fg))
+
+    # isotopic mass fractions
+    print("  mapping isotopic mass fractions...")
+    isot_keys = [
+        isot_key for isot_key in dfmodel.collect_schema().names() if ("X_" in isot_key and isot_key != "X_Fegroup")
+    ]
+    model_x_isot = dfmodel.select(isot_keys).collect().to_numpy()
+    x_isot_fg = map_multiple_quantities(model_x_isot.T, model_masses, weights.T)
+    df_isot_data = pl.DataFrame(x_isot_fg, schema=isot_keys)
+    dfmodel_out = dfmodel_out.with_columns([df_isot_data[col] for col in isot_keys])
+
+    print("  Done!")
+    r"""
+    # create abundances data and save to new model file
+    from artistools.misc import get_elsymbol
+
+    element_abbrevs_list = [get_elsymbol(Z) for Z in range(1, 101)]  # Keep full list as in your code
+    element_abbrevs_list_titled = [abbrev.title() for abbrev in element_abbrevs_list]
+
+    nuclide_columns = [col for col in dfmodel_out.collect_schema().names() if col.startswith("X_")][1:]
+
+    abunds_all = {
+        nuclide: dfmodel_out.select(pl.col(nuclide).cast(pl.Float32)).collect().to_series().to_numpy()
+        for nuclide in nuclide_columns
+    }
+    dfabundances = pl.DataFrame({"a": np.zeros(N_cells_fg)}).lazy()
+    import re
+
+    for element in element_abbrevs_list_titled:
+        dfabundances = dfabundances.with_columns(pl.lit(0).alias(element))
+        pattern = re.escape(element) + r"\d"
+        for nuclide in nuclide_columns:
+            if re.search(pattern, nuclide):
+                # now add upp the columns
+                s = dfmodel_out.select(pl.col(nuclide).cast(pl.Float32)).collect().to_series()
+                dfabundances = dfabundances.with_columns((pl.col(element) + pl.lit(s)).alias(element))
+
+    dfabundances_pd = dfabundances.collect().to_pandas()
+    dfabundances_pd.rename(columns={"a": "inputcellid"}, inplace=True)
+    dfabundances_pd["inputcellid"] = range(1, N_cells_fg + 1)
+    for column in dfabundances_pd.columns[1:]:
+        dfabundances_pd.rename(columns={column: f"X_{column}"}, inplace=True)
+
+    save_initelemabundances(dfelabundances=dfabundances_pd, outpath=Path("../"))
+    modelmeta = {
+        "dimensions": 3,
+        "ncoordgridx": N_x_fg,
+        "ncoordgridy": N_y_fg,
+        "ncoordgridz": N_z_fg,
+        "t_model_init_days": 0.1,
+        "vmax_cmps": z_max_old_grid[-1] / (0.1 * 86400),
+    }
+    dfmodel_out_pd = dfmodel_out.collect().to_pandas()
+    dfmodel_out_pd["inputcellid"] = range(1, N_cells_fg + 1)
+    save_modeldata(dfmodel=dfmodel_out_pd, modelmeta=modelmeta, outpath=Path("../"))
+    print("Test model saved!")
+    """
+    return dfmodel_out
 
 
 def scale_model_to_time(
