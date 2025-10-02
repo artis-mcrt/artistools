@@ -47,6 +47,7 @@ subcommandtree: CommandType = {
     "plotlightcurves": ("lightcurve.plotlightcurve", "main"),
     "plotlinefluxes": ("linefluxes", "main"),
     "plotdensity": ("inputmodel.plotdensity", "main"),
+    "plotgammaopacity": ("opacity.plotgammaopacity", "main"),
     "plotmacroatom": ("macroatom", "main"),
     "plotnltepops": ("nltepops.plotnltepops", "main"),
     "plotradfield": ("radfield", "main"),
