@@ -19,9 +19,9 @@ import pandas as pd
 import polars as pl
 import polars.selectors as cs
 
+import artistools.constants as const
 import artistools.packets as atpackets
 from artistools.configuration import get_config
-from artistools.constants import megaparsec_to_cm
 from artistools.misc import average_direction_bins
 from artistools.misc import firstexisting
 from artistools.misc import get_bflist
@@ -138,22 +138,39 @@ def get_exspec_bins(
 ) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     """Get the wavelength bins for the emergent spectrum."""
     if modelpath is not None:
-        dfspec = read_spec(modelpath, gamma=gamma).collect()
-        if mnubins is None:
-            mnubins = dfspec.height
+        try:
+            dfspec = read_spec(modelpath, gamma=gamma).collect()
+            if mnubins is None:
+                mnubins = dfspec.height
 
-        nu_centre_min = dfspec.item(0, 0)
-        nu_centre_max = dfspec.item(dfspec.height - 1, 0)
+            nu_centre_min = dfspec.item(0, 0)
+            nu_centre_max = dfspec.item(dfspec.height - 1, 0)
 
-        # This is not an exact solution for dlognu since we're assuming the bin centre spacing matches the bin edge spacing
-        # but it's close enough for our purposes and avoids the difficulty of finding the exact solution (lots more algebra)
-        dlognu = math.log(dfspec.item(1, 0) / dfspec.item(0, 0))  # second nu value divided by the first nu value
+            # This is not an exact solution for dlognu since we're assuming the bin centre spacing matches the bin edge spacing
+            # but it's close enough for our purposes and avoids the difficulty of finding the exact solution (lots more algebra)
+            dlognu = math.log(dfspec.item(1, 0) / dfspec.item(0, 0))  # second nu value divided by the first nu value
 
-        if nu_min_r is None:
-            nu_min_r = nu_centre_min / (1 + 0.5 * dlognu)
+            if nu_min_r is None:
+                nu_min_r = nu_centre_min / (1 + 0.5 * dlognu)
 
-        if nu_max_r is None:
-            nu_max_r = nu_centre_max * (1 + 0.5 * dlognu)
+            if nu_max_r is None:
+                nu_max_r = nu_centre_max * (1 + 0.5 * dlognu)
+        except FileNotFoundError:
+            mnubins = 1000
+            if gamma:
+                min_mev_on_h = 0.05
+                nu_min_r = min_mev_on_h * const.MEV_to_erg / const.H_erg_s
+                max_mev_on_h = 4.0
+                nu_max_r = max_mev_on_h * const.MEV_to_erg / const.H_erg_s
+                print(
+                    f"No gamma_spec.out found. Using default gamma bins: mnubins {mnubins} nu_min_r {min_mev_on_h:.2f} MeV/H nu_max_r {max_mev_on_h:.2f} MeV/H"
+                )
+            else:
+                nu_min_r = 1e13
+                nu_max_r = 5e16
+                print(
+                    f"No spec.out found. Using default rpkt bins: mnubins {mnubins} nu_min_r {nu_min_r:.2e} nu_max_r {nu_max_r:.2e}"
+                )
 
     assert nu_min_r is not None
     assert nu_max_r is not None
@@ -405,7 +422,7 @@ def get_from_packets(
                     pl.col(f"{energy_column}_sum")
                     / pl_delta_lambda
                     / delta_time_s
-                    / (megaparsec_to_cm**2)
+                    / (const.megaparsec_to_cm**2)
                     / nprocs_read
                 ).alias(f"f_lambda_dirbin{vspecindex}"),
                 pl.col("count").alias(f"count_dirbin{vspecindex}"),
@@ -475,7 +492,7 @@ def get_from_packets(
                     / delta_time_s
                     / (4 * math.pi)
                     * solidanglefactor
-                    / (megaparsec_to_cm**2)
+                    / (const.megaparsec_to_cm**2)
                     / nprocs_read
                 ).alias(f"f_lambda_dirbin{dirbin}"),
                 pl.col("count").alias(f"count_dirbin{dirbin}"),

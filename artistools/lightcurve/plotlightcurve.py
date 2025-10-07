@@ -689,7 +689,9 @@ def make_lightcurve_plot(
                         args=args,
                         pellet_nucname=pellet_nucname,
                         use_pellet_decay_time=args.use_pellet_decay_time,
-                        linestyle=args.linestyle[lcindex] if escape_type == "TYPE_RPKT" else ":",
+                        linestyle=args.linestyle[lcindex]
+                        if (escape_type == "TYPE_RPKT" or len(escape_types) == 1)
+                        else ":",
                         color=args.color[lcindex],
                         linelabel=args.label[lcindex],
                     )
