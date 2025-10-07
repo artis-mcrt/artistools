@@ -195,8 +195,8 @@ jobs:
 
             - name: Check artistools command line tool
               run: |
-                  uv run -- artistools --help
-                  uv run -- artistools completions
+                  artistools --help
+                  artistools completions
 
             - name: Cache test data
               uses: actions/cache@v4
