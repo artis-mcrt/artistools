@@ -638,6 +638,8 @@ def get_spectrum(
                 specdata[-1] = read_spec(modelpath=modelpath, gamma=gamma)
 
             except FileNotFoundError:
+                if gamma:
+                    raise
                 specdata[-1] = get_specpol_data(angle=-1, modelpath=modelpath)[stokesparam]
 
         else:
