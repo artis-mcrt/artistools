@@ -1,17 +1,19 @@
 {
-     "editor.formatOnPaste": false,
-     "editor.formatOnSave": true,
-     "[python]": {
-         "editor.codeActionsOnSave": {
-            "source.fixAll": "explicit",
-            "source.organizeImports": "explicit"
-        },
-         "editor.defaultFormatter": "charliermarsh.ruff"
-     },
-    "files.insertFinalNewline": true,
-    "files.eol": "\n",
-    "files.trimFinalNewlines": true,
-    "rust-analyzer.cargo.targetDir": true,
-    "rust-analyzer.diagnostics.styleLints.enable": true,
-    "rust-analyzer.runnables.extraArgs": ["--release"]
+  "[python]": {
+    "editor.codeActionsOnSave": {
+      "source.fixAll": "explicit",
+      "source.organizeImports": "explicit"
+    },
+    "editor.defaultFormatter": "charliermarsh.ruff"
+  },
+  "editor.formatOnPaste": false,
+  "editor.formatOnSave": true,
+  "files.eol": "\n",
+  "files.insertFinalNewline": true,
+  "files.trimFinalNewlines": true,
+  "rust-analyzer.cargo.targetDir": true,
+  "rust-analyzer.diagnostics.styleLints.enable": true,
+  "rust-analyzer.runnables.extraArgs": [
+    "--release"
+  ]
 }

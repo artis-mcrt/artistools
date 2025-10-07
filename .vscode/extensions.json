@@ -1,9 +1,9 @@
 {
-    "recommendations": [
-        "ms-python.mypy-type-checker",
-        "charliermarsh.ruff",
-        "sourcery.sourcery",
-        "usernamehw.errorlens",
-        "rust-lang.rust-analyzer"
-    ]
+  "recommendations": [
+    "ms-python.mypy-type-checker",
+    "charliermarsh.ruff",
+    "sourcery.sourcery",
+    "usernamehw.errorlens",
+    "rust-lang.rust-analyzer"
+  ]
 }
