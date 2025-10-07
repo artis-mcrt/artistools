@@ -7,7 +7,12 @@
   "labels": ["dependencies"],
   "bumpVersion": "major",
   "pre-commit": {
-    "enabled": true
+    "enabled": true,
+    "automerge": true
+  },
+  "github-actions": {
+    "enabled": true,
+    "automerge": true
   },
   "lockFileMaintenance": {
     "enabled": true,
