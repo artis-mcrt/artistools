@@ -1,27 +1,29 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "bumpVersion": "major",
   "extends": [
     "config:recommended"
   ],
-  "rebaseWhen": "conflicted",
-  "labels": ["dependencies"],
-  "bumpVersion": "major",
-  "pre-commit": {
-    "enabled": true,
-    "automerge": true
-  },
   "github-actions": {
-    "enabled": true,
-    "automerge": true
-  },
-  "lockFileMaintenance": {
-    "enabled": true,
     "automerge": true,
+    "enabled": true
+  },
+  "labels": [
+    "dependencies"
+  ],
+  "lockFileMaintenance": {
+    "automerge": true,
+    "enabled": true,
     "schedule": [
       "* 9 * * 2"
     ]
   },
+  "pre-commit": {
+    "automerge": true,
+    "enabled": true
+  },
   "rangeStrategy": "update-lockfile",
+  "rebaseWhen": "conflicted",
   "schedule": [
     "* 9 * * 2"
   ]
