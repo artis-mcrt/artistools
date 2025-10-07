@@ -73,7 +73,7 @@ dev = [
     "pyright>=1.1.405",
     "pynonthermal>=2025.3.31.2",
     "pytest>=8.3.3",
-    "pytest-codspeed<4.1.0",
+    "pytest-codspeed>=4.1.1",
     "pytest-cov>=6.0.0",
     "pytest-xdist[psutil]>=3.6.1",
     "ruff>=0.13.1",
