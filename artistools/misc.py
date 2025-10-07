@@ -19,7 +19,7 @@ from pathlib import Path
 import numpy as np
 import numpy.typing as npt
 import polars as pl
-import polars.selectors as cs
+from polars import selectors as cs
 
 from artistools.configuration import get_config
 
@@ -1191,9 +1191,7 @@ def get_linelist_pldf(modelpath: Path | str, get_ion_str: bool = False) -> pl.La
                 "lower_level": lower_levels,
             })
             .with_row_index(name="lineindex")
-            .with_columns(
-                pl.col(pl.UInt32).cast(pl.Int32), pl.col(pl.Int64).cast(pl.Int32), pl.col(pl.Float64).cast(pl.Float32)
-            )
+            .with_columns(cs.integer().cast(pl.Int32), cs.float().cast(pl.Float32))
         )
         pldf.write_parquet(parquetfile, compression="zstd")
         print(f"open {parquetfile}")

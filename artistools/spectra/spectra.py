@@ -1189,7 +1189,7 @@ def get_flux_contributions_from_packets(
 
             emtypestrings = pl.concat([
                 linelistlazy.select([
-                    pl.col("lineindex").alias(emtypecolumn),
+                    pl.col("lineindex").cast(pl.Int32).alias(emtypecolumn),
                     expr_linelist_to_str.alias("emissiontype_str"),
                 ]),
                 pl.DataFrame(
@@ -1219,7 +1219,9 @@ def get_flux_contributions_from_packets(
         cols |= {"absorptiontype_str", "absorption_freq"}
         assert linelistlazy is not None
         abstypestrings = pl.concat([
-            linelistlazy.select(absorption_type=pl.col("lineindex"), absorptiontype_str=expr_linelist_to_str),
+            linelistlazy.select(
+                absorption_type=pl.col("lineindex").cast(pl.Int32), absorptiontype_str=expr_linelist_to_str
+            ),
             pl.DataFrame(
                 {"absorption_type": [-1, -2], "absorptiontype_str": ["free-free", "bound-free"]},
                 schema={"absorption_type": pl.Int32, "absorptiontype_str": pl.String},
