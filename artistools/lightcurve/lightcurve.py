@@ -75,16 +75,17 @@ def get_from_packets(
     if directionbins is None:
         directionbins = [-1]
 
-    timesteps_df = at.misc.df_filter_minmax_bounded(
+    dftimesteps_selected = at.misc.df_filter_minmax_bounded(
         at.get_timesteps(modelpath), "tmid_days", timedaysmin, timedaysmax
     ).collect()
-    arr_tstart = timesteps_df["tstart_days"].to_list()
-    arr_timedelta = timesteps_df["twidth_days"].to_list()
 
     _, modelmeta = at.inputmodel.get_modeldata(modelpath, printwarningsonly=True)
     escapesurfacegamma = math.sqrt(1 - (modelmeta["vmax_cmps"] / 29979245800) ** 2)
 
-    timebinstarts_plusend = [*arr_tstart, arr_tstart[-1] + arr_timedelta[-1]]
+    timebinstarts_plusend = [
+        *dftimesteps_selected["tstart_days"],
+        dftimesteps_selected.select(pl.col("tstart_days").last() + pl.col("twidth_days").last()).item(),
+    ]
 
     nphibins = at.get_viewingdirection_phibincount()
     ncosthetabins = at.get_viewingdirection_costhetabincount()
@@ -151,9 +152,9 @@ def get_from_packets(
             at.packets.bin_and_sum(
                 pldfpackets_dirbin, bincol=timecol, bins=timebinstarts_plusend, sumcols=["e_rf"], getcounts=True
             )
-            .with_columns(timestep=pl.col(f"{timecol}_bin").cast(pl.Int32) + timesteps_df["timestep"].min())
+            .with_columns(timestep=pl.col(f"{timecol}_bin").cast(pl.Int32) + dftimesteps_selected["timestep"].min())
             .rename({"count": "packetcount"})
-            .join(timesteps_df.select("timestep", "twidth_days", "tmid_days").lazy(), how="left", on="timestep")
+            .join(dftimesteps_selected.select("timestep", "twidth_days", "tmid_days").lazy(), how="left", on="timestep")
             .with_columns(
                 lum=(
                     pl.col("e_rf_sum")
