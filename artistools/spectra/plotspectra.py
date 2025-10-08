@@ -3,6 +3,7 @@
 """Artistools - spectra plotting functions."""
 
 import argparse
+import contextlib
 import math
 import sys
 import typing as t
@@ -31,6 +32,7 @@ from artistools.misc import CustomArgHelpFormatter
 from artistools.misc import df_filter_minmax_bounded
 from artistools.misc import flatten_list
 from artistools.misc import get_dirbin_labels
+from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_filterfunc
 from artistools.misc import get_model_name
 from artistools.misc import get_time_range
@@ -49,6 +51,31 @@ def path_is_artis_model(filepath: str | Path) -> bool:
     if Path(filepath).name.endswith(".out.zst"):
         return True
     return True if Path(filepath).suffix == ".out" else Path(filepath).is_dir()
+
+
+def check_time_range_is_valid(modelpath: Path, timemin: float, timemax: float, allow_invalid: bool) -> None:
+    with contextlib.suppress(FileNotFoundError):
+        _, validrange_start_days, validrange_end_days = get_escaped_arrivalrange(modelpath)
+        problem_messages = []
+        if validrange_start_days is None and validrange_end_days is None:
+            problem_messages.append(
+                f" {'WARNING' if allow_invalid else 'ERROR'}:The model has no valid time range days"
+            )
+        if validrange_start_days is not None and timemin < validrange_start_days:
+            problem_messages.append(
+                f" {'WARNING' if allow_invalid else 'ERROR'}: timemin {timemin} days is before the start of the valid range at {validrange_start_days:.2f} days"
+            )
+        if validrange_end_days is not None and timemax > validrange_end_days:
+            problem_messages.append(
+                f" {'WARNING' if allow_invalid else 'ERROR'}: timemax {timemax} days is after the end of the valid range at {validrange_end_days:.2f} days"
+            )
+
+        if problem_messages and not allow_invalid:
+            problem_messages.append("To override this error and plot anyway, run with --plotinvalidpart")
+            raise ValueError("\n".join(problem_messages))
+
+        if problem_messages:
+            print("\n".join(problem_messages))
 
 
 def get_lambda_range_binsize(
@@ -401,7 +428,6 @@ def plot_artis_spectrum(
                 clamp_to_timesteps=clamp_to_timesteps,
             )
 
-        modelname = get_model_name(modelpath)
         if timestepmin == timestepmax == -1:
             return None
 
@@ -411,6 +437,7 @@ def plot_artis_spectrum(
         timedelta = (args.timemax - args.timemin) / 2
         linelabel_is_custom = linelabel is not None
         if linelabel is None:
+            modelname = get_model_name(modelpath)
             linelabel = modelname if len(modelname) < 70 else f"...{modelname[-67:]}"
 
             if not args.hidemodeltime and not args.multispecplot:
@@ -423,6 +450,8 @@ def plot_artis_spectrum(
             f"====> '{linelabel}' timesteps {timestepmin} to {timestepmax} ({args.timemin:.3f} to {args.timemax:.3f}d{'' if clamp_to_timesteps else ' not necessarily clamped to timestep start/end'})"
         )
         print(f" modelpath {modelpath}")
+
+        check_time_range_is_valid(modelpath, args.timemin, args.timemax, args.plotinvalidpart)
 
         viewinganglespectra = {}
 
@@ -774,6 +803,8 @@ def make_emissionabsorption_plot(
     if timestepmin == timestepmax == -1:
         print(f"Can't plot {modelname}...skipping")
         return [], [], None
+
+    check_time_range_is_valid(modelpath, args.timemin, args.timemax, args.plotinvalidpart)
 
     if args.plotvspecpol and not args.frompackets:
         args.frompackets = True
@@ -1319,6 +1350,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument(
         "-maxpacketfiles", "-maxpacketsfiles", type=int, default=None, help="Limit the number of packet files read"
+    )
+
+    parser.add_argument(
+        "--plotinvalidpart",
+        action="store_true",
+        help="Plot the spectra even if it falls outside the valid time range (due to light travel times)",
     )
 
     parser.add_argument("--emissionabsorption", action="store_true", help="Implies --showemission and --showabsorption")
