@@ -1355,7 +1355,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--plotinvalidpart",
         action="store_true",
-        help="Plot the spectra even if it falls outside the valid time range (due light travel times)",
+        help="Plot the spectra even if it falls outside the valid time range (due to light travel times)",
     )
 
     parser.add_argument("--emissionabsorption", action="store_true", help="Implies --showemission and --showabsorption")
