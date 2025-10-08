@@ -429,7 +429,7 @@ def get_modeldata(
             dfmodel.collect().write_parquet(
                 partialparquetfilepath,
                 compression="zstd",
-                statistics=True,
+                statistics="full",
                 metadata={
                     "creationtimeutc": str(datetime.datetime.now(datetime.UTC)),
                     "textsource_mtime": str(textsource_mtime),
