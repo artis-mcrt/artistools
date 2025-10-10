@@ -1,4 +1,3 @@
-import gzip
 import itertools
 import typing as t
 from pathlib import Path
@@ -84,14 +83,12 @@ def read_classic_estimators(
 
     estimators: dict[tuple[int, int], t.Any] = {}
     for estfilepath in estimfiles:
-        opener: t.Any = gzip.open if str(estfilepath).endswith(".gz") else open
-
         # If classic plots break it's probably getting first timestep here
         # Try either of the next two lines
         timestep = first_timesteps_in_dir[str(estfilepath).split("/")[0]]  # get the starting timestep for the estfile
         # timestep = first_timesteps_in_dir[str(estfile[:-20])]
         # timestep = 0  # if the first timestep in the file is 0 then this is fine
-        with opener(estfilepath) as estfile:
+        with at.zopen(estfilepath) as estfile:
             modelgridindex = -1
             for line in estfile:
                 row = line.split()
