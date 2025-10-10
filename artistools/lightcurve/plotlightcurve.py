@@ -626,7 +626,6 @@ def make_lightcurve_plot(
             dflightcurve, metadata = at.lightcurve.read_bol_reflightcurve_data(bolreflightcurve)
             lightcurvelabel = args.label[lcindex] or metadata.get("label", bolreflightcurve)
             color = args.color[lcindex] or ["0.0", "0.5", "0.7"][reflightcurveindex]
-            plotkwargs = {"label": lightcurvelabel, "color": color, "zorder": 0}
             if (
                 "luminosity_errminus_erg/s" in dflightcurve.columns
                 and "luminosity_errplus_erg/s" in dflightcurve.columns
@@ -637,10 +636,18 @@ def make_lightcurve_plot(
                     yerr=[dflightcurve["luminosity_errminus_erg/s"], dflightcurve["luminosity_errplus_erg/s"]],
                     fmt="o",
                     capsize=3,
-                    **plotkwargs,
+                    label=lightcurvelabel,
+                    color=color,
+                    zorder=0,
                 )
             else:
-                axis.scatter(dflightcurve["time_days"], dflightcurve["luminosity_erg/s"], **plotkwargs)
+                axis.scatter(
+                    dflightcurve["time_days"],
+                    dflightcurve["luminosity_erg/s"],
+                    label=lightcurvelabel,
+                    color=color,
+                    zorder=0,
+                )
             print(f"====> {lightcurvelabel}")
             reflightcurveindex += 1
             plottedsomething = True
