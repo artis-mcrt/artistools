@@ -360,10 +360,10 @@ def plot_filter_functions(axis: mplax.Axes) -> None:
             sep=r"\s+",
             header=None,
             skiprows=4,
-            names=["lamba_angstroms", "flux_normalised"],
+            names=["lambda_angstroms", "flux_normalised"],
         )
         filter_data.plot(
-            x="lamba_angstroms", y="flux_normalised", ax=axis, label=filter_name, color=colours[index], alpha=0.3
+            x="lambda_angstroms", y="flux_normalised", ax=axis, label=filter_name, color=colours[index], alpha=0.3
         )
 
 
@@ -1147,10 +1147,12 @@ def make_contrib_plot(
                         list_lambda[v].append(c_ang_s / packet.nu_rf)
                         lists_y[v].append(packet.true_emission_velocity / 1e5)
                 else:
-                    k: tuple[int, int] = (packet["em_timestep"], packet["emtrue_modelgridindex"])
-                    if k in estimators:
+                    ts, mg = packet["em_timestep"], packet["emtrue_modelgridindex"]
+                    assert isinstance(ts, int)
+                    assert isinstance(mg, int)
+                    if (ts, mg) in estimators:
                         list_lambda[v].append(c_ang_s / packet.nu_rf)
-                        lists_y[v].append(estimators[k][v])
+                        lists_y[v].append(estimators[ts, mg][v])
 
     for ax, yvar in zip(axes, densityplotyvars, strict=False):
         # ax.set_ylabel(r'velocity [{} km/s]')

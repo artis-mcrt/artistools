@@ -155,7 +155,10 @@ def get_fullspecfittedfield(
     nu_lower = 2.99792458e18 / xmin
     nu_upper = 2.99792458e18 / xmax
     arr_nu_hz = np.linspace(nu_lower, nu_upper, num=500, dtype=np.float64)
-    arr_j_nu = j_nu_dbb(arr_nu_hz, row["W"], row["T_R"])
+    W, T_R = row["W"], row["T_R"]
+    assert isinstance(W, float)
+    assert isinstance(T_R, float)
+    arr_j_nu = j_nu_dbb(arr_nu_hz, W, T_R)
 
     arr_lambda = 2.99792458e18 / arr_nu_hz
     arr_j_lambda = arr_j_nu * arr_nu_hz / arr_lambda
@@ -202,7 +205,10 @@ def get_fitted_field(
 
         if row["W"] >= 0:
             arr_nu_hz_bin = np.linspace(nu_lower, nu_upper, num=200)
-            arr_j_nu = j_nu_dbb(arr_nu_hz_bin, row["W"], row["T_R"])
+            W, T_R = row["W"], row["T_R"]
+            assert isinstance(W, float)
+            assert isinstance(T_R, float)
+            arr_j_nu = j_nu_dbb(arr_nu_hz_bin, W, T_R)
 
             arr_lambda_bin = 2.99792458e18 / arr_nu_hz_bin
             arr_j_lambda_bin = arr_j_nu * arr_nu_hz_bin / arr_lambda_bin
@@ -432,11 +438,7 @@ def plot_celltimestep(
 
 
 def plot_bin_fitted_field_evolution(
-    axis: mplax.Axes,
-    radfielddata: pd.DataFrame,
-    nu_line: float,
-    modelgridindex: int,
-    **plotkwargs: dict[str, t.Any | None],
+    axis: mplax.Axes, radfielddata: pd.DataFrame, nu_line: float, modelgridindex: int, **plotkwargs: t.Any
 ) -> None:
     bin_num, _nu_lower, _nu_upper = select_bin(radfielddata, nu=nu_line, modelgridindex=modelgridindex)
     # print(f"Selected bin_num {bin_num} to get a binned radiation field estimator")
@@ -453,10 +455,9 @@ def plot_bin_fitted_field_evolution(
     )
     lambda_angstroms = 2.99792458e18 / nu_line
 
-    radfielddataselected.plot(
-        x="timestep",
-        y="Jb_lambda_at_line",
-        ax=axis,
+    axis.plot(
+        radfielddataselected["timestep"],
+        radfielddataselected["Jb_lambda_at_line"],
         label=f"Fitted field from bin at {lambda_angstroms:.1f} Å",
         **plotkwargs,
     )

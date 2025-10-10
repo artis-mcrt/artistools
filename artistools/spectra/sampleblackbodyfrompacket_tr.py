@@ -122,6 +122,7 @@ for npacketfile in range(nprocs):
 
         for _df_index, row in dfpackets_timestep.iterrows():
             TR = row["em_TR"]
+            assert isinstance(TR, float)
             # if TR not in [100, 140000]:
 
             nu = sample_planck(TR, nu_lower, nu_upper)
