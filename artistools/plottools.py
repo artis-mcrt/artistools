@@ -89,6 +89,7 @@ def set_axis_properties(ax: Iterable[mplax.Axes] | mplax.Axes, args: argparse.Na
 
     if isinstance(ax, Iterable):
         for axis in ax:
+            assert isinstance(axis, mplax.Axes)
             axis.minorticks_on()
             axis.tick_params(
                 axis="both",

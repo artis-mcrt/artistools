@@ -236,7 +236,9 @@ def get_vpkt_config(modelpath: Path | str) -> dict[str, t.Any]:
             "cos_theta": [float(x) for x in vpkt_txt.readline().split()],
             "phi": [float(x) for x in vpkt_txt.readline().split()],
         }
+        assert isinstance(vpkt_config["cos_theta"], t.Sized)
         assert vpkt_config["nobsdirections"] == len(vpkt_config["cos_theta"])
+        assert isinstance(vpkt_config["phi"], t.Sized)
         assert len(vpkt_config["cos_theta"]) == len(vpkt_config["phi"])
 
         speclistline = vpkt_txt.readline().split()
@@ -1351,6 +1353,7 @@ def get_mpiranklist(
     if isinstance(modelgridindex, Iterable):
         mpiranklist = set()
         for mgi in modelgridindex:
+            assert isinstance(mgi, int)
             if mgi < 0:
                 if only_ranks_withgridcells:
                     return range(

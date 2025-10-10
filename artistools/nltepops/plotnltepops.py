@@ -417,7 +417,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths: list[Path | str], ar
     )
 
     ion_data = adata.query("Z == @Z and ion_stage == @ion_stage").iloc[0]
-    levelconfignames = ion_data["levels"]["levelname"]
+    levelconfignames = ion_data["levels"]["levelname"].to_list()
     # levelconfignames = [at.nltepops.texifyconfiguration(name) for name in levelconfignames]
 
     if args.timedayslist:
