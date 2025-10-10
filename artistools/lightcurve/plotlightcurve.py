@@ -520,7 +520,7 @@ def plot_artis_lightcurve(
             axis.plot(lcdata_before_valid["time"], lcdata_before_valid[ycolumn], **plotkwargs_invalidrange)
             axis.plot(lcdata_after_valid["time"], lcdata_after_valid[ycolumn], **plotkwargs_invalidrange)
         elif lcdata_valid.is_empty():
-            print("  WARNING: No data points in valid range")
+            print(" WARNING: No data points in valid range")
 
         from scipy import integrate
 
