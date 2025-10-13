@@ -48,7 +48,7 @@ jobs:
                       cibw-rust-target-${{ runner.os }}${{ runner.arch }}-python3.${{ matrix.python-minor-version }}-
                       cibw-rust-target-${{ runner.os }}${{ runner.arch }}-
 
-            - uses: actions/setup-python@v5
+            - uses: actions/setup-python@v6
               with:
                   python-version: 3.${{ matrix.python-minor-version }}
                   allow-prereleases: true
@@ -75,7 +75,7 @@ jobs:
               with:
                   fetch-depth: 0
 
-            - uses: actions/setup-python@v5
+            - uses: actions/setup-python@v6
 
             - name: Install dependencies
               run: |
