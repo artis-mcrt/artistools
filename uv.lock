@@ -157,11 +157,11 @@ wheels = [
 
 [[package]]
 name = "astropy-iers-data"
-version = "0.2025.10.6.0.35.25"
+version = "0.2025.10.13.0.37.17"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/c8/d2/7a41e765d318449d00a42a9bc29a1c8c681709615adb6555ae62c326074b/astropy_iers_data-0.2025.10.6.0.35.25.tar.gz", hash = "sha256:60a0a8ff69dcb2d3470071f444c58685b06299c48214349a1a0ce2d44e178f76", size = 1910387, upload-time = "2025-10-06T00:36:05.541Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/af/0b/330240e26e2b9c15852b53b77420940c98a50fe8fc1bb4574a301b1b387a/astropy_iers_data-0.2025.10.13.0.37.17.tar.gz", hash = "sha256:c1ecc6a8fc407e2388a309490a28bddfea6e049269ce490607218dab97cd0df6", size = 1911429, upload-time = "2025-10-13T00:37:57.348Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c5/38/be921eaf8fc67333fd2c2657ea965103ccc4050c29a66d5fd5f3db881c0f/astropy_iers_data-0.2025.10.6.0.35.25-py3-none-any.whl", hash = "sha256:b6f572ee3ae4e02e4ae377229b533ed89d6f8eb027ae31e380cbc8096735ba49", size = 1966052, upload-time = "2025-10-06T00:36:03.945Z" },
+    { url = "https://files.pythonhosted.org/packages/ae/ba/38b9767b35ee85a3f793140ea43757c0a0a2de093117f6c227e7d1add4df/astropy_iers_data-0.2025.10.13.0.37.17-py3-none-any.whl", hash = "sha256:e22cd7e7d00383988b08a7fcc0b77b9b3e9cd22a061103405c3d6efdd08a6e5e", size = 1967221, upload-time = "2025-10-13T00:37:55.585Z" },
 ]
 
 [[package]]
@@ -605,11 +605,11 @@ wheels = [
 
 [[package]]
 name = "idna"
-version = "3.10"
+version = "3.11"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/f1/70/7703c29685631f5a7590aa73f1f1d3fa9a380e654b86af429e0934a32f7d/idna-3.10.tar.gz", hash = "sha256:12f65c9b470abda6dc35cf8e63cc574b1c52b11df2c86030af0ac09b01b13ea9", size = 190490, upload-time = "2024-09-15T18:07:39.745Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/6f/6d/0703ccc57f3a7233505399edb88de3cbd678da106337b9fcde432b65ed60/idna-3.11.tar.gz", hash = "sha256:795dafcc9c04ed0c1fb032c2aa73654d8e8c5023a7df64a53f39190ada629902", size = 194582, upload-time = "2025-10-12T14:55:20.501Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/76/c6/c88e154df9c4e1a2a66ccf0005a88dfb2650c1dffb6f5ce603dfbd452ce3/idna-3.10-py3-none-any.whl", hash = "sha256:946d195a0d259cbba61165e88e65941f16e9b36ea6ddb97f00452bae8b1287d3", size = 70442, upload-time = "2024-09-15T18:07:37.964Z" },
+    { url = "https://files.pythonhosted.org/packages/0e/61/66938bbb5fc52dbdf84594873d5b51fb1f7c7794e9c0f5bd885f30bc507b/idna-3.11-py3-none-any.whl", hash = "sha256:771a87f49d9defaf64091e6e6fe9c18d4833f140bd19464795bc32d966ca37ea", size = 71008, upload-time = "2025-10-12T14:55:18.883Z" },
 ]
 
 [[package]]
@@ -863,11 +863,11 @@ wheels = [
 
 [[package]]
 name = "narwhals"
-version = "2.7.0"
+version = "2.8.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/87/76/9ca8f4d03f02b8289807d0c91eeb01fa6b7fdd6273769d5bd1f94773b40b/narwhals-2.7.0.tar.gz", hash = "sha256:e3fff7f1610fd3318ede78c969bc5954ce710d585eefdb689586fb69da3da43c", size = 569315, upload-time = "2025-10-06T09:39:37.69Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ae/05/79a5b5a795f36c1aaa002d194c1ef71e5d95f7e1900155bbfde734815ab9/narwhals-2.8.0.tar.gz", hash = "sha256:52e0b22d54718264ae703bd9293af53b04abc995a1414908c3b807ba8c913858", size = 574277, upload-time = "2025-10-13T08:44:28.81Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/74/0d/bc630dfd34ad2150d40f9392e94d3803980e71a47e10a709ce9bfcd40ffe/narwhals-2.7.0-py3-none-any.whl", hash = "sha256:010791aa0cee86d90bf2b658264aaec3eeea34fb4ddf2e83746ea4940bcffae3", size = 412767, upload-time = "2025-10-06T09:39:35.564Z" },
+    { url = "https://files.pythonhosted.org/packages/1d/86/ac808ecb94322a3f1ea31627d13ab3e50dd4333564d711e0e481ad0f4586/narwhals-2.8.0-py3-none-any.whl", hash = "sha256:6304856676ba4a79fd34148bda63aed8060dd6edb1227edf3659ce5e091de73c", size = 415852, upload-time = "2025-10-13T08:44:25.421Z" },
 ]
 
 [[package]]
