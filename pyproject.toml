@@ -405,6 +405,14 @@ deprecated = "ignore"
 [tool.ty.src]
 exclude = ["artistools/inputmodel/fromcmfgen/rd_cmfgen.py", ".venv/**"]
 
+[tool.uv.sources]
+pyarrow = { index = "scientific-python-nightly" }
+
+[[tool.uv.index]]
+name = "scientific-python-nightly"
+url = "https://pypi.anaconda.org/scientific-python-nightly-wheels/simple/"
+explicit = true
+
 [tool.vulture]
 exclude = [".*", "build/", ".eggs/"]
 paths = ["artistools"]
