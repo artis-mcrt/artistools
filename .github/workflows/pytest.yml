@@ -146,14 +146,6 @@ jobs:
                       cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python3.${{ matrix.python-minor-version }}-
                       cargo-rust-target-${{ runner.os }}${{ runner.arch }}-
 
-            - name: install apache-arrow
-              if: matrix.os.name == 'macos' && startsWith(matrix.python-minor-version, '14')
-              run: |
-                  brew update
-                  brew install apache-arrow
-                  echo "ARROW_HOME=$(brew --prefix apache-arrow)" >> $GITHUB_ENV
-                  uv pip install pyarrow
-
             - name: Install artistools (no dev deps)
               run: |
                   rustup update stable
