@@ -139,8 +139,8 @@ def get_rankbatch_parquetfile(
         pldf_batch.write_parquet(
             partialparquetfilepath,
             compression="zstd",
-            statistics="full",
-            compression_level=8,
+            compression_level=10,
+            statistics=True,
             metadata={
                 "creationtimeutc": str(datetime.datetime.now(datetime.UTC)),
                 "textsource_mtime": str(textsource_mtime),
