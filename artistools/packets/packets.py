@@ -537,7 +537,7 @@ def get_rankbatch_parquetfile(
         tempparquetfilepath = Path(
             tempfile.mkstemp(dir=packetdir, prefix=f"{parquetfilename}.partial", suffix=".tmp")[1]
         )
-        pldf_batch.lazy().sink_parquet(tempparquetfilepath, compression="zstd", statistics="full", compression_level=12)
+        pldf_batch.lazy().sink_parquet(tempparquetfilepath, compression="zstd", compression_level=12, statistics=True)
         if parquetfilepath.exists():
             tempparquetfilepath.unlink()
         else:

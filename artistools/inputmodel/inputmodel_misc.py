@@ -429,6 +429,7 @@ def get_modeldata(
             dfmodel.collect().write_parquet(
                 partialparquetfilepath,
                 compression="zstd",
+                compression_level=8,
                 statistics="full",
                 metadata={
                     "creationtimeutc": str(datetime.datetime.now(datetime.UTC)),
@@ -1087,7 +1088,9 @@ def get_initelemabundances(modelpath: Path = Path(), printwarningsonly: bool = F
             partialparquetfilepath = Path(
                 tempfile.mkstemp(dir=modelpath, prefix=f"{parquetfilepath.name}.partial", suffix=".tmp")[1]
             )
-            abundancedata.write_parquet(partialparquetfilepath, compression="zstd", statistics=True)
+            abundancedata.write_parquet(
+                partialparquetfilepath, compression="zstd", compression_level=8, statistics=True
+            )
             if parquetfilepath.exists():
                 partialparquetfilepath.unlink()
             else:

@@ -1195,8 +1195,8 @@ def get_linelist_pldf(modelpath: Path | str, get_ion_str: bool = False) -> pl.La
             .with_row_index(name="lineindex")
             .with_columns(cs.integer().cast(pl.Int32), cs.float().cast(pl.Float32))
         )
-        pldf.write_parquet(parquetfile, compression="zstd")
-        print(f"open {parquetfile}")
+        pldf.write_parquet(parquetfile, compression="zstd", compression_level=8, statistics=True)
+        print(f"Wrote {parquetfile}")
     else:
         print(f"Reading {parquetfile}")
 
