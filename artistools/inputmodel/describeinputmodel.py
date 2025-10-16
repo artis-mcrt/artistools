@@ -268,13 +268,17 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
     def sortkey(tup_species_mass_g: tuple[str, float]) -> tuple[int, int, str] | tuple[float, str]:
         species, mass_g = tup_species_mass_g
         assert args is not None
-        if args.sort == "z":
+        if args.sort in {"z", "a"}:
             # for a species like C_isosum, strmassnumber is "", so use -1 to sort it first
             strmassnumber = species.lstrip("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz").rstrip(
                 "_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
             )
             massnumber = int(strmassnumber) if strmassnumber else -1
-            return (at.get_atomic_number(species), massnumber, species)
+            if args.sort == "z":
+                return (at.get_atomic_number(species), massnumber, species)
+
+            if args.sort == "a":
+                return (massnumber, at.get_atomic_number(species), species)
 
         return (-mass_g, species)
 
@@ -325,9 +329,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-sort",
         default="z",
-        choices=["z", "mass"],
-        nargs="+",
-        help="Sort order for abundances (z = atomic number, mass = mass fraction)",
+        choices=["z", "a", "mass"],
+        help="Sort order for abundances (z = atomic number, a = mass number, mass = total global mass)",
     )
 
 
