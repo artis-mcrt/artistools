@@ -22,9 +22,8 @@ git clone https://github.com/artis-mcrt/artistools.git
 cd artistools
 ```
 
-To create a [uv](https://docs.astral.sh/uv/getting-started/installation/) virtual environment with locked dependency versions, run:
+To make the artistools command available using an isolated [uv](https://docs.astral.sh/uv/getting-started/installation/) virtual environment, run:
 ```sh
-uv sync --extra extras --frozen
 uv tool install --editable .[extras]
 prek install
 ```
