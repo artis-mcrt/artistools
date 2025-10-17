@@ -668,7 +668,13 @@ def make_lightcurve_plot(
                             modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type=escape_type
                         )
                         top_nuclides = (
-                            dfpackets.group_by("pellet_nucindex")
+                            at.misc.df_filter_minmax_bounded(
+                                dfpackets.with_columns(tdecay_d=pl.col("tdecay") / 86400),
+                                "tdecay_d" if args.use_pellet_decay_time else "t_arrive_d",
+                                args.timemin,
+                                args.timemax,
+                            )
+                            .group_by("pellet_nucindex")
                             .agg(pl.sum("e_rf").alias("e_rf_sum"))
                             .top_k(by="e_rf_sum", k=topnucs)
                             .join(dfnuclides, on="pellet_nucindex", how="left")
