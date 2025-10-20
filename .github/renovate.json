@@ -4,10 +4,6 @@
   "extends": [
     "config:recommended"
   ],
-  "github-actions": {
-    "automerge": true,
-    "enabled": true
-  },
   "labels": [
     "dependencies"
   ],
