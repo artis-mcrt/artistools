@@ -512,7 +512,7 @@ def plot_multi_ion_series(
             # elsym = at.get_elsymbol(atomic_number)
             ax.set_ylabel(r"X$_{i}$/X$_{\rm element}$")
         elif args.poptype == "totalpop":
-            ax.set_ylabel(r"X$_{i}$/X$_{rm tot}$")
+            ax.set_ylabel(r"X$_{i}$/X$_{\rm tot}$")
         elif args.poptype == "radialdensity":
             ax.set_ylabel(r"Radial density dN/dr $\left[\rm{cm}^{-1}\right]$")
         elif args.poptype == "cylradialdensity":
