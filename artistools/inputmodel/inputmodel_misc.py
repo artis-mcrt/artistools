@@ -401,9 +401,9 @@ def get_modeldata(
             if not printwarningsonly:
                 print(f"Reading model table from {parquetfilepath}")
             pqmetadata = pl.read_parquet_metadata(parquetfilepath)
-            if pqmetadata["textsource_mtime"] != str(textsource_mtime):
+            if pqmetadata.get("textsource_mtime") != str(textsource_mtime):
                 print(
-                    f"Modification time of text source ({textsource_mtime!s}) does not match parquet metadata ({pqmetadata['textsource_mtime']!s}). Will regenerate."
+                    f"Modification time of text source ({textsource_mtime!s}) does not match parquet metadata ({pqmetadata.get('textsource_mtime')!s}). Will regenerate."
                 )
             else:
                 try:
