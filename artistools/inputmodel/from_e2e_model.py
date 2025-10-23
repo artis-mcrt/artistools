@@ -598,7 +598,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("-npz", required=True, help="Path to the model npz file")
 
-    parser.add_argument("-iso", required=True, help="Path to the nuclide information npy (!) file")
+    parser.add_argument(
+        "-iso",
+        default=None,
+        help="Path to the nuclide information npy file. If not provided, will be assumed to be [npz_path]/iso_table.npy",
+    )
 
     parser.add_argument(
         "-vmax", type=float, default=0.5, help="Maximum one-direction velocity in units of c the ARTIS model shall have"
@@ -634,6 +638,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         at.set_args_from_dict(parser, kwargs)
         argcomplete.autocomplete(parser)
         args = parser.parse_args([] if kwargs else argsraw)
+    if args.iso is None:
+        args.iso = Path(args.npz).parent / "iso_table.npy"
 
     numb_cells_ARTIS_radial = int(args.ngridrcyl)
     numb_cells_ARTIS_z = int(args.ngridz)
