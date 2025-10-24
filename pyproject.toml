@@ -406,7 +406,7 @@ deprecated = "ignore"
 exclude = ["artistools/inputmodel/fromcmfgen/rd_cmfgen.py", ".venv/**"]
 
 [tool.uv.sources]
-pyarrow = { index = "scientific-python-nightly" }
+# pyarrow = { index = "scientific-python-nightly" }
 
 [[tool.uv.index]]
 name = "scientific-python-nightly"
