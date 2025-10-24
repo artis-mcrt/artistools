@@ -73,6 +73,7 @@ def get_grid(
     nodynej: bool,
     nohmns: bool,
     notorus: bool,
+    no_nu_trapping: bool,
     outputpath: Path,
 ) -> tuple[
     npt.NDArray[np.floating],
@@ -135,6 +136,9 @@ def get_grid(
         # exclude torus ejecta
         mass_arr[np.where(state == 1)] = 1e-30
         qdot_arr[np.where(state == 1)] = 1e-30
+
+    hnuloss_arr = dat.f.hnuloss.copy() if no_nu_trapping else np.zeros_like(qdot_arr, dtype=np.float64)
+
     for i1 in nodid:  # index of Oli's original list
         i += 1  # index in the new list accounting for unprocessed trajs.
         i2 = list(dynidall).index(i1)  # index in Zeweis extended list of trajs.
@@ -142,7 +146,7 @@ def get_grid(
         # no multiplication with mass to keep it a specific energy release
         time_by_t_snap = time_s / tsnap
         qtraj[i] = np.trapezoid(
-            time_by_t_snap[starting_idx:closest_idx] * qdot_arr[i2][starting_idx:closest_idx],
+            time_by_t_snap[starting_idx:closest_idx] * (qdot_arr[i2] + hnuloss_arr[i2])[starting_idx:closest_idx],
             time_s[starting_idx:closest_idx],
         )
         tot_Q_rel += mtraj[i] * qtraj[i]
@@ -153,17 +157,21 @@ def get_grid(
         # exclude dynamical ejecta
         mass_arr[np.where(state == -1)] = 1e-30
         qdot_arr[np.where(state == -1)] = 1e-30
+        hnuloss_arr[np.where(state == -1)] = 1e-30
     for i1 in dynid:
         i += 1  # index in the new list accounting for unprocessed trajs.
         i3 = np.where(dynidall == i1)[0]  # indices in Zeweis extended list of trajs.
         mtraj[i] = np.sum(mass_arr[i3]) * msol
         time_by_t_snap = time_s / tsnap
         qtraj[i] = np.trapezoid(
-            time_by_t_snap[starting_idx:closest_idx] * np.sum(qdot_arr[i3], axis=0)[starting_idx:closest_idx],
+            time_by_t_snap[starting_idx:closest_idx]
+            * np.sum((qdot_arr[i3] + hnuloss_arr[i3]), axis=0)[starting_idx:closest_idx],
             time_s[starting_idx:closest_idx],
         )
         tot_Q_rel += mtraj[i] * qtraj[i]
+
     print(f"tot_Q_rel: {tot_Q_rel}")
+
     i = -1
     # ... non-dynamical ejecta
     for i1 in nodid:  # index of Oli's original list
@@ -616,6 +624,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-ngridz", type=int, default=50, help="Number of cells in z direction the ARTIS model shall have"
     )
 
+    parser.add_argument("--nonutrapping", action="store_true", help="Exclude neutrino energy from the snapshot energy")
+
     parser.add_argument("--nodyn", action="store_true", help="Exclude dynamical ejecta from the model")
 
     parser.add_argument("--nohmns", action="store_true", help="Exclude neutrino wind ejecta from the model")
@@ -652,7 +662,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.nodyn,
         args.nohmns,
         args.notorus,
-        args.outputpath,
+        no_nu_trapping=args.nonutrapping,
+        outputpath=args.outputpath,
     )
 
     create_ARTIS_modelfile(
