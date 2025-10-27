@@ -101,7 +101,7 @@ jobs:
             id-token: write
         if: startsWith(github.ref , 'refs/tags/v') != true && github.event_name == 'workflow_dispatch'
         steps:
-            - uses: actions/download-artifact@v5
+            - uses: actions/download-artifact@v6
               with:
                   pattern: cibw-*
                   path: dist
@@ -125,7 +125,7 @@ jobs:
             id-token: write
         if: startsWith(github.ref, 'refs/tags/v')
         steps:
-            - uses: actions/download-artifact@v5
+            - uses: actions/download-artifact@v6
               with:
                   pattern: cibw-*
                   path: dist
