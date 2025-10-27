@@ -190,7 +190,7 @@ jobs:
                   verbose: true
 
             - name: Upload output files
-              uses: actions/upload-artifact@v4
+              uses: actions/upload-artifact@v5
               with:
                   name: testoutput-${{ matrix.os.name }}-${{ matrix.os.version }}-py3${{ matrix.python-minor-version }}
                   path: tests/output/
