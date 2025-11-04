@@ -46,7 +46,7 @@ def plot_qdot(
         print("Can't do qdot plot because no deposition.out file")
         return
 
-    heatcols = ["hbeta", "halpha", "hbfis", "hspof", "Ye", "Qdot"]
+    heatcols = ["hbeta", "halpha", "hspof", "Ye", "Qdot"]
 
     arr_heat = {col: np.zeros_like(arr_time_gsi_days) for col in heatcols}
     series_mass_g = lzdfmodel.select("mass_g").collect().get_column("mass_g")
@@ -299,7 +299,7 @@ def plot_cell_abund_evolution(
 
 def get_particledata(
     arr_time_s: Sequence[float] | npt.NDArray[np.floating[t.Any]],
-    arr_strnuc_z_n: list[tuple[str, int, int]],
+    arr_strnuc_z_n: list[tuple[str, int, int | None]],
     traj_root: Path,
     particleid: int,
     verbose: bool = False,
@@ -334,8 +334,8 @@ def get_particledata(
     with get_tar_member_extracted_path(
         traj_root=traj_root, particleid=particleid, memberfilename="./Run_rprocess/heating.dat"
     ).open(encoding="utf-8") as f:
-        dfheating = pd.read_csv(f, sep=r"\s+", usecols=["#count", "time/s", "hbeta", "halpha", "hbfis", "hspof"])
-        heatcols = ["hbeta", "halpha", "hbfis", "hspof"]
+        dfheating = pd.read_csv(f, sep=r"\s+", usecols=["#count", "time/s", "hbeta", "halpha", "hspof"])
+        heatcols = ["hbeta", "halpha", "hspof"]
 
         heatrates_in: dict[str, list[float]] = {col: [] for col in heatcols}
         arr_time_s_source = []
@@ -383,7 +383,15 @@ def get_particledata(
                 particleid, traj_root=traj_root, nts=nts
             )
             for strnuc, Z, N in arr_strnuc_z_n:
-                arr_massfracs[strnuc].append(traj_nuc_abund.get((Z, N), 0.0))
+                if N is None:
+                    # sum over all isotopes of this element
+                    elabund = 0.0
+                    for key, isoabund in traj_nuc_abund.items():
+                        if isinstance(key, tuple) and key[0] == Z:
+                            elabund += isoabund
+                    arr_massfracs[strnuc].append(elabund)
+                else:
+                    arr_massfracs[strnuc].append(traj_nuc_abund.get((Z, N), 0.0))
 
         for strnuc, _, _ in arr_strnuc_z_n:
             massfracs_interp = np.interp(arr_time_s, arr_traj_time_s, arr_massfracs[strnuc])
@@ -396,7 +404,7 @@ def plot_qdot_abund_modelcells(
     modelpath: Path,
     merger_root: Path,
     mgiplotlist: Sequence[int],
-    arr_el_a: list[tuple[str, int]],
+    arr_el_a: list[tuple[str, int | None]],
     xmax: float | None = None,
 ) -> None:
     # default values, because early model.txt didn't specify this
@@ -420,19 +428,22 @@ def plot_qdot_abund_modelcells(
     print(f"model.txt griddata_root: {griddata_root}")
     assert traj_root.is_dir()
 
-    arr_el, arr_a = zip(*arr_el_a, strict=False)
-    arr_strnuc: list[str] = [f"{el}{a}" for el, a in arr_el_a]
+    arr_el, arr_a = zip(*arr_el_a, strict=True)
+    arr_strnuc: list[str] = [f"{el}{a}" if a is not None else el for el, a in arr_el_a]
     arr_z = [at.get_atomic_number(el) for el in arr_el]
-    arr_n = [a - z for z, a in zip(arr_z, arr_a, strict=False)]
+    arr_n = [a - z if a is not None else None for z, a in zip(arr_z, arr_a, strict=True)]
     arr_strnuc_z_n = list(zip(arr_strnuc, arr_z, arr_n, strict=True))
 
     # arr_z = [at.get_atomic_number(el) for el in arr_el]
 
-    lzdfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath, derived_cols=["mass_g", "rho", "logrho", "volume"])
+    lzdfmodel, modelmeta = at.inputmodel.get_modeldata(
+        modelpath, derived_cols=["mass_g", "rho", "logrho", "volume"], get_elemabundances=True
+    )
     npts_model = modelmeta["npts_model"]
 
     # these factors correct for missing mass due to skipped shells, and volume error due to Cartesian grid map
-    correction_factors = {}
+    # it is important to follow the same method as artis to get the correct mass fractions
+    correction_factors: dict[str, float] = {}
     assoc_cells: dict[int, list[int]] = {}
     mgi_of_propcells: dict[int, int] = {}
     try:
@@ -451,8 +462,6 @@ def plot_qdot_abund_modelcells(
         direct_model_propgrid_map = True
 
     if direct_model_propgrid_map:
-        correction_factors = dict.fromkeys(arr_strnuc, 1.0)
-
         lzdfmodel = lzdfmodel.with_columns(n_assoc_cells=pl.lit(1.0))
     else:
         ncoordgridx = math.ceil(np.cbrt(max(mgi_of_propcells.keys()) + 1))
@@ -471,12 +480,20 @@ def plot_qdot_abund_modelcells(
         # for spherical models, ARTIS mapping to a cubic grid introduces some errors in the cell volumes
         lzdfmodel = lzdfmodel.with_columns(mass_g_mapped=10 ** pl.col("logrho") * wid_init**3 * pl.col("n_assoc_cells"))
         for strnuc in arr_strnuc:
-            corr = (
-                lzdfmodel.select(pl.col(f"X_{strnuc}") * pl.col("mass_g_mapped")).sum().collect().item()
-                / lzdfmodel.select(pl.col(f"X_{strnuc}") * pl.col("mass_g")).sum().collect().item()
+            # could be a nuclide like "Sr89" or an element like "Sr"
+            nucisocols = (
+                [f"X_{strnuc}"]
+                if strnuc[-1].isdigit()
+                else [c for c in lzdfmodel.collect_schema().names() if c.startswith(f"X_{strnuc}")]
             )
-            # print(strnuc, corr)
-            correction_factors[strnuc] = corr
+            for nucisocol in nucisocols:
+                correction_factors[nucisocol.removeprefix("X_")] = (
+                    lzdfmodel.select(
+                        pl.col(nucisocol).dot(pl.col("mass_g_mapped")) / pl.col(nucisocol).dot(pl.col("mass_g"))
+                    )
+                    .collect()
+                    .item()
+                )
 
     tmids = at.get_timestep_times(modelpath, loc="mid")
     MH = 1.67352e-24  # g
@@ -486,7 +503,9 @@ def plot_qdot_abund_modelcells(
 
     with contextlib.suppress(FileNotFoundError):
         get_mgi_list = tuple(mgiplotlist)  # all cells if Ye is calculated
-        estimators_lazy = at.estimators.scan_estimators(modelpath=modelpath, modelgridindex=get_mgi_list)
+        estimators_lazy = at.estimators.scan_estimators(
+            modelpath=modelpath, modelgridindex=get_mgi_list, join_modeldata=True
+        )
         assert estimators_lazy is not None
         estimators_lazy = estimators_lazy.filter(pl.col("timestep") > 0)
 
@@ -494,18 +513,11 @@ def plot_qdot_abund_modelcells(
         estimators_lazy = estimators_lazy.filter(pl.col("modelgridindex").is_in(mgiplotlist))
 
         estimators_lazy = estimators_lazy.select(
-            "modelgridindex", "timestep", cs.by_name([f"nniso_{strnuc}" for strnuc in arr_strnuc], require_all=False)
-        )
-
-        estimators_lazy = (
-            estimators_lazy.join(
-                lzdfmodel.select(
-                    "modelgridindex", "rho", cs.by_name([f"X_{strnuc}" for strnuc in arr_strnuc], require_all=False)
-                ),
-                on="modelgridindex",
-            )
-            .collect()
-            .lazy()
+            "modelgridindex",
+            "timestep",
+            cs.starts_with(*[f"nniso_{strnuc}" for strnuc in arr_strnuc]),
+            "rho",
+            cs.starts_with(*[f"init_X_{strnuc}" for strnuc in arr_strnuc]),
         )
 
         estimators_lazy = estimators_lazy.join(
@@ -516,33 +528,37 @@ def plot_qdot_abund_modelcells(
             how="left",
         )
 
-        estimators_lazy = estimators_lazy.with_columns(
-            rho_init=pl.col("rho"), rho=pl.col("rho") * (modelmeta["t_model_init_days"] / pl.col("tmid_days")) ** 3
-        )
-        # assert False
-
-        # estimators_lazy = estimators_lazy.with_columns(
-        #     rho=pl.col("rho") * (modelmeta["t_model_init_days"] / pl.col("tmid_days")) ** 3
-        # )
-
         estimators_lazy = estimators_lazy.sort(by=["timestep", "modelgridindex"])
         estimators = estimators_lazy.collect()
 
-        for (nts, mgi), estimtsmgsi in estimators.group_by(["timestep", "modelgridindex"], maintain_order=True):
+        for (nts, mgi), estimtsmgi in estimators.group_by(["timestep", "modelgridindex"], maintain_order=True):
             assert isinstance(nts, int)
             assert isinstance(mgi, int)
 
             if first_mgi is None:
                 first_mgi = mgi
-            time_days = estimtsmgsi["tmid_days"].item()
+            time_days = estimtsmgi["tmid_days"].item()
 
             if mgi == first_mgi:
                 arr_time_artis_days.append(time_days)
 
-            for strnuc, a in zip(arr_strnuc, arr_a, strict=False):
-                abund = estimtsmgsi[f"nniso_{strnuc}"].item()
-                massfrac = abund * a * MH / estimtsmgsi["rho"].item()
-                massfrac += estimtsmgsi[f"X_{strnuc}"].item() * (correction_factors[strnuc] - 1.0)
+            for strnuc, a in zip(arr_strnuc, arr_a, strict=True):
+                if a is not None:
+                    abund = estimtsmgi[f"nniso_{strnuc}"].item()
+                    massfrac = abund * a * MH / estimtsmgi["rho"].item()
+                    if f"init_X_{strnuc}" in estimtsmgi.columns:
+                        massfrac += estimtsmgi[f"init_X_{strnuc}"].item() * (correction_factors[strnuc] - 1.0)
+                else:
+                    massfrac = 0.0
+                    for col in estimtsmgi.columns:
+                        if col.startswith(f"nniso_{strnuc}") and col.removeprefix(f"nniso_{strnuc}").isdigit():
+                            abund = estimtsmgi[col].item()
+                            a_iso = int(col.removeprefix(f"nniso_{strnuc}"))
+                            massfrac += abund * a_iso * MH / estimtsmgi["rho"].item()
+                            if f"init_X_{strnuc}{a_iso}" in estimtsmgi.columns:
+                                massfrac += estimtsmgi[f"init_X_{strnuc}{a_iso}"].item() * (
+                                    correction_factors.get(f"{strnuc}{a_iso}", 1.0) - 1.0
+                                )
 
                 if mgi not in arr_abund_artis:
                     arr_abund_artis[mgi] = {}
@@ -575,7 +591,7 @@ def plot_qdot_abund_modelcells(
 
     mgiplotlistplus1 = [mgi + 1 for mgi in mgiplotlist]
     list_particleids_getabund = dfpartcontrib.filter(pl.col("cellindex").is_in(mgiplotlistplus1))["particleid"].unique()
-    fworkerwithabund = partial(get_particledata, arr_time_gsi_s_incpremerger, arr_strnuc_z_n, traj_root, verbose=True)
+    fworkerwithabund = partial(get_particledata, arr_time_gsi_s_incpremerger, arr_strnuc_z_n, traj_root, verbose=False)
 
     print(f"Reading trajectories from {traj_root}")
     print(f"Reading Qdot/thermo and abundance data for {len(list_particleids_getabund)} particles")
@@ -668,6 +684,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     arr_el_a = [
         ("He", 4),
         # ("Ga", 72),
+        ("Sr", None),
+        ("Y", None),
+        ("Zr", None),
         ("Sr", 89),
         ("Sr", 91),
         ("Sr", 92),
@@ -702,7 +721,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     #     ("Nd", 147),
     # ]
 
-    arr_el_a.sort(key=lambda x: (at.get_atomic_number(x[0]), x[1]))
+    arr_el_a.sort(key=lambda x: (at.get_atomic_number(x[0]), x[1] if x[1] is not None else -1))
 
     modelpath = Path(args.modelpath)
     if args.modelgridindex is None:
