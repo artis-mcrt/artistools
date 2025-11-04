@@ -129,7 +129,7 @@ def plot_qdot(
         arr_heat["hbeta"],
         linewidth=2,
         color="black",
-        linestyle="dashed",
+        linestyle="solid",
         # marker='x', markersize=8,
         label=r"$\dot{Q}_\beta$ GSI Network",
     )
@@ -139,7 +139,7 @@ def plot_qdot(
         depdata["Qdot_betaminus_ana_erg/s/g"],
         linewidth=2,
         color="red",
-        linestyle="dashed",
+        linestyle="solid",
         # marker='+', markersize=15,
         label=r"$\dot{Q}_\beta$ ARTIS",
     )
@@ -149,7 +149,7 @@ def plot_qdot(
         arr_heat["halpha"],
         linewidth=2,
         color="black",
-        linestyle="dotted",
+        linestyle="dashed",
         # marker='x', markersize=8,
         label=r"$\dot{Q}_\alpha$ GSI Network",
     )
@@ -159,28 +159,18 @@ def plot_qdot(
         depdata["Qdotalpha_ana_erg/s/g"],
         linewidth=2,
         color="red",
-        linestyle="dotted",
+        linestyle="dashed",
         # marker='+', markersize=15,
         label=r"$\dot{Q}_\alpha$ ARTIS",
     )
 
     axis.plot(
         arr_time_gsi_days,
-        arr_heat["hbfis"],
-        linewidth=2,
-        linestyle="dotted",
-        # marker='x', markersize=8,
-        # color='black',
-        label=r"$\dot{Q}_{\beta fis}$ GSI Network",
-    )
-
-    axis.plot(
-        arr_time_gsi_days,
         arr_heat["hspof"],
         linewidth=2,
+        color="black",
         linestyle="dotted",
         # marker='x', markersize=8,
-        # color='black',
         label=r"$\dot{Q}_{sponfis}$ GSI Network",
     )
 
