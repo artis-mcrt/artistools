@@ -184,6 +184,17 @@ def plot_qdot(
         label=r"$\dot{Q}_{sponfis}$ GSI Network",
     )
 
+    if "Qdotspfission_ana_erg/s/g" in depdata.columns:
+        axis.plot(
+            depdata["tmid_days"],
+            depdata["Qdotspfission_ana_erg/s/g"],
+            linewidth=2,
+            color="red",
+            linestyle="dotted",
+            # marker='+', markersize=15,
+            label=r"$\dot{Q}_{sponfis}$ ARTIS",
+        )
+
     axis.legend(loc="best", frameon=False, handlelength=1, ncol=3, numpoints=1)
 
     # fig.suptitle(f'{at.get_model_name(modelpath)}', fontsize=10)
@@ -420,7 +431,7 @@ def plot_qdot_abund_modelcells(
     assert traj_root.is_dir()
 
     arr_el, arr_a = zip(*arr_el_a, strict=False)
-    arr_strnuc: list[str] = [el + str(a) for el, a in arr_el_a]
+    arr_strnuc: list[str] = [f"{el}{a}" for el, a in arr_el_a]
     arr_z = [at.get_atomic_number(el) for el in arr_el]
     arr_n = [a - z for z, a in zip(arr_z, arr_a, strict=False)]
     arr_strnuc_z_n = list(zip(arr_strnuc, arr_z, arr_n, strict=True))
@@ -684,6 +695,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         # ('Th', 234),
         # ('Pa', 233),
         # ('U', 235),
+        ("Cf", 254),
     ]
 
     # arr_el_a = [
