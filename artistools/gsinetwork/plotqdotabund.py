@@ -626,7 +626,7 @@ def plot_qdot_abund_modelcells(
             arr_strnuc,
             arr_abund_artis.get(mgi, {}),
             modelmeta["t_model_init_days"],
-            lzdfmodel.select(modelgridindex=mgi).collect(),
+            lzdfmodel.filter(modelgridindex=mgi).collect(),
             mgi=mgi,
             pdfoutpath=Path(modelpath, f"gsinetwork_cell{mgi}-abundance.pdf"),
             xmax=xmax,
