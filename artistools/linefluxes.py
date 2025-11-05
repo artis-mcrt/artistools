@@ -521,26 +521,33 @@ def plot_nne_te_points(
 def plot_nne_te_bars(axis: mplax.Axes, em_log10nne, em_Te, color: t.Any) -> None:  # noqa: ANN001
     if len(em_log10nne) == 0:
         return
-    errorbarkwargs = {
-        "xerr": np.std(em_log10nne),
-        "yerr": np.std(em_Te),
-        "color": "black",
-        "markersize": 10.0,
-        "fillstyle": "full",
-        "capthick": 4,
-        "capsize": 15,
-        "linewidth": 4.0,
-        "alpha": 1.0,
-    }
     # black larger one for an outline
-    axis.errorbar(np.mean(em_log10nne), np.mean(em_Te), **errorbarkwargs)
-    errorbarkwargs["markersize"] -= 2
-    errorbarkwargs["capthick"] -= 2
-    errorbarkwargs["capsize"] -= 1
-    errorbarkwargs["linewidth"] -= 2
-    errorbarkwargs["color"] = color
-    # errorbarkwargs['zorder'] += 0.5
-    axis.errorbar(np.mean(em_log10nne), np.mean(em_Te), **errorbarkwargs)
+    axis.errorbar(
+        np.mean(em_log10nne),
+        np.mean(em_Te),
+        xerr=np.std(em_log10nne),
+        yerr=np.std(em_Te),
+        color="black",
+        markersize=12.0,
+        fillstyle="full",
+        capthick=4,
+        capsize=15,
+        linewidth=4.0,
+        alpha=1.0,
+    )
+    axis.errorbar(
+        np.mean(em_log10nne),
+        np.mean(em_Te),
+        xerr=np.std(em_log10nne),
+        yerr=np.std(em_Te),
+        color=color,
+        markersize=8.0,
+        fillstyle="full",
+        capthick=2,
+        capsize=14,
+        linewidth=2.0,
+        alpha=1.0,
+    )
 
 
 def make_emitting_regions_plot(args: argparse.Namespace) -> None:
