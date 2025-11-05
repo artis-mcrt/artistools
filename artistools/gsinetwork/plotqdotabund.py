@@ -238,7 +238,7 @@ def plot_cell_abund_evolution(
     assert isinstance(axes, np.ndarray)
     axes[-1].set_xlabel("Time [days]")
     axis = axes[0]
-    print("nuc gsi_abund artis_abund")
+    print(f"{'nuc':7s}  gsi_abund artis_abund")
     for axis, strnuc in zip(axes, arr_strnuc, strict=False):
         # print(arr_time_artis_days)
         xmin = min(arr_time_gsi_days) * 0.9
@@ -264,7 +264,9 @@ def plot_cell_abund_evolution(
             color="black",
         )
 
+        print(f"{strnuc:7s}  {arr_abund_gsi[strnuc][0]:.2e}", end="")
         if strnuc in arr_abund_artis:
+            print(f" {arr_abund_artis[strnuc][0]:.2e}")
             axis.plot(
                 arr_time_artis_days,
                 arr_abund_artis[strnuc],
@@ -274,8 +276,9 @@ def plot_cell_abund_evolution(
                 label=f"{strnuc_latex} ARTIS",
                 color="red",
             )
+        else:
+            print(" [no ARTIS data]")
 
-        print(f"{strnuc} {arr_abund_gsi[strnuc][0]:.2e} {arr_abund_artis[strnuc][0]:.2e}")
         if f"X_{strnuc}" in dfcell and not hideinputmodelpoints:
             axis.plot(
                 t_model_init_days,
@@ -289,10 +292,9 @@ def plot_cell_abund_evolution(
 
         axis.legend(loc="best", frameon=False, handlelength=1, ncol=1, numpoints=1)
 
-        at.plottools.autoscale(ax=axis)
+        at.plottools.autoscale(ax=axis, margin=0.25)
 
     # fig.suptitle(f"{at.get_model_name(modelpath)} cell {mgi}", y=0.995, fontsize=10)
-    at.plottools.autoscale(axis, margin=0.05)
     fig.savefig(pdfoutpath, format="pdf")
     print(f"open {pdfoutpath}")
 
@@ -487,6 +489,8 @@ def plot_qdot_abund_modelcells(
                 else [c for c in lzdfmodel.collect_schema().names() if c.startswith(f"X_{strnuc}")]
             )
             for nucisocol in nucisocols:
+                if nucisocol not in lzdfmodel.collect_schema().names():
+                    continue
                 correction_factors[nucisocol.removeprefix("X_")] = (
                     lzdfmodel.select(
                         pl.col(nucisocol).dot(pl.col("mass_g_mapped")) / pl.col(nucisocol).dot(pl.col("mass_g"))
@@ -543,13 +547,8 @@ def plot_qdot_abund_modelcells(
                 arr_time_artis_days.append(time_days)
 
             for strnuc, a in zip(arr_strnuc, arr_a, strict=True):
-                if a is not None:
-                    abund = estimtsmgi[f"nniso_{strnuc}"].item()
-                    massfrac = abund * a * MH / estimtsmgi["rho"].item()
-                    if f"init_X_{strnuc}" in estimtsmgi.columns:
-                        massfrac += estimtsmgi[f"init_X_{strnuc}"].item() * (correction_factors[strnuc] - 1.0)
-                else:
-                    massfrac = 0.0
+                massfrac = 0.0
+                if a is None:
                     for col in estimtsmgi.columns:
                         if col.startswith(f"nniso_{strnuc}") and col.removeprefix(f"nniso_{strnuc}").isdigit():
                             abund = estimtsmgi[col].item()
@@ -559,6 +558,14 @@ def plot_qdot_abund_modelcells(
                                 massfrac += estimtsmgi[f"init_X_{strnuc}{a_iso}"].item() * (
                                     correction_factors.get(f"{strnuc}{a_iso}", 1.0) - 1.0
                                 )
+
+                elif f"nniso_{strnuc}" in estimtsmgi.columns:
+                    abund = estimtsmgi[f"nniso_{strnuc}"].item()
+                    massfrac = abund * a * MH / estimtsmgi["rho"].item()
+                    if f"init_X_{strnuc}" in estimtsmgi.columns:
+                        massfrac += estimtsmgi[f"init_X_{strnuc}"].item() * (correction_factors.get(strnuc, 1.0) - 1.0)
+                else:
+                    continue
 
                 if mgi not in arr_abund_artis:
                     arr_abund_artis[mgi] = {}
@@ -682,44 +689,27 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args = parser.parse_args([] if kwargs else argsraw)
 
     arr_el_a = [
-        ("He", 4),
+        # ("He", 4),
         # ("Ga", 72),
         ("Sr", None),
         ("Y", None),
         ("Zr", None),
+        ("Gd", None),
+        ("La", None),
+        ("Pr", None),
+        ("Ce", None),
         ("Sr", 89),
         ("Sr", 91),
         ("Sr", 92),
+        ("Sr", 104),
         ("Y", 92),
-        ("Y", 93),
-        ("Zr", 93),
-        ("Ba", 140),
-        ("Ce", 141),
-        ("Nd", 147),
-        # ('Rn', 222),
-        # ("Ra", 223),
-        # ("Ra", 224),
-        # ("Ra", 225),
-        # ("Ac", 225),
-        # ('Th', 234),
-        # ('Pa', 233),
-        # ('U', 235),
         ("Cf", 254),
+        ("Rb", 88),
+        ("I", 129),
+        ("I", 132),
+        ("Sb", 128),
+        ("Cu", 66),
     ]
-
-    # arr_el_a = [
-    #     ("He", 4),
-    #     ("Ga", 72),
-    #     ("Sr", 91),
-    #     ("Sr", 92),
-    # ]
-
-    # arr_el_a = [
-    #     ("Y", 92),
-    #     ("Zr", 93),
-    #     ("Ce", 141),
-    #     ("Nd", 147),
-    # ]
 
     arr_el_a.sort(key=lambda x: (at.get_atomic_number(x[0]), x[1] if x[1] is not None else -1))
 
