@@ -317,22 +317,24 @@ def get_particledata(
     if arr_strnuc_z_n:
         nts_list = list(range(nts_min, nts_max + 1))
         nts_count = len(nts_list)
-        arr_traj_time_s = np.zeros(nts_count, dtype=np.float32)
+        arr_traj_time_s = [nstep_timesec[nts] for nts in nts_list]
         arr_massfracs = {strnuc: np.zeros(nts_count, dtype=np.float32) for strnuc, _, _ in arr_strnuc_z_n}
         for i, nts in enumerate(nts_list):
-            arr_traj_time_s[i] = nstep_timesec[nts]
-
-            traj_nuc_abund = at.inputmodel.rprocess_from_trajectory.get_trajectory_abund_q(
-                particleid, traj_root=traj_root, nts=nts
+            dftrajnucabund, _traj_time_s = at.inputmodel.rprocess_from_trajectory.get_trajectory_timestepfile_nuc_abund(
+                traj_root, particleid, f"./Run_rprocess/nz-plane{nts:05d}"
             )
             for strnuc, Z, N in arr_strnuc_z_n:
                 if N is None:
                     # sum over all isotopes of this element
-                    arr_massfracs[strnuc][i] = sum(
-                        isoabund for key, isoabund in traj_nuc_abund.items() if isinstance(key, tuple) and key[0] == Z
+                    arr_massfracs[strnuc][i] = (
+                        dftrajnucabund.filter(pl.col("Z") == Z).select(pl.col("massfrac").sum()).item()
                     )
                 else:
-                    arr_massfracs[strnuc][i] = traj_nuc_abund.get((Z, N), 0.0)
+                    arr_massfracs[strnuc][i] = (
+                        dftrajnucabund.filter((pl.col("Z") == Z) & (pl.col("N") == N))
+                        .select(pl.col("massfrac").sum())
+                        .item()
+                    )
 
         particledata = particledata.with_columns(
             pl.Series(
