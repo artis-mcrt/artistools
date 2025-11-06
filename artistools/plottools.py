@@ -26,9 +26,8 @@ class ExponentLabelFormatter(ticker.ScalarFormatter):
     _useMathText: bool
     _usetex: bool
 
-    def __init__(self, labeltemplate: str, useMathText: bool = True, decimalplaces: int | None = None) -> None:
+    def __init__(self, labeltemplate: str, useMathText: bool = True) -> None:
         self.set_labeltemplate(labeltemplate)
-        self.decimalplaces = decimalplaces
 
         super().__init__(useOffset=False, useMathText=useMathText)
         # ticker.ScalarFormatter.__init__(self, useOffset=useOffset, useMathText=useMathText)
@@ -51,34 +50,8 @@ class ExponentLabelFormatter(ticker.ScalarFormatter):
         self.labeltemplate = labeltemplate
 
     def set_locs(self, locs) -> None:  # noqa: ANN001
-        if self.decimalplaces is not None:
-            self.format = f"%1.{self.decimalplaces!s}f"
-            if self._usetex:
-                self.format = f"${self.format}$"
-            elif self._useMathText:
-                self.format = rf"$\mathdefault{{{self.format}}}$"
-
         super().set_locs(locs)
-
-        if self.decimalplaces is not None:
-            # rounding the tick labels will make the locations incorrect unless we round these too
-            newlocs = [
-                (float(f"%1.{self.decimalplaces!s}f" % (x / (10**self.orderOfMagnitude))) * 10**self.orderOfMagnitude)
-                for x in self.locs
-            ]
-            super().set_locs(newlocs)
-            self.axis.set_ticks(newlocs)  # type: ignore[union-attr] # pyright: ignore[reportAttributeAccessIssue]
-
         self._set_formatted_label_text()
-
-    def _set_format(self, *args: t.Any, **kwargs: t.Any) -> None:
-        if self.decimalplaces is None:
-            super()._set_format(*args, **kwargs)  # type: ignore[misc] # pyright: ignore[reportAttributeAccessIssue]
-        else:
-            sigfigs = self.decimalplaces
-            self.format = f"%1.{sigfigs}f"
-            if self._usetex or self._useMathText:
-                self.format = rf"$\mathdefault{{{self.format}}}$"
 
     def set_axis(self, axis) -> None:  # noqa: ANN001
         super().set_axis(axis)
