@@ -227,7 +227,7 @@ def get_exspec_bins(
 
 def convert_xunit_aliases_to_canonical(xunit: str) -> str:
     match xunit.lower():
-        case "erg":
+        case "erg" | "ergs":
             return "erg"
         case "ev" | "electronvolt":
             return "ev"
