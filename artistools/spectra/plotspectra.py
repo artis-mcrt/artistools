@@ -148,6 +148,8 @@ def get_axis_labels(args: argparse.Namespace) -> tuple[str | None, str | None]:
                     ylabel = r"Scaled F$_\lambda$"
                 case "packetcount":
                     ylabel = r"Scaled Monte Carlo packets"
+                case "photonflux":
+                    ylabel = f"Scaled photons/{str_xunit}"
                 case "photoncount":
                     ylabel = f"Scaled photons/{str_xunit}"
                 case "eflux":
@@ -174,7 +176,9 @@ def get_axis_labels(args: argparse.Namespace) -> tuple[str | None, str | None]:
                 case "eflux":
                     ylabel = f"E$^2$ flux at {strdist} [{{}}{str_xunit}/s/cm$^2$]"
                 case "photoncount":
-                    ylabel = f"Photon flux at {strdist} [{{}}/s/cm$^2$/{str_xunit}]"
+                    ylabel = f"Photon count [{{}}#/s/{str_xunit}]"
+                case "photonflux":
+                    ylabel = f"Photon flux at {strdist} [{{}}#/s/cm$^2$/{str_xunit}]"
                 case _:
                     msg = f"Unknown y-variable {args.yvariable}"
                     raise AssertionError(msg)
@@ -1381,7 +1385,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-y",
         type=str,
         default="flux",
-        choices=["flux", "packetcount", "photoncount", "eflux"],
+        choices=["flux", "packetcount", "photoncount", "photonflux", "eflux"],
         help="Specify the y-axis variable for the plot",
     )
 
