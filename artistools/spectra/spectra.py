@@ -61,7 +61,10 @@ def timeshift_fluxscale_co56law(scaletoreftime: float | None, spectime: float) -
 def get_dfspectrum_x_y_with_units(
     dfspectrum: pl.DataFrame | pl.LazyFrame, xunit: str, yvariable: str, fluxdistance_mpc: float
 ) -> pl.LazyFrame:
-    h = 4.1356677e-15  # Planck's constant [eV s]
+    h_ev_s = 4.1356677e-15  # Planck's constant [eV s]
+    from artistools.constants import H_erg_s
+    from artistools.constants import megaparsec_to_cm
+
     dfspectrum = dfspectrum.lazy()
 
     if "nu" not in dfspectrum.collect_schema().names():
@@ -82,23 +85,30 @@ def get_dfspectrum_x_y_with_units(
         case "hz":
             dfspectrum = dfspectrum.with_columns(x=pl.col("nu"), yflux=pl.col("f_nu"))
 
+        case "erg":
+            dfspectrum = (
+                dfspectrum.with_columns(en_erg=H_erg_s * pl.col("nu"))
+                .with_columns(f_en_erg=pl.col("f_nu") * pl.col("nu") / pl.col("en_erg"))
+                .with_columns(x=pl.col("en_erg"), yflux=pl.col("f_en_erg"))
+            )
+
         case "ev":
             dfspectrum = (
-                dfspectrum.with_columns(en_ev=h * pl.col("nu"))
+                dfspectrum.with_columns(en_ev=h_ev_s * pl.col("nu"))
                 .with_columns(f_en_kev=pl.col("f_nu") * pl.col("nu") / pl.col("en_ev"))
                 .with_columns(x=pl.col("en_ev"), yflux=pl.col("f_en_kev"))
             )
 
         case "kev":
             dfspectrum = (
-                dfspectrum.with_columns(en_kev=h * pl.col("nu") / 1000.0)
+                dfspectrum.with_columns(en_kev=h_ev_s * pl.col("nu") / 1000.0)
                 .with_columns(f_en_kev=pl.col("f_nu") * pl.col("nu") / pl.col("en_kev"))
                 .with_columns(x=pl.col("en_kev"), yflux=pl.col("f_en_kev"))
             )
 
         case "mev":
             dfspectrum = (
-                dfspectrum.with_columns(en_mev=h * pl.col("nu") / 1e6)
+                dfspectrum.with_columns(en_mev=h_ev_s * pl.col("nu") / 1e6)
                 .with_columns(f_en_mev=pl.col("f_nu") * pl.col("nu") / pl.col("en_mev"))
                 .with_columns(x=pl.col("en_mev"), yflux=pl.col("f_en_mev"))
             )
@@ -107,24 +117,43 @@ def get_dfspectrum_x_y_with_units(
             msg = f"Unit {xunit} not implemented"
             raise NotImplementedError(msg)
 
+    # yflux is now [erg/s/cm^2/xunit] at 1 Mpc distance
     match yvariable.lower():
+        case "luminosity":
+            # multiply by 4pi dist^2 to cancel out the /cm^2 at 1 Mpc
+            # [erg/s/xunit]
+            dfspectrum = dfspectrum.with_columns(y=pl.col("yflux") * 4 * math.pi * megaparsec_to_cm**2)
+
         case "flux":
-            assert yvariable == "flux"
+            # adjust flux to required distance
+            # [erg/s/cm^2/xunit]
             dfspectrum = dfspectrum.with_columns(y=pl.col("yflux") / fluxdistance_mpc**2)
+
         case "eflux":
+            # adjust for distance, convert erg to xunit and multiply by another factor of x
+            # [xunit/s/cm^2]
             erg_to_angstrom = 1.986454e-8
-            erg_to_xunit = convert_angstroms_to_unit(erg_to_angstrom, xunit.lower())
-            dfspectrum = dfspectrum.with_columns(y=(pl.col("yflux") / fluxdistance_mpc**2 * erg_to_xunit) * pl.col("x"))
-        case "photonflux":
-            ev_to_erg = 1.60218e-12
+            xunit_per_erg = convert_angstroms_to_unit(erg_to_angstrom, xunit.lower())
             dfspectrum = dfspectrum.with_columns(
-                y=pl.col("yflux") / fluxdistance_mpc**2 / (h * pl.col("nu") * ev_to_erg)
+                y=(pl.col("yflux") / fluxdistance_mpc**2 * xunit_per_erg) * pl.col("x")
             )
+
+        case "photonflux":
+            # divide by the photon energy to get a count rate and adjust for distance
+            # [#/s/cm^2/xunit]
+            dfspectrum = dfspectrum.with_columns(y=pl.col("yflux") / fluxdistance_mpc**2 / (H_erg_s * pl.col("nu")))
+
         case "photoncount":
-            ev_to_erg = 1.60218e-12
-            dfspectrum = dfspectrum.with_columns(y=pl.col("yflux") / (h * pl.col("nu") * ev_to_erg))
+            # divide by the photon energy and multiply by 4pi dist^2 to cancel out the /cm^2 at 1 Mpc
+            # [#/s/xunit]
+            dfspectrum = dfspectrum.with_columns(
+                y=pl.col("yflux") * 4 * math.pi * megaparsec_to_cm**2 / (H_erg_s * pl.col("nu"))
+            )
+
         case "packetcount":
+            # Monte Carlo packet count is stored separately
             dfspectrum = dfspectrum.with_columns(y=pl.col("packetcount"))
+
         case _:
             msg = f"Unit {yvariable} not implemented"
             raise NotImplementedError(msg)
@@ -198,6 +227,8 @@ def get_exspec_bins(
 
 def convert_xunit_aliases_to_canonical(xunit: str) -> str:
     match xunit.lower():
+        case "erg":
+            return "erg"
         case "ev" | "electronvolt":
             return "ev"
         case "kev" | "kiloelectronvolt":
@@ -222,7 +253,10 @@ def convert_angstroms_to_unit(value_angstroms: float, new_units: str) -> float:
     c = 2.99792458e18  # speed of light [angstroms/s]
     h = 4.1356677e-15  # Planck's constant [eV s]
     hc_ev_angstroms = h * c  # [eV angstroms]
+    hc_erg_angstroms = hc_ev_angstroms * 1.60218e-12  # [erg angstroms]
     match new_units.lower():
+        case "erg":
+            return hc_erg_angstroms / value_angstroms
         case "ev":
             return hc_ev_angstroms / value_angstroms
         case "kev":
