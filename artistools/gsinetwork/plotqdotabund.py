@@ -149,7 +149,7 @@ def plot_qdot(
     axis.legend(loc="best", frameon=False, handlelength=1, ncol=3, numpoints=1)
 
     # fig.suptitle(f'{at.get_model_name(modelpath)}', fontsize=10)
-    at.plottools.autoscale(axis, margin=0.0)
+    at.plottools.autoscale(axis, margin=0.02)
     fig.savefig(pdfoutpath, format="pdf")
     print(f"open {pdfoutpath}\n")
 
