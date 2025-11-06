@@ -125,6 +125,9 @@ def get_axis_labels(args: argparse.Namespace) -> tuple[str | None, str | None]:
         case "hz":
             xtype = "Frequency"
             str_xunit = "Hz"
+        case "erg":
+            xtype = "Energy"
+            str_xunit = "erg"
         case "ev":
             xtype = "Energy"
             str_xunit = "eV"
@@ -146,6 +149,8 @@ def get_axis_labels(args: argparse.Namespace) -> tuple[str | None, str | None]:
             match args.yvariable:
                 case "flux":
                     ylabel = r"Scaled F$_\lambda$"
+                case "luminosity":
+                    ylabel = r"Scaled Luminosity"
                 case "packetcount":
                     ylabel = r"Scaled Monte Carlo packets"
                 case "photonflux":
@@ -171,6 +176,8 @@ def get_axis_labels(args: argparse.Namespace) -> tuple[str | None, str | None]:
                         ylabel = rf"F$_\nu$ at {strdist} [{{}}erg/s/cm$^2$/{str_xunit}]"
                     elif xtype == "Energy":
                         ylabel = f"dF/dE at {strdist} [{{}}erg/s/cm$^2$/{str_xunit}]"
+                case "luminosity":
+                    ylabel = f"Luminosity [{{}}erg/s/{str_xunit}]"
                 case "packetcount":
                     ylabel = r"{}Monte Carlo packets per bin"
                 case "eflux":
@@ -1385,7 +1392,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-y",
         type=str,
         default="flux",
-        choices=["flux", "packetcount", "photoncount", "photonflux", "eflux"],
+        choices=["flux", "packetcount", "photoncount", "photonflux", "eflux", "luminosity"],
         help="Specify the y-axis variable for the plot",
     )
 
