@@ -104,7 +104,7 @@ def addsubparsers(
 
             assert hasattr(submodule, "addargs")
             assert callable(submodule.addargs)
-            submodule.addargs(subparser)
+            submodule.addargs(subparser)  # ty: ignore[too-many-positional-arguments]
             subparser.set_defaults(func=func)
 
 
