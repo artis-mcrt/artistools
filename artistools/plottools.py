@@ -29,8 +29,11 @@ class ExponentLabelFormatter(ticker.ScalarFormatter):
     def __init__(self, labeltemplate: str, useMathText: bool = True, decimalplaces: int | None = None) -> None:
         self.set_labeltemplate(labeltemplate)
         self.decimalplaces = decimalplaces
-        super().__init__(useOffset=True, useMathText=useMathText)
+
+        super().__init__(useOffset=False, useMathText=useMathText)
         # ticker.ScalarFormatter.__init__(self, useOffset=useOffset, useMathText=useMathText)
+        self.set_scientific(True)
+        self.set_powerlimits((0, 0))  # always use scientific notation
 
     def _set_formatted_label_text(self) -> None:
         # or use self.orderOfMagnitude
