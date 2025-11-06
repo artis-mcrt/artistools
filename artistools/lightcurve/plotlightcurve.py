@@ -20,6 +20,7 @@ import matplotlib.ticker as mplticker
 import numpy as np
 import numpy.typing as npt
 import polars as pl
+from matplotlib import ticker
 from polars import selectors as cs
 
 import artistools as at
@@ -759,7 +760,10 @@ def make_lightcurve_plot(
         axis.set_ylabel(yvarname + str_units)
 
         if "{" in axis.get_ylabel() and not args.logscaley:
-            axis.yaxis.set_major_formatter(at.plottools.ExponentLabelFormatter(axis.get_ylabel(), decimalplaces=1))
+            axis.yaxis.set_major_formatter(at.plottools.ExponentLabelFormatter(axis.get_ylabel()))
+            axis.yaxis.set_major_locator(
+                ticker.MaxNLocator(nbins="auto", steps=[1, 2, 4, 5, 8, 10], integer=True, prune=None)
+            )
 
     if args.colorbarcostheta or args.colorbarphi:
         _, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(usedegrees=args.usedegrees)

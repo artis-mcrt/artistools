@@ -1249,7 +1249,10 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[t.An
             axis.set_ylabel(ylabel)
 
         if "{" in axis.get_ylabel() and not args.logscaley:
-            axis.yaxis.set_major_formatter(ExponentLabelFormatter(axis.get_ylabel(), decimalplaces=1))
+            axis.yaxis.set_major_formatter(ExponentLabelFormatter(axis.get_ylabel()))
+            axis.yaxis.set_major_locator(
+                ticker.MaxNLocator(nbins="auto", steps=[1, 2, 4, 5, 8, 10], integer=True, prune=None)
+            )
             axis.yaxis.set_minor_locator(ticker.AutoMinorLocator())
 
         axis.set_xlabel("")  # remove xlabel (last axis xlabel optionally added later)
