@@ -149,10 +149,7 @@ def make_2d_plot(grid, grid_Te, vmax, modelpath, xgrid, time) -> None:  # noqa: 
         p = pv.Plotter()
         p.set_scale(p, xscale=1.5, yscale=1.5, zscale=1.5)
         single_slice = mesh.slice(normal="z")
-        p.add_mesh(
-            single_slice,  # pyright: ignore[reportArgumentType]
-            scalar_bar_args=sargs,  # type: ignore[arg-type] # pyright: ignore[reportArgumentType]
-        )  # , clim=[100, 60000]
+        p.add_mesh(single_slice, scalar_bar_args=sargs)  # type: ignore[arg-type] # pyright: ignore[reportArgumentType]
         p.show_bounds(
             p,
             grid=False,
