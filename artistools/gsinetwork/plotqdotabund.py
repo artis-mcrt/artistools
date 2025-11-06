@@ -21,6 +21,73 @@ import artistools as at
 from artistools.inputmodel.rprocess_from_trajectory import get_tar_member_extracted_path
 
 
+def get_abundance_correction_factors(
+    lzdfmodel: pl.LazyFrame,
+    mgiplotlist: Sequence[int],
+    arr_strnuc: Sequence[str],
+    modelpath: str | Path,
+    modelmeta: dict[str, t.Any],
+) -> dict[str, float]:
+    """Get a dictionary of abundance multipliers that ARTIS will apply to correct for missing mass due to skipped shells, and volume error due to Cartesian grid mapping.
+
+    It is important to follow the same method as artis to get the correct mass fractions.
+    """
+    correction_factors: dict[str, float] = {}
+    assoc_cells: dict[int, list[int]] = {}
+    mgi_of_propcells: dict[int, int] = {}
+    try:
+        assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath)
+        for mgi in mgiplotlist:
+            assert assoc_cells.get(mgi, []), (
+                f"No propagation grid cells associated with model cell {mgi}, cannot plot abundances!"
+            )
+        direct_model_propgrid_map = all(
+            len(propcells) == 1 and mgi == propcells[0] for mgi, propcells in assoc_cells.items()
+        )
+        if direct_model_propgrid_map:
+            print("  detected direct mapping of model cells to propagation grid")
+    except FileNotFoundError:
+        print("No grid mapping file found, assuming direct mapping of model cells to propagation grid")
+        direct_model_propgrid_map = True
+
+    if direct_model_propgrid_map:
+        lzdfmodel = lzdfmodel.with_columns(n_assoc_cells=pl.lit(1.0))
+    else:
+        ncoordgridx = math.ceil(np.cbrt(max(mgi_of_propcells.keys()) + 1))
+        propcellcount = ncoordgridx**3
+        print(f" inferring {propcellcount} propagation grid cells from grid mapping file")
+        xmax_tmodel = modelmeta["vmax_cmps"] * modelmeta["t_model_init_days"] * 86400
+        wid_init = at.get_wid_init_at_tmodel(modelpath, propcellcount, modelmeta["t_model_init_days"], xmax_tmodel)
+
+        lzdfmodel = lzdfmodel.with_columns(
+            n_assoc_cells=pl.Series([
+                len(assoc_cells.get(inputcellid - 1, []))
+                for (inputcellid,) in lzdfmodel.select("inputcellid").collect().iter_rows()
+            ])
+        )
+
+        # for spherical models, ARTIS mapping to a cubic grid introduces some errors in the cell volumes
+        lzdfmodel = lzdfmodel.with_columns(mass_g_mapped=10 ** pl.col("logrho") * wid_init**3 * pl.col("n_assoc_cells"))
+        for strnuc in arr_strnuc:
+            # could be a nuclide like "Sr89" or an element like "Sr"
+            nucisocols = (
+                [f"X_{strnuc}"]
+                if strnuc[-1].isdigit()
+                else [c for c in lzdfmodel.collect_schema().names() if c.startswith(f"X_{strnuc}")]
+            )
+            for nucisocol in nucisocols:
+                if nucisocol not in lzdfmodel.collect_schema().names():
+                    continue
+                correction_factors[nucisocol.removeprefix("X_")] = (
+                    lzdfmodel.select(
+                        pl.col(nucisocol).dot(pl.col("mass_g_mapped")) / pl.col(nucisocol).dot(pl.col("mass_g"))
+                    )
+                    .collect()
+                    .item()
+                )
+    return correction_factors
+
+
 def strnuc_to_latex(strnuc: str) -> str:
     """Convert a string like sr89 to $^{89}$Sr."""
     elsym = strnuc.rstrip(string.digits)
@@ -29,10 +96,83 @@ def strnuc_to_latex(strnuc: str) -> str:
     return rf"$^{{{massnum}}}${elsym.title()}"
 
 
+def get_artis_abund_sequences(
+    modelpath: str | Path,
+    dftimesteps: pl.DataFrame,
+    mgiplotlist: Sequence[int],
+    arr_strnuc: Sequence[str],
+    arr_a: Sequence[int],
+    correction_factors: dict[str, float],
+) -> tuple[list[float], dict[int, dict[str, list[float]]]]:
+    arr_time_artis_days: list[float] = []
+    arr_abund_artis: dict[int, dict[str, list[float]]] = {}
+    MH = 1.67352e-24  # g
+
+    with contextlib.suppress(FileNotFoundError):
+        estimators_lazy = at.estimators.scan_estimators(
+            modelpath=modelpath,
+            modelgridindex=mgiplotlist,
+            timestep=dftimesteps["timestep"].to_list(),
+            join_modeldata=True,
+        )
+
+        estimators_lazy = estimators_lazy.filter(pl.col("modelgridindex").is_in(mgiplotlist))
+
+        estimators_lazy = estimators_lazy.select(
+            "modelgridindex",
+            "timestep",
+            "tmid_days",
+            cs.starts_with(*[f"nniso_{strnuc}" for strnuc in arr_strnuc]),
+            "rho",
+            cs.starts_with(*[f"init_X_{strnuc}" for strnuc in arr_strnuc]),
+        )
+
+        estimators_lazy = estimators_lazy.sort(by=["timestep", "modelgridindex"])
+        arr_time_artis_days = estimators_lazy.select(pl.col("tmid_days").unique()).collect().to_series().to_list()
+
+        for mgi in mgiplotlist:
+            assert isinstance(mgi, int)
+            estim_thismgi = estimators_lazy.filter(pl.col("modelgridindex") == mgi).collect()
+
+            for strnuc, a in zip(arr_strnuc, arr_a, strict=True):
+                massfracs = np.zeros(estim_thismgi.height, dtype=float)
+                if a is None:
+                    for col in estim_thismgi.collect_schema().names():
+                        if col.startswith(f"nniso_{strnuc}") and col.removeprefix(f"nniso_{strnuc}").isdigit():
+                            a_iso = int(col.removeprefix(f"nniso_{strnuc}"))
+                            offset = 0.0
+                            if f"init_X_{strnuc}{a_iso}" in estim_thismgi.columns:
+                                initmassfrac = pl.col(f"init_X_{strnuc}{a_iso}").first()
+                                offset = initmassfrac * (correction_factors.get(f"{strnuc}{a_iso}", 1.0) - 1.0)
+                            massfracs += (
+                                estim_thismgi.select(pl.col(col) * a_iso * MH / estim_thismgi["rho"] + offset)
+                                .to_series()
+                                .to_numpy()
+                            )
+
+                elif f"nniso_{strnuc}" in estim_thismgi.columns:
+                    offset = 0.0
+                    if f"init_X_{strnuc}" in estim_thismgi.columns:
+                        initmassfrac = pl.col(f"init_X_{strnuc}").first()
+                        offset = initmassfrac * (correction_factors.get(strnuc, 1.0) - 1.0)
+                    massfracs = (
+                        estim_thismgi.select(pl.col(f"nniso_{strnuc}") * a * MH / estim_thismgi["rho"] + offset)
+                        .to_series()
+                        .to_list()
+                    )
+                else:
+                    continue
+
+                if mgi not in arr_abund_artis:
+                    arr_abund_artis[mgi] = {}
+
+                arr_abund_artis[mgi][strnuc] = list(massfracs)
+    return arr_time_artis_days, arr_abund_artis
+
+
 def plot_qdot(
     modelpath: Path,
     dfcontribsparticledata: pl.LazyFrame,
-    arr_time_artis_days: Sequence[float],  # noqa: ARG001
     arr_time_gsi_days: Sequence[float],
     pdfoutpath: Path | str,
     xmax: float | None = None,
@@ -258,7 +398,7 @@ def plot_cell_abund_evolution(
 
 
 def get_particledata(
-    arr_time_s: Sequence[float] | npt.NDArray[np.floating[t.Any]],
+    arr_time_s_incpremerger: Sequence[float] | npt.NDArray[np.floating[t.Any]],
     arr_strnuc_z_n: list[tuple[str, int, int | None]],
     traj_root: Path,
     particleid: int,
@@ -267,10 +407,10 @@ def get_particledata(
     """For an array of times (NSM time including time before merger), interpolate the heating rates of various decay channels and (if arr_strnuc is not empty) the nuclear mass fractions."""
     try:
         nts_min = at.inputmodel.rprocess_from_trajectory.get_closest_network_timestep(
-            traj_root, particleid, timesec=min(float(x) for x in arr_time_s), cond="lessthan"
+            traj_root, particleid, timesec=min(float(x) for x in arr_time_s_incpremerger), cond="lessthan"
         )
         nts_max = at.inputmodel.rprocess_from_trajectory.get_closest_network_timestep(
-            traj_root, particleid, timesec=max(float(x) for x in arr_time_s), cond="greaterthan"
+            traj_root, particleid, timesec=max(float(x) for x in arr_time_s_incpremerger), cond="greaterthan"
         )
 
     except FileNotFoundError:
@@ -309,8 +449,8 @@ def get_particledata(
         for col in heatcols:
             particledata = particledata.with_columns(
                 pl.Series(
-                    [np.interp(arr_time_s, arr_time_s_source, heatrates_in[col])],
-                    dtype=pl.Array(pl.Float32, len(arr_time_s)),
+                    [np.interp(arr_time_s_incpremerger, arr_time_s_source, heatrates_in[col])],
+                    dtype=pl.Array(pl.Float32, len(arr_time_s_incpremerger)),
                 ).alias(col)
             )
 
@@ -338,8 +478,8 @@ def get_particledata(
 
         particledata = particledata.with_columns(
             pl.Series(
-                [np.interp(arr_time_s, arr_traj_time_s, arr_massfracs[strnuc])],
-                dtype=pl.Array(pl.Float32, len(arr_time_s)),
+                [np.interp(arr_time_s_incpremerger, arr_traj_time_s, arr_massfracs[strnuc])],
+                dtype=pl.Array(pl.Float32, len(arr_time_s_incpremerger)),
             ).alias(strnuc)
             for strnuc, _, _ in arr_strnuc_z_n
         )
@@ -391,154 +531,38 @@ def plot_qdot_abund_modelcells(
     model_mass_grams = lzdfmodel.select(pl.col("mass_g").sum()).collect().item()
     print(f"model mass: {model_mass_grams / 1.989e33:.3f} Msun")
 
-    npts_model = modelmeta["npts_model"]
+    correction_factors = get_abundance_correction_factors(lzdfmodel, mgiplotlist, arr_strnuc, modelpath, modelmeta)
 
-    # these factors correct for missing mass due to skipped shells, and volume error due to Cartesian grid map
-    # it is important to follow the same method as artis to get the correct mass fractions
-    correction_factors: dict[str, float] = {}
-    assoc_cells: dict[int, list[int]] = {}
-    mgi_of_propcells: dict[int, int] = {}
-    try:
-        assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath)
-        for mgi in mgiplotlist:
-            assert assoc_cells.get(mgi, []), (
-                f"No propagation grid cells associated with model cell {mgi}, cannot plot abundances!"
-            )
-        direct_model_propgrid_map = all(
-            len(propcells) == 1 and mgi == propcells[0] for mgi, propcells in assoc_cells.items()
+    dftimesteps = at.misc.df_filter_minmax_bounded(
+        at.get_timesteps(modelpath).select("timestep", "tmid_days"), "tmid_days", None, xmax
+    ).collect()
+    arr_time_artis_s_alltimesteps = dftimesteps.select(pl.col("tmid_days") * 86400.0).to_series().to_numpy()
+    arr_time_artis_days_alltimesteps = dftimesteps.select(pl.col("tmid_days")).to_series().to_numpy()
+
+    if mgiplotlist:
+        arr_time_artis_days, arr_abund_artis = get_artis_abund_sequences(
+            modelpath=modelpath,
+            dftimesteps=dftimesteps,
+            mgiplotlist=mgiplotlist,
+            arr_strnuc=arr_strnuc,
+            arr_a=arr_a,
+            correction_factors=correction_factors,
         )
-        if direct_model_propgrid_map:
-            print("  detected direct mapping of model cells to propagation grid")
-    except FileNotFoundError:
-        print("No grid mapping file found, assuming direct mapping of model cells to propagation grid")
-        direct_model_propgrid_map = True
-
-    if direct_model_propgrid_map:
-        lzdfmodel = lzdfmodel.with_columns(n_assoc_cells=pl.lit(1.0))
-    else:
-        ncoordgridx = math.ceil(np.cbrt(max(mgi_of_propcells.keys()) + 1))
-        propcellcount = ncoordgridx**3
-        print(f" inferring {propcellcount} propagation grid cells from grid mapping file")
-        xmax_tmodel = modelmeta["vmax_cmps"] * modelmeta["t_model_init_days"] * 86400
-        wid_init = at.get_wid_init_at_tmodel(modelpath, propcellcount, modelmeta["t_model_init_days"], xmax_tmodel)
-
-        lzdfmodel = lzdfmodel.with_columns(
-            n_assoc_cells=pl.Series([
-                len(assoc_cells.get(inputcellid - 1, []))
-                for (inputcellid,) in lzdfmodel.select("inputcellid").collect().iter_rows()
-            ])
-        )
-
-        # for spherical models, ARTIS mapping to a cubic grid introduces some errors in the cell volumes
-        lzdfmodel = lzdfmodel.with_columns(mass_g_mapped=10 ** pl.col("logrho") * wid_init**3 * pl.col("n_assoc_cells"))
-        for strnuc in arr_strnuc:
-            # could be a nuclide like "Sr89" or an element like "Sr"
-            nucisocols = (
-                [f"X_{strnuc}"]
-                if strnuc[-1].isdigit()
-                else [c for c in lzdfmodel.collect_schema().names() if c.startswith(f"X_{strnuc}")]
-            )
-            for nucisocol in nucisocols:
-                if nucisocol not in lzdfmodel.collect_schema().names():
-                    continue
-                correction_factors[nucisocol.removeprefix("X_")] = (
-                    lzdfmodel.select(
-                        pl.col(nucisocol).dot(pl.col("mass_g_mapped")) / pl.col(nucisocol).dot(pl.col("mass_g"))
-                    )
-                    .collect()
-                    .item()
-                )
-
-    MH = 1.67352e-24  # g
-
-    arr_time_artis_days: list[float] = []
-    arr_abund_artis: dict[int, dict[str, list[float]]] = {}
-
-    with contextlib.suppress(FileNotFoundError):
-        estimators_lazy = at.estimators.scan_estimators(
-            modelpath=modelpath, modelgridindex=mgiplotlist, join_modeldata=True
-        )
-
-        estimators_lazy = estimators_lazy.filter(pl.col("modelgridindex").is_in(mgiplotlist))
-
-        estimators_lazy = estimators_lazy.select(
-            "modelgridindex",
-            "timestep",
-            "tmid_days",
-            cs.starts_with(*[f"nniso_{strnuc}" for strnuc in arr_strnuc]),
-            "rho",
-            cs.starts_with(*[f"init_X_{strnuc}" for strnuc in arr_strnuc]),
-        )
-
-        estimators_lazy = estimators_lazy.sort(by=["timestep", "modelgridindex"])
-        arr_time_artis_days = estimators_lazy.select(pl.col("tmid_days").unique()).collect().to_series().to_list()
-
-        for mgi in mgiplotlist:
-            assert isinstance(mgi, int)
-            estim_thismgi = estimators_lazy.filter(pl.col("modelgridindex") == mgi).collect()
-
-            for strnuc, a in zip(arr_strnuc, arr_a, strict=True):
-                massfracs = np.zeros(estim_thismgi.height, dtype=float)
-                if a is None:
-                    for col in estim_thismgi.collect_schema().names():
-                        if col.startswith(f"nniso_{strnuc}") and col.removeprefix(f"nniso_{strnuc}").isdigit():
-                            a_iso = int(col.removeprefix(f"nniso_{strnuc}"))
-                            offset = 0.0
-                            if f"init_X_{strnuc}{a_iso}" in estim_thismgi.columns:
-                                initmassfrac = pl.col(f"init_X_{strnuc}{a_iso}").first()
-                                offset = initmassfrac * (correction_factors.get(f"{strnuc}{a_iso}", 1.0) - 1.0)
-                            massfracs += (
-                                estim_thismgi.select(pl.col(col) * a_iso * MH / estim_thismgi["rho"] + offset)
-                                .to_series()
-                                .to_numpy()
-                            )
-
-                elif f"nniso_{strnuc}" in estim_thismgi.columns:
-                    offset = 0.0
-                    if f"init_X_{strnuc}" in estim_thismgi.columns:
-                        initmassfrac = pl.col(f"init_X_{strnuc}").first()
-                        offset = initmassfrac * (correction_factors.get(strnuc, 1.0) - 1.0)
-                    massfracs = (
-                        estim_thismgi.select(pl.col(f"nniso_{strnuc}") * a * MH / estim_thismgi["rho"] + offset)
-                        .to_series()
-                        .to_list()
-                    )
-                else:
-                    continue
-
-                if mgi not in arr_abund_artis:
-                    arr_abund_artis[mgi] = {}
-
-                arr_abund_artis[mgi][strnuc] = list(massfracs)
-
-    arr_time_artis_days_alltimesteps = (
-        at.misc.df_filter_minmax_bounded(at.get_timesteps(modelpath).select("tmid_days"), "tmid_days", None, xmax)
-        .collect()
-        .get_column("tmid_days")
-        .to_numpy()
-    )
-    arr_time_artis_s_alltimesteps = 86400.0 * arr_time_artis_days_alltimesteps
-
-    # no completed timesteps yet, so display full set of timesteps that artis will compute
-    if not arr_time_artis_days:
-        arr_time_artis_days = list(arr_time_artis_days_alltimesteps)
-
-    arr_time_gsi_s = np.array([modelmeta["t_model_init_days"] * 86400, *arr_time_artis_s_alltimesteps], dtype=float)
 
     # times in artis are relative to merger, but NSM simulation time started earlier
     mergertime_geomunits = at.inputmodel.modelfromhydro.get_merger_time_geomunits(griddata_root)
     t_mergertime_s = mergertime_geomunits * 4.926e-6
     arr_time_gsi_s_incpremerger = np.array([
-        modelmeta["t_model_init_days"] * 86400 + t_mergertime_s,
+        modelmeta["t_model_init_days"] * 86400.0 + t_mergertime_s,
         *arr_time_artis_s_alltimesteps,
     ])
-    arr_time_gsi_days = list(arr_time_gsi_s / 86400.0)
+    arr_time_gsi_days = [modelmeta["t_model_init_days"], *arr_time_artis_days_alltimesteps]
 
     dfpartcontrib = (
         at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(modelpath)
         .lazy()
         .with_columns(modelgridindex=pl.col("cellindex") - 1)
-        .filter(pl.col("modelgridindex") < npts_model)
+        .filter(pl.col("modelgridindex") < modelmeta["npts_model"])
         .filter(pl.col("frac_of_cellmass") > 0)
     ).join(lzdfmodel.select(["modelgridindex", "cellmass_on_mtot"]), on="modelgridindex", how="left")
 
@@ -582,7 +606,6 @@ def plot_qdot_abund_modelcells(
     plot_qdot(
         modelpath,
         dfcontribsparticledata,
-        arr_time_artis_days,
         arr_time_gsi_days,
         pdfoutpath=Path(modelpath, "gsinetwork_global-qdot.pdf"),
         xmax=xmax,
@@ -624,6 +647,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-mgi",
         type=int,
         dest="mgilist",
+        default=[],
         nargs="*",
         help="Modelgridindex (zero-indexed) to plot or list such as 4,5,6",
     )
