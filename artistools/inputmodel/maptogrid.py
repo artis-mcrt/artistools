@@ -279,7 +279,7 @@ def maptogrid(
                 # or via neighbors  - not yet implemented
 
             if dis2 <= maxdist2:
-                wtij = kernelvals2(dis2, h[n], wij)
+                wtij = kernelvals2(dis2, float(h[n]), wij)
 
                 # USED PREVIOUSLY: less accurate?
                 # grho_contrib = pmass[n] * wtij

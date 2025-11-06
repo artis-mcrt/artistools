@@ -284,8 +284,10 @@ def make_ionsubplot(
             dftrans = None
 
     if dftrans is not None:
+        dflevel_and_pop = pl.from_pandas(dfpopthision[["level", "n_NLTE"]])
+        assert isinstance(dflevel_and_pop, pl.DataFrame)
         dftrans = dftrans.join(
-            pl.from_pandas(dfpopthision[["level", "n_NLTE"]]).with_columns(pl.col("level").cast(pl.Int32)),
+            dflevel_and_pop.with_columns(pl.col("level").cast(pl.Int32)),
             how="left",
             left_on="upper",
             right_on="level",
