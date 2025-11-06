@@ -173,7 +173,6 @@ def get_trajectory_timestepfile_nuc_abund(
             raise ValueError(msg) from exc
 
         t_model_init_seconds = float(str_t_model_init_seconds)
-        trajfile.seek(0)
 
         trajfile.seek(0)
         dfnucabund = (
