@@ -67,6 +67,7 @@ class ExponentLabelFormatter(ticker.ScalarFormatter):
                 for x in self.locs
             ]
             super().set_locs(newlocs)
+            self.axis.set_ticks(newlocs)  # type: ignore[union-attr] # pyright: ignore[reportAttributeAccessIssue]
 
         self._set_formatted_label_text()
 
