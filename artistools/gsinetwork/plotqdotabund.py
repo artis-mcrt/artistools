@@ -163,16 +163,16 @@ def get_artis_abund_sequences(
                         initmassfrac = pl.col(f"init_X_{strnuciso}").first()
                         offset = initmassfrac * (correction_factors.get(f"{strnuciso}", 1.0) - 1.0)
 
-                    dfcellmassfraclist = estim_mgifiltered.group_by("modelgridindex", maintain_order=True).agg(
-                        ((pl.col(col) * a_iso * MH / pl.col("rho") + offset) * pl.col("cellmass_on_mtot"))
-                        .implode()
-                        .cast(pl.Array(pl.Float64, len(arr_time_artis_days)))
-                        .alias("cellmassfracs")
-                    )
                     massfracs += (
-                        dfcellmassfraclist.select(
+                        estim_mgifiltered.group_by("modelgridindex", maintain_order=True)
+                        .agg(
+                            ((pl.col(col) * a_iso * MH / pl.col("rho") + offset) * pl.col("cellmass_on_mtot"))
+                            .implode()
+                            .alias("cellmassfracs")
+                        )
+                        .select(
                             pl.concat_arr([
-                                pl.col("cellmassfracs").arr.get(n).sum() for n in range(len(arr_time_artis_days))
+                                pl.col("cellmassfracs").list.get(n).sum() for n in range(len(arr_time_artis_days))
                             ])
                             .explode()
                             .alias("massfracs")
