@@ -172,30 +172,37 @@ def get_artis_abund_sequences(
 
 def plot_qdot(
     modelpath: Path,
-    dfcontribsparticledata: pl.LazyFrame,
-    arr_time_gsi_days: Sequence[float],
+    dfcontribsparticledata: pl.LazyFrame | None,
+    arr_time_gsi_days: Sequence[float] | None,
     pdfoutpath: Path | str,
     xmax: float | None = None,
 ) -> None:
     try:
-        depdata = at.get_deposition(modelpath=modelpath).collect()
+        depdata = at.misc.df_filter_minmax_bounded(
+            at.get_deposition(modelpath=modelpath), "tmid_days", None, xmax
+        ).collect()
+        print(depdata)
 
     except FileNotFoundError:
         print("Can't do qdot plot because no deposition.out file")
         return
 
-    heatcols = ["hbeta", "halpha", "hspof"]
+    if dfcontribsparticledata is not None:
+        heatcols = ["hbeta", "halpha", "hspof"]
 
-    print("Calculating global heating rates from the individual particle heating rates")
-    dfgsiglobalheating = dfcontribsparticledata.select([
-        pl.concat_arr(
-            (pl.col(col) * pl.col("cellmass_on_mtot") * pl.col("frac_of_cellmass")).arr.get(n).sum()
-            for n in range(len(arr_time_gsi_days))
-        )
-        .explode()
-        .alias(col)
-        for col in heatcols
-    ]).collect()
+        print("Calculating global heating rates from the individual particle heating rates")
+        assert arr_time_gsi_days is not None
+        dfgsiglobalheating = dfcontribsparticledata.select([
+            pl.concat_arr(
+                (pl.col(col) * pl.col("cellmass_on_mtot") * pl.col("frac_of_cellmass")).arr.get(n).sum()
+                for n in range(len(arr_time_gsi_days))
+            )
+            .explode()
+            .alias(col)
+            for col in heatcols
+        ]).collect()
+    else:
+        dfgsiglobalheating = None
 
     nrows = 1
     fig, axes = plt.subplots(
@@ -212,28 +219,20 @@ def plot_qdot(
     assert isinstance(axes, np.ndarray)
     axis = axes[0]
 
-    # axis.set_ylim(bottom=1e7, top=2e10)
-    # axis.set_xlim(left=depdata["tmid_days"].min(), right=depdata["tmid_days"].max())
-    xmin = min(arr_time_gsi_days) * 0.9
-    xmax = xmax or max(arr_time_gsi_days) * 1.03
-    axis.set_xlim(left=xmin, right=xmax)
-
-    # axis.set_xscale('log')
-
-    # axis.set_xlim(left=1., right=arr_time_artis[-1])
-    axes[-1].set_xlabel("Time [days]")
+    axis.set_xlabel("Time [days]")
     axis.set_yscale("log")
-    axis.set_ylabel("Qdot [erg/s/g]")
+    axis.set_ylabel(r"$\dot{Q}$ [erg/s/g]")
 
-    axis.plot(
-        arr_time_gsi_days,
-        dfgsiglobalheating["hbeta"],
-        linewidth=2,
-        color="black",
-        linestyle="solid",
-        # marker='x', markersize=8,
-        label=r"$\dot{Q}_\beta$ GSINET",
-    )
+    if dfgsiglobalheating is not None:
+        axis.plot(
+            arr_time_gsi_days,
+            dfgsiglobalheating["hbeta"],
+            linewidth=2,
+            color="black",
+            linestyle="solid",
+            # marker='x', markersize=8,
+            label=r"$\dot{Q}_\beta$ GSINET",
+        )
 
     axis.plot(
         depdata["tmid_days"],
@@ -245,15 +244,16 @@ def plot_qdot(
         label=r"$\dot{Q}_\beta$ ARTIS",
     )
 
-    axis.plot(
-        arr_time_gsi_days,
-        dfgsiglobalheating["halpha"],
-        linewidth=2,
-        color="black",
-        linestyle="dashed",
-        # marker='x', markersize=8,
-        label=r"$\dot{Q}_\alpha$ GSINET",
-    )
+    if dfgsiglobalheating is not None:
+        axis.plot(
+            arr_time_gsi_days,
+            dfgsiglobalheating["halpha"],
+            linewidth=2,
+            color="black",
+            linestyle="dashed",
+            # marker='x', markersize=8,
+            label=r"$\dot{Q}_\alpha$ GSINET",
+        )
 
     axis.plot(
         depdata["tmid_days"],
@@ -265,15 +265,16 @@ def plot_qdot(
         label=r"$\dot{Q}_\alpha$ ARTIS",
     )
 
-    axis.plot(
-        arr_time_gsi_days,
-        dfgsiglobalheating["hspof"],
-        linewidth=2,
-        color="black",
-        linestyle="dotted",
-        # marker='x', markersize=8,
-        label=r"$\dot{Q}_{sponfis}$ GSINET",
-    )
+    if dfgsiglobalheating is not None:
+        axis.plot(
+            arr_time_gsi_days,
+            dfgsiglobalheating["hspof"],
+            linewidth=2,
+            color="black",
+            linestyle="dotted",
+            # marker='x', markersize=8,
+            label=r"$\dot{Q}_{sponfis}$ GSINET",
+        )
 
     if "Qdotspfission_ana_erg/s/g" in depdata.columns:
         axis.plot(
@@ -286,19 +287,21 @@ def plot_qdot(
             label=r"$\dot{Q}_{sponfis}$ ARTIS",
         )
 
-    axis.legend(loc="best", frameon=False, handlelength=1, ncol=3, numpoints=1)
+    axis.legend(loc="best", frameon=False, handlelength=2, ncol=3, numpoints=1)
 
     # fig.suptitle(f'{at.get_model_name(modelpath)}', fontsize=10)
-    at.plottools.autoscale(axis, margin=0.02)
+    axis.autoscale(enable=True, axis="both")
+    axis.set_xmargin(0.02)
+    axis.set_ymargin(0.02)
     fig.savefig(pdfoutpath, format="pdf")
     print(f"open {pdfoutpath}\n")
 
 
 def plot_cell_abund_evolution(
-    modelpath: Path,  # noqa: ARG001
-    dfcontribsparticledata: pl.LazyFrame,
+    modelpath: Path,
+    dfcontribsparticledata: pl.LazyFrame | None,
     arr_time_artis_days: Sequence[float],
-    arr_time_gsi_days: Sequence[float],
+    arr_time_gsi_days: Sequence[float] | None,
     arr_strnuc: Sequence[str],
     arr_abund_artis: dict[str, list[float]],
     t_model_init_days: float,
@@ -306,32 +309,35 @@ def plot_cell_abund_evolution(
     pdfoutpath: Path,
     mgi: int,
     hideinputmodelpoints: bool = True,
-    xmax: float | None = None,
 ) -> None:
-    print(f"Calculating abundances in model cell {mgi} from the individual particle abundances")
-    dfpartcontrib_thiscell = dfcontribsparticledata.filter(pl.col("modelgridindex") == mgi)
-    frac_of_cellmass_sum = dfpartcontrib_thiscell.select(pl.col("frac_of_cellmass").sum()).collect().item()
-    print(f"frac_of_cellmass_sum: {frac_of_cellmass_sum} (can be < 1.0 because of missing particles)")
+    if dfcontribsparticledata is not None:
+        print(f"Calculating abundances in model cell {mgi} from the individual particle abundances")
+        dfpartcontrib_thiscell = dfcontribsparticledata.filter(pl.col("modelgridindex") == mgi)
+        frac_of_cellmass_sum = dfpartcontrib_thiscell.select(pl.col("frac_of_cellmass").sum()).collect().item()
+        print(f"frac_of_cellmass_sum: {frac_of_cellmass_sum} (can be < 1.0 because of missing particles)")
 
-    # we didn't include all cells (maybe), so we need a normalization factor here
-    normfactor = (
-        dfpartcontrib_thiscell.group_by("modelgridindex")
-        .agg(pl.col("cellmass_on_mtot").first())
-        .drop("modelgridindex")
-        .sum()
-        .collect()
-        .item()
-    )
-
-    df_gsi_abunds = dfpartcontrib_thiscell.select([
-        pl.concat_arr(
-            (pl.col(strnuc) * pl.col("frac_of_cellmass") * pl.col("cellmass_on_mtot") / normfactor).arr.get(n).sum()
-            for n in range(len(arr_time_gsi_days))
+        # we didn't include all cells (maybe), so we need a normalization factor here
+        normfactor = (
+            dfpartcontrib_thiscell.group_by("modelgridindex")
+            .agg(pl.col("cellmass_on_mtot").first())
+            .drop("modelgridindex")
+            .sum()
+            .collect()
+            .item()
         )
-        .explode()
-        .alias(strnuc)
-        for strnuc in arr_strnuc
-    ]).collect()
+
+        assert arr_time_gsi_days is not None
+        df_gsi_abunds = dfpartcontrib_thiscell.select([
+            pl.concat_arr(
+                (pl.col(strnuc) * pl.col("frac_of_cellmass") * pl.col("cellmass_on_mtot") / normfactor).arr.get(n).sum()
+                for n in range(len(arr_time_gsi_days))
+            )
+            .explode()
+            .alias(strnuc)
+            for strnuc in arr_strnuc
+        ]).collect()
+    else:
+        df_gsi_abunds = None
 
     fig, axes = plt.subplots(
         nrows=len(arr_strnuc),
@@ -342,33 +348,34 @@ def plot_cell_abund_evolution(
         tight_layout={"pad": 0.4, "w_pad": 0.0, "h_pad": 0.0},
     )
     fig.subplots_adjust(top=0.8)
-    # axis.set_xscale('log')
     assert isinstance(axes, np.ndarray)
     axes[-1].set_xlabel("Time [days]")
     axis = axes[0]
     print(f"{'nuc':7s}  gsi_abund artis_abund")
+
     for axis, strnuc in zip(axes, arr_strnuc, strict=False):
-        # print(arr_time_artis_days)
-        xmin = min(arr_time_gsi_days) * 0.9
-        xmax = xmax or max(arr_time_gsi_days) * 1.03
-        axis.set_xlim(left=xmin, right=xmax)
         # axis.set_yscale('log')
-        # axis.set_ylabel(f'X({strnuc})')
         axis.set_ylabel("Mass fraction")
 
         strnuc_latex = strnuc_to_latex(strnuc)
 
-        axis.plot(
-            arr_time_gsi_days,
-            df_gsi_abunds[strnuc],
-            linewidth=2,
-            marker="x",
-            markersize=8,
-            label=f"{strnuc_latex} GSINET",
-            color="black",
-        )
+        if df_gsi_abunds is not None:
+            axis.plot(
+                arr_time_gsi_days,
+                df_gsi_abunds[strnuc],
+                linewidth=2,
+                marker="x",
+                markersize=8,
+                label=f"{strnuc_latex} GSINET",
+                color="black",
+            )
 
-        print(f"{strnuc:7s}  {df_gsi_abunds[strnuc][1]:.2e}", end="")
+        print(f"{strnuc:7s}  ", end="")
+        if df_gsi_abunds is not None:
+            print(f"{df_gsi_abunds[strnuc][1]:.2e}", end="")
+        else:
+            print(" [no GSINET]", end="")
+
         if strnuc in arr_abund_artis:
             print(f" {arr_abund_artis[strnuc][0]:.2e}")
             axis.plot(
@@ -390,9 +397,11 @@ def plot_cell_abund_evolution(
 
         axis.legend(loc="best", frameon=False, handlelength=1, ncol=1, numpoints=1)
 
-        at.plottools.autoscale(ax=axis, margin=0.25)
+        axis.autoscale(enable=True, axis="both")
+        axis.set_xmargin(0.02)
+        axis.set_ymargin(0.05)
 
-    # fig.suptitle(f"{at.get_model_name(modelpath)} cell {mgi}", y=0.995, fontsize=10)
+    fig.suptitle(f"{at.get_model_name(modelpath)} cell {mgi}", y=0.995, fontsize=10)
     fig.savefig(pdfoutpath, format="pdf")
     print(f"open {pdfoutpath}")
 
@@ -511,17 +520,22 @@ def plot_qdot_abund_modelcells(
 
     griddata_root = Path(merger_root, mergermodelfolder, griddatafolder)
     traj_root = Path(merger_root, mergermodelfolder, trajfolder)
-    print(f"model.txt traj_root: {traj_root}")
-    print(f"model.txt griddata_root: {griddata_root}")
-    assert traj_root.is_dir()
+    gsinet_available = griddata_root.is_dir() and traj_root.is_dir()
+    if gsinet_available:
+        print(f"model.txt traj_root: {traj_root}")
+        print(f"model.txt griddata_root: {griddata_root}")
+    else:
+        if not griddata_root.is_dir():
+            print(f"model.txt griddata_root {griddata_root} is not a directory!")
+        if not traj_root.is_dir():
+            print(f"model.txt traj_root {traj_root} is not a directory!")
+        gsinet_available = False
 
     arr_el, arr_a = zip(*arr_el_a, strict=True)
     arr_strnuc: list[str] = [f"{el}{a}" if a is not None else el for el, a in arr_el_a]
     arr_z = [at.get_atomic_number(el) for el in arr_el]
     arr_n = [a - z if a is not None else None for z, a in zip(arr_z, arr_a, strict=True)]
     arr_strnuc_z_n = list(zip(arr_strnuc, arr_z, arr_n, strict=True))
-
-    # arr_z = [at.get_atomic_number(el) for el in arr_el]
 
     lzdfmodel, modelmeta = at.inputmodel.get_modeldata(
         modelpath, derived_cols=["mass_g", "rho", "logrho", "volume"], get_elemabundances=True
@@ -548,60 +562,65 @@ def plot_qdot_abund_modelcells(
             arr_a=arr_a,
             correction_factors=correction_factors,
         )
+    if gsinet_available:
+        # times in artis are relative to merger, but NSM simulation time started earlier
+        mergertime_geomunits = at.inputmodel.modelfromhydro.get_merger_time_geomunits(griddata_root)
+        t_mergertime_s = mergertime_geomunits * 4.926e-6
+        arr_time_gsi_s_incpremerger = np.array([
+            modelmeta["t_model_init_days"] * 86400.0 + t_mergertime_s,
+            *arr_time_artis_s_alltimesteps,
+        ])
+        arr_time_gsi_days = [modelmeta["t_model_init_days"], *arr_time_artis_days_alltimesteps]
 
-    # times in artis are relative to merger, but NSM simulation time started earlier
-    mergertime_geomunits = at.inputmodel.modelfromhydro.get_merger_time_geomunits(griddata_root)
-    t_mergertime_s = mergertime_geomunits * 4.926e-6
-    arr_time_gsi_s_incpremerger = np.array([
-        modelmeta["t_model_init_days"] * 86400.0 + t_mergertime_s,
-        *arr_time_artis_s_alltimesteps,
-    ])
-    arr_time_gsi_days = [modelmeta["t_model_init_days"], *arr_time_artis_days_alltimesteps]
+        dfpartcontrib = (
+            at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(modelpath)
+            .lazy()
+            .with_columns(modelgridindex=pl.col("cellindex") - 1)
+            .filter(pl.col("modelgridindex") < modelmeta["npts_model"])
+            .filter(pl.col("frac_of_cellmass") > 0)
+        ).join(lzdfmodel.select(["modelgridindex", "cellmass_on_mtot"]), on="modelgridindex", how="left")
 
-    dfpartcontrib = (
-        at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(modelpath)
-        .lazy()
-        .with_columns(modelgridindex=pl.col("cellindex") - 1)
-        .filter(pl.col("modelgridindex") < modelmeta["npts_model"])
-        .filter(pl.col("frac_of_cellmass") > 0)
-    ).join(lzdfmodel.select(["modelgridindex", "cellmass_on_mtot"]), on="modelgridindex", how="left")
+        allcontribparticleids = dfpartcontrib.select(pl.col("particleid").unique()).collect().to_series().to_list()
+        list_particleids_getabund = (
+            dfpartcontrib.filter(pl.col("modelgridindex").is_in(mgiplotlist))
+            .select(pl.col("particleid").unique())
+            .collect()
+            .to_series()
+            .to_list()
+        )
+        fworkerwithabund = partial(
+            get_particledata, arr_time_gsi_s_incpremerger, arr_strnuc_z_n, traj_root, verbose=False
+        )
 
-    allcontribparticleids = dfpartcontrib.select(pl.col("particleid").unique()).collect().to_series().to_list()
-    list_particleids_getabund = (
-        dfpartcontrib.filter(pl.col("modelgridindex").is_in(mgiplotlist))
-        .select(pl.col("particleid").unique())
-        .collect()
-        .to_series()
-        .to_list()
-    )
-    fworkerwithabund = partial(get_particledata, arr_time_gsi_s_incpremerger, arr_strnuc_z_n, traj_root, verbose=False)
+        print(f"Reading trajectories from {traj_root}")
+        print(f"Reading Qdot/thermo and abundance data for {len(list_particleids_getabund)} particles")
 
-    print(f"Reading trajectories from {traj_root}")
-    print(f"Reading Qdot/thermo and abundance data for {len(list_particleids_getabund)} particles")
+        if at.get_config()["num_processes"] > 1:
+            with at.get_multiprocessing_pool() as pool:
+                list_particledata_withabund = pool.map(fworkerwithabund, list_particleids_getabund)
+                pool.close()
+                pool.join()
+        else:
+            list_particledata_withabund = [fworkerwithabund(particleid) for particleid in list_particleids_getabund]
 
-    if at.get_config()["num_processes"] > 1:
-        with at.get_multiprocessing_pool() as pool:
-            list_particledata_withabund = pool.map(fworkerwithabund, list_particleids_getabund)
-            pool.close()
-            pool.join()
+        list_particleids_noabund = [pid for pid in allcontribparticleids if pid not in list_particleids_getabund]
+        fworkernoabund = partial(get_particledata, arr_time_gsi_s_incpremerger, [], traj_root)
+        print(f"Reading for Qdot/thermo data (no abundances needed) for {len(list_particleids_noabund)} particles")
+
+        if at.get_config()["num_processes"] > 1:
+            with at.get_multiprocessing_pool() as pool:
+                list_particledata_noabund = pool.map(fworkernoabund, list_particleids_noabund)
+                pool.close()
+                pool.join()
+        else:
+            list_particledata_noabund = [fworkernoabund(particleid) for particleid in list_particleids_noabund]
+
+        allparticledata = pl.concat(list_particledata_withabund + list_particledata_noabund, how="diagonal")
+
+        dfcontribsparticledata = dfpartcontrib.join(allparticledata, on="particleid", how="inner")
     else:
-        list_particledata_withabund = [fworkerwithabund(particleid) for particleid in list_particleids_getabund]
-
-    list_particleids_noabund = [pid for pid in allcontribparticleids if pid not in list_particleids_getabund]
-    fworkernoabund = partial(get_particledata, arr_time_gsi_s_incpremerger, [], traj_root)
-    print(f"Reading for Qdot/thermo data (no abundances needed) for {len(list_particleids_noabund)} particles")
-
-    if at.get_config()["num_processes"] > 1:
-        with at.get_multiprocessing_pool() as pool:
-            list_particledata_noabund = pool.map(fworkernoabund, list_particleids_noabund)
-            pool.close()
-            pool.join()
-    else:
-        list_particledata_noabund = [fworkernoabund(particleid) for particleid in list_particleids_noabund]
-
-    allparticledata = pl.concat(list_particledata_withabund + list_particledata_noabund, how="diagonal")
-
-    dfcontribsparticledata = dfpartcontrib.join(allparticledata, on="particleid", how="inner")
+        dfcontribsparticledata = None
+        arr_time_gsi_days = None
 
     plot_qdot(
         modelpath,
@@ -623,7 +642,6 @@ def plot_qdot_abund_modelcells(
             lzdfmodel.filter(modelgridindex=mgi).collect(),
             mgi=mgi,
             pdfoutpath=Path(modelpath, f"gsinetwork_cell{mgi}-abundance.pdf"),
-            xmax=xmax,
         )
 
 
