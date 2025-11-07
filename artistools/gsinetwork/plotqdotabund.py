@@ -103,6 +103,7 @@ def get_artis_abund_sequences(
     arr_species: Sequence[str],
     arr_a: Sequence[int | None],
     correction_factors: dict[str, float],
+    timedaysmax: float | None = None,
 ) -> tuple[list[float], dict[int, dict[str, list[float]]]]:
     arr_time_artis_days: list[float] = []
     arr_abund_artis: dict[int, dict[str, list[float]]] = {}
@@ -114,16 +115,19 @@ def get_artis_abund_sequences(
             modelgridindex=None if any(mgi < 0 for mgi in mgiplotlist) else mgiplotlist,
             timestep=dftimesteps["timestep"].to_list(),
             join_modeldata=True,
-        )
+        ).filter(pl.col("mass_g") > 0)
 
         if all(mgi >= 0 for mgi in mgiplotlist):
             estimators_lazy = estimators_lazy.filter(pl.col("modelgridindex").is_in(mgiplotlist))
+
+        estimators_lazy = at.misc.df_filter_minmax_bounded(estimators_lazy, "tmid_days", None, timedaysmax)
 
         estimators_lazy = estimators_lazy.select(
             "modelgridindex",
             "timestep",
             "tmid_days",
             cs.starts_with(*[f"nniso_{strnuc}" for strnuc in arr_species]),
+            "mass_g",
             "rho",
             cs.starts_with(*[f"init_X_{strnuc}" for strnuc in arr_species]),
         )
@@ -133,34 +137,49 @@ def get_artis_abund_sequences(
 
         for mgi in mgiplotlist:
             assert isinstance(mgi, int)
-            estim_thismgi = estimators_lazy.filter((pl.col("modelgridindex") == mgi).or_(mgi < 0)).collect()
+            estim_mgifiltered = estimators_lazy.filter((pl.col("modelgridindex") == mgi).or_(mgi < 0)).collect()
+            mass_selected = (
+                estim_mgifiltered.group_by("modelgridindex").agg(pl.col("mass_g").first()).get_column("mass_g").sum()
+            )
+            estim_mgifiltered = estim_mgifiltered.with_columns(cellmass_on_mtot=pl.col("mass_g") / mass_selected)
 
             for strnuc, a in zip(arr_species, arr_a, strict=True):
-                massfracs = np.zeros(estim_thismgi.height, dtype=float)
+                massfracs = np.zeros(len(arr_time_artis_days), dtype=float)
                 if a is None:
-                    for col in estim_thismgi.collect_schema().names():
-                        if col.startswith(f"nniso_{strnuc}") and col.removeprefix(f"nniso_{strnuc}").isdigit():
-                            a_iso = int(col.removeprefix(f"nniso_{strnuc}"))
-                            offset = 0.0
-                            if f"init_X_{strnuc}{a_iso}" in estim_thismgi.columns:
-                                initmassfrac = pl.col(f"init_X_{strnuc}{a_iso}").first()
-                                offset = initmassfrac * (correction_factors.get(f"{strnuc}{a_iso}", 1.0) - 1.0)
+                    matched_cols = [
+                        col
+                        for col in estim_mgifiltered.collect_schema().names()
+                        if col.startswith(f"nniso_{strnuc}") and col.removeprefix(f"nniso_{strnuc}").isdigit()
+                    ]
+                    for col in matched_cols:
+                        a_iso = int(col.removeprefix(f"nniso_{strnuc}"))
+                        offset = 0.0
+                        if f"init_X_{strnuc}{a_iso}" in estim_mgifiltered.columns:
+                            initmassfrac = pl.col(f"init_X_{strnuc}{a_iso}").first()
+                            offset = initmassfrac * (correction_factors.get(f"{strnuc}{a_iso}", 1.0) - 1.0)
+                        for (_,), df in estim_mgifiltered.group_by("modelgridindex", maintain_order=True):
                             massfracs += (
-                                estim_thismgi.select(pl.col(col) * a_iso * MH / pl.col("rho") + offset)
+                                df.select(
+                                    (pl.col(col) * a_iso * MH / pl.col("rho") + offset) * pl.col("cellmass_on_mtot")
+                                )
                                 .to_series()
                                 .to_numpy()
                             )
 
-                elif f"nniso_{strnuc}" in estim_thismgi.columns:
+                elif f"nniso_{strnuc}" in estim_mgifiltered.columns:
                     offset = 0.0
-                    if f"init_X_{strnuc}" in estim_thismgi.columns:
+                    if f"init_X_{strnuc}" in estim_mgifiltered.columns:
                         initmassfrac = pl.col(f"init_X_{strnuc}").first()
                         offset = initmassfrac * (correction_factors.get(strnuc, 1.0) - 1.0)
-                    massfracs = (
-                        estim_thismgi.select(pl.col(f"nniso_{strnuc}") * a * MH / pl.col("rho") + offset)
-                        .to_series()
-                        .to_list()
-                    )
+                    for (_,), df in estim_mgifiltered.group_by("modelgridindex", maintain_order=True):
+                        massfracs += (
+                            df.select(
+                                (pl.col(f"nniso_{strnuc}") * a * MH / pl.col("rho") + offset)
+                                * pl.col("cellmass_on_mtot")
+                            )
+                            .to_series()
+                            .to_numpy()
+                        )
                 else:
                     continue
 
@@ -195,7 +214,7 @@ def plot_qdot(
         dfgsiglobalheating = (
             dfcontribsparticledata.select([
                 pl.concat_arr(
-                    (pl.col(col) * pl.col("cellmass_on_mtot") * pl.col("frac_of_cellmass")).arr.get(n).sum()
+                    (pl.col(col).arr.get(n) * pl.col("cellmass_on_mtot") * pl.col("frac_of_cellmass")).sum()
                     for n in range(len(arr_time_gsi_days))
                 )
                 .explode()
@@ -330,7 +349,7 @@ def plot_cell_abund_evolution(
         assert arr_time_gsi_days is not None
         df_gsi_abunds = dfpartcontrib_thiscell.select([
             pl.concat_arr(
-                (pl.col(strnuc) * pl.col("frac_of_cellmass") * pl.col("cellmass_on_mtot") / normfactor).arr.get(n).sum()
+                (pl.col(strnuc).arr.get(n) * pl.col("frac_of_cellmass") * pl.col("cellmass_on_mtot") / normfactor).sum()
                 for n in range(len(arr_time_gsi_days))
             )
             .explode()
@@ -500,7 +519,12 @@ def get_particledata(
 
 
 def plot_qdot_abund_modelcells(
-    modelpath: Path, merger_root: Path, mgiplotlist: Sequence[int], arr_species: list[str], xmax: float | None = None
+    modelpath: Path,
+    merger_root: Path,
+    mgiplotlist: Sequence[int],
+    arr_species: list[str],
+    timedaysmax: float | None = None,
+    nogsinet: bool = False,
 ) -> None:
     # default values, because early model.txt didn't specify this
     griddatafolder: Path = Path("SFHo_snapshot")
@@ -519,7 +543,7 @@ def plot_qdot_abund_modelcells(
 
     griddata_root = Path(merger_root, mergermodelfolder, griddatafolder)
     traj_root = Path(merger_root, mergermodelfolder, trajfolder)
-    gsinet_available = griddata_root.is_dir() and traj_root.is_dir()
+    gsinet_available = griddata_root.is_dir() and traj_root.is_dir() and not nogsinet
     if gsinet_available:
         print(f"model.txt traj_root: {traj_root}")
         print(f"model.txt griddata_root: {griddata_root}")
@@ -552,7 +576,7 @@ def plot_qdot_abund_modelcells(
     correction_factors = get_abundance_correction_factors(lzdfmodel, mgiplotlist, arr_species, modelpath, modelmeta)
 
     dftimesteps = at.misc.df_filter_minmax_bounded(
-        at.get_timesteps(modelpath).select("timestep", "tmid_days"), "tmid_days", None, xmax
+        at.get_timesteps(modelpath).select("timestep", "tmid_days"), "tmid_days", None, timedaysmax
     ).collect()
 
     arr_time_artis_s_alltimesteps = dftimesteps.select(pl.col("tmid_days") * 86400.0).to_series().to_numpy()
@@ -566,6 +590,7 @@ def plot_qdot_abund_modelcells(
             arr_species=arr_species,
             arr_a=arr_a,
             correction_factors=correction_factors,
+            timedaysmax=timedaysmax,
         )
 
     if gsinet_available:
@@ -633,10 +658,11 @@ def plot_qdot_abund_modelcells(
         dfcontribsparticledata,
         arr_time_gsi_days,
         pdfoutpath=Path(modelpath, "gsinetwork_global-qdot.pdf"),
-        xmax=xmax,
+        xmax=timedaysmax,
     )
 
     for mgi in mgiplotlist:
+        strmgi = f"mgi{mgi}" if mgi >= 0 else "global"
         plot_cell_abund_evolution(
             modelpath,
             dfcontribsparticledata,
@@ -647,7 +673,7 @@ def plot_qdot_abund_modelcells(
             modelmeta["t_model_init_days"],
             lzdfmodel.filter(modelgridindex=mgi).collect(),
             mgi=mgi,
-            pdfoutpath=Path(modelpath, f"gsinetwork_cell{mgi}-abundance.pdf"),
+            pdfoutpath=Path(modelpath, f"gsinetwork_{strmgi}-abundance.pdf"),
         )
 
 
@@ -676,6 +702,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Modelgridindex (zero-indexed) to plot or list such as 4,5,6",
     )
 
+    parser.add_argument(
+        "--nogsinet", action="store_true", help="Do not attempt to read GSI Network data even if available"
+    )
+
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Compare the energy release and abundances from ARTIS to the GSI Network calculation."""
@@ -690,13 +720,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     arr_species = [
         # "He4",
         # "Ga72",
-        # "Sr",
-        "Sr89"
+        "Sr",
+        "Sr89",
         # "Sr91",
         # "I129",
         # "I132",
         # "Rb88",
-        # "Y92",
+        "Y92",
         # "Sb128",
         # "Cu66",
         # "Cf254",
@@ -707,7 +737,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         merger_root=Path(args.mergerroot),
         mgiplotlist=args.mgilist,
         arr_species=arr_species,
-        xmax=args.xmax,
+        timedaysmax=args.xmax,
+        nogsinet=args.nogsinet,
     )
 
 
