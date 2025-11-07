@@ -568,9 +568,7 @@ def plot_qdot_abund_modelcells(
             print(f"model.txt traj_root {traj_root} is not a directory!")
         gsinet_available = False
 
-    arr_species.sort(
-        key=lambda x: (at.get_atomic_number(x[0]), int(x[1].removeprefix(x[1].rstrip(string.digits)) or -1))
-    )
+    arr_species.sort(key=lambda x: (at.get_atomic_number(x), int(x.removeprefix(x.rstrip(string.digits)) or -1)))
     arr_z = [at.get_atomic_number(species) for species in arr_species]
     arr_a = [
         int(a) if a is not None else a
