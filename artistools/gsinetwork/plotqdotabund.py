@@ -181,7 +181,6 @@ def plot_qdot(
         depdata = at.misc.df_filter_minmax_bounded(
             at.get_deposition(modelpath=modelpath), "tmid_days", None, xmax
         ).collect()
-        print(depdata)
 
     except FileNotFoundError:
         print("Can't do qdot plot because no deposition.out file")
