@@ -114,6 +114,7 @@ def get_artis_abund_sequences(
             modelgridindex=None if any(mgi < 0 for mgi in mgiplotlist) else mgiplotlist,
             timestep=dftimesteps["timestep"].to_list(),
             join_modeldata=True,
+            verbose=False,
         ).filter(pl.col("mass_g") > 0)
 
         if all(mgi >= 0 for mgi in mgiplotlist):
