@@ -131,17 +131,22 @@ def get_artis_abund_sequences(
 
         estimators_lazy = estimators_lazy.sort(by=["timestep", "modelgridindex"])
         arr_time_artis_days = estimators_lazy.select(pl.col("tmid_days").unique()).collect().to_series().to_list()
-
+        lazyresults = []
         for mgi in mgiplotlist:
             assert isinstance(mgi, int)
-            estim_mgifiltered = estimators_lazy.filter((pl.col("modelgridindex") == mgi).or_(mgi < 0)).collect()
+            estim_mgifiltered = estimators_lazy.filter((pl.col("modelgridindex") == mgi).or_(mgi < 0))
             mass_selected = (
-                estim_mgifiltered.group_by("modelgridindex").agg(pl.col("mass_g").first()).get_column("mass_g").sum()
+                estim_mgifiltered.group_by("modelgridindex")
+                .agg(pl.col("mass_g").first())
+                .select("mass_g")
+                .sum()
+                .collect()
+                .item()
             )
             estim_mgifiltered = estim_mgifiltered.with_columns(cellmass_on_mtot=pl.col("mass_g") / mass_selected)
 
             for strnuc, a in zip(arr_species, arr_a, strict=True):
-                massfracs = np.zeros(len(arr_time_artis_days), dtype=float)
+                combinedlzdf = pl.LazyFrame()
                 if a is None:
                     matched_cols = [
                         col
@@ -150,7 +155,7 @@ def get_artis_abund_sequences(
                     ]
                     list_a_iso = [int(col.removeprefix(f"nniso_{strnuc}")) for col in matched_cols]
                     list_str_nuc_iso = [f"{strnuc}{a_iso}" for a_iso in list_a_iso]
-                elif f"nniso_{strnuc}" in estim_mgifiltered.columns:
+                elif f"nniso_{strnuc}" in estim_mgifiltered.collect_schema().names():
                     matched_cols = [f"nniso_{strnuc}"]
                     list_a_iso = [a]
                     list_str_nuc_iso = [strnuc]
@@ -159,32 +164,40 @@ def get_artis_abund_sequences(
 
                 for col, a_iso, strnuciso in zip(matched_cols, list_a_iso, list_str_nuc_iso, strict=True):
                     offset = 0.0
-                    if f"init_X_{strnuciso}" in estim_mgifiltered.columns:
+                    if f"init_X_{strnuciso}" in estim_mgifiltered.collect_schema().names():
                         initmassfrac = pl.col(f"init_X_{strnuciso}").first()
                         offset = initmassfrac * (correction_factors.get(f"{strnuciso}", 1.0) - 1.0)
-
-                    massfracs += (
-                        estim_mgifiltered.group_by("modelgridindex", maintain_order=True)
-                        .agg(
-                            ((pl.col(col) * a_iso * MH / pl.col("rho") + offset) * pl.col("cellmass_on_mtot"))
-                            .implode()
-                            .alias("cellmassfracs")
-                        )
-                        .select(
-                            pl.concat_arr([
-                                pl.col("cellmassfracs").list.get(n).sum() for n in range(len(arr_time_artis_days))
-                            ])
-                            .explode()
-                            .alias("massfracs")
-                        )
-                        .to_series()
-                        .to_numpy()
+                    combinedlzdf = pl.concat(
+                        [
+                            combinedlzdf,
+                            (
+                                estim_mgifiltered.group_by("modelgridindex", maintain_order=True)
+                                .agg(
+                                    ((pl.col(col) * a_iso * MH / pl.col("rho") + offset) * pl.col("cellmass_on_mtot"))
+                                    .implode()
+                                    .alias("cellmassfracs")
+                                )
+                                .select(
+                                    pl.concat_arr([
+                                        pl.col("cellmassfracs").list.get(n).sum()
+                                        for n in range(len(arr_time_artis_days))
+                                    ])
+                                    .explode()
+                                    .alias(f"{strnuciso}_massfracs")
+                                )
+                            ),
+                        ],
+                        how="horizontal",
                     )
+                combinedlzdf = combinedlzdf.select(pl.sum_horizontal(cs.ends_with("_massfracs")).alias(strnuc))
+                lazyresults.append((mgi, strnuc, combinedlzdf))
 
-                if mgi not in arr_abund_artis:
-                    arr_abund_artis[mgi] = {}
+        dfcollected = pl.collect_all([lzdf for _, _, lzdf in lazyresults])
+        for (mgi, strnuc, _lzdfs), df in zip(lazyresults, dfcollected, strict=True):
+            if mgi not in arr_abund_artis:
+                arr_abund_artis[mgi] = {}
 
-                arr_abund_artis[mgi][strnuc] = list(massfracs)
+            arr_abund_artis[mgi][strnuc] = df.to_series().to_list()
     return arr_time_artis_days, arr_abund_artis
 
 
@@ -310,7 +323,7 @@ def plot_qdot(
     axis.set_xmargin(0.02)
     axis.set_ymargin(0.02)
     fig.savefig(pdfoutpath, format="pdf")
-    print(f"open {pdfoutpath}\n")
+    print(f"open {pdfoutpath}")
 
 
 def plot_cell_abund_evolution(
@@ -659,6 +672,7 @@ def plot_qdot_abund_modelcells(
     )
 
     for mgi in mgiplotlist:
+        print()
         strmgi = f"mgi{mgi}" if mgi >= 0 else "global"
         plot_cell_abund_evolution(
             modelpath,
