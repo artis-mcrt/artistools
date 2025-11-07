@@ -148,37 +148,38 @@ def get_artis_abund_sequences(
                         for col in estim_mgifiltered.collect_schema().names()
                         if col.startswith(f"nniso_{strnuc}") and col.removeprefix(f"nniso_{strnuc}").isdigit()
                     ]
-                    for col in matched_cols:
-                        a_iso = int(col.removeprefix(f"nniso_{strnuc}"))
-                        offset = 0.0
-                        if f"init_X_{strnuc}{a_iso}" in estim_mgifiltered.columns:
-                            initmassfrac = pl.col(f"init_X_{strnuc}{a_iso}").first()
-                            offset = initmassfrac * (correction_factors.get(f"{strnuc}{a_iso}", 1.0) - 1.0)
-                        for (_,), df in estim_mgifiltered.group_by("modelgridindex", maintain_order=True):
-                            massfracs += (
-                                df.select(
-                                    (pl.col(col) * a_iso * MH / pl.col("rho") + offset) * pl.col("cellmass_on_mtot")
-                                )
-                                .to_series()
-                                .to_numpy()
-                            )
-
+                    list_a_iso = [int(col.removeprefix(f"nniso_{strnuc}")) for col in matched_cols]
+                    list_str_nuc_iso = [f"{strnuc}{a_iso}" for a_iso in list_a_iso]
                 elif f"nniso_{strnuc}" in estim_mgifiltered.columns:
-                    offset = 0.0
-                    if f"init_X_{strnuc}" in estim_mgifiltered.columns:
-                        initmassfrac = pl.col(f"init_X_{strnuc}").first()
-                        offset = initmassfrac * (correction_factors.get(strnuc, 1.0) - 1.0)
-                    for (_,), df in estim_mgifiltered.group_by("modelgridindex", maintain_order=True):
-                        massfracs += (
-                            df.select(
-                                (pl.col(f"nniso_{strnuc}") * a * MH / pl.col("rho") + offset)
-                                * pl.col("cellmass_on_mtot")
-                            )
-                            .to_series()
-                            .to_numpy()
-                        )
+                    matched_cols = [f"nniso_{strnuc}"]
+                    list_a_iso = [a]
+                    list_str_nuc_iso = [strnuc]
                 else:
                     continue
+
+                for col, a_iso, strnuciso in zip(matched_cols, list_a_iso, list_str_nuc_iso, strict=True):
+                    offset = 0.0
+                    if f"init_X_{strnuciso}" in estim_mgifiltered.columns:
+                        initmassfrac = pl.col(f"init_X_{strnuciso}").first()
+                        offset = initmassfrac * (correction_factors.get(f"{strnuciso}", 1.0) - 1.0)
+
+                    dfcellmassfraclist = estim_mgifiltered.group_by("modelgridindex", maintain_order=True).agg(
+                        ((pl.col(col) * a_iso * MH / pl.col("rho") + offset) * pl.col("cellmass_on_mtot"))
+                        .implode()
+                        .cast(pl.Array(pl.Float64, len(arr_time_artis_days)))
+                        .alias("cellmassfracs")
+                    )
+                    massfracs += (
+                        dfcellmassfraclist.select(
+                            pl.concat_arr([
+                                pl.col("cellmassfracs").arr.get(n).sum() for n in range(len(arr_time_artis_days))
+                            ])
+                            .explode()
+                            .alias("massfracs")
+                        )
+                        .to_series()
+                        .to_numpy()
+                    )
 
                 if mgi not in arr_abund_artis:
                     arr_abund_artis[mgi] = {}
