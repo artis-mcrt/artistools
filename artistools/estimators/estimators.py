@@ -242,7 +242,7 @@ def scan_estimators(
 
     runfolders = at.get_runfolders(modelpath, timesteps=match_timestep)
     if runfolders:
-        parquetfiles = (
+        parquetfiles = [
             get_rankbatch_parquetfile(
                 modelpath=modelpath,
                 folderpath=runfolder,
@@ -252,10 +252,11 @@ def scan_estimators(
             )
             for runfolder in runfolders
             for batchindex, mpiranks in mpirank_groups
-        )
+        ]
 
         assert bool(parquetfiles)
-
+        if not verbose:
+            print(f"  scanning {len(parquetfiles)} parquet estimator files...")
         pldflazy = (
             pl.concat([pl.scan_parquet(pfile) for pfile in parquetfiles], how="diagonal_relaxed")
             .unique(["timestep", "modelgridindex"], maintain_order=True, keep="first")
