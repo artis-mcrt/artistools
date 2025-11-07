@@ -116,7 +116,8 @@ def get_artis_abund_sequences(
             join_modeldata=True,
         )
 
-        estimators_lazy = estimators_lazy.filter(pl.col("modelgridindex").is_in(mgiplotlist))
+        if all(mgi >= 0 for mgi in mgiplotlist):
+            estimators_lazy = estimators_lazy.filter(pl.col("modelgridindex").is_in(mgiplotlist))
 
         estimators_lazy = estimators_lazy.select(
             "modelgridindex",
@@ -529,6 +530,9 @@ def plot_qdot_abund_modelcells(
             print(f"model.txt traj_root {traj_root} is not a directory!")
         gsinet_available = False
 
+    arr_species.sort(
+        key=lambda x: (at.get_atomic_number(x[0]), int(x[1].removeprefix(x[1].rstrip(string.digits)) or -1))
+    )
     arr_z = [at.get_atomic_number(species) for species in arr_species]
     arr_a = [
         int(a) if a is not None else a
@@ -563,6 +567,7 @@ def plot_qdot_abund_modelcells(
             arr_a=arr_a,
             correction_factors=correction_factors,
         )
+
     if gsinet_available:
         # times in artis are relative to merger, but NSM simulation time started earlier
         mergertime_geomunits = at.inputmodel.modelfromhydro.get_merger_time_geomunits(griddata_root)
@@ -696,8 +701,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         # "Cu66",
         # "Cf254",
     ]
-
-    arr_species.sort(key=lambda x: (at.get_atomic_number(x[0]), x[1] if x[1] is not None else -1))
 
     plot_qdot_abund_modelcells(
         modelpath=Path(args.modelpath),
