@@ -103,7 +103,6 @@ def get_artis_abund_sequences(
     arr_species: Sequence[str],
     arr_a: Sequence[int | None],
     correction_factors: dict[str, float],
-    timedaysmax: float | None = None,
 ) -> tuple[list[float], dict[int, dict[str, list[float]]]]:
     arr_time_artis_days: list[float] = []
     arr_abund_artis: dict[int, dict[str, list[float]]] = {}
@@ -119,8 +118,6 @@ def get_artis_abund_sequences(
 
         if all(mgi >= 0 for mgi in mgiplotlist):
             estimators_lazy = estimators_lazy.filter(pl.col("modelgridindex").is_in(mgiplotlist))
-
-        estimators_lazy = at.misc.df_filter_minmax_bounded(estimators_lazy, "tmid_days", None, timedaysmax)
 
         estimators_lazy = estimators_lazy.select(
             "modelgridindex",
@@ -590,7 +587,6 @@ def plot_qdot_abund_modelcells(
             arr_species=arr_species,
             arr_a=arr_a,
             correction_factors=correction_factors,
-            timedaysmax=timedaysmax,
         )
 
     if gsinet_available:
