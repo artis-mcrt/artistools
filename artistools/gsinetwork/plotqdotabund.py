@@ -167,6 +167,7 @@ def get_artis_abund_sequences(
                     if f"init_X_{strnuciso}" in estim_mgifiltered.collect_schema().names():
                         initmassfrac = pl.col(f"init_X_{strnuciso}").first()
                         offset = initmassfrac * (correction_factors.get(f"{strnuciso}", 1.0) - 1.0)
+
                     combinedlzdf = pl.concat(
                         [
                             combinedlzdf,
@@ -192,7 +193,9 @@ def get_artis_abund_sequences(
                 combinedlzdf = combinedlzdf.select(pl.sum_horizontal(cs.ends_with("_massfracs")).alias(strnuc))
                 lazyresults.append((mgi, strnuc, combinedlzdf))
 
+        print("Collecting ARTIS abundance sequences...")
         dfcollected = pl.collect_all([lzdf for _, _, lzdf in lazyresults])
+        print("Finished collecting ARTIS abundance sequences.")
         for (mgi, strnuc, _lzdfs), df in zip(lazyresults, dfcollected, strict=True):
             if mgi not in arr_abund_artis:
                 arr_abund_artis[mgi] = {}
@@ -584,24 +587,12 @@ def plot_qdot_abund_modelcells(
     model_mass_grams = lzdfmodel.select(pl.col("mass_g").sum()).collect().item()
     print(f"model mass: {model_mass_grams / 1.989e33:.3f} Msun")
 
-    correction_factors = get_abundance_correction_factors(lzdfmodel, mgiplotlist, arr_species, modelpath, modelmeta)
-
     dftimesteps = at.misc.df_filter_minmax_bounded(
         at.get_timesteps(modelpath).select("timestep", "tmid_days"), "tmid_days", None, timedaysmax
     ).collect()
 
     arr_time_artis_s_alltimesteps = dftimesteps.select(pl.col("tmid_days") * 86400.0).to_series().to_numpy()
     arr_time_artis_days_alltimesteps = dftimesteps.select(pl.col("tmid_days")).to_series().to_numpy()
-
-    if mgiplotlist:
-        arr_time_artis_days, arr_abund_artis = get_artis_abund_sequences(
-            modelpath=modelpath,
-            dftimesteps=dftimesteps,
-            mgiplotlist=mgiplotlist,
-            arr_species=arr_species,
-            arr_a=arr_a,
-            correction_factors=correction_factors,
-        )
 
     if gsinet_available:
         # times in artis are relative to merger, but NSM simulation time started earlier
@@ -671,21 +662,32 @@ def plot_qdot_abund_modelcells(
         xmax=timedaysmax,
     )
 
-    for mgi in mgiplotlist:
-        print()
-        strmgi = f"mgi{mgi}" if mgi >= 0 else "global"
-        plot_cell_abund_evolution(
-            modelpath,
-            dfcontribsparticledata,
-            arr_time_artis_days,
-            arr_time_gsi_days,
-            arr_species,
-            arr_abund_artis.get(mgi, {}),
-            modelmeta["t_model_init_days"],
-            lzdfmodel.filter(modelgridindex=mgi).collect(),
-            mgi=mgi,
-            pdfoutpath=Path(modelpath, f"gsinetwork_{strmgi}-abundance.pdf"),
+    if mgiplotlist:
+        correction_factors = get_abundance_correction_factors(lzdfmodel, mgiplotlist, arr_species, modelpath, modelmeta)
+        arr_time_artis_days, arr_abund_artis = get_artis_abund_sequences(
+            modelpath=modelpath,
+            dftimesteps=dftimesteps,
+            mgiplotlist=mgiplotlist,
+            arr_species=arr_species,
+            arr_a=arr_a,
+            correction_factors=correction_factors,
         )
+
+        for mgi in mgiplotlist:
+            print()
+            strmgi = f"mgi{mgi}" if mgi >= 0 else "global"
+            plot_cell_abund_evolution(
+                modelpath,
+                dfcontribsparticledata,
+                arr_time_artis_days,
+                arr_time_gsi_days,
+                arr_species,
+                arr_abund_artis.get(mgi, {}),
+                modelmeta["t_model_init_days"],
+                lzdfmodel.filter(modelgridindex=mgi).collect(),
+                mgi=mgi,
+                pdfoutpath=Path(modelpath, f"gsinetwork_{strmgi}-abundance.pdf"),
+            )
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -729,15 +731,15 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args = parser.parse_args([] if kwargs else argsraw)
 
     arr_species = [
-        # "He4",
+        "He4",
         # "Ga72",
         "Sr",
-        "Sr89",
+        # "Sr89",
         # "Sr91",
         # "I129",
         # "I132",
         # "Rb88",
-        "Y92",
+        # "Y92",
         # "Sb128",
         # "Cu66",
         # "Cf254",
