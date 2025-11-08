@@ -101,7 +101,6 @@ def get_artis_abund_sequences(
     dftimesteps: pl.DataFrame,
     mgiplotlist: Sequence[int],
     arr_species: Sequence[str],
-    arr_a: Sequence[int | None],
     correction_factors: dict[str, float],
 ) -> tuple[list[float], dict[int, dict[str, list[float]]]]:
     arr_time_artis_days: list[float] = []
@@ -124,84 +123,53 @@ def get_artis_abund_sequences(
             "modelgridindex",
             "timestep",
             "tmid_days",
-            cs.starts_with(*[f"nniso_{strnuc}" for strnuc in arr_species]),
+            cs.starts_with(*[f"nniso_{strspecies}" for strspecies in arr_species]),
             "mass_g",
             "rho",
-            cs.starts_with(*[f"init_X_{strnuc}" for strnuc in arr_species]),
+            cs.starts_with(*[f"init_X_{strspecies}" for strspecies in arr_species]),
         )
-
         estimators_lazy = estimators_lazy.sort(by=["timestep", "modelgridindex"])
+        allisotopes = [
+            col.removeprefix("nniso_")
+            for col in estimators_lazy.collect_schema().names()
+            if col.startswith("nniso_") and col.removeprefix("nniso_").lstrip(string.ascii_letters).isdigit()
+        ]
+        estimators_lazy = estimators_lazy.with_columns(
+            (pl.col(f"init_X_{striso}") * (correction_factors.get(striso, 1.0) - 1.0)).alias(f"offset_{striso}")
+            for striso in allisotopes
+        )
+        estimators_lazy = estimators_lazy.with_columns([
+            (
+                (pl.col(f"nniso_{striso}") * int(striso.lstrip(string.ascii_letters)) * MH / pl.col("rho"))
+                + pl.col(f"offset_{striso}")
+            ).alias(f"X_{striso}")
+            for striso in allisotopes
+        ])
+
         arr_time_artis_days = estimators_lazy.select(pl.col("tmid_days").unique()).collect().to_series().to_list()
         lazyresults = []
         for mgi in mgiplotlist:
             assert isinstance(mgi, int)
-            estim_mgifiltered = estimators_lazy.filter((pl.col("modelgridindex") == mgi).or_(mgi < 0))
-            mass_selected = (
-                estim_mgifiltered.group_by("modelgridindex")
-                .agg(pl.col("mass_g").first())
-                .select("mass_g")
-                .sum()
-                .collect()
-                .item()
+            combinedlzdf = (
+                estimators_lazy.filter((pl.col("modelgridindex") == mgi).or_(mgi < 0))
+                .group_by("timestep", maintain_order=True)
+                .agg(
+                    (
+                        (pl.sum_horizontal(cs.matches(rf"^X_{strspecies}\d+")) * pl.col("mass_g")).sum()
+                        / pl.col("mass_g").sum()
+                    ).alias(f"X_{strspecies}")
+                    for strspecies in arr_species
+                )
             )
-            estim_mgifiltered = estim_mgifiltered.with_columns(cellmass_on_mtot=pl.col("mass_g") / mass_selected)
+            lazyresults.append((mgi, combinedlzdf))
 
-            for strnuc, a in zip(arr_species, arr_a, strict=True):
-                combinedlzdf = pl.LazyFrame()
-                if a is None:
-                    matched_cols = [
-                        col
-                        for col in estim_mgifiltered.collect_schema().names()
-                        if col.startswith(f"nniso_{strnuc}") and col.removeprefix(f"nniso_{strnuc}").isdigit()
-                    ]
-                    list_a_iso = [int(col.removeprefix(f"nniso_{strnuc}")) for col in matched_cols]
-                    list_str_nuc_iso = [f"{strnuc}{a_iso}" for a_iso in list_a_iso]
-                elif f"nniso_{strnuc}" in estim_mgifiltered.collect_schema().names():
-                    matched_cols = [f"nniso_{strnuc}"]
-                    list_a_iso = [a]
-                    list_str_nuc_iso = [strnuc]
-                else:
-                    continue
-
-                for col, a_iso, strnuciso in zip(matched_cols, list_a_iso, list_str_nuc_iso, strict=True):
-                    offset = 0.0
-                    if f"init_X_{strnuciso}" in estim_mgifiltered.collect_schema().names():
-                        initmassfrac = pl.col(f"init_X_{strnuciso}").first()
-                        offset = initmassfrac * (correction_factors.get(f"{strnuciso}", 1.0) - 1.0)
-
-                    combinedlzdf = pl.concat(
-                        [
-                            combinedlzdf,
-                            (
-                                estim_mgifiltered.group_by("modelgridindex", maintain_order=True)
-                                .agg(
-                                    ((pl.col(col) * a_iso * MH / pl.col("rho") + offset) * pl.col("cellmass_on_mtot"))
-                                    .implode()
-                                    .alias("cellmassfracs")
-                                )
-                                .select(
-                                    pl.concat_arr([
-                                        pl.col("cellmassfracs").list.get(n).sum()
-                                        for n in range(len(arr_time_artis_days))
-                                    ])
-                                    .explode()
-                                    .alias(f"{strnuciso}_massfracs")
-                                )
-                            ),
-                        ],
-                        how="horizontal",
-                    )
-                combinedlzdf = combinedlzdf.select(pl.sum_horizontal(cs.ends_with("_massfracs")).alias(strnuc))
-                lazyresults.append((mgi, strnuc, combinedlzdf))
-
-        print("Collecting ARTIS abundance sequences...")
-        dfcollected = pl.collect_all([lzdf for _, _, lzdf in lazyresults])
-        print("Finished collecting ARTIS abundance sequences.")
-        for (mgi, strnuc, _lzdfs), df in zip(lazyresults, dfcollected, strict=True):
+        dfcollected = pl.collect_all([lzdf for _, lzdf in lazyresults])
+        for (mgi, _lzdfs), df in zip(lazyresults, dfcollected, strict=True):
             if mgi not in arr_abund_artis:
                 arr_abund_artis[mgi] = {}
+            for strspecies in arr_species:
+                arr_abund_artis[mgi][strspecies] = df.get_column(f"X_{strspecies}").to_list()
 
-            arr_abund_artis[mgi][strnuc] = df.to_series().to_list()
     return arr_time_artis_days, arr_abund_artis
 
 
@@ -229,7 +197,7 @@ def plot_qdot(
         dfgsiglobalheating = (
             dfcontribsparticledata.select([
                 pl.concat_arr(
-                    (pl.col(col).arr.get(n) * pl.col("cellmass_on_mtot") * pl.col("frac_of_cellmass")).sum()
+                    (pl.col(col).arr.get(n) * pl.col("frac_of_cellmass") * pl.col("cellmass_on_mtot")).sum()
                     for n in range(len(arr_time_gsi_days))
                 )
                 .explode()
@@ -388,7 +356,7 @@ def plot_cell_abund_evolution(
     assert isinstance(axes, np.ndarray)
     axes[-1].set_xlabel("Time [days]")
     axis = axes[0]
-    print(f"{'nuc':7s}  gsi_abund artis_abund")
+    print(f"{'':7s}  gsi_abund artis_abund")
 
     for axis, strnuc in zip(axes, arr_species, strict=False):
         # axis.set_yscale('log')
@@ -573,7 +541,7 @@ def plot_qdot_abund_modelcells(
     arr_z = [at.get_atomic_number(species) for species in arr_species]
     arr_a = [
         int(a) if a is not None else a
-        for a in [species.removeprefix(species.rstrip(string.digits)) or None for species in arr_species]
+        for a in [species.lstrip(string.ascii_letters) or None for species in arr_species]
     ]
     arr_n = [a - z if a is not None else None for z, a in zip(arr_z, arr_a, strict=True)]
     arr_strnuc_z_n = list(zip(arr_species, arr_z, arr_n, strict=True))
@@ -633,7 +601,7 @@ def plot_qdot_abund_modelcells(
                 pool.join()
         else:
             list_particledata_withabund = [fworkerwithabund(particleid) for particleid in list_particleids_getabund]
-
+        print("  done")
         list_particleids_noabund = [pid for pid in allcontribparticleids if pid not in list_particleids_getabund]
         fworkernoabund = partial(get_particledata, arr_time_gsi_s_incpremerger, [], traj_root)
         print(f"Reading for Qdot/thermo data (no abundances needed) for {len(list_particleids_noabund)} particles")
@@ -645,6 +613,7 @@ def plot_qdot_abund_modelcells(
                 pool.join()
         else:
             list_particledata_noabund = [fworkernoabund(particleid) for particleid in list_particleids_noabund]
+        print("  done")
 
         allparticledata = pl.concat(list_particledata_withabund + list_particledata_noabund, how="diagonal")
 
@@ -668,7 +637,6 @@ def plot_qdot_abund_modelcells(
             dftimesteps=dftimesteps,
             mgiplotlist=mgiplotlist,
             arr_species=arr_species,
-            arr_a=arr_a,
             correction_factors=correction_factors,
         )
 
@@ -718,6 +686,14 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--nogsinet", action="store_true", help="Do not attempt to read GSI Network data even if available"
     )
 
+    parser.add_argument(
+        "-species",
+        type=str,
+        default=["Sr", "Y", "Zr"],
+        nargs="*",
+        help=("Element symbols or isotope names to plot abundances for, e.g., Sr Sr89 Y Zr"),
+    )
+
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Compare the energy release and abundances from ARTIS to the GSI Network calculation."""
@@ -729,26 +705,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         argcomplete.autocomplete(parser)
         args = parser.parse_args([] if kwargs else argsraw)
 
-    arr_species = [
-        "He4",
-        # "Ga72",
-        "Sr",
-        # "Sr89",
-        # "Sr91",
-        # "I129",
-        # "I132",
-        # "Rb88",
-        # "Y92",
-        # "Sb128",
-        # "Cu66",
-        # "Cf254",
-    ]
-
+    print(f"Selected species: {' '.join(args.species)}")
     plot_qdot_abund_modelcells(
         modelpath=Path(args.modelpath),
         merger_root=Path(args.mergerroot),
         mgiplotlist=args.mgilist,
-        arr_species=arr_species,
+        arr_species=args.species,
         timedaysmax=args.xmax,
         nogsinet=args.nogsinet,
     )
