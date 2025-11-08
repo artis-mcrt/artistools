@@ -146,7 +146,6 @@ def get_artis_abund_sequences(
         ])
 
         arr_time_artis_days = estimators_lazy.select(pl.col("tmid_days").unique()).collect().to_series().to_list()
-        lazyresults = []
         cellmassfrac_exprs = []
         for strspecies in arr_species:
             if strspecies[-1].isdigit() and f"X_{strspecies}" in estimators_lazy.collect_schema().names():
@@ -157,6 +156,8 @@ def get_artis_abund_sequences(
                 )  # sum over all isotopes of this element
             else:
                 cellmassfrac_exprs.append(pl.lit(float("-inf")))
+
+        lazydfs = []
         for mgi in mgiplotlist:
             assert isinstance(mgi, int)
             combinedlzdf = (
@@ -167,10 +168,10 @@ def get_artis_abund_sequences(
                     for strspecies, cellmassfracexpr in zip(arr_species, cellmassfrac_exprs, strict=True)
                 )
             )
-            lazyresults.append((mgi, combinedlzdf))
+            lazydfs.append((mgi, combinedlzdf))
 
-        dfcollected = pl.collect_all([lzdf for _, lzdf in lazyresults])
-        for (mgi, _lzdfs), df in zip(lazyresults, dfcollected, strict=True):
+        dfcollected = pl.collect_all([lzdf for _, lzdf in lazydfs])
+        for (mgi, _lzdfs), df in zip(lazydfs, dfcollected, strict=True):
             if mgi not in arr_abund_artis:
                 arr_abund_artis[mgi] = {}
             for strspecies in arr_species:
