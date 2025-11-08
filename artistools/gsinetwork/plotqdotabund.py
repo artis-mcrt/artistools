@@ -129,36 +129,42 @@ def get_artis_abund_sequences(
             cs.starts_with(*[f"init_X_{strspecies}" for strspecies in arr_species]),
         )
         estimators_lazy = estimators_lazy.sort(by=["timestep", "modelgridindex"])
-        allisotopes = [
+        allisotopes_in_df = [
             col.removeprefix("nniso_")
             for col in estimators_lazy.collect_schema().names()
             if col.startswith("nniso_") and col.removeprefix("nniso_").lstrip(string.ascii_letters).isdigit()
         ]
         estimators_lazy = estimators_lazy.with_columns(
             (pl.col(f"init_X_{striso}") * (correction_factors.get(striso, 1.0) - 1.0)).alias(f"offset_{striso}")
-            for striso in allisotopes
-        )
-        estimators_lazy = estimators_lazy.with_columns([
+            for striso in allisotopes_in_df
+        ).with_columns([
             (
                 (pl.col(f"nniso_{striso}") * int(striso.lstrip(string.ascii_letters)) * MH / pl.col("rho"))
                 + pl.col(f"offset_{striso}")
             ).alias(f"X_{striso}")
-            for striso in allisotopes
+            for striso in allisotopes_in_df
         ])
 
         arr_time_artis_days = estimators_lazy.select(pl.col("tmid_days").unique()).collect().to_series().to_list()
         lazyresults = []
+        cellmassfrac_exprs = []
+        for strspecies in arr_species:
+            if strspecies[-1].isdigit() and f"X_{strspecies}" in estimators_lazy.collect_schema().names():
+                cellmassfrac_exprs.append(pl.col(f"X_{strspecies}"))
+            elif len(estimators_lazy.select(cs.matches(rf"^X_{strspecies}\d+")).collect_schema().names()) > 0:
+                cellmassfrac_exprs.append(
+                    pl.sum_horizontal(cs.matches(rf"^X_{strspecies}\d+"))
+                )  # sum over all isotopes of this element
+            else:
+                cellmassfrac_exprs.append(pl.lit(float("-inf")))
         for mgi in mgiplotlist:
             assert isinstance(mgi, int)
             combinedlzdf = (
                 estimators_lazy.filter((pl.col("modelgridindex") == mgi).or_(mgi < 0))
                 .group_by("timestep", maintain_order=True)
                 .agg(
-                    (
-                        (pl.sum_horizontal(cs.matches(rf"^X_{strspecies}\d+")) * pl.col("mass_g")).sum()
-                        / pl.col("mass_g").sum()
-                    ).alias(f"X_{strspecies}")
-                    for strspecies in arr_species
+                    ((cellmassfracexpr * pl.col("mass_g")).sum() / pl.col("mass_g").sum()).alias(f"X_{strspecies}")
+                    for strspecies, cellmassfracexpr in zip(arr_species, cellmassfrac_exprs, strict=True)
                 )
             )
             lazyresults.append((mgi, combinedlzdf))
@@ -168,7 +174,8 @@ def get_artis_abund_sequences(
             if mgi not in arr_abund_artis:
                 arr_abund_artis[mgi] = {}
             for strspecies in arr_species:
-                arr_abund_artis[mgi][strspecies] = df.get_column(f"X_{strspecies}").to_list()
+                if df.select(pl.col(f"X_{strspecies}").is_finite().any()).item():
+                    arr_abund_artis[mgi][strspecies] = df.get_column(f"X_{strspecies}").to_list()
 
     return arr_time_artis_days, arr_abund_artis
 
@@ -537,7 +544,6 @@ def plot_qdot_abund_modelcells(
             print(f"model.txt traj_root {traj_root} is not a directory!")
         gsinet_available = False
 
-    arr_species.sort(key=lambda x: (at.get_atomic_number(x), int(x.removeprefix(x.rstrip(string.digits)) or -1)))
     arr_z = [at.get_atomic_number(species) for species in arr_species]
     arr_a = [
         int(a) if a is not None else a
@@ -689,7 +695,23 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-species",
         type=str,
-        default=["Sr", "Y", "Zr"],
+        default=[
+            "He4",
+            "Sr",
+            "Y",
+            "Zr",
+            "Ga72",
+            "Cu77",
+            "Sr89",
+            "Sr91",
+            "I129",
+            "I132",
+            "Rb88",
+            "Y92",
+            "Sb128",
+            "Cu66",
+            "Cf254",
+        ],
         nargs="*",
         help=("Element symbols or isotope names to plot abundances for, e.g., Sr Sr89 Y Zr"),
     )
