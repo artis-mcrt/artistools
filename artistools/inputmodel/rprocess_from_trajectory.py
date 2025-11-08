@@ -131,7 +131,11 @@ def get_traj_network_timesteps(traj_root: Path, particleid: int) -> pl.DataFrame
 
 
 def get_closest_network_timestep(
-    traj_root: Path, particleid: int, timesec: float, cond: t.Literal["lessthan", "greaterthan", "nearest"] = "nearest"
+    traj_root: Path,
+    particleid: int,
+    timesec: float,
+    cond: t.Literal["lessthan", "greaterthan", "nearest"] = "nearest",
+    dfevol: pl.DataFrame | None = None,
 ) -> int:
     """Find the closest network timestep to a given time in seconds.
 
@@ -139,7 +143,8 @@ def get_closest_network_timestep(
       - 'lessthan': find highest timestep less than time_sec
       - 'greaterthan': find lowest timestep greater than time_sec.
     """
-    dfevol = get_traj_network_timesteps(traj_root, particleid)
+    if dfevol is None:
+        dfevol = get_traj_network_timesteps(traj_root, particleid)
 
     if cond == "nearest":
         idx = np.abs(dfevol["timesec"].to_numpy() - timesec).argmin()
