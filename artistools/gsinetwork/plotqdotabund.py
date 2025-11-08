@@ -428,12 +428,7 @@ def get_particledata(
 ) -> pl.LazyFrame:
     """For an array of times (NSM time including time before merger), interpolate the heating rates of various decay channels and (if arr_strnuc is not empty) the nuclear mass fractions."""
     try:
-        nts_min = at.inputmodel.rprocess_from_trajectory.get_closest_network_timestep(
-            traj_root, particleid, timesec=min(float(x) for x in arr_time_s_incpremerger), cond="lessthan"
-        )
-        nts_max = at.inputmodel.rprocess_from_trajectory.get_closest_network_timestep(
-            traj_root, particleid, timesec=max(float(x) for x in arr_time_s_incpremerger), cond="greaterthan"
-        )
+        dfevol = at.inputmodel.rprocess_from_trajectory.get_traj_network_timesteps(traj_root, particleid)
 
     except FileNotFoundError:
         print(f"No network calculation for particle {particleid}")
@@ -477,7 +472,23 @@ def get_particledata(
             )
 
     if arr_strnuc_z_n:
-        nts_list = list(range(nts_min, nts_max + 1))
+        ntslowers = [
+            nts
+            for nts in [
+                dfevol.filter(pl.col("timesec") >= timesec).get_column("nstep").min()
+                for timesec in arr_time_s_incpremerger
+            ]
+            if nts is not None
+        ]
+        ntsuppers = [
+            nts
+            for nts in [
+                dfevol.filter(pl.col("timesec") < timesec).get_column("nstep").max()
+                for timesec in arr_time_s_incpremerger
+            ]
+            if nts is not None
+        ]
+        nts_list = sorted(set(ntslowers + ntsuppers))
         nts_count = len(nts_list)
         arr_traj_time_s = [nstep_timesec[nts] for nts in nts_list]
         arr_massfracs = {strnuc: np.zeros(nts_count, dtype=np.float32) for strnuc, _, _ in arr_strnuc_z_n}
