@@ -72,7 +72,7 @@ dev = [
     "prek>=0.2.9",
     "pyright>=1.1.405",
     "pynonthermal>=2025.3.31.2",
-    "pytest>=8.3.3",
+    "pytest>=9.0.0",
     "pytest-codspeed>=4.1.1",
     "pytest-cov>=6.0.0",
     "pytest-xdist[psutil]>=3.6.1",
@@ -262,8 +262,8 @@ typeCheckingMode = "standard"
 useLibraryCodeForTypes = true
 pythonVersion = "3.11"
 
-[tool.pytest.ini_options]
-addopts = " --durations=0 --durations-min=1.0 --typeguard-packages=artistools -n auto"
+[tool.pytest]
+addopts = ["--durations=0","--durations-min=1.0","--typeguard-packages=artistools","-n","auto"]
 
 [tool.refurb]
 ignore = ["FURB120"]
