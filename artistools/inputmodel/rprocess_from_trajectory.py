@@ -375,7 +375,9 @@ def save_gridparticlecontributions(dfcontribs: pl.DataFrame, gridcontribpath: Pa
         oldfile = gridcontribpath.rename(gridcontribpath.with_suffix(".bak"))
         print(f"{gridcontribpath} already exists. Renaming existing file to {oldfile}")
 
-    dfcontribs.write_csv(gridcontribpath, separator=" ", float_scientific=True, float_precision=7)
+    dfcontribs.sort(by=["cellindex", "particleid"]).write_csv(
+        gridcontribpath, separator=" ", float_scientific=True, float_precision=7
+    )
 
 
 def add_abundancecontributions(
