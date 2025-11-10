@@ -213,7 +213,7 @@ def read_modelfile_text(
 
         dfmodel = pl.from_pandas(dfmodelpd).lazy()
 
-    dfmodel = dfmodel.rename({"velocity_outer": "vel_r_max_kmps", "cellYe": "Ye"}, strict=False)
+    dfmodel = dfmodel.sort("inputcellid").rename({"velocity_outer": "vel_r_max_kmps", "cellYe": "Ye"}, strict=False)
 
     if modelmeta["dimensions"] == 1:
         vmax_kmps = dfmodel.select(pl.col("vel_r_max_kmps").max()).collect().item()
@@ -346,7 +346,6 @@ def read_modelfile_text(
                     pos_y_min=(pl.col("pos_y_mid") - modelmeta["wid_init_y"] / 2.0),
                     pos_z_min=(pl.col("pos_z_mid") - modelmeta["wid_init_z"] / 2.0),
                 )
-
     return dfmodel, modelmeta
 
 
