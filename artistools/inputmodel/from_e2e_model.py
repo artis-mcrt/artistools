@@ -14,10 +14,10 @@ import polars as pl
 
 import artistools as at
 
-cl = 29979245800.0
+CLIGHT = 29979245800.0  # cm/s
 day = 86400.0
 msol = 1.989e33  # solar mass in g
-tsnap = 0.1 * day  # snapshot time is fixed by the npz files
+t_model_init_days = 0.1 * day  # snapshot time is fixed by the npz files
 
 
 def sphkernel(
@@ -67,7 +67,7 @@ def f1corr(rcyl: npt.NDArray[np.floating], hsph: npt.NDArray[np.floating]) -> np
 def get_grid(
     dat_path: Path,
     iso_path: Path,
-    vmax: float,
+    vmax_on_c: float,
     numb_cells_ARTIS_radial: int,
     numb_cells_ARTIS_z: int,
     nodynej: bool,
@@ -117,7 +117,7 @@ def get_grid(
 
     time_s = dat.f.time
     starting_idx = (np.abs(time_s - 0.1)).argmin()
-    closest_idx = (np.abs(time_s - tsnap)).argmin()
+    closest_idx = (np.abs(time_s - t_model_init_days)).argmin()
     i = -1
     tot_Q_rel = 0
 
@@ -144,7 +144,7 @@ def get_grid(
         i2 = list(dynidall).index(i1)  # index in Zeweis extended list of trajs.
         mtraj[i] = mass_arr[i2] * msol
         # no multiplication with mass to keep it a specific energy release
-        time_by_t_snap = time_s / tsnap
+        time_by_t_snap = time_s / t_model_init_days
         qtraj[i] = np.trapezoid(
             time_by_t_snap[starting_idx:closest_idx] * (qdot_arr[i2] + hnuloss_arr[i2])[starting_idx:closest_idx],
             time_s[starting_idx:closest_idx],
@@ -162,7 +162,7 @@ def get_grid(
         i += 1  # index in the new list accounting for unprocessed trajs.
         i3 = np.where(dynidall == i1)[0]  # indices in Zeweis extended list of trajs.
         mtraj[i] = np.sum(mass_arr[i3]) * msol
-        time_by_t_snap = time_s / tsnap
+        time_by_t_snap = time_s / t_model_init_days
         qtraj[i] = np.trapezoid(
             time_by_t_snap[starting_idx:closest_idx]
             * np.sum((qdot_arr[i3] + hnuloss_arr[i3]), axis=0)[starting_idx:closest_idx],
@@ -207,24 +207,26 @@ def get_grid(
     # ... cylindrical coordinates of the particle positions
     rcyltraj, zcyltraj = np.zeros(ntraj), np.zeros(ntraj)
     for i in [int(j) for j in np.arange(ntraj)]:
-        rcyltraj[i] = vtraj[i] * np.sin(atraj[i]) * cl * tsnap
-        zcyltraj[i] = vtraj[i] * np.cos(atraj[i]) * cl * tsnap
+        rcyltraj[i] = vtraj[i] * np.sin(atraj[i]) * CLIGHT * t_model_init_days
+        zcyltraj[i] = vtraj[i] * np.cos(atraj[i]) * CLIGHT * t_model_init_days
 
     # ... cylindrical coordinates of the grid onto which we want to map
-    vmax_cmps = vmax * cl
+    vmax_cmps = vmax_on_c * CLIGHT
     nvr = numb_cells_ARTIS_radial
     nvz = numb_cells_ARTIS_z // eqsymfac  # number of mapping grid cells in z direction depends on equatorial symmetry
 
-    wid_init_rcyl = vmax_cmps * tsnap / nvr
-    pos_rcyl_min = np.array([vmax_cmps * tsnap / nvr * nr for nr in range(nvr)])
+    wid_init_rcyl = vmax_cmps * t_model_init_days / nvr
+    pos_rcyl_min = np.array([vmax_cmps * t_model_init_days / nvr * nr for nr in range(nvr)])
     pos_rcyl_mid = pos_rcyl_min + 0.5 * wid_init_rcyl
     pos_rcyl_max = pos_rcyl_min + wid_init_rcyl
 
-    wid_init_z = (2.0 / eqsymfac) * vmax_cmps * tsnap / nvz
+    wid_init_z = (2.0 / eqsymfac) * vmax_cmps * t_model_init_days / nvz
     if eqsymfac == 1:
-        pos_z_min = np.array([-vmax_cmps * tsnap + 2.0 * vmax_cmps * tsnap / nvz * nz for nz in range(nvz)])
+        pos_z_min = np.array([
+            -vmax_cmps * t_model_init_days + 2.0 * vmax_cmps * t_model_init_days / nvz * nz for nz in range(nvz)
+        ])
     else:
-        pos_z_min = np.array([vmax_cmps * tsnap / nvz * nz for nz in range(nvz)])
+        pos_z_min = np.array([vmax_cmps * t_model_init_days / nvz * nz for nz in range(nvz)])
     pos_z_mid = pos_z_min + 0.5 * wid_init_z
     # pos_z_max = pos_z_min + wid_init_z
 
@@ -248,7 +250,7 @@ def get_grid(
     for i in [int(j) for j in np.arange(ntraj)]:
         # print(i)
         cont = True
-        hl, hr = 0.00001 * cl * tsnap, 1.0 * cl * tsnap
+        hl, hr = 0.00001 * CLIGHT * t_model_init_days, 1.0 * CLIGHT * t_model_init_days
         dist = np.sqrt((rcyltraj[i] - rcyltraj) ** 2 + (zcyltraj[i] - zcyltraj) ** 2)
         ic = 0
         while cont:
@@ -381,7 +383,7 @@ def z_reflect(arr: npt.NDArray[np.floating | np.integer], sign: int = 1) -> npt.
 def map_to_artis(
     ngridrcyl: int,
     ngridz: int,
-    vmax: float,
+    vmax_on_c: float,
     pos_t_s_grid_rad: npt.NDArray[np.floating | np.integer],
     pos_t_s_grid_z: npt.NDArray[np.floating | np.integer],
     rho_interpol: npt.NDArray[np.floating | np.integer],
@@ -461,8 +463,10 @@ def map_to_artis(
         "dimensions": 2,
         "ncoordgridrcyl": ngridrcyl,
         "ncoordgridz": ngridz,
-        "t_model_init_days": tsnap / day,
-        "vmax_cmps": vmax * cl,
+        "wid_init_rcyl": vmax_on_c * CLIGHT * t_model_init_days / ngridrcyl,
+        "wid_init_z": 2 * vmax_on_c * CLIGHT * t_model_init_days / ngridz,
+        "t_model_init_days": t_model_init_days / day,
+        "vmax_cmps": vmax_on_c * CLIGHT,
     }
 
     return dfmodel, dfabundances, modelmeta
@@ -522,7 +526,7 @@ def merge_neighbour_cells(
     N_cell_r_old, N_cell_z_old = ngrid_rcyl, ngrid_z
     N_cell_r_new, N_cell_z_new = N_cell_r_old // red_fact_1D, N_cell_z_old // red_fact_1D
     new_numb_cells = N_cell_r_new * N_cell_z_new
-    r_max_snap = vmax * cl * tsnap
+    r_max_snap = vmax * CLIGHT * t_model_init_days
 
     # create new grid
     Delta_r = r_max_snap / N_cell_r_new
@@ -594,8 +598,8 @@ def merge_neighbour_cells(
         "dimensions": 2,
         "ncoordgridrcyl": N_cell_r_new,
         "ncoordgridz": N_cell_z_new,
-        "t_model_init_days": tsnap / day,
-        "vmax_cmps": vmax * cl,
+        "t_model_init_days": t_model_init_days / day,
+        "vmax_cmps": vmax * CLIGHT,
     }
     print(f"Remapped model to {N_cell_r_new}x{N_cell_z_new} grid.")
     return dfmodel, dfelabundances, modelmeta
@@ -613,7 +617,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "-vmax", type=float, default=0.5, help="Maximum one-direction velocity in units of c the ARTIS model shall have"
+        "-vmax_on_c",
+        type=float,
+        default=0.5,
+        help="Maximum one-direction velocity in units of c the ARTIS model shall have",
     )
 
     parser.add_argument(
@@ -657,7 +664,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.iso = Path(args.npz).parent / "iso_table.npy"
 
     if args.outputpath is None:
-        args.outputpath = Path(args.npz).parent / "artis_inputmodels" / Path(args.npz).name.replace(".npz", "")
+        modelname = Path(args.npz).name.replace(".npz", "")
+        if args.dimensions is not None and args.dimensions < 2:
+            modelname += f"_{args.dimensions}D"
+        args.outputpath = Path(args.npz).parent / "artis_inputmodels" / modelname
         args.outputpath.mkdir(parents=True, exist_ok=True)
         print(args.outputpath)
 
@@ -676,7 +686,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     ) = get_grid(
         args.npz,
         args.iso,
-        float(args.vmax),
+        float(args.vmax_on_c),
         ngrid_rcyl,
         ngrid_z,
         args.nodyn,
@@ -688,7 +698,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     dfmodel, dfabundances, modelmeta = map_to_artis(
         ngridrcyl=ngrid_rcyl,
         ngridz=ngrid_z,
-        vmax=float(args.vmax),
+        vmax_on_c=float(args.vmax_on_c),
         pos_t_s_grid_rad=pos_t_s_grid_rad,
         pos_t_s_grid_z=pos_t_s_grid_z,
         rho_interpol=rho_interpol,
