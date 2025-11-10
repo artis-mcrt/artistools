@@ -570,8 +570,8 @@ def merge_neighbour_cells(
 
     nuclide_columns = [col for col in dfmodel_out.columns if col.startswith("X_")][1:]
 
-    masses_all = dfmodel_out["mass_g"].to_numpy()
-    abunds_all = {nuclide: dfmodel_out[nuclide].to_numpy() for nuclide in nuclide_columns}
+    masses_all = dfmodel["mass_g"].to_numpy()
+    abunds_all = {nuclide: dfmodel[nuclide].to_numpy() for nuclide in nuclide_columns}
     for nuclide in nuclide_columns:
         new_X_arr = np.zeros(new_numb_cells)
         for new_z in range(1, N_cell_z_new + 1):
