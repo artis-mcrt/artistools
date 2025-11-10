@@ -568,7 +568,7 @@ def merge_neighbour_cells(
     el_mass_fracs = np.zeros((len(element_abbrevs_list), new_numb_cells))
     dictelabunds = {"inputcellid": np.array(range(1, new_numb_cells + 1))}
 
-    nuclide_columns = [col for col in dfmodel_out.columns if col.startswith("X_")][1:]
+    nuclide_columns = [col for col in dfmodel.columns if col.startswith("X_")][1:]
 
     masses_all = dfmodel["mass_g"].to_numpy()
     abunds_all = {nuclide: dfmodel[nuclide].to_numpy() for nuclide in nuclide_columns}
