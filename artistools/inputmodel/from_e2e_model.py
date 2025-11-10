@@ -74,7 +74,6 @@ def get_grid(
     nohmns: bool,
     notorus: bool,
     no_nu_trapping: bool,
-    outputpath: Path,
 ) -> tuple[
     npt.NDArray[np.floating],
     npt.NDArray[np.floating],
@@ -84,6 +83,7 @@ def get_grid(
     npt.NDArray[np.floating],
     npt.NDArray[np.floating],
     int,
+    pl.DataFrame,
 ]:
     dat = np.load(dat_path)
     iso = np.load(iso_path)
@@ -342,22 +342,31 @@ def get_grid(
     print("(X-1)_max over 2D grid 2  :", np.amax(np.where(test > -1, abs(test), 0.0)))
 
     # write file containing the contribution of each trajectory to each interpolated grid cell
-    with (outputpath / Path("gridcontributions.txt")).open("w", encoding="utf-8") as fgridcontributions:
-        fgridcontributions.write("particleid cellindex frac_of_cellmass frac_of_cellmass_includemissing" + "\n")
-        for nz in np.arange(nvz):
-            for nr in np.arange(nvr):
-                cellid = nz * nvr + nr + 1
-                if dmgrid[nr, nz] > (1e-100 * mtot):
-                    # print(
-                    # f"{nr} {nz} {temint[nr, nz]} {q_ergperg[nr, nz]} {rhoint[nr, nz]} {dmgrid[nr, nz]} {xint[nr, nz]}"
-                    # )
-                    wloc = wall[nr, nz, :] * rho2dtraj / rho2dhat
-                    wloc /= np.sum(wloc)
-                    pids = np.where(wloc > 1.0e-20)[0]
-                    for pid in pids:
-                        fgridcontributions.write(f"{pid:<10}  {cellid:<8} {wloc[pid]:25.15e} {wloc[pid]:25.15e}\n")
+    dfcontributions_particleids = []
+    dfcontributions_cellindices = []
+    dfcontributions_fracofcellmass = []
+    for nz in np.arange(nvz):
+        for nr in np.arange(nvr):
+            cellid = nz * nvr + nr + 1
+            if dmgrid[nr, nz] > (1e-100 * mtot):
+                # print(
+                # f"{nr} {nz} {temint[nr, nz]} {q_ergperg[nr, nz]} {rhoint[nr, nz]} {dmgrid[nr, nz]} {xint[nr, nz]}"
+                # )
+                wloc = wall[nr, nz, :] * rho2dtraj / rho2dhat
+                wloc /= np.sum(wloc)
+                pids = np.where(wloc > 1.0e-20)[0]
+                for pid in pids:
+                    dfcontributions_particleids.append(pid)
+                    dfcontributions_cellindices.append(cellid)
+                    dfcontributions_fracofcellmass.append(wloc[pid])
 
-    return rgridc2d, zgridc2d, rhoint, xint, iso, qinterpol, yeinterpol, eqsymfac
+    dfparticlecontribs = pl.DataFrame({
+        "particleid": dfcontributions_particleids,
+        "cellindex": dfcontributions_cellindices,
+        "frac_of_cellmass": dfcontributions_fracofcellmass,
+    }).with_columns(frac_of_cellmass_includemissing=pl.col("frac_of_cellmass"))
+
+    return rgridc2d, zgridc2d, rhoint, xint, iso, qinterpol, yeinterpol, eqsymfac, dfparticlecontribs
 
 
 def z_reflect(arr: npt.NDArray[np.floating | np.integer], sign: int = 1) -> npt.NDArray[np.floating | np.integer]:
@@ -654,7 +663,17 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     ngrid_rcyl = int(args.ngridrcyl)
     ngrid_z = int(args.ngridz)
-    pos_t_s_grid_rad, pos_t_s_grid_z, rho_interpol, X_cells, isot_table, q_ergperg, ye_traj, eqsymfac = get_grid(
+    (
+        pos_t_s_grid_rad,
+        pos_t_s_grid_z,
+        rho_interpol,
+        X_cells,
+        isot_table,
+        q_ergperg,
+        ye_traj,
+        eqsymfac,
+        dfgridcontributions,
+    ) = get_grid(
         args.npz,
         args.iso,
         float(args.vmax),
@@ -664,7 +683,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.nohmns,
         args.notorus,
         no_nu_trapping=args.nonutrapping,
-        outputpath=args.outputpath,
     )
 
     dfmodel, dfabundances, modelmeta = map_to_artis(
@@ -701,12 +719,17 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         )
 
     if args.dimensions is not None and args.dimensions < 2:
-        dfmodel, dfabundances, _dfgridcontributions, modelmeta = at.inputmodel.dimension_reduce_model(
-            dfmodel=dfmodel, outputdimensions=args.dimensions, dfabundances=dfabundances, modelmeta=modelmeta
+        dfmodel, dfabundances, dfgridcontributions, modelmeta = at.inputmodel.dimension_reduce_model(
+            dfmodel=dfmodel,
+            outputdimensions=args.dimensions,
+            dfabundances=dfabundances,
+            modelmeta=modelmeta,
+            dfgridcontributions=dfgridcontributions,
         )
 
     at.inputmodel.save_initelemabundances(dfelabundances=dfabundances, outpath=args.outputpath)
     at.inputmodel.save_modeldata(dfmodel=dfmodel, modelmeta=modelmeta, outpath=args.outputpath)
+    at.inputmodel.rprocess_from_trajectory.save_gridparticlecontributions(dfgridcontributions, args.outputpath)
 
 
 if __name__ == "__main__":
