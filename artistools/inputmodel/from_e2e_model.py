@@ -403,7 +403,7 @@ def map_to_artis(
             "pos_z_mid": (pos_t_s_grid_z).flatten(order="F"),
             "rho": (rho_interpol).flatten(order="F"),
             "q": (q_ergperg).flatten(order="F"),
-            # "cellYe": z_reflect(ye).flatten(order="F"),
+            "Ye": z_reflect(ye_traj).flatten(order="F"),
         })
     else:
         # equatorial symmetry -> have to reflect
@@ -418,7 +418,7 @@ def map_to_artis(
             "pos_z_mid": (pos_t_s_grid_z).flatten(order="F"),
             "rho": (rho_interpol).flatten(order="F"),
             "q": (q_ergperg).flatten(order="F"),
-            "cellYe": (ye_traj).flatten(order="F"),
+            "Ye": (ye_traj).flatten(order="F"),
         })
 
     assert pos_t_s_grid_rad.shape == (ngridrcyl, ngridz)
@@ -480,7 +480,7 @@ def get_old_cell_indices(red_fact: int, new_r: int, new_z: int, N_cell_r_old: in
 
 
 def remap_mass_weighted_quantity(
-    im_ARTIS_old: pl.DataFrame,
+    dfmodel_in: pl.DataFrame,
     fieldname: str,
     red_fact: int,
     N_cell_r_new: int,
@@ -494,8 +494,8 @@ def remap_mass_weighted_quantity(
     new_field = np.zeros(new_numb_cells)
 
     # get arrays
-    mass_arr = im_ARTIS_old["mass_g"].to_numpy()
-    field_arr = im_ARTIS_old[fieldname].to_numpy()
+    mass_arr = dfmodel_in["mass_g"].to_numpy()
+    field_arr = dfmodel_in[fieldname].to_numpy()
 
     for new_z, new_r in itertools.product(range(1, N_cell_z_new + 1), range(1, N_cell_r_new + 1)):
         new_cell_idx = new_r + N_cell_r_new * (new_z - 1)
@@ -527,6 +527,10 @@ def merge_neighbour_cells(
     new_numb_cells = N_cell_r_new * N_cell_z_new
     r_max_snap = vmax * CLIGHT * t_model_init_days
 
+    dfmodel = at.inputmodel.add_derived_cols_to_modeldata(
+        dfmodel, modelmeta=modelmeta, derived_cols=["mass_g"]
+    ).collect()
+
     # create new grid
     Delta_r = r_max_snap / N_cell_r_new
     Delta_z = 2 * r_max_snap / N_cell_z_new  # account for positive and negative z-values
@@ -548,13 +552,13 @@ def merge_neighbour_cells(
     print("  Done.")
 
     # new model data frame
-    dfmodel = pl.DataFrame({
+    dfmodel_out = pl.DataFrame({
         "inputcellid": range(1, new_numb_cells + 1),
         "pos_rcyl_mid": np.tile(r_mid_grid, N_cell_z_new),
         "pos_z_mid": np.repeat(z_mid_grid, N_cell_r_new),
         "rho": new_rho_arr,
         "q": new_q_arr,
-        "cellYe": new_ye_arr,
+        "Ye": new_ye_arr,
     })
 
     # now map the abundances
@@ -564,10 +568,10 @@ def merge_neighbour_cells(
     el_mass_fracs = np.zeros((len(element_abbrevs_list), new_numb_cells))
     dictelabunds = {"inputcellid": np.array(range(1, new_numb_cells + 1))}
 
-    nuclide_columns = [col for col in dfmodel.columns if col.startswith("X_")][1:]
+    nuclide_columns = [col for col in dfmodel_out.columns if col.startswith("X_")][1:]
 
-    masses_all = dfmodel["mass_g"].to_numpy()
-    abunds_all = {nuclide: dfmodel[nuclide].to_numpy() for nuclide in nuclide_columns}
+    masses_all = dfmodel_out["mass_g"].to_numpy()
+    abunds_all = {nuclide: dfmodel_out[nuclide].to_numpy() for nuclide in nuclide_columns}
     for nuclide in nuclide_columns:
         new_X_arr = np.zeros(new_numb_cells)
         for new_z in range(1, N_cell_z_new + 1):
@@ -587,21 +591,23 @@ def merge_neighbour_cells(
     for i, el in enumerate(element_abbrevs_list_titled):
         dictelabunds[f"X_{el}"] = el_mass_fracs[i]
 
-    if "X_Fegroup" not in dfmodel.columns:
-        dfmodel = dfmodel.with_columns(pl.lit(1.0).alias("X_Fegroup"))
+    if "X_Fegroup" not in dfmodel_out.columns:
+        dfmodel_out = dfmodel_out.with_columns(pl.lit(1.0).alias("X_Fegroup"))
 
-    dfmodel = dfmodel.with_columns(dictabunds)
+    dfmodel_out = dfmodel_out.with_columns(dictabunds)
     dfelabundances = pl.DataFrame(dictelabunds).fill_nan(0.0)
 
-    modelmeta = {
+    modelmeta_out = modelmeta | {
         "dimensions": 2,
         "ncoordgridrcyl": N_cell_r_new,
         "ncoordgridz": N_cell_z_new,
+        "wid_init_rcyl": vmax * CLIGHT * t_model_init_days / N_cell_r_new,
+        "wid_init_z": 2 * vmax * CLIGHT * t_model_init_days / N_cell_z_new,
         "t_model_init_days": t_model_init_days / day,
         "vmax_cmps": vmax * CLIGHT,
     }
     print(f"Remapped model to {N_cell_r_new}x{N_cell_z_new} grid.")
-    return dfmodel, dfelabundances, modelmeta
+    return dfmodel_out, dfelabundances, modelmeta_out
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -724,7 +730,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             red_fact=args.mergecells,
             ngrid_rcyl=ngrid_rcyl,
             ngrid_z=ngrid_z,
-            vmax=args.vmax,
+            vmax=args.vmax_on_c,
         )
 
     if args.dimensions is not None and args.dimensions < 2:
