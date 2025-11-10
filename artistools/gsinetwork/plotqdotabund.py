@@ -523,7 +523,6 @@ def get_dfcontribsparticledata(
     arr_strnuc_z_n: list[tuple[str, int, int | None]],
     traj_root: Path,
     griddata_root: Path,
-    modelmeta: dict[str, t.Any],
     lzdfmodel: pl.LazyFrame,
     arr_time_gsi_days: list[float],
 ) -> pl.LazyFrame:
@@ -537,9 +536,8 @@ def get_dfcontribsparticledata(
         at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(modelpath)
         .lazy()
         .with_columns(modelgridindex=pl.col("cellindex") - 1)
-        .filter(pl.col("modelgridindex") < modelmeta["npts_model"])
         .filter(pl.col("frac_of_cellmass") > 0)
-    ).join(lzdfmodel.select(["modelgridindex", "cellmass_on_mtot"]), on="modelgridindex", how="left")
+    ).join(lzdfmodel.select(["modelgridindex", "cellmass_on_mtot"]), on="modelgridindex", how="inner")
 
     allcontribparticleids = dfpartcontrib.select(pl.col("particleid").unique()).collect().to_series().to_list()
     list_particleids_getabund = (
@@ -646,7 +644,6 @@ def plot_qdot_abund_modelcells(
             arr_strnuc_z_n=arr_strnuc_z_n,
             traj_root=traj_root,
             arr_time_gsi_days=arr_time_gsi_days,
-            modelmeta=modelmeta,
             griddata_root=griddata_root,
             lzdfmodel=lzdfmodel,
         )
