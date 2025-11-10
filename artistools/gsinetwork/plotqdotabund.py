@@ -102,9 +102,8 @@ def get_artis_abund_sequences(
     mgiplotlist: Sequence[int],
     arr_species: Sequence[str],
     correction_factors: dict[str, float],
-) -> tuple[list[float], dict[int, dict[str, list[float]]]]:
-    arr_time_artis_days: list[float] = []
-    arr_abund_artis: dict[int, dict[str, list[float]]] = {}
+) -> dict[int, pl.DataFrame]:
+    arr_abund_artis: dict[int, pl.DataFrame] = {}
     MH = 1.67352e-24  # g
 
     with contextlib.suppress(FileNotFoundError):
@@ -145,7 +144,6 @@ def get_artis_abund_sequences(
             for striso in allisotopes_in_df
         ])
 
-        arr_time_artis_days = estimators_lazy.select(pl.col("tmid_days").unique()).collect().to_series().to_list()
         cellmassfrac_exprs = []
         for strspecies in arr_species:
             if strspecies[-1].isdigit() and f"X_{strspecies}" in estimators_lazy.collect_schema().names():
@@ -164,21 +162,18 @@ def get_artis_abund_sequences(
                 estimators_lazy.filter((pl.col("modelgridindex") == mgi).or_(mgi < 0))
                 .group_by("timestep", maintain_order=True)
                 .agg(
-                    ((cellmassfracexpr * pl.col("mass_g")).sum() / pl.col("mass_g").sum()).alias(f"X_{strspecies}")
-                    for strspecies, cellmassfracexpr in zip(arr_species, cellmassfrac_exprs, strict=True)
+                    [
+                        ((cellmassfracexpr * pl.col("mass_g")).sum() / pl.col("mass_g").sum()).alias(f"X_{strspecies}")
+                        for strspecies, cellmassfracexpr in zip(arr_species, cellmassfrac_exprs, strict=True)
+                    ]
+                    + [pl.col("tmid_days").mean()]
                 )
             )
             lazydfs.append((mgi, combinedlzdf))
 
-        dfcollected = pl.collect_all([lzdf for _, lzdf in lazydfs])
-        for (mgi, _lzdfs), df in zip(lazydfs, dfcollected, strict=True):
-            if mgi not in arr_abund_artis:
-                arr_abund_artis[mgi] = {}
-            for strspecies in arr_species:
-                if df.select(pl.col(f"X_{strspecies}").is_finite().any()).item():
-                    arr_abund_artis[mgi][strspecies] = df.get_column(f"X_{strspecies}").to_list()
+        arr_abund_artis = dict(zip(mgiplotlist, pl.collect_all([lzdf for _, lzdf in lazydfs]), strict=True))
 
-    return arr_time_artis_days, arr_abund_artis
+    return arr_abund_artis
 
 
 def plot_qdot(
@@ -309,10 +304,9 @@ def plot_qdot(
 def plot_cell_abund_evolution(
     modelpath: Path,
     dfcontribsparticledata: pl.LazyFrame | None,
-    arr_time_artis_days: Sequence[float],
     arr_time_gsi_days: Sequence[float] | None,
     arr_species: Sequence[str],
-    arr_abund_artis: dict[str, list[float]],
+    arr_abund_artis: pl.DataFrame | None,
     t_model_init_days: float,
     dfcell: pl.DataFrame,
     pdfoutpath: Path,
@@ -366,16 +360,16 @@ def plot_cell_abund_evolution(
     axis = axes[0]
     print(f"{'':7s}  gsi_abund artis_abund")
 
-    for axis, strnuc in zip(axes, arr_species, strict=False):
+    for axis, strspecies in zip(axes, arr_species, strict=False):
         # axis.set_yscale('log')
         axis.set_ylabel("Mass fraction")
 
-        strnuc_latex = strnuc_to_latex(strnuc)
+        strnuc_latex = strnuc_to_latex(strspecies)
 
         if df_gsi_abunds is not None:
             axis.plot(
                 arr_time_gsi_days,
-                df_gsi_abunds[strnuc],
+                df_gsi_abunds[strspecies],
                 linewidth=2,
                 marker="x",
                 markersize=8,
@@ -383,24 +377,28 @@ def plot_cell_abund_evolution(
                 color="black",
             )
 
-        print(f"{strnuc:7s}  ", end="")
+        print(f"{strspecies:7s}  ", end="")
         if df_gsi_abunds is not None:
-            print(f"{df_gsi_abunds[strnuc][1]:.2e}", end="")
+            print(f"{df_gsi_abunds[strspecies][1]:.2e}", end="")
         else:
             print(" [no GSINET]", end="")
 
-        if strnuc in arr_abund_artis:
-            print(f" {arr_abund_artis[strnuc][0]:.2e}")
+        if arr_abund_artis is not None and arr_abund_artis.select(pl.col(f"X_{strspecies}").is_finite().any()).item():
+            print(f" {arr_abund_artis[f'X_{strspecies}'][0]:.2e}")
             axis.plot(
-                arr_time_artis_days, arr_abund_artis[strnuc], linewidth=2, label=f"{strnuc_latex} ARTIS", color="red"
+                arr_abund_artis["tmid_days"],
+                arr_abund_artis[f"X_{strspecies}"],
+                linewidth=2,
+                label=f"{strnuc_latex} ARTIS",
+                color="red",
             )
         else:
             print(" [no ARTIS data]")
 
-        if f"X_{strnuc}" in dfcell and not hideinputmodelpoints:
+        if f"X_{strspecies}" in dfcell and not hideinputmodelpoints:
             axis.plot(
                 t_model_init_days,
-                dfcell[f"X_{strnuc}"],
+                dfcell[f"X_{strspecies}"],
                 marker="+",
                 markersize=15,
                 markeredgewidth=2,
@@ -414,7 +412,8 @@ def plot_cell_abund_evolution(
         axis.set_xmargin(0.02)
         axis.set_ymargin(0.05)
 
-    fig.suptitle(f"{at.get_model_name(modelpath)} cell {mgi}", y=0.995, fontsize=10)
+    strcell = f"cell {mgi}" if mgi >= 0 else "global"
+    fig.suptitle(f"{at.get_model_name(modelpath)} {strcell}", y=0.999, fontsize=10)
     fig.savefig(pdfoutpath, format="pdf")
     print(f"open {pdfoutpath}")
 
@@ -428,7 +427,80 @@ def get_particledata(
 ) -> pl.LazyFrame:
     """For an array of times (NSM time including time before merger), interpolate the heating rates of various decay channels and (if arr_strnuc is not empty) the nuclear mass fractions."""
     try:
-        dfevol = at.inputmodel.rprocess_from_trajectory.get_traj_network_timesteps(traj_root, particleid)
+        if verbose:
+            print(
+                "Reading network calculation heating.dat,"
+                f" energy_thermo.dat{', and nz-plane abundances' if arr_strnuc_z_n else ''} for particle {particleid}..."
+            )
+
+        particledata = pl.LazyFrame({"particleid": [particleid]}, schema={"particleid": pl.Int32})
+        nstep_timesec = {}
+        with get_tar_member_extracted_path(
+            traj_root=traj_root, particleid=particleid, memberfilename="./Run_rprocess/heating.dat"
+        ).open(encoding="utf-8") as f:
+            dfheating = pd.read_csv(f, sep=r"\s+", usecols=["#count", "time/s", "hbeta", "halpha", "hspof"])
+            heatcols = ["hbeta", "halpha", "hspof"]
+
+            heatrates_in: dict[str, list[float]] = {col: [] for col in heatcols}
+            arr_time_s_source = []
+            for _, row in dfheating.iterrows():
+                nstep_timesec[row["#count"]] = row["time/s"]
+                arr_time_s_source.append(row["time/s"])
+                for col in heatcols:
+                    try:
+                        heatrates_in[col].append(float(row[col]))
+                    except ValueError:
+                        heatrates_in[col].append(float(row[col].replace("-", "e-")))
+
+            for col in heatcols:
+                particledata = particledata.with_columns(
+                    pl.Series(
+                        [np.interp(arr_time_s_incpremerger, arr_time_s_source, heatrates_in[col])],
+                        dtype=pl.Array(pl.Float32, len(arr_time_s_incpremerger)),
+                    ).alias(col)
+                )
+
+        if arr_strnuc_z_n:
+            ntslowers = at.inputmodel.rprocess_from_trajectory.get_closest_network_timesteps(
+                traj_root, particleid, arr_time_s_incpremerger, cond="lessthan"
+            )
+            ntsuppers = at.inputmodel.rprocess_from_trajectory.get_closest_network_timesteps(
+                traj_root, particleid, arr_time_s_incpremerger, cond="greaterthan"
+            )
+            nts_list = sorted(set(ntslowers + ntsuppers))
+            nts_count = len(nts_list)
+            arr_massfracs = {strnuc: np.zeros(nts_count, dtype=np.float32) for strnuc, _, _ in arr_strnuc_z_n}
+            for i, nts in enumerate(nts_list):
+                dftrajnucabund, traj_time_s = (
+                    at.inputmodel.rprocess_from_trajectory.get_trajectory_timestepfile_nuc_abund(
+                        traj_root, particleid, f"./Run_rprocess/nz-plane{nts:05d}"
+                    )
+                )
+                assert math.isclose(traj_time_s, nstep_timesec[nts])
+                for strnuc, Z, N in arr_strnuc_z_n:
+                    if N is None:
+                        # sum over all isotopes of this element
+                        arr_massfracs[strnuc][i] = (
+                            dftrajnucabund.filter(pl.col("Z") == Z).select(pl.col("massfrac").sum()).item()
+                        )
+                    else:
+                        arr_massfracs[strnuc][i] = (
+                            dftrajnucabund.filter((pl.col("Z") == Z) & (pl.col("N") == N))
+                            .select(pl.col("massfrac").sum())
+                            .item()
+                        )
+
+            particledata = particledata.with_columns(
+                pl.Series(
+                    [
+                        np.interp(
+                            arr_time_s_incpremerger, [nstep_timesec[nts] for nts in nts_list], arr_massfracs[strnuc]
+                        )
+                    ],
+                    dtype=pl.Array(pl.Float32, len(arr_time_s_incpremerger)),
+                ).alias(strnuc)
+                for strnuc, _, _ in arr_strnuc_z_n
+            )
 
     except FileNotFoundError:
         print(f"No network calculation for particle {particleid}")
@@ -437,85 +509,6 @@ def get_particledata(
             print("ERROR:", particleid, arr_strnuc_z_n)
         assert not arr_strnuc_z_n
         return pl.LazyFrame()
-
-    if verbose:
-        print(
-            "Reading network calculation heating.dat,"
-            f" energy_thermo.dat{', and nz-plane abundances' if arr_strnuc_z_n else ''} for particle {particleid}..."
-        )
-
-    particledata = pl.LazyFrame({"particleid": [particleid]}, schema={"particleid": pl.Int32})
-    nstep_timesec = {}
-    with get_tar_member_extracted_path(
-        traj_root=traj_root, particleid=particleid, memberfilename="./Run_rprocess/heating.dat"
-    ).open(encoding="utf-8") as f:
-        dfheating = pd.read_csv(f, sep=r"\s+", usecols=["#count", "time/s", "hbeta", "halpha", "hspof"])
-        heatcols = ["hbeta", "halpha", "hspof"]
-
-        heatrates_in: dict[str, list[float]] = {col: [] for col in heatcols}
-        arr_time_s_source = []
-        for _, row in dfheating.iterrows():
-            nstep_timesec[row["#count"]] = row["time/s"]
-            arr_time_s_source.append(row["time/s"])
-            for col in heatcols:
-                try:
-                    heatrates_in[col].append(float(row[col]))
-                except ValueError:
-                    heatrates_in[col].append(float(row[col].replace("-", "e-")))
-
-        for col in heatcols:
-            particledata = particledata.with_columns(
-                pl.Series(
-                    [np.interp(arr_time_s_incpremerger, arr_time_s_source, heatrates_in[col])],
-                    dtype=pl.Array(pl.Float32, len(arr_time_s_incpremerger)),
-                ).alias(col)
-            )
-
-    if arr_strnuc_z_n:
-        ntslowers = [
-            nts
-            for nts in [
-                dfevol.filter(pl.col("timesec") >= timesec).get_column("nstep").min()
-                for timesec in arr_time_s_incpremerger
-            ]
-            if nts is not None
-        ]
-        ntsuppers = [
-            nts
-            for nts in [
-                dfevol.filter(pl.col("timesec") < timesec).get_column("nstep").max()
-                for timesec in arr_time_s_incpremerger
-            ]
-            if nts is not None
-        ]
-        nts_list = sorted(set(ntslowers + ntsuppers))
-        nts_count = len(nts_list)
-        arr_traj_time_s = [nstep_timesec[nts] for nts in nts_list]
-        arr_massfracs = {strnuc: np.zeros(nts_count, dtype=np.float32) for strnuc, _, _ in arr_strnuc_z_n}
-        for i, nts in enumerate(nts_list):
-            dftrajnucabund, _traj_time_s = at.inputmodel.rprocess_from_trajectory.get_trajectory_timestepfile_nuc_abund(
-                traj_root, particleid, f"./Run_rprocess/nz-plane{nts:05d}"
-            )
-            for strnuc, Z, N in arr_strnuc_z_n:
-                if N is None:
-                    # sum over all isotopes of this element
-                    arr_massfracs[strnuc][i] = (
-                        dftrajnucabund.filter(pl.col("Z") == Z).select(pl.col("massfrac").sum()).item()
-                    )
-                else:
-                    arr_massfracs[strnuc][i] = (
-                        dftrajnucabund.filter((pl.col("Z") == Z) & (pl.col("N") == N))
-                        .select(pl.col("massfrac").sum())
-                        .item()
-                    )
-
-        particledata = particledata.with_columns(
-            pl.Series(
-                [np.interp(arr_time_s_incpremerger, arr_traj_time_s, arr_massfracs[strnuc])],
-                dtype=pl.Array(pl.Float32, len(arr_time_s_incpremerger)),
-            ).alias(strnuc)
-            for strnuc, _, _ in arr_strnuc_z_n
-        )
 
     return particledata
 
@@ -650,7 +643,7 @@ def plot_qdot_abund_modelcells(
 
     if mgiplotlist:
         correction_factors = get_abundance_correction_factors(lzdfmodel, mgiplotlist, arr_species, modelpath, modelmeta)
-        arr_time_artis_days, arr_abund_artis = get_artis_abund_sequences(
+        arr_abund_artis = get_artis_abund_sequences(
             modelpath=modelpath,
             dftimesteps=dftimesteps,
             mgiplotlist=mgiplotlist,
@@ -664,10 +657,9 @@ def plot_qdot_abund_modelcells(
             plot_cell_abund_evolution(
                 modelpath,
                 dfcontribsparticledata,
-                arr_time_artis_days,
                 arr_time_gsi_days,
                 arr_species,
-                arr_abund_artis.get(mgi, {}),
+                arr_abund_artis.get(mgi),
                 modelmeta["t_model_init_days"],
                 lzdfmodel.filter(modelgridindex=mgi).collect(),
                 mgi=mgi,

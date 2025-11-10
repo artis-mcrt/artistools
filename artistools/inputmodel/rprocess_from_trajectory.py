@@ -16,6 +16,7 @@ from pathlib import Path
 
 import argcomplete
 import numpy as np
+import numpy.typing as npt
 import polars as pl
 
 import artistools as at
@@ -130,13 +131,13 @@ def get_traj_network_timesteps(traj_root: Path, particleid: int) -> pl.DataFrame
         )
 
 
-def get_closest_network_timestep(
+def get_closest_network_timesteps(
     traj_root: Path,
     particleid: int,
-    timesec: float,
+    timesec: float | Sequence[float] | npt.NDArray[np.floating],
     cond: t.Literal["lessthan", "greaterthan", "nearest"] = "nearest",
     dfevol: pl.DataFrame | None = None,
-) -> int:
+) -> list[int]:
     """Find the closest network timestep to a given time in seconds.
 
     cond:
@@ -146,21 +147,26 @@ def get_closest_network_timestep(
     if dfevol is None:
         dfevol = get_traj_network_timesteps(traj_root, particleid)
 
-    if cond == "nearest":
-        idx = np.abs(dfevol["timesec"].to_numpy() - timesec).argmin()
-        return int(dfevol["nstep"].to_numpy()[idx])
+    if isinstance(timesec, float):
+        timesec = [timesec]
+    assert not isinstance(timesec, float)
+    assert not isinstance(timesec, int)
 
+    if cond == "nearest":
+        return [
+            dfevol.filter(pl.col("timesec") == pl.col("timesec").bottom_k_by((pl.col("timesec") - t).abs(), k=1))
+            .get_column("nstep")
+            .item()
+            for t in timesec
+        ]
     if cond == "greaterthan":
-        step = dfevol.filter(pl.col("timesec") > timesec).get_column("nstep").min()
-        assert isinstance(step, int)
-        return step
+        return [dfevol.select(pl.col("nstep").filter(pl.col("timesec") > tsec).min()).item() for tsec in timesec]
 
     if cond == "lessthan":
-        step = dfevol.filter(pl.col("timesec") < timesec).get_column("nstep").max()
-        assert isinstance(step, int)
-        return step
+        return [dfevol.select(pl.col("nstep").filter(pl.col("timesec") < tsec).max()).item() for tsec in timesec]
 
-    raise AssertionError
+    msg = f"Unknown cond value {cond}"
+    raise AssertionError(msg)
 
 
 def get_trajectory_timestepfile_nuc_abund(
@@ -251,7 +257,7 @@ def get_trajectory_abund_q(
             memberfilename = f"./Run_rprocess/nz-plane{nts:05d}"
         elif t_model_s is not None:
             # find the closest timestep to the required time
-            nts = get_closest_network_timestep(traj_root, particleid, t_model_s)
+            nts = get_closest_network_timesteps(traj_root, particleid, [t_model_s])[0]
             memberfilename = f"./Run_rprocess/nz-plane{nts:05d}"
         else:
             msg = "Either t_model_s or nts must be specified"
