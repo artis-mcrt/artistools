@@ -517,6 +517,69 @@ def get_particledata(
     return particledata
 
 
+def get_dfcontribsparticledata(
+    modelpath: Path | str,
+    mgiplotlist: Sequence[int],
+    arr_strnuc_z_n: list[tuple[str, int, int | None]],
+    traj_root: Path,
+    griddata_root: Path,
+    modelmeta: dict[str, t.Any],
+    lzdfmodel: pl.LazyFrame,
+    arr_time_gsi_days: list[float],
+) -> pl.LazyFrame:
+    """Get the grid particle contributions joined with their interpolated heating rates and abundances."""
+    # times in artis are relative to merger, but NSM simulation time started earlier
+    mergertime_geomunits = at.inputmodel.modelfromhydro.get_merger_time_geomunits(griddata_root)
+    t_mergertime_s = mergertime_geomunits * 4.926e-6
+    arr_time_gsi_s_incpremerger = np.array(arr_time_gsi_days) * 86400.0 + t_mergertime_s
+
+    dfpartcontrib = (
+        at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(modelpath)
+        .lazy()
+        .with_columns(modelgridindex=pl.col("cellindex") - 1)
+        .filter(pl.col("modelgridindex") < modelmeta["npts_model"])
+        .filter(pl.col("frac_of_cellmass") > 0)
+    ).join(lzdfmodel.select(["modelgridindex", "cellmass_on_mtot"]), on="modelgridindex", how="left")
+
+    allcontribparticleids = dfpartcontrib.select(pl.col("particleid").unique()).collect().to_series().to_list()
+    list_particleids_getabund = (
+        dfpartcontrib.filter(pl.col("modelgridindex").is_in(mgiplotlist).or_(any(mgi < 0 for mgi in mgiplotlist)))
+        .select(pl.col("particleid").unique())
+        .collect()
+        .to_series()
+        .to_list()
+    )
+    fworkerwithabund = partial(get_particledata, arr_time_gsi_s_incpremerger, arr_strnuc_z_n, traj_root, verbose=False)
+
+    print(f"Reading trajectories from {traj_root}")
+    print(f"Reading Qdot/thermo and abundance data for {len(list_particleids_getabund)} particles")
+
+    if at.get_config()["num_processes"] > 1:
+        with at.get_multiprocessing_pool() as pool:
+            list_particledata_withabund = pool.map(fworkerwithabund, list_particleids_getabund)
+            pool.close()
+            pool.join()
+    else:
+        list_particledata_withabund = [fworkerwithabund(particleid) for particleid in list_particleids_getabund]
+    print("  done")
+    list_particleids_noabund = [pid for pid in allcontribparticleids if pid not in list_particleids_getabund]
+    fworkernoabund = partial(get_particledata, arr_time_gsi_s_incpremerger, [], traj_root)
+    print(f"Reading for Qdot/thermo data (no abundances needed) for {len(list_particleids_noabund)} particles")
+
+    if at.get_config()["num_processes"] > 1:
+        with at.get_multiprocessing_pool() as pool:
+            list_particledata_noabund = pool.map(fworkernoabund, list_particleids_noabund)
+            pool.close()
+            pool.join()
+    else:
+        list_particledata_noabund = [fworkernoabund(particleid) for particleid in list_particleids_noabund]
+    print("  done")
+
+    allparticledata = pl.concat(list_particledata_withabund + list_particledata_noabund, how="diagonal")
+
+    return dfpartcontrib.join(allparticledata, on="particleid", how="inner")
+
+
 def plot_qdot_abund_modelcells(
     modelpath: Path,
     merger_root: Path,
@@ -576,59 +639,18 @@ def plot_qdot_abund_modelcells(
     arr_time_artis_days_alltimesteps = dftimesteps.select(pl.col("tmid_days")).to_series().to_numpy()
 
     if gsinet_available:
-        # times in artis are relative to merger, but NSM simulation time started earlier
-        mergertime_geomunits = at.inputmodel.modelfromhydro.get_merger_time_geomunits(griddata_root)
-        t_mergertime_s = mergertime_geomunits * 4.926e-6
         arr_time_gsi_days = [modelmeta["t_model_init_days"], *arr_time_artis_days_alltimesteps]
-        arr_time_gsi_s_incpremerger = np.array(arr_time_gsi_days) * 86400.0 + t_mergertime_s
-
-        dfpartcontrib = (
-            at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(modelpath)
-            .lazy()
-            .with_columns(modelgridindex=pl.col("cellindex") - 1)
-            .filter(pl.col("modelgridindex") < modelmeta["npts_model"])
-            .filter(pl.col("frac_of_cellmass") > 0)
-        ).join(lzdfmodel.select(["modelgridindex", "cellmass_on_mtot"]), on="modelgridindex", how="left")
-
-        allcontribparticleids = dfpartcontrib.select(pl.col("particleid").unique()).collect().to_series().to_list()
-        list_particleids_getabund = (
-            dfpartcontrib.filter(pl.col("modelgridindex").is_in(mgiplotlist).or_(any(mgi < 0 for mgi in mgiplotlist)))
-            .select(pl.col("particleid").unique())
-            .collect()
-            .to_series()
-            .to_list()
-        )
-        fworkerwithabund = partial(
-            get_particledata, arr_time_gsi_s_incpremerger, arr_strnuc_z_n, traj_root, verbose=False
+        dfcontribsparticledata = get_dfcontribsparticledata(
+            modelpath=modelpath,
+            mgiplotlist=mgiplotlist,
+            arr_strnuc_z_n=arr_strnuc_z_n,
+            traj_root=traj_root,
+            arr_time_gsi_days=arr_time_gsi_days,
+            modelmeta=modelmeta,
+            griddata_root=griddata_root,
+            lzdfmodel=lzdfmodel,
         )
 
-        print(f"Reading trajectories from {traj_root}")
-        print(f"Reading Qdot/thermo and abundance data for {len(list_particleids_getabund)} particles")
-
-        if at.get_config()["num_processes"] > 1:
-            with at.get_multiprocessing_pool() as pool:
-                list_particledata_withabund = pool.map(fworkerwithabund, list_particleids_getabund)
-                pool.close()
-                pool.join()
-        else:
-            list_particledata_withabund = [fworkerwithabund(particleid) for particleid in list_particleids_getabund]
-        print("  done")
-        list_particleids_noabund = [pid for pid in allcontribparticleids if pid not in list_particleids_getabund]
-        fworkernoabund = partial(get_particledata, arr_time_gsi_s_incpremerger, [], traj_root)
-        print(f"Reading for Qdot/thermo data (no abundances needed) for {len(list_particleids_noabund)} particles")
-
-        if at.get_config()["num_processes"] > 1:
-            with at.get_multiprocessing_pool() as pool:
-                list_particledata_noabund = pool.map(fworkernoabund, list_particleids_noabund)
-                pool.close()
-                pool.join()
-        else:
-            list_particledata_noabund = [fworkernoabund(particleid) for particleid in list_particleids_noabund]
-        print("  done")
-
-        allparticledata = pl.concat(list_particledata_withabund + list_particledata_noabund, how="diagonal")
-
-        dfcontribsparticledata = dfpartcontrib.join(allparticledata, on="particleid", how="inner")
     else:
         dfcontribsparticledata = None
         arr_time_gsi_days = None
