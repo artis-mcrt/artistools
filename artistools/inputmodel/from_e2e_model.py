@@ -594,7 +594,7 @@ def merge_neighbour_cells(
     if "X_Fegroup" not in dfmodel_out.columns:
         dfmodel_out = dfmodel_out.with_columns(pl.lit(1.0).alias("X_Fegroup"))
 
-    dfmodel_out = dfmodel_out.with_columns(dictabunds)
+    dfmodel_out = dfmodel_out.with_columns(**dictabunds)
     dfelabundances = pl.DataFrame(dictelabunds).fill_nan(0.0)
 
     modelmeta_out = modelmeta | {
