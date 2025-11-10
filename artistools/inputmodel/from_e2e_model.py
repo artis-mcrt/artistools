@@ -394,11 +394,10 @@ def map_to_artis(
     eqsymfac: int,
 ) -> tuple[pl.DataFrame, pl.DataFrame, dict[str, t.Any]]:
     numb_cells = ngridrcyl * ngridz
-    import pandas as pd
 
     # now reflect the arrays if equatorial symmetry is assumed or otherwise not
     if eqsymfac == 1:
-        dfmodel = pd.DataFrame({
+        dfmodel = pl.DataFrame({
             "inputcellid": range(1, numb_cells + 1),
             "pos_rcyl_mid": (pos_t_s_grid_rad).flatten(order="F"),
             "pos_z_mid": (pos_t_s_grid_z).flatten(order="F"),
@@ -413,7 +412,7 @@ def map_to_artis(
         rho_interpol = z_reflect(rho_interpol)
         q_ergperg = z_reflect(q_ergperg)
         ye_traj = z_reflect(ye_traj)
-        dfmodel = pd.DataFrame({
+        dfmodel = pl.DataFrame({
             "inputcellid": range(1, numb_cells + 1),
             "pos_rcyl_mid": (pos_t_s_grid_rad).flatten(order="F"),
             "pos_z_mid": (pos_t_s_grid_z).flatten(order="F"),
@@ -436,7 +435,7 @@ def map_to_artis(
 
     # add mass fraction columns
     if "X_Fegroup" not in dfmodel.columns:
-        dfmodel = pd.concat([dfmodel, pd.DataFrame({"X_Fegroup": np.ones(len(dfmodel))})], axis=1)
+        dfmodel = dfmodel.with_columns(X_Fegroup=pl.lit(1.0))
     # pdb.set_trace()
 
     dictabunds = {}
@@ -455,7 +454,7 @@ def map_to_artis(
             )
 
     print(f"Number of non-zero nuclides {len(dictabunds)}")
-    dfmodel = pl.from_pandas(pd.concat([dfmodel, pd.DataFrame(dictabunds)], axis=1))
+    dfmodel = dfmodel.with_columns(**dictabunds)
 
     dfabundances = pl.DataFrame(dictelabunds).fill_null(0.0)
 
@@ -591,7 +590,7 @@ def merge_neighbour_cells(
     if "X_Fegroup" not in dfmodel.columns:
         dfmodel = dfmodel.with_columns(pl.lit(1.0).alias("X_Fegroup"))
 
-    dfmodel = dfmodel.with_columns(*{nuclide: dictabunds[nuclide] for nuclide in dictabunds})
+    dfmodel = dfmodel.with_columns(dictabunds)
     dfelabundances = pl.DataFrame(dictelabunds).fill_nan(0.0)
 
     modelmeta = {
@@ -732,7 +731,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         dfmodel, dfabundances, dfgridcontributions, modelmeta = at.inputmodel.dimension_reduce_model(
             dfmodel=dfmodel,
             outputdimensions=args.dimensions,
-            dfabundances=dfabundances,
+            dfelabundances=dfabundances,
             modelmeta=modelmeta,
             dfgridcontributions=dfgridcontributions,
         )
