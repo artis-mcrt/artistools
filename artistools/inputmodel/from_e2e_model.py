@@ -403,7 +403,7 @@ def map_to_artis(
             "pos_z_mid": (pos_t_s_grid_z).flatten(order="F"),
             "rho": (rho_interpol).flatten(order="F"),
             "q": (q_ergperg).flatten(order="F"),
-            "Ye": z_reflect(ye_traj).flatten(order="F"),
+            "Ye": (ye_traj).flatten(order="F"),
         })
     else:
         # equatorial symmetry -> have to reflect
