@@ -578,7 +578,7 @@ def merge_neighbour_cells(
     if "X_Fegroup" not in dfmodel.columns:
         dfmodel = dfmodel.with_columns(pl.lit(1.0).alias("X_Fegroup"))
 
-    dfmodel = dfmodel.with_columns(dictabunds[nuclide].alias(nuclide) for nuclide in dictabunds)
+    dfmodel = dfmodel.with_columns(*{nuclide: dictabunds[nuclide] for nuclide in dictabunds})
     dfelabundances = pl.DataFrame(dictelabunds).fill_nan(0.0)
 
     modelmeta = {
