@@ -456,7 +456,7 @@ def map_to_artis(
     print(f"Number of non-zero nuclides {len(dictabunds)}")
     dfmodel = dfmodel.with_columns(**dictabunds)
 
-    dfabundances = pl.DataFrame(dictelabunds).fill_null(0.0)
+    dfelabundances = pl.DataFrame(dictelabunds).fill_null(0.0)
 
     modelmeta = {
         "dimensions": 2,
@@ -468,7 +468,7 @@ def map_to_artis(
         "vmax_cmps": vmax_on_c * CLIGHT,
     }
 
-    return dfmodel, dfabundances, modelmeta
+    return dfmodel, dfelabundances, modelmeta
 
 
 def get_old_cell_indices(red_fact: int, new_r: int, new_z: int, N_cell_r_old: int) -> list[int]:
@@ -694,7 +694,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         no_nu_trapping=args.nonutrapping,
     )
 
-    dfmodel, dfabundances, modelmeta = map_to_artis(
+    dfmodel, dfelabundances, modelmeta = map_to_artis(
         ngridrcyl=ngrid_rcyl,
         ngridz=ngrid_z,
         vmax_on_c=float(args.vmax_on_c),
@@ -718,7 +718,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         assert (ngrid_rcyl / np.sqrt(args.mergecells)).is_integer(), (
             "Number of merged cells in r direction is no integer!"
         )
-        dfmodel, dfabundances, modelmeta = merge_neighbour_cells(
+        dfmodel, dfelabundances, modelmeta = merge_neighbour_cells(
             dfmodel=dfmodel,
             modelmeta=modelmeta,
             red_fact=args.mergecells,
@@ -728,15 +728,15 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         )
 
     if args.dimensions is not None and args.dimensions < 2:
-        dfmodel, dfabundances, dfgridcontributions, modelmeta = at.inputmodel.dimension_reduce_model(
+        dfmodel, dfelabundances, dfgridcontributions, modelmeta = at.inputmodel.dimension_reduce_model(
             dfmodel=dfmodel,
             outputdimensions=args.dimensions,
-            dfelabundances=dfabundances,
+            dfelabundances=dfelabundances,
             modelmeta=modelmeta,
             dfgridcontributions=dfgridcontributions,
         )
 
-    at.inputmodel.save_initelemabundances(dfelabundances=dfabundances, outpath=args.outputpath)
+    at.inputmodel.save_initelemabundances(dfelabundances=dfelabundances, outpath=args.outputpath)
     at.inputmodel.save_modeldata(dfmodel=dfmodel, modelmeta=modelmeta, outpath=args.outputpath)
     at.inputmodel.rprocess_from_trajectory.save_gridparticlecontributions(dfgridcontributions, args.outputpath)
 
