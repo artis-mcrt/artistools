@@ -671,7 +671,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if args.outputpath is None:
         modelname = Path(args.npz).name.replace(".npz", "")
         if args.dimensions is not None and args.dimensions < 2:
-            modelname += f"_{args.dimensions}D"
+            modelname += f"_{args.dimensions}d"
         args.outputpath = Path(args.npz).parent / "artis_inputmodels" / modelname
         args.outputpath.mkdir(parents=True, exist_ok=True)
         print(args.outputpath)
