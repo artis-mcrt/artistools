@@ -569,18 +569,14 @@ def plot_qdot_abund_modelcells(
         at.get_timesteps(modelpath).select("timestep", "tmid_days"), "tmid_days", None, timedaysmax
     ).collect()
 
-    arr_time_artis_s_alltimesteps = dftimesteps.select(pl.col("tmid_days") * 86400.0).to_series().to_numpy()
     arr_time_artis_days_alltimesteps = dftimesteps.select(pl.col("tmid_days")).to_series().to_numpy()
 
     if gsinet_available:
         # times in artis are relative to merger, but NSM simulation time started earlier
         mergertime_geomunits = at.inputmodel.modelfromhydro.get_merger_time_geomunits(griddata_root)
         t_mergertime_s = mergertime_geomunits * 4.926e-6
-        arr_time_gsi_s_incpremerger = np.array([
-            modelmeta["t_model_init_days"] * 86400.0 + t_mergertime_s,
-            *arr_time_artis_s_alltimesteps,
-        ])
         arr_time_gsi_days = [modelmeta["t_model_init_days"], *arr_time_artis_days_alltimesteps]
+        arr_time_gsi_s_incpremerger = np.array(arr_time_gsi_days) * 86400.0 + t_mergertime_s
 
         dfpartcontrib = (
             at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(modelpath)
