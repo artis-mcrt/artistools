@@ -368,8 +368,8 @@ def z_reflect(arr: npt.NDArray[np.floating | np.integer], sign: int = 1) -> npt.
     return reflected
 
 
-# function added by Luke and Gerrit to create the ARTIS model.txt
-def create_ARTIS_modelfile(
+# function added by Luke and Gerrit
+def map_to_artis(
     ngridrcyl: int,
     ngridz: int,
     vmax: float,
@@ -381,8 +381,7 @@ def create_ARTIS_modelfile(
     q_ergperg: npt.NDArray[np.floating | np.integer],
     ye_traj: npt.NDArray[np.floating | np.integer],
     eqsymfac: int,
-    outputpath: Path,
-) -> None:
+) -> tuple[pl.DataFrame, pl.DataFrame, dict[str, t.Any]]:
     numb_cells = ngridrcyl * ngridz
     import pandas as pd
 
@@ -445,14 +444,10 @@ def create_ARTIS_modelfile(
             )
 
     print(f"Number of non-zero nuclides {len(dictabunds)}")
-    dfmodel = pd.concat([dfmodel, pd.DataFrame(dictabunds)], axis=1)
+    dfmodel = pl.from_pandas(pd.concat([dfmodel, pd.DataFrame(dictabunds)], axis=1))
 
-    dfabundances = pd.DataFrame(dictelabunds).fillna(0.0)
+    dfabundances = pl.DataFrame(dictelabunds).fill_null(0.0)
 
-    # create init abundance file
-    at.inputmodel.save_initelemabundances(dfelabundances=pl.from_pandas(dfabundances), outpath=outputpath)
-
-    # create modelmeta dictionary
     modelmeta = {
         "dimensions": 2,
         "ncoordgridrcyl": ngridrcyl,
@@ -461,8 +456,7 @@ def create_ARTIS_modelfile(
         "vmax_cmps": vmax * cl,
     }
 
-    # create model.txt
-    at.inputmodel.save_modeldata(dfmodel=pl.from_pandas(dfmodel), modelmeta=modelmeta, outpath=outputpath)
+    return dfmodel, dfabundances, modelmeta
 
 
 def get_old_cell_indices(red_fact: int, new_r: int, new_z: int, N_cell_r_old: int) -> list[int]:
@@ -511,16 +505,15 @@ def remap_mass_weighted_quantity(
     return new_field
 
 
-def merge_ARTIS_cells(red_fact: int, N_r: int, N_z: int, v_max: float, outputpath: Path) -> None:
+def merge_neighbour_cells(
+    dfmodel: pl.DataFrame, modelmeta: dict[str, t.Any], red_fact: int, ngrid_rcyl: int, ngrid_z: int, vmax: float
+) -> tuple[pl.DataFrame, pl.DataFrame, dict[str, t.Any]]:
     """red_fact: number of cells to be merged."""
-    import pandas as pd
-
     red_fact_1D = int(np.sqrt(red_fact))
-    im_ARTIS_old = at.inputmodel.get_modeldata(modelpath=Path(), derived_cols=["mass_g"])[0].collect()
-    N_cell_r_old, N_cell_z_old = N_r, N_z
-    N_cell_r_new, N_cell_z_new = int(N_cell_r_old / red_fact_1D), int(N_cell_z_old / red_fact_1D)
+    N_cell_r_old, N_cell_z_old = ngrid_rcyl, ngrid_z
+    N_cell_r_new, N_cell_z_new = N_cell_r_old // red_fact_1D, N_cell_z_old // red_fact_1D
     new_numb_cells = N_cell_r_new * N_cell_z_new
-    r_max_snap = v_max * cl * tsnap
+    r_max_snap = vmax * cl * tsnap
 
     # create new grid
     Delta_r = r_max_snap / N_cell_r_new
@@ -532,18 +525,18 @@ def merge_ARTIS_cells(red_fact: int, N_r: int, N_z: int, v_max: float, outputpat
     print("Now remap masses, q and Ye")
     # remap density, integrated energy release and Y_e
     new_rho_arr = remap_mass_weighted_quantity(
-        im_ARTIS_old, "mass_g", red_fact_1D, N_cell_r_new, N_cell_z_new, N_r, Delta_r, Delta_z
+        dfmodel, "mass_g", red_fact_1D, N_cell_r_new, N_cell_z_new, ngrid_rcyl, Delta_r, Delta_z
     )
     new_q_arr = remap_mass_weighted_quantity(
-        im_ARTIS_old, "q", red_fact_1D, N_cell_r_new, N_cell_z_new, N_r, Delta_r, Delta_z
+        dfmodel, "q", red_fact_1D, N_cell_r_new, N_cell_z_new, ngrid_rcyl, Delta_r, Delta_z
     )
     new_ye_arr = remap_mass_weighted_quantity(
-        im_ARTIS_old, "Ye", red_fact_1D, N_cell_r_new, N_cell_z_new, N_r, Delta_r, Delta_z
+        dfmodel, "Ye", red_fact_1D, N_cell_r_new, N_cell_z_new, ngrid_rcyl, Delta_r, Delta_z
     )
     print("  Done.")
 
     # new model data frame
-    dfmodel = pd.DataFrame({
+    dfmodel = pl.DataFrame({
         "inputcellid": range(1, new_numb_cells + 1),
         "pos_rcyl_mid": np.tile(r_mid_grid, N_cell_z_new),
         "pos_z_mid": np.repeat(z_mid_grid, N_cell_r_new),
@@ -559,10 +552,10 @@ def merge_ARTIS_cells(red_fact: int, N_r: int, N_z: int, v_max: float, outputpat
     el_mass_fracs = np.zeros((len(element_abbrevs_list), new_numb_cells))
     dictelabunds = {"inputcellid": np.array(range(1, new_numb_cells + 1))}
 
-    nuclide_columns = [col for col in im_ARTIS_old.columns if col.startswith("X_")][1:]
+    nuclide_columns = [col for col in dfmodel.columns if col.startswith("X_")][1:]
 
-    masses_all = im_ARTIS_old["mass_g"].to_numpy()
-    abunds_all = {nuclide: im_ARTIS_old[nuclide].to_numpy() for nuclide in nuclide_columns}
+    masses_all = dfmodel["mass_g"].to_numpy()
+    abunds_all = {nuclide: dfmodel[nuclide].to_numpy() for nuclide in nuclide_columns}
     for nuclide in nuclide_columns:
         new_X_arr = np.zeros(new_numb_cells)
         for new_z in range(1, N_cell_z_new + 1):
@@ -583,26 +576,24 @@ def merge_ARTIS_cells(red_fact: int, N_r: int, N_z: int, v_max: float, outputpat
         dictelabunds[f"X_{el}"] = el_mass_fracs[i]
 
     if "X_Fegroup" not in dfmodel.columns:
-        dfmodel = pd.concat([dfmodel, pd.DataFrame({"X_Fegroup": np.ones(len(dfmodel))})], axis=1)
+        dfmodel = dfmodel.with_columns(pl.lit(1.0).alias("X_Fegroup"))
 
-    dfmodel = pd.concat([dfmodel, pd.DataFrame(dictabunds)], axis=1)
-    dfabundances = pd.DataFrame(dictelabunds).fillna(0.0)
+    dfmodel = dfmodel.with_columns(dictabunds[nuclide].alias(nuclide) for nuclide in dictabunds)
+    dfelabundances = pl.DataFrame(dictelabunds).fill_nan(0.0)
 
-    at.inputmodel.save_initelemabundances(dfelabundances=pl.from_pandas(dfabundances), outpath=outputpath)
     modelmeta = {
         "dimensions": 2,
         "ncoordgridrcyl": N_cell_r_new,
         "ncoordgridz": N_cell_z_new,
         "t_model_init_days": tsnap / day,
-        "vmax_cmps": v_max * cl,
+        "vmax_cmps": vmax * cl,
     }
-
-    at.inputmodel.save_modeldata(dfmodel=pl.from_pandas(dfmodel), modelmeta=modelmeta, outpath=outputpath)
-    print(f"Successfully remapped model to {N_cell_r_new}x{N_cell_z_new} grid.")
+    print(f"Remapped model to {N_cell_r_new}x{N_cell_z_new} grid.")
+    return dfmodel, dfelabundances, modelmeta
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("-outputpath", "-o", default=".", help="Path of output ARTIS model file")
+    parser.add_argument("-outputpath", "-o", default=None, help="Path of output ARTIS model file")
 
     parser.add_argument("-npz", required=True, help="Path to the model npz file")
 
@@ -639,6 +630,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Merge specified number of cells in postprocessing to keep precision in the mass fractions",
     )
 
+    parser.add_argument(
+        "-dimensions", "-d", default=None, type=int, choices=[0, 1], help="Reduce 2D model to 1D or 0D (one-zone)"
+    )
+
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     if args is None:
@@ -648,17 +643,23 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         at.set_args_from_dict(parser, kwargs)
         argcomplete.autocomplete(parser)
         args = parser.parse_args([] if kwargs else argsraw)
+
     if args.iso is None:
         args.iso = Path(args.npz).parent / "iso_table.npy"
 
-    numb_cells_ARTIS_radial = int(args.ngridrcyl)
-    numb_cells_ARTIS_z = int(args.ngridz)
+    if args.outputpath is None:
+        args.outputpath = Path(args.npz).parent / "artis_inputmodels" / Path(args.npz).name.replace(".npz", "")
+        args.outputpath.mkdir(parents=True, exist_ok=True)
+        print(args.outputpath)
+
+    ngrid_rcyl = int(args.ngridrcyl)
+    ngrid_z = int(args.ngridz)
     pos_t_s_grid_rad, pos_t_s_grid_z, rho_interpol, X_cells, isot_table, q_ergperg, ye_traj, eqsymfac = get_grid(
         args.npz,
         args.iso,
         float(args.vmax),
-        numb_cells_ARTIS_radial,
-        numb_cells_ARTIS_z,
+        ngrid_rcyl,
+        ngrid_z,
         args.nodyn,
         args.nohmns,
         args.notorus,
@@ -666,19 +667,18 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         outputpath=args.outputpath,
     )
 
-    create_ARTIS_modelfile(
-        numb_cells_ARTIS_radial,
-        numb_cells_ARTIS_z,
-        float(args.vmax),
-        pos_t_s_grid_rad,
-        pos_t_s_grid_z,
-        rho_interpol,
-        X_cells,
-        isot_table,
-        q_ergperg,
-        ye_traj,
-        eqsymfac,
-        args.outputpath,
+    dfmodel, dfabundances, modelmeta = map_to_artis(
+        ngridrcyl=ngrid_rcyl,
+        ngridz=ngrid_z,
+        vmax=float(args.vmax),
+        pos_t_s_grid_rad=pos_t_s_grid_rad,
+        pos_t_s_grid_z=pos_t_s_grid_z,
+        rho_interpol=rho_interpol,
+        X_cells=X_cells,
+        isot_table=isot_table,
+        q_ergperg=q_ergperg,
+        ye_traj=ye_traj,
+        eqsymfac=eqsymfac,
     )
 
     if args.mergecells is not None:
@@ -687,15 +687,26 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         # check if the number is a square number
         assert np.sqrt(args.mergecells).is_integer(), "Number of cells to merge is not a square number!"
         # check if the current number of cells is a multiple of the cells to merge
-        assert (numb_cells_ARTIS_z / np.sqrt(args.mergecells)).is_integer(), (
-            "Number of merged cells in z direction is no integer!"
-        )
-        assert (numb_cells_ARTIS_radial / np.sqrt(args.mergecells)).is_integer(), (
+        assert (ngrid_z / np.sqrt(args.mergecells)).is_integer(), "Number of merged cells in z direction is no integer!"
+        assert (ngrid_rcyl / np.sqrt(args.mergecells)).is_integer(), (
             "Number of merged cells in r direction is no integer!"
         )
-        merge_ARTIS_cells(
-            args.mergecells, numb_cells_ARTIS_radial, numb_cells_ARTIS_z, float(args.vmax), args.outputpath
+        dfmodel, dfabundances, modelmeta = merge_neighbour_cells(
+            dfmodel=dfmodel,
+            modelmeta=modelmeta,
+            red_fact=args.mergecells,
+            ngrid_rcyl=ngrid_rcyl,
+            ngrid_z=ngrid_z,
+            vmax=args.vmax,
         )
+
+    if args.dimensions is not None and args.dimensions < 2:
+        dfmodel, dfabundances, _dfgridcontributions, modelmeta = at.inputmodel.dimension_reduce_model(
+            dfmodel=dfmodel, outputdimensions=args.dimensions, dfabundances=dfabundances, modelmeta=modelmeta
+        )
+
+    at.inputmodel.save_initelemabundances(dfelabundances=dfabundances, outpath=args.outputpath)
+    at.inputmodel.save_modeldata(dfmodel=dfmodel, modelmeta=modelmeta, outpath=args.outputpath)
 
 
 if __name__ == "__main__":
