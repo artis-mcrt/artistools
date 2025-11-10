@@ -438,27 +438,31 @@ def get_particledata(
         with get_tar_member_extracted_path(
             traj_root=traj_root, particleid=particleid, memberfilename="./Run_rprocess/heating.dat"
         ).open(encoding="utf-8") as f:
-            dfheating = pd.read_csv(f, sep=r"\s+", usecols=["#count", "time/s", "hbeta", "halpha", "hspof"])
+            dfheating = pl.from_pandas(
+                pd.read_csv(
+                    f, sep=r"\s+", usecols=["#count", "time/s", "hbeta", "halpha", "hspof"], dtype_backend="pyarrow"
+                )
+            )
+            # triple digit exponents like 1.735904-244 need to be converted to 1.735904e-244
+            # because of Fortran output
+            dfheating = dfheating.with_columns(
+                pl.when(cs.by_dtype(pl.String).str.slice(-4, 1) == "-")
+                .then(cs.by_dtype(pl.String).str.replace_all("-", "e-"))
+                .otherwise(cs.by_dtype(pl.String))
+                .cast(pl.Float32)
+            )
+
             heatcols = ["hbeta", "halpha", "hspof"]
 
-            heatrates_in: dict[str, list[float]] = {col: [] for col in heatcols}
-            arr_time_s_source = []
-            for _, row in dfheating.iterrows():
-                nstep_timesec[row["#count"]] = row["time/s"]
-                arr_time_s_source.append(row["time/s"])
-                for col in heatcols:
-                    try:
-                        heatrates_in[col].append(float(row[col]))
-                    except ValueError:
-                        heatrates_in[col].append(float(row[col].replace("-", "e-")))
+            nstep_timesec = dict(dfheating.select("#count", "time/s").iter_rows())
 
-            for col in heatcols:
-                particledata = particledata.with_columns(
-                    pl.Series(
-                        [np.interp(arr_time_s_incpremerger, arr_time_s_source, heatrates_in[col])],
-                        dtype=pl.Array(pl.Float32, len(arr_time_s_incpremerger)),
-                    ).alias(col)
-                )
+            particledata = particledata.with_columns(
+                pl.Series(
+                    [np.interp(arr_time_s_incpremerger, dfheating["time/s"], dfheating[col])],
+                    dtype=pl.Array(pl.Float32, len(arr_time_s_incpremerger)),
+                ).alias(col)
+                for col in heatcols
+            )
 
         if arr_strnuc_z_n:
             ntslowers = at.inputmodel.rprocess_from_trajectory.get_closest_network_timesteps(
