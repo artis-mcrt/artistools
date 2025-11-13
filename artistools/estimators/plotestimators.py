@@ -682,23 +682,28 @@ def plot_subplot(
         elif ylabel != get_ylabel(variablename):
             sameylabel = False
             break
+
+    remaining_plotitems = []
     ymin, ymax = None, None
     for plotitem in plotitems:
         if isinstance(plotitem, str | pl.Expr):
+            remaining_plotitems.append(plotitem)
             continue
         seriestype, params = plotitem
-        if seriestype == "_ymin":
+        if seriestype.removeprefix("_") == "ymin":
             ymin = float(params) if isinstance(params, str) else params
             ax.set_ylim(bottom=ymin)
 
-        elif seriestype == "_ymax":
+        elif seriestype.removeprefix("_") == "ymax":
             ymax = float(params) if isinstance(params, str) else params
             ax.set_ylim(top=ymax)
 
-        elif seriestype == "_yscale":
+        elif seriestype.removeprefix("_") == "yscale":
             ax.set_yscale(params)
+        else:
+            remaining_plotitems.append(plotitem)
 
-    for plotitem in plotitems:
+    for plotitem in remaining_plotitems:
         if isinstance(plotitem, str | pl.Expr):
             variablename = plotitem.meta.output_name() if isinstance(plotitem, pl.Expr) else plotitem
             assert isinstance(variablename, str)
@@ -718,8 +723,6 @@ def plot_subplot(
         else:  # it's a sequence of values
             seriestype, params = plotitem
             showlegend = True
-            if isinstance(params, str) and seriestype.startswith("_"):
-                continue
 
             if seriestype in {"initabundances", "initmasses"}:
                 assert isinstance(params, list)
@@ -751,8 +754,6 @@ def plot_subplot(
 
             else:
                 seriestype, ionlist = plotitem
-                if seriestype.startswith("_"):
-                    continue
                 ax.set_yscale("log")
                 if seriestype == "populations" and len(ionlist) > 2 and ax.get_yscale() == "log":
                     legend_kwargs["ncol"] = 2
@@ -1133,14 +1134,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             plotlist[i] = [plotlist[i]]
         assert isinstance(plotlist[i], list)
         plot_directives = [
-            plotvar.split("=", maxsplit=1)
-            for plotvar in plotlist[i]
-            if isinstance(plotvar, str) and plotvar.startswith("_") and "=" in plotvar
+            plotvar.split("=", maxsplit=1) for plotvar in plotlist[i] if isinstance(plotvar, str) and ("=" in plotvar)
         ]
         plotlist[i] = [
             VARIABLE_ALIASES.get(plotvar, plotvar) if isinstance(plotvar, str) else plotvar
             for plotvar in plotlist[i]
-            if not isinstance(plotvar, str) or not plotvar.startswith("_") or "=" not in plotvar
+            if not isinstance(plotvar, str) or "=" not in plotvar
         ]
         if isinstance(plotlist[i][0], str) and plotlist[i][0] not in estimatorcolumns:
             # this is going to cause an error, so attempt to interpret it as populations
@@ -1150,7 +1149,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                     continue
                 if not isinstance(plotvar, str):
                     break
-                if plotvar.startswith("_"):
+                if "=" in plotvar:
                     continue
                 atomic_number, ionstage = get_iontuple(plotvar)
                 if get_column_name("populations", atomic_number, ionstage)[0] not in estimatorcolumns:
