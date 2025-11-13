@@ -668,7 +668,7 @@ def plot_subplot(
     """Make plot from ARTIS estimators."""
     # these three lists give the x value, modelgridex, and a list of timesteps (for averaging) for each plot of the plot
     showlegend = False
-    legend_ncol = None
+    legend_ncols = 1
     seriescount = 0
     ylabel = None
     sameylabel = True
@@ -757,7 +757,7 @@ def plot_subplot(
                 seriestype, ionlist = plotitem
                 ax.set_yscale("log")
                 if seriestype == "populations" and len(ionlist) > 2 and ax.get_yscale() == "log":
-                    legend_ncol = 2
+                    legend_ncols = 2
 
                 plot_multi_ion_series(
                     ax=ax,
@@ -774,7 +774,7 @@ def plot_subplot(
 
     ax.tick_params(right=True)
     if showlegend and not args.nolegend:
-        ax.legend(loc="best", handlelength=2, frameon=False, numpoints=1, ncol=legend_ncol, markerscale=3)
+        ax.legend(loc="best", handlelength=2, frameon=False, numpoints=1, ncols=legend_ncols, markerscale=3)
 
 
 def make_figure(
