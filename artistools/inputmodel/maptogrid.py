@@ -272,6 +272,9 @@ def maptogrid(
                 # from the particle h and 150% of the mean h for all particles
                 if modifysmoothinglength == "option4" and dis > rmean:
                     h[n] = max(h[n], hmean * 1.5)
+                if modifysmoothinglength == "option5" and dis > rmean:
+                    h[n] = max(h[n], 0.75 * dx)
+                    h[n] = min(h[n], 2500)
 
                 maxdist2 = (2.0 * h[n]) ** 2
                 # -------------------------------
