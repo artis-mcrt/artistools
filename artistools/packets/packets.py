@@ -607,7 +607,7 @@ def get_packets_pl_before_filter(modelpath: Path, maxpacketfiles: int | None = N
     nprocs_read, packetsparquetfiles = get_packets_batch_parquet_paths(modelpath, maxpacketfiles)
 
     nbatches_read = len(packetsparquetfiles)
-    packetsdatasize_gb = sum(Path(f).stat().st_size for f in packetsparquetfiles) / 1024 / 1024 / 1024
+    packetsdatasize_gb = sum(f.stat().st_size for f in packetsparquetfiles) / 1024 / 1024 / 1024
     print(f"  total parquet size is {packetsdatasize_gb:.1f} GB (from {nbatches_read} batches)")
 
     pldfpackets = pl.scan_parquet(packetsparquetfiles).rename(

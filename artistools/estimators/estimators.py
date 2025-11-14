@@ -78,7 +78,7 @@ def get_rankbatch_parquetfile(
     batch_mpiranks: Sequence[int],
     batchindex: int,
     modelpath: Path | str | None = None,
-    verbose: bool = True,
+    verbose: bool = False,
 ) -> Path:
     printornot = print if verbose else lambda _: None
     modelpath = Path(folderpath).parent if modelpath is None else Path(modelpath)
@@ -196,7 +196,7 @@ def scan_estimators(
     modelgridindex: int | Sequence[int] | None = None,
     timestep: int | Sequence[int] | None = None,
     join_modeldata: bool = False,
-    verbose: bool = True,
+    verbose: bool = False,
 ) -> pl.LazyFrame:
     """Read estimator files into a dictionary of (timestep, modelgridindex): estimators.
 
@@ -256,7 +256,11 @@ def scan_estimators(
 
         assert bool(parquetfiles)
         if not verbose:
-            print(f"  scanning {len(parquetfiles)} parquet estimator files...")
+            datasize_GB = sum(pfile.stat().st_size for pfile in parquetfiles) / 1024 / 1024 / 1024
+            str_runfolders = ", ".join([Path(x).relative_to(modelpath).as_posix() for x in runfolders])
+            print(
+                f"  scanning {len(parquetfiles)} parquet estimator files ({datasize_GB:.1f} GB) from {str_runfolders}..."
+            )
         pldflazy = (
             pl.concat([pl.scan_parquet(pfile) for pfile in parquetfiles], how="diagonal_relaxed")
             .unique(["timestep", "modelgridindex"], maintain_order=True, keep="first")
