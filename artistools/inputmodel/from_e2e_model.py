@@ -113,7 +113,7 @@ def get_grid(
     bstraj = np.zeros(ntraj)  # binary state (bs) variable (1: dynamical, 0: secular)
 
     time_s = dat.f.time
-    starting_idx = (np.abs(time_s - 0.1)).argmin()
+    starting_idx = 0
     closest_idx = (np.abs(time_s - tsnap)).argmin()
     i = -1
     tot_Q_rel = 0
@@ -469,15 +469,17 @@ def create_ARTIS_modelfile(
     q_ergperg: npt.NDArray[np.floating | np.integer],
     ye: npt.NDArray[np.floating | np.integer],
     eqsymfac: int,
-    outputpath: Path,
+    outputpath: str,
     pos_t_s_grid_rad: npt.NDArray[np.floating | np.integer] = None,
     pos_t_s_grid_z: npt.NDArray[np.floating | np.integer] = None,
     x3d: npt.NDArray[np.floating | np.integer] = None,
     y3d: npt.NDArray[np.floating | np.integer] = None,
     z3d: npt.NDArray[np.floating | np.integer] = None,
     bin_state: npt.NDArray[np.floating | np.integer] = None,
-    replacedyn: float = False,
+    replacedyn: str | None = None,
     bs_thr: float = 0.5,
+    global_dyn_scale: float | None = None,
+    local_dyn_scale: npt.NDArray[np.floating | np.integer] = None,
 ) -> None:
     import pandas as pd
 
@@ -563,7 +565,11 @@ def create_ARTIS_modelfile(
         print(f"Replace dynamical ejecta using model {replacedyn}...")
         # do the replacing of the dynamical ejecta here
         # load second model as Pandas DF
-        dyn_model = at.inputmodel.get_modeldata(modelpath=Path(replacedyn))[0].collect().to_pandas()
+        dyn_model = (
+            at.inputmodel.get_modeldata(modelpath=Path(replacedyn), derived_cols=["volume", "velocity"])[0]
+            .collect()
+            .to_pandas()
+        )
         dyn_abunds = at.inputmodel.get_initelemabundances(modelpath=Path(replacedyn)).collect().to_pandas()
         dyn_model = dyn_model.rename(columns={"Ye": "CellYe"})
         dyn_model = dyn_model.drop("tracercount", axis="columns")
@@ -587,6 +593,38 @@ def create_ARTIS_modelfile(
             [dfmodel[~dfmodel["inputcellid"].isin(id_list)], dyn_model[dyn_model["inputcellid"].isin(id_list)]],
             ignore_index=True,
         ).sort_values("inputcellid")
+
+        # if specified, perform mass scalings
+        if global_dyn_scale:
+            # get total ejecta mass
+            M_tot_prev = (dfmodel["rho"] * dyn_model["volume"]).sum() / msol
+            Delta_M = global_dyn_scale - M_tot_prev
+            dyn_DF = dfmodel[~dfmodel["inputcellid"].isin(id_list)]
+            M_dyn_prev = (dyn_DF["rho"] * dyn_model["volume"]).sum() / msol
+            global_mass_scaling = (M_dyn_prev + Delta_M) / M_dyn_prev
+            # now scale all dynamical cells
+            dfmodel.loc[dfmodel["inputcellid"].isin(id_list), "rho"] *= global_mass_scaling
+        elif local_dyn_scale is not None:
+            # same procedure as before, but now only make a subselection of the id_list with cells only within the critical velocity range
+            v_min = local_dyn_scale[1]
+            v_max = local_dyn_scale[2]
+            M_tot_prev = (dfmodel["rho"] * dyn_model["volume"]).sum() / msol
+            Delta_M = local_dyn_scale[0] - M_tot_prev
+            # now obtain the dynamical ejecta mass in the critical velocity range...
+            # POORLY CODED: columns between the two dataframes mixed assuming same grid
+            dfmodel["vel_r_mid_on_c"] = dyn_model["vel_r_mid_on_c"]
+            dfmodel["bin_state"] = bin_state.flatten(order="F")
+            mask = (dfmodel["bin_state"] > bs_thr) & (dfmodel["vel_r_mid_on_c"].between(v_min, v_max))
+            v_range_id_list = dfmodel.loc[mask, "inputcellid"].tolist()
+            # ... and do the scaling as before
+            dyn_DF_vrange = dfmodel[dfmodel["inputcellid"].isin(v_range_id_list)]
+            M_dyn_vrange_prev = (dyn_DF_vrange["rho"] * dyn_model["volume"]).sum() / msol
+            local_mass_scaling = (M_dyn_vrange_prev + Delta_M) / M_dyn_vrange_prev
+            print(f"  Rescale model density locally by {local_mass_scaling}..")
+            # now scale all dynamical cells
+            dfmodel.loc[dfmodel["inputcellid"].isin(v_range_id_list), "rho"] *= local_mass_scaling
+            dfmodel = dfmodel.drop("bin_state", axis="columns")
+            dfmodel = dfmodel.drop("vel_r_mid_on_c", axis="columns")
 
         print("Done!")
 
@@ -803,6 +841,18 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Threshold in the binary state variable for replacing dynamical ejecta with the 3D model. (default: 0.5)",
     )
 
+    parser.add_argument(
+        "-globaldynscale",
+        default=None,
+        help="Scale the mass of all (!) dynamical ejecta such that the resulting total ejecta mass matches the value specified",
+    )
+
+    parser.add_argument(
+        "-localdynscale",
+        default=None,
+        help="Scale the mass of those dynamical ejecta within velocities (in units of c) v_min and v_max which replaced previous 2D data such that the resulting total ejecta mass matches the value specified. Values separated by comma",
+    )
+
     parser.add_argument("--nonutrapping", action="store_true", help="Exclude neutrino energy from the snapshot energy")
 
     parser.add_argument("--nodyn", action="store_true", help="Exclude dynamical ejecta from the model")
@@ -893,6 +943,19 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             outputpath=args.outputpath,
         )
 
+        globaldynscale = 0.0
+        if args.globaldynscale:
+            globaldynscale = float(args.globaldynscale)
+
+        localdynscale = np.zeros(3)
+        if args.localdynscale:
+            values = args.localdynscale.split(",")
+            localdynscale[0] = float(values[0])
+            localdynscale[1] = float(values[1])
+            localdynscale[2] = float(values[2])
+        else:
+            localdynscale = None
+
         create_ARTIS_modelfile(
             model_dim,
             np.array([int(args.ngridx), int(args.ngridy), int(args.ngridz)]),
@@ -910,6 +973,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             bin_state=bsinterpol,
             bs_thr=float(args.replacethr),
             replacedyn=args.replacedyn,
+            global_dyn_scale=globaldynscale,
+            local_dyn_scale=localdynscale,
         )
 
         # no cell merging implemented in this case. Isotopic mass fractions are more consistenly treated in get_grid here
