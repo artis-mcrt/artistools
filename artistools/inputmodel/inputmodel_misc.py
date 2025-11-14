@@ -357,16 +357,15 @@ def get_modeldata(
 ) -> tuple[pl.LazyFrame, dict[t.Any, t.Any]]:
     """Read an artis model.txt file containing cell velocities, densities, and mass fraction abundances of radioactive nuclides.
 
+    Returns dfmodel, modelmeta
+        - dfmodel: a pandas DataFrame with a row for each model grid cell
+        - modelmeta: a dictionary of input model parameters, with keys such as t_model_init_days, vmax_cmps, dimensions, etc.
+
     Parameters
     ----------
         - modelpath: either a path to model.txt file, or a folder containing model.txt
-        - get_elemabundances: also read elemental abundances (abundances.txt) and
-            merge with the output DataFrame
-        - derived_cols: list of derived columns to add to the model data, or "ALL" to add all possible derived columns
-
-    return dfmodel, modelmeta
-        - dfmodel: a pandas DataFrame with a row for each model grid cell
-        - modelmeta: a dictionary of input model parameters, with keys such as t_model_init_days, vmax_cmps, dimensions, etc.
+        - get_elemabundances: also read elemental abundances (from abundances.txt) and merge with the output DataFrame
+        - derived_cols: list of derived columns to add to the model data, or "all" to add all possible derived columns
 
     """
     if isinstance(derived_cols, str):
@@ -527,7 +526,7 @@ def add_derived_cols_to_modeldata(
     derived_cols = list(derived_cols)
 
     t_model_init_seconds = modelmeta["t_model_init_days"] * 86400.0
-    keep_all = "ALL" in derived_cols
+    keep_all = any(c.lower() == "all" for c in derived_cols)
 
     if "logrho" not in dfmodel.collect_schema().names() and "rho" in dfmodel.collect_schema().names():
         dfmodel = dfmodel.with_columns(logrho=pl.col("rho").log10())
@@ -690,7 +689,7 @@ def add_derived_cols_to_modeldata(
     if unknown_cols := [
         col
         for col in derived_cols
-        if col not in dfmodel.collect_schema().names() and col not in {"pos_min", "pos_max", "ALL", "velocity"}
+        if col not in dfmodel.collect_schema().names() and col.lower() not in {"pos_min", "pos_max", "all", "velocity"}
     ]:
         print(f"WARNING: Unknown derived columns: {unknown_cols}")
 
