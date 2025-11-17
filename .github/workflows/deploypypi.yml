@@ -60,7 +60,7 @@ jobs:
                   echo "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS=$(python3 -m setuptools_scm --strip-dev)" >> $GITHUB_ENV
 
             - name: Build wheels
-              uses: pypa/cibuildwheel@v3.2
+              uses: pypa/cibuildwheel@v3.3
 
             - uses: actions/upload-artifact@v5
               with:
