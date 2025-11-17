@@ -56,11 +56,13 @@ jobs:
 
             - name: Strip dev tag from version
               run: |
-                  python3 -m pip install --upgrade uv setuptools_scm
+                  python3 -m pip install --upgrade setuptools_scm
                   echo "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS=$(python3 -m setuptools_scm --strip-dev)" >> $GITHUB_ENV
 
             - name: Build wheels
               uses: pypa/cibuildwheel@v3.3
+              with:
+                  extras: uv
 
             - uses: actions/upload-artifact@v5
               with:
