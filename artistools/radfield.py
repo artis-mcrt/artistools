@@ -90,7 +90,7 @@ def get_binaverage_field(
         + (" & timestep==@timestep" if timestep else "")
     )
 
-    arr_lambda = 2.99792458e18 / bindata["nu_upper"].to_numpy(dtype=float)
+    arr_lambda = 2.99792458e18 / bindata["nu_upper"].to_numpy(dtype=np.float64)
 
     bindata.loc[:, "dlambda"] = bindata.apply(
         lambda row: 2.99792458e18 * (1 / row["nu_lower"] - 1 / row["nu_upper"]), axis=1
@@ -453,6 +453,7 @@ def plot_bin_fitted_field_evolution(
     radfielddataselected = radfielddataselected.eval(
         "Jb_lambda_at_line = Jb_nu_at_line * (@nu_line ** 2) / 2.99792458e18"
     )
+    assert isinstance(radfielddataselected, pd.DataFrame)
     lambda_angstroms = 2.99792458e18 / nu_line
 
     axis.plot(
@@ -500,7 +501,7 @@ def plot_line_estimator_evolution(
     **plotkwargs: t.Any,
 ) -> None:
     """Plot the Jblue_lu values over time for a detailed line estimators."""
-    radfielddataselected: t.Any = radfielddata.query(
+    radfielddataselected = radfielddata.query(
         "bin_num == @bin_num"
         + (" & modelgridindex == @modelgridindex" if modelgridindex else "")
         + (" & timestep >= @timestep_min" if timestep_min else "")
@@ -510,6 +511,7 @@ def plot_line_estimator_evolution(
     radfielddataselected = radfielddataselected.eval("lambda_angstroms = 2.99792458e18 / nu_upper")
     assert isinstance(radfielddataselected, pd.DataFrame)
     radfielddataselected = radfielddataselected.eval("Jb_lambda = J_nu_avg * (nu_upper ** 2) / 2.99792458e18")
+    assert isinstance(radfielddataselected, pd.DataFrame)
 
     axis.plot(
         radfielddataselected["timestep"],
