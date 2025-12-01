@@ -631,8 +631,8 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
                         }
                     else:
                         emdata_all[modelindex][tmid, feature.colname] = {
-                            "em_log10nne": dfpackets_selected.em_log10nne.to_numpy(dtype=float),
-                            "em_Te": dfpackets_selected.em_Te.to_numpy(dtype=float),
+                            "em_log10nne": dfpackets_selected.em_log10nne.to_numpy(dtype=np.float64),
+                            "em_Te": dfpackets_selected.em_Te.to_numpy(dtype=np.float64),
                         }
 
             estimators = at.estimators.read_estimators(modelpath)
