@@ -414,7 +414,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 get_nist_transitions(f"nist/nist-{ion['Z']:02d}-{ion['ion_stage']:02d}.txt")
             )
         else:
-            pldftransitions = ion["transitions"].lazy().collect()
+            pldftransitions = ion["transitions"]
+            assert isinstance(pldftransitions, pl.DataFrame | pl.LazyFrame)
+            pldftransitions = pldftransitions.lazy().collect()
 
         print(
             f"\n======> {at.get_elsymbol(ionid.Z)} {at.roman_numerals[ionid.ion_stage]:3s} "
@@ -427,7 +429,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         if not pldftransitions.is_empty():
             if args.atomicdatabase == "artis":
-                assert isinstance(ion["levels"], pl.DataFrame)
+                assert isinstance(ion["levels"], pl.DataFrame | pl.LazyFrame)
                 pldftransitions = (
                     at.atomic.add_transition_columns(
                         pldftransitions,
@@ -453,9 +455,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             if args.atomicdatabase == "artis":
                 K_B = 8.617333262145179e-05  # eV / K
                 T_exc = vardict["Te"]
-                ltepartfunc = (
-                    ion["levels"].select(pl.col("g") * (-pl.col("energy_ev") / K_B / T_exc).exp()).sum().item()
-                )
+                pldflevels = ion["levels"]
+                assert isinstance(pldflevels, pl.DataFrame | pl.LazyFrame)
+                pldflevels = pldflevels.lazy().collect()
+                ltepartfunc = pldflevels.select(pl.col("g") * (-pl.col("energy_ev") / K_B / T_exc).exp()).sum().item()
 
             else:
                 ltepartfunc = 1.0
@@ -478,7 +481,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
             for seriesindex, temperature in enumerate(temperature_list):
                 if temperature == "NOTEMPNLTE":
-                    dftransitions: pd.DataFrame = pldftransitions.to_pandas(use_pyarrow_extension_array=False)
+                    dftransitions = pldftransitions.to_pandas(use_pyarrow_extension_array=False)
                     dfnltepops_thision = dfnltepops.query("Z==@ionid.Z & ion_stage==@ionid.ion_stage")
 
                     nltepopdict = {row["level"]: row["n_NLTE"] for _, row in dfnltepops_thision.iterrows()}
@@ -511,8 +514,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                     popcolumnname = f"upper_pop_lte_{T_exc:.0f}K"
                     if args.atomicdatabase == "artis":
                         K_B = 8.617333262145179e-05  # eV / K
+                        pldftransitions = ion["transitions"]
+                        assert isinstance(pldftransitions, pl.DataFrame)
                         ltepartfunc = (
-                            ion["levels"].select(pl.col("g") * (-pl.col("energy_ev") / K_B / T_exc).exp()).sum().item()
+                            pldftransitions.select(pl.col("g") * (-pl.col("energy_ev") / K_B / T_exc).exp())
+                            .sum()
+                            .item()
                         )
                     else:
                         ltepartfunc = 1.0
@@ -533,7 +540,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         if args.print_lines:
             print(dftransitions.columns)
-            print(dftransitions[["lower", "upper", "forbidden", "A", "lambda_angstroms"]].to_string(index=False))
+            print(dftransitions[["lower", "upper", "forbidden", "A", "lambda_angstroms"]])
     print()
 
     if args.save_lines:
