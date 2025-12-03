@@ -681,7 +681,7 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
 
 
 def second_band_brightness_at_peak_first_band(
-    data: dict[str, npt.NDArray[np.floating]],
+    data: dict[str, npt.NDArray[np.float64]],
     bands: Sequence[str],
     modelpath: Path,
     modelnumber: int,
