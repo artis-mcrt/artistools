@@ -161,14 +161,6 @@ def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> 
             dirbins = list(range(at.get_viewingdirectionbincount()))
     elif args.plotviewingangle and viewing_angle_data_exists:
         dirbins = args.plotviewingangle
-    elif (
-        args.calculate_costheta_phi_from_viewing_angle_numbers
-        and args.calculate_costheta_phi_from_viewing_angle_numbers[0] == -2
-    ):
-        dirbins = list(np.arange(0, 100, 1, dtype=int))
-    elif args.calculate_costheta_phi_from_viewing_angle_numbers:
-        dirbins = args.calculate_costheta_phi_from_viewing_angle_numbers
-        assert dirbins is not None
     else:
         dirbins = [-1]
 
