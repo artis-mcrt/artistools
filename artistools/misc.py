@@ -1599,14 +1599,15 @@ def get_dirbin_labels(
     _, _, phibinlabels = get_phi_bins(usedegrees=usedegrees)
 
     nphibins = get_viewingdirection_phibincount()
+    ndirbins = get_viewingdirectionbincount()
 
     if dirbins is None:
         if average_over_phi:
-            dirbins = np.arange(get_viewingdirection_costhetabincount()) * 10
+            dirbins = list(range(0, ndirbins, nphibins))
         elif average_over_theta:
-            dirbins = np.arange(nphibins)
+            dirbins = list(range(nphibins))
         else:
-            dirbins = np.arange(get_viewingdirectionbincount())
+            dirbins = list(range(ndirbins))
 
     angle_definitions: dict[int, str] = {}
     for dirbin in dirbins:
