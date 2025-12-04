@@ -1703,19 +1703,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "-calculate_costheta_phi_from_viewing_angle_numbers",
-        type=int,
-        nargs="+",
-        help=(
-            "calculate costheta and phi for each viewing angle given the number of the viewing angle"
-            "Expects ints for angle number supplied from the argument of plot viewing angle"
-            "use args = -1 to select all viewing angles"
-            "Note: this method will only work if the number of angle bins (MABINS) = 100"
-            "if this is not the case an error will be printed"
-        ),
-    )
-
-    parser.add_argument(
         "--colorbarcostheta", action="store_true", help="Colour viewing angles by cos theta and show color bar"
     )
 
