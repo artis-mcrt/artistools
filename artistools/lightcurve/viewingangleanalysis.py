@@ -153,11 +153,12 @@ def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> 
     if args.plotvspecpol and (modelpath / "vpkt.txt").is_file():
         dirbins = args.plotvspecpol
     elif args.plotviewingangle and args.plotviewingangle[0] == -2 and viewing_angle_data_exists:
-        dirbins = list(np.arange(0, 100, 1, dtype=int))
         if args.average_over_phi_angle:
-            dirbins = [d for d in dirbins if d % at.get_viewingdirection_phibincount() == 0]
-        if args.average_over_theta_angle:
-            dirbins = [d for d in dirbins if d < at.get_viewingdirection_costhetabincount()]
+            dirbins = list(range(0, at.get_viewingdirectionbincount(), at.get_viewingdirection_phibincount()))
+        elif args.average_over_theta_angle:
+            dirbins = list(range(at.get_viewingdirection_phibincount()))
+        else:
+            dirbins = list(range(at.get_viewingdirectionbincount()))
     elif args.plotviewingangle and viewing_angle_data_exists:
         dirbins = args.plotviewingangle
     elif (
@@ -463,7 +464,7 @@ def update_plotkwargs_for_viewingangle_colorbar(
     costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(usedegrees=args.usedegrees)
     scaledmap = at.lightcurve.plotlightcurve.make_colorbar_viewingangles_colormap()
 
-    angles = np.arange(0, at.get_viewingdirectionbincount(), dtype=int)
+    angles = list(range(at.get_viewingdirectionbincount()))
     colors = []
     for angle in angles:
         colorindex: t.Any
