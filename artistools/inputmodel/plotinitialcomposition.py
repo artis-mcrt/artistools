@@ -302,7 +302,7 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
     plotcoloropacity = [0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]  # some choices: 'linear' 'sigmoid'
     # plotter.set_scale(0.95, 0.95, 0.95) # adjusts fig resolution
     plotter.show_bounds(
-        mesh,
+        mesh,  # ty: ignore[invalid-argument-type]
         grid=False,
         location="outer",
         xlabel="vx / c",
