@@ -272,6 +272,11 @@ def maptogrid(
                 # from the particle h and 150% of the mean h for all particles
                 if modifysmoothinglength == "option4" and dis > rmean:
                     h[n] = max(h[n], hmean * 1.5)
+                if modifysmoothinglength == "option5" and dis > rmean:
+                    h[n] = max(h[n], 0.75 * dx)
+                    h[n] = min(h[n], 2500)
+                if modifysmoothinglength == "option6" and dis > rmean:
+                    h[n] = max(h[n], 0.75 * dx)
 
                 maxdist2 = (2.0 * h[n]) ** 2
                 # -------------------------------
@@ -419,6 +424,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             "option2",
             "option3",
             "option4",
+            "option5",
+            "option6",
             "False",
         ],  # We should choose if the default should be false and how we want to name these
         help="Option to modify smoothing length h. Choose from options."
