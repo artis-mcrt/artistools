@@ -64,7 +64,7 @@ jobs:
               with:
                   extras: uv
 
-            - uses: actions/upload-artifact@v5
+            - uses: actions/upload-artifact@v6
               with:
                   name: cibw-wheels-${{ matrix.target.os_arch }}-${{ strategy.job-index }}
                   path: ./wheelhouse/*.whl
@@ -87,7 +87,7 @@ jobs:
             - name: Build sdist
               run: uv build --sdist
 
-            - uses: actions/upload-artifact@v5
+            - uses: actions/upload-artifact@v6
               with:
                   name: cibw-sdist
                   path: dist/*.tar.gz
