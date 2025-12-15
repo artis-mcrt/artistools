@@ -36,7 +36,7 @@ jobs:
                   echo "PYO3_PYTHON=python3.$(python -c 'import platform; print(platform.python_version_tuple()[1])')" >> $GITHUB_ENV
 
             - name: Cache cargo and rust build
-              uses: actions/cache@v4
+              uses: actions/cache@v5
               with:
                   path: |
                       ~/.cargo/registry/index/
@@ -57,7 +57,7 @@ jobs:
                   uv pip install --compile-bytecode .
 
             - name: Cache test data
-              uses: actions/cache@v4
+              uses: actions/cache@v5
               with:
                   enableCrossOsArchive: true
                   path: tests/data/*.tar.xz
