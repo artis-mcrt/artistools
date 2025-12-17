@@ -93,15 +93,11 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
             print(f"  2D corner vmax: {vmax_corner_2d:.2e} cm/s ({vmax_corner_2d * 1e-5 / 299792.458:.2f} * c)")
 
     minrho = dfmodel.select(pl.col("rho").min()).collect().item()
-    minrho_cellcount = (
-        dfmodel.filter(pl.col("rho") == minrho)
-        .group_by("rho", maintain_order=False)
-        .agg(pl.len().alias("minrho_cellcount"))
-        .select("minrho_cellcount")
-        .collect()
-        .item()
-    )
+    minrho_cellcount = dfmodel.filter(pl.col("rho") == minrho).select(pl.len()).collect().item()
     print(f"  min density: {minrho:.2e} g/cm³. Cells with this density: {minrho_cellcount}")
+    maxrho = dfmodel.select(pl.col("rho").max()).collect().item()
+    maxrho_cellcount = dfmodel.filter(pl.col("rho") == maxrho).select(pl.len()).collect().item()
+    print(f"  max density: {maxrho:.2e} g/cm³. Cells with this density: {maxrho_cellcount}")
 
     if args.cell is not None:
         mgi = int(args.cell)
