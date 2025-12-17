@@ -565,7 +565,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
             floers_te_nne = json.loads(data_file.read())
 
         # give an ordering and index to dict items
-        refdatakeys_thisseries = sorted(floers_te_nne.keys(), key=float)  # strings, not floats
+        refdatakeys_thisseries = [str(x) for x in sorted(floers_te_nne.keys(), key=float)]  # strings, not floats
         assert refdatakeys_thisseries is not None
         refdatakeys[refdataindex] = refdatakeys_thisseries
         refdatatimes[refdataindex] = np.array([float(t) for t in refdatakeys_thisseries])
