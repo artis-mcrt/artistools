@@ -305,11 +305,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             adata = at.atomic.get_levels(modelpath, get_transitions=True, ionlist=tuple(ions))
 
         if step == 0 and args.ostat:
-            with Path(args.ostat).open("w", encoding="utf-8") as fstat:
-                strheader = "#emin emax npts x_e frac_sum frac_excitation frac_ionization frac_heating"
-                for atomic_number, ion_stage in ions:
-                    strheader += " frac_ionization_" + at.get_ionstring(atomic_number, ion_stage, sep="")
-                fstat.write(strheader + "\n")
+            strheader = "#emin emax npts x_e frac_sum frac_excitation frac_ionization frac_heating"
+            for atomic_number, ion_stage in ions:
+                strheader += " frac_ionization_" + at.get_ionstring(atomic_number, ion_stage, sep="")
+            Path(args.ostat).write_text(strheader + "\n", encoding="utf-8")
 
         import pynonthermal as pynt
 
