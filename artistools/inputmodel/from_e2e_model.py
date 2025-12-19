@@ -6,10 +6,12 @@ import itertools
 import typing as t
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 import argcomplete
 import numpy as np
 import numpy.typing as npt
+import pandas as pd
 import polars as pl
 
 import artistools as at
@@ -68,31 +70,25 @@ def get_grid(
     dat_path: Path,
     iso_path: Path,
     vmax_on_c: float,
-    numb_cells_ARTIS_radial: int,
-    numb_cells_ARTIS_z: int,
+    model_dim: int,
+    grid_dims: npt.NDArray[np.integer],
     nodynej: bool,
     nohmns: bool,
     notorus: bool,
     no_nu_trapping: bool,
-) -> tuple[
-    npt.NDArray[np.floating],
-    npt.NDArray[np.floating],
-    npt.NDArray[np.floating],
-    npt.NDArray[np.floating],
-    npt.NDArray[np.floating],
-    npt.NDArray[np.floating],
-    npt.NDArray[np.floating],
-    int,
-    pl.DataFrame,
-]:
+) -> tuple[Any, ...]:
     dat = np.load(dat_path)
     iso = np.load(iso_path)
+
+    # Step 1) Determine symmetry factor from nucleosynthesis data
 
     # assume equatorial symmetry? (1=no, 2=yes)
     # determine whether the model assumes equatorial symmetry. Criterion: if the input npz files contains
     # tracer particles only in the upper half space (z > 0 or angle < pi/2), equatorial symmetry is assumed
     # and the reflection w.r.t. the z-axis for the final model.txt has to be done
     eqsymfac = 2 if np.amax(dat.f.pos[:, 1]) < np.pi / 2.0 else 1
+
+    # Step 2) Collect tracer particle data and account for splitting within the e2e modeling
 
     # first re-construct the original post-merger trajectories by merging the
     # splitted dynamical ejecta trajectories
@@ -109,14 +105,15 @@ def get_grid(
     isoA0 = iso[:, 0] + iso[:, 1]  # mass number = neutron number + proton number
     xiso0 = dat.f.nz[:, :] * isoA0[:]  # number fraction -> mass fraction
     ncomp = len(xiso0[0, :])  # number of isotopes
-    xtraj = np.zeros((ntraj, ncomp))  # final mass fractions for each isotope at t = tsnap
+    xtraj = np.zeros((ntraj, ncomp))  # final mass fractions for each isotope at t = t_model_init_days
     vtraj = np.zeros(ntraj)  # final radial velocity
     atraj = np.zeros(ntraj)  # final polar angle
     qtraj = np.zeros(ntraj)  # integrated energy release up to snapshot
     yetraj = np.zeros(ntraj)  # initial electron fraction
+    bstraj = np.zeros(ntraj)  # binary state (bs) variable (1: dynamical, 0: secular)
 
     time_s = dat.f.time
-    starting_idx = (np.abs(time_s - 0.1)).argmin()
+    starting_idx = 0
     closest_idx = (np.abs(time_s - t_model_init_days)).argmin()
     i = -1
     tot_Q_rel = 0
@@ -182,6 +179,7 @@ def get_grid(
         yetraj[i] = dat.f.t5out[i2, 4]
         vtraj[i] = dat.f.pos[i2, 0]
         atraj[i] = dat.f.pos[i2, 1]
+        bstraj[i] = 0
     # ... dynamical ejecta
     for i1 in dynid:  # index of my original list
         i += 1  # index in the new list accounting for unprocessed trajs.
@@ -195,6 +193,7 @@ def get_grid(
         yetraj[i] = np.sum(weights * dat.f.t5out[i4, 4])
         vtraj[i] = np.sum(weights * dat.f.pos[i4, 0])
         atraj[i] = np.sum(weights * dat.f.pos[i4, 1])
+        bstraj[i] = 1
 
     # now do the mapping using an SPH like interpolation
     # (see e.g. Price 2007, http://adsabs.harvard.edu/abs/2007PASA...24..159P,
@@ -204,41 +203,89 @@ def get_grid(
     # ... smoothing length prefactor and number of dimensions (see Eq. 10 of P2007)
     hsmeta = 1.01
     nu = 2
+    oa = np.add.outer
+    op = np.multiply.outer
+
+    # Step 3) Define the final grid
+
+    # define grid variables depending on final dimension again
+    if model_dim == 2:
+        numb_cells_ARTIS_radial = grid_dims[0]
+        numb_cells_ARTIS_z = grid_dims[1]
+    elif model_dim == 3:
+        numb_cells_ARTIS_x = grid_dims[0]
+        numb_cells_ARTIS_y = grid_dims[1]
+        numb_cells_ARTIS_z = grid_dims[2]
+
     # ... cylindrical coordinates of the particle positions
+    vmax_cmps = vmax_on_c * CLIGHT  # maximum velocity in coordinate direction (!)
     rcyltraj, zcyltraj = np.zeros(ntraj), np.zeros(ntraj)
     for i in [int(j) for j in np.arange(ntraj)]:
         rcyltraj[i] = vtraj[i] * np.sin(atraj[i]) * CLIGHT * t_model_init_days
         zcyltraj[i] = vtraj[i] * np.cos(atraj[i]) * CLIGHT * t_model_init_days
+    if model_dim == 2:
+        # ... cylindrical coordinates of the grid onto which we want to map
+        nvr = numb_cells_ARTIS_radial
+        nvz = (
+            numb_cells_ARTIS_z // eqsymfac
+        )  # number of mapping grid cells in z direction depends on equatorial symmetry
 
-    # ... cylindrical coordinates of the grid onto which we want to map
-    vmax_cmps = vmax_on_c * CLIGHT
-    nvr = numb_cells_ARTIS_radial
-    nvz = numb_cells_ARTIS_z // eqsymfac  # number of mapping grid cells in z direction depends on equatorial symmetry
+        wid_init_rcyl = vmax_cmps * t_model_init_days / nvr
+        pos_rcyl_min = np.array([vmax_cmps * t_model_init_days / nvr * nr for nr in range(nvr)])
+        pos_rcyl_mid = pos_rcyl_min + 0.5 * wid_init_rcyl
+        pos_rcyl_max = pos_rcyl_min + wid_init_rcyl
 
-    wid_init_rcyl = vmax_cmps * t_model_init_days / nvr
-    pos_rcyl_min = np.array([vmax_cmps * t_model_init_days / nvr * nr for nr in range(nvr)])
-    pos_rcyl_mid = pos_rcyl_min + 0.5 * wid_init_rcyl
-    pos_rcyl_max = pos_rcyl_min + wid_init_rcyl
+        wid_init_z = (2.0 / eqsymfac) * vmax_cmps * t_model_init_days / nvz
+        if eqsymfac == 1:
+            pos_z_min = np.array([
+                -vmax_cmps * t_model_init_days + 2.0 * vmax_cmps * t_model_init_days / nvz * nz for nz in range(nvz)
+            ])
+        else:
+            pos_z_min = np.array([vmax_cmps * t_model_init_days / nvz * nz for nz in range(nvz)])
+        pos_z_mid = pos_z_min + 0.5 * wid_init_z
+        # pos_z_max = pos_z_min + wid_init_z
 
-    wid_init_z = (2.0 / eqsymfac) * vmax_cmps * t_model_init_days / nvz
-    if eqsymfac == 1:
-        pos_z_min = np.array([
-            -vmax_cmps * t_model_init_days + 2.0 * vmax_cmps * t_model_init_days / nvz * nz for nz in range(nvz)
-        ])
-    else:
-        pos_z_min = np.array([vmax_cmps * t_model_init_days / nvz * nz for nz in range(nvz)])
-    pos_z_mid = pos_z_min + 0.5 * wid_init_z
-    # pos_z_max = pos_z_min + wid_init_z
+        rgridc2d = np.array([pos_rcyl_mid[n_r] for n_r in range(nvr) for n_z in range(nvz)]).reshape(nvr, nvz)
+        # the z-grid has to be shifted to starting from zero to keep consistency with Oli's script
+        zgridc2d = np.array([pos_z_mid[n_z] for n_r in range(nvr) for n_z in range(nvz)]).reshape(nvr, nvz)
 
-    rgridc2d = np.array([pos_rcyl_mid[n_r] for n_r in range(nvr) for n_z in range(nvz)]).reshape(nvr, nvz)
-    # the z-grid has to be shifted to starting from zero to keep consistency with Oli's script
-    zgridc2d = np.array([pos_z_mid[n_z] for n_r in range(nvr) for n_z in range(nvz)]).reshape(nvr, nvz)
+        volgrid = np.array([
+            wid_init_z * np.pi * (pos_rcyl_max[n_r] ** 2 - pos_rcyl_min[n_r] ** 2)
+            for n_r in range(nvr)
+            for n_z in range(nvz)
+        ]).reshape(nvr, nvz)
+    elif model_dim == 3:
+        # nvx = numb_cells_ARTIS_x
+        # nvy = numb_cells_ARTIS_y
+        nvz = (
+            numb_cells_ARTIS_z // eqsymfac
+        )  # number of mapping grid cells in z direction depends on equatorial symmetry
+        vminr, vmaxr, nvr = -0.5, 0.5, 50
+        vxgridl = np.array([vminr + i * (vmaxr - vminr) / nvr for i in np.arange(numb_cells_ARTIS_x)])
+        vxgridr = np.flip(np.array([vmaxr - i * (vmaxr - vminr) / nvr for i in np.arange(numb_cells_ARTIS_x)]))
+        vxgridc = 0.5 * (vxgridl + vxgridr)
+        vygridl, vygridc, vygridr = vxgridl, vxgridc, vxgridr
+        vzgridl, vzgridc, vzgridr = vxgridl, vxgridc, vxgridr
 
-    volgrid2d = np.array([
-        wid_init_z * np.pi * (pos_rcyl_max[n_r] ** 2 - pos_rcyl_min[n_r] ** 2)
-        for n_r in range(nvr)
-        for n_z in range(nvz)
-    ]).reshape(nvr, nvz)
+        x3d = op(op(vxgridc, np.ones(numb_cells_ARTIS_y)), np.ones(numb_cells_ARTIS_z)) * (CLIGHT * t_model_init_days)
+        y3d = op(op(np.ones(numb_cells_ARTIS_x), vygridc), np.ones(numb_cells_ARTIS_z)) * (CLIGHT * t_model_init_days)
+        z3d = op(op(np.ones(numb_cells_ARTIS_x), np.ones(numb_cells_ARTIS_y)), vzgridc) * (CLIGHT * t_model_init_days)
+
+        x3d_min = op(op(vxgridl, np.ones(numb_cells_ARTIS_y)), np.ones(numb_cells_ARTIS_z)) * (
+            CLIGHT * t_model_init_days
+        )
+        y3d_min = op(op(np.ones(numb_cells_ARTIS_x), vygridl), np.ones(numb_cells_ARTIS_z)) * (
+            CLIGHT * t_model_init_days
+        )
+        z3d_min = op(op(np.ones(numb_cells_ARTIS_x), np.ones(numb_cells_ARTIS_z)), vzgridl) * (
+            CLIGHT * t_model_init_days
+        )
+        if eqsymfac == 2:
+            z3d = abs(z3d)
+        R3d = np.sqrt(x3d**2 + y3d**2)
+        volgrid = op(op(vxgridr - vxgridl, vygridr - vygridl), vzgridr - vzgridl) * (CLIGHT * t_model_init_days) ** 3
+
+    # Step 4) Prepare the mapping procedure by calculating the tracer particle smoothing lengths
 
     # compute mass density and smoothing length of each particle
     # by solving Eq. 10 of P2007 where rho is replaced by the
@@ -285,33 +332,64 @@ def get_grid(
     neinumavg = np.sum(neinum * mtraj) / np.sum(mtraj)
     print("average number of neighbors:", neinumavg)
 
-    # now interpolate all quantities onto the grid
+    # Step 5) Final mapping by interpolating all quantities onto the grid
+
+    interpol_axis = model_dim
     print("interpolating...")
-    oa = np.add.outer
-    distall = np.sqrt(oa(rgridc2d, -rcyltraj) ** 2 + oa(zgridc2d, -zcyltraj) ** 2)
-    hall = np.multiply.outer(np.ones((nvr, nvz)), hsmooth)
+    if model_dim == 2:
+        distall = np.sqrt(oa(rgridc2d, -rcyltraj) ** 2 + oa(zgridc2d, -zcyltraj) ** 2)
+        hall = np.multiply.outer(np.ones((nvr, nvz)), hsmooth)
+    elif model_dim == 3:
+        distall = np.sqrt(oa(R3d, -rcyltraj) ** 2 + oa(z3d, -zcyltraj) ** 2)
+        hall = np.multiply.outer(np.ones((nvr, nvr, nvr)), hsmooth)
     wall = sphkernel(distall, hall, nu)
     weight = wall * (mtraj / rho2dhat)
-    weinor = (weight.T / (np.sum(weight, axis=2) + 1.0e-100).T).T
-    hint = np.sum(weinor * hsmooth, axis=2)
+    weinor = (weight.T / (np.sum(weight, axis=interpol_axis) + 1.0e-100).T).T
+    hint = np.sum(weinor * hsmooth, axis=interpol_axis)
+
     # ... density
-    rho2d = np.sum(wall * mtraj * rho2dtraj / rho2dhat, axis=2)
-    rhoint = rho2d / (
-        2.0 * np.pi * np.clip(rgridc2d, 0.5 * hint, None)
-    )  # limiting to 0.5*h seems to prevent artefacts near the axis
-    # ... mass fractions
-    xint = np.tensordot(xtraj.T, wall * mtraj, axes=(1, 2)) / (np.sum(wall * mtraj, axis=2) + 1e-100)
-    xin2 = np.tensordot(xtraj.T, weinor, axes=(1, 2))  # for testing
+    rho2d = np.sum(wall * mtraj * rho2dtraj / rho2dhat, axis=interpol_axis)
+    if model_dim == 2:
+        rhoint = rho2d / (
+            2.0 * np.pi * np.clip(rgridc2d, 0.5 * hint, None)
+        )  # limiting to 0.5*h seems to prevent artefacts near the axis
+        xint = np.tensordot(xtraj.T, wall * mtraj, axes=(1, 2)) / (np.sum(wall * mtraj, axis=2) + 1e-100)
+        # xin2 = np.tensordot(xtraj.T, weinor, axes=(1, 2))  # for testing
+    elif model_dim == 3:
+        rhoint = rho2d / (2.0 * np.pi * R3d)
+        xint = np.tensordot(xtraj.T, wall * mtraj, axes=(1, 3)) / (2.0 * np.pi * R3d)
     # ... temperature
-    qinterpol = np.sum(weinor * qtraj, axis=2)
-    yeinterpol = np.sum(weinor * yetraj, axis=2)
+    qinterpol = np.sum(weinor * qtraj, axis=interpol_axis)
+    yeinterpol = np.sum(weinor * yetraj, axis=interpol_axis)
+    bsinterpol = np.sum(weinor * bstraj, axis=interpol_axis)
 
     # renormalize so that interpolated mass = sum of particle masses
-    dmgrid = rhoint * volgrid2d
+    dmgrid = rhoint * volgrid  # either 2D or 3D
     print("total mass after interpolation (but BEFORE renormalization):", np.sum(dmgrid) / msol * eqsymfac)
     rescfac = np.sum(mtraj) / np.sum(dmgrid)
-    dmgrid *= rescfac
-    rhoint *= rescfac  # the densities are returned by means of rhoint
+    if model_dim == 2:
+        rhoint *= rescfac
+    elif model_dim == 3:
+        # renormalize each partial density such that isotopic masses on mapped grid = isotopic masses from tracers
+        rescfacx = np.zeros(ncomp)
+        for n in np.arange(ncomp):
+            rescfacx[n] = np.sum(xiso0[:, n] * dat.f.mass * msol) / (np.sum(xint[n, :, :] * volgrid) + 1e-100)
+            xint[n, :, :] *= rescfacx[n]
+        # ... recompute total density from partial densities?
+        rhoint = np.sum(xint, axis=0)
+        # ... renormalize total density
+        rescfac = np.sum(mtraj) / np.sum(rhoint * volgrid)
+        rhoint *= rescfac
+        print("rescfac 1:", rescfac)
+        # ... and finally renormalize all partial densities by the same factor
+        for k in np.arange(ncomp):
+            xint[k, :, :] *= rescfac
+        # ... obtain mass fractions
+        xint = np.copy(xint)
+        for m in np.arange(ncomp):
+            xint[m, :, :] /= rhoint + 1e-100
+
+    dmgrid = rhoint * volgrid
     mtot = np.sum(dmgrid)
 
     # test outputs
@@ -339,28 +417,42 @@ def get_grid(
     test = np.where(test > -1, test, 0.0)
     print("(X-1)_max over 2D grid    :", np.amax(np.where(test > -1, abs(test), 0.0)))
 
-    test = np.sum(xin2, axis=0) - 1.0
-    test = np.where(test > -1, test, 0.0)
-    print("(X-1)_max over 2D grid 2  :", np.amax(np.where(test > -1, abs(test), 0.0)))
+    # test = np.sum(xin2, axis=0) - 1.0
+    # test = np.where(test > -1, test, 0.0)
+    # print("(X-1)_max over 2D grid 2  :", np.amax(np.where(test > -1, abs(test), 0.0)))
 
     # write file containing the contribution of each trajectory to each interpolated grid cell
     dfcontributions_particleids = []
     dfcontributions_cellindices = []
     dfcontributions_fracofcellmass = []
-    for nz in np.arange(nvz):
-        for nr in np.arange(nvr):
-            cellid = nz * nvr + nr + 1
-            if dmgrid[nr, nz] > (1e-100 * mtot):
-                # print(
-                # f"{nr} {nz} {temint[nr, nz]} {q_ergperg[nr, nz]} {rhoint[nr, nz]} {dmgrid[nr, nz]} {xint[nr, nz]}"
-                # )
-                wloc = wall[nr, nz, :] * rho2dtraj / rho2dhat
-                wloc /= np.sum(wloc)
-                pids = np.where(wloc > 1.0e-20)[0]
-                for pid in pids:
-                    dfcontributions_particleids.append(pid)
-                    dfcontributions_cellindices.append(cellid)
-                    dfcontributions_fracofcellmass.append(wloc[pid])
+    if model_dim == 2:
+        for nz in np.arange(nvz):
+            for nr in np.arange(nvr):
+                cellid = nz * nvr + nr + 1
+                if dmgrid[nr, nz] > (1e-100 * mtot):
+                    # print(
+                    # f"{nr} {nz} {temint[nr, nz]} {q_ergperg[nr, nz]} {rhoint[nr, nz]} {dmgrid[nr, nz]} {xint[nr, nz]}"
+                    # )
+                    wloc = wall[nr, nz, :] * rho2dtraj / rho2dhat
+                    wloc /= np.sum(wloc)
+                    pids = np.where(wloc > 1.0e-20)[0]
+                    for pid in pids:
+                        dfcontributions_particleids.append(pid)
+                        dfcontributions_cellindices.append(cellid)
+                        dfcontributions_fracofcellmass.append(wloc[pid])
+    elif model_dim == 3:
+        for nx in np.arange(grid_dims[0]):
+            for ny in np.arange(grid_dims[1]):
+                for nz in np.arange(grid_dims[2]):
+                    cellid = nz * grid_dims[0] * grid_dims[1] + ny * grid_dims[0] + nx + 1
+                    if dmgrid[nx, ny, nz] > (1e-100 * mtot):
+                        wloc = wall[nx, ny, nz, :] * rho2dtraj / rho2dhat
+                        wloc /= np.sum(wloc)
+                        pids = np.where(wloc > 1.0e-20)[0]
+                        for pid in pids:
+                            dfcontributions_particleids.append(pid)
+                            dfcontributions_cellindices.append(cellid)
+                            dfcontributions_fracofcellmass.append(wloc[pid])
 
     dfparticlecontribs = pl.DataFrame({
         "particleid": dfcontributions_particleids,
@@ -369,6 +461,11 @@ def get_grid(
     }).with_columns(frac_of_cellmass_includemissing=pl.col("frac_of_cellmass"))
 
     return rgridc2d, zgridc2d, rhoint, xint, iso, qinterpol, yeinterpol, eqsymfac, dfparticlecontribs
+
+    if model_dim == 2:
+        return rgridc2d, zgridc2d, rhoint, xint, iso, qinterpol, yeinterpol, eqsymfac, dfparticlecontribs
+    # 3D case
+    return x3d_min, y3d_min, z3d_min, rhoint, xint, iso, qinterpol, yeinterpol, bsinterpol, eqsymfac, dfparticlecontribs
 
 
 def z_reflect(arr: npt.NDArray[np.floating | np.integer], sign: int = 1) -> npt.NDArray[np.floating | np.integer]:
@@ -381,62 +478,90 @@ def z_reflect(arr: npt.NDArray[np.floating | np.integer], sign: int = 1) -> npt.
 
 # function added by Luke and Gerrit
 def map_to_artis(
-    ngridrcyl: int,
-    ngridz: int,
+    model_dim: int,
+    grid_dims: npt.NDArray[np.integer],
     vmax_on_c: float,
-    pos_t_s_grid_rad: npt.NDArray[np.floating | np.integer],
-    pos_t_s_grid_z: npt.NDArray[np.floating | np.integer],
     rho_interpol: npt.NDArray[np.floating | np.integer],
     X_cells: npt.NDArray[np.floating | np.integer],
     isot_table: npt.NDArray[t.Any],
     q_ergperg: npt.NDArray[np.floating | np.integer],
-    ye_traj: npt.NDArray[np.floating | np.integer],
+    ye_interpol: npt.NDArray[np.floating | np.integer],
     eqsymfac: int,
+    pos_t_s_grid_rad: npt.NDArray[np.floating | np.integer] | None = None,
+    pos_t_s_grid_z: npt.NDArray[np.floating | np.integer] | None = None,
+    x3d: npt.NDArray[np.floating | np.integer] | None = None,
+    y3d: npt.NDArray[np.floating | np.integer] | None = None,
+    z3d: npt.NDArray[np.floating | np.integer] | None = None,
+    bin_state: npt.NDArray[np.floating | np.integer] | None = None,
+    replacedyn: str | None = None,
+    bs_thr: float = 0.5,
+    global_dyn_scale: bool = False,
+    local_dyn_scale: npt.NDArray[np.floating | np.integer] | None = None,
+    interpolate: bool = False,
+    M_2Ddyn: float | None = None,
 ) -> tuple[pl.DataFrame, pl.DataFrame, dict[str, t.Any]]:
-    numb_cells = ngridrcyl * ngridz
+    dfmodel: pl.DataFrame
+    if model_dim == 2:
+        ngridrcyl = grid_dims[0]
+        ngridz = grid_dims[1]
+        numb_cells = ngridrcyl * ngridz
 
-    # now reflect the arrays if equatorial symmetry is assumed or otherwise not
-    if eqsymfac == 1:
-        dfmodel = pl.DataFrame({
-            "inputcellid": range(1, numb_cells + 1),
-            "pos_rcyl_mid": (pos_t_s_grid_rad).flatten(order="F"),
-            "pos_z_mid": (pos_t_s_grid_z).flatten(order="F"),
-            "rho": (rho_interpol).flatten(order="F"),
-            "q": (q_ergperg).flatten(order="F"),
-            "Ye": (ye_traj).flatten(order="F"),
-        })
+        assert pos_t_s_grid_rad is not None, "Error, pos_t_s_grid_rad is None!"
+        assert pos_t_s_grid_z is not None, "Error, pos_t_s_grid_z is None!"
+
+        # now reflect the arrays if equatorial symmetry is assumed or otherwise not
+        if eqsymfac == 1:
+            dfmodel = pl.DataFrame({
+                "inputcellid": range(1, numb_cells + 1),
+                "pos_rcyl_mid": (pos_t_s_grid_rad).flatten(order="F"),
+                "pos_z_mid": (pos_t_s_grid_z).flatten(order="F"),
+                "rho": (rho_interpol).flatten(order="F"),
+                "q": (q_ergperg).flatten(order="F"),
+                "Ye": (ye_interpol).flatten(order="F"),
+            })
+        else:
+            # equatorial symmetry -> have to reflect
+            pos_t_s_grid_rad = z_reflect(pos_t_s_grid_rad)
+            pos_t_s_grid_z = z_reflect(pos_t_s_grid_z, sign=-1)
+            rho_interpol = z_reflect(rho_interpol)
+            q_ergperg = z_reflect(q_ergperg)
+            ye_interpol = z_reflect(ye_interpol)
+            dfmodel = pl.DataFrame({
+                "inputcellid": range(1, numb_cells + 1),
+                "pos_rcyl_mid": (pos_t_s_grid_rad).flatten(order="F"),
+                "pos_z_mid": (pos_t_s_grid_z).flatten(order="F"),
+                "rho": (rho_interpol).flatten(order="F"),
+                "q": (q_ergperg).flatten(order="F"),
+                "Ye": (ye_interpol).flatten(order="F"),
+            })
+
+        assert pos_t_s_grid_rad.shape == (ngridrcyl, ngridz)
+        assert pos_t_s_grid_z.shape == (ngridrcyl, ngridz)
+        assert rho_interpol.shape == (ngridrcyl, ngridz)
+        assert q_ergperg.shape == (ngridrcyl, ngridz)
     else:
-        # equatorial symmetry -> have to reflect
-        pos_t_s_grid_rad = z_reflect(pos_t_s_grid_rad)
-        pos_t_s_grid_z = z_reflect(pos_t_s_grid_z, sign=-1)
-        rho_interpol = z_reflect(rho_interpol)
-        q_ergperg = z_reflect(q_ergperg)
-        ye_traj = z_reflect(ye_traj)
+        assert x3d is not None, "Error, x3d is None!"
+        assert y3d is not None, "Error, y3d is None!"
+        assert z3d is not None, "Error, z3d is None!"
+        numb_cells = grid_dims[0] * grid_dims[1] * grid_dims[2]
         dfmodel = pl.DataFrame({
             "inputcellid": range(1, numb_cells + 1),
-            "pos_rcyl_mid": (pos_t_s_grid_rad).flatten(order="F"),
-            "pos_z_mid": (pos_t_s_grid_z).flatten(order="F"),
+            "pos_x_min": (x3d).flatten(order="F"),
+            "pos_y_min": (y3d).flatten(order="F"),
+            "pos_z_min": (z3d).flatten(order="F"),
             "rho": (rho_interpol).flatten(order="F"),
             "q": (q_ergperg).flatten(order="F"),
-            "Ye": (ye_traj).flatten(order="F"),
+            "cellYe": (ye_interpol).flatten(order="F"),
         })
 
-    assert pos_t_s_grid_rad.shape == (ngridrcyl, ngridz)
-    assert pos_t_s_grid_z.shape == (ngridrcyl, ngridz)
-    assert rho_interpol.shape == (ngridrcyl, ngridz)
-    assert q_ergperg.shape == (ngridrcyl, ngridz)
-
-    # DF_model, DF_el_contribs, DF_contribs = at.inputmodel.rprocess_from_trajectory.add_abundancecontributions(
-    #     dfgridcontributions=DF_gridcontributions,
-    #     dfmodel=DF_model,
-    #     t_model_days_incpremerger=0.1,
-    #     traj_root=Path("./traj_PM/"),
-    # )
+        assert x3d.shape == (grid_dims[0], grid_dims[1], grid_dims[2])
+        assert y3d.shape == (grid_dims[0], grid_dims[1], grid_dims[2])
+        assert z3d.shape == (grid_dims[0], grid_dims[1], grid_dims[2])
+        assert rho_interpol.shape == (grid_dims[0], grid_dims[1], grid_dims[2])
+        assert q_ergperg.shape == (grid_dims[0], grid_dims[1], grid_dims[2])
 
     # add mass fraction columns
-    if "X_Fegroup" not in dfmodel.columns:
-        dfmodel = dfmodel.with_columns(X_Fegroup=pl.lit(1.0))
-    # pdb.set_trace()
+    dfmodel = dfmodel.with_columns(pl.lit(1.0).alias("X_Fegroup"))
 
     dictabunds = {}
     dictelabunds = {"inputcellid": np.array(range(1, numb_cells + 1))}
@@ -454,19 +579,285 @@ def map_to_artis(
             )
 
     print(f"Number of non-zero nuclides {len(dictabunds)}")
-    dfmodel = dfmodel.with_columns(**dictabunds)
+    dfmodel = dfmodel.with_columns(list(itertools.starmap(pl.Series, dictabunds.items())))
 
     dfelabundances = pl.DataFrame(dictelabunds).fill_null(0.0)
 
-    modelmeta = {
-        "dimensions": 2,
-        "ncoordgridrcyl": ngridrcyl,
-        "ncoordgridz": ngridz,
-        "wid_init_rcyl": vmax_on_c * CLIGHT * t_model_init_days / ngridrcyl,
-        "wid_init_z": 2 * vmax_on_c * CLIGHT * t_model_init_days / ngridz,
-        "t_model_init_days": t_model_init_days / day,
-        "vmax_cmps": vmax_on_c * CLIGHT,
-    }
+    if replacedyn:
+        """
+            Either replace dynamical ejecta or interpolate between the models
+        """
+
+        # Step 1) preparations
+        # 1) prepare bin_state variable
+        assert bin_state is not None, "Error, bin_state is None!"
+        assert x3d is not None, "Error, x3d is None!"
+        assert y3d is not None, "Error, y3d is None!"
+        assert z3d is not None, "Error, z3d is None!"
+
+        dfmodel = dfmodel.with_columns([pl.Series("bin_state", bin_state.flatten(order="F"))])
+
+        cell_width = max(abs((x3d).flatten(order="F"))) / (grid_dims[0] / 2)
+        x_mid = (x3d).flatten(order="F") + cell_width / 2
+        y_mid = (y3d).flatten(order="F") + cell_width / 2
+        z_mid = (z3d).flatten(order="F") + cell_width / 2
+        V_dfmodel = np.ones(len(dfmodel)) * cell_width**3
+
+        vel_r_mid_on_c = np.sqrt(x_mid**2 + y_mid**2 + z_mid**2) / (t_model_init_days * CLIGHT)
+        dfmodel = dfmodel.with_columns([
+            pl.Series("vel_r_mid_on_c", vel_r_mid_on_c),
+            pl.lit(cell_width**3).alias("volume"),
+        ])
+        M_tot_before_replacing = (dfmodel["rho"] * dfmodel["volume"]).sum() / msol
+
+        # 2) load dynamical ejecta model
+        # load second model as Pandas DF
+        dyn_model = at.inputmodel.get_modeldata(modelpath=Path(replacedyn), derived_cols=["volume", "velocity"])[
+            0
+        ].collect()
+        dyn_abunds = at.inputmodel.get_initelemabundances(modelpath=Path(replacedyn))
+        dyn_model = dyn_model.rename({"Ye": "cellYe"})
+        dyn_model = dyn_model.drop(["tracercount", "modelgridindex"])
+
+        # Step 2) Model modification
+        if interpolate:
+            # interpolate between the models
+            print(f"Interpolate with dynamical ejecta using model {replacedyn}...")
+            # define resc_factor if required
+            resc_factor = 1.0
+            if M_2Ddyn:
+                mass_dyn = (
+                    dyn_model.select((pl.col("rho") * pl.col("volume") * pl.col("bin_state")).sum()).collect().item()
+                )
+
+                resc_factor = M_2Ddyn * msol / mass_dyn
+                print(f"Scaling factor to obtain 2D dynamical ejecta mass: {resc_factor}")
+
+            # now interpolate all model quantities
+            beta_3D = dyn_model["rho"] * dfmodel["bin_state"] * resc_factor
+            beta_2D = dfmodel["rho"] * (1 - dfmodel["bin_state"])
+            rho = beta_3D + beta_2D
+
+            dfmodel = dfmodel.with_columns([
+                pl.Series("beta_3D", beta_3D / rho),
+                pl.Series("beta_2D", beta_2D / rho),
+                pl.Series("rho", rho),
+            ])
+
+            dfmodel = dfmodel.with_columns([
+                pl.when(pl.col(col).is_infinite()).then(0.0).otherwise(pl.col(col)).fill_null(0.0).alias(col)
+                for col in ["beta_3D", "beta_2D"]
+            ])
+
+            # interpolate q and Ye and threshold small values
+            dfmodel = dfmodel.with_columns([
+                dyn_model.get_column("q").alias("dyn_q"),
+                dyn_model.get_column("cellYe").alias("dyn_cellYe"),
+            ])
+            dfmodel = dfmodel.with_columns([
+                (pl.col("beta_3D") * pl.col("dyn_q") + pl.col("beta_2D") * pl.col("q")).alias("q"),
+                (pl.col("beta_3D") * pl.col("dyn_cellYe") + pl.col("beta_2D") * pl.col("cellYe")).alias("cellYe"),
+            ])
+            dfmodel = dfmodel.drop(["dyn_q", "dyn_cellYe"])
+            dfmodel = dfmodel.with_columns([
+                pl.when(pl.col("q") < 1e-10).then(0).otherwise(pl.col("q")).alias("q"),
+                pl.when(pl.col("cellYe") < 1e-10).then(0).otherwise(pl.col("cellYe")).alias("cellYe"),
+            ])
+
+            # properly empty cells
+            dfmodel = dfmodel.with_columns([
+                pl.when(pl.col("rho") == 0.0).then(0).otherwise(pl.col("q")).alias("q"),
+                pl.when(pl.col("rho") == 0.0).then(0).otherwise(pl.col("cellYe")).alias("cellYe"),
+                pl.when(pl.col("rho") == 0.0).then(0).otherwise(pl.col("X_Fegroup")).alias("X_Fegroup"),
+            ])
+            # write "replaced" ejecta to seperate model files for plotting / consistency check
+            # 1) 3D dynamical ejecta weighted but not scaled
+            dyn_model = dyn_model.with_columns([pl.col("rho") * pl.col("bin_state")])
+            at.inputmodel.save_initelemabundances(dfelabundances=dyn_abunds, outpath=Path("dyn_abunds.txt"))
+            dyn_modelmeta = {
+                "dimensions": 3,
+                "ncoordgridx": grid_dims[0],
+                "ncoordgridy": grid_dims[1],
+                "ncoordgridz": grid_dims[2],
+                "t_model_init_days": t_model_init_days / day,
+                "vmax_cmps": vmax_on_c * CLIGHT,
+            }
+            at.inputmodel.save_modeldata(
+                dfmodel=pl.from_pandas(dyn_model), modelmeta=dyn_modelmeta, outpath=Path("dyn_mode_notrescaled.txt")
+            )
+            # 2) 3D dynamical ejecta weighted and scaled
+            dyn_model = dyn_model.with_columns([pl.col("rho") * resc_factor])
+            at.inputmodel.save_modeldata(
+                dfmodel=pl.from_pandas(dyn_model), modelmeta=dyn_modelmeta, outpath=Path("dyn_mode_rescaled.txt")
+            )
+
+            # mass fractions, avoid looping
+            X_list = list(filter(lambda c: c.startswith("X_"), dfmodel.columns))
+            X_list_dyn_model = list(filter(lambda c: c.startswith("X_"), dyn_model.columns))
+            els_missing_in_dyn = [value for value in X_list if value not in X_list_dyn_model]
+            dyn_model = dyn_model.assign(**dict.fromkeys(els_missing_in_dyn, 0.0))
+            X_list.remove("X_Fegroup")
+            X_list_dyn_model.remove("X_Fegroup")
+            # properly set mass fractions to zero in empty cells
+            dfmodel = dfmodel.with_columns([
+                pl.when(pl.col("rho") == 0.0).then(0.0).otherwise(pl.col(col)).alias(col) for col in X_list
+            ])
+            dyn_model = dyn_model.with_columns([
+                pl.when(pl.col("rho") == 0.0).then(0.0).otherwise(pl.col(col)).alias(col) for col in X_list
+            ])
+
+            dyn_model = dyn_model.rename({col: f"{col}_dyn" for col in X_list})
+
+            dfmodel = dfmodel.with_columns([
+                (pl.col(f"{col}_dyn") * pl.col("beta_3D") + pl.col(col) * pl.col("beta_2D")).alias(col)
+                for col in X_list
+            ])
+
+            # threshold small values
+            dfmodel = dfmodel.with_columns([
+                pl.when(pl.col(col) < 1e-10).then(0.0).otherwise(pl.col(col)).alias(col) for col in X_list
+            ])
+
+            # calculate elemental mass fractions and scaling factors
+            dfmodel = dfmodel.with_columns([pl.sum_horizontal(*X_list).alias("X_el")])
+
+            dfmodel = dfmodel.with_columns([
+                (1.0 / pl.col("X_el")).replace([float("inf"), float("-inf")], 0.0).alias("X_scale")
+            ])
+
+            # scale all mass fractions with scaling factor
+            dfmodel = dfmodel.with_columns([(pl.col(col) * pl.col("X_scale")).alias(col) for col in X_list])
+            # determine elemental abundances for abundances.txt as before again (no interpolation)
+            dictabunds = {}
+            dictelabunds = {"inputcellid": np.array(range(1, numb_cells + 1))}
+            for isot_str in X_list:
+                Z = at.get_atomic_number(isot_str)
+                interpol_X_iso = dfmodel[isot_str].to_numpy()
+                dictabunds[isot_str] = interpol_X_iso
+                elem_str = f"X_{at.get_elsymbol(Z)}"
+                if elem_str == "X_N":
+                    elem_str = "X_n"
+                if elem_str in dictelabunds:
+                    dictelabunds[elem_str] += interpol_X_iso
+                else:
+                    dictelabunds[elem_str] = interpol_X_iso
+            dfabundances = pd.DataFrame(dictelabunds).fillna(0.0)
+            """
+            # old interpolation
+            el_list = [value for value in dfabundances.columns if value in dyn_abunds.columns]
+            el_list.remove('inputcellid')
+            model_el_X = dfabundances.loc[:, el_list]
+            dyn_el_X = dyn_abunds.loc[:, el_list]
+            final_el_X = dyn_el_X.to_numpy() * w_3D.to_numpy()[:, None] + model_el_X.to_numpy() * w_2D.to_numpy()[:, None]
+            dfabundances.loc[:,el_list] = final_el_X
+            dfabundances[el_list] = dfabundances[el_list].mask(dfabundances[el_list] < 1e-10, 0)
+            """
+        else:
+            # replace above threshold
+            print(f"Replace dynamical ejecta above dynamical ejecta fraction threshold using model {replacedyn}...")
+            # get cell list from original model which shall be replaced
+            id_list = (dfmodel["bin_state"] > bs_thr).to_numpy().nonzero()[0].tolist()
+
+            # do replacement in dfelabundances...
+            # obtain dfelabundances from the dyn model first again
+            dfabundances = pl.concat([
+                pl.DataFrame(dfelabundances.filter(~pl.col("inputcellid").is_in(id_list))),
+                pl.DataFrame(dyn_abunds.filter(pl.col("inputcellid").is_in(id_list))),
+            ]).sort("inputcellid")
+
+            # ... and in the model dataframe
+            dfmodel = pl.concat([
+                dfmodel.filter(~pl.col("inputcellid").is_in(id_list)),
+                dyn_model.filter(pl.col("inputcellid").is_in(id_list)),
+            ]).sort("inputcellid")
+
+            M_tot_after_replacing = (dfmodel["rho"] * dfmodel["volume"]).sum() / msol
+
+            # perform mass scalings
+            if global_dyn_scale:
+                Delta_M = M_tot_before_replacing - M_tot_after_replacing
+                dyn_DF = dfmodel.filter(pl.col("inputcellid").is_in(id_list))
+                M_dyn_prev = (dyn_DF.select((pl.col("rho") * V_dfmodel).sum()).item()) / msol
+                print(f"  Dynamical ejecta mass after replacing: {M_dyn_prev} Msun")
+
+                global_mass_scaling = (M_dyn_prev + Delta_M) / M_dyn_prev
+                print(f"  Rescale replaced dynamical ejecta globally by {global_mass_scaling}..")
+
+                dfmodel = dfmodel.with_columns([
+                    pl.when(pl.col("inputcellid").is_in(id_list))
+                    .then(pl.col("rho") * global_mass_scaling)
+                    .otherwise(pl.col("rho"))
+                    .alias("rho")
+                ])
+
+                M_rescaled = (dfmodel.select((pl.col("rho") * V_dfmodel).sum()).item()) / msol
+                print(f"  New ejecta mass after replacing and rescaling: {M_rescaled} Msun")
+
+            elif local_dyn_scale is not None:
+                v_min, v_max = local_dyn_scale
+                Delta_M = M_tot_before_replacing - M_tot_after_replacing
+
+                mask = (pl.col("bin_state") > bs_thr) & (pl.col("vel_r_mid_on_c").is_between(v_min, v_max))
+                v_range_id_list = dfmodel.filter(mask).select("inputcellid").to_series().to_list()
+
+                dyn_DF_vrange = dfmodel.filter(pl.col("inputcellid").is_in(v_range_id_list))
+                M_dyn_vrange_prev = (dyn_DF_vrange.select((pl.col("rho") * V_dfmodel).sum()).item()) / msol
+                print(f"  Dynamical ejecta mass after replacing: {M_dyn_vrange_prev} Msun")
+
+                local_mass_scaling = (M_dyn_vrange_prev + Delta_M) / M_dyn_vrange_prev
+                print(
+                    f"  Rescale replaced dynamical ejecta locally by {local_mass_scaling} from v={v_min} to {v_max}.."
+                )
+
+                dfmodel = dfmodel.with_columns([
+                    pl.when(pl.col("inputcellid").is_in(v_range_id_list))
+                    .then(pl.col("rho") * local_mass_scaling)
+                    .otherwise(pl.col("rho"))
+                    .alias("rho")
+                ])
+
+                M_rescaled = (dfmodel.select((pl.col("rho") * V_dfmodel).sum()).item()) / msol
+                print(f"  New ejecta mass after replacing and rescaling: {M_rescaled} Msun")
+                dfmodel = dfmodel.drop("vel_r_mid_on_c")
+
+        dfmodel = dfmodel.drop("bin_state")
+        superfluous_cols = [
+            "bin_state",
+            "vel_r_mid_on_c",
+            "volume",
+            "beta_3D",
+            "beta_2D",
+            "modelgridindex",
+            "X_el",
+            "X_scale",
+        ]
+        dfmodel = dfmodel.drop([col for col in superfluous_cols if col in dfmodel.columns])
+        print("Done!")
+
+    dfelabundances = dfabundances
+    if not isinstance(dfelabundances, pl.DataFrame):
+        dfelabundances = pl.from_pandas(dfelabundances)
+
+    if model_dim == 2:
+        # create modelmeta dictionary
+        modelmeta = {
+            "dimensions": 2,
+            "ncoordgridrcyl": ngridrcyl,
+            "ncoordgridz": ngridz,
+            "wid_init_rcyl": vmax_on_c * CLIGHT * t_model_init_days / ngridrcyl,
+            "wid_init_z": 2 * vmax_on_c * CLIGHT * t_model_init_days / ngridz,
+            "t_model_init_days": t_model_init_days / day,
+            "vmax_cmps": vmax_on_c * CLIGHT,
+        }
+    elif model_dim == 3:
+        modelmeta = {
+            "dimensions": 3,
+            "ncoordgridx": grid_dims[0],
+            "ncoordgridy": grid_dims[1],
+            "ncoordgridz": grid_dims[2],
+            "t_model_init_days": t_model_init_days / day,
+            "vmax_cmps": vmax_on_c * CLIGHT,
+        }
 
     return dfmodel, dfelabundances, modelmeta
 
@@ -636,6 +1027,22 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-ngridz", type=int, default=50, help="Number of cells in z direction the ARTIS model shall have"
     )
 
+    parser.add_argument("--mapto3D", action="store_true", help="Final grid will be 3D. Requires -ngridx and -ngridy.")
+
+    parser.add_argument(
+        "-ngridx",
+        type=int,
+        default=50,
+        help="Number of cells in x direction the ARTIS model shall have (from -vmax to +vmax)",
+    )
+
+    parser.add_argument(
+        "-ngridy",
+        type=int,
+        default=50,
+        help="Number of cells in y direction the ARTIS model shall have (from -vmax to +vmax)",
+    )
+
     parser.add_argument("--nonutrapping", action="store_true", help="Exclude neutrino energy from the snapshot energy")
 
     parser.add_argument("--nodyn", action="store_true", help="Exclude dynamical ejecta from the model")
@@ -643,6 +1050,36 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--nohmns", action="store_true", help="Exclude neutrino wind ejecta from the model")
 
     parser.add_argument("--notorus", action="store_true", help="Exclude torus ejecta from the model")
+
+    parser.add_argument(
+        "--interpolate",
+        action="store_true",
+        help="Interpolate between ejecta types instead of replacing full ejecta by dynamical",
+    )
+
+    parser.add_argument(
+        "-interpolrescale",
+        default=None,
+        help="Scale so that dynamical ejecta mass matches 2D dynamical ejecta again. Float is the 2D dynamical ejecta mass.",
+    )
+
+    parser.add_argument(
+        "-replacethr",
+        default=0.5,
+        help="Threshold in the binary state variable for replacing dynamical ejecta with the 3D model. (default: 0.5)",
+    )
+
+    parser.add_argument(
+        "--globaldynscale",
+        action="store_true",
+        help="Scale the mass of all (!) dynamical ejecta such that the resulting total ejecta mass matches the value specified",
+    )
+
+    parser.add_argument(
+        "-localdynscale",
+        default=None,
+        help="Scale the mass of those dynamical ejecta within velocities (in units of c) v_min and v_max which replaced previous 2D data such that the resulting total ejecta mass matches the value specified. Values separated by comma",
+    )
 
     parser.add_argument(
         "-mergecells",
@@ -672,67 +1109,109 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         modelname = Path(args.npz).name.replace(".npz", "")
         if args.dimensions is not None and args.dimensions < 2:
             modelname += f"_{args.dimensions}d"
+        elif args.mapto3D:
+            modelname += "_3d"
+        else:
+            modelname += "_2d"
         args.outputpath = Path(args.npz).parent / "artis_inputmodels" / modelname
         args.outputpath.mkdir(parents=True, exist_ok=True)
         print(args.outputpath)
 
-    ngrid_rcyl = int(args.ngridrcyl)
-    ngrid_z = int(args.ngridz)
-    (
-        pos_t_s_grid_rad,
-        pos_t_s_grid_z,
-        rho_interpol,
-        X_cells,
-        isot_table,
-        q_ergperg,
-        ye_traj,
-        eqsymfac,
-        dfgridcontributions,
-    ) = get_grid(
-        args.npz,
-        args.iso,
-        float(args.vmax_on_c),
-        ngrid_rcyl,
-        ngrid_z,
-        args.nodyn,
-        args.nohmns,
-        args.notorus,
-        no_nu_trapping=args.nonutrapping,
-    )
+        # model_dim = 1 not covered in this script
+    model_dim = 3 if args.mapto3D else 2
 
-    dfmodel, dfelabundances, modelmeta = map_to_artis(
-        ngridrcyl=ngrid_rcyl,
-        ngridz=ngrid_z,
-        vmax_on_c=float(args.vmax_on_c),
-        pos_t_s_grid_rad=pos_t_s_grid_rad,
-        pos_t_s_grid_z=pos_t_s_grid_z,
-        rho_interpol=rho_interpol,
-        X_cells=X_cells,
-        isot_table=isot_table,
-        q_ergperg=q_ergperg,
-        ye_traj=ye_traj,
-        eqsymfac=eqsymfac,
-    )
-
-    if args.mergecells is not None:
-        # bunch of checks to assure proper cell merging
-        assert isinstance(args.mergecells, int), "Number of cells to merge is not an integer!"
-        # check if the number is a square number
-        assert np.sqrt(args.mergecells).is_integer(), "Number of cells to merge is not a square number!"
-        # check if the current number of cells is a multiple of the cells to merge
-        assert (ngrid_z / np.sqrt(args.mergecells)).is_integer(), "Number of merged cells in z direction is no integer!"
-        assert (ngrid_rcyl / np.sqrt(args.mergecells)).is_integer(), (
-            "Number of merged cells in r direction is no integer!"
-        )
-        dfmodel, dfelabundances, modelmeta = merge_neighbour_cells(
-            dfmodel=dfmodel,
-            modelmeta=modelmeta,
-            red_fact=args.mergecells,
-            ngrid_rcyl=ngrid_rcyl,
-            ngrid_z=ngrid_z,
-            vmax=args.vmax_on_c,
+    if model_dim == 2:
+        ngrid_rcyl = int(args.ngridrcyl)
+        ngrid_z = int(args.ngridz)
+        (
+            pos_t_s_grid_rad,
+            pos_t_s_grid_z,
+            rho_interpol,
+            X_cells,
+            isot_table,
+            q_ergperg,
+            ye,
+            eqsymfac,
+            dfgridcontributions,
+        ) = get_grid(
+            args.npz,
+            args.iso,
+            float(args.vmax_on_c),
+            model_dim,
+            np.array([ngrid_rcyl, ngrid_z]),
+            args.nodyn,
+            args.nohmns,
+            args.notorus,
+            no_nu_trapping=args.nonutrapping,
         )
 
+        dfmodel, dfelabundances, modelmeta = map_to_artis(
+            model_dim,
+            np.array([ngrid_rcyl, ngrid_z]),
+            float(args.vmax_on_c),
+            rho_interpol,
+            X_cells,
+            isot_table,
+            q_ergperg,
+            ye,
+            eqsymfac,
+            pos_t_s_grid_rad=pos_t_s_grid_rad,
+            pos_t_s_grid_z=pos_t_s_grid_z,
+        )
+
+        if args.mergecells is not None:
+            # bunch of checks to assure proper cell merging
+            assert model_dim == 2, "Cell merging only implemented for 2D models!"
+            assert isinstance(args.mergecells, int), "Number of cells to merge is not an integer!"
+            # check if the number is a square number
+            assert np.sqrt(args.mergecells).is_integer(), "Number of cells to merge is not a square number!"
+            # check if the current number of cells is a multiple of the cells to merge
+            assert (ngrid_z / np.sqrt(args.mergecells)).is_integer(), (
+                "Number of merged cells in z direction is no integer!"
+            )
+            assert (ngrid_rcyl / np.sqrt(args.mergecells)).is_integer(), (
+                "Number of merged cells in r direction is no integer!"
+            )
+            dfmodel, dfelabundances, modelmeta = merge_neighbour_cells(
+                dfmodel=dfmodel,
+                modelmeta=modelmeta,
+                red_fact=args.mergecells,
+                ngrid_rcyl=ngrid_rcyl,
+                ngrid_z=ngrid_z,
+                vmax=args.vmax_on_c,
+            )
+    elif model_dim == 3:
+        x3d, y3d, z3d, rhoint, xint, iso, q_ergperg, yeinterpol, bsinterpol, eqsymfac = get_grid(
+            args.npz,
+            args.iso,
+            float(args.vmax_on_c),
+            model_dim,
+            np.array([int(args.ngridx), int(args.ngridy), int(args.ngridz)]),
+            args.nodyn,
+            args.nohmns,
+            args.notorus,
+            no_nu_trapping=args.nonutrapping,
+        )
+
+        dfmodel, dfelabundances, modelmeta = map_to_artis(
+            model_dim,
+            np.array([int(args.ngridx), int(args.ngridy), int(args.ngridz)]),
+            float(args.vmax),
+            rhoint,
+            xint,
+            iso,
+            q_ergperg,
+            yeinterpol,
+            eqsymfac,
+            x3d=x3d,
+            y3d=y3d,
+            z3d=z3d,
+            bin_state=bsinterpol,
+            bs_thr=float(args.replacethr),
+            replacedyn=args.replacedyn,
+        )
+
+    # add dimension reduce if 1D or 1-zone model wanted
     if args.dimensions is not None and args.dimensions < 2:
         dfmodel, dfelabundances, dfgridcontributions, modelmeta = at.inputmodel.dimension_reduce_model(
             dfmodel=dfmodel,
