@@ -628,9 +628,7 @@ def map_to_artis(
             # define resc_factor if required
             resc_factor = 1.0
             if M_2Ddyn:
-                mass_dyn = (
-                    dyn_model.select((pl.col("rho") * pl.col("volume") * pl.col("bin_state")).sum()).collect().item()
-                )
+                mass_dyn = dyn_model.select((pl.col("rho") * pl.col("volume") * pl.col("bin_state")).sum()).item()
 
                 resc_factor = M_2Ddyn * msol / mass_dyn
                 print(f"Scaling factor to obtain 2D dynamical ejecta mass: {resc_factor}")
@@ -697,7 +695,7 @@ def map_to_artis(
             X_list = list(filter(lambda c: c.startswith("X_"), dfmodel.columns))
             X_list_dyn_model = list(filter(lambda c: c.startswith("X_"), dyn_model.columns))
             els_missing_in_dyn = [value for value in X_list if value not in X_list_dyn_model]
-            dyn_model = dyn_model.assign(**dict.fromkeys(els_missing_in_dyn, 0.0))
+            dyn_model = dyn_model.with_columns(**{col: pl.lit(0.0) for col in els_missing_in_dyn})
             X_list.remove("X_Fegroup")
             X_list_dyn_model.remove("X_Fegroup")
             # properly set mass fractions to zero in empty cells
