@@ -349,6 +349,7 @@ def get_grid(
 
     # ... density
     rho2d = np.sum(wall * mtraj * rho2dtraj / rho2dhat, axis=interpol_axis)
+    rhoint = np.zeros(rho2d.shape)
     if model_dim == 2:
         rhoint = rho2d / (
             2.0 * np.pi * np.clip(rgridc2d, 0.5 * hint, None)
@@ -358,6 +359,7 @@ def get_grid(
     elif model_dim == 3:
         rhoint = rho2d / (2.0 * np.pi * R3d)
         xint = np.tensordot(xtraj.T, wall * mtraj, axes=(1, 3)) / (2.0 * np.pi * R3d)
+    assert max(rhoint) > 0, "Model is empty after interpolating!"
     # ... temperature
     qinterpol = np.sum(weinor * qtraj, axis=interpol_axis)
     yeinterpol = np.sum(weinor * yetraj, axis=interpol_axis)
@@ -612,9 +614,9 @@ def map_to_artis(
 
         # 2) load dynamical ejecta model
         # load second model as Pandas DF
-        dyn_model = at.inputmodel.get_modeldata(modelpath=Path(replacedyn), derived_cols=["volume", "velocity"])[
-            0
-        ].collect()
+        dyn_model: pl.DataFrame = at.inputmodel.get_modeldata(
+            modelpath=Path(replacedyn), derived_cols=["volume", "velocity"]
+        )[0].collect()
         dyn_abunds = at.inputmodel.get_initelemabundances(modelpath=Path(replacedyn))
         dyn_model = dyn_model.rename({"Ye": "cellYe"})
         dyn_model = dyn_model.drop(["tracercount", "modelgridindex"])
@@ -683,12 +685,12 @@ def map_to_artis(
                 "vmax_cmps": vmax_on_c * CLIGHT,
             }
             at.inputmodel.save_modeldata(
-                dfmodel=pl.from_pandas(dyn_model), modelmeta=dyn_modelmeta, outpath=Path("dyn_mode_notrescaled.txt")
+                dfmodel=dyn_model, modelmeta=dyn_modelmeta, outpath=Path("dyn_mode_notrescaled.txt")
             )
             # 2) 3D dynamical ejecta weighted and scaled
             dyn_model = dyn_model.with_columns([pl.col("rho") * resc_factor])
             at.inputmodel.save_modeldata(
-                dfmodel=pl.from_pandas(dyn_model), modelmeta=dyn_modelmeta, outpath=Path("dyn_mode_rescaled.txt")
+                dfmodel=dyn_model, modelmeta=dyn_modelmeta, outpath=Path("dyn_mode_rescaled.txt")
             )
 
             # mass fractions, avoid looping
