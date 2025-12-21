@@ -30,7 +30,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("-xmin", type=float, default=None, help="Plot range: x-axis")
 
-    parser.add_argument("-nbins", type=int, default=None, help="Use specified number of fixed velocity bins up to maximum plot velocity.")
+    parser.add_argument(
+        "-nbins",
+        type=int,
+        default=None,
+        help="Use specified number of fixed velocity bins up to maximum plot velocity.",
+    )
 
     parser.add_argument("--plotye", action="store_true", help="Plot electron fraction versus velocity")
 
@@ -108,10 +113,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             vupperscoarse = [xmin + xdeltamax * (i + 1) for i in range(ncoarsevelbins)]
 
         if args.nbins:
-            vupperscoarse = [
-                (i + 1) * (29979245800 / args.nbins)
-                for i in range(args.nbins)
-            ]
+            vupperscoarse = [(i + 1) * (29979245800 / args.nbins) for i in range(args.nbins)]
         binned_xvals: list[float] = []
         binned_yvals: list[float] = []
         vlowerscoarse = [0.0, *vupperscoarse[:-1]]
