@@ -42,8 +42,7 @@ def readfile(filepath: str | Path) -> dict[int, pl.LazyFrame]:
 def read_3d_gammalightcurve(filepath: str | Path) -> dict[int, pd.DataFrame]:
     import pandas as pd
 
-    columns = ["time"]
-    columns.extend(np.arange(0, 100))
+    columns = ["time", *[str(i) for i in range(100)]]
     lcdata = pd.read_csv(filepath, sep=r"\s+", header=None).set_axis(columns, axis=1)
     # lcdata = lcdata.rename(columns={0: 'time', 1: 'lum', 2: 'lum_cmf'})
 
