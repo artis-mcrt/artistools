@@ -152,6 +152,7 @@ def get_closest_network_timesteps(
     assert not isinstance(timesec, float)
     assert not isinstance(timesec, int)
 
+    dfevol = dfevol.unique(subset=["timesec"], keep="first")
     if cond == "nearest":
         return [
             dfevol
