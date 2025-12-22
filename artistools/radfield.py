@@ -144,7 +144,8 @@ def get_fullspecfittedfield(
     radfielddata: pd.DataFrame, xmin: float, xmax: float, modelgridindex: int | None = None, timestep: int | None = None
 ) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     row = (
-        radfielddata.query(
+        radfielddata
+        .query(
             "bin_num == -1"
             + (" & modelgridindex==@modelgridindex" if modelgridindex else "")
             + (" & timestep==@timestep" if timestep else "")
@@ -289,7 +290,8 @@ def plot_specout(
         modelpath = Path(specfilename).parent
 
     dfspectrum = (
-        at.spectra.get_spectrum(modelpath=modelpath, timestepmin=timestep)[-1]
+        at.spectra
+        .get_spectrum(modelpath=modelpath, timestepmin=timestep)[-1]
         .collect()
         .to_pandas(use_pyarrow_extension_array=True)
     )

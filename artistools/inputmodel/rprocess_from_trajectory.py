@@ -154,7 +154,8 @@ def get_closest_network_timesteps(
 
     if cond == "nearest":
         return [
-            dfevol.filter(pl.col("timesec") == pl.col("timesec").bottom_k_by((pl.col("timesec") - t).abs(), k=1))
+            dfevol
+            .filter(pl.col("timesec") == pl.col("timesec").bottom_k_by((pl.col("timesec") - t).abs(), k=1))
             .get_column("nstep")
             .item()
             for t in timesec
@@ -187,7 +188,8 @@ def get_trajectory_timestepfile_nuc_abund(
 
         trajfile.seek(0)
         dfnucabund = (
-            pl.read_csv(trajfile, separator="\n", skip_rows=1, has_header=False, new_columns=["data"], n_threads=1)
+            pl
+            .read_csv(trajfile, separator="\n", skip_rows=1, has_header=False, new_columns=["data"], n_threads=1)
             .lazy()
             .select(
                 pl.col("data").str.slice(0, 4).str.strip_chars().cast(pl.Int32).alias("N"),
@@ -318,7 +320,8 @@ def filtermissinggridparticlecontributions(dfcontribs: pl.DataFrame, missing_par
     # after filtering, frac_of_cellmass_includemissing will still include particles with rho but no abundance data
     # frac_of_cellmass will exclude particles with no abundances
     dfcontribs = dfcontribs.with_columns(frac_of_cellmass_includemissing=pl.col("frac_of_cellmass")).with_columns(
-        frac_of_cellmass=pl.when(pl.col("particleid").is_in(missing_particleids))
+        frac_of_cellmass=pl
+        .when(pl.col("particleid").is_in(missing_particleids))
         .then(0.0)
         .otherwise(pl.col("frac_of_cellmass"))
     )
@@ -331,7 +334,8 @@ def filtermissinggridparticlecontributions(dfcontribs: pl.DataFrame, missing_par
         cell_frac_includemissing_sum[cellindex] = dfparticlecontribs["frac_of_cellmass_includemissing"].sum()
 
     dfcontribs = (
-        dfcontribs.lazy()
+        dfcontribs
+        .lazy()
         .with_columns([
             pl.Series(
                 (
@@ -546,7 +550,8 @@ def get_wollaeger_density_profile(wollaeger_profilename: Path | str, t_model_ini
     t_model_init_seconds_in = t_model_init_days_in * 24 * 60 * 60
 
     return (
-        pl.from_pandas(
+        pl
+        .from_pandas(
             pd.read_csv(wollaeger_profilename, sep=r"\s+", skiprows=1, names=["cellid", "vel_r_max_kmps", "rho"])
         )
         .with_columns(pl.col("mgi").cast(pl.Int32))

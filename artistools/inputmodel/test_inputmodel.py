@@ -52,7 +52,8 @@ def test_get_modeldata_3d() -> None:
 
 def test_get_cell_angle() -> None:
     modeldata = (
-        at.inputmodel.get_modeldata(modelpath=modelpath_3d, derived_cols=["pos_x_mid", "pos_y_mid", "pos_z_mid"])[0]
+        at.inputmodel
+        .get_modeldata(modelpath=modelpath_3d, derived_cols=["pos_x_mid", "pos_y_mid", "pos_z_mid"])[0]
         .collect()
         .to_pandas(use_pyarrow_extension_array=True)
     )
@@ -1450,7 +1451,8 @@ def test_save_load_3d_model() -> None:
     )
 
     dfelements = (
-        at.get_elsymbols_df()
+        at
+        .get_elsymbols_df()
         .filter(
             pl.col("atomic_number").is_between(1, 50) | (pl.col("atomic_number") == 113)
         )  # Z=113 Uut has three chars, so test that that too

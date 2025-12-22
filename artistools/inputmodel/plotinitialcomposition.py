@@ -335,7 +335,8 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
 
 def plot_phi_hist(modelpath: Path | str) -> None:
     dfmodel = (
-        at.get_modeldata(modelpath, derived_cols=["pos_x_mid", "pos_y_mid", "pos_z_mid", "vel_r_mid"])[0]
+        at
+        .get_modeldata(modelpath, derived_cols=["pos_x_mid", "pos_y_mid", "pos_z_mid", "vel_r_mid"])[0]
         .collect()
         .to_pandas(use_pyarrow_extension_array=True)
     )

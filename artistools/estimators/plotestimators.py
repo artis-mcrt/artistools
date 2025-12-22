@@ -71,7 +71,8 @@ def plot_data(
 
     # Calculate the average line and optionally, the min-max bounding area
     dflinepoints = (
-        dfplotdata.group_by("xvalue_binned", maintain_order=True)
+        dfplotdata
+        .group_by("xvalue_binned", maintain_order=True)
         .agg(
             yvalue_binned=(pl.col("yvalue") * pl.col("celltsweight")).sum() / pl.col("celltsweight").sum(),
             yvalue_binned_min=pl.col("yvalue").min(),
@@ -263,13 +264,15 @@ def plot_levelpop(
         raise ValueError
 
     modeldata = (
-        at.inputmodel.get_modeldata(modelpath, derived_cols=["mass_g", "volume"])[0]
+        at.inputmodel
+        .get_modeldata(modelpath, derived_cols=["mass_g", "volume"])[0]
         .collect()
         .to_pandas(use_pyarrow_extension_array=True)
     )
 
     adata = (
-        at.atomic.get_levels(modelpath)
+        at.atomic
+        .get_levels(modelpath)
         .with_columns(
             levels=pl.col("levels").map_elements(
                 lambda x: x.to_pandas(use_pyarrow_extension_array=True), return_dtype=pl.Object
@@ -307,7 +310,8 @@ def plot_levelpop(
 
             for timestep in timestepslist:
                 levelpop = (
-                    dfnltepops.query(
+                    dfnltepops
+                    .query(
                         "modelgridindex==@modelgridindex and timestep==@timestep and Z==@atomic_number"
                         " and ion_stage==@ion_stage and level==@levelindex"
                     )
@@ -621,8 +625,10 @@ def get_xlist(
         xupper = xbinedges[1:]
         xmids = (xlower + xupper) / 2
         estimators = (
-            estimators.with_columns(
-                pl.col("xvalue")
+            estimators
+            .with_columns(
+                pl
+                .col("xvalue")
                 .cut(breaks=list(xbinedges), labels=[str(x) for x in range(-1, len(xbinedges))])
                 .cast(pl.Utf8)
                 .cast(pl.Int32)

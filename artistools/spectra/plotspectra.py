@@ -201,7 +201,8 @@ def get_axis_labels(args: argparse.Namespace) -> tuple[str | None, str | None]:
 def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
     angle = args.plotviewingangle[0]
     dfspectrum = (
-        atspectra.get_specpol_data(angle=angle, modelpath=modelpath)[args.stokesparam]
+        atspectra
+        .get_specpol_data(angle=angle, modelpath=modelpath)[args.stokesparam]
         .with_columns(lambda_angstroms=2.99792458e18 / pl.col("nu"))
         .collect()
         .to_pandas(use_pyarrow_extension_array=True)

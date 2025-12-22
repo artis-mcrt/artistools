@@ -53,7 +53,8 @@ def parse_adata(
                 level_list.append((float(row[1]), float(row[2]), int(row[3]), levelname, phixstargetlist, phixstable))
 
             dflevels = (
-                pl.DataFrame(
+                pl
+                .DataFrame(
                     level_list,
                     schema=[
                         ("energy_ev", pl.Float64),
@@ -137,7 +138,8 @@ def add_transition_columns(
     dflevels = dflevels.select(["g", "energy_ev", "levelname", "levelindex"]).lazy()
 
     dftransitions = (
-        dftransitions.join(
+        dftransitions
+        .join(
             dflevels.select(
                 lower="levelindex",
                 lower_g=pl.col("g"),

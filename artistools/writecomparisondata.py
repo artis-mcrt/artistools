@@ -172,7 +172,8 @@ def write_phys(
 def write_lbol_edep(modelpath: str | Path, selected_timesteps: Sequence[int], outputpath: Path) -> None:
     # times = at.get_timestep_times(modelpath)
     dflightcurve = (
-        at.lightcurve.readfile(Path(modelpath, "light_curve.out"))[-1]
+        at.lightcurve
+        .readfile(Path(modelpath, "light_curve.out"))[-1]
         .collect()
         .to_pandas(use_pyarrow_extension_array=True)
         .merge(

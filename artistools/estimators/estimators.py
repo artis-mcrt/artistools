@@ -262,14 +262,16 @@ def scan_estimators(
                 f"  scanning {len(parquetfiles)} parquet estimator files ({datasize_GB:.1f} GB) from {str_runfolders}..."
             )
         pldflazy = (
-            pl.concat([pl.scan_parquet(pfile) for pfile in parquetfiles], how="diagonal_relaxed")
+            pl
+            .concat([pl.scan_parquet(pfile) for pfile in parquetfiles], how="diagonal_relaxed")
             .unique(["timestep", "modelgridindex"], maintain_order=True, keep="first")
             .lazy()
         )
     else:
         print(f"WARNING: No run folders found in {modelpath}. Enabling fallback to cross join of all cells/timesteps.")
         pldflazy = (
-            at.get_timesteps(modelpath)
+            at
+            .get_timesteps(modelpath)
             .select("timestep", "tmid_days", "twidth_days")
             .join(at.inputmodel.get_modeldata(modelpath)[0].select("modelgridindex"), how="cross")
         )

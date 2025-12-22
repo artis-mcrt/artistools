@@ -60,7 +60,8 @@ def get_profile_along_axis(
 
     if modeldata is None:
         modeldata = (
-            at.inputmodel.get_modeldata(args.modelpath, get_elemabundances=True, derived_cols=derived_cols)[0]
+            at.inputmodel
+            .get_modeldata(args.modelpath, get_elemabundances=True, derived_cols=derived_cols)[0]
             .collect()
             .to_pandas(use_pyarrow_extension_array=True)
         )

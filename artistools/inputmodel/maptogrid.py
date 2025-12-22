@@ -133,7 +133,8 @@ def maptogrid(
     logprint(f"Propagating particles for dtextra_seconds={dtextra_seconds}")
     dtextra = dtextra_seconds / 4.926e-6  # convert to geom units.
     dfsnapshot = (
-        dfsnapshot.with_columns(
+        dfsnapshot
+        .with_columns(
             dis_orig=(pl.col("x") ** 2 + pl.col("y") ** 2 + pl.col("z") ** 2).sqrt(),
             x_orig=pl.col("x"),
             y_orig=pl.col("y"),
@@ -149,7 +150,8 @@ def maptogrid(
             vtot=(pl.col("vx") ** 2 + pl.col("vy") ** 2 + pl.col("vz") ** 2).sqrt(),
         )
         .with_columns(
-            vperp=pl.when(pl.col("vtot") > pl.col("vrad"))
+            vperp=pl
+            .when(pl.col("vtot") > pl.col("vrad"))
             .then((pl.col("vtot") ** 2 - pl.col("vrad") ** 2).sqrt())
             .otherwise(0.0)
         )

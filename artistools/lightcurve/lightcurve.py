@@ -152,7 +152,8 @@ def get_from_packets(
             pldfpackets_dirbin = dfpackets.filter(pl.col("dirbin") == dirbin)
 
         lcdata[dirbin] = (
-            at.packets.bin_and_sum(
+            at.packets
+            .bin_and_sum(
                 pldfpackets_dirbin, bincol=timecol, bins=timebinstarts_plusend, sumcols=["e_rf"], getcounts=True
             )
             .with_columns(timestep=pl.col(f"{timecol}_bin").cast(pl.Int32) + dftimesteps_selected["timestep"].min())
@@ -502,10 +503,10 @@ def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pd.Dat
 
     if "dist_mpc" in metadata:
         lightcurve_data["magnitude"] = lightcurve_data["magnitude"].apply(
-            lambda x: (x - 5 * np.log10(metadata["dist_mpc"] * 10**6) + 5)
+            lambda x: x - 5 * np.log10(metadata["dist_mpc"] * 10**6) + 5
         )
     elif "dist_modulus" in metadata:
-        lightcurve_data["magnitude"] = lightcurve_data["magnitude"].apply(lambda x: (x - metadata["dist_modulus"]))
+        lightcurve_data["magnitude"] = lightcurve_data["magnitude"].apply(lambda x: x - metadata["dist_modulus"])
 
     return lightcurve_data, metadata
 
