@@ -294,7 +294,8 @@ def make_ionsubplot(
             coalesce=True,
         )
         dftrans = dftrans.with_columns(
-            emissionstrength=pl.when(pl.col("n_NLTE").is_not_null())
+            emissionstrength=pl
+            .when(pl.col("n_NLTE").is_not_null())
             .then(pl.col("n_NLTE") * pl.col("A") * pl.col("epsilon_trans_ev"))
             .otherwise(0)
         )
@@ -406,7 +407,8 @@ def make_plot_populations_with_time_or_velocity(modelpaths: list[Path | str], ar
     ion_stage = int(args.ion_stages[0])
 
     adata = (
-        at.atomic.get_levels(modelpaths[0], get_transitions=True)
+        at.atomic
+        .get_levels(modelpaths[0], get_transitions=True)
         .with_columns(
             levels=pl.col("levels").map_elements(
                 lambda x: x.to_pandas(use_pyarrow_extension_array=True), return_dtype=pl.Object

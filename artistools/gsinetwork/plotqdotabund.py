@@ -79,9 +79,8 @@ def get_abundance_correction_factors(
                 if nucisocol not in lzdfmodel.collect_schema().names():
                     continue
                 correction_factors[nucisocol.removeprefix("X_")] = (
-                    lzdfmodel.select(
-                        pl.col(nucisocol).dot(pl.col("mass_g_mapped")) / pl.col(nucisocol).dot(pl.col("mass_g"))
-                    )
+                    lzdfmodel
+                    .select(pl.col(nucisocol).dot(pl.col("mass_g_mapped")) / pl.col(nucisocol).dot(pl.col("mass_g")))
                     .collect()
                     .item()
                 )
@@ -159,7 +158,8 @@ def get_artis_abund_sequences(
         for mgi in mgiplotlist:
             assert isinstance(mgi, int)
             combinedlzdf = (
-                estimators_lazy.filter((pl.col("modelgridindex") == mgi).or_(mgi < 0))
+                estimators_lazy
+                .filter((pl.col("modelgridindex") == mgi).or_(mgi < 0))
                 .group_by("timestep", maintain_order=True)
                 .agg(
                     [
@@ -198,8 +198,10 @@ def plot_qdot(
         print("Calculating global heating rates from the individual particle heating rates")
         assert arr_time_gsi_days is not None
         dfgsiglobalheating = (
-            dfcontribsparticledata.select([
-                pl.concat_arr(
+            dfcontribsparticledata
+            .select([
+                pl
+                .concat_arr(
                     (pl.col(col).arr.get(n) * pl.col("frac_of_cellmass") * pl.col("cellmass_on_mtot")).sum()
                     for n in range(len(arr_time_gsi_days))
                 )
@@ -323,7 +325,8 @@ def plot_cell_abund_evolution(
 
         # we didn't include all cells (maybe), so we need a normalization factor here
         normfactor = (
-            dfpartcontrib_thiscell.group_by("modelgridindex")
+            dfpartcontrib_thiscell
+            .group_by("modelgridindex")
             .agg(pl.col("cellmass_on_mtot").first())
             .drop("modelgridindex")
             .sum()
@@ -333,7 +336,8 @@ def plot_cell_abund_evolution(
 
         assert arr_time_gsi_days is not None
         df_gsi_abunds = dfpartcontrib_thiscell.select([
-            pl.concat_arr(
+            pl
+            .concat_arr(
                 (pl.col(strnuc).arr.get(n) * pl.col("frac_of_cellmass") * pl.col("cellmass_on_mtot") / normfactor).sum()
                 for n in range(len(arr_time_gsi_days))
             )
@@ -446,7 +450,8 @@ def get_particledata(
             # triple digit exponents like 1.735904-244 need to be converted to 1.735904e-244
             # because of Fortran output
             dfheating = dfheating.with_columns(
-                pl.when(cs.by_dtype(pl.String).str.slice(-4, 1) == "-")
+                pl
+                .when(cs.by_dtype(pl.String).str.slice(-4, 1) == "-")
                 .then(cs.by_dtype(pl.String).str.replace_all("-", "e-"))
                 .otherwise(cs.by_dtype(pl.String))
                 .cast(pl.Float32)
@@ -489,7 +494,8 @@ def get_particledata(
                         )
                     else:
                         arr_massfracs[strnuc][i] = (
-                            dftrajnucabund.filter((pl.col("Z") == Z) & (pl.col("N") == N))
+                            dftrajnucabund
+                            .filter((pl.col("Z") == Z) & (pl.col("N") == N))
                             .select(pl.col("massfrac").sum())
                             .item()
                         )
@@ -533,7 +539,8 @@ def get_dfcontribsparticledata(
     arr_time_gsi_s_incpremerger = np.array(arr_time_gsi_days) * 86400.0 + t_mergertime_s
 
     dfpartcontrib = (
-        at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(modelpath)
+        at.inputmodel.rprocess_from_trajectory
+        .get_gridparticlecontributions(modelpath)
         .lazy()
         .with_columns(modelgridindex=pl.col("cellindex") - 1)
         .filter(pl.col("frac_of_cellmass") > 0)
@@ -541,7 +548,8 @@ def get_dfcontribsparticledata(
 
     allcontribparticleids = dfpartcontrib.select(pl.col("particleid").unique()).collect().to_series().to_list()
     list_particleids_getabund = (
-        dfpartcontrib.filter(pl.col("modelgridindex").is_in(mgiplotlist).or_(any(mgi < 0 for mgi in mgiplotlist)))
+        dfpartcontrib
+        .filter(pl.col("modelgridindex").is_in(mgiplotlist).or_(any(mgi < 0 for mgi in mgiplotlist)))
         .select(pl.col("particleid").unique())
         .collect()
         .to_series()

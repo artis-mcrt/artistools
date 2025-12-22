@@ -293,7 +293,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         timestep = at.get_timestep_of_timedays(modelpath, args.timedays) if args.timedays else args.timestep
 
         modeldata = (
-            at.inputmodel.get_modeldata(Path(modelpath, "model.txt"))[0]
+            at.inputmodel
+            .get_modeldata(Path(modelpath, "model.txt"))[0]
             .collect()
             .to_pandas(use_pyarrow_extension_array=True)
         )
@@ -431,7 +432,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             if args.atomicdatabase == "artis":
                 assert isinstance(ion["levels"], pl.DataFrame | pl.LazyFrame)
                 pldftransitions = (
-                    at.atomic.add_transition_columns(
+                    at.atomic
+                    .add_transition_columns(
                         pldftransitions,
                         ion["levels"],
                         [
@@ -517,7 +519,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                         pldftransitions = ion["transitions"]
                         assert isinstance(pldftransitions, pl.DataFrame)
                         ltepartfunc = (
-                            pldftransitions.select(pl.col("g") * (-pl.col("energy_ev") / K_B / T_exc).exp())
+                            pldftransitions
+                            .select(pl.col("g") * (-pl.col("energy_ev") / K_B / T_exc).exp())
                             .sum()
                             .item()
                         )

@@ -87,28 +87,32 @@ def get_dfspectrum_x_y_with_units(
 
         case "erg":
             dfspectrum = (
-                dfspectrum.with_columns(en_erg=H_erg_s * pl.col("nu"))
+                dfspectrum
+                .with_columns(en_erg=H_erg_s * pl.col("nu"))
                 .with_columns(f_en_erg=pl.col("f_nu") * pl.col("nu") / pl.col("en_erg"))
                 .with_columns(x=pl.col("en_erg"), yflux=pl.col("f_en_erg"))
             )
 
         case "ev":
             dfspectrum = (
-                dfspectrum.with_columns(en_ev=h_ev_s * pl.col("nu"))
+                dfspectrum
+                .with_columns(en_ev=h_ev_s * pl.col("nu"))
                 .with_columns(f_en_kev=pl.col("f_nu") * pl.col("nu") / pl.col("en_ev"))
                 .with_columns(x=pl.col("en_ev"), yflux=pl.col("f_en_kev"))
             )
 
         case "kev":
             dfspectrum = (
-                dfspectrum.with_columns(en_kev=h_ev_s * pl.col("nu") / 1000.0)
+                dfspectrum
+                .with_columns(en_kev=h_ev_s * pl.col("nu") / 1000.0)
                 .with_columns(f_en_kev=pl.col("f_nu") * pl.col("nu") / pl.col("en_kev"))
                 .with_columns(x=pl.col("en_kev"), yflux=pl.col("f_en_kev"))
             )
 
         case "mev":
             dfspectrum = (
-                dfspectrum.with_columns(en_mev=h_ev_s * pl.col("nu") / 1e6)
+                dfspectrum
+                .with_columns(en_mev=h_ev_s * pl.col("nu") / 1e6)
                 .with_columns(f_en_mev=pl.col("f_nu") * pl.col("nu") / pl.col("en_mev"))
                 .with_columns(x=pl.col("en_mev"), yflux=pl.col("f_en_mev"))
             )
@@ -423,7 +427,8 @@ def get_from_packets(
     ])
 
     dfbinned_lazy = (
-        pl.DataFrame(
+        pl
+        .DataFrame(
             {"lambda_angstroms": lambda_bin_centres, "lambda_binindex": range(len(lambda_bin_centres))},
             schema_overrides={"lambda_binindex": pl.Int32},
         )
@@ -570,7 +575,8 @@ def read_spec(modelpath: Path | str, gamma: bool = False) -> pl.LazyFrame:
     print(f"Reading {specfilename}")
 
     return (
-        pl.scan_csv(zopenpl(specfilename), separator=" ", infer_schema=False, truncate_ragged_lines=True)
+        pl
+        .scan_csv(zopenpl(specfilename), separator=" ", infer_schema=False, truncate_ragged_lines=True)
         .with_columns(pl.all().cast(pl.Float64))
         .rename({"0": "nu"})
     )
@@ -628,7 +634,8 @@ def read_emission_absorption_file(emabsfilename: str | Path) -> pl.LazyFrame:
         print(f" Reading {emabsfilename}")
 
     dfemabs = (
-        pl.read_csv(zopenpl(emabsfilename), separator=" ", has_header=False, infer_schema_length=0)
+        pl
+        .read_csv(zopenpl(emabsfilename), separator=" ", has_header=False, infer_schema_length=0)
         .lazy()
         .with_columns(pl.all().cast(pl.Float32, strict=True))
     )
@@ -1278,7 +1285,8 @@ def get_flux_contributions_from_packets(
     dfpackets = lzdfpackets.select(cs.by_name(cols, require_all=False)).collect(engine="streaming")
     if getemission:
         empackets = (
-            dfpackets.drop("absorptiontype_str", "absorption_freq", strict=False)
+            dfpackets
+            .drop("absorptiontype_str", "absorption_freq", strict=False)
             .filter(pl.col(dirbin_nu_column).is_between(nu_min, nu_max))
             .drop_nulls("emissiontype_str")
         )
@@ -1292,7 +1300,8 @@ def get_flux_contributions_from_packets(
 
     if getabsorption:
         abspackets = (
-            dfpackets.drop(dirbin_nu_column, "emissiontype_str", strict=False)
+            dfpackets
+            .drop(dirbin_nu_column, "emissiontype_str", strict=False)
             .filter(pl.col("absorption_freq").is_between(nu_min, nu_max))
             .drop_nulls("absorptiontype_str")
         )

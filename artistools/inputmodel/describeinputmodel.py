@@ -33,7 +33,8 @@ def calculate_model_electron_frac(dfmodel: pl.LazyFrame) -> float:
         exprs_nucleons.append(1 / MH * pl.col(column) * pl.col("mass_g"))
 
     globalelectronfrac = (
-        dfmodel.with_columns(protons=pl.sum_horizontal(exprs_protons), nucleons=pl.sum_horizontal(exprs_nucleons))
+        dfmodel
+        .with_columns(protons=pl.sum_horizontal(exprs_protons), nucleons=pl.sum_horizontal(exprs_nucleons))
         .with_columns(electronfrac=pl.col("protons") / pl.col("nucleons"))
         .select(pl.col("protons").sum() / pl.col("nucleons").sum())
         .collect()
@@ -181,7 +182,8 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
 
     if modelmeta["dimensions"] > 1:
         corner_mass = (
-            dfmodel.select(["vel_r_mid", "mass_g"])
+            dfmodel
+            .select(["vel_r_mid", "mass_g"])
             .filter(pl.col("vel_r_mid") > vmax)
             .select(pl.col("mass_g").sum())
             .collect()

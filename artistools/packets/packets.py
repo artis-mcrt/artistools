@@ -262,7 +262,8 @@ def add_derived_columns_lazy(
         velbins = (dfmodel.select(pl.col("vel_r_max_kmps")).lazy().collect()["vel_r_max_kmps"] * 1000.0).to_list()
         dfpackets = dfpackets.with_columns(
             em_modelgridindex=(
-                pl.col("emission_velocity")
+                pl
+                .col("emission_velocity")
                 .cut(breaks=velbins, labels=[str(x) for x in range(-1, len(velbins))])
                 .cast(pl.Utf8)
                 .cast(pl.Int32)
@@ -728,7 +729,8 @@ def add_packet_directions_lazypolars(dfpackets: pl.LazyFrame | pl.DataFrame) -> 
 
         dfpackets = dfpackets.with_columns(
             (
-                pl.when(pl.col("testphi") > 0)
+                pl
+                .when(pl.col("testphi") > 0)
                 .then(2 * math.pi - pl.col("cosphi").arccos())
                 .otherwise(pl.col("cosphi").arccos())
             )
@@ -768,7 +770,8 @@ def bin_packet_directions_polars(
         # for historical consistency, this binning method decreases phi angle with increasing bin index
         dfpackets = dfpackets.with_columns(
             (
-                pl.when(pl.col("testphi") > 0)
+                pl
+                .when(pl.col("testphi") > 0)
                 .then(pl.col("cosphi").arccos() / (2 * math.pi) * nphibins)
                 .otherwise((pl.col("cosphi").arccos() + math.pi) / (2 * math.pi) * nphibins)
             )
@@ -995,7 +998,8 @@ def bin_and_sum(
     # Polars method
 
     dfcut = (
-        df.lazy()
+        df
+        .lazy()
         .filter(pl.col(bincol).is_between(bins[0], bins[-1], closed="both"))
         .with_columns(
             (pl.col(bincol).cut(breaks=bins, labels=[str(x) for x in range(-1, len(bins))]))
@@ -1014,7 +1018,8 @@ def bin_and_sum(
 
     # now we will include the empty bins
     return (
-        pl.LazyFrame({f"{bincol}_bin": range(len(bins) - 1)}, schema={f"{bincol}_bin": pl.Int32})
+        pl
+        .LazyFrame({f"{bincol}_bin": range(len(bins) - 1)}, schema={f"{bincol}_bin": pl.Int32})
         .join(wlbins, how="left", on=f"{bincol}_bin", coalesce=True)
         .fill_null(0)
         .sort(by=f"{bincol}_bin")
