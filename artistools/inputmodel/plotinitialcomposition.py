@@ -66,7 +66,7 @@ def plot_slice_modelcolumn(
 
     if args.hideemptycells:
         # Don't plot empty cells:
-        colorscale = np.ma.masked_where(colorscale == 0.0, colorscale)  # type: ignore[no-untyped-call]
+        colorscale = np.ma.masked_where(colorscale == 0.0, colorscale)
 
     if args.logcolorscale:
         # logscale for colormap
@@ -371,7 +371,7 @@ def plot_phi_hist(modelpath: Path | str) -> None:
     print("WARNING: histogram not normalised")
     plt.clf()
 
-    heatmap = np.ma.masked_where(heatmap == 0.0, heatmap)  # type: ignore[no-untyped-call]
+    heatmap = np.ma.masked_where(heatmap == 0.0, heatmap)
     # heatmap = np.log10(heatmap)
 
     fig = plt.figure(figsize=(5, 4))
