@@ -239,7 +239,7 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
         fluxes = dfspectrum[timeavg]
         nbins = 5
 
-        for i in np.arange(0, len(wavelengths - nbins), nbins, dtype=int):
+        for i in range(0, len(wavelengths - nbins), nbins):
             new_lambda_angstroms.append(wavelengths[i + nbins // 2])
             sum_flux = sum(fluxes[j] for j in range(i, i + nbins))
             binned_flux.append(sum_flux / nbins)
@@ -597,7 +597,7 @@ def plot_artis_spectrum(
                 fluxes = dfspectrum["y"]
                 nbins = 5
 
-                for i in np.arange(0, len(wavelengths - nbins), nbins, dtype=int):
+                for i in range(0, len(wavelengths - nbins), nbins):
                     i_max = min(i + nbins, len(wavelengths))
                     ncontribs = i_max - i
                     sum_lambda = sum(wavelengths[j] for j in range(i, i_max))
