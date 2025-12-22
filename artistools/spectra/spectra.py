@@ -894,7 +894,7 @@ def get_vspecpol_spectrum(
     def match_closest_time(reftime: float) -> int:
         return min(vspec_timesteps, key=lambda ts: abs(arr_tmid[ts] - reftime))
 
-    if "timemin" and "timemax" in args:
+    if "timemin" in args and "timemax" in args and args.timemin is not None and args.timemax is not None:
         timestepmin = match_closest_time(args.timemin)  # how timemin, timemax are used changed at some point
         timestepmax = match_closest_time(args.timemax)  # to average over multiple timesteps needs to fix this
     else:
