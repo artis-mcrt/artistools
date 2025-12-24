@@ -17,11 +17,9 @@ if t.TYPE_CHECKING:
 
 
 def make_cone(args: argparse.Namespace) -> pd.DataFrame:
-    import pandas as pd
-
     print("Making cone")
 
-    angle_of_cone = 30  # in deg
+    angle_of_cone = args.coneangle  # in deg
 
     theta = np.radians([angle_of_cone / 2])  # angle between line of sight and edge is half angle of cone
 
@@ -241,6 +239,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         action="store",
         default=True,
         help="Make 1D model from cone around axis. Default is True.If False uses points along axis.",
+    )
+
+    parser.add_argument(
+        "-coneangle", type=float, default=30.0, help="Cone angle in degrees, cone half angle given by coneangle/2"
     )
 
     parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")
