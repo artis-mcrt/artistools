@@ -16,10 +16,11 @@ if t.TYPE_CHECKING:
     from mpl_toolkits.mplot3d import Axes3D
 
 
-def make_cone(args: argparse.Namespace) -> pd.DataFrame:
+def make_cone(args: argparse.Namespace, logprint: t.Callable[..., None]) -> pd.DataFrame:
     print("Making cone")
 
     angle_of_cone = args.coneangle  # in deg
+    logprint(f"Using cone angle of {angle_of_cone} degrees")
 
     theta = np.radians([angle_of_cone / 2])  # angle between line of sight and edge is half angle of cone
 
@@ -82,22 +83,17 @@ def get_profile_along_axis(
         ]
 
     profile1d = profile1d.reset_index(drop=True)
-    import pandas as pd
 
     assert isinstance(profile1d, pd.DataFrame)
     return profile1d
 
 
-def make_1d_profile(args: argparse.Namespace) -> pd.DataFrame:
+def make_1d_profile(args: argparse.Namespace, logprint: t.Callable[..., None]) -> pd.DataFrame:
     """Make 1D model from 3D model."""
-    logprint = at.inputmodel.inputmodel_misc.savetologfile(
-        outputfolderpath=Path(args.outputpath), logfilename="make1dmodellog.txt"
-    )
-
     logprint("Making 1D model from 3D model:", at.get_model_name(args.modelpath[0]))
     if args.makefromcone:
         logprint("from a cone")
-        cone = make_cone(args)
+        cone = make_cone(args, logprint)
 
         slice1d = cone.groupby([f"pos_{args.sliceaxis}_min"], as_index=False).mean()
         # where more than 1 X value, average rows eg. (1,0,0) (1,1,0) (1,1,1)
@@ -140,10 +136,8 @@ def make_1d_profile(args: argparse.Namespace) -> pd.DataFrame:
     return slice1d
 
 
-def make_1d_model_files(args: argparse.Namespace) -> None:
-    import pandas as pd
-
-    slice1d = make_1d_profile(args)
+def make_1d_model_files(args: argparse.Namespace, logprint: t.Callable[..., None]) -> None:
+    slice1d = make_1d_profile(args, logprint)
 
     # query_abundances_positions = slice1d.columns.str.startswith("X_")
     query_abundances_positions = np.array([
@@ -193,8 +187,8 @@ def make_1d_model_files(args: argparse.Namespace) -> None:
 # cone = cone.loc[cone['rho_model'] > 0.0]
 
 
-def make_plot(args: argparse.Namespace) -> None:
-    cone = make_cone(args)
+def make_plot(args: argparse.Namespace, logprint: t.Callable[..., None]) -> None:
+    cone = make_cone(args, logprint)
 
     cone = cone.loc[cone["rho_model"] > 0.0002]  # cut low densities (empty cells?) from plot
     ax: Axes3D = plt.figure().gca(projection="3d")  # type: ignore[call-arg,no-any-unimported] # pyright: ignore[reportCallIssue]
@@ -273,9 +267,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     # remember: models before scaling down to artis input have x and z axis swapped compared to artis input files
 
-    make_1d_model_files(args)
+    logprint = at.inputmodel.inputmodel_misc.savetologfile(
+        outputfolderpath=Path(args.outputpath), logfilename="make1dmodellog.txt"
+    )
 
-    # make_plot(args) # Uncomment to make 3D plot todo: add command line option
+    make_1d_model_files(args, logprint)
+
+    # make_plot(args, logprint) # Uncomment to make 3D plot todo: add command line option
 
 
 if __name__ == "__main__":
