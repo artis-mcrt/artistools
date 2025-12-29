@@ -24,25 +24,40 @@ def make_cone(args: argparse.Namespace, logprint: t.Callable[..., None]) -> pd.D
 
     theta = np.radians([angle_of_cone / 2])  # angle between line of sight and edge is half angle of cone
 
-    pldfmodel, modelmeta = at.get_modeldata(modelpath=args.modelpath[0], get_elemabundances=True)
+    pldfmodel, modelmeta = at.get_modeldata(
+        modelpath=args.modelpath[0],
+        get_elemabundances=True,
+        derived_cols=[
+            "volume",
+            "pos_x_mid",
+            "pos_y_mid",
+            "pos_z_mid",
+            "pos_x_min",
+            "pos_y_min",
+            "pos_z_min",
+            "pos_r_mid",
+            "mass_g",
+            "pos_r_min",
+        ],
+    )
     dfmodel = pldfmodel.collect().to_pandas(use_pyarrow_extension_array=True)
     args.t_model = modelmeta["t_model_init_days"]
 
     if args.positive_axis:
         print("using positive axis")
         cone = dfmodel.loc[
-            dfmodel[f"pos_{args.sliceaxis}_min"]
+            dfmodel[f"pos_{args.sliceaxis}_mid"]
             >= 1
             / (np.tan(theta))
-            * np.sqrt((dfmodel[f"pos_{args.other_axis2}_min"]) ** 2 + (dfmodel[f"pos_{args.other_axis1}_min"]) ** 2)
+            * np.sqrt((dfmodel[f"pos_{args.other_axis2}_mid"]) ** 2 + (dfmodel[f"pos_{args.other_axis1}_mid"]) ** 2)
         ]  # positive axis
     else:
         print("using negative axis")
         cone = dfmodel.loc[
-            dfmodel[f"pos_{args.sliceaxis}_min"]
+            dfmodel[f"pos_{args.sliceaxis}_mid"]
             <= -1
             / (np.tan(theta))
-            * np.sqrt((dfmodel[f"pos_{args.other_axis2}_min"]) ** 2 + (dfmodel[f"pos_{args.other_axis1}_min"]) ** 2)
+            * np.sqrt((dfmodel[f"pos_{args.other_axis2}_mid"]) ** 2 + (dfmodel[f"pos_{args.other_axis1}_mid"]) ** 2)
         ]  # negative axis
     # print(cone.loc[:, :[f'pos_{slice_on_axis}']])
     del dfmodel  # merge_dfs not needed anymore so free memory
