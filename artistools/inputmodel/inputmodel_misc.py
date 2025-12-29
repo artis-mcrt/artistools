@@ -1470,6 +1470,7 @@ def scale_model_to_time(
 
 def savetologfile(outputfolderpath: Path, logfilename: str = "modellog.txt") -> Callable[..., None]:
     # save the printed output to a log file
+    outputfolderpath.mkdir(parents=True, exist_ok=True)
     logfilepath = outputfolderpath / logfilename
     logfilepath.unlink(missing_ok=True)
 
