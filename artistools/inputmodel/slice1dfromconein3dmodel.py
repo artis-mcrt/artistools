@@ -9,7 +9,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import polars as pl
-from astropy import units as u
 
 import artistools as at
 
@@ -119,7 +118,7 @@ def make_1d_profile(args: argparse.Namespace, logprint: t.Callable[..., None]) -
         if args.coneshellsequalvolume:
             logprint("Spacing shells in 1D model so they have equal volume")
             V_total = (4 / 3) * np.pi * r_max**3
-            cone1d_bins = []
+            cone1d_bins: list[float] = []
             for i in range(N_shells):
                 r_inner = 0 if i == 0 else cone1d_bins[i - 1]
                 r_outer = ((3 * V_total) / (4 * np.pi * N_shells) + r_inner**3) ** (1 / 3)
@@ -204,16 +203,14 @@ def make_1d_profile(args: argparse.Namespace, logprint: t.Callable[..., None]) -
 
         # Concatenate all bin results into a single DataFrame
         slice1d = pd.concat(cone1d_df, ignore_index=True)
-        slice1d["r_bin_max_boundary"] = slice1d["r_bin_max_boundary"].apply(
-            lambda x: x / args.t_model * (u.cm / u.day).to("km/s")
-        )
+        slice1d["r_bin_max_boundary"] = slice1d["r_bin_max_boundary"].apply(lambda x: x / (args.t_model * 86400 * 1e5))
         slice1d = slice1d.rename(columns={"r_bin_max_boundary": "vel_r_max_kmps"})
 
     else:  # make from along chosen axis
         logprint("from along the axis")
         slice1d = get_profile_along_axis(args)
         slice1d.loc[:, f"pos_{args.sliceaxis}_min"] = slice1d[f"pos_{args.sliceaxis}_min"].apply(
-            lambda x: x / 1e5 / (args.t_model * 86400)
+            lambda x: x / (args.t_model * 86400 * 1e5)
         )  # Convert positions to velocities
         slice1d = slice1d.rename(columns={f"pos_{args.sliceaxis}_min": "vel_r_max_kmps"})
         # Convert position to velocity
