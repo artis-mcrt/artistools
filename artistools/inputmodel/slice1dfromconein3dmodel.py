@@ -230,7 +230,7 @@ def make_1d_profile(args: argparse.Namespace, logprint: t.Callable[..., None]) -
 
     slice1d.index += 1
 
-    if not args.positive_axis:
+    if not args.positive_axis and not args.makefromcone:
         # Invert rows and *velocity by -1 to make velocities positive for slice on negative axis
         slice1d.iloc[:] = slice1d.iloc[::-1].to_numpy()
         slice1d.loc[:, "vel_r_max_kmps"] *= -1
