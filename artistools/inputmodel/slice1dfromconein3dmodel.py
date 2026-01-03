@@ -180,7 +180,11 @@ def make_1d_profile(args: argparse.Namespace, logprint: t.Callable[..., None]) -
                     "\nSumming all mass weighted compositions in the shells. If these values significantly\n"
                     "deviate from 1 there could be an issue with the input model. The compositions for each\n"
                     "shell in the output 1D model are normalised here regardless of how close to 1 they are.\n"
-                    "Also printing how many 3D cells make up each 1D shell in the model generated.\n"
+                    "Also printing how many 3D cells make up each 1D shell in the model generated.\n\n"
+                    "NOTE: the compositions do not always sum exactly to 1 in the 3D model grid cells.\n"
+                    "From limited testing this appears to be most pronounced in the outer cells of the 3D\n"
+                    "models where the composition sum can deviate by ~1% from 1 when averaging the 3D cells\n"
+                    "into the shells in the 1D model\n"
                 )
             sum_composition_check = composition.iloc[5:].sum()
             logprint(
