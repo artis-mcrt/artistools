@@ -138,8 +138,8 @@ def make_1d_profile(args: argparse.Namespace, logprint: t.Callable[..., None]) -
             total_mass_g = cells_within_bin["mass_g"].sum()
             total_volume = cells_within_bin["volume"].sum()
 
-            if total_mass_g <= 0 and total_volume <= 0:
-                assert total_mass_g > 0, (
+            if total_mass_g <= 0:
+                assert total_volume > 0, (
                     f"\nAssertion Error: No cell midpoints within cone limits for shell {i + 1}.\n"
                     "The small volume contained within the cone for the innermost shell means this is quite likely to\n"
                     "occur, especially for smaller cone angles and grid spacings where the inner shell radius is\n"
@@ -148,8 +148,7 @@ def make_1d_profile(args: argparse.Namespace, logprint: t.Callable[..., None]) -
                     "different grid spacing (using -coneshellspacingexponent or -nshells) or increase -coneangle\n"
                     "to ensure at least one cell midpoint is contained within the cone limits of the shell\n"
                 )
-
-            elif total_mass_g == 0:
+                # Cells exist but all have density=0
                 logprint(
                     f"\nWARNING: Shell {i + 1} is empty (all 3D grid cells averaged in the shell must have density=0).\n"
                     "This shell and all shells further out in the model will be removed from the model.\n"
@@ -186,6 +185,10 @@ def make_1d_profile(args: argparse.Namespace, logprint: t.Callable[..., None]) -
                     "models where the composition sum can deviate by ~1% from 1 when averaging the 3D cells\n"
                     "into the shells in the 1D model\n"
                 )
+            # Skipping first 5 columns which contain the radioisotoptes utilised in SN models
+            # the remaining columns contain the 30 elements in the composition file for SN models
+            # which have the radioisotopes already including in the composition total for the
+            # relevant elements
             sum_composition_check = composition.iloc[5:].sum()
             logprint(
                 f"Shell {i + 1:<3}     3D cells averaged: {len(cells_within_bin):<6} composition sum before norm: {sum_composition_check}"
@@ -353,7 +356,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-nshells",
         type=int,
         default=100,
-        help="Number of shells used when making 1D model from cone. Note the final number of shell may be lower as empty outer shells are removed from the output 1D model files",
+        help="Number of shells used when making 1D model from cone. Note the final number of shells may be lower as empty outer shells are removed from the output 1D model files",
     )
 
     parser.add_argument(
