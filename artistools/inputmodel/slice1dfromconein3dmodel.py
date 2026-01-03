@@ -173,7 +173,7 @@ def make_1d_profile(args: argparse.Namespace, logprint: t.Callable[..., None]) -
             # Calculate composition
             composition = species_total_mass / total_mass_g
 
-            # Sum all composition values to ensure compositions are normalised to 1
+            # Sum all composition values to ensure compositions are normalised to 1 in 3D model
             if i == 0:
                 logprint(
                     "\nSumming all mass weighted compositions in the shells. If these values significantly\n"
@@ -183,7 +183,9 @@ def make_1d_profile(args: argparse.Namespace, logprint: t.Callable[..., None]) -
                     "NOTE: the compositions do not always sum exactly to 1 in the 3D model grid cells.\n"
                     "From limited testing this appears to be most pronounced in the outer cells of the 3D\n"
                     "models where the composition sum can deviate by ~1% from 1 when averaging the 3D cells\n"
-                    "into the shells in the 1D model\n"
+                    "into the shells in the 1D model. The composition is normalised before writing out the \n"
+                    "1D model but worth checking the log file to ensure the normalisation of the cells in the 3D \n"
+                    "model used in the 1D model shells is close to 1 before this\n"
                 )
             # Skipping first 5 columns which contain the radioisotoptes utilised in SN models
             # the remaining columns contain the 30 elements in the composition file for SN models
