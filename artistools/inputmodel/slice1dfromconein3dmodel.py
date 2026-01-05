@@ -144,7 +144,7 @@ def make_1d_profile(args: argparse.Namespace, logprint: t.Callable[..., None]) -
                     "The small volume contained within the cone for the innermost shell means this is quite likely to\n"
                     "occur, especially for smaller cone angles and grid spacings where the inner shell radius is\n"
                     "small. Also more likely to occur when ncoordgrid/2 is even, resulting in the slice axis being\n"
-                    "along cell minimums not cell midpoints in the 3D model. If this occurs you can either chose a \n"
+                    "along cell minimums not cell midpoints in the 3D model. If this occurs you can either choose a \n"
                     "different grid spacing (using -coneshellspacingexponent or -nshells) or increase -coneangle\n"
                     "to ensure at least one cell midpoint is contained within the cone limits of the shell\n"
                 )
@@ -159,7 +159,7 @@ def make_1d_profile(args: argparse.Namespace, logprint: t.Callable[..., None]) -
                     "the cells are too optically thin to impact the synthetic observables. However if you want cells\n"
                     "in these outer regions to be included in the 1D cone can experiment with -coneangle,-nshells and\n"
                     "-coneshellspacingexponent to ensure the shells for these outer regions include some non-empty 3D\n"
-                    "grid cell and thus the shells can be included the 1D model.\n"
+                    "grid cell and thus the shells can be included in the 1D model.\n"
                 )
                 break
 
@@ -187,9 +187,9 @@ def make_1d_profile(args: argparse.Namespace, logprint: t.Callable[..., None]) -
                     "1D model but worth checking the log file to ensure the normalisation of the cells in the 3D \n"
                     "model used in the 1D model shells is close to 1 before this\n"
                 )
-            # Skipping first 5 columns which contain the radioisotoptes utilised in SN models
+            # Skipping first 5 columns which contain the radioisototes utilised in SN models
             # the remaining columns contain the 30 elements in the composition file for SN models
-            # which have the radioisotopes already including in the composition total for the
+            # which have the radioisotopes already included in the composition total for the
             # relevant elements
             sum_composition_check = composition.iloc[5:].sum()
             logprint(
@@ -347,7 +347,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--makefromcone",
         action="store",
         default=True,
-        help="Make 1D model from cone around axis. Default is True.If False uses points along axis.",
+        help="Make 1D model from cone around axis. Default is True. If False uses points along axis.",
     )
 
     parser.add_argument(
@@ -365,7 +365,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-coneshellspacingexponent",
         type=float,
         default=1.5,
-        help="Vary the exponent used when selecting the radius dependance of the shell spacing when making 1D model from cone. By default the shells are spaced evenly in radius^(1.5)",
+        help="Vary the exponent used when selecting the radius dependence of the shell spacing when making 1D model from cone. By default the shells are spaced evenly in radius^(1.5)",
     )
 
     parser.add_argument(
