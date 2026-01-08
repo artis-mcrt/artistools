@@ -71,7 +71,7 @@ def make_2d_packets_plot_pyvista(modelpath: Path, timestep: int) -> None:
     vmax_cms = modelmeta["vmax_cmps"]
     modeldata = plmodeldata.collect().to_pandas(use_pyarrow_extension_array=True)
     _, x, y, z = at.packets.make_3d_grid(modeldata, vmax_cms)
-    mesh = pv.StructuredGrid(x, y, z)
+    mesh: t.Any = pv.StructuredGrid(x, y, z)
 
     hist = at.packets.make_3d_histogram_from_packets(modelpath, timestep)
 
