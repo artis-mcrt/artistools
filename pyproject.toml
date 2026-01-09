@@ -76,7 +76,7 @@ dev = [
     "pytest-codspeed>=4.1.1",
     "pytest-cov>=6.0.0",
     "pytest-xdist[psutil]>=3.6.1",
-    "ruff>=0.14.10",
+    "ruff>=0.14.11",
     "ty>=0.0.10",
     "typeguard>=4.4.4",
     "types-python-dateutil>=2.9.0.20241206",
@@ -284,6 +284,7 @@ fix = true
 show-fixes = true
 extend-exclude = ["_version.py", "artistools/inputmodel/fromcmfgen/rd_cmfgen.py", ".venv/**"]
 preview = true
+required-version = ">=0.14.11"
 
 [tool.ruff.format]
 skip-magic-trailing-comma = true
