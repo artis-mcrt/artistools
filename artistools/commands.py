@@ -38,7 +38,7 @@ subcommandtree: CommandType = {
     "describeinputmodel": ("inputmodel.describeinputmodel", "main"),
     "estimators": ("estimators.plotestimators", "main"),
     "exportmassfractions": ("estimators.exportmassfractions", "main"),
-    "getpath": ("", "get_path"),
+    "getpath": ("commands", "get_artistools_path"),
     "lc": ("lightcurve.plotlightcurve", "main"),
     "makeartismodelfromparticlegridmap": ("inputmodel.modelfromhydro", "main"),
     "maptogrid": ("inputmodel.maptogrid", "main"),
@@ -145,3 +145,9 @@ def show_version(*args: t.Any, **kwargs: t.Any) -> None:  # noqa: ARG001
     from artistools.version import version
 
     print(f"artistools {version}")
+
+
+def get_artistools_path(**kwargs: t.Any) -> None:  # noqa: ARG001
+    from artistools.configuration import get_config
+
+    print(get_config("path_artistools_dir"))

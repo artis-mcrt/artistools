@@ -4,8 +4,6 @@ A collection of plotting, analysis, and file format conversion tools
 for the ARTIS radiative transfer code.
 """
 
-import typing as t
-
 from artistools import atomic as atomic
 from artistools import codecomparison as codecomparison
 from artistools import commands as commands
@@ -105,9 +103,4 @@ from artistools.misc import zopen as zopen
 from artistools.misc import zopenpl as zopenpl
 from artistools.plottools import set_mpl_style as set_mpl_style
 
-
-def get_path(**kwargs: t.Any) -> None:  # noqa: ARG001
-    print(get_config("path_artistools_dir"))
-
-
-set_mpl_style()
+set_mpl_style()  # noqa: RUF067
