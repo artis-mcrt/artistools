@@ -95,7 +95,7 @@ def make_2d_packets_plot_pyvista(modelpath: Path, timestep: int) -> None:
     # single_slice = mesh.slice(normal='z')
     p.add_mesh(single_slice, scalar_bar_args=sargs)
     p.show_bounds(
-        p,  # ty: ignore[invalid-argument-type]
+        p,
         grid=False,
         xlabel="vx / c",
         ylabel="vy / c",
