@@ -143,7 +143,6 @@ def read_modelfile_text(
         dfmodel = pl.read_csv(
             zopenpl(filename),
             separator=" ",
-            comment_prefix="#",
             new_columns=columns,
             n_rows=npts_model,
             has_header=False,
