@@ -15,7 +15,7 @@ on:
 jobs:
     lint:
         name: Format, lint, and type check
-        runs-on: ubuntu-24.04
+        runs-on: ubuntu-24.04-arm
         env:
             RUFF_OUTPUT_FORMAT: github
             UV_FROZEN: 1
@@ -102,7 +102,7 @@ jobs:
         strategy:
             fail-fast: false
             matrix:
-                os: [{name: macos, version: '26'}, {name: ubuntu, version: '24.04'}]
+                os: [{name: macos, version: '26'}, {name: ubuntu, version: 24.04-arm}]
                 python-minor-version: ['11', '12', '13', '14', 14t]
                 exclude:
                     - os: {name: macos, version: '26'}
