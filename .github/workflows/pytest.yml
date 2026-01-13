@@ -105,14 +105,11 @@ jobs:
                 os: [{name: macos, version: '26'}, {name: ubuntu, version: 24.04-arm}]
                 python-minor-version: ['11', '12', '13', '14', 14t]
                 exclude:
+                    # macos runners are very limited in number
                     - os: {name: macos, version: '26'}
                       python-minor-version: 11
                     - os: {name: macos, version: '26'}
                       python-minor-version: 12
-                    - os: {name: ubuntu, version: '24.04'}
-                      python-minor-version: 14
-                    - os: {name: ubuntu, version: '24.04'}
-                      python-minor-version: 14t
         env:
             OS: ${{ matrix.os.name }}-${{ matrix.os.version }}
             PYTHON: 3.${{ matrix.python-minor-version }}
