@@ -1061,7 +1061,14 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         elif args.readonlymgi == "cone":
             print(f"Getting mgi lying within a cone around {args.axis} axis")
-            dfselectedcells = at.inputmodel.slice1dfromconein3dmodel.make_cone(args)
+            pldfcone, args.t_model = at.inputmodel.slice1dfromconein3dmodel.make_cone(
+                modelpath=args.modelpath[0],
+                positive_axis=args.positive_axis,
+                sliceaxis=args.sliceaxis,
+                other_axis1=args.other_axis1,
+                other_axis2=args.other_axis2,
+            )
+            dfselectedcells = pldfcone.collect().to_pandas(use_pyarrow_extension_array=True)
         else:
             msg = f"Invalid args.readonlymgi: {args.readonlymgi}"
             raise ValueError(msg)

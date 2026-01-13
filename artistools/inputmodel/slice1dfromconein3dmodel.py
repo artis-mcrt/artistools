@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import argparse
-import gc
 import typing as t
 from collections.abc import Sequence
 from pathlib import Path
@@ -16,41 +15,37 @@ if t.TYPE_CHECKING:
     from mpl_toolkits.mplot3d import Axes3D
 
 
-def make_cone(args: argparse.Namespace) -> pd.DataFrame:
-    import pandas as pd
-
+def make_cone(
+    modelpath: str | Path, positive_axis: bool, sliceaxis: str, other_axis1: str, other_axis2: str
+) -> tuple[pl.LazyFrame, float]:
     print("Making cone")
 
     angle_of_cone = 30  # in deg
 
     theta = np.radians([angle_of_cone / 2])  # angle between line of sight and edge is half angle of cone
 
-    pldfmodel, modelmeta = at.get_modeldata(modelpath=args.modelpath[0], get_elemabundances=True)
-    dfmodel = pldfmodel.collect().to_pandas(use_pyarrow_extension_array=True)
-    args.t_model = modelmeta["t_model_init_days"]
+    dfmodel, modelmeta = at.get_modeldata(modelpath=modelpath, get_elemabundances=True)
 
-    if args.positive_axis:
+    if positive_axis:
         print("using positive axis")
-        cone = dfmodel.loc[
-            dfmodel[f"pos_{args.sliceaxis}_min"]
-            >= 1
-            / (np.tan(theta))
-            * np.sqrt((dfmodel[f"pos_{args.other_axis2}_min"]) ** 2 + (dfmodel[f"pos_{args.other_axis1}_min"]) ** 2)
-        ]  # positive axis
-    else:
-        print("using negative axis")
-        cone = dfmodel.loc[
-            dfmodel[f"pos_{args.sliceaxis}_min"]
-            <= -1
-            / (np.tan(theta))
-            * np.sqrt((dfmodel[f"pos_{args.other_axis2}_min"]) ** 2 + (dfmodel[f"pos_{args.other_axis1}_min"]) ** 2)
-        ]  # negative axis
-    # print(cone.loc[:, :[f'pos_{slice_on_axis}']])
-    del dfmodel  # merge_dfs not needed anymore so free memory
-    gc.collect()
+        return dfmodel.filter(
+            pl.col(f"pos_{sliceaxis}_min")
+            >= (
+                1.0
+                / (np.tan(theta))
+                * (pl.col(f"pos_{other_axis2}_min") ** 2 + pl.col(f"pos_{other_axis1}_min") ** 2).sqrt()
+            )
+        ), modelmeta["t_model_init_days"]
 
-    assert isinstance(cone, pd.DataFrame)
-    return cone
+    print("using negative axis")
+    return dfmodel.filter(
+        pl.col(f"pos_{sliceaxis}_min")
+        <= (
+            -1.0
+            / (np.tan(theta))
+            * (pl.col(f"pos_{other_axis2}_min") ** 2 + pl.col(f"pos_{other_axis1}_min") ** 2).sqrt()
+        )
+    ), modelmeta["t_model_init_days"]
 
 
 def get_profile_along_axis(
@@ -99,7 +94,14 @@ def make_1d_profile(args: argparse.Namespace) -> pd.DataFrame:
     logprint("Making 1D model from 3D model:", at.get_model_name(args.modelpath[0]))
     if args.makefromcone:
         logprint("from a cone")
-        cone = make_cone(args)
+        pldfcone, args.t_model = make_cone(
+            modelpath=args.modelpath[0],
+            positive_axis=args.positive_axis,
+            sliceaxis=args.sliceaxis,
+            other_axis1=args.other_axis1,
+            other_axis2=args.other_axis2,
+        )
+        cone = pldfcone.collect().to_pandas(use_pyarrow_extension_array=True)
 
         slice1d = cone.groupby([f"pos_{args.sliceaxis}_min"], as_index=False).mean()
         # where more than 1 X value, average rows eg. (1,0,0) (1,1,0) (1,1,1)
@@ -196,7 +198,14 @@ def make_1d_model_files(args: argparse.Namespace) -> None:
 
 
 def make_plot(args: argparse.Namespace) -> None:
-    cone = make_cone(args)
+    pldfcone, args.t_model = at.inputmodel.slice1dfromconein3dmodel.make_cone(
+        modelpath=args.modelpath[0],
+        positive_axis=args.positive_axis,
+        sliceaxis=args.sliceaxis,
+        other_axis1=args.other_axis1,
+        other_axis2=args.other_axis2,
+    )
+    cone = pldfcone.collect().to_pandas(use_pyarrow_extension_array=True)
 
     cone = cone.loc[cone["rho_model"] > 0.0002]  # cut low densities (empty cells?) from plot
     ax: Axes3D = plt.figure().gca(projection="3d")  # type: ignore[call-arg,no-any-unimported] # pyright: ignore[reportCallIssue]
