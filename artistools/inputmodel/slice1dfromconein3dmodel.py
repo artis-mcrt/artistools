@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import argparse
-import gc
 import typing as t
 from collections.abc import Sequence
 from pathlib import Path
@@ -40,31 +39,31 @@ def make_cone(args: argparse.Namespace, logprint: t.Callable[..., None]) -> pd.D
             "pos_r_min",
         ],
     )
-    dfmodel = pldfmodel.collect().to_pandas(use_pyarrow_extension_array=True)
+    dfmodel = pldfmodel
     args.t_model = modelmeta["t_model_init_days"]
 
     if args.positive_axis:
         print("using positive axis")
-        cone = dfmodel.loc[
-            dfmodel[f"pos_{args.sliceaxis}_mid"]
-            >= 1
-            / (np.tan(theta))
-            * np.sqrt((dfmodel[f"pos_{args.other_axis2}_mid"]) ** 2 + (dfmodel[f"pos_{args.other_axis1}_mid"]) ** 2)
-        ]  # positive axis
+        cone = dfmodel.filter(
+            pl.col(f"pos_{args.sliceaxis}_mid")
+            >= (
+                1.0
+                / (np.tan(theta))
+                * (pl.col(f"pos_{args.other_axis2}_mid") ** 2 + pl.col(f"pos_{args.other_axis1}_mid") ** 2).sqrt()
+            )
+        )
     else:
         print("using negative axis")
-        cone = dfmodel.loc[
-            dfmodel[f"pos_{args.sliceaxis}_mid"]
-            <= -1
-            / (np.tan(theta))
-            * np.sqrt((dfmodel[f"pos_{args.other_axis2}_mid"]) ** 2 + (dfmodel[f"pos_{args.other_axis1}_mid"]) ** 2)
-        ]  # negative axis
-    # print(cone.loc[:, :[f'pos_{slice_on_axis}']])
-    del dfmodel  # merge_dfs not needed anymore so free memory
-    gc.collect()
+        cone = dfmodel.filter(
+            pl.col(f"pos_{args.sliceaxis}_mid")
+            <= -(
+                1.0
+                / (np.tan(theta))
+                * (pl.col(f"pos_{args.other_axis2}_mid") ** 2 + pl.col(f"pos_{args.other_axis1}_mid") ** 2).sqrt()
+            )
+        )
 
-    assert isinstance(cone, pd.DataFrame)
-    return cone
+    return cone.collect().to_pandas(use_pyarrow_extension_array=True)
 
 
 def get_profile_along_axis(
@@ -187,7 +186,7 @@ def make_1d_profile(args: argparse.Namespace, logprint: t.Callable[..., None]) -
                     "1D model but worth checking the log file to ensure the normalisation of the cells in the 3D \n"
                     "model used in the 1D model shells is close to 1 before this\n"
                 )
-            # Skipping first 5 columns which contain the radioisototes utilised in SN models
+            # Skipping first 5 columns which contain the radioisotopes utilised in SN models
             # the remaining columns contain the 30 elements in the composition file for SN models
             # which have the radioisotopes already included in the composition total for the
             # relevant elements
