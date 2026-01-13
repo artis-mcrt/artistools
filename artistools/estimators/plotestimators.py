@@ -1061,7 +1061,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         elif args.readonlymgi == "cone":
             print(f"Getting mgi lying within a cone around {args.axis} axis")
-            dfselectedcells = at.inputmodel.slice1dfromconein3dmodel.make_cone(args)
+            dfselectedcells = at.inputmodel.slice1dfromconein3dmodel.make_cone(args, logprint=print)
         else:
             msg = f"Invalid args.readonlymgi: {args.readonlymgi}"
             raise ValueError(msg)
