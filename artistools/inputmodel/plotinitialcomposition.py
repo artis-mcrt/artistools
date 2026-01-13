@@ -222,7 +222,7 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
     import pyvista as pv
 
     # set white background
-    pv.set_plot_theme("document")  # type: ignore[no-untyped-call]
+    pv.set_plot_theme("document")
 
     get_elemabundances = False
     # choose what surface will be coloured by
@@ -297,12 +297,12 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
         "label_font_size": 22,
     }
 
-    plotter = pv.Plotter()
+    plotter: t.Any = pv.Plotter()
     # plotter.add_mesh(mesh.outline(), color="k")
     plotcoloropacity = [0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]  # some choices: 'linear' 'sigmoid'
     # plotter.set_scale(0.95, 0.95, 0.95) # adjusts fig resolution
     plotter.show_bounds(
-        mesh,  # ty: ignore[invalid-argument-type]
+        mesh,
         grid=False,
         location="outer",
         xlabel="vx / c",
@@ -313,7 +313,7 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
         font_size=28,
         bold=False,
     )
-    plotter.add_mesh(surf, opacity=plotcoloropacity, scalar_bar_args=sargs, cmap="coolwarm_r")  # type: ignore[arg-type] # pyright: ignore[reportArgumentType]
+    plotter.add_mesh(surf, opacity=plotcoloropacity, scalar_bar_args=sargs, cmap="coolwarm_r")
     # plotter.add_mesh(surf, opacity=plotcoloropacity, use_transparency=True, cmap='coolwarm_r') #magma
 
     # plotter.remove_scalar_bar() # removes colorbar

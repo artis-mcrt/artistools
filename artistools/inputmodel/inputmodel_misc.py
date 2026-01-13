@@ -143,7 +143,6 @@ def read_modelfile_text(
         dfmodel = pl.read_csv(
             zopenpl(filename),
             separator=" ",
-            comment_prefix="#",
             new_columns=columns,
             n_rows=npts_model,
             has_header=False,
@@ -264,7 +263,7 @@ def read_modelfile_text(
                 ("pos_z_mid", -xmax_tmodel + wid_init_z / 2.0),
             )
             for col, pos in expected_positions:
-                if col in firstrow and not math.isclose(firstrow["pos_x_min"], pos, rel_tol=0.01):
+                if col in firstrow and not math.isclose(firstrow[col], pos, rel_tol=0.01):
                     print(
                         f"  WARNING: {col} does not match expected value. Check that vmax is consistent with the cell positions."
                     )
