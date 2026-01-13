@@ -141,7 +141,7 @@ def get_axis_labels(args: argparse.Namespace) -> tuple[str | None, str | None]:
             msg = f"Unknown x-axis unit {args.xunit}"
             raise AssertionError(msg)
 
-    xlabel = None if args.hidexticklabels else f"{xtype} " + r"$\left[\mathrm{{" + str_xunit + r"}}\right]$"
+    xlabel = None if args.hidexticklabels else f"{xtype} [{str_xunit}]"
 
     ylabel = None
     if not args.hideyticklabels:
@@ -1048,7 +1048,7 @@ def make_emissionabsorption_plot(
     if args.title:
         plotlabel = args.title
     else:
-        plotlabel = f"{modelname}\n{args.timemin:.2f}d to {args.timemax:.2f}d"
+        plotlabel = f"{modelname} [{args.timemin:.2f}d to {args.timemax:.2f}d]"
         if args.plotviewingangle or args.plotvspecpol:
             dirbin_definitions = (
                 get_vspec_dir_labels(modelpath=modelpath, usedegrees=args.usedegrees)
