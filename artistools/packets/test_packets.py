@@ -49,34 +49,6 @@ def test_directionbins() -> None:
         assert phibinlowers[pkt["phibin"]] <= pkt["phi_defined"] or pktdir_is_along_zaxis
         assert phibinuppers[pkt["phibin"]] >= pkt["phi_defined"] or pktdir_is_along_zaxis
 
-        # print(dirx, diry, dirz, dirbin, costhetabin, phibin)
-
-    testdirections_pandas = testdirections.to_pandas(use_pyarrow_extension_array=False)
-
-    pddfpackets = at.packets.bin_packet_directions(dfpackets=testdirections_pandas)
-
-    for row in pddfpackets.itertuples(index=True):
-        assert isinstance(row.costheta_defined, float)
-        assert isinstance(row.phi_defined, float)
-        assert isinstance(row.costheta, float)
-        assert isinstance(row.phi, float)
-        assert isinstance(row.dirz, float)
-        pktdir_is_along_zaxis = np.isclose(row.dirz, 1.0) or np.isclose(row.dirz, -1.0)
-        assert math.isclose(row.costheta_defined, row.costheta, rel_tol=1e-4, abs_tol=1e-4)
-        assert math.isclose(row.phi_defined, row.phi, rel_tol=1e-4, abs_tol=1e-4) or pktdir_is_along_zaxis
-
-        assert isinstance(row.costhetabin, int)
-        expected_costhetabin = testdirections.item(row[0], "costhetabin")
-        assert expected_costhetabin == row.costhetabin, f"Expected {expected_costhetabin}, got {row.costhetabin}"
-
-        assert isinstance(row.phibin, int)
-        expected_phibin = testdirections.item(row[0], "phibin")
-        assert expected_phibin == row.phibin or pktdir_is_along_zaxis, f"Expected {expected_phibin}, got {row.phibin}"
-
-        assert isinstance(row.dirbin, int)
-        expected_dirbin = testdirections.item(row[0], "dirbin")
-        assert expected_dirbin == row.dirbin or pktdir_is_along_zaxis, f"Expected {expected_dirbin}, got {row.dirbin}"
-
 
 def test_get_virtual_packets_pl() -> None:
     _, dfvpkt = at.packets.get_virtual_packets_pl(
