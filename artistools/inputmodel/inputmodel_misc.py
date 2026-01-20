@@ -143,7 +143,6 @@ def read_modelfile_text(
         dfmodel = pl.read_csv(
             zopenpl(filename),
             separator=" ",
-            comment_prefix="#",
             new_columns=columns,
             n_rows=npts_model,
             has_header=False,
@@ -264,7 +263,7 @@ def read_modelfile_text(
                 ("pos_z_mid", -xmax_tmodel + wid_init_z / 2.0),
             )
             for col, pos in expected_positions:
-                if col in firstrow and not math.isclose(firstrow["pos_x_min"], pos, rel_tol=0.01):
+                if col in firstrow and not math.isclose(firstrow[col], pos, rel_tol=0.01):
                     print(
                         f"  WARNING: {col} does not match expected value. Check that vmax is consistent with the cell positions."
                     )
@@ -485,7 +484,8 @@ def get_empty_3d_model(
     fncoordgrid = float(ncoordgrid)  # fixes an issue with polars 0.20.23 https://github.com/pola-rs/polars/issues/15952
 
     dfmodel = (
-        pl.DataFrame(
+        pl
+        .DataFrame(
             {"modelgridindex": range(ncoordgrid**3), "inputcellid": range(1, 1 + ncoordgrid**3)},
             schema={"modelgridindex": pl.Int32, "inputcellid": pl.Int32},
         )
@@ -543,7 +543,8 @@ def add_derived_cols_to_modeldata(
             axes = ["r"]
 
             dfmodel = (
-                dfmodel.with_columns(vel_r_min_kmps=pl.col("vel_r_max_kmps").shift(n=1, fill_value=0.0))
+                dfmodel
+                .with_columns(vel_r_min_kmps=pl.col("vel_r_max_kmps").shift(n=1, fill_value=0.0))
                 .with_columns(vel_r_min=(pl.col("vel_r_min_kmps") * 1e5), vel_r_max=(pl.col("vel_r_max_kmps") * 1e5))
                 .with_columns(vel_r_mid=((pl.col("vel_r_max") + pl.col("vel_r_min")) / 2))
                 .with_columns(
@@ -624,7 +625,8 @@ def add_derived_cols_to_modeldata(
                     modelmeta[f"wid_init_{ax}"] = modelmeta["wid_init"]
 
             dfmodel = (
-                dfmodel.with_columns(
+                dfmodel
+                .with_columns(
                     volume=pl.lit(modelmeta["wid_init_x"] * modelmeta["wid_init_y"] * modelmeta["wid_init_z"])
                 )
                 .with_columns([
@@ -1276,9 +1278,11 @@ def dimension_reduce_model(
 
     if outputdimensions == 2:
         dfmodel_out = (
-            dfmodel_out.with_columns(
+            dfmodel_out
+            .with_columns(
                 (
-                    pl.col("vel_z_mid")
+                    pl
+                    .col("vel_z_mid")
                     .cut(breaks=vel_z_bins, labels=[str(x) for x in range(-1, len(vel_z_bins))])
                     .cast(pl.Utf8)
                     .cast(pl.Int32)
@@ -1296,16 +1300,19 @@ def dimension_reduce_model(
     dfmodel_out = dfmodel_out.sort("mgiout")
 
     dfmodel_out = (
-        dfmodel_out.group_by("mgiout", cs.starts_with("out_n_"))
+        dfmodel_out
+        .group_by("mgiout", cs.starts_with("out_n_"))
         .agg(
-            pl.when(pl.col("mass_g").sum() > 0)
+            pl
+            .when(pl.col("mass_g").sum() > 0)
             .then(
                 (cs.starts_with("X_") | cs.by_name(["Ye", "cellYe"], require_all=False)).dot(pl.col("mass_g"))
                 / pl.col("mass_g").sum()
             )
             .otherwise(0.0),
             cs.by_name("tracercount", require_all=False).sum(),
-            pl.when(pl.col("mass_g").sum() > 0)
+            pl
+            .when(pl.col("mass_g").sum() > 0)
             .then((cs.by_name(["q"], require_all=False)).dot(pl.col("mass_g")) / pl.col("mass_g").sum())
             .otherwise(0.0),
             pl.col("mass_g").sum().alias("out_mass_g"),
@@ -1365,7 +1372,8 @@ def dimension_reduce_model(
 
     dfelabundances_out = (
         (
-            dfelabundances.lazy()
+            dfelabundances
+            .lazy()
             .with_columns(pl.col("inputcellid").cast(pl.Int32))
             .join(dfoutcell_inputcells_masses, on="inputcellid", how="left")
             .drop("inputcellid")
@@ -1384,7 +1392,8 @@ def dimension_reduce_model(
 
     dfgridcontributions_out = (
         (
-            dfgridcontributions.lazy()
+            dfgridcontributions
+            .lazy()
             .with_columns(pl.col("cellindex").cast(pl.Int32))
             .rename({"cellindex": "inputcellid"})
             .join(dfoutcell_inputcells_masses.lazy(), on="inputcellid", how="left")
@@ -1460,6 +1469,7 @@ def scale_model_to_time(
 
 def savetologfile(outputfolderpath: Path, logfilename: str = "modellog.txt") -> Callable[..., None]:
     # save the printed output to a log file
+    outputfolderpath.mkdir(parents=True, exist_ok=True)
     logfilepath = outputfolderpath / logfilename
     logfilepath.unlink(missing_ok=True)
 

@@ -294,7 +294,8 @@ def make_ionsubplot(
             coalesce=True,
         )
         dftrans = dftrans.with_columns(
-            emissionstrength=pl.when(pl.col("n_NLTE").is_not_null())
+            emissionstrength=pl
+            .when(pl.col("n_NLTE").is_not_null())
             .then(pl.col("n_NLTE") * pl.col("A") * pl.col("epsilon_trans_ev"))
             .otherwise(0)
         )
@@ -317,7 +318,7 @@ def make_ionsubplot(
         ycolumnname = "departure_coeff"
 
         # skip one color, since T_e is not plotted in departure mode
-        ax._get_lines.get_next_color()  # type: ignore[attr-defined] # noqa: SLF001 # pyright: ignore[reportAttributeAccessIssue] # ty: ignore[unresolved-attribute]
+        ax._get_lines.get_next_color()  # type: ignore[attr-defined] # noqa: SLF001 # pyright: ignore[reportAttributeAccessIssue]
         if floers_levelpop_values is not None:
             assert floers_levelnums is not None
             ax.plot(
@@ -406,7 +407,8 @@ def make_plot_populations_with_time_or_velocity(modelpaths: list[Path | str], ar
     ion_stage = int(args.ion_stages[0])
 
     adata = (
-        at.atomic.get_levels(modelpaths[0], get_transitions=True)
+        at.atomic
+        .get_levels(modelpaths[0], get_transitions=True)
         .with_columns(
             levels=pl.col("levels").map_elements(
                 lambda x: x.to_pandas(use_pyarrow_extension_array=True), return_dtype=pl.Object

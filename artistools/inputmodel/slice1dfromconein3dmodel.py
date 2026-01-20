@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import argparse
-import gc
 import typing as t
 from collections.abc import Sequence
 from pathlib import Path
@@ -16,41 +15,55 @@ if t.TYPE_CHECKING:
     from mpl_toolkits.mplot3d import Axes3D
 
 
-def make_cone(args: argparse.Namespace) -> pd.DataFrame:
-    import pandas as pd
-
+def make_cone(args: argparse.Namespace, logprint: t.Callable[..., None]) -> pd.DataFrame:
     print("Making cone")
 
-    angle_of_cone = 30  # in deg
+    angle_of_cone = args.coneangle  # in deg
+    logprint(f"Using cone angle of {angle_of_cone} degrees")
 
     theta = np.radians([angle_of_cone / 2])  # angle between line of sight and edge is half angle of cone
 
-    pldfmodel, modelmeta = at.get_modeldata(modelpath=args.modelpath[0], get_elemabundances=True)
-    dfmodel = pldfmodel.collect().to_pandas(use_pyarrow_extension_array=True)
+    pldfmodel, modelmeta = at.get_modeldata(
+        modelpath=args.modelpath[0],
+        get_elemabundances=True,
+        derived_cols=[
+            "volume",
+            "pos_x_mid",
+            "pos_y_mid",
+            "pos_z_mid",
+            "pos_x_min",
+            "pos_y_min",
+            "pos_z_min",
+            "pos_r_mid",
+            "mass_g",
+            "pos_r_min",
+        ],
+    )
+    dfmodel = pldfmodel
     args.t_model = modelmeta["t_model_init_days"]
 
     if args.positive_axis:
         print("using positive axis")
-        cone = dfmodel.loc[
-            dfmodel[f"pos_{args.sliceaxis}_min"]
-            >= 1
-            / (np.tan(theta))
-            * np.sqrt((dfmodel[f"pos_{args.other_axis2}_min"]) ** 2 + (dfmodel[f"pos_{args.other_axis1}_min"]) ** 2)
-        ]  # positive axis
+        cone = dfmodel.filter(
+            pl.col(f"pos_{args.sliceaxis}_mid")
+            >= (
+                1.0
+                / (np.tan(theta))
+                * (pl.col(f"pos_{args.other_axis2}_mid") ** 2 + pl.col(f"pos_{args.other_axis1}_mid") ** 2).sqrt()
+            )
+        )
     else:
         print("using negative axis")
-        cone = dfmodel.loc[
-            dfmodel[f"pos_{args.sliceaxis}_min"]
-            <= -1
-            / (np.tan(theta))
-            * np.sqrt((dfmodel[f"pos_{args.other_axis2}_min"]) ** 2 + (dfmodel[f"pos_{args.other_axis1}_min"]) ** 2)
-        ]  # negative axis
-    # print(cone.loc[:, :[f'pos_{slice_on_axis}']])
-    del dfmodel  # merge_dfs not needed anymore so free memory
-    gc.collect()
+        cone = dfmodel.filter(
+            pl.col(f"pos_{args.sliceaxis}_mid")
+            <= -(
+                1.0
+                / (np.tan(theta))
+                * (pl.col(f"pos_{args.other_axis2}_mid") ** 2 + pl.col(f"pos_{args.other_axis1}_mid") ** 2).sqrt()
+            )
+        )
 
-    assert isinstance(cone, pd.DataFrame)
-    return cone
+    return cone.collect().to_pandas(use_pyarrow_extension_array=True)
 
 
 def get_profile_along_axis(
@@ -60,7 +73,8 @@ def get_profile_along_axis(
 
     if modeldata is None:
         modeldata = (
-            at.inputmodel.get_modeldata(args.modelpath, get_elemabundances=True, derived_cols=derived_cols)[0]
+            at.inputmodel
+            .get_modeldata(args.modelpath, get_elemabundances=True, derived_cols=derived_cols)[0]
             .collect()
             .to_pandas(use_pyarrow_extension_array=True)
         )
@@ -83,40 +97,135 @@ def get_profile_along_axis(
         ]
 
     profile1d = profile1d.reset_index(drop=True)
-    import pandas as pd
 
     assert isinstance(profile1d, pd.DataFrame)
     return profile1d
 
 
-def make_1d_profile(args: argparse.Namespace) -> pd.DataFrame:
+def make_1d_profile(args: argparse.Namespace, logprint: t.Callable[..., None]) -> pd.DataFrame:
     """Make 1D model from 3D model."""
-    logprint = at.inputmodel.inputmodel_misc.savetologfile(
-        outputfolderpath=Path(args.outputpath), logfilename="make1dmodellog.txt"
-    )
-
     logprint("Making 1D model from 3D model:", at.get_model_name(args.modelpath[0]))
+    _, modelmeta = at.get_modeldata(modelpath=args.modelpath[0])
     if args.makefromcone:
         logprint("from a cone")
-        cone = make_cone(args)
+        cone = make_cone(args, logprint)
+        N_shells = args.nshells
+        # Max radius that still ensures a full shell as the cartesian grid means some
+        # radius values will be greater than the max radius of the axis the cone is centred on
+        r_max = modelmeta["wid_init"] * (modelmeta["ncoordgrid"] / 2)
 
-        slice1d = cone.groupby([f"pos_{args.sliceaxis}_min"], as_index=False).mean()
-        # where more than 1 X value, average rows eg. (1,0,0) (1,1,0) (1,1,1)
+        if args.coneshellsequalvolume:
+            logprint("Spacing shells in 1D model so they have equal volume")
+            V_total = (4 / 3) * np.pi * r_max**3
+            cone1d_bins: list[float] = []
+            for i in range(N_shells):
+                r_inner = 0 if i == 0 else cone1d_bins[i - 1]
+                r_outer = ((3 * V_total) / (4 * np.pi * N_shells) + r_inner**3) ** (1 / 3)
+                cone1d_bins.append(r_outer)
+            cone1d_bins.insert(0, 0.0)
+        else:
+            shell_spacing_power = args.coneshellspacingexponent  # Change this to get the desired velocity bin spacing
+            logprint(f"Spacing shells in 1D model so they are equally spaced on a radius^{shell_spacing_power} grid")
+            cone_radius_spacing = np.linspace(0, r_max**shell_spacing_power, N_shells + 1)
+            cone1d_bins = np.power(cone_radius_spacing, (1 / shell_spacing_power))
+        cone1d_df = []
+        for i in range(len(cone1d_bins) - 1):
+            # Filter cells within bin
+            cone1d_bin_mask = (cone["pos_r_mid"] >= cone1d_bins[i]) & (cone["pos_r_mid"] < cone1d_bins[i + 1])
+            cells_within_bin = cone[cone1d_bin_mask]
+            # Sum mass and volume for each of the 3D cells that are being included in this 1D shell
+            total_mass_g = cells_within_bin["mass_g"].sum()
+            total_volume = cells_within_bin["volume"].sum()
+
+            if total_mass_g <= 0:
+                assert total_volume > 0, (
+                    f"\nAssertion Error: No cell midpoints within cone limits for shell {i + 1}.\n"
+                    "The small volume contained within the cone for the innermost shell means this is quite likely to\n"
+                    "occur, especially for smaller cone angles and grid spacings where the inner shell radius is\n"
+                    "small. Also more likely to occur when ncoordgrid/2 is even, resulting in the slice axis being\n"
+                    "along cell minimums not cell midpoints in the 3D model. If this occurs you can either choose a \n"
+                    "different grid spacing (using -coneshellspacingexponent or -nshells) or increase -coneangle\n"
+                    "to ensure at least one cell midpoint is contained within the cone limits of the shell\n"
+                )
+                # Cells exist but all have density=0
+                logprint(
+                    f"\nWARNING: Shell {i + 1} is empty (all 3D grid cells averaged in the shell must have density=0).\n"
+                    "This shell and all shells further out in the model will be removed from the model.\n"
+                    "This is safe provided this empty shell is far enough out in the model: check model file to \n"
+                    "confirm this is the case. If not there may be an issue with the model being read in.\n"
+                    "The outer regions of some models can have empty regions before there are more non-empty cells\n"
+                    "again at higher velocities. This should generally be in the very outer regions of models where\n"
+                    "the cells are too optically thin to impact the synthetic observables. However if you want cells\n"
+                    "in these outer regions to be included in the 1D cone can experiment with -coneangle,-nshells and\n"
+                    "-coneshellspacingexponent to ensure the shells for these outer regions include some non-empty 3D\n"
+                    "grid cell and thus the shells can be included in the 1D model.\n"
+                )
+                break
+
+            species_mass = cells_within_bin.filter(regex=r"^X_", axis=1)
+            mass_g_values = cells_within_bin["mass_g"].to_numpy().reshape(-1, 1)
+            # Calculate mass of each species in each 3D grid cell
+            species_mass *= mass_g_values
+            # Sum masses of individual species
+            species_total_mass = species_mass.sum(axis=0)
+
+            # Calculate composition
+            composition = species_total_mass / total_mass_g
+
+            # Sum all composition values to ensure compositions are normalised to 1 in 3D model
+            if i == 0:
+                logprint(
+                    "\nSumming all mass weighted compositions in the shells. If these values significantly\n"
+                    "deviate from 1 there could be an issue with the input model. The compositions for each\n"
+                    "shell in the output 1D model are normalised here regardless of how close to 1 they are.\n"
+                    "Also printing how many 3D cells make up each 1D shell in the model generated.\n\n"
+                    "NOTE: the compositions do not always sum exactly to 1 in the 3D model grid cells.\n"
+                    "From limited testing this appears to be most pronounced in the outer cells of the 3D\n"
+                    "models where the composition sum can deviate by ~1% from 1 when averaging the 3D cells\n"
+                    "into the shells in the 1D model. The composition is normalised before writing out the \n"
+                    "1D model but worth checking the log file to ensure the normalisation of the cells in the 3D \n"
+                    "model used in the 1D model shells is close to 1 before this\n"
+                )
+            # Skipping first 5 columns which contain the radioisotopes utilised in SN models
+            # the remaining columns contain the 30 elements in the composition file for SN models
+            # which have the radioisotopes already included in the composition total for the
+            # relevant elements
+            sum_composition_check = composition.iloc[5:].sum()
+            logprint(
+                f"Shell {i + 1:<3}     3D cells averaged: {len(cells_within_bin):<6} composition sum before norm: {sum_composition_check}"
+            )
+            composition /= sum_composition_check
+
+            bin_cone1d_df_dict = {
+                "inputcellid": [i + 1],
+                "r_bin_max_boundary": [cone1d_bins[i + 1]],
+                "rho": [total_mass_g / total_volume],
+                **{species: [composition[species]] for species in composition.index},
+            }
+
+            # Create DataFrame from the dictionary
+            bin_cone1d_df = pd.DataFrame(bin_cone1d_df_dict)
+
+            # Append results for this bin to the overall results
+            cone1d_df.append(bin_cone1d_df)
+
+        # Concatenate all bin results into a single DataFrame
+        slice1d = pd.concat(cone1d_df, ignore_index=True)
+        slice1d["r_bin_max_boundary"] = slice1d["r_bin_max_boundary"].apply(lambda x: x / (args.t_model * 86400 * 1e5))
+        slice1d = slice1d.rename(columns={"r_bin_max_boundary": "vel_r_max_kmps"})
 
     else:  # make from along chosen axis
         logprint("from along the axis")
         slice1d = get_profile_along_axis(args)
+        slice1d.loc[:, f"pos_{args.sliceaxis}_min"] = slice1d[f"pos_{args.sliceaxis}_min"].apply(
+            lambda x: x / (args.t_model * 86400 * 1e5)
+        )  # Convert positions to velocities
+        slice1d = slice1d.rename(columns={f"pos_{args.sliceaxis}_min": "vel_r_max_kmps"})
+        # Convert position to velocity
+        slice1d = slice1d.drop(
+            ["inputcellid", f"pos_{args.other_axis1}_min", f"pos_{args.other_axis2}_min"], axis=1
+        )  # Remove columns we don't need
     logprint("using axis:", args.axis)
-
-    slice1d.loc[:, f"pos_{args.sliceaxis}_min"] = slice1d[f"pos_{args.sliceaxis}_min"].apply(
-        lambda x: x / 1e5 / (args.t_model * 86400)
-    )  # Convert positions to velocities
-    slice1d = slice1d.rename(columns={f"pos_{args.sliceaxis}_min": "vel_r_max_kmps"})
-    # Convert position to velocity
-
-    slice1d = slice1d.drop(
-        ["inputcellid", f"pos_{args.other_axis1}_min", f"pos_{args.other_axis2}_min"], axis=1
-    )  # Remove columns we don't need
 
     if args.rhoscale:
         logprint("Scaling density by a factor of:", args.rhoscale)
@@ -129,7 +238,7 @@ def make_1d_profile(args: argparse.Namespace) -> pd.DataFrame:
 
     slice1d.index += 1
 
-    if not args.positive_axis:
+    if not args.positive_axis and not args.makefromcone:
         # Invert rows and *velocity by -1 to make velocities positive for slice on negative axis
         slice1d.iloc[:] = slice1d.iloc[::-1].to_numpy()
         slice1d.loc[:, "vel_r_max_kmps"] *= -1
@@ -141,10 +250,8 @@ def make_1d_profile(args: argparse.Namespace) -> pd.DataFrame:
     return slice1d
 
 
-def make_1d_model_files(args: argparse.Namespace) -> None:
-    import pandas as pd
-
-    slice1d = make_1d_profile(args)
+def make_1d_model_files(args: argparse.Namespace, logprint: t.Callable[..., None]) -> None:
+    slice1d = make_1d_profile(args, logprint)
 
     # query_abundances_positions = slice1d.columns.str.startswith("X_")
     query_abundances_positions = np.array([
@@ -194,8 +301,8 @@ def make_1d_model_files(args: argparse.Namespace) -> None:
 # cone = cone.loc[cone['rho_model'] > 0.0]
 
 
-def make_plot(args: argparse.Namespace) -> None:
-    cone = make_cone(args)
+def make_plot(args: argparse.Namespace, logprint: t.Callable[..., None]) -> None:
+    cone = make_cone(args, logprint)
 
     cone = cone.loc[cone["rho_model"] > 0.0002]  # cut low densities (empty cells?) from plot
     ax: Axes3D = plt.figure().gca(projection="3d")  # type: ignore[call-arg,no-any-unimported] # pyright: ignore[reportCallIssue]
@@ -239,7 +346,29 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--makefromcone",
         action="store",
         default=True,
-        help="Make 1D model from cone around axis. Default is True.If False uses points along axis.",
+        help="Make 1D model from cone around axis. Default is True. If False uses points along axis.",
+    )
+
+    parser.add_argument(
+        "-coneangle", type=float, default=30.0, help="Cone angle in degrees, cone half angle given by coneangle/2"
+    )
+
+    parser.add_argument(
+        "-nshells",
+        type=int,
+        default=100,
+        help="Number of shells used when making 1D model from cone. Note the final number of shells may be lower as empty outer shells are removed from the output 1D model files",
+    )
+
+    parser.add_argument(
+        "-coneshellspacingexponent",
+        type=float,
+        default=1.5,
+        help="Vary the exponent used when selecting the radius dependence of the shell spacing when making 1D model from cone. By default the shells are spaced evenly in radius^(1.5)",
+    )
+
+    parser.add_argument(
+        "--coneshellsequalvolume", action="store_true", help="Use equal volume shells when making 1D model from cone"
     )
 
     parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")
@@ -270,9 +399,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     # remember: models before scaling down to artis input have x and z axis swapped compared to artis input files
 
-    make_1d_model_files(args)
+    logprint = at.inputmodel.inputmodel_misc.savetologfile(
+        outputfolderpath=Path(args.outputpath), logfilename="make1dmodellog.txt"
+    )
 
-    # make_plot(args) # Uncomment to make 3D plot todo: add command line option
+    make_1d_model_files(args, logprint)
+
+    # make_plot(args, logprint) # Uncomment to make 3D plot todo: add command line option
 
 
 if __name__ == "__main__":

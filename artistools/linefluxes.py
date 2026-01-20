@@ -148,7 +148,8 @@ def get_line_fluxes_from_pops(
 
     ionlist = [(feature.atomic_number, feature.ion_stage) for feature in emfeatures]
     adata = (
-        at.atomic.get_levels(modelpath, ionlist=tuple(ionlist), get_transitions=True, get_photoionisations=False)
+        at.atomic
+        .get_levels(modelpath, ionlist=tuple(ionlist), get_transitions=True, get_photoionisations=False)
         .with_columns(
             levels=pl.col("levels").map_elements(
                 lambda x: x.to_pandas(use_pyarrow_extension_array=True), return_dtype=pl.Object
@@ -191,7 +192,8 @@ def get_line_fluxes_from_pops(
                 for modelgridindex in modeldata.index:
                     try:
                         levelpop = (
-                            dfnltepops.query(
+                            dfnltepops
+                            .query(
                                 "modelgridindex==@modelgridindex and timestep==@timestep and Z==@feature.atomic_number"
                                 " and ion_stage==@feature.ion_stage and level==@upperlevelindex"
                             )
@@ -232,7 +234,8 @@ def get_line_fluxes_from_pops(
 
 def get_linelist_dataframe(modelpath: Path | str) -> pd.DataFrame:
     return (
-        at.misc.get_linelist_pldf(modelpath)
+        at.misc
+        .get_linelist_pldf(modelpath)
         .with_columns(upper_level=pl.col("upperlevelindex") + 1, lower_level=pl.col("lowerlevelindex") + 1)
         .collect()
         .to_pandas(use_pyarrow_extension_array=True)
@@ -561,8 +564,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
     refdatatimes = [np.array([], dtype=np.float64) for _ in refdatafilenames]
     refdatapoints: list[list[float]] = [[] for _ in refdatafilenames]
     for refdataindex, refdatafilename in enumerate(refdatafilenames):
-        with Path(refdatafilename).open(encoding="utf-8") as data_file:
-            floers_te_nne = json.loads(data_file.read())
+        floers_te_nne = json.loads(Path(refdatafilename).read_text(encoding="utf-8"))
 
         # give an ordering and index to dict items
         refdatakeys_thisseries = [str(x) for x in sorted(floers_te_nne.keys(), key=float)]  # strings, not floats

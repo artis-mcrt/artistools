@@ -270,7 +270,8 @@ def get_grid_mapping(modelpath: Path | str) -> tuple[dict[int, list[int]], dict[
         schema={"cellindex": pl.Int32, "modelgridindex": pl.Int32},
     )
     assoc_cells = dict(
-        dfgrid.group_by("modelgridindex")
+        dfgrid
+        .group_by("modelgridindex")
         .agg(pl.col("cellindex").implode())
         .select([pl.col("modelgridindex"), pl.col("cellindex")])
         .iter_rows()
@@ -369,7 +370,8 @@ def get_timesteps(modelpath: Path | str) -> pl.LazyFrame:
         from artistools.codecomparison import get_timestep_times as cc_get_times
 
         return (
-            pl.LazyFrame({
+            pl
+            .LazyFrame({
                 "tmid_days": cc_get_times(modelpath=modelpath, loc="mid"),
                 "tstart_days": cc_get_times(modelpath=modelpath, loc="start"),
                 "tend_days": cc_get_times(modelpath=modelpath, loc="end"),
@@ -383,7 +385,8 @@ def get_timesteps(modelpath: Path | str) -> pl.LazyFrame:
     tsfilepath = Path(modelpath, "timesteps.out")
     if tsfilepath.exists():
         return (
-            pl.scan_csv(tsfilepath, has_header=True, separator=" ")
+            pl
+            .scan_csv(tsfilepath, has_header=True, separator=" ")
             .rename(lambda column_name: column_name.removeprefix("#"))
             .with_columns(tend_days=pl.col("tstart_days") + pl.col("twidth_days"))
         )
@@ -395,7 +398,8 @@ def get_timesteps(modelpath: Path | str) -> pl.LazyFrame:
     timesteps = range(inputparams["ntstep"])
 
     return (
-        pl.LazyFrame({"timestep": list(timesteps)}, schema={"timestep": pl.Int32})
+        pl
+        .LazyFrame({"timestep": list(timesteps)}, schema={"timestep": pl.Int32})
         .with_columns(
             tmid_days=tmin * pl.lit(math.e).pow((pl.col("timestep") + 0.5) * dlogt),
             tstart_days=tmin * pl.lit(math.e).pow(pl.col("timestep") * dlogt),
@@ -564,9 +568,8 @@ def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | None, 
     try:
         depdata = get_deposition(modelpath=modelpath)  # use this file to find the last computed timestep
         nts_last = (
-            depdata.select(
-                pl.col("timestep").max() if "timestep" in depdata.collect_schema().names() else (pl.len() - 1)
-            )
+            depdata
+            .select(pl.col("timestep").max() if "timestep" in depdata.collect_schema().names() else (pl.len() - 1))
             .collect()
             .item()
         )
@@ -640,7 +643,8 @@ def get_elsymbolslist() -> list[str]:
 def get_elsymbols_df() -> pl.LazyFrame:
     """Return a polars DataFrame of atomic number and element symbols."""
     return (
-        pl.scan_csv(
+        pl
+        .scan_csv(
             get_config()["path_datadir"] / "elements.csv",
             separator=",",
             has_header=True,
@@ -1069,7 +1073,8 @@ def get_nuclides(modelpath: Path | str) -> pl.LazyFrame:
         raise FileNotFoundError(msg)
 
     dfnuclides = (
-        pl.scan_csv(filepath, separator=" ", has_header=True)
+        pl
+        .scan_csv(filepath, separator=" ", has_header=True)
         .rename({"#nucindex": "pellet_nucindex", "Z": "atomic_number"})
         .join(get_elsymbols_df().lazy(), on="atomic_number", how="left")
         .with_columns(nucname=pl.col("elsymbol") + pl.col("A").cast(pl.String))
@@ -1133,7 +1138,8 @@ def get_bflist(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame
 
     if get_ion_str:
         dfboundfree = (
-            dfboundfree.join(get_ion_stage_roman_numeral_df().lazy(), on="ion_stage", how="left")
+            dfboundfree
+            .join(get_ion_stage_roman_numeral_df().lazy(), on="ion_stage", how="left")
             .join(get_elsymbols_df().lazy(), on="atomic_number", how="left")
             .with_columns(ion_str=pl.col("elsymbol") + " " + pl.col("ion_stage_roman"))
         )
@@ -1185,7 +1191,8 @@ def get_linelist_pldf(modelpath: Path | str, get_ion_str: bool = False) -> pl.La
         lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels = read_linestatfile(textfile)
 
         pldf = (
-            pl.DataFrame({
+            pl
+            .DataFrame({
                 "lambda_angstroms": lambda_angstroms,
                 "atomic_number": atomic_numbers,
                 "ion_stage": ion_stages,
@@ -1201,9 +1208,11 @@ def get_linelist_pldf(modelpath: Path | str, get_ion_str: bool = False) -> pl.La
         print(f"Reading {parquetfile}")
 
     linelist_lazy = (
-        pl.scan_parquet(parquetfile)
+        pl
+        .scan_parquet(parquetfile)
         .with_columns(
-            pl.when(pl.col("lambda_angstroms").is_between(2000, 20000))
+            pl
+            .when(pl.col("lambda_angstroms").is_between(2000, 20000))
             .then(pl.col("lambda_angstroms") / 1.0003)
             .otherwise(pl.col("lambda_angstroms"))
             .alias("lambda_angstroms_air"),
@@ -1221,7 +1230,8 @@ def get_linelist_pldf(modelpath: Path | str, get_ion_str: bool = False) -> pl.La
 
     if get_ion_str:
         linelist_lazy = (
-            linelist_lazy.join(get_ion_stage_roman_numeral_df().lazy(), on="ion_stage", how="left")
+            linelist_lazy
+            .join(get_ion_stage_roman_numeral_df().lazy(), on="ion_stage", how="left")
             .join(get_elsymbols_df().lazy(), on="atomic_number", how="left")
             .with_columns(ion_str=pl.col("elsymbol") + " " + pl.col("ion_stage_roman"))
         )

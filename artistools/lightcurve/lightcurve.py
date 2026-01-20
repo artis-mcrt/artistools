@@ -42,8 +42,7 @@ def readfile(filepath: str | Path) -> dict[int, pl.LazyFrame]:
 def read_3d_gammalightcurve(filepath: str | Path) -> dict[int, pd.DataFrame]:
     import pandas as pd
 
-    columns = ["time"]
-    columns.extend(np.arange(0, 100))
+    columns = ["time", *[str(i) for i in range(100)]]
     lcdata = pd.read_csv(filepath, sep=r"\s+", header=None).set_axis(columns, axis=1)
     # lcdata = lcdata.rename(columns={0: 'time', 1: 'lum', 2: 'lum_cmf'})
 
@@ -100,7 +99,10 @@ def get_from_packets(
             modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type=escape_type
         )
 
-    dfpackets = dfpackets.with_columns([(pl.col("escape_time") * escapesurfacegamma / 86400.0).alias("t_arrive_cmf_d")])
+    if not directionbins_are_vpkt_observers:
+        dfpackets = dfpackets.with_columns([
+            (pl.col("escape_time") * escapesurfacegamma / 86400.0).alias("t_arrive_cmf_d")
+        ])
 
     try:
         if pellet_nucname is not None:
@@ -149,7 +151,8 @@ def get_from_packets(
             pldfpackets_dirbin = dfpackets.filter(pl.col("dirbin") == dirbin)
 
         lcdata[dirbin] = (
-            at.packets.bin_and_sum(
+            at.packets
+            .bin_and_sum(
                 pldfpackets_dirbin, bincol=timecol, bins=timebinstarts_plusend, sumcols=["e_rf"], getcounts=True
             )
             .with_columns(timestep=pl.col(f"{timecol}_bin").cast(pl.Int32) + dftimesteps_selected["timestep"].min())
@@ -167,25 +170,26 @@ def get_from_packets(
             .drop("e_rf_sum", f"{timecol}_bin")
         )
 
-        lcdata[dirbin] = (
-            lcdata[dirbin]
-            .join(
-                at.packets.bin_and_sum(
-                    pldfpackets_dirbin, bincol="t_arrive_cmf_d", bins=timebinstarts_plusend, sumcols=["e_cmf"]
-                ).rename({"t_arrive_cmf_d_bin": "timestep"}),
-                how="left",
-                on="timestep",
+        if "t_arrive_cmf_d" in pldfpackets_dirbin.collect_schema().names():
+            lcdata[dirbin] = (
+                lcdata[dirbin]
+                .join(
+                    at.packets.bin_and_sum(
+                        pldfpackets_dirbin, bincol="t_arrive_cmf_d", bins=timebinstarts_plusend, sumcols=["e_cmf"]
+                    ).rename({"t_arrive_cmf_d_bin": "timestep"}),
+                    how="left",
+                    on="timestep",
+                )
+                .with_columns(
+                    lum_cmf=pl.col("e_cmf_sum")
+                    / nprocs_read
+                    * solidanglefactor
+                    / escapesurfacegamma
+                    / (pl.col("twidth_days") * 86400)
+                    / Lsun_to_erg_per_s
+                )
+                .drop("e_cmf_sum")
             )
-            .with_columns(
-                lum_cmf=pl.col("e_cmf_sum")
-                / nprocs_read
-                * solidanglefactor
-                / escapesurfacegamma
-                / (pl.col("twidth_days") * 86400)
-                / Lsun_to_erg_per_s
-            )
-            .drop("e_cmf_sum")
-        )
 
         lcdata[dirbin] = lcdata[dirbin].rename({"tmid_days": "time"}).drop("twidth_days")
 
@@ -498,10 +502,10 @@ def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pd.Dat
 
     if "dist_mpc" in metadata:
         lightcurve_data["magnitude"] = lightcurve_data["magnitude"].apply(
-            lambda x: (x - 5 * np.log10(metadata["dist_mpc"] * 10**6) + 5)
+            lambda x: x - 5 * np.log10(metadata["dist_mpc"] * 10**6) + 5
         )
     elif "dist_modulus" in metadata:
-        lightcurve_data["magnitude"] = lightcurve_data["magnitude"].apply(lambda x: (x - metadata["dist_modulus"]))
+        lightcurve_data["magnitude"] = lightcurve_data["magnitude"].apply(lambda x: x - metadata["dist_modulus"])
 
     return lightcurve_data, metadata
 

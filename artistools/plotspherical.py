@@ -114,7 +114,8 @@ def plot_spherical(
         ]
         dfpackets = dfpackets.with_columns(
             (
-                pl.col("em_time")
+                pl
+                .col("em_time")
                 .cut(breaks=timebins, labels=[str(x) for x in range(-1, len(timebins))])
                 .cast(pl.Utf8)
                 .cast(pl.Int32)
@@ -123,7 +124,8 @@ def plot_spherical(
 
         assert dfestimators is not None
         dfestimators = (
-            dfestimators.select(["timestep", "modelgridindex", "TR", *nnelement_vars])
+            dfestimators
+            .select(["timestep", "modelgridindex", "TR", *nnelement_vars])
             .drop_nulls()
             .rename({"timestep": "em_timestep", "modelgridindex": "em_modelgridindex"})
         )
@@ -153,14 +155,16 @@ def plot_spherical(
 
     aggs.append(pl.len().alias("count"))
     dfpackets = (
-        dfpackets.group_by(["costhetabin", "phibinmonotonicasc"])
+        dfpackets
+        .group_by(["costhetabin", "phibinmonotonicasc"])
         .agg(aggs)
         .select(["costhetabin", "phibinmonotonicasc", "count", *plotvars])
     )
 
     ndirbins = nphibins * ncosthetabins
     alldirbins = (
-        pl.DataFrame(
+        pl
+        .DataFrame(
             {
                 "phibinmonotonicasc": (d % nphibins for d in range(ndirbins)),
                 "costhetabin": (d // nphibins for d in range(ndirbins)),

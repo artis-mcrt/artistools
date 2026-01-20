@@ -669,7 +669,8 @@ def make_lightcurve_plot(
                             modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type=escape_type
                         )
                         top_nuclides = (
-                            at.misc.df_filter_minmax_bounded(
+                            at.misc
+                            .df_filter_minmax_bounded(
                                 dfpackets.with_columns(tdecay_d=pl.col("tdecay") / 86400),
                                 "tdecay_d" if args.use_pellet_decay_time else "t_arrive_d",
                                 args.timemin,
