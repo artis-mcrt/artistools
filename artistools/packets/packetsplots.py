@@ -1,3 +1,4 @@
+import typing as t
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -70,11 +71,11 @@ def make_2d_packets_plot_pyvista(modelpath: Path, timestep: int) -> None:
     vmax_cms = modelmeta["vmax_cmps"]
     modeldata = plmodeldata.collect().to_pandas(use_pyarrow_extension_array=True)
     _, x, y, z = at.packets.make_3d_grid(modeldata, vmax_cms)
-    mesh = pv.StructuredGrid(x, y, z)
+    mesh: t.Any = pv.StructuredGrid(x, y, z)
 
     hist = at.packets.make_3d_histogram_from_packets(modelpath, timestep)
 
-    mesh["energy [erg/s]"] = hist.ravel(order="F")  # type: ignore[assignment]
+    mesh["energy [erg/s]"] = hist.ravel(order="F")
     # print(max(mesh['energy [erg/s]']))
 
     sargs = {
@@ -86,15 +87,15 @@ def make_2d_packets_plot_pyvista(modelpath: Path, timestep: int) -> None:
         "label_font_size": 25,
     }
 
-    pv.set_plot_theme("document")  # type: ignore[no-untyped-call]
-    p = pv.Plotter()
+    pv.set_plot_theme("document")
+    p: t.Any = pv.Plotter()
 
-    p.set_scale(p, xscale=1.5, yscale=1.5, zscale=1.5)  # ty: ignore[invalid-argument-type]
+    p.set_scale(p, xscale=1.5, yscale=1.5, zscale=1.5)
     single_slice = mesh.slice(normal="y")
     # single_slice = mesh.slice(normal='z')
-    p.add_mesh(single_slice, scalar_bar_args=sargs)  # type: ignore[arg-type]# pyright: ignore[reportArgumentType]
+    p.add_mesh(single_slice, scalar_bar_args=sargs)
     p.show_bounds(
-        p,  # ty: ignore[invalid-argument-type]
+        p,
         grid=False,
         xlabel="vx / c",
         ylabel="vy / c",

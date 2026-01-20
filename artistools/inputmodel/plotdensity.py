@@ -137,7 +137,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             vlowerscoarse = [0.0, *vupperscoarse[:-1]]
             for vlower, vupper in zip(vlowerscoarse, vupperscoarse, strict=True):
                 yval = (
-                    dfmodelcollect.filter(pl.col("vel_r_mid").is_between(vlower, vupper, closed="left"))
+                    dfmodelcollect
+                    .filter(pl.col("vel_r_mid").is_between(vlower, vupper, closed="left"))
                     .select(pl.col("Ye").dot(pl.col("mass_g")) / pl.col("mass_g").sum())
                     .item()
                 )

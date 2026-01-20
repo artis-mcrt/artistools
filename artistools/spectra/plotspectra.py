@@ -141,7 +141,7 @@ def get_axis_labels(args: argparse.Namespace) -> tuple[str | None, str | None]:
             msg = f"Unknown x-axis unit {args.xunit}"
             raise AssertionError(msg)
 
-    xlabel = None if args.hidexticklabels else f"{xtype} " + r"$\left[\mathrm{{" + str_xunit + r"}}\right]$"
+    xlabel = None if args.hidexticklabels else f"{xtype} [{str_xunit}]"
 
     ylabel = None
     if not args.hideyticklabels:
@@ -201,7 +201,8 @@ def get_axis_labels(args: argparse.Namespace) -> tuple[str | None, str | None]:
 def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
     angle = args.plotviewingangle[0]
     dfspectrum = (
-        atspectra.get_specpol_data(angle=angle, modelpath=modelpath)[args.stokesparam]
+        atspectra
+        .get_specpol_data(angle=angle, modelpath=modelpath)[args.stokesparam]
         .with_columns(lambda_angstroms=2.99792458e18 / pl.col("nu"))
         .collect()
         .to_pandas(use_pyarrow_extension_array=True)
@@ -238,7 +239,7 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
         fluxes = dfspectrum[timeavg]
         nbins = 5
 
-        for i in np.arange(0, len(wavelengths - nbins), nbins, dtype=int):
+        for i in range(0, len(wavelengths - nbins), nbins):
             new_lambda_angstroms.append(wavelengths[i + nbins // 2])
             sum_flux = sum(fluxes[j] for j in range(i, i + nbins))
             binned_flux.append(sum_flux / nbins)
@@ -596,7 +597,7 @@ def plot_artis_spectrum(
                 fluxes = dfspectrum["y"]
                 nbins = 5
 
-                for i in np.arange(0, len(wavelengths - nbins), nbins, dtype=int):
+                for i in range(0, len(wavelengths - nbins), nbins):
                     i_max = min(i + nbins, len(wavelengths))
                     ncontribs = i_max - i
                     sum_lambda = sum(wavelengths[j] for j in range(i, i_max))
@@ -1047,7 +1048,7 @@ def make_emissionabsorption_plot(
     if args.title:
         plotlabel = args.title
     else:
-        plotlabel = f"{modelname}\n{args.timemin:.2f}d to {args.timemax:.2f}d"
+        plotlabel = f"{modelname} [{args.timemin:.2f}d to {args.timemax:.2f}d]"
         if args.plotviewingangle or args.plotvspecpol:
             dirbin_definitions = (
                 get_vspec_dir_labels(modelpath=modelpath, usedegrees=args.usedegrees)

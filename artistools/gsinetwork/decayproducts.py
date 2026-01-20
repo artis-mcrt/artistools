@@ -43,7 +43,8 @@ def get_nuc_data(nuc_dataset: str) -> pl.DataFrame:
 
     assert nuc_dataset in {"Hotokezaka", "ENSDF"}
     hotokezaka_betaminus = (
-        pl.read_csv(
+        pl
+        .read_csv(
             get_config()["path_datadir"] / "betaminusdecays.txt",
             separator=" ",
             comment_prefix="#",
@@ -126,7 +127,8 @@ def process_trajectory(
     import pandas as pd
 
     dfheatingthermo = (
-        pl.from_pandas(
+        pl
+        .from_pandas(
             pd.read_csv(
                 get_tar_member_extracted_path(
                     traj_root=traj_root, particleid=traj_ID, memberfilename="./Run_rprocess/heating.dat"
@@ -200,7 +202,8 @@ def process_trajectory(
         pldf_abund_decay = (
             (
                 (
-                    dftrajnucabund.lazy()
+                    dftrajnucabund
+                    .lazy()
                     .filter(pl.col("massfrac") > 0.0)
                     .with_columns(pl.col(pl.Int32).cast(pl.Int64), pl.col(pl.Float32).cast(pl.Float64))
                     .with_columns(A=pl.col("Z") + pl.col("N"))

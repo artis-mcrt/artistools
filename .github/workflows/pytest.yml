@@ -15,7 +15,7 @@ on:
 jobs:
     lint:
         name: Format, lint, and type check
-        runs-on: ubuntu-24.04
+        runs-on: ubuntu-24.04-arm
         env:
             RUFF_OUTPUT_FORMAT: github
             UV_FROZEN: 1
@@ -34,7 +34,7 @@ jobs:
                   echo "PYO3_PYTHON=python3.$(python -c 'import platform; print(platform.python_version_tuple()[1])')" >> $GITHUB_ENV
 
             - name: Cache cargo and rust build
-              uses: actions/cache@v4
+              uses: actions/cache@v5
               with:
                   path: |
                       ~/.cargo/registry/index/
@@ -76,7 +76,7 @@ jobs:
               run: uv run -- mypy
 
             - name: Cache prek
-              uses: actions/cache@v4
+              uses: actions/cache@v5
               with:
                   path: ~/.cache/prek
                   key: prek-3-${{ runner.os }}${{ runner.arch }}-${{ hashFiles('.pre-commit-config.yaml') }}-${{ github.run_id }}
@@ -102,17 +102,14 @@ jobs:
         strategy:
             fail-fast: false
             matrix:
-                os: [{name: macos, version: '26'}, {name: ubuntu, version: '24.04'}]
+                os: [{name: macos, version: '26'}, {name: ubuntu, version: 24.04-arm}]
                 python-minor-version: ['11', '12', '13', '14', 14t]
                 exclude:
+                    # macos runners are very limited in number
                     - os: {name: macos, version: '26'}
                       python-minor-version: 11
                     - os: {name: macos, version: '26'}
                       python-minor-version: 12
-                    - os: {name: ubuntu, version: '24.04'}
-                      python-minor-version: 14
-                    - os: {name: ubuntu, version: '24.04'}
-                      python-minor-version: 14t
         env:
             OS: ${{ matrix.os.name }}-${{ matrix.os.version }}
             PYTHON: 3.${{ matrix.python-minor-version }}
@@ -132,7 +129,7 @@ jobs:
                   python-version: 3.${{ matrix.python-minor-version }}
 
             - name: Cache cargo and rust build
-              uses: actions/cache@v4
+              uses: actions/cache@v5
               with:
                   path: |
                       ~/.cargo/registry/index/
@@ -158,7 +155,7 @@ jobs:
                   artistools completions
 
             - name: Cache test data
-              uses: actions/cache@v4
+              uses: actions/cache@v5
               with:
                   enableCrossOsArchive: true
                   path: tests/data/*.tar.xz
@@ -190,7 +187,7 @@ jobs:
                   verbose: true
 
             - name: Upload output files
-              uses: actions/upload-artifact@v5
+              uses: actions/upload-artifact@v6
               with:
                   name: testoutput-${{ matrix.os.name }}-${{ matrix.os.version }}-py3${{ matrix.python-minor-version }}
                   path: tests/output/

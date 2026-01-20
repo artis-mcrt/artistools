@@ -67,7 +67,7 @@ def plot_slice_modelcolumn(
 
     if args.hideemptycells:
         # Don't plot empty cells:
-        colorscale = np.ma.masked_where(colorscale == 0.0, colorscale)  # type: ignore[no-untyped-call]
+        colorscale = np.ma.masked_where(colorscale == 0.0, colorscale)
 
     if args.logcolorscale:
         # logscale for colormap
@@ -223,7 +223,7 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
     import pyvista as pv
 
     # set white background
-    pv.set_plot_theme("document")  # type: ignore[no-untyped-call]
+    pv.set_plot_theme("document")
 
     get_elemabundances = False
     # choose what surface will be coloured by
@@ -298,12 +298,12 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
         "label_font_size": 22,
     }
 
-    plotter = pv.Plotter()
+    plotter: t.Any = pv.Plotter()
     # plotter.add_mesh(mesh.outline(), color="k")
     plotcoloropacity = [0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]  # some choices: 'linear' 'sigmoid'
     # plotter.set_scale(0.95, 0.95, 0.95) # adjusts fig resolution
     plotter.show_bounds(
-        mesh,  # ty: ignore[invalid-argument-type]
+        mesh,
         grid=False,
         location="outer",
         xlabel="vx / c",
@@ -314,7 +314,7 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
         font_size=28,
         bold=False,
     )
-    plotter.add_mesh(surf, opacity=plotcoloropacity, scalar_bar_args=sargs, cmap="coolwarm_r")  # type: ignore[arg-type] # pyright: ignore[reportArgumentType]
+    plotter.add_mesh(surf, opacity=plotcoloropacity, scalar_bar_args=sargs, cmap="coolwarm_r")
     # plotter.add_mesh(surf, opacity=plotcoloropacity, use_transparency=True, cmap='coolwarm_r') #magma
 
     # plotter.remove_scalar_bar() # removes colorbar
@@ -336,7 +336,8 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
 
 def plot_phi_hist(modelpath: Path | str) -> None:
     dfmodel = (
-        at.get_modeldata(modelpath, derived_cols=["pos_x_mid", "pos_y_mid", "pos_z_mid", "vel_r_mid"])[0]
+        at
+        .get_modeldata(modelpath, derived_cols=["pos_x_mid", "pos_y_mid", "pos_z_mid", "vel_r_mid"])[0]
         .collect()
         .to_pandas(use_pyarrow_extension_array=True)
     )
@@ -371,7 +372,7 @@ def plot_phi_hist(modelpath: Path | str) -> None:
     print("WARNING: histogram not normalised")
     plt.clf()
 
-    heatmap = np.ma.masked_where(heatmap == 0.0, heatmap)  # type: ignore[no-untyped-call]
+    heatmap = np.ma.masked_where(heatmap == 0.0, heatmap)
     # heatmap = np.log10(heatmap)
 
     fig = plt.figure(figsize=(5, 4))

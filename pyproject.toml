@@ -39,11 +39,11 @@ readme = { file = "README.md", content-type = 'text/markdown' }
 dependencies = [
     "argcomplete>=3.6.2",
     "extinction>=0.4.7",
-    "matplotlib>=3.10.6",
-    "numpy>=2.3.3",
+    "matplotlib>=3.10.8",
+    "numpy>=2.4.1",
     "pandas>=2.3.2",
-    "polars>=1.33.1",
-    "pyarrow>=21.0.0",
+    "polars>=1.37.1",
+    "pyarrow>=22.0.0",
     "pypdf>=6.0.0",
     "pyyaml>=6.0.2",
     "rich>=14.1.0",
@@ -55,34 +55,34 @@ dependencies = [
 
 [project.optional-dependencies]
 extras = [
-    "astropy>=7.0.1",
+    "astropy>=7.2",
     "george>=0.4.4",
-    "imageio>=2.37.0",
-    "plotly>=6.0.1",
+    "imageio>=2.37.2",
+    "plotly>=6.5.2",
     "pynonthermal>=2025.4.8",
-    "pyvista>=0.45",
+    # "pyvista>=0.45",  # not compatible with cpython 3.14 yet
     "tabulate>=0.9",
 ]
 
 [dependency-groups]
 dev = [
-    "imageio>=2.37.0",
-    "mypy>=1.18.2",
+    "imageio>=2.37.2",
+    "mypy>=1.19.1",
     "pandas-stubs>=2.2.3.250527",
-    "prek>=0.2.9",
-    "pyright>=1.1.405",
-    "pynonthermal>=2025.3.31.2",
-    "pytest>=9.0.0",
-    "pytest-codspeed>=4.1.1",
-    "pytest-cov>=6.0.0",
-    "pytest-xdist[psutil]>=3.6.1",
-    "ruff>=0.13.1",
-    "ty>=0.0.1a30",
+    "prek>=0.2.28",
+    "pyright>=1.1.408",
+    "pynonthermal>=2025.4.8",
+    "pytest>=9.0.2",
+    "pytest-codspeed>=4.2.0",
+    "pytest-cov>=7.0.0",
+    "pytest-xdist[psutil]>=3.8.0",
+    "ruff>=0.14.12",
+    "ty>=0.0.12",
     "typeguard>=4.4.4",
-    "types-python-dateutil>=2.9.0.20241206",
-    "types-pyyaml>=6.0.12.20240917",
-    "types-tabulate>=0.9.0.20240106",
-    "uv>=0.9.7",
+    "types-python-dateutil>=2.9.0.20251115",
+    "types-pyyaml>=6.0.12.20250915",
+    "types-tabulate>=0.9.0.20241207",
+    "uv>=0.9.25",
 ]
 
 [project.urls]
@@ -155,7 +155,7 @@ disallow_any_generics = true
 disallow_any_unimported = true
 disallow_incomplete_defs = true
 disallow_subclassing_any = true
-disallow_untyped_calls = true
+disallow_untyped_calls = false
 disallow_untyped_decorators = true
 disallow_untyped_defs = true
 error_summary = true
@@ -284,6 +284,7 @@ fix = true
 show-fixes = true
 extend-exclude = ["_version.py", "artistools/inputmodel/fromcmfgen/rd_cmfgen.py", ".venv/**"]
 preview = true
+required-version = ">=0.14.11"
 
 [tool.ruff.format]
 skip-magic-trailing-comma = true
