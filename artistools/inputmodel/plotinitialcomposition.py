@@ -446,8 +446,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.axis = args.axis[1]
     args.sliceaxis = args.axis
 
-    args.plotvars = ["cellYe" if var == "Ye" else var for var in args.plotvars]
-
     if not args.modelpath:
         args.modelpath = Path()
 
