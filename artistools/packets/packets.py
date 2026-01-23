@@ -205,11 +205,10 @@ def add_derived_columns_lazy(
 
     We might as well add everything, since the columns only get calculated when they are actually used (polars LazyFrame).
     """
-    if dfmodel:
-        if isinstance(dfmodel, pd.DataFrame):
-            dfmodel = pl.from_pandas(dfmodel).lazy()
-    
-        assert isinstance(dfmodel, pl.LazyFrame)
+    if isinstance(dfmodel, pd.DataFrame):
+        dfmodel = pl.from_pandas(dfmodel).lazy()
+
+    assert isinstance(dfmodel, pl.LazyFrame | None)
 
     dfpackets = dfpackets.lazy().with_columns(
         emission_velocity=(
