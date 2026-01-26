@@ -448,14 +448,10 @@ def plot_bin_fitted_field_evolution(
         f"bin_num == {bin_num} and modelgridindex == @modelgridindex and nu_lower <= @nu_line and nu_upper >= @nu_line"
     ).copy()
 
-    radfielddataselected["Jb_nu_at_line"] = radfielddataselected.apply(
-        lambda x: j_nu_dbb([nu_line], x.W, x.T_R)[0], axis=1
-    )
+    radfielddataselected = radfielddataselected.assign(
+        Jb_nu_at_line=lambda x: j_nu_dbb([nu_line], x.W, x.T_R)[0]
+    ).assign(Jb_lambda_at_line=lambda x: x.Jb_nu_at_line * (nu_line**2) / 2.99792458e18)
 
-    radfielddataselected = radfielddataselected.eval(
-        "Jb_lambda_at_line = Jb_nu_at_line * (@nu_line ** 2) / 2.99792458e18"
-    )
-    assert isinstance(radfielddataselected, pd.DataFrame)
     lambda_angstroms = 2.99792458e18 / nu_line
 
     axis.plot(
@@ -510,10 +506,10 @@ def plot_line_estimator_evolution(
         + (" & timestep <= @timestep_max" if timestep_max else "")
     )[["timestep", "nu_upper", "J_nu_avg"]]
     assert isinstance(radfielddataselected, pd.DataFrame)
-    radfielddataselected = radfielddataselected.eval("lambda_angstroms = 2.99792458e18 / nu_upper")
-    assert isinstance(radfielddataselected, pd.DataFrame)
-    radfielddataselected = radfielddataselected.eval("Jb_lambda = J_nu_avg * (nu_upper ** 2) / 2.99792458e18")
-    assert isinstance(radfielddataselected, pd.DataFrame)
+    radfielddataselected = radfielddataselected.assign(
+        lambda_angstroms=2.99792458e18 / pd.col("nu_upper"),  # type: ignore[attr-defined] # pyright: ignore[reportAttributeAccessIssue]
+        Jb_lambda=pd.col("J_nu_avg") * (pd.col("nu_upper") ** 2) / 2.99792458e18,  # type: ignore[attr-defined] # pyright: ignore[reportAttributeAccessIssue]
+    )
 
     axis.plot(
         radfielddataselected["timestep"],
