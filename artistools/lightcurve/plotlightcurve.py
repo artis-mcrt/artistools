@@ -865,7 +865,7 @@ def set_lightcurveplot_legend(ax: mplax.Axes | npt.NDArray[t.Any], args: argpars
         return
 
     if args.subplots:
-        assert isinstance(ax, np.ndarray)
+        assert not isinstance(ax, mplax.Axes)
         axis = ax[args.legendsubplotnumber]
         assert isinstance(axis, mplax.Axes)
         axis.legend(loc=args.legendposition, frameon=args.legendframeon, fontsize="x-small", ncol=args.ncolslegend)
@@ -1030,7 +1030,7 @@ def make_band_lightcurves_plot(
                 plotkwargs["label"] = str(args.plot_hesma_model).split("_")[:3]
 
             for plotnumber, band_name in enumerate(band_lightcurve_data):
-                axis = ax[plotnumber] if isinstance(ax, np.ndarray) else ax
+                axis = ax if isinstance(ax, mplax.Axes) else ax[plotnumber]
                 assert isinstance(axis, mplax.Axes)
                 if first_band_name is None:
                     first_band_name = band_name
@@ -1136,7 +1136,7 @@ def make_band_lightcurves_plot(
     if args.show:
         plt.show()
 
-    firstaxis = ax[0] if isinstance(ax, np.ndarray) else ax
+    firstaxis = ax if isinstance(ax, mplax.Axes) else ax[0]
     assert isinstance(firstaxis, mplax.Axes)
     ymin, ymax = firstaxis.get_ylim()
     if ymin < ymax:
@@ -1312,7 +1312,7 @@ def plot_lightcurve_from_refdata(
 
     filter_data = {}
     for axnumber, filter_name_raw in enumerate(filter_names):
-        axis = ax[axnumber] if isinstance(ax, np.ndarray) else ax
+        axis = ax if isinstance(ax, mplax.Axes) else ax[axnumber]
         assert isinstance(axis, mplax.Axes)
         if filter_name_raw == "bol":
             continue
@@ -1432,7 +1432,7 @@ def plot_color_evolution_from_data(
     #         filter_data[i]['time'] = filter_data[i]['time'].apply(lambda x: round(float(x)))  # round to nearest day
 
     merge_dataframes = filter_data[0].merge(filter_data[1], how="inner", on=["time"])
-    axis = ax[plotnumber] if isinstance(ax, np.ndarray) else ax
+    axis = ax if isinstance(ax, mplax.Axes) else ax[plotnumber]
     assert isinstance(axis, mplax.Axes)
     axis.plot(
         merge_dataframes["time"],
