@@ -15,7 +15,6 @@ import numpy.typing as npt
 import polars as pl
 import tqdm.rich
 from tqdm import TqdmExperimentalWarning
-from tqdm.contrib.concurrent import process_map
 
 import artistools as at
 from artistools.configuration import get_config
@@ -281,6 +280,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     traj_ids = traj_summ_data["Id"].to_list()
 
     traj_masses_g = {trajid: mass * M_sol_cgs for trajid, mass in traj_summ_data[["Id", "Mass"]].to_numpy()}
+
+    from tqdm.contrib.concurrent import process_map
 
     alltraj_decay_powers: list[dict[str, npt.NDArray[np.floating]]] = process_map(
         partial(process_trajectory, nuc_data, args.trajectoryroot, traj_masses_g, arr_t_day),
