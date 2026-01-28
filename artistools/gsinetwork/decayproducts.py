@@ -13,14 +13,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import polars as pl
-import tqdm.rich
-from tqdm import TqdmExperimentalWarning
 
 import artistools as at
 from artistools.configuration import get_config
 from artistools.inputmodel.rprocess_from_trajectory import get_tar_member_extracted_path
-
-warnings.filterwarnings("ignore", category=TqdmExperimentalWarning)
 
 Ye_bins = [("all", 0.0, float("inf")), ("low", 0.05, 0.15), ("mid", 0.2, 0.3), ("high", 0.35, 0.45)]
 t_compar_min_d = 0.1
@@ -281,7 +277,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     traj_masses_g = {trajid: mass * M_sol_cgs for trajid, mass in traj_summ_data[["Id", "Mass"]].to_numpy()}
 
+    import tqdm.rich
+    from tqdm import TqdmExperimentalWarning
     from tqdm.contrib.concurrent import process_map
+
+    warnings.filterwarnings("ignore", category=TqdmExperimentalWarning)
 
     alltraj_decay_powers: list[dict[str, npt.NDArray[np.floating]]] = process_map(
         partial(process_trajectory, nuc_data, args.trajectoryroot, traj_masses_g, arr_t_day),
