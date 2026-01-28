@@ -5,7 +5,6 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import argcomplete
-from yaml import dump as yamldump
 
 import artistools as at
 
@@ -86,6 +85,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             ]
         },
     }
+    from yaml import dump as yamldump
+
     with outputfilepath.open("w", encoding="utf-8") as fileout:
         fileout.write("---\n")
         yamldump(dictmeta, fileout, sort_keys=False)
