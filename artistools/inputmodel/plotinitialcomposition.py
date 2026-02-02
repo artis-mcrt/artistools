@@ -60,7 +60,6 @@ def plot_slice_modelcolumn(
     args: argparse.Namespace,
 ) -> tuple[AxesImage, mplcm.ScalarMappable | None]:
     print(f"plotting {colname}")
-    dfmodelslice.loc[dfmodelslice["rho"] < 1e-20, "rho"] = 0
     colorscale = (
         dfmodelslice[colname] * dfmodelslice["rho"] if colname.startswith("X_") else dfmodelslice[colname]
     ).to_numpy()
