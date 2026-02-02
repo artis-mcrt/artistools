@@ -274,9 +274,13 @@ def maptogrid(
                 # from the particle h and 150% of the mean h for all particles
                 if modifysmoothinglength == "option4" and dis > rmean:
                     h[n] = max(h[n], hmean * 1.5)
+                # option 5 -- for particles with radius > mean particle radius, set a minimum smoothing length of 0.75 * dx,
+                # but also impose a maximum cap of 2500. This can help avoid excessively large smoothing lengths in the outer regions.
                 if modifysmoothinglength == "option5" and dis > rmean:
                     h[n] = max(h[n], 0.75 * dx)
                     h[n] = min(h[n], 2500)
+                # option 6 -- similar to option 5, but does not impose a maximum cap on the smoothing length.
+                # Use this if you want to allow smoothing lengths to grow freely beyond 0.75 * dx in the outer regions.
                 if modifysmoothinglength == "option6" and dis > rmean:
                     h[n] = max(h[n], 0.75 * dx)
 
