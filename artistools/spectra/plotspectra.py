@@ -1138,12 +1138,6 @@ def make_contrib_plot(
             allnonemptymgilist=allnonemptymgilist,
         )
 
-        # dfpackets.eval('xindex = floor((@c_ang_s / nu_rf - @lambda_min) / @delta_lambda)', inplace=True)
-        # dfpackets.eval(
-        #     "lambda_rf_binned = @lambda_min + @delta_lambda * floor((@c_ang_s / nu_rf - @lambda_min) / @delta_lambda)",
-        #     inplace=True,
-        # )
-
         for _, packet in dfpackets_selected.iterrows():
             for v in densityplotyvars:
                 if v not in list_lambda:

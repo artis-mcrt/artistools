@@ -208,7 +208,7 @@ def add_derived_columns_lazy(
     if isinstance(dfmodel, pd.DataFrame):
         dfmodel = pl.from_pandas(dfmodel).lazy()
 
-    assert isinstance(dfmodel, pl.LazyFrame)
+    assert isinstance(dfmodel, pl.LazyFrame | None)
 
     dfpackets = dfpackets.lazy().with_columns(
         emission_velocity=(
