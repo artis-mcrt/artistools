@@ -551,17 +551,24 @@ def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | None, 
     from artistools.inputmodel import get_modeldata
 
     _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
-    vmax = modelmeta["vmax_cmps"]
-    cornervmax = math.sqrt(3 * vmax**2)
+    vmax = modelmeta["vmax_cmps"]  # max velocity component for a single axis [cm/s]
 
     # find the earliest possible escape time and add the largest possible travel time
 
-    # for 3D models, the box corners can have non-zero density (allowing packet escape from tmin)
-    # for 1D and 2D, the largest escape radius at tmin is the box side radius (if the prop grid was also 1D or 2D)
-    vmax_tmin = cornervmax if modelmeta["dimensions"] == 3 else vmax
+    # for 2D and 3D models, the box corners are the maximum radius with (potentially) non-zero density
+    match modelmeta["dimensions"]:
+        case 1:
+            cornervmax = vmax
+        case 2:
+            cornervmax = math.sqrt(2 * vmax**2)
+        case 3:
+            cornervmax = math.sqrt(3 * vmax**2)
+        case _:
+            msg = "Model dimensions must be 1, 2, or 3"
+            raise ValueError(msg)
 
     # earliest completely valid time is tmin plus maximum possible travel time from the origin to the corner
-    validrange_start_days = get_timestep_times(modelpath, loc="start")[0] * (1 + vmax_tmin / 29979245800)
+    validrange_start_days = get_timestep_times(modelpath, loc="start")[0] * (1 + cornervmax / 29979245800)
 
     t_end = get_timestep_times(modelpath, loc="end")
     # find the last possible escape time and subtract the largest possible travel time (observer time correction)
@@ -581,7 +588,8 @@ def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | None, 
     nts_last_tend = t_end[nts_last]
 
     # latest possible valid range is the end of the latest computed timestep plus the longest travel time
-    validrange_end_days: float = nts_last_tend * (1 - cornervmax / 29979245800)
+    # assume we're on a 3D propagation grid for safety (1D or 2D could reduce the travel time somewhat)
+    validrange_end_days: float = nts_last_tend * (1 - math.sqrt(3 * vmax**2) / 29979245800)
 
     if validrange_start_days > validrange_end_days:
         return nts_last, None, None
