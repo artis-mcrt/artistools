@@ -11,8 +11,6 @@ from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
 
-import matplotlib as mpl
-import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
@@ -1471,7 +1469,6 @@ def sort_and_reduce_flux_contribution_list(
     arraylambda_angstroms: npt.NDArray[np.floating],
     fixedionlist: list[str] | None = None,
     hideother: bool = False,
-    greyscale: bool = False,
 ) -> list[FluxContributionTuple]:
     from scipy import integrate
 
@@ -1494,23 +1491,9 @@ def sort_and_reduce_flux_contribution_list(
 
     contribution_list = sorted(contribution_list_in, key=sortkey)
 
-    color_list: list[t.Any]
-    if greyscale:
-        from artistools.spectra.plotspectra import hatchestypes
+    import matplotlib.pyplot as plt
 
-        seriescount = len(fixedionlist) if fixedionlist else maxseriescount
-        colorcount = math.ceil(seriescount / 1.0 / len(hatchestypes))
-        greylist = [str(x) for x in np.linspace(0.4, 0.9, colorcount, endpoint=True)]
-        color_list = []
-        for c in range(colorcount):
-            for _h in hatchestypes:
-                color_list.append(greylist[c])
-        # color_list = list(plt.get_cmap('tab20')(np.linspace(0, 1.0, 20)))
-        mpl.rcParams["hatch.linewidth"] = 0.1
-        # TODO: remove???
-        color_list = list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20)))
-    else:
-        color_list = list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20)))
+    color_list = list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20)))
 
     # combine the items past maxseriescount or not in manual list into a single item
     remainder_flambda_emission = np.zeros_like(arraylambda_angstroms, dtype=float)

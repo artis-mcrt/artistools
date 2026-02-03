@@ -899,7 +899,6 @@ def make_emissionabsorption_plot(
         arraylambda_angstroms,
         fixedionlist=args.fixedionlist,
         hideother=args.hideother,
-        greyscale=args.greyscale,
     )
 
     plotobjectlabels: list[str] = []
@@ -981,10 +980,6 @@ def make_emissionabsorption_plot(
                 colors=[x.color for x in contributions_sorted_reduced],
                 linewidth=0,
             )
-            if args.greyscale:
-                for i, stack in enumerate(stackplot):
-                    selectedhatch = hatchestypes[i % len(hatchestypes)]
-                    stack.set_hatch(selectedhatch * 7)
             plotobjects.extend(stackplot)
             facecolors = [p.get_facecolor()[0] for p in stackplot]
         else:
@@ -1352,8 +1347,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-dashes", default=[], nargs="*", help="Dashes property of lines")
 
     parser.add_argument("--gamma", action="store_true", help="Make light curve from gamma rays instead of R-packets")
-
-    parser.add_argument("--greyscale", action="store_true", help="Plot in greyscale")
 
     parser.add_argument(
         "--frompackets", action="store_true", help="Read packets files directly instead of exspec results"
