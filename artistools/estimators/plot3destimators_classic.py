@@ -43,12 +43,12 @@ def get_modelgridcells_2D_slice(modeldata, modelpath) -> list[int]:  # noqa: ANN
 
 
 def get_mgi_of_modeldata(modeldata: pd.DataFrame, modelpath: Path | str) -> list[int]:
-    _, mgi_of_propcells = at.get_grid_mapping(modelpath=modelpath)
+    mgi_of_propcells = at.get_grid_mapping(modelpath=modelpath)[1]
     return [mgi_of_propcells[int(row["inputcellid"]) - 1] for _index, row in modeldata.iterrows() if row["rho"] > 0]
 
 
 def plot_Te_vs_time_lineofsight_3d_model(modelpath, modeldata, estimators, readonly_mgi) -> None:  # noqa: ANN001
-    assoc_cells, _ = at.get_grid_mapping(modelpath=modelpath)
+    assoc_cells = at.get_grid_mapping(modelpath=modelpath)[0]
     times = at.get_timestep_times(modelpath)
 
     for mgi in readonly_mgi:
@@ -66,7 +66,7 @@ def plot_Te_vs_time_lineofsight_3d_model(modelpath, modeldata, estimators, reado
 
 
 def plot_Te_vs_velocity(modelpath, modeldata, estimators, readonly_mgi) -> None:  # noqa: ANN001
-    assoc_cells, _ = at.get_grid_mapping(modelpath=modelpath)
+    assoc_cells = at.get_grid_mapping(modelpath=modelpath)[0]
     times = at.get_timestep_times(modelpath)
     timesteps = [50, 55, 60, 65, 70, 75, 80, 90]
 
@@ -95,7 +95,7 @@ def get_Te_vs_velocity_2D(
     readonly_mgi,  # noqa: ANN001
     timestep,  # noqa: ANN001
 ) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating]]:
-    assoc_cells, _ = at.get_grid_mapping(modelpath=modelpath)
+    assoc_cells = at.get_grid_mapping(modelpath=modelpath)[0]
     times = at.get_timestep_times(modelpath)
     print(list(enumerate(times)))
     time = times[timestep]

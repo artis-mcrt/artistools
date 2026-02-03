@@ -258,8 +258,14 @@ def get_vpkt_config(modelpath: Path | str) -> dict[str, t.Any]:
     return vpkt_config
 
 
-def get_grid_mapping(modelpath: Path | str) -> tuple[dict[int, list[int]], dict[int, int]]:
-    """Return dict with the associated propagation cells for each model grid cell and a dict with the associated model grid cell of each propagration cell."""
+def get_grid_mapping(modelpath: Path | str) -> tuple[dict[int, list[int]], dict[int, int], bool]:
+    """Get a bi-directional mapping between model cells and propagation grid cells. These can be different, e.g. 1D input model with a 3D grid.
+
+    Returns a tuple with:
+    - dict[modelgridindex] = list of associated propagation cellindices,
+    - dict[cellindex] = modelgridindex,
+    - bool indicating if the mapping is direct (one-to-one).
+    """
     modelpath = Path(modelpath)
     filename = firstexisting("grid.out", tryzipped=True, folder=modelpath)
     dfgrid = pl.read_csv(
@@ -269,7 +275,7 @@ def get_grid_mapping(modelpath: Path | str) -> tuple[dict[int, list[int]], dict[
         comment_prefix="#",
         schema={"cellindex": pl.Int32, "modelgridindex": pl.Int32},
     )
-    assoc_cells = dict(
+    assoc_cells: dict[int, list[int]] = dict(
         dfgrid
         .group_by("modelgridindex")
         .agg(pl.col("cellindex").implode())
@@ -277,9 +283,12 @@ def get_grid_mapping(modelpath: Path | str) -> tuple[dict[int, list[int]], dict[
         .iter_rows()
     )
 
-    mgi_of_propcells = dict(dfgrid.select([pl.col("cellindex"), pl.col("modelgridindex")]).iter_rows())
+    mgi_of_propcells: dict[int, int] = dict(dfgrid.select([pl.col("cellindex"), pl.col("modelgridindex")]).iter_rows())
+    direct_model_propgrid_map = all(
+        len(propcells) == 1 and mgi == propcells[0] for mgi, propcells in assoc_cells.items()
+    )
 
-    return assoc_cells, mgi_of_propcells
+    return assoc_cells, mgi_of_propcells, direct_model_propgrid_map
 
 
 def get_wid_init_at_tmodel(

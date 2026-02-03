@@ -36,14 +36,12 @@ def get_abundance_correction_factors(
     assoc_cells: dict[int, list[int]] = {}
     mgi_of_propcells: dict[int, int] = {}
     try:
-        assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath)
+        assoc_cells, mgi_of_propcells, direct_model_propgrid_map = at.get_grid_mapping(modelpath)
         for mgi in mgiplotlist:
             assert mgi < 0 or assoc_cells.get(mgi, []), (
                 f"No propagation grid cells associated with model cell {mgi}, cannot plot abundances!"
             )
-        direct_model_propgrid_map = all(
-            len(propcells) == 1 and mgi == propcells[0] for mgi, propcells in assoc_cells.items()
-        )
+
         if direct_model_propgrid_map:
             print("  detected direct mapping of model cells to propagation grid")
     except FileNotFoundError:

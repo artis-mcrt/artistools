@@ -109,11 +109,11 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
             print(dfmodel)
 
     try:
-        assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath)
+        assoc_cells, mgi_of_propcells, direct_model_propgrid_map = at.get_grid_mapping(modelpath)
         print(f"  {len(assoc_cells)} model cells have associated prop cells")
     except FileNotFoundError:
         print("  no cell mapping file found")
-        assoc_cells, mgi_of_propcells = None, None
+        assoc_cells, mgi_of_propcells, direct_model_propgrid_map = None, None, True
 
     if "Ye" in dfmodel.collect_schema().names():
         electronfrac = dfmodel.select(pl.col("Ye").dot(pl.col("mass_g")) / pl.col("mass_g").sum()).collect().item()
@@ -145,9 +145,6 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
     mass_msun_rho = mass_g_rho / msun_g
 
     if assoc_cells is not None and mgi_of_propcells is not None:
-        direct_model_propgrid_map = all(
-            len(propcells) == 1 and mgi == propcells[0] for mgi, propcells in assoc_cells.items()
-        )
         if direct_model_propgrid_map:
             print("  detected direct mapping of model cells to propagation grid")
         else:
