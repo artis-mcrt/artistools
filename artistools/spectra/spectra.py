@@ -1493,7 +1493,13 @@ def sort_and_reduce_flux_contribution_list(
 
     import matplotlib.pyplot as plt
 
-    color_list = list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20)))
+    from artistools.plottools import glasbey_category20
+
+    color_list = [
+        color
+        for color in [*list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20))), *glasbey_category20[10:]]
+        if color[0] != color[1] or color[1] != color[2] or color[0] != color[2]  # remove greys
+    ]
 
     # combine the items past maxseriescount or not in manual list into a single item
     remainder_flambda_emission = np.zeros_like(arraylambda_angstroms, dtype=float)
