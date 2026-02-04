@@ -1,5 +1,8 @@
+"""Script to load energy release data from nucleosynthesis trajectories. Optionally also writes output to a JSON."""
+
 # PYTHON_ARGCOMPLETE_OK
 import argparse
+import json
 import math
 import multiprocessing as mp
 import typing as t
@@ -18,11 +21,6 @@ import artistools as at
 from artistools.configuration import get_config
 from artistools.inputmodel.rprocess_from_trajectory import get_tar_member_extracted_path
 
-Ye_bins = [("all", 0.0, float("inf")), ("low", 0.05, 0.15), ("mid", 0.2, 0.3), ("high", 0.35, 0.45)]
-t_compar_min_d = 0.1
-t_compar_max_d = 10
-numb_steps = 50
-nuc_dataset = "Hotokezaka"  # Use "Hotokezaka" (directly from betaminusdecays.txt) or "ENSDF" using the ENSDF database
 ARTIS_colors = ["r", "g", "b", "m", "c", "orange"]  # reddish colors
 M_sol_cgs = 1.989e33
 amu_g = 1.66e-24
@@ -31,6 +29,27 @@ MeV_to_erg = 1.60218e-6
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-trajectoryroot", "-trajroot", required=True, help="Path to nuclear network trajectory folder")
+
+    parser.add_argument(
+        "-npz", default=None, help="Path to npz file which specifies the ejecta type of each trajectory"
+    )
+
+    parser.add_argument("-tmin", type=float, default=0.1, help="Minimum time in days")
+
+    parser.add_argument("-tmax", type=float, default=80.0, help="Maximum time in days")
+
+    parser.add_argument("-nsteps", type=int, default=64, help="Number of timesteps")
+
+    parser.add_argument("-nucdata", type=str, default="ensdf", help='Nuclear dataset to use, either "hoto" or "ensdf"')
+
+    parser.add_argument(
+        "-yemax",
+        type=float,
+        default=0.52,
+        help="Y_e,max of hydro model considered. Default 0.52 for e2e sym-n1a6 from Just+23",
+    )
+
+    parser.add_argument("--json", action="store_true", help="Writes output dictionary to a JSON file")
 
 
 def get_nuc_data(nuc_dataset: str) -> pl.DataFrame:
@@ -150,6 +169,11 @@ def process_trajectory(
         .rename({"#count": "nstep", "time/s": "timesec"})
     )
 
+    dfheatingthermo = dfheatingthermo.with_columns(
+        htot=pl.when(pl.col("Qdot") > 1e-20).then(pl.lit("0.0")).otherwise(pl.col("Qdot"))
+    )
+    dfheatingthermo = dfheatingthermo.with_columns(pl.col("htot").cast(pl.Float64))
+
     # get nearest network time to each plotted time
     arr_networktimedays = dfheatingthermo["timesec"].to_numpy() / 86400
     networktimestepindices = [
@@ -182,6 +206,13 @@ def process_trajectory(
         )
         for col in ("hbeta", "htot", "Qdot")
     }
+
+    A_arr = nuc_data["A"].to_numpy()
+    Z_arr = nuc_data["Z"].to_numpy()
+    for AZ_tuple in zip(A_arr, Z_arr, strict=False):
+        decay_powers[f"({int(AZ_tuple[0])},{int(AZ_tuple[1])})_elec"] = np.zeros(len(arr_t_day))
+        decay_powers[f"({int(AZ_tuple[0])},{int(AZ_tuple[1])})_gam"] = np.zeros(len(arr_t_day))
+        decay_powers[f"({int(AZ_tuple[0])},{int(AZ_tuple[1])})_nu"] = np.zeros(len(arr_t_day))
 
     # now get abundances from single timestep files
     for plottimestep, networktimestepindex in enumerate(networktimestepindices):
@@ -219,6 +250,35 @@ def process_trajectory(
         for col in pldf_abund_decay.columns:
             decay_powers[col][plottimestep] = float(pldf_abund_decay.get_column(col).item())
 
+        int_PL_DF = (
+            dftrajnucabund
+            .lazy()
+            .filter(pl.col("massfrac") > 0.0)
+            .with_columns([
+                pl.col(pl.Int32).cast(pl.Int64),
+                pl.col(pl.Float32).cast(pl.Float64),
+                (pl.col("Z") + pl.col("N")).alias("A"),
+                (pl.col("massfrac") * traj_mass_grams / ((pl.col("Z") + pl.col("N")) * amu_g)).alias("num_nuc"),
+            ])
+            .join(nuc_data.lazy(), on=("Z", "A"), how="inner")
+            .with_columns((pl.col("num_nuc") / pl.col("tau[s]")).alias("N_dot"))
+            .with_columns(
+                (pl.col("N_dot") * pl.col("Eneutrino[MeV]") * MeV_to_erg).alias("Qneutrino[erg/s]"),
+                (pl.col("N_dot") * pl.col("Eelec[MeV]") * MeV_to_erg).alias("Qelec[erg/s]"),
+                (pl.col("N_dot") * pl.col("Egamma[MeV]") * MeV_to_erg).alias("Qgamma[erg/s]"),
+            )
+        ).collect()
+
+        for AZ_tuple in zip(A_arr, Z_arr, strict=False):
+            sel = int_PL_DF.filter((pl.col("A") == AZ_tuple[0]) & (pl.col("Z") == AZ_tuple[1]))
+            if sel.height == 0:
+                # nuclide not found
+                continue
+
+            decay_powers[f"({AZ_tuple[0]},{AZ_tuple[1]})_elec"][plottimestep] = sel["Qelec[erg/s]"][0]
+            decay_powers[f"({AZ_tuple[0]},{AZ_tuple[1]})_gam"][plottimestep] = sel["Qgamma[erg/s]"][0]
+            decay_powers[f"({AZ_tuple[0]},{AZ_tuple[1]})_nu"][plottimestep] = sel["Qneutrino[erg/s]"][0]
+
     # if not np.all(np.diff(decay_powers["abundweighted_Qdot"]) <= 0.01 * decay_powers["abundweighted_Qdot"][0]):
     #     print(f"\nTraj {traj_ID} has inconsistent Qdot values. delete {Path(traj_root, str(traj_ID))} and rerun")
     #     # import shutil
@@ -239,14 +299,29 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args = parser.parse_args([] if kwargs else argsraw)
     import pandas as pd
 
+    nuc_dataset = "Hotokezaka" if args.nucdata == "hoto" else "ENSDF"
+
+    if args.npz:
+        npz_dict = np.load(args.npz)
+        npz_idcs = npz_dict["idx"]
+        npz_types = npz_dict["state"]
+        Ye_bins = [("all", 0.0, float("inf"))]
+    else:
+        Ye_bins = [
+            ("all", 0.0, float("inf")),
+            ("low", 0.0, args.yemax / 3),
+            ("mid", args.yemax / 3, args.yemax * 2 / 3),
+            ("high", args.yemax * 2 / 3, args.yemax / 3),
+        ]
+
     # get beta decay data
     nuc_data = get_nuc_data(nuc_dataset)
     assert nuc_data.height == nuc_data.unique(("Z", "A")).height
 
     # set timesteps logarithmically
-    log_t_compar_min_s = np.log10(t_compar_min_d)
-    log_t_compar_max_s = np.log10(t_compar_max_d)
-    arr_t_day = 10 ** (np.linspace(log_t_compar_min_s, log_t_compar_max_s, numb_steps, endpoint=True))
+    log_t_compar_min_s = np.log10(args.tmin)
+    log_t_compar_max_s = np.log10(args.tmax)
+    arr_t_day = 10 ** (np.linspace(log_t_compar_min_s, log_t_compar_max_s, args.nsteps, endpoint=True))
 
     # get masses of trajectories
     colnames = None
@@ -296,16 +371,29 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     print()
 
-    for label, Ye_lower, Ye_upper in Ye_bins:
-        labelfull = f"Ye [{Ye_lower}, {Ye_upper}]" if math.isfinite(Ye_upper) else "all Ye"
-        print(f"Processing Ye bin {label}... Ye: [{Ye_lower}, {Ye_upper}]")
-        selected_traj_ids = (
-            traj_summ_data.filter(pl.col("Ye").is_between(Ye_lower, Ye_upper))["Id"].to_list() if Ye_lower else traj_ids
-        )
+    ej_states = [-1, 0, 1]
+    ej_names = ["dyn", "hmns", "torus"]
+    for i in range(3):
+        state = ej_states[i]
+        if not args.npz:
+            label, Ye_lower, Ye_upper = Ye_bins[i]
+            labelfull = f"Ye [{Ye_lower}, {Ye_upper}]" if math.isfinite(Ye_upper) else "all Ye"
+            print(f"Processing Ye bin {label}... Ye: [{Ye_lower}, {Ye_upper}]")
+            selected_traj_ids = (
+                traj_summ_data.filter(pl.col("Ye").is_between(Ye_lower, Ye_upper))["Id"].to_list()
+                if Ye_lower
+                else traj_ids
+            )
 
-        print(f" {len(selected_traj_ids)} trajectories selected")
-        if not selected_traj_ids:
-            continue
+            print(f" {len(selected_traj_ids)} trajectories selected")
+            if not selected_traj_ids:
+                continue
+        else:
+            # select by ejecta type
+            selected_traj_ids = list(set(traj_ids) & set(npz_idcs[np.where(npz_types == state)]))
+            print(f" {len(selected_traj_ids)} trajectories selected")
+            labelfull = ej_names[i]
+            label = ej_names[i]
 
         decay_powers = {
             k: sum(
@@ -321,6 +409,19 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         decay_powers["abundweighted_gammanuelec"] = (
             decay_powers["abundweighted_gamma"] + decay_powers["abundweighted_nu"] + decay_powers["abundweighted_elec"]
         )
+
+        if args.json:
+            # dump to JSON
+            decay_powers_json_copy = decay_powers.copy()
+
+            for key in decay_powers_json_copy:
+                val = decay_powers_json_copy[key]
+                if isinstance(val, np.ndarray):
+                    decay_powers_json_copy[key] = val.tolist()
+
+            output_path = Path(f"decay_powers_{label}.json")
+            with output_path.open("w", encoding="utf-8") as f:
+                json.dump(decay_powers_json_copy, f)
 
         fig, axes = plt.subplots(
             nrows=2, ncols=1, figsize=(6, 10), tight_layout={"pad": 0.4, "w_pad": 0.0, "h_pad": 0.0}
