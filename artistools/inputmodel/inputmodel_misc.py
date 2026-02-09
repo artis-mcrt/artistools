@@ -895,25 +895,28 @@ def save_modeldata(
         assert vmax is None or vmax == modelmeta["vmax_cmps"]
         vmax = modelmeta["vmax_cmps"]
 
+    dfmodel_npts_model = dfmodel.select(pl.count()).lazy().collect().item()
     if "npts_model" in modelmeta:
-        assert len(dfmodel) == modelmeta["npts_model"]
+        assert modelmeta["npts_model"] == dfmodel_npts_model
+    else:
+        modelmeta["npts_model"] = dfmodel_npts_model
 
     timestart = time.perf_counter()
     if modelmeta.get("dimensions") is None:
         modelmeta["dimensions"] = get_dfmodel_dimensions(dfmodel)
 
     if modelmeta["dimensions"] == 1:
-        print(f" 1D grid radial bins: {len(dfmodel)}")
+        print(f" 1D grid radial bins: {dfmodel_npts_model}")
 
     elif modelmeta["dimensions"] == 2:
-        print(f" 2D grid size: {len(dfmodel)} ({modelmeta['ncoordgridrcyl']} x {modelmeta['ncoordgridz']})")
-        assert modelmeta["ncoordgridrcyl"] * modelmeta["ncoordgridz"] == len(dfmodel)
+        print(f" 2D grid size: {dfmodel_npts_model} ({modelmeta['ncoordgridrcyl']} x {modelmeta['ncoordgridz']})")
+        assert modelmeta["ncoordgridrcyl"] * modelmeta["ncoordgridz"] == dfmodel_npts_model
 
     elif modelmeta["dimensions"] == 3:
         dfmodel = dfmodel.rename({"gridindex": "inputcellid"}, strict=False)
-        griddimension = round(len(dfmodel) ** (1.0 / 3.0))
-        print(f" 3D grid size: {len(dfmodel)} ({griddimension}^3)")
-        assert griddimension**3 == len(dfmodel)
+        griddimension = round(dfmodel_npts_model ** (1.0 / 3.0))
+        print(f" 3D grid size: {dfmodel_npts_model} ({griddimension}^3)")
+        assert griddimension**3 == dfmodel_npts_model
 
     else:
         msg = f"dimensions must be 1, 2, or 3, not {modelmeta['dimensions']}"
@@ -952,7 +955,7 @@ def save_modeldata(
             fmodel.write("\n".join([f"# {line}" for line in headercommentlines]) + "\n")
 
         fmodel.write(
-            f"{len(dfmodel)}\n"
+            f"{dfmodel_npts_model}\n"
             if modelmeta["dimensions"] != 2
             else f"{modelmeta['ncoordgridrcyl']} {modelmeta['ncoordgridz']}\n"
         )
