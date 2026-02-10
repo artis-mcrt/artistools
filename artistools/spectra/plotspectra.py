@@ -1568,6 +1568,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--makevspecpol", action="store_true", help="Make file summing the virtual packet spectra from all ranks"
     )
 
+    parser.add_argument(
+        "--makevspecvelgrid", action="store_true", help="Make file summing the virtual packet grid from all ranks"
+    )
+
     # To get better statistics for polarisation use multiple runs of the same simulation. This will then average the
     # files produced by makevspecpol for all simulations.
     parser.add_argument(
@@ -1727,6 +1731,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if args.makevspecpol:
         atspectra.make_virtual_spectra_summed_file(args.specpath[0])
+        return
+
+    if args.makevspecvelgrid:
+        atspectra.make_virtual_grid_summed_file(args.specpath[0])
         return
 
     if args.averagevspecpolfiles:
