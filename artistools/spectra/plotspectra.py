@@ -42,6 +42,7 @@ from artistools.misc import print_theta_phi_definitions
 from artistools.misc import set_args_from_dict
 from artistools.misc import trim_or_pad
 from artistools.plottools import ExponentLabelFormatter
+from artistools.plottools import glasbey_category20_nogreys
 from artistools.plottools import set_mpl_style
 
 hatchestypes = ["", "x", "-", "\\", "+", "O", ".", "", "x", "*", "\\", "+", "O", "."]  # ,
@@ -1684,13 +1685,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if not args.color:
         args.color = []
-        artismodelcolors = [f"C{i}" for i in range(10)]
         refspeccolors = ["0.0", "0.4", "0.6", "0.7"]
         refspecnum = 0
         artismodelnum = 0
         for filepath in args.specpath:
             if path_is_artis_model(filepath):
-                args.color.append(artismodelcolors[artismodelnum])
+                args.color.append(glasbey_category20_nogreys[artismodelnum])
                 artismodelnum += 1
             else:
                 args.color.append(refspeccolors[refspecnum])
