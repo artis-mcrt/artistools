@@ -852,7 +852,7 @@ def get_vspecpol_data(vspecindex: int, modelpath: Path | str) -> dict[str, pl.La
 
 def split_dataframe_stokesparams(specdata: pl.DataFrame | pl.LazyFrame) -> dict[str, pl.LazyFrame]:
     """DataFrames read from specpol*.out and vspecpol*.out are repeated over I, Q, U parameters. Split these into a dictionary of DataFrames."""
-    specdata = specdata.rename({specdata.columns[0]: "nu"}).lazy()
+    specdata = specdata.rename({specdata.collect_schema().names()[0]: "nu"}).lazy()
     stokes_params = {
         "I": specdata.select(cs.exclude(cs.contains("_duplicated_"))),
         "Q": specdata.select(
