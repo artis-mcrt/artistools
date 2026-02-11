@@ -275,6 +275,10 @@ glasbey_category20 = [
     [0.345098, 0.745098, 0.556863],
 ]
 
+glasbey_category20_nogreys = [
+    color for color in glasbey_category20 if color[0] != color[1] or color[1] != color[2] or color[0] != color[2]
+]
+
 
 def set_mpl_style() -> None:
     plt.style.use("file://" + str(get_config()["path_artistools_dir"] / "matplotlibrc"))
