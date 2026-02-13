@@ -11,8 +11,6 @@ from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
 
-import matplotlib as mpl
-import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
@@ -854,7 +852,7 @@ def get_vspecpol_data(vspecindex: int, modelpath: Path | str) -> dict[str, pl.La
 
 def split_dataframe_stokesparams(specdata: pl.DataFrame | pl.LazyFrame) -> dict[str, pl.LazyFrame]:
     """DataFrames read from specpol*.out and vspecpol*.out are repeated over I, Q, U parameters. Split these into a dictionary of DataFrames."""
-    specdata = specdata.rename({specdata.columns[0]: "nu"}).lazy()
+    specdata = specdata.rename({specdata.collect_schema().names()[0]: "nu"}).lazy()
     stokes_params = {
         "I": specdata.select(cs.exclude(cs.contains("_duplicated_"))),
         "Q": specdata.select(
@@ -1471,7 +1469,6 @@ def sort_and_reduce_flux_contribution_list(
     arraylambda_angstroms: npt.NDArray[np.floating],
     fixedionlist: list[str] | None = None,
     hideother: bool = False,
-    greyscale: bool = False,
 ) -> list[FluxContributionTuple]:
     from scipy import integrate
 
@@ -1494,23 +1491,15 @@ def sort_and_reduce_flux_contribution_list(
 
     contribution_list = sorted(contribution_list_in, key=sortkey)
 
-    color_list: list[t.Any]
-    if greyscale:
-        from artistools.spectra.plotspectra import hatchestypes
+    import matplotlib.pyplot as plt
 
-        seriescount = len(fixedionlist) if fixedionlist else maxseriescount
-        colorcount = math.ceil(seriescount / 1.0 / len(hatchestypes))
-        greylist = [str(x) for x in np.linspace(0.4, 0.9, colorcount, endpoint=True)]
-        color_list = []
-        for c in range(colorcount):
-            for _h in hatchestypes:
-                color_list.append(greylist[c])
-        # color_list = list(plt.get_cmap('tab20')(np.linspace(0, 1.0, 20)))
-        mpl.rcParams["hatch.linewidth"] = 0.1
-        # TODO: remove???
-        color_list = list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20)))
-    else:
-        color_list = list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20)))
+    from artistools.plottools import glasbey_category20
+
+    color_list = [
+        color
+        for color in [*list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20))), *glasbey_category20[10:]]
+        if color[0] != color[1] or color[1] != color[2] or color[0] != color[2]  # remove greys
+    ]
 
     # combine the items past maxseriescount or not in manual list into a single item
     remainder_flambda_emission = np.zeros_like(arraylambda_angstroms, dtype=float)

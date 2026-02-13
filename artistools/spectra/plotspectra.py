@@ -42,6 +42,7 @@ from artistools.misc import print_theta_phi_definitions
 from artistools.misc import set_args_from_dict
 from artistools.misc import trim_or_pad
 from artistools.plottools import ExponentLabelFormatter
+from artistools.plottools import glasbey_category20_nogreys
 from artistools.plottools import set_mpl_style
 
 hatchestypes = ["", "x", "-", "\\", "+", "O", ".", "", "x", "*", "\\", "+", "O", "."]  # ,
@@ -899,7 +900,6 @@ def make_emissionabsorption_plot(
         arraylambda_angstroms,
         fixedionlist=args.fixedionlist,
         hideother=args.hideother,
-        greyscale=args.greyscale,
     )
 
     plotobjectlabels: list[str] = []
@@ -981,10 +981,6 @@ def make_emissionabsorption_plot(
                 colors=[x.color for x in contributions_sorted_reduced],
                 linewidth=0,
             )
-            if args.greyscale:
-                for i, stack in enumerate(stackplot):
-                    selectedhatch = hatchestypes[i % len(hatchestypes)]
-                    stack.set_hatch(selectedhatch * 7)
             plotobjects.extend(stackplot)
             facecolors = [p.get_facecolor()[0] for p in stackplot]
         else:
@@ -1353,8 +1349,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--gamma", action="store_true", help="Make light curve from gamma rays instead of R-packets")
 
-    parser.add_argument("--greyscale", action="store_true", help="Plot in greyscale")
-
     parser.add_argument(
         "--frompackets", action="store_true", help="Read packets files directly instead of exspec results"
     )
@@ -1691,13 +1685,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if not args.color:
         args.color = []
-        artismodelcolors = [f"C{i}" for i in range(10)]
         refspeccolors = ["0.0", "0.4", "0.6", "0.7"]
         refspecnum = 0
         artismodelnum = 0
         for filepath in args.specpath:
             if path_is_artis_model(filepath):
-                args.color.append(artismodelcolors[artismodelnum])
+                args.color.append(glasbey_category20_nogreys[artismodelnum])
                 artismodelnum += 1
             else:
                 args.color.append(refspeccolors[refspecnum])
