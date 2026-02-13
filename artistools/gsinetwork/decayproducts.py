@@ -209,6 +209,7 @@ def process_trajectory(
 
     A_arr = nuc_data["A"].to_numpy()
     Z_arr = nuc_data["Z"].to_numpy()
+
     for AZ_tuple in zip(A_arr, Z_arr, strict=False):
         decay_powers[f"({int(AZ_tuple[0])},{int(AZ_tuple[1])})_elec"] = np.zeros(len(arr_t_day))
         decay_powers[f"({int(AZ_tuple[0])},{int(AZ_tuple[1])})_gam"] = np.zeros(len(arr_t_day))
@@ -371,9 +372,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     print()
 
-    ej_states = [-1, 0, 1]
-    ej_names = ["dyn", "hmns", "torus"]
-    for i in range(3):
+    ej_states = ["any", -1, 0, 1]
+    ej_names = ["all", "dyn", "hmns", "torus"]
+    for i in range(4):
         state = ej_states[i]
         if not args.npz:
             label, Ye_lower, Ye_upper = Ye_bins[i]
@@ -390,7 +391,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 continue
         else:
             # select by ejecta type
-            selected_traj_ids = list(set(traj_ids) & set(npz_idcs[np.where(npz_types == state)]))
+            selected_traj_ids = (
+                traj_ids if state == "any" else list(set(traj_ids) & set(npz_idcs[np.where(npz_types == state)]))
+            )
             print(f" {len(selected_traj_ids)} trajectories selected")
             labelfull = ej_names[i]
             label = ej_names[i]
