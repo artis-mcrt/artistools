@@ -300,7 +300,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         labelfull = f"Ye [{Ye_lower}, {Ye_upper}]" if math.isfinite(Ye_upper) else "all Ye"
         print(f"Processing Ye bin {label}... Ye: [{Ye_lower}, {Ye_upper}]")
         selected_traj_ids = (
-            traj_summ_data.filter(pl.col("Ye").is_between(Ye_lower, Ye_upper))["Id"].to_list() if Ye_lower else traj_ids
+            traj_summ_data.filter(pl.col("Ye").is_between(Ye_lower, Ye_upper))["Id"].to_list()
         )
 
         print(f" {len(selected_traj_ids)} trajectories selected")
