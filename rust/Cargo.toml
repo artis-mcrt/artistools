@@ -1,9 +1,9 @@
 [package]
 name = "artistools"
-version = "2025.8.5"
+version = "2026.2.17"
 authors = ["Luke Shingles <luke.shingles@gmail.com>"]
 edition = "2024"
-rust-version = "1.86"
+rust-version = "1.87"
 description = "Rust functions used to speed up the artistools python package"
 license = "MIT"
 homepage = "https://github.com/artis-mcrt/artistools"

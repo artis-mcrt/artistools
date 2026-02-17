@@ -179,7 +179,7 @@ fn read_estimator_file(folderpath: &str, rank: i32) -> Result<DataFrame, PolarsE
     }
 
     DataFrame::new(
-        coldata.values().next().unwrap().len(),
+        outputrownum,
         coldata
             .iter()
             .map(|(colname, values)| Column::new(colname.into(), values.to_owned()))
