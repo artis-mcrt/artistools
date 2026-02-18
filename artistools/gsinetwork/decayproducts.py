@@ -5,7 +5,6 @@ import argparse
 import json
 import math
 import multiprocessing as mp
-import os
 import typing as t
 import warnings
 from collections.abc import Sequence
@@ -51,6 +50,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument("--json", action="store_true", help="Writes output dictionary to a JSON file")
+
+    parser.add_argument("--nuclides", action="store_true", help="Calculates contributions of individual nuclides")
+
+    parser.add_argument("--trajjson", action="store_true", help="Writes individual JSONs for all trajectories.")
 
 
 def get_nuc_data(nuc_dataset: str) -> pl.DataFrame:
@@ -137,6 +140,8 @@ def process_trajectory(
     traj_masses_g: dict[int, float],
     arr_t_day: npt.NDArray[np.floating],
     traj_ID: int,
+    nuclide_contrib: bool,
+    traj_json: bool,
 ) -> dict[str, npt.NDArray[np.floating]]:
     """Process a single trajectory to extract decay powers."""
     traj_mass_grams = traj_masses_g[traj_ID]
@@ -237,13 +242,10 @@ def process_trajectory(
                 pl.col(pl.Int32).cast(pl.Int64),
                 pl.col(pl.Float32).cast(pl.Float64),
                 (pl.col("Z") + pl.col("N")).alias("A"),
-                (pl.col("massfrac") * traj_mass_grams /
-                ((pl.col("Z") + pl.col("N")) * amu_g)).alias("num_nuc"),
+                (pl.col("massfrac") * traj_mass_grams / ((pl.col("Z") + pl.col("N")) * amu_g)).alias("num_nuc"),
             ])
             .join(nuc_data.lazy(), on=("Z", "A"), how="inner")
-            .with_columns([
-                (pl.col("num_nuc") / pl.col("tau[s]")).alias("N_dot"),
-            ])
+            .with_columns([(pl.col("num_nuc") / pl.col("tau[s]")).alias("N_dot")])
             .with_columns([
                 (pl.col("N_dot") * pl.col("Eneutrino[MeV]") * MeV_to_erg).alias("Qnu"),
                 (pl.col("N_dot") * pl.col("Eelec[MeV]") * MeV_to_erg).alias("Qelec"),
@@ -260,47 +262,44 @@ def process_trajectory(
         ])
         global_sums_row = global_sums.row(0)  # nur ein Row-Objekt, da Summe
 
-        decay_powers["abundweighted_nu"][plottimestep]   = global_sums_row[0]
+        decay_powers["abundweighted_nu"][plottimestep] = global_sums_row[0]
         decay_powers["abundweighted_elec"][plottimestep] = global_sums_row[1]
         decay_powers["abundweighted_gamma"][plottimestep] = global_sums_row[2]
         decay_powers["abundweighted_Qdot"][plottimestep] = global_sums_row[3]
 
-        grouped = (
-            pldf_all
-            .group_by(["A", "Z"])
-            .agg([
-                pl.sum("Qelec").alias("Qelec"),
-                pl.sum("Qgamma").alias("Qgamma"),
-                pl.sum("Qnu").alias("Qnu"),
-            ])
-        )
+        grouped = pldf_all.group_by(["A", "Z"]).agg([
+            pl.sum("Qelec").alias("Qelec"),
+            pl.sum("Qgamma").alias("Qgamma"),
+            pl.sum("Qnu").alias("Qnu"),
+        ])
+        if nuclide_contrib:
+            A_vals = grouped["A"].to_numpy()
+            Z_vals = grouped["Z"].to_numpy()
+            Qelec_vals = grouped["Qelec"].to_numpy()
+            Qgamma_vals = grouped["Qgamma"].to_numpy()
+            Qnu_vals = grouped["Qnu"].to_numpy()
 
-        A_vals = grouped["A"].to_numpy()
-        Z_vals = grouped["Z"].to_numpy()
-        Qelec_vals = grouped["Qelec"].to_numpy()
-        Qgamma_vals = grouped["Qgamma"].to_numpy()
-        Qnu_vals = grouped["Qnu"].to_numpy()
-
-        for A, Z, Qe, Qg, Qn in zip(A_vals, Z_vals, Qelec_vals, Qgamma_vals, Qnu_vals):
-            decay_powers[f"({A},{Z})_elec"][plottimestep] = Qe
-            decay_powers[f"({A},{Z})_gam"][plottimestep]  = Qg
-            decay_powers[f"({A},{Z})_nu"][plottimestep]   = Qn
+            for A, Z, Qe, Qg, Qn in zip(A_vals, Z_vals, Qelec_vals, Qgamma_vals, Qnu_vals, strict=True):
+                decay_powers[f"({A},{Z})_elec"][plottimestep] = Qe
+                decay_powers[f"({A},{Z})_gam"][plottimestep] = Qg
+                decay_powers[f"({A},{Z})_nu"][plottimestep] = Qn
     # if not np.all(np.diff(decay_powers["abundweighted_Qdot"]) <= 0.01 * decay_powers["abundweighted_Qdot"][0]):
     #     print(f"\nTraj {traj_ID} has inconsistent Qdot values. delete {Path(traj_root, str(traj_ID))} and rerun")
     #     # import shutil
 
     # dump to JSON
-    decay_powers_json_copy = decay_powers.copy()
+    if traj_json:
+        decay_powers_json_copy = decay_powers.copy()
 
-    for key in decay_powers_json_copy:
-        val = decay_powers_json_copy[key]
-        if isinstance(val, np.ndarray):
-            decay_powers_json_copy[key] = val.tolist()
+        for key in decay_powers_json_copy:
+            val = decay_powers_json_copy[key]
+            if isinstance(val, np.ndarray):
+                decay_powers_json_copy[key] = val.tolist()
 
-    output_path = Path(f"json/decay_powers_{traj_ID}.json")
-    with output_path.open("w", encoding="utf-8") as f:
-        json.dump(decay_powers_json_copy, f)
-    #     # shutil.rmtree(Path(traj_root, str(traj_ID)))
+        output_path = Path(f"json/decay_powers_{traj_ID}.json")
+        with output_path.open("w", encoding="utf-8") as f:
+            json.dump(decay_powers_json_copy, f)
+        #     # shutil.rmtree(Path(traj_root, str(traj_ID)))
     return decay_powers
 
 
@@ -333,8 +332,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     # get beta decay data
     nuc_data = get_nuc_data(nuc_dataset)
     traj_json_dir = f"json_{nuc_data}"
-    if not os.path.exists(traj_json_dir):
-        os.makedirs(traj_json_dir)
+    if not Path(traj_json_dir).exists():
+        Path(traj_json_dir).mkdir(parents=True)
         print(f"Created directory '{traj_json_dir}'.")
     else:
         print(f"'{traj_json_dir}' already exists.")
@@ -381,7 +380,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     warnings.filterwarnings("ignore", category=TqdmExperimentalWarning)
 
     alltraj_decay_powers: list[dict[str, npt.NDArray[np.floating]]] = process_map(
-        partial(process_trajectory, nuc_data, args.trajectoryroot, traj_masses_g, arr_t_day),
+        partial(
+            process_trajectory, nuc_data, args.trajectoryroot, traj_masses_g, arr_t_day, args.nuclides, args.trajjson
+        ),
         traj_ids,
         chunksize=3,
         desc="Processing trajectories",
@@ -401,9 +402,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             label, Ye_lower, Ye_upper = Ye_bins[i]
             labelfull = f"Ye [{Ye_lower}, {Ye_upper}]" if math.isfinite(Ye_upper) else "all Ye"
             print(f"Processing Ye bin {label}... Ye: [{Ye_lower}, {Ye_upper}]")
-            selected_traj_ids = (
-                traj_summ_data.filter(pl.col("Ye").is_between(Ye_lower, Ye_upper))["Id"].to_list()
-            )
+            selected_traj_ids = traj_summ_data.filter(pl.col("Ye").is_between(Ye_lower, Ye_upper))["Id"].to_list()
 
             print(f" {len(selected_traj_ids)} trajectories selected")
             if not selected_traj_ids:
