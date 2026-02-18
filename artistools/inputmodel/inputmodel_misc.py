@@ -29,7 +29,6 @@ from artistools.misc import zopen
 from artistools.misc import zopenpl
 
 
-# @lru_cache(maxsize=3)
 def read_modelfile_text(
     filename: Path | str, printwarningsonly: bool = False
 ) -> tuple[pl.LazyFrame, dict[t.Any, t.Any]]:
@@ -895,7 +894,7 @@ def save_modeldata(
         assert vmax is None or vmax == modelmeta["vmax_cmps"]
         vmax = modelmeta["vmax_cmps"]
 
-    dfmodel_npts_model = dfmodel.select(pl.count()).lazy().collect().item()
+    dfmodel_npts_model = dfmodel.select(pl.len()).lazy().collect().item()
     if "npts_model" in modelmeta:
         assert modelmeta["npts_model"] == dfmodel_npts_model
     else:
