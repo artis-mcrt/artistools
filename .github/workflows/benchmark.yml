@@ -70,6 +70,6 @@ jobs:
             - name: Run benchmarks
               uses: CodSpeedHQ/action@v4
               with:
-                  mode: instrumentation
+                  mode: simulation
                   token: ${{ secrets.CODSPEED_TOKEN }}
                   run: pytest --codspeed
