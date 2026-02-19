@@ -736,7 +736,7 @@ def map_to_artis(
                     dictelabunds[elem_str] += interpol_X_iso
                 else:
                     dictelabunds[elem_str] = interpol_X_iso
-            dfabundances = pd.DataFrame(dictelabunds).fillna(0.0)
+            dfabundances = pl.DataFrame(dictelabunds).fill_null(0.0)
             """
             # old interpolation
             el_list = [value for value in dfabundances.columns if value in dyn_abunds.columns]
