@@ -702,6 +702,8 @@ def map_to_artis(
 
             dyn_model = dyn_model.rename({col: f"{col}_dyn" for col in X_list})
 
+            dfmodel = dfmodel.join(dyn_model.select(["id"] + [f"{col}_dyn" for col in X_list]), on="id", how="left")
+
             dfmodel = dfmodel.with_columns([
                 (pl.col(f"{col}_dyn") * pl.col("beta_3D") + pl.col(col) * pl.col("beta_2D")).alias(col)
                 for col in X_list
