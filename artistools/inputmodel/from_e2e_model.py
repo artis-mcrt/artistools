@@ -678,12 +678,12 @@ def map_to_artis(
                 "vmax_cmps": vmax_on_c * CLIGHT,
             }
             at.inputmodel.save_modeldata(
-                dfmodel=dyn_model, modelmeta=dyn_modelmeta, outpath=Path("dyn_mode_notrescaled.txt")
+                dfmodel=dyn_model, modelmeta=dyn_modelmeta, outpath=Path("dyn_model_notrescaled.txt")
             )
             # 2) 3D dynamical ejecta weighted and scaled
             dyn_model = dyn_model.with_columns([pl.col("rho") * resc_factor])
             at.inputmodel.save_modeldata(
-                dfmodel=dyn_model, modelmeta=dyn_modelmeta, outpath=Path("dyn_mode_rescaled.txt")
+                dfmodel=dyn_model, modelmeta=dyn_modelmeta, outpath=Path("dyn_model_rescaled.txt")
             )
 
             # mass fractions, avoid looping
