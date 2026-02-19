@@ -1229,7 +1229,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         if args.mergecells is not None:
             # bunch of checks to assure proper cell merging
-            assert model_dim == 2, "Cell merging only implemented for 2D models!"
             assert isinstance(args.mergecells, int), "Number of cells to merge is not an integer!"
             # check if the number is a square number
             assert np.sqrt(args.mergecells).is_integer(), "Number of cells to merge is not a square number!"
