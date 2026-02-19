@@ -1277,6 +1277,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             bin_state=bsinterpol,
             bs_thr=float(args.replacethr),
             replacedyn=args.replacedyn,
+            global_dyn_scale=args.globaldynscale,
+            local_dyn_scale=args.localdynscale,
+            interpolate=args.interpolate,
+            M_2Ddyn=args.interpolrescale,
         )
 
         if args.perturb3Dmodel:
