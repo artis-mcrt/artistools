@@ -1132,8 +1132,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument(
         "-localdynscale",
+        type=float,
+        nargs=2,
         default=None,
-        help="Scale the mass of those dynamical ejecta within velocities (in units of c) v_min and v_max which replaced previous 2D data such that the resulting total ejecta mass matches the value specified. Values separated by comma",
+        help="Scale the mass of those dynamical ejecta within velocities (in units of c) v_min and v_max which replaced previous 2D data such that the resulting total ejecta mass matches the value specified.",
     )
 
     parser.add_argument(
