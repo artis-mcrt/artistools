@@ -584,9 +584,7 @@ def map_to_artis(
     dfelabundances = pl.DataFrame(dictelabunds).fill_null(0.0)
 
     if replacedyn:
-        """
-            Either replace dynamical ejecta or interpolate between the models
-        """
+        # Either replace dynamical ejecta or interpolate between the models
 
         # Step 1) preparations
         # 1) prepare bin_state variable
