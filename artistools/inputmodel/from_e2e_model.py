@@ -1114,6 +1114,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument(
         "-interpolrescale",
+        type=float,
         default=None,
         help="Scale so that dynamical ejecta mass matches 2D dynamical ejecta again. Float is the 2D dynamical ejecta mass.",
     )
