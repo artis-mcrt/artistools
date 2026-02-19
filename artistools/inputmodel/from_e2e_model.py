@@ -830,6 +830,7 @@ def map_to_artis(
             "X_scale",
         ]
         dfmodel = dfmodel.drop([col for col in superfluous_cols if col in dfmodel.columns])
+        dfmodel = dfmodel.drop([col for col in dfmodel.columns if "_dyn" in col])
         print("Done!")
 
         dfelabundances = dfabundances
