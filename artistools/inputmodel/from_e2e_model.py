@@ -277,7 +277,7 @@ def get_grid(
         y3d_min = op(op(np.ones(numb_cells_ARTIS_x), vygridl), np.ones(numb_cells_ARTIS_z)) * (
             CLIGHT * t_model_init_days
         )
-        z3d_min = op(op(np.ones(numb_cells_ARTIS_x), np.ones(numb_cells_ARTIS_z)), vzgridl) * (
+        z3d_min = op(op(np.ones(numb_cells_ARTIS_x), np.ones(numb_cells_ARTIS_y)), vzgridl) * (
             CLIGHT * t_model_init_days
         )
         if eqsymfac == 2:
