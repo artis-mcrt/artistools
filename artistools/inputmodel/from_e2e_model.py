@@ -1120,6 +1120,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument(
         "-replacethr",
+        type=float,
         default=0.5,
         help="Threshold in the binary state variable for replacing dynamical ejecta with the 3D model. (default: 0.5)",
     )
