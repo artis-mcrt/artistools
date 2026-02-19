@@ -551,7 +551,7 @@ def map_to_artis(
             "pos_z_min": (z3d).flatten(order="F"),
             "rho": (rho_interpol).flatten(order="F"),
             "q": (q_ergperg).flatten(order="F"),
-            "cellYe": (ye_interpol).flatten(order="F"),
+            "Ye": (ye_interpol).flatten(order="F"),
         })
 
         assert x3d.shape == (grid_dims[0], grid_dims[1], grid_dims[2])
@@ -616,7 +616,6 @@ def map_to_artis(
             modelpath=Path(replacedyn), derived_cols=["volume", "velocity"]
         )[0].collect()
         dyn_abunds = at.inputmodel.get_initelemabundances(modelpath=Path(replacedyn))
-        dyn_model = dyn_model.rename({"Ye": "cellYe"})
         dyn_model = dyn_model.drop(["tracercount", "modelgridindex"])
 
         # Step 2) Model modification
@@ -650,22 +649,22 @@ def map_to_artis(
             # interpolate q and Ye and threshold small values
             dfmodel = dfmodel.with_columns([
                 dyn_model.get_column("q").alias("dyn_q"),
-                dyn_model.get_column("cellYe").alias("dyn_cellYe"),
+                dyn_model.get_column("Ye").alias("dyn_Ye"),
             ])
             dfmodel = dfmodel.with_columns([
                 (pl.col("beta_3D") * pl.col("dyn_q") + pl.col("beta_2D") * pl.col("q")).alias("q"),
-                (pl.col("beta_3D") * pl.col("dyn_cellYe") + pl.col("beta_2D") * pl.col("cellYe")).alias("cellYe"),
+                (pl.col("beta_3D") * pl.col("dyn_Ye") + pl.col("beta_2D") * pl.col("Ye")).alias("Ye"),
             ])
-            dfmodel = dfmodel.drop(["dyn_q", "dyn_cellYe"])
+            dfmodel = dfmodel.drop(["dyn_q", "dyn_Ye"])
             dfmodel = dfmodel.with_columns([
                 pl.when(pl.col("q") < 1e-10).then(0).otherwise(pl.col("q")).alias("q"),
-                pl.when(pl.col("cellYe") < 1e-10).then(0).otherwise(pl.col("cellYe")).alias("cellYe"),
+                pl.when(pl.col("Ye") < 1e-10).then(0).otherwise(pl.col("Ye")).alias("Ye"),
             ])
 
             # properly empty cells
             dfmodel = dfmodel.with_columns([
                 pl.when(pl.col("rho") == 0.0).then(0).otherwise(pl.col("q")).alias("q"),
-                pl.when(pl.col("rho") == 0.0).then(0).otherwise(pl.col("cellYe")).alias("cellYe"),
+                pl.when(pl.col("rho") == 0.0).then(0).otherwise(pl.col("Ye")).alias("Ye"),
                 pl.when(pl.col("rho") == 0.0).then(0).otherwise(pl.col("X_Fegroup")).alias("X_Fegroup"),
             ])
             # write "replaced" ejecta to seperate model files for plotting / consistency check
