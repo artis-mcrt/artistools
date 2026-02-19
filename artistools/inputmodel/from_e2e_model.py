@@ -1020,7 +1020,6 @@ def apply_density_perturbations(df_model: pl.DataFrame, vmax: float, pert_model:
         y = np.linspace(-vmax + Delta_v / 2, vmax - Delta_v / 2, N_x)
         z = np.linspace(-vmax + Delta_v / 2, vmax - Delta_v / 2, N_x)
         x_mesh, y_mesh, z_mesh = np.meshgrid(x, y, z)
-        y_mesh.flatten()
         X = z_mesh.flatten()
         Y = x_mesh.flatten()
         Z = np.tile(np.concatenate([np.ones(N_x**2, dtype=int), np.zeros(N_x**2, dtype=int)]), int(N_x / 2))
