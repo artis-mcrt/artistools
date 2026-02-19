@@ -11,7 +11,6 @@ from typing import Any
 import argcomplete
 import numpy as np
 import numpy.typing as npt
-import pandas as pd
 import polars as pl
 
 import artistools as at
@@ -1000,12 +999,10 @@ def merge_neighbour_cells(
 
 def apply_density_perturbations(df_model: pl.DataFrame, vmax: float, pert_model: tuple[float | str]) -> pl.DataFrame:
     n_cells = len(df_model)
-    # infer cubic grid size from number of cells; this function assumes an N_x × N_x × N_x grid
-    N_x = int(round(n_cells ** (1 / 3)))
-    assert N_x > 0 and N_x**3 == n_cells, (
-        "apply_density_perturbations expects a cubic grid with N_x^3 cells; "
-        f"got {n_cells} cells, which is not a perfect cube"
-    )
+    # infer cubic grid size from number of cells; this function assumes an N_x x N_x x N_x grid
+    N_x = round(n_cells ** (1 / 3))
+    assert N_x > 0, "Empty grid, fatal!"
+    assert N_x**3 == n_cells, f"got {n_cells} cells, which is not a perfect cube"
     # current perturbation pattern assumes an even number of cells per dimension
     assert N_x % 2 == 0, "apply_density_perturbations requires an even N_x for the current perturbation pattern"
     pert_array = np.ones(n_cells)
@@ -1019,7 +1016,7 @@ def apply_density_perturbations(df_model: pl.DataFrame, vmax: float, pert_model:
         x = np.linspace(-vmax + Delta_v / 2, vmax - Delta_v / 2, N_x)
         y = np.linspace(-vmax + Delta_v / 2, vmax - Delta_v / 2, N_x)
         z = np.linspace(-vmax + Delta_v / 2, vmax - Delta_v / 2, N_x)
-        x_mesh, y_mesh, z_mesh = np.meshgrid(x, y, z)
+        x_mesh, _, z_mesh = np.meshgrid(x, y, z)
         X = z_mesh.flatten()
         Y = x_mesh.flatten()
         Z = np.tile(np.concatenate([np.ones(N_x**2, dtype=int), np.zeros(N_x**2, dtype=int)]), int(N_x / 2))
