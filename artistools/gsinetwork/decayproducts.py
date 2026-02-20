@@ -141,9 +141,9 @@ def process_trajectory(
     traj_root: Path | str,
     traj_masses_g: dict[int, float],
     arr_t_day: npt.NDArray[np.floating],
-    traj_ID: int,
     nuclide_contrib: bool,
     traj_json: bool,
+    traj_ID: int,
 ) -> dict[str, npt.NDArray[np.floating]]:
     """Process a single trajectory to extract decay powers."""
     traj_mass_grams = traj_masses_g[traj_ID]
@@ -360,25 +360,19 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         msg = "ERROR: No header found in summary-all.dat. Please check the file format."
         raise ValueError(msg)
 
-    traj_summ_data = (
-        pl
-        .from_pandas(
-            pd.read_csv(
-                Path(args.trajectoryroot, "summary-all.dat"),
-                delimiter=r"\s+",
-                skiprows=skiprows,
-                names=colnames,
-                dtype_backend="pyarrow",
-            )
+    traj_summ_data = pl.from_pandas(
+        pd.read_csv(
+            Path(args.trajectoryroot, "summary-all.dat"),
+            delimiter=r"\s+",
+            skiprows=skiprows,
+            names=colnames,
+            dtype_backend="pyarrow",
         )
-        .filter(pl.any_horizontal(pl.col("Ye").is_between(Ye_lower, Ye_upper) for _, Ye_lower, Ye_upper in Ye_bins))
-        .head(10)
-    )
+    ).filter(pl.any_horizontal(pl.col("Ye").is_between(Ye_lower, Ye_upper) for _, Ye_lower, Ye_upper in Ye_bins))
 
     print(traj_summ_data)
 
     traj_ids = traj_summ_data["Id"].to_list()
-    # traj_ids = traj_ids[:10]
 
     traj_masses_g = {trajid: mass * M_sol_cgs for trajid, mass in traj_summ_data[["Id", "Mass"]].to_numpy()}
 
