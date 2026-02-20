@@ -270,12 +270,12 @@ def process_trajectory(
         decay_powers["abundweighted_gamma"][plottimestep] = global_sums_row[2]
         decay_powers["abundweighted_Qdot"][plottimestep] = global_sums_row[3]
 
-        grouped = pldf_all.group_by(["A", "Z"]).agg([
-            pl.sum("Qelec").alias("Qelec"),
-            pl.sum("Qgamma").alias("Qgamma"),
-            pl.sum("Qnu").alias("Qnu"),
-        ])
         if nuclide_contrib:
+            grouped = pldf_all.group_by(["A", "Z"]).agg([
+                pl.sum("Qelec").alias("Qelec"),
+                pl.sum("Qgamma").alias("Qgamma"),
+                pl.sum("Qnu").alias("Qnu"),
+            ])
             A_vals = grouped["A"].to_numpy()
             Z_vals = grouped["Z"].to_numpy()
             Qelec_vals = grouped["Qelec"].to_numpy()
