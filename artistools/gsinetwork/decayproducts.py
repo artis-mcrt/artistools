@@ -263,7 +263,7 @@ def process_trajectory(
             pl.sum("Qgamma").alias("abundweighted_gamma"),
             pl.sum("Qtot").alias("abundweighted_Qdot"),
         ])
-        global_sums_row = global_sums.row(0)  # nur ein Row-Objekt, da Summe
+        global_sums_row = global_sums.row(0)  # only a single Row object because we computed sums
 
         decay_powers["abundweighted_nu"][plottimestep] = global_sums_row[0]
         decay_powers["abundweighted_elec"][plottimestep] = global_sums_row[1]
