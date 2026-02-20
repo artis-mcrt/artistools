@@ -321,18 +321,17 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     nuc_dataset = "Hotokezaka" if args.nucdata == "hoto" else "ENSDF"
 
+    Ye_bins = [
+        ("all", 0.0, float("inf")),
+        ("low", 0.0, args.yemax / 3),
+        ("mid", args.yemax / 3, args.yemax * 2 / 3),
+        ("high", args.yemax * 2 / 3, args.yemax),
+    ]
+
     if args.npz:
         npz_dict = np.load(args.npz)
         npz_idcs = npz_dict["idx"]
         npz_types = npz_dict["state"]
-        Ye_bins = [("all", 0.0, float("inf"))]
-    else:
-        Ye_bins = [
-            ("all", 0.0, float("inf")),
-            ("low", 0.0, args.yemax / 3),
-            ("mid", args.yemax / 3, args.yemax * 2 / 3),
-            ("high", args.yemax * 2 / 3, args.yemax),
-        ]
 
     # get beta decay data
     nuc_data = get_nuc_data(nuc_dataset)
