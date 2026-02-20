@@ -49,7 +49,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Y_e,max of hydro model considered. Default 0.52 for e2e sym-n1a6 from Just+23",
     )
 
-    parser.add_argument("--json", action="store_true", help="Writes output dictionary to a JSON file")
+    parser.add_argument(
+        "--json", action="store_true", help="Prints output dictionaries of full Ye bins or ejecta componenets to a JSON"
+    )
 
     parser.add_argument("--nuclides", action="store_true", help="Calculates contributions of individual nuclides")
 
@@ -331,12 +333,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     # get beta decay data
     nuc_data = get_nuc_data(nuc_dataset)
-    traj_json_dir = f"json_{nuc_data}"
-    if not Path(traj_json_dir).exists():
-        Path(traj_json_dir).mkdir(parents=True)
-        print(f"Created directory '{traj_json_dir}'.")
-    else:
-        print(f"'{traj_json_dir}' already exists.")
+    if args.trajjson:
+        traj_json_dir = f"json_{args.nucdata}"
+        if not Path(traj_json_dir).exists():
+            Path(traj_json_dir).mkdir(parents=True)
+            print(f"Created directory '{traj_json_dir}'.")
+        else:
+            print(f"'{traj_json_dir}' already exists.")
     assert nuc_data.height == nuc_data.unique(("Z", "A")).height
 
     # set timesteps logarithmically
@@ -357,19 +360,25 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         msg = "ERROR: No header found in summary-all.dat. Please check the file format."
         raise ValueError(msg)
 
-    traj_summ_data = pl.from_pandas(
-        pd.read_csv(
-            Path(args.trajectoryroot, "summary-all.dat"),
-            delimiter=r"\s+",
-            skiprows=skiprows,
-            names=colnames,
-            dtype_backend="pyarrow",
+    traj_summ_data = (
+        pl
+        .from_pandas(
+            pd.read_csv(
+                Path(args.trajectoryroot, "summary-all.dat"),
+                delimiter=r"\s+",
+                skiprows=skiprows,
+                names=colnames,
+                dtype_backend="pyarrow",
+            )
         )
-    ).filter(pl.any_horizontal(pl.col("Ye").is_between(Ye_lower, Ye_upper) for _, Ye_lower, Ye_upper in Ye_bins))
+        .filter(pl.any_horizontal(pl.col("Ye").is_between(Ye_lower, Ye_upper) for _, Ye_lower, Ye_upper in Ye_bins))
+        .head(10)
+    )
 
     print(traj_summ_data)
 
     traj_ids = traj_summ_data["Id"].to_list()
+    # traj_ids = traj_ids[:10]
 
     traj_masses_g = {trajid: mass * M_sol_cgs for trajid, mass in traj_summ_data[["Id", "Mass"]].to_numpy()}
 
@@ -389,7 +398,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         unit="traj",
         smoothing=0.0,
         tqdm_class=tqdm.rich.tqdm,
-        # max_workers=1,
+        max_workers=1,
     )
 
     print()
@@ -405,7 +414,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             selected_traj_ids = traj_summ_data.filter(pl.col("Ye").is_between(Ye_lower, Ye_upper))["Id"].to_list()
 
             print(f" {len(selected_traj_ids)} trajectories selected")
-            if not selected_traj_ids:
+            if len(selected_traj_ids) == 0:
+                print(f"No trajectories found for Ye [{Ye_lower}, {Ye_upper}]")
                 continue
         else:
             # select by ejecta type
@@ -413,6 +423,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 traj_ids if state == "any" else list(set(traj_ids) & set(npz_idcs[np.where(npz_types == state)]))
             )
             print(f" {len(selected_traj_ids)} trajectories selected")
+            if len(selected_traj_ids) == 0:
+                print(f"Warning! No trajectories found for eject state {state}")
+                continue
             labelfull = ej_names[i]
             label = ej_names[i]
 
@@ -424,6 +437,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             )
             for k in alltraj_decay_powers[0]
         }
+
         assert isinstance(decay_powers["abundweighted_gamma"], np.ndarray)
         assert isinstance(decay_powers["abundweighted_elec"], np.ndarray)
         assert isinstance(decay_powers["abundweighted_nu"], np.ndarray)
