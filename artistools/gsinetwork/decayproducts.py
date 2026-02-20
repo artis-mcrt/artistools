@@ -300,6 +300,8 @@ def process_trajectory(
                 decay_powers_json_copy[key] = val.tolist()
 
         output_path = Path(f"json/decay_powers_{traj_ID}.json")
+        # Ensure the output directory exists to avoid FileNotFoundError
+        output_path.parent.mkdir(parents=True, exist_ok=True)
         with output_path.open("w", encoding="utf-8") as f:
             json.dump(decay_powers_json_copy, f)
         #     # shutil.rmtree(Path(traj_root, str(traj_ID)))
