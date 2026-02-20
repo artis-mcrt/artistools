@@ -331,7 +331,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             ("all", 0.0, float("inf")),
             ("low", 0.0, args.yemax / 3),
             ("mid", args.yemax / 3, args.yemax * 2 / 3),
-            ("high", args.yemax * 2 / 3, args.yemax / 3),
+            ("high", args.yemax * 2 / 3, args.yemax),
         ]
 
     # get beta decay data
