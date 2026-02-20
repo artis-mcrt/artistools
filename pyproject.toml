@@ -37,18 +37,18 @@ license =  "MIT"
 license-files = ["LICEN[CS]E*"]
 readme = { file = "README.md", content-type = 'text/markdown' }
 dependencies = [
-    "argcomplete>=3.6.2",
+    "argcomplete>=3.6.3",
     "extinction>=0.4.7",
     "matplotlib>=3.10.8",
-    "numpy>=2.4.1",
-    "pandas>=3.0.0",
+    "numpy>=2.4.2",
+    "pandas>=3.0.1",
     "polars>=1.37.1",
     "pyarrow>=22.0.0",
     "pypdf>=6.0.0",
     "pyyaml>=6.0.2",
-    "rich>=14.1.0",
-    "scipy>=1.16.0",
-    "tqdm>=4.67.1",
+    "rich>=14.3.3",
+    "scipy>=1.17.0",
+    "tqdm>=4.67.3",
     "typing_extensions>=4.14",
     "zstandard>=0.23.0;python_version<'3.14'",
 ]
@@ -68,21 +68,21 @@ extras = [
 dev = [
     "imageio>=2.37.2",
     "mypy>=1.19.1",
-    "pandas-stubs>=2.2.3.250527",
+    "pandas-stubs>=3.0.0.260204",
     "prek>=0.2.28",
     "pyright>=1.1.408",
     "pynonthermal>=2025.4.8",
     "pytest>=9.0.2",
-    "pytest-codspeed>=4.2.0",
+    "pytest-codspeed>=4.3.0",
     "pytest-cov>=7.0.0",
     "pytest-xdist[psutil]>=3.8.0",
-    "ruff>=0.15.00",
+    "ruff>=0.15.2",
     "ty>=0.0.14",
-    "typeguard>=4.5.0",
+    "typeguard>=4.5.1",
     "types-python-dateutil>=2.9.0.20251115",
     "types-pyyaml>=6.0.12.20250915",
     "types-tabulate>=0.9.0.20241207",
-    "uv>=0.9.27",
+    "uv>=0.10.4",
 ]
 
 [project.urls]
