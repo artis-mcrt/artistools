@@ -220,10 +220,11 @@ def process_trajectory(
     A_arr = nuc_data["A"].to_numpy()
     Z_arr = nuc_data["Z"].to_numpy()
 
-    for AZ_tuple in zip(A_arr, Z_arr, strict=False):
-        decay_powers[f"({int(AZ_tuple[0])},{int(AZ_tuple[1])})_elec"] = np.zeros(len(arr_t_day))
-        decay_powers[f"({int(AZ_tuple[0])},{int(AZ_tuple[1])})_gam"] = np.zeros(len(arr_t_day))
-        decay_powers[f"({int(AZ_tuple[0])},{int(AZ_tuple[1])})_nu"] = np.zeros(len(arr_t_day))
+    if nuclide_contrib:
+        for AZ_tuple in zip(A_arr, Z_arr, strict=False):
+            decay_powers[f"({int(AZ_tuple[0])},{int(AZ_tuple[1])})_elec"] = np.zeros(len(arr_t_day))
+            decay_powers[f"({int(AZ_tuple[0])},{int(AZ_tuple[1])})_gam"] = np.zeros(len(arr_t_day))
+            decay_powers[f"({int(AZ_tuple[0])},{int(AZ_tuple[1])})_nu"] = np.zeros(len(arr_t_day))
 
     # now get abundances from single timestep files
     for plottimestep, networktimestepindex in enumerate(networktimestepindices):
