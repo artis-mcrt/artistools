@@ -495,7 +495,7 @@ def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pd.Dat
         from astropy import cosmology
 
         cosmo = (
-            cosmology.FlatLambdaCDM(H0=70, Om0=0.3)  # ty: ignore[unknown-argument] # pyright: ignore[reportCallIssue]
+            cosmology.FlatLambdaCDM(H0=70, Om0=0.3)  # pyright: ignore[reportCallIssue]
         )
         metadata["dist_mpc"] = cosmo.luminosity_distance(metadata["z"]).value  # pyright: ignore[reportAttributeAccessIssue]
         print(f"luminosity distance from redshift = {metadata['dist_mpc']} for {metadata['label']}")

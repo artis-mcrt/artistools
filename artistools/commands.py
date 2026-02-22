@@ -44,6 +44,7 @@ subcommandtree: CommandType = {
     "maptogrid": ("inputmodel.maptogrid", "main"),
     "plotestimators": ("estimators.plotestimators", "main"),
     "plotinitialcomposition": ("inputmodel.plotinitialcomposition", "main"),
+    "plotlastpacketinteraction": ("packets.packetsplots", "main"),
     "plotlightcurves": ("lightcurve.plotlightcurve", "main"),
     "plotlinefluxes": ("linefluxes", "main"),
     "plotdensity": ("inputmodel.plotdensity", "main"),

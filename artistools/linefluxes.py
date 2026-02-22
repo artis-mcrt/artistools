@@ -242,6 +242,14 @@ def get_linelist_dataframe(modelpath: Path | str) -> pd.DataFrame:
     )
 
 
+def get_ion_linelist(modelpath: Path | str, atomic_number: int, ion_stage: int) -> Sequence[int]:
+    df_linelist = get_linelist_dataframe(modelpath)
+    dflinelistclosematches = df_linelist[
+        (df_linelist["atomic_number"] == atomic_number) & (df_linelist["ion_stage"] == ion_stage)
+    ].copy()
+    return tuple(dflinelistclosematches.index.to_numpy())
+
+
 def get_closelines(
     modelpath: Path | str,
     atomic_number: int,
