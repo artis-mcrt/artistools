@@ -30,7 +30,6 @@ dependencies = [
     { name = "pandas" },
     { name = "polars" },
     { name = "pyarrow" },
-    { name = "pypdf" },
     { name = "pyyaml" },
     { name = "rich" },
     { name = "scipy" },
@@ -46,6 +45,7 @@ extras = [
     { name = "imageio" },
     { name = "plotly" },
     { name = "pynonthermal" },
+    { name = "pypdf" },
     { name = "tabulate" },
 ]
 
@@ -84,7 +84,7 @@ requires-dist = [
     { name = "polars", specifier = ">=1.37.1" },
     { name = "pyarrow", specifier = ">=22.0.0" },
     { name = "pynonthermal", marker = "extra == 'extras'", specifier = ">=2025.4.8" },
-    { name = "pypdf", specifier = ">=6.0.0" },
+    { name = "pypdf", marker = "extra == 'extras'", specifier = ">=6.0.0" },
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "rich", specifier = ">=14.3.3" },
     { name = "scipy", specifier = ">=1.17.0" },
