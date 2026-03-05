@@ -419,7 +419,6 @@ def make_plot_populations_with_time_or_velocity(modelpaths: list[Path | str], ar
 
     ion_data = adata.query("Z == @Z and ion_stage == @ion_stage").iloc[0]
     levelconfignames = ion_data["levels"]["levelname"].to_list()
-    # levelconfignames = [at.nltepops.texifyconfiguration(name) for name in levelconfignames]
 
     if args.timedayslist:
         rows = len(args.timedayslist)
@@ -463,10 +462,10 @@ def make_plot_populations_with_time_or_velocity(modelpaths: list[Path | str], ar
             axis.set_xlim([args.xmin, args.xmax])
             axis.set_ylim([args.ymin, args.ymax])
             axis.set_yscale("log")
-            if args.timedayslist:
+            if timedayslist:
                 ymin, _ = axis.get_ylim()
                 _, xmax = axis.get_xlim()
-                axis.text(xmax * 0.85, ymin * 50, f"{args.timedayslist[plotnumber]} days")
+                axis.text(xmax * 0.85, ymin * 50, f"{timedayslist[plotnumber]} days")
         ax[0].legend(loc="best", frameon=True, fontsize="x-small", ncol=1)
     else:
         assert isinstance(ax, mplax.Axes)
@@ -527,6 +526,8 @@ def plot_populations_with_time_or_velocity(
                     continue
 
                 timesteppops = dfpop.loc[(dfpop["Z"] == Z) & (dfpop["ion_stage"] == ion_stage)]
+                if "timestep" in dfpop.columns:
+                    timesteppops = timesteppops.loc[timesteppops["timestep"] == timestep]
                 if timesteppops.empty:
                     continue
 

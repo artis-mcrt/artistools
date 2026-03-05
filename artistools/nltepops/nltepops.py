@@ -203,7 +203,11 @@ def read_files_timestep(modelpath: str | Path, timestep: int) -> pd.DataFrame:
     if not arr_dfnltepop:
         return pd.DataFrame()
 
-    return pd.concat(arr_dfnltepop, ignore_index=True, copy=False)
+    dfconcat = pd.concat(arr_dfnltepop, ignore_index=True, copy=False)
+    if "timestep" in dfconcat.columns:
+        dfconcat = dfconcat.loc[dfconcat["timestep"] == timestep]
+
+    return dfconcat
 
 
 @lru_cache(maxsize=2)
@@ -217,6 +221,9 @@ def read_files(
     """Read in NLTE populations from a model for a particular timestep and grid cell."""
     if dfquery is None and timestep >= 0:
         dfconcat = read_files_timestep(modelpath, timestep)
+
+        if "timestep" in dfconcat.columns:
+            dfconcat = dfconcat.loc[dfconcat["timestep"] == timestep]
 
         if modelgridindex < 0:
             return dfconcat
