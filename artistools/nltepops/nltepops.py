@@ -222,9 +222,6 @@ def read_files(
     if dfquery is None and timestep >= 0:
         dfconcat = read_files_timestep(modelpath, timestep)
 
-        if "timestep" in dfconcat.columns:
-            dfconcat = dfconcat.loc[dfconcat["timestep"] == timestep]
-
         if modelgridindex < 0:
             return dfconcat
 

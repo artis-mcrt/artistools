@@ -462,10 +462,9 @@ def make_plot_populations_with_time_or_velocity(modelpaths: list[Path | str], ar
             axis.set_xlim([args.xmin, args.xmax])
             axis.set_ylim([args.ymin, args.ymax])
             axis.set_yscale("log")
-            if timedayslist:
-                ymin, _ = axis.get_ylim()
-                _, xmax = axis.get_xlim()
-                axis.text(xmax * 0.85, ymin * 50, f"{timedayslist[plotnumber]} days")
+            ymin, _ = axis.get_ylim()
+            _, xmax = axis.get_xlim()
+            axis.text(xmax * 0.85, ymin * 50, f"{timedayslist[plotnumber]} days")
         ax[0].legend(loc="best", frameon=True, fontsize="x-small", ncol=1)
     else:
         assert isinstance(ax, mplax.Axes)
