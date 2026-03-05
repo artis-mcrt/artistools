@@ -497,7 +497,7 @@ def plot_populations_with_time_or_velocity(
     args: argparse.Namespace,
 ) -> None:
     if args.x == "time":
-        timesteps = list(range(args.timestepmin, args.timestepmax))
+        timesteps = list(range(args.timestepmin, args.timestepmax + 1))
 
         if not args.modelgridindex:
             print("Please specify modelgridindex")
