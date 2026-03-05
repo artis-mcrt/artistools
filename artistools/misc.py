@@ -813,7 +813,7 @@ def parse_range(rng: str, dictvars: dict[str, int]) -> Iterable[t.Any]:
     return range(start, end + 1)
 
 
-def parse_range_list(rngs: str | list[str] | int, dictvars: dict[str, int] | None = None) -> list[t.Any]:
+def parse_range_list(rngs: str | list[str] | list[int] | int, dictvars: dict[str, int] | None = None) -> list[t.Any]:
     """Parse a string with comma-separated ranges or a list of range strings.
 
     Return a sorted list of integers in any of the ranges.
