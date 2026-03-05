@@ -509,8 +509,8 @@ def get_time_range(
                 break
 
         if timestepmin is None:
-            print(f"Time min {timemin} is greater than all timesteps ({tstarts[0]} to {tends[-1]})")
-            raise ValueError
+            msg = f"Time min {timemin} is greater than all timesteps ({tstarts[0]} to {tends[-1]})"
+            raise ValueError(msg)
 
         if not timemax:
             timemax = tends[-1]
@@ -520,7 +520,9 @@ def get_time_range(
             if tmid <= float(timemax):
                 timestepmax = timestep
 
-        assert timestepmax is not None
+        if timestepmax is None:
+            msg = f"Time max {timemax} is less than all timesteps ({tstarts[0]} to {tends[-1]})"
+            raise ValueError(msg)
         if timestepmax < timestepmin:
             if clamp_to_timesteps:
                 msg = f"Specified time range does not include any full timesteps. {timestepmin=} {timestepmax=}"
@@ -811,13 +813,13 @@ def parse_range(rng: str, dictvars: dict[str, int]) -> Iterable[t.Any]:
     return range(start, end + 1)
 
 
-def parse_range_list(rngs: str | list[str] | int, dictvars: dict[str, int] | None = None) -> list[t.Any]:
+def parse_range_list(rngs: str | list[str] | list[int] | int, dictvars: dict[str, int] | None = None) -> list[t.Any]:
     """Parse a string with comma-separated ranges or a list of range strings.
 
     Return a sorted list of integers in any of the ranges.
     """
     if isinstance(rngs, list):
-        rngs = ",".join(rngs)
+        rngs = ",".join(str(x) for x in rngs)
     elif not hasattr(rngs, "split"):
         return [rngs]
 
