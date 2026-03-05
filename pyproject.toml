@@ -109,7 +109,7 @@ plotartisinitialcomposition = 'artistools.inputmodel.plotinitialcomposition:main
 plotartisviewingangles = 'artistools.viewing_angles_visualization:main'
 
 [tool.cibuildwheel]
-build-frontend = "build[uv]"
+build-frontend = "uv"
 archs = ["auto64"]
 enable = ["cpython-freethreading"]
 environment-pass = ["PYO3_PYTHON"]
