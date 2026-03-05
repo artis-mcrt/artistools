@@ -87,10 +87,35 @@ def test_macroatom() -> None:
 
 
 @pytest.mark.benchmark
-def test_nltepops() -> None:
-    # at.nltepops.plot(modelpath=modelpath, outputfile=outputpath, timedays=300),
-    #                    **benchargs)
+def test_nltepops_singletimestep() -> None:
     at.nltepops.plot(argsraw=[], modelpath=modelpath, outputfile=outputpath, timestep=40)
+
+
+@pytest.mark.benchmark
+def test_nltepops_versus_velocity() -> None:
+    at.nltepops.plot(
+        argsraw=[],
+        modelpath=modelpath,
+        outputfile=outputpath,
+        timestep=40,
+        x="velocity",
+        ion_stages=[1, 2],
+        levels=[0, 1],
+    )
+
+
+@pytest.mark.benchmark
+def test_nltepops_versus_time() -> None:
+    at.nltepops.plot(
+        argsraw=[],
+        modelpath=modelpath,
+        outputfile=outputpath,
+        cell=0,
+        x="time",
+        timedays="270-275",
+        ion_stages=[1, 2],
+        levels=[0, 1],
+    )
 
 
 @pytest.mark.benchmark

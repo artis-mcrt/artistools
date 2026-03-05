@@ -427,7 +427,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths: list[Path | str], ar
         args.subplots = True
     else:
         rows = 1
-        timedayslist = [at.get_timestep_time(modelpaths[0], ts) for ts in range(args.timestepmin, args.timestepmax)]
+        timedayslist = [at.get_timestep_time(modelpaths[0], ts) for ts in range(args.timestepmin, args.timestepmax + 1)]
         args.subplots = False
 
     cols = 1
@@ -439,7 +439,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths: list[Path | str], ar
         figsize=(at.get_config()["figwidth"] * 2 * cols, at.get_config()["figwidth"] * 0.85 * rows),
         tight_layout={"pad": 2.0, "w_pad": 0.2, "h_pad": 0.2},
     )
-    assert isinstance(ax, np.ndarray)
+
     if args.subplots:
         ax = ax.flatten()
 
@@ -447,7 +447,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths: list[Path | str], ar
         axis = ax[plotnumber] if args.subplots else ax
         assert isinstance(axis, mplax.Axes)
         plot_populations_with_time_or_velocity(
-            axis, modelpaths, timedays, ion_stage, ionlevels, Z, levelconfignames, args
+            axis, modelpaths, timedays, ion_stage, ionlevels, Z, levelconfignames, args=args
         )
 
     labelfontsize = 20
@@ -478,7 +478,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths: list[Path | str], ar
         if args.x == "time":
             title += f", mgi = {args.modelgridindex[0]}"
         elif args.x == "velocity":
-            title += f", {args.timedays} days"
+            title += f", {timedayslist} days"
         plt.title(title)
 
     at.plottools.set_axis_properties(ax, args)
@@ -501,7 +501,7 @@ def plot_populations_with_time_or_velocity(
     required_columns = {"Z", "ion_stage", "level", "n_NLTE"}
 
     if args.x == "time":
-        timesteps = list(range(args.timestepmin, args.timestepmax))
+        timesteps = list(range(args.timestepmin, args.timestepmax + 1))
 
         if not args.modelgridindex:
             print("Please specify modelgridindex")
@@ -575,7 +575,7 @@ def plot_populations_with_time_or_velocity(
                 ax.plot(timedayslist, plotpopulations, marker=model_marker, label=linelabel)
 
 
-def make_plot(
+def make_singletimestep_plot(
     modelpath: Path,
     atomic_number: int,
     ion_stages_displayed: list[int] | None,
@@ -826,11 +826,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         #     print("Please specify time range with -timedays")
         #     sys.exit(1)
         if not args.ion_stages:
-            print("Please specify ion_stage")
-            sys.exit(1)
+            msg = "Please specify ion_stage"
+            raise ValueError(msg)
+
         if not args.levels:
-            print("Please specify levels")
-            sys.exit(1)
+            msg = "Please specify levels"
+            raise ValueError(msg)
 
     if args.timedays:
         if "-" in args.timedays:
@@ -838,20 +839,23 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         else:
             timestep = at.get_timestep_of_timedays(modelpath, args.timedays)
             args.timestep = timestep
+            args.timestepmin, args.timestepmax = timestep, timestep
     elif args.timedayslist:
         print(args.timedayslist)
     elif args.timestep is not None:
-        timestep = int(args.timestep)
+        args.timestepmin, args.timestepmax, _, _ = at.get_time_range(modelpath, timestep_range_str=str(args.timestep))
+    elif args.x in {"time", "velocity"}:
+        args.timestepmin, args.timestepmax, _, _ = at.get_time_range(modelpath, timemin=0, timemax=math.inf)
     else:
-        print("Please specify time with -timedays or -timestep")
-        sys.exit(1)
+        msg = "Please specify time with -timedays or -timestep"
+        raise ValueError(msg)
 
     if Path(args.outputfile).is_dir():
         args.outputfile = Path(args.outputfile, defaultoutputfile)
 
     ion_stages_permitted = at.parse_range_list(args.ion_stages) if args.ion_stages else None
 
-    if isinstance(args.modelgridindex, str):
+    if isinstance(args.modelgridindex, str | int):
         args.modelgridindex = [args.modelgridindex]
 
     if isinstance(args.elements, str):
@@ -870,7 +874,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         mgilist.append(0)
 
     if args.x in {"time", "velocity"}:
-        make_plot_populations_with_time_or_velocity(args.modelpath, args)
+        make_plot_populations_with_time_or_velocity(modelpaths=args.modelpath, args=args)
         return
 
     for el_in in args.elements:
@@ -883,7 +887,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             if atomic_number < 1:
                 print(f"Could not find element '{elsymbol}'")
 
-        make_plot(modelpath, atomic_number, ion_stages_permitted, mgilist, timestep, args)
+        for timestep in range(args.timestepmin, args.timestepmax + 1):
+            make_singletimestep_plot(modelpath, atomic_number, ion_stages_permitted, mgilist, timestep, args)
 
 
 if __name__ == "__main__":
