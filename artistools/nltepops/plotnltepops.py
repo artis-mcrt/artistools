@@ -460,6 +460,8 @@ def make_plot_populations_with_time_or_velocity(modelpaths: list[Path | str], ar
     at.plottools.set_axis_labels(fig, ax, xlabel, ylabel, labelfontsize, args)
     if args.subplots:
         for plotnumber, axis in enumerate(ax):
+            axis.set_xlim([args.xmin, args.xmax])
+            axis.set_ylim([args.ymin, args.ymax])
             axis.set_yscale("log")
             if args.timedayslist:
                 ymin, _ = axis.get_ylim()
