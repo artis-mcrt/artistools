@@ -417,6 +417,6 @@ url = "https://pypi.anaconda.org/scientific-python-nightly-wheels/simple/"
 explicit = true
 
 [tool.vulture]
-exclude = [".*", "build/", ".eggs/"]
+exclude = [".*", "build/", ".eggs/", ".venv", "venv"]
 paths = ["artistools"]
 sort_by_size = true
