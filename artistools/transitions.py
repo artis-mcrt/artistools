@@ -255,8 +255,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--print-lines", action="store_true", help="Output details of matching lines to standard out")
 
-    parser.add_argument("--save-lines", action="store_true", help="Output details of all lines to transitionlines.txt")
-
     parser.add_argument(
         "--atomicdatabase",
         default="artis",
@@ -390,7 +388,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     xvalues = np.arange(args.xmin, args.xmax, step=plot_resolution)
     yvalues = np.zeros((len(temperature_list) + 1, len(ionlist), len(xvalues)))
-    dftransitions_all = None
     fe2depcoeff, ni2depcoeff = None, None
     iterdict = (
         adata.iter_rows(named=True)
@@ -465,14 +462,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             else:
                 ltepartfunc = 1.0
 
-            if args.save_lines:
-                pldftransitions = pldftransitions.with_columns(Z=ion["Z"], ion_stage=ion["ion_stage"])
-
-                if dftransitions_all is None:
-                    dftransitions_all = pldftransitions
-                else:
-                    dftransitions_all = pl.concat([dftransitions_all, pldftransitions])
-
             pldftransitions = pldftransitions.with_columns(
                 flux_factor=(pl.col("upper_energy_ev") - pl.col("lower_energy_ev")) * pl.col("A")
             )
@@ -545,45 +534,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             print(dftransitions.columns)
             print(dftransitions[["lower", "upper", "forbidden", "A", "lambda_angstroms"]])
     print()
-
-    if args.save_lines:
-        from tabulate import tabulate
-
-        assert dftransitions_all is not None
-        dftransitions_all = dftransitions_all[dftransitions_all["A"] > 0]
-        dftransitions_all = dftransitions_all.rename({
-            "lower_energy_ev": "lower_energy_Ev",
-            "upper_energy_ev": "upper_energy_Ev",
-        })
-        dftransitions_all = dftransitions_all.with_columns(pl.col("forbidden").cast(pl.Int32))
-        dftransitions_all["lambda_angstroms"] /= 1.0003
-        dftransitions_all = dftransitions_all.sort(by=["Z", "ion_stage", "lower", "upper"], descending=False)
-        dftransitions_all = dftransitions_all[
-            [
-                "lambda_angstroms",
-                "A",
-                "Z",
-                "ion_stage",
-                "lower_energy_Ev",
-                "lower_statweight",
-                "forbidden",
-                "lower_level",
-                "upper_level",
-                "upper_statweight",
-                "upper_energy_Ev",
-            ]
-        ]
-        print(dftransitions_all)
-        # dftransitions_all.to_csv("transitions.txt", index=False, sep=" ")
-        content = tabulate(dftransitions_all.to_numpy().tolist(), list(dftransitions_all.columns), tablefmt="plain")
-        # print(content)
-
-        outpath = (
-            Path(args.outputfile).parent if Path(args.outputfile).suffix else Path(args.outputfile)
-        ) / "transitionlines.txt"
-        print(f"Writing {outpath}")
-        with outpath.open("w", encoding="utf-8") as f:
-            f.write(content)
 
     if from_model:
         feions = [2, 3]
