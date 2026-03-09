@@ -60,11 +60,11 @@ jobs:
                   echo "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS=$(python3 -m setuptools_scm --strip-dev)" >> $GITHUB_ENV
 
             - name: Build wheels
-              uses: pypa/cibuildwheel@v3.3
+              uses: pypa/cibuildwheel@v3.4
               with:
                   extras: uv
 
-            - uses: actions/upload-artifact@v6
+            - uses: actions/upload-artifact@v7
               with:
                   name: cibw-wheels-${{ matrix.target.os_arch }}-${{ strategy.job-index }}
                   path: ./wheelhouse/*.whl
@@ -87,7 +87,7 @@ jobs:
             - name: Build sdist
               run: uv build --sdist
 
-            - uses: actions/upload-artifact@v6
+            - uses: actions/upload-artifact@v7
               with:
                   name: cibw-sdist
                   path: dist/*.tar.gz
@@ -103,7 +103,7 @@ jobs:
             id-token: write
         if: startsWith(github.ref , 'refs/tags/v') != true && github.event_name == 'workflow_dispatch'
         steps:
-            - uses: actions/download-artifact@v7
+            - uses: actions/download-artifact@v8
               with:
                   pattern: cibw-*
                   path: dist
@@ -127,7 +127,7 @@ jobs:
             id-token: write
         if: startsWith(github.ref, 'refs/tags/v')
         steps:
-            - uses: actions/download-artifact@v7
+            - uses: actions/download-artifact@v8
               with:
                   pattern: cibw-*
                   path: dist

@@ -25,6 +25,7 @@ from artistools import spectra as spectra
 from artistools import transitions as transitions
 from artistools import writecomparisondata as writecomparisondata
 from artistools.commands import addargs as addargs
+from artistools.commands import show_version as show_version
 from artistools.configuration import get_config as get_config
 from artistools.configuration import set_config as set_config
 from artistools.estimators import read_estimators as read_estimators
