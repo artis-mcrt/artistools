@@ -4,6 +4,8 @@ permissions:
     contents: read
 on:
     push:
+        branches:
+            - '*'
     merge_group:
     schedule:
         - cron: 0 10 * * 2
@@ -176,7 +178,7 @@ jobs:
                   verbose: true
 
             - name: Upload output files
-              uses: actions/upload-artifact@v6
+              uses: actions/upload-artifact@v7
               with:
                   name: testoutput-${{ matrix.os.name }}-${{ matrix.os.version }}-py3${{ matrix.python-minor-version }}
                   path: tests/output/
