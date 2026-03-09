@@ -40,7 +40,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("-nsteps", type=int, default=64, help="Number of timesteps")
 
-    parser.add_argument("-nucdata", type=str, default="ensdf", help='Nuclear dataset to use, either "hoto" or "ensdf"')
+    parser.add_argument(
+        "-nucdata", type=str, default="ensdf", help='Nuclear dataset to use, either "hotokezaka" or "ensdf"'
+    )
 
     parser.add_argument(
         "-yemax",
@@ -55,7 +57,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--nuclides", action="store_true", help="Calculates contributions of individual nuclides")
 
-    parser.add_argument("--trajjson", action="store_true", help="Writes individual JSONs for all trajectories.")
+    parser.add_argument(
+        "--trajparquet", action="store_true", help="Writes individual parquet files for all trajectories."
+    )
 
 
 def get_nuc_data(nuc_dataset: str) -> pl.DataFrame:
@@ -142,7 +146,7 @@ def process_trajectory(
     traj_masses_g: dict[int, float],
     arr_t_day: npt.NDArray[np.floating],
     nuclide_contrib: bool,
-    traj_json: bool,
+    traj_parquet: bool,
     traj_ID: int,
 ) -> dict[str, npt.NDArray[np.floating]]:
     """Process a single trajectory to extract decay powers."""
@@ -250,18 +254,18 @@ def process_trajectory(
             .join(nuc_data.lazy(), on=("Z", "A"), how="inner")
             .with_columns([(pl.col("num_nuc") / pl.col("tau[s]")).alias("N_dot")])
             .with_columns([
-                (pl.col("N_dot") * pl.col("Eneutrino[MeV]") * MeV_to_erg).alias("Qnu"),
-                (pl.col("N_dot") * pl.col("Eelec[MeV]") * MeV_to_erg).alias("Qelec"),
-                (pl.col("N_dot") * pl.col("Egamma[MeV]") * MeV_to_erg).alias("Qgamma"),
-                (pl.col("N_dot") * pl.col("Q[MeV]") * MeV_to_erg).alias("Qtot"),
+                (pl.col("N_dot") * pl.col("Eneutrino[MeV]") * MeV_to_erg).alias("eps_nu"),
+                (pl.col("N_dot") * pl.col("Eelec[MeV]") * MeV_to_erg).alias("eps_elec"),
+                (pl.col("N_dot") * pl.col("Egamma[MeV]") * MeV_to_erg).alias("eps_gamma"),
+                (pl.col("N_dot") * pl.col("Q[MeV]") * MeV_to_erg).alias("eps_tot"),
             ])
             .collect()
         )
         global_sums = pldf_all.select([
-            pl.sum("Qnu").alias("abundweighted_nu"),
-            pl.sum("Qelec").alias("abundweighted_elec"),
-            pl.sum("Qgamma").alias("abundweighted_gamma"),
-            pl.sum("Qtot").alias("abundweighted_Qdot"),
+            pl.sum("eps_nu").alias("abundweighted_nu"),
+            pl.sum("eps_elec").alias("abundweighted_elec"),
+            pl.sum("eps_gamma").alias("abundweighted_gamma"),
+            pl.sum("eps_tot").alias("abundweighted_Qdot"),
         ])
         global_sums_row = global_sums.row(0)  # only a single Row object because we computed sums
 
@@ -272,17 +276,17 @@ def process_trajectory(
 
         if nuclide_contrib:
             grouped = pldf_all.group_by(["A", "Z"]).agg([
-                pl.sum("Qelec").alias("Qelec"),
-                pl.sum("Qgamma").alias("Qgamma"),
-                pl.sum("Qnu").alias("Qnu"),
+                pl.sum("eps_elec").alias("eps_elec"),
+                pl.sum("eps_gamma").alias("eps_gamma"),
+                pl.sum("eps_nu").alias("eps_nu"),
             ])
             A_vals = grouped["A"].to_numpy()
             Z_vals = grouped["Z"].to_numpy()
-            Qelec_vals = grouped["Qelec"].to_numpy()
-            Qgamma_vals = grouped["Qgamma"].to_numpy()
-            Qnu_vals = grouped["Qnu"].to_numpy()
+            eps_elec_vals = grouped["eps_elec"].to_numpy()
+            eps_gamma_vals = grouped["eps_gamma"].to_numpy()
+            eps_nu_vals = grouped["eps_nu"].to_numpy()
 
-            for A, Z, Qe, Qg, Qn in zip(A_vals, Z_vals, Qelec_vals, Qgamma_vals, Qnu_vals, strict=True):
+            for A, Z, Qe, Qg, Qn in zip(A_vals, Z_vals, eps_elec_vals, eps_gamma_vals, eps_nu_vals, strict=True):
                 decay_powers[f"({A},{Z})_elec"][plottimestep] = Qe
                 decay_powers[f"({A},{Z})_gam"][plottimestep] = Qg
                 decay_powers[f"({A},{Z})_nu"][plottimestep] = Qn
@@ -291,20 +295,9 @@ def process_trajectory(
     #     # import shutil
 
     # dump to JSON
-    if traj_json:
-        decay_powers_json_copy = decay_powers.copy()
-
-        for key in decay_powers_json_copy:
-            val = decay_powers_json_copy[key]
-            if isinstance(val, np.ndarray):
-                decay_powers_json_copy[key] = val.tolist()
-
-        output_path = Path(f"json/decay_powers_{traj_ID}.json")
-        # Ensure the output directory exists to avoid FileNotFoundError
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        with output_path.open("w", encoding="utf-8") as f:
-            json.dump(decay_powers_json_copy, f)
-        #     # shutil.rmtree(Path(traj_root, str(traj_ID)))
+    if traj_parquet:
+        traj_df = pl.DataFrame(decay_powers)
+        traj_df.write_parquet(f"parquet/decay_powers_{traj_ID}.parquet")
     return decay_powers
 
 
@@ -319,7 +312,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args = parser.parse_args([] if kwargs else argsraw)
     import pandas as pd
 
-    nuc_dataset = "Hotokezaka" if args.nucdata == "hoto" else "ENSDF"
+    nuc_dataset = "Hotokezaka" if args.nucdata == "hotokezaka" else "ENSDF"
 
     Ye_bins = [
         ("all", 0.0, float("inf")),
@@ -335,13 +328,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     # get beta decay data
     nuc_data = get_nuc_data(nuc_dataset)
-    if args.trajjson:
-        traj_json_dir = f"json_{args.nucdata}"
-        if not Path(traj_json_dir).exists():
-            Path(traj_json_dir).mkdir(parents=True)
-            print(f"Created directory '{traj_json_dir}'.")
+    if args.trajparquet:
+        traj_parquet_dir = "parquet"
+        if not Path(traj_parquet_dir).exists():
+            Path(traj_parquet_dir).mkdir(parents=True)
+            print(f"Created directory '{traj_parquet_dir}'.")
         else:
-            print(f"'{traj_json_dir}' already exists.")
+            print(f"'{traj_parquet_dir}' already exists.")
     assert nuc_data.height == nuc_data.unique(("Z", "A")).height
 
     # set timesteps logarithmically
@@ -386,7 +379,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     alltraj_decay_powers: list[dict[str, npt.NDArray[np.floating]]] = process_map(
         partial(
-            process_trajectory, nuc_data, args.trajectoryroot, traj_masses_g, arr_t_day, args.nuclides, args.trajjson
+            process_trajectory, nuc_data, args.trajectoryroot, traj_masses_g, arr_t_day, args.nuclides, args.trajparquet
         ),
         traj_ids,
         chunksize=3,
