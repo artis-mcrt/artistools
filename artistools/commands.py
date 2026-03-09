@@ -25,6 +25,7 @@ COMMANDS = [
     "plotartistransitions",
     "plotartisinitialcomposition",
     "plotartisviewingangles",
+    "plotopacity",
 ]
 # fully recursive python >= 3.12
 # type CommandType = dict[str, tuple[str, str] | "CommandType"]
@@ -49,6 +50,7 @@ subcommandtree: CommandType = {
     "plotdensity": ("inputmodel.plotdensity", "main"),
     "plotmacroatom": ("macroatom", "main"),
     "plotnltepops": ("nltepops.plotnltepops", "main"),
+    "plotopacity": ("opacity.plotejectaopac", "main"),
     "plotradfield": ("radfield", "main"),
     "plotspectra": ("spectra.plotspectra", "main"),
     "plotspherical": ("plotspherical", "main"),
