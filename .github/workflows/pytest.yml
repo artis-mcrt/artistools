@@ -144,7 +144,7 @@ jobs:
                   brew install apache-arrow
                   echo "ARROW_HOME=$(brew --prefix apache-arrow)" >> $GITHUB_ENV
                   uv pip install pyarrow
-                  brew install gfortran gcc
+                  brew install gfortran gcc openblas
                   brew link --overwrite gfortran
                   CXX=g++-15 FC=gfortran-15 uv pip install scipy
 
