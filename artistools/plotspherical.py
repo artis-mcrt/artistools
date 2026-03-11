@@ -1,6 +1,15 @@
-#!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
-
+__lazy_modules__ = [
+    "matplotlib",
+    "matplotlib.axes",
+    "matplotlib.figure",
+    "matplotlib.pyplot",
+    "numpy",
+    "numpy.typing",
+    "pandas",
+    "polars",
+    "polars.selectors",
+]
 import argparse
 import typing as t
 from pathlib import Path

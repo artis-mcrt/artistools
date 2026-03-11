@@ -1,8 +1,18 @@
-#!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
 # adapted from Fortran maptogrid.f90 and kernelmodule.f90
 # original Fortran code by Andreas Bauswein
 
+__lazy_modules__ = [
+    "matplotlib",
+    "matplotlib.axes",
+    "matplotlib.figure",
+    "matplotlib.pyplot",
+    "numpy",
+    "numpy.typing",
+    "pandas",
+    "polars",
+    "polars.selectors",
+]
 import argparse
 import math
 import typing as t

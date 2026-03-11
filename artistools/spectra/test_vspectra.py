@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import typing as t
 from unittest import mock
 

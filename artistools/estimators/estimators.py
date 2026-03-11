@@ -1,9 +1,22 @@
-#!/usr/bin/env python3
 """Functions for reading and processing estimator files.
 
 Examples are temperatures, populations, and heating/cooling rates.
 """
 
+__lazy_modules__ = [
+    "matplotlib",
+    "matplotlib.axes",
+    "matplotlib.figure",
+    "matplotlib.image",
+    "matplotlib.pyplot",
+    "matplotlib.ticker",
+    "numpy",
+    "numpy.typing",
+    "pandas",
+    "polars",
+    "polars.selectors",
+    "tempfile",
+]
 import contextlib
 import datetime
 import tempfile
