@@ -1,5 +1,6 @@
 """Artistools - spectra related functions."""
 
+__lazy_modules__ = ["pandas"]
 import argparse
 import contextlib
 import math

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+__lazy_modules__ = ["pandas"]
 import argparse
 import typing as t
 from collections.abc import Sequence

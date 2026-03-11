@@ -5,6 +5,7 @@
 Examples are temperatures, populations, heating/cooling rates.
 """
 
+__lazy_modules__ = ["pandas"]
 import argparse
 import math
 import string

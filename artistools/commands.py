@@ -1,3 +1,4 @@
+__lazy_modules__ = ["pandas"]
 import argparse
 import importlib
 import subprocess

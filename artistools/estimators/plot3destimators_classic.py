@@ -1,3 +1,4 @@
+__lazy_modules__ = ["pandas"]
 import argparse
 import typing as t
 from pathlib import Path

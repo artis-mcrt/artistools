@@ -2,6 +2,7 @@
 # PYTHON_ARGCOMPLETE_OK
 """Artistools - spectra plotting functions."""
 
+__lazy_modules__ = ["pandas"]
 import argparse
 import contextlib
 import math

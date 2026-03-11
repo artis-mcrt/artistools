@@ -3,6 +3,7 @@
 # adapted from Fortran maptogrid.f90 and kernelmodule.f90
 # original Fortran code by Andreas Bauswein
 
+__lazy_modules__ = ["pandas"]
 import argparse
 import math
 import typing as t

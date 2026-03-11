@@ -1,5 +1,6 @@
 """Write out ARTIS spectra for each timestep to individual text files."""
 
+__lazy_modules__ = ["pandas"]
 import argparse
 import typing as t
 from collections.abc import Sequence

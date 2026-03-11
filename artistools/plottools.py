@@ -1,5 +1,6 @@
 """Matplotlib-related plotting functions."""
 
+__lazy_modules__ = ["pandas"]
 import argparse
 import itertools
 import sys

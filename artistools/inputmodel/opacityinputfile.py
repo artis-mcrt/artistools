@@ -1,3 +1,4 @@
+__lazy_modules__ = ["pandas"]
 from pathlib import Path
 
 import numpy as np

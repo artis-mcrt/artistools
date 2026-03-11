@@ -1,3 +1,4 @@
+__lazy_modules__ = ["pandas"]
 import argparse
 import sys
 import typing as t

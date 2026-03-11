@@ -1,5 +1,6 @@
 # PYTHON_ARGCOMPLETE_OK
 
+__lazy_modules__ = ["pandas"]
 import argparse
 import contextlib
 import math

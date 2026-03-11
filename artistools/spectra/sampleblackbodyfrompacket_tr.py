@@ -1,3 +1,4 @@
+__lazy_modules__ = ["pandas"]
 import copy
 import math
 import random

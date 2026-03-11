@@ -1,5 +1,6 @@
 """Artistools - NLTE population related functions."""
 
+__lazy_modules__ = ["pandas"]
 import math
 import re
 import string
