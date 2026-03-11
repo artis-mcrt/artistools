@@ -146,7 +146,7 @@ jobs:
                   uv pip install pyarrow
                   brew install gfortran gcc
                   brew link --overwrite gfortran
-                  CXX=g++-15 uv pip install scipy
+                  CXX=g++-15 FC=gfortran-15 uv pip install scipy
 
             - name: Install artistools (no dev deps)
               run: |
