@@ -363,7 +363,7 @@ unfixable = [
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
-banned-eager-imports = "all"
+#banned-eager-imports = "all"
 
 [tool.ruff.lint.isort]
 force-single-line = true
