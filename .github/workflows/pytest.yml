@@ -153,7 +153,8 @@ jobs:
               if: matrix.os.name == 'macos' && matrix.python-minor-version == '15'
               run: |
                   uv pip install pyarrow
-                  CXX=g++-15 FC=gfortran-15 uv pip install scipy
+                  GCC_MAJOR="$(brew list --versions gcc | awk '{print $2}' | cut -d. -f1)"
+                  CXX="g++-${GCC_MAJOR}" FC="gfortran-${GCC_MAJOR}" uv pip install scipy
 
             - name: Install artistools (no dev deps)
               run: |
