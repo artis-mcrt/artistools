@@ -145,6 +145,8 @@ jobs:
                   echo "ARROW_HOME=$(brew --prefix apache-arrow)" >> $GITHUB_ENV
                   uv pip install pyarrow
                   brew install gfortran gcc openblas
+                  echo "LDFLAGS=-L/opt/homebrew/opt/openblas/lib" >> $GITHUB_ENV
+                  echo "CPPFLAGS=-I/opt/homebrew/opt/openblas/include" >> $GITHUB_ENV
                   echo "CMAKE_PREFIX_PATH=/opt/homebrew/opt/openblas" >> $GITHUB_ENV
                   echo "PKG_CONFIG_PATH=/opt/homebrew/opt/openblas/lib/pkgconfig" >> $GITHUB_ENV
                   brew link --overwrite gfortran
