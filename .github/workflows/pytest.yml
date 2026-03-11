@@ -137,6 +137,10 @@ jobs:
                       cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python3.${{ matrix.python-minor-version }}-
                       cargo-rust-target-${{ runner.os }}${{ runner.arch }}-
 
+            - name: Install gfortran for scipy build
+              if: matrix.python-minor-version == '15' && matrix.os.name == 'macos'
+              run: brew install gfortran
+
             - name: Install artistools (no dev deps)
               run: |
                   rustup update stable
