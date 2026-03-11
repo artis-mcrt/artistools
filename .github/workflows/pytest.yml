@@ -101,8 +101,8 @@ jobs:
                       python-minor-version: 11
                     - os: {name: macos, version: '26'}
                       python-minor-version: 12
-                    # - os: {name: linux, version: 24.04-arm}
-                    #   python-minor-version: 15
+                    - os: {name: linux, version: 24.04-arm}
+                      python-minor-version: 15
         env:
             OS: ${{ matrix.os.name }}-${{ matrix.os.version }}
             PYTHON: 3.${{ matrix.python-minor-version }}
@@ -137,13 +137,13 @@ jobs:
                       cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python3.${{ matrix.python-minor-version }}-
                       cargo-rust-target-${{ runner.os }}${{ runner.arch }}-
 
-            - name: Install gfortran for scipy build
-              if: matrix.python-minor-version == '15' && matrix.os.name == 'macos'
-              run: brew install gfortran
-
-            - name: Install libjpeg for pillow build
-              if: matrix.python-minor-version == '15' && matrix.os.name == 'ubuntu'
-              run: sudo apt install libjpeg-dev zlib1g-dev
+            - name: Install apache-arrow
+              if: matrix.os.name == 'macos' && matrix.python-minor-version == '15'
+              run: |
+                  brew update
+                  brew install apache-arrow
+                  echo "ARROW_HOME=$(brew --prefix apache-arrow)" >> $GITHUB_ENV
+                  uv pip install pyarrow
 
             - name: Install artistools (no dev deps)
               run: |
