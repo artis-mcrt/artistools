@@ -33,17 +33,17 @@ repos:
       hooks:
           - id: yamlfmt
 
-    - repo: https://github.com/astral-sh/uv-pre-commit
-      rev: 0.10.9
-      hooks:
-          - id: uv-lock
-
     - repo: https://github.com/astral-sh/ruff-pre-commit
       rev: v0.15.5
       hooks:
           - id: ruff-check
             args: [--fix]
           - id: ruff-format
+
+    - repo: https://github.com/astral-sh/uv-pre-commit
+      rev: 0.10.9
+      hooks:
+          - id: uv-lock
 
     - repo: local
       hooks:
