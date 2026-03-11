@@ -143,7 +143,7 @@ jobs:
                   brew update
                   brew install apache-arrow
                   echo "ARROW_HOME=$(brew --prefix apache-arrow)" >> $GITHUB_ENV
-                  brew install gfortran gcc openblas
+                  brew install gcc openblas
                   echo "LDFLAGS=-L/opt/homebrew/opt/openblas/lib" >> $GITHUB_ENV
                   echo "CPPFLAGS=-I/opt/homebrew/opt/openblas/include" >> $GITHUB_ENV
                   echo "CMAKE_PREFIX_PATH=/opt/homebrew/opt/openblas" >> $GITHUB_ENV
