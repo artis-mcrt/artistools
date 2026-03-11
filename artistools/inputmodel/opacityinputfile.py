@@ -1,4 +1,12 @@
-__lazy_modules__ = ["pandas"]
+__lazy_modules__ = [
+    "matplotlib",
+    "matplotlib.axes",
+    "matplotlib.figure",
+    "matplotlib.pyplot",
+    "pandas",
+    "polars",
+    "numpy",
+]
 from pathlib import Path
 
 import numpy as np
@@ -20,8 +28,6 @@ def opacity_by_Ye(outputfilepath: Path | str, griddata: pd.DataFrame | pl.DataFr
     """Opacities from Table 1 Tanaka 2020."""
     if isinstance(griddata, pl.DataFrame):
         griddata = griddata.to_pandas()
-    import pandas as pd
-
     griddata = pd.DataFrame(griddata)
     print("Getting opacity kappa from Ye")
 

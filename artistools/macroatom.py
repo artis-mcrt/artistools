@@ -1,4 +1,12 @@
-__lazy_modules__ = ["pandas"]
+__lazy_modules__ = [
+    "matplotlib",
+    "matplotlib.axes",
+    "matplotlib.figure",
+    "matplotlib.pyplot",
+    "pandas",
+    "polars",
+    "numpy",
+]
 import argparse
 import typing as t
 from collections.abc import Sequence
@@ -6,6 +14,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import polars as pl
 
 import artistools as at
@@ -117,8 +126,6 @@ def read_files(
     timestepmax: int | None = None,
     atomic_number: int | None = None,
 ) -> pl.DataFrame:
-    import pandas as pd
-
     dfall = None
     if not files:
         print("No files")

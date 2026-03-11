@@ -1,6 +1,20 @@
 """Matplotlib-related plotting functions."""
 
-__lazy_modules__ = ["pandas"]
+__lazy_modules__ = [
+    "itertools",
+    "matplotlib",
+    "matplotlib.axes",
+    "matplotlib.figure",
+    "matplotlib.image",
+    "matplotlib.pyplot",
+    "matplotlib.ticker",
+    "numpy",
+    "numpy.typing",
+    "pandas",
+    "polars",
+    "sys",
+    "typing",
+]
 import argparse
 import itertools
 import sys

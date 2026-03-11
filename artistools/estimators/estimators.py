@@ -3,6 +3,17 @@
 Examples are temperatures, populations, and heating/cooling rates.
 """
 
+__lazy_modules__ = [
+    "matplotlib",
+    "matplotlib.axes",
+    "matplotlib.figure",
+    "matplotlib.image",
+    "matplotlib.pyplot",
+    "matplotlib.ticker",
+    "numpy",
+    "pandas",
+    "polars",
+]
 import contextlib
 import datetime
 import tempfile

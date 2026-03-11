@@ -1,5 +1,13 @@
 # PYTHON_ARGCOMPLETE_OK
-__lazy_modules__ = ["pandas"]
+__lazy_modules__ = [
+    "matplotlib",
+    "matplotlib.axes",
+    "matplotlib.figure",
+    "matplotlib.pyplot",
+    "pandas",
+    "polars",
+    "numpy",
+]
 import argparse
 import math
 import os

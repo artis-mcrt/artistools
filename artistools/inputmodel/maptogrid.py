@@ -2,7 +2,15 @@
 # adapted from Fortran maptogrid.f90 and kernelmodule.f90
 # original Fortran code by Andreas Bauswein
 
-__lazy_modules__ = ["pandas"]
+__lazy_modules__ = [
+    "matplotlib",
+    "matplotlib.axes",
+    "matplotlib.figure",
+    "matplotlib.pyplot",
+    "pandas",
+    "polars",
+    "numpy",
+]
 import argparse
 import math
 import typing as t

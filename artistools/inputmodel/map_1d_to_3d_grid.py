@@ -1,4 +1,12 @@
-__lazy_modules__ = ["pandas"]
+__lazy_modules__ = [
+    "matplotlib",
+    "matplotlib.axes",
+    "matplotlib.figure",
+    "matplotlib.pyplot",
+    "pandas",
+    "polars",
+    "numpy",
+]
 import numpy as np
 import pandas as pd
 import polars as pl

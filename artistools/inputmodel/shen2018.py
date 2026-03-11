@@ -1,4 +1,12 @@
-__lazy_modules__ = ["pandas"]
+__lazy_modules__ = [
+    "matplotlib",
+    "matplotlib.axes",
+    "matplotlib.figure",
+    "matplotlib.pyplot",
+    "pandas",
+    "polars",
+    "numpy",
+]
 import argparse
 import math
 import string
@@ -6,6 +14,7 @@ import typing as t
 from collections.abc import Sequence
 from pathlib import Path
 
+import pandas as pd
 import polars as pl
 
 import artistools as at
@@ -24,8 +33,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         addargs(parser)
         at.set_args_from_dict(parser, kwargs)
         args = parser.parse_args([] if kwargs else argsraw)
-
-    import pandas as pd
 
     with Path(args.inputpath).open(encoding="utf-8") as infile:
         columns = infile.readline().split()

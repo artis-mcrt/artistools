@@ -1,4 +1,12 @@
-__lazy_modules__ = ["pandas"]
+__lazy_modules__ = [
+    "matplotlib",
+    "matplotlib.axes",
+    "matplotlib.figure",
+    "matplotlib.pyplot",
+    "pandas",
+    "polars",
+    "numpy",
+]
 import calendar
 import datetime
 import errno
@@ -166,8 +174,6 @@ def read_modelfile_text(
         dtypes["inputcellid"] = "int32[pyarrow]"
 
         # each cell takes up two lines in the model file
-        import pandas as pd
-
         dfmodelpd = pd.read_csv(
             zopen(filename, mode="r"),
             sep=r"\s+",
@@ -727,8 +733,6 @@ def add_derived_cols_to_modeldata(
 
 def get_cell_angle(dfmodel: pd.DataFrame) -> pd.DataFrame:
     """Get angle between origin to cell midpoint and the syn_dir axis."""
-    import pandas as pd
-
     syn_dir = np.array([0.0, 0.0, 1.0])
     xhat = np.array([1.0, 0.0, 0.0])
 

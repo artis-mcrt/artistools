@@ -104,5 +104,3 @@ from artistools.misc import vec_len as vec_len
 from artistools.misc import zopen as zopen
 from artistools.misc import zopenpl as zopenpl
 from artistools.plottools import set_mpl_style as set_mpl_style
-
-set_mpl_style()  # noqa: RUF067

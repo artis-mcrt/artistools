@@ -1,6 +1,16 @@
 """Artistools - NLTE population related functions."""
 
-__lazy_modules__ = ["pandas"]
+__lazy_modules__ = [
+    "matplotlib",
+    "matplotlib.axes",
+    "matplotlib.figure",
+    "matplotlib.image",
+    "matplotlib.pyplot",
+    "matplotlib.ticker",
+    "pandas",
+    "polars",
+    "numpy",
+]
 import argparse
 import contextlib
 import math

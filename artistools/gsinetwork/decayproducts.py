@@ -1,5 +1,13 @@
 # PYTHON_ARGCOMPLETE_OK
-__lazy_modules__ = ["pandas"]
+__lazy_modules__ = [
+    "matplotlib",
+    "matplotlib.axes",
+    "matplotlib.figure",
+    "matplotlib.pyplot",
+    "pandas",
+    "polars",
+    "numpy",
+]
 import argparse
 import math
 import multiprocessing as mp
@@ -13,6 +21,7 @@ import argcomplete
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
+import pandas as pd
 import polars as pl
 
 import artistools as at
@@ -35,8 +44,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 
 def get_nuc_data(nuc_dataset: str) -> pl.DataFrame:
-    import pandas as pd
-
     assert nuc_dataset in {"Hotokezaka", "ENSDF"}
     hotokezaka_betaminus = (
         pl
@@ -120,8 +127,6 @@ def process_trajectory(
     """Process a single trajectory to extract decay powers."""
     traj_mass_grams = traj_masses_g[traj_ID]
     traj_root = Path(traj_root)
-    import pandas as pd
-
     dfheatingthermo = (
         pl
         .from_pandas(
@@ -238,8 +243,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         at.set_args_from_dict(parser, kwargs)
         argcomplete.autocomplete(parser)
         args = parser.parse_args([] if kwargs else argsraw)
-    import pandas as pd
-
     # get beta decay data
     nuc_data = get_nuc_data(nuc_dataset)
     assert nuc_data.height == nuc_data.unique(("Z", "A")).height

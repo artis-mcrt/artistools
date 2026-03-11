@@ -1,5 +1,13 @@
 # PYTHON_ARGCOMPLETE_OK
-__lazy_modules__ = ["pandas"]
+__lazy_modules__ = [
+    "matplotlib",
+    "matplotlib.axes",
+    "matplotlib.figure",
+    "matplotlib.pyplot",
+    "numpy",
+    "pandas",
+    "polars",
+]
 import argparse
 import typing as t
 from collections.abc import Sequence

@@ -1,3 +1,13 @@
+__lazy_modules__ = [
+    "matplotlib",
+    "matplotlib.axes",
+    "matplotlib.figure",
+    "matplotlib.pyplot",
+    "pandas",
+    "polars",
+    "numpy",
+    "typing",
+]
 import io
 import time
 import typing as t
