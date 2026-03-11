@@ -90,7 +90,7 @@ def check_time_range_is_valid(modelpath: Path, timemin: float, timemax: float, a
             print("\n".join(problem_messages))
 
 
-def get_lambda_range_binsize(
+def get_lambda_min_max_binwidth(
     xmin: float, xmax: float, args: argparse.Namespace
 ) -> tuple[float, float, float | npt.NDArray[np.floating] | None]:
     lambda_min, lambda_max = sorted([
@@ -477,7 +477,7 @@ def plot_artis_spectrum(
 
         xmin, xmax = axis.get_xlim()
         if from_packets:
-            lambda_min, lambda_max, delta_lambda = get_lambda_range_binsize(xmin, xmax, args)
+            lambda_min, lambda_max, delta_lambda = get_lambda_min_max_binwidth(xmin, xmax, args)
 
             viewinganglespectra = atspectra.get_from_packets(
                 modelpath,
@@ -855,7 +855,7 @@ def make_emissionabsorption_plot(
         else:
             emtypecolumn = "emissiontype"
 
-        lambda_min, lambda_max, delta_lambda = get_lambda_range_binsize(xmin, xmax, args)
+        lambda_min, lambda_max, delta_lambda = get_lambda_min_max_binwidth(xmin, xmax, args)
 
         (contribution_list, array_flambda_emission_total, arraylambda_angstroms) = (
             atspectra.get_flux_contributions_from_packets(
