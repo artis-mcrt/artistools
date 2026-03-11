@@ -52,11 +52,11 @@ repos:
             language: system
             entry: uv sync --frozen --all-extras --no-install-project
             pass_filenames: false
-            args: [--python=.venv/bin/python]
+            args: [--python=.venv/]
 
           - id: ty-check
             name: ty check
             language: system
-            entry: uv run --all-extras --frozen -- ty check
+            entry: uv run --all-extras --no-project --frozen -- ty check
             pass_filenames: false
             args: [--python=.venv/]
