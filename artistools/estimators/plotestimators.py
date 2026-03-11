@@ -12,6 +12,7 @@ __lazy_modules__ = [
     "matplotlib.pyplot",
     "matplotlib.ticker",
     "numpy",
+    "numpy.typing",
     "pandas",
     "polars",
 ]

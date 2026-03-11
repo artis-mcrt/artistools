@@ -5,6 +5,7 @@ __lazy_modules__ = [
     "matplotlib.figure",
     "matplotlib.pyplot",
     "numpy",
+    "numpy.typing",
     "pandas",
     "polars",
 ]

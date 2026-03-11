@@ -4,9 +4,11 @@ __lazy_modules__ = [
     "matplotlib.figure",
     "matplotlib.legend_handler",
     "matplotlib.pyplot",
+    "numpy",
+    "numpy.typing",
     "pandas",
     "polars",
-    "numpy",
+    "polars.selectors",
 ]
 import argparse
 import sys

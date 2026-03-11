@@ -3,9 +3,11 @@ __lazy_modules__ = [
     "matplotlib.axes",
     "matplotlib.figure",
     "matplotlib.pyplot",
+    "numpy",
+    "numpy.typing",
     "pandas",
     "polars",
-    "numpy",
+    "polars.selectors",
 ]
 import argparse
 import typing as t

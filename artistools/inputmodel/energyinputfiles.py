@@ -3,9 +3,13 @@ __lazy_modules__ = [
     "matplotlib.axes",
     "matplotlib.figure",
     "matplotlib.pyplot",
+    "numpy",
+    "numpy.typing",
     "pandas",
     "polars",
-    "numpy",
+    "polars.selectors",
+    "scipy",
+    "tarfile",
 ]
 import tarfile
 from pathlib import Path

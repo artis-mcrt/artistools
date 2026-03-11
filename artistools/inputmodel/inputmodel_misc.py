@@ -3,9 +3,12 @@ __lazy_modules__ = [
     "matplotlib.axes",
     "matplotlib.figure",
     "matplotlib.pyplot",
+    "numpy",
+    "numpy.typing",
     "pandas",
     "polars",
-    "numpy",
+    "polars.selectors",
+    "tempfile",
 ]
 import calendar
 import datetime

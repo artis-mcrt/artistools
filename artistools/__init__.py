@@ -4,6 +4,29 @@ A collection of plotting, analysis, and file format conversion tools
 for the ARTIS radiative transfer code.
 """
 
+__lazy_modules__ = [  # noqa: RUF067
+    "artistools.atomic",
+    "artistools.codecomparison",
+    "artistools.commands",
+    "artistools.configuration",
+    "artistools.constants",
+    "artistools.estimators",
+    "artistools.gsinetwork",
+    "artistools.inputmodel",
+    "artistools.lightcurve",
+    "artistools.macroatom",
+    "artistools.misc",
+    "artistools.nltepops",
+    "artistools.nonthermal",
+    "artistools.packets",
+    "artistools.plotspherical",
+    "artistools.plottools",
+    "artistools.radfield",
+    "artistools.rustext",
+    "artistools.spectra",
+    "artistools.transitions",
+    "artistools.writecomparisondata",
+]
 from artistools import atomic as atomic
 from artistools import codecomparison as codecomparison
 from artistools import commands as commands

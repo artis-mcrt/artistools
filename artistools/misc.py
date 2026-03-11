@@ -8,10 +8,14 @@ __lazy_modules__ = [
     "matplotlib.axes",
     "matplotlib.figure",
     "matplotlib.pyplot",
+    "multiprocessing",
+    "multiprocessing.pool",
     "numpy",
+    "numpy.typing",
     "pathlib",
     "pandas",
     "polars",
+    "polars.selectors",
     "typing",
 ]
 import argparse

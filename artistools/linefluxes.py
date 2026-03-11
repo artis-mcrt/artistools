@@ -4,10 +4,14 @@ __lazy_modules__ = [
     "matplotlib",
     "matplotlib.axes",
     "matplotlib.figure",
+    "matplotlib.markers",
     "matplotlib.pyplot",
+    "matplotlib.typing",
+    "numpy",
+    "numpy.typing",
     "pandas",
     "polars",
-    "numpy",
+    "polars.selectors",
 ]
 import argparse
 import contextlib

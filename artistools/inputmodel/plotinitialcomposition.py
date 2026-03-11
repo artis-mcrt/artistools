@@ -7,9 +7,11 @@ __lazy_modules__ = [
     "matplotlib.colors",
     "matplotlib.figure",
     "matplotlib.pyplot",
+    "numpy",
+    "numpy.typing",
     "pandas",
     "polars",
-    "numpy",
+    "polars.selectors",
 ]
 import argparse
 import math

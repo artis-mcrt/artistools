@@ -4,9 +4,11 @@ __lazy_modules__ = [
     "matplotlib.container",
     "matplotlib.figure",
     "matplotlib.pyplot",
+    "numpy",
+    "numpy.typing",
     "pandas",
     "polars",
-    "numpy",
+    "polars.selectors",
 ]
 import argparse
 import math

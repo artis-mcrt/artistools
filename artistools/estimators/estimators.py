@@ -11,8 +11,11 @@ __lazy_modules__ = [
     "matplotlib.pyplot",
     "matplotlib.ticker",
     "numpy",
+    "numpy.typing",
     "pandas",
     "polars",
+    "polars.selectors",
+    "tempfile",
 ]
 import contextlib
 import datetime

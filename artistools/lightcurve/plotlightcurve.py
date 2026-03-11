@@ -8,9 +8,11 @@ __lazy_modules__ = [
     "matplotlib.image",
     "matplotlib.pyplot",
     "matplotlib.ticker",
+    "numpy",
+    "numpy.typing",
     "pandas",
     "polars",
-    "numpy",
+    "polars.selectors",
 ]
 import argparse
 import math
