@@ -101,7 +101,7 @@ jobs:
                       python-minor-version: 11
                     - os: {name: macos, version: '26'}
                       python-minor-version: 12
-                    - os: {name: linux, version: 24.04-arm}
+                    - os: {name: ubuntu, version: 24.04-arm}
                       python-minor-version: 15
         env:
             OS: ${{ matrix.os.name }}-${{ matrix.os.version }}
