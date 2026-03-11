@@ -9,7 +9,7 @@ on:
     merge_group:
     schedule:
         - cron: 0 10 * * 2
-    pull_request:
+    # pull_request:
     workflow_dispatch:
     repository_dispatch:
         types: [trigger_checks]
@@ -107,6 +107,7 @@ jobs:
             PYTHON_GIL: ${{ endsWith(matrix.python-minor-version, 't') && '0' || '1' }}
             UV_FROZEN: 1
             PYO3_PYTHON: python3.${{ matrix.python-minor-version }}
+            PYO3_USE_ABI3_FORWARD_COMPATIBILITY: 1
         name: pytest ${{ matrix.os.name }} python 3.${{ matrix.python-minor-version }}
         steps:
             - name: Checkout Code
