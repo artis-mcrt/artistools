@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Convert a CMFGEN model file to ARTIS format. Original script possibly by Markus Kromer?."""
 
 # from rd_cmfgen import rd_nuc_decay_data

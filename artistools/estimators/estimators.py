@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Functions for reading and processing estimator files.
 
 Examples are temperatures, populations, and heating/cooling rates.

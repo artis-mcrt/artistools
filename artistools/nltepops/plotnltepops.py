@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Artistools - NLTE population related functions."""
 
 __lazy_modules__ = ["pandas"]

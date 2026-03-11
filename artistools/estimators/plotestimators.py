@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
 """Functions for plotting artis estimators and internal structure.
 
