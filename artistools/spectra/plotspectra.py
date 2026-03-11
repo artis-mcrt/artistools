@@ -58,8 +58,6 @@ from artistools.plottools import ExponentLabelFormatter
 from artistools.plottools import glasbey_category20_nogreys
 from artistools.plottools import set_mpl_style
 
-hatchestypes = ["", "x", "-", "\\", "+", "O", ".", "", "x", "*", "\\", "+", "O", "."]  # ,
-
 
 def path_is_artis_model(filepath: str | Path) -> bool:
     if Path(filepath).name.endswith(".out.zst"):
@@ -103,11 +101,9 @@ def get_lambda_range_binsize(
         if args.deltalogx is not None:
             x = xmin
             list_x_bin_edges = [xmin]
-            steps = 0
             while x <= xmax:
                 x *= 1 + args.deltalogx
                 list_x_bin_edges.append(x)
-                steps += 1
             x_bin_edges = np.array(list_x_bin_edges)
         else:
             x_bin_edges = np.arange(xmin, xmax + args.deltax, args.deltax)
