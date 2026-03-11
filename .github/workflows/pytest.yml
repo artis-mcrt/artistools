@@ -94,7 +94,7 @@ jobs:
             fail-fast: false
             matrix:
                 os: [{name: macos, version: '26'}, {name: ubuntu, version: 24.04-arm}]
-                python-minor-version: ['11', '12', '13', '14', 14t]
+                python-minor-version: ['11', '12', '13', '14', 14t, '15']
                 exclude:
                     # macos runners are very limited in number
                     - os: {name: macos, version: '26'}
