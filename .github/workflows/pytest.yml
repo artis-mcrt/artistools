@@ -181,7 +181,7 @@ jobs:
               run: uv sync
 
             - name: Test with pytest
-              run: uv run --no-sync -- python -m pytest ${{ matrix.python-minor-version == '15' && "--typeguard-packages=none" || "" }} --cov=./ --cov-report=xml
+              run: uv run --no-sync -- python -m pytest ${{ (matrix.python-minor-version == '15') && '--typeguard-packages=none' || '' }} --cov=./ --cov-report=xml
 
             - name: Report coverage
               run: uv run -- python -m coverage report
