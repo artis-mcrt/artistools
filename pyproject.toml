@@ -282,7 +282,7 @@ fix = true
 show-fixes = true
 extend-exclude = ["_version.py", "artistools/inputmodel/fromcmfgen/rd_cmfgen.py", ".venv/**"]
 preview = true
-required-version = ">=0.14.11"
+required-version = ">=0.15.5"
 
 [tool.ruff.format]
 skip-magic-trailing-comma = true
