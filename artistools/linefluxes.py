@@ -1,6 +1,18 @@
-#!/usr/bin/env python3
 """Artistools - spectra related functions."""
 
+__lazy_modules__ = [
+    "matplotlib",
+    "matplotlib.axes",
+    "matplotlib.figure",
+    "matplotlib.markers",
+    "matplotlib.pyplot",
+    "matplotlib.typing",
+    "numpy",
+    "numpy.typing",
+    "pandas",
+    "polars",
+    "polars.selectors",
+]
 import argparse
 import contextlib
 import json

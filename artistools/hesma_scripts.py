@@ -1,7 +1,19 @@
+__lazy_modules__ = [
+    "matplotlib",
+    "matplotlib.axes",
+    "matplotlib.figure",
+    "matplotlib.pyplot",
+    "numpy",
+    "numpy.typing",
+    "pandas",
+    "polars",
+    "polars.selectors",
+]
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import polars as pl
 
 import artistools as at
@@ -9,8 +21,6 @@ import artistools as at
 
 def plot_hesma_spectrum(timeavg, axes) -> None:  # noqa: ANN001
     hesma_file = Path("/Users/ccollins/Downloads/hesma_files/M2a/hesma_specseq.dat")
-    import pandas as pd
-
     hesma_spec = pd.read_csv(hesma_file, comment="#", sep=r"\s+", dtype=float)
     # print(hesma_spec)
 
@@ -32,8 +42,6 @@ def plot_hesma_spectrum(timeavg, axes) -> None:  # noqa: ANN001
 def plothesmaresspec(fig, ax) -> None:  # noqa: ANN001
     # specfiles = ["/Users/ccollins/Downloads/hesma_files/M2a_i55/hesma_specseq_theta.dat"]
     specfiles = ["/Users/ccollins/Downloads/hesma_files/M2a/hesma_virtualspecseq_theta.dat"]
-    import pandas as pd
-
     for specfilename in specfiles:
         specdata = pl.from_pandas(pd.read_csv(specfilename, sep=r"\s+", header=None, dtype=float))
 
@@ -136,8 +144,6 @@ def make_hesma_peakmag_dm15_dm40(
     band: str, pathtofiles: Path, modelname: str, outpath: Path, dm40: bool = False
 ) -> None:
     dm15filename = f"{band}band_{modelname}_viewing_angle_data.txt"
-    import pandas as pd
-
     dm15data = pd.read_csv(
         pathtofiles / dm15filename, sep=r"\s+", header=None, names=["peakmag", "risetime", "dm15"], skiprows=1
     )
@@ -161,8 +167,6 @@ def make_hesma_peakmag_dm15_dm40(
 
 
 def read_hesma_peakmag_dm15_dm40(pathtofiles) -> None:  # noqa: ANN001
-    import pandas as pd
-
     data = []
     for filepath in Path(pathtofiles).iterdir():
         print(filepath)

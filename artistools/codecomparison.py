@@ -5,6 +5,17 @@ codecomparison/[modelname]/[codename]
 e.g., codecomparison/DDC10/artisnebular
 """
 
+__lazy_modules__ = [
+    "matplotlib",
+    "matplotlib.axes",
+    "matplotlib.figure",
+    "matplotlib.pyplot",
+    "numpy",
+    "numpy.typing",
+    "pandas",
+    "polars",
+    "polars.selectors",
+]
 import math
 import typing as t
 from collections.abc import Sequence
@@ -13,6 +24,7 @@ from pathlib import Path
 import matplotlib.axes as mplax
 import numpy as np
 import numpy.typing as npt
+import pandas as pd
 import polars as pl
 
 import artistools as at
@@ -176,8 +188,6 @@ def get_spectra(modelpath: str | Path) -> tuple[pl.DataFrame, npt.NDArray[np.flo
     inputmodelfolder = Path(at.get_config()["codecomparisondata1path"], inputmodel)
 
     specfilepath = Path(inputmodelfolder, f"spectra_{inputmodel}_{codename}.txt")
-    import pandas as pd
-
     with specfilepath.open(encoding="utf-8") as fspec:
         ntimes = int(fspec.readline().replace("#NTIMES:", ""))
         _ = int(fspec.readline().replace("#NWAVE:", ""))

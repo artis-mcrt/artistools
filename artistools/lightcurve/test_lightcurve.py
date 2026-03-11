@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import typing as t
 from pathlib import Path
 from unittest import mock

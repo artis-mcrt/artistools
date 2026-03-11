@@ -1,5 +1,16 @@
 """Write out ARTIS spectra for each timestep to individual text files."""
 
+__lazy_modules__ = [
+    "matplotlib",
+    "matplotlib.axes",
+    "matplotlib.figure",
+    "matplotlib.pyplot",
+    "numpy",
+    "numpy.typing",
+    "pandas",
+    "polars",
+    "polars.selectors",
+]
 import argparse
 import typing as t
 from collections.abc import Sequence
