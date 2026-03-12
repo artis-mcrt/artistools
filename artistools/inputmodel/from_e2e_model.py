@@ -612,6 +612,7 @@ def map_to_artis(
         dyn_model: pl.DataFrame = at.inputmodel.get_modeldata(
             modelpath=Path(replacedyn), derived_cols=["volume", "velocity"]
         )[0].collect()
+        dyn_model = dyn_model.with_columns(dfmodel["bin_state"].alias("bin_state"))
         dyn_abunds = at.inputmodel.get_initelemabundances(modelpath=Path(replacedyn))
         dyn_model = dyn_model.drop(["tracercount", "modelgridindex"])
 
@@ -667,12 +668,8 @@ def map_to_artis(
             # write "replaced" ejecta to seperate model files for plotting / consistency check
             # 1) 3D dynamical ejecta weighted but not scaled
             dyn_model = dyn_model.join(
-                dfmodel.select(["inputcellid", "bin_state"]),
-                on="inputcellid",
-                how="left",
-            ).with_columns(
-                (pl.col("rho") * pl.col("bin_state")).alias("rho")
-            )
+                dfmodel.select(["inputcellid", "bin_state"]), on="inputcellid", how="left"
+            ).with_columns((pl.col("rho") * pl.col("bin_state")).alias("rho"))
             at.inputmodel.save_initelemabundances(dfelabundances=dyn_abunds, outpath=Path("dyn_abunds.txt"))
             dyn_modelmeta = {
                 "dimensions": 3,
@@ -742,6 +739,7 @@ def map_to_artis(
                 if elem_str == "X_N":
                     elem_str = "X_n"
                 if elem_str in dictelabunds:
+                    dictelabunds[elem_str] = dictelabunds[elem_str].copy()
                     dictelabunds[elem_str] += interpol_X_iso
                 else:
                     dictelabunds[elem_str] = interpol_X_iso
@@ -764,16 +762,49 @@ def map_to_artis(
 
             # do replacement in dfelabundances...
             # obtain dfelabundances from the dyn model first again
-            dfabundances = pl.concat([
-                pl.DataFrame(dfelabundances.filter(~pl.col("inputcellid").is_in(id_list))),
-                pl.DataFrame(dyn_abunds.filter(pl.col("inputcellid").is_in(id_list))),
-            ]).sort("inputcellid")
+            float_types = {pl.Float32, pl.Float64}
+            dyn_abunds = dyn_abunds.collect()
+            common_cols = list(set(dfelabundances.columns).intersection(dyn_abunds.columns))
+            dfelabundances_cast = (
+                dfelabundances
+                .select(common_cols)
+                .with_columns([
+                    pl.col(col).cast(pl.Float64) for col in common_cols if dfelabundances[col].dtype in float_types
+                ])
+                .filter(~pl.col("inputcellid").is_in(id_list))
+            )
+            dfelabundances_cast = dfelabundances_cast.with_columns(pl.col("inputcellid").cast(pl.Int32))
+            dyn_abunds_cast = (
+                dyn_abunds
+                .select(common_cols)
+                .with_columns([
+                    pl.col(col).cast(pl.Float64) for col in common_cols if dyn_abunds[col].dtype in float_types
+                ])
+                .filter(pl.col("inputcellid").is_in(id_list))
+            )
+
+            dfabundances = pl.concat([dfelabundances_cast, dyn_abunds_cast]).sort("inputcellid")
 
             # ... and in the model dataframe
-            dfmodel = pl.concat([
-                dfmodel.filter(~pl.col("inputcellid").is_in(id_list)),
-                dyn_model.filter(pl.col("inputcellid").is_in(id_list)),
-            ]).sort("inputcellid")
+            common_cols = list(set(dfmodel.columns).intersection(dyn_model.columns))
+            dfmodel_cast = (
+                dfmodel
+                .select(common_cols)
+                .with_columns([
+                    pl.col(col).cast(pl.Float32) for col in common_cols if dfmodel[col].dtype in float_types
+                ])
+                .filter(~pl.col("inputcellid").is_in(id_list))
+            )
+            dfmodel_cast = dfmodel_cast.with_columns(pl.col("inputcellid").cast(pl.Int32))
+            dyn_model_cast = (
+                dyn_model
+                .select(common_cols)
+                .with_columns([
+                    pl.col(col).cast(pl.Float32) for col in common_cols if dyn_model[col].dtype in float_types
+                ])
+                .filter(pl.col("inputcellid").is_in(id_list))
+            )
+            dfmodel = pl.concat([dfmodel_cast, dyn_model_cast]).sort("inputcellid")
 
             M_tot_after_replacing = (dfmodel["rho"] * dfmodel["volume"]).sum() / msol
 
@@ -781,7 +812,7 @@ def map_to_artis(
             if global_dyn_scale:
                 Delta_M = M_tot_before_replacing - M_tot_after_replacing
                 dyn_DF = dfmodel.filter(pl.col("inputcellid").is_in(id_list))
-                M_dyn_prev = (dyn_DF.select((pl.col("rho") * V_dfmodel).sum()).item()) / msol
+                M_dyn_prev = (dyn_DF.select((pl.col("rho") * pl.col("volume")).sum()).item()) / msol
                 print(f"  Dynamical ejecta mass after replacing: {M_dyn_prev} Msun")
 
                 global_mass_scaling = (M_dyn_prev + Delta_M) / M_dyn_prev
@@ -806,7 +837,7 @@ def map_to_artis(
                 v_range_id_list = dfmodel.filter(mask).select("inputcellid").to_series().to_list()
 
                 dyn_DF_vrange = dfmodel.filter(pl.col("inputcellid").is_in(v_range_id_list))
-                M_dyn_vrange_prev = (dyn_DF_vrange.select((pl.col("rho") * V_dfmodel).sum()).item()) / msol
+                M_dyn_vrange_prev = (dyn_DF_vrange.select((pl.col("rho") * pl.col("volume")).sum()).item()) / msol
                 print(f"  Dynamical ejecta mass after replacing: {M_dyn_vrange_prev} Msun")
 
                 local_mass_scaling = (M_dyn_vrange_prev + Delta_M) / M_dyn_vrange_prev
