@@ -83,6 +83,16 @@ def get_packets_with_emtype(
         arr_dfmatchingpackets = [processfile(f) for f in packetsfiles]
 
     dfmatchingpackets = pd.concat(arr_dfmatchingpackets)
+    dfmatchingpackets = dfmatchingpackets.assign(
+        t_arrive_d=(
+            (
+                pd.col("escape_time")  # type: ignore[attr-defined] # pyright: ignore[reportAttributeAccessIssue]
+                - (pd.col("posx") * pd.col("dirx") + pd.col("posy") * pd.col("diry") + pd.col("posz") * pd.col("dirz"))  # type: ignore[attr-defined] # pyright: ignore[reportAttributeAccessIssue]
+                / 29979245800.0
+            )
+            / 86400.0
+        )
+    )
 
     return dfmatchingpackets, nprocs_read
 
@@ -93,7 +103,9 @@ def calculate_timebinned_packet_sum(
     binned = pd.cut(dfpackets["t_arrive_d"], timearrayplusend, labels=False, include_lowest=True)
 
     binnedenergysums = np.zeros_like(timearrayplusend[:-1], dtype=float)
-    for binindex, e_rf_sum in dfpackets.groupby(binned)["e_rf"].sum().iteritems():
+    for binindex, e_rf_sum in dfpackets.groupby(binned)["e_rf"].sum().items():
+        print(binindex)
+        assert isinstance(binindex, float | int)
         binnedenergysums[int(binindex)] = e_rf_sum
 
     return binnedenergysums
@@ -267,15 +279,14 @@ def get_closelines(
     dflinelistclosematches = (
         get_linelist_dataframe(modelpath).query("atomic_number == @atomic_number and ion_stage == @ion_stage").copy()
     )
-    if lambdamin is not None:
+    if lambdamin is not None and lambdamin > 0:
         dflinelistclosematches = dflinelistclosematches.query("@lambdamin < lambda_angstroms")
-    if lambdamax is not None:
+    if lambdamax is not None and lambdamax > 0:
         dflinelistclosematches = dflinelistclosematches.query("@lambdamax > lambda_angstroms")
-    if lowerlevelindex is not None:
+    if lowerlevelindex is not None and lowerlevelindex >= 0:
         dflinelistclosematches = dflinelistclosematches.query("lowerlevelindex==@lowerlevelindex")
-    if upperlevelindex is not None:
+    if upperlevelindex is not None and upperlevelindex >= 0:
         dflinelistclosematches = dflinelistclosematches.query("upperlevelindex==@upperlevelindex")
-    # print(dflinelistclosematches)
 
     linelistindices = tuple(dflinelistclosematches.index.to_numpy())
     upperlevelindicies = tuple(dflinelistclosematches.upperlevelindex.to_numpy(dtype=int))
@@ -329,10 +340,11 @@ def make_flux_ratio_plot(args: argparse.Namespace) -> None:
         ),
         tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
     )
-    assert isinstance(axes, np.ndarray)
 
     if nrows == 1:
         axes = np.array([axes])
+
+    assert isinstance(axes, np.ndarray)
 
     axis = axes[0]
     axis.set_yscale("log")
@@ -395,7 +407,7 @@ def make_flux_ratio_plot(args: argparse.Namespace) -> None:
             ax.plot(arr_tdays, arr_floersfit, color="black", label="Flörs+2020 fit", lw=2.0)
 
         femis = pd.read_csv(
-            "/Users/luke/Dropbox/Papers (first-author)/2022 Artis ionisation/"
+            "/Users/luke/iCloud/Papers (first-author)/2022 Artis ionisation/"
             "generateplots/floers_model_NIR_VIS_ratio_20201126.csv"
         )
 
@@ -474,7 +486,6 @@ def get_packets_with_emission_conditions(
     em_mgicolumn = "em_modelgridindex" if emtypecolumn == "emissiontype" else "emtrue_modelgridindex"
 
     dfpackets_selected, _ = get_packets_with_emtype(modelpath, emtypecolumn, lineindices, maxpacketfiles=maxpacketfiles)
-
     dfpackets_selected = dfpackets_selected.query("t_arrive_d >= @tstart and t_arrive_d <= @tend", inplace=False).copy()
 
     dfpackets_selected = at.packets.add_derived_columns(
