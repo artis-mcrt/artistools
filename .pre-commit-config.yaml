@@ -57,6 +57,6 @@ repos:
           - id: ty-check
             name: ty check
             language: system
-            entry: uv run --all-extras --no-project --frozen -- ty check
+            entry: uv run --all-extras --frozen -- ty check
             pass_filenames: false
             args: [--python=.venv/]
