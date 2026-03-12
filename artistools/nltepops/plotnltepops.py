@@ -1,6 +1,18 @@
-#!/usr/bin/env python3
 """Artistools - NLTE population related functions."""
 
+__lazy_modules__ = [
+    "matplotlib",
+    "matplotlib.axes",
+    "matplotlib.figure",
+    "matplotlib.image",
+    "matplotlib.pyplot",
+    "matplotlib.ticker",
+    "numpy",
+    "numpy.typing",
+    "pandas",
+    "polars",
+    "polars.selectors",
+]
 import argparse
 import contextlib
 import math

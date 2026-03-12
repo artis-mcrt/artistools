@@ -1,10 +1,21 @@
-#!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
 """Functions for plotting artis estimators and internal structure.
 
 Examples are temperatures, populations, heating/cooling rates.
 """
 
+__lazy_modules__ = [
+    "matplotlib",
+    "matplotlib.axes",
+    "matplotlib.figure",
+    "matplotlib.image",
+    "matplotlib.pyplot",
+    "matplotlib.ticker",
+    "numpy",
+    "numpy.typing",
+    "pandas",
+    "polars",
+]
 import argparse
 import math
 import string
@@ -23,7 +34,18 @@ from matplotlib import ticker
 
 import artistools as at
 
-colors_tab10: list[str] = list(plt.get_cmap("tab10")(np.linspace(0, 1.0, 10)))
+colors_tab10 = [
+    (0.12156862745098039, 0.4666666666666667, 0.7058823529411765, 1.0),
+    (1.0, 0.4980392156862745, 0.054901960784313725, 1.0),
+    (0.17254901960784313, 0.6274509803921569, 0.17254901960784313, 1.0),
+    (0.8392156862745098, 0.15294117647058825, 0.1568627450980392, 1.0),
+    (0.5803921568627451, 0.403921568627451, 0.7411764705882353, 1.0),
+    (0.5490196078431373, 0.33725490196078434, 0.29411764705882354, 1.0),
+    (0.8901960784313725, 0.4666666666666667, 0.7607843137254902, 1.0),
+    (0.4980392156862745, 0.4980392156862745, 0.4980392156862745, 1.0),
+    (0.7372549019607844, 0.7411764705882353, 0.13333333333333333, 1.0),
+    (0.09019607843137255, 0.7450980392156863, 0.8117647058823529, 1.0),
+]
 
 # reserve colours for these elements
 elementcolors = {"Fe": colors_tab10[0], "Ni": colors_tab10[1], "Co": colors_tab10[2]}
@@ -31,7 +53,7 @@ elementcolors = {"Fe": colors_tab10[0], "Ni": colors_tab10[1], "Co": colors_tab1
 VARIABLE_ALIASES = {"T_e": "Te", "n_e": "nne", "T_R": "TR", "T_J": "TJ"}
 
 
-def get_elemcolor(atomic_number: int | None = None, elsymbol: str | None = None) -> str | npt.NDArray[t.Any]:
+def get_elemcolor(atomic_number: int | None = None, elsymbol: str | None = None) -> t.Any:
     """Get the colour of an element from the reserved color list (reserving a new one if needed)."""
     assert (atomic_number is None) != (elsymbol is None)
     if atomic_number is not None:

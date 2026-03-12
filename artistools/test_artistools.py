@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import contextlib
 import hashlib
 import importlib
