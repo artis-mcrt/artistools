@@ -51,7 +51,7 @@ subcommandtree: CommandType = {
     "plotdensity": ("inputmodel.plotdensity", "main"),
     "plotmacroatom": ("macroatom", "main"),
     "plotnltepops": ("nltepops.plotnltepops", "main"),
-    "plotopacity": ("opacity.plotejectaopac", "main"),
+    "plotopacity": ("plotejectaopac", "main"),
     "plotradfield": ("radfield", "main"),
     "plotspectra": ("spectra.plotspectra", "main"),
     "plotspherical": ("plotspherical", "main"),

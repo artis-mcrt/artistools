@@ -1,4 +1,4 @@
-"""Script added by Gerrit for plotting the Planck mean opacity structure of any ARTIS run."""
+"""Script for plotting the Planck mean opacity structure of 2D ARTIS models and slices of 3D runs."""
 
 # PYTHON_ARGCOMPLETE_OK
 import argparse
@@ -16,24 +16,21 @@ import artistools as at
 CLIGHT = 2.99792458e10
 DAYS_TO_S = 86400
 A_TO_CM = 1e-8
-M_U_CGS = 1.66054 * 1e-24
 K_B_CGS = 1.380649e-16  # erg / K
 K_B_AU = 8.617333262145e-5  # eV / K
 H_CGS = 6.62607015e-27  # erg * s
-C_CGS = 2.99792458e10  # cm / s
 C_AU = 137.035999
-HtimesC_AU = 12398.4198
+HC_AU = 12398.4198
 M_E_CGS = 9.1093837015e-28  # g
 E_CGS = 4.803204712570263e-10  # Fr (esu)
-SIGMA_CGS = 5.6704e-9  # Stefan-Boltzmann constant, g s^-3 K^-4
 
-wavelen_steps = 250  # 25000 A <-> 100 A bin
+WAVELEN_STEPS = 250  # 25000 A <-> 100 A bin
 
 
 def planck_lambda(T: float, wavelen_A: np.ndarray) -> np.ndarray:
     wavelen_cm = wavelen_A * A_TO_CM
-    x = H_CGS * C_CGS / (K_B_CGS * T * wavelen_cm)
-    prefac = 2.0 * H_CGS * C_CGS**2 / wavelen_cm**5
+    x = H_CGS * CLIGHT / (K_B_CGS * T * wavelen_cm)
+    prefac = 2.0 * H_CGS * CLIGHT**2 / wavelen_cm**5
     large = x > 100  # exp(700) ~ float limit
     small = ~large
 
@@ -45,11 +42,6 @@ def planck_lambda(T: float, wavelen_A: np.ndarray) -> np.ndarray:
     return result
 
 
-def canonical_part_fct(T: float, ldf: pl.DataFrame) -> float:
-    beta = 1 / (T * K_B_AU)
-    return ldf.select((pl.col("g_values") * (-beta * pl.col("E_values")).exp()).sum()).item()
-
-
 def integrated_exp_opac(
     T: float, texp_s: float, n_ion: float, rho: float, tddf: pl.DataFrame, ldf: pl.DataFrame
 ) -> float:
@@ -58,8 +50,8 @@ def integrated_exp_opac(
         return 0.0
 
     max_wl = 1e8 / T
-    bin_width = max_wl / wavelen_steps
-    wl_edges = np.array([i * bin_width for i in range(wavelen_steps)])
+    bin_width = max_wl / WAVELEN_STEPS
+    wl_edges = np.array([i * bin_width for i in range(WAVELEN_STEPS)])
     wl_centers = wl_edges + 0.5 * bin_width
     B_lambda = planck_lambda(T, wl_centers)
 
@@ -83,26 +75,27 @@ def integrated_exp_opac(
         .join(lev_plDF.select([pl.col("levelindex").alias("upper"), pl.col("g").alias("g_u")]), on="upper", how="left")
         .with_columns((pl.col("upper_energy_ev") - pl.col("lower_energy_ev")).alias("delta_energy_ev"))
     )
-    tr_plDF = tr_plDF.with_columns((HtimesC_AU / pl.col("delta_energy_ev")).alias("wavelength_A"))
+    tr_plDF = tr_plDF.with_columns((HC_AU / pl.col("delta_energy_ev")).alias("wavelength_A"))
     E_l = tr_plDF["lower_energy_ev"].to_numpy()
     g_l = tr_plDF["g_l"].to_numpy()
     wl = tr_plDF["wavelength_A"].to_numpy()
-    # TODO: check this
-    f_lu = tr_plDF["g_u"] / tr_plDF["g_l"] * tr_plDF["wavelength_A"] ** 2 * tr_plDF["A"] * C_AU / (8 * np.pi**2)
+    f_lu = (
+        tr_plDF["g_u"] / tr_plDF["g_l"] * tr_plDF["wavelength_A"] ** 2 * tr_plDF["A"] * C_AU / (8 * np.pi**2)
+    ).to_numpy()
 
     n_l = n_ion * g_l / part_fct * np.exp(-E_l * beta)
 
-    prefactor = np.pi * E_CGS**2 / (C_CGS * M_E_CGS) * 1e-8 * texp_s
+    prefactor = np.pi * E_CGS**2 / (CLIGHT * M_E_CGS) * 1e-8 * texp_s
     tau = prefactor * wl * f_lu * n_l
     one_minus_exp_tau = -np.expm1(-tau)
 
-    kappa_line = wl / bin_width * one_minus_exp_tau / (C_CGS * texp_s * rho)
+    kappa_line = wl / bin_width * one_minus_exp_tau / (CLIGHT * texp_s * rho)
     kappa_line = np.asarray(kappa_line)
 
     bin_index = np.digitize(wl, wl_edges) - 1
-    valid = (bin_index >= 0) & (bin_index < wavelen_steps)
+    valid = (bin_index >= 0) & (bin_index < WAVELEN_STEPS)
 
-    kappa_binned = np.zeros(wavelen_steps)
+    kappa_binned = np.zeros(WAVELEN_STEPS)
     np.add.at(kappa_binned, bin_index[valid], kappa_line[valid])
 
     numerator = np.trapezoid(kappa_binned * B_lambda, wl_centers)
@@ -240,14 +233,17 @@ def select_3D_slice(elf: pl.LazyFrame, sliceplane: str) -> tuple[pl.LazyFrame, s
     if sliceplane == "yz":
         return elf.filter((pl.col("pos_x_min") <= 0.0) & (pl.col("pos_x_max") >= 0.0)), "y", "z"
 
-    raise ValueError
+    msg = "Should not be reached"
+    raise ValueError(msg)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("-modelpath", type=Path, default=Path(), help="Path of ARTIS model")
 
-    parser.add_argument("-tdays", type=float, help="Time in days for the 2D opacity plot. Either in 2D or 3D mode.")
+    parser.add_argument(
+        "-tdays", type=float, required=True, help="Time in days for the 2D opacity plot. Either in 2D or 3D mode."
+    )
 
     parser.add_argument("-slice", default="xy", help="Plane of slice in case of a 3D model. Example: xy <-> z=0.")
 
@@ -314,33 +310,32 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 args.modelpath, opac_data, n_ax1, n_ax2, plotaxis1, plotaxis2, outputpath=args.outputpath
             )
         elif model_dim == 3:
-            # ---- select time ----
-            assert args.tdays is not None, "No time specified."
-            t_d = float(args.tdays)
-            t_s = t_d * DAYS_TO_S
-
-            ts_lf = at.get_timesteps(Path(args.modelpath))
-            plot_ts = ts_lf.filter(pl.col("tstart_days") <= t_d).select(pl.col("timestep").max()).collect().item()
-
-            # ---- reduce to selected timestep ----
             elf_ts = elf.filter(pl.col("timestep") == plot_ts)
+            elf_ts = elf_ts.join(
+                im[0]
+                .select(["modelgridindex", "vel_r_min_on_c", "vel_r_max_on_c", "vel_z_min_on_c", "vel_z_max_on_c"])
+                .collect(),
+                on="modelgridindex",
+                how="left",
+            )
 
-            # ---- select slice of 3D model ----
             elf_slice, plotaxis1, plotaxis2 = select_3D_slice(elf_ts, args.slice)
 
             elf_slice = elf_slice.sort("modelgridindex")
-
-            # ---- append density to dataframe ----
-            exp_factor = (t_snap_days / t_d) ** 3
 
             elf_slice = elf_slice.join(
                 im[0].select(["modelgridindex", "rho"]), on="modelgridindex", how="left"
             ).with_columns((pl.col("rho") * exp_factor).alias("rho"))
 
-            # ---- calculate opacities ----
             opac_data = calc_cell_opacs(args.modelpath, elf_slice, t_s)
+            opac_data = opac_data.join(
+                im[0]
+                .select(["modelgridindex", "vel_r_min_on_c", "vel_r_max_on_c", "vel_z_min_on_c", "vel_z_max_on_c"])
+                .collect(),
+                on="modelgridindex",
+                how="left",
+            )
 
-            # ---- append position data ----
             pos_cols = [
                 "modelgridindex",
                 f"pos_{plotaxis1}_min",
@@ -351,7 +346,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
             opac_data = opac_data.join(elf_slice.select(pos_cols), on="modelgridindex", how="left")
 
-            # ---- determine grid dimensions ----
             n_ax1 = opac_data.select(pl.col(f"pos_{plotaxis1}_min")).n_unique()
             n_ax2 = opac_data.select(pl.col(f"pos_{plotaxis2}_min")).n_unique()
 
