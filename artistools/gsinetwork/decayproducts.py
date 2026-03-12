@@ -1,8 +1,7 @@
-"""Script to load energy release data from nucleosynthesis trajectories. Optionally also writes output to a JSON."""
+"""Script to load energy release data from nucleosynthesis trajectories. Optionally also writes output to parquet files."""
 
 # PYTHON_ARGCOMPLETE_OK
 import argparse
-import json
 import math
 import multiprocessing as mp
 import typing as t
@@ -41,7 +40,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-nsteps", type=int, default=64, help="Number of timesteps")
 
     parser.add_argument(
-        "-nucdata", type=str, default="ensdf", help='Nuclear dataset to use, either "hotokezaka" or "ensdf"'
+        "-nucdata",
+        type=str,
+        default="ensdf",
+        choices=["hotokezaka", "ensdf"],
+        help='Nuclear dataset to use, either "hotokezaka" or "ensdf"',
     )
 
     parser.add_argument(
@@ -52,7 +55,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "--json", action="store_true", help="Prints output dictionaries of full Ye bins or ejecta componenets to a JSON"
+        "--parquet",
+        action="store_true",
+        help="Prints output dictionaries of full Ye bins or ejecta components to parquet files",
     )
 
     parser.add_argument("--nuclides", action="store_true", help="Calculates contributions of individual nuclides")
@@ -241,40 +246,67 @@ def process_trajectory(
 
         assert dftrajnucabund.height > 100, dftrajnucabund.height
 
-        pldf_all = (
-            dftrajnucabund
-            .lazy()
-            .filter(pl.col("massfrac") > 0.0)
-            .with_columns([
-                pl.col(pl.Int32).cast(pl.Int64),
-                pl.col(pl.Float32).cast(pl.Float64),
-                (pl.col("Z") + pl.col("N")).alias("A"),
-                (pl.col("massfrac") * traj_mass_grams / ((pl.col("Z") + pl.col("N")) * amu_g)).alias("num_nuc"),
-            ])
-            .join(nuc_data.lazy(), on=("Z", "A"), how="inner")
-            .with_columns([(pl.col("num_nuc") / pl.col("tau[s]")).alias("N_dot")])
-            .with_columns([
-                (pl.col("N_dot") * pl.col("Eneutrino[MeV]") * MeV_to_erg).alias("eps_nu"),
-                (pl.col("N_dot") * pl.col("Eelec[MeV]") * MeV_to_erg).alias("eps_elec"),
-                (pl.col("N_dot") * pl.col("Egamma[MeV]") * MeV_to_erg).alias("eps_gamma"),
-                (pl.col("N_dot") * pl.col("Q[MeV]") * MeV_to_erg).alias("eps_tot"),
-            ])
-            .collect()
-        )
-        global_sums = pldf_all.select([
-            pl.sum("eps_nu").alias("abundweighted_nu"),
-            pl.sum("eps_elec").alias("abundweighted_elec"),
-            pl.sum("eps_gamma").alias("abundweighted_gamma"),
-            pl.sum("eps_tot").alias("abundweighted_Qdot"),
-        ])
-        global_sums_row = global_sums.row(0)  # only a single Row object because we computed sums
+        if not nuclide_contrib:
+            pldf_all = (
+                dftrajnucabund
+                .lazy()
+                .filter(pl.col("massfrac") > 0.0)
+                .with_columns([
+                    pl.col(pl.Int32).cast(pl.Int64),
+                    pl.col(pl.Float32).cast(pl.Float64),
+                    (pl.col("Z") + pl.col("N")).alias("A"),
+                    (pl.col("massfrac") * traj_mass_grams / ((pl.col("Z") + pl.col("N")) * amu_g)).alias("num_nuc"),
+                ])
+                .join(nuc_data.lazy(), on=("Z", "A"), how="inner")
+                .with_columns([(pl.col("num_nuc") / pl.col("tau[s]")).alias("N_dot")])
+                .select(
+                    abundweighted_nu=(pl.col("N_dot") * pl.col("Eneutrino[MeV]") * MeV_to_erg).sum(),
+                    abundweighted_elec=(pl.col("N_dot") * pl.col("Eelec[MeV]") * MeV_to_erg).sum(),
+                    abundweighted_gamma=(pl.col("N_dot") * pl.col("Egamma[MeV]") * MeV_to_erg).sum(),
+                    abundweighted_Qdot=(pl.col("N_dot") * pl.col("Q[MeV]") * MeV_to_erg).sum(),
+                )
+                .collect()
+            )
 
-        decay_powers["abundweighted_nu"][plottimestep] = global_sums_row[0]
-        decay_powers["abundweighted_elec"][plottimestep] = global_sums_row[1]
-        decay_powers["abundweighted_gamma"][plottimestep] = global_sums_row[2]
-        decay_powers["abundweighted_Qdot"][plottimestep] = global_sums_row[3]
+            for col in pldf_all.columns:
+                decay_powers[col][plottimestep] = float(pldf_all.get_column(col).item())
 
-        if nuclide_contrib:
+        else:
+            # store all nuclide contributions in detail
+            pldf_all = (
+                dftrajnucabund
+                .lazy()
+                .filter(pl.col("massfrac") > 0.0)
+                .with_columns([
+                    pl.col(pl.Int32).cast(pl.Int64),
+                    pl.col(pl.Float32).cast(pl.Float64),
+                    (pl.col("Z") + pl.col("N")).alias("A"),
+                    (pl.col("massfrac") * traj_mass_grams / ((pl.col("Z") + pl.col("N")) * amu_g)).alias("num_nuc"),
+                ])
+                .join(nuc_data.lazy(), on=("Z", "A"), how="inner")
+                .with_columns([(pl.col("num_nuc") / pl.col("tau[s]")).alias("N_dot")])
+                .with_columns([
+                    (pl.col("N_dot") * pl.col("Eneutrino[MeV]") * MeV_to_erg).alias("eps_nu"),
+                    (pl.col("N_dot") * pl.col("Eelec[MeV]") * MeV_to_erg).alias("eps_elec"),
+                    (pl.col("N_dot") * pl.col("Egamma[MeV]") * MeV_to_erg).alias("eps_gamma"),
+                    (pl.col("N_dot") * pl.col("Q[MeV]") * MeV_to_erg).alias("eps_tot"),
+                ])
+                .collect()
+            )
+
+            global_sums = pldf_all.select([
+                pl.sum("eps_nu").alias("abundweighted_nu"),
+                pl.sum("eps_elec").alias("abundweighted_elec"),
+                pl.sum("eps_gamma").alias("abundweighted_gamma"),
+                pl.sum("eps_tot").alias("abundweighted_Qdot"),
+            ])
+            global_sums_row = global_sums.row(0)
+
+            decay_powers["abundweighted_nu"][plottimestep] = global_sums_row[0]
+            decay_powers["abundweighted_elec"][plottimestep] = global_sums_row[1]
+            decay_powers["abundweighted_gamma"][plottimestep] = global_sums_row[2]
+            decay_powers["abundweighted_Qdot"][plottimestep] = global_sums_row[3]
+
             grouped = pldf_all.group_by(["A", "Z"]).agg([
                 pl.sum("eps_elec").alias("eps_elec"),
                 pl.sum("eps_gamma").alias("eps_gamma"),
@@ -294,7 +326,7 @@ def process_trajectory(
     #     print(f"\nTraj {traj_ID} has inconsistent Qdot values. delete {Path(traj_root, str(traj_ID))} and rerun")
     #     # import shutil
 
-    # dump to JSON
+    # dump to parquet
     if traj_parquet:
         traj_df = pl.DataFrame(decay_powers)
         traj_df.write_parquet(f"parquet/decay_powers_{traj_ID}.parquet")
@@ -328,7 +360,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     # get beta decay data
     nuc_data = get_nuc_data(nuc_dataset)
-    if args.trajparquet:
+    if args.parquet or args.trajparquet:
         traj_parquet_dir = "parquet"
         if not Path(traj_parquet_dir).exists():
             Path(traj_parquet_dir).mkdir(parents=True)
@@ -368,7 +400,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     print(traj_summ_data)
 
     traj_ids = traj_summ_data["Id"].to_list()
-
+    traj_ids = traj_ids[:5]
     traj_masses_g = {trajid: mass * M_sol_cgs for trajid, mass in traj_summ_data[["Id", "Mass"]].to_numpy()}
 
     import tqdm.rich
@@ -434,18 +466,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             decay_powers["abundweighted_gamma"] + decay_powers["abundweighted_nu"] + decay_powers["abundweighted_elec"]
         )
 
-        if args.json:
-            # dump to JSON
-            decay_powers_json_copy = decay_powers.copy()
-
-            for key in decay_powers_json_copy:
-                val = decay_powers_json_copy[key]
-                if isinstance(val, np.ndarray):
-                    decay_powers_json_copy[key] = val.tolist()
-
-            output_path = Path(f"decay_powers_{label}.json")
-            with output_path.open("w", encoding="utf-8") as f:
-                json.dump(decay_powers_json_copy, f)
+        if args.parquet:
+            traj_df = pl.DataFrame(decay_powers)
+            traj_df.write_parquet(f"parquet/decay_powers_{labelfull}.parquet")
 
         fig, axes = plt.subplots(
             nrows=2, ncols=1, figsize=(6, 10), tight_layout={"pad": 0.4, "w_pad": 0.0, "h_pad": 0.0}
