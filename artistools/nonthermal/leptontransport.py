@@ -1,4 +1,14 @@
-#!/usr/bin/env python3
+__lazy_modules__ = [
+    "matplotlib",
+    "matplotlib.axes",
+    "matplotlib.figure",
+    "matplotlib.pyplot",
+    "numpy",
+    "numpy.typing",
+    "pandas",
+    "polars",
+    "polars.selectors",
+]
 import math
 
 import matplotlib.pyplot as plt

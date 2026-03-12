@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import itertools
 import math
 import typing as t
