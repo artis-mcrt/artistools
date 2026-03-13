@@ -1,16 +1,5 @@
 """Tools to get artis output in the required format for the code comparison workshop."""
 
-__lazy_modules__ = [
-    "matplotlib",
-    "matplotlib.axes",
-    "matplotlib.figure",
-    "matplotlib.pyplot",
-    "numpy",
-    "numpy.typing",
-    "pandas",
-    "polars",
-    "polars.selectors",
-]
 import argparse
 import math
 import typing as t

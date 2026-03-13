@@ -1,25 +1,5 @@
 """Matplotlib-related plotting functions."""
 
-__lazy_modules__ = [
-    "itertools",
-    "matplotlib",
-    "matplotlib.axes",
-    "matplotlib.cbook",
-    "matplotlib.cm",
-    "matplotlib.colors",
-    "matplotlib.colorbar",
-    "matplotlib.figure",
-    "matplotlib.image",
-    "matplotlib.pyplot",
-    "matplotlib.rcsetup",
-    "matplotlib.ticker",
-    "numpy",
-    "numpy.typing",
-    "pandas",
-    "polars",
-    "sys",
-    "typing",
-]
 import argparse
 import itertools
 import sys

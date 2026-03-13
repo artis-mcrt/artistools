@@ -1,15 +1,4 @@
 # PYTHON_ARGCOMPLETE_OK
-__lazy_modules__ = [
-    "matplotlib",
-    "matplotlib.axes",
-    "matplotlib.figure",
-    "matplotlib.pyplot",
-    "numpy",
-    "numpy.typing",
-    "pandas",
-    "polars",
-    "polars.selectors",
-]
 import argparse
 import math
 import multiprocessing as mp

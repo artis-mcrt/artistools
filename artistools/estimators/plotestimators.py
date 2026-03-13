@@ -4,18 +4,6 @@
 Examples are temperatures, populations, heating/cooling rates.
 """
 
-__lazy_modules__ = [
-    "matplotlib",
-    "matplotlib.axes",
-    "matplotlib.figure",
-    "matplotlib.image",
-    "matplotlib.pyplot",
-    "matplotlib.ticker",
-    "numpy",
-    "numpy.typing",
-    "pandas",
-    "polars",
-]
 import argparse
 import math
 import string

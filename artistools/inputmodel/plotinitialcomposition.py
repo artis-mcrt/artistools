@@ -1,18 +1,4 @@
 # PYTHON_ARGCOMPLETE_OK
-__lazy_modules__ = [
-    "matplotlib",
-    "matplotlib.axes",
-    "matplotlib.cm",
-    "matplotlib.image",
-    "matplotlib.colors",
-    "matplotlib.figure",
-    "matplotlib.pyplot",
-    "numpy",
-    "numpy.typing",
-    "pandas",
-    "polars",
-    "polars.selectors",
-]
 import argparse
 import math
 import string

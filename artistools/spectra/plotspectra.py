@@ -1,20 +1,6 @@
 # PYTHON_ARGCOMPLETE_OK
 """Artistools - spectra plotting functions."""
 
-__lazy_modules__ = [
-    "matplotlib",
-    "matplotlib.axes",
-    "matplotlib.figure",
-    "matplotlib.image",
-    "matplotlib.patches",
-    "matplotlib.pyplot",
-    "matplotlib.ticker",
-    "numpy",
-    "numpy.typing",
-    "pandas",
-    "polars",
-    "polars.selectors",
-]
 import argparse
 import contextlib
 import math
