@@ -227,18 +227,21 @@ def add_derived_columns_lazy(
         assert modelpath is not None, "modelpath must be provided if dfmodel is not provided"
         dfmodel, modelmeta = at.get_modeldata(modelpath=modelpath)
 
-    timebins = [tstart * 86400.0 for tstart in at.get_timestep_times(modelpath, loc="start")] + [
-        at.get_timestep_times(modelpath, loc="end")[-1] * 86400.0
-    ]
-    dfpackets = dfpackets.lazy().with_columns(
-        (
-            pl
-            .col("em_time")
-            .cut(breaks=timebins, labels=[str(x) for x in range(-1, len(timebins))])
-            .cast(pl.Utf8)
-            .cast(pl.Int32)
-        ).alias("em_timestep")
-    )
+    dfpackets = dfpackets.lazy()
+
+    if modelpath is not None:
+        timebins = [tstart * 86400.0 for tstart in at.get_timestep_times(modelpath, loc="start")] + [
+            at.get_timestep_times(modelpath, loc="end")[-1] * 86400.0
+        ]
+        dfpackets = dfpackets.with_columns(
+            (
+                pl
+                .col("em_time")
+                .cut(breaks=timebins, labels=[str(x) for x in range(-1, len(timebins))])
+                .cast(pl.Utf8)
+                .cast(pl.Int32)
+            ).alias("em_timestep")
+        )
 
     if "trueem_posx" in dfpackets.collect_schema().names():
         dfpackets = dfpackets.with_columns(
