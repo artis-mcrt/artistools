@@ -390,7 +390,7 @@ def make_flux_ratio_plot(args: argparse.Namespace) -> None:
 
         # for amodelname, (xlist, ylist) in amodels.items():
         for aindex, (amodelname, alabel) in enumerate([
-            # ("w7", "W7"),
+            ("w7", "W7")
             # ("subch", "S0"),
             # ('subch_shen2018', r'1M$_\odot$'),
             # ('subch_shen2018_electronlossboost4x', '1M$_\odot$ (Shen+18) 4x e- loss'),
