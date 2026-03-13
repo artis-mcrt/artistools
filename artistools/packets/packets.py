@@ -240,6 +240,14 @@ def add_derived_columns_lazy(
         ).alias("em_timestep")
     )
 
+    if "trueem_posx" in dfpackets.collect_schema().names():
+        dfpackets = dfpackets.with_columns(
+            true_emission_velocity=(
+                (pl.col("trueem_posx") ** 2 + pl.col("trueem_posy") ** 2 + pl.col("trueem_posz") ** 2).sqrt()
+                / pl.col("trueem_time")
+            )
+        )
+
     dfpackets = dfpackets.with_columns(
         emission_velocity=(
             (pl.col("em_posx") ** 2 + pl.col("em_posy") ** 2 + pl.col("em_posz") ** 2).sqrt() / pl.col("em_time")
@@ -300,15 +308,18 @@ def add_derived_columns_lazy(
                 .cut(breaks=velbins, labels=[str(x) for x in range(-1, len(velbins))])
                 .cast(pl.Utf8)
                 .cast(pl.Int32)
-            ),
-            emtrue_modelgridindex=(
-                pl
-                .col("true_emission_velocity")
-                .cut(breaks=velbins, labels=[str(x) for x in range(-1, len(velbins))])
-                .cast(pl.Utf8)
-                .cast(pl.Int32)
-            ),
+            )
         )
+        if "true_emission_velocity" in dfpackets.collect_schema().names():
+            dfpackets = dfpackets.with_columns(
+                emtrue_modelgridindex=(
+                    pl
+                    .col("true_emission_velocity")
+                    .cut(breaks=velbins, labels=[str(x) for x in range(-1, len(velbins))])
+                    .cast(pl.Utf8)
+                    .cast(pl.Int32)
+                )
+            )
 
     return dfpackets
 
