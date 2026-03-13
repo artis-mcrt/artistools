@@ -118,7 +118,7 @@ def get_line_fluxes_from_pops(
         arr_tend = at.get_timestep_times(modelpath, loc="end")
 
     # arr_timedelta = np.array(arr_tend) - np.array(arr_tstart)
-    arr_tmid = (np.array(arr_tstart) + np.array(arr_tend)) / 2.0
+    arr_tmid = list((np.array(arr_tstart) + np.array(arr_tend)) / 2.0)
 
     modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect().to_pandas(use_pyarrow_extension_array=True)
 
