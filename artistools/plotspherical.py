@@ -323,6 +323,8 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
         assert args.atomic_number is None
         args.atomic_number = at.get_atomic_number(args.elem)
 
+    at.plottools.set_mpl_style()
+
     dfestimators = at.estimators.scan_estimators(modelpath=args.modelpath) if "temperature" in args.plotvars else None
 
     nprocs_read, dfpackets = at.packets.get_packets_pl(
