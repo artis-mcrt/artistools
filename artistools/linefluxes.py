@@ -203,7 +203,7 @@ def get_line_fluxes_from_pops(
                     print(f"No data for cells {unaccounted_shells} (expected for empty cells)")
                 assert len(unaccounted_shells) < len(modeldata.index)  # must be data for at least one shell
 
-        dictlcdata[feature.colname] = fluxdata
+        dictlcdata[feature.colname] = list(fluxdata)
 
     return pl.DataFrame(dictlcdata)
 

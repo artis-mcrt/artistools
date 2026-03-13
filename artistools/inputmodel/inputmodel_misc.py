@@ -1039,7 +1039,7 @@ def get_mgi_of_velocity_kms(modelpath: Path, velocity: float) -> int | None:
         return None
     dfmodel, modelmeta = get_modeldata(modelpath)
     assert modelmeta["dimensions"] == 1, "get_mgi_of_velocity_kms only works for 1D models"
-    arr_vouter = dfmodel.select("vel_r_max_kmps").collect().to_series().to_numpy(dtype=float)
+    arr_vouter = dfmodel.select("vel_r_max_kmps").collect().to_series().to_numpy()
 
     mgi_upper = int(np.searchsorted(arr_vouter, velocity))
     if mgi_upper >= len(arr_vouter):
