@@ -20,7 +20,6 @@ import math
 import typing as t
 from collections.abc import Iterable
 from collections.abc import Sequence
-from functools import partial
 from pathlib import Path
 
 import matplotlib as mpl
@@ -49,50 +48,14 @@ class FeatureTuple(t.NamedTuple):
     lowerlevelindicies: Sequence[int]
 
 
-def get_packets_with_emtype_onefile(
-    emtypecolumn: str,
-    lineindices: Sequence[int],  # noqa: ARG001
-    packetsfile: Path | str,
-) -> pd.DataFrame:
-    import gzip
-
-    try:
-        dfpackets = at.packets.readfile(packetsfile, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
-    except gzip.BadGzipFile as exc:
-        print(f"Bad file: {packetsfile}")
-        raise gzip.BadGzipFile from exc
-
-    return dfpackets.query(f"{emtypecolumn} in @lineindices", inplace=False).copy()
-
-
 def get_packets_with_emtype(
     modelpath: Path | str, emtypecolumn: str, lineindices: Sequence[int], maxpacketfiles: int | None = None
-) -> tuple[pd.DataFrame, int]:
-    packetsfiles = at.packets.get_packets_text_paths(modelpath, maxpacketfiles=maxpacketfiles)
-    nprocs_read = len(packetsfiles)
-    assert nprocs_read > 0
-
-    processfile = partial(get_packets_with_emtype_onefile, emtypecolumn, lineindices)
-    if at.get_config()["num_processes"] > 1:
-        print(f"Reading packets files with {at.get_config()['num_processes']} processes")
-        with at.get_multiprocessing_pool() as pool:
-            arr_dfmatchingpackets = pool.map(processfile, packetsfiles)
-            pool.close()
-            pool.join()
-    else:
-        arr_dfmatchingpackets = [processfile(f) for f in packetsfiles]
-
-    dfmatchingpackets = pd.concat(arr_dfmatchingpackets)
-    dfmatchingpackets = dfmatchingpackets.assign(
-        t_arrive_d=(
-            (
-                pd.col("escape_time")  # type: ignore[attr-defined] # pyright: ignore[reportAttributeAccessIssue]
-                - (pd.col("posx") * pd.col("dirx") + pd.col("posy") * pd.col("diry") + pd.col("posz") * pd.col("dirz"))  # type: ignore[attr-defined] # pyright: ignore[reportAttributeAccessIssue]
-                / 29979245800.0
-            )
-            / 86400.0
-        )
+) -> tuple[pl.LazyFrame, int]:
+    nprocs_read, dfpackets = at.packets.get_packets_pl(
+        modelpath=modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
+    dfpackets = dfpackets.filter(pl.col(emtypecolumn).is_in(lineindices))
+    dfmatchingpackets = dfpackets
 
     return dfmatchingpackets, nprocs_read
 
@@ -140,7 +103,12 @@ def get_line_fluxes_from_packets(
     for feature in emfeatures:
         # dictlcdata[feature.colname] = np.zeros_like(arr_tstart, dtype=float)
 
-        dfpackets_selected = dfpackets.query(f"{emtypecolumn} in @feature.linelistindices", inplace=False)
+        dfpackets_selected = (
+            dfpackets
+            .filter(pl.col(emtypecolumn).is_in(feature.linelistindices))
+            .collect()
+            .to_pandas(use_pyarrow_extension_array=True)
+        )
 
         normfactor = 1.0 / nprocs_read
         # mpc_to_cm = 3.085677581491367e+24  # 1 megaparsec in cm
@@ -475,7 +443,7 @@ def get_packets_with_emission_conditions(
     modelpath: str | Path,
     emtypecolumn: str,
     lineindices: Sequence[int],
-    tstart: float,  # noqa: ARG001
+    tstart: float,
     tend: float,
     maxpacketfiles: int | None = None,
 ) -> pd.DataFrame:
@@ -486,7 +454,12 @@ def get_packets_with_emission_conditions(
     em_mgicolumn = "em_modelgridindex" if emtypecolumn == "emissiontype" else "emtrue_modelgridindex"
 
     dfpackets_selected, _ = get_packets_with_emtype(modelpath, emtypecolumn, lineindices, maxpacketfiles=maxpacketfiles)
-    dfpackets_selected = dfpackets_selected.query("t_arrive_d >= @tstart and t_arrive_d <= @tend", inplace=False).copy()
+    dfpackets_selected = (
+        dfpackets_selected
+        .filter(pl.col("t_arrive_d").is_between(tstart, tend, closed="both"))
+        .collect()
+        .to_pandas(use_pyarrow_extension_array=True)
+    )
 
     dfpackets_selected = at.packets.add_derived_columns(
         dfpackets_selected, modelpath, ["em_timestep", em_mgicolumn], allnonemptymgilist=allnonemptymgilist
