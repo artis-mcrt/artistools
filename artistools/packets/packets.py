@@ -899,7 +899,7 @@ def bin_and_sum(
     if sumcols is None:
         sumcols = []
 
-    aggs = [pl.col(col).sum().alias(col + "_sum") for col in sumcols] if sumcols is not None else []
+    aggs = [pl.col(col).sum().alias(col + "_sum") for col in sumcols]
 
     if getcounts:
         aggs.append(pl.col(bincol).count().alias("count"))
