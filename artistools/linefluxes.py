@@ -75,9 +75,7 @@ def get_line_fluxes_from_packets(
 
     arr_timedelta = np.array(arr_tend) - np.array(arr_tstart)
     arr_tmid = (np.array(arr_tstart) + np.array(arr_tend)) / 2.0
-
     timearrayplusend = np.concatenate([arr_tstart, [arr_tend[-1]]]).tolist()
-    print(f"{timearrayplusend=}")
 
     linelistindices_allfeatures = tuple(lineindex for feature in emfeatures for lineindex in feature.linelistindices)
 
