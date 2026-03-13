@@ -93,7 +93,7 @@ def get_line_fluxes_from_packets(
                     bins=timearrayplusend,
                     sumcols=["e_rf"],
                 )
-                .with_columns(timedelta_days=arr_timedelta)
+                .with_columns(pl.Series("timedelta_days", arr_timedelta))
                 .select(pl.col("e_rf_sum") / nprocs_read / (86400.0 * pl.col("timedelta_days")))
                 .collect()
                 .to_series()
