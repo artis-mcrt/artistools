@@ -920,6 +920,6 @@ def bin_and_sum(
         .join(wlbins, how="left", on=f"{bincol}_bin", coalesce=True)
         # fill nulls with 0 for sum columns
         .with_columns(pl.col(f"{sumcol}_sum").fill_null(0) for sumcol in sumcols)
-        .with_columns(cs.by_name("count").fill_null(0))
+        .with_columns(cs.by_name("count", require_all=False).fill_null(0))
         .sort(by=f"{bincol}_bin")
     )
