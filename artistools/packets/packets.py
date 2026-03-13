@@ -918,6 +918,8 @@ def bin_and_sum(
         pl
         .LazyFrame({f"{bincol}_bin": range(len(bins) - 1)}, schema={f"{bincol}_bin": pl.Int32})
         .join(wlbins, how="left", on=f"{bincol}_bin", coalesce=True)
-        .with_columns(pl.col(f"{sumcol}_sum").fill_null(0) for sumcol in sumcols)  # fill nulls with 0 for sum columns
+        # fill nulls with 0 for sum columns
+        .with_columns(pl.col(f"{sumcol}_sum").fill_null(0) for sumcol in sumcols)
+        .with_columns(cs.by_name("count").fill_null(0))
         .sort(by=f"{bincol}_bin")
     )
