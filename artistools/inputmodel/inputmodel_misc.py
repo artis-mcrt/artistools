@@ -1034,10 +1034,13 @@ def save_modeldata(
 
 
 def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist: Sequence[int] | None = None) -> int | None:
-    """Return the modelgridindex of the cell whose outer velocity is closest to velocity.
+    """Return the modelgridindex of the cell whose outer velocity brackets the given velocity.
 
     If mgilist is given, then chose from these cells only.
     """
+    if np.isnan(velocity):
+        return None
+
     modeldata = get_modeldata(modelpath)[0].collect().to_pandas(use_pyarrow_extension_array=True)
 
     if not mgilist:
@@ -1046,17 +1049,13 @@ def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist: Sequence[
     else:
         arr_vouter = np.array([modeldata["vel_r_max_kmps"][mgi] for mgi in mgilist])
 
-    index_closestvouter = int(np.abs(arr_vouter - velocity).argmin())
-
-    if velocity < arr_vouter[index_closestvouter] or index_closestvouter + 1 >= len(mgilist):
-        return mgilist[index_closestvouter]
-    if velocity < arr_vouter[index_closestvouter + 1]:
-        return mgilist[index_closestvouter + 1]
-    if np.isnan(velocity):
-        return None
-
-    print(f"Can't find cell with velocity of {velocity}. Velocity list: {arr_vouter}")
-    raise AssertionError
+    idx_upper = int(np.searchsorted(arr_vouter, velocity))
+    if idx_upper >= len(arr_vouter):
+        msg = f"Velocity {velocity} is larger than all cell outer velocities. Velocity list: {arr_vouter}"
+        raise AssertionError(msg)
+    assert arr_vouter[idx_upper] >= velocity if idx_upper < len(arr_vouter) else True
+    assert arr_vouter[idx_upper - 1] < velocity if idx_upper > 0 else True
+    return mgilist[idx_upper] if mgilist else idx_upper
 
 
 def get_initelemabundances(modelpath: Path = Path(), printwarningsonly: bool = False) -> pl.LazyFrame:
