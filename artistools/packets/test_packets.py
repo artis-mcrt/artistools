@@ -4,7 +4,6 @@ import numpy as np
 import polars as pl
 
 import artistools as at
-from artistools.packets import add_packet_directions_lazypolars
 
 
 def test_directionbins() -> None:
@@ -24,7 +23,7 @@ def test_directionbins() -> None:
         dirz=pl.col("costheta_defined"),
     )
 
-    testdirections = add_packet_directions_lazypolars(testdirections).collect()
+    testdirections = at.packets.add_packet_directions_lazypolars(testdirections).collect()
     testdirections = at.packets.bin_packet_directions_polars(testdirections).collect()
 
     for pkt in testdirections.iter_rows(named=True):
