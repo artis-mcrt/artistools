@@ -67,7 +67,6 @@ def calculate_timebinned_packet_sum(
 
     binnedenergysums = np.zeros_like(timearrayplusend[:-1], dtype=float)
     for binindex, e_rf_sum in dfpackets.groupby(binned)["e_rf"].sum().items():
-        print(binindex)
         assert isinstance(binindex, float | int)
         binnedenergysums[int(binindex)] = e_rf_sum
 
@@ -75,12 +74,12 @@ def calculate_timebinned_packet_sum(
 
 
 def get_line_fluxes_from_packets(
-    emtypecolumn,  # noqa: ANN001
-    emfeatures,  # noqa: ANN001
-    modelpath,  # noqa: ANN001
-    maxpacketfiles=None,  # noqa: ANN001
-    arr_tstart=None,  # noqa: ANN001
-    arr_tend=None,  # noqa: ANN001
+    emtypecolumn: str,
+    emfeatures: Iterable[FeatureTuple],
+    modelpath: Path | str,
+    maxpacketfiles: int | None = None,
+    arr_tstart: Sequence[float] | None = None,
+    arr_tend: Sequence[float] | None = None,
 ) -> pd.DataFrame:
     if arr_tstart is None:
         arr_tstart = at.get_timestep_times(modelpath, loc="start")
@@ -88,9 +87,10 @@ def get_line_fluxes_from_packets(
         arr_tend = at.get_timestep_times(modelpath, loc="end")
 
     arr_timedelta = np.array(arr_tend) - np.array(arr_tstart)
-    arr_tmid = arr_tend = (np.array(arr_tstart) + np.array(arr_tend)) / 2.0
+    arr_tmid = (np.array(arr_tstart) + np.array(arr_tend)) / 2.0
 
     timearrayplusend = np.concatenate([arr_tstart, [arr_tend[-1]]]).tolist()
+    print(f"{timearrayplusend=}")
 
     dictlcdata = {"time": arr_tmid}
 
@@ -347,7 +347,6 @@ def make_flux_ratio_plot(args: argparse.Namespace) -> None:
         )
 
         # \mathrm{\AA}
-
         print(dflcdata)
 
         axis.plot(
@@ -390,8 +389,8 @@ def make_flux_ratio_plot(args: argparse.Namespace) -> None:
 
         # for amodelname, (xlist, ylist) in amodels.items():
         for aindex, (amodelname, alabel) in enumerate([
-            ("w7", "W7"),
-            ("subch", "S0"),
+            # ("w7", "W7"),
+            # ("subch", "S0"),
             # ('subch_shen2018', r'1M$_\odot$'),
             # ('subch_shen2018_electronlossboost4x', '1M$_\odot$ (Shen+18) 4x e- loss'),
             # ('subch_shen2018_electronlossboost8x', r'1M$_\odot$ heatboost8'),
@@ -439,44 +438,6 @@ def make_flux_ratio_plot(args: argparse.Namespace) -> None:
     plt.close()
 
 
-def get_packets_with_emission_conditions(
-    modelpath: str | Path,
-    emtypecolumn: str,
-    lineindices: Sequence[int],
-    tstart: float,
-    tend: float,
-    maxpacketfiles: int | None = None,
-) -> pd.DataFrame:
-    estimators = at.estimators.read_estimators(modelpath)
-
-    ts = at.get_timestep_of_timedays(modelpath, tend)
-    allnonemptymgilist = list({modelgridindex for estimts, modelgridindex in estimators if estimts == ts})
-    em_mgicolumn = "em_modelgridindex" if emtypecolumn == "emissiontype" else "emtrue_modelgridindex"
-
-    dfpackets_selected, _ = get_packets_with_emtype(modelpath, emtypecolumn, lineindices, maxpacketfiles=maxpacketfiles)
-    dfpackets_selected = (
-        dfpackets_selected
-        .filter(pl.col("t_arrive_d").is_between(tstart, tend, closed="both"))
-        .collect()
-        .to_pandas(use_pyarrow_extension_array=True)
-    )
-
-    dfpackets_selected = at.packets.add_derived_columns(
-        dfpackets_selected, modelpath, ["em_timestep", em_mgicolumn], allnonemptymgilist=allnonemptymgilist
-    )
-
-    if not dfpackets_selected.empty:
-        dfpackets_selected["em_log10nne"] = dfpackets_selected.apply(
-            lambda packet: math.log10(estimators[int(packet["em_timestep"]), int(packet[em_mgicolumn])]["nne"]), axis=1
-        )
-
-        dfpackets_selected["em_Te"] = dfpackets_selected.apply(
-            lambda packet: estimators[int(packet["em_timestep"]), int(packet[em_mgicolumn])]["Te"], axis=1
-        )
-
-    return dfpackets_selected
-
-
 def plot_nne_te_points(
     axis: mplax.Axes,
     serieslabel: str,
@@ -489,8 +450,8 @@ def plot_nne_te_points(
     color_adj = [(c + 0.1) / 1.1 for c in mpl.colors.to_rgb(color)]  # type: ignore[arg-type] # pyright: ignore[reportAttributeAccessIssue]
     hitcount: dict[tuple[float, float], int] = {}
     for log10nne, Te in zip(em_log10nne, em_Te, strict=True):
-        assert isinstance(log10nne, float)
-        assert isinstance(Te, float)
+        assert isinstance(log10nne, float | np.floating)
+        assert isinstance(Te, float | np.floating)
         hitcount[log10nne, Te] = hitcount.get((log10nne, Te), 0) + 1
 
     arr_log10nne, arr_te = zip(*hitcount.keys(), strict=False) if hitcount else ([], [])
@@ -608,29 +569,42 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
                 lineindex for feature in emfeatures for lineindex in feature.linelistindices
             )
 
-            for tmid, tstart, tend in zip(times_days, args.timebins_tstart, args.timebins_tend, strict=False):
-                dfpackets = get_packets_with_emission_conditions(
-                    modelpath,
-                    args.emtypecolumn,
-                    linelistindices_allfeatures,
-                    tstart,
-                    tend,
-                    maxpacketfiles=args.maxpacketfiles,
-                )
+            em_mgicolumn = "em_modelgridindex" if args.emtypecolumn == "emissiontype" else "emtrue_modelgridindex"
 
+            dfpackets, _ = get_packets_with_emtype(
+                modelpath, args.emtypecolumn, linelistindices_allfeatures, maxpacketfiles=args.maxpacketfiles
+            )
+
+            dfpackets = at.packets.add_derived_columns_lazy(dfpackets, modelpath=modelpath)
+
+            dfestimators = (
+                at.estimators
+                .scan_estimators(modelpath=modelpath)
+                .select(["timestep", "modelgridindex", "Te", "nne"])
+                .drop_nulls()
+                .rename({"timestep": "em_timestep", "modelgridindex": em_mgicolumn, "Te": "em_Te", "nne": "em_nne"})
+            ).with_columns(em_log10nne=pl.col("em_nne").log10())
+
+            dfpackets = dfpackets.join(dfestimators, on=["em_timestep", em_mgicolumn], how="inner")
+
+            for tmid, tstart, tend in zip(times_days, args.timebins_tstart, args.timebins_tend, strict=False):
                 for feature in emfeatures:
-                    dfpackets_selected = dfpackets.query(
-                        f"{args.emtypecolumn} in @feature.linelistindices", inplace=False
+                    dfpackets_selected = (
+                        dfpackets
+                        .filter(pl.col("t_arrive_d").is_between(tstart, tend, closed="both"))
+                        .filter(pl.col(args.emtypecolumn).is_in(feature.linelistindices))
+                        .select("em_log10nne", "em_Te")
+                        .collect()
                     )
-                    if dfpackets_selected.empty:
+                    if dfpackets_selected.is_empty():
                         emdata_all[modelindex][tmid, feature.colname] = {
                             "em_log10nne": np.array([]),
                             "em_Te": np.array([]),
                         }
                     else:
                         emdata_all[modelindex][tmid, feature.colname] = {
-                            "em_log10nne": dfpackets_selected.em_log10nne.to_numpy(dtype=np.float64),
-                            "em_Te": dfpackets_selected.em_Te.to_numpy(dtype=np.float64),
+                            "em_log10nne": dfpackets_selected["em_log10nne"].to_numpy(),
+                            "em_Te": dfpackets_selected["em_Te"].to_numpy(),
                         }
 
             estimators = at.estimators.read_estimators(modelpath)
