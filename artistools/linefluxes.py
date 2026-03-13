@@ -241,14 +241,18 @@ def get_closelines(
 
     colname = f"flux_{at.get_ionstring(atomic_number, ion_stage, sep='')}_{approxlambdalabel}"
     featurelabel = f"{at.get_ionstring(atomic_number, ion_stage)} {approxlambdalabel} Å"
+    lowestlambda = dflinelistclosematches["lambda_angstroms"].min()
+    assert isinstance(lowestlambda, float | np.floating)
+    highestlambda = dflinelistclosematches["lambda_angstroms"].max()
+    assert isinstance(highestlambda, float | np.floating)
 
     return FeatureTuple(
         colname=colname,
         featurelabel=featurelabel,
         approxlambda=approxlambdalabel,
         linelistindices=tuple(dflinelistclosematches["lineindex"].to_list()),
-        lowestlambda=dflinelistclosematches["lambda_angstroms"].min(),
-        highestlambda=dflinelistclosematches["lambda_angstroms"].max(),
+        lowestlambda=lowestlambda,
+        highestlambda=highestlambda,
         atomic_number=atomic_number,
         ion_stage=ion_stage,
         upperlevelindicies=tuple(dflinelistclosematches["upperlevelindex"].to_list()),
@@ -431,7 +435,8 @@ def plot_nne_te_points(
     for log10nne, Te in zip(em_log10nne, em_Te, strict=True):
         assert isinstance(log10nne, float | np.floating)
         assert isinstance(Te, float | np.floating)
-        hitcount[log10nne, Te] = hitcount.get((log10nne, Te), 0) + 1
+        dictkey = (float(log10nne), float(Te))
+        hitcount[dictkey] = hitcount.get(dictkey, 0) + 1
 
     arr_log10nne, arr_te = zip(*hitcount.keys(), strict=False) if hitcount else ([], [])
     arr_weight = np.array([hitcount[x, y] for x, y in zip(arr_log10nne, arr_te, strict=False)])
