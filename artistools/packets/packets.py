@@ -137,73 +137,6 @@ def get_column_names_artiscode(modelpath: str | Path) -> list[str] | None:
     return None
 
 
-@deprecated("Use add_derived_columns_lazy instead.")
-def add_derived_columns(
-    dfpackets: pd.DataFrame,
-    modelpathin: Path | str,
-    colnames: Sequence[str],
-    allnonemptymgilist: Sequence[int] | None = None,
-) -> pd.DataFrame:
-    """Add columns to a packets DataFrame that are derived from the values that are stored in the packets files."""
-    modelpath = Path(modelpathin)
-    cm_to_km = 1e-5
-    day_in_s = 86400
-    if dfpackets.empty:
-        return dfpackets
-
-    colnames = at.makelist(colnames)
-    dimensions = at.get_inputparams(modelpath)["n_dimensions"]
-
-    def em_modelgridindex(packet: t.Any) -> int | float:
-        assert dimensions == 1
-
-        mgi = at.inputmodel.get_mgi_of_velocity_kms(modelpath, packet.emission_velocity * cm_to_km)
-        return math.nan if mgi is None else mgi
-
-    def emtrue_modelgridindex(packet: t.Any) -> int | float:
-        assert dimensions == 1
-
-        mgi = at.inputmodel.get_mgi_of_velocity_kms(modelpath, packet.true_emission_velocity * cm_to_km)
-        return math.nan if mgi is None else mgi
-
-    def em_timestep(packet: t.Any) -> int:
-        return at.get_timestep_of_timedays(modelpath, packet.em_time / day_in_s)
-
-    def emtrue_timestep(packet: t.Any) -> int:
-        return at.get_timestep_of_timedays(modelpath, packet.trueem_time / day_in_s)
-
-    if "emission_velocity" in colnames:
-        dfpackets["emission_velocity"] = (
-            np.sqrt(dfpackets["em_posx"] ** 2 + dfpackets["em_posy"] ** 2 + dfpackets["em_posz"] ** 2)
-            / dfpackets["em_time"]
-        )
-
-        dfpackets["em_velx"] = dfpackets["em_posx"] / dfpackets["em_time"]
-        dfpackets["em_vely"] = dfpackets["em_posy"] / dfpackets["em_time"]
-        dfpackets["em_velz"] = dfpackets["em_posz"] / dfpackets["em_time"]
-
-    if "em_modelgridindex" in colnames:
-        if "emission_velocity" not in dfpackets.columns:
-            dfpackets = add_derived_columns(
-                dfpackets, modelpath, ["emission_velocity"], allnonemptymgilist=allnonemptymgilist
-            )
-        dfpackets["em_modelgridindex"] = dfpackets.apply(em_modelgridindex, axis=1)
-
-    if "emtrue_modelgridindex" in colnames:
-        dfpackets["emtrue_modelgridindex"] = dfpackets.apply(emtrue_modelgridindex, axis=1)
-
-    if "emtrue_timestep" in colnames:
-        dfpackets["emtrue_timestep"] = dfpackets.apply(emtrue_timestep, axis=1)
-
-    if "em_timestep" in colnames:
-        dfpackets["em_timestep"] = dfpackets.apply(em_timestep, axis=1)
-
-    if any(x in colnames for x in ("angle_bin", "dirbin", "costhetabin", "phibin")):
-        dfpackets = bin_packet_directions(dfpackets)
-
-    return dfpackets
-
-
 def add_derived_columns_lazy(
     dfpackets: pl.LazyFrame | pl.DataFrame,
     modelmeta: dict[str, t.Any] | None = None,
@@ -905,38 +838,26 @@ def make_3d_histogram_from_packets(
     else:
         print("Binning by packet arrival time")
 
-    _, packetsfiles = at.packets.get_packets_batch_parquet_paths(modelpath)
-
-    emission_position3d_lists: list[list[float]] = [[], [], []]
-    e_cmf: list[float] = []
-
     only_packets_0_scatters = False
-    for packetsfile in packetsfiles:
-        # for npacketfile in range(0, 1):
-        dfpackets = readfile(packetsfile)
-        at.packets.add_derived_columns(dfpackets, modelpath, ["emission_velocity"])
-        dfpackets = dfpackets.dropna(subset=["emission_velocity"])  # drop rows where emission_vel is NaN
+    nprocs_read, dfpackets = at.packets.get_packets_pl(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
+    at.packets.add_derived_columns_lazy(dfpackets, modelpath=modelpath)
+    if only_packets_0_scatters:
+        print("Only using packets with 0 scatters")
+        dfpackets = dfpackets.filter(pl.col("nscatterings") == 0)
 
-        if only_packets_0_scatters:
-            print("Only using packets with 0 scatters")
-            # print(dfpackets[['scat_count', 'interactions', 'nscatterings']])
-            dfpackets = dfpackets.query("nscatterings == 0")
+    dfpackets = dfpackets.filter(
+        ((pl.col("em_time") / 86400.0) if em_time else pl.col("t_arrive_d"))
+        .cast(pl.Float32)
+        .is_between(timeminarray[timestep_min], timemaxarray[timestep_max])
+    )
 
-        # print(dfpackets[['emission_velocity', 'em_velx', 'em_vely', 'em_velz']])
-        # select only type escape and type r-pkt (don't include gamma-rays)
-        dfpackets = dfpackets.query(
-            f"type_id == {type_ids['TYPE_ESCAPE']} and escape_type_id == {type_ids['TYPE_RPKT']}"
-        )
-        if em_time:
-            dfpackets = dfpackets.query("@timeminarray[@timestep_min] < em_time/@DAY < @timemaxarray[@timestep_max]")
-        else:  # packet arrival time
-            dfpackets = dfpackets.query("@timeminarray[@timestep_min] < t_arrive_d < @timemaxarray[@timestep_max]")
+    emission_position3d_lists = [
+        dfpackets.select(pl.col("em_posx") / pl.col("em_time") / CLIGHT).collect().to_series().to_list(),
+        dfpackets.select(pl.col("em_posy") / pl.col("em_time") / CLIGHT).collect().to_series().to_list(),
+        dfpackets.select(pl.col("em_posz") / pl.col("em_time") / CLIGHT).collect().to_series().to_list(),
+    ]
 
-        emission_position3d_lists[0].extend(list(dfpackets["em_velx"] / CLIGHT))
-        emission_position3d_lists[1].extend(list(dfpackets["em_vely"] / CLIGHT))
-        emission_position3d_lists[2].extend(list(dfpackets["em_velz"] / CLIGHT))
-
-        e_cmf.extend(list(dfpackets["e_cmf"]))
+    e_cmf = dfpackets.select("e_cmf").collect().to_series().to_list()
 
     emission_position3d = np.array(emission_position3d_lists)
     weight_by_energy = True
@@ -954,7 +875,7 @@ def make_3d_histogram_from_packets(
     if weight_by_energy:
         # Divide binned energies by number of processes and by length of timestep
         hist = (
-            hist / len(packetsfiles) / (timemaxarray[timestep_max] - timeminarray[timestep_min])
+            hist / nprocs_read / (timemaxarray[timestep_max] - timeminarray[timestep_min])
         )  # timedeltaarray[timestep]  # histogram weighted by energy
     # - need to divide by number of processes
     # and length of timestep(s)
@@ -993,46 +914,42 @@ def get_mean_packet_emission_velocity_per_ts(
     escape_type: t.Literal["TYPE_RPKT", "TYPE_GAMMA"] = "TYPE_RPKT",
     maxpacketfiles: int | None = None,
     escape_angles: int | None = None,
-) -> pd.DataFrame:
-    nprocs_read, packetsfiles = at.packets.get_packets_batch_parquet_paths(modelpath, maxpacketfiles=maxpacketfiles)
+) -> pl.DataFrame:
+    nprocs_read, dfpackets = get_packets_pl(
+        modelpath, maxpacketfiles=maxpacketfiles, packet_type=packet_type, escape_type=escape_type
+    )
+    dfpackets = add_derived_columns_lazy(dfpackets, modelpath=modelpath)
     assert nprocs_read > 0
 
     timearray = at.get_timestep_times(modelpath=modelpath, loc="mid")
     arr_timedelta = at.get_timestep_times(modelpath=modelpath, loc="delta")
     timearrayplusend = [*timearray, timearray[-1] + arr_timedelta[-1]]
 
-    dfpackets_escape_velocity_and_arrive_time = pd.DataFrame()
     emission_data = pd.DataFrame({
         "t_arrive_d": timearray,
         "mean_emission_velocity": np.zeros_like(timearray, dtype=float),
     })
 
-    for i, packetsfile in enumerate(packetsfiles):
-        dfpackets = readfile(packetsfile, packet_type=packet_type, escape_type=escape_type)
-        at.packets.add_derived_columns(dfpackets, modelpath, ["emission_velocity"])
-        if escape_angles is not None:
-            dfpackets = at.packets.bin_packet_directions(dfpackets)
-            dfpackets = dfpackets.query("dirbin == @escape_angles")
+    if escape_angles is not None:
+        dfpackets = add_packet_directions_lazypolars(dfpackets)
+        dfpackets = dfpackets.filter(pl.col("dirbin") == escape_angles)
 
-        if i == 0:  # make new df
-            dfpackets_escape_velocity_and_arrive_time = dfpackets[["t_arrive_d", "emission_velocity"]]
-        else:  # append to df
-            # dfpackets_escape_velocity_and_arrive_time = dfpackets_escape_velocity_and_arrive_time.append(
-            #     other=dfpackets[["t_arrive_d", "emission_velocity"]], ignore_index=True
-            # )
-            dfpackets_escape_velocity_and_arrive_time = pd.concat(
-                [dfpackets_escape_velocity_and_arrive_time, dfpackets[["t_arrive_d", "emission_velocity"]]],
-                ignore_index=True,
+    emission_data = pl.DataFrame({
+        "t_arrive_d": timearray,
+        "mean_emission_velocity": (
+            at.packets
+            .bin_and_sum(
+                dfpackets,
+                bincol="t_arrive_d",
+                bins=timearrayplusend,
+                otheraggs=[pl.col("emission_velocity").mean().alias("mean_emission_velocity")],
             )
-
-    print(dfpackets_escape_velocity_and_arrive_time)
-    binned = pd.cut(
-        dfpackets_escape_velocity_and_arrive_time["t_arrive_d"], timearrayplusend, labels=False, include_lowest=True
-    )
-    for binindex, emission_velocity in (
-        dfpackets_escape_velocity_and_arrive_time.groupby(binned)["emission_velocity"].mean().iteritems()
-    ):
-        emission_data["mean_emission_velocity"][binindex] += emission_velocity  # / 2.99792458e10
+            .select("mean_emission_velocity")
+            .collect()
+            .to_series()
+        ),
+    })
+    print(emission_data)
 
     return emission_data
 
@@ -1043,6 +960,7 @@ def bin_and_sum(
     bins: Sequence[float | int],
     sumcols: list[str] | None = None,
     getcounts: bool = False,
+    otheraggs: pl.Expr | list[pl.Expr] | None = None,
 ) -> pl.LazyFrame:
     """Bins is a list of lower edges, and the final upper edge."""
     # Polars method
@@ -1059,10 +977,19 @@ def bin_and_sum(
         )
     )
 
+    if sumcols is None:
+        sumcols = []
+
     aggs = [pl.col(col).sum().alias(col + "_sum") for col in sumcols] if sumcols is not None else []
 
     if getcounts:
         aggs.append(pl.col(bincol).count().alias("count"))
+
+    if otheraggs is None:
+        otheraggs = []
+    elif isinstance(otheraggs, pl.Expr):
+        otheraggs = [otheraggs]
+    aggs.extend(otheraggs)
 
     wlbins = dfcut.group_by(f"{bincol}_bin").agg(aggs)
 
@@ -1071,6 +998,6 @@ def bin_and_sum(
         pl
         .LazyFrame({f"{bincol}_bin": range(len(bins) - 1)}, schema={f"{bincol}_bin": pl.Int32})
         .join(wlbins, how="left", on=f"{bincol}_bin", coalesce=True)
-        .fill_null(0)
+        .with_columns(pl.col(f"{sumcol}_sum").fill_null(0) for sumcol in sumcols)  # fill nulls with 0 for sum columns
         .sort(by=f"{bincol}_bin")
     )

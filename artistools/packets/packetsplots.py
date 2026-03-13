@@ -31,6 +31,7 @@ def make_2d_packets_plot_imshow(modelpath: Path, timestep_min: int, timestep_max
     hist = at.packets.make_3d_histogram_from_packets(
         modelpath, timestep_min=timestep_min, timestep_max=timestep_max, em_time=em_time
     )
+    print(hist)
 
     grid = round(len(modeldata["inputcellid"]) ** (1.0 / 3.0))
     vmax_cms /= CLIGHT
@@ -141,7 +142,7 @@ def plot_packet_mean_emission_velocity(modelpath: str | Path, write_emission_dat
     plt.legend()
 
     if write_emission_data:
-        emission_data.to_csv(Path(modelpath) / "meanemissionvelocity.txt", sep=" ", index=False)
+        emission_data.to_pandas().to_csv(Path(modelpath) / "meanemissionvelocity.txt", sep=" ", index=False)
 
     outfilename = "meanemissionvelocity.pdf"
     plt.savefig(Path(modelpath) / outfilename, format="pdf")
