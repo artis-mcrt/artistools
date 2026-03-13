@@ -411,19 +411,6 @@ def read_virtual_packets_text_file(vpacketsfiletext: Path | str, column_names: l
     ).with_columns(mpirank=pl.lit(mpirank, dtype=pl.Int32))
 
 
-def get_packets_text_paths(modelpath: str | Path, maxpacketfiles: int | None = None) -> list[Path]:
-    """Get a list of Paths to packets*.out files."""
-    modelpath = Path(modelpath)
-    nprocs_read = at.get_nprocs(modelpath)
-    if maxpacketfiles is not None:
-        nprocs_read = min(nprocs_read, maxpacketfiles)
-
-    return [
-        at.firstexisting(f"packets00_{rank:04d}.out", folder=modelpath, tryzipped=True, search_subfolders=True)
-        for rank in range(nprocs_read)
-    ]
-
-
 def get_vpackets_text_columns(vpacketsfiletext: Path) -> list[str]:
     firstline: str = at.zopen(vpacketsfiletext, mode="rt", encoding="utf-8").readline()
     assert firstline.lstrip().startswith("#")
@@ -585,7 +572,6 @@ def get_virtual_packets_pl(modelpath: str | Path, maxpacketfiles: int | None = N
     return nprocs_read, dfpackets
 
 
-@lru_cache
 def get_packets_pl_before_filter(modelpath: Path, maxpacketfiles: int | None = None) -> tuple[int, pl.LazyFrame]:
     nprocs_read, packetsparquetfiles = get_packets_batch_parquet_paths(modelpath, maxpacketfiles)
 
@@ -877,7 +863,6 @@ def get_mean_packet_emission_velocity_per_ts(
     })
 
     if escape_angles is not None:
-        dfpackets = add_packet_directions_lazypolars(dfpackets)
         dfpackets = dfpackets.filter(pl.col("dirbin") == escape_angles)
 
     emission_data = pl.DataFrame({
