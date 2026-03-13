@@ -24,7 +24,6 @@ import numpy.typing as npt
 import pandas as pd
 import polars as pl
 import polars.selectors as cs
-from typing_extensions import deprecated
 
 import artistools as at
 
@@ -762,58 +761,6 @@ def bin_packet_directions_polars(
             .cast(pl.Int32)
             .alias("phibin")
         ).with_columns((pl.col("costhetabin") * nphibins + pl.col("phibin")).cast(pl.Int32).alias("dirbin"))
-
-    return dfpackets
-
-
-@deprecated("Use bin_packet_directions_polars instead.")
-def bin_packet_directions(dfpackets: pd.DataFrame) -> pd.DataFrame:
-    """Avoid this slow pandas function and use bin_packet_directions_polars instead for new code."""
-    nphibins = at.get_viewingdirection_phibincount()
-    ncosthetabins = at.get_viewingdirection_costhetabincount()
-
-    syn_dir = np.array([0.0, 0.0, 1.0])
-    xhat = np.array([1.0, 0.0, 0.0])
-    vec2 = np.cross(xhat, syn_dir)
-
-    pktdirvecs = dfpackets[["dirx", "diry", "dirz"]].to_numpy().copy()
-
-    # normalise. might not be needed
-    dirmags = np.linalg.norm(pktdirvecs, axis=1)
-    pktdirvecs /= np.array([dirmags, dirmags, dirmags]).transpose()
-
-    costheta = np.dot(pktdirvecs, syn_dir)
-    arr_costhetabin = np.clip(((costheta + 1) / 2.0 * ncosthetabins).astype(int), 0, ncosthetabins - 1)
-    dfpackets["costhetabin"] = arr_costhetabin
-
-    arr_vec1 = np.cross(pktdirvecs, syn_dir)
-
-    norms = np.linalg.norm(arr_vec1, axis=1)
-    # replace zero norms to a small number to avoid division by zero
-    norms[norms == 0] = 1e-20
-    inverse_norms = 1 / norms
-
-    arr_cosphi = np.dot(arr_vec1, vec2) * inverse_norms / np.linalg.norm(vec2)
-    vec3 = np.cross(vec2, syn_dir)
-    arr_testphi = np.dot(arr_vec1, vec3)
-
-    arr_phibin = np.zeros(len(pktdirvecs), dtype=int)
-    filta = arr_testphi > 0
-    arr_phibin[filta] = np.arccos(arr_cosphi[filta]) / 2.0 / math.pi * nphibins
-    filtb = np.invert(filta)
-    arr_phibin[filtb] = (np.arccos(arr_cosphi[filtb]) + math.pi) / 2.0 / math.pi * nphibins
-    arr_phibin = np.clip(arr_phibin, 0, nphibins - 1)
-    dfpackets["phibin"] = arr_phibin
-    dfpackets["arccoscosphi"] = np.arccos(arr_cosphi)
-
-    dfpackets["dirbin"] = (arr_costhetabin * nphibins) + arr_phibin
-
-    assert np.all(dfpackets["costhetabin"] >= 0)
-    assert np.all(dfpackets["costhetabin"] < ncosthetabins)
-    assert np.all(dfpackets["phibin"] >= 0)
-    assert np.all(dfpackets["phibin"] < nphibins)
-    assert np.all(dfpackets["dirbin"] >= 0)
-    assert np.all(dfpackets["dirbin"] < (nphibins * ncosthetabins))
 
     return dfpackets
 

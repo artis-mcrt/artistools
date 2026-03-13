@@ -97,69 +97,60 @@ specpol_res_data_bb = [copy.deepcopy(specpol_data_bb) for _ in range(n_angle_bin
 # need deep copy to make new empty array of same size
 
 
-packetsfiles = at.packets.get_packets_text_paths(modelpath)
-nprocs = at.get_nprocs(modelpath)
-# nprocs = 100
-for npacketfile in range(nprocs):
-    dfpackets = at.packets.readfile(packetsfiles[npacketfile])  # , type='TYPE_ESCAPE', escape_type='TYPE_RPKT')
-    dfpackets = at.packets.bin_packet_directions(dfpackets)
-    dfpackets = dfpackets.query(f"type_id == {type_ids['TYPE_ESCAPE']} and escape_type_id == {type_ids['TYPE_RPKT']}")
+nprocs_read, dfpackets = at.packets.get_packets_pl(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
+dfpackets = dfpackets.collect().to_pandas()
+for timestep, timedays in enumerate(arr_tstart):
+    # print('ts', timestep, timedays, 'days')
 
-    # print(max(dfpackets['t_arrive_d']))
-    # print(dfpackets)
+    # get packets escaping within timestep
+    timelow = column_names[timestep] * 86400
+    timehigh = arr_tend[timestep] * 86400
+    # timelow = float(arr_tstart[timestep])
+    # timehigh = float(arr_tend[timestep])
+    # print('ts', timestep, 'low', timelow, 'high', timehigh)
 
-    for timestep, timedays in enumerate(arr_tstart):
-        # print('ts', timestep, timedays, 'days')
+    dfpackets_timestep = dfpackets.query(
+        "@timelow < escape_time - (posx * dirx + posy * diry + posz * dirz) / @c_cgs < @timehigh", inplace=False
+    )
+    # dfpackets_timestep = dfpackets.query('t_arrive_d > @timelow and t_arrive_d < @timehigh', inplace=False).copy()
 
-        # get packets escaping within timestep
-        timelow = column_names[timestep] * 86400
-        timehigh = arr_tend[timestep] * 86400
-        # timelow = float(arr_tstart[timestep])
-        # timehigh = float(arr_tend[timestep])
-        # print('ts', timestep, 'low', timelow, 'high', timehigh)
+    # if len(dfpackets_timestep) > 0:
+    #     print('timestep:')
+    #     print((dfpackets_timestep[['escape_time', 'escape_time_d', 't_arrive_d', 'em_TR']]))
+    #     print('initial df:')
+    #     print((dfpackets[['escape_time', 'escape_time_d', 't_arrive_d', 'em_TR']]))
+    #     print('\n\n\n')
+    #     # sys.exit(1)
 
-        dfpackets_timestep = dfpackets.query(
-            "@timelow < escape_time - (posx * dirx + posy * diry + posz * dirz) / @c_cgs < @timehigh", inplace=False
-        )
-        # dfpackets_timestep = dfpackets.query('t_arrive_d > @timelow and t_arrive_d < @timehigh', inplace=False).copy()
+    for _df_index, row in dfpackets_timestep.iterrows():
+        TR = row["em_TR"]
+        assert isinstance(TR, float)
+        # if TR not in [100, 140000]:
 
-        # if len(dfpackets_timestep) > 0:
-        #     print('timestep:')
-        #     print((dfpackets_timestep[['escape_time', 'escape_time_d', 't_arrive_d', 'em_TR']]))
-        #     print('initial df:')
-        #     print((dfpackets[['escape_time', 'escape_time_d', 't_arrive_d', 'em_TR']]))
-        #     print('\n\n\n')
-        #     # sys.exit(1)
+        nu = sample_planck(TR, nu_lower, nu_upper)
 
-        for _df_index, row in dfpackets_timestep.iterrows():
-            TR = row["em_TR"]
-            assert isinstance(TR, float)
-            # if TR not in [100, 140000]:
+        if nu > 0.0:
+            angle = int(row["angle_bin"])
+            if angle > 99:  # 100 is getting in there somehow??
+                continue
+            e_rf = row["e_rf"]
+            hist, _ = np.histogram([nu], bins=arr_nu_hz)  # get frequency bin - returns array with 1 in correct bin
+            hist *= e_rf  # multiply by packet rf energy to get the energy in the right bin
+            freq_bin_number = np.nonzero(hist)  # the frequency bin number is where hist is non zero
 
-            nu = sample_planck(TR, nu_lower, nu_upper)
-
-            if nu > 0.0:
-                angle = int(row["angle_bin"])
-                if angle > 99:  # 100 is getting in there somehow??
-                    continue
-                e_rf = row["e_rf"]
-                hist, _ = np.histogram([nu], bins=arr_nu_hz)  # get frequency bin - returns array with 1 in correct bin
-                hist *= e_rf  # multiply by packet rf energy to get the energy in the right bin
-                freq_bin_number = np.nonzero(hist)  # the frequency bin number is where hist is non zero
-
-                # add to angle bin in this timestep
-                specpol_res_data_bb[angle][timedays] += (
-                    hist
-                    / (timehigh - timelow)
-                    / arr_delta_nu_hz[freq_bin_number[0][0]]
-                    / 4.0e12
-                    / np.pi
-                    / PARSEC
-                    / PARSEC
-                    * n_angle_bins
-                    / nprocs
-                )
-                # packet_contribution_count_res[angle][timedays] += 1
+            # add to angle bin in this timestep
+            specpol_res_data_bb[angle][timedays] += (
+                hist
+                / (timehigh - timelow)
+                / arr_delta_nu_hz[freq_bin_number[0][0]]
+                / 4.0e12
+                / np.pi
+                / PARSEC
+                / PARSEC
+                * n_angle_bins
+                / nprocs_read
+            )
+            # packet_contribution_count_res[angle][timedays] += 1
 
 for angle in range(n_angle_bins):
     dfspec = pd.DataFrame.from_dict(specpol_res_data_bb[angle])
