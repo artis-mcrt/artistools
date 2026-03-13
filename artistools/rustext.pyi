@@ -1,4 +1,3 @@
-__lazy_modules__: list[str] = ["collections.abc", "polars"]
 from collections.abc import Collection
 
 import polars as pl

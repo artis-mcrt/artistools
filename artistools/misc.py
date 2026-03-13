@@ -1,23 +1,3 @@
-__lazy_modules__ = [
-    "collections.abc",
-    "functools",
-    "io",
-    "itertools",
-    "math",
-    "matplotlib",
-    "matplotlib.axes",
-    "matplotlib.figure",
-    "matplotlib.pyplot",
-    "multiprocessing",
-    "multiprocessing.pool",
-    "numpy",
-    "numpy.typing",
-    "pathlib",
-    "pandas",
-    "polars",
-    "polars.selectors",
-    "typing",
-]
 import argparse
 import contextlib
 import functools
