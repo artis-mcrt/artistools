@@ -80,7 +80,7 @@ def get_line_fluxes_from_packets(
     maxpacketfiles: int | None = None,
     arr_tstart: Sequence[float] | None = None,
     arr_tend: Sequence[float] | None = None,
-) -> pd.DataFrame:
+) -> pl.DataFrame:
     if arr_tstart is None:
         arr_tstart = at.get_timestep_times(modelpath, loc="start")
     if arr_tend is None:
@@ -119,7 +119,7 @@ def get_line_fluxes_from_packets(
         fluxdata = np.divide(energysumsreduced * normfactor, arr_timedelta * 86400.0)
         dictlcdata[feature.colname] = fluxdata
 
-    return pd.DataFrame(dictlcdata)
+    return pl.DataFrame(dictlcdata)
 
 
 def get_line_fluxes_from_pops(
@@ -127,7 +127,7 @@ def get_line_fluxes_from_pops(
     modelpath: Path | str,
     arr_tstart: Iterable[float] | None = None,
     arr_tend: Iterable[float] | None = None,
-) -> pd.DataFrame:
+) -> pl.DataFrame:
     if arr_tstart is None:
         arr_tstart = at.get_timestep_times(modelpath, loc="start")
     if arr_tend is None:
@@ -221,7 +221,7 @@ def get_line_fluxes_from_pops(
 
         dictlcdata[feature.colname] = fluxdata
 
-    return pd.DataFrame(dictlcdata)
+    return pl.DataFrame(dictlcdata)
 
 
 def get_linelist_dataframe(modelpath: Path | str) -> pd.DataFrame:
@@ -319,8 +319,8 @@ def make_flux_ratio_plot(args: argparse.Namespace) -> None:
     # axis.set_ylabel(r'log$_1$$_0$ F$_\lambda$ at 1 Mpc [erg/s/cm$^2$/$\mathrm{{\AA}}$]')
 
     # axis.set_xlim(left=supxmin, right=supxmax)
-    pd.set_option("display.max_rows", 500)
-    pd.set_option("display.width", 150)
+    tmin = math.inf
+    tmax = -math.inf
 
     for modelpath, modellabel, modelcolor in zip(args.modelpath, args.label, args.color, strict=False):
         print(f"====> {modellabel}")
@@ -341,7 +341,8 @@ def make_flux_ratio_plot(args: argparse.Namespace) -> None:
                 arr_tend=args.timebins_tend,
             )
         )
-        dflcdata["fratio"] = dflcdata[emfeatures[1].colname] / dflcdata[emfeatures[0].colname]
+
+        dflcdata = dflcdata.with_columns(fratio=pl.col(emfeatures[1].colname) / pl.col(emfeatures[0].colname))
         axis.set_ylabel(
             r"F$_{\mathrm{" + emfeatures[1].featurelabel + r"}}$ / F$_{\mathrm{" + emfeatures[0].featurelabel + r"}}$"
         )
@@ -350,8 +351,8 @@ def make_flux_ratio_plot(args: argparse.Namespace) -> None:
         print(dflcdata)
 
         axis.plot(
-            dflcdata.time,
-            dflcdata.fratio,
+            dflcdata["time"],
+            dflcdata["fratio"],
             label=modellabel,
             marker="x",
             lw=0,
@@ -362,8 +363,8 @@ def make_flux_ratio_plot(args: argparse.Namespace) -> None:
             fillstyle="none",
         )
 
-        tmin = dflcdata.time.min()
-        tmax = dflcdata.time.max()
+        tmin = min(tmin, dflcdata.select(pl.col("time").min()).item())
+        tmax = max(tmax, dflcdata.select(pl.col("time").max()).item())
 
     if args.emfeaturesearch[0][:3] == (26, 2, 7155) and args.emfeaturesearch[1][:3] == (26, 2, 12570):
         axis.set_ylim(ymin=0.05)
@@ -534,10 +535,6 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
     times_days = ((np.array(args.timebins_tstart) + np.array(args.timebins_tend)) / 2.0).tolist()
 
     print(f"Chosen times: {times_days}")
-
-    # axis.set_xlim(left=supxmin, right=supxmax)
-    pd.set_option("display.max_rows", 500)
-    pd.set_option("display.width", 250)
 
     emdata_all: dict[int, dict[tuple[float, str], dict[str, npt.NDArray[np.floating]]]] = {}
     log10nnedata_all: dict[int, dict[int, list[float]]] = {}
@@ -862,6 +859,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         if args.label[i] is None:
             assert hasattr(args.label, "__setitem__")
             args.label[i] = at.get_model_name(args.modelpath[i])
+
+    at.plottools.set_mpl_style()
 
     if args.plotemittingregions:
         make_emitting_regions_plot(args)
