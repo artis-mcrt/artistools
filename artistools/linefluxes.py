@@ -211,16 +211,6 @@ def get_line_fluxes_from_pops(
     return pl.DataFrame(dictlcdata)
 
 
-def get_linelist_dataframe(modelpath: Path | str) -> pd.DataFrame:
-    return (
-        at.misc
-        .get_linelist_pldf(modelpath)
-        .with_columns(upper_level=pl.col("upperlevelindex") + 1, lower_level=pl.col("lowerlevelindex") + 1)
-        .collect()
-        .to_pandas(use_pyarrow_extension_array=True)
-    )
-
-
 def get_closelines(
     modelpath: Path | str,
     atomic_number: int,
@@ -231,37 +221,42 @@ def get_closelines(
     lowerlevelindex: int | None = None,
     upperlevelindex: int | None = None,
 ) -> FeatureTuple:
-    dflinelistclosematches = (
-        get_linelist_dataframe(modelpath).query("atomic_number == @atomic_number and ion_stage == @ion_stage").copy()
+    lzdflinelistclosematches = (
+        at.misc
+        .get_linelist_pldf(modelpath)
+        .with_columns(upper_level=pl.col("upperlevelindex") + 1, lower_level=pl.col("lowerlevelindex") + 1)
+        .filter(pl.col("atomic_number") == atomic_number, pl.col("ion_stage") == ion_stage)
     )
-    if lambdamin is not None and lambdamin > 0:
-        dflinelistclosematches = dflinelistclosematches.query("@lambdamin < lambda_angstroms")
-    if lambdamax is not None and lambdamax > 0:
-        dflinelistclosematches = dflinelistclosematches.query("@lambdamax > lambda_angstroms")
-    if lowerlevelindex is not None and lowerlevelindex >= 0:
-        dflinelistclosematches = dflinelistclosematches.query("lowerlevelindex==@lowerlevelindex")
-    if upperlevelindex is not None and upperlevelindex >= 0:
-        dflinelistclosematches = dflinelistclosematches.query("upperlevelindex==@upperlevelindex")
 
-    linelistindices = tuple(dflinelistclosematches.index.to_numpy())
-    upperlevelindicies = tuple(dflinelistclosematches.upperlevelindex.to_numpy(dtype=int))
-    lowerlevelindicies = tuple(dflinelistclosematches.lowerlevelindex.to_numpy(dtype=int))
-    lowestlambda = dflinelistclosematches.lambda_angstroms.min()
-    highestlambda = dflinelistclosematches.lambda_angstroms.max()
+    if lambdamin is not None and lambdamin > 0:
+        lzdflinelistclosematches = lzdflinelistclosematches.filter(lambdamin < pl.col("lambda_angstroms"))
+    if lambdamax is not None and lambdamax > 0:
+        lzdflinelistclosematches = lzdflinelistclosematches.filter(lambdamax > pl.col("lambda_angstroms"))
+    if lowerlevelindex is not None and lowerlevelindex >= 0:
+        lzdflinelistclosematches = lzdflinelistclosematches.filter(pl.col("lowerlevelindex") == lowerlevelindex)
+    if upperlevelindex is not None and upperlevelindex >= 0:
+        lzdflinelistclosematches = lzdflinelistclosematches.filter(pl.col("upperlevelindex") == upperlevelindex)
+
+    dflinelistclosematches = lzdflinelistclosematches.collect()
+    linelistindices = tuple(dflinelistclosematches["lineindex"].to_list())
+    upperlevelindicies = tuple(dflinelistclosematches["upperlevelindex"].to_list())
+    lowerlevelindicies = tuple(dflinelistclosematches["lowerlevelindex"].to_list())
+    lowestlambda = dflinelistclosematches["lambda_angstroms"].min()
+    highestlambda = dflinelistclosematches["lambda_angstroms"].max()
     colname = f"flux_{at.get_ionstring(atomic_number, ion_stage, sep='')}_{approxlambdalabel}"
     featurelabel = f"{at.get_ionstring(atomic_number, ion_stage)} {approxlambdalabel} Å"
 
     return FeatureTuple(
-        colname,
-        featurelabel,
-        approxlambdalabel,
-        linelistindices,
-        lowestlambda,
-        highestlambda,
-        atomic_number,
-        ion_stage,
-        upperlevelindicies,
-        lowerlevelindicies,
+        colname=colname,
+        featurelabel=featurelabel,
+        approxlambda=approxlambdalabel,
+        linelistindices=linelistindices,
+        lowestlambda=lowestlambda,
+        highestlambda=highestlambda,
+        atomic_number=atomic_number,
+        ion_stage=ion_stage,
+        upperlevelindicies=upperlevelindicies,
+        lowerlevelindicies=lowerlevelindicies,
     )
 
 
