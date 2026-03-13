@@ -854,15 +854,10 @@ def get_mean_packet_emission_velocity_per_ts(
     arr_timedelta = at.get_timestep_times(modelpath=modelpath, loc="delta")
     timearrayplusend = [*timearray, timearray[-1] + arr_timedelta[-1]]
 
-    emission_data = pd.DataFrame({
-        "t_arrive_d": timearray,
-        "mean_emission_velocity": np.zeros_like(timearray, dtype=float),
-    })
-
     if escape_angles is not None:
         dfpackets = dfpackets.filter(pl.col("dirbin") == escape_angles)
 
-    emission_data = pl.DataFrame({
+    return pl.DataFrame({
         "t_arrive_d": timearray,
         "mean_emission_velocity": (
             at.packets
@@ -877,9 +872,6 @@ def get_mean_packet_emission_velocity_per_ts(
             .to_series()
         ),
     })
-    print(emission_data)
-
-    return emission_data
 
 
 def bin_and_sum(
