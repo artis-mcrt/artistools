@@ -1033,30 +1033,21 @@ def save_modeldata(
     print(f"Wrote {modelfilepath} (took {time.perf_counter() - timestart:.1f} seconds)")
 
 
-def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist: Sequence[int] | None = None) -> int | None:
-    """Return the modelgridindex of the cell whose outer velocity is closest to velocity.
-
-    If mgilist is given, then chose from these cells only.
-    """
-    modeldata = get_modeldata(modelpath)[0].collect().to_pandas(use_pyarrow_extension_array=True)
-
-    if not mgilist:
-        mgilist = list(modeldata.index)
-        arr_vouter = modeldata["vel_r_max_kmps"].to_numpy(dtype=float)
-    else:
-        arr_vouter = np.array([modeldata["vel_r_max_kmps"][mgi] for mgi in mgilist])
-
-    index_closestvouter = int(np.abs(arr_vouter - velocity).argmin())
-
-    if velocity < arr_vouter[index_closestvouter] or index_closestvouter + 1 >= len(mgilist):
-        return mgilist[index_closestvouter]
-    if velocity < arr_vouter[index_closestvouter + 1]:
-        return mgilist[index_closestvouter + 1]
+def get_mgi_of_velocity_kms(modelpath: Path, velocity: float) -> int | None:
+    """Return the modelgridindex of the cell whose outer velocity brackets the given velocity."""
     if np.isnan(velocity):
         return None
+    dfmodel, modelmeta = get_modeldata(modelpath)
+    assert modelmeta["dimensions"] == 1, "get_mgi_of_velocity_kms only works for 1D models"
+    arr_vouter = dfmodel.select("vel_r_max_kmps").collect().to_series().to_numpy()
 
-    print(f"Can't find cell with velocity of {velocity}. Velocity list: {arr_vouter}")
-    raise AssertionError
+    mgi_upper = int(np.searchsorted(arr_vouter, velocity))
+    if mgi_upper >= len(arr_vouter):
+        msg = f"Velocity {velocity} is larger than all cell outer velocities. Velocity list: {arr_vouter}"
+        raise AssertionError(msg)
+    assert arr_vouter[mgi_upper] >= velocity if mgi_upper < len(arr_vouter) else True
+    assert arr_vouter[mgi_upper - 1] < velocity if mgi_upper > 0 else True
+    return mgi_upper
 
 
 def get_initelemabundances(modelpath: Path = Path(), printwarningsonly: bool = False) -> pl.LazyFrame:
