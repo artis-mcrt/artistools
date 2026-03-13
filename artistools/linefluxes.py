@@ -18,7 +18,6 @@ import contextlib
 import json
 import math
 import typing as t
-from collections.abc import Iterable
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -62,7 +61,7 @@ def get_packets_with_emtype(
 
 def get_line_fluxes_from_packets(
     emtypecolumn: str,
-    emfeatures: Iterable[FeatureTuple],
+    emfeatures: Sequence[FeatureTuple],
     modelpath: Path | str,
     maxpacketfiles: int | None = None,
     arr_tstart: Sequence[float] | None = None,
@@ -108,10 +107,10 @@ def get_line_fluxes_from_packets(
 
 
 def get_line_fluxes_from_pops(
-    emfeatures: Iterable[FeatureTuple],
+    emfeatures: Sequence[FeatureTuple],
     modelpath: Path | str,
-    arr_tstart: Iterable[float] | None = None,
-    arr_tend: Iterable[float] | None = None,
+    arr_tstart: Sequence[float] | None = None,
+    arr_tend: Sequence[float] | None = None,
 ) -> pl.DataFrame:
     if arr_tstart is None:
         arr_tstart = at.get_timestep_times(modelpath, loc="start")
@@ -258,7 +257,7 @@ def get_closelines(
     )
 
 
-def get_labelandlineindices(modelpath: Path | str, emfeaturesearch: Iterable[t.Any]) -> list[FeatureTuple]:
+def get_labelandlineindices(modelpath: Path | str, emfeaturesearch: Sequence[t.Any]) -> list[FeatureTuple]:
     labelandlineindices = []
     for params in emfeaturesearch:
         feature = get_closelines(modelpath, params[0], params[1], params[2], *params[3:])
