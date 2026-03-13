@@ -79,36 +79,32 @@ def get_line_fluxes_from_packets(
     timearrayplusend = np.concatenate([arr_tstart, [arr_tend[-1]]]).tolist()
     print(f"{timearrayplusend=}")
 
-    dictlcdata = {"time": arr_tmid}
-
     linelistindices_allfeatures = tuple(lineindex for feature in emfeatures for lineindex in feature.linelistindices)
 
     dfpackets, nprocs_read = get_packets_with_emtype(
         modelpath, emtypecolumn, linelistindices_allfeatures, maxpacketfiles=maxpacketfiles
     )
 
-    for feature in emfeatures:
-        # dictlcdata[feature.colname] = np.zeros_like(arr_tstart, dtype=float)
-
-        dfpackets_selected = dfpackets.filter(pl.col(emtypecolumn).is_in(feature.linelistindices))
-
-        # mpc_to_cm = 3.085677581491367e+24  # 1 megaparsec in cm
-        # normfactor = 1. / 4 / math.pi / (mpc_to_cm ** 2) / nprocs_read
-
-        binnednew = at.packets.bin_and_sum(
-            dfpackets_selected, bincol="t_arrive_d", bins=timearrayplusend, sumcols=["e_rf"]
-        )
-        binnednew = binnednew.with_columns(timedelta_days=arr_timedelta)
-        fluxdata = (
-            binnednew
-            .select(pl.col("e_rf_sum") / nprocs_read / (86400.0 * pl.col("timedelta_days")))
-            .collect()
-            .to_series()
-            .to_numpy()
-        )
-
-        # print(energysumsreduced, arr_timedelta)
-        dictlcdata[feature.colname] = fluxdata
+    dictlcdata = {
+        "time": arr_tmid,
+        **{
+            feature.colname: (
+                at.packets
+                .bin_and_sum(
+                    dfpackets.filter(pl.col(emtypecolumn).is_in(feature.linelistindices)),
+                    bincol="t_arrive_d",
+                    bins=timearrayplusend,
+                    sumcols=["e_rf"],
+                )
+                .with_columns(timedelta_days=arr_timedelta)
+                .select(pl.col("e_rf_sum") / nprocs_read / (86400.0 * pl.col("timedelta_days")))
+                .collect()
+                .to_series()
+                .to_numpy()
+            )
+            for feature in emfeatures
+        },
+    }
 
     return pl.DataFrame(dictlcdata)
 
