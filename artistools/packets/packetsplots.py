@@ -31,7 +31,6 @@ def make_2d_packets_plot_imshow(modelpath: Path, timestep_min: int, timestep_max
     hist = at.packets.make_3d_histogram_from_packets(
         modelpath, timestep_min=timestep_min, timestep_max=timestep_max, em_time=em_time
     )
-    print(hist)
 
     grid = round(len(modeldata["inputcellid"]) ** (1.0 / 3.0))
     vmax_cms /= CLIGHT

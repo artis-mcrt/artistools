@@ -813,12 +813,11 @@ def make_3d_histogram_from_packets(
     print(emission_position3d.shape)
     print(emission_position3d[0].shape)
 
-    # print(emission_position3d)
     grid_3d, _, _, _ = make_3d_grid(modeldata, vmax_cms)
     print(grid_3d.shape)
     # https://stackoverflow.com/questions/49861468/binning-random-data-to-regular-3d-grid-with-unequal-axis-lengths
     hist, _ = np.histogramdd(emission_position3d.T, [np.append(ax, np.inf) for ax in grid_3d], weights=weights)
-    # print(hist.shape)
+
     if weight_by_energy:
         # Divide binned energies by number of processes and by length of timestep
         hist = (
