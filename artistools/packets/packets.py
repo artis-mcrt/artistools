@@ -770,7 +770,6 @@ def make_3d_histogram_from_packets(
 
     only_packets_0_scatters = False
     nprocs_read, dfpackets = at.packets.get_packets_pl(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
-    at.packets.add_derived_columns_lazy(dfpackets, modelpath=modelpath)
     if only_packets_0_scatters:
         print("Only using packets with 0 scatters")
         dfpackets = dfpackets.filter(pl.col("nscatterings") == 0)
