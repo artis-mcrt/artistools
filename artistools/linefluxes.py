@@ -238,11 +238,7 @@ def get_closelines(
         lzdflinelistclosematches = lzdflinelistclosematches.filter(pl.col("upperlevelindex") == upperlevelindex)
 
     dflinelistclosematches = lzdflinelistclosematches.collect()
-    linelistindices = tuple(dflinelistclosematches["lineindex"].to_list())
-    upperlevelindicies = tuple(dflinelistclosematches["upperlevelindex"].to_list())
-    lowerlevelindicies = tuple(dflinelistclosematches["lowerlevelindex"].to_list())
-    lowestlambda = dflinelistclosematches["lambda_angstroms"].min()
-    highestlambda = dflinelistclosematches["lambda_angstroms"].max()
+
     colname = f"flux_{at.get_ionstring(atomic_number, ion_stage, sep='')}_{approxlambdalabel}"
     featurelabel = f"{at.get_ionstring(atomic_number, ion_stage)} {approxlambdalabel} Å"
 
@@ -250,13 +246,13 @@ def get_closelines(
         colname=colname,
         featurelabel=featurelabel,
         approxlambda=approxlambdalabel,
-        linelistindices=linelistindices,
-        lowestlambda=lowestlambda,
-        highestlambda=highestlambda,
+        linelistindices=tuple(dflinelistclosematches["lineindex"].to_list()),
+        lowestlambda=dflinelistclosematches["lambda_angstroms"].min(),
+        highestlambda=dflinelistclosematches["lambda_angstroms"].max(),
         atomic_number=atomic_number,
         ion_stage=ion_stage,
-        upperlevelindicies=upperlevelindicies,
-        lowerlevelindicies=lowerlevelindicies,
+        upperlevelindicies=tuple(dflinelistclosematches["upperlevelindex"].to_list()),
+        lowerlevelindicies=tuple(dflinelistclosematches["lowerlevelindex"].to_list()),
     )
 
 
