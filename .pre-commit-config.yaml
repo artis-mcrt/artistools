@@ -34,7 +34,7 @@ repos:
           - id: yamlfmt
 
     - repo: https://github.com/astral-sh/ruff-pre-commit
-      rev: v0.15.5
+      rev: v0.15.6
       hooks:
           - id: ruff-check
             args: [--fix]
@@ -52,11 +52,10 @@ repos:
             language: system
             entry: uv sync --frozen --all-extras --no-install-project
             pass_filenames: false
-            args: [--python=.venv/]
 
           - id: ty-check
             name: ty check
             language: system
-            entry: uv run --all-extras --frozen -- ty check
+            entry: uv run --all-extras --frozen --no-sync -- ty check
             pass_filenames: false
             args: [--python=.venv/]
