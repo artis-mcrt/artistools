@@ -1037,8 +1037,9 @@ def get_mgi_of_velocity_kms(modelpath: Path, velocity: float) -> int | None:
     """Return the modelgridindex of the cell whose outer velocity brackets the given velocity."""
     if np.isnan(velocity):
         return None
-
-    arr_vouter = get_modeldata(modelpath)[0].select("vel_r_max_kmps").collect().to_series().to_numpy(dtype=float)
+    dfmodel, modelmeta = get_modeldata(modelpath)
+    assert modelmeta["dimensions"] == 1, "get_mgi_of_velocity_kms only works for 1D models"
+    arr_vouter = dfmodel.select("vel_r_max_kmps").collect().to_series().to_numpy(dtype=float)
 
     mgi_upper = int(np.searchsorted(arr_vouter, velocity))
     if mgi_upper >= len(arr_vouter):
