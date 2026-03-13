@@ -76,6 +76,7 @@ dev = [
     "pytest-cov>=7.0.0",
     "pytest-xdist[psutil]>=3.8.0",
     "ruff>=0.15.6",
+    "setuptools_scm>=9.2.2",
     "ty>=0.0.14",
     "typeguard>=4.5.1",
     "types-python-dateutil>=2.9.0.20251115",
