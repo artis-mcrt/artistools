@@ -212,6 +212,7 @@ def add_derived_columns_lazy(
     dfpackets: pl.LazyFrame | pl.DataFrame,
     modelmeta: dict[str, t.Any] | None = None,
     dfmodel: pd.DataFrame | pl.LazyFrame | None = None,
+    modelpath: Path | str | None = None,
 ) -> pl.LazyFrame:
     """Add columns to a packets DataFrame that are derived from the values that are stored in the packets files.
 
@@ -222,7 +223,24 @@ def add_derived_columns_lazy(
 
     assert isinstance(dfmodel, pl.LazyFrame | None)
 
+    if dfmodel is None:
+        assert modelpath is not None, "modelpath must be provided if dfmodel is not provided"
+        dfmodel, modelmeta = at.get_modeldata(modelpath=modelpath)
+
+    timebins = [tstart * 86400.0 for tstart in at.get_timestep_times(modelpath, loc="start")] + [
+        at.get_timestep_times(modelpath, loc="end")[-1] * 86400.0
+    ]
     dfpackets = dfpackets.lazy().with_columns(
+        (
+            pl
+            .col("em_time")
+            .cut(breaks=timebins, labels=[str(x) for x in range(-1, len(timebins))])
+            .cast(pl.Utf8)
+            .cast(pl.Int32)
+        ).alias("em_timestep")
+    )
+
+    dfpackets = dfpackets.with_columns(
         emission_velocity=(
             (pl.col("em_posx") ** 2 + pl.col("em_posy") ** 2 + pl.col("em_posz") ** 2).sqrt() / pl.col("em_time")
         ),
@@ -271,7 +289,10 @@ def add_derived_columns_lazy(
     elif modelmeta["dimensions"] == 1:
         assert dfmodel is not None, "dfmodel must be provided for 1D models to set em_modelgridindex"
 
-        velbins = (dfmodel.select(pl.col("vel_r_max_kmps")).lazy().collect()["vel_r_max_kmps"] * 1000.0).to_list()
+        velbins = [
+            0.0,
+            *(dfmodel.select(pl.col("vel_r_max_kmps")).lazy().collect()["vel_r_max_kmps"] * 100000.0).to_list(),
+        ]
         dfpackets = dfpackets.with_columns(
             em_modelgridindex=(
                 pl
@@ -279,7 +300,14 @@ def add_derived_columns_lazy(
                 .cut(breaks=velbins, labels=[str(x) for x in range(-1, len(velbins))])
                 .cast(pl.Utf8)
                 .cast(pl.Int32)
-            )
+            ),
+            emtrue_modelgridindex=(
+                pl
+                .col("true_emission_velocity")
+                .cut(breaks=velbins, labels=[str(x) for x in range(-1, len(velbins))])
+                .cast(pl.Utf8)
+                .cast(pl.Int32)
+            ),
         )
 
     return dfpackets
