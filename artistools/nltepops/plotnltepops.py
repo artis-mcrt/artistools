@@ -418,7 +418,6 @@ def make_plot_populations_with_time_or_velocity(modelpaths: list[Path | str], ar
 
     ion_data = adata.query("Z == @Z and ion_stage == @ion_stage").iloc[0]
     levelconfignames = ion_data["levels"]["levelname"].to_list()
-    # levelconfignames = [at.nltepops.texifyconfiguration(name) for name in levelconfignames]
 
     if args.timedayslist:
         rows = len(args.timedayslist)
@@ -459,11 +458,12 @@ def make_plot_populations_with_time_or_velocity(modelpaths: list[Path | str], ar
     at.plottools.set_axis_labels(fig, ax, xlabel, ylabel, labelfontsize, args)
     if args.subplots:
         for plotnumber, axis in enumerate(ax):
+            axis.set_xlim([args.xmin, args.xmax])
+            axis.set_ylim([args.ymin, args.ymax])
             axis.set_yscale("log")
-            if args.timedayslist:
-                ymin, _ = axis.get_ylim()
-                _, xmax = axis.get_xlim()
-                axis.text(xmax * 0.85, ymin * 50, f"{args.timedayslist[plotnumber]} days")
+            ymin, _ = axis.get_ylim()
+            _, xmax = axis.get_xlim()
+            axis.text(xmax * 0.85, ymin * 50, f"{timedayslist[plotnumber]} days")
         ax[0].legend(loc="best", frameon=True, fontsize="x-small", ncol=1)
     else:
         assert isinstance(ax, mplax.Axes)
@@ -495,6 +495,8 @@ def plot_populations_with_time_or_velocity(
     levelconfignames: list[int],
     args: argparse.Namespace,
 ) -> None:
+    required_columns = {"Z", "ion_stage", "level", "n_NLTE"}
+
     if args.x == "time":
         timesteps = list(range(args.timestepmin, args.timestepmax + 1))
 
@@ -504,52 +506,72 @@ def plot_populations_with_time_or_velocity(
 
         modelgridindex_list = [int(args.modelgridindex[0])] * len(timesteps)
 
-    if args.x == "velocity":
-        modeldata = at.inputmodel.get_modeldata(modelpaths[0])[0].collect().to_pandas(use_pyarrow_extension_array=True)
-        velocity = modeldata["vel_r_max_kmps"]
-        modelgridindex_list = [mgi for mgi, _ in enumerate(velocity)]
-
-        timesteps = [at.get_timestep_of_timedays(modelpaths[0], timedays)] * len(modelgridindex_list)
-
     markers = ["o", "x", "^", "s", "8"]
     for modelnumber, modelpath in enumerate(modelpaths):
-        # modelname = at.get_model_name(modelpath)
+        model_marker = markers[modelnumber % len(markers)]
+        if args.x == "velocity":
+            modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect().to_pandas(use_pyarrow_extension_array=True)
+            velocity = np.asarray(modeldata["vel_r_max_kmps"], dtype=float)
+            modelgridindex_list = list(range(len(velocity)))
+            timestep = at.get_timestep_of_timedays(modelpath, timedays)
 
-        populations = {}
-        # populationsLTE = {}
+            populations_velocity: dict[tuple[int, int], float] = {}
 
+            for mgi in modelgridindex_list:
+                dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=mgi)
+
+                if not required_columns.issubset(dfpop.columns):
+                    continue
+
+                timesteppops = dfpop.loc[(dfpop["Z"] == Z) & (dfpop["ion_stage"] == ion_stage)]
+                if "timestep" in dfpop.columns:
+                    timesteppops = timesteppops.loc[timesteppops["timestep"] == timestep]
+                if timesteppops.empty:
+                    continue
+
+                for ionlevel in ionlevels:
+                    vals = timesteppops.loc[timesteppops["level"] == ionlevel, "n_NLTE"].to_numpy()
+                    if vals.size > 0:
+                        populations_velocity[ionlevel, mgi] = float(vals[0])
+
+            for ionlevelindex, ionlevel in enumerate(ionlevels):
+                plotpopulations = np.full(len(velocity), np.nan, dtype=float)
+                for mgi in modelgridindex_list:
+                    popvalue = populations_velocity.get((ionlevel, mgi))
+                    if popvalue is not None:
+                        plotpopulations[mgi] = popvalue
+
+                linelabel = str(levelconfignames[ionlevel])
+                ax.plot(velocity, plotpopulations, marker=markers[ionlevelindex % len(markers)], label=linelabel)
+            continue
+
+        populations: dict[tuple[int, int, int], float] = {}
         for timestep, mgi in zip(timesteps, modelgridindex_list, strict=False):
             dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=mgi)
-            try:
-                timesteppops = dfpop.loc[(dfpop["Z"] == Z) & (dfpop["ion_stage"] == ion_stage)]
-            except KeyError:
+            if not required_columns.issubset(dfpop.columns):
                 continue
+
+            timesteppops = dfpop.loc[(dfpop["Z"] == Z) & (dfpop["ion_stage"] == ion_stage)]
             if timesteppops.empty:
                 continue
+
             for ionlevel in ionlevels:
-                populations[timestep, ionlevel, mgi] = timesteppops.loc[timesteppops["level"] == ionlevel][
-                    "n_NLTE"
-                ].to_numpy()[0]
-                # populationsLTE[(timestep, ionlevel)] = (timesteppops.loc[timesteppops['level']
-                #                                                          == ionlevel]['n_LTE'].values[0])
+                vals = timesteppops.loc[timesteppops["level"] == ionlevel, "n_NLTE"].to_numpy()
+                if vals.size > 0:
+                    populations[timestep, ionlevel, mgi] = float(vals[0])
 
         for ionlevel in ionlevels:
             plottimesteps = np.array([ts for ts, level, mgi in populations if level == ionlevel])
+            if plottimesteps.size == 0:
+                continue
             timedayslist = [at.get_timestep_time(modelpath, ts) for ts in plottimesteps]
             plotpopulations = np.array([
                 float(populations[ts, level, mgi]) for ts, level, mgi in populations if level == ionlevel
             ])
-            # plotpopulationsLTE = np.array([float(populationsLTE[ts, level]) for ts, level in populationsLTE.keys()
-            #                             if level == ionlevel])
             linelabel = str(levelconfignames[ionlevel])
-            # linelabel = f'level {ionlevel} {modelname}'
 
             if args.x == "time":
-                ax.plot(timedayslist, plotpopulations, marker=markers[modelnumber], label=linelabel)
-            elif args.x == "velocity":
-                ax.plot(velocity, plotpopulations, marker=markers[modelnumber], label=linelabel)
-            # plt.plot(timedayslist, plotpopulationsLTE, marker=markers[modelnumber+1],
-            #          label=f'level {ionlevel} {modelname} LTE')
+                ax.plot(timedayslist, plotpopulations, marker=model_marker, label=linelabel)
 
 
 def make_singletimestep_plot(

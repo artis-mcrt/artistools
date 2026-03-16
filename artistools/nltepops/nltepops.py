@@ -183,6 +183,33 @@ def read_file_filtered(
     return dfpopfile
 
 
+@lru_cache(maxsize=8)
+def read_files_timestep(modelpath: str | Path, timestep: int) -> pd.DataFrame:
+    """Read and concatenate NLTE populations for a single timestep."""
+    mpiranklist = at.get_mpiranklist(modelpath, modelgridindex=-1)
+
+    nltefilepaths = [
+        Path(folderpath, f"nlte_{mpirank:04d}.out")
+        for folderpath in at.get_runfolders(modelpath, timestep=timestep)
+        for mpirank in mpiranklist
+    ]
+
+    if at.get_config()["num_processes"] > 1:
+        with at.get_multiprocessing_pool() as pool:
+            arr_dfnltepop = pool.map(read_file, nltefilepaths)
+    else:
+        arr_dfnltepop = [read_file(f) for f in nltefilepaths]
+
+    if not arr_dfnltepop:
+        return pd.DataFrame()
+
+    dfconcat = pd.concat(arr_dfnltepop, ignore_index=True, copy=False)
+    if "timestep" in dfconcat.columns:
+        dfconcat = dfconcat.loc[dfconcat["timestep"] == timestep]
+
+    return dfconcat
+
+
 @lru_cache(maxsize=2)
 def read_files(
     modelpath: str | Path,
@@ -192,6 +219,17 @@ def read_files(
     dfqueryvars: dict[str, t.Any] | None = None,
 ) -> pd.DataFrame:
     """Read in NLTE populations from a model for a particular timestep and grid cell."""
+    if dfquery is None and timestep >= 0:
+        dfconcat = read_files_timestep(modelpath, timestep)
+
+        if modelgridindex < 0:
+            return dfconcat
+
+        if "modelgridindex" not in dfconcat.columns:
+            return pd.DataFrame(columns=dfconcat.columns)
+
+        return dfconcat.loc[dfconcat["modelgridindex"] == modelgridindex]
+
     if dfqueryvars is None:
         dfqueryvars = {}
 
@@ -222,10 +260,12 @@ def read_files(
             arr_dfnltepop = pool.map(
                 partial(read_file_filtered, strquery=dfquery_full, dfqueryvars=dfqueryvars), nltefilepaths
             )
-            pool.close()
-            pool.join()
     else:
         arr_dfnltepop = [read_file_filtered(f, strquery=dfquery_full, dfqueryvars=dfqueryvars) for f in nltefilepaths]
-    dfconcat = pd.concat(arr_dfnltepop)
+
+    if not arr_dfnltepop:
+        return pd.DataFrame()
+
+    dfconcat = pd.concat(arr_dfnltepop, ignore_index=True, copy=False)
     assert isinstance(dfconcat, pd.DataFrame)
     return dfconcat
