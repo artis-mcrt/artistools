@@ -4,6 +4,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
+import pandas as pd
 import polars as pl
 
 import artistools as at
@@ -137,8 +138,6 @@ def get_rprocess_calculation_files(
     interpolate_trajectories: bool = False,
     thermalisation: bool = False,  # noqa: ARG001
 ) -> None:
-    import pandas as pd
-
     tarfiles = [file.name for file in Path(path_to_rprocess_calculation).iterdir() if file.name.endswith(".tar.xz")]
 
     trajectory_ids = []
@@ -249,8 +248,6 @@ def plot_energy_rate(modelpath: str | Path) -> None:
 
 
 def get_etot_fromfile(modelpath: str | Path) -> tuple[float, pl.DataFrame]:
-    import pandas as pd
-
     energydistribution_data = pl.from_pandas(
         pd.read_csv(
             Path(modelpath) / "energydistribution.txt",
@@ -265,8 +262,6 @@ def get_etot_fromfile(modelpath: str | Path) -> tuple[float, pl.DataFrame]:
 
 
 def get_energy_rate_fromfile(modelpath: str | Path) -> pl.DataFrame:
-    import pandas as pd
-
     return pl.from_pandas(
         pd.read_csv(Path(modelpath) / "energyrate.txt", skiprows=1, sep=r"\s+", header=None, names=["times", "rate"])
     )

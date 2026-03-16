@@ -1,6 +1,4 @@
-#!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
-
 import argparse
 import typing as t
 from pathlib import Path
@@ -109,19 +107,6 @@ def plot_spherical(
         )
 
     if "temperature" in plotvars or "temperature_sigma" in plotvars or nnelement_vars:
-        timebins = [tstart * 86400.0 for tstart in at.get_timestep_times(modelpath, loc="start")] + [
-            at.get_timestep_times(modelpath, loc="end")[-1] * 86400.0
-        ]
-        dfpackets = dfpackets.with_columns(
-            (
-                pl
-                .col("em_time")
-                .cut(breaks=timebins, labels=[str(x) for x in range(-1, len(timebins))])
-                .cast(pl.Utf8)
-                .cast(pl.Int32)
-            ).alias("em_timestep")
-        )
-
         assert dfestimators is not None
         dfestimators = (
             dfestimators
@@ -327,13 +312,14 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
         assert args.atomic_number is None
         args.atomic_number = at.get_atomic_number(args.elem)
 
-    dfmodel, modelmeta = at.get_modeldata(modelpath=args.modelpath, printwarningsonly=True)
+    at.plottools.set_mpl_style()
+
     dfestimators = at.estimators.scan_estimators(modelpath=args.modelpath) if "temperature" in args.plotvars else None
 
     nprocs_read, dfpackets = at.packets.get_packets_pl(
         args.modelpath, args.maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
-    dfpackets = at.packets.add_derived_columns_lazy(dfpackets, modelmeta=modelmeta, dfmodel=dfmodel)
+    dfpackets = at.packets.add_derived_columns_lazy(dfpackets, modelpath=args.modelpath)
 
     tstarts = at.get_timestep_times(args.modelpath, loc="start")
     tends = at.get_timestep_times(args.modelpath, loc="end")

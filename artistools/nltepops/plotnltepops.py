@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Artistools - NLTE population related functions."""
 
 import argparse

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
 """Artistools - spectra plotting functions."""
 
@@ -8,7 +7,6 @@ import math
 import sys
 import typing as t
 from collections.abc import Callable
-from collections.abc import Iterable
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -20,6 +18,7 @@ import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
+import pandas as pd
 import polars as pl
 import polars.selectors as cs
 from matplotlib import ticker
@@ -44,8 +43,6 @@ from artistools.misc import trim_or_pad
 from artistools.plottools import ExponentLabelFormatter
 from artistools.plottools import glasbey_category20_nogreys
 from artistools.plottools import set_mpl_style
-
-hatchestypes = ["", "x", "-", "\\", "+", "O", ".", "", "x", "*", "\\", "+", "O", "."]  # ,
 
 
 def path_is_artis_model(filepath: str | Path) -> bool:
@@ -79,7 +76,7 @@ def check_time_range_is_valid(modelpath: Path, timemin: float, timemax: float, a
             print("\n".join(problem_messages))
 
 
-def get_lambda_range_binsize(
+def get_lambda_min_max_binwidth(
     xmin: float, xmax: float, args: argparse.Namespace
 ) -> tuple[float, float, float | npt.NDArray[np.floating] | None]:
     lambda_min, lambda_max = sorted([
@@ -90,11 +87,9 @@ def get_lambda_range_binsize(
         if args.deltalogx is not None:
             x = xmin
             list_x_bin_edges = [xmin]
-            steps = 0
             while x <= xmax:
                 x *= 1 + args.deltalogx
                 list_x_bin_edges.append(x)
-                steps += 1
             x_bin_edges = np.array(list_x_bin_edges)
         else:
             x_bin_edges = np.arange(xmin, xmax + args.deltax, args.deltax)
@@ -361,8 +356,6 @@ def plot_reference_spectrum(
 
 
 def plot_filter_functions(axis: mplax.Axes) -> None:
-    import pandas as pd
-
     filter_names = ["U", "B", "V", "I"]
     colours = ["r", "b", "g", "c", "m"]
 
@@ -470,7 +463,7 @@ def plot_artis_spectrum(
 
         xmin, xmax = axis.get_xlim()
         if from_packets:
-            lambda_min, lambda_max, delta_lambda = get_lambda_range_binsize(xmin, xmax, args)
+            lambda_min, lambda_max, delta_lambda = get_lambda_min_max_binwidth(xmin, xmax, args)
 
             viewinganglespectra = atspectra.get_from_packets(
                 modelpath,
@@ -848,7 +841,7 @@ def make_emissionabsorption_plot(
         else:
             emtypecolumn = "emissiontype"
 
-        lambda_min, lambda_max, delta_lambda = get_lambda_range_binsize(xmin, xmax, args)
+        lambda_min, lambda_max, delta_lambda = get_lambda_min_max_binwidth(xmin, xmax, args)
 
         (contribution_list, array_flambda_emission_total, arraylambda_angstroms) = (
             atspectra.get_flux_contributions_from_packets(
@@ -1090,99 +1083,8 @@ def make_emissionabsorption_plot(
     return plotobjects, plotobjectlabels, dfaxisdata
 
 
-def make_contrib_plot(
-    axes: Iterable[mplax.Axes], modelpath: Path, densityplotyvars: list[str], args: argparse.Namespace
-) -> None:
-    (_timestepmin, _timestepmax, args.timemin, args.timemax) = get_time_range(
-        modelpath, args.timestep, args.timemin, args.timemax, args.timedays
-    )
-    import artistools.estimators as atestimators
-    import artistools.packets as atpackets
-
-    if args.classicartis:
-        estimators = atestimators.estimators_classic.read_classic_estimators(modelpath)
-        assert estimators is not None
-    else:
-        estimators = atestimators.read_estimators(modelpath=modelpath)
-    allnonemptymgilist = list({modelgridindex for ts, modelgridindex in estimators})
-
-    assert estimators is not None
-    packetsfiles = atpackets.get_packets_text_paths(modelpath, args.maxpacketfiles)
-    assert args.timemin is not None
-    assert args.timemax is not None
-    # tdays_min = float(args.timemin)
-    # tdays_max = float(args.timemax)
-
-    c_ang_s = 2.99792458e18
-    # nu_min = c_ang_s / args.xmax
-    # nu_max = c_ang_s / args.xmin
-
-    list_lambda: dict[str, list[float]] = {}
-    lists_y: dict[str, list[float]] = {}
-    for packetsfile in packetsfiles:
-        dfpackets = atpackets.readfile(packetsfile, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
-
-        dfpackets_selected = dfpackets.query(
-            "@nu_min <= nu_rf < @nu_max and t_arrive_d >= @tdays_min and t_arrive_d <= @tdays_max", inplace=False
-        ).copy()
-
-        # TODO: optimize this to avoid calculating unused columns
-        dfpackets_selected = atpackets.add_derived_columns(
-            dfpackets_selected,
-            modelpath,
-            ["em_timestep", "emtrue_modelgridindex", "emission_velocity"],
-            allnonemptymgilist=allnonemptymgilist,
-        )
-
-        for _, packet in dfpackets_selected.iterrows():
-            for v in densityplotyvars:
-                if v not in list_lambda:
-                    list_lambda[v] = []
-                if v not in lists_y:
-                    lists_y[v] = []
-                if v == "emission_velocity":
-                    if not np.isnan(packet.emission_velocity) and not np.isinf(packet.emission_velocity):
-                        list_lambda[v].append(c_ang_s / packet.nu_rf)
-                        lists_y[v].append(packet.emission_velocity / 1e5)
-                elif v == "true_emission_velocity":
-                    if not np.isnan(packet.true_emission_velocity) and not np.isinf(packet.true_emission_velocity):
-                        list_lambda[v].append(c_ang_s / packet.nu_rf)
-                        lists_y[v].append(packet.true_emission_velocity / 1e5)
-                else:
-                    ts, mg = packet["em_timestep"], packet["emtrue_modelgridindex"]
-                    assert isinstance(ts, int)
-                    assert isinstance(mg, int)
-                    if (ts, mg) in estimators:
-                        list_lambda[v].append(c_ang_s / packet.nu_rf)
-                        lists_y[v].append(estimators[ts, mg][v])
-
-    for ax, yvar in zip(axes, densityplotyvars, strict=False):
-        # ax.set_ylabel(r'velocity [{} km/s]')
-        if not args.hideyticklabels:
-            ax.set_ylabel(f"{yvar} {atestimators.get_units_string(yvar)}")
-        # ax.plot(list_lambda, list_yvar, lw=0, marker='o', markersize=0.5)
-        # ax.hexbin(list_lambda[yvar], lists_y[yvar], gridsize=100, cmap=plt.cm.BuGn_r)
-        ax.hist2d(list_lambda[yvar], lists_y[yvar], bins=(50, 30), cmap="Greys")
-        # plt.cm.Greys
-        # x = np.array(list_lambda[yvar])
-        # y = np.array(lists_y[yvar])
-        # from scipy.stats import kde
-        #
-        # nbins = 30
-        # xi, yi = np.mgrid[x.min():x.max():nbins*1j, y.min():y.max():nbins*1j]
-        # zi = k(np.vstack([xi.flatten(), yi.flatten()]))
-        # ax.pcolormesh(xi, yi, zi.reshape(xi.shape), shading='gouraud', cmap=plt.cm.BuGn_r)
-
-
 def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[t.Any], pl.DataFrame]:
-    # font = {'size': 16}
-    # mpl.rc('font', **font)
-
-    densityplotyvars: list[str] = []
-    # densityplotyvars = ['emission_velocity', 'Te', 'nne']
-    # densityplotyvars = ['true_emission_velocity', 'emission_velocity', 'Te', 'nne']
-
-    nrows = len(args.timedayslist) if args.multispecplot else 1 + len(densityplotyvars)
+    nrows = len(args.timedayslist) if args.multispecplot else 1
 
     figwidth = args.figscale * get_config()["figwidth"] * args.figwidthscale
     figheight = args.figscale * get_config()["figwidth"] * (0.25 + nrows * 0.4)
@@ -1265,9 +1167,6 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[t.An
 
     if not args.hidexticklabels:
         axes[-1].set_xlabel(xlabel)
-
-    if densityplotyvars:
-        make_contrib_plot(axes[:-1], args.specpath[0], densityplotyvars, args)
 
     if args.showemission or args.showabsorption:
         legendncol = 2

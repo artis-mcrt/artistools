@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Tools to get artis output in the required format for the code comparison workshop."""
 
 import argparse

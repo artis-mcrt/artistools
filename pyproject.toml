@@ -75,7 +75,8 @@ dev = [
     "pytest-codspeed>=4.3.0",
     "pytest-cov>=7.0.0",
     "pytest-xdist[psutil]>=3.8.0",
-    "ruff>=0.15.2",
+    "ruff>=0.15.6",
+    "setuptools_scm>=9.2.2",
     "ty>=0.0.14",
     "typeguard>=4.5.1",
     "types-python-dateutil>=2.9.0.20251115",
@@ -282,7 +283,7 @@ fix = true
 show-fixes = true
 extend-exclude = ["_version.py", "artistools/inputmodel/fromcmfgen/rd_cmfgen.py", ".venv/**"]
 preview = true
-required-version = ">=0.14.11"
+required-version = ">=0.15.6"
 
 [tool.ruff.format]
 skip-magic-trailing-comma = true
@@ -363,6 +364,7 @@ unfixable = [
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
+require-lazy = "all"
 
 [tool.ruff.lint.isort]
 force-single-line = true

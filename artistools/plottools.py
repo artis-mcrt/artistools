@@ -9,9 +9,9 @@ from collections.abc import Iterable
 import matplotlib.axes as mplax
 import matplotlib.figure as mplfig
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mplticker
 import numpy as np
 import numpy.typing as npt
-from matplotlib import ticker
 
 from artistools.configuration import get_config
 
@@ -284,7 +284,7 @@ def set_mpl_style() -> None:
     plt.style.use("file://" + str(get_config()["path_artistools_dir"] / "matplotlibrc"))
 
 
-class ExponentLabelFormatter(ticker.ScalarFormatter):
+class ExponentLabelFormatter(mplticker.ScalarFormatter):
     """Formatter to move the 'x10^x' offset text into the axis label."""
 
     _useMathText: bool
@@ -294,7 +294,7 @@ class ExponentLabelFormatter(ticker.ScalarFormatter):
         self.set_labeltemplate(labeltemplate)
 
         super().__init__(useOffset=False, useMathText=useMathText)
-        # ticker.ScalarFormatter.__init__(self, useOffset=useOffset, useMathText=useMathText)
+        # mplticker.ScalarFormatter.__init__(self, useOffset=useOffset, useMathText=useMathText)
         self.set_scientific(True)
         self.set_powerlimits((0, 0))  # always use scientific notation
 

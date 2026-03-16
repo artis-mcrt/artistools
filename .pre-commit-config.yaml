@@ -33,25 +33,29 @@ repos:
       hooks:
           - id: yamlfmt
 
-    - repo: https://github.com/astral-sh/uv-pre-commit
-      rev: 0.10.7
-      hooks:
-          - id: uv-sync
-            args: [--locked, --all-extras]
-
     - repo: https://github.com/astral-sh/ruff-pre-commit
-      rev: v0.15.4
+      rev: v0.15.6
       hooks:
           - id: ruff-check
             args: [--fix]
           - id: ruff-format
 
+    - repo: https://github.com/astral-sh/uv-pre-commit
+      rev: 0.10.9
+      hooks:
+          - id: uv-lock
+
     - repo: local
       hooks:
+          - id: uv-sync
+            name: uv sync
+            language: system
+            entry: uv sync --frozen --all-extras --no-install-project
+            pass_filenames: false
+
           - id: ty-check
             name: ty check
-            language: python
-            entry: uv run --all-extras --frozen -- ty check
+            language: system
+            entry: uv run --all-extras --frozen --no-sync -- ty check
             pass_filenames: false
             args: [--python=.venv/]
-            additional_dependencies: [ty]

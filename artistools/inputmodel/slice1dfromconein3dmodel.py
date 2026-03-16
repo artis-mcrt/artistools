@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import argparse
 import typing as t
 from collections.abc import Sequence

@@ -1,6 +1,4 @@
 # PYTHON_ARGCOMPLETE_OK
-
-
 import argparse
 import math
 import sys
@@ -26,8 +24,6 @@ from polars import selectors as cs
 import artistools as at
 from artistools.constants import Lsun_to_erg_per_s
 from artistools.misc import print_theta_phi_definitions
-
-color_list = list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20)))
 
 
 def plot_deposition_thermalisation(
@@ -1183,6 +1179,7 @@ def colour_evolution_plot(
 ) -> None:
     args.labelfontsize = 24  # TODO: make command line arg
     angle_counter = 0
+    color_list = list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20)))
 
     fig, ax = create_axes(args)
 

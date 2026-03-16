@@ -151,7 +151,7 @@ def plot_packet_mean_emission_velocity(modelpath: str | Path, write_emission_dat
     plt.legend()
 
     if write_emission_data:
-        emission_data.to_csv(Path(modelpath) / "meanemissionvelocity.txt", sep=" ", index=False)
+        emission_data.to_pandas().to_csv(Path(modelpath) / "meanemissionvelocity.txt", sep=" ", index=False)
 
     outfilename = "meanemissionvelocity.pdf"
     plt.savefig(Path(modelpath) / outfilename, format="pdf")

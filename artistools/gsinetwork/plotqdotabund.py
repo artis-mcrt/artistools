@@ -1,5 +1,4 @@
 # PYTHON_ARGCOMPLETE_OK
-
 import argparse
 import contextlib
 import math
