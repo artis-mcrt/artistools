@@ -18,17 +18,18 @@ KB = 1.38064852e-16  # Boltzmann constant [erg/K]
 
 def read_files(modelpath: Path | str, timestep: int | None = None, modelgridindex: int | None = None) -> pl.DataFrame:
     """Read radiation field data from a model folder, possibly with timestep and modelgridindex filters."""
-    mpiranklist = at.get_mpiranklist(modelpath, modelgridindex=modelgridindex)
     radfieldfilepaths = [
         at.firstexisting(f"radfield_{mpirank:04d}.out", folder=folderpath, tryzipped=True)
         for folderpath in at.get_runfolders(modelpath, timestep=timestep)
-        for mpirank in mpiranklist
+        for mpirank in at.get_mpiranklist(modelpath, modelgridindex=modelgridindex)
     ]
     import pandas as pd
 
     pldf = pl.concat(
         (
-            pl.from_pandas(pd.read_csv(radfieldfilepath, sep=r"\s+", dtype_backend="pyarrow"))
+            pl.from_pandas(pd.read_csv(radfieldfilepath, sep=r"\s+", dtype_backend="pyarrow")).with_columns(
+                pl.col("modelgridindex").cast(pl.Int64), pl.col("timestep").cast(pl.Int64)
+            )
             for radfieldfilepath in radfieldfilepaths
         ),
         how="vertical",
