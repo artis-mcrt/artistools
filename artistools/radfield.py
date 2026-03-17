@@ -35,34 +35,6 @@ def read_files(modelpath: Path | str, timestep: int | None = None, modelgridinde
     return pldf
 
 
-def select_bin(
-    radfielddata: pl.DataFrame,
-    nu: float | None = None,
-    lambda_angstroms: float | None = None,
-    modelgridindex: int | None = None,
-    timestep: int | None = None,
-) -> tuple[int, float, float]:
-    assert nu is None or lambda_angstroms is None
-
-    if lambda_angstroms is not None:
-        nu = 2.99792458e18 / lambda_angstroms
-    else:
-        assert nu is not None
-        lambda_angstroms = 2.99792458e18 / nu
-
-    if modelgridindex:
-        radfielddata = radfielddata.filter(pl.col("modelgridindex") == modelgridindex)
-    if timestep:
-        radfielddata = radfielddata.filter(pl.col("timestep") == timestep)
-
-    radfielddata = radfielddata.filter(
-        (pl.col("nu_lower") <= nu) & (pl.col("nu_upper") >= nu) & (pl.col("bin_num") > -1)
-    )
-
-    assert not radfielddata.is_empty()
-    return radfielddata["bin_num"].item(0), radfielddata["nu_lower"].item(0), radfielddata["nu_upper"].item(0)
-
-
 def get_binaverage_field(
     radfielddata: pl.DataFrame, modelgridindex: int | None = None, timestep: int | None = None
 ) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating]]:
