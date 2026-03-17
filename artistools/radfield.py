@@ -131,9 +131,9 @@ def get_fitted_field(
     j_lambda_fitted: list[float] = []
 
     radfielddata_subset = radfielddata.filter(pl.col("bin_num") >= 0)
-    if modelgridindex:
+    if modelgridindex is not None:
         radfielddata_subset = radfielddata_subset.filter(pl.col("modelgridindex") == modelgridindex)
-    if timestep:
+    if timestep is not None:
         radfielddata_subset = radfielddata_subset.filter(pl.col("timestep") == timestep)
 
     if lambdamax is not None:
