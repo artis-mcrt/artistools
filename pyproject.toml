@@ -22,7 +22,6 @@ authors = [
 description = "Plotting and analysis tools for the ARTIS 3D radiative transfer code for supernovae and kilonovae."
 classifiers = [
     "Intended Audience :: Science/Research",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
@@ -32,7 +31,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Physics",
 ]
 dynamic = ["version"]
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license =  "MIT"
 license-files = ["LICEN[CS]E*"]
 readme = { file = "README.md", content-type = 'text/markdown' }
@@ -228,6 +227,7 @@ ignored-modules = ["astropy", "extinction", "pyvista"]
 unsafe-load-any-extension = true
 
 [tool.pyright]
+analyzeUnannotatedFunctions = true
 deprecateTypingAliases = true
 enableTypeIgnoreComments = false # leave these for mypy to interpret
 exclude = [
@@ -245,6 +245,7 @@ reportAttributeAccessIssue = true
 reportCallIssue = true
 reportConstantRedefinition = false
 reportDeprecated = true
+reportImplicitOverride = true
 reportMatchNotExhaustive = false
 reportMissingImports = "information"
 reportMissingTypeStubs = false
@@ -260,9 +261,10 @@ reportUnnecessaryTypeIgnoreComment = true
 reportUnreachable = false
 reportUnusedFunction = true
 reportUnusedVariable = true
+strictDictionaryInference = true
 typeCheckingMode = "strict"
 useLibraryCodeForTypes = true
-pythonVersion = "3.11"
+pythonVersion = "3.12"
 
 [tool.pytest]
 minversion = "9.0"
@@ -273,7 +275,7 @@ testpaths = ["artistools"]
 ignore = ["FURB120"]
 quiet = false
 enable_all = true
-python_version = "3.11"
+python_version = "3.12"
 sort_by = "error"
 
 [[tool.refurb.amend]]
