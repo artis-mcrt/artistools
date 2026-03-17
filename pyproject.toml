@@ -195,6 +195,7 @@ fixed_format_cache = true
 max-line-length = 120
 disable = """
     broad-exception-caught,
+    cell-var-from-loop,
     fixme,
     missing-function-docstring,
     missing-module-docstring,
