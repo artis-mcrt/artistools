@@ -77,11 +77,6 @@ def write_single_estimator(
             f.write(f"{vel_r_mid / 1e5:.2f}")
             for timestep in selected_timesteps:
                 cellvalue = estimators[timestep, modelgridindex][keyname]
-                # try:
-                #     cellvalue = estimators[(timestep, modelgridindex)][keyname]
-                # except KeyError:
-                #     cellvalue = (estimators[(timestep - 1, modelgridindex)][keyname]
-                #                  + estimators[(timestep + 1, modelgridindex)][keyname]) / 2.
                 f.write(f" {cellvalue:.3e}")
             f.write("\n")
 
