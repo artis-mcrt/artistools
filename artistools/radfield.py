@@ -24,7 +24,6 @@ def read_files(modelpath: Path | str, timestep: int | None = None, modelgridinde
         for folderpath in at.get_runfolders(modelpath, timestep=timestep)
         for mpirank in mpiranklist
     ]
-    print(radfieldfilepaths)
     pldf = pl.scan_csv(radfieldfilepaths, separator=" ")
     if modelgridindex is not None:
         pldf = pldf.filter(pl.col("modelgridindex") == modelgridindex)
