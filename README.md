@@ -13,7 +13,7 @@ Artistools is collection of plotting, analysis, and file format conversion tools
 ## Installation
 Requires Python >= 3.12
 
-The artistools command be invoked with uvx artistools (after installing [uv](https://docs.astral.sh/uv/getting-started/installation/)) or installed into your environment with pip install artistools.
+The artistools command be invoked with uvx artistools (after installing [uv](https://docs.astral.sh/uv/getting-started/installation/)), installed globally with uv tool install artistools, or installed into your environment with pip install artistools.
 
 ## Development (editable installation)
 For development, you will need [a rust compiler](https://www.rust-lang.org/tools/install) and a clone of the repository:
