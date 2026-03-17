@@ -43,7 +43,7 @@ from artistools.misc import trim_or_pad
 from artistools.plottools import ExponentLabelFormatter
 from artistools.plottools import glasbey_category20_nogreys
 from artistools.plottools import set_mpl_style
-from artistools.spectra import write_flambda_spectra
+from artistools.spectra.writespectra import write_flambda_spectra
 
 
 def path_is_artis_model(filepath: str | Path) -> bool:
