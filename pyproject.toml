@@ -164,9 +164,12 @@ enable_error_code = [
     "no-any-return",
     "no-any-unimported",
     "no-untyped-call",
+    "redundant-cast",
     "redundant-expr",
     "redundant-self",
     "truthy-bool",
+    "truthy-iterable",
+    "type-arg",
     "unused-awaitable",
 ]
 exclude = "(build)|(dist)|(tests)|(data)|(.venv)|(venv)|(_version.py)"
@@ -180,6 +183,7 @@ pretty = true
 scripts_are_modules = true
 strict = true
 strict_equality = true
+strict_bytes = true
 warn_redundant_casts = true
 warn_unreachable = false
 warn_unused_configs = true
@@ -391,7 +395,6 @@ local_scheme = "no-local-version"
 
 [tool.ty.rules]
 unresolved-import = "ignore"
-deprecated = "ignore"
 
 [tool.ty.src]
 exclude = ["artistools/inputmodel/fromcmfgen/rd_cmfgen.py", ".venv/**"]
