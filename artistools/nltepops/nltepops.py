@@ -5,7 +5,6 @@ import re
 import string
 import typing as t
 from collections.abc import Sequence
-from functools import partial
 from pathlib import Path
 
 import pandas as pd
@@ -152,30 +151,6 @@ def add_lte_pops(
     return dfpop
 
 
-def read_file(nltefilepath: str | Path, filterexpr: pl.Expr | None = None) -> pl.DataFrame:
-    """Read NLTE populations from one file."""
-    try:
-        nltefilepath = at.firstexisting(nltefilepath, tryzipped=True)
-    except FileNotFoundError:
-        # print(f"Warning: Could not find {nltefilepath}")
-        return pl.DataFrame()
-
-    filesize = Path(nltefilepath).stat().st_size / 1024 / 1024
-    print(f"Reading {nltefilepath} ({filesize:.2f} MiB)")
-
-    dfpop = (
-        pl
-        .from_pandas(pd.read_csv(nltefilepath, sep=r"\s+", dtype_backend="pyarrow"))
-        .rename({"ionstage": "ion_stage"}, strict=False)
-        .with_columns(pl.col("modelgridindex").cast(pl.Int64), pl.col("timestep").cast(pl.Int64))
-    )
-
-    if filterexpr is not None:
-        dfpop = dfpop.filter(filterexpr)
-
-    return dfpop
-
-
 def read_files(
     modelpath: str | Path, timestep: int = -1, modelgridindex: int = -1, filterexpr: pl.Expr | None = None
 ) -> pl.DataFrame:
@@ -183,10 +158,20 @@ def read_files(
     mpiranklist = at.get_mpiranklist(modelpath, modelgridindex=modelgridindex)
 
     nltefilepaths = [
-        Path(folderpath, f"nlte_{mpirank:04d}.out")
+        at.firstexisting(Path(folderpath, f"nlte_{mpirank:04d}.out"), tryzipped=True)
         for folderpath in at.get_runfolders(modelpath, timestep=timestep)
         for mpirank in mpiranklist
     ]
+
+    dfnltepop = (
+        pl
+        .concat(
+            pl.from_pandas(pd.read_csv(nltefilepath, sep=r"\s+", dtype_backend="pyarrow"))
+            for nltefilepath in nltefilepaths
+        )
+        .rename({"ionstage": "ion_stage"}, strict=False)
+        .with_columns(pl.col("modelgridindex").cast(pl.Int64), pl.col("timestep").cast(pl.Int64))
+    )
 
     if filterexpr is None:
         filterexpr = pl.lit(True)
@@ -197,11 +182,4 @@ def read_files(
     if timestep >= 0:
         filterexpr &= pl.col("timestep") == timestep
 
-    if at.get_config()["num_processes"] > 1:
-        with at.get_multiprocessing_pool() as pool:
-            arr_dfnltepop = pool.map(partial(read_file, filterexpr=filterexpr), nltefilepaths)
-            pool.close()
-            pool.join()
-    else:
-        arr_dfnltepop = [read_file(f, filterexpr=filterexpr) for f in nltefilepaths]
-    return pl.concat(arr_dfnltepop)
+    return dfnltepop.filter(filterexpr)
