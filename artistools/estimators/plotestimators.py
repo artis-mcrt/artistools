@@ -308,9 +308,12 @@ def plot_levelpop(
         print(f"plot_levelpop {label}")
 
         # level index query goes outside for caching granularity reasons
-        dfnltepops = at.nltepops.read_files(
-            modelpath, dfquery=f"Z=={atomic_number:.0f} and ion_stage=={ion_stage:.0f}"
-        ).query("level==@levelindex")
+        dfnltepops = (
+            at.nltepops
+            .read_files(modelpath, filterexpr=pl.col("Z") == atomic_number & pl.col("ion_stage") == ion_stage)
+            .filter(pl.col("level") == levelindex)
+            .to_pandas(use_pyarrow_extension_array=True)
+        )
 
         ylist = []
         for modelgridindex in mgilist:

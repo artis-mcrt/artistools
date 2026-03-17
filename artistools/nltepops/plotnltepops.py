@@ -520,7 +520,9 @@ def plot_populations_with_time_or_velocity(
         # populationsLTE = {}
 
         for timestep, mgi in zip(timesteps, modelgridindex_list, strict=False):
-            dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=mgi)
+            dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=mgi).to_pandas(
+                use_pyarrow_extension_array=True
+            )
             try:
                 timesteppops = dfpop.loc[(dfpop["Z"] == Z) & (dfpop["ion_stage"] == ion_stage)]
             except KeyError:
@@ -572,7 +574,9 @@ def make_singletimestep_plot(
     time_days = at.get_timestep_time(modelpath, timestep)
     modelname = at.get_model_name(modelpath)
 
-    dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=mgilist[0])
+    dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=mgilist[0]).to_pandas(
+        use_pyarrow_extension_array=True
+    )
 
     if dfpop.empty:
         print(f"No NLTE population data for modelgrid cell {mgilist[0]} timestep {timestep}")
@@ -635,7 +639,9 @@ def make_singletimestep_plot(
             T_e = args.exc_temperature
             T_R = args.exc_temperature
 
-        dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=modelgridindex).copy()
+        dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=modelgridindex).to_pandas(
+            use_pyarrow_extension_array=True
+        )
 
         if dfpop.empty:
             print(f"No NLTE population data for modelgrid cell {modelgridindex} timestep {timestep}")
