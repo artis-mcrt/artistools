@@ -28,7 +28,9 @@ def read_files(modelpath: Path | str, timestep: int | None = None, modelgridinde
 
     pldf = pl.concat(
         (
-            pl.from_pandas(pd.read_csv(radfieldfilepath, sep=r"\s+", dtype_backend="pyarrow"))
+            pl.from_pandas(pd.read_csv(radfieldfilepath, sep=r"\s+", dtype_backend="pyarrow")).with_columns(
+                pl.col("modelgridindex").cast(pl.Int64), pl.col("timestep").cast(pl.Int64)
+            )
             for radfieldfilepath in radfieldfilepaths
         ),
         how="vertical",
