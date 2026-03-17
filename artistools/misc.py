@@ -55,6 +55,7 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
         kwargs["max_help_position"] = 39
         super().__init__(*args, **kwargs)
 
+    @t.override
     def add_arguments(self, actions: Iterable[argparse.Action]) -> None:
         getinvocation = super()._format_action_invocation
 
