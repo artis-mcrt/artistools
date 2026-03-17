@@ -271,7 +271,8 @@ def plot_specout(
 
 
 def get_binedges(radfielddata: pl.DataFrame) -> list[float]:
-    return [2.99792458e18 / radfielddata["nu_lower"].item(1), *list(2.99792458e18 / radfielddata["nu_upper"])]
+    radfielddata = radfielddata.filter(pl.col("bin_num") >= 0)
+    return [2.99792458e18 / radfielddata["nu_lower"].item(0), *list(2.99792458e18 / radfielddata["nu_upper"])]
 
 
 def plot_celltimestep(
