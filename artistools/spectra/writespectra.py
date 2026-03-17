@@ -8,7 +8,11 @@ from pathlib import Path
 import argcomplete
 import polars as pl
 
-import artistools as at
+from artistools import CustomArgHelpFormatter
+from artistools import get_timestep_times
+from artistools import set_args_from_dict
+from artistools.misc import get_escaped_arrivalrange
+from artistools.spectra import get_spectrum
 
 
 def write_spectrum(dfspectrum: pl.DataFrame, outfilepath: Path) -> None:
@@ -34,23 +38,21 @@ def write_flambda_spectra(modelpath: Path) -> None:
 
     outdirectory.mkdir(parents=True, exist_ok=True)
 
-    tmids = at.get_timestep_times(modelpath, loc="mid")
+    tmids = get_timestep_times(modelpath, loc="mid")
 
-    tslast, tmin_d_valid, tmax_d_valid = at.get_escaped_arrivalrange(modelpath)
+    tslast, tmin_d_valid, tmax_d_valid = get_escaped_arrivalrange(modelpath)
 
     assert tmin_d_valid is not None
     assert tmax_d_valid is not None
     timesteps = [ts for ts in range(tslast + 1) if tmids[ts] >= tmin_d_valid and tmids[ts] <= tmax_d_valid]
 
     for timestep in timesteps:
-        dfspectrum = at.spectra.get_spectrum(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)[
-            -1
-        ].collect()
+        dfspectrum = get_spectrum(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)[-1].collect()
 
         write_spectrum(dfspectrum, outfilepath=outdirectory / f"spectrum_ts{timestep:02.0f}_{tmids[timestep]:.2f}d.txt")
 
     for timestep in timesteps:
-        dfspectra = at.spectra.get_spectrum(
+        dfspectra = get_spectrum(
             modelpath=modelpath, timestepmin=timestep, timestepmax=timestep, average_over_phi=True, directionbins=[0]
         )
         if 0 in dfspectra:
@@ -69,9 +71,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot spectra from ARTIS and reference data."""
     if args is None:
-        parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
+        parser = argparse.ArgumentParser(formatter_class=CustomArgHelpFormatter, description=__doc__)
         addargs(parser)
-        at.set_args_from_dict(parser, kwargs)
+        set_args_from_dict(parser, kwargs)
         argcomplete.autocomplete(parser)
         args = parser.parse_args([] if kwargs else argsraw)
 
