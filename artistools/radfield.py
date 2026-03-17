@@ -136,11 +136,11 @@ def get_fitted_field(
     arr_lambda: list[float] = []
     j_lambda_fitted: list[float] = []
 
-    radfielddata_subset = radfielddata.to_pandas(use_pyarrow_extension_array=True).query(
-        "bin_num >= 0"
-        + (" & modelgridindex==@modelgridindex" if modelgridindex else "")
-        + (" & timestep==@timestep" if timestep else "")
-    )
+    radfielddata_subset = radfielddata.filter(pl.col("bin_num") >= 0)
+    if modelgridindex:
+        radfielddata_subset = radfielddata_subset.filter(pl.col("modelgridindex") == modelgridindex)
+    if timestep:
+        radfielddata_subset = radfielddata_subset.filter(pl.col("timestep") == timestep)
 
     if lambdamax is not None:
         nu_min = 2.99792458e18 / lambdamax
@@ -148,7 +148,7 @@ def get_fitted_field(
     if lambdamin is not None:
         nu_max = 2.99792458e18 / lambdamin
 
-    for _, row in radfielddata_subset.iterrows():
+    for row in radfielddata_subset.iter_rows(named=True):
         nu_lower = row["nu_lower"]
         nu_upper = row["nu_upper"]
 
