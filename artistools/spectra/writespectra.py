@@ -12,7 +12,7 @@ from artistools import CustomArgHelpFormatter
 from artistools import get_timestep_times
 from artistools import set_args_from_dict
 from artistools.misc import get_escaped_arrivalrange
-from artistools.spectra import get_spectrum
+from artistools.spectra.spectra import get_spectrum
 
 
 def write_spectrum(dfspectrum: pl.DataFrame, outfilepath: Path) -> None:
