@@ -152,12 +152,9 @@ def append_cell_to_output(
     )
 
     xlist.append(velocity)
-    assert isinstance(cell["rho"], float)
-    ylists[0].append(cell["rho"])
-    assert isinstance(cell["f56ni"], float)
-    ylists[1].append(cell["f56ni"])
-    assert isinstance(cell["fco"], float)
-    ylists[2].append(cell["fco"])
+    ylists[0].append(float(cell["rho"]))
+    ylists[1].append(float(cell["f56ni"]))
+    ylists[2].append(float(cell["fco"]))
 
 
 def make_plot(xlist: list[float], ylists: list[list[float]], pdfoutputfile: str) -> None:
