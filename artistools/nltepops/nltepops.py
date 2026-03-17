@@ -151,9 +151,7 @@ def add_lte_pops(
     return dfpop
 
 
-def read_files(
-    modelpath: str | Path, timestep: int = -1, modelgridindex: int = -1, filterexpr: pl.Expr | None = None
-) -> pl.DataFrame:
+def read_files(modelpath: str | Path, timestep: int = -1, modelgridindex: int = -1) -> pl.DataFrame:
     """Read in NLTE populations from a model for a particular timestep and grid cell."""
     mpiranklist = at.get_mpiranklist(modelpath, modelgridindex=modelgridindex)
 
@@ -173,8 +171,7 @@ def read_files(
         .with_columns(pl.col("modelgridindex").cast(pl.Int64), pl.col("timestep").cast(pl.Int64))
     )
 
-    if filterexpr is None:
-        filterexpr = pl.lit(True)
+    filterexpr = pl.lit(True)
 
     if modelgridindex >= 0:
         filterexpr &= pl.col("modelgridindex") == modelgridindex

@@ -131,10 +131,13 @@ def get_line_fluxes_from_pops(
     for feature in emfeatures:
         fluxdata = np.zeros_like(arr_tmid, dtype=float)
 
-        dfnltepops = at.nltepops.read_files(
-            modelpath,
-            filterexpr=(pl.col("Z") == feature.atomic_number) & (pl.col("ion_stage") == feature.ion_stage),
-        ).filter(pl.col("level").is_in(feature.upperlevelindicies))
+        dfnltepops = (
+            at.nltepops
+            .read_files(modelpath)
+            .filter(pl.col("Z") == feature.atomic_number)
+            .filter(pl.col("ion_stage") == feature.ion_stage)
+            .filter(pl.col("level").is_in(feature.upperlevelindicies))
+        )
 
         ion = adata.query("Z == @feature.atomic_number and ion_stage == @feature.ion_stage").iloc[0]
 

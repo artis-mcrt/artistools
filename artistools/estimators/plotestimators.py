@@ -309,7 +309,8 @@ def plot_levelpop(
 
         dfnltepops = (
             at.nltepops
-            .read_files(modelpath, filterexpr=(pl.col("Z") == atomic_number) & (pl.col("ion_stage") == ion_stage))
+            .read_files(modelpath)
+            .filter((pl.col("Z") == atomic_number) & (pl.col("ion_stage") == ion_stage))
             .filter(pl.col("level") == levelindex)
             .to_pandas(use_pyarrow_extension_array=True)
         )
