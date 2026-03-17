@@ -15,6 +15,7 @@ tar -xf vspecpolmodel.tar.xz
 if [ ! -f test_classicmode_3d.tar.xz ]; then curl -O https://theory.gsi.de/~lshingle/artis_http_public/artistools/test_classicmode_3d.tar.xz; fi
 tar -xf test_classicmode_3d.tar.xz
 
+unxz testmodel/*.xz
 
 cp grid.out testmodel/
 
