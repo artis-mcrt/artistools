@@ -446,7 +446,12 @@ def plot_nne_te_points(
     #           fillstyle='full', color=color_b)
 
 
-def plot_nne_te_bars(axis: mplax.Axes, em_log10nne, em_Te, color: t.Any) -> None:  # noqa: ANN001
+def plot_nne_te_bars(
+    axis: mplax.Axes,
+    em_log10nne: Sequence[float] | npt.NDArray[np.floating],
+    em_Te: Sequence[float] | npt.NDArray[np.floating],
+    color: t.Any,
+) -> None:
     if len(em_log10nne) == 0:
         return
     # black larger one for an outline

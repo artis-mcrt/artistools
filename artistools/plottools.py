@@ -313,11 +313,11 @@ class ExponentLabelFormatter(mplticker.ScalarFormatter):
         assert "{" in labeltemplate
         self.labeltemplate = labeltemplate
 
-    def set_locs(self, locs) -> None:  # noqa: ANN001
+    def set_locs(self, locs: t.Any) -> None:
         super().set_locs(locs)
         self._set_formatted_label_text()
 
-    def set_axis(self, axis) -> None:  # noqa: ANN001
+    def set_axis(self, axis: t.Any) -> None:
         super().set_axis(axis)
         self._set_formatted_label_text()
 

@@ -1142,14 +1142,10 @@ def get_bflist(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame
         dfboundfree = pl.DataFrame(schema=schema).lazy()
 
     dfboundfree = dfboundfree.with_columns(
-        atomic_number=pl.col("elementindex").map_elements(
-            lambda elementindex: compositiondata["Z"][elementindex], return_dtype=pl.Int32
-        ),
+        atomic_number=pl.col("elementindex").map_elements(compositiondata["Z"].item, return_dtype=pl.Int32),
         ion_stage=(
             pl.col("ionindex")
-            + pl.col("elementindex").map_elements(
-                lambda elementindex: compositiondata["lowermost_ion_stage"][elementindex], return_dtype=pl.Int32
-            )
+            + pl.col("elementindex").map_elements(compositiondata["lowermost_ion_stage"].item, return_dtype=pl.Int32)
         ),
     )
 

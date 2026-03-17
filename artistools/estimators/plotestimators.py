@@ -1107,7 +1107,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     estimators = estimators.with_columns(deltavol_deltat=pl.col("volume") * pl.col("twidth_days"))
 
-    plotlist = args.plotlist or [
+    plotlist: list[t.Any] = args.plotlist or [
         # [["initabundances", ["Fe", "Ni_stable", "Ni_56"]]],
         # ['heating_dep', 'heating_coll', 'heating_bf', 'heating_ff',
         #  ['_yscale', 'linear']],
