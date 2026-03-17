@@ -16,7 +16,7 @@ H = 6.6260755e-27  # Planck constant [erg s]
 KB = 1.38064852e-16  # Boltzmann constant [erg/K]
 
 
-def read_files(modelpath: Path | str, timestep: int | None = None, modelgridindex: int | None = None) -> pl.LazyFrame:
+def read_files(modelpath: Path | str, timestep: int | None = None, modelgridindex: int | None = None) -> pl.DataFrame:
     """Read radiation field data from a model folder, possibly with timestep and modelgridindex filters."""
     mpiranklist = at.get_mpiranklist(modelpath, modelgridindex=modelgridindex)
     radfieldfilepaths = [
@@ -24,7 +24,16 @@ def read_files(modelpath: Path | str, timestep: int | None = None, modelgridinde
         for folderpath in at.get_runfolders(modelpath, timestep=timestep)
         for mpirank in mpiranklist
     ]
-    pldf = pl.scan_csv(radfieldfilepaths, separator=" ")
+    import pandas as pd
+
+    pldf = pl.concat(
+        (
+            pl.from_pandas(pd.read_csv(radfieldfilepath, sep=r"\s+", dtype_backend="pyarrow"))
+            for radfieldfilepath in radfieldfilepaths
+        ),
+        how="vertical",
+    )
+
     if modelgridindex is not None:
         pldf = pldf.filter(pl.col("modelgridindex") == modelgridindex)
 
@@ -276,7 +285,7 @@ def plot_celltimestep(
     normalised: bool = False,
 ) -> bool:
     """Plot a cell at a timestep things like the bin edges, fitted field, and emergent spectrum (from all cells)."""
-    radfielddata = read_files(modelpath, timestep=timestep, modelgridindex=modelgridindex).collect()
+    radfielddata = read_files(modelpath, timestep=timestep, modelgridindex=modelgridindex)
     if radfielddata.select(pl.len()).item() == 0:
         print(f"No data for timestep {timestep:d} modelgridindex {modelgridindex:d}")
         return False
