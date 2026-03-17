@@ -152,7 +152,7 @@ def add_lte_pops(
     return dfpop
 
 
-def read_file(nltefilepath: str | Path) -> pl.DataFrame:
+def read_file(nltefilepath: str | Path, filterexpr: pl.Expr | None = None) -> pl.DataFrame:
     """Read NLTE populations from one file."""
     try:
         nltefilepath = at.firstexisting(nltefilepath, tryzipped=True)
@@ -163,18 +163,14 @@ def read_file(nltefilepath: str | Path) -> pl.DataFrame:
     filesize = Path(nltefilepath).stat().st_size / 1024 / 1024
     print(f"Reading {nltefilepath} ({filesize:.2f} MiB)")
 
-    dfpop = pl.from_pandas(pd.read_csv(nltefilepath, sep=r"\s+", dtype_backend="pyarrow"))
-
-    return dfpop.rename({"ionstage": "ion_stage"}, strict=False)
-
-
-def read_file_filtered(nltefilepath: str | Path, filterexpr: pl.Expr | None = None) -> pl.DataFrame:
-    dfpopfile = read_file(nltefilepath)
+    dfpop = pl.from_pandas(pd.read_csv(nltefilepath, sep=r"\s+", dtype_backend="pyarrow")).rename(
+        {"ionstage": "ion_stage"}, strict=False
+    )
 
     if filterexpr is not None:
-        dfpopfile = dfpopfile.filter(filterexpr)
+        dfpop = dfpop.filter(filterexpr)
 
-    return dfpopfile
+    return dfpop
 
 
 def read_files(
@@ -200,9 +196,9 @@ def read_files(
 
     if at.get_config()["num_processes"] > 1:
         with at.get_multiprocessing_pool() as pool:
-            arr_dfnltepop = pool.map(partial(read_file_filtered, filterexpr=filterexpr), nltefilepaths)
+            arr_dfnltepop = pool.map(partial(read_file, filterexpr=filterexpr), nltefilepaths)
             pool.close()
             pool.join()
     else:
-        arr_dfnltepop = [read_file_filtered(f, filterexpr=filterexpr) for f in nltefilepaths]
+        arr_dfnltepop = [read_file(f, filterexpr=filterexpr) for f in nltefilepaths]
     return pl.concat(arr_dfnltepop)
