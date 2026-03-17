@@ -2,14 +2,12 @@ import argparse
 import math
 import typing as t
 from collections.abc import Sequence
-from functools import lru_cache
 from pathlib import Path
 
 import matplotlib.axes as mplax
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
-import pandas as pd
 import polars as pl
 
 import artistools as at
@@ -18,91 +16,54 @@ H = 6.6260755e-27  # Planck constant [erg s]
 KB = 1.38064852e-16  # Boltzmann constant [erg/K]
 
 
-@lru_cache(maxsize=4)
-def read_files(modelpath: Path | str, timestep: int | None = None, modelgridindex: int | None = None) -> pd.DataFrame:
-    """Read radiation field data from a list of file paths into a pandas DataFrame."""
-    radfielddata_allfiles: list[pd.DataFrame] = []
-    modelpath = Path(modelpath)
-
+def read_files(modelpath: Path | str, timestep: int | None = None, modelgridindex: int | None = None) -> pl.DataFrame:
+    """Read radiation field data from a model folder, possibly with timestep and modelgridindex filters."""
     mpiranklist = at.get_mpiranklist(modelpath, modelgridindex=modelgridindex)
-    for folderpath in at.get_runfolders(modelpath, timestep=timestep):
-        for mpirank in mpiranklist:
-            radfieldfilename = f"radfield_{mpirank:04d}.out"
-            radfieldfilepath = Path(folderpath, radfieldfilename)
-            radfieldfilepath = at.firstexisting(radfieldfilename, folder=folderpath, tryzipped=True)
+    radfieldfilepaths = [
+        at.firstexisting(f"radfield_{mpirank:04d}.out", folder=folderpath, tryzipped=True)
+        for folderpath in at.get_runfolders(modelpath, timestep=timestep)
+        for mpirank in mpiranklist
+    ]
+    import pandas as pd
 
-            if modelgridindex is not None:
-                filesize = Path(radfieldfilepath).stat().st_size / 1024 / 1024
-                print(f"Reading {Path(radfieldfilepath).relative_to(modelpath.parent)} ({filesize:.2f} MiB)")
-
-            radfielddata_thisfile = pd.read_csv(radfieldfilepath, sep=r"\s+")
-            # radfielddata_thisfile[['modelgridindex', 'timestep']].apply(pd.to_numeric)
-
-            if timestep is not None:
-                radfielddata_thisfile = radfielddata_thisfile.query("timestep==@timestep")
-
-            if modelgridindex is not None:
-                radfielddata_thisfile = radfielddata_thisfile.query("modelgridindex==@modelgridindex")
-
-            if not radfielddata_thisfile.empty:
-                if timestep is not None and modelgridindex is not None:
-                    return radfielddata_thisfile
-                radfielddata_allfiles.append(radfielddata_thisfile)
-
-    return pd.concat(radfielddata_allfiles, ignore_index=True)
-
-
-def select_bin(
-    radfielddata: pd.DataFrame,
-    nu: float | None = None,
-    lambda_angstroms: float | None = None,
-    modelgridindex: int | None = None,
-    timestep: int | None = None,
-) -> tuple[int, float, float]:
-    assert nu is None or lambda_angstroms is None
-
-    if lambda_angstroms is not None:
-        nu = 2.99792458e18 / lambda_angstroms
-    else:
-        assert nu is not None
-        lambda_angstroms = 2.99792458e18 / nu
-
-    dfselected = radfielddata.query(
-        ("modelgridindex == @modelgridindex and " if modelgridindex else "")
-        + ("timestep == @timestep and " if timestep else "")
-        + "nu_lower <= @nu and nu_upper >= @nu and bin_num > -1"
+    pldf = pl.concat(
+        (
+            pl.from_pandas(pd.read_csv(radfieldfilepath, sep=r"\s+", dtype_backend="pyarrow"))
+            for radfieldfilepath in radfieldfilepaths
+        ),
+        how="vertical",
     )
 
-    assert not dfselected.empty
-    return dfselected.iloc[0].bin_num, dfselected.iloc[0].nu_lower, dfselected.iloc[0].nu_upper
+    if modelgridindex is not None:
+        pldf = pldf.filter(pl.col("modelgridindex") == modelgridindex)
+
+    if timestep is not None:
+        pldf = pldf.filter(pl.col("timestep") == timestep)
+
+    return pldf
 
 
 def get_binaverage_field(
-    radfielddata: pd.DataFrame, modelgridindex: int | None = None, timestep: int | None = None
+    radfielddata: pl.DataFrame, modelgridindex: int | None = None, timestep: int | None = None
 ) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     """Get the dJ/dlambda constant average estimators of each bin."""
     # exclude the global fit parameters and detailed lines with negative "bin_num"
-    bindata = radfielddata.copy().query(
-        "bin_num >= 0"
-        + (" & modelgridindex==@modelgridindex" if modelgridindex else "")
-        + (" & timestep==@timestep" if timestep else "")
-    )
+    bindata = radfielddata.filter(pl.col("bin_num") >= 0)
+    if modelgridindex is not None:
+        bindata = bindata.filter(pl.col("modelgridindex") == modelgridindex)
+    if timestep is not None:
+        bindata = bindata.filter(pl.col("timestep") == timestep)
 
-    arr_lambda = 2.99792458e18 / bindata["nu_upper"].to_numpy(dtype=np.float64)
+    arr_lambda = 2.99792458e18 / bindata["nu_upper"].to_numpy()
 
-    bindata.loc[:, "dlambda"] = bindata.apply(
-        lambda row: 2.99792458e18 * (1 / row["nu_lower"] - 1 / row["nu_upper"]), axis=1
-    )
+    bindata = bindata.with_columns(dlambda=2.99792458e18 * (1 / pl.col("nu_lower") - 1 / pl.col("nu_upper")))
 
-    yvalues = bindata.apply(
-        lambda row: (
-            row["J"] / row["dlambda"] if (not math.isnan(row["J"] / row["dlambda"]) and row["T_R"] >= 0) else 0.0
-        ),
-        axis=1,
-    ).to_numpy(dtype=float)
+    yvalues = bindata.select(
+        pl.when(pl.col("T_R") >= 0).then(pl.col("J") / pl.col("dlambda")).otherwise(0.0)
+    ).to_numpy()
 
     # add the starting point
-    arr_lambda = np.insert(arr_lambda, 0, 2.99792458e18 / bindata["nu_lower"].iloc[0])
+    arr_lambda = np.insert(arr_lambda, 0, 2.99792458e18 / bindata["nu_lower"].item(0))
     yvalues = np.insert(yvalues, 0, 0.0)
 
     return arr_lambda, yvalues
@@ -139,24 +100,20 @@ def j_nu_dbb(arr_nu_hz: Sequence[float] | npt.NDArray[np.floating], W: float, T:
 
 
 def get_fullspecfittedfield(
-    radfielddata: pd.DataFrame, xmin: float, xmax: float, modelgridindex: int | None = None, timestep: int | None = None
+    radfielddata: pl.DataFrame, xmin: float, xmax: float, modelgridindex: int | None = None, timestep: int | None = None
 ) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating]]:
-    row = (
-        radfielddata
-        .query(
-            "bin_num == -1"
-            + (" & modelgridindex==@modelgridindex" if modelgridindex else "")
-            + (" & timestep==@timestep" if timestep else "")
-        )
-        .copy()
-        .iloc[0]
-    )
+    radfielddata = radfielddata.filter(pl.col("bin_num") == -1)
+    if modelgridindex is not None:
+        radfielddata = radfielddata.filter(pl.col("modelgridindex") == modelgridindex)
+    if timestep is not None:
+        radfielddata = radfielddata.filter(pl.col("timestep") == timestep)
+    W = radfielddata.item(0, "W")
+    assert isinstance(W, float)
+    T_R = radfielddata.item(0, "T_R")
+    assert isinstance(T_R, float)
     nu_lower = 2.99792458e18 / xmin
     nu_upper = 2.99792458e18 / xmax
     arr_nu_hz = np.linspace(nu_lower, nu_upper, num=500, dtype=np.float64)
-    W, T_R = row["W"], row["T_R"]
-    assert isinstance(W, float)
-    assert isinstance(T_R, float)
     arr_j_nu = j_nu_dbb(arr_nu_hz, W, T_R)
 
     arr_lambda = 2.99792458e18 / arr_nu_hz
@@ -166,7 +123,7 @@ def get_fullspecfittedfield(
 
 
 def get_fitted_field(
-    radfielddata: pd.DataFrame,
+    radfielddata: pl.DataFrame,
     modelgridindex: int | None = None,
     timestep: int | None = None,
     print_bins: bool = False,
@@ -177,11 +134,11 @@ def get_fitted_field(
     arr_lambda: list[float] = []
     j_lambda_fitted: list[float] = []
 
-    radfielddata_subset = radfielddata.copy().query(
-        "bin_num >= 0"
-        + (" & modelgridindex==@modelgridindex" if modelgridindex else "")
-        + (" & timestep==@timestep" if timestep else "")
-    )
+    radfielddata_subset = radfielddata.filter(pl.col("bin_num") >= 0)
+    if modelgridindex is not None:
+        radfielddata_subset = radfielddata_subset.filter(pl.col("modelgridindex") == modelgridindex)
+    if timestep is not None:
+        radfielddata_subset = radfielddata_subset.filter(pl.col("timestep") == timestep)
 
     if lambdamax is not None:
         nu_min = 2.99792458e18 / lambdamax
@@ -189,7 +146,7 @@ def get_fitted_field(
     if lambdamin is not None:
         nu_max = 2.99792458e18 / lambdamin
 
-    for _, row in radfielddata_subset.iterrows():
+    for row in radfielddata_subset.iter_rows(named=True):
         nu_lower = row["nu_lower"]
         nu_upper = row["nu_upper"]
 
@@ -237,7 +194,7 @@ def get_fitted_field(
 
 def plot_line_estimators(
     axis: mplax.Axes,
-    radfielddata: pd.DataFrame,
+    radfielddata: pl.DataFrame,
     modelgridindex: int | None = None,
     timestep: int | None = None,
     **plotkwargs: t.Any,
@@ -245,11 +202,14 @@ def plot_line_estimators(
     """Plot the Jblue_lu values from the detailed line estimators on a spectrum."""
     ymax = -1
 
-    radfielddataselected = radfielddata.query(
+    radfielddataselected = radfielddata.to_pandas(use_pyarrow_extension_array=True).query(
         "bin_num < -1"
         + (" & modelgridindex==@modelgridindex" if modelgridindex else "")
         + (" & timestep==@timestep" if timestep else "")
     )[["nu_upper", "J_nu_avg"]]
+    if radfielddataselected.empty:
+        print("No line estimators to plot")
+        return 0.0
 
     radfielddataselected.loc[:, "lambda_angstroms"] = 2.99792458e18 / radfielddataselected["nu_upper"]
     radfielddataselected.loc[:, "Jb_lambda"] = (
@@ -305,8 +265,9 @@ def plot_specout(
     dfspectrum.plot(x="lambda_angstroms", y="f_lambda", ax=axis, label=label, **plotkwargs)
 
 
-def get_binedges(radfielddata: pd.DataFrame) -> list[float]:
-    return [2.99792458e18 / radfielddata["nu_lower"].iloc[1], *list(2.99792458e18 / radfielddata["nu_upper"][1:])]
+def get_binedges(radfielddata: pl.DataFrame) -> list[float]:
+    radfielddata = radfielddata.filter(pl.col("bin_num") >= 0)
+    return [2.99792458e18 / radfielddata["nu_lower"].item(0), *list(2.99792458e18 / radfielddata["nu_upper"])]
 
 
 def plot_celltimestep(
@@ -321,14 +282,14 @@ def plot_celltimestep(
 ) -> bool:
     """Plot a cell at a timestep things like the bin edges, fitted field, and emergent spectrum (from all cells)."""
     radfielddata = read_files(modelpath, timestep=timestep, modelgridindex=modelgridindex)
-    if radfielddata.empty:
+    if radfielddata.select(pl.len()).item() == 0:
         print(f"No data for timestep {timestep:d} modelgridindex {modelgridindex:d}")
         return False
 
     modelname = at.get_model_name(modelpath)
     time_days = at.get_timestep_times(modelpath)[timestep]
     print(f"Plotting {modelname} timestep {timestep:d} (t={time_days:.3f}d)")
-    T_R = radfielddata.query("bin_num == -1").iloc[0].T_R
+    T_R = radfielddata.filter(pl.col("bin_num") == -1).select("T_R").item()
     print(f"T_R = {T_R}")
 
     fig, axis = plt.subplots(
@@ -437,161 +398,9 @@ def plot_celltimestep(
     return True
 
 
-def plot_bin_fitted_field_evolution(
-    axis: mplax.Axes, radfielddata: pd.DataFrame, nu_line: float, modelgridindex: int, **plotkwargs: t.Any
-) -> None:
-    bin_num, _nu_lower, _nu_upper = select_bin(radfielddata, nu=nu_line, modelgridindex=modelgridindex)
-    # print(f"Selected bin_num {bin_num} to get a binned radiation field estimator")
-    radfielddataselected: t.Any = radfielddata.query(
-        f"bin_num == {bin_num} and modelgridindex == @modelgridindex and nu_lower <= @nu_line and nu_upper >= @nu_line"
-    ).copy()
-
-    radfielddataselected = radfielddataselected.assign(
-        Jb_nu_at_line=lambda x: j_nu_dbb([nu_line], x.W, x.T_R)[0]
-    ).assign(Jb_lambda_at_line=lambda x: x.Jb_nu_at_line * (nu_line**2) / 2.99792458e18)
-
-    lambda_angstroms = 2.99792458e18 / nu_line
-
-    axis.plot(
-        radfielddataselected["timestep"],
-        radfielddataselected["Jb_lambda_at_line"],
-        label=f"Fitted field from bin at {lambda_angstroms:.1f} Å",
-        **plotkwargs,
-    )
-
-
-def plot_global_fitted_field_evolution(
-    axis: mplax.Axes,
-    radfielddata: pd.DataFrame,
-    nu_line: float,
-    modelgridindex: int,  # noqa: ARG001
-    **plotkwargs: t.Any,
-) -> None:
-    radfielddataselected = radfielddata.query("bin_num == -1 and modelgridindex == @modelgridindex").copy()
-
-    radfielddataselected["J_nu_fullspec_at_line"] = radfielddataselected.apply(
-        lambda x: j_nu_dbb([nu_line], x.W, x.T_R)[0], axis=1
-    )
-
-    radfielddataselected["J_lambda_fullspec_at_line"] = (
-        radfielddataselected["J_nu_fullspec_at_line"] * (nu_line**2) / 2.99792458e18
-    )
-    lambda_angstroms = 2.99792458e18 / nu_line
-
-    radfielddataselected.plot(
-        x="timestep",
-        y="J_lambda_fullspec_at_line",
-        ax=axis,
-        label=f"Full-spec fitted field at {lambda_angstroms:.1f} Å",
-        **plotkwargs,
-    )
-
-
-def plot_line_estimator_evolution(
-    axis: mplax.Axes,
-    radfielddata: pd.DataFrame,
-    bin_num: int,
-    modelgridindex: int | None = None,
-    timestep_min: int | None = None,
-    timestep_max: int | None = None,
-    **plotkwargs: t.Any,
-) -> None:
-    """Plot the Jblue_lu values over time for a detailed line estimators."""
-    radfielddataselected = radfielddata.query(
-        "bin_num == @bin_num"
-        + (" & modelgridindex == @modelgridindex" if modelgridindex else "")
-        + (" & timestep >= @timestep_min" if timestep_min else "")
-        + (" & timestep <= @timestep_max" if timestep_max else "")
-    )[["timestep", "nu_upper", "J_nu_avg"]]
-    assert isinstance(radfielddataselected, pd.DataFrame)
-    radfielddataselected = radfielddataselected.assign(
-        lambda_angstroms=2.99792458e18 / pd.col("nu_upper"),  # type: ignore[attr-defined] # pyright: ignore[reportAttributeAccessIssue]
-        Jb_lambda=pd.col("J_nu_avg") * (pd.col("nu_upper") ** 2) / 2.99792458e18,  # type: ignore[attr-defined] # pyright: ignore[reportAttributeAccessIssue]
-    )
-
-    axis.plot(
-        radfielddataselected["timestep"],
-        radfielddataselected["Jb_lambda"],
-        label=f"Jb_lu bin_num {bin_num}",
-        **plotkwargs,
-    )
-
-
-def plot_timeevolution(
-    modelpath: Path | str, outputfile: Path | str, modelgridindex: int, args: argparse.Namespace
-) -> None:
-    """Plot a estimator evolution over time for a cell. This is not well tested and should be checked."""
-    print(f"Plotting time evolution of cell {modelgridindex:d}")
-
-    radfielddata = read_files(modelpath, modelgridindex=modelgridindex)
-    radfielddataselected = radfielddata.query("modelgridindex == @modelgridindex")
-
-    nlinesplotted = 200
-    fig, axes = plt.subplots(
-        nlinesplotted,
-        1,
-        sharex=True,
-        figsize=(
-            args.figscale * at.get_config()["figwidth"],
-            args.figscale * at.get_config()["figwidth"] * (0.25 + nlinesplotted * 0.35),
-        ),
-        tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
-    )
-
-    if isinstance(axes, mplax.Axes):
-        axes = np.array([axes])
-
-    assert isinstance(axes, np.ndarray)
-
-    timestep = at.get_timestep_of_timedays(modelpath, 330)
-    time_days = at.get_timestep_time(modelpath, timestep)
-
-    dftopestimators = radfielddataselected.query("timestep==@timestep and bin_num < -1").copy()
-    dftopestimators["lambda_angstroms"] = 2.99792458e18 / dftopestimators["nu_upper"]
-    dftopestimators["Jb_lambda"] = dftopestimators["J_nu_avg"] * (dftopestimators["nu_upper"] ** 2) / 2.99792458e18
-    dftopestimators = dftopestimators.sort_values("Jb_lambda", ascending=False, inplace=False).iloc[:nlinesplotted]
-    print(f"Top estimators at timestep {timestep} t={time_days:.1f}")
-    print(dftopestimators)
-
-    for ax, bin_num_estimator, nu_line in zip(
-        axes, dftopestimators.bin_num.to_numpy(dtype=float), dftopestimators.nu_upper.to_numpy(dtype=float), strict=True
-    ):
-        lambda_angstroms = 2.99792458e18 / nu_line
-        print(f"Selected line estimator with bin_num {bin_num_estimator}, lambda={lambda_angstroms:.1f}")
-        plot_line_estimator_evolution(ax, radfielddataselected, bin_num_estimator, modelgridindex=modelgridindex)
-
-        plot_bin_fitted_field_evolution(ax, radfielddata, nu_line, modelgridindex=modelgridindex)
-
-        plot_global_fitted_field_evolution(ax, radfielddata, nu_line, modelgridindex=modelgridindex)
-        ax.annotate(
-            rf"$\lambda$={lambda_angstroms:.1f} Å in cell {modelgridindex:d}\n",
-            xy=(0.02, 0.96),
-            xycoords="axes fraction",
-            horizontalalignment="left",
-            verticalalignment="top",
-            fontsize=10,
-        )
-
-        ax.set_ylabel(r"J$_\lambda$ [erg/s/cm$^2$/$\mathrm{{\AA}}$]")
-        ax.legend(loc="best", handlelength=2, frameon=False, numpoints=1)
-
-    axes[-1].set_xlabel(r"Timestep")
-    # axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
-    # axis.set_xlim(left=xmin, right=xmax)
-    # axis.set_ylim(bottom=0.0, top=ymax)
-
-    print(f"Saving to {outputfile}")
-    fig.savefig(str(outputfile), format="pdf")
-    plt.close()
-
-
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     parser.add_argument("-modelpath", default=".", type=Path, help="Path to ARTIS folder")
-
-    parser.add_argument(
-        "-xaxis", "-x", default="lambda", choices=["lambda", "timestep"], help="Horizontal axis variable."
-    )
 
     parser.add_argument("-timedays", "-time", "-t", help="Time in days to plot")
 
@@ -634,11 +443,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     at.set_mpl_style()
 
-    defaultoutputfile = (
-        Path("plotradfield_cell{modelgridindex:03d}_ts{timestep:03d}.pdf")
-        if args.xaxis == "lambda"
-        else Path("plotradfield_cell{modelgridindex:03d}_evolution.pdf")
-    )
+    defaultoutputfile = Path("plotradfield_cell{modelgridindex:03d}_ts{timestep:03d}.pdf")
 
     if not args.outputfile:
         args.outputfile = defaultoutputfile
@@ -668,27 +473,19 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     for modelgridindex in modelgridindexlist:
         assert modelgridindex is not None
-        if args.xaxis == "lambda":
-            for timestep in timesteplist:
-                outputfile = str(args.outputfile).format(modelgridindex=modelgridindex, timestep=timestep)
-                if plot_celltimestep(
-                    modelpath,
-                    timestep,
-                    outputfile,
-                    xmin=args.xmin,
-                    xmax=args.xmax,
-                    modelgridindex=modelgridindex,
-                    args=args,
-                    normalised=args.normalised,
-                ):
-                    pdf_list.append(outputfile)
-        elif args.xaxis == "timestep":
-            outputfile = str(args.outputfile).format(modelgridindex=modelgridindex)
-            assert modelgridindex is not None
-            plot_timeevolution(modelpath, outputfile, modelgridindex, args)
-        else:
-            print("Unknown plot type {args.plot}")
-            raise AssertionError
+        for timestep in timesteplist:
+            outputfile = str(args.outputfile).format(modelgridindex=modelgridindex, timestep=timestep)
+            if plot_celltimestep(
+                modelpath,
+                timestep,
+                outputfile,
+                xmin=args.xmin,
+                xmax=args.xmax,
+                modelgridindex=modelgridindex,
+                args=args,
+                normalised=args.normalised,
+            ):
+                pdf_list.append(outputfile)
 
     if len(pdf_list) > 1:
         print(pdf_list)
