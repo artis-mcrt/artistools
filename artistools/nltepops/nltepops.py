@@ -153,12 +153,10 @@ def add_lte_pops(
 
 def read_files(modelpath: str | Path, timestep: int = -1, modelgridindex: int = -1) -> pl.DataFrame:
     """Read in NLTE populations from a model for a particular timestep and grid cell."""
-    mpiranklist = at.get_mpiranklist(modelpath, modelgridindex=modelgridindex)
-
     nltefilepaths = [
         at.firstexisting(Path(folderpath, f"nlte_{mpirank:04d}.out"), tryzipped=True)
         for folderpath in at.get_runfolders(modelpath, timestep=timestep)
-        for mpirank in mpiranklist
+        for mpirank in at.get_mpiranklist(modelpath, modelgridindex=modelgridindex)
     ]
 
     dfnltepop = (
