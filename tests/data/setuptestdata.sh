@@ -20,6 +20,4 @@ cp grid.out testmodel/
 
 xz -d testmodel/transitiondata.txt.xz
 
-unxz testmodel/*.xz
-
 set +x
