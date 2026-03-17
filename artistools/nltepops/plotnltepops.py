@@ -534,7 +534,7 @@ def plot_populations_with_time_or_velocity(
                 #                                                          == ionlevel]['n_LTE'].values[0])
 
         for ionlevel in ionlevels:
-            plottimesteps = np.array([ts for ts, level, mgi in populations if level == ionlevel])
+            plottimesteps = np.array([ts for ts, level, _mgi in populations if level == ionlevel])
             timedayslist = [at.get_timestep_time(modelpath, ts) for ts in plottimesteps]
             plotpopulations = np.array([
                 float(populations[ts, level, mgi]) for ts, level, mgi in populations if level == ionlevel

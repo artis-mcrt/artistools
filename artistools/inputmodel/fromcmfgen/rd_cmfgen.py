@@ -9,6 +9,7 @@ rd_sn_hydro_data
 import sys
 
 import numpy as np
+import typing as t
 
 # constants
 DAY2SEC = 86400.0
@@ -128,7 +129,7 @@ def rd_nuc_decay_data(file, quiet=False):
 ###############################################################################
 
 
-def rd_sn_hydro_data(file, ncol=8, reverse=False, quiet=False):
+def rd_sn_hydro_data(file: str, ncol: int = 8, reverse: bool = False, quiet: bool = False) -> dict[str, t.Any]:
     """read in SN_HYDRO_DATA or SN_HYDRO_FOR_NEXT_MODEL files and return namespace
     set reverse=True to output vectors from vmin to vmax (CMFGEN's grid moves inward from vmax to vmin)
     set quiet=True to disable verbose output
