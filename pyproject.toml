@@ -187,16 +187,6 @@ warn_unused_ignores = true
 warn_return_any = true
 fixed_format_cache = true
 
-# these files need detailed type annotations added
-[[tool.mypy.overrides]]
-module = [
-    "artistools.estimators.plot3destimators_classic",
-    "artistools.inputmodel.make1dslicefrom3d",
-]
-disallow_incomplete_defs = false
-disallow_untyped_calls = false
-disallow_untyped_defs = false
-
 [tool.pylint.'MESSAGES CONTROL']
 max-line-length = 120
 disable = """
