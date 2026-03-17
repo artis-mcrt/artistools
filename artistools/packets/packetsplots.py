@@ -353,7 +353,6 @@ def packets_2d_hist_bin_and_ejecta_vel(
                 lam_min = wavelen - binwidth / 2
                 lam_max = wavelen + binwidth / 2
                 dfpackets = dfpackets[(dfpackets["lambda_rf"] > lam_min) & (dfpackets["lambda_rf"] < lam_max)]
-
     else:
         dirbin = dirbin_range[0]
         escape_angles = list(range(dirbin, dirbin + 10))
@@ -425,46 +424,26 @@ def packets_2d_hist_bin_and_ejecta_vel(
     if mask_empty_cells:
         heatmap = np.ma.masked_where(heatmap == 0.0, heatmap)
 
-    if TYPE_CHECKING:
-        from matplotlib.projections.polar import PolarAxesSubplot
-    fig, ax = plt.subplots(subplot_kw={"projection": "polar"}, figsize=(4, 3.5))
-    if TYPE_CHECKING:
-        ax: PolarAxesSubplot
-    ax = cast("PolarAxesSubplot", ax)
+    fig, ax = plt.subplots(figsize=(8, 4.5))
+    z = heatmap.T 
 
-    costhetas = np.array([-1, -0.8, -0.6, -0.4, -0.2, 0, 0.2, 0.4, 0.6, 0.8, 1])
-    thetas = np.arccos(costhetas)
-
-    radii = xedges
-    z = heatmap
-
-    im = ax.pcolormesh(thetas, radii, z, shading="auto")
-
-    ax.set_thetamin(0)
-    ax.set_thetamax(180)
-    ax.set_theta_offset(np.pi / 2)
-
-    ax.set_xticks(thetas)
-    ax.set_xticklabels(np.round(costhetas, 2))
-    ax.grid(True)
-
-    cbar = fig.colorbar(im)
-    if logscale:
-        cbar.set_label(r"log energy [erg/s]", rotation=90)
-    else:
-        cbar.set_label(r"Energy rate [10$^{40}$ erg/s]", rotation=90)
-
-    ax.set_xlabel(r"Polar angle [cos($\theta$)]")
-    ax.set_ylabel("Radial velocity [c]")
-    ax.yaxis.set_label_position("right")
-    ax.yaxis.set_label_coords(0.9, 0.5)
-
-    ax.annotate(
-        "",
-        xy=(arrow_angles[dirbin_range[0]], 0.7),
-        xytext=(arrow_angles[dirbin_range[0]], 0.52),
-        arrowprops={"facecolor": "black", "edgecolor": "white"},
+    im = ax.imshow(
+        z,
+        origin="lower",   
+        aspect="auto",   
+        cmap="viridis",  
     )
+    ax.set_xlabel(r"v$_r$")
+    ax.set_ylabel(r"v$_z$")
+    ax.set_title("Packet Energy per Grid Cell")
+    cbar = fig.colorbar(im, ax=ax)
+    if logscale:
+        cbar.set_label("log energy [erg/s]")
+    else:
+        cbar.set_label("Energy rate [10^40 erg/s]")
+
+    ax.set_xticks(np.arange(0, z.shape[1], 5))  # alle 5 Zellen
+    ax.set_yticks(np.arange(0, z.shape[0], 5))
 
     outfilename = (
         startoflabel
