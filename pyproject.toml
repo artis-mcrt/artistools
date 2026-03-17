@@ -190,10 +190,8 @@ fixed_format_cache = true
 # these files need detailed type annotations added
 [[tool.mypy.overrides]]
 module = [
-    "conftest",
     "artistools.estimators.plot3destimators_classic",
     "artistools.inputmodel.make1dslicefrom3d",
-    "artistools.plottools",
 ]
 disallow_incomplete_defs = false
 disallow_untyped_calls = false
