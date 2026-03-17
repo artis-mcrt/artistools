@@ -510,93 +510,9 @@ def plot_line_estimator_evolution(
     )
 
 
-def plot_timeevolution(
-    modelpath: Path | str, outputfile: Path | str, modelgridindex: int, args: argparse.Namespace
-) -> None:
-    """Plot a estimator evolution over time for a cell. This is not well tested and should be checked."""
-    print(f"Plotting time evolution of cell {modelgridindex:d}")
-
-    radfielddata = read_files(modelpath, modelgridindex=modelgridindex)
-    radfielddataselected = (
-        radfielddata.collect().to_pandas(use_pyarrow_extension_array=True).query("modelgridindex == @modelgridindex")
-    )
-
-    nlinesplotted = 200
-    fig, axes = plt.subplots(
-        nlinesplotted,
-        1,
-        sharex=True,
-        figsize=(
-            args.figscale * at.get_config()["figwidth"],
-            args.figscale * at.get_config()["figwidth"] * (0.25 + nlinesplotted * 0.35),
-        ),
-        tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
-    )
-
-    if isinstance(axes, mplax.Axes):
-        axes = np.array([axes])
-
-    assert isinstance(axes, np.ndarray)
-
-    timestep = at.get_timestep_of_timedays(modelpath, 330)
-    time_days = at.get_timestep_time(modelpath, timestep)
-
-    dftopestimators = radfielddataselected.query("timestep==@timestep and bin_num < -1").copy()
-    dftopestimators["lambda_angstroms"] = 2.99792458e18 / dftopestimators["nu_upper"]
-    dftopestimators["Jb_lambda"] = dftopestimators["J_nu_avg"] * (dftopestimators["nu_upper"] ** 2) / 2.99792458e18
-    dftopestimators = dftopestimators.sort_values("Jb_lambda", ascending=False, inplace=False).iloc[:nlinesplotted]
-    print(f"Top estimators at timestep {timestep} t={time_days:.1f}")
-    print(dftopestimators)
-
-    for ax, bin_num_estimator, nu_line in zip(
-        axes, dftopestimators.bin_num.to_numpy(dtype=float), dftopestimators.nu_upper.to_numpy(dtype=float), strict=True
-    ):
-        lambda_angstroms = 2.99792458e18 / nu_line
-        print(f"Selected line estimator with bin_num {bin_num_estimator}, lambda={lambda_angstroms:.1f}")
-        plot_line_estimator_evolution(ax, radfielddataselected, bin_num_estimator, modelgridindex=modelgridindex)
-
-        plot_bin_fitted_field_evolution(
-            ax,
-            radfielddata.collect().to_pandas(use_pyarrow_extension_array=True),
-            nu_line,
-            modelgridindex=modelgridindex,
-        )
-
-        plot_global_fitted_field_evolution(
-            ax,
-            radfielddata.collect().to_pandas(use_pyarrow_extension_array=True),
-            nu_line,
-            modelgridindex=modelgridindex,
-        )
-        ax.annotate(
-            rf"$\lambda$={lambda_angstroms:.1f} Å in cell {modelgridindex:d}\n",
-            xy=(0.02, 0.96),
-            xycoords="axes fraction",
-            horizontalalignment="left",
-            verticalalignment="top",
-            fontsize=10,
-        )
-
-        ax.set_ylabel(r"J$_\lambda$ [erg/s/cm$^2$/$\mathrm{{\AA}}$]")
-        ax.legend(loc="best", handlelength=2, frameon=False, numpoints=1)
-
-    axes[-1].set_xlabel(r"Timestep")
-    # axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
-    # axis.set_xlim(left=xmin, right=xmax)
-    # axis.set_ylim(bottom=0.0, top=ymax)
-
-    print(f"Saving to {outputfile}")
-    fig.savefig(str(outputfile), format="pdf")
-    plt.close()
-
-
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     parser.add_argument("-modelpath", default=".", type=Path, help="Path to ARTIS folder")
-
-    parser.add_argument(
-        "-xaxis", "-x", default="lambda", choices=["lambda", "timestep"], help="Horizontal axis variable."
-    )
 
     parser.add_argument("-timedays", "-time", "-t", help="Time in days to plot")
 
@@ -639,11 +555,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     at.set_mpl_style()
 
-    defaultoutputfile = (
-        Path("plotradfield_cell{modelgridindex:03d}_ts{timestep:03d}.pdf")
-        if args.xaxis == "lambda"
-        else Path("plotradfield_cell{modelgridindex:03d}_evolution.pdf")
-    )
+    defaultoutputfile = Path("plotradfield_cell{modelgridindex:03d}_ts{timestep:03d}.pdf")
 
     if not args.outputfile:
         args.outputfile = defaultoutputfile
@@ -673,27 +585,19 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     for modelgridindex in modelgridindexlist:
         assert modelgridindex is not None
-        if args.xaxis == "lambda":
-            for timestep in timesteplist:
-                outputfile = str(args.outputfile).format(modelgridindex=modelgridindex, timestep=timestep)
-                if plot_celltimestep(
-                    modelpath,
-                    timestep,
-                    outputfile,
-                    xmin=args.xmin,
-                    xmax=args.xmax,
-                    modelgridindex=modelgridindex,
-                    args=args,
-                    normalised=args.normalised,
-                ):
-                    pdf_list.append(outputfile)
-        elif args.xaxis == "timestep":
-            outputfile = str(args.outputfile).format(modelgridindex=modelgridindex)
-            assert modelgridindex is not None
-            plot_timeevolution(modelpath, outputfile, modelgridindex, args)
-        else:
-            print("Unknown plot type {args.plot}")
-            raise AssertionError
+        for timestep in timesteplist:
+            outputfile = str(args.outputfile).format(modelgridindex=modelgridindex, timestep=timestep)
+            if plot_celltimestep(
+                modelpath,
+                timestep,
+                outputfile,
+                xmin=args.xmin,
+                xmax=args.xmax,
+                modelgridindex=modelgridindex,
+                args=args,
+                normalised=args.normalised,
+            ):
+                pdf_list.append(outputfile)
 
     if len(pdf_list) > 1:
         print(pdf_list)
