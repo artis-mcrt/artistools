@@ -132,7 +132,7 @@ def slice_abundance_file(inputfolder, outputfolder, dict3dcellidto1dcellid) -> N
 
 
 def append_cell_to_output(
-    cell,  # noqa: ANN001
+    cell: dict[str, float | str],
     outcellid: int,
     t_model: str | float,
     listout: list[str],
@@ -148,8 +148,11 @@ def append_cell_to_output(
     )
 
     xlist.append(velocity)
+    assert isinstance(cell["rho"], float)
     ylists[0].append(cell["rho"])
+    assert isinstance(cell["f56ni"], float)
     ylists[1].append(cell["f56ni"])
+    assert isinstance(cell["fco"], float)
     ylists[2].append(cell["fco"])
 
 
