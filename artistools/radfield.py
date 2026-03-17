@@ -8,7 +8,6 @@ import matplotlib.axes as mplax
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
-import pandas as pd
 import polars as pl
 
 import artistools as at
@@ -51,14 +50,17 @@ def select_bin(
         assert nu is not None
         lambda_angstroms = 2.99792458e18 / nu
 
-    dfselected = radfielddata.to_pandas(use_pyarrow_extension_array=True).query(
-        ("modelgridindex == @modelgridindex and " if modelgridindex else "")
-        + ("timestep == @timestep and " if timestep else "")
-        + "nu_lower <= @nu and nu_upper >= @nu and bin_num > -1"
+    if modelgridindex:
+        radfielddata = radfielddata.filter(pl.col("modelgridindex") == modelgridindex)
+    if timestep:
+        radfielddata = radfielddata.filter(pl.col("timestep") == timestep)
+
+    radfielddata = radfielddata.filter(
+        (pl.col("nu_lower") <= nu) & (pl.col("nu_upper") >= nu) & (pl.col("bin_num") > -1)
     )
 
-    assert not dfselected.empty
-    return dfselected.iloc[0].bin_num, dfselected.iloc[0].nu_lower, dfselected.iloc[0].nu_upper
+    assert not radfielddata.is_empty()
+    return radfielddata["bin_num"].item(0), radfielddata["nu_lower"].item(0), radfielddata["nu_upper"].item(0)
 
 
 def get_binaverage_field(
@@ -423,91 +425,6 @@ def plot_celltimestep(
     fig.savefig(str(outputfile), format="pdf")
     plt.close()
     return True
-
-
-def plot_bin_fitted_field_evolution(
-    axis: mplax.Axes, radfielddata: pl.DataFrame, nu_line: float, modelgridindex: int, **plotkwargs: t.Any
-) -> None:
-    bin_num, _nu_lower, _nu_upper = select_bin(radfielddata, nu=nu_line, modelgridindex=modelgridindex)
-    # print(f"Selected bin_num {bin_num} to get a binned radiation field estimator")
-    radfielddataselected: t.Any = (
-        radfielddata
-        .to_pandas(use_pyarrow_extension_array=True)
-        .query(
-            f"bin_num == {bin_num} and modelgridindex == @modelgridindex and nu_lower <= @nu_line and nu_upper >= @nu_line"
-        )
-        .copy()
-    )
-
-    radfielddataselected = radfielddataselected.assign(
-        Jb_nu_at_line=lambda x: j_nu_dbb([nu_line], x.W, x.T_R)[0]
-    ).assign(Jb_lambda_at_line=lambda x: x.Jb_nu_at_line * (nu_line**2) / 2.99792458e18)
-
-    lambda_angstroms = 2.99792458e18 / nu_line
-
-    axis.plot(
-        radfielddataselected["timestep"],
-        radfielddataselected["Jb_lambda_at_line"],
-        label=f"Fitted field from bin at {lambda_angstroms:.1f} Å",
-        **plotkwargs,
-    )
-
-
-def plot_global_fitted_field_evolution(
-    axis: mplax.Axes,
-    radfielddata: pd.DataFrame,
-    nu_line: float,
-    modelgridindex: int,  # noqa: ARG001
-    **plotkwargs: t.Any,
-) -> None:
-    radfielddataselected = radfielddata.query("bin_num == -1 and modelgridindex == @modelgridindex").copy()
-
-    radfielddataselected["J_nu_fullspec_at_line"] = radfielddataselected.apply(
-        lambda x: j_nu_dbb([nu_line], x.W, x.T_R)[0], axis=1
-    )
-
-    radfielddataselected["J_lambda_fullspec_at_line"] = (
-        radfielddataselected["J_nu_fullspec_at_line"] * (nu_line**2) / 2.99792458e18
-    )
-    lambda_angstroms = 2.99792458e18 / nu_line
-
-    radfielddataselected.plot(
-        x="timestep",
-        y="J_lambda_fullspec_at_line",
-        ax=axis,
-        label=f"Full-spec fitted field at {lambda_angstroms:.1f} Å",
-        **plotkwargs,
-    )
-
-
-def plot_line_estimator_evolution(
-    axis: mplax.Axes,
-    radfielddata: pd.DataFrame,
-    bin_num: int,
-    modelgridindex: int | None = None,
-    timestep_min: int | None = None,
-    timestep_max: int | None = None,
-    **plotkwargs: t.Any,
-) -> None:
-    """Plot the Jblue_lu values over time for a detailed line estimators."""
-    radfielddataselected = radfielddata.query(
-        "bin_num == @bin_num"
-        + (" & modelgridindex == @modelgridindex" if modelgridindex else "")
-        + (" & timestep >= @timestep_min" if timestep_min else "")
-        + (" & timestep <= @timestep_max" if timestep_max else "")
-    )[["timestep", "nu_upper", "J_nu_avg"]]
-    assert isinstance(radfielddataselected, pd.DataFrame)
-    radfielddataselected = radfielddataselected.assign(
-        lambda_angstroms=2.99792458e18 / pd.col("nu_upper"),  # type: ignore[attr-defined] # pyright: ignore[reportAttributeAccessIssue]
-        Jb_lambda=pd.col("J_nu_avg") * (pd.col("nu_upper") ** 2) / 2.99792458e18,  # type: ignore[attr-defined] # pyright: ignore[reportAttributeAccessIssue]
-    )
-
-    axis.plot(
-        radfielddataselected["timestep"],
-        radfielddataselected["Jb_lambda"],
-        label=f"Jb_lu bin_num {bin_num}",
-        **plotkwargs,
-    )
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
