@@ -39,27 +39,22 @@ def get_binaverage_field(
 ) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     """Get the dJ/dlambda constant average estimators of each bin."""
     # exclude the global fit parameters and detailed lines with negative "bin_num"
-    bindata = radfielddata.to_pandas(use_pyarrow_extension_array=True).query(
-        "bin_num >= 0"
-        + (" & modelgridindex==@modelgridindex" if modelgridindex else "")
-        + (" & timestep==@timestep" if timestep else "")
-    )
+    bindata = radfielddata.filter(pl.col("bin_num") >= 0)
+    if modelgridindex is not None:
+        bindata = bindata.filter(pl.col("modelgridindex") == modelgridindex)
+    if timestep is not None:
+        bindata = bindata.filter(pl.col("timestep") == timestep)
 
-    arr_lambda = 2.99792458e18 / bindata["nu_upper"].to_numpy(dtype=np.float64)
+    arr_lambda = 2.99792458e18 / bindata["nu_upper"].to_numpy()
 
-    bindata.loc[:, "dlambda"] = bindata.apply(
-        lambda row: 2.99792458e18 * (1 / row["nu_lower"] - 1 / row["nu_upper"]), axis=1
-    )
+    bindata = bindata.with_columns(dlambda=2.99792458e18 * (1 / pl.col("nu_lower") - 1 / pl.col("nu_upper")))
 
-    yvalues = bindata.apply(
-        lambda row: (
-            row["J"] / row["dlambda"] if (not math.isnan(row["J"] / row["dlambda"]) and row["T_R"] >= 0) else 0.0
-        ),
-        axis=1,
-    ).to_numpy(dtype=float)
+    yvalues = bindata.select(
+        pl.when(pl.col("T_R") >= 0).then(pl.col("J") / pl.col("dlambda")).otherwise(0.0)
+    ).to_numpy()
 
     # add the starting point
-    arr_lambda = np.insert(arr_lambda, 0, 2.99792458e18 / bindata["nu_lower"].iloc[0])
+    arr_lambda = np.insert(arr_lambda, 0, 2.99792458e18 / bindata["nu_lower"].item(0))
     yvalues = np.insert(yvalues, 0, 0.0)
 
     return arr_lambda, yvalues
