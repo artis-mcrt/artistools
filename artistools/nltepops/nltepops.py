@@ -163,8 +163,11 @@ def read_file(nltefilepath: str | Path, filterexpr: pl.Expr | None = None) -> pl
     filesize = Path(nltefilepath).stat().st_size / 1024 / 1024
     print(f"Reading {nltefilepath} ({filesize:.2f} MiB)")
 
-    dfpop = pl.from_pandas(pd.read_csv(nltefilepath, sep=r"\s+", dtype_backend="pyarrow")).rename(
-        {"ionstage": "ion_stage"}, strict=False
+    dfpop = (
+        pl
+        .from_pandas(pd.read_csv(nltefilepath, sep=r"\s+", dtype_backend="pyarrow"))
+        .rename({"ionstage": "ion_stage"}, strict=False)
+        .with_columns(pl.col("modelgridindex").cast(pl.Int64), pl.col("timestep").cast(pl.Int64))
     )
 
     if filterexpr is not None:
