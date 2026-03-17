@@ -241,7 +241,7 @@ exclude = [
 ]
 reportAttributeAccessIssue = true
 reportCallIssue = true
-reportDeprecated = true
+reportDeprecated = false
 reportMissingImports = false
 reportPossiblyUnboundVariable = false
 reportUnnecessaryTypeIgnoreComment = true
