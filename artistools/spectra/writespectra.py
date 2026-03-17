@@ -69,7 +69,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
-    """Plot spectra from ARTIS and reference data."""
+    """Write ARTIS spectra for each timestep to individual text files."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=CustomArgHelpFormatter, description=__doc__)
         addargs(parser)
