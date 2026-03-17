@@ -241,15 +241,14 @@ exclude = [
     '.venv',
     '**/rd_cmfgen.py'
 ]
-reportAttributeAccessIssue = true
-reportCallIssue = true
 reportConstantRedefinition = false
-reportDeprecated = true
-reportImplicitOverride = true
+reportImplicitOverride = "erro"
+reportImportCycles = false
 reportMatchNotExhaustive = false
 reportMissingImports = "information"
 reportMissingTypeStubs = false
 reportPossiblyUnboundVariable = false
+reportPropertyTypeMismatch = "error"
 reportUnknownArgumentType = false
 reportUnknownLambdaType = false
 reportUnknownMemberType = false
@@ -257,11 +256,7 @@ reportUnknownParameterType = false
 reportUnknownVariableType = false
 reportUnnecessaryComparison = false
 reportUnnecessaryIsInstance = false
-reportUnnecessaryTypeIgnoreComment = true
 reportUnreachable = false
-reportUnusedFunction = true
-reportUnusedVariable = true
-strictDictionaryInference = true
 typeCheckingMode = "strict"
 useLibraryCodeForTypes = true
 pythonVersion = "3.12"
