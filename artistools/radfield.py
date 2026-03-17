@@ -102,23 +102,18 @@ def j_nu_dbb(arr_nu_hz: Sequence[float] | npt.NDArray[np.floating], W: float, T:
 def get_fullspecfittedfield(
     radfielddata: pl.DataFrame, xmin: float, xmax: float, modelgridindex: int | None = None, timestep: int | None = None
 ) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating]]:
-    row = (
-        radfielddata
-        .to_pandas(use_pyarrow_extension_array=True)
-        .query(
-            "bin_num == -1"
-            + (" & modelgridindex==@modelgridindex" if modelgridindex else "")
-            + (" & timestep==@timestep" if timestep else "")
-        )
-        .copy()
-        .iloc[0]
-    )
+    radfielddata = radfielddata.filter(pl.col("bin_num") >= 0)
+    if modelgridindex is not None:
+        radfielddata = radfielddata.filter(pl.col("modelgridindex") == modelgridindex)
+    if timestep is not None:
+        radfielddata = radfielddata.filter(pl.col("timestep") == timestep)
+    W = radfielddata.item(0, "W")
+    assert isinstance(W, float)
+    T_R = radfielddata.item(0, "T_R")
+    assert isinstance(T_R, float)
     nu_lower = 2.99792458e18 / xmin
     nu_upper = 2.99792458e18 / xmax
     arr_nu_hz = np.linspace(nu_lower, nu_upper, num=500, dtype=np.float64)
-    W, T_R = row["W"], row["T_R"]
-    assert isinstance(W, float)
-    assert isinstance(T_R, float)
     arr_j_nu = j_nu_dbb(arr_nu_hz, W, T_R)
 
     arr_lambda = 2.99792458e18 / arr_nu_hz
