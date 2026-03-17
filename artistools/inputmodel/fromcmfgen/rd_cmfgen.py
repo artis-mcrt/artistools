@@ -9,6 +9,7 @@ rd_sn_hydro_data
 import sys
 
 import numpy as np
+import typing as t
 
 # constants
 DAY2SEC = 86400.0
