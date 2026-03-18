@@ -914,7 +914,7 @@ def zopenpl(filename: Path | str, mode: str = "r", encoding: str | None = None) 
 
 def firstexisting(
     filelist: Sequence[str | Path] | str | Path,
-    folder: Path | str = Path(),
+    folder: Path | str = ".",
     tryzipped: bool = True,
     search_subfolders: bool = True,
 ) -> Path:
@@ -964,7 +964,7 @@ def firstexisting(
 
 
 def anyexist(
-    filelist: Sequence[str | Path], folder: Path | str = Path(), tryzipped: bool = True, search_subfolders: bool = True
+    filelist: Sequence[str | Path], folder: Path | str = ".", tryzipped: bool = True, search_subfolders: bool = True
 ) -> Path | None:
     """Return true if any files in file list exist."""
     try:

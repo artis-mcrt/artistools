@@ -346,7 +346,7 @@ def read_modelfile_text(
 
 
 def get_modeldata(
-    modelpath: Path | str = Path(),
+    modelpath: Path | str = ".",
     get_elemabundances: bool = False,
     derived_cols: Sequence[str] | str | None = None,
     printwarningsonly: bool = False,
@@ -1038,7 +1038,7 @@ def get_mgi_of_velocity_kms(modelpath: Path, velocity: float) -> int | None:
     return mgi_upper
 
 
-def get_initelemabundances(modelpath: Path = Path(), printwarningsonly: bool = False) -> pl.LazyFrame:
+def get_initelemabundances(modelpath: Path | str = ".", printwarningsonly: bool = False) -> pl.LazyFrame:
     """Return a table of elemental mass fractions by cell from abundances."""
     textfilepath = firstexisting("abundances.txt", folder=modelpath, tryzipped=True)
     parquetfilepath = stripallsuffixes(Path(textfilepath)).with_suffix(".txt.parquet.tmp")
@@ -1160,7 +1160,7 @@ def save_initelemabundances(
     print(f"wrote {abundancefilename} (took {time.perf_counter() - timestart:.1f} seconds)")
 
 
-def save_empty_abundance_file(npts_model: int, outputfilepath: str | Path = Path()) -> None:
+def save_empty_abundance_file(npts_model: int, outputfilepath: str | Path = ".") -> None:
     """Save dummy abundance file with only zeros."""
     if Path(outputfilepath).is_dir():
         outputfilepath = Path(outputfilepath) / "abundances.txt"
