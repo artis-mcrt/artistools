@@ -156,7 +156,7 @@ def make_2d_plot(
         }
 
         # set white background
-        pv.set_plot_theme("document")
+        pv.set_plot_theme("document")  # type: ignore[no-untyped-call]
         p: t.Any = pv.Plotter()
         p.set_scale(p, xscale=1.5, yscale=1.5, zscale=1.5)
         single_slice = mesh.slice(normal="z")
