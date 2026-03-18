@@ -94,7 +94,7 @@ def test_spectra_get_spectrum(benchmark: BenchmarkFixture) -> None:
         assert isinstance(flambdamean, float)
         assert math.isclose(flambdamean, 1.0314682640070206e-14, abs_tol=1e-5)
 
-    dfspectrum = benchmark(lambda: at.spectra.get_spectrum(modelpath, 55, 65, fluxfilterfunc=None))[-1].collect()
+    dfspectrum = at.spectra.get_spectrum(modelpath, 55, 65, fluxfilterfunc=None)[-1].collect()
 
     assert len(dfspectrum["lambda_angstroms"]) == 1000
     assert len(dfspectrum["f_lambda"]) == 1000

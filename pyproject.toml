@@ -22,7 +22,6 @@ authors = [
 description = "Plotting and analysis tools for the ARTIS 3D radiative transfer code for supernovae and kilonovae."
 classifiers = [
     "Intended Audience :: Science/Research",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
@@ -32,7 +31,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Physics",
 ]
 dynamic = ["version"]
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license =  "MIT"
 license-files = ["LICEN[CS]E*"]
 readme = { file = "README.md", content-type = 'text/markdown' }
@@ -154,7 +153,7 @@ disallow_any_generics = true
 disallow_any_unimported = true
 disallow_incomplete_defs = true
 disallow_subclassing_any = true
-disallow_untyped_calls = false
+disallow_untyped_calls = true
 disallow_untyped_decorators = true
 disallow_untyped_defs = true
 error_summary = true
@@ -164,9 +163,12 @@ enable_error_code = [
     "no-any-return",
     "no-any-unimported",
     "no-untyped-call",
+    "redundant-cast",
     "redundant-expr",
     "redundant-self",
     "truthy-bool",
+    "truthy-iterable",
+    "type-arg",
     "unused-awaitable",
 ]
 exclude = "(build)|(dist)|(tests)|(data)|(.venv)|(venv)|(_version.py)"
@@ -180,6 +182,7 @@ pretty = true
 scripts_are_modules = true
 strict = true
 strict_equality = true
+strict_bytes = true
 warn_redundant_casts = true
 warn_unreachable = false
 warn_unused_configs = true
@@ -187,24 +190,11 @@ warn_unused_ignores = true
 warn_return_any = true
 fixed_format_cache = true
 
-# these files need detailed type annotations added
-[[tool.mypy.overrides]]
-module = [
-    "conftest",
-    "artistools.estimators.plot3destimators_classic",
-    "artistools.hesma_scripts",
-    "artistools.inputmodel.make1dslicefrom3d",
-    "artistools.linefluxes",
-    "artistools.plottools",
-]
-disallow_incomplete_defs = false
-disallow_untyped_calls = false
-disallow_untyped_defs = false
-
 [tool.pylint.'MESSAGES CONTROL']
 max-line-length = 120
 disable = """
     broad-exception-caught,
+    cell-var-from-loop,
     fixme,
     missing-function-docstring,
     missing-module-docstring,
@@ -237,7 +227,6 @@ ignored-modules = ["astropy", "extinction", "pyvista"]
 unsafe-load-any-extension = true
 
 [tool.pyright]
-deprecateTypingAliases = true
 enableTypeIgnoreComments = false # leave these for mypy to interpret
 exclude = [
     '**/node_modules',
@@ -248,18 +237,27 @@ exclude = [
     'target',
     '**/version.py',
     '.venv',
+    '**/rd_cmfgen.py'
 ]
-reportAttributeAccessIssue = true
-reportCallIssue = true
-reportDeprecated = false
-reportMissingImports = false
+reportConstantRedefinition = false
+reportImplicitOverride = "error"
+reportImportCycles = false
+reportMatchNotExhaustive = false
+reportMissingImports = "information"
+reportMissingTypeStubs = false
 reportPossiblyUnboundVariable = false
-reportUnnecessaryTypeIgnoreComment = true
+reportPropertyTypeMismatch = "error"
+reportUnknownArgumentType = false
+reportUnknownLambdaType = false
+reportUnknownMemberType = false
+reportUnknownParameterType = false
 reportUnknownVariableType = false
+reportUnnecessaryComparison = false
+reportUnnecessaryIsInstance = false
 reportUnreachable = false
-typeCheckingMode = "standard"
+typeCheckingMode = "strict"
 useLibraryCodeForTypes = true
-pythonVersion = "3.11"
+pythonVersion = "3.12"
 
 [tool.pytest]
 minversion = "9.0"
@@ -270,7 +268,7 @@ testpaths = ["artistools"]
 ignore = ["FURB120"]
 quiet = false
 enable_all = true
-python_version = "3.11"
+python_version = "3.12"
 sort_by = "error"
 
 [[tool.refurb.amend]]
@@ -405,7 +403,6 @@ local_scheme = "no-local-version"
 
 [tool.ty.rules]
 unresolved-import = "ignore"
-deprecated = "ignore"
 
 [tool.ty.src]
 exclude = ["artistools/inputmodel/fromcmfgen/rd_cmfgen.py", ".venv/**"]

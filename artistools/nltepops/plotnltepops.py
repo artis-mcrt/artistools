@@ -260,8 +260,9 @@ def make_ionsubplot(
         else float(ionpopulation / dfpopthision["n_LTE_T_e"].sum())
     )
 
-    dfpopthision = dfpopthision.assign(n_LTE_T_e_normed=pd.col("n_LTE_T_e") * lte_scalefactor)  # type: ignore[attr-defined] # pyright: ignore[reportAttributeAccessIssue]
-    dfpopthision = dfpopthision.assign(departure_coeff=pd.col("n_NLTE") / pd.col("n_LTE_T_e_normed"))  # type: ignore[attr-defined] # pyright: ignore[reportAttributeAccessIssue]
+    dfpopthision = dfpopthision.assign(n_LTE_T_e_normed=pd.col("n_LTE_T_e") * lte_scalefactor).assign(  # type: ignore[attr-defined] # pyright: ignore[reportAttributeAccessIssue]
+        departure_coeff=pd.col("n_NLTE") / pd.col("n_LTE_T_e_normed")  # type: ignore[attr-defined] # pyright: ignore[reportAttributeAccessIssue]
+    )
 
     pd.set_option("display.max_columns", 150)
     if len(dfpopthision) < 30:
@@ -519,7 +520,9 @@ def plot_populations_with_time_or_velocity(
         # populationsLTE = {}
 
         for timestep, mgi in zip(timesteps, modelgridindex_list, strict=False):
-            dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=mgi)
+            dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=mgi).to_pandas(
+                use_pyarrow_extension_array=True
+            )
             try:
                 timesteppops = dfpop.loc[(dfpop["Z"] == Z) & (dfpop["ion_stage"] == ion_stage)]
             except KeyError:
@@ -534,7 +537,7 @@ def plot_populations_with_time_or_velocity(
                 #                                                          == ionlevel]['n_LTE'].values[0])
 
         for ionlevel in ionlevels:
-            plottimesteps = np.array([ts for ts, level, mgi in populations if level == ionlevel])
+            plottimesteps = np.array([ts for ts, level, _mgi in populations if level == ionlevel])
             timedayslist = [at.get_timestep_time(modelpath, ts) for ts in plottimesteps]
             plotpopulations = np.array([
                 float(populations[ts, level, mgi]) for ts, level, mgi in populations if level == ionlevel
@@ -571,7 +574,9 @@ def make_singletimestep_plot(
     time_days = at.get_timestep_time(modelpath, timestep)
     modelname = at.get_model_name(modelpath)
 
-    dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=mgilist[0])
+    dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=mgilist[0]).to_pandas(
+        use_pyarrow_extension_array=True
+    )
 
     if dfpop.empty:
         print(f"No NLTE population data for modelgrid cell {mgilist[0]} timestep {timestep}")
@@ -634,7 +639,9 @@ def make_singletimestep_plot(
             T_e = args.exc_temperature
             T_R = args.exc_temperature
 
-        dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=modelgridindex).copy()
+        dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=modelgridindex).to_pandas(
+            use_pyarrow_extension_array=True
+        )
 
         if dfpop.empty:
             print(f"No NLTE population data for modelgrid cell {modelgridindex} timestep {timestep}")

@@ -15,6 +15,7 @@ if sys.version_info >= (3, 15) and hasattr(sys, "set_lazy_imports_filter"):  # n
                 "concurrent.futures",
                 "pandas._libs",
                 "pandas.core",
+                "pandas._config",
                 "pyarrow._compute",
             ))
         )

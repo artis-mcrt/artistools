@@ -1549,7 +1549,7 @@ def test_dimension_reduce(outputdimensions: int, benchmark: BenchmarkFixture) ->
     outpath.mkdir(exist_ok=True, parents=True)
 
     @benchmark
-    def run_dimension_reduce() -> None:
+    def run_dimension_reduce() -> None:  # pyright: ignore[reportUnusedFunction]
         (dfmodel_lowerd, _, _, modelmeta_lowerd) = (at.inputmodel.dimension_reduce_model)(
             dfmodel=dfmodel3d_pl, modelmeta=modelmeta_3d, outputdimensions=outputdimensions
         )

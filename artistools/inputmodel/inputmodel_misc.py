@@ -1286,10 +1286,9 @@ def dimension_reduce_model(
         assert outputdimensions in {0, 1}
         dfmodel_out = dfmodel_out.with_columns(mgiout=pl.col("out_n_r"))
 
-    dfmodel_out = dfmodel_out.sort("mgiout")
-
     dfmodel_out = (
         dfmodel_out
+        .sort("mgiout")
         .group_by("mgiout", cs.starts_with("out_n_"))
         .agg(
             pl

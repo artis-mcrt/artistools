@@ -1,5 +1,6 @@
 import argparse
 import typing as t
+from collections.abc import Callable
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -14,7 +15,7 @@ if t.TYPE_CHECKING:
     from mpl_toolkits.mplot3d import Axes3D
 
 
-def make_cone(args: argparse.Namespace, logprint: t.Callable[..., None]) -> pd.DataFrame:
+def make_cone(args: argparse.Namespace, logprint: Callable[..., None]) -> pd.DataFrame:
     print("Making cone")
 
     angle_of_cone = args.coneangle  # in deg
@@ -101,7 +102,7 @@ def get_profile_along_axis(
     return profile1d
 
 
-def make_1d_profile(args: argparse.Namespace, logprint: t.Callable[..., None]) -> pd.DataFrame:
+def make_1d_profile(args: argparse.Namespace, logprint: Callable[..., None]) -> pd.DataFrame:
     """Make 1D model from 3D model."""
     logprint("Making 1D model from 3D model:", at.get_model_name(args.modelpath[0]))
     _, modelmeta = at.get_modeldata(modelpath=args.modelpath[0])
@@ -249,7 +250,7 @@ def make_1d_profile(args: argparse.Namespace, logprint: t.Callable[..., None]) -
     return slice1d
 
 
-def make_1d_model_files(args: argparse.Namespace, logprint: t.Callable[..., None]) -> None:
+def make_1d_model_files(args: argparse.Namespace, logprint: Callable[..., None]) -> None:
     slice1d = make_1d_profile(args, logprint)
 
     # query_abundances_positions = slice1d.columns.str.startswith("X_")
@@ -300,7 +301,7 @@ def make_1d_model_files(args: argparse.Namespace, logprint: t.Callable[..., None
 # cone = cone.loc[cone['rho_model'] > 0.0]
 
 
-def make_plot(args: argparse.Namespace, logprint: t.Callable[..., None]) -> None:
+def make_plot(args: argparse.Namespace, logprint: Callable[..., None]) -> None:
     cone = make_cone(args, logprint)
 
     cone = cone.loc[cone["rho_model"] > 0.0002]  # cut low densities (empty cells?) from plot

@@ -1,4 +1,7 @@
-def pytest_configure(config) -> None:  # noqa: ARG001,ANN001
+import typing as t
+
+
+def pytest_configure(config: t.Any) -> None:  # noqa: ARG001
     """Clear the test output of previous runs."""
     import sys
     from pathlib import Path

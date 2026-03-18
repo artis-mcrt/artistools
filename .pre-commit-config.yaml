@@ -41,7 +41,7 @@ repos:
           - id: ruff-format
 
     - repo: https://github.com/astral-sh/uv-pre-commit
-      rev: 0.10.9
+      rev: 0.10.11
       hooks:
           - id: uv-lock
 
@@ -56,6 +56,5 @@ repos:
           - id: ty-check
             name: ty check
             language: system
-            entry: uv run --all-extras --frozen --no-sync -- ty check
+            entry: uv run --all-extras --frozen --no-sync --python=.venv/ -- ty check --python=.venv/
             pass_filenames: false
-            args: [--python=.venv/]

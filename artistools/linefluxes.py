@@ -131,9 +131,13 @@ def get_line_fluxes_from_pops(
     for feature in emfeatures:
         fluxdata = np.zeros_like(arr_tmid, dtype=float)
 
-        dfnltepops = at.nltepops.read_files(
-            modelpath, dfquery=f"Z=={feature.atomic_number:.0f} and ion_stage=={feature.ion_stage:.0f}"
-        ).query("level in @feature.upperlevelindicies")
+        dfnltepops = (
+            at.nltepops
+            .read_files(modelpath)
+            .filter(pl.col("Z") == feature.atomic_number)
+            .filter(pl.col("ion_stage") == feature.ion_stage)
+            .filter(pl.col("level").is_in(feature.upperlevelindicies))
+        )
 
         ion = adata.query("Z == @feature.atomic_number and ion_stage == @feature.ion_stage").iloc[0]
 
@@ -154,15 +158,13 @@ def get_line_fluxes_from_pops(
                 unaccounted_shells = []
                 for modelgridindex in modeldata.index:
                     try:
-                        levelpop = (
-                            dfnltepops
-                            .query(
-                                "modelgridindex==@modelgridindex and timestep==@timestep and Z==@feature.atomic_number"
-                                " and ion_stage==@feature.ion_stage and level==@upperlevelindex"
-                            )
-                            .iloc[0]
-                            .n_NLTE
-                        )
+                        levelpop = dfnltepops.filter(
+                            (pl.col("modelgridindex") == modelgridindex)
+                            & (pl.col("timestep") == timestep)
+                            & (pl.col("Z") == feature.atomic_number)
+                            & (pl.col("ion_stage") == feature.ion_stage)
+                            & (pl.col("level") == upperlevelindex)
+                        )["n_NLTE"].item(0)
 
                         A_val = (
                             ion.transitions.query("upper == @upperlevelindex and lower == @lowerlevelindex").iloc[0].A
@@ -454,7 +456,12 @@ def plot_nne_te_points(
     #           fillstyle='full', color=color_b)
 
 
-def plot_nne_te_bars(axis: mplax.Axes, em_log10nne, em_Te, color: t.Any) -> None:  # noqa: ANN001
+def plot_nne_te_bars(
+    axis: mplax.Axes,
+    em_log10nne: Sequence[float] | npt.NDArray[np.floating],
+    em_Te: Sequence[float] | npt.NDArray[np.floating],
+    color: t.Any,
+) -> None:
     if len(em_log10nne) == 0:
         return
     # black larger one for an outline
