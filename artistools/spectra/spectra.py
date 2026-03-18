@@ -389,13 +389,11 @@ def get_from_packets(
         lambda_bin_edges = np.arange(lambda_min, lambda_max + delta_lambda, delta_lambda)
         lambda_bin_centres = 0.5 * (lambda_bin_edges[:-1] + lambda_bin_edges[1:])  # bin centres
         pl_delta_lambda = pl.lit(delta_lambda)
-    elif isinstance(delta_lambda, np.ndarray):
+    else:
+        assert isinstance(delta_lambda, np.ndarray)
         lambda_bin_edges = np.array([lambda_min + (delta_lambda[:i]).sum() for i in range(len(delta_lambda) + 1)])
         lambda_bin_centres = 0.5 * (lambda_bin_edges[:-1] + lambda_bin_edges[1:])
         pl_delta_lambda = pl.Series(delta_lambda)
-    else:
-        msg = f"Invalid delta_lambda type: {type(delta_lambda)}"
-        raise ValueError(msg)
 
     delta_time_s = (timehighdays - timelowdays) * 86400.0
 

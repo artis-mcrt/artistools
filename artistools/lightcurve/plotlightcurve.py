@@ -244,8 +244,6 @@ def plot_artis_lightcurve(
 ) -> dict[int, pl.DataFrame] | None:
     if args is None:
         args = argparse.Namespace()
-    if plotkwargs is None:
-        plotkwargs = {}
     if escape_type not in {"TYPE_RPKT", "TYPE_GAMMA"}:
         msg = f"Unknown escape type {escape_type}"
         raise ValueError(msg)
@@ -779,9 +777,6 @@ def get_linelabel(
     elif args.label:
         linelabel = str(args.label[modelnumber])
     else:
-        linelabel = modelname
-
-    if linelabel == "None" or linelabel is None:
         linelabel = modelname
 
     return linelabel
