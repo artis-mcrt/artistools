@@ -26,11 +26,10 @@ def get_elemabund_from_nucabund(dfnucabund: pl.DataFrame) -> dict[str, float]:
     """Return a dictionary of elemental abundances from nuclear abundance DataFrame."""
     ZMAX = dfnucabund["Z"].max()
     assert isinstance(ZMAX, int)
-    dictelemabund: dict[str, float] = {
+    return {
         f"X_{at.get_elsymbol(atomic_number)}": dfnucabund.filter(pl.col("Z") == atomic_number)["massfrac"].sum()
         for atomic_number in range(1, ZMAX + 1)
     }
-    return dictelemabund
 
 
 def get_dfelemabund_from_dfmodel(dfmodel: pl.DataFrame) -> pl.DataFrame:
@@ -277,8 +276,8 @@ def get_trajectory_abund_q(
 
     # print(f'trajectory particle id {particleid} massfrac sum: {massfractotal:.2f}')
     # print(f' grid snapshot: {t_model_s:.2e} s, network: {traj_time_s:.2e} s (timestep {nts})')
-    assert np.isclose(massfractotal, 1.0, rtol=0.02)
-    if not np.isclose(traj_time_s, t_model_s, rtol=0.2, atol=1.0):
+    assert math.isclose(massfractotal, 1.0, rel_tol=0.02)
+    if not math.isclose(traj_time_s, t_model_s, rel_tol=0.2, abs_tol=1.0):
         msg = f"ERROR: particle {particleid} step time of {traj_time_s} is not similar to target {t_model_s} seconds"
         raise AssertionError(msg)
 
@@ -328,8 +327,8 @@ def filtermissinggridparticlecontributions(dfcontribs: pl.DataFrame, missing_par
     cell_frac_includemissing_sum: dict[int, float] = {}
     for (cellindex,), dfparticlecontribs in dfcontribs.group_by(["cellindex"]):
         assert isinstance(cellindex, int)
-        cell_frac_sum[cellindex] = dfparticlecontribs["frac_of_cellmass"].sum()
-        cell_frac_includemissing_sum[cellindex] = dfparticlecontribs["frac_of_cellmass_includemissing"].sum()
+        cell_frac_sum[cellindex] = float(dfparticlecontribs["frac_of_cellmass"].sum())
+        cell_frac_includemissing_sum[cellindex] = float(dfparticlecontribs["frac_of_cellmass_includemissing"].sum())
 
     dfcontribs = (
         dfcontribs
@@ -357,11 +356,11 @@ def filtermissinggridparticlecontributions(dfcontribs: pl.DataFrame, missing_par
 
     for _, dfparticlecontribs in dfcontribs.group_by(["cellindex"]):
         frac_sum: float = dfparticlecontribs["frac_of_cellmass"].sum()
-        assert frac_sum == 0.0 or np.isclose(frac_sum, 1.0, rtol=0.02)
+        assert frac_sum == 0.0 or math.isclose(frac_sum, 1.0, rel_tol=0.02)
 
         cell_frac_includemissing_sum_thiscell: float = dfparticlecontribs["frac_of_cellmass_includemissing"].sum()
-        assert cell_frac_includemissing_sum_thiscell == 0.0 or np.isclose(
-            cell_frac_includemissing_sum_thiscell, 1.0, rtol=0.02
+        assert cell_frac_includemissing_sum_thiscell == 0.0 or math.isclose(
+            cell_frac_includemissing_sum_thiscell, 1.0, rel_tol=0.02
         )
 
     print("done")
