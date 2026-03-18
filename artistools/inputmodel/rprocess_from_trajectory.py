@@ -204,8 +204,6 @@ def get_trajectory_timestepfile_nuc_abund(
 
 def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, t_model_s: float) -> float:
     """Calculate initial cell energy [erg/g] from reactions t < t_model_s (reduced by work done)."""
-    from scipy import integrate
-
     with get_tar_member_extracted_path(
         traj_root=traj_root, particleid=particleid, memberfilename="./Run_rprocess/energy_thermo.dat"
     ).open(encoding="utf-8") as enthermofile:
@@ -232,7 +230,7 @@ def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, 
         dfthermo = dfthermo.with_columns(Qdot_expansionadjusted=pl.col("Qdot") * pl.col("time_s") / t_model_s)
 
         qdotintegral = float(
-            integrate.trapezoid(
+            np.trapezoid(
                 y=dfthermo["Qdot_expansionadjusted"][startindex : nts_max + 1],
                 x=dfthermo["time_s"][startindex : nts_max + 1],
             )

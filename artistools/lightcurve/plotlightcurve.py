@@ -456,12 +456,8 @@ def plot_artis_lightcurve(
         elif lcdata_valid.is_empty():
             print(" WARNING: No data points in valid range")
 
-        from scipy import integrate
-
         # lum column is erg/s
-        energy_released = abs(
-            integrate.trapezoid(np.nan_to_num(lcdata_valid["lum"], nan=0.0), x=lcdata_valid["time"] * 86400)
-        )
+        energy_released = abs(np.trapezoid(np.nan_to_num(lcdata_valid["lum"], nan=0.0), x=lcdata_valid["time"] * 86400))
         lcdatamin = lcdata_valid.select(pl.min("time")).item()
         lcdatamax = lcdata_valid.select(pl.max("time")).item()
         if lcdatamin is not None and lcdatamax is not None:

@@ -312,7 +312,6 @@ def bolometric_magnitude(
     average_over_phi: bool = False,
     average_over_theta: bool = False,
 ) -> tuple[list[float], list[float]]:
-    from scipy import integrate
 
     magnitudes = []
     times = []
@@ -336,7 +335,7 @@ def bolometric_magnitude(
                     average_over_phi=average_over_phi,
                     average_over_theta=average_over_theta,
                 )[angle].collect()
-            integrated_flux = integrate.trapezoid(spectrum["f_lambda"], spectrum["lambda_angstroms"])
+            integrated_flux = np.trapezoid(spectrum["f_lambda"], spectrum["lambda_angstroms"])
             integrated_luminosity = integrated_flux * 4 * np.pi * np.power(Mpc_to_cm, 2)
             Mbol_sun = 4.74
             with np.errstate(divide="ignore"):
@@ -407,10 +406,9 @@ def evaluate_magnitudes(
     wavelength_from_spectrum: npt.NDArray[np.floating],
     zeropointenergyflux: float,
 ) -> float:
-    from scipy import integrate
 
     cf = flux * transmission
-    flux_obs = abs(integrate.trapezoid(cf, wavelength_from_spectrum))  # using trapezoidal rule to integrate
+    flux_obs = abs(np.trapezoid(cf, wavelength_from_spectrum))  # using trapezoidal rule to integrate
     val = 0.0 if flux_obs == 0.0 else -2.5 * np.log10(flux_obs / zeropointenergyflux)
     assert isinstance(val, float)
     return val

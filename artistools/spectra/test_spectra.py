@@ -9,7 +9,6 @@ import numpy as np
 import polars as pl
 import pytest
 from pytest_codspeed.plugin import BenchmarkFixture
-from scipy import integrate
 
 import artistools as at
 
@@ -31,7 +30,7 @@ def test_spectraplot(mockplot: t.Any) -> None:
     arr_lambda = np.array(mockplot.call_args[0][1])
     arr_f_lambda = np.array(mockplot.call_args[0][2])
 
-    integral = integrate.trapezoid(y=arr_f_lambda, x=arr_lambda)
+    integral = np.trapezoid(y=arr_f_lambda, x=arr_lambda)
     assert np.isclose(integral, 5.870730903198916e-11, atol=1e-14)
 
 
@@ -50,7 +49,7 @@ def test_spectra_frompackets(mockplot: t.Any, benchmark: BenchmarkFixture) -> No
     arr_lambda = np.array(mockplot.call_args[0][1])
     arr_f_lambda = np.array(mockplot.call_args[0][2])
 
-    integral = integrate.trapezoid(y=arr_f_lambda, x=arr_lambda)
+    integral = np.trapezoid(y=arr_f_lambda, x=arr_lambda)
 
     assert np.isclose(integral, 7.7888e-12, rtol=1e-3)
 
@@ -217,7 +216,7 @@ def test_spectra_get_flux_contributions(benchmark: BenchmarkFixture) -> None:
         modelpath=modelpath, timestepmin=timestepmin, timestepmax=timestepmax, fluxfilterfunc=None
     )[-1].collect()
 
-    integrated_flux_specout = integrate.trapezoid(dfspectrum["f_lambda"], x=dfspectrum["lambda_angstroms"])
+    integrated_flux_specout = np.trapezoid(dfspectrum["f_lambda"], x=dfspectrum["lambda_angstroms"])
 
     _contribution_list, array_flambda_emission_total, arraylambda_angstroms = benchmark(
         lambda: at.spectra.get_flux_contributions(
@@ -225,7 +224,7 @@ def test_spectra_get_flux_contributions(benchmark: BenchmarkFixture) -> None:
         )
     )
 
-    integrated_flux_emission = -integrate.trapezoid(array_flambda_emission_total, x=arraylambda_angstroms)
+    integrated_flux_emission = -np.trapezoid(array_flambda_emission_total, x=arraylambda_angstroms)
 
     # total spectrum should be equal to the sum of all emission processes
     print(f"Integrated flux from spec.out:     {integrated_flux_specout}")
