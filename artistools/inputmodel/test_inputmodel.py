@@ -86,7 +86,7 @@ def test_downscale_3dmodel() -> None:
 
 
 def verify_file_checksums(
-    checksums_expected: dict[t.Any, t.Any], digest: str = "sha256", folder: Path | str = Path()
+    checksums_expected: dict[t.Any, t.Any], digest: str = "sha256", folder: Path | str = "."
 ) -> None:
     checksums_actual = {}
 

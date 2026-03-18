@@ -191,7 +191,7 @@ def join_cell_modeldata(
 
 
 def scan_estimators(
-    modelpath: Path | str = Path(),
+    modelpath: Path | str = ".",
     modelgridindex: int | Sequence[int] | None = None,
     timestep: int | Sequence[int] | None = None,
     join_modeldata: bool = False,
@@ -303,7 +303,7 @@ def scan_estimators(
 
 
 def read_estimators(
-    modelpath: Path | str = Path(),
+    modelpath: Path | str = ".",
     modelgridindex: int | Sequence[int] | None = None,
     timestep: int | Sequence[int] | None = None,
     keys: Collection[str] | None = None,

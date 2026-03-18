@@ -240,7 +240,7 @@ def add_derived_columns_lazy(
     return dfpackets
 
 
-def get_packets_text_columns(packetsfile: Path | str, modelpath: Path = Path()) -> list[str]:
+def get_packets_text_columns(packetsfile: Path | str, modelpath: Path | str = ".") -> list[str]:
     column_names: list[str] = []
     with at.zopen(packetsfile, mode="rt", encoding="utf-8") as fpackets:
         firstline = fpackets.readline()

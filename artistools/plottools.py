@@ -289,6 +289,7 @@ class ExponentLabelFormatter(mplticker.ScalarFormatter):
 
     _useMathText: bool
     _usetex: bool
+    labeltemplate: str
 
     def __init__(self, labeltemplate: str, useMathText: bool = True) -> None:
         self.set_labeltemplate(labeltemplate)
