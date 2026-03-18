@@ -294,9 +294,12 @@ def generate_band_lightcurve_data(
                     wavelength_from_spectrum = np.linspace(wavefilter_min, wavefilter_max, len(wavefilter))
                     flux = interpolate_fn(wavelength_from_spectrum)
 
-                phot_filtobs_sn = evaluate_magnitudes(flux, transmission, wavelength_from_spectrum, zeropointenergyflux)
+                weighted_flux_obs = abs(np.trapezoid(flux * transmission, wavelength_from_spectrum))
+                assert isinstance(weighted_flux_obs, float)
+                phot_filtobs_sn: float = (
+                    0.0 if weighted_flux_obs == 0.0 else -2.5 * np.log10(weighted_flux_obs / zeropointenergyflux)
+                )
 
-                # print(time, phot_filtobs_sn)
                 if phot_filtobs_sn != 0.0:
                     phot_filtobs_sn -= 25  # Absolute magnitude
                 filters_dict[filter_name].append((time, phot_filtobs_sn))
@@ -398,20 +401,6 @@ def get_spectrum_in_filter_range(
             flux.append(flambda)
 
     return np.array(wavelength_from_spectrum), np.array(flux)
-
-
-def evaluate_magnitudes(
-    flux: npt.NDArray[np.floating],
-    transmission: npt.NDArray[np.floating],
-    wavelength_from_spectrum: npt.NDArray[np.floating],
-    zeropointenergyflux: float,
-) -> float:
-
-    cf = flux * transmission
-    flux_obs = abs(np.trapezoid(cf, wavelength_from_spectrum))  # using trapezoidal rule to integrate
-    val = 0.0 if flux_obs == 0.0 else -2.5 * np.log10(flux_obs / zeropointenergyflux)
-    assert isinstance(val, float)
-    return val
 
 
 def get_band_lightcurve(

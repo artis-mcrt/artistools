@@ -1083,6 +1083,7 @@ def get_flux_contributions(
                 fluxcontribthisseries = abs(np.trapezoid(array_fnu_emission, x=arraynu)) + abs(
                     np.trapezoid(array_fnu_absorption, x=arraynu)
                 )
+                assert isinstance(fluxcontribthisseries, float)
 
                 if emissiontypeclass == "bound-bound":
                     linelabel = get_ionstring(elementlist["Z"][elementindex], ion_stage)
