@@ -834,8 +834,6 @@ def map_to_artis(
         print("Done!")
 
         dfelabundances = dfabundances
-        if not isinstance(dfelabundances, pl.DataFrame):
-            dfelabundances = pl.from_pandas(dfelabundances)
 
     if model_dim == 2:
         # create modelmeta dictionary

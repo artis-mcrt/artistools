@@ -251,8 +251,6 @@ def test_get_elemabund_from_nucabund() -> None:
     # Determine the maximum Z in the input to generate all element symbols up to it
     max_z = dfnucabund["Z"].max()
     assert isinstance(max_z, int)
-    if max_z is None:  # Should not happen with the sample data
-        max_z = 0
 
     # Populate expected_abunds with all elements up to max_Z, defaulting to 0.0
     all_expected_abunds = {}
