@@ -47,7 +47,6 @@ dependencies = [
     "rich>=14.3.3",
     "scipy>=1.17.0",
     "tqdm>=4.67.3",
-    "typing_extensions>=4.14",
     "zstandard>=0.23.0;python_version<'3.14'",
 ]
 

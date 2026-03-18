@@ -34,7 +34,6 @@ dependencies = [
     { name = "rich" },
     { name = "scipy" },
     { name = "tqdm" },
-    { name = "typing-extensions" },
     { name = "zstandard", marker = "python_full_version < '3.14'" },
 ]
 
@@ -90,7 +89,6 @@ requires-dist = [
     { name = "rich", specifier = ">=14.3.3" },
     { name = "scipy", specifier = ">=1.17.0" },
     { name = "tqdm", specifier = ">=4.67.3" },
-    { name = "typing-extensions", specifier = ">=4.14" },
     { name = "zstandard", marker = "python_full_version < '3.14'", specifier = ">=0.23.0" },
 ]
 provides-extras = ["extras"]
