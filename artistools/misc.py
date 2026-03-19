@@ -1665,11 +1665,4 @@ def get_multiprocessing_pool() -> multiprocessing.pool.Pool:
             if not sys._is_gil_enabled():  # noqa: SLF001
                 # return a thread pool if we have no GIL (free threading)
                 return multiprocessing.pool.ThreadPool()
-    # this is a workaround for to keep pytest-cov from crashing
-    try:
-        from pytest_cov.embed import cleanup_on_sigterm
-    except ImportError:
-        pass
-    else:
-        cleanup_on_sigterm()
     return multiprocessing.get_context("spawn").Pool(processes=get_config()["num_processes"])
