@@ -1,3 +1,4 @@
 *
 !.gitignore
 !*.tar.xz
+!summary-all.dat
