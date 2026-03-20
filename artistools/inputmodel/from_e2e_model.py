@@ -768,10 +768,10 @@ def map_to_artis(
             dfelabundances_cast = (
                 dfelabundances
                 .select(common_cols)
-                .with_columns(cs.float().cast(pl.Float64))
+                .with_columns(cs.float().cast(pl.Float64), pl.col("inputcellid").cast(pl.Int32))
                 .filter(~pl.col("inputcellid").is_in(id_list))
             )
-            dfelabundances_cast = dfelabundances_cast.with_columns(pl.col("inputcellid").cast(pl.Int32))
+
             dyn_abunds_cast = (
                 dyn_abunds
                 .select(common_cols)
@@ -786,14 +786,13 @@ def map_to_artis(
             dfmodel_cast = (
                 dfmodel
                 .select(common_cols)
-                .with_columns([cs.float().cast(pl.Float32)])
+                .with_columns(cs.float().cast(pl.Float32), pl.col("inputcellid").cast(pl.Int32))
                 .filter(~pl.col("inputcellid").is_in(id_list))
             )
-            dfmodel_cast = dfmodel_cast.with_columns(pl.col("inputcellid").cast(pl.Int32))
             dyn_model_cast = (
                 dyn_model
                 .select(common_cols)
-                .with_columns([cs.float().cast(pl.Float32)])
+                .with_columns(cs.float().cast(pl.Float32))
                 .filter(pl.col("inputcellid").is_in(id_list))
             )
             dfmodel = pl.concat([dfmodel_cast, dyn_model_cast]).sort("inputcellid")
