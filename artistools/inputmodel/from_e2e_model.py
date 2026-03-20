@@ -1,17 +1,6 @@
 """Prepare data for ARTIS KN calculation from end-to-end hydro models. Original script by Oliver Just with modifications by Gerrit Leck for abundance mapping."""
 
 # PYTHON_ARGCOMPLETE_OK
-__lazy_modules__ = [
-    "matplotlib",
-    "matplotlib.axes",
-    "matplotlib.figure",
-    "matplotlib.pyplot",
-    "numpy",
-    "numpy.typing",
-    "pandas",
-    "polars",
-    "polars.selectors",
-]
 import argparse
 import itertools
 import typing as t
@@ -255,14 +244,14 @@ def get_grid(
         pos_z_mid = pos_z_min + 0.5 * wid_init_z
         # pos_z_max = pos_z_min + wid_init_z
 
-        rgridc2d = np.array([pos_rcyl_mid[n_r] for n_r in range(nvr) for n_z in range(nvz)]).reshape(nvr, nvz)
+        rgridc2d = np.array([pos_rcyl_mid[n_r] for n_r in range(nvr) for _n_z in range(nvz)]).reshape(nvr, nvz)
         # the z-grid has to be shifted to starting from zero to keep consistency with Oli's script
-        zgridc2d = np.array([pos_z_mid[n_z] for n_r in range(nvr) for n_z in range(nvz)]).reshape(nvr, nvz)
+        zgridc2d = np.array([pos_z_mid[n_z] for _n_r in range(nvr) for n_z in range(nvz)]).reshape(nvr, nvz)
 
         volgrid = np.array([
             wid_init_z * np.pi * (pos_rcyl_max[n_r] ** 2 - pos_rcyl_min[n_r] ** 2)
             for n_r in range(nvr)
-            for n_z in range(nvz)
+            for _n_z in range(nvz)
         ]).reshape(nvr, nvz)
     elif model_dim == 3:
         # nvx = numb_cells_ARTIS_x
@@ -884,8 +873,6 @@ def map_to_artis(
         print("Done!")
 
         dfelabundances = dfabundances
-        if not isinstance(dfelabundances, pl.DataFrame):
-            dfelabundances = pl.from_pandas(dfelabundances)
 
     if model_dim == 2:
         # create modelmeta dictionary

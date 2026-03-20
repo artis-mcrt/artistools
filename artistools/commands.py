@@ -1,4 +1,3 @@
-__lazy_modules__ = ["importlib", "pandas", "subprocess"]
 import argparse
 import importlib
 import subprocess
@@ -28,9 +27,7 @@ COMMANDS = [
     "plotartisviewingangles",
 ]
 # fully recursive python >= 3.12
-# type CommandType = dict[str, tuple[str, str] | "CommandType"]
-# fully recursive python >= 3.11
-CommandType: t.TypeAlias = dict[str, t.Union[tuple[str, str], "CommandType"]]
+type CommandType = dict[str, tuple[str, str] | CommandType]
 
 # new subparser based list
 subcommandtree: CommandType = {

@@ -1,14 +1,3 @@
-__lazy_modules__ = [
-    "matplotlib",
-    "matplotlib.axes",
-    "matplotlib.figure",
-    "matplotlib.pyplot",
-    "numpy",
-    "numpy.typing",
-    "pandas",
-    "polars",
-    "polars.selectors",
-]
 import argparse
 import math
 import sys
@@ -347,7 +336,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         adata = at.atomic.get_levels(modelpath, tuple(ionlist), get_transitions=True)
     ionpopdict: dict[IonTuple, float] = {}
     if from_model:
-        dfnltepops = at.nltepops.read_files(modelpath, modelgridindex=modelgridindex, timestep=timestep)
+        dfnltepops = at.nltepops.read_files(modelpath, modelgridindex=modelgridindex, timestep=timestep).to_pandas(
+            use_pyarrow_extension_array=True
+        )
 
         if dfnltepops.empty:
             print(f"ERROR: no NLTE populations for cell {modelgridindex} at timestep {timestep}")

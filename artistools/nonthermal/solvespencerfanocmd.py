@@ -1,14 +1,3 @@
-__lazy_modules__ = [
-    "matplotlib",
-    "matplotlib.axes",
-    "matplotlib.figure",
-    "matplotlib.pyplot",
-    "numpy",
-    "numpy.typing",
-    "pandas",
-    "polars",
-    "polars.selectors",
-]
 import argparse
 import sys
 import typing as t
@@ -179,7 +168,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         assert isinstance(args.modelgridindex, int)
         estim = estimators[args.timestep, args.modelgridindex]
 
-        dfpops = at.nltepops.read_files(modelpath, modelgridindex=args.modelgridindex, timestep=args.timestep)
+        dfpops = at.nltepops.read_files(
+            modelpath, modelgridindex=args.modelgridindex, timestep=args.timestep
+        ).to_pandas(use_pyarrow_extension_array=True)
 
         if dfpops.empty:
             print(f"ERROR: no NLTE populations for cell {args.modelgridindex} at timestep {args.timestep}")

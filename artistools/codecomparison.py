@@ -5,17 +5,6 @@ codecomparison/[modelname]/[codename]
 e.g., codecomparison/DDC10/artisnebular
 """
 
-__lazy_modules__ = [
-    "matplotlib",
-    "matplotlib.axes",
-    "matplotlib.figure",
-    "matplotlib.pyplot",
-    "numpy",
-    "numpy.typing",
-    "pandas",
-    "polars",
-    "polars.selectors",
-]
 import math
 import typing as t
 from collections.abc import Sequence

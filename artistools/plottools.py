@@ -1,25 +1,5 @@
 """Matplotlib-related plotting functions."""
 
-__lazy_modules__ = [
-    "itertools",
-    "matplotlib",
-    "matplotlib.axes",
-    "matplotlib.cbook",
-    "matplotlib.cm",
-    "matplotlib.colors",
-    "matplotlib.colorbar",
-    "matplotlib.figure",
-    "matplotlib.image",
-    "matplotlib.pyplot",
-    "matplotlib.rcsetup",
-    "matplotlib.ticker",
-    "numpy",
-    "numpy.typing",
-    "pandas",
-    "polars",
-    "sys",
-    "typing",
-]
 import argparse
 import itertools
 import sys
@@ -309,6 +289,7 @@ class ExponentLabelFormatter(mplticker.ScalarFormatter):
 
     _useMathText: bool
     _usetex: bool
+    labeltemplate: str
 
     def __init__(self, labeltemplate: str, useMathText: bool = True) -> None:
         self.set_labeltemplate(labeltemplate)
@@ -333,11 +314,13 @@ class ExponentLabelFormatter(mplticker.ScalarFormatter):
         assert "{" in labeltemplate
         self.labeltemplate = labeltemplate
 
-    def set_locs(self, locs) -> None:  # noqa: ANN001
+    @t.override
+    def set_locs(self, locs: t.Any) -> None:
         super().set_locs(locs)
         self._set_formatted_label_text()
 
-    def set_axis(self, axis) -> None:  # noqa: ANN001
+    @t.override
+    def set_axis(self, axis: t.Any) -> None:
         super().set_axis(axis)
         self._set_formatted_label_text()
 

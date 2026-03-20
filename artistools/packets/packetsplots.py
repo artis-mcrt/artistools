@@ -1,14 +1,3 @@
-__lazy_modules__ = [
-    "matplotlib",
-    "matplotlib.axes",
-    "matplotlib.figure",
-    "matplotlib.pyplot",
-    "numpy",
-    "numpy.typing",
-    "pandas",
-    "polars",
-    "polars.selectors",
-]
 import typing as t
 from pathlib import Path
 
@@ -98,7 +87,7 @@ def make_2d_packets_plot_pyvista(modelpath: Path, timestep: int) -> None:
         "label_font_size": 25,
     }
 
-    pv.set_plot_theme("document")
+    pv.set_plot_theme("document")  # type: ignore[no-untyped-call]
     p: t.Any = pv.Plotter()
 
     p.set_scale(p, xscale=1.5, yscale=1.5, zscale=1.5)
@@ -141,7 +130,7 @@ def plot_packet_mean_emission_velocity(modelpath: str | Path, write_emission_dat
     plt.legend()
 
     if write_emission_data:
-        emission_data.to_csv(Path(modelpath) / "meanemissionvelocity.txt", sep=" ", index=False)
+        emission_data.to_pandas().to_csv(Path(modelpath) / "meanemissionvelocity.txt", sep=" ", index=False)
 
     outfilename = "meanemissionvelocity.pdf"
     plt.savefig(Path(modelpath) / outfilename, format="pdf")

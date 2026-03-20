@@ -1,20 +1,6 @@
 # PYTHON_ARGCOMPLETE_OK
 """Artistools - spectra plotting functions."""
 
-__lazy_modules__ = [
-    "matplotlib",
-    "matplotlib.axes",
-    "matplotlib.figure",
-    "matplotlib.image",
-    "matplotlib.patches",
-    "matplotlib.pyplot",
-    "matplotlib.ticker",
-    "numpy",
-    "numpy.typing",
-    "pandas",
-    "polars",
-    "polars.selectors",
-]
 import argparse
 import contextlib
 import math
@@ -57,6 +43,7 @@ from artistools.misc import trim_or_pad
 from artistools.plottools import ExponentLabelFormatter
 from artistools.plottools import glasbey_category20_nogreys
 from artistools.plottools import set_mpl_style
+from artistools.spectra.writespectra import write_flambda_spectra
 
 
 def path_is_artis_model(filepath: str | Path) -> bool:
@@ -1087,13 +1074,6 @@ def make_emissionabsorption_plot(
     if args.ymax is None:
         axis.set_ylim(top=ymax)
 
-    if args.showbinedges:
-        import artistools.radfield as atradfield
-
-        radfielddata = atradfield.read_files(modelpath, timestep=timestepmax, modelgridindex=30)
-        binedges = atradfield.get_binedges(radfielddata)
-        axis.vlines(binedges, ymin=0.0, ymax=ymax, linewidth=0.5, color="red", label="", zorder=-1, alpha=0.4)
-
     return plotobjects, plotobjectlabels, dfaxisdata
 
 
@@ -1435,8 +1415,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-scaletoreftime", type=float, default=None, help="Scale reference spectra flux using Co56 decay timescale"
     )
 
-    parser.add_argument("--showbinedges", action="store_true", help="Plot vertical lines at the bin edges")
-
     parser.add_argument(
         "-figscale", type=float, default=1.8, help="Scale factor for plot area. 1.0 is for single-column"
     )
@@ -1652,7 +1630,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if args.output_spectra:
         for modelpath in args.specpath:
-            atspectra.write_flambda_spectra(modelpath)
+            write_flambda_spectra(modelpath)
 
     else:
         if args.emissionabsorption:

@@ -1,16 +1,3 @@
-__lazy_modules__ = [
-    "matplotlib",
-    "matplotlib.axes",
-    "matplotlib.figure",
-    "matplotlib.pyplot",
-    "numpy",
-    "numpy.typing",
-    "pandas",
-    "polars",
-    "polars.selectors",
-    "scipy",
-    "tarfile",
-]
 import tarfile
 from pathlib import Path
 
@@ -70,7 +57,6 @@ def rprocess_const_and_powerlaw() -> tuple[pl.DataFrame, float]:
 
 
 def define_heating_rate() -> tuple[pl.DataFrame, float]:
-    from scipy import integrate
 
     tmin = 0.0001  # days
     tmax = 50
@@ -78,9 +64,11 @@ def define_heating_rate() -> tuple[pl.DataFrame, float]:
     times = np.logspace(np.log10(tmin), np.log10(tmax), num=300)  # days
     qdot = 5e9 * (times) ** (-1.3)  # define energy power law (5e9*t^-1.3)
 
-    E_tot = integrate.trapezoid(y=qdot, x=times)  # ergs/s/g
+    E_tot = np.trapezoid(y=qdot, x=times)  # ergs/s/g
     assert isinstance(E_tot, float)
     # print("Etot per gram", E_tot, E_tot*1.989e33*0.01)
+
+    from scipy import integrate
 
     cumulative_integrated_energy = integrate.cumulative_trapezoid(y=qdot, x=times)
     cumulative_integrated_energy = np.insert(cumulative_integrated_energy, 0, 0)
@@ -120,7 +108,6 @@ def define_heating_rate() -> tuple[pl.DataFrame, float]:
 def energy_from_rprocess_calculation(
     energy_thermo_data: pl.DataFrame, get_rate: bool = True
 ) -> float | tuple[pl.DataFrame, float]:
-    from scipy import integrate
 
     energy_thermo_data = energy_thermo_data.filter(pl.col("time/s") <= 1e7)
     # print("Dropping times later than 116 days")
@@ -129,10 +116,11 @@ def energy_from_rprocess_calculation(
     times = energy_thermo_data["time/s"][skipfirstnrows:]
     qdot = energy_thermo_data["Qdot"][skipfirstnrows:]
 
-    E_tot = float(integrate.trapezoid(y=qdot, x=times))  # erg / g
+    E_tot = float(np.trapezoid(y=qdot, x=times))  # erg / g
 
     if get_rate:
         print(f"E_tot {E_tot} erg/g")
+        from scipy import integrate
 
         cumulative_integrated_energy = integrate.cumulative_trapezoid(y=qdot, x=times)
         cumulative_integrated_energy = np.insert(cumulative_integrated_energy, 0, 0)

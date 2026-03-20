@@ -22,7 +22,6 @@ authors = [
 description = "Plotting and analysis tools for the ARTIS 3D radiative transfer code for supernovae and kilonovae."
 classifiers = [
     "Intended Audience :: Science/Research",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
@@ -32,7 +31,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Physics",
 ]
 dynamic = ["version"]
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license =  "MIT"
 license-files = ["LICEN[CS]E*"]
 readme = { file = "README.md", content-type = 'text/markdown' }
@@ -48,7 +47,6 @@ dependencies = [
     "rich>=14.3.3",
     "scipy>=1.17.0",
     "tqdm>=4.67.3",
-    "typing_extensions>=4.14",
     "zstandard>=0.23.0;python_version<'3.14'",
 ]
 
@@ -60,22 +58,23 @@ extras = [
     "plotly>=6.5.2",
     "pypdf>=6.7.5",
     "pynonthermal>=2025.4.8",
-    # "pyvista>=0.45",  # not compatible with cpython 3.14 yet
+    "pyvista>=0.47.1;python_version<'3.15'",  # not compatible with cpython 3.15 yet
 ]
 
 [dependency-groups]
 dev = [
+    "basedpyright>=1.38.3",
     "imageio>=2.37.2",
     "mypy>=1.19.1",
     "pandas-stubs>=3.0.0.260204",
     "prek>=0.2.28",
-    "pyright>=1.1.408",
     "pynonthermal>=2025.4.8",
     "pytest>=9.0.2",
     "pytest-codspeed>=4.3.0",
     "pytest-cov>=7.0.0",
     "pytest-xdist[psutil]>=3.8.0",
-    "ruff>=0.15.5",
+    "ruff>=0.15.6",
+    "setuptools_scm>=9.2.2",
     "ty>=0.0.14",
     "typeguard>=4.5.1",
     "types-python-dateutil>=2.9.0.20251115",
@@ -153,7 +152,7 @@ disallow_any_generics = true
 disallow_any_unimported = true
 disallow_incomplete_defs = true
 disallow_subclassing_any = true
-disallow_untyped_calls = false
+disallow_untyped_calls = true
 disallow_untyped_decorators = true
 disallow_untyped_defs = true
 error_summary = true
@@ -163,9 +162,12 @@ enable_error_code = [
     "no-any-return",
     "no-any-unimported",
     "no-untyped-call",
+    "redundant-cast",
     "redundant-expr",
     "redundant-self",
     "truthy-bool",
+    "truthy-iterable",
+    "type-arg",
     "unused-awaitable",
 ]
 exclude = "(build)|(dist)|(tests)|(data)|(.venv)|(venv)|(_version.py)"
@@ -179,6 +181,7 @@ pretty = true
 scripts_are_modules = true
 strict = true
 strict_equality = true
+strict_bytes = true
 warn_redundant_casts = true
 warn_unreachable = false
 warn_unused_configs = true
@@ -186,24 +189,11 @@ warn_unused_ignores = true
 warn_return_any = true
 fixed_format_cache = true
 
-# these files need detailed type annotations added
-[[tool.mypy.overrides]]
-module = [
-    "conftest",
-    "artistools.estimators.plot3destimators_classic",
-    "artistools.hesma_scripts",
-    "artistools.inputmodel.make1dslicefrom3d",
-    "artistools.linefluxes",
-    "artistools.plottools",
-]
-disallow_incomplete_defs = false
-disallow_untyped_calls = false
-disallow_untyped_defs = false
-
 [tool.pylint.'MESSAGES CONTROL']
 max-line-length = 120
 disable = """
     broad-exception-caught,
+    cell-var-from-loop,
     fixme,
     missing-function-docstring,
     missing-module-docstring,
@@ -236,7 +226,6 @@ ignored-modules = ["astropy", "extinction", "pyvista"]
 unsafe-load-any-extension = true
 
 [tool.pyright]
-deprecateTypingAliases = true
 enableTypeIgnoreComments = false # leave these for mypy to interpret
 exclude = [
     '**/node_modules',
@@ -247,18 +236,32 @@ exclude = [
     'target',
     '**/version.py',
     '.venv',
+    '**/rd_cmfgen.py'
 ]
-reportAttributeAccessIssue = true
-reportCallIssue = true
-reportDeprecated = false
-reportMissingImports = false
+reportAny = false
+reportCallInDefaultInitializer = false
+reportConstantRedefinition = false
+reportExplicitAny = false
+reportImplicitOverride = "error"
+reportImplicitStringConcatenation = false
+reportImportCycles = false
+reportMatchNotExhaustive = false
+reportMissingImports = "information"
+reportMissingTypeStubs = false
 reportPossiblyUnboundVariable = false
-reportUnnecessaryTypeIgnoreComment = true
+reportPropertyTypeMismatch = "error"
+reportUninitializedInstanceVariable = false
+reportUnknownArgumentType = false
+reportUnknownLambdaType = false
+reportUnknownMemberType = false
 reportUnknownVariableType = false
+reportUnnecessaryComparison = "information"
 reportUnreachable = false
-typeCheckingMode = "standard"
+reportUnusedCallResult = false
+reportUnusedParameter = false
+typeCheckingMode = "strict"
 useLibraryCodeForTypes = true
-pythonVersion = "3.11"
+pythonVersion = "3.12"
 
 [tool.pytest]
 minversion = "9.0"
@@ -269,7 +272,7 @@ testpaths = ["artistools"]
 ignore = ["FURB120"]
 quiet = false
 enable_all = true
-python_version = "3.11"
+python_version = "3.12"
 sort_by = "error"
 
 [[tool.refurb.amend]]
@@ -282,7 +285,7 @@ fix = true
 show-fixes = true
 extend-exclude = ["_version.py", "artistools/inputmodel/fromcmfgen/rd_cmfgen.py", ".venv/**"]
 preview = true
-required-version = ">=0.15.5"
+required-version = ">=0.15.6"
 
 [tool.ruff.format]
 skip-magic-trailing-comma = true
@@ -363,7 +366,7 @@ unfixable = [
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
-#banned-eager-imports = "all"
+require-lazy = "all"
 
 [tool.ruff.lint.isort]
 force-single-line = true
@@ -404,7 +407,6 @@ local_scheme = "no-local-version"
 
 [tool.ty.rules]
 unresolved-import = "ignore"
-deprecated = "ignore"
 
 [tool.ty.src]
 exclude = ["artistools/inputmodel/fromcmfgen/rd_cmfgen.py", ".venv/**"]
