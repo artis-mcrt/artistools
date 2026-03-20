@@ -12,6 +12,7 @@ import argcomplete
 import numpy as np
 import numpy.typing as npt
 import polars as pl
+import polars.selectors as cs
 
 import artistools as at
 
@@ -762,24 +763,19 @@ def map_to_artis(
 
             # do replacement in dfelabundances...
             # obtain dfelabundances from the dyn model first again
-            float_types = {pl.Float32, pl.Float64}
             dyn_abunds = dyn_abunds.collect()
             common_cols = list(set(dfelabundances.columns).intersection(dyn_abunds.columns))
             dfelabundances_cast = (
                 dfelabundances
                 .select(common_cols)
-                .with_columns([
-                    pl.col(col).cast(pl.Float64) for col in common_cols if dfelabundances[col].dtype in float_types
-                ])
+                .with_columns(cs.float().cast(pl.Float64))
                 .filter(~pl.col("inputcellid").is_in(id_list))
             )
             dfelabundances_cast = dfelabundances_cast.with_columns(pl.col("inputcellid").cast(pl.Int32))
             dyn_abunds_cast = (
                 dyn_abunds
                 .select(common_cols)
-                .with_columns([
-                    pl.col(col).cast(pl.Float64) for col in common_cols if dyn_abunds[col].dtype in float_types
-                ])
+                .with_columns([cs.float().cast(pl.Float64)])
                 .filter(pl.col("inputcellid").is_in(id_list))
             )
 
@@ -790,18 +786,14 @@ def map_to_artis(
             dfmodel_cast = (
                 dfmodel
                 .select(common_cols)
-                .with_columns([
-                    pl.col(col).cast(pl.Float32) for col in common_cols if dfmodel[col].dtype in float_types
-                ])
+                .with_columns([cs.float().cast(pl.Float32)])
                 .filter(~pl.col("inputcellid").is_in(id_list))
             )
             dfmodel_cast = dfmodel_cast.with_columns(pl.col("inputcellid").cast(pl.Int32))
             dyn_model_cast = (
                 dyn_model
                 .select(common_cols)
-                .with_columns([
-                    pl.col(col).cast(pl.Float32) for col in common_cols if dyn_model[col].dtype in float_types
-                ])
+                .with_columns([cs.float().cast(pl.Float32)])
                 .filter(pl.col("inputcellid").is_in(id_list))
             )
             dfmodel = pl.concat([dfmodel_cast, dyn_model_cast]).sort("inputcellid")
