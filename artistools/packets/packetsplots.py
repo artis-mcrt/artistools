@@ -220,7 +220,7 @@ def plot_last_emission_velocities_histogram(
     print(f"open {outfilename}")
 
 
-def get_required_packets(modelpath: Path, Z: int, ion_stage: int, srII_triplet: bool = False) -> pd.DataFrame:
+def get_required_packets(modelpath: Path, Z: Sequence[int], ion_stage: Sequence[int], srII_triplet: bool = False) -> pl.LazyFrame:
     """Options for this function: Either the Sr II triplet, specific or all ion stages of an element."""
     # careful: ion_stage is counted from 1 here, i.e. 1 <-> neutral, 2 <-> singly ionized
 
@@ -254,15 +254,7 @@ def get_required_packets(modelpath: Path, Z: int, ion_stage: int, srII_triplet: 
                 )[3],  # 4p6.5p 2P,enpercm=24516.65,j=1.5
             )
         )
-    elif ion_stage:
-        lineindices = at.linefluxes.get_ion_linelist(modelpath=modelpath, atomic_number=Z, ion_stage=ion_stage)
-    else:
-        # all ionisation stages
-        lineindices = list(
-            chain.from_iterable(
-                at.linefluxes.get_ion_linelist(modelpath=modelpath, atomic_number=Z, ion_stage=i) for i in range(1, 5)
-            )
-        )
+    lineindices = at.linefluxes.get_ion_linelist(modelpath=modelpath, atomic_number=Z, ion_stage=ion_stage)
 
     dfpackets_selected, _ = at.linefluxes.get_packets_with_emtype(
         modelpath=modelpath, emtypecolumn="absorption_type", lineindices=lineindices, maxpacketfiles=None
@@ -274,13 +266,13 @@ def get_required_packets(modelpath: Path, Z: int, ion_stage: int, srII_triplet: 
 def get_red_packet_set(
     modelpath: Path,
     escape_angles: list[int],
-    Z: int,
-    ion_stage: int,
+    Z: Sequence[int],
+    ion_stage: Sequence[int],
     wavelen: float | None = None,
     binwidth: float | None = None,
     srII_triplet: bool = False,
 ) -> pd.DataFrame:
-    """Get packets in specific escape angle bins.
+    """Get packets in specific escape angle bins for observer direction.
 
     Options:
         - all_packets=True  -> use all escaping packets
@@ -289,165 +281,120 @@ def get_red_packet_set(
         - wavelen+binwidth  -> wavelength slice
     """
     dfpackets_selected = get_required_packets(modelpath, Z, ion_stage, srII_triplet=srII_triplet)
+    dfpackets_selected = dfpackets_selected.with_columns(
+        (CLIGHT * 1e8 / pl.col("nu_rf")).alias("lambda_rf")
+    )
 
-    # wavelength cut (if requested)
     if wavelen is not None and binwidth is not None:
         lam_min = wavelen - binwidth / 2
         lam_max = wavelen + binwidth / 2
-        dfpackets_selected = dfpackets_selected[
-            (dfpackets_selected["lambda_rf"] > lam_min) & (dfpackets_selected["lambda_rf"] < lam_max)
-        ]
 
-    dfpackets_selected = at.packets.add_derived_columns(
-        dfpackets_selected, modelpath, ["emission_velocity", "angle_bin"]
+        dfpackets_selected = dfpackets_selected.filter(
+            (pl.col("lambda_rf") > lam_min) &
+            (pl.col("lambda_rf") < lam_max)
+        )
+    dfmodel, modelmeta = at.get_modeldata(modelpath=modelpath, printwarningsonly=True)
+
+    dfpackets_selected = dfpackets_selected.filter(
+        pl.col("dirbin").is_in(escape_angles)
     )
-    return dfpackets_selected[dfpackets_selected["angle_bin"].isin(escape_angles)]
+    return dfpackets_selected
 
 
 def packets_2d_hist_bin_and_ejecta_vel(
     modelpath: Path,
     tdays: float,
     srIItriplet: bool,
+    colorlogscale: bool,
     dirbin_range: list[int] | None = None,
     Z: int | None = None,
     ion_stage: str | None = None,
     wavelen: float | None = None,
     binwidth: float | None = None,
 ) -> None:
-    all_angles = False
-    if not dirbin_range:
-        # bolometric case, i.e. in all directions
-        all_angles = True
-    dirbin_range = [50, 59]
-    all_packets = False
-    if all(x is None for x in (Z, ion_stage)):
-        all_packets = True
-
-    arrow_angles = {0: 2.82, 90: 0.32, 40: 1.67, 50: 1.47}  # dirbin angle: angle of arrow in rad
-
-    usecols = ["t_arrive_d", "em_time", "emission_velocity", "e_rf", "em_ejecta_angle_bin"]
-
-    if all_packets:
-        filename = f"dfpackets_dirbins{dirbin_range[0]}-{dirbin_range[1]}TYPE_ESCAPETYPE_RPKT.txt"
-        dfpackets = pd.read_csv(modelpath / filename, sep=r"\s+", usecols=usecols)
-        print(f"read packets data bins {dirbin_range[0]}-{dirbin_range[1]}")
-        startoflabel = ""
-        if all_angles:
-            startoflabel = "all_angles_"
-            for i, bin_number in enumerate(dirbin_range):
-                dirbin_range[i] = bin_number + 10
-            while dirbin_range[0] < 100:
-                print(f"reading packets bins {dirbin_range[0]}-{dirbin_range[1]}")
-                dfpackets_next = pd.read_csv(modelpath / filename, sep=r"\s+", usecols=usecols)
-                dfpackets = pd.concat([dfpackets, dfpackets_next], axis=0, ignore_index=True)
-                print(dfpackets)
-                for i, bin_number in enumerate(dirbin_range):
-                    dirbin_range[i] = bin_number + 10
-
-            dfpackets["phi_bin"] = dfpackets["em_ejecta_angle_bin"] % 10
-            dfpackets = dfpackets[dfpackets["phi_bin"] == 0]
-            print(dfpackets)
-
-            # wavelength cut (if requested)
-            if wavelen is not None and binwidth is not None:
-                lam_min = wavelen - binwidth / 2
-                lam_max = wavelen + binwidth / 2
-                dfpackets = dfpackets[(dfpackets["lambda_rf"] > lam_min) & (dfpackets["lambda_rf"] < lam_max)]
+    
+    start_of_filename = ""
+    if wavelen is not None:
+        start_of_filename = f"{wavelen:.0f}A_"
+    if Z:
+        start_of_filename = f"{start_of_filename}_Z={Z}_"
     else:
-        dirbin = dirbin_range[0]
-        escape_angles = list(range(dirbin, dirbin + 10))
-        assert Z is not None
-        assert ion_stage is not None
-        ion_stage_int = at.decode_roman_numeral(ion_stage)
-        dfpackets = get_red_packet_set(
-            modelpath, escape_angles, Z, ion_stage_int, wavelen=wavelen, binwidth=binwidth, srII_triplet=srIItriplet
-        )
-        # at.packets.get_ejecta_angle_bin_where_packet_emitted(modelpath, dfpackets)
-        print(dfpackets)
-        if all_packets:
-            startoflabel = "allpackets_"
-        elif wavelen is not None:
-            startoflabel = f"{wavelen:.0f}A_"
-        elif Z is not None:
-            if ion_stage is not None:
-                startoflabel = f"{at.get_elsymbol(Z)}_ion{ion_stage}_"
-            else:
-                startoflabel = f"{at.get_elsymbol(Z)}_allions_"
-        else:
-            startoflabel = ""
+        start_of_filename = f"{start_of_filename}_allelements_"
+    if ion_stage:
+        start_of_filename = f"{start_of_filename}_I={ion_stage}_"
+    else:
+        start_of_filename = f"{start_of_filename}_allions_"
 
-    logscale = False
+    # Step 1) collect packets IDs and select according to arrival time
+    if Z:
+        Z_list = [Z]
+    else:
+        # get all Z of atomic data
+        Z_list = [i for i in range(1,101)]
+    if ion_stage:
+        ion_stage_list = [at.decode_roman_numeral(ion_stage)]
+    else:
+        # take all ionisation stages from data
+        ion_stage_list = [i for i in range(1,5)]
 
-    mask_empty_cells = True
+    dfpackets = get_red_packet_set(
+        modelpath, dirbin_range, Z_list, ion_stage_list, wavelen=wavelen, binwidth=binwidth, srII_triplet=srIItriplet
+    )
 
-    packetsfiles = at.packets.get_packets_text_paths(modelpath)
-    nprocs_read = len(packetsfiles)
-    assert nprocs_read > 0
-
-    startoflabel += "t_arrive_d"
+    start_of_filename += "t_arrive_d"
     timeminarray = at.misc.get_timestep_times(modelpath=modelpath, loc="start")
     timemaxarray = at.misc.get_timestep_times(modelpath=modelpath, loc="end")
-    print(timeminarray, timemaxarray)
     timestep_min = at.misc.get_timestep_of_timedays(modelpath, tdays)
     timestep_max = timestep_min + 1
     t_min = timeminarray[timestep_min]
     t_max = timemaxarray[timestep_max]
 
-    dfpackets_selected = dfpackets[(dfpackets["t_arrive_d"] > t_min) & (dfpackets["t_arrive_d"] < t_max)]
+    dfpackets_selected = dfpackets.filter(
+        (pl.col("t_arrive_d") > t_min) & (pl.col("t_arrive_d") < t_max)
+    ).collect()
+    
+    # Step 2) create the heatmap
+    e_rf = dfpackets_selected["e_rf"]
+    weights = e_rf
 
-    if "emission_velocity" not in dfpackets_selected:
-        at.packets.add_derived_columns(dfpackets_selected, modelpath, ["emission_velocity"])
-
-    print(f" between {timeminarray[timestep_min]}-{timemaxarray[timestep_max]} days")
-    print(f"npackets = {len(dfpackets_selected)}")
-    # print(f"sum e_rf dfpackets_selected {dfpackets_selected['e_rf'].sum()}")
-    # print(f"luminosity from packets {(dfpackets_selected['e_rf'].sum() / nprocs_read * 10 / (timemaxarray[timestep_max] - timeminarray[timestep_min])) * (u.erg / u.day).to('erg/s')}")
-    weight_by_energy = True
-    if weight_by_energy:
-        e_rf = dfpackets_selected["e_rf"]
-        # e_cmf = dfpackets_selected["e_cmf"]
-        weights = e_rf
-        # weights = e_cmf
-    else:
-        weights = None
-
-    heatmap, xedges, _ = np.histogram2d(
-        dfpackets_selected["emission_velocity"] / CLIGHT,
-        dfpackets_selected["em_ejecta_angle_bin"],
-        bins=[np.linspace(0, 0.7, num=29), np.linspace(0, 100, num=11)],
+    # derive the emission velocity for each packet from the emission position
+    heatmap, xedges, yedges = np.histogram2d(
+        (dfpackets_selected["em_posx"]**2 + dfpackets_selected["em_posy"]**2)**0.5 / dfpackets_selected["em_time"] / CLIGHT,
+        dfpackets_selected["em_posz"] / dfpackets_selected["em_time"] / CLIGHT,
+        bins=[np.linspace(0,0.5, num=25), np.linspace(-0.5,0.5, num=50)],
         weights=weights,
     )
-    heatmap = heatmap / nprocs_read * 10 / (timemaxarray[timestep_max] - timeminarray[timestep_min])  # erg/day
+    heatmap = heatmap / (timemaxarray[timestep_max] - timeminarray[timestep_min])  # erg/day
     heatmap /= DAY  # conversion from per erg/day to erg/s
-    heatmap = np.log(heatmap) if logscale else heatmap / 1e40
+    heatmap = np.log(heatmap) if colorlogscale else heatmap / 1e40
 
-    if mask_empty_cells:
-        heatmap = np.ma.masked_where(heatmap == 0.0, heatmap)
+    heatmap = np.ma.masked_where(heatmap == 0.0, heatmap)
 
-    fig, ax = plt.subplots(figsize=(8, 4.5))
+    fig, ax = plt.subplots(figsize=(3.5, 4.5))
     z = heatmap.T 
 
     im = ax.imshow(
         z,
         origin="lower",   
-        aspect="auto",   
         cmap="viridis",  
+        extent=[xedges[0], xedges[-1], yedges[0], yedges[-1]],
     )
+    ax.set_aspect('equal')
     ax.set_xlabel(r"v$_r$")
     ax.set_ylabel(r"v$_z$")
     ax.set_title("Packet Energy per Grid Cell")
     cbar = fig.colorbar(im, ax=ax)
-    if logscale:
+    if colorlogscale:
         cbar.set_label("log energy [erg/s]")
     else:
-        cbar.set_label("Energy rate [10^40 erg/s]")
+        cbar.set_label(r"Energy rate [10$^{40}$ erg/s]")
 
-    ax.set_xticks(np.arange(0, z.shape[1], 5))  # alle 5 Zellen
-    ax.set_yticks(np.arange(0, z.shape[0], 5))
+    ax.set_xticks(np.linspace(xedges[0], xedges[-1], 6)) 
+    ax.set_yticks(np.linspace(yedges[0], yedges[-1], 6)) 
 
     outfilename = (
-        startoflabel
-        + f"escape_from_bins_ts{timestep_min}-{timestep_max}_into_dirbins{dirbin_range[0]}-{dirbin_range[1]}.pdf"
+        start_of_filename
+        + f"escape_from_bins_ts{timestep_min}-{timestep_max}_into_dirbins{dirbin_range[0]}-{dirbin_range[-1]}.pdf"
     )
     print(f"Saving {outfilename}")
     plt.savefig(Path(modelpath) / outfilename, dpi=300)
@@ -467,11 +414,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-wavelen", type=float, default=None, help="Central wavelength in Angstrom")
     parser.add_argument("-binwidth", type=float, default=None, help="Wavelength bin width in Angstrom")
 
-    parser.add_argument("-element", type=int, default=None, help="Element symbol")
+    parser.add_argument("-element", type=str, default=None, help="Element symbol")
     parser.add_argument("-ionstage", type=str, default=None, help="Ionisation stage (spectroscopic notation)")
 
     parser.add_argument("-dir", type=str, default="eq", help="Viewing direction bin start (Options: eq, npol, spol)")
     parser.add_argument("--srIItriplet", action="store_true", help="Analyse SrII triplet in particular")
+    parser.add_argument("--colorlogscale", action="store_true", help="Log scale for color bar in 2D plot")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -494,11 +442,15 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         case _:
             dirbin = None
 
+    if args.wavelen:
+        assert args.binwidth is not None, "Wavelength but no bin width provided!"
+
     packets_2d_hist_bin_and_ejecta_vel(
         Path(args.modelpath),
         args.tdays,
         args.srIItriplet,
-        dirbin_range=[dirbin, dirbin + 9] if dirbin else None,
+        args.colorlogscale,
+        dirbin_range=[dirbin + i for i in range(10)] if dirbin else [i for i in range(100)],
         Z=at.get_atomic_number(args.element) if args.element else None,
         ion_stage=args.ionstage,
         wavelen=args.wavelen,
