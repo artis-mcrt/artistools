@@ -1662,9 +1662,12 @@ def get_dirbin_labels(
 
 
 def parallel_map[IterableType, ResultType](
-    fn: Callable[[IterableType], ResultType], *iterables: Iterable[IterableType], **kwargs: t.Any
+    fn: Callable[[IterableType], ResultType],
+    *iterables: Iterable[IterableType],
+    allow_multiprocessing: bool = True,
+    **kwargs: t.Any,
 ) -> list[ResultType]:
-    """Return a parallel map with progress bar using either threading (for free threading in Python 3.13+) or multiprocessing."""
+    """Return a parallel map that displays a progress bar using either multithreading (for free-threading python or allow_multiprocessing=False) or multiprocessing."""
     import multiprocessing as mp
     import warnings
 
@@ -1672,20 +1675,23 @@ def parallel_map[IterableType, ResultType](
     from tqdm import TqdmExperimentalWarning
 
     warnings.filterwarnings("ignore", category=TqdmExperimentalWarning)
-    if sys.version_info >= (3, 13):
+
+    use_multiprocessing = allow_multiprocessing
+    if allow_multiprocessing and sys.version_info >= (3, 13):
         with contextlib.suppress(AttributeError):
             if not sys._is_gil_enabled():  # noqa: SLF001
                 # return a thread pool if we have no GIL (free threading)
-                from tqdm.contrib.concurrent import thread_map
+                use_multiprocessing = False
 
-                results = thread_map(fn, *iterables, tqdm_class=tqdm.rich.tqdm, **kwargs)
-                assert isinstance(results, list)
-                return results
+    if use_multiprocessing:
+        mp.set_start_method("spawn", force=True)
+        from tqdm.contrib.concurrent import process_map
 
-    from tqdm.contrib.concurrent import process_map
+        results = process_map(fn, *iterables, tqdm_class=tqdm.rich.tqdm, **kwargs)
+    else:
+        from tqdm.contrib.concurrent import thread_map
 
-    mp.set_start_method("spawn", force=True)
+        results = thread_map(fn, *iterables, tqdm_class=tqdm.rich.tqdm, **kwargs)
 
-    results = process_map(fn, *iterables, tqdm_class=tqdm.rich.tqdm, **kwargs)
     assert isinstance(results, list)
     return results
