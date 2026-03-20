@@ -404,6 +404,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     from tqdm.contrib.concurrent import process_map
 
     warnings.filterwarnings("ignore", category=TqdmExperimentalWarning)
+    mp.set_start_method("spawn", force=True)
 
     alltraj_decay_powers: list[dict[str, npt.NDArray[np.floating]]] = process_map(
         partial(
