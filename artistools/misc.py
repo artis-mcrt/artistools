@@ -1676,10 +1676,14 @@ def parallel_map[T, R](fn: Callable[[T], R], *iterables: Iterable[T], **kwargs: 
                 # return a thread pool if we have no GIL (free threading)
                 from tqdm.contrib.concurrent import thread_map
 
-                return thread_map(fn, *iterables, tqdm_class=tqdm.rich.tqdm, **kwargs)
+                results = thread_map(fn, *iterables, tqdm_class=tqdm.rich.tqdm, **kwargs)
+                assert isinstance(results, list)
+                return results
 
     from tqdm.contrib.concurrent import process_map
 
     mp.set_start_method("spawn", force=True)
 
-    return process_map(fn, *iterables, tqdm_class=tqdm.rich.tqdm, **kwargs)
+    results = process_map(fn, *iterables, tqdm_class=tqdm.rich.tqdm, **kwargs)
+    assert isinstance(results, list)
+    return results
