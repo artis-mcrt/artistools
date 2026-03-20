@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Tools to get artis output in the required format for the code comparison workshop."""
 
 import argparse
@@ -78,11 +77,6 @@ def write_single_estimator(
             f.write(f"{vel_r_mid / 1e5:.2f}")
             for timestep in selected_timesteps:
                 cellvalue = estimators[timestep, modelgridindex][keyname]
-                # try:
-                #     cellvalue = estimators[(timestep, modelgridindex)][keyname]
-                # except KeyError:
-                #     cellvalue = (estimators[(timestep - 1, modelgridindex)][keyname]
-                #                  + estimators[(timestep + 1, modelgridindex)][keyname]) / 2.
                 f.write(f" {cellvalue:.3e}")
             f.write("\n")
 
@@ -101,9 +95,9 @@ def write_ionfracts(
     elementlist = at.get_composition_data(modelpath)
     nelements = len(elementlist)
     for elementindex in range(nelements):
-        atomic_number = elementlist["Z"][elementindex]
+        atomic_number = elementlist["Z"].item(elementindex)
         elsymb = at.get_elsymbol(atomic_number)
-        nions = elementlist["nions"][elementindex]
+        nions = elementlist["nions"].item(elementindex)
         pathfileout = Path(outputpath, f"ionfrac_{elsymb.lower()}_{model_id}_artisnebular.txt")
         fileisallzeros = True  # will be changed when a non-zero is encountered
         with pathfileout.open("w", encoding="utf-8") as f:
@@ -121,7 +115,7 @@ def write_ionfracts(
                     f.write(f"{vel_r_mid / 1e5:.2f}")
                     elabund = estimators[timestep, modelgridindex].get(f"nnelement_{elsymb}", 0)
                     for ion in range(nions):
-                        ion_stage = ion + elementlist["lowermost_ion_stage"][elementindex]
+                        ion_stage = ion + elementlist["lowermost_ion_stage"].item(elementindex)
                         ionstr = at.get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
                         ionabund = estimators[timestep, modelgridindex].get(f"nnion_{ionstr}", 0)
                         ionfrac = ionabund / elabund if elabund > 0 else 0

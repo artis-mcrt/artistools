@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
 import argparse
 import math
@@ -19,7 +18,7 @@ from matplotlib.image import AxesImage
 
 import artistools as at
 
-AxisType: t.TypeAlias = t.Literal["x", "y", "z", "r", "rcyl"]
+type AxisType = t.Literal["x", "y", "z", "r", "rcyl"]
 
 
 def get_2D_slice_through_3d_model(
@@ -30,8 +29,6 @@ def get_2D_slice_through_3d_model(
     plotaxis2: AxisType | None = None,
     sliceindex: int | None = None,
 ) -> pd.DataFrame:
-    import pandas as pd
-
     if not sliceindex:
         # get midpoint
         sliceposition: float = dfmodel.iloc[(dfmodel["pos_x_min"]).abs().argsort()][:1]["pos_x_min"].item()
@@ -222,7 +219,7 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
     import pyvista as pv
 
     # set white background
-    pv.set_plot_theme("document")
+    pv.set_plot_theme("document")  # type: ignore[no-untyped-call]
 
     get_elemabundances = False
     # choose what surface will be coloured by
@@ -247,8 +244,6 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
     mincellparticles = 0
     if mincellparticles > 0:
         if "tracercount" not in model:
-            import pandas as pd
-
             griddata = pd.read_csv(modelpath / "grid.dat", sep=r"\s+", comment="#", skiprows=3)
             model["tracercount"] = griddata["tracercount"]
         print(model["tracercount"], max(model["tracercount"]))
@@ -302,7 +297,7 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
     plotcoloropacity = [0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]  # some choices: 'linear' 'sigmoid'
     # plotter.set_scale(0.95, 0.95, 0.95) # adjusts fig resolution
     plotter.show_bounds(
-        mesh,
+        mesh,  # ty: ignore[invalid-argument-type]
         grid=False,
         location="outer",
         xlabel="vx / c",

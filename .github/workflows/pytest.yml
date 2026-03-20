@@ -9,7 +9,7 @@ on:
     merge_group:
     schedule:
         - cron: 0 10 * * 2
-    pull_request:
+    # pull_request:
     workflow_dispatch:
     repository_dispatch:
         types: [trigger_checks]
@@ -69,9 +69,9 @@ jobs:
               if: always()
               run: uv run -- ty check
 
-            - name: Run pyright
+            - name: Run basedpyright
               if: always()
-              run: uv run -- pyright --warnings
+              run: uv run -- basedpyright --warnings
 
             - name: Run mypy
               if: always()
@@ -94,19 +94,20 @@ jobs:
             fail-fast: false
             matrix:
                 os: [{name: macos, version: '26'}, {name: ubuntu, version: 24.04-arm}]
-                python-minor-version: ['11', '12', '13', '14', 14t]
+                python-minor-version: ['12', '13', '14', 14t, '15']
                 exclude:
                     # macos runners are very limited in number
                     - os: {name: macos, version: '26'}
-                      python-minor-version: 11
-                    - os: {name: macos, version: '26'}
                       python-minor-version: 12
+                    - os: {name: ubuntu, version: 24.04-arm}
+                      python-minor-version: 15
         env:
             OS: ${{ matrix.os.name }}-${{ matrix.os.version }}
             PYTHON: 3.${{ matrix.python-minor-version }}
             PYTHON_GIL: ${{ endsWith(matrix.python-minor-version, 't') && '0' || '1' }}
             UV_FROZEN: 1
             PYO3_PYTHON: python3.${{ matrix.python-minor-version }}
+            PYO3_USE_ABI3_FORWARD_COMPATIBILITY: 1
         name: pytest ${{ matrix.os.name }} python 3.${{ matrix.python-minor-version }}
         steps:
             - name: Checkout Code
@@ -134,6 +135,25 @@ jobs:
                       cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python3.${{ matrix.python-minor-version }}-
                       cargo-rust-target-${{ runner.os }}${{ runner.arch }}-
 
+            - name: Install deps for building pyarrow and scipy from source
+              if: matrix.os.name == 'macos' && matrix.python-minor-version == '15'
+              run: |
+                  brew update
+                  brew install apache-arrow
+                  echo "ARROW_HOME=$(brew --prefix apache-arrow)" >> $GITHUB_ENV
+                  brew install gcc openblas
+                  echo "LDFLAGS=-L/opt/homebrew/opt/openblas/lib" >> $GITHUB_ENV
+                  echo "CPPFLAGS=-I/opt/homebrew/opt/openblas/include" >> $GITHUB_ENV
+                  echo "CMAKE_PREFIX_PATH=/opt/homebrew/opt/openblas" >> $GITHUB_ENV
+                  echo "PKG_CONFIG_PATH=/opt/homebrew/opt/openblas/lib/pkgconfig" >> $GITHUB_ENV
+
+            - name: Install pyarrow and scipy from source
+              if: matrix.os.name == 'macos' && matrix.python-minor-version == '15'
+              run: |
+                  uv pip install pyarrow
+                  GCC_MAJOR="$(brew list --versions gcc | awk '{print $2}' | cut -d. -f1)"
+                  CXX="g++-${GCC_MAJOR}" FC="gfortran-${GCC_MAJOR}" uv pip install scipy
+
             - name: Install artistools (no dev deps)
               run: |
                   rustup update stable
@@ -160,7 +180,7 @@ jobs:
               run: uv sync
 
             - name: Test with pytest
-              run: uv run --no-sync -- python -m pytest --cov=./ --cov-report=xml
+              run: uv run --no-sync -- python -m pytest ${{ (matrix.python-minor-version == '15') && '--typeguard-packages=none' || '' }} --cov=./ --cov-report=xml
 
             - name: Report coverage
               run: uv run -- python -m coverage report

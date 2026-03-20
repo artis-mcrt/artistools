@@ -1,6 +1,4 @@
-#!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
-
 import argparse
 import math
 import sys
@@ -56,8 +54,6 @@ def read_ejectasnapshot(
         "iwasequil(i, 2)",
         "iwasequil(i, 3)",
     ]
-    import pandas as pd
-
     dfsnapshot = pl.from_pandas(
         pd.read_csv(
             Path(pathtosnapshot) / "ejectasnapshot.dat" if Path(pathtosnapshot).is_dir() else pathtosnapshot,
@@ -124,8 +120,6 @@ def get_snapshot_time_geomunits(pathtogriddata: Path | str) -> tuple[float, floa
 def read_griddat_file(
     pathtogriddata: str | Path, targetmodeltime_days: float | None = None
 ) -> tuple[pd.DataFrame, float, float, float, dict[str, t.Any]]:
-    import pandas as pd
-
     griddatfilepath = Path(pathtogriddata) / "grid.dat"
 
     # Get simulation time for ejecta snapshot
@@ -295,19 +289,18 @@ def add_mass_to_center(
     vmax: float,  # noqa: ARG001
     args: argparse.Namespace,  # noqa: ARG001
 ) -> pd.DataFrame:
-    from scipy import integrate
 
     print(griddata)
 
     # Just (2021) Fig. 16 top left panel
     vel_hole = [0, 0.02, 0.05, 0.07, 0.09, 0.095, 0.1]
     mass_hole = [3e-4, 3e-4, 2e-4, 1e-4, 2e-5, 1e-5, 1e-9]
-    mass_integrated = integrate.trapezoid(y=mass_hole, x=vel_hole)  # Msun
+    mass_integrated = np.trapezoid(y=mass_hole, x=vel_hole)  # Msun
 
     # # Just (2021) Fig. 16 4th down, left panel
     # vel_hole = [0, 0.02, 0.05, 0.1, 0.15, 0.16]
     # mass_hole = [4e-3, 2e-3, 1e-3, 1e-4, 6e-6, 1e-9]
-    # mass_integrated = integrate.trapezoid(y=mass_hole, x=vel_hole)  # Msun
+    # mass_integrated = np.trapezoid(y=mass_hole, x=vel_hole)  # Msun
 
     v_outer_hole = 0.1 * CLIGHT  # cm/s
     pos_outer_hole = v_outer_hole * t_model_in_days * (24.0 * 3600)  # cm

@@ -9,9 +9,9 @@ from collections.abc import Iterable
 import matplotlib.axes as mplax
 import matplotlib.figure as mplfig
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mplticker
 import numpy as np
 import numpy.typing as npt
-from matplotlib import ticker
 
 from artistools.configuration import get_config
 
@@ -284,17 +284,18 @@ def set_mpl_style() -> None:
     plt.style.use("file://" + str(get_config()["path_artistools_dir"] / "matplotlibrc"))
 
 
-class ExponentLabelFormatter(ticker.ScalarFormatter):
+class ExponentLabelFormatter(mplticker.ScalarFormatter):
     """Formatter to move the 'x10^x' offset text into the axis label."""
 
     _useMathText: bool
     _usetex: bool
+    labeltemplate: str
 
     def __init__(self, labeltemplate: str, useMathText: bool = True) -> None:
         self.set_labeltemplate(labeltemplate)
 
         super().__init__(useOffset=False, useMathText=useMathText)
-        # ticker.ScalarFormatter.__init__(self, useOffset=useOffset, useMathText=useMathText)
+        # mplticker.ScalarFormatter.__init__(self, useOffset=useOffset, useMathText=useMathText)
         self.set_scientific(True)
         self.set_powerlimits((0, 0))  # always use scientific notation
 
@@ -313,11 +314,13 @@ class ExponentLabelFormatter(ticker.ScalarFormatter):
         assert "{" in labeltemplate
         self.labeltemplate = labeltemplate
 
-    def set_locs(self, locs) -> None:  # noqa: ANN001
+    @t.override
+    def set_locs(self, locs: t.Any) -> None:
         super().set_locs(locs)
         self._set_formatted_label_text()
 
-    def set_axis(self, axis) -> None:  # noqa: ANN001
+    @t.override
+    def set_axis(self, axis: t.Any) -> None:
         super().set_axis(axis)
         self._set_formatted_label_text()
 

@@ -40,8 +40,6 @@ def readfile(filepath: str | Path) -> dict[int, pl.LazyFrame]:
 
 
 def read_3d_gammalightcurve(filepath: str | Path) -> dict[int, pd.DataFrame]:
-    import pandas as pd
-
     columns = ["time", *[str(i) for i in range(100)]]
     lcdata = pd.read_csv(filepath, sep=r"\s+", header=None).set_axis(columns, axis=1)
     # lcdata = lcdata.rename(columns={0: 'time', 1: 'lum', 2: 'lum_cmf'})
@@ -203,7 +201,6 @@ def generate_band_lightcurve_data(
     modelnumber: int | None = None,  # noqa: ARG001
 ) -> dict[str, t.Any]:
     """Integrate spectra to get band magnitude vs time. Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py."""
-    import pandas as pd
     from scipy.interpolate import interp1d
 
     if args.plotvspecpol and Path(modelpath, "vpkt.txt").is_file():
@@ -297,9 +294,12 @@ def generate_band_lightcurve_data(
                     wavelength_from_spectrum = np.linspace(wavefilter_min, wavefilter_max, len(wavefilter))
                     flux = interpolate_fn(wavelength_from_spectrum)
 
-                phot_filtobs_sn = evaluate_magnitudes(flux, transmission, wavelength_from_spectrum, zeropointenergyflux)
+                weighted_flux_obs = abs(np.trapezoid(flux * transmission, wavelength_from_spectrum))
+                assert isinstance(weighted_flux_obs, float)
+                phot_filtobs_sn: float = (
+                    0.0 if weighted_flux_obs == 0.0 else -2.5 * np.log10(weighted_flux_obs / zeropointenergyflux)
+                )
 
-                # print(time, phot_filtobs_sn)
                 if phot_filtobs_sn != 0.0:
                     phot_filtobs_sn -= 25  # Absolute magnitude
                 filters_dict[filter_name].append((time, phot_filtobs_sn))
@@ -315,7 +315,6 @@ def bolometric_magnitude(
     average_over_phi: bool = False,
     average_over_theta: bool = False,
 ) -> tuple[list[float], list[float]]:
-    from scipy import integrate
 
     magnitudes = []
     times = []
@@ -339,7 +338,7 @@ def bolometric_magnitude(
                     average_over_phi=average_over_phi,
                     average_over_theta=average_over_theta,
                 )[angle].collect()
-            integrated_flux = integrate.trapezoid(spectrum["f_lambda"], spectrum["lambda_angstroms"])
+            integrated_flux = np.trapezoid(spectrum["f_lambda"], spectrum["lambda_angstroms"])
             integrated_luminosity = integrated_flux * 4 * np.pi * np.power(Mpc_to_cm, 2)
             Mbol_sun = 4.74
             with np.errstate(divide="ignore"):
@@ -404,21 +403,6 @@ def get_spectrum_in_filter_range(
     return np.array(wavelength_from_spectrum), np.array(flux)
 
 
-def evaluate_magnitudes(
-    flux: npt.NDArray[np.floating],
-    transmission: npt.NDArray[np.floating],
-    wavelength_from_spectrum: npt.NDArray[np.floating],
-    zeropointenergyflux: float,
-) -> float:
-    from scipy import integrate
-
-    cf = flux * transmission
-    flux_obs = abs(integrate.trapezoid(cf, wavelength_from_spectrum))  # using trapezoidal rule to integrate
-    val = 0.0 if flux_obs == 0.0 else -2.5 * np.log10(flux_obs / zeropointenergyflux)
-    assert isinstance(val, float)
-    return val
-
-
 def get_band_lightcurve(
     band_lightcurve_data: dict[str, Sequence[tuple[float, float]]], band_name: str, args: argparse.Namespace
 ) -> tuple[Sequence[float], npt.NDArray[np.floating]]:
@@ -458,8 +442,6 @@ def get_colour_delta_mag(
 
 
 def read_hesma_lightcurve(args: argparse.Namespace) -> pd.DataFrame:
-    import pandas as pd
-
     hesma_directory = Path(at.get_config()["path_artistools_dir"], "data/hesma")
     filename = args.plot_hesma_model
     hesma_modelname = hesma_directory / filename
@@ -477,8 +459,6 @@ def read_hesma_lightcurve(args: argparse.Namespace) -> pd.DataFrame:
 
 
 def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pd.DataFrame, dict[str, t.Any]]:
-    import pandas as pd
-
     filepath = Path(at.get_config()["path_artistools_dir"], "data", "lightcurves", lightcurvefilename)
     metadata = at.get_file_metadata(filepath)
 
@@ -511,8 +491,6 @@ def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pd.Dat
 
 
 def read_bol_reflightcurve_data(lightcurvefilename: str | Path) -> tuple[pd.DataFrame, dict[str, t.Any]]:
-    import pandas as pd
-
     data_path = (
         Path(lightcurvefilename)
         if Path(lightcurvefilename).is_file()
@@ -545,8 +523,6 @@ def read_bol_reflightcurve_data(lightcurvefilename: str | Path) -> tuple[pd.Data
 
 
 def get_sn_sample_bol() -> tuple[t.Any, str]:
-    import pandas as pd
-
     datafilepath = Path(at.get_config()["path_artistools_dir"], "data", "lightcurves", "SNsample", "bololc.txt")
     sn_data = pd.read_csv(datafilepath, sep=r"\s+", comment="#")
 
@@ -593,8 +569,6 @@ def get_sn_sample_bol() -> tuple[t.Any, str]:
 
 
 def get_phillips_relation_data() -> tuple[pd.DataFrame, str]:
-    import pandas as pd
-
     datafilepath = Path(at.get_config()["path_artistools_dir"], "data", "lightcurves", "SNsample", "CfA3_Phillips.dat")
     sn_data = pd.read_csv(datafilepath, sep=r"\s+", comment="#")
     print(sn_data)

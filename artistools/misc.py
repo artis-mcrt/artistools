@@ -55,6 +55,7 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
         kwargs["max_help_position"] = 39
         super().__init__(*args, **kwargs)
 
+    @t.override
     def add_arguments(self, actions: Iterable[argparse.Action]) -> None:
         getinvocation = super()._format_action_invocation
 
@@ -913,7 +914,7 @@ def zopenpl(filename: Path | str, mode: str = "r", encoding: str | None = None) 
 
 def firstexisting(
     filelist: Sequence[str | Path] | str | Path,
-    folder: Path | str = Path(),
+    folder: Path | str = ".",
     tryzipped: bool = True,
     search_subfolders: bool = True,
 ) -> Path:
@@ -963,7 +964,7 @@ def firstexisting(
 
 
 def anyexist(
-    filelist: Sequence[str | Path], folder: Path | str = Path(), tryzipped: bool = True, search_subfolders: bool = True
+    filelist: Sequence[str | Path], folder: Path | str = ".", tryzipped: bool = True, search_subfolders: bool = True
 ) -> Path | None:
     """Return true if any files in file list exist."""
     try:
@@ -1142,14 +1143,10 @@ def get_bflist(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame
         dfboundfree = pl.DataFrame(schema=schema).lazy()
 
     dfboundfree = dfboundfree.with_columns(
-        atomic_number=pl.col("elementindex").map_elements(
-            lambda elementindex: compositiondata["Z"][elementindex], return_dtype=pl.Int32
-        ),
+        atomic_number=pl.col("elementindex").map_elements(compositiondata["Z"].item, return_dtype=pl.Int32),
         ion_stage=(
             pl.col("ionindex")
-            + pl.col("elementindex").map_elements(
-                lambda elementindex: compositiondata["lowermost_ion_stage"][elementindex], return_dtype=pl.Int32
-            )
+            + pl.col("elementindex").map_elements(compositiondata["lowermost_ion_stage"].item, return_dtype=pl.Int32)
         ),
     )
 
@@ -1668,11 +1665,4 @@ def get_multiprocessing_pool() -> multiprocessing.pool.Pool:
             if not sys._is_gil_enabled():  # noqa: SLF001
                 # return a thread pool if we have no GIL (free threading)
                 return multiprocessing.pool.ThreadPool()
-    # this is a workaround for to keep pytest-cov from crashing
-    try:
-        from pytest_cov.embed import cleanup_on_sigterm
-    except ImportError:
-        pass
-    else:
-        cleanup_on_sigterm()
     return multiprocessing.get_context("spawn").Pool(processes=get_config()["num_processes"])

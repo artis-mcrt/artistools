@@ -1,20 +1,22 @@
+from collections.abc import Sequence
 from pathlib import Path
 
+import matplotlib.axes as mplax
+import matplotlib.figure as mplfig
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import polars as pl
 
 import artistools as at
 
 
-def plot_hesma_spectrum(timeavg, axes) -> None:  # noqa: ANN001
+def plot_hesma_spectrum(timeavg: float, axes: Sequence[mplax.Axes]) -> None:
     hesma_file = Path("/Users/ccollins/Downloads/hesma_files/M2a/hesma_specseq.dat")
-    import pandas as pd
-
     hesma_spec = pd.read_csv(hesma_file, comment="#", sep=r"\s+", dtype=float)
     # print(hesma_spec)
 
-    def match_closest_time(reftime) -> str:  # noqa: ANN001
+    def match_closest_time(reftime: float) -> str:
         return str(min((float(x) for x in hesma_spec.keys()[1:]), key=lambda x: abs(x - reftime)))
 
     closest_time = match_closest_time(timeavg)
@@ -29,11 +31,9 @@ def plot_hesma_spectrum(timeavg, axes) -> None:  # noqa: ANN001
         ax.plot(hesma_spec["0.00"], hesma_spec[closest_time], label="HESMA model")
 
 
-def plothesmaresspec(fig, ax) -> None:  # noqa: ANN001
+def plothesmaresspec(fig: mplfig.Figure, ax: mplax.Axes) -> None:
     # specfiles = ["/Users/ccollins/Downloads/hesma_files/M2a_i55/hesma_specseq_theta.dat"]
     specfiles = ["/Users/ccollins/Downloads/hesma_files/M2a/hesma_virtualspecseq_theta.dat"]
-    import pandas as pd
-
     for specfilename in specfiles:
         specdata = pl.from_pandas(pd.read_csv(specfilename, sep=r"\s+", header=None, dtype=float))
 
@@ -136,8 +136,6 @@ def make_hesma_peakmag_dm15_dm40(
     band: str, pathtofiles: Path, modelname: str, outpath: Path, dm40: bool = False
 ) -> None:
     dm15filename = f"{band}band_{modelname}_viewing_angle_data.txt"
-    import pandas as pd
-
     dm15data = pd.read_csv(
         pathtofiles / dm15filename, sep=r"\s+", header=None, names=["peakmag", "risetime", "dm15"], skiprows=1
     )
@@ -160,9 +158,7 @@ def make_hesma_peakmag_dm15_dm40(
     outdataframe.to_csv(outpath / f"{modelname}_width-luminosity.dat", sep=" ", index=False, header=True)
 
 
-def read_hesma_peakmag_dm15_dm40(pathtofiles) -> None:  # noqa: ANN001
-    import pandas as pd
-
+def read_hesma_peakmag_dm15_dm40(pathtofiles: Path | str) -> None:
     data = []
     for filepath in Path(pathtofiles).iterdir():
         print(filepath)

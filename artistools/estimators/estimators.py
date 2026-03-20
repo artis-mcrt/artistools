@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Functions for reading and processing estimator files.
 
 Examples are temperatures, populations, and heating/cooling rates.
@@ -192,7 +191,7 @@ def join_cell_modeldata(
 
 
 def scan_estimators(
-    modelpath: Path | str = Path(),
+    modelpath: Path | str = ".",
     modelgridindex: int | Sequence[int] | None = None,
     timestep: int | Sequence[int] | None = None,
     join_modeldata: bool = False,
@@ -304,7 +303,7 @@ def scan_estimators(
 
 
 def read_estimators(
-    modelpath: Path | str = Path(),
+    modelpath: Path | str = ".",
     modelgridindex: int | Sequence[int] | None = None,
     timestep: int | Sequence[int] | None = None,
     keys: Collection[str] | None = None,
@@ -343,7 +342,9 @@ def read_estimators(
 def get_averageexcitation(
     modelpath: Path | str, modelgridindex: int, timestep: int, atomic_number: int, ion_stage: int, T_exc: float
 ) -> float | None:
-    dfnltepops = at.nltepops.read_files(modelpath, modelgridindex=modelgridindex, timestep=timestep)
+    dfnltepops = at.nltepops.read_files(modelpath, modelgridindex=modelgridindex, timestep=timestep).to_pandas(
+        use_pyarrow_extension_array=True
+    )
     if dfnltepops.empty:
         print(f"WARNING: NLTE pops not found for cell {modelgridindex} at timestep {timestep}")
 

@@ -4,6 +4,25 @@ A collection of plotting, analysis, and file format conversion tools
 for the ARTIS radiative transfer code.
 """
 
+import sys
+
+if sys.version_info >= (3, 15) and hasattr(sys, "set_lazy_imports_filter"):  # noqa: RUF067
+    sys.set_lazy_imports_filter(
+        lambda _importing, imported, _fromlist: (
+            not imported.startswith((
+                "matplotlib.",
+                "six.moves",
+                "concurrent.futures",
+                "pandas._libs",
+                "pandas.core",
+                "pandas._config",
+                "pyarrow._compute",
+                "typing",
+            ))
+        )
+    )
+    sys.set_lazy_imports("all")
+
 from artistools import atomic as atomic
 from artistools import codecomparison as codecomparison
 from artistools import commands as commands
@@ -104,5 +123,3 @@ from artistools.misc import vec_len as vec_len
 from artistools.misc import zopen as zopen
 from artistools.misc import zopenpl as zopenpl
 from artistools.plottools import set_mpl_style as set_mpl_style
-
-set_mpl_style()  # noqa: RUF067

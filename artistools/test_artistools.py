@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import contextlib
 import hashlib
 import importlib
@@ -122,7 +121,7 @@ def test_nltepops_versus_time() -> None:
 def test_radfield() -> None:
     funcoutpath = outputpath / funcname()
     funcoutpath.mkdir(exist_ok=True, parents=True)
-    at.radfield.main(argsraw=[], modelpath=modelpath, modelgridindex=0, outputfile=funcoutpath)
+    at.radfield.main(argsraw=[], modelpath=modelpath, modelgridindex=0, outputfile=funcoutpath, showbinedges=True)
 
 
 @pytest.mark.benchmark

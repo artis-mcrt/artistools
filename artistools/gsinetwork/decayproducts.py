@@ -14,6 +14,7 @@ import argcomplete
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
+import pandas as pd
 import polars as pl
 
 import artistools as at
@@ -68,8 +69,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 
 def get_nuc_data(nuc_dataset: str) -> pl.DataFrame:
-    import pandas as pd
-
     assert nuc_dataset in {"Hotokezaka", "ENSDF"}
     hotokezaka_betaminus = (
         pl
@@ -157,8 +156,6 @@ def process_trajectory(
     """Process a single trajectory to extract decay powers."""
     traj_mass_grams = traj_masses_g[traj_ID]
     traj_root = Path(traj_root)
-    import pandas as pd
-
     dfheatingthermo = (
         pl
         .from_pandas(
@@ -342,7 +339,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         at.set_args_from_dict(parser, kwargs)
         argcomplete.autocomplete(parser)
         args = parser.parse_args([] if kwargs else argsraw)
-    import pandas as pd
 
     nuc_dataset = "Hotokezaka" if args.nucdata == "hotokezaka" else "ENSDF"
 
@@ -526,7 +522,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             ax.set_xlabel("time (days)")
             ax.set_xscale("log")
 
-        fig.savefig(f"beta_release_ratios_tot_{nuc_dataset}_Ye{label}.pdf", bbox_inches="tight")
+        filenameout = f"beta_release_ratios_tot_{nuc_dataset}_Ye{label}.pdf"
+        print(f"open {filenameout}")
+        fig.savefig(filenameout, bbox_inches="tight")
 
 
 if __name__ == "__main__":
