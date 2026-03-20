@@ -90,7 +90,6 @@ from artistools.misc import get_mpirankofcell as get_mpirankofcell
 from artistools.misc import get_nprocs as get_nprocs
 from artistools.misc import get_nu_grid as get_nu_grid
 from artistools.misc import get_nuclides as get_nuclides
-from artistools.misc import get_parallel_map as get_parallel_map
 from artistools.misc import get_phi_bins as get_phi_bins
 from artistools.misc import get_runfolders as get_runfolders
 from artistools.misc import get_time_range as get_time_range
@@ -109,6 +108,7 @@ from artistools.misc import LineTuple as LineTuple
 from artistools.misc import makelist as makelist
 from artistools.misc import match_closest_time as match_closest_time
 from artistools.misc import merge_pdf_files as merge_pdf_files
+from artistools.misc import parallel_map as parallel_map
 from artistools.misc import parse_range as parse_range
 from artistools.misc import parse_range_list as parse_range_list
 from artistools.misc import print_theta_phi_definitions as print_theta_phi_definitions

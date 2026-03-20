@@ -1661,27 +1661,25 @@ def get_dirbin_labels(
     return angle_definitions
 
 
-def get_parallel_map() -> Callable[..., t.Any]:
+def parallel_map[T, R](fn: Callable[[T], R], *iterables: Iterable[T], **kwargs: t.Any) -> list[R]:
     """Return a parallel map with progress bar using either threading (for free threading in Python 3.13+) or multiprocessing."""
     import multiprocessing as mp
     import warnings
-    from functools import partial
 
     import tqdm.rich
     from tqdm import TqdmExperimentalWarning
 
     warnings.filterwarnings("ignore", category=TqdmExperimentalWarning)
-
     if sys.version_info >= (3, 13):
         with contextlib.suppress(AttributeError):
             if not sys._is_gil_enabled():  # noqa: SLF001
                 # return a thread pool if we have no GIL (free threading)
                 from tqdm.contrib.concurrent import thread_map
 
-                return partial(thread_map, tqdm_class=tqdm.rich.tqdm)
+                return thread_map(fn, *iterables, tqdm_class=tqdm.rich.tqdm, **kwargs)
 
     from tqdm.contrib.concurrent import process_map
 
     mp.set_start_method("spawn", force=True)
 
-    return partial(process_map, tqdm_class=tqdm.rich.tqdm)
+    return process_map(fn, *iterables, tqdm_class=tqdm.rich.tqdm, **kwargs)

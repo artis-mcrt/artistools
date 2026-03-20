@@ -557,13 +557,13 @@ def get_dfcontribsparticledata(
     print(f"Reading trajectories from {traj_root}")
     print(f"Reading Qdot/thermo and abundance data for {len(list_particleids_getabund)} particles")
 
-    list_particledata_withabund = at.get_parallel_map()(fworkerwithabund, list_particleids_getabund)
+    list_particledata_withabund = at.parallel_map(fworkerwithabund, list_particleids_getabund)
     print("  done")
     list_particleids_noabund = [pid for pid in allcontribparticleids if pid not in list_particleids_getabund]
     fworkernoabund = partial(get_particledata, arr_time_gsi_s_incpremerger, [], traj_root)
     print(f"Reading for Qdot/thermo data (no abundances needed) for {len(list_particleids_noabund)} particles")
 
-    list_particledata_noabund = at.get_parallel_map()(fworkernoabund, list_particleids_noabund, chunksize=16)
+    list_particledata_noabund = at.parallel_map(fworkernoabund, list_particleids_noabund, chunksize=16)
     print("  done")
 
     allparticledata = pl.concat(list_particledata_withabund + list_particledata_noabund, how="diagonal")
