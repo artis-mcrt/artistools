@@ -5,7 +5,6 @@ import argparse
 import math
 import multiprocessing as mp
 import typing as t
-import warnings
 from collections.abc import Sequence
 from functools import partial
 from pathlib import Path
@@ -399,23 +398,15 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     traj_masses_g = {trajid: mass * M_sol_cgs for trajid, mass in traj_summ_data[["Id", "Mass"]].to_numpy()}
 
-    import tqdm.rich
-    from tqdm import TqdmExperimentalWarning
-    from tqdm.contrib.concurrent import process_map
-
-    warnings.filterwarnings("ignore", category=TqdmExperimentalWarning)
-    mp.set_start_method("spawn", force=True)
-
-    alltraj_decay_powers: list[dict[str, npt.NDArray[np.floating]]] = process_map(
+    alltraj_decay_powers: list[dict[str, npt.NDArray[np.floating]]] = at.parallel_map(
         partial(
             process_trajectory, nuc_data, args.trajectoryroot, traj_masses_g, arr_t_day, args.nuclides, args.trajparquet
         ),
         traj_ids,
-        chunksize=3,
+        chunksize=2,
         desc="Processing trajectories",
         unit="traj",
         smoothing=0.0,
-        tqdm_class=tqdm.rich.tqdm,
         # max_workers=1,
     )
 

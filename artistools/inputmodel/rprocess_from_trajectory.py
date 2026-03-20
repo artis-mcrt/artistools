@@ -397,13 +397,7 @@ def add_abundancecontributions(
     timestart = time.perf_counter()
     trajworker = partial(get_trajectory_abund_q, t_model_s=t_model_s, traj_root=Path(traj_root), getqdotintegral=True)
 
-    if at.get_config()["num_processes"] > 1:
-        with at.get_multiprocessing_pool() as pool:
-            list_traj_nuc_abund = pool.map(trajworker, particleids)
-            pool.close()
-            pool.join()
-    else:
-        list_traj_nuc_abund = [trajworker(particleid) for particleid in particleids]
+    list_traj_nuc_abund = at.parallel_map(trajworker, particleids)
 
     missing_particle_ids = [
         particleid for particleid, df in zip(particleids, list_traj_nuc_abund, strict=True) if not df
