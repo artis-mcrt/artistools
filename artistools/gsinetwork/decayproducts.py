@@ -403,7 +403,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             process_trajectory, nuc_data, args.trajectoryroot, traj_masses_g, arr_t_day, args.nuclides, args.trajparquet
         ),
         traj_ids,
-        chunksize=16,
+        chunksize=2,
         desc="Processing trajectories",
         unit="traj",
         smoothing=0.0,
