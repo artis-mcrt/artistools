@@ -1667,7 +1667,7 @@ def parallel_map[IterableType, ResultType](
     allow_multiprocessing: bool = True,
     **kwargs: t.Any,
 ) -> list[ResultType]:
-    """Return a parallel map that displays a progress bar using either multithreading (for free-threading python or allow_multiprocessing=False) or multiprocessing."""
+    """Apply parallel map that displays a progress bar using either multithreading (for free-threading python or allow_multiprocessing=False) or multiprocessing."""
     import multiprocessing as mp
     import warnings
 
