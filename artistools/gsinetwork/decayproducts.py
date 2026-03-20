@@ -396,7 +396,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     print(traj_summ_data)
 
     traj_ids = traj_summ_data["Id"].to_list()
-    traj_ids = traj_ids[:5]
+
     traj_masses_g = {trajid: mass * M_sol_cgs for trajid, mass in traj_summ_data[["Id", "Mass"]].to_numpy()}
 
     import tqdm.rich
@@ -415,7 +415,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         unit="traj",
         smoothing=0.0,
         tqdm_class=tqdm.rich.tqdm,
-        max_workers=1,
+        # max_workers=1,
     )
 
     print()
