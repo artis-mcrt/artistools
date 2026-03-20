@@ -191,11 +191,6 @@ def process_trajectory(
         .rename({"#count": "nstep", "time/s": "timesec"})
     )
 
-    dfheatingthermo = dfheatingthermo.with_columns(
-        htot=pl.when(pl.col("Qdot") <= 1e-20).then(pl.lit(0.0)).otherwise(pl.col("Qdot"))
-    )
-    dfheatingthermo = dfheatingthermo.with_columns(pl.col("htot").cast(pl.Float64))
-
     # get nearest network time to each plotted time
     arr_networktimedays = dfheatingthermo["timesec"].to_numpy() / 86400
     networktimestepindices = [
