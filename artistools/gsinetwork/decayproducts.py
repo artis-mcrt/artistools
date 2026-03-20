@@ -28,10 +28,12 @@ MeV_to_erg = 1.60218e-6
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("-trajectoryroot", "-trajroot", required=True, help="Path to nuclear network trajectory folder")
+    parser.add_argument(
+        "-trajectoryroot", "-trajroot", required=True, type=Path, help="Path to nuclear network trajectory folder"
+    )
 
     parser.add_argument(
-        "-npz", default=None, help="Path to npz file which specifies the ejecta type of each trajectory"
+        "-npz", default=None, type=Path, help="Path to npz file which specifies the ejecta type of each trajectory"
     )
 
     parser.add_argument("-tmin", type=float, default=0.1, help="Minimum time in days")
@@ -65,6 +67,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument(
         "--trajparquet", action="store_true", help="Writes individual parquet files for all trajectories."
+    )
+
+    parser.add_argument(
+        "-outputpath", "-o", action="store", type=Path, default=Path(), help="Path for output PDF and parquet files"
     )
 
 
@@ -357,7 +363,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     # get beta decay data
     nuc_data = get_nuc_data(nuc_dataset)
     if args.parquet or args.trajparquet:
-        traj_parquet_dir = "parquet"
+        traj_parquet_dir = args.outputpath / "parquet"
         if not Path(traj_parquet_dir).exists():
             Path(traj_parquet_dir).mkdir(parents=True)
             print(f"Created directory '{traj_parquet_dir}'.")
@@ -522,9 +528,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             ax.set_xlabel("time (days)")
             ax.set_xscale("log")
 
-        filenameout = f"beta_release_ratios_tot_{nuc_dataset}_Ye{label}.pdf"
-        print(f"open {filenameout}")
-        fig.savefig(filenameout, bbox_inches="tight")
+        outfilepath = args.outputpath / f"beta_release_ratios_tot_{nuc_dataset}_Ye{label}.pdf"
+        print(f"open {outfilepath}")
+        fig.savefig(outfilepath, bbox_inches="tight")
 
 
 if __name__ == "__main__":
