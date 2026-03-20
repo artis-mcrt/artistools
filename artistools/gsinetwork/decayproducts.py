@@ -371,7 +371,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             ax.set_xlabel("time (days)")
             ax.set_xscale("log")
 
-        fig.savefig(f"beta_release_ratios_tot_{nuc_dataset}_Ye{label}.pdf", bbox_inches="tight")
+        filenameout = f"beta_release_ratios_tot_{nuc_dataset}_Ye{label}.pdf"
+        print(f"open {filenameout}")
+        fig.savefig(filenameout, bbox_inches="tight")
 
 
 if __name__ == "__main__":
