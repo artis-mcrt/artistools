@@ -1661,7 +1661,9 @@ def get_dirbin_labels(
     return angle_definitions
 
 
-def parallel_map[T, R](fn: Callable[[T], R], *iterables: Iterable[T], **kwargs: t.Any) -> list[R]:
+def parallel_map[IterableType, ResultType](
+    fn: Callable[[IterableType], ResultType], *iterables: Iterable[IterableType], **kwargs: t.Any
+) -> list[ResultType]:
     """Return a parallel map with progress bar using either threading (for free threading in Python 3.13+) or multiprocessing."""
     import multiprocessing as mp
     import warnings
