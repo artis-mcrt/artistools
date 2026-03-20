@@ -401,17 +401,16 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     import tqdm.rich
     from tqdm import TqdmExperimentalWarning
-    from tqdm.contrib.concurrent import process_map
+    from tqdm.contrib.concurrent import thread_map
 
     warnings.filterwarnings("ignore", category=TqdmExperimentalWarning)
-    mp.set_start_method("spawn", force=True)
 
-    alltraj_decay_powers: list[dict[str, npt.NDArray[np.floating]]] = process_map(
+    alltraj_decay_powers: list[dict[str, npt.NDArray[np.floating]]] = thread_map(
         partial(
             process_trajectory, nuc_data, args.trajectoryroot, traj_masses_g, arr_t_day, args.nuclides, args.trajparquet
         ),
         traj_ids,
-        chunksize=3,
+        chunksize=16,
         desc="Processing trajectories",
         unit="traj",
         smoothing=0.0,

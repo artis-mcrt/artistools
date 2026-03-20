@@ -87,10 +87,10 @@ from artistools.misc import get_linelist_pldf as get_linelist_pldf
 from artistools.misc import get_model_name as get_model_name
 from artistools.misc import get_mpiranklist as get_mpiranklist
 from artistools.misc import get_mpirankofcell as get_mpirankofcell
-from artistools.misc import get_multiprocessing_pool as get_multiprocessing_pool
 from artistools.misc import get_nprocs as get_nprocs
 from artistools.misc import get_nu_grid as get_nu_grid
 from artistools.misc import get_nuclides as get_nuclides
+from artistools.misc import get_parallel_map as get_parallel_map
 from artistools.misc import get_phi_bins as get_phi_bins
 from artistools.misc import get_runfolders as get_runfolders
 from artistools.misc import get_time_range as get_time_range

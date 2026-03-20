@@ -4,8 +4,6 @@ import functools
 import io
 import itertools
 import math
-import multiprocessing
-import multiprocessing.pool
 import string
 import sys
 import typing as t
@@ -1663,11 +1661,27 @@ def get_dirbin_labels(
     return angle_definitions
 
 
-def get_multiprocessing_pool() -> multiprocessing.pool.Pool:
-    """Return a multiprocessing pool that can be used to parallelize tasks."""
+def get_parallel_map() -> Callable[..., t.Any]:
+    """Return a parallel map with progress bar using either threading (for free threading in Python 3.13+) or multiprocessing."""
+    import multiprocessing as mp
+    import warnings
+    from functools import partial
+
+    import tqdm.rich
+    from tqdm import TqdmExperimentalWarning
+
+    warnings.filterwarnings("ignore", category=TqdmExperimentalWarning)
+
     if sys.version_info >= (3, 13):
         with contextlib.suppress(AttributeError):
             if not sys._is_gil_enabled():  # noqa: SLF001
                 # return a thread pool if we have no GIL (free threading)
-                return multiprocessing.pool.ThreadPool()
-    return multiprocessing.get_context("spawn").Pool(processes=get_config()["num_processes"])
+                from tqdm.contrib.concurrent import thread_map
+
+                return partial(thread_map, tqdm_class=tqdm.rich.tqdm)
+
+    from tqdm.contrib.concurrent import process_map
+
+    mp.set_start_method("spawn", force=True)
+
+    return partial(process_map, tqdm_class=tqdm.rich.tqdm)
