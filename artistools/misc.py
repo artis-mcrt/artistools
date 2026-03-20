@@ -791,6 +791,11 @@ def set_args_from_dict(parser: argparse.ArgumentParser, kwargs: dict[str, t.Any]
                 kwargs[arg.dest] = kwargs.pop(optstring.lstrip("-"))
 
     parser.set_defaults(**kwargs)
+    # set required=False on all arguments to avoid errors about missing required arguments when we set defaults from kwargs
+    for arg in parser._actions:  # noqa: SLF001
+        if arg.default is not None:
+            arg.required = False
+
     if unknown := {k: v for k, v in kwargs.items() if k not in (arg.dest for arg in parser._actions)}:  # noqa: SLF001
         msg = f"Unknown argument names: {unknown}"
         raise ValueError(msg)
