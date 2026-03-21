@@ -2,9 +2,8 @@ import argparse
 import importlib
 import subprocess
 import typing as t
+from collections.abc import Iterable
 from pathlib import Path
-
-from artistools.misc import CustomArgHelpFormatter
 
 # top-level commands (one file installed per command)
 # we generally should phase this out except for a couple of main ones like at and artistools
@@ -71,6 +70,24 @@ subcommandtree: CommandType = {
         "to_tardis": ("inputmodel.to_tardis", "main"),
     },
 }
+
+
+class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
+    """Custom argparse formatter to show default values in help text, sorted with dashes last."""
+
+    def __init__(self, *args: t.Any, **kwargs: t.Any) -> None:
+        kwargs["max_help_position"] = 39
+        super().__init__(*args, **kwargs)
+
+    @t.override
+    def add_arguments(self, actions: Iterable[argparse.Action]) -> None:
+        getinvocation = super()._format_action_invocation
+
+        def my_sort(action: argparse.Action) -> str:
+            return getinvocation(action).upper().replace("-", "z")  # push dash chars below alphabet
+
+        actions = sorted(actions, key=my_sort)
+        super().add_arguments(actions)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:

@@ -46,24 +46,6 @@ roman_numerals = (
 )
 
 
-class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
-    """Custom argparse formatter to show default values in help text, sorted with dashes last."""
-
-    def __init__(self, *args: t.Any, **kwargs: t.Any) -> None:
-        kwargs["max_help_position"] = 39
-        super().__init__(*args, **kwargs)
-
-    @t.override
-    def add_arguments(self, actions: Iterable[argparse.Action]) -> None:
-        getinvocation = super()._format_action_invocation
-
-        def my_sort(action: argparse.Action) -> str:
-            return getinvocation(action).upper().replace("-", "z")  # push dash chars below alphabet
-
-        actions = sorted(actions, key=my_sort)
-        super().add_arguments(actions)
-
-
 @lru_cache(maxsize=8)
 def get_composition_data(filename: Path | str) -> pl.DataFrame:
     """Return a pandas DataFrame containing details of included elements and ions."""

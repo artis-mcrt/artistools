@@ -26,8 +26,8 @@ from matplotlib.artist import Artist
 from matplotlib.lines import Line2D
 
 import artistools.spectra as atspectra
+from artistools.commands import CustomArgHelpFormatter
 from artistools.commands import get_path
-from artistools.misc import CustomArgHelpFormatter
 from artistools.misc import df_filter_minmax_bounded
 from artistools.misc import flatten_list
 from artistools.misc import get_dirbin_labels

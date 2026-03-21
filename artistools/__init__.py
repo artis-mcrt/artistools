@@ -44,6 +44,7 @@ from artistools import spectra as spectra
 from artistools import transitions as transitions
 from artistools import writecomparisondata as writecomparisondata
 from artistools.commands import addargs as addargs
+from artistools.commands import CustomArgHelpFormatter as CustomArgHelpFormatter
 from artistools.commands import get_path as get_path
 from artistools.commands import show_version as show_version
 from artistools.estimators import read_estimators as read_estimators
@@ -58,7 +59,6 @@ from artistools.inputmodel import save_initelemabundances as save_initelemabunda
 from artistools.inputmodel import save_modeldata as save_modeldata
 from artistools.misc import anyexist as anyexist
 from artistools.misc import average_direction_bins as average_direction_bins
-from artistools.misc import CustomArgHelpFormatter as CustomArgHelpFormatter
 from artistools.misc import decode_roman_numeral as decode_roman_numeral
 from artistools.misc import firstexisting as firstexisting
 from artistools.misc import flatten_list as flatten_list
