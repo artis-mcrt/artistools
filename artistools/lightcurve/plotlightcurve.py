@@ -497,7 +497,7 @@ def make_lightcurve_plot(
     if args is None:
         args = argparse.Namespace()
 
-    conffigwidth = float(at.get_config()["figwidth"])
+    conffigwidth = 5.0
     fig, axis = plt.subplots(
         nrows=1,
         ncols=1,
@@ -740,9 +740,9 @@ def create_axes(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[t.
         cols = 1
 
     if "figwidth" not in args:
-        args.figwidth = at.get_config()["figwidth"] * 1.6 * cols
+        args.figwidth = 5.0 * 1.6 * cols
     if "figheight" not in args:
-        args.figheight = at.get_config()["figwidth"] * 1.1 * rows * 1.5
+        args.figheight = 5.0 * 1.1 * rows * 1.5
 
     fig, ax = plt.subplots(
         nrows=rows,
@@ -1184,7 +1184,7 @@ def plot_lightcurve_from_refdata(
     lightcurve_data, metadata = at.lightcurve.read_reflightcurve_band_data(lightcurvefilename)
     linename = metadata["label"] if plotnumber == 0 else None
     assert linename is None or isinstance(linename, str)
-    filterdir = Path(at.get_config()["path_artistools_dir"], "data/filters/")
+    filterdir = Path(at.get_path("artistools_dir"), "data/filters/")
 
     filter_data = {}
     for axnumber, filter_name_raw in enumerate(filter_names):
@@ -1267,7 +1267,7 @@ def plot_color_evolution_from_data(
     from extinction import ccm89
 
     lightcurve_from_data, metadata = at.lightcurve.read_reflightcurve_band_data(lightcurvefilename)
-    filterdir = Path(at.get_config()["path_artistools_dir"], "data/filters/")
+    filterdir = Path(at.get_path("artistools_dir"), "data/filters/")
 
     filter_data = []
     for i, filter_name_raw in enumerate(filter_names):

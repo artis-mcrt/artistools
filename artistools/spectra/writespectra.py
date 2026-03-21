@@ -8,7 +8,7 @@ from pathlib import Path
 import argcomplete
 import polars as pl
 
-from artistools.misc import CustomArgHelpFormatter
+from artistools.commands import CustomArgHelpFormatter
 from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_timestep_times
 from artistools.misc import set_args_from_dict

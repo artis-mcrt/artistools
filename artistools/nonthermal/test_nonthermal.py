@@ -1,7 +1,7 @@
 import artistools as at
 
-modelpath = at.get_config()["path_testartismodel"]
-outputpath = at.get_config()["path_testoutput"]
+modelpath = at.get_path("testartismodel")
+outputpath = at.get_path("testoutput")
 
 
 def test_spencerfano() -> None:

@@ -12,9 +12,9 @@ from pytest_codspeed.plugin import BenchmarkFixture
 
 import artistools as at
 
-modelpath = at.get_config()["path_testdata"] / "testmodel"
-outputpath = at.get_config()["path_testoutput"]
-modelpath_classic_3d = at.get_config()["path_testdata"] / "test-classicmode_3d"
+modelpath = at.get_path("testdata") / "testmodel"
+outputpath = at.get_path("testoutput")
+modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
