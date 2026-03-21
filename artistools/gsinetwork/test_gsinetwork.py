@@ -9,7 +9,7 @@ from pytest_codspeed.plugin import BenchmarkFixture
 import artistools as at
 
 modelpath = at.get_path("testdata") / "testmodel"
-modelpath_classic_3d = at.get_path("testdata") / "test-classicmodel_3d"
+modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
 outputpath = at.get_path("testoutput")
 
 
