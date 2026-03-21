@@ -19,7 +19,7 @@ import numpy.typing as npt
 import polars as pl
 from polars import selectors as cs
 
-from artistools.configuration import get_config
+from artistools.commands import get_path
 
 roman_numerals = (
     "",
@@ -44,24 +44,6 @@ roman_numerals = (
     "XIX",
     "XX",
 )
-
-
-class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
-    """Custom argparse formatter to show default values in help text, sorted with dashes last."""
-
-    def __init__(self, *args: t.Any, **kwargs: t.Any) -> None:
-        kwargs["max_help_position"] = 39
-        super().__init__(*args, **kwargs)
-
-    @t.override
-    def add_arguments(self, actions: Iterable[argparse.Action]) -> None:
-        getinvocation = super()._format_action_invocation
-
-        def my_sort(action: argparse.Action) -> str:
-            return getinvocation(action).upper().replace("-", "z")  # push dash chars below alphabet
-
-        actions = sorted(actions, key=my_sort)
-        super().add_arguments(actions)
 
 
 @lru_cache(maxsize=8)
@@ -652,10 +634,7 @@ def get_elsymbolslist() -> list[str]:
     elsymbolslist()[26] = 'Fe'.
 
     """
-    return [
-        "n",
-        *pl.read_csv(get_config()["path_datadir"] / "elements.csv", has_header=True, separator=",")["symbol"].to_list(),
-    ]
+    return ["n", *pl.read_csv(get_path("datadir") / "elements.csv", has_header=True, separator=",")["symbol"].to_list()]
 
 
 def get_elsymbols_df() -> pl.LazyFrame:
@@ -663,10 +642,7 @@ def get_elsymbols_df() -> pl.LazyFrame:
     return (
         pl
         .scan_csv(
-            get_config()["path_datadir"] / "elements.csv",
-            separator=",",
-            has_header=True,
-            schema_overrides={"Z": pl.Int32},
+            get_path("datadir") / "elements.csv", separator=",", has_header=True, schema_overrides={"Z": pl.Int32}
         )
         .drop("name")
         .rename({"symbol": "elsymbol", "Z": "atomic_number"})

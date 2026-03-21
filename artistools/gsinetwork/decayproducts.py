@@ -17,7 +17,7 @@ import pandas as pd
 import polars as pl
 
 import artistools as at
-from artistools.configuration import get_config
+from artistools.commands import get_path
 from artistools.inputmodel.rprocess_from_trajectory import get_tar_member_extracted_path
 
 ARTIS_colors = ["r", "g", "b", "m", "c", "orange"]  # reddish colors
@@ -77,7 +77,7 @@ def get_nuc_data(nuc_dataset: str) -> pl.DataFrame:
     hotokezaka_betaminus = (
         pl
         .read_csv(
-            get_config()["path_datadir"] / "betaminusdecays.txt",
+            get_path("datadir") / "betaminusdecays.txt",
             separator=" ",
             comment_prefix="#",
             has_header=False,
@@ -88,7 +88,7 @@ def get_nuc_data(nuc_dataset: str) -> pl.DataFrame:
     )
     if nuc_dataset == "Hotokezaka":
         return hotokezaka_betaminus
-    csvpath = Path(get_config()["path_datadir"], "betaminusdecays_ensdf.txt")
+    csvpath = Path(get_path("datadir"), "betaminusdecays_ensdf.txt")
     if not csvpath.exists():
         print("Collecting ENSDF data...")
         rows = []

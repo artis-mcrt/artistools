@@ -18,7 +18,7 @@ import pandas as pd
 import polars as pl
 import polars.selectors as cs
 
-from artistools.configuration import get_config
+from artistools.commands import get_path
 from artistools.misc import firstexisting
 from artistools.misc import get_atomic_number
 from artistools.misc import get_elsymbol
@@ -378,7 +378,7 @@ def get_modeldata(
     elif not inputpath.exists() and inputpath.parts[0] == "codecomparison":
         modelpath = inputpath
         _, inputmodel, _ = modelpath.parts
-        textfilepath = Path(get_config()["codecomparisonmodelartismodelpath"], inputmodel, "model.txt")
+        textfilepath = Path(get_path("codecomparisonmodelartismodelpath"), inputmodel, "model.txt")
     else:
         raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), inputpath)
 

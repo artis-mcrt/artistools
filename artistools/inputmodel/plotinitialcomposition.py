@@ -165,7 +165,7 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
     nrows = 1
     ncols = len(args.plotvars)
     xfactor = 1 if modelmeta["dimensions"] == 3 else 0.5
-    figwidth = at.get_config()["figwidth"]
+    figwidth = 5.0
     fig = plt.figure(
         figsize=(figwidth * xfactor * ncols, figwidth * nrows), tight_layout={"pad": 1.0, "w_pad": 0.0, "h_pad": 0.0}
     )

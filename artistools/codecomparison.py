@@ -23,7 +23,7 @@ def get_timestep_times(modelpath: Path | str, loc: t.Literal["start", "mid", "en
     modelpath = Path(modelpath)
     _, modelname, codename = modelpath.parts
 
-    filepath = Path(at.get_config()["codecomparisondata1path"], modelname, f"phys_{modelname}_{codename}.txt")
+    filepath = Path(at.get_path("codecomparisondata1path"), modelname, f"phys_{modelname}_{codename}.txt")
 
     with filepath.open(encoding="utf-8") as fphys:
         _ = int(fphys.readline().replace("#NTIMES:", ""))
@@ -59,7 +59,7 @@ def read_reference_estimators(
     virtualfolder, inputmodel, codename = Path(modelpath).parts
     assert virtualfolder == "codecomparison"
 
-    inputmodelfolder = Path(at.get_config()["codecomparisondata1path"], inputmodel)
+    inputmodelfolder = Path(at.get_path("codecomparisondata1path"), inputmodel)
 
     physfilepath = Path(inputmodelfolder, f"phys_{inputmodel}_{codename}.txt")
 
@@ -174,7 +174,7 @@ def get_spectra(modelpath: str | Path) -> tuple[pl.DataFrame, npt.NDArray[np.flo
     virtualfolder, inputmodel, codename = modelpath.parts
     assert virtualfolder == "codecomparison"
 
-    inputmodelfolder = Path(at.get_config()["codecomparisondata1path"], inputmodel)
+    inputmodelfolder = Path(at.get_path("codecomparisondata1path"), inputmodel)
 
     specfilepath = Path(inputmodelfolder, f"spectra_{inputmodel}_{codename}.txt")
     with specfilepath.open(encoding="utf-8") as fspec:

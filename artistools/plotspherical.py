@@ -176,7 +176,7 @@ def plot_spherical(
 
     meshgrid_phi, meshgrid_theta = np.meshgrid(phigrid, thetagrid)
 
-    xwidth = float(figscale * at.get_config()["figwidth"])
+    xwidth = float(figscale * 5.0)
     fig, axes = plt.subplots(
         len(plotvars),
         1,
