@@ -811,10 +811,7 @@ def make_figure(
         nrows=len(plotlist),
         ncols=1,
         sharex=True,
-        figsize=(
-            args.figscale * at.plottools.FIGWIDTH * args.scalefigwidth,
-            args.figscale * at.plottools.FIGWIDTH * 0.5 * len(plotlist),
-        ),
+        figsize=(args.figscale * 5.0 * args.scalefigwidth, args.figscale * 5.0 * 0.5 * len(plotlist)),
         layout="constrained",
         # tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
     )

@@ -15,8 +15,6 @@ import numpy.typing as npt
 
 from artistools.commands import get_path
 
-FIGWIDTH = 5.0
-
 # colorcet.glasbey_category20
 glasbey_category20 = [
     [0.121569, 0.466667, 0.705882],

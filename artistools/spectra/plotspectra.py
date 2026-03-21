@@ -41,7 +41,6 @@ from artistools.misc import print_theta_phi_definitions
 from artistools.misc import set_args_from_dict
 from artistools.misc import trim_or_pad
 from artistools.plottools import ExponentLabelFormatter
-from artistools.plottools import FIGWIDTH
 from artistools.plottools import glasbey_category20_nogreys
 from artistools.plottools import set_mpl_style
 from artistools.spectra.writespectra import write_flambda_spectra
@@ -1081,8 +1080,8 @@ def make_emissionabsorption_plot(
 def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[t.Any], pl.DataFrame]:
     nrows = len(args.timedayslist) if args.multispecplot else 1
 
-    figwidth = args.figscale * FIGWIDTH * args.figwidthscale
-    figheight = args.figscale * FIGWIDTH * (0.25 + nrows * 0.4)
+    figwidth = args.figscale * 5.0 * args.figwidthscale
+    figheight = args.figscale * 5.0 * (0.25 + nrows * 0.4)
     if args.showabsorption:
         figheight *= 1.56
     if args.hidexticklabels:
