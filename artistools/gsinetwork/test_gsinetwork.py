@@ -1,6 +1,5 @@
 import math
 import typing as t
-from pathlib import Path
 from unittest import mock
 
 import matplotlib.axes as mplax
@@ -9,15 +8,15 @@ from pytest_codspeed.plugin import BenchmarkFixture
 
 import artistools as at
 
-modelpath = at.get_config()["path_testdata"] / "testmodel"
-modelpath_classic_3d = at.get_config()["path_testdata"] / "test-classicmode_3d"
-outputpath = Path(at.get_config()["path_testoutput"])
+modelpath = at.get_path("testdata") / "testmodel"
+modelpath_classic_3d = at.get_path("testdata") / "test-classicmodel_3d"
+outputpath = at.get_path("testoutput")
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
 def test_decayproducts(mockplot: t.Any, benchmark: BenchmarkFixture) -> None:
-    trajpath = at.get_config()["path_testdata"] / "kilonova" / "trajectories"
+    trajpath = at.get_path("testdata") / "kilonova" / "trajectories"
     at.gsinetwork.decayproducts.main(
         argsraw=[], trajectoryroot=trajpath, tmin=0.1, tmax=0.1, nsteps=1, outputpath=outputpath
     )

@@ -8,8 +8,8 @@ from pytest_codspeed.plugin import BenchmarkFixture
 
 import artistools as at
 
-modelpath = at.get_config()["path_testdata"] / "testmodel"
-outputpath = at.get_config()["path_testoutput"]
+modelpath = at.get_path("testdata") / "testmodel"
+outputpath = at.get_path("testoutput")
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)

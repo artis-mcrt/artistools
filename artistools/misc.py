@@ -19,7 +19,7 @@ import numpy.typing as npt
 import polars as pl
 from polars import selectors as cs
 
-from artistools.configuration import get_config
+from artistools.commands import get_path
 
 roman_numerals = (
     "",
@@ -652,10 +652,7 @@ def get_elsymbolslist() -> list[str]:
     elsymbolslist()[26] = 'Fe'.
 
     """
-    return [
-        "n",
-        *pl.read_csv(get_config()["path_datadir"] / "elements.csv", has_header=True, separator=",")["symbol"].to_list(),
-    ]
+    return ["n", *pl.read_csv(get_path("datadir") / "elements.csv", has_header=True, separator=",")["symbol"].to_list()]
 
 
 def get_elsymbols_df() -> pl.LazyFrame:
@@ -663,10 +660,7 @@ def get_elsymbols_df() -> pl.LazyFrame:
     return (
         pl
         .scan_csv(
-            get_config()["path_datadir"] / "elements.csv",
-            separator=",",
-            has_header=True,
-            schema_overrides={"Z": pl.Int32},
+            get_path("datadir") / "elements.csv", separator=",", has_header=True, schema_overrides={"Z": pl.Int32}
         )
         .drop("name")
         .rename({"symbol": "elsymbol", "Z": "atomic_number"})

@@ -13,7 +13,9 @@ import matplotlib.ticker as mplticker
 import numpy as np
 import numpy.typing as npt
 
-from artistools.configuration import get_config
+from artistools.commands import get_path
+
+FIGWIDTH = 5.0
 
 # colorcet.glasbey_category20
 glasbey_category20 = [
@@ -281,7 +283,7 @@ glasbey_category20_nogreys = [
 
 
 def set_mpl_style() -> None:
-    plt.style.use("file://" + str(get_config()["path_artistools_dir"] / "matplotlibrc"))
+    plt.style.use("file://" + str(get_path("artistools_dir") / "matplotlibrc"))
 
 
 class ExponentLabelFormatter(mplticker.ScalarFormatter):

@@ -436,7 +436,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths: list[Path | str], ar
         ncols=cols,
         sharex=True,
         sharey=True,
-        figsize=(at.get_config()["figwidth"] * 2 * cols, at.get_config()["figwidth"] * 0.85 * rows),
+        figsize=(at.plottools.FIGWIDTH * 2 * cols, at.plottools.FIGWIDTH * 0.85 * rows),
         tight_layout={"pad": 2.0, "w_pad": 0.2, "h_pad": 0.2},
     )
 
@@ -603,10 +603,7 @@ def make_singletimestep_plot(
         nrows=nrows,
         ncols=1,
         sharex=False,
-        figsize=(
-            args.figscale * at.get_config()["figwidth"],
-            args.figscale * at.get_config()["figwidth"] * subplotheight * nrows,
-        ),
+        figsize=(args.figscale * at.plottools.FIGWIDTH, args.figscale * at.plottools.FIGWIDTH * subplotheight * nrows),
         tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
     )
 

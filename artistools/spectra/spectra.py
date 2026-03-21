@@ -19,7 +19,7 @@ import polars.selectors as cs
 
 import artistools.constants as const
 import artistools.packets as atpackets
-from artistools.configuration import get_config
+from artistools.commands import get_path
 from artistools.misc import average_direction_bins
 from artistools.misc import firstexisting
 from artistools.misc import get_bflist
@@ -1582,7 +1582,7 @@ def get_reference_spectrum(filename: Path | str) -> tuple[pl.DataFrame, dict[t.A
     if Path(filename).is_file():
         filepath = Path(filename)
     else:
-        filepath = Path(get_config()["path_artistools_dir"], "data", "refspectra", filename)
+        filepath = Path(get_path("artistools_dir"), "data", "refspectra", filename)
 
         if not filepath.is_file():
             filepathxz = filepath.with_suffix(f"{filepath.suffix}.xz")

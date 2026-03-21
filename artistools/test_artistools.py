@@ -9,12 +9,12 @@ import pytest
 
 import artistools as at
 
-modelpath = at.get_config()["path_testdata"] / "testmodel"
-modelpath_3d = at.get_config()["path_testdata"] / "testmodel_3d_10^3"
-outputpath = at.get_config()["path_testoutput"]
+modelpath = at.get_path("testdata") / "testmodel"
+modelpath_3d = at.get_path("testdata") / "testmodel_3d_10^3"
+outputpath = at.get_path("testoutput")
 outputpath.mkdir(exist_ok=True, parents=True)
 
-REPOPATH = at.get_config("path_artistools_repository")
+REPOPATH = at.get_path("artistools_repository")
 
 
 def funcname() -> str:

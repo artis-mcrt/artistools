@@ -26,7 +26,7 @@ from matplotlib.artist import Artist
 from matplotlib.lines import Line2D
 
 import artistools.spectra as atspectra
-from artistools.configuration import get_config
+from artistools.commands import get_path
 from artistools.misc import CustomArgHelpFormatter
 from artistools.misc import df_filter_minmax_bounded
 from artistools.misc import flatten_list
@@ -41,6 +41,7 @@ from artistools.misc import print_theta_phi_definitions
 from artistools.misc import set_args_from_dict
 from artistools.misc import trim_or_pad
 from artistools.plottools import ExponentLabelFormatter
+from artistools.plottools import FIGWIDTH
 from artistools.plottools import glasbey_category20_nogreys
 from artistools.plottools import set_mpl_style
 from artistools.spectra.writespectra import write_flambda_spectra
@@ -360,7 +361,7 @@ def plot_filter_functions(axis: mplax.Axes) -> None:
     filter_names = ["U", "B", "V", "I"]
     colours = ["r", "b", "g", "c", "m"]
 
-    filterdir = Path(get_config()["path_artistools_dir"], "data/filters/")
+    filterdir = Path(get_path("artistools_dir"), "data/filters/")
     for index, filter_name in enumerate(filter_names):
         filter_data = pd.read_csv(
             filterdir / f"{filter_name}.txt",
@@ -646,9 +647,9 @@ def make_spectrum_plot(
         seriesdata: pl.DataFrame | None
         if (
             Path(specpath).is_file()
-            or Path(get_config()["path_artistools_dir"], "data", "refspectra", specpath).is_file()
-            or Path(get_config()["path_artistools_dir"], "data", "refspectra", f"{specpath!s}.xz").is_file()
-            or Path(get_config()["path_artistools_dir"], "data", "refspectra", f"{specpath!s}.zst").is_file()
+            or Path(get_path("artistools_dir"), "data", "refspectra", specpath).is_file()
+            or Path(get_path("artistools_dir"), "data", "refspectra", f"{specpath!s}.xz").is_file()
+            or Path(get_path("artistools_dir"), "data", "refspectra", f"{specpath!s}.zst").is_file()
         ):
             # reference spectrum
             if "linewidth" not in plotkwargs:
@@ -1080,8 +1081,8 @@ def make_emissionabsorption_plot(
 def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[t.Any], pl.DataFrame]:
     nrows = len(args.timedayslist) if args.multispecplot else 1
 
-    figwidth = args.figscale * get_config()["figwidth"] * args.figwidthscale
-    figheight = args.figscale * get_config()["figwidth"] * (0.25 + nrows * 0.4)
+    figwidth = args.figscale * FIGWIDTH * args.figwidthscale
+    figheight = args.figscale * FIGWIDTH * (0.25 + nrows * 0.4)
     if args.showabsorption:
         figheight *= 1.56
     if args.hidexticklabels:
