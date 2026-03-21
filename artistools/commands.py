@@ -1,6 +1,5 @@
 import argparse
 import importlib
-import subprocess
 import typing as t
 from collections.abc import Iterable
 from pathlib import Path
@@ -124,6 +123,8 @@ def addsubparsers(
 
 
 def setup_completions(*args: t.Any, **kwargs: t.Any) -> None:  # noqa: ARG001
+    import subprocess
+
     path_package_source = Path(__file__).absolute().parent
     completionscriptpath = path_package_source / "artistoolscompletions.sh"
     with (completionscriptpath).open("w", encoding="utf-8") as f:
