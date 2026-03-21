@@ -165,7 +165,7 @@ def show_version(*args: t.Any, **kwargs: t.Any) -> None:  # noqa: ARG001
 def get_path(key: str) -> Path:
     match key:
         case "codecomparisondata1path":
-            return Path("/Users/luke/Library/Mobile Documents/com~apple~CloudDocs/GitHub/sn-rad-trans/data1")
+            return Path(Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/GitHub/sn-rad-trans/data1")
         case "codecomparisonmodelartismodelpath":
             return Path(Path.home() / "Google Drive/My Drive/artis_runs/weizmann/")
         case "artistools_repository":
