@@ -4,7 +4,6 @@ from unittest import mock
 
 import matplotlib.axes as mplax
 import pytest
-from pytest_codspeed.plugin import BenchmarkFixture
 
 import artistools as at
 
@@ -15,7 +14,7 @@ outputpath = at.get_path("testoutput")
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
-def test_decayproducts(mockplot: t.Any, benchmark: BenchmarkFixture) -> None:
+def test_decayproducts(mockplot: t.Any) -> None:
     trajpath = at.get_path("testdata") / "kilonova" / "trajectories"
     at.gsinetwork.decayproducts.main(
         argsraw=[], trajectoryroot=trajpath, tmin=0.1, tmax=0.1, nsteps=1, outputpath=outputpath
