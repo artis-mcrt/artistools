@@ -36,8 +36,7 @@ def main() -> None:
 
     # Update Cargo.toml
     cargo_toml_path = repo_path / "rust" / "Cargo.toml"
-    # this can fail because the larger cargo-edit crate is already installed to supply the same command, which is fine
-    subprocess.run(["cargo", "install", "-q", "cargo-set-version"], shell=False, capture_output=True, check=False)
+    subprocess.check_call(["cargo", "install", "-q", "cargo-edit"])
     update_command = ["cargo", "set-version", f"--manifest-path={cargo_toml_path}", version]
     try:
         subprocess.check_call(update_command)  # noqa: S603
