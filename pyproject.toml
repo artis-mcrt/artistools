@@ -1,12 +1,6 @@
 [build-system]
-requires = [
-    # "maturin>=1.9.3",
-    "setuptools>=80.9.0",
-    "setuptools-rust>=1.12",
-    "setuptools_scm>=9.2.2",
-]
-# build-backend = "maturin"
-build-backend = "setuptools.build_meta"
+requires = ["maturin>=1.12.6"]
+build-backend = "maturin"
 
 [project]
 name = "artistools"
@@ -17,7 +11,7 @@ authors = [
     { name = "Fionntan Callan", email = "fcallan02@qub.ac.uk" },
     { name = "Stuart Sim", email = "s.sim@qub.ac.uk" },
     { name = "Joshua Pollin", email = "jpollin02@qub.ac.uk" },
-    { name = "Gerrit Leck", email = "g.leck@gsi.de" }
+    { name = "Gerrit Leck", email = "g.leck@gsi.de" },
 ]
 description = "Plotting and analysis tools for the ARTIS 3D radiative transfer code for supernovae and kilonovae."
 classifiers = [
@@ -30,9 +24,9 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Astronomy",
     "Topic :: Scientific/Engineering :: Physics",
 ]
-dynamic = ["version"]
+version = "2026.3.3"
 requires-python = ">=3.12"
-license =  "MIT"
+license = "MIT"
 license-files = ["LICEN[CS]E*"]
 readme = { file = "README.md", content-type = 'text/markdown' }
 dependencies = [
@@ -58,7 +52,7 @@ extras = [
     "plotly>=6.5.2",
     "pypdf>=6.7.5",
     "pynonthermal>=2025.4.8",
-    "pyvista>=0.47.1;python_version<'3.15'",  # not compatible with cpython 3.15 yet
+    "pyvista>=0.47.1;python_version<'3.15'", # not compatible with cpython 3.15 yet
 ]
 
 [dependency-groups]
@@ -74,7 +68,6 @@ dev = [
     "pytest-cov>=7.0.0",
     "pytest-xdist[psutil]>=3.8.0",
     "ruff>=0.15.6",
-    "setuptools_scm>=9.2.2",
     "ty>=0.0.14",
     "typeguard>=4.5.1",
     "types-python-dateutil>=2.9.0.20251115",
@@ -141,8 +134,16 @@ before-all = [
 bindings = "pyo3"
 profile = "release"
 manifest-path = "rust/Cargo.toml"
-features = ["pyo3/extension-module"]
 module-name = "artistools.rustext"
+use-base-python = true
+include = [
+    "artistools/data/**",
+    "**/matplotlibrc",
+    "**/pyproject.toml",
+    "**/README.md",
+    "**/*.cff",
+    "**/LICENSE*",
+]
 
 [tool.mypy]
 check_untyped_defs = true
@@ -236,7 +237,7 @@ exclude = [
     'target',
     '**/version.py',
     '.venv',
-    '**/rd_cmfgen.py'
+    '**/rd_cmfgen.py',
 ]
 reportAny = false
 reportCallInDefaultInitializer = false
@@ -265,7 +266,13 @@ pythonVersion = "3.12"
 
 [tool.pytest]
 minversion = "9.0"
-addopts = ["--durations=0","--durations-min=1.0","--typeguard-packages=artistools","-n","auto"]
+addopts = [
+    "--durations=0",
+    "--durations-min=1.0",
+    "--typeguard-packages=artistools",
+    "-n",
+    "auto",
+]
 testpaths = ["artistools"]
 
 [tool.refurb]
@@ -283,7 +290,11 @@ ignore = ["FURB108"]
 line-length = 120
 fix = true
 show-fixes = true
-extend-exclude = ["_version.py", "artistools/inputmodel/fromcmfgen/rd_cmfgen.py", ".venv/**"]
+extend-exclude = [
+    "_version.py",
+    "artistools/inputmodel/fromcmfgen/rd_cmfgen.py",
+    ".venv/**",
+]
 preview = true
 required-version = ">=0.15.6"
 
@@ -347,7 +358,7 @@ unfixable = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"test_*.py" = ["ARG001"]  # unused-argument for pytest fixtures
+"test_*.py" = ["ARG001"]    # unused-argument for pytest fixtures
 "rd_cmfgen.py" = ["PGH004"]
 
 [tool.ruff.lint.flake8-import-conventions.extend-aliases]
@@ -371,39 +382,6 @@ require-lazy = "all"
 [tool.ruff.lint.isort]
 force-single-line = true
 order-by-type = false
-
-[tool.setuptools]
-include-package-data = true
-
-[[tool.setuptools-rust.ext-modules]]
-target = "artistools.rustext" # The last part of the name has to match lib.name in Cargo.toml,
-path = "rust/Cargo.toml"
-binding = "PyO3"
-debug = false
-optional = false
-
-[tool.setuptools.packages.find]
-namespaces = true
-where = ["."]
-include = ["*", "**/matplotlibrc", "**/data"]
-exclude = [
-    "tests",
-    "**/dist",
-    "**/lib",
-    "**/build",
-    "*.egg-info",
-    "**/.*",
-    "**/target",
-    "**/.venv",
-    "**/venv",
-]
-
-#[tool.distutils.bdist_wheel]
-#py_limited_api="cp312"
-
-[tool.setuptools_scm]
-version_file = "artistools/version.py"
-local_scheme = "no-local-version"
 
 [tool.ty.rules]
 unresolved-import = "ignore"

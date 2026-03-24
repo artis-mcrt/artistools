@@ -58,3 +58,9 @@ repos:
             language: system
             entry: uv run --all-extras --frozen --no-sync --python=.venv/ -- ty check --python=.venv/
             pass_filenames: false
+
+          - id: set-version
+            name: set version
+            language: system
+            entry: python ./set_version.py
+            pass_filenames: false

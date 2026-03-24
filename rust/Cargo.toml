@@ -1,6 +1,6 @@
 [package]
 name = "artistools"
-version = "2026.2.17"
+version = "2026.3.3"
 authors = ["Luke Shingles <luke.shingles@gmail.com>"]
 edition = "2024"
 rust-version = "1.87"
@@ -9,6 +9,7 @@ license = "MIT"
 homepage = "https://github.com/artis-mcrt/artistools"
 repository = "https://github.com/artis-mcrt/artistools"
 readme = "../README.md"
+build = "build.rs"
 
 [lib]
 name = "rustext"
@@ -18,7 +19,6 @@ path = "src/lib.rs"
 [dependencies]
 autocompress = { version = "0.6.0", features = ["gzip", "rayon", "xz", "zstd"] }
 polars = { version = "0.53.0", features = ["diagonal_concat", "performant"] }
-# features = ["abi3-py312"]
 pyo3 = { version = "0.27.2" }
 pyo3-polars = { version = "0.26.0" }
 rayon = "1.10"
