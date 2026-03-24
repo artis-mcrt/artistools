@@ -138,6 +138,7 @@ module-name = "artistools.rustext"
 use-base-python = true
 include = [
     "artistools/data/**",
+    "**/artistoolscompletions.sh",
     "**/matplotlibrc",
     "**/pyproject.toml",
     "**/README.md",
