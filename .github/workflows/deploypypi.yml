@@ -51,6 +51,7 @@ jobs:
             - uses: astral-sh/setup-uv@v7
               with:
                   python-version: 3.${{ matrix.python-minor-version }}
+                  enable-cache: false
 
             - name: Ensure version is up to date
               run: python3 ./set_version.py
