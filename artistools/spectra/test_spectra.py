@@ -36,7 +36,7 @@ def test_spectraplot(mockplot: t.Any) -> None:
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
-def test_spectra_frompackets(mockplot: t.Any, benchmark: BenchmarkFixture) -> None:
+def test_spectra_frompackets(mockplot: t.Any) -> None:
     at.spectra.plot(
         argsraw=[],
         specpath=modelpath,
@@ -59,7 +59,7 @@ def test_spectra_outputtext() -> None:
 
 
 @pytest.mark.benchmark
-def test_spectraemissionplot(benchmark: BenchmarkFixture) -> None:
+def test_spectraemissionplot() -> None:
     at.spectra.plot(
         argsraw=[],
         specpath=modelpath,
@@ -72,7 +72,7 @@ def test_spectraemissionplot(benchmark: BenchmarkFixture) -> None:
 
 
 @pytest.mark.benchmark
-def test_spectraemissionplot_nostack(benchmark: BenchmarkFixture) -> None:
+def test_spectraemissionplot_nostack() -> None:
     at.spectra.plot(
         argsraw=[],
         specpath=modelpath,
@@ -85,7 +85,7 @@ def test_spectraemissionplot_nostack(benchmark: BenchmarkFixture) -> None:
     )
 
 
-def test_spectra_get_spectrum(benchmark: BenchmarkFixture) -> None:
+def test_spectra_get_spectrum() -> None:
     def check_spectrum(dfspectrumpkts: pl.DataFrame) -> None:
         assert math.isclose(max(dfspectrumpkts["f_lambda"]), 2.548532804918824e-13, abs_tol=1e-5)
         assert min(dfspectrumpkts["f_lambda"]) < 1e-9
@@ -115,7 +115,7 @@ def test_spectra_get_spectrum(benchmark: BenchmarkFixture) -> None:
 
 
 @pytest.mark.benchmark
-def test_spectra_get_spectrum_polar_angles(benchmark: BenchmarkFixture) -> None:
+def test_spectra_get_spectrum_polar_angles() -> None:
     spectra = at.spectra.get_spectrum(
         modelpath=modelpath_classic_3d,
         directionbins=[0, 10, 20, 30, 40, 50, 60, 70, 80, 90],
