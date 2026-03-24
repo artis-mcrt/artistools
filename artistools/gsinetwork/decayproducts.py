@@ -43,7 +43,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument(
         "-nucdata",
-        default="ensdf",
+        default="hotokezaka",
         choices=["hotokezaka", "ensdf"],
         help='Nuclear dataset to use, either "hotokezaka" or "ensdf"',
     )

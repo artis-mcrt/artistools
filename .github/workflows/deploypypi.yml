@@ -48,16 +48,13 @@ jobs:
                       cibw-rust-target-${{ runner.os }}${{ runner.arch }}-python3.${{ matrix.python-minor-version }}-
                       cibw-rust-target-${{ runner.os }}${{ runner.arch }}-
 
-            - uses: actions/setup-python@v6
+            - uses: astral-sh/setup-uv@v7
               with:
                   python-version: 3.${{ matrix.python-minor-version }}
-                  allow-prereleases: true
-                  check-latest: true
+                  enable-cache: false
 
-            - name: Strip dev tag from version
-              run: |
-                  python3 -m pip install --upgrade setuptools_scm
-                  echo "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS=$(python3 -m setuptools_scm --strip-dev)" >> $GITHUB_ENV
+            - name: Ensure version is up to date
+              run: python3 ./set_version.py
 
             - name: Build wheels
               uses: pypa/cibuildwheel@v3.4
@@ -77,12 +74,10 @@ jobs:
               with:
                   fetch-depth: 0
 
-            - uses: actions/setup-python@v6
+            - uses: astral-sh/setup-uv@v7
 
-            - name: Install dependencies
-              run: |
-                  python3 -m pip install --upgrade uv setuptools_scm
-                  echo "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS=$(python3 -m setuptools_scm --strip-dev)" >> $GITHUB_ENV
+            - name: Ensure version is up to date
+              run: python3 ./set_version.py
 
             - name: Build sdist
               run: uv build --sdist
