@@ -16,15 +16,15 @@ def update_pyproject_version(version: str) -> None:
 
 
 def update_cff_citation(version: str) -> None:
-
+    cff_path = repo_path / "CITATION.cff"
     # Convert e.g. "v2026.1.2" to "2026-01-02"
     date_released = "-".join(part.zfill(2) for part in version.lstrip("v").split("."))
-    cff_in = (repo_path / "CITATION.cff").read_text(encoding="utf-8")
+    cff_in = cff_path.read_text(encoding="utf-8")
 
     cff_out = re.sub(r"^version: .*$", f"version: {version}", cff_in, flags=re.MULTILINE)
     cff_out = re.sub(r"^date-released: .*$", f"date-released: {date_released}", cff_out, flags=re.MULTILINE)
 
-    Path("CITATION.cff").write_text(cff_out, encoding="utf-8")
+    cff_path.write_text(cff_out, encoding="utf-8")
 
 
 def main() -> None:
