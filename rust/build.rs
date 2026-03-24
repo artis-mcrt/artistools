@@ -6,7 +6,8 @@ fn main() {
         .args(["../set_version.py"])
         .status()
         .expect("Failed to start set_version.py");
-    if !status.success() {
-        panic!("set_version.py failed with status: {}", status);
-    }
+    assert!(
+        status.success(),
+        "set_version.py failed with status: {status}"
+    );
 }
