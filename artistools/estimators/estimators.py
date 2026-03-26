@@ -170,7 +170,10 @@ def join_cell_modeldata(
     """Join the estimator data with data from model.txt and derived quantities, e.g. density, volume, etc."""
     assert estimators is not None
     estimators = estimators.join(
-        at.get_timesteps(modelpath).select("timestep", "tmid_days", "twidth_days"),
+        at
+        .get_timesteps(modelpath)
+        .select("timestep", "tmid_days", "twidth_days")
+        .with_columns(tmid_days_prevtimestep=pl.col("tmid_days").shift(1)),
         on="timestep",
         how="left",
         coalesce=True,
@@ -187,6 +190,8 @@ def join_cell_modeldata(
     return estimators.join(dfmodel, on="modelgridindex", suffix="_initmodel").with_columns(
         rho=pl.col("init_rho") * (modelmeta["t_model_init_days"] / pl.col("tmid_days")) ** 3,
         volume=pl.col("init_volume") * (pl.col("tmid_days") / modelmeta["t_model_init_days"]) ** 3,
+        volume_prevtimestep=pl.col("init_volume")
+        * (pl.col("tmid_days_prevtimestep") / modelmeta["t_model_init_days"]) ** 3,
     ), modelmeta
 
 
