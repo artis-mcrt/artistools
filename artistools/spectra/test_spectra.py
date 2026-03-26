@@ -9,13 +9,12 @@ import numpy as np
 import polars as pl
 import pytest
 from pytest_codspeed.plugin import BenchmarkFixture
-from scipy import integrate
 
 import artistools as at
 
-modelpath = at.get_config()["path_testdata"] / "testmodel"
-outputpath = at.get_config()["path_testoutput"]
-modelpath_classic_3d = at.get_config()["path_testdata"] / "test-classicmode_3d"
+modelpath = at.get_path("testdata") / "testmodel"
+outputpath = at.get_path("testoutput")
+modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
@@ -31,13 +30,13 @@ def test_spectraplot(mockplot: t.Any) -> None:
     arr_lambda = np.array(mockplot.call_args[0][1])
     arr_f_lambda = np.array(mockplot.call_args[0][2])
 
-    integral = integrate.trapezoid(y=arr_f_lambda, x=arr_lambda)
+    integral = np.trapezoid(y=arr_f_lambda, x=arr_lambda)
     assert np.isclose(integral, 5.870730903198916e-11, atol=1e-14)
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
-def test_spectra_frompackets(mockplot: t.Any, benchmark: BenchmarkFixture) -> None:
+def test_spectra_frompackets(mockplot: t.Any) -> None:
     at.spectra.plot(
         argsraw=[],
         specpath=modelpath,
@@ -50,7 +49,7 @@ def test_spectra_frompackets(mockplot: t.Any, benchmark: BenchmarkFixture) -> No
     arr_lambda = np.array(mockplot.call_args[0][1])
     arr_f_lambda = np.array(mockplot.call_args[0][2])
 
-    integral = integrate.trapezoid(y=arr_f_lambda, x=arr_lambda)
+    integral = np.trapezoid(y=arr_f_lambda, x=arr_lambda)
 
     assert np.isclose(integral, 7.7888e-12, rtol=1e-3)
 
@@ -60,7 +59,7 @@ def test_spectra_outputtext() -> None:
 
 
 @pytest.mark.benchmark
-def test_spectraemissionplot(benchmark: BenchmarkFixture) -> None:
+def test_spectraemissionplot() -> None:
     at.spectra.plot(
         argsraw=[],
         specpath=modelpath,
@@ -73,7 +72,7 @@ def test_spectraemissionplot(benchmark: BenchmarkFixture) -> None:
 
 
 @pytest.mark.benchmark
-def test_spectraemissionplot_nostack(benchmark: BenchmarkFixture) -> None:
+def test_spectraemissionplot_nostack() -> None:
     at.spectra.plot(
         argsraw=[],
         specpath=modelpath,
@@ -86,7 +85,7 @@ def test_spectraemissionplot_nostack(benchmark: BenchmarkFixture) -> None:
     )
 
 
-def test_spectra_get_spectrum(benchmark: BenchmarkFixture) -> None:
+def test_spectra_get_spectrum() -> None:
     def check_spectrum(dfspectrumpkts: pl.DataFrame) -> None:
         assert math.isclose(max(dfspectrumpkts["f_lambda"]), 2.548532804918824e-13, abs_tol=1e-5)
         assert min(dfspectrumpkts["f_lambda"]) < 1e-9
@@ -94,7 +93,7 @@ def test_spectra_get_spectrum(benchmark: BenchmarkFixture) -> None:
         assert isinstance(flambdamean, float)
         assert math.isclose(flambdamean, 1.0314682640070206e-14, abs_tol=1e-5)
 
-    dfspectrum = benchmark(lambda: at.spectra.get_spectrum(modelpath, 55, 65, fluxfilterfunc=None))[-1].collect()
+    dfspectrum = at.spectra.get_spectrum(modelpath, 55, 65, fluxfilterfunc=None)[-1].collect()
 
     assert len(dfspectrum["lambda_angstroms"]) == 1000
     assert len(dfspectrum["f_lambda"]) == 1000
@@ -116,7 +115,7 @@ def test_spectra_get_spectrum(benchmark: BenchmarkFixture) -> None:
 
 
 @pytest.mark.benchmark
-def test_spectra_get_spectrum_polar_angles(benchmark: BenchmarkFixture) -> None:
+def test_spectra_get_spectrum_polar_angles() -> None:
     spectra = at.spectra.get_spectrum(
         modelpath=modelpath_classic_3d,
         directionbins=[0, 10, 20, 30, 40, 50, 60, 70, 80, 90],
@@ -217,7 +216,7 @@ def test_spectra_get_flux_contributions(benchmark: BenchmarkFixture) -> None:
         modelpath=modelpath, timestepmin=timestepmin, timestepmax=timestepmax, fluxfilterfunc=None
     )[-1].collect()
 
-    integrated_flux_specout = integrate.trapezoid(dfspectrum["f_lambda"], x=dfspectrum["lambda_angstroms"])
+    integrated_flux_specout = np.trapezoid(dfspectrum["f_lambda"], x=dfspectrum["lambda_angstroms"])
 
     _contribution_list, array_flambda_emission_total, arraylambda_angstroms = benchmark(
         lambda: at.spectra.get_flux_contributions(
@@ -225,7 +224,7 @@ def test_spectra_get_flux_contributions(benchmark: BenchmarkFixture) -> None:
         )
     )
 
-    integrated_flux_emission = -integrate.trapezoid(array_flambda_emission_total, x=arraylambda_angstroms)
+    integrated_flux_emission = -np.trapezoid(array_flambda_emission_total, x=arraylambda_angstroms)
 
     # total spectrum should be equal to the sum of all emission processes
     print(f"Integrated flux from spec.out:     {integrated_flux_specout}")

@@ -4,18 +4,17 @@ from unittest import mock
 import matplotlib.axes as mplax
 import numpy as np
 import pytest
-from pytest_codspeed.plugin import BenchmarkFixture
 
 import artistools as at
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
-def test_vspectraplot(mockplot: t.Any, benchmark: BenchmarkFixture) -> None:
+def test_vspectraplot(mockplot: t.Any) -> None:
     at.spectra.plot(
         argsraw=[],
-        specpath=[at.get_config()["path_testdata"] / "vspecpolmodel", "sn2011fe_PTF11kly_20120822_norm.txt"],
-        outputfile=at.get_config()["path_testoutput"] / "test_vspectra.pdf",
+        specpath=[at.get_path("testdata") / "vspecpolmodel", "sn2011fe_PTF11kly_20120822_norm.txt"],
+        outputfile=at.get_path("testoutput") / "test_vspectra.pdf",
         plotvspecpol=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
         timemin=11,
         timemax=12,
@@ -63,11 +62,11 @@ def test_vspectraplot(mockplot: t.Any, benchmark: BenchmarkFixture) -> None:
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
-def test_vpkt_frompackets_spectrum_plot(mockplot: t.Any, benchmark: BenchmarkFixture) -> None:
+def test_vpkt_frompackets_spectrum_plot(mockplot: t.Any) -> None:
     at.spectra.plot(
         argsraw=[],
-        specpath=[at.get_config()["path_testdata"] / "vpktcontrib"],
-        outputfile=at.get_config()["path_testoutput"] / "test_vpktscontrib_spectra.pdf",
+        specpath=[at.get_path("testdata") / "vpktcontrib"],
+        outputfile=at.get_path("testoutput") / "test_vpktscontrib_spectra.pdf",
         plotvspecpol=[0, 1, 2, 3, 4, 5, 6, 7, 8],
         frompackets=True,
         maxpacketfiles=2,

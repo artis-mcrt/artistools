@@ -1,25 +1,5 @@
 """Matplotlib-related plotting functions."""
 
-__lazy_modules__ = [
-    "itertools",
-    "matplotlib",
-    "matplotlib.axes",
-    "matplotlib.cbook",
-    "matplotlib.cm",
-    "matplotlib.colors",
-    "matplotlib.colorbar",
-    "matplotlib.figure",
-    "matplotlib.image",
-    "matplotlib.pyplot",
-    "matplotlib.rcsetup",
-    "matplotlib.ticker",
-    "numpy",
-    "numpy.typing",
-    "pandas",
-    "polars",
-    "sys",
-    "typing",
-]
 import argparse
 import itertools
 import sys
@@ -33,7 +13,7 @@ import matplotlib.ticker as mplticker
 import numpy as np
 import numpy.typing as npt
 
-from artistools.configuration import get_config
+from artistools.commands import get_path
 
 # colorcet.glasbey_category20
 glasbey_category20 = [
@@ -301,7 +281,7 @@ glasbey_category20_nogreys = [
 
 
 def set_mpl_style() -> None:
-    plt.style.use("file://" + str(get_config()["path_artistools_dir"] / "matplotlibrc"))
+    plt.style.use("file://" + str(get_path("artistools_dir") / "matplotlibrc"))
 
 
 class ExponentLabelFormatter(mplticker.ScalarFormatter):
@@ -309,6 +289,7 @@ class ExponentLabelFormatter(mplticker.ScalarFormatter):
 
     _useMathText: bool
     _usetex: bool
+    labeltemplate: str
 
     def __init__(self, labeltemplate: str, useMathText: bool = True) -> None:
         self.set_labeltemplate(labeltemplate)
@@ -333,11 +314,13 @@ class ExponentLabelFormatter(mplticker.ScalarFormatter):
         assert "{" in labeltemplate
         self.labeltemplate = labeltemplate
 
-    def set_locs(self, locs) -> None:  # noqa: ANN001
+    @t.override
+    def set_locs(self, locs: t.Any) -> None:
         super().set_locs(locs)
         self._set_formatted_label_text()
 
-    def set_axis(self, axis) -> None:  # noqa: ANN001
+    @t.override
+    def set_axis(self, axis: t.Any) -> None:
         super().set_axis(axis)
         self._set_formatted_label_text()
 

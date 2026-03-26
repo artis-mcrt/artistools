@@ -4,18 +4,6 @@
 Examples are temperatures, populations, heating/cooling rates.
 """
 
-__lazy_modules__ = [
-    "matplotlib",
-    "matplotlib.axes",
-    "matplotlib.figure",
-    "matplotlib.image",
-    "matplotlib.pyplot",
-    "matplotlib.ticker",
-    "numpy",
-    "numpy.typing",
-    "pandas",
-    "polars",
-]
 import argparse
 import math
 import string
@@ -319,10 +307,13 @@ def plot_levelpop(
 
         print(f"plot_levelpop {label}")
 
-        # level index query goes outside for caching granularity reasons
-        dfnltepops = at.nltepops.read_files(
-            modelpath, dfquery=f"Z=={atomic_number:.0f} and ion_stage=={ion_stage:.0f}"
-        ).query("level==@levelindex")
+        dfnltepops = (
+            at.nltepops
+            .read_files(modelpath)
+            .filter((pl.col("Z") == atomic_number) & (pl.col("ion_stage") == ion_stage))
+            .filter(pl.col("level") == levelindex)
+            .to_pandas(use_pyarrow_extension_array=True)
+        )
 
         ylist = []
         for modelgridindex in mgilist:
@@ -820,10 +811,7 @@ def make_figure(
         nrows=len(plotlist),
         ncols=1,
         sharex=True,
-        figsize=(
-            args.figscale * at.get_config()["figwidth"] * args.scalefigwidth,
-            args.figscale * at.get_config()["figwidth"] * 0.5 * len(plotlist),
-        ),
+        figsize=(args.figscale * 5.0 * args.scalefigwidth, args.figscale * 5.0 * 0.5 * len(plotlist)),
         layout="constrained",
         # tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
     )
@@ -1119,7 +1107,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     estimators = estimators.with_columns(deltavol_deltat=pl.col("volume") * pl.col("twidth_days"))
 
-    plotlist = args.plotlist or [
+    plotlist: list[t.Any] = args.plotlist or [
         # [["initabundances", ["Fe", "Ni_stable", "Ni_56"]]],
         # ['heating_dep', 'heating_coll', 'heating_bf', 'heating_ff',
         #  ['_yscale', 'linear']],

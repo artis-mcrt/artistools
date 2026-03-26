@@ -1,16 +1,5 @@
 """Artistools - spectra related functions."""
 
-__lazy_modules__ = [
-    "matplotlib",
-    "matplotlib.axes",
-    "matplotlib.figure",
-    "matplotlib.pyplot",
-    "numpy",
-    "numpy.typing",
-    "pandas",
-    "polars",
-    "polars.selectors",
-]
 import argparse
 import contextlib
 import math
@@ -30,7 +19,7 @@ import polars.selectors as cs
 
 import artistools.constants as const
 import artistools.packets as atpackets
-from artistools.configuration import get_config
+from artistools.commands import get_path
 from artistools.misc import average_direction_bins
 from artistools.misc import firstexisting
 from artistools.misc import get_bflist
@@ -400,13 +389,11 @@ def get_from_packets(
         lambda_bin_edges = np.arange(lambda_min, lambda_max + delta_lambda, delta_lambda)
         lambda_bin_centres = 0.5 * (lambda_bin_edges[:-1] + lambda_bin_edges[1:])  # bin centres
         pl_delta_lambda = pl.lit(delta_lambda)
-    elif isinstance(delta_lambda, np.ndarray):
+    else:
+        assert isinstance(delta_lambda, np.ndarray)
         lambda_bin_edges = np.array([lambda_min + (delta_lambda[:i]).sum() for i in range(len(delta_lambda) + 1)])
         lambda_bin_centres = 0.5 * (lambda_bin_edges[:-1] + lambda_bin_edges[1:])
         pl_delta_lambda = pl.Series(delta_lambda)
-    else:
-        msg = f"Invalid delta_lambda type: {type(delta_lambda)}"
-        raise ValueError(msg)
 
     delta_time_s = (timehighdays - timelowdays) * 86400.0
 
@@ -954,7 +941,6 @@ def get_flux_contributions(
     average_over_phi: bool = False,
     average_over_theta: bool = False,
 ) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
-    from scipy import integrate
 
     arr_tmid = get_timestep_times(modelpath, loc="mid")
     arr_tdelta = get_timestep_times(modelpath, loc="delta")
@@ -1094,9 +1080,10 @@ def get_flux_contributions(
                 array_flambda_absorption = array_fnu_absorption * arraynu / arraylambda
 
                 array_flambda_emission_total += array_flambda_emission
-                fluxcontribthisseries = abs(integrate.trapezoid(array_fnu_emission, x=arraynu)) + abs(
-                    integrate.trapezoid(array_fnu_absorption, x=arraynu)
+                fluxcontribthisseries = abs(np.trapezoid(array_fnu_emission, x=arraynu)) + abs(
+                    np.trapezoid(array_fnu_absorption, x=arraynu)
                 )
+                assert isinstance(fluxcontribthisseries, float)
 
                 if emissiontypeclass == "bound-bound":
                     linelabel = get_ionstring(elementlist["Z"][elementindex], ion_stage)
@@ -1142,7 +1129,6 @@ def get_flux_contributions_from_packets(
     vpkt_match_emission_exclusion_to_opac: bool = False,
     gamma: bool = False,
 ) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
-    from scipy import integrate
 
     assert groupby in {"ion", "line", "nuc", "nucmass"}
     assert emtypecolumn in {"emissiontype", "trueemissiontype", "pellet_nucindex"}
@@ -1450,8 +1436,8 @@ def get_flux_contributions_from_packets(
         if array_flambda_emission is None:
             array_flambda_emission = np.zeros_like(array_flambda_absorption, dtype=float)
 
-        fluxcontribthisseries = abs(integrate.trapezoid(array_flambda_emission, x=array_lambda)) + abs(
-            integrate.trapezoid(array_flambda_absorption, x=array_lambda)
+        fluxcontribthisseries = abs(np.trapezoid(array_flambda_emission, x=array_lambda)) + abs(
+            np.trapezoid(array_flambda_absorption, x=array_lambda)
         )
         assert isinstance(fluxcontribthisseries, float)
 
@@ -1481,7 +1467,6 @@ def sort_and_reduce_flux_contribution_list(
     fixedionlist: list[str] | None = None,
     hideother: bool = False,
 ) -> list[FluxContributionTuple]:
-    from scipy import integrate
 
     if fixedionlist:
         if unrecognised_items := [x for x in fixedionlist if x not in [y.linelabel for y in contribution_list_in]]:
@@ -1542,8 +1527,8 @@ def sort_and_reduce_flux_contribution_list(
             index += 1
 
         if numotherprinted < maxnumotherprinted and row.linelabel != "Other":
-            integemiss = abs(integrate.trapezoid(row.array_flambda_emission, x=arraylambda_angstroms))
-            integabsorp = abs(integrate.trapezoid(-row.array_flambda_absorption, x=arraylambda_angstroms))
+            integemiss = abs(np.trapezoid(row.array_flambda_emission, x=arraylambda_angstroms))
+            integabsorp = abs(np.trapezoid(-row.array_flambda_absorption, x=arraylambda_angstroms))
             if integabsorp > 0.0 and integemiss > 0.0:
                 print(
                     f"{row.fluxcontrib:.1e}, emission {integemiss:.1e}, "
@@ -1581,9 +1566,8 @@ def sort_and_reduce_flux_contribution_list(
 def print_integrated_flux(
     arr_df_on_dx: npt.NDArray[np.floating] | pl.Series, arr_x: npt.NDArray[np.floating] | pl.Series
 ) -> float:
-    from scipy import integrate
 
-    integrated_flux = abs(integrate.trapezoid(np.nan_to_num(arr_df_on_dx, nan=0.0), x=arr_x))
+    integrated_flux = abs(np.trapezoid(np.nan_to_num(arr_df_on_dx, nan=0.0), x=arr_x))
     x_min = arr_x.min()
     x_max = arr_x.max()
     assert isinstance(x_min, int | float)
@@ -1598,7 +1582,7 @@ def get_reference_spectrum(filename: Path | str) -> tuple[pl.DataFrame, dict[t.A
     if Path(filename).is_file():
         filepath = Path(filename)
     else:
-        filepath = Path(get_config()["path_artistools_dir"], "data", "refspectra", filename)
+        filepath = Path(get_path("artistools_dir"), "data", "refspectra", filename)
 
         if not filepath.is_file():
             filepathxz = filepath.with_suffix(f"{filepath.suffix}.xz")

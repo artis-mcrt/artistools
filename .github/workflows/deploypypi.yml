@@ -3,11 +3,8 @@ name: Build and deploy to PyPI/testPyPI
 permissions:
     contents: read
 on:
-    push:
-        tags:
-            - v*
-    # release:
-    #     types: [published, edited]
+    release:
+        types: [published, edited]
     repository_dispatch:
         types: [trigger_checks]
     workflow_dispatch:
@@ -19,7 +16,7 @@ jobs:
             matrix:
                 target: [{os_arch: manylinux_x86_64, runs-on: ubuntu-24.04}, {os_arch: manylinux_aarch64, runs-on: ubuntu-24.04-arm}, {os_arch: macosx_arm64,
                           runs-on: macos-26}]
-                python-minor-version: ['11', '12', '13', '14', 14t]
+                python-minor-version: ['12', '13', '14', 14t]
             fail-fast: false
         runs-on: ${{ matrix.target.runs-on }}
         env:
@@ -48,16 +45,13 @@ jobs:
                       cibw-rust-target-${{ runner.os }}${{ runner.arch }}-python3.${{ matrix.python-minor-version }}-
                       cibw-rust-target-${{ runner.os }}${{ runner.arch }}-
 
-            - uses: actions/setup-python@v6
+            - uses: astral-sh/setup-uv@v7
               with:
                   python-version: 3.${{ matrix.python-minor-version }}
-                  allow-prereleases: true
-                  check-latest: true
+                  enable-cache: false
 
-            - name: Strip dev tag from version
-              run: |
-                  python3 -m pip install --upgrade setuptools_scm
-                  echo "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS=$(python3 -m setuptools_scm --strip-dev)" >> $GITHUB_ENV
+            - name: Ensure version is up to date
+              run: python3 ./set_version.py
 
             - name: Build wheels
               uses: pypa/cibuildwheel@v3.4
@@ -77,12 +71,10 @@ jobs:
               with:
                   fetch-depth: 0
 
-            - uses: actions/setup-python@v6
+            - uses: astral-sh/setup-uv@v7
 
-            - name: Install dependencies
-              run: |
-                  python3 -m pip install --upgrade uv setuptools_scm
-                  echo "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS=$(python3 -m setuptools_scm --strip-dev)" >> $GITHUB_ENV
+            - name: Ensure version is up to date
+              run: python3 ./set_version.py
 
             - name: Build sdist
               run: uv build --sdist

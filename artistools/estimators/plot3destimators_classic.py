@@ -1,14 +1,3 @@
-__lazy_modules__ = [
-    "matplotlib",
-    "matplotlib.axes",
-    "matplotlib.figure",
-    "matplotlib.pyplot",
-    "numpy",
-    "numpy.typing",
-    "pandas",
-    "polars",
-    "polars.selectors",
-]
 import argparse
 import typing as t
 from pathlib import Path
@@ -46,7 +35,7 @@ def get_modelgridcells_along_axis(modelpath: Path | str, args: argparse.Namespac
     return get_mgi_of_modeldata(profile1d, modelpath)
 
 
-def get_modelgridcells_2D_slice(modeldata, modelpath) -> list[int]:  # noqa: ANN001
+def get_modelgridcells_2D_slice(modeldata: pd.DataFrame, modelpath: Path | str) -> list[int]:
     sliceaxis: t.Literal["x", "y", "z"] = "x"
 
     slicedata = at.inputmodel.plotinitialcomposition.get_2D_slice_through_3d_model(modeldata, sliceaxis)
@@ -58,7 +47,9 @@ def get_mgi_of_modeldata(modeldata: pd.DataFrame, modelpath: Path | str) -> list
     return [mgi_of_propcells[int(row["inputcellid"]) - 1] for _index, row in modeldata.iterrows() if row["rho"] > 0]
 
 
-def plot_Te_vs_time_lineofsight_3d_model(modelpath, modeldata, estimators, readonly_mgi) -> None:  # noqa: ANN001
+def plot_Te_vs_time_lineofsight_3d_model(
+    modelpath: Path | str, modeldata: pd.DataFrame, estimators: dict[tuple[int, int], t.Any], readonly_mgi: list[int]
+) -> None:
     assoc_cells = at.get_grid_mapping(modelpath=modelpath)[0]
     times = at.get_timestep_times(modelpath)
 
@@ -76,7 +67,9 @@ def plot_Te_vs_time_lineofsight_3d_model(modelpath, modeldata, estimators, reado
     plt.show()
 
 
-def plot_Te_vs_velocity(modelpath, modeldata, estimators, readonly_mgi) -> None:  # noqa: ANN001
+def plot_Te_vs_velocity(
+    modelpath: Path | str, modeldata: pd.DataFrame, estimators: dict[tuple[int, int], t.Any], readonly_mgi: list[int]
+) -> None:
     assoc_cells = at.get_grid_mapping(modelpath=modelpath)[0]
     times = at.get_timestep_times(modelpath)
     timesteps = [50, 55, 60, 65, 70, 75, 80, 90]
@@ -99,12 +92,12 @@ def plot_Te_vs_velocity(modelpath, modeldata, estimators, readonly_mgi) -> None:
 
 
 def get_Te_vs_velocity_2D(
-    modelpath,  # noqa: ANN001
-    modeldata,  # noqa: ANN001
-    vmax,  # noqa: ANN001
-    estimators,  # noqa: ANN001
-    readonly_mgi,  # noqa: ANN001
-    timestep,  # noqa: ANN001
+    modelpath: Path | str,
+    modeldata: pd.DataFrame,
+    vmax: float,
+    estimators: dict[tuple[int, int], t.Any],
+    readonly_mgi: list[int],
+    timestep: int,
 ) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     assoc_cells = at.get_grid_mapping(modelpath=modelpath)[0]
     times = at.get_timestep_times(modelpath)
@@ -136,7 +129,14 @@ def get_Te_vs_velocity_2D(
     return grid_Te, xgrid
 
 
-def make_2d_plot(grid, grid_Te, vmax, modelpath, xgrid, time) -> None:  # noqa: ANN001
+def make_2d_plot(
+    grid: int,
+    grid_Te: npt.NDArray[np.floating],
+    vmax: float,
+    modelpath: Path | str,
+    xgrid: npt.NDArray[np.floating],
+    time: float,
+) -> None:
     import pyvista as pv
 
     pyvista = False
@@ -156,7 +156,7 @@ def make_2d_plot(grid, grid_Te, vmax, modelpath, xgrid, time) -> None:  # noqa: 
         }
 
         # set white background
-        pv.set_plot_theme("document")
+        pv.set_plot_theme("document")  # type: ignore[no-untyped-call]
         p: t.Any = pv.Plotter()
         p.set_scale(p, xscale=1.5, yscale=1.5, zscale=1.5)
         single_slice = mesh.slice(normal="z")
@@ -176,7 +176,7 @@ def make_2d_plot(grid, grid_Te, vmax, modelpath, xgrid, time) -> None:  # noqa: 
 
         p.camera_position = "xy"
         p.add_title(f"{time:.1f} days")
-        p.show(screenshot=modelpath / f"3Dplot_Te{time:.1f}days_disk.png")
+        p.show(screenshot=Path(modelpath, f"3Dplot_Te{time:.1f}days_disk.png"))
 
     imshow = True
     if imshow:
@@ -222,6 +222,7 @@ def main() -> None:
     times = at.get_timestep_times(modelpath)
     time = times[timestep]
     estimators = read_selected_mgi(modelpath, readonly_mgi=readonly_mgi, readonly_timestep=[timestep])
+    assert estimators is not None
     grid_Te, xgrid = get_Te_vs_velocity_2D(modelpath, modeldata, vmax, estimators, readonly_mgi, timestep)
     grid = round(len(modeldata["inputcellid"]) ** (1.0 / 3.0))
     make_2d_plot(grid, grid_Te, vmax, modelpath, xgrid, time)

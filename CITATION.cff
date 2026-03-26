@@ -23,8 +23,8 @@ authors:
   - family-names: Leck
     given-names: Gerrit
 title: artistools
-version: v2026.3.3
-date-released: 2026-03-03
+version: 2026.3.24
+date-released: 2026-03-24
 doi: 10.5281/zenodo.7728326
 license: MIT
 repository-code: 'https://github.com/artis-mcrt/artistools'

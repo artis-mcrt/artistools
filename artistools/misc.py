@@ -1,31 +1,9 @@
-__lazy_modules__ = [
-    "collections.abc",
-    "functools",
-    "io",
-    "itertools",
-    "math",
-    "matplotlib",
-    "matplotlib.axes",
-    "matplotlib.figure",
-    "matplotlib.pyplot",
-    "multiprocessing",
-    "multiprocessing.pool",
-    "numpy",
-    "numpy.typing",
-    "pathlib",
-    "pandas",
-    "polars",
-    "polars.selectors",
-    "typing",
-]
 import argparse
 import contextlib
 import functools
 import io
 import itertools
 import math
-import multiprocessing
-import multiprocessing.pool
 import string
 import sys
 import typing as t
@@ -41,7 +19,7 @@ import numpy.typing as npt
 import polars as pl
 from polars import selectors as cs
 
-from artistools.configuration import get_config
+from artistools.commands import get_path
 
 roman_numerals = (
     "",
@@ -66,23 +44,6 @@ roman_numerals = (
     "XIX",
     "XX",
 )
-
-
-class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
-    """Custom argparse formatter to show default values in help text, sorted with dashes last."""
-
-    def __init__(self, *args: t.Any, **kwargs: t.Any) -> None:
-        kwargs["max_help_position"] = 39
-        super().__init__(*args, **kwargs)
-
-    def add_arguments(self, actions: Iterable[argparse.Action]) -> None:
-        getinvocation = super()._format_action_invocation
-
-        def my_sort(action: argparse.Action) -> str:
-            return getinvocation(action).upper().replace("-", "z")  # push dash chars below alphabet
-
-        actions = sorted(actions, key=my_sort)
-        super().add_arguments(actions)
 
 
 @lru_cache(maxsize=8)
@@ -673,10 +634,7 @@ def get_elsymbolslist() -> list[str]:
     elsymbolslist()[26] = 'Fe'.
 
     """
-    return [
-        "n",
-        *pl.read_csv(get_config()["path_datadir"] / "elements.csv", has_header=True, separator=",")["symbol"].to_list(),
-    ]
+    return ["n", *pl.read_csv(get_path("datadir") / "elements.csv", has_header=True, separator=",")["symbol"].to_list()]
 
 
 def get_elsymbols_df() -> pl.LazyFrame:
@@ -684,10 +642,7 @@ def get_elsymbols_df() -> pl.LazyFrame:
     return (
         pl
         .scan_csv(
-            get_config()["path_datadir"] / "elements.csv",
-            separator=",",
-            has_header=True,
-            schema_overrides={"Z": pl.Int32},
+            get_path("datadir") / "elements.csv", separator=",", has_header=True, schema_overrides={"Z": pl.Int32}
         )
         .drop("name")
         .rename({"symbol": "elsymbol", "Z": "atomic_number"})
@@ -810,6 +765,11 @@ def set_args_from_dict(parser: argparse.ArgumentParser, kwargs: dict[str, t.Any]
                 kwargs[arg.dest] = kwargs.pop(optstring.lstrip("-"))
 
     parser.set_defaults(**kwargs)
+    # set required=False on all arguments to avoid errors about missing required arguments when we set defaults from kwargs
+    for arg in parser._actions:  # noqa: SLF001
+        if arg.default is not None:
+            arg.required = False
+
     if unknown := {k: v for k, v in kwargs.items() if k not in (arg.dest for arg in parser._actions)}:  # noqa: SLF001
         msg = f"Unknown argument names: {unknown}"
         raise ValueError(msg)
@@ -933,7 +893,7 @@ def zopenpl(filename: Path | str, mode: str = "r", encoding: str | None = None) 
 
 def firstexisting(
     filelist: Sequence[str | Path] | str | Path,
-    folder: Path | str = Path(),
+    folder: Path | str = ".",
     tryzipped: bool = True,
     search_subfolders: bool = True,
 ) -> Path:
@@ -983,7 +943,7 @@ def firstexisting(
 
 
 def anyexist(
-    filelist: Sequence[str | Path], folder: Path | str = Path(), tryzipped: bool = True, search_subfolders: bool = True
+    filelist: Sequence[str | Path], folder: Path | str = ".", tryzipped: bool = True, search_subfolders: bool = True
 ) -> Path | None:
     """Return true if any files in file list exist."""
     try:
@@ -1162,14 +1122,10 @@ def get_bflist(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame
         dfboundfree = pl.DataFrame(schema=schema).lazy()
 
     dfboundfree = dfboundfree.with_columns(
-        atomic_number=pl.col("elementindex").map_elements(
-            lambda elementindex: compositiondata["Z"][elementindex], return_dtype=pl.Int32
-        ),
+        atomic_number=pl.col("elementindex").map_elements(compositiondata["Z"].item, return_dtype=pl.Int32),
         ion_stage=(
             pl.col("ionindex")
-            + pl.col("elementindex").map_elements(
-                lambda elementindex: compositiondata["lowermost_ion_stage"][elementindex], return_dtype=pl.Int32
-            )
+            + pl.col("elementindex").map_elements(compositiondata["lowermost_ion_stage"].item, return_dtype=pl.Int32)
         ),
     )
 
@@ -1681,18 +1637,37 @@ def get_dirbin_labels(
     return angle_definitions
 
 
-def get_multiprocessing_pool() -> multiprocessing.pool.Pool:
-    """Return a multiprocessing pool that can be used to parallelize tasks."""
-    if sys.version_info >= (3, 13):
+def parallel_map[IterableType, ResultType](
+    fn: Callable[[IterableType], ResultType],
+    *iterables: Iterable[IterableType],
+    allow_multiprocessing: bool = True,
+    **kwargs: t.Any,
+) -> list[ResultType]:
+    """Execute a parallel map with a progress bar using either multithreading (for free-threading python or allow_multiprocessing=False) or multiprocessing."""
+    import multiprocessing as mp
+    import warnings
+
+    import tqdm.rich
+    from tqdm import TqdmExperimentalWarning
+
+    warnings.filterwarnings("ignore", category=TqdmExperimentalWarning)
+
+    use_multiprocessing = allow_multiprocessing
+    if allow_multiprocessing and sys.version_info >= (3, 13):
         with contextlib.suppress(AttributeError):
             if not sys._is_gil_enabled():  # noqa: SLF001
                 # return a thread pool if we have no GIL (free threading)
-                return multiprocessing.pool.ThreadPool()
-    # this is a workaround for to keep pytest-cov from crashing
-    try:
-        from pytest_cov.embed import cleanup_on_sigterm
-    except ImportError:
-        pass
+                use_multiprocessing = False
+
+    if use_multiprocessing:
+        mp.set_start_method("spawn", force=True)
+        from tqdm.contrib.concurrent import process_map
+
+        results = process_map(fn, *iterables, tqdm_class=tqdm.rich.tqdm, **kwargs)
     else:
-        cleanup_on_sigterm()
-    return multiprocessing.get_context("spawn").Pool(processes=get_config()["num_processes"])
+        from tqdm.contrib.concurrent import thread_map
+
+        results = thread_map(fn, *iterables, tqdm_class=tqdm.rich.tqdm, **kwargs)
+
+    assert isinstance(results, list)
+    return results

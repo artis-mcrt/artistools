@@ -1,14 +1,4 @@
 # PYTHON_ARGCOMPLETE_OK
-__lazy_modules__ = [
-    "matplotlib",
-    "matplotlib.axes",
-    "matplotlib.figure",
-    "matplotlib.pyplot",
-    "numpy",
-    "numpy.typing",
-    "pandas",
-    "polars",
-]
 import argparse
 import typing as t
 from collections.abc import Sequence
@@ -16,8 +6,8 @@ from collections.abc import Sequence
 import argcomplete
 
 from artistools.commands import addsubparsers
+from artistools.commands import CustomArgHelpFormatter
 from artistools.commands import subcommandtree
-from artistools.misc import CustomArgHelpFormatter
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

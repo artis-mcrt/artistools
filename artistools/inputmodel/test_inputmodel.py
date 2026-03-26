@@ -1,4 +1,5 @@
 import hashlib
+import math
 import shutil
 import typing as t
 from pathlib import Path
@@ -12,10 +13,10 @@ from pytest_codspeed.plugin import BenchmarkFixture
 
 import artistools as at
 
-modelpath = at.get_config()["path_testdata"] / "testmodel"
-modelpath_3d = at.get_config()["path_testdata"] / "testmodel_3d_10^3"
-outputpath = at.get_config()["path_testoutput"]
-testdatapath = at.get_config()["path_testdata"]
+modelpath = at.get_path("testdata") / "testmodel"
+modelpath_3d = at.get_path("testdata") / "testmodel_3d_10^3"
+outputpath = at.get_path("testoutput")
+testdatapath = at.get_path("testdata")
 
 
 def test_describeinputmodel() -> None:
@@ -29,25 +30,25 @@ def test_describeinputmodel_3d() -> None:
 
 def test_get_modeldata_1d() -> None:
     _, modelmeta = at.get_modeldata(modelpath=modelpath)
-    assert np.isclose(modelmeta["t_model_init_days"], 0.00115740740741, rtol=0.0001)
-    assert np.isclose(modelmeta["vmax_cmps"], 800000000.0)
+    assert math.isclose(modelmeta["t_model_init_days"], 0.00115740740741, rel_tol=0.0001)
+    assert math.isclose(modelmeta["vmax_cmps"], 800000000.0)
     assert modelmeta["dimensions"] == 1
     assert modelmeta["npts_model"] == 1
 
     lzdfmodel, modelmeta = at.get_modeldata(modelpath=modelpath, derived_cols=["mass_g"])
-    assert np.isclose(lzdfmodel.select(pl.col("mass_g").sum()).collect().item(), 1.416963e33)
+    assert math.isclose(lzdfmodel.select(pl.col("mass_g").sum()).collect().item(), 1.416963e33, rel_tol=1e-05)
 
 
 @pytest.mark.benchmark
 def test_get_modeldata_3d() -> None:
     _, modelmeta = at.get_modeldata(modelpath=modelpath_3d)
-    assert np.isclose(modelmeta["vmax_cmps"], 2892020000.0)
+    assert math.isclose(modelmeta["vmax_cmps"], 2892020000.0)
     assert modelmeta["dimensions"] == 3
     assert modelmeta["npts_model"] == 1000
     assert modelmeta["ncoordgridx"] == 10
 
     lzdfmodel, modelmeta = at.get_modeldata(modelpath=modelpath_3d, derived_cols=["mass_g"])
-    assert np.isclose(lzdfmodel.select(pl.col("mass_g").sum()).collect().item(), 2.7861855e33)
+    assert math.isclose(lzdfmodel.select(pl.col("mass_g").sum()).collect().item(), 2.7861855e33, rel_tol=1e-05)
 
 
 def test_get_cell_angle() -> None:
@@ -71,19 +72,21 @@ def test_downscale_3dmodel() -> None:
         modelpath_3d_small, get_elemabundances=True, derived_cols=["mass_g"]
     )
     dfmodel_small = lzdfmodel_small.collect()
-    assert np.isclose(dfmodel["mass_g"].sum(), dfmodel_small["mass_g"].sum())
-    assert np.isclose(modelmeta["vmax_cmps"], modelmeta_small["vmax_cmps"])
-    assert np.isclose(modelmeta["t_model_init_days"], modelmeta_small["t_model_init_days"])
+    assert math.isclose(dfmodel["mass_g"].sum(), dfmodel_small["mass_g"].sum(), rel_tol=1e-5)
+    assert math.isclose(modelmeta["vmax_cmps"], modelmeta_small["vmax_cmps"], rel_tol=1e-5)
+    assert math.isclose(modelmeta["t_model_init_days"], modelmeta_small["t_model_init_days"], rel_tol=1e-5)
 
     abundcols = (x for x in dfmodel.columns if x.startswith("X_"))
     for abundcol in abundcols:
-        assert np.isclose(
-            (dfmodel[abundcol] * dfmodel["mass_g"]).sum(), (dfmodel_small[abundcol] * dfmodel_small["mass_g"]).sum()
+        assert math.isclose(
+            (dfmodel[abundcol] * dfmodel["mass_g"]).sum(),
+            (dfmodel_small[abundcol] * dfmodel_small["mass_g"]).sum(),
+            rel_tol=1e-5,
         )
 
 
 def verify_file_checksums(
-    checksums_expected: dict[t.Any, t.Any], digest: str = "sha256", folder: Path | str = Path()
+    checksums_expected: dict[t.Any, t.Any], digest: str = "sha256", folder: Path | str = "."
 ) -> None:
     checksums_actual = {}
 
@@ -171,15 +174,15 @@ def test_makeartismodelfrom_sph_particles() -> None:
             dfmodel_lowerd = dfmodel_lowerdlz.collect()
 
             # check that the total mass is conserved
-            assert np.isclose(dfmodel_lowerd["mass_g"].sum(), dfmodel3["mass_g"].sum(), rtol=5e-2)
-            assert np.isclose(dfmodel_lowerd["tracercount"].sum(), dfmodel3["tracercount"].sum(), rtol=1e-1)
+            assert math.isclose(dfmodel_lowerd["mass_g"].sum(), dfmodel3["mass_g"].sum(), rel_tol=5e-2)
+            assert math.isclose(dfmodel_lowerd["tracercount"].sum(), dfmodel3["tracercount"].sum(), rel_tol=1e-1)
 
             # check that the total mass of each species and total internal energy are conserved
             for col in dfmodel3.columns:
                 if col.startswith("X_") or col == "q":
                     lowerd_mass = dfmodel_lowerd.select(pl.col("mass_g").dot(pl.col(col))).item()
                     model3_mass = dfmodel3.select(pl.col("mass_g").dot(pl.col(col))).item()
-                    assert np.isclose(lowerd_mass, model3_mass, rtol=5e-2)
+                    assert math.isclose(lowerd_mass, model3_mass, rel_tol=5e-2)
 
 
 @pytest.mark.benchmark
@@ -248,8 +251,6 @@ def test_get_elemabund_from_nucabund() -> None:
     # Determine the maximum Z in the input to generate all element symbols up to it
     max_z = dfnucabund["Z"].max()
     assert isinstance(max_z, int)
-    if max_z is None:  # Should not happen with the sample data
-        max_z = 0
 
     # Populate expected_abunds with all elements up to max_Z, defaulting to 0.0
     all_expected_abunds = {}
@@ -1430,7 +1431,7 @@ def test_get_trajectory_abund_q() -> None:
 
     for key, value in expected.items():
         assert key in abund_q, f"Key {key} not found in abund_q"
-        assert np.isclose(abund_q[key], value)
+        assert math.isclose(abund_q[key], value)
 
 
 def test_plotdensity() -> None:
@@ -1549,7 +1550,7 @@ def test_dimension_reduce(outputdimensions: int, benchmark: BenchmarkFixture) ->
     outpath.mkdir(exist_ok=True, parents=True)
 
     @benchmark
-    def run_dimension_reduce() -> None:
+    def run_dimension_reduce() -> None:  # pyright: ignore[reportUnusedFunction]
         (dfmodel_lowerd, _, _, modelmeta_lowerd) = (at.inputmodel.dimension_reduce_model)(
             dfmodel=dfmodel3d_pl, modelmeta=modelmeta_3d, outputdimensions=outputdimensions
         )
@@ -1559,17 +1560,18 @@ def test_dimension_reduce(outputdimensions: int, benchmark: BenchmarkFixture) ->
     dfmodel_lowerd = dfmodel_lowerd_lz.collect()
 
     # check that the total mass is conserved
-    assert np.isclose(dfmodel_lowerd["mass_g"].sum(), dfmodel3d_pl["mass_g"].sum(), rtol=1e-3)
+    assert math.isclose(dfmodel_lowerd["mass_g"].sum(), dfmodel3d_pl["mass_g"].sum(), rel_tol=1e-3)
 
     lowerd_ejecta_ke_erg: float = dfmodel_lowerd.select("kinetic_en_erg").sum().item()
 
     # check that kinetic energy very roughly matches (we conserved mass, not kinetic energy)
-    assert np.isclose(lowerd_ejecta_ke_erg, ejecta_ke_erg, rtol=0.04), f"{lowerd_ejecta_ke_erg} {ejecta_ke_erg}"
+    assert math.isclose(lowerd_ejecta_ke_erg, ejecta_ke_erg, rel_tol=0.04), f"{lowerd_ejecta_ke_erg} {ejecta_ke_erg}"
 
     # check that the total mass of each species is conserved
     for col in dfmodel3d_pl.columns:
         if col.startswith("X_"):
-            assert np.isclose(
+            assert math.isclose(
                 (dfmodel_lowerd["mass_g"] * dfmodel_lowerd[col]).sum(),
                 (dfmodel3d_pl["mass_g"] * dfmodel3d_pl[col]).sum(),
+                rel_tol=1e-5,
             )

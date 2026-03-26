@@ -69,16 +69,16 @@ jobs:
               if: always()
               run: uv run -- ty check
 
-            - name: Run pyright
+            - name: Run basedpyright
               if: always()
-              run: uv run -- pyright --warnings
+              run: uv run -- basedpyright --warnings
 
             - name: Run mypy
               if: always()
               run: uv run -- mypy
 
             - name: Run prek pre-commit checks
-              uses: j178/prek-action@v1
+              uses: j178/prek-action@v2
 
             - name: Run rust clippy
               if: always()
@@ -94,11 +94,9 @@ jobs:
             fail-fast: false
             matrix:
                 os: [{name: macos, version: '26'}, {name: ubuntu, version: 24.04-arm}]
-                python-minor-version: ['11', '12', '13', '14', 14t, '15']
+                python-minor-version: ['12', '13', '14', 14t, '15']
                 exclude:
                     # macos runners are very limited in number
-                    - os: {name: macos, version: '26'}
-                      python-minor-version: 11
                     - os: {name: macos, version: '26'}
                       python-minor-version: 12
                     - os: {name: ubuntu, version: 24.04-arm}

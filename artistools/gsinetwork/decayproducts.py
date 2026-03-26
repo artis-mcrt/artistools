@@ -1,20 +1,10 @@
+"""Script to load energy release data from nucleosynthesis trajectories. Optionally also writes output to parquet files."""
+
 # PYTHON_ARGCOMPLETE_OK
-__lazy_modules__ = [
-    "matplotlib",
-    "matplotlib.axes",
-    "matplotlib.figure",
-    "matplotlib.pyplot",
-    "numpy",
-    "numpy.typing",
-    "pandas",
-    "polars",
-    "polars.selectors",
-]
 import argparse
 import math
 import multiprocessing as mp
 import typing as t
-import warnings
 from collections.abc import Sequence
 from functools import partial
 from pathlib import Path
@@ -27,14 +17,9 @@ import pandas as pd
 import polars as pl
 
 import artistools as at
-from artistools.configuration import get_config
+from artistools.commands import get_path
 from artistools.inputmodel.rprocess_from_trajectory import get_tar_member_extracted_path
 
-Ye_bins = [("all", 0.0, float("inf")), ("low", 0.05, 0.15), ("mid", 0.2, 0.3), ("high", 0.35, 0.45)]
-t_compar_min_d = 0.1
-t_compar_max_d = 10
-numb_steps = 50
-nuc_dataset = "Hotokezaka"  # Use "Hotokezaka" (directly from betaminusdecays.txt) or "ENSDF" using the ENSDF database
 ARTIS_colors = ["r", "g", "b", "m", "c", "orange"]  # reddish colors
 M_sol_cgs = 1.989e33
 amu_g = 1.66e-24
@@ -42,7 +27,49 @@ MeV_to_erg = 1.60218e-6
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("-trajectoryroot", "-trajroot", required=True, help="Path to nuclear network trajectory folder")
+    parser.add_argument(
+        "-trajectoryroot", "-trajroot", required=True, type=Path, help="Path to nuclear network trajectory folder"
+    )
+
+    parser.add_argument(
+        "-npz", default=None, type=Path, help="Path to npz file which specifies the ejecta type of each trajectory"
+    )
+
+    parser.add_argument("-tmin", type=float, default=0.1, help="Minimum time in days")
+
+    parser.add_argument("-tmax", type=float, default=80.0, help="Maximum time in days")
+
+    parser.add_argument("-nsteps", type=int, default=64, help="Number of timesteps")
+
+    parser.add_argument(
+        "-nucdata",
+        default="hotokezaka",
+        choices=["hotokezaka", "ensdf"],
+        help='Nuclear dataset to use, either "hotokezaka" or "ensdf"',
+    )
+
+    parser.add_argument(
+        "-yemax",
+        type=float,
+        default=0.52,
+        help="Y_e,max of hydro model considered. Default 0.52 for e2e sym-n1a6 from Just+23",
+    )
+
+    parser.add_argument(
+        "--parquet",
+        action="store_true",
+        help="Prints output dictionaries of full Ye bins or ejecta components to parquet files",
+    )
+
+    parser.add_argument("--nuclides", action="store_true", help="Calculates contributions of individual nuclides")
+
+    parser.add_argument(
+        "--trajparquet", action="store_true", help="Writes individual parquet files for all trajectories."
+    )
+
+    parser.add_argument(
+        "-outputpath", "-o", action="store", type=Path, default=Path(), help="Path for output PDF and parquet files"
+    )
 
 
 def get_nuc_data(nuc_dataset: str) -> pl.DataFrame:
@@ -50,7 +77,7 @@ def get_nuc_data(nuc_dataset: str) -> pl.DataFrame:
     hotokezaka_betaminus = (
         pl
         .read_csv(
-            get_config()["path_datadir"] / "betaminusdecays.txt",
+            get_path("datadir") / "betaminusdecays.txt",
             separator=" ",
             comment_prefix="#",
             has_header=False,
@@ -61,7 +88,7 @@ def get_nuc_data(nuc_dataset: str) -> pl.DataFrame:
     )
     if nuc_dataset == "Hotokezaka":
         return hotokezaka_betaminus
-    csvpath = Path(get_config()["path_datadir"], "betaminusdecays_ensdf.txt")
+    csvpath = Path(get_path("datadir"), "betaminusdecays_ensdf.txt")
     if not csvpath.exists():
         print("Collecting ENSDF data...")
         rows = []
@@ -77,6 +104,8 @@ def get_nuc_data(nuc_dataset: str) -> pl.DataFrame:
                     "User-Agent": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:77.0) Gecko/20100101 Firefox/77.0"
                 },
             )
+            if "mean_energy" in dfnuc.columns:
+                dfnuc = dfnuc.dropna(subset=["mean_energy"])
             if len(dfnuc) > 0:
                 dfnuc = dfnuc.loc[dfnuc["p_energy"] == 0]
                 if dfnuc.empty:
@@ -124,6 +153,8 @@ def process_trajectory(
     traj_root: Path | str,
     traj_masses_g: dict[int, float],
     arr_t_day: npt.NDArray[np.floating],
+    nuclide_contrib: bool,
+    traj_parquet: bool,
     traj_ID: int,
 ) -> dict[str, npt.NDArray[np.floating]]:
     """Process a single trajectory to extract decay powers."""
@@ -191,6 +222,15 @@ def process_trajectory(
         for col in ("hbeta", "htot", "Qdot")
     }
 
+    A_arr = nuc_data["A"].to_numpy()
+    Z_arr = nuc_data["Z"].to_numpy()
+
+    if nuclide_contrib:
+        for AZ_tuple in zip(A_arr, Z_arr, strict=False):
+            decay_powers[f"({int(AZ_tuple[0])},{int(AZ_tuple[1])})_elec"] = np.zeros(len(arr_t_day))
+            decay_powers[f"({int(AZ_tuple[0])},{int(AZ_tuple[1])})_gam"] = np.zeros(len(arr_t_day))
+            decay_powers[f"({int(AZ_tuple[0])},{int(AZ_tuple[1])})_nu"] = np.zeros(len(arr_t_day))
+
     # now get abundances from single timestep files
     for plottimestep, networktimestepindex in enumerate(networktimestepindices):
         if networktimestepindex < 1:
@@ -202,37 +242,90 @@ def process_trajectory(
 
         assert dftrajnucabund.height > 100, dftrajnucabund.height
 
-        pldf_abund_decay = (
-            (
-                (
-                    dftrajnucabund
-                    .lazy()
-                    .filter(pl.col("massfrac") > 0.0)
-                    .with_columns(pl.col(pl.Int32).cast(pl.Int64), pl.col(pl.Float32).cast(pl.Float64))
-                    .with_columns(A=pl.col("Z") + pl.col("N"))
-                    .with_columns(num_nuc=pl.col("massfrac") * traj_mass_grams / (pl.col("A") * amu_g))
-                )
+        if not nuclide_contrib:
+            pldf_all = (
+                dftrajnucabund
+                .lazy()
+                .filter(pl.col("massfrac") > 0.0)
+                .with_columns([
+                    pl.col(pl.Int32).cast(pl.Int64),
+                    pl.col(pl.Float32).cast(pl.Float64),
+                    (pl.col("Z") + pl.col("N")).alias("A"),
+                    (pl.col("massfrac") * traj_mass_grams / ((pl.col("Z") + pl.col("N")) * amu_g)).alias("num_nuc"),
+                ])
                 .join(nuc_data.lazy(), on=("Z", "A"), how="inner")
-                .with_columns(N_dot=pl.col("num_nuc") / pl.col("tau[s]"))
+                .with_columns([(pl.col("num_nuc") / pl.col("tau[s]")).alias("N_dot")])
+                .select(
+                    abundweighted_nu=(pl.col("N_dot") * pl.col("Eneutrino[MeV]") * MeV_to_erg).sum(),
+                    abundweighted_elec=(pl.col("N_dot") * pl.col("Eelec[MeV]") * MeV_to_erg).sum(),
+                    abundweighted_gamma=(pl.col("N_dot") * pl.col("Egamma[MeV]") * MeV_to_erg).sum(),
+                    abundweighted_Qdot=(pl.col("N_dot") * pl.col("Q[MeV]") * MeV_to_erg).sum(),
+                )
+                .collect()
             )
-            .select(
-                abundweighted_nu=(pl.col("N_dot") * pl.col("Eneutrino[MeV]") * MeV_to_erg).sum(),
-                abundweighted_elec=(pl.col("N_dot") * pl.col("Eelec[MeV]") * MeV_to_erg).sum(),
-                abundweighted_gamma=(pl.col("N_dot") * pl.col("Egamma[MeV]") * MeV_to_erg).sum(),
-                abundweighted_Qdot=(pl.col("N_dot") * pl.col("Q[MeV]") * MeV_to_erg).sum(),
-                # massfrac_sum=pl.col("massfrac").sum(),
-            )
-            .collect()
-        )
-        for col in pldf_abund_decay.columns:
-            decay_powers[col][plottimestep] = float(pldf_abund_decay.get_column(col).item())
 
+            for col in pldf_all.columns:
+                decay_powers[col][plottimestep] = float(pldf_all.get_column(col).item())
+
+        else:
+            # store all nuclide contributions in detail
+            pldf_all = (
+                dftrajnucabund
+                .lazy()
+                .filter(pl.col("massfrac") > 0.0)
+                .with_columns([
+                    pl.col(pl.Int32).cast(pl.Int64),
+                    pl.col(pl.Float32).cast(pl.Float64),
+                    (pl.col("Z") + pl.col("N")).alias("A"),
+                    (pl.col("massfrac") * traj_mass_grams / ((pl.col("Z") + pl.col("N")) * amu_g)).alias("num_nuc"),
+                ])
+                .join(nuc_data.lazy(), on=("Z", "A"), how="inner")
+                .with_columns([(pl.col("num_nuc") / pl.col("tau[s]")).alias("N_dot")])
+                .with_columns([
+                    (pl.col("N_dot") * pl.col("Eneutrino[MeV]") * MeV_to_erg).alias("eps_nu"),
+                    (pl.col("N_dot") * pl.col("Eelec[MeV]") * MeV_to_erg).alias("eps_elec"),
+                    (pl.col("N_dot") * pl.col("Egamma[MeV]") * MeV_to_erg).alias("eps_gamma"),
+                    (pl.col("N_dot") * pl.col("Q[MeV]") * MeV_to_erg).alias("eps_tot"),
+                ])
+                .collect()
+            )
+
+            global_sums = pldf_all.select([
+                pl.sum("eps_nu").alias("abundweighted_nu"),
+                pl.sum("eps_elec").alias("abundweighted_elec"),
+                pl.sum("eps_gamma").alias("abundweighted_gamma"),
+                pl.sum("eps_tot").alias("abundweighted_Qdot"),
+            ])
+            global_sums_row = global_sums.row(0)
+
+            decay_powers["abundweighted_nu"][plottimestep] = global_sums_row[0]
+            decay_powers["abundweighted_elec"][plottimestep] = global_sums_row[1]
+            decay_powers["abundweighted_gamma"][plottimestep] = global_sums_row[2]
+            decay_powers["abundweighted_Qdot"][plottimestep] = global_sums_row[3]
+
+            grouped = pldf_all.group_by(["A", "Z"]).agg([
+                pl.sum("eps_elec").alias("eps_elec"),
+                pl.sum("eps_gamma").alias("eps_gamma"),
+                pl.sum("eps_nu").alias("eps_nu"),
+            ])
+            A_vals = grouped["A"].to_numpy()
+            Z_vals = grouped["Z"].to_numpy()
+            eps_elec_vals = grouped["eps_elec"].to_numpy()
+            eps_gamma_vals = grouped["eps_gamma"].to_numpy()
+            eps_nu_vals = grouped["eps_nu"].to_numpy()
+
+            for A, Z, Qe, Qg, Qn in zip(A_vals, Z_vals, eps_elec_vals, eps_gamma_vals, eps_nu_vals, strict=True):
+                decay_powers[f"({A},{Z})_elec"][plottimestep] = Qe
+                decay_powers[f"({A},{Z})_gam"][plottimestep] = Qg
+                decay_powers[f"({A},{Z})_nu"][plottimestep] = Qn
     # if not np.all(np.diff(decay_powers["abundweighted_Qdot"]) <= 0.01 * decay_powers["abundweighted_Qdot"][0]):
     #     print(f"\nTraj {traj_ID} has inconsistent Qdot values. delete {Path(traj_root, str(traj_ID))} and rerun")
     #     # import shutil
 
-    #     # shutil.rmtree(Path(traj_root, str(traj_ID)))
-
+    # dump to parquet
+    if traj_parquet:
+        traj_df = pl.DataFrame(decay_powers)
+        traj_df.write_parquet(f"parquet/decay_powers_{traj_ID}.parquet")
     return decay_powers
 
 
@@ -245,14 +338,36 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         at.set_args_from_dict(parser, kwargs)
         argcomplete.autocomplete(parser)
         args = parser.parse_args([] if kwargs else argsraw)
+
+    nuc_dataset = "Hotokezaka" if args.nucdata == "hotokezaka" else "ENSDF"
+
+    Ye_bins = [
+        ("all", 0.0, float("inf")),
+        ("low", 0.0, args.yemax / 3),
+        ("mid", args.yemax / 3, args.yemax * 2 / 3),
+        ("high", args.yemax * 2 / 3, args.yemax),
+    ]
+
+    if args.npz:
+        npz_dict = np.load(args.npz)
+        npz_idcs = npz_dict["idx"]
+        npz_types = npz_dict["state"]
+
     # get beta decay data
     nuc_data = get_nuc_data(nuc_dataset)
+    if args.parquet or args.trajparquet:
+        traj_parquet_dir = args.outputpath / "parquet"
+        if not Path(traj_parquet_dir).exists():
+            Path(traj_parquet_dir).mkdir(parents=True)
+            print(f"Created directory '{traj_parquet_dir}'.")
+        else:
+            print(f"'{traj_parquet_dir}' already exists.")
     assert nuc_data.height == nuc_data.unique(("Z", "A")).height
 
     # set timesteps logarithmically
-    log_t_compar_min_s = np.log10(t_compar_min_d)
-    log_t_compar_max_s = np.log10(t_compar_max_d)
-    arr_t_day = 10 ** (np.linspace(log_t_compar_min_s, log_t_compar_max_s, numb_steps, endpoint=True))
+    log_t_compar_min_s = np.log10(args.tmin)
+    log_t_compar_max_s = np.log10(args.tmax)
+    arr_t_day = 10 ** (np.linspace(log_t_compar_min_s, log_t_compar_max_s, args.nsteps, endpoint=True))
 
     # get masses of trajectories
     colnames = None
@@ -283,33 +398,45 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     traj_masses_g = {trajid: mass * M_sol_cgs for trajid, mass in traj_summ_data[["Id", "Mass"]].to_numpy()}
 
-    import tqdm.rich
-    from tqdm import TqdmExperimentalWarning
-    from tqdm.contrib.concurrent import process_map
-
-    warnings.filterwarnings("ignore", category=TqdmExperimentalWarning)
-
-    alltraj_decay_powers: list[dict[str, npt.NDArray[np.floating]]] = process_map(
-        partial(process_trajectory, nuc_data, args.trajectoryroot, traj_masses_g, arr_t_day),
+    alltraj_decay_powers: list[dict[str, npt.NDArray[np.floating]]] = at.parallel_map(
+        partial(
+            process_trajectory, nuc_data, args.trajectoryroot, traj_masses_g, arr_t_day, args.nuclides, args.trajparquet
+        ),
         traj_ids,
-        chunksize=3,
+        chunksize=2,
         desc="Processing trajectories",
         unit="traj",
         smoothing=0.0,
-        tqdm_class=tqdm.rich.tqdm,
         # max_workers=1,
     )
 
     print()
 
-    for label, Ye_lower, Ye_upper in Ye_bins:
-        labelfull = f"Ye [{Ye_lower}, {Ye_upper}]" if math.isfinite(Ye_upper) else "all Ye"
-        print(f"Processing Ye bin {label}... Ye: [{Ye_lower}, {Ye_upper}]")
-        selected_traj_ids = traj_summ_data.filter(pl.col("Ye").is_between(Ye_lower, Ye_upper))["Id"].to_list()
+    ej_states = ["any", -1, 0, 1]
+    ej_names = ["all", "dyn", "hmns", "torus"]
+    for i in range(4):
+        state = ej_states[i]
+        if not args.npz:
+            label, Ye_lower, Ye_upper = Ye_bins[i]
+            labelfull = f"Ye [{Ye_lower}, {Ye_upper}]" if math.isfinite(Ye_upper) else "all Ye"
+            print(f"Processing Ye bin {label}... Ye: [{Ye_lower}, {Ye_upper}]")
+            selected_traj_ids = traj_summ_data.filter(pl.col("Ye").is_between(Ye_lower, Ye_upper))["Id"].to_list()
 
-        print(f" {len(selected_traj_ids)} trajectories selected")
-        if not selected_traj_ids:
-            continue
+            print(f" {len(selected_traj_ids)} trajectories selected")
+            if len(selected_traj_ids) == 0:
+                print(f"No trajectories found for Ye [{Ye_lower}, {Ye_upper}]")
+                continue
+        else:
+            # select by ejecta type
+            selected_traj_ids = (
+                traj_ids if state == "any" else list(set(traj_ids) & set(npz_idcs[np.where(npz_types == state)]))
+            )
+            print(f" {len(selected_traj_ids)} trajectories selected")
+            if len(selected_traj_ids) == 0:
+                print(f"Warning! No trajectories found for eject state {state}")
+                continue
+            labelfull = ej_names[i]
+            label = ej_names[i]
 
         decay_powers = {
             k: sum(
@@ -319,12 +446,17 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             )
             for k in alltraj_decay_powers[0]
         }
+
         assert isinstance(decay_powers["abundweighted_gamma"], np.ndarray)
         assert isinstance(decay_powers["abundweighted_elec"], np.ndarray)
         assert isinstance(decay_powers["abundweighted_nu"], np.ndarray)
         decay_powers["abundweighted_gammanuelec"] = (
             decay_powers["abundweighted_gamma"] + decay_powers["abundweighted_nu"] + decay_powers["abundweighted_elec"]
         )
+
+        if args.parquet:
+            traj_df = pl.DataFrame(decay_powers)
+            traj_df.write_parquet(f"parquet/decay_powers_{labelfull}.parquet")
 
         fig, axes = plt.subplots(
             nrows=2, ncols=1, figsize=(6, 10), tight_layout={"pad": 0.4, "w_pad": 0.0, "h_pad": 0.0}
@@ -382,7 +514,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             ax.set_xlabel("time (days)")
             ax.set_xscale("log")
 
-        fig.savefig(f"beta_release_ratios_tot_{nuc_dataset}_Ye{label}.pdf", bbox_inches="tight")
+        outfilepath = args.outputpath / f"beta_release_ratios_tot_{nuc_dataset}_Ye{label}.pdf"
+        print(f"open {outfilepath}")
+        fig.savefig(outfilepath, bbox_inches="tight")
 
 
 if __name__ == "__main__":

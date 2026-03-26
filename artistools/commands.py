@@ -1,11 +1,8 @@
-__lazy_modules__ = ["importlib", "pandas", "subprocess"]
 import argparse
 import importlib
-import subprocess
 import typing as t
+from collections.abc import Iterable
 from pathlib import Path
-
-from artistools.misc import CustomArgHelpFormatter
 
 # top-level commands (one file installed per command)
 # we generally should phase this out except for a couple of main ones like at and artistools
@@ -29,9 +26,7 @@ COMMANDS = [
     "plotopacity",
 ]
 # fully recursive python >= 3.12
-# type CommandType = dict[str, tuple[str, str] | "CommandType"]
-# fully recursive python >= 3.11
-CommandType: t.TypeAlias = dict[str, t.Union[tuple[str, str], "CommandType"]]
+type CommandType = dict[str, tuple[str, str] | CommandType]
 
 # new subparser based list
 subcommandtree: CommandType = {
@@ -78,6 +73,24 @@ subcommandtree: CommandType = {
 }
 
 
+class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
+    """Custom argparse formatter to show default values in help text, sorted with dashes last."""
+
+    def __init__(self, *args: t.Any, **kwargs: t.Any) -> None:
+        kwargs["max_help_position"] = 39
+        super().__init__(*args, **kwargs)
+
+    @t.override
+    def add_arguments(self, actions: Iterable[argparse.Action]) -> None:
+        getinvocation = super()._format_action_invocation
+
+        def my_sort(action: argparse.Action) -> str:
+            return getinvocation(action).upper().replace("-", "z")  # push dash chars below alphabet
+
+        actions = sorted(actions, key=my_sort)
+        super().add_arguments(actions)
+
+
 def addargs(parser: argparse.ArgumentParser) -> None:
     pass
 
@@ -112,6 +125,8 @@ def addsubparsers(
 
 
 def setup_completions(*args: t.Any, **kwargs: t.Any) -> None:  # noqa: ARG001
+    import subprocess
+
     path_package_source = Path(__file__).absolute().parent
     completionscriptpath = path_package_source / "artistoolscompletions.sh"
     with (completionscriptpath).open("w", encoding="utf-8") as f:
@@ -150,7 +165,28 @@ def show_version(*args: t.Any, **kwargs: t.Any) -> None:  # noqa: ARG001
     print(f"artistools {version}")
 
 
-def get_artistools_path(**kwargs: t.Any) -> None:  # noqa: ARG001
-    from artistools.configuration import get_config
+def get_path(key: str) -> Path:
+    match key:
+        case "codecomparisondata1path":
+            return Path(Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/GitHub/sn-rad-trans/data1")
+        case "codecomparisonmodelartismodelpath":
+            return Path(Path.home() / "Google Drive/My Drive/artis_runs/weizmann/")
+        case "artistools_repository":
+            return Path(__file__).absolute().parent.parent
+        case "artistools_dir":
+            return Path(__file__).absolute().parent  # the package path
+        case "datadir":
+            return Path(__file__).absolute().parent / "data"
+        case "testartismodel":
+            return Path(get_path("artistools_repository"), "tests", "data", "testmodel")
+        case "testdata":
+            return Path(get_path("artistools_repository"), "tests", "data")
+        case "testoutput":
+            return Path(get_path("artistools_repository"), "tests", "output")
+        case _:
+            msg = f"Unknown path key: {key}"
+            raise KeyError(msg)
 
-    print(get_config("path_artistools_dir"))
+
+def get_artistools_path(**kwargs: t.Any) -> None:  # noqa: ARG001
+    print(get_path("artistools_dir"))

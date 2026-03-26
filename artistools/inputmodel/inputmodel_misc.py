@@ -1,15 +1,3 @@
-__lazy_modules__ = [
-    "matplotlib",
-    "matplotlib.axes",
-    "matplotlib.figure",
-    "matplotlib.pyplot",
-    "numpy",
-    "numpy.typing",
-    "pandas",
-    "polars",
-    "polars.selectors",
-    "tempfile",
-]
 import calendar
 import datetime
 import errno
@@ -30,7 +18,7 @@ import pandas as pd
 import polars as pl
 import polars.selectors as cs
 
-from artistools.configuration import get_config
+from artistools.commands import get_path
 from artistools.misc import firstexisting
 from artistools.misc import get_atomic_number
 from artistools.misc import get_elsymbol
@@ -358,7 +346,7 @@ def read_modelfile_text(
 
 
 def get_modeldata(
-    modelpath: Path | str = Path(),
+    modelpath: Path | str = ".",
     get_elemabundances: bool = False,
     derived_cols: Sequence[str] | str | None = None,
     printwarningsonly: bool = False,
@@ -390,7 +378,7 @@ def get_modeldata(
     elif not inputpath.exists() and inputpath.parts[0] == "codecomparison":
         modelpath = inputpath
         _, inputmodel, _ = modelpath.parts
-        textfilepath = Path(get_config()["codecomparisonmodelartismodelpath"], inputmodel, "model.txt")
+        textfilepath = Path(get_path("codecomparisonmodelartismodelpath"), inputmodel, "model.txt")
     else:
         raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), inputpath)
 
@@ -1033,33 +1021,24 @@ def save_modeldata(
     print(f"Wrote {modelfilepath} (took {time.perf_counter() - timestart:.1f} seconds)")
 
 
-def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist: Sequence[int] | None = None) -> int | None:
-    """Return the modelgridindex of the cell whose outer velocity is closest to velocity.
-
-    If mgilist is given, then chose from these cells only.
-    """
-    modeldata = get_modeldata(modelpath)[0].collect().to_pandas(use_pyarrow_extension_array=True)
-
-    if not mgilist:
-        mgilist = list(modeldata.index)
-        arr_vouter = modeldata["vel_r_max_kmps"].to_numpy(dtype=float)
-    else:
-        arr_vouter = np.array([modeldata["vel_r_max_kmps"][mgi] for mgi in mgilist])
-
-    index_closestvouter = int(np.abs(arr_vouter - velocity).argmin())
-
-    if velocity < arr_vouter[index_closestvouter] or index_closestvouter + 1 >= len(mgilist):
-        return mgilist[index_closestvouter]
-    if velocity < arr_vouter[index_closestvouter + 1]:
-        return mgilist[index_closestvouter + 1]
+def get_mgi_of_velocity_kms(modelpath: Path, velocity: float) -> int | None:
+    """Return the modelgridindex of the cell whose outer velocity brackets the given velocity."""
     if np.isnan(velocity):
         return None
+    dfmodel, modelmeta = get_modeldata(modelpath)
+    assert modelmeta["dimensions"] == 1, "get_mgi_of_velocity_kms only works for 1D models"
+    arr_vouter = dfmodel.select("vel_r_max_kmps").collect().to_series().to_numpy()
 
-    print(f"Can't find cell with velocity of {velocity}. Velocity list: {arr_vouter}")
-    raise AssertionError
+    mgi_upper = int(np.searchsorted(arr_vouter, velocity))
+    if mgi_upper >= len(arr_vouter):
+        msg = f"Velocity {velocity} is larger than all cell outer velocities. Velocity list: {arr_vouter}"
+        raise AssertionError(msg)
+    assert arr_vouter[mgi_upper] >= velocity if mgi_upper < len(arr_vouter) else True
+    assert arr_vouter[mgi_upper - 1] < velocity if mgi_upper > 0 else True
+    return mgi_upper
 
 
-def get_initelemabundances(modelpath: Path = Path(), printwarningsonly: bool = False) -> pl.LazyFrame:
+def get_initelemabundances(modelpath: Path | str = ".", printwarningsonly: bool = False) -> pl.LazyFrame:
     """Return a table of elemental mass fractions by cell from abundances."""
     textfilepath = firstexisting("abundances.txt", folder=modelpath, tryzipped=True)
     parquetfilepath = stripallsuffixes(Path(textfilepath)).with_suffix(".txt.parquet.tmp")
@@ -1181,7 +1160,7 @@ def save_initelemabundances(
     print(f"wrote {abundancefilename} (took {time.perf_counter() - timestart:.1f} seconds)")
 
 
-def save_empty_abundance_file(npts_model: int, outputfilepath: str | Path = Path()) -> None:
+def save_empty_abundance_file(npts_model: int, outputfilepath: str | Path = ".") -> None:
     """Save dummy abundance file with only zeros."""
     if Path(outputfilepath).is_dir():
         outputfilepath = Path(outputfilepath) / "abundances.txt"
@@ -1307,10 +1286,9 @@ def dimension_reduce_model(
         assert outputdimensions in {0, 1}
         dfmodel_out = dfmodel_out.with_columns(mgiout=pl.col("out_n_r"))
 
-    dfmodel_out = dfmodel_out.sort("mgiout")
-
     dfmodel_out = (
         dfmodel_out
+        .sort("mgiout")
         .group_by("mgiout", cs.starts_with("out_n_"))
         .agg(
             pl

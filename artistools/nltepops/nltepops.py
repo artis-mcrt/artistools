@@ -1,23 +1,10 @@
 """Artistools - NLTE population related functions."""
 
-__lazy_modules__ = [
-    "matplotlib",
-    "matplotlib.axes",
-    "matplotlib.figure",
-    "matplotlib.pyplot",
-    "numpy",
-    "numpy.typing",
-    "pandas",
-    "polars",
-    "polars.selectors",
-]
 import math
 import re
 import string
 import typing as t
 from collections.abc import Sequence
-from functools import lru_cache
-from functools import partial
 from pathlib import Path
 
 import pandas as pd
@@ -164,79 +151,30 @@ def add_lte_pops(
     return dfpop
 
 
-def read_file(nltefilepath: str | Path) -> pd.DataFrame:
-    """Read NLTE populations from one file."""
-    try:
-        nltefilepath = at.firstexisting(nltefilepath, tryzipped=True)
-    except FileNotFoundError:
-        # print(f"Warning: Could not find {nltefilepath}")
-        return pd.DataFrame()
-
-    filesize = Path(nltefilepath).stat().st_size / 1024 / 1024
-    print(f"Reading {nltefilepath} ({filesize:.2f} MiB)")
-
-    try:
-        dfpop = pd.read_csv(nltefilepath, sep=r"\s+")
-    except pd.errors.EmptyDataError:
-        return pd.DataFrame()
-
-    return dfpop.rename(columns={"ionstage": "ion_stage"}, errors="ignore")
-
-
-def read_file_filtered(
-    nltefilepath: str | Path, strquery: str | None = None, dfqueryvars: dict[str, t.Any] | None = None
-) -> pd.DataFrame:
-    dfpopfile = read_file(nltefilepath)
-
-    if strquery and not dfpopfile.empty:
-        dfpopfile = dfpopfile.query(strquery, local_dict=dfqueryvars)
-
-    return dfpopfile
-
-
-@lru_cache(maxsize=2)
-def read_files(
-    modelpath: str | Path,
-    timestep: int = -1,
-    modelgridindex: int = -1,
-    dfquery: str | None = None,
-    dfqueryvars: dict[str, t.Any] | None = None,
-) -> pd.DataFrame:
+def read_files(modelpath: str | Path, timestep: int = -1, modelgridindex: int = -1) -> pl.DataFrame:
     """Read in NLTE populations from a model for a particular timestep and grid cell."""
-    if dfqueryvars is None:
-        dfqueryvars = {}
-
-    mpiranklist = at.get_mpiranklist(modelpath, modelgridindex=modelgridindex)
-
     nltefilepaths = [
-        Path(folderpath, f"nlte_{mpirank:04d}.out")
+        at.firstexisting(Path(folderpath, f"nlte_{mpirank:04d}.out"), tryzipped=True)
         for folderpath in at.get_runfolders(modelpath, timestep=timestep)
-        for mpirank in mpiranklist
+        for mpirank in at.get_mpiranklist(modelpath, modelgridindex=modelgridindex)
     ]
 
-    dfqueryvars["modelgridindex"] = modelgridindex
-    dfqueryvars["timestep"] = timestep
+    dfnltepop = (
+        pl
+        .concat(
+            pl.from_pandas(pd.read_csv(nltefilepath, sep=r"\s+", dtype_backend="pyarrow"))
+            for nltefilepath in nltefilepaths
+        )
+        .rename({"ionstage": "ion_stage"}, strict=False)
+        .with_columns(pl.col("modelgridindex").cast(pl.Int64), pl.col("timestep").cast(pl.Int64))
+    )
 
-    dfquery_full = "timestep==@timestep" if timestep >= 0 else ""
+    filterexpr = pl.lit(True)
+
     if modelgridindex >= 0:
-        if dfquery_full:
-            dfquery_full += " and "
-        dfquery_full += "modelgridindex==@modelgridindex"
+        filterexpr &= pl.col("modelgridindex") == modelgridindex
 
-    if dfquery:
-        if dfquery_full:
-            dfquery_full = f"({dfquery_full}) and "
-        dfquery_full += f"({dfquery})"
+    if timestep >= 0:
+        filterexpr &= pl.col("timestep") == timestep
 
-    if at.get_config()["num_processes"] > 1:
-        with at.get_multiprocessing_pool() as pool:
-            arr_dfnltepop = pool.map(
-                partial(read_file_filtered, strquery=dfquery_full, dfqueryvars=dfqueryvars), nltefilepaths
-            )
-            pool.close()
-            pool.join()
-    else:
-        arr_dfnltepop = [read_file_filtered(f, strquery=dfquery_full, dfqueryvars=dfqueryvars) for f in nltefilepaths]
-    dfconcat = pd.concat(arr_dfnltepop)
-    assert isinstance(dfconcat, pd.DataFrame)
-    return dfconcat
+    return dfnltepop.filter(filterexpr)

@@ -4,29 +4,25 @@ A collection of plotting, analysis, and file format conversion tools
 for the ARTIS radiative transfer code.
 """
 
-__lazy_modules__ = [  # noqa: RUF067
-    "artistools.atomic",
-    "artistools.codecomparison",
-    "artistools.commands",
-    "artistools.configuration",
-    "artistools.constants",
-    "artistools.estimators",
-    "artistools.gsinetwork",
-    "artistools.inputmodel",
-    "artistools.lightcurve",
-    "artistools.macroatom",
-    "artistools.misc",
-    "artistools.nltepops",
-    "artistools.nonthermal",
-    "artistools.packets",
-    "artistools.plotspherical",
-    "artistools.plottools",
-    "artistools.radfield",
-    "artistools.rustext",
-    "artistools.spectra",
-    "artistools.transitions",
-    "artistools.writecomparisondata",
-]
+import sys
+
+if sys.version_info >= (3, 15) and hasattr(sys, "set_lazy_imports_filter"):  # noqa: RUF067
+    sys.set_lazy_imports_filter(
+        lambda _importing, imported, _fromlist: (
+            not imported.startswith((
+                "matplotlib.",
+                "six.moves",
+                "concurrent.futures",
+                "pandas._libs",
+                "pandas.core",
+                "pandas._config",
+                "pyarrow._compute",
+                "typing",
+            ))
+        )
+    )
+    sys.set_lazy_imports("all")
+
 from artistools import atomic as atomic
 from artistools import codecomparison as codecomparison
 from artistools import commands as commands
@@ -48,9 +44,9 @@ from artistools import spectra as spectra
 from artistools import transitions as transitions
 from artistools import writecomparisondata as writecomparisondata
 from artistools.commands import addargs as addargs
+from artistools.commands import CustomArgHelpFormatter as CustomArgHelpFormatter
+from artistools.commands import get_path as get_path
 from artistools.commands import show_version as show_version
-from artistools.configuration import get_config as get_config
-from artistools.configuration import set_config as set_config
 from artistools.estimators import read_estimators as read_estimators
 from artistools.estimators import scan_estimators as scan_estimators
 from artistools.inputmodel import add_derived_cols_to_modeldata as add_derived_cols_to_modeldata
@@ -63,7 +59,6 @@ from artistools.inputmodel import save_initelemabundances as save_initelemabunda
 from artistools.inputmodel import save_modeldata as save_modeldata
 from artistools.misc import anyexist as anyexist
 from artistools.misc import average_direction_bins as average_direction_bins
-from artistools.misc import CustomArgHelpFormatter as CustomArgHelpFormatter
 from artistools.misc import decode_roman_numeral as decode_roman_numeral
 from artistools.misc import firstexisting as firstexisting
 from artistools.misc import flatten_list as flatten_list
@@ -91,7 +86,6 @@ from artistools.misc import get_linelist_pldf as get_linelist_pldf
 from artistools.misc import get_model_name as get_model_name
 from artistools.misc import get_mpiranklist as get_mpiranklist
 from artistools.misc import get_mpirankofcell as get_mpirankofcell
-from artistools.misc import get_multiprocessing_pool as get_multiprocessing_pool
 from artistools.misc import get_nprocs as get_nprocs
 from artistools.misc import get_nu_grid as get_nu_grid
 from artistools.misc import get_nuclides as get_nuclides
@@ -113,6 +107,7 @@ from artistools.misc import LineTuple as LineTuple
 from artistools.misc import makelist as makelist
 from artistools.misc import match_closest_time as match_closest_time
 from artistools.misc import merge_pdf_files as merge_pdf_files
+from artistools.misc import parallel_map as parallel_map
 from artistools.misc import parse_range as parse_range
 from artistools.misc import parse_range_list as parse_range_list
 from artistools.misc import print_theta_phi_definitions as print_theta_phi_definitions

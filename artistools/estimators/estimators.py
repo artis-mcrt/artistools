@@ -3,20 +3,6 @@
 Examples are temperatures, populations, and heating/cooling rates.
 """
 
-__lazy_modules__ = [
-    "matplotlib",
-    "matplotlib.axes",
-    "matplotlib.figure",
-    "matplotlib.image",
-    "matplotlib.pyplot",
-    "matplotlib.ticker",
-    "numpy",
-    "numpy.typing",
-    "pandas",
-    "polars",
-    "polars.selectors",
-    "tempfile",
-]
 import contextlib
 import datetime
 import tempfile
@@ -184,7 +170,10 @@ def join_cell_modeldata(
     """Join the estimator data with data from model.txt and derived quantities, e.g. density, volume, etc."""
     assert estimators is not None
     estimators = estimators.join(
-        at.get_timesteps(modelpath).select("timestep", "tmid_days", "twidth_days"),
+        at
+        .get_timesteps(modelpath)
+        .select("timestep", "tmid_days", "twidth_days")
+        .with_columns(tmid_days_prevtimestep=pl.col("tmid_days").shift(1)),
         on="timestep",
         how="left",
         coalesce=True,
@@ -201,11 +190,13 @@ def join_cell_modeldata(
     return estimators.join(dfmodel, on="modelgridindex", suffix="_initmodel").with_columns(
         rho=pl.col("init_rho") * (modelmeta["t_model_init_days"] / pl.col("tmid_days")) ** 3,
         volume=pl.col("init_volume") * (pl.col("tmid_days") / modelmeta["t_model_init_days"]) ** 3,
+        volume_prevtimestep=pl.col("init_volume")
+        * (pl.col("tmid_days_prevtimestep") / modelmeta["t_model_init_days"]) ** 3,
     ), modelmeta
 
 
 def scan_estimators(
-    modelpath: Path | str = Path(),
+    modelpath: Path | str = ".",
     modelgridindex: int | Sequence[int] | None = None,
     timestep: int | Sequence[int] | None = None,
     join_modeldata: bool = False,
@@ -317,7 +308,7 @@ def scan_estimators(
 
 
 def read_estimators(
-    modelpath: Path | str = Path(),
+    modelpath: Path | str = ".",
     modelgridindex: int | Sequence[int] | None = None,
     timestep: int | Sequence[int] | None = None,
     keys: Collection[str] | None = None,
@@ -356,7 +347,9 @@ def read_estimators(
 def get_averageexcitation(
     modelpath: Path | str, modelgridindex: int, timestep: int, atomic_number: int, ion_stage: int, T_exc: float
 ) -> float | None:
-    dfnltepops = at.nltepops.read_files(modelpath, modelgridindex=modelgridindex, timestep=timestep)
+    dfnltepops = at.nltepops.read_files(modelpath, modelgridindex=modelgridindex, timestep=timestep).to_pandas(
+        use_pyarrow_extension_array=True
+    )
     if dfnltepops.empty:
         print(f"WARNING: NLTE pops not found for cell {modelgridindex} at timestep {timestep}")
 

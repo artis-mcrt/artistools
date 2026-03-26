@@ -1,15 +1,3 @@
-__lazy_modules__ = [
-    "matplotlib",
-    "matplotlib.axes",
-    "matplotlib.figure",
-    "matplotlib.pyplot",
-    "numpy",
-    "numpy.typing",
-    "pandas",
-    "polars",
-    "polars.selectors",
-    "tempfile",
-]
 import calendar
 import math
 import tempfile
@@ -24,7 +12,6 @@ import numpy.typing as npt
 import pandas as pd
 import polars as pl
 import polars.selectors as cs
-from typing_extensions import deprecated
 
 import artistools as at
 
@@ -137,81 +124,11 @@ def get_column_names_artiscode(modelpath: str | Path) -> list[str] | None:
     return None
 
 
-@deprecated("Use add_derived_columns_lazy instead.")
-def add_derived_columns(
-    dfpackets: pd.DataFrame,
-    modelpathin: Path | str,
-    colnames: Sequence[str],
-    allnonemptymgilist: Sequence[int] | None = None,
-) -> pd.DataFrame:
-    """Add columns to a packets DataFrame that are derived from the values that are stored in the packets files."""
-    modelpath = Path(modelpathin)
-    cm_to_km = 1e-5
-    day_in_s = 86400
-    if dfpackets.empty:
-        return dfpackets
-
-    colnames = at.makelist(colnames)
-    dimensions = at.get_inputparams(modelpath)["n_dimensions"]
-
-    def em_modelgridindex(packet: t.Any) -> int | float:
-        assert dimensions == 1
-
-        mgi = at.inputmodel.get_mgi_of_velocity_kms(
-            modelpath, packet.emission_velocity * cm_to_km, mgilist=allnonemptymgilist
-        )
-        return math.nan if mgi is None else mgi
-
-    def emtrue_modelgridindex(packet: t.Any) -> int | float:
-        assert dimensions == 1
-
-        mgi = at.inputmodel.get_mgi_of_velocity_kms(
-            modelpath, packet.true_emission_velocity * cm_to_km, mgilist=allnonemptymgilist
-        )
-        return math.nan if mgi is None else mgi
-
-    def em_timestep(packet: t.Any) -> int:
-        return at.get_timestep_of_timedays(modelpath, packet.em_time / day_in_s)
-
-    def emtrue_timestep(packet: t.Any) -> int:
-        return at.get_timestep_of_timedays(modelpath, packet.trueem_time / day_in_s)
-
-    if "emission_velocity" in colnames:
-        dfpackets["emission_velocity"] = (
-            np.sqrt(dfpackets["em_posx"] ** 2 + dfpackets["em_posy"] ** 2 + dfpackets["em_posz"] ** 2)
-            / dfpackets["em_time"]
-        )
-
-        dfpackets["em_velx"] = dfpackets["em_posx"] / dfpackets["em_time"]
-        dfpackets["em_vely"] = dfpackets["em_posy"] / dfpackets["em_time"]
-        dfpackets["em_velz"] = dfpackets["em_posz"] / dfpackets["em_time"]
-
-    if "em_modelgridindex" in colnames:
-        if "emission_velocity" not in dfpackets.columns:
-            dfpackets = add_derived_columns(
-                dfpackets, modelpath, ["emission_velocity"], allnonemptymgilist=allnonemptymgilist
-            )
-        dfpackets["em_modelgridindex"] = dfpackets.apply(em_modelgridindex, axis=1)
-
-    if "emtrue_modelgridindex" in colnames:
-        dfpackets["emtrue_modelgridindex"] = dfpackets.apply(emtrue_modelgridindex, axis=1)
-
-    if "emtrue_timestep" in colnames:
-        dfpackets["emtrue_timestep"] = dfpackets.apply(emtrue_timestep, axis=1)
-
-    if "em_timestep" in colnames:
-        dfpackets["em_timestep"] = dfpackets.apply(em_timestep, axis=1)
-
-    if any(x in colnames for x in ("angle_bin", "dirbin", "costhetabin", "phibin")):
-        dfpackets = bin_packet_directions(dfpackets)
-
-    return dfpackets
-
-
 def add_derived_columns_lazy(
     dfpackets: pl.LazyFrame | pl.DataFrame,
     modelmeta: dict[str, t.Any] | None = None,
     dfmodel: pd.DataFrame | pl.LazyFrame | None = None,
+    modelpath: Path | str | None = None,
 ) -> pl.LazyFrame:
     """Add columns to a packets DataFrame that are derived from the values that are stored in the packets files.
 
@@ -222,7 +139,35 @@ def add_derived_columns_lazy(
 
     assert isinstance(dfmodel, pl.LazyFrame | None)
 
-    dfpackets = dfpackets.lazy().with_columns(
+    if dfmodel is None:
+        assert modelpath is not None, "modelpath must be provided if dfmodel is not provided"
+        dfmodel, modelmeta = at.get_modeldata(modelpath=modelpath)
+
+    dfpackets = dfpackets.lazy()
+
+    if modelpath is not None:
+        timebins = [tstart * 86400.0 for tstart in at.get_timestep_times(modelpath, loc="start")] + [
+            at.get_timestep_times(modelpath, loc="end")[-1] * 86400.0
+        ]
+        dfpackets = dfpackets.with_columns(
+            (
+                pl
+                .col("em_time")
+                .cut(breaks=timebins, labels=[str(x) for x in range(-1, len(timebins))])
+                .cast(pl.Utf8)
+                .cast(pl.Int32)
+            ).alias("em_timestep")
+        )
+
+    if "trueem_posx" in dfpackets.collect_schema().names():
+        dfpackets = dfpackets.with_columns(
+            true_emission_velocity=(
+                (pl.col("trueem_posx") ** 2 + pl.col("trueem_posy") ** 2 + pl.col("trueem_posz") ** 2).sqrt()
+                / pl.col("trueem_time")
+            )
+        )
+
+    dfpackets = dfpackets.with_columns(
         emission_velocity=(
             (pl.col("em_posx") ** 2 + pl.col("em_posy") ** 2 + pl.col("em_posz") ** 2).sqrt() / pl.col("em_time")
         ),
@@ -271,7 +216,7 @@ def add_derived_columns_lazy(
     elif modelmeta["dimensions"] == 1:
         assert dfmodel is not None, "dfmodel must be provided for 1D models to set em_modelgridindex"
 
-        velbins = (dfmodel.select(pl.col("vel_r_max_kmps")).lazy().collect()["vel_r_max_kmps"] * 1000.0).to_list()
+        velbins = [0.0, *(dfmodel.select(pl.col("vel_r_max_kmps") * 100000.0).collect().to_series().to_list())]
         dfpackets = dfpackets.with_columns(
             em_modelgridindex=(
                 pl
@@ -281,11 +226,21 @@ def add_derived_columns_lazy(
                 .cast(pl.Int32)
             )
         )
+        if "true_emission_velocity" in dfpackets.collect_schema().names():
+            dfpackets = dfpackets.with_columns(
+                emtrue_modelgridindex=(
+                    pl
+                    .col("true_emission_velocity")
+                    .cut(breaks=velbins, labels=[str(x) for x in range(-1, len(velbins))])
+                    .cast(pl.Utf8)
+                    .cast(pl.Int32)
+                )
+            )
 
     return dfpackets
 
 
-def get_packets_text_columns(packetsfile: Path | str, modelpath: Path = Path()) -> list[str]:
+def get_packets_text_columns(packetsfile: Path | str, modelpath: Path | str = ".") -> list[str]:
     column_names: list[str] = []
     with at.zopen(packetsfile, mode="rt", encoding="utf-8") as fpackets:
         firstline = fpackets.readline()
@@ -439,19 +394,6 @@ def read_virtual_packets_text_file(vpacketsfiletext: Path | str, column_names: l
         | {col: pl.Float64 for col in column_names if col.endswith("_nu_rf") or "_e_rf" in col}
         | {col: pl.Float32 for col in column_names if col.endswith("_t_arrive_d")},
     ).with_columns(mpirank=pl.lit(mpirank, dtype=pl.Int32))
-
-
-def get_packets_text_paths(modelpath: str | Path, maxpacketfiles: int | None = None) -> list[Path]:
-    """Get a list of Paths to packets*.out files."""
-    modelpath = Path(modelpath)
-    nprocs_read = at.get_nprocs(modelpath)
-    if maxpacketfiles is not None:
-        nprocs_read = min(nprocs_read, maxpacketfiles)
-
-    return [
-        at.firstexisting(f"packets00_{rank:04d}.out", folder=modelpath, tryzipped=True, search_subfolders=True)
-        for rank in range(nprocs_read)
-    ]
 
 
 def get_vpackets_text_columns(vpacketsfiletext: Path) -> list[str]:
@@ -615,7 +557,6 @@ def get_virtual_packets_pl(modelpath: str | Path, maxpacketfiles: int | None = N
     return nprocs_read, dfpackets
 
 
-@lru_cache
 def get_packets_pl_before_filter(modelpath: Path, maxpacketfiles: int | None = None) -> tuple[int, pl.LazyFrame]:
     nprocs_read, packetsparquetfiles = get_packets_batch_parquet_paths(modelpath, maxpacketfiles)
 
@@ -795,58 +736,6 @@ def bin_packet_directions_polars(
     return dfpackets
 
 
-@deprecated("Use bin_packet_directions_polars instead.")
-def bin_packet_directions(dfpackets: pd.DataFrame) -> pd.DataFrame:
-    """Avoid this slow pandas function and use bin_packet_directions_polars instead for new code."""
-    nphibins = at.get_viewingdirection_phibincount()
-    ncosthetabins = at.get_viewingdirection_costhetabincount()
-
-    syn_dir = np.array([0.0, 0.0, 1.0])
-    xhat = np.array([1.0, 0.0, 0.0])
-    vec2 = np.cross(xhat, syn_dir)
-
-    pktdirvecs = dfpackets[["dirx", "diry", "dirz"]].to_numpy().copy()
-
-    # normalise. might not be needed
-    dirmags = np.linalg.norm(pktdirvecs, axis=1)
-    pktdirvecs /= np.array([dirmags, dirmags, dirmags]).transpose()
-
-    costheta = np.dot(pktdirvecs, syn_dir)
-    arr_costhetabin = np.clip(((costheta + 1) / 2.0 * ncosthetabins).astype(int), 0, ncosthetabins - 1)
-    dfpackets["costhetabin"] = arr_costhetabin
-
-    arr_vec1 = np.cross(pktdirvecs, syn_dir)
-
-    norms = np.linalg.norm(arr_vec1, axis=1)
-    # replace zero norms to a small number to avoid division by zero
-    norms[norms == 0] = 1e-20
-    inverse_norms = 1 / norms
-
-    arr_cosphi = np.dot(arr_vec1, vec2) * inverse_norms / np.linalg.norm(vec2)
-    vec3 = np.cross(vec2, syn_dir)
-    arr_testphi = np.dot(arr_vec1, vec3)
-
-    arr_phibin = np.zeros(len(pktdirvecs), dtype=int)
-    filta = arr_testphi > 0
-    arr_phibin[filta] = np.arccos(arr_cosphi[filta]) / 2.0 / math.pi * nphibins
-    filtb = np.invert(filta)
-    arr_phibin[filtb] = (np.arccos(arr_cosphi[filtb]) + math.pi) / 2.0 / math.pi * nphibins
-    arr_phibin = np.clip(arr_phibin, 0, nphibins - 1)
-    dfpackets["phibin"] = arr_phibin
-    dfpackets["arccoscosphi"] = np.arccos(arr_cosphi)
-
-    dfpackets["dirbin"] = (arr_costhetabin * nphibins) + arr_phibin
-
-    assert np.all(dfpackets["costhetabin"] >= 0)
-    assert np.all(dfpackets["costhetabin"] < ncosthetabins)
-    assert np.all(dfpackets["phibin"] >= 0)
-    assert np.all(dfpackets["phibin"] < nphibins)
-    assert np.all(dfpackets["dirbin"] >= 0)
-    assert np.all(dfpackets["dirbin"] < (nphibins * ncosthetabins))
-
-    return dfpackets
-
-
 def make_3d_histogram_from_packets(
     modelpath: str | Path, timestep_min: int, timestep_max: int | None = None, em_time: bool = True
 ) -> npt.NDArray[np.floating]:
@@ -867,38 +756,25 @@ def make_3d_histogram_from_packets(
     else:
         print("Binning by packet arrival time")
 
-    _, packetsfiles = at.packets.get_packets_batch_parquet_paths(modelpath)
-
-    emission_position3d_lists: list[list[float]] = [[], [], []]
-    e_cmf: list[float] = []
-
     only_packets_0_scatters = False
-    for packetsfile in packetsfiles:
-        # for npacketfile in range(0, 1):
-        dfpackets = readfile(packetsfile)
-        at.packets.add_derived_columns(dfpackets, modelpath, ["emission_velocity"])
-        dfpackets = dfpackets.dropna(subset=["emission_velocity"])  # drop rows where emission_vel is NaN
+    nprocs_read, dfpackets = at.packets.get_packets_pl(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
+    if only_packets_0_scatters:
+        print("Only using packets with 0 scatters")
+        dfpackets = dfpackets.filter(pl.col("nscatterings") == 0)
 
-        if only_packets_0_scatters:
-            print("Only using packets with 0 scatters")
-            # print(dfpackets[['scat_count', 'interactions', 'nscatterings']])
-            dfpackets = dfpackets.query("nscatterings == 0")
+    dfpackets = dfpackets.filter(
+        ((pl.col("em_time") / 86400.0) if em_time else pl.col("t_arrive_d"))
+        .cast(pl.Float32)
+        .is_between(timeminarray[timestep_min], timemaxarray[timestep_max])
+    )
 
-        # print(dfpackets[['emission_velocity', 'em_velx', 'em_vely', 'em_velz']])
-        # select only type escape and type r-pkt (don't include gamma-rays)
-        dfpackets = dfpackets.query(
-            f"type_id == {type_ids['TYPE_ESCAPE']} and escape_type_id == {type_ids['TYPE_RPKT']}"
-        )
-        if em_time:
-            dfpackets = dfpackets.query("@timeminarray[@timestep_min] < em_time/@DAY < @timemaxarray[@timestep_max]")
-        else:  # packet arrival time
-            dfpackets = dfpackets.query("@timeminarray[@timestep_min] < t_arrive_d < @timemaxarray[@timestep_max]")
+    emission_position3d_lists = [
+        dfpackets.select(pl.col("em_posx") / pl.col("em_time") / CLIGHT).collect().to_series().to_list(),
+        dfpackets.select(pl.col("em_posy") / pl.col("em_time") / CLIGHT).collect().to_series().to_list(),
+        dfpackets.select(pl.col("em_posz") / pl.col("em_time") / CLIGHT).collect().to_series().to_list(),
+    ]
 
-        emission_position3d_lists[0].extend(list(dfpackets["em_velx"] / CLIGHT))
-        emission_position3d_lists[1].extend(list(dfpackets["em_vely"] / CLIGHT))
-        emission_position3d_lists[2].extend(list(dfpackets["em_velz"] / CLIGHT))
-
-        e_cmf.extend(list(dfpackets["e_cmf"]))
+    e_cmf = dfpackets.select("e_cmf").collect().to_series().to_list()
 
     emission_position3d = np.array(emission_position3d_lists)
     weight_by_energy = True
@@ -907,16 +783,15 @@ def make_3d_histogram_from_packets(
     print(emission_position3d.shape)
     print(emission_position3d[0].shape)
 
-    # print(emission_position3d)
     grid_3d, _, _, _ = make_3d_grid(modeldata, vmax_cms)
     print(grid_3d.shape)
     # https://stackoverflow.com/questions/49861468/binning-random-data-to-regular-3d-grid-with-unequal-axis-lengths
     hist, _ = np.histogramdd(emission_position3d.T, [np.append(ax, np.inf) for ax in grid_3d], weights=weights)
-    # print(hist.shape)
+
     if weight_by_energy:
         # Divide binned energies by number of processes and by length of timestep
         hist = (
-            hist / len(packetsfiles) / (timemaxarray[timestep_max] - timeminarray[timestep_min])
+            hist / nprocs_read / (timemaxarray[timestep_max] - timeminarray[timestep_min])
         )  # timedeltaarray[timestep]  # histogram weighted by energy
     # - need to divide by number of processes
     # and length of timestep(s)
@@ -955,48 +830,35 @@ def get_mean_packet_emission_velocity_per_ts(
     escape_type: t.Literal["TYPE_RPKT", "TYPE_GAMMA"] = "TYPE_RPKT",
     maxpacketfiles: int | None = None,
     escape_angles: int | None = None,
-) -> pd.DataFrame:
-    nprocs_read, packetsfiles = at.packets.get_packets_batch_parquet_paths(modelpath, maxpacketfiles=maxpacketfiles)
+) -> pl.DataFrame:
+    nprocs_read, dfpackets = get_packets_pl(
+        modelpath, maxpacketfiles=maxpacketfiles, packet_type=packet_type, escape_type=escape_type
+    )
+    dfpackets = add_derived_columns_lazy(dfpackets, modelpath=modelpath)
     assert nprocs_read > 0
 
     timearray = at.get_timestep_times(modelpath=modelpath, loc="mid")
     arr_timedelta = at.get_timestep_times(modelpath=modelpath, loc="delta")
     timearrayplusend = [*timearray, timearray[-1] + arr_timedelta[-1]]
 
-    dfpackets_escape_velocity_and_arrive_time = pd.DataFrame()
-    emission_data = pd.DataFrame({
+    if escape_angles is not None:
+        dfpackets = dfpackets.filter(pl.col("dirbin") == escape_angles)
+
+    return pl.DataFrame({
         "t_arrive_d": timearray,
-        "mean_emission_velocity": np.zeros_like(timearray, dtype=float),
-    })
-
-    for i, packetsfile in enumerate(packetsfiles):
-        dfpackets = readfile(packetsfile, packet_type=packet_type, escape_type=escape_type)
-        at.packets.add_derived_columns(dfpackets, modelpath, ["emission_velocity"])
-        if escape_angles is not None:
-            dfpackets = at.packets.bin_packet_directions(dfpackets)
-            dfpackets = dfpackets.query("dirbin == @escape_angles")
-
-        if i == 0:  # make new df
-            dfpackets_escape_velocity_and_arrive_time = dfpackets[["t_arrive_d", "emission_velocity"]]
-        else:  # append to df
-            # dfpackets_escape_velocity_and_arrive_time = dfpackets_escape_velocity_and_arrive_time.append(
-            #     other=dfpackets[["t_arrive_d", "emission_velocity"]], ignore_index=True
-            # )
-            dfpackets_escape_velocity_and_arrive_time = pd.concat(
-                [dfpackets_escape_velocity_and_arrive_time, dfpackets[["t_arrive_d", "emission_velocity"]]],
-                ignore_index=True,
+        "mean_emission_velocity": (
+            at.packets
+            .bin_and_sum(
+                dfpackets,
+                bincol="t_arrive_d",
+                bins=timearrayplusend,
+                otheraggs=[pl.col("emission_velocity").mean().alias("mean_emission_velocity")],
             )
-
-    print(dfpackets_escape_velocity_and_arrive_time)
-    binned = pd.cut(
-        dfpackets_escape_velocity_and_arrive_time["t_arrive_d"], timearrayplusend, labels=False, include_lowest=True
-    )
-    for binindex, emission_velocity in (
-        dfpackets_escape_velocity_and_arrive_time.groupby(binned)["emission_velocity"].mean().iteritems()
-    ):
-        emission_data["mean_emission_velocity"][binindex] += emission_velocity  # / 2.99792458e10
-
-    return emission_data
+            .select("mean_emission_velocity")
+            .collect()
+            .to_series()
+        ),
+    })
 
 
 def bin_and_sum(
@@ -1005,6 +867,7 @@ def bin_and_sum(
     bins: Sequence[float | int],
     sumcols: list[str] | None = None,
     getcounts: bool = False,
+    otheraggs: pl.Expr | list[pl.Expr] | None = None,
 ) -> pl.LazyFrame:
     """Bins is a list of lower edges, and the final upper edge."""
     # Polars method
@@ -1021,10 +884,19 @@ def bin_and_sum(
         )
     )
 
-    aggs = [pl.col(col).sum().alias(col + "_sum") for col in sumcols] if sumcols is not None else []
+    if sumcols is None:
+        sumcols = []
+
+    aggs = [pl.col(col).sum().alias(col + "_sum") for col in sumcols]
 
     if getcounts:
         aggs.append(pl.col(bincol).count().alias("count"))
+
+    if otheraggs is None:
+        otheraggs = []
+    elif isinstance(otheraggs, pl.Expr):
+        otheraggs = [otheraggs]
+    aggs.extend(otheraggs)
 
     wlbins = dfcut.group_by(f"{bincol}_bin").agg(aggs)
 
@@ -1033,6 +905,8 @@ def bin_and_sum(
         pl
         .LazyFrame({f"{bincol}_bin": range(len(bins) - 1)}, schema={f"{bincol}_bin": pl.Int32})
         .join(wlbins, how="left", on=f"{bincol}_bin", coalesce=True)
-        .fill_null(0)
+        # fill nulls with 0 for sum columns
+        .with_columns(pl.col(f"{sumcol}_sum").fill_null(0) for sumcol in sumcols)
+        .with_columns(cs.by_name("count", require_all=False).fill_null(0))
         .sort(by=f"{bincol}_bin")
     )

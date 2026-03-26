@@ -1,14 +1,3 @@
-__lazy_modules__ = [
-    "matplotlib",
-    "matplotlib.axes",
-    "matplotlib.figure",
-    "matplotlib.pyplot",
-    "numpy",
-    "numpy.typing",
-    "pandas",
-    "polars",
-    "polars.selectors",
-]
 import argparse
 import math
 import sys
@@ -62,7 +51,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         make_plot(xlist, ylists, args.pdfoutputfile)
 
 
-def slice_3dmodel(inputfolder, outputfolder, chosenaxis) -> tuple[dict[int, int], list[float], list[list[float]]]:  # noqa: ANN001
+def slice_3dmodel(
+    inputfolder: Path | str, outputfolder: Path | str, chosenaxis: str
+) -> tuple[dict[int, int], list[float], list[list[float]]]:
     xlist: list[float] = []
     ylists: list[list[float]] = [[], [], []]
     listout: list[str] = []
@@ -113,7 +104,9 @@ def slice_3dmodel(inputfolder, outputfolder, chosenaxis) -> tuple[dict[int, int]
     return dict3dcellidto1dcellid, xlist, ylists
 
 
-def slice_abundance_file(inputfolder, outputfolder, dict3dcellidto1dcellid) -> None:  # noqa: ANN001
+def slice_abundance_file(
+    inputfolder: Path | str, outputfolder: Path | str, dict3dcellidto1dcellid: dict[int, int]
+) -> None:
     with (
         Path(inputfolder, "abundances.txt").open(encoding="utf-8") as fabundancesin,
         Path(outputfolder, "abundances.txt").open("w", encoding="utf-8") as fabundancesout,
@@ -143,7 +136,7 @@ def slice_abundance_file(inputfolder, outputfolder, dict3dcellidto1dcellid) -> N
 
 
 def append_cell_to_output(
-    cell,  # noqa: ANN001
+    cell: dict[str, float | str],
     outcellid: int,
     t_model: str | float,
     listout: list[str],
@@ -159,9 +152,9 @@ def append_cell_to_output(
     )
 
     xlist.append(velocity)
-    ylists[0].append(cell["rho"])
-    ylists[1].append(cell["f56ni"])
-    ylists[2].append(cell["fco"])
+    ylists[0].append(float(cell["rho"]))
+    ylists[1].append(float(cell["f56ni"]))
+    ylists[2].append(float(cell["fco"]))
 
 
 def make_plot(xlist: list[float], ylists: list[list[float]], pdfoutputfile: str) -> None:

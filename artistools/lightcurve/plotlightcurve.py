@@ -1,19 +1,4 @@
 # PYTHON_ARGCOMPLETE_OK
-__lazy_modules__ = [
-    "matplotlib",
-    "matplotlib.axes",
-    "matplotlib.cm",
-    "matplotlib.colors",
-    "matplotlib.figure",
-    "matplotlib.image",
-    "matplotlib.pyplot",
-    "matplotlib.ticker",
-    "numpy",
-    "numpy.typing",
-    "pandas",
-    "polars",
-    "polars.selectors",
-]
 import argparse
 import math
 import sys
@@ -33,7 +18,6 @@ import matplotlib.ticker as mplticker
 import numpy as np
 import numpy.typing as npt
 import polars as pl
-from matplotlib import ticker
 from polars import selectors as cs
 
 import artistools as at
@@ -49,13 +33,6 @@ def plot_deposition_thermalisation(
     args: argparse.Namespace,
     **plotkwargs: t.Any,
 ) -> None:
-    # if args.logscalex:
-    #     axistherm.set_xscale("log")
-
-    # if args.logscaley:
-    #     axistherm.set_yscale("log")
-    #     axistherm.set_ylim(bottom=0.1, top=1.0)
-
     if args.plotthermalisation:
         dfmodel, _ = at.inputmodel.get_modeldata(modelpath, derived_cols=["mass_g", "vel_r_mid", "kinetic_en_erg"])
 
@@ -64,46 +41,12 @@ def plot_deposition_thermalisation(
 
     depdata = at.get_deposition(modelpath).collect()
 
-    # color_total = axis._get_lines.get_next_color()
-
-    # axis.plot(depdata['tmid_days'], depdata['eps_erg/s/g'] * model_mass_grams, **dict(
-    #     plotkwargs, **{
-    #         'label': plotkwargs['label'] + r' $\dot{\epsilon}_{\alpha\beta^\pm\gamma}$',
-    #         'linestyle': 'dashed',
-    #         'color': color_total,
-    #     }))
-
-    # axis.plot(depdata['tmid_days'], depdata['total_dep_Lsun'] * Lsun_to_erg_per_s, **dict(
-    #     plotkwargs, **{
-    #         'label': plotkwargs['label'] + r' $\dot{E}_{dep,\alpha\beta^\pm\gamma}$',
-    #         'linestyle': 'dotted',
-    #         'color': color_total,
-    #     }))
-    # if args.plotthermalisation:
-    #     # f = depdata['eps_erg/s/g'] / depdata['Qdot_ana_erg/s/g']
-    #     f = depdata['total_dep_Lsun'] * Lsun_to_erg_per_s / (depdata['eps_erg/s/g'] * model_mass_grams)
-    #     axistherm.plot(depdata['tmid_days'], f, **dict(
-    #         plotkwargs, **{
-    #             'label': plotkwargs['label'] + r' $\dot{E}_{dep}/\dot{E}_{rad}$',
-    #             'linestyle': 'solid',
-    #             'color': color_total,
-    #         }))
-
     color_gamma = axis._get_lines.get_next_color()  # type: ignore[attr-defined] # noqa: SLF001 # pyright: ignore[reportAttributeAccessIssue]
     color_gamma = axis._get_lines.get_next_color()  # type: ignore[attr-defined] # noqa: SLF001 # pyright: ignore[reportAttributeAccessIssue]
-
-    # axis.plot(depdata['tmid_days'], depdata['eps_gamma_Lsun'] * Lsun_to_erg_per_s, **dict(
-    #     plotkwargs, **{
-    #         'label': plotkwargs['label'] + r' $\dot{E}_{rad,\gamma}$',
-    #         'linestyle': 'dashed',
-    #         'color': color_gamma,
-    #     }))
-
-    gammadep_lsun = depdata["gammadep_Lsun"]
 
     axis.plot(
         depdata["tmid_days"],
-        gammadep_lsun * Lsun_to_erg_per_s,
+        depdata["gammadep_Lsun"] * Lsun_to_erg_per_s,
         **(
             plotkwargs
             | {"label": plotkwargs["label"] + r" $\dot{E}_{dep,\gamma}$", "linestyle": "dashed", "color": color_gamma}
@@ -139,25 +82,6 @@ def plot_deposition_thermalisation(
                 }
             ),
         )
-
-    # c23modelpath = Path(
-    #     Path.home(), "Google Drive/Shared drives/ARTIS/artis_runs_published/Collinsetal2023/sfho_long_1-35-135Msun"
-    # )
-
-    # c23energyrate = at.inputmodel.energyinputfiles.get_energy_rate_fromfile(c23modelpath)
-    # c23etot, c23energydistribution_data = at.inputmodel.energyinputfiles.get_etot_fromfile(c23modelpath)
-
-    # dE = np.diff(c23energyrate["rate"] * c23etot)
-    # dt = np.diff(c23energyrate["times"] * 24 * 60 * 60)
-
-    # axis.plot(
-    #     c23energyrate["times"][1:],
-    #     dE / dt * 0.308,
-    #     color="grey",
-    #     linestyle="--",
-    #     zorder=20,
-    #     label=r"Collins+23 $\dot{E}_{rad,\beta^-}$",
-    # )
 
     # color_alpha = axis._get_lines.get_next_color()
     color_alpha = "C1"
@@ -320,8 +244,6 @@ def plot_artis_lightcurve(
 ) -> dict[int, pl.DataFrame] | None:
     if args is None:
         args = argparse.Namespace()
-    if plotkwargs is None:
-        plotkwargs = {}
     if escape_type not in {"TYPE_RPKT", "TYPE_GAMMA"}:
         msg = f"Unknown escape type {escape_type}"
         raise ValueError(msg)
@@ -534,12 +456,8 @@ def plot_artis_lightcurve(
         elif lcdata_valid.is_empty():
             print(" WARNING: No data points in valid range")
 
-        from scipy import integrate
-
         # lum column is erg/s
-        energy_released = abs(
-            integrate.trapezoid(np.nan_to_num(lcdata_valid["lum"], nan=0.0), x=lcdata_valid["time"] * 86400)
-        )
+        energy_released = abs(np.trapezoid(np.nan_to_num(lcdata_valid["lum"], nan=0.0), x=lcdata_valid["time"] * 86400))
         lcdatamin = lcdata_valid.select(pl.min("time")).item()
         lcdatamax = lcdata_valid.select(pl.max("time")).item()
         if lcdatamin is not None and lcdatamax is not None:
@@ -579,7 +497,7 @@ def make_lightcurve_plot(
     if args is None:
         args = argparse.Namespace()
 
-    conffigwidth = float(at.get_config()["figwidth"])
+    conffigwidth = 5.0
     fig, axis = plt.subplots(
         nrows=1,
         ncols=1,
@@ -609,20 +527,17 @@ def make_lightcurve_plot(
             tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
         )
 
-        # axistherm.set_xscale('log')
         axistherm.set_ylabel("Thermalisation ratio")
         axistherm.set_xlabel(r"Time [days]")
-        # axistherm.set_xlim(left=0., args.timemax)
         if args.timemin is not None:
             axistherm.set_xlim(left=args.timemin)
         if args.timemax is not None:
             axistherm.set_xlim(right=args.timemax)
         axistherm.set_ylim(bottom=0.0)
-        # axistherm.set_ylim(top=1.05)
     else:
         axistherm = None
 
-    # take any specified colours our of the cycle
+    # take any specified colours out of the cycle
     colors = [
         color for i, color in enumerate(plt.rcParams["axes.prop_cycle"].by_key()["color"]) if f"C{i}" not in args.color
     ]
@@ -774,7 +689,7 @@ def make_lightcurve_plot(
         if "{" in axis.get_ylabel() and not args.logscaley:
             axis.yaxis.set_major_formatter(at.plottools.ExponentLabelFormatter(axis.get_ylabel()))
             axis.yaxis.set_major_locator(
-                ticker.MaxNLocator(nbins="auto", steps=[1, 2, 4, 5, 8, 10], integer=True, prune=None)
+                mplticker.MaxNLocator(nbins="auto", steps=[1, 2, 4, 5, 8, 10], integer=True, prune=None)
             )
 
     if args.colorbarcostheta or args.colorbarphi:
@@ -797,7 +712,6 @@ def make_lightcurve_plot(
     if args.plotthermalisation:
         assert figtherm is not None
 
-        # filenameout2 = "plotthermalisation.pdf"
         filenameout2 = str(filenameout).replace(".pdf", "_thermalisation.pdf")
         figtherm.savefig(filenameout2, format="pdf")
         print(f"open {filenameout2}")
@@ -826,9 +740,9 @@ def create_axes(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[t.
         cols = 1
 
     if "figwidth" not in args:
-        args.figwidth = at.get_config()["figwidth"] * 1.6 * cols
+        args.figwidth = 5.0 * 1.6 * cols
     if "figheight" not in args:
-        args.figheight = at.get_config()["figwidth"] * 1.1 * rows * 1.5
+        args.figheight = 5.0 * 1.1 * rows * 1.5
 
     fig, ax = plt.subplots(
         nrows=rows,
@@ -856,16 +770,9 @@ def get_linelabel(
     if angle is not None and angle != -1:
         assert angle_definition is not None
         linelabel = angle_definition[angle] if args.nomodelname else f"{modelname} {angle_definition[angle]}"
-        # linelabel = None
-        # linelabel = fr"{modelname} $\theta$ = {angle_names[index]}$^\circ$"
-        # plt.plot(time, magnitude, label=linelabel, linewidth=3)
     elif args.label:
         linelabel = str(args.label[modelnumber])
     else:
-        linelabel = modelname
-        # linelabel = 'Angle averaged'
-
-    if linelabel == "None" or linelabel is None:
         linelabel = modelname
 
     return linelabel
@@ -1010,9 +917,6 @@ def make_band_lightcurves_plot(
     outputfolder: Path | str,
     args: argparse.Namespace,
 ) -> None:
-    # angle_names = [0, 45, 90, 180]
-    # plt.style.use('dark_background')
-
     args.labelfontsize = 22  # TODO: make command line arg
     fig, ax = create_axes(args)
 
@@ -1062,22 +966,15 @@ def make_band_lightcurves_plot(
                     print(txtout)
 
                 plotkwargs["label"] = get_linelabel(modelname, modelnumber, angle, angle_definition, args)
-                # plotkwargs['label'] = '\n'.join(wrap(linelabel, 40))  # TODO: could be arg? wraps text in label
 
                 filterfunc = at.get_filterfunc(args)
                 if filterfunc is not None:
                     brightness_in_mag = filterfunc(brightness_in_mag)
 
-                # This does the same thing as below -- leaving code in case I'm wrong (CC)
-                # if args.plotviewingangle and args.plotviewingangles_lightcurves:
-                #     global define_colours_list
-                #     plt.plot(time, brightness_in_mag, label=modelname, color=define_colours_list[angle], linewidth=3)
-
                 if modelnumber == 0 and args.plot_hesma_model and band_name in hesma_model:  # TODO: see if this works
                     assert isinstance(ax, mplax.Axes)
                     ax.plot(hesma_model.t, hesma_model[band_name], color="black")
 
-                # axarr[plotnumber].axis([0, 60, -16, -19.5])
                 text_key = filternames_conversion_dict.get(band_name, band_name)
 
                 if args.subplots:
@@ -1091,10 +988,6 @@ def make_band_lightcurves_plot(
                         horizontalalignment="right",
                         verticalalignment="top",
                     )
-                # else:
-                #     ax.text(args.timemax * 0.75, args.ymax * 0.95, text_key)
-
-                # if not args.calculate_peak_time_mag_deltam15_bool:
 
                 if args.reflightcurves and modelnumber == 0:
                     if len(angles) > 1 and index > 0:
@@ -1155,35 +1048,6 @@ def make_band_lightcurves_plot(
 
     plt.savefig(args.outputfile, format="pdf")
     print(f"Saved figure: {args.outputfile}")
-
-
-# In case this code is needed again...
-
-# if 'redshifttoz' in args and args.redshifttoz[modelnumber] != 0:
-#     # print('time before', time)
-#     # print('z', args.redshifttoz[modelnumber])
-#     time = np.array(time) * (1 + args.redshifttoz[modelnumber])
-#     print(f'Correcting for time dilation at redshift {args.redshifttoz[modelnumber]}')
-#     # print('time after', time)
-#     linestyle = '--'
-#     color = 'darkmagenta'
-#     linelabel=args.label[1]
-# else:
-#     linestyle = '-'
-#     color='k'
-# plt.plot(time, magnitude, label=linelabel, linewidth=3)
-
-# if (args.magnitude or args.plotviewingangles_lightcurves) and not (
-#         args.calculate_peakmag_risetime_delta_m15 or args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
-#         or args.save_viewing_angle_peakmag_risetime_delta_m15_to_file or args.test_viewing_angle_fit
-#         or args.make_viewing_angle_peakmag_risetime_scatter_plot or
-#         args.make_viewing_angle_peakmag_delta_m15_scatter_plot):
-#     if args.reflightcurves:
-#         colours = args.refspeccolors
-#         markers = args.refspecmarkers
-#         for i, reflightcurve in enumerate(args.reflightcurves):
-#             plot_lightcurve_from_refdata(filters_dict.keys(), reflightcurve, colours[i], markers[i],
-#                                       filternames_conversion_dict)
 
 
 def colour_evolution_plot(
@@ -1320,7 +1184,7 @@ def plot_lightcurve_from_refdata(
     lightcurve_data, metadata = at.lightcurve.read_reflightcurve_band_data(lightcurvefilename)
     linename = metadata["label"] if plotnumber == 0 else None
     assert linename is None or isinstance(linename, str)
-    filterdir = Path(at.get_config()["path_artistools_dir"], "data/filters/")
+    filterdir = Path(at.get_path("artistools_dir"), "data/filters/")
 
     filter_data = {}
     for axnumber, filter_name_raw in enumerate(filter_names):
@@ -1403,7 +1267,7 @@ def plot_color_evolution_from_data(
     from extinction import ccm89
 
     lightcurve_from_data, metadata = at.lightcurve.read_reflightcurve_band_data(lightcurvefilename)
-    filterdir = Path(at.get_config()["path_artistools_dir"], "data/filters/")
+    filterdir = Path(at.get_path("artistools_dir"), "data/filters/")
 
     filter_data = []
     for i, filter_name_raw in enumerate(filter_names):

@@ -1,16 +1,5 @@
-"""Convert a CMFGEN model file to ARTIS format. Original script possibly by Markus Kromer?."""
+"""Convert a CMFGEN model file to ARTIS format."""
 
-__lazy_modules__ = [
-    "matplotlib",
-    "matplotlib.axes",
-    "matplotlib.figure",
-    "matplotlib.pyplot",
-    "numpy",
-    "numpy.typing",
-    "pandas",
-    "polars",
-    "polars.selectors",
-]
 # from rd_cmfgen import rd_nuc_decay_data
 import typing as t
 from math import exp
