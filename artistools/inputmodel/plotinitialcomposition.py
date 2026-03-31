@@ -93,14 +93,23 @@ def plot_slice_modelcolumn(
     vmax_ax1 = dfmodelslice[f"pos_{plotaxis1}_max"].max() / t_model_s * unitfactor
     vmin_ax2 = dfmodelslice[f"pos_{plotaxis2}_min"].min() / t_model_s * unitfactor
     vmax_ax2 = dfmodelslice[f"pos_{plotaxis2}_max"].max() / t_model_s * unitfactor
+    if colname == "rho":
+        vmin=-15
+        vmax=-7
+    elif colname == "Ye":
+        vmin=0
+        vmax=0.6
+    else:
+        vmin=None 
+        vmax=None
     im = ax.imshow(
         valuegrid,
         cmap="viridis",
         interpolation="nearest",
         extent=(vmin_ax1, vmax_ax1, vmin_ax2, vmax_ax2),
         origin="lower",
-        # vmin=0.0,
-        # vmax=1.0,
+        vmin=vmin,
+        vmax=vmax
     )
 
     # plot_vmax = 0.2
@@ -185,7 +194,7 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
 
     for plotvar, ax in zip(args.plotvars, axes, strict=False):
         colname = plotvar if plotvar in df2dslice.columns else f"X_{plotvar.title()}"
-
+        
         im, _ = plot_slice_modelcolumn(
             ax, df2dslice, modelmeta, colname, plotaxis1, plotaxis2, modelmeta["t_model_init_days"], args
         )
