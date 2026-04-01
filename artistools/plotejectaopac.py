@@ -6,6 +6,8 @@ import typing as t
 from collections.abc import Sequence
 from pathlib import Path
 import itertools
+from tqdm import tqdm
+import math
 
 import argcomplete
 import matplotlib.pyplot as plt
@@ -25,6 +27,7 @@ C_AU = 137.035999
 HC_AU = 12398.4198
 M_E_CGS = 9.1093837015e-28  # g
 E_CGS = 4.803204712570263e-10  # Fr (esu)
+HC_EV_ANG = 12398.4193
 
 WAVELEN_STEPS = 250  # 25000 A <-> 100 A bin
 LAZYFRAME_FILTER_FACTOR = 10
@@ -52,6 +55,8 @@ def planck_lambda(T: float, wavelen_A: np.ndarray) -> np.ndarray:
 
 def calc_ionic_Planck_abs_coeff(T, t_days, Z, ion_stage, n_ij, bin_centres, bin_edges, bin_width):
     # calculate Planck opacity for a single ion using trapezoidal integration
+    global master_levels_DF
+    global global_trans_DF
     row = master_levels_DF.filter((pl.col("Z") == Z) & (pl.col("ion_stage") == ion_stage))
     levels_df = row.select("levels").item()
     E_max_eV = 10 * T * K_B_AU
@@ -63,15 +68,15 @@ def calc_ionic_Planck_abs_coeff(T, t_days, Z, ion_stage, n_ij, bin_centres, bin_
     beta_pereV = 1 / (T * K_B_AU)
     t_exp = t_days * DAYS_TO_S
 
-    n_l_expr = pl.col("g_l") * n_ij / part_fct * pl.exp(-pl.col("E_l") / (T * K_B_AU))
-    trans_DF = trans_DF.with_columns(n_l_expr.alias("n_l"))
+    n_l_expr = pl.col("g_l") * n_ij / part_fct * (-pl.col("E_l") / (T * K_B_AU)).exp()
+    trans_DF = global_trans_DF.with_columns(n_l_expr.alias("n_l"))
 
     opt_depth_prefactor = -np.pi * E_CGS**2 / (CLIGHT * M_E_CGS) * t_exp
 
     trans_DF = trans_DF.with_columns(
-        (1 - pl.exp(opt_depth_prefactor * pl.col("wavelength_A") * A_TO_CM * pl.col("f_lu") * pl.col("n_l"))).alias(
-            "abs_prob"
-        )
+        (
+            1 - (opt_depth_prefactor * pl.col("wavelength_A") * A_TO_CM * pl.col("f_lu") * pl.col("n_l")).exp()
+        ).alias("abs_prob")
     )
 
     # here: reduced number of additional columns
@@ -79,13 +84,32 @@ def calc_ionic_Planck_abs_coeff(T, t_days, Z, ion_stage, n_ij, bin_centres, bin_
         (pl.col("wavelength_A") / bin_width * pl.col("abs_prob") / (CLIGHT * t_exp)).alias("exp_abs_coeff_contr")
     )
     # here is the absorption coefficient calculation
-    trans_DF["exp_abs_coeff_contr"] = (
-        trans_DF.wavelength_A.array / bin_width * one_minus_Sob_opt_depth / (CLIGHT * t_exp)
+    trans_DF = trans_DF.with_columns(
+        (
+            pl.col("wavelength_A") / bin_width * pl.col("abs_prob") / (CLIGHT * t_exp)
+        ).alias("exp_abs_coeff_contr")
     )
-    trans_DF = trans_DF.with_columns(pl.bucket(pl.col("wavelength_A"), bins=bin_edges).alias("wavelength_bin_idx"))
-    exp_abs_coeff_df = trans_DF.groupby("wavelength_bin_idx").agg(pl.sum("exp_abs_coeff_contr").alias("exp_abs_coeff"))
+    trans_DF = trans_DF.with_columns(
+        pl.col("wavelength_A").cut(bin_edges, labels=None).alias("wavelength_bin_idx").cast(pl.Int32)
+    )
+    all_bins = pl.DataFrame({"wavelength_bin_idx": list(range(WAVELEN_STEPS))}).lazy()
+    all_bins = all_bins.with_columns(pl.col("wavelength_bin_idx").cast(pl.Int32))
+    exp_abs_coeff_df = (
+    trans_DF.group_by("wavelength_bin_idx")
+        .agg(pl.sum("exp_abs_coeff_contr").alias("exp_abs_coeff"))
+    )
+    exp_abs_coeff_df = all_bins.join(exp_abs_coeff_df, on="wavelength_bin_idx", how="left").with_columns(
+        pl.col("exp_abs_coeff").fill_null(0)
+    )
     B_wavelength_table = planck_lambda(T, bin_centres)
-    exp_abs_coeff_data = exp_abs_coeff_df.sort("wavelength_bin_idx")["exp_abs_coeff"].to_numpy()
+    
+    exp_abs_coeff_data = (
+        exp_abs_coeff_df
+        .sort("wavelength_bin_idx")
+        .select("exp_abs_coeff") 
+        .collect()
+        .to_numpy()
+    ).flatten()
 
     # trapezoidal integration
     Planck_abs_coeff_num = np.sum(
@@ -130,8 +154,7 @@ def calc_atomic_chi_Planck(Z: int, t_exp: float, T: float, n_e: float, n_i: floa
     global global_level_DF
     global global_trans_DF
     # Step 1) calculate ionisation balance
-    breakpoint()
-    ion_stages = [key for key in master_trans_dict.keys() if key[0] == Z]
+    ion_stages = [key[1] for key in master_trans_dict.keys() if key[0] == Z]
     numb_ions = len(ion_stages)
     n_ij_arr = np.zeros(numb_ions)
     part_fcts = np.zeros(numb_ions)
@@ -152,8 +175,8 @@ def calc_atomic_chi_Planck(Z: int, t_exp: float, T: float, n_e: float, n_i: floa
     # Step 2) prepare wavelength bins depending on temperature
     max_lambda = CM_TO_A / T  # maximum wavelength in Angstrom
     bin_width = math.ceil(max_lambda / WAVELEN_STEPS)
-    bin_centres = np.linspace(bin_width / 2, bin_width * (WAVELEN_STEPS + 1 / 2), WAVELEN_STEPS)
-    bin_edges = [wl - bin_width / 2 for wl in bin_centres] + [bin_centres[-1] + bin_width / 2]
+    bin_edges = np.arange(0, bin_width * (WAVELEN_STEPS + 1), bin_width)  
+    bin_centres = (bin_edges[:-1] + bin_edges[1:]) / 2                
 
     # Step 3) perform the main computation of absorption coefficients
     atomic_Planck_abs_coeff = 0
@@ -163,12 +186,41 @@ def calc_atomic_chi_Planck(Z: int, t_exp: float, T: float, n_e: float, n_i: floa
         global_level_DF = (
             master_levels_DF.filter((pl.col("Z") == Z) & (pl.col("ion_stage") == ion_stage)).select("levels").item()
         )
-        global_trans_DF = global_trans_dict[(Z, ion_stage)]
+        global_trans_DF = master_trans_dict[(Z, ion_stage)]
         global_trans_DF = global_trans_DF.join(
-            global_level_DF.select([pl.col("levelindex").alias("lower"), pl.col("energy_ev").alias("E_l")]),
+            global_level_DF
+                .select([
+                    pl.col("levelindex").alias("lower"),
+                    pl.col("energy_ev").alias("E_l"),
+                    pl.col("g").alias("g_l")
+                ])
+                .lazy(),
             on="lower",
             how="left",
         )
+        global_trans_DF = global_trans_DF.join(
+            global_level_DF
+                .select([
+                    pl.col("levelindex").alias("upper"),
+                    pl.col("energy_ev").alias("E_u"),
+                    pl.col("g").alias("g_u")
+                ])
+                .lazy(),
+            on="upper",
+            how="left",
+        )
+        global_trans_DF = global_trans_DF.with_columns([
+            ((HC_EV_ANG) / (pl.col("E_u") - pl.col("E_l"))).alias("wavelength_A")
+        ])
+        global_trans_DF = global_trans_DF.with_columns([
+            (
+                (pl.col("g_u") / pl.col("g_l")) 
+                * pl.col("wavelength_A")**2 
+                * pl.col("A") 
+                * C_AU 
+                / (8 * np.pi**2)
+            ).alias("f_lu")
+        ])
         if n_ij > 1e-30:
             atomic_Planck_abs_coeff += calc_ionic_Planck_abs_coeff(
                 T, t_exp, Z, ion_stage, n_ij, bin_centres, bin_edges, bin_width
@@ -193,7 +245,7 @@ def create_opacity_table(modelpath: Path):
     master_levels_DF = at.atomic.get_levels(Path(modelpath))  # gives a pl.DataFrame (eager)
     # transition data dictionary
     master_trans_dict = at.atomic.get_transitiondata(Path(modelpath))  # gives a dict with keys for every ion
-    Z_range = {k[0] for k in master_trans_dict.keys()}
+    Z_range = np.array(sorted({k[0] for k in master_trans_dict.keys()}))
 
     # Step 2) Get tabulation boundaries
     t_range = np.concatenate([[0.1, 0.5], np.arange(1.0, 4.5, 0.5), np.arange(5.0, 11.0, 1.0)])
@@ -208,8 +260,13 @@ def create_opacity_table(modelpath: Path):
     TEMP_flat = TEMP.ravel()
     NE_flat = NE.ravel()
     NI_flat = NI.ravel()
-    breakpoint()
-    chi_column = calc_atomic_chi_Planck(ATOMNUMB_flat, TIME_flat, TEMP_flat, NE_flat, NI_flat)
+    chi_column = np.array([
+        calc_atomic_chi_Planck(Z, t, T, n_e, n_i)
+        for Z, t, T, n_e, n_i in tqdm(
+            zip(ATOMNUMB_flat, TIME_flat, TEMP_flat, NE_flat, NI_flat),
+            total=len(ATOMNUMB_flat)
+        )
+    ])
     abs_coeff_df = pl.DataFrame({
         "Z": ATOMNUMB_flat,
         "t_exp": TIME_flat.astype(np.float32),
