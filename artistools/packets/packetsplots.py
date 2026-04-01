@@ -348,15 +348,31 @@ def packets_2d_hist_bin_and_ejecta_vel(
     timestep_max = timestep_min + 1
     t_min = timeminarray[timestep_min]
     t_max = timemaxarray[timestep_max]
+    Delta = 0.5 * CLIGHT / 25 * 0.1 * DAY
 
+    dfpackets = dfpackets.with_columns(
+        (
+            (((pl.col("em_posx")**2 + pl.col("em_posy")**2).sqrt()) / Delta)
+            .floor() * Delta
+        ).alias("R_inner")
+    )
+    dfpackets = dfpackets.with_columns(
+        (pl.col("R_inner") + Delta).alias("R_outer")
+    )
+    dfpackets = dfpackets.with_columns(
+        (
+            np.pi * Delta * (
+                pl.col("R_outer").cast(pl.Float64)**2 -
+                pl.col("R_inner").cast(pl.Float64)**2
+            )
+        ).alias("hollow_cyl_vol")
+    )
     dfpackets_selected = dfpackets.filter(
         (pl.col("t_arrive_d") > t_min) & (pl.col("t_arrive_d") < t_max)
     ).collect()
     
     # Step 2) create the heatmap
-    e_rf = dfpackets_selected["e_rf"]
-    weights = e_rf
-
+    weights = dfpackets_selected["e_rf"] / dfpackets_selected["hollow_cyl_vol"]
     # derive the emission velocity for each packet from the emission position
     heatmap, xedges, yedges = np.histogram2d(
         (dfpackets_selected["em_posx"]**2 + dfpackets_selected["em_posy"]**2)**0.5 / dfpackets_selected["em_time"] / CLIGHT,
@@ -366,7 +382,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
     )
     heatmap = heatmap / (timemaxarray[timestep_max] - timeminarray[timestep_min])  # erg/day
     heatmap /= DAY  # conversion from per erg/day to erg/s
-    heatmap = np.log(heatmap) if colorlogscale else heatmap / 1e40
+    heatmap = np.log(heatmap) if colorlogscale else heatmap
 
     heatmap = np.ma.masked_where(heatmap == 0.0, heatmap)
 
@@ -382,12 +398,11 @@ def packets_2d_hist_bin_and_ejecta_vel(
     ax.set_aspect('equal')
     ax.set_xlabel(r"v$_r$")
     ax.set_ylabel(r"v$_z$")
-    ax.set_title("Packet Energy per Grid Cell")
     cbar = fig.colorbar(im, ax=ax)
     if colorlogscale:
-        cbar.set_label("log energy [erg/s]")
+        cbar.set_label(r"log volumetric emissivity [erg/(s cm$^3$)]")
     else:
-        cbar.set_label(r"Energy rate [10$^{40}$ erg/s]")
+        cbar.set_label(r"volumetric emissivity [10$^{7}$ erg/(s cm$^3$)]")
 
     ax.set_xticks(np.linspace(xedges[0], xedges[-1], 6)) 
     ax.set_yticks(np.linspace(yedges[0], yedges[-1], 6)) 
