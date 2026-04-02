@@ -54,80 +54,47 @@ def planck_lambda(T: float, wavelen_A: np.ndarray) -> np.ndarray:
 
 
 def calc_ionic_Planck_abs_coeff(T, t_days, Z, ion_stage, n_ij, bin_centres, bin_edges, bin_width):
-    # calculate Planck opacity for a single ion using trapezoidal integration
-    global master_levels_DF
-    global global_trans_DF
-    row = master_levels_DF.filter((pl.col("Z") == Z) & (pl.col("ion_stage") == ion_stage))
-    levels_df = row.select("levels").item()
-    E_max_eV = 10 * T * K_B_AU
-    trans_lf = master_trans_dict[(Z, ion_stage)]  # lf: lazy frame
+    """
+    Vektorisierte NumPy-Version der Planck-Absorptionsberechnung für einen einzelnen Ion.
+    """
+    # 1) Levels und Übergänge
+    levels_df = master_levels_DF.filter((pl.col("Z") == Z) & (pl.col("ion_stage") == ion_stage)).select("levels").item()
+    trans_df = master_trans_dict[(Z, ion_stage)].collect()  # einmaliger collect
 
-    E_ion_eV = row.select("ion_pot").item()
-    part_fct = levels_df.select((pl.col("g") * (-pl.col("energy_ev") / (K_B_AU * T)).exp()).sum()).item()
+    E_l = levels_df["energy_ev"].values
+    g_l = levels_df["g"].values
+    level_index_map = {idx: i for i, idx in enumerate(levels_df["levelindex"].values)}
 
-    beta_pereV = 1 / (T * K_B_AU)
+    # f_lu, wavelengths
+    lower_idx = np.array([level_index_map[x] for x in trans_df["lower"].values])
+    upper_idx = np.array([level_index_map[x] for x in trans_df["upper"].values])
+    E_u = E_l[upper_idx]
+    g_u = g_l[upper_idx]
+    f_lu = (g_u / g_l[lower_idx]) * (HC_EV_ANG / (E_u - E_l[lower_idx]))**2 * trans_df["A"].values * C_AU / (8 * np.pi**2)
+    wavelength_A = HC_EV_ANG / (E_u - E_l[lower_idx])
+
+    # 2) populations
+    part_fct = np.sum(g_l * np.exp(-E_l / (K_B_AU * T)))
+    n_l = g_l[lower_idx] * n_ij / part_fct * np.exp(-E_l[lower_idx] / (K_B_AU * T))
+
+    # 3) absorption probability
     t_exp = t_days * DAYS_TO_S
-
-    n_l_expr = pl.col("g_l") * n_ij / part_fct * (-pl.col("E_l") / (T * K_B_AU)).exp()
-    trans_DF = global_trans_DF.with_columns(n_l_expr.alias("n_l"))
-
     opt_depth_prefactor = -np.pi * E_CGS**2 / (CLIGHT * M_E_CGS) * t_exp
+    abs_prob = 1 - np.exp(opt_depth_prefactor * wavelength_A * A_TO_CM * f_lu * n_l)
 
-    trans_DF = trans_DF.with_columns(
-        (
-            1 - (opt_depth_prefactor * pl.col("wavelength_A") * A_TO_CM * pl.col("f_lu") * pl.col("n_l")).exp()
-        ).alias("abs_prob")
-    )
+    # 4) contribution to bins
+    exp_abs_coeff_contr = wavelength_A / bin_width * abs_prob / (CLIGHT * t_exp)
+    bin_idx = np.digitize(wavelength_A, bin_edges) - 1
+    exp_abs_coeff_data = np.bincount(bin_idx, weights=exp_abs_coeff_contr, minlength=WAVELEN_STEPS)
 
-    # here: reduced number of additional columns
-    trans_DF = trans_DF.with_columns(
-        (pl.col("wavelength_A") / bin_width * pl.col("abs_prob") / (CLIGHT * t_exp)).alias("exp_abs_coeff_contr")
-    )
-    # here is the absorption coefficient calculation
-    trans_DF = trans_DF.with_columns(
-        (
-            pl.col("wavelength_A") / bin_width * pl.col("abs_prob") / (CLIGHT * t_exp)
-        ).alias("exp_abs_coeff_contr")
-    )
-    trans_DF = trans_DF.with_columns(
-        pl.col("wavelength_A").cut(bin_edges, labels=None).alias("wavelength_bin_idx").cast(pl.Int32)
-    )
-    all_bins = pl.DataFrame({"wavelength_bin_idx": list(range(WAVELEN_STEPS))}).lazy()
-    all_bins = all_bins.with_columns(pl.col("wavelength_bin_idx").cast(pl.Int32))
-    exp_abs_coeff_df = (
-    trans_DF.group_by("wavelength_bin_idx")
-        .agg(pl.sum("exp_abs_coeff_contr").alias("exp_abs_coeff"))
-    )
-    exp_abs_coeff_df = all_bins.join(exp_abs_coeff_df, on="wavelength_bin_idx", how="left").with_columns(
-        pl.col("exp_abs_coeff").fill_null(0)
-    )
+    # 5) Planck-gewichtete Trapezregel
     B_wavelength_table = planck_lambda(T, bin_centres)
-    
-    exp_abs_coeff_data = (
-        exp_abs_coeff_df
-        .sort("wavelength_bin_idx")
-        .select("exp_abs_coeff") 
-        .collect()
-        .to_numpy()
-    ).flatten()
-
-    # trapezoidal integration
-    Planck_abs_coeff_num = np.sum(
-        0.5
-        * (bin_centres[1:] - bin_centres[:-1])
-        * (
-            (exp_abs_coeff_data[:-1] * B_wavelength_table[:-1] / bin_centres[:-1] ** 2)
-            + (exp_abs_coeff_data[1:] * B_wavelength_table[1:] / bin_centres[1:] ** 2)
-        )
-    )
-
-    Planck_abs_coeff_den = np.sum(
-        0.5
-        * (bin_centres[1:] - bin_centres[:-1])
-        * ((B_wavelength_table[:-1] / bin_centres[:-1] ** 2) + (B_wavelength_table[1:] / bin_centres[1:] ** 2))
-    )
-
-    return Planck_abs_coeff_num / Planck_abs_coeff_den
+    delta = bin_centres[1:] - bin_centres[:-1]
+    num = 0.5 * np.sum(delta * ((exp_abs_coeff_data[:-1] * B_wavelength_table[:-1] / bin_centres[:-1]**2) +
+                                (exp_abs_coeff_data[1:] * B_wavelength_table[1:] / bin_centres[1:]**2)))
+    den = 0.5 * np.sum(delta * ((B_wavelength_table[:-1] / bin_centres[:-1]**2) +
+                                (B_wavelength_table[1:] / bin_centres[1:]**2)))
+    return num / den
 
 
 def g_e(T: float) -> float:
