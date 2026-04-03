@@ -138,7 +138,7 @@ def plot_data(
         ax.plot(
             dfplotdata.select("xvalue").collect().to_series(),
             dfplotdata.select("yvalue").collect().to_series(),
-            **plotkwargs_markers,
+            **plotkwargs_markers,  # type: ignore[arg-type]
         )
 
     else:
