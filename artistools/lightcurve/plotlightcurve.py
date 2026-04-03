@@ -165,7 +165,7 @@ def plot_deposition_thermalisation(
             depdata["tmid_days"],
             f_alpha,
             **(
-                plotkwargs
+                plotkwargs  # type: ignore[arg-type]
                 | {
                     "label": modelname + r" $\left(\dot{E}_{dep,\alpha} \middle/ \dot{E}_{rad,\alpha}\right)$",
                     "linestyle": "solid",
@@ -220,7 +220,7 @@ def plot_deposition_thermalisation(
         axistherm.plot(
             depdata["tmid_days"],
             barnes_f_alpha,
-            **(plotkwargs | {"label": r"Barnes+2016 $f_\alpha$", "linestyle": "dashed", "color": color_alpha}),
+            **(plotkwargs | {"label": r"Barnes+2016 $f_\alpha$", "linestyle": "dashed", "color": color_alpha}),  # type: ignore[arg-type]
         )
 
 
