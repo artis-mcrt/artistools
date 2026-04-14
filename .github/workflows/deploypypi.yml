@@ -6,7 +6,7 @@ on:
     workflow_dispatch:
         inputs:
             deploy-to-pypi:
-                description: Whether to deploy to PyPI (true) or TestPyPI (false)
+                description: Do real deployment to PyPI (not TestPyPI)
                 type: boolean
                 required: true
                 default: false
