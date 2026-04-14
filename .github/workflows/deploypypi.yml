@@ -95,7 +95,7 @@ jobs:
             url: https://test.pypi.org/project/artistools/
         permissions:
             id-token: write
-        if: !github.event.inputs.deploy-to-pypi
+        if: github.event.inputs.deploy-to-pypi == false
         steps:
             - uses: actions/download-artifact@v8
               with:
@@ -119,7 +119,7 @@ jobs:
             url: https://pypi.org/project/artistools/
         permissions:
             id-token: write
-        if: github.event.inputs.deploy-to-pypi
+        if: github.event.inputs.deploy-to-pypi == true
         steps:
             - uses: actions/download-artifact@v8
               with:
