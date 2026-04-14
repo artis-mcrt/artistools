@@ -7,9 +7,8 @@ on:
         inputs:
             deploy-to-pypi:
                 description: Do real deployment to PyPI (not TestPyPI)
-                type: boolean
                 required: true
-                default: false
+                default: 'false'
 
 jobs:
     build_wheels:
@@ -95,7 +94,7 @@ jobs:
             url: https://test.pypi.org/project/artistools/
         permissions:
             id-token: write
-        if: github.event.inputs.deploy-to-pypi == false
+        if: github.event.inputs.deploy-to-pypi == 'false'
         steps:
             - uses: actions/download-artifact@v8
               with:
@@ -119,7 +118,7 @@ jobs:
             url: https://pypi.org/project/artistools/
         permissions:
             id-token: write
-        if: github.event.inputs.deploy-to-pypi == true
+        if: github.event.inputs.deploy-to-pypi == 'true'
         steps:
             - uses: actions/download-artifact@v8
               with:
