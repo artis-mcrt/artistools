@@ -3,16 +3,12 @@ name: Build and deploy to PyPI/testPyPI
 permissions:
     contents: read
 on:
-    release:
-        types: [published, edited]
-    repository_dispatch:
-        types: [trigger_checks]
     workflow_dispatch:
-    push:
-        branches:
-            - main
-        tags:
-            - v*
+        inputs:
+            deploy-to-pypi:
+                description: Whether to deploy to PyPI (true) or TestPyPI (false)
+                required: true
+                default: 'false'
 
 jobs:
     build_wheels:
@@ -98,7 +94,7 @@ jobs:
             url: https://test.pypi.org/project/artistools/
         permissions:
             id-token: write
-        if: startsWith(github.ref , 'refs/tags/v') != true && github.event_name == 'workflow_dispatch'
+        if: github.event.inputs.deploy-to-pypi == 'false'
         steps:
             - uses: actions/download-artifact@v8
               with:
@@ -122,7 +118,7 @@ jobs:
             url: https://pypi.org/project/artistools/
         permissions:
             id-token: write
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.event.inputs.deploy-to-pypi == 'true'
         steps:
             - uses: actions/download-artifact@v8
               with:
