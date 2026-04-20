@@ -12,8 +12,11 @@ def test_directionbins() -> None:
     costhetabinlowers, costhetabinuppers, _ = at.get_costheta_bins(usedegrees=False)
     phibinlowers, phibinuppers, _ = at.get_phi_bins(usedegrees=False)
 
-    testdirections = pl.DataFrame({"phi_defined": np.linspace(0.1, 2 * math.pi, nphibins * 2, endpoint=False)}).join(
-        pl.DataFrame({"costheta_defined": np.linspace(0.0, 1.0, ncosthetabins * 2, endpoint=True)}), how="cross"
+    testdirections = pl.DataFrame({
+        "phi_defined": np.linspace(0.1, 2 * math.pi, nphibins * 2, endpoint=False).tolist()
+    }).join(
+        pl.DataFrame({"costheta_defined": np.linspace(0.0, 1.0, ncosthetabins * 2, endpoint=True).tolist()}),
+        how="cross",
     )
 
     syn_dir = (0, 0, 1)

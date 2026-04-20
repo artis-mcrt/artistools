@@ -420,3 +420,6 @@ explicit = true
 exclude = [".*", "build/", ".eggs/", ".venv", "venv"]
 paths = ["artistools"]
 sort_by_size = true
+
+[tool.zuban]
+mode = "default"
