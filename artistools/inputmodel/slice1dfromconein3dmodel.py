@@ -127,7 +127,7 @@ def make_1d_profile(args: argparse.Namespace, logprint: Callable[..., None]) -> 
             shell_spacing_power = args.coneshellspacingexponent  # Change this to get the desired velocity bin spacing
             logprint(f"Spacing shells in 1D model so they are equally spaced on a radius^{shell_spacing_power} grid")
             cone_radius_spacing = np.linspace(0, r_max**shell_spacing_power, N_shells + 1)
-            cone1d_bins = np.power(cone_radius_spacing, (1 / shell_spacing_power))
+            cone1d_bins = list(np.power(cone_radius_spacing, (1 / shell_spacing_power)))
         cone1d_df = []
         for i in range(len(cone1d_bins) - 1):
             # Filter cells within bin

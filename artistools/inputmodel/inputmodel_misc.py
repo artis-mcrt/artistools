@@ -733,8 +733,8 @@ def get_cell_angle(dfmodel: pd.DataFrame) -> pd.DataFrame:
         mid_point = [cell["pos_x_mid"], cell["pos_y_mid"], cell["pos_z_mid"]]
         cos_theta[i] = (np.dot(mid_point, syn_dir)) / (vec_len(mid_point) * vec_len(syn_dir))
 
-        vec1 = np.cross(mid_point, syn_dir)
-        vec2 = np.cross(xhat, syn_dir)
+        vec1 = list(np.cross(mid_point, syn_dir))
+        vec2 = list(np.cross(xhat, syn_dir))
         cosphi = np.dot(vec1, vec2) / vec_len(vec1) / vec_len(vec2)
 
         vec3 = np.cross(vec2, syn_dir)

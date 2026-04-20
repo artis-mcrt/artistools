@@ -227,6 +227,24 @@ disable = """
 ignored-modules = ["astropy", "extinction", "pyvista"]
 unsafe-load-any-extension = true
 
+[tool.pyrefly]
+project-excludes = [
+    '**/node_modules',
+    '**/__pycache__',
+    '**/.*',
+    'build',
+    'dist',
+    'target',
+    '**/version.py',
+    '.venv',
+    '**/rd_cmfgen.py',
+]
+
+[tool.pyrefly.errors]
+missing-import = false
+unbound-name = false
+unsupported-operation = false
+
 [tool.pyright]
 enableTypeIgnoreComments = false # leave these for mypy to interpret
 exclude = [
