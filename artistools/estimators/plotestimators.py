@@ -66,7 +66,7 @@ def adjust_lightness(color: t.Any, amount: float = 0.5) -> tuple[float, float, f
     except (SyntaxWarning, KeyError, TypeError):
         c = color
     c = colorsys.rgb_to_hls(*mc.to_rgb(c))
-    return colorsys.hls_to_rgb(c[0], max(0, min(1, amount * c[1])), c[2])
+    return colorsys.hls_to_rgb(c[0], max(0.0, min(1.0, amount * c[1])), c[2])
 
 
 def plot_data(

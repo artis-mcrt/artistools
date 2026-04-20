@@ -151,8 +151,8 @@ def plot_spherical(
         pl
         .DataFrame(
             {
-                "phibinmonotonicasc": (d % nphibins for d in range(ndirbins)),
-                "costhetabin": (d // nphibins for d in range(ndirbins)),
+                "phibinmonotonicasc": [d % nphibins for d in range(ndirbins)],
+                "costhetabin": [d // nphibins for d in range(ndirbins)],
             },
             schema={"phibinmonotonicasc": pl.Int32, "costhetabin": pl.Int32},
         )

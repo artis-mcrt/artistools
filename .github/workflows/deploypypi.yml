@@ -51,9 +51,6 @@ jobs:
                   python-version: 3.${{ matrix.python-minor-version }}
                   enable-cache: false
 
-            - name: Ensure version is up to date
-              run: python3 ./set_version.py
-
             - name: Build wheels
               uses: pypa/cibuildwheel@v3.4
               with:
@@ -73,9 +70,6 @@ jobs:
                   fetch-depth: 0
 
             - uses: astral-sh/setup-uv@v7
-
-            - name: Ensure version is up to date
-              run: python3 ./set_version.py
 
             - name: Build sdist
               run: uv build --sdist
