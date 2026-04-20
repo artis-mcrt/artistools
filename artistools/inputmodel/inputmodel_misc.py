@@ -354,7 +354,7 @@ def get_modeldata(
     """Read an artis model.txt file containing cell velocities, densities, and mass fraction abundances of radioactive nuclides.
 
     Returns dfmodel, modelmeta
-        - dfmodel: a pandas DataFrame with a row for each model grid cell
+        - dfmodel: a polars LazyFrame with a row for each model grid cell
         - modelmeta: a dictionary of input model parameters, with keys such as t_model_init_days, vmax_cmps, dimensions, etc.
 
     Parameters
@@ -801,13 +801,13 @@ def get_mean_cell_properties_of_angle_bin(dfmodeldata: pd.DataFrame, vmax_cmps: 
         )
 
         binned = pd.cut(x=dfanglebin["vel_r_mid"], bins=list(velocity_bins), labels=False, include_lowest=True)
-        for binindex, mean_rho in dfanglebin.groupby(binned)["rho"].mean().iteritems():
+        for binindex, mean_rho in dfanglebin.groupby(binned)["rho"].mean().items():
             mean_bin_properties[bin_number]["mean_rho"][binindex] += mean_rho
         if "Ye" in dfmodeldata:
-            for binindex, mean_Ye in dfanglebin.groupby(binned)["Ye"].mean().iteritems():
+            for binindex, mean_Ye in dfanglebin.groupby(binned)["Ye"].mean().items():
                 mean_bin_properties[bin_number]["mean_Ye"][binindex] += mean_Ye
         if "Q" in dfmodeldata:
-            for binindex, mean_Q in dfanglebin.groupby(binned)["Q"].mean().iteritems():
+            for binindex, mean_Q in dfanglebin.groupby(binned)["Q"].mean().items():
                 mean_bin_properties[bin_number]["mean_Q"][binindex] += mean_Q
 
     return mean_bin_properties
@@ -850,7 +850,7 @@ def save_modeldata(
     twolinespercell: bool = False,
     **kwargs: t.Any,
 ) -> None:
-    """Save an artis model.txt (density and composition versus velocity) from a pandas DataFrame of cell properties and other metadata such as the time after explosion.
+    """Save an artis model.txt (density and composition versus velocity) from a polars DataFrame of cell properties and other metadata such as the time after explosion.
 
     1D
     -------

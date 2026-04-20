@@ -202,9 +202,9 @@ def scan_estimators(
     join_modeldata: bool = False,
     verbose: bool = False,
 ) -> pl.LazyFrame:
-    """Read estimator files into a dictionary of (timestep, modelgridindex): estimators.
+    """Read estimator files into a polars LazyFrame with columns for timestep, modelgridindex, and estimator values.
 
-    Selecting particular timesteps or modelgrid cells will using speed this up by reducing the number of files that must be read.
+    Selecting particular timesteps or modelgrid cells will speed this up by reducing the number of files that must be read.
     """
     modelpath = Path(modelpath)
     match_modelgridindex: Sequence[int] | None
