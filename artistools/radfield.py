@@ -28,7 +28,7 @@ def read_files(modelpath: Path | str, timestep: int | None = None, modelgridinde
     pldf = pl.concat(
         (
             pl.from_pandas(pd.read_csv(radfieldfilepath, sep=r"\s+", dtype_backend="pyarrow")).with_columns(
-                pl.col("modelgridindex").cast(pl.Int64), pl.col("timestep").cast(pl.Int64)
+                pl.col("modelgridindex").cast(pl.Int64), pl.col("timestep").cast(pl.Int64),
             )
             for radfieldfilepath in radfieldfilepaths
         ),
@@ -45,7 +45,7 @@ def read_files(modelpath: Path | str, timestep: int | None = None, modelgridinde
 
 
 def get_binaverage_field(
-    radfielddata: pl.DataFrame, modelgridindex: int | None = None, timestep: int | None = None
+    radfielddata: pl.DataFrame, modelgridindex: int | None = None, timestep: int | None = None,
 ) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     """Get the dJ/dlambda constant average estimators of each bin."""
     # exclude the global fit parameters and detailed lines with negative "bin_num"
@@ -60,7 +60,7 @@ def get_binaverage_field(
     bindata = bindata.with_columns(dlambda=2.99792458e18 * (1 / pl.col("nu_lower") - 1 / pl.col("nu_upper")))
 
     yvalues = bindata.select(
-        pl.when(pl.col("T_R") >= 0).then(pl.col("J") / pl.col("dlambda")).otherwise(0.0)
+        pl.when(pl.col("T_R") >= 0).then(pl.col("J") / pl.col("dlambda")).otherwise(0.0),
     ).to_numpy()
 
     # add the starting point
@@ -101,7 +101,7 @@ def j_nu_dbb(arr_nu_hz: Sequence[float] | npt.NDArray[np.floating], W: float, T:
 
 
 def get_fullspecfittedfield(
-    radfielddata: pl.DataFrame, xmin: float, xmax: float, modelgridindex: int | None = None, timestep: int | None = None
+    radfielddata: pl.DataFrame, xmin: float, xmax: float, modelgridindex: int | None = None, timestep: int | None = None,
 ) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     radfielddata = radfielddata.filter(pl.col("bin_num") == -1)
     if modelgridindex is not None:
@@ -187,7 +187,7 @@ def get_fitted_field(
         ):
             print(
                 f"Bin lambda_lower {lambda_lower:.1f} W {row['W']:.1e} "
-                f"contribs {row['ncontrib']} J_nu_avg {row['J_nu_avg']:.1e}"
+                f"contribs {row['ncontrib']} J_nu_avg {row['J_nu_avg']:.1e}",
             )
 
     return arr_lambda, j_lambda_fitted
@@ -206,7 +206,7 @@ def plot_line_estimators(
     radfielddataselected = radfielddata.to_pandas(use_pyarrow_extension_array=True).query(
         "bin_num < -1"
         + (" & modelgridindex==@modelgridindex" if modelgridindex else "")
-        + (" & timestep==@timestep" if timestep else "")
+        + (" & timestep==@timestep" if timestep else ""),
     )[["nu_upper", "J_nu_avg"]]
     if radfielddataselected.empty:
         print("No line estimators to plot")
@@ -317,20 +317,20 @@ def plot_celltimestep(
         arr_lambda, yvalues = get_binaverage_field(radfielddata, modelgridindex=modelgridindex, timestep=timestep)
         axis.step(arr_lambda, yvalues, where="pre", label="Band-average field", color="green", linewidth=1.5)
         ymax = np.max(
-            [ymax] + [float(yval) for xval, yval in zip(arr_lambda, yvalues, strict=True) if xmin <= xval <= xmax]
+            [ymax] + [float(yval) for xval, yval in zip(arr_lambda, yvalues, strict=True) if xmin <= xval <= xmax],
         )
 
     arr_lambda_fitted, j_lambda_fitted = get_fitted_field(
-        radfielddata, modelgridindex=modelgridindex, timestep=timestep
+        radfielddata, modelgridindex=modelgridindex, timestep=timestep,
     )
     ymax = max(
-        [ymax] + [yval for xval, yval in zip(arr_lambda_fitted, j_lambda_fitted, strict=True) if xmin <= xval <= xmax]
+        [ymax] + [yval for xval, yval in zip(arr_lambda_fitted, j_lambda_fitted, strict=True) if xmin <= xval <= xmax],
     )
 
     axis.plot(arr_lambda_fitted, j_lambda_fitted, label="Radiation field model", alpha=0.8, color="blue", linewidth=1.5)
 
     ymax3 = plot_line_estimators(
-        axis, radfielddata, modelgridindex=modelgridindex, timestep=timestep, zorder=-2, color="red"
+        axis, radfielddata, modelgridindex=modelgridindex, timestep=timestep, zorder=-2, color="red",
     )
 
     ymax = args.ymax if args.ymax >= 0 else max(ymax, ymax3)
@@ -351,7 +351,7 @@ def plot_celltimestep(
             scale_factor = (r_observer / r_surface) ** 2 / (2 * math.pi)
             print(
                 "Scaling emergent spectrum flux at 1 Mpc to specific intensity "
-                f"at surface (v={v_surface:.3e}, r={r_surface:.3e} {r_observer:.3e}) scale_factor: {scale_factor:.3e}"
+                f"at surface (v={v_surface:.3e}, r={r_surface:.3e} {r_observer:.3e}) scale_factor: {scale_factor:.3e}",
             )
             plotkwargs["scale_factor"] = scale_factor
         else:
@@ -425,7 +425,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--nobandaverage", action="store_true", help="Suppress the band-average line")
 
     parser.add_argument(
-        "-figscale", type=float, default=1.0, help="Scale factor for plot area. 1.0 is for single-column"
+        "-figscale", type=float, default=1.0, help="Scale factor for plot area. 1.0 is for single-column",
     )
 
     parser.add_argument("-o", action="store", dest="outputfile", type=Path, help="Filename for PDF file")

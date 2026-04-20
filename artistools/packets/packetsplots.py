@@ -18,7 +18,7 @@ def make_2d_packets_plot_imshow(modelpath: Path, timestep_min: int, timestep_max
     em_time = True  # False for arrive time
 
     hist = at.packets.make_3d_histogram_from_packets(
-        modelpath, timestep_min=timestep_min, timestep_max=timestep_max, em_time=em_time
+        modelpath, timestep_min=timestep_min, timestep_max=timestep_max, em_time=em_time,
     )
 
     grid = round(len(modeldata["inputcellid"]) ** (1.0 / 3.0))
@@ -145,13 +145,13 @@ def plot_last_emission_velocities_histogram(
     maxpacketfiles: int | None = None,
 ) -> None:
     fig, ax = plt.subplots(
-        nrows=1, ncols=1, figsize=(5, 4), tight_layout={"pad": 1.0, "w_pad": 0.0, "h_pad": 0.5}, sharex=True
+        nrows=1, ncols=1, figsize=(5, 4), tight_layout={"pad": 1.0, "w_pad": 0.0, "h_pad": 0.5}, sharex=True,
     )
 
     dfmodel, modelmeta = at.get_modeldata(modelpath=modelpath, printwarningsonly=True)
 
     nprocs_read, dfpackets = at.packets.get_packets_pl(
-        modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
+        modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT",
     )
     dfpackets = at.packets.bin_packet_directions_polars(dfpackets=dfpackets)
     dfpackets = at.packets.add_derived_columns_lazy(dfpackets, modelmeta=modelmeta, dfmodel=dfmodel)

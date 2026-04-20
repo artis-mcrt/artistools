@@ -15,7 +15,7 @@ def main() -> None:
         sys.exit()
 
     fig, axes = plt.subplots(
-        nrows=2, ncols=1, sharey=True, figsize=(8, 5), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0}
+        nrows=2, ncols=1, sharey=True, figsize=(8, 5), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
     )
     assert isinstance(axes, np.ndarray)
 

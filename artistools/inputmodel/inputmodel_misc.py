@@ -30,7 +30,7 @@ from artistools.misc import zopenpl
 
 
 def read_modelfile_text(
-    filename: Path | str, printwarningsonly: bool = False
+    filename: Path | str, printwarningsonly: bool = False,
 ) -> tuple[pl.LazyFrame, dict[t.Any, t.Any]]:
     """Read an artis model.txt file containing cell velocities, density, and abundances of radioactive nuclides."""
     onelinepercellformat = None
@@ -262,7 +262,7 @@ def read_modelfile_text(
             for col, pos in expected_positions:
                 if col in firstrow and not math.isclose(firstrow[col], pos, rel_tol=0.01):
                     print(
-                        f"  WARNING: {col} does not match expected value. Check that vmax is consistent with the cell positions."
+                        f"  WARNING: {col} does not match expected value. Check that vmax is consistent with the cell positions.",
                     )
 
         else:
@@ -397,7 +397,7 @@ def get_modeldata(
             pqmetadata = pl.read_parquet_metadata(parquetfilepath)
             if pqmetadata.get("textsource_mtime") != str(textsource_mtime):
                 print(
-                    f"Modification time of text source ({textsource_mtime!s}) does not match parquet metadata ({pqmetadata.get('textsource_mtime')!s}). Will regenerate."
+                    f"Modification time of text source ({textsource_mtime!s}) does not match parquet metadata ({pqmetadata.get('textsource_mtime')!s}). Will regenerate.",
                 )
             else:
                 try:
@@ -417,7 +417,7 @@ def get_modeldata(
         if textfilepath.stat().st_size > 2 * mebibyte:
             print(f"Saving {parquetfilepath}")
             partialparquetfilepath = Path(
-                tempfile.mkstemp(dir=modelpath, prefix=f"{parquetfilepath.name}.partial", suffix=".tmp")[1]
+                tempfile.mkstemp(dir=modelpath, prefix=f"{parquetfilepath.name}.partial", suffix=".tmp")[1],
             )
             modelmeta_json = json.dumps(modelmeta)
             dfmodel.collect().write_parquet(
@@ -451,14 +451,14 @@ def get_modeldata(
 
     if derived_cols:
         dfmodel = add_derived_cols_to_modeldata(
-            dfmodel=dfmodel, derived_cols=derived_cols, modelmeta=modelmeta, modelpath=modelpath
+            dfmodel=dfmodel, derived_cols=derived_cols, modelmeta=modelmeta, modelpath=modelpath,
         )
 
     return dfmodel, modelmeta
 
 
 def get_empty_3d_model(
-    ncoordgrid: int, vmax: float, t_model_init_days: float, includenico57: bool = False
+    ncoordgrid: int, vmax: float, t_model_init_days: float, includenico57: bool = False,
 ) -> tuple[pl.LazyFrame, dict[str, t.Any]]:
     xmax = vmax * t_model_init_days * 86400.0
 
@@ -530,7 +530,7 @@ def add_derived_cols_to_modeldata(
 
     if "rho" not in dfmodel.collect_schema().names() and "logrho" in dfmodel.collect_schema().names():
         dfmodel = dfmodel.with_columns(
-            rho=(pl.when(pl.col("logrho") > -98).then(10 ** pl.col("logrho")).otherwise(0.0))
+            rho=(pl.when(pl.col("logrho") > -98).then(10 ** pl.col("logrho")).otherwise(0.0)),
         )
 
     axes: list[str] = []
@@ -553,7 +553,7 @@ def add_derived_cols_to_modeldata(
                             - pl.col("vel_r_min_kmps").cast(pl.Float64).pow(3)
                         )
                         * (1e5 * t_model_init_seconds) ** 3
-                    )
+                    ),
                 )
                 .with_columns(  # 1/2 m v^2 integrated across each spherical shell's vmin to vmax
                     kinetic_en_erg_r=2.0
@@ -561,7 +561,7 @@ def add_derived_cols_to_modeldata(
                     * math.pi
                     * pl.col("rho")
                     * t_model_init_seconds**3
-                    * (pl.col("vel_r_max").cast(pl.Float64).pow(5) - pl.col("vel_r_min").cast(pl.Float64).pow(5))
+                    * (pl.col("vel_r_max").cast(pl.Float64).pow(5) - pl.col("vel_r_min").cast(pl.Float64).pow(5)),
                 )
             )
 
@@ -624,7 +624,7 @@ def add_derived_cols_to_modeldata(
             dfmodel = (
                 dfmodel
                 .with_columns(
-                    volume=pl.lit(modelmeta["wid_init_x"] * modelmeta["wid_init_y"] * modelmeta["wid_init_z"])
+                    volume=pl.lit(modelmeta["wid_init_x"] * modelmeta["wid_init_y"] * modelmeta["wid_init_z"]),
                 )
                 .with_columns([
                     (pl.col(f"pos_{ax}_min") + 0.5 * modelmeta[f"wid_init_{ax}"]).alias(f"pos_{ax}_mid") for ax in axes
@@ -672,7 +672,7 @@ def add_derived_cols_to_modeldata(
     dfmodel = dfmodel.with_columns(
         kinetic_en_erg=(
             pl.sum_horizontal(pl.col(f"kinetic_en_erg_{ax}") for ax in axes if (ax != "r" or dimensions == 1))
-        )
+        ),
     )
 
     for col in dfmodel.collect_schema().names():
@@ -797,7 +797,7 @@ def get_mean_cell_properties_of_angle_bin(dfmodeldata: pd.DataFrame, vmax_cmps: 
     for bin_number in range(10):
         # get cells with bin number
         dfanglebin = dfmodeldata.query(
-            "cos_bin == @cos_bin_number", inplace=False, local_dict={"cos_bin_number": bin_number * 10}
+            "cos_bin == @cos_bin_number", inplace=False, local_dict={"cos_bin_number": bin_number * 10},
         )
 
         binned = pd.cut(x=dfanglebin["vel_r_mid"], bins=list(velocity_bins), labels=False, include_lowest=True)
@@ -814,7 +814,7 @@ def get_mean_cell_properties_of_angle_bin(dfmodeldata: pd.DataFrame, vmax_cmps: 
 
 
 def get_standard_columns(
-    dimensions: int, includenico57: bool = False, includeabund: bool = True, pos_unknown: bool = False
+    dimensions: int, includenico57: bool = False, includeabund: bool = True, pos_unknown: bool = False,
 ) -> list[str]:
     """Get standard (artis classic) columns for modeldata DataFrame."""
     cols: list[str] = []
@@ -931,7 +931,7 @@ def save_modeldata(
     dfmodel = dfmodel.with_columns(pl.col("inputcellid").cast(pl.Int32))
     customcols = [col for col in dfmodel.collect_schema().names() if col not in standardcols]
     customcols.sort(
-        key=lambda col: get_z_a_nucname(col) if col.startswith("X_") else (math.inf, 0)
+        key=lambda col: get_z_a_nucname(col) if col.startswith("X_") else (math.inf, 0),
     )  # sort columns by atomic number, mass number
 
     if outpath is None:
@@ -952,7 +952,7 @@ def save_modeldata(
         fmodel.write(
             f"{dfmodel_npts_model}\n"
             if modelmeta["dimensions"] != 2
-            else f"{modelmeta['ncoordgridrcyl']} {modelmeta['ncoordgridz']}\n"
+            else f"{modelmeta['ncoordgridrcyl']} {modelmeta['ncoordgridz']}\n",
         )
 
         fmodel.write(f"{modelmeta['t_model_init_days']}\n")
@@ -977,7 +977,7 @@ def save_modeldata(
                 fmodel.write(
                     " ".join([(f"{colvalue:.4e}" if colvalue > 0.0 else "0.0") for colvalue in abundandcustomcolvals])
                     if logrho > -99.0
-                    else strzeroabund
+                    else strzeroabund,
                 )
                 fmodel.write("\n")
 
@@ -996,7 +996,7 @@ def save_modeldata(
                     fmodel.write(
                         " ".join((f"{colvalue:.4e}" if colvalue > 0.0 else "0.0") for colvalue in colvals[nstartcols:])
                         if colvals[rhocolindex] > 0.0
-                        else strzeroabund
+                        else strzeroabund,
                     )
                     fmodel.write("\n")
             else:
@@ -1057,7 +1057,7 @@ def get_initelemabundances(modelpath: Path | str = ".", printwarningsonly: bool 
             print(f"Reading {textfilepath}")
 
         abundancedata = pl.read_csv(
-            zopenpl(textfilepath), has_header=False, separator=" ", comment_prefix="#", infer_schema_length=0
+            zopenpl(textfilepath), has_header=False, separator=" ", comment_prefix="#", infer_schema_length=0,
         )
 
         # fix up multiple spaces at beginning of lines
@@ -1075,10 +1075,10 @@ def get_initelemabundances(modelpath: Path | str = ".", printwarningsonly: bool 
         if textfilepath.stat().st_size > 2 * mebibyte:
             print(f"Saving {parquetfilepath}")
             partialparquetfilepath = Path(
-                tempfile.mkstemp(dir=modelpath, prefix=f"{parquetfilepath.name}.partial", suffix=".tmp")[1]
+                tempfile.mkstemp(dir=modelpath, prefix=f"{parquetfilepath.name}.partial", suffix=".tmp")[1],
             )
             abundancedata.write_parquet(
-                partialparquetfilepath, compression="zstd", compression_level=8, statistics=True
+                partialparquetfilepath, compression="zstd", compression_level=8, statistics=True,
             )
             if parquetfilepath.exists():
                 partialparquetfilepath.unlink()
@@ -1236,7 +1236,7 @@ def dimension_reduce_model(
         ncoordgridz = 1
     elif outputdimensions == 2:
         dfmodel_out = dfmodel_out.with_columns([
-            (pl.col("vel_x_mid") ** 2 + pl.col("vel_y_mid") ** 2).sqrt().alias("vel_rcyl_mid")
+            (pl.col("vel_x_mid") ** 2 + pl.col("vel_y_mid") ** 2).sqrt().alias("vel_rcyl_mid"),
         ])
         if ncoordgridz is None:
             ncoordgridz = int(modelmeta.get("ncoordgridx", round(math.cbrt(in_ngridpoints))))
@@ -1262,7 +1262,7 @@ def dimension_reduce_model(
             .cut(breaks=vel_r_bins, labels=[str(x) for x in range(-1, len(vel_r_bins))])
             .cast(pl.Utf8)
             .cast(pl.Int32)
-        ).alias("out_n_r")
+        ).alias("out_n_r"),
     ).filter(pl.col("out_n_r").is_between(0, ncoordgridr - 1))
 
     if outputdimensions == 2:
@@ -1275,10 +1275,10 @@ def dimension_reduce_model(
                     .cut(breaks=vel_z_bins, labels=[str(x) for x in range(-1, len(vel_z_bins))])
                     .cast(pl.Utf8)
                     .cast(pl.Int32)
-                ).alias("out_n_z")
+                ).alias("out_n_z"),
             )
             .filter(
-                pl.col("out_n_r").is_between(0, ncoordgridr - 1) & (pl.col("out_n_z").is_between(0, ncoordgridz - 1))
+                pl.col("out_n_r").is_between(0, ncoordgridr - 1) & (pl.col("out_n_z").is_between(0, ncoordgridz - 1)),
             )
             .with_columns(mgiout=pl.col("out_n_z") * ncoordgridr + pl.col("out_n_r"))
         )
@@ -1295,7 +1295,7 @@ def dimension_reduce_model(
             .when(pl.col("mass_g").sum() > 0)
             .then(
                 (cs.starts_with("X_") | cs.by_name(["Ye", "cellYe"], require_all=False)).dot(pl.col("mass_g"))
-                / pl.col("mass_g").sum()
+                / pl.col("mass_g").sum(),
             )
             .otherwise(0.0),
             cs.by_name("tracercount", require_all=False).sum(),
@@ -1341,7 +1341,7 @@ def dimension_reduce_model(
     )
     if outputdimensions < 2:
         dfmodel_out = dfmodel_out.with_columns(
-            logrho=pl.when(pl.col("rho") > 0).then(pl.max_horizontal(-99, pl.col("rho").log10())).otherwise(-99.0)
+            logrho=pl.when(pl.col("rho") > 0).then(pl.max_horizontal(-99, pl.col("rho").log10())).otherwise(-99.0),
         ).drop("rho")
 
     modelmeta_out["npts_model"] = dfmodel_out.select(pl.len()).collect().item()
@@ -1433,7 +1433,7 @@ def scale_model_to_time(
 
     print(
         f"Adjusting t_model to {targetmodeltime_days} days (factor {timefactor}) "
-        "using homologous expansion of positions and densities"
+        "using homologous expansion of positions and densities",
     )
 
     for col in dfmodel.columns:
@@ -1449,7 +1449,7 @@ def scale_model_to_time(
 
     modelmeta["t_model_days"] = targetmodeltime_days
     modelmeta.get("headercommentlines", []).append(
-        f"scaled from {t_model_days} to {targetmodeltime_days} (no abund change from decays)"
+        f"scaled from {t_model_days} to {targetmodeltime_days} (no abund change from decays)",
     )
 
     return dfmodel, modelmeta

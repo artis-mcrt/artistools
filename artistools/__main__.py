@@ -13,7 +13,7 @@ from artistools.commands import subcommandtree
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Parse and run artistools commands."""
     parser = argparse.ArgumentParser(
-        prog="artistools", formatter_class=CustomArgHelpFormatter, description="Artistools base command."
+        prog="artistools", formatter_class=CustomArgHelpFormatter, description="Artistools base command.",
     )
     parser.set_defaults(func=None)
 

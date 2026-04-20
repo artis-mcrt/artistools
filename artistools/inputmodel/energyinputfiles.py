@@ -17,7 +17,7 @@ def rprocess_const_and_powerlaw() -> tuple[pl.DataFrame, float]:
     """Following eqn 4 Korobkin 2012."""
 
     def integrand(
-        t_days: float, t0: float, epsilon0: float, sigma: float, alpha: float, thermalisation_factor: float
+        t_days: float, t0: float, epsilon0: float, sigma: float, alpha: float, thermalisation_factor: float,
     ) -> float:
         return float(epsilon0 * ((1 / 2) - (1 / np.pi * np.arctan((t_days - t0) / sigma))) ** alpha) * (
             thermalisation_factor / 0.5
@@ -41,7 +41,7 @@ def rprocess_const_and_powerlaw() -> tuple[pl.DataFrame, float]:
     energy_per_gram_cumulative = [0.0]
     for time in times[1:]:
         cumulative_integral = quad(
-            integrand, tmin, time, args=(t0, epsilon0, sigma, alpha, thermalisation_factor)
+            integrand, tmin, time, args=(t0, epsilon0, sigma, alpha, thermalisation_factor),
         )  # ergs/s/g
         energy_per_gram_cumulative.append(cumulative_integral[0])
 
@@ -106,7 +106,7 @@ def define_heating_rate() -> tuple[pl.DataFrame, float]:
 
 
 def energy_from_rprocess_calculation(
-    energy_thermo_data: pl.DataFrame, get_rate: bool = True
+    energy_thermo_data: pl.DataFrame, get_rate: bool = True,
 ) -> float | tuple[pl.DataFrame, float]:
 
     energy_thermo_data = energy_thermo_data.filter(pl.col("time/s") <= 1e7)
@@ -137,7 +137,7 @@ def energy_from_rprocess_calculation(
 def get_rprocess_calculation_files(
     path_to_rprocess_calculation: Path | str,
     interpolate_trajectories: bool = False,
-    thermalisation: bool = False,  # noqa: ARG001
+    thermalisation: bool = False,
 ) -> None:
     tarfiles = [file.name for file in Path(path_to_rprocess_calculation).iterdir() if file.name.endswith(".tar.xz")]
 
@@ -160,7 +160,7 @@ def get_rprocess_calculation_files(
 
         if interpolate_trajectories:
             qdotinterp = np.interp(
-                interpolated_trajectories["time/s"], energy_thermo_data["time/s"], energy_thermo_data["Qdot"]
+                interpolated_trajectories["time/s"], energy_thermo_data["time/s"], energy_thermo_data["Qdot"],
             )
             interpolated_trajectories[trajectory_id] = qdotinterp
 
@@ -178,7 +178,7 @@ def get_rprocess_calculation_files(
         dfinterpolated_trajectories = dfinterpolated_trajectories.drop(index_time_lessthan)
 
         dfinterpolated_trajectories.to_csv(
-            Path(path_to_rprocess_calculation, "interpolatedQdot.dat"), sep=" ", index=False
+            Path(path_to_rprocess_calculation, "interpolatedQdot.dat"), sep=" ", index=False,
         )
     print(f"sum etot {sum(trajectory_E_tot)}")
     trajectory_energy = pd.DataFrame.from_dict({"id": trajectory_ids, "E_tot": trajectory_E_tot}).sort_values(by="id")
@@ -188,7 +188,7 @@ def get_rprocess_calculation_files(
 
 
 def make_energydistribution_weightedbyrho(
-    rho: npt.NDArray[np.floating], E_tot_per_gram: float, Mtot_grams: float
+    rho: npt.NDArray[np.floating], E_tot_per_gram: float, Mtot_grams: float,
 ) -> pl.DataFrame:
     print(f"energy distribution weighted by rho (E_tot per gram {E_tot_per_gram})")
     Etot = E_tot_per_gram * Mtot_grams
@@ -244,7 +244,7 @@ def plot_energy_rate(modelpath: str | Path) -> None:
     model = lzmodel.collect()
     Mtot_grams = model["mass_g"].sum()
     plt.plot(
-        times_and_rate["times"], np.array(times_and_rate["nuclear_heating_power"]) * Mtot_grams, color="k", zorder=10
+        times_and_rate["times"], np.array(times_and_rate["nuclear_heating_power"]) * Mtot_grams, color="k", zorder=10,
     )
 
 
@@ -256,7 +256,7 @@ def get_etot_fromfile(modelpath: str | Path) -> tuple[float, pl.DataFrame]:
             sep=r"\s+",
             header=None,
             names=["cellid", "cell_energy"],
-        )
+        ),
     )
     etot = float(energydistribution_data["cell_energy"].sum())
     return etot, energydistribution_data
@@ -264,5 +264,5 @@ def get_etot_fromfile(modelpath: str | Path) -> tuple[float, pl.DataFrame]:
 
 def get_energy_rate_fromfile(modelpath: str | Path) -> pl.DataFrame:
     return pl.from_pandas(
-        pd.read_csv(Path(modelpath) / "energyrate.txt", skiprows=1, sep=r"\s+", header=None, names=["times", "rate"])
+        pd.read_csv(Path(modelpath) / "energyrate.txt", skiprows=1, sep=r"\s+", header=None, names=["times", "rate"]),
     )

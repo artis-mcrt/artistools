@@ -23,7 +23,7 @@ t_model_init_days = 0.1 * day  # snapshot time is fixed by the npz files
 
 
 def sphkernel(
-    dist: npt.NDArray[np.floating], hsph: float | npt.NDArray[np.float64], nu: float
+    dist: npt.NDArray[np.floating], hsph: float | npt.NDArray[np.float64], nu: float,
 ) -> npt.NDArray[np.floating]:
     # smoothing kernel for SPH-like interpolation of particle
     # data
@@ -611,7 +611,7 @@ def map_to_artis(
         # 2) load dynamical ejecta model
         # load second model as Pandas DF
         dyn_model: pl.DataFrame = at.inputmodel.get_modeldata(
-            modelpath=Path(replacedyn), derived_cols=["volume", "velocity"]
+            modelpath=Path(replacedyn), derived_cols=["volume", "velocity"],
         )[0].collect()
         dyn_model = dyn_model.with_columns(dfmodel["bin_state"].alias("bin_state"))
         dyn_abunds = at.inputmodel.get_initelemabundances(modelpath=Path(replacedyn))
@@ -669,7 +669,7 @@ def map_to_artis(
             # write "replaced" ejecta to seperate model files for plotting / consistency check
             # 1) 3D dynamical ejecta weighted but not scaled
             dyn_model = dyn_model.join(
-                dfmodel.select(["inputcellid", "bin_state"]), on="inputcellid", how="left"
+                dfmodel.select(["inputcellid", "bin_state"]), on="inputcellid", how="left",
             ).with_columns((pl.col("rho") * pl.col("bin_state")).alias("rho"))
             at.inputmodel.save_initelemabundances(dfelabundances=dyn_abunds, outpath=Path("dyn_abunds.txt"))
             dyn_modelmeta = {
@@ -681,12 +681,12 @@ def map_to_artis(
                 "vmax_cmps": vmax_on_c * CLIGHT,
             }
             at.inputmodel.save_modeldata(
-                dfmodel=dyn_model, modelmeta=dyn_modelmeta, outpath=Path("dyn_model_notrescaled.txt")
+                dfmodel=dyn_model, modelmeta=dyn_modelmeta, outpath=Path("dyn_model_notrescaled.txt"),
             )
             # 2) 3D dynamical ejecta weighted and scaled
             dyn_model = dyn_model.with_columns([pl.col("rho") * resc_factor])
             at.inputmodel.save_modeldata(
-                dfmodel=dyn_model, modelmeta=dyn_modelmeta, outpath=Path("dyn_model_rescaled.txt")
+                dfmodel=dyn_model, modelmeta=dyn_modelmeta, outpath=Path("dyn_model_rescaled.txt"),
             )
 
             # mass fractions, avoid looping
@@ -707,7 +707,7 @@ def map_to_artis(
             dyn_model = dyn_model.rename({col: f"{col}_dyn" for col in X_list})
 
             dfmodel = dfmodel.join(
-                dyn_model.select(["inputcellid"] + [f"{col}_dyn" for col in X_list]), on="inputcellid", how="left"
+                dyn_model.select(["inputcellid"] + [f"{col}_dyn" for col in X_list]), on="inputcellid", how="left",
             )
 
             dfmodel = dfmodel.with_columns([
@@ -724,7 +724,7 @@ def map_to_artis(
             dfmodel = dfmodel.with_columns([pl.sum_horizontal(*X_list).alias("X_el")])
 
             dfmodel = dfmodel.with_columns([
-                (1.0 / pl.col("X_el")).replace([float("inf"), float("-inf")], 0.0).alias("X_scale")
+                (1.0 / pl.col("X_el")).replace([float("inf"), float("-inf")], 0.0).alias("X_scale"),
             ])
 
             # scale all mass fractions with scaling factor
@@ -814,7 +814,7 @@ def map_to_artis(
                     .when(pl.col("inputcellid").is_in(id_list))
                     .then(pl.col("rho") * global_mass_scaling)
                     .otherwise(pl.col("rho"))
-                    .alias("rho")
+                    .alias("rho"),
                 ])
 
                 M_rescaled = (dfmodel.select((pl.col("rho") * V_dfmodel).sum()).item()) / msol
@@ -833,7 +833,7 @@ def map_to_artis(
 
                 local_mass_scaling = (M_dyn_vrange_prev + Delta_M) / M_dyn_vrange_prev
                 print(
-                    f"  Rescale replaced dynamical ejecta locally by {local_mass_scaling} from v={v_min} to {v_max}.."
+                    f"  Rescale replaced dynamical ejecta locally by {local_mass_scaling} from v={v_min} to {v_max}..",
                 )
 
                 dfmodel = dfmodel.with_columns([
@@ -841,7 +841,7 @@ def map_to_artis(
                     .when(pl.col("inputcellid").is_in(v_range_id_list))
                     .then(pl.col("rho") * local_mass_scaling)
                     .otherwise(pl.col("rho"))
-                    .alias("rho")
+                    .alias("rho"),
                 ])
 
                 M_rescaled = (dfmodel.select((pl.col("rho") * V_dfmodel).sum()).item()) / msol
@@ -936,7 +936,7 @@ def remap_mass_weighted_quantity(
 
 
 def merge_neighbour_cells(
-    dfmodel: pl.DataFrame, modelmeta: dict[str, t.Any], red_fact: int, ngrid_rcyl: int, ngrid_z: int, vmax: float
+    dfmodel: pl.DataFrame, modelmeta: dict[str, t.Any], red_fact: int, ngrid_rcyl: int, ngrid_z: int, vmax: float,
 ) -> tuple[pl.DataFrame, pl.DataFrame, dict[str, t.Any]]:
     """red_fact: number of cells to be merged."""
     red_fact_1D = int(np.sqrt(red_fact))
@@ -946,7 +946,7 @@ def merge_neighbour_cells(
     r_max_snap = vmax * CLIGHT * t_model_init_days
 
     dfmodel = at.inputmodel.add_derived_cols_to_modeldata(
-        dfmodel, modelmeta=modelmeta, derived_cols=["mass_g"]
+        dfmodel, modelmeta=modelmeta, derived_cols=["mass_g"],
     ).collect()
 
     # create new grid
@@ -959,13 +959,13 @@ def merge_neighbour_cells(
     print("Now remap masses, q and Ye")
     # remap density, integrated energy release and Y_e
     new_rho_arr = remap_mass_weighted_quantity(
-        dfmodel, "mass_g", red_fact_1D, N_cell_r_new, N_cell_z_new, ngrid_rcyl, Delta_r, Delta_z
+        dfmodel, "mass_g", red_fact_1D, N_cell_r_new, N_cell_z_new, ngrid_rcyl, Delta_r, Delta_z,
     )
     new_q_arr = remap_mass_weighted_quantity(
-        dfmodel, "q", red_fact_1D, N_cell_r_new, N_cell_z_new, ngrid_rcyl, Delta_r, Delta_z
+        dfmodel, "q", red_fact_1D, N_cell_r_new, N_cell_z_new, ngrid_rcyl, Delta_r, Delta_z,
     )
     new_ye_arr = remap_mass_weighted_quantity(
-        dfmodel, "Ye", red_fact_1D, N_cell_r_new, N_cell_z_new, ngrid_rcyl, Delta_r, Delta_z
+        dfmodel, "Ye", red_fact_1D, N_cell_r_new, N_cell_z_new, ngrid_rcyl, Delta_r, Delta_z,
     )
     print("  Done.")
 
@@ -1103,11 +1103,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "-ngridrcyl", type=int, default=25, help="Number of cells in radial direction the ARTIS model shall have"
+        "-ngridrcyl", type=int, default=25, help="Number of cells in radial direction the ARTIS model shall have",
     )
 
     parser.add_argument(
-        "-ngridz", type=int, default=50, help="Number of cells in z direction the ARTIS model shall have"
+        "-ngridz", type=int, default=50, help="Number of cells in z direction the ARTIS model shall have",
     )
 
     parser.add_argument("--mapto3D", action="store_true", help="Final grid will be 3D. Requires -ngridx and -ngridy.")
@@ -1176,11 +1176,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "-dimensions", "-d", default=None, type=int, choices=[0, 1], help="Reduce 2D model to 1D or 0D (one-zone)"
+        "-dimensions", "-d", default=None, type=int, choices=[0, 1], help="Reduce 2D model to 1D or 0D (one-zone)",
     )
 
     parser.add_argument(
-        "-replacedyn", default=None, type=str, help="Path to dynamical ejecta model which shall be used for replacing."
+        "-replacedyn", default=None, type=str, help="Path to dynamical ejecta model which shall be used for replacing.",
     )
 
     parser.add_argument(
@@ -1317,7 +1317,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         if args.perturb3Dmodel:
             if args.replacedyn:
                 print(
-                    "Warning! Perturbations should only be applied to axisymmetric 3D models to conserve global isotopic mass fractions."
+                    "Warning! Perturbations should only be applied to axisymmetric 3D models to conserve global isotopic mass fractions.",
                 )
             dfmodel = apply_density_perturbations(dfmodel, float(args.vmax_on_c), tuple(args.perturb3Dmodel))
 

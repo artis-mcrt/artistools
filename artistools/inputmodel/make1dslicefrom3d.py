@@ -14,17 +14,17 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-inputfolder", action="store", default=".", help="Path to folder with 3D files")
 
     parser.add_argument(
-        "-axis", action="store", dest="chosenaxis", default="x", choices=["x", "y", "z"], help="Slice axis (x, y, or z)"
+        "-axis", action="store", dest="chosenaxis", default="x", choices=["x", "y", "z"], help="Slice axis (x, y, or z)",
     )
 
     parser.add_argument(
-        "-outputfolder", action="store", default="1dslice", help="Path to folder in which to store 1D output files"
+        "-outputfolder", action="store", default="1dslice", help="Path to folder in which to store 1D output files",
     )
 
     parser.add_argument("-opdf", action="store", dest="pdfoutputfile", help="Path/filename for PDF plot.")
 
 
-def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:  # noqa: ARG001
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     if args is None:
         parser = argparse.ArgumentParser(
             formatter_class=at.CustomArgHelpFormatter,
@@ -52,7 +52,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
 
 def slice_3dmodel(
-    inputfolder: Path | str, outputfolder: Path | str, chosenaxis: str
+    inputfolder: Path | str, outputfolder: Path | str, chosenaxis: str,
 ) -> tuple[dict[int, int], list[float], list[list[float]]]:
     xlist: list[float] = []
     ylists: list[list[float]] = [[], [], []]
@@ -105,7 +105,7 @@ def slice_3dmodel(
 
 
 def slice_abundance_file(
-    inputfolder: Path | str, outputfolder: Path | str, dict3dcellidto1dcellid: dict[int, int]
+    inputfolder: Path | str, outputfolder: Path | str, dict3dcellidto1dcellid: dict[int, int],
 ) -> None:
     with (
         Path(inputfolder, "abundances.txt").open(encoding="utf-8") as fabundancesin,
@@ -148,7 +148,7 @@ def append_cell_to_output(
 
     listout.append(
         f"{outcellid:6d}  {velocity:8.2f}  {math.log10(max(float(cell['rho']), 1e-100)):8.5f}  "
-        f"{cell['ffe']:.5f}  {cell['f56ni']:.5f}  {cell['fco']:.5f}  {cell['f52fe']:.5f}  {cell['f48cr']:.5f}"
+        f"{cell['ffe']:.5f}  {cell['f56ni']:.5f}  {cell['fco']:.5f}  {cell['f52fe']:.5f}  {cell['f48cr']:.5f}",
     )
 
     xlist.append(velocity)
@@ -159,7 +159,7 @@ def append_cell_to_output(
 
 def make_plot(xlist: list[float], ylists: list[list[float]], pdfoutputfile: str) -> None:
     fig, axis = plt.subplots(
-        nrows=1, ncols=1, sharey=True, figsize=(6, 4), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0}
+        nrows=1, ncols=1, sharey=True, figsize=(6, 4), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
     )
     axis.set_xlabel(r"v (km/s)")
     axis.set_ylabel(r"Density (g/cm$^3$) or mass fraction")

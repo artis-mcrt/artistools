@@ -49,7 +49,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             "X_Cr48",
             "X_Ni57",
             "X_Co57",
-        ]
+        ],
     )
     dfmodel.index.name = "cellid"
     dfelabundances = pd.DataFrame(columns=["inputcellid", *["X_" + at.get_elsymbol(x) for x in range(1, 31)]])

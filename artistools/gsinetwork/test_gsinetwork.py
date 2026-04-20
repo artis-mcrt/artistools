@@ -17,7 +17,7 @@ outputpath = at.get_path("testoutput")
 def test_decayproducts(mockplot: t.Any) -> None:
     trajpath = at.get_path("testdata") / "kilonova" / "trajectories"
     at.gsinetwork.decayproducts.main(
-        argsraw=[], trajectoryroot=trajpath, tmin=0.1, tmax=0.1, nsteps=1, outputpath=outputpath
+        argsraw=[], trajectoryroot=trajpath, tmin=0.1, tmax=0.1, nsteps=1, outputpath=outputpath,
     )
 
     expected_y_arrays = [

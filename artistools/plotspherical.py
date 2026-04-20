@@ -47,7 +47,7 @@ def plot_spherical(
         elif timemindays < tmin_d_valid:
             print(
                 f"WARNING! timemindays {timemindays} is too early for light to travel from the entire ejecta "
-                f" ({tmin_d_valid:.2f} d)"
+                f" ({tmin_d_valid:.2f} d)",
             )
 
         if timemaxdays is None:
@@ -56,7 +56,7 @@ def plot_spherical(
         elif timemaxdays > tmax_d_valid:
             print(
                 f"WARNING! timemaxdays {timemaxdays} is too late to receive light from the entire ejecta "
-                f" ({tmax_d_valid:.2f} d)"
+                f" ({tmax_d_valid:.2f} d)",
             )
         dfpackets = dfpackets.filter(pl.col("t_arrive_d").is_between(timemindays, timemaxdays))
 
@@ -68,7 +68,7 @@ def plot_spherical(
     # y=math.sin(-phi)
 
     dfpackets = at.packets.bin_packet_directions_polars(
-        dfpackets=dfpackets, nphibins=nphibins, ncosthetabins=ncosthetabins, phibintype="phibinmonotonicasc"
+        dfpackets=dfpackets, nphibins=nphibins, ncosthetabins=ncosthetabins, phibintype="phibinmonotonicasc",
     )
 
     # for figuring out where the axes are on the plot, make a cut
@@ -84,8 +84,8 @@ def plot_spherical(
     if "emvelocityoverc" in plotvars:
         aggs.append(
             ((pl.col("emission_velocity") * pl.col("e_rf")).mean() / pl.col("e_rf").mean() / 29979245800).alias(
-                "emvelocityoverc"
-            )
+                "emvelocityoverc",
+            ),
         )
 
     if "emvelocityoverc_sigma" in plotvars:
@@ -95,15 +95,15 @@ def plot_spherical(
         aggs.append(
             (
                 (pl.col("emission_velocity_lineofsight") * pl.col("e_rf")).mean() / pl.col("e_rf").mean() / 29979245800
-            ).alias("emlosvelocityoverc")
+            ).alias("emlosvelocityoverc"),
         )
 
     if "luminosity" in plotvars:
         solidanglefactor = nphibins * ncosthetabins
         aggs.append(
             (pl.col("e_rf").sum() / nprocs_read * solidanglefactor / (timemaxdays - timemindays) / 86400).alias(
-                "luminosity"
-            )
+                "luminosity",
+            ),
         )
 
     if "temperature" in plotvars or "temperature_sigma" in plotvars or nnelement_vars:
@@ -135,7 +135,7 @@ def plot_spherical(
 
         selected_emtypes = dflinelist.select("lineindex").collect().get_column("lineindex")
         dfpackets = dfpackets.filter(
-            pl.col("emissiontype").is_in(selected_emtypes) | pl.col("absorption_type").is_in(selected_emtypes)
+            pl.col("emissiontype").is_in(selected_emtypes) | pl.col("absorption_type").is_in(selected_emtypes),
         )
 
     aggs.append(pl.len().alias("count"))
@@ -260,7 +260,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-nphibins", action="store", type=int, default=64, help="Number of azimuthal bins")
     parser.add_argument("-ncosthetabins", action="store", type=int, default=32, help="Number of polar angle bins")
     parser.add_argument(
-        "-maxpacketfiles", "-maxpacketsfiles", type=int, default=None, help="Limit the number of packet files read"
+        "-maxpacketfiles", "-maxpacketsfiles", type=int, default=None, help="Limit the number of packet files read",
     )
     parser.add_argument("-gaussian_sigma", type=int, default=None, help="Apply Gaussian filter")
     parser.add_argument(
@@ -272,15 +272,15 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument("-elem", type=str, default=None, help="Filter emitted packets by element of last emission")
     parser.add_argument(
-        "-atomic_number", type=int, default=None, help="Filter emitted packets by element of last emission"
+        "-atomic_number", type=int, default=None, help="Filter emitted packets by element of last emission",
     )
     parser.add_argument(
-        "-ion_stage", type=int, default=None, help="Filter emitted packets by ionistion stage of last emission"
+        "-ion_stage", type=int, default=None, help="Filter emitted packets by ionistion stage of last emission",
     )
     parser.add_argument("-cmap", default=None, type=str, help="Matplotlib color map name")
 
     parser.add_argument(
-        "-figscale", type=float, default=1.0, help="Scale factor for plot area. 1.0 is for single-column"
+        "-figscale", type=float, default=1.0, help="Scale factor for plot area. 1.0 is for single-column",
     )
 
     parser.add_argument("--makegif", action="store_true", help="Make a gif with time evolution")
@@ -290,7 +290,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--phireverse", action="store_true", help="Reverse the phi direction")
 
     parser.add_argument(
-        "-o", action="store", dest="outputfile", type=str, default="", help="Filename for plot output file"
+        "-o", action="store", dest="outputfile", type=str, default="", help="Filename for plot output file",
     )
 
     parser.add_argument("-format", "-f", default="", choices=["pdf", "png"], help="Set format of output plot files")
@@ -317,7 +317,7 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
     dfestimators = at.estimators.scan_estimators(modelpath=args.modelpath) if "temperature" in args.plotvars else None
 
     nprocs_read, dfpackets = at.packets.get_packets_pl(
-        args.modelpath, args.maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
+        args.modelpath, args.maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT",
     )
     dfpackets = at.packets.add_derived_columns_lazy(dfpackets, modelpath=args.modelpath)
 
@@ -365,14 +365,14 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
 
         if not args.notitle:
             axes[0].set_title(
-                f"{timemindays:.2f}-{timemaxdays:.2f} days{f' ({condition})' if condition else ''}", loc="left", pad=0
+                f"{timemindays:.2f}-{timemaxdays:.2f} days{f' ({condition})' if condition else ''}", loc="left", pad=0,
             )
 
         defaultfilename = "plotspherical_{timemindays:.2f}-{timemaxdays:.2f}d.{outformat}"  # noqa: RUF027
         outfilename = str(
             args.outputfile
             if (args.outputfile and not Path(args.outputfile).is_dir() and not args.makegif)
-            else Path(args.outputfile) / defaultfilename
+            else Path(args.outputfile) / defaultfilename,
         ).format(timemindays=timemindays, timemaxdays=timemaxdays, outformat=outformat)
 
         fig.savefig(outfilename, format=outformat, dpi=300, pad_inches=0.0)

@@ -84,7 +84,7 @@ def plot_reference_data(
                     print(f"Plotting reference data from {depfilepath},")
                     print(
                         f"nne = {file_nne} (ARTIS {nne}) cm^-3, Te = {file_Te} (ARTIS {Te}) K, "
-                        f"TR = {file_TR} (ARTIS {TR}) K, W = {file_W} (ARTIS {W})"
+                        f"TR = {file_TR} (ARTIS {TR}) K, W = {file_W} (ARTIS {W})",
                     )
                     levelnums = []
                     depcoeffs = []
@@ -121,7 +121,7 @@ def plot_reference_data(
 
 
 def get_floers_data(
-    dfpopthision: pd.DataFrame, atomic_number: int, ion_stage: int, modelpath: Path, T_e: float, modelgridindex: int
+    dfpopthision: pd.DataFrame, atomic_number: int, ion_stage: int, modelpath: Path, T_e: float, modelgridindex: int,
 ) -> tuple[list[int] | None, list[float] | None]:
     floers_levelnums, floers_levelpop_values = None, None
 
@@ -249,7 +249,7 @@ def make_ionsubplot(
 
     print(
         f"{at.get_elsymbol(atomic_number)} {at.roman_numerals[ion_stage]} has a summed "
-        f"level population of {ionpopulation:.1f} (from estimator file ion pop = {ionpopulation_fromest})"
+        f"level population of {ionpopulation:.1f} (from estimator file ion pop = {ionpopulation_fromest})",
     )
 
     lte_scalefactor = (
@@ -261,7 +261,7 @@ def make_ionsubplot(
     )
 
     dfpopthision = dfpopthision.assign(n_LTE_T_e_normed=pd.col("n_LTE_T_e") * lte_scalefactor).assign(  # type: ignore[attr-defined] # pyright: ignore[reportAttributeAccessIssue]
-        departure_coeff=pd.col("n_NLTE") / pd.col("n_LTE_T_e_normed")  # type: ignore[attr-defined] # pyright: ignore[reportAttributeAccessIssue]
+        departure_coeff=pd.col("n_NLTE") / pd.col("n_LTE_T_e_normed"),  # type: ignore[attr-defined] # pyright: ignore[reportAttributeAccessIssue]
     )
 
     pd.set_option("display.max_columns", 150)
@@ -270,8 +270,8 @@ def make_ionsubplot(
         #     ['Z', 'ion_stage', 'level', 'config', 'departure_coeff', 'texname']].to_string(index=False))
         print(
             dfpopthision.loc[
-                :, [c not in {"timestep", "modelgridindex", "Z", "parity", "texname"} for c in dfpopthision.columns]
-            ].to_string(index=False)
+                :, [c not in {"timestep", "modelgridindex", "Z", "parity", "texname"} for c in dfpopthision.columns],
+            ].to_string(index=False),
         )
 
     maxlevel = max(dfpopthision["level"])
@@ -295,7 +295,7 @@ def make_ionsubplot(
             emissionstrength=pl
             .when(pl.col("n_NLTE").is_not_null())
             .then(pl.col("n_NLTE") * pl.col("A") * pl.col("epsilon_trans_ev"))
-            .otherwise(0)
+            .otherwise(0),
         )
 
         dftrans = dftrans.sort(by="emissionstrength", descending=True)
@@ -306,7 +306,7 @@ def make_ionsubplot(
     ax.set_yscale("log")
 
     floers_levelnums, floers_levelpop_values = get_floers_data(
-        dfpopthision, atomic_number, ion_stage, modelpath, T_e, modelgridindex
+        dfpopthision, atomic_number, ion_stage, modelpath, T_e, modelgridindex,
     )
 
     if args.departuremode:
@@ -316,7 +316,7 @@ def make_ionsubplot(
         ycolumnname = "departure_coeff"
 
         # skip one color, since T_e is not plotted in departure mode
-        ax._get_lines.get_next_color()  # type: ignore[attr-defined] # noqa: SLF001 # pyright: ignore[reportAttributeAccessIssue]
+        ax._get_lines.get_next_color()  # type: ignore[attr-defined] # pyright: ignore[reportAttributeAccessIssue]
         if floers_levelpop_values is not None:
             assert floers_levelnums is not None
             ax.plot(
@@ -390,7 +390,7 @@ def make_ionsubplot(
 
     if args.plotrefdata:
         plot_reference_data(
-            ax, atomic_number, ion_stage, estimators[timestep, modelgridindex], dfpopthision, annotatelines=True
+            ax, atomic_number, ion_stage, estimators[timestep, modelgridindex], dfpopthision, annotatelines=True,
         )
 
 
@@ -408,10 +408,10 @@ def make_plot_populations_with_time_or_velocity(modelpaths: list[Path | str], ar
         .get_levels(modelpaths[0], get_transitions=True)
         .with_columns(
             levels=pl.col("levels").map_elements(
-                lambda x: x.to_pandas(use_pyarrow_extension_array=True), return_dtype=pl.Object
+                lambda x: x.to_pandas(use_pyarrow_extension_array=True), return_dtype=pl.Object,
             ),
             transitions=pl.col("transitions").map_elements(
-                lambda x: x.collect().to_pandas(use_pyarrow_extension_array=True), return_dtype=pl.Object
+                lambda x: x.collect().to_pandas(use_pyarrow_extension_array=True), return_dtype=pl.Object,
             ),
         )
         .to_pandas(use_pyarrow_extension_array=True)
@@ -447,7 +447,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths: list[Path | str], ar
         axis = ax[plotnumber] if args.subplots else ax
         assert isinstance(axis, mplax.Axes)
         plot_populations_with_time_or_velocity(
-            axis, modelpaths, timedays, ion_stage, ionlevels, Z, levelconfignames, args=args
+            axis, modelpaths, timedays, ion_stage, ionlevels, Z, levelconfignames, args=args,
         )
 
     labelfontsize = 20
@@ -521,7 +521,7 @@ def plot_populations_with_time_or_velocity(
 
         for timestep, mgi in zip(timesteps, modelgridindex_list, strict=False):
             dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=mgi).to_pandas(
-                use_pyarrow_extension_array=True
+                use_pyarrow_extension_array=True,
             )
             try:
                 timesteppops = dfpop.loc[(dfpop["Z"] == Z) & (dfpop["ion_stage"] == ion_stage)]
@@ -575,7 +575,7 @@ def make_singletimestep_plot(
     modelname = at.get_model_name(modelpath)
 
     dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=mgilist[0]).to_pandas(
-        use_pyarrow_extension_array=True
+        use_pyarrow_extension_array=True,
     )
 
     if dfpop.empty:
@@ -621,7 +621,7 @@ def make_singletimestep_plot(
         estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
         elsymbol = at.get_elsymbol(atomic_number)
         print(
-            f"Plotting NLTE pops for {modelname} modelgridindex {modelgridindex}, timestep {timestep} (t={time_days}d)"
+            f"Plotting NLTE pops for {modelname} modelgridindex {modelgridindex}, timestep {timestep} (t={time_days}d)",
         )
         print(f"Z={atomic_number} {elsymbol}")
 
@@ -637,7 +637,7 @@ def make_singletimestep_plot(
             T_R = args.exc_temperature
 
         dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=modelgridindex).to_pandas(
-            use_pyarrow_extension_array=True
+            use_pyarrow_extension_array=True,
         )
 
         if dfpop.empty:
@@ -718,7 +718,7 @@ def make_singletimestep_plot(
         axes[-1].set_xlabel(r"Level index")
 
     outputfilename = str(args.outputfile).format(
-        elsymbol=at.get_elsymbol(atomic_number), cell=mgilist[0], timestep=timestep, time_days=time_days
+        elsymbol=at.get_elsymbol(atomic_number), cell=mgilist[0], timestep=timestep, time_days=time_days,
     )
     fig.savefig(outputfilename, format="pdf")
     print(f"open {outputfilename}")
@@ -749,23 +749,23 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-exc-temperature", type=float, default=6000.0, help="Default if no estimator data")
 
     parser.add_argument(
-        "-x", choices=["index", "config", "time", "velocity", "none"], default="index", help="Horizontal axis variable"
+        "-x", choices=["index", "config", "time", "velocity", "none"], default="index", help="Horizontal axis variable",
     )
 
     parser.add_argument("-ion_stages", help="Ion stage range, 1 is neutral, 2 is 1+")
 
     parser.add_argument(
-        "-levels", type=int, nargs="+", help="Choose levels to plot"
+        "-levels", type=int, nargs="+", help="Choose levels to plot",
     )  # currently only for x axis = time
 
     parser.add_argument("-maxlevel", default=-1, type=int, help="Maximum level to plot")
 
     parser.add_argument(
-        "-figscale", type=float, default=1.6, help="Scale factor for plot area. 1.0 is for single-column"
+        "-figscale", type=float, default=1.6, help="Scale factor for plot area. 1.0 is for single-column",
     )
 
     parser.add_argument(
-        "--departuremode", action="store_true", help="Show departure coefficients instead of populations"
+        "--departuremode", action="store_true", help="Show departure coefficients instead of populations",
     )
 
     parser.add_argument("--gettransitions", action="store_true", help="Show the most significant transitions")

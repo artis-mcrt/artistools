@@ -50,7 +50,7 @@ def make_cone(args: argparse.Namespace, logprint: Callable[..., None]) -> pd.Dat
                 1.0
                 / (np.tan(theta))
                 * (pl.col(f"pos_{args.other_axis2}_mid") ** 2 + pl.col(f"pos_{args.other_axis1}_mid") ** 2).sqrt()
-            )
+            ),
         )
     else:
         print("using negative axis")
@@ -60,14 +60,14 @@ def make_cone(args: argparse.Namespace, logprint: Callable[..., None]) -> pd.Dat
                 1.0
                 / (np.tan(theta))
                 * (pl.col(f"pos_{args.other_axis2}_mid") ** 2 + pl.col(f"pos_{args.other_axis1}_mid") ** 2).sqrt()
-            )
+            ),
         )
 
     return cone.collect().to_pandas(use_pyarrow_extension_array=True)
 
 
 def get_profile_along_axis(
-    args: argparse.Namespace, modeldata: pd.DataFrame | None = None, derived_cols: Sequence[str] | None = None
+    args: argparse.Namespace, modeldata: pd.DataFrame | None = None, derived_cols: Sequence[str] | None = None,
 ) -> pd.DataFrame:
     print("Getting profile along axis")
 
@@ -158,7 +158,7 @@ def make_1d_profile(args: argparse.Namespace, logprint: Callable[..., None]) -> 
                     "the cells are too optically thin to impact the synthetic observables. However if you want cells\n"
                     "in these outer regions to be included in the 1D cone can experiment with -coneangle,-nshells and\n"
                     "-coneshellspacingexponent to ensure the shells for these outer regions include some non-empty 3D\n"
-                    "grid cell and thus the shells can be included in the 1D model.\n"
+                    "grid cell and thus the shells can be included in the 1D model.\n",
                 )
                 break
 
@@ -184,7 +184,7 @@ def make_1d_profile(args: argparse.Namespace, logprint: Callable[..., None]) -> 
                     "models where the composition sum can deviate by ~1% from 1 when averaging the 3D cells\n"
                     "into the shells in the 1D model. The composition is normalised before writing out the \n"
                     "1D model but worth checking the log file to ensure the normalisation of the cells in the 3D \n"
-                    "model used in the 1D model shells is close to 1 before this\n"
+                    "model used in the 1D model shells is close to 1 before this\n",
                 )
             # Skipping first 5 columns which contain the radioisotopes utilised in SN models
             # the remaining columns contain the 30 elements in the composition file for SN models
@@ -192,7 +192,7 @@ def make_1d_profile(args: argparse.Namespace, logprint: Callable[..., None]) -> 
             # relevant elements
             sum_composition_check = composition.iloc[5:].sum()
             logprint(
-                f"Shell {i + 1:<3}     3D cells averaged: {len(cells_within_bin):<6} composition sum before norm: {sum_composition_check}"
+                f"Shell {i + 1:<3}     3D cells averaged: {len(cells_within_bin):<6} composition sum before norm: {sum_composition_check}",
             )
             composition /= sum_composition_check
 
@@ -218,12 +218,12 @@ def make_1d_profile(args: argparse.Namespace, logprint: Callable[..., None]) -> 
         logprint("from along the axis")
         slice1d = get_profile_along_axis(args)
         slice1d.loc[:, f"pos_{args.sliceaxis}_min"] = slice1d[f"pos_{args.sliceaxis}_min"].apply(
-            lambda x: x / (args.t_model * 86400 * 1e5)
+            lambda x: x / (args.t_model * 86400 * 1e5),
         )  # Convert positions to velocities
         slice1d = slice1d.rename(columns={f"pos_{args.sliceaxis}_min": "vel_r_max_kmps"})
         # Convert position to velocity
         slice1d = slice1d.drop(
-            ["inputcellid", f"pos_{args.other_axis1}_min", f"pos_{args.other_axis2}_min"], axis=1
+            ["inputcellid", f"pos_{args.other_axis1}_min", f"pos_{args.other_axis2}_min"], axis=1,
         )  # Remove columns we don't need
     logprint("using axis:", args.axis)
 
@@ -275,12 +275,12 @@ def make_1d_model_files(args: argparse.Namespace, logprint: Callable[..., None])
     abundances_df.loc[:, ["inputcellid"]] = inputcellid
     assert isinstance(model_df, pd.DataFrame)
     at.inputmodel.save_modeldata(
-        dfmodel=pl.from_pandas(model_df), t_model_init_days=args.t_model, outpath=Path(args.outputpath, "model_1d.txt")
+        dfmodel=pl.from_pandas(model_df), t_model_init_days=args.t_model, outpath=Path(args.outputpath, "model_1d.txt"),
     )
 
     assert isinstance(abundances_df, pd.DataFrame)
     at.inputmodel.save_initelemabundances(
-        pl.from_pandas(abundances_df), outpath=Path(args.outputpath, "abundances_1d.txt")
+        pl.from_pandas(abundances_df), outpath=Path(args.outputpath, "abundances_1d.txt"),
     )
 
     # with Path(args.modelpath[0], "model_1d.txt").open("r+") as f:  # add number of cells and tmodel to start of file
@@ -350,7 +350,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "-coneangle", type=float, default=30.0, help="Cone angle in degrees, cone half angle given by coneangle/2"
+        "-coneangle", type=float, default=30.0, help="Cone angle in degrees, cone half angle given by coneangle/2",
     )
 
     parser.add_argument(
@@ -368,7 +368,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "--coneshellsequalvolume", action="store_true", help="Use equal volume shells when making 1D model from cone"
+        "--coneshellsequalvolume", action="store_true", help="Use equal volume shells when making 1D model from cone",
     )
 
     parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")
@@ -400,7 +400,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     # remember: models before scaling down to artis input have x and z axis swapped compared to artis input files
 
     logprint = at.inputmodel.inputmodel_misc.savetologfile(
-        outputfolderpath=Path(args.outputpath), logfilename="make1dmodellog.txt"
+        outputfolderpath=Path(args.outputpath), logfilename="make1dmodellog.txt",
     )
 
     make_1d_model_files(args, logprint)

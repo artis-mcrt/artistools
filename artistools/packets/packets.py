@@ -147,7 +147,7 @@ def add_derived_columns_lazy(
 
     if modelpath is not None:
         timebins = [tstart * 86400.0 for tstart in at.get_timestep_times(modelpath, loc="start")] + [
-            at.get_timestep_times(modelpath, loc="end")[-1] * 86400.0
+            at.get_timestep_times(modelpath, loc="end")[-1] * 86400.0,
         ]
         dfpackets = dfpackets.with_columns(
             (
@@ -156,7 +156,7 @@ def add_derived_columns_lazy(
                 .cut(breaks=timebins, labels=[str(x) for x in range(-1, len(timebins))])
                 .cast(pl.Utf8)
                 .cast(pl.Int32)
-            ).alias("em_timestep")
+            ).alias("em_timestep"),
         )
 
     if "trueem_posx" in dfpackets.collect_schema().names():
@@ -164,7 +164,7 @@ def add_derived_columns_lazy(
             true_emission_velocity=(
                 (pl.col("trueem_posx") ** 2 + pl.col("trueem_posy") ** 2 + pl.col("trueem_posz") ** 2).sqrt()
                 / pl.col("trueem_time")
-            )
+            ),
         )
 
     dfpackets = dfpackets.with_columns(
@@ -197,7 +197,7 @@ def add_derived_columns_lazy(
                 ).cast(pl.Int32),
                 coordpointnumz=((pl.col("em_posz") / pl.col("em_time") + vmax) / vwidthz).cast(pl.Int32),
             ).with_columns(
-                em_modelgridindex=(pl.col("coordpointnumz") * modelmeta["ncoordgridrcyl"] + pl.col("coordpointnumrcyl"))
+                em_modelgridindex=(pl.col("coordpointnumz") * modelmeta["ncoordgridrcyl"] + pl.col("coordpointnumrcyl")),
             )
 
         elif modelmeta["dimensions"] == 3:
@@ -210,7 +210,7 @@ def add_derived_columns_lazy(
                     pl.col("coordpointnumz") * modelmeta["ncoordgridy"] * modelmeta["ncoordgridx"]
                     + pl.col("coordpointnumy") * modelmeta["ncoordgridx"]
                     + pl.col("coordpointnumx")
-                )
+                ),
             )
 
     elif modelmeta["dimensions"] == 1:
@@ -224,7 +224,7 @@ def add_derived_columns_lazy(
                 .cut(breaks=velbins, labels=[str(x) for x in range(-1, len(velbins))])
                 .cast(pl.Utf8)
                 .cast(pl.Int32)
-            )
+            ),
         )
         if "true_emission_velocity" in dfpackets.collect_schema().names():
             dfpackets = dfpackets.with_columns(
@@ -234,7 +234,7 @@ def add_derived_columns_lazy(
                     .cut(breaks=velbins, labels=[str(x) for x in range(-1, len(velbins))])
                     .cast(pl.Utf8)
                     .cast(pl.Int32)
-                )
+                ),
             )
 
     return dfpackets
@@ -277,7 +277,7 @@ def readfile(
     if escape_type is not None:
         assert packet_type is None or packet_type == "TYPE_ESCAPE"
         dfpackets = dfpackets.filter(
-            (pl.col("type_id") == type_ids["TYPE_ESCAPE"]) & (pl.col("escape_type_id") == type_ids[escape_type])
+            (pl.col("type_id") == type_ids["TYPE_ESCAPE"]) & (pl.col("escape_type_id") == type_ids[escape_type]),
         )
     elif packet_type is not None and packet_type:
         dfpackets = dfpackets.filter(pl.col("type_id") == type_ids[packet_type])
@@ -403,7 +403,7 @@ def get_vpackets_text_columns(vpacketsfiletext: Path) -> list[str]:
 
 
 def get_rankbatch_parquetfile(
-    modelpath: Path | str, batch_mpiranks: Sequence[int], batchindex: int, virtual: bool
+    modelpath: Path | str, batch_mpiranks: Sequence[int], batchindex: int, virtual: bool,
 ) -> Path:
     """Get the path to a parquet file containing packets for a specific batch of MPI ranks. If the file does not exists or is outdated, generate it first from the text files."""
     modelpath = Path(modelpath)
@@ -477,20 +477,20 @@ def get_rankbatch_parquetfile(
                         / 29979245800.0
                     )
                     / 86400.0
-                ).cast(pl.Float32)
+                ).cast(pl.Float32),
             ).sort(by=["type_id", "escape_type_id", "t_arrive_d"])
 
             pldf_batch = add_packet_directions_lazypolars(pldf_batch)
             pldf_batch = bin_packet_directions_polars(
-                pldf_batch, nphibins=10, ncosthetabins=10, phibintype="phibinhistoricaldescendingdiscont"
+                pldf_batch, nphibins=10, ncosthetabins=10, phibintype="phibinhistoricaldescendingdiscont",
             )
 
         print(
-            f"   took {time.perf_counter() - time_start_load:.1f} seconds. Writing parquet file...", end="", flush=True
+            f"   took {time.perf_counter() - time_start_load:.1f} seconds. Writing parquet file...", end="", flush=True,
         )
         time_start_write = time.perf_counter()
         tempparquetfilepath = Path(
-            tempfile.mkstemp(dir=packetdir, prefix=f"{parquetfilename}.partial", suffix=".tmp")[1]
+            tempfile.mkstemp(dir=packetdir, prefix=f"{parquetfilename}.partial", suffix=".tmp")[1],
         )
         pldf_batch.lazy().sink_parquet(tempparquetfilepath, compression="zstd", compression_level=12, statistics=True)
         if parquetfilepath.exists():
@@ -503,7 +503,7 @@ def get_rankbatch_parquetfile(
 
 
 def get_packets_batch_parquet_paths(
-    modelpath: str | Path, maxpacketfiles: int | None = None, printwarningsonly: bool = False, virtual: bool = False
+    modelpath: str | Path, maxpacketfiles: int | None = None, printwarningsonly: bool = False, virtual: bool = False,
 ) -> tuple[int, list[Path]]:
     """Get a list of Paths to parquet-formatted packets files, (which are generated from text files if needed)."""
     nprocs = at.get_nprocs(modelpath)
@@ -537,18 +537,18 @@ def get_packets_batch_parquet_paths(
 
 def get_virtual_packets_pl(modelpath: str | Path, maxpacketfiles: int | None = None) -> tuple[int, pl.LazyFrame]:
     nprocs_read, vpacketparquetfiles = get_packets_batch_parquet_paths(
-        modelpath, maxpacketfiles=maxpacketfiles, virtual=True
+        modelpath, maxpacketfiles=maxpacketfiles, virtual=True,
     )
 
     nbatches_read = len(vpacketparquetfiles)
     packetsdatasize_gb = nbatches_read * Path(vpacketparquetfiles[0]).stat().st_size / 1024 / 1024 / 1024
     print(
-        f"  data size is {packetsdatasize_gb:.1f} GB ({nbatches_read} batches * size of {vpacketparquetfiles[0].parts[-1]})"
+        f"  data size is {packetsdatasize_gb:.1f} GB ({nbatches_read} batches * size of {vpacketparquetfiles[0].parts[-1]})",
     )
 
     # add some extra columns to imitate the real packets
     dfpackets = pl.scan_parquet(vpacketparquetfiles).with_columns(
-        type_id=type_ids["TYPE_ESCAPE"], escape_type_id=type_ids["TYPE_RPKT"]
+        type_id=type_ids["TYPE_ESCAPE"], escape_type_id=type_ids["TYPE_RPKT"],
     )
 
     npkts_total = dfpackets.select(pl.len()).collect().item()
@@ -565,7 +565,7 @@ def get_packets_pl_before_filter(modelpath: Path, maxpacketfiles: int | None = N
     print(f"  total parquet size is {packetsdatasize_gb:.1f} GB (from {nbatches_read} batches)")
 
     pldfpackets = pl.scan_parquet(packetsparquetfiles).rename(
-        {"originated_from_positron": "originated_from_particlenotgamma"}, strict=False
+        {"originated_from_positron": "originated_from_particlenotgamma"}, strict=False,
     )
 
     npkts_total = pldfpackets.select(pl.len()).collect().item()
@@ -593,7 +593,7 @@ def get_packets_pl(
     if escape_type is not None:
         assert packet_type is None or packet_type == "TYPE_ESCAPE"
         pldfpackets = pldfpackets.filter(
-            (pl.col("type_id") == type_ids["TYPE_ESCAPE"]) & (pl.col("escape_type_id") == type_ids[escape_type])
+            (pl.col("type_id") == type_ids["TYPE_ESCAPE"]) & (pl.col("escape_type_id") == type_ids[escape_type]),
         )
     elif packet_type is not None and packet_type:
         pldfpackets = pldfpackets.filter(pl.col("type_id") == type_ids[packet_type])
@@ -602,7 +602,7 @@ def get_packets_pl(
 
 
 def get_directionbin(
-    dirx: float, diry: float, dirz: float, nphibins: int, ncosthetabins: int, syn_dir: tuple[float, float, float]
+    dirx: float, diry: float, dirz: float, nphibins: int, ncosthetabins: int, syn_dir: tuple[float, float, float],
 ) -> int:
     dirmag = np.sqrt(dirx**2 + diry**2 + dirz**2)
     pkt_dir = [dirx / dirmag, diry / dirmag, dirz / dirmag]
@@ -640,7 +640,7 @@ def add_packet_directions_lazypolars(dfpackets: pl.LazyFrame | pl.DataFrame) -> 
 
     if "dirmag" not in colnames:
         dfpackets = dfpackets.with_columns(
-            (pl.col("dirx") ** 2 + pl.col("diry") ** 2 + pl.col("dirz") ** 2).sqrt().alias("dirmag")
+            (pl.col("dirx") ** 2 + pl.col("diry") ** 2 + pl.col("dirz") ** 2).sqrt().alias("dirmag"),
         )
 
     if "costheta" not in colnames:
@@ -650,7 +650,7 @@ def add_packet_directions_lazypolars(dfpackets: pl.LazyFrame | pl.DataFrame) -> 
                 / pl.col("dirmag")
             )
             .cast(pl.Float32)
-            .alias("costheta")
+            .alias("costheta"),
         )
 
     if "phi" not in colnames:
@@ -668,7 +668,7 @@ def add_packet_directions_lazypolars(dfpackets: pl.LazyFrame | pl.DataFrame) -> 
                 / float(np.linalg.norm(vec2))
             )
             .cast(pl.Float32)
-            .alias("cosphi")
+            .alias("cosphi"),
         )
 
         vec3 = np.cross(vec2, syn_dir)  # -xhat if syn_dir is zhat
@@ -677,7 +677,7 @@ def add_packet_directions_lazypolars(dfpackets: pl.LazyFrame | pl.DataFrame) -> 
         dfpackets = dfpackets.with_columns(
             ((pl.col("vec1_x") * vec3[0] + pl.col("vec1_y") * vec3[1] + pl.col("vec1_z") * vec3[2]) / pl.col("dirmag"))
             .cast(pl.Float32)
-            .alias("testphi")
+            .alias("testphi"),
         )
 
         dfpackets = dfpackets.with_columns(
@@ -688,7 +688,7 @@ def add_packet_directions_lazypolars(dfpackets: pl.LazyFrame | pl.DataFrame) -> 
                 .otherwise(pl.col("cosphi").arccos())
             )
             .cast(pl.Float32)
-            .alias("phi")
+            .alias("phi"),
         )
 
     return dfpackets.drop(["dirmag", "vec1_x", "vec1_y", "vec1_z"])
@@ -699,7 +699,7 @@ def bin_packet_directions_polars(
     nphibins: int | None = None,
     ncosthetabins: int | None = None,
     phibintype: t.Literal[
-        "phibinhistoricaldescendingdiscont", "phibinmonotonicasc"
+        "phibinhistoricaldescendingdiscont", "phibinmonotonicasc",
     ] = "phibinhistoricaldescendingdiscont",
 ) -> pl.LazyFrame:
     dfpackets = dfpackets.lazy()
@@ -711,13 +711,13 @@ def bin_packet_directions_polars(
 
     dfpackets = dfpackets.with_columns(
         pl.min_horizontal(
-            ((pl.col("costheta") + 1) / 2.0 * ncosthetabins).fill_nan(0).cast(pl.Int32), ncosthetabins - 1
-        ).alias("costhetabin")
+            ((pl.col("costheta") + 1) / 2.0 * ncosthetabins).fill_nan(0).cast(pl.Int32), ncosthetabins - 1,
+        ).alias("costhetabin"),
     )
 
     if phibintype == "phibinmonotonicasc":
         dfpackets = dfpackets.with_columns(
-            (pl.col("phi") / 2.0 / math.pi * nphibins).fill_nan(0.0).cast(pl.Int32).alias("phibinmonotonicasc")
+            (pl.col("phi") / 2.0 / math.pi * nphibins).fill_nan(0.0).cast(pl.Int32).alias("phibinmonotonicasc"),
         )
     else:
         # for historical consistency, this binning method decreases phi angle with increasing bin index
@@ -730,14 +730,14 @@ def bin_packet_directions_polars(
             )
             .fill_nan(0)
             .cast(pl.Int32)
-            .alias("phibin")
+            .alias("phibin"),
         ).with_columns((pl.col("costhetabin") * nphibins + pl.col("phibin")).cast(pl.Int32).alias("dirbin"))
 
     return dfpackets
 
 
 def make_3d_histogram_from_packets(
-    modelpath: str | Path, timestep_min: int, timestep_max: int | None = None, em_time: bool = True
+    modelpath: str | Path, timestep_min: int, timestep_max: int | None = None, em_time: bool = True,
 ) -> npt.NDArray[np.floating]:
     if timestep_max is None:
         timestep_max = timestep_min
@@ -765,7 +765,7 @@ def make_3d_histogram_from_packets(
     dfpackets = dfpackets.filter(
         ((pl.col("em_time") / 86400.0) if em_time else pl.col("t_arrive_d"))
         .cast(pl.Float32)
-        .is_between(timeminarray[timestep_min], timemaxarray[timestep_max])
+        .is_between(timeminarray[timestep_min], timemaxarray[timestep_max]),
     )
 
     emission_position3d_lists = [
@@ -805,7 +805,7 @@ def make_3d_histogram_from_packets(
 
 
 def make_3d_grid(
-    modeldata: pd.DataFrame, vmax_cms: float
+    modeldata: pd.DataFrame, vmax_cms: float,
 ) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     grid = round(len(modeldata["inputcellid"]) ** (1.0 / 3.0))
     xgrid = np.zeros(grid)
@@ -832,7 +832,7 @@ def get_mean_packet_emission_velocity_per_ts(
     escape_angles: int | None = None,
 ) -> pl.DataFrame:
     nprocs_read, dfpackets = get_packets_pl(
-        modelpath, maxpacketfiles=maxpacketfiles, packet_type=packet_type, escape_type=escape_type
+        modelpath, maxpacketfiles=maxpacketfiles, packet_type=packet_type, escape_type=escape_type,
     )
     dfpackets = add_derived_columns_lazy(dfpackets, modelpath=modelpath)
     assert nprocs_read > 0
@@ -880,7 +880,7 @@ def bin_and_sum(
             (pl.col(bincol).cut(breaks=bins, labels=[str(x) for x in range(-1, len(bins))]))
             .cast(pl.Utf8)
             .cast(pl.Int32)
-            .alias(f"{bincol}_bin")
+            .alias(f"{bincol}_bin"),
         )
     )
 

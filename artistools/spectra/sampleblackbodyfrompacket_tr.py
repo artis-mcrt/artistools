@@ -99,7 +99,7 @@ for timestep, timedays in enumerate(arr_tstart):
     # print('ts', timestep, 'low', timelow, 'high', timehigh)
 
     dfpackets_timestep = dfpackets.query(
-        "@timelow < escape_time - (posx * dirx + posy * diry + posz * dirz) / @c_cgs < @timehigh", inplace=False
+        "@timelow < escape_time - (posx * dirx + posy * diry + posz * dirz) / @c_cgs < @timehigh", inplace=False,
     )
     # dfpackets_timestep = dfpackets.query('t_arrive_d > @timelow and t_arrive_d < @timehigh', inplace=False).copy()
 

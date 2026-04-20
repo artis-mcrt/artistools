@@ -41,8 +41,8 @@ def plot_deposition_thermalisation(
 
     depdata = at.get_deposition(modelpath).collect()
 
-    color_gamma = axis._get_lines.get_next_color()  # type: ignore[attr-defined] # noqa: SLF001 # pyright: ignore[reportAttributeAccessIssue]
-    color_gamma = axis._get_lines.get_next_color()  # type: ignore[attr-defined] # noqa: SLF001 # pyright: ignore[reportAttributeAccessIssue]
+    color_gamma = axis._get_lines.get_next_color()  # type: ignore[attr-defined] # pyright: ignore[reportAttributeAccessIssue]
+    color_gamma = axis._get_lines.get_next_color()  # type: ignore[attr-defined] # pyright: ignore[reportAttributeAccessIssue]
 
     axis.plot(
         depdata["tmid_days"],
@@ -53,7 +53,7 @@ def plot_deposition_thermalisation(
         ),
     )
 
-    color_beta = axis._get_lines.get_next_color()  # type: ignore[attr-defined] # noqa: SLF001 # pyright: ignore[reportAttributeAccessIssue]
+    color_beta = axis._get_lines.get_next_color()  # type: ignore[attr-defined] # pyright: ignore[reportAttributeAccessIssue]
 
     if "eps_elec_Lsun" in depdata:
         axis.plot(
@@ -338,7 +338,7 @@ def plot_artis_lightcurve(
                     .select(
                         cs.by_name(["time", "lum"], require_all=True)
                         | cs.by_name("packetcount", require_all=False)
-                        | cs.by_name(["lum_cmf"] if args.plotcmf else [])
+                        | cs.by_name(["lum_cmf"] if args.plotcmf else []),
                     ),
                     colname="time",
                     minval=args.timemin,
@@ -347,7 +347,7 @@ def plot_artis_lightcurve(
                 for dirbin in dirbins
             ),
             strict=True,
-        )
+        ),
     )
     lctimemin = lcdataframes[dirbins[0]].select(pl.min("time")).item()
     lctimemax = lcdataframes[dirbins[0]].select(pl.max("time")).item()
@@ -365,7 +365,7 @@ def plot_artis_lightcurve(
     except FileNotFoundError:
         print(
             " range of validity: could not determine due to missing files "
-            "(requires deposition.out, input.txt, model.txt)"
+            "(requires deposition.out, input.txt, model.txt)",
         )
         nts_last, validrange_start_days, validrange_end_days = None, -math.inf, math.inf
 
@@ -392,7 +392,7 @@ def plot_artis_lightcurve(
                     label_with_tags = None
                 # Update plotkwargs with viewing angle colour
                 plotkwargs, colorindex = get_viewinganglecolor_for_colorbar(
-                    dirbin, costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, plotkwargs, args
+                    dirbin, costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, plotkwargs, args,
                 )
                 if args.average_over_phi_angle:
                     plotkwargs["color"] = "lightgrey"
@@ -478,7 +478,7 @@ def plot_artis_lightcurve(
 
     if args.plotdeposition or args.plotthermalisation:
         plot_deposition_thermalisation(
-            axis, axistherm, modelpath, label=linelabel, args=args, modelname=linelabel, **plotkwargs
+            axis, axistherm, modelpath, label=linelabel, args=args, modelname=linelabel, **plotkwargs,
         )
 
     return lcdataframes
@@ -592,7 +592,7 @@ def make_lightcurve_plot(
                     try:
                         dfnuclides = at.get_nuclides(modelpath=modelpath)
                         _, dfpackets = at.packets.get_packets_pl(
-                            modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type=escape_type
+                            modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type=escape_type,
                         )
                         top_nuclides = (
                             at.misc
@@ -664,7 +664,7 @@ def make_lightcurve_plot(
         if args.plotthermalisation:
             assert axistherm is not None
             axistherm.legend(
-                loc="upper right", handlelength=2, frameon=args.legendframeon, numpoints=1, prop={"size": 9}
+                loc="upper right", handlelength=2, frameon=args.legendframeon, numpoints=1, prop={"size": 9},
             )
 
     axis.set_xlabel(r"Time [days]")
@@ -689,7 +689,7 @@ def make_lightcurve_plot(
         if "{" in axis.get_ylabel() and not args.logscaley:
             axis.yaxis.set_major_formatter(at.plottools.ExponentLabelFormatter(axis.get_ylabel()))
             axis.yaxis.set_major_locator(
-                mplticker.MaxNLocator(nbins="auto", steps=[1, 2, 4, 5, 8, 10], integer=True, prune=None)
+                mplticker.MaxNLocator(nbins="auto", steps=[1, 2, 4, 5, 8, 10], integer=True, prune=None),
             )
 
     if args.colorbarcostheta or args.colorbarphi:
@@ -844,8 +844,8 @@ def make_colorbar_viewingangles_colormap() -> t.Any:
 
 def get_viewinganglecolor_for_colorbar(
     angle: int,
-    costheta_viewing_angle_bins: list[str],  # noqa: ARG001
-    phi_viewing_angle_bins: list[str],  # noqa: ARG001
+    costheta_viewing_angle_bins: list[str],
+    phi_viewing_angle_bins: list[str],
     scaledmap: t.Any,
     plotkwargs: dict[str, t.Any],
     args: argparse.Namespace,
@@ -867,7 +867,7 @@ def get_viewinganglecolor_for_colorbar(
 
 
 def make_colorbar_viewingangles(
-    phi_viewing_angle_bins: list[str],  # noqa: ARG001
+    phi_viewing_angle_bins: list[str],
     scaledmap: t.Any,
     args: argparse.Namespace,
     fig: mplfig.Figure | None = None,
@@ -924,7 +924,7 @@ def make_band_lightcurves_plot(
 
     if args.colorbarcostheta or args.colorbarphi:
         costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(
-            usedegrees=args.usedegrees
+            usedegrees=args.usedegrees,
         )
         scaledmap = make_colorbar_viewingangles_colormap()
 
@@ -937,7 +937,7 @@ def make_band_lightcurves_plot(
             modelname = at.get_model_name(modelpath)
             print(f"Reading spectra: {modelname} (angle {angle})")
             band_lightcurve_data = at.lightcurve.generate_band_lightcurve_data(
-                modelpath, args, angle, modelnumber=modelnumber
+                modelpath, args, angle, modelnumber=modelnumber,
             )
 
             if modelnumber == 0 and args.plot_hesma_model:  # TODO: does this work?
@@ -1017,7 +1017,7 @@ def make_band_lightcurves_plot(
                     # Update plotkwargs with viewing angle colour
                     plotkwargs["label"] = None
                     plotkwargs, _ = get_viewinganglecolor_for_colorbar(
-                        angle, costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, plotkwargs, args
+                        angle, costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, plotkwargs, args,
                     )
 
                 if args.linestyle:
@@ -1075,7 +1075,7 @@ def colour_evolution_plot(
                 filter_names = filters.split("-")
                 args.filter = filter_names
                 band_lightcurve_data = at.lightcurve.generate_band_lightcurve_data(
-                    modelpath, args, angle=angle, modelnumber=modelnumber
+                    modelpath, args, angle=angle, modelnumber=modelnumber,
                 )
 
                 plot_times, colour_delta_mag = at.lightcurve.get_colour_delta_mag(band_lightcurve_data, filter_names)
@@ -1089,7 +1089,7 @@ def colour_evolution_plot(
                 if args.color and args.plotviewingangle:
                     print(
                         "WARNING: -color argument will not work with viewing angles for colour evolution plots,"
-                        "colours are taken from color_list array instead"
+                        "colours are taken from color_list array instead",
                     )
                     # plotkwargs["color"] = color_list[angle_counter]  # index instead of angle_counter??
                     angle_counter += 1
@@ -1215,7 +1215,7 @@ def plot_lightcurve_from_refdata(
             )  # gs
 
             filter_data[filter_name]["dered"] = apply(
-                ccm89(filters[:], a_v=-metadata["a_v"], r_v=metadata["r_v"]), filter_data[filter_name]["flux"]
+                ccm89(filters[:], a_v=-metadata["a_v"], r_v=metadata["r_v"]), filter_data[filter_name]["flux"],
             )
 
             filter_data[filter_name]["magnitude"] = (
@@ -1294,7 +1294,7 @@ def plot_color_evolution_from_data(
             )
 
             filter_data[i]["dered"] = apply(
-                ccm89(filters[:], a_v=-metadata["a_v"], r_v=metadata["r_v"]), filter_data[i]["flux"]
+                ccm89(filters[:], a_v=-metadata["a_v"], r_v=metadata["r_v"]), filter_data[i]["flux"],
             )
 
             filter_data[i]["magnitude"] = (
@@ -1344,13 +1344,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-dashes", default=[], nargs="*", help="Dashes property of lines")
 
     parser.add_argument(
-        "-figscale", type=float, default=1.6, help="Scale factor for plot area. 1.0 is for single-column"
+        "-figscale", type=float, default=1.6, help="Scale factor for plot area. 1.0 is for single-column",
     )
 
     parser.add_argument("--frompackets", action="store_true", help="Read packets files instead of light_curve.out")
 
     parser.add_argument(
-        "-maxpacketfiles", "-maxpacketsfiles", type=int, default=None, help="Limit the number of packet files read"
+        "-maxpacketfiles", "-maxpacketsfiles", type=int, default=None, help="Limit the number of packet files read",
     )
 
     parser.add_argument("--gamma", action="store_true", help="Make light curve from gamma rays")
@@ -1385,15 +1385,15 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--plotdeposition", action="store_true", help="Plot model deposition rates")
 
     parser.add_argument(
-        "--plotthermalisation", action="store_true", help="Plot thermalisation rates (in separate plot)"
+        "--plotthermalisation", action="store_true", help="Plot thermalisation rates (in separate plot)",
     )
 
     parser.add_argument(
-        "-topnucs", type=int, default=0, help="Show light curves from top n nuclides energy contributions."
+        "-topnucs", type=int, default=0, help="Show light curves from top n nuclides energy contributions.",
     )
 
     parser.add_argument(
-        "--use_pellet_decay_time", action="store_true", help="Use pellet decay time instead of observer arrival time"
+        "--use_pellet_decay_time", action="store_true", help="Use pellet decay time instead of observer arrival time",
     )
 
     parser.add_argument("--magnitude", action="store_true", help="Plot light curves in magnitudes")
@@ -1427,7 +1427,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "-plotvspecpol", type=int, nargs="+", help="Plot vspecpol. Expects int for spec number in vspecpol files"
+        "-plotvspecpol", type=int, nargs="+", help="Plot vspecpol. Expects int for spec number in vspecpol files",
     )
 
     parser.add_argument(
@@ -1451,11 +1451,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-ymin", type=float, default=None, help="Plot range: y-axis")
 
     parser.add_argument(
-        "-timemin", "-timedaysmin", "-xmin", type=float, default=None, help="Plot range: x-axis minimum"
+        "-timemin", "-timedaysmin", "-xmin", type=float, default=None, help="Plot range: x-axis minimum",
     )
 
     parser.add_argument(
-        "-timemax", "-timedaysmax", "-xmax", type=float, default=None, help="Plot range: x-axis maximum"
+        "-timemax", "-timedaysmax", "-xmax", type=float, default=None, help="Plot range: x-axis maximum",
     )
 
     parser.add_argument("--logscalex", action="store_true", help="Use log scale for horizontal axis")
@@ -1471,11 +1471,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "-refspeccolors", default=["0.0", "0.3", "0.5"], nargs="*", help="Set a list of color for reference spectra"
+        "-refspeccolors", default=["0.0", "0.3", "0.5"], nargs="*", help="Set a list of color for reference spectra",
     )
 
     parser.add_argument(
-        "-refspecmarkers", default=["o", "s", "h"], nargs="*", help="Set a list of markers for reference spectra"
+        "-refspecmarkers", default=["o", "s", "h"], nargs="*", help="Set a list of markers for reference spectra",
     )
 
     parser.add_argument(
@@ -1557,11 +1557,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "--noerrorbars", action="store_true", help="Don't plot error bars on viewing angle scatter plots"
+        "--noerrorbars", action="store_true", help="Don't plot error bars on viewing angle scatter plots",
     )
 
     parser.add_argument(
-        "--noangleaveraged", action="store_true", help="Don't plot angle averaged values on viewing angle scatter plots"
+        "--noangleaveraged", action="store_true", help="Don't plot angle averaged values on viewing angle scatter plots",
     )
 
     parser.add_argument(
@@ -1580,13 +1580,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "--colorbarcostheta", action="store_true", help="Colour viewing angles by cos theta and show color bar"
+        "--colorbarcostheta", action="store_true", help="Colour viewing angles by cos theta and show color bar",
     )
 
     parser.add_argument("--colorbarphi", action="store_true", help="Colour viewing angles by phi and show color bar")
 
     parser.add_argument(
-        "--colouratpeak", action="store_true", help="Make scatter plot of colour at peak for viewing angles"
+        "--colouratpeak", action="store_true", help="Make scatter plot of colour at peak for viewing angles",
     )
 
     parser.add_argument(
@@ -1600,7 +1600,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--nomodelname", action="store_true", help="Model name not added to linename in legend")
 
     parser.add_argument(
-        "-legendsubplotnumber", type=int, default=1, help="Subplot number to place legend in. Default is subplot[1]"
+        "-legendsubplotnumber", type=int, default=1, help="Subplot number to place legend in. Default is subplot[1]",
     )
 
     parser.add_argument("-legendposition", type=str, default="best", help="Position of legend in plot. Default is best")
@@ -1642,7 +1642,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             modelpaths.append(elem)
 
     args.color, args.label, args.linestyle, args.dashes, args.linewidth = at.trim_or_pad(
-        len(args.modelpath), args.color, args.label, args.linestyle, args.dashes, args.linewidth
+        len(args.modelpath), args.color, args.label, args.linestyle, args.dashes, args.linewidth,
     )
 
     if args.rpkt is False and not args.gamma:

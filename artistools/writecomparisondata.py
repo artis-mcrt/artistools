@@ -43,7 +43,7 @@ def write_spectra(modelpath: str | Path, selected_timesteps: Sequence[int], outf
 
         for n in reversed(range(len(lambdas))):
             outfile.write(
-                f"{lambdas[n]:.2f} " + " ".join([f"{lum_lambda[n, ts]:.2e}" for ts in selected_timesteps]) + "\n"
+                f"{lambdas[n]:.2f} " + " ".join([f"{lum_lambda[n, ts]:.2e}" for ts in selected_timesteps]) + "\n",
             )
 
 
@@ -186,7 +186,7 @@ def write_lbol_edep(modelpath: str | Path, selected_timesteps: Sequence[int], ou
             if timestep not in selected_timesteps:
                 continue
             f.write(
-                f"{row.time:.2f} {row.lum * at.constants.Lsun_to_erg_per_s:.2e} {row.total_dep_Lsun * at.constants.Lsun_to_erg_per_s:.2e}\n"
+                f"{row.time:.2f} {row.lum * at.constants.Lsun_to_erg_per_s:.2e} {row.total_dep_Lsun * at.constants.Lsun_to_erg_per_s:.2e}\n",
             )
 
 
@@ -225,7 +225,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         try:
             write_lbol_edep(
-                modelpath, selected_timesteps, Path(args.outputpath, f"lbol_edep_{model_id}_artisnebular.txt")
+                modelpath, selected_timesteps, Path(args.outputpath, f"lbol_edep_{model_id}_artisnebular.txt"),
             )
         except FileNotFoundError:
             print("Can't write deposition because files are missing")

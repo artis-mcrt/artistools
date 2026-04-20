@@ -22,7 +22,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-xmin", type=int, default=1000, help="Plot range: minimum wavelength in Angstroms")
     parser.add_argument("-xmax", type=int, default=15000, help="Plot range: maximum wavelength in Angstroms")
     parser.add_argument(
-        "-o", action="store", dest="outputfile", default=defaultoutputfile, help="Filename for PDF file"
+        "-o", action="store", dest="outputfile", default=defaultoutputfile, help="Filename for PDF file",
     )
 
 
@@ -30,7 +30,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     """Plot the macroatom transitions."""
     if args is None:
         parser = argparse.ArgumentParser(
-            formatter_class=at.CustomArgHelpFormatter, description="Plot ARTIS macroatom transitions."
+            formatter_class=at.CustomArgHelpFormatter, description="Plot ARTIS macroatom transitions.",
         )
         addargs(parser)
         at.set_args_from_dict(parser, kwargs)
@@ -72,7 +72,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     print(f"Plotting {len(dfmacroatom)} transitions")
 
     fig, axis = plt.subplots(
-        nrows=1, ncols=1, sharex=True, figsize=(6, 6), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0}
+        nrows=1, ncols=1, sharex=True, figsize=(6, 6), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
     )
 
     axis.annotate(

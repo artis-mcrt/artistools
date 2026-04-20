@@ -271,7 +271,7 @@ def calculate_peak_time_mag_deltam15(
     if args.timemin is None or args.timemax is None:
         print(
             "Trying to calculate peak time / dm15 / rise time with no time range. "
-            "This will give a stupid result. Specify args.timemin and args.timemax"
+            "This will give a stupid result. Specify args.timemin and args.timemax",
         )
         sys.exit(1)
     print(
@@ -281,7 +281,7 @@ def calculate_peak_time_mag_deltam15(
         "timemin and timemax args which set the region of the light curve fitted. "
         "The --test_viewing_angle_fit flag will allow you to check the fitting is "
         "behaving as expected. In general fitting over a smaller region of the    "
-        "light curve tends to produce better fits."
+        "light curve tends to produce better fits.",
     )
     fxfit, xfit = lightcurve_polyfit(time, magnitude, args)
 
@@ -378,7 +378,7 @@ def lightcurve_polyfit(
             "WARNING: polynomial fit method is sensitive to the degrees of   "
             "freedom used in the polynomial fit. Therefore important to check"
             "which degree of freedom used in the polynomial provides the best"
-            "fit using the --test_viewing_angle_fit flag                     "
+            "fit using the --test_viewing_angle_fit flag                     ",
         )
         zfit = np.polyfit(x=time, y=magnitude, deg=deg)
         xfit = np.linspace(args.timemin + 0.5, args.timemax - 0.5, num=1000)
@@ -452,7 +452,7 @@ def set_scatterplot_plotkwargs(modelnumber: int, args: argparse.Namespace) -> tu
 
 
 def update_plotkwargs_for_viewingangle_colorbar(
-    plotkwargsviewingangles: dict[str, t.Any], args: argparse.Namespace
+    plotkwargsviewingangles: dict[str, t.Any], args: argparse.Namespace,
 ) -> dict[str, t.Any]:
     costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(usedegrees=args.usedegrees)
     scaledmap = at.lightcurve.plotlightcurve.make_colorbar_viewingangles_colormap()
@@ -462,7 +462,7 @@ def update_plotkwargs_for_viewingangle_colorbar(
     for angle in angles:
         colorindex: t.Any
         _, colorindex = at.lightcurve.plotlightcurve.get_viewinganglecolor_for_colorbar(
-            angle, costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, plotkwargsviewingangles, args
+            angle, costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, plotkwargsviewingangles, args,
         )
         colors.append(scaledmap.to_rgba(colorindex))
     plotkwargsviewingangles["color"] = colors
@@ -527,10 +527,10 @@ def set_scatterplot_plot_params(args: argparse.Namespace) -> None:
 
 
 def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
-    modelnames: Sequence[str], key: str, args: argparse.Namespace
+    modelnames: Sequence[str], key: str, args: argparse.Namespace,
 ) -> None:
     fig, ax = plt.subplots(
-        nrows=1, ncols=1, sharex=True, figsize=(8, 6), tight_layout={"pad": 0.5, "w_pad": 1.5, "h_pad": 0.3}
+        nrows=1, ncols=1, sharex=True, figsize=(8, 6), tight_layout={"pad": 0.5, "w_pad": 1.5, "h_pad": 0.3},
     )
 
     for ii, modelname in enumerate(modelnames):
@@ -556,7 +556,7 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
                 xvalues_angleaveraged = args.band_risetime_angle_averaged_polyfit[ii]
 
             p0 = ax.scatter(
-                xvalues_angleaveraged, args.band_peakmag_angle_averaged_polyfit[ii], **plotkwargsangleaveraged
+                xvalues_angleaveraged, args.band_peakmag_angle_averaged_polyfit[ii], **plotkwargsangleaveraged,
             )
             args.plotvalues.append((a0, p0))
         else:
@@ -614,7 +614,7 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
 
 def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
     fig, ax = plt.subplots(
-        nrows=1, ncols=1, sharex=True, figsize=(8, 6), tight_layout={"pad": 0.5, "w_pad": 1.5, "h_pad": 0.3}
+        nrows=1, ncols=1, sharex=True, figsize=(8, 6), tight_layout={"pad": 0.5, "w_pad": 1.5, "h_pad": 0.3},
     )
 
     for modelnumber, modelpath in enumerate(args.modelpath):
@@ -633,7 +633,7 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
             sys.exit(1)
 
         second_band_brightness: t.Any = second_band_brightness_at_peak_first_band(
-            data, bands, modelpath, modelnumber, args
+            data, bands, modelpath, modelnumber, args,
         )
 
         data[f"{bands[1]}at{bands[0]}max"] = second_band_brightness
@@ -680,14 +680,14 @@ def second_band_brightness_at_peak_first_band(
     second_band_brightness = []
     for anglenumber, _ in enumerate(data[f"time_{bands[0]}max"]):
         lightcurve_data = at.lightcurve.generate_band_lightcurve_data(
-            modelpath, args, anglenumber, modelnumber=modelnumber
+            modelpath, args, anglenumber, modelnumber=modelnumber,
         )
         time, brightness_in_mag = at.lightcurve.get_band_lightcurve(lightcurve_data, bands[1], args)
 
         fxfit, xfit = lightcurve_polyfit(time, brightness_in_mag, args)
 
         closest_list_time_to_first_band_peak = at.match_closest_time(
-            reftime=data[f"time_{bands[0]}max"][anglenumber], searchtimes=xfit
+            reftime=data[f"time_{bands[0]}max"][anglenumber], searchtimes=xfit,
         )
 
         for ii, xfits in enumerate(xfit):
@@ -703,7 +703,7 @@ def second_band_brightness_at_peak_first_band(
 
 
 def peakmag_risetime_declinerate_init(
-    modelpaths: list[str | Path], filternames_conversion_dict: dict[str, str], args: argparse.Namespace
+    modelpaths: list[str | Path], filternames_conversion_dict: dict[str, str], args: argparse.Namespace,
 ) -> None:
     # if args.calculate_peak_time_mag_deltam15_bool:  # If there's viewing angle scatter plot stuff define some arrays
     args.plotvalues = []  # a0 and p0 values for viewing angle scatter plots
@@ -739,7 +739,7 @@ def peakmag_risetime_declinerate_init(
             print(f"Reading spectra: {modelname}")
             if args.filter:
                 lightcurve_data_filters = at.lightcurve.generate_band_lightcurve_data(
-                    modelpath, args, angle, modelnumber=modelnumber
+                    modelpath, args, angle, modelnumber=modelnumber,
                 )
                 plottinglist = args.filter
             elif args.plotviewingangle:
@@ -760,7 +760,7 @@ def peakmag_risetime_declinerate_init(
 
                     lightcurve_data = lightcurve_data.replace([np.inf, -np.inf], 0)
                     brightness = np.array(
-                        [mag for mag in lightcurve_data["mag"] if mag != 0], dtype=np.float64
+                        [mag for mag in lightcurve_data["mag"] if mag != 0], dtype=np.float64,
                     )  # drop times with 0 brightness
                     time = [
                         t for t, mag in zip(lightcurve_data["time"], lightcurve_data["mag"], strict=False) if mag != 0
@@ -799,7 +799,7 @@ def peakmag_risetime_declinerate_init(
 
 def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Namespace) -> None:
     fig, axis = plt.subplots(
-        nrows=1, ncols=1, sharey=True, figsize=(8, 5), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0}
+        nrows=1, ncols=1, sharey=True, figsize=(8, 5), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
     )
 
     costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(usedegrees=args.usedegrees)
@@ -815,7 +815,7 @@ def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Names
     for angleindex, lcdata in lcdataframes.items():
         angle = angleindex
         plotkwargs, _ = at.lightcurve.plotlightcurve.get_viewinganglecolor_for_colorbar(
-            angle, costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, plotkwargs, args
+            angle, costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, plotkwargs, args,
         )
 
         lumattime = lcdata.filter(pl.col("time") == float(timetoplot)).select("lum").collect().item(0, 0)

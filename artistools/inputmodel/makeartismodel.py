@@ -13,7 +13,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-modelpath", default=[], nargs="*", type=Path, help="Path to input model file")
 
     parser.add_argument(
-        "--downscale3dgrid", action="store_true", help="Downscale a 3D ARTIS model to smaller grid size"
+        "--downscale3dgrid", action="store_true", help="Downscale a 3D ARTIS model to smaller grid size",
     )
 
     parser.add_argument("-inputgridsize", default=200, type=int, help="Size of big model grid for downscale script")
@@ -29,13 +29,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "--makemodelfromgriddata", action="store_true", help="Make ARTIS model files from SPH grid.dat file"
+        "--makemodelfromgriddata", action="store_true", help="Make ARTIS model files from SPH grid.dat file",
     )
 
     parser.add_argument("-pathtogriddata", default=".", help="Path to SPH grid.dat file")
 
     parser.add_argument(
-        "--fillcentralhole", action="store_true", help="Fill hole in middle of ejecta from SPH kilonova model"
+        "--fillcentralhole", action="store_true", help="Fill hole in middle of ejecta from SPH kilonova model",
     )
 
     parser.add_argument(
@@ -45,7 +45,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "--makeenergyinputfiles", action="store_true", help="Downscale a 3D ARTIS model to smaller grid size"
+        "--makeenergyinputfiles", action="store_true", help="Downscale a 3D ARTIS model to smaller grid size",
     )
 
     parser.add_argument("-outputpath", "-o", default=".", help="Folder for output")
@@ -69,7 +69,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if args.downscale3dgrid:
         at.inputmodel.downscale3dgrid.make_downscaled_3d_grid(
-            modelpath=Path(args.modelpath[0]), outputgridsize=args.outputgridsize
+            modelpath=Path(args.modelpath[0]), outputgridsize=args.outputgridsize,
         )
         return
 
@@ -112,7 +112,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if args.makemodelfromgriddata:
         print(args)
         at.inputmodel.modelfromhydro.makemodelfromgriddata(
-            gridfolderpath=args.pathtogriddata, outputpath=args.modelpath[0], args=args
+            gridfolderpath=args.pathtogriddata, outputpath=args.modelpath[0], args=args,
         )
 
     if args.makeenergyinputfiles:

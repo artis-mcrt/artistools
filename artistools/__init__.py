@@ -19,7 +19,7 @@ if sys.version_info >= (3, 15) and hasattr(sys, "set_lazy_imports_filter") and h
                 "pyarrow._compute",
                 "typing",
             ))
-        )
+        ),
     )
     sys.set_lazy_imports("all")
 

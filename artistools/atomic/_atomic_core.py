@@ -79,7 +79,7 @@ def parse_adata(
 
 
 def parse_phixsdata(
-    phixs_filename: Path | str, ionlist: Collection[tuple[int, int]] | None = None
+    phixs_filename: Path | str, ionlist: Collection[tuple[int, int]] | None = None,
 ) -> dict[tuple[int, int, int], tuple[npt.NDArray[np.floating[t.Any]], npt.NDArray[np.floating[t.Any]]]]:
     firstlevelnumber = 1
     phixsdict = {}
@@ -87,7 +87,7 @@ def parse_phixsdata(
         nphixspoints = int(fphixs.readline())
         phixsnuincrement = float(fphixs.readline())
         xgrid = np.linspace(
-            1.0, 1.0 + phixsnuincrement * nphixspoints, num=nphixspoints, endpoint=False, dtype=np.float64
+            1.0, 1.0 + phixsnuincrement * nphixspoints, num=nphixspoints, endpoint=False, dtype=np.float64,
         )
         for line in fphixs:
             if not line.strip():
@@ -116,7 +116,7 @@ def parse_phixsdata(
             if not ionlist or (Z, lowerion_stage) in ionlist:
                 phixslist = [float(fphixs.readline()) * 1e-18 for _ in range(nphixspoints)]
                 phixstable = np.array(
-                    list(zip(xgrid, phixslist, strict=True)), dtype=[("x", np.float64), ("sigma_cm2", np.float32)]
+                    list(zip(xgrid, phixslist, strict=True)), dtype=[("x", np.float64), ("sigma_cm2", np.float32)],
                 )
 
                 phixsdict[Z, lowerion_stage, lowerionlevel] = (nptargetlist, phixstable)
@@ -129,7 +129,7 @@ def parse_phixsdata(
 
 
 def add_transition_columns(
-    dftransitions: pl.LazyFrame | pl.DataFrame, dflevels: pl.DataFrame | pl.LazyFrame, columns: Sequence[str]
+    dftransitions: pl.LazyFrame | pl.DataFrame, dflevels: pl.DataFrame | pl.LazyFrame, columns: Sequence[str],
 ) -> pl.LazyFrame:
     """Add columns to a polars DataFrame of transitions."""
     dftransitions = dftransitions.lazy()
@@ -181,7 +181,7 @@ def add_transition_columns(
 
 
 def get_transitiondata(
-    modelpath: str | Path, ionlist: Collection[tuple[int, int]] | None = None, quiet: bool = False
+    modelpath: str | Path, ionlist: Collection[tuple[int, int]] | None = None, quiet: bool = False,
 ) -> dict[tuple[int, int], pl.LazyFrame]:
     """Return a dictionary of transitions."""
     ionlist = set(ionlist) if ionlist else None

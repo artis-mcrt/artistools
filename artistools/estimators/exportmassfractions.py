@@ -15,7 +15,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     if args is None:
         parser = argparse.ArgumentParser(
-            formatter_class=at.CustomArgHelpFormatter, description="Create solar r-process pattern in ARTIS format."
+            formatter_class=at.CustomArgHelpFormatter, description="Create solar r-process pattern in ARTIS format.",
         )
 
         addargs(parser)

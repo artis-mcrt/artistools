@@ -19,7 +19,7 @@ CLIGHT = 2.99792458e10
 
 
 def read_ejectasnapshot(
-    pathtosnapshot: str | Path, usecols: list[str] | None, downsamplefactor: int | None
+    pathtosnapshot: str | Path, usecols: list[str] | None, downsamplefactor: int | None,
 ) -> pl.DataFrame:
     column_names = [
         "id",
@@ -63,7 +63,7 @@ def read_ejectasnapshot(
             usecols=usecols,
             dtype={"id": "int64[pyarrow]", **{col: "float64[pyarrow]" for col in column_names if col != "id"}},
             dtype_backend="pyarrow",
-        )
+        ),
     )
 
     if downsamplefactor is not None and downsamplefactor > 1:
@@ -104,7 +104,7 @@ def get_snapshot_time_geomunits(pathtogriddata: Path | str) -> tuple[float, floa
             simulation_end_time_geomunits = float(line1.split()[2])
             print(
                 f"Found simulation snapshot time to be {simulation_end_time_geomunits} "
-                f"({simulation_end_time_geomunits * 4.926e-6} s)"
+                f"({simulation_end_time_geomunits * 4.926e-6} s)",
             )
 
         mergertime_geomunits = get_merger_time_geomunits(pathtogriddata)
@@ -118,7 +118,7 @@ def get_snapshot_time_geomunits(pathtogriddata: Path | str) -> tuple[float, floa
 
 
 def read_griddat_file(
-    pathtogriddata: str | Path, targetmodeltime_days: float | None = None
+    pathtogriddata: str | Path, targetmodeltime_days: float | None = None,
 ) -> tuple[pd.DataFrame, float, float, float, dict[str, t.Any]]:
     griddatfilepath = Path(pathtogriddata) / "grid.dat"
 
@@ -134,7 +134,7 @@ def read_griddat_file(
             "posx": "pos_x_min",  # for compatibility with fortran maptogrid script
             "posy": "pos_y_min",
             "posz": "pos_z_min",
-        }
+        },
     )
     # griddata in geom units
     griddata.loc[:, "rho"] = griddata["rho"].fillna(0.0)
@@ -174,12 +174,12 @@ def read_griddat_file(
     corner_vmax = math.sqrt(3 * vmax**2)
     print(
         f"vmax {vmax:.2e} cm/s ({vmax / 29979245800:.2f} * c) per component "
-        f"real corner vmax {corner_vmax:.2e} cm/s ({corner_vmax / 29979245800:.2f} * c)"
+        f"real corner vmax {corner_vmax:.2e} cm/s ({corner_vmax / 29979245800:.2f} * c)",
     )
 
     if targetmodeltime_days is not None:
         griddata, modelmeta = at.inputmodel.scale_model_to_time(
-            targetmodeltime_days=targetmodeltime_days, t_model_days=t_model_days, dfmodel=griddata
+            targetmodeltime_days=targetmodeltime_days, t_model_days=t_model_days, dfmodel=griddata,
         )
         t_model_days = targetmodeltime_days
         xmax = -griddata.pos_x_min.min()
@@ -286,8 +286,8 @@ def mirror_model_in_axis(griddata: pd.DataFrame) -> pd.DataFrame:
 def add_mass_to_center(
     griddata: pd.DataFrame,
     t_model_in_days: float,
-    vmax: float,  # noqa: ARG001
-    args: argparse.Namespace,  # noqa: ARG001
+    vmax: float,
+    args: argparse.Namespace,
 ) -> pd.DataFrame:
 
     print(griddata)
@@ -318,13 +318,13 @@ def add_mass_to_center(
             # if griddata['rho'][i] == 0:
             print("Inner empty cells")
             print(
-                cellid, griddata["pos_x_min"][i], griddata["pos_y_min"][i], griddata["pos_z_min"][i], griddata["rho"][i]
+                cellid, griddata["pos_x_min"][i], griddata["pos_y_min"][i], griddata["pos_z_min"][i], griddata["rho"][i],
             )
             griddata["rho"][i] += density_hole
             griddata["cellYe"][i] = max(griddata["cellYe"][i], 0.4)
             # print("Inner empty cells filled")
             print(
-                cellid, griddata["pos_x_min"][i], griddata["pos_y_min"][i], griddata["pos_z_min"][i], griddata["rho"][i]
+                cellid, griddata["pos_x_min"][i], griddata["pos_y_min"][i], griddata["pos_z_min"][i], griddata["rho"][i],
             )
 
     return griddata
@@ -343,7 +343,7 @@ def makemodelfromgriddata(
     if args is None:
         args = argparse.Namespace()
     pddfmodel, t_model_days, t_mergertime_s, vmax, modelmeta = at.inputmodel.modelfromhydro.read_griddat_file(
-        pathtogriddata=gridfolderpath, targetmodeltime_days=targetmodeltime_days
+        pathtogriddata=gridfolderpath, targetmodeltime_days=targetmodeltime_days,
     )
 
     if getattr(args, "fillcentralhole", False):
@@ -417,13 +417,13 @@ def makemodelfromgriddata(
 
     if dfgridcontributions is not None:
         at.inputmodel.rprocess_from_trajectory.save_gridparticlecontributions(
-            dfgridcontributions, Path(outputpath, "gridcontributions.txt")
+            dfgridcontributions, Path(outputpath, "gridcontributions.txt"),
         )
 
     if dfelabundances is not None:
         print(f"Writing to {Path(outputpath) / 'abundances.txt'}...")
         at.inputmodel.save_initelemabundances(
-            dfelabundances=dfelabundances, outpath=outputpath, headercommentlines=modelmeta["headercommentlines"]
+            dfelabundances=dfelabundances, outpath=outputpath, headercommentlines=modelmeta["headercommentlines"],
         )
     else:
         at.inputmodel.save_empty_abundance_file(outputfilepath=outputpath, npts_model=len(dfmodel))
@@ -437,7 +437,7 @@ def makemodelfromgriddata(
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
-        "-gridfolderpath", "-i", default=".", help="Path to folder containing grid.dat and gridcontributions.dat"
+        "-gridfolderpath", "-i", default=".", help="Path to folder containing grid.dat and gridcontributions.dat",
     )
     parser.add_argument(
         "-trajectoryroot",
@@ -453,7 +453,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Number of dimensions: 0 for one-zone spherical, 1 for spherically symmetric 1D, 2 for 2D cylindrical, 3 for 3D Cartesian",
     )
     parser.add_argument(
-        "-targetmodeltime_days", "-t", type=float, default=0.1, help="Time in days for the output model snapshot"
+        "-targetmodeltime_days", "-t", type=float, default=0.1, help="Time in days for the output model snapshot",
     )
     parser.add_argument(
         "-scalemass",

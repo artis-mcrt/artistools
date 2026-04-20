@@ -118,14 +118,14 @@ def add_lte_pops(
 
         for columnname, T_exc in columntemperature_tuples:
             dfpop.loc[masknotsuperlevel, columnname] = dfpop.loc[masknotsuperlevel].apply(
-                f_ltepop, args=(T_exc, gs_g, gs_energy, ionlevels), axis=1
+                f_ltepop, args=(T_exc, gs_g, gs_energy, ionlevels), axis=1,
             )
 
         if not dfpop[masksuperlevel].empty:
             levelnumber_sl = (
                 dfpop.query(
                     "modelgridindex == @modelgridindex and timestep == @timestep "
-                    "and Z == @Z and ion_stage == @ion_stage"
+                    "and Z == @Z and ion_stage == @ion_stage",
                 ).level.max()
                 + 1
             )
@@ -134,7 +134,7 @@ def add_lte_pops(
                 if not noprint:
                     print(
                         f"{at.get_elsymbol(Z)} {at.roman_numerals[ion_stage]} "
-                        f"has a superlevel at level {levelnumber_sl}"
+                        f"has a superlevel at level {levelnumber_sl}",
                     )
 
                 for columnname, T_exc in columntemperature_tuples:

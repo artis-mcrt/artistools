@@ -94,7 +94,7 @@ def plot_data(
     filterfunc = at.get_filterfunc(args)
     if filterfunc is not None:
         dflinepoints = dflinepoints.with_columns(
-            pl.col("yvalue_binned").map_batches(filterfunc, return_dtype=pl.self_dtype())
+            pl.col("yvalue_binned").map_batches(filterfunc, return_dtype=pl.self_dtype()),
         )
 
     if startfromzero:
@@ -144,7 +144,7 @@ def plot_data(
         yvalues_binned_min = dflinepoints.select("yvalue_binned_min").collect().get_column("yvalue_binned_min")
         yvalues_binned_max = dflinepoints.select("yvalue_binned_max").collect().get_column("yvalue_binned_max")
         plotobj = ax.fill_between(
-            xvalues_binned, yvalues_binned_min, yvalues_binned_max, alpha=0.2, color=color, linewidth=0, zorder=-2
+            xvalues_binned, yvalues_binned_min, yvalues_binned_max, alpha=0.2, color=color, linewidth=0, zorder=-2,
         )
 
 
@@ -160,7 +160,7 @@ def plot_init_abundances(
     if seriestype == "initmasses":
         estimators = estimators.with_columns(
             (pl.col(massfraccol) * pl.col("mass_g") / 1.989e33).alias(
-                f"init_mass_{massfraccol.removeprefix('init_X_')}"
+                f"init_mass_{massfraccol.removeprefix('init_X_')}",
             )
             for massfraccol in estimators.collect_schema().names()
             if massfraccol.startswith("init_X_")
@@ -237,7 +237,7 @@ def plot_average_ionisation(
         ]) / pl.col(f"nnelement_{elsymb}")
 
         dfplotdata = estimators.with_columns(
-            celltsweight=pl.col(f"nnelement_{elsymb}") * pl.col("deltavol_deltat"), yvalue=expr_charge_per_nuc
+            celltsweight=pl.col(f"nnelement_{elsymb}") * pl.col("deltavol_deltat"), yvalue=expr_charge_per_nuc,
         ).filter(pl.col(f"nnelement_{elsymb}") > 0.0)
 
         plot_data(
@@ -284,8 +284,8 @@ def plot_levelpop(
         .get_levels(modelpath)
         .with_columns(
             levels=pl.col("levels").map_elements(
-                lambda x: x.to_pandas(use_pyarrow_extension_array=True), return_dtype=pl.Object
-            )
+                lambda x: x.to_pandas(use_pyarrow_extension_array=True), return_dtype=pl.Object,
+            ),
         )
         .to_pandas(use_pyarrow_extension_array=True)
     )
@@ -325,7 +325,7 @@ def plot_levelpop(
                     dfnltepops
                     .query(
                         "modelgridindex==@modelgridindex and timestep==@timestep and Z==@atomic_number"
-                        " and ion_stage==@ion_stage and level==@levelindex"
+                        " and ion_stage==@ion_stage and level==@levelindex",
                     )
                     .iloc[0]
                     .n_NLTE
@@ -422,7 +422,7 @@ def plot_multi_ion_series(
                     and compositiondata.filter(
                         (pl.col("Z") == atomic_number)
                         & (pl.col("lowermost_ion_stage") <= ion_stage)
-                        & (pl.col("uppermost_ion_stage") >= ion_stage)
+                        & (pl.col("uppermost_ion_stage") >= ion_stage),
                     ).is_empty()
                 ):
                     missingions.add((atomic_number, ion_stage))
@@ -470,7 +470,7 @@ def plot_multi_ion_series(
             expr_yvals = expr_yvals.cum_sum()
 
         lazyframes.append(
-            estimators.with_columns(celltsweight=pl.col("deltavol_deltat"), yvalue=expr_yvals / expr_normfactor)
+            estimators.with_columns(celltsweight=pl.col("deltavol_deltat"), yvalue=expr_yvals / expr_normfactor),
         )
 
     for seriesindex, (iontuple, dfseries) in enumerate(zip(iontuplelist, pl.collect_all(lazyframes), strict=True)):
@@ -478,7 +478,7 @@ def plot_multi_ion_series(
         plotlabel = str(
             ion_stage
             if hasattr(ion_stage, "lower") and ion_stage != "ALL"
-            else at.get_ionstring(atomic_number, ion_stage, style="chargelatex")
+            else at.get_ionstring(atomic_number, ion_stage, style="chargelatex"),
         )
 
         color = get_elemcolor(atomic_number=atomic_number)
@@ -591,7 +591,7 @@ def plot_series(
 
 
 def get_xlist(
-    xvariable: str, estimators: pl.LazyFrame, timestepslist: Collection[int] | None, args: t.Any
+    xvariable: str, estimators: pl.LazyFrame, timestepslist: Collection[int] | None, args: t.Any,
 ) -> tuple[list[float | int], list[int], list[int], pl.LazyFrame]:
     if timestepslist is not None:
         estimators = estimators.filter(pl.col("timestep").is_in(timestepslist))
@@ -625,7 +625,7 @@ def get_xlist(
         xdeltamax = estimators.select(pl.col("xvalue").sort().diff().max()).collect().item()
         args.xbins = int((xmax - xmin) / xdeltamax)
         print(
-            f"Setting xbins to {args.xbins} based on data range [{xmin}, {xmax}] and largest x interval of {xdeltamax}"
+            f"Setting xbins to {args.xbins} based on data range [{xmin}, {xmax}] and largest x interval of {xdeltamax}",
         )
         if args.xbins <= 3:
             print(f"  would have only {args.xbins} bins. Replacing with 25")
@@ -644,7 +644,7 @@ def get_xlist(
                 .cut(breaks=list(xbinedges), labels=[str(x) for x in range(-1, len(xbinedges))])
                 .cast(pl.Utf8)
                 .cast(pl.Int32)
-                .alias("xbinindex")
+                .alias("xbinindex"),
             )
             .filter(pl.col("xbinindex").is_between(0, len(xmids) - 1, closed="both"))
             .join(pl.LazyFrame({"xvalue_binned": xmids}).with_row_index("xbinindex"), on="xbinindex", how="left")
@@ -824,11 +824,11 @@ def make_figure(
     # ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
     if not args.hidexlabel:
         axes[-1].set_xlabel(
-            f"{at.estimators.get_varname_formatted(xvariable)}{at.estimators.get_units_string(xvariable)}"
+            f"{at.estimators.get_varname_formatted(xvariable)}{at.estimators.get_units_string(xvariable)}",
         )
 
     xlist, mgilist, timestepslist, estimators = get_xlist(
-        xvariable=xvariable, estimators=estimators, timestepslist=timestepslist, args=args
+        xvariable=xvariable, estimators=estimators, timestepslist=timestepslist, args=args,
     )
 
     startfromzero = xvariable.startswith("velocity") or xvariable == "beta"
@@ -908,11 +908,11 @@ def make_figure(
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
-        "-modelpath", default=".", help="Paths to ARTIS folder (or virtual path e.g. codecomparison/ddc10/cmfgen)"
+        "-modelpath", default=".", help="Paths to ARTIS folder (or virtual path e.g. codecomparison/ddc10/cmfgen)",
     )
 
     parser.add_argument(
-        "-modelgridindex", "-cell", "-mgi", type=int, default=None, help="Modelgridindex for time evolution plot"
+        "-modelgridindex", "-cell", "-mgi", type=int, default=None, help="Modelgridindex for time evolution plot",
     )
 
     parser.add_argument("-timestep", "-ts", nargs="?", help="Timestep number for internal structure plot")
@@ -932,7 +932,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-xmax", type=float, default=None, help="Plot range: maximum x value")
 
     parser.add_argument(
-        "-xbins", type=int, default=None, help="Number of x bins between xmax and xmin (or -1 for automatic bin size)"
+        "-xbins", type=int, default=None, help="Number of x bins between xmax and xmin (or -1 for automatic bin size)",
     )
 
     parser.add_argument("--hidexlabel", action="store_true", help="Hide the bottom horizontal axis label")
@@ -975,7 +975,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--nolegend", action="store_true", help="Suppress the legend from the plot")
 
     parser.add_argument(
-        "-figscale", type=float, default=1.0, help="Scale factor for plot area. 1.0 is for single-column"
+        "-figscale", type=float, default=1.0, help="Scale factor for plot area. 1.0 is for single-column",
     )
 
     parser.add_argument("-scalefigwidth", type=float, default=1.0, help="Scale factor for plot width.")
@@ -994,11 +994,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "--colorbyion", action="store_true", help="Populations plots colored by ion rather than element"
+        "--colorbyion", action="store_true", help="Populations plots colored by ion rather than element",
     )
 
     parser.add_argument(
-        "--classicartis", action="store_true", help="Flag to show using output from classic ARTIS branch"
+        "--classicartis", action="store_true", help="Flag to show using output from classic ARTIS branch",
     )
 
     parser.add_argument(
@@ -1045,7 +1045,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         print(f"Setting x variable to {args.x}")
 
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
-        modelpath, args.timestep, args.timemin, args.timemax, args.timedays
+        modelpath, args.timestep, args.timemin, args.timemax, args.timedays,
     )
 
     if args.readonlymgi:
@@ -1060,7 +1060,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     print(
         f"Plotting estimators for '{modelname}' timesteps {timestepmin} to {timestepmax} "
-        f"({args.timemin:.1f} to {args.timemax:.1f}d)"
+        f"({args.timemin:.1f} to {args.timemax:.1f}d)",
     )
 
     if args.readonlymgi:
@@ -1088,7 +1088,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         ]).lazy()
     else:
         estimators = at.estimators.scan_estimators(
-            modelpath=modelpath, modelgridindex=args.modelgridindex, timestep=tuple(timesteps_included)
+            modelpath=modelpath, modelgridindex=args.modelgridindex, timestep=tuple(timesteps_included),
         )
 
     estimators, modelmeta = at.estimators.join_cell_modeldata(estimators=estimators, modelpath=modelpath, verbose=False)
