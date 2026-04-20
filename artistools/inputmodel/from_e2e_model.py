@@ -23,7 +23,7 @@ t_model_init_days = 0.1 * day  # snapshot time is fixed by the npz files
 
 
 def sphkernel(
-    dist: npt.NDArray[np.floating], hsph: float | npt.NDArray[np.floating], nu: float
+    dist: npt.NDArray[np.floating], hsph: float | npt.NDArray[np.float64], nu: float
 ) -> npt.NDArray[np.floating]:
     # smoothing kernel for SPH-like interpolation of particle
     # data
@@ -513,11 +513,11 @@ def map_to_artis(
         if eqsymfac == 1:
             dfmodel = pl.DataFrame({
                 "inputcellid": range(1, numb_cells + 1),
-                "pos_rcyl_mid": (pos_t_s_grid_rad).flatten(order="F"),
-                "pos_z_mid": (pos_t_s_grid_z).flatten(order="F"),
-                "rho": (rho_interpol).flatten(order="F"),
-                "q": (q_ergperg).flatten(order="F"),
-                "Ye": (ye_interpol).flatten(order="F"),
+                "pos_rcyl_mid": (pos_t_s_grid_rad).flatten(order="F").tolist(),
+                "pos_z_mid": (pos_t_s_grid_z).flatten(order="F").tolist(),
+                "rho": (rho_interpol).flatten(order="F").tolist(),
+                "q": (q_ergperg).flatten(order="F").tolist(),
+                "Ye": (ye_interpol).flatten(order="F").tolist(),
             })
         else:
             # equatorial symmetry -> have to reflect
@@ -528,11 +528,11 @@ def map_to_artis(
             ye_interpol = z_reflect(ye_interpol)
             dfmodel = pl.DataFrame({
                 "inputcellid": range(1, numb_cells + 1),
-                "pos_rcyl_mid": (pos_t_s_grid_rad).flatten(order="F"),
-                "pos_z_mid": (pos_t_s_grid_z).flatten(order="F"),
-                "rho": (rho_interpol).flatten(order="F"),
-                "q": (q_ergperg).flatten(order="F"),
-                "Ye": (ye_interpol).flatten(order="F"),
+                "pos_rcyl_mid": (pos_t_s_grid_rad).flatten(order="F").tolist(),
+                "pos_z_mid": (pos_t_s_grid_z).flatten(order="F").tolist(),
+                "rho": (rho_interpol).flatten(order="F").tolist(),
+                "q": (q_ergperg).flatten(order="F").tolist(),
+                "Ye": (ye_interpol).flatten(order="F").tolist(),
             })
 
         assert pos_t_s_grid_rad.shape == (ngridrcyl, ngridz)
@@ -546,12 +546,12 @@ def map_to_artis(
         numb_cells = grid_dims[0] * grid_dims[1] * grid_dims[2]
         dfmodel = pl.DataFrame({
             "inputcellid": range(1, numb_cells + 1),
-            "pos_x_min": (x3d).flatten(order="F"),
-            "pos_y_min": (y3d).flatten(order="F"),
-            "pos_z_min": (z3d).flatten(order="F"),
-            "rho": (rho_interpol).flatten(order="F"),
-            "q": (q_ergperg).flatten(order="F"),
-            "Ye": (ye_interpol).flatten(order="F"),
+            "pos_x_min": (x3d).flatten(order="F").tolist(),
+            "pos_y_min": (y3d).flatten(order="F").tolist(),
+            "pos_z_min": (z3d).flatten(order="F").tolist(),
+            "rho": (rho_interpol).flatten(order="F").tolist(),
+            "q": (q_ergperg).flatten(order="F").tolist(),
+            "Ye": (ye_interpol).flatten(order="F").tolist(),
         })
 
         assert x3d.shape == (grid_dims[0], grid_dims[1], grid_dims[2])
@@ -606,7 +606,7 @@ def map_to_artis(
             pl.Series("vel_r_mid_on_c", vel_r_mid_on_c),
             pl.lit(cell_width**3).alias("volume"),
         ])
-        M_tot_before_replacing = (dfmodel["rho"] * dfmodel["volume"]).sum() / msol
+        M_tot_before_replacing = dfmodel.select(pl.col("rho").dot(pl.col("volume"))).item() / msol
 
         # 2) load dynamical ejecta model
         # load second model as Pandas DF
@@ -797,7 +797,7 @@ def map_to_artis(
             )
             dfmodel = pl.concat([dfmodel_cast, dyn_model_cast]).sort("inputcellid")
 
-            M_tot_after_replacing = (dfmodel["rho"] * dfmodel["volume"]).sum() / msol
+            M_tot_after_replacing = dfmodel.select(pl.col("rho").dot(pl.col("volume"))).item() / msol
 
             # perform mass scalings
             if global_dyn_scale:
@@ -974,9 +974,9 @@ def merge_neighbour_cells(
         "inputcellid": range(1, new_numb_cells + 1),
         "pos_rcyl_mid": np.tile(r_mid_grid, N_cell_z_new),
         "pos_z_mid": np.repeat(z_mid_grid, N_cell_r_new),
-        "rho": new_rho_arr,
-        "q": new_q_arr,
-        "Ye": new_ye_arr,
+        "rho": new_rho_arr.tolist(),
+        "q": new_q_arr.tolist(),
+        "Ye": new_ye_arr.tolist(),
     })
 
     # now map the abundances

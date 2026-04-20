@@ -48,7 +48,7 @@ def plot_deposition_thermalisation(
         depdata["tmid_days"],
         depdata["gammadep_Lsun"] * Lsun_to_erg_per_s,
         **(
-            plotkwargs
+            plotkwargs  # pyright: ignore[reportArgumentType]
             | {"label": plotkwargs["label"] + r" $\dot{E}_{dep,\gamma}$", "linestyle": "dashed", "color": color_gamma}
         ),
     )
@@ -60,7 +60,7 @@ def plot_deposition_thermalisation(
             depdata["tmid_days"],
             depdata["eps_elec_Lsun"] * Lsun_to_erg_per_s,
             **(
-                plotkwargs
+                plotkwargs  # pyright: ignore[reportArgumentType]
                 | {
                     "label": plotkwargs["label"] + r" $\dot{E}_{rad,\beta^-}$",
                     "linestyle": "dotted",
@@ -74,7 +74,7 @@ def plot_deposition_thermalisation(
             depdata["tmid_days"],
             depdata["elecdep_Lsun"] * Lsun_to_erg_per_s,
             **(
-                plotkwargs
+                plotkwargs  # pyright: ignore[reportArgumentType]
                 | {
                     "label": plotkwargs["label"] + r" $\dot{E}_{dep,\beta^-}$",
                     "linestyle": "dashed",
@@ -93,7 +93,7 @@ def plot_deposition_thermalisation(
                 depdata["tmid_days"],
                 depdata["eps_alpha_ana_Lsun"] * Lsun_to_erg_per_s,
                 **(
-                    plotkwargs
+                    plotkwargs  # pyright: ignore[reportArgumentType]
                     | {
                         "label": plotkwargs["label"] + r" $\dot{E}_{rad,\alpha}$ analytical",
                         "linestyle": "solid",
@@ -107,7 +107,7 @@ def plot_deposition_thermalisation(
                 depdata["tmid_days"],
                 depdata["eps_alpha_Lsun"] * Lsun_to_erg_per_s,
                 **(
-                    plotkwargs
+                    plotkwargs  # pyright: ignore[reportArgumentType]
                     | {
                         "label": plotkwargs["label"] + r" $\dot{E}_{rad,\alpha}$",
                         "linestyle": "dashed",
@@ -120,7 +120,7 @@ def plot_deposition_thermalisation(
             depdata["tmid_days"],
             depdata["alphadep_Lsun"] * Lsun_to_erg_per_s,
             **(
-                plotkwargs
+                plotkwargs  # pyright: ignore[reportArgumentType]
                 | {
                     "label": plotkwargs["label"] + r" $\dot{E}_{dep,\alpha}$",
                     "linestyle": "dotted",
@@ -136,7 +136,7 @@ def plot_deposition_thermalisation(
             depdata["tmid_days"],
             f_gamma,
             **(
-                plotkwargs
+                plotkwargs  # pyright: ignore[reportArgumentType]
                 | {
                     "label": modelname + r" $\left(\dot{E}_{dep,\gamma} \middle/ \dot{E}_{rad,\gamma}\right)$",
                     "linestyle": "solid",
@@ -150,7 +150,7 @@ def plot_deposition_thermalisation(
             depdata["tmid_days"],
             f_beta,
             **(
-                plotkwargs
+                plotkwargs  # pyright: ignore[reportArgumentType]
                 | {
                     "label": modelname + r" $\left(\dot{E}_{dep,\beta^-} \middle/ \dot{E}_{rad,\beta^-}\right)$",
                     "linestyle": "solid",
@@ -165,7 +165,7 @@ def plot_deposition_thermalisation(
             depdata["tmid_days"],
             f_alpha,
             **(
-                plotkwargs  # type: ignore[arg-type]
+                plotkwargs  # pyright: ignore[reportArgumentType]
                 | {
                     "label": modelname + r" $\left(\dot{E}_{dep,\alpha} \middle/ \dot{E}_{rad,\alpha}\right)$",
                     "linestyle": "solid",
@@ -192,7 +192,7 @@ def plot_deposition_thermalisation(
         axistherm.plot(
             depdata["tmid_days"],
             barnes_f_gamma,
-            **(plotkwargs | {"label": r"Barnes+2016 $f_\gamma$", "linestyle": "dashed", "color": color_gamma}),
+            **(plotkwargs | {"label": r"Barnes+2016 $f_\gamma$", "linestyle": "dashed", "color": color_gamma}),  # pyright: ignore[reportArgumentType]
         )
 
         e0_beta_mev = 0.5
@@ -206,7 +206,7 @@ def plot_deposition_thermalisation(
         axistherm.plot(
             depdata["tmid_days"],
             barnes_f_beta,
-            **(plotkwargs | {"label": r"Barnes+2016 $f_\beta$", "linestyle": "dashed", "color": color_beta}),
+            **(plotkwargs | {"label": r"Barnes+2016 $f_\beta$", "linestyle": "dashed", "color": color_beta}),  # pyright: ignore[reportArgumentType]
         )
 
         e0_alpha_mev = 6.0
@@ -220,7 +220,7 @@ def plot_deposition_thermalisation(
         axistherm.plot(
             depdata["tmid_days"],
             barnes_f_alpha,
-            **(plotkwargs | {"label": r"Barnes+2016 $f_\alpha$", "linestyle": "dashed", "color": color_alpha}),  # type: ignore[arg-type]
+            **(plotkwargs | {"label": r"Barnes+2016 $f_\alpha$", "linestyle": "dashed", "color": color_alpha}),  # pyright: ignore[reportArgumentType]
         )
 
 
