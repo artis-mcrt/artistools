@@ -1,14 +1,35 @@
+import argparse
 import typing as t
+from collections.abc import Sequence
+from itertools import chain
 from pathlib import Path
+from typing import cast
+from typing import TYPE_CHECKING
 
+import argcomplete
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import polars as pl
 
 import artistools as at
+import artistools.linefluxes
 
 CLIGHT = 2.99792458e10
+MSUN = 1.989e33
 DAY = 86400
+colours = [
+    "tab:blue",
+    "tab:orange",
+    "tab:green",
+    "tab:red",
+    "tab:purple",
+    "tab:brown",
+    "tab:pink",
+    "tab:gray",
+    "tab:olive",
+    "tab:cyan",
+]
 
 
 def make_2d_packets_plot_imshow(modelpath: Path, timestep_min: int, timestep_max: int) -> None:
@@ -197,3 +218,260 @@ def plot_last_emission_velocities_histogram(
     outfilename = f"hist_emission_vel_{timeminarray[timestep_min]:.2f}-{timemaxarray[timestep_max]:.2f}d.pdf"
     fig.savefig(Path(modelpath) / outfilename, format="pdf")
     print(f"open {outfilename}")
+
+
+def get_required_packets(modelpath: Path, Z: Sequence[int], ion_stage: Sequence[int], srII_triplet: bool = False) -> pl.LazyFrame:
+    """Options for this function: Either the Sr II triplet, specific or all ion stages of an element."""
+    # careful: ion_stage is counted from 1 here, i.e. 1 <-> neutral, 2 <-> singly ionized
+
+    # Sr II triplet
+    if srII_triplet:
+        lineindices = list(
+            chain(
+                at.linefluxes.get_closelines(
+                    modelpath=modelpath,
+                    atomic_number=38,
+                    ion_stage=2,
+                    approxlambdalabel=10917,  # 10 914.874 AA
+                    lowerlevelindex=1,  # 4p6.4d 2D,enpercm=14555.9,j=1.5
+                    upperlevelindex=3,
+                )[3],  # 4p6.5p 2P,enpercm=23715.19,j=0.5
+                at.linefluxes.get_closelines(
+                    modelpath=modelpath,
+                    atomic_number=38,
+                    ion_stage=2,
+                    approxlambdalabel=10330,  # 10 327.309 AA
+                    lowerlevelindex=2,  # 4p6.4d 2D,enpercm=14836.24,j=2.5
+                    upperlevelindex=4,
+                )[3],  # 4p6.5p 2P,enpercm=24516.65,j=1.5
+                at.linefluxes.get_closelines(
+                    modelpath=modelpath,
+                    atomic_number=38,
+                    ion_stage=2,
+                    approxlambdalabel=10039,  # 10 036.654 AA
+                    lowerlevelindex=1,  # 4p6.4d 2D,enpercm=14555.9,j=1.5
+                    upperlevelindex=4,
+                )[3],  # 4p6.5p 2P,enpercm=24516.65,j=1.5
+            )
+        )
+    lineindices = at.linefluxes.get_ion_linelist(modelpath=modelpath, atomic_number=Z, ion_stage=ion_stage)
+
+    dfpackets_selected, _ = at.linefluxes.get_packets_with_emtype(
+        modelpath=modelpath, emtypecolumn="absorption_type", lineindices=lineindices, maxpacketfiles=None
+    )
+
+    return dfpackets_selected
+
+
+def get_red_packet_set(
+    modelpath: Path,
+    escape_angles: list[int],
+    Z: Sequence[int],
+    ion_stage: Sequence[int],
+    wavelen: float | None = None,
+    binwidth: float | None = None,
+    srII_triplet: bool = False,
+) -> pd.DataFrame:
+    """Get packets in specific escape angle bins for observer direction.
+
+    Options:
+        - all_packets=True  -> use all escaping packets
+        - Z only            -> all ion stages of element
+        - Z + ion_stage     -> specific ion
+        - wavelen+binwidth  -> wavelength slice
+    """
+    dfpackets_selected = get_required_packets(modelpath, Z, ion_stage, srII_triplet=srII_triplet)
+    dfpackets_selected = dfpackets_selected.with_columns(
+        (CLIGHT * 1e8 / pl.col("nu_rf")).alias("lambda_rf")
+    )
+
+    if wavelen is not None and binwidth is not None:
+        lam_min = wavelen - binwidth / 2
+        lam_max = wavelen + binwidth / 2
+
+        dfpackets_selected = dfpackets_selected.filter(
+            (pl.col("lambda_rf") > lam_min) &
+            (pl.col("lambda_rf") < lam_max)
+        )
+    dfmodel, modelmeta = at.get_modeldata(modelpath=modelpath, printwarningsonly=True)
+
+    dfpackets_selected = dfpackets_selected.filter(
+        pl.col("dirbin").is_in(escape_angles)
+    )
+    return dfpackets_selected
+
+
+def packets_2d_hist_bin_and_ejecta_vel(
+    modelpath: Path,
+    tdays: float,
+    srIItriplet: bool,
+    colorlogscale: bool,
+    dirbin_range: list[int] | None = None,
+    Z: int | None = None,
+    ion_stage: str | None = None,
+    wavelen: float | None = None,
+    binwidth: float | None = None,
+) -> None:
+    
+    start_of_filename = ""
+    if wavelen is not None:
+        start_of_filename = f"{wavelen:.0f}A_"
+    if Z:
+        start_of_filename = f"{start_of_filename}_Z={Z}_"
+    else:
+        start_of_filename = f"{start_of_filename}_allelements_"
+    if ion_stage:
+        start_of_filename = f"{start_of_filename}_I={ion_stage}_"
+    else:
+        start_of_filename = f"{start_of_filename}_allions_"
+
+    # Step 1) collect packets IDs and select according to arrival time
+    if Z:
+        Z_list = [Z]
+    else:
+        # get all Z of atomic data
+        Z_list = [i for i in range(1,101)]
+    if ion_stage:
+        ion_stage_list = [at.decode_roman_numeral(ion_stage)]
+    else:
+        # take all ionisation stages from data
+        ion_stage_list = [i for i in range(1,5)]
+
+    dfpackets = get_red_packet_set(
+        modelpath, dirbin_range, Z_list, ion_stage_list, wavelen=wavelen, binwidth=binwidth, srII_triplet=srIItriplet
+    )
+
+    start_of_filename += "t_arrive_d"
+    timeminarray = at.misc.get_timestep_times(modelpath=modelpath, loc="start")
+    timemaxarray = at.misc.get_timestep_times(modelpath=modelpath, loc="end")
+    timestep_min = at.misc.get_timestep_of_timedays(modelpath, tdays)
+    timestep_max = timestep_min + 1
+    t_min = timeminarray[timestep_min]
+    t_max = timemaxarray[timestep_max]
+    Delta = 0.5 * CLIGHT / 25 * 0.1 * DAY
+
+    dfpackets = dfpackets.with_columns(
+        (
+            (((pl.col("em_posx")**2 + pl.col("em_posy")**2).sqrt()) / Delta)
+            .floor() * Delta
+        ).alias("R_inner")
+    )
+    dfpackets = dfpackets.with_columns(
+        (pl.col("R_inner") + Delta).alias("R_outer")
+    )
+    dfpackets = dfpackets.with_columns(
+        (
+            np.pi * Delta * (
+                pl.col("R_outer").cast(pl.Float64)**2 -
+                pl.col("R_inner").cast(pl.Float64)**2
+            )
+        ).alias("hollow_cyl_vol")
+    )
+    dfpackets_selected = dfpackets.filter(
+        (pl.col("t_arrive_d") > t_min) & (pl.col("t_arrive_d") < t_max)
+    ).collect()
+    
+    # Step 2) create the heatmap
+    weights = dfpackets_selected["e_rf"] / dfpackets_selected["hollow_cyl_vol"]
+    # derive the emission velocity for each packet from the emission position
+    heatmap, xedges, yedges = np.histogram2d(
+        (dfpackets_selected["em_posx"]**2 + dfpackets_selected["em_posy"]**2)**0.5 / dfpackets_selected["em_time"] / CLIGHT,
+        dfpackets_selected["em_posz"] / dfpackets_selected["em_time"] / CLIGHT,
+        bins=[np.linspace(0,0.5, num=25), np.linspace(-0.5,0.5, num=50)],
+        weights=weights,
+    )
+    heatmap = heatmap / (timemaxarray[timestep_max] - timeminarray[timestep_min])  # erg/day
+    heatmap /= DAY  # conversion from per erg/day to erg/s
+    heatmap = np.log(heatmap) if colorlogscale else heatmap
+
+    heatmap = np.ma.masked_where(heatmap == 0.0, heatmap)
+
+    fig, ax = plt.subplots(figsize=(3.5, 4.5))
+    z = heatmap.T 
+
+    im = ax.imshow(
+        z,
+        origin="lower",   
+        cmap="viridis",  
+        extent=[xedges[0], xedges[-1], yedges[0], yedges[-1]],
+    )
+    ax.set_aspect('equal')
+    ax.set_xlabel(r"v$_r$")
+    ax.set_ylabel(r"v$_z$")
+    cbar = fig.colorbar(im, ax=ax)
+    if colorlogscale:
+        cbar.set_label(r"log volumetric emissivity [erg/(s cm$^3$)]")
+    else:
+        cbar.set_label(r"volumetric emissivity [10$^{7}$ erg/(s cm$^3$)]")
+
+    ax.set_xticks(np.linspace(xedges[0], xedges[-1], 6)) 
+    ax.set_yticks(np.linspace(yedges[0], yedges[-1], 6)) 
+
+    outfilename = (
+        start_of_filename
+        + f"escape_from_bins_ts{timestep_min}-{timestep_max}_into_dirbins{dirbin_range[0]}-{dirbin_range[-1]}.pdf"
+    )
+    print(f"Saving {outfilename}")
+    plt.savefig(Path(modelpath) / outfilename, dpi=300)
+    plt.clf()
+
+
+def addargs(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("-modelpath", required=True, help="Path to ARTIS simulation")
+
+    parser.add_argument(
+        "-tdays",
+        type=float,
+        required=True,
+        help="Time in days, collects packets for the timestep in which the specified value lies in",
+    )
+
+    parser.add_argument("-wavelen", type=float, default=None, help="Central wavelength in Angstrom")
+    parser.add_argument("-binwidth", type=float, default=None, help="Wavelength bin width in Angstrom")
+
+    parser.add_argument("-element", type=str, default=None, help="Element symbol")
+    parser.add_argument("-ionstage", type=str, default=None, help="Ionisation stage (spectroscopic notation)")
+
+    parser.add_argument("-dir", type=str, default="eq", help="Viewing direction bin start (Options: eq, npol, spol)")
+    parser.add_argument("--srIItriplet", action="store_true", help="Analyse SrII triplet in particular")
+    parser.add_argument("--colorlogscale", action="store_true", help="Log scale for color bar in 2D plot")
+
+
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
+    """Comparison to constant beta decay splitup factors."""
+    if args is None:
+        parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
+
+        addargs(parser)
+        at.set_args_from_dict(parser, kwargs)
+        argcomplete.autocomplete(parser)
+        args = parser.parse_args([] if kwargs else argsraw)
+
+    match args.dir:
+        case "eq":
+            dirbin = 50
+        case "npol":
+            dirbin = 90
+        case "spol":
+            dirbin = 0
+        case _:
+            dirbin = None
+
+    if args.wavelen:
+        assert args.binwidth is not None, "Wavelength but no bin width provided!"
+
+    packets_2d_hist_bin_and_ejecta_vel(
+        Path(args.modelpath),
+        args.tdays,
+        args.srIItriplet,
+        args.colorlogscale,
+        dirbin_range=[dirbin + i for i in range(10)] if dirbin else [i for i in range(100)],
+        Z=at.get_atomic_number(args.element) if args.element else None,
+        ion_stage=args.ionstage,
+        wavelen=args.wavelen,
+        binwidth=args.binwidth,
+    )
+
+
+if __name__ == "__main__":
+    main()

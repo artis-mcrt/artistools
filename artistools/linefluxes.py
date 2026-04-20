@@ -20,7 +20,6 @@ from matplotlib.typing import MarkerType
 
 import artistools as at
 
-
 class FeatureTuple(t.NamedTuple):
     colname: str
     featurelabel: str
@@ -195,6 +194,28 @@ def get_line_fluxes_from_pops(
         dictlcdata[feature.colname] = list(fluxdata)
 
     return pl.DataFrame(dictlcdata)
+
+
+def get_ion_linelist(
+    modelpath: Path | str,
+    atomic_number: Sequence[int],
+    ion_stage: Sequence[int]
+) -> Sequence[int]:
+    df_linelist = at.misc.get_linelist_pldf(modelpath)
+
+    atomic_numbers = [atomic_number] if isinstance(atomic_number, int) else list(atomic_number)
+    ion_stages = [ion_stage] if isinstance(ion_stage, int) else list(ion_stage)
+
+    df_linelist_filtered = (
+        df_linelist
+        .filter(
+            pl.col("atomic_number").is_in(atomic_numbers) &
+            pl.col("ion_stage").is_in(ion_stages)
+        )
+        .collect()
+    )
+
+    return tuple(df_linelist_filtered.get_column("lineindex").to_numpy())
 
 
 def get_closelines(
