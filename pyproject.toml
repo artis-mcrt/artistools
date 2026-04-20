@@ -24,7 +24,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Astronomy",
     "Topic :: Scientific/Engineering :: Physics",
 ]
-version = "2026.4.14"
+version = "2026.4.20"
 requires-python = ">=3.12"
 license = "MIT"
 license-files = ["LICEN[CS]E*"]

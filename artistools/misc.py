@@ -1083,11 +1083,11 @@ def get_nuclides(modelpath: Path | str) -> pl.LazyFrame:
         [
             pl.LazyFrame(
                 {
-                    "pellet_nucindex": -1,
-                    "atomic_number": -1,
-                    "A": -1,
-                    "elsymbol": "initial energy",
-                    "nucname": "initial energy",
+                    "pellet_nucindex": [-1],
+                    "atomic_number": [-1],
+                    "A": [-1],
+                    "elsymbol": ["initial energy"],
+                    "nucname": ["initial energy"],
                 },
                 schema=dfnuclides.collect_schema(),
             ),

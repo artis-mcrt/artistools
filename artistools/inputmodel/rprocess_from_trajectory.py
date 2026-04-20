@@ -486,7 +486,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     else:
         rho = 1e-11
         print(f"{wollaeger_profilename} not found. Using rho {rho} g/cm³")
-        dfdensities = pl.DataFrame({"mgi": 0, "rho": rho, "vel_r_max_kmps": 6.0e4})
+        dfdensities = pl.DataFrame({"mgi": [0], "rho": [rho], "vel_r_max_kmps": [6.0e4]})
 
     dfdensities["inputcellid"] = dfdensities["mgi"] + 1
     # print(dfdensities)
