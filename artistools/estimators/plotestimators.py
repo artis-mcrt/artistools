@@ -16,7 +16,6 @@ import argcomplete
 import matplotlib.axes as mplax
 import matplotlib.pyplot as plt
 import numpy as np
-import numpy.typing as npt
 import polars as pl
 from matplotlib import ticker
 
@@ -254,7 +253,7 @@ def plot_average_ionisation(
 
 def plot_levelpop(
     ax: mplax.Axes,
-    xlist: Sequence[int | float] | npt.NDArray[np.floating],
+    xlist: Sequence[int | float],
     seriestype: str,
     params: Sequence[str],
     timestepslist: Sequence[int],
