@@ -435,7 +435,7 @@ def get_particledata(
             )
 
         particledata = pl.LazyFrame({"particleid": [particleid]}, schema={"particleid": pl.Int32})
-        nstep_timesec = {}
+        nstep_timesec: dict[int, float] = {}
         with get_tar_member_extracted_path(
             traj_root=traj_root, particleid=particleid, memberfilename="./Run_rprocess/heating.dat"
         ).open(encoding="utf-8") as f:

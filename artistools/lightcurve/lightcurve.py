@@ -326,9 +326,8 @@ def bolometric_magnitude(
                 spectrum = at.spectra.get_spectrum(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)[
                     -1
                 ].collect()
-
             elif args.plotvspecpol:
-                spectrum = at.spectra.get_vspecpol_spectrum(modelpath, time, angle, args)
+                spectrum = at.spectra.get_vspecpol_spectrum(modelpath, time, angle, args).collect()
             else:
                 spectrum = at.spectra.get_spectrum(
                     modelpath=modelpath,

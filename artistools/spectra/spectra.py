@@ -330,7 +330,11 @@ def get_spectrum_at_time(
 ) -> pd.DataFrame:
     if dirbin >= 0:
         if args is not None and args.plotvspecpol and (modelpath / "vpkt.txt").is_file():
-            return get_vspecpol_spectrum(modelpath, time, dirbin, args).to_pandas(use_pyarrow_extension_array=True)
+            return (
+                get_vspecpol_spectrum(modelpath, time, dirbin, args)
+                .collect()
+                .to_pandas(use_pyarrow_extension_array=True)
+            )
         assert average_over_phi is not None
         assert average_over_theta is not None
     else:
@@ -884,11 +888,11 @@ def get_vspecpol_spectrum(
     angle: int,
     args: argparse.Namespace,
     fluxfilterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
-) -> pl.DataFrame:
+) -> pl.LazyFrame:
     stokes_params = get_vspecpol_data(vspecindex=angle, modelpath=Path(modelpath))
     if "stokesparam" not in args:
         args.stokesparam = "I"
-    vspecdata = stokes_params[args.stokesparam].collect()
+    vspecdata = stokes_params[args.stokesparam]
 
     arr_tmid = [float(i) for i in vspecdata.columns[1:]]
     vspec_timesteps = range(len(arr_tmid))
@@ -916,7 +920,7 @@ def get_vspecpol_spectrum(
             )
             / sum(arr_tdelta[timestepmin : timestepmax + 1])
         ),
-        nu=vspecdata["nu"],
+        nu=pl.col("nu"),
     ).with_columns(lambda_angstroms=2.99792458e18 / pl.col("nu"))
 
     if fluxfilterfunc:

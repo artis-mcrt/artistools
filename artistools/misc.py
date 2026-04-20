@@ -1663,11 +1663,11 @@ def parallel_map[IterableType, ResultType](
         mp.set_start_method("spawn", force=True)
         from tqdm.contrib.concurrent import process_map
 
-        results = process_map(fn, *iterables, tqdm_class=tqdm.rich.tqdm, **kwargs)
+        results = process_map(fn, *iterables, tqdm_class=tqdm.rich.tqdm, **kwargs)  # zuban: ignore[no-untyped-call]
     else:
         from tqdm.contrib.concurrent import thread_map
 
-        results = thread_map(fn, *iterables, tqdm_class=tqdm.rich.tqdm, **kwargs)
+        results = thread_map(fn, *iterables, tqdm_class=tqdm.rich.tqdm, **kwargs)  # zuban: ignore[no-untyped-call]
 
     assert isinstance(results, list)
     return results

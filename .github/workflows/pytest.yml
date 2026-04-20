@@ -65,9 +65,10 @@ jobs:
               if: always()
               run: uv run -- ruff format --check --exit-non-zero-on-format
 
-            - name: Run ty
-              if: always()
-              run: uv run -- ty check
+            # ty is disabled until it supports polars decorated overloads
+            # - name: Run ty
+            #   if: always()
+            #   run: uv run -- ty check
 
             - name: Run basedpyright
               if: always()

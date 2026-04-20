@@ -258,7 +258,7 @@ def get_etot_fromfile(modelpath: str | Path) -> tuple[float, pl.DataFrame]:
             names=["cellid", "cell_energy"],
         )
     )
-    etot = energydistribution_data["cell_energy"].sum()
+    etot = float(energydistribution_data["cell_energy"].sum())
     return etot, energydistribution_data
 
 

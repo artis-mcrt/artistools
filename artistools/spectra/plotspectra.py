@@ -93,6 +93,7 @@ def get_lambda_min_max_binwidth(
                 list_x_bin_edges.append(x)
             x_bin_edges = np.array(list_x_bin_edges)
         else:
+            assert args.deltax is not None
             x_bin_edges = np.arange(xmin, xmax + args.deltax, args.deltax)
         lambda_bin_edges = np.array(
             sorted(atspectra.convert_unit_to_angstroms(float(x), args.xunit) for x in x_bin_edges)
@@ -460,7 +461,7 @@ def plot_artis_spectrum(
 
         check_time_range_is_valid(modelpath, args.timemin, args.timemax, args.plotinvalidpart)
 
-        viewinganglespectra = {}
+        viewinganglespectra: dict[int, pl.LazyFrame] = {}
 
         xmin, xmax = axis.get_xlim()
         if from_packets:

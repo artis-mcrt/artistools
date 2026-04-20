@@ -90,9 +90,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         vuppers = dfmodelcollect["vel_r_max"].unique().sort()
         enclosed_xvals = [0.0, *(vuppers / 29979245800).to_list(), 29979245800]
         enclosed_yvals = [0.0] + [
-            dfmodelcollect.filter(pl.col("vel_r_mid") <= vupper)["mass_g"].sum() / 1.989e33 for vupper in vuppers
+            float(dfmodelcollect.filter(pl.col("vel_r_mid") <= vupper)["mass_g"].sum()) / 1.989e33 for vupper in vuppers
         ]
-        enclosed_yvals.append(dfmodelcollect["mass_g"].sum() / 1.989e33)
+        enclosed_yvals.append(float(dfmodelcollect["mass_g"].sum()) / 1.989e33)
         axes[0].plot(enclosed_xvals, enclosed_yvals, label=label, color=color)
 
         if "vel_r_max_kmps" in dfmodel.collect_schema().names():
@@ -118,7 +118,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         vlowerscoarse = [0.0, *vupperscoarse[:-1]]
         for vlower, vupper in zip(vlowerscoarse, vupperscoarse, strict=True):
             velbinmass = (
-                dfmodelcollect.filter(pl.col("vel_r_mid").is_between(vlower, vupper, closed="left"))["mass_g"].sum()
+                float(
+                    dfmodelcollect.filter(pl.col("vel_r_mid").is_between(vlower, vupper, closed="left"))["mass_g"].sum()
+                )
                 / 1.989e33
             )
             assert vlower < vupper

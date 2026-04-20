@@ -27,7 +27,7 @@ def get_elemabund_from_nucabund(dfnucabund: pl.DataFrame) -> dict[str, float]:
     ZMAX = dfnucabund["Z"].max()
     assert isinstance(ZMAX, int)
     return {
-        f"X_{at.get_elsymbol(atomic_number)}": dfnucabund.filter(pl.col("Z") == atomic_number)["massfrac"].sum()
+        f"X_{at.get_elsymbol(atomic_number)}": float(dfnucabund.filter(pl.col("Z") == atomic_number)["massfrac"].sum())
         for atomic_number in range(1, ZMAX + 1)
     }
 
@@ -353,10 +353,10 @@ def filtermissinggridparticlecontributions(dfcontribs: pl.DataFrame, missing_par
     )
 
     for _, dfparticlecontribs in dfcontribs.group_by(["cellindex"]):
-        frac_sum: float = dfparticlecontribs["frac_of_cellmass"].sum()
+        frac_sum: float = float(dfparticlecontribs["frac_of_cellmass"].sum())
         assert frac_sum == 0.0 or math.isclose(frac_sum, 1.0, rel_tol=0.02)
 
-        cell_frac_includemissing_sum_thiscell: float = dfparticlecontribs["frac_of_cellmass_includemissing"].sum()
+        cell_frac_includemissing_sum_thiscell = float(dfparticlecontribs["frac_of_cellmass_includemissing"].sum())
         assert cell_frac_includemissing_sum_thiscell == 0.0 or math.isclose(
             cell_frac_includemissing_sum_thiscell, 1.0, rel_tol=0.02
         )
