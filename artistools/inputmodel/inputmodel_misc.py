@@ -850,7 +850,7 @@ def save_modeldata(
     twolinespercell: bool = False,
     **kwargs: t.Any,
 ) -> None:
-    """Save an artis model.txt (density and composition versus velocity) from a polars DataFrame of cell properties and other metadata such as the time after explosion.
+    """Write an artis model.txt (density and composition snapshot) from a DataFrame/LazyFrame of cell properties and other metadata such as the time after explosion.
 
     1D
     -------
