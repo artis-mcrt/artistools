@@ -52,7 +52,6 @@ from artistools.estimators import scan_estimators as scan_estimators
 from artistools.inputmodel import add_derived_cols_to_modeldata as add_derived_cols_to_modeldata
 from artistools.inputmodel import get_cell_angle as get_cell_angle
 from artistools.inputmodel import get_dfmodel_dimensions as get_dfmodel_dimensions
-from artistools.inputmodel import get_mean_cell_properties_of_angle_bin as get_mean_cell_properties_of_angle_bin
 from artistools.inputmodel import get_mgi_of_velocity_kms as get_mgi_of_velocity_kms
 from artistools.inputmodel import get_modeldata as get_modeldata
 from artistools.inputmodel import save_initelemabundances as save_initelemabundances

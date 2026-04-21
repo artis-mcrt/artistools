@@ -771,51 +771,6 @@ def get_cell_angle(dfmodel: pd.DataFrame) -> pd.DataFrame:
     return dfmodel
 
 
-def get_mean_cell_properties_of_angle_bin(dfmodeldata: pd.DataFrame, vmax_cmps: float) -> dict[int, pd.DataFrame]:
-    if "cos_bin" not in dfmodeldata:
-        get_cell_angle(dfmodeldata)
-
-    dfmodeldata["rho"][dfmodeldata["rho"] == 0] = None
-
-    cell_velocities = np.unique(dfmodeldata["vel_x_min"].to_numpy(dtype=float))
-    cell_velocities = cell_velocities[cell_velocities >= 0]
-    velocity_bins = np.append(cell_velocities, vmax_cmps)
-
-    mid_velocities = np.unique(dfmodeldata["vel_x_mid"].to_numpy(dtype=float))
-    mid_velocities = mid_velocities[mid_velocities >= 0]
-
-    mean_bin_properties = {
-        bin_number: pd.DataFrame({
-            "velocity": mid_velocities,
-            "mean_rho": np.zeros_like(mid_velocities, dtype=float),
-            "mean_Ye": np.zeros_like(mid_velocities, dtype=float),
-            "mean_Q": np.zeros_like(mid_velocities, dtype=float),
-        })
-        for bin_number in range(10)
-    }
-
-    for bin_number in range(10):
-        # get cells with bin number
-        dfanglebin = dfmodeldata.query(
-            "cos_bin == @cos_bin_number", inplace=False, local_dict={"cos_bin_number": bin_number * 10}
-        )
-
-        binned = pd.cut(x=dfanglebin["vel_r_mid"], bins=list(velocity_bins), labels=False, include_lowest=True)
-        for binindex, mean_rho in dfanglebin.groupby(binned)["rho"].mean().items():
-            assert isinstance(binindex, int)
-            mean_bin_properties[bin_number]["mean_rho"][binindex] += mean_rho
-        if "Ye" in dfmodeldata:
-            for binindex, mean_Ye in dfanglebin.groupby(binned)["Ye"].mean().items():
-                assert isinstance(binindex, int)
-                mean_bin_properties[bin_number]["mean_Ye"][binindex] += mean_Ye
-        if "Q" in dfmodeldata:
-            for binindex, mean_Q in dfanglebin.groupby(binned)["Q"].mean().items():
-                assert isinstance(binindex, int)
-                mean_bin_properties[bin_number]["mean_Q"][binindex] += mean_Q
-
-    return mean_bin_properties
-
-
 def get_standard_columns(
     dimensions: int, includenico57: bool = False, includeabund: bool = True, pos_unknown: bool = False
 ) -> list[str]:

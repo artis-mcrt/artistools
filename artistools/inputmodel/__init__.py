@@ -18,9 +18,6 @@ from artistools.inputmodel.inputmodel_misc import get_cell_angle as get_cell_ang
 from artistools.inputmodel.inputmodel_misc import get_dfmodel_dimensions as get_dfmodel_dimensions
 from artistools.inputmodel.inputmodel_misc import get_empty_3d_model as get_empty_3d_model
 from artistools.inputmodel.inputmodel_misc import get_initelemabundances as get_initelemabundances
-from artistools.inputmodel.inputmodel_misc import (
-    get_mean_cell_properties_of_angle_bin as get_mean_cell_properties_of_angle_bin,
-)
 from artistools.inputmodel.inputmodel_misc import get_mgi_of_velocity_kms as get_mgi_of_velocity_kms
 from artistools.inputmodel.inputmodel_misc import get_modeldata as get_modeldata
 from artistools.inputmodel.inputmodel_misc import save_empty_abundance_file as save_empty_abundance_file
