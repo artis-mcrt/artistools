@@ -65,11 +65,11 @@ def test_get_cell_angle() -> None:
 def test_downscale_3dmodel() -> None:
     lzdfmodel, modelmeta = at.get_modeldata(modelpath=modelpath_3d, get_elemabundances=True, derived_cols=["mass_g"])
     modelpath_3d_small = at.inputmodel.downscale3dgrid.make_downscaled_3d_grid(
-        modelpath_3d, outputgridsize=2, outputfolder=outputpath,
+        modelpath_3d, outputgridsize=2, outputfolder=outputpath
     )
     dfmodel = lzdfmodel.collect()
     lzdfmodel_small, modelmeta_small = at.get_modeldata(
-        modelpath_3d_small, get_elemabundances=True, derived_cols=["mass_g"],
+        modelpath_3d_small, get_elemabundances=True, derived_cols=["mass_g"]
     )
     dfmodel_small = lzdfmodel_small.collect()
     assert math.isclose(dfmodel["mass_g"].sum(), dfmodel_small["mass_g"].sum(), rel_tol=1e-5)
@@ -86,7 +86,7 @@ def test_downscale_3dmodel() -> None:
 
 
 def verify_file_checksums(
-    checksums_expected: dict[t.Any, t.Any], digest: str = "sha256", folder: Path | str = ".",
+    checksums_expected: dict[t.Any, t.Any], digest: str = "sha256", folder: Path | str = "."
 ) -> None:
     checksums_actual = {}
 
@@ -126,11 +126,11 @@ def test_makeartismodelfrom_sph_particles() -> None:
     }
 
     shutil.copytree(
-        testdatapath / "kilonova", gridfolderpath, dirs_exist_ok=True, ignore=shutil.ignore_patterns("trajectories"),
+        testdatapath / "kilonova", gridfolderpath, dirs_exist_ok=True, ignore=shutil.ignore_patterns("trajectories")
     )
 
     at.inputmodel.maptogrid.main(
-        argsraw=[], inputpath=gridfolderpath, outputpath=gridfolderpath, **config["maptogridargs"],
+        argsraw=[], inputpath=gridfolderpath, outputpath=gridfolderpath, **config["maptogridargs"]
     )
 
     verify_file_checksums(config["maptogrid_sums"], digest="sha256", folder=gridfolderpath)
@@ -165,11 +165,11 @@ def test_makeartismodelfrom_sph_particles() -> None:
             )
         else:
             dfmodel3lz, _ = at.inputmodel.get_modeldata(
-                modelpath=outputpath / f"kilonova_{3:d}d", derived_cols=["mass_g"],
+                modelpath=outputpath / f"kilonova_{3:d}d", derived_cols=["mass_g"]
             )
             dfmodel3 = dfmodel3lz.collect()
             dfmodel_lowerdlz, _ = at.inputmodel.get_modeldata(
-                modelpath=outputpath / f"kilonova_{dimensions:d}d", derived_cols=["mass_g"],
+                modelpath=outputpath / f"kilonova_{dimensions:d}d", derived_cols=["mass_g"]
             )
             dfmodel_lowerd = dfmodel_lowerdlz.collect()
 
@@ -190,7 +190,7 @@ def test_makeartismodelfrom_fortrangriddat() -> None:
     gridfolderpath = testdatapath / "kilonova"
     outpath_kn = outputpath / "kilonova"
     at.inputmodel.modelfromhydro.main(
-        argsraw=[], gridfolderpath=gridfolderpath, outputpath=outpath_kn, dimensions=3, targetmodeltime_days=0.1,
+        argsraw=[], gridfolderpath=gridfolderpath, outputpath=outpath_kn, dimensions=3, targetmodeltime_days=0.1
     )
 
 
@@ -1441,14 +1441,14 @@ def test_plotdensity() -> None:
 @pytest.mark.benchmark
 def test_plotinitialcomposition() -> None:
     at.inputmodel.plotinitialcomposition.main(
-        argsraw=["-modelpath", str(modelpath_3d), "-o", str(outputpath), "rho", "Fe"],
+        argsraw=["-modelpath", str(modelpath_3d), "-o", str(outputpath), "rho", "Fe"]
     )
 
 
 @pytest.mark.benchmark
 def test_save_load_3d_model() -> None:
     lzdfmodel, modelmeta = at.inputmodel.get_empty_3d_model(
-        ncoordgrid=25, vmax=1000, t_model_init_days=1, includenico57=True,
+        ncoordgrid=25, vmax=1000, t_model_init_days=1, includenico57=True
     )
     dfmodel = lzdfmodel.collect()
 
@@ -1456,18 +1456,18 @@ def test_save_load_3d_model() -> None:
 
     # give a random rho to half of the cells
     dfmodel[rng.integers(0, dfmodel.height, dfmodel.height // 2), "rho"] = 10.0 * rng.random(
-        dfmodel.height // 2, dtype=np.float32,
+        dfmodel.height // 2, dtype=np.float32
     )
 
     dfelements = (
         at
         .get_elsymbols_df()
         .filter(
-            pl.col("atomic_number").is_between(1, 50) | (pl.col("atomic_number") == 113),
+            pl.col("atomic_number").is_between(1, 50) | (pl.col("atomic_number") == 113)
         )  # Z=113 Uut has three chars, so test that that too
         .sort(by="atomic_number")
         .with_columns(
-            elemcolname="X_" + pl.col("elsymbol"), mass_number_example=(pl.col("atomic_number") * 2).cast(pl.Int32),
+            elemcolname="X_" + pl.col("elsymbol"), mass_number_example=(pl.col("atomic_number") * 2).cast(pl.Int32)
         )
         .collect()
     )
@@ -1477,7 +1477,7 @@ def test_save_load_3d_model() -> None:
     # this give us several isotopes for each element (doesn't matter if they are real or not)
     isocolnames = pl.concat(
         dfelements.select(
-            (pl.col("elemcolname") + (pl.col("mass_number_example") + i).cast(pl.Utf8)).alias("isocolname"),
+            (pl.col("elemcolname") + (pl.col("mass_number_example") + i).cast(pl.Utf8)).alias("isocolname")
         )
         for i in range(2)
     ).get_column("isocolname")
@@ -1509,7 +1509,7 @@ def test_save_load_3d_model() -> None:
     for _ in (0, 1):
         dfmodel_loaded, modelmeta_loaded = at.inputmodel.get_modeldata(modelpath=outpath)
         pltest.assert_frame_equal(
-            dfmodel, dfmodel_loaded.collect(), check_column_order=False, check_dtypes=False, rel_tol=1e-4, abs_tol=1e-4,
+            dfmodel, dfmodel_loaded.collect(), check_column_order=False, check_dtypes=False, rel_tol=1e-4, abs_tol=1e-4
         )
         assert modelmeta == modelmeta_loaded
 
@@ -1517,7 +1517,7 @@ def test_save_load_3d_model() -> None:
         pltest.assert_frame_equal(
             dfelemabundances,
             dfelemabundances_loaded.select(
-                dfelemabundances.columns,  # ignore the extra elements that got added to give contiguous coverage of atomic numbers from min to max
+                dfelemabundances.columns  # ignore the extra elements that got added to give contiguous coverage of atomic numbers from min to max
             ).collect(),
             check_column_order=False,
             check_dtypes=False,
@@ -1540,7 +1540,7 @@ def test_dimension_reduce(outputdimensions: int, benchmark: BenchmarkFixture) ->
     dfmodel3d_pl[mgi1, "X_Ni56"] = 0.75
 
     dfmodel3d_pl = at.inputmodel.add_derived_cols_to_modeldata(
-        dfmodel=dfmodel3d_pl, modelmeta=modelmeta_3d, derived_cols=["mass_g", "kinetic_en_erg"],
+        dfmodel=dfmodel3d_pl, modelmeta=modelmeta_3d, derived_cols=["mass_g", "kinetic_en_erg"]
     ).collect()
 
     ejecta_ke_erg: float = dfmodel3d_pl.select("kinetic_en_erg").sum().item()
@@ -1552,7 +1552,7 @@ def test_dimension_reduce(outputdimensions: int, benchmark: BenchmarkFixture) ->
     @benchmark
     def run_dimension_reduce() -> None:  # pyright: ignore[reportUnusedFunction]
         (dfmodel_lowerd, _, _, modelmeta_lowerd) = (at.inputmodel.dimension_reduce_model)(
-            dfmodel=dfmodel3d_pl, modelmeta=modelmeta_3d, outputdimensions=outputdimensions,
+            dfmodel=dfmodel3d_pl, modelmeta=modelmeta_3d, outputdimensions=outputdimensions
         )
         at.inputmodel.save_modeldata(outpath=outpath, dfmodel=dfmodel_lowerd, modelmeta=modelmeta_lowerd)
 

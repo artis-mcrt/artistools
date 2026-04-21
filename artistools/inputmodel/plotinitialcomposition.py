@@ -128,7 +128,7 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
     # if the species doesn't end in a number (isotope, e.g. Sr92) then we need to also get element abundances (e.g., Sr)
     get_elemabundances = any(plotvar[-1] not in string.digits for plotvar in args.plotvars)
     lzdfmodel, modelmeta = at.get_modeldata(
-        modelpath, get_elemabundances=get_elemabundances, derived_cols=["pos_min", "pos_max"],
+        modelpath, get_elemabundances=get_elemabundances, derived_cols=["pos_min", "pos_max"]
     )
     assert modelmeta["dimensions"] > 1
     dfmodel = lzdfmodel.collect().to_pandas()
@@ -136,11 +136,11 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
     targetmodeltime_days = None
     if targetmodeltime_days is not None:
         print(
-            f"Scaling positions/densities to {targetmodeltime_days} days. \nWARNING: abundances not updated for radioactive decays",
+            f"Scaling positions/densities to {targetmodeltime_days} days. \nWARNING: abundances not updated for radioactive decays"
         )
 
         dfmodel, modelmeta = at.inputmodel.scale_model_to_time(
-            targetmodeltime_days=targetmodeltime_days, modelmeta=modelmeta, dfmodel=dfmodel,
+            targetmodeltime_days=targetmodeltime_days, modelmeta=modelmeta, dfmodel=dfmodel
         )
 
     if modelmeta["dimensions"] == 3:
@@ -152,7 +152,7 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
         print(f"Plotting slice through {sliceaxis}=0, plotting {plotaxis1} vs {plotaxis2}")
 
         df2dslice = get_2D_slice_through_3d_model(
-            dfmodel=dfmodel, modelmeta=modelmeta, sliceaxis=sliceaxis, plotaxis1=plotaxis1, plotaxis2=plotaxis2,
+            dfmodel=dfmodel, modelmeta=modelmeta, sliceaxis=sliceaxis, plotaxis1=plotaxis1, plotaxis2=plotaxis2
         )
     elif modelmeta["dimensions"] == 2:
         df2dslice = dfmodel
@@ -167,7 +167,7 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
     xfactor = 1 if modelmeta["dimensions"] == 3 else 0.5
     figwidth = 5.0
     fig = plt.figure(
-        figsize=(figwidth * xfactor * ncols, figwidth * nrows), tight_layout={"pad": 1.0, "w_pad": 0.0, "h_pad": 0.0},
+        figsize=(figwidth * xfactor * ncols, figwidth * nrows), tight_layout={"pad": 1.0, "w_pad": 0.0, "h_pad": 0.0}
     )
     gs = gridspec.GridSpec(nrows + 1, ncols, height_ratios=[0.05, 1], width_ratios=[1] * ncols)
 
@@ -187,7 +187,7 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
         colname = plotvar if plotvar in df2dslice.columns else f"X_{plotvar.title()}"
 
         im, _ = plot_slice_modelcolumn(
-            ax, df2dslice, modelmeta, colname, plotaxis1, plotaxis2, modelmeta["t_model_init_days"], args,
+            ax, df2dslice, modelmeta, colname, plotaxis1, plotaxis2, modelmeta["t_model_init_days"], args
         )
 
     xlabel = r"v$_{" + str(plotaxis1) + r"}$ [$c$]"

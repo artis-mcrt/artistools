@@ -48,7 +48,7 @@ def get_variableunits(key: str) -> str | None:
 
 def get_variablelongunits(key: str) -> str | None:
     return {"heating_dep/total_dep": "", "TR": "Temperature [K]", "Te": "Temperature [K]", "TJ": "Temperature [K]"}.get(
-        key,
+        key
     )
 
 
@@ -98,7 +98,7 @@ def get_rankbatch_parquetfile(
         generate_parquet = True
     elif textsource_mtime and textsource_mtime > parquetfilepath.stat().st_mtime:
         print(
-            f"  {parquetfilepath.relative_to(modelpath.parent)} is older than the estimator text files. File will be deleted and regenerated...",
+            f"  {parquetfilepath.relative_to(modelpath.parent)} is older than the estimator text files. File will be deleted and regenerated..."
         )
         parquetfilepath.unlink()
         generate_parquet = True
@@ -119,21 +119,21 @@ def get_rankbatch_parquetfile(
         pldf_batch = pl.DataFrame(at.rustext.estimparse(str(folderpath), min(batch_mpiranks), max(batch_mpiranks)))
 
         pldf_batch = pldf_batch.with_columns(
-            cs.by_name("titeration", "timestep", "modelgridindex", require_all=False).cast(pl.Int32),
+            cs.by_name("titeration", "timestep", "modelgridindex", require_all=False).cast(pl.Int32)
         )
 
         pldf_batch = pldf_batch.select(
             sorted(
                 pldf_batch.columns,
                 key=lambda col: f"-{col!r}" if col in {"timestep", "modelgridindex", "titer"} else str(col),
-            ),
+            )
         )
         print(f"took {time.perf_counter() - time_start:.1f} s. Writing parquet file...", end="", flush=True)
         time_start = time.perf_counter()
 
         assert pldf_batch is not None
         partialparquetfilepath = Path(
-            tempfile.mkstemp(dir=folderpath, prefix=f"{parquetfilename}.partial", suffix=".partial")[1],
+            tempfile.mkstemp(dir=folderpath, prefix=f"{parquetfilename}.partial", suffix=".partial")[1]
         )
         pldf_batch.write_parquet(
             partialparquetfilepath,
@@ -165,7 +165,7 @@ def get_rankbatch_parquetfile(
 
 
 def join_cell_modeldata(
-    estimators: pl.LazyFrame, modelpath: Path | str, verbose: bool = False,
+    estimators: pl.LazyFrame, modelpath: Path | str, verbose: bool = False
 ) -> tuple[pl.LazyFrame, dict[str, t.Any]]:
     """Join the estimator data with data from model.txt and derived quantities, e.g. density, volume, etc."""
     assert estimators is not None
@@ -179,7 +179,7 @@ def join_cell_modeldata(
         coalesce=True,
     )
     dfmodel, modelmeta = at.inputmodel.get_modeldata(
-        modelpath, derived_cols=["ALL"], get_elemabundances=True, printwarningsonly=not verbose,
+        modelpath, derived_cols=["ALL"], get_elemabundances=True, printwarningsonly=not verbose
     )
 
     dfmodel = dfmodel.rename({
@@ -225,7 +225,7 @@ def scan_estimators(
 
     if not Path(modelpath).exists() and Path(modelpath).parts[0] == "codecomparison":
         estimators = at.codecomparison.read_reference_estimators(
-            modelpath, timestep=timestep, modelgridindex=modelgridindex,
+            modelpath, timestep=timestep, modelgridindex=modelgridindex
         )
         return pl.DataFrame([
             {"timestep": ts, "modelgridindex": mgi, **estimvals} for (ts, mgi), estimvals in estimators.items()
@@ -263,7 +263,7 @@ def scan_estimators(
             datasize_GB = sum(pfile.stat().st_size for pfile in parquetfiles) / 1024 / 1024 / 1024
             str_runfolders = ", ".join([Path(x).relative_to(modelpath).as_posix() for x in runfolders])
             print(
-                f"  scanning {len(parquetfiles)} parquet estimator files ({datasize_GB:.1f} GB) from {str_runfolders}...",
+                f"  scanning {len(parquetfiles)} parquet estimator files ({datasize_GB:.1f} GB) from {str_runfolders}..."
             )
         pldflazy = (
             pl
@@ -345,10 +345,10 @@ def read_estimators(
 
 
 def get_averageexcitation(
-    modelpath: Path | str, modelgridindex: int, timestep: int, atomic_number: int, ion_stage: int, T_exc: float,
+    modelpath: Path | str, modelgridindex: int, timestep: int, atomic_number: int, ion_stage: int, T_exc: float
 ) -> float | None:
     dfnltepops = at.nltepops.read_files(modelpath, modelgridindex=modelgridindex, timestep=timestep).to_pandas(
-        use_pyarrow_extension_array=True,
+        use_pyarrow_extension_array=True
     )
     if dfnltepops.empty:
         print(f"WARNING: NLTE pops not found for cell {modelgridindex} at timestep {timestep}")
@@ -362,7 +362,7 @@ def get_averageexcitation(
         return None
 
     dfnltepops_ion = dfnltepops.query(
-        "modelgridindex==@modelgridindex and timestep==@timestep and Z==@atomic_number & ion_stage==@ion_stage",
+        "modelgridindex==@modelgridindex and timestep==@timestep and Z==@atomic_number & ion_stage==@ion_stage"
     )
 
     k_b = 8.617333262145179e-05  # eV / K

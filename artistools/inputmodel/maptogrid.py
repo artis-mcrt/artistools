@@ -75,7 +75,7 @@ def get_wij() -> npt.NDArray[np.floating]:
 
 
 def kernelvals2(
-    rij2: float, hmean: float, wij: npt.NDArray[np.floating],
+    rij2: float, hmean: float, wij: npt.NDArray[np.floating]
 ) -> float:  # ist schnell berechnet aber keine Gradienten
     hmean21 = 1.0 / hmean**2
     hmean31 = hmean21 / hmean
@@ -108,7 +108,7 @@ def maptogrid(
 
     # save the printed output to a log file
     logprint = at.inputmodel.inputmodel_misc.savetologfile(
-        outputfolderpath=outputfolderpath, logfilename="maptogridlog.txt",
+        outputfolderpath=outputfolderpath, logfilename="maptogridlog.txt"
     )
 
     wij = get_wij()
@@ -118,7 +118,7 @@ def maptogrid(
     snapshot_columns_used = ["id", "h", "x", "y", "z", "vx", "vy", "vz", "pmass", "rho", "p", "rho_rst", "ye"]
 
     dfsnapshot = at.inputmodel.modelfromhydro.read_ejectasnapshot(
-        ejectasnapshotpath, usecols=snapshot_columns_used, downsamplefactor=downsamplefactor,
+        ejectasnapshotpath, usecols=snapshot_columns_used, downsamplefactor=downsamplefactor
     )
 
     logprint(dfsnapshot)
@@ -152,7 +152,7 @@ def maptogrid(
             vperp=pl
             .when(pl.col("vtot") > pl.col("vrad"))
             .then((pl.col("vtot") ** 2 - pl.col("vrad") ** 2).sqrt())
-            .otherwise(0.0),
+            .otherwise(0.0)
         )
     )
 
@@ -193,7 +193,7 @@ def maptogrid(
 
     # set up grid
     logprint(
-        f"setgrid_fractionrmax={setgrid_fractionrmax}: gridmax is set to {setgrid_fractionrmax}*rmax of the SPH particles",
+        f"setgrid_fractionrmax={setgrid_fractionrmax}: gridmax is set to {setgrid_fractionrmax}*rmax of the SPH particles"
     )
     x0 = -setgrid_fractionrmax * rmax  # Set x0 (gridmax) to a fraction of the maximum radius of the SPH particles
     # Default is 50% (but is hand waving - choose) #
@@ -310,7 +310,7 @@ def maptogrid(
 
     logprint(
         f"particles with any cell contribution: {len(particlesused)} of {len(particlesinsidegrid)} inside grid out of"
-        f" {npart} total",
+        f" {npart} total"
     )
     unusedparticles = [n for n in range(npart) if n not in particlesused]
     for n in unusedparticles:
@@ -359,17 +359,17 @@ def maptogrid(
     logprint(f"fraction of total mass on grid {gmass / totmass}")
 
     logprint(
-        f"{'WARNING!' if gmass / totmass < 0.9 else ''} mass on grid from rho*V: {gmass} mass of particles: {totmass} ",
+        f"{'WARNING!' if gmass / totmass < 0.9 else ''} mass on grid from rho*V: {gmass} mass of particles: {totmass} "
     )
 
     logprint(
         f"number of cells with rho=0 {nzero}, total num of cells {ncoordgrid**3}, fraction of cells with rho=0:"
-        f" {(nzero) / (ncoordgrid**3)}",
+        f" {(nzero) / (ncoordgrid**3)}"
     )
 
     logprint(
         f"number of central cells (dis<rmean) with rho=0 {nzerocentral}, ratio"
-        f" {(nzerocentral) / (4.0 * math.pi / 3.0 * rmean**3 / (dx * dy * dz))}",
+        f" {(nzerocentral) / (4.0 * math.pi / 3.0 * rmean**3 / (dx * dy * dz))}"
     )
 
     logprint("probably we want to choose grid size, i.e. x0, as compromise between mapped mass and rho=0 cells")
@@ -388,7 +388,7 @@ def maptogrid(
                 gy = y0 + dy * j
                 for i in range(ncoordgrid):
                     fgrid.write(
-                        f"{gridindex:8d} {x0 + dx * i} {gy} {gz} {grho[i, j, k]} {gye[i, j, k]} {gparticlecounter[i, j, k]}\n",
+                        f"{gridindex:8d} {x0 + dx * i} {gy} {gz} {grho[i, j, k]} {gye[i, j, k]} {gparticlecounter[i, j, k]}\n"
                     )
                     # gridindex2 = ((k - 1) * ncoordgrid + (j - 1)) * ncoordgrid + (i - 1) + 1
 
@@ -400,7 +400,7 @@ def maptogrid(
 def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-inputpath", "-i", default=".", help="Path to ejectasnapshot")
     parser.add_argument(
-        "-ncoordgrid", type=int, default=50, help="Number of grid positions per axis (numcells = ncoordgrid^3)",
+        "-ncoordgrid", type=int, default=50, help="Number of grid positions per axis (numcells = ncoordgrid^3)"
     )
     parser.add_argument(
         "-dtextra_seconds",

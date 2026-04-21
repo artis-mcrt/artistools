@@ -78,13 +78,13 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
         vmax = vmax_kmps * 1e5
         print(
             f"Model contains {modelmeta['npts_model']} 1D spherical shells with vmax = {vmax / 1e5} km/s"
-            f" ({vmax / 29979245800:.2f} * c)",
+            f" ({vmax / 29979245800:.2f} * c)"
         )
     else:
         nonemptycells = dfmodel.filter(pl.col("rho") > 0.0).select(pl.len()).collect().item()
         print(
             f"Model contains {modelmeta['npts_model']} grid cells ({nonemptycells} nonempty) with "
-            f"vmax = {vmax} cm/s ({vmax * 1e-5 / 299792.458:.2f} * c)",
+            f"vmax = {vmax} cm/s ({vmax * 1e-5 / 299792.458:.2f} * c)"
         )
         vmax_corner_3d = math.sqrt(3 * vmax**2)
         print(f"  3D corner vmax: {vmax_corner_3d:.2e} cm/s ({vmax_corner_3d * 1e-5 / 299792.458:.2f} * c)")
@@ -165,13 +165,13 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
                 print(
                     f"  {'initial energy':19s} {initial_energy_mapped:.3e} erg (when mapped to"
                     f" {ncoordgridx}^3 cubic grid, error"
-                    f" {100 * (initial_energy_mapped / initial_energy - 1):.2f}%)",
+                    f" {100 * (initial_energy_mapped / initial_energy - 1):.2f}%)"
                 )
 
             mtot_mapped_msun = sum(cellmass_mapped) / msun_g
             print(
                 f"  {'M_tot_rho_map':19s} {mtot_mapped_msun:7.5f} MSun (density * volume when mapped to {ncoordgridx}^3"
-                f" cubic grid, error {100 * (mtot_mapped_msun / mass_msun_rho - 1):.2f}%)",
+                f" cubic grid, error {100 * (mtot_mapped_msun / mass_msun_rho - 1):.2f}%)"
             )
 
     print(f"  {'M_tot_rho':19s} {mass_msun_rho:7.5f} MSun (density * volume)")
@@ -187,7 +187,7 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
         ) / msun_g
         print(
             f"  {'M_corners':19s} {corner_mass:7.5f} MSun ("
-            f" {100 * corner_mass / mass_msun_rho:.2f}% of M_tot in cells with v_r_mid > vmax)",
+            f" {100 * corner_mass / mass_msun_rho:.2f}% of M_tot in cells with v_r_mid > vmax)"
         )
 
     if args.noabund:
@@ -234,29 +234,29 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
                 mass_msun_actinides += species_mass_msun
 
     print(
-        f"  {'M_tot_elem':19s} {mass_msun_elem:7.5f} MSun ({mass_msun_elem / mass_msun_rho * 100:6.2f}% of M_tot_rho)",
+        f"  {'M_tot_elem':19s} {mass_msun_elem:7.5f} MSun ({mass_msun_elem / mass_msun_rho * 100:6.2f}% of M_tot_rho)"
     )
 
     if args.isotopes:
         print(
             f"  {'M_tot_iso':19s} {mass_msun_isotopes:7.5f} MSun ({mass_msun_isotopes / mass_msun_rho * 100:6.2f}% "
-            "of M_tot_rho, but can be < 100% if stable isotopes not tracked)",
+            "of M_tot_rho, but can be < 100% if stable isotopes not tracked)"
         )
 
     mass_msun_fegroup = dfmodel.select(pl.col("X_Fegroup").dot(pl.col("mass_g"))).collect().item() / msun_g
     print(
         f"  {'M_Fegroup':19s} {mass_msun_fegroup:7.5f} MSun"
-        f" ({mass_msun_fegroup / mass_msun_rho * 100:6.2f}% of M_tot_rho)",
+        f" ({mass_msun_fegroup / mass_msun_rho * 100:6.2f}% of M_tot_rho)"
     )
 
     print(
         f"  {'M_lanthanide_isosum':19s} {mass_msun_lanthanides:7.5f} MSun"
-        f" ({mass_msun_lanthanides / mass_msun_rho * 100:6.2f}% of M_tot_rho)",
+        f" ({mass_msun_lanthanides / mass_msun_rho * 100:6.2f}% of M_tot_rho)"
     )
 
     print(
         f"  {'M_actinide_isosum':19s} {mass_msun_actinides:7.5f} MSun"
-        f" ({mass_msun_actinides / mass_msun_rho * 100:6.2f}% of M_tot_rho)",
+        f" ({mass_msun_actinides / mass_msun_rho * 100:6.2f}% of M_tot_rho)"
     )
 
     def sortkey(tup_species_mass_g: tuple[str, float]) -> tuple[int, int, str] | tuple[float, str]:
@@ -265,7 +265,7 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
         if args.sort in {"z", "a"}:
             # for a species like C_isosum, strmassnumber is "", so use -1 to sort it first
             strmassnumber = species.lstrip("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz").rstrip(
-                "_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
+                "_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
             )
             massnumber = int(strmassnumber) if strmassnumber else -1
             if args.sort == "z":
@@ -309,13 +309,13 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
-        "modelpath", default=[], nargs="*", type=Path, help="Path of input file or folder containing model.txt",
+        "modelpath", default=[], nargs="*", type=Path, help="Path of input file or folder containing model.txt"
     )
 
     parser.add_argument("-cell", "-mgi", default=None, help="Focus on particular cell number (0-indexed)")
 
     parser.add_argument(
-        "--noabund", action="store_true", help="Give total masses only, no nuclear or elemental abundances",
+        "--noabund", action="store_true", help="Give total masses only, no nuclear or elemental abundances"
     )
 
     parser.add_argument("--isotopes", action="store_true", help="Show full set of isotopic abundances")

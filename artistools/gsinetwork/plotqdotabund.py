@@ -60,7 +60,7 @@ def get_abundance_correction_factors(
             n_assoc_cells=pl.Series([
                 len(assoc_cells.get(inputcellid - 1, []))
                 for (inputcellid,) in lzdfmodel.select("inputcellid").collect().iter_rows()
-            ]),
+            ])
         )
 
         # for spherical models, ARTIS mapping to a cubic grid introduces some errors in the cell volumes
@@ -146,7 +146,7 @@ def get_artis_abund_sequences(
                 cellmassfrac_exprs.append(pl.col(f"X_{strspecies}"))
             elif len(estimators_lazy.select(cs.matches(rf"^X_{strspecies}\d+")).collect_schema().names()) > 0:
                 cellmassfrac_exprs.append(
-                    pl.sum_horizontal(cs.matches(rf"^X_{strspecies}\d+")),
+                    pl.sum_horizontal(cs.matches(rf"^X_{strspecies}\d+"))
                 )  # sum over all isotopes of this element
             else:
                 cellmassfrac_exprs.append(pl.lit(float("-inf")))
@@ -163,7 +163,7 @@ def get_artis_abund_sequences(
                         ((cellmassfracexpr * pl.col("mass_g")).sum() / pl.col("mass_g").sum()).alias(f"X_{strspecies}")
                         for strspecies, cellmassfracexpr in zip(arr_species, cellmassfrac_exprs, strict=True)
                     ]
-                    + [pl.col("tmid_days").mean()],
+                    + [pl.col("tmid_days").mean()]
                 )
             )
             lazydfs.append((mgi, combinedlzdf))
@@ -182,7 +182,7 @@ def plot_qdot(
 ) -> None:
     try:
         depdata = at.misc.df_filter_minmax_bounded(
-            at.get_deposition(modelpath=modelpath), "tmid_days", None, xmax,
+            at.get_deposition(modelpath=modelpath), "tmid_days", None, xmax
         ).collect()
 
     except FileNotFoundError:
@@ -431,18 +431,18 @@ def get_particledata(
         if verbose:
             print(
                 "Reading network calculation heating.dat,"
-                f" energy_thermo.dat{', and nz-plane abundances' if arr_strnuc_z_n else ''} for particle {particleid}...",
+                f" energy_thermo.dat{', and nz-plane abundances' if arr_strnuc_z_n else ''} for particle {particleid}..."
             )
 
         particledata = pl.LazyFrame({"particleid": [particleid]}, schema={"particleid": pl.Int32})
         nstep_timesec: dict[int, float] = {}
         with get_tar_member_extracted_path(
-            traj_root=traj_root, particleid=particleid, memberfilename="./Run_rprocess/heating.dat",
+            traj_root=traj_root, particleid=particleid, memberfilename="./Run_rprocess/heating.dat"
         ).open(encoding="utf-8") as f:
             dfheating = pl.from_pandas(
                 pd.read_csv(
-                    f, sep=r"\s+", usecols=["#count", "time/s", "hbeta", "halpha", "hspof"], dtype_backend="pyarrow",
-                ),
+                    f, sep=r"\s+", usecols=["#count", "time/s", "hbeta", "halpha", "hspof"], dtype_backend="pyarrow"
+                )
             )
             # triple digit exponents like 1.735904-244 need to be converted to 1.735904e-244
             # because of Fortran output
@@ -451,7 +451,7 @@ def get_particledata(
                 .when(cs.by_dtype(pl.String).str.slice(-4, 1) == "-")
                 .then(cs.by_dtype(pl.String).str.replace_all("-", "e-"))
                 .otherwise(cs.by_dtype(pl.String))
-                .cast(pl.Float32),
+                .cast(pl.Float32)
             )
 
             heatcols = ["hbeta", "halpha", "hspof"]
@@ -468,10 +468,10 @@ def get_particledata(
 
         if arr_strnuc_z_n:
             ntslowers = at.inputmodel.rprocess_from_trajectory.get_closest_network_timesteps(
-                traj_root, particleid, arr_time_s_incpremerger, cond="lessthan",
+                traj_root, particleid, arr_time_s_incpremerger, cond="lessthan"
             )
             ntsuppers = at.inputmodel.rprocess_from_trajectory.get_closest_network_timesteps(
-                traj_root, particleid, arr_time_s_incpremerger, cond="greaterthan",
+                traj_root, particleid, arr_time_s_incpremerger, cond="greaterthan"
             )
             nts_list = sorted(set(ntslowers + ntsuppers))
             nts_count = len(nts_list)
@@ -479,7 +479,7 @@ def get_particledata(
             for i, nts in enumerate(nts_list):
                 dftrajnucabund, traj_time_s = (
                     at.inputmodel.rprocess_from_trajectory.get_trajectory_timestepfile_nuc_abund(
-                        traj_root, particleid, f"./Run_rprocess/nz-plane{nts:05d}",
+                        traj_root, particleid, f"./Run_rprocess/nz-plane{nts:05d}"
                     )
                 )
                 assert math.isclose(traj_time_s, nstep_timesec[nts])
@@ -501,8 +501,8 @@ def get_particledata(
                 pl.Series(
                     [
                         np.interp(
-                            arr_time_s_incpremerger, [nstep_timesec[nts] for nts in nts_list], arr_massfracs[strnuc],
-                        ),
+                            arr_time_s_incpremerger, [nstep_timesec[nts] for nts in nts_list], arr_massfracs[strnuc]
+                        )
                     ],
                     dtype=pl.Array(pl.Float32, len(arr_time_s_incpremerger)),
                 ).alias(strnuc)
@@ -616,7 +616,7 @@ def plot_qdot_abund_modelcells(
     arr_strnuc_z_n = list(zip(arr_species, arr_z, arr_n, strict=True))
 
     lzdfmodel, modelmeta = at.inputmodel.get_modeldata(
-        modelpath, derived_cols=["mass_g", "rho", "logrho", "volume"], get_elemabundances=True,
+        modelpath, derived_cols=["mass_g", "rho", "logrho", "volume"], get_elemabundances=True
     )
     lzdfmodel = lzdfmodel.with_columns(cellmass_on_mtot=pl.col("mass_g") / pl.col("mass_g").sum())
 
@@ -624,7 +624,7 @@ def plot_qdot_abund_modelcells(
     print(f"model mass: {model_mass_grams / 1.989e33:.3f} Msun")
 
     dftimesteps = at.misc.df_filter_minmax_bounded(
-        at.get_timesteps(modelpath).select("timestep", "tmid_days"), "tmid_days", None, timedaysmax,
+        at.get_timesteps(modelpath).select("timestep", "tmid_days"), "tmid_days", None, timedaysmax
     ).collect()
 
     arr_time_artis_days_alltimesteps = dftimesteps.select(pl.col("tmid_days")).to_series().to_numpy()
@@ -705,7 +705,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "--nogsinet", action="store_true", help="Do not attempt to read GSI Network data even if available",
+        "--nogsinet", action="store_true", help="Do not attempt to read GSI Network data even if available"
     )
 
     parser.add_argument(

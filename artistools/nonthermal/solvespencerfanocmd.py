@@ -18,7 +18,7 @@ defaultoutputfile = "spencerfano_cell{cell:03d}_ts{timestep:02d}_{timedays:.0f}d
 
 def make_ntstats_plot(ntstatfile: str | Path) -> None:
     fig, ax = plt.subplots(
-        nrows=1, ncols=1, sharex=True, figsize=(4, 3), tight_layout={"pad": 0.5, "w_pad": 0.3, "h_pad": 0.3},
+        nrows=1, ncols=1, sharex=True, figsize=(4, 3), tight_layout={"pad": 0.5, "w_pad": 0.3, "h_pad": 0.3}
     )
 
     dfstats = pd.read_csv(ntstatfile, sep=r"\s+", escapechar="#").fillna(0)
@@ -78,7 +78,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "-vary", action="store", choices=["emin", "emax", "npts", "emax,npts", "x_e"], help="Which parameter to vary",
+        "-vary", action="store", choices=["emin", "emax", "npts", "emax,npts", "x_e"], help="Which parameter to vary"
     )
 
     parser.add_argument(
@@ -162,14 +162,14 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             args.modelgridindex = args.modelgridindex
         assert isinstance(args.modelgridindex, int)
         estimators = at.estimators.read_estimators(
-            modelpath, timestep=args.timestep, modelgridindex=args.modelgridindex,
+            modelpath, timestep=args.timestep, modelgridindex=args.modelgridindex
         )
         assert isinstance(args.timestep, int)
         assert isinstance(args.modelgridindex, int)
         estim = estimators[args.timestep, args.modelgridindex]
 
         dfpops = at.nltepops.read_files(
-            modelpath, modelgridindex=args.modelgridindex, timestep=args.timestep,
+            modelpath, modelgridindex=args.modelgridindex, timestep=args.timestep
         ).to_pandas(use_pyarrow_extension_array=True)
 
         if dfpops.empty:
@@ -329,7 +329,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
             if args.makeplot:
                 outputfilename = str(args.outputfile).format(
-                    cell=args.modelgridindex, timestep=args.timestep, timedays=args.timedays,
+                    cell=args.modelgridindex, timestep=args.timestep, timedays=args.timedays
                 )
                 # outputfilename = "spencerfano.pdf"
                 sf.plot_spec_channels(outputfilename=outputfilename)

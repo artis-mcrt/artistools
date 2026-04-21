@@ -108,7 +108,7 @@ def test_spectra_get_spectrum() -> None:
     timehighdays = at.get_timestep_times(modelpath)[65]
 
     dfspectrumpkts = at.spectra.get_from_packets(
-        modelpath, timelowdays=timelowdays, timehighdays=timehighdays, lambda_min=lambda_min, lambda_max=lambda_max,
+        modelpath, timelowdays=timelowdays, timehighdays=timehighdays, lambda_min=lambda_min, lambda_max=lambda_max
     )[-1].collect()
 
     check_spectrum(dfspectrumpkts)
@@ -176,7 +176,7 @@ def test_spectra_get_spectrum_polar_angles_frompackets(benchmark: BenchmarkFixtu
             timehighdays=timehighdays,
             lambda_min=100,
             lambda_max=50000,
-        ),
+        )
     )
 
     results_pkts = {
@@ -213,15 +213,15 @@ def test_spectra_get_flux_contributions(benchmark: BenchmarkFixture) -> None:
     timestepmin = 40
     timestepmax = 80
     dfspectrum = at.spectra.get_spectrum(
-        modelpath=modelpath, timestepmin=timestepmin, timestepmax=timestepmax, fluxfilterfunc=None,
+        modelpath=modelpath, timestepmin=timestepmin, timestepmax=timestepmax, fluxfilterfunc=None
     )[-1].collect()
 
     integrated_flux_specout = np.trapezoid(dfspectrum["f_lambda"], x=dfspectrum["lambda_angstroms"])
 
     _contribution_list, array_flambda_emission_total, arraylambda_angstroms = benchmark(
         lambda: at.spectra.get_flux_contributions(
-            modelpath, timestepmin=timestepmin, timestepmax=timestepmax, use_lastemissiontype=False,
-        ),
+            modelpath, timestepmin=timestepmin, timestepmax=timestepmax, use_lastemissiontype=False
+        )
     )
 
     integrated_flux_emission = -np.trapezoid(array_flambda_emission_total, x=arraylambda_angstroms)
@@ -241,7 +241,7 @@ def test_spectra_get_flux_contributions(benchmark: BenchmarkFixture) -> None:
 def test_spectra_timeseries_subplots() -> None:
     timedayslist = [295, 300]
     at.spectra.plot(
-        argsraw=[], specpath=modelpath, outputfile=outputpath, timedayslist=timedayslist, multispecplot=True,
+        argsraw=[], specpath=modelpath, outputfile=outputpath, timedayslist=timedayslist, multispecplot=True
     )
 
 

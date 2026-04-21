@@ -58,15 +58,15 @@ def check_time_range_is_valid(modelpath: Path, timemin: float, timemax: float, a
         problem_messages = []
         if validrange_start_days is None and validrange_end_days is None:
             problem_messages.append(
-                f" {'WARNING' if allow_invalid else 'ERROR'}:The model has no valid time range days",
+                f" {'WARNING' if allow_invalid else 'ERROR'}:The model has no valid time range days"
             )
         if validrange_start_days is not None and timemin < validrange_start_days:
             problem_messages.append(
-                f" {'WARNING' if allow_invalid else 'ERROR'}: timemin {timemin} days is before the start of the valid range at {validrange_start_days:.2f} days",
+                f" {'WARNING' if allow_invalid else 'ERROR'}: timemin {timemin} days is before the start of the valid range at {validrange_start_days:.2f} days"
             )
         if validrange_end_days is not None and timemax > validrange_end_days:
             problem_messages.append(
-                f" {'WARNING' if allow_invalid else 'ERROR'}: timemax {timemax} days is after the end of the valid range at {validrange_end_days:.2f} days",
+                f" {'WARNING' if allow_invalid else 'ERROR'}: timemax {timemax} days is after the end of the valid range at {validrange_end_days:.2f} days"
             )
 
         if problem_messages and not allow_invalid:
@@ -78,7 +78,7 @@ def check_time_range_is_valid(modelpath: Path, timemin: float, timemax: float, a
 
 
 def get_lambda_min_max_binwidth(
-    xmin: float, xmax: float, args: argparse.Namespace,
+    xmin: float, xmax: float, args: argparse.Namespace
 ) -> tuple[float, float, float | npt.NDArray[np.floating] | None]:
     lambda_min, lambda_max = sorted([
         atspectra.convert_unit_to_angstroms(xmin, args.xunit),
@@ -96,7 +96,7 @@ def get_lambda_min_max_binwidth(
             assert args.deltax is not None
             x_bin_edges = np.arange(xmin, xmax + args.deltax, args.deltax)
         lambda_bin_edges = np.array(
-            sorted(atspectra.convert_unit_to_angstroms(float(x), args.xunit) for x in x_bin_edges),
+            sorted(atspectra.convert_unit_to_angstroms(float(x), args.xunit) for x in x_bin_edges)
         )
         delta_lambda = np.array(
             [(lambda_bin_edges[i + 1] - lambda_bin_edges[i]) for i in range(len(lambda_bin_edges) - 1)],
@@ -208,7 +208,7 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
 
     timearray = dfspectrum.keys()[1:-1]
     (_, _, args.timemin, args.timemax) = get_time_range(
-        modelpath, args.timestep, args.timemin, args.timemax, args.timedays,
+        modelpath, args.timestep, args.timemin, args.timemax, args.timedays
     )
     assert args.timemin is not None
     assert args.timemax is not None
@@ -317,7 +317,7 @@ def plot_reference_spectrum(
             pl.any_horizontal([
                 pl.col("lambda_angstroms").is_between(band_low_rest, band_high_rest, closed="both")
                 for band_low_rest, band_high_rest in bands_rest
-            ]),
+            ])
         )
         specdata = specdata.with_columns(f_lambda=expr_masked.then(pl.lit(math.nan)).otherwise(pl.col("f_lambda")))
 
@@ -341,12 +341,12 @@ def plot_reference_spectrum(
         specdata = specdata.with_columns(cs.starts_with("f_lambda").map_batches(fluxfilterfunc))
 
     specdata = atspectra.get_dfspectrum_x_y_with_units(
-        specdata, xunit=xunit, yvariable=yvariable, fluxdistance_mpc=scale_to_dist_mpc,
+        specdata, xunit=xunit, yvariable=yvariable, fluxdistance_mpc=scale_to_dist_mpc
     ).collect()
 
     if scale_to_peak:
         specdata = specdata.with_columns(
-            y_scaled=pl.col("y") / pl.col("y").max() * scale_to_peak + offset,
+            y_scaled=pl.col("y") / pl.col("y").max() * scale_to_peak + offset
         ).with_columns(y=pl.col("y_scaled"))
     else:
         assert offset == 0
@@ -371,7 +371,7 @@ def plot_filter_functions(axis: mplax.Axes) -> None:
             names=["lambda_angstroms", "flux_normalised"],
         )
         filter_data.plot(
-            x="lambda_angstroms", y="flux_normalised", ax=axis, label=filter_name, color=colours[index], alpha=0.3,
+            x="lambda_angstroms", y="flux_normalised", ax=axis, label=filter_name, color=colours[index], alpha=0.3
         )
 
 
@@ -424,7 +424,7 @@ def plot_artis_spectrum(
         clamp_to_timesteps = not args.notimeclamp
         if args.multispecplot:
             (timestepmin, timestepmax, args.timemin, args.timemax) = get_time_range(
-                modelpath, timedays_range_str=args.timedayslist[axindex], clamp_to_timesteps=clamp_to_timesteps,
+                modelpath, timedays_range_str=args.timedayslist[axindex], clamp_to_timesteps=clamp_to_timesteps
             )
         else:
             (timestepmin, timestepmax, args.timemin, args.timemax) = get_time_range(
@@ -455,7 +455,7 @@ def plot_artis_spectrum(
                 linelabel += rf" ($\pm$ {timedelta:.1f}d)"
 
         print(
-            f"====> '{linelabel}' timesteps {timestepmin} to {timestepmax} ({args.timemin:.3f} to {args.timemax:.3f}d{'' if clamp_to_timesteps else ' not necessarily clamped to timestep start/end'})",
+            f"====> '{linelabel}' timesteps {timestepmin} to {timestepmax} ({args.timemin:.3f} to {args.timemax:.3f}d{'' if clamp_to_timesteps else ' not necessarily clamped to timestep start/end'})"
         )
         print(f" modelpath {modelpath}")
 
@@ -492,7 +492,7 @@ def plot_artis_spectrum(
             ):
                 print(
                     f"Timestep out of range of virtual packets: start time {vpkt_config['initial_time']} days "
-                    f"end time {vpkt_config['final_time']} days",
+                    f"end time {vpkt_config['final_time']} days"
                 )
                 sys.exit(1)
 
@@ -547,7 +547,7 @@ def plot_artis_spectrum(
                 (
                     df_filter_minmax_bounded(
                         atspectra.get_dfspectrum_x_y_with_units(
-                            viewinganglespectra[dirbin], xunit=xunit, yvariable=yvariable, fluxdistance_mpc=args.distmpc,
+                            viewinganglespectra[dirbin], xunit=xunit, yvariable=yvariable, fluxdistance_mpc=args.distmpc
                         ).sort("x"),
                         colname="x",
                         minval=xmin,
@@ -581,7 +581,7 @@ def plot_artis_spectrum(
 
             if scale_to_peak:
                 dfspectrum = dfspectrum.with_columns(
-                    y_scaled=pl.col("y") / pl.col("y").max() * scale_to_peak,
+                    y_scaled=pl.col("y") / pl.col("y").max() * scale_to_peak
                 ).with_columns(y=pl.col("y_scaled"))
 
             if args.binflux:
@@ -604,7 +604,7 @@ def plot_artis_spectrum(
                 dfspectrum = pl.DataFrame({"x": new_lambda_angstroms, "y": binned_flux})
 
             axis.plot(
-                dfspectrum["x"], dfspectrum["y"], label=linelabel_withdirbin if axindex == 0 else None, **plotkwargs,
+                dfspectrum["x"], dfspectrum["y"], label=linelabel_withdirbin if axindex == 0 else None, **plotkwargs
             )
 
     return dfspectrum[["lambda_angstroms", "f_lambda"]] if dfspectrum is not None else None
@@ -693,7 +693,7 @@ def make_spectrum_plot(
         elif not Path(specpath).exists() and Path(specpath).parts[0] == "codecomparison":
             # timeavg = (args.timemin + args.timemax) / 2.
             (_timestepmin, _timestepmax, args.timemin, args.timemax) = get_time_range(
-                specpath, args.timestep, args.timemin, args.timemax, args.timedays,
+                specpath, args.timestep, args.timemin, args.timemax, args.timedays
             )
             timeavg = args.timedays
             from artistools.codecomparison import plot_spectrum
@@ -805,7 +805,7 @@ def make_emissionabsorption_plot(
     clamp_to_timesteps = not args.notimeclamp
 
     (timestepmin, timestepmax, args.timemin, args.timemax) = get_time_range(
-        modelpath, args.timestep, args.timemin, args.timemax, args.timedays, clamp_to_timesteps=clamp_to_timesteps,
+        modelpath, args.timestep, args.timemin, args.timemax, args.timedays, clamp_to_timesteps=clamp_to_timesteps
     )
 
     if timestepmin == timestepmax == -1:
@@ -829,7 +829,7 @@ def make_emissionabsorption_plot(
     assert args.timemax is not None
 
     print(
-        f"Plotting {modelname} timesteps {timestepmin} to {timestepmax} ({args.timemin:.3f} to {args.timemax:.3f}d{'' if clamp_to_timesteps else ' not necessarily clamped to timestep start/end'})",
+        f"Plotting {modelname} timesteps {timestepmin} to {timestepmax} ({args.timemin:.3f} to {args.timemax:.3f}d{'' if clamp_to_timesteps else ' not necessarily clamped to timestep start/end'})"
     )
 
     xmin, xmax = axis.get_xlim()
@@ -921,11 +921,11 @@ def make_emissionabsorption_plot(
 
     for x in contributions_sorted_reduced:
         dfaxisdata = dfaxisdata.with_columns(
-            pl.Series(name=f"emission_flambda.{x.linelabel}", values=x.array_flambda_emission),
+            pl.Series(name=f"emission_flambda.{x.linelabel}", values=x.array_flambda_emission)
         )
         if args.showabsorption:
             dfaxisdata = dfaxisdata.with_columns(
-                pl.Series(name=f"absorption_flambda.{x.linelabel}", values=x.array_flambda_absorption),
+                pl.Series(name=f"absorption_flambda.{x.linelabel}", values=x.array_flambda_absorption)
             )
 
     if args.nostack:
@@ -952,7 +952,7 @@ def make_emissionabsorption_plot(
                     fluxdistance_mpc=args.distmpc,
                 ).collect()
                 (absorptioncomponentplot,) = axis.plot(
-                    dfspec["x"], -dfspec["y"] * scalefactor, color=linecolor, linewidth=1,
+                    dfspec["x"], -dfspec["y"] * scalefactor, color=linecolor, linewidth=1
                 )
                 if not args.showemission:
                     linecolor = absorptioncomponentplot.get_color()
@@ -1139,7 +1139,7 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[t.An
         if "{" in axis.get_ylabel() and not args.logscaley:
             axis.yaxis.set_major_formatter(ExponentLabelFormatter(axis.get_ylabel()))
             axis.yaxis.set_major_locator(
-                ticker.MaxNLocator(nbins="auto", steps=[1, 2, 4, 5, 8, 10], integer=True, prune=None),
+                ticker.MaxNLocator(nbins="auto", steps=[1, 2, 4, 5, 8, 10], integer=True, prune=None)
             )
             axis.yaxis.set_minor_locator(ticker.AutoMinorLocator())
 
@@ -1226,7 +1226,7 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[t.An
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
-        "specpath", default=[], nargs="*", type=Path, help="Paths to ARTIS folders or reference spectra filenames",
+        "specpath", default=[], nargs="*", type=Path, help="Paths to ARTIS folders or reference spectra filenames"
     )
 
     parser.add_argument("-label", default=[], nargs="*", help="List of series label overrides")
@@ -1244,11 +1244,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--gamma", action="store_true", help="Make light curve from gamma rays instead of R-packets")
 
     parser.add_argument(
-        "--frompackets", action="store_true", help="Read packets files directly instead of exspec results",
+        "--frompackets", action="store_true", help="Read packets files directly instead of exspec results"
     )
 
     parser.add_argument(
-        "-maxpacketfiles", "-maxpacketsfiles", type=int, default=None, help="Limit the number of packet files read",
+        "-maxpacketfiles", "-maxpacketsfiles", type=int, default=None, help="Limit the number of packet files read"
     )
 
     parser.add_argument(
@@ -1312,7 +1312,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-timestep", "-ts", dest="timestep", nargs="?", help="First timestep or a range e.g. 45-65")
 
     parser.add_argument(
-        "-timedays", "-time", "-t", dest="timedays", nargs="?", help="Range of times in days to plot (e.g. 50-100)",
+        "-timedays", "-time", "-t", dest="timedays", nargs="?", help="Range of times in days to plot (e.g. 50-100)"
     )
 
     parser.add_argument("-timemin", type=float, help="Lower time in days to integrate spectrum")
@@ -1320,7 +1320,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-timemax", type=float, help="Upper time in days to integrate spectrum")
 
     parser.add_argument(
-        "--notimeclamp", action="store_true", help="When plotting from packets, don't clamp to timestep start/end",
+        "--notimeclamp", action="store_true", help="When plotting from packets, don't clamp to timestep start/end"
     )
 
     parser.add_argument(
@@ -1334,21 +1334,21 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "-xmin", "-lambdamin", dest="xmin", type=float, default=None, help="Plot range: minimum x range",
+        "-xmin", "-lambdamin", dest="xmin", type=float, default=None, help="Plot range: minimum x range"
     )
 
     parser.add_argument(
-        "-xmax", "-lambdamax", dest="xmax", type=float, default=None, help="Plot range: maximum x range",
+        "-xmax", "-lambdamax", dest="xmax", type=float, default=None, help="Plot range: maximum x range"
     )
 
     xbinsizegroup = parser.add_mutually_exclusive_group()
 
     xbinsizegroup.add_argument(
-        "-deltalambda", type=float, default=None, help="Lambda bin size in Angstroms (applies to from_packets only)",
+        "-deltalambda", type=float, default=None, help="Lambda bin size in Angstroms (applies to from_packets only)"
     )
 
     xbinsizegroup.add_argument(
-        "-deltax", "-dx", type=float, default=None, help="Horizontal bin size in x-unit (applies to from_packets only)",
+        "-deltax", "-dx", type=float, default=None, help="Horizontal bin size in x-unit (applies to from_packets only)"
     )
 
     xbinsizegroup.add_argument(
@@ -1364,7 +1364,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-ymax", type=float, default=None, help="Plot range: y-axis")
 
     parser.add_argument(
-        "--hidemodeltimerange", action="store_true", help='Hide the "at (+/- x.xd)" from the line labels',
+        "--hidemodeltimerange", action="store_true", help='Hide the "at (+/- x.xd)" from the line labels'
     )
 
     parser.add_argument("--hidemodeltime", action="store_true", help="Hide the time from the line labels")
@@ -1413,11 +1413,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "-scaletoreftime", type=float, default=None, help="Scale reference spectra flux using Co56 decay timescale",
+        "-scaletoreftime", type=float, default=None, help="Scale reference spectra flux using Co56 decay timescale"
     )
 
     parser.add_argument(
-        "-figscale", type=float, default=1.8, help="Scale factor for plot area. 1.0 is for single-column",
+        "-figscale", type=float, default=1.8, help="Scale factor for plot area. 1.0 is for single-column"
     )
 
     parser.add_argument("-figwidthscale", type=float, default=1.0, help="Scale factor for plot width")
@@ -1447,24 +1447,24 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--write_data", action="store_true", help="Save data used to generate the plot in a CSV file")
 
     parser.add_argument(
-        "-outputfile", "-o", action="store", dest="outputfile", type=Path, help="path/filename for PDF file",
+        "-outputfile", "-o", action="store", dest="outputfile", type=Path, help="path/filename for PDF file"
     )
 
     parser.add_argument("-dpi", type=int, default=250, help="Dots Per Inch for output file")
 
     parser.add_argument(
-        "--output_spectra", "--write_spectra", action="store_true", help="Write out all timestep spectra to text files",
+        "--output_spectra", "--write_spectra", action="store_true", help="Write out all timestep spectra to text files"
     )
 
     # Combines all vspecpol files into one file which can then be read by artistools
     parser.add_argument(
-        "--makevspecpol", action="store_true", help="Make file summing the virtual packet spectra from all ranks",
+        "--makevspecpol", action="store_true", help="Make file summing the virtual packet spectra from all ranks"
     )
 
     # To get better statistics for polarisation use multiple runs of the same simulation. This will then average the
     # files produced by makevspecpol for all simulations.
     parser.add_argument(
-        "--averagevspecpolfiles", action="store_true", help="Average the vspecpol-total files for multiple simulations",
+        "--averagevspecpolfiles", action="store_true", help="Average the vspecpol-total files for multiple simulations"
     )
 
     parser.add_argument(
@@ -1475,7 +1475,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "-stokesparam", type=str, default="I", help="Stokes param to plot. Default I. Expects I, Q or U",
+        "-stokesparam", type=str, default="I", help="Stokes param to plot. Default I. Expects I, Q or U"
     )
 
     parser.add_argument(
@@ -1517,7 +1517,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "--multispecplot", action="store_true", help="Plot multiple spectra in subplots - expects timedayslist",
+        "--multispecplot", action="store_true", help="Plot multiple spectra in subplots - expects timedayslist"
     )
 
     parser.add_argument("-timedayslist", nargs="+", help="List of times in days for time sequence subplots")
@@ -1525,7 +1525,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--showtime", action="store_true", help="Write time on plot")
 
     parser.add_argument(
-        "--classicartis", action="store_true", help="Flag to show using output from classic ARTIS branch",
+        "--classicartis", action="store_true", help="Flag to show using output from classic ARTIS branch"
     )
 
     parser.add_argument(
@@ -1589,7 +1589,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 refspecnum += 1
 
     args.color, args.label, args.linestyle, args.linealpha, args.dashes, args.linewidth = trim_or_pad(
-        len(args.specpath), args.color, args.label, args.linestyle, args.linealpha, args.dashes, args.linewidth,
+        len(args.specpath), args.color, args.label, args.linestyle, args.linealpha, args.dashes, args.linewidth
     )
 
     if args.vpkt_match_emission_exclusion_to_opac:
@@ -1648,7 +1648,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         filenameout = (
             str(args.outputfile).format(
-                time_days_min=args.timemin, time_days_max=args.timemax, directionbins=strdirectionbins,
+                time_days_min=args.timemin, time_days_max=args.timemax, directionbins=strdirectionbins
             )
             if args.timemin is not None
             else "plotspec.pdf"

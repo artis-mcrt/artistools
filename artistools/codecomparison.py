@@ -52,8 +52,8 @@ def get_timestep_times(modelpath: Path | str, loc: t.Literal["start", "mid", "en
 
 def read_reference_estimators(
     modelpath: str | Path,
-    modelgridindex: int | Sequence[int] | None = None,
-    timestep: int | Sequence[int] | None = None,
+    modelgridindex: int | Sequence[int] | None = None,  # noqa: ARG001
+    timestep: int | Sequence[int] | None = None,  # noqa: ARG001
 ) -> dict[tuple[int, int], t.Any]:
     """Read estimators from code comparison workshop file."""
     virtualfolder, inputmodel, codename = Path(modelpath).parts
@@ -184,7 +184,7 @@ def get_spectra(modelpath: str | Path) -> tuple[pl.DataFrame, npt.NDArray[np.flo
         assert len(arr_timedays) == ntimes
 
         dfspectra = pl.from_pandas(
-            pd.read_csv(fspec, sep=r"\s+", header=None, names=["lambda", *list(arr_timedays)], comment="#"),
+            pd.read_csv(fspec, sep=r"\s+", header=None, names=["lambda", *list(arr_timedays)], comment="#")
         )
 
     return dfspectra, arr_timedays

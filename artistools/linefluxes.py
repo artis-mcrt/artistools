@@ -35,10 +35,10 @@ class FeatureTuple(t.NamedTuple):
 
 
 def get_packets_with_emtype(
-    modelpath: Path | str, emtypecolumn: str, lineindices: Sequence[int], maxpacketfiles: int | None = None,
+    modelpath: Path | str, emtypecolumn: str, lineindices: Sequence[int], maxpacketfiles: int | None = None
 ) -> tuple[pl.LazyFrame, int]:
     nprocs_read, dfpackets = at.packets.get_packets_pl(
-        modelpath=modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT",
+        modelpath=modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
     dfpackets = dfpackets.filter(pl.col(emtypecolumn).is_in(lineindices))
     dfmatchingpackets = dfpackets
@@ -66,7 +66,7 @@ def get_line_fluxes_from_packets(
     linelistindices_allfeatures = tuple(lineindex for feature in emfeatures for lineindex in feature.linelistindices)
 
     dfpackets, nprocs_read = get_packets_with_emtype(
-        modelpath, emtypecolumn, linelistindices_allfeatures, maxpacketfiles=maxpacketfiles,
+        modelpath, emtypecolumn, linelistindices_allfeatures, maxpacketfiles=maxpacketfiles
     )
 
     dictlcdata = {
@@ -115,10 +115,10 @@ def get_line_fluxes_from_pops(
         .get_levels(modelpath, ionlist=tuple(ionlist), get_transitions=True, get_photoionisations=False)
         .with_columns(
             levels=pl.col("levels").map_elements(
-                lambda x: x.to_pandas(use_pyarrow_extension_array=True), return_dtype=pl.Object,
+                lambda x: x.to_pandas(use_pyarrow_extension_array=True), return_dtype=pl.Object
             ),
             transitions=pl.col("transitions").map_elements(
-                lambda x: x.collect().to_pandas(use_pyarrow_extension_array=True), return_dtype=pl.Object,
+                lambda x: x.collect().to_pandas(use_pyarrow_extension_array=True), return_dtype=pl.Object
             ),
         )
         .to_pandas(use_pyarrow_extension_array=True)
@@ -152,7 +152,7 @@ def get_line_fluxes_from_pops(
             print(f"{feature.approxlambda}A {timedays}d (ts {timestep})")
 
             for upperlevelindex, lowerlevelindex in zip(
-                feature.upperlevelindicies, feature.lowerlevelindicies, strict=False,
+                feature.upperlevelindicies, feature.lowerlevelindicies, strict=False
             ):
                 unaccounted_shellvol = 0.0  # account for the volume of empty shells
                 unaccounted_shells = []
@@ -163,7 +163,7 @@ def get_line_fluxes_from_pops(
                             & (pl.col("timestep") == timestep)
                             & (pl.col("Z") == feature.atomic_number)
                             & (pl.col("ion_stage") == feature.ion_stage)
-                            & (pl.col("level") == upperlevelindex),
+                            & (pl.col("level") == upperlevelindex)
                         )["n_NLTE"].item(0)
 
                         A_val = (
@@ -252,7 +252,7 @@ def get_labelandlineindices(modelpath: Path | str, emfeaturesearch: Sequence[t.A
         feature = get_closelines(modelpath, params[0], params[1], params[2], *params[3:])
         print(
             f"{feature.featurelabel} includes {len(feature.linelistindices)} lines "
-            f"[{feature.lowestlambda:.1f} Å, {feature.highestlambda:.1f} Å]",
+            f"[{feature.lowestlambda:.1f} Å, {feature.highestlambda:.1f} Å]"
         )
         labelandlineindices.append(feature)
     # labelandlineindices.append(featuretuple(*get_closelines(dflinelist, 26, 2, 7155, 7150, 7160)))
@@ -294,7 +294,7 @@ def make_flux_ratio_plot(args: argparse.Namespace) -> None:
 
         dflcdata = (
             get_line_fluxes_from_pops(
-                emfeatures, modelpath, arr_tstart=args.timebins_tstart, arr_tend=args.timebins_tend,
+                emfeatures, modelpath, arr_tstart=args.timebins_tstart, arr_tend=args.timebins_tend
             )
             if args.frompops
             else get_line_fluxes_from_packets(
@@ -309,7 +309,7 @@ def make_flux_ratio_plot(args: argparse.Namespace) -> None:
 
         dflcdata = dflcdata.with_columns(fratio=pl.col(emfeatures[1].colname) / pl.col(emfeatures[0].colname))
         axis.set_ylabel(
-            r"F$_{\mathrm{" + emfeatures[1].featurelabel + r"}}$ / F$_{\mathrm{" + emfeatures[0].featurelabel + r"}}$",
+            r"F$_{\mathrm{" + emfeatures[1].featurelabel + r"}}$ / F$_{\mathrm{" + emfeatures[0].featurelabel + r"}}$"
         )
 
         # \mathrm{\AA}
@@ -341,7 +341,7 @@ def make_flux_ratio_plot(args: argparse.Namespace) -> None:
 
         femis = pd.read_csv(
             "/Users/luke/iCloud/Papers (first-author)/2022 Artis ionisation/"
-            "generateplots/floers_model_NIR_VIS_ratio_20201126.csv",
+            "generateplots/floers_model_NIR_VIS_ratio_20201126.csv"
         )
 
         amodels: dict[str, tuple[list[int], list[float]]] = {}
@@ -355,7 +355,7 @@ def make_flux_ratio_plot(args: argparse.Namespace) -> None:
 
         # for amodelname, (xlist, ylist) in amodels.items():
         for aindex, (amodelname, alabel) in enumerate([
-            ("w7", "W7"),
+            ("w7", "W7")
             # ("subch", "S0"),
             # ('subch_shen2018', r'1M$_\odot$'),
             # ('subch_shen2018_electronlossboost4x', '1M$_\odot$ (Shen+18) 4x e- loss'),
@@ -522,7 +522,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
     args.label.append(f"All models: {args.label}")
     args.modeltag.append("all")
     for modelindex, (modelpath, modellabel, modeltag) in enumerate(
-        zip(args.modelpath, args.label, args.modeltag, strict=False),
+        zip(args.modelpath, args.label, args.modeltag, strict=False)
     ):
         print(f"ARTIS model: '{modellabel}'")
 
@@ -540,7 +540,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
             em_mgicolumn = "em_modelgridindex" if args.emtypecolumn == "emissiontype" else "emtrue_modelgridindex"
 
             dfpackets, _ = get_packets_with_emtype(
-                modelpath, args.emtypecolumn, linelistindices_allfeatures, maxpacketfiles=args.maxpacketfiles,
+                modelpath, args.emtypecolumn, linelistindices_allfeatures, maxpacketfiles=args.maxpacketfiles
             )
 
             dfpackets = at.packets.add_derived_columns_lazy(dfpackets, modelpath=modelpath)
@@ -651,7 +651,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
                         label = args.label[truemodelindex].format(timeavg=tmid, modeltag=modeltag)
                         if not bars:
                             plot_nne_te_points(
-                                axis, label, em_log10nne, em_Te, normtotalpackets, modelcolor, marker="s",
+                                axis, label, em_log10nne, em_Te, normtotalpackets, modelcolor, marker="s"
                             )
                         else:
                             plot_nne_te_bars(axis, em_log10nne, em_Te, modelcolor)
@@ -738,7 +738,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
-        "-modelpath", default=[], nargs="*", type=Path, help="Paths to ARTIS folders with spec.out or packets files",
+        "-modelpath", default=[], nargs="*", type=Path, help="Paths to ARTIS folders with spec.out or packets files"
     )
 
     parser.add_argument("-label", default=[], nargs="*", help="List of series label overrides")
@@ -756,13 +756,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-dashes", default=[], nargs="*", help="Dashes property of lines")
 
     parser.add_argument(
-        "-maxpacketfiles", "-maxpacketsfiles", type=int, default=None, help="Limit the number of packet files read",
+        "-maxpacketfiles", "-maxpacketsfiles", type=int, default=None, help="Limit the number of packet files read"
     )
 
     parser.add_argument("-emfeaturesearch", default=[], nargs="*", help="List of tuples (TODO explain)")
 
     parser.add_argument(
-        "--frompops", action="store_true", help="Sum up internal emissivity instead of outgoing packets",
+        "--frompops", action="store_true", help="Sum up internal emissivity instead of outgoing packets"
     )
 
     parser.add_argument(
@@ -786,13 +786,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-ymax", type=float, default=None, help="Plot range: y-axis")
 
     parser.add_argument(
-        "-timebins_tstart", default=[], nargs="*", action="append", help="Time bin start values in days",
+        "-timebins_tstart", default=[], nargs="*", action="append", help="Time bin start values in days"
     )
 
     parser.add_argument("-timebins_tend", default=[], nargs="*", action="append", help="Time bin end values in days")
 
     parser.add_argument(
-        "-figscale", type=float, default=1.8, help="Scale factor for plot area. 1.0 is for single-column",
+        "-figscale", type=float, default=1.8, help="Scale factor for plot area. 1.0 is for single-column"
     )
 
     parser.add_argument("--write_data", action="store_true", help="Save data used to generate the plot in a CSV file")
@@ -800,7 +800,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--plotemittingregions", action="store_true", help="Plot conditions where flux line is emitted")
 
     parser.add_argument(
-        "-outputfile", "-o", action="store", dest="outputfile", type=Path, help="path/filename for PDF file",
+        "-outputfile", "-o", action="store", dest="outputfile", type=Path, help="path/filename for PDF file"
     )
 
 

@@ -13,7 +13,7 @@ def test_directionbins() -> None:
     phibinlowers, phibinuppers, _ = at.get_phi_bins(usedegrees=False)
 
     testdirections = pl.DataFrame({
-        "phi_defined": np.linspace(0.1, 2 * math.pi, nphibins * 2, endpoint=False).tolist(),
+        "phi_defined": np.linspace(0.1, 2 * math.pi, nphibins * 2, endpoint=False).tolist()
     }).join(
         pl.DataFrame({"costheta_defined": np.linspace(0.0, 1.0, ncosthetabins * 2, endpoint=True).tolist()}),
         how="cross",
@@ -38,7 +38,7 @@ def test_directionbins() -> None:
         assert np.isclose(pkt["phi_defined"], pkt["phi"], rtol=1e-4, atol=1e-4) or pktdir_is_along_zaxis
 
         dirbin2 = at.packets.get_directionbin(
-            pkt["dirx"], pkt["diry"], pkt["dirz"], nphibins=nphibins, ncosthetabins=ncosthetabins, syn_dir=syn_dir,
+            pkt["dirx"], pkt["diry"], pkt["dirz"], nphibins=nphibins, ncosthetabins=ncosthetabins, syn_dir=syn_dir
         )
 
         assert dirbin2 == pkt["dirbin"]

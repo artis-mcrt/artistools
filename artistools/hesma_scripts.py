@@ -116,11 +116,11 @@ def make_hesma_vspecfiles(modelpath: Path, outpath: Path | None = None) -> None:
             f"# File contains spectra at observer angles {angle_names} for Model {modelname}.\n# A header line"
             " containing spectra time is repeated at the beginning of each observer angle. Column 0 gives wavelength."
             " \n# Spectra are at a distance of 10 pc."
-            "\n" + content,
+            "\n" + content
         )
 
 
-def make_hesma_bol_lightcurve(modelpath: Path, outpath: Path, timemin: float, timemax: float) -> None:
+def make_hesma_bol_lightcurve(modelpath: Path, outpath: Path, timemin: float, timemax: float) -> None:  # noqa: ARG001
     """UVOIR bolometric light curve (angle-averaged)."""
     lightcurvedataframe = at.lightcurve.get_bol_lc_from_lightcurveout(modelpath)
     print(lightcurvedataframe)
@@ -133,17 +133,17 @@ def make_hesma_bol_lightcurve(modelpath: Path, outpath: Path, timemin: float, ti
 
 
 def make_hesma_peakmag_dm15_dm40(
-    band: str, pathtofiles: Path, modelname: str, outpath: Path, dm40: bool = False,
+    band: str, pathtofiles: Path, modelname: str, outpath: Path, dm40: bool = False
 ) -> None:
     dm15filename = f"{band}band_{modelname}_viewing_angle_data.txt"
     dm15data = pd.read_csv(
-        pathtofiles / dm15filename, sep=r"\s+", header=None, names=["peakmag", "risetime", "dm15"], skiprows=1,
+        pathtofiles / dm15filename, sep=r"\s+", header=None, names=["peakmag", "risetime", "dm15"], skiprows=1
     )
 
     if dm40:
         dm40filename = f"{band}band_{modelname}_viewing_angle_data_deltam40.txt"
         dm40data = pd.read_csv(
-            pathtofiles / dm40filename, sep=r"\s+", header=None, names=["peakmag", "risetime", "dm40"], skiprows=1,
+            pathtofiles / dm40filename, sep=r"\s+", header=None, names=["peakmag", "risetime", "dm40"], skiprows=1
         )
 
     outdata = {

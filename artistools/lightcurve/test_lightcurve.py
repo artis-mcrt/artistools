@@ -40,7 +40,7 @@ def test_lightcurve_plot_frompackets(mockplot: t.Any, benchmark: BenchmarkFixtur
             modelpath=modelpath,
             frompackets=True,
             outputfile=Path(outputpath, "lightcurve_from_packets.pdf"),
-        ),
+        )
     )
 
     arr_time_d = np.array(mockplot.call_args[0][1])

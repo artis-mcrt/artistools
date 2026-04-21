@@ -20,7 +20,7 @@ def get_bol_lc_from_spec(modelpath: Path) -> pd.DataFrame:
         for timestep, timestr in enumerate(timearray):
             if 5 < float(timestr) < 80:
                 spectrum = at.spectra.get_spectrum(
-                    modelpath=modelpath, directionbins=[angle], timestepmin=timestep, timestepmax=timestep,
+                    modelpath=modelpath, directionbins=[angle], timestepmin=timestep, timestepmax=timestep
                 )[angle].collect()
                 integrated_flux = np.trapezoid(spectrum["f_lambda"], spectrum["lambda_angstroms"])
                 integrated_luminosity = integrated_flux * 4 * np.pi * Mpc_to_cm**2
@@ -38,7 +38,7 @@ def get_bol_lc_from_spec(modelpath: Path) -> pd.DataFrame:
 def get_bol_lc_from_lightcurveout(modelpath: Path, res: bool = False) -> pd.DataFrame:
     lcfilename = "light_curve_res.out" if res else "light_curve.out"
     lcdata = pl.from_pandas(
-        pd.read_csv(modelpath / lcfilename, sep=r"\s+", header=None, names=["time", "lum", "lum_cmf"]),
+        pd.read_csv(modelpath / lcfilename, sep=r"\s+", header=None, names=["time", "lum", "lum_cmf"])
     )
     lcdataframes = {
         dirbin: pldf.collect().to_pandas(use_pyarrow_extension_array=True)
@@ -76,7 +76,7 @@ def main() -> None:
         lightcurvedataframe = get_bol_lc_from_lightcurveout(modelpath)
 
         lightcurvedataframe.to_csv(
-            outfilepath / f"bol_lightcurvedata_{modelname}.txt", sep=" ", index=False, header=False,
+            outfilepath / f"bol_lightcurvedata_{modelname}.txt", sep=" ", index=False, header=False
         )
 
         with (outfilepath / f"bol_lightcurvedata_{modelname}.txt").open("r+") as f:  # add comment to start of file
@@ -84,10 +84,10 @@ def main() -> None:
             f.seek(0, 0)
             f.write(
                 "# 1st col is time in days. Next columns are log10(luminosity) for each model viewing angle".rstrip(
-                    "\r\n",
+                    "\r\n"
                 )
                 + "\n"
-                + content,
+                + content
             )
 
         print("done")

@@ -24,12 +24,12 @@ def readfile(filepath: str | Path) -> dict[int, pl.LazyFrame]:
     if "_res" in str(Path(filepath).stem):
         # get a dict of dfs with light curves at each viewing direction bin
         lcdata_res = pl.scan_csv(
-            at.zopenpl(filepath), separator=" ", has_header=False, new_columns=["time", "lum", "lum_cmf"],
+            at.zopenpl(filepath), separator=" ", has_header=False, new_columns=["time", "lum", "lum_cmf"]
         )
         lcdata = at.split_multitable_dataframe(lcdata_res)
     else:
         lcdata[-1] = pl.scan_csv(
-            at.zopenpl(filepath), separator=" ", has_header=False, new_columns=["time", "lum", "lum_cmf"],
+            at.zopenpl(filepath), separator=" ", has_header=False, new_columns=["time", "lum", "lum_cmf"]
         )
 
         # if the light_curve.out file repeats x values, keep the first half only
@@ -73,7 +73,7 @@ def get_from_packets(
         directionbins = [-1]
 
     dftimesteps_selected = at.misc.df_filter_minmax_bounded(
-        at.get_timesteps(modelpath), "tmid_days", timedaysmin, timedaysmax,
+        at.get_timesteps(modelpath), "tmid_days", timedaysmin, timedaysmax
     ).collect()
 
     _, modelmeta = at.inputmodel.get_modeldata(modelpath, printwarningsonly=True)
@@ -94,12 +94,12 @@ def get_from_packets(
         nprocs_read, dfpackets = at.packets.get_virtual_packets_pl(modelpath, maxpacketfiles=maxpacketfiles)
     else:
         nprocs_read, dfpackets = at.packets.get_packets_pl(
-            modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type=escape_type,
+            modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type=escape_type
         )
 
     if not directionbins_are_vpkt_observers:
         dfpackets = dfpackets.with_columns([
-            (pl.col("escape_time") * escapesurfacegamma / 86400.0).alias("t_arrive_cmf_d"),
+            (pl.col("escape_time") * escapesurfacegamma / 86400.0).alias("t_arrive_cmf_d")
         ])
 
     try:
@@ -111,8 +111,8 @@ def get_from_packets(
                 expr = pl.col("nucname") == pellet_nucname
             dfpackets = dfpackets.filter(
                 pl.col("pellet_nucindex").is_in(
-                    at.get_nuclides(modelpath=modelpath).filter(expr).select("pellet_nucindex").collect().to_series(),
-                ),
+                    at.get_nuclides(modelpath=modelpath).filter(expr).select("pellet_nucindex").collect().to_series()
+                )
             )
     except FileNotFoundError:
         assert pellet_nucname is None
@@ -151,7 +151,7 @@ def get_from_packets(
         lcdata[dirbin] = (
             at.packets
             .bin_and_sum(
-                pldfpackets_dirbin, bincol=timecol, bins=timebinstarts_plusend, sumcols=["e_rf"], getcounts=True,
+                pldfpackets_dirbin, bincol=timecol, bins=timebinstarts_plusend, sumcols=["e_rf"], getcounts=True
             )
             .with_columns(timestep=pl.col(f"{timecol}_bin").cast(pl.Int32) + dftimesteps_selected["timestep"].min())
             .rename({"count": "packetcount"})
@@ -163,7 +163,7 @@ def get_from_packets(
                     * solidanglefactor
                     / (pl.col("twidth_days") * 86400)
                     / Lsun_to_erg_per_s
-                ),
+                )
             )
             .drop("e_rf_sum", f"{timecol}_bin")
         )
@@ -173,7 +173,7 @@ def get_from_packets(
                 lcdata[dirbin]
                 .join(
                     at.packets.bin_and_sum(
-                        pldfpackets_dirbin, bincol="t_arrive_cmf_d", bins=timebinstarts_plusend, sumcols=["e_cmf"],
+                        pldfpackets_dirbin, bincol="t_arrive_cmf_d", bins=timebinstarts_plusend, sumcols=["e_cmf"]
                     ).rename({"t_arrive_cmf_d_bin": "timestep"}),
                     how="left",
                     on="timestep",
@@ -184,7 +184,7 @@ def get_from_packets(
                     * solidanglefactor
                     / escapesurfacegamma
                     / (pl.col("twidth_days") * 86400)
-                    / Lsun_to_erg_per_s,
+                    / Lsun_to_erg_per_s
                 )
                 .drop("e_cmf_sum")
             )
@@ -198,7 +198,7 @@ def generate_band_lightcurve_data(
     modelpath: Path | str,
     args: argparse.Namespace,
     angle: int = -1,
-    modelnumber: int | None = None,
+    modelnumber: int | None = None,  # noqa: ARG001
 ) -> dict[str, t.Any]:
     """Integrate spectra to get band magnitude vs time. Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py."""
     from scipy.interpolate import interp1d
@@ -264,7 +264,7 @@ def generate_band_lightcurve_data(
         if filter_name == "bol":
             continue
         zeropointenergyflux, wavefilter, transmission, wavefilter_min, wavefilter_max = get_filter_data(
-            filterdir, filter_name,
+            filterdir, filter_name
         )
 
         for timestep, time in enumerate(float(time) for time in timearray):
@@ -349,7 +349,7 @@ def bolometric_magnitude(
 
 
 def get_filter_data(
-    filterdir: Path | str, filter_name: str,
+    filterdir: Path | str, filter_name: str
 ) -> tuple[float, npt.NDArray[np.floating], npt.NDArray[np.floating], float, float]:
     """Filter data in 'data/filters' taken from https://github.com/cinserra/S3/tree/master/src/s3/metadata."""
     with Path(filterdir, f"{filter_name}.txt").open("r", encoding="utf-8") as filter_metadata:  # definition of the file
@@ -403,7 +403,7 @@ def get_spectrum_in_filter_range(
 
 
 def get_band_lightcurve(
-    band_lightcurve_data: dict[str, Sequence[tuple[float, float]]], band_name: str, args: argparse.Namespace,
+    band_lightcurve_data: dict[str, Sequence[tuple[float, float]]], band_name: str, args: argparse.Namespace
 ) -> tuple[Sequence[float], npt.NDArray[np.floating]]:
     times, brightness_in_mag = zip(
         *[
@@ -418,7 +418,7 @@ def get_band_lightcurve(
 
 
 def get_colour_delta_mag(
-    band_lightcurve_data: dict[str, Iterable[t.Any]], filter_names: Sequence[str],
+    band_lightcurve_data: dict[str, Iterable[t.Any]], filter_names: Sequence[str]
 ) -> tuple[list[float], list[float]]:
     time_dict_1 = {}
     time_dict_2 = {}
@@ -427,7 +427,7 @@ def get_colour_delta_mag(
     colour_delta_mag = []
 
     for filter_1, filter_2 in zip(
-        band_lightcurve_data[filter_names[0]], band_lightcurve_data[filter_names[1]], strict=True,
+        band_lightcurve_data[filter_names[0]], band_lightcurve_data[filter_names[1]], strict=True
     ):
         # Make magnitude dictionaries where time is the key
         time_dict_1[float(filter_1[0])] = filter_1[1]
@@ -481,7 +481,7 @@ def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pd.Dat
 
     if "dist_mpc" in metadata:
         lightcurve_data["magnitude"] = lightcurve_data["magnitude"].apply(
-            lambda x: x - 5 * np.log10(metadata["dist_mpc"] * 10**6) + 5,
+            lambda x: x - 5 * np.log10(metadata["dist_mpc"] * 10**6) + 5
         )
     elif "dist_modulus" in metadata:
         lightcurve_data["magnitude"] = lightcurve_data["magnitude"].apply(lambda x: x - metadata["dist_modulus"])

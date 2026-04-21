@@ -130,7 +130,7 @@ def split_multitable_dataframe(res_df: pl.DataFrame | pl.LazyFrame) -> dict[int,
 
 
 def df_filter_minmax_bounded(
-    df: pl.LazyFrame, colname: str, minval: float | None, maxval: float | None,
+    df: pl.LazyFrame, colname: str, minval: float | None, maxval: float | None
 ) -> pl.LazyFrame:
     """Filter a DataFrame to selects rows where the value in colname is between minval and maxval, and also include the closest exterior rows if xmin/xmax are between two rows. This enables linear interpolation at xmin and xmax (if the surrounding values existed in the DataFrame)."""
     if minval is None and maxval is None:
@@ -139,20 +139,20 @@ def df_filter_minmax_bounded(
     if minval is not None:
         df = df.filter(
             (pl.col(colname).min() >= minval)
-            | (pl.col(colname) >= pl.col(colname).filter(pl.col(colname) <= minval).max()),
+            | (pl.col(colname) >= pl.col(colname).filter(pl.col(colname) <= minval).max())
         )
 
     if maxval is not None:
         df = df.filter(
             (pl.col(colname).max() <= maxval)
-            | (pl.col(colname) <= pl.col(colname).filter(pl.col(colname) >= maxval).min()),
+            | (pl.col(colname) <= pl.col(colname).filter(pl.col(colname) >= maxval).min())
         )
 
     return df
 
 
 def average_direction_bins(
-    dirbindataframes: dict[int, pl.DataFrame] | dict[int, pl.LazyFrame], overangle: t.Literal["phi", "theta"],
+    dirbindataframes: dict[int, pl.DataFrame] | dict[int, pl.LazyFrame], overangle: t.Literal["phi", "theta"]
 ) -> dict[int, pl.LazyFrame]:
     """Average dict of direction-binned polars DataFrames according to the phi or theta angle."""
     dirbincount = get_viewingdirectionbincount()
@@ -175,7 +175,7 @@ def average_direction_bins(
         contribbins = list(
             range(start_bin, start_bin + nphibins)
             if overangle == "phi"
-            else range(start_bin, dirbincount, ncosthetabins),
+            else range(start_bin, dirbincount, ncosthetabins)
         )
 
         dirbindataframesout[start_bin] = dirbindataframes[start_bin].lazy()
@@ -261,7 +261,7 @@ def get_grid_mapping(modelpath: Path | str) -> tuple[dict[int, list[int]], dict[
         .group_by("modelgridindex")
         .agg(pl.col("cellindex").implode())
         .select([pl.col("modelgridindex"), pl.col("cellindex")])
-        .iter_rows(),
+        .iter_rows()
     )
 
     mgi_of_propcells: dict[int, int] = dict(dfgrid.select([pl.col("cellindex"), pl.col("modelgridindex")]).iter_rows())
@@ -453,7 +453,7 @@ def get_time_range(
         return -1, -1, -math.inf, -math.inf
     if timemax and timemax < tstarts[0]:
         print(
-            f"{get_model_name(modelpath)}: WARNING timemax {timemax} is before the first timestep at {tstarts[0]:.1f}",
+            f"{get_model_name(modelpath)}: WARNING timemax {timemax} is before the first timestep at {tstarts[0]:.1f}"
         )
         return -1, -1, -math.inf, -math.inf
 
@@ -642,7 +642,7 @@ def get_elsymbols_df() -> pl.LazyFrame:
     return (
         pl
         .scan_csv(
-            get_path("datadir") / "elements.csv", separator=",", has_header=True, schema_overrides={"Z": pl.Int32},
+            get_path("datadir") / "elements.csv", separator=",", has_header=True, schema_overrides={"Z": pl.Int32}
         )
         .drop("name")
         .rename({"symbol": "elsymbol", "Z": "atomic_number"})
@@ -671,7 +671,7 @@ def decode_roman_numeral(strin: str) -> int:
 def get_ion_stage_roman_numeral_df() -> pl.DataFrame:
     """Return a polars DataFrame of ionisation stage and roman numerals."""
     return pl.DataFrame({"ion_stage_roman": roman_numerals[1:]}, schema={"ion_stage_roman": pl.Utf8}).with_row_index(
-        "ion_stage", offset=1,
+        "ion_stage", offset=1
     )
 
 
@@ -759,18 +759,18 @@ def get_ionstring(
 def set_args_from_dict(parser: argparse.ArgumentParser, kwargs: dict[str, t.Any]) -> None:
     """Set argparse defaults from a dictionary."""
     # set_defaults expects the dest of an argument. Here we allow the option strings to be used as keys
-    for arg in parser._actions:
+    for arg in parser._actions:  # noqa: SLF001
         for optstring in arg.option_strings:
             if optstring.lstrip("-") in kwargs and arg.dest not in kwargs:
                 kwargs[arg.dest] = kwargs.pop(optstring.lstrip("-"))
 
     parser.set_defaults(**kwargs)
     # set required=False on all arguments to avoid errors about missing required arguments when we set defaults from kwargs
-    for arg in parser._actions:
+    for arg in parser._actions:  # noqa: SLF001
         if arg.default is not None:
             arg.required = False
 
-    if unknown := {k: v for k, v in kwargs.items() if k not in (arg.dest for arg in parser._actions)}:
+    if unknown := {k: v for k, v in kwargs.items() if k not in (arg.dest for arg in parser._actions)}:  # noqa: SLF001
         msg = f"Unknown argument names: {unknown}"
         raise ValueError(msg)
 
@@ -943,12 +943,12 @@ def firstexisting(
 
 
 def anyexist(
-    filelist: Sequence[str | Path], folder: Path | str = ".", tryzipped: bool = True, search_subfolders: bool = True,
+    filelist: Sequence[str | Path], folder: Path | str = ".", tryzipped: bool = True, search_subfolders: bool = True
 ) -> Path | None:
     """Return true if any files in file list exist."""
     try:
         filepath = firstexisting(
-            filelist=filelist, folder=folder, tryzipped=tryzipped, search_subfolders=search_subfolders,
+            filelist=filelist, folder=folder, tryzipped=tryzipped, search_subfolders=search_subfolders
         )
     except FileNotFoundError:
         return None
@@ -1038,7 +1038,7 @@ def get_filterfunc(args: argparse.Namespace, mode: str = "interp") -> Callable[[
 
         assert filterfunc is None
         filterfunc = functools.partial(
-            scipy.signal.savgol_filter, window_length=window_length, polyorder=polyorder, mode=mode,
+            scipy.signal.savgol_filter, window_length=window_length, polyorder=polyorder, mode=mode
         )
 
         print("Applying Savitzky-Golay filter")
@@ -1312,7 +1312,7 @@ def get_runfolder_timesteps(folderpath: Path | str) -> tuple[int, ...]:
 
 
 def get_runfolders(
-    modelpath: Path | str, timestep: int | None = None, timesteps: Sequence[int] | None = None,
+    modelpath: Path | str, timestep: int | None = None, timesteps: Sequence[int] | None = None
 ) -> Sequence[Path]:
     """Get a list of folders containing ARTIS output files from a modelpath, optionally with a timestep restriction.
 
@@ -1334,7 +1334,7 @@ def get_runfolders(
 
 
 def get_mpiranklist(
-    modelpath: Path | str, modelgridindex: Iterable[int] | int | None = None, only_ranks_withgridcells: bool = False,
+    modelpath: Path | str, modelgridindex: Iterable[int] | int | None = None, only_ranks_withgridcells: bool = False
 ) -> Sequence[int]:
     """Get a list of rank ids.
 
@@ -1351,7 +1351,7 @@ def get_mpiranklist(
                 min(
                     get_nprocs(modelpath),
                     get_mpirankofcell(modelpath=modelpath, modelgridindex=get_npts_model(modelpath) - 1) + 1,
-                ),
+                )
             )
         return range(get_nprocs(modelpath))
 
@@ -1365,7 +1365,7 @@ def get_mpiranklist(
                         min(
                             get_nprocs(modelpath),
                             get_mpirankofcell(modelpath=modelpath, modelgridindex=get_npts_model(modelpath) - 1) + 1,
-                        ),
+                        )
                     )
                 return range(get_nprocs(modelpath))
 
@@ -1405,7 +1405,7 @@ def get_dfrankassignments(modelpath: Path | str) -> pl.LazyFrame | None:
     filerankassignments = Path(modelpath, "modelgridrankassignments.out")
     if filerankassignments.is_file():
         return pl.scan_csv(filerankassignments, has_header=True, separator=" ").rename(
-            lambda column_name: column_name.removeprefix("#"),
+            lambda column_name: column_name.removeprefix("#")
         )
     return None
 
@@ -1421,7 +1421,7 @@ def get_mpirankofcell(modelgridindex: int, modelpath: Path | str) -> int:
         dfselected = dfrankassignments.filter(
             (pl.col("ndo") > 0)
             & (pl.col("nstart") <= modelgridindex)
-            & ((pl.col("nstart") + pl.col("ndo") - 1) >= modelgridindex),
+            & ((pl.col("nstart") + pl.col("ndo") - 1) >= modelgridindex)
         ).collect()
         assert dfselected.height == 1
         return int(dfselected["rank"].item())
@@ -1459,7 +1459,7 @@ def get_viewingdirection_costhetabincount() -> int:
 
 def print_theta_phi_definitions() -> None:
     print(
-        "Spherical polar: x = r sinθ cosϕ, y = r sinθ sinϕ, z = r cosθ -> θ=0 is +Z and θ=π is -Z. At Z=0, ϕ=0 is +X and ϕ=π/2 is +Y",
+        "Spherical polar: x = r sinθ cosϕ, y = r sinθ sinϕ, z = r cosθ -> θ=0 is +Z and θ=π is -Z. At Z=0, ϕ=0 is +X and ϕ=π/2 is +Y"
     )
 
 
@@ -1514,7 +1514,7 @@ def get_phi_bins(
 
 
 def get_costheta_bins(
-    usedegrees: bool, usepiminustheta: bool = False,
+    usedegrees: bool, usepiminustheta: bool = False
 ) -> tuple[tuple[float, ...], tuple[float, ...], list[str]]:
     ncosthetabins = get_viewingdirection_costhetabincount()
     # the costheta bins are ordered by ascending cos θ from -1. to 1.,
@@ -1655,7 +1655,7 @@ def parallel_map[IterableType, ResultType](
     use_multiprocessing = allow_multiprocessing
     if allow_multiprocessing and sys.version_info >= (3, 13):
         with contextlib.suppress(AttributeError):
-            if not sys._is_gil_enabled():
+            if not sys._is_gil_enabled():  # noqa: SLF001
                 # return a thread pool if we have no GIL (free threading)
                 use_multiprocessing = False
 

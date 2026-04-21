@@ -57,5 +57,5 @@ def map_1d_to_3d(
     print(sum(modelgrid_rho_3d * (wid_init**3)) / CLIGHT)
 
     at.inputmodel.save_modeldata(
-        dfmodel=pl.from_pandas(dfgriddata), t_model_init_days=t_model_1d / (24 * 60 * 60), vmax=vmax * CLIGHT,
+        dfmodel=pl.from_pandas(dfgriddata), t_model_init_days=t_model_1d / (24 * 60 * 60), vmax=vmax * CLIGHT
     )

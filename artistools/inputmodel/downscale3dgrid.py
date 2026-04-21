@@ -8,7 +8,7 @@ import artistools as at
 
 
 def make_downscaled_3d_grid(
-    modelpath: str | Path, outputgridsize: int = 50, plot: bool = False, outputfolder: Path | str | None = None,
+    modelpath: str | Path, outputgridsize: int = 50, plot: bool = False, outputfolder: Path | str | None = None
 ) -> Path:
     """Get a 3D model with smallgrid^3 cells from a 3D model with grid^3 cells.
 
@@ -69,7 +69,7 @@ def make_downscaled_3d_grid(
     abund_small = np.zeros((smallgrid, smallgrid, smallgrid, max_atomic_number + 1))
 
     for z, y, x, zz, yy, xx in itertools.product(
-        range(smallgrid), range(smallgrid), range(smallgrid), range(merge), range(merge), range(merge),
+        range(smallgrid), range(smallgrid), range(smallgrid), range(merge), range(merge), range(merge)
     ):
         rho_small[x, y, z] += rho[x * merge + xx, y * merge + yy, z * merge + zz]
         for i in range(nabundcols):

@@ -1,7 +1,7 @@
 import typing as t
 
 
-def pytest_configure(config: t.Any) -> None:
+def pytest_configure(config: t.Any) -> None:  # noqa: ARG001
     """Clear the test output of previous runs."""
     import sys
     from pathlib import Path
@@ -17,7 +17,7 @@ def pytest_configure(config: t.Any) -> None:
         for file in outputpath.glob("*.*"):
             if repopath.resolve() not in file.resolve().parents:
                 print(
-                    f"Refusing to delete {file.resolve()} as it is not a descendant of the repository {repopath.resolve()}",
+                    f"Refusing to delete {file.resolve()} as it is not a descendant of the repository {repopath.resolve()}"
                 )
             elif not file.stem.startswith("."):
                 file.unlink(missing_ok=True)

@@ -117,7 +117,7 @@ def main() -> None:
         if steps % 100000 == 0:
             print(
                 f"E: {energy / CONST_EV_IN_J:.1f} eV x: {x:.1e} dE_on_dx_ionexc: {dE_on_dx}, dE_on_dx_plasma:"
-                f" {dE_on_dx_plasma}",
+                f" {dE_on_dx_plasma}"
             )
         x += delta_energy / dE_on_dx
         mean_free_path += -x * delta_energy / E_0
@@ -133,7 +133,7 @@ def main() -> None:
     print(f"mean free path: {mean_free_path:.1} m")
 
     fig, axes = plt.subplots(
-        nrows=2, ncols=1, sharex=False, figsize=(5, 8), tight_layout={"pad": 0.5, "w_pad": 0.0, "h_pad": 1.0},
+        nrows=2, ncols=1, sharex=False, figsize=(5, 8), tight_layout={"pad": 0.5, "w_pad": 0.0, "h_pad": 1.0}
     )
     assert isinstance(axes, np.ndarray)
     axes[0].plot(arr_dist, arr_energy_ev)

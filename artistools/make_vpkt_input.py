@@ -53,7 +53,7 @@ def main() -> None:
             f"{tau_max_vpkt}\n"
             f"{vgrid_on:d}\n"
             f"{tmin_vgrid_in_days} {tmax_vgrid_in_days}\n"
-            f"{Nrange_grid} {vgrid_lambda_min} {vgrid_lambda_max}",  # this can have multiple wavelength ranges. May need changed.
+            f"{Nrange_grid} {vgrid_lambda_min} {vgrid_lambda_max}"  # this can have multiple wavelength ranges. May need changed.
         )
 
 

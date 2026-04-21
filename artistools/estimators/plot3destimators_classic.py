@@ -13,17 +13,17 @@ CLIGHT = 2.99792458e10
 
 
 def read_selected_mgi(
-    modelpath: Path | str, readonly_mgi: list[int] | None = None, readonly_timestep: list[int] | None = None,
+    modelpath: Path | str, readonly_mgi: list[int] | None = None, readonly_timestep: list[int] | None = None
 ) -> dict[tuple[int, int], t.Any] | None:
     return at.estimators.estimators_classic.read_classic_estimators(
-        Path(modelpath), readonly_mgi=readonly_mgi, readonly_timestep=readonly_timestep,
+        Path(modelpath), readonly_mgi=readonly_mgi, readonly_timestep=readonly_timestep
     )
 
 
 def get_modelgridcells_along_axis(modelpath: Path | str, args: argparse.Namespace | None = None) -> list[int]:
     if args is None:
         args = argparse.Namespace(
-            modelpath=modelpath, sliceaxis="x", other_axis1="z", other_axis2="y", positive_axis=True,
+            modelpath=modelpath, sliceaxis="x", other_axis1="z", other_axis2="y", positive_axis=True
         )
     else:
         axes = ["x", "y", "z"]
@@ -48,7 +48,7 @@ def get_mgi_of_modeldata(modeldata: pd.DataFrame, modelpath: Path | str) -> list
 
 
 def plot_Te_vs_time_lineofsight_3d_model(
-    modelpath: Path | str, modeldata: pd.DataFrame, estimators: dict[tuple[int, int], t.Any], readonly_mgi: list[int],
+    modelpath: Path | str, modeldata: pd.DataFrame, estimators: dict[tuple[int, int], t.Any], readonly_mgi: list[int]
 ) -> None:
     assoc_cells = at.get_grid_mapping(modelpath=modelpath)[0]
     times = at.get_timestep_times(modelpath)
@@ -68,7 +68,7 @@ def plot_Te_vs_time_lineofsight_3d_model(
 
 
 def plot_Te_vs_velocity(
-    modelpath: Path | str, modeldata: pd.DataFrame, estimators: dict[tuple[int, int], t.Any], readonly_mgi: list[int],
+    modelpath: Path | str, modeldata: pd.DataFrame, estimators: dict[tuple[int, int], t.Any], readonly_mgi: list[int]
 ) -> None:
     assoc_cells = at.get_grid_mapping(modelpath=modelpath)[0]
     times = at.get_timestep_times(modelpath)

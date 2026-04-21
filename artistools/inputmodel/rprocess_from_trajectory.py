@@ -112,7 +112,7 @@ def get_tar_member_extracted_path(traj_root: Path | str, particleid: int, member
 @lru_cache(maxsize=16)
 def get_traj_network_timesteps(traj_root: Path, particleid: int) -> pl.DataFrame:
     with get_tar_member_extracted_path(
-        traj_root=traj_root, particleid=particleid, memberfilename="./Run_rprocess/energy_thermo.dat",
+        traj_root=traj_root, particleid=particleid, memberfilename="./Run_rprocess/energy_thermo.dat"
     ).open(encoding="utf-8") as evolfile:
         return pl.from_pandas(
             pd.read_csv(
@@ -124,7 +124,7 @@ def get_traj_network_timesteps(traj_root: Path, particleid: int) -> pl.DataFrame
                 engine="c",
                 dtype={0: "int32[pyarrow]", 1: "float32[pyarrow]"},
                 dtype_backend="pyarrow",
-            ),
+            )
         )
 
 
@@ -169,11 +169,11 @@ def get_closest_network_timesteps(
 
 
 def get_trajectory_timestepfile_nuc_abund(
-    traj_root: Path, particleid: int, memberfilename: str,
+    traj_root: Path, particleid: int, memberfilename: str
 ) -> tuple[pl.DataFrame, float]:
     """Get the nuclear abundances for a particular trajectory id number and time memberfilename should be something like "./Run_rprocess/tday_nz-plane"."""
     with get_tar_member_extracted_path(traj_root=traj_root, particleid=particleid, memberfilename=memberfilename).open(
-        encoding="utf-8",
+        encoding="utf-8"
     ) as trajfile:
         try:
             _, str_t_model_init_seconds, _, _, _, _ = trajfile.readline().split()
@@ -205,7 +205,7 @@ def get_trajectory_timestepfile_nuc_abund(
 def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, t_model_s: float) -> float:
     """Calculate initial cell energy [erg/g] from reactions t < t_model_s (reduced by work done)."""
     with get_tar_member_extracted_path(
-        traj_root=traj_root, particleid=particleid, memberfilename="./Run_rprocess/energy_thermo.dat",
+        traj_root=traj_root, particleid=particleid, memberfilename="./Run_rprocess/energy_thermo.dat"
     ).open(encoding="utf-8") as enthermofile:
         try:
             dfthermo = pl.from_pandas(
@@ -216,7 +216,7 @@ def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, 
                     engine="c",
                     dtype={0: "float32[pyarrow]", 1: "float32[pyarrow]"},
                     dtype_backend="pyarrow",
-                ),
+                )
             )
         except pd.errors.EmptyDataError:
             print(f"Problem with file {enthermofile}")
@@ -233,7 +233,7 @@ def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, 
             np.trapezoid(
                 y=dfthermo["Qdot_expansionadjusted"][startindex : nts_max + 1],
                 x=dfthermo["time_s"][startindex : nts_max + 1],
-            ),
+            )
         )
         assert qdotintegral >= 0.0
 
@@ -286,7 +286,7 @@ def get_trajectory_abund_q(
     if getqdotintegral:
         # set the cell energy at model time [erg/g]
         dict_traj_nuc_abund["q"] = get_trajectory_qdotintegral(
-            particleid=particleid, traj_root=traj_root, nts_max=nts, t_model_s=t_model_s,
+            particleid=particleid, traj_root=traj_root, nts_max=nts, t_model_s=t_model_s
         )
 
     return dict_traj_nuc_abund
@@ -318,7 +318,7 @@ def filtermissinggridparticlecontributions(dfcontribs: pl.DataFrame, missing_par
         frac_of_cellmass=pl
         .when(pl.col("particleid").is_in(missing_particleids))
         .then(0.0)
-        .otherwise(pl.col("frac_of_cellmass")),
+        .otherwise(pl.col("frac_of_cellmass"))
     )
 
     cell_frac_sum: dict[int, float] = {}
@@ -358,7 +358,7 @@ def filtermissinggridparticlecontributions(dfcontribs: pl.DataFrame, missing_par
 
         cell_frac_includemissing_sum_thiscell = float(dfparticlecontribs["frac_of_cellmass_includemissing"].sum())
         assert cell_frac_includemissing_sum_thiscell == 0.0 or math.isclose(
-            cell_frac_includemissing_sum_thiscell, 1.0, rel_tol=0.02,
+            cell_frac_includemissing_sum_thiscell, 1.0, rel_tol=0.02
         )
 
     print("done")
@@ -407,7 +407,7 @@ def add_abundancecontributions(
 
     print(
         f"{active_inputcellcount} of {len(dfmodel)} model cells have >0 particles contributing "
-        f"({len(dfcontribs)} cell contributions from {len(particleids)} particles)",
+        f"({len(dfcontribs)} cell contributions from {len(particleids)} particles)"
     )
     n_missing_particles = len(missing_particle_ids)
     print(f"  {n_missing_particles} particles are missing network abundance data out of {len(particleids)}")
@@ -440,7 +440,7 @@ def add_abundancecontributions(
     colnames = [key if isinstance(key, str) else f"X_{at.get_elsymbol(key[0])}{key[0] + key[1]}" for key in allkeys]
 
     dfnucabundances = dfnucabundances.transpose(
-        include_header=True, column_names=colnames, header_name="inputcellid",
+        include_header=True, column_names=colnames, header_name="inputcellid"
     ).with_columns(pl.col("inputcellid").cast(pl.Int32))
     print(f" took {time.perf_counter() - timestart:.1f} seconds")
 
@@ -467,13 +467,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args = parser.parse_args([] if kwargs else argsraw)
 
     traj_root = Path(
-        Path.home() / "Google Drive/Shared Drives/GSI NSM/Mergers/SFHo_long/Trajectory_SFHo_long-radius-entropy",
+        Path.home() / "Google Drive/Shared Drives/GSI NSM/Mergers/SFHo_long/Trajectory_SFHo_long-radius-entropy"
     )
     # particleid = 88969  # Ye = 0.0963284224
     particleid = 133371  # Ye = 0.403913230
     print(f"trajectory particle id {particleid}")
     dfnucabund, t_model_init_seconds = get_trajectory_timestepfile_nuc_abund(
-        traj_root, particleid, "./Run_rprocess/tday_nz-plane",
+        traj_root, particleid, "./Run_rprocess/tday_nz-plane"
     )
     dfnucabund = dfnucabund.filter(pl.col("Z") >= 1)
     dfnucabund["radioactive"] = True
@@ -539,7 +539,7 @@ def get_wollaeger_density_profile(wollaeger_profilename: Path | str, t_model_ini
     return (
         pl
         .from_pandas(
-            pd.read_csv(wollaeger_profilename, sep=r"\s+", skiprows=1, names=["cellid", "vel_r_max_kmps", "rho"]),
+            pd.read_csv(wollaeger_profilename, sep=r"\s+", skiprows=1, names=["cellid", "vel_r_max_kmps", "rho"])
         )
         .with_columns(pl.col("mgi").cast(pl.Int32))
         .with_columns(vel_r_min_kmps=pl.col("vel_r_max_kmps").shift(n=1, fill_value=0.0))
@@ -549,7 +549,7 @@ def get_wollaeger_density_profile(wollaeger_profilename: Path | str, t_model_ini
             / 3.0
             * math.pi
             * (pl.col("vel_r_max_kmps") ** 3 - pl.col("vel_r_min_kmps") ** 3)
-            * (1e5 * t_model_init_seconds_in) ** 3,
+            * (1e5 * t_model_init_seconds_in) ** 3
         )
         .with_columns(
             # now replace the density at the input time with the density at required time
@@ -560,7 +560,7 @@ def get_wollaeger_density_profile(wollaeger_profilename: Path | str, t_model_ini
                 * math.pi
                 * (pl.col("vel_r_max_kmps") ** 3 - pl.col("vel_r_min_kmps") ** 3)
                 * (1e5 * t_model_init_seconds) ** 3
-            ),
+            )
         )
     )
 

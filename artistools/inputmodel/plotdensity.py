@@ -119,7 +119,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         for vlower, vupper in zip(vlowerscoarse, vupperscoarse, strict=True):
             velbinmass = (
                 float(
-                    dfmodelcollect.filter(pl.col("vel_r_mid").is_between(vlower, vupper, closed="left"))["mass_g"].sum(),
+                    dfmodelcollect.filter(pl.col("vel_r_mid").is_between(vlower, vupper, closed="left"))["mass_g"].sum()
                 )
                 / 1.989e33
             )

@@ -144,10 +144,10 @@ def viewing_angles_visualisation(
             opacity=opacity,  # needs to be small to see through all surfaces
             surface_count=surface_count,  # needs to be a large number for good volume rendering
             colorbar={"title": "Density (g/cm³)"},
-        ),
+        )
     )
     fig.update_layout(
-        scene_xaxis_showticklabels=False, scene_yaxis_showticklabels=False, scene_zaxis_showticklabels=False,
+        scene_xaxis_showticklabels=False, scene_yaxis_showticklabels=False, scene_zaxis_showticklabels=False
     )
 
     if outfile:
@@ -174,7 +174,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--isomax", type=float, help="Maximum density for color coding.")
     parser.add_argument("--opacity", type=float, help="Opacity value. Default: 0.25", default=0.25)
     parser.add_argument(
-        "-s", "--surface_count", type=int, help="Number of isosurfaces plotted. Default: 20", default=20,
+        "-s", "--surface_count", type=int, help="Number of isosurfaces plotted. Default: 20", default=20
     )
     parser.add_argument("--linewidth", type=float, help="Width of the viewing angle lines. Default: 2.5", default=2.5)
     parser.add_argument(

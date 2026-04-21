@@ -41,7 +41,7 @@ def main() -> None:
     subprocess.check_call(["cargo", "install", "-q", "cargo-edit"])
     update_command = ["cargo", "set-version", f"--manifest-path={cargo_toml_path}", version]
     try:
-        subprocess.check_call(update_command)
+        subprocess.check_call(update_command)  # noqa: S603
     except subprocess.CalledProcessError as e:
         msg = f"Failed:\n{' '.join(update_command)}"
         raise RuntimeError(msg) from e

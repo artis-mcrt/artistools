@@ -411,7 +411,7 @@ def set_axis_labels(
 
 
 def imshow_init_for_artis_grid(
-    ngrid: int, vmax: float, plot_variable_3d_array: npt.NDArray[t.Any], plot_axes: str = "xy",
+    ngrid: int, vmax: float, plot_variable_3d_array: npt.NDArray[t.Any], plot_axes: str = "xy"
 ) -> tuple[npt.NDArray[t.Any], tuple[float, float, float, float]]:
     # ngrid = round(len(model['inputcellid']) ** (1./3.))
     extentdict = {"left": -vmax, "right": vmax, "bottom": vmax, "top": -vmax}

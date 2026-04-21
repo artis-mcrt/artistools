@@ -28,11 +28,11 @@ MeV_to_erg = 1.60218e-6
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
-        "-trajectoryroot", "-trajroot", required=True, type=Path, help="Path to nuclear network trajectory folder",
+        "-trajectoryroot", "-trajroot", required=True, type=Path, help="Path to nuclear network trajectory folder"
     )
 
     parser.add_argument(
-        "-npz", default=None, type=Path, help="Path to npz file which specifies the ejecta type of each trajectory",
+        "-npz", default=None, type=Path, help="Path to npz file which specifies the ejecta type of each trajectory"
     )
 
     parser.add_argument("-tmin", type=float, default=0.1, help="Minimum time in days")
@@ -64,11 +64,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--nuclides", action="store_true", help="Calculates contributions of individual nuclides")
 
     parser.add_argument(
-        "--trajparquet", action="store_true", help="Writes individual parquet files for all trajectories.",
+        "--trajparquet", action="store_true", help="Writes individual parquet files for all trajectories."
     )
 
     parser.add_argument(
-        "-outputpath", "-o", action="store", type=Path, default=Path(), help="Path for output PDF and parquet files",
+        "-outputpath", "-o", action="store", type=Path, default=Path(), help="Path for output PDF and parquet files"
     )
 
 
@@ -101,7 +101,7 @@ def get_nuc_data(nuc_dataset: str) -> pl.DataFrame:
             dfnuc = pd.read_csv(
                 f"https://nds.iaea.org/relnsd/v1/data?fields=decay_rads&nuclides={isot_str}&rad_types=bm",
                 storage_options={
-                    "User-Agent": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:77.0) Gecko/20100101 Firefox/77.0",
+                    "User-Agent": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:77.0) Gecko/20100101 Firefox/77.0"
                 },
             )
             if "mean_energy" in dfnuc.columns:
@@ -165,22 +165,22 @@ def process_trajectory(
         .from_pandas(
             pd.read_csv(
                 get_tar_member_extracted_path(
-                    traj_root=traj_root, particleid=traj_ID, memberfilename="./Run_rprocess/heating.dat",
+                    traj_root=traj_root, particleid=traj_ID, memberfilename="./Run_rprocess/heating.dat"
                 ),
                 sep=r"\s+",
                 usecols=["#count", "hbeta", "htot"],
-            ),
+            )
         )
         .with_columns(pl.col("htot").cast(pl.Float64, strict=False))
         .join(
             pl.from_pandas(
                 pd.read_csv(
                     get_tar_member_extracted_path(
-                        traj_root=traj_root, particleid=traj_ID, memberfilename="./Run_rprocess/energy_thermo.dat",
+                        traj_root=traj_root, particleid=traj_ID, memberfilename="./Run_rprocess/energy_thermo.dat"
                     ),
                     sep=r"\s+",
                     usecols=["#count", "time/s", "Qdot"],
-                ),
+                )
             ),
             on="#count",
             how="left",
@@ -237,7 +237,7 @@ def process_trajectory(
             continue
 
         dftrajnucabund, _networktime = at.inputmodel.rprocess_from_trajectory.get_trajectory_timestepfile_nuc_abund(
-            traj_root=traj_root, particleid=traj_ID, memberfilename=f"./Run_rprocess/nz-plane{networktimestepindex:05d}",
+            traj_root=traj_root, particleid=traj_ID, memberfilename=f"./Run_rprocess/nz-plane{networktimestepindex:05d}"
         )
 
         assert dftrajnucabund.height > 100, dftrajnucabund.height
@@ -389,7 +389,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             skiprows=skiprows,
             names=colnames,
             dtype_backend="pyarrow",
-        ),
+        )
     ).filter(pl.any_horizontal(pl.col("Ye").is_between(Ye_lower, Ye_upper) for _, Ye_lower, Ye_upper in Ye_bins))
 
     print(traj_summ_data)
@@ -400,7 +400,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     alltraj_decay_powers: list[dict[str, npt.NDArray[np.floating]]] = at.parallel_map(
         partial(
-            process_trajectory, nuc_data, args.trajectoryroot, traj_masses_g, arr_t_day, args.nuclides, args.trajparquet,
+            process_trajectory, nuc_data, args.trajectoryroot, traj_masses_g, arr_t_day, args.nuclides, args.trajparquet
         ),
         traj_ids,
         chunksize=2,
@@ -459,7 +459,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             traj_df.write_parquet(f"parquet/decay_powers_{labelfull}.parquet")
 
         fig, axes = plt.subplots(
-            nrows=2, ncols=1, figsize=(6, 10), tight_layout={"pad": 0.4, "w_pad": 0.0, "h_pad": 0.0},
+            nrows=2, ncols=1, figsize=(6, 10), tight_layout={"pad": 0.4, "w_pad": 0.0, "h_pad": 0.0}
         )
         ax0 = axes[0]
         ax0.axhline(y=0.45, color=ARTIS_colors[2], linestyle="dotted", label=r"Barnes+16 $\gamma$")
@@ -503,7 +503,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             label=f"Traj {labelfull} abund -> beta + gamma + nu",
         )
         ax1.plot(
-            arr_t_day, decay_powers["abundweighted_Qdot"], linestyle="-", label=f"Traj {labelfull} abund -> Qdot_beta",
+            arr_t_day, decay_powers["abundweighted_Qdot"], linestyle="-", label=f"Traj {labelfull} abund -> Qdot_beta"
         )
         ax1.set_ylabel("energy release rate (erg/s)")
         ax1.set_yscale("log")

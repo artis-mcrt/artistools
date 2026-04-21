@@ -22,7 +22,7 @@ def write_spectrum(dfspectrum: pl.DataFrame, outfilepath: Path) -> None:
         spec_file.write("#[A] [erg/s/cm2/A]\n")
 
         dfspectrum.to_pandas(use_pyarrow_extension_array=True).to_csv(
-            spec_file, header=False, sep=" ", index=False, columns=["lambda_angstroms", "f_lambda"],
+            spec_file, header=False, sep=" ", index=False, columns=["lambda_angstroms", "f_lambda"]
         )
 
     print(f"open {outfilepath}")
@@ -53,7 +53,7 @@ def write_flambda_spectra(modelpath: Path) -> None:
 
     for timestep in timesteps:
         dfspectra = get_spectrum(
-            modelpath=modelpath, timestepmin=timestep, timestepmax=timestep, average_over_phi=True, directionbins=[0],
+            modelpath=modelpath, timestepmin=timestep, timestepmax=timestep, average_over_phi=True, directionbins=[0]
         )
         if 0 in dfspectra:
             write_spectrum(

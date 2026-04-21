@@ -59,7 +59,7 @@ def get_kurucz_transitions() -> tuple[pd.DataFrame, list[IonTuple]]:
                         upper_energy_ev,
                         lower_statweight,
                         upper_statweight,
-                    ),
+                    )
                 )
 
                 if IonTuple(Z, ion_stage) not in ionlist:
@@ -94,8 +94,8 @@ def get_nist_transitions(filename: Path | str) -> pd.DataFrame:
                 lower_statweight, upper_statweight = (float(x.strip()) for x in row[12].split("-"))
                 translist.append(
                     NISTTransitionTuple(
-                        lambda_angstroms, A, lower_energy_ev, upper_energy_ev, lower_statweight, upper_statweight,
-                    ),
+                        lambda_angstroms, A, lower_energy_ev, upper_energy_ev, lower_statweight, upper_statweight
+                    )
                 )
 
     return pd.DataFrame(translist, columns=NISTTransitionTuple._fields)
@@ -216,7 +216,7 @@ def make_plot(
 
 
 def add_upper_lte_pop(
-    dftransitions: pl.DataFrame, T_exc: float, ionpop: float, ltepartfunc: float, columnname: str | None = None,
+    dftransitions: pl.DataFrame, T_exc: float, ionpop: float, ltepartfunc: float, columnname: str | None = None
 ) -> pl.DataFrame:
     K_B = 8.617333262145179e-05  # eV / K
     scalefactor = ionpop / ltepartfunc
@@ -224,7 +224,7 @@ def add_upper_lte_pop(
         columnname = f"upper_pop_lte_{T_exc:.0f}K"
 
     return dftransitions.with_columns(
-        (scalefactor * pl.col("upper_statweight") * (-pl.col("upper_energy_ev") / K_B / T_exc).exp()).alias(columnname),
+        (scalefactor * pl.col("upper_statweight") * (-pl.col("upper_energy_ev") / K_B / T_exc).exp()).alias(columnname)
     )
 
 
@@ -240,7 +240,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-sigma_v", type=float, default=5500.0, help="Gaussian width in km/s")
 
     parser.add_argument(
-        "-gaussian_window", type=float, default=3, help="Truncate Gaussian line profiles n sigmas from the centre",
+        "-gaussian_window", type=float, default=3, help="Truncate Gaussian line profiles n sigmas from the centre"
     )
 
     parser.add_argument("--include-permitted", action="store_true", help="Also consider permitted lines")
@@ -263,7 +263,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "-o", action="store", dest="outputfile", default=defaultoutputfile, help="path/filename for PDF file",
+        "-o", action="store", dest="outputfile", default=defaultoutputfile, help="path/filename for PDF file"
     )
 
 
@@ -337,7 +337,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     ionpopdict: dict[IonTuple, float] = {}
     if from_model:
         dfnltepops = at.nltepops.read_files(modelpath, modelgridindex=modelgridindex, timestep=timestep).to_pandas(
-            use_pyarrow_extension_array=True,
+            use_pyarrow_extension_array=True
         )
 
         if dfnltepops.empty:
@@ -407,11 +407,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         if args.atomicdatabase == "kurucz":
             pldftransitions = pl.from_pandas(
-                dftransgfall.query("Z == @ion.Z and ion_stage == @ion.ion_stage", inplace=False),
+                dftransgfall.query("Z == @ion.Z and ion_stage == @ion.ion_stage", inplace=False)
             )
         elif args.atomicdatabase == "nist":
             pldftransitions = pl.from_pandas(
-                get_nist_transitions(f"nist/nist-{ion['Z']:02d}-{ion['ion_stage']:02d}.txt"),
+                get_nist_transitions(f"nist/nist-{ion['Z']:02d}-{ion['ion_stage']:02d}.txt")
             )
         else:
             pldftransitions = ion["transitions"]
@@ -420,7 +420,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         print(
             f"\n======> {at.get_elsymbol(ionid.Z)} {at.roman_numerals[ionid.ion_stage]:3s} "
-            f"(pop={ionpopdict[ionid]:.2e} / cm3, {pldftransitions.height:6d} transitions)",
+            f"(pop={ionpopdict[ionid]:.2e} / cm3, {pldftransitions.height:6d} transitions)"
         )
 
         if not args.include_permitted and not pldftransitions.is_empty():
@@ -465,11 +465,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 ltepartfunc = 1.0
 
             pldftransitions = pldftransitions.with_columns(
-                flux_factor=(pl.col("upper_energy_ev") - pl.col("lower_energy_ev")) * pl.col("A"),
+                flux_factor=(pl.col("upper_energy_ev") - pl.col("lower_energy_ev")) * pl.col("A")
             )
 
             pldftransitions = add_upper_lte_pop(
-                pldftransitions, vardict["Te"], ionpopdict[ionid], ltepartfunc, columnname="upper_pop_Te",
+                pldftransitions, vardict["Te"], ionpopdict[ionid], ltepartfunc, columnname="upper_pop_Te"
             )
 
             for seriesindex, temperature in enumerate(temperature_list):
@@ -481,7 +481,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
                     assert isinstance(dftransitions, pd.DataFrame)
                     dftransitions.loc[:, "upper_pop_nlte"] = dftransitions.apply(
-                        lambda x: nltepopdict.get(x["upper"], 0.0),
+                        lambda x: nltepopdict.get(x["upper"], 0.0),  # noqa: B023
                         axis=1,
                     )
 
@@ -518,7 +518,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                     else:
                         ltepartfunc = 1.0
                     dftransitions = add_upper_lte_pop(
-                        pldftransitions, T_exc, ionpopdict[ionid], ltepartfunc, columnname=popcolumnname,
+                        pldftransitions, T_exc, ionpopdict[ionid], ltepartfunc, columnname=popcolumnname
                     ).to_pandas(use_pyarrow_extension_array=True)
 
                 if args.print_lines:
@@ -527,7 +527,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                     )
 
                 yvalues[seriesindex][ionindex] = generate_ion_spectrum(
-                    dftransitions, xvalues, popcolumnname, plot_resolution, args,
+                    dftransitions, xvalues, popcolumnname, plot_resolution, args
                 )
                 if args.normalised:
                     yvalues[seriesindex][ionindex] /= max(yvalues[seriesindex][ionindex])  # TODO: move to ax.plot line
@@ -559,7 +559,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         print(
             f"                     Fe II 7155             Ni II 7378  {strfeions}   /  {strniions}"
-            "      T_e    Fe III/II       Ni III/II",
+            "      T_e    Fe III/II       Ni III/II"
         )
 
         print(
@@ -567,7 +567,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             f"{ni2depcoeff:.2f}        "
             f"{est_fe_ionfracs_str}   /  {est_ni_ionfracs_str}      {Te:.0f}    "
             f"{estimators['nnion_Fe_III'] / estimators['nnion_Fe_II']:.2f}          "
-            f"{estimators['nnion_Ni_III'] / estimators['nnion_Ni_II']:5.2f}",
+            f"{estimators['nnion_Ni_III'] / estimators['nnion_Ni_II']:5.2f}"
         )
 
     outputfilename = (

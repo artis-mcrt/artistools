@@ -82,7 +82,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 {"name": "t_rad", "unit": "K", "desc": "radiative temperature"},
                 {"name": "dilution_factor", "desc": "dilution factor of shell"},
                 *[{"name": strnuc, "desc": f"fractional {strnuc} abundance"} for strnuc in listspecies],
-            ],
+            ]
         },
     }
     from yaml import dump as yamldump
@@ -99,7 +99,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         for cell in dfmodel.itertuples(index=False):
             abundlist = [f"{getattr(cell, f'X_{strnuc}'):.4e}" for strnuc in listspecies]
             fileout.write(
-                f"{cell.vel_r_max_kmps},{cell.rho:.4e},{temperature},{dilution_factor},{','.join(abundlist)}\n",
+                f"{cell.vel_r_max_kmps},{cell.rho:.4e},{temperature},{dilution_factor},{','.join(abundlist)}\n"
             )
 
     print(f"open {outputfilepath}")
