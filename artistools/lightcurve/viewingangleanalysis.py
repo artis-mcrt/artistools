@@ -374,11 +374,8 @@ def lightcurve_polyfit(
 
     except ModuleNotFoundError:
         print(
-            "Could not find 'george' module, falling back to polynomial fit  "
-            "WARNING: polynomial fit method is sensitive to the degrees of   "
-            "freedom used in the polynomial fit. Therefore important to check"
-            "which degree of freedom used in the polynomial provides the best"
-            "fit using the --test_viewing_angle_fit flag                     "
+            "Could not find 'george' module, falling back to polynomial fit. WARNING: polynomial fit method is sensitive to the degrees of freedom used in the polynomial fit. "
+            "Therefore, it is important to check which degree of freedom used in the polynomial provides the best fit using the --test_viewing_angle_fit flag"
         )
         zfit = np.polyfit(x=time, y=magnitude, deg=deg)
         xfit = np.linspace(args.timemin + 0.5, args.timemax - 0.5, num=1000)
