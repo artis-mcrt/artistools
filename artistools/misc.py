@@ -48,7 +48,7 @@ roman_numerals = (
 
 @lru_cache(maxsize=8)
 def get_composition_data(filename: Path | str) -> pl.DataFrame:
-    """Return a pandas DataFrame containing details of included elements and ions."""
+    """Return a polars DataFrame containing details of included elements and ions."""
     filename = Path(filename, "compositiondata.txt") if Path(filename).is_dir() else Path(filename)
 
     rows = []
@@ -314,7 +314,7 @@ def get_nu_grid(modelpath: Path) -> npt.NDArray[np.floating]:
 
 
 def get_deposition(modelpath: Path | str = ".") -> pl.LazyFrame:
-    """Return a polars DataFrame containing the deposition data."""
+    """Return a polars LazyFrame containing the deposition data."""
     if Path(modelpath).is_file():
         depfilepath = Path(modelpath)
         modelpath = Path(modelpath).parent
@@ -353,7 +353,7 @@ def get_deposition(modelpath: Path | str = ".") -> pl.LazyFrame:
 
 
 def get_timesteps(modelpath: Path | str) -> pl.LazyFrame:
-    """Return a DataFrame containing the timestep indicies, starts, mids, ends, deltas."""
+    """Return a LazyFrame containing the timestep indices, starts, mids, ends, deltas."""
     modelpath = Path(modelpath)
     # virtual path to code comparison workshop models
     if not modelpath.exists() and modelpath.parts[0] == "codecomparison":
@@ -1098,7 +1098,7 @@ def get_nuclides(modelpath: Path | str) -> pl.LazyFrame:
 
 
 def get_bflist(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame:
-    """Return a dict of bound-free transitions from bflist.out."""
+    """Return a LazyFrame of bound-free transitions from bflist.out."""
     compositiondata = get_composition_data(modelpath)
     bflistpath = firstexisting(["bflist.out", "bflist.dat"], folder=modelpath, tryzipped=True)
     print(f"Reading {bflistpath}")
