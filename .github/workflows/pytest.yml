@@ -100,6 +100,8 @@ jobs:
                       python-minor-version: 12
                     - os: {name: ubuntu, version: 24.04-arm}
                       python-minor-version: 15
+                    - os: {name: ubuntu, version: 24.04-arm}
+                      python-minor-version: 14t
         env:
             OS: ${{ matrix.os.name }}-${{ matrix.os.version }}
             PYTHON: 3.${{ matrix.python-minor-version }}
