@@ -41,8 +41,8 @@ def plot_deposition_thermalisation(
 
     depdata = at.get_deposition(modelpath).collect()
 
-    color_gamma = axis._get_lines.get_next_color()  # type: ignore[attr-defined] # pyright: ignore[reportAttributeAccessIssue]  # noqa: SLF001
-    color_gamma = axis._get_lines.get_next_color()  # type: ignore[attr-defined] # pyright: ignore[reportAttributeAccessIssue]  # noqa: SLF001
+    color_gamma = axis._get_lines.get_next_color()  # type: ignore[attr-defined] # noqa: SLF001 # pyright: ignore[reportAttributeAccessIssue]
+    color_gamma = axis._get_lines.get_next_color()  # type: ignore[attr-defined] # noqa: SLF001 # pyright: ignore[reportAttributeAccessIssue]
 
     axis.plot(
         depdata["tmid_days"],
@@ -53,7 +53,7 @@ def plot_deposition_thermalisation(
         ),
     )
 
-    color_beta = axis._get_lines.get_next_color()  # type: ignore[attr-defined] # pyright: ignore[reportAttributeAccessIssue]  # noqa: SLF001
+    color_beta = axis._get_lines.get_next_color()  # type: ignore[attr-defined] # noqa: SLF001 # pyright: ignore[reportAttributeAccessIssue]
 
     if "eps_elec_Lsun" in depdata:
         axis.plot(
