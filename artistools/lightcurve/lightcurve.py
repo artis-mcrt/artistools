@@ -39,19 +39,6 @@ def readfile(filepath: str | Path) -> dict[int, pl.LazyFrame]:
     return lcdata
 
 
-def read_3d_gammalightcurve(filepath: str | Path) -> dict[int, pd.DataFrame]:
-    columns = ["time", *[str(i) for i in range(100)]]
-    lcdata = pd.read_csv(filepath, sep=r"\s+", header=None).set_axis(columns, axis=1)
-    # lcdata = lcdata.rename(columns={0: 'time', 1: 'lum', 2: 'lum_cmf'})
-
-    res_data = {}
-    for angle in range(100):
-        res_data[angle] = lcdata[["time", angle]]
-        res_data[angle] = res_data[angle].rename(columns={angle: "lum"})
-
-    return res_data
-
-
 def get_from_packets(
     modelpath: str | Path,
     escape_type: str = "TYPE_RPKT",
