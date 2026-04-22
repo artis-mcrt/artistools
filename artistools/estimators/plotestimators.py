@@ -1031,6 +1031,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     should_use_all_timesteps = (
         not args.timedays
+        and not args.timemin
+        and not args.timemax
         and not args.timestep
         and (args.modelgridindex is not None or args.x in {None, "time", "timestep"})
     )
