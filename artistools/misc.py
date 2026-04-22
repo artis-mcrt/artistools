@@ -463,7 +463,12 @@ def get_time_range(
         else:
             timestepmin = int(timestep_range_str)
             timestepmax = timestepmin
-    elif (timemin is not None and timemax is not None) or timedays_range_str is not None:
+    elif (timemin is not None or timemax is not None) or timedays_range_str is not None:
+        if timemin is None and timemax is not None:
+            timemin = -1.0
+        elif timemax is None and timemin is not None:
+            timemax = math.inf
+
         # time days range is specified
         timestepmin = None
         timestepmax = None
