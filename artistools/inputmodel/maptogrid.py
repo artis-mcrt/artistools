@@ -282,6 +282,8 @@ def maptogrid(
                 # Use this if you want to allow smoothing lengths to grow freely beyond 0.75 * dx in the outer regions.
                 if modifysmoothinglength == "option6" and dis > rmean:
                     h[n] = max(h[n], 0.75 * dx)
+                if modifysmoothinglength == "option7" and dis > rmean and dis > 3.5e5:
+                    h[n] = 10*dx
 
                 maxdist2 = (2.0 * h[n]) ** 2
                 # -------------------------------
@@ -431,6 +433,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             "option4",
             "option5",
             "option6",
+            "option7",
             "False",
         ],  # We should choose if the default should be false and how we want to name these
         help="Option to modify smoothing length h. Choose from options."

@@ -391,6 +391,23 @@ def plot_phi_hist(modelpath: Path | str) -> None:
     plt.close()
 
 
+def plot_npz_abundances(npy_path: Path, npz_paths: Sequence[Path], npzlabels: Sequence[Path]) -> None:
+    iso_table = np.load(npy_path)
+    A_arr = np.unique(iso_table.sum(axis=1))
+    for npz_path, npzlabel in zip(npz_paths,npzlabels,strict=True):
+        snapshot_dict = np.load(npz_path)
+        traj_weights = snapshot_dict['mass'] / np.sum(snapshot_dict['mass'])
+        weighted_abundances = snapshot_dict['nz'] * traj_weights[:, None]
+        total_abundance = weighted_abundances.sum(axis=0)  
+        X_arr = np.bincount(A, weights=total_abundance)
+        if not np.isclose(X_arr.sum(), 1.0, rtol=1e-3):
+            raise ValueError(f"Mass fraction sum deviates too much: {X_arr.sum()}")
+        plt.plot(A_arr,X_arr, label=npzlabel,lw=0.5)
+    plt.xlabel("Mass number")
+    plt.ylabel("Mass fraction")
+
+
+
 def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-modelpath", type=Path, default=Path(), help="Path to ARTIS folder")
 
@@ -417,6 +434,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("-surfaces3d", type=float, nargs="+", help="define positions of surfaces for 3D plots")
 
+    parser.add_argument("-npz", type=Path, nargs="+", help="Plot mass fraction over mass number at snapshot time from npz files")
+
+    parser.add_argument("-npzlabels", type=str, nargs="+", help="Specify labels for each npz file")
+
+    parser.add_argument("-npy", type=Path, help="Path to table with isotopic information for npz mass fraction plots (.npy format)")
+
     parser.add_argument("-floorval", default=False, type=float, help="Set a floor value for colorscale. Expects float.")
 
     parser.add_argument(
@@ -435,6 +458,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         at.set_args_from_dict(parser, kwargs)
         argcomplete.autocomplete(parser)
         args = parser.parse_args([] if kwargs else argsraw)
+
+    if args.npz:
+        assert len(args.npz) == len(args.npzlabels), "numbers of npz files and labels do not match. Abort."
+        assert args.npy is not None, "isotopic information must be provided via an npy file"
+        plot_npz_abundances(args.npy,args.npz,args.npzlabels)
+        return
 
     if args.axis[0] in {"+", "-"}:
         args.positive_axis = args.axis[0] == "+"
