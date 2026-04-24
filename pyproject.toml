@@ -424,3 +424,4 @@ sort_by_size = true
 
 [tool.zuban]
 mode = "default"
+disallow_untyped_calls = false
