@@ -76,6 +76,10 @@ jobs:
               if: always()
               run: uv run -- mypy
 
+            - name: Run pyrefly
+              if: always()
+              run: uv run -- pyrefly check
+
             - name: Run prek pre-commit checks
               uses: j178/prek-action@v2
 
