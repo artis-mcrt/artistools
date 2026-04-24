@@ -9,7 +9,6 @@ license = "MIT"
 homepage = "https://github.com/artis-mcrt/artistools"
 repository = "https://github.com/artis-mcrt/artistools"
 readme = "../README.md"
-build = "build.rs"
 
 [lib]
 name = "rustext"
