@@ -48,7 +48,7 @@ roman_numerals = (
 
 @lru_cache(maxsize=8)
 def get_composition_data(filename: Path | str) -> pl.DataFrame:
-    """Return a polars DataFrame containing details of included elements and ions."""
+    """Return a DataFrame containing details of included elements and ions."""
     filename = Path(filename, "compositiondata.txt") if Path(filename).is_dir() else Path(filename)
 
     rows = []
