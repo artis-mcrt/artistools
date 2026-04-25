@@ -491,9 +491,9 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
     refdatacolors = ["0.0", "C1", "C2", "C4"]
     refdatakeys: list[list[str]] = [[] for _ in refdatafilenames]
     refdatatimes = [np.array([], dtype=np.float64) for _ in refdatafilenames]
-    refdatapoints: list[list[float]] = [[] for _ in refdatafilenames]
+    refdatapoints: list[list[dict[str, list[float]]]] = [[] for _ in refdatafilenames]
     for refdataindex, refdatafilename in enumerate(refdatafilenames):
-        floers_te_nne = json.loads(Path(refdatafilename).read_text(encoding="utf-8"))
+        floers_te_nne: dict[str, dict[str, list[float]]] = json.loads(Path(refdatafilename).read_text(encoding="utf-8"))
 
         # give an ordering and index to dict items
         refdatakeys_thisseries = [str(x) for x in sorted(floers_te_nne.keys(), key=float)]  # strings, not floats
