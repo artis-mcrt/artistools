@@ -495,9 +495,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                     dftransitions.loc[:, "upper_departure"] = (
                         dftransitions["upper_pop_nlte"] / dftransitions["upper_pop_Te"]
                     )
-                    if ionid == (26, 2):
+                    if ionid == IonTuple(26, 2):
                         fe2depcoeff = dftransitions.query("upper == 16 and lower == 5").iloc[0]["upper_departure"]
-                    elif ionid == (28, 2):
+                    elif ionid == IonTuple(28, 2):
                         ni2depcoeff = dftransitions.query("upper == 6 and lower == 0").iloc[0]["upper_departure"]
 
                     with pd.option_context("display.width", 200):
