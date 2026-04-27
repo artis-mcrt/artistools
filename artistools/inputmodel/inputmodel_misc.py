@@ -462,7 +462,7 @@ def get_empty_3d_model(
 ) -> tuple[pl.LazyFrame, dict[str, t.Any]]:
     xmax = vmax * t_model_init_days * 86400.0
 
-    modelmeta = {
+    modelmeta: dict[str, t.Any] = {
         "dimensions": 3,
         "t_model_init_days": t_model_init_days,
         "vmax_cmps": vmax,

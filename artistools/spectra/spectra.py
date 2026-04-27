@@ -1290,7 +1290,7 @@ def get_flux_contributions_from_packets(
             .drop_nulls("emissiontype_str")
         )
         emissiongroups = {k: v.drop(cs.by_dtype(pl.Utf8)) for (k,), v in empackets.group_by("emissiontype_str")}
-        emission_e_rf_sum = dict(
+        emission_e_rf_sum: dict[str, float] = dict(
             empackets.group_by("emissiontype_str").agg(pl.col("e_rf").sum().alias("e_rf")).iter_rows()
         )
     else:
@@ -1305,7 +1305,7 @@ def get_flux_contributions_from_packets(
             .drop_nulls("absorptiontype_str")
         )
         absorptiongroups = {k: v.drop(cs.by_dtype(pl.Utf8)) for (k,), v in abspackets.group_by("absorptiontype_str")}
-        absorption_e_rf_sum = dict(
+        absorption_e_rf_sum: dict[str, float] = dict(
             abspackets.group_by("absorptiontype_str").agg(pl.col("e_rf").sum().alias("e_rf")).iter_rows()
         )
     else:
