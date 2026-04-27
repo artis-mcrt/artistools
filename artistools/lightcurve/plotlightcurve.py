@@ -47,10 +47,10 @@ def plot_deposition_thermalisation(
     axis.plot(
         depdata["tmid_days"],
         depdata["gammadep_Lsun"] * Lsun_to_erg_per_s,
-        **(
-            plotkwargs  # pyright: ignore[reportArgumentType]
-            | {"label": plotkwargs["label"] + r" $\dot{E}_{dep,\gamma}$", "linestyle": "dashed", "color": color_gamma}
-        ),
+        **plotkwargs,
+        label=plotkwargs["label"] + r" $\dot{E}_{dep,\gamma}$",
+        linestyle="dashed",
+        color=color_gamma,
     )
 
     color_beta = axis._get_lines.get_next_color()  # type: ignore[attr-defined] # noqa: SLF001 # pyright: ignore[reportAttributeAccessIssue]
@@ -59,28 +59,20 @@ def plot_deposition_thermalisation(
         axis.plot(
             depdata["tmid_days"],
             depdata["eps_elec_Lsun"] * Lsun_to_erg_per_s,
-            **(
-                plotkwargs  # pyright: ignore[reportArgumentType]
-                | {
-                    "label": plotkwargs["label"] + r" $\dot{E}_{rad,\beta^-}$",
-                    "linestyle": "dotted",
-                    "color": color_beta,
-                }
-            ),
+            **plotkwargs,
+            label=plotkwargs["label"] + r" $\dot{E}_{rad,\beta^-}$",
+            linestyle="dotted",
+            color=color_beta,
         )
 
     if "elecdep_Lsun" in depdata:
         axis.plot(
             depdata["tmid_days"],
             depdata["elecdep_Lsun"] * Lsun_to_erg_per_s,
-            **(
-                plotkwargs  # pyright: ignore[reportArgumentType]
-                | {
-                    "label": plotkwargs["label"] + r" $\dot{E}_{dep,\beta^-}$",
-                    "linestyle": "dashed",
-                    "color": color_beta,
-                }
-            ),
+            **plotkwargs,
+            label=plotkwargs["label"] + r" $\dot{E}_{dep,\beta^-}$",
+            linestyle="dashed",
+            color=color_beta,
         )
 
     # color_alpha = axis._get_lines.get_next_color()
@@ -92,41 +84,29 @@ def plot_deposition_thermalisation(
             axis.plot(
                 depdata["tmid_days"],
                 depdata["eps_alpha_ana_Lsun"] * Lsun_to_erg_per_s,
-                **(
-                    plotkwargs  # pyright: ignore[reportArgumentType]
-                    | {
-                        "label": plotkwargs["label"] + r" $\dot{E}_{rad,\alpha}$ analytical",
-                        "linestyle": "solid",
-                        "color": color_alpha,
-                    }
-                ),
+                **plotkwargs,
+                label=plotkwargs["label"] + r" $\dot{E}_{rad,\alpha}$ analytical",
+                linestyle="solid",
+                color=color_alpha,
             )
 
         if "eps_alpha_Lsun" in depdata:
             axis.plot(
                 depdata["tmid_days"],
                 depdata["eps_alpha_Lsun"] * Lsun_to_erg_per_s,
-                **(
-                    plotkwargs  # pyright: ignore[reportArgumentType]
-                    | {
-                        "label": plotkwargs["label"] + r" $\dot{E}_{rad,\alpha}$",
-                        "linestyle": "dashed",
-                        "color": color_alpha,
-                    }
-                ),
+                **plotkwargs,
+                label=plotkwargs["label"] + r" $\dot{E}_{rad,\alpha}$",
+                linestyle="dashed",
+                color=color_alpha,
             )
 
         axis.plot(
             depdata["tmid_days"],
             depdata["alphadep_Lsun"] * Lsun_to_erg_per_s,
-            **(
-                plotkwargs  # pyright: ignore[reportArgumentType]
-                | {
-                    "label": plotkwargs["label"] + r" $\dot{E}_{dep,\alpha}$",
-                    "linestyle": "dotted",
-                    "color": color_alpha,
-                }
-            ),
+            **plotkwargs,
+            label=plotkwargs["label"] + r" $\dot{E}_{dep,\alpha}$",
+            linestyle="dotted",
+            color=color_alpha,
         )
 
     if args.plotthermalisation:
@@ -135,28 +115,20 @@ def plot_deposition_thermalisation(
         axistherm.plot(
             depdata["tmid_days"],
             f_gamma,
-            **(
-                plotkwargs  # pyright: ignore[reportArgumentType]
-                | {
-                    "label": modelname + r" $\left(\dot{E}_{dep,\gamma} \middle/ \dot{E}_{rad,\gamma}\right)$",
-                    "linestyle": "solid",
-                    "color": color_gamma,
-                }
-            ),
+            **plotkwargs,
+            label=modelname + r" $\left(\dot{E}_{dep,\gamma} \middle/ \dot{E}_{rad,\gamma}\right)$",
+            linestyle="solid",
+            color=color_gamma,
         )
 
         f_beta = depdata["elecdep_Lsun"] / depdata["eps_elec_Lsun"]
         axistherm.plot(
             depdata["tmid_days"],
             f_beta,
-            **(
-                plotkwargs  # pyright: ignore[reportArgumentType]
-                | {
-                    "label": modelname + r" $\left(\dot{E}_{dep,\beta^-} \middle/ \dot{E}_{rad,\beta^-}\right)$",
-                    "linestyle": "solid",
-                    "color": color_beta,
-                }
-            ),
+            **plotkwargs,
+            label=modelname + r" $\left(\dot{E}_{dep,\beta^-} \middle/ \dot{E}_{rad,\beta^-}\right)$",
+            linestyle="solid",
+            color=color_beta,
         )
 
         f_alpha = depdata["alphadep_Lsun"] / depdata["eps_alpha_Lsun"]
@@ -164,14 +136,10 @@ def plot_deposition_thermalisation(
         axistherm.plot(
             depdata["tmid_days"],
             f_alpha,
-            **(
-                plotkwargs  # pyright: ignore[reportArgumentType]
-                | {
-                    "label": modelname + r" $\left(\dot{E}_{dep,\alpha} \middle/ \dot{E}_{rad,\alpha}\right)$",
-                    "linestyle": "solid",
-                    "color": color_alpha,
-                }
-            ),
+            **plotkwargs,
+            label=modelname + r" $\left(\dot{E}_{dep,\alpha} \middle/ \dot{E}_{rad,\alpha}\right)$",
+            linestyle="solid",
+            color=color_alpha,
         )
 
         ejecta_ke_erg: float = dfmodel.select("kinetic_en_erg").sum().collect().item()
@@ -192,7 +160,10 @@ def plot_deposition_thermalisation(
         axistherm.plot(
             depdata["tmid_days"],
             barnes_f_gamma,
-            **(plotkwargs | {"label": r"Barnes+2016 $f_\gamma$", "linestyle": "dashed", "color": color_gamma}),  # pyright: ignore[reportArgumentType]
+            **plotkwargs,
+            label=r"Barnes+2016 $f_\gamma$",
+            linestyle="dashed",
+            color=color_gamma,
         )
 
         e0_beta_mev = 0.5
@@ -206,7 +177,10 @@ def plot_deposition_thermalisation(
         axistherm.plot(
             depdata["tmid_days"],
             barnes_f_beta,
-            **(plotkwargs | {"label": r"Barnes+2016 $f_\beta$", "linestyle": "dashed", "color": color_beta}),  # pyright: ignore[reportArgumentType]
+            **plotkwargs,
+            label=r"Barnes+2016 $f_\beta$",
+            linestyle="dashed",
+            color=color_beta,
         )
 
         e0_alpha_mev = 6.0
@@ -220,7 +194,10 @@ def plot_deposition_thermalisation(
         axistherm.plot(
             depdata["tmid_days"],
             barnes_f_alpha,
-            **(plotkwargs | {"label": r"Barnes+2016 $f_\alpha$", "linestyle": "dashed", "color": color_alpha}),  # pyright: ignore[reportArgumentType]
+            **plotkwargs,
+            label=r"Barnes+2016 $f_\alpha$",
+            linestyle="dashed",
+            color=color_alpha,
         )
 
 
@@ -769,13 +746,10 @@ def get_linelabel(
 ) -> str:
     if angle is not None and angle != -1:
         assert angle_definition is not None
-        linelabel = angle_definition[angle] if args.nomodelname else f"{modelname} {angle_definition[angle]}"
-    elif args.label:
-        linelabel = str(args.label[modelnumber])
-    else:
-        linelabel = modelname
-
-    return linelabel
+        return angle_definition[angle] if args.nomodelname else f"{modelname} {angle_definition[angle]}"
+    if args.label:
+        return str(args.label[modelnumber])
+    return modelname
 
 
 def set_lightcurveplot_legend(ax: mplax.Axes | npt.NDArray[t.Any], args: argparse.Namespace) -> None:
