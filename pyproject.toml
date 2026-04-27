@@ -51,24 +51,24 @@ extras = [
     "imageio>=2.37.2",
     "plotly>=6.7.0",
     "pypdf>=6.10.2",
-    "pynonthermal>=2025.4.8",
+    "pynonthermal>=2026.4.27",
     "pyvista>=0.47.1;python_version<'3.15'", # not compatible with cpython 3.15 yet
 ]
 
 [dependency-groups]
 dev = [
     "basedpyright>=1.39.3",
-    "imageio>=2.37.2",
+    "imageio>=2.37.3",
     "mypy[native-parser]>=1.20.2",
     "pandas-stubs>=3.0.0.260204",
     "prek>=0.2.28",
-    "pynonthermal>=2025.4.8",
+    "pynonthermal>=2026.4.27",
     "pyrefly>=0.62.0",
     "pytest>=9.0.3",
     "pytest-codspeed>=4.4.0",
     "pytest-cov>=7.1.0",
     "pytest-xdist[psutil]>=3.8.0",
-    "ruff>=0.15.11",
+    "ruff>=0.15.12",
     "ty>=0.0.14",
     "typeguard>=4.5.1",
     "types-python-dateutil>=2.9.0.20260408",
@@ -316,7 +316,7 @@ extend-exclude = [
     ".venv/**",
 ]
 preview = true
-required-version = ">=0.15.11"
+required-version = ">=0.15.12"
 
 [tool.ruff.format]
 skip-magic-trailing-comma = true
