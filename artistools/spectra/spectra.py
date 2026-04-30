@@ -6,6 +6,7 @@ import math
 import re
 import typing as t
 from collections.abc import Callable
+from collections.abc import Collection
 from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
@@ -363,6 +364,7 @@ def get_from_packets(
     delta_lambda: float | npt.NDArray[np.floating] | None = None,
     use_time: t.Literal["arrival", "emission", "escape"] = "arrival",
     maxpacketfiles: int | None = None,
+    directionbins: Collection[int] | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
     nu_column: str = "nu_rf",
@@ -435,7 +437,8 @@ def get_from_packets(
     dirbin_spectra: dict[int, pl.LazyFrame] = {}
     if directionbins_are_vpkt_observers:
         vpkt_config = get_vpkt_config(modelpath)
-        directionbins = range(vpkt_config["nobsdirections"] * vpkt_config["nspectraperobs"])
+        if directionbins is None:
+            directionbins = range(vpkt_config["nobsdirections"] * vpkt_config["nspectraperobs"])
         for vspecindex in directionbins:
             obsdirindex = vspecindex // vpkt_config["nspectraperobs"]
             opacchoiceindex = vspecindex % vpkt_config["nspectraperobs"]
@@ -486,7 +489,8 @@ def get_from_packets(
 
         assert use_time == "arrival"
     else:
-        directionbins = [-1, *list(range(get_viewingdirectionbincount()))]
+        if directionbins is None:
+            directionbins = [-1, *list(range(get_viewingdirectionbincount()))]
         lambda_column = nu_column.replace("nu_", "lambda_angstroms_")
         energy_column = "e_cmf" if use_time == "escape" else "e_rf"
 
@@ -1368,24 +1372,28 @@ def get_flux_contributions_from_packets(
     group_em_specs = dict(
         zip(
             emissiongroups.keys(),
-            pl.collect_all([
-                get_from_packets(
-                    modelpath=modelpath,
-                    timelowdays=timelowdays,
-                    timehighdays=timehighdays,
-                    lambda_min=lambda_min,
-                    lambda_max=lambda_max,
-                    use_time=use_time,
-                    delta_lambda=delta_lambda,
-                    fluxfilterfunc=filterfunc,
-                    nprocs_read_dfpackets=(nprocs_read, dfpkts),
-                    directionbins_are_vpkt_observers=directionbins_are_vpkt_observers,
-                    average_over_phi=average_over_phi,
-                    average_over_theta=average_over_theta,
-                    gamma=gamma,
-                )[directionbin].select("lambda_angstroms", "f_lambda")
-                for dfpkts in emissiongroups.values()
-            ]),
+            pl.collect_all(
+                [
+                    get_from_packets(
+                        modelpath=modelpath,
+                        timelowdays=timelowdays,
+                        timehighdays=timehighdays,
+                        lambda_min=lambda_min,
+                        lambda_max=lambda_max,
+                        use_time=use_time,
+                        delta_lambda=delta_lambda,
+                        fluxfilterfunc=filterfunc,
+                        nprocs_read_dfpackets=(nprocs_read, dfpkts),
+                        directionbins=[directionbin],
+                        directionbins_are_vpkt_observers=directionbins_are_vpkt_observers,
+                        average_over_phi=average_over_phi,
+                        average_over_theta=average_over_theta,
+                        gamma=gamma,
+                    )[directionbin].select("lambda_angstroms", "f_lambda")
+                    for dfpkts in emissiongroups.values()
+                ],
+                engine="streaming",
+            ),
             strict=True,
         )
     )
@@ -1404,6 +1412,7 @@ def get_flux_contributions_from_packets(
                     nu_column="absorption_freq",
                     fluxfilterfunc=filterfunc,
                     nprocs_read_dfpackets=(nprocs_read, dfpkts),
+                    directionbins=[directionbin],
                     directionbins_are_vpkt_observers=directionbins_are_vpkt_observers,
                     average_over_phi=average_over_phi,
                     average_over_theta=average_over_theta,
