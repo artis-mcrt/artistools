@@ -438,6 +438,8 @@ def get_from_packets(
     if directionbins_are_vpkt_observers:
         vpkt_config = get_vpkt_config(modelpath)
         if directionbins is None:
+            msg = "directionbins must be provided when directionbins_are_vpkt_observers is True"
+            raise AssertionError(msg)
             directionbins = range(vpkt_config["nobsdirections"] * vpkt_config["nspectraperobs"])
         for vspecindex in directionbins:
             obsdirindex = vspecindex // vpkt_config["nspectraperobs"]
