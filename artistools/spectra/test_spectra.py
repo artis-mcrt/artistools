@@ -152,13 +152,13 @@ def test_spectra_get_spectrum_polar_angles() -> None:
         90: (8.828105146277665e-12, 2.534549767123003e-11),
     }
 
-    for dirbin in spectra:
+    for dirbin in expected_results:
         result_mean = results[dirbin][0]
         assert isinstance(result_mean, float)
-        assert np.isclose(result_mean, expected_results[dirbin][0], rtol=1e-3)
+        assert math.isclose(result_mean, expected_results[dirbin][0], rel_tol=1e-3)
         result_std = results[dirbin][1]
         assert isinstance(result_std, float)
-        assert np.isclose(result_std, expected_results[dirbin][1], rtol=1e-3)
+        assert math.isclose(result_std, expected_results[dirbin][1], rel_tol=1e-3)
 
 
 @pytest.mark.benchmark
@@ -169,7 +169,6 @@ def test_spectra_get_spectrum_polar_angles_frompackets(benchmark: BenchmarkFixtu
     spectrafrompkts = benchmark(
         lambda: at.spectra.get_from_packets(
             modelpath=modelpath_classic_3d,
-            directionbins=[0, 10, 20, 30, 40, 50, 60, 70, 80, 90],
             average_over_phi=True,
             timelowdays=timelowdays,
             timehighdays=timehighdays,

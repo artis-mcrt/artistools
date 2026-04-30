@@ -6,7 +6,6 @@ import math
 import re
 import typing as t
 from collections.abc import Callable
-from collections.abc import Collection
 from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
@@ -364,7 +363,6 @@ def get_from_packets(
     delta_lambda: float | npt.NDArray[np.floating] | None = None,
     use_time: t.Literal["arrival", "emission", "escape"] = "arrival",
     maxpacketfiles: int | None = None,
-    directionbins: Collection[int] | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
     nu_column: str = "nu_rf",
@@ -374,9 +372,6 @@ def get_from_packets(
     gamma: bool = False,
 ) -> dict[int, pl.LazyFrame]:
     """Get a spectrum dataframe using the packets files as input."""
-    if directionbins is None:
-        directionbins = [-1]
-
     assert use_time in {"arrival", "emission", "escape"}
 
     if nu_column == "absorption_freq":
@@ -432,12 +427,15 @@ def get_from_packets(
             {"lambda_angstroms": lambda_bin_centres, "lambda_binindex": range(len(lambda_bin_centres))},
             schema_overrides={"lambda_binindex": pl.Int32},
         )
+        .with_columns(nu=(299792458.0 / (pl.col("lambda_angstroms") * 1e-10)))
         .sort(["lambda_binindex", "lambda_angstroms"])
         .lazy()
     )
     escapesurfacegamma: float | None = None
+    dirbin_spectra: dict[int, pl.LazyFrame] = {}
     if directionbins_are_vpkt_observers:
         vpkt_config = get_vpkt_config(modelpath)
+        directionbins = range(vpkt_config["nobsdirections"] * vpkt_config["nspectraperobs"])
         for vspecindex in directionbins:
             obsdirindex = vspecindex // vpkt_config["nspectraperobs"]
             opacchoiceindex = vspecindex % vpkt_config["nspectraperobs"]
@@ -474,6 +472,7 @@ def get_from_packets(
 
         assert use_time == "arrival"
     else:
+        directionbins = [-1, *list(range(get_viewingdirectionbincount()))]
         lambda_column = nu_column.replace("nu_", "lambda_angstroms_")
         energy_column = "e_cmf" if use_time == "escape" else "e_rf"
 
@@ -536,37 +535,27 @@ def get_from_packets(
                     * solidanglefactor
                     / (const.megaparsec_to_cm**2)
                     / nprocs_read
-                ).alias(f"f_lambda_dirbin{dirbin}"),
-                pl.col("count").alias(f"count_dirbin{dirbin}"),
+                ).alias("f_lambda"),
+                pl.col("count"),
             ])
 
             if use_time == "escape":
                 assert escapesurfacegamma is not None
-                dfbinned_dirbin = dfbinned_dirbin.with_columns(
-                    pl.col(f"f_lambda_dirbin{dirbin}").mul(1.0 / escapesurfacegamma)
-                )
+                dfbinned_dirbin = dfbinned_dirbin.with_columns(pl.col("f_lambda").mul(1.0 / escapesurfacegamma))
 
-            dfbinned_lazy = dfbinned_lazy.join(dfbinned_dirbin, on="lambda_binindex", how="left", coalesce=True)
+            if fluxfilterfunc:
+                dfbinned_dirbin = dfbinned_dirbin.with_columns(cs.starts_with("f_lambda_").map_batches(fluxfilterfunc))
+
+            dfbinned_dirbin = dfbinned_dirbin.join(dfbinned_lazy, on="lambda_binindex", how="left", coalesce=True)
+
+            dirbin_spectra[dirbin] = dfbinned_dirbin.with_columns(
+                f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu"))
+            )
 
     if fluxfilterfunc:
         print("Applying filter to ARTIS spectrum")
-        dfbinned_lazy = dfbinned_lazy.with_columns(cs.starts_with("f_lambda_").map_batches(fluxfilterfunc))
 
-    return dict(
-        zip(
-            directionbins,
-            (
-                dfbinned_lazy.select([
-                    "lambda_angstroms",
-                    pl.col(f"f_lambda_dirbin{dirbin}").alias("f_lambda"),
-                    pl.col(f"count_dirbin{dirbin}").alias("packetcount"),
-                    (299792458.0 / (pl.col("lambda_angstroms") * 1e-10)).alias("nu"),
-                ]).with_columns(f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu")))
-                for dirbin in directionbins
-            ),
-            strict=True,
-        )
-    )
+    return dirbin_spectra
 
 
 @lru_cache(maxsize=16)
@@ -993,7 +982,7 @@ def get_flux_contributions(
 
             emissiondata[dbin] = read_emission_absorption_file(emissionfilename).collect()
 
-            maxion_float = float(
+            maxion_float = (
                 (len(emissiondata[dbin].collect_schema().names()) - 1) / 2.0 / nelements
             )  # also known as MIONS in ARTIS sn3d.h
             assert maxion_float.is_integer()
@@ -1376,7 +1365,6 @@ def get_flux_contributions_from_packets(
                     delta_lambda=delta_lambda,
                     fluxfilterfunc=filterfunc,
                     nprocs_read_dfpackets=(nprocs_read, dfpkts),
-                    directionbins=[directionbin],
                     directionbins_are_vpkt_observers=directionbins_are_vpkt_observers,
                     average_over_phi=average_over_phi,
                     average_over_theta=average_over_theta,
@@ -1402,7 +1390,6 @@ def get_flux_contributions_from_packets(
                     nu_column="absorption_freq",
                     fluxfilterfunc=filterfunc,
                     nprocs_read_dfpackets=(nprocs_read, dfpkts),
-                    directionbins=[directionbin],
                     directionbins_are_vpkt_observers=directionbins_are_vpkt_observers,
                     average_over_phi=average_over_phi,
                     average_over_theta=average_over_theta,
