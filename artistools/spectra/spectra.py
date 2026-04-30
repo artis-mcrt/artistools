@@ -404,9 +404,9 @@ def get_from_packets(
         nprocs_read, dfpackets = nprocs_read_dfpackets[0], nprocs_read_dfpackets[1].lazy()
     elif directionbins_are_vpkt_observers:
         assert not gamma
-        nprocs_read, dfpackets = atpackets.get_virtual_packets_pl(modelpath, maxpacketfiles=maxpacketfiles)
+        nprocs_read, dfpackets = atpackets.get_virtual_packets(modelpath, maxpacketfiles=maxpacketfiles)
     else:
-        nprocs_read, dfpackets = atpackets.get_packets_pl(
+        nprocs_read, dfpackets = atpackets.get_packets(
             modelpath,
             maxpacketfiles=maxpacketfiles,
             packet_type="TYPE_ESCAPE",
@@ -1155,7 +1155,7 @@ def get_flux_contributions_from_packets(
         vpkt_config = get_vpkt_config(modelpath)
         obsdirindex = directionbin // vpkt_config["nspectraperobs"]
         opacchoiceindex = directionbin % vpkt_config["nspectraperobs"]
-        nprocs_read, lzdfpackets = atpackets.get_virtual_packets_pl(modelpath, maxpacketfiles=maxpacketfiles)
+        nprocs_read, lzdfpackets = atpackets.get_virtual_packets(modelpath, maxpacketfiles=maxpacketfiles)
         lzdfpackets = lzdfpackets.with_columns(e_rf=pl.col(f"dir{obsdirindex}_e_rf_{opacchoiceindex}"))
         dirbin_nu_column = f"dir{obsdirindex}_nu_rf"
 
@@ -1163,7 +1163,7 @@ def get_flux_contributions_from_packets(
         lzdfpackets = lzdfpackets.filter(pl.col(f"dir{obsdirindex}_t_arrive_d").is_between(timelowdays, timehighdays))
 
     else:
-        nprocs_read, lzdfpackets = atpackets.get_packets_pl(
+        nprocs_read, lzdfpackets = atpackets.get_packets(
             modelpath,
             maxpacketfiles=maxpacketfiles,
             packet_type="TYPE_ESCAPE",

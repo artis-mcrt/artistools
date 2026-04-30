@@ -316,7 +316,7 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
 
     dfestimators = at.estimators.scan_estimators(modelpath=args.modelpath) if "temperature" in args.plotvars else None
 
-    nprocs_read, dfpackets = at.packets.get_packets_pl(
+    nprocs_read, dfpackets = at.packets.get_packets(
         args.modelpath, args.maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
     dfpackets = at.packets.add_derived_columns_lazy(dfpackets, modelpath=args.modelpath)

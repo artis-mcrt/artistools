@@ -37,7 +37,7 @@ class FeatureTuple(t.NamedTuple):
 def get_packets_with_emtype(
     modelpath: Path | str, emtypecolumn: str, lineindices: Sequence[int], maxpacketfiles: int | None = None
 ) -> tuple[pl.LazyFrame, int]:
-    nprocs_read, dfpackets = at.packets.get_packets_pl(
+    nprocs_read, dfpackets = at.packets.get_packets(
         modelpath=modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
     dfpackets = dfpackets.filter(pl.col(emtypecolumn).is_in(lineindices))

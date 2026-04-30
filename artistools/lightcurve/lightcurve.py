@@ -78,9 +78,9 @@ def get_from_packets(
     vpkt_config = at.get_vpkt_config(modelpath) if directionbins_are_vpkt_observers else None
     assert not directionbins_are_vpkt_observers or pellet_nucname is None  # we don't track which pellet led to vpkts
     if directionbins_are_vpkt_observers:
-        nprocs_read, dfpackets = at.packets.get_virtual_packets_pl(modelpath, maxpacketfiles=maxpacketfiles)
+        nprocs_read, dfpackets = at.packets.get_virtual_packets(modelpath, maxpacketfiles=maxpacketfiles)
     else:
-        nprocs_read, dfpackets = at.packets.get_packets_pl(
+        nprocs_read, dfpackets = at.packets.get_packets(
             modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type=escape_type
         )
 
