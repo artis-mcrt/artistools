@@ -894,7 +894,7 @@ def get_vspecpol_spectrum(
         args.stokesparam = "I"
     vspecdata = stokes_params[args.stokesparam]
 
-    arr_tmid = [float(i) for i in vspecdata.columns[1:]]
+    arr_tmid = [float(i) for i in vspecdata.collect_schema().names()[1:]]
     vspec_timesteps = range(len(arr_tmid))
     arr_tdelta = [l1 - l2 for l1, l2 in zip(arr_tmid[1:], arr_tmid[:-1], strict=False)] + [arr_tmid[-1] - arr_tmid[-2]]
 
@@ -915,7 +915,7 @@ def get_vspecpol_spectrum(
     dfout = vspecdata.select(
         f_nu=(
             pl.sum_horizontal(
-                pl.col(vspecdata.columns[timestep + 1]) * arr_tdelta[timestep]
+                pl.col(vspecdata.collect_schema().names()[timestep + 1]) * arr_tdelta[timestep]
                 for timestep in range(timestepmin, timestepmax + 1)
             )
             / sum(arr_tdelta[timestepmin : timestepmax + 1])
