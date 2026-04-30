@@ -449,6 +449,16 @@ def get_from_packets(
             pldfpackets_dirbin_lazy = dfpackets.filter(pl.col(lambda_column).is_between(lambda_min, lambda_max)).filter(
                 pl.col(f"dir{obsdirindex}_t_arrive_d").is_between(timelowdays, timehighdays)
             )
+            if pldfpackets_dirbin_lazy.select(pl.len()).collect().item() == 0:
+                msg = f"No packets in time ({timelowdays:.2f} - {timehighdays:.2f}) and wavelength range ({lambda_min:.1f} - {lambda_max:.1f}) for vspecindex {vspecindex}"
+
+                print(
+                    f" lambda min max: {dfpackets.select(min=pl.col(lambda_column).min(), max=pl.col(lambda_column).max()).collect().row(0)}"
+                )
+                print(
+                    f" time min max : {dfpackets.select(min=pl.col(f'dir{obsdirindex}_t_arrive_d').min(), max=pl.col(f'dir{obsdirindex}_t_arrive_d').max()).collect().row(0)}"
+                )
+                raise RuntimeError(msg)
 
             dfbinned_dirbin = atpackets.bin_and_sum(
                 pldfpackets_dirbin_lazy,
@@ -464,11 +474,15 @@ def get_from_packets(
                     / delta_time_s
                     / (const.megaparsec_to_cm**2)
                     / nprocs_read
-                ).alias(f"f_lambda_dirbin{vspecindex}"),
-                pl.col("count").alias(f"count_dirbin{vspecindex}"),
+                ).alias("f_lambda"),
+                pl.col("count"),
             ])
 
-            dfbinned_lazy = dfbinned_lazy.join(dfbinned_dirbin, on="lambda_binindex", how="left", coalesce=True)
+            dfbinned_dirbin = dfbinned_dirbin.join(dfbinned_lazy, on="lambda_binindex", how="left", coalesce=True)
+
+            dirbin_spectra[vspecindex] = dfbinned_dirbin.with_columns(
+                f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu"))
+            )
 
         assert use_time == "arrival"
     else:
