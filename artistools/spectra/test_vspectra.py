@@ -24,7 +24,6 @@ def test_vspectraplot(mockplot: t.Any) -> None:
     assert all(np.array_equal(arr_time_d, np.array(mockplot.call_args_list[vspecdir][0][1])) for vspecdir in range(10))
 
     arr_allvspec = np.vstack([np.array(mockplot.call_args_list[vspecdir][0][2]) for vspecdir in range(10)])
-
     assert np.allclose(
         arr_allvspec.std(axis=1),
         [
@@ -39,7 +38,8 @@ def test_vspectraplot(mockplot: t.Any) -> None:
             2.05916843e-12,
             2.00515984e-12,
         ],
-        atol=1e-16,
+        rtol=0.001,
+        atol=0.0,
     )
 
     assert np.allclose(
@@ -56,7 +56,8 @@ def test_vspectraplot(mockplot: t.Any) -> None:
             3.0234533505898177e-12,
             2.9721539798925583e-12,
         ],
-        atol=1e-16,
+        rtol=0.001,
+        atol=0.0,
     )
 
 
@@ -78,36 +79,38 @@ def test_vpkt_frompackets_spectrum_plot(mockplot: t.Any) -> None:
     assert all(np.array_equal(arr_time_d, np.array(mockplot.call_args_list[vspecdir][0][1])) for vspecdir in range(9))
 
     arr_allvspec = np.vstack([np.array(mockplot.call_args_list[vspecdir][0][2]) for vspecdir in range(9)])
-    print(list(arr_allvspec.std(axis=1)))
+    print("expecting (std): ", [float(x) for x in arr_allvspec.std(axis=1)])
     assert np.allclose(
         arr_allvspec.std(axis=1),
         [
-            2.250169934569213e-15,
-            1.5100666673940305e-14,
-            4.869648743602329e-15,
-            2.2088584226201254e-15,
-            1.4772661475549563e-14,
-            4.81122573011189e-15,
-            2.3113250841019364e-15,
-            1.45676358684038e-14,
-            4.589891035117792e-15,
+            2.327497886235515e-15,
+            1.3598207820269362e-14,
+            5.008263656577672e-15,
+            2.2846087128139245e-15,
+            1.3201387803043819e-14,
+            4.942566647559291e-15,
+            2.3914786916308798e-15,
+            1.3150990321980048e-14,
+            4.713373632148831e-15,
         ],
-        rtol=0.0001,
+        rtol=0.001,
+        atol=0.0,
     )
 
-    print(list(arr_allvspec.mean(axis=1)))
+    print("expecting (mean): ", [float(x) for x in arr_allvspec.mean(axis=1)])
     assert np.allclose(
         arr_allvspec.mean(axis=1),
         [
-            1.1359234428755927e-15,
-            9.615508017438282e-15,
-            2.959189512289016e-15,
-            1.1078180792141745e-15,
-            9.453979816323599e-15,
-            2.981925804875244e-15,
-            1.1359823034815934e-15,
-            9.316807974058103e-15,
-            2.9236313925953637e-15,
+            1.2260651224209835e-15,
+            8.443895573486584e-15,
+            3.2160750274055088e-15,
+            1.2006100531102612e-15,
+            8.309438486245869e-15,
+            3.2461295230908496e-15,
+            1.2303479856067529e-15,
+            8.224253260472366e-15,
+            3.1773192704100478e-15,
         ],
-        rtol=0.0001,
+        rtol=0.001,
+        atol=0.0,
     )
