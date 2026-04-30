@@ -1,4 +1,3 @@
-import itertools
 import math
 import typing as t
 from pathlib import Path
@@ -176,6 +175,7 @@ def test_spectra_get_spectrum_polar_angles_frompackets(benchmark: BenchmarkFixtu
             timehighdays=timehighdays,
             lambda_min=100,
             lambda_max=50000,
+            delta_lambda=100,
         )
     )
 
@@ -186,27 +186,31 @@ def test_spectra_get_spectrum_polar_angles_frompackets(benchmark: BenchmarkFixtu
         )
         for dirbin, dfspecdir in spectrafrompkts.items()
     }
-    print(spectrafrompkts[0].select(pl.col("f_lambda").max()).collect().item())
-
-    print(f"result = {results_pkts!r}")
 
     expected_results = {
-        0: (4.353162807671065e-12, 1.0314585154204157e-11),
-        10: (3.780868631353459e-12, 9.530203183864417e-12),
-        20: (4.4248548518147095e-12, 1.016688085146278e-11),
-        30: (3.851739986649016e-12, 9.244210651898158e-12),
-        40: (4.067660527301169e-12, 9.994984475703157e-12),
-        50: (4.062299127491974e-12, 9.823916680282592e-12),
-        60: (3.858248734817849e-12, 9.158354676696867e-12),
-        70: (3.997311747521441e-12, 9.53473201327172e-12),
-        80: (4.121620503814969e-12, 9.481333902503268e-12),
-        90: (4.29975310930973e-12, 9.95760966920298e-12),
+        0: (1.797586165792736e-12, 5.590298324735384e-12),
+        10: (1.5663080169205979e-12, 4.939024069693974e-12),
+        20: (1.774102666296695e-12, 5.520228221791345e-12),
+        30: (1.5995255247265518e-12, 4.9241711406614e-12),
+        40: (1.639362478438235e-12, 4.9895610982735244e-12),
+        50: (1.675756083487473e-12, 5.1182931882077005e-12),
+        60: (1.5760353230761404e-12, 4.736330612172389e-12),
+        70: (1.6263369485761792e-12, 4.913505318082798e-12),
+        80: (1.7403350676338995e-12, 5.223319837133006e-12),
+        90: (1.7311116087677568e-12, 5.333605673696894e-12),
     }
+    actual_results = {
+        dirbin: (float(results_pkts[dirbin][0]), float(results_pkts[dirbin][1])) for dirbin in expected_results
+    }
+    print(f"results: {actual_results}")
 
-    for dirbin, i in itertools.product(results_pkts, range(2)):
-        result = results_pkts[dirbin][i]
-        assert isinstance(result, float)
-        assert np.isclose(result, expected_results[dirbin][i], rtol=1e-3)
+    for dirbin in expected_results:
+        expected_mean = expected_results[dirbin][0]
+        actual_mean = actual_results[dirbin][0]
+        assert math.isclose(actual_mean, expected_mean, rel_tol=1e-3)
+        expected_std = expected_results[dirbin][1]
+        actual_std = actual_results[dirbin][1]
+        assert math.isclose(actual_std, expected_std, rel_tol=1e-3)
 
 
 def test_spectra_get_flux_contributions(benchmark: BenchmarkFixture) -> None:
