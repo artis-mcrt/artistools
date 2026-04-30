@@ -476,7 +476,6 @@ def plot_artis_spectrum(
                 use_time=use_time,
                 maxpacketfiles=maxpacketfiles,
                 delta_lambda=delta_lambda,
-                directionbins=directionbins,
                 average_over_phi=average_over_phi,
                 average_over_theta=average_over_theta,
                 fluxfilterfunc=filterfunc,

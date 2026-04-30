@@ -586,11 +586,10 @@ def get_packets_pl(
             packet_type = "TYPE_ESCAPE"
     nprocs_read, pldfpackets = get_packets_pl_before_filter(Path(modelpath), maxpacketfiles)
 
-    if escape_type not in {"TYPE_RPKT", "TYPE_GAMMA"}:
-        msg = f"Unknown escape type {escape_type}"
-        raise ValueError(msg)
-
     if escape_type is not None:
+        if escape_type not in {"TYPE_RPKT", "TYPE_GAMMA"}:
+            msg = f"Unknown escape type {escape_type}"
+            raise ValueError(msg)
         assert packet_type is None or packet_type == "TYPE_ESCAPE"
         pldfpackets = pldfpackets.filter(
             (pl.col("type_id") == type_ids["TYPE_ESCAPE"]) & (pl.col("escape_type_id") == type_ids[escape_type])

@@ -6,7 +6,6 @@ import math
 import re
 import typing as t
 from collections.abc import Callable
-from collections.abc import Collection
 from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
@@ -364,7 +363,6 @@ def get_from_packets(
     delta_lambda: float | npt.NDArray[np.floating] | None = None,
     use_time: t.Literal["arrival", "emission", "escape"] = "arrival",
     maxpacketfiles: int | None = None,
-    directionbins: Collection[int] | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
     nu_column: str = "nu_rf",
@@ -437,10 +435,7 @@ def get_from_packets(
     dirbin_spectra: dict[int, pl.LazyFrame] = {}
     if directionbins_are_vpkt_observers:
         vpkt_config = get_vpkt_config(modelpath)
-        if directionbins is None:
-            msg = "directionbins must be provided when directionbins_are_vpkt_observers is True"
-            raise AssertionError(msg)
-            directionbins = range(vpkt_config["nobsdirections"] * vpkt_config["nspectraperobs"])
+        directionbins = range(vpkt_config["nobsdirections"] * vpkt_config["nspectraperobs"])
         for vspecindex in directionbins:
             obsdirindex = vspecindex // vpkt_config["nspectraperobs"]
             opacchoiceindex = vspecindex % vpkt_config["nspectraperobs"]
@@ -454,16 +449,6 @@ def get_from_packets(
             pldfpackets_dirbin_lazy = dfpackets.filter(pl.col(lambda_column).is_between(lambda_min, lambda_max)).filter(
                 pl.col(f"dir{obsdirindex}_t_arrive_d").is_between(timelowdays, timehighdays)
             )
-            if pldfpackets_dirbin_lazy.select(pl.len()).collect().item() == 0:
-                msg = f"No packets in time ({timelowdays:.2f} - {timehighdays:.2f}) and wavelength range ({lambda_min:.1f} - {lambda_max:.1f}) for vspecindex {vspecindex}"
-
-                print(
-                    f" lambda min max: {dfpackets.select(min=pl.col(lambda_column).min(), max=pl.col(lambda_column).max()).collect().row(0)}"
-                )
-                print(
-                    f" time min max : {dfpackets.select(min=pl.col(f'dir{obsdirindex}_t_arrive_d').min(), max=pl.col(f'dir{obsdirindex}_t_arrive_d').max()).collect().row(0)}"
-                )
-                raise RuntimeError(msg)
 
             dfbinned_dirbin = atpackets.bin_and_sum(
                 pldfpackets_dirbin_lazy,
@@ -491,8 +476,7 @@ def get_from_packets(
 
         assert use_time == "arrival"
     else:
-        if directionbins is None:
-            directionbins = [-1, *list(range(get_viewingdirectionbincount()))]
+        directionbins = [-1, *list(range(get_viewingdirectionbincount()))]
         lambda_column = nu_column.replace("nu_", "lambda_angstroms_")
         energy_column = "e_cmf" if use_time == "escape" else "e_rf"
 
@@ -1026,7 +1010,7 @@ def get_flux_contributions(
             absorptionfilename = firstexisting(absorptionfilenames, folder=modelpath, tryzipped=True)
 
             absorptiondata[dbin] = read_emission_absorption_file(absorptionfilename).collect()
-            absorption_maxion_float = float(len(absorptiondata[dbin].collect_schema().names()) / nelements)
+            absorption_maxion_float = len(absorptiondata[dbin].collect_schema().names()) / nelements
             assert absorption_maxion_float.is_integer()
             absorption_maxion = int(absorption_maxion_float)
             if maxion is None:
@@ -1386,7 +1370,6 @@ def get_flux_contributions_from_packets(
                         delta_lambda=delta_lambda,
                         fluxfilterfunc=filterfunc,
                         nprocs_read_dfpackets=(nprocs_read, dfpkts),
-                        directionbins=[directionbin],
                         directionbins_are_vpkt_observers=directionbins_are_vpkt_observers,
                         average_over_phi=average_over_phi,
                         average_over_theta=average_over_theta,
@@ -1414,7 +1397,6 @@ def get_flux_contributions_from_packets(
                     nu_column="absorption_freq",
                     fluxfilterfunc=filterfunc,
                     nprocs_read_dfpackets=(nprocs_read, dfpkts),
-                    directionbins=[directionbin],
                     directionbins_are_vpkt_observers=directionbins_are_vpkt_observers,
                     average_over_phi=average_over_phi,
                     average_over_theta=average_over_theta,
