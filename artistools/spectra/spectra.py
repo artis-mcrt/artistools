@@ -550,7 +550,7 @@ def get_from_packets(
                 dfbinned_dirbin = dfbinned_dirbin.with_columns(pl.col("f_lambda").mul(1.0 / escapesurfacegamma))
 
             if fluxfilterfunc:
-                dfbinned_dirbin = dfbinned_dirbin.with_columns(cs.starts_with("f_lambda_").map_batches(fluxfilterfunc))
+                dfbinned_dirbin = dfbinned_dirbin.with_columns(pl.col("f_lambda").map_batches(fluxfilterfunc))
 
             dfbinned_dirbin = dfbinned_dirbin.join(dfbinned_lazy, on="lambda_binindex", how="left", coalesce=True)
 
