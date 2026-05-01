@@ -80,12 +80,12 @@ def make_hesma_vspecfiles(modelpath: Path, outpath: Path | None = None) -> None:
     vpkt_config = at.get_vpkt_config(modelpath)
     angle_names = []
 
-    for angle in angles:
-        angle_names.append(rf"cos(theta) = {vpkt_config['cos_theta'][angle]}")
-        print(rf"cos(theta) = {vpkt_config['cos_theta'][angle]}")
+    for dirbin in angles:
+        angle_names.append(rf"cos(theta) = {vpkt_config['cos_theta'][dirbin]}")
+        print(rf"cos(theta) = {vpkt_config['cos_theta'][dirbin]}")
         vspecdata = (
             at.spectra
-            .get_specpol_data(angle=angle, modelpath=modelpath)["I"]
+            .get_specpol_data(dirbin=dirbin, modelpath=modelpath)["I"]
             .collect()
             .to_pandas(use_pyarrow_extension_array=True)
         )
@@ -103,7 +103,7 @@ def make_hesma_vspecfiles(modelpath: Path, outpath: Path | None = None) -> None:
         vspecdata = vspecdata.rename(columns={"lambda_angstroms": "0"})
 
         outfilename = f"{modelname}_vspec_res.dat"
-        if angle == 0:
+        if dirbin == 0:
             vspecdata.to_csv(outpath / outfilename, sep=" ", index=False)  # create file
         else:
             # append to file

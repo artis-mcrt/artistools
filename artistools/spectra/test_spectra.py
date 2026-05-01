@@ -92,7 +92,7 @@ def test_spectra_get_spectrum() -> None:
         assert isinstance(flambdamean, float)
         assert math.isclose(flambdamean, 1.0314682640070206e-14, abs_tol=1e-5)
 
-    dfspectrum = at.spectra.get_spectrum(modelpath, 55, 65, fluxfilterfunc=None)[-1].collect()
+    dfspectrum = at.spectra.get_spectra(modelpath, 55, 65, fluxfilterfunc=None)[-1].collect()
 
     assert len(dfspectrum["lambda_angstroms"]) == 1000
     assert len(dfspectrum["f_lambda"]) == 1000
@@ -115,25 +115,21 @@ def test_spectra_get_spectrum() -> None:
 
 @pytest.mark.benchmark
 def test_spectra_get_spectrum_polar_angles() -> None:
-    spectra = at.spectra.get_spectrum(
-        modelpath=modelpath_classic_3d,
-        directionbins=[0, 10, 20, 30, 40, 50, 60, 70, 80, 90],
-        average_over_phi=True,
-        timestepmin=20,
-        timestepmax=25,
+    spectra = at.spectra.get_spectra(
+        modelpath=modelpath_classic_3d, average_over_phi=True, timestepmin=20, timestepmax=25
     )
 
     assert all(
-        np.isclose(dirspec.collect()["lambda_angstroms"].to_numpy().mean(), 7510.074, rtol=1e-3)
+        math.isclose(dirspec.select(pl.col("lambda_angstroms").mean()).collect().item(), 7510.074, rel_tol=1e-3)
         for dirspec in spectra.values()
     )
     assert all(
-        np.isclose(dirspec.collect()["lambda_angstroms"].to_numpy().std(), 7647.317, rtol=1e-3)
+        math.isclose(dirspec.select(pl.col("lambda_angstroms").std()).collect().item(), 7647.317, rel_tol=1e-3)
         for dirspec in spectra.values()
     )
 
     results = {
-        dirbin: (dfspecdir.collect()["f_lambda"].mean(), dfspecdir.collect()["f_lambda"].std())
+        dirbin: (dfspecdir.select(mean=pl.col("f_lambda").mean(), std=pl.col("f_lambda").std()).collect().row(0))
         for dirbin, dfspecdir in spectra.items()
     }
 
@@ -152,13 +148,13 @@ def test_spectra_get_spectrum_polar_angles() -> None:
         90: (8.828105146277665e-12, 2.534549767123003e-11),
     }
 
-    for dirbin in spectra:
+    for dirbin in expected_results:
         result_mean = results[dirbin][0]
         assert isinstance(result_mean, float)
-        assert np.isclose(result_mean, expected_results[dirbin][0], rtol=1e-3)
+        assert math.isclose(result_mean, expected_results[dirbin][0], rel_tol=1e-3)
         result_std = results[dirbin][1]
         assert isinstance(result_std, float)
-        assert np.isclose(result_std, expected_results[dirbin][1], rtol=1e-3)
+        assert math.isclose(result_std, expected_results[dirbin][1], rel_tol=1e-3)
 
 
 @pytest.mark.benchmark
@@ -169,7 +165,6 @@ def test_spectra_get_spectrum_polar_angles_frompackets(benchmark: BenchmarkFixtu
     spectrafrompkts = benchmark(
         lambda: at.spectra.get_from_packets(
             modelpath=modelpath_classic_3d,
-            directionbins=[0, 10, 20, 30, 40, 50, 60, 70, 80, 90],
             average_over_phi=True,
             timelowdays=timelowdays,
             timehighdays=timehighdays,
@@ -216,7 +211,7 @@ def test_spectra_get_spectrum_polar_angles_frompackets(benchmark: BenchmarkFixtu
 def test_spectra_get_flux_contributions(benchmark: BenchmarkFixture) -> None:
     timestepmin = 40
     timestepmax = 80
-    dfspectrum = at.spectra.get_spectrum(
+    dfspectrum = at.spectra.get_spectra(
         modelpath=modelpath, timestepmin=timestepmin, timestepmax=timestepmax, fluxfilterfunc=None
     )[-1].collect()
 
@@ -236,9 +231,53 @@ def test_spectra_get_flux_contributions(benchmark: BenchmarkFixture) -> None:
     assert math.isclose(integrated_flux_specout, integrated_flux_emission, rel_tol=4e-3)
 
     # check each bin is not out by a large fraction
+    diff = [
+        abs(x - y)
+        for x, y in zip(reversed(array_flambda_emission_total), dfspectrum["f_lambda"].to_numpy(), strict=False)
+    ]
+    print(f"Max f_lambda difference {max(diff) / integrated_flux_specout}")
+    assert max(diff) / integrated_flux_specout < 1e-9
+
+
+def test_spectra_get_flux_contributions_from_packets(benchmark: BenchmarkFixture) -> None:
+    lambdamin = 200
+    lambdamax = 20000
+    delta_lambda = 100
+    timelowdays = 4
+    timehighdays = 7
+    dfspectrum = at.spectra.get_from_packets(
+        modelpath=modelpath_classic_3d,
+        timelowdays=timelowdays,
+        timehighdays=timehighdays,
+        lambda_min=lambdamin,
+        lambda_max=lambdamax,
+        delta_lambda=delta_lambda,
+    )[-1].collect()
+
+    integrated_flux_specout = np.trapezoid(dfspectrum["f_lambda"], x=dfspectrum["lambda_angstroms"])
+    _contribution_list, array_flambda_emission_total, arraylambda_angstroms = benchmark(
+        lambda: at.spectra.get_flux_contributions_from_packets(
+            modelpath_classic_3d,
+            timelowdays=timelowdays,
+            timehighdays=timehighdays,
+            emtypecolumn="emissiontype",
+            lambda_min=lambdamin,
+            lambda_max=lambdamax,
+            delta_lambda=delta_lambda,
+        )
+    )
+
+    integrated_flux_emission = np.trapezoid(array_flambda_emission_total, x=arraylambda_angstroms)
+
+    # total spectrum should be equal to the sum of all emission processes
+    print(f"Integrated flux from spec.out:     {integrated_flux_specout}")
+    print(f"Integrated flux from emission sum: {integrated_flux_emission}")
+    assert math.isclose(integrated_flux_specout, integrated_flux_emission, rel_tol=4e-3)
+
+    # check each bin is not out by a large fraction
     diff = [abs(x - y) for x, y in zip(array_flambda_emission_total, dfspectrum["f_lambda"].to_numpy(), strict=False)]
     print(f"Max f_lambda difference {max(diff) / integrated_flux_specout}")
-    assert max(diff) / integrated_flux_specout < 2e-3
+    assert max(diff) / integrated_flux_specout < 1e-10
 
 
 @pytest.mark.benchmark

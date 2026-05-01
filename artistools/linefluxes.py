@@ -37,7 +37,7 @@ class FeatureTuple(t.NamedTuple):
 def get_packets_with_emtype(
     modelpath: Path | str, emtypecolumn: str, lineindices: Sequence[int], maxpacketfiles: int | None = None
 ) -> tuple[pl.LazyFrame, int]:
-    nprocs_read, dfpackets = at.packets.get_packets_pl(
+    nprocs_read, dfpackets = at.packets.get_packets(
         modelpath=modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
     dfpackets = dfpackets.filter(pl.col(emtypecolumn).is_in(lineindices))
@@ -496,7 +496,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
         floers_te_nne: dict[str, dict[str, list[float]]] = json.loads(Path(refdatafilename).read_text(encoding="utf-8"))
 
         # give an ordering and index to dict items
-        refdatakeys_thisseries = [str(x) for x in sorted(floers_te_nne.keys(), key=float)]  # strings, not floats
+        refdatakeys_thisseries = sorted(floers_te_nne.keys(), key=float)  # strings, not floats
         assert refdatakeys_thisseries is not None
         refdatakeys[refdataindex] = refdatakeys_thisseries
         refdatatimes[refdataindex] = np.array([float(t) for t in refdatakeys_thisseries])
