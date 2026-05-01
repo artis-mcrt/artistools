@@ -21,7 +21,7 @@ def readfile(filepath: str | Path) -> dict[int, pl.LazyFrame]:
     """Read an ARTIS light curve file."""
     print(f"Reading {filepath}")
     lcdata: dict[int, pl.LazyFrame] = {}
-    if "_res" in str(Path(filepath).stem):
+    if "_res" in Path(filepath).stem:
         # get a dict of dfs with light curves at each viewing direction bin
         lcdata_res = pl.scan_csv(
             at.zopenpl(filepath), separator=" ", has_header=False, new_columns=["time", "lum", "lum_cmf"]
@@ -318,7 +318,6 @@ def bolometric_magnitude(
             else:
                 spectrum = at.spectra.get_spectrum(
                     modelpath=modelpath,
-                    directionbins=[angle],
                     timestepmin=timestep,
                     timestepmax=timestep,
                     average_over_phi=average_over_phi,

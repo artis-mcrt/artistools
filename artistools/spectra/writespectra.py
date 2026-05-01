@@ -52,9 +52,7 @@ def write_flambda_spectra(modelpath: Path) -> None:
         write_spectrum(dfspectrum, outfilepath=outdirectory / f"spectrum_ts{timestep:02.0f}_{tmids[timestep]:.2f}d.txt")
 
     for timestep in timesteps:
-        dfspectra = get_spectrum(
-            modelpath=modelpath, timestepmin=timestep, timestepmax=timestep, average_over_phi=True, directionbins=[0]
-        )
+        dfspectra = get_spectrum(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep, average_over_phi=True)
         if 0 in dfspectra:
             write_spectrum(
                 dfspectra[0].collect(),

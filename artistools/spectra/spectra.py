@@ -6,7 +6,7 @@ import math
 import re
 import typing as t
 from collections.abc import Callable
-from collections.abc import Sequence
+from contextlib import suppress
 from functools import lru_cache
 from pathlib import Path
 
@@ -343,7 +343,6 @@ def get_spectrum_at_time(
     return (
         get_spectrum(
             modelpath=modelpath,
-            directionbins=[dirbin],
             timestepmin=timestep,
             timestepmax=timestep,
             average_over_phi=average_over_phi,
@@ -659,7 +658,6 @@ def get_spectrum(
     modelpath: Path,
     timestepmin: int,
     timestepmax: int | None = None,
-    directionbins: Sequence[int] | None = None,
     fluxfilterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     average_over_theta: bool = False,
     average_over_phi: bool = False,
@@ -670,42 +668,31 @@ def get_spectrum(
     if timestepmax is None or timestepmax < 0:
         timestepmax = timestepmin
 
-    if directionbins is None:
-        directionbins = [-1]
-
     # keys are direction bins (or -1 for spherical average)
     specdata: dict[int, pl.LazyFrame] = {}
 
-    if any(dirbin != -1 for dirbin in directionbins):
-        assert stokesparam == "I"
-        try:
-            specdata |= get_spec_res(
-                modelpath=modelpath, average_over_theta=average_over_theta, average_over_phi=average_over_phi
-            )
-        except FileNotFoundError:
-            msg = "WARNING: Direction-resolved spectra not found. Getting only spherically averaged spectra instead."
-            print(msg)
-            directionbins = [-1]
+    try:
+        specdata |= get_spec_res(
+            modelpath=modelpath, average_over_theta=average_over_theta, average_over_phi=average_over_phi
+        )
+    except FileNotFoundError:
+        msg = "WARNING: Direction-resolved spectra not found. Getting only spherically averaged spectra instead."
+        print(msg)
 
-    if -1 in directionbins:
-        # spherically averaged spectra
-        if stokesparam == "I":
-            try:
-                specdata[-1] = read_spec(modelpath=modelpath, gamma=gamma)
+    # spherically averaged spectra
+    if stokesparam == "I":
+        with suppress(FileNotFoundError):
+            specdata[-1] = read_spec(modelpath=modelpath, gamma=gamma)
 
-            except FileNotFoundError:
-                if gamma:
-                    raise
-                specdata[-1] = get_specpol_data(angle=-1, modelpath=modelpath)[stokesparam]
+    if -1 not in specdata:
+        if gamma:
+            msg = "ERROR: No spherically averaged gamma spectrum found."
+            raise FileNotFoundError(msg)
 
-        else:
-            specdata[-1] = get_specpol_data(angle=-1, modelpath=modelpath)[stokesparam]
+        specdata[-1] = get_specpol_data(angle=-1, modelpath=modelpath)[stokesparam]
 
     specdataout: dict[int, pl.LazyFrame] = {}
-    for dirbin in directionbins:
-        if dirbin not in specdata:
-            print(f"WARNING: Direction bin {dirbin} not found in specdata. Dirbins: {list(specdata.keys())}")
-            continue
+    for dirbin in specdata:
         arr_tdelta = get_timestep_times(modelpath, loc="delta")
 
         dfspectrum = (
@@ -724,13 +711,14 @@ def get_spectrum(
         )
 
         if fluxfilterfunc:
-            if dirbin == directionbins[0]:
-                print("Applying filter to ARTIS spectrum")
             dfspectrum = dfspectrum.with_columns(cs.starts_with("f_nu").map_batches(fluxfilterfunc))
 
         specdataout[dirbin] = dfspectrum.with_columns(
             f_lambda=pl.col("f_nu") * pl.col("nu") / pl.col("lambda_angstroms")
         ).sort(by="nu" if gamma else "lambda_angstroms")
+
+    if fluxfilterfunc:
+        print("Applying filter to ARTIS spectrum")
 
     return specdataout
 

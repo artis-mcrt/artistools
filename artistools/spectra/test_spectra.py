@@ -116,11 +116,7 @@ def test_spectra_get_spectrum() -> None:
 @pytest.mark.benchmark
 def test_spectra_get_spectrum_polar_angles() -> None:
     spectra = at.spectra.get_spectrum(
-        modelpath=modelpath_classic_3d,
-        directionbins=[0, 10, 20, 30, 40, 50, 60, 70, 80, 90],
-        average_over_phi=True,
-        timestepmin=20,
-        timestepmax=25,
+        modelpath=modelpath_classic_3d, average_over_phi=True, timestepmin=20, timestepmax=25
     )
 
     assert all(

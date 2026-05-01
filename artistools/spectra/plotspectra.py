@@ -503,7 +503,6 @@ def plot_artis_spectrum(
         else:
             viewinganglespectra = atspectra.get_spectrum(
                 modelpath=modelpath,
-                directionbins=directionbins,
                 timestepmin=timestepmin,
                 timestepmax=timestepmax,
                 average_over_phi=average_over_phi,
