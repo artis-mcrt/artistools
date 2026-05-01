@@ -501,7 +501,7 @@ def plot_artis_spectrum(
                 if dirbin >= 0
             }
         else:
-            viewinganglespectra = atspectra.get_spectrum(
+            viewinganglespectra = atspectra.get_spectra(
                 modelpath=modelpath,
                 timestepmin=timestepmin,
                 timestepmax=timestepmax,

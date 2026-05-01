@@ -905,13 +905,13 @@ def make_band_lightcurves_plot(
     first_band_name = None
     for modelnumber, modelpath in enumerate(Path(m) for m in modelpaths):
         # check if doing viewing angle stuff, and if so define which data to use
-        angles, angle_definition = at.lightcurve.parse_directionbin_args(modelpath, args)
+        dirbins, dirbin_definition = at.lightcurve.parse_directionbin_args(modelpath, args)
 
-        for index, angle in enumerate(angles):
+        for index, dirbin in enumerate(dirbins):
             modelname = at.get_model_name(modelpath)
-            print(f"Reading spectra: {modelname} (angle {angle})")
+            print(f"Reading spectra: {modelname} (angle {dirbin})")
             band_lightcurve_data = at.lightcurve.generate_band_lightcurve_data(
-                modelpath, args, angle, modelnumber=modelnumber
+                modelpath, args, dirbin, modelnumber=modelnumber
             )
 
             if modelnumber == 0 and args.plot_hesma_model:  # TODO: does this work?
@@ -931,7 +931,7 @@ def make_band_lightcurves_plot(
                     txtout = "\n".join(txtlinesout)
                 if args.write_data:
                     bandoutfile = (
-                        Path(f"band_{band_name}_angle_{angle}.txt") if angle != -1 else Path(f"band_{band_name}.txt")
+                        Path(f"band_{band_name}_angle_{dirbin}.txt") if dirbin != -1 else Path(f"band_{band_name}.txt")
                     )
                     with bandoutfile.open("w", encoding="utf-8") as f:
                         f.write(txtout)
@@ -939,7 +939,7 @@ def make_band_lightcurves_plot(
                 if args.print_data:
                     print(txtout)
 
-                plotkwargs["label"] = get_linelabel(modelname, modelnumber, angle, angle_definition, args)
+                plotkwargs["label"] = get_linelabel(modelname, modelnumber, dirbin, dirbin_definition, args)
 
                 filterfunc = at.get_filterfunc(args)
                 if filterfunc is not None:
@@ -964,7 +964,7 @@ def make_band_lightcurves_plot(
                     )
 
                 if args.reflightcurves and modelnumber == 0:
-                    if len(angles) > 1 and index > 0:
+                    if len(dirbins) > 1 and index > 0:
                         print("already plotted reflightcurve")
                     else:
                         assert isinstance(ax, mplax.Axes)
@@ -981,7 +981,7 @@ def make_band_lightcurves_plot(
                                 plotnumber,
                             )
 
-                if len(angles) == 1:
+                if len(dirbins) == 1:
                     if args.color:
                         plotkwargs["color"] = args.color[modelnumber]
                     else:
@@ -991,7 +991,7 @@ def make_band_lightcurves_plot(
                     # Update plotkwargs with viewing angle colour
                     plotkwargs["label"] = None
                     plotkwargs, _ = get_viewinganglecolor_for_colorbar(
-                        angle, costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, plotkwargs, args
+                        dirbin, costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, plotkwargs, args
                     )
 
                 if args.linestyle:
@@ -1042,19 +1042,19 @@ def colour_evolution_plot(
         modelname = at.get_model_name(modelpath)
         print(f"Reading spectra: {modelname}")
 
-        angles, angle_definition = at.lightcurve.parse_directionbin_args(modelpath, args)
+        dirbins, dirbin_definition = at.lightcurve.parse_directionbin_args(modelpath, args)
 
-        for index, angle in enumerate(angles):
+        for index, dirbin in enumerate(dirbins):
             for plotnumber, filters in enumerate(args.colour_evolution):
                 filter_names = filters.split("-")
                 args.filter = filter_names
                 band_lightcurve_data = at.lightcurve.generate_band_lightcurve_data(
-                    modelpath, args, angle=angle, modelnumber=modelnumber
+                    modelpath, args, dirbin=dirbin, modelnumber=modelnumber
                 )
 
                 plot_times, colour_delta_mag = at.lightcurve.get_colour_delta_mag(band_lightcurve_data, filter_names)
 
-                plotkwargs["label"] = get_linelabel(modelname, modelnumber, angle, angle_definition, args)
+                plotkwargs["label"] = get_linelabel(modelname, modelnumber, dirbin, dirbin_definition, args)
 
                 filterfunc = at.get_filterfunc(args)
                 if filterfunc is not None:
@@ -1076,7 +1076,7 @@ def colour_evolution_plot(
                     plotkwargs["linestyle"] = args.linestyle[modelnumber]
 
                 if args.reflightcurves and modelnumber == 0:
-                    if len(angles) > 1 and index > 0:
+                    if len(dirbins) > 1 and index > 0:
                         print("already plotted reflightcurve")
                     else:
                         for i, reflightcurve in enumerate(args.reflightcurves):

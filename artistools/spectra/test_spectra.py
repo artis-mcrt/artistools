@@ -92,7 +92,7 @@ def test_spectra_get_spectrum() -> None:
         assert isinstance(flambdamean, float)
         assert math.isclose(flambdamean, 1.0314682640070206e-14, abs_tol=1e-5)
 
-    dfspectrum = at.spectra.get_spectrum(modelpath, 55, 65, fluxfilterfunc=None)[-1].collect()
+    dfspectrum = at.spectra.get_spectra(modelpath, 55, 65, fluxfilterfunc=None)[-1].collect()
 
     assert len(dfspectrum["lambda_angstroms"]) == 1000
     assert len(dfspectrum["f_lambda"]) == 1000
@@ -115,7 +115,7 @@ def test_spectra_get_spectrum() -> None:
 
 @pytest.mark.benchmark
 def test_spectra_get_spectrum_polar_angles() -> None:
-    spectra = at.spectra.get_spectrum(
+    spectra = at.spectra.get_spectra(
         modelpath=modelpath_classic_3d, average_over_phi=True, timestepmin=20, timestepmax=25
     )
 
@@ -211,7 +211,7 @@ def test_spectra_get_spectrum_polar_angles_frompackets(benchmark: BenchmarkFixtu
 def test_spectra_get_flux_contributions(benchmark: BenchmarkFixture) -> None:
     timestepmin = 40
     timestepmax = 80
-    dfspectrum = at.spectra.get_spectrum(
+    dfspectrum = at.spectra.get_spectra(
         modelpath=modelpath, timestepmin=timestepmin, timestepmax=timestepmax, fluxfilterfunc=None
     )[-1].collect()
 

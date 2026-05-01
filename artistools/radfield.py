@@ -250,7 +250,7 @@ def plot_specout(
 
     dfspectrum = (
         at.spectra
-        .get_spectrum(modelpath=modelpath, timestepmin=timestep)[-1]
+        .get_spectra(modelpath=modelpath, timestepmin=timestep)[-1]
         .collect()
         .to_pandas(use_pyarrow_extension_array=True)
     )

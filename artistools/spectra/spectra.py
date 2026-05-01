@@ -341,7 +341,7 @@ def get_spectrum_at_time(
         average_over_theta = False
 
     return (
-        get_spectrum(
+        get_spectra(
             modelpath=modelpath,
             timestepmin=timestep,
             timestepmax=timestep,
@@ -656,20 +656,7 @@ def read_emission_absorption_file(emabsfilename: str | Path) -> pl.LazyFrame:
     return dfemabs
 
 
-@lru_cache(maxsize=4)
-def get_spec_res(
-    modelpath: Path, average_over_theta: bool = False, average_over_phi: bool = False
-) -> dict[int, pl.LazyFrame]:
-    res_specdata = read_spec_res(modelpath)
-    if average_over_theta:
-        res_specdata = average_direction_bins(res_specdata, overangle="theta")
-    if average_over_phi:
-        res_specdata = average_direction_bins(res_specdata, overangle="phi")
-
-    return res_specdata
-
-
-def get_spectrum(
+def get_spectra(
     modelpath: Path,
     timestepmin: int,
     timestepmax: int | None = None,
@@ -684,22 +671,25 @@ def get_spectrum(
         timestepmax = timestepmin
 
     specdata_alltimesteps: dict[int, pl.LazyFrame] = {}
-    with suppress(FileNotFoundError):
-        specdata_alltimesteps |= get_spec_res(
-            modelpath=modelpath, average_over_theta=average_over_theta, average_over_phi=average_over_phi
-        )
-
-    # spherically averaged spectra
     if stokesparam == "I":
         with suppress(FileNotFoundError):
+            res_specdata = read_spec_res(modelpath)
+            if average_over_theta:
+                res_specdata = average_direction_bins(res_specdata, overangle="theta")
+            if average_over_phi:
+                res_specdata = average_direction_bins(res_specdata, overangle="phi")
+            specdata_alltimesteps |= res_specdata
+
+        # spherically averaged spectra
+        try:
             specdata_alltimesteps[-1] = read_spec(modelpath=modelpath, gamma=gamma)
 
-    if -1 not in specdata_alltimesteps:
-        if gamma:
-            msg = "ERROR: No spherically averaged gamma spectrum found."
-            raise FileNotFoundError(msg)
-
-        specdata_alltimesteps[-1] = get_specpol_data(angle=-1, modelpath=modelpath)[stokesparam]
+        except FileNotFoundError as e:
+            if gamma:
+                msg = "ERROR: No spherically averaged gamma spectrum found."
+                raise FileNotFoundError(msg) from e
+    else:
+        specdata_alltimesteps[-1] = get_specpol_data(dirbin=-1, modelpath=modelpath)[stokesparam]
 
     arr_tdelta = get_timestep_times(modelpath, loc="delta")
     specdataout: dict[int, pl.LazyFrame] = {}
@@ -808,14 +798,14 @@ def make_averaged_vspecfiles(args: argparse.Namespace) -> None:
 
 @lru_cache(maxsize=4)
 def get_specpol_data(
-    angle: int = -1, modelpath: Path | None = None, specdata: pl.LazyFrame | None = None
+    dirbin: int = -1, modelpath: Path | None = None, specdata: pl.LazyFrame | None = None
 ) -> dict[str, pl.LazyFrame]:
     if specdata is None:
         assert modelpath is not None
         specfilename = (
             firstexisting("specpol.out", folder=modelpath, tryzipped=True)
-            if angle == -1
-            else firstexisting(f"specpol_res_{angle}.out", folder=modelpath, tryzipped=True)
+            if dirbin == -1
+            else firstexisting(f"specpol_res_{dirbin}.out", folder=modelpath, tryzipped=True)
         )
 
         print(f"Reading {specfilename}")

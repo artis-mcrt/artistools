@@ -182,7 +182,7 @@ def get_from_packets(
 def generate_band_lightcurve_data(
     modelpath: Path | str,
     args: argparse.Namespace,
-    angle: int = -1,
+    dirbin: int = -1,
     modelnumber: int | None = None,  # noqa: ARG001
 ) -> dict[str, t.Any]:
     """Integrate spectra to get band magnitude vs time. Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py."""
@@ -191,9 +191,9 @@ def generate_band_lightcurve_data(
     if args.plotvspecpol and Path(modelpath, "vpkt.txt").is_file():
         print("Found vpkt.txt, using virtual packets")
         stokes_params = (
-            at.spectra.get_vspecpol_data(vspecindex=angle, modelpath=modelpath)
-            if angle >= 0
-            else at.spectra.get_specpol_data(angle=angle, modelpath=modelpath)
+            at.spectra.get_vspecpol_data(vspecindex=dirbin, modelpath=modelpath)
+            if dirbin >= 0
+            else at.spectra.get_specpol_data(dirbin=dirbin, modelpath=modelpath)
         )
         vspecdata = stokes_params["I"]
         timearray = vspecdata.columns[1:]
@@ -231,7 +231,7 @@ def generate_band_lightcurve_data(
                 Path(modelpath),
                 timearray,
                 args,
-                angle=angle,
+                angle=dirbin,
                 average_over_phi=args.average_over_phi_angle,
                 average_over_theta=args.average_over_theta_angle,
             )
@@ -260,7 +260,7 @@ def generate_band_lightcurve_data(
                     time=time,
                     wavefilter_min=wavefilter_min,
                     wavefilter_max=wavefilter_max,
-                    angle=angle,
+                    angle=dirbin,
                     args=args,
                     average_over_phi=args.average_over_phi_angle,
                     average_over_theta=args.average_over_theta_angle,
@@ -308,13 +308,13 @@ def bolometric_magnitude(
     for timestep, time in enumerate(float(time) for time in timearray):
         if (args.timemin is None or args.timemin <= time) and (args.timemax is None or args.timemax >= time):
             if angle == -1:
-                spectrum = at.spectra.get_spectrum(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)[
+                spectrum = at.spectra.get_spectra(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)[
                     -1
                 ].collect()
             elif args.plotvspecpol:
                 spectrum = at.spectra.get_vspecpol_spectrum(modelpath, time, angle, args).collect()
             else:
-                spectrum = at.spectra.get_spectrum(
+                spectrum = at.spectra.get_spectra(
                     modelpath=modelpath,
                     timestepmin=timestep,
                     timestepmax=timestep,

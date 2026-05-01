@@ -19,7 +19,7 @@ def get_bol_lc_from_spec(modelpath: Path) -> pd.DataFrame:
         bol_luminosity = []
         for timestep, timestr in enumerate(timearray):
             if 5 < float(timestr) < 80:
-                spectrum = at.spectra.get_spectrum(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)[
+                spectrum = at.spectra.get_spectra(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)[
                     angle
                 ].collect()
                 integrated_flux = np.trapezoid(spectrum["f_lambda"], spectrum["lambda_angstroms"])
