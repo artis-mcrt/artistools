@@ -470,6 +470,9 @@ def get_from_packets(
 
             dfbinned_dirbin = dfbinned_dirbin.join(dfbinned_lazy, on="lambda_binindex", how="left", coalesce=True)
 
+            if fluxfilterfunc:
+                dfbinned_dirbin = fluxfilterfunc(dfbinned_dirbin)
+
             dirbin_spectra[vspecindex] = dfbinned_dirbin.with_columns(
                 f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu"))
             )
