@@ -53,8 +53,8 @@ def test_directionbins() -> None:
         assert phibinuppers[pkt["phibin"]] >= pkt["phi_defined"] or pktdir_is_along_zaxis
 
 
-def test_get_virtual_packets_pl() -> None:
-    _, dfvpkt = at.packets.get_virtual_packets_pl(modelpath=at.get_path("testdata") / "vpktcontrib", maxpacketfiles=2)
+def test_get_virtual_packets() -> None:
+    _, dfvpkt = at.packets.get_virtual_packets(modelpath=at.get_path("testdata") / "vpktcontrib", maxpacketfiles=2)
 
     npkts_total = dfvpkt.select(pl.len()).collect().item()
     assert npkts_total == 13783

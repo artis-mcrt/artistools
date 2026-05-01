@@ -86,7 +86,7 @@ specpol_res_data_bb = [copy.deepcopy(specpol_data_bb) for _ in range(n_angle_bin
 # need deep copy to make new empty array of same size
 
 
-nprocs_read, dfpackets = at.packets.get_packets_pl(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
+nprocs_read, dfpackets = at.packets.get_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
 dfpackets = dfpackets.collect().to_pandas()
 for timestep, timedays in enumerate(arr_tstart):
     # print('ts', timestep, timedays, 'days')

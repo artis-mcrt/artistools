@@ -12,7 +12,7 @@ from artistools.commands import CustomArgHelpFormatter
 from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_timestep_times
 from artistools.misc import set_args_from_dict
-from artistools.spectra.spectra import get_spectrum
+from artistools.spectra.spectra import get_spectra
 
 
 def write_spectrum(dfspectrum: pl.DataFrame, outfilepath: Path) -> None:
@@ -47,14 +47,12 @@ def write_flambda_spectra(modelpath: Path) -> None:
     timesteps = [ts for ts in range(tslast + 1) if tmids[ts] >= tmin_d_valid and tmids[ts] <= tmax_d_valid]
 
     for timestep in timesteps:
-        dfspectrum = get_spectrum(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)[-1].collect()
+        dfspectrum = get_spectra(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)[-1].collect()
 
         write_spectrum(dfspectrum, outfilepath=outdirectory / f"spectrum_ts{timestep:02.0f}_{tmids[timestep]:.2f}d.txt")
 
     for timestep in timesteps:
-        dfspectra = get_spectrum(
-            modelpath=modelpath, timestepmin=timestep, timestepmax=timestep, average_over_phi=True, directionbins=[0]
-        )
+        dfspectra = get_spectra(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep, average_over_phi=True)
         if 0 in dfspectra:
             write_spectrum(
                 dfspectra[0].collect(),

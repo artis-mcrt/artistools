@@ -21,7 +21,7 @@ def readfile(filepath: str | Path) -> dict[int, pl.LazyFrame]:
     """Read an ARTIS light curve file."""
     print(f"Reading {filepath}")
     lcdata: dict[int, pl.LazyFrame] = {}
-    if "_res" in str(Path(filepath).stem):
+    if "_res" in Path(filepath).stem:
         # get a dict of dfs with light curves at each viewing direction bin
         lcdata_res = pl.scan_csv(
             at.zopenpl(filepath), separator=" ", has_header=False, new_columns=["time", "lum", "lum_cmf"]
@@ -64,27 +64,25 @@ def get_from_packets(
     ).collect()
 
     _, modelmeta = at.inputmodel.get_modeldata(modelpath, printwarningsonly=True)
-    escapesurfacegamma = math.sqrt(1 - (modelmeta["vmax_cmps"] / 29979245800) ** 2)
 
     timebinstarts_plusend = [
         *dftimesteps_selected["tstart_days"],
         dftimesteps_selected.select(pl.col("tstart_days").last() + pl.col("twidth_days").last()).item(),
     ]
 
-    nphibins = at.get_viewingdirection_phibincount()
-    ncosthetabins = at.get_viewingdirection_costhetabincount()
-    ndirbins = at.get_viewingdirectionbincount()
-
     vpkt_config = at.get_vpkt_config(modelpath) if directionbins_are_vpkt_observers else None
     assert not directionbins_are_vpkt_observers or pellet_nucname is None  # we don't track which pellet led to vpkts
     if directionbins_are_vpkt_observers:
-        nprocs_read, dfpackets = at.packets.get_virtual_packets_pl(modelpath, maxpacketfiles=maxpacketfiles)
+        nprocs_read, dfpackets = at.packets.get_virtual_packets(modelpath, maxpacketfiles=maxpacketfiles)
     else:
-        nprocs_read, dfpackets = at.packets.get_packets_pl(
+        nprocs_read, dfpackets = at.packets.get_packets(
             modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type=escape_type
         )
+        nphibins = at.get_viewingdirection_phibincount()
+        ncosthetabins = at.get_viewingdirection_costhetabincount()
+        ndirbins = at.get_viewingdirectionbincount()
 
-    if not directionbins_are_vpkt_observers:
+        escapesurfacegamma = math.sqrt(1 - (modelmeta["vmax_cmps"] / 29979245800) ** 2)
         dfpackets = dfpackets.with_columns([
             (pl.col("escape_time") * escapesurfacegamma / 86400.0).alias("t_arrive_cmf_d")
         ])
@@ -184,7 +182,7 @@ def get_from_packets(
 def generate_band_lightcurve_data(
     modelpath: Path | str,
     args: argparse.Namespace,
-    angle: int = -1,
+    dirbin: int = -1,
     modelnumber: int | None = None,  # noqa: ARG001
 ) -> dict[str, t.Any]:
     """Integrate spectra to get band magnitude vs time. Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py."""
@@ -193,9 +191,9 @@ def generate_band_lightcurve_data(
     if args.plotvspecpol and Path(modelpath, "vpkt.txt").is_file():
         print("Found vpkt.txt, using virtual packets")
         stokes_params = (
-            at.spectra.get_vspecpol_data(vspecindex=angle, modelpath=modelpath)
-            if angle >= 0
-            else at.spectra.get_specpol_data(angle=angle, modelpath=modelpath)
+            at.spectra.get_vspecpol_data(vspecindex=dirbin, modelpath=modelpath)
+            if dirbin >= 0
+            else at.spectra.get_specpol_data(dirbin=dirbin, modelpath=modelpath)
         )
         vspecdata = stokes_params["I"]
         timearray = vspecdata.columns[1:]
@@ -233,7 +231,7 @@ def generate_band_lightcurve_data(
                 Path(modelpath),
                 timearray,
                 args,
-                angle=angle,
+                angle=dirbin,
                 average_over_phi=args.average_over_phi_angle,
                 average_over_theta=args.average_over_theta_angle,
             )
@@ -262,7 +260,7 @@ def generate_band_lightcurve_data(
                     time=time,
                     wavefilter_min=wavefilter_min,
                     wavefilter_max=wavefilter_max,
-                    angle=angle,
+                    angle=dirbin,
                     args=args,
                     average_over_phi=args.average_over_phi_angle,
                     average_over_theta=args.average_over_theta_angle,
@@ -310,15 +308,14 @@ def bolometric_magnitude(
     for timestep, time in enumerate(float(time) for time in timearray):
         if (args.timemin is None or args.timemin <= time) and (args.timemax is None or args.timemax >= time):
             if angle == -1:
-                spectrum = at.spectra.get_spectrum(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)[
+                spectrum = at.spectra.get_spectra(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)[
                     -1
                 ].collect()
             elif args.plotvspecpol:
                 spectrum = at.spectra.get_vspecpol_spectrum(modelpath, time, angle, args).collect()
             else:
-                spectrum = at.spectra.get_spectrum(
+                spectrum = at.spectra.get_spectra(
                     modelpath=modelpath,
-                    directionbins=[angle],
                     timestepmin=timestep,
                     timestepmax=timestep,
                     average_over_phi=average_over_phi,

@@ -150,7 +150,7 @@ def plot_last_emission_velocities_histogram(
 
     dfmodel, modelmeta = at.get_modeldata(modelpath=modelpath, printwarningsonly=True)
 
-    nprocs_read, dfpackets = at.packets.get_packets_pl(
+    nprocs_read, dfpackets = at.packets.get_packets(
         modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
     dfpackets = at.packets.bin_packet_directions_polars(dfpackets=dfpackets)

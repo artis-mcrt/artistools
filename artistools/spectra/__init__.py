@@ -15,7 +15,7 @@ from artistools.spectra.spectra import get_flux_contributions_from_packets as ge
 from artistools.spectra.spectra import get_from_packets as get_from_packets
 from artistools.spectra.spectra import get_reference_spectrum as get_reference_spectrum
 from artistools.spectra.spectra import get_specpol_data as get_specpol_data
-from artistools.spectra.spectra import get_spectrum as get_spectrum
+from artistools.spectra.spectra import get_spectra as get_spectra
 from artistools.spectra.spectra import get_spectrum_at_time as get_spectrum_at_time
 from artistools.spectra.spectra import get_vspecpol_data as get_vspecpol_data
 from artistools.spectra.spectra import get_vspecpol_spectrum as get_vspecpol_spectrum
