@@ -664,39 +664,31 @@ def get_spectrum(
     stokesparam: t.Literal["I", "Q", "U"] = "I",
     gamma: bool = False,
 ) -> dict[int, pl.LazyFrame]:
-    """Get a polars DataFrame containing an ARTIS emergent spectrum."""
+    """Get a mapping direction bins to polars LazyFrames containing ARTIS emergent UVOIR spectra."""
     if timestepmax is None or timestepmax < 0:
         timestepmax = timestepmin
 
-    # keys are direction bins (or -1 for spherical average)
-    specdata: dict[int, pl.LazyFrame] = {}
-
-    try:
-        specdata |= get_spec_res(
-            modelpath=modelpath, average_over_theta=average_over_theta, average_over_phi=average_over_phi
-        )
-    except FileNotFoundError:
-        msg = "WARNING: Direction-resolved spectra not found. Getting only spherically averaged spectra instead."
-        print(msg)
+    specdata_alltimesteps = get_spec_res(
+        modelpath=modelpath, average_over_theta=average_over_theta, average_over_phi=average_over_phi
+    )
 
     # spherically averaged spectra
     if stokesparam == "I":
         with suppress(FileNotFoundError):
-            specdata[-1] = read_spec(modelpath=modelpath, gamma=gamma)
+            specdata_alltimesteps[-1] = read_spec(modelpath=modelpath, gamma=gamma)
 
-    if -1 not in specdata:
+    if -1 not in specdata_alltimesteps:
         if gamma:
             msg = "ERROR: No spherically averaged gamma spectrum found."
             raise FileNotFoundError(msg)
 
-        specdata[-1] = get_specpol_data(angle=-1, modelpath=modelpath)[stokesparam]
+        specdata_alltimesteps[-1] = get_specpol_data(angle=-1, modelpath=modelpath)[stokesparam]
 
+    arr_tdelta = get_timestep_times(modelpath, loc="delta")
     specdataout: dict[int, pl.LazyFrame] = {}
-    for dirbin in specdata:
-        arr_tdelta = get_timestep_times(modelpath, loc="delta")
-
+    for dirbin in specdata_alltimesteps:
         dfspectrum = (
-            specdata[dirbin]
+            specdata_alltimesteps[dirbin]
             .select(
                 pl.col("nu"),
                 (
