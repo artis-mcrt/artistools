@@ -64,16 +64,11 @@ def get_from_packets(
     ).collect()
 
     _, modelmeta = at.inputmodel.get_modeldata(modelpath, printwarningsonly=True)
-    escapesurfacegamma = math.sqrt(1 - (modelmeta["vmax_cmps"] / 29979245800) ** 2)
 
     timebinstarts_plusend = [
         *dftimesteps_selected["tstart_days"],
         dftimesteps_selected.select(pl.col("tstart_days").last() + pl.col("twidth_days").last()).item(),
     ]
-
-    nphibins = at.get_viewingdirection_phibincount()
-    ncosthetabins = at.get_viewingdirection_costhetabincount()
-    ndirbins = at.get_viewingdirectionbincount()
 
     vpkt_config = at.get_vpkt_config(modelpath) if directionbins_are_vpkt_observers else None
     assert not directionbins_are_vpkt_observers or pellet_nucname is None  # we don't track which pellet led to vpkts
@@ -83,8 +78,11 @@ def get_from_packets(
         nprocs_read, dfpackets = at.packets.get_packets(
             modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type=escape_type
         )
+        nphibins = at.get_viewingdirection_phibincount()
+        ncosthetabins = at.get_viewingdirection_costhetabincount()
+        ndirbins = at.get_viewingdirectionbincount()
 
-    if not directionbins_are_vpkt_observers:
+        escapesurfacegamma = math.sqrt(1 - (modelmeta["vmax_cmps"] / 29979245800) ** 2)
         dfpackets = dfpackets.with_columns([
             (pl.col("escape_time") * escapesurfacegamma / 86400.0).alias("t_arrive_cmf_d")
         ])
