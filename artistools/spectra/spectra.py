@@ -668,9 +668,11 @@ def get_spectrum(
     if timestepmax is None or timestepmax < 0:
         timestepmax = timestepmin
 
-    specdata_alltimesteps = get_spec_res(
-        modelpath=modelpath, average_over_theta=average_over_theta, average_over_phi=average_over_phi
-    )
+    specdata_alltimesteps: dict[int, pl.LazyFrame] = {}
+    with suppress(FileNotFoundError):
+        specdata_alltimesteps |= get_spec_res(
+            modelpath=modelpath, average_over_theta=average_over_theta, average_over_phi=average_over_phi
+        )
 
     # spherically averaged spectra
     if stokesparam == "I":
