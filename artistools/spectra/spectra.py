@@ -449,33 +449,36 @@ def get_from_packets(
                 pl.col(f"dir{obsdirindex}_t_arrive_d").is_between(timelowdays, timehighdays)
             )
 
-            dfbinned_dirbin = atpackets.bin_and_sum(
-                pldfpackets_dirbin_lazy,
-                bincol=lambda_column,
-                bins=lambda_bin_edges.tolist(),
-                sumcols=[energy_column],
-                getcounts=True,
-            ).select([
-                pl.col(f"{lambda_column}_bin").alias("lambda_binindex"),
-                (
-                    pl.col(f"{energy_column}_sum")
-                    / pl_delta_lambda
-                    / delta_time_s
-                    / (const.megaparsec_to_cm**2)
-                    / nprocs_read
-                ).alias("f_lambda"),
-                pl.col("count"),
-                pl.col("count").alias("packetcount"),
-            ])
-
-            dfbinned_dirbin = dfbinned_dirbin.join(dfbinned_lazy, on="lambda_binindex", how="left", coalesce=True)
+            dirbin_spectra[vspecindex] = (
+                atpackets
+                .bin_and_sum(
+                    pldfpackets_dirbin_lazy,
+                    bincol=lambda_column,
+                    bins=lambda_bin_edges.tolist(),
+                    sumcols=[energy_column],
+                    getcounts=True,
+                )
+                .select([
+                    pl.col(f"{lambda_column}_bin").alias("lambda_binindex"),
+                    (
+                        pl.col(f"{energy_column}_sum")
+                        / pl_delta_lambda
+                        / delta_time_s
+                        / (const.megaparsec_to_cm**2)
+                        / nprocs_read
+                    ).alias("f_lambda"),
+                    pl.col("count"),
+                    pl.col("count").alias("packetcount"),
+                ])
+                .join(dfbinned_lazy, on="lambda_binindex", how="left", coalesce=True)
+            )
 
             if fluxfilterfunc:
-                dfbinned_dirbin = dfbinned_dirbin.with_columns(pl.col("f_lambda").map_batches(fluxfilterfunc))
-
-            dirbin_spectra[vspecindex] = dfbinned_dirbin.with_columns(
-                f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu"))
-            )
+                dirbin_spectra[vspecindex] = (
+                    dirbin_spectra[vspecindex]
+                    .with_columns(pl.col("f_lambda").map_batches(fluxfilterfunc))
+                    .with_columns(f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu")))
+                )
 
         assert use_time == "arrival"
     else:
@@ -526,7 +529,7 @@ def get_from_packets(
                 solidanglefactor = ndirbins
                 pldfpackets_dirbin_lazy = dfpackets.filter(pl.col("dirbin") == dirbin)
 
-            dfbinned_dirbin = atpackets.bin_and_sum(
+            dirbin_spectra[dirbin] = atpackets.bin_and_sum(
                 pldfpackets_dirbin_lazy,
                 bincol=lambda_column,
                 bins=lambda_bin_edges.tolist(),
@@ -549,15 +552,19 @@ def get_from_packets(
 
             if use_time == "escape":
                 assert escapesurfacegamma is not None
-                dfbinned_dirbin = dfbinned_dirbin.with_columns(pl.col("f_lambda").mul(1.0 / escapesurfacegamma))
+                dirbin_spectra[dirbin] = dirbin_spectra[dirbin].with_columns(
+                    pl.col("f_lambda").mul(1.0 / escapesurfacegamma)
+                )
 
             if fluxfilterfunc:
-                dfbinned_dirbin = dfbinned_dirbin.with_columns(pl.col("f_lambda").map_batches(fluxfilterfunc))
+                dirbin_spectra[dirbin] = dirbin_spectra[dirbin].with_columns(
+                    pl.col("f_lambda").map_batches(fluxfilterfunc)
+                )
 
-            dfbinned_dirbin = dfbinned_dirbin.join(dfbinned_lazy, on="lambda_binindex", how="left", coalesce=True)
-
-            dirbin_spectra[dirbin] = dfbinned_dirbin.with_columns(
-                f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu"))
+            dirbin_spectra[dirbin] = (
+                dirbin_spectra[dirbin]
+                .join(dfbinned_lazy, on="lambda_binindex", how="left", coalesce=True)
+                .with_columns(f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu")))
             )
 
     if fluxfilterfunc:
