@@ -124,11 +124,11 @@ def test_spectra_get_spectrum_polar_angles() -> None:
     )
 
     assert all(
-        np.isclose(dirspec.collect()["lambda_angstroms"].to_numpy().mean(), 7510.074, rtol=1e-3)
+        math.isclose(dirspec.select(pl.col("lambda_angstroms").mean()).collect().item(), 7510.074, rel_tol=1e-3)
         for dirspec in spectra.values()
     )
     assert all(
-        np.isclose(dirspec.collect()["lambda_angstroms"].to_numpy().std(), 7647.317, rtol=1e-3)
+        math.isclose(dirspec.select(pl.col("lambda_angstroms").std()).collect().item(), 7647.317, rel_tol=1e-3)
         for dirspec in spectra.values()
     )
 
