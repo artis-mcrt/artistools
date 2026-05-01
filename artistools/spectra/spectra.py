@@ -1352,27 +1352,24 @@ def get_flux_contributions_from_packets(
     group_em_specs = dict(
         zip(
             emissiongroups.keys(),
-            pl.collect_all(
-                [
-                    get_from_packets(
-                        modelpath=modelpath,
-                        timelowdays=timelowdays,
-                        timehighdays=timehighdays,
-                        lambda_min=lambda_min,
-                        lambda_max=lambda_max,
-                        use_time=use_time,
-                        delta_lambda=delta_lambda,
-                        fluxfilterfunc=filterfunc,
-                        nprocs_read_dfpackets=(nprocs_read, dfpkts),
-                        directionbins_are_vpkt_observers=directionbins_are_vpkt_observers,
-                        average_over_phi=average_over_phi,
-                        average_over_theta=average_over_theta,
-                        gamma=gamma,
-                    )[directionbin].select("lambda_angstroms", "f_lambda")
-                    for dfpkts in emissiongroups.values()
-                ],
-                engine="streaming",
-            ),
+            pl.collect_all([
+                get_from_packets(
+                    modelpath=modelpath,
+                    timelowdays=timelowdays,
+                    timehighdays=timehighdays,
+                    lambda_min=lambda_min,
+                    lambda_max=lambda_max,
+                    use_time=use_time,
+                    delta_lambda=delta_lambda,
+                    fluxfilterfunc=filterfunc,
+                    nprocs_read_dfpackets=(nprocs_read, dfpkts),
+                    directionbins_are_vpkt_observers=directionbins_are_vpkt_observers,
+                    average_over_phi=average_over_phi,
+                    average_over_theta=average_over_theta,
+                    gamma=gamma,
+                )[directionbin].select("lambda_angstroms", "f_lambda")
+                for dfpkts in emissiongroups.values()
+            ]),
             strict=True,
         )
     )

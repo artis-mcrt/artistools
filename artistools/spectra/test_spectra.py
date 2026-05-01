@@ -231,9 +231,53 @@ def test_spectra_get_flux_contributions(benchmark: BenchmarkFixture) -> None:
     assert math.isclose(integrated_flux_specout, integrated_flux_emission, rel_tol=4e-3)
 
     # check each bin is not out by a large fraction
+    diff = [
+        abs(x - y)
+        for x, y in zip(reversed(array_flambda_emission_total), dfspectrum["f_lambda"].to_numpy(), strict=False)
+    ]
+    print(f"Max f_lambda difference {max(diff) / integrated_flux_specout}")
+    assert max(diff) / integrated_flux_specout < 1e-9
+
+
+def test_spectra_get_flux_contributions_from_packets(benchmark: BenchmarkFixture) -> None:
+    lambdamin = 200
+    lambdamax = 20000
+    delta_lambda = 100
+    timelowdays = 4
+    timehighdays = 7
+    dfspectrum = at.spectra.get_from_packets(
+        modelpath=modelpath_classic_3d,
+        timelowdays=timelowdays,
+        timehighdays=timehighdays,
+        lambda_min=lambdamin,
+        lambda_max=lambdamax,
+        delta_lambda=delta_lambda,
+    )[-1].collect()
+
+    integrated_flux_specout = np.trapezoid(dfspectrum["f_lambda"], x=dfspectrum["lambda_angstroms"])
+    _contribution_list, array_flambda_emission_total, arraylambda_angstroms = benchmark(
+        lambda: at.spectra.get_flux_contributions_from_packets(
+            modelpath_classic_3d,
+            timelowdays=timelowdays,
+            timehighdays=timehighdays,
+            emtypecolumn="emissiontype",
+            lambda_min=lambdamin,
+            lambda_max=lambdamax,
+            delta_lambda=delta_lambda,
+        )
+    )
+
+    integrated_flux_emission = np.trapezoid(array_flambda_emission_total, x=arraylambda_angstroms)
+
+    # total spectrum should be equal to the sum of all emission processes
+    print(f"Integrated flux from spec.out:     {integrated_flux_specout}")
+    print(f"Integrated flux from emission sum: {integrated_flux_emission}")
+    assert math.isclose(integrated_flux_specout, integrated_flux_emission, rel_tol=4e-3)
+
+    # check each bin is not out by a large fraction
     diff = [abs(x - y) for x, y in zip(array_flambda_emission_total, dfspectrum["f_lambda"].to_numpy(), strict=False)]
     print(f"Max f_lambda difference {max(diff) / integrated_flux_specout}")
-    assert max(diff) / integrated_flux_specout < 2e-3
+    assert max(diff) / integrated_flux_specout < 1e-10
 
 
 @pytest.mark.benchmark
