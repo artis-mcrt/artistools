@@ -483,11 +483,11 @@ def get_from_packets(
         assert use_time == "arrival"
     else:
         if average_over_phi:
-            directionbins = [-1, *(range(0, ndirbins, nphibins))]
+            directionbins = [-1, *range(0, ndirbins, nphibins)]
         elif average_over_theta:
-            directionbins = [-1, *(range(nphibins))]
+            directionbins = [-1, *range(nphibins)]
         else:
-            directionbins = [-1, *(range(ndirbins))]
+            directionbins = [-1, *range(ndirbins)]
         lambda_column = nu_column.replace("nu_", "lambda_angstroms_")
         energy_column = "e_cmf" if use_time == "escape" else "e_rf"
 
