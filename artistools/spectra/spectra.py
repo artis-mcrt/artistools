@@ -466,6 +466,7 @@ def get_from_packets(
                     / nprocs_read
                 ).alias("f_lambda"),
                 pl.col("count"),
+                pl.col("count").alias("packetcount"),
             ])
 
             dfbinned_dirbin = dfbinned_dirbin.join(dfbinned_lazy, on="lambda_binindex", how="left", coalesce=True)
