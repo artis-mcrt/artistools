@@ -133,7 +133,7 @@ def test_spectra_get_spectrum_polar_angles() -> None:
     )
 
     results = {
-        dirbin: (dfspecdir.collect()["f_lambda"].mean(), dfspecdir.collect()["f_lambda"].std())
+        dirbin: (dfspecdir.select(mean=pl.col("f_lambda").mean(), std=pl.col("f_lambda").std()).collect().row(0))
         for dirbin, dfspecdir in spectra.items()
     }
 
