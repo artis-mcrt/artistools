@@ -542,6 +542,7 @@ def get_from_packets(
                     / nprocs_read
                 ).alias("f_lambda"),
                 pl.col("count"),
+                pl.col("count").alias("packetcount"),
             ])
 
             if use_time == "escape":
