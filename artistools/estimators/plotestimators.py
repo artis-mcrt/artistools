@@ -120,7 +120,7 @@ def plot_data(
     color = plotobj.get_color()
 
     if args.markers:
-        plotkwargs_markers = plotkwargs | {
+        plotkwargs_markers: dict[str, t.Any] = plotkwargs | {
             "linestyle": "None",
             "marker": ".",
             "markersize": 5,

@@ -134,7 +134,7 @@ def viewing_angles_visualisation(
     fig.update_layout(legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "right", "x": 1})
 
     fig = fig.add_trace(
-        go.Volume(
+        go.Volume(  # zuban: ignore[attr-defined]
             x=x.flatten(),
             y=y.flatten(),
             z=z.flatten(),
