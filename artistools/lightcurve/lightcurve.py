@@ -267,7 +267,7 @@ def generate_band_lightcurve_data(
                 )
 
                 if len(wavelength_from_spectrum) > len(wavefilter):
-                    interpolate_fn = interp1d(wavefilter, transmission, bounds_error=False, fill_value=0.0)
+                    interpolate_fn = interp1d(wavefilter, transmission, bounds_error=False, fill_value=0.0)  # pyrefly: ignore[bad-argument-type]
                     wavefilter = np.linspace(
                         np.min(wavelength_from_spectrum),
                         int(np.max(wavelength_from_spectrum)),
@@ -458,7 +458,7 @@ def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pd.Dat
         from astropy import cosmology
 
         cosmo = (
-            cosmology.FlatLambdaCDM(H0=70, Om0=0.3)  # ty: ignore[unknown-argument] # pyright: ignore[reportCallIssue] # pyrefly: ignore[unexpected-keyword]
+            cosmology.FlatLambdaCDM(H0=70, Om0=0.3)  # ty: ignore[unknown-argument] # pyright: ignore[reportCallIssue] # pyrefly: ignore[unexpected-keyword] # zuban: ignore[call-arg]
         )
         metadata["dist_mpc"] = cosmo.luminosity_distance(metadata["z"]).value  # pyright: ignore[reportAttributeAccessIssue]
         print(f"luminosity distance from redshift = {metadata['dist_mpc']} for {metadata['label']}")
