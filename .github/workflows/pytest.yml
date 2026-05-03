@@ -63,22 +63,21 @@ jobs:
               if: always()
               run: uv run -- ruff format --check --exit-non-zero-on-format
 
-            # ty is disabled until it supports polars decorated overloads
-            # - name: Run ty
-            #   if: always()
-            #   run: uv run -- ty check
+            - name: Run zuban
+              if: always()
+              run: uv run -- zuban check
 
             - name: Run basedpyright
               if: always()
               run: uv run -- basedpyright --warnings
 
-            - name: Run mypy
-              if: always()
-              run: uv run -- mypy
-
             - name: Run pyrefly
               if: always()
               run: uv run -- pyrefly check
+
+            - name: Run mypy
+              if: always()
+              run: uv run -- mypy
 
             - name: Run prek pre-commit checks
               uses: j178/prek-action@v2
