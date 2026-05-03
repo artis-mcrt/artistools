@@ -61,8 +61,8 @@ repos:
 
     - repo: local
       hooks:
-          - id: pyrefly-check
-            name: Pyrefly (type checking)
-            pass_filenames: false # Recommended to do full repo checks. However, you can change this to `true` to only check changed files
+          - id: zuban-check
+            name: Zuban type check
+            pass_filenames: false
             language: system
-            entry: uv run pyrefly check
+            entry: uv run zuban check

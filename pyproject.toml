@@ -63,7 +63,7 @@ dev = [
     "pandas-stubs>=3.0.0.260204",
     "prek>=0.2.28",
     "pynonthermal>=2026.4.27",
-    "pyrefly>=0.62.0",
+    "pyrefly>=0.63.1",
     "pytest>=9.0.3",
     "pytest-codspeed>=4.4.0",
     "pytest-cov>=7.1.0",
@@ -73,6 +73,7 @@ dev = [
     "types-python-dateutil>=2.9.0.20260408",
     "types-pyyaml>=6.0.12.20260408",
     "types-tqdm>=4.67.3.20260408",
+    "zuban>=0.7.1",
 ]
 
 [project.urls]
