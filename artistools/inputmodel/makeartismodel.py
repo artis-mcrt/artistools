@@ -44,9 +44,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Make opacity.txt where opacity is set in each cell by Ye from SPH model",
     )
 
-    parser.add_argument(
-        "--makeenergyinputfiles", action="store_true", help="Downscale a 3D ARTIS model to smaller grid size"
-    )
+    parser.add_argument("--makeenergyinputfiles", action="store_true")
 
     parser.add_argument("-outputpath", "-o", default=".", help="Folder for output")
 
