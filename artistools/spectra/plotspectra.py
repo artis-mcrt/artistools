@@ -542,18 +542,15 @@ def plot_artis_spectrum(
         dirbin_dfspec = zip(
             directionbins,
             pl.collect_all(
-                (
-                    df_filter_minmax_bounded(
-                        atspectra.get_dfspectrum_x_y_with_units(
-                            viewinganglespectra[dirbin], xunit=xunit, yvariable=yvariable, fluxdistance_mpc=args.distmpc
-                        ).sort("x"),
-                        colname="x",
-                        minval=xmin,
-                        maxval=xmax,
-                    )
-                    for dirbin in directionbins
-                ),
-                engine="streaming",
+                df_filter_minmax_bounded(
+                    atspectra.get_dfspectrum_x_y_with_units(
+                        viewinganglespectra[dirbin], xunit=xunit, yvariable=yvariable, fluxdistance_mpc=args.distmpc
+                    ).sort("x"),
+                    colname="x",
+                    minval=xmin,
+                    maxval=xmax,
+                )
+                for dirbin in directionbins
             ),
             strict=True,
         )
