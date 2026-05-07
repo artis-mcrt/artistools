@@ -232,8 +232,11 @@ def get_vpkt_config(modelpath: Path | str) -> dict[str, t.Any]:
             vpkt_config["nspectraperobs"] = 1
             vpkt_config["z_excludelist"] = [0]
 
+        timesline = vpkt_txt.readline().split()
         vpkt_config["time_limits_enabled"], vpkt_config["initial_time"], vpkt_config["final_time"] = (
-            int(x) for x in vpkt_txt.readline().split()
+            int(timesline[0]),
+            float(timesline[1]),
+            float(timesline[2]),
         )
 
     return vpkt_config
