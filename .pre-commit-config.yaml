@@ -41,7 +41,7 @@ repos:
           - id: ruff-format
 
     - repo: https://github.com/astral-sh/uv-pre-commit
-      rev: 0.11.11
+      rev: 0.11.12
       hooks:
           - id: uv-lock
 
@@ -61,8 +61,8 @@ repos:
 
     - repo: local
       hooks:
-          - id: zuban-check
-            name: Zuban type check
+          - id: pyrefly-check
+            name: Pyrefly type check
             pass_filenames: false
             language: system
-            entry: uv run zuban check
+            entry: uv run pyrefly check
