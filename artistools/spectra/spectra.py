@@ -305,7 +305,7 @@ def convert_unit_to_angstroms(value: float, old_units: str) -> float:
 def stackspectra(
     spectra_and_factors: list[tuple[np.ndarray[t.Any, np.dtype[np.floating[t.Any]]], float]],
 ) -> np.ndarray[t.Any, np.dtype[np.floating[t.Any]]]:
-    """Add spectra using weighting factors, i.e., specout[nu] = spec1[nu] * factor1 + spec2[nu] * factor2 + ...
+    """Average spectra using (normalised) weighting factors, i.e., specout[nu] = (spec1[nu] * factor1 + spec2[nu] * factor2 + ...) / (factor1 + factor2 + ...).
 
     spectra_and_factors should be a list of tuples: spectra[], factor.
     """

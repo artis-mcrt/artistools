@@ -621,7 +621,7 @@ def get_model_name(path: Path | str, maxlen: int | None = 50) -> str:
 
 
 def get_z_a_nucname(nucname: str) -> tuple[int, int]:
-    """Return atomic number and mass number from a string like 'Pb208', 'X_Pb208', or "nniso_Pb208' (returns 92, 208)."""
+    """Return atomic number and mass number from a string like 'Pb208', 'X_Pb208', or "nniso_Pb208' (returns 82, 208)."""
     if "_" in nucname:
         nucname = nucname.split("_")[1]
 
