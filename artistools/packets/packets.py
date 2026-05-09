@@ -154,7 +154,7 @@ def add_derived_columns_lazy(
                 pl
                 .col("em_time")
                 .cut(breaks=timebins, labels=[str(x) for x in range(-1, len(timebins))])
-                .cast(pl.Utf8)
+                .cast(pl.String)
                 .cast(pl.Int32)
             ).alias("em_timestep")
         )
@@ -222,7 +222,7 @@ def add_derived_columns_lazy(
                 pl
                 .col("emission_velocity")
                 .cut(breaks=velbins, labels=[str(x) for x in range(-1, len(velbins))])
-                .cast(pl.Utf8)
+                .cast(pl.String)
                 .cast(pl.Int32)
             )
         )
@@ -232,7 +232,7 @@ def add_derived_columns_lazy(
                     pl
                     .col("true_emission_velocity")
                     .cut(breaks=velbins, labels=[str(x) for x in range(-1, len(velbins))])
-                    .cast(pl.Utf8)
+                    .cast(pl.String)
                     .cast(pl.Int32)
                 )
             )
@@ -873,7 +873,7 @@ def bin_and_sum(
         .filter(pl.col(bincol).is_between(bins[0], bins[-1], closed="both"))
         .with_columns(
             (pl.col(bincol).cut(breaks=bins, labels=[str(x) for x in range(-1, len(bins))]))
-            .cast(pl.Utf8)
+            .cast(pl.String)
             .cast(pl.Int32)
             .alias(f"{bincol}_bin")
         )
