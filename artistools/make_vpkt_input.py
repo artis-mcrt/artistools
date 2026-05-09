@@ -14,7 +14,7 @@ def main() -> None:
     vspec_tmin_in_days = 0.2
     vspec_tmax_in_days = 1.5
 
-    custom_lambda_ranges: list[tuple[float, float]] = [(3500, 18000)]
+    custom_lambda_ranges: list[tuple[float, float]] = []
 
     override_thickcell_tau = True  # if override_thickcell_tau=1  vpkt are not created when cell optical depth is larger than cell_is_optically_thick_vpkt
     cell_is_optically_thick_vpkt = 100
