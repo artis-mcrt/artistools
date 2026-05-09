@@ -397,7 +397,8 @@ def read_virtual_packets_text_file(vpacketsfiletext: Path | str, column_names: l
 
 
 def get_vpackets_text_columns(vpacketsfiletext: Path) -> list[str]:
-    firstline: str = at.zopen(vpacketsfiletext, mode="rt", encoding="utf-8").readline()
+    with at.zopen(vpacketsfiletext, mode="rt", encoding="utf-8") as f:
+        firstline: str = f.readline()
     assert firstline.lstrip().startswith("#")
     return firstline.lstrip("#").split()
 
