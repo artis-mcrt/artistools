@@ -10,6 +10,7 @@ import time
 import typing as t
 from collections.abc import Collection
 from collections.abc import Sequence
+from itertools import batched
 from pathlib import Path
 
 import polars as pl
@@ -240,7 +241,7 @@ def scan_estimators(
     )
     mpirank_groups = [
         (batchindex, mpiranks)
-        for batchindex, mpiranks in enumerate(at.misc.batched(mpiranklist, 100))
+        for batchindex, mpiranks in enumerate(batched(mpiranklist, 100))
         if mpiranks_matched.intersection(mpiranks)
     ]
 
