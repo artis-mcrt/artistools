@@ -262,7 +262,7 @@ def get_grid_mapping(modelpath: Path | str) -> tuple[dict[int, list[int]], dict[
     assoc_cells: dict[int, list[int]] = dict(
         dfgrid
         .group_by("modelgridindex")
-        .agg(pl.col("cellindex").implode())
+        .agg(pl.col("cellindex"))
         .select([pl.col("modelgridindex"), pl.col("cellindex")])
         .iter_rows()
     )
@@ -451,10 +451,10 @@ def get_time_range(
 
     time_days_lower, time_days_upper = None, None
 
-    if timemin and timemin > tends[-1]:
+    if timemin is not None and timemin > tends[-1]:
         print(f"{get_model_name(modelpath)}: WARNING timemin {timemin} is after the last timestep at {tends[-1]:.1f}")
         return -1, -1, -math.inf, -math.inf
-    if timemax and timemax < tstarts[0]:
+    if timemax is not None and timemax < tstarts[0]:
         print(
             f"{get_model_name(modelpath)}: WARNING timemax {timemax} is before the first timestep at {tstarts[0]:.1f}"
         )
@@ -501,7 +501,7 @@ def get_time_range(
             msg = f"Time min {timemin} is greater than all timesteps ({tstarts[0]} to {tends[-1]})"
             raise ValueError(msg)
 
-        if not timemax:
+        if timemax is None:
             timemax = tends[-1]
         assert timemax is not None
 
@@ -819,7 +819,7 @@ def makelist(x: Sequence[t.Any] | str | Path | None) -> list[t.Any]:
     """If x is not a list (or is a string), make a list containing x."""
     if x is None:
         return []
-    return list(x) if isinstance(x, Iterable) else [x]
+    return [x] if isinstance(x, str | Path) else list(x)
 
 
 def trim_or_pad(requiredlength: int, *listoflistin: t.Any) -> Sequence[Sequence[t.Any]]:
