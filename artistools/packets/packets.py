@@ -5,6 +5,7 @@ import time
 import typing as t
 from collections.abc import Sequence
 from functools import lru_cache
+from itertools import batched
 from pathlib import Path
 
 import numpy as np
@@ -509,7 +510,7 @@ def get_packets_batch_parquet_paths(
     """Get a list of Paths to parquet-formatted packets files, (which are generated from text files if needed)."""
     nprocs = at.get_nprocs(modelpath)
 
-    mpirank_groups_all = list(enumerate(at.misc.batched(range(nprocs), 100)))
+    mpirank_groups_all = list(enumerate(batched(range(nprocs), 100)))
     mpirank_groups = [
         (batchindex, batch_mpiranks)
         for batchindex, batch_mpiranks in mpirank_groups_all

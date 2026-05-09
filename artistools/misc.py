@@ -815,17 +815,6 @@ def parse_range_list(rngs: str | list[str] | list[int] | int, dictvars: dict[str
     return sorted(set(itertools.chain.from_iterable([parse_range(rng, dictvars or {}) for rng in rngs.split(",")])))
 
 
-def batched(iterable: Iterable[t.Any], n: int) -> Iterable[Sequence[int]]:
-    """Yield successive n-sized chunks from iterable."""
-    # when python 3.12 becomes the minimum version, use itertools.batched instead
-    assert n > 0, "n must be at least one"
-    it = iter(iterable)
-    batches = []
-    while batch := tuple(itertools.islice(it, n)):
-        batches.append(batch)
-    return batches
-
-
 def makelist(x: Sequence[t.Any] | str | Path | None) -> list[t.Any]:
     """If x is not a list (or is a string), make a list containing x."""
     if x is None:
