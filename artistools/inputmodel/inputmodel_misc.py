@@ -1218,7 +1218,7 @@ def dimension_reduce_model(
         (
             (pl.col("vel_rcyl_mid") if outputdimensions == 2 else pl.col("vel_r_mid"))
             .cut(breaks=vel_r_bins, labels=[str(x) for x in range(-1, len(vel_r_bins))])
-            .cast(pl.Utf8)
+            .cast(pl.String)
             .cast(pl.Int32)
         ).alias("out_n_r")
     ).filter(pl.col("out_n_r").is_between(0, ncoordgridr - 1))
@@ -1231,7 +1231,7 @@ def dimension_reduce_model(
                     pl
                     .col("vel_z_mid")
                     .cut(breaks=vel_z_bins, labels=[str(x) for x in range(-1, len(vel_z_bins))])
-                    .cast(pl.Utf8)
+                    .cast(pl.String)
                     .cast(pl.Int32)
                 ).alias("out_n_z")
             )

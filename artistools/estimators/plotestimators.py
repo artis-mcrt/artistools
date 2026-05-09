@@ -642,7 +642,7 @@ def get_xlist(
                 pl
                 .col("xvalue")
                 .cut(breaks=list(xbinedges), labels=[str(x) for x in range(-1, len(xbinedges))])
-                .cast(pl.Utf8)
+                .cast(pl.String)
                 .cast(pl.Int32)
                 .alias("xbinindex")
             )

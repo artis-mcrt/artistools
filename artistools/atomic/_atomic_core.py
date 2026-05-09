@@ -60,7 +60,7 @@ def parse_adata(
                         ("energy_ev", pl.Float64),
                         ("g", pl.Float32),
                         ("transition_count", pl.Int32),
-                        ("levelname", pl.Utf8),
+                        ("levelname", pl.String),
                         ("phixstargetlist", pl.Object),
                         ("phixstable", pl.Object),
                     ],
