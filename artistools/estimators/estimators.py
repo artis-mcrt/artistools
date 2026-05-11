@@ -124,9 +124,10 @@ def get_rankbatch_parquetfile(
         )
 
         pldf_batch = pldf_batch.select(
+            # sort columns with timestep, modelgridindex, and titeration first, then the rest alphabetically
             sorted(
                 pldf_batch.columns,
-                key=lambda col: f"-{col!r}" if col in {"timestep", "modelgridindex", "titer"} else str(col),
+                key=lambda col: f"-{col!r}" if col in {"timestep", "modelgridindex", "titeration"} else str(col),
             )
         )
         print(f"took {time.perf_counter() - time_start:.1f} s. Writing parquet file...", end="", flush=True)
