@@ -374,7 +374,7 @@ def get_timesteps(modelpath: Path | str) -> pl.LazyFrame:
             .with_columns(pl.col("timestep").cast(pl.Int32))
         )
 
-    # use timestep.out if possible (allowing arbitrary timestep lengths)
+    # use timesteps.out if possible (allowing arbitrary timestep lengths)
     tsfilepath = Path(modelpath, "timesteps.out")
     if tsfilepath.exists():
         return (
@@ -567,7 +567,9 @@ def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | None, 
             msg = "Model dimensions must be 1, 2, or 3"
             raise ValueError(msg)
 
-    # earliest completely valid time is tmin plus maximum possible travel time from the origin to the corner
+    # if the initial conditions were perfect, then t_arrive = tmin would be valid already
+    # (with a free path, light from the origin at tmin would escape sometime later, but that travel time would be subtracted to get tarrive = tmin),
+    # but we should at least wait until light signals from the origin reach the corners
     validrange_start_days = get_timestep_times(modelpath, loc="start")[0] * (1 + cornervmax / 29979245800)
 
     t_end = get_timestep_times(modelpath, loc="end")
@@ -587,7 +589,7 @@ def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | None, 
     assert isinstance(nts_last, int)
     nts_last_tend = t_end[nts_last]
 
-    # latest possible valid range is the end of the latest computed timestep plus the longest travel time
+    # last valid observer time is escape at the end of the latest computed timestep minus the longest travel time relative to origin
     # assume we're on a 3D propagation grid for safety (1D or 2D could reduce the travel time somewhat)
     validrange_end_days: float = nts_last_tend * (1 - math.sqrt(3 * vmax**2) / 29979245800)
 
@@ -646,7 +648,7 @@ def get_elsymbolslist() -> list[str]:
 
 
 def get_elsymbols_df() -> pl.LazyFrame:
-    """Return a polars DataFrame of atomic number and element symbols."""
+    """Return a polars LazyFrame of atomic number and element symbols."""
     return (
         pl
         .scan_csv(
@@ -1062,7 +1064,7 @@ def merge_pdf_files(pdf_files: list[str]) -> None:
 
 
 def get_nuclides(modelpath: Path | str) -> pl.LazyFrame:
-    """Return LazyFrame with: pellet_nucindex atomic_number A nucname from nuclides.out file."""
+    """Return LazyFrame with columns: pellet_nucindex, atomic_number, A, nucname from nuclides.out file and the -1 initial energy special case."""
     filepath = Path(modelpath, "nuclides.out")
     if not filepath.is_file():
         msg = f"File {filepath} not found"

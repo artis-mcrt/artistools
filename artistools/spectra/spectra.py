@@ -94,8 +94,8 @@ def get_dfspectrum_x_y_with_units(
             dfspectrum = (
                 dfspectrum
                 .with_columns(en_ev=h_ev_s * pl.col("nu"))
-                .with_columns(f_en_kev=pl.col("f_nu") * pl.col("nu") / pl.col("en_ev"))
-                .with_columns(x=pl.col("en_ev"), yflux=pl.col("f_en_kev"))
+                .with_columns(f_en_ev=pl.col("f_nu") * pl.col("nu") / pl.col("en_ev"))
+                .with_columns(x=pl.col("en_ev"), yflux=pl.col("f_en_ev"))
             )
 
         case "kev":
@@ -592,7 +592,7 @@ def read_spec(modelpath: Path | str, gamma: bool = False) -> pl.LazyFrame:
 
 
 def read_spec_res(modelpath: Path | str) -> dict[int, pl.LazyFrame]:
-    """Return a dataframe of time-series spectra for every viewing direction."""
+    """Return a dict of LazyFrames of time-series spectra keyed to the viewing direction bin."""
     specfilename = (
         modelpath
         if Path(modelpath).is_file()
