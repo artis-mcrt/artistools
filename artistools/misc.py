@@ -568,7 +568,7 @@ def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | None, 
             raise ValueError(msg)
 
     # if the initial conditions were perfect, then t_arrive = tmin would be valid already
-    # (with a free path, light from the origin at tmin would escape sometime later, but that travel time would be subtracted to get tarrive = tmin),
+    # (with a free path, light from the origin at tmin would escape sometime later, but that travel time would be subtracted to get t_arrive = tmin),
     # but we should at least wait until light signals from the origin reach the corners
     validrange_start_days = get_timestep_times(modelpath, loc="start")[0] * (1 + cornervmax / 29979245800)
 
