@@ -53,4 +53,4 @@ repos:
             name: Pyrefly type check
             pass_filenames: false
             language: system
-            entry: uv run pyrefly check
+            entry: uv run --frozen -- pyrefly check
