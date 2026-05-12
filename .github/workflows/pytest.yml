@@ -73,7 +73,7 @@ jobs:
 
             - name: Run pyrefly
               if: always()
-              run: uv run -- pyrefly check
+              run: uv run -- pyrefly check --output-format github
 
             - name: Run mypy
               if: always()
