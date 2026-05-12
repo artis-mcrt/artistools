@@ -16,7 +16,6 @@ import argcomplete
 import matplotlib.axes as mplax
 import matplotlib.pyplot as plt
 import numpy as np
-import numpy.typing as npt
 import polars as pl
 from matplotlib import ticker
 
@@ -66,7 +65,7 @@ def adjust_lightness(color: t.Any, amount: float = 0.5) -> tuple[float, float, f
     except (SyntaxWarning, KeyError, TypeError):
         c = color
     c = colorsys.rgb_to_hls(*mc.to_rgb(c))
-    return colorsys.hls_to_rgb(c[0], max(0, min(1, amount * c[1])), c[2])
+    return colorsys.hls_to_rgb(c[0], max(0.0, min(1.0, amount * c[1])), c[2])
 
 
 def plot_data(
@@ -121,7 +120,7 @@ def plot_data(
     color = plotobj.get_color()
 
     if args.markers:
-        plotkwargs_markers = plotkwargs | {
+        plotkwargs_markers: dict[str, t.Any] = plotkwargs | {
             "linestyle": "None",
             "marker": ".",
             "markersize": 5,
@@ -138,7 +137,7 @@ def plot_data(
         ax.plot(
             dfplotdata.select("xvalue").collect().to_series(),
             dfplotdata.select("yvalue").collect().to_series(),
-            **plotkwargs_markers,
+            **plotkwargs_markers,  # pyright: ignore[reportArgumentType]
         )
 
     else:
@@ -254,7 +253,7 @@ def plot_average_ionisation(
 
 def plot_levelpop(
     ax: mplax.Axes,
-    xlist: Sequence[int | float] | npt.NDArray[np.floating],
+    xlist: Sequence[int | float],
     seriestype: str,
     params: Sequence[str],
     timestepslist: Sequence[int],
@@ -643,7 +642,7 @@ def get_xlist(
                 pl
                 .col("xvalue")
                 .cut(breaks=list(xbinedges), labels=[str(x) for x in range(-1, len(xbinedges))])
-                .cast(pl.Utf8)
+                .cast(pl.String)
                 .cast(pl.Int32)
                 .alias("xbinindex")
             )
@@ -811,10 +810,7 @@ def make_figure(
         nrows=len(plotlist),
         ncols=1,
         sharex=True,
-        figsize=(
-            args.figscale * at.get_config()["figwidth"] * args.scalefigwidth,
-            args.figscale * at.get_config()["figwidth"] * 0.5 * len(plotlist),
-        ),
+        figsize=(args.figscale * 5.0 * args.scalefigwidth, args.figscale * 5.0 * 0.5 * len(plotlist)),
         layout="constrained",
         # tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
     )
@@ -1035,6 +1031,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     should_use_all_timesteps = (
         not args.timedays
+        and not args.timemin
+        and not args.timemax
         and not args.timestep
         and (args.modelgridindex is not None or args.x in {None, "time", "timestep"})
     )

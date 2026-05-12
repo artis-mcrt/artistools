@@ -9,7 +9,6 @@ import artistools as at
 
 
 def get_bol_lc_from_spec(modelpath: Path) -> pd.DataFrame:
-    from scipy import integrate
 
     res_specdata = at.spectra.read_spec_res(modelpath)
     timearray = res_specdata[0].columns[1:]
@@ -20,10 +19,10 @@ def get_bol_lc_from_spec(modelpath: Path) -> pd.DataFrame:
         bol_luminosity = []
         for timestep, timestr in enumerate(timearray):
             if 5 < float(timestr) < 80:
-                spectrum = at.spectra.get_spectrum(
-                    modelpath=modelpath, directionbins=[angle], timestepmin=timestep, timestepmax=timestep
-                )[angle].collect()
-                integrated_flux = integrate.trapezoid(spectrum["f_lambda"], spectrum["lambda_angstroms"])
+                spectrum = at.spectra.get_spectra(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)[
+                    angle
+                ].collect()
+                integrated_flux = np.trapezoid(spectrum["f_lambda"], spectrum["lambda_angstroms"])
                 integrated_luminosity = integrated_flux * 4 * np.pi * Mpc_to_cm**2
                 bol_luminosity.append(integrated_luminosity)
 

@@ -26,11 +26,10 @@ def get_elemabund_from_nucabund(dfnucabund: pl.DataFrame) -> dict[str, float]:
     """Return a dictionary of elemental abundances from nuclear abundance DataFrame."""
     ZMAX = dfnucabund["Z"].max()
     assert isinstance(ZMAX, int)
-    dictelemabund: dict[str, float] = {
-        f"X_{at.get_elsymbol(atomic_number)}": dfnucabund.filter(pl.col("Z") == atomic_number)["massfrac"].sum()
+    return {
+        f"X_{at.get_elsymbol(atomic_number)}": float(dfnucabund.filter(pl.col("Z") == atomic_number)["massfrac"].sum())
         for atomic_number in range(1, ZMAX + 1)
     }
-    return dictelemabund
 
 
 def get_dfelemabund_from_dfmodel(dfmodel: pl.DataFrame) -> pl.DataFrame:
@@ -205,8 +204,6 @@ def get_trajectory_timestepfile_nuc_abund(
 
 def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, t_model_s: float) -> float:
     """Calculate initial cell energy [erg/g] from reactions t < t_model_s (reduced by work done)."""
-    from scipy import integrate
-
     with get_tar_member_extracted_path(
         traj_root=traj_root, particleid=particleid, memberfilename="./Run_rprocess/energy_thermo.dat"
     ).open(encoding="utf-8") as enthermofile:
@@ -233,7 +230,7 @@ def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, 
         dfthermo = dfthermo.with_columns(Qdot_expansionadjusted=pl.col("Qdot") * pl.col("time_s") / t_model_s)
 
         qdotintegral = float(
-            integrate.trapezoid(
+            np.trapezoid(
                 y=dfthermo["Qdot_expansionadjusted"][startindex : nts_max + 1],
                 x=dfthermo["time_s"][startindex : nts_max + 1],
             )
@@ -277,8 +274,8 @@ def get_trajectory_abund_q(
 
     # print(f'trajectory particle id {particleid} massfrac sum: {massfractotal:.2f}')
     # print(f' grid snapshot: {t_model_s:.2e} s, network: {traj_time_s:.2e} s (timestep {nts})')
-    assert np.isclose(massfractotal, 1.0, rtol=0.02)
-    if not np.isclose(traj_time_s, t_model_s, rtol=0.2, atol=1.0):
+    assert math.isclose(massfractotal, 1.0, rel_tol=0.02)
+    if not math.isclose(traj_time_s, t_model_s, rel_tol=0.2, abs_tol=1.0):
         msg = f"ERROR: particle {particleid} step time of {traj_time_s} is not similar to target {t_model_s} seconds"
         raise AssertionError(msg)
 
@@ -328,8 +325,8 @@ def filtermissinggridparticlecontributions(dfcontribs: pl.DataFrame, missing_par
     cell_frac_includemissing_sum: dict[int, float] = {}
     for (cellindex,), dfparticlecontribs in dfcontribs.group_by(["cellindex"]):
         assert isinstance(cellindex, int)
-        cell_frac_sum[cellindex] = dfparticlecontribs["frac_of_cellmass"].sum()
-        cell_frac_includemissing_sum[cellindex] = dfparticlecontribs["frac_of_cellmass_includemissing"].sum()
+        cell_frac_sum[cellindex] = float(dfparticlecontribs["frac_of_cellmass"].sum())
+        cell_frac_includemissing_sum[cellindex] = float(dfparticlecontribs["frac_of_cellmass_includemissing"].sum())
 
     dfcontribs = (
         dfcontribs
@@ -356,12 +353,12 @@ def filtermissinggridparticlecontributions(dfcontribs: pl.DataFrame, missing_par
     )
 
     for _, dfparticlecontribs in dfcontribs.group_by(["cellindex"]):
-        frac_sum: float = dfparticlecontribs["frac_of_cellmass"].sum()
-        assert frac_sum == 0.0 or np.isclose(frac_sum, 1.0, rtol=0.02)
+        frac_sum: float = float(dfparticlecontribs["frac_of_cellmass"].sum())
+        assert frac_sum == 0.0 or math.isclose(frac_sum, 1.0, rel_tol=0.02)
 
-        cell_frac_includemissing_sum_thiscell: float = dfparticlecontribs["frac_of_cellmass_includemissing"].sum()
-        assert cell_frac_includemissing_sum_thiscell == 0.0 or np.isclose(
-            cell_frac_includemissing_sum_thiscell, 1.0, rtol=0.02
+        cell_frac_includemissing_sum_thiscell = float(dfparticlecontribs["frac_of_cellmass_includemissing"].sum())
+        assert cell_frac_includemissing_sum_thiscell == 0.0 or math.isclose(
+            cell_frac_includemissing_sum_thiscell, 1.0, rel_tol=0.02
         )
 
     print("done")
@@ -400,13 +397,7 @@ def add_abundancecontributions(
     timestart = time.perf_counter()
     trajworker = partial(get_trajectory_abund_q, t_model_s=t_model_s, traj_root=Path(traj_root), getqdotintegral=True)
 
-    if at.get_config()["num_processes"] > 1:
-        with at.get_multiprocessing_pool() as pool:
-            list_traj_nuc_abund = pool.map(trajworker, particleids)
-            pool.close()
-            pool.join()
-    else:
-        list_traj_nuc_abund = [trajworker(particleid) for particleid in particleids]
+    list_traj_nuc_abund = at.parallel_map(trajworker, particleids)
 
     missing_particle_ids = [
         particleid for particleid, df in zip(particleids, list_traj_nuc_abund, strict=True) if not df
@@ -495,7 +486,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     else:
         rho = 1e-11
         print(f"{wollaeger_profilename} not found. Using rho {rho} g/cm³")
-        dfdensities = pl.DataFrame({"mgi": 0, "rho": rho, "vel_r_max_kmps": 6.0e4})
+        dfdensities = pl.DataFrame({"mgi": [0], "rho": [rho], "vel_r_max_kmps": [6.0e4]})
 
     dfdensities["inputcellid"] = dfdensities["mgi"] + 1
     # print(dfdensities)

@@ -36,7 +36,7 @@ class FeatureTuple(t.NamedTuple):
 def get_packets_with_emtype(
     modelpath: Path | str, emtypecolumn: str, lineindices: Sequence[int], maxpacketfiles: int | None = None
 ) -> tuple[pl.LazyFrame, int]:
-    nprocs_read, dfpackets = at.packets.get_packets_pl(
+    nprocs_read, dfpackets = at.packets.get_packets(
         modelpath=modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
     dfpackets = dfpackets.filter(pl.col(emtypecolumn).is_in(lineindices))
@@ -291,10 +291,7 @@ def make_flux_ratio_plot(args: argparse.Namespace) -> None:
         nrows=nrows,
         ncols=1,
         sharey=False,
-        figsize=(
-            args.figscale * at.get_config()["figwidth"],
-            args.figscale * at.get_config()["figwidth"] * (0.25 + nrows * 0.4),
-        ),
+        figsize=(args.figscale * 5.0, args.figscale * 5.0 * (0.25 + nrows * 0.4)),
         tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
     )
 
@@ -515,12 +512,12 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
     refdatacolors = ["0.0", "C1", "C2", "C4"]
     refdatakeys: list[list[str]] = [[] for _ in refdatafilenames]
     refdatatimes = [np.array([], dtype=np.float64) for _ in refdatafilenames]
-    refdatapoints: list[list[float]] = [[] for _ in refdatafilenames]
+    refdatapoints: list[list[dict[str, list[float]]]] = [[] for _ in refdatafilenames]
     for refdataindex, refdatafilename in enumerate(refdatafilenames):
-        floers_te_nne = json.loads(Path(refdatafilename).read_text(encoding="utf-8"))
+        floers_te_nne: dict[str, dict[str, list[float]]] = json.loads(Path(refdatafilename).read_text(encoding="utf-8"))
 
         # give an ordering and index to dict items
-        refdatakeys_thisseries = [str(x) for x in sorted(floers_te_nne.keys(), key=float)]  # strings, not floats
+        refdatakeys_thisseries = sorted(floers_te_nne.keys(), key=float)  # strings, not floats
         assert refdatakeys_thisseries is not None
         refdatakeys[refdataindex] = refdatakeys_thisseries
         refdatatimes[refdataindex] = np.array([float(t) for t in refdatakeys_thisseries])
@@ -632,10 +629,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
                 ncols=1,
                 sharey=False,
                 sharex=False,
-                figsize=(
-                    args.figscale * at.get_config()["figwidth"],
-                    args.figscale * at.get_config()["figwidth"] * (0.25 + nrows * 0.7),
-                ),
+                figsize=(args.figscale * 5.0, args.figscale * 5.0 * (0.25 + nrows * 0.7)),
                 tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.2},
             )
             assert isinstance(axis, mplax.Axes)
@@ -683,6 +677,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
                         else:
                             plot_nne_te_bars(axis, em_log10nne, em_Te, modelcolor)
             else:
+                assert isinstance(modelpath, Path | str)
                 emfeatures = get_labelandlineindices(modelpath, tuple(args.emfeaturesearch))
 
                 featurecolours = ["blue", "red"]

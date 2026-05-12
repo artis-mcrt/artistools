@@ -1,12 +1,6 @@
 [build-system]
-requires = [
-    # "maturin>=1.9.3",
-    "setuptools>=80.9.0",
-    "setuptools-rust>=1.12",
-    "setuptools_scm>=9.2.2",
-]
-# build-backend = "maturin"
-build-backend = "setuptools.build_meta"
+requires = ["maturin>=1.13.3"]
+build-backend = "maturin"
 
 [project]
 name = "artistools"
@@ -17,7 +11,7 @@ authors = [
     { name = "Fionntan Callan", email = "fcallan02@qub.ac.uk" },
     { name = "Stuart Sim", email = "s.sim@qub.ac.uk" },
     { name = "Joshua Pollin", email = "jpollin02@qub.ac.uk" },
-    { name = "Gerrit Leck", email = "g.leck@gsi.de" }
+    { name = "Gerrit Leck", email = "g.leck@gsi.de" },
 ]
 description = "Plotting and analysis tools for the ARTIS 3D radiative transfer code for supernovae and kilonovae."
 classifiers = [
@@ -30,25 +24,24 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Astronomy",
     "Topic :: Scientific/Engineering :: Physics",
 ]
-dynamic = ["version"]
+version = "2026.5.9"
 requires-python = ">=3.12"
-license =  "MIT"
+license = "MIT"
 license-files = ["LICEN[CS]E*"]
 readme = { file = "README.md", content-type = 'text/markdown' }
 dependencies = [
     "argcomplete>=3.6.3",
     "extinction>=0.4.7",
     "matplotlib>=3.10.8",
-    "numpy>=2.4.2",
-    "pandas>=3.0.1",
-    "polars>=1.37.1",
+    "numpy>=2.4.4",
+    "pandas>=3.0.2",
+    "polars>=1.40.0",
     "pyarrow>=22.0.0",
     "pyyaml>=6.0.2",
-    "rich>=14.3.3",
-    "scipy>=1.17.0",
+    "rich>=15.0.0",
+    "scipy>=1.17.1",
     "tqdm>=4.67.3",
-    "typing_extensions>=4.14",
-    "zstandard>=0.23.0;python_version<'3.14'",
+    "zstandard>=0.25.0;python_version<'3.14'",
 ]
 
 [project.optional-dependencies]
@@ -56,31 +49,31 @@ extras = [
     "astropy>=7.2",
     "george>=0.4.4",
     "imageio>=2.37.2",
-    "plotly>=6.5.2",
-    "pypdf>=6.7.5",
-    "pynonthermal>=2025.4.8",
-    # "pyvista>=0.45",  # not compatible with cpython 3.14 yet
+    "plotly>=6.7.0",
+    "pypdf>=6.10.2",
+    "pynonthermal>=2026.4.27",
+    "pyvista>=0.47.1;python_version<'3.15'", # not compatible with cpython 3.15 yet
 ]
 
 [dependency-groups]
 dev = [
-    "imageio>=2.37.2",
-    "mypy>=1.19.1",
+    "basedpyright>=1.39.3",
+    "imageio>=2.37.3",
+    "mypy>=2.0.0",
     "pandas-stubs>=3.0.0.260204",
     "prek>=0.2.28",
-    "pyright>=1.1.408",
-    "pynonthermal>=2025.4.8",
-    "pytest>=9.0.2",
-    "pytest-codspeed>=4.3.0",
-    "pytest-cov>=7.0.0",
+    "pynonthermal>=2026.4.27",
+    "pyrefly>=0.64.0",
+    "pytest>=9.0.3",
+    "pytest-codspeed>=4.4.0",
+    "pytest-cov>=7.1.0",
     "pytest-xdist[psutil]>=3.8.0",
-    "ruff>=0.15.6",
-    "setuptools_scm>=9.2.2",
-    "ty>=0.0.14",
+    "ruff>=0.15.12",
     "typeguard>=4.5.1",
-    "types-python-dateutil>=2.9.0.20251115",
-    "types-pyyaml>=6.0.12.20250915",
-    "uv>=0.10.4",
+    "types-python-dateutil>=2.9.0.20260408",
+    "types-pyyaml>=6.0.12.20260408",
+    "types-tqdm>=4.67.3.20260408",
+    "zuban>=0.7.2",
 ]
 
 [project.urls]
@@ -142,8 +135,17 @@ before-all = [
 bindings = "pyo3"
 profile = "release"
 manifest-path = "rust/Cargo.toml"
-features = ["pyo3/extension-module"]
 module-name = "artistools.rustext"
+use-base-python = true
+include = [
+    "artistools/data/**",
+    "**/artistoolscompletions.sh",
+    "**/matplotlibrc",
+    "**/pyproject.toml",
+    "**/README.md",
+    "**/*.cff",
+    "**/LICENSE*",
+]
 
 [tool.mypy]
 check_untyped_defs = true
@@ -226,6 +228,24 @@ disable = """
 ignored-modules = ["astropy", "extinction", "pyvista"]
 unsafe-load-any-extension = true
 
+[tool.pyrefly]
+project-excludes = [
+    '**/node_modules',
+    '**/__pycache__',
+    '**/.*',
+    'build',
+    'dist',
+    'target',
+    '**/version.py',
+    '.venv',
+    '**/rd_cmfgen.py',
+]
+
+[tool.pyrefly.errors]
+missing-import = false
+unbound-name = false
+unsupported-operation = false
+
 [tool.pyright]
 enableTypeIgnoreComments = false # leave these for mypy to interpret
 exclude = [
@@ -237,31 +257,42 @@ exclude = [
     'target',
     '**/version.py',
     '.venv',
-    '**/rd_cmfgen.py'
+    '**/rd_cmfgen.py',
 ]
+reportAny = false
+reportCallInDefaultInitializer = false
 reportConstantRedefinition = false
+reportExplicitAny = false
 reportImplicitOverride = "error"
+reportImplicitStringConcatenation = false
 reportImportCycles = false
 reportMatchNotExhaustive = false
 reportMissingImports = "information"
 reportMissingTypeStubs = false
 reportPossiblyUnboundVariable = false
 reportPropertyTypeMismatch = "error"
+reportUninitializedInstanceVariable = false
 reportUnknownArgumentType = false
 reportUnknownLambdaType = false
 reportUnknownMemberType = false
-reportUnknownParameterType = false
 reportUnknownVariableType = false
-reportUnnecessaryComparison = false
-reportUnnecessaryIsInstance = false
+reportUnnecessaryComparison = "information"
 reportUnreachable = false
+reportUnusedCallResult = false
+reportUnusedParameter = false
 typeCheckingMode = "strict"
 useLibraryCodeForTypes = true
 pythonVersion = "3.12"
 
 [tool.pytest]
 minversion = "9.0"
-addopts = ["--durations=0","--durations-min=1.0","--typeguard-packages=artistools","-n","auto"]
+addopts = [
+    "--durations=0",
+    "--durations-min=1.0",
+    "--typeguard-packages=artistools",
+    "-n",
+    "auto",
+]
 testpaths = ["artistools"]
 
 [tool.refurb]
@@ -279,9 +310,13 @@ ignore = ["FURB108"]
 line-length = 120
 fix = true
 show-fixes = true
-extend-exclude = ["_version.py", "artistools/inputmodel/fromcmfgen/rd_cmfgen.py", ".venv/**"]
+extend-exclude = [
+    "_version.py",
+    "artistools/inputmodel/fromcmfgen/rd_cmfgen.py",
+    ".venv/**",
+]
 preview = true
-required-version = ">=0.15.6"
+required-version = ">=0.15.12"
 
 [tool.ruff.format]
 skip-magic-trailing-comma = true
@@ -343,7 +378,7 @@ unfixable = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"test_*.py" = ["ARG001"]  # unused-argument for pytest fixtures
+"test_*.py" = ["ARG001"]    # unused-argument for pytest fixtures
 "rd_cmfgen.py" = ["PGH004"]
 
 [tool.ruff.lint.flake8-import-conventions.extend-aliases]
@@ -368,39 +403,6 @@ require-lazy = "all"
 force-single-line = true
 order-by-type = false
 
-[tool.setuptools]
-include-package-data = true
-
-[[tool.setuptools-rust.ext-modules]]
-target = "artistools.rustext" # The last part of the name has to match lib.name in Cargo.toml,
-path = "rust/Cargo.toml"
-binding = "PyO3"
-debug = false
-optional = false
-
-[tool.setuptools.packages.find]
-namespaces = true
-where = ["."]
-include = ["*", "**/matplotlibrc", "**/data"]
-exclude = [
-    "tests",
-    "**/dist",
-    "**/lib",
-    "**/build",
-    "*.egg-info",
-    "**/.*",
-    "**/target",
-    "**/.venv",
-    "**/venv",
-]
-
-#[tool.distutils.bdist_wheel]
-#py_limited_api="cp312"
-
-[tool.setuptools_scm]
-version_file = "artistools/version.py"
-local_scheme = "no-local-version"
-
 [tool.ty.rules]
 unresolved-import = "ignore"
 
@@ -419,3 +421,7 @@ explicit = true
 exclude = [".*", "build/", ".eggs/", ".venv", "venv"]
 paths = ["artistools"]
 sort_by_size = true
+
+[tool.zuban]
+mode = "default"
+disallow_untyped_calls = false

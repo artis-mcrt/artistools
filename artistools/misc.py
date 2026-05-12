@@ -4,8 +4,6 @@ import functools
 import io
 import itertools
 import math
-import multiprocessing
-import multiprocessing.pool
 import string
 import sys
 import typing as t
@@ -21,7 +19,7 @@ import numpy.typing as npt
 import polars as pl
 from polars import selectors as cs
 
-from artistools.configuration import get_config
+from artistools.commands import get_path
 
 roman_numerals = (
     "",
@@ -48,27 +46,9 @@ roman_numerals = (
 )
 
 
-class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
-    """Custom argparse formatter to show default values in help text, sorted with dashes last."""
-
-    def __init__(self, *args: t.Any, **kwargs: t.Any) -> None:
-        kwargs["max_help_position"] = 39
-        super().__init__(*args, **kwargs)
-
-    @t.override
-    def add_arguments(self, actions: Iterable[argparse.Action]) -> None:
-        getinvocation = super()._format_action_invocation
-
-        def my_sort(action: argparse.Action) -> str:
-            return getinvocation(action).upper().replace("-", "z")  # push dash chars below alphabet
-
-        actions = sorted(actions, key=my_sort)
-        super().add_arguments(actions)
-
-
 @lru_cache(maxsize=8)
 def get_composition_data(filename: Path | str) -> pl.DataFrame:
-    """Return a pandas DataFrame containing details of included elements and ions."""
+    """Return a DataFrame containing details of included elements and ions."""
     filename = Path(filename, "compositiondata.txt") if Path(filename).is_dir() else Path(filename)
 
     rows = []
@@ -252,8 +232,11 @@ def get_vpkt_config(modelpath: Path | str) -> dict[str, t.Any]:
             vpkt_config["nspectraperobs"] = 1
             vpkt_config["z_excludelist"] = [0]
 
+        timesline = vpkt_txt.readline().split()
         vpkt_config["time_limits_enabled"], vpkt_config["initial_time"], vpkt_config["final_time"] = (
-            int(x) for x in vpkt_txt.readline().split()
+            int(timesline[0]),
+            float(timesline[1]),
+            float(timesline[2]),
         )
 
     return vpkt_config
@@ -279,7 +262,7 @@ def get_grid_mapping(modelpath: Path | str) -> tuple[dict[int, list[int]], dict[
     assoc_cells: dict[int, list[int]] = dict(
         dfgrid
         .group_by("modelgridindex")
-        .agg(pl.col("cellindex").implode())
+        .agg(pl.col("cellindex"))
         .select([pl.col("modelgridindex"), pl.col("cellindex")])
         .iter_rows()
     )
@@ -334,7 +317,7 @@ def get_nu_grid(modelpath: Path) -> npt.NDArray[np.floating]:
 
 
 def get_deposition(modelpath: Path | str = ".") -> pl.LazyFrame:
-    """Return a polars DataFrame containing the deposition data."""
+    """Return a polars LazyFrame containing the deposition data."""
     if Path(modelpath).is_file():
         depfilepath = Path(modelpath)
         modelpath = Path(modelpath).parent
@@ -373,7 +356,7 @@ def get_deposition(modelpath: Path | str = ".") -> pl.LazyFrame:
 
 
 def get_timesteps(modelpath: Path | str) -> pl.LazyFrame:
-    """Return a DataFrame containing the timestep indicies, starts, mids, ends, deltas."""
+    """Return a LazyFrame containing the timestep indices, starts, mids, ends, deltas."""
     modelpath = Path(modelpath)
     # virtual path to code comparison workshop models
     if not modelpath.exists() and modelpath.parts[0] == "codecomparison":
@@ -391,7 +374,7 @@ def get_timesteps(modelpath: Path | str) -> pl.LazyFrame:
             .with_columns(pl.col("timestep").cast(pl.Int32))
         )
 
-    # use timestep.out if possible (allowing arbitrary timestep lengths)
+    # use timesteps.out if possible (allowing arbitrary timestep lengths)
     tsfilepath = Path(modelpath, "timesteps.out")
     if tsfilepath.exists():
         return (
@@ -468,10 +451,10 @@ def get_time_range(
 
     time_days_lower, time_days_upper = None, None
 
-    if timemin and timemin > tends[-1]:
+    if timemin is not None and timemin > tends[-1]:
         print(f"{get_model_name(modelpath)}: WARNING timemin {timemin} is after the last timestep at {tends[-1]:.1f}")
         return -1, -1, -math.inf, -math.inf
-    if timemax and timemax < tstarts[0]:
+    if timemax is not None and timemax < tstarts[0]:
         print(
             f"{get_model_name(modelpath)}: WARNING timemax {timemax} is before the first timestep at {tstarts[0]:.1f}"
         )
@@ -483,7 +466,12 @@ def get_time_range(
         else:
             timestepmin = int(timestep_range_str)
             timestepmax = timestepmin
-    elif (timemin is not None and timemax is not None) or timedays_range_str is not None:
+    elif (timemin is not None or timemax is not None) or timedays_range_str is not None:
+        if timemin is None and timemax is not None:
+            timemin = -1.0
+        elif timemax is None and timemin is not None:
+            timemax = math.inf
+
         # time days range is specified
         timestepmin = None
         timestepmax = None
@@ -513,7 +501,7 @@ def get_time_range(
             msg = f"Time min {timemin} is greater than all timesteps ({tstarts[0]} to {tends[-1]})"
             raise ValueError(msg)
 
-        if not timemax:
+        if timemax is None:
             timemax = tends[-1]
         assert timemax is not None
 
@@ -579,7 +567,9 @@ def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | None, 
             msg = "Model dimensions must be 1, 2, or 3"
             raise ValueError(msg)
 
-    # earliest completely valid time is tmin plus maximum possible travel time from the origin to the corner
+    # if the initial conditions were perfect, then t_arrive = tmin would be valid already
+    # (with a free path, light from the origin at tmin would escape sometime later, but that travel time would be subtracted to get t_arrive = tmin),
+    # but we should at least wait until light signals from the origin reach the corners
     validrange_start_days = get_timestep_times(modelpath, loc="start")[0] * (1 + cornervmax / 29979245800)
 
     t_end = get_timestep_times(modelpath, loc="end")
@@ -599,7 +589,7 @@ def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | None, 
     assert isinstance(nts_last, int)
     nts_last_tend = t_end[nts_last]
 
-    # latest possible valid range is the end of the latest computed timestep plus the longest travel time
+    # last valid observer time is escape at the end of the latest computed timestep minus the longest travel time relative to origin
     # assume we're on a 3D propagation grid for safety (1D or 2D could reduce the travel time somewhat)
     validrange_end_days: float = nts_last_tend * (1 - math.sqrt(3 * vmax**2) / 29979245800)
 
@@ -633,7 +623,7 @@ def get_model_name(path: Path | str, maxlen: int | None = 50) -> str:
 
 
 def get_z_a_nucname(nucname: str) -> tuple[int, int]:
-    """Return atomic number and mass number from a string like 'Pb208', 'X_Pb208', or "nniso_Pb208' (returns 92, 208)."""
+    """Return atomic number and mass number from a string like 'Pb208', 'X_Pb208', or "nniso_Pb208' (returns 82, 208)."""
     if "_" in nucname:
         nucname = nucname.split("_")[1]
 
@@ -654,21 +644,15 @@ def get_elsymbolslist() -> list[str]:
     elsymbolslist()[26] = 'Fe'.
 
     """
-    return [
-        "n",
-        *pl.read_csv(get_config()["path_datadir"] / "elements.csv", has_header=True, separator=",")["symbol"].to_list(),
-    ]
+    return ["n", *pl.read_csv(get_path("datadir") / "elements.csv", has_header=True, separator=",")["symbol"].to_list()]
 
 
 def get_elsymbols_df() -> pl.LazyFrame:
-    """Return a polars DataFrame of atomic number and element symbols."""
+    """Return a polars LazyFrame of atomic number and element symbols."""
     return (
         pl
         .scan_csv(
-            get_config()["path_datadir"] / "elements.csv",
-            separator=",",
-            has_header=True,
-            schema_overrides={"Z": pl.Int32},
+            get_path("datadir") / "elements.csv", separator=",", has_header=True, schema_overrides={"Z": pl.Int32}
         )
         .drop("name")
         .rename({"symbol": "elsymbol", "Z": "atomic_number"})
@@ -696,7 +680,7 @@ def decode_roman_numeral(strin: str) -> int:
 
 def get_ion_stage_roman_numeral_df() -> pl.DataFrame:
     """Return a polars DataFrame of ionisation stage and roman numerals."""
-    return pl.DataFrame({"ion_stage_roman": roman_numerals[1:]}, schema={"ion_stage_roman": pl.Utf8}).with_row_index(
+    return pl.DataFrame({"ion_stage_roman": roman_numerals[1:]}, schema={"ion_stage_roman": pl.String}).with_row_index(
         "ion_stage", offset=1
     )
 
@@ -791,6 +775,11 @@ def set_args_from_dict(parser: argparse.ArgumentParser, kwargs: dict[str, t.Any]
                 kwargs[arg.dest] = kwargs.pop(optstring.lstrip("-"))
 
     parser.set_defaults(**kwargs)
+    # set required=False on all arguments to avoid errors about missing required arguments when we set defaults from kwargs
+    for arg in parser._actions:  # noqa: SLF001
+        if arg.default is not None:
+            arg.required = False
+
     if unknown := {k: v for k, v in kwargs.items() if k not in (arg.dest for arg in parser._actions)}:  # noqa: SLF001
         msg = f"Unknown argument names: {unknown}"
         raise ValueError(msg)
@@ -828,22 +817,11 @@ def parse_range_list(rngs: str | list[str] | list[int] | int, dictvars: dict[str
     return sorted(set(itertools.chain.from_iterable([parse_range(rng, dictvars or {}) for rng in rngs.split(",")])))
 
 
-def batched(iterable: Iterable[t.Any], n: int) -> Iterable[Sequence[int]]:
-    """Yield successive n-sized chunks from iterable."""
-    # when python 3.12 becomes the minimum version, use itertools.batched instead
-    assert n > 0, "n must be at least one"
-    it = iter(iterable)
-    batches = []
-    while batch := tuple(itertools.islice(it, n)):
-        batches.append(batch)
-    return batches
-
-
 def makelist(x: Sequence[t.Any] | str | Path | None) -> list[t.Any]:
     """If x is not a list (or is a string), make a list containing x."""
     if x is None:
         return []
-    return list(x) if isinstance(x, Iterable) else [x]
+    return [x] if isinstance(x, str | Path) else list(x)
 
 
 def trim_or_pad(requiredlength: int, *listoflistin: t.Any) -> Sequence[Sequence[t.Any]]:
@@ -914,7 +892,7 @@ def zopenpl(filename: Path | str, mode: str = "r", encoding: str | None = None) 
 
 def firstexisting(
     filelist: Sequence[str | Path] | str | Path,
-    folder: Path | str = Path(),
+    folder: Path | str = ".",
     tryzipped: bool = True,
     search_subfolders: bool = True,
 ) -> Path:
@@ -964,7 +942,7 @@ def firstexisting(
 
 
 def anyexist(
-    filelist: Sequence[str | Path], folder: Path | str = Path(), tryzipped: bool = True, search_subfolders: bool = True
+    filelist: Sequence[str | Path], folder: Path | str = ".", tryzipped: bool = True, search_subfolders: bool = True
 ) -> Path | None:
     """Return true if any files in file list exist."""
     try:
@@ -1086,7 +1064,7 @@ def merge_pdf_files(pdf_files: list[str]) -> None:
 
 
 def get_nuclides(modelpath: Path | str) -> pl.LazyFrame:
-    """Return LazyFrame with: pellet_nucindex atomic_number A nucname from nuclides.out file."""
+    """Return LazyFrame with columns: pellet_nucindex, atomic_number, A, nucname from nuclides.out file and the -1 initial energy special case."""
     filepath = Path(modelpath, "nuclides.out")
     if not filepath.is_file():
         msg = f"File {filepath} not found"
@@ -1104,11 +1082,11 @@ def get_nuclides(modelpath: Path | str) -> pl.LazyFrame:
         [
             pl.LazyFrame(
                 {
-                    "pellet_nucindex": -1,
-                    "atomic_number": -1,
-                    "A": -1,
-                    "elsymbol": "initial energy",
-                    "nucname": "initial energy",
+                    "pellet_nucindex": [-1],
+                    "atomic_number": [-1],
+                    "A": [-1],
+                    "elsymbol": ["initial energy"],
+                    "nucname": ["initial energy"],
                 },
                 schema=dfnuclides.collect_schema(),
             ),
@@ -1119,7 +1097,7 @@ def get_nuclides(modelpath: Path | str) -> pl.LazyFrame:
 
 
 def get_bflist(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame:
-    """Return a dict of bound-free transitions from bflist.out."""
+    """Return a LazyFrame of bound-free transitions from bflist.out."""
     compositiondata = get_composition_data(modelpath)
     bflistpath = firstexisting(["bflist.out", "bflist.dat"], folder=modelpath, tryzipped=True)
     print(f"Reading {bflistpath}")
@@ -1658,18 +1636,37 @@ def get_dirbin_labels(
     return angle_definitions
 
 
-def get_multiprocessing_pool() -> multiprocessing.pool.Pool:
-    """Return a multiprocessing pool that can be used to parallelize tasks."""
-    if sys.version_info >= (3, 13):
+def parallel_map[IterableType, ResultType](
+    fn: Callable[[IterableType], ResultType],
+    *iterables: Iterable[IterableType],
+    allow_multiprocessing: bool = True,
+    **kwargs: t.Any,
+) -> list[ResultType]:
+    """Execute a parallel map with a progress bar using either multithreading (for free-threading python or allow_multiprocessing=False) or multiprocessing."""
+    import multiprocessing as mp
+    import warnings
+
+    import tqdm.rich
+    from tqdm import TqdmExperimentalWarning
+
+    warnings.filterwarnings("ignore", category=TqdmExperimentalWarning)
+
+    use_multiprocessing = allow_multiprocessing
+    if allow_multiprocessing and sys.version_info >= (3, 13):
         with contextlib.suppress(AttributeError):
             if not sys._is_gil_enabled():  # noqa: SLF001
                 # return a thread pool if we have no GIL (free threading)
-                return multiprocessing.pool.ThreadPool()
-    # this is a workaround for to keep pytest-cov from crashing
-    try:
-        from pytest_cov.embed import cleanup_on_sigterm
-    except ImportError:
-        pass
+                use_multiprocessing = False
+
+    if use_multiprocessing:
+        mp.set_start_method("spawn", force=True)
+        from tqdm.contrib.concurrent import process_map
+
+        results = process_map(fn, *iterables, tqdm_class=tqdm.rich.tqdm, **kwargs)  # type: ignore[arg-type] # zuban: ignore[no-untyped-call]
     else:
-        cleanup_on_sigterm()
-    return multiprocessing.get_context("spawn").Pool(processes=get_config()["num_processes"])
+        from tqdm.contrib.concurrent import thread_map
+
+        results = thread_map(fn, *iterables, tqdm_class=tqdm.rich.tqdm, **kwargs)  # type: ignore[arg-type] # zuban: ignore[no-untyped-call]
+
+    assert isinstance(results, list)
+    return results

@@ -10,6 +10,7 @@ import time
 import typing as t
 from collections.abc import Collection
 from collections.abc import Sequence
+from itertools import batched
 from pathlib import Path
 
 import polars as pl
@@ -123,9 +124,10 @@ def get_rankbatch_parquetfile(
         )
 
         pldf_batch = pldf_batch.select(
+            # sort columns with timestep, modelgridindex, and titeration first, then the rest alphabetically
             sorted(
                 pldf_batch.columns,
-                key=lambda col: f"-{col!r}" if col in {"timestep", "modelgridindex", "titer"} else str(col),
+                key=lambda col: f"-{col!r}" if col in {"timestep", "modelgridindex", "titeration"} else str(col),
             )
         )
         print(f"took {time.perf_counter() - time_start:.1f} s. Writing parquet file...", end="", flush=True)
@@ -170,7 +172,10 @@ def join_cell_modeldata(
     """Join the estimator data with data from model.txt and derived quantities, e.g. density, volume, etc."""
     assert estimators is not None
     estimators = estimators.join(
-        at.get_timesteps(modelpath).select("timestep", "tmid_days", "twidth_days"),
+        at
+        .get_timesteps(modelpath)
+        .select("timestep", "tmid_days", "twidth_days")
+        .with_columns(tmid_days_prevtimestep=pl.col("tmid_days").shift(1)),
         on="timestep",
         how="left",
         coalesce=True,
@@ -187,19 +192,21 @@ def join_cell_modeldata(
     return estimators.join(dfmodel, on="modelgridindex", suffix="_initmodel").with_columns(
         rho=pl.col("init_rho") * (modelmeta["t_model_init_days"] / pl.col("tmid_days")) ** 3,
         volume=pl.col("init_volume") * (pl.col("tmid_days") / modelmeta["t_model_init_days"]) ** 3,
+        volume_prevtimestep=pl.col("init_volume")
+        * (pl.col("tmid_days_prevtimestep") / modelmeta["t_model_init_days"]) ** 3,
     ), modelmeta
 
 
 def scan_estimators(
-    modelpath: Path | str = Path(),
+    modelpath: Path | str = ".",
     modelgridindex: int | Sequence[int] | None = None,
     timestep: int | Sequence[int] | None = None,
     join_modeldata: bool = False,
     verbose: bool = False,
 ) -> pl.LazyFrame:
-    """Read estimator files into a dictionary of (timestep, modelgridindex): estimators.
+    """Read estimator files into a polars LazyFrame with columns for timestep, modelgridindex, and estimator values.
 
-    Selecting particular timesteps or modelgrid cells will using speed this up by reducing the number of files that must be read.
+    Selecting particular timesteps or modelgrid cells will speed this up by reducing the number of files that must be read.
     """
     modelpath = Path(modelpath)
     match_modelgridindex: Sequence[int] | None
@@ -235,7 +242,7 @@ def scan_estimators(
     )
     mpirank_groups = [
         (batchindex, mpiranks)
-        for batchindex, mpiranks in enumerate(at.misc.batched(mpiranklist, 100))
+        for batchindex, mpiranks in enumerate(batched(mpiranklist, 100))
         if mpiranks_matched.intersection(mpiranks)
     ]
 
@@ -303,7 +310,7 @@ def scan_estimators(
 
 
 def read_estimators(
-    modelpath: Path | str = Path(),
+    modelpath: Path | str = ".",
     modelgridindex: int | Sequence[int] | None = None,
     timestep: int | Sequence[int] | None = None,
     keys: Collection[str] | None = None,

@@ -6,7 +6,7 @@ for the ARTIS radiative transfer code.
 
 import sys
 
-if sys.version_info >= (3, 15) and hasattr(sys, "set_lazy_imports_filter"):  # noqa: RUF067
+if sys.version_info >= (3, 15) and hasattr(sys, "set_lazy_imports_filter") and hasattr(sys, "set_lazy_imports"):  # noqa: RUF067
     sys.set_lazy_imports_filter(
         lambda _importing, imported, _fromlist: (
             not imported.startswith((
@@ -17,6 +17,7 @@ if sys.version_info >= (3, 15) and hasattr(sys, "set_lazy_imports_filter"):  # n
                 "pandas.core",
                 "pandas._config",
                 "pyarrow._compute",
+                "typing",
             ))
         )
     )
@@ -43,22 +44,20 @@ from artistools import spectra as spectra
 from artistools import transitions as transitions
 from artistools import writecomparisondata as writecomparisondata
 from artistools.commands import addargs as addargs
+from artistools.commands import CustomArgHelpFormatter as CustomArgHelpFormatter
+from artistools.commands import get_path as get_path
 from artistools.commands import show_version as show_version
-from artistools.configuration import get_config as get_config
-from artistools.configuration import set_config as set_config
 from artistools.estimators import read_estimators as read_estimators
 from artistools.estimators import scan_estimators as scan_estimators
 from artistools.inputmodel import add_derived_cols_to_modeldata as add_derived_cols_to_modeldata
 from artistools.inputmodel import get_cell_angle as get_cell_angle
 from artistools.inputmodel import get_dfmodel_dimensions as get_dfmodel_dimensions
-from artistools.inputmodel import get_mean_cell_properties_of_angle_bin as get_mean_cell_properties_of_angle_bin
 from artistools.inputmodel import get_mgi_of_velocity_kms as get_mgi_of_velocity_kms
 from artistools.inputmodel import get_modeldata as get_modeldata
 from artistools.inputmodel import save_initelemabundances as save_initelemabundances
 from artistools.inputmodel import save_modeldata as save_modeldata
 from artistools.misc import anyexist as anyexist
 from artistools.misc import average_direction_bins as average_direction_bins
-from artistools.misc import CustomArgHelpFormatter as CustomArgHelpFormatter
 from artistools.misc import decode_roman_numeral as decode_roman_numeral
 from artistools.misc import firstexisting as firstexisting
 from artistools.misc import flatten_list as flatten_list
@@ -86,7 +85,6 @@ from artistools.misc import get_linelist_pldf as get_linelist_pldf
 from artistools.misc import get_model_name as get_model_name
 from artistools.misc import get_mpiranklist as get_mpiranklist
 from artistools.misc import get_mpirankofcell as get_mpirankofcell
-from artistools.misc import get_multiprocessing_pool as get_multiprocessing_pool
 from artistools.misc import get_nprocs as get_nprocs
 from artistools.misc import get_nu_grid as get_nu_grid
 from artistools.misc import get_nuclides as get_nuclides
@@ -108,6 +106,7 @@ from artistools.misc import LineTuple as LineTuple
 from artistools.misc import makelist as makelist
 from artistools.misc import match_closest_time as match_closest_time
 from artistools.misc import merge_pdf_files as merge_pdf_files
+from artistools.misc import parallel_map as parallel_map
 from artistools.misc import parse_range as parse_range
 from artistools.misc import parse_range_list as parse_range_list
 from artistools.misc import print_theta_phi_definitions as print_theta_phi_definitions

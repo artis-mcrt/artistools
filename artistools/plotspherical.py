@@ -151,8 +151,8 @@ def plot_spherical(
         pl
         .DataFrame(
             {
-                "phibinmonotonicasc": (d % nphibins for d in range(ndirbins)),
-                "costhetabin": (d // nphibins for d in range(ndirbins)),
+                "phibinmonotonicasc": [d % nphibins for d in range(ndirbins)],
+                "costhetabin": [d // nphibins for d in range(ndirbins)],
             },
             schema={"phibinmonotonicasc": pl.Int32, "costhetabin": pl.Int32},
         )
@@ -176,7 +176,7 @@ def plot_spherical(
 
     meshgrid_phi, meshgrid_theta = np.meshgrid(phigrid, thetagrid)
 
-    xwidth = float(figscale * at.get_config()["figwidth"])
+    xwidth = figscale * 5.0
     fig, axes = plt.subplots(
         len(plotvars),
         1,
@@ -316,7 +316,7 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
 
     dfestimators = at.estimators.scan_estimators(modelpath=args.modelpath) if "temperature" in args.plotvars else None
 
-    nprocs_read, dfpackets = at.packets.get_packets_pl(
+    nprocs_read, dfpackets = at.packets.get_packets(
         args.modelpath, args.maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
     dfpackets = at.packets.add_derived_columns_lazy(dfpackets, modelpath=args.modelpath)

@@ -21,7 +21,7 @@ def readfile(filepath: str | Path) -> dict[int, pl.LazyFrame]:
     """Read an ARTIS light curve file."""
     print(f"Reading {filepath}")
     lcdata: dict[int, pl.LazyFrame] = {}
-    if "_res" in str(Path(filepath).stem):
+    if "_res" in Path(filepath).stem:
         # get a dict of dfs with light curves at each viewing direction bin
         lcdata_res = pl.scan_csv(
             at.zopenpl(filepath), separator=" ", has_header=False, new_columns=["time", "lum", "lum_cmf"]
@@ -37,19 +37,6 @@ def readfile(filepath: str | Path) -> dict[int, pl.LazyFrame]:
             lcdata[-1] = lcdata[-1].select(pl.all().slice(0, pl.len() // 2))
 
     return lcdata
-
-
-def read_3d_gammalightcurve(filepath: str | Path) -> dict[int, pd.DataFrame]:
-    columns = ["time", *[str(i) for i in range(100)]]
-    lcdata = pd.read_csv(filepath, sep=r"\s+", header=None).set_axis(columns, axis=1)
-    # lcdata = lcdata.rename(columns={0: 'time', 1: 'lum', 2: 'lum_cmf'})
-
-    res_data = {}
-    for angle in range(100):
-        res_data[angle] = lcdata[["time", angle]]
-        res_data[angle] = res_data[angle].rename(columns={angle: "lum"})
-
-    return res_data
 
 
 def get_from_packets(
@@ -77,27 +64,25 @@ def get_from_packets(
     ).collect()
 
     _, modelmeta = at.inputmodel.get_modeldata(modelpath, printwarningsonly=True)
-    escapesurfacegamma = math.sqrt(1 - (modelmeta["vmax_cmps"] / 29979245800) ** 2)
 
     timebinstarts_plusend = [
         *dftimesteps_selected["tstart_days"],
         dftimesteps_selected.select(pl.col("tstart_days").last() + pl.col("twidth_days").last()).item(),
     ]
 
-    nphibins = at.get_viewingdirection_phibincount()
-    ncosthetabins = at.get_viewingdirection_costhetabincount()
-    ndirbins = at.get_viewingdirectionbincount()
-
     vpkt_config = at.get_vpkt_config(modelpath) if directionbins_are_vpkt_observers else None
     assert not directionbins_are_vpkt_observers or pellet_nucname is None  # we don't track which pellet led to vpkts
     if directionbins_are_vpkt_observers:
-        nprocs_read, dfpackets = at.packets.get_virtual_packets_pl(modelpath, maxpacketfiles=maxpacketfiles)
+        nprocs_read, dfpackets = at.packets.get_virtual_packets(modelpath, maxpacketfiles=maxpacketfiles)
     else:
-        nprocs_read, dfpackets = at.packets.get_packets_pl(
+        nprocs_read, dfpackets = at.packets.get_packets(
             modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type=escape_type
         )
+        nphibins = at.get_viewingdirection_phibincount()
+        ncosthetabins = at.get_viewingdirection_costhetabincount()
+        ndirbins = at.get_viewingdirectionbincount()
 
-    if not directionbins_are_vpkt_observers:
+        escapesurfacegamma = math.sqrt(1 - (modelmeta["vmax_cmps"] / 29979245800) ** 2)
         dfpackets = dfpackets.with_columns([
             (pl.col("escape_time") * escapesurfacegamma / 86400.0).alias("t_arrive_cmf_d")
         ])
@@ -197,7 +182,7 @@ def get_from_packets(
 def generate_band_lightcurve_data(
     modelpath: Path | str,
     args: argparse.Namespace,
-    angle: int = -1,
+    dirbin: int = -1,
     modelnumber: int | None = None,  # noqa: ARG001
 ) -> dict[str, t.Any]:
     """Integrate spectra to get band magnitude vs time. Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py."""
@@ -206,9 +191,9 @@ def generate_band_lightcurve_data(
     if args.plotvspecpol and Path(modelpath, "vpkt.txt").is_file():
         print("Found vpkt.txt, using virtual packets")
         stokes_params = (
-            at.spectra.get_vspecpol_data(vspecindex=angle, modelpath=modelpath)
-            if angle >= 0
-            else at.spectra.get_specpol_data(angle=angle, modelpath=modelpath)
+            at.spectra.get_vspecpol_data(vspecindex=dirbin, modelpath=modelpath)
+            if dirbin >= 0
+            else at.spectra.get_specpol_data(dirbin=dirbin, modelpath=modelpath)
         )
         vspecdata = stokes_params["I"]
         timearray = vspecdata.columns[1:]
@@ -246,7 +231,7 @@ def generate_band_lightcurve_data(
                 Path(modelpath),
                 timearray,
                 args,
-                angle=angle,
+                angle=dirbin,
                 average_over_phi=args.average_over_phi_angle,
                 average_over_theta=args.average_over_theta_angle,
             )
@@ -258,7 +243,7 @@ def generate_band_lightcurve_data(
         elif filter_name not in filters_dict:
             filters_dict[filter_name] = []
 
-    filterdir = Path(at.get_config()["path_artistools_dir"], "data/filters/")
+    filterdir = Path(at.get_path("artistools_dir"), "data/filters/")
 
     for filter_name in filters_list:
         if filter_name == "bol":
@@ -275,14 +260,14 @@ def generate_band_lightcurve_data(
                     time=time,
                     wavefilter_min=wavefilter_min,
                     wavefilter_max=wavefilter_max,
-                    angle=angle,
+                    angle=dirbin,
                     args=args,
                     average_over_phi=args.average_over_phi_angle,
                     average_over_theta=args.average_over_theta_angle,
                 )
 
                 if len(wavelength_from_spectrum) > len(wavefilter):
-                    interpolate_fn = interp1d(wavefilter, transmission, bounds_error=False, fill_value=0.0)
+                    interpolate_fn = interp1d(wavefilter, transmission, bounds_error=False, fill_value=0.0)  # pyrefly: ignore[bad-argument-type]
                     wavefilter = np.linspace(
                         np.min(wavelength_from_spectrum),
                         int(np.max(wavelength_from_spectrum)),
@@ -294,9 +279,12 @@ def generate_band_lightcurve_data(
                     wavelength_from_spectrum = np.linspace(wavefilter_min, wavefilter_max, len(wavefilter))
                     flux = interpolate_fn(wavelength_from_spectrum)
 
-                phot_filtobs_sn = evaluate_magnitudes(flux, transmission, wavelength_from_spectrum, zeropointenergyflux)
+                weighted_flux_obs = abs(np.trapezoid(flux * transmission, wavelength_from_spectrum))
+                assert isinstance(weighted_flux_obs, float)
+                phot_filtobs_sn: float = (
+                    0.0 if weighted_flux_obs == 0.0 else -2.5 * np.log10(weighted_flux_obs / zeropointenergyflux)
+                )
 
-                # print(time, phot_filtobs_sn)
                 if phot_filtobs_sn != 0.0:
                     phot_filtobs_sn -= 25  # Absolute magnitude
                 filters_dict[filter_name].append((time, phot_filtobs_sn))
@@ -312,7 +300,6 @@ def bolometric_magnitude(
     average_over_phi: bool = False,
     average_over_theta: bool = False,
 ) -> tuple[list[float], list[float]]:
-    from scipy import integrate
 
     magnitudes = []
     times = []
@@ -321,22 +308,20 @@ def bolometric_magnitude(
     for timestep, time in enumerate(float(time) for time in timearray):
         if (args.timemin is None or args.timemin <= time) and (args.timemax is None or args.timemax >= time):
             if angle == -1:
-                spectrum = at.spectra.get_spectrum(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)[
+                spectrum = at.spectra.get_spectra(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)[
                     -1
                 ].collect()
-
             elif args.plotvspecpol:
-                spectrum = at.spectra.get_vspecpol_spectrum(modelpath, time, angle, args)
+                spectrum = at.spectra.get_vspecpol_spectrum(modelpath, time, angle, args).collect()
             else:
-                spectrum = at.spectra.get_spectrum(
+                spectrum = at.spectra.get_spectra(
                     modelpath=modelpath,
-                    directionbins=[angle],
                     timestepmin=timestep,
                     timestepmax=timestep,
                     average_over_phi=average_over_phi,
                     average_over_theta=average_over_theta,
                 )[angle].collect()
-            integrated_flux = integrate.trapezoid(spectrum["f_lambda"], spectrum["lambda_angstroms"])
+            integrated_flux = np.trapezoid(spectrum["f_lambda"], spectrum["lambda_angstroms"])
             integrated_luminosity = integrated_flux * 4 * np.pi * np.power(Mpc_to_cm, 2)
             Mbol_sun = 4.74
             with np.errstate(divide="ignore"):
@@ -401,21 +386,6 @@ def get_spectrum_in_filter_range(
     return np.array(wavelength_from_spectrum), np.array(flux)
 
 
-def evaluate_magnitudes(
-    flux: npt.NDArray[np.floating],
-    transmission: npt.NDArray[np.floating],
-    wavelength_from_spectrum: npt.NDArray[np.floating],
-    zeropointenergyflux: float,
-) -> float:
-    from scipy import integrate
-
-    cf = flux * transmission
-    flux_obs = abs(integrate.trapezoid(cf, wavelength_from_spectrum))  # using trapezoidal rule to integrate
-    val = 0.0 if flux_obs == 0.0 else -2.5 * np.log10(flux_obs / zeropointenergyflux)
-    assert isinstance(val, float)
-    return val
-
-
 def get_band_lightcurve(
     band_lightcurve_data: dict[str, Sequence[tuple[float, float]]], band_name: str, args: argparse.Namespace
 ) -> tuple[Sequence[float], npt.NDArray[np.floating]]:
@@ -455,7 +425,7 @@ def get_colour_delta_mag(
 
 
 def read_hesma_lightcurve(args: argparse.Namespace) -> pd.DataFrame:
-    hesma_directory = Path(at.get_config()["path_artistools_dir"], "data/hesma")
+    hesma_directory = Path(at.get_path("artistools_dir"), "data/hesma")
     filename = args.plot_hesma_model
     hesma_modelname = hesma_directory / filename
 
@@ -472,10 +442,10 @@ def read_hesma_lightcurve(args: argparse.Namespace) -> pd.DataFrame:
 
 
 def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pd.DataFrame, dict[str, t.Any]]:
-    filepath = Path(at.get_config()["path_artistools_dir"], "data", "lightcurves", lightcurvefilename)
+    filepath = Path(at.get_path("artistools_dir"), "data", "lightcurves", lightcurvefilename)
     metadata = at.get_file_metadata(filepath)
 
-    data_path = Path(at.get_config()["path_artistools_dir"], f"data/lightcurves/{lightcurvefilename}")
+    data_path = Path(at.get_path("artistools_dir"), f"data/lightcurves/{lightcurvefilename}")
     lightcurve_data = pd.read_csv(data_path, comment="#")
     if len(lightcurve_data.keys()) == 1:
         lightcurve_data = pd.read_csv(data_path, comment="#", sep=r"\s+")
@@ -507,7 +477,7 @@ def read_bol_reflightcurve_data(lightcurvefilename: str | Path) -> tuple[pd.Data
     data_path = (
         Path(lightcurvefilename)
         if Path(lightcurvefilename).is_file()
-        else Path(at.get_config()["path_artistools_dir"], "data/lightcurves/bollightcurves", lightcurvefilename)
+        else Path(at.get_path("artistools_dir"), "data/lightcurves/bollightcurves", lightcurvefilename)
     )
 
     metadata = at.get_file_metadata(data_path)
@@ -536,7 +506,7 @@ def read_bol_reflightcurve_data(lightcurvefilename: str | Path) -> tuple[pd.Data
 
 
 def get_sn_sample_bol() -> tuple[t.Any, str]:
-    datafilepath = Path(at.get_config()["path_artistools_dir"], "data", "lightcurves", "SNsample", "bololc.txt")
+    datafilepath = Path(at.get_path("artistools_dir"), "data", "lightcurves", "SNsample", "bololc.txt")
     sn_data = pd.read_csv(datafilepath, sep=r"\s+", comment="#")
 
     print(sn_data)
@@ -582,7 +552,7 @@ def get_sn_sample_bol() -> tuple[t.Any, str]:
 
 
 def get_phillips_relation_data() -> tuple[pd.DataFrame, str]:
-    datafilepath = Path(at.get_config()["path_artistools_dir"], "data", "lightcurves", "SNsample", "CfA3_Phillips.dat")
+    datafilepath = Path(at.get_path("artistools_dir"), "data", "lightcurves", "SNsample", "CfA3_Phillips.dat")
     sn_data = pd.read_csv(datafilepath, sep=r"\s+", comment="#")
     print(sn_data)
 

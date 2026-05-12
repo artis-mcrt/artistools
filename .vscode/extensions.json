@@ -4,6 +4,6 @@
     "sourcery.sourcery",
     "usernamehw.errorlens",
     "rust-lang.rust-analyzer",
-    "astral-sh.ty"
+    "detachhead.basedpyright"
   ]
 }

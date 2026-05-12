@@ -5,12 +5,11 @@ from unittest import mock
 import matplotlib.axes as mplax
 import numpy as np
 from pytest_codspeed.plugin import BenchmarkFixture
-from scipy import integrate
 
 import artistools as at
 
-modelpath = at.get_config()["path_testdata"] / "testmodel"
-outputpath = at.get_config()["path_testoutput"]
+modelpath = at.get_path("testdata") / "testmodel"
+outputpath = at.get_path("testoutput")
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
@@ -26,7 +25,7 @@ def test_lightcurve_plot(mockplot: t.Any, benchmark: BenchmarkFixture) -> None:
     assert np.isclose(arr_time_d.mean(), 293.67411, rtol=1e-4)
     assert np.isclose(arr_time_d.std(), 22.2348791, rtol=1e-4)
 
-    integral = integrate.trapezoid(arr_lum, arr_time_d)
+    integral = np.trapezoid(arr_lum, arr_time_d)
     assert np.isclose(integral, 2.4189054554e42, rtol=1e-2)
 
     assert np.isclose(arr_lum.mean(), 3.231155e40, rtol=1e-4)
@@ -53,7 +52,7 @@ def test_lightcurve_plot_frompackets(mockplot: t.Any, benchmark: BenchmarkFixtur
     assert np.isclose(arr_time_d.mean(), 293.67411, rtol=1e-4)
     assert np.isclose(arr_time_d.std(), 22.23483, rtol=1e-4)
 
-    integral = integrate.trapezoid(arr_lum, arr_time_d)
+    integral = np.trapezoid(arr_lum, arr_time_d)
 
     assert np.isclose(integral, 9.0323767e40, rtol=1e-2)
 

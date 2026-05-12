@@ -12,6 +12,7 @@ import argcomplete
 import numpy as np
 import numpy.typing as npt
 import polars as pl
+import polars.selectors as cs
 
 import artistools as at
 
@@ -22,7 +23,7 @@ t_model_init_days = 0.1 * day  # snapshot time is fixed by the npz files
 
 
 def sphkernel(
-    dist: npt.NDArray[np.floating], hsph: float | npt.NDArray[np.floating], nu: float
+    dist: npt.NDArray[np.floating], hsph: float | npt.NDArray[np.float64], nu: float
 ) -> npt.NDArray[np.floating]:
     # smoothing kernel for SPH-like interpolation of particle
     # data
@@ -512,11 +513,11 @@ def map_to_artis(
         if eqsymfac == 1:
             dfmodel = pl.DataFrame({
                 "inputcellid": range(1, numb_cells + 1),
-                "pos_rcyl_mid": (pos_t_s_grid_rad).flatten(order="F"),
-                "pos_z_mid": (pos_t_s_grid_z).flatten(order="F"),
-                "rho": (rho_interpol).flatten(order="F"),
-                "q": (q_ergperg).flatten(order="F"),
-                "Ye": (ye_interpol).flatten(order="F"),
+                "pos_rcyl_mid": (pos_t_s_grid_rad).flatten(order="F").tolist(),
+                "pos_z_mid": (pos_t_s_grid_z).flatten(order="F").tolist(),
+                "rho": (rho_interpol).flatten(order="F").tolist(),
+                "q": (q_ergperg).flatten(order="F").tolist(),
+                "Ye": (ye_interpol).flatten(order="F").tolist(),
             })
         else:
             # equatorial symmetry -> have to reflect
@@ -527,11 +528,11 @@ def map_to_artis(
             ye_interpol = z_reflect(ye_interpol)
             dfmodel = pl.DataFrame({
                 "inputcellid": range(1, numb_cells + 1),
-                "pos_rcyl_mid": (pos_t_s_grid_rad).flatten(order="F"),
-                "pos_z_mid": (pos_t_s_grid_z).flatten(order="F"),
-                "rho": (rho_interpol).flatten(order="F"),
-                "q": (q_ergperg).flatten(order="F"),
-                "Ye": (ye_interpol).flatten(order="F"),
+                "pos_rcyl_mid": (pos_t_s_grid_rad).flatten(order="F").tolist(),
+                "pos_z_mid": (pos_t_s_grid_z).flatten(order="F").tolist(),
+                "rho": (rho_interpol).flatten(order="F").tolist(),
+                "q": (q_ergperg).flatten(order="F").tolist(),
+                "Ye": (ye_interpol).flatten(order="F").tolist(),
             })
 
         assert pos_t_s_grid_rad.shape == (ngridrcyl, ngridz)
@@ -545,12 +546,12 @@ def map_to_artis(
         numb_cells = grid_dims[0] * grid_dims[1] * grid_dims[2]
         dfmodel = pl.DataFrame({
             "inputcellid": range(1, numb_cells + 1),
-            "pos_x_min": (x3d).flatten(order="F"),
-            "pos_y_min": (y3d).flatten(order="F"),
-            "pos_z_min": (z3d).flatten(order="F"),
-            "rho": (rho_interpol).flatten(order="F"),
-            "q": (q_ergperg).flatten(order="F"),
-            "Ye": (ye_interpol).flatten(order="F"),
+            "pos_x_min": (x3d).flatten(order="F").tolist(),
+            "pos_y_min": (y3d).flatten(order="F").tolist(),
+            "pos_z_min": (z3d).flatten(order="F").tolist(),
+            "rho": (rho_interpol).flatten(order="F").tolist(),
+            "q": (q_ergperg).flatten(order="F").tolist(),
+            "Ye": (ye_interpol).flatten(order="F").tolist(),
         })
 
         assert x3d.shape == (grid_dims[0], grid_dims[1], grid_dims[2])
@@ -605,13 +606,14 @@ def map_to_artis(
             pl.Series("vel_r_mid_on_c", vel_r_mid_on_c),
             pl.lit(cell_width**3).alias("volume"),
         ])
-        M_tot_before_replacing = (dfmodel["rho"] * dfmodel["volume"]).sum() / msol
+        M_tot_before_replacing = dfmodel.select(pl.col("rho").dot(pl.col("volume"))).item() / msol
 
         # 2) load dynamical ejecta model
         # load second model as Pandas DF
         dyn_model: pl.DataFrame = at.inputmodel.get_modeldata(
             modelpath=Path(replacedyn), derived_cols=["volume", "velocity"]
         )[0].collect()
+        dyn_model = dyn_model.with_columns(dfmodel["bin_state"].alias("bin_state"))
         dyn_abunds = at.inputmodel.get_initelemabundances(modelpath=Path(replacedyn))
         dyn_model = dyn_model.drop(["tracercount", "modelgridindex"])
 
@@ -666,7 +668,9 @@ def map_to_artis(
             ])
             # write "replaced" ejecta to seperate model files for plotting / consistency check
             # 1) 3D dynamical ejecta weighted but not scaled
-            dyn_model = dyn_model.with_columns([pl.col("rho") * pl.col("bin_state")])
+            dyn_model = dyn_model.join(
+                dfmodel.select(["inputcellid", "bin_state"]), on="inputcellid", how="left"
+            ).with_columns((pl.col("rho") * pl.col("bin_state")).alias("rho"))
             at.inputmodel.save_initelemabundances(dfelabundances=dyn_abunds, outpath=Path("dyn_abunds.txt"))
             dyn_modelmeta = {
                 "dimensions": 3,
@@ -702,7 +706,9 @@ def map_to_artis(
 
             dyn_model = dyn_model.rename({col: f"{col}_dyn" for col in X_list})
 
-            dfmodel = dfmodel.join(dyn_model.select(["id"] + [f"{col}_dyn" for col in X_list]), on="id", how="left")
+            dfmodel = dfmodel.join(
+                dyn_model.select(["inputcellid"] + [f"{col}_dyn" for col in X_list]), on="inputcellid", how="left"
+            )
 
             dfmodel = dfmodel.with_columns([
                 (pl.col(f"{col}_dyn") * pl.col("beta_3D") + pl.col(col) * pl.col("beta_2D")).alias(col)
@@ -734,6 +740,7 @@ def map_to_artis(
                 if elem_str == "X_N":
                     elem_str = "X_n"
                 if elem_str in dictelabunds:
+                    dictelabunds[elem_str] = dictelabunds[elem_str].copy()
                     dictelabunds[elem_str] += interpol_X_iso
                 else:
                     dictelabunds[elem_str] = interpol_X_iso
@@ -756,24 +763,47 @@ def map_to_artis(
 
             # do replacement in dfelabundances...
             # obtain dfelabundances from the dyn model first again
-            dfabundances = pl.concat([
-                pl.DataFrame(dfelabundances.filter(~pl.col("inputcellid").is_in(id_list))),
-                pl.DataFrame(dyn_abunds.filter(pl.col("inputcellid").is_in(id_list))),
-            ]).sort("inputcellid")
+            dyn_abunds = dyn_abunds.collect()
+            common_cols = list(set(dfelabundances.columns).intersection(dyn_abunds.columns))
+            dfelabundances_cast = (
+                dfelabundances
+                .select(common_cols)
+                .with_columns(cs.float().cast(pl.Float64), pl.col("inputcellid").cast(pl.Int32))
+                .filter(~pl.col("inputcellid").is_in(id_list))
+            )
+
+            dyn_abunds_cast = (
+                dyn_abunds
+                .select(common_cols)
+                .with_columns([cs.float().cast(pl.Float64)])
+                .filter(pl.col("inputcellid").is_in(id_list))
+            )
+
+            dfabundances = pl.concat([dfelabundances_cast, dyn_abunds_cast]).sort("inputcellid")
 
             # ... and in the model dataframe
-            dfmodel = pl.concat([
-                dfmodel.filter(~pl.col("inputcellid").is_in(id_list)),
-                dyn_model.filter(pl.col("inputcellid").is_in(id_list)),
-            ]).sort("inputcellid")
+            common_cols = list(set(dfmodel.columns).intersection(dyn_model.columns))
+            dfmodel_cast = (
+                dfmodel
+                .select(common_cols)
+                .with_columns(cs.float().cast(pl.Float32), pl.col("inputcellid").cast(pl.Int32))
+                .filter(~pl.col("inputcellid").is_in(id_list))
+            )
+            dyn_model_cast = (
+                dyn_model
+                .select(common_cols)
+                .with_columns(cs.float().cast(pl.Float32))
+                .filter(pl.col("inputcellid").is_in(id_list))
+            )
+            dfmodel = pl.concat([dfmodel_cast, dyn_model_cast]).sort("inputcellid")
 
-            M_tot_after_replacing = (dfmodel["rho"] * dfmodel["volume"]).sum() / msol
+            M_tot_after_replacing = dfmodel.select(pl.col("rho").dot(pl.col("volume"))).item() / msol
 
             # perform mass scalings
             if global_dyn_scale:
                 Delta_M = M_tot_before_replacing - M_tot_after_replacing
                 dyn_DF = dfmodel.filter(pl.col("inputcellid").is_in(id_list))
-                M_dyn_prev = (dyn_DF.select((pl.col("rho") * V_dfmodel).sum()).item()) / msol
+                M_dyn_prev = (dyn_DF.select((pl.col("rho") * pl.col("volume")).sum()).item()) / msol
                 print(f"  Dynamical ejecta mass after replacing: {M_dyn_prev} Msun")
 
                 global_mass_scaling = (M_dyn_prev + Delta_M) / M_dyn_prev
@@ -798,7 +828,7 @@ def map_to_artis(
                 v_range_id_list = dfmodel.filter(mask).select("inputcellid").to_series().to_list()
 
                 dyn_DF_vrange = dfmodel.filter(pl.col("inputcellid").is_in(v_range_id_list))
-                M_dyn_vrange_prev = (dyn_DF_vrange.select((pl.col("rho") * V_dfmodel).sum()).item()) / msol
+                M_dyn_vrange_prev = (dyn_DF_vrange.select((pl.col("rho") * pl.col("volume")).sum()).item()) / msol
                 print(f"  Dynamical ejecta mass after replacing: {M_dyn_vrange_prev} Msun")
 
                 local_mass_scaling = (M_dyn_vrange_prev + Delta_M) / M_dyn_vrange_prev
@@ -834,8 +864,6 @@ def map_to_artis(
         print("Done!")
 
         dfelabundances = dfabundances
-        if not isinstance(dfelabundances, pl.DataFrame):
-            dfelabundances = pl.from_pandas(dfelabundances)
 
     if model_dim == 2:
         # create modelmeta dictionary
@@ -946,9 +974,9 @@ def merge_neighbour_cells(
         "inputcellid": range(1, new_numb_cells + 1),
         "pos_rcyl_mid": np.tile(r_mid_grid, N_cell_z_new),
         "pos_z_mid": np.repeat(z_mid_grid, N_cell_r_new),
-        "rho": new_rho_arr,
-        "q": new_q_arr,
-        "Ye": new_ye_arr,
+        "rho": new_rho_arr.tolist(),
+        "q": new_q_arr.tolist(),
+        "Ye": new_ye_arr.tolist(),
     })
 
     # now map the abundances

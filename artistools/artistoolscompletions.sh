@@ -42,7 +42,7 @@ _python_argcomplete() {
         if is-at-least 5.8; then
             nosort=(-o nosort)
         fi
-        if [[ "${completions-}" =~ ([^\\]): && "${match[1]}" =~ [=/:] ]]; then
+        if [[ "${completions-}" =~ ([^\\\\]): && "${match[1]}" =~ [=/:] ]]; then
             nospace=(-S '')
         fi
         _describe "${words[1]}" completions "${nosort[@]}" "${nospace[@]}"

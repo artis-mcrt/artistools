@@ -289,19 +289,18 @@ def add_mass_to_center(
     vmax: float,  # noqa: ARG001
     args: argparse.Namespace,  # noqa: ARG001
 ) -> pd.DataFrame:
-    from scipy import integrate
 
     print(griddata)
 
     # Just (2021) Fig. 16 top left panel
     vel_hole = [0, 0.02, 0.05, 0.07, 0.09, 0.095, 0.1]
     mass_hole = [3e-4, 3e-4, 2e-4, 1e-4, 2e-5, 1e-5, 1e-9]
-    mass_integrated = integrate.trapezoid(y=mass_hole, x=vel_hole)  # Msun
+    mass_integrated = np.trapezoid(y=mass_hole, x=vel_hole)  # Msun
 
     # # Just (2021) Fig. 16 4th down, left panel
     # vel_hole = [0, 0.02, 0.05, 0.1, 0.15, 0.16]
     # mass_hole = [4e-3, 2e-3, 1e-3, 1e-4, 6e-6, 1e-9]
-    # mass_integrated = integrate.trapezoid(y=mass_hole, x=vel_hole)  # Msun
+    # mass_integrated = np.trapezoid(y=mass_hole, x=vel_hole)  # Msun
 
     v_outer_hole = 0.1 * CLIGHT  # cm/s
     pos_outer_hole = v_outer_hole * t_model_in_days * (24.0 * 3600)  # cm
@@ -364,9 +363,9 @@ def makemodelfromgriddata(
     assert isinstance(dfmodel, pl.DataFrame)
     dfmodel = dfmodel.with_columns(pl.col("inputcellid").cast(pl.Int32))
     if scalemass != 1.0:
-        origmass_msun = dfmodel["mass_g"].sum() / 2.99792458e33
+        origmass_msun = float(dfmodel["mass_g"].sum()) / 2.99792458e33
         dfmodel = dfmodel.with_columns(cs.by_name("rho", "mass_g", require_all=False) * scalemass)
-        newmass_msun = dfmodel["mass_g"].sum() / 2.99792458e33
+        newmass_msun = float(dfmodel["mass_g"].sum()) / 2.99792458e33
         operationmsg = f"densities are scaled by factor of {scalemass} to increase total mass from {origmass_msun:.2e} to {newmass_msun:.2e} Msun"
         print(operationmsg)
         modelmeta["headercommentlines"].append(operationmsg)

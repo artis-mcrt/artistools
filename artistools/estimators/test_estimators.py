@@ -1,23 +1,21 @@
 import typing as t
-from pathlib import Path
 from unittest import mock
 
 import matplotlib.axes as mplax
 import numpy as np
 import polars as pl
 import pytest
-from pytest_codspeed.plugin import BenchmarkFixture
 
 import artistools as at
 
-modelpath = at.get_config()["path_testdata"] / "testmodel"
-modelpath_classic_3d = at.get_config()["path_testdata"] / "test-classicmode_3d"
-outputpath = Path(at.get_config()["path_testoutput"])
+modelpath = at.get_path("testdata") / "testmodel"
+modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
+outputpath = at.get_path("testoutput")
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
-def test_estimator_snapshot(mockplot: t.Any, benchmark: BenchmarkFixture) -> None:
+def test_estimator_snapshot(mockplot: t.Any) -> None:
     plotlist = [
         [["initabundances", ["Fe", "Ni_stable", "Ni_56"]]],
         ["nne"],
@@ -92,7 +90,7 @@ def test_estimator_snapshot(mockplot: t.Any, benchmark: BenchmarkFixture) -> Non
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
-def test_estimator_averaging(mockplot: t.Any, benchmark: BenchmarkFixture) -> None:
+def test_estimator_averaging(mockplot: t.Any) -> None:
     plotlist = [
         [["initabundances", ["Fe", "Ni_stable", "Ni_56"]]],
         ["nne"],

@@ -18,7 +18,7 @@ import pandas as pd
 import polars as pl
 import polars.selectors as cs
 
-from artistools.configuration import get_config
+from artistools.commands import get_path
 from artistools.misc import firstexisting
 from artistools.misc import get_atomic_number
 from artistools.misc import get_elsymbol
@@ -346,7 +346,7 @@ def read_modelfile_text(
 
 
 def get_modeldata(
-    modelpath: Path | str = Path(),
+    modelpath: Path | str = ".",
     get_elemabundances: bool = False,
     derived_cols: Sequence[str] | str | None = None,
     printwarningsonly: bool = False,
@@ -354,7 +354,7 @@ def get_modeldata(
     """Read an artis model.txt file containing cell velocities, densities, and mass fraction abundances of radioactive nuclides.
 
     Returns dfmodel, modelmeta
-        - dfmodel: a pandas DataFrame with a row for each model grid cell
+        - dfmodel: a polars LazyFrame with a row for each model grid cell
         - modelmeta: a dictionary of input model parameters, with keys such as t_model_init_days, vmax_cmps, dimensions, etc.
 
     Parameters
@@ -378,7 +378,7 @@ def get_modeldata(
     elif not inputpath.exists() and inputpath.parts[0] == "codecomparison":
         modelpath = inputpath
         _, inputmodel, _ = modelpath.parts
-        textfilepath = Path(get_config()["codecomparisonmodelartismodelpath"], inputmodel, "model.txt")
+        textfilepath = Path(get_path("codecomparisonmodelartismodelpath"), inputmodel, "model.txt")
     else:
         raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), inputpath)
 
@@ -462,7 +462,7 @@ def get_empty_3d_model(
 ) -> tuple[pl.LazyFrame, dict[str, t.Any]]:
     xmax = vmax * t_model_init_days * 86400.0
 
-    modelmeta = {
+    modelmeta: dict[str, t.Any] = {
         "dimensions": 3,
         "t_model_init_days": t_model_init_days,
         "vmax_cmps": vmax,
@@ -733,8 +733,8 @@ def get_cell_angle(dfmodel: pd.DataFrame) -> pd.DataFrame:
         mid_point = [cell["pos_x_mid"], cell["pos_y_mid"], cell["pos_z_mid"]]
         cos_theta[i] = (np.dot(mid_point, syn_dir)) / (vec_len(mid_point) * vec_len(syn_dir))
 
-        vec1 = np.cross(mid_point, syn_dir)
-        vec2 = np.cross(xhat, syn_dir)
+        vec1 = list(np.cross(mid_point, syn_dir))
+        vec2 = list(np.cross(xhat, syn_dir))
         cosphi = np.dot(vec1, vec2) / vec_len(vec1) / vec_len(vec2)
 
         vec3 = np.cross(vec2, syn_dir)
@@ -769,48 +769,6 @@ def get_cell_angle(dfmodel: pd.DataFrame) -> pd.DataFrame:
     dfmodel.loc[:, "phi_bin"] = pd.cut(dfmodel["phi"], phibins, labels=labels)
 
     return dfmodel
-
-
-def get_mean_cell_properties_of_angle_bin(dfmodeldata: pd.DataFrame, vmax_cmps: float) -> dict[int, pd.DataFrame]:
-    if "cos_bin" not in dfmodeldata:
-        get_cell_angle(dfmodeldata)
-
-    dfmodeldata["rho"][dfmodeldata["rho"] == 0] = None
-
-    cell_velocities = np.unique(dfmodeldata["vel_x_min"].to_numpy(dtype=float))
-    cell_velocities = cell_velocities[cell_velocities >= 0]
-    velocity_bins = np.append(cell_velocities, vmax_cmps)
-
-    mid_velocities = np.unique(dfmodeldata["vel_x_mid"].to_numpy(dtype=float))
-    mid_velocities = mid_velocities[mid_velocities >= 0]
-
-    mean_bin_properties = {
-        bin_number: pd.DataFrame({
-            "velocity": mid_velocities,
-            "mean_rho": np.zeros_like(mid_velocities, dtype=float),
-            "mean_Ye": np.zeros_like(mid_velocities, dtype=float),
-            "mean_Q": np.zeros_like(mid_velocities, dtype=float),
-        })
-        for bin_number in range(10)
-    }
-
-    for bin_number in range(10):
-        # get cells with bin number
-        dfanglebin = dfmodeldata.query(
-            "cos_bin == @cos_bin_number", inplace=False, local_dict={"cos_bin_number": bin_number * 10}
-        )
-
-        binned = pd.cut(x=dfanglebin["vel_r_mid"], bins=list(velocity_bins), labels=False, include_lowest=True)
-        for binindex, mean_rho in dfanglebin.groupby(binned)["rho"].mean().iteritems():
-            mean_bin_properties[bin_number]["mean_rho"][binindex] += mean_rho
-        if "Ye" in dfmodeldata:
-            for binindex, mean_Ye in dfanglebin.groupby(binned)["Ye"].mean().iteritems():
-                mean_bin_properties[bin_number]["mean_Ye"][binindex] += mean_Ye
-        if "Q" in dfmodeldata:
-            for binindex, mean_Q in dfanglebin.groupby(binned)["Q"].mean().iteritems():
-                mean_bin_properties[bin_number]["mean_Q"][binindex] += mean_Q
-
-    return mean_bin_properties
 
 
 def get_standard_columns(
@@ -850,7 +808,7 @@ def save_modeldata(
     twolinespercell: bool = False,
     **kwargs: t.Any,
 ) -> None:
-    """Save an artis model.txt (density and composition versus velocity) from a pandas DataFrame of cell properties and other metadata such as the time after explosion.
+    """Write an artis model.txt (density and composition snapshot) from a DataFrame/LazyFrame of cell properties and other metadata such as the time after explosion.
 
     1D
     -------
@@ -1038,7 +996,7 @@ def get_mgi_of_velocity_kms(modelpath: Path, velocity: float) -> int | None:
     return mgi_upper
 
 
-def get_initelemabundances(modelpath: Path = Path(), printwarningsonly: bool = False) -> pl.LazyFrame:
+def get_initelemabundances(modelpath: Path | str = ".", printwarningsonly: bool = False) -> pl.LazyFrame:
     """Return a table of elemental mass fractions by cell from abundances."""
     textfilepath = firstexisting("abundances.txt", folder=modelpath, tryzipped=True)
     parquetfilepath = stripallsuffixes(Path(textfilepath)).with_suffix(".txt.parquet.tmp")
@@ -1160,7 +1118,7 @@ def save_initelemabundances(
     print(f"wrote {abundancefilename} (took {time.perf_counter() - timestart:.1f} seconds)")
 
 
-def save_empty_abundance_file(npts_model: int, outputfilepath: str | Path = Path()) -> None:
+def save_empty_abundance_file(npts_model: int, outputfilepath: str | Path = ".") -> None:
     """Save dummy abundance file with only zeros."""
     if Path(outputfilepath).is_dir():
         outputfilepath = Path(outputfilepath) / "abundances.txt"
@@ -1260,7 +1218,7 @@ def dimension_reduce_model(
         (
             (pl.col("vel_rcyl_mid") if outputdimensions == 2 else pl.col("vel_r_mid"))
             .cut(breaks=vel_r_bins, labels=[str(x) for x in range(-1, len(vel_r_bins))])
-            .cast(pl.Utf8)
+            .cast(pl.String)
             .cast(pl.Int32)
         ).alias("out_n_r")
     ).filter(pl.col("out_n_r").is_between(0, ncoordgridr - 1))
@@ -1273,7 +1231,7 @@ def dimension_reduce_model(
                     pl
                     .col("vel_z_mid")
                     .cut(breaks=vel_z_bins, labels=[str(x) for x in range(-1, len(vel_z_bins))])
-                    .cast(pl.Utf8)
+                    .cast(pl.String)
                     .cast(pl.Int32)
                 ).alias("out_n_z")
             )

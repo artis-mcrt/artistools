@@ -166,7 +166,7 @@ def maptogrid(
     rho = dfsnapshot["rho"].to_numpy()
     Ye = dfsnapshot["ye"].to_numpy()
 
-    totmass = dfsnapshot["pmass"].sum()
+    totmass = float(dfsnapshot["pmass"].sum())
     rmean = dfsnapshot["dis"].mean()
     assert isinstance(rmean, float)
     hmean = dfsnapshot["h"].mean()
