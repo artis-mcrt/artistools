@@ -232,14 +232,15 @@ unsafe-load-any-extension = true
 [tool.pyrefly]
 preset = "strict"
 project-excludes = [
-    '**/node_modules',
-    '**/__pycache__',
-    '**/.*',
-    'build',
-    'dist',
-    'target',
+    "**/node_modules",
+    "**/__pycache__",
+    "**/venv/**",
+    "**/.[!/.]*/**",
+    '**/build/**',
+    '**/dist/**',
+    '**/target/**',
     '**/version.py',
-    '.venv',
+    '**/.venv/**',
     '**/rd_cmfgen.py',
 ]
 python-interpreter-path = ".venv/bin/python3"

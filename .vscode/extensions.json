@@ -1,9 +1,8 @@
 {
   "recommendations": [
     "charliermarsh.ruff",
-    "sourcery.sourcery",
     "usernamehw.errorlens",
     "rust-lang.rust-analyzer",
-    "detachhead.basedpyright"
+    "meta.pyrefly"
   ]
 }
