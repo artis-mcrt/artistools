@@ -335,7 +335,7 @@ def process_trajectory(
             for c in value_cols
         ])
         traj_df = pl.concat([main, last_row])
-        traj_df = traj_df.fill_nan(0.0)
+        traj_df = traj_df.fill_null(0.0).fill_nan(0.0)
 
         traj_df.write_parquet(f"parquet/decay_powers_{traj_ID}.parquet")
     return decay_powers
