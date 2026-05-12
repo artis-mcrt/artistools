@@ -94,14 +94,18 @@ def plot_slice_modelcolumn(
     vmin_ax2 = dfmodelslice[f"pos_{plotaxis2}_min"].min() / t_model_s * unitfactor
     vmax_ax2 = dfmodelslice[f"pos_{plotaxis2}_max"].max() / t_model_s * unitfactor
     if colname == "rho":
-        vmin=-15
-        vmax=-7
+        if args.logcolorscale:
+            vmin = -15
+            vmax = -7
+        else:
+            vmin = 1e-15
+            vmax = 1e7
     elif colname == "Ye":
-        vmin=0
-        vmax=0.6
+        vmin = 0
+        vmax = 0.6
     else:
-        vmin=None 
-        vmax=None
+        vmin = None
+        vmax = None
     im = ax.imshow(
         valuegrid,
         cmap="viridis",
@@ -109,7 +113,7 @@ def plot_slice_modelcolumn(
         extent=(vmin_ax1, vmax_ax1, vmin_ax2, vmax_ax2),
         origin="lower",
         vmin=vmin,
-        vmax=vmax
+        vmax=vmax,
     )
 
     # plot_vmax = 0.2
@@ -194,7 +198,7 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
 
     for plotvar, ax in zip(args.plotvars, axes, strict=False):
         colname = plotvar if plotvar in df2dslice.columns else f"X_{plotvar.title()}"
-        
+
         im, _ = plot_slice_modelcolumn(
             ax, df2dslice, modelmeta, colname, plotaxis1, plotaxis2, modelmeta["t_model_init_days"], args
         )
@@ -206,10 +210,10 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
     axes[0].set_xlabel(xlabel)
     axes[0].set_ylabel(ylabel)
 
-    if "cellYe" not in args.plotvars and "tracercount" not in args.plotvars:
+    if "Ye" not in args.plotvars and "tracercount" not in args.plotvars:
         cbar.set_label(r"log10($\rho$ [g/cm³])" if args.logcolorscale else r"$\rho$ [g/cm³]")
     else:
-        cbar.set_label("Ye" if "cellYe" in args.plotvars else "tracercount")
+        cbar.set_label("Ye" if "Ye" in args.plotvars else "tracercount")
 
     defaultfilename = Path(modelpath) / f"plotcomposition_{','.join(v.lower() for v in args.plotvars)}.pdf"
     if args.outputfile and Path(args.outputfile).is_dir():
@@ -234,8 +238,8 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
     # choose what surface will be coloured by
     if "rho" in args.plotvars:
         coloursurfaceby = "rho"
-    elif "cellYe" in args.plotvars:
-        coloursurfaceby = "cellYe"
+    elif "Ye" in args.plotvars:
+        coloursurfaceby = "Ye"
     else:
         print(f"Colours set by X_{args.plotvars}")
         coloursurfaceby = f"X_{args.plotvars}"
@@ -245,10 +249,10 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
     vmax = modelmeta["vmax_cmps"]
     model = plmodel.collect().to_pandas(use_pyarrow_extension_array=True)
 
-    if "cellYe" in args.plotvars and "cellYe" not in model:
+    if "Ye" in args.plotvars and "Ye" not in model:
         file_contents = np.loadtxt(Path(modelpath) / "Ye.txt", unpack=True, skiprows=1)
         Ye = file_contents[1]
-        model["cellYe"] = Ye
+        model["Ye"] = Ye
 
     mincellparticles = 0
     if mincellparticles > 0:
@@ -357,7 +361,7 @@ def plot_phi_hist(modelpath: Path | str) -> None:
     # weights = dfmodel['q']
     weightby = "rho"
     weights = dfmodel[weightby]
-    labeldict = {"cellYe": "Ye"}
+    labeldict = {"Ye": "Ye"}
     if weightby in labeldict:
         weightby = labeldict[weightby]
 
