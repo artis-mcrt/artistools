@@ -3,13 +3,10 @@ import typing as t
 from collections.abc import Sequence
 from itertools import chain
 from pathlib import Path
-from typing import cast
-from typing import TYPE_CHECKING
 
 import argcomplete
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 import polars as pl
 
 import artistools as at
@@ -220,7 +217,9 @@ def plot_last_emission_velocities_histogram(
     print(f"open {outfilename}")
 
 
-def get_required_packets(modelpath: Path, Z: Sequence[int], ion_stage: Sequence[int], srII_triplet: bool = False) -> pl.LazyFrame:
+def get_required_packets(
+    modelpath: Path, Z: Sequence[int], ion_stage: Sequence[int], srII_triplet: bool = False
+) -> pl.LazyFrame:
     """Options for this function: Either the Sr II triplet, specific or all ion stages of an element."""
     # careful: ion_stage is counted from 1 here, i.e. 1 <-> neutral, 2 <-> singly ionized
 
@@ -271,7 +270,7 @@ def get_red_packet_set(
     wavelen: float | None = None,
     binwidth: float | None = None,
     srII_triplet: bool = False,
-) -> pd.DataFrame:
+) -> pl.LazyFrame:
     """Get packets in specific escape angle bins for observer direction.
 
     Options:
@@ -281,24 +280,17 @@ def get_red_packet_set(
         - wavelen+binwidth  -> wavelength slice
     """
     dfpackets_selected = get_required_packets(modelpath, Z, ion_stage, srII_triplet=srII_triplet)
-    dfpackets_selected = dfpackets_selected.with_columns(
-        (CLIGHT * 1e8 / pl.col("nu_rf")).alias("lambda_rf")
-    )
+    dfpackets_selected = dfpackets_selected.with_columns((CLIGHT * 1e8 / pl.col("nu_rf")).alias("lambda_rf"))
 
     if wavelen is not None and binwidth is not None:
         lam_min = wavelen - binwidth / 2
         lam_max = wavelen + binwidth / 2
 
         dfpackets_selected = dfpackets_selected.filter(
-            (pl.col("lambda_rf") > lam_min) &
-            (pl.col("lambda_rf") < lam_max)
+            (pl.col("lambda_rf") > lam_min) & (pl.col("lambda_rf") < lam_max)
         )
-    dfmodel, modelmeta = at.get_modeldata(modelpath=modelpath, printwarningsonly=True)
 
-    dfpackets_selected = dfpackets_selected.filter(
-        pl.col("dirbin").is_in(escape_angles)
-    )
-    return dfpackets_selected
+    return dfpackets_selected.filter(pl.col("dirbin").is_in(escape_angles))
 
 
 def packets_2d_hist_bin_and_ejecta_vel(
@@ -306,36 +298,22 @@ def packets_2d_hist_bin_and_ejecta_vel(
     tdays: float,
     srIItriplet: bool,
     colorlogscale: bool,
-    dirbin_range: list[int] | None = None,
+    dirbin_range: list[int],
     Z: int | None = None,
     ion_stage: str | None = None,
     wavelen: float | None = None,
     binwidth: float | None = None,
 ) -> None:
-    
+
     start_of_filename = ""
     if wavelen is not None:
         start_of_filename = f"{wavelen:.0f}A_"
-    if Z:
-        start_of_filename = f"{start_of_filename}_Z={Z}_"
-    else:
-        start_of_filename = f"{start_of_filename}_allelements_"
-    if ion_stage:
-        start_of_filename = f"{start_of_filename}_I={ion_stage}_"
-    else:
-        start_of_filename = f"{start_of_filename}_allions_"
+    start_of_filename = f"{start_of_filename}_Z={Z}_" if Z else f"{start_of_filename}_allelements_"
+    start_of_filename = f"{start_of_filename}_I={ion_stage}_" if ion_stage else f"{start_of_filename}_allions_"
 
     # Step 1) collect packets IDs and select according to arrival time
-    if Z:
-        Z_list = [Z]
-    else:
-        # get all Z of atomic data
-        Z_list = [i for i in range(1,101)]
-    if ion_stage:
-        ion_stage_list = [at.decode_roman_numeral(ion_stage)]
-    else:
-        # take all ionisation stages from data
-        ion_stage_list = [i for i in range(1,5)]
+    Z_list = [Z] if Z else list(range(1, 101))
+    ion_stage_list = [at.decode_roman_numeral(ion_stage)] if ion_stage else list(range(1, 5))
 
     dfpackets = get_red_packet_set(
         modelpath, dirbin_range, Z_list, ion_stage_list, wavelen=wavelen, binwidth=binwidth, srII_triplet=srIItriplet
@@ -351,61 +329,47 @@ def packets_2d_hist_bin_and_ejecta_vel(
     Delta = 0.5 * CLIGHT / 25 * 0.1 * DAY
 
     dfpackets = dfpackets.with_columns(
-        (
-            (((pl.col("em_posx")**2 + pl.col("em_posy")**2).sqrt()) / Delta)
-            .floor() * Delta
-        ).alias("R_inner")
+        ((((pl.col("em_posx") ** 2 + pl.col("em_posy") ** 2).sqrt()) / Delta).floor() * Delta).alias("R_inner")
     )
+    dfpackets = dfpackets.with_columns((pl.col("R_inner") + Delta).alias("R_outer"))
     dfpackets = dfpackets.with_columns(
-        (pl.col("R_inner") + Delta).alias("R_outer")
+        (np.pi * Delta * (pl.col("R_outer").cast(pl.Float64) ** 2 - pl.col("R_inner").cast(pl.Float64) ** 2)).alias(
+            "hollow_cyl_vol"
+        )
     )
-    dfpackets = dfpackets.with_columns(
-        (
-            np.pi * Delta * (
-                pl.col("R_outer").cast(pl.Float64)**2 -
-                pl.col("R_inner").cast(pl.Float64)**2
-            )
-        ).alias("hollow_cyl_vol")
-    )
-    dfpackets_selected = dfpackets.filter(
-        (pl.col("t_arrive_d") > t_min) & (pl.col("t_arrive_d") < t_max)
-    ).collect()
-    
+    dfpackets_selected = dfpackets.filter((pl.col("t_arrive_d") > t_min) & (pl.col("t_arrive_d") < t_max)).collect()
+
     # Step 2) create the heatmap
     weights = dfpackets_selected["e_rf"] / dfpackets_selected["hollow_cyl_vol"]
     # derive the emission velocity for each packet from the emission position
     heatmap, xedges, yedges = np.histogram2d(
-        (dfpackets_selected["em_posx"]**2 + dfpackets_selected["em_posy"]**2)**0.5 / dfpackets_selected["em_time"] / CLIGHT,
+        (dfpackets_selected["em_posx"] ** 2 + dfpackets_selected["em_posy"] ** 2) ** 0.5
+        / dfpackets_selected["em_time"]
+        / CLIGHT,
         dfpackets_selected["em_posz"] / dfpackets_selected["em_time"] / CLIGHT,
-        bins=[np.linspace(0,0.5, num=25), np.linspace(-0.5,0.5, num=50)],
+        bins=[np.linspace(0, 0.5, num=25), np.linspace(-0.5, 0.5, num=50)],
         weights=weights,
     )
-    heatmap = heatmap / (timemaxarray[timestep_max] - timeminarray[timestep_min])  # erg/day
-    heatmap /= DAY  # conversion from per erg/day to erg/s
+    heatmap /= (timemaxarray[timestep_max] - timeminarray[timestep_min]) / DAY  # conversion to erg/s/cm3
     heatmap = np.log(heatmap) if colorlogscale else heatmap
 
     heatmap = np.ma.masked_where(heatmap == 0.0, heatmap)
 
     fig, ax = plt.subplots(figsize=(3.5, 4.5))
-    z = heatmap.T 
+    z = heatmap.T
 
-    im = ax.imshow(
-        z,
-        origin="lower",   
-        cmap="viridis",  
-        extent=[xedges[0], xedges[-1], yedges[0], yedges[-1]],
-    )
-    ax.set_aspect('equal')
-    ax.set_xlabel(r"v$_r$")
-    ax.set_ylabel(r"v$_z$")
+    im = ax.imshow(z, origin="lower", cmap="viridis", extent=(xedges[0], xedges[-1], yedges[0], yedges[-1]))
+    ax.set_aspect("equal")
+    ax.set_xlabel(r"$v_r$")
+    ax.set_ylabel(r"$v_z$")
     cbar = fig.colorbar(im, ax=ax)
     if colorlogscale:
         cbar.set_label(r"log volumetric emissivity [erg/(s cm$^3$)]")
     else:
         cbar.set_label(r"volumetric emissivity [10$^{7}$ erg/(s cm$^3$)]")
 
-    ax.set_xticks(np.linspace(xedges[0], xedges[-1], 6)) 
-    ax.set_yticks(np.linspace(yedges[0], yedges[-1], 6)) 
+    ax.set_xticks(np.linspace(xedges[0], xedges[-1], 6))
+    ax.set_yticks(np.linspace(yedges[0], yedges[-1], 6))
 
     outfilename = (
         start_of_filename
@@ -465,7 +429,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.tdays,
         args.srIItriplet,
         args.colorlogscale,
-        dirbin_range=[dirbin + i for i in range(10)] if dirbin else [i for i in range(100)],
+        dirbin_range=[dirbin + i for i in range(10)] if dirbin else list(range(100)),
         Z=at.get_atomic_number(args.element) if args.element else None,
         ion_stage=args.ionstage,
         wavelen=args.wavelen,
