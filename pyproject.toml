@@ -148,6 +148,7 @@ include = [
 ]
 
 [tool.mypy]
+python_executable = ".venv/bin/python3"
 check_untyped_defs = true
 allow_redefinition_new = true
 disallow_any_explicit = false
@@ -229,6 +230,7 @@ ignored-modules = ["astropy", "extinction", "pyvista"]
 unsafe-load-any-extension = true
 
 [tool.pyrefly]
+preset = "strict"
 project-excludes = [
     '**/node_modules',
     '**/__pycache__',
@@ -240,11 +242,13 @@ project-excludes = [
     '.venv',
     '**/rd_cmfgen.py',
 ]
+python-interpreter-path = ".venv/bin/python3"
 
 [tool.pyrefly.errors]
 missing-import = false
 unbound-name = false
 unsupported-operation = false
+implicit-any-empty-container = false
 
 [tool.pyright]
 enableTypeIgnoreComments = false # leave these for mypy to interpret
