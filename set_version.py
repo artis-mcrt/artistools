@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import datetime as dt
 import re
 import subprocess
 from pathlib import Path
@@ -15,10 +16,8 @@ def update_pyproject_version(version: str) -> None:
     pyproject_path.write_text(pyproject_text_out, encoding="utf-8")
 
 
-def update_cff_citation(version: str) -> None:
+def update_cff_citation(version: str, date_released: str) -> None:
     cff_path = repo_path / "CITATION.cff"
-    # Convert e.g. "v2026.1.2" to "2026-01-02"
-    date_released = "-".join(part.zfill(2) for part in version.lstrip("v").split("."))
     cff_in = cff_path.read_text(encoding="utf-8")
 
     cff_out = re.sub(r"^version: .*$", f"version: {version}", cff_in, flags=re.MULTILINE)
@@ -28,9 +27,12 @@ def update_cff_citation(version: str) -> None:
 
 
 def main() -> None:
-    version = subprocess.check_output(["git", "describe", "--tags", "--abbrev=0"], text=True).strip().removeprefix("v")
-    assert "." in version, "Version must contain a dot"
-    print(version)
+    # get YYYY-MM-DD (no zero padding) from current date in UTC
+    date_released = dt.datetime.now(dt.UTC).strftime("%Y-%m-%d")
+    # get version with no zero padding and '.' for separator, e.g. 2026.4.20
+    version = ".".join(f"{int(part):d}" for part in date_released.split("-"))
+    print(f"Setting version to: {version}")
+    print(f"Date released: {date_released}")
 
     update_pyproject_version(version)
 
@@ -44,7 +46,7 @@ def main() -> None:
         msg = f"Failed:\n{' '.join(update_command)}"
         raise RuntimeError(msg) from e
 
-    update_cff_citation(version.removesuffix("+dev"))
+    update_cff_citation(version=version, date_released=date_released)
 
     (repo_path / "artistools" / "version.py").write_text(f'version = "{version}"\n', encoding="utf-8")
 

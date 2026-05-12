@@ -127,7 +127,7 @@ def make_1d_profile(args: argparse.Namespace, logprint: Callable[..., None]) -> 
             shell_spacing_power = args.coneshellspacingexponent  # Change this to get the desired velocity bin spacing
             logprint(f"Spacing shells in 1D model so they are equally spaced on a radius^{shell_spacing_power} grid")
             cone_radius_spacing = np.linspace(0, r_max**shell_spacing_power, N_shells + 1)
-            cone1d_bins = np.power(cone_radius_spacing, (1 / shell_spacing_power))
+            cone1d_bins = list(np.power(cone_radius_spacing, (1 / shell_spacing_power)))
         cone1d_df = []
         for i in range(len(cone1d_bins) - 1):
             # Filter cells within bin
@@ -305,7 +305,7 @@ def make_plot(args: argparse.Namespace, logprint: Callable[..., None]) -> None:
     cone = make_cone(args, logprint)
 
     cone = cone.loc[cone["rho_model"] > 0.0002]  # cut low densities (empty cells?) from plot
-    ax: Axes3D = plt.figure().gca(projection="3d")  # type: ignore[call-arg,no-any-unimported] # pyright: ignore[reportCallIssue]
+    ax: Axes3D = plt.figure().gca(projection="3d")  # type: ignore[call-arg,no-any-unimported] # pyright: ignore[reportCallIssue] # zuban: ignore [assignment]
 
     # print(cone['rho_model'])
 
@@ -320,7 +320,7 @@ def make_plot(args: argparse.Namespace, logprint: Callable[..., None]) -> None:
 
     ax.set_xlabel(r"x [10$^3$ km/s]")
     ax.set_ylabel(r"y [10$^3$ km/s]")
-    ax.set_zlabel(r"z [10$^3$ km/s]")
+    ax.set_zlabel(r"z [10$^3$ km/s]")  # zuban: ignore[no-untyped-call]
 
     # plt.scatter(cone[f'pos_x_min']/1e11, cone[f'pos_y_min']/1e11)
     plt.show()

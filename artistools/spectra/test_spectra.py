@@ -1,4 +1,3 @@
-import itertools
 import math
 import typing as t
 from pathlib import Path
@@ -93,7 +92,7 @@ def test_spectra_get_spectrum() -> None:
         assert isinstance(flambdamean, float)
         assert math.isclose(flambdamean, 1.0314682640070206e-14, abs_tol=1e-5)
 
-    dfspectrum = at.spectra.get_spectrum(modelpath, 55, 65, fluxfilterfunc=None)[-1].collect()
+    dfspectrum = at.spectra.get_spectra(modelpath, 55, 65, fluxfilterfunc=None)[-1].collect()
 
     assert len(dfspectrum["lambda_angstroms"]) == 1000
     assert len(dfspectrum["f_lambda"]) == 1000
@@ -116,25 +115,21 @@ def test_spectra_get_spectrum() -> None:
 
 @pytest.mark.benchmark
 def test_spectra_get_spectrum_polar_angles() -> None:
-    spectra = at.spectra.get_spectrum(
-        modelpath=modelpath_classic_3d,
-        directionbins=[0, 10, 20, 30, 40, 50, 60, 70, 80, 90],
-        average_over_phi=True,
-        timestepmin=20,
-        timestepmax=25,
+    spectra = at.spectra.get_spectra(
+        modelpath=modelpath_classic_3d, average_over_phi=True, timestepmin=20, timestepmax=25
     )
 
     assert all(
-        np.isclose(dirspec.collect()["lambda_angstroms"].to_numpy().mean(), 7510.074, rtol=1e-3)
+        math.isclose(dirspec.select(pl.col("lambda_angstroms").mean()).collect().item(), 7510.074, rel_tol=1e-3)
         for dirspec in spectra.values()
     )
     assert all(
-        np.isclose(dirspec.collect()["lambda_angstroms"].to_numpy().std(), 7647.317, rtol=1e-3)
+        math.isclose(dirspec.select(pl.col("lambda_angstroms").std()).collect().item(), 7647.317, rel_tol=1e-3)
         for dirspec in spectra.values()
     )
 
     results = {
-        dirbin: (dfspecdir.collect()["f_lambda"].mean(), dfspecdir.collect()["f_lambda"].std())
+        dirbin: (dfspecdir.select(mean=pl.col("f_lambda").mean(), std=pl.col("f_lambda").std()).collect().row(0))
         for dirbin, dfspecdir in spectra.items()
     }
 
@@ -153,13 +148,13 @@ def test_spectra_get_spectrum_polar_angles() -> None:
         90: (8.828105146277665e-12, 2.534549767123003e-11),
     }
 
-    for dirbin in spectra:
+    for dirbin in expected_results:
         result_mean = results[dirbin][0]
         assert isinstance(result_mean, float)
-        assert np.isclose(result_mean, expected_results[dirbin][0], rtol=1e-3)
+        assert math.isclose(result_mean, expected_results[dirbin][0], rel_tol=1e-3)
         result_std = results[dirbin][1]
         assert isinstance(result_std, float)
-        assert np.isclose(result_std, expected_results[dirbin][1], rtol=1e-3)
+        assert math.isclose(result_std, expected_results[dirbin][1], rel_tol=1e-3)
 
 
 @pytest.mark.benchmark
@@ -170,12 +165,12 @@ def test_spectra_get_spectrum_polar_angles_frompackets(benchmark: BenchmarkFixtu
     spectrafrompkts = benchmark(
         lambda: at.spectra.get_from_packets(
             modelpath=modelpath_classic_3d,
-            directionbins=[0, 10, 20, 30, 40, 50, 60, 70, 80, 90],
             average_over_phi=True,
             timelowdays=timelowdays,
             timehighdays=timehighdays,
             lambda_min=100,
             lambda_max=50000,
+            delta_lambda=100,
         )
     )
 
@@ -186,33 +181,37 @@ def test_spectra_get_spectrum_polar_angles_frompackets(benchmark: BenchmarkFixtu
         )
         for dirbin, dfspecdir in spectrafrompkts.items()
     }
-    print(spectrafrompkts[0].select(pl.col("f_lambda").max()).collect().item())
-
-    print(f"result = {results_pkts!r}")
 
     expected_results = {
-        0: (4.353162807671065e-12, 1.0314585154204157e-11),
-        10: (3.780868631353459e-12, 9.530203183864417e-12),
-        20: (4.4248548518147095e-12, 1.016688085146278e-11),
-        30: (3.851739986649016e-12, 9.244210651898158e-12),
-        40: (4.067660527301169e-12, 9.994984475703157e-12),
-        50: (4.062299127491974e-12, 9.823916680282592e-12),
-        60: (3.858248734817849e-12, 9.158354676696867e-12),
-        70: (3.997311747521441e-12, 9.53473201327172e-12),
-        80: (4.121620503814969e-12, 9.481333902503268e-12),
-        90: (4.29975310930973e-12, 9.95760966920298e-12),
+        0: (1.797586165792736e-12, 5.590298324735384e-12),
+        10: (1.5663080169205979e-12, 4.939024069693974e-12),
+        20: (1.774102666296695e-12, 5.520228221791345e-12),
+        30: (1.5995255247265518e-12, 4.9241711406614e-12),
+        40: (1.639362478438235e-12, 4.9895610982735244e-12),
+        50: (1.675756083487473e-12, 5.1182931882077005e-12),
+        60: (1.5760353230761404e-12, 4.736330612172389e-12),
+        70: (1.6263369485761792e-12, 4.913505318082798e-12),
+        80: (1.7403350676338995e-12, 5.223319837133006e-12),
+        90: (1.7311116087677568e-12, 5.333605673696894e-12),
     }
+    actual_results = {
+        dirbin: (float(results_pkts[dirbin][0]), float(results_pkts[dirbin][1])) for dirbin in expected_results
+    }
+    print(f"results: {actual_results}")
 
-    for dirbin, i in itertools.product(results_pkts, range(2)):
-        result = results_pkts[dirbin][i]
-        assert isinstance(result, float)
-        assert np.isclose(result, expected_results[dirbin][i], rtol=1e-3)
+    for dirbin in expected_results:
+        expected_mean = expected_results[dirbin][0]
+        actual_mean = actual_results[dirbin][0]
+        assert math.isclose(actual_mean, expected_mean, rel_tol=1e-3)
+        expected_std = expected_results[dirbin][1]
+        actual_std = actual_results[dirbin][1]
+        assert math.isclose(actual_std, expected_std, rel_tol=1e-3)
 
 
 def test_spectra_get_flux_contributions(benchmark: BenchmarkFixture) -> None:
     timestepmin = 40
     timestepmax = 80
-    dfspectrum = at.spectra.get_spectrum(
+    dfspectrum = at.spectra.get_spectra(
         modelpath=modelpath, timestepmin=timestepmin, timestepmax=timestepmax, fluxfilterfunc=None
     )[-1].collect()
 
@@ -232,9 +231,53 @@ def test_spectra_get_flux_contributions(benchmark: BenchmarkFixture) -> None:
     assert math.isclose(integrated_flux_specout, integrated_flux_emission, rel_tol=4e-3)
 
     # check each bin is not out by a large fraction
+    diff = [
+        abs(x - y)
+        for x, y in zip(reversed(array_flambda_emission_total), dfspectrum["f_lambda"].to_numpy(), strict=False)
+    ]
+    print(f"Max f_lambda difference {max(diff) / integrated_flux_specout}")
+    assert max(diff) / integrated_flux_specout < 1e-9
+
+
+def test_spectra_get_flux_contributions_from_packets(benchmark: BenchmarkFixture) -> None:
+    lambdamin = 200
+    lambdamax = 20000
+    delta_lambda = 100
+    timelowdays = 4
+    timehighdays = 7
+    dfspectrum = at.spectra.get_from_packets(
+        modelpath=modelpath_classic_3d,
+        timelowdays=timelowdays,
+        timehighdays=timehighdays,
+        lambda_min=lambdamin,
+        lambda_max=lambdamax,
+        delta_lambda=delta_lambda,
+    )[-1].collect()
+
+    integrated_flux_specout = np.trapezoid(dfspectrum["f_lambda"], x=dfspectrum["lambda_angstroms"])
+    _contribution_list, array_flambda_emission_total, arraylambda_angstroms = benchmark(
+        lambda: at.spectra.get_flux_contributions_from_packets(
+            modelpath_classic_3d,
+            timelowdays=timelowdays,
+            timehighdays=timehighdays,
+            emtypecolumn="emissiontype",
+            lambda_min=lambdamin,
+            lambda_max=lambdamax,
+            delta_lambda=delta_lambda,
+        )
+    )
+
+    integrated_flux_emission = np.trapezoid(array_flambda_emission_total, x=arraylambda_angstroms)
+
+    # total spectrum should be equal to the sum of all emission processes
+    print(f"Integrated flux from spec.out:     {integrated_flux_specout}")
+    print(f"Integrated flux from emission sum: {integrated_flux_emission}")
+    assert math.isclose(integrated_flux_specout, integrated_flux_emission, rel_tol=4e-3)
+
+    # check each bin is not out by a large fraction
     diff = [abs(x - y) for x, y in zip(array_flambda_emission_total, dfspectrum["f_lambda"].to_numpy(), strict=False)]
     print(f"Max f_lambda difference {max(diff) / integrated_flux_specout}")
-    assert max(diff) / integrated_flux_specout < 2e-3
+    assert max(diff) / integrated_flux_specout < 1e-10
 
 
 @pytest.mark.benchmark

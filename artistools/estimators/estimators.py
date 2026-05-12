@@ -10,6 +10,7 @@ import time
 import typing as t
 from collections.abc import Collection
 from collections.abc import Sequence
+from itertools import batched
 from pathlib import Path
 
 import polars as pl
@@ -123,9 +124,10 @@ def get_rankbatch_parquetfile(
         )
 
         pldf_batch = pldf_batch.select(
+            # sort columns with timestep, modelgridindex, and titeration first, then the rest alphabetically
             sorted(
                 pldf_batch.columns,
-                key=lambda col: f"-{col!r}" if col in {"timestep", "modelgridindex", "titer"} else str(col),
+                key=lambda col: f"-{col!r}" if col in {"timestep", "modelgridindex", "titeration"} else str(col),
             )
         )
         print(f"took {time.perf_counter() - time_start:.1f} s. Writing parquet file...", end="", flush=True)
@@ -202,9 +204,9 @@ def scan_estimators(
     join_modeldata: bool = False,
     verbose: bool = False,
 ) -> pl.LazyFrame:
-    """Read estimator files into a dictionary of (timestep, modelgridindex): estimators.
+    """Read estimator files into a polars LazyFrame with columns for timestep, modelgridindex, and estimator values.
 
-    Selecting particular timesteps or modelgrid cells will using speed this up by reducing the number of files that must be read.
+    Selecting particular timesteps or modelgrid cells will speed this up by reducing the number of files that must be read.
     """
     modelpath = Path(modelpath)
     match_modelgridindex: Sequence[int] | None
@@ -240,7 +242,7 @@ def scan_estimators(
     )
     mpirank_groups = [
         (batchindex, mpiranks)
-        for batchindex, mpiranks in enumerate(at.misc.batched(mpiranklist, 100))
+        for batchindex, mpiranks in enumerate(batched(mpiranklist, 100))
         if mpiranks_matched.intersection(mpiranks)
     ]
 

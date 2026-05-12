@@ -60,12 +60,9 @@ def make_downscaled_3d_grid(
     t_model_days = modelmeta["t_model_init_days"]
     vmax = modelmeta["vmax_cmps"]
 
-    cellindex = 0
-    for z, y, x in itertools.product(range(grid), range(grid), range(grid)):
+    for cellindex, (z, y, x) in enumerate(itertools.product(range(grid), range(grid), range(grid))):
         rho[x, y, z] = dfmodel.iloc[cellindex]["rho"]
         radioabunds[x, y, z, :] = dfmodel.iloc[cellindex][abundcols]
-
-        cellindex += 1
 
     rho_small = np.zeros((smallgrid, smallgrid, smallgrid))
     radioabunds_small = np.zeros((smallgrid, smallgrid, smallgrid, nabundcols))

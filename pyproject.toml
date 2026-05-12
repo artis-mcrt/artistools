@@ -1,5 +1,5 @@
 [build-system]
-requires = ["maturin>=1.12.6"]
+requires = ["maturin>=1.13.3"]
 build-backend = "maturin"
 
 [project]
@@ -24,7 +24,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Astronomy",
     "Topic :: Scientific/Engineering :: Physics",
 ]
-version = "2026.3.24"
+version = "2026.5.9"
 requires-python = ">=3.12"
 license = "MIT"
 license-files = ["LICEN[CS]E*"]
@@ -33,15 +33,15 @@ dependencies = [
     "argcomplete>=3.6.3",
     "extinction>=0.4.7",
     "matplotlib>=3.10.8",
-    "numpy>=2.4.2",
-    "pandas>=3.0.1",
-    "polars>=1.37.1",
+    "numpy>=2.4.4",
+    "pandas>=3.0.2",
+    "polars>=1.40.0",
     "pyarrow>=22.0.0",
     "pyyaml>=6.0.2",
-    "rich>=14.3.3",
-    "scipy>=1.17.0",
+    "rich>=15.0.0",
+    "scipy>=1.17.1",
     "tqdm>=4.67.3",
-    "zstandard>=0.23.0;python_version<'3.14'",
+    "zstandard>=0.25.0;python_version<'3.14'",
 ]
 
 [project.optional-dependencies]
@@ -49,30 +49,31 @@ extras = [
     "astropy>=7.2",
     "george>=0.4.4",
     "imageio>=2.37.2",
-    "plotly>=6.5.2",
-    "pypdf>=6.7.5",
-    "pynonthermal>=2025.4.8",
+    "plotly>=6.7.0",
+    "pypdf>=6.10.2",
+    "pynonthermal>=2026.4.27",
     "pyvista>=0.47.1;python_version<'3.15'", # not compatible with cpython 3.15 yet
 ]
 
 [dependency-groups]
 dev = [
-    "basedpyright>=1.38.3",
-    "imageio>=2.37.2",
-    "mypy>=1.19.1",
+    "basedpyright>=1.39.3",
+    "imageio>=2.37.3",
+    "mypy>=2.0.0",
     "pandas-stubs>=3.0.0.260204",
     "prek>=0.2.28",
-    "pynonthermal>=2025.4.8",
-    "pytest>=9.0.2",
-    "pytest-codspeed>=4.3.0",
-    "pytest-cov>=7.0.0",
+    "pynonthermal>=2026.4.27",
+    "pyrefly>=0.64.0",
+    "pytest>=9.0.3",
+    "pytest-codspeed>=4.4.0",
+    "pytest-cov>=7.1.0",
     "pytest-xdist[psutil]>=3.8.0",
-    "ruff>=0.15.6",
-    "ty>=0.0.14",
+    "ruff>=0.15.12",
     "typeguard>=4.5.1",
-    "types-python-dateutil>=2.9.0.20251115",
-    "types-pyyaml>=6.0.12.20250915",
-    "uv>=0.10.4",
+    "types-python-dateutil>=2.9.0.20260408",
+    "types-pyyaml>=6.0.12.20260408",
+    "types-tqdm>=4.67.3.20260408",
+    "zuban>=0.7.2",
 ]
 
 [project.urls]
@@ -227,6 +228,24 @@ disable = """
 ignored-modules = ["astropy", "extinction", "pyvista"]
 unsafe-load-any-extension = true
 
+[tool.pyrefly]
+project-excludes = [
+    '**/node_modules',
+    '**/__pycache__',
+    '**/.*',
+    'build',
+    'dist',
+    'target',
+    '**/version.py',
+    '.venv',
+    '**/rd_cmfgen.py',
+]
+
+[tool.pyrefly.errors]
+missing-import = false
+unbound-name = false
+unsupported-operation = false
+
 [tool.pyright]
 enableTypeIgnoreComments = false # leave these for mypy to interpret
 exclude = [
@@ -297,7 +316,7 @@ extend-exclude = [
     ".venv/**",
 ]
 preview = true
-required-version = ">=0.15.6"
+required-version = ">=0.15.12"
 
 [tool.ruff.format]
 skip-magic-trailing-comma = true
@@ -402,3 +421,7 @@ explicit = true
 exclude = [".*", "build/", ".eggs/", ".venv", "venv"]
 paths = ["artistools"]
 sort_by_size = true
+
+[tool.zuban]
+mode = "default"
+disallow_untyped_calls = false

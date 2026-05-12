@@ -5,6 +5,7 @@ import time
 import typing as t
 from collections.abc import Sequence
 from functools import lru_cache
+from itertools import batched
 from pathlib import Path
 
 import numpy as np
@@ -154,7 +155,7 @@ def add_derived_columns_lazy(
                 pl
                 .col("em_time")
                 .cut(breaks=timebins, labels=[str(x) for x in range(-1, len(timebins))])
-                .cast(pl.Utf8)
+                .cast(pl.String)
                 .cast(pl.Int32)
             ).alias("em_timestep")
         )
@@ -173,10 +174,10 @@ def add_derived_columns_lazy(
         ),
         emission_velocity_lineofsight=(
             (
-                (pl.col("em_posx") * pl.col("dirx")) ** 2
-                + (pl.col("em_posy") * pl.col("diry")) ** 2
-                + (pl.col("em_posz") * pl.col("dirz")) ** 2
-            ).sqrt()
+                (pl.col("em_posx") * pl.col("dirx"))
+                + (pl.col("em_posy") * pl.col("diry"))
+                + (pl.col("em_posz") * pl.col("dirz"))
+            )
             / pl.col("em_time")
         ),
     )
@@ -222,7 +223,7 @@ def add_derived_columns_lazy(
                 pl
                 .col("emission_velocity")
                 .cut(breaks=velbins, labels=[str(x) for x in range(-1, len(velbins))])
-                .cast(pl.Utf8)
+                .cast(pl.String)
                 .cast(pl.Int32)
             )
         )
@@ -232,7 +233,7 @@ def add_derived_columns_lazy(
                     pl
                     .col("true_emission_velocity")
                     .cut(breaks=velbins, labels=[str(x) for x in range(-1, len(velbins))])
-                    .cast(pl.Utf8)
+                    .cast(pl.String)
                     .cast(pl.Int32)
                 )
             )
@@ -397,7 +398,8 @@ def read_virtual_packets_text_file(vpacketsfiletext: Path | str, column_names: l
 
 
 def get_vpackets_text_columns(vpacketsfiletext: Path) -> list[str]:
-    firstline: str = at.zopen(vpacketsfiletext, mode="rt", encoding="utf-8").readline()
+    with at.zopen(vpacketsfiletext, mode="rt", encoding="utf-8") as f:
+        firstline: str = f.readline()
     assert firstline.lstrip().startswith("#")
     return firstline.lstrip("#").split()
 
@@ -508,7 +510,7 @@ def get_packets_batch_parquet_paths(
     """Get a list of Paths to parquet-formatted packets files, (which are generated from text files if needed)."""
     nprocs = at.get_nprocs(modelpath)
 
-    mpirank_groups_all = list(enumerate(at.misc.batched(range(nprocs), 100)))
+    mpirank_groups_all = list(enumerate(batched(range(nprocs), 100)))
     mpirank_groups = [
         (batchindex, batch_mpiranks)
         for batchindex, batch_mpiranks in mpirank_groups_all
@@ -535,7 +537,7 @@ def get_packets_batch_parquet_paths(
     return nprocs_read, parquetpacketsfiles
 
 
-def get_virtual_packets_pl(modelpath: str | Path, maxpacketfiles: int | None = None) -> tuple[int, pl.LazyFrame]:
+def get_virtual_packets(modelpath: str | Path, maxpacketfiles: int | None = None) -> tuple[int, pl.LazyFrame]:
     nprocs_read, vpacketparquetfiles = get_packets_batch_parquet_paths(
         modelpath, maxpacketfiles=maxpacketfiles, virtual=True
     )
@@ -557,7 +559,17 @@ def get_virtual_packets_pl(modelpath: str | Path, maxpacketfiles: int | None = N
     return nprocs_read, dfpackets
 
 
-def get_packets_pl_before_filter(modelpath: Path, maxpacketfiles: int | None = None) -> tuple[int, pl.LazyFrame]:
+def get_packets(
+    modelpath: str | Path,
+    maxpacketfiles: int | None = None,
+    packet_type: str | None = None,
+    escape_type: str | None = None,
+) -> tuple[int, pl.LazyFrame]:
+    if escape_type is not None:
+        assert packet_type in {None, "TYPE_ESCAPE"}
+        if packet_type is None:
+            packet_type = "TYPE_ESCAPE"
+
     nprocs_read, packetsparquetfiles = get_packets_batch_parquet_paths(modelpath, maxpacketfiles)
 
     nbatches_read = len(packetsparquetfiles)
@@ -571,26 +583,10 @@ def get_packets_pl_before_filter(modelpath: Path, maxpacketfiles: int | None = N
     npkts_total = pldfpackets.select(pl.len()).collect().item()
     print(f"  files contain {npkts_total:.2e} packets from {nprocs_read} ranks")
 
-    return nprocs_read, pldfpackets
-
-
-def get_packets_pl(
-    modelpath: str | Path,
-    maxpacketfiles: int | None = None,
-    packet_type: str | None = None,
-    escape_type: str | None = None,
-) -> tuple[int, pl.LazyFrame]:
     if escape_type is not None:
-        assert packet_type in {None, "TYPE_ESCAPE"}
-        if packet_type is None:
-            packet_type = "TYPE_ESCAPE"
-    nprocs_read, pldfpackets = get_packets_pl_before_filter(Path(modelpath), maxpacketfiles)
-
-    if escape_type not in {"TYPE_RPKT", "TYPE_GAMMA"}:
-        msg = f"Unknown escape type {escape_type}"
-        raise ValueError(msg)
-
-    if escape_type is not None:
+        if escape_type not in {"TYPE_RPKT", "TYPE_GAMMA"}:
+            msg = f"Unknown escape type {escape_type}"
+            raise ValueError(msg)
         assert packet_type is None or packet_type == "TYPE_ESCAPE"
         pldfpackets = pldfpackets.filter(
             (pl.col("type_id") == type_ids["TYPE_ESCAPE"]) & (pl.col("escape_type_id") == type_ids[escape_type])
@@ -757,7 +753,7 @@ def make_3d_histogram_from_packets(
         print("Binning by packet arrival time")
 
     only_packets_0_scatters = False
-    nprocs_read, dfpackets = at.packets.get_packets_pl(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
+    nprocs_read, dfpackets = at.packets.get_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
     if only_packets_0_scatters:
         print("Only using packets with 0 scatters")
         dfpackets = dfpackets.filter(pl.col("nscatterings") == 0)
@@ -831,7 +827,7 @@ def get_mean_packet_emission_velocity_per_ts(
     maxpacketfiles: int | None = None,
     escape_angles: int | None = None,
 ) -> pl.DataFrame:
-    nprocs_read, dfpackets = get_packets_pl(
+    nprocs_read, dfpackets = get_packets(
         modelpath, maxpacketfiles=maxpacketfiles, packet_type=packet_type, escape_type=escape_type
     )
     dfpackets = add_derived_columns_lazy(dfpackets, modelpath=modelpath)
@@ -878,7 +874,7 @@ def bin_and_sum(
         .filter(pl.col(bincol).is_between(bins[0], bins[-1], closed="both"))
         .with_columns(
             (pl.col(bincol).cut(breaks=bins, labels=[str(x) for x in range(-1, len(bins))]))
-            .cast(pl.Utf8)
+            .cast(pl.String)
             .cast(pl.Int32)
             .alias(f"{bincol}_bin")
         )

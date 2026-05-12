@@ -1477,7 +1477,7 @@ def test_save_load_3d_model() -> None:
     # this give us several isotopes for each element (doesn't matter if they are real or not)
     isocolnames = pl.concat(
         dfelements.select(
-            (pl.col("elemcolname") + (pl.col("mass_number_example") + i).cast(pl.Utf8)).alias("isocolname")
+            (pl.col("elemcolname") + (pl.col("mass_number_example") + i).cast(pl.String)).alias("isocolname")
         )
         for i in range(2)
     ).get_column("isocolname")

@@ -93,6 +93,7 @@ def get_lambda_min_max_binwidth(
                 list_x_bin_edges.append(x)
             x_bin_edges = np.array(list_x_bin_edges)
         else:
+            assert args.deltax is not None
             x_bin_edges = np.arange(xmin, xmax + args.deltax, args.deltax)
         lambda_bin_edges = np.array(
             sorted(atspectra.convert_unit_to_angstroms(float(x), args.xunit) for x in x_bin_edges)
@@ -460,7 +461,7 @@ def plot_artis_spectrum(
 
         check_time_range_is_valid(modelpath, args.timemin, args.timemax, args.plotinvalidpart)
 
-        viewinganglespectra = {}
+        viewinganglespectra: dict[int, pl.LazyFrame] = {}
 
         xmin, xmax = axis.get_xlim()
         if from_packets:
@@ -475,7 +476,6 @@ def plot_artis_spectrum(
                 use_time=use_time,
                 maxpacketfiles=maxpacketfiles,
                 delta_lambda=delta_lambda,
-                directionbins=directionbins,
                 average_over_phi=average_over_phi,
                 average_over_theta=average_over_theta,
                 fluxfilterfunc=filterfunc,
@@ -501,9 +501,8 @@ def plot_artis_spectrum(
                 if dirbin >= 0
             }
         else:
-            viewinganglespectra = atspectra.get_spectrum(
+            viewinganglespectra = atspectra.get_spectra(
                 modelpath=modelpath,
-                directionbins=directionbins,
                 timestepmin=timestepmin,
                 timestepmax=timestepmax,
                 average_over_phi=average_over_phi,
@@ -543,18 +542,15 @@ def plot_artis_spectrum(
         dirbin_dfspec = zip(
             directionbins,
             pl.collect_all(
-                (
-                    df_filter_minmax_bounded(
-                        atspectra.get_dfspectrum_x_y_with_units(
-                            viewinganglespectra[dirbin], xunit=xunit, yvariable=yvariable, fluxdistance_mpc=args.distmpc
-                        ).sort("x"),
-                        colname="x",
-                        minval=xmin,
-                        maxval=xmax,
-                    )
-                    for dirbin in directionbins
-                ),
-                engine="streaming",
+                df_filter_minmax_bounded(
+                    atspectra.get_dfspectrum_x_y_with_units(
+                        viewinganglespectra[dirbin], xunit=xunit, yvariable=yvariable, fluxdistance_mpc=args.distmpc
+                    ).sort("x"),
+                    colname="x",
+                    minval=xmin,
+                    maxval=xmax,
+                )
+                for dirbin in directionbins
             ),
             strict=True,
         )
