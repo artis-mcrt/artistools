@@ -94,8 +94,8 @@ def get_dfspectrum_x_y_with_units(
             dfspectrum = (
                 dfspectrum
                 .with_columns(en_ev=h_ev_s * pl.col("nu"))
-                .with_columns(f_en_kev=pl.col("f_nu") * pl.col("nu") / pl.col("en_ev"))
-                .with_columns(x=pl.col("en_ev"), yflux=pl.col("f_en_kev"))
+                .with_columns(f_en_ev=pl.col("f_nu") * pl.col("nu") / pl.col("en_ev"))
+                .with_columns(x=pl.col("en_ev"), yflux=pl.col("f_en_ev"))
             )
 
         case "kev":
@@ -305,7 +305,7 @@ def convert_unit_to_angstroms(value: float, old_units: str) -> float:
 def stackspectra(
     spectra_and_factors: list[tuple[np.ndarray[t.Any, np.dtype[np.floating[t.Any]]], float]],
 ) -> np.ndarray[t.Any, np.dtype[np.floating[t.Any]]]:
-    """Add spectra using weighting factors, i.e., specout[nu] = spec1[nu] * factor1 + spec2[nu] * factor2 + ...
+    """Average spectra using (normalised) weighting factors, i.e., specout[nu] = (spec1[nu] * factor1 + spec2[nu] * factor2 + ...) / (factor1 + factor2 + ...).
 
     spectra_and_factors should be a list of tuples: spectra[], factor.
     """
@@ -592,7 +592,7 @@ def read_spec(modelpath: Path | str, gamma: bool = False) -> pl.LazyFrame:
 
 
 def read_spec_res(modelpath: Path | str) -> dict[int, pl.LazyFrame]:
-    """Return a dataframe of time-series spectra for every viewing direction."""
+    """Return a dict of LazyFrames of time-series spectra keyed to the viewing direction bin."""
     specfilename = (
         modelpath
         if Path(modelpath).is_file()
@@ -1271,7 +1271,7 @@ def get_flux_contributions_from_packets(
             .filter(pl.col(dirbin_nu_column).is_between(nu_min, nu_max))
             .drop_nulls("emissiontype_str")
         )
-        emissiongroups = {k: v.drop(cs.by_dtype(pl.Utf8)) for (k,), v in empackets.group_by("emissiontype_str")}
+        emissiongroups = {k: v.drop(cs.by_dtype(pl.String)) for (k,), v in empackets.group_by("emissiontype_str")}
         emission_e_rf_sum: dict[str, float] = dict(
             empackets.group_by("emissiontype_str").agg(pl.col("e_rf").sum().alias("e_rf")).iter_rows()
         )
@@ -1286,7 +1286,7 @@ def get_flux_contributions_from_packets(
             .filter(pl.col("absorption_freq").is_between(nu_min, nu_max))
             .drop_nulls("absorptiontype_str")
         )
-        absorptiongroups = {k: v.drop(cs.by_dtype(pl.Utf8)) for (k,), v in abspackets.group_by("absorptiontype_str")}
+        absorptiongroups = {k: v.drop(cs.by_dtype(pl.String)) for (k,), v in abspackets.group_by("absorptiontype_str")}
         absorption_e_rf_sum: dict[str, float] = dict(
             abspackets.group_by("absorptiontype_str").agg(pl.col("e_rf").sum().alias("e_rf")).iter_rows()
         )

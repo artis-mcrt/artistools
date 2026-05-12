@@ -1,5 +1,6 @@
 *       @lukeshingles
 # version files are not owned to allow auto-approval of version updates
-pyproject.toml
 .github/workflows/**
+pyproject.toml
 **/*.lock
+.pre-commit-config.yaml
