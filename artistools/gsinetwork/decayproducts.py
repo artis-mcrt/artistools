@@ -331,7 +331,14 @@ def process_trajectory(
         value_cols = [c for c in traj_df.columns if c != "timedays"]
         last_row = traj_df.tail(1)
         main = traj_df.slice(0, traj_df.height - 1).with_columns([
-            pl.when(pl.col(c) == pl.col(c).shift()).then(None).otherwise(pl.col(c)).interpolate_by("timedays").alias(c)
+            pl
+            .when(pl.col(c) == pl.col(c).shift())
+            .then(None)
+            .otherwise(pl.col(c))
+            .interpolate_by("timedays")
+            .forward_fill()
+            .backward_fill()
+            .alias(c)
             for c in value_cols
         ])
         traj_df = pl.concat([main, last_row])
