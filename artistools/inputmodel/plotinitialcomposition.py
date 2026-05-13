@@ -101,7 +101,7 @@ def plot_slice_modelcolumn(
             vmin = args.floorval or 1e-15
             vmax = 1e-7
     elif colname == "Ye":
-        vmin = 0
+        vmin = args.floorval or 0
         vmax = 0.6
     else:
         vmin = None
