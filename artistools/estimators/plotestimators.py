@@ -18,6 +18,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
 from matplotlib import ticker
+from polars import selectors as cs
 
 import artistools as at
 
@@ -76,6 +77,10 @@ def plot_data(
     startfromzero: bool = False,
     **plotkwargs: t.Any,
 ) -> None:
+    """Plot a series with an average line and optionally, a min-max bounding area.
+
+    These columns are required: xvalue, xvalue_binned, yvalue, celltsweight (the weight for averaging, e.g., cell volume times timestep duration).
+    """
     dfplotdata = dfplotdata.lazy()
 
     # Calculate the average line and optionally, the min-max bounding area
@@ -353,6 +358,11 @@ def plot_levelpop(
 
 def get_iontuple(ionstr: str) -> tuple[int, str | int]:
     """Decode into atomic number and parameter, e.g., [(26, 1), (26, 2), (26, 'ALL'), (26, 'Fe56')]."""
+    # interpret bare integers as atomic numbers
+    if ionstr.isdigit():
+        atomic_number = int(ionstr)
+        return (atomic_number, "ALL")
+
     if ionstr in at.get_elsymbolslist():
         return (at.get_atomic_number(ionstr), "ALL")
 
@@ -470,7 +480,11 @@ def plot_multi_ion_series(
             expr_yvals = expr_yvals.cum_sum()
 
         lazyframes.append(
-            estimators.with_columns(celltsweight=pl.col("deltavol_deltat"), yvalue=expr_yvals / expr_normfactor)
+            estimators.select(
+                pl.col("deltavol_deltat").alias("celltsweight"),
+                (expr_yvals / expr_normfactor).alias("yvalue"),
+                cs.starts_with("xvalue"),
+            )
         )
 
     for seriesindex, (iontuple, dfseries) in enumerate(zip(iontuplelist, pl.collect_all(lazyframes), strict=True)):
@@ -1161,20 +1175,24 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         ]
         if isinstance(plotlist[i][0], str) and plotlist[i][0] not in estimatorcolumns:
             # this is going to cause an error, so attempt to interpret it as populations
-            rewrite_is_valid = False
+            # look for something that looks like an ion in the list, and if all items look like ions then rewrite to populations plot
             for plotvar in plotlist[i]:
                 if isinstance(plotvar, list):
                     continue
+                # interpret bare integers as atomic numbers
+                if isinstance(plotvar, int):
+                    continue
                 if not isinstance(plotvar, str):
                     break
+                # check if string can be interpreted as an integer (atomic number)
+                if plotvar.isdigit():
+                    continue
                 if "=" in plotvar:
                     continue
-                atomic_number, ionstage = get_iontuple(plotvar)
-                if get_column_name("populations", atomic_number, ionstage)[0] not in estimatorcolumns:
+                atomic_number, _ionstage = get_iontuple(plotvar)
+                if atomic_number < 1:
                     break
             else:
-                rewrite_is_valid = True
-            if rewrite_is_valid:
                 new_plotvars = [["populations", plotlist[i]]]
                 print(f"Rewriting plotlist {plotlist[i]} to {new_plotvars}")
                 plotlist[i] = new_plotvars

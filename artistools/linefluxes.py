@@ -418,6 +418,7 @@ def plot_nne_te_points(
     for log10nne, Te in zip(em_log10nne, em_Te, strict=True):
         assert isinstance(log10nne, float | np.floating)
         assert isinstance(Te, float | np.floating)
+        # pyrefly: ignore [unnecessary-type-conversion]
         dictkey = (float(log10nne), float(Te))
         hitcount[dictkey] = hitcount.get(dictkey, 0) + 1
 
