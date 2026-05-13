@@ -18,6 +18,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
 from matplotlib import ticker
+from polars import selectors as cs
 
 import artistools as at
 
@@ -76,6 +77,10 @@ def plot_data(
     startfromzero: bool = False,
     **plotkwargs: t.Any,
 ) -> None:
+    """Plot a series with an average line and optionally, a min-max bounding area.
+
+    These columns are required: xvalue, xvalue_binned, yvalue, celltsweight (the weight for averaging, e.g., cell volume times timestep duration).
+    """
     dfplotdata = dfplotdata.lazy()
 
     # Calculate the average line and optionally, the min-max bounding area
@@ -475,7 +480,11 @@ def plot_multi_ion_series(
             expr_yvals = expr_yvals.cum_sum()
 
         lazyframes.append(
-            estimators.with_columns(celltsweight=pl.col("deltavol_deltat"), yvalue=expr_yvals / expr_normfactor)
+            estimators.select(
+                pl.col("deltavol_deltat").alias("celltsweight"),
+                (expr_yvals / expr_normfactor).alias("yvalue"),
+                cs.starts_with("xvalue"),
+            )
         )
 
     for seriesindex, (iontuple, dfseries) in enumerate(zip(iontuplelist, pl.collect_all(lazyframes), strict=True)):
