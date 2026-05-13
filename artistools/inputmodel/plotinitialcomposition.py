@@ -95,11 +95,11 @@ def plot_slice_modelcolumn(
     vmax_ax2 = dfmodelslice[f"pos_{plotaxis2}_max"].max() / t_model_s * unitfactor
     if colname == "rho":
         if args.logcolorscale:
-            vmin = -15
+            vmin = args.floorval or -15
             vmax = -7
         else:
-            vmin = 1e-15
-            vmax = 1e7
+            vmin = args.floorval or 1e-15
+            vmax = 1e-7
     elif colname == "Ye":
         vmin = 0
         vmax = 0.6
