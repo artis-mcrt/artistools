@@ -267,7 +267,7 @@ def generate_band_lightcurve_data(
                 )
 
                 if len(wavelength_from_spectrum) > len(wavefilter):
-                    interpolate_fn = interp1d(x=wavefilter, y=transmission, bounds_error=False, fill_value=0.0)  # pyright: ignore[reportArgumentType] # pyrefly: ignore [bad-argument-type]
+                    interpolate_fn = interp1d(x=wavefilter, y=transmission, bounds_error=False, fill_value=0.0)  # type: ignore[arg-type] # pyright: ignore[reportArgumentType] # pyrefly: ignore [bad-argument-type]
                     wavefilter = np.linspace(
                         np.min(wavelength_from_spectrum),
                         int(np.max(wavelength_from_spectrum)),
