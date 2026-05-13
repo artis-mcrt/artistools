@@ -341,69 +341,6 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
     # plotter.close()
 
 
-def plot_phi_hist(modelpath: Path | str) -> None:
-    dfmodel = (
-        at
-        .get_modeldata(modelpath, derived_cols=["pos_x_mid", "pos_y_mid", "pos_z_mid", "vel_r_mid"])[0]
-        .collect()
-        .to_pandas(use_pyarrow_extension_array=True)
-    )
-    # print(dfmodel.keys())
-    # quit()
-    at.inputmodel.inputmodel_misc.get_cell_angle(dfmodel)
-    CLIGHT = 2.99792458e10
-    # MSUN = 1.989e33
-
-    # dfmodel.query("cos_bin in [40, 50]", inplace=True)
-    # mass = dfmodel["cellmass_grams"] / MSUN
-    # weights = mass
-    # weights = dfmodel['cellYe']
-    # weights = dfmodel['q']
-    weightby = "rho"
-    weights = dfmodel[weightby]
-    labeldict = {"Ye": "Ye"}
-    if weightby in labeldict:
-        weightby = labeldict[weightby]
-
-    nphibins = 25
-    nvbins = 25
-    vmin = 0.0  # c
-    vmax = 0.7  # c
-    heatmap, xedges, yedges = np.histogram2d(
-        dfmodel["vel_r_mid"] / CLIGHT,
-        dfmodel["phi"],
-        bins=(np.linspace(vmin, vmax, num=nvbins), np.linspace(0, 2 * np.pi, num=nphibins)),
-        weights=weights,
-    )
-    # heatmap = heatmap / (2 * np.pi) / (vmax - vmin) / nphibins / nvbins
-    print("WARNING: histogram not normalised")
-    plt.clf()
-
-    heatmap = np.ma.masked_where(heatmap == 0.0, heatmap)
-    # heatmap = np.log10(heatmap)
-
-    fig = plt.figure(figsize=(5, 4))
-    ax = fig.add_axes((0.15, 0.15, 0.75, 0.75), polar=True)
-
-    radii = xedges
-    z = heatmap
-    phis = yedges
-
-    cmap = "coolwarm_r" if weightby == "Ye" else "coolwarm"
-    im = ax.pcolormesh(phis, radii, z, cmap=cmap)
-    cbar = fig.colorbar(im)
-
-    cbar.set_label(weightby, rotation=90)
-    plt.xlabel(r"azimuthal angle")
-    plt.ylabel("Radial velocity [c]")
-    ax.yaxis.set_label_coords(-0.15, 0.5)
-
-    outfilename = f"model{weightby}phi.pdf"
-    plt.savefig(Path(modelpath) / outfilename, format="pdf")
-    print(f"open {outfilename}")
-    plt.close()
-
-
 def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-modelpath", type=Path, default=Path(), help="Path to ARTIS folder")
 
