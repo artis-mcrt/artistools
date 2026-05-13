@@ -101,6 +101,7 @@ def plot_slice_modelcolumn(
             vmin = args.floorval or 1e-15
             vmax = 1e-7
     elif colname == "Ye":
+        assert not args.logcolorscale, "log colorscale not supported for Ye"
         vmin = args.floorval or 0
         vmax = 0.6
     else:
