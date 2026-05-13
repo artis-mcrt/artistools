@@ -482,7 +482,7 @@ def plot_multi_ion_series(
         lazyframes.append(
             estimators.select(
                 pl.col("deltavol_deltat").alias("celltsweight"),
-                (expr_yvals / expr_normfactor).alias("yvalue"),
+                (expr_yvals / expr_normfactor).fill_nan(0.0).alias("yvalue"),
                 cs.starts_with("xvalue"),
             )
         )
