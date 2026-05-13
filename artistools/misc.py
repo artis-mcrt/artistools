@@ -873,7 +873,7 @@ def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None) -
         import gzip
         import lzma
 
-        import zstandard as zstd
+        import zstandard as zstd  # pyright: ignore[reportMissingImports]
 
     ext_fopen: dict[str, t.Any] = {".zst": zstd.open, ".gz": gzip.open, ".xz": lzma.open}
 

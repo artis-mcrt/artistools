@@ -37,7 +37,7 @@ def get_wij() -> npt.NDArray[np.floating]:
     #  a) v less than 1
     #
     wij = np.zeros(itab + 1)
-    if igphi == 1:
+    if igphi == 1:  # pyright: ignore[reportUnnecessaryComparison]
         for i in range(1, i1 + 1):
             v2 = i * dvtable
             v = math.sqrt(v2)
@@ -56,7 +56,7 @@ def get_wij() -> npt.NDArray[np.floating]:
     #
     #  b) v greater than 1
     #
-    if igphi == 1:
+    if igphi == 1:  # pyright: ignore[reportUnnecessaryComparison]
         for i in range(i1 + 1, itable + 1):
             v2 = i * dvtable
             v = math.sqrt(v2)
