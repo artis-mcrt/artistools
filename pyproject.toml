@@ -252,6 +252,8 @@ unsupported-operation = false
 implicit-any-empty-container = false
 
 [tool.pyright]
+venvPath = "."
+venv = ".venv"
 enableTypeIgnoreComments = false # leave these for mypy to interpret
 exclude = [
     '**/node_modules',
