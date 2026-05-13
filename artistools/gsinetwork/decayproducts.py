@@ -221,6 +221,7 @@ def process_trajectory(
         )
         for col in ("hbeta", "htot", "Qdot")
     }
+    decay_powers |= {"timedays": np.array(arr_t_day)}
 
     A_arr = nuc_data["A"].to_numpy()
     Z_arr = nuc_data["Z"].to_numpy()
@@ -325,6 +326,24 @@ def process_trajectory(
     # dump to parquet
     if traj_parquet:
         traj_df = pl.DataFrame(decay_powers)
+
+        # perform time interpolation to prevent effects from low trajectory time grid resolution
+        value_cols = [c for c in traj_df.columns if c != "timedays"]
+        last_row = traj_df.tail(1)
+        main = traj_df.slice(0, traj_df.height - 1).with_columns([
+            pl
+            .when(pl.col(c) == pl.col(c).shift())
+            .then(None)
+            .otherwise(pl.col(c))
+            .interpolate_by("timedays")
+            .forward_fill()
+            .backward_fill()
+            .alias(c)
+            for c in value_cols
+        ])
+        traj_df = pl.concat([main, last_row])
+        traj_df = traj_df.fill_null(0.0).fill_nan(0.0)
+
         traj_df.write_parquet(f"parquet/decay_powers_{traj_ID}.parquet")
     return decay_powers
 
@@ -455,8 +474,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         )
 
         if args.parquet:
-            traj_df = pl.DataFrame(decay_powers)
-            traj_df.write_parquet(f"parquet/decay_powers_{labelfull}.parquet")
+            traj_set_df = pl.DataFrame(decay_powers)
+            traj_set_df.write_parquet(f"parquet/decay_powers_{labelfull}.parquet")
 
         fig, axes = plt.subplots(
             nrows=2, ncols=1, figsize=(6, 10), tight_layout={"pad": 0.4, "w_pad": 0.0, "h_pad": 0.0}
