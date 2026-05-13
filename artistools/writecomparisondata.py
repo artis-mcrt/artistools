@@ -217,6 +217,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args.outputpath.mkdir(parents=True, exist_ok=True)
 
     for modelpath in modelpathlist:
+        # pyrefly: ignore [unnecessary-type-conversion]
         model_id = str(Path(modelpath).name).split("_")[0]
         print(f"{model_id=}")
 
