@@ -1049,7 +1049,7 @@ def get_filterfunc(args: argparse.Namespace, mode: str = "interp") -> Callable[[
         window_length, polyorder = (int(x) for x in args.filtersavgol)
 
         assert filterfunc is None
-        filterfunc = functools.partial(
+        filterfunc = functools.partial(  # pyright: ignore[reportCallIssue]
             scipy.signal.savgol_filter, window_length=window_length, polyorder=polyorder, mode=mode
         )
 
