@@ -66,6 +66,7 @@ dev = [
     { name = "pytest-cov" },
     { name = "pytest-xdist", extra = ["psutil"] },
     { name = "ruff" },
+    { name = "scipy-stubs" },
     { name = "typeguard" },
     { name = "types-python-dateutil" },
     { name = "types-pyyaml" },
@@ -110,6 +111,7 @@ dev = [
     { name = "pytest-cov", specifier = ">=7.1.0" },
     { name = "pytest-xdist", extras = ["psutil"], specifier = ">=3.8.0" },
     { name = "ruff", specifier = ">=0.15.12" },
+    { name = "scipy-stubs", specifier = ">=1.17.1" },
     { name = "typeguard", specifier = ">=4.5.1" },
     { name = "types-python-dateutil", specifier = ">=2.9.0.20260408" },
     { name = "types-pyyaml", specifier = ">=6.0.12.20260408" },
@@ -462,10 +464,10 @@ name = "cyclopts"
 version = "4.11.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "attrs" },
-    { name = "docstring-parser" },
-    { name = "rich" },
-    { name = "rich-rst" },
+    { name = "attrs", marker = "python_full_version < '3.15'" },
+    { name = "docstring-parser", marker = "python_full_version < '3.15'" },
+    { name = "rich", marker = "python_full_version < '3.15'" },
+    { name = "rich-rst", marker = "python_full_version < '3.15'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/e4/f7/3ee212c1bc314551094fc8fda7b4b63c647ac5c32d06daa285d04d33edfc/cyclopts-4.11.2.tar.gz", hash = "sha256:8c9b77921660fa1ee52c150e2217ced672323efb3434e9b338077de1bc551ff4", size = 175935, upload-time = "2026-05-04T00:11:57.857Z" }
 wheels = [
@@ -993,6 +995,36 @@ wheels = [
 ]
 
 [[package]]
+name = "numpy-typing-compat"
+version = "20251206.2.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/42/5f/29fd5f29b0a5d96e2def96ecba3112fc330ecd16e8c97c2b332563c5e201/numpy_typing_compat-20251206.2.4.tar.gz", hash = "sha256:59882d23aaff054a2536da80564012cdce33487657be4d79c5925bb8705fcabc", size = 5011, upload-time = "2025-12-06T20:02:04.942Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/63/7c/5c2892e6bc0628a2ccf4e938e1e2db22794657ccb374672d66e20d73839e/numpy_typing_compat-20251206.2.4-py3-none-any.whl", hash = "sha256:a82e723bd20efaa4cf2886709d4264c144f1f2b609bda83d1545113b7e47a5b5", size = 6300, upload-time = "2025-12-06T20:01:57.578Z" },
+]
+
+[[package]]
+name = "optype"
+version = "0.17.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/81/9f/3b13bab05debf685678b8af004e46b8c67c6f98ffa08eaf5d33bcf162c16/optype-0.17.0.tar.gz", hash = "sha256:31351a1e64d9eba7bf67e14deefb286e85c66458db63c67dd5e26dd72e4664e5", size = 53484, upload-time = "2026-03-08T23:03:12.594Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6b/44/dca78187415947d1bb90b2ee2a58e47d9573528331e8dc6196996b53612a/optype-0.17.0-py3-none-any.whl", hash = "sha256:8c2d88ff13149454bcf6eb47502f80d288bc542e7238fcc412ac4d222c439397", size = 65854, upload-time = "2026-03-08T23:03:11.425Z" },
+]
+
+[package.optional-dependencies]
+numpy = [
+    { name = "numpy" },
+    { name = "numpy-typing-compat" },
+]
+
+[[package]]
 name = "packaging"
 version = "26.2"
 source = { registry = "https://pypi.org/simple" }
@@ -1207,9 +1239,9 @@ name = "pooch"
 version = "1.9.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "packaging" },
-    { name = "platformdirs" },
-    { name = "requests" },
+    { name = "packaging", marker = "python_full_version < '3.15'" },
+    { name = "platformdirs", marker = "python_full_version < '3.15'" },
+    { name = "requests", marker = "python_full_version < '3.15'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/83/43/85ef45e8b36c6a48546af7b266592dc32d7f67837a6514d111bced6d7d75/pooch-1.9.0.tar.gz", hash = "sha256:de46729579b9857ffd3e741987a2f6d5e0e03219892c167c6578c0091fb511ed", size = 61788, upload-time = "2026-01-30T19:15:09.649Z" }
 wheels = [
@@ -1486,14 +1518,14 @@ name = "pyvista"
 version = "0.48.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "cyclopts" },
-    { name = "matplotlib" },
-    { name = "numpy" },
-    { name = "pillow" },
-    { name = "pooch" },
-    { name = "scooby" },
-    { name = "typing-extensions" },
-    { name = "vtk" },
+    { name = "cyclopts", marker = "python_full_version < '3.15'" },
+    { name = "matplotlib", marker = "python_full_version < '3.15'" },
+    { name = "numpy", marker = "python_full_version < '3.15'" },
+    { name = "pillow", marker = "python_full_version < '3.15'" },
+    { name = "pooch", marker = "python_full_version < '3.15'" },
+    { name = "scooby", marker = "python_full_version < '3.15'" },
+    { name = "typing-extensions", marker = "python_full_version < '3.15'" },
+    { name = "vtk", marker = "python_full_version < '3.15'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/45/7d/747bd2c8fa132f94ffb0282611fcb6970caa97bfad950350318de444bc05/pyvista-0.48.2.tar.gz", hash = "sha256:0b115b107f03e8e57bfb5d9dd2a40591f4e641b6a87dc8beb5d0c2099a225e2e", size = 2580977, upload-time = "2026-05-10T06:37:35.017Z" }
 wheels = [
@@ -1551,10 +1583,10 @@ name = "requests"
 version = "2.34.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "certifi" },
-    { name = "charset-normalizer" },
-    { name = "idna" },
-    { name = "urllib3" },
+    { name = "certifi", marker = "python_full_version < '3.15'" },
+    { name = "charset-normalizer", marker = "python_full_version < '3.15'" },
+    { name = "idna", marker = "python_full_version < '3.15'" },
+    { name = "urllib3", marker = "python_full_version < '3.15'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/43/b8/7a707d60fea4c49094e40262cc0e2ca6c768cca21587e34d3f705afec47e/requests-2.34.0.tar.gz", hash = "sha256:7d62fe92f50eb82c529b0916bb445afa1531a566fc8f35ffdc64446e771b856a", size = 142436, upload-time = "2026-05-11T19:29:51.717Z" }
 wheels = [
@@ -1579,8 +1611,8 @@ name = "rich-rst"
 version = "1.3.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "docutils" },
-    { name = "rich" },
+    { name = "docutils", marker = "python_full_version < '3.15'" },
+    { name = "rich", marker = "python_full_version < '3.15'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/bc/6d/a506aaa4a9eaa945ed8ab2b7347859f53593864289853c5d6d62b77246e0/rich_rst-1.3.2.tar.gz", hash = "sha256:a1196fdddf1e364b02ec68a05e8ff8f6914fee10fbca2e6b6735f166bb0da8d4", size = 14936, upload-time = "2025-10-14T16:49:45.332Z" }
 wheels = [
@@ -1671,6 +1703,18 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/52/52/e57eceff0e342a1f50e274264ed47497b59e6a4e3118808ee58ddda7b74a/scipy-1.17.1-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:a77cbd07b940d326d39a1d1b37817e2ee4d79cb30e7338f3d0cddffae70fcaa2", size = 37682317, upload-time = "2026-02-23T00:22:18.513Z" },
     { url = "https://files.pythonhosted.org/packages/11/2f/b29eafe4a3fbc3d6de9662b36e028d5f039e72d345e05c250e121a230dd4/scipy-1.17.1-cp314-cp314t-win_amd64.whl", hash = "sha256:eb092099205ef62cd1782b006658db09e2fed75bffcae7cc0d44052d8aa0f484", size = 37345327, upload-time = "2026-02-23T00:22:24.442Z" },
     { url = "https://files.pythonhosted.org/packages/07/39/338d9219c4e87f3e708f18857ecd24d22a0c3094752393319553096b98af/scipy-1.17.1-cp314-cp314t-win_arm64.whl", hash = "sha256:200e1050faffacc162be6a486a984a0497866ec54149a01270adc8a59b7c7d21", size = 25489165, upload-time = "2026-02-23T00:22:29.563Z" },
+]
+
+[[package]]
+name = "scipy-stubs"
+version = "1.17.1.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "optype", extra = ["numpy"] },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d1/75/d944a11fca64aa84fbb4bfcf613b758319c6103cb30a304a0e9727009d62/scipy_stubs-1.17.1.4.tar.gz", hash = "sha256:cae00c5207aa62ceb4bcadea202d9fbbf002e958f9e4de981720436b8d5c1802", size = 396980, upload-time = "2026-04-13T11:46:54.528Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/92/f8/334aa5a7a482ea89cb14d92f6a4d9ffa1e193e733144d4d14c7ffcb33583/scipy_stubs-1.17.1.4-py3-none-any.whl", hash = "sha256:e6e5c390fb864745bc3d5f591de81f5cb4f84403857d4f660acb5b6339956f5b", size = 604752, upload-time = "2026-04-13T11:46:53.135Z" },
 ]
 
 [[package]]
@@ -1798,7 +1842,7 @@ name = "vtk"
 version = "9.6.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "matplotlib" },
+    { name = "matplotlib", marker = "python_full_version < '3.15'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/95/89/c274101ec7b9bf7356333fdacf5e634803fe6b40f776e82c6ce9d941e0ad/vtk-9.6.1-cp312-cp312-macosx_10_10_x86_64.whl", hash = "sha256:b8125e3e3bc3160e18853a15be98101d0efe662c16036179ab15ddf1669b32af", size = 114729308, upload-time = "2026-03-27T13:50:37.547Z" },
