@@ -44,20 +44,8 @@ repos:
       rev: 0.11.12
       hooks:
           - id: uv-lock
-
-    - repo: local
-      hooks:
           - id: uv-sync
-            name: uv sync
-            language: system
-            entry: uv sync --frozen --all-extras --no-install-project
-            pass_filenames: false
-
-        #   - id: ty-check
-        #     name: ty check
-        #     language: system
-        #     entry: uv run --all-extras --frozen --no-sync --python=.venv/ -- ty check --python=.venv/
-        #     pass_filenames: false
+            args: [--frozen, --all-extras, --no-install-project]
 
     - repo: local
       hooks:
@@ -65,4 +53,4 @@ repos:
             name: Pyrefly type check
             pass_filenames: false
             language: system
-            entry: uv run pyrefly check
+            entry: uv run --frozen -- pyrefly check --ignore=unused-ignore

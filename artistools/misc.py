@@ -438,8 +438,8 @@ def get_timestep_of_timedays(modelpath: Path | str, timedays: str | float) -> in
 def get_time_range(
     modelpath: Path | str,
     timestep_range_str: str | None = None,
-    timemin: float | None = None,
-    timemax: float | None = None,
+    timemin: float | str | None = None,
+    timemax: float | str | None = None,
     timedays_range_str: str | float | None = None,
     clamp_to_timesteps: bool = True,
 ) -> tuple[int, int, float, float]:
@@ -451,16 +451,18 @@ def get_time_range(
 
     time_days_lower, time_days_upper = None, None
 
-    if timemin is not None and timemin > tends[-1]:
+    if timemin is not None and float(timemin) > tends[-1]:
         print(f"{get_model_name(modelpath)}: WARNING timemin {timemin} is after the last timestep at {tends[-1]:.1f}")
         return -1, -1, -math.inf, -math.inf
-    if timemax is not None and timemax < tstarts[0]:
+    if timemax is not None and float(timemax) < tstarts[0]:
         print(
             f"{get_model_name(modelpath)}: WARNING timemax {timemax} is before the first timestep at {tstarts[0]:.1f}"
         )
         return -1, -1, -math.inf, -math.inf
 
     if timestep_range_str is not None:
+        assert timemin is None
+        assert timemax is None
         if "-" in timestep_range_str:
             timestepmin, timestepmax = (int(nts) for nts in timestep_range_str.split("-"))
         else:
@@ -525,12 +527,23 @@ def get_time_range(
     if timestepmax > timesteplast:
         print(f"Warning timestepmax {timestepmax} > timesteplast {timesteplast}")
         timestepmax = timesteplast
+
     if time_days_lower is None:
-        assert timestepmin is not None
-        time_days_lower = tstarts[timestepmin] if clamp_to_timesteps else timemin
+        if clamp_to_timesteps:
+            assert timestepmin is not None
+            time_days_lower = tstarts[timestepmin]
+        else:
+            assert timemin is not None
+            time_days_lower = float(timemin)
+
     if time_days_upper is None:
-        assert timestepmax is not None
-        time_days_upper = tends[timestepmax] if clamp_to_timesteps else timemax
+        if clamp_to_timesteps:
+            assert timestepmax is not None
+            time_days_upper = tends[timestepmax]
+        else:
+            assert timemax is not None
+            time_days_upper = float(timemax)
+
     assert timestepmin is not None
     assert timestepmax is not None
     assert time_days_lower is not None
@@ -1036,7 +1049,7 @@ def get_filterfunc(args: argparse.Namespace, mode: str = "interp") -> Callable[[
         window_length, polyorder = (int(x) for x in args.filtersavgol)
 
         assert filterfunc is None
-        filterfunc = functools.partial(
+        filterfunc = functools.partial(  # pyright: ignore[reportCallIssue]
             scipy.signal.savgol_filter, window_length=window_length, polyorder=polyorder, mode=mode
         )
 

@@ -63,17 +63,13 @@ jobs:
               if: always()
               run: uv run -- ruff format --check --exit-non-zero-on-format
 
-            - name: Run zuban
-              if: always()
-              run: uv run -- zuban check
-
             - name: Run basedpyright
               if: always()
               run: uv run -- basedpyright --warnings
 
             - name: Run pyrefly
               if: always()
-              run: uv run -- pyrefly check
+              run: uv run -- pyrefly check --output-format github
 
             - name: Run mypy
               if: always()

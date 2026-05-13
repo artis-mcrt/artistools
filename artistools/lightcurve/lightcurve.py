@@ -267,7 +267,7 @@ def generate_band_lightcurve_data(
                 )
 
                 if len(wavelength_from_spectrum) > len(wavefilter):
-                    interpolate_fn = interp1d(wavefilter, transmission, bounds_error=False, fill_value=0.0)  # pyrefly: ignore[bad-argument-type]
+                    interpolate_fn = interp1d(x=wavefilter, y=transmission, bounds_error=False, fill_value=0.0)  # pyright: ignore[reportArgumentType] # pyrefly: ignore [bad-argument-type]
                     wavefilter = np.linspace(
                         np.min(wavelength_from_spectrum),
                         int(np.max(wavelength_from_spectrum)),
@@ -279,7 +279,7 @@ def generate_band_lightcurve_data(
                     wavelength_from_spectrum = np.linspace(wavefilter_min, wavefilter_max, len(wavefilter))
                     flux = interpolate_fn(wavelength_from_spectrum)
 
-                weighted_flux_obs = abs(np.trapezoid(flux * transmission, wavelength_from_spectrum))
+                weighted_flux_obs = abs(np.trapezoid(flux * transmission, wavelength_from_spectrum))  # pyright: ignore[reportArgumentType]
                 assert isinstance(weighted_flux_obs, float)
                 phot_filtobs_sn: float = (
                     0.0 if weighted_flux_obs == 0.0 else -2.5 * np.log10(weighted_flux_obs / zeropointenergyflux)

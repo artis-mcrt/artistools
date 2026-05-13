@@ -1325,9 +1325,13 @@ def get_flux_contributions_from_packets(
         allgroupnames = [*allgroupnames[:maxseriescount], "Other"]
 
         if getemission:
-            emissiongroups["Other"] = pl.concat(
-                (emissiongroups[groupname] for groupname in other_groupnames if groupname in emissiongroups),
-                rechunk=False,
+            other_subgroups = [
+                emissiongroups[groupname] for groupname in other_groupnames if groupname in emissiongroups
+            ]
+            emissiongroups["Other"] = (
+                pl.concat(other_subgroups, rechunk=False)
+                if other_subgroups
+                else pl.DataFrame(schema=emissiongroups[next(iter(emissiongroups))].schema)
             )
 
         if getabsorption:
