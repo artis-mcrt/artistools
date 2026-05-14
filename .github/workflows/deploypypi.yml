@@ -46,7 +46,7 @@ jobs:
                       cibw-rust-target-${{ runner.os }}${{ runner.arch }}-python3.${{ matrix.python-minor-version }}-
                       cibw-rust-target-${{ runner.os }}${{ runner.arch }}-
 
-            - uses: astral-sh/setup-uv@v7
+            - uses: astral-sh/setup-uv@v8.1.0
               with:
                   python-version: 3.${{ matrix.python-minor-version }}
                   enable-cache: false
@@ -69,7 +69,7 @@ jobs:
               with:
                   fetch-depth: 0
 
-            - uses: astral-sh/setup-uv@v7
+            - uses: astral-sh/setup-uv@v8.1.0
 
             - name: Build sdist
               run: uv build --sdist
