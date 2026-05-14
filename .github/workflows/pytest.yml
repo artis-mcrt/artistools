@@ -24,7 +24,7 @@ jobs:
               with:
                   fetch-depth: 0
 
-            - uses: astral-sh/setup-uv@v7
+            - uses: astral-sh/setup-uv@v8.1.0
               with:
                   activate-environment: true
 
@@ -50,7 +50,6 @@ jobs:
             - name: Install artistools[extras]
               run: |
                   uv sync --all-extras
-                  uv pip install --compile-bytecode .[extras]
 
             - name: Run Ruff
               if: always()
@@ -110,7 +109,7 @@ jobs:
               with:
                   fetch-depth: 0
 
-            - uses: astral-sh/setup-uv@v7
+            - uses: astral-sh/setup-uv@v8.1.0
               with:
                   activate-environment: true
                   python-version: 3.${{ matrix.python-minor-version }}
@@ -152,8 +151,7 @@ jobs:
             - name: Install artistools (no dev deps)
               run: |
                   rustup update stable
-                  uv sync --no-dev
-                  uv pip install --compile-bytecode .
+                  uv sync --no-dev --compile-bytecode
 
             - name: Check artistools command line tool
               run: |
