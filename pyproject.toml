@@ -316,7 +316,6 @@ ignore = ["FURB108"]
 [tool.ruff]
 line-length = 120
 fix = true
-show-fixes = true
 extend-exclude = [
     "_version.py",
     "artistools/inputmodel/fromcmfgen/rd_cmfgen.py",
