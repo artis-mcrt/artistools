@@ -283,7 +283,7 @@ def maptogrid(
                 if modifysmoothinglength == "option6" and dis > rmean:
                     h[n] = max(h[n], 0.75 * dx)
                 if modifysmoothinglength == "option7" and dis > rmean and dis > 3.5e5:
-                    h[n] = 10*dx
+                    h[n] = 10 * dx
 
                 maxdist2 = (2.0 * h[n]) ** 2
                 # -------------------------------
