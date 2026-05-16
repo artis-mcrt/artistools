@@ -158,13 +158,6 @@ jobs:
                   artistools --help
                   artistools completions
 
-            - name: Cache test data
-              uses: actions/cache@v5
-              with:
-                  enableCrossOsArchive: true
-                  path: tests/data/*.tar.xz
-                  key: testdata20231114
-
             - name: Download/extract test data
               working-directory: tests/data/
               run: source ./setuptestdata.sh
