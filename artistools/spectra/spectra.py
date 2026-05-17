@@ -476,7 +476,7 @@ def get_from_packets(
             if fluxfilterfunc:
                 dirbin_spectra[vspecindex] = (
                     dirbin_spectra[vspecindex]
-                    .with_columns(pl.col("f_lambda").map_batches(fluxfilterfunc))
+                    .with_columns(pl.col("f_lambda").map_batches(fluxfilterfunc, return_dtype=pl.self_dtype()))
                     .with_columns(f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu")))
                 )
 
@@ -563,7 +563,7 @@ def get_from_packets(
 
             if fluxfilterfunc:
                 dirbin_spectra[dirbin] = dirbin_spectra[dirbin].with_columns(
-                    pl.col("f_lambda").map_batches(fluxfilterfunc)
+                    pl.col("f_lambda").map_batches(fluxfilterfunc, return_dtype=pl.self_dtype())
                 )
 
             dirbin_spectra[dirbin] = (
@@ -710,7 +710,9 @@ def get_spectra(
         )
 
         if fluxfilterfunc:
-            dfspectrum = dfspectrum.with_columns(cs.starts_with("f_nu").map_batches(fluxfilterfunc))
+            dfspectrum = dfspectrum.with_columns(
+                cs.starts_with("f_nu").map_batches(fluxfilterfunc, return_dtype=pl.self_dtype())
+            )
 
         specdataout[dirbin] = dfspectrum.with_columns(
             f_lambda=pl.col("f_nu") * pl.col("nu") / pl.col("lambda_angstroms")
@@ -907,7 +909,7 @@ def get_vspecpol_spectrum(
 
     if fluxfilterfunc:
         print("Applying filter to ARTIS spectrum")
-        dfout = dfout.with_columns(cs.starts_with("f_nu").map_batches(fluxfilterfunc))
+        dfout = dfout.with_columns(cs.starts_with("f_nu").map_batches(fluxfilterfunc, return_dtype=pl.self_dtype()))
 
     return dfout.with_columns(f_lambda=pl.col("f_nu") * pl.col("nu") / pl.col("lambda_angstroms")).sort(
         by="lambda_angstroms"

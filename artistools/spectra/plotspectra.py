@@ -338,7 +338,9 @@ def plot_reference_spectrum(
 
     if fluxfilterfunc:
         print(" applying filter to reference spectrum")
-        specdata = specdata.with_columns(cs.starts_with("f_lambda").map_batches(fluxfilterfunc))
+        specdata = specdata.with_columns(
+            cs.starts_with("f_lambda").map_batches(fluxfilterfunc, return_dtype=pl.self_dtype())
+        )
 
     specdata = atspectra.get_dfspectrum_x_y_with_units(
         specdata, xunit=xunit, yvariable=yvariable, fluxdistance_mpc=scale_to_dist_mpc
