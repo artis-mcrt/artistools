@@ -1038,19 +1038,21 @@ def make_emissionabsorption_plot(
     else:
         plotlabel = f"{modelname} [{args.timemin:.2f}d to {args.timemax:.2f}d]"
         if args.plotviewingangle or args.plotvspecpol:
+            assert dirbin is not None
             dirbin_definitions = (
                 get_vspec_dir_labels(modelpath=modelpath, usedegrees=args.usedegrees)
                 if args.plotvspecpol
                 else get_dirbin_labels(
-                    dirbins=args.plotviewingangle,
                     modelpath=modelpath,
                     average_over_phi=args.average_over_phi_angle,
                     average_over_theta=args.average_over_theta_angle,
                     usedegrees=args.usedegrees,
                 )
             )
-            assert dirbin is not None
             plotlabel += f", {dirbin_definitions[dirbin]}"
+
+            if dirbin != -1:
+                print_theta_phi_definitions()
 
     if not args.notitle:
         if args.inset_title:
