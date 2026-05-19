@@ -148,7 +148,6 @@ include = [
 
 [tool.mypy]
 python_executable = ".venv/bin/python3"
-native_parser = true
 check_untyped_defs = true
 allow_redefinition = true
 disallow_any_explicit = false
@@ -174,7 +173,7 @@ enable_error_code = [
     "type-arg",
     "unused-awaitable",
 ]
-exclude = "(build)|(dist)|(tests)|(data)|(.venv)|(venv)|(_version.py)"
+exclude = "(build)|(dist)|(tests)|(data)|(.venv)|(venv)"
 extra_checks = true
 ignore_missing_imports = true
 implicit_optional = false
@@ -237,7 +236,6 @@ project-excludes = [
     '**/build/**',
     '**/dist/**',
     '**/target/**',
-    '**/version.py',
     '**/.venv/**',
     '**/rd_cmfgen.py',
 ]
@@ -315,7 +313,6 @@ ignore = ["FURB108"]
 line-length = 120
 fix = true
 extend-exclude = [
-    "_version.py",
     "artistools/inputmodel/fromcmfgen/rd_cmfgen.py",
     ".venv/**",
 ]
@@ -393,11 +390,11 @@ unfixable = [
 "matplotlib.pyplot" = "plt"
 "matplotlib.typing" = "mplt"
 "numpy.typing" = "npt"
-"typing" = "t"
 "polars" = "pl"
 "polars.selectors" = "cs"
 "polars.testing" = "pltest"
 "pynonthermal" = "pynt"
+"typing" = "t"
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
