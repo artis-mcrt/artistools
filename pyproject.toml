@@ -293,7 +293,6 @@ minversion = "9.0"
 addopts = [
     "--durations=0",
     "--durations-min=1.0",
-    "--typeguard-packages=artistools",
     "-n",
     "auto",
 ]
