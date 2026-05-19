@@ -28,6 +28,7 @@ jobs:
                   activate-environment: true
                   cache-suffix: lint
                   prune-cache: false
+                  cache-dependency-glob: '**/uv.lock'
 
             - name: Cache cargo and rust build
               uses: actions/cache@v5
@@ -106,6 +107,7 @@ jobs:
               with:
                   activate-environment: true
                   python-version: ${{ matrix.python-version }}
+                  cache-dependency-glob: '**/uv.lock'
 
             - name: Cache cargo and rust build
               uses: actions/cache@v5
