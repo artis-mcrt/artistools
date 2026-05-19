@@ -57,3 +57,4 @@ repos:
 
 ci:
     skip: [pyrefly-check]
+    autoupdate_schedule: quarterly
