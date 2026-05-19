@@ -10,25 +10,24 @@ on:
     workflow_dispatch:
     repository_dispatch:
         types: [trigger_checks]
-
 jobs:
     codspeed-benchmarks:
         timeout-minutes: 180
         runs-on: ubuntu-24.04
         env:
             UV_FROZEN: 1
+            PYO3_USE_ABI3_FORWARD_COMPATIBILITY: 1
 
         name: codspeed benchmarks
         steps:
             - name: Checkout Code
               uses: actions/checkout@v6
-              with:
-                  fetch-depth: 0
 
             - name: Setup uv
               uses: astral-sh/setup-uv@v8.1.0
               with:
                   activate-environment: true
+                  cache-suffix: codspeed
 
             - name: Get python minor version
               run: |

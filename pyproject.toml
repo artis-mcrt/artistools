@@ -149,8 +149,9 @@ include = [
 
 [tool.mypy]
 python_executable = ".venv/bin/python3"
+native_parser = true
 check_untyped_defs = true
-allow_redefinition_new = true
+allow_redefinition = true
 disallow_any_explicit = false
 disallow_any_generics = true
 disallow_any_unimported = true
@@ -179,13 +180,11 @@ extra_checks = true
 ignore_missing_imports = true
 implicit_optional = false
 implicit_reexport = false
-local_partial_types = true
 packages = "artistools"
 pretty = true
 scripts_are_modules = true
 strict = true
 strict_equality = true
-strict_bytes = true
 warn_redundant_casts = true
 warn_unreachable = false
 warn_unused_configs = true
