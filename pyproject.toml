@@ -390,11 +390,11 @@ unfixable = [
 "matplotlib.pyplot" = "plt"
 "matplotlib.typing" = "mplt"
 "numpy.typing" = "npt"
-"typing" = "t"
 "polars" = "pl"
 "polars.selectors" = "cs"
 "polars.testing" = "pltest"
 "pynonthermal" = "pynt"
+"typing" = "t"
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
