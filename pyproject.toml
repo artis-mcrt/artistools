@@ -58,6 +58,7 @@ extras = [
 [dependency-groups]
 dev = [
     "basedpyright>=1.39.3",
+    "beartype>=0.22.9",
     "imageio>=2.37.3",
     "mypy>=2.0.0",
     "pandas-stubs>=3.0.0.260204",

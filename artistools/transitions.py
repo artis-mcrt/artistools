@@ -107,7 +107,7 @@ def generate_ion_spectrum(
     popcolumn: str,
     plot_resolution: float,
     args: argparse.Namespace,
-) -> npt.NDArray[np.floating[t.Any]]:
+) -> npt.NDArray[np.floating]:
     yvalues = np.zeros(len(xvalues))
 
     # iterate over lines
