@@ -11,12 +11,17 @@ on:
                 description: Do real deployment to PyPI (not TestPyPI)
                 required: true
                 default: 'false'
+env:
+    MACOSX_DEPLOYMENT_TARGET: 13.0
+    PYO3_USE_ABI3_FORWARD_COMPATIBILITY: 1
+    UV_FROZEN: 1
+
 jobs:
     build_wheels:
         name: Build cp3${{ matrix.python-minor-version }}-${{ matrix.target.os_arch }}
         strategy:
             matrix:
-                target: [{os_arch: manylinux_x86_64, runs-on: ubuntu-24.04}, {os_arch: manylinux_aarch64, runs-on: ubuntu-24.04-arm}, {os_arch: macosx_arm64,
+                target: [{os_arch: manylinux_x86_64, runs-on: ubuntu-latest}, {os_arch: manylinux_aarch64, runs-on: ubuntu-24.04-arm}, {os_arch: macosx_arm64,
                           runs-on: macos-26}]
                 python-minor-version: ['12', '13', '14', 14t]
             fail-fast: false
@@ -24,9 +29,7 @@ jobs:
         env:
             CIBW_ENVIRONMENT_PASS_LINUX: SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS
             CIBW_BUILD: cp3${{ matrix.python-minor-version }}-${{ matrix.target.os_arch }}
-            MACOSX_DEPLOYMENT_TARGET: 13.0
             PYO3_PYTHON: python3.${{ matrix.python-minor-version }}
-
         steps:
             - uses: actions/checkout@v6
 
@@ -63,7 +66,7 @@ jobs:
 
     build_sdist:
         name: Build source distribution
-        runs-on: ubuntu-24.04
+        runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v6
 
@@ -80,7 +83,7 @@ jobs:
     testdeploy:
         name: Test upload to TestPyPI (workflow dispatch only)
         needs: [build_wheels, build_sdist]
-        runs-on: ubuntu-24.04
+        runs-on: ubuntu-latest
         environment:
             name: test
             url: https://test.pypi.org/project/artistools/
@@ -104,7 +107,7 @@ jobs:
     deploy:
         name: Upload to PyPI
         needs: [build_wheels, build_sdist]
-        runs-on: ubuntu-24.04
+        runs-on: ubuntu-latest
         environment:
             name: release
             url: https://pypi.org/project/artistools/
