@@ -25,13 +25,10 @@ jobs:
 
             - name: Setup uv
               uses: astral-sh/setup-uv@v8.1.0
+              id: setup-uv
               with:
                   activate-environment: true
                   cache-suffix: codspeed
-
-            - name: Get python minor version
-              run: |
-                  echo "PYTHON_MINOR_VERSION=$(python -c 'import platform; print(platform.python_version_tuple()[1])')" >> $GITHUB_ENV
 
             - name: Cache cargo and rust build
               uses: actions/cache@v5
@@ -41,11 +38,12 @@ jobs:
                       ~/.cargo/registry/cache/
                       ~/.cargo/git/db/
                       rust/target/
-                  key: cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python3.${{ env.PYTHON_MINOR_VERSION }}-${{ hashFiles('**/Cargo.lock') }}-${{
-                      github.run_id }}
+                  key: codspeed-cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python${{ steps.setup-uv.outputs.python-version }}-${{ hashFiles('**/Cargo.lock')
+                      }}-${{ github.run_id }}
                   restore-keys: |
-                      cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python3.${{ env.PYTHON_MINOR_VERSION }}-${{ hashFiles('**/Cargo.lock') }}-
-                      cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python3.${{ env.PYTHON_MINOR_VERSION }}-
+                      codspeed-cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python${{ steps.setup-uv.outputs.python-version }}-${{ hashFiles('**/Cargo.lock') }}-
+                      codspeed-cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python${{ steps.setup-uv.outputs.python-version }}-
+                      codspeed-cargo-rust-target-${{ runner.os }}${{ runner.arch }}-
                       cargo-rust-target-${{ runner.os }}${{ runner.arch }}-
 
             - name: Install artistools
