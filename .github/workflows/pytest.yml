@@ -95,9 +95,6 @@ jobs:
                     - os: {name: ubuntu, version: 24.04-arm}
                       python-version: 3.14t
         runs-on: ${{ matrix.os.name }}-${{ matrix.os.version }}
-        env:
-            OS: ${{ matrix.os.name }}-${{ matrix.os.version }}
-            PYTHON: ${{ matrix.python-version }}
         name: pytest ${{ matrix.os.name }} python ${{ matrix.python-version }}
         steps:
             - name: Checkout Code
