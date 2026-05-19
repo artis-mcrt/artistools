@@ -1164,7 +1164,11 @@ class LineTuple(t.NamedTuple):
     lowerlevelindex: int
 
 
-def read_linestatfile(filepath: Path | str) -> tuple[list[float], list[int], list[int], list[int], list[int]]:
+def read_linestatfile(
+    filepath: Path | str,
+) -> tuple[
+    npt.NDArray[np.floating], npt.NDArray[np.int32], npt.NDArray[np.int32], npt.NDArray[np.int32], npt.NDArray[np.int32]
+]:
     """Load linestat.out containing transitions wavelength, element, ion, upper and lower levels."""
     if Path(filepath).is_dir():
         filepath = firstexisting("linestat.out", folder=filepath, tryzipped=True)
@@ -1175,17 +1179,17 @@ def read_linestatfile(filepath: Path | str) -> tuple[list[float], list[int], lis
     lambda_angstroms = data[0] * 1e8
     nlines = len(lambda_angstroms)
 
-    atomic_numbers = data[1].astype(int)
+    atomic_numbers = data[1].astype(np.int32)
     assert len(atomic_numbers) == nlines
 
-    ion_stages = data[2].astype(int)
+    ion_stages = data[2].astype(np.int32)
     assert len(ion_stages) == nlines
 
     # the file adds one to the levelindex, i.e. lowest level is 1
-    upper_levels = data[3].astype(int)
+    upper_levels = data[3].astype(np.int32)
     assert len(upper_levels) == nlines
 
-    lower_levels = data[4].astype(int)
+    lower_levels = data[4].astype(np.int32)
     assert len(lower_levels) == nlines
 
     return lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels
