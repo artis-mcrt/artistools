@@ -420,7 +420,7 @@ def plot_cell_abund_evolution(
 
 
 def get_particledata(
-    arr_time_s_incpremerger: Sequence[float] | npt.NDArray[np.floating[t.Any]],
+    arr_time_s_incpremerger: Sequence[float] | npt.NDArray[np.floating],
     arr_strnuc_z_n: list[tuple[str, int, int | None]],
     traj_root: Path,
     particleid: int,

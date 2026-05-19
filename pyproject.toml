@@ -58,6 +58,7 @@ extras = [
 [dependency-groups]
 dev = [
     "basedpyright>=1.39.3",
+    "beartype>=0.22.9",
     "imageio>=2.37.3",
     "mypy>=2.0.0",
     "pandas-stubs>=3.0.0.260204",
@@ -292,7 +293,6 @@ minversion = "9.0"
 addopts = [
     "--durations=0",
     "--durations-min=1.0",
-    "--typeguard-packages=artistools",
     "-n",
     "auto",
 ]
@@ -360,6 +360,7 @@ ignore = [
     "PLR0915", # too-many-statements
     "PLR2004", # magic-value-comparison
     "PLW2901", # redefined-loop-name
+    "PYI041",  # redundant-numeric-union (keep int | float for beartype)
     "RUF069",  # float equality comparison
     "S101",    # Use of assert detected
     "S311",    # suspicious-non-cryptographic-random-usage

@@ -158,7 +158,7 @@ jobs:
               run: uv sync --compile-bytecode
 
             - name: Test with pytest
-              run: uv run --no-sync -- python -m pytest ${{ (matrix.python-version == '3.15') && '--typeguard-packages=none' || '' }} --cov=./ --cov-report=xml
+              run: uv run --no-sync -- python -m pytest ${{ (matrix.python-version != '3.15') && '--typeguard-packages=artistools' }} --cov=./ --cov-report=xml
 
             - name: Report coverage
               run: uv run -- python -m coverage report

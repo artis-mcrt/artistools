@@ -415,7 +415,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     traj_ids = traj_summ_data["Id"].to_list()
 
-    traj_masses_g = {trajid: mass * M_sol_cgs for trajid, mass in traj_summ_data[["Id", "Mass"]].to_numpy()}
+    traj_masses_g = {int(trajid): mass * M_sol_cgs for trajid, mass in traj_summ_data[["Id", "Mass"]].to_numpy()}
 
     alltraj_decay_powers: list[dict[str, npt.NDArray[np.floating]]] = at.parallel_map(
         partial(

@@ -414,7 +414,7 @@ def get_timestep_times(modelpath: Path | str, loc: t.Literal["mid", "start", "en
     raise ValueError(msg)
 
 
-def get_timestep_of_timedays(modelpath: Path | str, timedays: str | float) -> int:
+def get_timestep_of_timedays(modelpath: Path | str, timedays: str | int | float) -> int:
     """Return the timestep containing the given time in days."""
     if isinstance(timedays, str):
         # could be a string like '330d'
@@ -438,9 +438,9 @@ def get_timestep_of_timedays(modelpath: Path | str, timedays: str | float) -> in
 def get_time_range(
     modelpath: Path | str,
     timestep_range_str: str | None = None,
-    timemin: float | str | None = None,
-    timemax: float | str | None = None,
-    timedays_range_str: str | float | None = None,
+    timemin: float | int | str | None = None,
+    timemax: float | int | str | None = None,
+    timedays_range_str: str | int | float | None = None,
     clamp_to_timesteps: bool = True,
 ) -> tuple[int, int, float, float]:
     """Handle a time range specified in either days or timesteps."""
@@ -1164,7 +1164,11 @@ class LineTuple(t.NamedTuple):
     lowerlevelindex: int
 
 
-def read_linestatfile(filepath: Path | str) -> tuple[list[float], list[int], list[int], list[int], list[int]]:
+def read_linestatfile(
+    filepath: Path | str,
+) -> tuple[
+    npt.NDArray[np.floating], npt.NDArray[np.int32], npt.NDArray[np.int32], npt.NDArray[np.int32], npt.NDArray[np.int32]
+]:
     """Load linestat.out containing transitions wavelength, element, ion, upper and lower levels."""
     if Path(filepath).is_dir():
         filepath = firstexisting("linestat.out", folder=filepath, tryzipped=True)
@@ -1175,17 +1179,17 @@ def read_linestatfile(filepath: Path | str) -> tuple[list[float], list[int], lis
     lambda_angstroms = data[0] * 1e8
     nlines = len(lambda_angstroms)
 
-    atomic_numbers = data[1].astype(int)
+    atomic_numbers = data[1].astype(np.int32)
     assert len(atomic_numbers) == nlines
 
-    ion_stages = data[2].astype(int)
+    ion_stages = data[2].astype(np.int32)
     assert len(ion_stages) == nlines
 
     # the file adds one to the levelindex, i.e. lowest level is 1
-    upper_levels = data[3].astype(int)
+    upper_levels = data[3].astype(np.int32)
     assert len(upper_levels) == nlines
 
-    lower_levels = data[4].astype(int)
+    lower_levels = data[4].astype(np.int32)
     assert len(lower_levels) == nlines
 
     return lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels
@@ -1475,9 +1479,7 @@ def print_theta_phi_definitions() -> None:
     )
 
 
-def get_phi_bins(
-    usedegrees: bool,
-) -> tuple[npt.NDArray[np.floating[t.Any]], npt.NDArray[np.floating[t.Any]], list[str]]:
+def get_phi_bins(usedegrees: bool) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating], list[str]]:
     nphibins = get_viewingdirection_phibincount()
     # pi/2 must be an exact boundary because of the change in behaviour there
     assert nphibins % 2 == 0

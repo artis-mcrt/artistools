@@ -101,7 +101,11 @@ def j_nu_dbb(arr_nu_hz: Sequence[float] | npt.NDArray[np.floating], W: float, T:
 
 
 def get_fullspecfittedfield(
-    radfielddata: pl.DataFrame, xmin: float, xmax: float, modelgridindex: int | None = None, timestep: int | None = None
+    radfielddata: pl.DataFrame,
+    xmin: float | int,
+    xmax: float | int,
+    modelgridindex: int | None = None,
+    timestep: int | None = None,
 ) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     radfielddata = radfielddata.filter(pl.col("bin_num") == -1)
     if modelgridindex is not None:
@@ -275,8 +279,8 @@ def plot_celltimestep(
     modelpath: Path | str,
     timestep: int,
     outputfile: Path | str,
-    xmin: float,
-    xmax: float,
+    xmin: float | int,
+    xmax: float | int,
     modelgridindex: int,
     args: argparse.Namespace,
     normalised: bool = False,

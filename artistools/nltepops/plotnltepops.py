@@ -489,11 +489,11 @@ def make_plot_populations_with_time_or_velocity(modelpaths: list[Path | str], ar
 def plot_populations_with_time_or_velocity(
     ax: mplax.Axes,
     modelpaths: list[Path | str],
-    timedays: float,
+    timedays: float | int,
     ion_stage: int,
     ionlevels: list[int],
     Z: int,
-    levelconfignames: list[int],
+    levelconfignames: list[str | int],
     args: argparse.Namespace,
 ) -> None:
     if args.x == "time":
@@ -537,7 +537,7 @@ def plot_populations_with_time_or_velocity(
                 #                                                          == ionlevel]['n_LTE'].values[0])
 
         for ionlevel in ionlevels:
-            plottimesteps = np.array([ts for ts, level, _mgi in populations if level == ionlevel])
+            plottimesteps = [ts for ts, level, _mgi in populations if level == ionlevel]
             timedayslist = [at.get_timestep_time(modelpath, ts) for ts in plottimesteps]
             plotpopulations = np.array([
                 float(populations[ts, level, mgi]) for ts, level, mgi in populations if level == ionlevel

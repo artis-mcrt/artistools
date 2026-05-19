@@ -78,7 +78,7 @@ def check_time_range_is_valid(modelpath: Path, timemin: float, timemax: float, a
 
 
 def get_lambda_min_max_binwidth(
-    xmin: float, xmax: float, args: argparse.Namespace
+    xmin: float | int, xmax: float | int, args: argparse.Namespace
 ) -> tuple[float, float, float | npt.NDArray[np.floating] | None]:
     lambda_min, lambda_max = sorted([
         atspectra.convert_unit_to_angstroms(xmin, args.xunit),
