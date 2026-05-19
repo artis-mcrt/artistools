@@ -7,26 +7,24 @@ on:
     merge_group:
     schedule:
         - cron: 0 10 * * 2
-    pull_request:
     workflow_dispatch:
     repository_dispatch:
         types: [trigger_checks]
-
+env:
+    RUFF_OUTPUT_FORMAT: github
+    UV_FROZEN: 1
+    PYO3_USE_ABI3_FORWARD_COMPATIBILITY: 1
 jobs:
     lint:
         name: Format, lint, and type check
         runs-on: ubuntu-24.04-arm
-        env:
-            RUFF_OUTPUT_FORMAT: github
-            UV_FROZEN: 1
         steps:
             - uses: actions/checkout@v6
-              with:
-                  fetch-depth: 0
 
             - uses: astral-sh/setup-uv@v8.1.0
               with:
                   activate-environment: true
+                  cache-suffix: lint
 
             - name: Get python minor version
               run: |
@@ -100,14 +98,10 @@ jobs:
         env:
             OS: ${{ matrix.os.name }}-${{ matrix.os.version }}
             PYTHON: 3.${{ matrix.python-minor-version }}
-            UV_FROZEN: 1
-            PYO3_USE_ABI3_FORWARD_COMPATIBILITY: 1
         name: pytest ${{ matrix.os.name }} python 3.${{ matrix.python-minor-version }}
         steps:
             - name: Checkout Code
               uses: actions/checkout@v6
-              with:
-                  fetch-depth: 0
 
             - uses: astral-sh/setup-uv@v8.1.0
               with:
@@ -141,9 +135,6 @@ jobs:
                   echo "CMAKE_PREFIX_PATH=/opt/homebrew/opt/openblas" >> $GITHUB_ENV
                   echo "PKG_CONFIG_PATH=/opt/homebrew/opt/openblas/lib/pkgconfig" >> $GITHUB_ENV
 
-            - name: Install pyarrow and scipy from source
-              if: matrix.os.name == 'macos' && matrix.python-minor-version == '15'
-              run: |
                   uv pip install pyarrow
                   GCC_MAJOR="$(brew list --versions gcc | awk '{print $2}' | cut -d. -f1)"
                   CXX="g++-${GCC_MAJOR}" FC="gfortran-${GCC_MAJOR}" uv pip install scipy
@@ -175,12 +166,10 @@ jobs:
               with:
                   token: ${{ secrets.CODECOV_TOKEN }}
                   files: ./coverage.xml
-                  # directory: ./coverage/reports/
                   flags: unittests
                   env_vars: OS,PYTHON
                   name: codecov-umbrella
                   fail_ci_if_error: false
-                  # path_to_write_report: ./coverage/codecov_report.txt
                   verbose: true
 
             - name: Upload output files
