@@ -468,7 +468,7 @@ def get_grid(
     return x3d_min, y3d_min, z3d_min, rhoint, xint, iso, qinterpol, yeinterpol, bsinterpol, eqsymfac, dfparticlecontribs
 
 
-def z_reflect(arr: npt.NDArray[np.floating | np.integer], sign: int = 1) -> npt.NDArray[np.floating | np.integer]:
+def z_reflect(arr: npt.NDArray[np.floating], sign: int = 1) -> npt.NDArray[np.floating]:
     """Flatten an array and add a reflection in z."""
     _ngridrcyl = arr.shape[0]
     reflected = np.concatenate([sign * np.flip(arr[:, :], axis=1), arr[:, :]], axis=1)
@@ -481,22 +481,22 @@ def map_to_artis(
     model_dim: int,
     grid_dims: npt.NDArray[np.integer],
     vmax_on_c: float,
-    rho_interpol: npt.NDArray[np.floating | np.integer],
-    X_cells: npt.NDArray[np.floating | np.integer],
+    rho_interpol: npt.NDArray[np.floating],
+    X_cells: npt.NDArray[np.floating],
     isot_table: npt.NDArray[t.Any],
-    q_ergperg: npt.NDArray[np.floating | np.integer],
-    ye_interpol: npt.NDArray[np.floating | np.integer],
+    q_ergperg: npt.NDArray[np.floating],
+    ye_interpol: npt.NDArray[np.floating],
     eqsymfac: int,
-    pos_t_s_grid_rad: npt.NDArray[np.floating | np.integer] | None = None,
-    pos_t_s_grid_z: npt.NDArray[np.floating | np.integer] | None = None,
-    x3d: npt.NDArray[np.floating | np.integer] | None = None,
-    y3d: npt.NDArray[np.floating | np.integer] | None = None,
-    z3d: npt.NDArray[np.floating | np.integer] | None = None,
-    bin_state: npt.NDArray[np.floating | np.integer] | None = None,
+    pos_t_s_grid_rad: npt.NDArray[np.floating] | None = None,
+    pos_t_s_grid_z: npt.NDArray[np.floating] | None = None,
+    x3d: npt.NDArray[np.floating] | None = None,
+    y3d: npt.NDArray[np.floating] | None = None,
+    z3d: npt.NDArray[np.floating] | None = None,
+    bin_state: npt.NDArray[np.floating] | None = None,
     replacedyn: str | None = None,
     bs_thr: float = 0.5,
     global_dyn_scale: bool = False,
-    local_dyn_scale: npt.NDArray[np.floating | np.integer] | None = None,
+    local_dyn_scale: npt.NDArray[np.floating] | None = None,
     interpolate: bool = False,
     M_2Ddyn: float | None = None,
 ) -> tuple[pl.DataFrame, pl.DataFrame, dict[str, t.Any]]:

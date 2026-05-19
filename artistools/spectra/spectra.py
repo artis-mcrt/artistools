@@ -302,9 +302,7 @@ def convert_unit_to_angstroms(value: float, old_units: str) -> float:
             raise ValueError(msg)
 
 
-def stackspectra(
-    spectra_and_factors: list[tuple[np.ndarray[t.Any, np.dtype[np.floating[t.Any]]], float]],
-) -> np.ndarray[t.Any, np.dtype[np.floating[t.Any]]]:
+def stackspectra(spectra_and_factors: list[tuple[npt.NDArray[np.floating], float]]) -> npt.NDArray[np.floating]:
     """Average spectra using (normalised) weighting factors, i.e., specout[nu] = (spec1[nu] * factor1 + spec2[nu] * factor2 + ...) / (factor1 + factor2 + ...).
 
     spectra_and_factors should be a list of tuples: spectra[], factor.
@@ -355,11 +353,11 @@ def get_spectrum_at_time(
 
 def get_from_packets(
     modelpath: Path | str,
-    timelowdays: float,
-    timehighdays: float,
-    lambda_min: float,
-    lambda_max: float,
-    delta_lambda: float | npt.NDArray[np.floating] | None = None,
+    timelowdays: float | int,
+    timehighdays: float | int,
+    lambda_min: float | int,
+    lambda_max: float | int,
+    delta_lambda: float | int | npt.NDArray[np.floating] | None = None,
     use_time: t.Literal["arrival", "emission", "escape"] = "arrival",
     maxpacketfiles: int | None = None,
     average_over_phi: bool = False,
@@ -1095,11 +1093,11 @@ def get_flux_contributions(
 
 def get_flux_contributions_from_packets(
     modelpath: Path,
-    timelowdays: float,
-    timehighdays: float,
-    lambda_min: float,
-    lambda_max: float,
-    delta_lambda: float | npt.NDArray[np.floating] | None = None,
+    timelowdays: float | int,
+    timehighdays: float | int,
+    lambda_min: float | int,
+    lambda_max: float | int,
+    delta_lambda: float | int | npt.NDArray[np.floating] | None = None,
     getemission: bool = True,
     getabsorption: bool = True,
     maxpacketfiles: int | None = None,
@@ -1109,7 +1107,7 @@ def get_flux_contributions_from_packets(
     fixedionlist: list[str] | None = None,
     use_time: t.Literal["arrival", "emission", "escape"] = "arrival",
     emtypecolumn: str | None = None,
-    emissionvelocitycut: float | None = None,
+    emissionvelocitycut: float | int | None = None,
     directionbin: int | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
