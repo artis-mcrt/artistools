@@ -165,6 +165,9 @@ jobs:
               run: uv run -- python -m coverage report
 
             - uses: codecov/codecov-action@v6
+              env:
+                  OS: ${{ matrix.os.name }}-${{ matrix.os.version }}
+                  PYTHON: ${{ matrix.python-version }}
               with:
                   token: ${{ secrets.CODECOV_TOKEN }}
                   files: ./coverage.xml
