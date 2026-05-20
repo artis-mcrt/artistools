@@ -302,9 +302,7 @@ def convert_unit_to_angstroms(value: float, old_units: str) -> float:
             raise ValueError(msg)
 
 
-def stackspectra(
-    spectra_and_factors: list[tuple[np.ndarray[t.Any, np.dtype[np.floating[t.Any]]], float]],
-) -> np.ndarray[t.Any, np.dtype[np.floating[t.Any]]]:
+def stackspectra(spectra_and_factors: list[tuple[npt.NDArray[np.floating], float]]) -> npt.NDArray[np.floating]:
     """Average spectra using (normalised) weighting factors, i.e., specout[nu] = (spec1[nu] * factor1 + spec2[nu] * factor2 + ...) / (factor1 + factor2 + ...).
 
     spectra_and_factors should be a list of tuples: spectra[], factor.
@@ -355,11 +353,11 @@ def get_spectrum_at_time(
 
 def get_from_packets(
     modelpath: Path | str,
-    timelowdays: float,
-    timehighdays: float,
-    lambda_min: float,
-    lambda_max: float,
-    delta_lambda: float | npt.NDArray[np.floating] | None = None,
+    timelowdays: float | int,
+    timehighdays: float | int,
+    lambda_min: float | int,
+    lambda_max: float | int,
+    delta_lambda: float | int | npt.NDArray[np.floating] | None = None,
     use_time: t.Literal["arrival", "emission", "escape"] = "arrival",
     maxpacketfiles: int | None = None,
     average_over_phi: bool = False,
@@ -476,7 +474,7 @@ def get_from_packets(
             if fluxfilterfunc:
                 dirbin_spectra[vspecindex] = (
                     dirbin_spectra[vspecindex]
-                    .with_columns(pl.col("f_lambda").map_batches(fluxfilterfunc))
+                    .with_columns(pl.col("f_lambda").map_batches(fluxfilterfunc, return_dtype=pl.self_dtype()))
                     .with_columns(f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu")))
                 )
 
@@ -563,7 +561,7 @@ def get_from_packets(
 
             if fluxfilterfunc:
                 dirbin_spectra[dirbin] = dirbin_spectra[dirbin].with_columns(
-                    pl.col("f_lambda").map_batches(fluxfilterfunc)
+                    pl.col("f_lambda").map_batches(fluxfilterfunc, return_dtype=pl.self_dtype())
                 )
 
             dirbin_spectra[dirbin] = (
@@ -710,7 +708,9 @@ def get_spectra(
         )
 
         if fluxfilterfunc:
-            dfspectrum = dfspectrum.with_columns(cs.starts_with("f_nu").map_batches(fluxfilterfunc))
+            dfspectrum = dfspectrum.with_columns(
+                cs.starts_with("f_nu").map_batches(fluxfilterfunc, return_dtype=pl.self_dtype())
+            )
 
         specdataout[dirbin] = dfspectrum.with_columns(
             f_lambda=pl.col("f_nu") * pl.col("nu") / pl.col("lambda_angstroms")
@@ -907,7 +907,7 @@ def get_vspecpol_spectrum(
 
     if fluxfilterfunc:
         print("Applying filter to ARTIS spectrum")
-        dfout = dfout.with_columns(cs.starts_with("f_nu").map_batches(fluxfilterfunc))
+        dfout = dfout.with_columns(cs.starts_with("f_nu").map_batches(fluxfilterfunc, return_dtype=pl.self_dtype()))
 
     return dfout.with_columns(f_lambda=pl.col("f_nu") * pl.col("nu") / pl.col("lambda_angstroms")).sort(
         by="lambda_angstroms"
@@ -1093,11 +1093,11 @@ def get_flux_contributions(
 
 def get_flux_contributions_from_packets(
     modelpath: Path,
-    timelowdays: float,
-    timehighdays: float,
-    lambda_min: float,
-    lambda_max: float,
-    delta_lambda: float | npt.NDArray[np.floating] | None = None,
+    timelowdays: float | int,
+    timehighdays: float | int,
+    lambda_min: float | int,
+    lambda_max: float | int,
+    delta_lambda: float | int | npt.NDArray[np.floating] | None = None,
     getemission: bool = True,
     getabsorption: bool = True,
     maxpacketfiles: int | None = None,
@@ -1107,7 +1107,7 @@ def get_flux_contributions_from_packets(
     fixedionlist: list[str] | None = None,
     use_time: t.Literal["arrival", "emission", "escape"] = "arrival",
     emtypecolumn: str | None = None,
-    emissionvelocitycut: float | None = None,
+    emissionvelocitycut: float | int | None = None,
     directionbin: int | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
@@ -1325,9 +1325,13 @@ def get_flux_contributions_from_packets(
         allgroupnames = [*allgroupnames[:maxseriescount], "Other"]
 
         if getemission:
-            emissiongroups["Other"] = pl.concat(
-                (emissiongroups[groupname] for groupname in other_groupnames if groupname in emissiongroups),
-                rechunk=False,
+            other_subgroups = [
+                emissiongroups[groupname] for groupname in other_groupnames if groupname in emissiongroups
+            ]
+            emissiongroups["Other"] = (
+                pl.concat(other_subgroups, rechunk=False)
+                if other_subgroups
+                else pl.DataFrame(schema=emissiongroups[next(iter(emissiongroups))].schema)
             )
 
         if getabsorption:

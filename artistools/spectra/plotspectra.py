@@ -78,7 +78,7 @@ def check_time_range_is_valid(modelpath: Path, timemin: float, timemax: float, a
 
 
 def get_lambda_min_max_binwidth(
-    xmin: float, xmax: float, args: argparse.Namespace
+    xmin: float | int, xmax: float | int, args: argparse.Namespace
 ) -> tuple[float, float, float | npt.NDArray[np.floating] | None]:
     lambda_min, lambda_max = sorted([
         atspectra.convert_unit_to_angstroms(xmin, args.xunit),
@@ -338,7 +338,9 @@ def plot_reference_spectrum(
 
     if fluxfilterfunc:
         print(" applying filter to reference spectrum")
-        specdata = specdata.with_columns(cs.starts_with("f_lambda").map_batches(fluxfilterfunc))
+        specdata = specdata.with_columns(
+            cs.starts_with("f_lambda").map_batches(fluxfilterfunc, return_dtype=pl.self_dtype())
+        )
 
     specdata = atspectra.get_dfspectrum_x_y_with_units(
         specdata, xunit=xunit, yvariable=yvariable, fluxdistance_mpc=scale_to_dist_mpc
@@ -1036,19 +1038,21 @@ def make_emissionabsorption_plot(
     else:
         plotlabel = f"{modelname} [{args.timemin:.2f}d to {args.timemax:.2f}d]"
         if args.plotviewingangle or args.plotvspecpol:
+            assert dirbin is not None
             dirbin_definitions = (
                 get_vspec_dir_labels(modelpath=modelpath, usedegrees=args.usedegrees)
                 if args.plotvspecpol
                 else get_dirbin_labels(
-                    dirbins=args.plotviewingangle,
                     modelpath=modelpath,
                     average_over_phi=args.average_over_phi_angle,
                     average_over_theta=args.average_over_theta_angle,
                     usedegrees=args.usedegrees,
                 )
             )
-            assert dirbin is not None
             plotlabel += f", {dirbin_definitions[dirbin]}"
+
+            if dirbin != -1:
+                print_theta_phi_definitions()
 
     if not args.notitle:
         if args.inset_title:

@@ -10,30 +10,25 @@ on:
     workflow_dispatch:
     repository_dispatch:
         types: [trigger_checks]
-
 jobs:
     codspeed-benchmarks:
         timeout-minutes: 180
         runs-on: ubuntu-24.04
         env:
+            PYO3_USE_ABI3_FORWARD_COMPATIBILITY: 1
             UV_FROZEN: 1
-
         name: codspeed benchmarks
         steps:
             - name: Checkout Code
               uses: actions/checkout@v6
-              with:
-                  fetch-depth: 0
 
             - name: Setup uv
-              uses: astral-sh/setup-uv@v7
+              uses: astral-sh/setup-uv@v8.1.0
+              id: setup-uv
               with:
                   activate-environment: true
-
-            - name: Get python minor version
-              run: |
-                  echo "PYTHON_MINOR_VERSION=$(python -c 'import platform; print(platform.python_version_tuple()[1])')" >> $GITHUB_ENV
-                  echo "PYO3_PYTHON=python3.$(python -c 'import platform; print(platform.python_version_tuple()[1])')" >> $GITHUB_ENV
+                  cache-suffix: codspeed
+                  cache-dependency-glob: '**/uv.lock'
 
             - name: Cache cargo and rust build
               uses: actions/cache@v5
@@ -43,25 +38,18 @@ jobs:
                       ~/.cargo/registry/cache/
                       ~/.cargo/git/db/
                       rust/target/
-                  key: cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python3.${{ env.PYTHON_MINOR_VERSION }}-${{ hashFiles('**/Cargo.lock') }}-${{
-                      github.run_id }}
+                  key: codspeed-cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python${{ steps.setup-uv.outputs.python-version }}-${{ hashFiles('**/Cargo.lock')
+                      }}-${{ github.run_id }}
                   restore-keys: |
-                      cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python3.${{ env.PYTHON_MINOR_VERSION }}-${{ hashFiles('**/Cargo.lock') }}-
-                      cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python3.${{ env.PYTHON_MINOR_VERSION }}-
+                      codspeed-cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python${{ steps.setup-uv.outputs.python-version }}-${{ hashFiles('**/Cargo.lock') }}-
+                      codspeed-cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python${{ steps.setup-uv.outputs.python-version }}-
+                      codspeed-cargo-rust-target-${{ runner.os }}${{ runner.arch }}-
                       cargo-rust-target-${{ runner.os }}${{ runner.arch }}-
 
             - name: Install artistools
               run: |
                   rustup update stable
-                  uv sync
-                  uv pip install --compile-bytecode .
-
-            - name: Cache test data
-              uses: actions/cache@v5
-              with:
-                  enableCrossOsArchive: true
-                  path: tests/data/*.tar.xz
-                  key: testdata20231114
+                  uv sync --compile-bytecode
 
             - name: Download/extract test data
               working-directory: tests/data/

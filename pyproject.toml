@@ -58,22 +58,23 @@ extras = [
 [dependency-groups]
 dev = [
     "basedpyright>=1.39.3",
+    "beartype>=0.22.9",
     "imageio>=2.37.3",
     "mypy>=2.0.0",
     "pandas-stubs>=3.0.0.260204",
     "prek>=0.2.28",
     "pynonthermal>=2026.4.27",
-    "pyrefly>=0.64.0",
+    "pyrefly>=1.0.0",
     "pytest>=9.0.3",
     "pytest-codspeed>=4.4.0",
     "pytest-cov>=7.1.0",
     "pytest-xdist[psutil]>=3.8.0",
     "ruff>=0.15.12",
+    "scipy-stubs>=1.17.1",
     "typeguard>=4.5.1",
     "types-python-dateutil>=2.9.0.20260408",
     "types-pyyaml>=6.0.12.20260408",
     "types-tqdm>=4.67.3.20260408",
-    "zuban>=0.7.2",
 ]
 
 [project.urls]
@@ -102,7 +103,6 @@ plotartisviewingangles = 'artistools.viewing_angles_visualization:main'
 [tool.cibuildwheel]
 build-frontend = "uv"
 archs = ["auto64"]
-enable = ["cpython-freethreading"]
 environment-pass = ["PYO3_PYTHON"]
 # installing dependencies on Linux arm64 takes ~20 minutes
 #test-command = "python -m artistools"
@@ -148,8 +148,9 @@ include = [
 ]
 
 [tool.mypy]
+python_executable = ".venv/bin/python3"
 check_untyped_defs = true
-allow_redefinition_new = true
+allow_redefinition = true
 disallow_any_explicit = false
 disallow_any_generics = true
 disallow_any_unimported = true
@@ -173,18 +174,16 @@ enable_error_code = [
     "type-arg",
     "unused-awaitable",
 ]
-exclude = "(build)|(dist)|(tests)|(data)|(.venv)|(venv)|(_version.py)"
+exclude = "(build)|(dist)|(tests)|(data)|(.venv)|(venv)"
 extra_checks = true
 ignore_missing_imports = true
 implicit_optional = false
 implicit_reexport = false
-local_partial_types = true
 packages = "artistools"
 pretty = true
 scripts_are_modules = true
 strict = true
 strict_equality = true
-strict_bytes = true
 warn_redundant_casts = true
 warn_unreachable = false
 warn_unused_configs = true
@@ -229,24 +228,29 @@ ignored-modules = ["astropy", "extinction", "pyvista"]
 unsafe-load-any-extension = true
 
 [tool.pyrefly]
+preset = "strict"
 project-excludes = [
-    '**/node_modules',
-    '**/__pycache__',
-    '**/.*',
-    'build',
-    'dist',
-    'target',
-    '**/version.py',
-    '.venv',
+    "**/node_modules",
+    "**/__pycache__",
+    "**/venv/**",
+    "**/.[!/.]*/**",
+    '**/build/**',
+    '**/dist/**',
+    '**/target/**',
+    '**/.venv/**',
     '**/rd_cmfgen.py',
 ]
+python-interpreter-path = ".venv/bin/python3"
 
 [tool.pyrefly.errors]
 missing-import = false
 unbound-name = false
 unsupported-operation = false
+implicit-any-empty-container = false
 
 [tool.pyright]
+venvPath = "."
+venv = ".venv"
 enableTypeIgnoreComments = false # leave these for mypy to interpret
 exclude = [
     '**/node_modules',
@@ -289,7 +293,6 @@ minversion = "9.0"
 addopts = [
     "--durations=0",
     "--durations-min=1.0",
-    "--typeguard-packages=artistools",
     "-n",
     "auto",
 ]
@@ -309,9 +312,7 @@ ignore = ["FURB108"]
 [tool.ruff]
 line-length = 120
 fix = true
-show-fixes = true
 extend-exclude = [
-    "_version.py",
     "artistools/inputmodel/fromcmfgen/rd_cmfgen.py",
     ".venv/**",
 ]
@@ -359,6 +360,7 @@ ignore = [
     "PLR0915", # too-many-statements
     "PLR2004", # magic-value-comparison
     "PLW2901", # redefined-loop-name
+    "PYI041",  # redundant-numeric-union (keep int | float for beartype)
     "RUF069",  # float equality comparison
     "S101",    # Use of assert detected
     "S311",    # suspicious-non-cryptographic-random-usage
@@ -389,11 +391,11 @@ unfixable = [
 "matplotlib.pyplot" = "plt"
 "matplotlib.typing" = "mplt"
 "numpy.typing" = "npt"
-"typing" = "t"
 "polars" = "pl"
 "polars.selectors" = "cs"
 "polars.testing" = "pltest"
 "pynonthermal" = "pynt"
+"typing" = "t"
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"

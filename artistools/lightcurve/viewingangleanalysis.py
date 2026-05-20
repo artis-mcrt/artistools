@@ -262,7 +262,7 @@ def calculate_peak_time_mag_deltam15(
     time: Sequence[float],
     magnitude: npt.NDArray[np.floating],
     modelname: str,
-    angle: float,
+    angle: int,
     key: str,
     args: argparse.Namespace,
     filternames_conversion_dict: dict[str, str],
@@ -399,7 +399,7 @@ def make_plot_test_viewing_angle_fit(
     tmax_polyfit: float,
     time_after15days_polyfit: float | str,
     modelname: str,
-    angle: float,
+    angle: int,
     args: argparse.Namespace,
 ) -> None:
     plt.plot(time, magnitude)

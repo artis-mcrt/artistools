@@ -458,7 +458,7 @@ def get_modeldata(
 
 
 def get_empty_3d_model(
-    ncoordgrid: int, vmax: float, t_model_init_days: float, includenico57: bool = False
+    ncoordgrid: int, vmax: float | int, t_model_init_days: float | int, includenico57: bool = False
 ) -> tuple[pl.LazyFrame, dict[str, t.Any]]:
     xmax = vmax * t_model_init_days * 86400.0
 

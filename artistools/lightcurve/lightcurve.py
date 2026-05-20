@@ -49,8 +49,8 @@ def get_from_packets(
     directionbins_are_vpkt_observers: bool = False,
     pellet_nucname: str | None = None,
     use_pellet_decay_time: bool = False,
-    timedaysmin: float | None = None,
-    timedaysmax: float | None = None,
+    timedaysmin: float | int | None = None,
+    timedaysmax: float | int | None = None,
 ) -> dict[int, pl.LazyFrame]:
     """Get ARTIS luminosity vs time from packets files."""
     if escape_type not in {"TYPE_RPKT", "TYPE_GAMMA"}:
@@ -267,7 +267,7 @@ def generate_band_lightcurve_data(
                 )
 
                 if len(wavelength_from_spectrum) > len(wavefilter):
-                    interpolate_fn = interp1d(wavefilter, transmission, bounds_error=False, fill_value=0.0)  # pyrefly: ignore[bad-argument-type]
+                    interpolate_fn = interp1d(x=wavefilter, y=transmission, bounds_error=False, fill_value=0.0)  # type: ignore[arg-type] # pyright: ignore[reportArgumentType] # pyrefly: ignore [bad-argument-type]
                     wavefilter = np.linspace(
                         np.min(wavelength_from_spectrum),
                         int(np.max(wavelength_from_spectrum)),
@@ -279,7 +279,7 @@ def generate_band_lightcurve_data(
                     wavelength_from_spectrum = np.linspace(wavefilter_min, wavefilter_max, len(wavefilter))
                     flux = interpolate_fn(wavelength_from_spectrum)
 
-                weighted_flux_obs = abs(np.trapezoid(flux * transmission, wavelength_from_spectrum))
+                weighted_flux_obs = abs(np.trapezoid(flux * transmission, wavelength_from_spectrum))  # pyright: ignore[reportArgumentType]
                 assert isinstance(weighted_flux_obs, float)
                 phot_filtobs_sn: float = (
                     0.0 if weighted_flux_obs == 0.0 else -2.5 * np.log10(weighted_flux_obs / zeropointenergyflux)
@@ -334,7 +334,7 @@ def bolometric_magnitude(
 
 def get_filter_data(
     filterdir: Path | str, filter_name: str
-) -> tuple[float, npt.NDArray[np.floating], npt.NDArray[np.floating], float, float]:
+) -> tuple[float, npt.NDArray[np.floating], npt.NDArray[np.floating], float, int]:
     """Filter data in 'data/filters' taken from https://github.com/cinserra/S3/tree/master/src/s3/metadata."""
     with Path(filterdir, f"{filter_name}.txt").open("r", encoding="utf-8") as filter_metadata:  # definition of the file
         line_in_filter_metadata = filter_metadata.readlines()  # list of lines
@@ -342,7 +342,8 @@ def get_filter_data(
     zeropointenergyflux = float(line_in_filter_metadata[0])
     # zero point in energy flux (erg/cm^2/s)
 
-    wavefilter, transmission = [], []
+    wavefilter: list[float] = []
+    transmission: list[float] = []
     for row in line_in_filter_metadata[4:]:
         # lines where the wave and transmission are stored
         wavefilter.append(float(row.split()[0]))
@@ -357,9 +358,9 @@ def get_filter_data(
 def get_spectrum_in_filter_range(
     modelpath: Path | str,
     timestep: int,
-    time: float,
-    wavefilter_min: float,
-    wavefilter_max: float,
+    time: float | int,
+    wavefilter_min: float | int,
+    wavefilter_max: float | int,
     angle: int = -1,
     spectrum: pd.DataFrame | None = None,
     args: argparse.Namespace | None = None,
