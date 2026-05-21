@@ -249,25 +249,27 @@ def get_trajectory_abund_q(
 ) -> dict[tuple[int, int] | str, float]:
     """Get the nuclear mass fractions (and Qdotintegral) for a particle particle number as a given time."""
     assert t_model_s is not None or nts is not None
-    try:
-        if nts is not None:
-            memberfilename = f"./Run_rprocess/nz-plane{nts:05d}"
-        elif t_model_s is not None:
-            # find the closest timestep to the required time
+    if nts is not None:
+        memberfilename = f"./Run_rprocess/nz-plane{nts:05d}"
+    elif t_model_s is not None:
+        # find the closest timestep to the required time
+        try:
             nts = get_closest_network_timesteps(traj_root, particleid, [t_model_s])[0]
-            memberfilename = f"./Run_rprocess/nz-plane{nts:05d}"
-        else:
-            msg = "Either t_model_s or nts must be specified"
-            raise ValueError(msg)
+        except FileNotFoundError:
+            return {}
+        memberfilename = f"./Run_rprocess/nz-plane{nts:05d}"
+    else:
+        msg = "Either t_model_s or nts must be specified"
+        raise ValueError(msg)
 
+    try:
         dftrajnucabund, traj_time_s = get_trajectory_timestepfile_nuc_abund(traj_root, particleid, memberfilename)
 
-        if t_model_s is None:
-            t_model_s = traj_time_s
-
     except FileNotFoundError:
-        # print(f" WARNING {particleid}.tar.xz file not found! ")
         return {}
+
+    if t_model_s is None:
+        t_model_s = traj_time_s
 
     massfractotal = dftrajnucabund["massfrac"].sum()
     dftrajnucabund = dftrajnucabund.filter(pl.col("Z") >= 1)

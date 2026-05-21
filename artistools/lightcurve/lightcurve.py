@@ -87,20 +87,17 @@ def get_from_packets(
             (pl.col("escape_time") * escapesurfacegamma / 86400.0).alias("t_arrive_cmf_d")
         ])
 
-    try:
-        if pellet_nucname is not None:
-            atomic_number = at.get_atomic_number(pellet_nucname)
-            if at.get_elsymbol(atomic_number) == pellet_nucname:
-                expr = pl.col("atomic_number") == atomic_number
-            else:
-                expr = pl.col("nucname") == pellet_nucname
-            dfpackets = dfpackets.filter(
-                pl.col("pellet_nucindex").is_in(
-                    at.get_nuclides(modelpath=modelpath).filter(expr).select("pellet_nucindex").collect().to_series()
-                )
+    if pellet_nucname is not None:
+        atomic_number = at.get_atomic_number(pellet_nucname)
+        if at.get_elsymbol(atomic_number) == pellet_nucname:
+            expr = pl.col("atomic_number") == atomic_number
+        else:
+            expr = pl.col("nucname") == pellet_nucname
+        dfpackets = dfpackets.filter(
+            pl.col("pellet_nucindex").is_in(
+                at.get_nuclides(modelpath=modelpath).filter(expr).select("pellet_nucindex").collect().to_series()
             )
-    except FileNotFoundError:
-        assert pellet_nucname is None
+        )
 
     if use_pellet_decay_time:
         assert not directionbins_are_vpkt_observers

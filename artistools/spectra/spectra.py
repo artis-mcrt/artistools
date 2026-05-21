@@ -173,21 +173,6 @@ def get_exspec_bins(
     if modelpath is not None:
         try:
             dfspec = read_spec(modelpath, gamma=gamma).collect()
-            if mnubins is None:
-                mnubins = dfspec.height
-
-            nu_centre_min = dfspec.item(0, 0)
-            nu_centre_max = dfspec.item(dfspec.height - 1, 0)
-
-            # This is not an exact solution for dlognu since we're assuming the bin centre spacing matches the bin edge spacing
-            # but it's close enough for our purposes and avoids the difficulty of finding the exact solution (lots more algebra)
-            dlognu = math.log(dfspec.item(1, 0) / dfspec.item(0, 0))  # second nu value divided by the first nu value
-
-            if nu_min_r is None:
-                nu_min_r = nu_centre_min / (1 + 0.5 * dlognu)
-
-            if nu_max_r is None:
-                nu_max_r = nu_centre_max * (1 + 0.5 * dlognu)
         except FileNotFoundError:
             mnubins = 1000
             if gamma:
@@ -204,6 +189,22 @@ def get_exspec_bins(
                 print(
                     f"No spec.out found. Using default rpkt bins: mnubins {mnubins} nu_min_r {nu_min_r:.2e} nu_max_r {nu_max_r:.2e}"
                 )
+        else:
+            if mnubins is None:
+                mnubins = dfspec.height
+
+            nu_centre_min = dfspec.item(0, 0)
+            nu_centre_max = dfspec.item(dfspec.height - 1, 0)
+
+            # This is not an exact solution for dlognu since we're assuming the bin centre spacing matches the bin edge spacing
+            # but it's close enough for our purposes and avoids the difficulty of finding the exact solution (lots more algebra)
+            dlognu = math.log(dfspec.item(1, 0) / dfspec.item(0, 0))  # second nu value divided by the first nu value
+
+            if nu_min_r is None:
+                nu_min_r = nu_centre_min / (1 + 0.5 * dlognu)
+
+            if nu_max_r is None:
+                nu_max_r = nu_centre_max * (1 + 0.5 * dlognu)
 
     assert nu_min_r is not None
     assert nu_max_r is not None

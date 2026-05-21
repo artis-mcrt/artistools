@@ -334,17 +334,18 @@ def plot_artis_lightcurve(
     print(f" range of light curve: {lctimemin:.2f} to {lctimemax:.2f} days")
     try:
         nts_last, validrange_start_days, validrange_end_days = at.get_escaped_arrivalrange(modelpath)
-        if validrange_start_days is not None and validrange_end_days is not None:
-            str_valid_range = f"{validrange_start_days:.2f} to {validrange_end_days:.2f} days"
-        else:
-            str_valid_range = f"{validrange_start_days} to {validrange_end_days} days"
-        print(f" range of validity (last timestep {nts_last}): {str_valid_range}")
     except FileNotFoundError:
         print(
             " range of validity: could not determine due to missing files "
             "(requires deposition.out, input.txt, model.txt)"
         )
         nts_last, validrange_start_days, validrange_end_days = None, -math.inf, math.inf
+    else:
+        if validrange_start_days is not None and validrange_end_days is not None:
+            str_valid_range = f"{validrange_start_days:.2f} to {validrange_end_days:.2f} days"
+        else:
+            str_valid_range = f"{validrange_start_days} to {validrange_end_days} days"
+        print(f" range of validity (last timestep {nts_last}): {str_valid_range}")
 
     if any(dirbin != -1 for dirbin in dirbins):
         print_theta_phi_definitions()
