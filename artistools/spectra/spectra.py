@@ -276,12 +276,12 @@ def convert_angstroms_to_unit(value_angstroms: float | int, new_units: str) -> f
     raise ValueError(msg)
 
 
-def convert_unit_to_angstroms(value: float | int, old_units: str) -> float:
+def convert_unit_to_angstroms(value: float | int | np.floating, old_units: str) -> float:
     """Convert a wavelength, frequency, or energy to wavelength angstroms."""
     c = 2.99792458e18  # speed of light [angstroms/s]
     h = 4.1356677e-15  # Planck's constant [eV s]
     hc_ev_angstroms = h * c  # [eV angstroms]
-
+    value = float(value)
     match old_units.lower():
         case "ev":
             return hc_ev_angstroms / value
