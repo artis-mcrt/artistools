@@ -248,7 +248,10 @@ def get_trajectory_abund_q(
     getqdotintegral: bool = False,
 ) -> dict[tuple[int, int] | str, float]:
     """Get the nuclear mass fractions (and Qdotintegral) for a particle particle number as a given time."""
-    assert t_model_s is not None or nts is not None
+    if t_model_s is None and nts is None:
+        msg = "Either t_model_s or nts must be specified"
+        raise ValueError(msg)
+
     if nts is not None:
         memberfilename = f"./Run_rprocess/nz-plane{nts:05d}"
     elif t_model_s is not None:
@@ -258,9 +261,6 @@ def get_trajectory_abund_q(
         except FileNotFoundError:
             return {}
         memberfilename = f"./Run_rprocess/nz-plane{nts:05d}"
-    else:
-        msg = "Either t_model_s or nts must be specified"
-        raise ValueError(msg)
 
     try:
         dftrajnucabund, traj_time_s = get_trajectory_timestepfile_nuc_abund(traj_root, particleid, memberfilename)
