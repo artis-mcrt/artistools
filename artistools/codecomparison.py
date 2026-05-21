@@ -190,7 +190,7 @@ def get_spectra(modelpath: str | Path) -> tuple[pl.DataFrame, npt.NDArray[np.flo
     return dfspectra, arr_timedays
 
 
-def plot_spectrum(modelpath: str | Path, timedays: str | float, axis: mplax.Axes, **plotkwargs: t.Any) -> None:
+def plot_spectrum(modelpath: str | Path, timedays: str | float | int, axis: mplax.Axes, **plotkwargs: t.Any) -> None:
     dfspectra, arr_timedays = get_spectra(modelpath)
     timeindex = int((np.abs(arr_timedays - float(timedays))).argmin())
     timedays_found = dfspectra.columns[timeindex + 1]

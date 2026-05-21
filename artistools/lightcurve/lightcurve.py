@@ -281,7 +281,7 @@ def generate_band_lightcurve_data(
 
                 weighted_flux_obs = abs(np.trapezoid(flux * transmission, wavelength_from_spectrum))  # pyright: ignore[reportArgumentType]
                 assert isinstance(weighted_flux_obs, float)
-                phot_filtobs_sn: float = (
+                phot_filtobs_sn: float | int = (
                     0.0 if weighted_flux_obs == 0.0 else -2.5 * np.log10(weighted_flux_obs / zeropointenergyflux)
                 )
 

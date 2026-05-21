@@ -52,7 +52,7 @@ def path_is_artis_model(filepath: str | Path) -> bool:
     return True if Path(filepath).suffix == ".out" else Path(filepath).is_dir()
 
 
-def check_time_range_is_valid(modelpath: Path, timemin: float, timemax: float, allow_invalid: bool) -> None:
+def check_time_range_is_valid(modelpath: Path, timemin: float | int, timemax: float | int, allow_invalid: bool) -> None:
     with contextlib.suppress(FileNotFoundError):
         _, validrange_start_days, validrange_end_days = get_escaped_arrivalrange(modelpath)
         problem_messages = []
@@ -270,13 +270,13 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
 def plot_reference_spectrum(
     filename: Path | str,
     axis: mplax.Axes,
-    xmin: float,
-    xmax: float,
+    xmin: float | int,
+    xmax: float | int,
     fluxfilterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
-    scale_to_peak: float | None = None,
-    offset: float = 0,
-    scale_to_dist_mpc: float = 1,
-    scaletoreftime: float | None = None,
+    scale_to_peak: float | int | None = None,
+    offset: float | int = 0,
+    scale_to_dist_mpc: float | int = 1,
+    scaletoreftime: float | int | None = None,
     xunit: str = "angstroms",
     yvariable: str = "flux",
     **plotkwargs: t.Any,
@@ -381,7 +381,7 @@ def plot_artis_spectrum(
     axes: npt.NDArray[t.Any] | Sequence[mplax.Axes],
     modelpath: Path | str,
     args: argparse.Namespace,
-    scale_to_peak: float | None = None,
+    scale_to_peak: float | int | None = None,
     from_packets: bool = False,
     filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     linelabel: str | None = None,
@@ -612,7 +612,7 @@ def make_spectrum_plot(
     axes: npt.NDArray[t.Any] | Sequence[mplax.Axes],
     filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None,
     args: argparse.Namespace,
-    scale_to_peak: float | None = None,
+    scale_to_peak: float | int | None = None,
 ) -> pl.DataFrame:
     """Plot reference spectra and ARTIS spectra."""
     dfalldata = pl.DataFrame()
@@ -793,7 +793,7 @@ def make_emissionabsorption_plot(
     axis: mplax.Axes,
     args: argparse.Namespace,
     filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
-    scale_to_peak: float | None = None,
+    scale_to_peak: float | int | None = None,
 ) -> tuple[list[Artist], list[str], pl.DataFrame | None]:
     """Plot the emission and absorption contribution spectra, grouped by ion/line/term for an ARTIS model."""
     modelname = args.label[0] if args.label and args.label[0] is not None else get_model_name(modelpath)

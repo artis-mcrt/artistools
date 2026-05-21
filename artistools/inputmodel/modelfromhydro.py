@@ -118,7 +118,7 @@ def get_snapshot_time_geomunits(pathtogriddata: Path | str) -> tuple[float, floa
 
 
 def read_griddat_file(
-    pathtogriddata: str | Path, targetmodeltime_days: float | None = None
+    pathtogriddata: str | Path, targetmodeltime_days: float | int | None = None
 ) -> tuple[pd.DataFrame, float, float, float, dict[str, t.Any]]:
     griddatfilepath = Path(pathtogriddata) / "grid.dat"
 
@@ -285,8 +285,8 @@ def mirror_model_in_axis(griddata: pd.DataFrame) -> pd.DataFrame:
 
 def add_mass_to_center(
     griddata: pd.DataFrame,
-    t_model_in_days: float,
-    vmax: float,  # noqa: ARG001
+    t_model_in_days: float | int,
+    vmax: float | int,  # noqa: ARG001
     args: argparse.Namespace,  # noqa: ARG001
 ) -> pd.DataFrame:
 
@@ -333,11 +333,11 @@ def add_mass_to_center(
 def makemodelfromgriddata(
     gridfolderpath: Path | str,
     outputpath: Path | str,
-    targetmodeltime_days: float | None = None,
+    targetmodeltime_days: float | int | None = None,
     traj_root: Path | str | None = None,
     dimensions: int = 3,
-    scalemass: float = 1.0,
-    scalevelocity: float = 1.0,
+    scalemass: float | int = 1.0,
+    scalevelocity: float | int = 1.0,
     args: argparse.Namespace | None = None,
 ) -> None:
     if args is None:

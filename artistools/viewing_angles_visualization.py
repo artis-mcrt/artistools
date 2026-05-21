@@ -7,7 +7,7 @@ import pandas as pd
 import artistools as at
 
 
-def get_theta_phi(anglebin: int) -> tuple[float | None, float | None]:
+def get_theta_phi(anglebin: int) -> tuple[float | int | None, float | int | None]:
     """Get the central theta and phi angles for given anglebin."""
     assert isinstance(anglebin, int), "Anglebin has to be int"
     cos_theta = [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9]
@@ -55,12 +55,12 @@ def gen_viewing_angle_df(length: int) -> pd.DataFrame:
 def viewing_angles_visualisation(
     modelfile: str,
     outfile: str | None = None,
-    isomin: float | None = None,
-    isomax: float | None = None,
-    opacity: float = 2.5,
+    isomin: float | int | None = None,
+    isomax: float | int | None = None,
+    opacity: float | int = 2.5,
     surface_count: int = 20,
-    linewidth: float = 2.5,
-    linelength: float = 1.0,
+    linewidth: float | int = 2.5,
+    linelength: float | int = 1.0,
     show_plot: bool = False,
 ) -> tuple[float, float]:
     """Tool to generate a 3D visualization of an ARTIS model. Viewing angle bins will get overplotted with an animation.
@@ -91,7 +91,7 @@ def viewing_angles_visualisation(
 
     Returns
     -------
-    isomin, isomax : float, float
+    isomin, isomax : float | int, float
 
     """
     try:

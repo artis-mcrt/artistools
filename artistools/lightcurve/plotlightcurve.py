@@ -142,7 +142,7 @@ def plot_deposition_thermalisation(
             color=color_alpha,
         )
 
-        ejecta_ke_erg: float = dfmodel.select("kinetic_en_erg").sum().collect().item()
+        ejecta_ke_erg: float | int = dfmodel.select("kinetic_en_erg").sum().collect().item()
 
         print(f"  ejecta kinetic energy: {ejecta_ke_erg / 1e7:.2e} [J] = {ejecta_ke_erg:.2e} [erg]")
 
