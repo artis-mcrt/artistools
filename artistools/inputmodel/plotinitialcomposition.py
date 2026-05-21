@@ -31,7 +31,7 @@ def get_2D_slice_through_3d_model(
 ) -> pd.DataFrame:
     if not sliceindex:
         # get midpoint
-        sliceposition: float = dfmodel.iloc[(dfmodel["pos_x_min"]).abs().argsort()][:1]["pos_x_min"].item()
+        sliceposition: float | int = dfmodel.iloc[(dfmodel["pos_x_min"]).abs().argsort()][:1]["pos_x_min"].item()
         # Choose position to slice. This gets minimum absolute value as the closest to 0
     else:
         cell_boundaries = list(dfmodel[f"pos_{sliceaxis}_min"].unique())
@@ -53,7 +53,7 @@ def plot_slice_modelcolumn(
     colname: str,
     plotaxis1: str,
     plotaxis2: str,
-    t_model_d: float,
+    t_model_d: float | int,
     args: argparse.Namespace,
 ) -> tuple[AxesImage, mplcm.ScalarMappable | None]:
     print(f"plotting {colname}")

@@ -46,7 +46,7 @@ class FluxContributionTuple(t.NamedTuple):
     color: t.Any
 
 
-def timeshift_fluxscale_co56law(scaletoreftime: float | None, spectime: float) -> float:
+def timeshift_fluxscale_co56law(scaletoreftime: float | int | None, spectime: float) -> float:
     if scaletoreftime is not None:
         # Co56 decay flux scaling
         assert spectime > 150
@@ -165,8 +165,8 @@ def get_dfspectrum_x_y_with_units(
 def get_exspec_bins(
     modelpath: str | Path | None = None,
     mnubins: int | None = None,
-    nu_min_r: float | None = None,
-    nu_max_r: float | None = None,
+    nu_min_r: float | int | None = None,
+    nu_max_r: float | int | None = None,
     gamma: bool = False,
 ) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     """Get the wavelength bins for the emergent spectrum."""
@@ -249,7 +249,7 @@ def convert_xunit_aliases_to_canonical(xunit: str) -> str:
             raise ValueError(msg)
 
 
-def convert_angstroms_to_unit(value_angstroms: float, new_units: str) -> float:
+def convert_angstroms_to_unit(value_angstroms: float | int, new_units: str) -> float:
     """Convert a wavelength in angstroms to a different unit, either length, frequency, or energy."""
     c = 2.99792458e18  # speed of light [angstroms/s]
     h = 4.1356677e-15  # Planck's constant [eV s]
@@ -276,7 +276,7 @@ def convert_angstroms_to_unit(value_angstroms: float, new_units: str) -> float:
     raise ValueError(msg)
 
 
-def convert_unit_to_angstroms(value: float, old_units: str) -> float:
+def convert_unit_to_angstroms(value: float | int, old_units: str) -> float:
     """Convert a wavelength, frequency, or energy to wavelength angstroms."""
     c = 2.99792458e18  # speed of light [angstroms/s]
     h = 4.1356677e-15  # Planck's constant [eV s]
@@ -319,7 +319,7 @@ def stackspectra(spectra_and_factors: list[tuple[npt.NDArray[np.floating], float
 def get_spectrum_at_time(
     modelpath: Path,
     timestep: int,
-    time: float,
+    time: float | int,
     args: argparse.Namespace | None,
     dirbin: int = -1,
     average_over_phi: bool | None = None,
@@ -428,7 +428,7 @@ def get_from_packets(
         .sort(["lambda_binindex", "lambda_angstroms"])
         .lazy()
     )
-    escapesurfacegamma: float | None = None
+    escapesurfacegamma: float | int | None = None
     dirbin_spectra: dict[int, pl.LazyFrame] = {}
     if directionbins_are_vpkt_observers:
         vpkt_config = get_vpkt_config(modelpath)
@@ -866,7 +866,7 @@ def split_dataframe_stokesparams(specdata: pl.DataFrame | pl.LazyFrame) -> dict[
 
 def get_vspecpol_spectrum(
     modelpath: Path | str,
-    timeavg: float,
+    timeavg: float | int,
     angle: int,
     args: argparse.Namespace,
     fluxfilterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,

@@ -131,7 +131,7 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
     else:
         initial_energy = 0.0
 
-    ejecta_ke_erg: float = dfmodel.select("kinetic_en_erg").sum().collect().item()
+    ejecta_ke_erg: float | int = dfmodel.select("kinetic_en_erg").sum().collect().item()
 
     print(f"  {'kinetic energy':19s} {ejecta_ke_erg:.2e} erg")
 

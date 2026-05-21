@@ -69,7 +69,7 @@ def f1corr(rcyl: npt.NDArray[np.floating], hsph: npt.NDArray[np.floating]) -> np
 def get_grid(
     dat_path: Path,
     iso_path: Path,
-    vmax_on_c: float,
+    vmax_on_c: float | int,
     model_dim: int,
     grid_dims: npt.NDArray[np.integer],
     nodynej: bool,
@@ -480,7 +480,7 @@ def z_reflect(arr: npt.NDArray[np.floating], sign: int = 1) -> npt.NDArray[np.fl
 def map_to_artis(
     model_dim: int,
     grid_dims: npt.NDArray[np.integer],
-    vmax_on_c: float,
+    vmax_on_c: float | int,
     rho_interpol: npt.NDArray[np.floating],
     X_cells: npt.NDArray[np.floating],
     isot_table: npt.NDArray[t.Any],
@@ -494,11 +494,11 @@ def map_to_artis(
     z3d: npt.NDArray[np.floating] | None = None,
     bin_state: npt.NDArray[np.floating] | None = None,
     replacedyn: str | None = None,
-    bs_thr: float = 0.5,
+    bs_thr: float | int = 0.5,
     global_dyn_scale: bool = False,
     local_dyn_scale: npt.NDArray[np.floating] | None = None,
     interpolate: bool = False,
-    M_2Ddyn: float | None = None,
+    M_2Ddyn: float | int | None = None,
 ) -> tuple[pl.DataFrame, pl.DataFrame, dict[str, t.Any]]:
     dfmodel: pl.DataFrame
     if model_dim == 2:
@@ -904,8 +904,8 @@ def remap_mass_weighted_quantity(
     N_cell_r_new: int,
     N_cell_z_new: int,
     N_cell_r_old: int,
-    Delta_r: float,
-    Delta_z: float,
+    Delta_r: float | int,
+    Delta_z: float | int,
 ) -> npt.NDArray[np.float64]:
     # function that remaps any mass-weighted quantity
     new_numb_cells = N_cell_r_new * N_cell_z_new
@@ -1028,7 +1028,9 @@ def merge_neighbour_cells(
     return dfmodel_out, dfelabundances, modelmeta_out
 
 
-def apply_density_perturbations(df_model: pl.DataFrame, vmax: float, pert_model: tuple[float | str]) -> pl.DataFrame:
+def apply_density_perturbations(
+    df_model: pl.DataFrame, vmax: float | int, pert_model: tuple[float | str]
+) -> pl.DataFrame:
     n_cells = len(df_model)
     # infer cubic grid size from number of cells; this function assumes an N_x x N_x x N_x grid
     N_x = round(n_cells ** (1 / 3))

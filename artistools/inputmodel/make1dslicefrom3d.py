@@ -138,7 +138,7 @@ def slice_abundance_file(
 def append_cell_to_output(
     cell: dict[str, float | str],
     outcellid: int,
-    t_model: str | float,
+    t_model: str | float | int,
     listout: list[str],
     xlist: list[float],
     ylists: list[list[float]],

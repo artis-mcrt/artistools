@@ -1543,7 +1543,7 @@ def test_dimension_reduce(outputdimensions: int, benchmark: BenchmarkFixture) ->
         dfmodel=dfmodel3d_pl, modelmeta=modelmeta_3d, derived_cols=["mass_g", "kinetic_en_erg"]
     ).collect()
 
-    ejecta_ke_erg: float = dfmodel3d_pl.select("kinetic_en_erg").sum().item()
+    ejecta_ke_erg: float | int = dfmodel3d_pl.select("kinetic_en_erg").sum().item()
 
     outpath = outputpath / f"test_dimension_reduce_3d_{outputdimensions:d}d"
 
@@ -1562,7 +1562,7 @@ def test_dimension_reduce(outputdimensions: int, benchmark: BenchmarkFixture) ->
     # check that the total mass is conserved
     assert math.isclose(dfmodel_lowerd["mass_g"].sum(), dfmodel3d_pl["mass_g"].sum(), rel_tol=1e-3)
 
-    lowerd_ejecta_ke_erg: float = dfmodel_lowerd.select("kinetic_en_erg").sum().item()
+    lowerd_ejecta_ke_erg: float | int = dfmodel_lowerd.select("kinetic_en_erg").sum().item()
 
     # check that kinetic energy very roughly matches (we conserved mass, not kinetic energy)
     assert math.isclose(lowerd_ejecta_ke_erg, ejecta_ke_erg, rel_tol=0.04), f"{lowerd_ejecta_ke_erg} {ejecta_ke_erg}"

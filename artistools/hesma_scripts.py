@@ -11,7 +11,7 @@ import polars as pl
 import artistools as at
 
 
-def plot_hesma_spectrum(timeavg: float, axes: Sequence[mplax.Axes]) -> None:
+def plot_hesma_spectrum(timeavg: float | int, axes: Sequence[mplax.Axes]) -> None:
     hesma_file = Path("/Users/ccollins/Downloads/hesma_files/M2a/hesma_specseq.dat")
     hesma_spec = pd.read_csv(hesma_file, comment="#", sep=r"\s+", dtype=float)
     # print(hesma_spec)
@@ -120,7 +120,7 @@ def make_hesma_vspecfiles(modelpath: Path, outpath: Path | None = None) -> None:
         )
 
 
-def make_hesma_bol_lightcurve(modelpath: Path, outpath: Path, timemin: float, timemax: float) -> None:  # noqa: ARG001
+def make_hesma_bol_lightcurve(modelpath: Path, outpath: Path, timemin: float | int, timemax: float) -> None:  # noqa: ARG001
     """UVOIR bolometric light curve (angle-averaged)."""
     lightcurvedataframe = at.lightcurve.get_bol_lc_from_lightcurveout(modelpath)
     print(lightcurvedataframe)

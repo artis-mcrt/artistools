@@ -38,8 +38,8 @@ types = {0: "TYPE_NONE", 10: "TYPE_GAMMA", 11: "TYPE_RPKT", 20: "TYPE_NTLEPTON",
 type_ids = {v: k for k, v in types.items()}
 
 
-def sample_planck(temperature: float, nu_max_r: float, nu_min_r: float) -> float:
-    def planck(nu: float, temperature: float) -> float:
+def sample_planck(temperature: float | int, nu_max_r: float | int, nu_min_r: float) -> float:
+    def planck(nu: float | int, temperature: float) -> float:
         return TWOHOVERCLIGHTSQUARED * pow(nu, 3) / (math.exp(HOVERKB * nu / temperature) - 1)
 
     nu_peak = 5.879e10 * temperature

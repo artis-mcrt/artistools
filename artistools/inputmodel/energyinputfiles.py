@@ -17,7 +17,12 @@ def rprocess_const_and_powerlaw() -> tuple[pl.DataFrame, float]:
     """Following eqn 4 Korobkin 2012."""
 
     def integrand(
-        t_days: float, t0: float, epsilon0: float, sigma: float, alpha: float, thermalisation_factor: float
+        t_days: float | int,
+        t0: float | int,
+        epsilon0: float | int,
+        sigma: float | int,
+        alpha: float | int,
+        thermalisation_factor: float,
     ) -> float:
         return float(epsilon0 * ((1 / 2) - (1 / np.pi * np.arctan((t_days - t0) / sigma))) ** alpha) * (
             thermalisation_factor / 0.5
@@ -188,7 +193,7 @@ def get_rprocess_calculation_files(
 
 
 def make_energydistribution_weightedbyrho(
-    rho: npt.NDArray[np.floating], E_tot_per_gram: float, Mtot_grams: float
+    rho: npt.NDArray[np.floating], E_tot_per_gram: float | int, Mtot_grams: float
 ) -> pl.DataFrame:
     print(f"energy distribution weighted by rho (E_tot per gram {E_tot_per_gram})")
     Etot = E_tot_per_gram * Mtot_grams
@@ -204,7 +209,7 @@ def make_energydistribution_weightedbyrho(
     return pl.DataFrame(data=energydistdata)
 
 
-def make_energy_files(rho: npt.NDArray[np.floating], Mtot_grams: float, outputpath: Path | str) -> None:
+def make_energy_files(rho: npt.NDArray[np.floating], Mtot_grams: float | int, outputpath: Path | str) -> None:
     powerlaw = True
     if powerlaw:
         print("Using power law for energy rate")

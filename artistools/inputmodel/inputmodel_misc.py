@@ -36,7 +36,7 @@ def read_modelfile_text(
     onelinepercellformat = None
 
     modelmeta: dict[str, t.Any] = {"headercommentlines": []}
-    xmax_tmodel: float = 0.0
+    xmax_tmodel: float | int = 0.0
     ncoordgridx: int = 0
     ncoordgridy: int = 0
     ncoordgridz: int = 0
@@ -802,7 +802,7 @@ def get_standard_columns(
 def save_modeldata(
     dfmodel: pl.LazyFrame | pl.DataFrame,
     outpath: Path | str | None = None,
-    vmax: float | None = None,
+    vmax: float | int | None = None,
     headercommentlines: list[str] | None = None,
     modelmeta: dict[str, t.Any] | None = None,
     twolinespercell: bool = False,
@@ -1376,8 +1376,8 @@ def dimension_reduce_model(
 
 def scale_model_to_time(
     dfmodel: pd.DataFrame,
-    targetmodeltime_days: float,
-    t_model_days: float | None = None,
+    targetmodeltime_days: float | int,
+    t_model_days: float | int | None = None,
     modelmeta: dict[str, t.Any] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, t.Any]]:
     """Homologously expand model to targetmodeltime_days by reducing densities and adjusting cell positions."""

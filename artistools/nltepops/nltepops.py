@@ -106,7 +106,7 @@ def add_lte_pops(
             & (dfpop["level"] != -1)
         )
 
-        def f_ltepop(x: t.Any, T_exc: float, gsg: float, gse: float, ionlevels: t.Any) -> float:
+        def f_ltepop(x: t.Any, T_exc: float | int, gsg: float | int, gse: float | int, ionlevels: t.Any) -> float:
             levelindex = int(x["level"])
             ltepop = (
                 ionlevels["g"].item(levelindex)

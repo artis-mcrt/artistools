@@ -75,7 +75,7 @@ def get_wij() -> npt.NDArray[np.floating]:
 
 
 def kernelvals2(
-    rij2: float, hmean: float, wij: npt.NDArray[np.floating]
+    rij2: float | int, hmean: float | int, wij: npt.NDArray[np.floating]
 ) -> float:  # ist schnell berechnet aber keine Gradienten
     hmean21 = 1.0 / hmean**2
     hmean31 = hmean21 / hmean
@@ -94,8 +94,8 @@ def maptogrid(
     outputfolderpath: Path | str,
     ncoordgrid: int = 50,
     downsamplefactor: int = 1,
-    dtextra_seconds: float = 0.5,
-    setgrid_fractionrmax: float = 0.5,
+    dtextra_seconds: float | int = 0.5,
+    setgrid_fractionrmax: float | int = 0.5,
     modifysmoothinglength: str = "option4",
 ) -> None:
     if not ejectasnapshotpath.is_file():

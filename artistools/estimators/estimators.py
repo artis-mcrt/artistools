@@ -86,7 +86,7 @@ def get_rankbatch_parquetfile(
     parquetfilename = f"estimbatch{batchindex:02d}_{batch_mpiranks[0]:04d}_{batch_mpiranks[-1]:04d}.out.parquet.tmp"
     parquetfilepath = folderpath / parquetfilename
 
-    textsource_mtime: float | None = None
+    textsource_mtime: float | int | None = None
     with contextlib.suppress(StopIteration):
         textsource_mtime = next(folderpath.glob("estimators_????.out*")).stat().st_mtime
 
@@ -348,7 +348,7 @@ def read_estimators(
 
 def get_averageexcitation(
     modelpath: Path | str, modelgridindex: int, timestep: int, atomic_number: int, ion_stage: int, T_exc: float
-) -> float | None:
+) -> float | int | None:
     dfnltepops = at.nltepops.read_files(modelpath, modelgridindex=modelgridindex, timestep=timestep).to_pandas(
         use_pyarrow_extension_array=True
     )
