@@ -73,6 +73,13 @@ def read_modelfile_text(
         # if the next line is a single float then the model is 2D or 3D (vmax)
         try:
             modelmeta["vmax_cmps"] = float(line)  # velocity max in cm/s
+        except ValueError:
+            assert modelmeta.get("dimensions", -1) != 2, "2D model should have a vmax line here"
+            if "dimensions" not in modelmeta:
+                if not printwarningsonly:
+                    print(f"  detected 1D model file with {npts_model} radial zones")
+                modelmeta["dimensions"] = 1
+        else:
             xmax_tmodel = modelmeta["vmax_cmps"] * t_model_init_seconds  # xmax = ymax = zmax
             numheaderrows += 1
             if "dimensions" not in modelmeta:  # not already detected as 2D
@@ -92,13 +99,6 @@ def read_modelfile_text(
                     print(f"  detected 3D model file with {ncoordgridx}x{ncoordgridy}x{ncoordgridz}={npts_model} cells")
 
             line = fmodel.readline()
-
-        except ValueError:
-            assert modelmeta.get("dimensions", -1) != 2, "2D model should have a vmax line here"
-            if "dimensions" not in modelmeta:
-                if not printwarningsonly:
-                    print(f"  detected 1D model file with {npts_model} radial zones")
-                modelmeta["dimensions"] = 1
 
         columns = None
         if line.startswith("#"):

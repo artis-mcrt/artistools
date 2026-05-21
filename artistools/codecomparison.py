@@ -154,14 +154,14 @@ def read_reference_estimators(
                         ionstr = at.get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
                         try:
                             ionfrac = float(strionfrac)
+                        except ValueError:
+                            estimators[tsmgi][f"nnion_{ionstr}"] = math.nan
+                        else:
                             ionpop = ionfrac * estimators[tsmgi]["nntot"]
                             if ionpop > 1e-80:
                                 estimators[tsmgi][f"nnion_{ionstr}"] = ionpop
                                 estimators[tsmgi].setdefault(f"nnelement_{elsym}", 0.0)
                                 estimators[tsmgi][f"nnelement_{elsym}"] += ionpop
-
-                        except ValueError:
-                            estimators[tsmgi][f"nnion_{ionstr}"] = math.nan
 
                     assert np.isclose(float(row[0]), estimators[tsmgi]["vel_mid"], rtol=0.01)
                     assert estimators[key]["vel_mid"]
