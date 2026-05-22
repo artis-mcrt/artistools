@@ -410,7 +410,8 @@ def plot_artis_lightcurve(
             plotkwargs["color"] = scaledmap.to_rgba(colorindex)  # Update colours for light curves averaged over phi
             plotkwargs["zorder"] = 10
 
-        lcdata_tmin, lcdata_tmax = lcdata["time"].min(), lcdata["time"].max()
+        lcdata_tmin = lcdata.select(pl.col("time").min()).item()
+        lcdata_tmax = lcdata.select(pl.col("time").max()).item()
         katz_integral = np.trapezoid(
             np.nan_to_num(lcdata["lum"], nan=0.0) * (lcdata["time"] * 86400), x=lcdata["time"] * 86400
         )
@@ -441,7 +442,9 @@ def plot_artis_lightcurve(
 
         # lum column is erg/s
         energy_released = abs(np.trapezoid(np.nan_to_num(lcdata_valid["lum"], nan=0.0), x=lcdata_valid["time"] * 86400))
-        lcdata_valid_tmin, lcdata_valid_tmax = lcdata_valid["time"].min(), lcdata_valid["time"].max()
+
+        lcdata_valid_tmin = lcdata_valid.select(pl.col("time").min()).item()
+        lcdata_valid_tmax = lcdata_valid.select(pl.col("time").max()).item()
         if lcdata_valid_tmin is not None and lcdata_valid_tmax is not None:
             print(
                 f" Integrated luminosity ({lcdata_valid_tmin:.1f} to {lcdata_valid_tmax:.1f} days): {energy_released:.3e} [erg]"
