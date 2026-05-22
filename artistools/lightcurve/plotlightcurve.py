@@ -410,6 +410,12 @@ def plot_artis_lightcurve(
             plotkwargs["color"] = scaledmap.to_rgba(colorindex)  # Update colours for light curves averaged over phi
             plotkwargs["zorder"] = 10
 
+        lcdata_tmin = lcdata.select(pl.col("time").min()).item()
+        lcdata_tmax = lcdata.select(pl.col("time").max()).item()
+        katz_integral = np.trapezoid(
+            np.nan_to_num(lcdata["lum"], nan=0.0) * (lcdata["time"] * 86400), x=lcdata["time"] * 86400
+        )
+        print(f" Katz integral L*t dt ({lcdata_tmin:.1f} to {lcdata_tmax:.1f} days):: {katz_integral:.3e} [erg s]")
         # show the parts of the light curve that are outside the valid arrival range as partially transparent
         if validrange_start_days is None or validrange_end_days is None:
             # entire range is invalid
@@ -436,10 +442,13 @@ def plot_artis_lightcurve(
 
         # lum column is erg/s
         energy_released = abs(np.trapezoid(np.nan_to_num(lcdata_valid["lum"], nan=0.0), x=lcdata_valid["time"] * 86400))
-        lcdatamin = lcdata_valid.select(pl.min("time")).item()
-        lcdatamax = lcdata_valid.select(pl.max("time")).item()
-        if lcdatamin is not None and lcdatamax is not None:
-            print(f" Integrated luminosity ({lcdatamin:.1f} to {lcdatamax:.1f} days): {energy_released:.3e} [erg]")
+
+        lcdata_valid_tmin = lcdata_valid.select(pl.col("time").min()).item()
+        lcdata_valid_tmax = lcdata_valid.select(pl.col("time").max()).item()
+        if lcdata_valid_tmin is not None and lcdata_valid_tmax is not None:
+            print(
+                f" Integrated luminosity ({lcdata_valid_tmin:.1f} to {lcdata_valid_tmax:.1f} days): {energy_released:.3e} [erg]"
+            )
 
         axis.plot(lcdata_valid["time"], lcdata_valid[ycolumn], label=label_with_tags, **plotkwargs)
         if args.print_data:
