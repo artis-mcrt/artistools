@@ -22,7 +22,10 @@ def readfile(filepath: str | Path) -> dict[int, pl.LazyFrame]:
     print(f"Reading {filepath}")
     lcdata: dict[int, pl.LazyFrame] = {}
     lzdf = pl.scan_csv(
-        at.zopenpl(filepath), separator=" ", has_header=False, new_columns=["time_days", "lum_Lsun", "lum_cmf_Lsun"]
+        at.zopenpl(filepath),
+        separator=" ",
+        has_header=False,
+        new_columns=["time_days", "luminosity_Lsun", "luminosity_cmf_Lsun"],
     )
     if "_res" in Path(filepath).stem:
         # get a dict of dfs with light curves at each viewing direction bin
@@ -137,7 +140,7 @@ def get_from_packets(
             .rename({"count": "packetcount"})
             .join(dftimesteps_selected.select("timestep", "twidth_days", "tmid_days").lazy(), how="left", on="timestep")
             .with_columns(
-                lum_Lsun=(
+                luminosity_Lsun=(
                     pl.col("e_rf_sum")
                     / nprocs_read
                     * solidanglefactor
@@ -159,7 +162,7 @@ def get_from_packets(
                     on="timestep",
                 )
                 .with_columns(
-                    lum_cmf_Lsun=pl.col("e_cmf_sum")
+                    luminosity_cmf_Lsun=pl.col("e_cmf_sum")
                     / nprocs_read
                     * solidanglefactor
                     / escapesurfacegamma

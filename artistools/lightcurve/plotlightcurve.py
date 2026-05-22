@@ -359,9 +359,9 @@ def plot_artis_lightcurve(
             print()
 
         lcdata = lcdata.with_columns(
-            (4.74 - (2.5 * pl.col("lum_Lsun").log10())).alias("mag"),
-            (pl.col("lum_Lsun") * Lsun_to_erg_per_s).alias("luminosity_erg/s"),
-            (pl.col("lum_cmf_Lsun") * Lsun_to_erg_per_s).alias("luminosity_cmf_erg/s"),
+            (4.74 - (2.5 * pl.col("luminosity_Lsun").log10())).alias("mag"),
+            (pl.col("luminosity_Lsun") * Lsun_to_erg_per_s).alias("luminosity_erg/s"),
+            (pl.col("luminosity_cmf_Lsun") * Lsun_to_erg_per_s).alias("luminosity_cmf_erg/s"),
         )
         filterfunc = at.get_filterfunc(args)
         if filterfunc is not None:
@@ -394,7 +394,7 @@ def plot_artis_lightcurve(
             # convert to bol magnitude
             ycolumn = "mag"
         elif args.Lsun:
-            ycolumn = "lum_Lsun"
+            ycolumn = "luminosity_Lsun"
         else:
             ycolumn = "luminosity_erg/s"
 
@@ -461,7 +461,10 @@ def plot_artis_lightcurve(
             plotkwargs["linestyle"] = "dashed"
             # plotkwargs['color'] = 'tab:orange'
             axis.plot(
-                lcdata["time_days"], lcdata[ycolumn.replace("lum_", "lum_cmf_")], label=label_with_tags, **plotkwargs
+                lcdata["time_days"],
+                lcdata[ycolumn.replace("luminosity_", "luminosity_cmf_")],
+                label=label_with_tags,
+                **plotkwargs,
             )
 
     if args.plotdeposition or args.plotthermalisation:
