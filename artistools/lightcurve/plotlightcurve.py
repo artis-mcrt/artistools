@@ -437,7 +437,6 @@ def plot_artis_lightcurve(
         elif lcdata_valid.is_empty():
             print(" WARNING: No data points in valid range")
 
-        # lum column is erg/s
         energy_released = abs(
             np.trapezoid(np.nan_to_num(lcdata_valid["luminosity_erg/s"], nan=0.0), x=lcdata_valid["time_days"] * 86400)
         )
