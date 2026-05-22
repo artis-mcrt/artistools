@@ -21,19 +21,17 @@ def readfile(filepath: str | Path) -> dict[int, pl.LazyFrame]:
     """Read an ARTIS light curve file."""
     print(f"Reading {filepath}")
     lcdata: dict[int, pl.LazyFrame] = {}
+    lzdf = pl.scan_csv(
+        at.zopenpl(filepath), separator=" ", has_header=False, new_columns=["time_days", "lum_Lsun", "lum_cmf_Lsun"]
+    )
     if "_res" in Path(filepath).stem:
         # get a dict of dfs with light curves at each viewing direction bin
-        lcdata_res = pl.scan_csv(
-            at.zopenpl(filepath), separator=" ", has_header=False, new_columns=["time", "lum", "lum_cmf"]
-        )
-        lcdata = at.split_multitable_dataframe(lcdata_res)
+        lcdata = at.split_multitable_dataframe(lzdf)
     else:
-        lcdata[-1] = pl.scan_csv(
-            at.zopenpl(filepath), separator=" ", has_header=False, new_columns=["time", "lum", "lum_cmf"]
-        )
+        lcdata[-1] = lzdf
 
         # if the light_curve.out file repeats x values, keep the first half only
-        if lcdata[-1].select(pl.col("time").n_unique() < pl.len()).collect().item():
+        if lcdata[-1].select(pl.col("time_days").n_unique() < pl.len()).collect().item():
             lcdata[-1] = lcdata[-1].select(pl.all().slice(0, pl.len() // 2))
 
     return lcdata
@@ -139,7 +137,7 @@ def get_from_packets(
             .rename({"count": "packetcount"})
             .join(dftimesteps_selected.select("timestep", "twidth_days", "tmid_days").lazy(), how="left", on="timestep")
             .with_columns(
-                lum=(
+                lum_Lsun=(
                     pl.col("e_rf_sum")
                     / nprocs_read
                     * solidanglefactor
@@ -161,7 +159,7 @@ def get_from_packets(
                     on="timestep",
                 )
                 .with_columns(
-                    lum_cmf=pl.col("e_cmf_sum")
+                    lum_cmf_Lsun=pl.col("e_cmf_sum")
                     / nprocs_read
                     * solidanglefactor
                     / escapesurfacegamma
@@ -171,7 +169,7 @@ def get_from_packets(
                 .drop("e_cmf_sum")
             )
 
-        lcdata[dirbin] = lcdata[dirbin].rename({"tmid_days": "time"}).drop("twidth_days")
+        lcdata[dirbin] = lcdata[dirbin].rename({"tmid_days": "time_days"}).drop("twidth_days")
 
     return lcdata
 
