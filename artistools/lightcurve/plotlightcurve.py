@@ -312,7 +312,7 @@ def plot_artis_lightcurve(
                 at.misc.df_filter_minmax_bounded(
                     lcdataframes[dirbin]
                     .lazy()
-                    .select(cs.by_name(["time_days", "packetcount"]) | cs.starts_with("lum")),
+                    .select(cs.by_name(["time_days", "packetcount"], require_all=False) | cs.starts_with("lum")),
                     colname="time_days",
                     minval=args.timemin,
                     maxval=args.timemax,
