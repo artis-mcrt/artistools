@@ -41,7 +41,6 @@ from artistools.misc import print_theta_phi_definitions
 from artistools.misc import set_args_from_dict
 from artistools.misc import trim_or_pad
 from artistools.plottools import ExponentLabelFormatter
-from artistools.plottools import glasbey_category20_nogreys
 from artistools.plottools import set_mpl_style
 from artistools.spectra.writespectra import write_flambda_spectra
 
@@ -1584,7 +1583,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         artismodelnum = 0
         for filepath in args.specpath:
             if path_is_artis_model(filepath):
-                args.color.append(glasbey_category20_nogreys[artismodelnum])
                 artismodelnum += 1
             else:
                 args.color.append(refspeccolors[refspecnum])
