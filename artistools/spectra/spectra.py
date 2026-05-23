@@ -1478,11 +1478,11 @@ def sort_and_reduce_flux_contribution_list(
 
     import matplotlib.pyplot as plt
 
-    from artistools.plottools import glasbey_category20
+    from artistools.plottools import glasbey_category20_nogreys
 
     color_list = [
         color
-        for color in [*list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20))), *glasbey_category20[10:]]
+        for color in [*list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20))), *glasbey_category20_nogreys[10:]]
         if color[0] != color[1] or color[1] != color[2] or color[0] != color[2]  # remove greys
     ]
 
