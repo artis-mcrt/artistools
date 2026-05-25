@@ -21,19 +21,18 @@ CM_TO_A = 1e8
 K_B_CGS = 1.380649e-16  # erg / K
 K_B_AU = 8.617333262145e-5  # eV / K
 H_CGS = 6.62607015e-27  # erg * s
-C_AU = 137.035999
 HC_AU = 12398.4198
 M_E_CGS = 9.1093837015e-28  # g
 E_CGS = 4.803204712570263e-10  # Fr (esu)
 HC_EV_ANG = 12398.4193
 
-WAVELEN_STEPS = 250  # 25000 A <-> 100 A bin
+WAVELEN_STEPS = 1000  # 5000 K <-> 100 A bin
 
-roman_map = {"I": 1, "II": 2, "III": 3, "IV": 4}
+ion_stage_spectroscopic_notation = {1: "I", 2: "II", 3: "III", 4: "IV"}
 
 
-def calc_abs_coeffs(estimators_lazyframe: pl.LazyFrame, modelpath: Path) -> pl.DataFrame:
-    element_to_Z = {at.get_elsymbol(Z): Z for Z in range(1, 101)}
+def calc_abs_coeffs(estimators_lazyframe: pl.LazyFrame, modelpath: Path, timesecs_plot: float) -> pl.DataFrame:
+    element_to_Z = {Z: at.get_elsymbol(Z) for Z in range(1, 119)}
     """Calculate opacities as a new column of estimators lazyframe."""
     # Step 1) load atomic level data from adata.txt
     adata_df = at.atomic.get_levels(modelpath)  # gives a pl.DataFrame (eager), convert to lazyframes
@@ -43,7 +42,7 @@ def calc_abs_coeffs(estimators_lazyframe: pl.LazyFrame, modelpath: Path) -> pl.D
             for Z, ion, lf in zip(adata_df["Z"], adata_df["ion_stage"], adata_df["levels"], strict=True)
         ],
         how="vertical",
-    )
+    ).lazy()
 
     # Step 2) create master lazyframe from transitiondata.txt
     transdata_dict = at.atomic.get_transitiondata(modelpath)  # gives a dict with keys for every ion
@@ -51,29 +50,33 @@ def calc_abs_coeffs(estimators_lazyframe: pl.LazyFrame, modelpath: Path) -> pl.D
 
     # merge the single ion transition lazyframes into a huge single one
     for (Z, ion_stage), lf in transdata_dict.items():
-        frames.append(lf.with_columns([pl.lit(Z).alias("charge_number"), (pl.lit(ion_stage) - 1).alias("ion_charge")]))
-    master_transitionframe = pl.concat(frames, how="vertical")
+        frames.append(lf.with_columns([pl.lit(Z).alias("Z"), pl.lit(ion_stage).alias("ion_stage")]))
+    master_transitionframe = pl.concat(frames, how="vertical")  # .top_k(k=3_000, by="A")
+    master_transitionframe = master_transitionframe.filter(pl.col("forbidden") == 0.0)
 
     # Step 3) expand the master frame using the information from level dataframes
-
     master_transitionframe = master_transitionframe.join(
         master_levelframe.select(
             pl.col("levelindex").alias("lower"),
             pl.col("energy_ev").alias("lower_level_energy_eV"),
             pl.col("g").alias("lower_level_g"),
-        ).lazy(),
-        on="lower",
+            pl.col("Z"),
+            pl.col("ion_stage"),
+        ),
+        on=["lower", "Z", "ion_stage"],
         how="left",
-    )
-    master_transitionframe = master_transitionframe.join(
+    ).join(
         master_levelframe.select(
             pl.col("levelindex").alias("upper"),
             pl.col("energy_ev").alias("upper_level_energy_eV"),
             pl.col("g").alias("upper_level_g"),
-        ).lazy(),
-        on="upper",
+            pl.col("Z"),
+            pl.col("ion_stage"),
+        ),
+        on=["upper", "Z", "ion_stage"],
         how="left",
     )
+
     master_transitionframe = master_transitionframe.with_columns([
         ((HC_EV_ANG) / (pl.col("upper_level_energy_eV") - pl.col("lower_level_energy_eV"))).alias("wavelength_Angstrom")
     ])
@@ -82,53 +85,85 @@ def calc_abs_coeffs(estimators_lazyframe: pl.LazyFrame, modelpath: Path) -> pl.D
             (pl.col("upper_level_g") / pl.col("lower_level_g"))
             * pl.col("wavelength_Angstrom") ** 2
             * pl.col("A")
-            * C_AU
-            / (8 * np.pi**2)
-        ).alias("f_lu")
+            * 1.49919e-16
+        ).alias("oscillator_strength")
     ])
     master_transitionframe = master_transitionframe.with_columns(
         (pl.col("wavelength_Angstrom") * 1e-8).alias("wavelength_cm")
     )
+    master_transitionframe = master_transitionframe.drop([
+        "collstr",
+        "forbidden",
+        "upper_level_energy_eV",
+        "upper_level_g",
+    ])
 
     # Step 4) merge with estimators data to obtain the master frame
-    estimators_lazyframe_long = estimators_lazyframe.unpivot(index=[], variable_name="species_key", value_name="nnion")
-    estimators_lazyframe_long = estimators_lazyframe_long.with_columns([
-        pl.col("species_key").str.extract(r"n_density_([A-Za-z]+)_([IVXLCDM]+)", 1).alias("element"),
-        pl.col("species_key").str.extract(r"n_density_([A-Za-z]+)_([IVXLCDM]+)", 2).alias("roman_stage"),
-    ])
-    estimators_lazyframe_long = estimators_lazyframe_long.with_columns(
-        pl.col("element").replace_strict(element_to_Z).alias("Z")
-    )
     master_lazyframe = master_transitionframe.join(
-        estimators_lazyframe_long.select(["Z", "ion_stage", "n_density", "rho", "tdays", "Trad", "modelgridindex"]),
-        on=["Z", "ion_stage"],  # BUGALERT
-        how="left",
+        estimators_lazyframe.select(["modelgridindex", "rho", "TR", "wavelength_binwidth_cm"]), how="cross"
     )
-    master_lazyframe = master_lazyframe.with_columns((pl.col("tdays") * DAYS_TO_S).alias("time_s"))
+    ion_densities_long = estimators_lazyframe.select(["modelgridindex", pl.col("^nnion_.*$")]).unpivot(
+        index=["modelgridindex"], variable_name="ion_density_key", value_name="ion_density"
+    )
+    # partition functions
+    partition_function_lazyframe = (
+        master_levelframe
+        .select(["Z", "ion_stage", pl.col("energy_ev"), pl.col("g")])
+        .join(master_lazyframe.select(["modelgridindex", "TR"]).unique(), how="cross")
+        .with_columns(
+            (pl.col("g") * (-pl.col("energy_ev") / (pl.lit(K_B_AU) * pl.col("TR"))).exp()).alias("boltzmann_weight")
+        )
+        .group_by(["Z", "ion_stage", "modelgridindex"])
+        .agg(pl.sum("boltzmann_weight").alias("partition_function"))
+    )
+    master_lazyframe = master_lazyframe.join(
+        partition_function_lazyframe, on=["Z", "ion_stage", "modelgridindex"], how="left"
+    )
+    master_lazyframe = master_lazyframe.with_columns([
+        pl.col("Z").replace_strict(element_to_Z, default="UNKNOWN").alias("element"),
+        pl.col("ion_stage").replace_strict(ion_stage_spectroscopic_notation, default="UNKNOWN").alias("ion_stage_str"),
+    ])
+    """assert (
+        not master_lazyframe.select(pl.col("ion_stage_str") == "UNKNOWN").any().item()
+    ), "ERROR: Unmapped ion_stage values detected (UNKNOWN present)"
+    assert not master_lazyframe.select(pl.col("element") == "UNKNOWN").any().item(), (
+        "ERROR: Unmapped Z values detected (UNKNOWN present)"
+    )"""
+    master_lazyframe = (
+        master_lazyframe
+        .with_columns(
+            pl.concat_str([pl.lit("nnion_"), pl.col("element"), pl.lit("_"), pl.col("ion_stage_str")]).alias(
+                "ion_density_key"
+            )
+        )
+        .join(ion_densities_long, on=["modelgridindex", "ion_density_key"], how="left")
+        .filter(pl.col("ion_density").is_not_null())
+        .drop(["lower", "upper", "A", "Z", "ion_stage", "element", "ion_stage_str", "ion_density_key"])
+    )
 
     # Step 5) calculate contributions of individual transitions to the absorption coefficient
     master_lazyframe = master_lazyframe.with_columns(
         (
-            pl.col("ion_number_density")
-            * np.exp(-pl.col("lower_level_energy") / (K_B_CGS * pl.col("temperature")))
+            pl.col("ion_density")
+            * (-pl.col("lower_level_energy_eV") / (pl.lit(K_B_AU) * pl.col("TR"))).exp()
             * pl.col("lower_level_g")
-            / pl.col("ground_state_g")
+            / pl.col("partition_function")
         ).alias("lower_level_number_density")
-    )
+    ).drop(["lower_level_g", "partition_function", "lower_level_energy_eV", "ion_density"])
 
     master_lazyframe = master_lazyframe.with_columns(
         (
             np.pi
             * E_CGS**2
             / (CLIGHT * M_E_CGS)
-            * pl.col("time_s")
+            * timesecs_plot
             * pl.col("wavelength_cm")
             * pl.col("oscillator_strength")
             * pl.col("lower_level_number_density")
         ).alias("optical_depth")
     )
     master_lazyframe = master_lazyframe.with_columns(
-        (1 - np.exp(-pl.col("optical_depth"))).alias("absorption_probability")
+        (1 - pl.col("optical_depth").neg().exp()).alias("absorption_probability")
     )
 
     master_lazyframe = master_lazyframe.with_columns(
@@ -136,47 +171,54 @@ def calc_abs_coeffs(estimators_lazyframe: pl.LazyFrame, modelpath: Path) -> pl.D
             pl.col("absorption_probability")
             * pl.col("wavelength_cm")
             / pl.col("wavelength_binwidth_cm")
-            / (CLIGHT * pl.col("time_s"))
-        ).alias("Planck_absorption_coefficient_contribution")
+            / (CLIGHT * timesecs_plot)
+        ).alias("expansion_absorption_coefficient_contribution")
     )
     # Step 6) Reduce master_frame again to obtain the total opacities
-    master_lazyframe = master_lazyframe.group_by([
-        "modelgridindex",
-        "wavelength_cm",
-        "wavelength_binwidth_cm",
-        "temperature",
-    ]).agg(pl.sum("Planck_absorption_coefficient_contribution").alias("bin_absorption_coefficient"))
-
     master_lazyframe = master_lazyframe.with_columns(
-        planck_weight=(
-            1.0
+        (pl.col("wavelength_cm") / pl.col("wavelength_binwidth_cm")).cast(pl.Int64).alias("bin_index")
+    )
+    master_lazyframe = master_lazyframe.group_by(["modelgridindex", "bin_index"]).agg(
+        pl.sum("expansion_absorption_coefficient_contribution").alias("expansion_bin_absorption_coefficient"),
+        pl.mean("TR").alias("TR"),
+        pl.mean("wavelength_cm").alias("wavelength_cm"),
+        pl.mean("rho").alias("rho"),
+        pl.mean("wavelength_binwidth_cm").alias("wavelength_binwidth_cm"),
+    )
+    master_lazyframe = master_lazyframe.with_columns(
+        (
+            2
+            * H_CGS
+            * CLIGHT**2
             / (
                 pl.col("wavelength_cm") ** 5
-                * ((CLIGHT**2 / (pl.col("wavelength_cm") * pl.col("temperature"))).exp() - 1.0)
+                * ((H_CGS * CLIGHT / (pl.col("wavelength_cm") * K_B_CGS * pl.col("TR"))).exp() - 1.0)
             )
-        )
+        ).alias("planck_weight")
     )
-
     master_lazyframe = master_lazyframe.with_columns(
-        numerator_term=(
-            pl.col("bin_absorption_coefficient") * pl.col("planck_weight") * pl.col("wavelength_binwidth_cm")
-        ),
-        denominator_term=(pl.col("planck_weight") * pl.col("wavelength_binwidth_cm")),
+        (
+            pl.col("expansion_bin_absorption_coefficient") * pl.col("planck_weight") * pl.col("wavelength_binwidth_cm")
+        ).alias("numerator_term"),
+        (pl.col("planck_weight") * pl.col("wavelength_binwidth_cm")).alias("denominator_term"),
     )
 
     master_lazyframe = (
         master_lazyframe
         .group_by("modelgridindex")
-        .agg([pl.sum("numerator_term").alias("num"), pl.sum("denominator_term").alias("den")])
-        .with_columns((pl.col("num") / pl.col("den")).alias("Planck_absorption_coeff"))
+        .agg(pl.sum("numerator_term").alias("num"), pl.sum("denominator_term").alias("den"))
+        .with_columns((pl.col("num") / pl.col("den")).alias("Planck_mean_absorption_coeff"))
     )
-    opacity_lazyframe = master_lazyframe.select(["modelgridindex", "planck_mean_absorption_coefficient"])
-    estimators_lazyframe = estimators_lazyframe.join(opacity_lazyframe, on="modelgridindex", how="left")
+    absorption_coefficient_lazyframe = master_lazyframe.select(["modelgridindex", "Planck_mean_absorption_coeff"])
+    estimators_lazyframe = estimators_lazyframe.join(absorption_coefficient_lazyframe, on="modelgridindex", how="left")
 
     # Step 7) multiply by density to obtain the opacity and return the estimators again
-    return estimators_lazyframe.with_columns(
-        (pl.col("Planck_absorption_coeff") * pl.col("rho")).alias("Planck_opacity")
-    ).collect()
+    return (
+        estimators_lazyframe
+        .with_columns((pl.col("Planck_mean_absorption_coeff") / pl.col("rho")).alias("Planck_mean_opacity"))
+        .drop("Planck_mean_absorption_coeff")
+        .collect()
+    )
 
 
 def plot_opacity(
@@ -197,14 +239,14 @@ def plot_opacity(
     if dimension == 0:
         # 1-zone model
         estimators_frame = estimators_frame.sort("timedays", descending=False)
-        axis.plot(estimators_frame["timedays"], estimators_frame["Planck_opacity"])
+        axis.plot(estimators_frame["timedays"], estimators_frame["Planck_mean_opacity"])
         axis.set_xlabel("time (days)")
         axis.set_ylabel(r"Planck mean opacity (cm$^2$ g$^{-1}$)")
         plot_info = "0D"
     elif dimension == 1:
         # 1D model, plot opacity as function of radius
         estimators_frame = estimators_frame.sort("velocity", descending=False)
-        axis.plot(estimators_frame["timedays"] / CLIGHT_KMperS, estimators_frame["Planck_opacity"])
+        axis.plot(estimators_frame["timedays"] / CLIGHT_KMperS, estimators_frame["Planck_mean_opacity"])
         axis.set_xlabel("velocity (fraction of c)")
         axis.set_ylabel(r"Planck mean opacity (cm$^2$ g$^{-1}$)")
         plot_info = "1D"
@@ -215,7 +257,9 @@ def plot_opacity(
         assert numb_x_pts is not None
         assert numb_y_pts is not None
 
-        colorscale = np.ma.masked_where(estimators_frame["Planck_opacity"] == 0.0, estimators_frame["Planck_opacity"])
+        colorscale = np.ma.masked_where(
+            estimators_frame["Planck_mean_opacity"] == 0.0, estimators_frame["Planck_mean_opacity"]
+        )
         valuegrid = colorscale.reshape((numb_x_pts, numb_y_pts))
 
         vmin_ax1 = estimators_frame.select(pl.col(f"vel_{x_coord}_min_on_c").min()).item()
@@ -321,20 +365,29 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     # add density to estimators
     timesteps_lazyframe = at.get_timesteps(args.modelpath)
+    im_join_columns = ["modelgridindex", "rho"]
+    if model_dim in {0, 1}:
+        pass
+    elif model_dim == 2:
+        im_join_columns.extend(["vel_rcyl_mid", "vel_z_mid"])
+    elif model_dim == 3:
+        pass
     estimators_lazyframe = (
         at.estimators
         .scan_estimators(modelpath=Path(args.modelpath))
         .join(
             timesteps_lazyframe.select(pl.col("timestep"), pl.col("tstart_days").alias("tdays")),
-            left_on="lower",
+            left_on="timestep",
             right_on="timestep",
             how="left",
         )
         .with_columns(((snopshot_time_days / pl.col("tdays")) ** 3).alias("exp_factor"))
-        .join(im[0].select(["modelgridindex", "rho", "velocity"]), on="modelgridindex", how="left")
+        .join(im[0].select(im_join_columns), on="modelgridindex", how="left")
         .with_columns((pl.col("rho") * pl.col("exp_factor")).alias("rho"))
     )
-    estimators_lazyframe = estimators_lazyframe.with_columns((1.25 / pl.col("Trad")).alias("wavelength_binwidth_cm"))
+    estimators_lazyframe = estimators_lazyframe.with_columns(
+        (4 / pl.col("TR") / WAVELEN_STEPS).alias("wavelength_binwidth_cm")
+    )
 
     plotaxis1 = None
     plotaxis2 = None
@@ -344,11 +397,15 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if model_dim > 0:
         assert args.tdays is not None, "No time specified. Abort."
         # select closest timestep for plotting
-        plot_ts = (
-            (timesteps_lazyframe.filter(pl.col("tstart_days") <= args.tdays).select(pl.col("timestep").max()))
+        res = (
+            timesteps_lazyframe
+            .filter(pl.col("tmid_days") <= args.tdays)
+            .select([pl.col("timestep").max().alias("plot_ts"), pl.col("tmid_days").max().alias("timedays_plot")])
             .collect()
-            .item()
+            .row(0)
         )
+
+        plot_ts, timedays_plot = res
         estimators_lazyframe = estimators_lazyframe.filter(pl.col("timestep") == plot_ts).sort("modelgridindex")
         if model_dim == 2:
             # 2D: 2D-plot of ejecta opacity at one specified time
@@ -360,7 +417,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         elif model_dim == 3:
             plot_dimension = 2
             estimators_lazyframe, plotaxis1, plotaxis2, n_ax1, n_ax2 = select_2D_slice(estimators_lazyframe, args.slice)
-    estimators_dataframe = calc_abs_coeffs(estimators_lazyframe, args.modelpath)
+    estimators_dataframe = calc_abs_coeffs(estimators_lazyframe, args.modelpath, timedays_plot * DAYS_TO_S)
     plot_opacity(
         plot_dimension, args.modelpath, args.outputpath, estimators_dataframe, plotaxis1, plotaxis2, n_ax1, n_ax2
     )
