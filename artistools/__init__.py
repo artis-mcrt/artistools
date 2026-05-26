@@ -4,9 +4,10 @@ A collection of plotting, analysis, and file format conversion tools
 for the ARTIS radiative transfer code.
 """
 
+# ruff: noqa: RUF067
 import sys
 
-if sys.version_info >= (3, 15) and hasattr(sys, "set_lazy_imports_filter") and hasattr(sys, "set_lazy_imports"):  # noqa: RUF067
+if sys.version_info >= (3, 15) and hasattr(sys, "set_lazy_imports_filter") and hasattr(sys, "set_lazy_imports"):
     sys.set_lazy_imports_filter(
         lambda _importing, imported, _fromlist: (
             not imported.startswith((
@@ -22,6 +23,14 @@ if sys.version_info >= (3, 15) and hasattr(sys, "set_lazy_imports_filter") and h
         )
     )
     sys.set_lazy_imports("all")
+
+try:
+    from beartype.claw import beartype_this_package
+
+    beartype_this_package()
+except ImportError:
+    pass
+
 
 from artistools import atomic as atomic
 from artistools import codecomparison as codecomparison
@@ -56,6 +65,9 @@ from artistools.inputmodel import get_mgi_of_velocity_kms as get_mgi_of_velocity
 from artistools.inputmodel import get_modeldata as get_modeldata
 from artistools.inputmodel import save_initelemabundances as save_initelemabundances
 from artistools.inputmodel import save_modeldata as save_modeldata
+from artistools.linefluxes import get_closelines as get_closelines
+from artistools.linefluxes import get_ion_linelist as get_ion_linelist
+from artistools.linefluxes import get_packets_with_emtype as get_packets_with_emtype
 from artistools.misc import anyexist as anyexist
 from artistools.misc import average_direction_bins as average_direction_bins
 from artistools.misc import decode_roman_numeral as decode_roman_numeral

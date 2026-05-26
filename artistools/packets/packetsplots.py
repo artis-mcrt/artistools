@@ -10,7 +10,6 @@ import numpy as np
 import polars as pl
 
 import artistools as at
-import artistools.linefluxes
 
 CLIGHT = 2.99792458e10
 MSUN = 1.989e33
@@ -227,7 +226,7 @@ def get_required_packets(
     if srII_triplet:
         lineindices = list(
             chain(
-                at.linefluxes.get_closelines(
+                at.get_closelines(
                     modelpath=modelpath,
                     atomic_number=38,
                     ion_stage=2,
@@ -235,7 +234,7 @@ def get_required_packets(
                     lowerlevelindex=1,  # 4p6.4d 2D,enpercm=14555.9,j=1.5
                     upperlevelindex=3,
                 )[3],  # 4p6.5p 2P,enpercm=23715.19,j=0.5
-                at.linefluxes.get_closelines(
+                at.get_closelines(
                     modelpath=modelpath,
                     atomic_number=38,
                     ion_stage=2,
@@ -243,7 +242,7 @@ def get_required_packets(
                     lowerlevelindex=2,  # 4p6.4d 2D,enpercm=14836.24,j=2.5
                     upperlevelindex=4,
                 )[3],  # 4p6.5p 2P,enpercm=24516.65,j=1.5
-                at.linefluxes.get_closelines(
+                at.get_closelines(
                     modelpath=modelpath,
                     atomic_number=38,
                     ion_stage=2,
@@ -253,9 +252,9 @@ def get_required_packets(
                 )[3],  # 4p6.5p 2P,enpercm=24516.65,j=1.5
             )
         )
-    lineindices = at.linefluxes.get_ion_linelist(modelpath=modelpath, atomic_number=Z, ion_stage=ion_stage)
+    lineindices = at.get_ion_linelist(modelpath=modelpath, atomic_number=Z, ion_stage=ion_stage)
 
-    dfpackets_selected, _ = at.linefluxes.get_packets_with_emtype(
+    dfpackets_selected, _ = at.get_packets_with_emtype(
         modelpath=modelpath, emtypecolumn="absorption_type", lineindices=lineindices, maxpacketfiles=None
     )
 
