@@ -178,7 +178,7 @@ def plot_qdot(
     dfcontribsparticledata: pl.LazyFrame | None,
     arr_time_gsi_days: Sequence[float] | None,
     pdfoutpath: Path | str,
-    xmax: float | None = None,
+    xmax: float | int | None = None,
 ) -> None:
     try:
         depdata = at.misc.df_filter_minmax_bounded(
@@ -306,7 +306,7 @@ def plot_cell_abund_evolution(
     arr_time_gsi_days: Sequence[float] | None,
     arr_species: Sequence[str],
     arr_abund_artis: pl.DataFrame | None,
-    t_model_init_days: float,
+    t_model_init_days: float | int,
     dfcell: pl.DataFrame,
     pdfoutpath: Path,
     mgi: int,
@@ -427,7 +427,7 @@ def get_particledata(
     verbose: bool = False,
 ) -> pl.LazyFrame:
     """For an array of times (NSM time including time before merger), interpolate the heating rates of various decay channels and (if arr_strnuc is not empty) the nuclear mass fractions."""
-    try:
+    try:  # noqa: PLW0717
         if verbose:
             print(
                 "Reading network calculation heating.dat,"
@@ -576,7 +576,7 @@ def plot_qdot_abund_modelcells(
     merger_root: Path,
     mgiplotlist: Sequence[int],
     arr_species: list[str],
-    timedaysmax: float | None = None,
+    timedaysmax: float | int | None = None,
     nogsinet: bool = False,
 ) -> None:
     # default values, because early model.txt didn't specify this

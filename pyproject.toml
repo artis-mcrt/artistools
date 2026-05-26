@@ -69,7 +69,7 @@ dev = [
     "pytest-codspeed>=4.4.0",
     "pytest-cov>=7.1.0",
     "pytest-xdist[psutil]>=3.8.0",
-    "ruff>=0.15.12",
+    "ruff>=0.15.14",
     "scipy-stubs>=1.17.1",
     "typeguard>=4.5.1",
     "types-python-dateutil>=2.9.0.20260408",
@@ -317,7 +317,7 @@ extend-exclude = [
     ".venv/**",
 ]
 preview = true
-required-version = ">=0.15.12"
+required-version = ">=0.15.14"
 
 [tool.ruff.format]
 skip-magic-trailing-comma = true

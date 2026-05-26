@@ -46,7 +46,7 @@ class FluxContributionTuple(t.NamedTuple):
     color: t.Any
 
 
-def timeshift_fluxscale_co56law(scaletoreftime: float | None, spectime: float) -> float:
+def timeshift_fluxscale_co56law(scaletoreftime: float | int | None, spectime: float) -> float:
     if scaletoreftime is not None:
         # Co56 decay flux scaling
         assert spectime > 150
@@ -165,29 +165,14 @@ def get_dfspectrum_x_y_with_units(
 def get_exspec_bins(
     modelpath: str | Path | None = None,
     mnubins: int | None = None,
-    nu_min_r: float | None = None,
-    nu_max_r: float | None = None,
+    nu_min_r: float | int | None = None,
+    nu_max_r: float | int | None = None,
     gamma: bool = False,
 ) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     """Get the wavelength bins for the emergent spectrum."""
     if modelpath is not None:
         try:
             dfspec = read_spec(modelpath, gamma=gamma).collect()
-            if mnubins is None:
-                mnubins = dfspec.height
-
-            nu_centre_min = dfspec.item(0, 0)
-            nu_centre_max = dfspec.item(dfspec.height - 1, 0)
-
-            # This is not an exact solution for dlognu since we're assuming the bin centre spacing matches the bin edge spacing
-            # but it's close enough for our purposes and avoids the difficulty of finding the exact solution (lots more algebra)
-            dlognu = math.log(dfspec.item(1, 0) / dfspec.item(0, 0))  # second nu value divided by the first nu value
-
-            if nu_min_r is None:
-                nu_min_r = nu_centre_min / (1 + 0.5 * dlognu)
-
-            if nu_max_r is None:
-                nu_max_r = nu_centre_max * (1 + 0.5 * dlognu)
         except FileNotFoundError:
             mnubins = 1000
             if gamma:
@@ -204,6 +189,22 @@ def get_exspec_bins(
                 print(
                     f"No spec.out found. Using default rpkt bins: mnubins {mnubins} nu_min_r {nu_min_r:.2e} nu_max_r {nu_max_r:.2e}"
                 )
+        else:
+            if mnubins is None:
+                mnubins = dfspec.height
+
+            nu_centre_min = dfspec.item(0, 0)
+            nu_centre_max = dfspec.item(dfspec.height - 1, 0)
+
+            # This is not an exact solution for dlognu since we're assuming the bin centre spacing matches the bin edge spacing
+            # but it's close enough for our purposes and avoids the difficulty of finding the exact solution (lots more algebra)
+            dlognu = math.log(dfspec.item(1, 0) / dfspec.item(0, 0))  # second nu value divided by the first nu value
+
+            if nu_min_r is None:
+                nu_min_r = nu_centre_min / (1 + 0.5 * dlognu)
+
+            if nu_max_r is None:
+                nu_max_r = nu_centre_max * (1 + 0.5 * dlognu)
 
     assert nu_min_r is not None
     assert nu_max_r is not None
@@ -249,7 +250,7 @@ def convert_xunit_aliases_to_canonical(xunit: str) -> str:
             raise ValueError(msg)
 
 
-def convert_angstroms_to_unit(value_angstroms: float, new_units: str) -> float:
+def convert_angstroms_to_unit(value_angstroms: float | int, new_units: str) -> float:
     """Convert a wavelength in angstroms to a different unit, either length, frequency, or energy."""
     c = 2.99792458e18  # speed of light [angstroms/s]
     h = 4.1356677e-15  # Planck's constant [eV s]
@@ -276,12 +277,12 @@ def convert_angstroms_to_unit(value_angstroms: float, new_units: str) -> float:
     raise ValueError(msg)
 
 
-def convert_unit_to_angstroms(value: float, old_units: str) -> float:
+def convert_unit_to_angstroms(value: float | int | np.floating, old_units: str) -> float:
     """Convert a wavelength, frequency, or energy to wavelength angstroms."""
     c = 2.99792458e18  # speed of light [angstroms/s]
     h = 4.1356677e-15  # Planck's constant [eV s]
     hc_ev_angstroms = h * c  # [eV angstroms]
-
+    value = float(value)
     match old_units.lower():
         case "ev":
             return hc_ev_angstroms / value
@@ -319,7 +320,7 @@ def stackspectra(spectra_and_factors: list[tuple[npt.NDArray[np.floating], float
 def get_spectrum_at_time(
     modelpath: Path,
     timestep: int,
-    time: float,
+    time: float | int,
     args: argparse.Namespace | None,
     dirbin: int = -1,
     average_over_phi: bool | None = None,
@@ -428,7 +429,7 @@ def get_from_packets(
         .sort(["lambda_binindex", "lambda_angstroms"])
         .lazy()
     )
-    escapesurfacegamma: float | None = None
+    escapesurfacegamma: float | int | None = None
     dirbin_spectra: dict[int, pl.LazyFrame] = {}
     if directionbins_are_vpkt_observers:
         vpkt_config = get_vpkt_config(modelpath)
@@ -866,7 +867,7 @@ def split_dataframe_stokesparams(specdata: pl.DataFrame | pl.LazyFrame) -> dict[
 
 def get_vspecpol_spectrum(
     modelpath: Path | str,
-    timeavg: float,
+    timeavg: float | int,
     angle: int,
     args: argparse.Namespace,
     fluxfilterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
@@ -1477,11 +1478,11 @@ def sort_and_reduce_flux_contribution_list(
 
     import matplotlib.pyplot as plt
 
-    from artistools.plottools import glasbey_category20
+    from artistools.plottools import glasbey_category20_nogreys
 
     color_list = [
         color
-        for color in [*list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20))), *glasbey_category20[10:]]
+        for color in [*list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20))), *glasbey_category20_nogreys[10:]]
         if color[0] != color[1] or color[1] != color[2] or color[0] != color[2]  # remove greys
     ]
 

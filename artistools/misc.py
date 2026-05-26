@@ -130,7 +130,7 @@ def split_multitable_dataframe(res_df: pl.DataFrame | pl.LazyFrame) -> dict[int,
 
 
 def df_filter_minmax_bounded(
-    df: pl.LazyFrame, colname: str, minval: float | None, maxval: float | None
+    df: pl.LazyFrame, colname: str, minval: float | int | None, maxval: float | int | None
 ) -> pl.LazyFrame:
     """Filter a DataFrame to selects rows where the value in colname is between minval and maxval, and also include the closest exterior rows if xmin/xmax are between two rows. This enables linear interpolation at xmin and xmax (if the surrounding values existed in the DataFrame)."""
     if minval is None and maxval is None:
@@ -203,7 +203,7 @@ def average_direction_bins(
     return dirbindataframesout
 
 
-def match_closest_time(reftime: float, searchtimes: list[t.Any]) -> str:
+def match_closest_time(reftime: float | int, searchtimes: list[t.Any]) -> str:
     """Get time closest to reftime in list of times (searchtimes)."""
     return str(min((float(x) for x in searchtimes), key=lambda x: abs(x - reftime)))
 
@@ -278,8 +278,8 @@ def get_grid_mapping(modelpath: Path | str) -> tuple[dict[int, list[int]], dict[
 def get_wid_init_at_tmodel(
     modelpath: Path | str | None = None,
     ngridpoints: int | None = None,
-    t_model_days: float | None = None,
-    xmax: float | None = None,
+    t_model_days: float | int | None = None,
+    xmax: float | int | None = None,
 ) -> float:
     """Return the Cartesian cell width [cm] at the model snapshot time."""
     if ngridpoints is None or t_model_days is None or xmax is None:
@@ -440,7 +440,7 @@ def get_time_range(
     timestep_range_str: str | None = None,
     timemin: float | int | str | None = None,
     timemax: float | int | str | None = None,
-    timedays_range_str: str | int | float | None = None,
+    timedays_range_str: str | float | int | None = None,
     clamp_to_timesteps: bool = True,
 ) -> tuple[int, int, float, float]:
     """Handle a time range specified in either days or timesteps."""
@@ -558,7 +558,7 @@ def get_timestep_time(modelpath: Path | str, timestep: int) -> float:
     return timearray[timestep]
 
 
-def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | None, float | None]:
+def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | int | None, float | int | None]:
     """Return the time range for which the entire model can send light signals the observer."""
     modelpath = Path(modelpath)
     from artistools.inputmodel import get_modeldata
@@ -604,7 +604,7 @@ def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | None, 
 
     # last valid observer time is escape at the end of the latest computed timestep minus the longest travel time relative to origin
     # assume we're on a 3D propagation grid for safety (1D or 2D could reduce the travel time somewhat)
-    validrange_end_days: float = nts_last_tend * (1 - math.sqrt(3 * vmax**2) / 29979245800)
+    validrange_end_days: float | int = nts_last_tend * (1 - math.sqrt(3 * vmax**2) / 29979245800)
 
     if validrange_start_days > validrange_end_days:
         return nts_last, None, None

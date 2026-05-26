@@ -56,7 +56,7 @@ def get_ylabel(variable: str) -> str:
     return at.estimators.get_variablelongunits(variable) or at.estimators.get_units_string(variable)
 
 
-def adjust_lightness(color: t.Any, amount: float = 0.5) -> tuple[float, float, float]:
+def adjust_lightness(color: t.Any, amount: float | int = 0.5) -> tuple[float, float, float]:
     import colorsys
 
     import matplotlib.colors as mc
@@ -407,8 +407,8 @@ def plot_multi_ion_series(
     estimators: pl.LazyFrame,
     modelpath: str | Path,
     args: argparse.Namespace,
-    ymin: float | None = None,
-    ymax: float | None = None,
+    ymin: float | int | None = None,
+    ymax: float | int | None = None,
     **plotkwargs: t.Any,
 ) -> None:
     """Plot an ion-specific property, e.g., populations."""

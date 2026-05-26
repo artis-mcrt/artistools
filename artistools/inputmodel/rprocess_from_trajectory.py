@@ -131,7 +131,7 @@ def get_traj_network_timesteps(traj_root: Path, particleid: int) -> pl.DataFrame
 def get_closest_network_timesteps(
     traj_root: Path,
     particleid: int,
-    timesec: float | Sequence[float] | npt.NDArray[np.floating],
+    timesec: float | int | Sequence[float] | npt.NDArray[np.floating],
     cond: t.Literal["lessthan", "greaterthan", "nearest"] = "nearest",
     dfevol: pl.DataFrame | None = None,
 ) -> list[int]:
@@ -243,31 +243,32 @@ def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, 
 def get_trajectory_abund_q(
     particleid: int,
     traj_root: Path,
-    t_model_s: float | None = None,
+    t_model_s: float | int | None = None,
     nts: int | None = None,  # GSI network timestep number
     getqdotintegral: bool = False,
 ) -> dict[tuple[int, int] | str, float]:
     """Get the nuclear mass fractions (and Qdotintegral) for a particle particle number as a given time."""
-    assert t_model_s is not None or nts is not None
-    try:
-        if nts is not None:
-            memberfilename = f"./Run_rprocess/nz-plane{nts:05d}"
-        elif t_model_s is not None:
-            # find the closest timestep to the required time
-            nts = get_closest_network_timesteps(traj_root, particleid, [t_model_s])[0]
-            memberfilename = f"./Run_rprocess/nz-plane{nts:05d}"
-        else:
-            msg = "Either t_model_s or nts must be specified"
-            raise ValueError(msg)
+    if (t_model_s is None) == (nts is None):
+        msg = "Either t_model_s or nts must be specified (but not both)"
+        raise ValueError(msg)
 
+    if t_model_s is not None:
+        # find the closest timestep to the required time
+        try:
+            nts = get_closest_network_timesteps(traj_root, particleid, [t_model_s])[0]
+        except FileNotFoundError:
+            return {}
+    assert nts is not None
+    memberfilename = f"./Run_rprocess/nz-plane{nts:05d}"
+
+    try:
         dftrajnucabund, traj_time_s = get_trajectory_timestepfile_nuc_abund(traj_root, particleid, memberfilename)
 
-        if t_model_s is None:
-            t_model_s = traj_time_s
-
     except FileNotFoundError:
-        # print(f" WARNING {particleid}.tar.xz file not found! ")
         return {}
+
+    if t_model_s is None:
+        t_model_s = traj_time_s
 
     massfractotal = dftrajnucabund["massfrac"].sum()
     dftrajnucabund = dftrajnucabund.filter(pl.col("Z") >= 1)
@@ -353,7 +354,7 @@ def filtermissinggridparticlecontributions(dfcontribs: pl.DataFrame, missing_par
     )
 
     for _, dfparticlecontribs in dfcontribs.group_by(["cellindex"]):
-        frac_sum: float = float(dfparticlecontribs["frac_of_cellmass"].sum())
+        frac_sum: float | int = float(dfparticlecontribs["frac_of_cellmass"].sum())
         assert frac_sum == 0.0 or math.isclose(frac_sum, 1.0, rel_tol=0.02)
 
         cell_frac_includemissing_sum_thiscell = float(dfparticlecontribs["frac_of_cellmass_includemissing"].sum())
@@ -380,7 +381,7 @@ def save_gridparticlecontributions(dfcontribs: pl.DataFrame, gridcontribpath: Pa
 def add_abundancecontributions(
     dfgridcontributions: pl.DataFrame,
     dfmodel: pl.LazyFrame | pl.DataFrame,
-    t_model_days_incpremerger: float,
+    t_model_days_incpremerger: float | int,
     traj_root: Path | str,
 ) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
     """Contribute trajectory network calculation abundances to model cell abundances and return dfmodel, dfelabundances, dfcontribs."""

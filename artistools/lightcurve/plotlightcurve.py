@@ -142,7 +142,7 @@ def plot_deposition_thermalisation(
             color=color_alpha,
         )
 
-        ejecta_ke_erg: float = dfmodel.select("kinetic_en_erg").sum().collect().item()
+        ejecta_ke_erg: float | int = dfmodel.select("kinetic_en_erg").sum().collect().item()
 
         print(f"  ejecta kinetic energy: {ejecta_ke_erg / 1e7:.2e} [J] = {ejecta_ke_erg:.2e} [erg]")
 
@@ -334,17 +334,18 @@ def plot_artis_lightcurve(
     print(f" range of light curve: {lctimemin:.2f} to {lctimemax:.2f} days")
     try:
         nts_last, validrange_start_days, validrange_end_days = at.get_escaped_arrivalrange(modelpath)
-        if validrange_start_days is not None and validrange_end_days is not None:
-            str_valid_range = f"{validrange_start_days:.2f} to {validrange_end_days:.2f} days"
-        else:
-            str_valid_range = f"{validrange_start_days} to {validrange_end_days} days"
-        print(f" range of validity (last timestep {nts_last}): {str_valid_range}")
     except FileNotFoundError:
         print(
             " range of validity: could not determine due to missing files "
             "(requires deposition.out, input.txt, model.txt)"
         )
         nts_last, validrange_start_days, validrange_end_days = None, -math.inf, math.inf
+    else:
+        if validrange_start_days is not None and validrange_end_days is not None:
+            str_valid_range = f"{validrange_start_days:.2f} to {validrange_end_days:.2f} days"
+        else:
+            str_valid_range = f"{validrange_start_days} to {validrange_end_days} days"
+        print(f" range of validity (last timestep {nts_last}): {str_valid_range}")
 
     if any(dirbin != -1 for dirbin in dirbins):
         print_theta_phi_definitions()
@@ -409,6 +410,12 @@ def plot_artis_lightcurve(
             plotkwargs["color"] = scaledmap.to_rgba(colorindex)  # Update colours for light curves averaged over phi
             plotkwargs["zorder"] = 10
 
+        lcdata_tmin = lcdata.select(pl.col("time").min()).item()
+        lcdata_tmax = lcdata.select(pl.col("time").max()).item()
+        katz_integral = np.trapezoid(
+            np.nan_to_num(lcdata["lum"], nan=0.0) * (lcdata["time"] * 86400), x=lcdata["time"] * 86400
+        )
+        print(f" Katz integral L*t dt ({lcdata_tmin:.1f} to {lcdata_tmax:.1f} days):: {katz_integral:.3e} [erg s]")
         # show the parts of the light curve that are outside the valid arrival range as partially transparent
         if validrange_start_days is None or validrange_end_days is None:
             # entire range is invalid
@@ -435,10 +442,13 @@ def plot_artis_lightcurve(
 
         # lum column is erg/s
         energy_released = abs(np.trapezoid(np.nan_to_num(lcdata_valid["lum"], nan=0.0), x=lcdata_valid["time"] * 86400))
-        lcdatamin = lcdata_valid.select(pl.min("time")).item()
-        lcdatamax = lcdata_valid.select(pl.max("time")).item()
-        if lcdatamin is not None and lcdatamax is not None:
-            print(f" Integrated luminosity ({lcdatamin:.1f} to {lcdatamax:.1f} days): {energy_released:.3e} [erg]")
+
+        lcdata_valid_tmin = lcdata_valid.select(pl.col("time").min()).item()
+        lcdata_valid_tmax = lcdata_valid.select(pl.col("time").max()).item()
+        if lcdata_valid_tmin is not None and lcdata_valid_tmax is not None:
+            print(
+                f" Integrated luminosity ({lcdata_valid_tmin:.1f} to {lcdata_valid_tmax:.1f} days): {energy_released:.3e} [erg]"
+            )
 
         axis.plot(lcdata_valid["time"], lcdata_valid[ycolumn], label=label_with_tags, **plotkwargs)
         if args.print_data:

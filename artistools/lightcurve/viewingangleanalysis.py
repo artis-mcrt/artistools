@@ -336,12 +336,26 @@ def lightcurve_polyfit(
     time: Sequence[float],
     magnitude: npt.NDArray[np.floating],
     args: argparse.Namespace,
-    deg: float = 10,
-    kernel_scale: float = 10,
-    lc_error: float = 0.01,
+    deg: float | int = 10,
+    kernel_scale: float | int = 10,
+    lc_error: float | int = 0.01,
 ) -> tuple[t.Any, t.Any]:
     try:
         import george
+
+    except ModuleNotFoundError:
+        print(
+            "Could not find 'george' module, falling back to polynomial fit. WARNING: polynomial fit method is sensitive to the degrees of freedom used in the polynomial fit. "
+            "Therefore, it is important to check which degree of freedom used in the polynomial provides the best fit using the --test_viewing_angle_fit flag"
+        )
+        zfit = np.polyfit(x=time, y=magnitude, deg=deg)
+        xfit = np.linspace(args.timemin + 0.5, args.timemax - 0.5, num=1000)
+
+        # Taking line_min and line_max from the limits set for the lightcurve being plotted
+        # polynomial with 10 degrees of freedom used here but change as required if it improves the fit
+        fxfit = np.poly1d(zfit)
+        pred = fxfit(xfit)
+    else:
         import scipy.optimize as op
         from george import kernels
 
@@ -372,19 +386,6 @@ def lightcurve_polyfit(
         xfit = np.linspace(min(time), max(time), 1000)
         pred, _ = gp.predict(magnitude, xfit, return_var=True)
 
-    except ModuleNotFoundError:
-        print(
-            "Could not find 'george' module, falling back to polynomial fit. WARNING: polynomial fit method is sensitive to the degrees of freedom used in the polynomial fit. "
-            "Therefore, it is important to check which degree of freedom used in the polynomial provides the best fit using the --test_viewing_angle_fit flag"
-        )
-        zfit = np.polyfit(x=time, y=magnitude, deg=deg)
-        xfit = np.linspace(args.timemin + 0.5, args.timemax - 0.5, num=1000)
-
-        # Taking line_min and line_max from the limits set for the lightcurve being plotted
-        # polynomial with 10 degrees of freedom used here but change as required if it improves the fit
-        fxfit = np.poly1d(zfit)
-        pred = fxfit(xfit)
-
     return pred, xfit
 
 
@@ -395,8 +396,8 @@ def make_plot_test_viewing_angle_fit(
     fxfit: Sequence[float],
     filternames_conversion_dict: dict[str, str],
     key: str,
-    mag_after15days_polyfit: float,
-    tmax_polyfit: float,
+    mag_after15days_polyfit: float | int,
+    tmax_polyfit: float | int,
     time_after15days_polyfit: float | str,
     modelname: str,
     angle: int,

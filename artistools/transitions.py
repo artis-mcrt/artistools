@@ -216,7 +216,11 @@ def make_plot(
 
 
 def add_upper_lte_pop(
-    dftransitions: pl.DataFrame, T_exc: float, ionpop: float, ltepartfunc: float, columnname: str | None = None
+    dftransitions: pl.DataFrame,
+    T_exc: float | int,
+    ionpop: float | int,
+    ltepartfunc: float | int,
+    columnname: str | None = None,
 ) -> pl.DataFrame:
     K_B = 8.617333262145179e-05  # eV / K
     scalefactor = ionpop / ltepartfunc
