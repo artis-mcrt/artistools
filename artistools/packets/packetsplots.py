@@ -314,7 +314,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
     t_max = timemaxarray[timestep]
     Delta_beta = 0.5 / 25
 
-    dfpackets = dfpackets.filter((pl.col("t_arrive_d") > t_min) & (pl.col("t_arrive_d") < t_max))
+    dfpackets = dfpackets.filter(pl.col("t_arrive_d").is_between(t_min, t_max, closed="right"))
     dfpackets = dfpackets.with_columns(
         ((pl.col("em_posx") ** 2 + pl.col("em_posy") ** 2).sqrt() / pl.col("em_time") / CLIGHT).alias("beta_r_cyl_em")
     ).with_columns((pl.col("em_posz") / pl.col("em_time") / CLIGHT).alias("beta_z_em"))
