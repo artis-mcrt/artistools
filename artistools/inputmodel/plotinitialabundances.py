@@ -12,6 +12,9 @@ import artistools as at
 
 
 def make_plot(args: argparse.Namespace) -> None:
+    at.plottools.set_mpl_style()
+    fig, ax = plt.subplots()
+
     for model_path in args.modelpath:
         df = at.inputmodel.get_modeldata(modelpath=Path(model_path), derived_cols=["volume", "rho"])[0].collect()
 
@@ -35,77 +38,50 @@ def make_plot(args: argparse.Namespace) -> None:
             meta_df, on="column"
         )
 
-        if args.xaxis == "A":
-            xcol = "A"
+        axis = "A" if args.xaxis == "A" else "Z"
+        suffix = axis
 
-            if args.yaxis == "X":
-                result = (
-                    long
-                    .group_by("A")
-                    .agg([(pl.col("X") * pl.col("m_cell")).sum().alias("m_A"), pl.col("m_cell").sum().alias("m_total")])
-                    .with_columns((pl.col("m_A") / pl.col("m_total")).alias("X_A"))
-                    .select(["A", "X_A"])
-                    .sort("A")
-                )
-            else:
-                long = long.with_columns((pl.col("X") / pl.col("A")).alias("Y"))
-                result = (
-                    long
-                    .group_by("A")
-                    .agg([
-                        (pl.col("Y") * pl.col("m_cell")).sum().alias("abund_weighted_mass"),
-                        pl.col("m_cell").sum().alias("m_total"),
-                    ])
-                    .with_columns((pl.col("abund_weighted_mass") / pl.col("m_total")).alias("Y_A"))
-                    .select(["A", "Y_A"])
-                    .sort("A")
-                )
-
+        # y vorbereiten (einmal!)
+        if args.yaxis == "X":
+            y_expr = pl.col("X")
+            y_name = f"X_{suffix}"
         else:
-            xcol = "Z"
+            y_expr = pl.col("X") / pl.col("A")
+            y_name = f"Y_{suffix}"
 
-            if args.yaxis == "X":
-                result = (
-                    long
-                    .group_by("Z")
-                    .agg([(pl.col("X") * pl.col("m_cell")).sum().alias("m_Z"), pl.col("m_cell").sum().alias("m_total")])
-                    .with_columns((pl.col("m_Z") / pl.col("m_total")).alias("X_Z"))
-                    .select(["Z", "X_Z"])
-                    .sort("Z")
-                )
-            else:
-                long = long.with_columns((pl.col("X") / pl.col("A")).alias("Y"))
+        value_name = "m_total"
+        weighted_name = f"m_{suffix}" if args.yaxis == "X" else "abund_weighted_mass"
 
-                result = (
-                    long
-                    .group_by("Z")
-                    .agg([
-                        (pl.col("Y") * pl.col("m_cell")).sum().alias("abund_weighted_mass"),
-                        pl.col("m_cell").sum().alias("m_total"),
-                    ])
-                    .with_columns((pl.col("abund_weighted_mass") / pl.col("m_total")).alias("Y_Z"))
-                    .select(["Z", "Y_Z"])
-                    .sort("Z")
-                )
+        result = (
+            long
+            .with_columns(y_expr.alias("Y"))
+            .group_by(axis)
+            .agg([
+                (pl.col("Y") * pl.col("m_cell")).sum().alias(weighted_name),
+                pl.col("m_cell").sum().alias(value_name),
+            ])
+            .with_columns((pl.col(weighted_name) / pl.col(value_name)).alias(y_name))
+            .select([axis, y_name])
+            .sort(axis)
+        )
 
         df_plot = result.to_pandas()
 
-        plt.figure()
+        ax.plot(df_plot[axis], df_plot[f"{args.yaxis}_{args.xaxis}"], label=at.get_model_name(model_path))
 
-        plt.plot(df_plot[xcol], df_plot[f"{args.yaxis}_{args.xaxis}"], label=at.get_model_name(model_path))
+    ax.set_xlabel("mass number" if args.xaxis == "A" else "charge number")
+    ax.set_ylabel("mass fraction" if args.yaxis == "X" else "abundance")
 
-    plt.xlabel("mass number" if args.xaxis == "A" else "charge number")
-    plt.ylabel("mass fraction" if args.yaxis == "X" else "abundance")
-
-    plt.yscale("log")
+    ax.set_yscale("log")
 
     ylim_values = (1e-5, 1.0) if args.yaxis == "X" else (1e-7, 0.1)
-    plt.ylim(ylim_values)
-    plt.legend()
+    ax.set_ylim(*ylim_values)
+
+    ax.legend()
 
     pdf_name = f"plotinitialabundances_{args.yaxis}vs{args.xaxis}.pdf"
-    plt.savefig(Path(args.outputpath) / pdf_name, dpi=300)
-    plt.close()
+    fig.savefig(Path(args.outputpath) / pdf_name, dpi=300)
+    plt.close(fig)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
