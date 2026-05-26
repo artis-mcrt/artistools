@@ -168,9 +168,7 @@ def test_radfield(mockstep: t.Any, mockplot: t.Any) -> None:
     at.radfield.main(argsraw=[], modelpath=modelpath, modelgridindex=0, outputfile=funcoutpath, showbinedges=True)
 
     plot_calls = {
-        label.strip(): call
-        for call in mockplot.call_args_list
-        if isinstance((label := call.kwargs.get("label")), str)
+        label.strip(): call for call in mockplot.call_args_list if isinstance((label := call.kwargs.get("label")), str)
     }
     dilute_xarr, dilute_yarr = get_plot_xy(plot_calls["Dilute blackbody model"])
     assert np.isclose(dilute_xarr.min(), 1000.0, rtol=1e-4)
