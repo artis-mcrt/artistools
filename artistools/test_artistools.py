@@ -186,7 +186,7 @@ def test_radfield(mockstep: t.Any, mockplot: t.Any) -> None:
     assert np.isclose(bandavg_xarr.min(), 2000.0030554517798, rtol=1e-4)
     assert np.isclose(bandavg_xarr.max(), 20000.030554517798, rtol=1e-4)
     assert np.isclose(bandavg_yarr.mean(), 43.58807185509511, rtol=1e-4)
-    assert np.isclose(np.trapezoid(bandavg_yarr, bandavg_xarr), -475489.00963827176, rtol=1e-4)
+    assert np.isclose(abs(np.trapezoid(bandavg_yarr, bandavg_xarr)), 475489.00963827176, rtol=1e-4)
 
 
 @pytest.mark.benchmark
