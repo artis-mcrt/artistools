@@ -262,7 +262,7 @@ def get_required_packets(
     return dfpackets_selected
 
 
-def get_red_packet_set(
+def get_reduced_packet_set(
     modelpath: Path,
     escape_angles: list[int],
     Z: Sequence[int],
@@ -315,42 +315,51 @@ def packets_2d_hist_bin_and_ejecta_vel(
     Z_list = [Z] if Z else list(range(1, 101))
     ion_stage_list = [at.decode_roman_numeral(ion_stage)] if ion_stage else list(range(1, 5))
 
-    dfpackets = get_red_packet_set(
+    dfpackets = get_reduced_packet_set(
         modelpath, dirbin_range, Z_list, ion_stage_list, wavelen=wavelen, binwidth=binwidth, srII_triplet=srIItriplet
     )
 
     start_of_filename += "t_arrive_d"
     timeminarray = at.misc.get_timestep_times(modelpath=modelpath, loc="start")
     timemaxarray = at.misc.get_timestep_times(modelpath=modelpath, loc="end")
-    timestep_min = at.misc.get_timestep_of_timedays(modelpath, tdays)
-    timestep_max = timestep_min + 1
-    t_min = timeminarray[timestep_min]
-    t_max = timemaxarray[timestep_max]
-    Delta = 0.5 * CLIGHT / 25 * 0.1 * DAY
+    timestep = at.misc.get_timestep_of_timedays(modelpath, tdays)
+    t_min = timeminarray[timestep]
+    t_max = timemaxarray[timestep]
+    Delta_beta = 0.5 / 25
+
+    dfpackets = dfpackets.filter((pl.col("t_arrive_d") > t_min) & (pl.col("t_arrive_d") < t_max))
+    dfpackets = dfpackets.with_columns(
+        ((pl.col("em_posx") ** 2 + pl.col("em_posy") ** 2).sqrt() / pl.col("em_time") / CLIGHT).alias("beta_r_cyl_em")
+    ).with_columns((pl.col("em_posz") / pl.col("em_time") / CLIGHT).alias("beta_z_em"))
+
+    dfpackets = dfpackets.with_columns()
 
     dfpackets = dfpackets.with_columns(
-        ((((pl.col("em_posx") ** 2 + pl.col("em_posy") ** 2).sqrt()) / Delta).floor() * Delta).alias("R_inner")
-    )
-    dfpackets = dfpackets.with_columns((pl.col("R_inner") + Delta).alias("R_outer"))
-    dfpackets = dfpackets.with_columns(
-        (np.pi * Delta * (pl.col("R_outer").cast(pl.Float64) ** 2 - pl.col("R_inner").cast(pl.Float64) ** 2)).alias(
-            "hollow_cyl_vol"
+        ((pl.col("beta_r_cyl_em") / Delta_beta).floor() * Delta_beta * CLIGHT * pl.col("em_time")).alias(
+            "R_cyl_inner_em"
         )
+    ).with_columns((pl.col("R_cyl_inner_em") + Delta_beta * CLIGHT * pl.col("em_time")).alias("R_cyl_outer_em"))
+    dfpackets = dfpackets.with_columns(
+        (
+            np.pi
+            * (pl.col("R_cyl_outer_em").cast(pl.Float64) ** 2 - pl.col("R_cyl_inner_em").cast(pl.Float64) ** 2)
+            * CLIGHT
+            * Delta_beta
+            * pl.col("em_time")
+        ).alias("hollow_cyl_vol_em")
     )
-    dfpackets_selected = dfpackets.filter((pl.col("t_arrive_d") > t_min) & (pl.col("t_arrive_d") < t_max)).collect()
+    dfpackets_selected = dfpackets.collect()
 
-    # Step 2) create the heatmap
-    weights = dfpackets_selected["e_rf"] / dfpackets_selected["hollow_cyl_vol"]
+    # Step 2) create the heatmap. Normalise packet energy to modelgrid cell volume at packet emission time (lab frame)
+    weights = dfpackets_selected["e_rf"] / dfpackets_selected["hollow_cyl_vol_em"]
     # derive the emission velocity for each packet from the emission position
     heatmap, xedges, yedges = np.histogram2d(
-        (dfpackets_selected["em_posx"] ** 2 + dfpackets_selected["em_posy"] ** 2) ** 0.5
-        / dfpackets_selected["em_time"]
-        / CLIGHT,
-        dfpackets_selected["em_posz"] / dfpackets_selected["em_time"] / CLIGHT,
+        dfpackets_selected["beta_r_cyl_em"],
+        dfpackets_selected["beta_z_em"],
         bins=[np.linspace(0, 0.5, num=25), np.linspace(-0.5, 0.5, num=50)],
         weights=weights,
     )
-    heatmap /= (timemaxarray[timestep_max] - timeminarray[timestep_min]) / DAY  # conversion to erg/s/cm3
+    heatmap /= (timemaxarray[timestep] - timeminarray[timestep]) * 1e7 / DAY  # conversion to erg/s
     heatmap = np.log(heatmap) if colorlogscale else heatmap
 
     heatmap = np.ma.masked_where(heatmap == 0.0, heatmap)
@@ -360,23 +369,22 @@ def packets_2d_hist_bin_and_ejecta_vel(
 
     im = ax.imshow(z, origin="lower", cmap="viridis", extent=(xedges[0], xedges[-1], yedges[0], yedges[-1]))
     ax.set_aspect("equal")
-    ax.set_xlabel(r"$v_r$")
-    ax.set_ylabel(r"$v_z$")
+    ax.set_xlabel(r"$v_r$ [$c$]")
+    ax.set_ylabel(r"$v_z$ [$c$]")
     cbar = fig.colorbar(im, ax=ax)
     if colorlogscale:
         cbar.set_label(r"log volumetric emissivity [erg/(s cm$^3$)]")
     else:
-        cbar.set_label(r"volumetric emissivity [10$^{7}$ erg/(s cm$^3$)]")
+        cbar.set_label(r"volumetric emissivity [$10^7$ erg/(s cm$^3$)]")
 
     ax.set_xticks(np.linspace(xedges[0], xedges[-1], 6))
     ax.set_yticks(np.linspace(yedges[0], yedges[-1], 6))
 
     outfilename = (
-        start_of_filename
-        + f"escape_from_bins_ts{timestep_min}-{timestep_max}_into_dirbins{dirbin_range[0]}-{dirbin_range[-1]}.pdf"
+        start_of_filename + f"escape_from_bins_ts{timestep}_into_dirbins{dirbin_range[0]}-{dirbin_range[-1]}.pdf"
     )
     print(f"Saving {outfilename}")
-    plt.savefig(Path(modelpath) / outfilename, dpi=300)
+    plt.savefig(Path(modelpath) / outfilename, dpi=300, bbox_inches="tight")
     plt.clf()
 
 
