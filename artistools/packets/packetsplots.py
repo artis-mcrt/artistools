@@ -12,20 +12,7 @@ import polars as pl
 import artistools as at
 
 CLIGHT = 2.99792458e10
-MSUN = 1.989e33
 DAY = 86400
-colours = [
-    "tab:blue",
-    "tab:orange",
-    "tab:green",
-    "tab:red",
-    "tab:purple",
-    "tab:brown",
-    "tab:pink",
-    "tab:gray",
-    "tab:olive",
-    "tab:cyan",
-]
 
 
 def make_2d_packets_plot_imshow(modelpath: Path, timestep_min: int, timestep_max: int) -> None:
@@ -252,7 +239,8 @@ def get_required_packets(
                 )[3],  # 4p6.5p 2P,enpercm=24516.65,j=1.5
             )
         )
-    lineindices = at.get_ion_linelist(modelpath=modelpath, atomic_number=Z, ion_stage=ion_stage)
+    else:
+        lineindices = at.get_ion_linelist(modelpath=modelpath, atomic_number=Z, ion_stage=ion_stage)
 
     dfpackets_selected, _ = at.get_packets_with_emtype(
         modelpath=modelpath, emtypecolumn="absorption_type", lineindices=lineindices, maxpacketfiles=None
@@ -299,7 +287,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
     colorlogscale: bool,
     dirbin_range: list[int],
     Z: int | None = None,
-    ion_stage: str | None = None,
+    ion_stage_str: str | None = None,
     wavelen: float | None = None,
     binwidth: float | None = None,
 ) -> None:
@@ -308,11 +296,11 @@ def packets_2d_hist_bin_and_ejecta_vel(
     if wavelen is not None:
         start_of_filename = f"{wavelen:.0f}A_"
     start_of_filename = f"{start_of_filename}_Z={Z}_" if Z else f"{start_of_filename}_allelements_"
-    start_of_filename = f"{start_of_filename}_I={ion_stage}_" if ion_stage else f"{start_of_filename}_allions_"
+    start_of_filename = f"{start_of_filename}_I={ion_stage_str}_" if ion_stage_str else f"{start_of_filename}_allions_"
 
     # Step 1) collect packets IDs and select according to arrival time
     Z_list = [Z] if Z else list(range(1, 101))
-    ion_stage_list = [at.decode_roman_numeral(ion_stage)] if ion_stage else list(range(1, 5))
+    ion_stage_list = [at.decode_roman_numeral(ion_stage_str)] if ion_stage_str else list(range(1, 5))
 
     dfpackets = get_reduced_packet_set(
         modelpath, dirbin_range, Z_list, ion_stage_list, wavelen=wavelen, binwidth=binwidth, srII_triplet=srIItriplet
@@ -359,9 +347,9 @@ def packets_2d_hist_bin_and_ejecta_vel(
         weights=weights,
     )
     heatmap /= (timemaxarray[timestep] - timeminarray[timestep]) * 1e7 / DAY  # conversion to erg/s
-    heatmap = np.log(heatmap) if colorlogscale else heatmap
-
-    heatmap = np.ma.masked_where(heatmap == 0.0, heatmap)
+    heatmap = np.ma.masked_less_equal(heatmap, 0.0)
+    if colorlogscale:
+        heatmap = np.ma.log(heatmap)
 
     fig, ax = plt.subplots(figsize=(3.5, 4.5))
     z = heatmap.T
@@ -409,7 +397,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
-    """Comparison to constant beta decay splitup factors."""
+    """Plot last packet interaction properties versus ejecta velocity for selected packets."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
 
@@ -438,7 +426,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.colorlogscale,
         dirbin_range=[dirbin + i for i in range(10)] if dirbin else list(range(100)),
         Z=at.get_atomic_number(args.element) if args.element else None,
-        ion_stage=args.ionstage,
+        ion_stage_str=args.ionstage,
         wavelen=args.wavelen,
         binwidth=args.binwidth,
     )
