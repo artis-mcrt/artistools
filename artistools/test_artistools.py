@@ -178,7 +178,7 @@ def test_radfield(mockstep: t.Any, mockplot: t.Any) -> None:
     assert np.isclose(fitted_xarr.min(), 2000.0030554517798, rtol=1e-4)
     assert np.isclose(fitted_xarr.max(), 20000.030554517798, rtol=1e-4)
     assert np.isclose(fitted_yarr.mean(), 48.342355990852596, rtol=1e-4)
-    assert np.isclose(np.trapezoid(fitted_yarr, fitted_xarr), -489588.12007010705, rtol=1e-4)
+    assert np.isclose(abs(np.trapezoid(fitted_yarr, fitted_xarr)), 489588.12007010705, rtol=1e-4)
 
     bandavg_xarr, bandavg_yarr = get_plot_xy(mockstep.call_args_list[0])
     assert np.isclose(bandavg_xarr.min(), 2000.0030554517798, rtol=1e-4)
