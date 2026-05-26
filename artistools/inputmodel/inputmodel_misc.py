@@ -36,7 +36,7 @@ def read_modelfile_text(
     onelinepercellformat = None
 
     modelmeta: dict[str, t.Any] = {"headercommentlines": []}
-    xmax_tmodel: float = 0.0
+    xmax_tmodel: float | int = 0.0
     ncoordgridx: int = 0
     ncoordgridy: int = 0
     ncoordgridz: int = 0
@@ -73,6 +73,13 @@ def read_modelfile_text(
         # if the next line is a single float then the model is 2D or 3D (vmax)
         try:
             modelmeta["vmax_cmps"] = float(line)  # velocity max in cm/s
+        except ValueError:
+            assert modelmeta.get("dimensions", -1) != 2, "2D model should have a vmax line here"
+            if "dimensions" not in modelmeta:
+                if not printwarningsonly:
+                    print(f"  detected 1D model file with {npts_model} radial zones")
+                modelmeta["dimensions"] = 1
+        else:
             xmax_tmodel = modelmeta["vmax_cmps"] * t_model_init_seconds  # xmax = ymax = zmax
             numheaderrows += 1
             if "dimensions" not in modelmeta:  # not already detected as 2D
@@ -92,13 +99,6 @@ def read_modelfile_text(
                     print(f"  detected 3D model file with {ncoordgridx}x{ncoordgridy}x{ncoordgridz}={npts_model} cells")
 
             line = fmodel.readline()
-
-        except ValueError:
-            assert modelmeta.get("dimensions", -1) != 2, "2D model should have a vmax line here"
-            if "dimensions" not in modelmeta:
-                if not printwarningsonly:
-                    print(f"  detected 1D model file with {npts_model} radial zones")
-                modelmeta["dimensions"] = 1
 
         columns = None
         if line.startswith("#"):
@@ -458,7 +458,7 @@ def get_modeldata(
 
 
 def get_empty_3d_model(
-    ncoordgrid: int, vmax: float, t_model_init_days: float, includenico57: bool = False
+    ncoordgrid: int, vmax: float | int, t_model_init_days: float | int, includenico57: bool = False
 ) -> tuple[pl.LazyFrame, dict[str, t.Any]]:
     xmax = vmax * t_model_init_days * 86400.0
 
@@ -802,7 +802,7 @@ def get_standard_columns(
 def save_modeldata(
     dfmodel: pl.LazyFrame | pl.DataFrame,
     outpath: Path | str | None = None,
-    vmax: float | None = None,
+    vmax: float | int | None = None,
     headercommentlines: list[str] | None = None,
     modelmeta: dict[str, t.Any] | None = None,
     twolinespercell: bool = False,
@@ -1376,8 +1376,8 @@ def dimension_reduce_model(
 
 def scale_model_to_time(
     dfmodel: pd.DataFrame,
-    targetmodeltime_days: float,
-    t_model_days: float | None = None,
+    targetmodeltime_days: float | int,
+    t_model_days: float | int | None = None,
     modelmeta: dict[str, t.Any] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, t.Any]]:
     """Homologously expand model to targetmodeltime_days by reducing densities and adjusting cell positions."""

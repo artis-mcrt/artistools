@@ -41,7 +41,6 @@ from artistools.misc import print_theta_phi_definitions
 from artistools.misc import set_args_from_dict
 from artistools.misc import trim_or_pad
 from artistools.plottools import ExponentLabelFormatter
-from artistools.plottools import glasbey_category20_nogreys
 from artistools.plottools import set_mpl_style
 from artistools.spectra.writespectra import write_flambda_spectra
 
@@ -52,7 +51,7 @@ def path_is_artis_model(filepath: str | Path) -> bool:
     return True if Path(filepath).suffix == ".out" else Path(filepath).is_dir()
 
 
-def check_time_range_is_valid(modelpath: Path, timemin: float, timemax: float, allow_invalid: bool) -> None:
+def check_time_range_is_valid(modelpath: Path, timemin: float | int, timemax: float | int, allow_invalid: bool) -> None:
     with contextlib.suppress(FileNotFoundError):
         _, validrange_start_days, validrange_end_days = get_escaped_arrivalrange(modelpath)
         problem_messages = []
@@ -78,8 +77,8 @@ def check_time_range_is_valid(modelpath: Path, timemin: float, timemax: float, a
 
 
 def get_lambda_min_max_binwidth(
-    xmin: float, xmax: float, args: argparse.Namespace
-) -> tuple[float, float, float | npt.NDArray[np.floating] | None]:
+    xmin: float | int, xmax: float | int, args: argparse.Namespace
+) -> tuple[float, float, float | int | npt.NDArray[np.floating] | None]:
     lambda_min, lambda_max = sorted([
         atspectra.convert_unit_to_angstroms(xmin, args.xunit),
         atspectra.convert_unit_to_angstroms(xmax, args.xunit),
@@ -270,13 +269,13 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
 def plot_reference_spectrum(
     filename: Path | str,
     axis: mplax.Axes,
-    xmin: float,
-    xmax: float,
+    xmin: float | int,
+    xmax: float | int,
     fluxfilterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
-    scale_to_peak: float | None = None,
-    offset: float = 0,
-    scale_to_dist_mpc: float = 1,
-    scaletoreftime: float | None = None,
+    scale_to_peak: float | int | None = None,
+    offset: float | int = 0,
+    scale_to_dist_mpc: float | int = 1,
+    scaletoreftime: float | int | None = None,
     xunit: str = "angstroms",
     yvariable: str = "flux",
     **plotkwargs: t.Any,
@@ -338,7 +337,9 @@ def plot_reference_spectrum(
 
     if fluxfilterfunc:
         print(" applying filter to reference spectrum")
-        specdata = specdata.with_columns(cs.starts_with("f_lambda").map_batches(fluxfilterfunc))
+        specdata = specdata.with_columns(
+            cs.starts_with("f_lambda").map_batches(fluxfilterfunc, return_dtype=pl.self_dtype())
+        )
 
     specdata = atspectra.get_dfspectrum_x_y_with_units(
         specdata, xunit=xunit, yvariable=yvariable, fluxdistance_mpc=scale_to_dist_mpc
@@ -379,7 +380,7 @@ def plot_artis_spectrum(
     axes: npt.NDArray[t.Any] | Sequence[mplax.Axes],
     modelpath: Path | str,
     args: argparse.Namespace,
-    scale_to_peak: float | None = None,
+    scale_to_peak: float | int | None = None,
     from_packets: bool = False,
     filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     linelabel: str | None = None,
@@ -542,15 +543,18 @@ def plot_artis_spectrum(
         dirbin_dfspec = zip(
             directionbins,
             pl.collect_all(
-                df_filter_minmax_bounded(
-                    atspectra.get_dfspectrum_x_y_with_units(
-                        viewinganglespectra[dirbin], xunit=xunit, yvariable=yvariable, fluxdistance_mpc=args.distmpc
-                    ).sort("x"),
-                    colname="x",
-                    minval=xmin,
-                    maxval=xmax,
-                )
-                for dirbin in directionbins
+                [
+                    df_filter_minmax_bounded(
+                        atspectra.get_dfspectrum_x_y_with_units(
+                            viewinganglespectra[dirbin], xunit=xunit, yvariable=yvariable, fluxdistance_mpc=args.distmpc
+                        ).sort("x"),
+                        colname="x",
+                        minval=xmin,
+                        maxval=xmax,
+                    )
+                    for dirbin in directionbins
+                ],
+                optimizations=pl.QueryOptFlags(comm_subplan_elim=False),
             ),
             strict=True,
         )
@@ -610,7 +614,7 @@ def make_spectrum_plot(
     axes: npt.NDArray[t.Any] | Sequence[mplax.Axes],
     filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None,
     args: argparse.Namespace,
-    scale_to_peak: float | None = None,
+    scale_to_peak: float | int | None = None,
 ) -> pl.DataFrame:
     """Plot reference spectra and ARTIS spectra."""
     dfalldata = pl.DataFrame()
@@ -791,7 +795,7 @@ def make_emissionabsorption_plot(
     axis: mplax.Axes,
     args: argparse.Namespace,
     filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
-    scale_to_peak: float | None = None,
+    scale_to_peak: float | int | None = None,
 ) -> tuple[list[Artist], list[str], pl.DataFrame | None]:
     """Plot the emission and absorption contribution spectra, grouped by ion/line/term for an ARTIS model."""
     modelname = args.label[0] if args.label and args.label[0] is not None else get_model_name(modelpath)
@@ -1036,19 +1040,21 @@ def make_emissionabsorption_plot(
     else:
         plotlabel = f"{modelname} [{args.timemin:.2f}d to {args.timemax:.2f}d]"
         if args.plotviewingangle or args.plotvspecpol:
+            assert dirbin is not None
             dirbin_definitions = (
                 get_vspec_dir_labels(modelpath=modelpath, usedegrees=args.usedegrees)
                 if args.plotvspecpol
                 else get_dirbin_labels(
-                    dirbins=args.plotviewingangle,
                     modelpath=modelpath,
                     average_over_phi=args.average_over_phi_angle,
                     average_over_theta=args.average_over_theta_angle,
                     usedegrees=args.usedegrees,
                 )
             )
-            assert dirbin is not None
             plotlabel += f", {dirbin_definitions[dirbin]}"
+
+            if dirbin != -1:
+                print_theta_phi_definitions()
 
     if not args.notitle:
         if args.inset_title:
@@ -1577,7 +1583,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         artismodelnum = 0
         for filepath in args.specpath:
             if path_is_artis_model(filepath):
-                args.color.append(glasbey_category20_nogreys[artismodelnum])
                 artismodelnum += 1
             else:
                 args.color.append(refspeccolors[refspecnum])

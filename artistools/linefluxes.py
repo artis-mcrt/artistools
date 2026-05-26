@@ -215,8 +215,8 @@ def get_closelines(
     atomic_number: int,
     ion_stage: int,
     approxlambdalabel: str | int,
-    lambdamin: float | None = None,
-    lambdamax: float | None = None,
+    lambdamin: float | int | None = None,
+    lambdamax: float | int | None = None,
     lowerlevelindex: int | None = None,
     upperlevelindex: int | None = None,
 ) -> FeatureTuple:
@@ -422,7 +422,7 @@ def plot_nne_te_points(
     serieslabel: str,
     em_log10nne: Sequence[float] | npt.NDArray[np.floating],
     em_Te: Sequence[float] | npt.NDArray[np.floating],
-    normtotalpackets: float,
+    normtotalpackets: float | int,
     color: float | str | None,
     marker: MarkerType,
 ) -> None:
@@ -431,6 +431,7 @@ def plot_nne_te_points(
     for log10nne, Te in zip(em_log10nne, em_Te, strict=True):
         assert isinstance(log10nne, float | np.floating)
         assert isinstance(Te, float | np.floating)
+        # pyrefly: ignore [unnecessary-type-conversion]
         dictkey = (float(log10nne), float(Te))
         hitcount[dictkey] = hitcount.get(dictkey, 0) + 1
 

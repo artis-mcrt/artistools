@@ -154,14 +154,14 @@ def read_reference_estimators(
                         ionstr = at.get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
                         try:
                             ionfrac = float(strionfrac)
+                        except ValueError:
+                            estimators[tsmgi][f"nnion_{ionstr}"] = math.nan
+                        else:
                             ionpop = ionfrac * estimators[tsmgi]["nntot"]
                             if ionpop > 1e-80:
                                 estimators[tsmgi][f"nnion_{ionstr}"] = ionpop
                                 estimators[tsmgi].setdefault(f"nnelement_{elsym}", 0.0)
                                 estimators[tsmgi][f"nnelement_{elsym}"] += ionpop
-
-                        except ValueError:
-                            estimators[tsmgi][f"nnion_{ionstr}"] = math.nan
 
                     assert np.isclose(float(row[0]), estimators[tsmgi]["vel_mid"], rtol=0.01)
                     assert estimators[key]["vel_mid"]
@@ -190,7 +190,7 @@ def get_spectra(modelpath: str | Path) -> tuple[pl.DataFrame, npt.NDArray[np.flo
     return dfspectra, arr_timedays
 
 
-def plot_spectrum(modelpath: str | Path, timedays: str | float, axis: mplax.Axes, **plotkwargs: t.Any) -> None:
+def plot_spectrum(modelpath: str | Path, timedays: str | float | int, axis: mplax.Axes, **plotkwargs: t.Any) -> None:
     dfspectra, arr_timedays = get_spectra(modelpath)
     timeindex = int((np.abs(arr_timedays - float(timedays))).argmin())
     timedays_found = dfspectra.columns[timeindex + 1]

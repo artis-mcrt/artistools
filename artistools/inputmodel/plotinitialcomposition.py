@@ -31,7 +31,7 @@ def get_2D_slice_through_3d_model(
 ) -> pd.DataFrame:
     if not sliceindex:
         # get midpoint
-        sliceposition: float = dfmodel.iloc[(dfmodel["pos_x_min"]).abs().argsort()][:1]["pos_x_min"].item()
+        sliceposition: float | int = dfmodel.iloc[(dfmodel["pos_x_min"]).abs().argsort()][:1]["pos_x_min"].item()
         # Choose position to slice. This gets minimum absolute value as the closest to 0
     else:
         cell_boundaries = list(dfmodel[f"pos_{sliceaxis}_min"].unique())
@@ -53,7 +53,7 @@ def plot_slice_modelcolumn(
     colname: str,
     plotaxis1: str,
     plotaxis2: str,
-    t_model_d: float,
+    t_model_d: float | int,
     args: argparse.Namespace,
 ) -> tuple[AxesImage, mplcm.ScalarMappable | None]:
     print(f"plotting {colname}")
@@ -93,14 +93,28 @@ def plot_slice_modelcolumn(
     vmax_ax1 = dfmodelslice[f"pos_{plotaxis1}_max"].max() / t_model_s * unitfactor
     vmin_ax2 = dfmodelslice[f"pos_{plotaxis2}_min"].min() / t_model_s * unitfactor
     vmax_ax2 = dfmodelslice[f"pos_{plotaxis2}_max"].max() / t_model_s * unitfactor
+    if colname == "rho":
+        if args.logcolorscale:
+            vmin = args.floorval or -15
+            vmax = -7
+        else:
+            vmin = args.floorval or 1e-15
+            vmax = 1e-7
+    elif colname == "Ye":
+        assert not args.logcolorscale, "log colorscale not supported for Ye"
+        vmin = args.floorval or 0
+        vmax = 0.6
+    else:
+        vmin = None
+        vmax = None
     im = ax.imshow(
         valuegrid,
         cmap="viridis",
         interpolation="nearest",
         extent=(vmin_ax1, vmax_ax1, vmin_ax2, vmax_ax2),
         origin="lower",
-        # vmin=0.0,
-        # vmax=1.0,
+        vmin=vmin,
+        vmax=vmax,
     )
 
     # plot_vmax = 0.2
@@ -197,10 +211,10 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
     axes[0].set_xlabel(xlabel)
     axes[0].set_ylabel(ylabel)
 
-    if "cellYe" not in args.plotvars and "tracercount" not in args.plotvars:
+    if "Ye" not in args.plotvars and "tracercount" not in args.plotvars:
         cbar.set_label(r"log10($\rho$ [g/cm³])" if args.logcolorscale else r"$\rho$ [g/cm³]")
     else:
-        cbar.set_label("Ye" if "cellYe" in args.plotvars else "tracercount")
+        cbar.set_label("Ye" if "Ye" in args.plotvars else "tracercount")
 
     defaultfilename = Path(modelpath) / f"plotcomposition_{','.join(v.lower() for v in args.plotvars)}.pdf"
     if args.outputfile and Path(args.outputfile).is_dir():
@@ -225,8 +239,8 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
     # choose what surface will be coloured by
     if "rho" in args.plotvars:
         coloursurfaceby = "rho"
-    elif "cellYe" in args.plotvars:
-        coloursurfaceby = "cellYe"
+    elif "Ye" in args.plotvars:
+        coloursurfaceby = "Ye"
     else:
         print(f"Colours set by X_{args.plotvars}")
         coloursurfaceby = f"X_{args.plotvars}"
@@ -236,10 +250,10 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
     vmax = modelmeta["vmax_cmps"]
     model = plmodel.collect().to_pandas(use_pyarrow_extension_array=True)
 
-    if "cellYe" in args.plotvars and "cellYe" not in model:
+    if "Ye" in args.plotvars and "Ye" not in model:
         file_contents = np.loadtxt(Path(modelpath) / "Ye.txt", unpack=True, skiprows=1)
         Ye = file_contents[1]
-        model["cellYe"] = Ye
+        model["Ye"] = Ye
 
     mincellparticles = 0
     if mincellparticles > 0:
@@ -326,69 +340,6 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
     # plotter.open_gif("orbit.gif")
     # plotter.orbit_on_path(path, write_frames=True)
     # plotter.close()
-
-
-def plot_phi_hist(modelpath: Path | str) -> None:
-    dfmodel = (
-        at
-        .get_modeldata(modelpath, derived_cols=["pos_x_mid", "pos_y_mid", "pos_z_mid", "vel_r_mid"])[0]
-        .collect()
-        .to_pandas(use_pyarrow_extension_array=True)
-    )
-    # print(dfmodel.keys())
-    # quit()
-    at.inputmodel.inputmodel_misc.get_cell_angle(dfmodel)
-    CLIGHT = 2.99792458e10
-    # MSUN = 1.989e33
-
-    # dfmodel.query("cos_bin in [40, 50]", inplace=True)
-    # mass = dfmodel["cellmass_grams"] / MSUN
-    # weights = mass
-    # weights = dfmodel['cellYe']
-    # weights = dfmodel['q']
-    weightby = "rho"
-    weights = dfmodel[weightby]
-    labeldict = {"cellYe": "Ye"}
-    if weightby in labeldict:
-        weightby = labeldict[weightby]
-
-    nphibins = 25
-    nvbins = 25
-    vmin = 0.0  # c
-    vmax = 0.7  # c
-    heatmap, xedges, yedges = np.histogram2d(
-        dfmodel["vel_r_mid"] / CLIGHT,
-        dfmodel["phi"],
-        bins=(np.linspace(vmin, vmax, num=nvbins), np.linspace(0, 2 * np.pi, num=nphibins)),
-        weights=weights,
-    )
-    # heatmap = heatmap / (2 * np.pi) / (vmax - vmin) / nphibins / nvbins
-    print("WARNING: histogram not normalised")
-    plt.clf()
-
-    heatmap = np.ma.masked_where(heatmap == 0.0, heatmap)
-    # heatmap = np.log10(heatmap)
-
-    fig = plt.figure(figsize=(5, 4))
-    ax = fig.add_axes((0.15, 0.15, 0.75, 0.75), polar=True)
-
-    radii = xedges
-    z = heatmap
-    phis = yedges
-
-    cmap = "coolwarm_r" if weightby == "Ye" else "coolwarm"
-    im = ax.pcolormesh(phis, radii, z, cmap=cmap)
-    cbar = fig.colorbar(im)
-
-    cbar.set_label(weightby, rotation=90)
-    plt.xlabel(r"azimuthal angle")
-    plt.ylabel("Radial velocity [c]")
-    ax.yaxis.set_label_coords(-0.15, 0.5)
-
-    outfilename = f"model{weightby}phi.pdf"
-    plt.savefig(Path(modelpath) / outfilename, format="pdf")
-    print(f"open {outfilename}")
-    plt.close()
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:

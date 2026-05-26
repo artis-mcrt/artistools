@@ -60,9 +60,9 @@ columns_full = [
     "absorptiondirx",
     "absorptiondiry",
     "absorptiondirz",
-    "stokes1",
-    "stokes2",
-    "stokes3",
+    "stokes_i",
+    "stokes_q",
+    "stokes_u",
     "pol_dirx",
     "pol_diry",
     "pol_dirz",
@@ -106,9 +106,9 @@ def get_column_names_artiscode(modelpath: str | Path) -> list[str] | None:
             "absorptiondir[0]": "absorptiondirx",
             "absorptiondir[1]": "absorptiondiry",
             "absorptiondir[2]": "absorptiondirz",
-            "stokes[0]": "stokes1",
-            "stokes[1]": "stokes2",
-            "stokes[2]": "stokes3",
+            "stokes[0]": "stokes_i",
+            "stokes[1]": "stokes_q",
+            "stokes[2]": "stokes_u",
             "pol_dir[0]": "pol_dirx",
             "pol_dir[1]": "pol_diry",
             "pol_dir[2]": "pol_dirz",
@@ -320,6 +320,9 @@ def readfile_text(packetsfiletext: Path | str, column_names: list[str]) -> pl.Da
         "stokes1": pl.Float32,
         "stokes2": pl.Float32,
         "stokes3": pl.Float32,
+        "stokes_i": pl.Float32,
+        "stokes_q": pl.Float32,
+        "stokes_u": pl.Float32,
         "t_decay": pl.Float32,
         "true_emission_velocity": pl.Float32,
         "trueem_posx": pl.Float32,
@@ -358,6 +361,8 @@ def readfile_text(packetsfiletext: Path | str, column_names: list[str]) -> pl.Da
             "pol_dirx",
             "pol_diry",
             "pol_dirz",
+            "stokes0",
+            "stokes_i",
         ],
         strict=False,
     ).with_columns(mpirank=pl.lit(mpirank, dtype=pl.Int32))
@@ -577,7 +582,13 @@ def get_packets(
     print(f"  total parquet size is {packetsdatasize_gb:.1f} GB (from {nbatches_read} batches)")
 
     pldfpackets = pl.scan_parquet(packetsparquetfiles).rename(
-        {"originated_from_positron": "originated_from_particlenotgamma"}, strict=False
+        {
+            "originated_from_positron": "originated_from_particlenotgamma",
+            "stokes0": "stokes_i",
+            "stokes1": "stokes_q",
+            "stokes2": "stokes_u",
+        },
+        strict=False,
     )
 
     npkts_total = pldfpackets.select(pl.len()).collect().item()
@@ -598,7 +609,12 @@ def get_packets(
 
 
 def get_directionbin(
-    dirx: float, diry: float, dirz: float, nphibins: int, ncosthetabins: int, syn_dir: tuple[float, float, float]
+    dirx: float | int,
+    diry: float | int,
+    dirz: float | int,
+    nphibins: int,
+    ncosthetabins: int,
+    syn_dir: tuple[float | int, float | int, float | int],
 ) -> int:
     dirmag = np.sqrt(dirx**2 + diry**2 + dirz**2)
     pkt_dir = [dirx / dirmag, diry / dirmag, dirz / dirmag]

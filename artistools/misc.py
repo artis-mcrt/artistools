@@ -130,7 +130,7 @@ def split_multitable_dataframe(res_df: pl.DataFrame | pl.LazyFrame) -> dict[int,
 
 
 def df_filter_minmax_bounded(
-    df: pl.LazyFrame, colname: str, minval: float | None, maxval: float | None
+    df: pl.LazyFrame, colname: str, minval: float | int | None, maxval: float | int | None
 ) -> pl.LazyFrame:
     """Filter a DataFrame to selects rows where the value in colname is between minval and maxval, and also include the closest exterior rows if xmin/xmax are between two rows. This enables linear interpolation at xmin and xmax (if the surrounding values existed in the DataFrame)."""
     if minval is None and maxval is None:
@@ -203,7 +203,7 @@ def average_direction_bins(
     return dirbindataframesout
 
 
-def match_closest_time(reftime: float, searchtimes: list[t.Any]) -> str:
+def match_closest_time(reftime: float | int, searchtimes: list[t.Any]) -> str:
     """Get time closest to reftime in list of times (searchtimes)."""
     return str(min((float(x) for x in searchtimes), key=lambda x: abs(x - reftime)))
 
@@ -278,8 +278,8 @@ def get_grid_mapping(modelpath: Path | str) -> tuple[dict[int, list[int]], dict[
 def get_wid_init_at_tmodel(
     modelpath: Path | str | None = None,
     ngridpoints: int | None = None,
-    t_model_days: float | None = None,
-    xmax: float | None = None,
+    t_model_days: float | int | None = None,
+    xmax: float | int | None = None,
 ) -> float:
     """Return the Cartesian cell width [cm] at the model snapshot time."""
     if ngridpoints is None or t_model_days is None or xmax is None:
@@ -414,7 +414,7 @@ def get_timestep_times(modelpath: Path | str, loc: t.Literal["mid", "start", "en
     raise ValueError(msg)
 
 
-def get_timestep_of_timedays(modelpath: Path | str, timedays: str | float) -> int:
+def get_timestep_of_timedays(modelpath: Path | str, timedays: str | int | float) -> int:
     """Return the timestep containing the given time in days."""
     if isinstance(timedays, str):
         # could be a string like '330d'
@@ -438,9 +438,9 @@ def get_timestep_of_timedays(modelpath: Path | str, timedays: str | float) -> in
 def get_time_range(
     modelpath: Path | str,
     timestep_range_str: str | None = None,
-    timemin: float | None = None,
-    timemax: float | None = None,
-    timedays_range_str: str | float | None = None,
+    timemin: float | int | str | None = None,
+    timemax: float | int | str | None = None,
+    timedays_range_str: str | float | int | None = None,
     clamp_to_timesteps: bool = True,
 ) -> tuple[int, int, float, float]:
     """Handle a time range specified in either days or timesteps."""
@@ -451,16 +451,18 @@ def get_time_range(
 
     time_days_lower, time_days_upper = None, None
 
-    if timemin is not None and timemin > tends[-1]:
+    if timemin is not None and float(timemin) > tends[-1]:
         print(f"{get_model_name(modelpath)}: WARNING timemin {timemin} is after the last timestep at {tends[-1]:.1f}")
         return -1, -1, -math.inf, -math.inf
-    if timemax is not None and timemax < tstarts[0]:
+    if timemax is not None and float(timemax) < tstarts[0]:
         print(
             f"{get_model_name(modelpath)}: WARNING timemax {timemax} is before the first timestep at {tstarts[0]:.1f}"
         )
         return -1, -1, -math.inf, -math.inf
 
     if timestep_range_str is not None:
+        assert timemin is None
+        assert timemax is None
         if "-" in timestep_range_str:
             timestepmin, timestepmax = (int(nts) for nts in timestep_range_str.split("-"))
         else:
@@ -525,12 +527,23 @@ def get_time_range(
     if timestepmax > timesteplast:
         print(f"Warning timestepmax {timestepmax} > timesteplast {timesteplast}")
         timestepmax = timesteplast
+
     if time_days_lower is None:
-        assert timestepmin is not None
-        time_days_lower = tstarts[timestepmin] if clamp_to_timesteps else timemin
+        if clamp_to_timesteps:
+            assert timestepmin is not None
+            time_days_lower = tstarts[timestepmin]
+        else:
+            assert timemin is not None
+            time_days_lower = float(timemin)
+
     if time_days_upper is None:
-        assert timestepmax is not None
-        time_days_upper = tends[timestepmax] if clamp_to_timesteps else timemax
+        if clamp_to_timesteps:
+            assert timestepmax is not None
+            time_days_upper = tends[timestepmax]
+        else:
+            assert timemax is not None
+            time_days_upper = float(timemax)
+
     assert timestepmin is not None
     assert timestepmax is not None
     assert time_days_lower is not None
@@ -545,7 +558,7 @@ def get_timestep_time(modelpath: Path | str, timestep: int) -> float:
     return timearray[timestep]
 
 
-def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | None, float | None]:
+def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | int | None, float | int | None]:
     """Return the time range for which the entire model can send light signals the observer."""
     modelpath = Path(modelpath)
     from artistools.inputmodel import get_modeldata
@@ -591,7 +604,7 @@ def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | None, 
 
     # last valid observer time is escape at the end of the latest computed timestep minus the longest travel time relative to origin
     # assume we're on a 3D propagation grid for safety (1D or 2D could reduce the travel time somewhat)
-    validrange_end_days: float = nts_last_tend * (1 - math.sqrt(3 * vmax**2) / 29979245800)
+    validrange_end_days: float | int = nts_last_tend * (1 - math.sqrt(3 * vmax**2) / 29979245800)
 
     if validrange_start_days > validrange_end_days:
         return nts_last, None, None
@@ -860,7 +873,7 @@ def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None) -
         import gzip
         import lzma
 
-        import zstandard as zstd
+        import zstandard as zstd  # pyright: ignore[reportMissingImports]
 
     ext_fopen: dict[str, t.Any] = {".zst": zstd.open, ".gz": gzip.open, ".xz": lzma.open}
 
@@ -1036,7 +1049,7 @@ def get_filterfunc(args: argparse.Namespace, mode: str = "interp") -> Callable[[
         window_length, polyorder = (int(x) for x in args.filtersavgol)
 
         assert filterfunc is None
-        filterfunc = functools.partial(
+        filterfunc = functools.partial(  # pyright: ignore[reportCallIssue]
             scipy.signal.savgol_filter, window_length=window_length, polyorder=polyorder, mode=mode
         )
 
@@ -1151,7 +1164,11 @@ class LineTuple(t.NamedTuple):
     lowerlevelindex: int
 
 
-def read_linestatfile(filepath: Path | str) -> tuple[list[float], list[int], list[int], list[int], list[int]]:
+def read_linestatfile(
+    filepath: Path | str,
+) -> tuple[
+    npt.NDArray[np.floating], npt.NDArray[np.int32], npt.NDArray[np.int32], npt.NDArray[np.int32], npt.NDArray[np.int32]
+]:
     """Load linestat.out containing transitions wavelength, element, ion, upper and lower levels."""
     if Path(filepath).is_dir():
         filepath = firstexisting("linestat.out", folder=filepath, tryzipped=True)
@@ -1162,17 +1179,17 @@ def read_linestatfile(filepath: Path | str) -> tuple[list[float], list[int], lis
     lambda_angstroms = data[0] * 1e8
     nlines = len(lambda_angstroms)
 
-    atomic_numbers = data[1].astype(int)
+    atomic_numbers = data[1].astype(np.int32)
     assert len(atomic_numbers) == nlines
 
-    ion_stages = data[2].astype(int)
+    ion_stages = data[2].astype(np.int32)
     assert len(ion_stages) == nlines
 
     # the file adds one to the levelindex, i.e. lowest level is 1
-    upper_levels = data[3].astype(int)
+    upper_levels = data[3].astype(np.int32)
     assert len(upper_levels) == nlines
 
-    lower_levels = data[4].astype(int)
+    lower_levels = data[4].astype(np.int32)
     assert len(lower_levels) == nlines
 
     return lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels
@@ -1462,9 +1479,7 @@ def print_theta_phi_definitions() -> None:
     )
 
 
-def get_phi_bins(
-    usedegrees: bool,
-) -> tuple[npt.NDArray[np.floating[t.Any]], npt.NDArray[np.floating[t.Any]], list[str]]:
+def get_phi_bins(usedegrees: bool) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating], list[str]]:
     nphibins = get_viewingdirection_phibincount()
     # pi/2 must be an exact boundary because of the change in behaviour there
     assert nphibins % 2 == 0

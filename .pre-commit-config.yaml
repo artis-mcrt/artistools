@@ -34,30 +34,18 @@ repos:
           - id: yamlfmt
 
     - repo: https://github.com/astral-sh/ruff-pre-commit
-      rev: v0.15.12
+      rev: v0.15.14
       hooks:
           - id: ruff-check
             args: [--fix]
           - id: ruff-format
 
     - repo: https://github.com/astral-sh/uv-pre-commit
-      rev: 0.11.12
+      rev: 0.11.16
       hooks:
           - id: uv-lock
-
-    - repo: local
-      hooks:
           - id: uv-sync
-            name: uv sync
-            language: system
-            entry: uv sync --frozen --all-extras --no-install-project
-            pass_filenames: false
-
-        #   - id: ty-check
-        #     name: ty check
-        #     language: system
-        #     entry: uv run --all-extras --frozen --no-sync --python=.venv/ -- ty check --python=.venv/
-        #     pass_filenames: false
+            args: [--frozen, --all-extras, --no-install-project]
 
     - repo: local
       hooks:
@@ -65,4 +53,8 @@ repos:
             name: Pyrefly type check
             pass_filenames: false
             language: system
-            entry: uv run pyrefly check
+            entry: uv run --frozen -- pyrefly check --ignore=unused-ignore
+
+ci:
+    skip: [pyrefly-check]
+    autoupdate_schedule: quarterly
