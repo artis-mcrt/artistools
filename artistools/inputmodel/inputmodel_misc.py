@@ -152,7 +152,7 @@ def read_modelfile_text(
                 truncate_ragged_lines=True,
             ).lazy()
 
-            assert dfmodel.select(pl.count()).collect().item() == npts_model
+            assert dfmodel.select(pl.len()).collect().item() == npts_model
 
         else:
 
