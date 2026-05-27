@@ -33,19 +33,19 @@ def read_modelfile_text(
     filename: Path | str, printwarningsonly: bool = False
 ) -> tuple[pl.LazyFrame, dict[t.Any, t.Any]]:
     """Read an artis model.txt file containing cell velocities, density, and abundances of radioactive nuclides."""
-    onelinepercellformat = None
-
-    modelmeta: dict[str, t.Any] = {"headercommentlines": []}
-    xmax_tmodel: float | int = 0.0
-    ncoordgridx: int = 0
-    ncoordgridy: int = 0
-    ncoordgridz: int = 0
-
     if not printwarningsonly:
         print(f"Reading {filename}")
 
-    numheaderrows = 0
     with zopen(filename) as fmodel:
+        onelinepercellformat: bool | None = None
+
+        modelmeta: dict[str, t.Any] = {"headercommentlines": []}
+        xmax_tmodel: float | int = 0.0
+        ncoordgridx: int = 0
+        ncoordgridy: int = 0
+        ncoordgridz: int = 0
+
+        numheaderrows = 0
         line = "#"
         while line.startswith("#"):
             line = fmodel.readline()
@@ -111,6 +111,8 @@ def read_modelfile_text(
         data_line_odd = fmodel.readline()
         ncols_line_odd = len(data_line_odd.split())
 
+        fmodel.seek(0)  # undo our readlines for following read_csv calls
+
         if columns is None:
             columns = get_standard_columns(modelmeta["dimensions"], includenico57=True, pos_unknown=True)
             # last two abundances are optional
@@ -135,79 +137,76 @@ def read_modelfile_text(
             assert (ncols_line_even + ncols_line_odd) == len(columns)
             onelinepercellformat = False
 
-    if onelinepercellformat and "  " not in data_line_even and "  " not in data_line_odd:
-        if not printwarningsonly:
-            print("  using fast method polars.read_csv (requires one line per cell and single space delimiters)")
+        if onelinepercellformat and "  " not in data_line_even and "  " not in data_line_odd:
+            if not printwarningsonly:
+                print("  using fast method polars.read_csv (requires one line per cell and single space delimiters)")
 
-        dfmodel = pl.read_csv(
-            zopenpl(filename),
-            separator=" ",
-            new_columns=columns,
-            n_rows=npts_model,
-            has_header=False,
-            skip_rows=numheaderrows,
-            schema={col: pl.Int32 if col == "inputcellid" else pl.Float32 for col in columns},
-            truncate_ragged_lines=True,
-        ).lazy()
+            dfmodel = pl.read_csv(
+                fmodel,
+                separator=" ",
+                new_columns=columns,
+                n_rows=npts_model,
+                has_header=False,
+                skip_rows=numheaderrows,
+                schema={col: pl.Int32 if col == "inputcellid" else pl.Float32 for col in columns},
+                truncate_ragged_lines=True,
+            ).lazy()
 
-    else:
-        skiprows: list[int] | int = (
-            numheaderrows
-            if onelinepercellformat
-            else [
-                x
-                for x in range(numheaderrows + npts_model * 2)
-                if x < numheaderrows or (x - numheaderrows - 1) % 2 == 0
-            ]
-        )
+            assert dfmodel.select(pl.count()).collect().item() == npts_model
 
-        dtypes: defaultdict[str, str] = defaultdict(lambda: "float32[pyarrow]")
-        dtypes["inputcellid"] = "int32[pyarrow]"
+        else:
 
-        # each cell takes up two lines in the model file
-        dfmodelpd = pd.read_csv(
-            zopen(filename, mode="r"),
-            sep=r"\s+",
-            engine="c",
-            header=None,
-            skiprows=skiprows,
-            names=columns[:ncols_line_even],
-            usecols=columns[:ncols_line_even],
-            nrows=npts_model,
-            dtype=dtypes,
-            dtype_backend="pyarrow",
-        )
+            def skiprows(x: int) -> bool:
+                if x < numheaderrows:
+                    return True
+                if onelinepercellformat:
+                    return False
+                # only read the even lines (0-based) if two lines per cell format
+                return (x - numheaderrows) % 2 == 1
 
-        if ncols_line_odd > 0 and not onelinepercellformat:
-            # read in the odd rows and merge dataframes
-            skipevenrows = [
-                x
-                for x in range(numheaderrows + npts_model * 2)
-                if x < numheaderrows or (x - numheaderrows - 1) % 2 == 1
-            ]
-            dfmodeloddlines = pd.read_csv(
-                zopen(filename, mode="r"),
+            dtypes: defaultdict[str, str] = defaultdict(lambda: "float32[pyarrow]")
+            dtypes["inputcellid"] = "int32[pyarrow]"
+
+            # each cell takes up two lines in the model file
+            dfmodelpd = pd.read_csv(
+                fmodel,
                 sep=r"\s+",
                 engine="c",
                 header=None,
-                skiprows=skipevenrows,
-                names=columns[ncols_line_even:],
+                skiprows=skiprows,
+                names=columns[:ncols_line_even],
+                usecols=columns[:ncols_line_even],
                 nrows=npts_model,
                 dtype=dtypes,
                 dtype_backend="pyarrow",
             )
-            assert len(dfmodelpd) == len(dfmodeloddlines)
-            dfmodelpd = dfmodelpd.merge(dfmodeloddlines, left_index=True, right_index=True)
-            del dfmodeloddlines
 
-        if len(dfmodelpd) > npts_model:
-            dfmodelpd = dfmodelpd.iloc[:npts_model]
+            if ncols_line_odd > 0 and not onelinepercellformat:
+                # read in the odd rows and merge dataframes
+                fmodel.seek(0)
+                dfmodeloddlines = pd.read_csv(
+                    fmodel,
+                    sep=r"\s+",
+                    engine="c",
+                    header=None,
+                    skiprows=lambda i: i < numheaderrows or (i - numheaderrows) % 2 == 0,
+                    names=columns[ncols_line_even:],
+                    nrows=npts_model,
+                    dtype=dtypes,
+                    dtype_backend="pyarrow",
+                )
+                assert len(dfmodelpd) == len(dfmodeloddlines)
+                dfmodelpd = dfmodelpd.merge(dfmodeloddlines, left_index=True, right_index=True)
+                del dfmodeloddlines
 
-        assert len(dfmodelpd) == npts_model
+            if len(dfmodelpd) > npts_model:
+                dfmodelpd = dfmodelpd.iloc[:npts_model]
 
-        dfmodelpd.index.name = "cellid"
+            assert len(dfmodelpd) == npts_model
 
-        dfmodel = pl.from_pandas(dfmodelpd).lazy()
+            dfmodelpd.index.name = "cellid"
+
+            dfmodel = pl.from_pandas(dfmodelpd).lazy()
 
     dfmodel = dfmodel.sort("inputcellid").rename({"velocity_outer": "vel_r_max_kmps", "cellYe": "Ye"}, strict=False)
 
@@ -299,7 +298,12 @@ def read_modelfile_text(
                 pos_y_mid = -xmax_tmodel + (yindex + 0.5) * wid_init_y
                 pos_z_mid = -xmax_tmodel + (zindex + 0.5) * wid_init_z
 
-                pos3_in = list(dfmodel.select(["inputpos_a", "inputpos_b", "inputpos_c"]).collect().row(modelgridindex))
+                pos3_in = list(
+                    dfmodel
+                    .select(cs.by_name("inputpos_a", "inputpos_b", "inputpos_c").get(modelgridindex))
+                    .collect()
+                    .row(0)
+                )
 
                 if not vectormatch(pos3_in, [pos_x_min, pos_y_min, pos_z_min]):
                     matched_pos_xyz_min = False
