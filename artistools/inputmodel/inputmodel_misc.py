@@ -423,7 +423,7 @@ def get_modeldata(
                 tempfile.mkstemp(dir=modelpath, prefix=f"{parquetfilepath.name}.partial", suffix=".tmp")[1]
             )
             modelmeta_json = json.dumps(modelmeta)
-            dfmodel.collect().write_parquet(
+            dfmodel.sink_parquet(
                 partialparquetfilepath,
                 compression="zstd",
                 compression_level=8,
