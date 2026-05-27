@@ -318,8 +318,6 @@ def packets_2d_hist_bin_and_ejecta_vel(
         ((pl.col("em_posx") ** 2 + pl.col("em_posy") ** 2).sqrt() / pl.col("em_time") / CLIGHT).alias("beta_r_cyl_em")
     ).with_columns((pl.col("em_posz") / pl.col("em_time") / CLIGHT).alias("beta_z_em"))
 
-    dfpackets = dfpackets.with_columns()
-
     dfpackets = dfpackets.with_columns(
         ((pl.col("beta_r_cyl_em") / Delta_beta).floor() * Delta_beta * CLIGHT * pl.col("em_time")).alias(
             "R_cyl_inner_em"
