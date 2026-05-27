@@ -1264,7 +1264,7 @@ def get_flux_contributions_from_packets(
         else:
             cols.add("dirbin")
 
-    dfpackets = lzdfpackets.select(cs.by_name(cols, require_all=False)).collect(engine="streaming")
+    dfpackets = lzdfpackets.select(cs.by_name(cols, require_all=False)).collect()
     if getemission:
         empackets = (
             dfpackets

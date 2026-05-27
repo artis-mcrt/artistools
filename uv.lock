@@ -85,7 +85,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.4.4" },
     { name = "pandas", specifier = ">=3.0.2" },
     { name = "plotly", marker = "extra == 'extras'", specifier = ">=6.7.0" },
-    { name = "polars", specifier = ">=1.40.0" },
+    { name = "polars", specifier = ">=1.41.1" },
     { name = "pyarrow", specifier = ">=22.0.0" },
     { name = "pynonthermal", marker = "extra == 'extras'", specifier = ">=2026.4.27" },
     { name = "pypdf", marker = "extra == 'extras'", specifier = ">=6.10.2" },
@@ -477,10 +477,10 @@ name = "cyclopts"
 version = "4.16.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "attrs" },
-    { name = "docstring-parser" },
-    { name = "rich" },
-    { name = "rich-rst" },
+    { name = "attrs", marker = "python_full_version < '3.15'" },
+    { name = "docstring-parser", marker = "python_full_version < '3.15'" },
+    { name = "rich", marker = "python_full_version < '3.15'" },
+    { name = "rich-rst", marker = "python_full_version < '3.15'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/34/07/bf61d13de86d96a4c46aff00c9ca0eced44bcc8c3e16280605c1253e5720/cyclopts-4.16.1.tar.gz", hash = "sha256:8aa47bf92a5fb33abca5af05e576eecdb0d2f79893ad29238046df78370fc4a8", size = 181196, upload-time = "2026-05-25T15:29:08.518Z" }
 wheels = [
@@ -1243,9 +1243,9 @@ name = "pooch"
 version = "1.9.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "packaging" },
-    { name = "platformdirs" },
-    { name = "requests" },
+    { name = "packaging", marker = "python_full_version < '3.15'" },
+    { name = "platformdirs", marker = "python_full_version < '3.15'" },
+    { name = "requests", marker = "python_full_version < '3.15'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/83/43/85ef45e8b36c6a48546af7b266592dc32d7f67837a6514d111bced6d7d75/pooch-1.9.0.tar.gz", hash = "sha256:de46729579b9857ffd3e741987a2f6d5e0e03219892c167c6578c0091fb511ed", size = 61788, upload-time = "2026-01-30T19:15:09.649Z" }
 wheels = [
@@ -1522,14 +1522,14 @@ name = "pyvista"
 version = "0.48.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "cyclopts" },
-    { name = "matplotlib" },
-    { name = "numpy" },
-    { name = "pillow" },
-    { name = "pooch" },
-    { name = "scooby" },
-    { name = "typing-extensions" },
-    { name = "vtk" },
+    { name = "cyclopts", marker = "python_full_version < '3.15'" },
+    { name = "matplotlib", marker = "python_full_version < '3.15'" },
+    { name = "numpy", marker = "python_full_version < '3.15'" },
+    { name = "pillow", marker = "python_full_version < '3.15'" },
+    { name = "pooch", marker = "python_full_version < '3.15'" },
+    { name = "scooby", marker = "python_full_version < '3.15'" },
+    { name = "typing-extensions", marker = "python_full_version < '3.15'" },
+    { name = "vtk", marker = "python_full_version < '3.15'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/a6/11/554ae45f79d45039c733d93acb36a433b71e8c63a79bbf2f414b3685de18/pyvista-0.48.4.tar.gz", hash = "sha256:c639dad1bddff5e366d77371f66f783f6e6a0581446810a66439902222d8db07", size = 2581423, upload-time = "2026-05-18T02:25:51.828Z" }
 wheels = [
@@ -1587,10 +1587,10 @@ name = "requests"
 version = "2.34.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "certifi" },
-    { name = "charset-normalizer" },
-    { name = "idna" },
-    { name = "urllib3" },
+    { name = "certifi", marker = "python_full_version < '3.15'" },
+    { name = "charset-normalizer", marker = "python_full_version < '3.15'" },
+    { name = "idna", marker = "python_full_version < '3.15'" },
+    { name = "urllib3", marker = "python_full_version < '3.15'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/ac/c3/e2a2b89f2d3e2179abd6d00ebd70bff6273f37fb3e0cc209f48b39d00cbf/requests-2.34.2.tar.gz", hash = "sha256:f288924cae4e29463698d6d60bc6a4da69c89185ad1e0bcc4104f584e960b9ed", size = 142856, upload-time = "2026-05-14T19:25:27.735Z" }
 wheels = [
@@ -1615,8 +1615,8 @@ name = "rich-rst"
 version = "2.0.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "pygments" },
-    { name = "rich" },
+    { name = "pygments", marker = "python_full_version < '3.15'" },
+    { name = "rich", marker = "python_full_version < '3.15'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/57/56/3191bae66b08ccc637ea8120426068bcb361cc323c96404c310886937067/rich_rst-2.0.1.tar.gz", hash = "sha256:cbe236ed0901d1ec8427cc6a50bf0a34353ba28ad014dc24def68bfe7f3b9e68", size = 300570, upload-time = "2026-05-16T00:47:57.362Z" }
 wheels = [
@@ -1846,7 +1846,7 @@ name = "vtk"
 version = "9.6.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "matplotlib" },
+    { name = "matplotlib", marker = "python_full_version < '3.15'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/60/d3/344f3664586f1f8bb5f7950db73c257439f5c796e0978e7a53e91d0fe2aa/vtk-9.6.2-cp312-cp312-macosx_10_10_x86_64.whl", hash = "sha256:2adcaed1cc4d3411a6b19834d6ed7d480f9ad9252e56546ea9930e66beae84e8", size = 114881278, upload-time = "2026-05-19T04:47:12.045Z" },
