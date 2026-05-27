@@ -15,6 +15,9 @@ def make_plot(args: argparse.Namespace) -> None:
     at.plottools.set_mpl_style()
     fig, ax = plt.subplots()
 
+    xaxis = "A" if args.xaxis == "massnumber" else "Z"
+    yaxis = "X" if args.yaxis == "massfraction" else "Y"
+
     for model_path in args.modelpath:
         df = at.inputmodel.get_modeldata(modelpath=Path(model_path), derived_cols=["volume", "rho"])[0].collect()
 
@@ -38,11 +41,10 @@ def make_plot(args: argparse.Namespace) -> None:
             meta_df, on="column"
         )
 
-        axis = "A" if args.xaxis == "A" else "Z"
+        axis = "A" if xaxis == "A" else "Z"
         suffix = axis
 
-        # y vorbereiten (einmal!)
-        if args.yaxis == "X":
+        if yaxis == "X":
             y_expr = pl.col("X")
             y_name = f"X_{suffix}"
         else:
@@ -50,7 +52,7 @@ def make_plot(args: argparse.Namespace) -> None:
             y_name = f"Y_{suffix}"
 
         value_name = "m_total"
-        weighted_name = f"m_{suffix}" if args.yaxis == "X" else "abund_weighted_mass"
+        weighted_name = f"m_{suffix}" if yaxis == "X" else "abund_weighted_mass"
 
         result = (
             long
@@ -67,19 +69,19 @@ def make_plot(args: argparse.Namespace) -> None:
 
         df_plot = result.to_pandas()
 
-        ax.plot(df_plot[axis], df_plot[f"{args.yaxis}_{args.xaxis}"], label=at.get_model_name(model_path))
+        ax.plot(df_plot[axis], df_plot[f"{yaxis}_{xaxis}"], label=at.get_model_name(model_path))
 
-    ax.set_xlabel("mass number" if args.xaxis == "A" else "charge number")
-    ax.set_ylabel("mass fraction" if args.yaxis == "X" else "abundance")
+    ax.set_xlabel("mass number" if xaxis == "A" else "charge number")
+    ax.set_ylabel("mass fraction" if yaxis == "X" else "abundance")
 
     ax.set_yscale("log")
 
-    ylim_values = (1e-5, 1.0) if args.yaxis == "X" else (1e-7, 0.1)
+    ylim_values = (1e-5, 1.0) if yaxis == "X" else (1e-7, 0.1)
     ax.set_ylim(*ylim_values)
 
     ax.legend()
 
-    pdf_name = f"plotinitialabundances_{args.yaxis}vs{args.xaxis}.pdf"
+    pdf_name = f"plotinitialabundances_{yaxis}vs{xaxis}.pdf"
     fig.savefig(Path(args.outputpath) / pdf_name, dpi=300)
     plt.close(fig)
 
@@ -94,8 +96,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Path(s) to ARTIS folders for which abundances / mass fractions shall be plotted",
     )
 
-    parser.add_argument("-xaxis", type=str, default="A", choices=["A", "Z"])
-    parser.add_argument("-yaxis", type=str, default="X", choices=["X", "Y"])
+    parser.add_argument("-xaxis", "-x", type=str, default="massnumber", choices=["massnumber", "chargenumber"])
+    parser.add_argument("-yaxis", "-y", type=str, default="massfraction", choices=["massfraction", "abundance"])
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
