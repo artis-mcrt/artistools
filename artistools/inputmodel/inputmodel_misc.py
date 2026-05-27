@@ -266,7 +266,7 @@ def read_modelfile_text(
 
         else:
 
-            def vectormatch(vec1: list[float], vec2: list[float]) -> bool:
+            def vectormatch(vec1: t.Sequence[float], vec2: t.Sequence[float]) -> bool:
                 xclose = np.isclose(vec1[0], vec2[0], atol=wid_init_x * 0.05)
                 yclose = np.isclose(vec1[1], vec2[1], atol=wid_init_y * 0.05)
                 zclose = np.isclose(vec1[2], vec2[2], atol=wid_init_z * 0.05)
@@ -287,7 +287,13 @@ def read_modelfile_text(
                 (ncoordgridx - 1) * (ncoordgridy - 1) * (ncoordgridz - 1),
             ]
 
-            for modelgridindex in indexlist:
+            pos3_in_list = (
+                dfmodel
+                .select(cs.by_name("inputpos_a", "inputpos_b", "inputpos_c").gather(indexlist).explode())
+                .collect()
+                .iter_rows()
+            )
+            for modelgridindex, pos3_in in zip(indexlist, pos3_in_list, strict=True):
                 xindex = modelgridindex % ncoordgridx
                 yindex = (modelgridindex // ncoordgridx) % ncoordgridy
                 zindex = (modelgridindex // (ncoordgridx * ncoordgridy)) % ncoordgridz
@@ -298,23 +304,16 @@ def read_modelfile_text(
                 pos_y_mid = -xmax_tmodel + (yindex + 0.5) * wid_init_y
                 pos_z_mid = -xmax_tmodel + (zindex + 0.5) * wid_init_z
 
-                pos3_in = list(
-                    dfmodel
-                    .select(cs.by_name("inputpos_a", "inputpos_b", "inputpos_c").get(modelgridindex))
-                    .collect()
-                    .row(0)
-                )
-
-                if not vectormatch(pos3_in, [pos_x_min, pos_y_min, pos_z_min]):
+                if not vectormatch(pos3_in, (pos_x_min, pos_y_min, pos_z_min)):
                     matched_pos_xyz_min = False
 
-                if not vectormatch(pos3_in, [pos_z_min, pos_y_min, pos_x_min]):
+                if not vectormatch(pos3_in, (pos_z_min, pos_y_min, pos_x_min)):
                     matched_pos_zyx_min = False
 
-                if not vectormatch(pos3_in, [pos_x_mid, pos_y_mid, pos_z_mid]):
+                if not vectormatch(pos3_in, (pos_x_mid, pos_y_mid, pos_z_mid)):
                     matched_pos_xyz_mid = False
 
-                if not vectormatch(pos3_in, [pos_z_mid, pos_y_mid, pos_x_mid]):
+                if not vectormatch(pos3_in, (pos_z_mid, pos_y_mid, pos_x_mid)):
                     matched_pos_zyx_mid = False
 
             assert sum((matched_pos_xyz_min, matched_pos_zyx_min, matched_pos_xyz_mid, matched_pos_zyx_mid)) == 1, (
