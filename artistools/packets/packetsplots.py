@@ -260,11 +260,10 @@ def get_reduced_packet_set(
 ) -> pl.LazyFrame:
     """Get packets in specific escape angle bins for observer direction.
 
-    Options:
-        - all_packets=True  -> use all escaping packets
-        - Z only            -> all ion stages of element
-        - Z + ion_stage     -> specific ion
-        - wavelen+binwidth  -> wavelength slice
+    Selection is based on the packets returned by `get_required_packets()`
+    for the requested element/ion filters. If both `wavelen` and `binwidth`
+    are provided, the packets are additionally restricted to that wavelength
+    slice before filtering to the requested escape-angle bins.
     """
     dfpackets_selected = get_required_packets(modelpath, Z, ion_stage, srII_triplet=srII_triplet)
     dfpackets_selected = dfpackets_selected.with_columns((CLIGHT * 1e8 / pl.col("nu_rf")).alias("lambda_rf"))
