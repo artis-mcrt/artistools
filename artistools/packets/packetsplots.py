@@ -413,15 +413,16 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         case _:
             dirbin = None
 
-    if args.wavelen:
-        assert args.binwidth is not None, "Wavelength but no bin width provided!"
+    if args.wavelen and args.binwidth is None:
+        error_message = "Wavelength mode requires binwidth to be provided."
+        raise ValueError(error_message)
 
     packets_2d_hist_bin_and_ejecta_vel(
         Path(args.modelpath),
         args.tdays,
         args.srIItriplet,
         args.colorlogscale,
-        dirbin_range=[dirbin + i for i in range(10)] if dirbin else list(range(100)),
+        dirbin_range=[dirbin + i for i in range(10)] if dirbin is not None else list(range(100)),
         Z=at.get_atomic_number(args.element) if args.element else None,
         ion_stage_str=args.ionstage,
         wavelen=args.wavelen,
