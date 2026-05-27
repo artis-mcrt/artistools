@@ -392,7 +392,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-ionstage", type=str, default=None, help="Ionisation stage (spectroscopic notation)")
 
     parser.add_argument("-dir", type=str, default="eq", help="Viewing direction bin start (Options: eq, npol, spol)")
-    parser.add_argument("--srIItriplet", action="store_true", help="Analyse SrII triplet in particular")
+    parser.add_argument("--srIItriplet", action="store_true", help="Plot packets from SrII triplet only")
     parser.add_argument("--colorlogscale", action="store_true", help="Log scale for color bar in 2D plot")
 
 
