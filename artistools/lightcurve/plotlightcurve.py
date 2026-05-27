@@ -356,7 +356,9 @@ def plot_artis_lightcurve(
         filterfunc = at.get_filterfunc(args)
         if filterfunc is not None:
             lcdata = lcdata.with_columns(
-                cs.starts_with("luminosity_").map_batches(filterfunc, return_dtype=pl.self_dtype())
+                (cs.starts_with("luminosity_") | cs.by_name("mag")).map_batches(
+                    filterfunc, return_dtype=pl.self_dtype()
+                )
             )
 
         label_with_tags: str | None = linelabel
