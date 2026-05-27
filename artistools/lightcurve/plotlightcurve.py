@@ -524,7 +524,9 @@ def make_lightcurve_plot(
 
     # take any specified colours out of the cycle
     colors = [
-        color for i, color in enumerate(plt.rcParams["axes.prop_cycle"].by_key()["color"]) if f"C{i}" not in args.color
+        color
+        for i, color in enumerate(plt.rcParams["axes.prop_cycle"].by_key()["color"])
+        if f"C{i}" not in args.color and color not in args.color
     ]
     axis.set_prop_cycle(color=colors)
     reflightcurveindex = 0
