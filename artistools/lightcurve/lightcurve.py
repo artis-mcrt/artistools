@@ -12,6 +12,7 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import polars as pl
+import polars.selectors as cs
 
 import artistools as at
 from artistools.constants import Lsun_to_erg_per_s
@@ -28,8 +29,7 @@ def readfile(filepath: str | Path) -> dict[int, pl.LazyFrame]:
         new_columns=["time_days", "luminosity_Lsun", "luminosity_cmf_Lsun"],
     ).with_columns(
         (4.74 - (2.5 * pl.col("luminosity_Lsun").log10())).alias("mag"),
-        (pl.col("luminosity_Lsun") * Lsun_to_erg_per_s).alias("luminosity_erg/s"),
-        (pl.col("luminosity_cmf_Lsun") * Lsun_to_erg_per_s).alias("luminosity_cmf_erg/s"),
+        (cs.ends_with("_Lsun") * Lsun_to_erg_per_s).name.replace("_Lsun", "_erg/s"),
     )
     if "_res" in Path(filepath).stem:
         # get a dict of dfs with light curves at each viewing direction bin
@@ -182,8 +182,7 @@ def get_from_packets(
             .drop("twidth_days")
             .with_columns(
                 (4.74 - (2.5 * pl.col("luminosity_Lsun").log10())).alias("mag"),
-                (pl.col("luminosity_Lsun") * Lsun_to_erg_per_s).alias("luminosity_erg/s"),
-                (pl.col("luminosity_cmf_Lsun") * Lsun_to_erg_per_s).alias("luminosity_cmf_erg/s"),
+                (cs.ends_with("_Lsun") * Lsun_to_erg_per_s).name.replace("_Lsun", "_erg/s"),
             )
         )
 
