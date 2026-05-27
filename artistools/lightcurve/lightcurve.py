@@ -176,7 +176,16 @@ def get_from_packets(
                 .drop("e_cmf_sum")
             )
 
-        lcdata[dirbin] = lcdata[dirbin].rename({"tmid_days": "time_days"}).drop("twidth_days")
+        lcdata[dirbin] = (
+            lcdata[dirbin]
+            .rename({"tmid_days": "time_days"})
+            .drop("twidth_days")
+            .with_columns(
+                (4.74 - (2.5 * pl.col("luminosity_Lsun").log10())).alias("mag"),
+                (pl.col("luminosity_Lsun") * Lsun_to_erg_per_s).alias("luminosity_erg/s"),
+                (pl.col("luminosity_cmf_Lsun") * Lsun_to_erg_per_s).alias("luminosity_cmf_erg/s"),
+            )
+        )
 
     return lcdata
 
