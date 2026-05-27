@@ -32,7 +32,9 @@ def make_plot(args: argparse.Namespace) -> None:
             if not m:
                 continue
             elem, A = m.group(1), int(m.group(2))
-            Z = at.get_atomic_number(elem)
+            Z = 0 if elem == "n" else at.get_atomic_number(elem)
+            if Z < 0:
+                continue
             meta.append((c, A, Z))
 
         meta_df = pl.DataFrame(meta, schema=["column", "A", "Z"])
