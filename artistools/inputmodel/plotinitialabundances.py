@@ -105,10 +105,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot initial abundances or mass fractions from one or more ARTIS models."""
     if args is None:
-        parser = argparse.ArgumentParser(
-            formatter_class=at.CustomArgHelpFormatter,
-            description=main.__doc__,
-        )
+        parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=main.__doc__)
         addargs(parser)
         at.set_args_from_dict(parser, kwargs)
         argcomplete.autocomplete(parser)
