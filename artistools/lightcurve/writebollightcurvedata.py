@@ -3,7 +3,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import polars as pl
 
 import artistools as at
 
@@ -36,27 +35,23 @@ def get_bol_lc_from_spec(modelpath: Path) -> pd.DataFrame:
 
 
 def get_bol_lc_from_lightcurveout(modelpath: Path, res: bool = False) -> pd.DataFrame:
-    lcfilename = "light_curve_res.out" if res else "light_curve.out"
-    lcdata = pl.from_pandas(
-        pd.read_csv(modelpath / lcfilename, sep=r"\s+", header=None, names=["time", "lum", "lum_cmf"])
-    )
     lcdataframes = {
-        dirbin: pldf.collect().to_pandas(use_pyarrow_extension_array=True)
-        for dirbin, pldf in at.split_multitable_dataframe(lcdata).items()
+        dirbin: df.collect().to_pandas()
+        for dirbin, df in at.lightcurve.readfile(
+            modelpath / ("light_curve_res.out" if res else "light_curve.out")
+        ).items()
     }
 
-    lightcurvedata = {"time": np.array(lcdataframes[0]["time"])}
+    lightcurvedata = {"time": lcdataframes[next(iter(lcdataframes.keys()))]["time_days"]}
 
-    nangles = len(lcdataframes) if res else 1
-    for angle in range(nangles):
-        lcdata = lcdataframes[angle]
-        bol_luminosity = np.array(lcdata["lum"]) * at.constants.Lsun_to_erg_per_s  # Luminosity in erg/s
-
+    dirbins = range(len(lcdataframes)) if res else [-1]
+    for dirbin in dirbins:
+        lcdata = lcdataframes[dirbin]
         # lightcurvedata[f'angle={angle}'] = np.log10(bol_luminosity)
         columnname = "lum (erg/s)"
-        if res:
-            columnname = f"angle={angle}"
-        lightcurvedata[columnname] = bol_luminosity
+        if dirbin != -1:
+            columnname += f"angle={dirbin}"
+        lightcurvedata[columnname] = lcdata["luminosity_erg/s"]
 
     lightcurvedataframe = pd.DataFrame(lightcurvedata)
     return lightcurvedataframe.replace([np.inf, -np.inf], 0)

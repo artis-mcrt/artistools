@@ -26,6 +26,10 @@ def readfile(filepath: str | Path) -> dict[int, pl.LazyFrame]:
         separator=" ",
         has_header=False,
         new_columns=["time_days", "luminosity_Lsun", "luminosity_cmf_Lsun"],
+    ).with_columns(
+        (4.74 - (2.5 * pl.col("luminosity_Lsun").log10())).alias("mag"),
+        (pl.col("luminosity_Lsun") * Lsun_to_erg_per_s).alias("luminosity_erg/s"),
+        (pl.col("luminosity_cmf_Lsun") * Lsun_to_erg_per_s).alias("luminosity_cmf_erg/s"),
     )
     if "_res" in Path(filepath).stem:
         # get a dict of dfs with light curves at each viewing direction bin

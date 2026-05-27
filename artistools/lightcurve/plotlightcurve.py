@@ -364,12 +364,6 @@ def plot_artis_lightcurve(
                 cs.starts_with("luminosity_").map_batches(filterfunc, return_dtype=pl.self_dtype())
             )
 
-        lcdata = lcdata.with_columns(
-            (4.74 - (2.5 * pl.col("luminosity_Lsun").log10())).alias("mag"),
-            (pl.col("luminosity_Lsun") * Lsun_to_erg_per_s).alias("luminosity_erg/s"),
-            (pl.col("luminosity_cmf_Lsun") * Lsun_to_erg_per_s).alias("luminosity_cmf_erg/s"),
-        )
-
         label_with_tags: str | None = linelabel
         if dirbin != -1:
             if args.colorbarcostheta or args.colorbarphi:
