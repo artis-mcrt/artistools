@@ -310,12 +310,7 @@ def plot_artis_lightcurve(
             dirbins,
             pl.collect_all(
                 at.misc.df_filter_minmax_bounded(
-                    lcdataframes[dirbin]
-                    .lazy()
-                    .select(cs.by_name(["time_days", "packetcount"], require_all=False) | cs.starts_with("lum")),
-                    colname="time_days",
-                    minval=args.timemin,
-                    maxval=args.timemax,
+                    lcdataframes[dirbin], colname="time_days", minval=args.timemin, maxval=args.timemax
                 )
                 for dirbin in dirbins
             ),
@@ -450,6 +445,7 @@ def plot_artis_lightcurve(
             print(lcdata)
 
         if args.plotcmf:
+            assert not args.magnitude, "Cannot plot cmf luminosity if magnitude is selected"
             plotkwargs["linewidth"] = 1
             if not linelabel_is_custom:
                 assert label_with_tags is not None
