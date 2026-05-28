@@ -311,7 +311,7 @@ def test_parse_range_list() -> None:
 def test_makelist() -> None:
     assert at.makelist(None) == []
     assert at.makelist("hello") == ["hello"]
-    assert at.makelist(Path("/tmp")) == [Path("/tmp")]
+    assert at.makelist(Path("my/folder/path")) == [Path("my/folder/path")]
     assert at.makelist([1, 2, 3]) == [1, 2, 3]
     assert at.makelist((1, 2)) == [1, 2]
 
