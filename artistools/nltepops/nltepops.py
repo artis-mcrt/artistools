@@ -157,7 +157,7 @@ def read_files(modelpath: str | Path, timestep: int = -1, modelgridindex: int = 
     assert runfolders, f"No run folders found in {modelpath} for timestep {timestep}"
     nltefilepaths = [
         at.firstexisting(Path(folderpath, f"nlte_{mpirank:04d}.out"), tryzipped=True)
-        for folderpath in at.get_runfolders(modelpath, timestep=timestep)
+        for folderpath in runfolders
         for mpirank in at.get_mpiranklist(modelpath, modelgridindex=modelgridindex)
     ]
     assert nltefilepaths
