@@ -29,6 +29,5 @@ jobs:
               run: uv sync --all-extras
 
             - name: Setup test data
-              run: |
-                  cd tests/data
-                  bash setuptestdata.sh
+              working-directory: tests/data/
+              run: source ./setuptestdata.sh
