@@ -514,15 +514,18 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         A = row["N"] + row["Z"]
         rowdict[f"X_{at.get_elsymbol(row['Z'])}{A}"] = row["massfrac"]
 
-    dfmodel = pl.DataFrame([
-        {
-            "inputcellid": densityrow["inputcellid"],
-            "vel_r_max_kmps": densityrow["vel_r_max_kmps"],
-            "logrho": math.log10(densityrow["rho"]),
-        }
-        | rowdict
-        for densityrow in dfdensities.iter_rows(named=True)
-    ])
+    dfmodel = pl.DataFrame(
+        [
+            {
+                "inputcellid": densityrow["inputcellid"],
+                "vel_r_max_kmps": densityrow["vel_r_max_kmps"],
+                "logrho": math.log10(densityrow["rho"]),
+            }
+            | rowdict
+            for densityrow in dfdensities.iter_rows(named=True)
+        ],
+        orient="row",
+    )
     at.inputmodel.save_modeldata(dfmodel=dfmodel, t_model_init_days=t_model_init_days, filepath=Path(args.outputpath))
 
     with Path(args.outputpath, "gridcontributions.txt").open("w", encoding="utf-8") as fcontribs:
