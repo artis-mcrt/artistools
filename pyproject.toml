@@ -24,7 +24,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Astronomy",
     "Topic :: Scientific/Engineering :: Physics",
 ]
-version = "2026.5.9"
+version = "2026.5.28"
 requires-python = ">=3.12"
 license = "MIT"
 license-files = ["LICEN[CS]E*"]
@@ -35,7 +35,7 @@ dependencies = [
     "matplotlib>=3.10.8",
     "numpy>=2.4.4",
     "pandas>=3.0.2",
-    "polars>=1.40.0",
+    "polars>=1.41.1",
     "pyarrow>=22.0.0",
     "pyyaml>=6.0.2",
     "rich>=15.0.0",
@@ -71,7 +71,6 @@ dev = [
     "pytest-xdist[psutil]>=3.8.0",
     "ruff>=0.15.14",
     "scipy-stubs>=1.17.1",
-    "typeguard>=4.5.1",
     "types-python-dateutil>=2.9.0.20260408",
     "types-pyyaml>=6.0.12.20260408",
     "types-tqdm>=4.67.3.20260408",
@@ -259,7 +258,6 @@ exclude = [
     'build',
     'dist',
     'target',
-    '**/version.py',
     '.venv',
     '**/rd_cmfgen.py',
 ]

@@ -641,11 +641,8 @@ def read_emission_absorption_file(emabsfilename: str | Path) -> pl.LazyFrame:
     except AttributeError:
         print(f" Reading {emabsfilename}")
 
-    dfemabs = (
-        pl
-        .read_csv(zopenpl(emabsfilename), separator=" ", has_header=False, infer_schema_length=0)
-        .lazy()
-        .with_columns(pl.all().cast(pl.Float32, strict=True))
+    dfemabs = pl.scan_csv(zopenpl(emabsfilename), separator=" ", has_header=False, infer_schema_length=0).with_columns(
+        pl.all().cast(pl.Float32, strict=True)
     )
 
     # drop last column of nulls (caused by trailing space on each line)
@@ -1218,10 +1215,11 @@ def get_flux_contributions_from_packets(
                     pl.col("lineindex").cast(pl.Int32).alias(emtypecolumn),
                     expr_linelist_to_str.alias("emissiontype_str"),
                 ]),
-                pl.DataFrame(
+                pl.LazyFrame(
                     {emtypecolumn: [-9999999, -9999000], "emissiontype_str": ["free-free", "NOT SET"]},
                     schema={emtypecolumn: pl.Int32, "emissiontype_str": pl.String},
-                ).lazy(),
+                    orient="col",
+                ),
                 bflistlazy.select([pl.col(emtypecolumn), expr_bflist_to_str.alias("emissiontype_str")]),
             ])
 
@@ -1248,10 +1246,11 @@ def get_flux_contributions_from_packets(
             linelistlazy.select(
                 absorption_type=pl.col("lineindex").cast(pl.Int32), absorptiontype_str=expr_linelist_to_str
             ),
-            pl.DataFrame(
+            pl.LazyFrame(
                 {"absorption_type": [-1, -2], "absorptiontype_str": ["free-free", "bound-free"]},
                 schema={"absorption_type": pl.Int32, "absorptiontype_str": pl.String},
-            ).lazy(),
+                orient="col",
+            ),
         ]).with_columns(pl.col("absorptiontype_str"))
 
         lzdfpackets = lzdfpackets.join(abstypestrings, on="absorption_type", how="left")
@@ -1264,7 +1263,7 @@ def get_flux_contributions_from_packets(
         else:
             cols.add("dirbin")
 
-    dfpackets = lzdfpackets.select(cs.by_name(cols, require_all=False)).collect(engine="streaming")
+    dfpackets = lzdfpackets.select(cs.by_name(cols, require_all=False)).collect()
     if getemission:
         empackets = (
             dfpackets
