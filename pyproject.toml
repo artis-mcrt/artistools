@@ -258,7 +258,6 @@ exclude = [
     'build',
     'dist',
     'target',
-    '**/version.py',
     '.venv',
     '**/rd_cmfgen.py',
 ]
