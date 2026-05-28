@@ -41,16 +41,12 @@ def test_add_lte_pops_calculates_levels_and_superlevel() -> None:
     assert math.isclose(result.loc[result["level"] == 4, "lte_10000"].item(), expected_superlevel, rel_tol=1e-12)
 
 
-def test_read_files_combines_ranks_and_applies_filters(tmp_path: Path, monkeypatch: object) -> None:
+def test_read_files_combines_ranks_and_applies_filters(tmp_path: Path) -> None:
     rank0 = tmp_path / "nlte_0000.out"
     rank1 = tmp_path / "nlte_0001.out"
 
     rank0.write_text("modelgridindex timestep ionstage level n_NLTE\n7 5 2 0 1.0\n8 5 2 1 2.0\n", encoding="utf-8")
     rank1.write_text("modelgridindex timestep ionstage level n_NLTE\n7 6 2 1 3.0\n7 5 3 0 4.0\n", encoding="utf-8")
-
-    monkeypatch.setattr("artistools.nltepops.nltepops.at.get_runfolders", lambda modelpath, timestep=-1: [tmp_path])
-    monkeypatch.setattr("artistools.nltepops.nltepops.at.get_mpiranklist", lambda modelpath, modelgridindex=-1: [0, 1])
-    monkeypatch.setattr("artistools.nltepops.nltepops.at.firstexisting", lambda filepath, tryzipped=True: filepath)
 
     filtered = at.nltepops.read_files(tmp_path, timestep=5, modelgridindex=7)
 
