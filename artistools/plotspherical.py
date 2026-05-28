@@ -149,14 +149,14 @@ def plot_spherical(
     ndirbins = nphibins * ncosthetabins
     alldirbins = (
         pl
-        .DataFrame(
+        .LazyFrame(
             {
                 "phibinmonotonicasc": [d % nphibins for d in range(ndirbins)],
                 "costhetabin": [d // nphibins for d in range(ndirbins)],
             },
             schema={"phibinmonotonicasc": pl.Int32, "costhetabin": pl.Int32},
+            orient="col",
         )
-        .lazy()
         .join(dfpackets, how="left", on=["costhetabin", "phibinmonotonicasc"], coalesce=True)
         .fill_null(0)
         .sort(["costhetabin", "phibinmonotonicasc"])

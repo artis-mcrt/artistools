@@ -176,8 +176,8 @@ def add_transition_columns(
 
 def get_transitiondata(
     modelpath: str | Path, ionlist: Collection[tuple[int, int]] | None = None, quiet: bool = False
-) -> dict[tuple[int, int], pl.LazyFrame]:
-    """Return a dictionary of transitions."""
+) -> dict[tuple[int, int], pl.DataFrame]:
+    """Return a dictionary of transitions from (Z, ion_stage) to a polars DataFrame."""
     ionlist = set(ionlist) if ionlist else None
     transition_filename = at.firstexisting("transitiondata.txt", folder=modelpath)
 
@@ -185,10 +185,7 @@ def get_transitiondata(
     if not quiet:
         print(f"Reading {transition_filename.relative_to(Path(modelpath).parent)}...")
 
-    transitionsdict = {
-        k: pl.DataFrame(v).lazy()
-        for k, v in at.rustext.read_transitiondata(str(transition_filename), ionlist=ionlist).items()
-    }
+    transitionsdict = at.rustext.read_transitiondata(str(transition_filename), ionlist=ionlist)
 
     if not quiet:
         print(f"  took {time.perf_counter() - time_start:.2f} seconds")
@@ -234,7 +231,7 @@ def get_levels(
 
         for Z, ion_stage, level_count, ionisation_energy_ev, dflevels in parse_adata(fadata, phixsdict, ionlist):
             if (Z, ion_stage) in transitionsdict:
-                dftransitions = transitionsdict[Z, ion_stage]
+                dftransitions = transitionsdict[Z, ion_stage].lazy()
                 if derived_transitions_columns is not None:
                     dftransitions = add_transition_columns(dftransitions, dflevels, derived_transitions_columns)
             else:
@@ -242,7 +239,7 @@ def get_levels(
 
             level_lists.append(IonTuple(Z, ion_stage, level_count, ionisation_energy_ev, dflevels, dftransitions))
 
-    return pl.DataFrame(level_lists)
+    return pl.DataFrame(level_lists, orient="row")
 
 
 def parse_recombratefile(frecomb: io.TextIOBase) -> Generator[tuple[int, int, pl.DataFrame]]:
