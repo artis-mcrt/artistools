@@ -218,8 +218,6 @@ def get_levels(
 
         phixsdict = parse_phixsdata(phixs_filename, ionlist)
 
-    level_lists = []
-
     class IonTuple(t.NamedTuple):
         Z: int
         ion_stage: int
@@ -227,6 +225,8 @@ def get_levels(
         ion_pot: float
         levels: pl.DataFrame
         transitions: pl.LazyFrame
+
+    level_lists: list[IonTuple] = []
 
     with at.zopen(adatafilename) as fadata:
         if not quiet:
