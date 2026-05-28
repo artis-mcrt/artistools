@@ -1,10 +1,89 @@
 import math
+import typing as t
 from pathlib import Path
+from unittest import mock
 
+import matplotlib.axes as mplax
+import numpy as np
 import pandas as pd
 import polars as pl
+import pytest
 
 import artistools as at
+
+modelpath = at.get_path("testdata") / "testmodel"
+outputpath = at.get_path("testoutput")
+outputpath.mkdir(exist_ok=True, parents=True)
+
+
+def get_plot_xy(callargs: t.Any) -> tuple[np.ndarray, np.ndarray]:
+    return np.array(callargs[0][1], dtype=float), np.array(callargs[0][2], dtype=float)
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+@pytest.mark.benchmark
+def test_nltepops_singletimestep(mockplot: t.Any) -> None:
+    at.nltepops.plot(argsraw=[], modelpath=modelpath, outputfile=outputpath, timestep=40)
+
+    assert len(mockplot.call_args_list) == 15
+    expected_stats = {
+        2: (5.31208, 6.01117e-08, 0.1588193243000988, 0.6969032639613162),
+        6: (27071.5, 5.25769e-06, 1493.302228052353, 4621.593586839317),
+        10: (109325.0, 5.03688e-10, 3308.8327426461733, 15522.059841599794),
+        14: (35210.9, 2.5153e-08, 431.60267129328645, 3864.3843149881213),
+    }
+    for callindex, (expected_first, expected_last, expected_mean, expected_std) in expected_stats.items():
+        _, yarr = get_plot_xy(mockplot.call_args_list[callindex])
+        assert np.isclose(yarr[0], expected_first, rtol=1e-4)
+        assert np.isclose(yarr[-1], expected_last, rtol=1e-4)
+        assert np.isclose(yarr.mean(), expected_mean, rtol=1e-4)
+        assert np.isclose(yarr.std(), expected_std, rtol=1e-4)
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+@pytest.mark.benchmark
+def test_nltepops_versus_velocity(mockplot: t.Any) -> None:
+    at.nltepops.plot(
+        argsraw=[],
+        modelpath=modelpath,
+        outputfile=outputpath,
+        timestep=40,
+        x="velocity",
+        ion_stages=[1, 2],
+        levels=[0, 1],
+    )
+
+    assert len(mockplot.call_args_list) == 2
+    expected_yvals = [5.31208, 3.07492]
+    for callargs, expected_yval in zip(mockplot.call_args_list, expected_yvals, strict=True):
+        xarr, yarr = get_plot_xy(callargs)
+        assert np.allclose(xarr, [8000.0], rtol=1e-4)
+        assert np.allclose(yarr, [expected_yval], rtol=1e-4)
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+@pytest.mark.benchmark
+def test_nltepops_versus_time(mockplot: t.Any) -> None:
+    at.nltepops.plot(
+        argsraw=[],
+        modelpath=modelpath,
+        outputfile=outputpath,
+        cell=0,
+        x="time",
+        timedays="270-275",
+        ion_stages=[1, 2],
+        levels=[0, 1],
+    )
+
+    assert len(mockplot.call_args_list) == 10
+    expected_series = [
+        ([271.48221094182054, 273.31529638210384], [7.40594, 6.39568]),
+        ([271.48221094182054, 273.31529638210384], [4.71888, 3.89199]),
+    ]
+    for callargs, (expected_xarr, expected_yarr) in zip(mockplot.call_args_list[:2], expected_series, strict=True):
+        xarr, yarr = get_plot_xy(callargs)
+        assert np.allclose(xarr, expected_xarr, rtol=1e-4)
+        assert np.allclose(yarr, expected_yarr, rtol=1e-4)
 
 
 def test_texifyterm_handles_multiplicity_parity_and_jvalue() -> None:
