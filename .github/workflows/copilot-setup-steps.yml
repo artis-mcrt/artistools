@@ -1,4 +1,5 @@
-name: "Copilot Setup Steps"
+---
+name: Copilot Setup Steps
 
 on:
     workflow_dispatch:
@@ -22,7 +23,7 @@ jobs:
               uses: astral-sh/setup-uv@v8
               with:
                   activate-environment: true
-                  cache-dependency-glob: "**/uv.lock"
+                  cache-dependency-glob: '**/uv.lock'
 
             - name: Install artistools with all extras
               run: uv sync --all-extras
