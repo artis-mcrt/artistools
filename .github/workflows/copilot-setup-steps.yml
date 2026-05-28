@@ -1,0 +1,33 @@
+name: "Copilot Setup Steps"
+
+on:
+    workflow_dispatch:
+    push:
+        paths:
+            - .github/workflows/copilot-setup-steps.yml
+    pull_request:
+        paths:
+            - .github/workflows/copilot-setup-steps.yml
+
+jobs:
+    copilot-setup-steps:
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v6
+
+            - name: Setup uv
+              uses: astral-sh/setup-uv@v8
+              with:
+                  activate-environment: true
+                  cache-dependency-glob: "**/uv.lock"
+
+            - name: Install artistools with all extras
+              run: uv sync --all-extras
+
+            - name: Setup test data
+              run: |
+                  cd tests/data
+                  bash setuptestdata.sh
