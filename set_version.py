@@ -49,6 +49,7 @@ def main() -> None:
     update_cff_citation(version=version, date_released=date_released)
 
     (repo_path / "artistools" / "version.py").write_text(f'version = "{version}"\n', encoding="utf-8")
+    subprocess.check_call(["uv", "lock"], cwd=repo_path)
 
 
 if __name__ == "__main__":
