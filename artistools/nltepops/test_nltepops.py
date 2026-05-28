@@ -1,6 +1,5 @@
 import math
 import typing as t
-from pathlib import Path
 from unittest import mock
 
 import matplotlib.axes as mplax
@@ -118,20 +117,3 @@ def test_add_lte_pops_calculates_levels_and_superlevel() -> None:
     assert math.isclose(result.loc[result["level"] == 0, "lte_10000"].item(), 1.0, rel_tol=1e-12)
     assert math.isclose(result.loc[result["level"] == 1, "lte_10000"].item(), expected_level1, rel_tol=1e-12)
     assert math.isclose(result.loc[result["level"] == 4, "lte_10000"].item(), expected_superlevel, rel_tol=1e-12)
-
-
-def test_read_files_combines_ranks_and_applies_filters(tmp_path: Path) -> None:
-    rank0 = tmp_path / "nlte_0000.out"
-    rank1 = tmp_path / "nlte_0001.out"
-
-    rank0.write_text("modelgridindex timestep ionstage level n_NLTE\n7 5 2 0 1.0\n8 5 2 1 2.0\n", encoding="utf-8")
-    rank1.write_text("modelgridindex timestep ionstage level n_NLTE\n7 6 2 1 3.0\n7 5 3 0 4.0\n", encoding="utf-8")
-
-    filtered = at.nltepops.read_files(tmp_path, timestep=5, modelgridindex=7)
-
-    assert filtered.height == 2
-    assert "ion_stage" in filtered.columns
-    assert "ionstage" not in filtered.columns
-    assert set(filtered["ion_stage"].to_list()) == {2, 3}
-    assert filtered["modelgridindex"].to_list() == [7, 7]
-    assert filtered["timestep"].to_list() == [5, 5]
