@@ -1316,7 +1316,6 @@ def get_runfolder_timesteps(folderpath: Path | str) -> tuple[int, ...]:
         # the first timestep of a restarted run is duplicate and should be ignored
         restart_timestep = None if 0 in timesteps_contained else timesteps_contained[0]
         return tuple(ts for ts in timesteps_contained if ts != restart_timestep)
-
     if estimfiles := sorted(Path(folderpath).glob("estimators_*.out*")):
         with zopen(estimfiles[0]) as estfile:
             timesteps_contained = sorted({int(line.split()[1]) for line in estfile if line.startswith("timestep ")})

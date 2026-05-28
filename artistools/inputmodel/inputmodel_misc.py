@@ -266,7 +266,7 @@ def read_modelfile_text(
 
         else:
 
-            def vectormatch(vec1: t.Sequence[float], vec2: t.Sequence[float]) -> bool:
+            def vectormatch(vec1: Sequence[float], vec2: Sequence[float]) -> bool:
                 xclose = np.isclose(vec1[0], vec2[0], atol=wid_init_x * 0.05)
                 yclose = np.isclose(vec1[1], vec2[1], atol=wid_init_y * 0.05)
                 zclose = np.isclose(vec1[2], vec2[2], atol=wid_init_z * 0.05)

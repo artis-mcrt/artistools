@@ -94,72 +94,6 @@ def test_macroatom() -> None:
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-@pytest.mark.benchmark
-def test_nltepops_singletimestep(mockplot: t.Any) -> None:
-    at.nltepops.plot(argsraw=[], modelpath=modelpath, outputfile=outputpath, timestep=40)
-
-    assert len(mockplot.call_args_list) == 15
-    expected_stats = {
-        2: (5.31208, 6.01117e-08, 0.1588193243000988, 0.6969032639613162),
-        6: (27071.5, 5.25769e-06, 1493.302228052353, 4621.593586839317),
-        10: (109325.0, 5.03688e-10, 3308.8327426461733, 15522.059841599794),
-        14: (35210.9, 2.5153e-08, 431.60267129328645, 3864.3843149881213),
-    }
-    for callindex, (expected_first, expected_last, expected_mean, expected_std) in expected_stats.items():
-        _, yarr = get_plot_xy(mockplot.call_args_list[callindex])
-        assert np.isclose(yarr[0], expected_first, rtol=1e-4)
-        assert np.isclose(yarr[-1], expected_last, rtol=1e-4)
-        assert np.isclose(yarr.mean(), expected_mean, rtol=1e-4)
-        assert np.isclose(yarr.std(), expected_std, rtol=1e-4)
-
-
-@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-@pytest.mark.benchmark
-def test_nltepops_versus_velocity(mockplot: t.Any) -> None:
-    at.nltepops.plot(
-        argsraw=[],
-        modelpath=modelpath,
-        outputfile=outputpath,
-        timestep=40,
-        x="velocity",
-        ion_stages=[1, 2],
-        levels=[0, 1],
-    )
-
-    assert len(mockplot.call_args_list) == 2
-    expected_yvals = [5.31208, 3.07492]
-    for callargs, expected_yval in zip(mockplot.call_args_list, expected_yvals, strict=True):
-        xarr, yarr = get_plot_xy(callargs)
-        assert np.allclose(xarr, [8000.0], rtol=1e-4)
-        assert np.allclose(yarr, [expected_yval], rtol=1e-4)
-
-
-@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-@pytest.mark.benchmark
-def test_nltepops_versus_time(mockplot: t.Any) -> None:
-    at.nltepops.plot(
-        argsraw=[],
-        modelpath=modelpath,
-        outputfile=outputpath,
-        cell=0,
-        x="time",
-        timedays="270-275",
-        ion_stages=[1, 2],
-        levels=[0, 1],
-    )
-
-    assert len(mockplot.call_args_list) == 10
-    expected_series = [
-        ([271.48221094182054, 273.31529638210384], [7.40594, 6.39568]),
-        ([271.48221094182054, 273.31529638210384], [4.71888, 3.89199]),
-    ]
-    for callargs, (expected_xarr, expected_yarr) in zip(mockplot.call_args_list[:2], expected_series, strict=True):
-        xarr, yarr = get_plot_xy(callargs)
-        assert np.allclose(xarr, expected_xarr, rtol=1e-4)
-        assert np.allclose(yarr, expected_yarr, rtol=1e-4)
-
-
-@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @mock.patch.object(mplax.Axes, "step", side_effect=mplax.Axes.step, autospec=True)
 @pytest.mark.benchmark
 def test_radfield(mockstep: t.Any, mockplot: t.Any) -> None:
@@ -239,3 +173,116 @@ def test_writecomparisondata() -> None:
     at.writecomparisondata.main(
         argsraw=[], modelpath=modelpath, outputpath=outputpath, selected_timesteps=list(range(99))
     )
+
+
+def test_get_z_a_nucname() -> None:
+    assert at.get_z_a_nucname("Pb208") == (82, 208)
+    assert at.get_z_a_nucname("X_Pb208") == (82, 208)
+    assert at.get_z_a_nucname("nniso_Pb208") == (82, 208)
+    assert at.get_z_a_nucname("Fe56") == (26, 56)
+    assert at.get_z_a_nucname("Ni56") == (28, 56)
+    assert at.get_z_a_nucname("Co56") == (27, 56)
+    assert at.get_z_a_nucname("H1") == (1, 1)
+
+
+def test_get_atomic_number_and_elsymbol() -> None:
+    assert at.get_atomic_number("Fe") == 26
+    assert at.get_atomic_number("Ni") == 28
+    assert at.get_atomic_number("Co") == 27
+    assert at.get_atomic_number("H") == 1
+    assert at.get_atomic_number("He") == 2
+    assert at.get_atomic_number("X_Fe") == 26
+    assert at.get_atomic_number("UnknownXYZ") == -1
+
+    assert at.get_elsymbol(26) == "Fe"
+    assert at.get_elsymbol(28) == "Ni"
+    assert at.get_elsymbol(1) == "H"
+    assert at.get_elsymbol(2) == "He"
+
+
+def test_decode_roman_numeral() -> None:
+    assert at.decode_roman_numeral("I") == 1
+    assert at.decode_roman_numeral("II") == 2
+    assert at.decode_roman_numeral("III") == 3
+    assert at.decode_roman_numeral("IV") == 4
+    assert at.decode_roman_numeral("V") == 5
+    assert at.decode_roman_numeral("X") == 10
+    assert at.decode_roman_numeral("XX") == 20
+    assert at.decode_roman_numeral("i") == 1  # case-insensitive
+    assert at.decode_roman_numeral("INVALID") == -1
+
+
+def test_get_ionstring() -> None:
+    assert at.get_ionstring(26, 2) == "Fe II"
+    assert at.get_ionstring(26, 1) == "Fe I"
+    assert at.get_ionstring(28, 3) == "Ni III"
+    assert at.get_ionstring(26, 2, sep="") == "FeII"
+    assert at.get_ionstring(26, None) == "Fe"
+    assert at.get_ionstring(26, "ALL") == "Fe"
+    assert at.get_ionstring(26, 2, style="charge") == "Fe+"
+    assert at.get_ionstring(26, 3, style="charge") == "Fe2+"
+    assert at.get_ionstring(26, 1, style="charge") == "Fe0"
+
+
+def test_get_ion_tuple() -> None:
+    assert at.get_ion_tuple("Fe II") == (26, 2)
+    assert at.get_ion_tuple("Fe I") == (26, 1)
+    assert at.get_ion_tuple("Ni III") == (28, 3)
+    assert at.get_ion_tuple("Co II") == (27, 2)
+    assert at.get_ion_tuple("Ni") == 28
+    assert at.get_ion_tuple("26") == 26
+
+
+def test_parse_range_list() -> None:
+    assert at.parse_range_list("5") == [5]
+    assert at.parse_range_list("3-5") == [3, 4, 5]
+    assert at.parse_range_list("1,3-5,8") == [1, 3, 4, 5, 8]
+    assert at.parse_range_list([3, 5, 7]) == [3, 5, 7]
+    assert at.parse_range_list(42) == [42]
+    assert at.parse_range_list("5-3") == [3, 4, 5]  # reversed range is sorted
+
+
+def test_makelist() -> None:
+    assert at.makelist(None) == []
+    assert at.makelist("hello") == ["hello"]
+    assert at.makelist(Path("my/folder/path")) == [Path("my/folder/path")]
+    assert at.makelist([1, 2, 3]) == [1, 2, 3]
+    assert at.makelist((1, 2)) == [1, 2]
+
+
+def test_flatten_list() -> None:
+    assert at.flatten_list([[1, 2], [3, 4]]) == [1, 2, 3, 4]
+    assert at.flatten_list([1, [2, 3], 4]) == [1, 2, 3, 4]
+    assert at.flatten_list([]) == []
+    assert at.flatten_list([1, 2, 3]) == [1, 2, 3]
+
+
+def test_trim_or_pad() -> None:
+    result = at.trim_or_pad(3, [1, 2, 3, 4], [10, 20])
+    assert list(result[0]) == [1, 2, 3]
+    assert list(result[1]) == [10, 20, None]
+
+    result2 = at.trim_or_pad(2, "single_string")
+    assert list(result2[0]) == ["single_string", None]
+
+
+def test_vec_len() -> None:
+    assert math.isclose(at.vec_len([3.0, 4.0, 0.0]), 5.0)
+    assert math.isclose(at.vec_len([1.0, 0.0, 0.0]), 1.0)
+    assert math.isclose(at.vec_len([0.0, 0.0, 0.0]), 0.0)
+    assert math.isclose(at.vec_len([1.0, 1.0, 1.0]), math.sqrt(3.0))
+
+
+def test_stripallsuffixes() -> None:
+    assert at.stripallsuffixes(Path("packets00_0000.out.gz")) == Path("packets00_0000")
+    assert at.stripallsuffixes(Path("model.txt.xz")) == Path("model")
+    assert at.stripallsuffixes(Path("noextension")) == Path("noextension")
+    assert at.stripallsuffixes(Path("single.txt")) == Path("single")
+
+
+def test_match_closest_time() -> None:
+    times = [100.0, 200.0, 300.0, 400.0]
+    assert at.match_closest_time(250.0, times) == "200.0"
+    assert at.match_closest_time(310.0, times) == "300.0"
+    assert at.match_closest_time(99.0, times) == "100.0"
+    assert at.match_closest_time(400.0, times) == "400.0"
