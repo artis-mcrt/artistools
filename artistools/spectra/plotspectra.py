@@ -1418,7 +1418,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-fluxdistmpc",
         type=float,
         default=None,
-        help="Distance in megaparsec when calculating fluxes (default: 1 Mpc)",
+        help="Distance in megaparsec when calculating fluxes (default: first reference spec distance or 1 Mpc)",
     )
 
     parser.add_argument(
