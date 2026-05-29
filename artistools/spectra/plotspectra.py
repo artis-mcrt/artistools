@@ -1577,10 +1577,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.color = []
         refspeccolors = ["0.0", "0.4", "0.6", "0.7"]
         refspecnum = 0
-        artismodelnum = 0
         for filepath in args.specpath:
             if path_is_artis_model(filepath):
-                artismodelnum += 1
+                args.color.append(None)
             else:
                 args.color.append(refspeccolors[refspecnum])
                 refspecnum += 1
