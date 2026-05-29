@@ -29,9 +29,11 @@ import artistools.spectra as atspectra
 from artistools.commands import CustomArgHelpFormatter
 from artistools.commands import get_path
 from artistools.misc import df_filter_minmax_bounded
+from artistools.misc import firstexisting
 from artistools.misc import flatten_list
 from artistools.misc import get_dirbin_labels
 from artistools.misc import get_escaped_arrivalrange
+from artistools.misc import get_file_metadata
 from artistools.misc import get_filterfunc
 from artistools.misc import get_model_name
 from artistools.misc import get_time_range
@@ -285,15 +287,26 @@ def plot_reference_spectrum(
     The filename must be in space separated text formatted with the first two
     columns being wavelength in Angstroms, and F_lambda
     """
-    specdata, metadata = atspectra.get_reference_spectrum(filename)
+    try:
+        filepath = firstexisting(filename, tryzipped=True)
+    except FileNotFoundError:
+        filepath = firstexisting(
+            filename, folder=Path(get_path("artistools_dir"), "data", "refspectra"), tryzipped=True
+        )
+
+    metadata = get_file_metadata(filepath)
     label = plotkwargs.get("label", metadata.get("label", filename))
     assert isinstance(label, str)
     plotkwargs.pop("label", None)
 
+    print(f"====> Reference spectrum '{label}'")
+    specdata = atspectra.get_reference_spectrum(filepath)
+    print(f" file: {filepath}")
+
     # scale to flux at required distance
     if scale_to_dist_mpc:
         # scale to 1 Mpc and let get_dfspectrum_x_y_with_units scale to scale_to_dist_mpc later
-        print(f"Scale to {scale_to_dist_mpc} Mpc")
+        print(f"Scaling to distance {scale_to_dist_mpc} Mpc")
         assert metadata["dist_mpc"] > 0  # we must know the true distance in order to scale to some other distance
         specdata = specdata.with_columns(f_lambda=pl.col("f_lambda") * ((metadata["dist_mpc"]) ** 2))
 
@@ -320,8 +333,7 @@ def plot_reference_spectrum(
         )
         specdata = specdata.with_columns(f_lambda=expr_masked.then(pl.lit(math.nan)).otherwise(pl.col("f_lambda")))
 
-    print(f"Reference spectrum '{label}' has {len(specdata)} points in the plot range")
-    print(f" file: {filename}")
+    print(f" points: {len(specdata)}")
 
     print(" metadata: " + ", ".join([f"{k}='{v}'" if hasattr(v, "lower") else f"{k}={v}" for k, v in metadata.items()]))
 
@@ -329,7 +341,6 @@ def plot_reference_spectrum(
         atspectra.convert_unit_to_angstroms(xmin, xunit),
         atspectra.convert_unit_to_angstroms(xmax, xunit),
     ])
-    print(f" lambda_min {lambda_min:.1f} lambda_max {lambda_max:.1f}")
 
     specdata = specdata.filter(pl.col("lambda_angstroms").is_between(lambda_min, lambda_max))
 
@@ -573,7 +584,7 @@ def plot_artis_spectrum(
             if dirbin != -1 and (len(directionbins) > 1 or not linelabel_is_custom):
                 linelabel_withdirbin = f"{linelabel} {dirbin_definitions[dirbin]}"
 
-            atspectra.print_integrated_flux(dfspectrum["yflux"], dfspectrum["x"])
+            atspectra.print_integrated_flux(dfspectrum["dflux_on_dx_onempc"], dfspectrum["x"])
 
             if scale_to_peak:
                 dfspectrum = dfspectrum.with_columns(
@@ -1406,8 +1417,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-dist",
         "-fluxdistmpc",
         type=float,
-        default=1.0,
-        help="Distance in megaparsec when calculating fluxes (default: 1 Mpc)",
+        default=None,
+        help="Distance in megaparsec when calculating fluxes (default: first reference spec distance or 1 Mpc)",
     )
 
     parser.add_argument(
@@ -1583,6 +1594,24 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             else:
                 args.color.append(refspeccolors[refspecnum])
                 refspecnum += 1
+
+    if args.distmpc is None:
+        for filepath in args.specpath:
+            if not path_is_artis_model(filepath):
+                try:
+                    fullfilepath = firstexisting(filepath, tryzipped=True)
+                except FileNotFoundError:
+                    fullfilepath = firstexisting(
+                        filepath, folder=Path(get_path("artistools_dir"), "data", "refspectra"), tryzipped=True
+                    )
+                args.distmpc = get_file_metadata(fullfilepath).get("dist_mpc")
+                if args.distmpc is not None:
+                    print(f"Found distance {args.distmpc} Mpc in metadata of {filepath}")
+                break
+        if args.distmpc is None:
+            args.distmpc = 1.0  # no reference spectra with distances, so default to 1 Mpc
+    assert args.distmpc is not None
+    assert args.distmpc > 0.0
 
     args.color, args.label, args.linestyle, args.linealpha, args.dashes, args.linewidth = trim_or_pad(
         len(args.specpath), args.color, args.label, args.linestyle, args.linealpha, args.dashes, args.linewidth
