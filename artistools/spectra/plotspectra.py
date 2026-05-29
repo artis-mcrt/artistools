@@ -1595,9 +1595,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 args.color.append(refspeccolors[refspecnum])
                 refspecnum += 1
 
-    if not args.distmpc:
+    if args.distmpc is None:
         for filepath in args.specpath:
-            print(f"Checking {filepath} for distance metadata...")
             if not path_is_artis_model(filepath):
                 try:
                     fullfilepath = firstexisting(filepath, tryzipped=True)
@@ -1609,8 +1608,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 if args.distmpc is not None:
                     print(f"Found distance {args.distmpc} Mpc in metadata of {filepath}")
                 break
-        if not args.distmpc:
+        if args.distmpc is None:
             args.distmpc = 1.0  # no reference spectra with distances, so default to 1 Mpc
+    assert args.distmpc is not None
+    assert args.distmpc > 0.0
 
     args.color, args.label, args.linestyle, args.linealpha, args.dashes, args.linewidth = trim_or_pad(
         len(args.specpath), args.color, args.label, args.linestyle, args.linealpha, args.dashes, args.linewidth
