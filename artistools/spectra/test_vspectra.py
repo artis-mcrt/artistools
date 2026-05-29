@@ -18,6 +18,7 @@ def test_vspectraplot(mockplot: t.Any) -> None:
         plotvspecpol=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
         timemin=11,
         timemax=12,
+        distmpc=1.0,
     )
 
     arr_time_d = np.array(mockplot.call_args_list[0][0][1])
