@@ -1588,7 +1588,7 @@ def get_reference_spectrum(filepath: Path | str) -> pl.DataFrame:
         )
     )
 
-    if "a_v" in metadata or "r_v" in metadata:
+    if "a_v" in metadata and "r_v" in metadata:
         from extinction import apply
         from extinction import ccm89
 
