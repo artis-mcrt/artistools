@@ -37,6 +37,7 @@ def read_modelfile_text(
         print(f"Reading {filename}")
 
     with zopen(filename) as fmodel:
+        startpos = fmodel.tell()
         onelinepercellformat: bool | None = None
 
         modelmeta: dict[str, t.Any] = {"headercommentlines": []}
@@ -111,7 +112,7 @@ def read_modelfile_text(
         data_line_odd = fmodel.readline()
         ncols_line_odd = len(data_line_odd.split())
 
-        fmodel.seek(0)  # undo our readlines for following read_csv calls
+        fmodel.seek(startpos, os.SEEK_SET)  # undo our readlines for following read_csv calls
 
         if columns is None:
             columns = get_standard_columns(modelmeta["dimensions"], includenico57=True, pos_unknown=True)
