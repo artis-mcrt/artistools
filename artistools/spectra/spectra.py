@@ -282,12 +282,11 @@ def convert_angstroms_to_unit(value_angstroms: float | int, new_units: str) -> f
     raise ValueError(msg)
 
 
-def convert_unit_to_angstroms(value: float | int | np.floating, old_units: str) -> float:
+def convert_unit_to_angstroms[T: (float, npt.NDArray[np.floating])](value: T, old_units: str) -> T:
     """Convert a wavelength, frequency, or energy to wavelength angstroms."""
     c = 2.99792458e18  # speed of light [angstroms/s]
     h = 4.1356677e-15  # Planck's constant [eV s]
     hc_ev_angstroms = h * c  # [eV angstroms]
-    value = float(value)
     match old_units.lower():
         case "ev":
             return hc_ev_angstroms / value
@@ -384,8 +383,6 @@ def get_from_packets(
     pl_delta_lambda: pl.Series | pl.Expr
     if delta_lambda is None:
         lambda_bin_edges, lambda_bin_centres, delta_lambda = get_exspec_bins(modelpath=modelpath, gamma=gamma)
-        lambda_min = lambda_bin_centres[0]
-        lambda_max = lambda_bin_centres[-1]
         pl_delta_lambda = pl.Series(delta_lambda)
     elif isinstance(delta_lambda, float | int):
         lambda_bin_edges = np.arange(lambda_min, lambda_max + delta_lambda, delta_lambda)
@@ -393,6 +390,9 @@ def get_from_packets(
         pl_delta_lambda = pl.lit(delta_lambda)
     else:
         assert isinstance(delta_lambda, np.ndarray)
+        assert math.isclose(lambda_min + delta_lambda.sum(), lambda_max, rel_tol=1e-5), (
+            "If delta_lambda is an array, its sum must equal lambda_max - lambda_min"
+        )
         lambda_bin_edges = np.array([lambda_min + (delta_lambda[:i]).sum() for i in range(len(delta_lambda) + 1)])
         lambda_bin_centres = 0.5 * (lambda_bin_edges[:-1] + lambda_bin_edges[1:])
         pl_delta_lambda = pl.Series(delta_lambda)
@@ -449,7 +449,7 @@ def get_from_packets(
             )
             energy_column = f"dir{obsdirindex}_e_rf_{opacchoiceindex}"
 
-            pldfpackets_dirbin_lazy = dfpackets.filter(pl.col(lambda_column).is_between(lambda_min, lambda_max)).filter(
+            pldfpackets_dirbin_lazy = dfpackets.filter(
                 pl.col(f"dir{obsdirindex}_t_arrive_d").is_between(timelowdays, timehighdays)
             )
 
