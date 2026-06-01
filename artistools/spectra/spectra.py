@@ -258,6 +258,9 @@ def get_lambda_bin_edges(
         x_bin_edges = np.arange(xmin_plot - deltax * 0.5, xmax_plot + deltax * 1.5, deltax)
         lambda_bin_edges = np.sort(convert_unit_to_angstroms(x_bin_edges, xunit))
     elif deltalambda is not None:
+        if not deltalambda > 0:
+            msg = f"deltalambda must be positive, got {deltalambda}"
+            raise ValueError(msg)
         # the plotted x limits are bin centres, not bin edges, so shift them by half a bin width
         xmin = xmin_plot - deltalambda * 0.5
         xmax = xmax_plot + deltalambda * 0.5
@@ -823,27 +826,22 @@ def make_averaged_vspecfiles(args: argparse.Namespace) -> None:
         )
 
 
-@lru_cache(maxsize=4)
-def get_specpol_data(
-    dirbin: int = -1, modelpath: Path | None = None, specdata: pl.LazyFrame | None = None
-) -> dict[str, pl.LazyFrame]:
-    if specdata is None:
-        assert modelpath is not None
-        specfilename = (
-            firstexisting("specpol.out", folder=modelpath, tryzipped=True)
-            if dirbin == -1
-            else firstexisting(f"specpol_res_{dirbin}.out", folder=modelpath, tryzipped=True)
-        )
+def get_specpol_data(dirbin: int = -1, modelpath: Path | str | None = None) -> dict[str, pl.LazyFrame]:
+    assert modelpath is not None
+    specfilename = (
+        firstexisting("specpol.out", folder=modelpath, tryzipped=True)
+        if dirbin == -1
+        else firstexisting(f"specpol_res_{dirbin}.out", folder=modelpath, tryzipped=True)
+    )
 
-        print(f"Reading {specfilename}")
-        specdata = pl.scan_csv(zopenpl(specfilename), separator=" ", has_header=True, infer_schema=False).with_columns(
-            pl.all().cast(pl.Float64)
-        )
+    print(f"Reading {specfilename}")
+    specdata = pl.scan_csv(zopenpl(specfilename), separator=" ", has_header=True, infer_schema=False).with_columns(
+        pl.all().cast(pl.Float64)
+    )
 
     return split_dataframe_stokesparams(specdata)
 
 
-@lru_cache(maxsize=4)
 def get_vspecpol_data(vspecindex: int, modelpath: Path | str) -> dict[str, pl.LazyFrame]:
     assert modelpath is not None
     # alternatively use f'vspecpol_averaged-{angle}.out' ?

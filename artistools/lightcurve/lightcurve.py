@@ -372,7 +372,6 @@ def get_spectrum_in_filter_range(
     wavefilter_min: float | int,
     wavefilter_max: float | int,
     angle: int = -1,
-    spectrum: pd.DataFrame | None = None,
     args: argparse.Namespace | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
