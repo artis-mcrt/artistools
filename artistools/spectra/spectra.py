@@ -591,7 +591,7 @@ def get_from_packets(
 
             if fluxfilterfunc:
                 dirbin_spectra[dirbin] = dirbin_spectra[dirbin].with_columns(
-                    cs.starts_with("f_").map_batches(fluxfilterfunc, return_dtype=pl.self_dtype())
+                    cs.by_name(("f_lambda", "f_nu")).map_batches(fluxfilterfunc, return_dtype=pl.self_dtype())
                 )
 
     if fluxfilterfunc:
