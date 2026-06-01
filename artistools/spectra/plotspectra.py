@@ -78,41 +78,6 @@ def check_time_range_is_valid(modelpath: Path, timemin: float | int, timemax: fl
             print("\n".join(problem_messages))
 
 
-def get_lambda_min_max_binwidth(
-    xmin_plot: float | int,
-    xmax_plot: float | int,
-    deltax: float | int | None,
-    deltalogx: float | int | None,
-    deltalambda: float | int | None,
-    xunit: str,
-) -> tuple[float, float, float | int | npt.NDArray[np.floating] | None]:
-    """Get the minimum and maximum wavelength to collect data for, and the bin width to ensure coverage of the plotted range."""
-    if deltax is not None or deltalogx is not None:
-        if deltalogx is not None:
-            # xmin_plot is the centre of the first bin, so we need to subtract half a bin width to get the lower edge of the first bin
-            xbin_lower = xmin_plot / (1 + deltalogx) ** 0.5
-            xmax = xmax_plot * (1 + deltalogx) ** 0.5
-            list_x_bin_edges = [xbin_lower]
-            while xbin_lower <= xmax:
-                xbin_lower *= 1 + deltalogx
-                list_x_bin_edges.append(xbin_lower)
-            x_bin_edges = np.array(list_x_bin_edges)
-        else:
-            assert deltax is not None
-            xbin_lower = xmin_plot - deltax * 0.5
-            xmax = xmax_plot + deltax * 0.5
-            x_bin_edges = np.arange(xbin_lower, xmax + deltax, deltax)
-        lambda_bin_edges = np.sort(atspectra.convert_unit_to_angstroms(x_bin_edges, xunit))
-        delta_lambda = np.diff(lambda_bin_edges)
-        lambda_min = lambda_bin_edges[0]
-        lambda_max = lambda_bin_edges[-1]
-    else:
-        lambda_min, lambda_max = sorted(atspectra.convert_unit_to_angstroms(np.array((xmin_plot, xmax_plot)), xunit))
-        delta_lambda = deltalambda
-
-    return lambda_min, lambda_max, delta_lambda
-
-
 def get_axis_labels(args: argparse.Namespace) -> tuple[str | None, str | None]:
     """Get the x-axis and y-axis labels based on the arguments."""
     match args.xunit.lower():
@@ -481,17 +446,22 @@ def plot_artis_spectrum(
 
         xmin, xmax = axis.get_xlim()
         if from_packets:
-            lambda_min, lambda_max, delta_lambda = get_lambda_min_max_binwidth(
-                xmin, xmax, deltax=args.deltax, deltalogx=args.deltalogx, deltalambda=args.deltalambda, xunit=args.xunit
+            lambda_bin_edges = atspectra.get_lambda_bin_edges(
+                xmin,
+                xmax,
+                deltax=args.deltax,
+                deltalogx=args.deltalogx,
+                deltalambda=args.deltalambda,
+                xunit=args.xunit,
+                modelpath=modelpath,
+                gamma=args.gamma,
             )
 
             viewinganglespectra = atspectra.get_from_packets(
                 modelpath,
                 timelowdays=args.timemin,
                 timehighdays=args.timemax,
-                lambda_min=lambda_min,
-                lambda_max=lambda_max,
-                delta_lambda=delta_lambda,
+                lambda_bin_edges=lambda_bin_edges,
                 use_time=use_time,
                 maxpacketfiles=maxpacketfiles,
                 average_over_phi=average_over_phi,
@@ -856,8 +826,15 @@ def make_emissionabsorption_plot(
         else:
             emtypecolumn = "emissiontype"
 
-        lambda_min, lambda_max, delta_lambda = get_lambda_min_max_binwidth(
-            xmin, xmax, deltax=args.deltax, deltalogx=args.deltalogx, deltalambda=args.deltalambda, xunit=args.xunit
+        lambda_bin_edges = atspectra.get_lambda_bin_edges(
+            xmin,
+            xmax,
+            deltax=args.deltax,
+            deltalogx=args.deltalogx,
+            deltalambda=args.deltalambda,
+            xunit=args.xunit,
+            modelpath=modelpath,
+            gamma=args.gamma,
         )
 
         (contribution_list, array_flambda_emission_total, arraylambda_angstroms) = (
@@ -865,9 +842,7 @@ def make_emissionabsorption_plot(
                 modelpath,
                 timelowdays=args.timemin,
                 timehighdays=args.timemax,
-                lambda_min=lambda_min,
-                lambda_max=lambda_max,
-                delta_lambda=delta_lambda,
+                lambda_bin_edges=lambda_bin_edges,
                 getemission=args.showemission,
                 getabsorption=args.showabsorption,
                 maxpacketfiles=args.maxpacketfiles,

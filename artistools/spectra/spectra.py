@@ -58,7 +58,7 @@ def get_dfspectrum_x_y_with_units(
     dfspectrum: pl.DataFrame | pl.LazyFrame, xunit: str, yvariable: str, fluxdistance_mpc: float | int
 ) -> pl.LazyFrame:
     h_ev_s = 4.1356677e-15  # Planck's constant [eV s]
-    from artistools.constants import H_erg_s
+    from artistools.constants import h_erg_s
     from artistools.constants import megaparsec_to_cm
 
     dfspectrum = dfspectrum.lazy()
@@ -89,7 +89,7 @@ def get_dfspectrum_x_y_with_units(
         case "erg":
             dfspectrum = (
                 dfspectrum
-                .with_columns(en_erg=H_erg_s * pl.col("nu"))
+                .with_columns(en_erg=h_erg_s * pl.col("nu"))
                 .with_columns(f_en_erg=pl.col("f_nu") * pl.col("nu") / pl.col("en_erg"))
                 .with_columns(x=pl.col("en_erg"), dflux_on_dx_onempc=pl.col("f_en_erg"))
             )
@@ -146,14 +146,14 @@ def get_dfspectrum_x_y_with_units(
             # divide by the photon energy to get a count rate and adjust for distance
             # [#/s/cm^2/xunit]
             dfspectrum = dfspectrum.with_columns(
-                y=pl.col("dflux_on_dx_onempc") / fluxdistance_mpc**2 / (H_erg_s * pl.col("nu"))
+                y=pl.col("dflux_on_dx_onempc") / fluxdistance_mpc**2 / (h_erg_s * pl.col("nu"))
             )
 
         case "photoncount":
             # divide by the photon energy and multiply by 4pi dist^2 to cancel out the /cm^2 at 1 Mpc
             # [#/s/xunit]
             dfspectrum = dfspectrum.with_columns(
-                y=pl.col("dflux_on_dx_onempc") * 4 * math.pi * megaparsec_to_cm**2 / (H_erg_s * pl.col("nu"))
+                y=pl.col("dflux_on_dx_onempc") * 4 * math.pi * megaparsec_to_cm**2 / (h_erg_s * pl.col("nu"))
             )
 
         case "packetcount":
@@ -167,13 +167,13 @@ def get_dfspectrum_x_y_with_units(
     return dfspectrum.sort("x")
 
 
-def get_exspec_bins(
+def get_exspec_lambda_bin_edges(
     modelpath: str | Path | None = None,
     mnubins: int | None = None,
     nu_min_r: float | int | None = None,
     nu_max_r: float | int | None = None,
     gamma: bool = False,
-) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
+) -> npt.NDArray[np.floating]:
     """Get the wavelength bins for the emergent spectrum."""
     if modelpath is not None:
         try:
@@ -182,9 +182,9 @@ def get_exspec_bins(
             mnubins = 1000
             if gamma:
                 min_mev_on_h = 0.05
-                nu_min_r = min_mev_on_h * const.MEV_to_erg / const.H_erg_s
+                nu_min_r = min_mev_on_h * const.MEV_to_erg / const.h_erg_s
                 max_mev_on_h = 4.0
-                nu_max_r = max_mev_on_h * const.MEV_to_erg / const.H_erg_s
+                nu_max_r = max_mev_on_h * const.MEV_to_erg / const.h_erg_s
                 print(
                     f"No gamma_spec.out found. Using default gamma bins: mnubins {mnubins} nu_min_r {min_mev_on_h:.2f} MeV/H nu_max_r {max_mev_on_h:.2f} MeV/H"
                 )
@@ -215,21 +215,51 @@ def get_exspec_bins(
     assert nu_max_r is not None
     assert mnubins is not None
 
-    c_ang_s = 2.99792458e18
-
     dlognu = (math.log(nu_max_r) - math.log(nu_min_r)) / mnubins
 
-    bins_nu_lower = np.array([math.exp(math.log(nu_min_r) + (m * (dlognu))) for m in range(mnubins)])
-    # bins_nu_upper = np.array([math.exp(math.log(nu_min_r) + ((m + 1) * (dlognu))) for m in range(mnubins)])
-    bins_nu_upper = bins_nu_lower * math.exp(dlognu)
-    bins_nu_centre = 0.5 * (bins_nu_lower + bins_nu_upper)
+    nu_bin_edges = np.array([math.exp(math.log(nu_min_r) + (m * (dlognu))) for m in range(mnubins + 1)])
 
     # np.flip is used to get an ascending wavelength array from an ascending nu array
-    lambda_bin_edges = np.append(c_ang_s / np.flip(bins_nu_upper), c_ang_s / bins_nu_lower[0])
-    lambda_bin_centres = c_ang_s / np.flip(bins_nu_centre)
-    delta_lambdas = np.flip(c_ang_s / bins_nu_lower - c_ang_s / bins_nu_upper)
+    return const.c_ang_per_s / np.flip(nu_bin_edges)
 
-    return lambda_bin_edges, lambda_bin_centres, delta_lambdas
+
+def get_lambda_bin_edges(
+    xmin_plot: float | int,
+    xmax_plot: float | int,
+    deltax: float | int | None,
+    deltalogx: float | int | None,
+    deltalambda: float | int | None,
+    xunit: str,
+    modelpath: Path | str,
+    gamma: bool = False,
+) -> npt.NDArray[np.floating]:
+    """Get the minimum and maximum wavelength to collect data for, and the bin width to ensure coverage of the plotted range."""
+    if deltax is not None or deltalogx is not None:
+        if deltalogx is not None:
+            # xmin_plot is the centre of the first bin, so we need to subtract half a bin width to get the lower edge of the first bin
+            xbin_lower = xmin_plot / (1 + deltalogx) ** 0.5
+            xmax = xmax_plot * (1 + deltalogx) ** 0.5
+            list_x_bin_edges = [xbin_lower]
+            while xbin_lower <= xmax:
+                xbin_lower *= 1 + deltalogx
+                list_x_bin_edges.append(xbin_lower)
+            x_bin_edges = np.array(list_x_bin_edges)
+        else:
+            assert deltax is not None
+            xbin_lower = xmin_plot - deltax * 0.5
+            xmax = xmax_plot + deltax * 0.5
+            x_bin_edges = np.arange(xbin_lower, xmax + deltax, deltax)
+        lambda_bin_edges = np.sort(convert_unit_to_angstroms(x_bin_edges, xunit))
+    elif deltalambda is not None:
+        # the plotted x limits are bin centres, not bin edges, so shift them by half a bin width
+        xmin = xmin_plot - deltalambda * 0.5
+        xmax = xmax_plot + deltalambda * 0.5
+        lambda_min, lambda_max = sorted(convert_unit_to_angstroms(np.array((xmin, xmax)), xunit))
+        lambda_bin_edges = np.arange(lambda_min, lambda_max + deltalambda, deltalambda)
+    else:
+        lambda_bin_edges = get_exspec_lambda_bin_edges(modelpath=modelpath, gamma=gamma)
+
+    return lambda_bin_edges
 
 
 def convert_xunit_aliases_to_canonical(xunit: str) -> str:
@@ -257,9 +287,7 @@ def convert_xunit_aliases_to_canonical(xunit: str) -> str:
 
 def convert_angstroms_to_unit(value_angstroms: float | int, new_units: str) -> float:
     """Convert a wavelength in angstroms to a different unit, either length, frequency, or energy."""
-    c = 2.99792458e18  # speed of light [angstroms/s]
-    h = 4.1356677e-15  # Planck's constant [eV s]
-    hc_ev_angstroms = h * c  # [eV angstroms]
+    hc_ev_angstroms = const.h_ev_s * const.c_ang_per_s  # [eV angstroms]
     hc_erg_angstroms = hc_ev_angstroms * 1.60218e-12  # [erg angstroms]
     match new_units.lower():
         case "erg":
@@ -271,7 +299,7 @@ def convert_angstroms_to_unit(value_angstroms: float | int, new_units: str) -> f
         case "mev":
             return hc_ev_angstroms / value_angstroms / 1e6
         case "hz":
-            return c / value_angstroms
+            return const.c_ang_per_s / value_angstroms
         case "angstroms":
             return value_angstroms
         case "nm":
@@ -359,9 +387,7 @@ def get_from_packets(
     modelpath: Path | str,
     timelowdays: float | int,
     timehighdays: float | int,
-    lambda_min: float | int,
-    lambda_max: float | int,
-    delta_lambda: float | int | npt.NDArray[np.floating] | None = None,
+    lambda_bin_edges: npt.NDArray[np.floating] | None = None,
     use_time: t.Literal["arrival", "emission", "escape"] = "arrival",
     maxpacketfiles: int | None = None,
     average_over_phi: bool = False,
@@ -377,25 +403,11 @@ def get_from_packets(
 
     if nu_column == "absorption_freq":
         nu_column = "nu_absorbed"
-
-    lambda_bin_edges: npt.NDArray[np.floating]
-    pl_delta_lambda: pl.Series | pl.Expr
-    if delta_lambda is None:
-        lambda_bin_edges, lambda_bin_centres, delta_lambda = get_exspec_bins(modelpath=modelpath, gamma=gamma)
-        pl_delta_lambda = pl.Series(delta_lambda)
-    elif isinstance(delta_lambda, float | int):
-        lambda_bin_edges = np.arange(lambda_min, lambda_max + delta_lambda, delta_lambda)
-        lambda_bin_centres = 0.5 * (lambda_bin_edges[:-1] + lambda_bin_edges[1:])  # bin centres
-        pl_delta_lambda = pl.lit(delta_lambda)
-    else:
-        assert isinstance(delta_lambda, np.ndarray)
-        assert math.isclose(lambda_min + delta_lambda.sum(), lambda_max, rel_tol=1e-5), (
-            "If delta_lambda is an array, its sum must equal lambda_max - lambda_min"
-        )
-        lambda_bin_edges = np.array([lambda_min + (delta_lambda[:i]).sum() for i in range(len(delta_lambda) + 1)])
-        lambda_bin_centres = 0.5 * (lambda_bin_edges[:-1] + lambda_bin_edges[1:])
-        pl_delta_lambda = pl.Series(delta_lambda)
-
+    if lambda_bin_edges is None:
+        lambda_bin_edges = get_exspec_lambda_bin_edges(modelpath=modelpath, gamma=gamma)
+    lambda_bin_edges = np.sort(lambda_bin_edges)
+    lambda_bin_centres = 0.5 * (lambda_bin_edges[:-1] + lambda_bin_edges[1:])
+    pl_delta_lambda = pl.Series(lambda_bin_edges[1:] - lambda_bin_edges[:-1])
     delta_time_s = (timehighdays - timelowdays) * 86400.0
 
     nphibins = get_viewingdirection_phibincount()
@@ -425,10 +437,8 @@ def get_from_packets(
 
     dfbinned_lazy = (
         pl
-        .DataFrame(
-            {"lambda_angstroms": lambda_bin_centres, "lambda_binindex": range(len(lambda_bin_centres))},
-            schema_overrides={"lambda_binindex": pl.Int32},
-        )
+        .DataFrame({"lambda_angstroms": lambda_bin_centres, "delta_lambda": pl_delta_lambda})
+        .with_row_index("lambda_binindex")
         .with_columns(nu=(299792458.0 / (pl.col("lambda_angstroms") * 1e-10)))
         .sort(["lambda_binindex", "lambda_angstroms"])
         .lazy()
@@ -448,14 +458,10 @@ def get_from_packets(
             )
             energy_column = f"dir{obsdirindex}_e_rf_{opacchoiceindex}"
 
-            pldfpackets_dirbin_lazy = dfpackets.filter(
-                pl.col(f"dir{obsdirindex}_t_arrive_d").is_between(timelowdays, timehighdays)
-            )
-
             dirbin_spectra[vspecindex] = (
                 atpackets
                 .bin_and_sum(
-                    pldfpackets_dirbin_lazy,
+                    dfpackets.filter(pl.col(f"dir{obsdirindex}_t_arrive_d").is_between(timelowdays, timehighdays)),
                     bincol=lambda_column,
                     bins=lambda_bin_edges.tolist(),
                     sumcols=[energy_column],
@@ -520,7 +526,7 @@ def get_from_packets(
                 )
             )
 
-        dfpackets = dfpackets.filter(pl.col(lambda_column).is_between(lambda_min, lambda_max))
+        dfpackets = dfpackets.filter(pl.col(lambda_column).is_between(lambda_bin_edges[0], lambda_bin_edges[-1]))
 
         for dirbin in directionbins:
             if dirbin == -1:
@@ -1097,9 +1103,7 @@ def get_flux_contributions_from_packets(
     modelpath: Path,
     timelowdays: float | int,
     timehighdays: float | int,
-    lambda_min: float | int,
-    lambda_max: float | int,
-    delta_lambda: float | int | npt.NDArray[np.floating] | None = None,
+    lambda_bin_edges: npt.NDArray[np.floating],
     getemission: bool = True,
     getabsorption: bool = True,
     maxpacketfiles: int | None = None,
@@ -1137,8 +1141,8 @@ def get_flux_contributions_from_packets(
     cols = {"e_rf"}
     cols.add({"arrival": "t_arrive_d", "emission": "em_time", "escape": "escape_time"}[use_time])
 
-    nu_min = 2.99792458e18 / lambda_max
-    nu_max = 2.99792458e18 / lambda_min
+    nu_min = 2.99792458e18 / lambda_bin_edges[-1]
+    nu_max = 2.99792458e18 / lambda_bin_edges[0]
 
     vpkt_config = None
     opacchoiceindex = None
@@ -1360,10 +1364,8 @@ def get_flux_contributions_from_packets(
                     modelpath=modelpath,
                     timelowdays=timelowdays,
                     timehighdays=timehighdays,
-                    lambda_min=lambda_min,
-                    lambda_max=lambda_max,
+                    lambda_bin_edges=lambda_bin_edges,
                     use_time=use_time,
-                    delta_lambda=delta_lambda,
                     fluxfilterfunc=filterfunc,
                     nprocs_read_dfpackets=(nprocs_read, dfpkts),
                     directionbins_are_vpkt_observers=directionbins_are_vpkt_observers,
@@ -1384,10 +1386,8 @@ def get_flux_contributions_from_packets(
                     modelpath=modelpath,
                     timelowdays=timelowdays,
                     timehighdays=timehighdays,
-                    lambda_min=lambda_min,
-                    lambda_max=lambda_max,
+                    lambda_bin_edges=lambda_bin_edges,
                     use_time=use_time,
-                    delta_lambda=delta_lambda,
                     nu_column="absorption_freq",
                     fluxfilterfunc=filterfunc,
                     nprocs_read_dfpackets=(nprocs_read, dfpkts),
