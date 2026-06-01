@@ -260,14 +260,12 @@ def get_lambda_bin_edges(
     else:
         lambda_min_plot, lambda_max_plot = sorted(convert_unit_to_angstroms(np.array((xmin_plot, xmax_plot)), xunit))
         lambda_bin_edges = get_exspec_lambda_bin_edges(modelpath=modelpath, gamma=gamma)
-        lambda_bin_centres = 0.5 * (lambda_bin_edges[:-1] + lambda_bin_edges[1:])
         lambda_bin_edges = (
             df_filter_minmax_bounded(
-                pl.DataFrame({
+                pl.LazyFrame({
                     "lambda_bin_lower": lambda_bin_edges[:-1],
                     "lambda_bin_upper": lambda_bin_edges[1:],
-                    "lambda_bin_centre": lambda_bin_centres,
-                }),
+                }).with_columns(lambda_bin_centre=0.5 * (pl.col("lambda_bin_lower") + pl.col("lambda_bin_upper"))),
                 "lambda_bin_centre",
                 lambda_min_plot,
                 lambda_max_plot,
