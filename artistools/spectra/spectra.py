@@ -407,7 +407,6 @@ def get_from_packets(
         lambda_bin_edges = get_exspec_lambda_bin_edges(modelpath=modelpath, gamma=gamma)
     lambda_bin_edges = np.sort(lambda_bin_edges)
     lambda_bin_centres = 0.5 * (lambda_bin_edges[:-1] + lambda_bin_edges[1:])
-    pl_delta_lambda = pl.Series(lambda_bin_edges[1:] - lambda_bin_edges[:-1])
     delta_time_s = (timehighdays - timelowdays) * 86400.0
 
     nphibins = get_viewingdirection_phibincount()
@@ -437,7 +436,10 @@ def get_from_packets(
 
     dfbinned_lazy = (
         pl
-        .DataFrame({"lambda_angstroms": lambda_bin_centres, "delta_lambda": pl_delta_lambda})
+        .DataFrame({
+            "lambda_angstroms": lambda_bin_centres,
+            "delta_lambda": lambda_bin_edges[1:] - lambda_bin_edges[:-1],
+        })
         .with_row_index("lambda_binindex")
         .with_columns(nu=(299792458.0 / (pl.col("lambda_angstroms") * 1e-10)))
         .sort(["lambda_binindex", "lambda_angstroms"])
@@ -469,17 +471,15 @@ def get_from_packets(
                 )
                 .select([
                     pl.col(f"{lambda_column}_bin").alias("lambda_binindex"),
-                    (
-                        pl.col(f"{energy_column}_sum")
-                        / pl_delta_lambda
-                        / delta_time_s
-                        / (const.megaparsec_to_cm**2)
-                        / nprocs_read
-                    ).alias("f_lambda"),
+                    (pl.col(f"{energy_column}_sum") / delta_time_s / (const.megaparsec_to_cm**2) / nprocs_read).alias(
+                        "flux"
+                    ),
                     pl.col("count"),
                     pl.col("count").alias("packetcount"),
                 ])
                 .join(dfbinned_lazy, on="lambda_binindex", how="left", coalesce=True)
+                .with_columns(f_lambda=pl.col("flux") / pl.col("delta_lambda"))
+                .drop("flux")
             )
 
             if fluxfilterfunc:
@@ -553,13 +553,12 @@ def get_from_packets(
                 pl.col(f"{lambda_column}_bin").alias("lambda_binindex"),
                 (
                     pl.col(f"{energy_column}_sum")
-                    / pl_delta_lambda
                     / delta_time_s
                     / (4 * math.pi)
                     * solidanglefactor
                     / (const.megaparsec_to_cm**2)
                     / nprocs_read
-                ).alias("f_lambda"),
+                ).alias("flux"),
                 pl.col("count"),
                 pl.col("count").alias("packetcount"),
             ])
@@ -578,6 +577,8 @@ def get_from_packets(
             dirbin_spectra[dirbin] = (
                 dirbin_spectra[dirbin]
                 .join(dfbinned_lazy, on="lambda_binindex", how="left", coalesce=True)
+                .with_columns(f_lambda=pl.col("flux") / pl.col("delta_lambda"))
+                .drop("flux")
                 .with_columns(f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu")))
             )
 
