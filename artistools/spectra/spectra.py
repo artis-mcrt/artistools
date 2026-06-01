@@ -586,16 +586,13 @@ def get_from_packets(
                 .join(dfbinned_lazy, on="lambda_binindex", how="left", coalesce=True)
                 .with_columns(f_lambda=pl.col("flux") / pl.col("delta_lambda"))
                 .drop("flux")
+                .with_columns(f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu")))
             )
 
             if fluxfilterfunc:
                 dirbin_spectra[dirbin] = dirbin_spectra[dirbin].with_columns(
-                    pl.col("f_lambda").map_batches(fluxfilterfunc, return_dtype=pl.self_dtype())
+                    cs.starts_with("f_").map_batches(fluxfilterfunc, return_dtype=pl.self_dtype())
                 )
-
-            dirbin_spectra[dirbin] = dirbin_spectra[dirbin].with_columns(
-                f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu"))
-            )
 
     if fluxfilterfunc:
         print("Applying filter to ARTIS spectrum")
