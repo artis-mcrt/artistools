@@ -70,7 +70,7 @@ def get_binaverage_field(
     return arr_lambda, yvalues
 
 
-def j_nu_dbb(arr_nu_hz: Sequence[float] | npt.NDArray[np.floating], W: float, T: float) -> list[float]:
+def j_nu_dbb(arr_nu_hz: Sequence[float] | npt.NDArray[np.floating], W: float | int, T: float) -> list[float]:
     """Calculate the spectral energy density of a dilute blackbody radiation field.
 
     Parameters
@@ -101,7 +101,11 @@ def j_nu_dbb(arr_nu_hz: Sequence[float] | npt.NDArray[np.floating], W: float, T:
 
 
 def get_fullspecfittedfield(
-    radfielddata: pl.DataFrame, xmin: float, xmax: float, modelgridindex: int | None = None, timestep: int | None = None
+    radfielddata: pl.DataFrame,
+    xmin: float | int,
+    xmax: float | int,
+    modelgridindex: int | None = None,
+    timestep: int | None = None,
 ) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     radfielddata = radfielddata.filter(pl.col("bin_num") == -1)
     if modelgridindex is not None:
@@ -128,8 +132,8 @@ def get_fitted_field(
     modelgridindex: int | None = None,
     timestep: int | None = None,
     print_bins: bool = False,
-    lambdamin: float | None = None,
-    lambdamax: float | None = None,
+    lambdamin: float | int | None = None,
+    lambdamax: float | int | None = None,
 ) -> tuple[list[float], list[float]]:
     """Return the fitted dilute blackbody (list of lambda, list of j_nu) made up of all bins."""
     arr_lambda: list[float] = []
@@ -235,8 +239,8 @@ def plot_specout(
     axis: mplax.Axes,
     specfilename: str | Path,
     timestep: int,
-    peak_value: float | None = None,
-    scale_factor: float | None = None,
+    peak_value: float | int | None = None,
+    scale_factor: float | int | None = None,
     **plotkwargs: t.Any,
 ) -> None:
     """Plot the ARTIS spectrum."""
@@ -275,8 +279,8 @@ def plot_celltimestep(
     modelpath: Path | str,
     timestep: int,
     outputfile: Path | str,
-    xmin: float,
-    xmax: float,
+    xmin: float | int,
+    xmax: float | int,
     modelgridindex: int,
     args: argparse.Namespace,
     normalised: bool = False,

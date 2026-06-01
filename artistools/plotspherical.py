@@ -17,8 +17,8 @@ def plot_spherical(
     modelpath: str | Path,
     dfpackets: pl.LazyFrame,
     nprocs_read: int,
-    timemindays: float | None,
-    timemaxdays: float | None,
+    timemindays: float | int | None,
+    timemaxdays: float | int | None,
     nphibins: int,
     ncosthetabins: int,
     dfestimators: pl.LazyFrame | None = None,
@@ -26,7 +26,7 @@ def plot_spherical(
     ion_stage: int | None = None,
     gaussian_sigma: int | None = None,
     plotvars: list[str] | None = None,
-    figscale: float = 1.0,
+    figscale: float | int = 1.0,
     cmap: str | None = None,
     phireverse: bool = False,
 ) -> tuple[mplfig.Figure, t.Any, float, float, str]:
@@ -149,14 +149,14 @@ def plot_spherical(
     ndirbins = nphibins * ncosthetabins
     alldirbins = (
         pl
-        .DataFrame(
+        .LazyFrame(
             {
                 "phibinmonotonicasc": [d % nphibins for d in range(ndirbins)],
                 "costhetabin": [d // nphibins for d in range(ndirbins)],
             },
             schema={"phibinmonotonicasc": pl.Int32, "costhetabin": pl.Int32},
+            orient="col",
         )
-        .lazy()
         .join(dfpackets, how="left", on=["costhetabin", "phibinmonotonicasc"], coalesce=True)
         .fill_null(0)
         .sort(["costhetabin", "phibinmonotonicasc"])

@@ -1,4 +1,5 @@
 .DS_Store
+._*
 *.iml
 .ropeproject
 
@@ -61,7 +62,6 @@ artistools/data/lightcurves/SNsample/*.txt
 plottingscripts/*
 plottingscripts/
 
-version.py
-
 .dmypy.json
 target
+.antigravitycli

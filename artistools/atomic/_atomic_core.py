@@ -16,7 +16,7 @@ import artistools as at
 
 def parse_adata(
     fadata: io.TextIOBase,
-    phixsdict: dict[tuple[int, int, int], tuple[npt.NDArray[np.floating[t.Any]], npt.NDArray[np.floating[t.Any]]]],
+    phixsdict: dict[tuple[int, int, int], tuple[npt.NDArray[t.Any], npt.NDArray[t.Any]]],
     ionlist: Collection[tuple[int, int]] | None,
 ) -> Generator[tuple[int, int, int, float, pl.DataFrame]]:
     """Generate ions and their level lists from adata.txt."""
@@ -33,14 +33,7 @@ def parse_adata(
 
         if not ionlist or (Z, ion_stage) in ionlist:
             level_list: list[
-                tuple[
-                    float,
-                    float,
-                    int,
-                    str | None,
-                    npt.NDArray[np.floating[t.Any]] | None,
-                    npt.NDArray[np.floating[t.Any]] | None,
-                ]
+                tuple[float, float, int, str | None, npt.NDArray[t.Any] | None, npt.NDArray[t.Any] | None]
             ] = []
             for levelindex in range(level_count):
                 row = fadata.readline().split(maxsplit=4)
@@ -80,9 +73,9 @@ def parse_adata(
 
 def parse_phixsdata(
     phixs_filename: Path | str, ionlist: Collection[tuple[int, int]] | None = None
-) -> dict[tuple[int, int, int], tuple[npt.NDArray[np.floating[t.Any]], npt.NDArray[np.floating[t.Any]]]]:
+) -> dict[tuple[int, int, int], tuple[npt.NDArray[t.Any], npt.NDArray[t.Any]]]:
     firstlevelnumber = 1
-    phixsdict = {}
+    phixsdict: dict[tuple[int, int, int], tuple[npt.NDArray[t.Any], npt.NDArray[t.Any]]] = {}
     with at.zopen(phixs_filename) as fphixs:
         nphixspoints = int(fphixs.readline())
         phixsnuincrement = float(fphixs.readline())
@@ -103,6 +96,7 @@ def parse_phixsdata(
 
             assert upperion_stage == lowerion_stage + 1
 
+            nptargetlist: npt.NDArray[t.Any]
             if upperionlevel >= 0:
                 nptargetlist = np.array([(upperionlevel, 1.0)], dtype=[("level", np.int32), ("fraction", np.float32)])
             else:
@@ -182,8 +176,8 @@ def add_transition_columns(
 
 def get_transitiondata(
     modelpath: str | Path, ionlist: Collection[tuple[int, int]] | None = None, quiet: bool = False
-) -> dict[tuple[int, int], pl.LazyFrame]:
-    """Return a dictionary of transitions."""
+) -> dict[tuple[int, int], pl.DataFrame]:
+    """Return a dictionary of transitions from (Z, ion_stage) to a polars DataFrame."""
     ionlist = set(ionlist) if ionlist else None
     transition_filename = at.firstexisting("transitiondata.txt", folder=modelpath)
 
@@ -191,10 +185,7 @@ def get_transitiondata(
     if not quiet:
         print(f"Reading {transition_filename.relative_to(Path(modelpath).parent)}...")
 
-    transitionsdict = {
-        k: pl.DataFrame(v).lazy()
-        for k, v in at.rustext.read_transitiondata(str(transition_filename), ionlist=ionlist).items()
-    }
+    transitionsdict = at.rustext.read_transitiondata(str(transition_filename), ionlist=ionlist)
 
     if not quiet:
         print(f"  took {time.perf_counter() - time_start:.2f} seconds")
@@ -224,8 +215,6 @@ def get_levels(
 
         phixsdict = parse_phixsdata(phixs_filename, ionlist)
 
-    level_lists = []
-
     class IonTuple(t.NamedTuple):
         Z: int
         ion_stage: int
@@ -234,13 +223,15 @@ def get_levels(
         levels: pl.DataFrame
         transitions: pl.LazyFrame
 
+    level_lists: list[IonTuple] = []
+
     with at.zopen(adatafilename) as fadata:
         if not quiet:
             print(f"Reading {adatafilename.relative_to(Path(modelpath).parent)}")
 
         for Z, ion_stage, level_count, ionisation_energy_ev, dflevels in parse_adata(fadata, phixsdict, ionlist):
             if (Z, ion_stage) in transitionsdict:
-                dftransitions = transitionsdict[Z, ion_stage]
+                dftransitions = transitionsdict[Z, ion_stage].lazy()
                 if derived_transitions_columns is not None:
                     dftransitions = add_transition_columns(dftransitions, dflevels, derived_transitions_columns)
             else:
@@ -248,7 +239,7 @@ def get_levels(
 
             level_lists.append(IonTuple(Z, ion_stage, level_count, ionisation_energy_ev, dflevels, dftransitions))
 
-    return pl.DataFrame(level_lists)
+    return pl.DataFrame(level_lists, orient="row")
 
 
 def parse_recombratefile(frecomb: io.TextIOBase) -> Generator[tuple[int, int, pl.DataFrame]]:

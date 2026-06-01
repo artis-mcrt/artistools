@@ -3,19 +3,25 @@ name: Build and deploy to PyPI/testPyPI
 permissions:
     contents: read
 on:
+    release:
+        types: [published]
     workflow_dispatch:
         inputs:
             deploy-to-pypi:
                 description: Do real deployment to PyPI (not TestPyPI)
                 required: true
                 default: 'false'
+env:
+    MACOSX_DEPLOYMENT_TARGET: 13.0
+    PYO3_USE_ABI3_FORWARD_COMPATIBILITY: 1
+    UV_FROZEN: 1
 
 jobs:
     build_wheels:
         name: Build cp3${{ matrix.python-minor-version }}-${{ matrix.target.os_arch }}
         strategy:
             matrix:
-                target: [{os_arch: manylinux_x86_64, runs-on: ubuntu-24.04}, {os_arch: manylinux_aarch64, runs-on: ubuntu-24.04-arm}, {os_arch: macosx_arm64,
+                target: [{os_arch: manylinux_x86_64, runs-on: ubuntu-latest}, {os_arch: manylinux_aarch64, runs-on: ubuntu-24.04-arm}, {os_arch: macosx_arm64,
                           runs-on: macos-26}]
                 python-minor-version: ['12', '13', '14', 14t]
             fail-fast: false
@@ -23,13 +29,9 @@ jobs:
         env:
             CIBW_ENVIRONMENT_PASS_LINUX: SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS
             CIBW_BUILD: cp3${{ matrix.python-minor-version }}-${{ matrix.target.os_arch }}
-            MACOSX_DEPLOYMENT_TARGET: 13.0
             PYO3_PYTHON: python3.${{ matrix.python-minor-version }}
-
         steps:
             - uses: actions/checkout@v6
-              with:
-                  fetch-depth: 0
 
             - name: Cache cargo and rust build
               uses: actions/cache@v5
@@ -46,15 +48,16 @@ jobs:
                       cibw-rust-target-${{ runner.os }}${{ runner.arch }}-python3.${{ matrix.python-minor-version }}-
                       cibw-rust-target-${{ runner.os }}${{ runner.arch }}-
 
-            - uses: astral-sh/setup-uv@v7
+            - uses: astral-sh/setup-uv@v8.1.0
               with:
                   python-version: 3.${{ matrix.python-minor-version }}
                   enable-cache: false
+                  activate-environment: true
 
             - name: Build wheels
               uses: pypa/cibuildwheel@v3.4
               with:
-                  extras: uv
+                  output-dir: wheelhouse
 
             - uses: actions/upload-artifact@v7
               with:
@@ -63,13 +66,11 @@ jobs:
 
     build_sdist:
         name: Build source distribution
-        runs-on: ubuntu-24.04
+        runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v6
-              with:
-                  fetch-depth: 0
 
-            - uses: astral-sh/setup-uv@v7
+            - uses: astral-sh/setup-uv@v8.1.0
 
             - name: Build sdist
               run: uv build --sdist
@@ -82,13 +83,13 @@ jobs:
     testdeploy:
         name: Test upload to TestPyPI (workflow dispatch only)
         needs: [build_wheels, build_sdist]
-        runs-on: ubuntu-24.04
+        runs-on: ubuntu-latest
         environment:
             name: test
             url: https://test.pypi.org/project/artistools/
         permissions:
             id-token: write
-        if: github.event.inputs.deploy-to-pypi == 'false'
+        if: github.event.inputs.deploy-to-pypi == 'false' && github.event_name != 'release'
         steps:
             - uses: actions/download-artifact@v8
               with:
@@ -106,13 +107,13 @@ jobs:
     deploy:
         name: Upload to PyPI
         needs: [build_wheels, build_sdist]
-        runs-on: ubuntu-24.04
+        runs-on: ubuntu-latest
         environment:
             name: release
             url: https://pypi.org/project/artistools/
         permissions:
             id-token: write
-        if: github.event.inputs.deploy-to-pypi == 'true'
+        if: github.event.inputs.deploy-to-pypi == 'true' || github.event_name == 'release'
         steps:
             - uses: actions/download-artifact@v8
               with:

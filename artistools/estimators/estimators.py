@@ -86,7 +86,7 @@ def get_rankbatch_parquetfile(
     parquetfilename = f"estimbatch{batchindex:02d}_{batch_mpiranks[0]:04d}_{batch_mpiranks[-1]:04d}.out.parquet.tmp"
     parquetfilepath = folderpath / parquetfilename
 
-    textsource_mtime: float | None = None
+    textsource_mtime: float | int | None = None
     with contextlib.suppress(StopIteration):
         textsource_mtime = next(folderpath.glob("estimators_????.out*")).stat().st_mtime
 
@@ -117,7 +117,7 @@ def get_rankbatch_parquetfile(
             flush=True,
         )
 
-        pldf_batch = pl.DataFrame(at.rustext.estimparse(str(folderpath), min(batch_mpiranks), max(batch_mpiranks)))
+        pldf_batch = at.rustext.estimparse(str(folderpath), min(batch_mpiranks), max(batch_mpiranks))
 
         pldf_batch = pldf_batch.with_columns(
             cs.by_name("titeration", "timestep", "modelgridindex", require_all=False).cast(pl.Int32)
@@ -229,9 +229,10 @@ def scan_estimators(
         estimators = at.codecomparison.read_reference_estimators(
             modelpath, timestep=timestep, modelgridindex=modelgridindex
         )
-        return pl.DataFrame([
-            {"timestep": ts, "modelgridindex": mgi, **estimvals} for (ts, mgi), estimvals in estimators.items()
-        ]).lazy()
+        return pl.LazyFrame(
+            [{"timestep": ts, "modelgridindex": mgi, **estimvals} for (ts, mgi), estimvals in estimators.items()],
+            orient="row",
+        )
 
     # print(f" matching cells {match_modelgridindex} and timesteps {match_timestep}")
     mpiranklist = at.get_mpiranklist(modelpath, only_ranks_withgridcells=True)
@@ -348,7 +349,7 @@ def read_estimators(
 
 def get_averageexcitation(
     modelpath: Path | str, modelgridindex: int, timestep: int, atomic_number: int, ion_stage: int, T_exc: float
-) -> float | None:
+) -> float | int | None:
     dfnltepops = at.nltepops.read_files(modelpath, modelgridindex=modelgridindex, timestep=timestep).to_pandas(
         use_pyarrow_extension_array=True
     )

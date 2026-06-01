@@ -142,7 +142,7 @@ def plot_deposition_thermalisation(
             color=color_alpha,
         )
 
-        ejecta_ke_erg: float = dfmodel.select("kinetic_en_erg").sum().collect().item()
+        ejecta_ke_erg: float | int = dfmodel.select("kinetic_en_erg").sum().collect().item()
 
         print(f"  ejecta kinetic energy: {ejecta_ke_erg / 1e7:.2e} [J] = {ejecta_ke_erg:.2e} [erg]")
 
@@ -310,41 +310,33 @@ def plot_artis_lightcurve(
             dirbins,
             pl.collect_all(
                 at.misc.df_filter_minmax_bounded(
-                    lcdataframes[dirbin]
-                    .lazy()
-                    .select(
-                        cs.by_name(["time", "lum"], require_all=True)
-                        | cs.by_name("packetcount", require_all=False)
-                        | cs.by_name(["lum_cmf"] if args.plotcmf else [])
-                    ),
-                    colname="time",
-                    minval=args.timemin,
-                    maxval=args.timemax,
+                    lcdataframes[dirbin], colname="time_days", minval=args.timemin, maxval=args.timemax
                 )
                 for dirbin in dirbins
             ),
             strict=True,
         )
     )
-    lctimemin = lcdataframes[dirbins[0]].select(pl.min("time")).item()
-    lctimemax = lcdataframes[dirbins[0]].select(pl.max("time")).item()
+    lctimemin = lcdataframes[dirbins[0]].select(pl.min("time_days")).item()
+    lctimemax = lcdataframes[dirbins[0]].select(pl.max("time_days")).item()
     assert isinstance(lctimemin, float)
     assert isinstance(lctimemax, float)
 
     print(f" range of light curve: {lctimemin:.2f} to {lctimemax:.2f} days")
     try:
         nts_last, validrange_start_days, validrange_end_days = at.get_escaped_arrivalrange(modelpath)
-        if validrange_start_days is not None and validrange_end_days is not None:
-            str_valid_range = f"{validrange_start_days:.2f} to {validrange_end_days:.2f} days"
-        else:
-            str_valid_range = f"{validrange_start_days} to {validrange_end_days} days"
-        print(f" range of validity (last timestep {nts_last}): {str_valid_range}")
     except FileNotFoundError:
         print(
             " range of validity: could not determine due to missing files "
             "(requires deposition.out, input.txt, model.txt)"
         )
         nts_last, validrange_start_days, validrange_end_days = None, -math.inf, math.inf
+    else:
+        if validrange_start_days is not None and validrange_end_days is not None:
+            str_valid_range = f"{validrange_start_days:.2f} to {validrange_end_days:.2f} days"
+        else:
+            str_valid_range = f"{validrange_start_days} to {validrange_end_days} days"
+        print(f" range of validity (last timestep {nts_last}): {str_valid_range}")
 
     if any(dirbin != -1 for dirbin in dirbins):
         print_theta_phi_definitions()
@@ -360,6 +352,14 @@ def plot_artis_lightcurve(
             print(f"   \t{npkts_selected:.2e} packets")
         else:
             print()
+
+        filterfunc = at.get_filterfunc(args)
+        if filterfunc is not None:
+            lcdata = lcdata.with_columns(
+                (cs.starts_with("luminosity_") | cs.by_name("mag")).map_batches(
+                    filterfunc, return_dtype=pl.self_dtype()
+                )
+            )
 
         label_with_tags: str | None = linelabel
         if dirbin != -1:
@@ -384,22 +384,13 @@ def plot_artis_lightcurve(
         if pellet_nucname is not None:
             plotkwargs["color"] = None
 
-        filterfunc = at.get_filterfunc(args)
-        if filterfunc is not None:
-            lcdata = lcdata.with_columns(pl.col("lum").map_batches(filterfunc, return_dtype=pl.self_dtype()))
-
-        if not args.Lsun or args.magnitude:
-            # convert luminosity from Lsun to erg/s
-            lcdata = lcdata.with_columns(pl.col("lum") * Lsun_to_erg_per_s)
-            if "lum_cmf" in lcdata.columns:
-                lcdata = lcdata.with_columns(pl.col("lum_cmf") * Lsun_to_erg_per_s)
-
         if args.magnitude:
             # convert to bol magnitude
-            lcdata["mag"] = 4.74 - (2.5 * np.log10(lcdata["lum"] / Lsun_to_erg_per_s))
             ycolumn = "mag"
+        elif args.Lsun:
+            ycolumn = "luminosity_Lsun"
         else:
-            ycolumn = "lum"
+            ycolumn = "luminosity_erg/s"
 
         if (
             args.average_over_phi_angle
@@ -409,6 +400,13 @@ def plot_artis_lightcurve(
             plotkwargs["color"] = scaledmap.to_rgba(colorindex)  # Update colours for light curves averaged over phi
             plotkwargs["zorder"] = 10
 
+        lcdata_tmin = lcdata.select(pl.col("time_days").min()).item()
+        lcdata_tmax = lcdata.select(pl.col("time_days").max()).item()
+        katz_integral = np.trapezoid(
+            np.nan_to_num(lcdata["luminosity_erg/s"], nan=0.0) * (lcdata["time_days"] * 86400),
+            x=lcdata["time_days"] * 86400,
+        )
+        print(f" Katz integral L t dt ({lcdata_tmin:.2f} to {lcdata_tmax:.2f} days): {katz_integral:.3e} [erg s]")
         # show the parts of the light curve that are outside the valid arrival range as partially transparent
         if validrange_start_days is None or validrange_end_days is None:
             # entire range is invalid
@@ -416,42 +414,52 @@ def plot_artis_lightcurve(
             lcdata_after_valid = pl.DataFrame(schema=lcdata.schema)
             lcdata_valid = pl.DataFrame(schema=lcdata.schema)
         else:
-            lcdata_valid = lcdata.filter(pl.col("time").is_between(validrange_start_days, validrange_end_days))
+            lcdata_valid = lcdata.filter(pl.col("time_days").is_between(validrange_start_days, validrange_end_days))
             if lcdata_valid.is_empty():
                 # valid range doesn't contain any data points
                 lcdata_before_valid = lcdata
                 lcdata_after_valid = pl.DataFrame(schema=lcdata.schema)
             else:
-                lcdata_before_valid = lcdata.filter(pl.col("time") <= lcdata_valid["time"].min())
-                lcdata_after_valid = lcdata.filter(pl.col("time") >= lcdata_valid["time"].max())
+                lcdata_before_valid = lcdata.filter(pl.col("time_days") <= lcdata_valid["time_days"].min())
+                lcdata_after_valid = lcdata.filter(pl.col("time_days") >= lcdata_valid["time_days"].max())
 
         if args.plotinvalidpart:
             plotkwargs_invalidrange = plotkwargs.copy()
             plotkwargs_invalidrange.update({"label": None, "alpha": 0.5})
-            axis.plot(lcdata_before_valid["time"], lcdata_before_valid[ycolumn], **plotkwargs_invalidrange)
-            axis.plot(lcdata_after_valid["time"], lcdata_after_valid[ycolumn], **plotkwargs_invalidrange)
+            axis.plot(lcdata_before_valid["time_days"], lcdata_before_valid[ycolumn], **plotkwargs_invalidrange)
+            axis.plot(lcdata_after_valid["time_days"], lcdata_after_valid[ycolumn], **plotkwargs_invalidrange)
         elif lcdata_valid.is_empty():
             print(" WARNING: No data points in valid range")
 
-        # lum column is erg/s
-        energy_released = abs(np.trapezoid(np.nan_to_num(lcdata_valid["lum"], nan=0.0), x=lcdata_valid["time"] * 86400))
-        lcdatamin = lcdata_valid.select(pl.min("time")).item()
-        lcdatamax = lcdata_valid.select(pl.max("time")).item()
-        if lcdatamin is not None and lcdatamax is not None:
-            print(f" Integrated luminosity ({lcdatamin:.1f} to {lcdatamax:.1f} days): {energy_released:.3e} [erg]")
+        energy_released = abs(
+            np.trapezoid(np.nan_to_num(lcdata_valid["luminosity_erg/s"], nan=0.0), x=lcdata_valid["time_days"] * 86400)
+        )
 
-        axis.plot(lcdata_valid["time"], lcdata_valid[ycolumn], label=label_with_tags, **plotkwargs)
+        lcdata_valid_tmin = lcdata_valid.select(pl.col("time_days").min()).item()
+        lcdata_valid_tmax = lcdata_valid.select(pl.col("time_days").max()).item()
+        if lcdata_valid_tmin is not None and lcdata_valid_tmax is not None:
+            print(
+                f" Integrated luminosity ({lcdata_valid_tmin:.2f} to {lcdata_valid_tmax:.2f} days): {energy_released:.3e} [erg]"
+            )
+
+        axis.plot(lcdata_valid["time_days"], lcdata_valid[ycolumn], label=label_with_tags, **plotkwargs)
         if args.print_data:
-            print(lcdata[["time", ycolumn, "lum_cmf"]])
+            print(lcdata)
 
         if args.plotcmf:
+            assert not args.magnitude, "Cannot plot cmf luminosity if magnitude is selected"
             plotkwargs["linewidth"] = 1
             if not linelabel_is_custom:
                 assert label_with_tags is not None
                 label_with_tags += " (cmf)"
             plotkwargs["linestyle"] = "dashed"
             # plotkwargs['color'] = 'tab:orange'
-            axis.plot(lcdata["time"], lcdata["lum_cmf"], label=label_with_tags, **plotkwargs)
+            axis.plot(
+                lcdata["time_days"],
+                lcdata[ycolumn.replace("luminosity_", "luminosity_cmf_")],
+                label=label_with_tags,
+                **plotkwargs,
+            )
 
     if args.plotdeposition or args.plotthermalisation:
         plot_deposition_thermalisation(
@@ -516,7 +524,9 @@ def make_lightcurve_plot(
 
     # take any specified colours out of the cycle
     colors = [
-        color for i, color in enumerate(plt.rcParams["axes.prop_cycle"].by_key()["color"]) if f"C{i}" not in args.color
+        color
+        for i, color in enumerate(plt.rcParams["axes.prop_cycle"].by_key()["color"])
+        if f"C{i}" not in args.color and color not in args.color
     ]
     axis.set_prop_cycle(color=colors)
     reflightcurveindex = 0

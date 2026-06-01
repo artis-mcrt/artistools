@@ -1,15 +1,13 @@
 ---
 name: Dependabot auto-merge
 on: pull_request
-
 permissions:
     contents: write
     pull-requests: write
-
 jobs:
     dependabot:
         runs-on: ubuntu-latest
-        if: github.event.pull_request.user.login == 'dependabot[bot]'
+        if: github.event.pull_request.user.login == 'dependabot[bot]' || github.event.pull_request.user.login == 'pre-commit-ci'
         steps:
             - name: Enable auto-merge for Dependabot PRs
               run: gh pr merge --auto --merge "$PR_URL"

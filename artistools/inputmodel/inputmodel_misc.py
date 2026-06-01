@@ -33,19 +33,19 @@ def read_modelfile_text(
     filename: Path | str, printwarningsonly: bool = False
 ) -> tuple[pl.LazyFrame, dict[t.Any, t.Any]]:
     """Read an artis model.txt file containing cell velocities, density, and abundances of radioactive nuclides."""
-    onelinepercellformat = None
-
-    modelmeta: dict[str, t.Any] = {"headercommentlines": []}
-    xmax_tmodel: float = 0.0
-    ncoordgridx: int = 0
-    ncoordgridy: int = 0
-    ncoordgridz: int = 0
-
     if not printwarningsonly:
         print(f"Reading {filename}")
 
-    numheaderrows = 0
     with zopen(filename) as fmodel:
+        onelinepercellformat: bool | None = None
+
+        modelmeta: dict[str, t.Any] = {"headercommentlines": []}
+        xmax_tmodel: float | int = 0.0
+        ncoordgridx: int = 0
+        ncoordgridy: int = 0
+        ncoordgridz: int = 0
+
+        numheaderrows = 0
         line = "#"
         while line.startswith("#"):
             line = fmodel.readline()
@@ -73,6 +73,13 @@ def read_modelfile_text(
         # if the next line is a single float then the model is 2D or 3D (vmax)
         try:
             modelmeta["vmax_cmps"] = float(line)  # velocity max in cm/s
+        except ValueError:
+            assert modelmeta.get("dimensions", -1) != 2, "2D model should have a vmax line here"
+            if "dimensions" not in modelmeta:
+                if not printwarningsonly:
+                    print(f"  detected 1D model file with {npts_model} radial zones")
+                modelmeta["dimensions"] = 1
+        else:
             xmax_tmodel = modelmeta["vmax_cmps"] * t_model_init_seconds  # xmax = ymax = zmax
             numheaderrows += 1
             if "dimensions" not in modelmeta:  # not already detected as 2D
@@ -93,13 +100,6 @@ def read_modelfile_text(
 
             line = fmodel.readline()
 
-        except ValueError:
-            assert modelmeta.get("dimensions", -1) != 2, "2D model should have a vmax line here"
-            if "dimensions" not in modelmeta:
-                if not printwarningsonly:
-                    print(f"  detected 1D model file with {npts_model} radial zones")
-                modelmeta["dimensions"] = 1
-
         columns = None
         if line.startswith("#"):
             numheaderrows += 1
@@ -111,36 +111,36 @@ def read_modelfile_text(
         data_line_odd = fmodel.readline()
         ncols_line_odd = len(data_line_odd.split())
 
-        if columns is None:
-            columns = get_standard_columns(modelmeta["dimensions"], includenico57=True, pos_unknown=True)
-            # last two abundances are optional
-            assert columns is not None
-            if ncols_line_even == ncols_line_odd and (ncols_line_even + ncols_line_odd) > len(columns):
-                # one line per cell format
-                ncols_line_odd = 0
-
-            assert len(columns) in {ncols_line_even + ncols_line_odd, ncols_line_even + ncols_line_odd + 2}
-            columns = columns[: ncols_line_even + ncols_line_odd]
-
+    if columns is None:
+        columns = get_standard_columns(modelmeta["dimensions"], includenico57=True, pos_unknown=True)
+        # last two abundances are optional
         assert columns is not None
-        if ncols_line_even == len(columns):
-            if not printwarningsonly:
-                print("  model file is one line per cell")
+        if ncols_line_even == ncols_line_odd and (ncols_line_even + ncols_line_odd) > len(columns):
+            # one line per cell format
             ncols_line_odd = 0
-            onelinepercellformat = True
-        else:
-            if not printwarningsonly:
-                print("  model file format is two lines per cell")
-            # columns split over two lines
-            assert (ncols_line_even + ncols_line_odd) == len(columns)
-            onelinepercellformat = False
+
+        assert len(columns) in {ncols_line_even + ncols_line_odd, ncols_line_even + ncols_line_odd + 2}
+        columns = columns[: ncols_line_even + ncols_line_odd]
+
+    assert columns is not None
+    if ncols_line_even == len(columns):
+        if not printwarningsonly:
+            print("  model file is one line per cell")
+        ncols_line_odd = 0
+        onelinepercellformat = True
+    else:
+        if not printwarningsonly:
+            print("  model file format is two lines per cell")
+        # columns split over two lines
+        assert (ncols_line_even + ncols_line_odd) == len(columns)
+        onelinepercellformat = False
 
     if onelinepercellformat and "  " not in data_line_even and "  " not in data_line_odd:
         if not printwarningsonly:
             print("  using fast method polars.read_csv (requires one line per cell and single space delimiters)")
 
         dfmodel = pl.read_csv(
-            zopenpl(filename),
+            filename,
             separator=" ",
             new_columns=columns,
             n_rows=npts_model,
@@ -151,22 +151,21 @@ def read_modelfile_text(
         ).lazy()
 
     else:
-        skiprows: list[int] | int = (
-            numheaderrows
-            if onelinepercellformat
-            else [
-                x
-                for x in range(numheaderrows + npts_model * 2)
-                if x < numheaderrows or (x - numheaderrows - 1) % 2 == 0
-            ]
-        )
+
+        def skiprows(x: int) -> bool:
+            if x < numheaderrows:
+                return True
+            if onelinepercellformat:
+                return False
+            # only read the even lines (0-based) if two lines per cell format
+            return (x - numheaderrows) % 2 == 1
 
         dtypes: defaultdict[str, str] = defaultdict(lambda: "float32[pyarrow]")
         dtypes["inputcellid"] = "int32[pyarrow]"
 
         # each cell takes up two lines in the model file
         dfmodelpd = pd.read_csv(
-            zopen(filename, mode="r"),
+            filename,
             sep=r"\s+",
             engine="c",
             header=None,
@@ -180,17 +179,12 @@ def read_modelfile_text(
 
         if ncols_line_odd > 0 and not onelinepercellformat:
             # read in the odd rows and merge dataframes
-            skipevenrows = [
-                x
-                for x in range(numheaderrows + npts_model * 2)
-                if x < numheaderrows or (x - numheaderrows - 1) % 2 == 1
-            ]
             dfmodeloddlines = pd.read_csv(
-                zopen(filename, mode="r"),
+                filename,
                 sep=r"\s+",
                 engine="c",
                 header=None,
-                skiprows=skipevenrows,
+                skiprows=lambda i: i < numheaderrows or (i - numheaderrows) % 2 == 0,
                 names=columns[ncols_line_even:],
                 nrows=npts_model,
                 dtype=dtypes,
@@ -203,11 +197,11 @@ def read_modelfile_text(
         if len(dfmodelpd) > npts_model:
             dfmodelpd = dfmodelpd.iloc[:npts_model]
 
-        assert len(dfmodelpd) == npts_model
-
         dfmodelpd.index.name = "cellid"
 
         dfmodel = pl.from_pandas(dfmodelpd).lazy()
+
+    assert dfmodel.select(pl.len()).collect().item() == npts_model
 
     dfmodel = dfmodel.sort("inputcellid").rename({"velocity_outer": "vel_r_max_kmps", "cellYe": "Ye"}, strict=False)
 
@@ -267,7 +261,7 @@ def read_modelfile_text(
 
         else:
 
-            def vectormatch(vec1: list[float], vec2: list[float]) -> bool:
+            def vectormatch(vec1: Sequence[float], vec2: Sequence[float]) -> bool:
                 xclose = np.isclose(vec1[0], vec2[0], atol=wid_init_x * 0.05)
                 yclose = np.isclose(vec1[1], vec2[1], atol=wid_init_y * 0.05)
                 zclose = np.isclose(vec1[2], vec2[2], atol=wid_init_z * 0.05)
@@ -288,7 +282,13 @@ def read_modelfile_text(
                 (ncoordgridx - 1) * (ncoordgridy - 1) * (ncoordgridz - 1),
             ]
 
-            for modelgridindex in indexlist:
+            pos3_in_list = (
+                dfmodel
+                .select(cs.by_name("inputpos_a", "inputpos_b", "inputpos_c").gather(indexlist).explode())
+                .collect()
+                .iter_rows()
+            )
+            for modelgridindex, pos3_in in zip(indexlist, pos3_in_list, strict=True):
                 xindex = modelgridindex % ncoordgridx
                 yindex = (modelgridindex // ncoordgridx) % ncoordgridy
                 zindex = (modelgridindex // (ncoordgridx * ncoordgridy)) % ncoordgridz
@@ -299,18 +299,16 @@ def read_modelfile_text(
                 pos_y_mid = -xmax_tmodel + (yindex + 0.5) * wid_init_y
                 pos_z_mid = -xmax_tmodel + (zindex + 0.5) * wid_init_z
 
-                pos3_in = list(dfmodel.select(["inputpos_a", "inputpos_b", "inputpos_c"]).collect().row(modelgridindex))
-
-                if not vectormatch(pos3_in, [pos_x_min, pos_y_min, pos_z_min]):
+                if not vectormatch(pos3_in, (pos_x_min, pos_y_min, pos_z_min)):
                     matched_pos_xyz_min = False
 
-                if not vectormatch(pos3_in, [pos_z_min, pos_y_min, pos_x_min]):
+                if not vectormatch(pos3_in, (pos_z_min, pos_y_min, pos_x_min)):
                     matched_pos_zyx_min = False
 
-                if not vectormatch(pos3_in, [pos_x_mid, pos_y_mid, pos_z_mid]):
+                if not vectormatch(pos3_in, (pos_x_mid, pos_y_mid, pos_z_mid)):
                     matched_pos_xyz_mid = False
 
-                if not vectormatch(pos3_in, [pos_z_mid, pos_y_mid, pos_x_mid]):
+                if not vectormatch(pos3_in, (pos_z_mid, pos_y_mid, pos_x_mid)):
                     matched_pos_zyx_mid = False
 
             assert sum((matched_pos_xyz_min, matched_pos_zyx_min, matched_pos_xyz_mid, matched_pos_zyx_mid)) == 1, (
@@ -420,7 +418,7 @@ def get_modeldata(
                 tempfile.mkstemp(dir=modelpath, prefix=f"{parquetfilepath.name}.partial", suffix=".tmp")[1]
             )
             modelmeta_json = json.dumps(modelmeta)
-            dfmodel.collect().write_parquet(
+            dfmodel.sink_parquet(
                 partialparquetfilepath,
                 compression="zstd",
                 compression_level=8,
@@ -458,7 +456,7 @@ def get_modeldata(
 
 
 def get_empty_3d_model(
-    ncoordgrid: int, vmax: float, t_model_init_days: float, includenico57: bool = False
+    ncoordgrid: int, vmax: float | int, t_model_init_days: float | int, includenico57: bool = False
 ) -> tuple[pl.LazyFrame, dict[str, t.Any]]:
     xmax = vmax * t_model_init_days * 86400.0
 
@@ -802,7 +800,7 @@ def get_standard_columns(
 def save_modeldata(
     dfmodel: pl.LazyFrame | pl.DataFrame,
     outpath: Path | str | None = None,
-    vmax: float | None = None,
+    vmax: float | int | None = None,
     headercommentlines: list[str] | None = None,
     modelmeta: dict[str, t.Any] | None = None,
     twolinespercell: bool = False,
@@ -1376,8 +1374,8 @@ def dimension_reduce_model(
 
 def scale_model_to_time(
     dfmodel: pd.DataFrame,
-    targetmodeltime_days: float,
-    t_model_days: float | None = None,
+    targetmodeltime_days: float | int,
+    t_model_days: float | int | None = None,
     modelmeta: dict[str, t.Any] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, t.Any]]:
     """Homologously expand model to targetmodeltime_days by reducing densities and adjusting cell positions."""

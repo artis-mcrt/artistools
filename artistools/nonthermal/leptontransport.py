@@ -11,7 +11,7 @@ CONST_C = 299792458  # [m / s]
 CONST_KB = 8.617333262145e-5  # Boltzmann constant [eV / K]
 
 
-def calculate_dE_on_dx_plasma(energy: float, n_e_free: float) -> float:
+def calculate_dE_on_dx_plasma(energy: float | int, n_e_free: float) -> float:
     # Barnes et al. (2016) eq 4
     # electron loss rate to plasma
     # in [J / m] (will always be negative)
@@ -27,7 +27,7 @@ def calculate_dE_on_dx_plasma(energy: float, n_e_free: float) -> float:
     T_K = 11604
     T_mev = CONST_KB * T_K * 1e-6  # temperature in [MeV]
 
-    de_on_dt: float = (
+    de_on_dt: float | int = (
         1e6
         * CONST_EV_IN_J
         * (7e-15 * (energy_mev**-0.5) * (n_e_free / 1e6) * 10 * (1.0 - 3.9 / 7.7 * T_mev / energy_mev))
@@ -45,7 +45,7 @@ def calculate_dE_on_dx_plasma(energy: float, n_e_free: float) -> float:
     return -de_on_dx
 
 
-def calculate_dE_on_dx_ionexc(energy: float, n_e_bound: float) -> float:
+def calculate_dE_on_dx_ionexc(energy: float | int, n_e_bound: float) -> float:
     # Barnes et al. (2016) electron loss rate to ionisation and excitation
     # in [J / m] (will always be negative)
 

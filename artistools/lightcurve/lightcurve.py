@@ -12,6 +12,7 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import polars as pl
+import polars.selectors as cs
 
 import artistools as at
 from artistools.constants import Lsun_to_erg_per_s
@@ -21,19 +22,23 @@ def readfile(filepath: str | Path) -> dict[int, pl.LazyFrame]:
     """Read an ARTIS light curve file."""
     print(f"Reading {filepath}")
     lcdata: dict[int, pl.LazyFrame] = {}
+    lzdf = pl.scan_csv(
+        at.zopenpl(filepath),
+        separator=" ",
+        has_header=False,
+        new_columns=["time_days", "luminosity_Lsun", "luminosity_cmf_Lsun"],
+    ).with_columns(
+        (4.74 - (2.5 * pl.col("luminosity_Lsun").log10())).alias("mag"),
+        (cs.ends_with("_Lsun") * Lsun_to_erg_per_s).name.replace("_Lsun", "_erg/s"),
+    )
     if "_res" in Path(filepath).stem:
         # get a dict of dfs with light curves at each viewing direction bin
-        lcdata_res = pl.scan_csv(
-            at.zopenpl(filepath), separator=" ", has_header=False, new_columns=["time", "lum", "lum_cmf"]
-        )
-        lcdata = at.split_multitable_dataframe(lcdata_res)
+        lcdata = at.split_multitable_dataframe(lzdf)
     else:
-        lcdata[-1] = pl.scan_csv(
-            at.zopenpl(filepath), separator=" ", has_header=False, new_columns=["time", "lum", "lum_cmf"]
-        )
+        lcdata[-1] = lzdf
 
         # if the light_curve.out file repeats x values, keep the first half only
-        if lcdata[-1].select(pl.col("time").n_unique() < pl.len()).collect().item():
+        if lcdata[-1].select(pl.col("time_days").n_unique() < pl.len()).collect().item():
             lcdata[-1] = lcdata[-1].select(pl.all().slice(0, pl.len() // 2))
 
     return lcdata
@@ -49,8 +54,8 @@ def get_from_packets(
     directionbins_are_vpkt_observers: bool = False,
     pellet_nucname: str | None = None,
     use_pellet_decay_time: bool = False,
-    timedaysmin: float | None = None,
-    timedaysmax: float | None = None,
+    timedaysmin: float | int | None = None,
+    timedaysmax: float | int | None = None,
 ) -> dict[int, pl.LazyFrame]:
     """Get ARTIS luminosity vs time from packets files."""
     if escape_type not in {"TYPE_RPKT", "TYPE_GAMMA"}:
@@ -87,20 +92,17 @@ def get_from_packets(
             (pl.col("escape_time") * escapesurfacegamma / 86400.0).alias("t_arrive_cmf_d")
         ])
 
-    try:
-        if pellet_nucname is not None:
-            atomic_number = at.get_atomic_number(pellet_nucname)
-            if at.get_elsymbol(atomic_number) == pellet_nucname:
-                expr = pl.col("atomic_number") == atomic_number
-            else:
-                expr = pl.col("nucname") == pellet_nucname
-            dfpackets = dfpackets.filter(
-                pl.col("pellet_nucindex").is_in(
-                    at.get_nuclides(modelpath=modelpath).filter(expr).select("pellet_nucindex").collect().to_series()
-                )
+    if pellet_nucname is not None:
+        atomic_number = at.get_atomic_number(pellet_nucname)
+        if at.get_elsymbol(atomic_number) == pellet_nucname:
+            expr = pl.col("atomic_number") == atomic_number
+        else:
+            expr = pl.col("nucname") == pellet_nucname
+        dfpackets = dfpackets.filter(
+            pl.col("pellet_nucindex").is_in(
+                at.get_nuclides(modelpath=modelpath).filter(expr).select("pellet_nucindex").collect().to_series()
             )
-    except FileNotFoundError:
-        assert pellet_nucname is None
+        )
 
     if use_pellet_decay_time:
         assert not directionbins_are_vpkt_observers
@@ -142,7 +144,7 @@ def get_from_packets(
             .rename({"count": "packetcount"})
             .join(dftimesteps_selected.select("timestep", "twidth_days", "tmid_days").lazy(), how="left", on="timestep")
             .with_columns(
-                lum=(
+                luminosity_Lsun=(
                     pl.col("e_rf_sum")
                     / nprocs_read
                     * solidanglefactor
@@ -164,7 +166,7 @@ def get_from_packets(
                     on="timestep",
                 )
                 .with_columns(
-                    lum_cmf=pl.col("e_cmf_sum")
+                    luminosity_cmf_Lsun=pl.col("e_cmf_sum")
                     / nprocs_read
                     * solidanglefactor
                     / escapesurfacegamma
@@ -174,7 +176,15 @@ def get_from_packets(
                 .drop("e_cmf_sum")
             )
 
-        lcdata[dirbin] = lcdata[dirbin].rename({"tmid_days": "time"}).drop("twidth_days")
+        lcdata[dirbin] = (
+            lcdata[dirbin]
+            .rename({"tmid_days": "time_days"})
+            .drop("twidth_days")
+            .with_columns(
+                (4.74 - (2.5 * pl.col("luminosity_Lsun").log10())).alias("mag"),
+                (cs.ends_with("_Lsun") * Lsun_to_erg_per_s).name.replace("_Lsun", "_erg/s"),
+            )
+        )
 
     return lcdata
 
@@ -267,7 +277,7 @@ def generate_band_lightcurve_data(
                 )
 
                 if len(wavelength_from_spectrum) > len(wavefilter):
-                    interpolate_fn = interp1d(wavefilter, transmission, bounds_error=False, fill_value=0.0)  # pyrefly: ignore[bad-argument-type]
+                    interpolate_fn = interp1d(x=wavefilter, y=transmission, bounds_error=False, fill_value=0.0)  # type: ignore[arg-type] # pyright: ignore[reportArgumentType] # pyrefly: ignore [bad-argument-type]
                     wavefilter = np.linspace(
                         np.min(wavelength_from_spectrum),
                         int(np.max(wavelength_from_spectrum)),
@@ -279,9 +289,9 @@ def generate_band_lightcurve_data(
                     wavelength_from_spectrum = np.linspace(wavefilter_min, wavefilter_max, len(wavefilter))
                     flux = interpolate_fn(wavelength_from_spectrum)
 
-                weighted_flux_obs = abs(np.trapezoid(flux * transmission, wavelength_from_spectrum))
+                weighted_flux_obs = abs(np.trapezoid(flux * transmission, wavelength_from_spectrum))  # pyright: ignore[reportArgumentType]
                 assert isinstance(weighted_flux_obs, float)
-                phot_filtobs_sn: float = (
+                phot_filtobs_sn: float | int = (
                     0.0 if weighted_flux_obs == 0.0 else -2.5 * np.log10(weighted_flux_obs / zeropointenergyflux)
                 )
 
@@ -334,7 +344,7 @@ def bolometric_magnitude(
 
 def get_filter_data(
     filterdir: Path | str, filter_name: str
-) -> tuple[float, npt.NDArray[np.floating], npt.NDArray[np.floating], float, float]:
+) -> tuple[float, npt.NDArray[np.floating], npt.NDArray[np.floating], float, int]:
     """Filter data in 'data/filters' taken from https://github.com/cinserra/S3/tree/master/src/s3/metadata."""
     with Path(filterdir, f"{filter_name}.txt").open("r", encoding="utf-8") as filter_metadata:  # definition of the file
         line_in_filter_metadata = filter_metadata.readlines()  # list of lines
@@ -342,7 +352,8 @@ def get_filter_data(
     zeropointenergyflux = float(line_in_filter_metadata[0])
     # zero point in energy flux (erg/cm^2/s)
 
-    wavefilter, transmission = [], []
+    wavefilter: list[float] = []
+    transmission: list[float] = []
     for row in line_in_filter_metadata[4:]:
         # lines where the wave and transmission are stored
         wavefilter.append(float(row.split()[0]))
@@ -357,9 +368,9 @@ def get_filter_data(
 def get_spectrum_in_filter_range(
     modelpath: Path | str,
     timestep: int,
-    time: float,
-    wavefilter_min: float,
-    wavefilter_max: float,
+    time: float | int,
+    wavefilter_min: float | int,
+    wavefilter_max: float | int,
     angle: int = -1,
     spectrum: pd.DataFrame | None = None,
     args: argparse.Namespace | None = None,

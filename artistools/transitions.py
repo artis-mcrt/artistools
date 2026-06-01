@@ -103,11 +103,11 @@ def get_nist_transitions(filename: Path | str) -> pd.DataFrame:
 
 def generate_ion_spectrum(
     transitions: pd.DataFrame,
-    xvalues: npt.NDArray[np.floating],
+    xvalues: npt.NDArray[np.floating] | npt.NDArray[np.integer],
     popcolumn: str,
-    plot_resolution: float,
+    plot_resolution: float | int,
     args: argparse.Namespace,
-) -> npt.NDArray[np.floating[t.Any]]:
+) -> npt.NDArray[np.floating]:
     yvalues = np.zeros(len(xvalues))
 
     # iterate over lines
@@ -131,14 +131,14 @@ def generate_ion_spectrum(
 
 
 def make_plot(
-    xvalues: npt.NDArray[np.floating],
+    xvalues: npt.NDArray[np.floating] | npt.NDArray[np.integer],
     yvalues: npt.NDArray[np.floating],
     temperature_list: list[str],
     vardict: dict[str, float],
     ionlist: Sequence[IonTuple],
     ionpopdict: dict[IonTuple, float],
-    xmin: float,
-    xmax: float,
+    xmin: float | int,
+    xmax: float | int,
     figure_title: str,
     outputfilename: str,
 ) -> None:
@@ -216,7 +216,11 @@ def make_plot(
 
 
 def add_upper_lte_pop(
-    dftransitions: pl.DataFrame, T_exc: float, ionpop: float, ltepartfunc: float, columnname: str | None = None
+    dftransitions: pl.DataFrame,
+    T_exc: float | int,
+    ionpop: float | int,
+    ltepartfunc: float | int,
+    columnname: str | None = None,
 ) -> pl.DataFrame:
     K_B = 8.617333262145179e-05  # eV / K
     scalefactor = ionpop / ltepartfunc

@@ -18,7 +18,6 @@ import polars.selectors as cs
 
 import artistools.constants as const
 import artistools.packets as atpackets
-from artistools.commands import get_path
 from artistools.misc import average_direction_bins
 from artistools.misc import firstexisting
 from artistools.misc import get_bflist
@@ -46,7 +45,7 @@ class FluxContributionTuple(t.NamedTuple):
     color: t.Any
 
 
-def timeshift_fluxscale_co56law(scaletoreftime: float | None, spectime: float) -> float:
+def timeshift_fluxscale_co56law(scaletoreftime: float | int | None, spectime: float) -> float:
     if scaletoreftime is not None:
         # Co56 decay flux scaling
         assert spectime > 150
@@ -56,7 +55,7 @@ def timeshift_fluxscale_co56law(scaletoreftime: float | None, spectime: float) -
 
 
 def get_dfspectrum_x_y_with_units(
-    dfspectrum: pl.DataFrame | pl.LazyFrame, xunit: str, yvariable: str, fluxdistance_mpc: float
+    dfspectrum: pl.DataFrame | pl.LazyFrame, xunit: str, yvariable: str, fluxdistance_mpc: float | int
 ) -> pl.LazyFrame:
     h_ev_s = 4.1356677e-15  # Planck's constant [eV s]
     from artistools.constants import H_erg_s
@@ -69,25 +68,30 @@ def get_dfspectrum_x_y_with_units(
     if "f_nu" not in dfspectrum.collect_schema().names():
         dfspectrum = dfspectrum.with_columns(f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu")))
 
+    # set dflux_on_dx_onempc in units of [erg/s/cm^2/xunit] at 1 Mpc distance
     match xunit.lower():
         case "angstroms":
-            dfspectrum = dfspectrum.with_columns(x=pl.col("lambda_angstroms"), yflux=pl.col("f_lambda"))
+            dfspectrum = dfspectrum.with_columns(x=pl.col("lambda_angstroms"), dflux_on_dx_onempc=pl.col("f_lambda"))
 
         case "nm":
-            dfspectrum = dfspectrum.with_columns(x=pl.col("lambda_angstroms") / 10, yflux=pl.col("f_lambda") * 10)
+            dfspectrum = dfspectrum.with_columns(
+                x=pl.col("lambda_angstroms") / 10, dflux_on_dx_onempc=pl.col("f_lambda") * 10
+            )
 
         case "micron":
-            dfspectrum = dfspectrum.with_columns(x=pl.col("lambda_angstroms") / 10000, yflux=pl.col("f_lambda") * 10000)
+            dfspectrum = dfspectrum.with_columns(
+                x=pl.col("lambda_angstroms") / 10000, dflux_on_dx_onempc=pl.col("f_lambda") * 10000
+            )
 
         case "hz":
-            dfspectrum = dfspectrum.with_columns(x=pl.col("nu"), yflux=pl.col("f_nu"))
+            dfspectrum = dfspectrum.with_columns(x=pl.col("nu"), dflux_on_dx_onempc=pl.col("f_nu"))
 
         case "erg":
             dfspectrum = (
                 dfspectrum
                 .with_columns(en_erg=H_erg_s * pl.col("nu"))
                 .with_columns(f_en_erg=pl.col("f_nu") * pl.col("nu") / pl.col("en_erg"))
-                .with_columns(x=pl.col("en_erg"), yflux=pl.col("f_en_erg"))
+                .with_columns(x=pl.col("en_erg"), dflux_on_dx_onempc=pl.col("f_en_erg"))
             )
 
         case "ev":
@@ -95,7 +99,7 @@ def get_dfspectrum_x_y_with_units(
                 dfspectrum
                 .with_columns(en_ev=h_ev_s * pl.col("nu"))
                 .with_columns(f_en_ev=pl.col("f_nu") * pl.col("nu") / pl.col("en_ev"))
-                .with_columns(x=pl.col("en_ev"), yflux=pl.col("f_en_ev"))
+                .with_columns(x=pl.col("en_ev"), dflux_on_dx_onempc=pl.col("f_en_ev"))
             )
 
         case "kev":
@@ -103,7 +107,7 @@ def get_dfspectrum_x_y_with_units(
                 dfspectrum
                 .with_columns(en_kev=h_ev_s * pl.col("nu") / 1000.0)
                 .with_columns(f_en_kev=pl.col("f_nu") * pl.col("nu") / pl.col("en_kev"))
-                .with_columns(x=pl.col("en_kev"), yflux=pl.col("f_en_kev"))
+                .with_columns(x=pl.col("en_kev"), dflux_on_dx_onempc=pl.col("f_en_kev"))
             )
 
         case "mev":
@@ -111,24 +115,23 @@ def get_dfspectrum_x_y_with_units(
                 dfspectrum
                 .with_columns(en_mev=h_ev_s * pl.col("nu") / 1e6)
                 .with_columns(f_en_mev=pl.col("f_nu") * pl.col("nu") / pl.col("en_mev"))
-                .with_columns(x=pl.col("en_mev"), yflux=pl.col("f_en_mev"))
+                .with_columns(x=pl.col("en_mev"), dflux_on_dx_onempc=pl.col("f_en_mev"))
             )
 
         case _:
             msg = f"Unit {xunit} not implemented"
             raise NotImplementedError(msg)
 
-    # yflux is now [erg/s/cm^2/xunit] at 1 Mpc distance
     match yvariable.lower():
         case "luminosity":
             # multiply by 4pi dist^2 to cancel out the /cm^2 at 1 Mpc
             # [erg/s/xunit]
-            dfspectrum = dfspectrum.with_columns(y=pl.col("yflux") * 4 * math.pi * megaparsec_to_cm**2)
+            dfspectrum = dfspectrum.with_columns(y=pl.col("dflux_on_dx_onempc") * 4 * math.pi * megaparsec_to_cm**2)
 
         case "flux":
             # adjust flux to required distance
             # [erg/s/cm^2/xunit]
-            dfspectrum = dfspectrum.with_columns(y=pl.col("yflux") / fluxdistance_mpc**2)
+            dfspectrum = dfspectrum.with_columns(y=pl.col("dflux_on_dx_onempc") / fluxdistance_mpc**2)
 
         case "eflux":
             # adjust for distance, convert erg to xunit and multiply by another factor of x
@@ -136,19 +139,21 @@ def get_dfspectrum_x_y_with_units(
             erg_to_angstrom = 1.986454e-8
             xunit_per_erg = convert_angstroms_to_unit(erg_to_angstrom, xunit.lower())
             dfspectrum = dfspectrum.with_columns(
-                y=(pl.col("yflux") / fluxdistance_mpc**2 * xunit_per_erg) * pl.col("x")
+                y=(pl.col("dflux_on_dx_onempc") / fluxdistance_mpc**2 * xunit_per_erg) * pl.col("x")
             )
 
         case "photonflux":
             # divide by the photon energy to get a count rate and adjust for distance
             # [#/s/cm^2/xunit]
-            dfspectrum = dfspectrum.with_columns(y=pl.col("yflux") / fluxdistance_mpc**2 / (H_erg_s * pl.col("nu")))
+            dfspectrum = dfspectrum.with_columns(
+                y=pl.col("dflux_on_dx_onempc") / fluxdistance_mpc**2 / (H_erg_s * pl.col("nu"))
+            )
 
         case "photoncount":
             # divide by the photon energy and multiply by 4pi dist^2 to cancel out the /cm^2 at 1 Mpc
             # [#/s/xunit]
             dfspectrum = dfspectrum.with_columns(
-                y=pl.col("yflux") * 4 * math.pi * megaparsec_to_cm**2 / (H_erg_s * pl.col("nu"))
+                y=pl.col("dflux_on_dx_onempc") * 4 * math.pi * megaparsec_to_cm**2 / (H_erg_s * pl.col("nu"))
             )
 
         case "packetcount":
@@ -165,29 +170,14 @@ def get_dfspectrum_x_y_with_units(
 def get_exspec_bins(
     modelpath: str | Path | None = None,
     mnubins: int | None = None,
-    nu_min_r: float | None = None,
-    nu_max_r: float | None = None,
+    nu_min_r: float | int | None = None,
+    nu_max_r: float | int | None = None,
     gamma: bool = False,
 ) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     """Get the wavelength bins for the emergent spectrum."""
     if modelpath is not None:
         try:
             dfspec = read_spec(modelpath, gamma=gamma).collect()
-            if mnubins is None:
-                mnubins = dfspec.height
-
-            nu_centre_min = dfspec.item(0, 0)
-            nu_centre_max = dfspec.item(dfspec.height - 1, 0)
-
-            # This is not an exact solution for dlognu since we're assuming the bin centre spacing matches the bin edge spacing
-            # but it's close enough for our purposes and avoids the difficulty of finding the exact solution (lots more algebra)
-            dlognu = math.log(dfspec.item(1, 0) / dfspec.item(0, 0))  # second nu value divided by the first nu value
-
-            if nu_min_r is None:
-                nu_min_r = nu_centre_min / (1 + 0.5 * dlognu)
-
-            if nu_max_r is None:
-                nu_max_r = nu_centre_max * (1 + 0.5 * dlognu)
         except FileNotFoundError:
             mnubins = 1000
             if gamma:
@@ -204,6 +194,22 @@ def get_exspec_bins(
                 print(
                     f"No spec.out found. Using default rpkt bins: mnubins {mnubins} nu_min_r {nu_min_r:.2e} nu_max_r {nu_max_r:.2e}"
                 )
+        else:
+            if mnubins is None:
+                mnubins = dfspec.height
+
+            nu_centre_min = dfspec.item(0, 0)
+            nu_centre_max = dfspec.item(dfspec.height - 1, 0)
+
+            # This is not an exact solution for dlognu since we're assuming the bin centre spacing matches the bin edge spacing
+            # but it's close enough for our purposes and avoids the difficulty of finding the exact solution (lots more algebra)
+            dlognu = math.log(dfspec.item(1, 0) / dfspec.item(0, 0))  # second nu value divided by the first nu value
+
+            if nu_min_r is None:
+                nu_min_r = nu_centre_min / (1 + 0.5 * dlognu)
+
+            if nu_max_r is None:
+                nu_max_r = nu_centre_max * (1 + 0.5 * dlognu)
 
     assert nu_min_r is not None
     assert nu_max_r is not None
@@ -249,7 +255,7 @@ def convert_xunit_aliases_to_canonical(xunit: str) -> str:
             raise ValueError(msg)
 
 
-def convert_angstroms_to_unit(value_angstroms: float, new_units: str) -> float:
+def convert_angstroms_to_unit(value_angstroms: float | int, new_units: str) -> float:
     """Convert a wavelength in angstroms to a different unit, either length, frequency, or energy."""
     c = 2.99792458e18  # speed of light [angstroms/s]
     h = 4.1356677e-15  # Planck's constant [eV s]
@@ -276,12 +282,12 @@ def convert_angstroms_to_unit(value_angstroms: float, new_units: str) -> float:
     raise ValueError(msg)
 
 
-def convert_unit_to_angstroms(value: float, old_units: str) -> float:
+def convert_unit_to_angstroms(value: float | int | np.floating, old_units: str) -> float:
     """Convert a wavelength, frequency, or energy to wavelength angstroms."""
     c = 2.99792458e18  # speed of light [angstroms/s]
     h = 4.1356677e-15  # Planck's constant [eV s]
     hc_ev_angstroms = h * c  # [eV angstroms]
-
+    value = float(value)
     match old_units.lower():
         case "ev":
             return hc_ev_angstroms / value
@@ -302,9 +308,7 @@ def convert_unit_to_angstroms(value: float, old_units: str) -> float:
             raise ValueError(msg)
 
 
-def stackspectra(
-    spectra_and_factors: list[tuple[np.ndarray[t.Any, np.dtype[np.floating[t.Any]]], float]],
-) -> np.ndarray[t.Any, np.dtype[np.floating[t.Any]]]:
+def stackspectra(spectra_and_factors: list[tuple[npt.NDArray[np.floating], float]]) -> npt.NDArray[np.floating]:
     """Average spectra using (normalised) weighting factors, i.e., specout[nu] = (spec1[nu] * factor1 + spec2[nu] * factor2 + ...) / (factor1 + factor2 + ...).
 
     spectra_and_factors should be a list of tuples: spectra[], factor.
@@ -321,7 +325,7 @@ def stackspectra(
 def get_spectrum_at_time(
     modelpath: Path,
     timestep: int,
-    time: float,
+    time: float | int,
     args: argparse.Namespace | None,
     dirbin: int = -1,
     average_over_phi: bool | None = None,
@@ -355,11 +359,11 @@ def get_spectrum_at_time(
 
 def get_from_packets(
     modelpath: Path | str,
-    timelowdays: float,
-    timehighdays: float,
-    lambda_min: float,
-    lambda_max: float,
-    delta_lambda: float | npt.NDArray[np.floating] | None = None,
+    timelowdays: float | int,
+    timehighdays: float | int,
+    lambda_min: float | int,
+    lambda_max: float | int,
+    delta_lambda: float | int | npt.NDArray[np.floating] | None = None,
     use_time: t.Literal["arrival", "emission", "escape"] = "arrival",
     maxpacketfiles: int | None = None,
     average_over_phi: bool = False,
@@ -430,7 +434,7 @@ def get_from_packets(
         .sort(["lambda_binindex", "lambda_angstroms"])
         .lazy()
     )
-    escapesurfacegamma: float | None = None
+    escapesurfacegamma: float | int | None = None
     dirbin_spectra: dict[int, pl.LazyFrame] = {}
     if directionbins_are_vpkt_observers:
         vpkt_config = get_vpkt_config(modelpath)
@@ -476,7 +480,7 @@ def get_from_packets(
             if fluxfilterfunc:
                 dirbin_spectra[vspecindex] = (
                     dirbin_spectra[vspecindex]
-                    .with_columns(pl.col("f_lambda").map_batches(fluxfilterfunc))
+                    .with_columns(pl.col("f_lambda").map_batches(fluxfilterfunc, return_dtype=pl.self_dtype()))
                     .with_columns(f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu")))
                 )
 
@@ -563,7 +567,7 @@ def get_from_packets(
 
             if fluxfilterfunc:
                 dirbin_spectra[dirbin] = dirbin_spectra[dirbin].with_columns(
-                    pl.col("f_lambda").map_batches(fluxfilterfunc)
+                    pl.col("f_lambda").map_batches(fluxfilterfunc, return_dtype=pl.self_dtype())
                 )
 
             dirbin_spectra[dirbin] = (
@@ -642,11 +646,8 @@ def read_emission_absorption_file(emabsfilename: str | Path) -> pl.LazyFrame:
     except AttributeError:
         print(f" Reading {emabsfilename}")
 
-    dfemabs = (
-        pl
-        .read_csv(zopenpl(emabsfilename), separator=" ", has_header=False, infer_schema_length=0)
-        .lazy()
-        .with_columns(pl.all().cast(pl.Float32, strict=True))
+    dfemabs = pl.scan_csv(zopenpl(emabsfilename), separator=" ", has_header=False, infer_schema_length=0).with_columns(
+        pl.all().cast(pl.Float32, strict=True)
     )
 
     # drop last column of nulls (caused by trailing space on each line)
@@ -710,7 +711,9 @@ def get_spectra(
         )
 
         if fluxfilterfunc:
-            dfspectrum = dfspectrum.with_columns(cs.starts_with("f_nu").map_batches(fluxfilterfunc))
+            dfspectrum = dfspectrum.with_columns(
+                cs.starts_with("f_nu").map_batches(fluxfilterfunc, return_dtype=pl.self_dtype())
+            )
 
         specdataout[dirbin] = dfspectrum.with_columns(
             f_lambda=pl.col("f_nu") * pl.col("nu") / pl.col("lambda_angstroms")
@@ -866,7 +869,7 @@ def split_dataframe_stokesparams(specdata: pl.DataFrame | pl.LazyFrame) -> dict[
 
 def get_vspecpol_spectrum(
     modelpath: Path | str,
-    timeavg: float,
+    timeavg: float | int,
     angle: int,
     args: argparse.Namespace,
     fluxfilterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
@@ -907,7 +910,7 @@ def get_vspecpol_spectrum(
 
     if fluxfilterfunc:
         print("Applying filter to ARTIS spectrum")
-        dfout = dfout.with_columns(cs.starts_with("f_nu").map_batches(fluxfilterfunc))
+        dfout = dfout.with_columns(cs.starts_with("f_nu").map_batches(fluxfilterfunc, return_dtype=pl.self_dtype()))
 
     return dfout.with_columns(f_lambda=pl.col("f_nu") * pl.col("nu") / pl.col("lambda_angstroms")).sort(
         by="lambda_angstroms"
@@ -1093,11 +1096,11 @@ def get_flux_contributions(
 
 def get_flux_contributions_from_packets(
     modelpath: Path,
-    timelowdays: float,
-    timehighdays: float,
-    lambda_min: float,
-    lambda_max: float,
-    delta_lambda: float | npt.NDArray[np.floating] | None = None,
+    timelowdays: float | int,
+    timehighdays: float | int,
+    lambda_min: float | int,
+    lambda_max: float | int,
+    delta_lambda: float | int | npt.NDArray[np.floating] | None = None,
     getemission: bool = True,
     getabsorption: bool = True,
     maxpacketfiles: int | None = None,
@@ -1107,7 +1110,7 @@ def get_flux_contributions_from_packets(
     fixedionlist: list[str] | None = None,
     use_time: t.Literal["arrival", "emission", "escape"] = "arrival",
     emtypecolumn: str | None = None,
-    emissionvelocitycut: float | None = None,
+    emissionvelocitycut: float | int | None = None,
     directionbin: int | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
@@ -1217,10 +1220,11 @@ def get_flux_contributions_from_packets(
                     pl.col("lineindex").cast(pl.Int32).alias(emtypecolumn),
                     expr_linelist_to_str.alias("emissiontype_str"),
                 ]),
-                pl.DataFrame(
+                pl.LazyFrame(
                     {emtypecolumn: [-9999999, -9999000], "emissiontype_str": ["free-free", "NOT SET"]},
                     schema={emtypecolumn: pl.Int32, "emissiontype_str": pl.String},
-                ).lazy(),
+                    orient="col",
+                ),
                 bflistlazy.select([pl.col(emtypecolumn), expr_bflist_to_str.alias("emissiontype_str")]),
             ])
 
@@ -1247,10 +1251,11 @@ def get_flux_contributions_from_packets(
             linelistlazy.select(
                 absorption_type=pl.col("lineindex").cast(pl.Int32), absorptiontype_str=expr_linelist_to_str
             ),
-            pl.DataFrame(
+            pl.LazyFrame(
                 {"absorption_type": [-1, -2], "absorptiontype_str": ["free-free", "bound-free"]},
                 schema={"absorption_type": pl.Int32, "absorptiontype_str": pl.String},
-            ).lazy(),
+                orient="col",
+            ),
         ]).with_columns(pl.col("absorptiontype_str"))
 
         lzdfpackets = lzdfpackets.join(abstypestrings, on="absorption_type", how="left")
@@ -1263,7 +1268,7 @@ def get_flux_contributions_from_packets(
         else:
             cols.add("dirbin")
 
-    dfpackets = lzdfpackets.select(cs.by_name(cols, require_all=False)).collect(engine="streaming")
+    dfpackets = lzdfpackets.select(cs.by_name(cols, require_all=False)).collect()
     if getemission:
         empackets = (
             dfpackets
@@ -1325,9 +1330,13 @@ def get_flux_contributions_from_packets(
         allgroupnames = [*allgroupnames[:maxseriescount], "Other"]
 
         if getemission:
-            emissiongroups["Other"] = pl.concat(
-                (emissiongroups[groupname] for groupname in other_groupnames if groupname in emissiongroups),
-                rechunk=False,
+            other_subgroups = [
+                emissiongroups[groupname] for groupname in other_groupnames if groupname in emissiongroups
+            ]
+            emissiongroups["Other"] = (
+                pl.concat(other_subgroups, rechunk=False)
+                if other_subgroups
+                else pl.DataFrame(schema=emissiongroups[next(iter(emissiongroups))].schema)
             )
 
         if getabsorption:
@@ -1473,11 +1482,11 @@ def sort_and_reduce_flux_contribution_list(
 
     import matplotlib.pyplot as plt
 
-    from artistools.plottools import glasbey_category20
+    from artistools.plottools import glasbey_category20_nogreys
 
     color_list = [
         color
-        for color in [*list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20))), *glasbey_category20[10:]]
+        for color in [*list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20))), *glasbey_category20_nogreys[10:]]
         if color[0] != color[1] or color[1] != color[2] or color[0] != color[2]  # remove greys
     ]
 
@@ -1562,21 +1571,7 @@ def print_integrated_flux(
     return integrated_flux
 
 
-def get_reference_spectrum(filename: Path | str) -> tuple[pl.DataFrame, dict[t.Any, t.Any]]:
-    if Path(filename).is_file():
-        filepath = Path(filename)
-    else:
-        filepath = Path(get_path("artistools_dir"), "data", "refspectra", filename)
-
-        if not filepath.is_file():
-            filepathxz = filepath.with_suffix(f"{filepath.suffix}.xz")
-            if filepathxz.is_file():
-                filepath = filepathxz
-            else:
-                filepathgz = filepath.with_suffix(f"{filepath.suffix}.gz")
-                if filepathgz.is_file():
-                    filepath = filepathgz
-
+def get_reference_spectrum(filepath: Path | str) -> pl.DataFrame:
     metadata = get_file_metadata(filepath)
 
     flambdaindex = metadata.get("f_lambda_columnindex", 1)
@@ -1593,8 +1588,7 @@ def get_reference_spectrum(filename: Path | str) -> tuple[pl.DataFrame, dict[t.A
         )
     )
 
-    if "a_v" in metadata or "e_bminusv" in metadata:
-        print("Correcting for reddening")
+    if "a_v" in metadata and "r_v" in metadata:
         from extinction import apply
         from extinction import ccm89
 
@@ -1609,9 +1603,12 @@ def get_reference_spectrum(filename: Path | str) -> tuple[pl.DataFrame, dict[t.A
                 specdata["f_lambda"].to_numpy(),
             )
         )
+        print(
+            f"Correcting for reddening using CCM89 law with A_V = {metadata['a_v']} and R_V = {metadata.get('r_v', 3.1)}"
+        )
 
     if "z" in metadata:
-        print("Correcting for redshift")
         specdata = specdata.with_columns(lambda_angstroms=pl.col("lambda_angstroms") / (1 + metadata["z"]))
+        print(f"Correcting for redshift z = {metadata['z']}")
 
-    return specdata, metadata
+    return specdata

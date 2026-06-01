@@ -7,31 +7,28 @@ on:
     merge_group:
     schedule:
         - cron: 0 10 * * 2
-    pull_request:
     workflow_dispatch:
     repository_dispatch:
         types: [trigger_checks]
-
+env:
+    PYO3_USE_ABI3_FORWARD_COMPATIBILITY: 1
+    RUFF_OUTPUT_FORMAT: github
+    UV_FROZEN: 1
 jobs:
     lint:
         name: Format, lint, and type check
         runs-on: ubuntu-24.04-arm
-        env:
-            RUFF_OUTPUT_FORMAT: github
-            UV_FROZEN: 1
         steps:
-            - uses: actions/checkout@v6
-              with:
-                  fetch-depth: 0
+            - name: Checkout Code
+              uses: actions/checkout@v6
 
-            - uses: astral-sh/setup-uv@v7
+            - uses: astral-sh/setup-uv@v8.1.0
+              id: setup-uv
               with:
                   activate-environment: true
-
-            - name: Get python minor version
-              run: |
-                  echo "PYTHON_MINOR_VERSION=$(python -c 'import platform; print(platform.python_version_tuple()[1])')" >> $GITHUB_ENV
-                  echo "PYO3_PYTHON=python3.$(python -c 'import platform; print(platform.python_version_tuple()[1])')" >> $GITHUB_ENV
+                  cache-suffix: lint
+                  prune-cache: false
+                  cache-dependency-glob: '**/uv.lock'
 
             - name: Cache cargo and rust build
               uses: actions/cache@v5
@@ -41,17 +38,17 @@ jobs:
                       ~/.cargo/registry/cache/
                       ~/.cargo/git/db/
                       rust/target/
-                  key: cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python3.${{ env.PYTHON_MINOR_VERSION }}-${{ hashFiles('**/Cargo.lock') }}-${{
-                      github.run_id }}
+                  key: lint-cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python${{ steps.setup-uv.outputs.python-version }}-${{ hashFiles('**/Cargo.lock')
+                      }}-${{ github.run_id }}
                   restore-keys: |
-                      cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python3.${{ env.PYTHON_MINOR_VERSION }}-${{ hashFiles('**/Cargo.lock') }}-
-                      cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python3.${{ env.PYTHON_MINOR_VERSION }}-
+                      lint-cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python${{ steps.setup-uv.outputs.python-version }}-${{ hashFiles('**/Cargo.lock') }}-
+                      lint-cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python${{ steps.setup-uv.outputs.python-version }}-
+                      lint-cargo-rust-target-${{ runner.os }}${{ runner.arch }}-
                       cargo-rust-target-${{ runner.os }}${{ runner.arch }}-
 
             - name: Install artistools[extras]
               run: |
                   uv sync --all-extras
-                  uv pip install --compile-bytecode .[extras]
 
             - name: Run Ruff
               if: always()
@@ -63,17 +60,13 @@ jobs:
               if: always()
               run: uv run -- ruff format --check --exit-non-zero-on-format
 
-            - name: Run zuban
-              if: always()
-              run: uv run -- zuban check
-
             - name: Run basedpyright
               if: always()
               run: uv run -- basedpyright --warnings
 
             - name: Run pyrefly
               if: always()
-              run: uv run -- pyrefly check
+              run: uv run -- pyrefly check --output-format github
 
             - name: Run mypy
               if: always()
@@ -91,36 +84,30 @@ jobs:
 
     pytest:
         timeout-minutes: 120
-        runs-on: ${{ matrix.os.name }}-${{ matrix.os.version }}
         strategy:
             fail-fast: false
             matrix:
                 os: [{name: macos, version: '26'}, {name: ubuntu, version: 24.04-arm}]
-                python-minor-version: ['12', '13', '14', 14t]
+                python-version: ['3.12', '3.13', '3.14', 3.14t]
                 exclude:
                     # macos runners are very limited in number
                     - os: {name: macos, version: '26'}
-                      python-minor-version: 12
+                      python-version: '3.12'
                     - os: {name: ubuntu, version: 24.04-arm}
-                      python-minor-version: 14t
-        env:
-            OS: ${{ matrix.os.name }}-${{ matrix.os.version }}
-            PYTHON: 3.${{ matrix.python-minor-version }}
-            PYTHON_GIL: ${{ endsWith(matrix.python-minor-version, 't') && '0' || '1' }}
-            UV_FROZEN: 1
-            PYO3_PYTHON: python3.${{ matrix.python-minor-version }}
-            PYO3_USE_ABI3_FORWARD_COMPATIBILITY: 1
-        name: pytest ${{ matrix.os.name }} python 3.${{ matrix.python-minor-version }}
+                      python-version: 3.14t
+        runs-on: ${{ matrix.os.name }}-${{ matrix.os.version }}
+        name: pytest ${{ matrix.os.name }} python ${{ matrix.python-version }}
         steps:
             - name: Checkout Code
               uses: actions/checkout@v6
-              with:
-                  fetch-depth: 0
 
-            - uses: astral-sh/setup-uv@v7
+            - name: Setup uv
+              uses: astral-sh/setup-uv@v8.1.0
+              id: setup-uv
               with:
                   activate-environment: true
-                  python-version: 3.${{ matrix.python-minor-version }}
+                  python-version: ${{ matrix.python-version }}
+                  cache-dependency-glob: '**/uv.lock'
 
             - name: Cache cargo and rust build
               uses: actions/cache@v5
@@ -130,15 +117,15 @@ jobs:
                       ~/.cargo/registry/cache/
                       ~/.cargo/git/db/
                       rust/target/
-                  key: cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python3.${{ matrix.python-minor-version }}-${{ hashFiles('**/Cargo.lock') }}-${{
-                      github.run_id }}
+                  key: cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python${{ steps.setup-uv.outputs.python-version }}-${{ hashFiles('**/Cargo.lock')
+                      }}-${{ github.run_id }}
                   restore-keys: |
-                      cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python3.${{ matrix.python-minor-version }}-${{ hashFiles('**/Cargo.lock') }}-
-                      cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python3.${{ matrix.python-minor-version }}-
+                      cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python${{ steps.setup-uv.outputs.python-version }}-${{ hashFiles('**/Cargo.lock') }}-
+                      cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python${{ steps.setup-uv.outputs.python-version }}-
                       cargo-rust-target-${{ runner.os }}${{ runner.arch }}-
 
             - name: Install deps for building pyarrow and scipy from source
-              if: matrix.os.name == 'macos' && matrix.python-minor-version == '15'
+              if: matrix.os.name == 'macos' && matrix.python-version == '3.15'
               run: |
                   brew update
                   brew install apache-arrow
@@ -149,9 +136,6 @@ jobs:
                   echo "CMAKE_PREFIX_PATH=/opt/homebrew/opt/openblas" >> $GITHUB_ENV
                   echo "PKG_CONFIG_PATH=/opt/homebrew/opt/openblas/lib/pkgconfig" >> $GITHUB_ENV
 
-            - name: Install pyarrow and scipy from source
-              if: matrix.os.name == 'macos' && matrix.python-minor-version == '15'
-              run: |
                   uv pip install pyarrow
                   GCC_MAJOR="$(brew list --versions gcc | awk '{print $2}' | cut -d. -f1)"
                   CXX="g++-${GCC_MAJOR}" FC="gfortran-${GCC_MAJOR}" uv pip install scipy
@@ -159,48 +143,41 @@ jobs:
             - name: Install artistools (no dev deps)
               run: |
                   rustup update stable
-                  uv sync --no-dev
-                  uv pip install --compile-bytecode .
+                  uv sync --no-dev --compile-bytecode
 
             - name: Check artistools command line tool
               run: |
                   artistools --help
                   artistools completions
 
-            - name: Cache test data
-              uses: actions/cache@v5
-              with:
-                  enableCrossOsArchive: true
-                  path: tests/data/*.tar.xz
-                  key: testdata20231114
-
             - name: Download/extract test data
               working-directory: tests/data/
               run: source ./setuptestdata.sh
 
             - name: Install dev deps
-              run: uv sync
+              run: uv sync --compile-bytecode
 
             - name: Test with pytest
-              run: uv run --no-sync -- python -m pytest ${{ (matrix.python-minor-version == '15') && '--typeguard-packages=none' || '' }} --cov=./ --cov-report=xml
+              run: uv run --no-sync -- python -m pytest --cov=./ --cov-report=xml
 
             - name: Report coverage
               run: uv run -- python -m coverage report
 
             - uses: codecov/codecov-action@v6
+              env:
+                  OS: ${{ matrix.os.name }}-${{ matrix.os.version }}
+                  PYTHON: ${{ matrix.python-version }}
               with:
                   token: ${{ secrets.CODECOV_TOKEN }}
                   files: ./coverage.xml
-                  # directory: ./coverage/reports/
                   flags: unittests
                   env_vars: OS,PYTHON
                   name: codecov-umbrella
                   fail_ci_if_error: false
-                  # path_to_write_report: ./coverage/codecov_report.txt
                   verbose: true
 
             - name: Upload output files
               uses: actions/upload-artifact@v7
               with:
-                  name: testoutput-${{ matrix.os.name }}-${{ matrix.os.version }}-py3${{ matrix.python-minor-version }}
+                  name: testoutput-${{ matrix.os.name }}-${{ matrix.os.version }}-py${{ matrix.python-version }}
                   path: tests/output/

@@ -4,9 +4,10 @@ A collection of plotting, analysis, and file format conversion tools
 for the ARTIS radiative transfer code.
 """
 
+# ruff: noqa: RUF067
 import sys
 
-if sys.version_info >= (3, 15) and hasattr(sys, "set_lazy_imports_filter") and hasattr(sys, "set_lazy_imports"):  # noqa: RUF067
+if sys.version_info >= (3, 15) and hasattr(sys, "set_lazy_imports_filter") and hasattr(sys, "set_lazy_imports"):
     sys.set_lazy_imports_filter(
         lambda _importing, imported, _fromlist: (
             not imported.startswith((
@@ -23,14 +24,25 @@ if sys.version_info >= (3, 15) and hasattr(sys, "set_lazy_imports_filter") and h
     )
     sys.set_lazy_imports("all")
 
+try:
+    from beartype.claw import beartype_this_package
+
+    beartype_this_package()
+except ImportError:
+    pass
+
+
 from artistools import atomic as atomic
 from artistools import codecomparison as codecomparison
 from artistools import commands as commands
 from artistools import constants as constants
 from artistools import estimators as estimators
 from artistools import gsinetwork as gsinetwork
+from artistools import hesma_scripts as hesma_scripts
 from artistools import inputmodel as inputmodel
 from artistools import lightcurve as lightcurve
+from artistools import linefluxes as linefluxes
+from artistools import logfiles as logfiles
 from artistools import macroatom as macroatom
 from artistools import misc as misc
 from artistools import nltepops as nltepops
@@ -42,6 +54,8 @@ from artistools import radfield as radfield
 from artistools import rustext as rustext
 from artistools import spectra as spectra
 from artistools import transitions as transitions
+from artistools import version as version
+from artistools import viewing_angles_visualization as viewing_angles_visualization
 from artistools import writecomparisondata as writecomparisondata
 from artistools.commands import addargs as addargs
 from artistools.commands import CustomArgHelpFormatter as CustomArgHelpFormatter

@@ -20,11 +20,11 @@ def change_cell_positions_to_new_time(dfgriddata: pd.DataFrame, t_model_1d: floa
 
 def map_1d_to_3d(
     dfgriddata: pd.DataFrame,
-    vmax: float,
+    vmax: float | int,
     n_3d_gridcells: int,
     data_1d: pd.DataFrame,
-    t_model_1d: float,
-    wid_init: float,
+    t_model_1d: float | int,
+    wid_init: float | int,
 ) -> None:
     modelgridindex = np.zeros(n_3d_gridcells)
     modelgrid_rho_3d = np.zeros(n_3d_gridcells)

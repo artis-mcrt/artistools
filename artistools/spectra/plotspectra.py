@@ -29,9 +29,11 @@ import artistools.spectra as atspectra
 from artistools.commands import CustomArgHelpFormatter
 from artistools.commands import get_path
 from artistools.misc import df_filter_minmax_bounded
+from artistools.misc import firstexisting
 from artistools.misc import flatten_list
 from artistools.misc import get_dirbin_labels
 from artistools.misc import get_escaped_arrivalrange
+from artistools.misc import get_file_metadata
 from artistools.misc import get_filterfunc
 from artistools.misc import get_model_name
 from artistools.misc import get_time_range
@@ -41,7 +43,6 @@ from artistools.misc import print_theta_phi_definitions
 from artistools.misc import set_args_from_dict
 from artistools.misc import trim_or_pad
 from artistools.plottools import ExponentLabelFormatter
-from artistools.plottools import glasbey_category20_nogreys
 from artistools.plottools import set_mpl_style
 from artistools.spectra.writespectra import write_flambda_spectra
 
@@ -52,7 +53,7 @@ def path_is_artis_model(filepath: str | Path) -> bool:
     return True if Path(filepath).suffix == ".out" else Path(filepath).is_dir()
 
 
-def check_time_range_is_valid(modelpath: Path, timemin: float, timemax: float, allow_invalid: bool) -> None:
+def check_time_range_is_valid(modelpath: Path, timemin: float | int, timemax: float | int, allow_invalid: bool) -> None:
     with contextlib.suppress(FileNotFoundError):
         _, validrange_start_days, validrange_end_days = get_escaped_arrivalrange(modelpath)
         problem_messages = []
@@ -78,8 +79,8 @@ def check_time_range_is_valid(modelpath: Path, timemin: float, timemax: float, a
 
 
 def get_lambda_min_max_binwidth(
-    xmin: float, xmax: float, args: argparse.Namespace
-) -> tuple[float, float, float | npt.NDArray[np.floating] | None]:
+    xmin: float | int, xmax: float | int, args: argparse.Namespace
+) -> tuple[float, float, float | int | npt.NDArray[np.floating] | None]:
     lambda_min, lambda_max = sorted([
         atspectra.convert_unit_to_angstroms(xmin, args.xunit),
         atspectra.convert_unit_to_angstroms(xmax, args.xunit),
@@ -270,13 +271,13 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
 def plot_reference_spectrum(
     filename: Path | str,
     axis: mplax.Axes,
-    xmin: float,
-    xmax: float,
+    xmin: float | int,
+    xmax: float | int,
     fluxfilterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
-    scale_to_peak: float | None = None,
-    offset: float = 0,
-    scale_to_dist_mpc: float = 1,
-    scaletoreftime: float | None = None,
+    scale_to_peak: float | int | None = None,
+    offset: float | int = 0,
+    scale_to_dist_mpc: float | int = 1,
+    scaletoreftime: float | int | None = None,
     xunit: str = "angstroms",
     yvariable: str = "flux",
     **plotkwargs: t.Any,
@@ -286,15 +287,26 @@ def plot_reference_spectrum(
     The filename must be in space separated text formatted with the first two
     columns being wavelength in Angstroms, and F_lambda
     """
-    specdata, metadata = atspectra.get_reference_spectrum(filename)
+    try:
+        filepath = firstexisting(filename, tryzipped=True)
+    except FileNotFoundError:
+        filepath = firstexisting(
+            filename, folder=Path(get_path("artistools_dir"), "data", "refspectra"), tryzipped=True
+        )
+
+    metadata = get_file_metadata(filepath)
     label = plotkwargs.get("label", metadata.get("label", filename))
     assert isinstance(label, str)
     plotkwargs.pop("label", None)
 
+    print(f"====> Reference spectrum '{label}'")
+    specdata = atspectra.get_reference_spectrum(filepath)
+    print(f" file: {filepath}")
+
     # scale to flux at required distance
     if scale_to_dist_mpc:
         # scale to 1 Mpc and let get_dfspectrum_x_y_with_units scale to scale_to_dist_mpc later
-        print(f"Scale to {scale_to_dist_mpc} Mpc")
+        print(f"Scaling to distance {scale_to_dist_mpc} Mpc")
         assert metadata["dist_mpc"] > 0  # we must know the true distance in order to scale to some other distance
         specdata = specdata.with_columns(f_lambda=pl.col("f_lambda") * ((metadata["dist_mpc"]) ** 2))
 
@@ -321,8 +333,7 @@ def plot_reference_spectrum(
         )
         specdata = specdata.with_columns(f_lambda=expr_masked.then(pl.lit(math.nan)).otherwise(pl.col("f_lambda")))
 
-    print(f"Reference spectrum '{label}' has {len(specdata)} points in the plot range")
-    print(f" file: {filename}")
+    print(f" points: {len(specdata)}")
 
     print(" metadata: " + ", ".join([f"{k}='{v}'" if hasattr(v, "lower") else f"{k}={v}" for k, v in metadata.items()]))
 
@@ -330,7 +341,6 @@ def plot_reference_spectrum(
         atspectra.convert_unit_to_angstroms(xmin, xunit),
         atspectra.convert_unit_to_angstroms(xmax, xunit),
     ])
-    print(f" lambda_min {lambda_min:.1f} lambda_max {lambda_max:.1f}")
 
     specdata = specdata.filter(pl.col("lambda_angstroms").is_between(lambda_min, lambda_max))
 
@@ -338,7 +348,9 @@ def plot_reference_spectrum(
 
     if fluxfilterfunc:
         print(" applying filter to reference spectrum")
-        specdata = specdata.with_columns(cs.starts_with("f_lambda").map_batches(fluxfilterfunc))
+        specdata = specdata.with_columns(
+            cs.starts_with("f_lambda").map_batches(fluxfilterfunc, return_dtype=pl.self_dtype())
+        )
 
     specdata = atspectra.get_dfspectrum_x_y_with_units(
         specdata, xunit=xunit, yvariable=yvariable, fluxdistance_mpc=scale_to_dist_mpc
@@ -379,7 +391,7 @@ def plot_artis_spectrum(
     axes: npt.NDArray[t.Any] | Sequence[mplax.Axes],
     modelpath: Path | str,
     args: argparse.Namespace,
-    scale_to_peak: float | None = None,
+    scale_to_peak: float | int | None = None,
     from_packets: bool = False,
     filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     linelabel: str | None = None,
@@ -541,7 +553,7 @@ def plot_artis_spectrum(
 
         dirbin_dfspec = zip(
             directionbins,
-            pl.collect_all(
+            pl.collect_all([
                 df_filter_minmax_bounded(
                     atspectra.get_dfspectrum_x_y_with_units(
                         viewinganglespectra[dirbin], xunit=xunit, yvariable=yvariable, fluxdistance_mpc=args.distmpc
@@ -551,7 +563,7 @@ def plot_artis_spectrum(
                     maxval=xmax,
                 )
                 for dirbin in directionbins
-            ),
+            ]),
             strict=True,
         )
         for dirbin, dfspectrum in dirbin_dfspec:
@@ -572,7 +584,7 @@ def plot_artis_spectrum(
             if dirbin != -1 and (len(directionbins) > 1 or not linelabel_is_custom):
                 linelabel_withdirbin = f"{linelabel} {dirbin_definitions[dirbin]}"
 
-            atspectra.print_integrated_flux(dfspectrum["yflux"], dfspectrum["x"])
+            atspectra.print_integrated_flux(dfspectrum["dflux_on_dx_onempc"], dfspectrum["x"])
 
             if scale_to_peak:
                 dfspectrum = dfspectrum.with_columns(
@@ -610,7 +622,7 @@ def make_spectrum_plot(
     axes: npt.NDArray[t.Any] | Sequence[mplax.Axes],
     filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None,
     args: argparse.Namespace,
-    scale_to_peak: float | None = None,
+    scale_to_peak: float | int | None = None,
 ) -> pl.DataFrame:
     """Plot reference spectra and ARTIS spectra."""
     dfalldata = pl.DataFrame()
@@ -791,7 +803,7 @@ def make_emissionabsorption_plot(
     axis: mplax.Axes,
     args: argparse.Namespace,
     filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
-    scale_to_peak: float | None = None,
+    scale_to_peak: float | int | None = None,
 ) -> tuple[list[Artist], list[str], pl.DataFrame | None]:
     """Plot the emission and absorption contribution spectra, grouped by ion/line/term for an ARTIS model."""
     modelname = args.label[0] if args.label and args.label[0] is not None else get_model_name(modelpath)
@@ -1036,19 +1048,21 @@ def make_emissionabsorption_plot(
     else:
         plotlabel = f"{modelname} [{args.timemin:.2f}d to {args.timemax:.2f}d]"
         if args.plotviewingangle or args.plotvspecpol:
+            assert dirbin is not None
             dirbin_definitions = (
                 get_vspec_dir_labels(modelpath=modelpath, usedegrees=args.usedegrees)
                 if args.plotvspecpol
                 else get_dirbin_labels(
-                    dirbins=args.plotviewingangle,
                     modelpath=modelpath,
                     average_over_phi=args.average_over_phi_angle,
                     average_over_theta=args.average_over_theta_angle,
                     usedegrees=args.usedegrees,
                 )
             )
-            assert dirbin is not None
             plotlabel += f", {dirbin_definitions[dirbin]}"
+
+            if dirbin != -1:
+                print_theta_phi_definitions()
 
     if not args.notitle:
         if args.inset_title:
@@ -1403,8 +1417,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-dist",
         "-fluxdistmpc",
         type=float,
-        default=1.0,
-        help="Distance in megaparsec when calculating fluxes (default: 1 Mpc)",
+        default=None,
+        help="Distance in megaparsec when calculating fluxes (default: first reference spec distance or 1 Mpc)",
     )
 
     parser.add_argument(
@@ -1574,14 +1588,30 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.color = []
         refspeccolors = ["0.0", "0.4", "0.6", "0.7"]
         refspecnum = 0
-        artismodelnum = 0
         for filepath in args.specpath:
             if path_is_artis_model(filepath):
-                args.color.append(glasbey_category20_nogreys[artismodelnum])
-                artismodelnum += 1
+                args.color.append(None)
             else:
                 args.color.append(refspeccolors[refspecnum])
                 refspecnum += 1
+
+    if args.distmpc is None:
+        for filepath in args.specpath:
+            if not path_is_artis_model(filepath):
+                try:
+                    fullfilepath = firstexisting(filepath, tryzipped=True)
+                except FileNotFoundError:
+                    fullfilepath = firstexisting(
+                        filepath, folder=Path(get_path("artistools_dir"), "data", "refspectra"), tryzipped=True
+                    )
+                args.distmpc = get_file_metadata(fullfilepath).get("dist_mpc")
+                if args.distmpc is not None:
+                    print(f"Found distance {args.distmpc} Mpc in metadata of {filepath}")
+                break
+        if args.distmpc is None:
+            args.distmpc = 1.0  # no reference spectra with distances, so default to 1 Mpc
+    assert args.distmpc is not None
+    assert args.distmpc > 0.0
 
     args.color, args.label, args.linestyle, args.linealpha, args.dashes, args.linewidth = trim_or_pad(
         len(args.specpath), args.color, args.label, args.linestyle, args.linealpha, args.dashes, args.linewidth
