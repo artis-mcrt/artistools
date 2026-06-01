@@ -554,9 +554,8 @@ def get_from_packets(
                 (
                     pl.col(f"{energy_column}_sum")
                     / delta_time_s
-                    / (4 * math.pi)
                     * solidanglefactor
-                    / (const.megaparsec_to_cm**2)
+                    / (4 * math.pi * const.megaparsec_to_cm**2)
                     / nprocs_read
                 ).alias("flux"),
                 pl.col("count"),
