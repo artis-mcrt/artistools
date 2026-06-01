@@ -347,7 +347,7 @@ def plot_levelpop(
                 ylist.append(valuesum / tdeltasum)
 
         plot_data(
-            pl.DataFrame({"xvalue": xlist, "yvalue": ylist}),
+            pl.DataFrame({"xvalue": xlist, "yvalue": ylist}, orient="col"),
             ax=ax,
             args=args,
             startfromzero=startfromzero,
@@ -1099,9 +1099,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         estimatorsdict = artistools.estimators.estimators_classic.read_classic_estimators(modelpath)
         assert estimatorsdict is not None
-        estimators = pl.DataFrame([
-            {"timestep": ts, "modelgridindex": mgi, **estimvals} for (ts, mgi), estimvals in estimatorsdict.items()
-        ]).lazy()
+        estimators = pl.LazyFrame(
+            [{"timestep": ts, "modelgridindex": mgi, **estimvals} for (ts, mgi), estimvals in estimatorsdict.items()],
+            orient="row",
+        )
     else:
         estimators = at.estimators.scan_estimators(
             modelpath=modelpath, modelgridindex=args.modelgridindex, timestep=tuple(timesteps_included)

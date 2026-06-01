@@ -406,7 +406,7 @@ def plot_artis_lightcurve(
             np.nan_to_num(lcdata["luminosity_erg/s"], nan=0.0) * (lcdata["time_days"] * 86400),
             x=lcdata["time_days"] * 86400,
         )
-        print(f" Katz integral L*t dt ({lcdata_tmin:.1f} to {lcdata_tmax:.1f} days):: {katz_integral:.3e} [erg s]")
+        print(f" Katz integral L t dt ({lcdata_tmin:.2f} to {lcdata_tmax:.2f} days): {katz_integral:.3e} [erg s]")
         # show the parts of the light curve that are outside the valid arrival range as partially transparent
         if validrange_start_days is None or validrange_end_days is None:
             # entire range is invalid
@@ -439,7 +439,7 @@ def plot_artis_lightcurve(
         lcdata_valid_tmax = lcdata_valid.select(pl.col("time_days").max()).item()
         if lcdata_valid_tmin is not None and lcdata_valid_tmax is not None:
             print(
-                f" Integrated luminosity ({lcdata_valid_tmin:.1f} to {lcdata_valid_tmax:.1f} days): {energy_released:.3e} [erg]"
+                f" Integrated luminosity ({lcdata_valid_tmin:.2f} to {lcdata_valid_tmax:.2f} days): {energy_released:.3e} [erg]"
             )
 
         axis.plot(lcdata_valid["time_days"], lcdata_valid[ycolumn], label=label_with_tags, **plotkwargs)

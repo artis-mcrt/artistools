@@ -38,8 +38,11 @@ from artistools import commands as commands
 from artistools import constants as constants
 from artistools import estimators as estimators
 from artistools import gsinetwork as gsinetwork
+from artistools import hesma_scripts as hesma_scripts
 from artistools import inputmodel as inputmodel
 from artistools import lightcurve as lightcurve
+from artistools import linefluxes as linefluxes
+from artistools import logfiles as logfiles
 from artistools import macroatom as macroatom
 from artistools import misc as misc
 from artistools import nltepops as nltepops
@@ -51,6 +54,8 @@ from artistools import radfield as radfield
 from artistools import rustext as rustext
 from artistools import spectra as spectra
 from artistools import transitions as transitions
+from artistools import version as version
+from artistools import viewing_angles_visualization as viewing_angles_visualization
 from artistools import writecomparisondata as writecomparisondata
 from artistools.commands import addargs as addargs
 from artistools.commands import CustomArgHelpFormatter as CustomArgHelpFormatter

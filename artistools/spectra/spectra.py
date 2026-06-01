@@ -18,7 +18,6 @@ import polars.selectors as cs
 
 import artistools.constants as const
 import artistools.packets as atpackets
-from artistools.commands import get_path
 from artistools.misc import average_direction_bins
 from artistools.misc import firstexisting
 from artistools.misc import get_bflist
@@ -56,7 +55,7 @@ def timeshift_fluxscale_co56law(scaletoreftime: float | int | None, spectime: fl
 
 
 def get_dfspectrum_x_y_with_units(
-    dfspectrum: pl.DataFrame | pl.LazyFrame, xunit: str, yvariable: str, fluxdistance_mpc: float
+    dfspectrum: pl.DataFrame | pl.LazyFrame, xunit: str, yvariable: str, fluxdistance_mpc: float | int
 ) -> pl.LazyFrame:
     h_ev_s = 4.1356677e-15  # Planck's constant [eV s]
     from artistools.constants import H_erg_s
@@ -69,25 +68,30 @@ def get_dfspectrum_x_y_with_units(
     if "f_nu" not in dfspectrum.collect_schema().names():
         dfspectrum = dfspectrum.with_columns(f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu")))
 
+    # set dflux_on_dx_onempc in units of [erg/s/cm^2/xunit] at 1 Mpc distance
     match xunit.lower():
         case "angstroms":
-            dfspectrum = dfspectrum.with_columns(x=pl.col("lambda_angstroms"), yflux=pl.col("f_lambda"))
+            dfspectrum = dfspectrum.with_columns(x=pl.col("lambda_angstroms"), dflux_on_dx_onempc=pl.col("f_lambda"))
 
         case "nm":
-            dfspectrum = dfspectrum.with_columns(x=pl.col("lambda_angstroms") / 10, yflux=pl.col("f_lambda") * 10)
+            dfspectrum = dfspectrum.with_columns(
+                x=pl.col("lambda_angstroms") / 10, dflux_on_dx_onempc=pl.col("f_lambda") * 10
+            )
 
         case "micron":
-            dfspectrum = dfspectrum.with_columns(x=pl.col("lambda_angstroms") / 10000, yflux=pl.col("f_lambda") * 10000)
+            dfspectrum = dfspectrum.with_columns(
+                x=pl.col("lambda_angstroms") / 10000, dflux_on_dx_onempc=pl.col("f_lambda") * 10000
+            )
 
         case "hz":
-            dfspectrum = dfspectrum.with_columns(x=pl.col("nu"), yflux=pl.col("f_nu"))
+            dfspectrum = dfspectrum.with_columns(x=pl.col("nu"), dflux_on_dx_onempc=pl.col("f_nu"))
 
         case "erg":
             dfspectrum = (
                 dfspectrum
                 .with_columns(en_erg=H_erg_s * pl.col("nu"))
                 .with_columns(f_en_erg=pl.col("f_nu") * pl.col("nu") / pl.col("en_erg"))
-                .with_columns(x=pl.col("en_erg"), yflux=pl.col("f_en_erg"))
+                .with_columns(x=pl.col("en_erg"), dflux_on_dx_onempc=pl.col("f_en_erg"))
             )
 
         case "ev":
@@ -95,7 +99,7 @@ def get_dfspectrum_x_y_with_units(
                 dfspectrum
                 .with_columns(en_ev=h_ev_s * pl.col("nu"))
                 .with_columns(f_en_ev=pl.col("f_nu") * pl.col("nu") / pl.col("en_ev"))
-                .with_columns(x=pl.col("en_ev"), yflux=pl.col("f_en_ev"))
+                .with_columns(x=pl.col("en_ev"), dflux_on_dx_onempc=pl.col("f_en_ev"))
             )
 
         case "kev":
@@ -103,7 +107,7 @@ def get_dfspectrum_x_y_with_units(
                 dfspectrum
                 .with_columns(en_kev=h_ev_s * pl.col("nu") / 1000.0)
                 .with_columns(f_en_kev=pl.col("f_nu") * pl.col("nu") / pl.col("en_kev"))
-                .with_columns(x=pl.col("en_kev"), yflux=pl.col("f_en_kev"))
+                .with_columns(x=pl.col("en_kev"), dflux_on_dx_onempc=pl.col("f_en_kev"))
             )
 
         case "mev":
@@ -111,24 +115,23 @@ def get_dfspectrum_x_y_with_units(
                 dfspectrum
                 .with_columns(en_mev=h_ev_s * pl.col("nu") / 1e6)
                 .with_columns(f_en_mev=pl.col("f_nu") * pl.col("nu") / pl.col("en_mev"))
-                .with_columns(x=pl.col("en_mev"), yflux=pl.col("f_en_mev"))
+                .with_columns(x=pl.col("en_mev"), dflux_on_dx_onempc=pl.col("f_en_mev"))
             )
 
         case _:
             msg = f"Unit {xunit} not implemented"
             raise NotImplementedError(msg)
 
-    # yflux is now [erg/s/cm^2/xunit] at 1 Mpc distance
     match yvariable.lower():
         case "luminosity":
             # multiply by 4pi dist^2 to cancel out the /cm^2 at 1 Mpc
             # [erg/s/xunit]
-            dfspectrum = dfspectrum.with_columns(y=pl.col("yflux") * 4 * math.pi * megaparsec_to_cm**2)
+            dfspectrum = dfspectrum.with_columns(y=pl.col("dflux_on_dx_onempc") * 4 * math.pi * megaparsec_to_cm**2)
 
         case "flux":
             # adjust flux to required distance
             # [erg/s/cm^2/xunit]
-            dfspectrum = dfspectrum.with_columns(y=pl.col("yflux") / fluxdistance_mpc**2)
+            dfspectrum = dfspectrum.with_columns(y=pl.col("dflux_on_dx_onempc") / fluxdistance_mpc**2)
 
         case "eflux":
             # adjust for distance, convert erg to xunit and multiply by another factor of x
@@ -136,19 +139,21 @@ def get_dfspectrum_x_y_with_units(
             erg_to_angstrom = 1.986454e-8
             xunit_per_erg = convert_angstroms_to_unit(erg_to_angstrom, xunit.lower())
             dfspectrum = dfspectrum.with_columns(
-                y=(pl.col("yflux") / fluxdistance_mpc**2 * xunit_per_erg) * pl.col("x")
+                y=(pl.col("dflux_on_dx_onempc") / fluxdistance_mpc**2 * xunit_per_erg) * pl.col("x")
             )
 
         case "photonflux":
             # divide by the photon energy to get a count rate and adjust for distance
             # [#/s/cm^2/xunit]
-            dfspectrum = dfspectrum.with_columns(y=pl.col("yflux") / fluxdistance_mpc**2 / (H_erg_s * pl.col("nu")))
+            dfspectrum = dfspectrum.with_columns(
+                y=pl.col("dflux_on_dx_onempc") / fluxdistance_mpc**2 / (H_erg_s * pl.col("nu"))
+            )
 
         case "photoncount":
             # divide by the photon energy and multiply by 4pi dist^2 to cancel out the /cm^2 at 1 Mpc
             # [#/s/xunit]
             dfspectrum = dfspectrum.with_columns(
-                y=pl.col("yflux") * 4 * math.pi * megaparsec_to_cm**2 / (H_erg_s * pl.col("nu"))
+                y=pl.col("dflux_on_dx_onempc") * 4 * math.pi * megaparsec_to_cm**2 / (H_erg_s * pl.col("nu"))
             )
 
         case "packetcount":
@@ -641,11 +646,8 @@ def read_emission_absorption_file(emabsfilename: str | Path) -> pl.LazyFrame:
     except AttributeError:
         print(f" Reading {emabsfilename}")
 
-    dfemabs = (
-        pl
-        .read_csv(zopenpl(emabsfilename), separator=" ", has_header=False, infer_schema_length=0)
-        .lazy()
-        .with_columns(pl.all().cast(pl.Float32, strict=True))
+    dfemabs = pl.scan_csv(zopenpl(emabsfilename), separator=" ", has_header=False, infer_schema_length=0).with_columns(
+        pl.all().cast(pl.Float32, strict=True)
     )
 
     # drop last column of nulls (caused by trailing space on each line)
@@ -1218,10 +1220,11 @@ def get_flux_contributions_from_packets(
                     pl.col("lineindex").cast(pl.Int32).alias(emtypecolumn),
                     expr_linelist_to_str.alias("emissiontype_str"),
                 ]),
-                pl.DataFrame(
+                pl.LazyFrame(
                     {emtypecolumn: [-9999999, -9999000], "emissiontype_str": ["free-free", "NOT SET"]},
                     schema={emtypecolumn: pl.Int32, "emissiontype_str": pl.String},
-                ).lazy(),
+                    orient="col",
+                ),
                 bflistlazy.select([pl.col(emtypecolumn), expr_bflist_to_str.alias("emissiontype_str")]),
             ])
 
@@ -1248,10 +1251,11 @@ def get_flux_contributions_from_packets(
             linelistlazy.select(
                 absorption_type=pl.col("lineindex").cast(pl.Int32), absorptiontype_str=expr_linelist_to_str
             ),
-            pl.DataFrame(
+            pl.LazyFrame(
                 {"absorption_type": [-1, -2], "absorptiontype_str": ["free-free", "bound-free"]},
                 schema={"absorption_type": pl.Int32, "absorptiontype_str": pl.String},
-            ).lazy(),
+                orient="col",
+            ),
         ]).with_columns(pl.col("absorptiontype_str"))
 
         lzdfpackets = lzdfpackets.join(abstypestrings, on="absorption_type", how="left")
@@ -1264,7 +1268,7 @@ def get_flux_contributions_from_packets(
         else:
             cols.add("dirbin")
 
-    dfpackets = lzdfpackets.select(cs.by_name(cols, require_all=False)).collect(engine="streaming")
+    dfpackets = lzdfpackets.select(cs.by_name(cols, require_all=False)).collect()
     if getemission:
         empackets = (
             dfpackets
@@ -1567,21 +1571,7 @@ def print_integrated_flux(
     return integrated_flux
 
 
-def get_reference_spectrum(filename: Path | str) -> tuple[pl.DataFrame, dict[t.Any, t.Any]]:
-    if Path(filename).is_file():
-        filepath = Path(filename)
-    else:
-        filepath = Path(get_path("artistools_dir"), "data", "refspectra", filename)
-
-        if not filepath.is_file():
-            filepathxz = filepath.with_suffix(f"{filepath.suffix}.xz")
-            if filepathxz.is_file():
-                filepath = filepathxz
-            else:
-                filepathgz = filepath.with_suffix(f"{filepath.suffix}.gz")
-                if filepathgz.is_file():
-                    filepath = filepathgz
-
+def get_reference_spectrum(filepath: Path | str) -> pl.DataFrame:
     metadata = get_file_metadata(filepath)
 
     flambdaindex = metadata.get("f_lambda_columnindex", 1)
@@ -1598,8 +1588,7 @@ def get_reference_spectrum(filename: Path | str) -> tuple[pl.DataFrame, dict[t.A
         )
     )
 
-    if "a_v" in metadata or "e_bminusv" in metadata:
-        print("Correcting for reddening")
+    if "a_v" in metadata and "r_v" in metadata:
         from extinction import apply
         from extinction import ccm89
 
@@ -1614,9 +1603,12 @@ def get_reference_spectrum(filename: Path | str) -> tuple[pl.DataFrame, dict[t.A
                 specdata["f_lambda"].to_numpy(),
             )
         )
+        print(
+            f"Correcting for reddening using CCM89 law with A_V = {metadata['a_v']} and R_V = {metadata.get('r_v', 3.1)}"
+        )
 
     if "z" in metadata:
-        print("Correcting for redshift")
         specdata = specdata.with_columns(lambda_angstroms=pl.col("lambda_angstroms") / (1 + metadata["z"]))
+        print(f"Correcting for redshift z = {metadata['z']}")
 
-    return specdata, metadata
+    return specdata

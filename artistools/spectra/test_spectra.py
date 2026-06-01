@@ -24,6 +24,7 @@ def test_spectraplot(mockplot: t.Any) -> None:
         outputfile=outputpath,
         timemin=290,
         timemax=320,
+        distmpc=1.0,
     )
 
     arr_lambda = np.array(mockplot.call_args[0][1])
