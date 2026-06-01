@@ -578,12 +578,7 @@ def get_from_packets(
             if use_time == "escape":
                 assert escapesurfacegamma is not None
                 dirbin_spectra[dirbin] = dirbin_spectra[dirbin].with_columns(
-                    pl.col("f_lambda").mul(1.0 / escapesurfacegamma)
-                )
-
-            if fluxfilterfunc:
-                dirbin_spectra[dirbin] = dirbin_spectra[dirbin].with_columns(
-                    pl.col("f_lambda").map_batches(fluxfilterfunc, return_dtype=pl.self_dtype())
+                    pl.col("flux").mul(1.0 / escapesurfacegamma)
                 )
 
             dirbin_spectra[dirbin] = (
@@ -591,7 +586,15 @@ def get_from_packets(
                 .join(dfbinned_lazy, on="lambda_binindex", how="left", coalesce=True)
                 .with_columns(f_lambda=pl.col("flux") / pl.col("delta_lambda"))
                 .drop("flux")
-                .with_columns(f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu")))
+            )
+
+            if fluxfilterfunc:
+                dirbin_spectra[dirbin] = dirbin_spectra[dirbin].with_columns(
+                    pl.col("f_lambda").map_batches(fluxfilterfunc, return_dtype=pl.self_dtype())
+                )
+
+            dirbin_spectra[dirbin] = dirbin_spectra[dirbin].with_columns(
+                f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu"))
             )
 
     if fluxfilterfunc:
