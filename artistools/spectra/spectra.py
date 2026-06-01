@@ -235,21 +235,27 @@ def get_lambda_bin_edges(
     gamma: bool = False,
 ) -> npt.NDArray[np.floating]:
     """Get the minimum and maximum wavelength to collect data for, and the bin width to ensure coverage of the plotted range."""
-    if deltax is not None or deltalogx is not None:
-        if deltalogx is not None:
-            # xmin_plot is the centre of the first bin, so we need to subtract half a bin width to get the lower edge of the first bin
-            xbin_lower = xmin_plot / (1 + deltalogx) ** 0.5
-            xmax = xmax_plot * (1 + deltalogx) ** 0.5
-            list_x_bin_edges = [xbin_lower]
-            while xbin_lower <= xmax:
-                xbin_lower *= 1 + deltalogx
-                list_x_bin_edges.append(xbin_lower)
-            x_bin_edges = np.array(list_x_bin_edges)
-        else:
-            assert deltax is not None
-            xbin_lower = xmin_plot - deltax * 0.5
-            xmax = xmax_plot + deltax * 0.5
-            x_bin_edges = np.arange(xbin_lower, xmax + deltax, deltax)
+    assert sum(param is not None for param in (deltax, deltalogx, deltalambda)) <= 1, (
+        "Options deltax, deltalogx, and deltalambda are mutually exclusive, but more than one was provided."
+    )
+    if deltalogx is not None:
+        if not deltalogx > 0:
+            msg = f"deltalogx must be positive, got {deltalogx}"
+            raise ValueError(msg)
+        # xmin_plot is the centre of the first bin, so we need to subtract half a bin width to get the lower edge of the first bin
+        xbin_lower = xmin_plot / (1 + deltalogx) ** 0.5
+        xmax = xmax_plot * (1 + deltalogx) ** 0.5
+        list_x_bin_edges = [xbin_lower]
+        while xbin_lower <= xmax:
+            xbin_lower *= 1 + deltalogx
+            list_x_bin_edges.append(xbin_lower)
+        x_bin_edges = np.array(list_x_bin_edges)
+        lambda_bin_edges = np.sort(convert_unit_to_angstroms(x_bin_edges, xunit))
+    elif deltax is not None:
+        if not deltax > 0:
+            msg = f"deltax must be positive, got {deltax}"
+            raise ValueError(msg)
+        x_bin_edges = np.arange(xmin_plot - deltax * 0.5, xmax_plot + deltax * 1.5, deltax)
         lambda_bin_edges = np.sort(convert_unit_to_angstroms(x_bin_edges, xunit))
     elif deltalambda is not None:
         # the plotted x limits are bin centres, not bin edges, so shift them by half a bin width
@@ -259,12 +265,12 @@ def get_lambda_bin_edges(
         lambda_bin_edges = np.arange(lambda_min, lambda_max + deltalambda, deltalambda)
     else:
         lambda_min_plot, lambda_max_plot = sorted(convert_unit_to_angstroms(np.array((xmin_plot, xmax_plot)), xunit))
-        lambda_bin_edges = get_exspec_lambda_bin_edges(modelpath=modelpath, gamma=gamma)
+        lambda_bin_edges_fullrange = get_exspec_lambda_bin_edges(modelpath=modelpath, gamma=gamma)
         lambda_bin_edges = (
             df_filter_minmax_bounded(
                 pl.LazyFrame({
-                    "lambda_bin_lower": lambda_bin_edges[:-1],
-                    "lambda_bin_upper": lambda_bin_edges[1:],
+                    "lambda_bin_lower": lambda_bin_edges_fullrange[:-1],
+                    "lambda_bin_upper": lambda_bin_edges_fullrange[1:],
                 }).with_columns(lambda_bin_centre=0.5 * (pl.col("lambda_bin_lower") + pl.col("lambda_bin_upper"))),
                 "lambda_bin_centre",
                 lambda_min_plot,
