@@ -769,9 +769,7 @@ def get_cell_angle(dfmodel: pd.DataFrame) -> pd.DataFrame:
     return dfmodel
 
 
-def get_standard_columns(
-    dimensions: int, includenico57: bool = False, includeabund: bool = True, pos_unknown: bool = False
-) -> list[str]:
+def get_standard_columns(dimensions: int, includenico57: bool = False, pos_unknown: bool = False) -> list[str]:
     """Get standard (artis classic) columns for modeldata DataFrame."""
     cols: list[str] = []
     match dimensions:
@@ -785,9 +783,6 @@ def get_standard_columns(
                 if pos_unknown
                 else ["inputcellid", "pos_x_min", "pos_y_min", "pos_z_min", "rho"]
             )
-
-    if not includeabund:
-        return cols
 
     cols += ["X_Fegroup", "X_Ni56", "X_Co56", "X_Fe52", "X_Cr48"]
 
@@ -1122,8 +1117,6 @@ def dimension_reduce_model(
     outputdimensions: int,
     dfelabundances: pl.DataFrame | pl.LazyFrame | None = None,
     dfgridcontributions: pl.DataFrame | None = None,
-    ncoordgridr: int | None = None,
-    ncoordgridz: int | None = None,
     modelmeta: dict[str, t.Any] | None = None,
     **kwargs: t.Any,
 ) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame, dict[str, t.Any]]:
@@ -1178,9 +1171,8 @@ def dimension_reduce_model(
         dfmodel_out = dfmodel_out.with_columns([
             (pl.col("vel_x_mid") ** 2 + pl.col("vel_y_mid") ** 2).sqrt().alias("vel_rcyl_mid")
         ])
-        if ncoordgridz is None:
-            ncoordgridz = int(modelmeta.get("ncoordgridx", round(math.cbrt(in_ngridpoints))))
-            assert ncoordgridz % 2 == 0
+        ncoordgridz = int(modelmeta.get("ncoordgridx", round(math.cbrt(in_ngridpoints))))
+        assert ncoordgridz % 2 == 0
         ncoordgridr = ncoordgridz // 2
         modelmeta_out["ncoordgridz"] = ncoordgridz
         modelmeta_out["ncoordgridrcyl"] = ncoordgridr

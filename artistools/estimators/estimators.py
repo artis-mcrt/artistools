@@ -8,7 +8,6 @@ import datetime
 import tempfile
 import time
 import typing as t
-from collections.abc import Collection
 from collections.abc import Sequence
 from itertools import batched
 from pathlib import Path
@@ -314,14 +313,11 @@ def read_estimators(
     modelpath: Path | str = ".",
     modelgridindex: int | Sequence[int] | None = None,
     timestep: int | Sequence[int] | None = None,
-    keys: Collection[str] | None = None,
 ) -> dict[tuple[int, int], dict[str, t.Any]]:
     """Read ARTIS estimator data into a dictionary keyed by (timestep, modelgridindex).
 
     When collecting many cells and timesteps, this is very slow, and it's almost always better to use scan_estimators instead.
     """
-    if isinstance(keys, str):
-        keys = {keys}
     lzpldfestimators = scan_estimators(modelpath, modelgridindex, timestep)
 
     if isinstance(modelgridindex, int):
@@ -339,9 +335,7 @@ def read_estimators(
     for estimtsmgi in pldfestimators.iter_rows(named=True):
         ts, mgi = estimtsmgi["timestep"], estimtsmgi["modelgridindex"]
         estimators[ts, mgi] = {
-            k: v
-            for k, v in estimtsmgi.items()
-            if k not in {"timestep", "modelgridindex"} and (keys is None or k in keys) and v is not None
+            k: v for k, v in estimtsmgi.items() if k not in {"timestep", "modelgridindex"} and v is not None
         }
 
     return estimators

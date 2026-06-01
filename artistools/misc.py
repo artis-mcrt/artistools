@@ -1029,7 +1029,7 @@ def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
     return {}
 
 
-def get_filterfunc(args: argparse.Namespace, mode: str = "interp") -> Callable[[t.Any], t.Any] | None:
+def get_filterfunc(args: argparse.Namespace) -> Callable[[t.Any], t.Any] | None:
     """Use command line arguments to determine the appropriate filter function."""
     filterfunc = None
     dictargs = vars(args)
@@ -1051,7 +1051,7 @@ def get_filterfunc(args: argparse.Namespace, mode: str = "interp") -> Callable[[
 
         assert filterfunc is None
         filterfunc = functools.partial(  # pyright: ignore[reportCallIssue]
-            scipy.signal.savgol_filter, window_length=window_length, polyorder=polyorder, mode=mode
+            scipy.signal.savgol_filter, window_length=window_length, polyorder=polyorder, mode="interp"
         )
 
         print("Applying Savitzky-Golay filter")
