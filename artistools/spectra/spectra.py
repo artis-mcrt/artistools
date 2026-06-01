@@ -302,9 +302,8 @@ def convert_unit_to_angstroms[T: (float, npt.NDArray[np.floating])](value: T, ol
             return value * 10
         case "micron":
             return value * 10000
-        case _:
-            msg = f"Unknown xunit {old_units}"
-            raise ValueError(msg)
+    msg = f"Unknown xunit {old_units}"
+    raise ValueError(msg)
 
 
 def stackspectra(spectra_and_factors: list[tuple[npt.NDArray[np.floating], float]]) -> npt.NDArray[np.floating]:
