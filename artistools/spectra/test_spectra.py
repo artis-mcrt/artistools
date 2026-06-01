@@ -102,14 +102,12 @@ def test_spectra_get_spectrum() -> None:
 
     check_spectrum(dfspectrum)
 
-    lambda_min = dfspectrum["lambda_angstroms"].to_numpy()[0]
-    lambda_max = dfspectrum["lambda_angstroms"].to_numpy()[-1]
     timelowdays = at.get_timestep_times(modelpath)[55]
     timehighdays = at.get_timestep_times(modelpath)[65]
 
-    dfspectrumpkts = at.spectra.get_from_packets(
-        modelpath, timelowdays=timelowdays, timehighdays=timehighdays, lambda_min=lambda_min, lambda_max=lambda_max
-    )[-1].collect()
+    dfspectrumpkts = at.spectra.get_from_packets(modelpath, timelowdays=timelowdays, timehighdays=timehighdays)[
+        -1
+    ].collect()
 
     check_spectrum(dfspectrumpkts)
 
@@ -163,15 +161,15 @@ def test_spectra_get_spectrum_polar_angles_frompackets(benchmark: BenchmarkFixtu
     timelowdays = at.get_timestep_times(modelpath_classic_3d, loc="start")[0]
     timehighdays = at.get_timestep_times(modelpath_classic_3d, loc="end")[25]
 
+    lambda_bin_edges = np.arange(100.0, 50000.0 + 100.0, 100.0)
+
     spectrafrompkts = benchmark(
         lambda: at.spectra.get_from_packets(
             modelpath=modelpath_classic_3d,
             average_over_phi=True,
             timelowdays=timelowdays,
             timehighdays=timehighdays,
-            lambda_min=100,
-            lambda_max=50000,
-            delta_lambda=100,
+            lambda_bin_edges=lambda_bin_edges,
         )
     )
 
@@ -241,18 +239,17 @@ def test_spectra_get_flux_contributions(benchmark: BenchmarkFixture) -> None:
 
 
 def test_spectra_get_flux_contributions_from_packets(benchmark: BenchmarkFixture) -> None:
-    lambdamin = 200
-    lambdamax = 20000
-    delta_lambda = 100
-    timelowdays = 4
-    timehighdays = 7
+    lambdamin = 200.0
+    lambdamax = 20000.0
+    deltalambda = 100.0
+    timelowdays = 4.0
+    timehighdays = 7.0
+    lambda_bin_edges = np.arange(lambdamin, lambdamax + deltalambda, deltalambda)
     dfspectrum = at.spectra.get_from_packets(
         modelpath=modelpath_classic_3d,
         timelowdays=timelowdays,
         timehighdays=timehighdays,
-        lambda_min=lambdamin,
-        lambda_max=lambdamax,
-        delta_lambda=delta_lambda,
+        lambda_bin_edges=lambda_bin_edges,
     )[-1].collect()
 
     integrated_flux_specout = np.trapezoid(dfspectrum["f_lambda"], x=dfspectrum["lambda_angstroms"])
@@ -262,9 +259,7 @@ def test_spectra_get_flux_contributions_from_packets(benchmark: BenchmarkFixture
             timelowdays=timelowdays,
             timehighdays=timehighdays,
             emtypecolumn="emissiontype",
-            lambda_min=lambdamin,
-            lambda_max=lambdamax,
-            delta_lambda=delta_lambda,
+            lambda_bin_edges=lambda_bin_edges,
         )
     )
 
