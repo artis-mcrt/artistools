@@ -285,13 +285,14 @@ def packets_2d_hist_bin_and_ejecta_vel(
     srIItriplet: bool,
     colorlogscale: bool,
     dirbin_range: list[int],
+    trueem: bool,
     Z: int | None = None,
     ion_stage_str: str | None = None,
     wavelen: float | None = None,
     binwidth: float | None = None,
 ) -> None:
 
-    start_of_filename = ""
+    start_of_filename = str(modelpath)
     if wavelen is not None:
         start_of_filename = f"{wavelen:.0f}A_"
     start_of_filename = f"{start_of_filename}_Z={Z}_" if Z else f"{start_of_filename}_allelements_"
@@ -313,23 +314,33 @@ def packets_2d_hist_bin_and_ejecta_vel(
     t_max = timemaxarray[timestep]
     Delta_beta = 0.5 / 25
 
+    pos_type_str = ""
+    if trueem:
+        pos_type_str = "true"
+
     dfpackets = dfpackets.filter(pl.col("t_arrive_d").is_between(t_min, t_max, closed="right"))
     dfpackets = dfpackets.with_columns(
-        ((pl.col("em_posx") ** 2 + pl.col("em_posy") ** 2).sqrt() / pl.col("em_time") / CLIGHT).alias("beta_r_cyl_em")
-    ).with_columns((pl.col("em_posz") / pl.col("em_time") / CLIGHT).alias("beta_z_em"))
+        (
+            (pl.col(f"{pos_type_str}em_posx") ** 2 + pl.col(f"{pos_type_str}em_posy") ** 2).sqrt()
+            / pl.col(f"{pos_type_str}em_time")
+            / CLIGHT
+        ).alias("beta_r_cyl_em")
+    ).with_columns((pl.col(f"{pos_type_str}em_posz") / pl.col(f"{pos_type_str}em_time") / CLIGHT).alias("beta_z_em"))
 
     dfpackets = dfpackets.with_columns(
-        ((pl.col("beta_r_cyl_em") / Delta_beta).floor() * Delta_beta * CLIGHT * pl.col("em_time")).alias(
+        ((pl.col("beta_r_cyl_em") / Delta_beta).floor() * Delta_beta * CLIGHT * pl.col(f"{pos_type_str}em_time")).alias(
             "R_cyl_inner_em"
         )
-    ).with_columns((pl.col("R_cyl_inner_em") + Delta_beta * CLIGHT * pl.col("em_time")).alias("R_cyl_outer_em"))
+    ).with_columns(
+        (pl.col("R_cyl_inner_em") + Delta_beta * CLIGHT * pl.col(f"{pos_type_str}em_time")).alias("R_cyl_outer_em")
+    )
     dfpackets = dfpackets.with_columns(
         (
             np.pi
             * (pl.col("R_cyl_outer_em").cast(pl.Float64) ** 2 - pl.col("R_cyl_inner_em").cast(pl.Float64) ** 2)
             * CLIGHT
             * Delta_beta
-            * pl.col("em_time")
+            * pl.col(f"{pos_type_str}em_time")
         ).alias("hollow_cyl_vol_em")
     )
     dfpackets_selected = dfpackets.collect()
@@ -392,6 +403,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--srIItriplet", action="store_true", help="Plot packets from SrII triplet only")
     parser.add_argument("--colorlogscale", action="store_true", help="Log scale for color bar in 2D plot")
 
+    parser.add_argument(
+        "--trueemission", action="store_true", help="Plot true emission rather than last interaction location"
+    )
+
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot last packet interaction properties versus ejecta velocity for selected packets."""
@@ -424,6 +439,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.colorlogscale,
         dirbin_range=[dirbin + i for i in range(10)] if dirbin is not None else list(range(100)),
         Z=at.get_atomic_number(args.element) if args.element else None,
+        trueem=args.trueemission,
         ion_stage_str=args.ionstage,
         wavelen=args.wavelen,
         binwidth=args.binwidth,
