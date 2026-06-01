@@ -130,9 +130,10 @@ def split_multitable_dataframe(res_df: pl.DataFrame | pl.LazyFrame) -> dict[int,
 
 
 def df_filter_minmax_bounded(
-    df: pl.LazyFrame, colname: str, minval: float | int | None, maxval: float | int | None
+    df: pl.LazyFrame | pl.DataFrame, colname: str, minval: float | int | None, maxval: float | int | None
 ) -> pl.LazyFrame:
     """Filter a DataFrame to selects rows where the value in colname is between minval and maxval, and also include the closest exterior rows if xmin/xmax are between two rows. This enables linear interpolation at xmin and xmax (if the surrounding values existed in the DataFrame)."""
+    df = df.lazy()
     if minval is None and maxval is None:
         return df
 
