@@ -19,6 +19,7 @@ import polars.selectors as cs
 import artistools.constants as const
 import artistools.packets as atpackets
 from artistools.misc import average_direction_bins
+from artistools.misc import df_filter_minmax_bounded
 from artistools.misc import firstexisting
 from artistools.misc import get_bflist
 from artistools.misc import get_elsymbol
@@ -257,7 +258,25 @@ def get_lambda_bin_edges(
         lambda_min, lambda_max = sorted(convert_unit_to_angstroms(np.array((xmin, xmax)), xunit))
         lambda_bin_edges = np.arange(lambda_min, lambda_max + deltalambda, deltalambda)
     else:
+        lambda_min_plot, lambda_max_plot = sorted(convert_unit_to_angstroms(np.array((xmin_plot, xmax_plot)), xunit))
         lambda_bin_edges = get_exspec_lambda_bin_edges(modelpath=modelpath, gamma=gamma)
+        lambda_bin_centres = 0.5 * (lambda_bin_edges[:-1] + lambda_bin_edges[1:])
+        lambda_bin_edges = (
+            df_filter_minmax_bounded(
+                pl.DataFrame({
+                    "lambda_bin_lower": lambda_bin_edges[:-1],
+                    "lambda_bin_upper": lambda_bin_edges[1:],
+                    "lambda_bin_centre": lambda_bin_centres,
+                }),
+                "lambda_bin_centre",
+                lambda_min_plot,
+                lambda_max_plot,
+            )
+            .select(pl.col("lambda_bin_lower").append(pl.col("lambda_bin_upper").last()).alias("lambda_bin_edges"))
+            .collect()
+            .to_numpy()
+            .flatten()
+        )
 
     return lambda_bin_edges
 
