@@ -128,12 +128,7 @@ def get_fullspecfittedfield(
 
 
 def get_fitted_field(
-    radfielddata: pl.DataFrame,
-    modelgridindex: int | None = None,
-    timestep: int | None = None,
-    print_bins: bool = False,
-    lambdamin: float | int | None = None,
-    lambdamax: float | int | None = None,
+    radfielddata: pl.DataFrame, modelgridindex: int | None = None, timestep: int | None = None
 ) -> tuple[list[float], list[float]]:
     """Return the fitted dilute blackbody (list of lambda, list of j_nu) made up of all bins."""
     arr_lambda: list[float] = []
@@ -145,24 +140,9 @@ def get_fitted_field(
     if timestep is not None:
         radfielddata_subset = radfielddata_subset.filter(pl.col("timestep") == timestep)
 
-    if lambdamax is not None:
-        nu_min = 2.99792458e18 / lambdamax
-
-    if lambdamin is not None:
-        nu_max = 2.99792458e18 / lambdamin
-
     for row in radfielddata_subset.iter_rows(named=True):
         nu_lower = row["nu_lower"]
         nu_upper = row["nu_upper"]
-
-        if lambdamax is not None:
-            if nu_upper > nu_max:
-                continue
-            nu_lower = max(nu_lower, nu_min)
-        if lambdamin is not None:
-            if nu_lower < nu_min:
-                continue
-            nu_upper = min(nu_upper, nu_max)
 
         if row["W"] >= 0:
             arr_nu_hz_bin = np.linspace(nu_lower, nu_upper, num=200)
@@ -181,18 +161,6 @@ def get_fitted_field(
 
             arr_lambda += [2.99792458e18 / nu for nu in arr_nu_hz_bin]
         j_lambda_fitted += arr_j_lambda_bin.tolist()
-
-        lambda_lower = 2.99792458e18 / row["nu_upper"]
-        lambda_upper = 2.99792458e18 / row["nu_lower"]
-        if (
-            print_bins
-            and (lambdamax is None or lambda_lower < lambdamax)
-            and (lambdamin is None or lambda_upper > lambdamin)
-        ):
-            print(
-                f"Bin lambda_lower {lambda_lower:.1f} W {row['W']:.1e} "
-                f"contribs {row['ncontrib']} J_nu_avg {row['J_nu_avg']:.1e}"
-            )
 
     return arr_lambda, j_lambda_fitted
 
