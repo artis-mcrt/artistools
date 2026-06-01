@@ -267,25 +267,6 @@ def get_packets_text_columns(packetsfile: Path | str, modelpath: Path | str = ".
     return column_names
 
 
-def readfile(
-    packetsfile: Path | str,
-    packet_type: str | None = None,
-    escape_type: t.Literal["TYPE_RPKT", "TYPE_GAMMA"] | None = None,
-) -> pd.DataFrame:
-    """Read a packet file into a Pandas DataFrame."""
-    dfpackets = readfile_text(packetsfile, column_names=get_packets_text_columns(packetsfile))
-
-    if escape_type is not None:
-        assert packet_type is None or packet_type == "TYPE_ESCAPE"
-        dfpackets = dfpackets.filter(
-            (pl.col("type_id") == type_ids["TYPE_ESCAPE"]) & (pl.col("escape_type_id") == type_ids[escape_type])
-        )
-    elif packet_type is not None and packet_type:
-        dfpackets = dfpackets.filter(pl.col("type_id") == type_ids[packet_type])
-
-    return dfpackets.to_pandas(use_pyarrow_extension_array=True)
-
-
 def readfile_text(packetsfiletext: Path | str, column_names: list[str]) -> pl.DataFrame:
     """Read a packets*.out(.xz/.zst) space-separated text file into a polars DataFrame."""
     packetsfiletext = Path(packetsfiletext)
