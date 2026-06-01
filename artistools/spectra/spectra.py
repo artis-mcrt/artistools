@@ -469,14 +469,11 @@ def get_from_packets(
                     sumcols=[energy_column],
                     getcounts=True,
                 )
-                .select([
-                    pl.col(f"{lambda_column}_bin").alias("lambda_binindex"),
-                    (pl.col(f"{energy_column}_sum") / delta_time_s / (const.megaparsec_to_cm**2) / nprocs_read).alias(
-                        "flux"
-                    ),
-                    pl.col("count"),
-                    pl.col("count").alias("packetcount"),
-                ])
+                .select(
+                    lambda_binindex=pl.col(f"{lambda_column}_bin"),
+                    flux=pl.col(f"{energy_column}_sum") / delta_time_s / (const.megaparsec_to_cm**2) / nprocs_read,
+                    packetcount=pl.col("count"),
+                )
                 .join(dfbinned_lazy, on="lambda_binindex", how="left", coalesce=True)
                 .with_columns(f_lambda=pl.col("flux") / pl.col("delta_lambda"))
                 .drop("flux")
@@ -549,18 +546,17 @@ def get_from_packets(
                 bins=lambda_bin_edges.tolist(),
                 sumcols=[energy_column],
                 getcounts=True,
-            ).select([
-                pl.col(f"{lambda_column}_bin").alias("lambda_binindex"),
-                (
+            ).select(
+                lambda_binindex=pl.col(f"{lambda_column}_bin"),
+                flux=(
                     pl.col(f"{energy_column}_sum")
                     / delta_time_s
                     * solidanglefactor
                     / (4 * math.pi * const.megaparsec_to_cm**2)
                     / nprocs_read
-                ).alias("flux"),
-                pl.col("count"),
-                pl.col("count").alias("packetcount"),
-            ])
+                ),
+                packetcount=pl.col("count"),
+            )
 
             if use_time == "escape":
                 assert escapesurfacegamma is not None
