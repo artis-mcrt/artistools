@@ -34,20 +34,15 @@ def get_bol_lc_from_spec(modelpath: Path) -> pd.DataFrame:
     return lightcurvedataframe
 
 
-def get_bol_lc_from_lightcurveout(modelpath: Path, res: bool = False) -> pd.DataFrame:
+def get_bol_lc_from_lightcurveout(modelpath: Path) -> pd.DataFrame:
     lcdataframes = {
-        dirbin: df.collect().to_pandas()
-        for dirbin, df in at.lightcurve.readfile(
-            modelpath / ("light_curve_res.out" if res else "light_curve.out")
-        ).items()
+        dirbin: df.collect().to_pandas() for dirbin, df in at.lightcurve.readfile(modelpath / "light_curve.out").items()
     }
 
     lightcurvedata = {"time": lcdataframes[next(iter(lcdataframes.keys()))]["time_days"]}
 
-    dirbins = range(len(lcdataframes)) if res else [-1]
-    for dirbin in dirbins:
+    for dirbin in [-1]:
         lcdata = lcdataframes[dirbin]
-        # lightcurvedata[f'angle={angle}'] = np.log10(bol_luminosity)
         columnname = "lum (erg/s)"
         if dirbin != -1:
             columnname += f"angle={dirbin}"

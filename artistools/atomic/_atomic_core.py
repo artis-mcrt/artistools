@@ -175,20 +175,18 @@ def add_transition_columns(
 
 
 def get_transitiondata(
-    modelpath: str | Path, ionlist: Collection[tuple[int, int]] | None = None, quiet: bool = False
+    modelpath: str | Path, ionlist: Collection[tuple[int, int]] | None = None
 ) -> dict[tuple[int, int], pl.DataFrame]:
     """Return a dictionary of transitions from (Z, ion_stage) to a polars DataFrame."""
     ionlist = set(ionlist) if ionlist else None
     transition_filename = at.firstexisting("transitiondata.txt", folder=modelpath)
 
     time_start = time.perf_counter()
-    if not quiet:
-        print(f"Reading {transition_filename.relative_to(Path(modelpath).parent)}...")
+    print(f"Reading {transition_filename.relative_to(Path(modelpath).parent)}...")
 
     transitionsdict = at.rustext.read_transitiondata(str(transition_filename), ionlist=ionlist)
 
-    if not quiet:
-        print(f"  took {time.perf_counter() - time_start:.2f} seconds")
+    print(f"  took {time.perf_counter() - time_start:.2f} seconds")
 
     return transitionsdict
 
@@ -198,20 +196,18 @@ def get_levels(
     ionlist: Collection[tuple[int, int]] | None = None,
     get_transitions: bool = False,
     get_photoionisations: bool = False,
-    quiet: bool = False,
     derived_transitions_columns: Sequence[str] | None = None,
 ) -> pl.DataFrame:
     """Return a polars DataFrame of energy levels."""
     adatafilename = Path(modelpath, "adata.txt")
 
-    transitionsdict = get_transitiondata(modelpath, ionlist=ionlist, quiet=quiet) if get_transitions else {}
+    transitionsdict = get_transitiondata(modelpath, ionlist=ionlist) if get_transitions else {}
 
     phixsdict = {}
     if get_photoionisations:
         phixs_filename = Path(modelpath, "phixsdata_v2.txt")
 
-        if not quiet:
-            print(f"Reading {phixs_filename.relative_to(Path(modelpath).parent)}")
+        print(f"Reading {phixs_filename.relative_to(Path(modelpath).parent)}")
 
         phixsdict = parse_phixsdata(phixs_filename, ionlist)
 
@@ -226,8 +222,7 @@ def get_levels(
     level_lists: list[IonTuple] = []
 
     with at.zopen(adatafilename) as fadata:
-        if not quiet:
-            print(f"Reading {adatafilename.relative_to(Path(modelpath).parent)}")
+        print(f"Reading {adatafilename.relative_to(Path(modelpath).parent)}")
 
         for Z, ion_stage, level_count, ionisation_energy_ev, dflevels in parse_adata(fadata, phixsdict, ionlist):
             if (Z, ion_stage) in transitionsdict:

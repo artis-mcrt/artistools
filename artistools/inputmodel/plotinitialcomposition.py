@@ -27,15 +27,10 @@ def get_2D_slice_through_3d_model(
     modelmeta: dict[str, t.Any] | None = None,
     plotaxis1: AxisType | None = None,
     plotaxis2: AxisType | None = None,
-    sliceindex: int | None = None,
 ) -> pd.DataFrame:
-    if not sliceindex:
-        # get midpoint
-        sliceposition: float | int = dfmodel.iloc[(dfmodel["pos_x_min"]).abs().argsort()][:1]["pos_x_min"].item()
-        # Choose position to slice. This gets minimum absolute value as the closest to 0
-    else:
-        cell_boundaries = list(dfmodel[f"pos_{sliceaxis}_min"].unique())
-        sliceposition = cell_boundaries[sliceindex]
+    # get midpoint
+    sliceposition: float | int = dfmodel.iloc[(dfmodel["pos_x_min"]).abs().argsort()][:1]["pos_x_min"].item()
+    # Choose position to slice. This gets minimum absolute value as the closest to 0
 
     slicedf = dfmodel.loc[dfmodel[f"pos_{sliceaxis}_min"] == sliceposition]
     assert isinstance(slicedf, pd.DataFrame)

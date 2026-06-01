@@ -66,18 +66,15 @@ def make_cone(args: argparse.Namespace, logprint: Callable[..., None]) -> pd.Dat
     return cone.collect().to_pandas(use_pyarrow_extension_array=True)
 
 
-def get_profile_along_axis(
-    args: argparse.Namespace, modeldata: pd.DataFrame | None = None, derived_cols: Sequence[str] | None = None
-) -> pd.DataFrame:
+def get_profile_along_axis(args: argparse.Namespace) -> pd.DataFrame:
     print("Getting profile along axis")
 
-    if modeldata is None:
-        modeldata = (
-            at.inputmodel
-            .get_modeldata(args.modelpath, get_elemabundances=True, derived_cols=derived_cols)[0]
-            .collect()
-            .to_pandas(use_pyarrow_extension_array=True)
-        )
+    modeldata = (
+        at.inputmodel
+        .get_modeldata(args.modelpath, get_elemabundances=True)[0]
+        .collect()
+        .to_pandas(use_pyarrow_extension_array=True)
+    )
 
     position_closest_to_axis = modeldata.iloc[(modeldata[f"pos_{args.other_axis2}_min"]).abs().argsort()][:1][
         f"pos_{args.other_axis2}_min"

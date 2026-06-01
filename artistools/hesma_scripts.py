@@ -72,9 +72,8 @@ def plothesmaresspec(fig: mplfig.Figure, ax: mplax.Axes) -> None:
     # plt.show()
 
 
-def make_hesma_vspecfiles(modelpath: Path, outpath: Path | None = None) -> None:
-    if not outpath:
-        outpath = modelpath
+def make_hesma_vspecfiles(modelpath: Path) -> None:
+    outpath = modelpath
     modelname = at.get_model_name(modelpath)
     angles = [0, 1, 2, 3, 4]
     vpkt_config = at.get_vpkt_config(modelpath)
@@ -132,27 +131,17 @@ def make_hesma_bol_lightcurve(modelpath: Path, outpath: Path, timemin: float | i
     lightcurvedataframe.to_csv(outpath / outfilename, sep=" ", index=False, header=False)
 
 
-def make_hesma_peakmag_dm15_dm40(
-    band: str, pathtofiles: Path, modelname: str, outpath: Path, dm40: bool = False
-) -> None:
+def make_hesma_peakmag_dm15_dm40(band: str, pathtofiles: Path, modelname: str, outpath: Path) -> None:
     dm15filename = f"{band}band_{modelname}_viewing_angle_data.txt"
     dm15data = pd.read_csv(
         pathtofiles / dm15filename, sep=r"\s+", header=None, names=["peakmag", "risetime", "dm15"], skiprows=1
     )
-
-    if dm40:
-        dm40filename = f"{band}band_{modelname}_viewing_angle_data_deltam40.txt"
-        dm40data = pd.read_csv(
-            pathtofiles / dm40filename, sep=r"\s+", header=None, names=["peakmag", "risetime", "dm40"], skiprows=1
-        )
 
     outdata = {
         "peakmag": dm15data["peakmag"],  # dm15 peak mag probably more accurate - shorter time window
         "dm15": dm15data["dm15"],
         "angle_bin": np.arange(0, 100),
     }
-    if dm40:
-        outdata["dm40"] = dm40data["dm40"]
 
     outdataframe = pd.DataFrame(outdata).round(decimals=4)
     outdataframe.to_csv(outpath / f"{modelname}_width-luminosity.dat", sep=" ", index=False, header=True)

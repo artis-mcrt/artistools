@@ -20,16 +20,8 @@ def read_selected_mgi(
     )
 
 
-def get_modelgridcells_along_axis(modelpath: Path | str, args: argparse.Namespace | None = None) -> list[int]:
-    if args is None:
-        args = argparse.Namespace(
-            modelpath=modelpath, sliceaxis="x", other_axis1="z", other_axis2="y", positive_axis=True
-        )
-    else:
-        axes = ["x", "y", "z"]
-        axes.remove(args.sliceaxis)
-        args.other_axis1 = axes[0]
-        args.other_axis2 = axes[1]
+def get_modelgridcells_along_axis(modelpath: Path | str) -> list[int]:
+    args = argparse.Namespace(modelpath=modelpath, sliceaxis="x", other_axis1="z", other_axis2="y", positive_axis=True)
 
     profile1d = at.inputmodel.slice1dfromconein3dmodel.get_profile_along_axis(args=args)
     return get_mgi_of_modeldata(profile1d, modelpath)

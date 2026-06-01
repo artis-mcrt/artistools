@@ -363,7 +363,6 @@ def plot_artis_spectrum(
     scale_to_peak: float | int | None = None,
     from_packets: bool = False,
     filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
-    linelabel: str | None = None,
     yvariable: str = "flux",
     directionbins: list[int] | None = None,
     average_over_phi: bool = False,
@@ -424,16 +423,14 @@ def plot_artis_spectrum(
         assert args.timemax is not None
         timeavg = (args.timemin + args.timemax) / 2.0
         timedelta = (args.timemax - args.timemin) / 2
-        linelabel_is_custom = linelabel is not None
-        if linelabel is None:
-            modelname = get_model_name(modelpath)
-            linelabel = modelname if len(modelname) < 70 else f"...{modelname[-67:]}"
+        modelname = get_model_name(modelpath)
+        linelabel = modelname if len(modelname) < 70 else f"...{modelname[-67:]}"
 
-            if not args.hidemodeltime and not args.multispecplot:
-                # TODO: fix this for multispecplot - use args.showtime for now
-                linelabel += f" +{timeavg:.1f}d"
-            if not args.hidemodeltimerange and not args.multispecplot and timedelta >= 0.1:
-                linelabel += rf" ($\pm$ {timedelta:.1f}d)"
+        if not args.hidemodeltime and not args.multispecplot:
+            # TODO: fix this for multispecplot - use args.showtime for now
+            linelabel += f" +{timeavg:.1f}d"
+        if not args.hidemodeltimerange and not args.multispecplot and timedelta >= 0.1:
+            linelabel += rf" ($\pm$ {timedelta:.1f}d)"
 
         print(
             f"====> '{linelabel}' timesteps {timestepmin} to {timestepmax} ({args.timemin:.3f} to {args.timemax:.3f}d{'' if clamp_to_timesteps else ' not necessarily clamped to timestep start/end'})"
@@ -557,7 +554,7 @@ def plot_artis_spectrum(
             else:
                 print()
 
-            if dirbin != -1 and (len(directionbins) > 1 or not linelabel_is_custom):
+            if dirbin != -1 and len(directionbins) > 1:
                 linelabel_withdirbin = f"{linelabel} {dirbin_definitions[dirbin]}"
 
             atspectra.print_integrated_flux(dfspectrum["dflux_on_dx_onempc"], dfspectrum["x"])

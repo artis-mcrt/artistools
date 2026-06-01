@@ -769,9 +769,7 @@ def get_cell_angle(dfmodel: pd.DataFrame) -> pd.DataFrame:
     return dfmodel
 
 
-def get_standard_columns(
-    dimensions: int, includenico57: bool = False, includeabund: bool = True, pos_unknown: bool = False
-) -> list[str]:
+def get_standard_columns(dimensions: int, includenico57: bool = False, pos_unknown: bool = False) -> list[str]:
     """Get standard (artis classic) columns for modeldata DataFrame."""
     cols: list[str] = []
     match dimensions:
@@ -786,9 +784,6 @@ def get_standard_columns(
                 else ["inputcellid", "pos_x_min", "pos_y_min", "pos_z_min", "rho"]
             )
 
-    if not includeabund:
-        return cols
-
     cols += ["X_Fegroup", "X_Ni56", "X_Co56", "X_Fe52", "X_Cr48"]
 
     if includenico57:
@@ -801,9 +796,7 @@ def save_modeldata(
     dfmodel: pl.LazyFrame | pl.DataFrame,
     outpath: Path | str | None = None,
     vmax: float | int | None = None,
-    headercommentlines: list[str] | None = None,
     modelmeta: dict[str, t.Any] | None = None,
-    twolinespercell: bool = False,
     **kwargs: t.Any,
 ) -> None:
     """Write an artis model.txt (density and composition snapshot) from a DataFrame/LazyFrame of cell properties and other metadata such as the time after explosion.
@@ -838,9 +831,7 @@ def save_modeldata(
 
     modelmeta |= kwargs  # add any extra keyword arguments to modelmeta
 
-    if "headercommentlines" in modelmeta:
-        assert headercommentlines is None
-        headercommentlines = modelmeta["headercommentlines"]
+    headercommentlines = modelmeta.get("headercommentlines")
 
     if "vmax_cmps" in modelmeta:
         assert vmax is None or vmax == modelmeta["vmax_cmps"]
@@ -941,38 +932,23 @@ def save_modeldata(
             # startcols are the standard ones, but excluding any abundances
             startcols = [col for col in standardcols if not col.startswith("X_")]
             dfmodel = dfmodel.select([*startcols, *abundandcustomcols])
-            if twolinespercell:
-                # slow python writer. only needed to create models for classic ARTIS
-                nstartcols = len(startcols)
-                rhocolindex = len(startcols) - 1
-                for colvals in dfmodel.iter_rows():
-                    inputcellid = colvals[0]
-                    fmodel.write(f"{inputcellid:d}" + "".join(f" {colvalue:.4e}" for colvalue in colvals[1:nstartcols]))
-                    fmodel.write("\n")
-                    fmodel.write(
-                        " ".join((f"{colvalue:.4e}" if colvalue > 0.0 else "0.0") for colvalue in colvals[nstartcols:])
-                        if colvals[rhocolindex] > 0.0
-                        else strzeroabund
-                    )
-                    fmodel.write("\n")
-            else:
-                # fast polars writer
-                # set abundances to null for cells with zero density (so that shorter form "0.0" can be written)
-                dfmodel = dfmodel.with_columns(
-                    pl.when(pl.col("rho") > 0).then(pl.col(col)).otherwise(pl.lit(None)).alias(col)
-                    for col in dfmodel.columns
-                    if not col.startswith("pos") and col != "inputcellid" and dfmodel.schema[col].is_float()
-                )
-                fmodel.flush()
-                dfmodel.write_csv(
-                    fmodel,
-                    include_header=False,
-                    separator=" ",
-                    line_terminator="\n",
-                    float_scientific=True,
-                    float_precision=4,
-                    null_value="0.0",
-                )
+            # fast polars writer
+            # set abundances to null for cells with zero density (so that shorter form "0.0" can be written)
+            dfmodel = dfmodel.with_columns(
+                pl.when(pl.col("rho") > 0).then(pl.col(col)).otherwise(pl.lit(None)).alias(col)
+                for col in dfmodel.columns
+                if not col.startswith("pos") and col != "inputcellid" and dfmodel.schema[col].is_float()
+            )
+            fmodel.flush()
+            dfmodel.write_csv(
+                fmodel,
+                include_header=False,
+                separator=" ",
+                line_terminator="\n",
+                float_scientific=True,
+                float_precision=4,
+                null_value="0.0",
+            )
 
     print(f"Wrote {modelfilepath} (took {time.perf_counter() - timestart:.1f} seconds)")
 
@@ -1138,8 +1114,6 @@ def dimension_reduce_model(
     outputdimensions: int,
     dfelabundances: pl.DataFrame | pl.LazyFrame | None = None,
     dfgridcontributions: pl.DataFrame | None = None,
-    ncoordgridr: int | None = None,
-    ncoordgridz: int | None = None,
     modelmeta: dict[str, t.Any] | None = None,
     **kwargs: t.Any,
 ) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame, dict[str, t.Any]]:
@@ -1194,9 +1168,8 @@ def dimension_reduce_model(
         dfmodel_out = dfmodel_out.with_columns([
             (pl.col("vel_x_mid") ** 2 + pl.col("vel_y_mid") ** 2).sqrt().alias("vel_rcyl_mid")
         ])
-        if ncoordgridz is None:
-            ncoordgridz = int(modelmeta.get("ncoordgridx", round(math.cbrt(in_ngridpoints))))
-            assert ncoordgridz % 2 == 0
+        ncoordgridz = int(modelmeta.get("ncoordgridx", round(math.cbrt(in_ngridpoints))))
+        assert ncoordgridz % 2 == 0
         ncoordgridr = ncoordgridz // 2
         modelmeta_out["ncoordgridz"] = ncoordgridz
         modelmeta_out["ncoordgridrcyl"] = ncoordgridr

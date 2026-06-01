@@ -614,11 +614,12 @@ def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | int | 
 
 
 @lru_cache(maxsize=8)
-def get_model_name(path: Path | str, maxlen: int | None = 50) -> str:
+def get_model_name(path: Path | str) -> str:
     """Get the name of an ARTIS model from the path to any file inside it.
 
     Name will be either from a special plotlabel.txt file if it exists or the enclosing directory name
     """
+    maxlen = 50
     path = Path(path)
     if not path.exists() and path.parts[0] == "codecomparison":
         return str(path)
@@ -633,7 +634,7 @@ def get_model_name(path: Path | str, maxlen: int | None = 50) -> str:
             return f.readline().strip()
     except FileNotFoundError:
         foldername = Path(modelpath).name
-        return foldername if (maxlen is None or len(foldername) <= maxlen) else f"...{foldername[-maxlen:]}"
+        return foldername if len(foldername) <= maxlen else f"...{foldername[-maxlen:]}"
 
 
 def get_z_a_nucname(nucname: str) -> tuple[int, int]:
@@ -887,7 +888,7 @@ def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None) -
     return Path(filename).open(mode=mode, encoding=encoding)
 
 
-def zopenpl(filename: Path | str, mode: str = "r", encoding: str | None = None) -> t.Any | Path:
+def zopenpl(filename: Path | str) -> t.Any | Path:
     """Open filename, filename.zst, filename.gz or filename.xz. If polars.read_csv can read the file directly, return a Path object instead of a file object."""
     if sys.version_info >= (3, 14):
         from compression import lzma
@@ -899,7 +900,7 @@ def zopenpl(filename: Path | str, mode: str = "r", encoding: str | None = None) 
     for ext, fopen in ext_fopen.items():
         file_withext = str(filename) if str(filename).endswith(ext) else str(filename) + ext
         if Path(file_withext).exists():
-            return Path(file_withext) if fopen is None else fopen(file_withext, mode=mode, encoding=encoding)
+            return Path(file_withext) if fopen is None else fopen(file_withext, mode="r", encoding=None)
 
     return Path(filename)
 
@@ -1029,7 +1030,7 @@ def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
     return {}
 
 
-def get_filterfunc(args: argparse.Namespace, mode: str = "interp") -> Callable[[t.Any], t.Any] | None:
+def get_filterfunc(args: argparse.Namespace) -> Callable[[t.Any], t.Any] | None:
     """Use command line arguments to determine the appropriate filter function."""
     filterfunc = None
     dictargs = vars(args)
@@ -1051,7 +1052,7 @@ def get_filterfunc(args: argparse.Namespace, mode: str = "interp") -> Callable[[
 
         assert filterfunc is None
         filterfunc = functools.partial(  # pyright: ignore[reportCallIssue]
-            scipy.signal.savgol_filter, window_length=window_length, polyorder=polyorder, mode=mode
+            scipy.signal.savgol_filter, window_length=window_length, polyorder=polyorder, mode="interp"
         )
 
         print("Applying Savitzky-Golay filter")
@@ -1601,7 +1602,6 @@ def get_dirbin_labels(
     average_over_phi: bool = False,
     average_over_theta: bool = False,
     usedegrees: bool = False,
-    usepiminustheta: bool = False,
 ) -> dict[int, str]:
     """Return a dict of text labels for viewing direction bins."""
     if modelpath:
@@ -1614,7 +1614,7 @@ def get_dirbin_labels(
             # check one beyond does not exist
             assert not list(modelpath.glob(f"*_res_{MABINS:02d}.out*"))
 
-    _, _, costhetabinlabels = get_costheta_bins(usedegrees=usedegrees, usepiminustheta=usepiminustheta)
+    _, _, costhetabinlabels = get_costheta_bins(usedegrees=usedegrees, usepiminustheta=False)
     _, _, phibinlabels = get_phi_bins(usedegrees=usedegrees)
 
     nphibins = get_viewingdirection_phibincount()
@@ -1652,12 +1652,9 @@ def get_dirbin_labels(
 
 
 def parallel_map[IterableType, ResultType](
-    fn: Callable[[IterableType], ResultType],
-    *iterables: Iterable[IterableType],
-    allow_multiprocessing: bool = True,
-    **kwargs: t.Any,
+    fn: Callable[[IterableType], ResultType], *iterables: Iterable[IterableType], **kwargs: t.Any
 ) -> list[ResultType]:
-    """Execute a parallel map with a progress bar using either multithreading (for free-threading python or allow_multiprocessing=False) or multiprocessing."""
+    """Execute a parallel map with a progress bar using either multithreading (for free-threading python) or multiprocessing."""
     import multiprocessing as mp
     import warnings
 
@@ -1666,8 +1663,8 @@ def parallel_map[IterableType, ResultType](
 
     warnings.filterwarnings("ignore", category=TqdmExperimentalWarning)
 
-    use_multiprocessing = allow_multiprocessing
-    if allow_multiprocessing and sys.version_info >= (3, 13):
+    use_multiprocessing = True
+    if sys.version_info >= (3, 13):
         with contextlib.suppress(AttributeError):
             if not sys._is_gil_enabled():  # noqa: SLF001
                 # return a thread pool if we have no GIL (free threading)

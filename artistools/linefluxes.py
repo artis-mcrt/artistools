@@ -198,14 +198,7 @@ def get_line_fluxes_from_pops(
 
 
 def get_closelines(
-    modelpath: Path | str,
-    atomic_number: int,
-    ion_stage: int,
-    approxlambdalabel: str | int,
-    lambdamin: float | int | None = None,
-    lambdamax: float | int | None = None,
-    lowerlevelindex: int | None = None,
-    upperlevelindex: int | None = None,
+    modelpath: Path | str, atomic_number: int, ion_stage: int, approxlambdalabel: str | int
 ) -> FeatureTuple:
     lzdflinelistclosematches = (
         at.misc
@@ -213,15 +206,6 @@ def get_closelines(
         .with_columns(upper_level=pl.col("upperlevelindex") + 1, lower_level=pl.col("lowerlevelindex") + 1)
         .filter(pl.col("atomic_number") == atomic_number, pl.col("ion_stage") == ion_stage)
     )
-
-    if lambdamin is not None and lambdamin > 0:
-        lzdflinelistclosematches = lzdflinelistclosematches.filter(lambdamin < pl.col("lambda_angstroms"))
-    if lambdamax is not None and lambdamax > 0:
-        lzdflinelistclosematches = lzdflinelistclosematches.filter(lambdamax > pl.col("lambda_angstroms"))
-    if lowerlevelindex is not None and lowerlevelindex >= 0:
-        lzdflinelistclosematches = lzdflinelistclosematches.filter(pl.col("lowerlevelindex") == lowerlevelindex)
-    if upperlevelindex is not None and upperlevelindex >= 0:
-        lzdflinelistclosematches = lzdflinelistclosematches.filter(pl.col("upperlevelindex") == upperlevelindex)
 
     dflinelistclosematches = lzdflinelistclosematches.collect()
 

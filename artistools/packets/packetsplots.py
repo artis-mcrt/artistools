@@ -117,7 +117,7 @@ def make_2d_packets_plot_pyvista(modelpath: Path, timestep: int) -> None:
     p.show(screenshot=modelpath / f"3Dplot_pktsemitted{time:.1f}days_disk.png")
 
 
-def plot_packet_mean_emission_velocity(modelpath: str | Path, write_emission_data: bool = True) -> None:
+def plot_packet_mean_emission_velocity(modelpath: str | Path) -> None:
     emission_data = at.packets.get_mean_packet_emission_velocity_per_ts(modelpath)
 
     plt.plot(emission_data["t_arrive_d"], emission_data["mean_emission_velocity"])
@@ -129,30 +129,21 @@ def plot_packet_mean_emission_velocity(modelpath: str | Path, write_emission_dat
     plt.ylabel("Mean emission velocity / c")
     plt.legend()
 
-    if write_emission_data:
-        emission_data.to_pandas().to_csv(Path(modelpath) / "meanemissionvelocity.txt", sep=" ", index=False)
+    emission_data.to_pandas().to_csv(Path(modelpath) / "meanemissionvelocity.txt", sep=" ", index=False)
 
     outfilename = "meanemissionvelocity.pdf"
     plt.savefig(Path(modelpath) / outfilename, format="pdf")
     print(f"open {outfilename}")
 
 
-def plot_last_emission_velocities_histogram(
-    modelpath: Path,
-    timestep_min: int,
-    timestep_max: int,
-    costhetabin: int | None = None,
-    maxpacketfiles: int | None = None,
-) -> None:
+def plot_last_emission_velocities_histogram(modelpath: Path, timestep_min: int, timestep_max: int) -> None:
     fig, ax = plt.subplots(
         nrows=1, ncols=1, figsize=(5, 4), tight_layout={"pad": 1.0, "w_pad": 0.0, "h_pad": 0.5}, sharex=True
     )
 
     dfmodel, modelmeta = at.get_modeldata(modelpath=modelpath, printwarningsonly=True)
 
-    nprocs_read, dfpackets = at.packets.get_packets(
-        modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
-    )
+    nprocs_read, dfpackets = at.packets.get_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
     dfpackets = at.packets.bin_packet_directions_polars(dfpackets=dfpackets)
     dfpackets = at.packets.add_derived_columns_lazy(dfpackets, modelmeta=modelmeta, dfmodel=dfmodel)
     print("read packets data")
@@ -164,9 +155,6 @@ def plot_last_emission_velocities_histogram(
     print(f"Using packets arriving at observer between {timelow:.2f} and {timehigh:.2f} days")
 
     dfpackets_selected = dfpackets.filter(pl.col("t_arrive_d").is_between(timelow, timehigh, closed="right"))
-
-    if costhetabin is not None:
-        dfpackets_selected = dfpackets.filter(pl.col("costhetabin") == costhetabin)
 
     weight_by_energy = True
     if weight_by_energy:

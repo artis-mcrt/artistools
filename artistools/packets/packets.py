@@ -267,21 +267,9 @@ def get_packets_text_columns(packetsfile: Path | str, modelpath: Path | str = ".
     return column_names
 
 
-def readfile(
-    packetsfile: Path | str,
-    packet_type: str | None = None,
-    escape_type: t.Literal["TYPE_RPKT", "TYPE_GAMMA"] | None = None,
-) -> pd.DataFrame:
+def readfile(packetsfile: Path | str) -> pd.DataFrame:
     """Read a packet file into a Pandas DataFrame."""
     dfpackets = readfile_text(packetsfile, column_names=get_packets_text_columns(packetsfile))
-
-    if escape_type is not None:
-        assert packet_type is None or packet_type == "TYPE_ESCAPE"
-        dfpackets = dfpackets.filter(
-            (pl.col("type_id") == type_ids["TYPE_ESCAPE"]) & (pl.col("escape_type_id") == type_ids[escape_type])
-        )
-    elif packet_type is not None and packet_type:
-        dfpackets = dfpackets.filter(pl.col("type_id") == type_ids[packet_type])
 
     return dfpackets.to_pandas(use_pyarrow_extension_array=True)
 
@@ -510,7 +498,7 @@ def get_rankbatch_parquetfile(
 
 
 def get_packets_batch_parquet_paths(
-    modelpath: str | Path, maxpacketfiles: int | None = None, printwarningsonly: bool = False, virtual: bool = False
+    modelpath: str | Path, maxpacketfiles: int | None = None, virtual: bool = False
 ) -> tuple[int, list[Path]]:
     """Get a list of Paths to parquet-formatted packets files, (which are generated from text files if needed)."""
     nprocs = at.get_nprocs(modelpath)
@@ -526,12 +514,11 @@ def get_packets_batch_parquet_paths(
         msg = f"No packets batches selected. Set maxpacketfiles to at least {mpirank_groups_all[0][1][-1] + 1}"
         raise ValueError(msg)
 
-    if not printwarningsonly:
-        if maxpacketfiles is not None and nprocs > maxpacketfiles:
-            nprocs_read = mpirank_groups[-1][1][-1] + 1
-            print(f"Reading packets from the first {nprocs_read} of {nprocs} ranks")
-        else:
-            print(f"Reading packets from {nprocs} ranks")
+    if maxpacketfiles is not None and nprocs > maxpacketfiles:
+        nprocs_read = mpirank_groups[-1][1][-1] + 1
+        print(f"Reading packets from the first {nprocs_read} of {nprocs} ranks")
+    else:
+        print(f"Reading packets from {nprocs} ranks")
 
     parquetpacketsfiles = [
         get_rankbatch_parquetfile(modelpath, batch_mpiranks=batch_mpiranks, batchindex=batchindex, virtual=virtual)
@@ -836,25 +823,14 @@ def make_3d_grid(
     return grid_3d, x, y, z
 
 
-def get_mean_packet_emission_velocity_per_ts(
-    modelpath: str | Path,
-    packet_type: str = "TYPE_ESCAPE",
-    escape_type: t.Literal["TYPE_RPKT", "TYPE_GAMMA"] = "TYPE_RPKT",
-    maxpacketfiles: int | None = None,
-    escape_angles: int | None = None,
-) -> pl.DataFrame:
-    nprocs_read, dfpackets = get_packets(
-        modelpath, maxpacketfiles=maxpacketfiles, packet_type=packet_type, escape_type=escape_type
-    )
+def get_mean_packet_emission_velocity_per_ts(modelpath: str | Path) -> pl.DataFrame:
+    nprocs_read, dfpackets = get_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
     dfpackets = add_derived_columns_lazy(dfpackets, modelpath=modelpath)
     assert nprocs_read > 0
 
     timearray = at.get_timestep_times(modelpath=modelpath, loc="mid")
     arr_timedelta = at.get_timestep_times(modelpath=modelpath, loc="delta")
     timearrayplusend = [*timearray, timearray[-1] + arr_timedelta[-1]]
-
-    if escape_angles is not None:
-        dfpackets = dfpackets.filter(pl.col("dirbin") == escape_angles)
 
     return pl.DataFrame({
         "t_arrive_d": timearray,

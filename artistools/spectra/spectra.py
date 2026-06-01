@@ -168,14 +168,11 @@ def get_dfspectrum_x_y_with_units(
     return dfspectrum.sort("x")
 
 
-def get_exspec_lambda_bin_edges(
-    modelpath: str | Path | None = None,
-    mnubins: int | None = None,
-    nu_min_r: float | int | None = None,
-    nu_max_r: float | int | None = None,
-    gamma: bool = False,
-) -> npt.NDArray[np.floating]:
+def get_exspec_lambda_bin_edges(modelpath: str | Path | None = None, gamma: bool = False) -> npt.NDArray[np.floating]:
     """Get the wavelength bins for the emergent spectrum."""
+    mnubins: int | None = None
+    nu_min_r: float | int | None = None
+    nu_max_r: float | int | None = None
     if modelpath is not None:
         try:
             dfspec = read_spec(modelpath, gamma=gamma).collect()
@@ -688,7 +685,6 @@ def get_spectra(
     fluxfilterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     average_over_theta: bool = False,
     average_over_phi: bool = False,
-    stokesparam: t.Literal["I", "Q", "U"] = "I",
     gamma: bool = False,
 ) -> dict[int, pl.LazyFrame]:
     """Get a mapping direction bins to polars LazyFrames containing ARTIS emergent UVOIR spectra."""
@@ -696,25 +692,22 @@ def get_spectra(
         timestepmax = timestepmin
 
     specdata_alltimesteps: dict[int, pl.LazyFrame] = {}
-    if stokesparam == "I":
-        with suppress(FileNotFoundError):
-            res_specdata = read_spec_res(modelpath)
-            if average_over_theta:
-                res_specdata = average_direction_bins(res_specdata, overangle="theta")
-            if average_over_phi:
-                res_specdata = average_direction_bins(res_specdata, overangle="phi")
-            specdata_alltimesteps |= res_specdata
+    with suppress(FileNotFoundError):
+        res_specdata = read_spec_res(modelpath)
+        if average_over_theta:
+            res_specdata = average_direction_bins(res_specdata, overangle="theta")
+        if average_over_phi:
+            res_specdata = average_direction_bins(res_specdata, overangle="phi")
+        specdata_alltimesteps |= res_specdata
 
-        # spherically averaged spectra
-        try:
-            specdata_alltimesteps[-1] = read_spec(modelpath=modelpath, gamma=gamma)
+    # spherically averaged spectra
+    try:
+        specdata_alltimesteps[-1] = read_spec(modelpath=modelpath, gamma=gamma)
 
-        except FileNotFoundError as e:
-            if gamma:
-                msg = "ERROR: No spherically averaged gamma spectrum found."
-                raise FileNotFoundError(msg) from e
-    else:
-        specdata_alltimesteps[-1] = get_specpol_data(dirbin=-1, modelpath=modelpath)[stokesparam]
+    except FileNotFoundError as e:
+        if gamma:
+            msg = "ERROR: No spherically averaged gamma spectrum found."
+            raise FileNotFoundError(msg) from e
 
     arr_tdelta = get_timestep_times(modelpath, loc="delta")
     specdataout: dict[int, pl.LazyFrame] = {}
@@ -824,21 +817,18 @@ def make_averaged_vspecfiles(args: argparse.Namespace) -> None:
 
 
 @lru_cache(maxsize=4)
-def get_specpol_data(
-    dirbin: int = -1, modelpath: Path | None = None, specdata: pl.LazyFrame | None = None
-) -> dict[str, pl.LazyFrame]:
-    if specdata is None:
-        assert modelpath is not None
-        specfilename = (
-            firstexisting("specpol.out", folder=modelpath, tryzipped=True)
-            if dirbin == -1
-            else firstexisting(f"specpol_res_{dirbin}.out", folder=modelpath, tryzipped=True)
-        )
+def get_specpol_data(dirbin: int = -1, modelpath: Path | None = None) -> dict[str, pl.LazyFrame]:
+    assert modelpath is not None
+    specfilename = (
+        firstexisting("specpol.out", folder=modelpath, tryzipped=True)
+        if dirbin == -1
+        else firstexisting(f"specpol_res_{dirbin}.out", folder=modelpath, tryzipped=True)
+    )
 
-        print(f"Reading {specfilename}")
-        specdata = pl.scan_csv(zopenpl(specfilename), separator=" ", has_header=True, infer_schema=False).with_columns(
-            pl.all().cast(pl.Float64)
-        )
+    print(f"Reading {specfilename}")
+    specdata = pl.scan_csv(zopenpl(specfilename), separator=" ", has_header=True, infer_schema=False).with_columns(
+        pl.all().cast(pl.Float64)
+    )
 
     return split_dataframe_stokesparams(specdata)
 
@@ -1130,7 +1120,6 @@ def get_flux_contributions_from_packets(
     groupby: str = "ion",
     maxseriescount: int | None = None,
     fixedionlist: list[str] | None = None,
-    use_time: t.Literal["arrival", "emission", "escape"] = "arrival",
     emtypecolumn: str | None = None,
     emissionvelocitycut: float | int | None = None,
     directionbin: int | None = None,
@@ -1158,7 +1147,7 @@ def get_flux_contributions_from_packets(
     )
 
     cols = {"e_rf"}
-    cols.add({"arrival": "t_arrive_d", "emission": "em_time", "escape": "escape_time"}[use_time])
+    cols.add("t_arrive_d")
 
     nu_min = 2.99792458e18 / lambda_bin_edges[-1]
     nu_max = 2.99792458e18 / lambda_bin_edges[0]
@@ -1384,7 +1373,7 @@ def get_flux_contributions_from_packets(
                     timelowdays=timelowdays,
                     timehighdays=timehighdays,
                     lambda_bin_edges=lambda_bin_edges,
-                    use_time=use_time,
+                    use_time="arrival",
                     fluxfilterfunc=filterfunc,
                     nprocs_read_dfpackets=(nprocs_read, dfpkts),
                     directionbins_are_vpkt_observers=directionbins_are_vpkt_observers,
@@ -1406,7 +1395,7 @@ def get_flux_contributions_from_packets(
                     timelowdays=timelowdays,
                     timehighdays=timehighdays,
                     lambda_bin_edges=lambda_bin_edges,
-                    use_time=use_time,
+                    use_time="arrival",
                     nu_column="absorption_freq",
                     fluxfilterfunc=filterfunc,
                     nprocs_read_dfpackets=(nprocs_read, dfpkts),
