@@ -8,7 +8,6 @@ import os
 import tempfile
 import time
 import typing as t
-from collections import defaultdict
 from collections.abc import Callable
 from collections.abc import Sequence
 from pathlib import Path
@@ -151,57 +150,36 @@ def read_modelfile_text(
         ).lazy()
 
     else:
-
-        def skiprows(x: int) -> bool:
-            if x < numheaderrows:
-                return True
-            if onelinepercellformat:
-                return False
-            # only read the even lines (0-based) if two lines per cell format
-            return (x - numheaderrows) % 2 == 1
-
-        dtypes: defaultdict[str, str] = defaultdict(lambda: "float32[pyarrow]")
-        dtypes["inputcellid"] = "int32[pyarrow]"
-
-        # each cell takes up two lines in the model file
-        dfmodelpd = pd.read_csv(
-            filename,
-            sep=r"\s+",
-            engine="c",
-            header=None,
-            skiprows=skiprows,
-            names=columns[:ncols_line_even],
-            usecols=columns[:ncols_line_even],
-            nrows=npts_model,
-            dtype=dtypes,
-            dtype_backend="pyarrow",
-        )
-
-        if ncols_line_odd > 0 and not onelinepercellformat:
-            # read in the odd rows and merge dataframes
-            dfmodeloddlines = pd.read_csv(
-                filename,
+        # dfmodelraw can have cells split across two lines, so to avoid reading twice, we read in everything and slice later
+        dfmodelraw = pl.from_pandas(
+            pd.read_csv(
+                zopen(filename),
                 sep=r"\s+",
                 engine="c",
                 header=None,
-                skiprows=lambda i: i < numheaderrows or (i - numheaderrows) % 2 == 0,
-                names=columns[ncols_line_even:],
-                nrows=npts_model,
-                dtype=dtypes,
-                dtype_backend="pyarrow",
+                skiprows=numheaderrows,
+                names=[str(i) for i in range(max(ncols_line_even, ncols_line_odd))],
             )
-            assert len(dfmodelpd) == len(dfmodeloddlines)
-            dfmodelpd = dfmodelpd.merge(dfmodeloddlines, left_index=True, right_index=True)
-            del dfmodeloddlines
+        )
 
-        if len(dfmodelpd) > npts_model:
-            dfmodelpd = dfmodelpd.iloc[:npts_model]
+        dfmodel = (
+            (dfmodelraw if onelinepercellformat else dfmodelraw[: npts_model * 2 : 2])
+            .select([pl.col(str(i)).alias(colname) for i, colname in enumerate(columns[:ncols_line_even])])
+            .with_columns(pl.col("inputcellid").cast(pl.Int32))
+        )
 
-        dfmodelpd.index.name = "cellid"
+        if ncols_line_odd > 0 and not onelinepercellformat:
+            # merge the odd rows with their correct column names
+            dfmodeloddlines = (
+                dfmodelraw[1 : npts_model * 2 : 2]
+                .select([pl.col(str(i)).alias(colname) for i, colname in enumerate(columns[ncols_line_even:])])
+                .with_row_index("inputcellid", offset=1)
+                .with_columns(pl.col("inputcellid").cast(pl.Int32))
+            )
+            assert len(dfmodel) == len(dfmodeloddlines)
+            dfmodel = dfmodel.join(dfmodeloddlines, on="inputcellid", how="left")
 
-        dfmodel = pl.from_pandas(dfmodelpd).lazy()
-
-    assert dfmodel.select(pl.len()).collect().item() == npts_model
+        dfmodel = dfmodel.head(npts_model).with_columns(pl.exclude("inputcellid").cast(pl.Float32)).lazy()
 
     dfmodel = dfmodel.sort("inputcellid").rename({"velocity_outer": "vel_r_max_kmps", "cellYe": "Ye"}, strict=False)
 
