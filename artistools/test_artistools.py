@@ -289,3 +289,70 @@ def test_match_closest_time() -> None:
     assert at.match_closest_time(310.0, times) == "300.0"
     assert at.match_closest_time(99.0, times) == "100.0"
     assert at.match_closest_time(400.0, times) == "400.0"
+
+
+def test_get_npts_model(tmp_path: Path) -> None:
+    # The 3D test model has 10^3 = 1000 cells
+    assert at.misc.get_npts_model(modelpath_3d) == 1000
+
+    # Single-number format used by 1D models
+    (tmp_path / "model.txt").write_text("20\n")
+    assert at.misc.get_npts_model(tmp_path) == 20
+
+    # Two-number format (Nx Ny): total cells = Nx * Ny
+    two_num_dir = tmp_path / "twonum"
+    two_num_dir.mkdir()
+    (two_num_dir / "model.txt").write_text("10 10\n")
+    assert at.misc.get_npts_model(two_num_dir) == 100
+
+
+def test_get_nprocs(tmp_path: Path) -> None:
+    # input.txt: line index 21 (0-indexed, 22nd line) holds nprocs
+    lines = ["placeholder\n"] * 21 + ["4 #nprocs\n"]
+    (tmp_path / "input.txt").write_text("".join(lines))
+    assert at.get_nprocs(tmp_path) == 4
+
+
+def test_get_cellsofmpirank(tmp_path: Path) -> None:
+    def make_model(path: Path, npts: int, nprocs: int) -> None:
+        lines = ["placeholder\n"] * 21 + [f"{nprocs} #nprocs\n"]
+        (path / "input.txt").write_text("".join(lines))
+        (path / "model.txt").write_text(f"{npts}\n")
+
+    for npts, nprocs in [(20, 4), (21, 4), (7, 3)]:
+        subdir = tmp_path / f"npts{npts}_nprocs{nprocs}"
+        subdir.mkdir()
+        make_model(subdir, npts=npts, nprocs=nprocs)
+
+        all_cells: list[int] = []
+        cells_per_rank = []
+        for rank in range(nprocs):
+            cells = list(at.get_cellsofmpirank(rank, subdir))
+            cells_per_rank.append(cells)
+            all_cells.extend(cells)
+
+        # Every cell index appears exactly once and all cells are covered
+        assert sorted(all_cells) == list(range(npts))
+
+        # Load balancing: ranks differ by at most 1 cell
+        sizes = [len(c) for c in cells_per_rank]
+        assert max(sizes) - min(sizes) <= 1
+
+        # Cells within each rank are contiguous
+        for cells in cells_per_rank:
+            assert cells == list(range(cells[0], cells[0] + len(cells)))
+
+    # Verify specific assignments for evenly divisible case (npts=20, nprocs=4)
+    even_dir = tmp_path / "even"
+    even_dir.mkdir()
+    make_model(even_dir, npts=20, nprocs=4)
+    assert list(at.get_cellsofmpirank(0, even_dir)) == list(range(5))
+    assert list(at.get_cellsofmpirank(3, even_dir)) == list(range(15, 20))
+
+    # Verify specific assignments for uneven case (npts=21, nprocs=4):
+    # rank 0 gets one extra cell (leftover), ranks 1-3 get the base count
+    uneven_dir = tmp_path / "uneven"
+    uneven_dir.mkdir()
+    make_model(uneven_dir, npts=21, nprocs=4)
+    assert list(at.get_cellsofmpirank(0, uneven_dir)) == list(range(6))
+    assert list(at.get_cellsofmpirank(1, uneven_dir)) == list(range(6, 11))
