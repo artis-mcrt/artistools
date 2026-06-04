@@ -44,10 +44,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     print(f"expopac_nbins = {expopac_nbins}")
     lambda_lowers = expopac_lambdamin + np.arange(expopac_nbins) * expopac_deltalambda
     lambda_uppers = expopac_lambdamin + (np.arange(expopac_nbins) + 1) * expopac_deltalambda
+    lambda_bin_edges = [*list(lambda_lowers), lambda_uppers[-1]]
 
-    selected_binindex = 0
     timestep = 2
-    modelgridindex = 20
+    modelgridindex = 0
     dfestimators = at.estimators.scan_estimators(
         args.modelpath, timestep=timestep, modelgridindex=modelgridindex, join_modeldata=True
     ).select("modelgridindex", "timestep", "Te", "tdays", "rho", cs.starts_with("nnion_"))
@@ -63,10 +63,15 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.modelpath, get_transitions=True, derived_transitions_columns=["epsilon_trans_ev", "lambda_angstroms"]
     )
     print("Summing opacities...")
-    lazy_dfs = []
+    lzdfresults = pl.LazyFrame({
+        "lambda_angstroms_binindex": range(expopac_nbins),
+        "lambda_angstroms_binlower": lambda_lowers,
+        "lambda_angstroms_binupper": lambda_uppers,
+    }).with_columns(lambda_bin_center=(pl.col("lambda_angstroms_binlower") + pl.col("lambda_angstroms_binupper")) / 2)
     for Z, ion_stage, dflevels, dftransitions in adata.select("Z", "ion_stage", "levels", "transitions").iter_rows():
         temperature_exc = dfestimators.select("Te").collect().item()
-        nnion = dfestimators.select(pl.col(f"nnion_{at.get_ionstring(Z, ion_stage, sep='_')}")).collect().item()
+        ionstr = at.get_ionstring(Z, ion_stage, sep="_")
+        nnion = dfestimators.select(pl.col(f"nnion_{ionstr}")).collect().item()
 
         dflevels = dflevels.lazy().with_columns(
             nnlevel_on_nnion=pl.col("g")
@@ -77,11 +82,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         dftransitions = (
             dftransitions
             .with_columns(nu_trans=pl.col("epsilon_trans_ev") / const.h_ev_s)
-            .filter(
-                pl.col("lambda_angstroms").is_between(
-                    lambda_lowers[selected_binindex], lambda_uppers[selected_binindex]
-                )
-            )
             .join(
                 dflevels.select(lower=pl.col("levelindex"), nnlevel_lower_on_nnion=pl.col("nnlevel_on_nnion")),
                 on="lower",
@@ -103,53 +103,67 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 * time_s
             )
             .with_columns(
-                exopac_contribution=(1 - (-pl.col("tau_sobolev_on_nnion") * nnion).exp())
-                * pl.col("lambda_angstroms")
-                / expopac_deltalambda
-                / c
-                / time_s
-                / rho,
-                linebinned_maxone_contribution=pl.min_horizontal(pl.col("tau_sobolev_on_nnion") * nnion, 1.0)
-                * pl.col("lambda_angstroms")
-                / expopac_deltalambda
-                / (c * time_s * rho),
-                linebinned_contribution=pl.col("tau_sobolev_on_nnion")
-                * nnion
-                * pl.col("lambda_angstroms")
-                / expopac_deltalambda
-                / (c * time_s * rho),
+                (
+                    (1 - (-pl.col("tau_sobolev_on_nnion") * nnion).exp())
+                    * pl.col("lambda_angstroms")
+                    / expopac_deltalambda
+                    / c
+                    / time_s
+                    / rho
+                ).alias(f"exopac_contribution_{ionstr}"),
+                (
+                    pl.min_horizontal(pl.col("tau_sobolev_on_nnion") * nnion, 1.0)
+                    * pl.col("lambda_angstroms")
+                    / expopac_deltalambda
+                    / (c * time_s * rho)
+                ).alias(f"linebinned_contribution_{ionstr}"),
+                (
+                    pl.col("tau_sobolev_on_nnion")
+                    * nnion
+                    * pl.col("lambda_angstroms")
+                    / expopac_deltalambda
+                    / (c * time_s * rho)
+                ).alias(f"linebinned_maxone_contribution_{ionstr}"),
             )
         )
-        lazy_dfs.append(
-            dftransitions.select(
-                expopac_expansion=pl.col("exopac_contribution").sum(),
-                exopac_linebinned=pl.col("linebinned_contribution").sum(),
-                linebinned_maxone_contribution=pl.col("linebinned_maxone_contribution").sum(),
+        dftransitions = (
+            dftransitions
+            .filter(pl.col("lambda_angstroms").is_between(lambda_bin_edges[0], lambda_bin_edges[-1], closed="both"))
+            .with_columns(
+                (
+                    pl.col("lambda_angstroms").cut(
+                        breaks=lambda_bin_edges, labels=[str(x) for x in range(-1, len(lambda_bin_edges))]
+                    )
+                )
+                .cast(pl.String)
+                .cast(pl.Int32)
+                .alias("lambda_angstroms_binindex")
             )
+            .group_by("lambda_angstroms_binindex")
+            .agg([
+                pl.col(col).sum()
+                for col in (
+                    f"exopac_contribution_{ionstr}",
+                    f"linebinned_contribution_{ionstr}",
+                    f"linebinned_maxone_contribution_{ionstr}",
+                )
+            ])
         )
 
-    dfresults = (
-        pl
-        .concat(lazy_dfs)
-        .select(
-            expopac_expansion=pl.col("expopac_expansion").sum(),
-            exopac_linebinned=pl.col("exopac_linebinned").sum(),
-            linebinned_maxone_contribution=pl.col("linebinned_maxone_contribution").sum(),
-        )
-        .collect()
+        lzdfresults = lzdfresults.join(dftransitions, on="lambda_angstroms_binindex", how="left")
+
+    lzdfresults = lzdfresults.select(
+        cs.starts_with("lambda_angstroms_"),
+        *[
+            pl.sum_horizontal(cs.starts_with(prefix)).alias(prefix.removesuffix("_contribution_"))
+            for prefix in ("exopac_contribution_", "linebinned_contribution_", "linebinned_maxone_contribution_")
+        ],
     )
-
-    opac_expansion = dfresults["expopac_expansion"].item()
-    opac_linebinned = dfresults["exopac_linebinned"].item()
-    opac_linebinned_maxone = dfresults["linebinned_maxone_contribution"].item()
-
+    dfresults = lzdfresults.collect()
     print()
     print(f"timestep {timestep} T_days = {time_days:.2e}")
     print(f"cell {modelgridindex} T_exc = {temperature_exc} K")
-    print(f"{'bin_lambda_lower':<20} {'kappa_expansion':<20} {'kappa_linebinned':<20} {'kappa_linebinned_maxone':<20}")
-    print(
-        f"{lambda_lowers[selected_binindex]:<20} {opac_expansion:<20.2e} {opac_linebinned:<20.2e} {opac_linebinned_maxone:<20.2e}"
-    )
+    print(dfresults)
 
 
 if __name__ == "__main__":
