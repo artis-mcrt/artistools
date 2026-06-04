@@ -18,6 +18,7 @@ import artistools.constants as const
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-modelpath", type=Path, default=Path(), help="Path of ARTIS model")
+    parser.add_argument("-timestep", "-ts", type=int, help="Timestep number to select")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -43,11 +44,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     lambda_uppers = expopac_lambdamin + (np.arange(expopac_nbins) + 1) * expopac_deltalambda
     lambda_bin_edges = [*list(lambda_lowers), lambda_uppers[-1]]
 
-    timestep = 2
-    modelgridindex = None
+    timestep = args.timestep
     dfestimators = (
         at.estimators
-        .scan_estimators(args.modelpath, timestep=timestep, modelgridindex=modelgridindex, join_modeldata=True)
+        .scan_estimators(args.modelpath, timestep=timestep, join_modeldata=True)
         .select("modelgridindex", "timestep", "Te", "tdays", "rho", "mass_g", cs.starts_with("nnion_"))
         .collect()
         .lazy()
