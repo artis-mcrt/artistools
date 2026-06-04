@@ -16,19 +16,9 @@ import artistools as at
 import artistools.constants as const
 
 
-def addargs(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("-timestep", "-ts", type=int, required=True, help="Timestep number to select")
-    parser.add_argument("-modelpath", type=Path, default=Path(), help="Path of ARTIS model")
-
-
-def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
-    if args is None:
-        parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
-
-        addargs(parser)
-        at.set_args_from_dict(parser, kwargs)
-        argcomplete.autocomplete(parser)
-        args = parser.parse_args([] if kwargs else argsraw)
+def calculate_opacities(adata: pl.DataFrame, dfestimators: pl.LazyFrame, timestep: int) -> None:
+    time_days = dfestimators.select("tdays").first().collect().item()
+    time_s = time_days * 86400.0
 
     K_B = const.K_B_ev_per_K
     HCLIGHTOVERFOURPI = const.h_erg_s * const.C_cm_per_s / 4 / math.pi
@@ -44,22 +34,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     lambda_uppers = expopac_lambdamin + (np.arange(expopac_nbins) + 1) * expopac_deltalambda
     lambda_bin_edges = [*list(lambda_lowers), lambda_uppers[-1]]
 
-    timestep = args.timestep
-    dfestimators = (
-        at.estimators
-        .scan_estimators(args.modelpath, timestep=timestep, join_modeldata=True)
-        .select("modelgridindex", "timestep", "Te", "tdays", "rho", "mass_g", cs.starts_with("nnion_"))
-        .collect()
-        .lazy()
-    )
-
-    time_days = dfestimators.select("tdays").first().collect().item()
-    time_s = time_days * 86400.0
-    pl.Config.set_tbl_cols(20)
-    pl.Config.set_tbl_rows(1200)
-
-    adata = at.atomic.get_levels(args.modelpath, get_transitions=True, derived_transitions_columns=["lambda_angstroms"])
     print("Summing opacities...")
+
     dfbinnedopacities = (
         pl
         .LazyFrame({
@@ -178,6 +154,40 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     print(f"timestep {timestep} T_days = {time_days:.2f}")
     # print(lzdfresults.collect())
     print(dfplanckmean.collect(engine="streaming"))
+
+
+def addargs(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("-timestep", "-ts", type=int, required=True, help="Timestep number to select")
+    parser.add_argument("-modelpath", type=Path, default=Path(), help="Path of ARTIS model")
+
+
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
+    if args is None:
+        parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
+
+        addargs(parser)
+        at.set_args_from_dict(parser, kwargs)
+        argcomplete.autocomplete(parser)
+        args = parser.parse_args([] if kwargs else argsraw)
+
+    timestep = args.timestep
+
+    adata = at.atomic.get_levels(args.modelpath, get_transitions=True, derived_transitions_columns=["lambda_angstroms"])
+
+    dfestimators_full = (
+        at.estimators
+        .scan_estimators(args.modelpath, timestep=timestep, join_modeldata=True)
+        .select("modelgridindex", "timestep", "Te", "tdays", "rho", "mass_g", cs.starts_with("nnion_"))
+        .collect()
+    )
+
+    pl.Config.set_tbl_cols(20)
+    pl.Config.set_tbl_rows(1200)
+    dfestimators_full = dfestimators_full.with_columns(batchindex=(pl.col("modelgridindex") / 32).cast(pl.Int64))
+
+    # work in batches of 20 cells
+    for dfestimators in dfestimators_full.partition_by("batchindex", maintain_order=True):
+        calculate_opacities(adata, dfestimators.lazy(), timestep)
 
 
 if __name__ == "__main__":
