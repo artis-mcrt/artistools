@@ -5,3 +5,5 @@ megaparsec_to_cm = 3.0856e24
 MEV_to_erg = 1.6021772e-6
 Msun_to_g = 1.989e33  # solar mass [g]
 c_ang_per_s = 2.99792458e18  # speed of light in [Angstrom/s]
+K_B_ev_per_K = 8.617333262145179e-05  # eV / K
+C_cm_per_s = 2.99792458e10  # speed of light in [cm/s]
