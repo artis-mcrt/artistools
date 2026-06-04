@@ -1,4 +1,4 @@
-"""Script to load energy release data from nucleosynthesis trajectories. Optionally also writes output to parquet files."""
+"""Script to load energy beta decay (- and +) release data from nucleosynthesis trajectories. Optionally also writes output to parquet files."""
 
 # PYTHON_ARGCOMPLETE_OK
 import argparse
@@ -72,6 +72,30 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def append_electroncapture_betaplus_nuclei(df: pl.DataFrame, nuc_dataset: str) -> pl.DataFrame:
+    data = {
+        "A": [48, 48, 52, 56, 56, 57, 57],
+        "Z": [23, 24, 25, 27, 28, 27, 28],
+        "Q[MeV]": [4.015, 1.657, 4.711, 4.566, 2.136, 0.836, 3.264],
+        "Egamma[MeV]": [2.919, 0.416, 5.857, 3.566, 1.728, 0.120, 1.928],
+        "Eelec[MeV]": [0.147, 0.001365, 0.071, 0.122, 0.0, 0.0, 0.154],
+        "Eneutrino[MeV]": [0.949, 1.240, 1.040, 0.878, 0.408, 0.716, 1.182],
+        "tau[s]": [
+            1991140.7543850502,
+            111976.2182936378,
+            696911.7289199209,
+            9627378.69698784,
+            757989.666170996,
+            33872078.915524825,
+            185103.5445262176,
+        ],
+    }
+
+    new_rows = pl.DataFrame(data) if nuc_dataset == "Hotokezaka" else pl.DataFrame({**data, "source": ["ENSDF"] * 7})
+
+    return pl.concat([df, new_rows], how="vertical_relaxed")
+
+
 def get_nuc_data(nuc_dataset: str) -> pl.DataFrame:
     assert nuc_dataset in {"Hotokezaka", "ENSDF"}
     hotokezaka_betaminus = (
@@ -87,7 +111,7 @@ def get_nuc_data(nuc_dataset: str) -> pl.DataFrame:
         .with_columns(pl.col(pl.Int32).cast(pl.Int64))
     )
     if nuc_dataset == "Hotokezaka":
-        return hotokezaka_betaminus
+        return append_electroncapture_betaplus_nuclei(hotokezaka_betaminus, nuc_dataset)
     csvpath = Path(get_path("datadir"), "betaminusdecays_ensdf.txt")
     if not csvpath.exists():
         print("Collecting ENSDF data...")
@@ -139,13 +163,14 @@ def get_nuc_data(nuc_dataset: str) -> pl.DataFrame:
             pl.DataFrame(rows).write_csv(f, separator=" ", include_header=True)
         print("done!")
 
-    return pl.read_csv(
+    ensdf_betaminus = pl.read_csv(
         csvpath,
         separator=" ",
         comment_prefix="#",
         has_header=False,
         new_columns=["A", "Z", "Q[MeV]", "Egamma[MeV]", "Eelec[MeV]", "Eneutrino[MeV]", "tau[s]", "source"],
     )
+    return append_electroncapture_betaplus_nuclei(ensdf_betaminus, nuc_dataset)
 
 
 def process_trajectory(
