@@ -1141,6 +1141,10 @@ def get_flux_contributions_from_packets(
 
     assert groupby in {"ion", "line", "nuc", "nucmass"}
     assert emtypecolumn in {"emissiontype", "trueemissiontype", "pellet_nucindex"}
+    if groupby == "line":
+        print(
+            "Grouping by line. Line labels are wavelengths in air between 2,000-20,000 Å, and vacuum wavelengths outside this range. This matches the NIST default options and many astrophysics papers."
+        )
 
     if gamma:
         assert groupby in {"nuc", "nucmass"}
