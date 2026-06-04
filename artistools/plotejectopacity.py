@@ -93,9 +93,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         )
 
         dftransitions = (
-            dfestimators
-            .select("modelgridindex", "rho")
-            .join(dftransitions.collect().lazy(), how="cross")
+            dftransitions
             .filter(pl.col("lambda_angstroms").is_between(lambda_bin_edges[0], lambda_bin_edges[-1]))
             .with_columns(
                 (
@@ -107,6 +105,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 .cast(pl.Int32)
                 .alias("lambda_angstroms_binindex")
             )
+            .join(dfestimators.select("modelgridindex", "rho"), how="cross")
             .join(
                 dflevels.select("modelgridindex", lower=pl.col("levelindex"), nnlevel_lower=pl.col("nnlevel")),
                 on=("modelgridindex", "lower"),
@@ -125,32 +124,33 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 * HCLIGHTOVERFOURPI
                 * time_s
             )
-        )
-        dftransitions = dftransitions.group_by("modelgridindex", "lambda_angstroms_binindex").agg(
-            (
+            .group_by("modelgridindex", "lambda_angstroms_binindex")
+            .agg(
                 (
-                    (1 - (-pl.col("tau_sobolev")).exp())
-                    * pl.col("lambda_angstroms")
-                    / expopac_deltalambda
-                    / (c * time_s * pl.col("rho"))
-                ).sum()
-            ).alias(f"exopac_contribution_{ionstr}"),
-            (
+                    (
+                        (1 - (-pl.col("tau_sobolev")).exp())
+                        * pl.col("lambda_angstroms")
+                        / expopac_deltalambda
+                        / (c * time_s * pl.col("rho"))
+                    ).sum()
+                ).alias(f"exopac_contribution_{ionstr}"),
                 (
-                    pl.min_horizontal(pl.col("tau_sobolev"), 1.0)
-                    * pl.col("lambda_angstroms")
-                    / expopac_deltalambda
-                    / (c * time_s * pl.col("rho"))
-                ).sum()
-            ).alias(f"linebinned_contribution_{ionstr}"),
-            (
+                    (
+                        pl.min_horizontal(pl.col("tau_sobolev"), 1.0)
+                        * pl.col("lambda_angstroms")
+                        / expopac_deltalambda
+                        / (c * time_s * pl.col("rho"))
+                    ).sum()
+                ).alias(f"linebinned_contribution_{ionstr}"),
                 (
-                    pl.col("tau_sobolev")
-                    * pl.col("lambda_angstroms")
-                    / expopac_deltalambda
-                    / (c * time_s * pl.col("rho"))
-                ).sum()
-            ).alias(f"linebinned_maxone_contribution_{ionstr}"),
+                    (
+                        pl.col("tau_sobolev")
+                        * pl.col("lambda_angstroms")
+                        / expopac_deltalambda
+                        / (c * time_s * pl.col("rho"))
+                    ).sum()
+                ).alias(f"linebinned_maxone_contribution_{ionstr}"),
+            )
         )
 
         dfbinnedopacities = dfbinnedopacities.join(
