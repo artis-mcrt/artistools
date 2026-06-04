@@ -17,10 +17,7 @@ import artistools.constants as const
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
-
     parser.add_argument("-modelpath", type=Path, default=Path(), help="Path of ARTIS model")
-
-    parser.add_argument("-outputpath", type=Path, default=Path("expansionopacity.pdf"), help="Path to output PDF")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -51,29 +48,33 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     dfestimators = (
         at.estimators
         .scan_estimators(args.modelpath, timestep=timestep, modelgridindex=modelgridindex, join_modeldata=True)
-        .select("modelgridindex", "timestep", "Te", "tdays", "rho", cs.starts_with("nnion_"))
+        .select("modelgridindex", "timestep", "Te", "tdays", "rho", "mass_g", cs.starts_with("nnion_"))
         .collect()
         .lazy()
     )
 
-    print(dfestimators.head().collect())
-
     time_days = dfestimators.select("tdays").first().collect().item()
     time_s = time_days * 86400.0
-    rho = dfestimators.select("rho").first().collect().item()
-
     pl.Config.set_tbl_cols(20)
+    pl.Config.set_tbl_rows(1200)
+
     adata = at.atomic.get_levels(args.modelpath, get_transitions=True, derived_transitions_columns=["lambda_angstroms"])
     print("Summing opacities...")
-    lzdfresults = (
+    dfbinnedopacities = (
         pl
         .LazyFrame({
             "lambda_angstroms_binindex": range(expopac_nbins),
             "lambda_angstroms_binlower": lambda_lowers,
             "lambda_angstroms_binupper": lambda_uppers,
         })
-        .with_columns(lambda_bin_center=(pl.col("lambda_angstroms_binlower") + pl.col("lambda_angstroms_binupper")) / 2)
-        .join(dfestimators.select("modelgridindex"), how="cross")
+        .with_columns(
+            lambda_angstroms_bin_mid=(pl.col("lambda_angstroms_binlower") + pl.col("lambda_angstroms_binupper")) / 2
+        )
+        .with_columns(nu_bin_mid=1e8 * c / pl.col("lambda_angstroms_bin_mid"))
+        .join(dfestimators.select("modelgridindex", "Te"), how="cross")
+        .with_columns(
+            planckfactor=pl.col("nu_bin_mid").pow(3) / ((H * pl.col("nu_bin_mid") / pl.col("Te") / K_B).exp() - 1)
+        )
     )
 
     for Z, ion_stage, dflevels, dftransitions in adata.select("Z", "ion_stage", "levels", "transitions").iter_rows():
@@ -93,8 +94,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         dftransitions = (
             dfestimators
-            .select("modelgridindex")
-            .join(dftransitions.lazy(), how="cross")
+            .select("modelgridindex", "rho")
+            .join(dftransitions.collect().lazy(), how="cross")
             .filter(pl.col("lambda_angstroms").is_between(lambda_bin_edges[0], lambda_bin_edges[-1]))
             .with_columns(
                 (
@@ -127,35 +128,56 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         )
         dftransitions = dftransitions.group_by("modelgridindex", "lambda_angstroms_binindex").agg(
             (
-                ((1 - (-pl.col("tau_sobolev")).exp()) * pl.col("lambda_angstroms")).sum()
-                / expopac_deltalambda
-                / (c * time_s * rho)
+                (
+                    (1 - (-pl.col("tau_sobolev")).exp())
+                    * pl.col("lambda_angstroms")
+                    / expopac_deltalambda
+                    / (c * time_s * pl.col("rho"))
+                ).sum()
             ).alias(f"exopac_contribution_{ionstr}"),
             (
-                (pl.min_horizontal(pl.col("tau_sobolev"), 1.0) * pl.col("lambda_angstroms")).sum()
-                / expopac_deltalambda
-                / (c * time_s * rho)
+                (
+                    pl.min_horizontal(pl.col("tau_sobolev"), 1.0)
+                    * pl.col("lambda_angstroms")
+                    / expopac_deltalambda
+                    / (c * time_s * pl.col("rho"))
+                ).sum()
             ).alias(f"linebinned_contribution_{ionstr}"),
             (
-                (pl.col("tau_sobolev") * pl.col("lambda_angstroms")).sum() / expopac_deltalambda / (c * time_s * rho)
+                (
+                    pl.col("tau_sobolev")
+                    * pl.col("lambda_angstroms")
+                    / expopac_deltalambda
+                    / (c * time_s * pl.col("rho"))
+                ).sum()
             ).alias(f"linebinned_maxone_contribution_{ionstr}"),
         )
 
-        lzdfresults = lzdfresults.join(dftransitions, on=("modelgridindex", "lambda_angstroms_binindex"), how="left")
+        dfbinnedopacities = dfbinnedopacities.join(
+            dftransitions, on=("modelgridindex", "lambda_angstroms_binindex"), how="left"
+        )
 
-    lzdfresults = lzdfresults.select(
+    dfbinnedopacities = dfbinnedopacities.select(
         "modelgridindex",
+        "Te",
+        "planckfactor",
         cs.starts_with("lambda_angstroms_"),
         *[
             pl.sum_horizontal(cs.starts_with(prefix)).alias(prefix.removesuffix("_contribution_"))
             for prefix in ("exopac_contribution_", "linebinned_contribution_", "linebinned_maxone_contribution_")
         ],
-    )
-    dfresults = lzdfresults.collect()
+    ).sort("modelgridindex", "lambda_angstroms_binindex")
+
+    dfplanckmean = (
+        dfbinnedopacities
+        .lazy()
+        .group_by("modelgridindex")
+        .agg(planckmean_opacity=((pl.col("planckfactor") * pl.col("exopac")).sum() / pl.col("planckfactor").sum()))
+    ).sort("modelgridindex")
     print()
     print(f"timestep {timestep} T_days = {time_days:.2e}")
-    # print(f"cell {modelgridindex} T_exc = {temperature_exc} K")
-    print(dfresults)
+    # print(lzdfresults.collect())
+    print(dfplanckmean.collect())
 
 
 if __name__ == "__main__":
