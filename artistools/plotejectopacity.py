@@ -99,14 +99,15 @@ def get_dflineopacities(
     )
 
 
-def calculate_opacities(adata: pl.DataFrame, time_days: float, dfestimators: pl.DataFrame) -> None:
+def calculate_opacities(
+    adata: pl.DataFrame, time_days: float, dfestimators: pl.DataFrame
+) -> tuple[pl.LazyFrame, pl.LazyFrame]:
     time_s = time_days * 86400.0
 
     expopac_lambdamin = 534.5
     expopac_lambdamax = 35000.0
     expopac_deltalambda = 35.5
     expopac_nbins = int((expopac_lambdamax - expopac_lambdamin) / expopac_deltalambda)
-    print(f"expopac_nbins = {expopac_nbins}")
     lambda_lowers = expopac_lambdamin + np.arange(expopac_nbins) * expopac_deltalambda
     lambda_uppers = expopac_lambdamin + (np.arange(expopac_nbins) + 1) * expopac_deltalambda
     lambda_bin_edges = [*list(lambda_lowers), lambda_uppers[-1]]
@@ -164,8 +165,7 @@ def calculate_opacities(adata: pl.DataFrame, time_days: float, dfestimators: pl.
         .group_by("modelgridindex")
         .agg(planckmean_opacity=((pl.col("planckfactor") * pl.col("exopac")).sum() / pl.col("planckfactor").sum()))
     ).sort("modelgridindex")
-    # print(lzdfresults.collect())
-    print(dfplanckmean.collect(engine="streaming"))
+    return dfbinnedopacities, dfplanckmean
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -200,7 +200,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     pl.Config.set_tbl_rows(1200)
 
     for dfcellbatch in dfestimators.partition_by("batchindex", maintain_order=True):
-        calculate_opacities(adata, time_days, dfcellbatch)
+        _dfbinnedopacities, dfplanckmean = calculate_opacities(adata, time_days, dfcellbatch)
+        print(dfplanckmean.collect(engine="streaming"))
 
 
 if __name__ == "__main__":
