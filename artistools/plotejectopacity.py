@@ -17,8 +17,8 @@ import artistools.constants as const
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("-timestep", "-ts", type=int, required=True, help="Timestep number to select")
     parser.add_argument("-modelpath", type=Path, default=Path(), help="Path of ARTIS model")
-    parser.add_argument("-timestep", "-ts", type=int, help="Timestep number to select")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -175,7 +175,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         .agg(planckmean_opacity=((pl.col("planckfactor") * pl.col("exopac")).sum() / pl.col("planckfactor").sum()))
     ).sort("modelgridindex")
     print()
-    print(f"timestep {timestep} T_days = {time_days:.2e}")
+    print(f"timestep {timestep} T_days = {time_days:.2f}")
     # print(lzdfresults.collect())
     print(dfplanckmean.collect())
 
