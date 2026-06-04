@@ -177,7 +177,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     print()
     print(f"timestep {timestep} T_days = {time_days:.2f}")
     # print(lzdfresults.collect())
-    print(dfplanckmean.collect())
+    print(dfplanckmean.collect(engine="streaming"))
 
 
 if __name__ == "__main__":
