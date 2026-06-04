@@ -47,10 +47,14 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     lambda_bin_edges = [*list(lambda_lowers), lambda_uppers[-1]]
 
     timestep = 2
-    modelgridindex = 0
-    dfestimators = at.estimators.scan_estimators(
-        args.modelpath, timestep=timestep, modelgridindex=modelgridindex, join_modeldata=True
-    ).select("modelgridindex", "timestep", "Te", "tdays", "rho", cs.starts_with("nnion_"))
+    modelgridindex = None
+    dfestimators = (
+        at.estimators
+        .scan_estimators(args.modelpath, timestep=timestep, modelgridindex=modelgridindex, join_modeldata=True)
+        .select("modelgridindex", "timestep", "Te", "tdays", "rho", cs.starts_with("nnion_"))
+        .collect()
+        .lazy()
+    )
 
     print(dfestimators.head().collect())
 
@@ -59,76 +63,39 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     rho = dfestimators.select("rho").first().collect().item()
 
     pl.Config.set_tbl_cols(20)
-    adata = at.atomic.get_levels(
-        args.modelpath, get_transitions=True, derived_transitions_columns=["epsilon_trans_ev", "lambda_angstroms"]
-    )
+    adata = at.atomic.get_levels(args.modelpath, get_transitions=True, derived_transitions_columns=["lambda_angstroms"])
     print("Summing opacities...")
-    lzdfresults = pl.LazyFrame({
-        "lambda_angstroms_binindex": range(expopac_nbins),
-        "lambda_angstroms_binlower": lambda_lowers,
-        "lambda_angstroms_binupper": lambda_uppers,
-    }).with_columns(lambda_bin_center=(pl.col("lambda_angstroms_binlower") + pl.col("lambda_angstroms_binupper")) / 2)
+    lzdfresults = (
+        pl
+        .LazyFrame({
+            "lambda_angstroms_binindex": range(expopac_nbins),
+            "lambda_angstroms_binlower": lambda_lowers,
+            "lambda_angstroms_binupper": lambda_uppers,
+        })
+        .with_columns(lambda_bin_center=(pl.col("lambda_angstroms_binlower") + pl.col("lambda_angstroms_binupper")) / 2)
+        .join(dfestimators.select("modelgridindex"), how="cross")
+    )
+
     for Z, ion_stage, dflevels, dftransitions in adata.select("Z", "ion_stage", "levels", "transitions").iter_rows():
-        temperature_exc = dfestimators.select("Te").collect().item()
         ionstr = at.get_ionstring(Z, ion_stage, sep="_")
-        nnion = dfestimators.select(pl.col(f"nnion_{ionstr}")).collect().item()
 
-        dflevels = dflevels.lazy().with_columns(
-            nnlevel_on_nnion=pl.col("g")
-            * (-pl.col("energy_ev") / K_B / temperature_exc).exp()
-            / ((pl.col("g") * (-pl.col("energy_ev") / K_B / temperature_exc).exp()).sum())
+        dflevels = (
+            dfestimators
+            .select("modelgridindex", "Te", f"nnion_{ionstr}")
+            .join(dflevels.lazy(), how="cross")
+            .with_columns(
+                nnlevel=pl.col("g")
+                * (-pl.col("energy_ev") / K_B / pl.col("Te")).exp()
+                / ((pl.col("g") * (-pl.col("energy_ev") / K_B / pl.col("Te")).exp()).sum())
+                * pl.col(f"nnion_{ionstr}")
+            )
         )
 
         dftransitions = (
-            dftransitions
-            .with_columns(nu_trans=pl.col("epsilon_trans_ev") / const.h_ev_s)
-            .join(
-                dflevels.select(lower=pl.col("levelindex"), nnlevel_lower_on_nnion=pl.col("nnlevel_on_nnion")),
-                on="lower",
-                how="left",
-            )
-            .join(
-                dflevels.select(upper=pl.col("levelindex"), nnlevel_upper_on_nnion=pl.col("nnlevel_on_nnion")),
-                on="upper",
-                how="left",
-            )
-            .with_columns(B_ul=c**2 / 2 / H / pl.col("nu_trans").pow(3) * pl.col("A"))
-            .with_columns(B_lu=pl.col("upper_g") / pl.col("lower_g") * pl.col("B_ul"))
-            .with_columns(
-                tau_sobolev_on_nnion=(
-                    pl.col("nnlevel_lower_on_nnion") * pl.col("B_lu")
-                    - pl.col("nnlevel_upper_on_nnion") * pl.col("B_ul")
-                )
-                * HCLIGHTOVERFOURPI
-                * time_s
-            )
-            .with_columns(
-                (
-                    (1 - (-pl.col("tau_sobolev_on_nnion") * nnion).exp())
-                    * pl.col("lambda_angstroms")
-                    / expopac_deltalambda
-                    / c
-                    / time_s
-                    / rho
-                ).alias(f"exopac_contribution_{ionstr}"),
-                (
-                    pl.min_horizontal(pl.col("tau_sobolev_on_nnion") * nnion, 1.0)
-                    * pl.col("lambda_angstroms")
-                    / expopac_deltalambda
-                    / (c * time_s * rho)
-                ).alias(f"linebinned_contribution_{ionstr}"),
-                (
-                    pl.col("tau_sobolev_on_nnion")
-                    * nnion
-                    * pl.col("lambda_angstroms")
-                    / expopac_deltalambda
-                    / (c * time_s * rho)
-                ).alias(f"linebinned_maxone_contribution_{ionstr}"),
-            )
-        )
-        dftransitions = (
-            dftransitions
-            .filter(pl.col("lambda_angstroms").is_between(lambda_bin_edges[0], lambda_bin_edges[-1], closed="both"))
+            dfestimators
+            .select("modelgridindex")
+            .join(dftransitions.lazy(), how="cross")
+            .filter(pl.col("lambda_angstroms").is_between(lambda_bin_edges[0], lambda_bin_edges[-1]))
             .with_columns(
                 (
                     pl.col("lambda_angstroms").cut(
@@ -139,20 +106,45 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 .cast(pl.Int32)
                 .alias("lambda_angstroms_binindex")
             )
-            .group_by("lambda_angstroms_binindex")
-            .agg([
-                pl.col(col).sum()
-                for col in (
-                    f"exopac_contribution_{ionstr}",
-                    f"linebinned_contribution_{ionstr}",
-                    f"linebinned_maxone_contribution_{ionstr}",
-                )
-            ])
+            .join(
+                dflevels.select("modelgridindex", lower=pl.col("levelindex"), nnlevel_lower=pl.col("nnlevel")),
+                on=("modelgridindex", "lower"),
+                how="left",
+            )
+            .join(
+                dflevels.select("modelgridindex", upper=pl.col("levelindex"), nnlevel_upper=pl.col("nnlevel")),
+                on=("modelgridindex", "upper"),
+                how="left",
+            )
+            .with_columns(nu_trans=1e8 * c / (pl.col("lambda_angstroms")))
+            .with_columns(B_ul=c**2 / 2 / H / pl.col("nu_trans").pow(3) * pl.col("A"))
+            .with_columns(B_lu=pl.col("upper_g") / pl.col("lower_g") * pl.col("B_ul"))
+            .with_columns(
+                tau_sobolev=(pl.col("nnlevel_lower") * pl.col("B_lu") - pl.col("nnlevel_upper") * pl.col("B_ul"))
+                * HCLIGHTOVERFOURPI
+                * time_s
+            )
+        )
+        dftransitions = dftransitions.group_by("modelgridindex", "lambda_angstroms_binindex").agg(
+            (
+                ((1 - (-pl.col("tau_sobolev")).exp()) * pl.col("lambda_angstroms")).sum()
+                / expopac_deltalambda
+                / (c * time_s * rho)
+            ).alias(f"exopac_contribution_{ionstr}"),
+            (
+                (pl.min_horizontal(pl.col("tau_sobolev"), 1.0) * pl.col("lambda_angstroms")).sum()
+                / expopac_deltalambda
+                / (c * time_s * rho)
+            ).alias(f"linebinned_contribution_{ionstr}"),
+            (
+                (pl.col("tau_sobolev") * pl.col("lambda_angstroms")).sum() / expopac_deltalambda / (c * time_s * rho)
+            ).alias(f"linebinned_maxone_contribution_{ionstr}"),
         )
 
-        lzdfresults = lzdfresults.join(dftransitions, on="lambda_angstroms_binindex", how="left")
+        lzdfresults = lzdfresults.join(dftransitions, on=("modelgridindex", "lambda_angstroms_binindex"), how="left")
 
     lzdfresults = lzdfresults.select(
+        "modelgridindex",
         cs.starts_with("lambda_angstroms_"),
         *[
             pl.sum_horizontal(cs.starts_with(prefix)).alias(prefix.removesuffix("_contribution_"))
@@ -162,7 +154,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     dfresults = lzdfresults.collect()
     print()
     print(f"timestep {timestep} T_days = {time_days:.2e}")
-    print(f"cell {modelgridindex} T_exc = {temperature_exc} K")
+    # print(f"cell {modelgridindex} T_exc = {temperature_exc} K")
     print(dfresults)
 
 
