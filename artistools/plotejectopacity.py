@@ -81,9 +81,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         ionstr = at.get_ionstring(Z, ion_stage, sep="_")
 
         dflevels = (
-            dfestimators
-            .select("modelgridindex", "Te", f"nnion_{ionstr}")
-            .join(dflevels.lazy(), how="cross")
+            dflevels
+            .lazy()
+            .join(dfestimators.select("modelgridindex", "Te", f"nnion_{ionstr}"), how="cross")
             .with_columns(
                 nnlevel=pl.col("g")
                 * (-pl.col("energy_ev") / K_B / pl.col("Te")).exp()
