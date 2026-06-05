@@ -210,7 +210,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 .with_columns(nu_bin_mid=1e8 * c / pl.col("lambda_angstroms_bin_mid"))
                 .with_columns(
                     planckfactor=pl.col("nu_bin_mid").pow(3)
-                    / ((H * pl.col("nu_bin_mid") / pl.col("Te") / K_B).exp() - 1)
+                    / ((H * pl.col("nu_bin_mid") / pl.col("Te") / K_B).exp() - 1.0)
                 )
                 .group_by("modelgridindex", "mass_g")
                 .agg(
