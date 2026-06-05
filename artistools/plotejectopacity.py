@@ -141,9 +141,10 @@ def get_expansion_opacities(adata: pl.DataFrame, time_days: float, dfestimators:
 
     return dfbinnedopacities.select(
         "modelgridindex",
+        "lambda_angstroms_binindex",
+        "lambda_angstroms_bin_mid",
         "Te",
         "mass_g",
-        cs.starts_with("lambda_angstroms_"),
         *[
             pl.sum_horizontal(cs.starts_with(prefix)).alias(prefix.removesuffix("_contribution_"))
             for prefix in ("exopac_contribution_", "linebinned_contribution_", "linebinned_maxone_contribution_")
