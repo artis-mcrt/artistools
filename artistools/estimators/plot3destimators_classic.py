@@ -38,7 +38,9 @@ def get_modelgridcells_along_axis(modelpath: Path | str, args: argparse.Namespac
 def get_modelgridcells_2D_slice(modeldata: pd.DataFrame, modelpath: Path | str) -> list[int]:
     sliceaxis: t.Literal["x", "y", "z"] = "x"
 
-    slicedata = at.inputmodel.plotinitialcomposition.get_2D_slice_through_3d_model(modeldata, sliceaxis)
+    slicedata = at.inputmodel.plotinitialcomposition.get_2D_slice_through_3d_model(
+        dfmodel=modeldata, sliceaxis=sliceaxis
+    )
     return get_mgi_of_modeldata(slicedata, modelpath)
 
 
