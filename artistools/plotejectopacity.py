@@ -3,6 +3,7 @@
 
 import argparse
 import math
+import time
 import typing as t
 from collections.abc import Sequence
 from pathlib import Path
@@ -21,7 +22,7 @@ K_B = const.K_B_ev_per_K
 H = const.h_erg_s
 
 
-def get_dflineopacities(
+def get_binned_opacities(
     dfestimators: pl.LazyFrame,
     dflevels: pl.LazyFrame,
     dftransitions: pl.LazyFrame,
@@ -135,7 +136,7 @@ def calculate_opacities(
         ionstr = at.get_ionstring(Z, ion_stage, sep="_")
 
         dfbinnedopacities = dfbinnedopacities.join(
-            get_dflineopacities(
+            get_binned_opacities(
                 dfestimators.lazy(),
                 dflevels.lazy(),
                 dftransitions,
@@ -198,10 +199,20 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     pl.Config.set_tbl_cols(20)
     pl.Config.set_tbl_rows(1200)
+    cellcount = dfestimators.select(pl.len()).item()
+    cells_processed = 0
+    time_start = time.perf_counter()
 
-    for dfcellbatch in dfestimators.partition_by("batchindex", maintain_order=True):
-        _dfbinnedopacities, dfplanckmean = calculate_opacities(adata, time_days, dfcellbatch)
-        print(dfplanckmean.collect(engine="streaming"))
+    for dfcellbatch in dfestimators.partition_by("batchindex", maintain_order=True, include_key=False):
+        _lzdfbinnedopacities, lzdfplanckmean = calculate_opacities(adata, time_days, dfcellbatch)
+        dfplanckmean = lzdfplanckmean.collect(engine="streaming")
+        cells_processed += dfplanckmean.select(pl.len()).item()
+        print(dfplanckmean)
+        elapsed = time.perf_counter() - time_start
+        timepercell = elapsed / cells_processed
+        print(
+            f" average seconds per cell: {timepercell:.3f}. cells remaining: {cellcount - cells_processed}. time remaining: {timepercell * (cellcount - cells_processed):.1f}s"
+        )
 
 
 if __name__ == "__main__":
