@@ -102,9 +102,9 @@ def get_binned_opacities_ion(
 
 
 def get_expansion_opacities(adata: pl.DataFrame, time_days: float, dfestimators: pl.DataFrame) -> pl.LazyFrame:
-    expopac_lambdamin = 534.5
-    expopac_lambdamax = 35000.0
-    expopac_deltalambda = 35.5
+    expopac_lambdamin = 50.0
+    expopac_lambdamax = 40000.0
+    expopac_deltalambda = 5.0
     expopac_nbins = int((expopac_lambdamax - expopac_lambdamin) / expopac_deltalambda)
 
     print("Summing opacities...")
@@ -124,6 +124,9 @@ def get_expansion_opacities(adata: pl.DataFrame, time_days: float, dfestimators:
 
     for Z, ion_stage, dflevels, dftransitions in adata.select("Z", "ion_stage", "levels", "transitions").iter_rows():
         ionstr = at.get_ionstring(Z, ion_stage, sep="_")
+
+        if f"nnion_{ionstr}" not in dfestimators.collect_schema().names():
+            continue
 
         dfbinnedopacities = dfbinnedopacities.join(
             get_binned_opacities_ion(
