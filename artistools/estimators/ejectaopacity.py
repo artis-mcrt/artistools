@@ -14,11 +14,12 @@ import polars.selectors as cs
 
 import artistools as at
 import artistools.constants as const
+from artistools.constants import C_cm_per_s
+from artistools.constants import h_erg_s
+from artistools.constants import K_B_erg_per_K
+from artistools.constants import K_B_ev_per_K
 
 HCLIGHTOVERFOURPI = const.h_erg_s * const.C_cm_per_s / 4 / math.pi
-c = const.C_cm_per_s
-K_B = const.K_B_ev_per_K
-H = const.h_erg_s
 
 
 def get_binned_opacities_ion(
@@ -32,8 +33,8 @@ def get_binned_opacities_ion(
 ) -> pl.LazyFrame:
     dfcelllevelpops = dflevels.join(dfcells, how="cross").with_columns(
         nnlevel=pl.col("g")
-        * (-pl.col("energy_ev") / K_B / pl.col("Te")).exp()
-        / ((pl.col("g") * (-pl.col("energy_ev") / K_B / pl.col("Te")).exp()).sum())
+        * (-pl.col("energy_ev") / K_B_ev_per_K / pl.col("Te")).exp()
+        / ((pl.col("g") * (-pl.col("energy_ev") / K_B_ev_per_K / pl.col("Te")).exp()).sum())
         * pl.col(f"nnion_{ionstr}")
     )
 
@@ -42,8 +43,8 @@ def get_binned_opacities_ion(
     return (
         dftransitions
         .filter(pl.col("lambda_angstroms").is_between(lambda_bin_edges[0], lambda_bin_edges[-1]))
-        .with_columns(nu_trans=1e8 * c / (pl.col("lambda_angstroms")))
-        .with_columns(B_ul=c**2 / 2 / H / pl.col("nu_trans").pow(3) * pl.col("A"))
+        .with_columns(nu_trans=1e8 * C_cm_per_s / (pl.col("lambda_angstroms")))
+        .with_columns(B_ul=C_cm_per_s**2 / 2 / h_erg_s / pl.col("nu_trans").pow(3) * pl.col("A"))
         .with_columns(B_lu=pl.col("upper_g") / pl.col("lower_g") * pl.col("B_ul"))
         .with_columns(
             (
@@ -78,7 +79,7 @@ def get_binned_opacities_ion(
                     (1 - (-pl.col("tau_sobolev")).exp())
                     * pl.col("lambda_angstroms")
                     / expopac_deltalambda
-                    / (c * time_s * pl.col("rho"))
+                    / (C_cm_per_s * time_s * pl.col("rho"))
                 ).sum()
             ).alias(f"exopac_contribution_{ionstr}"),
             (
@@ -86,7 +87,7 @@ def get_binned_opacities_ion(
                     pl.min_horizontal(pl.col("tau_sobolev"), 1.0)
                     * pl.col("lambda_angstroms")
                     / expopac_deltalambda
-                    / (c * time_s * pl.col("rho"))
+                    / (C_cm_per_s * time_s * pl.col("rho"))
                 ).sum()
             ).alias(f"linebinned_contribution_{ionstr}"),
             (
@@ -94,7 +95,7 @@ def get_binned_opacities_ion(
                     pl.col("tau_sobolev")
                     * pl.col("lambda_angstroms")
                     / expopac_deltalambda
-                    / (c * time_s * pl.col("rho"))
+                    / (C_cm_per_s * time_s * pl.col("rho"))
                 ).sum()
             ).alias(f"linebinned_maxone_contribution_{ionstr}"),
         )
@@ -102,9 +103,9 @@ def get_binned_opacities_ion(
 
 
 def get_expansion_opacities(adata: pl.DataFrame, time_days: float, dfestimators: pl.DataFrame) -> pl.LazyFrame:
-    expopac_lambdamin = 50.0
-    expopac_lambdamax = 40000.0
-    expopac_deltalambda = 5.0
+    expopac_lambdamin = 20.0
+    expopac_lambdamax = 50000.0
+    expopac_deltalambda = 10.0
     expopac_nbins = int((expopac_lambdamax - expopac_lambdamin) / expopac_deltalambda)
 
     print("Summing opacities...")
@@ -207,10 +208,15 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             (
                 dfbinnedopacities
                 .lazy()
-                .with_columns(nu_bin_mid=1e8 * c / pl.col("lambda_angstroms_bin_mid"))
+                .with_columns(lambda_cm_bin_mid=pl.col("lambda_angstroms_bin_mid") * 1e-8)
                 .with_columns(
-                    planckfactor=pl.col("nu_bin_mid").pow(3)
-                    / ((H * pl.col("nu_bin_mid") / pl.col("Te") / K_B).exp() - 1.0)
+                    planckfactor=(
+                        (pl.col("lambda_cm_bin_mid").pow(-5))
+                        / (
+                            (h_erg_s * C_cm_per_s / pl.col("lambda_cm_bin_mid") / pl.col("Te") / K_B_erg_per_K).exp()
+                            - 1
+                        )
+                    )
                 )
                 .group_by("modelgridindex", "mass_g")
                 .agg(
