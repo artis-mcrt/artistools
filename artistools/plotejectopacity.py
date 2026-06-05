@@ -153,7 +153,11 @@ def get_expansion_opacities(adata: pl.DataFrame, time_days: float, dfestimators:
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("-timestep", "-ts", type=int, required=True, help="Timestep number to select")
+    # mutex with time in days:
+    timegroup = parser.add_argument_group("time selection (specify either timestep or time in days)")
+    timegroup.add_argument("-timestep", "-ts", type=int, help="Timestep number to select")
+    timegroup.add_argument("-timedays", "-time", "-t", type=float, help="Time in days to select.")
+
     parser.add_argument("-modelpath", type=Path, default=Path(), help="Path of ARTIS model")
 
 
@@ -166,7 +170,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         argcomplete.autocomplete(parser)
         args = parser.parse_args([] if kwargs else argsraw)
 
-    timestep = args.timestep
+    if args.timedays is not None:
+        assert args.timestep is None, "Cannot specify both timestep and timedays. Please specify only one of them."
+        timestep = at.misc.get_timestep_of_timedays(args.modelpath, args.timedays)
+    else:
+        timestep = args.timestep
 
     adata = at.atomic.get_levels(args.modelpath, get_transitions=True, derived_transitions_columns=["lambda_angstroms"])
 
