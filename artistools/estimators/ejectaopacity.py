@@ -21,7 +21,7 @@ K_B = const.K_B_ev_per_K
 H = const.h_erg_s
 
 
-def get_ion_binned_opacities(
+def get_binned_opacities_ion(
     dfcells: pl.LazyFrame,
     dflevels: pl.LazyFrame,
     dftransitions: pl.LazyFrame,
@@ -126,7 +126,7 @@ def get_expansion_opacities(adata: pl.DataFrame, time_days: float, dfestimators:
         ionstr = at.get_ionstring(Z, ion_stage, sep="_")
 
         dfbinnedopacities = dfbinnedopacities.join(
-            get_ion_binned_opacities(
+            get_binned_opacities_ion(
                 dfestimators.lazy(),
                 dflevels.lazy(),
                 dftransitions,
@@ -176,8 +176,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     else:
         timestep = args.timestep
 
-    adata = at.atomic.get_levels(args.modelpath, get_transitions=True, derived_transitions_columns=["lambda_angstroms"])
-
     dfestimators = (
         at.estimators
         .scan_estimators(args.modelpath, timestep=timestep, join_modeldata=True)
@@ -190,13 +188,14 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     print()
     print(f"timestep {timestep} T_days = {time_days:.2f}")
 
+    adata = at.atomic.get_levels(args.modelpath, get_transitions=True, derived_transitions_columns=["lambda_angstroms"])
+
     pl.Config.set_tbl_cols(20)
     pl.Config.set_tbl_rows(1200)
     # pl.Config.set_engine_affinity("streaming")
     cellcount = dfestimators.select(pl.len()).item()
     cells_processed = 0
     time_start = time.perf_counter()
-
     planckmeanopacity_times_mass = 0.0
     mass_g_sum = 0.0
     for dfcellbatch in dfestimators.partition_by("batchindex", maintain_order=True, include_key=False):
