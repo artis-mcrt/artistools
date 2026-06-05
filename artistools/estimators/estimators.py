@@ -274,7 +274,9 @@ def scan_estimators(
             .lazy()
         )
     else:
-        print(f"WARNING: No run folders found in {modelpath}. Enabling fallback to cross join of all cells/timesteps.")
+        print(
+            f"WARNING: No run folders found in {modelpath}. Enabling fallback to cross join of all model data and timesteps."
+        )
         pldflazy = (
             at
             .get_timesteps(modelpath)

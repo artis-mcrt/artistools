@@ -709,8 +709,7 @@ def get_ion_tuple(ionstr: str) -> tuple[int, int] | int:
 
     Return the atomic number for a string like 'Fe' or '26'.
     """
-    if "_" in ionstr:
-        ionstr = ionstr.split("_", maxsplit=1)[1]
+    ionstr = ionstr.removeprefix("X_").removeprefix("nnelement_").removeprefix("nnion_")
 
     if ionstr.isdigit():
         return int(ionstr)
