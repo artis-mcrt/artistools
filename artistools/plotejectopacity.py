@@ -22,14 +22,14 @@ K_B = const.K_B_ev_per_K
 H = const.h_erg_s
 
 
-def get_binned_opacities(
+def get_ion_binned_opacities(
     dfestimators: pl.LazyFrame,
     dflevels: pl.LazyFrame,
     dftransitions: pl.LazyFrame,
     ionstr: str,
     lambda_bin_edges: list[float],
     expopac_deltalambda: float,
-    time_s: float,
+    time_days: float,
 ) -> pl.LazyFrame:
     dflevels = dflevels.join(dfestimators.select("modelgridindex", "Te", f"nnion_{ionstr}"), how="cross").with_columns(
         nnlevel=pl.col("g")
@@ -37,6 +37,8 @@ def get_binned_opacities(
         / ((pl.col("g") * (-pl.col("energy_ev") / K_B / pl.col("Te")).exp()).sum())
         * pl.col(f"nnion_{ionstr}")
     )
+
+    time_s = time_days * 86400.0
 
     return (
         dftransitions
@@ -100,11 +102,7 @@ def get_binned_opacities(
     )
 
 
-def calculate_opacities(
-    adata: pl.DataFrame, time_days: float, dfestimators: pl.DataFrame
-) -> tuple[pl.LazyFrame, pl.LazyFrame]:
-    time_s = time_days * 86400.0
-
+def get_expansion_opacities(adata: pl.DataFrame, time_days: float, dfestimators: pl.DataFrame) -> pl.LazyFrame:
     expopac_lambdamin = 534.5
     expopac_lambdamax = 35000.0
     expopac_deltalambda = 35.5
@@ -136,20 +134,20 @@ def calculate_opacities(
         ionstr = at.get_ionstring(Z, ion_stage, sep="_")
 
         dfbinnedopacities = dfbinnedopacities.join(
-            get_binned_opacities(
+            get_ion_binned_opacities(
                 dfestimators.lazy(),
                 dflevels.lazy(),
                 dftransitions,
                 ionstr,
                 lambda_bin_edges,
                 expopac_deltalambda,
-                time_s,
+                time_days,
             ),
             on=("modelgridindex", "lambda_angstroms_binindex"),
             how="left",
         )
 
-    dfbinnedopacities = dfbinnedopacities.select(
+    return dfbinnedopacities.select(
         "modelgridindex",
         "Te",
         "planckfactor",
@@ -159,14 +157,6 @@ def calculate_opacities(
             for prefix in ("exopac_contribution_", "linebinned_contribution_", "linebinned_maxone_contribution_")
         ],
     ).sort("modelgridindex", "lambda_angstroms_binindex")
-
-    dfplanckmean = (
-        dfbinnedopacities
-        .lazy()
-        .group_by("modelgridindex")
-        .agg(planckmean_opacity=((pl.col("planckfactor") * pl.col("exopac")).sum() / pl.col("planckfactor").sum()))
-    ).sort("modelgridindex")
-    return dfbinnedopacities, dfplanckmean
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -204,8 +194,22 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     time_start = time.perf_counter()
 
     for dfcellbatch in dfestimators.partition_by("batchindex", maintain_order=True, include_key=False):
-        _lzdfbinnedopacities, lzdfplanckmean = calculate_opacities(adata, time_days, dfcellbatch)
-        dfplanckmean = lzdfplanckmean.collect(engine="streaming")
+        dfbinnedopacities = get_expansion_opacities(adata, time_days, dfcellbatch)
+        dfplanckmean = (
+            (
+                dfbinnedopacities
+                .lazy()
+                .group_by("modelgridindex")
+                .agg(
+                    planckmean_opacity=(
+                        (pl.col("planckfactor") * pl.col("exopac")).sum() / pl.col("planckfactor").sum()
+                    )
+                )
+            )
+            .sort("modelgridindex")
+            .collect(engine="streaming")
+        )
+
         cells_processed += dfplanckmean.select(pl.len()).item()
         print(dfplanckmean)
         elapsed = time.perf_counter() - time_start
