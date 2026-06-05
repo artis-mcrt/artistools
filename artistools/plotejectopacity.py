@@ -123,11 +123,7 @@ def get_expansion_opacities(adata: pl.DataFrame, time_days: float, dfestimators:
         .with_columns(
             lambda_angstroms_bin_mid=(pl.col("lambda_angstroms_binlower") + pl.col("lambda_angstroms_binupper")) / 2
         )
-        .with_columns(nu_bin_mid=1e8 * c / pl.col("lambda_angstroms_bin_mid"))
         .join(dfestimators.select("modelgridindex", "Te").lazy(), how="cross")
-        .with_columns(
-            planckfactor=pl.col("nu_bin_mid").pow(3) / ((H * pl.col("nu_bin_mid") / pl.col("Te") / K_B).exp() - 1)
-        )
     )
 
     for Z, ion_stage, dflevels, dftransitions in adata.select("Z", "ion_stage", "levels", "transitions").iter_rows():
@@ -150,7 +146,6 @@ def get_expansion_opacities(adata: pl.DataFrame, time_days: float, dfestimators:
     return dfbinnedopacities.select(
         "modelgridindex",
         "Te",
-        "planckfactor",
         cs.starts_with("lambda_angstroms_"),
         *[
             pl.sum_horizontal(cs.starts_with(prefix)).alias(prefix.removesuffix("_contribution_"))
@@ -199,6 +194,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             (
                 dfbinnedopacities
                 .lazy()
+                .with_columns(nu_bin_mid=1e8 * c / pl.col("lambda_angstroms_bin_mid"))
+                .with_columns(
+                    planckfactor=pl.col("nu_bin_mid").pow(3)
+                    / ((H * pl.col("nu_bin_mid") / pl.col("Te") / K_B).exp() - 1)
+                )
                 .group_by("modelgridindex")
                 .agg(
                     planckmean_opacity=(
