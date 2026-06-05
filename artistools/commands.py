@@ -33,7 +33,7 @@ subcommandtree: CommandType = {
     "gsinetworkdecayproducts": ("gsinetwork.decayproducts", "main"),
     "describeinputmodel": ("inputmodel.describeinputmodel", "main"),
     "estimators": ("estimators.plotestimators", "main"),
-    "ejectaopacity": ("plotejectopacity", "main"),
+    "ejectaopacity": ("estimators.ejectaopacity", "main"),
     "exportmassfractions": ("estimators.exportmassfractions", "main"),
     "getpath": ("commands", "get_artistools_path"),
     "lc": ("lightcurve.plotlightcurve", "main"),
