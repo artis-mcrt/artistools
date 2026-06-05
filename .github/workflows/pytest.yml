@@ -87,16 +87,9 @@ jobs:
         strategy:
             fail-fast: false
             matrix:
-                os: [{name: macos, version: '26'}, {name: ubuntu, version: 24.04-arm}]
                 python-version: ['3.12', '3.13', '3.14', 3.14t]
-                exclude:
-                    # macos runners are very limited in number
-                    - os: {name: macos, version: '26'}
-                      python-version: '3.12'
-                    - os: {name: ubuntu, version: 24.04-arm}
-                      python-version: 3.14t
-        runs-on: ${{ matrix.os.name }}-${{ matrix.os.version }}
-        name: pytest ${{ matrix.os.name }} python ${{ matrix.python-version }}
+        runs-on: ubuntu-24.04
+        name: pytest python ${{ matrix.python-version }}
         steps:
             - name: Checkout Code
               uses: actions/checkout@v6
@@ -124,22 +117,6 @@ jobs:
                       cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python${{ steps.setup-uv.outputs.python-version }}-
                       cargo-rust-target-${{ runner.os }}${{ runner.arch }}-
 
-            - name: Install deps for building pyarrow and scipy from source
-              if: matrix.os.name == 'macos' && matrix.python-version == '3.15'
-              run: |
-                  brew update
-                  brew install apache-arrow
-                  echo "ARROW_HOME=$(brew --prefix apache-arrow)" >> $GITHUB_ENV
-                  brew install gcc openblas
-                  echo "LDFLAGS=-L/opt/homebrew/opt/openblas/lib" >> $GITHUB_ENV
-                  echo "CPPFLAGS=-I/opt/homebrew/opt/openblas/include" >> $GITHUB_ENV
-                  echo "CMAKE_PREFIX_PATH=/opt/homebrew/opt/openblas" >> $GITHUB_ENV
-                  echo "PKG_CONFIG_PATH=/opt/homebrew/opt/openblas/lib/pkgconfig" >> $GITHUB_ENV
-
-                  uv pip install pyarrow
-                  GCC_MAJOR="$(brew list --versions gcc | awk '{print $2}' | cut -d. -f1)"
-                  CXX="g++-${GCC_MAJOR}" FC="gfortran-${GCC_MAJOR}" uv pip install scipy
-
             - name: Install artistools (no dev deps)
               run: |
                   rustup update stable
@@ -165,7 +142,7 @@ jobs:
 
             - uses: codecov/codecov-action@v6
               env:
-                  OS: ${{ matrix.os.name }}-${{ matrix.os.version }}
+                  OS: ${{ runner.os.name }}-${{ runner.os.version }}
                   PYTHON: ${{ matrix.python-version }}
               with:
                   token: ${{ secrets.CODECOV_TOKEN }}
@@ -179,5 +156,5 @@ jobs:
             - name: Upload output files
               uses: actions/upload-artifact@v7
               with:
-                  name: testoutput-${{ matrix.os.name }}-${{ matrix.os.version }}-py${{ matrix.python-version }}
+                  name: testoutput-${{ runner.os.name }}-${{ runner.os.version }}-py${{ matrix.python-version }}
                   path: tests/output/
