@@ -1,4 +1,3 @@
-import tarfile
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -137,59 +136,6 @@ def energy_from_rprocess_calculation(
         return dftimes_and_rate, E_tot
 
     return E_tot
-
-
-def get_rprocess_calculation_files(
-    path_to_rprocess_calculation: Path | str,
-    interpolate_trajectories: bool = False,
-    thermalisation: bool = False,  # noqa: ARG001
-) -> None:
-    tarfiles = [file.name for file in Path(path_to_rprocess_calculation).iterdir() if file.name.endswith(".tar.xz")]
-
-    trajectory_ids = []
-    trajectory_E_tot = []
-
-    if interpolate_trajectories:
-        interpolated_trajectories = {"time/s": np.logspace(-1, 7, 300)}
-
-    energy_thermo_filepath = "./Run_rprocess/energy_thermo.dat"
-    for file in tarfiles:
-        trajectory_id = file.split(".")[0]
-        with tarfile.open(Path(path_to_rprocess_calculation, file), mode="r:*") as tar:
-            energythermo_file = tar.extractfile(member=energy_thermo_filepath)
-            assert energythermo_file is not None
-            energy_thermo_data = pl.from_pandas(pd.read_csv(energythermo_file, sep=r"\s+"))
-
-        # print(energy_thermo_data['Qdot'])
-        # print(energy_thermo_data['time/s'])
-
-        if interpolate_trajectories:
-            qdotinterp = np.interp(
-                interpolated_trajectories["time/s"], energy_thermo_data["time/s"], energy_thermo_data["Qdot"]
-            )
-            interpolated_trajectories[trajectory_id] = qdotinterp
-
-        E_tot = energy_from_rprocess_calculation(energy_thermo_data, get_rate=False)
-        assert isinstance(E_tot, float)
-
-        trajectory_ids.append(float(trajectory_id))
-        trajectory_E_tot.append(E_tot)
-
-    if interpolate_trajectories:
-        dfinterpolated_trajectories = pd.DataFrame.from_dict(interpolated_trajectories)
-        dfinterpolated_trajectories["mean"] = dfinterpolated_trajectories.iloc[:, 1:].mean(axis=1)
-
-        index_time_lessthan = dfinterpolated_trajectories[dfinterpolated_trajectories["time/s"] < 1.1e-1].index
-        dfinterpolated_trajectories = dfinterpolated_trajectories.drop(index_time_lessthan)
-
-        dfinterpolated_trajectories.to_csv(
-            Path(path_to_rprocess_calculation, "interpolatedQdot.dat"), sep=" ", index=False
-        )
-    print(f"sum etot {sum(trajectory_E_tot)}")
-    trajectory_energy = pd.DataFrame.from_dict({"id": trajectory_ids, "E_tot": trajectory_E_tot}).sort_values(by="id")
-
-    print(trajectory_energy)
-    trajectory_energy.to_csv(Path(path_to_rprocess_calculation, "trajectoryQ.dat"), sep=" ", index=False)
 
 
 def make_energydistribution_weightedbyrho(

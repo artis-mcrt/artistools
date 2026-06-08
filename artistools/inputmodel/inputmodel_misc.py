@@ -8,7 +8,6 @@ import os
 import tempfile
 import time
 import typing as t
-from collections import defaultdict
 from collections.abc import Callable
 from collections.abc import Sequence
 from pathlib import Path
@@ -151,57 +150,36 @@ def read_modelfile_text(
         ).lazy()
 
     else:
-
-        def skiprows(x: int) -> bool:
-            if x < numheaderrows:
-                return True
-            if onelinepercellformat:
-                return False
-            # only read the even lines (0-based) if two lines per cell format
-            return (x - numheaderrows) % 2 == 1
-
-        dtypes: defaultdict[str, str] = defaultdict(lambda: "float32[pyarrow]")
-        dtypes["inputcellid"] = "int32[pyarrow]"
-
-        # each cell takes up two lines in the model file
-        dfmodelpd = pd.read_csv(
-            filename,
-            sep=r"\s+",
-            engine="c",
-            header=None,
-            skiprows=skiprows,
-            names=columns[:ncols_line_even],
-            usecols=columns[:ncols_line_even],
-            nrows=npts_model,
-            dtype=dtypes,
-            dtype_backend="pyarrow",
-        )
-
-        if ncols_line_odd > 0 and not onelinepercellformat:
-            # read in the odd rows and merge dataframes
-            dfmodeloddlines = pd.read_csv(
-                filename,
+        # dfmodelraw can have cells split across two lines, so to avoid reading twice, we read in everything and slice later
+        dfmodelraw = pl.from_pandas(
+            pd.read_csv(
+                zopen(filename),
                 sep=r"\s+",
                 engine="c",
                 header=None,
-                skiprows=lambda i: i < numheaderrows or (i - numheaderrows) % 2 == 0,
-                names=columns[ncols_line_even:],
-                nrows=npts_model,
-                dtype=dtypes,
-                dtype_backend="pyarrow",
+                skiprows=numheaderrows,
+                names=[str(i) for i in range(max(ncols_line_even, ncols_line_odd))],
             )
-            assert len(dfmodelpd) == len(dfmodeloddlines)
-            dfmodelpd = dfmodelpd.merge(dfmodeloddlines, left_index=True, right_index=True)
-            del dfmodeloddlines
+        )
 
-        if len(dfmodelpd) > npts_model:
-            dfmodelpd = dfmodelpd.iloc[:npts_model]
+        dfmodel = (
+            (dfmodelraw if onelinepercellformat else dfmodelraw[: npts_model * 2 : 2])
+            .select([pl.col(str(i)).alias(colname) for i, colname in enumerate(columns[:ncols_line_even])])
+            .with_columns(pl.col("inputcellid").cast(pl.Int32))
+        )
 
-        dfmodelpd.index.name = "cellid"
+        if ncols_line_odd > 0 and not onelinepercellformat:
+            # merge the odd rows with their correct column names
+            dfmodeloddlines = (
+                dfmodelraw[1 : npts_model * 2 : 2]
+                .select([pl.col(str(i)).alias(colname) for i, colname in enumerate(columns[ncols_line_even:])])
+                .with_row_index("inputcellid", offset=1)
+                .with_columns(pl.col("inputcellid").cast(pl.Int32))
+            )
+            assert len(dfmodel) == len(dfmodeloddlines)
+            dfmodel = dfmodel.join(dfmodeloddlines, on="inputcellid", how="left")
 
-        dfmodel = pl.from_pandas(dfmodelpd).lazy()
-
-    assert dfmodel.select(pl.len()).collect().item() == npts_model
+        dfmodel = dfmodel.head(npts_model).with_columns(pl.exclude("inputcellid").cast(pl.Float32)).lazy()
 
     dfmodel = dfmodel.sort("inputcellid").rename({"velocity_outer": "vel_r_max_kmps", "cellYe": "Ye"}, strict=False)
 
@@ -769,9 +747,7 @@ def get_cell_angle(dfmodel: pd.DataFrame) -> pd.DataFrame:
     return dfmodel
 
 
-def get_standard_columns(
-    dimensions: int, includenico57: bool = False, includeabund: bool = True, pos_unknown: bool = False
-) -> list[str]:
+def get_standard_columns(dimensions: int, includenico57: bool = False, pos_unknown: bool = False) -> list[str]:
     """Get standard (artis classic) columns for modeldata DataFrame."""
     cols: list[str] = []
     match dimensions:
@@ -785,9 +761,6 @@ def get_standard_columns(
                 if pos_unknown
                 else ["inputcellid", "pos_x_min", "pos_y_min", "pos_z_min", "rho"]
             )
-
-    if not includeabund:
-        return cols
 
     cols += ["X_Fegroup", "X_Ni56", "X_Co56", "X_Fe52", "X_Cr48"]
 
@@ -803,7 +776,6 @@ def save_modeldata(
     vmax: float | int | None = None,
     headercommentlines: list[str] | None = None,
     modelmeta: dict[str, t.Any] | None = None,
-    twolinespercell: bool = False,
     **kwargs: t.Any,
 ) -> None:
     """Write an artis model.txt (density and composition snapshot) from a DataFrame/LazyFrame of cell properties and other metadata such as the time after explosion.
@@ -941,38 +913,23 @@ def save_modeldata(
             # startcols are the standard ones, but excluding any abundances
             startcols = [col for col in standardcols if not col.startswith("X_")]
             dfmodel = dfmodel.select([*startcols, *abundandcustomcols])
-            if twolinespercell:
-                # slow python writer. only needed to create models for classic ARTIS
-                nstartcols = len(startcols)
-                rhocolindex = len(startcols) - 1
-                for colvals in dfmodel.iter_rows():
-                    inputcellid = colvals[0]
-                    fmodel.write(f"{inputcellid:d}" + "".join(f" {colvalue:.4e}" for colvalue in colvals[1:nstartcols]))
-                    fmodel.write("\n")
-                    fmodel.write(
-                        " ".join((f"{colvalue:.4e}" if colvalue > 0.0 else "0.0") for colvalue in colvals[nstartcols:])
-                        if colvals[rhocolindex] > 0.0
-                        else strzeroabund
-                    )
-                    fmodel.write("\n")
-            else:
-                # fast polars writer
-                # set abundances to null for cells with zero density (so that shorter form "0.0" can be written)
-                dfmodel = dfmodel.with_columns(
-                    pl.when(pl.col("rho") > 0).then(pl.col(col)).otherwise(pl.lit(None)).alias(col)
-                    for col in dfmodel.columns
-                    if not col.startswith("pos") and col != "inputcellid" and dfmodel.schema[col].is_float()
-                )
-                fmodel.flush()
-                dfmodel.write_csv(
-                    fmodel,
-                    include_header=False,
-                    separator=" ",
-                    line_terminator="\n",
-                    float_scientific=True,
-                    float_precision=4,
-                    null_value="0.0",
-                )
+            # fast polars writer
+            # set abundances to null for cells with zero density (so that shorter form "0.0" can be written)
+            dfmodel = dfmodel.with_columns(
+                pl.when(pl.col("rho") > 0).then(pl.col(col)).otherwise(pl.lit(None)).alias(col)
+                for col in dfmodel.columns
+                if not col.startswith("pos") and col != "inputcellid" and dfmodel.schema[col].is_float()
+            )
+            fmodel.flush()
+            dfmodel.write_csv(
+                fmodel,
+                include_header=False,
+                separator=" ",
+                line_terminator="\n",
+                float_scientific=True,
+                float_precision=4,
+                null_value="0.0",
+            )
 
     print(f"Wrote {modelfilepath} (took {time.perf_counter() - timestart:.1f} seconds)")
 
@@ -1138,8 +1095,6 @@ def dimension_reduce_model(
     outputdimensions: int,
     dfelabundances: pl.DataFrame | pl.LazyFrame | None = None,
     dfgridcontributions: pl.DataFrame | None = None,
-    ncoordgridr: int | None = None,
-    ncoordgridz: int | None = None,
     modelmeta: dict[str, t.Any] | None = None,
     **kwargs: t.Any,
 ) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame, dict[str, t.Any]]:
@@ -1194,9 +1149,8 @@ def dimension_reduce_model(
         dfmodel_out = dfmodel_out.with_columns([
             (pl.col("vel_x_mid") ** 2 + pl.col("vel_y_mid") ** 2).sqrt().alias("vel_rcyl_mid")
         ])
-        if ncoordgridz is None:
-            ncoordgridz = int(modelmeta.get("ncoordgridx", round(math.cbrt(in_ngridpoints))))
-            assert ncoordgridz % 2 == 0
+        ncoordgridz = int(modelmeta.get("ncoordgridx", round(math.cbrt(in_ngridpoints))))
+        assert ncoordgridz % 2 == 0
         ncoordgridr = ncoordgridz // 2
         modelmeta_out["ncoordgridz"] = ncoordgridz
         modelmeta_out["ncoordgridrcyl"] = ncoordgridr

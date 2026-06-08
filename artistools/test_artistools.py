@@ -225,6 +225,9 @@ def test_get_ionstring() -> None:
 
 
 def test_get_ion_tuple() -> None:
+    assert at.get_ion_tuple("nnelement_I") == 53
+    assert at.get_ion_tuple("nnion_I_II") == (53, 2)
+    assert at.get_ion_tuple("Fe_II") == (26, 2)
     assert at.get_ion_tuple("Fe II") == (26, 2)
     assert at.get_ion_tuple("Fe I") == (26, 1)
     assert at.get_ion_tuple("Ni III") == (28, 3)

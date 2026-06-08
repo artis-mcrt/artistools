@@ -265,8 +265,8 @@ def make_ionsubplot(
         else float(ionpopulation / dfpopthision["n_LTE_T_e"].sum())
     )
 
-    dfpopthision = dfpopthision.assign(n_LTE_T_e_normed=pd.col("n_LTE_T_e") * lte_scalefactor).assign(  # type: ignore[attr-defined] # pyright: ignore[reportAttributeAccessIssue]
-        departure_coeff=pd.col("n_NLTE") / pd.col("n_LTE_T_e_normed")  # type: ignore[attr-defined] # pyright: ignore[reportAttributeAccessIssue]
+    dfpopthision = dfpopthision.assign(n_LTE_T_e_normed=pd.col("n_LTE_T_e") * lte_scalefactor).assign(  # pyright: ignore[reportAttributeAccessIssue]
+        departure_coeff=pd.col("n_NLTE") / pd.col("n_LTE_T_e_normed")  # pyright: ignore[reportAttributeAccessIssue]
     )
 
     pd.set_option("display.max_columns", 150)
@@ -359,7 +359,7 @@ def make_ionsubplot(
 
         if not args.hide_lte_tr:
             lte_scalefactor = float(ionpopulation / dfpopthision["n_LTE_T_R"].sum())
-            dfpopthision = dfpopthision.assign(n_LTE_T_R_normed=pd.col("n_LTE_T_R") * lte_scalefactor)  # type: ignore[attr-defined] # pyright: ignore[reportAttributeAccessIssue]
+            dfpopthision = dfpopthision.assign(n_LTE_T_R_normed=pd.col("n_LTE_T_R") * lte_scalefactor)  # pyright: ignore[reportAttributeAccessIssue]
             ax.plot(
                 dfpopthision["level"],
                 dfpopthision["n_LTE_T_R_normed"],

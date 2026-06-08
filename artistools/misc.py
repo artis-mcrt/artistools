@@ -130,9 +130,10 @@ def split_multitable_dataframe(res_df: pl.DataFrame | pl.LazyFrame) -> dict[int,
 
 
 def df_filter_minmax_bounded(
-    df: pl.LazyFrame, colname: str, minval: float | int | None, maxval: float | int | None
+    df: pl.LazyFrame | pl.DataFrame, colname: str, minval: float | int | None, maxval: float | int | None
 ) -> pl.LazyFrame:
     """Filter a DataFrame to selects rows where the value in colname is between minval and maxval, and also include the closest exterior rows if xmin/xmax are between two rows. This enables linear interpolation at xmin and xmax (if the surrounding values existed in the DataFrame)."""
+    df = df.lazy()
     if minval is None and maxval is None:
         return df
 
@@ -708,8 +709,7 @@ def get_ion_tuple(ionstr: str) -> tuple[int, int] | int:
 
     Return the atomic number for a string like 'Fe' or '26'.
     """
-    if "_" in ionstr:
-        ionstr = ionstr.split("_", maxsplit=1)[1]
+    ionstr = ionstr.removeprefix("X_").removeprefix("nnelement_").removeprefix("nnion_")
 
     if ionstr.isdigit():
         return int(ionstr)
@@ -1028,7 +1028,7 @@ def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
     return {}
 
 
-def get_filterfunc(args: argparse.Namespace, mode: str = "interp") -> Callable[[t.Any], t.Any] | None:
+def get_filterfunc(args: argparse.Namespace) -> Callable[[t.Any], t.Any] | None:
     """Use command line arguments to determine the appropriate filter function."""
     filterfunc = None
     dictargs = vars(args)
@@ -1050,7 +1050,7 @@ def get_filterfunc(args: argparse.Namespace, mode: str = "interp") -> Callable[[
 
         assert filterfunc is None
         filterfunc = functools.partial(  # pyright: ignore[reportCallIssue]
-            scipy.signal.savgol_filter, window_length=window_length, polyorder=polyorder, mode=mode
+            scipy.signal.savgol_filter, window_length=window_length, polyorder=polyorder, mode="interp"
         )
 
         print("Applying Savitzky-Golay filter")
