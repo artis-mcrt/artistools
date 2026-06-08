@@ -13,13 +13,12 @@ import polars as pl
 import polars.selectors as cs
 
 import artistools as at
-import artistools.constants as const
 from artistools.constants import C_cm_per_s
 from artistools.constants import h_erg_s
 from artistools.constants import K_B_erg_per_K
 from artistools.constants import K_B_ev_per_K
 
-HCLIGHTOVERFOURPI = const.h_erg_s * const.C_cm_per_s / 4 / math.pi
+HCLIGHTOVERFOURPI = h_erg_s * C_cm_per_s / 4 / math.pi
 
 
 def get_binned_opacities_ion(
