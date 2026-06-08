@@ -204,7 +204,7 @@ def plot_last_emission_velocities_histogram(
 
 
 def get_required_packets(
-    modelpath: Path, Z: Sequence[int], ion_stage: Sequence[int], srII_triplet: bool = False
+    modelpath: Path, Z_list: Sequence[int], ion_stage_list: Sequence[int], srII_triplet: bool = False
 ) -> pl.LazyFrame:
     """Options for this function: Either the Sr II triplet, specific or all ion stages of an element."""
     # careful: ion_stage is counted from 1 here, i.e. 1 <-> neutral, 2 <-> singly ionized
@@ -240,7 +240,14 @@ def get_required_packets(
             )
         )
     else:
-        lineindices = at.get_ion_linelist(modelpath=modelpath, atomic_number=Z, ion_stage=ion_stage)
+        lineindices = (
+            at.misc
+            .get_linelist_pldf(modelpath)
+            .filter(pl.col("atomic_number").is_in(Z_list) & pl.col("ion_stage").is_in(ion_stage_list))
+            .collect()
+            .get_column("lineindex")
+            .to_list()
+        )
 
     dfpackets_selected, _ = at.get_packets_with_emtype(
         modelpath=modelpath, emtypecolumn="absorption_type", lineindices=lineindices, maxpacketfiles=None
