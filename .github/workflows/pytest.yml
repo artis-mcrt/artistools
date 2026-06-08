@@ -22,7 +22,7 @@ jobs:
             - name: Checkout Code
               uses: actions/checkout@v6
 
-            - uses: astral-sh/setup-uv@v8.1.0
+            - uses: astral-sh/setup-uv@v8.2.0
               id: setup-uv
               with:
                   activate-environment: true
@@ -95,7 +95,7 @@ jobs:
               uses: actions/checkout@v6
 
             - name: Setup uv
-              uses: astral-sh/setup-uv@v8.1.0
+              uses: astral-sh/setup-uv@v8.2.0
               id: setup-uv
               with:
                   activate-environment: true
@@ -140,7 +140,7 @@ jobs:
             - name: Report coverage
               run: uv run -- python -m coverage report
 
-            - uses: codecov/codecov-action@v6
+            - uses: codecov/codecov-action@v7
               env:
                   OS: ${{ runner.os.name }}-${{ runner.os.version }}
                   PYTHON: ${{ matrix.python-version }}
