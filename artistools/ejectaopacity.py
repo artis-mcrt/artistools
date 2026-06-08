@@ -30,14 +30,13 @@ def get_binned_opacities_ion(
     expopac_deltalambda: float,
     time_days: float,
 ) -> pl.LazyFrame:
+    time_s = time_days * 86400.0
     dfcelllevelpops = dflevels.join(dfcells, how="cross").with_columns(
         nnlevel=pl.col("g")
         * (-pl.col("energy_ev") / K_B_ev_per_K / pl.col("Te")).exp()
         / ((pl.col("g") * (-pl.col("energy_ev") / K_B_ev_per_K / pl.col("Te")).exp()).sum())
         * pl.col(f"nnion_{ionstr}")
     )
-
-    time_s = time_days * 86400.0
 
     return (
         dftransitions
