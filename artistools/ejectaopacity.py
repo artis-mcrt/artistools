@@ -34,8 +34,9 @@ def get_binned_opacities_ion(
     dfcelllevelpops = dflevels.join(dfcells, how="cross").with_columns(
         nnlevel=pl.col("g")
         * (-pl.col("energy_ev") / K_B_ev_per_K / pl.col("Te")).exp()
-        / ((pl.col("g") * (-pl.col("energy_ev") / K_B_ev_per_K / pl.col("Te")).exp()).sum())
+        / ((pl.col("g") * (-pl.col("energy_ev") / K_B_ev_per_K / pl.col("Te")).exp()).sum().over("modelgridindex"))
         * pl.col(f"nnion_{ionstr}")
+    )
     )
 
     return (
