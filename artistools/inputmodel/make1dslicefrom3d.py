@@ -28,7 +28,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if args is None:
         parser = argparse.ArgumentParser(
             formatter_class=at.CustomArgHelpFormatter,
-            description="Covert abundances.txt and model.txt from 3D to a one dimensional slice.",
+            description="Convert abundances.txt and model.txt from 3D to a one dimensional slice.",
         )
         addargs(parser)
         at.set_args_from_dict(parser, kwargs)
