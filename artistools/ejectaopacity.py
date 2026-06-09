@@ -1,5 +1,5 @@
 # PYTHON_ARGCOMPLETE_OK
-"""Script for plotting the Planck mean opacity structure in postprocessing."""
+"""Script for computing binned expansion opacities and Planck-mean opacities in postprocessing."""
 
 import argparse
 import math
