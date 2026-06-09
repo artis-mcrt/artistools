@@ -177,7 +177,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         timestep = at.misc.get_timestep_of_timedays(args.modelpath, args.timedays)
     else:
         timestep = args.timestep
-
+        assert timestep is not None, "Please specify either -timestep or -timedays."
     dfestimators = (
         at.estimators
         .scan_estimators(args.modelpath, timestep=timestep, join_modeldata=True)
