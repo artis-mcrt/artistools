@@ -87,7 +87,7 @@ def get_binned_opacities_ion(
                     / expopac_deltalambda
                     / (C_cm_per_s * time_s * pl.col("rho"))
                 ).sum()
-            ).alias(f"linebinned_contribution_{ionstr}"),
+            ).alias(f"linebinned_maxone_contribution_{ionstr}"),
             (
                 (
                     pl.col("tau_sobolev")
@@ -95,7 +95,7 @@ def get_binned_opacities_ion(
                     / expopac_deltalambda
                     / (C_cm_per_s * time_s * pl.col("rho"))
                 ).sum()
-            ).alias(f"linebinned_maxone_contribution_{ionstr}"),
+            ).alias(f"linebinned_contribution_{ionstr}"),
         )
     )
 
