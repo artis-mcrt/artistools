@@ -239,7 +239,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         )
 
     print()
-    globalplanckmeanopacity = planckmeanopacity_times_mass / dfestimators.select(pl.col("mass_g").sum()).item()
+    globalplanckmeanopacity = planckmeanopacity_times_mass / mass_g_sum
     print(f"Global Planck mean opacity: {globalplanckmeanopacity:.2f} cm^2/g")
 
 
