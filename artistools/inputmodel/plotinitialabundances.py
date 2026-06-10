@@ -23,7 +23,7 @@ def make_plot(args: argparse.Namespace) -> None:
         df, _ = at.inputmodel.get_modeldata(modelpath=Path(model_path), derived_cols=["mass_g"])
         df = (
             df
-            .select((cs.matches(r"^X_[A-Z][a-z]?\d+$") * pl.col("mass_g")).sum() / pl.col("mass_g").sum())
+            .select((cs.matches(r"^X_[A-Z][a-z]?\d+$").dot(pl.col("mass_g"))) / pl.col("mass_g").sum())
             .unpivot(variable_name="nuclide", value_name="massfraction")
             .with_columns(
                 pl.col("nuclide").map_elements(
