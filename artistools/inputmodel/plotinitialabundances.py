@@ -33,9 +33,9 @@ def make_plot(args: argparse.Namespace) -> None:
             .unnest("nuclide")  # convert {28, 56} struct to columns Z and A
             .with_columns(abundance=pl.col("massfraction") / pl.col("A"))
         )
-        assert math.isclose(df.select(pl.col("massfraction").sum()).collect().item(), 1.0, abs_tol=1e-5), (
-            "Mass fractions do not sum to 1.0"
-        )
+        massfracsum = df.select(pl.col("massfraction").sum()).collect().item()
+        if not math.isclose(massfracsum, 1.0, abs_tol=1e-5):
+            print(f"WARNING: mass fractions for model {model_path} sum to {massfracsum:.3f} instead of 1.0.")
 
         df = (
             df
