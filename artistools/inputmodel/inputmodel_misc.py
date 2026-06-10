@@ -25,7 +25,6 @@ from artistools.misc import get_z_a_nucname
 from artistools.misc import stripallsuffixes
 from artistools.misc import vec_len
 from artistools.misc import zopen
-from artistools.misc import zopenpl
 
 
 def read_modelfile_text(
@@ -969,15 +968,7 @@ def get_initelemabundances(modelpath: Path | str = ".", printwarningsonly: bool 
         if not printwarningsonly:
             print(f"Reading {textfilepath}")
 
-        abundancedata = pl.read_csv(
-            zopenpl(textfilepath), has_header=False, separator=" ", comment_prefix="#", infer_schema_length=0
-        )
-
-        # fix up multiple spaces at beginning of lines
-        abundancedata = abundancedata.transpose()
-        abundancedata = pl.DataFrame([
-            abundancedata.to_series(idx).drop_nulls() for idx in range(len(abundancedata.columns))
-        ]).transpose()
+        abundancedata = pl.from_pandas(pd.read_csv(zopen(textfilepath), sep=r"\s+", comment="#", header=None))
 
         colnames = ["inputcellid", *[f"X_{get_elsymbol(x)}" for x in range(1, len(abundancedata.columns))]]
         abundancedata = abundancedata.rename({
