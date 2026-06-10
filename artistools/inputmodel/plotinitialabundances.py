@@ -1,6 +1,6 @@
 # PYTHON_ARGCOMPLETE_OK
 import argparse
-import re
+import math
 import typing as t
 from collections.abc import Sequence
 from pathlib import Path
@@ -8,85 +8,63 @@ from pathlib import Path
 import argcomplete
 import matplotlib.pyplot as plt
 import polars as pl
+import polars.selectors as cs
 
 import artistools as at
 
 
 def make_plot(args: argparse.Namespace) -> None:
-    at.plottools.set_mpl_style()
-    fig, ax = plt.subplots()
+    args.xaxis = {"Z": "atomicnumber", "A": "massnumber"}.get(args.xaxis, args.xaxis)
 
-    xaxis = "A" if args.xaxis == "massnumber" else "Z"
-    yaxis = "X" if args.yaxis == "massfraction" else "Y"
+    at.plottools.set_mpl_style()
+    fig, ax = plt.subplots(tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     for model_path in args.modelpath:
-        df = at.inputmodel.get_modeldata(modelpath=Path(model_path), derived_cols=["volume", "rho"])[0].collect()
-
-        df = df.with_columns((pl.col("rho") * pl.col("volume")).alias("m_cell"))
-
-        nuclide_cols = df.select(pl.col("^X_.*$")).columns
-        pattern = re.compile(r"X_([A-Z][a-z]?|n)(\d+)")
-
-        meta = []
-        for c in nuclide_cols:
-            m = pattern.fullmatch(c)
-            if not m:
-                continue
-            elem, A = m.group(1), int(m.group(2))
-            Z = 0 if elem == "n" else at.get_atomic_number(elem)
-            if Z < 0:
-                continue
-            meta.append((c, A, Z))
-
-        meta_df = pl.DataFrame(meta, schema=["column", "A", "Z"])
-
-        long = df.unpivot(on=nuclide_cols, index=["m_cell"], variable_name="column", value_name="X").join(
-            meta_df, on="column"
+        df, _ = at.inputmodel.get_modeldata(modelpath=Path(model_path), derived_cols=["mass_g"])
+        df = (
+            df
+            .select((cs.matches(r"^X_[A-Z][a-z]?\d+$") * pl.col("mass_g")).sum() / pl.col("mass_g").sum())
+            .unpivot(variable_name="nuclide", value_name="massfraction")
+            .with_columns(
+                pl.col("nuclide").map_elements(
+                    at.get_z_a_nucname, return_dtype=pl.Struct({"Z": pl.Int32, "A": pl.Int32})
+                )  # convert X_Ni56 to {28, 56}
+            )
+            .unnest("nuclide")  # convert {28, 56} struct to columns Z and A
+            .with_columns(abundance=pl.col("massfraction") / pl.col("A"))
+        )
+        assert math.isclose(df.select(pl.col("massfraction").sum()).collect().item(), 1.0, abs_tol=1e-5), (
+            "Mass fractions do not sum to 1.0"
         )
 
-        axis = "A" if xaxis == "A" else "Z"
-        suffix = axis
-
-        if yaxis == "X":
-            y_expr = pl.col("X")
-            y_name = f"X_{suffix}"
-        else:
-            y_expr = pl.col("X") / pl.col("A")
-            y_name = f"Y_{suffix}"
-
-        value_name = "m_total"
-        weighted_name = f"m_{suffix}" if yaxis == "X" else "abund_weighted_mass"
-
-        result = (
-            long
-            .with_columns(y_expr.alias("Y"))
-            .group_by(axis)
-            .agg([
-                (pl.col("Y") * pl.col("m_cell")).sum().alias(weighted_name),
-                pl.col("m_cell").sum().alias(value_name),
-            ])
-            .with_columns((pl.col(weighted_name) / pl.col(value_name)).alias(y_name))
-            .select([axis, y_name])
-            .sort(axis)
+        df = (
+            df
+            .select(
+                xvalue="A" if args.xaxis == "massnumber" else "Z",
+                yvalue="massfraction" if args.yaxis == "massfraction" else "abundance",
+            )
+            .group_by("xvalue")
+            .agg(pl.col("yvalue").sum())
+            .sort("xvalue")
+            .collect()
         )
 
-        df_plot = result.to_pandas()
+        ax.plot(df["xvalue"], df["yvalue"], label=at.get_model_name(model_path))
 
-        ax.plot(df_plot[axis], df_plot[f"{yaxis}_{xaxis}"], label=at.get_model_name(model_path))
-
-    ax.set_xlabel("mass number" if xaxis == "A" else "charge number")
-    ax.set_ylabel("mass fraction" if yaxis == "X" else "abundance")
+    ax.set_xlabel("Mass number" if args.xaxis == "massnumber" else "Atomic number")
+    ax.set_ylabel("Mass fraction" if args.yaxis == "massfraction" else "Number abundance")
 
     ax.set_yscale("log")
 
-    ylim_values = (1e-5, 1.0) if yaxis == "X" else (1e-7, 0.1)
-    ax.set_ylim(*ylim_values)
+    ax.set_ylim(*((1e-5, 1.0) if args.yaxis == "massfraction" else (1e-7, 0.1)))
 
     ax.legend()
 
-    pdf_name = f"plotinitialabundances_{yaxis}vs{xaxis}.pdf"
-    fig.savefig(Path(args.outputpath) / pdf_name, dpi=300)
-    plt.close(fig)
+    strxaxis = "A" if args.xaxis == "massnumber" else "Z"
+    stryaxis = "X" if args.yaxis == "massfraction" else "abundance"
+    outpath = Path(args.outputpath) / f"plotinitialabundances_{stryaxis}vs{strxaxis}.pdf"
+    fig.savefig(outpath, dpi=300)
+    print(f"open {outpath}")
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -99,7 +77,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Path(s) to ARTIS folders for which abundances / mass fractions shall be plotted",
     )
 
-    parser.add_argument("-xaxis", "-x", type=str, default="massnumber", choices=["massnumber", "chargenumber"])
+    parser.add_argument(
+        "-xaxis", "-x", type=str, default="massnumber", choices=["massnumber", "atomicnumber", "Z", "A"]
+    )
     parser.add_argument("-yaxis", "-y", type=str, default="massfraction", choices=["massfraction", "abundance"])
 
 
