@@ -17,7 +17,7 @@ env:
 jobs:
     lint:
         name: Format, lint, and type check
-        runs-on: ubuntu-24.04-arm
+        runs-on: ubuntu-26.04-arm
         steps:
             - name: Checkout Code
               uses: actions/checkout@v6
@@ -88,7 +88,7 @@ jobs:
             fail-fast: false
             matrix:
                 python-version: ['3.12', '3.13', '3.14', 3.14t]
-        runs-on: ubuntu-24.04
+        runs-on: ubuntu-26.04
         name: pytest python ${{ matrix.python-version }}
         steps:
             - name: Checkout Code
