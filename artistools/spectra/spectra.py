@@ -262,8 +262,9 @@ def get_lambda_bin_edges(
             msg = f"deltalambda must be positive, got {deltalambda}"
             raise ValueError(msg)
         # the plotted x limits are bin centres, not bin edges, so shift them by half a bin width
-        xmin = xmin_plot - deltalambda * 0.5
-        xmax = xmax_plot + deltalambda * 0.5
+        deltax = convert_angstroms_to_unit(deltalambda, xunit)
+        xmin = xmin_plot - deltax * 0.5
+        xmax = xmax_plot + deltax * 0.5
         lambda_min, lambda_max = sorted(convert_unit_to_angstroms(np.array((xmin, xmax)), xunit))
         lambda_bin_edges = np.arange(lambda_min, lambda_max + deltalambda, deltalambda)
     else:
