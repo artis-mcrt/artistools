@@ -36,6 +36,7 @@ from artistools import atomic as atomic
 from artistools import codecomparison as codecomparison
 from artistools import commands as commands
 from artistools import constants as constants
+from artistools import ejectaopacity as ejectaopacity
 from artistools import estimators as estimators
 from artistools import gsinetwork as gsinetwork
 from artistools import hesma_scripts as hesma_scripts
