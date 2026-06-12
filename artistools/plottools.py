@@ -299,9 +299,16 @@ class ExponentLabelFormatter(mplticker.ScalarFormatter):
         self.set_scientific(True)
         self.set_powerlimits((0, 0))  # always use scientific notation
 
+    @t.override
+    def get_offset(self) -> str:
+        # the offset is moved into the axis label, so the axis offsetText must stay
+        # empty, otherwise matplotlib >= 3.11 will use its (invisible) bounding box
+        # when positioning the title, leading to non-finite axes positions
+        return ""
+
     def _set_formatted_label_text(self) -> None:
         # or use self.orderOfMagnitude
-        stroffset = self.get_offset()
+        stroffset = super().get_offset()
         if stroffset:
             stroffset = stroffset.replace(r"$\times", "$") + " "
         strnewlabel = self.labeltemplate.format(stroffset)
