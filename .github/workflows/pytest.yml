@@ -142,7 +142,7 @@ jobs:
 
             - uses: codecov/codecov-action@v7
               env:
-                  OS: ${{ runner.os.name }}-${{ runner.os.version }}
+                  OS: ubuntu-26.04${{ !endsWith(matrix.python-version, 't') && '-arm' || '' }}
                   PYTHON: ${{ matrix.python-version }}
               with:
                   token: ${{ secrets.CODECOV_TOKEN }}
@@ -152,9 +152,3 @@ jobs:
                   name: codecov-umbrella
                   fail_ci_if_error: false
                   verbose: true
-
-            - name: Upload output files
-              uses: actions/upload-artifact@v7
-              with:
-                  name: testoutput-${{ runner.os.name }}-${{ runner.os.version }}-py${{ matrix.python-version }}
-                  path: tests/output/
