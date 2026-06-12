@@ -287,39 +287,29 @@ def set_mpl_style() -> None:
 class ExponentLabelFormatter(mplticker.ScalarFormatter):
     """Formatter to move the 'x10^x' offset text into the axis label."""
 
-    _useMathText: bool
-    _usetex: bool
     labeltemplate: str
 
-    def __init__(self, labeltemplate: str, useMathText: bool = True) -> None:
-        self.set_labeltemplate(labeltemplate)
+    def __init__(self, labeltemplate: str) -> None:
+        assert "{" in labeltemplate
+        self.labeltemplate = labeltemplate
 
-        super().__init__(useOffset=False, useMathText=useMathText)
-        # mplticker.ScalarFormatter.__init__(self, useOffset=useOffset, useMathText=useMathText)
-        self.set_scientific(True)
+        super().__init__(useOffset=False, useMathText=True)
         self.set_powerlimits((0, 0))  # always use scientific notation
 
     @t.override
     def get_offset(self) -> str:
         # the offset is moved into the axis label, so the axis offsetText must stay
-        # empty, otherwise matplotlib >= 3.11 will use its (invisible) bounding box
-        # when positioning the title, leading to non-finite axes positions
+        # empty, otherwise matplotlib >= 3.11 will use its bounding box when
+        # positioning the title, leading to non-finite axes positions
         return ""
 
     def _set_formatted_label_text(self) -> None:
-        # or use self.orderOfMagnitude
         stroffset = super().get_offset()
         if stroffset:
             stroffset = stroffset.replace(r"$\times", "$") + " "
         strnewlabel = self.labeltemplate.format(stroffset)
         assert self.axis is not None
         self.axis.set_label_text(strnewlabel)  # type: ignore[union-attr] # pyright: ignore[reportAttributeAccessIssue]
-        assert self.offset == 0
-        self.axis.offsetText.set_visible(False)  # type: ignore[union-attr] # pyright: ignore[reportAttributeAccessIssue]
-
-    def set_labeltemplate(self, labeltemplate: str) -> None:
-        assert "{" in labeltemplate
-        self.labeltemplate = labeltemplate
 
     @t.override
     def set_locs(self, locs: t.Any) -> None:
