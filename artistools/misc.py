@@ -1,9 +1,11 @@
 import argparse
 import contextlib
+import dataclasses
 import functools
 import io
 import itertools
 import math
+import re
 import string
 import sys
 import typing as t
@@ -1648,6 +1650,208 @@ def get_dirbin_labels(
             angle_definitions[dirbin_int] = f"{costhetabinlabels[costheta_index]}, {phibinlabels[phi_index]}"
 
     return angle_definitions
+
+
+@dataclasses.dataclass(frozen=True)
+class DirectionSpec:
+    """A single viewing direction selection for spectra and light curve plots.
+
+    kind is one of:
+    - "sphere": spherically averaged over all directions (index is ignored)
+    - "dirbin": one direction bin, where index = costhetabin * nphibins + phibin
+    - "costheta": one cos(theta) bin, averaged over all phi bins (index is the costheta bin)
+    - "phi": one phi bin, averaged over all costheta bins (index is the phi bin)
+    - "vpkt": a virtual packet observer spectrum, where index = nspectraperobs * obsdirindex + opacchoiceindex
+    """
+
+    kind: t.Literal["sphere", "dirbin", "costheta", "phi", "vpkt"]
+    index: int = -1
+
+    def __post_init__(self) -> None:
+        """Check that the bin index is within the valid range for the direction kind."""
+        if self.kind == "dirbin":
+            assert 0 <= self.index < get_viewingdirectionbincount(), f"direction bin {self.index} out of range"
+        elif self.kind == "costheta":
+            assert 0 <= self.index < get_viewingdirection_costhetabincount(), f"costheta bin {self.index} out of range"
+        elif self.kind == "phi":
+            assert 0 <= self.index < get_viewingdirection_phibincount(), f"phi bin {self.index} out of range"
+        elif self.kind == "vpkt":
+            assert self.index >= 0, f"vpkt spectrum index {self.index} out of range"
+
+    @property
+    def legacy_key(self) -> int:
+        """Return the integer key used by the direction-binned data loaders.
+
+        Phi-averaged costheta bins use the convention of the first contributing direction bin
+        (multiples of nphibins), and theta-averaged phi bins use the phi bin index.
+        """
+        match self.kind:
+            case "sphere":
+                return -1
+            case "costheta":
+                return self.index * get_viewingdirection_phibincount()
+            case _:
+                return self.index
+
+    @t.override
+    def __str__(self) -> str:
+        """Return a short command-line token form of the direction specification."""
+        match self.kind:
+            case "sphere":
+                return "all"
+            case "dirbin":
+                return f"{self.index:02d}"
+            case _:
+                return f"{self.kind}{self.index}"
+
+
+def parse_directionspec_token(
+    token: str | int, average_over_phi: bool = False, average_over_theta: bool = False
+) -> DirectionSpec:
+    """Parse a single direction token into a DirectionSpec.
+
+    Accepted forms (case insensitive):
+    - "-1" or "all": spherical average
+    - "23": direction bin 23 (= costhetabin * nphibins + phibin), unless an average_over flag
+      reinterprets it using the legacy integer convention
+    - "costheta2_phi3" or "t2p3": direction bin with costheta bin 2 and phi bin 3
+    - "costheta2" or "t2": costheta bin 2, averaged over phi
+    - "phi3" or "p3": phi bin 3, averaged over theta
+    - "vpkt1", "vspec1" or "v1": virtual packet observer spectrum index 1
+    """
+    nphibins = get_viewingdirection_phibincount()
+    tok = str(token).strip().lower()
+
+    if tok in {"-1", "all"}:
+        return DirectionSpec("sphere")
+
+    with contextlib.suppress(ValueError):
+        dirbin = int(tok)
+        if average_over_phi:
+            assert dirbin % nphibins == 0, (
+                f"direction bin {dirbin} must be a multiple of {nphibins} when averaging over phi"
+            )
+            return DirectionSpec("costheta", dirbin // nphibins)
+        if average_over_theta:
+            return DirectionSpec("phi", dirbin)
+        return DirectionSpec("dirbin", dirbin)
+
+    if match := re.fullmatch(r"(?:costheta|t)(\d+)_?(?:phi|p)(\d+)", tok):
+        costhetabin, phibin = int(match.group(1)), int(match.group(2))
+        assert 0 <= costhetabin < get_viewingdirection_costhetabincount(), f"costheta bin {costhetabin} out of range"
+        assert 0 <= phibin < nphibins, f"phi bin {phibin} out of range"
+        return DirectionSpec("dirbin", costhetabin * nphibins + phibin)
+
+    if match := re.fullmatch(r"(?:costheta|t)(\d+)", tok):
+        return DirectionSpec("costheta", int(match.group(1)))
+
+    if match := re.fullmatch(r"(?:phi|p)(\d+)", tok):
+        return DirectionSpec("phi", int(match.group(1)))
+
+    if match := re.fullmatch(r"(?:vpkt|vspec|v)(\d+)", tok):
+        return DirectionSpec("vpkt", int(match.group(1)))
+
+    msg = (
+        f"Unrecognised direction '{token}'. Valid forms: a direction bin number (e.g. 23), 'costheta2_phi3' (or"
+        " 't2p3'), 'costheta2' (or 't2') for a phi-averaged costheta bin, 'phi3' (or 'p3') for a theta-averaged phi"
+        " bin, 'vpkt1' (or 'vspec1'/'v1') for a virtual packet observer spectrum, 'all' (or -1) for the spherical"
+        " average, and 'alldirbins' (or -2) for every direction bin"
+    )
+    raise ValueError(msg)
+
+
+def parse_direction_args(args: argparse.Namespace) -> list[DirectionSpec]:
+    """Convert the -plotviewingangle/-dirbin tokens and -plotvspecpol indices into a list of DirectionSpec.
+
+    Returns an empty list when no direction arguments were given. For backwards compatibility,
+    homogeneous selections also normalise args.plotviewingangle, args.plotvspecpol, and the
+    averaging flags to the equivalent legacy integer form for code paths that still use them.
+    """
+    average_over_phi = bool(getattr(args, "average_over_phi_angle", False))
+    average_over_theta = bool(getattr(args, "average_over_theta_angle", False))
+    assert not (average_over_phi and average_over_theta), "cannot average over both phi and theta angles"
+
+    plotviewingangle = getattr(args, "plotviewingangle", None)
+    if isinstance(plotviewingangle, int | str):
+        plotviewingangle = [plotviewingangle]
+    plotvspecpol = getattr(args, "plotvspecpol", None)
+    if isinstance(plotvspecpol, int | str):
+        plotvspecpol = [plotvspecpol]
+
+    directionspecs = [DirectionSpec("vpkt", int(vspecindex)) for vspecindex in plotvspecpol or []]
+
+    for token in plotviewingangle or []:
+        if str(token).strip().lower() in {"-2", "alldirbins"}:
+            if average_over_phi:
+                directionspecs += [
+                    DirectionSpec("costheta", costhetabin)
+                    for costhetabin in range(get_viewingdirection_costhetabincount())
+                ]
+            elif average_over_theta:
+                directionspecs += [DirectionSpec("phi", phibin) for phibin in range(get_viewingdirection_phibincount())]
+            else:
+                directionspecs += [DirectionSpec("dirbin", dirbin) for dirbin in range(get_viewingdirectionbincount())]
+        else:
+            directionspecs.append(
+                parse_directionspec_token(
+                    token, average_over_phi=average_over_phi, average_over_theta=average_over_theta
+                )
+            )
+
+    realspecs = [spec for spec in directionspecs if spec.kind in {"dirbin", "costheta", "phi"}]
+    if average_over_phi and any(spec.kind != "costheta" for spec in realspecs):
+        msg = "--average_over_phi_angle contradicts the given direction tokens (expected only costheta bins)"
+        raise ValueError(msg)
+    if average_over_theta and any(spec.kind != "phi" for spec in realspecs):
+        msg = "--average_over_theta_angle contradicts the given direction tokens (expected only phi bins)"
+        raise ValueError(msg)
+
+    # remove duplicates while preserving the input order
+    directionspecs = list(dict.fromkeys(directionspecs))
+
+    # normalise the legacy argument forms for code paths that still read them directly.
+    # this is only possible for homogeneous selections (a single direction kind)
+    vpktspecs = [spec for spec in directionspecs if spec.kind == "vpkt"]
+    if directionspecs and not vpktspecs:
+        if realspecs and all(spec.kind == "costheta" for spec in realspecs):
+            args.average_over_phi_angle = True
+        elif realspecs and all(spec.kind == "phi" for spec in realspecs):
+            args.average_over_theta_angle = True
+        if not realspecs or all(spec.kind == realspecs[0].kind for spec in realspecs):
+            args.plotviewingangle = [spec.legacy_key for spec in directionspecs]
+            args.plotvspecpol = None
+    elif directionspecs and len(vpktspecs) == len(directionspecs):
+        args.plotvspecpol = [spec.index for spec in vpktspecs]
+        args.plotviewingangle = None
+
+    return directionspecs
+
+
+def get_directionspec_labels(
+    directionspecs: Sequence[DirectionSpec], modelpath: Path | str | None = None, usedegrees: bool = False
+) -> dict[DirectionSpec, str]:
+    """Return a dict of text labels for the given direction specifications."""
+    labels: dict[DirectionSpec, str] = {}
+    vspeclabels: dict[int, str] | None = None
+    for spec in directionspecs:
+        if spec.kind == "vpkt":
+            if vspeclabels is None:
+                assert modelpath is not None
+                vspeclabels = get_vspec_dir_labels(modelpath=modelpath, usedegrees=usedegrees)
+            if spec.index not in vspeclabels:
+                msg = f"vpkt spectrum index {spec.index} out of range. vpkt.txt defines {len(vspeclabels)} spectra"
+                raise ValueError(msg)
+            labels[spec] = vspeclabels[spec.index]
+        else:
+            labels[spec] = get_dirbin_labels(
+                dirbins=[spec.legacy_key],
+                modelpath=modelpath,
+                average_over_phi=spec.kind == "costheta",
+                average_over_theta=spec.kind == "phi",
+                usedegrees=usedegrees,
+            )[spec.legacy_key]
+
+    return labels
 
 
 def parallel_map[IterableType, ResultType](

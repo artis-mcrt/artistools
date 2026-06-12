@@ -210,15 +210,13 @@ def plot_artis_lightcurve(
     frompackets: bool = False,
     maxpacketfiles: int | None = None,
     axistherm: mplax.Axes | None = None,
-    directionbins: Sequence[int] | None = None,
-    average_over_phi: bool = False,
-    average_over_theta: bool = False,
+    directionspecs: Sequence[at.DirectionSpec] | None = None,
     usedegrees: bool = False,
     args: argparse.Namespace | None = None,
     pellet_nucname: str | None = None,
     use_pellet_decay_time: bool = False,
     **plotkwargs: t.Any,
-) -> dict[int, pl.DataFrame] | None:
+) -> dict[at.DirectionSpec, pl.DataFrame] | None:
     if args is None:
         args = argparse.Namespace()
     if escape_type not in {"TYPE_RPKT", "TYPE_GAMMA"}:
@@ -250,18 +248,17 @@ def plot_artis_lightcurve(
     if hasattr(args, "title") and args.title:
         axis.set_title(linelabel)
 
-    if directionbins is None:
-        directionbins = [-1]
+    if not directionspecs:
+        directionspecs = [at.DirectionSpec("sphere")]
+    directionspecs = list(directionspecs)
 
     if frompackets:
-        lcdataframes = at.lightcurve.get_from_packets(
+        lcdataframes_lazy = at.lightcurve.get_lightcurves_by_directionspec(
             modelpath,
+            directionspecs,
+            frompackets=True,
             escape_type=escape_type,
             maxpacketfiles=maxpacketfiles,
-            directionbins=directionbins,
-            average_over_phi=average_over_phi,
-            average_over_theta=average_over_theta,
-            directionbins_are_vpkt_observers=args.plotvspecpol is not None,
             pellet_nucname=pellet_nucname,
             use_pellet_decay_time=use_pellet_decay_time,
             timedaysmin=args.timemin,
@@ -270,36 +267,27 @@ def plot_artis_lightcurve(
     else:
         assert pellet_nucname is None, "pellet_nucname is only valid with frompackets=True"
         assert not use_pellet_decay_time, "use_pellet_decay_time is only valid with frompackets=True"
-        if lcfilename is None:
-            lcfilename = (
-                "light_curve_res.out"
-                if directionbins != [-1]
-                else "gamma_light_curve.out"
-                if escape_type == "TYPE_GAMMA"
-                else "light_curve.out"
-            )
-
         try:
-            lcpath = at.firstexisting(lcfilename, folder=modelpath, tryzipped=True)
-        except FileNotFoundError:
-            print(f"WARNING: Skipping because {lcfilename} does not exist")
+            lcdataframes_lazy = at.lightcurve.get_lightcurves_by_directionspec(
+                modelpath, directionspecs, frompackets=False, escape_type=escape_type, lcfilename=lcfilename
+            )
+        except FileNotFoundError as exc:
+            print(f"WARNING: Skipping because {exc}")
             return None
 
-        lcdataframes = at.lightcurve.readfile(lcpath)
-
-        if average_over_phi:
-            lcdataframes = at.average_direction_bins(lcdataframes, overangle="phi")
-
-        if average_over_theta:
-            lcdataframes = at.average_direction_bins(lcdataframes, overangle="theta")
+    if missingdirectionspecs := [dirspec for dirspec in directionspecs if dirspec not in lcdataframes_lazy]:
+        print(f"No data for direction(s): {[str(dirspec) for dirspec in missingdirectionspecs]}")
+        directionspecs = [dirspec for dirspec in directionspecs if dirspec in lcdataframes_lazy]
+        if not directionspecs:
+            print("No data to plot")
+            return None
 
     if args.dashes[lcindex]:
         plotkwargs["dashes"] = args.dashes[lcindex]
     if args.linewidth[lcindex]:
         plotkwargs["linewidth"] = args.linewidth[lcindex]
 
-    # check if doing viewing angle stuff, and if so define which data to use
-    dirbins, angle_definition = at.lightcurve.parse_directionbin_args(modelpath, args)
+    angle_definition = at.get_directionspec_labels(directionspecs, modelpath=modelpath, usedegrees=usedegrees)
 
     if args.colorbarcostheta or args.colorbarphi:
         costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(usedegrees=usedegrees)
@@ -307,18 +295,18 @@ def plot_artis_lightcurve(
 
     lcdataframes = dict(
         zip(
-            dirbins,
+            directionspecs,
             pl.collect_all(
                 at.misc.df_filter_minmax_bounded(
-                    lcdataframes[dirbin], colname="time_days", minval=args.timemin, maxval=args.timemax
+                    lcdataframes_lazy[dirspec], colname="time_days", minval=args.timemin, maxval=args.timemax
                 )
-                for dirbin in dirbins
+                for dirspec in directionspecs
             ),
             strict=True,
         )
     )
-    lctimemin = lcdataframes[dirbins[0]].select(pl.min("time_days")).item()
-    lctimemax = lcdataframes[dirbins[0]].select(pl.max("time_days")).item()
+    lctimemin = lcdataframes[directionspecs[0]].select(pl.min("time_days")).item()
+    lctimemax = lcdataframes[directionspecs[0]].select(pl.max("time_days")).item()
     assert isinstance(lctimemin, float)
     assert isinstance(lctimemax, float)
 
@@ -338,14 +326,14 @@ def plot_artis_lightcurve(
             str_valid_range = f"{validrange_start_days} to {validrange_end_days} days"
         print(f" range of validity (last timestep {nts_last}): {str_valid_range}")
 
-    if any(dirbin != -1 for dirbin in dirbins):
+    if any(dirspec.kind != "sphere" for dirspec in directionspecs):
         print_theta_phi_definitions()
 
     colorindex: t.Any = None
-    for dirbin in dirbins:
-        lcdata = lcdataframes[dirbin]
+    for dirspec in directionspecs:
+        lcdata = lcdataframes[dirspec]
 
-        print(f" directionbin {dirbin:4d}  {angle_definition[dirbin]}", end="")
+        print(f" direction {dirspec!s:>10}  {angle_definition[dirspec]}", end="")
 
         if "packetcount" in lcdata.collect_schema().names():
             npkts_selected = lcdata.select(pl.col("packetcount").sum()).item()
@@ -362,24 +350,24 @@ def plot_artis_lightcurve(
             )
 
         label_with_tags: str | None = linelabel
-        if dirbin != -1:
+        if dirspec.kind != "sphere":
             if args.colorbarcostheta or args.colorbarphi:
                 plotkwargs["alpha"] = 0.75
                 if not linelabel_is_custom:
                     label_with_tags = None
                 # Update plotkwargs with viewing angle colour
                 plotkwargs, colorindex = get_viewinganglecolor_for_colorbar(
-                    dirbin, costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, plotkwargs, args
+                    dirspec.legacy_key, costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, plotkwargs, args
                 )
-                if args.average_over_phi_angle:
+                if dirspec.kind == "costheta":
                     plotkwargs["color"] = "lightgrey"
             else:
                 # the first dirbin should use the color argument (which has been removed from the color cycle)
-                if dirbin != dirbins[0]:
+                if dirspec != directionspecs[0]:
                     plotkwargs["color"] = None
-                if len(dirbins) > 1 or not linelabel_is_custom:
+                if len(directionspecs) > 1 or not linelabel_is_custom:
                     assert label_with_tags is not None
-                    label_with_tags += f" {angle_definition[dirbin]}"
+                    label_with_tags += f" {angle_definition[dirspec]}"
 
         if pellet_nucname is not None:
             plotkwargs["color"] = None
@@ -392,11 +380,7 @@ def plot_artis_lightcurve(
         else:
             ycolumn = "luminosity_erg/s"
 
-        if (
-            args.average_over_phi_angle
-            and dirbin % at.get_viewingdirection_costhetabincount() == 0
-            and (args.colorbarcostheta or args.colorbarphi)
-        ):
+        if dirspec.kind == "costheta" and (args.colorbarcostheta or args.colorbarphi):
             plotkwargs["color"] = scaledmap.to_rgba(colorindex)  # Update colours for light curves averaged over phi
             plotkwargs["zorder"] = 10
 
@@ -567,7 +551,7 @@ def make_lightcurve_plot(
             plottedsomething = True
 
         else:
-            dirbin = args.plotviewingangle or (args.plotvspecpol or [-1])
+            directionspecs = getattr(args, "directionspecs", None) or at.parse_direction_args(args)
             escape_types = ["TYPE_RPKT"] if showuvoir else []
             if showgamma:
                 escape_types.append("TYPE_GAMMA")
@@ -610,9 +594,7 @@ def make_lightcurve_plot(
                         frompackets=frompackets,
                         maxpacketfiles=maxpacketfiles,
                         axistherm=axistherm,
-                        directionbins=dirbin,
-                        average_over_phi=args.average_over_phi_angle,
-                        average_over_theta=args.average_over_theta_angle,
+                        directionspecs=directionspecs,
                         usedegrees=args.usedegrees,
                         args=args,
                         pellet_nucname=pellet_nucname,
@@ -1417,11 +1399,14 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-plotviewingangle",
         "-dirbin",
-        type=int,
+        type=str,
+        metavar="dirbin",
         nargs="+",
         help=(
-            "Plot viewing angles. Expects int for angle number in specpol_res.out"
-            "use args = -2 to select all the viewing angles"
+            "Plot viewing directions. Each direction can be a direction bin number in light_curve_res.out (e.g. 23),"
+            " 'costheta2_phi3' (or 't2p3'), 'costheta2' (or 't2') for a phi-averaged costheta bin, 'phi3' (or 'p3')"
+            " for a theta-averaged phi bin, 'vpkt1' (or 'v1') for a virtual packet observer, 'all' (or -1) for the"
+            " spherical average, or 'alldirbins' (or -2) for every direction bin"
         ),
     )
     parser.add_argument(
@@ -1605,6 +1590,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         if args.average_every_tenth_viewing_angle:
             print("WARNING: --average_every_tenth_viewing_angle is deprecated. use --average_over_phi_angle instead")
             args.average_over_phi_angle = True
+
+    # virtual packet observer directions and real packet direction bins can be mixed
+    args.directionspecs = at.parse_direction_args(args)
 
     at.set_mpl_style()
 

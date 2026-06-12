@@ -16,6 +16,8 @@ import polars.selectors as cs
 
 import artistools as at
 from artistools.constants import Lsun_to_erg_per_s
+from artistools.constants import megaparsec_to_cm
+from artistools.misc import DirectionSpec
 
 
 def readfile(filepath: str | Path) -> dict[int, pl.LazyFrame]:
@@ -42,6 +44,110 @@ def readfile(filepath: str | Path) -> dict[int, pl.LazyFrame]:
             lcdata[-1] = lcdata[-1].select(pl.all().slice(0, pl.len() // 2))
 
     return lcdata
+
+
+def get_vspecpol_lightcurve(modelpath: str | Path, vspecindex: int) -> pl.LazyFrame:
+    """Get a bolometric light curve for a virtual packet observer by integrating the vspecpol fluxes over frequency."""
+    vspecdata = at.spectra.get_vspecpol_data(vspecindex=vspecindex, modelpath=modelpath)["I"].collect()
+    timecolumns = vspecdata.columns[1:]
+    arr_nu = vspecdata["nu"].to_numpy()
+    luminosity_erg_per_s = [
+        float(abs(np.trapezoid(vspecdata[timecolumn].to_numpy(), x=arr_nu))) * 4 * math.pi * megaparsec_to_cm**2
+        for timecolumn in timecolumns
+    ]
+
+    return pl.LazyFrame({
+        "time_days": [float(timecolumn) for timecolumn in timecolumns],
+        "luminosity_Lsun": np.array(luminosity_erg_per_s) / Lsun_to_erg_per_s,
+    }).with_columns(
+        (4.74 - (2.5 * pl.col("luminosity_Lsun").log10())).alias("mag"),
+        (cs.ends_with("_Lsun") * Lsun_to_erg_per_s).name.replace("_Lsun", "_erg/s"),
+    )
+
+
+def get_lightcurves_by_directionspec(
+    modelpath: str | Path,
+    directionspecs: Sequence[DirectionSpec],
+    *,
+    frompackets: bool = False,
+    escape_type: str = "TYPE_RPKT",
+    maxpacketfiles: int | None = None,
+    lcfilename: str | None = None,
+    pellet_nucname: str | None = None,
+    use_pellet_decay_time: bool = False,
+    timedaysmin: float | int | None = None,
+    timedaysmax: float | int | None = None,
+) -> dict[DirectionSpec, pl.LazyFrame]:
+    """Get light curves for any mix of direction specifications (real packet direction bins with per-spec phi/theta averaging, and virtual packet observers).
+
+    Specs are grouped by the loader mode required, with one call to the existing loaders per group.
+    """
+    lcdataout: dict[DirectionSpec, pl.LazyFrame] = {}
+    vpktspecs = [spec for spec in directionspecs if spec.kind == "vpkt"]
+    realspecs = [spec for spec in directionspecs if spec.kind != "vpkt"]
+
+    if frompackets:
+        if vpktspecs:
+            vpktlcdata = get_from_packets(
+                modelpath,
+                escape_type=escape_type,
+                maxpacketfiles=maxpacketfiles,
+                directionbins=[spec.index for spec in vpktspecs],
+                directionbins_are_vpkt_observers=True,
+                timedaysmin=timedaysmin,
+                timedaysmax=timedaysmax,
+            )
+            lcdataout |= {spec: vpktlcdata[spec.index] for spec in vpktspecs}
+
+        realspecgroups = [
+            (False, False, [spec for spec in realspecs if spec.kind in {"sphere", "dirbin"}]),
+            (True, False, [spec for spec in realspecs if spec.kind == "costheta"]),
+            (False, True, [spec for spec in realspecs if spec.kind == "phi"]),
+        ]
+        for average_over_phi, average_over_theta, specgroup in realspecgroups:
+            if specgroup:
+                grouplcdata = get_from_packets(
+                    modelpath,
+                    escape_type=escape_type,
+                    maxpacketfiles=maxpacketfiles,
+                    directionbins=[spec.legacy_key for spec in specgroup],
+                    average_over_phi=average_over_phi,
+                    average_over_theta=average_over_theta,
+                    pellet_nucname=pellet_nucname,
+                    use_pellet_decay_time=use_pellet_decay_time,
+                    timedaysmin=timedaysmin,
+                    timedaysmax=timedaysmax,
+                )
+                lcdataout |= {spec: grouplcdata[spec.legacy_key] for spec in specgroup}
+    else:
+        for spec in vpktspecs:
+            lcdataout[spec] = get_vspecpol_lightcurve(modelpath, spec.index)
+
+        if realspecs:
+            lcdata: dict[int, pl.LazyFrame] = {}
+            if lcfilename is not None:
+                lcdata = readfile(at.firstexisting(lcfilename, folder=modelpath, tryzipped=True))
+            else:
+                if any(spec.kind != "sphere" for spec in realspecs):
+                    lcdata |= readfile(at.firstexisting("light_curve_res.out", folder=modelpath, tryzipped=True))
+                if any(spec.kind == "sphere" for spec in realspecs):
+                    spherefilename = "gamma_light_curve.out" if escape_type == "TYPE_GAMMA" else "light_curve.out"
+                    lcdata |= readfile(at.firstexisting(spherefilename, folder=modelpath, tryzipped=True))
+
+            plainspecs = [spec for spec in realspecs if spec.kind in {"sphere", "dirbin"}]
+            lcdataout |= {spec: lcdata[spec.legacy_key] for spec in plainspecs if spec.legacy_key in lcdata}
+
+            overanglegroups: list[tuple[t.Literal["phi", "theta"], list[DirectionSpec]]] = [
+                ("phi", [spec for spec in realspecs if spec.kind == "costheta"]),
+                ("theta", [spec for spec in realspecs if spec.kind == "phi"]),
+            ]
+            for overangle, specgroup in overanglegroups:
+                if specgroup:
+                    averaged = at.average_direction_bins(lcdata, overangle=overangle)
+                    lcdataout |= {spec: averaged[spec.legacy_key] for spec in specgroup}
+
+    # return in the same order as the requested directionspecs
+    return {spec: lcdataout[spec] for spec in directionspecs if spec in lcdataout}
 
 
 def get_from_packets(

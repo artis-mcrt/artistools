@@ -6,6 +6,7 @@ import math
 import re
 import typing as t
 from collections.abc import Callable
+from collections.abc import Sequence
 from contextlib import suppress
 from functools import lru_cache
 from pathlib import Path
@@ -20,6 +21,7 @@ import artistools.constants as const
 import artistools.packets as atpackets
 from artistools.misc import average_direction_bins
 from artistools.misc import df_filter_minmax_bounded
+from artistools.misc import DirectionSpec
 from artistools.misc import firstexisting
 from artistools.misc import get_bflist
 from artistools.misc import get_elsymbol
@@ -938,6 +940,96 @@ def get_vspecpol_spectrum(
     return dfout.with_columns(f_lambda=pl.col("f_nu") * pl.col("nu") / pl.col("lambda_angstroms")).sort(
         by="lambda_angstroms"
     )
+
+
+def get_spectra_by_directionspec(
+    modelpath: Path | str,
+    directionspecs: Sequence[DirectionSpec],
+    *,
+    frompackets: bool = False,
+    timestepmin: int = -1,
+    timestepmax: int = -1,
+    timelowdays: float | int | None = None,
+    timehighdays: float | int | None = None,
+    timeavg: float | int | None = None,
+    lambda_bin_edges: npt.NDArray[np.floating] | None = None,
+    use_time: t.Literal["arrival", "emission", "escape"] = "arrival",
+    maxpacketfiles: int | None = None,
+    fluxfilterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
+    gamma: bool = False,
+    args: argparse.Namespace | None = None,
+) -> dict[DirectionSpec, pl.LazyFrame]:
+    """Get spectra for any mix of direction specifications (real packet direction bins with per-spec phi/theta averaging, and virtual packet observers).
+
+    Specs are grouped by the loader mode required, with one call to the existing loaders per group.
+    Missing direction bins (e.g. no direction-resolved spectra files) are omitted from the returned dict.
+    """
+    vpktspecs = [spec for spec in directionspecs if spec.kind == "vpkt"]
+    realspecgroups = [
+        (False, False, [spec for spec in directionspecs if spec.kind in {"sphere", "dirbin"}]),
+        (True, False, [spec for spec in directionspecs if spec.kind == "costheta"]),
+        (False, True, [spec for spec in directionspecs if spec.kind == "phi"]),
+    ]
+
+    spectra: dict[DirectionSpec, pl.LazyFrame] = {}
+    if frompackets:
+        assert timelowdays is not None
+        assert timehighdays is not None
+        if vpktspecs:
+            vpktspectra = get_from_packets(
+                modelpath,
+                timelowdays=timelowdays,
+                timehighdays=timehighdays,
+                lambda_bin_edges=lambda_bin_edges,
+                use_time=use_time,
+                maxpacketfiles=maxpacketfiles,
+                fluxfilterfunc=fluxfilterfunc,
+                directionbins_are_vpkt_observers=True,
+            )
+            spectra |= {spec: vpktspectra[spec.index] for spec in vpktspecs}
+
+        for average_over_phi, average_over_theta, specgroup in realspecgroups:
+            if specgroup:
+                groupspectra = get_from_packets(
+                    modelpath,
+                    timelowdays=timelowdays,
+                    timehighdays=timehighdays,
+                    lambda_bin_edges=lambda_bin_edges,
+                    use_time=use_time,
+                    maxpacketfiles=maxpacketfiles,
+                    average_over_phi=average_over_phi,
+                    average_over_theta=average_over_theta,
+                    fluxfilterfunc=fluxfilterfunc,
+                    gamma=gamma,
+                )
+                spectra |= {spec: groupspectra[spec.legacy_key] for spec in specgroup}
+    else:
+        if vpktspecs:
+            assert timeavg is not None
+            if args is None:
+                args = argparse.Namespace()
+            spectra |= {
+                spec: get_vspecpol_spectrum(modelpath, timeavg, spec.index, args, fluxfilterfunc=fluxfilterfunc)
+                for spec in vpktspecs
+            }
+
+        for average_over_phi, average_over_theta, specgroup in realspecgroups:
+            if specgroup:
+                groupspectra = get_spectra(
+                    modelpath=Path(modelpath),
+                    timestepmin=timestepmin,
+                    timestepmax=timestepmax,
+                    average_over_phi=average_over_phi,
+                    average_over_theta=average_over_theta,
+                    fluxfilterfunc=fluxfilterfunc,
+                    gamma=gamma,
+                )
+                spectra |= {
+                    spec: groupspectra[spec.legacy_key] for spec in specgroup if spec.legacy_key in groupspectra
+                }
+
+    # return in the same order as the requested directionspecs
+    return {spec: spectra[spec] for spec in directionspecs if spec in spectra}
 
 
 @lru_cache(maxsize=4)

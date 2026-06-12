@@ -356,3 +356,113 @@ def test_get_cellsofmpirank(tmp_path: Path) -> None:
     make_model(uneven_dir, npts=21, nprocs=4)
     assert list(at.get_cellsofmpirank(0, uneven_dir)) == list(range(6))
     assert list(at.get_cellsofmpirank(1, uneven_dir)) == list(range(6, 11))
+
+
+def test_parse_directionspec_token() -> None:
+    assert at.parse_directionspec_token("23") == at.DirectionSpec("dirbin", 23)
+    assert at.parse_directionspec_token(23) == at.DirectionSpec("dirbin", 23)
+    assert at.parse_directionspec_token("costheta2_phi3") == at.DirectionSpec("dirbin", 23)
+    assert at.parse_directionspec_token("t2p3") == at.DirectionSpec("dirbin", 23)
+    assert at.parse_directionspec_token("COSTHETA2") == at.DirectionSpec("costheta", 2)
+    assert at.parse_directionspec_token("t2") == at.DirectionSpec("costheta", 2)
+    assert at.parse_directionspec_token("phi3") == at.DirectionSpec("phi", 3)
+    assert at.parse_directionspec_token("p3") == at.DirectionSpec("phi", 3)
+    assert at.parse_directionspec_token("vpkt1") == at.DirectionSpec("vpkt", 1)
+    assert at.parse_directionspec_token("vspec1") == at.DirectionSpec("vpkt", 1)
+    assert at.parse_directionspec_token("v1") == at.DirectionSpec("vpkt", 1)
+    assert at.parse_directionspec_token("all") == at.DirectionSpec("sphere")
+    assert at.parse_directionspec_token("-1") == at.DirectionSpec("sphere")
+
+    # legacy reinterpretation of bare integers by the global averaging flags
+    assert at.parse_directionspec_token(20, average_over_phi=True) == at.DirectionSpec("costheta", 2)
+    assert at.parse_directionspec_token(3, average_over_theta=True) == at.DirectionSpec("phi", 3)
+
+    assert at.DirectionSpec("costheta", 2).legacy_key == 20
+    assert at.DirectionSpec("phi", 3).legacy_key == 3
+    assert at.DirectionSpec("dirbin", 23).legacy_key == 23
+    assert at.DirectionSpec("sphere").legacy_key == -1
+    assert at.DirectionSpec("vpkt", 4).legacy_key == 4
+
+    with pytest.raises(ValueError, match="Unrecognised direction"):
+        at.parse_directionspec_token("notadirection")
+    with pytest.raises(AssertionError):
+        at.parse_directionspec_token("costheta12")
+    with pytest.raises(AssertionError):
+        at.parse_directionspec_token("phi10")
+    with pytest.raises(AssertionError):
+        at.parse_directionspec_token("100")
+    with pytest.raises(AssertionError):
+        at.parse_directionspec_token(25, average_over_phi=True)
+
+
+def test_parse_direction_args() -> None:
+    import argparse
+
+    def make_args(**kwargs: t.Any) -> argparse.Namespace:
+        return argparse.Namespace(
+            plotviewingangle=kwargs.get("plotviewingangle"),
+            plotvspecpol=kwargs.get("plotvspecpol"),
+            average_over_phi_angle=kwargs.get("average_over_phi_angle", False),
+            average_over_theta_angle=kwargs.get("average_over_theta_angle", False),
+        )
+
+    assert at.parse_direction_args(make_args()) == []
+
+    args = make_args(plotviewingangle=["costheta2", "t3p4", "vpkt1", "all"], plotvspecpol=[0])
+    assert at.parse_direction_args(args) == [
+        at.DirectionSpec("vpkt", 0),
+        at.DirectionSpec("costheta", 2),
+        at.DirectionSpec("dirbin", 34),
+        at.DirectionSpec("vpkt", 1),
+        at.DirectionSpec("sphere"),
+    ]
+
+    # legacy: -plotviewingangle 20 --average_over_phi_angle
+    args = make_args(plotviewingangle=[20, 50], average_over_phi_angle=True)
+    assert at.parse_direction_args(args) == [at.DirectionSpec("costheta", 2), at.DirectionSpec("costheta", 5)]
+
+    # all-costheta tokens normalise back to the legacy form for old code paths
+    args = make_args(plotviewingangle=["costheta2", "costheta5"])
+    specs = at.parse_direction_args(args)
+    assert specs == [at.DirectionSpec("costheta", 2), at.DirectionSpec("costheta", 5)]
+    assert args.average_over_phi_angle
+    assert args.plotviewingangle == [20, 50]
+    assert at.parse_direction_args(args) == specs  # re-parsing is stable
+
+    # legacy: -plotviewingangle -2 selects all bins of the relevant kind
+    args = make_args(plotviewingangle=[-2])
+    assert at.parse_direction_args(args) == [
+        at.DirectionSpec("dirbin", n) for n in range(at.get_viewingdirectionbincount())
+    ]
+    args = make_args(plotviewingangle=["alldirbins"], average_over_phi_angle=True)
+    assert at.parse_direction_args(args) == [
+        at.DirectionSpec("costheta", n) for n in range(at.get_viewingdirection_costhetabincount())
+    ]
+
+    # vpkt-only tokens normalise to the legacy plotvspecpol argument
+    args = make_args(plotviewingangle=["vpkt0", "v2"])
+    assert at.parse_direction_args(args) == [at.DirectionSpec("vpkt", 0), at.DirectionSpec("vpkt", 2)]
+    assert args.plotvspecpol == [0, 2]
+    assert args.plotviewingangle is None
+
+    with pytest.raises(ValueError, match="average_over_phi_angle contradicts"):
+        at.parse_direction_args(make_args(plotviewingangle=["phi3"], average_over_phi_angle=True))
+    with pytest.raises(ValueError, match="average_over_theta_angle contradicts"):
+        at.parse_direction_args(make_args(plotviewingangle=["costheta2"], average_over_theta_angle=True))
+
+
+def test_direction_args_argparse() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    at.spectra.plotspectra.addargs(parser)
+    args = parser.parse_args(["-dirbin", "-1"])
+    assert args.plotviewingangle == ["-1"]
+    assert at.parse_direction_args(args) == [at.DirectionSpec("sphere")]
+
+    args = parser.parse_args(["-dirbin", "costheta2", "vpkt0", "23"])
+    assert at.parse_direction_args(args) == [
+        at.DirectionSpec("costheta", 2),
+        at.DirectionSpec("vpkt", 0),
+        at.DirectionSpec("dirbin", 23),
+    ]

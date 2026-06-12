@@ -286,3 +286,53 @@ def test_spectra_timeseries_subplots() -> None:
 
 def test_writespectra() -> None:
     at.spectra.writespectra.main(argsraw=[], modelpath=modelpath)
+
+
+def get_plotted_spectra(mockplot: t.Any, **kwargs: t.Any) -> list[tuple[np.ndarray, np.ndarray]]:
+    mockplot.reset_mock()
+    at.spectra.plot(argsraw=[], outputfile=outputpath, **kwargs)
+    return [(np.array(callargs[0][1]), np.array(callargs[0][2])) for callargs in mockplot.call_args_list]
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_spectra_direction_tokens_frompackets(mockplot: t.Any) -> None:
+    kwargs = {"specpath": modelpath, "timemin": 290, "timemax": 320, "frompackets": True}
+
+    costheta2 = get_plotted_spectra(mockplot, plotviewingangle=["costheta2"], **kwargs)
+    legacy_costheta2 = get_plotted_spectra(mockplot, plotviewingangle=[20], average_over_phi_angle=True, **kwargs)
+    assert len(costheta2) == len(legacy_costheta2) == 1
+    assert np.allclose(costheta2[0][1], legacy_costheta2[0][1], equal_nan=True)
+
+    phi3 = get_plotted_spectra(mockplot, plotviewingangle=["phi3"], **kwargs)
+    legacy_phi3 = get_plotted_spectra(mockplot, plotviewingangle=[3], average_over_theta_angle=True, **kwargs)
+    assert np.allclose(phi3[0][1], legacy_phi3[0][1], equal_nan=True)
+
+    dirbin23 = get_plotted_spectra(mockplot, plotviewingangle=["costheta2_phi3"], **kwargs)
+    legacy_dirbin23 = get_plotted_spectra(mockplot, plotviewingangle=[23], **kwargs)
+    assert np.allclose(dirbin23[0][1], legacy_dirbin23[0][1], equal_nan=True)
+
+    # phi-averaged, theta-averaged, individual, and spherically averaged series mixed in one plot
+    mixed = get_plotted_spectra(mockplot, plotviewingangle=["costheta2", "phi3", "23", "all"], **kwargs)
+    assert len(mixed) == 4
+    assert np.allclose(mixed[0][1], costheta2[0][1], equal_nan=True)
+    assert np.allclose(mixed[1][1], phi3[0][1], equal_nan=True)
+    assert np.allclose(mixed[2][1], dirbin23[0][1], equal_nan=True)
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_spectra_direction_tokens_from_files(mockplot: t.Any) -> None:
+    kwargs = {"specpath": modelpath_classic_3d, "timestep": "20-25", "plotinvalidpart": True}
+
+    costheta2 = get_plotted_spectra(mockplot, plotviewingangle=["costheta2"], **kwargs)
+    legacy_costheta2 = get_plotted_spectra(mockplot, plotviewingangle=[20], average_over_phi_angle=True, **kwargs)
+    assert len(costheta2) == len(legacy_costheta2) == 1
+    assert np.allclose(costheta2[0][1], legacy_costheta2[0][1], equal_nan=True)
+
+    # mix averaged bins, an individual bin, and the spherical average from spec.out in one plot
+    mixed = get_plotted_spectra(mockplot, plotviewingangle=["costheta2", "23", "all", "phi1"], **kwargs)
+    legacy_dirbin23 = get_plotted_spectra(mockplot, plotviewingangle=[23], **kwargs)
+    legacy_phi1 = get_plotted_spectra(mockplot, plotviewingangle=[1], average_over_theta_angle=True, **kwargs)
+    assert len(mixed) == 4
+    assert np.allclose(mixed[0][1], costheta2[0][1], equal_nan=True)
+    assert np.allclose(mixed[1][1], legacy_dirbin23[0][1], equal_nan=True)
+    assert np.allclose(mixed[3][1], legacy_phi1[0][1], equal_nan=True)

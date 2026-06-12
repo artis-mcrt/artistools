@@ -115,3 +115,45 @@ def test_vpkt_frompackets_spectrum_plot(mockplot: t.Any) -> None:
         rtol=0.001,
         atol=0.0,
     )
+
+
+def get_plotted_spectra(mockplot: t.Any, **kwargs: t.Any) -> list[tuple[np.ndarray, np.ndarray]]:
+    mockplot.reset_mock()
+    at.spectra.plot(argsraw=[], **kwargs)
+    return [(np.array(callargs[0][1]), np.array(callargs[0][2])) for callargs in mockplot.call_args_list]
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_vspectra_direction_tokens(mockplot: t.Any) -> None:
+    kwargs = {
+        "specpath": [at.get_path("testdata") / "vspecpolmodel"],
+        "outputfile": at.get_path("testoutput") / "test_vspectra_tokens.pdf",
+        "timemin": 11,
+        "timemax": 12,
+    }
+    tokenseries = get_plotted_spectra(mockplot, plotviewingangle=["vpkt0", "vspec1", "v2"], **kwargs)
+    legacyseries = get_plotted_spectra(mockplot, plotvspecpol=[0, 1, 2], **kwargs)
+    assert len(tokenseries) == len(legacyseries) == 3
+    assert all(
+        np.allclose(token[1], legacy[1], equal_nan=True)
+        for token, legacy in zip(tokenseries, legacyseries, strict=True)
+    )
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_vpkt_frompackets_direction_tokens(mockplot: t.Any) -> None:
+    kwargs = {
+        "specpath": [at.get_path("testdata") / "vpktcontrib"],
+        "outputfile": at.get_path("testoutput") / "test_vpktcontrib_tokens.pdf",
+        "frompackets": True,
+        "maxpacketfiles": 2,
+        "timemin": 130,
+        "timemax": 135,
+    }
+    tokenseries = get_plotted_spectra(mockplot, plotviewingangle=["v0", "v4"], **kwargs)
+    legacyseries = get_plotted_spectra(mockplot, plotvspecpol=[0, 4], **kwargs)
+    assert len(tokenseries) == len(legacyseries) == 2
+    assert all(
+        np.allclose(token[1], legacy[1], equal_nan=True)
+        for token, legacy in zip(tokenseries, legacyseries, strict=True)
+    )
