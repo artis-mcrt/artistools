@@ -1743,7 +1743,6 @@ def parse_directionspec_token(
     - "vpkt1", "vspec1" or "v1": virtual packet observer spectrum index 1
     """
     nphibins = get_viewingdirection_phibincount()
-    ncosthetabins = get_viewingdirection_costhetabincount()
     tok = str(token).strip().lower()
 
     if tok in {"-1", "all"}:
@@ -1764,13 +1763,13 @@ def parse_directionspec_token(
 
     if match := re.fullmatch(r"(?:costheta|t)(\d+)_?(?:phi|p)(\d+)", tok):
         costhetabin, phibin = int(match.group(1)), int(match.group(2))
-        assert 0 <= costhetabin < ncosthetabins, f"costheta bin {costhetabin} out of range"
+        assert 0 <= costhetabin < get_viewingdirection_costhetabincount(), f"costheta bin {costhetabin} out of range"
         assert 0 <= phibin < nphibins, f"phi bin {phibin} out of range"
         return str(costhetabin * nphibins + phibin)
 
     if match := re.fullmatch(r"(?:costheta|t)(\d+)", tok):
         costhetabin = int(match.group(1))
-        assert 0 <= costhetabin < ncosthetabins, f"costheta bin {costhetabin} out of range"
+        assert 0 <= costhetabin < get_viewingdirection_costhetabincount(), f"costheta bin {costhetabin} out of range"
         return f"costheta{costhetabin}"
 
     if match := re.fullmatch(r"(?:phi|p)(\d+)", tok):
