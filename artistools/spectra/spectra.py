@@ -312,7 +312,7 @@ def convert_xunit_aliases_to_canonical(xunit: str) -> str:
             raise ValueError(msg)
 
 
-def convert_angstroms_to_unit(value_angstroms: float | int, new_units: str) -> float:
+def convert_angstroms_to_unit[T: (float, int, npt.NDArray[np.floating])](value_angstroms: T, new_units: str) -> T:
     """Convert a wavelength in angstroms to a different unit, either length, frequency, or energy."""
     hc_ev_angstroms = const.h_ev_s * const.c_ang_per_s  # [eV angstroms]
     hc_erg_angstroms = hc_ev_angstroms * 1.60218e-12  # [erg angstroms]
@@ -330,9 +330,9 @@ def convert_angstroms_to_unit(value_angstroms: float | int, new_units: str) -> f
         case "angstroms":
             return value_angstroms
         case "nm":
-            return value_angstroms / 10
+            return value_angstroms / 10.0
         case "micron":
-            return value_angstroms / 10000
+            return value_angstroms / 10000.0
     msg = f"Unknown xunit {new_units}"
     raise ValueError(msg)
 
@@ -1339,7 +1339,7 @@ def get_flux_contributions_from_packets(
     if fixedionlist is not None and (unrecognised_items := [x for x in fixedionlist if x not in allgroupnames]):
         print(f"WARNING: (packets) did not find {len(unrecognised_items)} items in fixedionlist: {unrecognised_items}")
 
-    def sortkey(groupname: str) -> tuple[int, float]:
+    def sortkey(groupname: str) -> tuple[int, float | int]:
         grouptotal = emission_e_rf_sum.get(groupname, 0.0) + absorption_e_rf_sum.get(groupname, 0.0)
 
         if fixedionlist is None:
