@@ -426,17 +426,21 @@ def get_from_packets(
     nu_column: str = "nu_rf",
     fluxfilterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     nprocs_read_dfpackets: tuple[int, pl.DataFrame | pl.LazyFrame] | None = None,
-    directionbins_are_vpkt_observers: bool = False,
     gamma: bool = False,
 ) -> dict[str, pl.LazyFrame]:
     """Get a spectrum dataframe for each requested direction spec using the packets files as input.
 
-    directionbins is a list of direction spec tokens (e.g. "all", "23", "costheta2", "phi3", or "vpkt1"
-    when directionbins_are_vpkt_observers is set). The returned dict is keyed by those same tokens.
+    directionbins is a list of direction spec tokens (e.g. "all", "23", "costheta2", "phi3", or "vpkt1").
+    Virtual packet observer specs ("vpkt...") read from the virtual packets and cannot be mixed with real
+    direction bins in a single call. The returned dict is keyed by the same tokens.
     """
     assert use_time in {"arrival", "emission", "escape"}
     if directionbins is None:
         directionbins = ["all"]
+    vpkt_observers = any(directionspec_kind(spec) == "vpkt" for spec in directionbins)
+    assert all((directionspec_kind(spec) == "vpkt") == vpkt_observers for spec in directionbins), (
+        "cannot mix virtual packet observers with real direction bins in a single call"
+    )
 
     if nu_column == "absorption_freq":
         nu_column = "nu_absorbed"
@@ -448,7 +452,7 @@ def get_from_packets(
 
     if nprocs_read_dfpackets:
         nprocs_read, dfpackets = nprocs_read_dfpackets[0], nprocs_read_dfpackets[1].lazy()
-    elif directionbins_are_vpkt_observers:
+    elif vpkt_observers:
         assert not gamma
         nprocs_read, dfpackets = atpackets.get_virtual_packets(modelpath, maxpacketfiles=maxpacketfiles)
     else:
@@ -480,7 +484,7 @@ def get_from_packets(
     )
     escapesurfacegamma: float | int | None = None
     dirbin_spectra: dict[str, pl.LazyFrame] = {}
-    if directionbins_are_vpkt_observers:
+    if vpkt_observers:
         vpkt_config = get_vpkt_config(modelpath)
         for spec in directionbins:
             vspecindex = directionspec_index(spec)
@@ -967,7 +971,6 @@ def get_spectra_by_directionspec(
                 maxpacketfiles=maxpacketfiles,
                 directionbins=vpktspecs,
                 fluxfilterfunc=fluxfilterfunc,
-                directionbins_are_vpkt_observers=True,
             )
         if realspecs:
             spectra |= get_from_packets(
@@ -1470,7 +1473,6 @@ def get_flux_contributions_from_packets(
                     use_time=use_time,
                     fluxfilterfunc=filterfunc,
                     nprocs_read_dfpackets=(nprocs_read, dfpkts),
-                    directionbins_are_vpkt_observers=directionbins_are_vpkt_observers,
                     directionbins=[spec],
                     gamma=gamma,
                 )[spec].select("lambda_angstroms", "f_lambda")
@@ -1492,7 +1494,6 @@ def get_flux_contributions_from_packets(
                     nu_column="absorption_freq",
                     fluxfilterfunc=filterfunc,
                     nprocs_read_dfpackets=(nprocs_read, dfpkts),
-                    directionbins_are_vpkt_observers=directionbins_are_vpkt_observers,
                     directionbins=[spec],
                 )[spec].select("lambda_angstroms", "f_lambda")
                 for dfpkts in absorptiongroups.values()
