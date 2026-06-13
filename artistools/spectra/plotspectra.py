@@ -470,59 +470,40 @@ def plot_artis_spectrum(
             else None
         )
 
+        loadkwargs: dict[str, t.Any] = {
+            "frompackets": from_packets,
+            "timestepmin": timestepmin,
+            "timestepmax": timestepmax,
+            "timelowdays": args.timemin,
+            "timehighdays": args.timemax,
+            "timeavg": timeavg,
+            "lambda_bin_edges": lambda_bin_edges,
+            "use_time": use_time,
+            "maxpacketfiles": maxpacketfiles,
+            "fluxfilterfunc": filterfunc,
+            "gamma": args.gamma,
+            "args": args,
+        }
         viewinganglespectra: dict[DirectionSpec, pl.LazyFrame] = atspectra.get_spectra_by_directionspec(
-            modelpath,
-            directionspecs,
-            frompackets=from_packets,
-            timestepmin=timestepmin,
-            timestepmax=timestepmax,
-            timelowdays=args.timemin,
-            timehighdays=args.timemax,
-            timeavg=timeavg,
-            lambda_bin_edges=lambda_bin_edges,
-            use_time=use_time,
-            maxpacketfiles=maxpacketfiles,
-            fluxfilterfunc=filterfunc,
-            gamma=args.gamma,
-            args=args,
+            modelpath, directionspecs, **loadkwargs
         )
 
-        dirbin_definitions = get_directionspec_labels(directionspecs, modelpath=modelpath, usedegrees=usedegrees)
-
         missingdirectionspecs = [spec for spec in directionspecs if spec not in viewinganglespectra]
-        founddirectionspecs = [spec for spec in directionspecs if spec in viewinganglespectra]
         if missingdirectionspecs:
             print(f"No data for direction(s): {[str(spec) for spec in missingdirectionspecs]}")
+            founddirectionspecs = [spec for spec in directionspecs if spec in viewinganglespectra]
             if founddirectionspecs:
                 directionspecs = founddirectionspecs
+            elif (spherespec := DirectionSpec("sphere")) in (
+                viewinganglespectra := atspectra.get_spectra_by_directionspec(modelpath, [spherespec], **loadkwargs)
+            ):
+                directionspecs = [spherespec]
+                print("Showing spherically-averaged spectrum instead")
             else:
-                spherespec = DirectionSpec("sphere")
-                spherespectra = atspectra.get_spectra_by_directionspec(
-                    modelpath,
-                    [spherespec],
-                    frompackets=from_packets,
-                    timestepmin=timestepmin,
-                    timestepmax=timestepmax,
-                    timelowdays=args.timemin,
-                    timehighdays=args.timemax,
-                    timeavg=timeavg,
-                    lambda_bin_edges=lambda_bin_edges,
-                    use_time=use_time,
-                    maxpacketfiles=maxpacketfiles,
-                    fluxfilterfunc=filterfunc,
-                    gamma=args.gamma,
-                    args=args,
-                )
-                if spherespec in spherespectra:
-                    directionspecs = [spherespec]
-                    viewinganglespectra = spherespectra
-                    dirbin_definitions = get_directionspec_labels(
-                        directionspecs, modelpath=modelpath, usedegrees=usedegrees
-                    )
-                    print("Showing spherically-averaged spectrum instead")
-                else:
-                    print("No data to plot")
-                    return None
+                print("No data to plot")
+                return None
+
+        dirbin_definitions = get_directionspec_labels(directionspecs, modelpath=modelpath, usedegrees=usedegrees)
 
         if any(spec.kind != "sphere" for spec in directionspecs):
             print_theta_phi_definitions()

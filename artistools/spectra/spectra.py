@@ -987,46 +987,44 @@ def get_spectra_by_directionspec(
                 directionbins_are_vpkt_observers=True,
             )
             spectra |= {spec: vpktspectra[spec.index] for spec in vpktspecs}
+    elif vpktspecs:
+        assert timeavg is not None
+        if args is None:
+            args = argparse.Namespace()
+        spectra |= {
+            spec: get_vspecpol_spectrum(modelpath, timeavg, spec.index, args, fluxfilterfunc=fluxfilterfunc)
+            for spec in vpktspecs
+        }
 
-        for average_over_phi, average_over_theta, specgroup in realspecgroups:
-            if specgroup:
-                groupspectra = get_from_packets(
-                    modelpath,
-                    timelowdays=timelowdays,
-                    timehighdays=timehighdays,
-                    lambda_bin_edges=lambda_bin_edges,
-                    use_time=use_time,
-                    maxpacketfiles=maxpacketfiles,
-                    average_over_phi=average_over_phi,
-                    average_over_theta=average_over_theta,
-                    fluxfilterfunc=fluxfilterfunc,
-                    gamma=gamma,
-                )
-                spectra |= {spec: groupspectra[spec.legacy_key] for spec in specgroup}
-    else:
-        if vpktspecs:
-            assert timeavg is not None
-            if args is None:
-                args = argparse.Namespace()
-            spectra |= {
-                spec: get_vspecpol_spectrum(modelpath, timeavg, spec.index, args, fluxfilterfunc=fluxfilterfunc)
-                for spec in vpktspecs
-            }
-
-        for average_over_phi, average_over_theta, specgroup in realspecgroups:
-            if specgroup:
-                groupspectra = get_spectra(
-                    modelpath=Path(modelpath),
-                    timestepmin=timestepmin,
-                    timestepmax=timestepmax,
-                    average_over_phi=average_over_phi,
-                    average_over_theta=average_over_theta,
-                    fluxfilterfunc=fluxfilterfunc,
-                    gamma=gamma,
-                )
-                spectra |= {
-                    spec: groupspectra[spec.legacy_key] for spec in specgroup if spec.legacy_key in groupspectra
-                }
+    for average_over_phi, average_over_theta, specgroup in realspecgroups:
+        if not specgroup:
+            continue
+        if frompackets:
+            assert timelowdays is not None
+            assert timehighdays is not None
+            groupspectra = get_from_packets(
+                modelpath,
+                timelowdays=timelowdays,
+                timehighdays=timehighdays,
+                lambda_bin_edges=lambda_bin_edges,
+                use_time=use_time,
+                maxpacketfiles=maxpacketfiles,
+                average_over_phi=average_over_phi,
+                average_over_theta=average_over_theta,
+                fluxfilterfunc=fluxfilterfunc,
+                gamma=gamma,
+            )
+        else:
+            groupspectra = get_spectra(
+                modelpath=Path(modelpath),
+                timestepmin=timestepmin,
+                timestepmax=timestepmax,
+                average_over_phi=average_over_phi,
+                average_over_theta=average_over_theta,
+                fluxfilterfunc=fluxfilterfunc,
+                gamma=gamma,
+            )
+        spectra |= {spec: groupspectra[spec.legacy_key] for spec in specgroup if spec.legacy_key in groupspectra}
 
     # return in the same order as the requested directionspecs
     return {spec: spectra[spec] for spec in directionspecs if spec in spectra}
