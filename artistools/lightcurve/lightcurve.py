@@ -17,7 +17,6 @@ import polars.selectors as cs
 import artistools as at
 from artistools.constants import Lsun_to_erg_per_s
 from artistools.constants import megaparsec_to_cm
-from artistools.misc import directionspec_from_legacy
 from artistools.misc import directionspec_index
 from artistools.misc import directionspec_kind
 from artistools.misc import directionspec_legacy_key
@@ -91,38 +90,28 @@ def get_lightcurves_by_directionspec(
     realspecs = [spec for spec in directionspecs if directionspec_kind(spec) != "vpkt"]
 
     if frompackets:
+        # virtual and real packets come from different files, so they need one loader call each
         if vpktspecs:
-            vpktlcdata = get_from_packets(
+            lcdataout |= get_from_packets(
                 modelpath,
                 escape_type=escape_type,
                 maxpacketfiles=maxpacketfiles,
-                directionbins=[directionspec_index(spec) for spec in vpktspecs],
+                directionbins=vpktspecs,
                 directionbins_are_vpkt_observers=True,
                 timedaysmin=timedaysmin,
                 timedaysmax=timedaysmax,
             )
-            lcdataout |= {spec: vpktlcdata[directionspec_index(spec)] for spec in vpktspecs}
-
-        realspecgroups = [
-            (False, False, [spec for spec in realspecs if directionspec_kind(spec) in {"sphere", "dirbin"}]),
-            (True, False, [spec for spec in realspecs if directionspec_kind(spec) == "costheta"]),
-            (False, True, [spec for spec in realspecs if directionspec_kind(spec) == "phi"]),
-        ]
-        for average_over_phi, average_over_theta, specgroup in realspecgroups:
-            if specgroup:
-                grouplcdata = get_from_packets(
-                    modelpath,
-                    escape_type=escape_type,
-                    maxpacketfiles=maxpacketfiles,
-                    directionbins=[directionspec_legacy_key(spec) for spec in specgroup],
-                    average_over_phi=average_over_phi,
-                    average_over_theta=average_over_theta,
-                    pellet_nucname=pellet_nucname,
-                    use_pellet_decay_time=use_pellet_decay_time,
-                    timedaysmin=timedaysmin,
-                    timedaysmax=timedaysmax,
-                )
-                lcdataout |= {spec: grouplcdata[directionspec_legacy_key(spec)] for spec in specgroup}
+        if realspecs:
+            lcdataout |= get_from_packets(
+                modelpath,
+                escape_type=escape_type,
+                maxpacketfiles=maxpacketfiles,
+                directionbins=realspecs,
+                pellet_nucname=pellet_nucname,
+                use_pellet_decay_time=use_pellet_decay_time,
+                timedaysmin=timedaysmin,
+                timedaysmax=timedaysmax,
+            )
     else:
         for spec in vpktspecs:
             lcdataout[spec] = get_vspecpol_lightcurve(modelpath, directionspec_index(spec))
@@ -162,21 +151,23 @@ def get_from_packets(
     modelpath: str | Path,
     escape_type: str = "TYPE_RPKT",
     maxpacketfiles: int | None = None,
-    directionbins: Collection[int] | None = None,
-    average_over_phi: bool = False,
-    average_over_theta: bool = False,
+    directionbins: Sequence[str] | None = None,
     directionbins_are_vpkt_observers: bool = False,
     pellet_nucname: str | None = None,
     use_pellet_decay_time: bool = False,
     timedaysmin: float | int | None = None,
     timedaysmax: float | int | None = None,
-) -> dict[int, pl.LazyFrame]:
-    """Get ARTIS luminosity vs time from packets files."""
+) -> dict[str, pl.LazyFrame]:
+    """Get ARTIS luminosity vs time from packets files for each requested direction spec.
+
+    directionbins is a list of direction spec tokens (e.g. "all", "23", "costheta2", "phi3", or "vpkt1"
+    when directionbins_are_vpkt_observers is set). The returned dict is keyed by those same tokens.
+    """
     if escape_type not in {"TYPE_RPKT", "TYPE_GAMMA"}:
         msg = f"Unknown escape type {escape_type}"
         raise ValueError(msg)
     if directionbins is None:
-        directionbins = [-1]
+        directionbins = ["all"]
 
     dftimesteps_selected = at.misc.df_filter_minmax_bounded(
         at.get_timesteps(modelpath), "tmid_days", timedaysmin, timedaysmax
@@ -220,23 +211,23 @@ def get_from_packets(
 
     timecol = "tdecay_d" if use_pellet_decay_time else "t_arrive_d"
 
-    lcdata: dict[int, pl.LazyFrame] = {}
-    for dirbin in directionbins:
+    lcdata: dict[str, pl.LazyFrame] = {}
+    for spec in directionbins:
         if directionbins_are_vpkt_observers:
             assert vpkt_config is not None
-            obsdirindex = dirbin // vpkt_config["nspectraperobs"]
-            opacchoiceindex = dirbin % vpkt_config["nspectraperobs"]
+            vspecindex = directionspec_index(spec)
+            obsdirindex = vspecindex // vpkt_config["nspectraperobs"]
+            opacchoiceindex = vspecindex % vpkt_config["nspectraperobs"]
             pldfpackets_dirbin = dfpackets.with_columns(
                 e_rf=pl.col(f"dir{obsdirindex}_e_rf_{opacchoiceindex}"),
                 t_arrive_d=pl.col(f"dir{obsdirindex}_t_arrive_d"),
             )
             solidanglefactor = 4 * math.pi
         else:
-            spec = directionspec_from_legacy(dirbin, average_over_phi, average_over_theta)
             filterexpr, solidanglefactor = directionspec_packet_filter(spec)
             pldfpackets_dirbin = dfpackets.filter(filterexpr)
 
-        lcdata[dirbin] = (
+        lcdata[spec] = (
             at.packets
             .bin_and_sum(
                 pldfpackets_dirbin, bincol=timecol, bins=timebinstarts_plusend, sumcols=["e_rf"], getcounts=True
@@ -257,8 +248,8 @@ def get_from_packets(
         )
 
         if "t_arrive_cmf_d" in pldfpackets_dirbin.collect_schema().names():
-            lcdata[dirbin] = (
-                lcdata[dirbin]
+            lcdata[spec] = (
+                lcdata[spec]
                 .join(
                     at.packets.bin_and_sum(
                         pldfpackets_dirbin, bincol="t_arrive_cmf_d", bins=timebinstarts_plusend, sumcols=["e_cmf"]
@@ -277,8 +268,8 @@ def get_from_packets(
                 .drop("e_cmf_sum")
             )
 
-        lcdata[dirbin] = (
-            lcdata[dirbin]
+        lcdata[spec] = (
+            lcdata[spec]
             .rename({"tmid_days": "time_days"})
             .drop("twidth_days")
             .with_columns(

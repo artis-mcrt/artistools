@@ -422,16 +422,21 @@ def get_from_packets(
     lambda_bin_edges: npt.NDArray[np.floating] | None = None,
     use_time: t.Literal["arrival", "emission", "escape"] = "arrival",
     maxpacketfiles: int | None = None,
-    average_over_phi: bool = False,
-    average_over_theta: bool = False,
+    directionbins: Sequence[str] | None = None,
     nu_column: str = "nu_rf",
     fluxfilterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     nprocs_read_dfpackets: tuple[int, pl.DataFrame | pl.LazyFrame] | None = None,
     directionbins_are_vpkt_observers: bool = False,
     gamma: bool = False,
-) -> dict[int, pl.LazyFrame]:
-    """Get a spectrum dataframe using the packets files as input."""
+) -> dict[str, pl.LazyFrame]:
+    """Get a spectrum dataframe for each requested direction spec using the packets files as input.
+
+    directionbins is a list of direction spec tokens (e.g. "all", "23", "costheta2", "phi3", or "vpkt1"
+    when directionbins_are_vpkt_observers is set). The returned dict is keyed by those same tokens.
+    """
     assert use_time in {"arrival", "emission", "escape"}
+    if directionbins is None:
+        directionbins = ["all"]
 
     if nu_column == "absorption_freq":
         nu_column = "nu_absorbed"
@@ -440,9 +445,6 @@ def get_from_packets(
     lambda_bin_edges = np.sort(lambda_bin_edges)
     lambda_bin_centres = 0.5 * (lambda_bin_edges[:-1] + lambda_bin_edges[1:])
     delta_time_s = (timehighdays - timelowdays) * 86400.0
-
-    nphibins = get_viewingdirection_phibincount()
-    ndirbins = get_viewingdirectionbincount()
 
     if nprocs_read_dfpackets:
         nprocs_read, dfpackets = nprocs_read_dfpackets[0], nprocs_read_dfpackets[1].lazy()
@@ -477,11 +479,11 @@ def get_from_packets(
         .lazy()
     )
     escapesurfacegamma: float | int | None = None
-    dirbin_spectra: dict[int, pl.LazyFrame] = {}
+    dirbin_spectra: dict[str, pl.LazyFrame] = {}
     if directionbins_are_vpkt_observers:
         vpkt_config = get_vpkt_config(modelpath)
-        directionbins = range(vpkt_config["nobsdirections"] * vpkt_config["nspectraperobs"])
-        for vspecindex in directionbins:
+        for spec in directionbins:
+            vspecindex = directionspec_index(spec)
             obsdirindex = vspecindex // vpkt_config["nspectraperobs"]
             opacchoiceindex = vspecindex % vpkt_config["nspectraperobs"]
             lambda_column = (
@@ -491,7 +493,7 @@ def get_from_packets(
             )
             energy_column = f"dir{obsdirindex}_e_rf_{opacchoiceindex}"
 
-            dirbin_spectra[vspecindex] = (
+            dirbin_spectra[spec] = (
                 atpackets
                 .bin_and_sum(
                     dfpackets.filter(pl.col(f"dir{obsdirindex}_t_arrive_d").is_between(timelowdays, timehighdays)),
@@ -511,20 +513,14 @@ def get_from_packets(
             )
 
             if fluxfilterfunc:
-                dirbin_spectra[vspecindex] = (
-                    dirbin_spectra[vspecindex]
+                dirbin_spectra[spec] = (
+                    dirbin_spectra[spec]
                     .with_columns(pl.col("f_lambda").map_batches(fluxfilterfunc, return_dtype=pl.self_dtype()))
                     .with_columns(f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu")))
                 )
 
         assert use_time == "arrival"
     else:
-        if average_over_phi:
-            directionbins = [-1, *range(0, ndirbins, nphibins)]
-        elif average_over_theta:
-            directionbins = [-1, *range(nphibins)]
-        else:
-            directionbins = [-1, *range(ndirbins)]
         lambda_column = nu_column.replace("nu_", "lambda_angstroms_")
         energy_column = "e_cmf" if use_time == "escape" else "e_rf"
 
@@ -556,12 +552,11 @@ def get_from_packets(
 
         dfpackets = dfpackets.filter(pl.col(lambda_column).is_between(lambda_bin_edges[0], lambda_bin_edges[-1]))
 
-        for dirbin in directionbins:
-            spec = directionspec_from_legacy(dirbin, average_over_phi, average_over_theta)
+        for spec in directionbins:
             filterexpr, solidanglefactor = directionspec_packet_filter(spec)
             pldfpackets_dirbin_lazy = dfpackets.filter(filterexpr)
 
-            dirbin_spectra[dirbin] = atpackets.bin_and_sum(
+            dirbin_spectra[spec] = atpackets.bin_and_sum(
                 pldfpackets_dirbin_lazy,
                 bincol=lambda_column,
                 bins=lambda_bin_edges.tolist(),
@@ -581,12 +576,10 @@ def get_from_packets(
 
             if use_time == "escape":
                 assert escapesurfacegamma is not None
-                dirbin_spectra[dirbin] = dirbin_spectra[dirbin].with_columns(
-                    pl.col("flux").mul(1.0 / escapesurfacegamma)
-                )
+                dirbin_spectra[spec] = dirbin_spectra[spec].with_columns(pl.col("flux").mul(1.0 / escapesurfacegamma))
 
-            dirbin_spectra[dirbin] = (
-                dirbin_spectra[dirbin]
+            dirbin_spectra[spec] = (
+                dirbin_spectra[spec]
                 .join(dfbinned_lazy, on="lambda_binindex", how="left", coalesce=True)
                 .with_columns(f_lambda=pl.col("flux") / pl.col("delta_lambda"))
                 .drop("flux")
@@ -594,7 +587,7 @@ def get_from_packets(
             )
 
             if fluxfilterfunc:
-                dirbin_spectra[dirbin] = dirbin_spectra[dirbin].with_columns(
+                dirbin_spectra[spec] = dirbin_spectra[spec].with_columns(
                     cs.by_name(("f_lambda", "f_nu")).map_batches(fluxfilterfunc, return_dtype=pl.self_dtype())
                 )
 
@@ -957,58 +950,58 @@ def get_spectra_by_directionspec(
     Missing direction bins (e.g. no direction-resolved spectra files) are omitted from the returned dict.
     """
     vpktspecs = [spec for spec in directionspecs if directionspec_kind(spec) == "vpkt"]
-    realspecgroups = [
-        (False, False, [spec for spec in directionspecs if directionspec_kind(spec) in {"sphere", "dirbin"}]),
-        (True, False, [spec for spec in directionspecs if directionspec_kind(spec) == "costheta"]),
-        (False, True, [spec for spec in directionspecs if directionspec_kind(spec) == "phi"]),
-    ]
+    realspecs = [spec for spec in directionspecs if directionspec_kind(spec) != "vpkt"]
 
     spectra: dict[str, pl.LazyFrame] = {}
     if frompackets:
         assert timelowdays is not None
         assert timehighdays is not None
+        # virtual and real packets come from different files, so they need one loader call each
         if vpktspecs:
-            vpktspectra = get_from_packets(
+            spectra |= get_from_packets(
                 modelpath,
                 timelowdays=timelowdays,
                 timehighdays=timehighdays,
                 lambda_bin_edges=lambda_bin_edges,
                 use_time=use_time,
                 maxpacketfiles=maxpacketfiles,
+                directionbins=vpktspecs,
                 fluxfilterfunc=fluxfilterfunc,
                 directionbins_are_vpkt_observers=True,
             )
-            spectra |= {spec: vpktspectra[directionspec_index(spec)] for spec in vpktspecs}
-    elif vpktspecs:
-        assert timeavg is not None
-        if args is None:
-            args = argparse.Namespace()
-        spectra |= {
-            spec: get_vspecpol_spectrum(
-                modelpath, timeavg, directionspec_index(spec), args, fluxfilterfunc=fluxfilterfunc
-            )
-            for spec in vpktspecs
-        }
-
-    for average_over_phi, average_over_theta, specgroup in realspecgroups:
-        if not specgroup:
-            continue
-        if frompackets:
-            assert timelowdays is not None
-            assert timehighdays is not None
-            groupspectra = get_from_packets(
+        if realspecs:
+            spectra |= get_from_packets(
                 modelpath,
                 timelowdays=timelowdays,
                 timehighdays=timehighdays,
                 lambda_bin_edges=lambda_bin_edges,
                 use_time=use_time,
                 maxpacketfiles=maxpacketfiles,
-                average_over_phi=average_over_phi,
-                average_over_theta=average_over_theta,
+                directionbins=realspecs,
                 fluxfilterfunc=fluxfilterfunc,
                 gamma=gamma,
             )
-        else:
+    else:
+        if vpktspecs:
+            assert timeavg is not None
+            if args is None:
+                args = argparse.Namespace()
+            spectra |= {
+                spec: get_vspecpol_spectrum(
+                    modelpath, timeavg, directionspec_index(spec), args, fluxfilterfunc=fluxfilterfunc
+                )
+                for spec in vpktspecs
+            }
+
+        # file-based loaders read a different file per averaging mode, so group the specs by mode
+        realspecgroups = [
+            (False, False, [spec for spec in realspecs if directionspec_kind(spec) in {"sphere", "dirbin"}]),
+            (True, False, [spec for spec in realspecs if directionspec_kind(spec) == "costheta"]),
+            (False, True, [spec for spec in realspecs if directionspec_kind(spec) == "phi"]),
+        ]
+        for average_over_phi, average_over_theta, specgroup in realspecgroups:
+            if not specgroup:
+                continue
             groupspectra = get_spectra(
                 modelpath=Path(modelpath),
                 timestepmin=timestepmin,
@@ -1018,11 +1011,11 @@ def get_spectra_by_directionspec(
                 fluxfilterfunc=fluxfilterfunc,
                 gamma=gamma,
             )
-        spectra |= {
-            spec: groupspectra[directionspec_legacy_key(spec)]
-            for spec in specgroup
-            if directionspec_legacy_key(spec) in groupspectra
-        }
+            spectra |= {
+                spec: groupspectra[directionspec_legacy_key(spec)]
+                for spec in specgroup
+                if directionspec_legacy_key(spec) in groupspectra
+            }
 
     # return in the same order as the requested directionspecs
     return {spec: spectra[spec] for spec in directionspecs if spec in spectra}
@@ -1242,6 +1235,12 @@ def get_flux_contributions_from_packets(
     if directionbin is None:
         directionbin = -1
 
+    spec = (
+        f"vpkt{directionbin}"
+        if directionbins_are_vpkt_observers
+        else directionspec_from_legacy(directionbin, average_over_phi, average_over_theta)
+    )
+
     linelistlazy, bflistlazy = (
         (get_linelist_pldf(modelpath=modelpath, get_ion_str=True), get_bflist(modelpath, get_ion_str=True))
         if groupby != "nuc"
@@ -1278,7 +1277,6 @@ def get_flux_contributions_from_packets(
 
         lzdfpackets = lzdfpackets.filter(pl.col("t_arrive_d").is_between(timelowdays, timehighdays))
 
-        spec = directionspec_from_legacy(directionbin, average_over_phi, average_over_theta)
         filterexpr, _ = directionspec_packet_filter(spec)
         lzdfpackets = lzdfpackets.filter(filterexpr)
 
@@ -1473,10 +1471,9 @@ def get_flux_contributions_from_packets(
                     fluxfilterfunc=filterfunc,
                     nprocs_read_dfpackets=(nprocs_read, dfpkts),
                     directionbins_are_vpkt_observers=directionbins_are_vpkt_observers,
-                    average_over_phi=average_over_phi,
-                    average_over_theta=average_over_theta,
+                    directionbins=[spec],
                     gamma=gamma,
-                )[directionbin].select("lambda_angstroms", "f_lambda")
+                )[spec].select("lambda_angstroms", "f_lambda")
                 for dfpkts in emissiongroups.values()
             ]),
             strict=True,
@@ -1496,9 +1493,8 @@ def get_flux_contributions_from_packets(
                     fluxfilterfunc=filterfunc,
                     nprocs_read_dfpackets=(nprocs_read, dfpkts),
                     directionbins_are_vpkt_observers=directionbins_are_vpkt_observers,
-                    average_over_phi=average_over_phi,
-                    average_over_theta=average_over_theta,
-                )[directionbin].select("lambda_angstroms", "f_lambda")
+                    directionbins=[spec],
+                )[spec].select("lambda_angstroms", "f_lambda")
                 for dfpkts in absorptiongroups.values()
             ]),
             strict=True,
