@@ -22,7 +22,8 @@ from polars import selectors as cs
 
 import artistools as at
 from artistools.constants import Lsun_to_erg_per_s
-from artistools.misc import DirectionSpec
+from artistools.misc import directionspec_kind
+from artistools.misc import directionspec_legacy_key
 from artistools.misc import print_theta_phi_definitions
 
 
@@ -211,13 +212,13 @@ def plot_artis_lightcurve(
     frompackets: bool = False,
     maxpacketfiles: int | None = None,
     axistherm: mplax.Axes | None = None,
-    directionspecs: Sequence[DirectionSpec] | None = None,
+    directionspecs: Sequence[str] | None = None,
     usedegrees: bool = False,
     args: argparse.Namespace | None = None,
     pellet_nucname: str | None = None,
     use_pellet_decay_time: bool = False,
     **plotkwargs: t.Any,
-) -> dict[DirectionSpec, pl.DataFrame] | None:
+) -> dict[str, pl.DataFrame] | None:
     if args is None:
         args = argparse.Namespace()
     if escape_type not in {"TYPE_RPKT", "TYPE_GAMMA"}:
@@ -250,7 +251,7 @@ def plot_artis_lightcurve(
         axis.set_title(linelabel)
 
     if not directionspecs:
-        directionspecs = [DirectionSpec("sphere")]
+        directionspecs = ["all"]
     directionspecs = list(directionspecs)
 
     if frompackets:
@@ -277,7 +278,7 @@ def plot_artis_lightcurve(
             return None
 
     if missingdirectionspecs := [dirspec for dirspec in directionspecs if dirspec not in lcdataframes_lazy]:
-        print(f"No data for direction(s): {[str(dirspec) for dirspec in missingdirectionspecs]}")
+        print(f"No data for direction(s): {missingdirectionspecs}")
         directionspecs = [dirspec for dirspec in directionspecs if dirspec in lcdataframes_lazy]
         if not directionspecs:
             print("No data to plot")
@@ -327,14 +328,14 @@ def plot_artis_lightcurve(
             str_valid_range = f"{validrange_start_days} to {validrange_end_days} days"
         print(f" range of validity (last timestep {nts_last}): {str_valid_range}")
 
-    if any(dirspec.kind != "sphere" for dirspec in directionspecs):
+    if any(dirspec != "all" for dirspec in directionspecs):
         print_theta_phi_definitions()
 
     colorindex: t.Any = None
     for dirspec in directionspecs:
         lcdata = lcdataframes[dirspec]
 
-        print(f" direction {dirspec!s:>10}  {angle_definition[dirspec]}", end="")
+        print(f" direction {dirspec:>10}  {angle_definition[dirspec]}", end="")
 
         if "packetcount" in lcdata.collect_schema().names():
             npkts_selected = lcdata.select(pl.col("packetcount").sum()).item()
@@ -351,16 +352,21 @@ def plot_artis_lightcurve(
             )
 
         label_with_tags: str | None = linelabel
-        if dirspec.kind != "sphere":
+        if dirspec != "all":
             if args.colorbarcostheta or args.colorbarphi:
                 plotkwargs["alpha"] = 0.75
                 if not linelabel_is_custom:
                     label_with_tags = None
                 # Update plotkwargs with viewing angle colour
                 plotkwargs, colorindex = get_viewinganglecolor_for_colorbar(
-                    dirspec.legacy_key, costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, plotkwargs, args
+                    directionspec_legacy_key(dirspec),
+                    costheta_viewing_angle_bins,
+                    phi_viewing_angle_bins,
+                    scaledmap,
+                    plotkwargs,
+                    args,
                 )
-                if dirspec.kind == "costheta":
+                if directionspec_kind(dirspec) == "costheta":
                     plotkwargs["color"] = "lightgrey"
             else:
                 # the first dirbin should use the color argument (which has been removed from the color cycle)
@@ -381,7 +387,7 @@ def plot_artis_lightcurve(
         else:
             ycolumn = "luminosity_erg/s"
 
-        if dirspec.kind == "costheta" and (args.colorbarcostheta or args.colorbarphi):
+        if directionspec_kind(dirspec) == "costheta" and (args.colorbarcostheta or args.colorbarphi):
             plotkwargs["color"] = scaledmap.to_rgba(colorindex)  # Update colours for light curves averaged over phi
             plotkwargs["zorder"] = 10
 

@@ -29,7 +29,8 @@ import artistools.spectra as atspectra
 from artistools.commands import CustomArgHelpFormatter
 from artistools.commands import get_path
 from artistools.misc import df_filter_minmax_bounded
-from artistools.misc import DirectionSpec
+from artistools.misc import directionspec_kind
+from artistools.misc import directionspec_legacy_key
 from artistools.misc import firstexisting
 from artistools.misc import flatten_list
 from artistools.misc import get_directionspec_labels
@@ -366,7 +367,7 @@ def plot_artis_spectrum(
     filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     linelabel: str | None = None,
     yvariable: str = "flux",
-    directionspecs: Sequence[DirectionSpec] | None = None,
+    directionspecs: Sequence[str] | None = None,
     usedegrees: bool = False,
     maxpacketfiles: int | None = None,
     xunit: str = "angstroms",
@@ -394,7 +395,7 @@ def plot_artis_spectrum(
         use_time = "arrival"
 
     if not directionspecs:
-        directionspecs = [DirectionSpec("sphere")]
+        directionspecs = ["all"]
     directionspecs = list(directionspecs)
 
     if yvariable == "packetcount":
@@ -442,7 +443,7 @@ def plot_artis_spectrum(
 
         check_time_range_is_valid(modelpath, args.timemin, args.timemax, args.plotinvalidpart)
 
-        if any(spec.kind == "vpkt" for spec in directionspecs) and not from_packets:
+        if any(directionspec_kind(spec) == "vpkt" for spec in directionspecs) and not from_packets:
             # read virtual packet files (after running plotartisspectrum --makevspecpol)
             vpkt_config = get_vpkt_config(modelpath)
             if vpkt_config["time_limits_enabled"] and (
@@ -484,20 +485,20 @@ def plot_artis_spectrum(
             "gamma": args.gamma,
             "args": args,
         }
-        viewinganglespectra: dict[DirectionSpec, pl.LazyFrame] = atspectra.get_spectra_by_directionspec(
+        viewinganglespectra: dict[str, pl.LazyFrame] = atspectra.get_spectra_by_directionspec(
             modelpath, directionspecs, **loadkwargs
         )
 
         missingdirectionspecs = [spec for spec in directionspecs if spec not in viewinganglespectra]
         if missingdirectionspecs:
-            print(f"No data for direction(s): {[str(spec) for spec in missingdirectionspecs]}")
+            print(f"No data for direction(s): {missingdirectionspecs}")
             founddirectionspecs = [spec for spec in directionspecs if spec in viewinganglespectra]
             if founddirectionspecs:
                 directionspecs = founddirectionspecs
-            elif (spherespec := DirectionSpec("sphere")) in (
-                viewinganglespectra := atspectra.get_spectra_by_directionspec(modelpath, [spherespec], **loadkwargs)
+            elif "all" in (
+                viewinganglespectra := atspectra.get_spectra_by_directionspec(modelpath, ["all"], **loadkwargs)
             ):
-                directionspecs = [spherespec]
+                directionspecs = ["all"]
                 print("Showing spherically-averaged spectrum instead")
             else:
                 print("No data to plot")
@@ -505,7 +506,7 @@ def plot_artis_spectrum(
 
         dirbin_definitions = get_directionspec_labels(directionspecs, modelpath=modelpath, usedegrees=usedegrees)
 
-        if any(spec.kind != "sphere" for spec in directionspecs):
+        if any(spec != "all" for spec in directionspecs):
             print_theta_phi_definitions()
 
         dirbin_dfspec = zip(
@@ -531,14 +532,14 @@ def plot_artis_spectrum(
                 plotkwargs["color"] = None
 
             linelabel_withdirbin = linelabel
-            print(f" direction {dirspec!s:>10}  {dirbin_definitions[dirspec]}", end="")
+            print(f" direction {dirspec:>10}  {dirbin_definitions[dirspec]}", end="")
             if "packetcount" in dfspectrum.collect_schema().names():
                 npkts_selected = dfspectrum.select(pl.col("packetcount").sum()).item()
                 print(f"\t({npkts_selected:.2e} packets)")
             else:
                 print()
 
-            if dirspec.kind != "sphere" and (len(directionspecs) > 1 or not linelabel_is_custom):
+            if dirspec != "all" and (len(directionspecs) > 1 or not linelabel_is_custom):
                 linelabel_withdirbin = f"{linelabel} {dirbin_definitions[dirspec]}"
 
             atspectra.print_integrated_flux(dfspectrum["dflux_on_dx_onempc"], dfspectrum["x"])
@@ -779,9 +780,9 @@ def make_emissionabsorption_plot(
     directionspecs = getattr(args, "directionspecs", None) or parse_direction_args(args)
     firstdirspec = directionspecs[0] if directionspecs else None
     if len(directionspecs) > 1:
-        print(f"WARNING: emission/absorption plot uses only the first direction ({firstdirspec!s})")
+        print(f"WARNING: emission/absorption plot uses only the first direction ({firstdirspec})")
 
-    if firstdirspec is not None and firstdirspec.kind == "vpkt" and not args.frompackets:
+    if firstdirspec is not None and directionspec_kind(firstdirspec) == "vpkt" and not args.frompackets:
         args.frompackets = True
         print("Enabling --frompackets, since a virtual packet observer direction was specified")
 
@@ -801,9 +802,9 @@ def make_emissionabsorption_plot(
 
     xmin, xmax = axis.get_xlim()
 
-    dirbin = None if firstdirspec is None or firstdirspec.kind == "sphere" else firstdirspec.legacy_key
-    average_over_phi = firstdirspec is not None and firstdirspec.kind == "costheta"
-    average_over_theta = firstdirspec is not None and firstdirspec.kind == "phi"
+    dirbin = None if firstdirspec is None or firstdirspec == "all" else directionspec_legacy_key(firstdirspec)
+    average_over_phi = firstdirspec is not None and directionspec_kind(firstdirspec) == "costheta"
+    average_over_theta = firstdirspec is not None and directionspec_kind(firstdirspec) == "phi"
     if args.frompackets:
         if args.groupby in {"nuc", "nucmass"}:
             emtypecolumn = "pellet_nucindex"
@@ -842,7 +843,8 @@ def make_emissionabsorption_plot(
                 directionbin=dirbin,
                 average_over_phi=average_over_phi,
                 average_over_theta=average_over_theta,
-                directionbins_are_vpkt_observers=firstdirspec is not None and firstdirspec.kind == "vpkt",
+                directionbins_are_vpkt_observers=firstdirspec is not None
+                and directionspec_kind(firstdirspec) == "vpkt",
                 vpkt_match_emission_exclusion_to_opac=args.vpkt_match_emission_exclusion_to_opac,
             )
         )
@@ -1022,7 +1024,7 @@ def make_emissionabsorption_plot(
             )
             plotlabel += f", {dirbin_definitions[firstdirspec]}"
 
-            if firstdirspec.kind != "sphere":
+            if firstdirspec != "all":
                 print_theta_phi_definitions()
 
     if not args.notitle:
@@ -1630,9 +1632,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         fig, _axes, dfalldata = make_plot(args)
 
-        strdirectionbins = (
-            "_direction" + "_".join(str(dirspec) for dirspec in args.directionspecs) if args.directionspecs else ""
-        )
+        strdirectionbins = "_direction" + "_".join(args.directionspecs) if args.directionspecs else ""
 
         filenameout = (
             str(args.outputfile).format(

@@ -21,7 +21,11 @@ import artistools.constants as const
 import artistools.packets as atpackets
 from artistools.misc import average_direction_bins
 from artistools.misc import df_filter_minmax_bounded
-from artistools.misc import DirectionSpec
+from artistools.misc import directionspec_from_legacy
+from artistools.misc import directionspec_index
+from artistools.misc import directionspec_kind
+from artistools.misc import directionspec_legacy_key
+from artistools.misc import directionspec_packet_filter
 from artistools.misc import firstexisting
 from artistools.misc import get_bflist
 from artistools.misc import get_elsymbol
@@ -32,7 +36,6 @@ from artistools.misc import get_nprocs
 from artistools.misc import get_nu_grid
 from artistools.misc import get_nuclides
 from artistools.misc import get_timestep_times
-from artistools.misc import get_viewingdirection_costhetabincount
 from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import get_viewingdirectionbincount
 from artistools.misc import get_vpkt_config
@@ -439,7 +442,6 @@ def get_from_packets(
     delta_time_s = (timehighdays - timelowdays) * 86400.0
 
     nphibins = get_viewingdirection_phibincount()
-    ncosthetabins = get_viewingdirection_costhetabincount()
     ndirbins = get_viewingdirectionbincount()
 
     if nprocs_read_dfpackets:
@@ -555,19 +557,9 @@ def get_from_packets(
         dfpackets = dfpackets.filter(pl.col(lambda_column).is_between(lambda_bin_edges[0], lambda_bin_edges[-1]))
 
         for dirbin in directionbins:
-            if dirbin == -1:
-                solidanglefactor = 1.0
-                pldfpackets_dirbin_lazy = dfpackets
-            elif average_over_phi:
-                assert not average_over_theta
-                solidanglefactor = ncosthetabins
-                pldfpackets_dirbin_lazy = dfpackets.filter(pl.col("costhetabin") * nphibins == dirbin)
-            elif average_over_theta:
-                solidanglefactor = nphibins
-                pldfpackets_dirbin_lazy = dfpackets.filter(pl.col("phibin") == dirbin)
-            else:
-                solidanglefactor = ndirbins
-                pldfpackets_dirbin_lazy = dfpackets.filter(pl.col("dirbin") == dirbin)
+            spec = directionspec_from_legacy(dirbin, average_over_phi, average_over_theta)
+            filterexpr, solidanglefactor = directionspec_packet_filter(spec)
+            pldfpackets_dirbin_lazy = dfpackets.filter(filterexpr)
 
             dirbin_spectra[dirbin] = atpackets.bin_and_sum(
                 pldfpackets_dirbin_lazy,
@@ -944,7 +936,7 @@ def get_vspecpol_spectrum(
 
 def get_spectra_by_directionspec(
     modelpath: Path | str,
-    directionspecs: Sequence[DirectionSpec],
+    directionspecs: Sequence[str],
     *,
     frompackets: bool = False,
     timestepmin: int = -1,
@@ -958,20 +950,20 @@ def get_spectra_by_directionspec(
     fluxfilterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     gamma: bool = False,
     args: argparse.Namespace | None = None,
-) -> dict[DirectionSpec, pl.LazyFrame]:
+) -> dict[str, pl.LazyFrame]:
     """Get spectra for any mix of direction specifications (real packet direction bins with per-spec phi/theta averaging, and virtual packet observers).
 
     Specs are grouped by the loader mode required, with one call to the existing loaders per group.
     Missing direction bins (e.g. no direction-resolved spectra files) are omitted from the returned dict.
     """
-    vpktspecs = [spec for spec in directionspecs if spec.kind == "vpkt"]
+    vpktspecs = [spec for spec in directionspecs if directionspec_kind(spec) == "vpkt"]
     realspecgroups = [
-        (False, False, [spec for spec in directionspecs if spec.kind in {"sphere", "dirbin"}]),
-        (True, False, [spec for spec in directionspecs if spec.kind == "costheta"]),
-        (False, True, [spec for spec in directionspecs if spec.kind == "phi"]),
+        (False, False, [spec for spec in directionspecs if directionspec_kind(spec) in {"sphere", "dirbin"}]),
+        (True, False, [spec for spec in directionspecs if directionspec_kind(spec) == "costheta"]),
+        (False, True, [spec for spec in directionspecs if directionspec_kind(spec) == "phi"]),
     ]
 
-    spectra: dict[DirectionSpec, pl.LazyFrame] = {}
+    spectra: dict[str, pl.LazyFrame] = {}
     if frompackets:
         assert timelowdays is not None
         assert timehighdays is not None
@@ -986,13 +978,15 @@ def get_spectra_by_directionspec(
                 fluxfilterfunc=fluxfilterfunc,
                 directionbins_are_vpkt_observers=True,
             )
-            spectra |= {spec: vpktspectra[spec.index] for spec in vpktspecs}
+            spectra |= {spec: vpktspectra[directionspec_index(spec)] for spec in vpktspecs}
     elif vpktspecs:
         assert timeavg is not None
         if args is None:
             args = argparse.Namespace()
         spectra |= {
-            spec: get_vspecpol_spectrum(modelpath, timeavg, spec.index, args, fluxfilterfunc=fluxfilterfunc)
+            spec: get_vspecpol_spectrum(
+                modelpath, timeavg, directionspec_index(spec), args, fluxfilterfunc=fluxfilterfunc
+            )
             for spec in vpktspecs
         }
 
@@ -1024,7 +1018,11 @@ def get_spectra_by_directionspec(
                 fluxfilterfunc=fluxfilterfunc,
                 gamma=gamma,
             )
-        spectra |= {spec: groupspectra[spec.legacy_key] for spec in specgroup if spec.legacy_key in groupspectra}
+        spectra |= {
+            spec: groupspectra[directionspec_legacy_key(spec)]
+            for spec in specgroup
+            if directionspec_legacy_key(spec) in groupspectra
+        }
 
     # return in the same order as the requested directionspecs
     return {spec: spectra[spec] for spec in directionspecs if spec in spectra}
@@ -1280,15 +1278,9 @@ def get_flux_contributions_from_packets(
 
         lzdfpackets = lzdfpackets.filter(pl.col("t_arrive_d").is_between(timelowdays, timehighdays))
 
-        if directionbin != -1:
-            if average_over_phi:
-                assert not average_over_theta
-                nphibins = get_viewingdirection_phibincount()
-                lzdfpackets = lzdfpackets.filter(pl.col("costhetabin") * nphibins == directionbin)
-            elif average_over_theta:
-                lzdfpackets = lzdfpackets.filter(pl.col("phibin") == directionbin)
-            else:
-                lzdfpackets = lzdfpackets.filter(pl.col("dirbin") == directionbin)
+        spec = directionspec_from_legacy(directionbin, average_over_phi, average_over_theta)
+        filterexpr, _ = directionspec_packet_filter(spec)
+        lzdfpackets = lzdfpackets.filter(filterexpr)
 
     condition_nu_emit = pl.col(dirbin_nu_column).is_between(nu_min, nu_max) if getemission else pl.lit(False)
     condition_nu_abs = pl.col("absorption_freq").is_between(nu_min, nu_max) if getabsorption else pl.lit(False)

@@ -148,14 +148,14 @@ define_colours_list2 = [
 def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> tuple[Sequence[int], dict[int, str]]:
     """Translate the direction arguments into legacy integer direction bins and their labels.
 
-    This is a compatibility wrapper for plot modes that have not been updated to use DirectionSpec keys
+    This is a compatibility wrapper for plot modes that have not been updated to use direction spec keys
     and therefore cannot mix virtual packet observers with real packet direction bins, or mix
     phi/theta-averaged bins with individual direction bins.
     """
     modelpath = Path(modelpath)
     directionspecs = at.parse_direction_args(args)
 
-    vpktspecs = [spec for spec in directionspecs if spec.kind == "vpkt"]
+    vpktspecs = [spec for spec in directionspecs if at.directionspec_kind(spec) == "vpkt"]
     if vpktspecs:
         if len(vpktspecs) < len(directionspecs):
             sys.exit(
@@ -165,28 +165,28 @@ def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> 
         if not (modelpath / "vpkt.txt").is_file():
             sys.exit(f"ERROR: virtual packet observer directions requested, but {modelpath / 'vpkt.txt'} not found")
 
-        return [spec.index for spec in vpktspecs], at.get_vspec_dir_labels(
+        return [at.directionspec_index(spec) for spec in vpktspecs], at.get_vspec_dir_labels(
             modelpath=modelpath, usedegrees=args.usedegrees
         )
 
     viewing_angle_data_exists = args.frompackets or bool(list(modelpath.glob("*_res.out*")))
     if not directionspecs or not viewing_angle_data_exists:
-        directionspecs = [at.DirectionSpec("sphere")]
+        directionspecs = ["all"]
 
-    if len({spec.kind for spec in directionspecs if spec.kind != "sphere"}) > 1:
+    if len({at.directionspec_kind(spec) for spec in directionspecs if spec != "all"}) > 1:
         sys.exit(
             "ERROR: mixing phi/theta-averaged direction bins with individual direction bins is not supported for"
             " this plot mode"
         )
 
     dirbin_definition = {
-        spec.legacy_key: label
+        at.directionspec_legacy_key(spec): label
         for spec, label in at.get_directionspec_labels(
             directionspecs, modelpath=modelpath, usedegrees=args.usedegrees
         ).items()
     }
 
-    return [spec.legacy_key for spec in directionspecs], dirbin_definition
+    return [at.directionspec_legacy_key(spec) for spec in directionspecs], dirbin_definition
 
 
 def save_viewing_angle_data_for_plotting(band_name: str, modelname: str, args: argparse.Namespace) -> None:

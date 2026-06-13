@@ -17,7 +17,11 @@ import polars.selectors as cs
 import artistools as at
 from artistools.constants import Lsun_to_erg_per_s
 from artistools.constants import megaparsec_to_cm
-from artistools.misc import DirectionSpec
+from artistools.misc import directionspec_from_legacy
+from artistools.misc import directionspec_index
+from artistools.misc import directionspec_kind
+from artistools.misc import directionspec_legacy_key
+from artistools.misc import directionspec_packet_filter
 
 
 def readfile(filepath: str | Path) -> dict[int, pl.LazyFrame]:
@@ -67,7 +71,7 @@ def get_vspecpol_lightcurve(modelpath: str | Path, vspecindex: int) -> pl.LazyFr
 
 def get_lightcurves_by_directionspec(
     modelpath: str | Path,
-    directionspecs: Sequence[DirectionSpec],
+    directionspecs: Sequence[str],
     *,
     frompackets: bool = False,
     escape_type: str = "TYPE_RPKT",
@@ -77,14 +81,14 @@ def get_lightcurves_by_directionspec(
     use_pellet_decay_time: bool = False,
     timedaysmin: float | int | None = None,
     timedaysmax: float | int | None = None,
-) -> dict[DirectionSpec, pl.LazyFrame]:
+) -> dict[str, pl.LazyFrame]:
     """Get light curves for any mix of direction specifications (real packet direction bins with per-spec phi/theta averaging, and virtual packet observers).
 
     Specs are grouped by the loader mode required, with one call to the existing loaders per group.
     """
-    lcdataout: dict[DirectionSpec, pl.LazyFrame] = {}
-    vpktspecs = [spec for spec in directionspecs if spec.kind == "vpkt"]
-    realspecs = [spec for spec in directionspecs if spec.kind != "vpkt"]
+    lcdataout: dict[str, pl.LazyFrame] = {}
+    vpktspecs = [spec for spec in directionspecs if directionspec_kind(spec) == "vpkt"]
+    realspecs = [spec for spec in directionspecs if directionspec_kind(spec) != "vpkt"]
 
     if frompackets:
         if vpktspecs:
@@ -92,17 +96,17 @@ def get_lightcurves_by_directionspec(
                 modelpath,
                 escape_type=escape_type,
                 maxpacketfiles=maxpacketfiles,
-                directionbins=[spec.index for spec in vpktspecs],
+                directionbins=[directionspec_index(spec) for spec in vpktspecs],
                 directionbins_are_vpkt_observers=True,
                 timedaysmin=timedaysmin,
                 timedaysmax=timedaysmax,
             )
-            lcdataout |= {spec: vpktlcdata[spec.index] for spec in vpktspecs}
+            lcdataout |= {spec: vpktlcdata[directionspec_index(spec)] for spec in vpktspecs}
 
         realspecgroups = [
-            (False, False, [spec for spec in realspecs if spec.kind in {"sphere", "dirbin"}]),
-            (True, False, [spec for spec in realspecs if spec.kind == "costheta"]),
-            (False, True, [spec for spec in realspecs if spec.kind == "phi"]),
+            (False, False, [spec for spec in realspecs if directionspec_kind(spec) in {"sphere", "dirbin"}]),
+            (True, False, [spec for spec in realspecs if directionspec_kind(spec) == "costheta"]),
+            (False, True, [spec for spec in realspecs if directionspec_kind(spec) == "phi"]),
         ]
         for average_over_phi, average_over_theta, specgroup in realspecgroups:
             if specgroup:
@@ -110,7 +114,7 @@ def get_lightcurves_by_directionspec(
                     modelpath,
                     escape_type=escape_type,
                     maxpacketfiles=maxpacketfiles,
-                    directionbins=[spec.legacy_key for spec in specgroup],
+                    directionbins=[directionspec_legacy_key(spec) for spec in specgroup],
                     average_over_phi=average_over_phi,
                     average_over_theta=average_over_theta,
                     pellet_nucname=pellet_nucname,
@@ -118,33 +122,37 @@ def get_lightcurves_by_directionspec(
                     timedaysmin=timedaysmin,
                     timedaysmax=timedaysmax,
                 )
-                lcdataout |= {spec: grouplcdata[spec.legacy_key] for spec in specgroup}
+                lcdataout |= {spec: grouplcdata[directionspec_legacy_key(spec)] for spec in specgroup}
     else:
         for spec in vpktspecs:
-            lcdataout[spec] = get_vspecpol_lightcurve(modelpath, spec.index)
+            lcdataout[spec] = get_vspecpol_lightcurve(modelpath, directionspec_index(spec))
 
         if realspecs:
             lcdata: dict[int, pl.LazyFrame] = {}
             if lcfilename is not None:
                 lcdata = readfile(at.firstexisting(lcfilename, folder=modelpath, tryzipped=True))
             else:
-                if any(spec.kind != "sphere" for spec in realspecs):
+                if any(directionspec_kind(spec) != "sphere" for spec in realspecs):
                     lcdata |= readfile(at.firstexisting("light_curve_res.out", folder=modelpath, tryzipped=True))
-                if any(spec.kind == "sphere" for spec in realspecs):
+                if any(directionspec_kind(spec) == "sphere" for spec in realspecs):
                     spherefilename = "gamma_light_curve.out" if escape_type == "TYPE_GAMMA" else "light_curve.out"
                     lcdata |= readfile(at.firstexisting(spherefilename, folder=modelpath, tryzipped=True))
 
-            plainspecs = [spec for spec in realspecs if spec.kind in {"sphere", "dirbin"}]
-            lcdataout |= {spec: lcdata[spec.legacy_key] for spec in plainspecs if spec.legacy_key in lcdata}
+            plainspecs = [spec for spec in realspecs if directionspec_kind(spec) in {"sphere", "dirbin"}]
+            lcdataout |= {
+                spec: lcdata[directionspec_legacy_key(spec)]
+                for spec in plainspecs
+                if directionspec_legacy_key(spec) in lcdata
+            }
 
-            overanglegroups: list[tuple[t.Literal["phi", "theta"], list[DirectionSpec]]] = [
-                ("phi", [spec for spec in realspecs if spec.kind == "costheta"]),
-                ("theta", [spec for spec in realspecs if spec.kind == "phi"]),
+            overanglegroups: list[tuple[t.Literal["phi", "theta"], list[str]]] = [
+                ("phi", [spec for spec in realspecs if directionspec_kind(spec) == "costheta"]),
+                ("theta", [spec for spec in realspecs if directionspec_kind(spec) == "phi"]),
             ]
             for overangle, specgroup in overanglegroups:
                 if specgroup:
                     averaged = at.average_direction_bins(lcdata, overangle=overangle)
-                    lcdataout |= {spec: averaged[spec.legacy_key] for spec in specgroup}
+                    lcdataout |= {spec: averaged[directionspec_legacy_key(spec)] for spec in specgroup}
 
     # return in the same order as the requested directionspecs
     return {spec: lcdataout[spec] for spec in directionspecs if spec in lcdataout}
@@ -189,10 +197,6 @@ def get_from_packets(
         nprocs_read, dfpackets = at.packets.get_packets(
             modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type=escape_type
         )
-        nphibins = at.get_viewingdirection_phibincount()
-        ncosthetabins = at.get_viewingdirection_costhetabincount()
-        ndirbins = at.get_viewingdirectionbincount()
-
         escapesurfacegamma = math.sqrt(1 - (modelmeta["vmax_cmps"] / 29979245800) ** 2)
         dfpackets = dfpackets.with_columns([
             (pl.col("escape_time") * escapesurfacegamma / 86400.0).alias("t_arrive_cmf_d")
@@ -227,19 +231,10 @@ def get_from_packets(
                 t_arrive_d=pl.col(f"dir{obsdirindex}_t_arrive_d"),
             )
             solidanglefactor = 4 * math.pi
-        elif dirbin == -1:
-            solidanglefactor = 1.0
-            pldfpackets_dirbin = dfpackets
-        elif average_over_phi:
-            assert not average_over_theta
-            solidanglefactor = ncosthetabins
-            pldfpackets_dirbin = dfpackets.filter(pl.col("costhetabin") * nphibins == dirbin)
-        elif average_over_theta:
-            solidanglefactor = nphibins
-            pldfpackets_dirbin = dfpackets.filter(pl.col("phibin") == dirbin)
         else:
-            solidanglefactor = ndirbins
-            pldfpackets_dirbin = dfpackets.filter(pl.col("dirbin") == dirbin)
+            spec = directionspec_from_legacy(dirbin, average_over_phi, average_over_theta)
+            filterexpr, solidanglefactor = directionspec_packet_filter(spec)
+            pldfpackets_dirbin = dfpackets.filter(filterexpr)
 
         lcdata[dirbin] = (
             at.packets
