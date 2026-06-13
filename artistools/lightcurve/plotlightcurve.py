@@ -22,6 +22,7 @@ from polars import selectors as cs
 
 import artistools as at
 from artistools.constants import Lsun_to_erg_per_s
+from artistools.misc import DirectionSpec
 from artistools.misc import print_theta_phi_definitions
 
 
@@ -210,13 +211,13 @@ def plot_artis_lightcurve(
     frompackets: bool = False,
     maxpacketfiles: int | None = None,
     axistherm: mplax.Axes | None = None,
-    directionspecs: Sequence[at.DirectionSpec] | None = None,
+    directionspecs: Sequence[DirectionSpec] | None = None,
     usedegrees: bool = False,
     args: argparse.Namespace | None = None,
     pellet_nucname: str | None = None,
     use_pellet_decay_time: bool = False,
     **plotkwargs: t.Any,
-) -> dict[at.DirectionSpec, pl.DataFrame] | None:
+) -> dict[DirectionSpec, pl.DataFrame] | None:
     if args is None:
         args = argparse.Namespace()
     if escape_type not in {"TYPE_RPKT", "TYPE_GAMMA"}:
@@ -249,7 +250,7 @@ def plot_artis_lightcurve(
         axis.set_title(linelabel)
 
     if not directionspecs:
-        directionspecs = [at.DirectionSpec("sphere")]
+        directionspecs = [DirectionSpec("sphere")]
     directionspecs = list(directionspecs)
 
     if frompackets:
