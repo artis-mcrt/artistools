@@ -51,13 +51,15 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         argcomplete.autocomplete(parser)
         args = parser.parse_args([] if kwargs else argsraw)
 
+    at.plottools.set_mpl_style()
+
     fig, axes = plt.subplots(
         nrows=3 if args.plotye else 2,
         ncols=1,
         sharex=True,
         sharey=False,
         figsize=(4, 4),
-        tight_layout={"pad": 0.4, "w_pad": 0.0, "h_pad": 0.0},
+        tight_layout={"pad": 0.5, "w_pad": 0.5, "h_pad": 0.0},
     )
     assert isinstance(axes, np.ndarray)
 
@@ -157,9 +159,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     else:
         axes[0].set_xlim(right=max_vmax_on_c)
 
-    axes[-1].set_xlabel("Velocity [$c$]")
-    axes[0].set_ylabel(r"Mass Enclosed [M$_\odot$]")
-    axes[1].set_ylabel(r"$\Delta$M/$\Delta v$  [M$_\odot/c$]")
+    axes[-1].set_xlabel(r"Velocity $\left[c\right]$")
+    axes[0].set_ylabel(r"Mass Enclosed $\left[\mathrm{M}_\odot\right]$")
+    axes[1].set_ylabel(r"$\Delta$M/$\Delta v$ $\left[\mathrm{M}_\odot/c\right]$")
     if args.plotye:
         axes[2].set_ylabel(r"Electron fraction Ye")
     axes[1].legend(frameon=False)
