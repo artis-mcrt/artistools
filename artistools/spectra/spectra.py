@@ -1345,7 +1345,9 @@ def get_flux_contributions_from_packets(
         if fixedionlist is None:
             return (0, -grouptotal)
 
-        return (fixedionlist.index(groupname), 0) if groupname in fixedionlist else (len(fixedionlist) + 1, -grouptotal)
+        return (
+            (fixedionlist.index(groupname), 0.0) if groupname in fixedionlist else (len(fixedionlist) + 1, -grouptotal)
+        )
 
     # group small contributions together to avoid the cost of binning individual spectra for them
 
