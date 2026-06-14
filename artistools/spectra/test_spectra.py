@@ -106,7 +106,7 @@ def test_spectra_get_spectrum() -> None:
     timehighdays = at.get_timestep_times(modelpath)[65]
 
     dfspectrumpkts = at.spectra.get_from_packets(modelpath, timelowdays=timelowdays, timehighdays=timehighdays)[
-        -1
+        "all"
     ].collect()
 
     check_spectrum(dfspectrumpkts)
@@ -163,10 +163,11 @@ def test_spectra_get_spectrum_polar_angles_frompackets(benchmark: BenchmarkFixtu
 
     lambda_bin_edges = np.arange(100.0, 50000.0 + 100.0, 100.0)
 
+    costhetabins = [f"costheta{c}" for c in range(at.get_viewingdirection_costhetabincount())]
     spectrafrompkts = benchmark(
         lambda: at.spectra.get_from_packets(
             modelpath=modelpath_classic_3d,
-            average_over_phi=True,
+            directionbins=costhetabins,
             timelowdays=timelowdays,
             timehighdays=timehighdays,
             lambda_bin_edges=lambda_bin_edges,
@@ -174,36 +175,34 @@ def test_spectra_get_spectrum_polar_angles_frompackets(benchmark: BenchmarkFixtu
     )
 
     results_pkts = {
-        dirbin: (
+        spec: (
             dfspecdir.select(pl.col("f_lambda").mean()).collect().item(),
             dfspecdir.select(pl.col("f_lambda").std()).collect().item(),
         )
-        for dirbin, dfspecdir in spectrafrompkts.items()
+        for spec, dfspecdir in spectrafrompkts.items()
     }
 
     expected_results = {
-        0: (1.797586165792736e-12, 5.590298324735384e-12),
-        10: (1.5663080169205979e-12, 4.939024069693974e-12),
-        20: (1.774102666296695e-12, 5.520228221791345e-12),
-        30: (1.5995255247265518e-12, 4.9241711406614e-12),
-        40: (1.639362478438235e-12, 4.9895610982735244e-12),
-        50: (1.675756083487473e-12, 5.1182931882077005e-12),
-        60: (1.5760353230761404e-12, 4.736330612172389e-12),
-        70: (1.6263369485761792e-12, 4.913505318082798e-12),
-        80: (1.7403350676338995e-12, 5.223319837133006e-12),
-        90: (1.7311116087677568e-12, 5.333605673696894e-12),
+        "costheta0": (1.797586165792736e-12, 5.590298324735384e-12),
+        "costheta1": (1.5663080169205979e-12, 4.939024069693974e-12),
+        "costheta2": (1.774102666296695e-12, 5.520228221791345e-12),
+        "costheta3": (1.5995255247265518e-12, 4.9241711406614e-12),
+        "costheta4": (1.639362478438235e-12, 4.9895610982735244e-12),
+        "costheta5": (1.675756083487473e-12, 5.1182931882077005e-12),
+        "costheta6": (1.5760353230761404e-12, 4.736330612172389e-12),
+        "costheta7": (1.6263369485761792e-12, 4.913505318082798e-12),
+        "costheta8": (1.7403350676338995e-12, 5.223319837133006e-12),
+        "costheta9": (1.7311116087677568e-12, 5.333605673696894e-12),
     }
-    actual_results = {
-        dirbin: (float(results_pkts[dirbin][0]), float(results_pkts[dirbin][1])) for dirbin in expected_results
-    }
+    actual_results = {spec: (float(results_pkts[spec][0]), float(results_pkts[spec][1])) for spec in expected_results}
     print(f"results: {actual_results}")
 
-    for dirbin in expected_results:
-        expected_mean = expected_results[dirbin][0]
-        actual_mean = actual_results[dirbin][0]
+    for spec in expected_results:
+        expected_mean = expected_results[spec][0]
+        actual_mean = actual_results[spec][0]
         assert math.isclose(actual_mean, expected_mean, rel_tol=1e-3)
-        expected_std = expected_results[dirbin][1]
-        actual_std = actual_results[dirbin][1]
+        expected_std = expected_results[spec][1]
+        actual_std = actual_results[spec][1]
         assert math.isclose(actual_std, expected_std, rel_tol=1e-3)
 
 
@@ -250,7 +249,7 @@ def test_spectra_get_flux_contributions_from_packets(benchmark: BenchmarkFixture
         timelowdays=timelowdays,
         timehighdays=timehighdays,
         lambda_bin_edges=lambda_bin_edges,
-    )[-1].collect()
+    )["all"].collect()
 
     integrated_flux_specout = np.trapezoid(dfspectrum["f_lambda"], x=dfspectrum["lambda_angstroms"])
     _contribution_list, array_flambda_emission_total, arraylambda_angstroms = benchmark(
@@ -286,3 +285,53 @@ def test_spectra_timeseries_subplots() -> None:
 
 def test_writespectra() -> None:
     at.spectra.writespectra.main(argsraw=[], modelpath=modelpath)
+
+
+def get_plotted_spectra(mockplot: t.Any, **kwargs: t.Any) -> list[tuple[np.ndarray, np.ndarray]]:
+    mockplot.reset_mock()
+    at.spectra.plot(argsraw=[], outputfile=outputpath, **kwargs)
+    return [(np.array(callargs[0][1]), np.array(callargs[0][2])) for callargs in mockplot.call_args_list]
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_spectra_direction_tokens_frompackets(mockplot: t.Any) -> None:
+    kwargs = {"specpath": modelpath, "timemin": 290, "timemax": 320, "frompackets": True}
+
+    costheta2 = get_plotted_spectra(mockplot, plotviewingangle=["costheta2"], **kwargs)
+    legacy_costheta2 = get_plotted_spectra(mockplot, plotviewingangle=[20], average_over_phi_angle=True, **kwargs)
+    assert len(costheta2) == len(legacy_costheta2) == 1
+    assert np.allclose(costheta2[0][1], legacy_costheta2[0][1], equal_nan=True)
+
+    phi3 = get_plotted_spectra(mockplot, plotviewingangle=["phi3"], **kwargs)
+    legacy_phi3 = get_plotted_spectra(mockplot, plotviewingangle=[3], average_over_theta_angle=True, **kwargs)
+    assert np.allclose(phi3[0][1], legacy_phi3[0][1], equal_nan=True)
+
+    dirbin23 = get_plotted_spectra(mockplot, plotviewingangle=["costheta2_phi3"], **kwargs)
+    legacy_dirbin23 = get_plotted_spectra(mockplot, plotviewingangle=[23], **kwargs)
+    assert np.allclose(dirbin23[0][1], legacy_dirbin23[0][1], equal_nan=True)
+
+    # phi-averaged, theta-averaged, individual, and spherically averaged series mixed in one plot
+    mixed = get_plotted_spectra(mockplot, plotviewingangle=["costheta2", "phi3", "23", "all"], **kwargs)
+    assert len(mixed) == 4
+    assert np.allclose(mixed[0][1], costheta2[0][1], equal_nan=True)
+    assert np.allclose(mixed[1][1], phi3[0][1], equal_nan=True)
+    assert np.allclose(mixed[2][1], dirbin23[0][1], equal_nan=True)
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_spectra_direction_tokens_from_files(mockplot: t.Any) -> None:
+    kwargs = {"specpath": modelpath_classic_3d, "timestep": "20-25", "plotinvalidpart": True}
+
+    costheta2 = get_plotted_spectra(mockplot, plotviewingangle=["costheta2"], **kwargs)
+    legacy_costheta2 = get_plotted_spectra(mockplot, plotviewingangle=[20], average_over_phi_angle=True, **kwargs)
+    assert len(costheta2) == len(legacy_costheta2) == 1
+    assert np.allclose(costheta2[0][1], legacy_costheta2[0][1], equal_nan=True)
+
+    # mix averaged bins, an individual bin, and the spherical average from spec.out in one plot
+    mixed = get_plotted_spectra(mockplot, plotviewingangle=["costheta2", "23", "all", "phi1"], **kwargs)
+    legacy_dirbin23 = get_plotted_spectra(mockplot, plotviewingangle=[23], **kwargs)
+    legacy_phi1 = get_plotted_spectra(mockplot, plotviewingangle=[1], average_over_theta_angle=True, **kwargs)
+    assert len(mixed) == 4
+    assert np.allclose(mixed[0][1], costheta2[0][1], equal_nan=True)
+    assert np.allclose(mixed[1][1], legacy_dirbin23[0][1], equal_nan=True)
+    assert np.allclose(mixed[3][1], legacy_phi1[0][1], equal_nan=True)

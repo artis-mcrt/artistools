@@ -356,3 +356,152 @@ def test_get_cellsofmpirank(tmp_path: Path) -> None:
     make_model(uneven_dir, npts=21, nprocs=4)
     assert list(at.get_cellsofmpirank(0, uneven_dir)) == list(range(6))
     assert list(at.get_cellsofmpirank(1, uneven_dir)) == list(range(6, 11))
+
+
+def test_parse_directionspec_token() -> None:
+    assert at.parse_directionspec_token("23") == "23"
+    assert at.parse_directionspec_token(23) == "23"
+    assert at.parse_directionspec_token("costheta2_phi3") == "23"
+    assert at.parse_directionspec_token("t2p3") == "23"
+    assert at.parse_directionspec_token("COSTHETA2") == "costheta2"
+    assert at.parse_directionspec_token("t2") == "costheta2"
+    assert at.parse_directionspec_token("phi3") == "phi3"
+    assert at.parse_directionspec_token("p3") == "phi3"
+    assert at.parse_directionspec_token("vpkt1") == "vpkt1"
+    assert at.parse_directionspec_token("vspec1") == "vpkt1"
+    assert at.parse_directionspec_token("v1") == "vpkt1"
+    assert at.parse_directionspec_token("all") == "all"
+    assert at.parse_directionspec_token("-1") == "all"
+
+    # legacy reinterpretation of bare integers by the global averaging flags
+    assert at.parse_directionspec_token(20, average_over_phi=True) == "costheta2"
+    assert at.parse_directionspec_token(3, average_over_theta=True) == "phi3"
+
+    assert at.directionspec_kind("costheta2") == "costheta"
+    assert at.directionspec_kind("phi3") == "phi"
+    assert at.directionspec_kind("23") == "dirbin"
+    assert at.directionspec_kind("all") == "sphere"
+    assert at.directionspec_kind("vpkt4") == "vpkt"
+
+    assert at.directionspec_index("costheta2") == 2
+    assert at.directionspec_index("vpkt4") == 4
+    assert at.directionspec_index("23") == 23
+    assert at.directionspec_index("all") == -1
+
+    assert at.directionspec_legacy_key("costheta2") == 20
+    assert at.directionspec_legacy_key("phi3") == 3
+    assert at.directionspec_legacy_key("23") == 23
+    assert at.directionspec_legacy_key("all") == -1
+    assert at.directionspec_legacy_key("vpkt4") == 4
+
+    with pytest.raises(ValueError, match="Unrecognised direction"):
+        at.parse_directionspec_token("notadirection")
+    with pytest.raises(AssertionError):
+        at.parse_directionspec_token("costheta12")
+    with pytest.raises(AssertionError):
+        at.parse_directionspec_token("phi10")
+    with pytest.raises(AssertionError):
+        at.parse_directionspec_token("100")
+    with pytest.raises(AssertionError):
+        at.parse_directionspec_token(25, average_over_phi=True)
+
+
+def test_directionspec_packet_filter() -> None:
+    import polars as pl
+
+    nphibins = at.get_viewingdirection_phibincount()
+    ncosthetabins = at.get_viewingdirection_costhetabincount()
+    ndirbins = at.get_viewingdirectionbincount()
+
+    dfpackets = pl.DataFrame({
+        "costhetabin": [c for c in range(ncosthetabins) for _ in range(nphibins)],
+        "phibin": [p for _ in range(ncosthetabins) for p in range(nphibins)],
+    }).with_columns(dirbin=pl.col("costhetabin") * nphibins + pl.col("phibin"))
+
+    # spherical average: keep every packet, full solid angle factor 1
+    expr, solidangle = at.directionspec_packet_filter("all")
+    assert solidangle == 1.0
+    assert dfpackets.filter(expr).height == ndirbins
+
+    # single direction bin: one bin, solid angle factor = number of bins
+    expr, solidangle = at.directionspec_packet_filter("23")
+    assert solidangle == float(ndirbins)
+    selected = dfpackets.filter(expr)
+    assert selected.height == 1
+    assert selected["dirbin"].item() == 23
+
+    # phi-averaged costheta bin: all phi bins for one costheta bin
+    expr, solidangle = at.directionspec_packet_filter("costheta2")
+    assert solidangle == float(ncosthetabins)
+    selected = dfpackets.filter(expr)
+    assert selected.height == nphibins
+    assert selected["costhetabin"].unique().to_list() == [2]
+
+    # theta-averaged phi bin: all costheta bins for one phi bin
+    expr, solidangle = at.directionspec_packet_filter("phi3")
+    assert solidangle == float(nphibins)
+    selected = dfpackets.filter(expr)
+    assert selected.height == ncosthetabins
+    assert selected["phibin"].unique().to_list() == [3]
+
+    with pytest.raises(ValueError, match="no real-packet filter"):
+        at.directionspec_packet_filter("vpkt0")
+
+
+def test_parse_direction_args() -> None:
+    import argparse
+
+    def make_args(**kwargs: t.Any) -> argparse.Namespace:
+        return argparse.Namespace(
+            plotviewingangle=kwargs.get("plotviewingangle"),
+            plotvspecpol=kwargs.get("plotvspecpol"),
+            average_over_phi_angle=kwargs.get("average_over_phi_angle", False),
+            average_over_theta_angle=kwargs.get("average_over_theta_angle", False),
+        )
+
+    assert at.parse_direction_args(make_args()) == []
+
+    args = make_args(plotviewingangle=["costheta2", "t3p4", "vpkt1", "all"], plotvspecpol=[0])
+    assert at.parse_direction_args(args) == ["vpkt0", "costheta2", "34", "vpkt1", "all"]
+
+    # legacy: -plotviewingangle 20 --average_over_phi_angle
+    args = make_args(plotviewingangle=[20, 50], average_over_phi_angle=True)
+    assert at.parse_direction_args(args) == ["costheta2", "costheta5"]
+
+    # all-costheta tokens normalise back to the legacy form for old code paths
+    args = make_args(plotviewingangle=["costheta2", "costheta5"])
+    specs = at.parse_direction_args(args)
+    assert specs == ["costheta2", "costheta5"]
+    assert args.average_over_phi_angle
+    assert args.plotviewingangle == [20, 50]
+    assert at.parse_direction_args(args) == specs  # re-parsing is stable
+
+    # legacy: -plotviewingangle -2 selects all bins of the relevant kind
+    args = make_args(plotviewingangle=[-2])
+    assert at.parse_direction_args(args) == [str(n) for n in range(at.get_viewingdirectionbincount())]
+    args = make_args(plotviewingangle=["alldirbins"], average_over_phi_angle=True)
+    assert at.parse_direction_args(args) == [f"costheta{n}" for n in range(at.get_viewingdirection_costhetabincount())]
+
+    # vpkt-only tokens normalise to the legacy plotvspecpol argument
+    args = make_args(plotviewingangle=["vpkt0", "v2"])
+    assert at.parse_direction_args(args) == ["vpkt0", "vpkt2"]
+    assert args.plotvspecpol == [0, 2]
+    assert args.plotviewingangle is None
+
+    with pytest.raises(ValueError, match="average_over_phi_angle contradicts"):
+        at.parse_direction_args(make_args(plotviewingangle=["phi3"], average_over_phi_angle=True))
+    with pytest.raises(ValueError, match="average_over_theta_angle contradicts"):
+        at.parse_direction_args(make_args(plotviewingangle=["costheta2"], average_over_theta_angle=True))
+
+
+def test_direction_args_argparse() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    at.spectra.plotspectra.addargs(parser)
+    args = parser.parse_args(["-dirbin", "-1"])
+    assert args.plotviewingangle == ["-1"]
+    assert at.parse_direction_args(args) == ["all"]
+
+    args = parser.parse_args(["-dirbin", "costheta2", "vpkt0", "23"])
+    assert at.parse_direction_args(args) == ["costheta2", "vpkt0", "23"]

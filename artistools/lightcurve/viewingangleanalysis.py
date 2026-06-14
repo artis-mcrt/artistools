@@ -146,47 +146,47 @@ define_colours_list2 = [
 
 
 def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> tuple[Sequence[int], dict[int, str]]:
+    """Translate the direction arguments into legacy integer direction bins and their labels.
+
+    This is a compatibility wrapper for plot modes that have not been updated to use direction spec keys
+    and therefore cannot mix virtual packet observers with real packet direction bins, or mix
+    phi/theta-averaged bins with individual direction bins.
+    """
     modelpath = Path(modelpath)
-    viewing_angle_data_exists = args.frompackets or bool(list(modelpath.glob("*_res.out*")))
-    if isinstance(args.plotviewingangle, int):
-        args.plotviewingangle = [args.plotviewingangle]
-    dirbins = []
-    if args.plotvspecpol and (modelpath / "vpkt.txt").is_file():
-        dirbins = args.plotvspecpol
-    elif args.plotviewingangle and args.plotviewingangle[0] == -2 and viewing_angle_data_exists:
-        if args.average_over_phi_angle:
-            dirbins = list(range(0, at.get_viewingdirectionbincount(), at.get_viewingdirection_phibincount()))
-        elif args.average_over_theta_angle:
-            dirbins = list(range(at.get_viewingdirection_phibincount()))
-        else:
-            dirbins = list(range(at.get_viewingdirectionbincount()))
-    elif args.plotviewingangle and viewing_angle_data_exists:
-        dirbins = args.plotviewingangle
-    else:
-        dirbins = [-1]
+    directionspecs = at.parse_direction_args(args)
 
-    dirbin_definition: dict[int, str] = {}
+    vpktspecs = [spec for spec in directionspecs if at.directionspec_kind(spec) == "vpkt"]
+    if vpktspecs:
+        if len(vpktspecs) < len(directionspecs):
+            sys.exit(
+                "ERROR: mixing virtual packet observers with real packet direction bins is not supported for this"
+                " plot mode"
+            )
+        if not (modelpath / "vpkt.txt").is_file():
+            sys.exit(f"ERROR: virtual packet observer directions requested, but {modelpath / 'vpkt.txt'} not found")
 
-    if args.plotvspecpol:
-        dirbin_definition = at.get_vspec_dir_labels(modelpath=modelpath, usedegrees=args.usedegrees)
-    else:
-        dirbin_definition = at.get_dirbin_labels(
-            dirbins=dirbins,
-            modelpath=modelpath,
-            average_over_phi=args.average_over_phi_angle,
-            average_over_theta=args.average_over_theta_angle,
-            usedegrees=args.usedegrees,
+        return [at.directionspec_index(spec) for spec in vpktspecs], at.get_vspec_dir_labels(
+            modelpath=modelpath, usedegrees=args.usedegrees
         )
 
-        if args.average_over_phi_angle:
-            for dirbin in dirbin_definition:
-                assert dirbin % at.get_viewingdirection_phibincount() == 0 or dirbin == -1
+    viewing_angle_data_exists = args.frompackets or bool(list(modelpath.glob("*_res.out*")))
+    if not directionspecs or not viewing_angle_data_exists:
+        directionspecs = ["all"]
 
-        if args.average_over_theta_angle:
-            for dirbin in dirbin_definition:
-                assert dirbin < at.get_viewingdirection_costhetabincount() or dirbin == -1
+    if len({at.directionspec_kind(spec) for spec in directionspecs if spec != "all"}) > 1:
+        sys.exit(
+            "ERROR: mixing phi/theta-averaged direction bins with individual direction bins is not supported for"
+            " this plot mode"
+        )
 
-    return dirbins, dirbin_definition
+    dirbin_definition = {
+        at.directionspec_legacy_key(spec): label
+        for spec, label in at.get_directionspec_labels(
+            directionspecs, modelpath=modelpath, usedegrees=args.usedegrees
+        ).items()
+    }
+
+    return [at.directionspec_legacy_key(spec) for spec in directionspecs], dirbin_definition
 
 
 def save_viewing_angle_data_for_plotting(band_name: str, modelname: str, args: argparse.Namespace) -> None:

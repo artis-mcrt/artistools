@@ -17,6 +17,7 @@ from artistools.spectra.spectra import get_lambda_bin_edges as get_lambda_bin_ed
 from artistools.spectra.spectra import get_reference_spectrum as get_reference_spectrum
 from artistools.spectra.spectra import get_specpol_data as get_specpol_data
 from artistools.spectra.spectra import get_spectra as get_spectra
+from artistools.spectra.spectra import get_spectra_by_directionspec as get_spectra_by_directionspec
 from artistools.spectra.spectra import get_spectrum_at_time as get_spectrum_at_time
 from artistools.spectra.spectra import get_vspecpol_data as get_vspecpol_data
 from artistools.spectra.spectra import get_vspecpol_spectrum as get_vspecpol_spectrum

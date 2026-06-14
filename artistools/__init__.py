@@ -74,6 +74,11 @@ from artistools.inputmodel import save_modeldata as save_modeldata
 from artistools.misc import anyexist as anyexist
 from artistools.misc import average_direction_bins as average_direction_bins
 from artistools.misc import decode_roman_numeral as decode_roman_numeral
+from artistools.misc import directionspec_from_legacy as directionspec_from_legacy
+from artistools.misc import directionspec_index as directionspec_index
+from artistools.misc import directionspec_kind as directionspec_kind
+from artistools.misc import directionspec_legacy_key as directionspec_legacy_key
+from artistools.misc import directionspec_packet_filter as directionspec_packet_filter
 from artistools.misc import firstexisting as firstexisting
 from artistools.misc import flatten_list as flatten_list
 from artistools.misc import get_atomic_number as get_atomic_number
@@ -85,6 +90,7 @@ from artistools.misc import get_costheta_bins as get_costheta_bins
 from artistools.misc import get_costhetabin_phibin_labels as get_costhetabin_phibin_labels
 from artistools.misc import get_deposition as get_deposition
 from artistools.misc import get_dirbin_labels as get_dirbin_labels
+from artistools.misc import get_directionspec_labels as get_directionspec_labels
 from artistools.misc import get_elsymbol as get_elsymbol
 from artistools.misc import get_elsymbols_df as get_elsymbols_df
 from artistools.misc import get_elsymbolslist as get_elsymbolslist
@@ -122,6 +128,8 @@ from artistools.misc import makelist as makelist
 from artistools.misc import match_closest_time as match_closest_time
 from artistools.misc import merge_pdf_files as merge_pdf_files
 from artistools.misc import parallel_map as parallel_map
+from artistools.misc import parse_direction_args as parse_direction_args
+from artistools.misc import parse_directionspec_token as parse_directionspec_token
 from artistools.misc import parse_range as parse_range
 from artistools.misc import parse_range_list as parse_range_list
 from artistools.misc import print_theta_phi_definitions as print_theta_phi_definitions
