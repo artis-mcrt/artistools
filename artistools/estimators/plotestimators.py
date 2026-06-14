@@ -645,7 +645,9 @@ def get_xlist(
             print(f"  would have only {args.xbins} bins. Replacing with 25")
             args.xbins = 25
 
-    if args.xbins is not None:
+    if args.xbins is not None and args.xbins == 0:
+        estimators = estimators.with_columns(xvalue_binned=pl.lit(None).cast(pl.Float64))
+    elif args.xbins is not None:
         xbinedges = np.linspace(xmin, xmax, args.xbins)
         xlower = xbinedges[:-1]
         xupper = xbinedges[1:]
