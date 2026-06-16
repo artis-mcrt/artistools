@@ -719,29 +719,28 @@ def peakmag_risetime_declinerate_init(
     modelnames = []  # save names of models
 
     for modelnumber, modelpath in enumerate(modelpaths):
-        lightcurve_data: t.Any
+        lcdataframes: dict[int, pl.LazyFrame] = {}
 
         if not args.filter:
             lcname = "light_curve_res.out" if args.plotviewingangle else "light_curve.out"
             lcpath = at.firstexisting(lcname, folder=modelpath, tryzipped=True)
-            lightcurve_data = at.lightcurve.readfile(lcpath)
+            lcdataframes = at.lightcurve.readfile(lcpath)
 
         # check if doing viewing angle stuff, and if so define which data to use
-        angles, _ = parse_directionbin_args(modelpath, args)
+        dirbins, _ = parse_directionbin_args(modelpath, args)
         if not args.filter and args.plotviewingangle:
-            lcdataframes = lightcurve_data
+            dirbins = [-1]
 
-        for angle in angles:
+        for dirbin in dirbins:
             modelname = at.get_model_name(modelpath)
             modelnames.append(modelname)  # save for later
             print(f"Reading spectra: {modelname}")
             if args.filter:
                 lightcurve_data_filters = at.lightcurve.generate_band_lightcurve_data(
-                    modelpath, args, angle, modelnumber=modelnumber
+                    modelpath, args, dirbin, modelnumber=modelnumber
                 )
                 plottinglist = args.filter
-            elif args.plotviewingangle:
-                lightcurve_data = lcdataframes[angle]
+
             if not args.filter:
                 plottinglist = ["lightcurve"]
 
@@ -749,14 +748,13 @@ def peakmag_risetime_declinerate_init(
                 if args.filter:
                     time, brightness = at.lightcurve.get_band_lightcurve(lightcurve_data_filters, band_name, args)
                 else:
-                    assert isinstance(lightcurve_data, pd.DataFrame)
-                    lightcurve_data = lightcurve_data.loc[
-                        (lightcurve_data["time"] > args.timemin) & (lightcurve_data["time"] < args.timemax)
-                    ]
-
-                    lightcurve_data["mag"] = 4.74 - (2.5 * np.log10(lightcurve_data["lum"]))
-
-                    lightcurve_data = lightcurve_data.replace([np.inf, -np.inf], 0)
+                    lightcurve_data = (
+                        lcdataframes[dirbin]
+                        .filter(pl.col("time_days").is_between(args.timemin, args.timemax))
+                        .fill_nan(0.0)
+                        .select("time_days", "mag")
+                        .collect()
+                    )
                     brightness = np.array(
                         [mag for mag in lightcurve_data["mag"] if mag != 0], dtype=np.float64
                     )  # drop times with 0 brightness
@@ -770,7 +768,7 @@ def peakmag_risetime_declinerate_init(
                         time,
                         brightness,
                         modelname,
-                        angle,
+                        dirbin,
                         band_name,
                         args,
                         filternames_conversion_dict=filternames_conversion_dict,
