@@ -55,7 +55,7 @@ jobs:
                   activate-environment: true
 
             - name: Build wheels
-              uses: pypa/cibuildwheel@v4.0
+              uses: pypa/cibuildwheel@v4.1
               with:
                   output-dir: wheelhouse
 
