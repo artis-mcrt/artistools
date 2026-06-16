@@ -1256,7 +1256,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 with iio.get_writer(gifname, mode="I", duration=1000) as writer:
                     for filename in outputfiles:
                         image = iio.imread(filename)
-                        writer.append_data(image)  # type: ignore[attr-defined] # pyright: ignore[reportAttributeAccessIssue]
+                        writer.append_data(image)  # type: ignore[attr-defined] # pyright: ignore[reportAttributeAccessIssue]  # ty:ignore[unresolved-attribute]
                 print(f"Created gif: {gifname}")
             elif args.format == "pdf":
                 at.merge_pdf_files(outputfiles)

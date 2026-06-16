@@ -309,7 +309,7 @@ class ExponentLabelFormatter(mplticker.ScalarFormatter):
             stroffset = stroffset.replace(r"$\times", "$") + " "
         strnewlabel = self.labeltemplate.format(stroffset)
         assert self.axis is not None
-        self.axis.set_label_text(strnewlabel)  # type: ignore[union-attr] # pyright: ignore[reportAttributeAccessIssue]
+        self.axis.set_label_text(strnewlabel)  # type: ignore[union-attr] # pyright: ignore[reportAttributeAccessIssue]  # ty:ignore[unresolved-attribute]
 
     @t.override
     def set_locs(self, locs: t.Any) -> None:

@@ -47,13 +47,10 @@ repos:
           - id: uv-sync
             args: [--frozen, --all-extras, --no-install-project]
 
-    - repo: local
+    - repo: https://github.com/astral-sh/ty-pre-commit
+      rev: v0.0.49
       hooks:
-          - id: pyrefly-check
-            name: Pyrefly type check
-            pass_filenames: false
-            language: system
-            entry: uv run --frozen -- pyrefly check --ignore=unused-ignore
+          - id: ty
 
 ci:
     skip: [pyrefly-check]

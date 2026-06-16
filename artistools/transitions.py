@@ -584,7 +584,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         xvalues,
         yvalues,
         temperature_list,
-        vardict,
+        {k: float(v) for k, v in vardict.items()},
         ionlist,
         ionpopdict,
         args.xmin,
