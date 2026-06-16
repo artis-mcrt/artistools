@@ -258,6 +258,7 @@ def get_lambda_bin_edges(
         x_bin_edges = np.arange(xmin_plot - deltax * 0.5, xmax_plot + deltax * 1.5, deltax)
         lambda_bin_edges = np.sort(convert_unit_to_angstroms(x_bin_edges, xunit))
     elif deltalambda is not None:
+        deltalambda = float(deltalambda)
         if not deltalambda > 0:
             msg = f"deltalambda must be positive, got {deltalambda}"
             raise ValueError(msg)
@@ -312,7 +313,7 @@ def convert_xunit_aliases_to_canonical(xunit: str) -> str:
             raise ValueError(msg)
 
 
-def convert_angstroms_to_unit[T: (float, int, npt.NDArray[np.floating])](value_angstroms: T, new_units: str) -> T:
+def convert_angstroms_to_unit[T: (float, npt.NDArray[np.floating])](value_angstroms: T, new_units: str) -> T:
     """Convert a wavelength in angstroms to a different unit, either length, frequency, or energy."""
     hc_ev_angstroms = const.h_ev_s * const.c_ang_per_s  # [eV angstroms]
     hc_erg_angstroms = hc_ev_angstroms * 1.60218e-12  # [erg angstroms]
