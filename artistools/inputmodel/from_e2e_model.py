@@ -23,7 +23,7 @@ t_model_init_days = 0.1 * day  # snapshot time is fixed by the npz files
 
 
 def sphkernel(
-    dist: npt.NDArray[np.floating], hsph: float | npt.NDArray[np.float64], nu: float
+    dist: npt.NDArray[np.floating], hsph: float | npt.NDArray[np.float64], nu: int
 ) -> npt.NDArray[np.floating]:
     # smoothing kernel for SPH-like interpolation of particle
     # data
@@ -1089,11 +1089,12 @@ def float_or_str(x: str) -> float | str:
 def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-outputpath", "-o", default=None, help="Path of output ARTIS model file")
 
-    parser.add_argument("-npz", required=True, help="Path to the model npz file")
+    parser.add_argument("-npz", required=True, type=Path, help="Path to the model npz file")
 
     parser.add_argument(
         "-iso",
         default=None,
+        type=Path,
         help="Path to the nuclide information npy file. If not provided, will be assumed to be [npz_path]/iso_table.npy",
     )
 
