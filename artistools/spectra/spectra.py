@@ -15,6 +15,7 @@ import numpy.typing as npt
 import pandas as pd
 import polars as pl
 import polars.selectors as cs
+from matplotlib.typing import ColorType
 
 import artistools.constants as const
 import artistools.packets as atpackets
@@ -43,7 +44,7 @@ class FluxContributionTuple(t.NamedTuple):
     linelabel: str
     array_flambda_emission: npt.NDArray[np.floating]
     array_flambda_absorption: npt.NDArray[np.floating]
-    color: t.Any
+    color: ColorType | None
 
 
 def timeshift_fluxscale_co56law(scaletoreftime: float | int | None, spectime: float) -> float:
@@ -319,13 +320,13 @@ def convert_angstroms_to_unit[T: (float, npt.NDArray[np.floating])](value_angstr
     hc_erg_angstroms = hc_ev_angstroms * 1.60218e-12  # [erg angstroms]
     match new_units.lower():
         case "erg":
-            return hc_erg_angstroms / value_angstroms
+            return hc_erg_angstroms / value_angstroms  # ty:ignore[invalid-return-type]
         case "ev":
-            return hc_ev_angstroms / value_angstroms
+            return hc_ev_angstroms / value_angstroms  # ty:ignore[invalid-return-type]
         case "kev":
-            return hc_ev_angstroms / value_angstroms / 1e3
+            return hc_ev_angstroms / value_angstroms / 1.0e3  # ty:ignore[invalid-return-type]
         case "mev":
-            return hc_ev_angstroms / value_angstroms / 1e6
+            return hc_ev_angstroms / value_angstroms / 1.0e6  # ty:ignore[invalid-return-type]
         case "hz":
             return const.c_ang_per_s / value_angstroms
         case "angstroms":
@@ -345,19 +346,19 @@ def convert_unit_to_angstroms[T: (float, npt.NDArray[np.floating])](value: T, ol
     hc_ev_angstroms = h * c  # [eV angstroms]
     match old_units.lower():
         case "ev":
-            return hc_ev_angstroms / value
+            return hc_ev_angstroms / value  # ty:ignore[invalid-return-type]
         case "kev":
-            return hc_ev_angstroms / value / 1e3
+            return hc_ev_angstroms / value / 1e3  # ty:ignore[invalid-return-type]
         case "mev":
-            return hc_ev_angstroms / value / 1e6
+            return hc_ev_angstroms / value / 1e6  # ty:ignore[invalid-return-type]
         case "hz":
             return c / value
         case "angstroms":
             return value
         case "nm":
-            return value * 10
+            return value * 10  # ty:ignore[invalid-return-type]
         case "micron":
-            return value * 10000
+            return value * 10000  # ty:ignore[invalid-return-type]
     msg = f"Unknown xunit {old_units}"
     raise ValueError(msg)
 
@@ -1528,9 +1529,9 @@ def sort_and_reduce_flux_contribution_list(
 
     for row in contribution_list:
         if row.linelabel != "Other" and fixedionlist and row.linelabel in fixedionlist:
-            contribution_list_out.append(row._replace(color=color_list[fixedionlist.index(row.linelabel)]))
+            contribution_list_out.append(row._replace(color=color_list[fixedionlist.index(row.linelabel)]))  # ty:ignore[invalid-argument-type]
         elif row.linelabel != "Other" and not fixedionlist and index < maxseriescount:
-            contribution_list_out.append(row._replace(color=color_list[index]))
+            contribution_list_out.append(row._replace(color=color_list[index]))  # ty:ignore[invalid-argument-type]
             plotted_ion_list.append(row.linelabel)
         else:
             remainder_fluxcontrib += row.fluxcontrib

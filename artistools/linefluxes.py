@@ -237,8 +237,8 @@ def get_closelines(
         featurelabel=featurelabel,
         approxlambda=approxlambdalabel,
         linelistindices=tuple(dflinelistclosematches["lineindex"].to_list()),
-        lowestlambda=lowestlambda,
-        highestlambda=highestlambda,
+        lowestlambda=lowestlambda,  # ty:ignore[invalid-argument-type]
+        highestlambda=highestlambda,  # ty:ignore[invalid-argument-type]
         atomic_number=atomic_number,
         ion_stage=ion_stage,
         upperlevelindicies=tuple(dflinelistclosematches["upperlevelindex"].to_list()),
@@ -413,7 +413,7 @@ def plot_nne_te_points(
     color: float | str | None,
     marker: MarkerType,
 ) -> None:
-    color_adj = [(c + 0.1) / 1.1 for c in mpl.colors.to_rgb(color)]  # type: ignore[arg-type] # pyright: ignore[reportAttributeAccessIssue]
+    color_adj = [(c + 0.1) / 1.1 for c in mpl.colors.to_rgb(color)]  # type: ignore[arg-type] # pyright: ignore[reportAttributeAccessIssue]  # ty:ignore[invalid-argument-type]
     hitcount: dict[tuple[float, float], int] = {}
     for log10nne, Te in zip(em_log10nne, em_Te, strict=True):
         assert isinstance(log10nne, float | np.floating)
@@ -828,7 +828,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     for i in range(len(args.label)):
         if args.label[i] is None:
             assert hasattr(args.label, "__setitem__")
-            args.label[i] = at.get_model_name(args.modelpath[i])
+            args.label[i] = at.get_model_name(args.modelpath[i])  # ty:ignore[invalid-assignment]
 
     at.plottools.set_mpl_style()
 
