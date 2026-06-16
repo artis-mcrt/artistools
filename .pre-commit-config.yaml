@@ -53,5 +53,5 @@ repos:
           - id: ty
 
 ci:
-    skip: [pyrefly-check]
+    skip: []
     autoupdate_schedule: quarterly
