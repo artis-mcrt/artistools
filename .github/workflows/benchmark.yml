@@ -12,7 +12,7 @@ on:
 jobs:
     codspeed-benchmarks:
         timeout-minutes: 180
-        runs-on: ubuntu-24.04-arm
+        runs-on: ubuntu-26.04-arm
         env:
             PYO3_USE_ABI3_FORWARD_COMPATIBILITY: 1
             UV_FROZEN: 1
@@ -47,6 +47,7 @@ jobs:
 
             - name: Install artistools
               run: |
+                  sudo apt-get -y liblzma-dev
                   rustup update stable
                   uv sync --compile-bytecode
 
