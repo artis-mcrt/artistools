@@ -1233,7 +1233,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             args.multiplot = True
             args.format = "png"
 
-        outputfiles = []
+        outputfiles: list[str] = []
         for timesteps_included in frames_timesteps_included:
             outfilename = make_figure(
                 modelpath=modelpath,

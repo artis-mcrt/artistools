@@ -246,7 +246,7 @@ python-interpreter-path = ".venv/bin/python3"
 missing-import = false
 unbound-name = false
 unsupported-operation = false
-implicit-any-empty-container = false
+implicit-any-empty-container = true
 
 [tool.pyright]
 venvPath = "."

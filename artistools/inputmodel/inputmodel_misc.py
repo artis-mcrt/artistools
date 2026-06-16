@@ -292,7 +292,7 @@ def read_modelfile_text(
                 "one option must match uniquely"
             )
 
-            colrenames = {}
+            colrenames: dict[str, str] = {}
             if matched_pos_xyz_min:
                 print("  model cell positions are consistent with x-y-z min corner columns")
                 colrenames = {"inputpos_a": "pos_x_min", "inputpos_b": "pos_y_min", "inputpos_c": "pos_z_min"}

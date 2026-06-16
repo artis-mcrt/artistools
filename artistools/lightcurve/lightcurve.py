@@ -387,7 +387,8 @@ def get_spectrum_in_filter_range(
     )
     assert spectrum is not None
 
-    wavelength_from_spectrum, flux = [], []
+    wavelength_from_spectrum: list[float] = []
+    flux: list[float] = []
     for wavelength, flambda in zip(spectrum["lambda_angstroms"], spectrum["f_lambda"], strict=True):
         if wavefilter_min <= wavelength <= wavefilter_max:  # to match the spectrum wavelengths to those of the filter
             wavelength_from_spectrum.append(wavelength)
@@ -467,8 +468,8 @@ def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pd.Dat
     if "dist_mpc" not in metadata and "z" in metadata:
         from astropy import cosmology
 
-        cosmo = cosmology.FlatLambdaCDM(H0=70, Om0=0.3)
-        metadata["dist_mpc"] = cosmo.luminosity_distance(metadata["z"]).value  # pyright: ignore[reportAttributeAccessIssue]
+        cosmo = cosmology.FlatLambdaCDM(H0=70, Om0=0.3)  # pyright: ignore[reportCallIssue] # pyrefly: ignore[unexpected-keyword]  # ty:ignore[unknown-argument]
+        metadata["dist_mpc"] = cosmo.luminosity_distance(metadata["z"]).value  # pyright: ignore[reportAttributeAccessIssue]  # ty:ignore[unresolved-attribute]
         print(f"luminosity distance from redshift = {metadata['dist_mpc']} for {metadata['label']}")
 
     if "dist_mpc" in metadata:

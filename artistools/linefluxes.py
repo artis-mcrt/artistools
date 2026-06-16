@@ -155,7 +155,7 @@ def get_line_fluxes_from_pops(
                 feature.upperlevelindicies, feature.lowerlevelindicies, strict=False
             ):
                 unaccounted_shellvol = 0.0  # account for the volume of empty shells
-                unaccounted_shells = []
+                unaccounted_shells: list[int] = []
                 for modelgridindex in modeldata.index:
                     try:
                         levelpop = dfnltepops.filter(
@@ -422,7 +422,12 @@ def plot_nne_te_points(
         dictkey = (float(log10nne), float(Te))
         hitcount[dictkey] = hitcount.get(dictkey, 0) + 1
 
-    arr_log10nne, arr_te = zip(*hitcount.keys(), strict=False) if hitcount else ([], [])
+    arr_log10nne: list[float] = []
+    arr_te: list[float] = []
+    if hitcount:
+        log10nne_te_pairs = list(hitcount.keys())
+        arr_log10nne = [x[0] for x in log10nne_te_pairs]
+        arr_te = [x[1] for x in log10nne_te_pairs]
     arr_weight = np.array([hitcount[x, y] for x, y in zip(arr_log10nne, arr_te, strict=False)])
     arr_weight = (arr_weight / normtotalpackets) * 500
     arr_size = np.sqrt(arr_weight) * 10
