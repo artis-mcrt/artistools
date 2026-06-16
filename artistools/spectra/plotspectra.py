@@ -56,10 +56,10 @@ def path_is_artis_model(filepath: str | Path) -> bool:
 def check_time_range_is_valid(modelpath: Path, timemin: float | int, timemax: float | int, allow_invalid: bool) -> None:
     with contextlib.suppress(FileNotFoundError):
         _, validrange_start_days, validrange_end_days = get_escaped_arrivalrange(modelpath)
-        problem_messages = []
+        problem_messages: list[str] = []
         if validrange_start_days is None and validrange_end_days is None:
             problem_messages.append(
-                f" {'WARNING' if allow_invalid else 'ERROR'}:The model has no valid time range days"
+                f" {'WARNING' if allow_invalid else 'ERROR'}: The model has no valid time range days"
             )
         if validrange_start_days is not None and timemin < validrange_start_days:
             problem_messages.append(

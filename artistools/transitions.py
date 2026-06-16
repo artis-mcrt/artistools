@@ -35,7 +35,7 @@ def get_kurucz_transitions() -> tuple[pd.DataFrame, list[IonTuple]]:
         upper_statweight: float
 
     translist = []
-    ionlist = []
+    ionlist: list[IonTuple] = []
     with Path("gfall.dat").open(encoding="utf-8") as fnist:
         for line in fnist:
             row = line.split()
@@ -395,7 +395,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     xvalues = np.arange(args.xmin, args.xmax, step=plot_resolution)
     yvalues = np.zeros((len(temperature_list) + 1, len(ionlist), len(xvalues)))
     fe2depcoeff, ni2depcoeff = None, None
-    iterdict = (
+    iterdict: t.Iterable[dict[str, t.Any]] = (
         adata.iter_rows(named=True)
         if args.atomicdatabase == "artis"
         else ({"Z": Z, "ion_stage": ion_stage, "levels": None} for Z, ion_stage in ionlist)

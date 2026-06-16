@@ -150,7 +150,7 @@ def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> 
     viewing_angle_data_exists = args.frompackets or bool(list(modelpath.glob("*_res.out*")))
     if isinstance(args.plotviewingangle, int):
         args.plotviewingangle = [args.plotviewingangle]
-    dirbins = []
+    dirbins: list[int] = []
     if args.plotvspecpol and (modelpath / "vpkt.txt").is_file():
         dirbins = args.plotvspecpol
     elif args.plotviewingangle and args.plotviewingangle[0] == -2 and viewing_angle_data_exists:
@@ -675,7 +675,7 @@ def second_band_brightness_at_peak_first_band(
     modelnumber: int,
     args: argparse.Namespace,
 ) -> list[float]:
-    second_band_brightness = []
+    second_band_brightness: list[float] = []
     for anglenumber, _ in enumerate(data[f"time_{bands[0]}max"]):
         lightcurve_data = at.lightcurve.generate_band_lightcurve_data(
             modelpath, args, anglenumber, modelnumber=modelnumber

@@ -422,11 +422,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     modelpath = args.modelpath
 
-    pdf_list = []
-    modelgridindexlist = []
+    pdf_list: list[str] = []
+    modelgridindexlist: list[int] = []
 
     if args.velocity >= 0.0:
-        modelgridindexlist = [at.inputmodel.get_mgi_of_velocity_kms(modelpath, args.velocity)]
+        mgi = at.inputmodel.get_mgi_of_velocity_kms(modelpath, args.velocity)
+        assert mgi is not None, f"Could not find a cell with velocity {args.velocity:.3f} km/s"
+        modelgridindexlist = [mgi]
     elif args.modelgridindex is None:
         modelgridindexlist = [0]
     else:

@@ -204,9 +204,11 @@ def get_levels(
     """Return a polars DataFrame of energy levels."""
     adatafilename = Path(modelpath, "adata.txt")
 
-    transitionsdict = get_transitiondata(modelpath, ionlist=ionlist, quiet=quiet) if get_transitions else {}
+    transitionsdict: dict[tuple[int, int], pl.DataFrame] = (
+        get_transitiondata(modelpath, ionlist=ionlist, quiet=quiet) if get_transitions else {}
+    )
 
-    phixsdict = {}
+    phixsdict: dict[tuple[int, int, int], tuple[npt.NDArray[t.Any], npt.NDArray[t.Any]]] = {}
     if get_photoionisations:
         phixs_filename = Path(modelpath, "phixsdata_v2.txt")
 

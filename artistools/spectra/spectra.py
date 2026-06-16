@@ -984,8 +984,8 @@ def get_flux_contributions(
     else:
         dbinlist = [directionbin]
 
-    emissiondata = {}
-    absorptiondata = {}
+    emissiondata: dict[int, pl.DataFrame] = {}
+    absorptiondata: dict[int, pl.DataFrame] = {}
     maxion: int | None = None
     for dbin in dbinlist:
         if getemission:
@@ -1296,6 +1296,8 @@ def get_flux_contributions_from_packets(
             cols.add("dirbin")
 
     dfpackets = lzdfpackets.select(cs.by_name(cols, require_all=False)).collect()
+    emissiongroups: dict[str, pl.DataFrame] = {}
+    emission_e_rf_sum: dict[str, float] = {}
     if getemission:
         empackets = (
             dfpackets
@@ -1304,13 +1306,12 @@ def get_flux_contributions_from_packets(
             .drop_nulls("emissiontype_str")
         )
         emissiongroups = {k: v.drop(cs.by_dtype(pl.String)) for (k,), v in empackets.group_by("emissiontype_str")}
-        emission_e_rf_sum: dict[str, float] = dict(
+        emission_e_rf_sum = dict(
             empackets.group_by("emissiontype_str").agg(pl.col("e_rf").sum().alias("e_rf")).iter_rows()
         )
-    else:
-        emissiongroups = {}
-        emission_e_rf_sum = {}
 
+    absorptiongroups: dict[str, pl.DataFrame] = {}
+    absorption_e_rf_sum: dict[str, float] = {}
     if getabsorption:
         abspackets = (
             dfpackets
@@ -1319,12 +1320,9 @@ def get_flux_contributions_from_packets(
             .drop_nulls("absorptiontype_str")
         )
         absorptiongroups = {k: v.drop(cs.by_dtype(pl.String)) for (k,), v in abspackets.group_by("absorptiontype_str")}
-        absorption_e_rf_sum: dict[str, float] = dict(
+        absorption_e_rf_sum = dict(
             abspackets.group_by("absorptiontype_str").agg(pl.col("e_rf").sum().alias("e_rf")).iter_rows()
         )
-    else:
-        absorptiongroups = {}
-        absorption_e_rf_sum = {}
 
     del dfpackets
 

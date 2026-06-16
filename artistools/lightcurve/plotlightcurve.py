@@ -568,7 +568,7 @@ def make_lightcurve_plot(
 
         else:
             dirbin = args.plotviewingangle or (args.plotvspecpol or [-1])
-            escape_types = ["TYPE_RPKT"] if showuvoir else []
+            escape_types: list[str] = ["TYPE_RPKT"] if showuvoir else []
             if showgamma:
                 escape_types.append("TYPE_GAMMA")
 
