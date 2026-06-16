@@ -960,10 +960,11 @@ def make_emissionabsorption_plot(
                 )
                 for x in contributions_sorted_reduced
             ])
+            assert not any(x.color is None for x in contributions_sorted_reduced)
             stackplot = axis.stackplot(
                 dfabsorptionspectra[0]["x"],
                 [dfspec["y"] * scalefactor for dfspec in dfabsorptionspectra],
-                colors=[x.color for x in contributions_sorted_reduced],
+                colors=[x.color for x in contributions_sorted_reduced if x.color is not None],
                 linewidth=0,
             )
             plotobjects.extend(stackplot)
@@ -984,7 +985,7 @@ def make_emissionabsorption_plot(
             absstackplot = axis.stackplot(
                 dfabsorptionspectra[0]["x"],
                 [-dfspec["y"] * scalefactor for dfspec in dfabsorptionspectra],
-                colors=facecolors,  # type: ignore[arg-type] # pyright: ignore[reportArgumentType]
+                colors=facecolors,  # type: ignore[arg-type] # pyright: ignore[reportArgumentType]  # ty:ignore[invalid-argument-type]
                 linewidth=0,
             )
             if not args.showemission:
@@ -1065,7 +1066,7 @@ def make_emissionabsorption_plot(
 
     ymax = max(ymaxrefall, scalefactor * max_f_emission_total * 1.2)
     if args.ymax is None:
-        axis.set_ylim(top=ymax)
+        axis.set_ylim(top=ymax)  # ty:ignore[invalid-argument-type]
 
     return plotobjects, plotobjectlabels, dfaxisdata
 
