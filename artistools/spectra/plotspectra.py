@@ -56,10 +56,10 @@ def path_is_artis_model(filepath: str | Path) -> bool:
 def check_time_range_is_valid(modelpath: Path, timemin: float | int, timemax: float | int, allow_invalid: bool) -> None:
     with contextlib.suppress(FileNotFoundError):
         _, validrange_start_days, validrange_end_days = get_escaped_arrivalrange(modelpath)
-        problem_messages = []
+        problem_messages: list[str] = []
         if validrange_start_days is None and validrange_end_days is None:
             problem_messages.append(
-                f" {'WARNING' if allow_invalid else 'ERROR'}:The model has no valid time range days"
+                f" {'WARNING' if allow_invalid else 'ERROR'}: The model has no valid time range days"
             )
         if validrange_start_days is not None and timemin < validrange_start_days:
             problem_messages.append(
@@ -960,10 +960,11 @@ def make_emissionabsorption_plot(
                 )
                 for x in contributions_sorted_reduced
             ])
+            assert not any(x.color is None for x in contributions_sorted_reduced)
             stackplot = axis.stackplot(
                 dfabsorptionspectra[0]["x"],
                 [dfspec["y"] * scalefactor for dfspec in dfabsorptionspectra],
-                colors=[x.color for x in contributions_sorted_reduced],
+                colors=[x.color for x in contributions_sorted_reduced if x.color is not None],
                 linewidth=0,
             )
             plotobjects.extend(stackplot)
@@ -984,7 +985,7 @@ def make_emissionabsorption_plot(
             absstackplot = axis.stackplot(
                 dfabsorptionspectra[0]["x"],
                 [-dfspec["y"] * scalefactor for dfspec in dfabsorptionspectra],
-                colors=facecolors,  # type: ignore[arg-type] # pyright: ignore[reportArgumentType]
+                colors=facecolors,  # type: ignore[arg-type] # pyright: ignore[reportArgumentType]  # ty:ignore[invalid-argument-type]
                 linewidth=0,
             )
             if not args.showemission:
@@ -1065,7 +1066,7 @@ def make_emissionabsorption_plot(
 
     ymax = max(ymaxrefall, scalefactor * max_f_emission_total * 1.2)
     if args.ymax is None:
-        axis.set_ylim(top=ymax)
+        axis.set_ylim(top=ymax)  # ty:ignore[invalid-argument-type]
 
     return plotobjects, plotobjectlabels, dfaxisdata
 
