@@ -17,12 +17,12 @@ env:
 jobs:
     lint:
         name: Format, lint, and type check
-        runs-on: ubuntu-24.04-arm
+        runs-on: ubuntu-26.04-arm
         steps:
             - name: Checkout Code
               uses: actions/checkout@v6
 
-            - uses: astral-sh/setup-uv@v8.1.0
+            - uses: astral-sh/setup-uv@v8.2.0
               id: setup-uv
               with:
                   activate-environment: true
@@ -88,14 +88,14 @@ jobs:
             fail-fast: false
             matrix:
                 python-version: ['3.12', '3.13', '3.14', 3.14t]
-        runs-on: ubuntu-24.04
+        runs-on: ubuntu-26.04${{ !endsWith(matrix.python-version, 't') && '-arm' || '' }}
         name: pytest python ${{ matrix.python-version }}
         steps:
             - name: Checkout Code
               uses: actions/checkout@v6
 
             - name: Setup uv
-              uses: astral-sh/setup-uv@v8.1.0
+              uses: astral-sh/setup-uv@v8.2.0
               id: setup-uv
               with:
                   activate-environment: true
@@ -140,9 +140,9 @@ jobs:
             - name: Report coverage
               run: uv run -- python -m coverage report
 
-            - uses: codecov/codecov-action@v6
+            - uses: codecov/codecov-action@v7
               env:
-                  OS: ${{ runner.os.name }}-${{ runner.os.version }}
+                  OS: ubuntu-26.04${{ !endsWith(matrix.python-version, 't') && '-arm' || '' }}
                   PYTHON: ${{ matrix.python-version }}
               with:
                   token: ${{ secrets.CODECOV_TOKEN }}
@@ -152,9 +152,3 @@ jobs:
                   name: codecov-umbrella
                   fail_ci_if_error: false
                   verbose: true
-
-            - name: Upload output files
-              uses: actions/upload-artifact@v7
-              with:
-                  name: testoutput-${{ runner.os.name }}-${{ runner.os.version }}-py${{ matrix.python-version }}
-                  path: tests/output/

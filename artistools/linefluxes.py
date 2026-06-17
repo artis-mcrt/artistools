@@ -155,7 +155,7 @@ def get_line_fluxes_from_pops(
                 feature.upperlevelindicies, feature.lowerlevelindicies, strict=False
             ):
                 unaccounted_shellvol = 0.0  # account for the volume of empty shells
-                unaccounted_shells = []
+                unaccounted_shells: list[int] = []
                 for modelgridindex in modeldata.index:
                     try:
                         levelpop = dfnltepops.filter(
@@ -237,8 +237,8 @@ def get_closelines(
         featurelabel=featurelabel,
         approxlambda=approxlambdalabel,
         linelistindices=tuple(dflinelistclosematches["lineindex"].to_list()),
-        lowestlambda=lowestlambda,
-        highestlambda=highestlambda,
+        lowestlambda=lowestlambda,  # ty:ignore[invalid-argument-type]
+        highestlambda=highestlambda,  # ty:ignore[invalid-argument-type]
         atomic_number=atomic_number,
         ion_stage=ion_stage,
         upperlevelindicies=tuple(dflinelistclosematches["upperlevelindex"].to_list()),
@@ -413,7 +413,7 @@ def plot_nne_te_points(
     color: float | str | None,
     marker: MarkerType,
 ) -> None:
-    color_adj = [(c + 0.1) / 1.1 for c in mpl.colors.to_rgb(color)]  # type: ignore[arg-type] # pyright: ignore[reportAttributeAccessIssue]
+    color_adj = [(c + 0.1) / 1.1 for c in mpl.colors.to_rgb(color)]  # type: ignore[arg-type] # pyright: ignore[reportAttributeAccessIssue]  # ty:ignore[invalid-argument-type]
     hitcount: dict[tuple[float, float], int] = {}
     for log10nne, Te in zip(em_log10nne, em_Te, strict=True):
         assert isinstance(log10nne, float | np.floating)
@@ -422,7 +422,12 @@ def plot_nne_te_points(
         dictkey = (float(log10nne), float(Te))
         hitcount[dictkey] = hitcount.get(dictkey, 0) + 1
 
-    arr_log10nne, arr_te = zip(*hitcount.keys(), strict=False) if hitcount else ([], [])
+    arr_log10nne: list[float] = []
+    arr_te: list[float] = []
+    if hitcount:
+        log10nne_te_pairs = list(hitcount.keys())
+        arr_log10nne = [x[0] for x in log10nne_te_pairs]
+        arr_te = [x[1] for x in log10nne_te_pairs]
     arr_weight = np.array([hitcount[x, y] for x, y in zip(arr_log10nne, arr_te, strict=False)])
     arr_weight = (arr_weight / normtotalpackets) * 500
     arr_size = np.sqrt(arr_weight) * 10
@@ -828,7 +833,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     for i in range(len(args.label)):
         if args.label[i] is None:
             assert hasattr(args.label, "__setitem__")
-            args.label[i] = at.get_model_name(args.modelpath[i])
+            args.label[i] = at.get_model_name(args.modelpath[i])  # ty:ignore[invalid-assignment]
 
     at.plottools.set_mpl_style()
 

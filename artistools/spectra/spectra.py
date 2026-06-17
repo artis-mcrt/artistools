@@ -15,6 +15,7 @@ import numpy.typing as npt
 import pandas as pd
 import polars as pl
 import polars.selectors as cs
+from matplotlib.typing import ColorType
 
 import artistools.constants as const
 import artistools.packets as atpackets
@@ -43,7 +44,7 @@ class FluxContributionTuple(t.NamedTuple):
     linelabel: str
     array_flambda_emission: npt.NDArray[np.floating]
     array_flambda_absorption: npt.NDArray[np.floating]
-    color: t.Any
+    color: ColorType | None
 
 
 def timeshift_fluxscale_co56law(scaletoreftime: float | int | None, spectime: float) -> float:
@@ -258,12 +259,14 @@ def get_lambda_bin_edges(
         x_bin_edges = np.arange(xmin_plot - deltax * 0.5, xmax_plot + deltax * 1.5, deltax)
         lambda_bin_edges = np.sort(convert_unit_to_angstroms(x_bin_edges, xunit))
     elif deltalambda is not None:
+        deltalambda = float(deltalambda)
         if not deltalambda > 0:
             msg = f"deltalambda must be positive, got {deltalambda}"
             raise ValueError(msg)
         # the plotted x limits are bin centres, not bin edges, so shift them by half a bin width
-        xmin = xmin_plot - deltalambda * 0.5
-        xmax = xmax_plot + deltalambda * 0.5
+        deltax = convert_angstroms_to_unit(deltalambda, xunit)
+        xmin = xmin_plot - deltax * 0.5
+        xmax = xmax_plot + deltax * 0.5
         lambda_min, lambda_max = sorted(convert_unit_to_angstroms(np.array((xmin, xmax)), xunit))
         lambda_bin_edges = np.arange(lambda_min, lambda_max + deltalambda, deltalambda)
     else:
@@ -311,27 +314,27 @@ def convert_xunit_aliases_to_canonical(xunit: str) -> str:
             raise ValueError(msg)
 
 
-def convert_angstroms_to_unit(value_angstroms: float | int, new_units: str) -> float:
+def convert_angstroms_to_unit[T: (float, npt.NDArray[np.floating])](value_angstroms: T, new_units: str) -> T:
     """Convert a wavelength in angstroms to a different unit, either length, frequency, or energy."""
     hc_ev_angstroms = const.h_ev_s * const.c_ang_per_s  # [eV angstroms]
     hc_erg_angstroms = hc_ev_angstroms * 1.60218e-12  # [erg angstroms]
     match new_units.lower():
         case "erg":
-            return hc_erg_angstroms / value_angstroms
+            return hc_erg_angstroms / value_angstroms  # ty:ignore[invalid-return-type]
         case "ev":
-            return hc_ev_angstroms / value_angstroms
+            return hc_ev_angstroms / value_angstroms  # ty:ignore[invalid-return-type]
         case "kev":
-            return hc_ev_angstroms / value_angstroms / 1e3
+            return hc_ev_angstroms / value_angstroms / 1.0e3  # ty:ignore[invalid-return-type]
         case "mev":
-            return hc_ev_angstroms / value_angstroms / 1e6
+            return hc_ev_angstroms / value_angstroms / 1.0e6  # ty:ignore[invalid-return-type]
         case "hz":
             return const.c_ang_per_s / value_angstroms
         case "angstroms":
             return value_angstroms
         case "nm":
-            return value_angstroms / 10
+            return value_angstroms / 10.0
         case "micron":
-            return value_angstroms / 10000
+            return value_angstroms / 10000.0
     msg = f"Unknown xunit {new_units}"
     raise ValueError(msg)
 
@@ -343,19 +346,19 @@ def convert_unit_to_angstroms[T: (float, npt.NDArray[np.floating])](value: T, ol
     hc_ev_angstroms = h * c  # [eV angstroms]
     match old_units.lower():
         case "ev":
-            return hc_ev_angstroms / value
+            return hc_ev_angstroms / value  # ty:ignore[invalid-return-type]
         case "kev":
-            return hc_ev_angstroms / value / 1e3
+            return hc_ev_angstroms / value / 1e3  # ty:ignore[invalid-return-type]
         case "mev":
-            return hc_ev_angstroms / value / 1e6
+            return hc_ev_angstroms / value / 1e6  # ty:ignore[invalid-return-type]
         case "hz":
             return c / value
         case "angstroms":
             return value
         case "nm":
-            return value * 10
+            return value * 10  # ty:ignore[invalid-return-type]
         case "micron":
-            return value * 10000
+            return value * 10000  # ty:ignore[invalid-return-type]
     msg = f"Unknown xunit {old_units}"
     raise ValueError(msg)
 
@@ -981,8 +984,8 @@ def get_flux_contributions(
     else:
         dbinlist = [directionbin]
 
-    emissiondata = {}
-    absorptiondata = {}
+    emissiondata: dict[int, pl.DataFrame] = {}
+    absorptiondata: dict[int, pl.DataFrame] = {}
     maxion: int | None = None
     for dbin in dbinlist:
         if getemission:
@@ -1293,6 +1296,8 @@ def get_flux_contributions_from_packets(
             cols.add("dirbin")
 
     dfpackets = lzdfpackets.select(cs.by_name(cols, require_all=False)).collect()
+    emissiongroups: dict[str, pl.DataFrame] = {}
+    emission_e_rf_sum: dict[str, float] = {}
     if getemission:
         empackets = (
             dfpackets
@@ -1301,13 +1306,12 @@ def get_flux_contributions_from_packets(
             .drop_nulls("emissiontype_str")
         )
         emissiongroups = {k: v.drop(cs.by_dtype(pl.String)) for (k,), v in empackets.group_by("emissiontype_str")}
-        emission_e_rf_sum: dict[str, float] = dict(
+        emission_e_rf_sum = dict(
             empackets.group_by("emissiontype_str").agg(pl.col("e_rf").sum().alias("e_rf")).iter_rows()
         )
-    else:
-        emissiongroups = {}
-        emission_e_rf_sum = {}
 
+    absorptiongroups: dict[str, pl.DataFrame] = {}
+    absorption_e_rf_sum: dict[str, float] = {}
     if getabsorption:
         abspackets = (
             dfpackets
@@ -1316,12 +1320,9 @@ def get_flux_contributions_from_packets(
             .drop_nulls("absorptiontype_str")
         )
         absorptiongroups = {k: v.drop(cs.by_dtype(pl.String)) for (k,), v in abspackets.group_by("absorptiontype_str")}
-        absorption_e_rf_sum: dict[str, float] = dict(
+        absorption_e_rf_sum = dict(
             abspackets.group_by("absorptiontype_str").agg(pl.col("e_rf").sum().alias("e_rf")).iter_rows()
         )
-    else:
-        absorptiongroups = {}
-        absorption_e_rf_sum = {}
 
     del dfpackets
 
@@ -1338,13 +1339,15 @@ def get_flux_contributions_from_packets(
     if fixedionlist is not None and (unrecognised_items := [x for x in fixedionlist if x not in allgroupnames]):
         print(f"WARNING: (packets) did not find {len(unrecognised_items)} items in fixedionlist: {unrecognised_items}")
 
-    def sortkey(groupname: str) -> tuple[int, float]:
+    def sortkey(groupname: str) -> tuple[int, float | int]:
         grouptotal = emission_e_rf_sum.get(groupname, 0.0) + absorption_e_rf_sum.get(groupname, 0.0)
 
         if fixedionlist is None:
             return (0, -grouptotal)
 
-        return (fixedionlist.index(groupname), 0) if groupname in fixedionlist else (len(fixedionlist) + 1, -grouptotal)
+        return (
+            (fixedionlist.index(groupname), 0.0) if groupname in fixedionlist else (len(fixedionlist) + 1, -grouptotal)
+        )
 
     # group small contributions together to avoid the cost of binning individual spectra for them
 
@@ -1524,9 +1527,9 @@ def sort_and_reduce_flux_contribution_list(
 
     for row in contribution_list:
         if row.linelabel != "Other" and fixedionlist and row.linelabel in fixedionlist:
-            contribution_list_out.append(row._replace(color=color_list[fixedionlist.index(row.linelabel)]))
+            contribution_list_out.append(row._replace(color=color_list[fixedionlist.index(row.linelabel)]))  # ty:ignore[invalid-argument-type]
         elif row.linelabel != "Other" and not fixedionlist and index < maxseriescount:
-            contribution_list_out.append(row._replace(color=color_list[index]))
+            contribution_list_out.append(row._replace(color=color_list[index]))  # ty:ignore[invalid-argument-type]
             plotted_ion_list.append(row.linelabel)
         else:
             remainder_fluxcontrib += row.fluxcontrib

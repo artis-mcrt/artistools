@@ -33,6 +33,7 @@ subcommandtree: CommandType = {
     "gsinetworkdecayproducts": ("gsinetwork.decayproducts", "main"),
     "describeinputmodel": ("inputmodel.describeinputmodel", "main"),
     "estimators": ("estimators.plotestimators", "main"),
+    "ejectaopacity": ("ejectaopacity", "main"),
     "exportmassfractions": ("estimators.exportmassfractions", "main"),
     "getpath": ("commands", "get_artistools_path"),
     "lc": ("lightcurve.plotlightcurve", "main"),
@@ -67,6 +68,7 @@ subcommandtree: CommandType = {
         "makeartismodelfromshen2018": ("inputmodel.shen2018", "main"),
         "makeartismodelfromsingletrajectory": ("inputmodel.rprocess_from_trajectory", "main"),
         "from_e2e": ("inputmodel.from_e2e_model", "main"),
+        "plotinitialabundances": ("inputmodel.plotinitialabundances", "main"),
         "to_tardis": ("inputmodel.to_tardis", "main"),
     },
 }

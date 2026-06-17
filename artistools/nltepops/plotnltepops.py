@@ -143,7 +143,7 @@ def get_floers_data(
 
         floersmultizonefilename = None
         if modelpath.stem.startswith("w7_"):
-            if "workfn" not in modelpath.parts[-1]:
+            if "workfn" in modelpath.parts[-1]:
                 floersmultizonefilename = "level_pops_w7_workfn-247d.csv"
             elif "lossboost" not in modelpath.parts[-1]:
                 floersmultizonefilename = "level_pops_w7-247d.csv"
@@ -321,7 +321,7 @@ def make_ionsubplot(
         ycolumnname = "departure_coeff"
 
         # skip one color, since T_e is not plotted in departure mode
-        ax._get_lines.get_next_color()  # type: ignore[attr-defined] # noqa: SLF001 # pyright: ignore[reportAttributeAccessIssue]
+        ax._get_lines.get_next_color()  # type: ignore[attr-defined] # noqa: SLF001 # pyright: ignore[reportAttributeAccessIssue]  # ty:ignore[unresolved-attribute]
         if floers_levelpop_values is not None:
             assert floers_levelnums is not None
             ax.plot(
