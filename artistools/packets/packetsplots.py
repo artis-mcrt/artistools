@@ -346,7 +346,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
     hist2D, xedges, yedges = np.histogram2d(
         dfpackets_selected["beta_r_cyl_em"],
         dfpackets_selected["beta_z_em"],
-        bins=[np.linspace(0, 0.5, num=25), np.linspace(-0.5, 0.5, num=50)],
+        bins=[np.linspace(0, 0.5, num=26), np.linspace(-0.5, 0.5, num=51)],
         weights=weights,
     )
     heatmap = hist2D / (timemaxarray[timestep] - timeminarray[timestep]) / DAY / nprocs_read * solidanglefactor
