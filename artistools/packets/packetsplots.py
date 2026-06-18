@@ -1,7 +1,6 @@
 import argparse
 import typing as t
 from collections.abc import Sequence
-from itertools import chain
 from pathlib import Path
 
 import argcomplete
@@ -210,45 +209,22 @@ def get_required_packets(
     # careful: ion_stage is counted from 1 here, i.e. 1 <-> neutral, 2 <-> singly ionized
 
     # Sr II triplet
+    linelist_lazyframe = at.misc.get_linelist_pldf(modelpath)
     if srII_triplet:
-        lineindices = list(
-            chain(
-                at.get_closelines(
-                    modelpath=modelpath,
-                    atomic_number=38,
-                    ion_stage=2,
-                    approxlambdalabel=10917,  # 10 914.874 AA
-                    lowerlevelindex=1,  # 4p6.4d 2D,enpercm=14555.9,j=1.5
-                    upperlevelindex=3,
-                )[3],  # 4p6.5p 2P,enpercm=23715.19,j=0.5
-                at.get_closelines(
-                    modelpath=modelpath,
-                    atomic_number=38,
-                    ion_stage=2,
-                    approxlambdalabel=10330,  # 10 327.309 AA
-                    lowerlevelindex=2,  # 4p6.4d 2D,enpercm=14836.24,j=2.5
-                    upperlevelindex=4,
-                )[3],  # 4p6.5p 2P,enpercm=24516.65,j=1.5
-                at.get_closelines(
-                    modelpath=modelpath,
-                    atomic_number=38,
-                    ion_stage=2,
-                    approxlambdalabel=10039,  # 10 036.654 AA
-                    lowerlevelindex=1,  # 4p6.4d 2D,enpercm=14555.9,j=1.5
-                    upperlevelindex=4,
-                )[3],  # 4p6.5p 2P,enpercm=24516.65,j=1.5
+        linelist_lazyframe = linelist_lazyframe.filter(
+            (pl.col("atomic_number") == 38)
+            & (pl.col("ion_stage") == 2)
+            & (
+                ((pl.col("lowerlevelindex") == 1) & (pl.col("upperlevelindex") == 3))
+                | ((pl.col("lowerlevelindex") == 2) & (pl.col("upperlevelindex") == 4))
+                | ((pl.col("lowerlevelindex") == 1) & (pl.col("upperlevelindex") == 4))
             )
         )
     else:
-        lineindices = (
-            at.misc
-            .get_linelist_pldf(modelpath)
-            .filter(pl.col("atomic_number").is_in(Z_list) & pl.col("ion_stage").is_in(ion_stage_list))
-            .collect()
-            .get_column("lineindex")
-            .to_list()
+        linelist_lazyframe = linelist_lazyframe.filter(
+            pl.col("atomic_number").is_in(Z_list) & pl.col("ion_stage").is_in(ion_stage_list)
         )
-
+    lineindices = linelist_lazyframe.collect().get_column("lineindex").to_list()
     nprocs_read, dfpackets = at.packets.get_packets(
         modelpath=modelpath, maxpacketfiles=None, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
@@ -300,7 +276,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
     wavelen: float | None = None,
     binwidth: float | None = None,
 ) -> None:
-
+    at.plottools.set_mpl_style()
     start_of_filename = "" if modelpath == Path() else f"{modelpath.name}_"
     if wavelen is not None:
         start_of_filename = f"{wavelen:.0f}A_"
@@ -345,7 +321,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
     ).with_columns(
         (pl.col("R_cyl_inner_em") + Delta_beta * CLIGHT * pl.col(f"{pos_type_str}em_time")).alias("R_cyl_outer_em")
     )
-    dfpackets = dfpackets.with_columns(
+    dfpackets_selected = dfpackets.with_columns(
         (
             np.pi
             * (pl.col("R_cyl_outer_em").cast(pl.Float64) ** 2 - pl.col("R_cyl_inner_em").cast(pl.Float64) ** 2)
@@ -353,8 +329,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
             * Delta_beta
             * pl.col(f"{pos_type_str}em_time")
         ).alias("hollow_cyl_vol_em")
-    )
-    dfpackets_selected = dfpackets.collect()
+    ).collect()
     solidanglefactor = at.get_viewingdirection_costhetabincount() / (len(dirbin_range) / 10)
     energy_sum = float(dfpackets_selected["e_rf"].sum())
     print(f"Directional 4pi-equivalent bol. luminosity of {energy_sum / nprocs_read / Delta_t_secs * solidanglefactor}")
@@ -391,8 +366,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
 
     outfilename = start_of_filename + f"ts{timestep}_into_dirbins{dirbin_range[0]}-{dirbin_range[-1]}.pdf"
     print(f"Saving {outfilename}")
-    plt.savefig(Path(modelpath) / outfilename, dpi=300, bbox_inches="tight")
-    plt.clf()
+    fig.savefig(Path(modelpath) / outfilename, dpi=300, bbox_inches="tight")
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -416,7 +390,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--colorlogscale", action="store_true", help="Log scale for color bar in 2D plot")
 
     parser.add_argument(
-        "--trueemission", action="store_true", help="Plot true emission rather than last interaction location"
+        "--use_thermalemissiontype",
+        action="store_true",
+        help="Plot true thermal emission rather than last interaction location",
     )
 
 
@@ -441,7 +417,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.colorlogscale,
         dirbin_range=[args.dirbin + i for i in range(10)] if args.dirbin >= 0 else list(range(100)),
         Z=at.get_atomic_number(args.element) if args.element else None,
-        trueem=args.trueemission,
+        trueem=args.use_thermalemissiontype,
         ion_stage_str=args.ionstage,
         wavelen=args.wavelen,
         binwidth=args.binwidth,
