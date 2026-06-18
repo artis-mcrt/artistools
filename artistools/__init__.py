@@ -10,18 +10,7 @@ import sys
 if sys.version_info >= (3, 15) and hasattr(sys, "set_lazy_imports_filter") and hasattr(sys, "set_lazy_imports"):
     sys.set_lazy_imports_filter(
         lambda _importing, imported, _fromlist: (
-            not imported.startswith((
-                "matplotlib.",
-                "six.moves",
-                "concurrent.futures",
-                "pandas._libs",
-                "pandas.core",
-                "pandas._config",
-                "pyarrow._compute",
-                "polars.exceptions",
-                "polars.selectors",
-                "typing",
-            ))
+            not imported.startswith(("matplotlib.", "polars.exceptions", "polars.selectors"))
         )
     )
     sys.set_lazy_imports("all")
