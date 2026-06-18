@@ -303,8 +303,13 @@ def packets_2d_hist_bin_and_ejecta_vel(
 
     pos_type_str = ""
     if trueem:
+        required_cols = {"trueem_posx", "trueem_posy", "trueem_posz", "trueem_time"}
+        missing_cols = required_cols - set(dfpackets.collect_schema().names())
+        if missing_cols:
+            raise ValueError(
+                f"--use_thermalemissiontype requires packets with columns {sorted(required_cols)} (missing {sorted(missing_cols)})"
+            )
         pos_type_str = "true"
-
     print(f"t_min selected: {t_min} t_max_selected: {t_max}, is {Delta_t_secs} seconds")
     dfpackets = dfpackets.filter(pl.col("t_arrive_d").is_between(t_min, t_max, closed="right"))
     dfpackets = dfpackets.with_columns(
