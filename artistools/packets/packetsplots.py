@@ -416,7 +416,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args = parser.parse_args([] if kwargs else argsraw)
 
     if (args.wavelen is None) != (args.binwidth is None):
-        raise ValueError("Wavelength mode requires both -wavelen and -binwidth to be provided.")
+        message = "Wavelength mode requires both -wavelen and -binwidth to be provided."
+        raise ValueError(message)
 
     packets_2d_hist_bin_and_ejecta_vel(
         Path(args.modelpath),
