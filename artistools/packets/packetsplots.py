@@ -225,7 +225,7 @@ def get_required_packets(
         linelist_lazyframe = linelist_lazyframe.filter(
             pl.col("atomic_number").is_in(Z_list) & pl.col("ion_stage").is_in(ion_stage_list)
         )
-    lineindices = linelist_lazyframe.collect().get_column("lineindex").to_list()
+    lineindices = linelist_lazyframe.select("lineindex").collect().get_column("lineindex")
     nprocs_read, dfpackets = at.packets.get_packets(
         modelpath=modelpath, maxpacketfiles=None, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
