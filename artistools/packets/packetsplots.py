@@ -236,7 +236,7 @@ def get_required_packets(
 
 def get_reduced_packet_set(
     modelpath: Path,
-    escape_angles: list[int],
+    dirbin: int,
     Z: Sequence[int],
     ion_stage: Sequence[int],
     wavelen: float | None = None,
@@ -260,7 +260,8 @@ def get_reduced_packet_set(
         dfpackets_selected = dfpackets_selected.filter(
             (pl.col("lambda_rf") > lam_min) & (pl.col("lambda_rf") < lam_max)
         )
-    dfpackets_selected_dirbinned = dfpackets_selected.filter(pl.col("dirbin").is_in(escape_angles))
+    nphibins = at.get_viewingdirection_phibincount()
+    dfpackets_selected_dirbinned = dfpackets_selected.filter(pl.col("costhetabin") * nphibins == dirbin)
 
     return nprocs_read, dfpackets_selected_dirbinned
 
@@ -270,7 +271,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
     tdays: float,
     srIItriplet: bool,
     colorlogscale: bool,
-    dirbin_range: list[int],
+    dirbin: int,
     trueem: bool,
     Z: int | None = None,
     ion_stage_str: str | None = None,
@@ -289,7 +290,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
     ion_stage_list = [at.decode_roman_numeral(ion_stage_str)] if ion_stage_str else list(range(1, 5))
 
     nprocs_read, dfpackets = get_reduced_packet_set(
-        modelpath, dirbin_range, Z_list, ion_stage_list, wavelen=wavelen, binwidth=binwidth, srII_triplet=srIItriplet
+        modelpath, dirbin, Z_list, ion_stage_list, wavelen=wavelen, binwidth=binwidth, srII_triplet=srIItriplet
     )
 
     start_of_filename += f"t_arrive_d_{tdays}_"
@@ -306,9 +307,11 @@ def packets_2d_hist_bin_and_ejecta_vel(
         required_cols = {"trueem_posx", "trueem_posy", "trueem_posz", "trueem_time"}
         missing_cols = required_cols - set(dfpackets.collect_schema().names())
         if missing_cols:
-            raise ValueError(
-                f"--use_thermalemissiontype requires packets with columns {sorted(required_cols)} (missing {sorted(missing_cols)})"
+            message = (
+                "--use_thermalemissiontype requires packets with columns "
+                f"{sorted(required_cols)} (missing {sorted(missing_cols)})"
             )
+            raise ValueError(message)
         pos_type_str = "true"
     print(f"t_min selected: {t_min} t_max_selected: {t_max}, is {Delta_t_secs} seconds")
     dfpackets = dfpackets.filter(pl.col("t_arrive_d").is_between(t_min, t_max, closed="right"))
@@ -336,7 +339,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
             * pl.col(f"{pos_type_str}em_time")
         ).alias("hollow_cyl_vol_em")
     ).collect()
-    solidanglefactor = at.get_viewingdirection_costhetabincount() / (len(dirbin_range) / 10)
+    solidanglefactor = at.get_viewingdirection_costhetabincount() if dirbin else 1.0
     energy_sum = float(dfpackets_selected["e_rf"].sum())
     print(f"Directional 4pi-equivalent bol. luminosity of {energy_sum / nprocs_read / Delta_t_secs * solidanglefactor}")
 
@@ -370,7 +373,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
     ax.set_xticks(np.linspace(xedges[0], xedges[-1], 6))
     ax.set_yticks(np.linspace(yedges[0], yedges[-1], 6))
 
-    outfilename = start_of_filename + f"ts{timestep}_into_dirbins{dirbin_range[0]}-{dirbin_range[-1]}.pdf"
+    outfilename = start_of_filename + f"ts{timestep}_into_dirbin{dirbin}.pdf"
     print(f"Saving {outfilename}")
     fig.savefig(Path(modelpath) / outfilename, dpi=300, bbox_inches="tight")
 
@@ -420,7 +423,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.tdays,
         args.srIItriplet,
         args.colorlogscale,
-        dirbin_range=[args.dirbin + i for i in range(10)] if args.dirbin >= 0 else list(range(100)),
+        dirbin=args.dirbin,
         Z=at.get_atomic_number(args.element) if args.element else None,
         trueem=args.use_thermalemissiontype,
         ion_stage_str=args.ionstage,
