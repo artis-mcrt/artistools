@@ -41,8 +41,8 @@ def plot_deposition_thermalisation(
 
     depdata = at.get_deposition(modelpath).collect()
 
-    color_gamma = axis._get_lines.get_next_color()  # type: ignore[attr-defined] # noqa: SLF001 # pyright: ignore[reportAttributeAccessIssue]
-    color_gamma = axis._get_lines.get_next_color()  # type: ignore[attr-defined] # noqa: SLF001 # pyright: ignore[reportAttributeAccessIssue]
+    color_gamma = axis._get_lines.get_next_color()  # type: ignore[attr-defined] # noqa: SLF001 # pyright: ignore[reportAttributeAccessIssue]  # ty:ignore[unresolved-attribute]
+    color_gamma = axis._get_lines.get_next_color()  # type: ignore[attr-defined] # noqa: SLF001 # pyright: ignore[reportAttributeAccessIssue]  # ty:ignore[unresolved-attribute]
 
     axis.plot(
         depdata["tmid_days"],
@@ -53,7 +53,7 @@ def plot_deposition_thermalisation(
         color=color_gamma,
     )
 
-    color_beta = axis._get_lines.get_next_color()  # type: ignore[attr-defined] # noqa: SLF001 # pyright: ignore[reportAttributeAccessIssue]
+    color_beta = axis._get_lines.get_next_color()  # type: ignore[attr-defined] # noqa: SLF001 # pyright: ignore[reportAttributeAccessIssue]  # ty:ignore[unresolved-attribute]
 
     if "eps_elec_Lsun" in depdata:
         axis.plot(
@@ -568,7 +568,7 @@ def make_lightcurve_plot(
 
         else:
             dirbin = args.plotviewingangle or (args.plotvspecpol or [-1])
-            escape_types = ["TYPE_RPKT"] if showuvoir else []
+            escape_types: list[str] = ["TYPE_RPKT"] if showuvoir else []
             if showgamma:
                 escape_types.append("TYPE_GAMMA")
 
@@ -1663,7 +1663,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         or args.make_viewing_angle_peakmag_delta_m15_scatter_plot
     ):
         args.calculate_peak_time_mag_deltam15_bool = True
-        at.lightcurve.peakmag_risetime_declinerate_init(modelpaths, filternames_conversion_dict, args)
+        at.lightcurve.peakmag_risetime_declinerate_init(modelpaths, filternames_conversion_dict, args)  # ty:ignore[invalid-argument-type]
         return
 
     if args.colouratpeak:  # make scatter plot of colour at peak, eg. B-V at Bmax
@@ -1678,14 +1678,14 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             args.plotviewingangle = [-1]
         if not args.colorbarcostheta and not args.colorbarphi:
             args.colorbarphi = True
-        at.lightcurve.plot_viewanglebrightness_at_fixed_time(Path(modelpaths[0]), args)
+        at.lightcurve.plot_viewanglebrightness_at_fixed_time(Path(modelpaths[0]), args)  # ty:ignore[invalid-argument-type]
         return
 
     if args.filter:
-        make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfolder, args)
+        make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfolder, args)  # ty:ignore[invalid-argument-type]
 
     elif args.colour_evolution:
-        colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder, args)
+        colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder, args)  # ty:ignore[invalid-argument-type]
         print(f"Saved figure: {args.outputfile}")
     else:
         make_lightcurve_plot(

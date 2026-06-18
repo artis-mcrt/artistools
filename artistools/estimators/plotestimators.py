@@ -645,7 +645,9 @@ def get_xlist(
             print(f"  would have only {args.xbins} bins. Replacing with 25")
             args.xbins = 25
 
-    if args.xbins is not None:
+    if args.xbins is not None and args.xbins == 0:
+        estimators = estimators.with_columns(xvalue_binned=pl.lit(None).cast(pl.Float64))
+    elif args.xbins is not None:
         xbinedges = np.linspace(xmin, xmax, args.xbins)
         xlower = xbinedges[:-1]
         xupper = xbinedges[1:]
@@ -1231,7 +1233,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             args.multiplot = True
             args.format = "png"
 
-        outputfiles = []
+        outputfiles: list[str] = []
         for timesteps_included in frames_timesteps_included:
             outfilename = make_figure(
                 modelpath=modelpath,
@@ -1254,7 +1256,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 with iio.get_writer(gifname, mode="I", duration=1000) as writer:
                     for filename in outputfiles:
                         image = iio.imread(filename)
-                        writer.append_data(image)  # type: ignore[attr-defined] # pyright: ignore[reportAttributeAccessIssue]
+                        writer.append_data(image)  # type: ignore[attr-defined] # pyright: ignore[reportAttributeAccessIssue]  # ty:ignore[unresolved-attribute]
                 print(f"Created gif: {gifname}")
             elif args.format == "pdf":
                 at.merge_pdf_files(outputfiles)

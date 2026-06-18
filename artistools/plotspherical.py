@@ -224,7 +224,7 @@ def plot_spherical(
                 raise AssertionError(msg)
 
         cbar = fig.colorbar(colormesh, location="bottom", pad=0.03, ax=ax, shrink=0.95)
-        cbar.outline.set_linewidth(0)  # type: ignore[operator] # pyright: ignore[reportCallIssue]
+        cbar.outline.set_linewidth(0)  # type: ignore[operator] # pyright: ignore[reportCallIssue]  # ty:ignore[call-non-callable]
         cbar.ax.tick_params(axis="both", direction="out")
         cbar.ax.xaxis.set_ticks_position("top")
         # cbar.ax.set_title(colorbartitle)
@@ -393,7 +393,7 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
         with iio.get_writer(gifname, mode="I", duration=(1000 * 1 / 1.5)) as writer:
             for filename in outputfilenames:
                 image = iio.imread(filename)
-                writer.append_data(image)  # type: ignore[attr-defined] # pyright: ignore[reportAttributeAccessIssue]
+                writer.append_data(image)  # type: ignore[attr-defined] # pyright: ignore[reportAttributeAccessIssue]  # ty:ignore[unresolved-attribute]
         print(f"Created gif: {gifname}")
 
 
