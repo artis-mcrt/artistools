@@ -103,6 +103,7 @@ plotartisviewingangles = 'artistools.viewing_angles_visualization:main'
 [tool.cibuildwheel]
 build-frontend = "uv"
 archs = ["auto64"]
+enable = ["cpython-prerelease"]
 # installing dependencies on Linux arm64 takes ~20 minutes
 #test-command = "python -m artistools"
 
