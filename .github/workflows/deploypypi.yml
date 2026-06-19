@@ -3,6 +3,9 @@ name: Build and deploy to PyPI/testPyPI
 permissions:
     contents: read
 on:
+    push:
+        paths:
+            - .github/workflows/deploypypi.yml
     release:
         types: [published]
     workflow_dispatch:
