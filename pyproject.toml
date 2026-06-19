@@ -112,7 +112,7 @@ before-all = [
     "mkdir -p /project/rust/target",
     "rm -rf /project/rust/target",
     "ln -s -f /host/home/runner/work/artistools/artistools/rust/target /project/rust/",
-    # "curl -sSf https://sh.rustup.rs | sh -s -- -y",
+    "curl -sSf https://sh.rustup.rs | sh -s -- -y",
 ]
 environment = { PATH = "$HOME/.cargo/bin:$PATH" }
 
