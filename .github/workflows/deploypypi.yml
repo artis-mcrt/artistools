@@ -50,6 +50,12 @@ jobs:
                       cibw-rust-target-${{ runner.os }}${{ runner.arch }}-python3${{ matrix.freethreading }}-
                       cibw-rust-target-${{ runner.os }}${{ runner.arch }}-
 
+            - uses: astral-sh/setup-uv@v8.2.0
+              with:
+                  python-version: ${{ matrix.freethreading == 't' && '3.14t' || '3.12' }}
+                  enable-cache: false
+                  activate-environment: true
+
             - name: Build wheels
               uses: pypa/cibuildwheel@v4.1
               with:
