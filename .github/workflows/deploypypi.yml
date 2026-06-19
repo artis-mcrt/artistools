@@ -35,20 +35,20 @@ jobs:
         steps:
             - uses: actions/checkout@v6
 
-            - name: Cache cargo and rust build
-              uses: actions/cache@v5
-              with:
-                  path: |
-                      ~/.cargo/registry/index/
-                      ~/.cargo/registry/cache/
-                      ~/.cargo/git/db/
-                      rust/target/
-                  key: cibw-rust-target-${{ runner.os }}${{ runner.arch }}-python3${{ matrix.freethreading }}-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id
-                      }}
-                  restore-keys: |
-                      cibw-rust-target-${{ runner.os }}${{ runner.arch }}-python3${{ matrix.freethreading }}-${{ hashFiles('**/Cargo.lock') }}
-                      cibw-rust-target-${{ runner.os }}${{ runner.arch }}-python3${{ matrix.freethreading }}-
-                      cibw-rust-target-${{ runner.os }}${{ runner.arch }}-
+            # - name: Cache cargo and rust build
+            #   uses: actions/cache@v5
+            #   with:
+            #       path: |
+            #           ~/.cargo/registry/index/
+            #           ~/.cargo/registry/cache/
+            #           ~/.cargo/git/db/
+            #           rust/target/
+            #       key: cibw-rust-target-${{ runner.os }}${{ runner.arch }}-python3${{ matrix.freethreading }}-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id
+            #           }}
+            #       restore-keys: |
+            #           cibw-rust-target-${{ runner.os }}${{ runner.arch }}-python3${{ matrix.freethreading }}-${{ hashFiles('**/Cargo.lock') }}
+            #           cibw-rust-target-${{ runner.os }}${{ runner.arch }}-python3${{ matrix.freethreading }}-
+            #           cibw-rust-target-${{ runner.os }}${{ runner.arch }}-
 
             - uses: astral-sh/setup-uv@v8.2.0
 
