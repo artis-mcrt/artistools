@@ -169,7 +169,7 @@ def read_reference_estimators(
     return estimators
 
 
-def get_spectra(modelpath: str | Path) -> tuple[pl.DataFrame, npt.NDArray[np.floating]]:
+def get_spectra(modelpath: str | Path) -> tuple[pl.DataFrame, npt.NDArray[np.float64]]:
     modelpath = Path(modelpath)
     virtualfolder, inputmodel, codename = modelpath.parts
     assert virtualfolder == "codecomparison"
@@ -180,7 +180,7 @@ def get_spectra(modelpath: str | Path) -> tuple[pl.DataFrame, npt.NDArray[np.flo
     with specfilepath.open(encoding="utf-8") as fspec:
         ntimes = int(fspec.readline().replace("#NTIMES:", ""))
         _ = int(fspec.readline().replace("#NWAVE:", ""))
-        arr_timedays = np.array([float(x) for x in fspec.readline().split()[1:]])
+        arr_timedays = np.array([float(x) for x in fspec.readline().split()[1:]], dtype=np.float64)
         assert len(arr_timedays) == ntimes
 
         dfspectra = pl.from_pandas(
