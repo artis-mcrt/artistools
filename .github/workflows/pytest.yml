@@ -87,7 +87,7 @@ jobs:
         strategy:
             fail-fast: false
             matrix:
-                python-version: ['3.12', '3.13', '3.14', 3.14t]
+                python-version: ['3.13', '3.14', 3.14t]
         runs-on: ubuntu-26.04${{ !endsWith(matrix.python-version, 't') && '-arm' || '' }}
         name: pytest python ${{ matrix.python-version }}
         steps:

@@ -496,7 +496,7 @@ def get_packets_batch_parquet_paths(
     """Get a list of Paths to parquet-formatted packets files, (which are generated from text files if needed)."""
     nprocs = at.get_nprocs(modelpath)
 
-    mpirank_groups_all = list(enumerate(batched(range(nprocs), 100)))
+    mpirank_groups_all = list(enumerate(batched(range(nprocs), 100, strict=False)))
     mpirank_groups = [
         (batchindex, batch_mpiranks)
         for batchindex, batch_mpiranks in mpirank_groups_all

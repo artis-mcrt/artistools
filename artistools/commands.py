@@ -24,7 +24,7 @@ COMMANDS = [
     "plotartisinitialcomposition",
     "plotartisviewingangles",
 ]
-# fully recursive python >= 3.12
+
 type CommandType = dict[str, tuple[str, str] | CommandType]
 
 # new subparser based list
