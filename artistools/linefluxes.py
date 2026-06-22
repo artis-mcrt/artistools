@@ -227,8 +227,8 @@ def get_closelines(
         featurelabel=featurelabel,
         approxlambda=approxlambdalabel,
         linelistindices=tuple(dflinelistclosematches["lineindex"].to_list()),
-        lowestlambda=lowestlambda,  # ty:ignore[invalid-argument-type]
-        highestlambda=highestlambda,  # ty:ignore[invalid-argument-type]
+        lowestlambda=float(lowestlambda),
+        highestlambda=float(highestlambda),
         atomic_number=atomic_number,
         ion_stage=ion_stage,
         upperlevelindicies=tuple(dflinelistclosematches["upperlevelindex"].to_list()),
