@@ -1668,7 +1668,7 @@ def parallel_map[IterableType, ResultType](
     use_multiprocessing = allow_multiprocessing
     if allow_multiprocessing and sys.version_info >= (3, 13):
         with contextlib.suppress(AttributeError):
-            if not sys._is_gil_enabled():  # noqa: SLF001
+            if not sys._is_gil_enabled():  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
                 # return a thread pool if we have no GIL (free threading)
                 use_multiprocessing = False
 
