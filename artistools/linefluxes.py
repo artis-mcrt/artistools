@@ -668,9 +668,11 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
                 # featurecolours = ['C0', 'C3']
                 # featurebarcolours = ['blue', 'red']
 
-                normtotalpackets = np.sum([
-                    len(emdata_all[modelindex][tmid, feature.colname]["em_log10nne"]) for feature in emfeatures
-                ])
+                normtotalpackets = float(
+                    np.sum([
+                        len(emdata_all[modelindex][tmid, feature.colname]["em_log10nne"]) for feature in emfeatures
+                    ])
+                )
 
                 axis.scatter(
                     log10nnedata_all[modelindex][tmid],
