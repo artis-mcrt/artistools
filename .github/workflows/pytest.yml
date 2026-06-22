@@ -20,7 +20,7 @@ jobs:
         runs-on: ubuntu-26.04-arm
         steps:
             - name: Checkout Code
-              uses: actions/checkout@v6
+              uses: actions/checkout@v7
 
             - uses: astral-sh/setup-uv@v8.2.0
               id: setup-uv
@@ -92,7 +92,7 @@ jobs:
         name: pytest python ${{ matrix.python-version }}
         steps:
             - name: Checkout Code
-              uses: actions/checkout@v6
+              uses: actions/checkout@v7
 
             - name: Setup uv
               uses: astral-sh/setup-uv@v8.2.0
