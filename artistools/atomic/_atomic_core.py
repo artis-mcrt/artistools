@@ -8,7 +8,6 @@ from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
-import numpy.typing as npt
 import polars as pl
 
 import artistools as at
@@ -16,7 +15,7 @@ import artistools as at
 
 def parse_adata(
     fadata: io.TextIOBase,
-    phixsdict: dict[tuple[int, int, int], tuple[npt.NDArray[t.Any], npt.NDArray[t.Any]]],
+    phixsdict: dict[tuple[int, int, int], tuple[np.ndarray | None, np.ndarray | None]],
     ionlist: Collection[tuple[int, int]] | None,
 ) -> Generator[tuple[int, int, int, float, pl.DataFrame]]:
     """Generate ions and their level lists from adata.txt."""
@@ -32,9 +31,7 @@ def parse_adata(
         level_count = int(ionheader[2])
 
         if not ionlist or (Z, ion_stage) in ionlist:
-            level_list: list[
-                tuple[float, float, int, str | None, npt.NDArray[t.Any] | None, npt.NDArray[t.Any] | None]
-            ] = []
+            level_list: list[tuple[float, float, int, str | None, np.ndarray | None, np.ndarray | None]] = []
             for levelindex in range(level_count):
                 row = fadata.readline().split(maxsplit=4)
 
@@ -73,9 +70,9 @@ def parse_adata(
 
 def parse_phixsdata(
     phixs_filename: Path | str, ionlist: Collection[tuple[int, int]] | None = None
-) -> dict[tuple[int, int, int], tuple[npt.NDArray[t.Any], npt.NDArray[t.Any]]]:
+) -> dict[tuple[int, int, int], tuple[np.ndarray | None, np.ndarray | None]]:
     firstlevelnumber = 1
-    phixsdict: dict[tuple[int, int, int], tuple[npt.NDArray[t.Any], npt.NDArray[t.Any]]] = {}
+    phixsdict: dict[tuple[int, int, int], tuple[np.ndarray | None, np.ndarray | None]] = {}
     with at.zopen(phixs_filename) as fphixs:
         nphixspoints = int(fphixs.readline())
         phixsnuincrement = float(fphixs.readline())
@@ -96,7 +93,7 @@ def parse_phixsdata(
 
             assert upperion_stage == lowerion_stage + 1
 
-            nptargetlist: npt.NDArray[t.Any]
+            nptargetlist: np.ndarray | None
             if upperionlevel >= 0:
                 nptargetlist = np.array([(upperionlevel, 1.0)], dtype=[("level", np.int32), ("fraction", np.float32)])
             else:
@@ -208,7 +205,7 @@ def get_levels(
         get_transitiondata(modelpath, ionlist=ionlist, quiet=quiet) if get_transitions else {}
     )
 
-    phixsdict: dict[tuple[int, int, int], tuple[npt.NDArray[t.Any], npt.NDArray[t.Any]]] = {}
+    phixsdict: dict[tuple[int, int, int], tuple[np.ndarray | None, np.ndarray | None]] = {}
     if get_photoionisations:
         phixs_filename = Path(modelpath, "phixsdata_v2.txt")
 
