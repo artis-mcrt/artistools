@@ -5,10 +5,9 @@ def pytest_configure(config: t.Any) -> None:  # noqa: ARG001
     """Clear the test output of previous runs."""
     from pathlib import Path
 
-    from beartype.claw import beartype_package
-
-    beartype_package("artistools")
-
+    # numpy 2.5.0 broke beartype, so we disable it for now
+    # from beartype.claw import beartype_package
+    # beartype_package("artistools")
     from artistools.commands import get_path
 
     outputpath = get_path("testoutput")
