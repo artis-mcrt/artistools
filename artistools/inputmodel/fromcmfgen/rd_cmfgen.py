@@ -1,4 +1,3 @@
-# ruff: noqa
 # mypy: ignore-errors
 """various functions to read/write CMFGEN input/output files:
 
@@ -7,9 +6,9 @@ rd_sn_hydro_data
 """
 
 import sys
+import typing as t
 
 import numpy as np
-import typing as t
 
 # constants
 DAY2SEC = 86400.0
