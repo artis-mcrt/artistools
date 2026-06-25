@@ -305,7 +305,7 @@ extend-exclude = [
     ".venv/**",
 ]
 preview = true
-required-version = ">=0.15.14"
+required-version = ">=0.15.20"
 
 [tool.ruff.format]
 skip-magic-trailing-comma = true
