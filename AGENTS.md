@@ -1,5 +1,5 @@
 # Intructions for LLMs
-- Use type hints and python syntax must support 3.12 or above
+- Use type hints and python syntax must support 3.13 or above
 - Always use polars DataFrames (`import polars as pl`) instead of pandas.
 - Use `.group_by()` in polars (not `.groupby()` as in pandas).
 - Polars doesn't have `.group_by().filter()`, use agg first, then do any filtering.

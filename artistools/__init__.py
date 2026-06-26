@@ -12,25 +12,14 @@ if sys.version_info >= (3, 15) and hasattr(sys, "set_lazy_imports_filter") and h
         lambda _importing, imported, _fromlist: (
             not imported.startswith((
                 "matplotlib.",
-                "six.moves",
-                "concurrent.futures",
                 "pandas._libs",
                 "pandas.core",
-                "pandas._config",
-                "pyarrow._compute",
-                "typing",
+                "polars.exceptions",
+                "polars.selectors",
             ))
         )
     )
     sys.set_lazy_imports("all")
-
-try:
-    from beartype.claw import beartype_this_package
-
-    beartype_this_package()
-except ImportError:
-    pass
-
 
 from artistools import atomic as atomic
 from artistools import codecomparison as codecomparison

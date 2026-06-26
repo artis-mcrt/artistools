@@ -2,6 +2,7 @@ import argparse
 import math
 import sys
 import typing as t
+from collections.abc import Iterable
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -395,7 +396,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     xvalues = np.arange(args.xmin, args.xmax, step=plot_resolution)
     yvalues = np.zeros((len(temperature_list) + 1, len(ionlist), len(xvalues)))
     fe2depcoeff, ni2depcoeff = None, None
-    iterdict: t.Iterable[dict[str, t.Any]] = (
+    iterdict: Iterable[dict[str, t.Any]] = (
         adata.iter_rows(named=True)
         if args.atomicdatabase == "artis"
         else ({"Z": Z, "ion_stage": ion_stage, "levels": None} for Z, ion_stage in ionlist)

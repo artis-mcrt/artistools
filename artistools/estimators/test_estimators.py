@@ -323,9 +323,8 @@ def test_estimator_snapshot_classic_3d_x_axis(mockplot: t.Any) -> None:
         )
 
 
-@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
-def test_estimator_timeevolution(mockplot: t.Any) -> None:
+def test_estimator_timeevolution() -> None:
     at.estimators.plot(
         argsraw=[],
         modelpath=modelpath,

@@ -100,26 +100,28 @@ def get_binned_opacities_ion(
     )
 
 
-def get_expansion_opacities(adata: pl.DataFrame, time_days: float, dfestimators: pl.DataFrame) -> pl.LazyFrame:
-    expopac_lambdamin = 20.0
-    expopac_lambdamax = 50000.0
-    expopac_deltalambda = 10.0
-    expopac_nbins = int((expopac_lambdamax - expopac_lambdamin) / expopac_deltalambda)
+def get_expansion_opacities(
+    adata: pl.DataFrame,
+    time_days: float,
+    dfestimators: pl.DataFrame,
+    lambdamin: float,
+    lambdamax: float,
+    deltalambda: float,
+) -> pl.LazyFrame:
+    numbins = int((lambdamax - lambdamin) / deltalambda)
 
     print("Summing opacities...")
 
     dfbinnedopacities = (
         pl
-        .LazyFrame({"lambda_angstroms_binindex": range(expopac_nbins)})
+        .LazyFrame({"lambda_angstroms_binindex": range(numbins)})
         .set_sorted("lambda_angstroms_binindex")
-        .with_columns(
-            lambda_angstroms_binlower=expopac_lambdamin + pl.col("lambda_angstroms_binindex") * expopac_deltalambda
-        )
-        .with_columns(lambda_angstroms_bin_mid=pl.col("lambda_angstroms_binlower") + (expopac_deltalambda / 2))
+        .with_columns(lambda_angstroms_binlower=lambdamin + pl.col("lambda_angstroms_binindex") * deltalambda)
+        .with_columns(lambda_angstroms_bin_mid=pl.col("lambda_angstroms_binlower") + (deltalambda / 2))
         .join(dfestimators.select("modelgridindex", "Te", "mass_g").lazy(), how="cross")
     )
 
-    lambda_bin_edges = [expopac_lambdamin + i * expopac_deltalambda for i in range(expopac_nbins + 1)]
+    lambda_bin_edges = [lambdamin + i * deltalambda for i in range(numbins + 1)]
 
     for Z, ion_stage, dflevels, dftransitions in adata.select("Z", "ion_stage", "levels", "transitions").iter_rows():
         ionstr = at.get_ionstring(Z, ion_stage, sep="_")
@@ -129,13 +131,7 @@ def get_expansion_opacities(adata: pl.DataFrame, time_days: float, dfestimators:
 
         dfbinnedopacities = dfbinnedopacities.join(
             get_binned_opacities_ion(
-                dfestimators.lazy(),
-                dflevels.lazy(),
-                dftransitions,
-                ionstr,
-                lambda_bin_edges,
-                expopac_deltalambda,
-                time_days,
+                dfestimators.lazy(), dflevels.lazy(), dftransitions, ionstr, lambda_bin_edges, deltalambda, time_days
             ),
             on=("modelgridindex", "lambda_angstroms_binindex"),
             how="left",
@@ -161,6 +157,29 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     timegroup.add_argument("-timedays", "-time", "-t", type=float, help="Time in days to select.")
 
     parser.add_argument("-modelpath", type=Path, default=Path(), help="Path of ARTIS model")
+    parser.add_argument(
+        "--show_binned_opacities",
+        action="store_true",
+        help="Show the binned opacities for each cell (can be very large).",
+    )
+    parser.add_argument(
+        "-modelgridindex",
+        "-mgi",
+        "-cell",
+        type=int,
+        default=None,
+        help="Model grid index (cell) to select. If not specified, all cells are processed.",
+    )
+
+    parser.add_argument(
+        "-lambdamin", type=float, default=20.0, help="Minimum wavelength in Angstroms for binned opacities."
+    )
+    parser.add_argument(
+        "-lambdamax", type=float, default=50000.0, help="Maximum wavelength in Angstroms for binned opacities."
+    )
+    parser.add_argument(
+        "-deltalambda", type=float, default=10.0, help="Wavelength bin width in Angstroms for binned opacities."
+    )
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -178,9 +197,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     else:
         timestep = args.timestep
         assert timestep is not None, "Please specify either -timestep or -timedays."
+
     dfestimators = (
         at.estimators
-        .scan_estimators(args.modelpath, timestep=timestep, join_modeldata=True)
+        .scan_estimators(args.modelpath, timestep=timestep, modelgridindex=args.modelgridindex, join_modeldata=True)
         .select("modelgridindex", "timestep", "Te", "rho", "mass_g", cs.starts_with("nnion_"))
         .collect()
     ).with_columns(batchindex=(pl.row_index() / 32).cast(pl.Int64))
@@ -193,7 +213,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     adata = at.atomic.get_levels(args.modelpath, get_transitions=True, derived_transitions_columns=["lambda_angstroms"])
 
     pl.Config.set_tbl_cols(20)
-    pl.Config.set_tbl_rows(1200)
+    pl.Config.set_tbl_rows(5000)
     # pl.Config.set_engine_affinity("streaming")
     cellcount = dfestimators.select(pl.len()).item()
     cells_processed = 0
@@ -201,7 +221,18 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     planckmeanopacity_times_mass = 0.0
     mass_g_sum = 0.0
     for dfcellbatch in dfestimators.partition_by("batchindex", maintain_order=True, include_key=False):
-        dfbinnedopacities = get_expansion_opacities(adata, time_days, dfcellbatch)
+        dfbinnedopacities = get_expansion_opacities(
+            adata=adata,
+            time_days=time_days,
+            dfestimators=dfcellbatch,
+            lambdamin=args.lambdamin,
+            lambdamax=args.lambdamax,
+            deltalambda=args.deltalambda,
+        )
+        if args.show_binned_opacities:
+            dfbinnedopacities = dfbinnedopacities.collect()
+            print(dfbinnedopacities)
+
         dfplanckmean = (
             (
                 dfbinnedopacities

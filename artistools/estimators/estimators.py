@@ -242,7 +242,7 @@ def scan_estimators(
     )
     mpirank_groups = [
         (batchindex, mpiranks)
-        for batchindex, mpiranks in enumerate(batched(mpiranklist, 100))
+        for batchindex, mpiranks in enumerate(batched(mpiranklist, 100, strict=False))
         if mpiranks_matched.intersection(mpiranks)
     ]
 
