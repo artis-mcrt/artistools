@@ -419,6 +419,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         message = "Wavelength mode requires both -wavelen and -binwidth to be provided."
         raise ValueError(message)
 
+    assert (args.dirbin % at.get_viewingdirection_phibincount()) == 0, (
+        "dirbin needs to be a multiple of 10 (to be improved)"
+    )
+
     packets_2d_hist_bin_and_ejecta_vel(
         Path(args.modelpath),
         args.tdays,
