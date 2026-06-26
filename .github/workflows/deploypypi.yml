@@ -3,6 +3,9 @@ name: Build and deploy to PyPI/testPyPI
 permissions:
     contents: read
 on:
+    push:
+        paths:
+            - .github/workflows/deploypypi.yml
     release:
         types: [published]
     workflow_dispatch:
@@ -18,20 +21,19 @@ env:
 
 jobs:
     build_wheels:
-        name: Build cp3${{ matrix.python-minor-version }}-${{ matrix.target.os_arch }}
+        name: Build python3${{ matrix.freethreading }} ${{ matrix.target.os_arch }}
         strategy:
             matrix:
-                target: [{os_arch: manylinux_x86_64, runs-on: ubuntu-24.04}, {os_arch: manylinux_aarch64, runs-on: ubuntu-24.04-arm}, {os_arch: macosx_arm64,
+                target: [{os_arch: manylinux_x86_64, runs-on: ubuntu-26.04}, {os_arch: manylinux_aarch64, runs-on: ubuntu-26.04-arm}, {os_arch: macosx_arm64,
                           runs-on: macos-26}]
-                python-minor-version: ['12', '13', '14', 14t]
+                freethreading: [t, '']
             fail-fast: false
         runs-on: ${{ matrix.target.runs-on }}
         env:
             CIBW_ENVIRONMENT_PASS_LINUX: SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ARTISTOOLS
-            CIBW_BUILD: cp3${{ matrix.python-minor-version }}-${{ matrix.target.os_arch }}
-            PYO3_PYTHON: python3.${{ matrix.python-minor-version }}
+            CIBW_BUILD: cp3??${{ matrix.freethreading }}-${{ matrix.target.os_arch }}
         steps:
-            - uses: actions/checkout@v6
+            - uses: actions/checkout@v7
 
             - name: Cache cargo and rust build
               uses: actions/cache@v5
@@ -41,18 +43,14 @@ jobs:
                       ~/.cargo/registry/cache/
                       ~/.cargo/git/db/
                       rust/target/
-                  key: cibw-rust-target-${{ runner.os }}${{ runner.arch }}-python3.${{ matrix.python-minor-version }}-${{ hashFiles('**/Cargo.lock') }}-${{
-                      github.run_id }}
+                  key: cibw-rust-target-${{ runner.os }}${{ runner.arch }}-python3${{ matrix.freethreading }}-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id
+                      }}
                   restore-keys: |
-                      cibw-rust-target-${{ runner.os }}${{ runner.arch }}-python3.${{ matrix.python-minor-version }}-${{ hashFiles('**/Cargo.lock') }}
-                      cibw-rust-target-${{ runner.os }}${{ runner.arch }}-python3.${{ matrix.python-minor-version }}-
+                      cibw-rust-target-${{ runner.os }}${{ runner.arch }}-python3${{ matrix.freethreading }}-${{ hashFiles('**/Cargo.lock') }}
+                      cibw-rust-target-${{ runner.os }}${{ runner.arch }}-python3${{ matrix.freethreading }}-
                       cibw-rust-target-${{ runner.os }}${{ runner.arch }}-
 
             - uses: astral-sh/setup-uv@v8.2.0
-              with:
-                  python-version: 3.${{ matrix.python-minor-version }}
-                  enable-cache: false
-                  activate-environment: true
 
             - name: Build wheels
               uses: pypa/cibuildwheel@v4.1
@@ -66,9 +64,9 @@ jobs:
 
     build_sdist:
         name: Build source distribution
-        runs-on: ubuntu-latest
+        runs-on: ubuntu-26.04-arm
         steps:
-            - uses: actions/checkout@v6
+            - uses: actions/checkout@v7
 
             - uses: astral-sh/setup-uv@v8.2.0
 
@@ -81,15 +79,14 @@ jobs:
                   path: dist/*.tar.gz
 
     testdeploy:
-        name: Test upload to TestPyPI (workflow dispatch only)
+        name: Test upload to TestPyPI
         needs: [build_wheels, build_sdist]
-        runs-on: ubuntu-latest
+        runs-on: ubuntu-26.04
         environment:
             name: test
             url: https://test.pypi.org/project/artistools/
         permissions:
             id-token: write
-        if: github.event.inputs.deploy-to-pypi == 'false' && github.event_name != 'release'
         steps:
             - uses: actions/download-artifact@v8
               with:
@@ -107,7 +104,7 @@ jobs:
     deploy:
         name: Upload to PyPI
         needs: [build_wheels, build_sdist]
-        runs-on: ubuntu-latest
+        runs-on: ubuntu-26.04
         environment:
             name: release
             url: https://pypi.org/project/artistools/

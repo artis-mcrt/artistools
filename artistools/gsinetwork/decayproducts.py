@@ -473,7 +473,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         else:
             # select by ejecta type
             selected_traj_ids = (
-                traj_ids if state == "any" else list(set(traj_ids) & set(npz_idcs[np.where(npz_types == state)]))
+                traj_ids if state == "any" else list(set(traj_ids) & set(npz_idcs[np.where(npz_types == state)]))  # pyright: ignore[reportCallIssue,reportArgumentType]
             )
             print(f" {len(selected_traj_ids)} trajectories selected")
             if len(selected_traj_ids) == 0:

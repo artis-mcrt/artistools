@@ -16,7 +16,6 @@ authors = [
 description = "Plotting and analysis tools for the ARTIS 3D radiative transfer code for supernovae and kilonovae."
 classifiers = [
     "Intended Audience :: Science/Research",
-    "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
     "Programming Language :: Python :: Free Threading",
@@ -24,8 +23,8 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Astronomy",
     "Topic :: Scientific/Engineering :: Physics",
 ]
-version = "2026.6.1"
-requires-python = ">=3.12"
+version = "2026.6.18"
+requires-python = ">=3.13"
 license = "MIT"
 license-files = ["LICEN[CS]E*"]
 readme = { file = "README.md", content-type = 'text/markdown' }
@@ -33,7 +32,7 @@ dependencies = [
     "argcomplete>=3.6.3",
     "extinction>=0.4.7",
     "matplotlib>=3.10.8",
-    "numpy>=2.4.4",
+    "numpy>=2.4.6",
     "pandas>=3.0.2",
     "polars>=1.41.1",
     "pyarrow>=22.0.0",
@@ -58,7 +57,7 @@ extras = [
 [dependency-groups]
 dev = [
     "basedpyright>=1.39.3",
-    "beartype>=0.22.9",
+    # "beartype>=0.22.9", # numpy 2.5.0 broke beartype, so we disable it for now
     "imageio>=2.37.3",
     "mypy>=2.0.0",
     "pandas-stubs>=3.0.0.260204",
@@ -69,7 +68,7 @@ dev = [
     "pytest-codspeed>=4.4.0",
     "pytest-cov>=7.1.0",
     "pytest-xdist[psutil]>=3.8.0",
-    "ruff>=0.15.14",
+    "ruff>=0.15.20",
     "scipy-stubs>=1.17.1",
     "ty>=0.0.49",
     "types-python-dateutil>=2.9.0.20260408",
@@ -103,7 +102,6 @@ plotartisviewingangles = 'artistools.viewing_angles_visualization:main'
 [tool.cibuildwheel]
 build-frontend = "uv"
 archs = ["auto64"]
-environment-pass = ["PYO3_PYTHON"]
 # installing dependencies on Linux arm64 takes ~20 minutes
 #test-command = "python -m artistools"
 
@@ -116,20 +114,11 @@ before-all = [
     "curl -sSf https://sh.rustup.rs | sh -s -- -y",
 ]
 environment = { PATH = "$HOME/.cargo/bin:$PATH" }
-# repair-wheel-command = [
-#     "auditwheel repair -w {dest_dir} {wheel}",
-#     "pipx run abi3audit --strict --report {wheel}",
-# ]
 
 [tool.cibuildwheel.macos]
 before-all = [
     "rustup update stable",
 ]
-# repair-wheel-command = [
-#     "delocate-wheel --require-archs {delocate_archs} -w {dest_dir} -v {wheel}",
-#     "uv pip install abi3audit",
-#     "python3 -m abi3audit --strict --report {wheel}",
-# ]
 
 [tool.maturin]
 bindings = "pyo3"
@@ -285,7 +274,7 @@ reportUnusedCallResult = false
 reportUnusedParameter = false
 typeCheckingMode = "strict"
 useLibraryCodeForTypes = true
-pythonVersion = "3.12"
+pythonVersion = "3.13"
 
 [tool.pytest]
 minversion = "9.0"
@@ -301,7 +290,7 @@ testpaths = ["artistools"]
 ignore = ["FURB120"]
 quiet = false
 enable_all = true
-python_version = "3.12"
+python_version = "3.13"
 sort_by = "error"
 
 [[tool.refurb.amend]]
@@ -316,7 +305,7 @@ extend-exclude = [
     ".venv/**",
 ]
 preview = true
-required-version = ">=0.15.14"
+required-version = ">=0.15.20"
 
 [tool.ruff.format]
 skip-magic-trailing-comma = true
@@ -325,62 +314,61 @@ preview = true
 [tool.ruff.lint]
 select = ["ALL"]
 ignore = [
-    "ANN401",  # any-type
-    "C901",    # complex-structure
-    "COM812",  # missing-trailing-comma
-    "CPY001",  # missing-copyright-notice
-    "D100",    # undocumented-public-module
-    "D101",    # undocumented-public-class
-    "D102",    # undocumented-public-method
-    "D103",    # undocumented-public-function
-    "D104",    # undocumented-public-package
-    "D107",    # undocumented-public-init
-    "D203",    # one-blank-line-before-class
-    "D213",    # multi-line-summary-second-line
-    "D417",    # undocumented-param
-    "DOC201",  # docstring-missing-returns
-    "DOC402",  # docstring-missing-yields
-    "DOC501",  # docstring-missing-exception
-    "E501",    # Line too long
-    "ERA001",  # commented-out-code
+    "any-type",
+    "complex-structure",
+    "missing-trailing-comma",
+    "missing-copyright-notice",
+    "undocumented-public-module",
+    "undocumented-public-class",
+    "undocumented-public-method",
+    "undocumented-public-function",
+    "undocumented-public-package",
+    "undocumented-public-init",
+    "D203",                                      # incorrect-blank-line-before-class
+    "multi-line-summary-second-line",
+    "undocumented-param",
+    "docstring-missing-returns",
+    "docstring-missing-yields",
+    "docstring-missing-exception",
+    "line-too-long",
+    "commented-out-code",
     "FBT",
-    "FIX002",  # line contains TODO
-    "N802",    # Function name should be lowercase
-    "N803",    # Argument name should be lowercase
-    "N806",    # non-lowercase-variable-in-function
-    "N815",    # mixed-case-variable-in-class-scope
-    "PLC0415", # import-outside-toplevel
-    "PLR0914", # too-many-locals
-    "PLR0917", # too-many-positional
-    "PLR1702", # too-many-nested-blocks
-    "PLR0911", # too-many-return-statements
-    "PLR0912", # too-many-branches
-    "PLR0913", # too-many-arguments
-    "PLR0915", # too-many-statements
-    "PLR2004", # magic-value-comparison
-    "PLW2901", # redefined-loop-name
-    "PYI041",  # redundant-numeric-union (keep int | float for beartype)
-    "RUF069",  # float equality comparison
-    "S101",    # Use of assert detected
-    "S311",    # suspicious-non-cryptographic-random-usage
-    "S404",    # suspicious-subprocess-import
-    "S607",    # start-process-with-partial-path
-    "T201",    # print found
-    "TD002",   # missing-todo-author
-    "TD003",   # missing-todo-link
+    "line-contains-todo",
+    "invalid-function-name",
+    "invalid-argument-name",
+    "non-lowercase-variable-in-function",
+    "mixed-case-variable-in-class-scope",
+    "import-outside-top-level",
+    "too-many-locals",
+    "too-many-positional-arguments",
+    "too-many-nested-blocks",
+    "too-many-return-statements",
+    "too-many-branches",
+    "too-many-arguments",
+    "too-many-statements",
+    "magic-value-comparison",
+    "redefined-loop-name",
+    "redundant-numeric-union",
+    "float-equality-comparison",
+    "assert",
+    "suspicious-non-cryptographic-random-usage",
+    "suspicious-subprocess-import",
+    "start-process-with-partial-path",
+    "print",
+    "missing-todo-author",
+    "missing-todo-link",
 ]
 fixable = ["ALL"]
 unfixable = [
-    "ERA001", # commented-out-code (will just delete it!)
-    "F401",   # unused-import (can be annoying to have import disappear while editing)
-    "F841",   # unused-variable
-    "SIM222", # expr-or-true
-    "SIM223", # expr-and-false
+    "commented-out-code", # (will just delete it!)
+    "unused-import",      # (can be annoying to have import disappear while editing)
+    "unused-variable",
+    "expr-or-true",
+    "expr-and-false",
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"test_*.py" = ["ARG001"]    # unused-argument for pytest fixtures
-"rd_cmfgen.py" = ["PGH004"]
+"rd_cmfgen.py" = ["blanket-noqa"]
 
 [tool.ruff.lint.flake8-import-conventions.extend-aliases]
 "artistools" = "at"

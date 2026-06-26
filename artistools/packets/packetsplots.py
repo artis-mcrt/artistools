@@ -1,6 +1,10 @@
+# PYTHON_ARGCOMPLETE_OK
+import argparse
 import typing as t
+from collections.abc import Sequence
 from pathlib import Path
 
+import argcomplete
 import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
@@ -197,3 +201,241 @@ def plot_last_emission_velocities_histogram(
     outfilename = f"hist_emission_vel_{timeminarray[timestep_min]:.2f}-{timemaxarray[timestep_max]:.2f}d.pdf"
     fig.savefig(Path(modelpath) / outfilename, format="pdf")
     print(f"open {outfilename}")
+
+
+def get_required_packets(
+    modelpath: Path, Z_list: Sequence[int], ion_stage_list: Sequence[int], srII_triplet: bool = False
+) -> tuple[int, pl.LazyFrame]:
+    """Options for this function: Either the Sr II triplet, specific or all ion stages of an element."""
+    # careful: ion_stage is counted from 1 here, i.e. 1 <-> neutral, 2 <-> singly ionized
+
+    # Sr II triplet
+    linelist_lazyframe = at.misc.get_linelist_pldf(modelpath)
+    if srII_triplet:
+        linelist_lazyframe = linelist_lazyframe.filter(
+            (pl.col("atomic_number") == 38)
+            & (pl.col("ion_stage") == 2)
+            & (
+                ((pl.col("lowerlevelindex") == 1) & (pl.col("upperlevelindex") == 3))
+                | ((pl.col("lowerlevelindex") == 2) & (pl.col("upperlevelindex") == 4))
+                | ((pl.col("lowerlevelindex") == 1) & (pl.col("upperlevelindex") == 4))
+            )
+        )
+    else:
+        linelist_lazyframe = linelist_lazyframe.filter(
+            pl.col("atomic_number").is_in(Z_list) & pl.col("ion_stage").is_in(ion_stage_list)
+        )
+    lineindices = linelist_lazyframe.select("lineindex").collect().get_column("lineindex")
+    nprocs_read, dfpackets = at.packets.get_packets(
+        modelpath=modelpath, maxpacketfiles=None, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
+    )
+    dfpackets_selected = dfpackets.filter(pl.col("absorption_type").is_in(lineindices))
+
+    return nprocs_read, dfpackets_selected
+
+
+def get_reduced_packet_set(
+    modelpath: Path,
+    dirbin: int,
+    Z: Sequence[int],
+    ion_stage: Sequence[int],
+    wavelen: float | None = None,
+    binwidth: float | None = None,
+    srII_triplet: bool = False,
+) -> tuple[int, pl.LazyFrame]:
+    """Get packets in specific escape angle bins for observer direction.
+
+    Selection is based on the packets returned by `get_required_packets()`
+    for the requested element/ion filters. If both `wavelen` and `binwidth`
+    are provided, the packets are additionally restricted to that wavelength
+    slice before filtering to the requested escape-angle bins.
+    """
+    nprocs_read, dfpackets_selected = get_required_packets(modelpath, Z, ion_stage, srII_triplet=srII_triplet)
+    dfpackets_selected = dfpackets_selected.with_columns((CLIGHT * 1e8 / pl.col("nu_rf")).alias("lambda_rf"))
+
+    if wavelen is not None and binwidth is not None:
+        lam_min = wavelen - binwidth / 2
+        lam_max = wavelen + binwidth / 2
+
+        dfpackets_selected = dfpackets_selected.filter(
+            (pl.col("lambda_rf") > lam_min) & (pl.col("lambda_rf") < lam_max)
+        )
+    nphibins = at.get_viewingdirection_phibincount()
+    dfpackets_selected_dirbinned = dfpackets_selected.filter(pl.col("costhetabin") * nphibins == dirbin)
+
+    return nprocs_read, dfpackets_selected_dirbinned
+
+
+def packets_2d_hist_bin_and_ejecta_vel(
+    modelpath: Path,
+    tdays: float,
+    srIItriplet: bool,
+    colorlogscale: bool,
+    dirbin: int,
+    trueem: bool,
+    Z: int | None = None,
+    ion_stage_str: str | None = None,
+    wavelen: float | None = None,
+    binwidth: float | None = None,
+) -> None:
+    at.plottools.set_mpl_style()
+    start_of_filename = "" if modelpath == Path() else f"{modelpath.name}_"
+    if wavelen is not None:
+        start_of_filename = f"{wavelen:.0f}A_"
+    start_of_filename = f"{start_of_filename}Z={Z}_" if Z else f"{start_of_filename}allelements_"
+    start_of_filename = f"{start_of_filename}I={ion_stage_str}_" if ion_stage_str else f"{start_of_filename}allions_"
+
+    # Step 1) collect packets IDs and select according to arrival time
+    Z_list = [Z] if Z else list(range(1, 101))
+    ion_stage_list = [at.decode_roman_numeral(ion_stage_str)] if ion_stage_str else list(range(1, 5))
+
+    nprocs_read, dfpackets = get_reduced_packet_set(
+        modelpath, dirbin, Z_list, ion_stage_list, wavelen=wavelen, binwidth=binwidth, srII_triplet=srIItriplet
+    )
+
+    start_of_filename += f"t_arrive_d_{tdays}_"
+    timeminarray = at.misc.get_timestep_times(modelpath=modelpath, loc="start")
+    timemaxarray = at.misc.get_timestep_times(modelpath=modelpath, loc="end")
+    timestep = at.misc.get_timestep_of_timedays(modelpath, tdays)
+    t_min = timeminarray[timestep]
+    t_max = timemaxarray[timestep]
+    Delta_t_secs = (t_max - t_min) * DAY
+    Delta_beta = 0.5 / 25
+
+    pos_type_str = ""
+    if trueem:
+        required_cols = {"trueem_posx", "trueem_posy", "trueem_posz", "trueem_time"}
+        missing_cols = required_cols - set(dfpackets.collect_schema().names())
+        if missing_cols:
+            message = (
+                "--use_thermalemissiontype requires packets with columns "
+                f"{sorted(required_cols)} (missing {sorted(missing_cols)})"
+            )
+            raise ValueError(message)
+        pos_type_str = "true"
+    print(f"t_min selected: {t_min} t_max_selected: {t_max}, is {Delta_t_secs} seconds")
+    dfpackets = dfpackets.filter(pl.col("t_arrive_d").is_between(t_min, t_max, closed="right"))
+    dfpackets = dfpackets.with_columns(
+        (
+            (pl.col(f"{pos_type_str}em_posx") ** 2 + pl.col(f"{pos_type_str}em_posy") ** 2).sqrt()
+            / pl.col(f"{pos_type_str}em_time")
+            / CLIGHT
+        ).alias("beta_r_cyl_em")
+    ).with_columns((pl.col(f"{pos_type_str}em_posz") / pl.col(f"{pos_type_str}em_time") / CLIGHT).alias("beta_z_em"))
+
+    dfpackets = dfpackets.with_columns(
+        ((pl.col("beta_r_cyl_em") / Delta_beta).floor() * Delta_beta * CLIGHT * pl.col(f"{pos_type_str}em_time")).alias(
+            "R_cyl_inner_em"
+        )
+    ).with_columns(
+        (pl.col("R_cyl_inner_em") + Delta_beta * CLIGHT * pl.col(f"{pos_type_str}em_time")).alias("R_cyl_outer_em")
+    )
+    dfpackets_selected = dfpackets.with_columns(
+        (
+            np.pi
+            * (pl.col("R_cyl_outer_em").cast(pl.Float64) ** 2 - pl.col("R_cyl_inner_em").cast(pl.Float64) ** 2)
+            * CLIGHT
+            * Delta_beta
+            * pl.col(f"{pos_type_str}em_time")
+        ).alias("hollow_cyl_vol_em")
+    ).collect()
+    solidanglefactor = at.get_viewingdirection_costhetabincount() if dirbin else 1.0
+    energy_sum = float(dfpackets_selected["e_rf"].sum())
+    print(f"Directional 4pi-equivalent bol. luminosity of {energy_sum / nprocs_read / Delta_t_secs * solidanglefactor}")
+
+    # Step 2) create the heatmap. Normalise packet energy to modelgrid cell volume at packet emission time (lab frame)
+    weights = dfpackets_selected["e_rf"] / dfpackets_selected["hollow_cyl_vol_em"]
+    # derive the emission velocity for each packet from the emission position
+    hist2D, xedges, yedges = np.histogram2d(
+        dfpackets_selected["beta_r_cyl_em"],
+        dfpackets_selected["beta_z_em"],
+        bins=[np.linspace(0, 0.5, num=26), np.linspace(-0.5, 0.5, num=51)],
+        weights=weights,
+    )
+    heatmap = hist2D / (timemaxarray[timestep] - timeminarray[timestep]) / DAY / nprocs_read * solidanglefactor
+    heatmap = np.ma.masked_less_equal(heatmap, 0.0)
+    if colorlogscale:
+        heatmap = np.ma.log(heatmap)
+
+    fig, ax = plt.subplots(figsize=(3.5, 4.5))
+    z = heatmap.T
+
+    im = ax.imshow(z, origin="lower", cmap="viridis", extent=(xedges[0], xedges[-1], yedges[0], yedges[-1]))
+    ax.set_aspect("equal")
+    ax.set_xlabel(r"$v_r$ [$c$]")
+    ax.set_ylabel(r"$v_z$ [$c$]")
+    cbar = fig.colorbar(im, ax=ax)
+    if colorlogscale:
+        cbar.set_label(r"log volumetric emissivity [erg/(s cm$^3$)]")
+    else:
+        cbar.set_label(r"volumetric emissivity [erg/(s cm$^3$)]")
+
+    ax.set_xticks(np.linspace(xedges[0], xedges[-1], 6))
+    ax.set_yticks(np.linspace(yedges[0], yedges[-1], 6))
+
+    outfilename = start_of_filename + f"ts{timestep}_into_dirbin{dirbin}.pdf"
+    print(f"Saving {outfilename}")
+    fig.savefig(Path(modelpath) / outfilename, dpi=300, bbox_inches="tight")
+
+
+def addargs(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("-modelpath", required=True, help="Path to ARTIS simulation")
+
+    parser.add_argument(
+        "-tdays",
+        type=float,
+        required=True,
+        help="Time in days, collects packets for the timestep in which the specified value lies in",
+    )
+
+    parser.add_argument("-wavelen", type=float, default=None, help="Central wavelength in Angstrom")
+    parser.add_argument("-binwidth", type=float, default=None, help="Wavelength bin width in Angstrom")
+
+    parser.add_argument("-element", type=str, default=None, help="Element symbol")
+    parser.add_argument("-ionstage", type=str, default=None, help="Ionisation stage (spectroscopic notation)")
+
+    parser.add_argument("-dirbin", type=int, default=-1, help="Viewing direction bin. Default is isotropic (-1)")
+    parser.add_argument("--srIItriplet", action="store_true", help="Plot packets from SrII triplet only")
+    parser.add_argument("--colorlogscale", action="store_true", help="Log scale for color bar in 2D plot")
+
+    parser.add_argument(
+        "--use_thermalemissiontype",
+        action="store_true",
+        help="Plot true thermal emission rather than last interaction location",
+    )
+
+
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
+    """Plot last packet interaction properties versus ejecta velocity for selected packets."""
+    if args is None:
+        parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
+
+        addargs(parser)
+        at.set_args_from_dict(parser, kwargs)
+        argcomplete.autocomplete(parser)
+        args = parser.parse_args([] if kwargs else argsraw)
+
+    if (args.wavelen is None) != (args.binwidth is None):
+        message = "Wavelength mode requires both -wavelen and -binwidth to be provided."
+        raise ValueError(message)
+
+    assert (args.dirbin % at.get_viewingdirection_phibincount()) == 0, (
+        "dirbin needs to be a multiple of 10 (to be improved)"
+    )
+
+    packets_2d_hist_bin_and_ejecta_vel(
+        Path(args.modelpath),
+        args.tdays,
+        args.srIItriplet,
+        args.colorlogscale,
+        dirbin=args.dirbin,
+        Z=at.get_atomic_number(args.element) if args.element else None,
+        trueem=args.use_thermalemissiontype,
+        ion_stage_str=args.ionstage,
+        wavelen=args.wavelen,
+        binwidth=args.binwidth,
+    )
+
+
+if __name__ == "__main__":
+    main()

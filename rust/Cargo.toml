@@ -1,9 +1,9 @@
 [package]
 name = "artistools"
-version = "2026.6.1"
+version = "2026.6.18"
 authors = ["Luke Shingles <luke.shingles@gmail.com>"]
 edition = "2024"
-rust-version = "1.88.0"
+rust-version = "1.91.1"
 description = "Rust functions used to speed up the artistools python package"
 license = "MIT"
 homepage = "https://github.com/artis-mcrt/artistools"
@@ -18,7 +18,7 @@ path = "src/lib.rs"
 [dependencies]
 autocompress = { version = "0.6.0", features = ["gzip", "rayon", "xz", "zstd"] }
 polars = { version = "0.54.4", features = ["diagonal_concat", "performant"] }
-pyo3 = { version = "0.28.2" }
+pyo3 = { version = "0.28.2", features = ["abi3-py313"] }
 pyo3-polars = { version = "0.27.0" }
 rayon = "1.10"
 

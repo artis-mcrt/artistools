@@ -24,7 +24,7 @@ COMMANDS = [
     "plotartisinitialcomposition",
     "plotartisviewingangles",
 ]
-# fully recursive python >= 3.12
+
 type CommandType = dict[str, tuple[str, str] | CommandType]
 
 # new subparser based list
@@ -41,6 +41,7 @@ subcommandtree: CommandType = {
     "maptogrid": ("inputmodel.maptogrid", "main"),
     "plotestimators": ("estimators.plotestimators", "main"),
     "plotinitialcomposition": ("inputmodel.plotinitialcomposition", "main"),
+    "plotlastpacketinteraction": ("packets.packetsplots", "main"),
     "plotlightcurves": ("lightcurve.plotlightcurve", "main"),
     "plotlinefluxes": ("linefluxes", "main"),
     "plotdensity": ("inputmodel.plotdensity", "main"),
