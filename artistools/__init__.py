@@ -71,8 +71,6 @@ from artistools.inputmodel import get_mgi_of_velocity_kms as get_mgi_of_velocity
 from artistools.inputmodel import get_modeldata as get_modeldata
 from artistools.inputmodel import save_initelemabundances as save_initelemabundances
 from artistools.inputmodel import save_modeldata as save_modeldata
-from artistools.linefluxes import get_closelines as get_closelines
-from artistools.linefluxes import get_packets_with_emtype as get_packets_with_emtype
 from artistools.misc import anyexist as anyexist
 from artistools.misc import average_direction_bins as average_direction_bins
 from artistools.misc import decode_roman_numeral as decode_roman_numeral
