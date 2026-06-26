@@ -7,8 +7,11 @@ import time
 import typing as t
 from collections.abc import Sequence
 from pathlib import Path
+from typing import cast
 
 import argcomplete
+import matplotlib.pyplot as plt
+import numpy as np
 import polars as pl
 import polars.selectors as cs
 
@@ -19,6 +22,7 @@ from artistools.constants import K_B_erg_per_K
 from artistools.constants import K_B_ev_per_K
 
 HCLIGHTOVERFOURPI = h_erg_s * C_cm_per_s / 4 / math.pi
+CLIGHTKMPERSECOND = 2.99792458e5
 
 
 def get_binned_opacities_ion(
@@ -150,6 +154,91 @@ def get_expansion_opacities(
     ).sort("modelgridindex", "lambda_angstroms_binindex")
 
 
+def plot_planck_mean_opacity(
+    modelpath: Path,
+    outputpath: Path,
+    opacity_frame: pl.DataFrame,
+    timestep: int,
+    modelmeta: dict[str, t.Any],
+    slice_of_3D_model: str | None = None,
+) -> None:
+    """Plot the Planck mean opacity for any given model dimension at a specified time."""
+    model_dim = modelmeta["dimensions"]
+    assert model_dim > 0, "Plotting function should not be called for 1-zone models."
+    assert len(opacity_frame) == modelmeta["npts_model"], (
+        f"len(opacity_frame): {len(opacity_frame)} npts_model: {modelmeta['npts_model']} but must be equal"
+    )
+
+    if model_dim == 1:
+        # plot opacity as function of radius
+        at.plottools.set_mpl_style()
+        fig, axis = plt.subplots(nrows=1, ncols=1)
+        min_val = cast("float", opacity_frame["vel_r_max_kmps"].min())
+
+        opacity_frame = opacity_frame.with_columns((pl.col("vel_r_max_kmps") - 0.5 * min_val).alias("vel_r_max_kmps"))
+        axis.plot(opacity_frame["vel_r_max_kmps"] / CLIGHTKMPERSECOND, opacity_frame["planckmean_opacity"])
+        axis.set_xlabel("velocity (fraction of c)")
+        axis.set_ylabel(r"Planck mean opacity (cm$^2$ g$^{-1}$)")
+    else:
+        numb_x_axis_pts = 0
+        numb_y_axis_pts = 0
+        x_axis_coord = "r"
+        y_axis_coord = "z"
+        if model_dim == 3:
+            # reduce opacity frame to slice
+            assert slice_of_3D_model is not None, "No model slice provided"
+            if "x" in slice_of_3D_model:
+                x_axis_coord = "x"
+                y_axis_coord = slice_of_3D_model.replace("x", "")
+            else:
+                x_axis_coord = "y"
+                y_axis_coord = "z"
+            numb_x_axis_pts = modelmeta[f"ncoordgrid{x_axis_coord}"]
+            numb_y_axis_pts = modelmeta[f"ncoordgrid{y_axis_coord}"]
+        else:
+            numb_x_axis_pts = modelmeta["ncoordgridrcyl"]
+            numb_y_axis_pts = modelmeta["ncoordgridz"]
+
+        opacity_array = opacity_frame["planckmean_opacity"].to_numpy()
+        colorscale = np.ma.masked_where(opacity_array == 0.0, opacity_array)
+        valuegrid = colorscale.reshape((numb_y_axis_pts, numb_x_axis_pts))
+
+        cellsize = 0.5
+        figwidth = numb_x_axis_pts * cellsize
+        figheight = numb_y_axis_pts * cellsize
+        fig, axis = plt.subplots(figsize=(figwidth, figheight))
+
+        vmin_x_axis = opacity_frame.select(pl.col(f"vel_{x_axis_coord}_min_on_c").min()).item()
+        vmax_x_axis = opacity_frame.select(pl.col(f"vel_{x_axis_coord}_max_on_c").max()).item()
+        vmin_y_axis = opacity_frame.select(pl.col(f"vel_{y_axis_coord}_min_on_c").min()).item()
+        vmax_y_axis = opacity_frame.select(pl.col(f"vel_{y_axis_coord}_max_on_c").max()).item()
+
+        im = axis.imshow(
+            valuegrid,
+            cmap="viridis",
+            interpolation="nearest",
+            extent=(vmin_x_axis, vmax_x_axis, vmin_y_axis, vmax_y_axis),
+            origin="lower",
+            aspect="auto",
+        )
+
+        axis.set_xlabel(r"v$_{" + str(x_axis_coord) + r"}$ [$c$]", fontsize=16)
+        axis.set_ylabel(r"v$_{" + str(y_axis_coord) + r"}$ [$c$]", fontsize=16)
+        axis.tick_params(axis="both", which="major", labelsize=16)
+
+        cbar = fig.colorbar(im, ax=axis, orientation="horizontal", pad=0.05)
+        cbar.set_label(r"$\kappa_{Pl}$ [cm$^2$ $g^{-1}$]", fontsize=16)
+        cbar.ax.tick_params(labelsize=16)
+        fig.tight_layout(pad=0.5)
+    defaultfilename = modelpath / Path(f"plotplanckopac_ts{timestep}")
+    outputfilepath = (
+        outputpath / f"plotplanckopac_ts{timestep}.pdf" if outputpath and outputpath.is_dir() else defaultfilename
+    )
+    fig.savefig(outputfilepath, format="pdf", dpi=300)
+    print(f"Saved {outputfilepath}")
+    plt.close()
+
+
 def addargs(parser: argparse.ArgumentParser) -> None:
     # mutex with time in days:
     timegroup = parser.add_argument_group("time selection (specify either timestep or time in days)")
@@ -180,6 +269,20 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-deltalambda", type=float, default=10.0, help="Wavelength bin width in Angstroms for binned opacities."
     )
+    parser.add_argument(
+        "--plot_planck_opacities",
+        "--plot_planck",
+        action="store_true",
+        help="Plot the resulting Planck mean opacities.",
+    )
+    parser.add_argument(
+        "-slice",
+        type=str,
+        default=None,
+        choices=["xy", "yx", "yz", "zy", "xz", "zx"],
+        help="For 3D models, plot this slice only.",
+    )
+    parser.add_argument("-outputpath", type=Path, default=Path(), help="Path to output PDF")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -198,17 +301,32 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         timestep = args.timestep
         assert timestep is not None, "Please specify either -timestep or -timedays."
 
+    # Step 1) get model dimension
+    im = at.inputmodel.get_modeldata(modelpath=Path(args.modelpath), derived_cols=["mass_g", "velocity"])
+
+    im_join_columns = [c for c in im[0].collect_schema().names() if "vel" in c]
+    im_join_columns.append("modelgridindex")
     dfestimators = (
         at.estimators
         .scan_estimators(args.modelpath, timestep=timestep, modelgridindex=args.modelgridindex, join_modeldata=True)
         .select("modelgridindex", "timestep", "Te", "rho", "mass_g", cs.starts_with("nnion_"))
+        .join(im[0].select(im_join_columns), on="modelgridindex", how="left")
         .collect()
     ).with_columns(batchindex=(pl.row_index() / 32).cast(pl.Int64))
+
+    if args.slice:
+        # reduce cells for 3D model
+        if args.slice in {"xy", "yx"}:
+            dfestimators = dfestimators.filter(pl.col("vel_z_min_on_c") == 0)
+        elif args.slice in {"xz", "zx"}:
+            dfestimators = dfestimators.filter(pl.col("vel_y_min_on_c") == 0)
+        elif args.slice in {"yz", "zy"}:
+            dfestimators = dfestimators.filter(pl.col("vel_x_min_on_c") == 0)
 
     time_days = at.misc.get_timestep_time(args.modelpath, timestep)
 
     print()
-    print(f"timestep {timestep} T_days = {time_days:.2f}")
+    print(f"timestep {timestep} time_days = {time_days:.2f}")
 
     adata = at.atomic.get_levels(args.modelpath, get_transitions=True, derived_transitions_columns=["lambda_angstroms"])
 
@@ -267,6 +385,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         timepercell = elapsed / cells_processed
         print(
             f" average seconds per cell: {timepercell:.3f}. cells remaining: {cellcount - cells_processed}. time remaining: {timepercell * (cellcount - cells_processed):.1f}s"
+        )
+
+    if args.plot_planck_opacities:
+        dfplanckmean = dfplanckmean.join(im[0].select(im_join_columns).collect(), on="modelgridindex", how="left")
+        plot_planck_mean_opacity(
+            args.modelpath, args.outputpath, dfplanckmean, timestep, im[1], slice_of_3D_model=args.slice
         )
 
     print()
