@@ -15,7 +15,7 @@ DAY2SEC = 86400.0
 MEV2ERG = 1.60217733e-6
 
 
-def rd_nuc_decay_data(file, quiet=False):
+def rd_nuc_decay_data(file: str, quiet: bool = False):
     """read in NUC_DECAY_DATA file and return namespace
     set quiet=True to disable verbose output
     """
