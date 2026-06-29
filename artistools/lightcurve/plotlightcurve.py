@@ -402,9 +402,17 @@ def plot_artis_lightcurve(
 
         lcdata_tmin = lcdata.select(pl.col("time_days").min()).item()
         lcdata_tmax = lcdata.select(pl.col("time_days").max()).item()
+        lcdata = lcdata.with_columns(time_s=pl.col("time_days") * 86400.0)
         katz_integral = np.trapezoid(
-            np.nan_to_num(lcdata["luminosity_erg/s"], nan=0.0) * (lcdata["time_days"] * 86400),
-            x=lcdata["time_days"] * 86400,
+            (
+                lcdata
+                .select(pl.col("luminosity_erg/s") * pl.col("time_s"))
+                .fill_null(0.0)
+                .fill_nan(0.0)
+                .to_series()
+                .to_numpy()
+            ),
+            x=lcdata["time_s"],
         )
         print(f" Katz integral L t dt ({lcdata_tmin:.2f} to {lcdata_tmax:.2f} days): {katz_integral:.3e} [erg s]")
         # show the parts of the light curve that are outside the valid arrival range as partially transparent
