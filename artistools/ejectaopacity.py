@@ -156,7 +156,7 @@ def get_expansion_opacities(
 
 def plot_planck_mean_opacity(
     modelpath: Path,
-    outputpath: Path,
+    outputpath: Path | None,
     opacity_frame: pl.DataFrame,
     timestep: int,
     modelmeta: dict[str, t.Any],
@@ -232,7 +232,9 @@ def plot_planck_mean_opacity(
         fig.tight_layout(pad=0.5)
     defaultfilename = modelpath / Path(f"plotplanckopac_ts{timestep}")
     outputfilepath = (
-        outputpath / f"plotplanckopac_ts{timestep}.pdf" if outputpath and outputpath.is_dir() else defaultfilename
+        outputpath / f"plotplanckopac_ts{timestep}.pdf"
+        if outputpath is not None and outputpath.is_dir()
+        else defaultfilename
     )
     fig.savefig(outputfilepath, format="pdf", dpi=300)
     print(f"Saved {outputfilepath}")
