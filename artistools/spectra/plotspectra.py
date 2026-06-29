@@ -837,7 +837,7 @@ def make_emissionabsorption_plot(
             gamma=args.gamma,
         )
 
-        (contribution_list, array_flambda_emission_total, arraylambda_angstroms) = (
+        (contribution_list, array_flambda_emission_total, array_flambda_absorption_total, arraylambda_angstroms) = (
             atspectra.get_flux_contributions_from_packets(
                 modelpath,
                 timelowdays=args.timemin,
@@ -862,17 +862,19 @@ def make_emissionabsorption_plot(
         )
     else:
         assert not args.vpkt_match_emission_exclusion_to_opac
-        contribution_list, array_flambda_emission_total, arraylambda_angstroms = atspectra.get_flux_contributions(
-            modelpath,
-            filterfunc,
-            timestepmin,
-            timestepmax,
-            getemission=args.showemission,
-            getabsorption=args.showabsorption,
-            use_lastemissiontype=not args.use_thermalemissiontype,
-            directionbin=dirbin,
-            average_over_phi=args.average_over_phi_angle,
-            average_over_theta=args.average_over_theta_angle,
+        contribution_list, array_flambda_emission_total, array_flambda_absorption_total, arraylambda_angstroms = (
+            atspectra.get_flux_contributions(
+                modelpath,
+                filterfunc,
+                timestepmin,
+                timestepmax,
+                getemission=args.showemission,
+                getabsorption=args.showabsorption,
+                use_lastemissiontype=not args.use_thermalemissiontype,
+                directionbin=dirbin,
+                average_over_phi=args.average_over_phi_angle,
+                average_over_theta=args.average_over_theta_angle,
+            )
         )
 
     atspectra.print_integrated_flux(array_flambda_emission_total, arraylambda_angstroms)
@@ -1067,6 +1069,25 @@ def make_emissionabsorption_plot(
     ymax = max(ymaxrefall, scalefactor * max_f_emission_total * 1.2)
     if args.ymax is None:
         axis.set_ylim(top=ymax)  # ty:ignore[invalid-argument-type]
+
+    if args.ymin is None:
+        if args.normalised:
+            ymin = 0.0
+        elif args.showabsorption:
+            # Set bottom y limit based on absorption
+            abstotal = atspectra.get_dfspectrum_x_y_with_units(
+                pl.DataFrame({"f_lambda": array_flambda_absorption_total, "lambda_angstroms": arraylambda_angstroms}),
+                xunit=args.xunit,
+                yvariable=args.yvariable,
+                fluxdistance_mpc=args.distmpc,
+            ).collect()
+
+            max_f_absorption_total = abstotal.filter(pl.col("x").is_between(xmin, xmax))["y"].max()
+            assert isinstance(max_f_absorption_total, (float, np.floating))
+
+            ymin = -scalefactor * max_f_absorption_total
+
+        axis.set_ylim(bottom=-scalefactor * ymin)
 
     return plotobjects, plotobjectlabels, dfaxisdata
 
