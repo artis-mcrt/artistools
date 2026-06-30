@@ -954,7 +954,7 @@ def get_flux_contributions(
     directionbin: int | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
-) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
+) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
 
     arr_tmid = get_timestep_times(modelpath, loc="mid")
     arr_tdelta = get_timestep_times(modelpath, loc="delta")
@@ -1041,7 +1041,6 @@ def get_flux_contributions(
             assert absorptiondata[dbin].select(pl.len()).item() == len(arraynu) * len(arr_tmid)
 
     array_flambda_emission_total = np.zeros_like(arraylambda, dtype=float)
-    array_flambda_absorption_total = np.zeros_like(arraylambda, dtype=float)
     contribution_list = []
     if filterfunc:
         print("Applying filter to ARTIS spectrum")
@@ -1095,7 +1094,6 @@ def get_flux_contributions(
                 array_flambda_absorption = array_fnu_absorption * arraynu / arraylambda
 
                 array_flambda_emission_total += array_flambda_emission
-                array_flambda_absorption_total += array_flambda_absorption
                 fluxcontribthisseries = abs(np.trapezoid(array_fnu_emission, x=arraynu)) + abs(
                     np.trapezoid(array_fnu_absorption, x=arraynu)
                 )
@@ -1118,7 +1116,7 @@ def get_flux_contributions(
                     )
                 )
 
-    return contribution_list, array_flambda_emission_total, array_flambda_absorption_total, arraylambda
+    return contribution_list, array_flambda_emission_total, arraylambda
 
 
 def get_flux_contributions_from_packets(
@@ -1142,7 +1140,7 @@ def get_flux_contributions_from_packets(
     directionbins_are_vpkt_observers: bool = False,
     vpkt_match_emission_exclusion_to_opac: bool = False,
     gamma: bool = False,
-) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
+) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
 
     assert groupby in {"ion", "line", "nuc", "nucmass"}
     assert emtypecolumn in {"emissiontype", "trueemissiontype", "pellet_nucindex"}
@@ -1380,7 +1378,6 @@ def get_flux_contributions_from_packets(
                 del absorptiongroups[groupname]
 
     array_flambda_emission_total = None
-    array_flambda_absorption_total = None
     contribution_list = []
     array_lambda = None
     group_em_specs = dict(
@@ -1450,11 +1447,6 @@ def get_flux_contributions_from_packets(
 
             array_flambda_absorption = spec_group["f_lambda"].to_numpy()
 
-            if array_flambda_absorption_total is None:
-                array_flambda_absorption_total = array_flambda_absorption.copy()
-            else:
-                array_flambda_absorption_total += array_flambda_absorption
-
         else:
             array_flambda_absorption = np.zeros_like(array_flambda_emission, dtype=float)
 
@@ -1480,12 +1472,9 @@ def get_flux_contributions_from_packets(
     if array_flambda_emission_total is None:
         array_flambda_emission_total = np.zeros_like(array_lambda, dtype=float)
 
-    if array_flambda_absorption_total is None:
-        array_flambda_absorption_total = np.zeros_like(array_lambda, dtype=float)
-
     assert array_lambda is not None
 
-    return contribution_list, array_flambda_emission_total, array_flambda_absorption_total, array_lambda
+    return contribution_list, array_flambda_emission_total, array_lambda
 
 
 def sort_and_reduce_flux_contribution_list(
