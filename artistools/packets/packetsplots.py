@@ -366,9 +366,9 @@ def packets_2d_hist_bin_and_ejecta_vel(
     ax.set_ylabel(r"$v_z$ [$c$]")
     cbar = fig.colorbar(im, ax=ax)
     if colorlogscale:
-        cbar.set_label(r"log volumetric emissivity [erg/(s cm$^3$)]")
+        cbar.set_label(r"log volumetric emissivity (erg/(s cm$^3$))")
     else:
-        cbar.set_label(r"volumetric emissivity [erg/(s cm$^3$)]")
+        cbar.set_label(r"volumetric emissivity (erg/(s cm$^3$))")
 
     ax.set_xticks(np.linspace(xedges[0], xedges[-1], 6))
     ax.set_yticks(np.linspace(yedges[0], yedges[-1], 6))
