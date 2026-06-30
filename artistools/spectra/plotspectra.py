@@ -862,19 +862,17 @@ def make_emissionabsorption_plot(
         )
     else:
         assert not args.vpkt_match_emission_exclusion_to_opac
-        contribution_list, array_flambda_emission_total, arraylambda_angstroms = (
-            atspectra.get_flux_contributions(
-                modelpath,
-                filterfunc,
-                timestepmin,
-                timestepmax,
-                getemission=args.showemission,
-                getabsorption=args.showabsorption,
-                use_lastemissiontype=not args.use_thermalemissiontype,
-                directionbin=dirbin,
-                average_over_phi=args.average_over_phi_angle,
-                average_over_theta=args.average_over_theta_angle,
-            )
+        contribution_list, array_flambda_emission_total, arraylambda_angstroms = atspectra.get_flux_contributions(
+            modelpath,
+            filterfunc,
+            timestepmin,
+            timestepmax,
+            getemission=args.showemission,
+            getabsorption=args.showabsorption,
+            use_lastemissiontype=not args.use_thermalemissiontype,
+            directionbin=dirbin,
+            average_over_phi=args.average_over_phi_angle,
+            average_over_theta=args.average_over_theta_angle,
         )
 
     atspectra.print_integrated_flux(array_flambda_emission_total, arraylambda_angstroms)
@@ -996,13 +994,12 @@ def make_emissionabsorption_plot(
 
             # Calculate maximum absorption
             all_ys_absorption = pl.concat(
-                [df.select(pl.col("y").alias(f"y{i}")) for i, df in enumerate(dfabsorptionspectra)],
-                how="horizontal",
+                [df.select(pl.col("y").alias(f"y{i}")) for i, df in enumerate(dfabsorptionspectra)], how="horizontal"
             )
             total_y_absorption = all_ys_absorption.sum_horizontal().to_frame("y_sum")
             total_y_absorption = pl.concat([dfabsorptionspectra[2].select("x"), total_y_absorption], how="horizontal")
             ymin = total_y_absorption.filter(pl.col("x").is_between(xmin, xmax))["y_sum"].max()
-            assert(isinstance(ymin, (float, np.floating)))
+            assert isinstance(ymin, (float, np.floating))
 
     plotobjectlabels.extend([x.linelabel for x in contributions_sorted_reduced])
 
@@ -1082,7 +1079,7 @@ def make_emissionabsorption_plot(
         axis.set_ylim(top=ymax)  # ty:ignore[invalid-argument-type]
 
     if args.ymin is None:
-        ymin = 0. if not args.showabsorption else ymin
+        ymin = 0.0 if not args.showabsorption else ymin
         axis.set_ylim(bottom=float(-scalefactor * ymin * 1.2))
 
     return plotobjects, plotobjectlabels, dfaxisdata
