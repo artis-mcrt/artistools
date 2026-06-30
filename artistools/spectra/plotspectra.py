@@ -1087,7 +1087,7 @@ def make_emissionabsorption_plot(
 
             ymin = -scalefactor * max_f_absorption_total
 
-        axis.set_ylim(bottom=-scalefactor * ymin)
+        axis.set_ylim(bottom=float(ymin * 1.2))
 
     return plotobjects, plotobjectlabels, dfaxisdata
 
