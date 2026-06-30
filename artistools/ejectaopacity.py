@@ -182,7 +182,7 @@ def plot_planck_mean_opacity(
     else:
         numb_x_axis_pts = 0
         numb_y_axis_pts = 0
-        x_axis_coord = "r"
+        x_axis_coord = "rcyl"
         y_axis_coord = "z"
         if model_dim == 3:
             # reduce opacity frame to slice
@@ -222,14 +222,11 @@ def plot_planck_mean_opacity(
             aspect="auto",
         )
 
-        axis.set_xlabel(r"v$_{" + str(x_axis_coord) + r"}$ [$c$]", fontsize=16)
-        axis.set_ylabel(r"v$_{" + str(y_axis_coord) + r"}$ [$c$]", fontsize=16)
-        axis.tick_params(axis="both", which="major", labelsize=16)
+        axis.set_xlabel(r"v$_{" + str(x_axis_coord) + r"}$ [$c$]")
+        axis.set_ylabel(r"v$_{" + str(y_axis_coord) + r"}$ [$c$]")
 
-        cbar = fig.colorbar(im, ax=axis, orientation="horizontal", pad=0.05)
-        cbar.set_label(r"$\kappa_{Pl}$ [cm$^2$ $g^{-1}$]", fontsize=16)
-        cbar.ax.tick_params(labelsize=16)
-        fig.tight_layout(pad=0.5)
+        cbar = fig.colorbar(im, ax=axis)
+        cbar.set_label(r"Planck mean opacity (cm$^2$ $g^{-1}$)")
     defaultfilename = modelpath / Path(f"plotplanckopac_ts{timestep}")
     outputfilepath = (
         outputpath / f"plotplanckopac_ts{timestep}.pdf"
@@ -340,6 +337,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     time_start = time.perf_counter()
     planckmeanopacity_times_mass = 0.0
     mass_g_sum = 0.0
+    planck_opacity_frame_list = []
     for dfcellbatch in dfestimators.partition_by("batchindex", maintain_order=True, include_key=False):
         dfbinnedopacities = get_expansion_opacities(
             adata=adata,
@@ -378,6 +376,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             .collect(engine="streaming")
         )
 
+        if args.plot_planck_opacities:
+            planck_opacity_frame_list.append(
+                dfplanckmean.join(im[0].select(im_join_columns).collect(), on="modelgridindex", how="left")
+            )
+
         print(dfplanckmean)
         planckmeanopacity_times_mass += (dfplanckmean.select(pl.col("planckmean_opacity").dot(pl.col("mass_g")))).item()
         mass_g_sum += dfplanckmean.select(pl.col("mass_g").sum()).item()
@@ -390,9 +393,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         )
 
     if args.plot_planck_opacities:
-        dfplanckmean = dfplanckmean.join(im[0].select(im_join_columns).collect(), on="modelgridindex", how="left")
         plot_planck_mean_opacity(
-            args.modelpath, args.outputpath, dfplanckmean, timestep, im[1], slice_of_3D_model=args.slice
+            args.modelpath,
+            args.outputpath,
+            pl.concat(planck_opacity_frame_list),
+            timestep,
+            im[1],
+            slice_of_3D_model=args.slice,
         )
 
     print()
