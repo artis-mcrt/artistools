@@ -921,6 +921,7 @@ def make_emissionabsorption_plot(
             )
 
     if args.nostack:
+        # TODO: calculate ymin for this branch
         for x in contributions_sorted_reduced:
             if args.showemission:
                 dfspec = atspectra.get_dfspectrum_x_y_with_units(
@@ -992,6 +993,16 @@ def make_emissionabsorption_plot(
             )
             if not args.showemission:
                 plotobjects.extend(absstackplot)
+
+            # Calculate maximum absorption
+            all_ys_absorption = pl.concat(
+                [df.select(pl.col("y").alias(f"y{i}")) for i, df in enumerate(dfabsorptionspectra)],
+                how="horizontal",
+            )
+            total_y_absorption = all_ys_absorption.sum_horizontal().to_frame("y_sum")
+            total_y_absorption = pl.concat([dfabsorptionspectra[2].select("x"), total_y_absorption], how="horizontal")
+            ymin = total_y_absorption.filter(pl.col("x").is_between(xmin, xmax))["y_sum"].max()
+            assert(isinstance(ymin, (float, np.floating)))
 
     plotobjectlabels.extend([x.linelabel for x in contributions_sorted_reduced])
 
