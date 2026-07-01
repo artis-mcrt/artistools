@@ -919,7 +919,9 @@ def make_emissionabsorption_plot(
             )
 
     if args.nostack:
-        # TODO: calculate ymin for this branch
+        if args.showabsorption:
+            max_absorption = -np.inf
+
         for x in contributions_sorted_reduced:
             if args.showemission:
                 dfspec = atspectra.get_dfspectrum_x_y_with_units(
@@ -948,7 +950,16 @@ def make_emissionabsorption_plot(
                 if not args.showemission:
                     linecolor = absorptioncomponentplot.get_color()
 
+                if (
+                    this_max_absorption := dfspec.filter(pl.col("x").is_between(xmin, xmax))["y"].max()
+                ) > max_absorption:
+                    max_absorption = this_max_absorption
+
             plotobjects.append(mpatches.Patch(color=linecolor))
+
+        if args.showabsorption:
+            ymin = max_absorption
+            assert isinstance(ymin, (float, np.floating)) and np.isfinite(ymin)
 
     elif contributions_sorted_reduced:
         if args.showemission:
@@ -999,7 +1010,9 @@ def make_emissionabsorption_plot(
             total_y_absorption = all_ys_absorption.sum_horizontal().to_frame("y_sum")
             total_y_absorption = pl.concat([dfabsorptionspectra[2].select("x"), total_y_absorption], how="horizontal")
             ymin = total_y_absorption.filter(pl.col("x").is_between(xmin, xmax))["y_sum"].max()
-            assert(isinstance(ymin, (float, np.floating)))
+            assert isinstance(ymin, (float, np.floating))
+    else:
+        ymin = 0.0
 
     plotobjectlabels.extend([x.linelabel for x in contributions_sorted_reduced])
 
