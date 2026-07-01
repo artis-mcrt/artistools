@@ -216,12 +216,9 @@ def test_spectra_get_flux_contributions(benchmark: BenchmarkFixture) -> None:
 
     integrated_flux_specout = np.trapezoid(dfspectrum["f_lambda"], x=dfspectrum["lambda_angstroms"])
 
-    # TODO: Test for absorption as well?
-    _contribution_list, array_flambda_emission_total, arraylambda_angstroms = (
-        benchmark(
-            lambda: at.spectra.get_flux_contributions(
-                modelpath, timestepmin=timestepmin, timestepmax=timestepmax, use_lastemissiontype=False
-            )
+    _contribution_list, array_flambda_emission_total, arraylambda_angstroms = benchmark(
+        lambda: at.spectra.get_flux_contributions(
+            modelpath, timestepmin=timestepmin, timestepmax=timestepmax, use_lastemissiontype=False
         )
     )
 
@@ -256,16 +253,13 @@ def test_spectra_get_flux_contributions_from_packets(benchmark: BenchmarkFixture
     )[-1].collect()
 
     integrated_flux_specout = np.trapezoid(dfspectrum["f_lambda"], x=dfspectrum["lambda_angstroms"])
-    # TODO: Test for absorption as well?
-    _contribution_list, array_flambda_emission_total, arraylambda_angstroms = (
-        benchmark(
-            lambda: at.spectra.get_flux_contributions_from_packets(
-                modelpath_classic_3d,
-                timelowdays=timelowdays,
-                timehighdays=timehighdays,
-                emtypecolumn="emissiontype",
-                lambda_bin_edges=lambda_bin_edges,
-            )
+    _contribution_list, array_flambda_emission_total, arraylambda_angstroms = benchmark(
+        lambda: at.spectra.get_flux_contributions_from_packets(
+            modelpath_classic_3d,
+            timelowdays=timelowdays,
+            timehighdays=timehighdays,
+            emtypecolumn="emissiontype",
+            lambda_bin_edges=lambda_bin_edges,
         )
     )
 
