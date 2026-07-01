@@ -958,8 +958,7 @@ def make_emissionabsorption_plot(
             plotobjects.append(mpatches.Patch(color=linecolor))
 
         if args.showabsorption:
-            ymin = max_absorption
-            assert isinstance(ymin, (float, np.floating)) and np.isfinite(ymin)
+            assert isinstance(max_absorption, (float, np.floating)) and np.isfinite(max_absorption)
 
     elif contributions_sorted_reduced:
         if args.showemission:
@@ -1009,10 +1008,10 @@ def make_emissionabsorption_plot(
             )
             total_y_absorption = all_ys_absorption.sum_horizontal().to_frame("y_sum")
             total_y_absorption = pl.concat([dfabsorptionspectra[2].select("x"), total_y_absorption], how="horizontal")
-            ymin = total_y_absorption.filter(pl.col("x").is_between(xmin, xmax))["y_sum"].max()
-            assert isinstance(ymin, (float, np.floating))
+            max_absorption = total_y_absorption.filter(pl.col("x").is_between(xmin, xmax))["y_sum"].max()
+            assert isinstance(max_absorption, (float, np.floating))
     else:
-        ymin = 0.0
+        max_absorption = 0.0
 
     plotobjectlabels.extend([x.linelabel for x in contributions_sorted_reduced])
 
@@ -1092,8 +1091,8 @@ def make_emissionabsorption_plot(
         axis.set_ylim(top=ymax)  # ty:ignore[invalid-argument-type]
 
     if args.ymin is None:
-        ymin = 0.0 if not args.showabsorption else ymin
-        axis.set_ylim(bottom=float(-scalefactor * ymin * 1.2))
+        max_absorption = 0.0 if not args.showabsorption else max_absorption
+        axis.set_ylim(bottom=float(-scalefactor * max_absorption * 1.2))
 
     return plotobjects, plotobjectlabels, dfaxisdata
 
