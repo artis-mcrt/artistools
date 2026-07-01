@@ -919,8 +919,7 @@ def make_emissionabsorption_plot(
             )
 
     if args.nostack:
-        if args.showabsorption:
-            max_absorption = -np.inf
+        max_absorption: float = 0.0
 
         for x in contributions_sorted_reduced:
             if args.showemission:
