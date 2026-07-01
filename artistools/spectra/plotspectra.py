@@ -919,6 +919,8 @@ def make_emissionabsorption_plot(
             )
 
     if args.nostack:
+        max_absorption: float = 0.0
+
         for x in contributions_sorted_reduced:
             if args.showemission:
                 dfspec = atspectra.get_dfspectrum_x_y_with_units(
@@ -947,7 +949,16 @@ def make_emissionabsorption_plot(
                 if not args.showemission:
                     linecolor = absorptioncomponentplot.get_color()
 
+                if (  # type: ignore[operator]
+                    this_max_absorption := dfspec.filter(pl.col("x").is_between(xmin, xmax))["y"].max()
+                ) > max_absorption:  # type: ignore[operator] # pyright: ignore[ignoreArgumentType,reportOperatorIssue]
+                    max_absorption = this_max_absorption
+
             plotobjects.append(mpatches.Patch(color=linecolor))
+
+        if args.showabsorption:
+            assert isinstance(max_absorption, (float, np.floating))
+            assert np.isfinite(max_absorption)
 
     elif contributions_sorted_reduced:
         if args.showemission:
@@ -990,6 +1001,17 @@ def make_emissionabsorption_plot(
             )
             if not args.showemission:
                 plotobjects.extend(absstackplot)
+
+            # Calculate maximum absorption
+            all_ys_absorption = pl.concat(
+                [df.select(pl.col("y").alias(f"y{i}")) for i, df in enumerate(dfabsorptionspectra)], how="horizontal"
+            )
+            total_y_absorption = all_ys_absorption.sum_horizontal().to_frame("y_sum")
+            total_y_absorption = pl.concat([dfabsorptionspectra[0].select("x"), total_y_absorption], how="horizontal")
+            max_absorption = total_y_absorption.filter(pl.col("x").is_between(xmin, xmax))["y_sum"].max()
+            assert isinstance(max_absorption, (float, np.floating))
+    else:
+        max_absorption = 0.0
 
     plotobjectlabels.extend([x.linelabel for x in contributions_sorted_reduced])
 
@@ -1067,6 +1089,10 @@ def make_emissionabsorption_plot(
     ymax = max(ymaxrefall, scalefactor * max_f_emission_total * 1.2)
     if args.ymax is None:
         axis.set_ylim(top=ymax)  # ty:ignore[invalid-argument-type]
+
+    if args.ymin is None:
+        max_absorption = 0.0 if not args.showabsorption else max_absorption
+        axis.set_ylim(bottom=float(-scalefactor * max_absorption * 1.2))  # type: ignore[operator,arg-type] # pyright: ignore[reportArgumentType,reportOperatorIssue] # pyrefly: ignore[bad-argument-type]
 
     return plotobjects, plotobjectlabels, dfaxisdata
 
