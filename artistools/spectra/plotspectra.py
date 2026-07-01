@@ -1007,7 +1007,7 @@ def make_emissionabsorption_plot(
                 [df.select(pl.col("y").alias(f"y{i}")) for i, df in enumerate(dfabsorptionspectra)], how="horizontal"
             )
             total_y_absorption = all_ys_absorption.sum_horizontal().to_frame("y_sum")
-            total_y_absorption = pl.concat([dfabsorptionspectra[2].select("x"), total_y_absorption], how="horizontal")
+            total_y_absorption = pl.concat([dfabsorptionspectra[0].select("x"), total_y_absorption], how="horizontal")
             max_absorption = total_y_absorption.filter(pl.col("x").is_between(xmin, xmax))["y_sum"].max()
             assert isinstance(max_absorption, (float, np.floating))
     else:
