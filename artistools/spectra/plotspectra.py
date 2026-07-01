@@ -958,7 +958,8 @@ def make_emissionabsorption_plot(
             plotobjects.append(mpatches.Patch(color=linecolor))
 
         if args.showabsorption:
-            assert isinstance(max_absorption, (float, np.floating)) and np.isfinite(max_absorption)
+            assert isinstance(max_absorption, (float, np.floating))
+            assert np.isfinite(max_absorption)
 
     elif contributions_sorted_reduced:
         if args.showemission:
