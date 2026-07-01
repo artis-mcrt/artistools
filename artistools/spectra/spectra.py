@@ -1446,7 +1446,6 @@ def get_flux_contributions_from_packets(
                 array_lambda = spec_group["lambda_angstroms"].to_numpy()
 
             array_flambda_absorption = spec_group["f_lambda"].to_numpy()
-
         else:
             array_flambda_absorption = np.zeros_like(array_flambda_emission, dtype=float)
 
