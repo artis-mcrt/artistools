@@ -949,10 +949,9 @@ def make_emissionabsorption_plot(
                 if not args.showemission:
                     linecolor = absorptioncomponentplot.get_color()
 
-                if (
-                    this_max_absorption := dfspec.filter(pl.col("x").is_between(xmin, xmax))["y"].max()
-                ) is not None and this_max_absorption > max_absorption:  # type: ignore[operator] # pyright: ignore[ignoreArgumentType,reportOperatorIssue] # ty:ignore[unsupported-operator]
-                    max_absorption = this_max_absorption  # type: ignore[assignment] # pyright: ignore[reportAssignmentType] # pyrefly: ignore[bad-assignment] # ty:ignore[invalid-assignment]
+                this_max_absorption = dfspec.filter(pl.col("x").is_between(xmin, xmax))["y"].max()
+                assert isinstance(this_max_absorption, float)
+                max_absorption = max(max_absorption, this_max_absorption)
 
             plotobjects.append(mpatches.Patch(color=linecolor))
 
@@ -1008,11 +1007,9 @@ def make_emissionabsorption_plot(
             )
             total_y_absorption = all_ys_absorption.sum_horizontal().to_frame("y_sum")
             total_y_absorption = pl.concat([dfabsorptionspectra[0].select("x"), total_y_absorption], how="horizontal")
-            if (
-                max_total_y_absorption := total_y_absorption.filter(pl.col("x").is_between(xmin, xmax))["y_sum"].max()
-            ) is not None:
-                max_absorption = max_total_y_absorption  # type: ignore[assignment] # pyright: ignore[reportAssignmentType] # pyrefly: ignore[bad-assignment]
-            assert isinstance(max_absorption, (float, np.floating))
+            max_total_y_absorption = total_y_absorption.filter(pl.col("x").is_between(xmin, xmax))["y_sum"].max()
+            assert isinstance(max_total_y_absorption, float)
+            max_absorption = max_total_y_absorption
     else:
         max_absorption = 0.0
 
