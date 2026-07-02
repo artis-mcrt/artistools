@@ -951,8 +951,8 @@ def make_emissionabsorption_plot(
 
                 if (
                     this_max_absorption := dfspec.filter(pl.col("x").is_between(xmin, xmax))["y"].max()
-                ) is not None and this_max_absorption > max_absorption:  # type: ignore[operator] # pyright: ignore[ignoreArgumentType,reportOperatorIssue]
-                    max_absorption = this_max_absorption  # type: ignore[assignment] # pyright: ignore[reportAssignmentType] # pyrefly: ignore[bad-assignment]
+                ) is not None and this_max_absorption > max_absorption:  # type: ignore[operator] # pyright: ignore[ignoreArgumentType,reportOperatorIssue] # ty:ignore[unsupported-operator]
+                    max_absorption = this_max_absorption  # type: ignore[assignment] # pyright: ignore[reportAssignmentType] # pyrefly: ignore[bad-assignment] # ty:ignore[invalid-assignment]
 
             plotobjects.append(mpatches.Patch(color=linecolor))
 
@@ -1094,7 +1094,7 @@ def make_emissionabsorption_plot(
         axis.set_ylim(top=ymax)  # ty:ignore[invalid-argument-type]
 
     if args.ymin is None:
-        max_absorption = 0.0 if not args.showabsorption else max_absorption
+        max_absorption = 0.0 if not args.showabsorption else max_absorption  # ty:ignore[invalid-assignment]
         axis.set_ylim(bottom=float(-scalefactor * max_absorption * 1.2))
 
     return plotobjects, plotobjectlabels, dfaxisdata
