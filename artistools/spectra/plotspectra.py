@@ -949,10 +949,10 @@ def make_emissionabsorption_plot(
                 if not args.showemission:
                     linecolor = absorptioncomponentplot.get_color()
 
-                if (  # type: ignore[operator]
+                if (
                     this_max_absorption := dfspec.filter(pl.col("x").is_between(xmin, xmax))["y"].max()
-                ) > max_absorption:  # type: ignore[operator] # pyright: ignore[ignoreArgumentType,reportOperatorIssue]
-                    max_absorption = this_max_absorption
+                ) is not None and this_max_absorption > max_absorption:  # type: ignore[operator] # pyright: ignore[ignoreArgumentType,reportOperatorIssue]
+                    max_absorption = this_max_absorption  # type: ignore[assignment] # pyright: ignore[reportAssignmentType] # pyrefly: ignore[bad-assignment]
 
             plotobjects.append(mpatches.Patch(color=linecolor))
 
@@ -1008,7 +1008,10 @@ def make_emissionabsorption_plot(
             )
             total_y_absorption = all_ys_absorption.sum_horizontal().to_frame("y_sum")
             total_y_absorption = pl.concat([dfabsorptionspectra[0].select("x"), total_y_absorption], how="horizontal")
-            max_absorption = total_y_absorption.filter(pl.col("x").is_between(xmin, xmax))["y_sum"].max()
+            if (
+                max_total_y_absorption := total_y_absorption.filter(pl.col("x").is_between(xmin, xmax))["y_sum"].max()
+            ) is not None:
+                max_absorption = max_total_y_absorption  # type: ignore[assignment] # pyright: ignore[reportAssignmentType] # pyrefly: ignore[bad-assignment]
             assert isinstance(max_absorption, (float, np.floating))
     else:
         max_absorption = 0.0
@@ -1092,7 +1095,7 @@ def make_emissionabsorption_plot(
 
     if args.ymin is None:
         max_absorption = 0.0 if not args.showabsorption else max_absorption
-        axis.set_ylim(bottom=float(-scalefactor * max_absorption * 1.2))  # type: ignore[operator,arg-type] # pyright: ignore[reportArgumentType,reportOperatorIssue] # pyrefly: ignore[bad-argument-type]
+        axis.set_ylim(bottom=float(-scalefactor * max_absorption * 1.2))
 
     return plotobjects, plotobjectlabels, dfaxisdata
 
