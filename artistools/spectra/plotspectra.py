@@ -1091,7 +1091,7 @@ def make_emissionabsorption_plot(
         axis.set_ylim(top=ymax)  # ty:ignore[invalid-argument-type]
 
     if args.ymin is None:
-        max_absorption = 0.0 if not args.showabsorption else max_absorption  # ty:ignore[invalid-assignment]
+        max_absorption = 0.0 if not args.showabsorption else max_absorption
         axis.set_ylim(bottom=float(-scalefactor * max_absorption * 1.2))
 
     return plotobjects, plotobjectlabels, dfaxisdata
