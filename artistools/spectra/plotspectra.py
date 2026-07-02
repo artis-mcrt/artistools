@@ -899,6 +899,7 @@ def make_emissionabsorption_plot(
 
     max_f_emission_total = dfspectotal.filter(pl.col("x").is_between(xmin, xmax))["y"].max()
     assert isinstance(max_f_emission_total, (float, np.floating))
+    max_absorption = 0.0
 
     scalefactor = scale_to_peak / max_f_emission_total if scale_to_peak else 1.0
 
@@ -947,6 +948,10 @@ def make_emissionabsorption_plot(
                 if not args.showemission:
                     linecolor = absorptioncomponentplot.get_color()
 
+                this_max_absorption = dfspec.filter(pl.col("x").is_between(xmin, xmax))["y"].max()
+                assert isinstance(this_max_absorption, float)
+                max_absorption = max(max_absorption, this_max_absorption)
+
             plotobjects.append(mpatches.Patch(color=linecolor))
 
     elif contributions_sorted_reduced:
@@ -990,6 +995,16 @@ def make_emissionabsorption_plot(
             )
             if not args.showemission:
                 plotobjects.extend(absstackplot)
+
+            max_absorption = (
+                pl
+                .DataFrame({
+                    f"y{i}": df.filter(pl.col("x").is_between(xmin, xmax)).get_column("y")
+                    for i, df in enumerate(dfabsorptionspectra)
+                })
+                .select(pl.sum_horizontal(pl.all()).max())
+                .item()
+            )
 
     plotobjectlabels.extend([x.linelabel for x in contributions_sorted_reduced])
 
@@ -1067,6 +1082,9 @@ def make_emissionabsorption_plot(
     ymax = max(ymaxrefall, scalefactor * max_f_emission_total * 1.2)
     if args.ymax is None:
         axis.set_ylim(top=ymax)  # ty:ignore[invalid-argument-type]
+
+    if args.ymin is None:
+        axis.set_ylim(bottom=float(-scalefactor * max_absorption * 1.2))
 
     return plotobjects, plotobjectlabels, dfaxisdata
 
