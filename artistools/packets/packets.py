@@ -801,19 +801,11 @@ def make_3d_grid(
     modeldata: pd.DataFrame, vmax_cms: float
 ) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     grid = round(len(modeldata["inputcellid"]) ** (1.0 / 3.0))
-    xgrid = np.zeros(grid)
     vmax = vmax_cms / CLIGHT
-    i = 0
-    for _z in range(grid):
-        for _y in range(grid):
-            for nx in range(grid):
-                xgrid[nx] = -vmax + 2 * nx * vmax / grid
-                i += 1
+    xgrid = np.array([-vmax + 2 * nx * vmax / grid for nx in range(grid)])
 
     x, y, z = np.meshgrid(xgrid, xgrid, xgrid)
     grid_3d = np.array([xgrid, xgrid, xgrid])
-    # grid_Te = np.zeros((grid, grid, grid))
-    # print(grid_Te.shape)
     return grid_3d, x, y, z
 
 

@@ -276,23 +276,19 @@ def generate_band_lightcurve_data(
                     average_over_theta=args.average_over_theta_angle,
                 )
 
+                # interpolate the coarser-sampled series onto the finer wavelength grid before multiplying
                 if len(wavelength_from_spectrum) > len(wavefilter):
-                    interpolate_fn = interp1d(x=wavefilter, y=transmission, bounds_error=False, fill_value=0.0)  # type: ignore[arg-type] # pyright: ignore[reportArgumentType] # pyrefly: ignore [bad-argument-type]
-                    wavefilter = np.linspace(
-                        np.min(wavelength_from_spectrum),
-                        int(np.max(wavelength_from_spectrum)),
-                        len(wavelength_from_spectrum),
-                    )
-                    transmission = interpolate_fn(wavefilter)
+                    interpolate_fn = interp1d(x=wavefilter, y=transmission, bounds_error=False, fill_value=0.0)
+                    integrand = flux * interpolate_fn(wavelength_from_spectrum)
+                    integration_grid = wavelength_from_spectrum
                 else:
                     interpolate_fn = interp1d(wavelength_from_spectrum, flux, bounds_error=False, fill_value=0.0)
-                    wavelength_from_spectrum = np.linspace(wavefilter_min, wavefilter_max, len(wavefilter))
-                    flux = interpolate_fn(wavelength_from_spectrum)
+                    integrand = interpolate_fn(wavefilter) * transmission
+                    integration_grid = wavefilter
 
-                weighted_flux_obs = abs(np.trapezoid(flux * transmission, wavelength_from_spectrum))  # pyright: ignore[reportArgumentType]
-                assert isinstance(weighted_flux_obs, float)
+                weighted_flux_obs = float(abs(np.trapezoid(integrand, integration_grid)))
                 phot_filtobs_sn: float | int = (
-                    0.0 if weighted_flux_obs == 0.0 else -2.5 * np.log10(weighted_flux_obs / zeropointenergyflux)
+                    0.0 if weighted_flux_obs == 0.0 else -2.5 * math.log10(weighted_flux_obs / zeropointenergyflux)
                 )
 
                 if phot_filtobs_sn != 0.0:

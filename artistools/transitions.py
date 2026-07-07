@@ -163,7 +163,6 @@ def make_plot(
         print(figure_title)
         axes[0].set_title(figure_title, fontsize=10)
 
-    peak_y_value = -1
     yvalues_combined = np.zeros((len(temperature_list), len(xvalues)))
     for seriesindex, temperature in enumerate(temperature_list):
         serieslabel = "NLTE" if temperature == "NOTEMPNLTE" else f"LTE {temperature} = {vardict[temperature]:.0f} K"
@@ -173,13 +172,10 @@ def make_plot(
 
             axis.plot(xvalues, yvalues[seriesindex][ion_index], linewidth=1.5, label=serieslabel)
 
-            peak_y_value = max(yvalues[seriesindex][ion_index])
-
             axis.legend(loc="upper left", handlelength=1, frameon=False, numpoints=1, prop={"size": 8})
 
         if len(axes) > len(ionlist):
             axes[len(ionlist)].plot(xvalues, yvalues_combined[seriesindex], linewidth=1.5, label=serieslabel)
-            peak_y_value = max([peak_y_value] + yvalues_combined[seriesindex])
 
     axislabels = [
         f"{at.get_elsymbol(Z)} {at.roman_numerals[ion_stage]}\n(pop={ionpopdict[IonTuple(Z, ion_stage)]:.1e}/cm³)"
@@ -367,8 +363,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         if time_days != -1:
             figure_title += f" ({time_days:.1f}d)"
 
-        # -1 means use NLTE populations
-        temperature_list = ["Te", "TR", "NOTEMPNLTE"]
+        # NOTEMPNLTE means use NLTE populations
         temperature_list = ["NOTEMPNLTE"]
         vardict = {"Te": Te, "TR": TR}
     else:
@@ -512,13 +507,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                     popcolumnname = f"upper_pop_lte_{T_exc:.0f}K"
                     if args.atomicdatabase == "artis":
                         K_B = 8.617333262145179e-05  # eV / K
-                        pldftransitions = ion["transitions"]
-                        assert isinstance(pldftransitions, pl.DataFrame)
                         ltepartfunc = (
-                            pldftransitions
-                            .select(pl.col("g") * (-pl.col("energy_ev") / K_B / T_exc).exp())
-                            .sum()
-                            .item()
+                            pldflevels.select(pl.col("g") * (-pl.col("energy_ev") / K_B / T_exc).exp()).sum().item()
                         )
                     else:
                         ltepartfunc = 1.0

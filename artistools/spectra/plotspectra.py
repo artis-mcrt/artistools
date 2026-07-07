@@ -956,7 +956,7 @@ def make_emissionabsorption_plot(
 
     elif contributions_sorted_reduced:
         if args.showemission:
-            dfabsorptionspectra = pl.collect_all([
+            dfemissionspectra = pl.collect_all([
                 atspectra.get_dfspectrum_x_y_with_units(
                     pl.DataFrame({"f_lambda": x.array_flambda_emission, "lambda_angstroms": arraylambda_angstroms}),
                     xunit=args.xunit,
@@ -967,8 +967,8 @@ def make_emissionabsorption_plot(
             ])
             assert not any(x.color is None for x in contributions_sorted_reduced)
             stackplot = axis.stackplot(
-                dfabsorptionspectra[0]["x"],
-                [dfspec["y"] * scalefactor for dfspec in dfabsorptionspectra],
+                dfemissionspectra[0]["x"],
+                [dfspec["y"] * scalefactor for dfspec in dfemissionspectra],
                 colors=[x.color for x in contributions_sorted_reduced if x.color is not None],
                 linewidth=0,
             )

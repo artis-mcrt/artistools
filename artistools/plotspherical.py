@@ -76,10 +76,7 @@ def plot_spherical(
 
     aggs = []
     if nnelement_vars := [var for var in plotvars if var.startswith("nnelement_")]:
-        aggs += [
-            ((pl.col(var) * pl.col("e_rf")).mean() / pl.col("e_rf").mean() / 29979245800).alias(var)
-            for var in nnelement_vars
-        ]
+        aggs += [((pl.col(var) * pl.col("e_rf")).mean() / pl.col("e_rf").mean()).alias(var) for var in nnelement_vars]
 
     if "emvelocityoverc" in plotvars:
         aggs.append(
@@ -314,7 +311,11 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
 
     at.plottools.set_mpl_style()
 
-    dfestimators = at.estimators.scan_estimators(modelpath=args.modelpath) if "temperature" in args.plotvars else None
+    dfestimators = (
+        at.estimators.scan_estimators(modelpath=args.modelpath)
+        if any(var in {"temperature", "temperature_sigma"} or var.startswith("nnelement_") for var in args.plotvars)
+        else None
+    )
 
     nprocs_read, dfpackets = at.packets.get_packets(
         args.modelpath, args.maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"

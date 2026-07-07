@@ -170,7 +170,7 @@ def plot_last_emission_velocities_histogram(
     dfpackets_selected = dfpackets.filter(pl.col("t_arrive_d").is_between(timelow, timehigh, closed="right"))
 
     if costhetabin is not None:
-        dfpackets_selected = dfpackets.filter(pl.col("costhetabin") == costhetabin)
+        dfpackets_selected = dfpackets_selected.filter(pl.col("costhetabin") == costhetabin)
 
     weight_by_energy = True
     if weight_by_energy:
@@ -260,10 +260,11 @@ def get_reduced_packet_set(
         dfpackets_selected = dfpackets_selected.filter(
             (pl.col("lambda_rf") > lam_min) & (pl.col("lambda_rf") < lam_max)
         )
-    nphibins = at.get_viewingdirection_phibincount()
-    dfpackets_selected_dirbinned = dfpackets_selected.filter(pl.col("costhetabin") * nphibins == dirbin)
+    if dirbin >= 0:
+        nphibins = at.get_viewingdirection_phibincount()
+        dfpackets_selected = dfpackets_selected.filter(pl.col("costhetabin") * nphibins == dirbin)
 
-    return nprocs_read, dfpackets_selected_dirbinned
+    return nprocs_read, dfpackets_selected
 
 
 def packets_2d_hist_bin_and_ejecta_vel(
@@ -339,7 +340,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
             * pl.col(f"{pos_type_str}em_time")
         ).alias("hollow_cyl_vol_em")
     ).collect()
-    solidanglefactor = at.get_viewingdirection_costhetabincount() if dirbin else 1.0
+    solidanglefactor = at.get_viewingdirection_costhetabincount() if dirbin >= 0 else 1.0
     energy_sum = float(dfpackets_selected["e_rf"].sum())
     print(f"Directional 4pi-equivalent bol. luminosity of {energy_sum / nprocs_read / Delta_t_secs * solidanglefactor}")
 
@@ -419,8 +420,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         message = "Wavelength mode requires both -wavelen and -binwidth to be provided."
         raise ValueError(message)
 
-    assert (args.dirbin % at.get_viewingdirection_phibincount()) == 0, (
-        "dirbin needs to be a multiple of 10 (to be improved)"
+    assert args.dirbin == -1 or (args.dirbin % at.get_viewingdirection_phibincount()) == 0, (
+        "dirbin needs to be -1 (isotropic) or a multiple of 10 (to be improved)"
     )
 
     packets_2d_hist_bin_and_ejecta_vel(

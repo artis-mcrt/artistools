@@ -1087,7 +1087,7 @@ def get_flux_contributions(
 
                 if filterfunc:
                     array_fnu_emission = filterfunc(array_fnu_emission)
-                    if selectedcolumn <= nelements * maxion:
+                    if selectedcolumn < nelements * maxion:
                         array_fnu_absorption = filterfunc(array_fnu_absorption)
 
                 array_flambda_emission = array_fnu_emission * arraynu / arraylambda
