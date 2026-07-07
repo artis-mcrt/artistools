@@ -385,7 +385,7 @@ def get_averageexcitation(
             .item()
         )
 
-        boltzfac_sum = energy_boltzfac_sum = (
+        boltzfac_sum = (
             ionlevels[levelnumber_sl:].select(pl.col("g") * (-pl.col("energy_ev") / k_b / T_exc).exp()).sum().item()
         )
         # adjust to the actual superlevel population from ARTIS

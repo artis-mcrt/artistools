@@ -329,43 +329,45 @@ def make_flux_ratio_plot(args: argparse.Namespace) -> None:
         for ax in axes:
             ax.plot(arr_tdays, arr_floersfit, color="black", label="Flörs+2020 fit", lw=2.0)
 
-        femis = pd.read_csv(
+        floersmodelratiopath = Path(
             "/Users/luke/iCloud/Papers (first-author)/2022 Artis ionisation/"
             "generateplots/floers_model_NIR_VIS_ratio_20201126.csv"
         )
+        if floersmodelratiopath.is_file():
+            femis = pd.read_csv(floersmodelratiopath)
 
-        amodels: dict[str, tuple[list[int], list[float]]] = {}
-        for _index, row in femis.iterrows():
-            modelname = row.file.replace("fig-nne_Te_allcells-", "").replace(f"-{row.epoch}d.txt", "")
-            if modelname not in amodels:
-                amodels[modelname] = ([], [])
-            if int(row.epoch) != 263:
-                amodels[modelname][0].append(row.epoch)
-                amodels[modelname][1].append(row.NIR_VIS_ratio)
+            amodels: dict[str, tuple[list[int], list[float]]] = {}
+            for _index, row in femis.iterrows():
+                modelname = row.file.replace("fig-nne_Te_allcells-", "").replace(f"-{row.epoch}d.txt", "")
+                if modelname not in amodels:
+                    amodels[modelname] = ([], [])
+                if int(row.epoch) != 263:
+                    amodels[modelname][0].append(row.epoch)
+                    amodels[modelname][1].append(row.NIR_VIS_ratio)
 
-        # for amodelname, (xlist, ylist) in amodels.items():
-        for aindex, (amodelname, alabel) in enumerate([
-            ("w7", "W7")
-            # ("subch", "S0"),
-            # ('subch_shen2018', r'1M$_\odot$'),
-            # ('subch_shen2018_electronlossboost4x', '1M$_\odot$ (Shen+18) 4x e- loss'),
-            # ('subch_shen2018_electronlossboost8x', r'1M$_\odot$ heatboost8'),
-            # ('subch_shen2018_electronlossboost12x', '1M$_\odot$ (Shen+18) 12x e- loss'),
-        ]):
-            xlist, ylist = amodels[amodelname]
-            color = args.color[aindex] if aindex < len(args.color) else None
-            print(amodelname, xlist, ylist)
-            axis.plot(
-                xlist,
-                ylist,
-                color=color,
-                label="Flörs " + alabel,
-                marker="+",
-                markersize=10,
-                markeredgewidth=2,
-                lw=0,
-                alpha=0.8,
-            )
+            # for amodelname, (xlist, ylist) in amodels.items():
+            for aindex, (amodelname, alabel) in enumerate([
+                ("w7", "W7")
+                # ("subch", "S0"),
+                # ('subch_shen2018', r'1M$_\odot$'),
+                # ('subch_shen2018_electronlossboost4x', '1M$_\odot$ (Shen+18) 4x e- loss'),
+                # ('subch_shen2018_electronlossboost8x', r'1M$_\odot$ heatboost8'),
+                # ('subch_shen2018_electronlossboost12x', '1M$_\odot$ (Shen+18) 12x e- loss'),
+            ]):
+                xlist, ylist = amodels[amodelname]
+                color = args.color[aindex] if aindex < len(args.color) else None
+                print(amodelname, xlist, ylist)
+                axis.plot(
+                    xlist,
+                    ylist,
+                    color=color,
+                    label="Flörs " + alabel,
+                    marker="+",
+                    markersize=10,
+                    markeredgewidth=2,
+                    lw=0,
+                    alpha=0.8,
+                )
     m18_tdays = np.array([206, 229, 303, 339])
     m18_pew = {}
     # m18_pew[(26, 2, 12570)] = np.array([2383, 1941, 2798, 6770])

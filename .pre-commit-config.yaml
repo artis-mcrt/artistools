@@ -58,6 +58,7 @@ repos:
       hooks:
           - id: ty
             name: ty
+            args: [--all-extras]
 
 ci:
     skip: [ty]
