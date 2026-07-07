@@ -390,7 +390,7 @@ def add_abundancecontributions(
     if "X_Fegroup" not in dfmodel.columns:
         dfmodel = dfmodel.with_columns(pl.lit(1.0).alias("X_Fegroup"))
 
-    particleids = dfcontribs["particleid"].unique()
+    particleids = dfcontribs.select(pl.col("particleid").unique()).to_series()
 
     print("Reading trajectory abundances...")
     timestart = time.perf_counter()
