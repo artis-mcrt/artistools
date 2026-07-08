@@ -1607,7 +1607,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-labelfontsize",
         type=float,
         default=None,
-        help="Font size for axis labels. Defaults to 22 for band light curves and 24 for colour evolution plots",
+        help="Base font size for plot text (axis labels, tick labels, legend). Defaults to 22 for band light curves and 24 for colour evolution plots",
     )
 
 
