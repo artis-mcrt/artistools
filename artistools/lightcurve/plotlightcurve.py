@@ -909,7 +909,8 @@ def make_band_lightcurves_plot(
     outputfolder: Path | str,
     args: argparse.Namespace,
 ) -> None:
-    args.labelfontsize = 22  # TODO: make command line arg
+    if args.labelfontsize is None:
+        args.labelfontsize = 22
     fig, ax = create_axes(args)
 
     plotkwargs: dict[str, t.Any] = {}
@@ -1048,7 +1049,8 @@ def colour_evolution_plot(
     outputfolder: str | Path,
     args: argparse.Namespace,
 ) -> None:
-    args.labelfontsize = 24  # TODO: make command line arg
+    if args.labelfontsize is None:
+        args.labelfontsize = 24
     angle_counter = 0
     color_list = list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20)))
 
@@ -1600,6 +1602,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-ncolslegend", type=int, default=1, help="Number of columns in legend")
 
     parser.add_argument("--legendframeon", action="store_true", help="Frame on in legend")
+
+    parser.add_argument(
+        "-labelfontsize",
+        type=float,
+        default=None,
+        help="Font size for axis labels. Defaults to 22 for band light curves and 24 for colour evolution plots",
+    )
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
