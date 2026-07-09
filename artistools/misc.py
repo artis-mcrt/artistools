@@ -424,9 +424,9 @@ def get_timestep_of_timedays(modelpath: Path | str, timedays: str | int | float)
     timedays_float = float(timedays)
 
     arr_tstart = get_timestep_times(modelpath, loc="start")
-    arr_tend = get_timestep_times(modelpath, loc="end")
     # to avoid roundoff errors, use the next timestep's tstart at each timestep's tend (t_width is not exact)
-    arr_tend[:-1] = arr_tstart[1:]
+    # copy into a new list to avoid mutating the lru_cached list returned by get_timestep_times
+    arr_tend = [*arr_tstart[1:], get_timestep_times(modelpath, loc="end")[-1]]
 
     for ts, (tstart, tend) in enumerate(zip(arr_tstart, arr_tend, strict=False)):
         if tstart <= timedays_float < tend:

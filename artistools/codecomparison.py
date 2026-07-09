@@ -88,12 +88,13 @@ def read_reference_estimators(
 
                 key = (cur_timestep, cur_modelgridindex)
 
-                estimators[key]["vel_mid"] = float(row[0])
-                estimators[key]["Te"] = float(row[1])
-                estimators[key]["rho"] = float(row[2])
-                estimators[key]["nne"] = float(row[3])
-                estimators[key]["nntot"] = float(row[4])
-
+                estimators[key] = {
+                    "vel_mid": float(row[0]),
+                    "Te": float(row[1]),
+                    "rho": float(row[2]),
+                    "nne": float(row[3]),
+                    "nntot": float(row[4]),
+                }
                 estimators[key]["vel_r_max_kmps"] = estimators[key]["vel_mid"]
 
     ionfracfilepaths = inputmodelfolder.glob(f"ionfrac_*_{inputmodel}_{codename}.txt")
@@ -164,7 +165,7 @@ def read_reference_estimators(
                                 estimators[tsmgi][f"nnelement_{elsym}"] += ionpop
 
                     assert np.isclose(float(row[0]), estimators[tsmgi]["vel_mid"], rtol=0.01)
-                    assert estimators[key]["vel_mid"]
+                    assert estimators[tsmgi]["vel_mid"]
 
     return estimators
 

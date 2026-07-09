@@ -759,7 +759,9 @@ def peakmag_risetime_declinerate_init(
                         [mag for mag in lightcurve_data["mag"] if mag != 0], dtype=np.float64
                     )  # drop times with 0 brightness
                     time = [
-                        t for t, mag in zip(lightcurve_data["time"], lightcurve_data["mag"], strict=False) if mag != 0
+                        t
+                        for t, mag in zip(lightcurve_data["time_days"], lightcurve_data["mag"], strict=False)
+                        if mag != 0
                     ]
 
                 # Calculating band peak time, peak magnitude and delta m15
@@ -805,7 +807,9 @@ def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Names
 
     lcdataframes = at.lightcurve.readfile(modelpath / "light_curve_res.out")
 
-    timetoplot = at.match_closest_time(reftime=args.timedays, searchtimes=lcdataframes[0].collect()["time"].to_list())
+    timetoplot = at.match_closest_time(
+        reftime=args.timedays, searchtimes=lcdataframes[0].collect()["time_days"].to_list()
+    )
     print(timetoplot)
 
     for angleindex, lcdata in lcdataframes.items():
@@ -814,7 +818,9 @@ def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Names
             angle, costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, plotkwargs, args
         )
 
-        lumattime = lcdata.filter(pl.col("time") == float(timetoplot)).select("lum").collect().item(0, 0)
+        lumattime = (
+            lcdata.filter(pl.col("time_days") == float(timetoplot)).select("luminosity_Lsun").collect().item(0, 0)
+        )
         brightness = lumattime * at.constants.Lsun_to_erg_per_s
         if args.colorbarphi:
             xvalues = int(angleindex / 10)

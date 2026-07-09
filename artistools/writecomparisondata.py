@@ -31,7 +31,7 @@ def write_spectra(modelpath: str | Path, selected_timesteps: Sequence[int], outf
     lum_lambda = np.zeros((len(lambdas), len(times)))
 
     # convert flux to power by multiplying by area
-    for n in range(1000):
+    for n in range(len(lambdas)):
         # 2.99792458e18 is c in Angstrom / second
         lum_lambda[n, :] = fluxes_nu[n, :] * 2.99792458e18 / lambdas[n] / lambdas[n] * area
 

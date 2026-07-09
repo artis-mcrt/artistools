@@ -68,7 +68,9 @@ def plot_slice_modelcolumn(
     if args.logcolorscale:
         # logscale for colormap
         if args.floorval:
-            colorscale = np.array(args.floorval if x < args.floorval or not math.isfinite(x) else x for x in colorscale)
+            colorscale = np.array([
+                args.floorval if x < args.floorval or not math.isfinite(x) else x for x in colorscale
+            ])
         with np.errstate(divide="ignore"):
             colorscale = np.log10(colorscale)
         # np.nan_to_num(colorscale, posinf=-99, neginf=-99)

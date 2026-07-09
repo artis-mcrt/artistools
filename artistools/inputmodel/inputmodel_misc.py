@@ -1349,7 +1349,7 @@ def scale_model_to_time(
         modelmeta = {}
 
     modelmeta["t_model_days"] = targetmodeltime_days
-    modelmeta.get("headercommentlines", []).append(
+    modelmeta.setdefault("headercommentlines", []).append(
         f"scaled from {t_model_days} to {targetmodeltime_days} (no abund change from decays)"
     )
 

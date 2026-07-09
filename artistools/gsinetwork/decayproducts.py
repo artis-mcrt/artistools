@@ -489,7 +489,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 if traj_id in selected_traj_ids
             )
             for k in alltraj_decay_powers[0]
+            if k != "timedays"
         }
+        decay_powers["timedays"] = np.array(arr_t_day)
 
         assert isinstance(decay_powers["abundweighted_gamma"], np.ndarray)
         assert isinstance(decay_powers["abundweighted_elec"], np.ndarray)
