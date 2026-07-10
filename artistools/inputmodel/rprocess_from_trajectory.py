@@ -523,7 +523,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         ],
         orient="row",
     )
-    at.inputmodel.save_modeldata(dfmodel=dfmodel, t_model_init_days=t_model_init_days, filepath=Path(args.outputpath))
+    at.inputmodel.save_modeldata(dfmodel=dfmodel, t_model_init_days=t_model_init_days, outpath=Path(args.outputpath))
 
     with Path(args.outputpath, "gridcontributions.txt").open("w", encoding="utf-8") as fcontribs:
         fcontribs.write("particleid cellindex frac_of_cellmass\n")

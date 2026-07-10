@@ -129,7 +129,7 @@ def slice_abundance_file(
                     currentblock[0] = f"{outcellid:6d}"
                     keepcurrentblock = True
             else:
-                currentblock.append(*linesplit)
+                currentblock.extend(linesplit)
 
     if keepcurrentblock:
         print("WARNING: unfinished block")

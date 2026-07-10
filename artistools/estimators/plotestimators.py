@@ -347,7 +347,9 @@ def plot_levelpop(
                 ylist.append(valuesum / tdeltasum)
 
         plot_data(
-            pl.DataFrame({"xvalue": xlist, "yvalue": ylist}, orient="col"),
+            pl.DataFrame({"xvalue": xlist, "yvalue": ylist}, orient="col").with_columns(
+                xvalue_binned=pl.col("xvalue"), celltsweight=pl.lit(1.0)
+            ),
             ax=ax,
             args=args,
             startfromzero=startfromzero,

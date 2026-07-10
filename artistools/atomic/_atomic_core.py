@@ -162,7 +162,7 @@ def add_transition_columns(
     dftransitions = dftransitions.with_columns(lambda_angstroms=hc / pl.col("epsilon_trans_ev"))
 
     # clean up any columns used for intermediate calculations
-    dftransitions.drop(
+    dftransitions = dftransitions.drop(
         col
         for col in dftransitions.collect_schema().names()
         if col not in columns_before and col not in columns and col != "levelindex"

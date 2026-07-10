@@ -315,7 +315,7 @@ def bolometric_magnitude(
     magnitudes = []
     times = []
 
-    Mpc_to_cm = 3.085677581491367e24
+    Mpc_to_cm = at.constants.megaparsec_to_cm
     for timestep, time in enumerate(float(time) for time in timearray):
         if (args.timemin is None or args.timemin <= time) and (args.timemax is None or args.timemax >= time):
             if angle == -1:

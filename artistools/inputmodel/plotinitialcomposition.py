@@ -220,7 +220,7 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
 
     defaultfilename = Path(modelpath) / f"plotcomposition_{','.join(v.lower() for v in args.plotvars)}.pdf"
     if args.outputfile and Path(args.outputfile).is_dir():
-        outfilename = Path(modelpath) / defaultfilename
+        outfilename = Path(args.outputfile) / defaultfilename.name
     elif args.outputfile:
         outfilename = args.outputfile
     else:

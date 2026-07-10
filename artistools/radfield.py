@@ -319,7 +319,7 @@ def plot_celltimestep(
             # outer velocity
             v_surface = modelmeta["vmax_cmps"]
             r_surface = time_days * 86400 * v_surface
-            r_observer = 3.0857e24
+            r_observer = at.constants.megaparsec_to_cm
             scale_factor = (r_observer / r_surface) ** 2 / (2 * math.pi)
             print(
                 "Scaling emergent spectrum flux at 1 Mpc to specific intensity "

@@ -1,7 +1,7 @@
 h_ev_s = 4.1356677e-15  # Planck constant [eV s]
 h_erg_s = 6.6260755e-27  # Planck constant [erg s]
 Lsun_to_erg_per_s = 3.826e33  # Solar luminosity [erg/s]
-megaparsec_to_cm = 3.0856e24  # Megaparsec [cm]
+megaparsec_to_cm = 3.085677581491367e24  # Megaparsec [cm]
 MEV_to_erg = 1.6021772e-6  # Megaelectronvolt [erg]
 Msun_to_g = 1.989e33  # Solar mass [g]
 c_ang_per_s = 2.99792458e18  # Speed of light in [Angstrom/s]

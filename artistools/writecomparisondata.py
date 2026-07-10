@@ -24,9 +24,8 @@ def write_spectra(modelpath: str | Path, selected_timesteps: Sequence[int], outf
 
     fluxes_nu = spec_data[1:, 1:]
 
-    # 1 parsec in cm is 3.086e18
-    # area in cm^2 of a spherical of radius 1 Mpc is:
-    area = 3.086e18 * 3.086e18 * 1e12 * 4.0 * math.pi
+    # area in cm^2 of a sphere of radius 1 Mpc
+    area = 4.0 * math.pi * at.constants.megaparsec_to_cm**2
 
     lum_lambda = np.zeros((len(lambdas), len(times)))
 

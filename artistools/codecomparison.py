@@ -201,7 +201,6 @@ def plot_spectrum(modelpath: str | Path, timedays: str | float | int, axis: mpla
     assert np.isclose(float(timedays), float(timedays_found), rtol=0.1)  # found a detect match to requested time
     label = str(modelpath).lstrip("_") + f" {timedays_found}d"
 
-    megaparsec_to_cm = 3.085677581491367e24
-    arr_flux = dfspectra[dfspectra.columns[timeindex + 1]] / 4 / math.pi / (megaparsec_to_cm**2)
+    arr_flux = dfspectra[dfspectra.columns[timeindex + 1]] / 4 / math.pi / (at.constants.megaparsec_to_cm**2)
 
     axis.plot(dfspectra["lambda"], arr_flux, label=label, **plotkwargs)

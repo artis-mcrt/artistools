@@ -167,10 +167,15 @@ def get_axis_labels(args: argparse.Namespace) -> tuple[str | None, str | None]:
 
 
 def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
-    angle = args.plotviewingangle[0]
+    if args.plotvspecpol:
+        angle = args.plotvspecpol[0]
+        stokes_params = atspectra.get_vspecpol_data(vspecindex=angle, modelpath=modelpath)
+    else:
+        angle = args.plotviewingangle[0] if args.plotviewingangle else -1
+        stokes_params = atspectra.get_specpol_data(dirbin=angle, modelpath=modelpath)
+
     dfspectrum = (
-        atspectra
-        .get_specpol_data(dirbin=angle, modelpath=modelpath)[args.stokesparam]
+        stokes_params[args.stokesparam]
         .with_columns(lambda_angstroms=2.99792458e18 / pl.col("nu"))
         .collect()
         .to_pandas(use_pyarrow_extension_array=True)
@@ -194,7 +199,7 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
     vpkt_config = get_vpkt_config(modelpath)
 
     linelabel = (
-        f"{timeavg} days, cos($\\theta$) = {vpkt_config['cos_theta'][angle[0]]}"
+        f"{timeavg} days, cos($\\theta$) = {vpkt_config['cos_theta'][angle // vpkt_config['nspectraperobs']]}"
         if args.plotvspecpol
         else f"{timeavg} days"
     )
@@ -207,7 +212,7 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
         fluxes = dfspectrum[timeavg]
         nbins = 5
 
-        for i in range(0, len(wavelengths - nbins), nbins):
+        for i in range(0, len(wavelengths) - nbins + 1, nbins):
             new_lambda_angstroms.append(wavelengths[i + nbins // 2])
             sum_flux = sum(fluxes[j] for j in range(i, i + nbins))
             binned_flux.append(sum_flux / nbins)
@@ -576,7 +581,7 @@ def plot_artis_spectrum(
                 fluxes = dfspectrum["y"]
                 nbins = 5
 
-                for i in range(0, len(wavelengths - nbins), nbins):
+                for i in range(0, len(wavelengths), nbins):
                     i_max = min(i + nbins, len(wavelengths))
                     ncontribs = i_max - i
                     sum_lambda = sum(wavelengths[j] for j in range(i, i_max))
@@ -584,7 +589,9 @@ def plot_artis_spectrum(
                     sum_flux = sum(fluxes[j] for j in range(i, i_max))
                     binned_flux.append(sum_flux / ncontribs)
 
-                dfspectrum = pl.DataFrame({"x": new_lambda_angstroms, "y": binned_flux})
+                dfspectrum = pl.DataFrame({"x": new_lambda_angstroms, "y": binned_flux}).with_columns(
+                    lambda_angstroms=pl.col("x"), f_lambda=pl.col("y")
+                )
 
             axis.plot(
                 dfspectrum["x"], dfspectrum["y"], label=linelabel_withdirbin if axindex == 0 else None, **plotkwargs

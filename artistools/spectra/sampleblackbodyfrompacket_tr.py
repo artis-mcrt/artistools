@@ -92,10 +92,8 @@ for timestep, timedays in enumerate(arr_tstart):
     # print('ts', timestep, timedays, 'days')
 
     # get packets escaping within timestep
-    timelow = column_names[timestep] * 86400
+    timelow = timedays * 86400
     timehigh = arr_tend[timestep] * 86400
-    # timelow = float(arr_tstart[timestep])
-    # timehigh = float(arr_tend[timestep])
     # print('ts', timestep, 'low', timelow, 'high', timehigh)
 
     dfpackets_timestep = dfpackets.query(
