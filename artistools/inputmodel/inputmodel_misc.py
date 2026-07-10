@@ -1219,9 +1219,23 @@ def dimension_reduce_model(
                 )
             ).implode(),
         )
-        .select((pl.col("mgiout") + 1).alias("inputcellid"), cs.all().exclude("mgiout"))
-        .join(pl.LazyFrame({"inputcellid": range(ncoordgridr * ncoordgridz)}), on="inputcellid", how="left")
-        .with_columns(rho=pl.lit(None).cast(pl.Float32), inputcellid=pl.col("inputcellid").cast(pl.Int64))
+        .select((pl.col("mgiout") + 1).cast(pl.Int64).alias("inputcellid"), cs.all().exclude("mgiout"))
+        .join(
+            pl.LazyFrame({"inputcellid": range(1, ncoordgridr * ncoordgridz + 1)}, schema={"inputcellid": pl.Int64}),
+            on="inputcellid",
+            how="right",
+        )
+        .with_columns(
+            rho=pl.lit(None).cast(pl.Float32),
+            out_mass_g=pl.col("out_mass_g").fill_null(0.0),
+            # recompute the grid indices so that output cells with no contributing input cells are filled in
+            out_n_r=((pl.col("inputcellid") - 1) % ncoordgridr).cast(pl.Int32),
+            out_n_z=((pl.col("inputcellid") - 1) // ncoordgridr).cast(pl.Int32),
+        )
+        .with_columns(
+            cs.starts_with("X_").fill_null(0.0),
+            cs.by_name("Ye", "cellYe", "q", "tracercount", require_all=False).fill_null(0.0),
+        )
         .sort("inputcellid")
     )
 
@@ -1349,7 +1363,7 @@ def scale_model_to_time(
         modelmeta = {}
 
     modelmeta["t_model_days"] = targetmodeltime_days
-    modelmeta.get("headercommentlines", []).append(
+    modelmeta.setdefault("headercommentlines", []).append(
         f"scaled from {t_model_days} to {targetmodeltime_days} (no abund change from decays)"
     )
 

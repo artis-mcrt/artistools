@@ -22,9 +22,9 @@ def main() -> None:
     for index, logfilename in enumerate(logfiles):
         runfolder = logfilename.parent
 
-        timesteptimes: list[str] = []
+        timesteptimes: list[float] = []
         with (runfolder / "light_curve.out").open(encoding="utf-8") as lcfile:
-            timesteptimes.extend(line.split()[0] for line in lcfile)
+            timesteptimes.extend(float(line.split()[0]) for line in lcfile)
         timesteptimes = timesteptimes[: len(timesteptimes) // 2]
 
         stats: list[dict[str, int]] = []

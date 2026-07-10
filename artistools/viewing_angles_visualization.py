@@ -1,5 +1,7 @@
 import argparse
 import sys
+from collections.abc import Sequence
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -186,13 +188,15 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--show_plot", action="store_true", help="If flag is given, plot will be shown after saving.")
 
 
-def main() -> None:
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: Any) -> None:
     """Tool to generate a 3D visualization of an ARTIS model."""
-    parser = argparse.ArgumentParser()
-
-    addargs(parser)
-
-    args = parser.parse_args()
+    if args is None:
+        parser = argparse.ArgumentParser(
+            formatter_class=at.CustomArgHelpFormatter, description="Generate a 3D visualization of an ARTIS model."
+        )
+        addargs(parser)
+        at.set_args_from_dict(parser, kwargs)
+        args = parser.parse_args([] if kwargs else argsraw)
 
     viewing_angles_visualisation(
         modelfile=args.modelfile,

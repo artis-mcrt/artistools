@@ -51,10 +51,9 @@ def rprocess_const_and_powerlaw() -> tuple[pl.DataFrame, float]:
 
     rate = np.array(energy_per_gram_cumulative) / E_tot
 
-    # nuclear_heating_power = [integrand(time, t0, epsilon0, sigma, alpha, thermalisation_factor) for time in times]
+    nuclear_heating_power = [integrand(time, t0, epsilon0, sigma, alpha, thermalisation_factor) for time in times]
 
-    # times_and_rate = {'times': times/DAY, 'rate': rate, 'nuclear_heating_power': nuclear_heating_power}
-    times_and_rate = {"times": times / DAY, "rate": rate}
+    times_and_rate = {"times": times / DAY, "rate": rate, "nuclear_heating_power": nuclear_heating_power}
     dftimes_and_rate = pl.DataFrame(data=times_and_rate)
 
     return dftimes_and_rate, E_tot

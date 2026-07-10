@@ -288,10 +288,10 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
         strcomment = ""
         atomic_number = at.get_atomic_number(species)
         if species.endswith("_isosum"):
-            elsymb = species.removeprefix("_isosum")
+            elsymb = species.removesuffix("_isosum")
             elem_mass = speciesmasses.get(elsymb, 0.0)
-            if np.isclose(mass_g, elem_mass, rtol=1e-4):
-                # iso sum matches the element mass, so don't show it
+            if mass_g == 0.0 or np.isclose(mass_g, elem_mass, rtol=1e-4):
+                # iso sum is zero or matches the element mass, so don't show it
                 continue
             strcomment += f"({mass_g / elem_mass * 100 if elem_mass > 0 else math.nan:6.2f}% of {elsymb} element mass from abundances.txt)"
 

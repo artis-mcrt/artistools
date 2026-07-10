@@ -474,8 +474,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     dfnucabund, t_model_init_seconds = get_trajectory_timestepfile_nuc_abund(
         traj_root, particleid, "./Run_rprocess/tday_nz-plane"
     )
-    dfnucabund = dfnucabund.filter(pl.col("Z") >= 1)
-    dfnucabund["radioactive"] = True
+    dfnucabund = dfnucabund.filter(pl.col("Z") >= 1).with_columns(radioactive=pl.lit(value=True))
 
     t_model_init_days = t_model_init_seconds / (24 * 60 * 60)
 
@@ -487,7 +486,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         print(f"{wollaeger_profilename} not found. Using rho {rho} g/cm³")
         dfdensities = pl.DataFrame({"mgi": [0], "rho": [rho], "vel_r_max_kmps": [6.0e4]})
 
-    dfdensities["inputcellid"] = dfdensities["mgi"] + 1
+    dfdensities = dfdensities.with_columns(inputcellid=pl.col("mgi") + 1)
     # print(dfdensities)
 
     # write abundances.txt
@@ -524,7 +523,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         ],
         orient="row",
     )
-    at.inputmodel.save_modeldata(dfmodel=dfmodel, t_model_init_days=t_model_init_days, filepath=Path(args.outputpath))
+    at.inputmodel.save_modeldata(dfmodel=dfmodel, t_model_init_days=t_model_init_days, outpath=Path(args.outputpath))
 
     with Path(args.outputpath, "gridcontributions.txt").open("w", encoding="utf-8") as fcontribs:
         fcontribs.write("particleid cellindex frac_of_cellmass\n")
@@ -540,9 +539,7 @@ def get_wollaeger_density_profile(wollaeger_profilename: Path | str, t_model_ini
 
     return (
         pl
-        .from_pandas(
-            pd.read_csv(wollaeger_profilename, sep=r"\s+", skiprows=1, names=["cellid", "vel_r_max_kmps", "rho"])
-        )
+        .from_pandas(pd.read_csv(wollaeger_profilename, sep=r"\s+", skiprows=1, names=["mgi", "vel_r_max_kmps", "rho"]))
         .with_columns(pl.col("mgi").cast(pl.Int32))
         .with_columns(vel_r_min_kmps=pl.col("vel_r_max_kmps").shift(n=1, fill_value=0.0))
         .with_columns(

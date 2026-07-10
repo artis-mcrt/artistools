@@ -159,9 +159,14 @@ def get_from_packets(
             lcdata[dirbin] = (
                 lcdata[dirbin]
                 .join(
-                    at.packets.bin_and_sum(
+                    at.packets
+                    .bin_and_sum(
                         pldfpackets_dirbin, bincol="t_arrive_cmf_d", bins=timebinstarts_plusend, sumcols=["e_cmf"]
-                    ).rename({"t_arrive_cmf_d_bin": "timestep"}),
+                    )
+                    .with_columns(
+                        timestep=pl.col("t_arrive_cmf_d_bin").cast(pl.Int32) + dftimesteps_selected["timestep"].min()
+                    )
+                    .drop("t_arrive_cmf_d_bin"),
                     how="left",
                     on="timestep",
                 )
@@ -310,7 +315,7 @@ def bolometric_magnitude(
     magnitudes = []
     times = []
 
-    Mpc_to_cm = 3.085677581491367e24
+    Mpc_to_cm = at.constants.megaparsec_to_cm
     for timestep, time in enumerate(float(time) for time in timearray):
         if (args.timemin is None or args.timemin <= time) and (args.timemax is None or args.timemax >= time):
             if angle == -1:

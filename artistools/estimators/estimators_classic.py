@@ -85,7 +85,7 @@ def read_classic_estimators(
     for estfilepath in estimfiles:
         # If classic plots break it's probably getting first timestep here
         # Try either of the next two lines
-        timestep = first_timesteps_in_dir[str(estfilepath).split("/")[0]]  # get the starting timestep for the estfile
+        timestep = first_timesteps_in_dir[str(estfilepath.parent)]  # get the starting timestep for the estfile
         # timestep = first_timesteps_in_dir[str(estfile[:-20])]
         # timestep = 0  # if the first timestep in the file is 0 then this is fine
         with at.zopen(estfilepath) as estfile:

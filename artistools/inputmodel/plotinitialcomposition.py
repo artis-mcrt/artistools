@@ -68,7 +68,9 @@ def plot_slice_modelcolumn(
     if args.logcolorscale:
         # logscale for colormap
         if args.floorval:
-            colorscale = np.array(args.floorval if x < args.floorval or not math.isfinite(x) else x for x in colorscale)
+            colorscale = np.array([
+                args.floorval if x < args.floorval or not math.isfinite(x) else x for x in colorscale
+            ])
         with np.errstate(divide="ignore"):
             colorscale = np.log10(colorscale)
         # np.nan_to_num(colorscale, posinf=-99, neginf=-99)
@@ -218,7 +220,7 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
 
     defaultfilename = Path(modelpath) / f"plotcomposition_{','.join(v.lower() for v in args.plotvars)}.pdf"
     if args.outputfile and Path(args.outputfile).is_dir():
-        outfilename = Path(modelpath) / defaultfilename
+        outfilename = Path(args.outputfile) / defaultfilename.name
     elif args.outputfile:
         outfilename = args.outputfile
     else:

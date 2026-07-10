@@ -13,7 +13,7 @@ def get_bol_lc_from_spec(modelpath: Path) -> pd.DataFrame:
     timearray = res_specdata[0].columns[1:]
     times = [time for time in timearray if 5 < float(time) < 80]
     lightcurvedata: dict[str, t.Any] = {"time": times}
-    Mpc_to_cm = 3.085677581491367e24
+    Mpc_to_cm = at.constants.megaparsec_to_cm
     for angle in range(len(res_specdata)):
         bol_luminosity = []
         for timestep, timestr in enumerate(timearray):

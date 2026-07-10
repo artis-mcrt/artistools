@@ -533,7 +533,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     print()
 
     if from_model:
-        feions = [2, 3]
 
         def get_strionfracs(atomic_number: int, ion_stages: Sequence[int]) -> tuple[str, str]:
             elsym = at.get_elsymbol(atomic_number)
@@ -544,7 +543,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             ]
             ionfracs_str = " ".join([f"{pop:6.0e}" if pop < 0.01 else f"{pop:6.2f}" for pop in est_ionfracs])
             strions = " ".join([
-                f"{at.get_elsymbol(atomic_number)}{at.roman_numerals[ion_stage]}".rjust(6) for ion_stage in feions
+                f"{at.get_elsymbol(atomic_number)}{at.roman_numerals[ion_stage]}".rjust(6) for ion_stage in ion_stages
             ])
             return strions, ionfracs_str
 

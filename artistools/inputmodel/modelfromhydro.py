@@ -320,8 +320,8 @@ def add_mass_to_center(
             print(
                 cellid, griddata["pos_x_min"][i], griddata["pos_y_min"][i], griddata["pos_z_min"][i], griddata["rho"][i]
             )
-            griddata["rho"][i] += density_hole
-            griddata["cellYe"][i] = max(griddata["cellYe"][i], 0.4)
+            griddata.loc[i, "rho"] = griddata["rho"][i] + density_hole
+            griddata.loc[i, "cellYe"] = max(griddata["cellYe"][i], 0.4)
             # print("Inner empty cells filled")
             print(
                 cellid, griddata["pos_x_min"][i], griddata["pos_y_min"][i], griddata["pos_z_min"][i], griddata["rho"][i]
@@ -363,9 +363,9 @@ def makemodelfromgriddata(
     assert isinstance(dfmodel, pl.DataFrame)
     dfmodel = dfmodel.with_columns(pl.col("inputcellid").cast(pl.Int32))
     if scalemass != 1.0:
-        origmass_msun = float(dfmodel["mass_g"].sum()) / 2.99792458e33
+        origmass_msun = float(dfmodel["mass_g"].sum()) / MSUN
         dfmodel = dfmodel.with_columns(cs.by_name("rho", "mass_g", require_all=False) * scalemass)
-        newmass_msun = float(dfmodel["mass_g"].sum()) / 2.99792458e33
+        newmass_msun = float(dfmodel["mass_g"].sum()) / MSUN
         operationmsg = f"densities are scaled by factor of {scalemass} to increase total mass from {origmass_msun:.2e} to {newmass_msun:.2e} Msun"
         print(operationmsg)
         modelmeta["headercommentlines"].append(operationmsg)

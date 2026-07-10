@@ -533,7 +533,7 @@ def get_from_packets(
             from artistools.inputmodel import get_modeldata
 
             dfmodel, _ = get_modeldata(modelpath)
-            vmax_beta = dfmodel.select(pl.col("vel_r_max_kmps").max() * 299792.458).collect().item()
+            vmax_beta = dfmodel.select(pl.col("vel_r_max_kmps").max() / 299792.458).collect().item()
             escapesurfacegamma = math.sqrt(1 - vmax_beta**2)
 
             dfpackets = dfpackets.filter(

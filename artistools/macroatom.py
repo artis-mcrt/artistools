@@ -126,11 +126,11 @@ def read_files(
 
             df_thisfile = pd.read_csv(filepath, sep=r"\s+")
             # df_thisfile[['modelgridindex', 'timestep']].apply(pd.to_numeric)
-            if modelgridindex:
+            if modelgridindex is not None:
                 df_thisfile = df_thisfile[df_thisfile["modelgridindex"] == modelgridindex]
             if timestepmin is not None:
                 df_thisfile = df_thisfile[df_thisfile["timestep"] >= timestepmin]
-            if timestepmax:
+            if timestepmax is not None:
                 df_thisfile = df_thisfile[df_thisfile["timestep"] <= timestepmax]
             if atomic_number:
                 df_thisfile = df_thisfile[df_thisfile["Z"] == atomic_number]
