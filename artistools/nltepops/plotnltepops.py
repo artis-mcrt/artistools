@@ -555,7 +555,7 @@ def plot_populations_with_time_or_velocity(
             if args.x == "time":
                 ax.plot(timedayslist, plotpopulations, marker=markers[modelnumber], label=linelabel)
             elif args.x == "velocity":
-                plotvelocities = [float(velocity[mgi]) for ts, level, mgi in populations if level == ionlevel]
+                plotvelocities = [float(velocity[mgi]) for _ts, level, mgi in populations if level == ionlevel]
                 ax.plot(plotvelocities, plotpopulations, marker=markers[modelnumber], label=linelabel)
             # plt.plot(timedayslist, plotpopulationsLTE, marker=markers[modelnumber+1],
             #          label=f'level {ionlevel} {modelname} LTE')
