@@ -320,7 +320,7 @@ def add_mass_to_center(
             print(
                 cellid, griddata["pos_x_min"][i], griddata["pos_y_min"][i], griddata["pos_z_min"][i], griddata["rho"][i]
             )
-            griddata.loc[i, "rho"] += density_hole
+            griddata.loc[i, "rho"] = griddata["rho"][i] + density_hole
             griddata.loc[i, "cellYe"] = max(griddata["cellYe"][i], 0.4)
             # print("Inner empty cells filled")
             print(
