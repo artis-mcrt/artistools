@@ -400,7 +400,6 @@ def get_modeldata(
                     "modelmeta_json": json.dumps(modelmeta),
                 },
                 compression_level=8,
-                statistics="full",
             )
             print("  Done.")
             del dfmodel

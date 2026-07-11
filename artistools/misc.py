@@ -1491,7 +1491,6 @@ def write_parquet_atomic(
     parquetfilepath: Path,
     metadata: dict[str, str] | None = None,
     compression_level: int = 10,
-    statistics: bool | str = True,
 ) -> None:
     """Write a zstd-compressed parquet file via a temporary file and an atomic replace, so a partial write is never mistaken for a complete file.
 
@@ -1507,11 +1506,7 @@ def write_parquet_atomic(
     partialfilepath = Path(partialfilename)
     try:
         pldf.lazy().sink_parquet(
-            partialfilepath,
-            compression="zstd",
-            compression_level=compression_level,
-            statistics=statistics,
-            metadata=metadata,
+            partialfilepath, compression="zstd", compression_level=compression_level, metadata=metadata
         )
         partialfilepath.replace(parquetfilepath)
     finally:
