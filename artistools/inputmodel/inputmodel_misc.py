@@ -5,7 +5,6 @@ import gc
 import json
 import math
 import os
-import tempfile
 import time
 import typing as t
 from collections.abc import Callable
@@ -24,6 +23,7 @@ from artistools.misc import get_elsymbol
 from artistools.misc import get_z_a_nucname
 from artistools.misc import stripallsuffixes
 from artistools.misc import vec_len
+from artistools.misc import write_parquet_atomic
 from artistools.misc import zopen
 
 
@@ -391,22 +391,17 @@ def get_modeldata(
         mebibyte = 1024 * 1024
         if textfilepath.stat().st_size > 2 * mebibyte:
             print(f"Saving {parquetfilepath}")
-            partialparquetfilepath = Path(
-                tempfile.mkstemp(dir=modelpath, prefix=f"{parquetfilepath.name}.partial", suffix=".tmp")[1]
-            )
-            modelmeta_json = json.dumps(modelmeta)
-            dfmodel.sink_parquet(
-                partialparquetfilepath,
-                compression="zstd",
-                compression_level=8,
-                statistics="full",
+            write_parquet_atomic(
+                dfmodel,
+                parquetfilepath,
                 metadata={
                     "creationtimeutc": str(datetime.datetime.now(datetime.UTC)),
                     "textsource_mtime": str(textsource_mtime),
-                    "modelmeta_json": modelmeta_json,
+                    "modelmeta_json": json.dumps(modelmeta),
                 },
+                compression_level=8,
+                statistics="full",
             )
-            partialparquetfilepath.rename(parquetfilepath)
             print("  Done.")
             del dfmodel
             gc.collect()
@@ -978,17 +973,7 @@ def get_initelemabundances(modelpath: Path | str = ".", printwarningsonly: bool 
         mebibyte = 1024 * 1024
         if textfilepath.stat().st_size > 2 * mebibyte:
             print(f"Saving {parquetfilepath}")
-            partialparquetfilepath = Path(
-                tempfile.mkstemp(dir=modelpath, prefix=f"{parquetfilepath.name}.partial", suffix=".tmp")[1]
-            )
-            abundancedata.write_parquet(
-                partialparquetfilepath, compression="zstd", compression_level=8, statistics=True
-            )
-            if parquetfilepath.exists():
-                partialparquetfilepath.unlink()
-            else:
-                partialparquetfilepath.rename(parquetfilepath)
-
+            write_parquet_atomic(abundancedata, parquetfilepath, compression_level=8)
             print("  Done.")
             del abundancedata
             gc.collect()
