@@ -1492,22 +1492,25 @@ def write_parquet_atomic(
     metadata: dict[str, str] | None = None,
     compression_level: int = 10,
 ) -> None:
-    """Write a zstd-compressed parquet file via a temporary file and rename, so a partial write is never mistaken for a complete file.
+    """Write a zstd-compressed parquet file via a temporary file and an atomic replace, so a partial write is never mistaken for a complete file.
 
-    If the destination appears in the meantime (e.g. written by a concurrent process), the temporary file is discarded instead.
+    If a concurrent process wrote the destination first, it is atomically overwritten by this equally-valid replacement.
     """
+    import os
     import tempfile
 
-    partialfilepath = Path(
-        tempfile.mkstemp(dir=parquetfilepath.parent, prefix=f"{parquetfilepath.name}.partial", suffix=".partial")[1]
+    fd, partialfilename = tempfile.mkstemp(
+        dir=parquetfilepath.parent, prefix=f"{parquetfilepath.name}.partial", suffix=".partial"
     )
-    pldf.lazy().sink_parquet(
-        partialfilepath, compression="zstd", compression_level=compression_level, statistics=True, metadata=metadata
-    )
-    if parquetfilepath.exists():
-        partialfilepath.unlink()
-    else:
-        partialfilepath.rename(parquetfilepath)
+    os.close(fd)
+    partialfilepath = Path(partialfilename)
+    try:
+        pldf.lazy().sink_parquet(
+            partialfilepath, compression="zstd", compression_level=compression_level, statistics=True, metadata=metadata
+        )
+        partialfilepath.replace(parquetfilepath)
+    finally:
+        partialfilepath.unlink(missing_ok=True)
 
 
 def read_rank_outputfiles(
