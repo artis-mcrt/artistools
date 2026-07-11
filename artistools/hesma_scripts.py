@@ -16,10 +16,9 @@ def plot_hesma_spectrum(timeavg: float | int, axes: Sequence[mplax.Axes]) -> Non
     hesma_spec = pd.read_csv(hesma_file, comment="#", sep=r"\s+", dtype=float)
     # print(hesma_spec)
 
-    def match_closest_time(reftime: float) -> float:
-        return min((float(x) for x in hesma_spec.keys()[1:]), key=lambda x: abs(x - reftime))
+    searchtimes = [float(x) for x in hesma_spec.keys()[1:]]
 
-    closest_time = f"{match_closest_time(timeavg):.2f}"
+    closest_time = f"{at.match_closest_time(timeavg, searchtimes):.2f}"
     print(closest_time)
 
     # Scale distance to 1 Mpc
