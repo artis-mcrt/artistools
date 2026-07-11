@@ -1634,13 +1634,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     assert isinstance(args.modelpath, list)
     args.modelpath = at.flatten_list(args.modelpath)
 
-    # flatten the list
-    modelpaths = []
-    for elem in args.modelpath:
-        if isinstance(elem, list):
-            modelpaths.extend(elem)
-        else:
-            modelpaths.append(elem)
+    modelpaths = args.modelpath
 
     args.color, args.label, args.linestyle, args.dashes, args.linewidth = at.trim_or_pad(
         len(args.modelpath), args.color, args.label, args.linestyle, args.dashes, args.linewidth
@@ -1680,7 +1674,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         or args.make_viewing_angle_peakmag_delta_m15_scatter_plot
     ):
         args.calculate_peak_time_mag_deltam15_bool = True
-        at.lightcurve.peakmag_risetime_declinerate_init(modelpaths, filternames_conversion_dict, args)  # ty:ignore[invalid-argument-type]
+        at.lightcurve.peakmag_risetime_declinerate_init(modelpaths, filternames_conversion_dict, args)
         return
 
     if args.colouratpeak:  # make scatter plot of colour at peak, eg. B-V at Bmax
@@ -1695,14 +1689,14 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             args.plotviewingangle = [-1]
         if not args.colorbarcostheta and not args.colorbarphi:
             args.colorbarphi = True
-        at.lightcurve.plot_viewanglebrightness_at_fixed_time(Path(modelpaths[0]), args)  # ty:ignore[invalid-argument-type]
+        at.lightcurve.plot_viewanglebrightness_at_fixed_time(Path(modelpaths[0]), args)
         return
 
     if args.filter:
-        make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfolder, args)  # ty:ignore[invalid-argument-type]
+        make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfolder, args)
 
     elif args.colour_evolution:
-        colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder, args)  # ty:ignore[invalid-argument-type]
+        colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder, args)
         print(f"Saved figure: {args.outputfile}")
     else:
         make_lightcurve_plot(
