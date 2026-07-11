@@ -846,6 +846,30 @@ def get_mean_packet_emission_velocity_per_ts(
     })
 
 
+def filter_packets_dirbin(
+    dfpackets: pl.LazyFrame, dirbin: int, average_over_phi: bool = False, average_over_theta: bool = False
+) -> tuple[pl.LazyFrame, float]:
+    """Filter packets to a viewing direction bin, returning the filtered frame and the solid-angle factor (4 pi / solidangle).
+
+    dirbin -1 selects all directions. When averaging over phi or theta angle, dirbin must be the first bin of its averaging group.
+    """
+    if dirbin == -1:
+        return dfpackets, 1.0
+
+    if average_over_phi:
+        assert not average_over_theta
+        nphibins = at.get_viewingdirection_phibincount()
+        return (
+            dfpackets.filter(pl.col("costhetabin") * nphibins == dirbin),
+            float(at.get_viewingdirection_costhetabincount()),
+        )
+
+    if average_over_theta:
+        return dfpackets.filter(pl.col("phibin") == dirbin), float(at.get_viewingdirection_phibincount())
+
+    return dfpackets.filter(pl.col("dirbin") == dirbin), float(at.get_viewingdirectionbincount())
+
+
 def bin_and_sum(
     df: pl.DataFrame | pl.LazyFrame,
     bincol: str,

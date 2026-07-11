@@ -22,6 +22,7 @@ from artistools.misc import average_direction_bins
 from artistools.misc import df_filter_minmax_bounded
 from artistools.misc import firstexisting
 from artistools.misc import get_bflist
+from artistools.misc import get_dirbins
 from artistools.misc import get_elsymbol
 from artistools.misc import get_file_metadata
 from artistools.misc import get_ionstring
@@ -30,7 +31,6 @@ from artistools.misc import get_nprocs
 from artistools.misc import get_nu_grid
 from artistools.misc import get_nuclides
 from artistools.misc import get_timestep_times
-from artistools.misc import get_viewingdirection_costhetabincount
 from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import get_viewingdirectionbincount
 from artistools.misc import get_vpkt_config
@@ -437,10 +437,6 @@ def get_from_packets(
     lambda_bin_centres = 0.5 * (lambda_bin_edges[:-1] + lambda_bin_edges[1:])
     delta_time_s = (timehighdays - timelowdays) * 86400.0
 
-    nphibins = get_viewingdirection_phibincount()
-    ncosthetabins = get_viewingdirection_costhetabincount()
-    ndirbins = get_viewingdirectionbincount()
-
     if nprocs_read_dfpackets:
         nprocs_read, dfpackets = nprocs_read_dfpackets[0], nprocs_read_dfpackets[1].lazy()
     elif directionbins_are_vpkt_observers:
@@ -479,8 +475,7 @@ def get_from_packets(
         vpkt_config = get_vpkt_config(modelpath)
         directionbins = range(vpkt_config["nobsdirections"] * vpkt_config["nspectraperobs"])
         for vspecindex in directionbins:
-            obsdirindex = vspecindex // vpkt_config["nspectraperobs"]
-            opacchoiceindex = vspecindex % vpkt_config["nspectraperobs"]
+            obsdirindex, opacchoiceindex = divmod(vspecindex, vpkt_config["nspectraperobs"])
             lambda_column = (
                 f"dir{obsdirindex}_lambda_angstroms_rf"
                 if nu_column == "nu_rf"
@@ -516,12 +511,7 @@ def get_from_packets(
 
         assert use_time == "arrival"
     else:
-        if average_over_phi:
-            directionbins = [-1, *range(0, ndirbins, nphibins)]
-        elif average_over_theta:
-            directionbins = [-1, *range(nphibins)]
-        else:
-            directionbins = [-1, *range(ndirbins)]
+        directionbins = [-1, *get_dirbins(average_over_phi=average_over_phi, average_over_theta=average_over_theta)]
         lambda_column = nu_column.replace("nu_", "lambda_angstroms_")
         energy_column = "e_cmf" if use_time == "escape" else "e_rf"
 
@@ -554,19 +544,9 @@ def get_from_packets(
         dfpackets = dfpackets.filter(pl.col(lambda_column).is_between(lambda_bin_edges[0], lambda_bin_edges[-1]))
 
         for dirbin in directionbins:
-            if dirbin == -1:
-                solidanglefactor = 1.0
-                pldfpackets_dirbin_lazy = dfpackets
-            elif average_over_phi:
-                assert not average_over_theta
-                solidanglefactor = ncosthetabins
-                pldfpackets_dirbin_lazy = dfpackets.filter(pl.col("costhetabin") * nphibins == dirbin)
-            elif average_over_theta:
-                solidanglefactor = nphibins
-                pldfpackets_dirbin_lazy = dfpackets.filter(pl.col("phibin") == dirbin)
-            else:
-                solidanglefactor = ndirbins
-                pldfpackets_dirbin_lazy = dfpackets.filter(pl.col("dirbin") == dirbin)
+            pldfpackets_dirbin_lazy, inverse_solidangle_fraction = atpackets.filter_packets_dirbin(
+                dfpackets, dirbin, average_over_phi=average_over_phi, average_over_theta=average_over_theta
+            )
 
             dirbin_spectra[dirbin] = atpackets.bin_and_sum(
                 pldfpackets_dirbin_lazy,
@@ -579,7 +559,7 @@ def get_from_packets(
                 flux=(
                     pl.col(f"{energy_column}_sum")
                     / delta_time_s
-                    * solidanglefactor
+                    * inverse_solidangle_fraction
                     / (4 * math.pi * const.megaparsec_to_cm**2)
                     / nprocs_read
                 ),
@@ -1171,8 +1151,7 @@ def get_flux_contributions_from_packets(
     opacchoiceindex = None
     if directionbins_are_vpkt_observers:
         vpkt_config = get_vpkt_config(modelpath)
-        obsdirindex = directionbin // vpkt_config["nspectraperobs"]
-        opacchoiceindex = directionbin % vpkt_config["nspectraperobs"]
+        obsdirindex, opacchoiceindex = divmod(directionbin, vpkt_config["nspectraperobs"])
         nprocs_read, lzdfpackets = atpackets.get_virtual_packets(modelpath, maxpacketfiles=maxpacketfiles)
         lzdfpackets = lzdfpackets.with_columns(e_rf=pl.col(f"dir{obsdirindex}_e_rf_{opacchoiceindex}"))
         dirbin_nu_column = f"dir{obsdirindex}_nu_rf"
@@ -1191,15 +1170,9 @@ def get_flux_contributions_from_packets(
 
         lzdfpackets = lzdfpackets.filter(pl.col("t_arrive_d").is_between(timelowdays, timehighdays))
 
-        if directionbin != -1:
-            if average_over_phi:
-                assert not average_over_theta
-                nphibins = get_viewingdirection_phibincount()
-                lzdfpackets = lzdfpackets.filter(pl.col("costhetabin") * nphibins == directionbin)
-            elif average_over_theta:
-                lzdfpackets = lzdfpackets.filter(pl.col("phibin") == directionbin)
-            else:
-                lzdfpackets = lzdfpackets.filter(pl.col("dirbin") == directionbin)
+        lzdfpackets, _ = atpackets.filter_packets_dirbin(
+            lzdfpackets, directionbin, average_over_phi=average_over_phi, average_over_theta=average_over_theta
+        )
 
     condition_nu_emit = pl.col(dirbin_nu_column).is_between(nu_min, nu_max) if getemission else pl.lit(False)
     condition_nu_abs = pl.col("absorption_freq").is_between(nu_min, nu_max) if getabsorption else pl.lit(False)

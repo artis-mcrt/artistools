@@ -19,6 +19,7 @@ import numpy.typing as npt
 import polars as pl
 from polars import selectors as cs
 
+from artistools.commands import CustomArgHelpFormatter
 from artistools.commands import get_path
 
 roman_numerals = (
@@ -160,13 +161,10 @@ def average_direction_bins(
     nphibins = get_viewingdirection_phibincount()
     ncosthetabins = get_viewingdirection_costhetabincount()
 
-    if overangle == "phi":
-        start_bin_range = range(0, dirbincount, nphibins)
-    elif overangle == "theta":
-        start_bin_range = range(nphibins)
-    else:
+    if overangle not in {"phi", "theta"}:
         msg = "overangle must be 'phi' or 'theta'"
         raise ValueError(msg)
+    start_bin_range = get_dirbins(average_over_phi=overangle == "phi", average_over_theta=overangle == "theta")
 
     # we will make a copy to ensure that we don't cause side effects from altering the original DataFrames
     # that might be returned again later by an lru_cached function
@@ -779,6 +777,46 @@ def get_ionstring(
     return f"{get_elsymbol(atomic_number)}{strcharge}"
 
 
+def parse_cli_args(
+    addargsfunc: Callable[[argparse.ArgumentParser], None],
+    description: str | None,
+    args: argparse.Namespace | None,
+    argsraw: Sequence[str] | None = None,
+    kwargs: dict[str, t.Any] | None = None,
+) -> argparse.Namespace:
+    """Return args unchanged if already parsed, otherwise parse the command line using the options defined by addargsfunc.
+
+    Any keyword arguments override the parser defaults, and when at least one is given, the command line/argsraw is ignored.
+    """
+    if args is not None:
+        return args
+
+    import argcomplete
+
+    parser = argparse.ArgumentParser(formatter_class=CustomArgHelpFormatter, description=description)
+    addargsfunc(parser)
+    kwargs = kwargs or {}
+    set_args_from_dict(parser, kwargs)
+    argcomplete.autocomplete(parser)
+    return parser.parse_args([] if kwargs else argsraw)
+
+
+def resolve_outputfile(outputfile: Path | str | None, defaultoutputfile: Path | str) -> Path:
+    """Return the output file path, appending the default filename if outputfile is unset or refers to a folder.
+
+    A path with no file extension is treated as a folder and will be created if it does not exist.
+    """
+    if not outputfile:
+        return Path(defaultoutputfile)
+
+    outputfile = Path(outputfile)
+    if outputfile.is_dir() or not outputfile.suffixes:
+        outputfile.mkdir(parents=True, exist_ok=True)
+        return outputfile / defaultoutputfile
+
+    return outputfile
+
+
 def set_args_from_dict(parser: argparse.ArgumentParser, kwargs: dict[str, t.Any]) -> None:
     """Set argparse defaults from a dictionary."""
     # set_defaults expects the dest of an argument. Here we allow the option strings to be used as keys
@@ -859,6 +897,15 @@ def flatten_list(listin: list[t.Any]) -> list[t.Any]:
         else:
             listout.append(elem)
     return listout
+
+
+def normalize_path_list(paths: t.Any, default: Path | str = Path()) -> list[Path]:
+    """Return a flat list of Paths from a scalar or (possibly nested) sequence of paths, using the default if none given."""
+    if not paths:
+        return [Path(default)]
+    if isinstance(paths, str | Path):
+        return [Path(paths)]
+    return [Path(p) for p in flatten_list(list(paths))]
 
 
 def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None) -> t.Any:
@@ -1395,6 +1442,39 @@ def get_mpiranklist(
     return [get_mpirankofcell(modelgridindex, modelpath=modelpath)]
 
 
+def read_rank_outputfiles(
+    modelpath: Path | str, filenameformat: str, timestep: int | None = None, modelgridindex: int | None = None
+) -> pl.DataFrame:
+    """Read per-MPI-rank whitespace-separated output files (e.g. radfield_{mpirank:04d}.out) from the run folders into one DataFrame.
+
+    When a timestep or model grid cell is given, only the run folders and ranks that could contain it are read,
+    and the rows are filtered to that selection (negative values mean no filter).
+    """
+    import pandas as pd
+
+    filepaths = [
+        firstexisting(filenameformat.format(mpirank=mpirank), folder=folderpath, tryzipped=True)
+        for folderpath in get_runfolders(modelpath, timestep=timestep)
+        for mpirank in get_mpiranklist(modelpath, modelgridindex=modelgridindex)
+    ]
+    assert filepaths, f"No {filenameformat} files found in {modelpath}"
+
+    dfout = (
+        pl
+        .concat(pl.from_pandas(pd.read_csv(filepath, sep=r"\s+", dtype_backend="pyarrow")) for filepath in filepaths)
+        .rename({"ionstage": "ion_stage"}, strict=False)
+        .with_columns(pl.col("modelgridindex").cast(pl.Int64), pl.col("timestep").cast(pl.Int64))
+    )
+
+    filterexpr = pl.lit(True)
+    if modelgridindex is not None and modelgridindex >= 0:
+        filterexpr &= pl.col("modelgridindex") == modelgridindex
+    if timestep is not None and timestep >= 0:
+        filterexpr &= pl.col("timestep") == timestep
+
+    return dfout.filter(filterexpr)
+
+
 def get_cellsofmpirank(mpirank: int, modelpath: Path | str) -> Iterable[int]:
     """Return an iterable of the cell numbers processed by a given MPI rank."""
     npts_model = get_npts_model(modelpath)
@@ -1470,6 +1550,16 @@ def get_viewingdirection_phibincount() -> int:
 
 def get_viewingdirection_costhetabincount() -> int:
     return 10
+
+
+def get_dirbins(average_over_phi: bool = False, average_over_theta: bool = False) -> list[int]:
+    """Return the viewing direction bin indices, reduced to the first bin of each averaging group when averaging over phi or theta angle."""
+    assert not (average_over_phi and average_over_theta)
+    if average_over_phi:
+        return list(range(0, get_viewingdirectionbincount(), get_viewingdirection_phibincount()))
+    if average_over_theta:
+        return list(range(get_viewingdirection_phibincount()))
+    return list(range(get_viewingdirectionbincount()))
 
 
 def print_theta_phi_definitions() -> None:
@@ -1617,15 +1707,9 @@ def get_dirbin_labels(
     _, _, phibinlabels = get_phi_bins(usedegrees=usedegrees)
 
     nphibins = get_viewingdirection_phibincount()
-    ndirbins = get_viewingdirectionbincount()
 
     if dirbins is None:
-        if average_over_phi:
-            dirbins = list(range(0, ndirbins, nphibins))
-        elif average_over_theta:
-            dirbins = list(range(nphibins))
-        else:
-            dirbins = list(range(ndirbins))
+        dirbins = get_dirbins(average_over_phi=average_over_phi, average_over_theta=average_over_theta)
 
     angle_definitions: dict[int, str] = {}
     for dirbin in dirbins:

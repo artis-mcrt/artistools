@@ -4,8 +4,6 @@ import typing as t
 from collections.abc import Sequence
 from pathlib import Path
 
-import argcomplete
-
 import artistools as at
 
 
@@ -51,12 +49,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Tools to create an ARTIS input model."""
-    if args is None:
-        parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
-        addargs(parser)
-        at.set_args_from_dict(parser, kwargs)
-        argcomplete.autocomplete(parser)
-        args = parser.parse_args([] if kwargs else argsraw)
+    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     if not args.modelpath:
         args.modelpath = [Path()]

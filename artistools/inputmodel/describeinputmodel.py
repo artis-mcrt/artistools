@@ -4,11 +4,9 @@ import math
 import os
 import string
 import typing as t
-from collections.abc import Iterable
 from collections.abc import Sequence
 from pathlib import Path
 
-import argcomplete
 import numpy as np
 import polars as pl
 import polars.selectors as cs
@@ -330,19 +328,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Describe an ARTIS input model, such as the mass, velocity structure, and abundances."""
-    if args is None:
-        parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
-
-        addargs(parser)
-        at.set_args_from_dict(parser, kwargs)
-        argcomplete.autocomplete(parser)
-        args = parser.parse_args([] if kwargs else argsraw)
+    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     assert args is not None
-    if not args.modelpath:
-        args.modelpath = [Path()]
-    if not isinstance(args.modelpath, Iterable):
-        args.modelpath = [args.modelpath]
+    args.modelpath = at.normalize_path_list(args.modelpath)
 
     for modelpath in args.modelpath:
         describe_model(modelpath, args)

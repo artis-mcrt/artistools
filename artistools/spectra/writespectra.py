@@ -5,13 +5,11 @@ import typing as t
 from collections.abc import Sequence
 from pathlib import Path
 
-import argcomplete
 import polars as pl
 
-from artistools.commands import CustomArgHelpFormatter
 from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_timestep_times
-from artistools.misc import set_args_from_dict
+from artistools.misc import parse_cli_args
 from artistools.spectra.spectra import get_spectra
 
 
@@ -68,12 +66,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Write ARTIS spectra for each timestep to individual text files."""
-    if args is None:
-        parser = argparse.ArgumentParser(formatter_class=CustomArgHelpFormatter, description=__doc__)
-        addargs(parser)
-        set_args_from_dict(parser, kwargs)
-        argcomplete.autocomplete(parser)
-        args = parser.parse_args([] if kwargs else argsraw)
+    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     write_flambda_spectra(args.modelpath)
 

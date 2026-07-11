@@ -124,16 +124,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
-    if args is None:
-        parser = argparse.ArgumentParser(
-            formatter_class=at.CustomArgHelpFormatter, description="Plot durations from log files."
-        )
-        addargs(parser)
-        at.set_args_from_dict(parser, kwargs)
-        args = parser.parse_args([] if kwargs else argsraw)
+    args = at.parse_cli_args(addargs, "Plot durations from log files.", args, argsraw, kwargs)
 
-    if not args.modelpath:
-        args.modelpath = [Path()]
+    args.modelpath = at.normalize_path_list(args.modelpath)
 
     # make_plot(logfiledict)
 

@@ -10,7 +10,6 @@ from collections.abc import Callable
 from collections.abc import Sequence
 from pathlib import Path
 
-import argcomplete
 import matplotlib.artist as mplartist
 import matplotlib.axes as mplax
 import matplotlib.figure as mplfig
@@ -26,11 +25,9 @@ from matplotlib.artist import Artist
 from matplotlib.lines import Line2D
 
 import artistools.spectra as atspectra
-from artistools.commands import CustomArgHelpFormatter
 from artistools.commands import get_path
 from artistools.misc import df_filter_minmax_bounded
 from artistools.misc import firstexisting
-from artistools.misc import flatten_list
 from artistools.misc import get_dirbin_labels
 from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_file_metadata
@@ -39,8 +36,10 @@ from artistools.misc import get_model_name
 from artistools.misc import get_time_range
 from artistools.misc import get_vpkt_config
 from artistools.misc import get_vspec_dir_labels
+from artistools.misc import normalize_path_list
+from artistools.misc import parse_cli_args
 from artistools.misc import print_theta_phi_definitions
-from artistools.misc import set_args_from_dict
+from artistools.misc import resolve_outputfile
 from artistools.misc import trim_or_pad
 from artistools.plottools import ExponentLabelFormatter
 from artistools.plottools import set_mpl_style
@@ -1233,10 +1232,7 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[t.An
                 col = col[0]
             text.set_color(col)
 
-    if not args.outputfile:
-        args.outputfile = defaultoutputfile
-    elif not Path(args.outputfile).suffixes:
-        args.outputfile /= defaultoutputfile
+    args.outputfile = resolve_outputfile(args.outputfile, defaultoutputfile)
 
     assert dfalldata is not None
     return fig, axes, dfalldata
@@ -1555,15 +1551,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot spectra from ARTIS and reference data."""
-    if args is None:
-        parser = argparse.ArgumentParser(formatter_class=CustomArgHelpFormatter, description=__doc__)
-        addargs(parser)
-        set_args_from_dict(parser, kwargs)
-        argcomplete.autocomplete(parser)
-        args = parser.parse_args([] if kwargs else argsraw)
-        if args.average_every_tenth_viewing_angle:
-            print("WARNING: --average_every_tenth_viewing_angle is deprecated. use --average_over_phi_angle instead")
-            args.average_over_phi_angle = True
+    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+
+    if getattr(args, "average_every_tenth_viewing_angle", False):
+        print("WARNING: --average_every_tenth_viewing_angle is deprecated. use --average_over_phi_angle instead")
+        args.average_over_phi_angle = True
 
     if args.xunit is None:
         args.xunit = "kev" if args.gamma else "angstroms"
@@ -1582,12 +1574,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         not args.plotvspecpol or not args.plotviewingangle
     )  # choose either virtual packet directions or real packet direction bins
 
-    if not args.specpath:
-        args.specpath = [Path()]
-    elif isinstance(args.specpath, str | Path):  # or not not isinstance(args.specpath, Iterable)
-        args.specpath = [args.specpath]
-
-    args.specpath = flatten_list(args.specpath)
+    args.specpath = normalize_path_list(args.specpath)
 
     if args.timedayslist:
         args.multispecplot = True

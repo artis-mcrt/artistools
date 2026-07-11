@@ -384,11 +384,7 @@ def make_flux_ratio_plot(args: argparse.Namespace) -> None:
         if not args.nolegend:
             ax.legend(loc="upper right", frameon=False, handlelength=1, ncol=2, numpoints=1, prop={"size": 9})
 
-    defaultoutputfile = "linefluxes.pdf"
-    if not args.outputfile:
-        args.outputfile = defaultoutputfile
-    elif not Path(args.outputfile).suffixes:
-        args.outputfile /= defaultoutputfile
+    args.outputfile = at.resolve_outputfile(args.outputfile, "linefluxes.pdf")
 
     fig.savefig(args.outputfile, format="pdf")
     # plt.show()
@@ -510,11 +506,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
     Tedata_all: dict[int, dict[int, list[float]]] = {}
 
     # data is collected, now make plots
-    defaultoutputfile = "emittingregions.pdf"
-    if not args.outputfile:
-        args.outputfile = defaultoutputfile
-    elif not Path(args.outputfile).suffixes:
-        args.outputfile /= defaultoutputfile
+    args.outputfile = at.resolve_outputfile(args.outputfile, "emittingregions.pdf")
 
     args.modelpath.append(None)
     args.label.append(f"All models: {args.label}")
@@ -811,18 +803,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot line flux ratios for comparisons to Floers."""
-    if args is None:
-        parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=(__doc__))
-        addargs(parser)
-        at.set_args_from_dict(parser, kwargs)
-        args = parser.parse_args([] if kwargs else argsraw)
+    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
-    if not args.modelpath:
-        args.modelpath = [Path()]
-    elif isinstance(args.modelpath, str | Path):
-        args.modelpath = [args.modelpath]
-
-    args.modelpath = at.flatten_list(args.modelpath)
+    args.modelpath = at.normalize_path_list(args.modelpath)
 
     args.label, args.modeltag, args.color = at.trim_or_pad(len(args.modelpath), args.label, args.modeltag, args.color)
 

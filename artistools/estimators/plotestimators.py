@@ -12,7 +12,6 @@ from collections.abc import Collection
 from collections.abc import Sequence
 from pathlib import Path
 
-import argcomplete
 import matplotlib.axes as mplax
 import matplotlib.pyplot as plt
 import numpy as np
@@ -874,8 +873,7 @@ def make_figure(
         figure_title = f"{modelname}\nCell {mgilist[0]}"
 
         defaultoutputfile = "plotestimators_cell{modelgridindex:03d}.{format}"
-        if Path(args.outputfile).is_dir():
-            args.outputfile = str(Path(args.outputfile) / defaultoutputfile)
+        args.outputfile = at.resolve_outputfile(args.outputfile, defaultoutputfile)
 
         outfilename = str(args.outputfile).format(modelgridindex=mgilist[0], format=args.format)
 
@@ -904,8 +902,7 @@ def make_figure(
         print("  plotting " + figure_title.replace("\n", " "))
 
         defaultoutputfile = "plotestimators_{timestep}_{timedays}.{format}"
-        if Path(args.outputfile).is_dir():
-            args.outputfile = str(Path(args.outputfile) / defaultoutputfile)
+        args.outputfile = at.resolve_outputfile(args.outputfile, defaultoutputfile)
 
         assert isinstance(timestepslist, list)
         outfilename = str(args.outputfile).format(timestep=strtimestep, timedays=strtimedays, format=args.format)
@@ -1036,12 +1033,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot ARTIS estimators."""
-    if args is None:
-        parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
-        addargs(parser)
-        at.set_args_from_dict(parser, kwargs)
-        argcomplete.autocomplete(parser)
-        args = parser.parse_args([] if kwargs else argsraw)
+    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     modelpath = Path(args.modelpath)
 

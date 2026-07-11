@@ -4,7 +4,6 @@ import typing as t
 from collections.abc import Sequence
 from pathlib import Path
 
-import argcomplete
 import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
@@ -261,8 +260,7 @@ def get_reduced_packet_set(
             (pl.col("lambda_rf") > lam_min) & (pl.col("lambda_rf") < lam_max)
         )
     if dirbin >= 0:
-        nphibins = at.get_viewingdirection_phibincount()
-        dfpackets_selected = dfpackets_selected.filter(pl.col("costhetabin") * nphibins == dirbin)
+        dfpackets_selected, _ = at.packets.filter_packets_dirbin(dfpackets_selected, dirbin, average_over_phi=True)
 
     return nprocs_read, dfpackets_selected
 
@@ -340,9 +338,11 @@ def packets_2d_hist_bin_and_ejecta_vel(
             * pl.col(f"{pos_type_str}em_time")
         ).alias("hollow_cyl_vol_em")
     ).collect()
-    solidanglefactor = at.get_viewingdirection_costhetabincount() if dirbin >= 0 else 1.0
+    inverse_solidangle_fraction = at.get_viewingdirection_costhetabincount() if dirbin >= 0 else 1.0
     energy_sum = float(dfpackets_selected["e_rf"].sum())
-    print(f"Directional 4pi-equivalent bol. luminosity of {energy_sum / nprocs_read / Delta_t_secs * solidanglefactor}")
+    print(
+        f"Directional 4pi-equivalent bol. luminosity of {energy_sum / nprocs_read / Delta_t_secs * inverse_solidangle_fraction}"
+    )
 
     # Step 2) create the heatmap. Normalise packet energy to modelgrid cell volume at packet emission time (lab frame)
     weights = dfpackets_selected["e_rf"] / dfpackets_selected["hollow_cyl_vol_em"]
@@ -353,7 +353,9 @@ def packets_2d_hist_bin_and_ejecta_vel(
         bins=[np.linspace(0, 0.5, num=26), np.linspace(-0.5, 0.5, num=51)],
         weights=weights,
     )
-    heatmap = hist2D / (timemaxarray[timestep] - timeminarray[timestep]) / DAY / nprocs_read * solidanglefactor
+    heatmap = (
+        hist2D / (timemaxarray[timestep] - timeminarray[timestep]) / DAY / nprocs_read * inverse_solidangle_fraction
+    )
     heatmap = np.ma.masked_less_equal(heatmap, 0.0)
     if colorlogscale:
         heatmap = np.ma.log(heatmap)
@@ -408,13 +410,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot last packet interaction properties versus ejecta velocity for selected packets."""
-    if args is None:
-        parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
-
-        addargs(parser)
-        at.set_args_from_dict(parser, kwargs)
-        argcomplete.autocomplete(parser)
-        args = parser.parse_args([] if kwargs else argsraw)
+    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     if (args.wavelen is None) != (args.binwidth is None):
         message = "Wavelength mode requires both -wavelen and -binwidth to be provided."

@@ -797,11 +797,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot ARTIS non-LTE populations."""
-    if args is None:
-        parser = argparse.ArgumentParser(description=__doc__)
-        addargs(parser)
-        at.set_args_from_dict(parser, kwargs)
-        args = parser.parse_args([] if kwargs else argsraw)
+    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     at.set_mpl_style()
     timestep = -1
@@ -837,8 +833,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         msg = "Please specify time with -timedays or -timestep"
         raise ValueError(msg)
 
-    if Path(args.outputfile).is_dir():
-        args.outputfile = Path(args.outputfile, defaultoutputfile)
+    args.outputfile = at.resolve_outputfile(args.outputfile, defaultoutputfile)
 
     ion_stages_permitted = at.parse_range_list(args.ion_stages) if args.ion_stages else None
 

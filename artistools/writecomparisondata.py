@@ -199,16 +199,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Write ARTIS model data out in code comparison workshop format."""
-    if args is None:
-        parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
-        addargs(parser)
-        at.set_args_from_dict(parser, kwargs)
-        args = parser.parse_args([] if kwargs else argsraw)
+    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
-    if not args.modelpath:
-        args.modelpath = [Path()]
-    elif isinstance(args.modelpath, str | Path):
-        args.modelpath = [args.modelpath]
+    args.modelpath = at.normalize_path_list(args.modelpath)
 
     modelpathlist = args.modelpath
     selected_timesteps = args.selected_timesteps

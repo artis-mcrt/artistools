@@ -7,7 +7,6 @@ from collections.abc import Iterable
 from collections.abc import Sequence
 from pathlib import Path
 
-import argcomplete
 import matplotlib as mpl
 import matplotlib.axes as mplax
 import matplotlib.cm as mplcm
@@ -1613,26 +1612,15 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot ARTIS light curve."""
-    if args is None:
-        parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
-        addargs(parser)
-        at.set_args_from_dict(parser, kwargs)
-        argcomplete.autocomplete(parser)
-        args = parser.parse_args([] if kwargs else argsraw)
-        if args.average_every_tenth_viewing_angle:
-            print("WARNING: --average_every_tenth_viewing_angle is deprecated. use --average_over_phi_angle instead")
-            args.average_over_phi_angle = True
+    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+
+    if getattr(args, "average_every_tenth_viewing_angle", False):
+        print("WARNING: --average_every_tenth_viewing_angle is deprecated. use --average_over_phi_angle instead")
+        args.average_over_phi_angle = True
 
     at.set_mpl_style()
 
-    if not args.modelpath:
-        args.modelpath = ["."]
-
-    if not isinstance(args.modelpath, Iterable):
-        args.modelpath = [args.modelpath]
-
-    assert isinstance(args.modelpath, list)
-    args.modelpath = at.flatten_list(args.modelpath)
+    args.modelpath = at.normalize_path_list(args.modelpath)
 
     modelpaths = args.modelpath
 
@@ -1654,14 +1642,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     else:
         defaultoutputfile = "plotlightcurve.pdf"
 
-    if not args.outputfile:
-        outputfolder = Path()
-        args.outputfile = defaultoutputfile
-    elif args.outputfile.is_dir():
-        outputfolder = Path(args.outputfile)
-        args.outputfile = outputfolder / defaultoutputfile
-    else:
-        outputfolder = Path()
+    args.outputfile = at.resolve_outputfile(args.outputfile, defaultoutputfile)
+    outputfolder = args.outputfile.parent
 
     filternames_conversion_dict = {"rs": "r", "gs": "g", "is": "i", "zs": "z"}
 
