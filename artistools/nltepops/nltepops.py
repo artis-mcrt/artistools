@@ -155,4 +155,4 @@ def read_files(modelpath: str | Path, timestep: int | None = None, modelgridinde
     """Read in NLTE populations from a model for a particular timestep and grid cell."""
     return at.read_rank_outputfiles(
         modelpath, "nlte_{mpirank:04d}.out", timestep=timestep, modelgridindex=modelgridindex
-    )
+    ).rename({"ionstage": "ion_stage"}, strict=False)  # rename for compatibility with older ARTIS output files
