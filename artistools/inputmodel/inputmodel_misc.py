@@ -16,11 +16,11 @@ import pandas as pd
 import polars as pl
 import polars.selectors as cs
 
+from artistools.atomic import get_atomic_number
+from artistools.atomic import get_elsymbol
+from artistools.atomic import get_z_a_nucname
 from artistools.commands import get_path
 from artistools.misc import firstexisting
-from artistools.misc import get_atomic_number
-from artistools.misc import get_elsymbol
-from artistools.misc import get_z_a_nucname
 from artistools.misc import stripallsuffixes
 from artistools.misc import vec_len
 from artistools.misc import write_parquet_atomic

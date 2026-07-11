@@ -1,22 +1,5 @@
 """Miscellaneous helpers, split into focused submodules and re-exported here."""
 
-from artistools.misc.atomicdata import decode_roman_numeral as decode_roman_numeral
-from artistools.misc.atomicdata import get_atomic_number as get_atomic_number
-from artistools.misc.atomicdata import get_bflist as get_bflist
-from artistools.misc.atomicdata import get_composition_data as get_composition_data
-from artistools.misc.atomicdata import get_composition_data_from_outputfile as get_composition_data_from_outputfile
-from artistools.misc.atomicdata import get_elsymbol as get_elsymbol
-from artistools.misc.atomicdata import get_elsymbols_df as get_elsymbols_df
-from artistools.misc.atomicdata import get_elsymbolslist as get_elsymbolslist
-from artistools.misc.atomicdata import get_ion_stage_roman_numeral_df as get_ion_stage_roman_numeral_df
-from artistools.misc.atomicdata import get_ion_tuple as get_ion_tuple
-from artistools.misc.atomicdata import get_ionstring as get_ionstring
-from artistools.misc.atomicdata import get_linelist_pldf as get_linelist_pldf
-from artistools.misc.atomicdata import get_nuclides as get_nuclides
-from artistools.misc.atomicdata import get_z_a_nucname as get_z_a_nucname
-from artistools.misc.atomicdata import LineTuple as LineTuple
-from artistools.misc.atomicdata import read_linestatfile as read_linestatfile
-from artistools.misc.atomicdata import roman_numerals as roman_numerals
 from artistools.misc.cliutils import add_viewingangle_args as add_viewingangle_args
 from artistools.misc.cliutils import flatten_list as flatten_list
 from artistools.misc.cliutils import get_filterfunc as get_filterfunc

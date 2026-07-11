@@ -18,18 +18,18 @@ import polars.selectors as cs
 
 import artistools.constants as const
 import artistools.packets as atpackets
+from artistools.atomic import get_bflist
+from artistools.atomic import get_elsymbol
+from artistools.atomic import get_ionstring
+from artistools.atomic import get_linelist_pldf
+from artistools.atomic import get_nuclides
 from artistools.misc import average_direction_bins
 from artistools.misc import df_filter_minmax_bounded
 from artistools.misc import firstexisting
-from artistools.misc import get_bflist
 from artistools.misc import get_dirbins
-from artistools.misc import get_elsymbol
 from artistools.misc import get_file_metadata
-from artistools.misc import get_ionstring
-from artistools.misc import get_linelist_pldf
 from artistools.misc import get_nprocs
 from artistools.misc import get_nu_grid
-from artistools.misc import get_nuclides
 from artistools.misc import get_timestep_times
 from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import get_viewingdirectionbincount
@@ -939,11 +939,11 @@ def get_flux_contributions(
     arraylambda = 2.99792458e18 / arraynu
     if not Path(modelpath, "compositiondata.txt").is_file():
         print("WARNING: compositiondata.txt not found. Using output*.txt instead")
-        from artistools.misc import get_composition_data_from_outputfile
+        from artistools.atomic import get_composition_data_from_outputfile
 
         elementlist = get_composition_data_from_outputfile(modelpath)
     else:
-        from artistools.misc import get_composition_data
+        from artistools.atomic import get_composition_data
 
         elementlist = get_composition_data(modelpath)
     nelements = len(elementlist)

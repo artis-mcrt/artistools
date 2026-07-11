@@ -10,7 +10,6 @@ import numpy.typing as npt
 import polars as pl
 from polars import selectors as cs
 
-from artistools.misc.atomicdata import get_elsymbol
 from artistools.misc.modelinfo import get_vpkt_config
 
 
@@ -193,6 +192,8 @@ def get_costhetabin_phibin_labels(usedegrees: bool) -> tuple[list[str], list[str
 
 
 def get_opacity_condition_label(z_exclude: int) -> str:
+    from artistools.atomic._atomic_core import get_elsymbol
+
     if z_exclude == 0:
         # normal case: all opacities sources included
         return ""

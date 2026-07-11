@@ -198,7 +198,7 @@ def get_closelines(
     upperlevelindex: int | None = None,
 ) -> FeatureTuple:
     lzdflinelistclosematches = (
-        at.misc
+        at.atomic
         .get_linelist_pldf(modelpath)
         .with_columns(upper_level=pl.col("upperlevelindex") + 1, lower_level=pl.col("lowerlevelindex") + 1)
         .filter(pl.col("atomic_number") == atomic_number, pl.col("ion_stage") == ion_stage)

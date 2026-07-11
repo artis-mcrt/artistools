@@ -209,7 +209,7 @@ def get_required_packets(
     # careful: ion_stage is counted from 1 here, i.e. 1 <-> neutral, 2 <-> singly ionized
 
     # Sr II triplet
-    linelist_lazyframe = at.misc.get_linelist_pldf(modelpath)
+    linelist_lazyframe = at.atomic.get_linelist_pldf(modelpath)
     if srII_triplet:
         linelist_lazyframe = linelist_lazyframe.filter(
             (pl.col("atomic_number") == 38)
