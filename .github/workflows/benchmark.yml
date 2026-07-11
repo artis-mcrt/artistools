@@ -48,6 +48,8 @@ jobs:
             - name: Install artistools
               run: |
                   rustup update stable
+                  sudo apt-get update
+                  sudo apt-get install liblzma-dev
                   uv sync --compile-bytecode
 
             - name: Download/extract test data
