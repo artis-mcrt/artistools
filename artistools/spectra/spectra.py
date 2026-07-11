@@ -15,7 +15,6 @@ import numpy.typing as npt
 import pandas as pd
 import polars as pl
 import polars.selectors as cs
-from matplotlib.typing import ColorType
 
 import artistools.constants as const
 import artistools.packets as atpackets
@@ -44,7 +43,7 @@ class FluxContributionTuple(t.NamedTuple):
     linelabel: str
     array_flambda_emission: npt.NDArray[np.floating]
     array_flambda_absorption: npt.NDArray[np.floating]
-    color: ColorType | None
+    color: str | tuple[float, float, float] | None
 
 
 def timeshift_fluxscale_co56law(scaletoreftime: float | int | None, spectime: float) -> float:
@@ -1527,9 +1526,9 @@ def sort_and_reduce_flux_contribution_list(
 
     for row in contribution_list:
         if row.linelabel != "Other" and fixedionlist and row.linelabel in fixedionlist:
-            contribution_list_out.append(row._replace(color=color_list[fixedionlist.index(row.linelabel)]))  # ty:ignore[invalid-argument-type]
+            contribution_list_out.append(row._replace(color=color_list[fixedionlist.index(row.linelabel)]))
         elif row.linelabel != "Other" and not fixedionlist and index < maxseriescount:
-            contribution_list_out.append(row._replace(color=color_list[index]))  # ty:ignore[invalid-argument-type]
+            contribution_list_out.append(row._replace(color=color_list[index]))
             plotted_ion_list.append(row.linelabel)
         else:
             remainder_fluxcontrib += row.fluxcontrib
