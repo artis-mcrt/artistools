@@ -285,10 +285,11 @@ def test_stripallsuffixes() -> None:
 
 def test_match_closest_time() -> None:
     times = [100.0, 200.0, 300.0, 400.0]
-    assert at.match_closest_time(250.0, times) == "200.0"
-    assert at.match_closest_time(310.0, times) == "300.0"
-    assert at.match_closest_time(99.0, times) == "100.0"
-    assert at.match_closest_time(400.0, times) == "400.0"
+    assert at.match_closest_time(250.0, times) == 200.0
+    assert at.match_closest_time(310.0, times) == 300.0
+    assert at.match_closest_time(99.0, times) == 100.0
+    assert at.match_closest_time(400.0, times) == 400.0
+    assert at.match_closest_time(310.0, ["100", "300.5", "400"]) == 300.5
 
 
 def test_get_npts_model(tmp_path: Path) -> None:

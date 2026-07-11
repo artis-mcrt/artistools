@@ -1127,11 +1127,8 @@ def colour_evolution_plot(
                 )
 
             # UNCOMMENT TO ESTIMATE COLOUR AT TIME B MAX
-            # def match_closest_time(reftime):
-            #     return ("{}".format(min([float(x) for x in plot_times], key=lambda x: abs(x - reftime))))
-            #
             # tmax_B = 17.0  # CHANGE TO TIME OF B MAX
-            # tmax_B = float(match_closest_time(tmax_B))
+            # tmax_B = at.match_closest_time(tmax_B, plot_times)
             # print(f'{filter_names[0]} - {filter_names[1]} at t_Bmax ({tmax_B}) = '
             #       f'{diff[plot_times.index(tmax_B)]}')
 
@@ -1419,25 +1416,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Plot hesma model on top of lightcurve plot. Enter model name saved in data/hesma directory",
     )
 
-    parser.add_argument(
-        "-plotvspecpol", type=int, nargs="+", help="Plot vspecpol. Expects int for spec number in vspecpol files"
-    )
-
-    parser.add_argument(
-        "-plotviewingangle",
-        "-dirbin",
-        type=int,
-        nargs="+",
-        help=(
-            "Plot viewing angles. Expects int for angle number in specpol_res.out"
-            "use args = -2 to select all the viewing angles"
-        ),
-    )
-    parser.add_argument(
-        "--usedegrees",
-        action="store_true",
-        help="Use degrees instead of radians for viewing angles. Only works with -plotviewingangle",
-    )
+    at.add_viewingangle_args(parser, allow_select_all=True)
 
     parser.add_argument("-ymax", type=float, default=None, help="Plot range: y-axis")
 
@@ -1555,21 +1534,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument(
         "--noangleaveraged", action="store_true", help="Don't plot angle averaged values on viewing angle scatter plots"
-    )
-
-    parser.add_argument(
-        "--average_over_phi_angle",
-        action="store_true",
-        help="Average over phi (azimuthal) viewing angles to make direction bins into polar angle bins",
-    )
-
-    # for backwards compatibility with above option
-    parser.add_argument("--average_every_tenth_viewing_angle", action="store_true")
-
-    parser.add_argument(
-        "--average_over_theta_angle",
-        action="store_true",
-        help="Average over theta (polar) viewing angles to make direction bins into azimuthal angle bins",
     )
 
     parser.add_argument(

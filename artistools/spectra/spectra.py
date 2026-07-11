@@ -34,6 +34,7 @@ from artistools.misc import get_timestep_times
 from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import get_viewingdirectionbincount
 from artistools.misc import get_vpkt_config
+from artistools.misc import match_closest_time
 from artistools.misc import split_multitable_dataframe
 from artistools.misc import zopenpl
 
@@ -884,18 +885,15 @@ def get_vspecpol_spectrum(
     vspecdata = stokes_params[args.stokesparam]
 
     arr_tmid = [float(i) for i in vspecdata.collect_schema().names()[1:]]
-    vspec_timesteps = range(len(arr_tmid))
     arr_tdelta = [l1 - l2 for l1, l2 in zip(arr_tmid[1:], arr_tmid[:-1], strict=False)] + [arr_tmid[-1] - arr_tmid[-2]]
 
-    def match_closest_time(reftime: float) -> int:
-        return min(vspec_timesteps, key=lambda ts: abs(arr_tmid[ts] - reftime))
-
     if "timemin" in args and "timemax" in args and args.timemin is not None and args.timemax is not None:
-        timestepmin = match_closest_time(args.timemin)  # how timemin, timemax are used changed at some point
-        timestepmax = match_closest_time(args.timemax)  # to average over multiple timesteps needs to fix this
+        # how timemin, timemax are used changed at some point. to average over multiple timesteps needs to fix this
+        timestepmin = arr_tmid.index(match_closest_time(args.timemin, arr_tmid))
+        timestepmax = arr_tmid.index(match_closest_time(args.timemax, arr_tmid))
     else:
-        timestepmin = match_closest_time(timeavg)
-        timestepmax = match_closest_time(timeavg)
+        timestepmin = arr_tmid.index(match_closest_time(timeavg, arr_tmid))
+        timestepmax = timestepmin
 
     timelower = arr_tmid[timestepmin]
     timeupper = arr_tmid[timestepmax]
