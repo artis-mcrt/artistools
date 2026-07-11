@@ -56,14 +56,14 @@ extras = [
 
 [dependency-groups]
 dev = [
-    "basedpyright>=1.39.3",
+    "basedpyright>=1.39.9",
     # "beartype>=0.22.9", # numpy 2.5.0 broke beartype, so we disable it for now
     "imageio>=2.37.3",
-    "mypy>=2.0.0",
+    "mypy>=2.2.0",
     "pandas-stubs>=3.0.0.260204",
     "prek>=0.2.28",
     "pynonthermal>=2026.4.27",
-    "pyrefly>=1.0.0",
+    "pyrefly>=1.2.0-dev.2",
     "pytest>=9.0.3",
     "pytest-codspeed>=4.4.0",
     "pytest-cov>=7.1.0",
@@ -236,6 +236,7 @@ missing-import = false
 unbound-name = false
 unsupported-operation = false
 implicit-any-empty-container = true
+implicit-any-variable = false
 
 [tool.pyright]
 venvPath = "."
