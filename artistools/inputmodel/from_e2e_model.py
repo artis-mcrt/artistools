@@ -8,7 +8,6 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-import argcomplete
 import numpy as np
 import numpy.typing as npt
 import polars as pl
@@ -1195,13 +1194,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
-    if args is None:
-        parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
-
-        addargs(parser)
-        at.set_args_from_dict(parser, kwargs)
-        argcomplete.autocomplete(parser)
-        args = parser.parse_args([] if kwargs else argsraw)
+    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     if args.iso is None:
         args.iso = Path(args.npz).parent / "iso_table.npy"

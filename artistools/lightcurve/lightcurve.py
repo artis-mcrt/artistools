@@ -83,10 +83,6 @@ def get_from_packets(
         nprocs_read, dfpackets = at.packets.get_packets(
             modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type=escape_type
         )
-        nphibins = at.get_viewingdirection_phibincount()
-        ncosthetabins = at.get_viewingdirection_costhetabincount()
-        ndirbins = at.get_viewingdirectionbincount()
-
         escapesurfacegamma = math.sqrt(1 - (modelmeta["vmax_cmps"] / 29979245800) ** 2)
         dfpackets = dfpackets.with_columns([
             (pl.col("escape_time") * escapesurfacegamma / 86400.0).alias("t_arrive_cmf_d")
@@ -114,26 +110,16 @@ def get_from_packets(
     for dirbin in directionbins:
         if directionbins_are_vpkt_observers:
             assert vpkt_config is not None
-            obsdirindex = dirbin // vpkt_config["nspectraperobs"]
-            opacchoiceindex = dirbin % vpkt_config["nspectraperobs"]
+            obsdirindex, opacchoiceindex = divmod(dirbin, vpkt_config["nspectraperobs"])
             pldfpackets_dirbin = dfpackets.with_columns(
                 e_rf=pl.col(f"dir{obsdirindex}_e_rf_{opacchoiceindex}"),
                 t_arrive_d=pl.col(f"dir{obsdirindex}_t_arrive_d"),
             )
             solidanglefactor = 4 * math.pi
-        elif dirbin == -1:
-            solidanglefactor = 1.0
-            pldfpackets_dirbin = dfpackets
-        elif average_over_phi:
-            assert not average_over_theta
-            solidanglefactor = ncosthetabins
-            pldfpackets_dirbin = dfpackets.filter(pl.col("costhetabin") * nphibins == dirbin)
-        elif average_over_theta:
-            solidanglefactor = nphibins
-            pldfpackets_dirbin = dfpackets.filter(pl.col("phibin") == dirbin)
         else:
-            solidanglefactor = ndirbins
-            pldfpackets_dirbin = dfpackets.filter(pl.col("dirbin") == dirbin)
+            pldfpackets_dirbin, solidanglefactor = at.packets.filter_packets_dirbin(
+                dfpackets, dirbin, average_over_phi=average_over_phi, average_over_theta=average_over_theta
+            )
 
         lcdata[dirbin] = (
             at.packets

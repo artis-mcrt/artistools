@@ -4,7 +4,6 @@ import typing as t
 from collections.abc import Sequence
 from pathlib import Path
 
-import argcomplete
 import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
@@ -261,8 +260,7 @@ def get_reduced_packet_set(
             (pl.col("lambda_rf") > lam_min) & (pl.col("lambda_rf") < lam_max)
         )
     if dirbin >= 0:
-        nphibins = at.get_viewingdirection_phibincount()
-        dfpackets_selected = dfpackets_selected.filter(pl.col("costhetabin") * nphibins == dirbin)
+        dfpackets_selected, _ = at.packets.filter_packets_dirbin(dfpackets_selected, dirbin, average_over_phi=True)
 
     return nprocs_read, dfpackets_selected
 
@@ -408,13 +406,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot last packet interaction properties versus ejecta velocity for selected packets."""
-    if args is None:
-        parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
-
-        addargs(parser)
-        at.set_args_from_dict(parser, kwargs)
-        argcomplete.autocomplete(parser)
-        args = parser.parse_args([] if kwargs else argsraw)
+    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     if (args.wavelen is None) != (args.binwidth is None):
         message = "Wavelength mode requires both -wavelen and -binwidth to be provided."

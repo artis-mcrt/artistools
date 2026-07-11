@@ -75,6 +75,7 @@ from artistools.misc import get_costheta_bins as get_costheta_bins
 from artistools.misc import get_costhetabin_phibin_labels as get_costhetabin_phibin_labels
 from artistools.misc import get_deposition as get_deposition
 from artistools.misc import get_dirbin_labels as get_dirbin_labels
+from artistools.misc import get_dirbins as get_dirbins
 from artistools.misc import get_elsymbol as get_elsymbol
 from artistools.misc import get_elsymbols_df as get_elsymbols_df
 from artistools.misc import get_elsymbolslist as get_elsymbolslist
@@ -111,12 +112,16 @@ from artistools.misc import LineTuple as LineTuple
 from artistools.misc import makelist as makelist
 from artistools.misc import match_closest_time as match_closest_time
 from artistools.misc import merge_pdf_files as merge_pdf_files
+from artistools.misc import normalize_path_list as normalize_path_list
 from artistools.misc import parallel_map as parallel_map
+from artistools.misc import parse_cli_args as parse_cli_args
 from artistools.misc import parse_range as parse_range
 from artistools.misc import parse_range_list as parse_range_list
 from artistools.misc import print_theta_phi_definitions as print_theta_phi_definitions
 from artistools.misc import read_linestatfile as read_linestatfile
+from artistools.misc import read_rank_outputfiles as read_rank_outputfiles
 from artistools.misc import readnoncommentline as readnoncommentline
+from artistools.misc import resolve_outputfile as resolve_outputfile
 from artistools.misc import roman_numerals as roman_numerals
 from artistools.misc import set_args_from_dict as set_args_from_dict
 from artistools.misc import split_multitable_dataframe as split_multitable_dataframe

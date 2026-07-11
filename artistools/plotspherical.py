@@ -3,7 +3,6 @@ import argparse
 import typing as t
 from pathlib import Path
 
-import argcomplete
 import matplotlib.figure as mplfig
 import matplotlib.pyplot as plt
 import numpy as np
@@ -295,12 +294,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = None, **kwargs: t.Any) -> None:
     """Plot direction maps based on escaped packets."""
-    if args is None:
-        parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
-        addargs(parser)
-        at.set_args_from_dict(parser, kwargs)
-        argcomplete.autocomplete(parser)
-        args = parser.parse_args([] if kwargs else argsraw)
+    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     if not args.modelpath:
         args.modelpath = Path()

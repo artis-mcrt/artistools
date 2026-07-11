@@ -270,14 +270,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot estimated spectra from bound-bound transitions."""
-    if args is None:
-        parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
-        addargs(parser)
-        at.set_args_from_dict(parser, kwargs)
-        args = parser.parse_args([] if kwargs else argsraw)
+    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
-    if Path(args.outputfile).is_dir():
-        args.outputfile = Path(args.outputfile, defaultoutputfile)
+    args.outputfile = at.resolve_outputfile(args.outputfile, defaultoutputfile)
 
     if args.modelpath:
         from_model = True

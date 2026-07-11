@@ -154,12 +154,9 @@ def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> 
     if args.plotvspecpol and (modelpath / "vpkt.txt").is_file():
         dirbins = args.plotvspecpol
     elif args.plotviewingangle and args.plotviewingangle[0] == -2 and viewing_angle_data_exists:
-        if args.average_over_phi_angle:
-            dirbins = list(range(0, at.get_viewingdirectionbincount(), at.get_viewingdirection_phibincount()))
-        elif args.average_over_theta_angle:
-            dirbins = list(range(at.get_viewingdirection_phibincount()))
-        else:
-            dirbins = list(range(at.get_viewingdirectionbincount()))
+        dirbins = at.get_dirbins(
+            average_over_phi=args.average_over_phi_angle, average_over_theta=args.average_over_theta_angle
+        )
     elif args.plotviewingangle and viewing_angle_data_exists:
         dirbins = args.plotviewingangle
     else:
@@ -701,7 +698,9 @@ def second_band_brightness_at_peak_first_band(
 
 
 def peakmag_risetime_declinerate_init(
-    modelpaths: list[str | Path], filternames_conversion_dict: dict[str, str], args: argparse.Namespace
+    modelpaths: list[str | Path] | list[Path] | list[str],
+    filternames_conversion_dict: dict[str, str],
+    args: argparse.Namespace,
 ) -> None:
     # if args.calculate_peak_time_mag_deltam15_bool:  # If there's viewing angle scatter plot stuff define some arrays
     args.plotvalues = []  # a0 and p0 values for viewing angle scatter plots

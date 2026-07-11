@@ -28,16 +28,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot the macroatom transitions."""
-    if args is None:
-        parser = argparse.ArgumentParser(
-            formatter_class=at.CustomArgHelpFormatter, description="Plot ARTIS macroatom transitions."
-        )
-        addargs(parser)
-        at.set_args_from_dict(parser, kwargs)
-        args = parser.parse_args([] if kwargs else argsraw)
+    args = at.parse_cli_args(addargs, "Plot ARTIS macroatom transitions.", args, argsraw, kwargs)
 
-    if Path(args.outputfile).is_dir():
-        args.outputfile = str(Path(args.outputfile, defaultoutputfile))
+    args.outputfile = at.resolve_outputfile(args.outputfile, defaultoutputfile)
 
     atomic_number = at.get_atomic_number(args.element.lower())
     if atomic_number < 1:
@@ -60,7 +53,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         print(f"Could not find {specfilename}")
         raise FileNotFoundError
 
-    outputfile = args.outputfile.format(args.modelgridindex, timestepmin, timestepmax)
+    outputfile = str(args.outputfile).format(args.modelgridindex, timestepmin, timestepmax)
     modelpath = args.modelpath
     xmin = args.xmin
     xmax = args.xmax

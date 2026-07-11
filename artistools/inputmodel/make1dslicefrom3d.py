@@ -24,15 +24,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-opdf", action="store", dest="pdfoutputfile", help="Path/filename for PDF plot.")
 
 
-def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:  # noqa: ARG001
-    if args is None:
-        parser = argparse.ArgumentParser(
-            formatter_class=at.CustomArgHelpFormatter,
-            description="Convert abundances.txt and model.txt from 3D to a one dimensional slice.",
-        )
-        addargs(parser)
-        at.set_args_from_dict(parser, kwargs)
-        args = parser.parse_args()
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
+    args = at.parse_cli_args(
+        addargs, "Convert abundances.txt and model.txt from 3D to a one dimensional slice.", args, argsraw, kwargs
+    )
 
     if not Path(args.outputfolder).exists():
         Path(args.outputfolder).mkdir(parents=True)

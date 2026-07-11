@@ -13,14 +13,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
-    if args is None:
-        parser = argparse.ArgumentParser(
-            formatter_class=at.CustomArgHelpFormatter, description="Create solar r-process pattern in ARTIS format."
-        )
-
-        addargs(parser)
-        at.set_args_from_dict(parser, kwargs)
-        args = parser.parse_args([] if kwargs else argsraw)
+    args = at.parse_cli_args(addargs, "Create solar r-process pattern in ARTIS format.", args, argsraw, kwargs)
 
     modelpath: Path = Path()
     timestep = 14

@@ -190,13 +190,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: Any) -> None:
     """Tool to generate a 3D visualization of an ARTIS model."""
-    if args is None:
-        parser = argparse.ArgumentParser(
-            formatter_class=at.CustomArgHelpFormatter, description="Generate a 3D visualization of an ARTIS model."
-        )
-        addargs(parser)
-        at.set_args_from_dict(parser, kwargs)
-        args = parser.parse_args([] if kwargs else argsraw)
+    args = at.parse_cli_args(addargs, "Generate a 3D visualization of an ARTIS model.", args, argsraw, kwargs)
 
     viewing_angles_visualisation(
         modelfile=args.modelfile,

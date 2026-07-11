@@ -6,7 +6,6 @@ import typing as t
 from collections.abc import Sequence
 from pathlib import Path
 
-import argcomplete
 import matplotlib.axes as mplax
 import matplotlib.cm as mplcm
 import matplotlib.colors as mplcolors
@@ -382,12 +381,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot ARTIS input model composition."""
-    if args is None:
-        parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
-        addargs(parser)
-        at.set_args_from_dict(parser, kwargs)
-        argcomplete.autocomplete(parser)
-        args = parser.parse_args([] if kwargs else argsraw)
+    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     if args.axis[0] in {"+", "-"}:
         args.positive_axis = args.axis[0] == "+"

@@ -132,11 +132,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Solve Spencer-Fano equation using data from ARTIS cell at some timestep."""
-    if args is None:
-        parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
-        addargs(parser)
-        at.set_args_from_dict(parser, kwargs)
-        args = parser.parse_args([] if kwargs else argsraw)
+    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     if args.plotstats:
         make_ntstats_plot(args.plotstats)
@@ -144,8 +140,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     modelpath = Path(args.modelpath)
 
-    if Path(args.outputfile).is_dir():
-        args.outputfile = Path(args.outputfile, defaultoutputfile)
+    args.outputfile = at.resolve_outputfile(args.outputfile, defaultoutputfile)
     dfpops: pd.DataFrame | None
     ionpopdict: dict[tuple[int, int] | int, float]
     if args.composition == "artis":

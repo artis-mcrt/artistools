@@ -18,30 +18,9 @@ KB = 1.38064852e-16  # Boltzmann constant [erg/K]
 
 def read_files(modelpath: Path | str, timestep: int | None = None, modelgridindex: int | None = None) -> pl.DataFrame:
     """Read radiation field data from a model folder, possibly with timestep and modelgridindex filters."""
-    radfieldfilepaths = [
-        at.firstexisting(f"radfield_{mpirank:04d}.out", folder=folderpath, tryzipped=True)
-        for folderpath in at.get_runfolders(modelpath, timestep=timestep)
-        for mpirank in at.get_mpiranklist(modelpath, modelgridindex=modelgridindex)
-    ]
-    import pandas as pd
-
-    pldf = pl.concat(
-        (
-            pl.from_pandas(pd.read_csv(radfieldfilepath, sep=r"\s+", dtype_backend="pyarrow")).with_columns(
-                pl.col("modelgridindex").cast(pl.Int64), pl.col("timestep").cast(pl.Int64)
-            )
-            for radfieldfilepath in radfieldfilepaths
-        ),
-        how="vertical",
+    return at.read_rank_outputfiles(
+        modelpath, "radfield_{mpirank:04d}.out", timestep=timestep, modelgridindex=modelgridindex
     )
-
-    if modelgridindex is not None:
-        pldf = pldf.filter(pl.col("modelgridindex") == modelgridindex)
-
-    if timestep is not None:
-        pldf = pldf.filter(pl.col("timestep") == timestep)
-
-    return pldf
 
 
 def get_binaverage_field(
@@ -405,20 +384,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot the radiation field estimators."""
-    if args is None:
-        parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
-        addargs(parser)
-        at.set_args_from_dict(parser, kwargs)
-        args = parser.parse_args([] if kwargs else argsraw)
+    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     at.set_mpl_style()
 
     defaultoutputfile = Path("plotradfield_cell{modelgridindex:03d}_ts{timestep:03d}.pdf")
 
-    if not args.outputfile:
-        args.outputfile = defaultoutputfile
-    elif args.outputfile.is_dir():
-        args.outputfile /= defaultoutputfile
+    args.outputfile = at.resolve_outputfile(args.outputfile, defaultoutputfile)
 
     modelpath = args.modelpath
 
