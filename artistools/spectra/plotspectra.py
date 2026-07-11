@@ -26,6 +26,7 @@ from matplotlib.lines import Line2D
 
 import artistools.spectra as atspectra
 from artistools.commands import get_path
+from artistools.misc import add_viewingangle_args
 from artistools.misc import df_filter_minmax_bounded
 from artistools.misc import firstexisting
 from artistools.misc import get_dirbin_labels
@@ -1481,45 +1482,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--averagevspecpolfiles", action="store_true", help="Average the vspecpol-total files for multiple simulations"
     )
 
-    parser.add_argument(
-        "-plotvspecpol",
-        type=int,
-        nargs="+",
-        help="Plot viewing angles from vspecpol virtual packets. Expects int for angle = spec number in vspecpol files",
-    )
+    add_viewingangle_args(parser)
 
     parser.add_argument(
         "-stokesparam", type=str, default="I", help="Stokes param to plot. Default I. Expects I, Q or U"
-    )
-
-    parser.add_argument(
-        "-plotviewingangle",
-        "-dirbin",
-        type=int,
-        metavar="n",
-        nargs="+",
-        help="Plot viewing directions. Expects int for direction bin in specpol_res.out",
-    )
-
-    parser.add_argument(
-        "--usedegrees",
-        action="store_true",
-        help="Use degrees instead of radians for direction angles. Only works with -plotviewingangle",
-    )
-
-    parser.add_argument(
-        "--average_over_phi_angle",
-        action="store_true",
-        help="Average over phi (azimuthal) viewing angles to make direction bins into polar angle bins",
-    )
-
-    # for backwards compatibility with above option
-    parser.add_argument("--average_every_tenth_viewing_angle", action="store_true")
-
-    parser.add_argument(
-        "--average_over_theta_angle",
-        action="store_true",
-        help="Average over theta (polar) viewing angles to make direction bins into azimuthal angle bins",
     )
 
     parser.add_argument("--binflux", action="store_true", help="Bin flux over wavelength and average flux")

@@ -1,6 +1,5 @@
 import calendar
 import math
-import tempfile
 import time
 import typing as t
 from collections.abc import Sequence
@@ -421,8 +420,11 @@ def get_rankbatch_parquetfile(
             if parquet_mtime > last_textfile_mtime and parquet_mtime > t_lastschemachange:
                 conversion_needed = False
             else:
-                msg = f"ERROR: outdated file: {parquetfilepath}. Delete it to regenerate."
-                raise AssertionError(msg)
+                print(
+                    f"  {parquetfilepath.relative_to(modelpath)} is older than the packet text files or schema change."
+                    " File will be deleted and regenerated..."
+                )
+                parquetfilepath.unlink()
         else:
             conversion_needed = False
 
@@ -477,14 +479,7 @@ def get_rankbatch_parquetfile(
             f"   took {time.perf_counter() - time_start_load:.1f} seconds. Writing parquet file...", end="", flush=True
         )
         time_start_write = time.perf_counter()
-        tempparquetfilepath = Path(
-            tempfile.mkstemp(dir=packetdir, prefix=f"{parquetfilename}.partial", suffix=".tmp")[1]
-        )
-        pldf_batch.lazy().sink_parquet(tempparquetfilepath, compression="zstd", compression_level=12, statistics=True)
-        if parquetfilepath.exists():
-            tempparquetfilepath.unlink()
-        else:
-            tempparquetfilepath.rename(parquetfilepath)
+        at.write_parquet_atomic(pldf_batch, parquetfilepath, compression_level=12)
         print(f"took {time.perf_counter() - time_start_write:.1f} seconds")
 
     return parquetfilepath

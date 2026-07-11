@@ -202,9 +202,9 @@ def average_direction_bins(
     return dirbindataframesout
 
 
-def match_closest_time(reftime: float | int, searchtimes: list[t.Any]) -> str:
-    """Get time closest to reftime in list of times (searchtimes)."""
-    return str(min((float(x) for x in searchtimes), key=lambda x: abs(x - reftime)))
+def match_closest_time(reftime: float | int, searchtimes: Iterable[t.Any]) -> float:
+    """Return the time in searchtimes that is closest to reftime."""
+    return min((float(x) for x in searchtimes), key=lambda x: abs(x - reftime))
 
 
 def get_vpkt_config(modelpath: Path | str) -> dict[str, t.Any]:
@@ -775,6 +775,50 @@ def get_ionstring(
         strcharge = "0"
 
     return f"{get_elsymbol(atomic_number)}{strcharge}"
+
+
+def add_viewingangle_args(parser: argparse.ArgumentParser, allow_select_all: bool = False) -> None:
+    """Add the viewing direction selection and averaging arguments shared by the plotting commands."""
+    parser.add_argument(
+        "-plotvspecpol",
+        type=int,
+        metavar="n",
+        nargs="+",
+        help="Plot viewing angles from vspecpol virtual packets. Expects int for angle = spec number in vspecpol files",
+    )
+
+    parser.add_argument(
+        "-plotviewingangle",
+        "-dirbin",
+        type=int,
+        metavar="n",
+        nargs="+",
+        help=(
+            "Plot viewing directions. Expects int for direction bin in specpol_res.out"
+            + (". Use -2 to select all viewing angles" if allow_select_all else "")
+        ),
+    )
+
+    parser.add_argument(
+        "--usedegrees",
+        action="store_true",
+        help="Use degrees instead of radians for direction angles. Only works with -plotviewingangle",
+    )
+
+    parser.add_argument(
+        "--average_over_phi_angle",
+        action="store_true",
+        help="Average over phi (azimuthal) viewing angles to make direction bins into polar angle bins",
+    )
+
+    # deprecated alias for --average_over_phi_angle kept for backwards compatibility
+    parser.add_argument("--average_every_tenth_viewing_angle", action="store_true", help=argparse.SUPPRESS)
+
+    parser.add_argument(
+        "--average_over_theta_angle",
+        action="store_true",
+        help="Average over theta (polar) viewing angles to make direction bins into azimuthal angle bins",
+    )
 
 
 def parse_cli_args(
@@ -1442,6 +1486,30 @@ def get_mpiranklist(
     return [get_mpirankofcell(modelgridindex, modelpath=modelpath)]
 
 
+def write_parquet_atomic(
+    pldf: pl.DataFrame | pl.LazyFrame,
+    parquetfilepath: Path,
+    metadata: dict[str, str] | None = None,
+    compression_level: int = 10,
+) -> None:
+    """Write a zstd-compressed parquet file via a temporary file and rename, so a partial write is never mistaken for a complete file.
+
+    If the destination appears in the meantime (e.g. written by a concurrent process), the temporary file is discarded instead.
+    """
+    import tempfile
+
+    partialfilepath = Path(
+        tempfile.mkstemp(dir=parquetfilepath.parent, prefix=f"{parquetfilepath.name}.partial", suffix=".partial")[1]
+    )
+    pldf.lazy().sink_parquet(
+        partialfilepath, compression="zstd", compression_level=compression_level, statistics=True, metadata=metadata
+    )
+    if parquetfilepath.exists():
+        partialfilepath.unlink()
+    else:
+        partialfilepath.rename(parquetfilepath)
+
+
 def read_rank_outputfiles(
     modelpath: Path | str, filenameformat: str, timestep: int | None = None, modelgridindex: int | None = None
 ) -> pl.DataFrame:
@@ -1466,13 +1534,12 @@ def read_rank_outputfiles(
         .with_columns(pl.col("modelgridindex").cast(pl.Int64), pl.col("timestep").cast(pl.Int64))
     )
 
-    filterexpr = pl.lit(True)
     if modelgridindex is not None and modelgridindex >= 0:
-        filterexpr &= pl.col("modelgridindex") == modelgridindex
+        dfout = dfout.filter(pl.col("modelgridindex") == modelgridindex)
     if timestep is not None and timestep >= 0:
-        filterexpr &= pl.col("timestep") == timestep
+        dfout = dfout.filter(pl.col("timestep") == timestep)
 
-    return dfout.filter(filterexpr)
+    return dfout
 
 
 def get_cellsofmpirank(mpirank: int, modelpath: Path | str) -> Iterable[int]:

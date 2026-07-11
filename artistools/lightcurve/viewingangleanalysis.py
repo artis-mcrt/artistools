@@ -282,19 +282,16 @@ def calculate_peak_time_mag_deltam15(
     )
     fxfit, xfit = lightcurve_polyfit(time, magnitude, args)
 
-    def match_closest_time_polyfit(reftime_polyfit: float) -> str:
-        return str(min((float(x) for x in xfit), key=lambda x: abs(x - reftime_polyfit)))
-
     index_min = np.argmin(fxfit)
     tmax_polyfit = xfit[index_min]
-    time_after15days_polyfit = match_closest_time_polyfit(tmax_polyfit + 15)
+    time_after15days_polyfit = at.match_closest_time(tmax_polyfit + 15, xfit)
     if args.include_delta_m40:
-        time_after40days_polyfit = match_closest_time_polyfit(tmax_polyfit + 40)
+        time_after40days_polyfit = at.match_closest_time(tmax_polyfit + 40, xfit)
     index_after_40_days = None
     for ii, xfits in enumerate(xfit):
-        if float(xfits) == float(time_after15days_polyfit):
+        if float(xfits) == time_after15days_polyfit:
             index_after_15_days = ii
-        elif args.include_delta_m40 and float(xfits) == float(time_after40days_polyfit):
+        elif args.include_delta_m40 and float(xfits) == time_after40days_polyfit:
             index_after_40_days = ii
 
     mag_after15days_polyfit = fxfit[index_after_15_days]
@@ -686,7 +683,7 @@ def second_band_brightness_at_peak_first_band(
         )
 
         for ii, xfits in enumerate(xfit):
-            if float(xfits) == float(closest_list_time_to_first_band_peak):
+            if float(xfits) == closest_list_time_to_first_band_peak:
                 index_at_max = ii
                 break
 
@@ -817,9 +814,7 @@ def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Names
             angle, costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, plotkwargs, args
         )
 
-        lumattime = (
-            lcdata.filter(pl.col("time_days") == float(timetoplot)).select("luminosity_Lsun").collect().item(0, 0)
-        )
+        lumattime = lcdata.filter(pl.col("time_days") == timetoplot).select("luminosity_Lsun").collect().item(0, 0)
         brightness = lumattime * at.constants.Lsun_to_erg_per_s
         if args.colorbarphi:
             xvalues = int(angleindex / 10)

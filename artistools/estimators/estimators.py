@@ -5,7 +5,6 @@ Examples are temperatures, populations, and heating/cooling rates.
 
 import contextlib
 import datetime
-import tempfile
 import time
 import typing as t
 from collections.abc import Sequence
@@ -133,14 +132,9 @@ def get_rankbatch_parquetfile(
         time_start = time.perf_counter()
 
         assert pldf_batch is not None
-        partialparquetfilepath = Path(
-            tempfile.mkstemp(dir=folderpath, prefix=f"{parquetfilename}.partial", suffix=".partial")[1]
-        )
-        pldf_batch.write_parquet(
-            partialparquetfilepath,
-            compression="zstd",
-            compression_level=10,
-            statistics=True,
+        at.write_parquet_atomic(
+            pldf_batch,
+            parquetfilepath,
             metadata={
                 "creationtimeutc": str(datetime.datetime.now(datetime.UTC)),
                 "textsource_mtime": str(textsource_mtime),
@@ -149,10 +143,6 @@ def get_rankbatch_parquetfile(
                 "batchindex": str(batchindex),
             },
         )
-        if parquetfilepath.exists():
-            partialparquetfilepath.unlink()
-        else:
-            partialparquetfilepath.rename(parquetfilepath)
 
         print(f"took {time.perf_counter() - time_start:.1f} s.")
 

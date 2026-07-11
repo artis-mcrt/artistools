@@ -61,6 +61,7 @@ from artistools.inputmodel import get_mgi_of_velocity_kms as get_mgi_of_velocity
 from artistools.inputmodel import get_modeldata as get_modeldata
 from artistools.inputmodel import save_initelemabundances as save_initelemabundances
 from artistools.inputmodel import save_modeldata as save_modeldata
+from artistools.misc import add_viewingangle_args as add_viewingangle_args
 from artistools.misc import anyexist as anyexist
 from artistools.misc import average_direction_bins as average_direction_bins
 from artistools.misc import decode_roman_numeral as decode_roman_numeral
@@ -128,6 +129,7 @@ from artistools.misc import split_multitable_dataframe as split_multitable_dataf
 from artistools.misc import stripallsuffixes as stripallsuffixes
 from artistools.misc import trim_or_pad as trim_or_pad
 from artistools.misc import vec_len as vec_len
+from artistools.misc import write_parquet_atomic as write_parquet_atomic
 from artistools.misc import zopen as zopen
 from artistools.misc import zopenpl as zopenpl
 from artistools.plottools import set_mpl_style as set_mpl_style

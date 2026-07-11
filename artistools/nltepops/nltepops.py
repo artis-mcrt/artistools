@@ -151,33 +151,8 @@ def add_lte_pops(
     return dfpop
 
 
-def read_files(modelpath: str | Path, timestep: int = -1, modelgridindex: int = -1) -> pl.DataFrame:
+def read_files(modelpath: str | Path, timestep: int | None = None, modelgridindex: int | None = None) -> pl.DataFrame:
     """Read in NLTE populations from a model for a particular timestep and grid cell."""
-    runfolders = at.get_runfolders(modelpath, timestep=timestep)
-    assert runfolders, f"No run folders found in {modelpath} for timestep {timestep}"
-    nltefilepaths = [
-        at.firstexisting(Path(folderpath, f"nlte_{mpirank:04d}.out"), tryzipped=True)
-        for folderpath in runfolders
-        for mpirank in at.get_mpiranklist(modelpath, modelgridindex=modelgridindex)
-    ]
-    assert nltefilepaths
-
-    dfnltepop = (
-        pl
-        .concat(
-            pl.from_pandas(pd.read_csv(nltefilepath, sep=r"\s+", dtype_backend="pyarrow"))
-            for nltefilepath in nltefilepaths
-        )
-        .rename({"ionstage": "ion_stage"}, strict=False)
-        .with_columns(pl.col("modelgridindex").cast(pl.Int64), pl.col("timestep").cast(pl.Int64))
-    )
-
-    filterexpr = pl.lit(True)
-
-    if modelgridindex >= 0:
-        filterexpr &= pl.col("modelgridindex") == modelgridindex
-
-    if timestep >= 0:
-        filterexpr &= pl.col("timestep") == timestep
-
-    return dfnltepop.filter(filterexpr)
+    return at.read_rank_outputfiles(
+        modelpath, "nlte_{mpirank:04d}.out", timestep=timestep, modelgridindex=modelgridindex
+    ).rename({"ionstage": "ion_stage"}, strict=False)
