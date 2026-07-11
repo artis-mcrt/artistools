@@ -428,8 +428,8 @@ def get_grid(
     dfcontributions_cellindices = []
     dfcontributions_fracofcellmass = []
     if model_dim == 2:
-        for nz in np.arange(nvz):
-            for nr in np.arange(nvr):
+        for nz in range(nvz):
+            for nr in range(nvr):
                 cellid = nz * nvr + nr + 1
                 if dmgrid[nr, nz] > (1e-100 * mtot):
                     # print(
@@ -443,9 +443,9 @@ def get_grid(
                         dfcontributions_cellindices.append(cellid)
                         dfcontributions_fracofcellmass.append(wloc[pid])
     elif model_dim == 3:
-        for nx in np.arange(grid_dims[0]):
-            for ny in np.arange(grid_dims[1]):
-                for nz in np.arange(grid_dims[2]):
+        for nx in range(grid_dims[0]):
+            for ny in range(grid_dims[1]):
+                for nz in range(grid_dims[2]):
                     cellid = nz * grid_dims[0] * grid_dims[1] + ny * grid_dims[0] + nx + 1
                     if dmgrid[nx, ny, nz] > (1e-100 * mtot):
                         wloc = wall[nx, ny, nz, :] * rho2dtraj / rho2dhat
