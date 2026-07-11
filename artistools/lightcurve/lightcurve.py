@@ -115,9 +115,9 @@ def get_from_packets(
                 e_rf=pl.col(f"dir{obsdirindex}_e_rf_{opacchoiceindex}"),
                 t_arrive_d=pl.col(f"dir{obsdirindex}_t_arrive_d"),
             )
-            solidanglefactor = 4 * math.pi
+            inverse_solidangle_fraction = 4 * math.pi
         else:
-            pldfpackets_dirbin, solidanglefactor = at.packets.filter_packets_dirbin(
+            pldfpackets_dirbin, inverse_solidangle_fraction = at.packets.filter_packets_dirbin(
                 dfpackets, dirbin, average_over_phi=average_over_phi, average_over_theta=average_over_theta
             )
 
@@ -133,7 +133,7 @@ def get_from_packets(
                 luminosity_Lsun=(
                     pl.col("e_rf_sum")
                     / nprocs_read
-                    * solidanglefactor
+                    * inverse_solidangle_fraction
                     / (pl.col("twidth_days") * 86400)
                     / Lsun_to_erg_per_s
                 )
@@ -159,7 +159,7 @@ def get_from_packets(
                 .with_columns(
                     luminosity_cmf_Lsun=pl.col("e_cmf_sum")
                     / nprocs_read
-                    * solidanglefactor
+                    * inverse_solidangle_fraction
                     / escapesurfacegamma
                     / (pl.col("twidth_days") * 86400)
                     / Lsun_to_erg_per_s

@@ -544,7 +544,7 @@ def get_from_packets(
         dfpackets = dfpackets.filter(pl.col(lambda_column).is_between(lambda_bin_edges[0], lambda_bin_edges[-1]))
 
         for dirbin in directionbins:
-            pldfpackets_dirbin_lazy, solidanglefactor = atpackets.filter_packets_dirbin(
+            pldfpackets_dirbin_lazy, inverse_solidangle_fraction = atpackets.filter_packets_dirbin(
                 dfpackets, dirbin, average_over_phi=average_over_phi, average_over_theta=average_over_theta
             )
 
@@ -559,7 +559,7 @@ def get_from_packets(
                 flux=(
                     pl.col(f"{energy_column}_sum")
                     / delta_time_s
-                    * solidanglefactor
+                    * inverse_solidangle_fraction
                     / (4 * math.pi * const.megaparsec_to_cm**2)
                     / nprocs_read
                 ),

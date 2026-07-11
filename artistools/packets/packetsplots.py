@@ -338,9 +338,11 @@ def packets_2d_hist_bin_and_ejecta_vel(
             * pl.col(f"{pos_type_str}em_time")
         ).alias("hollow_cyl_vol_em")
     ).collect()
-    solidanglefactor = at.get_viewingdirection_costhetabincount() if dirbin >= 0 else 1.0
+    inverse_solidangle_fraction = at.get_viewingdirection_costhetabincount() if dirbin >= 0 else 1.0
     energy_sum = float(dfpackets_selected["e_rf"].sum())
-    print(f"Directional 4pi-equivalent bol. luminosity of {energy_sum / nprocs_read / Delta_t_secs * solidanglefactor}")
+    print(
+        f"Directional 4pi-equivalent bol. luminosity of {energy_sum / nprocs_read / Delta_t_secs * inverse_solidangle_fraction}"
+    )
 
     # Step 2) create the heatmap. Normalise packet energy to modelgrid cell volume at packet emission time (lab frame)
     weights = dfpackets_selected["e_rf"] / dfpackets_selected["hollow_cyl_vol_em"]
@@ -351,7 +353,9 @@ def packets_2d_hist_bin_and_ejecta_vel(
         bins=[np.linspace(0, 0.5, num=26), np.linspace(-0.5, 0.5, num=51)],
         weights=weights,
     )
-    heatmap = hist2D / (timemaxarray[timestep] - timeminarray[timestep]) / DAY / nprocs_read * solidanglefactor
+    heatmap = (
+        hist2D / (timemaxarray[timestep] - timeminarray[timestep]) / DAY / nprocs_read * inverse_solidangle_fraction
+    )
     heatmap = np.ma.masked_less_equal(heatmap, 0.0)
     if colorlogscale:
         heatmap = np.ma.log(heatmap)

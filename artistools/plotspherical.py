@@ -95,11 +95,11 @@ def plot_spherical(
         )
 
     if "luminosity" in plotvars:
-        solidanglefactor = nphibins * ncosthetabins
+        inverse_solidangle_fraction = nphibins * ncosthetabins
         aggs.append(
-            (pl.col("e_rf").sum() / nprocs_read * solidanglefactor / (timemaxdays - timemindays) / 86400).alias(
-                "luminosity"
-            )
+            (
+                pl.col("e_rf").sum() / nprocs_read * inverse_solidangle_fraction / (timemaxdays - timemindays) / 86400
+            ).alias("luminosity")
         )
 
     if "temperature" in plotvars or "temperature_sigma" in plotvars or nnelement_vars:
