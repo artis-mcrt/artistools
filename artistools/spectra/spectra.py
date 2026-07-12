@@ -1296,15 +1296,11 @@ def get_flux_contributions_from_packets(
 
     del dfpackets
 
+    emptystrset: set[str] = set()
     allgroupnames = list(
-        pl.concat(
-            ([empackets.get_column("emissiontype_str").unique()] if getemission else [])
-            + ([abspackets.get_column("absorptiontype_str").unique()] if getabsorption else [])
-        ).unique()
+        set(empackets.select(pl.col("emissiontype_str").unique()).to_series() if getemission else emptystrset)
+        | set(abspackets.select(pl.col("absorptiontype_str").unique()).to_series() if getabsorption else emptystrset)
     )
-
-    if maxseriescount is None:
-        maxseriescount = len(allgroupnames)
 
     if fixedionlist is not None and (unrecognised_items := [x for x in fixedionlist if x not in allgroupnames]):
         print(f"WARNING: (packets) did not find {len(unrecognised_items)} items in fixedionlist: {unrecognised_items}")
@@ -1322,6 +1318,9 @@ def get_flux_contributions_from_packets(
     # group small contributions together to avoid the cost of binning individual spectra for them
 
     allgroupnames.sort(key=sortkey)
+
+    if maxseriescount is None:
+        maxseriescount = len(allgroupnames)
     if len(allgroupnames) > maxseriescount:
         other_groupnames = allgroupnames[maxseriescount:]
         allgroupnames = [*allgroupnames[:maxseriescount], "Other"]
@@ -1431,7 +1430,7 @@ def get_flux_contributions_from_packets(
             contribution_list.append(
                 FluxContributionTuple(
                     fluxcontrib=fluxcontribthisseries,
-                    linelabel=str(groupname),
+                    linelabel=groupname,
                     array_flambda_emission=array_flambda_emission,
                     array_flambda_absorption=array_flambda_absorption,
                     color=None,
