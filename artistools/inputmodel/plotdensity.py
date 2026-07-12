@@ -81,7 +81,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         dfmodelcollect = dfmodel.select(cols).collect()
 
-        vuppers = dfmodelcollect["vel_r_max"].unique().sort()
+        vuppers = dfmodelcollect.select(pl.col("vel_r_max").unique().sort()).to_series()
         enclosed_xvals = [0.0, *(vuppers / 29979245800).to_list(), 29979245800]
         enclosed_yvals = [0.0] + [
             float(dfmodelcollect.filter(pl.col("vel_r_mid") <= vupper)["mass_g"].sum()) / 1.989e33 for vupper in vuppers
