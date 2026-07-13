@@ -50,7 +50,7 @@ jobs:
                       cibw-rust-target-${{ runner.os }}${{ runner.arch }}-python3${{ matrix.freethreading }}-
                       cibw-rust-target-${{ runner.os }}${{ runner.arch }}-
 
-            - uses: astral-sh/setup-uv@v8.3.0
+            - uses: astral-sh/setup-uv@v8.3.2
 
             - name: Build wheels
               uses: pypa/cibuildwheel@v4.1
@@ -68,7 +68,7 @@ jobs:
         steps:
             - uses: actions/checkout@v7
 
-            - uses: astral-sh/setup-uv@v8.3.0
+            - uses: astral-sh/setup-uv@v8.3.2
 
             - name: Build sdist
               run: uv build --sdist
