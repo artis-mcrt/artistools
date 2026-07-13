@@ -487,7 +487,7 @@ def get_ion_tuple(ionstr: str) -> tuple[int, int] | int:
 @lru_cache(maxsize=16)
 def get_ionstring(
     atomic_number: int | np.int64,
-    ion_stage: int | np.int64 | t.Literal["ALL"] | None,
+    ion_stage: int | np.int64 | str | None,
     style: t.Literal["spectral", "chargelatex", "charge"] = "spectral",
     sep: str = " ",
 ) -> str:
