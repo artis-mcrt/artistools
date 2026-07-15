@@ -489,12 +489,13 @@ def make_lightcurve_plot(
     if args is None:
         args = argparse.Namespace()
 
-    conffigwidth = 5.0
+    figwidth = args.figscale * 5.0 * args.figwidthscale
+    figheight = args.figscale * 5.0 * (0.25 + 0.4)
     fig, axis = plt.subplots(
         nrows=1,
         ncols=1,
         sharex=True,
-        figsize=(args.figscale * conffigwidth * args.figwidthscale, args.figscale * conffigwidth / 1.6),
+        figsize=(figwidth, figheight),
         tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
     )
     axis.margins(x=0.0)
@@ -515,7 +516,7 @@ def make_lightcurve_plot(
             nrows=1,
             ncols=1,
             sharex=True,
-            figsize=(args.figscale * conffigwidth * args.figwidthscale, args.figscale * conffigwidth / 1.6),
+            figsize=(figwidth, figheight),
             tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
         )
 
