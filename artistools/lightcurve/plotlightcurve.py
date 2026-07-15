@@ -1335,7 +1335,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-dashes", default=[], nargs="*", help="Dashes property of lines")
 
     parser.add_argument(
-        "-figscale", type=float, default=1.6, help="Scale factor for plot area. 1.0 is for single-column"
+        "-figscale", type=float, default=1.8, help="Scale factor for plot area. 1.0 is for single-column"
     )
 
     parser.add_argument("-figwidthscale", type=float, default=1.0, help="Scale factor for plot width")
