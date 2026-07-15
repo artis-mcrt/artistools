@@ -489,12 +489,16 @@ def make_lightcurve_plot(
     if args is None:
         args = argparse.Namespace()
 
-    conffigwidth = 5.0
+    if "figwidthscale" not in args:
+        args.figwidthscale = 1.0
+
+    figwidth = args.figscale * 5.0 * args.figwidthscale
+    figheight = args.figscale * 5.0 * (0.25 + 0.4)
     fig, axis = plt.subplots(
         nrows=1,
         ncols=1,
         sharex=True,
-        figsize=(args.figscale * conffigwidth, args.figscale * conffigwidth / 1.6),
+        figsize=(figwidth, figheight),
         tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
     )
     axis.margins(x=0.0)
@@ -515,7 +519,7 @@ def make_lightcurve_plot(
             nrows=1,
             ncols=1,
             sharex=True,
-            figsize=(args.figscale * conffigwidth, args.figscale * conffigwidth / 1.6),
+            figsize=(figwidth, figheight),
             tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
         )
 
@@ -733,8 +737,10 @@ def create_axes(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[t.
         rows = 1
         cols = 1
 
+    if "figwidthscale" not in args:
+        args.figwidthscale = 1.0
     if "figwidth" not in args:
-        args.figwidth = 5.0 * 1.6 * cols
+        args.figwidth = 5.0 * 1.6 * cols * args.figwidthscale
     if "figheight" not in args:
         args.figheight = 5.0 * 1.1 * rows * 1.5
 
@@ -1334,8 +1340,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-dashes", default=[], nargs="*", help="Dashes property of lines")
 
     parser.add_argument(
-        "-figscale", type=float, default=1.6, help="Scale factor for plot area. 1.0 is for single-column"
+        "-figscale", type=float, default=1.8, help="Scale factor for plot area. 1.0 is for single-column"
     )
+
+    parser.add_argument("-figwidthscale", type=float, default=1.0, help="Scale factor for plot width")
 
     parser.add_argument("--frompackets", action="store_true", help="Read packets files instead of light_curve.out")
 
