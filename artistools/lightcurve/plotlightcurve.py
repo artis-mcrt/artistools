@@ -489,6 +489,9 @@ def make_lightcurve_plot(
     if args is None:
         args = argparse.Namespace()
 
+    if "figwidthscale" not in args:
+        args.figwidthscale = 1.0
+
     figwidth = args.figscale * 5.0 * args.figwidthscale
     figheight = args.figscale * 5.0 * (0.25 + 0.4)
     fig, axis = plt.subplots(
@@ -734,6 +737,8 @@ def create_axes(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[t.
         rows = 1
         cols = 1
 
+    if "figwidthscale" not in args:
+        args.figwidthscale = 1.0
     if "figwidth" not in args:
         args.figwidth = 5.0 * 1.6 * cols * args.figwidthscale
     if "figheight" not in args:
