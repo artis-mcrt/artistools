@@ -769,11 +769,13 @@ def make_spectrum_plot(
             if args.inset_title:
                 axis.annotate(
                     args.title,
-                    xy=(0.03, 0.97),
+                    xy=(0.0, 1.0),
                     xycoords="axes fraction",
+                    xytext=(10, -10),
+                    textcoords="offset points",
                     horizontalalignment="left",
                     verticalalignment="top",
-                    fontsize="x-large",
+                    fontsize="large",
                 )
             else:
                 axis.set_title(args.title, fontsize=11)
@@ -1073,9 +1075,11 @@ def make_emissionabsorption_plot(
     if not args.notitle:
         if args.inset_title:
             axis.annotate(
-                plotlabel,
-                xy=(0.03, 0.96),
+                args.title,
+                xy=(0.0, 1.0),
                 xycoords="axes fraction",
+                xytext=(10, -10),
+                textcoords="offset points",
                 horizontalalignment="left",
                 verticalalignment="top",
                 fontsize="large",
