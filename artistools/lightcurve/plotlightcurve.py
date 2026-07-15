@@ -494,7 +494,7 @@ def make_lightcurve_plot(
         nrows=1,
         ncols=1,
         sharex=True,
-        figsize=(args.figscale * conffigwidth, args.figscale * conffigwidth / 1.6),
+        figsize=(args.figscale * conffigwidth * args.figwidthscale, args.figscale * conffigwidth / 1.6),
         tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
     )
     axis.margins(x=0.0)
@@ -515,7 +515,7 @@ def make_lightcurve_plot(
             nrows=1,
             ncols=1,
             sharex=True,
-            figsize=(args.figscale * conffigwidth, args.figscale * conffigwidth / 1.6),
+            figsize=(args.figscale * conffigwidth * args.figwidthscale, args.figscale * conffigwidth / 1.6),
             tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
         )
 
@@ -734,7 +734,7 @@ def create_axes(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[t.
         cols = 1
 
     if "figwidth" not in args:
-        args.figwidth = 5.0 * 1.6 * cols
+        args.figwidth = 5.0 * 1.6 * cols * args.figwidthscale
     if "figheight" not in args:
         args.figheight = 5.0 * 1.1 * rows * 1.5
 
@@ -1336,6 +1336,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-figscale", type=float, default=1.6, help="Scale factor for plot area. 1.0 is for single-column"
     )
+
+    parser.add_argument("-figwidthscale", type=float, default=1.0, help="Scale factor for plot width")
 
     parser.add_argument("--frompackets", action="store_true", help="Read packets files instead of light_curve.out")
 
