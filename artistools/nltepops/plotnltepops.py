@@ -321,7 +321,7 @@ def make_ionsubplot(
         ycolumnname = "departure_coeff"
 
         # skip one color, since T_e is not plotted in departure mode
-        ax._get_lines.get_next_color()  # type: ignore[attr-defined] # noqa: SLF001 # pyright: ignore[reportAttributeAccessIssue]  # ty:ignore[unresolved-attribute]
+        ax._get_lines.get_next_color()  # type: ignore[attr-defined] # ruff:ignore[private-member-access] # pyright: ignore[reportAttributeAccessIssue]  # ty:ignore[unresolved-attribute]
         if floers_levelpop_values is not None:
             assert floers_levelnums is not None
             ax.plot(

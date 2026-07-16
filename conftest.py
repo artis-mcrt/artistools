@@ -1,7 +1,7 @@
 import typing as t
 
 
-def pytest_configure(config: t.Any) -> None:  # noqa: ARG001
+def pytest_configure(config: t.Any) -> None:  # ruff:ignore[unused-function-argument]
     """Clear the test output of previous runs."""
     from pathlib import Path
 

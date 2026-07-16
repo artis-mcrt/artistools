@@ -40,8 +40,8 @@ def plot_deposition_thermalisation(
 
     depdata = at.get_deposition(modelpath).collect()
 
-    color_gamma = axis._get_lines.get_next_color()  # type: ignore[attr-defined] # noqa: SLF001 # pyright: ignore[reportAttributeAccessIssue]  # ty:ignore[unresolved-attribute]
-    color_gamma = axis._get_lines.get_next_color()  # type: ignore[attr-defined] # noqa: SLF001 # pyright: ignore[reportAttributeAccessIssue]  # ty:ignore[unresolved-attribute]
+    color_gamma = axis._get_lines.get_next_color()  # type: ignore[attr-defined] # ruff:ignore[private-member-access] # pyright: ignore[reportAttributeAccessIssue]  # ty:ignore[unresolved-attribute]
+    color_gamma = axis._get_lines.get_next_color()  # type: ignore[attr-defined] # ruff:ignore[private-member-access] # pyright: ignore[reportAttributeAccessIssue]  # ty:ignore[unresolved-attribute]
 
     axis.plot(
         depdata["tmid_days"],
@@ -52,7 +52,7 @@ def plot_deposition_thermalisation(
         color=color_gamma,
     )
 
-    color_beta = axis._get_lines.get_next_color()  # type: ignore[attr-defined] # noqa: SLF001 # pyright: ignore[reportAttributeAccessIssue]  # ty:ignore[unresolved-attribute]
+    color_beta = axis._get_lines.get_next_color()  # type: ignore[attr-defined] # ruff:ignore[private-member-access] # pyright: ignore[reportAttributeAccessIssue]  # ty:ignore[unresolved-attribute]
 
     if "eps_elec_Lsun" in depdata:
         axis.plot(
@@ -841,8 +841,8 @@ def make_colorbar_viewingangles_colormap() -> t.Any:
 
 def get_viewinganglecolor_for_colorbar(
     angle: int,
-    costheta_viewing_angle_bins: list[str],  # noqa: ARG001
-    phi_viewing_angle_bins: list[str],  # noqa: ARG001
+    costheta_viewing_angle_bins: list[str],  # ruff:ignore[unused-function-argument]
+    phi_viewing_angle_bins: list[str],  # ruff:ignore[unused-function-argument]
     scaledmap: t.Any,
     plotkwargs: dict[str, t.Any],
     args: argparse.Namespace,
@@ -864,7 +864,7 @@ def get_viewinganglecolor_for_colorbar(
 
 
 def make_colorbar_viewingangles(
-    phi_viewing_angle_bins: list[str],  # noqa: ARG001
+    phi_viewing_angle_bins: list[str],  # ruff:ignore[unused-function-argument]
     scaledmap: t.Any,
     args: argparse.Namespace,
     fig: mplfig.Figure | None = None,

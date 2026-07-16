@@ -426,7 +426,7 @@ def get_particledata(
     verbose: bool = False,
 ) -> pl.LazyFrame:
     """For an array of times (NSM time including time before merger), interpolate the heating rates of various decay channels and (if arr_strnuc is not empty) the nuclear mass fractions."""
-    try:  # noqa: PLW0717
+    try:  # ruff:ignore[too-many-statements-in-try-clause]
         if verbose:
             print(
                 "Reading network calculation heating.dat,"

@@ -4,7 +4,7 @@ A collection of plotting, analysis, and file format conversion tools
 for the ARTIS radiative transfer code.
 """
 
-# ruff: noqa: RUF067
+# ruff:file-ignore[non-empty-init-module]
 import sys
 
 if sys.version_info >= (3, 15) and hasattr(sys, "set_lazy_imports_filter") and hasattr(sys, "set_lazy_imports"):

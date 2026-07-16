@@ -101,18 +101,18 @@ def resolve_outputfile(outputfile: Path | str | None, defaultoutputfile: Path | 
 def set_args_from_dict(parser: argparse.ArgumentParser, kwargs: dict[str, t.Any]) -> None:
     """Set argparse defaults from a dictionary."""
     # set_defaults expects the dest of an argument. Here we allow the option strings to be used as keys
-    for arg in parser._actions:  # noqa: SLF001
+    for arg in parser._actions:  # ruff:ignore[private-member-access]
         for optstring in arg.option_strings:
             if optstring.lstrip("-") in kwargs and arg.dest not in kwargs:
                 kwargs[arg.dest] = kwargs.pop(optstring.lstrip("-"))
 
     parser.set_defaults(**kwargs)
     # set required=False on all arguments to avoid errors about missing required arguments when we set defaults from kwargs
-    for arg in parser._actions:  # noqa: SLF001
+    for arg in parser._actions:  # ruff:ignore[private-member-access]
         if arg.default is not None:
             arg.required = False
 
-    if unknown := {k: v for k, v in kwargs.items() if k not in (arg.dest for arg in parser._actions)}:  # noqa: SLF001
+    if unknown := {k: v for k, v in kwargs.items() if k not in (arg.dest for arg in parser._actions)}:  # ruff:ignore[private-member-access]
         msg = f"Unknown argument names: {unknown}"
         raise ValueError(msg)
 

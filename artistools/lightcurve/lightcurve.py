@@ -184,7 +184,7 @@ def generate_band_lightcurve_data(
     modelpath: Path | str,
     args: argparse.Namespace,
     dirbin: int = -1,
-    modelnumber: int | None = None,  # noqa: ARG001
+    modelnumber: int | None = None,  # ruff:ignore[unused-function-argument]
 ) -> dict[str, t.Any]:
     """Integrate spectra to get band magnitude vs time. Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py."""
     from scipy.interpolate import interp1d

@@ -285,8 +285,8 @@ def mirror_model_in_axis(griddata: pd.DataFrame) -> pd.DataFrame:
 def add_mass_to_center(
     griddata: pd.DataFrame,
     t_model_in_days: float | int,
-    vmax: float | int,  # noqa: ARG001
-    args: argparse.Namespace,  # noqa: ARG001
+    vmax: float | int,  # ruff:ignore[unused-function-argument]
+    args: argparse.Namespace,  # ruff:ignore[unused-function-argument]
 ) -> pd.DataFrame:
 
     print(griddata)

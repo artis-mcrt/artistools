@@ -99,7 +99,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 def addsubparsers(
     parser: argparse.ArgumentParser, parentcommand: str, subcommandtree: CommandType, depth: int = 1
 ) -> None:
-    def func(args: t.Any) -> None:  # noqa: ARG001
+    def func(args: t.Any) -> None:  # ruff:ignore[unused-function-argument]
         parser.print_help()
 
     parser.set_defaults(func=func)
@@ -125,7 +125,7 @@ def addsubparsers(
             subparser.set_defaults(func=func)
 
 
-def setup_completions(*args: t.Any, **kwargs: t.Any) -> None:  # noqa: ARG001
+def setup_completions(*args: t.Any, **kwargs: t.Any) -> None:  # ruff:ignore[unused-function-argument]
     import subprocess
 
     path_package_source = Path(__file__).absolute().parent
@@ -160,7 +160,7 @@ def setup_completions(*args: t.Any, **kwargs: t.Any) -> None:  # noqa: ARG001
     print(f"source {completionscriptpath}")
 
 
-def show_version(*args: t.Any, **kwargs: t.Any) -> None:  # noqa: ARG001
+def show_version(*args: t.Any, **kwargs: t.Any) -> None:  # ruff:ignore[unused-function-argument]
     from artistools.version import version
 
     print(f"artistools {version}")
@@ -189,5 +189,5 @@ def get_path(key: str) -> Path:
             raise KeyError(msg)
 
 
-def get_artistools_path(**kwargs: t.Any) -> None:  # noqa: ARG001
+def get_artistools_path(**kwargs: t.Any) -> None:  # ruff:ignore[unused-function-argument]
     print(get_path("artistools_dir"))

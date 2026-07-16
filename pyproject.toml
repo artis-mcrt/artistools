@@ -68,7 +68,7 @@ dev = [
     "pytest-codspeed>=4.4.0",
     "pytest-cov>=7.1.0",
     "pytest-xdist[psutil]>=3.8.0",
-    "ruff>=0.15.21",
+    "ruff>=0.15.22",
     "scipy-stubs>=1.18.0.1",
     "ty>=0.0.60",
     "types-python-dateutil>=2.9.0.20260408",
@@ -308,7 +308,7 @@ extend-exclude = [
     ".venv/**",
 ]
 preview = true
-required-version = ">=0.15.21"
+required-version = ">=0.15.22"
 
 [tool.ruff.format]
 skip-magic-trailing-comma = true
@@ -327,7 +327,7 @@ ignore = [
     "undocumented-public-function",
     "undocumented-public-package",
     "undocumented-public-init",
-    "D203",                                      # incorrect-blank-line-before-class
+    "incorrect-blank-line-before-class",
     "multi-line-summary-second-line",
     "undocumented-param",
     "docstring-missing-returns",
