@@ -335,8 +335,9 @@ def convert_angstroms_to_unit[T: (float, npt.NDArray[np.floating])](value_angstr
             return value_angstroms / 10.0
         case "micron":
             return value_angstroms / 10000.0
-    msg = f"Unknown xunit {new_units}"
-    raise ValueError(msg)
+        case _:
+            msg = f"Unknown xunit {new_units}"
+            raise ValueError(msg)
 
 
 def convert_unit_to_angstroms[T: (float, npt.NDArray[np.floating])](value: T, old_units: str) -> T:
@@ -359,8 +360,9 @@ def convert_unit_to_angstroms[T: (float, npt.NDArray[np.floating])](value: T, ol
             return value * 10  # ty:ignore[invalid-return-type]
         case "micron":
             return value * 10000  # ty:ignore[invalid-return-type]
-    msg = f"Unknown xunit {old_units}"
-    raise ValueError(msg)
+        case _:
+            msg = f"Unknown xunit {old_units}"
+            raise ValueError(msg)
 
 
 def stackspectra(spectra_and_factors: list[tuple[npt.NDArray[np.floating], float]]) -> npt.NDArray[np.floating]:
