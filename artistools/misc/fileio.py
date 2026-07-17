@@ -129,13 +129,16 @@ def stripallsuffixes(f: Path) -> Path:
 
 
 def readnoncommentline(file: io.TextIOBase) -> str:
-    """Read a line from the text file, skipping blank and comment lines that begin with #."""
-    line = ""
+    """Read a line from the text file, skipping blank and comment lines that begin with #.
 
-    while not line.strip() or line.lstrip().startswith("#"):
-        line = file.readline()
+    Raise EOFError if the end of the file is reached before any non-blank, non-comment line is found.
+    """
+    while line := file.readline():
+        if line.strip() and not line.lstrip().startswith("#"):
+            return line
 
-    return line
+    msg = "Reached end of file without finding a non-comment, non-blank line"
+    raise EOFError(msg)
 
 
 @lru_cache(maxsize=24)
