@@ -93,6 +93,12 @@ def test_readnoncommentline() -> None:
     # the next call continues from where the last one stopped
     assert at.readnoncommentline(stream) == "second\n"
 
+    # reaching EOF without a data line raises rather than looping forever
+    with pytest.raises(EOFError, match="end of file"):
+        at.readnoncommentline(io.StringIO(""))
+    with pytest.raises(EOFError, match="end of file"):
+        at.readnoncommentline(io.StringIO("\n# only comments\n   \n"))
+
 
 def test_get_file_metadata(tmp_path: Path) -> None:
     # r_v is derived from a_v and e_bminusv
