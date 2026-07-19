@@ -153,8 +153,6 @@ def write_phys(
                     10 ** cell["logrho"] * (modelmeta["t_model_init_days"] / times[timestep]) ** 3
                 )
 
-                estimators[timestep, modelgridindex]["nntot"] = estimators[timestep, modelgridindex]["nntot"]
-
                 f.write(f"{cell['vel_r_mid'] / 1e5:.2f}")
                 for keyname in ("Te", "rho", "nne", "nntot"):
                     estvalue = estimators[timestep, modelgridindex][keyname]

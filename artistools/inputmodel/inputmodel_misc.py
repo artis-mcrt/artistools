@@ -1020,11 +1020,6 @@ def save_initelemabundances(
         if colname not in dfelabundances.columns:
             dfelabundances = dfelabundances.with_columns(pl.lit(0.0).alias(colname))
 
-    # set missing elemental abundance columns to zero
-    for col in elcolnames:
-        if col not in dfelabundances.columns:
-            dfelabundances[col] = 0.0
-
     dfelabundances = dfelabundances.select(["inputcellid", *elcolnames])
 
     if abundancefilename.exists():

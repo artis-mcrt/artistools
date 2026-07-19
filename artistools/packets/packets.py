@@ -8,7 +8,6 @@ from itertools import batched
 from pathlib import Path
 
 import numpy as np
-import numpy.typing as npt
 import pandas as pd
 import polars as pl
 import polars.selectors as cs
@@ -722,123 +721,6 @@ def bin_packet_directions_polars(
         ).with_columns((pl.col("costhetabin") * nphibins + pl.col("phibin")).cast(pl.Int32).alias("dirbin"))
 
     return dfpackets
-
-
-def make_3d_histogram_from_packets(
-    modelpath: str | Path, timestep_min: int, timestep_max: int | None = None, em_time: bool = True
-) -> npt.NDArray[np.floating]:
-    if timestep_max is None:
-        timestep_max = timestep_min
-    plmodeldata, modelmeta = at.inputmodel.get_modeldata(modelpath)
-    vmax_cms = modelmeta["vmax_cmps"]
-    modeldata = plmodeldata.collect().to_pandas(use_pyarrow_extension_array=True)
-
-    timeminarray = at.get_timestep_times(modelpath=modelpath, loc="start")
-    # timedeltaarray = at.get_timestep_times(modelpath=modelpath, loc="delta")
-    timemaxarray = at.get_timestep_times(modelpath=modelpath, loc="end")
-
-    # timestep = 63 # 82 73 #63 #54 46 #27
-    # print([(ts, time) for ts, time in enumerate(timeminarray)])
-    if em_time:
-        print("Binning by packet emission time")
-    else:
-        print("Binning by packet arrival time")
-
-    only_packets_0_scatters = False
-    nprocs_read, dfpackets = at.packets.get_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
-    if only_packets_0_scatters:
-        print("Only using packets with 0 scatters")
-        dfpackets = dfpackets.filter(pl.col("nscatterings") == 0)
-
-    dfpackets = dfpackets.filter(
-        ((pl.col("em_time") / 86400.0) if em_time else pl.col("t_arrive_d"))
-        .cast(pl.Float32)
-        .is_between(timeminarray[timestep_min], timemaxarray[timestep_max])
-    )
-
-    emission_position3d_lists = [
-        dfpackets.select(pl.col("em_posx") / pl.col("em_time") / CLIGHT).collect().to_series().to_list(),
-        dfpackets.select(pl.col("em_posy") / pl.col("em_time") / CLIGHT).collect().to_series().to_list(),
-        dfpackets.select(pl.col("em_posz") / pl.col("em_time") / CLIGHT).collect().to_series().to_list(),
-    ]
-
-    e_cmf = dfpackets.select("e_cmf").collect().to_series().to_list()
-
-    emission_position3d = np.array(emission_position3d_lists)
-    weight_by_energy = True
-    weights = np.array(e_cmf) if weight_by_energy else None
-
-    print(emission_position3d.shape)
-    print(emission_position3d[0].shape)
-
-    grid_3d, _, _, _ = make_3d_grid(modeldata, vmax_cms)
-    print(grid_3d.shape)
-    # https://stackoverflow.com/questions/49861468/binning-random-data-to-regular-3d-grid-with-unequal-axis-lengths
-    hist, _ = np.histogramdd(emission_position3d.T, [np.append(ax, np.inf) for ax in grid_3d], weights=weights)
-
-    if weight_by_energy:
-        # Divide binned energies by number of processes and by length of timestep
-        hist = (
-            hist / nprocs_read / (timemaxarray[timestep_max] - timeminarray[timestep_min])
-        )  # timedeltaarray[timestep]  # histogram weighted by energy
-    # - need to divide by number of processes
-    # and length of timestep(s)
-
-    # # print histogram coordinates
-    # coords = np.nonzero(hist)
-    # for i, j, k in zip(*coords):
-    #     print(f'({grid_3d[0][i]}, {grid_3d[1][j]}, {grid_3d[2][k]}): {hist[i][j][k]}')
-
-    return np.array(hist, dtype=np.float64)
-
-
-def make_3d_grid(
-    modeldata: pd.DataFrame, vmax_cms: float
-) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
-    grid = round(len(modeldata["inputcellid"]) ** (1.0 / 3.0))
-    vmax = vmax_cms / CLIGHT
-    xgrid = np.array([-vmax + 2 * nx * vmax / grid for nx in range(grid)])
-
-    x, y, z = np.meshgrid(xgrid, xgrid, xgrid)
-    grid_3d = np.array([xgrid, xgrid, xgrid])
-    return grid_3d, x, y, z
-
-
-def get_mean_packet_emission_velocity_per_ts(
-    modelpath: str | Path,
-    packet_type: str = "TYPE_ESCAPE",
-    escape_type: t.Literal["TYPE_RPKT", "TYPE_GAMMA"] = "TYPE_RPKT",
-    maxpacketfiles: int | None = None,
-    escape_angles: int | None = None,
-) -> pl.DataFrame:
-    nprocs_read, dfpackets = get_packets(
-        modelpath, maxpacketfiles=maxpacketfiles, packet_type=packet_type, escape_type=escape_type
-    )
-    dfpackets = add_derived_columns_lazy(dfpackets, modelpath=modelpath)
-    assert nprocs_read > 0
-
-    timearray = at.get_timestep_times(modelpath=modelpath, loc="mid")
-    arr_timedelta = at.get_timestep_times(modelpath=modelpath, loc="delta")
-    timearrayplusend = [*timearray, timearray[-1] + arr_timedelta[-1]]
-
-    if escape_angles is not None:
-        dfpackets = dfpackets.filter(pl.col("dirbin") == escape_angles)
-
-    return pl.DataFrame({
-        "t_arrive_d": timearray,
-        "mean_emission_velocity": (
-            at.packets
-            .bin_and_sum(
-                dfpackets,
-                bincol="t_arrive_d",
-                bins=timearrayplusend,
-                otheraggs=[pl.col("emission_velocity").mean().alias("mean_emission_velocity")],
-            )
-            .select("mean_emission_velocity")
-            .collect()
-            .to_series()
-        ),
-    })
 
 
 def filter_packets_dirbin(

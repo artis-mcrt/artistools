@@ -6,8 +6,6 @@ from collections.abc import Iterable
 from collections.abc import Sequence
 from pathlib import Path
 
-import matplotlib.container as mplcontainer
-import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
@@ -501,52 +499,6 @@ def read_bol_reflightcurve_data(lightcurvefilename: str | Path) -> tuple[pd.Data
     return dflightcurve, metadata
 
 
-def get_sn_sample_bol() -> tuple[t.Any, str]:
-    datafilepath = Path(at.get_path("artistools_dir"), "data", "lightcurves", "SNsample", "bololc.txt")
-    sn_data = pd.read_csv(datafilepath, sep=r"\s+", comment="#")
-
-    print(sn_data)
-    bol_luminosity = sn_data["Lmax"].astype(float)
-    bol_magnitude = 4.74 - (2.5 * np.log10((10**bol_luminosity) / Lsun_to_erg_per_s))  # Mbol,sun = 4.74
-
-    bol_magnitude_error_upper = bol_magnitude - (
-        4.74 - (2.5 * np.log10((10 ** (bol_luminosity + sn_data["+/-.2"].astype(float))) / Lsun_to_erg_per_s))
-    )
-    # bol_magnitude_error_lower = (4.74 - (2.5 * np.log10
-    #     10**(bol_luminosity - sn_data['+/-.2'].astype(float))) / Lsun_in_erg_per_s))) - bol_magnitude
-    # print(bol_magnitude_error_upper, "============")
-    # print(bol_magnitude_error_lower, "============")
-    # print(bol_magnitude_error_upper == bol_magnitude_error_lower)
-
-    # a0 = plt.errorbar(x=sn_data['dm15'].astype(float), y=sn_data['Lmax'].astype(float),
-    #                   yerr=sn_data['+/-.2'].astype(float), xerr=sn_data['+/-'].astype(float),
-    #                   color='grey', marker='o', ls='None')
-    #
-    sn_data["bol_mag"] = bol_magnitude
-    print(sn_data[["name", "bol_mag", "dm15", "dm40"]])
-    sn_data[["name", "bol_mag", "dm15", "dm40"]].to_csv("boldata.txt", sep=" ", index=False)
-    a0 = plt.errorbar(
-        x=sn_data["dm15"].astype(float),
-        y=bol_magnitude,
-        yerr=bol_magnitude_error_upper,
-        xerr=sn_data["+/-"].astype(float),
-        color="k",
-        marker="o",
-        ls="None",
-    )
-
-    # a0 = plt.errorbar(x=sn_data['dm15'].astype(float), y=sn_data['dm40'].astype(float),
-    #                   yerr=sn_data['+/-.1'].astype(float), xerr=sn_data['+/-'].astype(float),
-    #                   color='k', marker='o', ls='None')
-
-    # a0 = plt.scatter(sn_data['dm15'].astype(float), bol_magnitude, s=80, color='k', marker='o')
-    # plt.gca().invert_yaxis()
-    # plt.show()
-
-    label = "Bolometric data (Scalzo et al. 2019)"
-    return a0, label
-
-
 def get_phillips_relation_data() -> tuple[pd.DataFrame, str]:
     datafilepath = Path(at.get_path("artistools_dir"), "data", "lightcurves", "SNsample", "CfA3_Phillips.dat")
     sn_data = pd.read_csv(datafilepath, sep=r"\s+", comment="#")
@@ -556,25 +508,3 @@ def get_phillips_relation_data() -> tuple[pd.DataFrame, str]:
     sn_data["MB"] = sn_data["MB"].astype(float)
 
     return sn_data, "Observed (Hicken et al. 2009)"
-
-
-def plot_phillips_relation_data() -> tuple[mplcontainer.ErrorbarContainer, str]:
-    sn_data, label = get_phillips_relation_data()
-
-    # a0 = plt.scatter(deltam_15B, M_B, s=80, color='grey', marker='o', label=label)
-    a0 = plt.errorbar(
-        x=sn_data["dm15(B)"],
-        y=sn_data["MB"],
-        yerr=sn_data["err_MB"],
-        xerr=sn_data["err_dm15(B)"],
-        color="k",
-        alpha=0.9,
-        marker=".",
-        capsize=2,
-        label=label,
-        ls="None",
-        zorder=5,
-    )
-    # plt.gca().invert_yaxis()
-    # plt.show()
-    return a0, label
