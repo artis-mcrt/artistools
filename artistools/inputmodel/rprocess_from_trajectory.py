@@ -319,33 +319,16 @@ def filtermissinggridparticlecontributions(dfcontribs: pl.DataFrame, missing_par
         .otherwise(pl.col("frac_of_cellmass"))
     )
 
-    cell_frac_sum: dict[int, float] = {}
-    cell_frac_includemissing_sum: dict[int, float] = {}
-    for (cellindex,), dfparticlecontribs in dfcontribs.group_by(["cellindex"]):
-        assert isinstance(cellindex, int)
-        cell_frac_sum[cellindex] = float(dfparticlecontribs["frac_of_cellmass"].sum())
-        cell_frac_includemissing_sum[cellindex] = float(dfparticlecontribs["frac_of_cellmass_includemissing"].sum())
-
     dfcontribs = (
         dfcontribs
         .lazy()
         .with_columns([
-            pl.Series(
-                (
-                    row["frac_of_cellmass"] / cell_frac_sum[row["cellindex"]]
-                    if cell_frac_sum[row["cellindex"]] > 0.0
-                    else 0.0
-                )
-                for row in dfcontribs.iter_rows(named=True)
-            ).alias("frac_of_cellmass"),
-            pl.Series(
-                (
-                    row["frac_of_cellmass_includemissing"] / cell_frac_includemissing_sum[row["cellindex"]]
-                    if cell_frac_includemissing_sum[row["cellindex"]] > 0.0
-                    else 0.0
-                )
-                for row in dfcontribs.iter_rows(named=True)
-            ).alias("frac_of_cellmass_includemissing"),
+            pl
+            .when(pl.col(fraccol).sum().over("cellindex") > 0.0)
+            .then(pl.col(fraccol) / pl.col(fraccol).sum().over("cellindex"))
+            .otherwise(0.0)
+            .alias(fraccol)
+            for fraccol in ("frac_of_cellmass", "frac_of_cellmass_includemissing")
         ])
         .collect()
     )
