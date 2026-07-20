@@ -23,16 +23,24 @@ def read_files(modelpath: Path | str, timestep: int | None = None, modelgridinde
     )
 
 
+def select_radfield_subset(
+    radfielddata: pl.DataFrame, binfilter: pl.Expr, modelgridindex: int | None, timestep: int | None
+) -> pl.DataFrame:
+    """Filter radfield rows by a bin_num condition and optionally by modelgridindex and timestep."""
+    subset = radfielddata.filter(binfilter)
+    if modelgridindex is not None:
+        subset = subset.filter(pl.col("modelgridindex") == modelgridindex)
+    if timestep is not None:
+        subset = subset.filter(pl.col("timestep") == timestep)
+    return subset
+
+
 def get_binaverage_field(
     radfielddata: pl.DataFrame, modelgridindex: int | None = None, timestep: int | None = None
 ) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     """Get the dJ/dlambda constant average estimators of each bin."""
     # exclude the global fit parameters and detailed lines with negative "bin_num"
-    bindata = radfielddata.filter(pl.col("bin_num") >= 0)
-    if modelgridindex is not None:
-        bindata = bindata.filter(pl.col("modelgridindex") == modelgridindex)
-    if timestep is not None:
-        bindata = bindata.filter(pl.col("timestep") == timestep)
+    bindata = select_radfield_subset(radfielddata, pl.col("bin_num") >= 0, modelgridindex, timestep)
 
     arr_lambda = c_ang_per_s / bindata["nu_upper"].to_numpy()
 
@@ -86,11 +94,7 @@ def get_fullspecfittedfield(
     modelgridindex: int | None = None,
     timestep: int | None = None,
 ) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating]]:
-    radfielddata = radfielddata.filter(pl.col("bin_num") == -1)
-    if modelgridindex is not None:
-        radfielddata = radfielddata.filter(pl.col("modelgridindex") == modelgridindex)
-    if timestep is not None:
-        radfielddata = radfielddata.filter(pl.col("timestep") == timestep)
+    radfielddata = select_radfield_subset(radfielddata, pl.col("bin_num") == -1, modelgridindex, timestep)
     W = radfielddata.item(0, "W")
     assert isinstance(W, float)
     T_R = radfielddata.item(0, "T_R")
@@ -113,11 +117,7 @@ def get_fitted_field(
     arr_lambda: list[float] = []
     j_lambda_fitted: list[float] = []
 
-    radfielddata_subset = radfielddata.filter(pl.col("bin_num") >= 0)
-    if modelgridindex is not None:
-        radfielddata_subset = radfielddata_subset.filter(pl.col("modelgridindex") == modelgridindex)
-    if timestep is not None:
-        radfielddata_subset = radfielddata_subset.filter(pl.col("timestep") == timestep)
+    radfielddata_subset = select_radfield_subset(radfielddata, pl.col("bin_num") >= 0, modelgridindex, timestep)
 
     for row in radfielddata_subset.iter_rows(named=True):
         nu_lower = row["nu_lower"]

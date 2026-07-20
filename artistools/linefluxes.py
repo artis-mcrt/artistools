@@ -95,24 +95,12 @@ def get_line_fluxes_from_pops(
         arr_tend = at.get_timestep_times(modelpath, loc="end")
 
     # arr_timedelta = np.array(arr_tend) - np.array(arr_tstart)
-    arr_tmid = list((np.array(arr_tstart) + np.array(arr_tend)) / 2.0)
+    arr_tmid = (np.array(arr_tstart) + np.array(arr_tend)) / 2.0
 
     modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect().to_pandas(use_pyarrow_extension_array=True)
 
     ionlist = [(feature.atomic_number, feature.ion_stage) for feature in emfeatures]
-    adata = (
-        at.atomic
-        .get_levels(modelpath, ionlist=tuple(ionlist), get_transitions=True, get_photoionisations=False)
-        .with_columns(
-            levels=pl.col("levels").map_elements(
-                lambda x: x.to_pandas(use_pyarrow_extension_array=True), return_dtype=pl.Object
-            ),
-            transitions=pl.col("transitions").map_elements(
-                lambda x: x.collect().to_pandas(use_pyarrow_extension_array=True), return_dtype=pl.Object
-            ),
-        )
-        .to_pandas(use_pyarrow_extension_array=True)
-    )
+    adata = at.atomic.get_levels_pandas(modelpath, ionlist=tuple(ionlist), get_transitions=True)
 
     # timearrayplusend = np.concatenate([arr_tstart, [arr_tend[-1]]])
 
@@ -182,7 +170,7 @@ def get_line_fluxes_from_pops(
                     print(f"No data for cells {unaccounted_shells} (expected for empty cells)")
                 assert len(unaccounted_shells) < len(modeldata.index)  # must be data for at least one shell
 
-        dictlcdata[feature.colname] = list(fluxdata)
+        dictlcdata[feature.colname] = fluxdata
 
     return pl.DataFrame(dictlcdata)
 
