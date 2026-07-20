@@ -14,10 +14,10 @@ import polars as pl
 import polars.selectors as cs
 
 import artistools as at
+from artistools.constants import C_cm_per_s as CLIGHT
+from artistools.constants import Msun_to_g as msol
 
-CLIGHT = 29979245800.0  # cm/s
 day = 86400.0
-msol = 1.989e33  # solar mass in g
 t_model_init_days = 0.1 * day  # snapshot time is fixed by the npz files
 
 

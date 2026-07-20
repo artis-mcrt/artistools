@@ -11,9 +11,9 @@ import numpy.typing as npt
 import polars as pl
 
 import artistools as at
-
-H = 6.6260755e-27  # Planck constant [erg s]
-KB = 1.38064852e-16  # Boltzmann constant [erg/K]
+from artistools.constants import c_ang_per_s
+from artistools.constants import h_erg_s
+from artistools.constants import K_B_erg_per_K
 
 
 def read_files(modelpath: Path | str, timestep: int | None = None, modelgridindex: int | None = None) -> pl.DataFrame:
@@ -34,16 +34,16 @@ def get_binaverage_field(
     if timestep is not None:
         bindata = bindata.filter(pl.col("timestep") == timestep)
 
-    arr_lambda = 2.99792458e18 / bindata["nu_upper"].to_numpy()
+    arr_lambda = c_ang_per_s / bindata["nu_upper"].to_numpy()
 
-    bindata = bindata.with_columns(dlambda=2.99792458e18 * (1 / pl.col("nu_lower") - 1 / pl.col("nu_upper")))
+    bindata = bindata.with_columns(dlambda=c_ang_per_s * (1 / pl.col("nu_lower") - 1 / pl.col("nu_upper")))
 
     yvalues = bindata.select(
         pl.when(pl.col("T_R") >= 0).then(pl.col("J") / pl.col("dlambda")).otherwise(0.0)
     ).to_numpy()
 
     # add the starting point
-    arr_lambda = np.insert(arr_lambda, 0, 2.99792458e18 / bindata["nu_lower"].item(0))
+    arr_lambda = np.insert(arr_lambda, 0, c_ang_per_s / bindata["nu_lower"].item(0))
     yvalues = np.insert(yvalues, 0, 0.0)
 
     return arr_lambda, yvalues
@@ -70,7 +70,7 @@ def j_nu_dbb(arr_nu_hz: Sequence[float] | npt.NDArray[np.floating], W: float | i
     if W > 0.0:
         try:
             return [
-                W * 1.4745007e-47 * pow(nu_hz, 3) * 1.0 / (math.expm1(H * nu_hz / T / KB))
+                W * 1.4745007e-47 * pow(nu_hz, 3) * 1.0 / (math.expm1(h_erg_s * nu_hz / T / K_B_erg_per_K))
                 for nu_hz in (arr_nu_hz.tolist() if isinstance(arr_nu_hz, np.ndarray) else arr_nu_hz)  # ty:ignore[no-matching-overload]
             ]
         except OverflowError:
@@ -95,12 +95,12 @@ def get_fullspecfittedfield(
     assert isinstance(W, float)
     T_R = radfielddata.item(0, "T_R")
     assert isinstance(T_R, float)
-    nu_lower = 2.99792458e18 / xmin
-    nu_upper = 2.99792458e18 / xmax
+    nu_lower = c_ang_per_s / xmin
+    nu_upper = c_ang_per_s / xmax
     arr_nu_hz = np.linspace(nu_lower, nu_upper, num=500, dtype=np.float64)
     arr_j_nu = j_nu_dbb(arr_nu_hz, W, T_R)
 
-    arr_lambda = 2.99792458e18 / arr_nu_hz
+    arr_lambda = c_ang_per_s / arr_nu_hz
     arr_j_lambda = arr_j_nu * arr_nu_hz / arr_lambda
 
     return arr_lambda, arr_j_lambda
@@ -130,7 +130,7 @@ def get_fitted_field(
             assert isinstance(T_R, float)
             arr_j_nu = j_nu_dbb(arr_nu_hz_bin, W, T_R)
 
-            arr_lambda_bin = 2.99792458e18 / arr_nu_hz_bin
+            arr_lambda_bin = c_ang_per_s / arr_nu_hz_bin
             arr_j_lambda_bin = arr_j_nu * arr_nu_hz_bin / arr_lambda_bin
 
             arr_lambda += arr_lambda_bin.tolist()
@@ -138,7 +138,7 @@ def get_fitted_field(
             arr_nu_hz_bin = np.array([nu_lower, nu_upper])
             arr_j_lambda_bin = np.array([0.0, 0.0])
 
-            arr_lambda += [2.99792458e18 / nu for nu in arr_nu_hz_bin]
+            arr_lambda += [c_ang_per_s / nu for nu in arr_nu_hz_bin]
         j_lambda_fitted += arr_j_lambda_bin.tolist()
 
     return arr_lambda, j_lambda_fitted
@@ -163,9 +163,9 @@ def plot_line_estimators(
         print("No line estimators to plot")
         return 0.0
 
-    radfielddataselected.loc[:, "lambda_angstroms"] = 2.99792458e18 / radfielddataselected["nu_upper"]
+    radfielddataselected.loc[:, "lambda_angstroms"] = c_ang_per_s / radfielddataselected["nu_upper"]
     radfielddataselected.loc[:, "Jb_lambda"] = (
-        radfielddataselected["J_nu_avg"] * (radfielddataselected["nu_upper"] ** 2) / 2.99792458e18
+        radfielddataselected["J_nu_avg"] * (radfielddataselected["nu_upper"] ** 2) / c_ang_per_s
     )
 
     ymax = radfielddataselected["Jb_lambda"].max()
@@ -219,7 +219,7 @@ def plot_specout(
 
 def get_binedges(radfielddata: pl.DataFrame) -> list[float]:
     radfielddata = radfielddata.filter(pl.col("bin_num") >= 0)
-    return [2.99792458e18 / radfielddata["nu_lower"].item(0), *list(2.99792458e18 / radfielddata["nu_upper"])]
+    return [c_ang_per_s / radfielddata["nu_lower"].item(0), *list(c_ang_per_s / radfielddata["nu_upper"])]
 
 
 def plot_celltimestep(

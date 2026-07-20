@@ -9,8 +9,8 @@ import numpy as np
 import polars as pl
 
 import artistools as at
+from artistools.constants import C_cm_per_s as CLIGHT
 
-CLIGHT = 2.99792458e10
 DAY = 86400
 
 

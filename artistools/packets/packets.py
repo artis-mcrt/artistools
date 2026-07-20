@@ -13,9 +13,7 @@ import polars as pl
 import polars.selectors as cs
 
 import artistools as at
-
-CLIGHT = 2.99792458e10
-DAY = 86400
+from artistools.constants import C_cm_per_s as CLIGHT
 
 types = {10: "TYPE_GAMMA", 11: "TYPE_RPKT", 20: "TYPE_NTLEPTON", 32: "TYPE_ESCAPE"}
 
@@ -463,7 +461,7 @@ def get_rankbatch_parquetfile(
                             + pl.col("posy") * pl.col("diry")
                             + pl.col("posz") * pl.col("dirz")
                         )
-                        / 29979245800.0
+                        / CLIGHT
                     )
                     / 86400.0
                 ).cast(pl.Float32)

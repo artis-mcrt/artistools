@@ -78,8 +78,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     )
 
     with np.errstate(divide="ignore"):
-        lambda_cmf_in = 2.99792458e18 / dfmacroatom["nu_cmf_in"].to_numpy()
-        lambda_cmf_out = 2.99792458e18 / dfmacroatom["nu_cmf_out"].to_numpy()
+        lambda_cmf_in = at.constants.c_ang_per_s / dfmacroatom["nu_cmf_in"].to_numpy()
+        lambda_cmf_out = at.constants.c_ang_per_s / dfmacroatom["nu_cmf_out"].to_numpy()
     # axis.scatter(lambda_cmf_in, lambda_cmf_out, s=1, alpha=0.5, edgecolor='none')
     axis.plot(
         lambda_cmf_in,

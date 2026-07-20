@@ -26,6 +26,7 @@ from matplotlib.lines import Line2D
 
 import artistools.spectra as atspectra
 from artistools.commands import get_path
+from artistools.constants import c_ang_per_s
 from artistools.misc import add_viewingangle_args
 from artistools.misc import df_filter_minmax_bounded
 from artistools.misc import firstexisting
@@ -176,7 +177,7 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
 
     dfspectrum = (
         stokes_params[args.stokesparam]
-        .with_columns(lambda_angstroms=2.99792458e18 / pl.col("nu"))
+        .with_columns(lambda_angstroms=c_ang_per_s / pl.col("nu"))
         .collect()
         .to_pandas(use_pyarrow_extension_array=True)
     )

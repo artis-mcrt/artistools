@@ -12,9 +12,8 @@ import polars as pl
 import polars.selectors as cs
 
 import artistools as at
-
-MSUN = 1.989e33
-CLIGHT = 2.99792458e10
+from artistools.constants import C_cm_per_s as CLIGHT
+from artistools.constants import Msun_to_g as MSUN
 
 
 def read_ejectasnapshot(

@@ -15,6 +15,7 @@ import polars as pl
 from polars import selectors as cs
 
 import artistools as at
+from artistools.constants import K_B_ev_per_K
 
 
 def get_variableunits(key: str) -> str | None:
@@ -354,8 +355,6 @@ def get_averageexcitation(
         "modelgridindex==@modelgridindex and timestep==@timestep and Z==@atomic_number & ion_stage==@ion_stage"
     )
 
-    k_b = 8.617333262145179e-05  # eV / K
-
     ionpopsum = dfnltepops_ion.n_NLTE.sum()
     assert isinstance(ionpopsum, float)
     energypopsum = sum(
@@ -370,13 +369,16 @@ def get_averageexcitation(
 
         energy_boltzfac_sum = (
             ionlevels[levelnumber_sl:]
-            .select(pl.col("energy_ev") * pl.col("g") * (-pl.col("energy_ev") / k_b / T_exc).exp())
+            .select(pl.col("energy_ev") * pl.col("g") * (-pl.col("energy_ev") / K_B_ev_per_K / T_exc).exp())
             .sum()
             .item()
         )
 
         boltzfac_sum = (
-            ionlevels[levelnumber_sl:].select(pl.col("g") * (-pl.col("energy_ev") / k_b / T_exc).exp()).sum().item()
+            ionlevels[levelnumber_sl:]
+            .select(pl.col("g") * (-pl.col("energy_ev") / K_B_ev_per_K / T_exc).exp())
+            .sum()
+            .item()
         )
         # adjust to the actual superlevel population from ARTIS
         energypopsum += energy_boltzfac_sum * superlevelrow.n_NLTE / boltzfac_sum
