@@ -54,6 +54,14 @@ def path_is_artis_model(filepath: str | Path) -> bool:
     return True if Path(filepath).suffix == ".out" else Path(filepath).is_dir()
 
 
+def find_reference_spectrum_file(filename: Path | str) -> Path:
+    """Return the reference spectrum path, falling back to the bundled data/refspectra folder."""
+    try:
+        return firstexisting(filename, tryzipped=True)
+    except FileNotFoundError:
+        return firstexisting(filename, folder=Path(get_path("artistools_dir"), "data", "refspectra"), tryzipped=True)
+
+
 def check_time_range_is_valid(modelpath: Path, timemin: float | int, timemax: float | int, allow_invalid: bool) -> None:
     with contextlib.suppress(FileNotFoundError):
         _, validrange_start_days, validrange_end_days = get_escaped_arrivalrange(modelpath)
@@ -262,12 +270,7 @@ def plot_reference_spectrum(
     The filename must be in space separated text formatted with the first two
     columns being wavelength in Angstroms, and F_lambda
     """
-    try:
-        filepath = firstexisting(filename, tryzipped=True)
-    except FileNotFoundError:
-        filepath = firstexisting(
-            filename, folder=Path(get_path("artistools_dir"), "data", "refspectra"), tryzipped=True
-        )
+    filepath = find_reference_spectrum_file(filename)
 
     metadata = get_file_metadata(filepath)
     label = plotkwargs.get("label", metadata.get("label", filename))
@@ -887,6 +890,14 @@ def make_emissionabsorption_plot(
 
     atspectra.print_integrated_flux(array_flambda_emission_total, arraylambda_angstroms)
 
+    def to_xy(flambda_array: npt.NDArray[np.floating]) -> pl.LazyFrame:
+        return atspectra.get_dfspectrum_x_y_with_units(
+            pl.DataFrame({"f_lambda": flambda_array, "lambda_angstroms": arraylambda_angstroms}),
+            xunit=args.xunit,
+            yvariable=args.yvariable,
+            fluxdistance_mpc=args.distmpc,
+        )
+
     # print("\n".join([f"{x[0]}, {x[1]}" for x in contribution_list]))
 
     contributions_sorted_reduced = atspectra.sort_and_reduce_flux_contribution_list(
@@ -900,12 +911,7 @@ def make_emissionabsorption_plot(
     plotobjectlabels: list[str] = []
     plotobjects: list[mplartist.Artist] = []
 
-    dfspectotal = atspectra.get_dfspectrum_x_y_with_units(
-        pl.DataFrame({"f_lambda": array_flambda_emission_total, "lambda_angstroms": arraylambda_angstroms}),
-        xunit=args.xunit,
-        yvariable=args.yvariable,
-        fluxdistance_mpc=args.distmpc,
-    ).collect()
+    dfspectotal = to_xy(array_flambda_emission_total).collect()
 
     max_f_emission_total = dfspectotal.filter(pl.col("x").is_between(xmin, xmax))["y"].max()
     assert isinstance(max_f_emission_total, (float, np.floating))
@@ -932,12 +938,7 @@ def make_emissionabsorption_plot(
     if args.nostack:
         for x in contributions_sorted_reduced:
             if args.showemission:
-                dfspec = atspectra.get_dfspectrum_x_y_with_units(
-                    pl.DataFrame({"f_lambda": x.array_flambda_emission, "lambda_angstroms": arraylambda_angstroms}),
-                    xunit=args.xunit,
-                    yvariable=args.yvariable,
-                    fluxdistance_mpc=args.distmpc,
-                ).collect()
+                dfspec = to_xy(x.array_flambda_emission).collect()
 
                 (emissioncomponentplot,) = axis.plot(dfspec["x"], dfspec["y"] * scalefactor, linewidth=1, color=x.color)
 
@@ -946,12 +947,7 @@ def make_emissionabsorption_plot(
                 linecolor = x.color
 
             if args.showabsorption:
-                dfspec = atspectra.get_dfspectrum_x_y_with_units(
-                    pl.DataFrame({"f_lambda": x.array_flambda_absorption, "lambda_angstroms": arraylambda_angstroms}),
-                    xunit=args.xunit,
-                    yvariable=args.yvariable,
-                    fluxdistance_mpc=args.distmpc,
-                ).collect()
+                dfspec = to_xy(x.array_flambda_absorption).collect()
                 (absorptioncomponentplot,) = axis.plot(
                     dfspec["x"], -dfspec["y"] * scalefactor, color=linecolor, linewidth=1
                 )
@@ -966,15 +962,7 @@ def make_emissionabsorption_plot(
 
     elif contributions_sorted_reduced:
         if args.showemission:
-            dfemissionspectra = pl.collect_all([
-                atspectra.get_dfspectrum_x_y_with_units(
-                    pl.DataFrame({"f_lambda": x.array_flambda_emission, "lambda_angstroms": arraylambda_angstroms}),
-                    xunit=args.xunit,
-                    yvariable=args.yvariable,
-                    fluxdistance_mpc=args.distmpc,
-                )
-                for x in contributions_sorted_reduced
-            ])
+            dfemissionspectra = pl.collect_all([to_xy(x.array_flambda_emission) for x in contributions_sorted_reduced])
             assert not any(x.color is None for x in contributions_sorted_reduced)
             stackplot = axis.stackplot(
                 dfemissionspectra[0]["x"],
@@ -989,13 +977,7 @@ def make_emissionabsorption_plot(
 
         if args.showabsorption:
             dfabsorptionspectra = pl.collect_all([
-                atspectra.get_dfspectrum_x_y_with_units(
-                    pl.DataFrame({"f_lambda": x.array_flambda_absorption, "lambda_angstroms": arraylambda_angstroms}),
-                    xunit=args.xunit,
-                    yvariable=args.yvariable,
-                    fluxdistance_mpc=args.distmpc,
-                )
-                for x in contributions_sorted_reduced
+                to_xy(x.array_flambda_absorption) for x in contributions_sorted_reduced
             ])
             absstackplot = axis.stackplot(
                 dfabsorptionspectra[0]["x"],
@@ -1566,12 +1548,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if args.distmpc is None:
         for filepath in args.specpath:
             if not path_is_artis_model(filepath):
-                try:
-                    fullfilepath = firstexisting(filepath, tryzipped=True)
-                except FileNotFoundError:
-                    fullfilepath = firstexisting(
-                        filepath, folder=Path(get_path("artistools_dir"), "data", "refspectra"), tryzipped=True
-                    )
+                fullfilepath = find_reference_spectrum_file(filepath)
                 args.distmpc = get_file_metadata(fullfilepath).get("dist_mpc")
                 if args.distmpc is not None:
                     print(f"Found distance {args.distmpc} Mpc in metadata of {filepath}")
