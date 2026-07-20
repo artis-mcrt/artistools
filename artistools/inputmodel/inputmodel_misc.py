@@ -447,8 +447,6 @@ def get_empty_3d_model(
         "headercommentlines": [],
     }
 
-    fncoordgrid = float(ncoordgrid)  # fixes an issue with polars 0.20.23 https://github.com/pola-rs/polars/issues/15952
-
     dfmodel = (
         pl
         .DataFrame(
@@ -462,9 +460,9 @@ def get_empty_3d_model(
             (pl.col("modelgridindex") // (ncoordgrid**2)).mod(ncoordgrid).alias("n_z"),
         ])
         .with_columns([
-            (-xmax + 2.0 * pl.col("n_x") * xmax / fncoordgrid).cast(pl.Float32).alias("pos_x_min"),
-            (-xmax + 2.0 * pl.col("n_y") * xmax / fncoordgrid).cast(pl.Float32).alias("pos_y_min"),
-            (-xmax + 2.0 * pl.col("n_z") * xmax / fncoordgrid).cast(pl.Float32).alias("pos_z_min"),
+            (-xmax + 2.0 * pl.col("n_x") * xmax / ncoordgrid).cast(pl.Float32).alias("pos_x_min"),
+            (-xmax + 2.0 * pl.col("n_y") * xmax / ncoordgrid).cast(pl.Float32).alias("pos_y_min"),
+            (-xmax + 2.0 * pl.col("n_z") * xmax / ncoordgrid).cast(pl.Float32).alias("pos_z_min"),
         ])
     )
 
