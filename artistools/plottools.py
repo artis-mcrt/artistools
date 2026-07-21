@@ -315,7 +315,7 @@ class ExponentLabelFormatter(mplticker.ScalarFormatter):
     def set_locs(self, locs: t.Any) -> None:
         super().set_locs(locs)
         # ScalarFormatter otherwise drops the decimal point for integer-spaced ticks.
-        self._format = self._format.replace("%1.0f", "%1.1f")
+        self._format = self.format.replace("%1.0f", "%1.1f")
         self._set_formatted_label_text()
 
     @t.override
