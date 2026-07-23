@@ -342,8 +342,8 @@ def convert_angstroms_to_unit[T: (float, npt.NDArray[np.floating])](value_angstr
 
 def convert_unit_to_angstroms[T: (float, npt.NDArray[np.floating])](value: T, old_units: str) -> T:
     """Convert a wavelength, frequency, or energy to wavelength angstroms."""
-    c = 2.99792458e18  # speed of light [angstroms/s]
-    h = 4.1356677e-15  # Planck's constant [eV s]
+    c = const.c_ang_per_s
+    h = const.h_ev_s
     hc_ev_angstroms = h * c  # [eV angstroms]
     match old_units.lower():
         case "ev":
@@ -454,7 +454,7 @@ def get_from_packets(
         )
 
     dfpackets = dfpackets.with_columns([
-        (2.99792458e18 / pl.col(colname)).alias(
+        (const.c_ang_per_s / pl.col(colname)).alias(
             colname.replace("absorption_freq", "nu_absorbed").replace("nu_", "lambda_angstroms_")
         )
         for colname in dfpackets.collect_schema().names()
@@ -719,7 +719,7 @@ def get_spectra(
                     / sum(arr_tdelta[timestepmin : timestepmax + 1])
                 ).alias("f_nu"),
             )
-            .with_columns(lambda_angstroms=2.99792458e18 / pl.col("nu"))
+            .with_columns(lambda_angstroms=const.c_ang_per_s / pl.col("nu"))
         )
 
         if fluxfilterfunc:
@@ -910,7 +910,7 @@ def get_vspecpol_spectrum(
             / sum(arr_tdelta[timestepmin : timestepmax + 1])
         ),
         nu=pl.col("nu"),
-    ).with_columns(lambda_angstroms=2.99792458e18 / pl.col("nu"))
+    ).with_columns(lambda_angstroms=const.c_ang_per_s / pl.col("nu"))
 
     if fluxfilterfunc:
         print("Applying filter to ARTIS spectrum")
@@ -938,7 +938,7 @@ def get_flux_contributions(
     arr_tmid = get_timestep_times(modelpath, loc="mid")
     arr_tdelta = get_timestep_times(modelpath, loc="delta")
     arraynu = get_nu_grid(modelpath)
-    arraylambda = 2.99792458e18 / arraynu
+    arraylambda = const.c_ang_per_s / arraynu
     if not Path(modelpath, "compositiondata.txt").is_file():
         print("WARNING: compositiondata.txt not found. Using output*.txt instead")
         from artistools.atomic import get_composition_data_from_outputfile
@@ -1144,8 +1144,8 @@ def get_flux_contributions_from_packets(
     cols = {"e_rf"}
     cols.add({"arrival": "t_arrive_d", "emission": "em_time", "escape": "escape_time"}[use_time])
 
-    nu_min = 2.99792458e18 / lambda_bin_edges[-1]
-    nu_max = 2.99792458e18 / lambda_bin_edges[0]
+    nu_min = const.c_ang_per_s / lambda_bin_edges[-1]
+    nu_max = const.c_ang_per_s / lambda_bin_edges[0]
 
     vpkt_config = None
     opacchoiceindex = None

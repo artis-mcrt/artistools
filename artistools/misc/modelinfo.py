@@ -253,7 +253,8 @@ def get_mpiranklist(
     - only_ranks_withgridcells:
         set True to skip ranks that only update packets (i.e. that don't update any grid cells/output estimators).
     """
-    if modelgridindex is None or modelgridindex == []:
+
+    def all_ranks() -> range:
         if only_ranks_withgridcells:
             return range(
                 min(
@@ -263,19 +264,15 @@ def get_mpiranklist(
             )
         return range(get_nprocs(modelpath))
 
+    if modelgridindex is None or modelgridindex == []:
+        return all_ranks()
+
     if isinstance(modelgridindex, Iterable):
         mpiranklist = set()
         for mgi in modelgridindex:
             assert isinstance(mgi, int)
             if mgi < 0:
-                if only_ranks_withgridcells:
-                    return range(
-                        min(
-                            get_nprocs(modelpath),
-                            get_mpirankofcell(modelpath=modelpath, modelgridindex=get_npts_model(modelpath) - 1) + 1,
-                        )
-                    )
-                return range(get_nprocs(modelpath))
+                return all_ranks()
 
             mpiranklist.add(get_mpirankofcell(mgi, modelpath=modelpath))
 

@@ -245,10 +245,26 @@ def read_modelfile_text(
 
                 return all([xclose, yclose, zclose])
 
-            matched_pos_xyz_min = True
-            matched_pos_zyx_min = True
-            matched_pos_xyz_mid = True
-            matched_pos_zyx_mid = True
+            # candidate coordinate column orderings: key -> (message, column renames)
+            posordercandidates = {
+                "xyz_min": (
+                    "  model cell positions are consistent with x-y-z min corner columns",
+                    {"inputpos_a": "pos_x_min", "inputpos_b": "pos_y_min", "inputpos_c": "pos_z_min"},
+                ),
+                "zyx_min": (
+                    "  cell positions are consistent with z-y-x min corner columns",
+                    {"inputpos_a": "pos_z_min", "inputpos_b": "pos_y_min", "inputpos_c": "pos_x_min"},
+                ),
+                "xyz_mid": (
+                    "  model cell positions are consistent with x-y-z midpoint columns",
+                    {"inputpos_a": "pos_x_mid", "inputpos_b": "pos_y_mid", "inputpos_c": "pos_z_mid"},
+                ),
+                "zyx_mid": (
+                    "  cell positions are consistent with z-y-x midpoint columns",
+                    {"inputpos_a": "pos_z_mid", "inputpos_b": "pos_y_mid", "inputpos_c": "pos_x_mid"},
+                ),
+            }
+            matched = dict.fromkeys(posordercandidates, True)
             # important cell numbers to check for coordinate column order
             indexlist = [
                 0,
@@ -276,42 +292,25 @@ def read_modelfile_text(
                 pos_y_mid = -xmax_tmodel + (yindex + 0.5) * wid_init_y
                 pos_z_mid = -xmax_tmodel + (zindex + 0.5) * wid_init_z
 
-                if not vectormatch(pos3_in, (pos_x_min, pos_y_min, pos_z_min)):
-                    matched_pos_xyz_min = False
+                targets = {
+                    "xyz_min": (pos_x_min, pos_y_min, pos_z_min),
+                    "zyx_min": (pos_z_min, pos_y_min, pos_x_min),
+                    "xyz_mid": (pos_x_mid, pos_y_mid, pos_z_mid),
+                    "zyx_mid": (pos_z_mid, pos_y_mid, pos_x_mid),
+                }
+                for key, target in targets.items():
+                    if not vectormatch(pos3_in, target):
+                        matched[key] = False
 
-                if not vectormatch(pos3_in, (pos_z_min, pos_y_min, pos_x_min)):
-                    matched_pos_zyx_min = False
+            assert sum(matched.values()) == 1, "one option must match uniquely"
 
-                if not vectormatch(pos3_in, (pos_x_mid, pos_y_mid, pos_z_mid)):
-                    matched_pos_xyz_mid = False
-
-                if not vectormatch(pos3_in, (pos_z_mid, pos_y_mid, pos_x_mid)):
-                    matched_pos_zyx_mid = False
-
-            assert sum((matched_pos_xyz_min, matched_pos_zyx_min, matched_pos_xyz_mid, matched_pos_zyx_mid)) == 1, (
-                "one option must match uniquely"
-            )
-
-            colrenames: dict[str, str] = {}
-            if matched_pos_xyz_min:
-                print("  model cell positions are consistent with x-y-z min corner columns")
-                colrenames = {"inputpos_a": "pos_x_min", "inputpos_b": "pos_y_min", "inputpos_c": "pos_z_min"}
-
-            if matched_pos_zyx_min:
-                print("  cell positions are consistent with z-y-x min corner columns")
-                colrenames = {"inputpos_a": "pos_z_min", "inputpos_b": "pos_y_min", "inputpos_c": "pos_x_min"}
-
-            if matched_pos_xyz_mid:
-                print("  model cell positions are consistent with x-y-z midpoint columns")
-                colrenames = {"inputpos_a": "pos_x_mid", "inputpos_b": "pos_y_mid", "inputpos_c": "pos_z_mid"}
-
-            if matched_pos_zyx_mid:
-                print("  cell positions are consistent with z-y-x midpoint columns")
-                colrenames = {"inputpos_a": "pos_z_mid", "inputpos_b": "pos_y_mid", "inputpos_c": "pos_x_mid"}
+            matchedkey = next(key for key, ismatch in matched.items() if ismatch)
+            message, colrenames = posordercandidates[matchedkey]
+            print(message)
 
             dfmodel = dfmodel.rename(colrenames, strict=False)
 
-            if matched_pos_xyz_mid or matched_pos_zyx_mid:
+            if matchedkey in {"xyz_mid", "zyx_mid"}:
                 dfmodel = dfmodel.with_columns(
                     pos_x_min=(pl.col("pos_x_mid") - modelmeta["wid_init_x"] / 2.0),
                     pos_y_min=(pl.col("pos_y_mid") - modelmeta["wid_init_y"] / 2.0),
@@ -447,8 +446,6 @@ def get_empty_3d_model(
         "headercommentlines": [],
     }
 
-    fncoordgrid = float(ncoordgrid)  # fixes an issue with polars 0.20.23 https://github.com/pola-rs/polars/issues/15952
-
     dfmodel = (
         pl
         .DataFrame(
@@ -462,9 +459,9 @@ def get_empty_3d_model(
             (pl.col("modelgridindex") // (ncoordgrid**2)).mod(ncoordgrid).alias("n_z"),
         ])
         .with_columns([
-            (-xmax + 2.0 * pl.col("n_x") * xmax / fncoordgrid).cast(pl.Float32).alias("pos_x_min"),
-            (-xmax + 2.0 * pl.col("n_y") * xmax / fncoordgrid).cast(pl.Float32).alias("pos_y_min"),
-            (-xmax + 2.0 * pl.col("n_z") * xmax / fncoordgrid).cast(pl.Float32).alias("pos_z_min"),
+            (-xmax + 2.0 * pl.col("n_x") * xmax / ncoordgrid).cast(pl.Float32).alias("pos_x_min"),
+            (-xmax + 2.0 * pl.col("n_y") * xmax / ncoordgrid).cast(pl.Float32).alias("pos_y_min"),
+            (-xmax + 2.0 * pl.col("n_z") * xmax / ncoordgrid).cast(pl.Float32).alias("pos_z_min"),
         ])
     )
 
@@ -763,6 +760,15 @@ def get_standard_columns(dimensions: int, includenico57: bool = False, pos_unkno
     return cols
 
 
+def resolve_output_filepath(outpath: Path | str | None, default_filename: str) -> Path:
+    """Resolve outpath to a file path, using default_filename when outpath is None or a directory."""
+    if outpath is None:
+        return Path(default_filename)
+    if Path(outpath).is_dir():
+        return Path(outpath) / default_filename
+    return Path(outpath)
+
+
 def save_modeldata(
     dfmodel: pl.LazyFrame | pl.DataFrame,
     outpath: Path | str | None = None,
@@ -855,12 +861,7 @@ def save_modeldata(
         key=lambda col: get_z_a_nucname(col) if col.startswith("X_") else (math.inf, 0)
     )  # sort columns by atomic number, mass number
 
-    if outpath is None:
-        modelfilepath = Path("model.txt")
-    elif Path(outpath).is_dir():
-        modelfilepath = Path(outpath) / "model.txt"
-    else:
-        modelfilepath = Path(outpath)
+    modelfilepath = resolve_output_filepath(outpath, "model.txt")
 
     if modelfilepath.exists():
         oldfile = modelfilepath.rename(modelfilepath.with_suffix(".bak"))
@@ -996,12 +997,7 @@ def save_initelemabundances(
     """
     timestart = time.perf_counter()
 
-    if outpath is None:
-        abundancefilename = Path("abundances.txt")
-    elif Path(outpath).is_dir():
-        abundancefilename = Path(outpath) / "abundances.txt"
-    else:
-        abundancefilename = Path(outpath)
+    abundancefilename = resolve_output_filepath(outpath, "abundances.txt")
 
     dfelabundances = (
         dfelabundances.lazy().with_columns([pl.col("inputcellid").cast(pl.Int32)]).sort("inputcellid").collect()
@@ -1019,11 +1015,6 @@ def save_initelemabundances(
     for colname in elcolnames:
         if colname not in dfelabundances.columns:
             dfelabundances = dfelabundances.with_columns(pl.lit(0.0).alias(colname))
-
-    # set missing elemental abundance columns to zero
-    for col in elcolnames:
-        if col not in dfelabundances.columns:
-            dfelabundances[col] = 0.0
 
     dfelabundances = dfelabundances.select(["inputcellid", *elcolnames])
 

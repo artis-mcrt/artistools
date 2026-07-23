@@ -8,8 +8,7 @@ import numpy.typing as npt
 import pandas as pd
 
 import artistools as at
-
-CLIGHT = 2.99792458e10
+from artistools.constants import C_cm_per_s as CLIGHT
 
 
 def read_selected_mgi(

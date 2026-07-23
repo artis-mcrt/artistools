@@ -55,7 +55,7 @@ def parallel_map[IterableType, ResultType](
     warnings.filterwarnings("ignore", category=TqdmExperimentalWarning)
 
     use_multiprocessing = allow_multiprocessing
-    if allow_multiprocessing and sys.version_info >= (3, 13):
+    if allow_multiprocessing:
         with contextlib.suppress(AttributeError):
             if not sys._is_gil_enabled():  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
                 # return a thread pool if we have no GIL (free threading)

@@ -11,6 +11,7 @@ import pandas as pd
 import polars as pl
 
 import artistools as at
+from artistools.constants import K_B_ev_per_K
 
 
 def texifyterm(strterm: str) -> str:
@@ -72,8 +73,6 @@ def add_lte_pops(
 
     columntemperature_tuples is a sequence of tuples of column name and temperature, e.g., ('mycolumn', 3000)
     """
-    K_B = 8.617333262145179e-05  # eV / K
-
     for _, row in dfpop.drop_duplicates(["modelgridindex", "timestep", "Z", "ion_stage"]).iterrows():
         modelgridindex = int(row.modelgridindex)
         timestep = int(row.timestep)
@@ -111,7 +110,7 @@ def add_lte_pops(
             ltepop = (
                 ionlevels["g"].item(levelindex)
                 / gsg
-                * math.exp(-(ionlevels["energy_ev"].item(levelindex) - gse) / K_B / T_exc)
+                * math.exp(-(ionlevels["energy_ev"].item(levelindex) - gse) / K_B_ev_per_K / T_exc)
             )
             assert isinstance(ltepop, float)
             return ltepop
@@ -140,7 +139,7 @@ def add_lte_pops(
                 for columnname, T_exc in columntemperature_tuples:
                     superlevelpop = (
                         ionlevels[levelnumber_sl:]
-                        .select(pl.col("g") / gs_g * (-(pl.col("energy_ev") - gs_energy) / K_B / T_exc).exp())
+                        .select(pl.col("g") / gs_g * (-(pl.col("energy_ev") - gs_energy) / K_B_ev_per_K / T_exc).exp())
                         .sum()
                         .item()
                     )

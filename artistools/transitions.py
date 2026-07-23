@@ -13,6 +13,7 @@ import pandas as pd
 import polars as pl
 
 import artistools as at
+from artistools.constants import K_B_ev_per_K
 
 defaultoutputfile = "plottransitions_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf"
 
@@ -219,13 +220,14 @@ def add_upper_lte_pop(
     ltepartfunc: float | int,
     columnname: str | None = None,
 ) -> pl.DataFrame:
-    K_B = 8.617333262145179e-05  # eV / K
     scalefactor = ionpop / ltepartfunc
     if columnname is None:
         columnname = f"upper_pop_lte_{T_exc:.0f}K"
 
     return dftransitions.with_columns(
-        (scalefactor * pl.col("upper_statweight") * (-pl.col("upper_energy_ev") / K_B / T_exc).exp()).alias(columnname)
+        (scalefactor * pl.col("upper_statweight") * (-pl.col("upper_energy_ev") / K_B_ev_per_K / T_exc).exp()).alias(
+            columnname
+        )
     )
 
 
@@ -449,12 +451,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             print(f"  {pldftransitions.height} plottable transitions")
 
             if args.atomicdatabase == "artis":
-                K_B = 8.617333262145179e-05  # eV / K
                 T_exc = vardict["Te"]
                 pldflevels = ion["levels"]
                 assert isinstance(pldflevels, pl.DataFrame | pl.LazyFrame)
                 pldflevels = pldflevels.lazy().collect()
-                ltepartfunc = pldflevels.select(pl.col("g") * (-pl.col("energy_ev") / K_B / T_exc).exp()).sum().item()
+                ltepartfunc = (
+                    pldflevels.select(pl.col("g") * (-pl.col("energy_ev") / K_B_ev_per_K / T_exc).exp()).sum().item()
+                )
 
             else:
                 ltepartfunc = 1.0
@@ -501,9 +504,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                     T_exc = vardict[temperature]
                     popcolumnname = f"upper_pop_lte_{T_exc:.0f}K"
                     if args.atomicdatabase == "artis":
-                        K_B = 8.617333262145179e-05  # eV / K
                         ltepartfunc = (
-                            pldflevels.select(pl.col("g") * (-pl.col("energy_ev") / K_B / T_exc).exp()).sum().item()
+                            pldflevels
+                            .select(pl.col("g") * (-pl.col("energy_ev") / K_B_ev_per_K / T_exc).exp())
+                            .sum()
+                            .item()
                         )
                     else:
                         ltepartfunc = 1.0

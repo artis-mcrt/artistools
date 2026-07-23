@@ -18,7 +18,7 @@ def write_spectra(modelpath: str | Path, selected_timesteps: Sequence[int], outf
 
     times = spec_data[0, 1:]
     freqs = spec_data[1:, 0]
-    lambdas = 2.99792458e18 / freqs
+    lambdas = at.constants.c_ang_per_s / freqs
 
     # print("\n".join(["{0}, {1}".format(*x) for x in enumerate(times)]))
 
@@ -31,8 +31,7 @@ def write_spectra(modelpath: str | Path, selected_timesteps: Sequence[int], outf
 
     # convert flux to power by multiplying by area
     for n in range(len(lambdas)):
-        # 2.99792458e18 is c in Angstrom / second
-        lum_lambda[n, :] = fluxes_nu[n, :] * 2.99792458e18 / lambdas[n] / lambdas[n] * area
+        lum_lambda[n, :] = fluxes_nu[n, :] * at.constants.c_ang_per_s / lambdas[n] / lambdas[n] * area
 
     with outfilepath.open("w", encoding="utf-8") as outfile:
         outfile.write(f"#NTIMES: {len(selected_timesteps)}\n")
@@ -152,8 +151,6 @@ def write_phys(
                 estimators[timestep, modelgridindex]["rho"] = (
                     10 ** cell["logrho"] * (modelmeta["t_model_init_days"] / times[timestep]) ** 3
                 )
-
-                estimators[timestep, modelgridindex]["nntot"] = estimators[timestep, modelgridindex]["nntot"]
 
                 f.write(f"{cell['vel_r_mid'] / 1e5:.2f}")
                 for keyname in ("Te", "rho", "nne", "nntot"):

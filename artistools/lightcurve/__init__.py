@@ -10,9 +10,7 @@ from artistools.lightcurve.lightcurve import get_colour_delta_mag as get_colour_
 from artistools.lightcurve.lightcurve import get_filter_data as get_filter_data
 from artistools.lightcurve.lightcurve import get_from_packets as get_from_packets
 from artistools.lightcurve.lightcurve import get_phillips_relation_data as get_phillips_relation_data
-from artistools.lightcurve.lightcurve import get_sn_sample_bol as get_sn_sample_bol
 from artistools.lightcurve.lightcurve import get_spectrum_in_filter_range as get_spectrum_in_filter_range
-from artistools.lightcurve.lightcurve import plot_phillips_relation_data as plot_phillips_relation_data
 from artistools.lightcurve.lightcurve import read_bol_reflightcurve_data as read_bol_reflightcurve_data
 from artistools.lightcurve.lightcurve import read_hesma_lightcurve as read_hesma_lightcurve
 from artistools.lightcurve.lightcurve import read_reflightcurve_band_data as read_reflightcurve_band_data

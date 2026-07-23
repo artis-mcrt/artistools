@@ -3,8 +3,7 @@ import pandas as pd
 import polars as pl
 
 import artistools as at
-
-CLIGHT = 2.99792458e10
+from artistools.constants import C_cm_per_s as CLIGHT
 
 
 def change_cell_positions_to_new_time(dfgriddata: pd.DataFrame, t_model_1d: float) -> tuple[pd.DataFrame, float]:

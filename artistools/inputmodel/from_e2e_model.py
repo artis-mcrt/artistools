@@ -14,10 +14,10 @@ import polars as pl
 import polars.selectors as cs
 
 import artistools as at
+from artistools.constants import C_cm_per_s as CLIGHT
+from artistools.constants import Msun_to_g as msol
 
-CLIGHT = 29979245800.0  # cm/s
 day = 86400.0
-msol = 1.989e33  # solar mass in g
 t_model_init_days = 0.1 * day  # snapshot time is fixed by the npz files
 
 
@@ -135,12 +135,13 @@ def get_grid(
 
     hnuloss_arr = dat.f.hnuloss.copy() if no_nu_trapping else np.zeros_like(qdot_arr, dtype=np.float64)
 
+    # no multiplication with mass to keep it a specific energy release
+    time_by_t_snap = time_s / t_model_init_days
+
     for i1 in nodid:  # index of Oli's original list
         i += 1  # index in the new list accounting for unprocessed trajs.
         i2 = list(dynidall).index(i1)  # index in Zeweis extended list of trajs.
         mtraj[i] = mass_arr[i2] * msol
-        # no multiplication with mass to keep it a specific energy release
-        time_by_t_snap = time_s / t_model_init_days
         qtraj[i] = np.trapezoid(
             time_by_t_snap[starting_idx:closest_idx] * (qdot_arr[i2] + hnuloss_arr[i2])[starting_idx:closest_idx],
             time_s[starting_idx:closest_idx],
@@ -158,7 +159,6 @@ def get_grid(
         i += 1  # index in the new list accounting for unprocessed trajs.
         i3 = np.where(dynidall == i1)[0]  # indices in Zeweis extended list of trajs.
         mtraj[i] = np.sum(mass_arr[i3]) * msol
-        time_by_t_snap = time_s / t_model_init_days
         qtraj[i] = np.trapezoid(
             time_by_t_snap[starting_idx:closest_idx]
             * np.sum((qdot_arr[i3] + hnuloss_arr[i3]), axis=0)[starting_idx:closest_idx],
@@ -508,31 +508,22 @@ def map_to_artis(
         assert pos_t_s_grid_rad is not None, "Error, pos_t_s_grid_rad is None!"
         assert pos_t_s_grid_z is not None, "Error, pos_t_s_grid_z is None!"
 
-        # now reflect the arrays if equatorial symmetry is assumed or otherwise not
-        if eqsymfac == 1:
-            dfmodel = pl.DataFrame({
-                "inputcellid": range(1, numb_cells + 1),
-                "pos_rcyl_mid": (pos_t_s_grid_rad).flatten(order="F").tolist(),
-                "pos_z_mid": (pos_t_s_grid_z).flatten(order="F").tolist(),
-                "rho": (rho_interpol).flatten(order="F").tolist(),
-                "q": (q_ergperg).flatten(order="F").tolist(),
-                "Ye": (ye_interpol).flatten(order="F").tolist(),
-            })
-        else:
-            # equatorial symmetry -> have to reflect
+        # reflect the arrays if equatorial symmetry is assumed
+        if eqsymfac != 1:
             pos_t_s_grid_rad = z_reflect(pos_t_s_grid_rad)
             pos_t_s_grid_z = z_reflect(pos_t_s_grid_z, sign=-1)
             rho_interpol = z_reflect(rho_interpol)
             q_ergperg = z_reflect(q_ergperg)
             ye_interpol = z_reflect(ye_interpol)
-            dfmodel = pl.DataFrame({
-                "inputcellid": range(1, numb_cells + 1),
-                "pos_rcyl_mid": (pos_t_s_grid_rad).flatten(order="F").tolist(),
-                "pos_z_mid": (pos_t_s_grid_z).flatten(order="F").tolist(),
-                "rho": (rho_interpol).flatten(order="F").tolist(),
-                "q": (q_ergperg).flatten(order="F").tolist(),
-                "Ye": (ye_interpol).flatten(order="F").tolist(),
-            })
+
+        dfmodel = pl.DataFrame({
+            "inputcellid": range(1, numb_cells + 1),
+            "pos_rcyl_mid": (pos_t_s_grid_rad).flatten(order="F").tolist(),
+            "pos_z_mid": (pos_t_s_grid_z).flatten(order="F").tolist(),
+            "rho": (rho_interpol).flatten(order="F").tolist(),
+            "q": (q_ergperg).flatten(order="F").tolist(),
+            "Ye": (ye_interpol).flatten(order="F").tolist(),
+        })
 
         assert pos_t_s_grid_rad.shape == (ngridrcyl, ngridz)
         assert pos_t_s_grid_z.shape == (ngridrcyl, ngridz)
