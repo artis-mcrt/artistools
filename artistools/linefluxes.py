@@ -44,6 +44,11 @@ def get_line_fluxes_from_packets(
     arr_tstart: Sequence[float] | None = None,
     arr_tend: Sequence[float] | None = None,
 ) -> pl.DataFrame:
+    """Get the emission line luminosities of the requested features vs time.
+
+    Despite the "flux" naming (kept for backwards compatibility of the returned column names), the values are
+    luminosities in [erg/s]: they are not divided by 4 pi d^2 for any observer distance.
+    """
     if arr_tstart is None:
         arr_tstart = at.get_timestep_times(modelpath, loc="start")
     if arr_tend is None:
@@ -135,6 +140,14 @@ def get_line_fluxes_from_pops(
             ):
                 unaccounted_shellvol = 0.0  # account for the volume of empty shells
                 unaccounted_shells: list[int] = []
+                # the transition data is the same for every cell, so look it up once. An IndexError here is a missing
+                # transition rather than an empty cell, and must not be silently absorbed below
+                A_val = ion.transitions.query("upper == @upperlevelindex and lower == @lowerlevelindex").iloc[0].A
+
+                delta_ergs = (
+                    ion.levels.iloc[upperlevelindex].energy_ev - ion.levels.iloc[lowerlevelindex].energy_ev
+                ) * EV_to_erg
+
                 for modelgridindex in modeldata.index:
                     try:
                         levelpop = dfnltepops.filter(
@@ -144,29 +157,22 @@ def get_line_fluxes_from_pops(
                             & (pl.col("ion_stage") == feature.ion_stage)
                             & (pl.col("level") == upperlevelindex)
                         )["n_NLTE"].item(0)
-
-                        A_val = (
-                            ion.transitions.query("upper == @upperlevelindex and lower == @lowerlevelindex").iloc[0].A
-                        )
-
-                        delta_ergs = (
-                            ion.levels.iloc[upperlevelindex].energy_ev - ion.levels.iloc[lowerlevelindex].energy_ev
-                        ) * EV_to_erg
-
-                        # l = delta_ergs * A_val * levelpop * (shell_volumes[modelgridindex] + unaccounted_shellvol)
-                        # print(f'  {modelgridindex} outer_velocity {modeldata.vel_r_max_kmps.to_numpy()[modelgridindex]}'
-                        #       f' km/s shell_vol: {shell_volumes[modelgridindex] + unaccounted_shellvol} cm3'
-                        #       f' n_level {levelpop} cm-3 shell_Lum {l} erg/s')
-
-                        fluxdata[timeindex] += (
-                            delta_ergs * A_val * levelpop * (shell_volumes[modelgridindex] + unaccounted_shellvol)
-                        )
-
-                        unaccounted_shellvol = 0.0
-
                     except IndexError:
+                        # no population data for this cell, so roll its volume into the next one that has data
                         unaccounted_shellvol += shell_volumes[modelgridindex]
                         unaccounted_shells.append(modelgridindex)
+                        continue
+
+                    # l = delta_ergs * A_val * levelpop * (shell_volumes[modelgridindex] + unaccounted_shellvol)
+                    # print(f'  {modelgridindex} outer_velocity {modeldata.vel_r_max_kmps.to_numpy()[modelgridindex]}'
+                    #       f' km/s shell_vol: {shell_volumes[modelgridindex] + unaccounted_shellvol} cm3'
+                    #       f' n_level {levelpop} cm-3 shell_Lum {l} erg/s')
+
+                    fluxdata[timeindex] += (
+                        delta_ergs * A_val * levelpop * (shell_volumes[modelgridindex] + unaccounted_shellvol)
+                    )
+
+                    unaccounted_shellvol = 0.0
                 if unaccounted_shells:
                     print(f"No data for cells {unaccounted_shells} (expected for empty cells)")
                 assert len(unaccounted_shells) < len(modeldata.index)  # must be data for at least one shell
