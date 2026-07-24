@@ -59,7 +59,7 @@ def rprocess_const_and_powerlaw() -> tuple[pl.DataFrame, float]:
     return dftimes_and_rate, E_tot
 
 
-def define_heating_rate() -> tuple[pl.DataFrame, float]:
+def get_cumulative_heating_fraction() -> tuple[pl.DataFrame, float]:
 
     tmin = 0.0001  # days
     tmax = 50
@@ -155,27 +155,10 @@ def make_energydistribution_weightedbyrho(
 
 
 def make_energy_files(rho: npt.NDArray[np.floating], Mtot_grams: float | int, outputpath: Path | str) -> None:
-    powerlaw = True
-    if powerlaw:
-        print("Using power law for energy rate")
-        # times_and_rate, E_tot_per_gram = rprocess_const_and_powerlaw()
-        times_and_rate, E_tot_per_gram = define_heating_rate()
-    # else:
-    #     path = Path(".")
-    #     energy_thermo_data = pd.read_csv(path / "interpolatedQdot.dat", sep='\s+')
-    #     energy_thermo_data = energy_thermo_data.rename(columns={"mean": "Qdot"})
-    #     print("Taking rate from averaged trajectories Qdot")
-    #     with pd.option_context("display.max_rows", None, "display.max_columns", None):
-    #         print(energy_thermo_data["time/s"] / DAY)
-    #     times_and_rate, E_tot_per_gram = energy_from_rprocess_calculation(
-    #         energy_thermo_data, get_rate=True, thermalisation=True
-    #     )
+    print("Using power law for energy rate")
+    times_and_rate, E_tot_per_gram = get_cumulative_heating_fraction()
 
-    weight_energy_by_rho = True
-    if weight_energy_by_rho:
-        energydistributiondata = make_energydistribution_weightedbyrho(rho, E_tot_per_gram, Mtot_grams)
-    # else:
-    # energydistributiondata = energy_distribution_from_Q_rprocess(modelpath, model)
+    energydistributiondata = make_energydistribution_weightedbyrho(rho, E_tot_per_gram, Mtot_grams)
 
     print("Writing energydistribution.txt")
     with Path(outputpath, "energydistribution.txt").open("w", encoding="utf-8") as fmodel:
