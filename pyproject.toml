@@ -63,7 +63,7 @@ dev = [
     "pandas-stubs>=3.0.3.260530",
     "prek>=0.4.9",
     "pynonthermal>=2026.4.27",
-    "pyrefly>=1.2.0-dev.2",
+    "pyrefly>=1.2.0-dev.3",
     "pytest>=9.0.3",
     "pytest-codspeed>=4.4.0",
     "pytest-cov>=7.1.0",
@@ -238,7 +238,7 @@ missing-import = false
 unbound-name = false
 unsupported-operation = false
 implicit-any-empty-container = true
-implicit-any-variable = false
+implicit-any-lambda = false
 
 [tool.pyright]
 venvPath = "."
