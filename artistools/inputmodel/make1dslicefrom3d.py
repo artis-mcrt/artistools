@@ -8,6 +8,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 
 import artistools as at
+from artistools.constants import day_to_s
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -139,7 +140,7 @@ def append_cell_to_output(
     ylists: list[list[float]],
 ) -> None:
     dist = math.sqrt(float(cell["pos_x_min"]) ** 2 + float(cell["pos_y_min"]) ** 2 + float(cell["pos_z_min"]) ** 2)
-    velocity = dist / float(t_model) / 86400.0 / 1.0e5
+    velocity = dist / float(t_model) / day_to_s / 1.0e5
 
     listout.append(
         f"{outcellid:6d}  {velocity:8.2f}  {math.log10(max(float(cell['rho']), 1e-100)):8.5f}  "

@@ -20,7 +20,10 @@ from artistools.atomic import get_atomic_number
 from artistools.atomic import get_elsymbol
 from artistools.atomic import get_z_a_nucname
 from artistools.commands import get_path
+from artistools.constants import C_cm_per_s
+from artistools.constants import day_to_s
 from artistools.misc import firstexisting
+from artistools.misc import resolve_outputfile
 from artistools.misc import stripallsuffixes
 from artistools.misc import vec_len
 from artistools.misc import write_parquet_atomic
@@ -430,7 +433,7 @@ def get_modeldata(
 def get_empty_3d_model(
     ncoordgrid: int, vmax: float | int, t_model_init_days: float | int, includenico57: bool = False
 ) -> tuple[pl.LazyFrame, dict[str, t.Any]]:
-    xmax = vmax * t_model_init_days * 86400.0
+    xmax = vmax * t_model_init_days * day_to_s
 
     modelmeta: dict[str, t.Any] = {
         "dimensions": 3,
@@ -490,7 +493,7 @@ def add_derived_cols_to_modeldata(
     original_cols = dfmodel.collect_schema().names()
     derived_cols = list(derived_cols)
 
-    t_model_init_seconds = modelmeta["t_model_init_days"] * 86400.0
+    t_model_init_seconds = modelmeta["t_model_init_days"] * day_to_s
     keep_all = any(c.lower() == "all" for c in derived_cols)
 
     if "logrho" not in dfmodel.collect_schema().names() and "rho" in dfmodel.collect_schema().names():
@@ -651,7 +654,7 @@ def add_derived_cols_to_modeldata(
         dfmodel = dfmodel.with_columns(mass_g=(pl.col("rho") * pl.col("volume")))
 
     # add vel_*_on_c scaled velocities
-    dfmodel = dfmodel.with_columns((cs.starts_with("vel_") / 29979245800.0).name.suffix("_on_c"))
+    dfmodel = dfmodel.with_columns((cs.starts_with("vel_") / C_cm_per_s).name.suffix("_on_c"))
 
     if unknown_cols := [
         col
@@ -762,15 +765,6 @@ def get_standard_columns(dimensions: int, includenico57: bool = False, pos_unkno
     return cols
 
 
-def resolve_output_filepath(outpath: Path | str | None, default_filename: str) -> Path:
-    """Resolve outpath to a file path, using default_filename when outpath is None or a directory."""
-    if outpath is None:
-        return Path(default_filename)
-    if Path(outpath).is_dir():
-        return Path(outpath) / default_filename
-    return Path(outpath)
-
-
 def save_modeldata(
     dfmodel: pl.LazyFrame | pl.DataFrame,
     outpath: Path | str | None = None,
@@ -863,7 +857,7 @@ def save_modeldata(
         key=lambda col: get_z_a_nucname(col) if col.startswith("X_") else (math.inf, 0)
     )  # sort columns by atomic number, mass number
 
-    modelfilepath = resolve_output_filepath(outpath, "model.txt")
+    modelfilepath = resolve_outputfile(outpath, "model.txt")
 
     if modelfilepath.exists():
         oldfile = modelfilepath.rename(modelfilepath.with_suffix(".bak"))
@@ -999,7 +993,7 @@ def save_initelemabundances(
     """
     timestart = time.perf_counter()
 
-    abundancefilename = resolve_output_filepath(outpath, "abundances.txt")
+    abundancefilename = resolve_outputfile(outpath, "abundances.txt")
 
     dfelabundances = (
         dfelabundances.lazy().with_columns([pl.col("inputcellid").cast(pl.Int32)]).sort("inputcellid").collect()
@@ -1043,9 +1037,6 @@ def save_initelemabundances(
 
 def save_empty_abundance_file(npts_model: int, outputfilepath: str | Path = ".") -> None:
     """Save dummy abundance file with only zeros."""
-    if Path(outputfilepath).is_dir():
-        outputfilepath = Path(outputfilepath) / "abundances.txt"
-
     save_initelemabundances(pl.DataFrame({"inputcellid": range(1, npts_model + 1)}), outpath=outputfilepath)
 
 

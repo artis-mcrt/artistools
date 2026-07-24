@@ -12,6 +12,9 @@ import polars as pl
 import polars.selectors as cs
 
 import artistools as at
+from artistools.constants import C_cm_per_s
+from artistools.constants import day_to_s
+from artistools.constants import Msun_to_g
 
 
 def calculate_model_electron_frac(dfmodel: pl.LazyFrame) -> float:
@@ -67,8 +70,7 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
 
     t_model_init_days, vmax = modelmeta["t_model_init_days"], modelmeta["vmax_cmps"]
 
-    t_model_init_seconds = t_model_init_days * 24 * 60 * 60
-    msun_g = 1.989e33
+    t_model_init_seconds = t_model_init_days * day_to_s
     print(f"Model is defined at {t_model_init_days} days ({t_model_init_seconds:.4f} seconds)")
 
     if modelmeta["dimensions"] == 1:
@@ -76,26 +78,24 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
         vmax = vmax_kmps * 1e5
         print(
             f"Model contains {modelmeta['npts_model']} 1D spherical shells with vmax = {vmax / 1e5} km/s"
-            f" ({vmax / 29979245800:.2f} * c)"
+            f" ({vmax / C_cm_per_s:.2f} * c)"
         )
     else:
         nonemptycells = dfmodel.filter(pl.col("rho") > 0.0).select(pl.len()).collect().item()
         print(
             f"Model contains {modelmeta['npts_model']} grid cells ({nonemptycells} nonempty) with "
-            f"vmax = {vmax} cm/s ({vmax * 1e-5 / 299792.458:.2f} * c)"
+            f"vmax = {vmax} cm/s ({vmax / C_cm_per_s:.2f} * c)"
         )
-        vmax_corner_3d = math.sqrt(3 * vmax**2)
-        print(f"  3D corner vmax: {vmax_corner_3d:.2e} cm/s ({vmax_corner_3d * 1e-5 / 299792.458:.2f} * c)")
+        vmax_corner_3d = vmax * math.sqrt(3)
+        print(f"  3D corner vmax: {vmax_corner_3d:.2e} cm/s ({vmax_corner_3d / C_cm_per_s:.2f} * c)")
         if modelmeta["dimensions"] == 2:
-            vmax_corner_2d = math.sqrt(2 * vmax**2)
-            print(f"  2D corner vmax: {vmax_corner_2d:.2e} cm/s ({vmax_corner_2d * 1e-5 / 299792.458:.2f} * c)")
+            vmax_corner_2d = vmax * math.sqrt(2)
+            print(f"  2D corner vmax: {vmax_corner_2d:.2e} cm/s ({vmax_corner_2d / C_cm_per_s:.2f} * c)")
 
-    minrho = dfmodel.select(pl.col("rho").min()).collect().item()
-    minrho_cellcount = dfmodel.filter(pl.col("rho") == minrho).select(pl.len()).collect().item()
-    print(f"  min density: {minrho:.2e} g/cm³. Cells with this density: {minrho_cellcount}")
-    maxrho = dfmodel.select(pl.col("rho").max()).collect().item()
-    maxrho_cellcount = dfmodel.filter(pl.col("rho") == maxrho).select(pl.len()).collect().item()
-    print(f"  max density: {maxrho:.2e} g/cm³. Cells with this density: {maxrho_cellcount}")
+    minrho, maxrho = dfmodel.select(minrho=pl.col("rho").min(), maxrho=pl.col("rho").max()).collect().row(0)
+    for minmaxlabel, rho in (("min", minrho), ("max", maxrho)):
+        cellcount = dfmodel.filter(pl.col("rho") == rho).select(pl.len()).collect().item()
+        print(f"  {minmaxlabel} density: {rho:.2e} g/cm³. Cells with this density: {cellcount}")
 
     if args.cell is not None:
         mgi = int(args.cell)
@@ -137,9 +137,9 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
 
     # velocity derived from ejecta kinetic energy to match Barnes et al. (2016) Section 2.1
     ejecta_v = np.sqrt(2 * ejecta_ke_erg / mass_g_rho)
-    print(f"  {'v_ej=√(2KE/m)':19s} {ejecta_v / 29979245800:.2f}c")
+    print(f"  {'v_ej=√(2KE/m)':19s} {ejecta_v / C_cm_per_s:.2f}c")
 
-    mass_msun_rho = mass_g_rho / msun_g
+    mass_msun_rho = mass_g_rho / Msun_to_g
 
     if assoc_cells is not None and mgi_of_propcells is not None:
         if direct_model_propgrid_map:
@@ -166,7 +166,7 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
                     f" {100 * (initial_energy_mapped / initial_energy - 1):.2f}%)"
                 )
 
-            mtot_mapped_msun = sum(cellmass_mapped) / msun_g
+            mtot_mapped_msun = sum(cellmass_mapped) / Msun_to_g
             print(
                 f"  {'M_tot_rho_map':19s} {mtot_mapped_msun:7.5f} MSun (density * volume when mapped to {ncoordgridx}^3"
                 f" cubic grid, error {100 * (mtot_mapped_msun / mass_msun_rho - 1):.2f}%)"
@@ -182,7 +182,7 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
             .select(pl.col("mass_g").sum())
             .collect()
             .item()
-        ) / msun_g
+        ) / Msun_to_g
         print(
             f"  {'M_corners':19s} {corner_mass:7.5f} MSun ("
             f" {100 * corner_mass / mass_msun_rho:.2f}% of M_tot in cells with v_r_mid > vmax)"
@@ -204,7 +204,7 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
 
         assert isinstance(speciesabund_g, float)
 
-        species_mass_msun = speciesabund_g / msun_g
+        species_mass_msun = speciesabund_g / Msun_to_g
 
         atomic_number = at.get_atomic_number(species.rstrip(string.digits))
 
@@ -241,7 +241,7 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
             "of M_tot_rho, but can be < 100% if stable isotopes not tracked)"
         )
 
-    mass_msun_fegroup = dfmodel.select(pl.col("X_Fegroup").dot(pl.col("mass_g"))).collect().item() / msun_g
+    mass_msun_fegroup = dfmodel.select(pl.col("X_Fegroup").dot(pl.col("mass_g"))).collect().item() / Msun_to_g
     print(
         f"  {'M_Fegroup':19s} {mass_msun_fegroup:7.5f} MSun"
         f" ({mass_msun_fegroup / mass_msun_rho * 100:6.2f}% of M_tot_rho)"
@@ -281,7 +281,7 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
     except OSError:
         maxbarchars = 20
     for species, mass_g in sorted(speciesmasses.items(), key=sortkey):
-        species_mass_msun = mass_g / msun_g
+        species_mass_msun = mass_g / Msun_to_g
         massfrac = species_mass_msun / mass_msun_rho
         strcomment = ""
         atomic_number = at.get_atomic_number(species)

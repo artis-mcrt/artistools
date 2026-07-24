@@ -10,8 +10,7 @@ import polars as pl
 
 import artistools as at
 from artistools.constants import C_cm_per_s as CLIGHT
-
-DAY = 86400
+from artistools.constants import day_to_s
 
 
 def get_required_packets(
@@ -110,7 +109,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
     timestep = at.misc.get_timestep_of_timedays(modelpath, tdays)
     t_min = timeminarray[timestep]
     t_max = timemaxarray[timestep]
-    Delta_t_secs = (t_max - t_min) * DAY
+    Delta_t_secs = (t_max - t_min) * day_to_s
     Delta_beta = 0.5 / 25
 
     pos_type_str = ""
@@ -166,7 +165,11 @@ def packets_2d_hist_bin_and_ejecta_vel(
         weights=weights,
     )
     heatmap = (
-        hist2D / (timemaxarray[timestep] - timeminarray[timestep]) / DAY / nprocs_read * inverse_solidangle_fraction
+        hist2D
+        / (timemaxarray[timestep] - timeminarray[timestep])
+        / day_to_s
+        / nprocs_read
+        * inverse_solidangle_fraction
     )
     heatmap = np.ma.masked_less_equal(heatmap, 0.0)
     if colorlogscale:

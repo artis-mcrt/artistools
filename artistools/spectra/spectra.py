@@ -66,7 +66,7 @@ def get_dfspectrum_x_y_with_units(
     dfspectrum = dfspectrum.lazy()
 
     if "nu" not in dfspectrum.collect_schema().names():
-        dfspectrum = dfspectrum.with_columns((299792458.0 / (pl.col("lambda_angstroms") * 1e-10)).alias("nu"))
+        dfspectrum = dfspectrum.with_columns((const.c_ang_per_s / pl.col("lambda_angstroms")).alias("nu"))
     if "f_nu" not in dfspectrum.collect_schema().names():
         dfspectrum = dfspectrum.with_columns(f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu")))
 
@@ -370,13 +370,9 @@ def stackspectra(spectra_and_factors: list[tuple[npt.NDArray[np.floating], float
 
     spectra_and_factors should be a list of tuples: spectra[], factor.
     """
-    factor_sum = sum(factor for _, factor in spectra_and_factors)
+    spectra, factors = zip(*spectra_and_factors, strict=True)
 
-    stackedspectrum = np.zeros_like(spectra_and_factors[0][0], dtype=float)
-    for spectrum, factor in spectra_and_factors:
-        stackedspectrum += spectrum * factor / factor_sum
-
-    return stackedspectrum
+    return np.average(spectra, axis=0, weights=factors)
 
 
 def get_spectrum_at_time(
@@ -438,7 +434,7 @@ def get_from_packets(
         lambda_bin_edges = get_exspec_lambda_bin_edges(modelpath=modelpath, gamma=gamma)
     lambda_bin_edges = np.sort(lambda_bin_edges)
     lambda_bin_centres = 0.5 * (lambda_bin_edges[:-1] + lambda_bin_edges[1:])
-    delta_time_s = (timehighdays - timelowdays) * 86400.0
+    delta_time_s = (timehighdays - timelowdays) * const.day_to_s
 
     if nprocs_read_dfpackets:
         nprocs_read, dfpackets = nprocs_read_dfpackets[0], nprocs_read_dfpackets[1].lazy()
@@ -468,7 +464,7 @@ def get_from_packets(
             "delta_lambda": lambda_bin_edges[1:] - lambda_bin_edges[:-1],
         })
         .with_row_index("lambda_binindex")
-        .with_columns(nu=(299792458.0 / (pl.col("lambda_angstroms") * 1e-10)))
+        .with_columns(nu=(const.c_ang_per_s / pl.col("lambda_angstroms")))
         .sort(["lambda_binindex", "lambda_angstroms"])
         .lazy()
     )
@@ -525,22 +521,22 @@ def get_from_packets(
             from artistools.inputmodel import get_modeldata
 
             dfmodel, _ = get_modeldata(modelpath)
-            vmax_beta = dfmodel.select(pl.col("vel_r_max_kmps").max() / 299792.458).collect().item()
+            vmax_beta = dfmodel.select(pl.col("vel_r_max_kmps").max() * 1e5 / const.C_cm_per_s).collect().item()
             escapesurfacegamma = math.sqrt(1 - vmax_beta**2)
 
             dfpackets = dfpackets.filter(
-                (pl.col("escape_time") * escapesurfacegamma / 86400.0).is_between(timelowdays, timehighdays)
+                (pl.col("escape_time") * escapesurfacegamma / const.day_to_s).is_between(timelowdays, timehighdays)
             )
 
         elif use_time == "emission":
             # We bin packets according to the emission time, but we shift times so we're still centered around the observer arrival time.
             # This makes easier to directly compare specta between emission time (no relative light travel time effects) and the standard arrival time
             col_emit_time = "tdecay" if gamma else "em_time"
-            mean_correction = (pl.col(col_emit_time) - pl.col("t_arrive_d") * 86400.0).mean()
+            mean_correction = (pl.col(col_emit_time) - pl.col("t_arrive_d") * const.day_to_s).mean()
 
             dfpackets = dfpackets.filter(
                 pl.col(col_emit_time).is_between(
-                    timelowdays * 86400.0 + mean_correction, timehighdays * 86400.0 + mean_correction
+                    timelowdays * const.day_to_s + mean_correction, timehighdays * const.day_to_s + mean_correction
                 )
             )
 

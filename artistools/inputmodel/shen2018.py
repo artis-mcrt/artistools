@@ -9,6 +9,7 @@ import pandas as pd
 import polars as pl
 
 import artistools as at
+from artistools.constants import Msun_to_g
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -56,7 +57,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     v_inner = 0.0  # velocity at inner boundary of cell
     m_enc_inner = 0.0  # mass enclosed at inner boundary
     tot_ni56mass = 0.0
-    Msun_to_g = 1.989e33
     for cellid, shell in datain.iterrows():
         m_enc_outer = float(shell["m"]) * Msun_to_g  # convert Solar masses to grams
         v_outer = float(shell["v"]) * 1e-5  # convert cm/s to km/s

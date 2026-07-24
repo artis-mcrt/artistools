@@ -19,6 +19,7 @@ import pandas as pd
 import polars as pl
 
 import artistools as at
+from artistools.constants import day_to_s
 
 
 def get_elemabund_from_nucabund(dfnucabund: pl.DataFrame) -> dict[str, float]:
@@ -365,7 +366,7 @@ def add_abundancecontributions(
     traj_root: Path | str,
 ) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
     """Contribute trajectory network calculation abundances to model cell abundances and return dfmodel, dfelabundances, dfcontribs."""
-    t_model_s = t_model_days_incpremerger * 86400
+    t_model_s = t_model_days_incpremerger * day_to_s
     dfcontribs = dfgridcontributions
 
     dfmodel = dfmodel.lazy().collect()

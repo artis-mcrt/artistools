@@ -17,12 +17,13 @@ import polars as pl
 
 import artistools as at
 from artistools.commands import get_path
+from artistools.constants import day_to_s
+from artistools.constants import MEV_to_erg
+from artistools.constants import Msun_to_g
 from artistools.inputmodel.rprocess_from_trajectory import get_tar_member_extracted_path
 
 ARTIS_colors = ["r", "g", "b", "m", "c", "orange"]  # reddish colors
-M_sol_cgs = 1.989e33
 amu_g = 1.66e-24
-MeV_to_erg = 1.60218e-6
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -214,7 +215,7 @@ def process_trajectory(
     )
 
     # get nearest network time to each plotted time
-    arr_networktimedays = dfheatingthermo["timesec"].to_numpy() / 86400
+    arr_networktimedays = dfheatingthermo["timesec"].to_numpy() / day_to_s
     networktimestepindices = [
         int(dfheatingthermo["nstep"].item(int(np.abs(arr_networktimedays - plottimedays).argmin())))
         if plottimedays < arr_networktimedays[-1]
@@ -267,79 +268,44 @@ def process_trajectory(
 
         assert dftrajnucabund.height > 100, dftrajnucabund.height
 
-        if not nuclide_contrib:
-            pldf_all = (
-                dftrajnucabund
-                .lazy()
-                .filter(pl.col("massfrac") > 0.0)
-                .with_columns([
-                    pl.col(pl.Int32).cast(pl.Int64),
-                    pl.col(pl.Float32).cast(pl.Float64),
-                    (pl.col("Z") + pl.col("N")).alias("A"),
-                    (pl.col("massfrac") * traj_mass_grams / ((pl.col("Z") + pl.col("N")) * amu_g)).alias("num_nuc"),
-                ])
-                .join(nuc_data.lazy(), on=("Z", "A"), how="inner")
-                .with_columns([(pl.col("num_nuc") / pl.col("tau[s]")).alias("N_dot")])
-                .select(
-                    abundweighted_nu=(pl.col("N_dot") * pl.col("Eneutrino[MeV]") * MeV_to_erg).sum(),
-                    abundweighted_elec=(pl.col("N_dot") * pl.col("Eelec[MeV]") * MeV_to_erg).sum(),
-                    abundweighted_gamma=(pl.col("N_dot") * pl.col("Egamma[MeV]") * MeV_to_erg).sum(),
-                    abundweighted_Qdot=(pl.col("N_dot") * pl.col("Q[MeV]") * MeV_to_erg).sum(),
-                )
-                .collect()
-            )
-
-            for col in pldf_all.columns:
-                decay_powers[col][plottimestep] = float(pldf_all.get_column(col).item())
-
-        else:
-            # store all nuclide contributions in detail
-            pldf_all = (
-                dftrajnucabund
-                .lazy()
-                .filter(pl.col("massfrac") > 0.0)
-                .with_columns([
-                    pl.col(pl.Int32).cast(pl.Int64),
-                    pl.col(pl.Float32).cast(pl.Float64),
-                    (pl.col("Z") + pl.col("N")).alias("A"),
-                    (pl.col("massfrac") * traj_mass_grams / ((pl.col("Z") + pl.col("N")) * amu_g)).alias("num_nuc"),
-                ])
-                .join(nuc_data.lazy(), on=("Z", "A"), how="inner")
-                .with_columns([(pl.col("num_nuc") / pl.col("tau[s]")).alias("N_dot")])
-                .with_columns([
-                    (pl.col("N_dot") * pl.col("Eneutrino[MeV]") * MeV_to_erg).alias("eps_nu"),
-                    (pl.col("N_dot") * pl.col("Eelec[MeV]") * MeV_to_erg).alias("eps_elec"),
-                    (pl.col("N_dot") * pl.col("Egamma[MeV]") * MeV_to_erg).alias("eps_gamma"),
-                    (pl.col("N_dot") * pl.col("Q[MeV]") * MeV_to_erg).alias("eps_tot"),
-                ])
-                .collect()
-            )
-
-            global_sums = pldf_all.select([
-                pl.sum("eps_nu").alias("abundweighted_nu"),
-                pl.sum("eps_elec").alias("abundweighted_elec"),
-                pl.sum("eps_gamma").alias("abundweighted_gamma"),
-                pl.sum("eps_tot").alias("abundweighted_Qdot"),
+        pldf_all = (
+            dftrajnucabund
+            .lazy()
+            .filter(pl.col("massfrac") > 0.0)
+            .with_columns([
+                pl.col(pl.Int32).cast(pl.Int64),
+                pl.col(pl.Float32).cast(pl.Float64),
+                (pl.col("Z") + pl.col("N")).alias("A"),
+                (pl.col("massfrac") * traj_mass_grams / ((pl.col("Z") + pl.col("N")) * amu_g)).alias("num_nuc"),
             ])
-            global_sums_row = global_sums.row(0)
+            .join(nuc_data.lazy(), on=("Z", "A"), how="inner")
+            .with_columns([(pl.col("num_nuc") / pl.col("tau[s]")).alias("N_dot")])
+            .with_columns([
+                (pl.col("N_dot") * pl.col("Eneutrino[MeV]") * MEV_to_erg).alias("eps_nu"),
+                (pl.col("N_dot") * pl.col("Eelec[MeV]") * MEV_to_erg).alias("eps_elec"),
+                (pl.col("N_dot") * pl.col("Egamma[MeV]") * MEV_to_erg).alias("eps_gamma"),
+                (pl.col("N_dot") * pl.col("Q[MeV]") * MEV_to_erg).alias("eps_tot"),
+            ])
+            .collect()
+        )
 
-            decay_powers["abundweighted_nu"][plottimestep] = global_sums_row[0]
-            decay_powers["abundweighted_elec"][plottimestep] = global_sums_row[1]
-            decay_powers["abundweighted_gamma"][plottimestep] = global_sums_row[2]
-            decay_powers["abundweighted_Qdot"][plottimestep] = global_sums_row[3]
+        global_sums = pldf_all.select(
+            abundweighted_nu=pl.sum("eps_nu"),
+            abundweighted_elec=pl.sum("eps_elec"),
+            abundweighted_gamma=pl.sum("eps_gamma"),
+            abundweighted_Qdot=pl.sum("eps_tot"),
+        )
+        for col in global_sums.columns:
+            decay_powers[col][plottimestep] = float(global_sums.get_column(col).item())
 
+        if nuclide_contrib:
+            # store all nuclide contributions in detail
             grouped = pldf_all.group_by(["A", "Z"]).agg([
                 pl.sum("eps_elec").alias("eps_elec"),
                 pl.sum("eps_gamma").alias("eps_gamma"),
                 pl.sum("eps_nu").alias("eps_nu"),
             ])
-            A_vals = grouped["A"].to_numpy()
-            Z_vals = grouped["Z"].to_numpy()
-            eps_elec_vals = grouped["eps_elec"].to_numpy()
-            eps_gamma_vals = grouped["eps_gamma"].to_numpy()
-            eps_nu_vals = grouped["eps_nu"].to_numpy()
-
-            for A, Z, Qe, Qg, Qn in zip(A_vals, Z_vals, eps_elec_vals, eps_gamma_vals, eps_nu_vals, strict=True):
+            for A, Z, Qe, Qg, Qn in grouped.select("A", "Z", "eps_elec", "eps_gamma", "eps_nu").iter_rows():
                 decay_powers[f"({A},{Z})_elec"][plottimestep] = Qe
                 decay_powers[f"({A},{Z})_gam"][plottimestep] = Qg
                 decay_powers[f"({A},{Z})_nu"][plottimestep] = Qn
@@ -433,7 +399,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     traj_ids = traj_summ_data["Id"].to_list()
 
-    traj_masses_g = {int(trajid): mass * M_sol_cgs for trajid, mass in traj_summ_data[["Id", "Mass"]].to_numpy()}
+    traj_masses_g = {int(trajid): mass * Msun_to_g for trajid, mass in traj_summ_data[["Id", "Mass"]].to_numpy()}
 
     alltraj_decay_powers: list[dict[str, npt.NDArray[np.floating]]] = at.parallel_map(
         partial(

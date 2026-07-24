@@ -10,6 +10,7 @@ import pandas as pd
 import polars as pl
 
 import artistools as at
+from artistools.constants import day_to_s
 
 if t.TYPE_CHECKING:
     from mpl_toolkits.mplot3d import Axes3D
@@ -211,14 +212,16 @@ def make_1d_profile(args: argparse.Namespace, logprint: Callable[..., None]) -> 
 
         # Concatenate all bin results into a single DataFrame
         slice1d = pd.concat(cone1d_df, ignore_index=True)
-        slice1d["r_bin_max_boundary"] = slice1d["r_bin_max_boundary"].apply(lambda x: x / (args.t_model * 86400 * 1e5))
+        slice1d["r_bin_max_boundary"] = slice1d["r_bin_max_boundary"].apply(
+            lambda x: x / (args.t_model * day_to_s * 1e5)
+        )
         slice1d = slice1d.rename(columns={"r_bin_max_boundary": "vel_r_max_kmps"})
 
     else:  # make from along chosen axis
         logprint("from along the axis")
         slice1d = get_profile_along_axis(args)
         slice1d.loc[:, f"pos_{args.sliceaxis}_min"] = slice1d[f"pos_{args.sliceaxis}_min"].apply(
-            lambda x: x / (args.t_model * 86400 * 1e5)
+            lambda x: x / (args.t_model * day_to_s * 1e5)
         )  # Convert positions to velocities
         slice1d = slice1d.rename(columns={f"pos_{args.sliceaxis}_min": "vel_r_max_kmps"})
         # Convert position to velocity
@@ -310,9 +313,9 @@ def make_plot(args: argparse.Namespace, logprint: Callable[..., None]) -> None:
     # print(cone['rho_model'])
 
     # set up for big model. For scaled down artis input model switch x and z
-    x = cone["pos_z_min"].apply(lambda x: x / 1e5 / (args.t_model * 86400)) / 1e3
-    y = cone["pos_y_min"].apply(lambda x: x / 1e5 / (args.t_model * 86400)) / 1e3
-    z = cone["pos_x_min"].apply(lambda x: x / 1e5 / (args.t_model * 86400)) / 1e3
+    x = cone["pos_z_min"].apply(lambda x: x / 1e5 / (args.t_model * day_to_s)) / 1e3
+    y = cone["pos_y_min"].apply(lambda x: x / 1e5 / (args.t_model * day_to_s)) / 1e3
+    z = cone["pos_x_min"].apply(lambda x: x / 1e5 / (args.t_model * day_to_s)) / 1e3
 
     _surf = ax.scatter3D(x, y, z, c=-cone["fni"], cmap=plt.get_cmap("viridis"))  # pyright: ignore[reportArgumentType]
 

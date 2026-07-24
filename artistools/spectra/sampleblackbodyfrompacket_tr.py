@@ -7,13 +7,13 @@ import numpy as np
 import pandas as pd
 
 import artistools as at
+from artistools.constants import c_ang_per_s
+from artistools.constants import C_cm_per_s
+from artistools.constants import day_to_s
 
-DAY = 86400
 TWOHOVERCLIGHTSQUARED = 1.4745007e-47
 HOVERKB = 4.799243681748932e-11
 PARSEC = 3.0857e18
-c_cgs = 29979245800.0  # cm/s
-c_ang_s = 299792458 / 1e-10  # angstrom/s
 
 modelpath = Path()
 
@@ -22,15 +22,15 @@ xmax = 30000
 n_nu_bins = 500  # number of frequency bins
 delta_lambda = xmax - xmin
 
-nu_lower = c_ang_s / xmin
-nu_upper = c_ang_s / xmax
+nu_lower = c_ang_per_s / xmin
+nu_upper = c_ang_per_s / xmax
 delta_nu = nu_lower - nu_upper
 arr_nu_hz = np.linspace(nu_upper, nu_lower, num=n_nu_bins)
 arr_min_nu_hz = arr_nu_hz[:-1]
 arr_max_nu_hz = arr_nu_hz[1:]
 arr_delta_nu_hz = arr_max_nu_hz - arr_min_nu_hz
 
-arr_lambda = c_ang_s / arr_nu_hz
+arr_lambda = c_ang_per_s / arr_nu_hz
 
 n_angle_bins = 100
 
@@ -73,8 +73,8 @@ arr_tend = at.get_timestep_times(modelpath, loc="end")
 column_names = np.append(arr_tstart, arr_tend[-1])
 column_names = np.insert(column_names, 0, 0.0, axis=0)
 
-timemin_seconds = column_names[1] * 86400
-timemax_seconds = arr_tend[-1] * 86400
+timemin_seconds = column_names[1] * day_to_s
+timemax_seconds = arr_tend[-1] * day_to_s
 
 specpol_data_bb = {column_names[0]: arr_min_nu_hz}
 packet_contribution_count = {}
@@ -88,17 +88,27 @@ specpol_res_data_bb = [copy.deepcopy(specpol_data_bb) for _ in range(n_angle_bin
 
 nprocs_read, dfpackets = at.packets.get_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
 dfpackets = dfpackets.collect().to_pandas()
+
+# observer arrival time [s], i.e. the escape time corrected for the light travel time to the observer
+t_arrive = (
+    dfpackets["escape_time"]
+    - (
+        dfpackets["posx"] * dfpackets["dirx"]
+        + dfpackets["posy"] * dfpackets["diry"]
+        + dfpackets["posz"] * dfpackets["dirz"]
+    )
+    / C_cm_per_s
+)
+
 for timestep, timedays in enumerate(arr_tstart):
     # print('ts', timestep, timedays, 'days')
 
     # get packets escaping within timestep
-    timelow = timedays * 86400
-    timehigh = arr_tend[timestep] * 86400
+    timelow = timedays * day_to_s
+    timehigh = arr_tend[timestep] * day_to_s
     # print('ts', timestep, 'low', timelow, 'high', timehigh)
 
-    dfpackets_timestep = dfpackets.query(
-        "@timelow < escape_time - (posx * dirx + posy * diry + posz * dirz) / @c_cgs < @timehigh", inplace=False
-    )
+    dfpackets_timestep = dfpackets[t_arrive.between(timelow, timehigh, inclusive="neither")]
     # dfpackets_timestep = dfpackets.query('t_arrive_d > @timelow and t_arrive_d < @timehigh', inplace=False).copy()
 
     # if len(dfpackets_timestep) > 0:

@@ -19,6 +19,8 @@ from matplotlib import markers as mplmarkers
 from matplotlib.typing import MarkerType
 
 import artistools as at
+from artistools.constants import day_to_s
+from artistools.constants import EV_to_erg
 
 
 class FeatureTuple(t.NamedTuple):
@@ -71,7 +73,7 @@ def get_line_fluxes_from_packets(
                     sumcols=["e_rf"],
                 )
                 .with_columns(pl.Series("timedelta_days", arr_timedelta))
-                .select(pl.col("e_rf_sum") / nprocs_read / (86400.0 * pl.col("timedelta_days")))
+                .select(pl.col("e_rf_sum") / nprocs_read / (day_to_s * pl.col("timedelta_days")))
                 .collect()
                 .to_series()
                 .to_numpy()
@@ -105,7 +107,6 @@ def get_line_fluxes_from_pops(
     # timearrayplusend = np.concatenate([arr_tstart, [arr_tend[-1]]])
 
     dictlcdata = {"time": arr_tmid}
-    ev_to_erg = 1.60218e-12
     for feature in emfeatures:
         fluxdata = np.zeros_like(arr_tmid, dtype=float)
 
@@ -123,7 +124,7 @@ def get_line_fluxes_from_pops(
             v_inner = modeldata.vel_r_min_kmps.to_numpy(dtype=float) * 1e5
             v_outer = modeldata.vel_r_max_kmps.to_numpy(dtype=float) * 1e5
 
-            t_sec = timedays * 86400
+            t_sec = timedays * day_to_s
             shell_volumes = (4 * math.pi / 3) * ((v_outer * t_sec) ** 3 - (v_inner * t_sec) ** 3)
 
             timestep = at.get_timestep_of_timedays(modelpath, float(timedays))
@@ -150,7 +151,7 @@ def get_line_fluxes_from_pops(
 
                         delta_ergs = (
                             ion.levels.iloc[upperlevelindex].energy_ev - ion.levels.iloc[lowerlevelindex].energy_ev
-                        ) * ev_to_erg
+                        ) * EV_to_erg
 
                         # l = delta_ergs * A_val * levelpop * (shell_volumes[modelgridindex] + unaccounted_shellvol)
                         # print(f'  {modelgridindex} outer_velocity {modeldata.vel_r_max_kmps.to_numpy()[modelgridindex]}'

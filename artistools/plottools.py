@@ -330,53 +330,20 @@ def set_axis_properties(ax: Iterable[mplax.Axes] | mplax.Axes, args: argparse.Na
     if "labelfontsize" not in args:
         args.labelfontsize = 18
 
-    if isinstance(ax, Iterable):
-        for axis in ax:
-            assert isinstance(axis, mplax.Axes)
-            axis.minorticks_on()
+    for axis in ax if isinstance(ax, Iterable) else [ax]:
+        assert isinstance(axis, mplax.Axes)
+        axis.minorticks_on()
+        for which, ticklength in (("minor", 5), ("major", 8)):
             axis.tick_params(
                 axis="both",
-                which="minor",
+                which=which,
                 top=True,
                 right=True,
-                length=5,
+                length=ticklength,
                 width=2,
                 labelsize=args.labelfontsize,
                 direction="in",
             )
-            axis.tick_params(
-                axis="both",
-                which="major",
-                top=True,
-                right=True,
-                length=8,
-                width=2,
-                labelsize=args.labelfontsize,
-                direction="in",
-            )
-
-    else:
-        ax.minorticks_on()
-        ax.tick_params(
-            axis="both",
-            which="minor",
-            top=True,
-            right=True,
-            length=5,
-            width=2,
-            labelsize=args.labelfontsize,
-            direction="in",
-        )
-        ax.tick_params(
-            axis="both",
-            which="major",
-            top=True,
-            right=True,
-            length=8,
-            width=2,
-            labelsize=args.labelfontsize,
-            direction="in",
-        )
 
     if "ymin" in args or "ymax" in args:
         plt.ylim(args.ymin, args.ymax)

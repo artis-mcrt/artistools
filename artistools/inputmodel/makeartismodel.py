@@ -5,6 +5,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import artistools as at
+from artistools.constants import Msun_to_g
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -112,7 +113,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         rho = model["rho"].to_numpy(dtype=float)
         Mtot_grams = model["mass_g"].sum()
 
-        print(f"total mass {Mtot_grams / 1.989e33} Msun")
+        print(f"total mass {Mtot_grams / Msun_to_g} Msun")
 
         at.inputmodel.energyinputfiles.make_energy_files(rho, Mtot_grams, outputpath=args.outputpath)
 

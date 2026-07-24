@@ -11,9 +11,24 @@ from pathlib import Path
 
 import polars as pl
 
+COMPRESSED_EXTENSIONS = (".zst", ".gz", ".xz")
 
-def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None) -> t.Any:
-    """Open filename, filename.zst, filename.gz or filename.xz."""
+# polars can read these compressed formats directly from a path
+POLARS_READABLE_EXTENSIONS = (".zst", ".gz")
+
+
+def find_compressed(filename: Path | str) -> tuple[str, Path] | None:
+    """Return the extension and path of filename.zst, filename.gz or filename.xz, or None if no compressed file exists."""
+    for ext in COMPRESSED_EXTENSIONS:
+        path_withext = Path(str(filename) if str(filename).endswith(ext) else str(filename) + ext)
+        if path_withext.exists():
+            return ext, path_withext
+
+    return None
+
+
+def get_decompress_open(ext: str) -> t.Any:
+    """Return the open() function of the compression module that handles the given file extension."""
     if sys.version_info >= (3, 14):
         # only available in Python 3.14+
         from compression import gzip
@@ -26,12 +41,14 @@ def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None) -
 
         import zstandard as zstd  # pyright: ignore[reportMissingImports]
 
-    ext_fopen: dict[str, t.Any] = {".zst": zstd.open, ".gz": gzip.open, ".xz": lzma.open}
+    return {".zst": zstd.open, ".gz": gzip.open, ".xz": lzma.open}[ext]
 
-    for ext, fopen in ext_fopen.items():
-        file_withext = str(filename) if str(filename).endswith(ext) else str(filename) + ext
-        if Path(file_withext).exists():
-            return fopen(file_withext, mode=mode, encoding=encoding)
+
+def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None) -> t.Any:
+    """Open filename, filename.zst, filename.gz or filename.xz."""
+    if found := find_compressed(filename):
+        ext, filepath = found
+        return get_decompress_open(ext)(filepath, mode=mode, encoding=encoding)
 
     # open() can raise file not found if this file doesn't exist
     return Path(filename).open(mode=mode, encoding=encoding)
@@ -39,17 +56,11 @@ def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None) -
 
 def zopenpl(filename: Path | str, mode: str = "r", encoding: str | None = None) -> t.Any | Path:
     """Open filename, filename.zst, filename.gz or filename.xz. If polars.read_csv can read the file directly, return a Path object instead of a file object."""
-    if sys.version_info >= (3, 14):
-        from compression import lzma
-    else:
-        import lzma
-
-    ext_fopen: dict[str, t.Any | None] = {".zst": None, ".gz": None, ".xz": lzma.open}
-
-    for ext, fopen in ext_fopen.items():
-        file_withext = str(filename) if str(filename).endswith(ext) else str(filename) + ext
-        if Path(file_withext).exists():
-            return Path(file_withext) if fopen is None else fopen(file_withext, mode=mode, encoding=encoding)
+    if found := find_compressed(filename):
+        ext, filepath = found
+        if ext in POLARS_READABLE_EXTENSIONS:
+            return filepath
+        return get_decompress_open(ext)(filepath, mode=mode, encoding=encoding)
 
     return Path(filename)
 
@@ -91,7 +102,7 @@ def firstexisting(
             fullpaths.append(thispath)
 
             if tryzipped:
-                for ext in (".zst", ".gz", ".xz"):
+                for ext in COMPRESSED_EXTENSIONS:
                     filename_withext = Path(str(filename) if str(filename).endswith(ext) else str(filename) + ext)
                     if filename_withext not in filelist:
                         thispath = Path(searchfolder, filename_withext)
@@ -158,7 +169,8 @@ def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
 
     import yaml
 
-    filepath = Path(str(filepath).replace(".xz", "").replace(".gz", "").replace(".zst", ""))
+    if filepath.suffix in COMPRESSED_EXTENSIONS:
+        filepath = filepath.with_suffix("")
 
     # check if the reference file (e.g. spectrum.txt) has an metadata file (spectrum.txt.meta.yml)
     individualmetafile = filepath.with_suffix(f"{filepath.suffix}.meta.yml")

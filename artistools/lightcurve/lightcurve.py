@@ -13,6 +13,8 @@ import polars as pl
 import polars.selectors as cs
 
 import artistools as at
+from artistools.constants import C_cm_per_s
+from artistools.constants import day_to_s
 from artistools.constants import Lsun_to_erg_per_s
 
 
@@ -81,9 +83,9 @@ def get_from_packets(
         nprocs_read, dfpackets = at.packets.get_packets(
             modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type=escape_type
         )
-        escapesurfacegamma = math.sqrt(1 - (modelmeta["vmax_cmps"] / 29979245800) ** 2)
+        escapesurfacegamma = math.sqrt(1 - (modelmeta["vmax_cmps"] / C_cm_per_s) ** 2)
         dfpackets = dfpackets.with_columns([
-            (pl.col("escape_time") * escapesurfacegamma / 86400.0).alias("t_arrive_cmf_d")
+            (pl.col("escape_time") * escapesurfacegamma / day_to_s).alias("t_arrive_cmf_d")
         ])
 
     if pellet_nucname is not None:
@@ -100,7 +102,7 @@ def get_from_packets(
 
     if use_pellet_decay_time:
         assert not directionbins_are_vpkt_observers
-        dfpackets = dfpackets.with_columns([(pl.col("tdecay") / 86400).alias("tdecay_d")])
+        dfpackets = dfpackets.with_columns([(pl.col("tdecay") / day_to_s).alias("tdecay_d")])
 
     timecol = "tdecay_d" if use_pellet_decay_time else "t_arrive_d"
 
@@ -132,7 +134,7 @@ def get_from_packets(
                     pl.col("e_rf_sum")
                     / nprocs_read
                     * inverse_solidangle_fraction
-                    / (pl.col("twidth_days") * 86400)
+                    / (pl.col("twidth_days") * day_to_s)
                     / Lsun_to_erg_per_s
                 )
             )
@@ -159,7 +161,7 @@ def get_from_packets(
                     / nprocs_read
                     * inverse_solidangle_fraction
                     / escapesurfacegamma
-                    / (pl.col("twidth_days") * 86400)
+                    / (pl.col("twidth_days") * day_to_s)
                     / Lsun_to_erg_per_s
                 )
                 .drop("e_cmf_sum")
@@ -178,6 +180,20 @@ def get_from_packets(
     return lcdata
 
 
+def args_from_kwargs(
+    args: argparse.Namespace | None, kwargs: dict[str, t.Any], **defaults: t.Any
+) -> argparse.Namespace:
+    """Return args if it was given, otherwise build a Namespace from kwargs on top of the given defaults."""
+    if args is None:
+        return argparse.Namespace(**(defaults | kwargs))
+
+    if kwargs:
+        msg = "Specify either args or keyword options, not both"
+        raise TypeError(msg)
+
+    return args
+
+
 def generate_band_lightcurve_data(
     modelpath: Path | str,
     args: argparse.Namespace | None = None,
@@ -188,18 +204,17 @@ def generate_band_lightcurve_data(
     """Integrate spectra to get band magnitude vs time. Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py."""
     from scipy.interpolate import interp1d
 
-    if args is not None and kwargs:
-        msg = "Specify either args or keyword options, not both"
-        raise TypeError(msg)
-    if args is None:
-        args = argparse.Namespace(**kwargs)
-        args.plotvspecpol = getattr(args, "plotvspecpol", False)
-        args.plotviewingangle = getattr(args, "plotviewingangle", False)
-        args.filter = getattr(args, "filter", None)
-        args.timemin = getattr(args, "timemin", None)
-        args.timemax = getattr(args, "timemax", None)
-        args.average_over_phi_angle = getattr(args, "average_over_phi_angle", False)
-        args.average_over_theta_angle = getattr(args, "average_over_theta_angle", False)
+    args = args_from_kwargs(
+        args,
+        kwargs,
+        plotvspecpol=False,
+        plotviewingangle=False,
+        filter=None,
+        timemin=None,
+        timemax=None,
+        average_over_phi_angle=False,
+        average_over_theta_angle=False,
+    )
     if args.plotvspecpol and Path(modelpath, "vpkt.txt").is_file():
         print("Found vpkt.txt, using virtual packets")
         stokes_params = (
@@ -403,11 +418,7 @@ def get_band_lightcurve(
     args: argparse.Namespace | None = None,
     **kwargs: t.Any,
 ) -> tuple[Sequence[float], npt.NDArray[np.floating]]:
-    if args is not None and kwargs:
-        msg = "Specify either args or keyword options, not both"
-        raise TypeError(msg)
-    if args is None:
-        args = argparse.Namespace(**kwargs)
+    args = args_from_kwargs(args, kwargs)
 
     times, brightness_in_mag = zip(
         *[

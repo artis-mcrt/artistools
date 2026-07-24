@@ -49,9 +49,7 @@ from artistools.spectra.writespectra import write_flambda_spectra
 
 
 def path_is_artis_model(filepath: str | Path) -> bool:
-    if Path(filepath).name.endswith(".out.zst"):
-        return True
-    return True if Path(filepath).suffix == ".out" else Path(filepath).is_dir()
+    return Path(filepath).name.endswith((".out", ".out.zst")) or Path(filepath).is_dir()
 
 
 def find_reference_spectrum_file(filename: Path | str) -> Path:
