@@ -105,10 +105,10 @@ def firstexisting(
     raise FileNotFoundError(msg)
 
 
-def anyexist(
+def firstexisting_or_none(
     filelist: Sequence[str | Path], folder: Path | str = ".", tryzipped: bool = True, search_subfolders: bool = True
 ) -> Path | None:
-    """Return true if any files in file list exist."""
+    """Return the first existing file in file list, or None if none exist."""
     try:
         filepath = firstexisting(
             filelist=filelist, folder=folder, tryzipped=tryzipped, search_subfolders=search_subfolders

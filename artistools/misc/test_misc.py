@@ -82,9 +82,9 @@ def test_firstexisting_anyexist(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError, match="None of these files exist"):
         at.firstexisting(["nope.txt"], folder=zipdir)
 
-    # anyexist returns the path if found, else None
-    assert at.anyexist(["a.txt"], folder=firstdir) == firstdir / "a.txt"
-    assert at.anyexist(["nope.txt"], folder=firstdir) is None
+    # firstexisting_or_none returns the path if found, else None
+    assert at.firstexisting_or_none(["a.txt"], folder=firstdir) == firstdir / "a.txt"
+    assert at.firstexisting_or_none(["nope.txt"], folder=firstdir) is None
 
 
 def test_readnoncommentline() -> None:

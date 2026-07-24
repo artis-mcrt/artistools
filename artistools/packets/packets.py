@@ -411,7 +411,9 @@ def get_rankbatch_parquetfile(
     conversion_needed = True
     if parquetfilepath.is_file():
         parquet_mtime = parquetfilepath.stat().st_mtime
-        if text_filepath := at.anyexist(text_filenames[-1], folder=modelpath, tryzipped=True, search_subfolders=True):
+        if text_filepath := at.firstexisting_or_none(
+            text_filenames[-1], folder=modelpath, tryzipped=True, search_subfolders=True
+        ):
             last_textfile_mtime = text_filepath.stat().st_mtime
 
             if parquet_mtime > last_textfile_mtime and parquet_mtime > t_lastschemachange:

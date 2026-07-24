@@ -209,7 +209,9 @@ def generate_band_lightcurve_data(
         )
         vspecdata = stokes_params["I"]
         timearray = vspecdata.columns[1:]
-    elif args.plotviewingangle and at.anyexist(["specpol_res.out", "spec_res.out"], folder=modelpath, tryzipped=True):
+    elif args.plotviewingangle and at.firstexisting_or_none(
+        ["specpol_res.out", "spec_res.out"], folder=modelpath, tryzipped=True
+    ):
         specfilename = at.firstexisting(["specpol_res.out", "spec_res.out"], folder=modelpath, tryzipped=True)
         specdataresdata = pd.read_csv(specfilename, sep=r"\s+")
         timearray = [i for i in specdataresdata.columns.to_numpy()[1:] if i[-2] != "."]

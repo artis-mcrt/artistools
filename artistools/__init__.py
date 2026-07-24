@@ -79,9 +79,9 @@ from artistools.inputmodel import get_modeldata as get_modeldata
 from artistools.inputmodel import save_initelemabundances as save_initelemabundances
 from artistools.inputmodel import save_modeldata as save_modeldata
 from artistools.misc import add_viewingangle_args as add_viewingangle_args
-from artistools.misc import anyexist as anyexist
 from artistools.misc import average_direction_bins as average_direction_bins
 from artistools.misc import firstexisting as firstexisting
+from artistools.misc import firstexisting_or_none as firstexisting_or_none
 from artistools.misc import flatten_list as flatten_list
 from artistools.misc import get_cellsofmpirank as get_cellsofmpirank
 from artistools.misc import get_costheta_bins as get_costheta_bins
