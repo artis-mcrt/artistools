@@ -102,8 +102,8 @@ def get_tar_member_extracted_path(traj_root: Path | str, particleid: int, member
         return path_extracted_file
 
     if tarfilepath is None:
-        print(f"  No network data found for particle {particleid} (so can't access {memberfilename})")
-        raise FileNotFoundError
+        msg = f"  No network data found for particle {particleid} (so can't access {memberfilename})"
+        raise FileNotFoundError(msg)
 
     print(f"Member {memberfilename} not found in {tarfilepath}")
     raise AssertionError
@@ -379,7 +379,7 @@ def add_abundancecontributions(
     timestart = time.perf_counter()
     trajworker = partial(get_trajectory_abund_q, t_model_s=t_model_s, traj_root=Path(traj_root), getqdotintegral=True)
 
-    list_traj_nuc_abund = at.parallel_map(trajworker, particleids)
+    list_traj_nuc_abund = at.parallel_map(trajworker, particleids, chunksize=16)
 
     missing_particle_ids = [
         particleid for particleid, df in zip(particleids, list_traj_nuc_abund, strict=True) if not df
