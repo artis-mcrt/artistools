@@ -18,7 +18,7 @@ from artistools.constants import C_cm_per_s as CLIGHT
 from artistools.constants import Msun_to_g as msol
 
 day = 86400.0
-t_model_init_days = 0.1 * day  # snapshot time is fixed by the npz files
+t_model_init_s = 0.1 * day  # snapshot time is fixed by the npz files
 
 
 def sphkernel(
@@ -113,7 +113,7 @@ def get_grid(
 
     time_s = dat.f.time
     starting_idx = 0
-    closest_idx = (np.abs(time_s - t_model_init_days)).argmin()
+    closest_idx = (np.abs(time_s - t_model_init_s)).argmin()
     i = -1
     tot_Q_rel = 0
 
@@ -136,7 +136,7 @@ def get_grid(
     hnuloss_arr = dat.f.hnuloss.copy() if no_nu_trapping else np.zeros_like(qdot_arr, dtype=np.float64)
 
     # no multiplication with mass to keep it a specific energy release
-    time_by_t_snap = time_s / t_model_init_days
+    time_by_t_snap = time_s / t_model_init_s
 
     for i1 in nodid:  # index of Oli's original list
         i += 1  # index in the new list accounting for unprocessed trajs.
@@ -220,8 +220,8 @@ def get_grid(
     vmax_cmps = vmax_on_c * CLIGHT  # maximum velocity in coordinate direction (!)
     rcyltraj, zcyltraj = np.zeros(ntraj), np.zeros(ntraj)
     for i in [int(j) for j in np.arange(ntraj)]:
-        rcyltraj[i] = vtraj[i] * np.sin(atraj[i]) * CLIGHT * t_model_init_days
-        zcyltraj[i] = vtraj[i] * np.cos(atraj[i]) * CLIGHT * t_model_init_days
+        rcyltraj[i] = vtraj[i] * np.sin(atraj[i]) * CLIGHT * t_model_init_s
+        zcyltraj[i] = vtraj[i] * np.cos(atraj[i]) * CLIGHT * t_model_init_s
     if model_dim == 2:
         # ... cylindrical coordinates of the grid onto which we want to map
         nvr = numb_cells_ARTIS_radial
@@ -229,18 +229,18 @@ def get_grid(
             numb_cells_ARTIS_z // eqsymfac
         )  # number of mapping grid cells in z direction depends on equatorial symmetry
 
-        wid_init_rcyl = vmax_cmps * t_model_init_days / nvr
-        pos_rcyl_min = np.array([vmax_cmps * t_model_init_days / nvr * nr for nr in range(nvr)])
+        wid_init_rcyl = vmax_cmps * t_model_init_s / nvr
+        pos_rcyl_min = np.array([vmax_cmps * t_model_init_s / nvr * nr for nr in range(nvr)])
         pos_rcyl_mid = pos_rcyl_min + 0.5 * wid_init_rcyl
         pos_rcyl_max = pos_rcyl_min + wid_init_rcyl
 
-        wid_init_z = (2.0 / eqsymfac) * vmax_cmps * t_model_init_days / nvz
+        wid_init_z = (2.0 / eqsymfac) * vmax_cmps * t_model_init_s / nvz
         if eqsymfac == 1:
             pos_z_min = np.array([
-                -vmax_cmps * t_model_init_days + 2.0 * vmax_cmps * t_model_init_days / nvz * nz for nz in range(nvz)
+                -vmax_cmps * t_model_init_s + 2.0 * vmax_cmps * t_model_init_s / nvz * nz for nz in range(nvz)
             ])
         else:
-            pos_z_min = np.array([vmax_cmps * t_model_init_days / nvz * nz for nz in range(nvz)])
+            pos_z_min = np.array([vmax_cmps * t_model_init_s / nvz * nz for nz in range(nvz)])
         pos_z_mid = pos_z_min + 0.5 * wid_init_z
         # pos_z_max = pos_z_min + wid_init_z
 
@@ -266,23 +266,17 @@ def get_grid(
         vygridl, vygridc, vygridr = vxgridl, vxgridc, vxgridr
         vzgridl, vzgridc, vzgridr = vxgridl, vxgridc, vxgridr
 
-        x3d = op(op(vxgridc, np.ones(numb_cells_ARTIS_y)), np.ones(numb_cells_ARTIS_z)) * (CLIGHT * t_model_init_days)
-        y3d = op(op(np.ones(numb_cells_ARTIS_x), vygridc), np.ones(numb_cells_ARTIS_z)) * (CLIGHT * t_model_init_days)
-        z3d = op(op(np.ones(numb_cells_ARTIS_x), np.ones(numb_cells_ARTIS_y)), vzgridc) * (CLIGHT * t_model_init_days)
+        x3d = op(op(vxgridc, np.ones(numb_cells_ARTIS_y)), np.ones(numb_cells_ARTIS_z)) * (CLIGHT * t_model_init_s)
+        y3d = op(op(np.ones(numb_cells_ARTIS_x), vygridc), np.ones(numb_cells_ARTIS_z)) * (CLIGHT * t_model_init_s)
+        z3d = op(op(np.ones(numb_cells_ARTIS_x), np.ones(numb_cells_ARTIS_y)), vzgridc) * (CLIGHT * t_model_init_s)
 
-        x3d_min = op(op(vxgridl, np.ones(numb_cells_ARTIS_y)), np.ones(numb_cells_ARTIS_z)) * (
-            CLIGHT * t_model_init_days
-        )
-        y3d_min = op(op(np.ones(numb_cells_ARTIS_x), vygridl), np.ones(numb_cells_ARTIS_z)) * (
-            CLIGHT * t_model_init_days
-        )
-        z3d_min = op(op(np.ones(numb_cells_ARTIS_x), np.ones(numb_cells_ARTIS_y)), vzgridl) * (
-            CLIGHT * t_model_init_days
-        )
+        x3d_min = op(op(vxgridl, np.ones(numb_cells_ARTIS_y)), np.ones(numb_cells_ARTIS_z)) * (CLIGHT * t_model_init_s)
+        y3d_min = op(op(np.ones(numb_cells_ARTIS_x), vygridl), np.ones(numb_cells_ARTIS_z)) * (CLIGHT * t_model_init_s)
+        z3d_min = op(op(np.ones(numb_cells_ARTIS_x), np.ones(numb_cells_ARTIS_y)), vzgridl) * (CLIGHT * t_model_init_s)
         if eqsymfac == 2:
             z3d = abs(z3d)
         R3d = np.sqrt(x3d**2 + y3d**2)
-        volgrid = op(op(vxgridr - vxgridl, vygridr - vygridl), vzgridr - vzgridl) * (CLIGHT * t_model_init_days) ** 3
+        volgrid = op(op(vxgridr - vxgridl, vygridr - vygridl), vzgridr - vzgridl) * (CLIGHT * t_model_init_s) ** 3
 
     # Step 4) Prepare the mapping procedure by calculating the tracer particle smoothing lengths
 
@@ -296,7 +290,7 @@ def get_grid(
     for i in [int(j) for j in np.arange(ntraj)]:
         # print(i)
         cont = True
-        hl, hr = 0.00001 * CLIGHT * t_model_init_days, 1.0 * CLIGHT * t_model_init_days
+        hl, hr = 0.00001 * CLIGHT * t_model_init_s, 1.0 * CLIGHT * t_model_init_s
         dist = np.sqrt((rcyltraj[i] - rcyltraj) ** 2 + (zcyltraj[i] - zcyltraj) ** 2)
         ic = 0
         while cont:
@@ -591,7 +585,7 @@ def map_to_artis(
         z_mid = (z3d).flatten(order="F") + cell_width / 2
         V_dfmodel = np.ones(len(dfmodel)) * cell_width**3
 
-        vel_r_mid_on_c = np.sqrt(x_mid**2 + y_mid**2 + z_mid**2) / (t_model_init_days * CLIGHT)
+        vel_r_mid_on_c = np.sqrt(x_mid**2 + y_mid**2 + z_mid**2) / (t_model_init_s * CLIGHT)
         dfmodel = dfmodel.with_columns([
             pl.Series("vel_r_mid_on_c", vel_r_mid_on_c),
             pl.lit(cell_width**3).alias("volume"),
@@ -667,7 +661,7 @@ def map_to_artis(
                 "ncoordgridx": grid_dims[0],
                 "ncoordgridy": grid_dims[1],
                 "ncoordgridz": grid_dims[2],
-                "t_model_init_days": t_model_init_days / day,
+                "t_model_init_days": t_model_init_s / day,
                 "vmax_cmps": vmax_on_c * CLIGHT,
             }
             at.inputmodel.save_modeldata(
@@ -861,9 +855,9 @@ def map_to_artis(
             "dimensions": 2,
             "ncoordgridrcyl": ngridrcyl,
             "ncoordgridz": ngridz,
-            "wid_init_rcyl": vmax_on_c * CLIGHT * t_model_init_days / ngridrcyl,
-            "wid_init_z": 2 * vmax_on_c * CLIGHT * t_model_init_days / ngridz,
-            "t_model_init_days": t_model_init_days / day,
+            "wid_init_rcyl": vmax_on_c * CLIGHT * t_model_init_s / ngridrcyl,
+            "wid_init_z": 2 * vmax_on_c * CLIGHT * t_model_init_s / ngridz,
+            "t_model_init_days": t_model_init_s / day,
             "vmax_cmps": vmax_on_c * CLIGHT,
         }
     elif model_dim == 3:
@@ -872,7 +866,7 @@ def map_to_artis(
             "ncoordgridx": grid_dims[0],
             "ncoordgridy": grid_dims[1],
             "ncoordgridz": grid_dims[2],
-            "t_model_init_days": t_model_init_days / day,
+            "t_model_init_days": t_model_init_s / day,
             "vmax_cmps": vmax_on_c * CLIGHT,
         }
 
@@ -933,7 +927,7 @@ def merge_neighbour_cells(
     N_cell_r_old, N_cell_z_old = ngrid_rcyl, ngrid_z
     N_cell_r_new, N_cell_z_new = N_cell_r_old // red_fact_1D, N_cell_z_old // red_fact_1D
     new_numb_cells = N_cell_r_new * N_cell_z_new
-    r_max_snap = vmax * CLIGHT * t_model_init_days
+    r_max_snap = vmax * CLIGHT * t_model_init_s
 
     dfmodel = at.inputmodel.add_derived_cols_to_modeldata(
         dfmodel, modelmeta=modelmeta, derived_cols=["mass_g"]
@@ -1009,9 +1003,9 @@ def merge_neighbour_cells(
         "dimensions": 2,
         "ncoordgridrcyl": N_cell_r_new,
         "ncoordgridz": N_cell_z_new,
-        "wid_init_rcyl": vmax * CLIGHT * t_model_init_days / N_cell_r_new,
-        "wid_init_z": 2 * vmax * CLIGHT * t_model_init_days / N_cell_z_new,
-        "t_model_init_days": t_model_init_days / day,
+        "wid_init_rcyl": vmax * CLIGHT * t_model_init_s / N_cell_r_new,
+        "wid_init_z": 2 * vmax * CLIGHT * t_model_init_s / N_cell_z_new,
+        "t_model_init_days": t_model_init_s / day,
         "vmax_cmps": vmax * CLIGHT,
     }
     print(f"Remapped model to {N_cell_r_new}x{N_cell_z_new} grid.")
