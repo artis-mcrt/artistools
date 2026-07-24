@@ -82,7 +82,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         dfmodelcollect = dfmodel.select(cols).collect()
 
         vuppers = dfmodelcollect.select(pl.col("vel_r_max").unique().sort()).to_series()
-        enclosed_xvals = [0.0, *(vuppers / 29979245800).to_list(), 29979245800]
+        enclosed_xvals = [0.0, *(vuppers / 29979245800.0).to_list(), 1.0]
         enclosed_yvals = [0.0] + [
             float(dfmodelcollect.filter(pl.col("vel_r_mid") <= vupper)["mass_g"].sum()) / 1.989e33 for vupper in vuppers
         ]
@@ -106,7 +106,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             vupperscoarse = [xmin + xdeltamax * (i + 1) for i in range(ncoarsevelbins)]
 
         if args.nbins:
-            vupperscoarse = [(i + 1) * (29979245800 / args.nbins) for i in range(args.nbins)]
+            vupperscoarse = [(i + 1) * (29979245800.0 / args.nbins) for i in range(args.nbins)]
         binned_xvals: list[float] = []
         binned_yvals: list[float] = []
         vlowerscoarse = [0.0, *vupperscoarse[:-1]]
@@ -118,11 +118,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 / 1.989e33
             )
             assert vlower < vupper
-            binned_xvals.extend((vlower / 29979245800, vupper / 29979245800))
-            delta_beta = (vupper - vlower) / 29979245800
+            binned_xvals.extend((vlower / 29979245800.0, vupper / 29979245800.0))
+            delta_beta = (vupper - vlower) / 29979245800.0
             yval = velbinmass / delta_beta
             binned_yvals.extend((yval, yval))
-        binned_xvals.extend((binned_xvals[-1], 29979245800))
+        binned_xvals.extend((binned_xvals[-1], 1.0))
         binned_yvals.extend((0.0, 0.0))
 
         axes[1].plot(binned_xvals, binned_yvals, label=label, color=color)
@@ -137,7 +137,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                     .select(pl.col("Ye").dot(pl.col("mass_g")) / pl.col("mass_g").sum())
                     .item()
                 )
-                binned_xvals.extend((vlower / 29979245800, vupper / 29979245800))
+                binned_xvals.extend((vlower / 29979245800.0, vupper / 29979245800.0))
                 binned_yvals.extend((yval, yval))
             axes[2].plot(binned_xvals, binned_yvals, label=label, color=color)
 
