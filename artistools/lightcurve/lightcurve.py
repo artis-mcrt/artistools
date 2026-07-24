@@ -193,7 +193,13 @@ def generate_band_lightcurve_data(
         raise TypeError(msg)
     if args is None:
         args = argparse.Namespace(**kwargs)
-
+        args.plotvspecpol = getattr(args, "plotvspecpol", False)
+        args.plotviewingangle = getattr(args, "plotviewingangle", False)
+        args.filter = getattr(args, "filter", None)
+        args.timemin = getattr(args, "timemin", None)
+        args.timemax = getattr(args, "timemax", None)
+        args.average_over_phi_angle = getattr(args, "average_over_phi_angle", False)
+        args.average_over_theta_angle = getattr(args, "average_over_theta_angle", False)
     if args.plotvspecpol and Path(modelpath, "vpkt.txt").is_file():
         print("Found vpkt.txt, using virtual packets")
         stokes_params = (
