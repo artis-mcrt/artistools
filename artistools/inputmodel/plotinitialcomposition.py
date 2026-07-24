@@ -28,7 +28,7 @@ def get_2D_slice_through_3d_model(
     plotaxis2: AxisType | None = None,
     sliceindex: int | None = None,
 ) -> pd.DataFrame:
-    if not sliceindex:
+    if sliceindex is None:
         # get midpoint
         sliceposition: float | int = dfmodel.iloc[(dfmodel["pos_x_min"]).abs().argsort()][:1]["pos_x_min"].item()
         # Choose position to slice. This gets minimum absolute value as the closest to 0
