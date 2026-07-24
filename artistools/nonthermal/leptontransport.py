@@ -3,12 +3,14 @@ import math
 import matplotlib.pyplot as plt
 import numpy as np
 
+from artistools.constants import K_B_ev_per_K as CONST_KB  # Boltzmann constant [eV / K]
+
+# this module works in SI units, so these have no artistools.constants equivalent
 CONST_EV_IN_J = 1.602176634e-19  # 1 eV [J]
 
 CONST_RE = 2.8179403262e-15  # classical electron radius [m]
 CONST_ME = 9.10938356e-31  # mass of electron [kg]
 CONST_C = 299792458  # [m / s]
-CONST_KB = 8.617333262145e-5  # Boltzmann constant [eV / K]
 
 
 def calculate_dE_on_dx_plasma(energy: float | int, n_e_free: float) -> float:
