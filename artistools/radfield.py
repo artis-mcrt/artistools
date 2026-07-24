@@ -12,6 +12,7 @@ import polars as pl
 
 import artistools as at
 from artistools.constants import c_ang_per_s
+from artistools.constants import day_to_s
 from artistools.constants import h_erg_s
 from artistools.constants import K_B_erg_per_K
 
@@ -297,7 +298,7 @@ def plot_celltimestep(
             _, modelmeta = at.inputmodel.get_modeldata(modelpath)
             # outer velocity
             v_surface = modelmeta["vmax_cmps"]
-            r_surface = time_days * 86400 * v_surface
+            r_surface = time_days * day_to_s * v_surface
             r_observer = at.constants.megaparsec_to_cm
             scale_factor = (r_observer / r_surface) ** 2 / (2 * math.pi)
             print(

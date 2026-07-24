@@ -13,6 +13,7 @@ import polars.selectors as cs
 
 import artistools as at
 from artistools.constants import C_cm_per_s
+from artistools.constants import day_to_s
 from artistools.constants import h_erg_s
 from artistools.constants import K_B_erg_per_K
 from artistools.constants import K_B_ev_per_K
@@ -29,7 +30,7 @@ def get_binned_opacities_ion(
     expopac_deltalambda: float,
     time_days: float,
 ) -> pl.LazyFrame:
-    time_s = time_days * 86400.0
+    time_s = time_days * day_to_s
     dfcelllevelpops = dflevels.join(dfcells, how="cross").with_columns(
         nnlevel=pl.col("g")
         * (-pl.col("energy_ev") / K_B_ev_per_K / pl.col("Te")).exp()

@@ -7,9 +7,7 @@ import pandas as pd
 import polars as pl
 
 import artistools as at
-
-DAY = 86400  # day in seconds
-MSUN = 1.989e33  # solar mass in grams
+from artistools.constants import day_to_s
 
 
 def rprocess_const_and_powerlaw() -> tuple[pl.DataFrame, float]:
@@ -29,8 +27,8 @@ def rprocess_const_and_powerlaw() -> tuple[pl.DataFrame, float]:
 
     from scipy.integrate import quad
 
-    tmin = 0.01 * DAY
-    tmax = 50 * DAY
+    tmin = 0.01 * day_to_s
+    tmax = 50 * day_to_s
     t0 = 1.3  # seconds
     epsilon0 = 2e18
     sigma = 0.11
@@ -53,7 +51,7 @@ def rprocess_const_and_powerlaw() -> tuple[pl.DataFrame, float]:
 
     nuclear_heating_power = [integrand(time, t0, epsilon0, sigma, alpha, thermalisation_factor) for time in times]
 
-    times_and_rate = {"times": times / DAY, "rate": rate, "nuclear_heating_power": nuclear_heating_power}
+    times_and_rate = {"times": times / day_to_s, "rate": rate, "nuclear_heating_power": nuclear_heating_power}
     dftimes_and_rate = pl.DataFrame(data=times_and_rate)
 
     return dftimes_and_rate, E_tot
@@ -94,8 +92,8 @@ def get_cumulative_heating_fraction() -> tuple[pl.DataFrame, float]:
     dt = np.diff(times * 24 * 60 * 60)
 
     # check energy rate is on top of power law line
-    # plt.plot(dftimes_and_rate["times"][1:], (dE / dt) * 0.01 * MSUN)
-    # plt.plot(dftimes_and_rate["times"], qdot * 0.01 * MSUN)
+    # plt.plot(dftimes_and_rate["times"][1:], (dE / dt) * 0.01 * Msun_to_g)
+    # plt.plot(dftimes_and_rate["times"], qdot * 0.01 * Msun_to_g)
     # plt.yscale("log")
     # plt.xscale("log")
 
@@ -130,7 +128,7 @@ def energy_from_rprocess_calculation(
 
         rate = cumulative_integrated_energy / E_tot
 
-        dftimes_and_rate = pl.DataFrame({"times": times / DAY, "rate": rate})
+        dftimes_and_rate = pl.DataFrame({"times": times / day_to_s, "rate": rate})
 
         return dftimes_and_rate, E_tot
 

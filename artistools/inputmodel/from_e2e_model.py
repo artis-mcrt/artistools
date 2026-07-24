@@ -15,10 +15,10 @@ import polars.selectors as cs
 
 import artistools as at
 from artistools.constants import C_cm_per_s as CLIGHT
+from artistools.constants import day_to_s
 from artistools.constants import Msun_to_g as msol
 
-day = 86400.0
-t_model_init_s = 0.1 * day  # snapshot time is fixed by the npz files
+t_model_init_s = 0.1 * day_to_s  # snapshot time is fixed by the npz files
 
 
 def sphkernel(
@@ -661,7 +661,7 @@ def map_to_artis(
                 "ncoordgridx": grid_dims[0],
                 "ncoordgridy": grid_dims[1],
                 "ncoordgridz": grid_dims[2],
-                "t_model_init_days": t_model_init_s / day,
+                "t_model_init_days": t_model_init_s / day_to_s,
                 "vmax_cmps": vmax_on_c * CLIGHT,
             }
             at.inputmodel.save_modeldata(
@@ -857,7 +857,7 @@ def map_to_artis(
             "ncoordgridz": ngridz,
             "wid_init_rcyl": vmax_on_c * CLIGHT * t_model_init_s / ngridrcyl,
             "wid_init_z": 2 * vmax_on_c * CLIGHT * t_model_init_s / ngridz,
-            "t_model_init_days": t_model_init_s / day,
+            "t_model_init_days": t_model_init_s / day_to_s,
             "vmax_cmps": vmax_on_c * CLIGHT,
         }
     elif model_dim == 3:
@@ -866,7 +866,7 @@ def map_to_artis(
             "ncoordgridx": grid_dims[0],
             "ncoordgridy": grid_dims[1],
             "ncoordgridz": grid_dims[2],
-            "t_model_init_days": t_model_init_s / day,
+            "t_model_init_days": t_model_init_s / day_to_s,
             "vmax_cmps": vmax_on_c * CLIGHT,
         }
 
@@ -1005,7 +1005,7 @@ def merge_neighbour_cells(
         "ncoordgridz": N_cell_z_new,
         "wid_init_rcyl": vmax * CLIGHT * t_model_init_s / N_cell_r_new,
         "wid_init_z": 2 * vmax * CLIGHT * t_model_init_s / N_cell_z_new,
-        "t_model_init_days": t_model_init_s / day,
+        "t_model_init_days": t_model_init_s / day_to_s,
         "vmax_cmps": vmax * CLIGHT,
     }
     print(f"Remapped model to {N_cell_r_new}x{N_cell_z_new} grid.")

@@ -16,6 +16,8 @@ import polars as pl
 from polars import selectors as cs
 
 import artistools as at
+from artistools.constants import day_to_s
+from artistools.constants import Msun_to_g
 from artistools.inputmodel.rprocess_from_trajectory import get_tar_member_extracted_path
 
 
@@ -52,7 +54,7 @@ def get_abundance_correction_factors(
         ncoordgridx = math.ceil(np.cbrt(max(mgi_of_propcells.keys()) + 1))
         propcellcount = ncoordgridx**3
         print(f" inferring {propcellcount} propagation grid cells from grid mapping file")
-        xmax_tmodel = modelmeta["vmax_cmps"] * modelmeta["t_model_init_days"] * 86400
+        xmax_tmodel = modelmeta["vmax_cmps"] * modelmeta["t_model_init_days"] * day_to_s
         wid_init = at.get_wid_init_at_tmodel(modelpath, propcellcount, modelmeta["t_model_init_days"], xmax_tmodel)
 
         lzdfmodel = lzdfmodel.with_columns(
@@ -532,7 +534,7 @@ def get_dfcontribsparticledata(
     # times in artis are relative to merger, but NSM simulation time started earlier
     mergertime_geomunits = at.inputmodel.modelfromhydro.get_merger_time_geomunits(griddata_root)
     t_mergertime_s = mergertime_geomunits * 4.926e-6
-    arr_time_gsi_s_incpremerger = np.array(arr_time_gsi_days) * 86400.0 + t_mergertime_s
+    arr_time_gsi_s_incpremerger = np.array(arr_time_gsi_days) * day_to_s + t_mergertime_s
 
     dfpartcontrib = (
         at.inputmodel.rprocess_from_trajectory
@@ -620,7 +622,7 @@ def plot_qdot_abund_modelcells(
     lzdfmodel = lzdfmodel.with_columns(cellmass_on_mtot=pl.col("mass_g") / pl.col("mass_g").sum())
 
     model_mass_grams = lzdfmodel.select(pl.col("mass_g").sum()).collect().item()
-    print(f"model mass: {model_mass_grams / 1.989e33:.3f} Msun")
+    print(f"model mass: {model_mass_grams / Msun_to_g:.3f} Msun")
 
     dftimesteps = at.misc.df_filter_minmax_bounded(
         at.get_timesteps(modelpath).select("timestep", "tmid_days"), "tmid_days", None, timedaysmax

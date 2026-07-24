@@ -10,6 +10,7 @@ import numpy.typing as npt
 import pandas as pd
 
 import artistools as at
+from artistools.constants import EV_to_erg
 
 minionfraction = 0.0  # minimum number fraction of the total population to include in SF solution
 
@@ -175,7 +176,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         x_e = estim["nne"] / nntot
         T_e = estim["Te"]
         print("WARNING: Use LTE pops at Te for now")
-        deposition_density_ev = estim["heating_dep"] / 1.6021772e-12  # convert erg to eV
+        deposition_density_ev = estim["heating_dep"] / EV_to_erg
         ionpopdict = {at.get_ion_tuple(k): v for k, v in estim.items() if k.startswith(("nnion_", "nnelement_"))}
 
         velocity = modeldata["vel_r_max_kmps"][args.modelgridindex]

@@ -7,9 +7,8 @@ from pathlib import Path
 
 import numpy as np
 
+from artistools.constants import Msun_to_g
 from artistools.inputmodel.fromcmfgen.rd_cmfgen import rd_sn_hydro_data
-
-msun = 1.989e33
 
 model = "DDC25"
 snapshot = "SN_HYDRO_DATA_1.300d"
@@ -226,8 +225,8 @@ def main() -> None:
     rin = rmax
     rin = np.insert(rin, 0, 0)  # for artis we use 0 as inner radius for the innermost shell, cmfgen uses
     # the innermost radius r[0], this gives a slight discrepancy (<1%) in the total mass
-    dm = 4 / 3 * np.pi * (rout**3 - rin**3) * a["dens"] / msun
-    print(dm.sum(), dm.sum() / (a["dmass"].sum() / msun))  # Check total mass
+    dm = 4 / 3 * np.pi * (rout**3 - rin**3) * a["dens"] / Msun_to_g
+    print(dm.sum(), dm.sum() / (a["dmass"].sum() / Msun_to_g))  # Check total mass
 
     with Path(model, "model.txt").open("w", encoding="utf-8") as f:
         f.write(str(a["nd"]) + "\n")

@@ -20,7 +20,10 @@ import polars as pl
 from polars import selectors as cs
 
 import artistools as at
+from artistools.constants import C_cm_per_s
+from artistools.constants import day_to_s
 from artistools.constants import Lsun_to_erg_per_s
+from artistools.constants import Msun_to_g
 from artistools.misc import print_theta_phi_definitions
 
 
@@ -36,7 +39,7 @@ def plot_deposition_thermalisation(
         dfmodel, _ = at.inputmodel.get_modeldata(modelpath, derived_cols=["mass_g", "vel_r_mid", "kinetic_en_erg"])
 
         model_mass_grams = dfmodel.select("mass_g").sum().collect().item()
-        print(f"  model mass: {model_mass_grams / 1.989e33:.3f} Msun")
+        print(f"  model mass: {model_mass_grams / Msun_to_g:.3f} Msun")
 
     depdata = at.get_deposition(modelpath).collect()
 
@@ -147,9 +150,9 @@ def plot_deposition_thermalisation(
 
         # velocity derived from ejecta kinetic energy to match Barnes et al. (2016) Section 2.1
         ejecta_v = np.sqrt(2 * ejecta_ke_erg / model_mass_grams)
-        print(f"  Barnes average ejecta velocity: {ejecta_v / 29979245800:.2f}c")
-        m5 = model_mass_grams / (5e-3 * 1.989e33)  # M / (5e-3 Msun)
-        v2 = ejecta_v / (0.2 * 29979245800)  # ejecta_v / (0.2c)
+        print(f"  Barnes average ejecta velocity: {ejecta_v / C_cm_per_s:.2f}c")
+        m5 = model_mass_grams / (5e-3 * Msun_to_g)  # M / (5e-3 Msun)
+        v2 = ejecta_v / (0.2 * C_cm_per_s)  # ejecta_v / (0.2c)
 
         # Barnes et al (2016) scaling form from equation 17, with fiducial t_ineff_gamma of 1.4 days
         t_ineff_gamma = 1.4 * np.sqrt(m5) / v2
@@ -401,7 +404,7 @@ def plot_artis_lightcurve(
 
         lcdata_tmin = lcdata.select(pl.col("time_days").min()).item()
         lcdata_tmax = lcdata.select(pl.col("time_days").max()).item()
-        lcdata = lcdata.with_columns(time_s=pl.col("time_days") * 86400.0)
+        lcdata = lcdata.with_columns(time_s=pl.col("time_days") * day_to_s)
         katz_integral = np.trapezoid(
             (
                 lcdata
@@ -439,7 +442,9 @@ def plot_artis_lightcurve(
             print(" WARNING: No data points in valid range")
 
         energy_released = abs(
-            np.trapezoid(np.nan_to_num(lcdata_valid["luminosity_erg/s"], nan=0.0), x=lcdata_valid["time_days"] * 86400)
+            np.trapezoid(
+                np.nan_to_num(lcdata_valid["luminosity_erg/s"], nan=0.0), x=lcdata_valid["time_days"] * day_to_s
+            )
         )
 
         lcdata_valid_tmin = lcdata_valid.select(pl.col("time_days").min()).item()
@@ -595,7 +600,7 @@ def make_lightcurve_plot(
                         top_nuclides = (
                             at.misc
                             .df_filter_minmax_bounded(
-                                dfpackets.with_columns(tdecay_d=pl.col("tdecay") / 86400),
+                                dfpackets.with_columns(tdecay_d=pl.col("tdecay") / day_to_s),
                                 "tdecay_d" if args.use_pellet_decay_time else "t_arrive_d",
                                 args.timemin,
                                 args.timemax,

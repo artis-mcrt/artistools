@@ -13,6 +13,7 @@ import pandas as pd
 import polars as pl
 
 import artistools as at
+from artistools.constants import C_cm_per_s
 from artistools.constants import K_B_ev_per_K
 
 defaultoutputfile = "plottransitions_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf"
@@ -119,7 +120,7 @@ def generate_ion_spectrum(
         # contribute the Gaussian line profile to the discrete flux bins
 
         centre_index = round((line["lambda_angstroms"] - args.xmin) / plot_resolution)
-        sigma_angstroms = line["lambda_angstroms"] * args.sigma_v / 299792.458
+        sigma_angstroms = line["lambda_angstroms"] * args.sigma_v * 1e5 / C_cm_per_s
         sigma_gridpoints = math.ceil(sigma_angstroms / plot_resolution)
         window_left_index = max(int(centre_index - args.gaussian_window * sigma_gridpoints), 0)
         window_right_index = min(int(centre_index + args.gaussian_window * sigma_gridpoints), len(xvalues))

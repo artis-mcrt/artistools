@@ -14,6 +14,7 @@ import polars.selectors as cs
 
 import artistools as at
 from artistools.constants import C_cm_per_s as CLIGHT
+from artistools.constants import day_to_s
 
 types = {10: "TYPE_GAMMA", 11: "TYPE_RPKT", 20: "TYPE_NTLEPTON", 32: "TYPE_ESCAPE"}
 
@@ -143,8 +144,8 @@ def add_derived_columns_lazy(
     dfpackets = dfpackets.lazy()
 
     if modelpath is not None:
-        timebins = [tstart * 86400.0 for tstart in at.get_timestep_times(modelpath, loc="start")] + [
-            at.get_timestep_times(modelpath, loc="end")[-1] * 86400.0
+        timebins = [tstart * day_to_s for tstart in at.get_timestep_times(modelpath, loc="start")] + [
+            at.get_timestep_times(modelpath, loc="end")[-1] * day_to_s
         ]
         dfpackets = dfpackets.with_columns(
             (
@@ -182,7 +183,7 @@ def add_derived_columns_lazy(
         return dfpackets
 
     if modelmeta["dimensions"] > 1:
-        t_model_s = modelmeta["t_model_init_days"] * 86400.0
+        t_model_s = modelmeta["t_model_init_days"] * day_to_s
         vmax = modelmeta["vmax_cmps"]
 
         if modelmeta["dimensions"] == 2:
@@ -465,7 +466,7 @@ def get_rankbatch_parquetfile(
                         )
                         / CLIGHT
                     )
-                    / 86400.0
+                    / day_to_s
                 ).cast(pl.Float32)
             ).sort(by=["type_id", "escape_type_id", "t_arrive_d"])
 

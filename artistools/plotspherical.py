@@ -9,6 +9,8 @@ import numpy as np
 import polars as pl
 
 import artistools as at
+from artistools.constants import C_cm_per_s
+from artistools.constants import day_to_s
 from artistools.misc import print_theta_phi_definitions
 
 
@@ -79,18 +81,18 @@ def plot_spherical(
 
     if "emvelocityoverc" in plotvars:
         aggs.append(
-            ((pl.col("emission_velocity") * pl.col("e_rf")).mean() / pl.col("e_rf").mean() / 29979245800).alias(
+            ((pl.col("emission_velocity") * pl.col("e_rf")).mean() / pl.col("e_rf").mean() / C_cm_per_s).alias(
                 "emvelocityoverc"
             )
         )
 
     if "emvelocityoverc_sigma" in plotvars:
-        aggs.append(((pl.col("emission_velocity") / 29979245800).std()).alias("emvelocityoverc_sigma"))
+        aggs.append(((pl.col("emission_velocity") / C_cm_per_s).std()).alias("emvelocityoverc_sigma"))
 
     if "emlosvelocityoverc" in plotvars:
         aggs.append(
             (
-                (pl.col("emission_velocity_lineofsight") * pl.col("e_rf")).mean() / pl.col("e_rf").mean() / 29979245800
+                (pl.col("emission_velocity_lineofsight") * pl.col("e_rf")).mean() / pl.col("e_rf").mean() / C_cm_per_s
             ).alias("emlosvelocityoverc")
         )
 
@@ -98,7 +100,11 @@ def plot_spherical(
         inverse_solidangle_fraction = nphibins * ncosthetabins
         aggs.append(
             (
-                pl.col("e_rf").sum() / nprocs_read * inverse_solidangle_fraction / (timemaxdays - timemindays) / 86400
+                pl.col("e_rf").sum()
+                / nprocs_read
+                * inverse_solidangle_fraction
+                / (timemaxdays - timemindays)
+                / day_to_s
             ).alias("luminosity")
         )
 

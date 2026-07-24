@@ -10,6 +10,7 @@ import numpy as np
 import numpy.typing as npt
 import polars as pl
 
+from artistools.constants import day_to_s
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import readnoncommentline
 from artistools.misc.fileio import zopen
@@ -98,7 +99,7 @@ def get_wid_init_at_tmodel(
         _, modelmeta = get_modeldata(modelpath)
         assert modelmeta["dimensions"] == 3
         ngridpoints = modelmeta["npts_model"]
-        xmax = modelmeta["vmax_cmps"] * modelmeta["t_model_init_days"] * 86400.0
+        xmax = modelmeta["vmax_cmps"] * modelmeta["t_model_init_days"] * day_to_s
     assert ngridpoints is not None
     ncoordgridx: int = round(ngridpoints ** (1.0 / 3.0))
 
