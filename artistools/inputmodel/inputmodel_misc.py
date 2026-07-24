@@ -481,6 +481,18 @@ def get_empty_3d_model(
     return dfmodel, modelmeta
 
 
+def min_abs_coordinate(ax: str) -> pl.Expr:
+    """Get the smallest |coordinate| reached anywhere inside a cell along axis ax.
+
+    A cell that straddles the axis (pos_min < 0 < pos_max) contains the origin plane, so its closest approach to that
+    plane is zero rather than min(|pos_min|, |pos_max|).
+    """
+    pos_min = pl.col(f"pos_{ax}_min")
+    pos_max = pl.col(f"pos_{ax}_max")
+
+    return pl.when(pos_min * pos_max < 0.0).then(pl.lit(0.0)).otherwise(pl.min_horizontal(pos_min.abs(), pos_max.abs()))
+
+
 def add_derived_cols_to_modeldata(
     dfmodel: pl.DataFrame | pl.LazyFrame,
     derived_cols: Sequence[str],
@@ -497,7 +509,11 @@ def add_derived_cols_to_modeldata(
     keep_all = any(c.lower() == "all" for c in derived_cols)
 
     if "logrho" not in dfmodel.collect_schema().names() and "rho" in dfmodel.collect_schema().names():
-        dfmodel = dfmodel.with_columns(logrho=pl.col("rho").log10())
+        # clamp at -99 to match save_modeldata(), which treats -99 as the empty-cell marker. A plain log10() would give
+        # -inf for rho == 0, which cannot be written to model.txt
+        dfmodel = dfmodel.with_columns(
+            logrho=pl.when(pl.col("rho") > 0).then(pl.max_horizontal(-99, pl.col("rho").log10())).otherwise(-99.0)
+        )
 
     if "rho" not in dfmodel.collect_schema().names() and "logrho" in dfmodel.collect_schema().names():
         dfmodel = dfmodel.with_columns(
@@ -550,10 +566,7 @@ def add_derived_cols_to_modeldata(
             # add a 3D radius column
             axes.append("r")
             dfmodel = dfmodel.with_columns(
-                pos_r_min=(
-                    pl.col("pos_rcyl_min").pow(2)
-                    + pl.min_horizontal(pl.col("pos_z_min").abs(), pl.col("pos_z_max").abs()).pow(2)
-                ).sqrt(),
+                pos_r_min=(pl.col("pos_rcyl_min").pow(2) + min_abs_coordinate("z").pow(2)).sqrt(),
                 pos_r_mid=(pl.col("pos_rcyl_mid").pow(2) + pl.col("pos_z_mid").pow(2)).sqrt(),
                 pos_r_max=(
                     pl.col("pos_rcyl_max").pow(2)
@@ -611,9 +624,7 @@ def add_derived_cols_to_modeldata(
             # xyz positions can be negative, so the min xyz side of the cube can have a larger radius than the max side
             dfmodel = dfmodel.with_columns(
                 pos_r_min=(
-                    pl.min_horizontal(pl.col("pos_x_min").abs(), pl.col("pos_x_max").abs()).pow(2)
-                    + pl.min_horizontal(pl.col("pos_y_min").abs(), pl.col("pos_y_max").abs()).pow(2)
-                    + pl.min_horizontal(pl.col("pos_z_min").abs(), pl.col("pos_z_max").abs()).pow(2)
+                    min_abs_coordinate("x").pow(2) + min_abs_coordinate("y").pow(2) + min_abs_coordinate("z").pow(2)
                 ).sqrt(),
                 pos_r_mid=(pl.col("pos_x_mid").pow(2) + pl.col("pos_y_mid").pow(2) + pl.col("pos_z_mid").pow(2)).sqrt(),
                 pos_r_max=(
@@ -638,12 +649,11 @@ def add_derived_cols_to_modeldata(
             )
 
     assert axes
-    # get total kinetic energy from orthogonal components
-    # all coord system also have a radial component calculated, so ignore this
+    # get total kinetic energy from orthogonal components. Every coordinate system also gets a radial component, which
+    # would double-count the orthogonal ones, so only use "r" for 1D models where it is the sole axis
+    orthogonal_axes = ["r"] if dimensions == 1 else [ax for ax in axes if ax != "r"]
     dfmodel = dfmodel.with_columns(
-        kinetic_en_erg=(
-            pl.sum_horizontal(pl.col(f"kinetic_en_erg_{ax}") for ax in axes if (ax != "r" or dimensions == 1))
-        )
+        kinetic_en_erg=(pl.sum_horizontal(pl.col(f"kinetic_en_erg_{ax}") for ax in orthogonal_axes))
     )
 
     for col in dfmodel.collect_schema().names():
@@ -653,8 +663,8 @@ def add_derived_cols_to_modeldata(
     if "rho" in dfmodel.collect_schema().names() and "volume" in dfmodel.collect_schema().names():
         dfmodel = dfmodel.with_columns(mass_g=(pl.col("rho") * pl.col("volume")))
 
-    # add vel_*_on_c scaled velocities
-    dfmodel = dfmodel.with_columns((cs.starts_with("vel_") / C_cm_per_s).name.suffix("_on_c"))
+    # add vel_*_on_c scaled velocities. The vel_*_kmps columns are in km/s instead of cm/s, so exclude them here
+    dfmodel = dfmodel.with_columns(((cs.starts_with("vel_") - cs.ends_with("_kmps")) / C_cm_per_s).name.suffix("_on_c"))
 
     if unknown_cols := [
         col
@@ -694,7 +704,13 @@ def add_derived_cols_to_modeldata(
 
 
 def get_cell_angle(dfmodel: pd.DataFrame) -> pd.DataFrame:
-    """Get angle between origin to cell midpoint and the syn_dir axis."""
+    """Get angle between origin to cell midpoint and the syn_dir axis.
+
+    Note that the "phi" column here does not use the same convention as the "phi" column added to packets by
+    artistools.packets.add_packet_directions_lazypolars(): the two branches of the testphi test are swapped, so this
+    phi is mirrored (2 pi - phi) relative to the packet one. Each is self-consistent with its own binning, but the
+    two are not interchangeable.
+    """
     syn_dir = np.array([0.0, 0.0, 1.0])
     xhat = np.array([1.0, 0.0, 0.0])
 

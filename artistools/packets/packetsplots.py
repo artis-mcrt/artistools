@@ -9,6 +9,7 @@ import numpy as np
 import polars as pl
 
 import artistools as at
+from artistools.constants import c_ang_per_s
 from artistools.constants import C_cm_per_s as CLIGHT
 from artistools.constants import day_to_s
 
@@ -61,7 +62,7 @@ def get_reduced_packet_set(
     slice before filtering to the requested escape-angle bins.
     """
     nprocs_read, dfpackets_selected = get_required_packets(modelpath, Z, ion_stage, srII_triplet=srII_triplet)
-    dfpackets_selected = dfpackets_selected.with_columns((CLIGHT * 1e8 / pl.col("nu_rf")).alias("lambda_rf"))
+    dfpackets_selected = dfpackets_selected.with_columns((c_ang_per_s / pl.col("nu_rf")).alias("lambda_rf"))
 
     if wavelen is not None and binwidth is not None:
         lam_min = wavelen - binwidth / 2
@@ -97,7 +98,8 @@ def packets_2d_hist_bin_and_ejecta_vel(
 
     # Step 1) collect packets IDs and select according to arrival time
     Z_list = [Z] if Z else list(range(1, 101))
-    ion_stage_list = [at.decode_roman_numeral(ion_stage_str)] if ion_stage_str else list(range(1, 5))
+    # the "all ions" case must cover every ion stage, otherwise the allions_ output filename is a lie
+    ion_stage_list = [at.decode_roman_numeral(ion_stage_str)] if ion_stage_str else list(range(1, 102))
 
     nprocs_read, dfpackets = get_reduced_packet_set(
         modelpath, dirbin, Z_list, ion_stage_list, wavelen=wavelen, binwidth=binwidth, srII_triplet=srIItriplet

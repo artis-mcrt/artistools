@@ -187,6 +187,30 @@ def join_cell_modeldata(
     ), modelmeta
 
 
+def add_derived_estimator_columns(pldflazy: pl.LazyFrame) -> pl.LazyFrame:
+    """Add quantities derived from the estimator columns that were read from file."""
+    colnames = pldflazy.collect_schema().names()
+
+    if "heating_gamma/gamma_dep" in colnames:
+        pldflazy = pldflazy.with_columns(gamma_dep=pl.col("heating_gamma") / pl.col("heating_gamma/gamma_dep"))
+
+    if "deposition_gamma" in colnames:
+        # sum up the gamma, elec, positron, alpha deposition contributions
+        pldflazy = pldflazy.with_columns(total_dep=pl.sum_horizontal(cs.starts_with("deposition_")))
+    elif "heating_heating_dep/total_dep" in colnames:
+        # for older files with no deposition data, take heating part of deposition and heating fraction
+        pldflazy = pldflazy.with_columns(total_dep=pl.col("heating_dep") / pl.col("heating_heating_dep/total_dep"))
+
+    if any(col.startswith("nnelement_") for col in colnames):
+        # only fill the nnelement columns: a missing number density means zero, but every other column (Te, TR, nne,
+        # ...) must keep its nulls so that missing data isn't silently read as a real zero
+        pldflazy = pldflazy.with_columns(cs.starts_with("nnelement_").fill_null(0)).with_columns(
+            nntot=pl.sum_horizontal(cs.starts_with("nnelement_"))
+        )
+
+    return pldflazy
+
+
 def scan_estimators(
     modelpath: Path | str = ".",
     modelgridindex: int | Sequence[int] | None = None,
@@ -281,20 +305,7 @@ def scan_estimators(
     if match_timestep is not None:
         pldflazy = pldflazy.filter(pl.col("timestep").is_in(match_timestep))
 
-    colnames = pldflazy.collect_schema().names()
-    # add some derived quantities
-    if "heating_gamma/gamma_dep" in colnames:
-        pldflazy = pldflazy.with_columns(gamma_dep=pl.col("heating_gamma") / pl.col("heating_gamma/gamma_dep"))
-
-    if "deposition_gamma" in colnames:
-        # sum up the gamma, elec, positron, alpha deposition contributions
-        pldflazy = pldflazy.with_columns(total_dep=pl.sum_horizontal(cs.starts_with("deposition_")))
-    elif "heating_heating_dep/total_dep" in colnames:
-        # for older files with no deposition data, take heating part of deposition and heating fraction
-        pldflazy = pldflazy.with_columns(total_dep=pl.col("heating_dep") / pl.col("heating_heating_dep/total_dep"))
-
-    if any(col.startswith("nnelement_") for col in colnames):
-        pldflazy = pldflazy.with_columns(nntot=pl.sum_horizontal(cs.starts_with("nnelement_"))).fill_null(0)
+    pldflazy = add_derived_estimator_columns(pldflazy)
 
     if join_modeldata:
         pldflazy, _ = join_cell_modeldata(estimators=pldflazy, modelpath=modelpath, verbose=verbose)

@@ -59,8 +59,8 @@ def timeshift_fluxscale_co56law(scaletoreftime: float | int | None, spectime: fl
 def get_dfspectrum_x_y_with_units(
     dfspectrum: pl.DataFrame | pl.LazyFrame, xunit: str, yvariable: str, fluxdistance_mpc: float | int
 ) -> pl.LazyFrame:
-    h_ev_s = 4.1356677e-15  # Planck's constant [eV s]
     from artistools.constants import h_erg_s
+    from artistools.constants import h_ev_s
     from artistools.constants import megaparsec_to_cm
 
     dfspectrum = dfspectrum.lazy()
@@ -317,7 +317,7 @@ def convert_xunit_aliases_to_canonical(xunit: str) -> str:
 def convert_angstroms_to_unit[T: (float, npt.NDArray[np.floating])](value_angstroms: T, new_units: str) -> T:
     """Convert a wavelength in angstroms to a different unit, either length, frequency, or energy."""
     hc_ev_angstroms = const.h_ev_s * const.c_ang_per_s  # [eV angstroms]
-    hc_erg_angstroms = hc_ev_angstroms * 1.60218e-12  # [erg angstroms]
+    hc_erg_angstroms = hc_ev_angstroms * const.EV_to_erg  # [erg angstroms]
     match new_units.lower():
         case "erg":
             return hc_erg_angstroms / value_angstroms  # ty:ignore[invalid-return-type]
@@ -346,6 +346,8 @@ def convert_unit_to_angstroms[T: (float, npt.NDArray[np.floating])](value: T, ol
     h = const.h_ev_s
     hc_ev_angstroms = h * c  # [eV angstroms]
     match old_units.lower():
+        case "erg":
+            return hc_ev_angstroms * const.EV_to_erg / value  # ty:ignore[invalid-return-type]
         case "ev":
             return hc_ev_angstroms / value  # ty:ignore[invalid-return-type]
         case "kev":
@@ -964,6 +966,12 @@ def get_flux_contributions(
     emissiondata: dict[int, pl.DataFrame] = {}
     absorptiondata: dict[int, pl.DataFrame] = {}
     maxion: int | None = None
+
+    # emission and absorption files store one row per (frequency, time) pair, with time varying fastest. Polarisation
+    # files hold the I, Q, and U components, so each frequency is followed by three times as many rows.
+    n_timeblocks = len(arr_tmid)
+    polarisation_notified = False
+
     for dbin in dbinlist:
         if getemission:
             emissionfilenames = ["emission.out", "emissionpol.out"] if use_lastemissiontype else ["emissiontrue.out"]
@@ -974,9 +982,11 @@ def get_flux_contributions(
             emissionfilename = firstexisting(emissionfilenames, folder=modelpath, tryzipped=True)
 
             if "pol" in str(emissionfilename):
-                print("This artis run contains polarisation data")
+                if not polarisation_notified:
+                    print("This artis run contains polarisation data")
+                    polarisation_notified = True
                 # File contains I, Q and U and so times are repeated 3 times
-                arr_tmid = list(np.tile(np.array(arr_tmid), 3))
+                n_timeblocks = 3 * len(arr_tmid)
 
             emissiondata[dbin] = read_emission_absorption_file(emissionfilename).collect()
 
@@ -993,15 +1003,21 @@ def get_flux_contributions(
             else:
                 assert maxion == int(maxion_float)
 
-            # check that the row count is product of timesteps and frequency bins found in spec.out
-            assert emissiondata[dbin].select(pl.len()).item() == len(arraynu) * len(arr_tmid)
+            # check that the row count is product of time blocks and frequency bins found in spec.out
+            assert emissiondata[dbin].select(pl.len()).item() == len(arraynu) * n_timeblocks
 
         if getabsorption:
             absorptionfilenames = ["absorption.out", "absorptionpol.out"]
-            if directionbin is not None:
+            if dbin != -1:
                 absorptionfilenames = [x.replace(".out", f"_res_{dbin:02d}.out") for x in absorptionfilenames]
 
             absorptionfilename = firstexisting(absorptionfilenames, folder=modelpath, tryzipped=True)
+
+            if "pol" in str(absorptionfilename):
+                if not polarisation_notified:
+                    print("This artis run contains polarisation data")
+                    polarisation_notified = True
+                n_timeblocks = 3 * len(arr_tmid)
 
             absorptiondata[dbin] = read_emission_absorption_file(absorptionfilename).collect()
             absorption_maxion_float = len(absorptiondata[dbin].collect_schema().names()) / nelements
@@ -1015,7 +1031,7 @@ def get_flux_contributions(
                 )
             else:
                 assert absorption_maxion == maxion
-            assert absorptiondata[dbin].select(pl.len()).item() == len(arraynu) * len(arr_tmid)
+            assert absorptiondata[dbin].select(pl.len()).item() == len(arraynu) * n_timeblocks
 
     array_flambda_emission_total = np.zeros_like(arraylambda, dtype=float)
     contribution_list = []
@@ -1041,7 +1057,7 @@ def get_flux_contributions(
                 if getemission:
                     array_fnu_emission = weighted_average_spectra([
                         (
-                            emissiondata[dbin][timestep :: len(arr_tmid), selectedcolumn].to_numpy(),
+                            emissiondata[dbin][timestep::n_timeblocks, selectedcolumn].to_numpy(),
                             arr_tdelta[timestep] / len(dbinlist),
                         )
                         for timestep in range(timestepmin, timestepmax + 1)
@@ -1053,7 +1069,7 @@ def get_flux_contributions(
                 if absorptiondata and selectedcolumn < nelements * maxion:  # bound-bound process
                     array_fnu_absorption = weighted_average_spectra([
                         (
-                            absorptiondata[dbin][timestep :: len(arr_tmid), selectedcolumn].to_numpy(),
+                            absorptiondata[dbin][timestep::n_timeblocks, selectedcolumn].to_numpy(),
                             arr_tdelta[timestep] / len(dbinlist),
                         )
                         for timestep in range(timestepmin, timestepmax + 1)

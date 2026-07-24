@@ -286,3 +286,14 @@ def test_spectra_timeseries_subplots() -> None:
 
 def test_writespectra() -> None:
     at.spectra.writespectra.main(argsraw=[], modelpath=modelpath)
+
+
+@pytest.mark.parametrize("xunit", ["angstroms", "nm", "micron", "hz", "ev", "kev", "mev", "erg"])
+def test_xunit_conversion_roundtrip(xunit: str) -> None:
+    """Every unit accepted by convert_angstroms_to_unit must also be invertible by convert_unit_to_angstroms."""
+    arr_lambda = np.array([1.0, 100.0, 5000.0, 1e5])
+
+    arr_converted = at.spectra.convert_angstroms_to_unit(arr_lambda, xunit)
+    arr_roundtrip = at.spectra.convert_unit_to_angstroms(arr_converted, xunit)
+
+    assert arr_roundtrip == pytest.approx(arr_lambda, rel=1e-9)
