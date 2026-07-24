@@ -25,6 +25,6 @@ from artistools.spectra.spectra import make_virtual_spectra_summed_file as make_
 from artistools.spectra.spectra import print_integrated_flux as print_integrated_flux
 from artistools.spectra.spectra import read_spec_res as read_spec_res
 from artistools.spectra.spectra import sort_and_reduce_flux_contribution_list as sort_and_reduce_flux_contribution_list
-from artistools.spectra.spectra import stackspectra as stackspectra
 from artistools.spectra.spectra import timeshift_fluxscale_co56law as timeshift_fluxscale_co56law
+from artistools.spectra.spectra import weighted_average_spectra as weighted_average_spectra
 from artistools.spectra.writespectra import write_flambda_spectra as write_flambda_spectra

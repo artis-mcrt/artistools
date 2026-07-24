@@ -365,7 +365,9 @@ def convert_unit_to_angstroms[T: (float, npt.NDArray[np.floating])](value: T, ol
             raise ValueError(msg)
 
 
-def stackspectra(spectra_and_factors: list[tuple[npt.NDArray[np.floating], float]]) -> npt.NDArray[np.floating]:
+def weighted_average_spectra(
+    spectra_and_factors: list[tuple[npt.NDArray[np.floating], float]],
+) -> npt.NDArray[np.floating]:
     """Average spectra using (normalised) weighting factors, i.e., specout[nu] = (spec1[nu] * factor1 + spec2[nu] * factor2 + ...) / (factor1 + factor2 + ...).
 
     spectra_and_factors should be a list of tuples: spectra[], factor.
@@ -1037,7 +1039,7 @@ def get_flux_contributions(
                 # if linelabel.startswith('Fe ') or linelabel.endswith("-free"):
                 #     continue
                 if getemission:
-                    array_fnu_emission = stackspectra([
+                    array_fnu_emission = weighted_average_spectra([
                         (
                             emissiondata[dbin][timestep :: len(arr_tmid), selectedcolumn].to_numpy(),
                             arr_tdelta[timestep] / len(dbinlist),
@@ -1049,7 +1051,7 @@ def get_flux_contributions(
                     array_fnu_emission = np.zeros_like(arraylambda, dtype=float)
 
                 if absorptiondata and selectedcolumn < nelements * maxion:  # bound-bound process
-                    array_fnu_absorption = stackspectra([
+                    array_fnu_absorption = weighted_average_spectra([
                         (
                             absorptiondata[dbin][timestep :: len(arr_tmid), selectedcolumn].to_numpy(),
                             arr_tdelta[timestep] / len(dbinlist),
