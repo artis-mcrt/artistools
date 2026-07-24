@@ -30,8 +30,8 @@ class FeatureTuple(t.NamedTuple):
     highestlambda: float
     atomic_number: int
     ion_stage: int
-    upperlevelindicies: Sequence[int]
-    lowerlevelindicies: Sequence[int]
+    upperlevelindices: Sequence[int]
+    lowerlevelindices: Sequence[int]
 
 
 def get_line_fluxes_from_packets(
@@ -114,7 +114,7 @@ def get_line_fluxes_from_pops(
             .read_files(modelpath)
             .filter(pl.col("Z") == feature.atomic_number)
             .filter(pl.col("ion_stage") == feature.ion_stage)
-            .filter(pl.col("level").is_in(feature.upperlevelindicies))
+            .filter(pl.col("level").is_in(feature.upperlevelindices))
         )
 
         ion = adata.query("Z == @feature.atomic_number and ion_stage == @feature.ion_stage").iloc[0]
@@ -130,7 +130,7 @@ def get_line_fluxes_from_pops(
             print(f"{feature.approxlambda}A {timedays}d (ts {timestep})")
 
             for upperlevelindex, lowerlevelindex in zip(
-                feature.upperlevelindicies, feature.lowerlevelindicies, strict=False
+                feature.upperlevelindices, feature.lowerlevelindices, strict=False
             ):
                 unaccounted_shellvol = 0.0  # account for the volume of empty shells
                 unaccounted_shells: list[int] = []
@@ -219,8 +219,8 @@ def get_closelines(
         highestlambda=highestlambda,  # ty:ignore[invalid-argument-type]
         atomic_number=atomic_number,
         ion_stage=ion_stage,
-        upperlevelindicies=tuple(dflinelistclosematches["upperlevelindex"].to_list()),
-        lowerlevelindicies=tuple(dflinelistclosematches["lowerlevelindex"].to_list()),
+        upperlevelindices=tuple(dflinelistclosematches["upperlevelindex"].to_list()),
+        lowerlevelindices=tuple(dflinelistclosematches["lowerlevelindex"].to_list()),
     )
 
 
