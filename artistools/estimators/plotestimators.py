@@ -420,6 +420,10 @@ def normalise_plotitems(plotitems: t.Any, estimatorcolumns: Collection[str]) -> 
         if not isinstance(plotvar, str) or "=" not in plotvar
     ]
 
+    if not plotvars:
+        msg = "Empty plot item list; provide at least one plot variable after -plot (e.g. -plot Te)."
+        raise ValueError(msg)
+
     if isinstance(plotvars[0], str) and plotvars[0] not in estimatorcolumns and all(map(could_be_ion, plotvars)):
         # plotting this as a variable would cause an error, so interpret it as ion populations instead
         new_plotvars = [["populations", plotvars]]
