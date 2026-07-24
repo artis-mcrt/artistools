@@ -180,13 +180,26 @@ def get_from_packets(
 
 def generate_band_lightcurve_data(
     modelpath: Path | str,
-    args: argparse.Namespace,
+    args: argparse.Namespace | None = None,
     dirbin: int = -1,
     modelnumber: int | None = None,  # ruff:ignore[unused-function-argument]
+    **kwargs: t.Any,
 ) -> dict[str, t.Any]:
     """Integrate spectra to get band magnitude vs time. Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py."""
     from scipy.interpolate import interp1d
 
+    if args is not None and kwargs:
+        msg = "Specify either args or keyword options, not both"
+        raise TypeError(msg)
+    if args is None:
+        args = argparse.Namespace(**kwargs)
+        args.plotvspecpol = getattr(args, "plotvspecpol", False)
+        args.plotviewingangle = getattr(args, "plotviewingangle", False)
+        args.filter = getattr(args, "filter", None)
+        args.timemin = getattr(args, "timemin", None)
+        args.timemax = getattr(args, "timemax", None)
+        args.average_over_phi_angle = getattr(args, "average_over_phi_angle", False)
+        args.average_over_theta_angle = getattr(args, "average_over_theta_angle", False)
     if args.plotvspecpol and Path(modelpath, "vpkt.txt").is_file():
         print("Found vpkt.txt, using virtual packets")
         stokes_params = (
@@ -383,8 +396,17 @@ def get_spectrum_in_filter_range(
 
 
 def get_band_lightcurve(
-    band_lightcurve_data: dict[str, Sequence[tuple[float, float]]], band_name: str, args: argparse.Namespace
+    band_lightcurve_data: dict[str, Sequence[tuple[float, float]]],
+    band_name: str,
+    args: argparse.Namespace | None = None,
+    **kwargs: t.Any,
 ) -> tuple[Sequence[float], npt.NDArray[np.floating]]:
+    if args is not None and kwargs:
+        msg = "Specify either args or keyword options, not both"
+        raise TypeError(msg)
+    if args is None:
+        args = argparse.Namespace(**kwargs)
+
     times, brightness_in_mag = zip(
         *[
             (time, brightness)

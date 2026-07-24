@@ -2,6 +2,7 @@ import math
 
 import numpy as np
 import polars as pl
+import pytest
 
 import artistools as at
 
@@ -54,7 +55,53 @@ def test_directionbins() -> None:
 
 
 def test_get_virtual_packets() -> None:
-    _, dfvpkt = at.packets.get_virtual_packets(modelpath=at.get_path("testdata") / "vpktcontrib", maxpacketfiles=2)
+    nprocs_read, dfvpkt = at.packets.get_virtual_packets(
+        modelpath=at.get_path("testdata") / "vpktcontrib", maxpacketfiles=2
+    )
+    dfvpkt = dfvpkt.collect()
 
-    npkts_total = dfvpkt.select(pl.len()).collect().item()
-    assert npkts_total == 13783
+    assert nprocs_read == 2
+    assert dfvpkt.height == 13783
+    assert dfvpkt.columns == [
+        "emissiontype",
+        "trueemissiontype",
+        "absorption_type",
+        "absorption_freq",
+        "dir0_t_arrive_d",
+        "dir0_nu_rf",
+        "dir0_e_rf_0",
+        "dir0_e_rf_1",
+        "dir0_e_rf_2",
+        "dir1_t_arrive_d",
+        "dir1_nu_rf",
+        "dir1_e_rf_0",
+        "dir1_e_rf_1",
+        "dir1_e_rf_2",
+        "dir2_t_arrive_d",
+        "dir2_nu_rf",
+        "dir2_e_rf_0",
+        "dir2_e_rf_1",
+        "dir2_e_rf_2",
+        "mpirank",
+        "type_id",
+        "escape_type_id",
+    ]
+    assert dfvpkt.schema["emissiontype"] == pl.Int32
+    assert dfvpkt.schema["dir0_t_arrive_d"] == pl.Float32
+    assert dfvpkt.schema["dir0_e_rf_0"] == pl.Float64
+    assert dfvpkt.schema["mpirank"] == pl.Int32
+    assert dfvpkt["dir0_t_arrive_d"].is_sorted()
+    assert dfvpkt["type_id"].unique().to_list() == [32]
+    assert dfvpkt["escape_type_id"].unique().to_list() == [11]
+    assert dfvpkt["dir0_t_arrive_d"].min() == pytest.approx(-1.0)
+    assert dfvpkt["dir0_t_arrive_d"].max() == pytest.approx(145.587997)
+
+    rank_summary = (
+        dfvpkt
+        .group_by("mpirank")
+        .agg(pl.len().alias("packet_count"), pl.col("dir0_e_rf_0").sum().alias("energy_sum"))
+        .sort("mpirank")
+    )
+    assert rank_summary["mpirank"].to_list() == [0, 1]
+    assert rank_summary["packet_count"].to_list() == [9402, 4381]
+    assert rank_summary["energy_sum"].to_list() == pytest.approx([5.56564454996292e44, 1.8265647804307455e44])

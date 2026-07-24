@@ -1,9 +1,11 @@
 import typing as t
+from operator import itemgetter
 from pathlib import Path
 from unittest import mock
 
 import matplotlib.axes as mplax
 import numpy as np
+import pytest
 from pytest_codspeed.plugin import BenchmarkFixture
 
 import artistools as at
@@ -62,6 +64,76 @@ def test_lightcurve_plot_frompackets(mockplot: t.Any, benchmark: BenchmarkFixtur
 
 def test_band_lightcurve_plot() -> None:
     at.lightcurve.plot(argsraw=[], modelpath=modelpath, filter=["B"], outputfile=outputpath)
+
+
+def test_band_magnitude_calculations() -> None:
+    band_magnitude_data = at.lightcurve.generate_band_lightcurve_data(
+        modelpath,
+        plotvspecpol=False,
+        plotviewingangle=False,
+        filter=["bol", "U", "B", "V", "I"],
+        timemin=290.0,
+        timemax=300.0,
+        average_over_phi_angle=False,
+        average_over_theta_angle=False,
+    )
+
+    expected_summary = {
+        "bol": ((290.381, -12.522955565351443), (299.309, -12.290504747994545), -12.486325221679541),
+        "U": ((290.381, -11.72755172004823), (299.309, -10.940395871435907), -11.552651445171437),
+        "B": ((290.381, -12.80311303703452), (299.309, -12.468614058886018), -12.729462436319448),
+        "V": ((290.381, -13.134615284653417), (299.309, -12.922527436514791), -13.018633619232805),
+        "I": ((290.381, -12.353784741224969), (299.309, -12.099751514986119), -12.443177921324608),
+    }
+    expected_brightest = {
+        "bol": (291.359, -12.572391488690043),
+        "U": (298.303, -11.927722052704134),
+        "B": (298.303, -12.885253294760465),
+        "V": (293.327, -13.166532931259166),
+        "I": (295.307, -12.701305015349229),
+    }
+
+    assert band_magnitude_data.keys() == expected_summary.keys()
+    for band_name, (expected_first, expected_last, expected_mean) in expected_summary.items():
+        magnitudes = band_magnitude_data[band_name]
+        assert len(magnitudes) == 10
+        assert magnitudes[0] == pytest.approx(expected_first)
+        assert magnitudes[-1] == pytest.approx(expected_last)
+        assert np.mean([magnitude for _, magnitude in magnitudes]) == pytest.approx(expected_mean)
+        assert min(magnitudes, key=itemgetter(1)) == pytest.approx(expected_brightest[band_name])
+
+
+def test_band_magnitude_selection_and_colour() -> None:
+    band_magnitude_data = at.lightcurve.generate_band_lightcurve_data(
+        modelpath,
+        plotvspecpol=False,
+        plotviewingangle=False,
+        filter=["B", "V"],
+        timemin=290.0,
+        timemax=300.0,
+        average_over_phi_angle=False,
+        average_over_theta_angle=False,
+    )
+
+    times, b_magnitudes = at.lightcurve.get_band_lightcurve(band_magnitude_data, "B", timemin=293.0, timemax=296.0)
+
+    assert times == pytest.approx([293.327, 294.315, 295.307])
+    assert b_magnitudes == pytest.approx([-12.708765155582157, -12.656976514620492, -12.794116835974194])
+
+    colour_times, b_minus_v = at.lightcurve.get_colour_delta_mag(band_magnitude_data, ["B", "V"])
+    assert colour_times == pytest.approx([time for time, _ in band_magnitude_data["B"]])
+    assert b_minus_v == pytest.approx([
+        0.33150224761889824,
+        0.2741971168171453,
+        0.23314295407410945,
+        0.4577677756770093,
+        0.34487289523804776,
+        0.0984198887313692,
+        0.2854667714378305,
+        0.38998118936833315,
+        0.022447612542014994,
+        0.4539133776287727,
+    ])
 
 
 def test_band_lightcurve_peakmag_risetime_plot() -> None:
