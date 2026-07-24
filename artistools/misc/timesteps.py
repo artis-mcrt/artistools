@@ -287,12 +287,8 @@ def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | int | 
     # find the last possible escape time and subtract the largest possible travel time (observer time correction)
     try:
         depdata = get_deposition(modelpath=modelpath)  # use this file to find the last computed timestep
-        nts_last = (
-            depdata
-            .select(pl.col("timestep").max() if "timestep" in depdata.collect_schema().names() else (pl.len() - 1))
-            .collect()
-            .item()
-        )
+        # get_deposition() always provides a timestep column, adding a row index if the file has no such column
+        nts_last = depdata.select(pl.col("timestep").max()).collect().item()
     except FileNotFoundError:
         print("WARNING: No deposition.out file found. Assuming all timesteps have been computed")
         nts_last = len(t_end) - 1

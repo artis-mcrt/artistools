@@ -77,6 +77,8 @@ def get_from_packets(
 
     vpkt_config = at.get_vpkt_config(modelpath) if directionbins_are_vpkt_observers else None
     assert not directionbins_are_vpkt_observers or pellet_nucname is None  # we don't track which pellet led to vpkts
+    # only set for real packets, where the escape times are measured at the model surface
+    escapesurfacegamma: float | None = None
     if directionbins_are_vpkt_observers:
         nprocs_read, dfpackets = at.packets.get_virtual_packets(modelpath, maxpacketfiles=maxpacketfiles)
     else:
@@ -141,7 +143,7 @@ def get_from_packets(
             .drop("e_rf_sum", f"{timecol}_bin")
         )
 
-        if "t_arrive_cmf_d" in pldfpackets_dirbin.collect_schema().names():
+        if escapesurfacegamma is not None and "t_arrive_cmf_d" in pldfpackets_dirbin.collect_schema().names():
             lcdata[dirbin] = (
                 lcdata[dirbin]
                 .join(

@@ -481,6 +481,18 @@ def get_empty_3d_model(
     return dfmodel, modelmeta
 
 
+def min_abs_coordinate(ax: str) -> pl.Expr:
+    """Get the smallest |coordinate| reached anywhere inside a cell along axis ax.
+
+    A cell that straddles the axis (pos_min < 0 < pos_max) contains the origin plane, so its closest approach to that
+    plane is zero rather than min(|pos_min|, |pos_max|).
+    """
+    pos_min = pl.col(f"pos_{ax}_min")
+    pos_max = pl.col(f"pos_{ax}_max")
+
+    return pl.when(pos_min * pos_max < 0.0).then(pl.lit(0.0)).otherwise(pl.min_horizontal(pos_min.abs(), pos_max.abs()))
+
+
 def add_derived_cols_to_modeldata(
     dfmodel: pl.DataFrame | pl.LazyFrame,
     derived_cols: Sequence[str],
@@ -497,7 +509,11 @@ def add_derived_cols_to_modeldata(
     keep_all = any(c.lower() == "all" for c in derived_cols)
 
     if "logrho" not in dfmodel.collect_schema().names() and "rho" in dfmodel.collect_schema().names():
-        dfmodel = dfmodel.with_columns(logrho=pl.col("rho").log10())
+        # clamp at -99 to match save_modeldata(), which treats -99 as the empty-cell marker. A plain log10() would give
+        # -inf for rho == 0, which cannot be written to model.txt
+        dfmodel = dfmodel.with_columns(
+            logrho=pl.when(pl.col("rho") > 0).then(pl.max_horizontal(-99, pl.col("rho").log10())).otherwise(-99.0)
+        )
 
     if "rho" not in dfmodel.collect_schema().names() and "logrho" in dfmodel.collect_schema().names():
         dfmodel = dfmodel.with_columns(
@@ -550,10 +566,7 @@ def add_derived_cols_to_modeldata(
             # add a 3D radius column
             axes.append("r")
             dfmodel = dfmodel.with_columns(
-                pos_r_min=(
-                    pl.col("pos_rcyl_min").pow(2)
-                    + pl.min_horizontal(pl.col("pos_z_min").abs(), pl.col("pos_z_max").abs()).pow(2)
-                ).sqrt(),
+                pos_r_min=(pl.col("pos_rcyl_min").pow(2) + min_abs_coordinate("z").pow(2)).sqrt(),
                 pos_r_mid=(pl.col("pos_rcyl_mid").pow(2) + pl.col("pos_z_mid").pow(2)).sqrt(),
                 pos_r_max=(
                     pl.col("pos_rcyl_max").pow(2)
@@ -611,9 +624,7 @@ def add_derived_cols_to_modeldata(
             # xyz positions can be negative, so the min xyz side of the cube can have a larger radius than the max side
             dfmodel = dfmodel.with_columns(
                 pos_r_min=(
-                    pl.min_horizontal(pl.col("pos_x_min").abs(), pl.col("pos_x_max").abs()).pow(2)
-                    + pl.min_horizontal(pl.col("pos_y_min").abs(), pl.col("pos_y_max").abs()).pow(2)
-                    + pl.min_horizontal(pl.col("pos_z_min").abs(), pl.col("pos_z_max").abs()).pow(2)
+                    min_abs_coordinate("x").pow(2) + min_abs_coordinate("y").pow(2) + min_abs_coordinate("z").pow(2)
                 ).sqrt(),
                 pos_r_mid=(pl.col("pos_x_mid").pow(2) + pl.col("pos_y_mid").pow(2) + pl.col("pos_z_mid").pow(2)).sqrt(),
                 pos_r_max=(
@@ -638,12 +649,11 @@ def add_derived_cols_to_modeldata(
             )
 
     assert axes
-    # get total kinetic energy from orthogonal components
-    # all coord system also have a radial component calculated, so ignore this
+    # get total kinetic energy from orthogonal components. Every coordinate system also gets a radial component, which
+    # would double-count the orthogonal ones, so only use "r" for 1D models where it is the sole axis
+    orthogonal_axes = ["r"] if dimensions == 1 else [ax for ax in axes if ax != "r"]
     dfmodel = dfmodel.with_columns(
-        kinetic_en_erg=(
-            pl.sum_horizontal(pl.col(f"kinetic_en_erg_{ax}") for ax in axes if (ax != "r" or dimensions == 1))
-        )
+        kinetic_en_erg=(pl.sum_horizontal(pl.col(f"kinetic_en_erg_{ax}") for ax in orthogonal_axes))
     )
 
     for col in dfmodel.collect_schema().names():
@@ -653,8 +663,8 @@ def add_derived_cols_to_modeldata(
     if "rho" in dfmodel.collect_schema().names() and "volume" in dfmodel.collect_schema().names():
         dfmodel = dfmodel.with_columns(mass_g=(pl.col("rho") * pl.col("volume")))
 
-    # add vel_*_on_c scaled velocities
-    dfmodel = dfmodel.with_columns((cs.starts_with("vel_") / C_cm_per_s).name.suffix("_on_c"))
+    # add vel_*_on_c scaled velocities. The vel_*_kmps columns are in km/s instead of cm/s, so exclude them here
+    dfmodel = dfmodel.with_columns(((cs.starts_with("vel_") - cs.ends_with("_kmps")) / C_cm_per_s).name.suffix("_on_c"))
 
     if unknown_cols := [
         col
@@ -694,12 +704,18 @@ def add_derived_cols_to_modeldata(
 
 
 def get_cell_angle(dfmodel: pd.DataFrame) -> pd.DataFrame:
-    """Get angle between origin to cell midpoint and the syn_dir axis."""
+    """Get angle between origin to cell midpoint and the syn_dir axis.
+
+    The azimuthal angle is named phi_mirrored rather than phi because it is measured in the opposite sense to the
+    "phi" column that add_packet_directions_lazypolars() adds to packets: the two branches of the testphi test are
+    swapped, giving phi_mirrored == 2 pi - phi. Each is self-consistent with its own binning, but the two are not
+    interchangeable.
+    """
     syn_dir = np.array([0.0, 0.0, 1.0])
     xhat = np.array([1.0, 0.0, 0.0])
 
     cos_theta = np.zeros(len(dfmodel))
-    phi = np.zeros(len(dfmodel))
+    phi_mirrored = np.zeros(len(dfmodel))
     for i, (_, cell) in enumerate(dfmodel.iterrows()):
         mid_point = [cell["pos_x_mid"], cell["pos_y_mid"], cell["pos_z_mid"]]
         cos_theta[i] = (np.dot(mid_point, syn_dir)) / (vec_len(mid_point) * vec_len(syn_dir))
@@ -710,10 +726,10 @@ def get_cell_angle(dfmodel: pd.DataFrame) -> pd.DataFrame:
 
         vec3 = np.cross(vec2, syn_dir)
         testphi = np.dot(vec1, vec3)
-        phi[i] = math.acos(cosphi) if testphi > 0 else (math.acos(-cosphi) + np.pi)
+        phi_mirrored[i] = math.acos(cosphi) if testphi > 0 else (math.acos(-cosphi) + np.pi)
 
     dfmodel.loc[:, "cos_theta"] = cos_theta
-    dfmodel.loc[:, "phi"] = phi
+    dfmodel.loc[:, "phi_mirrored"] = phi_mirrored
     cos_bins = [-1, -0.8, -0.6, -0.4, -0.2, 0, 0.2, 0.4, 0.6, 0.8, 1]  # including end bin
     labels = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90]
     # assert at.get_viewingdirection_costhetabincount() == 10
@@ -737,7 +753,7 @@ def get_cell_angle(dfmodel: pd.DataFrame) -> pd.DataFrame:
     ]
     # reorderphibins = {5: 9, 6: 8, 7: 7, 8: 6, 9: 5}
     labels = [0, 1, 2, 3, 4, 9, 8, 7, 6, 5]
-    dfmodel.loc[:, "phi_bin"] = pd.cut(dfmodel["phi"], phibins, labels=labels)
+    dfmodel.loc[:, "phi_bin"] = pd.cut(dfmodel["phi_mirrored"], phibins, labels=labels)
 
     return dfmodel
 

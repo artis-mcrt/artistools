@@ -139,7 +139,9 @@ def add_derived_columns_lazy(
 
     if dfmodel is None:
         assert modelpath is not None, "modelpath must be provided if dfmodel is not provided"
-        dfmodel, modelmeta = at.get_modeldata(modelpath=modelpath)
+        dfmodel, modelmeta_read = at.get_modeldata(modelpath=modelpath)
+        if modelmeta is None:
+            modelmeta = modelmeta_read
 
     dfpackets = dfpackets.lazy()
 
@@ -387,7 +389,7 @@ def get_vpackets_text_columns(vpacketsfiletext: Path) -> list[str]:
     return firstline.lstrip("#").split()
 
 
-def get_rankbatch_parquetfile(
+def get_packets_rankbatch_parquetfile(
     modelpath: Path | str, batch_mpiranks: Sequence[int], batchindex: int, virtual: bool
 ) -> Path:
     """Get the path to a parquet file containing packets for a specific batch of MPI ranks. If the file does not exists or is outdated, generate it first from the text files."""
@@ -412,6 +414,8 @@ def get_rankbatch_parquetfile(
     conversion_needed = True
     if parquetfilepath.is_file():
         parquet_mtime = parquetfilepath.stat().st_mtime
+        # only the last rank's file is checked, on the assumption that a run writes all of its ranks together. An
+        # individually-updated earlier file will not invalidate the cached parquet
         if text_filepath := at.firstexisting_or_none(
             text_filenames[-1], folder=modelpath, tryzipped=True, search_subfolders=True
         ):
@@ -472,7 +476,10 @@ def get_rankbatch_parquetfile(
 
             pldf_batch = add_packet_directions_lazypolars(pldf_batch)
             pldf_batch = bin_packet_directions_polars(
-                pldf_batch, nphibins=10, ncosthetabins=10, phibintype="phibinhistoricaldescendingdiscont"
+                pldf_batch,
+                nphibins=at.get_viewingdirection_phibincount(),
+                ncosthetabins=at.get_viewingdirection_costhetabincount(),
+                phibintype="phibinhistoricaldescendingdiscont",
             )
 
         print(
@@ -510,7 +517,9 @@ def get_packets_batch_parquet_paths(
             print(f"Reading packets from {nprocs} ranks")
 
     parquetpacketsfiles = [
-        get_rankbatch_parquetfile(modelpath, batch_mpiranks=batch_mpiranks, batchindex=batchindex, virtual=virtual)
+        get_packets_rankbatch_parquetfile(
+            modelpath, batch_mpiranks=batch_mpiranks, batchindex=batchindex, virtual=virtual
+        )
         for batchindex, batch_mpiranks in mpirank_groups
     ]
     assert bool(parquetpacketsfiles)
@@ -524,10 +533,8 @@ def get_virtual_packets(modelpath: str | Path, maxpacketfiles: int | None = None
     )
 
     nbatches_read = len(vpacketparquetfiles)
-    packetsdatasize_gb = nbatches_read * Path(vpacketparquetfiles[0]).stat().st_size / 1024 / 1024 / 1024
-    print(
-        f"  data size is {packetsdatasize_gb:.1f} GB ({nbatches_read} batches * size of {vpacketparquetfiles[0].parts[-1]})"
-    )
+    packetsdatasize_gb = sum(f.stat().st_size for f in vpacketparquetfiles) / 1024 / 1024 / 1024
+    print(f"  total parquet size is {packetsdatasize_gb:.1f} GB (from {nbatches_read} batches)")
 
     # add some extra columns to imitate the real packets
     dfpackets = pl.scan_parquet(vpacketparquetfiles).with_columns(
@@ -609,10 +616,13 @@ def get_directionbin(
         vec3 = np.cross(vec2, syn_dir)
         testphi = np.dot(vec1, vec3)
 
-        phibin = (
+        # acos(cosphi) + pi reaches exactly 2 pi when cosphi == -1, which would otherwise land in the first phi bin of
+        # the next costheta ring, so clamp to the last bin
+        phibin = min(
             int(math.acos(cosphi) / 2.0 / math.pi * nphibins)
             if testphi > 0
-            else int((math.acos(cosphi) + math.pi) / 2.0 / math.pi * nphibins)
+            else int((math.acos(cosphi) + math.pi) / 2.0 / math.pi * nphibins),
+            nphibins - 1,
         )
 
     return (costhetabin * nphibins) + phibin
@@ -661,9 +671,10 @@ def add_packet_directions_lazypolars(dfpackets: pl.LazyFrame | pl.DataFrame) -> 
 
         vec3 = np.cross(vec2, syn_dir)  # -xhat if syn_dir is zhat
 
-        # arr_testphi = np.dot(arr_vec1, vec3)
+        # arr_testphi = np.dot(arr_vec1, vec3). vec1 was already normalised by dirmag above, and only the sign of
+        # testphi is used, so there is no further division here (matching get_directionbin)
         dfpackets = dfpackets.with_columns(
-            ((pl.col("vec1_x") * vec3[0] + pl.col("vec1_y") * vec3[1] + pl.col("vec1_z") * vec3[2]) / pl.col("dirmag"))
+            (pl.col("vec1_x") * vec3[0] + pl.col("vec1_y") * vec3[1] + pl.col("vec1_z") * vec3[2])
             .cast(pl.Float32)
             .alias("testphi")
         )
@@ -704,21 +715,28 @@ def bin_packet_directions_polars(
     )
 
     if phibintype == "phibinmonotonicasc":
+        # phi reaches exactly 2 pi when cosphi == 1 and testphi > 0, so clamp to the last bin
         dfpackets = dfpackets.with_columns(
-            (pl.col("phi") / 2.0 / math.pi * nphibins).fill_nan(0.0).cast(pl.Int32).alias("phibinmonotonicasc")
+            pl.min_horizontal(
+                (pl.col("phi") / 2.0 / math.pi * nphibins).fill_nan(0.0).cast(pl.Int32), nphibins - 1
+            ).alias("phibinmonotonicasc")
         )
     else:
         # for historical consistency, this binning method decreases phi angle with increasing bin index
+        # acos(cosphi) + pi reaches exactly 2 pi when cosphi == -1, which would otherwise land in the first phi bin of
+        # the next costheta ring, so clamp to the last bin
         dfpackets = dfpackets.with_columns(
-            (
-                pl
-                .when(pl.col("testphi") > 0)
-                .then(pl.col("cosphi").arccos() / (2 * math.pi) * nphibins)
-                .otherwise((pl.col("cosphi").arccos() + math.pi) / (2 * math.pi) * nphibins)
-            )
-            .fill_nan(0)
-            .cast(pl.Int32)
-            .alias("phibin")
+            pl.min_horizontal(
+                (
+                    pl
+                    .when(pl.col("testphi") > 0)
+                    .then(pl.col("cosphi").arccos() / (2 * math.pi) * nphibins)
+                    .otherwise((pl.col("cosphi").arccos() + math.pi) / (2 * math.pi) * nphibins)
+                )
+                .fill_nan(0)
+                .cast(pl.Int32),
+                nphibins - 1,
+            ).alias("phibin")
         ).with_columns((pl.col("costhetabin") * nphibins + pl.col("phibin")).cast(pl.Int32).alias("dirbin"))
 
     return dfpackets

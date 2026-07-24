@@ -131,7 +131,7 @@ def firstexisting_or_none(
 
 
 def stripallsuffixes(f: Path) -> Path:
-    """Take a file path (e.g. packets00_0000.out.gz) and return the Path with no suffixes (e.g. packets)."""
+    """Take a file path (e.g. packets00_0000.out.gz) and return the Path with no suffixes (e.g. packets00_0000)."""
     f_nosuffixes = Path(f)
     for _ in f.suffixes:
         f_nosuffixes = f_nosuffixes.with_suffix("")  # each call removes only one suffix

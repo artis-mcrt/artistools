@@ -36,7 +36,7 @@ class FeatureTuple(t.NamedTuple):
     lowerlevelindices: Sequence[int]
 
 
-def get_line_fluxes_from_packets(
+def get_line_luminosities_from_packets(
     emtypecolumn: str,
     emfeatures: Sequence[FeatureTuple],
     modelpath: Path | str,
@@ -44,6 +44,10 @@ def get_line_fluxes_from_packets(
     arr_tstart: Sequence[float] | None = None,
     arr_tend: Sequence[float] | None = None,
 ) -> pl.DataFrame:
+    """Get the emission line luminosities of the requested features vs time.
+
+    The returned values are luminosities in [erg/s]: they are not divided by 4 pi d^2 for any observer distance.
+    """
     if arr_tstart is None:
         arr_tstart = at.get_timestep_times(modelpath, loc="start")
     if arr_tend is None:
@@ -85,7 +89,7 @@ def get_line_fluxes_from_packets(
     return pl.DataFrame(dictlcdata)
 
 
-def get_line_fluxes_from_pops(
+def get_line_luminosities_from_pops(
     emfeatures: Sequence[FeatureTuple],
     modelpath: Path | str,
     arr_tstart: Sequence[float] | None = None,
@@ -108,7 +112,7 @@ def get_line_fluxes_from_pops(
 
     dictlcdata = {"time": arr_tmid}
     for feature in emfeatures:
-        fluxdata = np.zeros_like(arr_tmid, dtype=float)
+        lumdata = np.zeros_like(arr_tmid, dtype=float)
 
         dfnltepops = (
             at.nltepops
@@ -135,6 +139,14 @@ def get_line_fluxes_from_pops(
             ):
                 unaccounted_shellvol = 0.0  # account for the volume of empty shells
                 unaccounted_shells: list[int] = []
+                # the transition data is the same for every cell, so look it up once. An IndexError here is a missing
+                # transition rather than an empty cell, and must not be silently absorbed below
+                A_val = ion.transitions.query("upper == @upperlevelindex and lower == @lowerlevelindex").iloc[0].A
+
+                delta_ergs = (
+                    ion.levels.iloc[upperlevelindex].energy_ev - ion.levels.iloc[lowerlevelindex].energy_ev
+                ) * EV_to_erg
+
                 for modelgridindex in modeldata.index:
                     try:
                         levelpop = dfnltepops.filter(
@@ -144,34 +156,27 @@ def get_line_fluxes_from_pops(
                             & (pl.col("ion_stage") == feature.ion_stage)
                             & (pl.col("level") == upperlevelindex)
                         )["n_NLTE"].item(0)
-
-                        A_val = (
-                            ion.transitions.query("upper == @upperlevelindex and lower == @lowerlevelindex").iloc[0].A
-                        )
-
-                        delta_ergs = (
-                            ion.levels.iloc[upperlevelindex].energy_ev - ion.levels.iloc[lowerlevelindex].energy_ev
-                        ) * EV_to_erg
-
-                        # l = delta_ergs * A_val * levelpop * (shell_volumes[modelgridindex] + unaccounted_shellvol)
-                        # print(f'  {modelgridindex} outer_velocity {modeldata.vel_r_max_kmps.to_numpy()[modelgridindex]}'
-                        #       f' km/s shell_vol: {shell_volumes[modelgridindex] + unaccounted_shellvol} cm3'
-                        #       f' n_level {levelpop} cm-3 shell_Lum {l} erg/s')
-
-                        fluxdata[timeindex] += (
-                            delta_ergs * A_val * levelpop * (shell_volumes[modelgridindex] + unaccounted_shellvol)
-                        )
-
-                        unaccounted_shellvol = 0.0
-
                     except IndexError:
+                        # no population data for this cell, so roll its volume into the next one that has data
                         unaccounted_shellvol += shell_volumes[modelgridindex]
                         unaccounted_shells.append(modelgridindex)
+                        continue
+
+                    # l = delta_ergs * A_val * levelpop * (shell_volumes[modelgridindex] + unaccounted_shellvol)
+                    # print(f'  {modelgridindex} outer_velocity {modeldata.vel_r_max_kmps.to_numpy()[modelgridindex]}'
+                    #       f' km/s shell_vol: {shell_volumes[modelgridindex] + unaccounted_shellvol} cm3'
+                    #       f' n_level {levelpop} cm-3 shell_Lum {l} erg/s')
+
+                    lumdata[timeindex] += (
+                        delta_ergs * A_val * levelpop * (shell_volumes[modelgridindex] + unaccounted_shellvol)
+                    )
+
+                    unaccounted_shellvol = 0.0
                 if unaccounted_shells:
                     print(f"No data for cells {unaccounted_shells} (expected for empty cells)")
                 assert len(unaccounted_shells) < len(modeldata.index)  # must be data for at least one shell
 
-        dictlcdata[feature.colname] = fluxdata
+        dictlcdata[feature.colname] = lumdata
 
     return pl.DataFrame(dictlcdata)
 
@@ -204,7 +209,7 @@ def get_closelines(
 
     dflinelistclosematches = lzdflinelistclosematches.collect()
 
-    colname = f"flux_{at.get_ionstring(atomic_number, ion_stage, sep='')}_{approxlambdalabel}"
+    colname = f"lum_{at.get_ionstring(atomic_number, ion_stage, sep='')}_{approxlambdalabel}"
     featurelabel = f"{at.get_ionstring(atomic_number, ion_stage)} {approxlambdalabel} Å"
     lowestlambda = dflinelistclosematches["lambda_angstroms"].min()
     assert isinstance(lowestlambda, float | np.floating)
@@ -241,7 +246,7 @@ def get_labelandlineindices(modelpath: Path | str, emfeaturesearch: Sequence[t.A
     return labelandlineindices
 
 
-def make_flux_ratio_plot(args: argparse.Namespace) -> None:
+def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
     # font = {'size': 16}
     # matplotlib.rc('font', **font)
     nrows = 1
@@ -272,11 +277,11 @@ def make_flux_ratio_plot(args: argparse.Namespace) -> None:
         emfeatures = get_labelandlineindices(modelpath, tuple(args.emfeaturesearch))
 
         dflcdata = (
-            get_line_fluxes_from_pops(
+            get_line_luminosities_from_pops(
                 emfeatures, modelpath, arr_tstart=args.timebins_tstart, arr_tend=args.timebins_tend
             )
             if args.frompops
-            else get_line_fluxes_from_packets(
+            else get_line_luminosities_from_packets(
                 args.emtypecolumn,
                 emfeatures,
                 modelpath,
@@ -811,7 +816,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if args.plotemittingregions:
         make_emitting_regions_plot(args)
     else:
-        make_flux_ratio_plot(args)
+        make_luminosity_ratio_plot(args)
 
 
 if __name__ == "__main__":

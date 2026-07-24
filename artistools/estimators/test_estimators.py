@@ -333,3 +333,39 @@ def test_estimator_timeevolution() -> None:
         modelgridindex=0,
         x="time",
     )
+
+
+def test_add_derived_estimator_columns_preserves_nulls() -> None:
+    """Missing nnelement values count as zero, but a null in any other column must not become a real zero."""
+    pldf = pl.LazyFrame({
+        "timestep": [0, 1],
+        "modelgridindex": [0, 0],
+        "Te": [5000.0, None],
+        "nne": [None, 1.0e8],
+        "nnelement_Fe": [2.0, None],
+        "nnelement_Ni": [3.0, 4.0],
+    })
+
+    dfout = at.estimators.add_derived_estimator_columns(pldf).collect()
+
+    # nnelement nulls are filled with zero and summed into nntot
+    assert dfout["nnelement_Fe"].to_list() == [2.0, 0.0]
+    assert dfout["nntot"].to_list() == [5.0, 4.0]
+
+    # every other column keeps its nulls
+    assert dfout["Te"].to_list() == [5000.0, None]
+    assert dfout["nne"].to_list() == [None, 1.0e8]
+
+
+def test_add_derived_estimator_columns_total_dep() -> None:
+    pldf = pl.LazyFrame({
+        "timestep": [0],
+        "deposition_gamma": [1.0],
+        "deposition_positron": [2.0],
+        "deposition_alpha": [4.0],
+    })
+
+    dfout = at.estimators.add_derived_estimator_columns(pldf).collect()
+
+    assert dfout["total_dep"].to_list() == [7.0]
+    assert "nntot" not in dfout.columns

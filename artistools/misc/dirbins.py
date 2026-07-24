@@ -33,7 +33,6 @@ def average_direction_bins(
     """Average dict of direction-binned polars DataFrames according to the phi or theta angle."""
     dirbincount = get_viewingdirectionbincount()
     nphibins = get_viewingdirection_phibincount()
-    ncosthetabins = get_viewingdirection_costhetabincount()
 
     if overangle not in {"phi", "theta"}:
         msg = "overangle must be 'phi' or 'theta'"
@@ -45,10 +44,10 @@ def average_direction_bins(
     dirbindataframesout: dict[int, pl.LazyFrame] = {}
 
     for start_bin in start_bin_range:
+        # dirbin == costheta_index * nphibins + phi_index, so the bins sharing a costheta index are contiguous, while
+        # the bins sharing a phi index are nphibins apart
         contribbins = list(
-            range(start_bin, start_bin + nphibins)
-            if overangle == "phi"
-            else range(start_bin, dirbincount, ncosthetabins)
+            range(start_bin, start_bin + nphibins) if overangle == "phi" else range(start_bin, dirbincount, nphibins)
         )
 
         dirbindataframesout[start_bin] = dirbindataframes[start_bin].lazy()

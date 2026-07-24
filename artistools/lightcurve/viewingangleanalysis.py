@@ -96,8 +96,9 @@ def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> 
                 assert dirbin % at.get_viewingdirection_phibincount() == 0 or dirbin == -1
 
         if args.average_over_theta_angle:
+            # averaging over theta leaves one bin per phi index
             for dirbin in dirbin_definition:
-                assert dirbin < at.get_viewingdirection_costhetabincount() or dirbin == -1
+                assert dirbin < at.get_viewingdirection_phibincount() or dirbin == -1
 
     return dirbins, dirbin_definition
 

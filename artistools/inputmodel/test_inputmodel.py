@@ -60,6 +60,13 @@ def test_get_cell_angle() -> None:
     )
     at.inputmodel.inputmodel_misc.get_cell_angle(modeldata)
     assert "cos_bin" in modeldata
+    assert "phi_bin" in modeldata
+
+    # the azimuth is measured in the opposite sense to the packet "phi", so it must not be named "phi"
+    assert "phi_mirrored" in modeldata
+    assert "phi" not in modeldata
+    assert modeldata["phi_mirrored"].min() >= 0.0
+    assert modeldata["phi_mirrored"].max() <= 2 * math.pi
 
 
 def test_downscale_3dmodel() -> None:
@@ -1581,3 +1588,53 @@ def test_dimension_reduce(outputdimensions: int, benchmark: BenchmarkFixture) ->
                 (dfmodel3d_pl["mass_g"] * dfmodel3d_pl[col]).sum(),
                 rel_tol=1e-5,
             )
+
+
+def test_pos_r_min_straddling_cells() -> None:
+    """A cell that straddles a coordinate plane reaches zero along that axis, so pos_r_min must account for it."""
+    # an odd ncoordgrid puts a cell centred on the origin, and rings of cells straddling each coordinate plane
+    ncoordgrid = 5
+    dfmodel, modelmeta = at.inputmodel.get_empty_3d_model(ncoordgrid=ncoordgrid, vmax=1e9, t_model_init_days=1.0)
+
+    dfmodel = at.inputmodel.add_derived_cols_to_modeldata(dfmodel, derived_cols=["ALL"], modelmeta=modelmeta).collect()
+
+    for ax in ("x", "y", "z"):
+        straddles = (dfmodel[f"pos_{ax}_min"] < 0) & (dfmodel[f"pos_{ax}_max"] > 0)
+        assert straddles.any(), f"expected some cells straddling the {ax} plane"
+
+    straddles_all = (
+        ((dfmodel["pos_x_min"] < 0) & (dfmodel["pos_x_max"] > 0))
+        & ((dfmodel["pos_y_min"] < 0) & (dfmodel["pos_y_max"] > 0))
+        & ((dfmodel["pos_z_min"] < 0) & (dfmodel["pos_z_max"] > 0))
+    )
+    # the cell containing the origin has zero closest approach
+    assert dfmodel.filter(straddles_all)["pos_r_min"].to_list() == pytest.approx([0.0])
+
+    # pos_r_min can never exceed the distance to any corner of its own cell, nor pos_r_mid
+    assert (dfmodel["pos_r_min"] <= dfmodel["pos_r_mid"] * (1.0 + 1e-9)).all()
+    assert (dfmodel["pos_r_min"] <= dfmodel["pos_r_max"]).all()
+
+
+def test_min_abs_coordinate() -> None:
+    dfpos = pl.DataFrame({"pos_x_min": [-3.0, 1.0, -5.0, 0.0], "pos_x_max": [-1.0, 4.0, 2.0, 3.0]})
+
+    result = dfpos.select(at.inputmodel.inputmodel_misc.min_abs_coordinate("x")).to_series().to_list()
+
+    # entirely negative -> 1, entirely positive -> 1, straddling -> 0, touching the plane -> 0
+    assert result == pytest.approx([1.0, 1.0, 0.0, 0.0])
+
+
+def test_vel_on_c_excludes_kmps_columns() -> None:
+    """The vel_*_kmps columns are in km/s, so they must not be divided by c as if they were cm/s."""
+    dfmodel, _modelmeta = at.inputmodel.get_modeldata(modelpath, derived_cols=["velocity"])
+    dfmodel = dfmodel.collect()
+
+    assert "vel_r_max_kmps" in dfmodel.columns
+    assert "vel_r_max_kmps_on_c" not in dfmodel.columns
+    assert "vel_r_max_on_c" in dfmodel.columns
+
+    # vel_r_max is in cm/s, so its fraction of c must stay below 1 for a physical model
+    assert dfmodel["vel_r_max_on_c"].to_numpy().max() < 1.0
+    assert dfmodel["vel_r_max_on_c"].to_numpy() == pytest.approx(
+        dfmodel["vel_r_max_kmps"].to_numpy() * 1e5 / at.constants.C_cm_per_s
+    )

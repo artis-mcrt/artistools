@@ -16,6 +16,7 @@ import pytest
 import yaml
 
 import artistools as at
+from artistools.misc import dirbins
 
 
 def _write_timesteps_out(modeldir: Path) -> None:
@@ -269,3 +270,32 @@ def test_get_deposition(tmp_path: Path) -> None:
 
     with pytest.raises(AssertionError, match="Deposition times do not match"):
         at.get_deposition(baddir).collect()
+
+
+def test_average_direction_bins_unequal_bincounts(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Averaging must group bins by the phi bin count, which is only distinguishable when the two counts differ."""
+    nphibins = 4
+    ncosthetabins = 3
+
+    monkeypatch.setattr(dirbins, "get_viewingdirection_phibincount", lambda: nphibins)
+    monkeypatch.setattr(dirbins, "get_viewingdirection_costhetabincount", lambda: ncosthetabins)
+
+    # dirbin == costheta_index * nphibins + phi_index, and each frame carries its own dirbin as the value
+    dirbindataframes = {
+        dirbin: pl.DataFrame({"timestep": [0, 1], "value": [float(dirbin), float(dirbin)]})
+        for dirbin in range(nphibins * ncosthetabins)
+    }
+
+    # averaging over theta collapses each phi index over all costheta rings: bins p, p + nphibins, p + 2 * nphibins
+    averaged = dirbins.average_direction_bins(dirbindataframes, overangle="theta")
+    assert sorted(averaged.keys()) == [0, 1, 2, 3]
+    for phibin in range(nphibins):
+        expected = sum(phibin + n * nphibins for n in range(ncosthetabins)) / ncosthetabins
+        assert averaged[phibin].collect()["value"].to_list() == pytest.approx([expected, expected])
+
+    # averaging over phi collapses each contiguous run of nphibins bins
+    averaged_phi = dirbins.average_direction_bins(dirbindataframes, overangle="phi")
+    assert sorted(averaged_phi.keys()) == [0, 4, 8]
+    for start_bin in (0, 4, 8):
+        expected = sum(start_bin + n for n in range(nphibins)) / nphibins
+        assert averaged_phi[start_bin].collect()["value"].to_list() == pytest.approx([expected, expected])
