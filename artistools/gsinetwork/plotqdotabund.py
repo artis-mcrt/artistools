@@ -201,7 +201,7 @@ def plot_qdot(
                     (pl.col(col).arr.get(n) * pl.col("frac_of_cellmass") * pl.col("cellmass_on_mtot")).sum()
                     for n in range(len(arr_time_gsi_days))
                 )
-                .explode()
+                .explode(empty_as_null=False)
                 .alias(col)
                 for col in heatcols
             ])
@@ -337,7 +337,7 @@ def plot_cell_abund_evolution(
                 (pl.col(strnuc).arr.get(n) * pl.col("frac_of_cellmass") * pl.col("cellmass_on_mtot") / normfactor).sum()
                 for n in range(len(arr_time_gsi_days))
             )
-            .explode()
+            .explode(empty_as_null=False)
             .alias(strnuc)
             for strnuc in arr_species
         ]).collect()

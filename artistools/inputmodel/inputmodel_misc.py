@@ -277,7 +277,9 @@ def read_modelfile_text(
 
             pos3_in_list = (
                 dfmodel
-                .select(cs.by_name("inputpos_a", "inputpos_b", "inputpos_c").gather(indexlist).explode())
+                .select(
+                    cs.by_name("inputpos_a", "inputpos_b", "inputpos_c").gather(indexlist).explode(empty_as_null=False)
+                )
                 .collect()
                 .iter_rows()
             )
@@ -1242,7 +1244,7 @@ def dimension_reduce_model(
         inputcellid=pl.col("inputcellid_list"),
         mass_g=pl.col("mass_g_list"),
         out_mass_g=pl.col("mass_g_list").list.sum(),
-    ).explode("inputcellid", "mass_g")
+    ).explode("inputcellid", "mass_g", empty_as_null=False)
 
     dfmodel_out = dfmodel_out.drop(["inputcellid_list", "mass_g_list"], strict=False)
     if other_cols := dfmodel_out.select(cs.by_dtype(pl.List)).collect_schema().names():
