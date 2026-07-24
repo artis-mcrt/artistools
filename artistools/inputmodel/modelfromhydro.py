@@ -13,6 +13,7 @@ import polars.selectors as cs
 
 import artistools as at
 from artistools.constants import C_cm_per_s as CLIGHT
+from artistools.constants import day_to_s
 from artistools.constants import Msun_to_g as MSUN
 
 
@@ -169,10 +170,10 @@ def read_griddat_file(
 
     t_model_days = t_model_sec / (24.0 * 3600)  # in days
     print(f"t_model in days {t_model_days} ({t_model_sec} s)")
-    corner_vmax = math.sqrt(3 * vmax**2)
+    corner_vmax = vmax * math.sqrt(3)
     print(
-        f"vmax {vmax:.2e} cm/s ({vmax / 29979245800:.2f} * c) per component "
-        f"real corner vmax {corner_vmax:.2e} cm/s ({corner_vmax / 29979245800:.2f} * c)"
+        f"vmax {vmax:.2e} cm/s ({vmax / CLIGHT:.2f} * c) per component "
+        f"real corner vmax {corner_vmax:.2e} cm/s ({corner_vmax / CLIGHT:.2f} * c)"
     )
 
     if targetmodeltime_days is not None:
@@ -302,14 +303,14 @@ def makemodelfromgriddata(
         for key in modelmeta:
             if key == "vmax_cmps" or key.startswith("wid_init_"):
                 modelmeta[key] *= scalevelocity
-        operationmsg = f"velocities are scaled by a factor of {scalevelocity} (with density scaled by 1/f^3 to conserve mass). vmax/c changed from {vmax_cmps_old / 29979245800:.2f} to {modelmeta['vmax_cmps'] / 29979245800:.2f}"
+        operationmsg = f"velocities are scaled by a factor of {scalevelocity} (with density scaled by 1/f^3 to conserve mass). vmax/c changed from {vmax_cmps_old / CLIGHT:.2f} to {modelmeta['vmax_cmps'] / CLIGHT:.2f}"
         print(operationmsg)
         modelmeta["headercommentlines"].append(operationmsg)
 
     if traj_root is not None:
         print(f"Nuclear network abundances from {traj_root} will be used")
         modelmeta["headercommentlines"].append(f"trajfolder: {Path(traj_root).resolve().parts[-1]}")
-        t_model_days_incpremerger = t_model_days + (t_mergertime_s / 86400)
+        t_model_days_incpremerger = t_model_days + (t_mergertime_s / day_to_s)
         assert dfgridcontributions is not None, (
             "gridcontributions.txt is required to set abundances from trajectories. Run artistools maptogrid"
         )

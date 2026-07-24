@@ -20,6 +20,8 @@ from matplotlib import ticker
 from polars import selectors as cs
 
 import artistools as at
+from artistools.constants import C_cm_per_s
+from artistools.constants import Msun_to_g
 
 colors_tab10 = [
     (0.12156862745098039, 0.4666666666666667, 0.7058823529411765, 1.0),
@@ -163,7 +165,7 @@ def plot_init_abundances(
 ) -> None:
     if seriestype == "initmasses":
         estimators = estimators.with_columns(
-            (pl.col(massfraccol) * pl.col("mass_g") / 1.989e33).alias(
+            (pl.col(massfraccol) * pl.col("mass_g") / Msun_to_g).alias(
                 f"init_mass_{massfraccol.removeprefix('init_X_')}"
             )
             for massfraccol in estimators.collect_schema().names()
@@ -385,6 +387,46 @@ def get_iontuple(ionstr: str) -> tuple[int, str | int]:
 
     atomic_number = at.get_atomic_number(ionstr.split("_", maxsplit=1)[0])
     return (atomic_number, ionstr)
+
+
+def could_be_ion(plotvar: t.Any) -> bool:
+    """Return True if plotvar could be part of an ion population plot, i.e. an ion/element/atomic number or a plot directive."""
+    # lists are plot directives and bare integers are atomic numbers
+    if isinstance(plotvar, (list, int)):
+        return True
+
+    if not isinstance(plotvar, str):
+        return False
+
+    # a string that is an integer is an atomic number
+    return plotvar.isdigit() or "=" in plotvar or get_iontuple(plotvar)[0] >= 1
+
+
+def normalise_plotitems(plotitems: t.Any, estimatorcolumns: Collection[str]) -> list[t.Any]:
+    """Resolve variable aliases and move any 'key=value' plot directives to the end of the plot item list.
+
+    A list of ions such as ["Sr I", "Sr II"] is rewritten as a populations plot [["populations", ["Sr I", "Sr II"]]].
+    """
+    if isinstance(plotitems, str):
+        plotitems = [plotitems]
+    assert isinstance(plotitems, list)
+
+    plot_directives = [
+        plotvar.split("=", maxsplit=1) for plotvar in plotitems if isinstance(plotvar, str) and ("=" in plotvar)
+    ]
+    plotvars = [
+        VARIABLE_ALIASES.get(plotvar, plotvar) if isinstance(plotvar, str) else plotvar
+        for plotvar in plotitems
+        if not isinstance(plotvar, str) or "=" not in plotvar
+    ]
+
+    if isinstance(plotvars[0], str) and plotvars[0] not in estimatorcolumns and all(map(could_be_ion, plotvars)):
+        # plotting this as a variable would cause an error, so interpret it as ion populations instead
+        new_plotvars = [["populations", plotvars]]
+        print(f"Rewriting plotlist {plotvars} to {new_plotvars}")
+        plotvars = new_plotvars
+
+    return plotvars + plot_directives
 
 
 def get_column_name(seriestype: str, atomic_number: int, ion_stage: str | int) -> tuple[str, str]:
@@ -619,7 +661,7 @@ def get_xlist(
         estimators = estimators.with_columns(xvalue=pl.col("tmid_days"))
     elif xvariable in {"velocity", "beta"}:
         velcolumn = "vel_r_mid"
-        scalefactor = 1e5 if xvariable == "velocity" else 29979245800
+        scalefactor = 1e5 if xvariable == "velocity" else C_cm_per_s
         estimators = estimators.with_columns(xvalue=(pl.col(velcolumn) / scalefactor))
     else:
         assert xvariable in estimators.collect_schema().names()
@@ -1156,45 +1198,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     estimatorcolumns = estimators.collect_schema().names()
 
-    # detect a list of populations and convert to the correct form
-    # e.g. ["Sr I", "Sr II"] is re-written to [['populations', ['Sr I', 'Sr II']]]
-    for i in range(len(plotlist)):
-        if isinstance(plotlist[i], str):
-            plotlist[i] = [plotlist[i]]
-        assert isinstance(plotlist[i], list)
-        plot_directives = [
-            plotvar.split("=", maxsplit=1) for plotvar in plotlist[i] if isinstance(plotvar, str) and ("=" in plotvar)
-        ]
-        plotlist[i] = [
-            VARIABLE_ALIASES.get(plotvar, plotvar) if isinstance(plotvar, str) else plotvar
-            for plotvar in plotlist[i]
-            if not isinstance(plotvar, str) or "=" not in plotvar
-        ]
-        if isinstance(plotlist[i][0], str) and plotlist[i][0] not in estimatorcolumns:
-            # this is going to cause an error, so attempt to interpret it as populations
-            # look for something that looks like an ion in the list, and if all items look like ions then rewrite to populations plot
-            for plotvar in plotlist[i]:
-                if isinstance(plotvar, list):
-                    continue
-                # interpret bare integers as atomic numbers
-                if isinstance(plotvar, int):
-                    continue
-                if not isinstance(plotvar, str):
-                    break
-                # check if string can be interpreted as an integer (atomic number)
-                if plotvar.isdigit():
-                    continue
-                if "=" in plotvar:
-                    continue
-                atomic_number, _ionstage = get_iontuple(plotvar)
-                if atomic_number < 1:
-                    break
-            else:
-                new_plotvars = [["populations", plotlist[i]]]
-                print(f"Rewriting plotlist {plotlist[i]} to {new_plotvars}")
-                plotlist[i] = new_plotvars
-        if plot_directives:
-            plotlist[i].extend(plot_directives)
+    plotlist = [normalise_plotitems(plotitems, estimatorcolumns) for plotitems in plotlist]
 
     outdir = Path(args.outputfile) if Path(args.outputfile).is_dir() else Path()
     assert args.x is not None
@@ -1211,7 +1215,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     else:
         # plot a range of cells in a time snapshot showing internal structure
 
-        if args.x == "velocity" and modelmeta["vmax_cmps"] > 0.3 * 29979245800:
+        if args.x == "velocity" and modelmeta["vmax_cmps"] > 0.3 * C_cm_per_s:
             args.x = "beta"
 
         if args.readonlymgi:

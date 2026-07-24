@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 import polars as pl
 
+from artistools.constants import C_cm_per_s
 from artistools.misc.modelinfo import get_inputparams
 from artistools.misc.modelinfo import get_model_name
 
@@ -271,21 +272,16 @@ def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | int | 
     # find the earliest possible escape time and add the largest possible travel time
 
     # for 2D and 3D models, the box corners are the maximum radius with (potentially) non-zero density
-    match modelmeta["dimensions"]:
-        case 1:
-            cornervmax = vmax
-        case 2:
-            cornervmax = math.sqrt(2 * vmax**2)
-        case 3:
-            cornervmax = math.sqrt(3 * vmax**2)
-        case _:
-            msg = "Model dimensions must be 1, 2, or 3"
-            raise ValueError(msg)
+    dimensions = modelmeta["dimensions"]
+    if dimensions not in {1, 2, 3}:
+        msg = "Model dimensions must be 1, 2, or 3"
+        raise ValueError(msg)
+    cornervmax = vmax * math.sqrt(dimensions)
 
     # if the initial conditions were perfect, then t_arrive = tmin would be valid already
     # (with a free path, light from the origin at tmin would escape sometime later, but that travel time would be subtracted to get t_arrive = tmin),
     # but we should at least wait until light signals from the origin reach the corners
-    validrange_start_days = get_timestep_times(modelpath, loc="start")[0] * (1 + cornervmax / 29979245800)
+    validrange_start_days = get_timestep_times(modelpath, loc="start")[0] * (1 + cornervmax / C_cm_per_s)
 
     t_end = get_timestep_times(modelpath, loc="end")
     # find the last possible escape time and subtract the largest possible travel time (observer time correction)
@@ -306,7 +302,7 @@ def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | int | 
 
     # last valid observer time is escape at the end of the latest computed timestep minus the longest travel time relative to origin
     # assume we're on a 3D propagation grid for safety (1D or 2D could reduce the travel time somewhat)
-    validrange_end_days: float | int = nts_last_tend * (1 - math.sqrt(3 * vmax**2) / 29979245800)
+    validrange_end_days: float | int = nts_last_tend * (1 - vmax * math.sqrt(3) / C_cm_per_s)
 
     if validrange_start_days > validrange_end_days:
         return nts_last, None, None

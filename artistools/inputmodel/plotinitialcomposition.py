@@ -16,6 +16,8 @@ from matplotlib import gridspec
 from matplotlib.image import AxesImage
 
 import artistools as at
+from artistools.constants import C_cm_per_s
+from artistools.constants import day_to_s
 
 type AxisType = t.Literal["x", "y", "z", "r", "rcyl"]
 
@@ -83,9 +85,9 @@ def plot_slice_modelcolumn(
     else:
         scaledmap = None
 
-    cmps_to_beta = 1.0 / (2.99792458e10)
+    cmps_to_beta = 1.0 / C_cm_per_s
     unitfactor = cmps_to_beta
-    t_model_s = t_model_d * 86400.0
+    t_model_s = t_model_d * day_to_s
 
     # turn 1D flattened array back into 2D array
     valuegrid = colorscale.reshape((modelmeta[f"ncoordgrid{plotaxis2}"], modelmeta[f"ncoordgrid{plotaxis1}"]))
@@ -217,13 +219,8 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
     else:
         cbar.set_label("Ye" if "Ye" in args.plotvars else "tracercount")
 
-    defaultfilename = Path(modelpath) / f"plotcomposition_{','.join(v.lower() for v in args.plotvars)}.pdf"
-    if args.outputfile and Path(args.outputfile).is_dir():
-        outfilename = Path(args.outputfile) / defaultfilename.name
-    elif args.outputfile:
-        outfilename = args.outputfile
-    else:
-        outfilename = defaultfilename
+    defaultfilename = f"plotcomposition_{','.join(v.lower() for v in args.plotvars)}.pdf"
+    outfilename = at.resolve_outputfile(args.outputfile or modelpath, defaultfilename)
 
     plt.savefig(outfilename, format="pdf")
 
@@ -270,7 +267,7 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
     xgrid = np.zeros(grid)
 
     surfacearr = np.array(model[coloursurfaceby])
-    vmax /= 29979245800.0
+    vmax /= C_cm_per_s
     i = 0
     for nz in range(grid):
         for ny in range(grid):
