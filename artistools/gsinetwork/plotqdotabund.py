@@ -88,7 +88,7 @@ def strnuc_to_latex(strnuc: str) -> str:
     elsym = strnuc.rstrip(string.digits)
     massnum = strnuc.removeprefix(elsym)
 
-    return rf"$^{{{massnum}}}${elsym.title()}"
+    return rf"$^{{{massnum}}}${elsym.title()}" if massnum else elsym.title()
 
 
 def get_artis_abund_sequences(

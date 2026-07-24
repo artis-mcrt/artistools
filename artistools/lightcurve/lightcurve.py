@@ -289,13 +289,13 @@ def generate_band_lightcurve_data(
                     integration_grid = wavefilter
 
                 weighted_flux_obs = float(abs(np.trapezoid(integrand, integration_grid)))
-                phot_filtobs_sn: float | int = (
+                phot_filtobs_mag: float | int = (
                     0.0 if weighted_flux_obs == 0.0 else -2.5 * math.log10(weighted_flux_obs / zeropointenergyflux)
                 )
 
-                if phot_filtobs_sn != 0.0:
-                    phot_filtobs_sn -= 25  # Absolute magnitude
-                filters_dict[filter_name].append((time, phot_filtobs_sn))
+                if phot_filtobs_mag != 0.0:
+                    phot_filtobs_mag -= 25  # Absolute magnitude
+                filters_dict[filter_name].append((time, phot_filtobs_mag))
 
     return filters_dict
 
@@ -342,7 +342,7 @@ def bolometric_magnitude(
 
 def get_filter_data(
     filterdir: Path | str, filter_name: str
-) -> tuple[float, npt.NDArray[np.floating], npt.NDArray[np.floating], float, int]:
+) -> tuple[float, npt.NDArray[np.floating], npt.NDArray[np.floating], float, float]:
     """Filter data in 'data/filters' taken from https://github.com/cinserra/S3/tree/master/src/s3/metadata."""
     with Path(filterdir, f"{filter_name}.txt").open("r", encoding="utf-8") as filter_metadata:  # definition of the file
         line_in_filter_metadata = filter_metadata.readlines()  # list of lines
@@ -358,7 +358,7 @@ def get_filter_data(
         transmission.append(float(row.split()[1]))
 
     wavefilter_min = min(wavefilter)
-    wavefilter_max = int(max(wavefilter))
+    wavefilter_max = max(wavefilter)
 
     return zeropointenergyflux, np.array(wavefilter), np.array(transmission), wavefilter_min, wavefilter_max
 

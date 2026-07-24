@@ -67,7 +67,7 @@ def define_heating_rate() -> tuple[pl.DataFrame, float]:
     times = np.logspace(np.log10(tmin), np.log10(tmax), num=300)  # days
     qdot = 5e9 * (times) ** (-1.3)  # define energy power law (5e9*t^-1.3)
 
-    E_tot = np.trapezoid(y=qdot, x=times)  # ergs/s/g
+    E_tot = np.trapezoid(y=qdot, x=times)
     assert isinstance(E_tot, float)
     # print("Etot per gram", E_tot, E_tot*1.989e33*0.01)
 
