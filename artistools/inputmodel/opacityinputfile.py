@@ -22,7 +22,7 @@ def opacity_by_Ye(outputfilepath: Path | str, griddata: pd.DataFrame | pl.DataFr
     griddata = pd.DataFrame(griddata)
     print("Getting opacity kappa from Ye")
 
-    cell_opacities = np.zeros_like(griddata["cellYe"])
+    cell_opacities = np.zeros(len(griddata), dtype=float)
 
     for index, Ye in enumerate(griddata["cellYe"]):
         if Ye == 0.0 and griddata["rho"][index] == 0:

@@ -239,6 +239,12 @@ def test_opacity_by_Ye_file() -> None:
     at.inputmodel.opacityinputfile.opacity_by_Ye(outputpath, griddata=griddata)
 
 
+def test_opacity_by_integer_Ye(tmp_path: Path) -> None:
+    griddata = pl.DataFrame({"cellYe": [0, 1], "rho": [1.0, 1.0], "inputcellid": [1, 2]})
+    at.inputmodel.opacityinputfile.opacity_by_Ye(tmp_path, griddata=griddata)
+    assert np.allclose(np.loadtxt(tmp_path / "opacity.txt", skiprows=1)[:, 1], [19.5, 0.96])
+
+
 def test_get_elemabund_from_nucabund() -> None:
     dfnucabund = pl.DataFrame({
         "Z": [26, 26, 28, 28, 1, 1],  # Fe, Fe, Ni, Ni, H, H
