@@ -389,7 +389,7 @@ def get_vpackets_text_columns(vpacketsfiletext: Path) -> list[str]:
     return firstline.lstrip("#").split()
 
 
-def get_rankbatch_parquetfile(
+def get_packets_rankbatch_parquetfile(
     modelpath: Path | str, batch_mpiranks: Sequence[int], batchindex: int, virtual: bool
 ) -> Path:
     """Get the path to a parquet file containing packets for a specific batch of MPI ranks. If the file does not exists or is outdated, generate it first from the text files."""
@@ -517,7 +517,9 @@ def get_packets_batch_parquet_paths(
             print(f"Reading packets from {nprocs} ranks")
 
     parquetpacketsfiles = [
-        get_rankbatch_parquetfile(modelpath, batch_mpiranks=batch_mpiranks, batchindex=batchindex, virtual=virtual)
+        get_packets_rankbatch_parquetfile(
+            modelpath, batch_mpiranks=batch_mpiranks, batchindex=batchindex, virtual=virtual
+        )
         for batchindex, batch_mpiranks in mpirank_groups
     ]
     assert bool(parquetpacketsfiles)

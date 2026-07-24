@@ -36,7 +36,7 @@ class FeatureTuple(t.NamedTuple):
     lowerlevelindices: Sequence[int]
 
 
-def get_line_fluxes_from_packets(
+def get_line_luminosities_from_packets(
     emtypecolumn: str,
     emfeatures: Sequence[FeatureTuple],
     modelpath: Path | str,
@@ -46,8 +46,7 @@ def get_line_fluxes_from_packets(
 ) -> pl.DataFrame:
     """Get the emission line luminosities of the requested features vs time.
 
-    Despite the "flux" naming (kept for backwards compatibility of the returned column names), the values are
-    luminosities in [erg/s]: they are not divided by 4 pi d^2 for any observer distance.
+    The returned values are luminosities in [erg/s]: they are not divided by 4 pi d^2 for any observer distance.
     """
     if arr_tstart is None:
         arr_tstart = at.get_timestep_times(modelpath, loc="start")
@@ -90,7 +89,7 @@ def get_line_fluxes_from_packets(
     return pl.DataFrame(dictlcdata)
 
 
-def get_line_fluxes_from_pops(
+def get_line_luminosities_from_pops(
     emfeatures: Sequence[FeatureTuple],
     modelpath: Path | str,
     arr_tstart: Sequence[float] | None = None,
@@ -113,7 +112,7 @@ def get_line_fluxes_from_pops(
 
     dictlcdata = {"time": arr_tmid}
     for feature in emfeatures:
-        fluxdata = np.zeros_like(arr_tmid, dtype=float)
+        lumdata = np.zeros_like(arr_tmid, dtype=float)
 
         dfnltepops = (
             at.nltepops
@@ -168,7 +167,7 @@ def get_line_fluxes_from_pops(
                     #       f' km/s shell_vol: {shell_volumes[modelgridindex] + unaccounted_shellvol} cm3'
                     #       f' n_level {levelpop} cm-3 shell_Lum {l} erg/s')
 
-                    fluxdata[timeindex] += (
+                    lumdata[timeindex] += (
                         delta_ergs * A_val * levelpop * (shell_volumes[modelgridindex] + unaccounted_shellvol)
                     )
 
@@ -177,7 +176,7 @@ def get_line_fluxes_from_pops(
                     print(f"No data for cells {unaccounted_shells} (expected for empty cells)")
                 assert len(unaccounted_shells) < len(modeldata.index)  # must be data for at least one shell
 
-        dictlcdata[feature.colname] = fluxdata
+        dictlcdata[feature.colname] = lumdata
 
     return pl.DataFrame(dictlcdata)
 
@@ -210,7 +209,7 @@ def get_closelines(
 
     dflinelistclosematches = lzdflinelistclosematches.collect()
 
-    colname = f"flux_{at.get_ionstring(atomic_number, ion_stage, sep='')}_{approxlambdalabel}"
+    colname = f"lum_{at.get_ionstring(atomic_number, ion_stage, sep='')}_{approxlambdalabel}"
     featurelabel = f"{at.get_ionstring(atomic_number, ion_stage)} {approxlambdalabel} Å"
     lowestlambda = dflinelistclosematches["lambda_angstroms"].min()
     assert isinstance(lowestlambda, float | np.floating)
@@ -247,7 +246,7 @@ def get_labelandlineindices(modelpath: Path | str, emfeaturesearch: Sequence[t.A
     return labelandlineindices
 
 
-def make_flux_ratio_plot(args: argparse.Namespace) -> None:
+def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
     # font = {'size': 16}
     # matplotlib.rc('font', **font)
     nrows = 1
@@ -278,11 +277,11 @@ def make_flux_ratio_plot(args: argparse.Namespace) -> None:
         emfeatures = get_labelandlineindices(modelpath, tuple(args.emfeaturesearch))
 
         dflcdata = (
-            get_line_fluxes_from_pops(
+            get_line_luminosities_from_pops(
                 emfeatures, modelpath, arr_tstart=args.timebins_tstart, arr_tend=args.timebins_tend
             )
             if args.frompops
-            else get_line_fluxes_from_packets(
+            else get_line_luminosities_from_packets(
                 args.emtypecolumn,
                 emfeatures,
                 modelpath,
@@ -817,7 +816,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if args.plotemittingregions:
         make_emitting_regions_plot(args)
     else:
-        make_flux_ratio_plot(args)
+        make_luminosity_ratio_plot(args)
 
 
 if __name__ == "__main__":

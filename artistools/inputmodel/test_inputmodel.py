@@ -60,6 +60,13 @@ def test_get_cell_angle() -> None:
     )
     at.inputmodel.inputmodel_misc.get_cell_angle(modeldata)
     assert "cos_bin" in modeldata
+    assert "phi_bin" in modeldata
+
+    # the azimuth is measured in the opposite sense to the packet "phi", so it must not be named "phi"
+    assert "phi_mirrored" in modeldata
+    assert "phi" not in modeldata
+    assert modeldata["phi_mirrored"].min() >= 0.0
+    assert modeldata["phi_mirrored"].max() <= 2 * math.pi
 
 
 def test_downscale_3dmodel() -> None:

@@ -706,16 +706,16 @@ def add_derived_cols_to_modeldata(
 def get_cell_angle(dfmodel: pd.DataFrame) -> pd.DataFrame:
     """Get angle between origin to cell midpoint and the syn_dir axis.
 
-    Note that the "phi" column here does not use the same convention as the "phi" column added to packets by
-    artistools.packets.add_packet_directions_lazypolars(): the two branches of the testphi test are swapped, so this
-    phi is mirrored (2 pi - phi) relative to the packet one. Each is self-consistent with its own binning, but the
-    two are not interchangeable.
+    The azimuthal angle is named phi_mirrored rather than phi because it is measured in the opposite sense to the
+    "phi" column that add_packet_directions_lazypolars() adds to packets: the two branches of the testphi test are
+    swapped, giving phi_mirrored == 2 pi - phi. Each is self-consistent with its own binning, but the two are not
+    interchangeable.
     """
     syn_dir = np.array([0.0, 0.0, 1.0])
     xhat = np.array([1.0, 0.0, 0.0])
 
     cos_theta = np.zeros(len(dfmodel))
-    phi = np.zeros(len(dfmodel))
+    phi_mirrored = np.zeros(len(dfmodel))
     for i, (_, cell) in enumerate(dfmodel.iterrows()):
         mid_point = [cell["pos_x_mid"], cell["pos_y_mid"], cell["pos_z_mid"]]
         cos_theta[i] = (np.dot(mid_point, syn_dir)) / (vec_len(mid_point) * vec_len(syn_dir))
@@ -726,10 +726,10 @@ def get_cell_angle(dfmodel: pd.DataFrame) -> pd.DataFrame:
 
         vec3 = np.cross(vec2, syn_dir)
         testphi = np.dot(vec1, vec3)
-        phi[i] = math.acos(cosphi) if testphi > 0 else (math.acos(-cosphi) + np.pi)
+        phi_mirrored[i] = math.acos(cosphi) if testphi > 0 else (math.acos(-cosphi) + np.pi)
 
     dfmodel.loc[:, "cos_theta"] = cos_theta
-    dfmodel.loc[:, "phi"] = phi
+    dfmodel.loc[:, "phi_mirrored"] = phi_mirrored
     cos_bins = [-1, -0.8, -0.6, -0.4, -0.2, 0, 0.2, 0.4, 0.6, 0.8, 1]  # including end bin
     labels = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90]
     # assert at.get_viewingdirection_costhetabincount() == 10
@@ -753,7 +753,7 @@ def get_cell_angle(dfmodel: pd.DataFrame) -> pd.DataFrame:
     ]
     # reorderphibins = {5: 9, 6: 8, 7: 7, 8: 6, 9: 5}
     labels = [0, 1, 2, 3, 4, 9, 8, 7, 6, 5]
-    dfmodel.loc[:, "phi_bin"] = pd.cut(dfmodel["phi"], phibins, labels=labels)
+    dfmodel.loc[:, "phi_bin"] = pd.cut(dfmodel["phi_mirrored"], phibins, labels=labels)
 
     return dfmodel
 

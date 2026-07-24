@@ -72,7 +72,7 @@ def get_units_string(variable: str) -> str:
     return f" [{units}]" if (units := get_variableunits(variable)) else ""
 
 
-def get_rankbatch_parquetfile(
+def get_estimators_rankbatch_parquetfile(
     folderpath: Path | str,
     batch_mpiranks: Sequence[int],
     batchindex: int,
@@ -264,7 +264,7 @@ def scan_estimators(
     runfolders = at.get_runfolders(modelpath, timesteps=match_timestep)
     if runfolders:
         parquetfiles = [
-            get_rankbatch_parquetfile(
+            get_estimators_rankbatch_parquetfile(
                 modelpath=modelpath,
                 folderpath=runfolder,
                 batch_mpiranks=mpiranks,
