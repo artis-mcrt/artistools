@@ -921,6 +921,25 @@ def get_vspecpol_spectrum(
     )
 
 
+def get_emabs_timeblock_count(dfemabs: pl.DataFrame, n_nu: int, n_timesteps: int, emabsfilename: str) -> int:
+    """Get the number of time blocks per frequency bin in an emission or absorption file.
+
+    These files store one row per (frequency, time) pair with time varying fastest, so this is the stride between
+    consecutive rows of the same frequency bin. Polarisation files hold the I, Q, and U components, giving three time
+    blocks per timestep instead of one.
+    """
+    nrows = dfemabs.height
+    assert nrows % n_nu == 0, f"{emabsfilename}: row count {nrows} is not a multiple of the {n_nu} frequency bins"
+
+    n_timeblocks = nrows // n_nu
+    assert n_timeblocks in {n_timesteps, 3 * n_timesteps}, (
+        f"{emabsfilename}: got {n_timeblocks} time blocks per frequency bin, expected {n_timesteps} timesteps"
+        f" or {3 * n_timesteps} for a polarisation file"
+    )
+
+    return n_timeblocks
+
+
 @lru_cache(maxsize=4)
 def get_flux_contributions(
     modelpath: Path,
@@ -965,11 +984,11 @@ def get_flux_contributions(
 
     emissiondata: dict[int, pl.DataFrame] = {}
     absorptiondata: dict[int, pl.DataFrame] = {}
+    # the row stride of each frame, derived from that frame alone so that emission and absorption (and separate
+    # direction bins) can never pick up each other's value
+    emission_timeblocks: dict[int, int] = {}
+    absorption_timeblocks: dict[int, int] = {}
     maxion: int | None = None
-
-    # emission and absorption files store one row per (frequency, time) pair, with time varying fastest. Polarisation
-    # files hold the I, Q, and U components, so each frequency is followed by three times as many rows.
-    n_timeblocks = len(arr_tmid)
     polarisation_notified = False
 
     for dbin in dbinlist:
@@ -981,14 +1000,14 @@ def get_flux_contributions(
 
             emissionfilename = firstexisting(emissionfilenames, folder=modelpath, tryzipped=True)
 
-            if "pol" in str(emissionfilename):
-                if not polarisation_notified:
-                    print("This artis run contains polarisation data")
-                    polarisation_notified = True
-                # File contains I, Q and U and so times are repeated 3 times
-                n_timeblocks = 3 * len(arr_tmid)
-
             emissiondata[dbin] = read_emission_absorption_file(emissionfilename).collect()
+            emission_timeblocks[dbin] = get_emabs_timeblock_count(
+                emissiondata[dbin], len(arraynu), len(arr_tmid), str(emissionfilename)
+            )
+
+            if emission_timeblocks[dbin] > len(arr_tmid) and not polarisation_notified:
+                print("This artis run contains polarisation data")
+                polarisation_notified = True
 
             maxion_float = (
                 (len(emissiondata[dbin].collect_schema().names()) - 1) / 2.0 / nelements
@@ -1003,9 +1022,6 @@ def get_flux_contributions(
             else:
                 assert maxion == int(maxion_float)
 
-            # check that the row count is product of time blocks and frequency bins found in spec.out
-            assert emissiondata[dbin].select(pl.len()).item() == len(arraynu) * n_timeblocks
-
         if getabsorption:
             absorptionfilenames = ["absorption.out", "absorptionpol.out"]
             if dbin != -1:
@@ -1013,13 +1029,15 @@ def get_flux_contributions(
 
             absorptionfilename = firstexisting(absorptionfilenames, folder=modelpath, tryzipped=True)
 
-            if "pol" in str(absorptionfilename):
-                if not polarisation_notified:
-                    print("This artis run contains polarisation data")
-                    polarisation_notified = True
-                n_timeblocks = 3 * len(arr_tmid)
-
             absorptiondata[dbin] = read_emission_absorption_file(absorptionfilename).collect()
+            absorption_timeblocks[dbin] = get_emabs_timeblock_count(
+                absorptiondata[dbin], len(arraynu), len(arr_tmid), str(absorptionfilename)
+            )
+
+            if absorption_timeblocks[dbin] > len(arr_tmid) and not polarisation_notified:
+                print("This artis run contains polarisation data")
+                polarisation_notified = True
+
             absorption_maxion_float = len(absorptiondata[dbin].collect_schema().names()) / nelements
             assert absorption_maxion_float.is_integer()
             absorption_maxion = int(absorption_maxion_float)
@@ -1031,7 +1049,6 @@ def get_flux_contributions(
                 )
             else:
                 assert absorption_maxion == maxion
-            assert absorptiondata[dbin].select(pl.len()).item() == len(arraynu) * n_timeblocks
 
     array_flambda_emission_total = np.zeros_like(arraylambda, dtype=float)
     contribution_list = []
@@ -1057,7 +1074,7 @@ def get_flux_contributions(
                 if getemission:
                     array_fnu_emission = weighted_average_spectra([
                         (
-                            emissiondata[dbin][timestep::n_timeblocks, selectedcolumn].to_numpy(),
+                            emissiondata[dbin][timestep :: emission_timeblocks[dbin], selectedcolumn].to_numpy(),
                             arr_tdelta[timestep] / len(dbinlist),
                         )
                         for timestep in range(timestepmin, timestepmax + 1)
@@ -1069,7 +1086,7 @@ def get_flux_contributions(
                 if absorptiondata and selectedcolumn < nelements * maxion:  # bound-bound process
                     array_fnu_absorption = weighted_average_spectra([
                         (
-                            absorptiondata[dbin][timestep::n_timeblocks, selectedcolumn].to_numpy(),
+                            absorptiondata[dbin][timestep :: absorption_timeblocks[dbin], selectedcolumn].to_numpy(),
                             arr_tdelta[timestep] / len(dbinlist),
                         )
                         for timestep in range(timestepmin, timestepmax + 1)
