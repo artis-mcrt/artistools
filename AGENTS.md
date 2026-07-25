@@ -92,6 +92,7 @@ Modules that expose a subcommand follow one pattern:
 ```python
 def addargs(parser: argparse.ArgumentParser) -> None: ...
 
+
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """One-line description used as the CLI help text."""
     args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
