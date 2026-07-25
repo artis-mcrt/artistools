@@ -11,3 +11,4 @@
 - For joining DataFrames, use `.join()` with explicit `on` arguments.
 - For type conversions, use `.cast()` (e.g., `df.with_columns(pl.col("a").cast(pl.Int64))`).
 - Avoid inplace operations; polars methods return new DataFrames.
+- The package has no public API, so code with no callers can be removed and functions can be renamed or refactored as needed.
