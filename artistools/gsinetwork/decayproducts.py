@@ -520,8 +520,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             ax.set_xscale("log")
 
         outfilepath = args.outputpath / f"beta_release_ratios_tot_{nuc_dataset}_Ye{label}.pdf"
-        at.print_saved(outfilepath)
         fig.savefig(outfilepath, bbox_inches="tight")
+        at.print_saved(outfilepath)
+        plt.close(fig)
 
 
 if __name__ == "__main__":

@@ -151,6 +151,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     fig.savefig(outfilepath)
     at.print_saved(outfilepath)
+    plt.close(fig)
 
 
 if __name__ == "__main__":

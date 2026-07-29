@@ -197,6 +197,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
     outfilename = start_of_filename + f"ts{timestep}_into_dirbin{dirbin}.pdf"
     fig.savefig(outfilename, dpi=300, bbox_inches="tight")
     at.print_saved(outfilename)
+    plt.close(fig)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:

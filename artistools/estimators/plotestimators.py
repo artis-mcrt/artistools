@@ -969,8 +969,7 @@ def make_figure(
 
     if args.show:
         plt.show()
-    else:
-        plt.close(fig)
+    plt.close(fig)
 
     return outfilename
 

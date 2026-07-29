@@ -729,7 +729,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
 
             outputfile = str(args.outputfile).format(timeavg=tmid, modeltag=modeltag)
             fig.savefig(outputfile, format="pdf")
-            print(f"    Saved {outputfile}")
+            at.print_saved(outputfile)
             plt.close(fig)
 
 

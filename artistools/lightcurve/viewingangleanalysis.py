@@ -523,7 +523,8 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
     if args.make_viewing_angle_peakmag_risetime_scatter_plot:
         filename = rf"{key}_band_{modelnames[0]}_risetime_peakmag.pdf"
     fig.savefig(filename, format="pdf")
-    print(f"saving {filename}")
+    at.print_saved(filename)
+    plt.close(fig)
 
 
 def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
@@ -581,7 +582,8 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
     set_scatterplot_plot_params(fig, ax, args)
     plotname = f"plotviewinganglecolour{bands[0]}-{bands[1]}.pdf"
     fig.savefig(plotname, format="pdf")
-    print(f"saving {plotname}")
+    at.print_saved(plotname)
+    plt.close(fig)
 
 
 def second_band_brightness_at_peak_first_band(
@@ -761,3 +763,4 @@ def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Names
     plotname = f"plotviewinganglebrightnessat{args.timedays}days.pdf"
     fig.savefig(plotname, format="pdf")
     at.print_saved(plotname)
+    plt.close(fig)

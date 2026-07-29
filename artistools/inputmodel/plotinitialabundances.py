@@ -64,6 +64,7 @@ def make_plot(args: argparse.Namespace) -> None:
     outpath = Path(args.outputpath) / f"plotinitialabundances_{stryaxis}vs{strxaxis}.pdf"
     fig.savefig(outpath, dpi=300)
     at.print_saved(outpath)
+    plt.close(fig)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
