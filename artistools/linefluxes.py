@@ -1,4 +1,4 @@
-"""Artistools - spectra related functions."""
+"""Plotting of emission line fluxes and flux ratios."""
 
 import argparse
 import contextlib

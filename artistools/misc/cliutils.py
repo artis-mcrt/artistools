@@ -9,8 +9,6 @@ from collections.abc import Iterable
 from collections.abc import Sequence
 from pathlib import Path
 
-import numpy as np
-
 from artistools.commands import CustomArgHelpFormatter
 
 
@@ -198,6 +196,8 @@ def get_filterfunc(args: argparse.Namespace) -> Callable[[t.Any], t.Any] | None:
     if dictargs.get("filtermovingavg", False):
 
         def movavgfilterfunc(ylist: t.Any) -> t.Any:
+            import numpy as np
+
             n = args.filtermovingavg
             arr_padded = np.pad(ylist, (n // 2, n - 1 - n // 2), mode="edge")
             return np.convolve(arr_padded, np.ones((n,)) / n, mode="valid")

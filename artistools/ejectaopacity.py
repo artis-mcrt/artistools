@@ -183,6 +183,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
+    """Compute binned expansion opacities and Planck-mean opacities in postprocessing."""
     args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     if args.timedays is not None:

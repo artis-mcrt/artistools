@@ -26,9 +26,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
-    args = at.parse_cli_args(
-        addargs, "Convert abundances.txt and model.txt from 3D to a one dimensional slice.", args, argsraw, kwargs
-    )
+    """Convert abundances.txt and model.txt from a 3D model to a one-dimensional slice."""
+    args = at.parse_cli_args(addargs, main.__doc__, args, argsraw, kwargs)
 
     if not Path(args.outputfolder).exists():
         Path(args.outputfolder).mkdir(parents=True)

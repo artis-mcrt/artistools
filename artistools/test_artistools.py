@@ -3,6 +3,7 @@ import hashlib
 import importlib
 import inspect
 import math
+import os
 import subprocess
 import sys
 import tomllib
@@ -64,17 +65,107 @@ def test_commands_list_matches_scripts() -> None:
 
 
 def test_subcommandtree() -> None:
-    def recursive_check(dictcmd: at.commands.CommandType) -> None:
-        for cmdtarget in dictcmd.values():
+    """Every subcommand spec must name an importable module, callable functions, and non-empty help text."""
+
+    def recursive_check(tree: at.commands.CommandTree) -> None:
+        for cmdtarget in tree.values():
             if isinstance(cmdtarget, dict):
                 recursive_check(cmdtarget)
             else:
-                submodulename, targetfuncname = cmdtarget
-                namestr = f"artistools.{submodulename.removeprefix('artistools.')}" if submodulename else "artistools"
-                submodule = importlib.import_module(namestr, package="artistools")
-                assert callable(getattr(submodule, targetfuncname, None))
+                assert cmdtarget.helptext
+                submodule = importlib.import_module(f"artistools.{cmdtarget.module}")
+                assert callable(getattr(submodule, cmdtarget.funcname, None))
+                assert callable(getattr(submodule, cmdtarget.addargsname, None))
 
     recursive_check(at.commands.subcommandtree)
+
+
+def test_all_subparsers_buildable() -> None:
+    """Populating every subcommand's argument parser must succeed (imports each module and runs its addargs)."""
+    import artistools.__main__
+
+    parser = artistools.__main__.build_parser()
+
+    def load_all(parser: argparse.ArgumentParser) -> None:
+        for action in parser._actions:  # ruff:ignore[private-member-access]
+            if isinstance(action, at.commands.LazySubParsersAction):
+                for name, subparser in action._name_parser_map.items():  # ruff:ignore[private-member-access]
+                    action.load_subparser_args(name)
+                    load_all(subparser)
+
+    load_all(parser)
+
+
+def test_cli_version(capsys: pytest.CaptureFixture[str]) -> None:
+    import artistools.__main__
+
+    artistools.__main__.main(argsraw=["version"])
+    assert f"artistools {at.version.version}" in capsys.readouterr().out
+
+    with pytest.raises(SystemExit) as excinfo:
+        artistools.__main__.main(argsraw=["--version"])
+    assert excinfo.value.code == 0
+    assert at.version.version in capsys.readouterr().out
+
+
+def test_cli_unknown_command() -> None:
+    import artistools.__main__
+
+    with pytest.raises(SystemExit) as excinfo:
+        artistools.__main__.main(argsraw=["plotspetcra"])
+    assert excinfo.value.code == 2
+
+
+def test_cli_no_command_prints_help(capsys: pytest.CaptureFixture[str]) -> None:
+    import artistools.__main__
+
+    artistools.__main__.main(argsraw=[])
+    assert "plotspectra" in capsys.readouterr().out
+
+
+def test_cli_missing_model_gives_short_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A missing input file from the at command must exit with a one-line error instead of a traceback."""
+    import artistools.__main__
+
+    with pytest.raises(SystemExit) as excinfo:
+        artistools.__main__.main(argsraw=["plotestimators", "-modelpath", str(tmp_path / "nomodel")])
+    assert excinfo.value.code == 1
+    stderr = capsys.readouterr().err
+    assert "input.txt" in stderr
+    assert "nomodel" in stderr
+
+
+def test_cli_help_is_lazy() -> None:
+    """Building the top-level CLI help must not import heavy libraries or any subcommand modules."""
+    code = (
+        "import contextlib, sys\n"
+        "from artistools.__main__ import main\n"
+        "with contextlib.suppress(SystemExit):\n"
+        "    main(argsraw=['--help'])\n"
+        "heavy = [m for m in ('matplotlib', 'polars', 'pandas', 'numpy', 'scipy') if m in sys.modules]\n"
+        "assert not heavy, f'heavy modules imported: {heavy}'\n"
+    )
+    subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
+        [sys.executable, "-c", code], check=True, cwd=REPOPATH, stdout=subprocess.DEVNULL
+    )
+
+
+@pytest.mark.parametrize(("comp_line", "expected"), [("at plotsp", "plotspectra"), ("at spec -timed", "-timedays")])
+def test_cli_tab_completion(tmp_path: Path, comp_line: str, expected: str) -> None:
+    """Tab completion must offer subcommand names and the options of a lazily loaded subcommand."""
+    outputfile = tmp_path / "completions.txt"
+    env = os.environ | {
+        "_ARGCOMPLETE": "1",
+        "_ARGCOMPLETE_SHELL": "bash",
+        "_ARGCOMPLETE_IFS": "\v",
+        "_ARGCOMPLETE_SUPPRESS_SPACE": "1",
+        "_ARGCOMPLETE_STDOUT_FILENAME": str(outputfile),
+        "COMP_LINE": comp_line,
+        "COMP_POINT": str(len(comp_line)),
+    }
+    subprocess.run([sys.executable, "-m", "artistools"], env=env, check=False, cwd=REPOPATH, timeout=120)
+    completions = outputfile.read_text(encoding="utf-8").split("\v")
+    assert expected in completions
 
 
 def test_package_attrs() -> None:

@@ -1179,6 +1179,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
+    """Prepare data for an ARTIS kilonova calculation from end-to-end hydro models."""
     args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     if args.iso is None:
