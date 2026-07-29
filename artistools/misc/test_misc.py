@@ -125,6 +125,26 @@ def test_set_args_from_dict_does_not_mutate_caller() -> None:
         at.set_args_from_dict(parser, {"badargname": 1})
 
 
+# --- fileio.py (print_saved) -------------------------------------------------------------------
+
+
+def test_print_saved(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
+    """print_saved must emit a runnable macOS open command with a path relative to the working directory."""
+    monkeypatch.chdir(tmp_path)
+
+    at.print_saved(tmp_path / "subdir" / "out.pdf")
+    assert capsys.readouterr().out == "open subdir/out.pdf\n"
+
+    at.print_saved("out.pdf")
+    assert capsys.readouterr().out == "open out.pdf\n"
+
+    at.print_saved(tmp_path / "subdir" / ".." / "out.pdf")
+    assert capsys.readouterr().out == "open out.pdf\n"
+
+    at.print_saved(tmp_path / "with space.pdf")
+    assert capsys.readouterr().out == "open 'with space.pdf'\n"
+
+
 # --- modelinfo.py ------------------------------------------------------------------------------
 
 
