@@ -15,6 +15,11 @@ import polars as pl
 import artistools as at
 from artistools.constants import C_cm_per_s
 from artistools.constants import K_B_ev_per_K
+from artistools.misc import add_axis_limit_args
+from artistools.misc import add_modelpath_arg
+from artistools.misc import add_outputfile_arg
+from artistools.misc import add_timedays_arg
+from artistools.misc import add_timestep_arg
 
 defaultoutputfile = "plottransitions_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf"
 
@@ -209,9 +214,9 @@ def make_plot(
         axis.set_xlim(xmin, xmax)
         axis.set_ylabel(r"$\propto$ F$_\lambda$")
 
-    print(f"Saving '{outputfilename}'")
     fig.savefig(outputfilename, format="pdf")
-    plt.close()
+    at.print_saved(outputfilename)
+    plt.close(fig)
 
 
 def add_upper_lte_pop(
@@ -233,11 +238,17 @@ def add_upper_lte_pop(
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("-modelpath", default=None, type=Path, help="Path to ARTIS folder")
+    add_modelpath_arg(parser, default=None)
 
-    parser.add_argument("-xmin", type=int, default=3500, help="Plot range: minimum wavelength in Angstroms")
-
-    parser.add_argument("-xmax", type=int, default=8000, help="Plot range: maximum wavelength in Angstroms")
+    add_axis_limit_args(
+        parser,
+        xlimtype=int,
+        xmindefault=3500,
+        xmaxdefault=8000,
+        xminhelp="Plot range: minimum wavelength in Angstroms",
+        xmaxhelp="Plot range: maximum wavelength in Angstroms",
+        include_y=False,
+    )
 
     parser.add_argument("-T", type=float, dest="T", default=[], nargs="*", help="Temperature in Kelvin")
 
@@ -249,9 +260,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--include-permitted", action="store_true", help="Also consider permitted lines")
 
-    parser.add_argument("-timedays", "-time", "-t", help="Time in days to plot")
+    add_timedays_arg(parser, kind="str")
 
-    parser.add_argument("-timestep", "-ts", type=int, default=70, help="Timestep number to plot")
+    add_timestep_arg(parser, kind="int", default=70)
 
     parser.add_argument("-modelgridindex", "-cell", type=int, default=0, help="Modelgridindex to plot")
 
@@ -260,15 +271,17 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--print-lines", action="store_true", help="Output details of matching lines to standard out")
 
     parser.add_argument(
-        "--atomicdatabase",
+        "-atomicdatabase",
         default="artis",
         choices=["artis", "kurucz", "nist"],
         help="Source of atomic data for excitation transitions",
     )
-
+    # deprecated double-dash spelling kept as a hidden alias
     parser.add_argument(
-        "-o", action="store", dest="outputfile", default=defaultoutputfile, help="path/filename for PDF file"
+        "--atomicdatabase", dest="atomicdatabase", choices=["artis", "kurucz", "nist"], help=argparse.SUPPRESS
     )
+
+    add_outputfile_arg(parser, default=defaultoutputfile, astype=None, helptext="path/filename for PDF file")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

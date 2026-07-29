@@ -9,21 +9,32 @@ import pandas as pd
 import polars as pl
 
 import artistools as at
+from artistools.misc import add_axis_limit_args
+from artistools.misc import add_modelpath_arg
+from artistools.misc import add_outputfile_arg
+from artistools.misc import add_timestep_arg
 
 defaultoutputfile = "plotmacroatom_cell{0:03d}_{1:03d}-{2:03d}.pdf"
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--modelpath", nargs="?", default="", help="Path to ARTIS folder")
-    parser.add_argument("-timestep", type=int, default=10, help="Timestep number to plot, or -1 for last")
+    add_modelpath_arg(parser, default=Path())
+    # deprecated double-dash spelling kept as a hidden alias
+    parser.add_argument("--modelpath", dest="modelpath", type=Path, help=argparse.SUPPRESS)
+    add_timestep_arg(parser, kind="int", default=10, helptext="Timestep number to plot, or -1 for last")
     parser.add_argument("-timestepmax", type=int, default=-1, help="Make plots for all timesteps up to this timestep")
     parser.add_argument("-modelgridindex", "-cell", type=int, default=0, help="Modelgridindex to plot")
     parser.add_argument("element", nargs="?", default="Fe", help="Plotted element")
-    parser.add_argument("-xmin", type=int, default=1000, help="Plot range: minimum wavelength in Angstroms")
-    parser.add_argument("-xmax", type=int, default=15000, help="Plot range: maximum wavelength in Angstroms")
-    parser.add_argument(
-        "-o", action="store", dest="outputfile", default=defaultoutputfile, help="Filename for PDF file"
+    add_axis_limit_args(
+        parser,
+        xlimtype=int,
+        xmindefault=1000,
+        xmaxdefault=15000,
+        xminhelp="Plot range: minimum wavelength in Angstroms",
+        xmaxhelp="Plot range: maximum wavelength in Angstroms",
+        include_y=False,
     )
+    add_outputfile_arg(parser, default=defaultoutputfile, astype=None, helptext="Filename for PDF file")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -98,9 +109,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     # axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 13})
 
-    print(f"Saving to {outputfile:s}")
     fig.savefig(outputfile, format="pdf")
-    plt.close()
+    at.print_saved(outputfile)
+    plt.close(fig)
 
 
 def read_files(

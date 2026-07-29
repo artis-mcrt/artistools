@@ -220,11 +220,12 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
         cbar.set_label("Ye" if "Ye" in args.plotvars else "tracercount")
 
     defaultfilename = f"plotcomposition_{','.join(v.lower() for v in args.plotvars)}.pdf"
-    outfilename = at.resolve_outputfile(args.outputfile or modelpath, defaultfilename)
+    outfilename = at.resolve_outputfile(args.outputfile, defaultfilename)
 
-    plt.savefig(outfilename, format="pdf")
+    fig.savefig(outfilename, format="pdf")
 
-    print(f"open {outfilename}")
+    at.print_saved(outfilename)
+    plt.close(fig)
 
 
 def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
@@ -372,7 +373,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-axis",
         default="+z",
         choices=["x", "y", "z", "+x", "-x", "+y", "-y", "+z", "-z"],
-        help="Choose an axis for use with args.readonlymgi. Hint: for negative use e.g. -axis=-z",
+        help="Slice axis for 2D plots. Hint: for negative use e.g. -axis=-z",
     )
 
 

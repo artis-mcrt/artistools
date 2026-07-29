@@ -15,6 +15,12 @@ from artistools.constants import c_ang_per_s
 from artistools.constants import day_to_s
 from artistools.constants import h_erg_s
 from artistools.constants import K_B_erg_per_K
+from artistools.misc import add_axis_limit_args
+from artistools.misc import add_figscale_args
+from artistools.misc import add_modelpath_arg
+from artistools.misc import add_outputfile_arg
+from artistools.misc import add_timedays_arg
+from artistools.misc import add_timestep_arg
 
 
 def read_files(modelpath: Path | str, timestep: int | None = None, modelgridindex: int | None = None) -> pl.DataFrame:
@@ -342,19 +348,19 @@ def plot_celltimestep(
 
     axis.legend(loc="best", handlelength=2, frameon=False, numpoints=1, fontsize=9)
 
-    print(f"Saving to {outputfile}")
     fig.savefig(str(outputfile), format="pdf")
-    plt.close()
+    at.print_saved(outputfile)
+    plt.close(fig)
     return True
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    parser.add_argument("-modelpath", default=".", type=Path, help="Path to ARTIS folder")
+    add_modelpath_arg(parser, default=".")
 
-    parser.add_argument("-timedays", "-time", "-t", help="Time in days to plot")
+    add_timedays_arg(parser, kind="str")
 
-    parser.add_argument("-timestep", "-ts", action="append", help="Timestep number to plot")
+    add_timestep_arg(parser, kind="strappend")
 
     parser.add_argument("-modelgridindex", "-cell", action="append", help="Modelgridindex to plot")
 
@@ -364,9 +370,15 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--showbinedges", action="store_true", help="Plot vertical lines at the bin edges")
 
-    parser.add_argument("-xmin", type=int, default=1000, help="Plot range: minimum wavelength in Angstroms")
-
-    parser.add_argument("-xmax", type=int, default=20000, help="Plot range: maximum wavelength in Angstroms")
+    add_axis_limit_args(
+        parser,
+        xlimtype=int,
+        xmindefault=1000,
+        xmaxdefault=20000,
+        xminhelp="Plot range: minimum wavelength in Angstroms",
+        xmaxhelp="Plot range: maximum wavelength in Angstroms",
+        include_y=False,
+    )
 
     parser.add_argument("-ymax", type=int, default=-1, help="Plot range: maximum J_nu")
 
@@ -376,11 +388,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--nobandaverage", action="store_true", help="Suppress the band-average line")
 
-    parser.add_argument(
-        "-figscale", type=float, default=1.0, help="Scale factor for plot area. 1.0 is for single-column"
-    )
+    add_figscale_args(parser)
 
-    parser.add_argument("-o", action="store", dest="outputfile", type=Path, help="Filename for PDF file")
+    add_outputfile_arg(parser, helptext="Filename for PDF file")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

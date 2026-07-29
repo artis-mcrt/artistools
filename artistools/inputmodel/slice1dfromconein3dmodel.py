@@ -11,6 +11,8 @@ import polars as pl
 
 import artistools as at
 from artistools.constants import day_to_s
+from artistools.misc import add_modelpath_arg
+from artistools.misc import add_outputpath_arg
 
 if t.TYPE_CHECKING:
     from mpl_toolkits.mplot3d import Axes3D
@@ -308,7 +310,8 @@ def make_plot(args: argparse.Namespace, logprint: Callable[..., None]) -> None:
     cone = make_cone(args, logprint)
 
     cone = cone.loc[cone["rho_model"] > 0.0002]  # cut low densities (empty cells?) from plot
-    ax: Axes3D = plt.figure().gca(projection="3d")  # type: ignore[call-arg,no-any-unimported] # pyright: ignore[reportCallIssue] # zuban: ignore [assignment]  # ty:ignore[invalid-assignment, unknown-argument]
+    fig = plt.figure()
+    ax: Axes3D = fig.add_subplot(projection="3d")  # type: ignore[no-any-unimported] # pyright: ignore[reportAssignmentType] # zuban: ignore [assignment]
 
     # print(cone['rho_model'])
 
@@ -325,31 +328,27 @@ def make_plot(args: argparse.Namespace, logprint: Callable[..., None]) -> None:
     ax.set_ylabel(r"y [10$^3$ km/s]")
     ax.set_zlabel(r"z [10$^3$ km/s]")  # zuban: ignore[no-untyped-call]
 
-    # plt.scatter(cone[f'pos_x_min']/1e11, cone[f'pos_y_min']/1e11)
     plt.show()
+    plt.close(fig)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument(
-        "-modelpath",
-        default=[],
-        nargs="*",
-        type=Path,
-        help="Path to ARTIS model folders with model.txt and abundances.txt",
+    add_modelpath_arg(
+        parser, multiplepaths=True, default=[], helptext="Path to ARTIS model folders with model.txt and abundances.txt"
     )
 
     parser.add_argument(
         "-axis",
         default="+x",
         choices=["+x", "-x", "+y", "-y", "+z", "-z"],
-        help="Choose an axis. USE INSTEAD OF DEPRECATED --POSITIVE_AXES AND -SLICEAXIS ARGS. Hint: for negative use e.g. -axis=-z",
+        help="Slice axis. Hint: for negative use e.g. -axis=-z",
     )
 
     parser.add_argument(
         "--makefromcone",
-        action="store",
+        action=argparse.BooleanOptionalAction,
         default=True,
-        help="Make 1D model from cone around axis. Default is True. If False uses points along axis.",
+        help="Make 1D model from a cone around the axis (--no-makefromcone samples points along the axis instead)",
     )
 
     parser.add_argument(
@@ -374,7 +373,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--coneshellsequalvolume", action="store_true", help="Use equal volume shells when making 1D model from cone"
     )
 
-    parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")
+    add_outputpath_arg(parser)
 
     parser.add_argument("-rhoscale", "-v", default=None, type=float, help="Density scale factor")
 

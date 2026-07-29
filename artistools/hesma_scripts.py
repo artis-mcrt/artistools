@@ -163,11 +163,13 @@ def read_hesma_peakmag_dm15_dm40(pathtofiles: Path | str) -> None:
         data.append(pd.read_csv(filepath, sep=r"\s+"))
     print(data[0])
 
+    fig, axis = plt.subplots()
     for df in data:
         print(df)
-        plt.scatter(df["dm15"], df["peakmag"])
-    plt.gca().invert_yaxis()
+        axis.scatter(df["dm15"], df["peakmag"])
+    axis.invert_yaxis()
     plt.show()
+    plt.close(fig)
 
 
 # def main():

@@ -7,9 +7,11 @@ from pathlib import Path
 
 import polars as pl
 
+from artistools.misc import add_modelpath_arg
 from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
+from artistools.misc import print_saved
 from artistools.spectra.spectra import get_spectra
 
 
@@ -23,7 +25,7 @@ def write_spectrum(dfspectrum: pl.DataFrame, outfilepath: Path) -> None:
             spec_file, header=False, sep=" ", index=False, columns=["lambda_angstroms", "f_lambda"]
         )
 
-    print(f"open {outfilepath}")
+    print_saved(outfilepath)
 
 
 def write_flambda_spectra(modelpath: Path) -> None:
@@ -61,7 +63,7 @@ def write_flambda_spectra(modelpath: Path) -> None:
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("-modelpath", type=Path, default=Path(), help="Path to ARTIS folder")
+    add_modelpath_arg(parser, default=Path())
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

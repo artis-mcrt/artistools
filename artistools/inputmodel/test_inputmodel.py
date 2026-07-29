@@ -1,3 +1,4 @@
+import argparse
 import hashlib
 import math
 import shutil
@@ -211,6 +212,14 @@ def test_make1dmodelfromcone() -> None:
         nshells=4,
         coneangle=60,
     )
+
+
+def test_makefromcone_arg_can_be_disabled() -> None:
+    """--makefromcone was previously action="store", so any value (even "False") was truthy."""
+    parser = argparse.ArgumentParser()
+    at.inputmodel.slice1dfromconein3dmodel.addargs(parser)
+    assert parser.parse_args([]).makefromcone is True
+    assert parser.parse_args(["--no-makefromcone"]).makefromcone is False
 
 
 def test_makemodel() -> None:

@@ -1,5 +1,16 @@
 """Miscellaneous helpers, split into focused submodules and re-exported here."""
 
+from artistools.misc.cliutils import add_axis_limit_args as add_axis_limit_args
+from artistools.misc.cliutils import add_figscale_args as add_figscale_args
+from artistools.misc.cliutils import add_filter_args as add_filter_args
+from artistools.misc.cliutils import add_maxpacketfiles_arg as add_maxpacketfiles_arg
+from artistools.misc.cliutils import add_modelpath_arg as add_modelpath_arg
+from artistools.misc.cliutils import add_outputfile_arg as add_outputfile_arg
+from artistools.misc.cliutils import add_outputpath_arg as add_outputpath_arg
+from artistools.misc.cliutils import add_series_style_args as add_series_style_args
+from artistools.misc.cliutils import add_timedays_arg as add_timedays_arg
+from artistools.misc.cliutils import add_timeminmax_args as add_timeminmax_args
+from artistools.misc.cliutils import add_timestep_arg as add_timestep_arg
 from artistools.misc.cliutils import add_viewingangle_args as add_viewingangle_args
 from artistools.misc.cliutils import flatten_list as flatten_list
 from artistools.misc.cliutils import get_filterfunc as get_filterfunc
@@ -28,6 +39,7 @@ from artistools.misc.fileio import firstexisting as firstexisting
 from artistools.misc.fileio import firstexisting_or_none as firstexisting_or_none
 from artistools.misc.fileio import get_file_metadata as get_file_metadata
 from artistools.misc.fileio import merge_pdf_files as merge_pdf_files
+from artistools.misc.fileio import print_saved as print_saved
 from artistools.misc.fileio import readnoncommentline as readnoncommentline
 from artistools.misc.fileio import stripallsuffixes as stripallsuffixes
 from artistools.misc.fileio import write_parquet_atomic as write_parquet_atomic

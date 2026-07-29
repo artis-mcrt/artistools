@@ -95,17 +95,19 @@ def read_time_taken(logfilepaths: Iterable[Path | str]) -> dict[str, dict[int, d
 
 def make_plot(logfiledict: dict[str, dict[int, t.Any]]) -> None:
     for timestep in range(55):
+        fig, axis = plt.subplots()
         plotvalues = ["update_packets", "update_grid", "write_estimators"]
         for plotvalue in plotvalues:
             # print(logfiledict[plotvalue][timestep])
             process, timetaken = zip(*logfiledict[plotvalue][timestep].items(), strict=False)
             # print(process, timetaken)
-            plt.plot(process, timetaken, label=plotvalue)
-        plt.xlabel("mpi rank")
-        plt.ylabel("time (s)")
-        plt.title(f"timestep {timestep}")
-        plt.legend()
+            axis.plot(process, timetaken, label=plotvalue)
+        axis.set_xlabel("mpi rank")
+        axis.set_ylabel("time (s)")
+        axis.set_title(f"timestep {timestep}")
+        axis.legend()
         plt.show()
+        plt.close(fig)
 
     # print(updategriddict.items())
 

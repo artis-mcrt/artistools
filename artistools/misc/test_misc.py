@@ -28,6 +28,136 @@ def _write_timesteps_out(modeldir: Path) -> None:
     (modeldir / "timesteps.out").write_text("\n".join(lines) + "\n")
 
 
+# --- cliutils.py -------------------------------------------------------------------------------
+
+
+def test_add_cli_arg_helpers() -> None:
+    """The shared argument helpers must define the standard flags, types, and defaults."""
+    parser = argparse.ArgumentParser()
+    at.add_modelpath_arg(parser, multiplepaths=True, default=[])
+    at.add_outputfile_arg(parser, default=Path("out.pdf"))
+    at.add_timestep_arg(parser)
+    at.add_timedays_arg(parser)
+    at.add_timeminmax_args(parser)
+    at.add_axis_limit_args(parser, xlimtype=int, xmindefault=1000, xmaxdefault=2000)
+    at.add_series_style_args(parser, colordefault=["C0", "C1"], include_linealpha=True)
+    at.add_figscale_args(parser, figscaledefault=1.8, include_figwidthscale=True)
+    at.add_filter_args(parser)
+    at.add_maxpacketfiles_arg(parser)
+
+    args = parser.parse_args([])
+    assert args.modelpath == []
+    assert args.outputfile == Path("out.pdf")
+    assert args.timestep is None
+    assert args.timedays is None
+    assert args.figscale == 1.8
+    assert args.figwidthscale == 1.0
+    assert args.xmin == 1000
+    assert args.xmax == 2000
+    assert args.color == ["C0", "C1"]
+    assert args.linealpha == []
+    assert args.filtermovingavg == 0
+    assert args.maxpacketfiles is None
+
+    args = parser.parse_args([
+        "-modelpath",
+        "model1",
+        "model2",
+        "-ts",
+        "45-65",
+        "-t",
+        "50-100",
+        "-colors",
+        "red",
+        "blue",
+        "-o",
+        "other.pdf",
+        "-maxpacketsfiles",
+        "5",
+        "-xmin",
+        "1500",
+        "-filtersavgol",
+        "5",
+        "3",
+    ])
+    assert args.modelpath == [Path("model1"), Path("model2")]
+    assert args.timestep == "45-65"
+    assert args.timedays == "50-100"
+    assert args.color == ["red", "blue"]
+    assert args.outputfile == Path("other.pdf")
+    assert args.maxpacketfiles == 5
+    assert args.xmin == 1500
+    assert args.filtersavgol == ["5", "3"]
+
+
+def test_add_cli_arg_helper_variants() -> None:
+    """The non-default helper modes must reproduce the per-command argument shapes."""
+    parser = argparse.ArgumentParser()
+    at.add_modelpath_arg(parser, positional=True, multiplepaths=True, default=[])
+    at.add_timestep_arg(parser, kind="int", default=70)
+    at.add_timedays_arg(parser, kind="float")
+    at.add_outputpath_arg(parser)
+    args = parser.parse_args(["model1", "-timestep", "12", "-timedays", "45.5"])
+    assert args.modelpath == [Path("model1")]
+    assert args.timestep == 12
+    assert args.timedays == 45.5
+    assert args.outputpath == "."
+
+    parserappend = argparse.ArgumentParser()
+    at.add_timestep_arg(parserappend, kind="strappend")
+    assert parserappend.parse_args(["-ts", "5", "-ts", "6"]).timestep == ["5", "6"]
+
+    parserrequired = argparse.ArgumentParser()
+    at.add_modelpath_arg(parserrequired, required=True)
+    with pytest.raises(SystemExit):
+        parserrequired.parse_args([])
+
+
+def test_set_args_from_dict_does_not_mutate_caller() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-outputfile", "-o", type=Path)
+    kwargs = {"o": "somefile.pdf"}
+    at.set_args_from_dict(parser, kwargs)
+    assert kwargs == {"o": "somefile.pdf"}
+    assert parser.parse_args([]).outputfile == Path("somefile.pdf")
+
+    with pytest.raises(ValueError, match="badargname"):
+        at.set_args_from_dict(parser, {"badargname": 1})
+
+
+# --- fileio.py (print_saved) -------------------------------------------------------------------
+
+
+def test_print_saved(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
+    """print_saved must emit a runnable macOS open command with a path relative to the working directory."""
+    monkeypatch.chdir(tmp_path)
+
+    at.print_saved(tmp_path / "subdir" / "out.pdf")
+    assert capsys.readouterr().out == "open subdir/out.pdf\n"
+
+    at.print_saved("out.pdf")
+    assert capsys.readouterr().out == "open out.pdf\n"
+
+    at.print_saved(tmp_path / "subdir" / ".." / "out.pdf")
+    assert capsys.readouterr().out == "open out.pdf\n"
+
+    at.print_saved(tmp_path / "with space.pdf")
+    assert capsys.readouterr().out == "open 'with space.pdf'\n"
+
+
+# --- modelinfo.py ------------------------------------------------------------------------------
+
+
+def test_missing_inputfile_error_names_the_path(tmp_path: Path) -> None:
+    """A non-ARTIS directory must produce an error naming the path, not a bare 'input.txt' message."""
+    with pytest.raises(FileNotFoundError, match="ARTIS folder") as excinfo:
+        at.get_inputparams(tmp_path / "nonexistentmodel")
+    assert "nonexistentmodel" in str(excinfo.value)
+
+    with pytest.raises(FileNotFoundError, match="ARTIS folder"):
+        at.get_nprocs(tmp_path / "nonexistentmodel")
+
+
 # --- fileio.py ---------------------------------------------------------------------------------
 
 

@@ -27,6 +27,14 @@ from matplotlib.lines import Line2D
 import artistools.spectra as atspectra
 from artistools.commands import get_path
 from artistools.constants import c_ang_per_s
+from artistools.misc import add_figscale_args
+from artistools.misc import add_filter_args
+from artistools.misc import add_maxpacketfiles_arg
+from artistools.misc import add_outputfile_arg
+from artistools.misc import add_series_style_args
+from artistools.misc import add_timedays_arg
+from artistools.misc import add_timeminmax_args
+from artistools.misc import add_timestep_arg
 from artistools.misc import add_viewingangle_args
 from artistools.misc import df_filter_minmax_bounded
 from artistools.misc import firstexisting
@@ -40,6 +48,7 @@ from artistools.misc import get_vpkt_config
 from artistools.misc import get_vspec_dir_labels
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
+from artistools.misc import print_saved
 from artistools.misc import print_theta_phi_definitions
 from artistools.misc import resolve_outputfile
 from artistools.misc import trim_or_pad
@@ -211,6 +220,8 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
         else f"{timeavg} days"
     )
 
+    fig, axis = plt.subplots()
+
     if args.binflux:
         new_lambda_angstroms = []
         binned_flux = []
@@ -224,9 +235,9 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
             sum_flux = sum(fluxes[j] for j in range(i, i + nbins))
             binned_flux.append(sum_flux / nbins)
 
-        plt.plot(new_lambda_angstroms, binned_flux)
+        axis.plot(new_lambda_angstroms, binned_flux)
     else:
-        dfspectrum.plot(x="lambda_angstroms", y=timeavg, label=linelabel)
+        dfspectrum.plot(x="lambda_angstroms", y=timeavg, label=linelabel, ax=axis)
 
     if args.ymax is None:
         args.ymax = 0.5
@@ -239,14 +250,16 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
     assert args.xmin < args.xmax
     assert args.ymin < args.ymax
 
-    plt.ylim(args.ymin, args.ymax)
-    plt.xlim(args.xmin, args.xmax)
+    axis.set_ylim(args.ymin, args.ymax)
+    axis.set_xlim(args.xmin, args.xmax)
 
-    plt.ylabel(str(args.stokesparam))
-    plt.xlabel(r"Wavelength ($\mathrm{{\AA}}$)")
+    axis.set_ylabel(str(args.stokesparam))
+    axis.set_xlabel(r"Wavelength ($\mathrm{{\AA}}$)")
     figname = f"plotpol_{timeavg}_days_{args.stokesparam.split('/')[0]}_{args.stokesparam.split('/')[1]}.pdf"
-    plt.savefig(modelpath / figname, format="pdf")
-    print(f"open {figname}")
+    outpath = resolve_outputfile(args.outputfile, figname)
+    fig.savefig(outpath, format="pdf")
+    print_saved(outpath)
+    plt.close(fig)
 
 
 def plot_reference_spectrum(
@@ -1056,7 +1069,7 @@ def make_emissionabsorption_plot(
     if not args.notitle:
         if args.inset_title:
             axis.annotate(
-                args.title,
+                plotlabel,
                 xy=(0.0, 1.0),
                 xycoords="axes fraction",
                 xytext=(10, -10),
@@ -1230,27 +1243,17 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "specpath", default=[], nargs="*", type=Path, help="Paths to ARTIS folders or reference spectra filenames"
     )
 
-    parser.add_argument("-label", default=[], nargs="*", help="List of series label overrides")
+    add_series_style_args(parser, include_linealpha=True)
 
-    parser.add_argument("-color", "-colors", dest="color", default=[], nargs="*", help="List of line colors")
-
-    parser.add_argument("-linestyle", default=[], nargs="*", help="List of line styles")
-
-    parser.add_argument("-linewidth", default=[], nargs="*", help="List of line widths")
-
-    parser.add_argument("-linealpha", default=[], nargs="*", help="List of line alphas (opacities)")
-
-    parser.add_argument("-dashes", default=[], nargs="*", help="Dashes property of lines")
-
-    parser.add_argument("--gamma", action="store_true", help="Make light curve from gamma rays instead of R-packets")
+    parser.add_argument(
+        "--gamma", action="store_true", help="Plot the gamma-ray spectrum instead of the UVOIR spectrum"
+    )
 
     parser.add_argument(
         "--frompackets", action="store_true", help="Read packets files directly instead of exspec results"
     )
 
-    parser.add_argument(
-        "-maxpacketfiles", "-maxpacketsfiles", type=int, default=None, help="Limit the number of packet files read"
-    )
+    add_maxpacketfiles_arg(parser)
 
     parser.add_argument(
         "--plotinvalidpart",
@@ -1302,23 +1305,17 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Maximum number of plot series (ions/processes) for emission/absorption plot",
     )
 
-    parser.add_argument(
-        "-filtersavgol",
-        nargs=2,
-        help="Savitzky-Golay filter. Specify the window_length and poly_order.e.g. -filtersavgol 5 3",
+    add_filter_args(parser)
+
+    add_timestep_arg(parser)
+
+    add_timedays_arg(parser)
+
+    add_timeminmax_args(
+        parser,
+        helptext_min="Lower time in days to integrate spectrum",
+        helptext_max="Upper time in days to integrate spectrum",
     )
-
-    parser.add_argument("-filtermovingavg", type=int, default=0, help="Smoothing length (1 is same as none)")
-
-    parser.add_argument("-timestep", "-ts", dest="timestep", nargs="?", help="First timestep or a range e.g. 45-65")
-
-    parser.add_argument(
-        "-timedays", "-time", "-t", dest="timedays", nargs="?", help="Range of times in days to plot (e.g. 50-100)"
-    )
-
-    parser.add_argument("-timemin", type=float, help="Lower time in days to integrate spectrum")
-
-    parser.add_argument("-timemax", type=float, help="Upper time in days to integrate spectrum")
 
     parser.add_argument(
         "--notimeclamp", action="store_true", help="When plotting from packets, don't clamp to timestep start/end"
@@ -1417,11 +1414,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-scaletoreftime", type=float, default=None, help="Scale reference spectra flux using Co56 decay timescale"
     )
 
-    parser.add_argument(
-        "-figscale", type=float, default=1.8, help="Scale factor for plot area. 1.0 is for single-column"
-    )
-
-    parser.add_argument("-figwidthscale", type=float, default=1.0, help="Scale factor for plot width")
+    add_figscale_args(parser, figscaledefault=1.8, include_figwidthscale=True)
 
     parser.add_argument("--logscalex", action="store_true", help="Use log scale for x values")
 
@@ -1433,7 +1426,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--notitle", action="store_true", help="Suppress the top title from the plot")
 
-    parser.add_argument("-title", action="store_true", help="Set the plot title")
+    parser.add_argument("-title", type=str, default=None, help="Custom plot title text")
 
     parser.add_argument("--inset_title", action="store_true", help="Place title inside the plot")
 
@@ -1447,9 +1440,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--write_data", action="store_true", help="Save data used to generate the plot in a CSV file")
 
-    parser.add_argument(
-        "-outputfile", "-o", action="store", dest="outputfile", type=Path, help="path/filename for PDF file"
-    )
+    add_outputfile_arg(parser, helptext="path/filename for PDF file")
 
     parser.add_argument("-dpi", type=int, default=250, help="Dots Per Inch for output file")
 
@@ -1614,25 +1605,26 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             else ""
         )
 
-        filenameout = (
-            str(args.outputfile).format(
+        filenameout = str(args.outputfile)
+        if args.timemin is not None:
+            filenameout = filenameout.format(
                 time_days_min=args.timemin, time_days_max=args.timemax, directionbins=strdirectionbins
             )
-            if args.timemin is not None
-            else "plotspec.pdf"
-        )
+        elif "{" in filenameout:
+            # no global time range was resolved (e.g. --multispecplot), so the time placeholders can't be filled
+            filenameout = str(Path(filenameout).with_name("plotspec.pdf"))
 
         if args.write_data and len(dfalldata.columns) > 0:
             datafilenameout = Path(filenameout).with_suffix(".txt")
             dfalldata.write_csv(datafilenameout, separator=" ")
-            print(f"open {datafilenameout}")
+            print_saved(datafilenameout)
 
         # plt.minorticks_on()
 
         fig.savefig(filenameout, dpi=args.dpi)
         # plt.show()
-        print(f"open {filenameout}")
-        plt.close()
+        print_saved(filenameout)
+        plt.close(fig)
 
 
 if __name__ == "__main__":

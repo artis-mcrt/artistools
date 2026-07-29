@@ -9,8 +9,6 @@ from collections.abc import Iterable
 from collections.abc import Sequence
 from pathlib import Path
 
-import numpy as np
-
 from artistools.commands import CustomArgHelpFormatter
 
 
@@ -58,6 +56,179 @@ def add_viewingangle_args(parser: argparse.ArgumentParser, allow_select_all: boo
     )
 
 
+def add_modelpath_arg(
+    parser: argparse.ArgumentParser,
+    *,
+    positional: bool = False,
+    multiplepaths: bool = False,
+    required: bool = False,
+    default: t.Any = None,
+    helptext: str = "Path to ARTIS folder",
+) -> None:
+    """Add the ARTIS model path argument (-modelpath option, or a positional path when positional=True)."""
+    kwargs: dict[str, t.Any] = {"type": Path, "default": default, "help": helptext}
+    if multiplepaths:
+        kwargs["nargs"] = "*"
+    if positional:
+        parser.add_argument("modelpath", **kwargs)
+    else:
+        if required:
+            kwargs["required"] = True
+        parser.add_argument("-modelpath", **kwargs)
+
+
+def add_outputfile_arg(
+    parser: argparse.ArgumentParser,
+    *,
+    default: t.Any = None,
+    astype: type[Path] | type[str] | None = Path,
+    extraflags: Sequence[str] = (),
+    helptext: str = "Path/filename for the output file",
+) -> None:
+    """Add the -outputfile/-o argument naming a single output file."""
+    kwargs: dict[str, t.Any] = {"dest": "outputfile", "default": default, "help": helptext}
+    if astype is not None:
+        kwargs["type"] = astype
+    parser.add_argument("-outputfile", *extraflags, "-o", **kwargs)
+
+
+def add_outputpath_arg(
+    parser: argparse.ArgumentParser,
+    *,
+    default: t.Any = ".",
+    astype: type[Path] | None = None,
+    helptext: str = "Path for output files",
+) -> None:
+    """Add the -outputpath/-o argument naming a directory for output files."""
+    kwargs: dict[str, t.Any] = {"default": default, "help": helptext}
+    if astype is not None:
+        kwargs["type"] = astype
+    parser.add_argument("-outputpath", "-o", **kwargs)
+
+
+def add_timestep_arg(
+    parser: argparse.ArgumentParser,
+    *,
+    kind: t.Literal["rangestr", "int", "strappend"] = "rangestr",
+    default: t.Any = None,
+    helptext: str | None = None,
+) -> None:
+    """Add the -timestep/-ts argument: a range string like 45-65, a single int, or an appendable list."""
+    flags = ("-timestep", "-ts")
+    if kind == "rangestr":
+        parser.add_argument(
+            *flags, dest="timestep", nargs="?", default=default, help=helptext or "First timestep or a range e.g. 45-65"
+        )
+    elif kind == "int":
+        parser.add_argument(*flags, type=int, default=default, help=helptext or "Timestep number to plot")
+    else:
+        parser.add_argument(*flags, action="append", default=default, help=helptext or "Timestep number to plot")
+
+
+def add_timedays_arg(
+    parser: argparse.ArgumentParser,
+    *,
+    kind: t.Literal["rangestr", "str", "float"] = "rangestr",
+    helptext: str | None = None,
+) -> None:
+    """Add the -timedays/-time/-t argument, either as a range string like 50-100 or a single value."""
+    flags = ("-timedays", "-time", "-t")
+    if kind == "rangestr":
+        parser.add_argument(
+            *flags, dest="timedays", nargs="?", help=helptext or "Range of times in days to plot (e.g. 50-100)"
+        )
+    elif kind == "float":
+        parser.add_argument(*flags, type=float, help=helptext or "Time in days to plot")
+    else:
+        parser.add_argument(*flags, help=helptext or "Time in days to plot")
+
+
+def add_timeminmax_args(
+    parser: argparse.ArgumentParser,
+    *,
+    helptext_min: str = "Lower time in days",
+    helptext_max: str = "Upper time in days",
+) -> None:
+    """Add the -timemin and -timemax arguments bounding a time range in days."""
+    parser.add_argument("-timemin", type=float, help=helptext_min)
+    parser.add_argument("-timemax", type=float, help=helptext_max)
+
+
+def add_axis_limit_args(
+    parser: argparse.ArgumentParser,
+    *,
+    xlimtype: type[int] | type[float] = float,
+    xmindefault: float | None = None,
+    xmaxdefault: float | None = None,
+    xminhelp: str = "Plot range: minimum x value",
+    xmaxhelp: str = "Plot range: maximum x value",
+    include_x: bool = True,
+    include_y: bool = True,
+) -> None:
+    """Add the -xmin/-xmax and -ymin/-ymax plot range arguments."""
+    if include_x:
+        parser.add_argument("-xmin", type=xlimtype, default=xmindefault, help=xminhelp)
+        parser.add_argument("-xmax", type=xlimtype, default=xmaxdefault, help=xmaxhelp)
+    if include_y:
+        parser.add_argument("-ymin", type=float, default=None, help="Plot range: y-axis minimum")
+        parser.add_argument("-ymax", type=float, default=None, help="Plot range: y-axis maximum")
+
+
+def add_series_style_args(
+    parser: argparse.ArgumentParser,
+    *,
+    colordefault: Sequence[str] | None = None,
+    include_linestyles: bool = True,
+    include_linealpha: bool = False,
+    include_dashes: bool = True,
+) -> None:
+    """Add the per-series style list arguments shared by the multi-series plotting commands."""
+    parser.add_argument("-label", default=[], nargs="*", help="List of series label overrides")
+    parser.add_argument(
+        "-color",
+        "-colors",
+        dest="color",
+        default=list(colordefault) if colordefault else [],
+        nargs="*",
+        help="List of line colors",
+    )
+    if include_linestyles:
+        parser.add_argument("-linestyle", default=[], nargs="*", help="List of line styles")
+        parser.add_argument("-linewidth", default=[], nargs="*", help="List of line widths")
+    if include_linealpha:
+        parser.add_argument("-linealpha", default=[], nargs="*", help="List of line alphas (opacities)")
+    if include_dashes:
+        parser.add_argument("-dashes", default=[], nargs="*", help="Dashes property of lines")
+
+
+def add_figscale_args(
+    parser: argparse.ArgumentParser, *, figscaledefault: float = 1.0, include_figwidthscale: bool = False
+) -> None:
+    """Add the figure size scale factor arguments."""
+    parser.add_argument(
+        "-figscale", type=float, default=figscaledefault, help="Scale factor for plot area. 1.0 is for single-column"
+    )
+    if include_figwidthscale:
+        parser.add_argument("-figwidthscale", type=float, default=1.0, help="Scale factor for plot width")
+
+
+def add_filter_args(parser: argparse.ArgumentParser) -> None:
+    """Add the spectrum smoothing filter arguments (get_filterfunc reads exactly these dests)."""
+    parser.add_argument("-filtermovingavg", type=int, default=0, help="Smoothing length (1 is same as none)")
+    parser.add_argument(
+        "-filtersavgol",
+        nargs=2,
+        help="Savitzky-Golay filter. Specify the window_length and poly_order, e.g. -filtersavgol 5 3",
+    )
+
+
+def add_maxpacketfiles_arg(parser: argparse.ArgumentParser) -> None:
+    """Add the -maxpacketfiles argument limiting how many packet files are read."""
+    parser.add_argument(
+        "-maxpacketfiles", "-maxpacketsfiles", type=int, default=None, help="Limit the number of packet files read"
+    )
+
+
 def parse_cli_args(
     addargsfunc: Callable[[argparse.ArgumentParser], None],
     description: str | None,
@@ -100,6 +271,7 @@ def resolve_outputfile(outputfile: Path | str | None, defaultoutputfile: Path | 
 
 def set_args_from_dict(parser: argparse.ArgumentParser, kwargs: dict[str, t.Any]) -> None:
     """Set argparse defaults from a dictionary."""
+    kwargs = dict(kwargs)  # keys are renamed to argument dests below, so don't mutate the caller's dict
     # set_defaults expects the dest of an argument. Here we allow the option strings to be used as keys
     for arg in parser._actions:  # ruff:ignore[private-member-access]
         for optstring in arg.option_strings:
@@ -197,6 +369,8 @@ def get_filterfunc(args: argparse.Namespace) -> Callable[[t.Any], t.Any] | None:
     if dictargs.get("filtermovingavg", False):
 
         def movavgfilterfunc(ylist: t.Any) -> t.Any:
+            import numpy as np
+
             n = args.filtermovingavg
             arr_padded = np.pad(ylist, (n // 2, n - 1 - n // 2), mode="edge")
             return np.convolve(arr_padded, np.ones((n,)) / n, mode="valid")

@@ -24,6 +24,13 @@ from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import Lsun_to_erg_per_s
 from artistools.constants import Msun_to_g
+from artistools.misc import add_axis_limit_args
+from artistools.misc import add_figscale_args
+from artistools.misc import add_filter_args
+from artistools.misc import add_maxpacketfiles_arg
+from artistools.misc import add_modelpath_arg
+from artistools.misc import add_outputfile_arg
+from artistools.misc import add_series_style_args
 from artistools.misc import print_theta_phi_definitions
 
 
@@ -250,7 +257,7 @@ def plot_artis_lightcurve(
     print(f" modelpath: {modelpath.resolve().parts[-1]}")
 
     if hasattr(args, "title") and args.title:
-        axis.set_title(linelabel)
+        axis.set_title(args.title if isinstance(args.title, str) else linelabel)
 
     if directionbins is None:
         directionbins = [-1]
@@ -710,16 +717,17 @@ def make_lightcurve_plot(
         plt.show()
 
     fig.savefig(str(filenameout), format="pdf")
-    print(f"open {filenameout}")
+    at.print_saved(filenameout)
 
     if args.plotthermalisation:
         assert figtherm is not None
 
         filenameout2 = str(filenameout).replace(".pdf", "_thermalisation.pdf")
         figtherm.savefig(filenameout2, format="pdf")
-        print(f"open {filenameout2}")
+        at.print_saved(filenameout2)
+        plt.close(figtherm)
 
-    plt.close()
+    plt.close(fig)
 
 
 def create_axes(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[t.Any] | mplax.Axes]:
@@ -905,7 +913,11 @@ def make_colorbar_viewingangles(
         if fig:
             cbar = fig.colorbar(scaledmap, orientation="horizontal", location="top", pad=0.10, ax=ax, shrink=0.95)
         else:
-            cbar = plt.colorbar(scaledmap, ax=ax)
+            assert ax is not None
+            firstaxis = ax if isinstance(ax, mplax.Axes) else next(iter(ax))
+            axisfigure = firstaxis.get_figure()
+            assert axisfigure is not None
+            cbar = axisfigure.colorbar(scaledmap, ax=ax)
         if label:
             cbar.set_label(label, rotation=0)
         cbar.locator = mplticker.FixedLocator(ticklocs)
@@ -964,7 +976,7 @@ def make_band_lightcurves_plot(
                     )
                     with bandoutfile.open("w", encoding="utf-8") as f:
                         f.write(txtout)
-                    print(f"open {bandoutfile}")
+                    at.print_saved(bandoutfile)
                 if args.print_data:
                     print(txtout)
 
@@ -1049,8 +1061,9 @@ def make_band_lightcurves_plot(
     if ymin < ymax:
         firstaxis.invert_yaxis()
 
-    plt.savefig(args.outputfile, format="pdf")
-    print(f"Saved figure: {args.outputfile}")
+    fig.savefig(args.outputfile, format="pdf")
+    at.print_saved(args.outputfile)
+    plt.close(fig)
 
 
 def colour_evolution_plot(
@@ -1153,7 +1166,8 @@ def colour_evolution_plot(
 
     if args.show:
         plt.show()
-    plt.savefig(args.outputfile, format="pdf")
+    fig.savefig(args.outputfile, format="pdf")
+    plt.close(fig)
 
 
 # Just in case it's needed...
@@ -1322,39 +1336,33 @@ def plot_color_evolution_from_data(
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument(
-        "modelpath",
+    add_modelpath_arg(
+        parser,
+        positional=True,
+        multiplepaths=True,
         default=[],
-        nargs="*",
-        type=Path,
-        help="Path(s) to ARTIS folders with light_curve.out or packets files (may include wildcards such as * and **)",
+        helptext="Path(s) to ARTIS folders with light_curve.out or packets files (may include wildcards such as * and **)",
     )
 
-    parser.add_argument("-label", default=[], nargs="*", help="List of series label overrides")
+    add_series_style_args(parser, colordefault=[f"C{i}" for i in range(10)])
 
     parser.add_argument("--nolegend", action="store_true", help="Suppress the legend from the plot")
 
-    parser.add_argument("--title", action="store_true", help="Show title of plot")
-
-    parser.add_argument("-color", default=[f"C{i}" for i in range(10)], nargs="*", help="List of line colors")
-
-    parser.add_argument("-linestyle", default=[], nargs="*", help="List of line styles")
-
-    parser.add_argument("-linewidth", default=[], nargs="*", help="List of line widths")
-
-    parser.add_argument("-dashes", default=[], nargs="*", help="Dashes property of lines")
-
     parser.add_argument(
-        "-figscale", type=float, default=1.8, help="Scale factor for plot area. 1.0 is for single-column"
+        "-title",
+        "--title",
+        dest="title",
+        nargs="?",
+        const=True,
+        default=None,
+        help="Show a plot title: pass the title text, or use the bare flag for the model name",
     )
 
-    parser.add_argument("-figwidthscale", type=float, default=1.0, help="Scale factor for plot width")
+    add_figscale_args(parser, figscaledefault=1.8, include_figwidthscale=True)
 
     parser.add_argument("--frompackets", action="store_true", help="Read packets files instead of light_curve.out")
 
-    parser.add_argument(
-        "-maxpacketfiles", "-maxpacketsfiles", type=int, default=None, help="Limit the number of packet files read"
-    )
+    add_maxpacketfiles_arg(parser)
 
     parser.add_argument("--gamma", action="store_true", help="Make light curve from gamma rays")
 
@@ -1368,7 +1376,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("-escape_type", default="TYPE_RPKT", help="Type of escaping packets")
 
-    parser.add_argument("-o", "-outputfile", action="store", dest="outputfile", type=Path, help="Filename for PDF file")
+    add_outputfile_arg(parser, helptext="Filename for PDF file")
 
     parser.add_argument(
         "--plotcmf",
@@ -1431,9 +1439,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     at.add_viewingangle_args(parser, allow_select_all=True)
 
-    parser.add_argument("-ymax", type=float, default=None, help="Plot range: y-axis")
-
-    parser.add_argument("-ymin", type=float, default=None, help="Plot range: y-axis")
+    add_axis_limit_args(parser, include_x=False)
 
     parser.add_argument(
         "-timemin", "-timedaysmin", "-xmin", type=float, default=None, help="Plot range: x-axis minimum"
@@ -1463,11 +1469,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-refspecmarkers", default=["o", "s", "h"], nargs="*", help="Set a list of markers for reference spectra"
     )
 
-    parser.add_argument(
-        "-filtersavgol",
-        nargs=2,
-        help="Savitzky-Golay filter. Specify the window_length and poly_order.e.g. -filtersavgol 5 3",
-    )
+    add_filter_args(parser)
 
     parser.add_argument(
         "-redshifttoz",
@@ -1656,7 +1658,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     elif args.colour_evolution:
         colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder, args)
-        print(f"Saved figure: {args.outputfile}")
+        at.print_saved(args.outputfile)
     else:
         make_lightcurve_plot(
             modelpaths=args.modelpath,

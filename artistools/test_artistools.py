@@ -1,8 +1,12 @@
-import contextlib
+import argparse
 import hashlib
 import importlib
 import inspect
 import math
+import os
+import subprocess
+import sys
+import tomllib
 import typing as t
 from pathlib import Path
 from unittest import mock
@@ -34,39 +38,213 @@ def get_plot_xy(callargs: t.Any) -> tuple[np.ndarray, np.ndarray]:
     return np.array(callargs[0][1], dtype=float), np.array(callargs[0][2], dtype=float)
 
 
-def test_commands() -> None:
-    commands: dict[str, tuple[str, str]] = {}
+def _console_script_targets() -> list[tuple[str, str, str]]:
+    """Return (command, submodulename, funcname) for every console script declared in pyproject.toml."""
+    with (REPOPATH / "pyproject.toml").open("rb") as f:
+        scripts: dict[str, str] = tomllib.load(f)["project"]["scripts"]
 
-    # just skip the test if tomllib is not available (python < 3.11)
-    with contextlib.suppress(ImportError):
-        import tomllib
+    targets = []
+    for command, target in scripts.items():
+        submodulename, _, targetfuncname = target.partition(":")
+        targets.append((command, submodulename, targetfuncname))
+    return targets
 
-        assert isinstance(REPOPATH, Path)
-        with (REPOPATH / "pyproject.toml").open("rb") as f:
-            pyproj = tomllib.load(f)
-        commands = {k: tuple(v.split(":")) for k, v in pyproj["project"]["scripts"].items()}
 
-        # ensure that the commands are pointing to valid submodule.function() targets
-        for command, (submodulename, funcname) in commands.items():
-            submodule = importlib.import_module(submodulename)
-            assert hasattr(submodule, funcname) or (
-                funcname == "main" and hasattr(importlib.import_module(f"{submodulename}.__main__"), funcname)
-            ), f"{submodulename}.{funcname} not found for command {command}"
+@pytest.mark.parametrize(("command", "submodulename", "targetfuncname"), _console_script_targets())
+def test_console_script_target(command: str, submodulename: str, targetfuncname: str) -> None:
+    """Every console script must point to an importable module with a callable target function."""
+    submodule = importlib.import_module(submodulename)
+    assert callable(getattr(submodule, targetfuncname, None)), (
+        f"{submodulename}.{targetfuncname} not found for command {command}"
+    )
 
-    def recursive_check(dictcmd: at.commands.CommandType) -> None:
-        for cmdtarget in dictcmd.values():
+
+def test_commands_list_matches_scripts() -> None:
+    """The completion setup command list must stay in sync with the console scripts in pyproject.toml."""
+    assert set(at.commands.COMMANDS) == {command for command, _, _ in _console_script_targets()}
+
+
+def test_subcommandtree() -> None:
+    """Every subcommand spec must name an importable module, callable functions, and non-empty help text."""
+
+    def recursive_check(tree: at.commands.CommandTree) -> None:
+        for cmdtarget in tree.values():
             if isinstance(cmdtarget, dict):
                 recursive_check(cmdtarget)
             else:
-                submodulename, funcname = cmdtarget
-                namestr = f"artistools.{submodulename.removeprefix('artistools.')}" if submodulename else "artistools"
-                print(namestr)
-                submodule = importlib.import_module(namestr, package="artistools")
-                assert hasattr(submodule, funcname) or (
-                    funcname == "main" and hasattr(importlib.import_module(f"{namestr}.__main__"), funcname)
-                )
+                assert cmdtarget.helptext
+                submodule = importlib.import_module(f"artistools.{cmdtarget.module}")
+                assert callable(getattr(submodule, cmdtarget.funcname, None))
+                assert callable(getattr(submodule, "addargs", None))
 
     recursive_check(at.commands.subcommandtree)
+
+
+def test_shared_cli_args_consistent() -> None:
+    """Arguments shared between commands must present the same flags and types everywhere."""
+    import artistools.__main__
+
+    parser = artistools.__main__.build_parser()
+    actionsbycommand: dict[str, dict[str, argparse.Action]] = {}
+
+    def collect(parser: argparse.ArgumentParser, prefix: str) -> None:
+        for action in parser._actions:  # ruff:ignore[private-member-access]
+            if isinstance(action, argparse._SubParsersAction):  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+                nameparsermap: dict[str, argparse.ArgumentParser] = action._name_parser_map  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]  # ty:ignore[invalid-assignment]
+                for name, subparser in nameparsermap.items():
+                    collect(subparser, f"{prefix}{name} ")
+            elif action.dest != "help":
+                actionsbycommand.setdefault(prefix.strip(), {})[action.dest] = action
+
+    collect(parser, "")
+    assert len(actionsbycommand) > 30
+
+    for command, actions in actionsbycommand.items():
+        for dest, action in actions.items():
+            flags = set(action.option_strings)
+            label = f"{command}: {dest} {sorted(flags)}"
+            if dest == "modelpath" and "-modelpath" in flags:
+                assert action.type is Path, label
+            elif dest == "timestep" and "-timestep" in flags:
+                assert "-ts" in flags, label
+            elif dest == "timedays" and "-timedays" in flags:
+                assert {"-time", "-t"} <= flags, label
+            elif dest == "maxpacketfiles":
+                assert flags == {"-maxpacketfiles", "-maxpacketsfiles"}, label
+                assert action.type is int, label
+            elif dest == "figscale":
+                assert action.type is float, label
+            elif dest == "outputfile" and "-outputfile" in flags:
+                assert "-o" in flags, label
+            elif dest == "filtersavgol":
+                assert action.nargs == 2, label
+                assert "filtermovingavg" in actions, label  # the contract read by at.get_filterfunc
+
+
+def test_deprecated_flag_spellings_still_work() -> None:
+    """Flags renamed to the single-dash-takes-a-value convention keep their old spellings as hidden aliases."""
+    parser = argparse.ArgumentParser()
+    at.transitions.addargs(parser)
+    assert parser.parse_args(["--atomicdatabase", "kurucz"]).atomicdatabase == "kurucz"
+    assert parser.parse_args(["-atomicdatabase", "nist"]).atomicdatabase == "nist"
+    assert parser.parse_args([]).atomicdatabase == "artis"
+
+    parser = argparse.ArgumentParser()
+    at.macroatom.addargs(parser)
+    assert parser.parse_args(["--modelpath", "amodel"]).modelpath == Path("amodel")
+    assert parser.parse_args(["-modelpath", "amodel"]).modelpath == Path("amodel")
+
+    parser = argparse.ArgumentParser()
+    at.estimators.plotestimators.addargs(parser)
+    assert parser.parse_args(["-scalefigwidth", "2.5"]).figwidthscale == 2.5
+    assert parser.parse_args(["-figwidthscale", "2.5"]).figwidthscale == 2.5
+    assert parser.parse_args([]).figwidthscale == 1.0
+
+    parser = argparse.ArgumentParser()
+    at.viewing_angles_visualization.addargs(parser)
+    for rawargs in (
+        ["model.txt", "--outfile", "vis.html", "--opacity", "0.5", "-s", "10"],
+        ["model.txt", "-outputfile", "vis.html", "-opacity", "0.5", "-surface_count", "10"],
+    ):
+        args = parser.parse_args(rawargs)
+        assert args.outputfile == "vis.html"
+        assert args.opacity == 0.5
+        assert args.surface_count == 10
+
+
+def test_lightcurve_title_arg() -> None:
+    """The lc -title flag accepts custom text, while the bare (deprecated --title) form shows the model name."""
+    parser = argparse.ArgumentParser()
+    at.lightcurve.plotlightcurve.addargs(parser)
+    assert parser.parse_args([]).title is None
+    assert parser.parse_args(["--title"]).title is True
+    assert parser.parse_args(["-title", "Custom title"]).title == "Custom title"
+
+
+def test_hidden_duplicate_commands() -> None:
+    """Cross-level duplicate command names still work but are not advertised in at --help."""
+    import artistools.__main__
+
+    parser = artistools.__main__.build_parser()
+    helptext = parser.format_help()
+    assert "plotspectra" in helptext
+    for hiddenname in ("describeinputmodel", "maptogrid", "makeartismodelfromparticlegridmap"):
+        assert hiddenname not in helptext
+
+    args = parser.parse_args(["describeinputmodel", "somemodelpath"])
+    assert args.func.__module__ == "artistools.inputmodel.describeinputmodel"
+
+
+def test_cli_version(capsys: pytest.CaptureFixture[str]) -> None:
+    import artistools.__main__
+
+    artistools.__main__.main(argsraw=["version"])
+    assert f"artistools {at.version.version}" in capsys.readouterr().out
+
+    with pytest.raises(SystemExit) as excinfo:
+        artistools.__main__.main(argsraw=["--version"])
+    assert excinfo.value.code == 0
+    assert at.version.version in capsys.readouterr().out
+
+
+def test_cli_unknown_command() -> None:
+    import artistools.__main__
+
+    with pytest.raises(SystemExit) as excinfo:
+        artistools.__main__.main(argsraw=["plotspetcra"])
+    assert excinfo.value.code == 2
+
+
+def test_cli_no_command_prints_help(capsys: pytest.CaptureFixture[str]) -> None:
+    import artistools.__main__
+
+    artistools.__main__.main(argsraw=[])
+    assert "plotspectra" in capsys.readouterr().out
+
+
+def test_cli_missing_model_gives_short_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A missing input file from the at command must exit with a one-line error instead of a traceback."""
+    import artistools.__main__
+
+    with pytest.raises(SystemExit) as excinfo:
+        artistools.__main__.main(argsraw=["plotestimators", "-modelpath", str(tmp_path / "nomodel")])
+    assert excinfo.value.code == 1
+    stderr = capsys.readouterr().err
+    assert "input.txt" in stderr
+    assert "nomodel" in stderr
+
+
+@pytest.mark.parametrize(("comp_line", "expected"), [("at plotsp", "plotspectra"), ("at spec -timed", "-timedays")])
+def test_cli_tab_completion(tmp_path: Path, comp_line: str, expected: str) -> None:
+    """Tab completion must offer subcommand names and the options of a subcommand."""
+    outputfile = tmp_path / "completions.txt"
+    env = os.environ | {
+        "_ARGCOMPLETE": "1",
+        "_ARGCOMPLETE_SHELL": "bash",
+        "_ARGCOMPLETE_IFS": "\v",
+        "_ARGCOMPLETE_SUPPRESS_SPACE": "1",
+        "_ARGCOMPLETE_STDOUT_FILENAME": str(outputfile),
+        "COMP_LINE": comp_line,
+        "COMP_POINT": str(len(comp_line)),
+    }
+    subprocess.run([sys.executable, "-m", "artistools"], env=env, check=False, cwd=REPOPATH, timeout=120)
+    completions = outputfile.read_text(encoding="utf-8").split("\v")
+    assert expected in completions
+
+
+def test_package_attrs() -> None:
+    """Every re-exported attribute must resolve."""
+    for name in dir(at):
+        if not name.startswith("_"):
+            assert getattr(at, name) is not None
+
+
+def test_plotspherical_format_arg() -> None:
+    parser = argparse.ArgumentParser()
+    at.plotspherical.addargs(parser)
+    assert parser.parse_args([]).format == "pdf"
+    with pytest.raises(SystemExit):
+        parser.parse_args(["-format", "svg"])
 
 
 def test_timestep_times() -> None:

@@ -78,6 +78,17 @@ from artistools.inputmodel import get_mgi_of_velocity_kms as get_mgi_of_velocity
 from artistools.inputmodel import get_modeldata as get_modeldata
 from artistools.inputmodel import save_initelemabundances as save_initelemabundances
 from artistools.inputmodel import save_modeldata as save_modeldata
+from artistools.misc import add_axis_limit_args as add_axis_limit_args
+from artistools.misc import add_figscale_args as add_figscale_args
+from artistools.misc import add_filter_args as add_filter_args
+from artistools.misc import add_maxpacketfiles_arg as add_maxpacketfiles_arg
+from artistools.misc import add_modelpath_arg as add_modelpath_arg
+from artistools.misc import add_outputfile_arg as add_outputfile_arg
+from artistools.misc import add_outputpath_arg as add_outputpath_arg
+from artistools.misc import add_series_style_args as add_series_style_args
+from artistools.misc import add_timedays_arg as add_timedays_arg
+from artistools.misc import add_timeminmax_args as add_timeminmax_args
+from artistools.misc import add_timestep_arg as add_timestep_arg
 from artistools.misc import add_viewingangle_args as add_viewingangle_args
 from artistools.misc import average_direction_bins as average_direction_bins
 from artistools.misc import firstexisting as firstexisting
@@ -120,6 +131,7 @@ from artistools.misc import parallel_map as parallel_map
 from artistools.misc import parse_cli_args as parse_cli_args
 from artistools.misc import parse_range as parse_range
 from artistools.misc import parse_range_list as parse_range_list
+from artistools.misc import print_saved as print_saved
 from artistools.misc import print_theta_phi_definitions as print_theta_phi_definitions
 from artistools.misc import read_rank_outputfiles as read_rank_outputfiles
 from artistools.misc import readnoncommentline as readnoncommentline

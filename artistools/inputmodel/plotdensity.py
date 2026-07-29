@@ -2,7 +2,6 @@
 import argparse
 import typing as t
 from collections.abc import Sequence
-from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -11,24 +10,26 @@ import polars as pl
 import artistools as at
 from artistools.constants import C_cm_per_s
 from artistools.constants import Msun_to_g
+from artistools.misc import add_axis_limit_args
+from artistools.misc import add_modelpath_arg
+from artistools.misc import add_outputpath_arg
+from artistools.misc import add_series_style_args
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument(
-        "modelpath",
+    add_modelpath_arg(
+        parser,
+        positional=True,
+        multiplepaths=True,
         default=[],
-        nargs="*",
-        type=Path,
-        help="Path(s) to model.txt file(s) or folders containing model.txt)",
+        helptext="Path(s) to model.txt file(s) or folders containing model.txt)",
     )
 
-    parser.add_argument("-label", default=[], nargs="*", help="List of series label overrides")
+    add_series_style_args(
+        parser, colordefault=[f"C{i}" for i in range(10)], include_linestyles=False, include_dashes=False
+    )
 
-    parser.add_argument("-color", default=[f"C{i}" for i in range(10)], nargs="*", help="List of line colors")
-
-    parser.add_argument("-xmax", type=float, default=None, help="Plot range: x-axis")
-
-    parser.add_argument("-xmin", type=float, default=None, help="Plot range: x-axis")
+    add_axis_limit_args(parser, include_y=False)
 
     parser.add_argument(
         "-nbins",
@@ -39,7 +40,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--plotye", action="store_true", help="Plot electron fraction versus velocity")
 
-    parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")
+    add_outputpath_arg(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -149,7 +150,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     outfilepath = at.resolve_outputfile(args.outputpath, "densityprofile.pdf")
 
     fig.savefig(outfilepath)
-    print(f"open {outfilepath}")
+    at.print_saved(outfilepath)
+    plt.close(fig)
 
 
 if __name__ == "__main__":

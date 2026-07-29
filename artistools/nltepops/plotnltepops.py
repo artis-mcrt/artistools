@@ -17,6 +17,10 @@ import polars as pl
 from matplotlib import ticker
 
 import artistools as at
+from artistools.misc import add_axis_limit_args
+from artistools.misc import add_figscale_args
+from artistools.misc import add_modelpath_arg
+from artistools.misc import add_outputfile_arg
 
 defaultoutputfile = "plotnlte_{elsymbol}_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf"
 
@@ -470,13 +474,16 @@ def make_plot_populations_with_time_or_velocity(modelpaths: list[Path | str], ar
             title += f", mgi = {args.modelgridindex[0]}"
         elif args.x == "velocity":
             title += f", {timedayslist} days"
-        plt.title(title)
+        titleaxis = ax[-1] if args.subplots else ax  # pyright: ignore[reportIndexIssue]
+        assert isinstance(titleaxis, mplax.Axes)
+        titleaxis.set_title(title)
 
     at.plottools.set_axis_properties(ax, args)
 
     figname = f"plotnltelevelpopsZ{Z}.pdf"
-    plt.savefig(Path(modelpaths[0]) / figname, format="pdf")
-    print(f"open {figname}")
+    fig.savefig(figname, format="pdf")
+    at.print_saved(figname)
+    plt.close(fig)
 
 
 def plot_populations_with_time_or_velocity(
@@ -715,14 +722,14 @@ def make_singletimestep_plot(
         elsymbol=at.get_elsymbol(atomic_number), cell=mgilist[0], timestep=timestep, time_days=time_days
     )
     fig.savefig(outputfilename, format="pdf")
-    print(f"open {outputfilename}")
-    plt.close()
+    at.print_saved(outputfilename)
+    plt.close(fig)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("elements", nargs="*", default=["Fe"], help="List of elements to plot")
 
-    parser.add_argument("-modelpath", default=Path(), type=Path, help="Path to ARTIS folder")
+    add_modelpath_arg(parser, default=Path())
 
     # arg to give multiple model paths - can use for x axis = time but breaks other plots
     # parser.add_argument('-modelpath', default=[Path('.')], nargs='*', type=Path,
@@ -754,9 +761,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("-maxlevel", default=-1, type=int, help="Maximum level to plot")
 
-    parser.add_argument(
-        "-figscale", type=float, default=1.6, help="Scale factor for plot area. 1.0 is for single-column"
-    )
+    add_figscale_args(parser, figscaledefault=1.6)
 
     parser.add_argument(
         "--departuremode", action="store_true", help="Show departure coefficients instead of populations"
@@ -772,15 +777,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--nolegend", action="store_true", help="Suppress the legend from the plot")
 
-    parser.add_argument("-xmin", type=float, default=None, help="Plot range: x-axis")
+    add_axis_limit_args(parser)
 
-    parser.add_argument("-xmax", type=float, default=None, help="Plot range: x-axis")
-
-    parser.add_argument("-ymin", type=float, default=None, help="Plot range: y-axis")
-
-    parser.add_argument("-ymax", type=float, default=None, help="Plot range: y-axis")
-
-    parser.add_argument("-outputfile", "-o", type=Path, default=defaultoutputfile, help="path/filename for PDF file")
+    add_outputfile_arg(parser, default=defaultoutputfile, helptext="path/filename for PDF file")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

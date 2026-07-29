@@ -54,18 +54,20 @@ def plot_Te_vs_time_lineofsight_3d_model(
     assoc_cells = at.get_grid_mapping(modelpath=modelpath)[0]
     times = at.get_timestep_times(modelpath)
 
+    fig, axis = plt.subplots()
     for mgi in readonly_mgi:
         associated_modeldata_row_for_mgi = modeldata.loc[modeldata["inputcellid"] == assoc_cells[mgi][0]]
 
         Te = [estimators[timestep, mgi]["Te"] for timestep in range(len(times))]
-        plt.scatter(times, Te, label=f"vel={associated_modeldata_row_for_mgi['vel_y_mid'].to_numpy()[0] / CLIGHT}")
+        axis.scatter(times, Te, label=f"vel={associated_modeldata_row_for_mgi['vel_y_mid'].to_numpy()[0] / CLIGHT}")
 
-    plt.xlabel("time [days]")
-    plt.ylabel("Te [K]")
-    plt.xlim(0.15, 10)
-    plt.xscale("log")
-    plt.legend()
+    axis.set_xlabel("time [days]")
+    axis.set_ylabel("Te [K]")
+    axis.set_xlim(0.15, 10)
+    axis.set_xscale("log")
+    axis.legend()
     plt.show()
+    plt.close(fig)
 
 
 def plot_Te_vs_velocity(
@@ -75,6 +77,7 @@ def plot_Te_vs_velocity(
     times = at.get_timestep_times(modelpath)
     timesteps = [50, 55, 60, 65, 70, 75, 80, 90]
 
+    fig, axis = plt.subplots()
     for timestep in timesteps:
         Te = [estimators[timestep, mgi]["Te"] for mgi in readonly_mgi]
 
@@ -83,13 +86,14 @@ def plot_Te_vs_velocity(
         ]
         velocity = [row["vel_y_mid"].to_numpy()[0] / CLIGHT for row in associated_modeldata_rows]
 
-        plt.plot(velocity, Te, label=f"{times[timestep]:.2f}", linestyle="-", marker="o")
+        axis.plot(velocity, Te, label=f"{times[timestep]:.2f}", linestyle="-", marker="o")
 
-    plt.xlabel("velocity/c")
-    plt.ylabel("Te [K]")
-    plt.yscale("log")
-    plt.legend()
+    axis.set_xlabel("velocity/c")
+    axis.set_ylabel("Te [K]")
+    axis.set_yscale("log")
+    axis.legend()
     plt.show()
+    plt.close(fig)
 
 
 def get_Te_vs_velocity_2D(
@@ -196,18 +200,18 @@ def make_2d_plot(
                     if x == round(grid / 2) - 1:
                         data[z, y] = grid_Te[x, y, z]
 
-        plt.imshow(data, extent=extent)
-        cbar = plt.colorbar()
+        fig, axis = plt.subplots()
+        im = axis.imshow(data, extent=extent)
+        cbar = fig.colorbar(im)
         cbar.set_label("Te [K]", rotation=90)
-        # plt.xlabel('vx / c')
-        # plt.ylabel('vy / c')
-        plt.xlabel("vy / c")
-        plt.ylabel("vz / c")
-        plt.xlim(-vmax, vmax)
-        plt.ylim(-vmax, vmax)
+        axis.set_xlabel("vy / c")
+        axis.set_ylabel("vz / c")
+        axis.set_xlim(-vmax, vmax)
+        axis.set_ylim(-vmax, vmax)
         outfilename = "plotestim.pdf"
-        plt.savefig(Path(modelpath) / outfilename, format="pdf")
-        print(f"open {outfilename}")
+        fig.savefig(outfilename, format="pdf")
+        at.print_saved(outfilename)
+        plt.close(fig)
 
 
 def main() -> None:

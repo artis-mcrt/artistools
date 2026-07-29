@@ -35,6 +35,7 @@ from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import get_viewingdirectionbincount
 from artistools.misc import get_vpkt_config
 from artistools.misc import match_closest_time
+from artistools.misc import print_saved
 from artistools.misc import split_multitable_dataframe
 from artistools.misc import zopenpl
 
@@ -779,7 +780,7 @@ def make_virtual_spectra_summed_file(modelpath: Path | str) -> None:
 
         outfile = Path(modelpath, f"vspecpol_total-{spec_index}.out")
         dfvspecpol.write_csv(outfile, separator=" ", include_header=False)
-        print(f"open {outfile}")
+        print_saved(outfile)
 
 
 def make_averaged_vspecfiles(args: argparse.Namespace) -> None:

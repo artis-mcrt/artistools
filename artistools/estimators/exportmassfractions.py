@@ -13,7 +13,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
-    args = at.parse_cli_args(addargs, "Create solar r-process pattern in ARTIS format.", args, argsraw, kwargs)
+    """Export elemental mass fractions from the estimators to a text file."""
+    args = at.parse_cli_args(addargs, main.__doc__, args, argsraw, kwargs)
 
     modelpath: Path = Path()
     timestep = 14
@@ -45,7 +46,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
             assert np.isclose(massfracsum, 1.0)
 
-    print(f"open {outfilename}")
+    at.print_saved(outfilename)
 
 
 if __name__ == "__main__":

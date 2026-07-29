@@ -141,7 +141,7 @@ def make_downscaled_3d_grid(
         im1 = ax1.imshow(rho[middle_ind, :, :])
         divider1 = make_axes_locatable(ax1)
         cax1 = divider1.append_axes("right", size="5%", pad=0.05)
-        cbar1 = plt.colorbar(im1, cax=cax1)
+        cbar1 = fig.colorbar(im1, cax=cax1)
         ax1.set_xlabel("Cell index")
         ax1.set_ylabel("Cell index")
         ax1.set_title("Original resolution")
@@ -151,14 +151,17 @@ def make_downscaled_3d_grid(
         im2 = ax2.imshow(rho_small[middle_ind_small, :, :])
         divider2 = make_axes_locatable(ax2)
         cax2 = divider2.append_axes("right", size="5%", pad=0.05)
-        cbar2 = plt.colorbar(im2, cax=cax2)
+        cbar2 = fig.colorbar(im2, cax=cax2)
         ax2.set_xlabel("Cell index")
         ax2.set_ylabel("Cell index")
         ax2.set_title("Downscaled resolution")
         cbar2.set_label(r"$\rho$ (g/cm$^3$)")
 
-        plt.tight_layout()
+        fig.tight_layout()
 
-        fig.savefig(modelpath / "downscaled_density_diagnostic.png", dpi=300, bbox_inches="tight")
+        diagnosticpath = outputfolder / "downscaled_density_diagnostic.png"
+        fig.savefig(diagnosticpath, dpi=300, bbox_inches="tight")
+        at.print_saved(diagnosticpath)
+        plt.close(fig)
 
     return outputfolder

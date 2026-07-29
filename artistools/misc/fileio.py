@@ -1,6 +1,8 @@
 """File helpers: compressed text files, file searching, metadata, and atomic parquet writes."""
 
+import contextlib
 import io
+import shlex
 import sys
 import typing as t
 from collections.abc import Generator
@@ -15,6 +17,14 @@ COMPRESSED_EXTENSIONS = (".zst", ".gz", ".xz")
 
 # polars can read these compressed formats directly from a path
 POLARS_READABLE_EXTENSIONS = (".zst", ".gz")
+
+
+def print_saved(filepath: Path | str) -> None:
+    """Report a saved output file as an 'open <relativepath>' command that can be run on macOS to view the file."""
+    filepath = Path(filepath).resolve()
+    with contextlib.suppress(ValueError):
+        filepath = filepath.relative_to(Path.cwd(), walk_up=True)
+    print(f"open {shlex.quote(str(filepath))}")
 
 
 def find_compressed(filename: Path | str) -> tuple[str, Path] | None:
@@ -209,7 +219,7 @@ def merge_pdf_files(pdf_files: list[str]) -> None:
     with Path(f"{resultfilename}.pdf").open("wb") as resultfile:
         merger.write(resultfile)
 
-    print(f"Files merged and saved to {resultfilename}.pdf")
+    print_saved(f"{resultfilename}.pdf")
 
 
 def write_parquet_atomic(

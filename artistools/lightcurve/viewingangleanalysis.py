@@ -4,6 +4,8 @@ import typing as t
 from collections.abc import Sequence
 from pathlib import Path
 
+import matplotlib.axes as mplax
+import matplotlib.figure as mplfig
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
@@ -314,28 +316,31 @@ def make_plot_test_viewing_angle_fit(
     angle: int,
     args: argparse.Namespace,
 ) -> None:
-    plt.plot(time, magnitude)
-    plt.plot(xfit, fxfit)
+    fig, axis = plt.subplots()
+    axis.plot(time, magnitude)
+    axis.plot(xfit, fxfit)
 
     if key in filternames_conversion_dict:
-        plt.ylabel(f"{filternames_conversion_dict[key]} Magnitude")
+        axis.set_ylabel(f"{filternames_conversion_dict[key]} Magnitude")
     else:
-        plt.ylabel(f"{key} Magnitude")
+        axis.set_ylabel(f"{key} Magnitude")
 
-    plt.xlabel("Time Since Explosion [d]")
-    plt.gca().invert_yaxis()
-    plt.xlim(args.timemin / 1.05, args.timemax * 1.05)
-    plt.minorticks_on()
-    plt.tick_params(axis="both", which="minor", top=True, right=True, length=5, width=2, labelsize=12)
-    plt.tick_params(axis="both", which="major", top=True, right=True, length=8, width=2, labelsize=12)
-    plt.axhline(y=min(fxfit), color="black", linestyle="--")
-    plt.axhline(y=mag_after15days_polyfit, color="black", linestyle="--")
-    plt.axvline(x=tmax_polyfit, color="black", linestyle="--")
-    plt.axvline(x=float(time_after15days_polyfit), color="black", linestyle="--")
+    axis.set_xlabel("Time Since Explosion [d]")
+    axis.invert_yaxis()
+    axis.set_xlim(args.timemin / 1.05, args.timemax * 1.05)
+    axis.minorticks_on()
+    axis.tick_params(axis="both", which="minor", top=True, right=True, length=5, width=2, labelsize=12)
+    axis.tick_params(axis="both", which="major", top=True, right=True, length=8, width=2, labelsize=12)
+    axis.axhline(y=min(fxfit), color="black", linestyle="--")
+    axis.axhline(y=mag_after15days_polyfit, color="black", linestyle="--")
+    axis.axvline(x=tmax_polyfit, color="black", linestyle="--")
+    axis.axvline(x=float(time_after15days_polyfit), color="black", linestyle="--")
     print("time after 15 days polyfit = ", time_after15days_polyfit)
-    plt.tight_layout()
-    plt.savefig(f"{key}_band_{modelname}_viewing_angle{angle!s}.png")
-    plt.close()
+    fig.tight_layout()
+    plotname = f"{key}_band_{modelname}_viewing_angle{angle!s}.png"
+    fig.savefig(plotname)
+    at.print_saved(plotname)
+    plt.close(fig)
 
 
 def set_scatterplot_plotkwargs(modelnumber: int, args: argparse.Namespace) -> tuple[dict[str, t.Any], dict[str, t.Any]]:
@@ -378,20 +383,20 @@ def update_plotkwargs_for_viewingangle_colorbar(
     return plotkwargsviewingangles
 
 
-def set_scatterplot_plot_params(args: argparse.Namespace) -> None:
+def set_scatterplot_plot_params(fig: mplfig.Figure, axis: mplax.Axes, args: argparse.Namespace) -> None:
     if not args.colouratpeak:
-        plt.gca().invert_yaxis()
-    plt.xlim(args.xmin, args.xmax)
-    plt.ylim(args.ymin, args.ymax)
-    plt.minorticks_on()
-    plt.tick_params(axis="both", which="minor", top=False, right=False, length=5, width=2, labelsize=12)
-    plt.tick_params(axis="both", which="major", top=False, right=False, length=8, width=2, labelsize=12)
-    plt.tight_layout()
+        axis.invert_yaxis()
+    axis.set_xlim(args.xmin, args.xmax)
+    axis.set_ylim(args.ymin, args.ymax)
+    axis.minorticks_on()
+    axis.tick_params(axis="both", which="minor", top=False, right=False, length=5, width=2, labelsize=12)
+    axis.tick_params(axis="both", which="major", top=False, right=False, length=8, width=2, labelsize=12)
+    fig.tight_layout()
 
     if args.colorbarcostheta or args.colorbarphi:
         _, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(usedegrees=args.usedegrees)
         scaledmap = at.lightcurve.plotlightcurve.make_colorbar_viewingangles_colormap()
-        at.lightcurve.plotlightcurve.make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args)
+        at.lightcurve.plotlightcurve.make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args, ax=axis)
 
 
 # COMBINED WITH DM15 plotting function now ###
@@ -511,14 +516,15 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
     ax.set_xlabel(xlabel, fontsize=14)
     # ax.set_ylabel('Peak ' + key + ' Band Magnitude', fontsize=14)
     ax.set_ylabel(rf"M$_{{\mathrm{{{key}}}}}$, max", fontsize=14)
-    set_scatterplot_plot_params(args)
+    set_scatterplot_plot_params(fig, ax, args)
 
     if args.make_viewing_angle_peakmag_delta_m15_scatter_plot:
         filename = rf"{key}_band_{modelnames[0]}_dm15_peakmag.pdf"
     if args.make_viewing_angle_peakmag_risetime_scatter_plot:
         filename = rf"{key}_band_{modelnames[0]}_risetime_peakmag.pdf"
     fig.savefig(filename, format="pdf")
-    print(f"saving {filename}")
+    at.print_saved(filename)
+    plt.close(fig)
 
 
 def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
@@ -573,10 +579,11 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
     ax.legend(loc="upper right", fontsize=8, ncol=1, columnspacing=1, frameon=False)
     ax.set_xlabel(f"{bands[0]}-{bands[1]} at {bands[0]}max", fontsize=14)
     ax.set_ylabel(f"{bands[0]}max", fontsize=14)
-    set_scatterplot_plot_params(args)
+    set_scatterplot_plot_params(fig, ax, args)
     plotname = f"plotviewinganglecolour{bands[0]}-{bands[1]}.pdf"
     fig.savefig(plotname, format="pdf")
-    print(f"saving {plotname}")
+    at.print_saved(plotname)
+    plt.close(fig)
 
 
 def second_band_brightness_at_peak_first_band(
@@ -741,7 +748,7 @@ def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Names
             xlabels = phi_viewing_angle_bins
 
         axis.scatter(xvalues, brightness, **plotkwargs)
-        plt.xticks(ticks=np.arange(0, 10), labels=xlabels, rotation=30, ha="right")
+        axis.set_xticks(ticks=np.arange(0, 10), labels=xlabels, rotation=30, ha="right")
 
     at.lightcurve.plotlightcurve.make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args, fig, axis)
 
@@ -755,4 +762,5 @@ def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Names
 
     plotname = f"plotviewinganglebrightnessat{args.timedays}days.pdf"
     fig.savefig(plotname, format="pdf")
-    print(f"Saved figure: {plotname}")
+    at.print_saved(plotname)
+    plt.close(fig)

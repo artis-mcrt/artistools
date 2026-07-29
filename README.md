@@ -44,10 +44,10 @@ artistools completions
 If you artistools for a paper or presentation, please cite it. For details, see [https://zenodo.org/badge/latestdoi/53433932](https://zenodo.org/badge/latestdoi/53433932).
 
 ## Usage
-Run "artistools" at the command-line to get a full list of subcommands. Some common commands are:
-- artistools plotspectra
-- artistools plotlightcurve
-- artistools plotestimators
+Run "artistools" (or the short alias "at") at the command-line to get a full list of subcommands, and "artistools --version" to check the installed version. Some common commands are:
+- artistools plotspectra (alias: at spec)
+- artistools plotlightcurve (alias: at lc)
+- artistools plotestimators (alias: at estimators)
 - artistools plotnltepops
 - artistools describeinputmodel
 

@@ -26,9 +26,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
-    args = at.parse_cli_args(
-        addargs, "Convert abundances.txt and model.txt from 3D to a one dimensional slice.", args, argsraw, kwargs
-    )
+    """Convert abundances.txt and model.txt from a 3D model to a one-dimensional slice."""
+    args = at.parse_cli_args(addargs, main.__doc__, args, argsraw, kwargs)
 
     if not Path(args.outputfolder).exists():
         Path(args.outputfolder).mkdir(parents=True)
@@ -165,8 +164,8 @@ def make_plot(xlist: list[float], ylists: list[list[float]], pdfoutputfile: str)
     axis.set_yscale("log", nonposy="clip")
     axis.legend(loc="best", handlelength=2, frameon=False, numpoints=1, prop={"size": 10})
     fig.savefig(pdfoutputfile, format="pdf")
-    print(f"open {pdfoutputfile}")
-    plt.close()
+    at.print_saved(pdfoutputfile)
+    plt.close(fig)
 
 
 if __name__ == "__main__":

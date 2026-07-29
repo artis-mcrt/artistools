@@ -1,4 +1,4 @@
-"""Artistools - spectra related functions."""
+"""Non-thermal energy deposition and Spencer-Fano equation solving."""
 
 __all__ = ["solvespencerfanocmd"]
 
