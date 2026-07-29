@@ -335,6 +335,27 @@ def test_estimator_timeevolution() -> None:
     )
 
 
+def test_estimparse() -> None:
+    pldf = at.rustext.estimparse(modelpath, 0, 0)
+    assert pldf.height == 100
+    assert {"timestep", "modelgridindex", "TR", "Te", "nne", "nnion_Fe_II", "heating_ff"} <= set(pldf.columns)
+
+    firstcell = pldf.sort("timestep", "modelgridindex").row(0, named=True)
+    assert firstcell["timestep"] == 0
+    assert firstcell["modelgridindex"] == 0
+    assert firstcell["nne"] == pytest.approx(71393.3)
+    assert firstcell["nnion_Fe_II"] == pytest.approx(80.59)
+    # nnelement is the sum over the ion stages of the element
+    assert firstcell["nnelement_Fe"] == pytest.approx(6.226e05 + 8.059e01 + 3.940e-24 + 1.586e-27 + 1.010e-27)
+    # quantities recorded as X*nne are also stored divided by the electron density
+    assert firstcell["Alpha_R_Fe_II"] == pytest.approx(1.821e-07 / 71393.3)
+
+
+def test_estimparse_missing_file() -> None:
+    with pytest.raises(OSError, match="no estimator file found for rank 999"):
+        at.rustext.estimparse(modelpath, 999, 999)
+
+
 def test_add_derived_estimator_columns_preserves_nulls() -> None:
     """Missing nnelement values count as zero, but a null in any other column must not become a real zero."""
     pldf = pl.LazyFrame({
