@@ -214,8 +214,8 @@ def make_plot(
         axis.set_xlim(xmin, xmax)
         axis.set_ylabel(r"$\propto$ F$_\lambda$")
 
-    print(f"Saving '{outputfilename}'")
     fig.savefig(outputfilename, format="pdf")
+    at.print_saved(outputfilename)
     plt.close()
 
 
@@ -271,10 +271,14 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--print-lines", action="store_true", help="Output details of matching lines to standard out")
 
     parser.add_argument(
-        "--atomicdatabase",
+        "-atomicdatabase",
         default="artis",
         choices=["artis", "kurucz", "nist"],
         help="Source of atomic data for excitation transitions",
+    )
+    # deprecated double-dash spelling kept as a hidden alias
+    parser.add_argument(
+        "--atomicdatabase", dest="atomicdatabase", choices=["artis", "kurucz", "nist"], help=argparse.SUPPRESS
     )
 
     add_outputfile_arg(parser, default=defaultoutputfile, astype=None, helptext="path/filename for PDF file")

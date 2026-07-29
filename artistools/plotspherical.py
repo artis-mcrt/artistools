@@ -375,7 +375,7 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
         ).format(timemindays=timemindays, timemaxdays=timemaxdays, outformat=outformat)
 
         fig.savefig(outfilename, format=outformat, dpi=300, pad_inches=0.0)
-        print(f"open {outfilename}")
+        at.print_saved(outfilename)
         plt.close()
         plt.clf()
 

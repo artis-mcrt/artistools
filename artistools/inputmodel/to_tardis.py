@@ -94,7 +94,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 f"{cell.vel_r_max_kmps},{cell.rho:.4e},{temperature},{dilution_factor},{','.join(abundlist)}\n"
             )
 
-    print(f"open {outputfilepath}")
+    at.print_saved(outputfilepath)
 
 
 if __name__ == "__main__":

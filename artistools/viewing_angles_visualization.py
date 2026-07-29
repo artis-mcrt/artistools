@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 
 import artistools as at
+from artistools.misc import add_outputfile_arg
 
 
 def get_theta_phi(anglebin: int) -> tuple[float | int | None, float | int | None]:
@@ -167,25 +168,29 @@ def viewing_angles_visualisation(
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("modelfile", help="Path to the ARTIS model.")
-    parser.add_argument(
-        "-o",
-        "--outfile",
-        help="Name of the output file. If it contains 'html', figure will be stored as html including the animation.",
+    add_outputfile_arg(
+        parser,
+        astype=None,
+        helptext="Name of the output file. If it contains 'html', figure will be stored as html including the animation.",
     )
-    parser.add_argument("--isomin", type=float, help="Minimum density for color coding.")
-    parser.add_argument("--isomax", type=float, help="Maximum density for color coding.")
-    parser.add_argument("--opacity", type=float, help="Opacity value. Default: 0.25", default=0.25)
+    parser.add_argument("-isomin", type=float, help="Minimum density for color coding.")
+    parser.add_argument("-isomax", type=float, help="Maximum density for color coding.")
+    parser.add_argument("-opacity", type=float, default=0.25, help="Opacity value.")
+    parser.add_argument("-surface_count", "-s", type=int, default=20, help="Number of isosurfaces plotted.")
+    parser.add_argument("-linewidth", type=float, default=2.5, help="Width of the viewing angle lines.")
     parser.add_argument(
-        "-s", "--surface_count", type=int, help="Number of isosurfaces plotted. Default: 20", default=20
-    )
-    parser.add_argument("--linewidth", type=float, help="Width of the viewing angle lines. Default: 2.5", default=2.5)
-    parser.add_argument(
-        "--linelength",
-        type=float,
-        help="Length of the viewing angle lines in units of the boxsize. Default: 1.0",
-        default=1.0,
+        "-linelength", type=float, default=1.0, help="Length of the viewing angle lines in units of the boxsize."
     )
     parser.add_argument("--show_plot", action="store_true", help="If flag is given, plot will be shown after saving.")
+
+    # deprecated double-dash spellings kept as hidden aliases
+    parser.add_argument("--outfile", dest="outputfile", help=argparse.SUPPRESS)
+    parser.add_argument("--isomin", dest="isomin", type=float, help=argparse.SUPPRESS)
+    parser.add_argument("--isomax", dest="isomax", type=float, help=argparse.SUPPRESS)
+    parser.add_argument("--opacity", dest="opacity", type=float, help=argparse.SUPPRESS)
+    parser.add_argument("--surface_count", dest="surface_count", type=int, help=argparse.SUPPRESS)
+    parser.add_argument("--linewidth", dest="linewidth", type=float, help=argparse.SUPPRESS)
+    parser.add_argument("--linelength", dest="linelength", type=float, help=argparse.SUPPRESS)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: Any) -> None:
@@ -194,7 +199,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     viewing_angles_visualisation(
         modelfile=args.modelfile,
-        outfile=args.outfile,
+        outfile=args.outputfile,
         isomin=args.isomin,
         isomax=args.isomax,
         opacity=args.opacity,

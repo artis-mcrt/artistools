@@ -39,6 +39,7 @@ from artistools.misc.fileio import firstexisting as firstexisting
 from artistools.misc.fileio import firstexisting_or_none as firstexisting_or_none
 from artistools.misc.fileio import get_file_metadata as get_file_metadata
 from artistools.misc.fileio import merge_pdf_files as merge_pdf_files
+from artistools.misc.fileio import print_saved as print_saved
 from artistools.misc.fileio import readnoncommentline as readnoncommentline
 from artistools.misc.fileio import stripallsuffixes as stripallsuffixes
 from artistools.misc.fileio import write_parquet_atomic as write_parquet_atomic

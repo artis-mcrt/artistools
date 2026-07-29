@@ -10,6 +10,7 @@ import polars as pl
 
 import artistools as at
 from artistools.misc import add_axis_limit_args
+from artistools.misc import add_modelpath_arg
 from artistools.misc import add_outputfile_arg
 from artistools.misc import add_timestep_arg
 
@@ -17,7 +18,9 @@ defaultoutputfile = "plotmacroatom_cell{0:03d}_{1:03d}-{2:03d}.pdf"
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--modelpath", nargs="?", default="", help="Path to ARTIS folder")
+    add_modelpath_arg(parser, default=Path())
+    # deprecated double-dash spelling kept as a hidden alias
+    parser.add_argument("--modelpath", dest="modelpath", type=Path, help=argparse.SUPPRESS)
     add_timestep_arg(parser, kind="int", default=10, helptext="Timestep number to plot, or -1 for last")
     parser.add_argument("-timestepmax", type=int, default=-1, help="Make plots for all timesteps up to this timestep")
     parser.add_argument("-modelgridindex", "-cell", type=int, default=0, help="Modelgridindex to plot")
@@ -106,8 +109,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     # axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 13})
 
-    print(f"Saving to {outputfile:s}")
     fig.savefig(outputfile, format="pdf")
+    at.print_saved(outputfile)
     plt.close()
 
 

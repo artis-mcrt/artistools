@@ -1171,11 +1171,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "--perturb3Dmodel",
+        "-perturb3Dmodel",
         type=float_or_str,
         nargs="+",
         help="Apply density perturbations to 3D model. Provide perturbation parameters. Options implemented:\n-sinusoidal, A, d\n-random, A",
     )
+    # deprecated double-dash spelling kept as a hidden alias
+    parser.add_argument("--perturb3Dmodel", dest="perturb3Dmodel", type=float_or_str, nargs="+", help=argparse.SUPPRESS)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

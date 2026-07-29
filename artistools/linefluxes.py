@@ -388,7 +388,7 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
 
     fig.savefig(args.outputfile, format="pdf")
     # plt.show()
-    print(f"open {args.outputfile}")
+    at.print_saved(args.outputfile)
     plt.close()
 
 

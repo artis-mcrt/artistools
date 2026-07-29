@@ -133,6 +133,7 @@ if t.TYPE_CHECKING:
     from artistools.misc import parse_cli_args as parse_cli_args
     from artistools.misc import parse_range as parse_range
     from artistools.misc import parse_range_list as parse_range_list
+    from artistools.misc import print_saved as print_saved
     from artistools.misc import print_theta_phi_definitions as print_theta_phi_definitions
     from artistools.misc import read_rank_outputfiles as read_rank_outputfiles
     from artistools.misc import readnoncommentline as readnoncommentline
@@ -267,6 +268,7 @@ else:
                 "parse_cli_args",
                 "parse_range",
                 "parse_range_list",
+                "print_saved",
                 "print_theta_phi_definitions",
                 "read_rank_outputfiles",
                 "readnoncommentline",

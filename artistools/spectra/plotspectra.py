@@ -48,6 +48,7 @@ from artistools.misc import get_vpkt_config
 from artistools.misc import get_vspec_dir_labels
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
+from artistools.misc import print_saved
 from artistools.misc import print_theta_phi_definitions
 from artistools.misc import resolve_outputfile
 from artistools.misc import trim_or_pad
@@ -254,7 +255,7 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
     plt.xlabel(r"Wavelength ($\mathrm{{\AA}}$)")
     figname = f"plotpol_{timeavg}_days_{args.stokesparam.split('/')[0]}_{args.stokesparam.split('/')[1]}.pdf"
     plt.savefig(modelpath / figname, format="pdf")
-    print(f"open {figname}")
+    print_saved(figname)
 
 
 def plot_reference_spectrum(
@@ -1612,13 +1613,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         if args.write_data and len(dfalldata.columns) > 0:
             datafilenameout = Path(filenameout).with_suffix(".txt")
             dfalldata.write_csv(datafilenameout, separator=" ")
-            print(f"open {datafilenameout}")
+            print_saved(datafilenameout)
 
         # plt.minorticks_on()
 
         fig.savefig(filenameout, dpi=args.dpi)
         # plt.show()
-        print(f"open {filenameout}")
+        print_saved(filenameout)
         plt.close()
 
 

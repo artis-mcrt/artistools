@@ -11,6 +11,7 @@ from artistools.misc import add_modelpath_arg
 from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
+from artistools.misc import print_saved
 from artistools.spectra.spectra import get_spectra
 
 
@@ -24,7 +25,7 @@ def write_spectrum(dfspectrum: pl.DataFrame, outfilepath: Path) -> None:
             spec_file, header=False, sep=" ", index=False, columns=["lambda_angstroms", "f_lambda"]
         )
 
-    print(f"open {outfilepath}")
+    print_saved(outfilepath)
 
 
 def write_flambda_spectra(modelpath: Path) -> None:

@@ -257,7 +257,7 @@ def plot_artis_lightcurve(
     print(f" modelpath: {modelpath.resolve().parts[-1]}")
 
     if hasattr(args, "title") and args.title:
-        axis.set_title(linelabel)
+        axis.set_title(args.title if isinstance(args.title, str) else linelabel)
 
     if directionbins is None:
         directionbins = [-1]
@@ -717,14 +717,14 @@ def make_lightcurve_plot(
         plt.show()
 
     fig.savefig(str(filenameout), format="pdf")
-    print(f"open {filenameout}")
+    at.print_saved(filenameout)
 
     if args.plotthermalisation:
         assert figtherm is not None
 
         filenameout2 = str(filenameout).replace(".pdf", "_thermalisation.pdf")
         figtherm.savefig(filenameout2, format="pdf")
-        print(f"open {filenameout2}")
+        at.print_saved(filenameout2)
 
     plt.close()
 
@@ -971,7 +971,7 @@ def make_band_lightcurves_plot(
                     )
                     with bandoutfile.open("w", encoding="utf-8") as f:
                         f.write(txtout)
-                    print(f"open {bandoutfile}")
+                    at.print_saved(bandoutfile)
                 if args.print_data:
                     print(txtout)
 
@@ -1057,7 +1057,7 @@ def make_band_lightcurves_plot(
         firstaxis.invert_yaxis()
 
     plt.savefig(args.outputfile, format="pdf")
-    print(f"Saved figure: {args.outputfile}")
+    at.print_saved(args.outputfile)
 
 
 def colour_evolution_plot(
@@ -1341,7 +1341,15 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--nolegend", action="store_true", help="Suppress the legend from the plot")
 
-    parser.add_argument("--title", action="store_true", help="Show title of plot")
+    parser.add_argument(
+        "-title",
+        "--title",
+        dest="title",
+        nargs="?",
+        const=True,
+        default=None,
+        help="Show a plot title: pass the title text, or use the bare flag for the model name",
+    )
 
     add_figscale_args(parser, figscaledefault=1.8, include_figwidthscale=True)
 
@@ -1643,7 +1651,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     elif args.colour_evolution:
         colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder, args)
-        print(f"Saved figure: {args.outputfile}")
+        at.print_saved(args.outputfile)
     else:
         make_lightcurve_plot(
             modelpaths=args.modelpath,

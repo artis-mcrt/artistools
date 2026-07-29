@@ -224,7 +224,7 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
 
     plt.savefig(outfilename, format="pdf")
 
-    print(f"open {outfilename}")
+    at.print_saved(outfilename)
 
 
 def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:

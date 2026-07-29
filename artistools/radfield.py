@@ -348,8 +348,8 @@ def plot_celltimestep(
 
     axis.legend(loc="best", handlelength=2, frameon=False, numpoints=1, fontsize=9)
 
-    print(f"Saving to {outputfile}")
     fig.savefig(str(outputfile), format="pdf")
+    at.print_saved(outputfile)
     plt.close()
     return True
 

@@ -17,6 +17,11 @@ COMPRESSED_EXTENSIONS = (".zst", ".gz", ".xz")
 POLARS_READABLE_EXTENSIONS = (".zst", ".gz")
 
 
+def print_saved(filepath: Path | str) -> None:
+    """Report a saved output file in the consistent 'Saved <path>' format."""
+    print(f"Saved {filepath}")
+
+
 def find_compressed(filename: Path | str) -> tuple[str, Path] | None:
     """Return the extension and path of filename.zst, filename.gz or filename.xz, or None if no compressed file exists."""
     for ext in COMPRESSED_EXTENSIONS:

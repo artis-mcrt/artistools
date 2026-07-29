@@ -755,4 +755,4 @@ def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Names
 
     plotname = f"plotviewinganglebrightnessat{args.timedays}days.pdf"
     fig.savefig(plotname, format="pdf")
-    print(f"Saved figure: {plotname}")
+    at.print_saved(plotname)

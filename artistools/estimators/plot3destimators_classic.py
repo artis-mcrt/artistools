@@ -207,7 +207,7 @@ def make_2d_plot(
         plt.ylim(-vmax, vmax)
         outfilename = "plotestim.pdf"
         plt.savefig(Path(modelpath) / outfilename, format="pdf")
-        print(f"open {outfilename}")
+        at.print_saved(outfilename)
 
 
 def main() -> None:

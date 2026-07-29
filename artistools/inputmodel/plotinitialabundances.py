@@ -63,7 +63,7 @@ def make_plot(args: argparse.Namespace) -> None:
     stryaxis = "X" if args.yaxis == "massfraction" else "abundance"
     outpath = Path(args.outputpath) / f"plotinitialabundances_{stryaxis}vs{strxaxis}.pdf"
     fig.savefig(outpath, dpi=300)
-    print(f"open {outpath}")
+    at.print_saved(outpath)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:

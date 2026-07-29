@@ -30,13 +30,17 @@ COMMANDS = [
 
 @dc.dataclass(frozen=True, slots=True)
 class CommandSpec:
-    """A subcommand definition: the implementing module and the static help text shown in command listings."""
+    """A subcommand definition: the implementing module and the static help text shown in command listings.
+
+    A hidden command still works but is left out of the --help listing (used for deprecated duplicate names).
+    """
 
     module: str
     funcname: str = "main"
     helptext: str = ""
     aliases: tuple[str, ...] = ()
     addargsname: str = "addargs"
+    hidden: bool = False
 
 
 type CommandTree = dict[str, CommandSpec | CommandTree]
@@ -55,6 +59,7 @@ subcommandtree: CommandTree = {
     "describeinputmodel": CommandSpec(
         "inputmodel.describeinputmodel",
         helptext="Describe an ARTIS input model, such as the mass, velocity structure, and abundances.",
+        hidden=True,  # duplicate of "inputmodel describe"
     ),
     "ejectaopacity": CommandSpec(
         "ejectaopacity", helptext="Compute binned expansion opacities and Planck-mean opacities in postprocessing."
@@ -104,9 +109,15 @@ subcommandtree: CommandTree = {
         "to_tardis": CommandSpec("inputmodel.to_tardis", helptext="Convert an ARTIS format model to TARDIS format."),
     },
     "makeartismodelfromparticlegridmap": CommandSpec(
-        "inputmodel.modelfromhydro", helptext="Create an ARTIS format model from grid.dat."
+        "inputmodel.modelfromhydro",
+        helptext="Create an ARTIS format model from grid.dat.",
+        hidden=True,  # duplicate of "inputmodel makeartismodelfromparticlegridmap"
     ),
-    "maptogrid": CommandSpec("inputmodel.maptogrid", helptext="Map tracer particle trajectories to a Cartesian grid."),
+    "maptogrid": CommandSpec(
+        "inputmodel.maptogrid",
+        helptext="Map tracer particle trajectories to a Cartesian grid.",
+        hidden=True,  # duplicate of "inputmodel maptogrid"
+    ),
     "plotdensity": CommandSpec("inputmodel.plotdensity", helptext="Plot the radial density profile of an ARTIS model."),
     "plotestimators": CommandSpec(
         "estimators.plotestimators", helptext="Plot ARTIS estimators.", aliases=("estimators",)
@@ -236,12 +247,13 @@ def addsubparsers(parser: argparse.ArgumentParser, parentcommand: str, subcomman
             )
             addsubparsers(parser=subparser, parentcommand=subcommand, subcommandtree=spec)
         else:
+            addparserkwargs: dict[str, t.Any] = {} if spec.hidden else {"help": spec.helptext}
             subparser = subparsers.add_parser(
                 subcommand,
-                help=spec.helptext,
                 description=spec.helptext,
                 aliases=spec.aliases,
                 formatter_class=CustomArgHelpFormatter,
+                **addparserkwargs,
             )
             for name in (subcommand, *spec.aliases):
                 subparsers.commandspecs[name] = spec

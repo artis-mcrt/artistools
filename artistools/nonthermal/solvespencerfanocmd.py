@@ -55,7 +55,7 @@ def make_ntstats_plot(ntstatfile: str | Path) -> None:
     ax.autoscale(enable=True, axis="both", tight=True)
     outputfilename = Path(ntstatfile).with_suffix(".pdf")
     fig.savefig(outputfilename, format="pdf")
-    print(f"Saved '{outputfilename}'")
+    at.print_saved(outputfilename)
     plt.close()
 
 

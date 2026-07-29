@@ -300,7 +300,7 @@ def plot_qdot(
     axis.set_xmargin(0.02)
     axis.set_ymargin(0.02)
     fig.savefig(pdfoutpath, format="pdf")
-    print(f"open {pdfoutpath}")
+    at.print_saved(pdfoutpath)
 
 
 def plot_cell_abund_evolution(
@@ -419,7 +419,7 @@ def plot_cell_abund_evolution(
     strcell = f"cell {mgi}" if mgi >= 0 else "global"
     fig.suptitle(f"{at.get_model_name(modelpath)} {strcell}", y=0.999, fontsize=10)
     fig.savefig(pdfoutpath, format="pdf")
-    print(f"open {pdfoutpath}")
+    at.print_saved(pdfoutpath)
 
 
 def get_particledata(

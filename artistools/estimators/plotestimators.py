@@ -881,7 +881,7 @@ def make_figure(
         nrows=len(plotlist),
         ncols=1,
         sharex=True,
-        figsize=(args.figscale * 5.0 * args.scalefigwidth, args.figscale * 5.0 * 0.5 * len(plotlist)),
+        figsize=(args.figscale * 5.0 * args.figwidthscale, args.figscale * 5.0 * 0.5 * len(plotlist)),
         layout="constrained",
         # tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
     )
@@ -964,7 +964,7 @@ def make_figure(
     if not args.notitle:
         axes[0].set_title(figure_title, fontsize=10)
 
-    print(f"open {outfilename}")
+    at.print_saved(outfilename)
     fig.savefig(outfilename, dpi=600)
 
     if args.show:
@@ -1033,9 +1033,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--nolegend", action="store_true", help="Suppress the legend from the plot")
 
-    add_figscale_args(parser)
-
-    parser.add_argument("-scalefigwidth", type=float, default=1.0, help="Scale factor for plot width.")
+    add_figscale_args(parser, include_figwidthscale=True)
+    # deprecated spelling of -figwidthscale kept as a hidden alias
+    parser.add_argument("-scalefigwidth", dest="figwidthscale", type=float, help=argparse.SUPPRESS)
 
     parser.add_argument("--show", action="store_true", help="Show plot before quitting")
 

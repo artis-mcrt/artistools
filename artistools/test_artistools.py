@@ -137,6 +137,60 @@ def test_shared_cli_args_consistent() -> None:
                 assert "filtermovingavg" in actions, label  # the contract read by at.get_filterfunc
 
 
+def test_deprecated_flag_spellings_still_work() -> None:
+    """Flags renamed to the single-dash-takes-a-value convention keep their old spellings as hidden aliases."""
+    parser = argparse.ArgumentParser()
+    at.transitions.addargs(parser)
+    assert parser.parse_args(["--atomicdatabase", "kurucz"]).atomicdatabase == "kurucz"
+    assert parser.parse_args(["-atomicdatabase", "nist"]).atomicdatabase == "nist"
+    assert parser.parse_args([]).atomicdatabase == "artis"
+
+    parser = argparse.ArgumentParser()
+    at.macroatom.addargs(parser)
+    assert parser.parse_args(["--modelpath", "amodel"]).modelpath == Path("amodel")
+    assert parser.parse_args(["-modelpath", "amodel"]).modelpath == Path("amodel")
+
+    parser = argparse.ArgumentParser()
+    at.estimators.plotestimators.addargs(parser)
+    assert parser.parse_args(["-scalefigwidth", "2.5"]).figwidthscale == 2.5
+    assert parser.parse_args(["-figwidthscale", "2.5"]).figwidthscale == 2.5
+    assert parser.parse_args([]).figwidthscale == 1.0
+
+    parser = argparse.ArgumentParser()
+    at.viewing_angles_visualization.addargs(parser)
+    for rawargs in (
+        ["model.txt", "--outfile", "vis.html", "--opacity", "0.5", "-s", "10"],
+        ["model.txt", "-outputfile", "vis.html", "-opacity", "0.5", "-surface_count", "10"],
+    ):
+        args = parser.parse_args(rawargs)
+        assert args.outputfile == "vis.html"
+        assert args.opacity == 0.5
+        assert args.surface_count == 10
+
+
+def test_lightcurve_title_arg() -> None:
+    """The lc -title flag accepts custom text, while the bare (deprecated --title) form shows the model name."""
+    parser = argparse.ArgumentParser()
+    at.lightcurve.plotlightcurve.addargs(parser)
+    assert parser.parse_args([]).title is None
+    assert parser.parse_args(["--title"]).title is True
+    assert parser.parse_args(["-title", "Custom title"]).title == "Custom title"
+
+
+def test_hidden_duplicate_commands() -> None:
+    """Cross-level duplicate command names still work but are not advertised in at --help."""
+    import artistools.__main__
+
+    parser = artistools.__main__.build_parser()
+    helptext = parser.format_help()
+    assert "plotspectra" in helptext
+    for hiddenname in ("describeinputmodel", "maptogrid", "makeartismodelfromparticlegridmap"):
+        assert hiddenname not in helptext
+
+    args = parser.parse_args(["describeinputmodel", "somemodelpath"])
+    assert args.func.__module__ == "artistools.inputmodel.describeinputmodel"
+
+
 def test_cli_version(capsys: pytest.CaptureFixture[str]) -> None:
     import artistools.__main__
 
