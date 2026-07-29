@@ -33,3 +33,7 @@ debug = "none"
 opt-level = 3
 overflow-checks = false
 #lto = "fat"
+# Skip cargo's default debuginfo strip: llvm-objcopy before rustc 1.97.1 misaligns the Mach-O
+# LINKEDIT string pool, and macOS 26+ dyld then refuses to load the extension module
+# (rust-lang/rust#157750). Removable once rustc >= 1.97.1 can be assumed everywhere.
+strip = "none"
