@@ -1,3 +1,5 @@
+use crate::parse::next_field;
+use crate::parse::parse_field;
 use autocompress::autodetect_open;
 use polars::prelude::*;
 use pyo3::prelude::*;
@@ -14,13 +16,17 @@ const FIRSTLEVELNUMBER: i32 = 1;
 /// Parse the header line of an ion block into (`atomic_number`, `ion_stage`, `transitioncount`)
 ///
 /// Returns `None` for the blank lines that separate the ion blocks.
-fn parse_ion_header(line: &str) -> Option<(i32, i32, usize)> {
+fn parse_ion_header(line: &str) -> PolarsResult<Option<(i32, i32, usize)>> {
     let mut tokens = line.split_whitespace();
-    let atomic_number = tokens.next()?.parse().unwrap();
-    let ion_stage = tokens.next().unwrap().parse().unwrap();
-    let transitioncount = tokens.next().unwrap().parse().unwrap();
+    let Some(atomic_number) = tokens.next() else {
+        return Ok(None);
+    };
 
-    Some((atomic_number, ion_stage, transitioncount))
+    Ok(Some((
+        parse_field(atomic_number, "an atomic number")?,
+        next_field(&mut tokens, "an ion stage")?,
+        next_field(&mut tokens, "a transition count")?,
+    )))
 }
 
 /// Parse the transition lines of a single ion into a `DataFrame`
@@ -28,20 +34,23 @@ fn parse_ion_transitions<'a>(
     lines: impl Iterator<Item = &'a str>,
     transitioncount: usize,
 ) -> PolarsResult<DataFrame> {
-    let mut vec_lower = Vec::with_capacity(transitioncount);
-    let mut vec_upper = Vec::with_capacity(transitioncount);
-    let mut vec_avalue = Vec::with_capacity(transitioncount);
-    let mut vec_collstr = Vec::with_capacity(transitioncount);
-    let mut vec_forbidden = Vec::with_capacity(transitioncount);
+    let mut vec_lower: Vec<i32> = Vec::with_capacity(transitioncount);
+    let mut vec_upper: Vec<i32> = Vec::with_capacity(transitioncount);
+    let mut vec_avalue: Vec<f32> = Vec::with_capacity(transitioncount);
+    let mut vec_collstr: Vec<f32> = Vec::with_capacity(transitioncount);
+    let mut vec_forbidden: Vec<i32> = Vec::with_capacity(transitioncount);
 
     for line in lines {
         let mut tokens = line.split_whitespace();
-        vec_lower.push(tokens.next().unwrap().parse::<i32>().unwrap() - FIRSTLEVELNUMBER);
-        vec_upper.push(tokens.next().unwrap().parse::<i32>().unwrap() - FIRSTLEVELNUMBER);
-        vec_avalue.push(tokens.next().unwrap().parse::<f32>().unwrap());
-        vec_collstr.push(tokens.next().unwrap().parse::<f32>().unwrap());
+        vec_lower.push(next_field::<i32>(&mut tokens, "a lower level")? - FIRSTLEVELNUMBER);
+        vec_upper.push(next_field::<i32>(&mut tokens, "an upper level")? - FIRSTLEVELNUMBER);
+        vec_avalue.push(next_field(&mut tokens, "an A value")?);
+        vec_collstr.push(next_field(&mut tokens, "a collision strength")?);
         // the forbidden flag is absent from files written by older ARTIS versions
-        vec_forbidden.push(tokens.next().map_or(0, |token| token.parse().unwrap()));
+        vec_forbidden.push(match tokens.next() {
+            Some(token) => parse_field(token, "a forbidden flag")?,
+            None => 0,
+        });
     }
 
     df!(
@@ -68,7 +77,9 @@ pub fn read_transitiondata(
     let mut transitiondata = Vec::new();
     let mut lines = filecontent.lines();
     while let Some(headerline) = lines.next() {
-        let Some((atomic_number, ion_stage, transitioncount)) = parse_ion_header(headerline) else {
+        let Some((atomic_number, ion_stage, transitioncount)) =
+            parse_ion_header(headerline).map_err(PyPolarsErr::from)?
+        else {
             continue;
         };
         let ionlines = lines.by_ref().take(transitioncount);

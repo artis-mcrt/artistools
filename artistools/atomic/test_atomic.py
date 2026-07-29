@@ -1,4 +1,5 @@
 import math
+from pathlib import Path
 
 import numpy as np
 import polars as pl
@@ -55,6 +56,15 @@ def test_read_transitiondata() -> None:
     selectedions = at.rustext.read_transitiondata(modelpath / "transitiondata.txt", ionlist={(26, 2)})
     assert selectedions.keys() == {(26, 2)}
     pltest.assert_frame_equal(selectedions[26, 2], dftransitions)
+
+
+def test_read_transitiondata_truncated(tmp_path: Path) -> None:
+    """A truncated ion header raises a Python exception rather than panicking in the extension."""
+    truncated = tmp_path / "transitiondata.txt"
+    truncated.write_text("26 2\n")
+
+    with pytest.raises(Exception, match="line ended where a transition count was expected"):
+        at.rustext.read_transitiondata(truncated)
 
 
 @pytest.mark.benchmark
