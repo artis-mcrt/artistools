@@ -3,7 +3,6 @@ import dataclasses as dc
 import importlib
 import typing as t
 from collections.abc import Iterable
-from collections.abc import Sequence
 from pathlib import Path
 
 # top-level commands (one file installed per command)
@@ -174,66 +173,18 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
         super().add_arguments(actions)
 
 
-if t.TYPE_CHECKING:
-    # the class is generic in the stubs but not subscriptable at runtime
-    _SubParsersActionBase = argparse._SubParsersAction[argparse.ArgumentParser]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
-else:
-    _SubParsersActionBase = argparse._SubParsersAction  # ruff:ignore[private-member-access]
-
-
-class LazySubParsersAction(_SubParsersActionBase):
-    """Subcommand action that defers each subcommand's module import and addargs() until it is invoked.
-
-    Subcommand names and help text are registered up front (so listings and completion of names are
-    instant), but the argument definitions require importing the implementing module, which is done
-    only for the subcommand actually being run or completed.
-    """
-
-    def __init__(self, *args: t.Any, **kwargs: t.Any) -> None:
-        super().__init__(*args, **kwargs)
-        self.commandspecs: dict[str, CommandSpec] = {}
-        self._loadedparserids: set[int] = set()
-
-    @t.override
-    def __call__(
-        self,
-        parser: argparse.ArgumentParser,
-        namespace: argparse.Namespace,
-        values: str | Sequence[t.Any] | None,
-        option_string: str | None = None,
-    ) -> None:
-        if isinstance(values, list) and values:
-            self.load_subparser_args(str(values[0]))
-        super().__call__(parser, namespace, values, option_string)
-
-    def load_subparser_args(self, subcommand: str) -> None:
-        """Import the module for a subcommand (or alias) and populate its subparser with arguments."""
-        spec = self.commandspecs.get(subcommand)
-        subparser = self._name_parser_map.get(subcommand)
-        if spec is None or subparser is None or id(subparser) in self._loadedparserids:
-            return
-        self._loadedparserids.add(id(subparser))
-
-        submodule = importlib.import_module(f"artistools.{spec.module}")
-        submodule.addargs(subparser)
-        subparser.set_defaults(func=getattr(submodule, spec.funcname))
-
-
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add no command-line arguments (for subcommands that take none)."""
 
 
 def addsubparsers(parser: argparse.ArgumentParser, parentcommand: str, subcommandtree: CommandTree) -> None:
-    """Register the subcommands in the tree on the parser, with lazy loading of their argument definitions."""
+    """Register the subcommands in the tree on the parser."""
 
     def func(args: t.Any) -> None:  # ruff:ignore[unused-function-argument]
         parser.print_help()
 
     parser.set_defaults(func=func)
-    subparsers = parser.add_subparsers(
-        action=LazySubParsersAction, dest="subcommand", required=False, metavar="command"
-    )
-    assert isinstance(subparsers, LazySubParsersAction)
+    subparsers = parser.add_subparsers(dest="subcommand", required=False, metavar="command")
 
     for subcommand, spec in subcommandtree.items():
         if isinstance(spec, dict):
@@ -253,23 +204,9 @@ def addsubparsers(parser: argparse.ArgumentParser, parentcommand: str, subcomman
                 formatter_class=CustomArgHelpFormatter,
                 **addparserkwargs,
             )
-            for name in (subcommand, *spec.aliases):
-                subparsers.commandspecs[name] = spec
-
-
-def preload_subparsers_for_words(parser: argparse.ArgumentParser, words: Sequence[str]) -> None:
-    """Populate the subparsers for any subcommand named in words.
-
-    Called before tab completion so that argcomplete sees the arguments of whichever subcommand
-    appears in the partial command line, without importing the modules of all the other subcommands.
-    """
-    for action in parser._actions:  # ruff:ignore[private-member-access]
-        if isinstance(action, LazySubParsersAction):
-            for word in words:
-                subparser = action._name_parser_map.get(word)  # ruff:ignore[private-member-access]
-                if subparser is not None:
-                    action.load_subparser_args(word)
-                    preload_subparsers_for_words(subparser, words)
+            submodule = importlib.import_module(f"artistools.{spec.module}")
+            submodule.addargs(subparser)
+            subparser.set_defaults(func=getattr(submodule, spec.funcname))
 
 
 def setup_completions(*args: t.Any, **kwargs: t.Any) -> None:  # ruff:ignore[unused-function-argument]

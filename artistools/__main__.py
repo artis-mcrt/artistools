@@ -7,7 +7,7 @@ from collections.abc import Sequence
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Construct the top-level artistools argument parser (subcommand argument definitions load lazily)."""
+    """Construct the top-level artistools argument parser."""
     from artistools.commands import addsubparsers
     from artistools.commands import CustomArgHelpFormatter
     from artistools.commands import subcommandtree
@@ -29,15 +29,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None) -> None:
     """Parse and run an artistools subcommand."""
+    import argcomplete
+
     parser = build_parser()
 
-    if "_ARGCOMPLETE" in os.environ:
-        import argcomplete
-
-        from artistools.commands import preload_subparsers_for_words
-
-        preload_subparsers_for_words(parser, os.environ.get("COMP_LINE", "").split())
-        argcomplete.autocomplete(parser)
+    argcomplete.autocomplete(parser)
 
     if args is None:
         args = parser.parse_args(argsraw)

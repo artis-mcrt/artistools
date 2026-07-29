@@ -80,22 +80,6 @@ def test_subcommandtree() -> None:
     recursive_check(at.commands.subcommandtree)
 
 
-def test_all_subparsers_buildable() -> None:
-    """Populating every subcommand's argument parser must succeed (imports each module and runs its addargs)."""
-    import artistools.__main__
-
-    parser = artistools.__main__.build_parser()
-
-    def load_all(parser: argparse.ArgumentParser) -> None:
-        for action in parser._actions:  # ruff:ignore[private-member-access]
-            if isinstance(action, at.commands.LazySubParsersAction):
-                for name, subparser in action._name_parser_map.items():  # ruff:ignore[private-member-access]
-                    action.load_subparser_args(name)
-                    load_all(subparser)
-
-    load_all(parser)
-
-
 def test_shared_cli_args_consistent() -> None:
     """Arguments shared between commands must present the same flags and types everywhere."""
     import artistools.__main__
@@ -105,9 +89,9 @@ def test_shared_cli_args_consistent() -> None:
 
     def collect(parser: argparse.ArgumentParser, prefix: str) -> None:
         for action in parser._actions:  # ruff:ignore[private-member-access]
-            if isinstance(action, at.commands.LazySubParsersAction):
-                for name, subparser in action._name_parser_map.items():  # ruff:ignore[private-member-access]
-                    action.load_subparser_args(name)
+            if isinstance(action, argparse._SubParsersAction):  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+                nameparsermap: dict[str, argparse.ArgumentParser] = action._name_parser_map  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]  # ty:ignore[invalid-assignment]
+                for name, subparser in nameparsermap.items():
                     collect(subparser, f"{prefix}{name} ")
             elif action.dest != "help":
                 actionsbycommand.setdefault(prefix.strip(), {})[action.dest] = action
@@ -230,24 +214,9 @@ def test_cli_missing_model_gives_short_error(tmp_path: Path, capsys: pytest.Capt
     assert "nomodel" in stderr
 
 
-def test_cli_help_is_lazy() -> None:
-    """Building the top-level CLI help must not import heavy libraries or any subcommand modules."""
-    code = (
-        "import contextlib, sys\n"
-        "from artistools.__main__ import main\n"
-        "with contextlib.suppress(SystemExit):\n"
-        "    main(argsraw=['--help'])\n"
-        "heavy = [m for m in ('matplotlib', 'polars', 'pandas', 'numpy', 'scipy') if m in sys.modules]\n"
-        "assert not heavy, f'heavy modules imported: {heavy}'\n"
-    )
-    subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
-        [sys.executable, "-c", code], check=True, cwd=REPOPATH, stdout=subprocess.DEVNULL
-    )
-
-
 @pytest.mark.parametrize(("comp_line", "expected"), [("at plotsp", "plotspectra"), ("at spec -timed", "-timedays")])
 def test_cli_tab_completion(tmp_path: Path, comp_line: str, expected: str) -> None:
-    """Tab completion must offer subcommand names and the options of a lazily loaded subcommand."""
+    """Tab completion must offer subcommand names and the options of a subcommand."""
     outputfile = tmp_path / "completions.txt"
     env = os.environ | {
         "_ARGCOMPLETE": "1",
@@ -264,22 +233,10 @@ def test_cli_tab_completion(tmp_path: Path, comp_line: str, expected: str) -> No
 
 
 def test_package_attrs() -> None:
-    """Every lazily re-exported attribute must resolve (catches drift between the lazy maps and the modules)."""
+    """Every re-exported attribute must resolve."""
     for name in dir(at):
         if not name.startswith("_"):
             assert getattr(at, name) is not None
-
-
-def test_import_artistools_is_lazy() -> None:
-    """Importing artistools and the command tree must not pull in heavy plotting/dataframe libraries."""
-    code = (
-        "import sys\n"
-        "import artistools\n"
-        "import artistools.commands\n"
-        "heavy = [m for m in ('matplotlib', 'polars', 'pandas', 'numpy', 'scipy') if m in sys.modules]\n"
-        "assert not heavy, f'heavy modules imported: {heavy}'\n"
-    )
-    subprocess.run([sys.executable, "-c", code], check=True, cwd=REPOPATH)  # ruff:ignore[subprocess-without-shell-equals-true]
 
 
 def test_plotspherical_format_arg() -> None:
