@@ -47,6 +47,7 @@ jobs:
 
             - name: Install artistools[extras]
               run: |
+                  rustup update stable
                   uv sync --all-extras
 
             - name: Run Ruff
