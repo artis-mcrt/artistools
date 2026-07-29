@@ -3,6 +3,8 @@ import hashlib
 import importlib
 import inspect
 import math
+import subprocess
+import sys
 import tomllib
 import typing as t
 from pathlib import Path
@@ -73,6 +75,25 @@ def test_subcommandtree() -> None:
                 assert callable(getattr(submodule, targetfuncname, None))
 
     recursive_check(at.commands.subcommandtree)
+
+
+def test_package_attrs() -> None:
+    """Every lazily re-exported attribute must resolve (catches drift between the lazy maps and the modules)."""
+    for name in dir(at):
+        if not name.startswith("_"):
+            assert getattr(at, name) is not None
+
+
+def test_import_artistools_is_lazy() -> None:
+    """Importing artistools and the command tree must not pull in heavy plotting/dataframe libraries."""
+    code = (
+        "import sys\n"
+        "import artistools\n"
+        "import artistools.commands\n"
+        "heavy = [m for m in ('matplotlib', 'polars', 'pandas', 'numpy', 'scipy') if m in sys.modules]\n"
+        "assert not heavy, f'heavy modules imported: {heavy}'\n"
+    )
+    subprocess.run([sys.executable, "-c", code], check=True, cwd=REPOPATH)  # ruff:ignore[subprocess-without-shell-equals-true]
 
 
 def test_plotspherical_format_arg() -> None:
