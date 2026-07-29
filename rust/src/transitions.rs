@@ -73,16 +73,15 @@ pub fn read_transitiondata(
         };
         let ionlines = lines.by_ref().take(transitioncount);
 
-        // keep the ion if it is in the ionlist or if ionlist is None (i.e., all ions are kept)
-        let keep_ion = ionlist
+        // ionlist=None means keep every ion in the file
+        if ionlist
             .as_ref()
-            .is_none_or(|ionlist| ionlist.contains(&(atomic_number, ion_stage)));
-
-        if keep_ion {
+            .is_none_or(|ions| ions.contains(&(atomic_number, ion_stage)))
+        {
             let df = parse_ion_transitions(ionlines, transitioncount).map_err(PyPolarsErr::from)?;
             transitiondata.push(((atomic_number, ion_stage), PyDataFrame(df)));
         } else {
-            ionlines.for_each(drop);
+            ionlines.for_each(drop); // skip past this ion's table
         }
     }
 

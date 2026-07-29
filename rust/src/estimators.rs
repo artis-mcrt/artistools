@@ -4,7 +4,6 @@ use pyo3_polars::PyDataFrame;
 use pyo3_polars::error::PyPolarsErr;
 use rayon::prelude::*;
 use std::collections::HashMap;
-use std::collections::hash_map::Entry;
 use std::io::{BufRead as _, BufReader};
 use std::path::{Path, PathBuf};
 
@@ -20,9 +19,6 @@ const ELSYMBOLS: [&str; 119] = [
 ];
 
 const ROMAN: [&str; 10] = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX"];
-
-/// Suffixes tried (in order) when looking for the estimator file of an MPI rank
-const FILE_EXTENSIONS: [&str; 4] = ["", ".zst", ".gz", ".xz"];
 
 /// Split a line into (name, value) token pairs, ignoring an unpaired trailing token
 fn token_pairs<'a>(tokens: &'a [&'a str]) -> impl Iterator<Item = (&'a str, &'a str)> {
@@ -61,32 +57,20 @@ impl EstimatorColumns {
     /// Finish the current cell by padding every column that it did not define with a zero
     fn end_cell(&mut self) {
         for values in self.coldata.values_mut() {
-            if values.len() < self.rownum {
-                assert_eq!(values.len(), self.rownum - 1);
-                values.push(0.);
-            }
+            values.resize(self.rownum, 0.);
         }
     }
 
     /// Set a column value for the current cell, creating the column if it doesn't exist yet
     fn push(&mut self, colname: String, colvalue: f32) {
-        let rownum = self.rownum;
-        match self.coldata.entry(colname) {
-            Entry::Occupied(entry) => {
-                assert_eq!(
-                    entry.get().len(),
-                    rownum - 1,
-                    "column {:?} was given two values for one cell",
-                    entry.key()
-                );
-                entry.into_mut().push(colvalue);
-            }
-            Entry::Vacant(entry) => {
-                let mut values = vec![0.; rownum - 1];
-                values.push(colvalue);
-                entry.insert(values);
-            }
-        }
+        let values = self.coldata.entry(colname).or_default();
+        assert!(
+            values.len() < self.rownum,
+            "a column was given two values for one cell"
+        );
+        // back-fill with zeros if the column first appeared part-way through the file
+        values.resize(self.rownum - 1, 0.);
+        values.push(colvalue);
     }
 
     /// Parse a single line from an estimator file and update the column data
@@ -108,7 +92,8 @@ impl EstimatorColumns {
         }
     }
 
-    /// Start a new cell, e.g. `timestep 0 modelgridindex 0 TR 2000 Te 2000 W 1 TJ 2000 nne 71393.3`
+    /// Finish the previous cell and start a new one from a line like
+    /// `timestep 0 modelgridindex 0 TR 2000 Te 2000 W 1 TJ 2000 nne 71393.3`
     fn parse_cell_header(&mut self, tokens: &[&str]) {
         self.end_cell();
 
@@ -124,19 +109,18 @@ impl EstimatorColumns {
 
     /// Parse a per-ion line, e.g. `populations  Z=26  1: 6.226e+05  2: 8.059e+01  3: 3.940e-24`
     fn parse_ion_line(&mut self, variablename: &str, tokens: &[&str]) {
-        // the atomic number either follows "Z=" directly or is given as a separate token
-        let ztoken = tokens[0].strip_prefix("Z=").expect("checked by caller");
-        let (atomic_number, tokens) = if ztoken.is_empty() {
-            (tokens[1], &tokens[2..])
-        } else {
-            (ztoken, &tokens[1..])
+        let (atomic_number, stagetokens) = match tokens[0].strip_prefix("Z=") {
+            Some("") => (tokens[1], &tokens[2..]), // the atomic number is a separate token: "Z= 26"
+            Some(znum) => (znum, &tokens[1..]),    // no space after the equals sign: "Z=26"
+            None => unreachable!("the caller only passes lines whose second token starts with Z="),
         };
-        let elsym = ELSYMBOLS[atomic_number
-            .parse::<usize>()
-            .unwrap_or_else(|_| panic!("{atomic_number:?} is not an atomic number"))];
+        let atomic_number: usize = atomic_number
+            .parse()
+            .unwrap_or_else(|_| panic!("{atomic_number:?} is not an atomic number"));
+        let elsym = ELSYMBOLS[atomic_number];
 
         let mut nnelement = 0.0;
-        for (ionstage, value) in token_pairs(tokens) {
+        for (ionstage, value) in token_pairs(stagetokens) {
             let ionstage = ionstage
                 .strip_suffix(':')
                 .unwrap_or_else(|| panic!("{ionstage:?} should end with a colon"));
@@ -194,7 +178,7 @@ impl EstimatorColumns {
 
 /// Find the estimator file of an MPI rank, which may or may not be compressed
 fn find_estimator_file(folderpath: &Path, rank: i32) -> Option<PathBuf> {
-    FILE_EXTENSIONS
+    ["", ".zst", ".gz", ".xz"]
         .iter()
         .map(|ext| folderpath.join(format!("estimators_{rank:04}.out{ext}")))
         .find(|filepath| filepath.is_file())
