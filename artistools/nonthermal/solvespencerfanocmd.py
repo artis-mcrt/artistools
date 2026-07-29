@@ -11,6 +11,9 @@ import pandas as pd
 
 import artistools as at
 from artistools.constants import EV_to_erg
+from artistools.misc import add_modelpath_arg
+from artistools.misc import add_timedays_arg
+from artistools.misc import add_timestep_arg
 
 minionfraction = 0.0  # minimum number fraction of the total population to include in SF solution
 
@@ -57,11 +60,11 @@ def make_ntstats_plot(ntstatfile: str | Path) -> None:
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("-modelpath", default=".", help="Path to ARTIS folder")
+    add_modelpath_arg(parser, default=".")
 
-    parser.add_argument("-timedays", "-time", "-t", help="Time in days to plot")
+    add_timedays_arg(parser, kind="str")
 
-    parser.add_argument("-timestep", "-ts", type=int, help="Timestep number to plot")
+    add_timestep_arg(parser, kind="int")
 
     parser.add_argument("-modelgridindex", "-cell", type=int, default=0, help="Modelgridindex to plot")
 

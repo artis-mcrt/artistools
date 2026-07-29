@@ -1,5 +1,16 @@
 """Miscellaneous helpers, split into focused submodules and re-exported here."""
 
+from artistools.misc.cliutils import add_axis_limit_args as add_axis_limit_args
+from artistools.misc.cliutils import add_figscale_args as add_figscale_args
+from artistools.misc.cliutils import add_filter_args as add_filter_args
+from artistools.misc.cliutils import add_maxpacketfiles_arg as add_maxpacketfiles_arg
+from artistools.misc.cliutils import add_modelpath_arg as add_modelpath_arg
+from artistools.misc.cliutils import add_outputfile_arg as add_outputfile_arg
+from artistools.misc.cliutils import add_outputpath_arg as add_outputpath_arg
+from artistools.misc.cliutils import add_series_style_args as add_series_style_args
+from artistools.misc.cliutils import add_timedays_arg as add_timedays_arg
+from artistools.misc.cliutils import add_timeminmax_args as add_timeminmax_args
+from artistools.misc.cliutils import add_timestep_arg as add_timestep_arg
 from artistools.misc.cliutils import add_viewingangle_args as add_viewingangle_args
 from artistools.misc.cliutils import flatten_list as flatten_list
 from artistools.misc.cliutils import get_filterfunc as get_filterfunc

@@ -21,6 +21,12 @@ from matplotlib.typing import MarkerType
 import artistools as at
 from artistools.constants import day_to_s
 from artistools.constants import EV_to_erg
+from artistools.misc import add_axis_limit_args
+from artistools.misc import add_figscale_args
+from artistools.misc import add_maxpacketfiles_arg
+from artistools.misc import add_modelpath_arg
+from artistools.misc import add_outputfile_arg
+from artistools.misc import add_series_style_args
 
 
 class FeatureTuple(t.NamedTuple):
@@ -728,27 +734,17 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument(
-        "-modelpath", default=[], nargs="*", type=Path, help="Paths to ARTIS folders with spec.out or packets files"
+    add_modelpath_arg(
+        parser, multiplepaths=True, default=[], helptext="Paths to ARTIS folders with spec.out or packets files"
     )
 
-    parser.add_argument("-label", default=[], nargs="*", help="List of series label overrides")
+    add_series_style_args(parser, colordefault=[f"C{i}" for i in range(10)])
 
     parser.add_argument("--nolegend", action="store_true", help="Suppress the legend from the plot")
 
     parser.add_argument("-modeltag", default=[], nargs="*", help="List of model tags for file names")
 
-    parser.add_argument("-color", default=[f"C{i}" for i in range(10)], nargs="*", help="List of line colors")
-
-    parser.add_argument("-linestyle", default=[], nargs="*", help="List of line styles")
-
-    parser.add_argument("-linewidth", default=[], nargs="*", help="List of line widths")
-
-    parser.add_argument("-dashes", default=[], nargs="*", help="Dashes property of lines")
-
-    parser.add_argument(
-        "-maxpacketfiles", "-maxpacketsfiles", type=int, default=None, help="Limit the number of packet files read"
-    )
+    add_maxpacketfiles_arg(parser)
 
     parser.add_argument(
         "-emfeaturesearch",
@@ -776,13 +772,14 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     # parser.add_argument('-timemax', type=float,
     #                     help='Upper time in days to integrate spectrum')
     #
-    parser.add_argument("-xmin", type=int, default=50, help="Plot range: minimum wavelength in Angstroms")
-
-    parser.add_argument("-xmax", type=int, default=450, help="Plot range: maximum wavelength in Angstroms")
-
-    parser.add_argument("-ymin", type=float, default=None, help="Plot range: y-axis")
-
-    parser.add_argument("-ymax", type=float, default=None, help="Plot range: y-axis")
+    add_axis_limit_args(
+        parser,
+        xlimtype=int,
+        xmindefault=50,
+        xmaxdefault=450,
+        xminhelp="Plot range: minimum wavelength in Angstroms",
+        xmaxhelp="Plot range: maximum wavelength in Angstroms",
+    )
 
     parser.add_argument(
         "-timebins_tstart", default=[], nargs="*", action="append", help="Time bin start values in days"
@@ -790,17 +787,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("-timebins_tend", default=[], nargs="*", action="append", help="Time bin end values in days")
 
-    parser.add_argument(
-        "-figscale", type=float, default=1.8, help="Scale factor for plot area. 1.0 is for single-column"
-    )
+    add_figscale_args(parser, figscaledefault=1.8)
 
     parser.add_argument("--write_data", action="store_true", help="Save data used to generate the plot in a CSV file")
 
     parser.add_argument("--plotemittingregions", action="store_true", help="Plot conditions where flux line is emitted")
 
-    parser.add_argument(
-        "-outputfile", "-o", action="store", dest="outputfile", type=Path, help="path/filename for PDF file"
-    )
+    add_outputfile_arg(parser, helptext="path/filename for PDF file")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

@@ -6,10 +6,12 @@ from pathlib import Path
 
 import artistools as at
 from artistools.constants import Msun_to_g
+from artistools.misc import add_modelpath_arg
+from artistools.misc import add_outputpath_arg
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("-modelpath", default=[], nargs="*", type=Path, help="Path to input model file")
+    add_modelpath_arg(parser, multiplepaths=True, default=[], helptext="Path to input model file")
 
     parser.add_argument(
         "--downscale3dgrid", action="store_true", help="Downscale a 3D ARTIS model to smaller grid size"
@@ -47,7 +49,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--makeenergyinputfiles", action="store_true", help="Write energydistribution.txt and energyrate.txt files"
     )
 
-    parser.add_argument("-outputpath", "-o", default=".", help="Folder for output")
+    add_outputpath_arg(parser, helptext="Folder for output")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

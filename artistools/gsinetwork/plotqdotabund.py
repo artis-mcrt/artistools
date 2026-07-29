@@ -19,6 +19,8 @@ import artistools as at
 from artistools.constants import day_to_s
 from artistools.constants import Msun_to_g
 from artistools.inputmodel.rprocess_from_trajectory import get_tar_member_extracted_path
+from artistools.misc import add_modelpath_arg
+from artistools.misc import add_outputpath_arg
 
 
 def get_abundance_correction_factors(
@@ -681,7 +683,7 @@ def plot_qdot_abund_modelcells(
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("-modelpath", type=Path, default=Path(), help="Path for ARTIS files")
+    add_modelpath_arg(parser, default=Path(), helptext="Path for ARTIS files")
 
     parser.add_argument(
         "-mergerroot",
@@ -690,7 +692,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Base path for merger snapshot and trajectory data specified in model.txt",
     )
 
-    parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")
+    add_outputpath_arg(parser)
 
     parser.add_argument("-xmax", default=None, type=float, help="Maximum time in days to plot")
 

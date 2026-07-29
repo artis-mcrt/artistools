@@ -12,6 +12,7 @@ import artistools as at
 from artistools.constants import c_ang_per_s
 from artistools.constants import C_cm_per_s as CLIGHT
 from artistools.constants import day_to_s
+from artistools.misc import add_modelpath_arg
 
 
 def get_required_packets(
@@ -199,7 +200,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("-modelpath", required=True, help="Path to ARTIS simulation")
+    add_modelpath_arg(parser, required=True, helptext="Path to ARTIS simulation")
 
     parser.add_argument(
         "-tdays",

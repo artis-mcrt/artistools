@@ -96,6 +96,47 @@ def test_all_subparsers_buildable() -> None:
     load_all(parser)
 
 
+def test_shared_cli_args_consistent() -> None:
+    """Arguments shared between commands must present the same flags and types everywhere."""
+    import artistools.__main__
+
+    parser = artistools.__main__.build_parser()
+    actionsbycommand: dict[str, dict[str, argparse.Action]] = {}
+
+    def collect(parser: argparse.ArgumentParser, prefix: str) -> None:
+        for action in parser._actions:  # ruff:ignore[private-member-access]
+            if isinstance(action, at.commands.LazySubParsersAction):
+                for name, subparser in action._name_parser_map.items():  # ruff:ignore[private-member-access]
+                    action.load_subparser_args(name)
+                    collect(subparser, f"{prefix}{name} ")
+            elif action.dest != "help":
+                actionsbycommand.setdefault(prefix.strip(), {})[action.dest] = action
+
+    collect(parser, "")
+    assert len(actionsbycommand) > 30
+
+    for command, actions in actionsbycommand.items():
+        for dest, action in actions.items():
+            flags = set(action.option_strings)
+            label = f"{command}: {dest} {sorted(flags)}"
+            if dest == "modelpath" and "-modelpath" in flags:
+                assert action.type is Path, label
+            elif dest == "timestep" and "-timestep" in flags:
+                assert "-ts" in flags, label
+            elif dest == "timedays" and "-timedays" in flags:
+                assert {"-time", "-t"} <= flags, label
+            elif dest == "maxpacketfiles":
+                assert flags == {"-maxpacketfiles", "-maxpacketsfiles"}, label
+                assert action.type is int, label
+            elif dest == "figscale":
+                assert action.type is float, label
+            elif dest == "outputfile" and "-outputfile" in flags:
+                assert "-o" in flags, label
+            elif dest == "filtersavgol":
+                assert action.nargs == 2, label
+                assert "filtermovingavg" in actions, label  # the contract read by at.get_filterfunc
+
+
 def test_cli_version(capsys: pytest.CaptureFixture[str]) -> None:
     import artistools.__main__
 

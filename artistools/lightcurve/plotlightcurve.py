@@ -24,6 +24,13 @@ from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import Lsun_to_erg_per_s
 from artistools.constants import Msun_to_g
+from artistools.misc import add_axis_limit_args
+from artistools.misc import add_figscale_args
+from artistools.misc import add_filter_args
+from artistools.misc import add_maxpacketfiles_arg
+from artistools.misc import add_modelpath_arg
+from artistools.misc import add_outputfile_arg
+from artistools.misc import add_series_style_args
 from artistools.misc import print_theta_phi_definitions
 
 
@@ -1322,39 +1329,25 @@ def plot_color_evolution_from_data(
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument(
-        "modelpath",
+    add_modelpath_arg(
+        parser,
+        positional=True,
+        multiplepaths=True,
         default=[],
-        nargs="*",
-        type=Path,
-        help="Path(s) to ARTIS folders with light_curve.out or packets files (may include wildcards such as * and **)",
+        helptext="Path(s) to ARTIS folders with light_curve.out or packets files (may include wildcards such as * and **)",
     )
 
-    parser.add_argument("-label", default=[], nargs="*", help="List of series label overrides")
+    add_series_style_args(parser, colordefault=[f"C{i}" for i in range(10)])
 
     parser.add_argument("--nolegend", action="store_true", help="Suppress the legend from the plot")
 
     parser.add_argument("--title", action="store_true", help="Show title of plot")
 
-    parser.add_argument("-color", default=[f"C{i}" for i in range(10)], nargs="*", help="List of line colors")
-
-    parser.add_argument("-linestyle", default=[], nargs="*", help="List of line styles")
-
-    parser.add_argument("-linewidth", default=[], nargs="*", help="List of line widths")
-
-    parser.add_argument("-dashes", default=[], nargs="*", help="Dashes property of lines")
-
-    parser.add_argument(
-        "-figscale", type=float, default=1.8, help="Scale factor for plot area. 1.0 is for single-column"
-    )
-
-    parser.add_argument("-figwidthscale", type=float, default=1.0, help="Scale factor for plot width")
+    add_figscale_args(parser, figscaledefault=1.8, include_figwidthscale=True)
 
     parser.add_argument("--frompackets", action="store_true", help="Read packets files instead of light_curve.out")
 
-    parser.add_argument(
-        "-maxpacketfiles", "-maxpacketsfiles", type=int, default=None, help="Limit the number of packet files read"
-    )
+    add_maxpacketfiles_arg(parser)
 
     parser.add_argument("--gamma", action="store_true", help="Make light curve from gamma rays")
 
@@ -1368,7 +1361,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("-escape_type", default="TYPE_RPKT", help="Type of escaping packets")
 
-    parser.add_argument("-o", "-outputfile", action="store", dest="outputfile", type=Path, help="Filename for PDF file")
+    add_outputfile_arg(parser, helptext="Filename for PDF file")
 
     parser.add_argument(
         "--plotcmf",
@@ -1431,9 +1424,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     at.add_viewingangle_args(parser, allow_select_all=True)
 
-    parser.add_argument("-ymax", type=float, default=None, help="Plot range: y-axis")
-
-    parser.add_argument("-ymin", type=float, default=None, help="Plot range: y-axis")
+    add_axis_limit_args(parser, include_x=False)
 
     parser.add_argument(
         "-timemin", "-timedaysmin", "-xmin", type=float, default=None, help="Plot range: x-axis minimum"
@@ -1463,11 +1454,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-refspecmarkers", default=["o", "s", "h"], nargs="*", help="Set a list of markers for reference spectra"
     )
 
-    parser.add_argument(
-        "-filtersavgol",
-        nargs=2,
-        help="Savitzky-Golay filter. Specify the window_length and poly_order, e.g. -filtersavgol 5 3",
-    )
+    add_filter_args(parser)
 
     parser.add_argument(
         "-redshifttoz",

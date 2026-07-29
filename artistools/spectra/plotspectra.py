@@ -27,6 +27,14 @@ from matplotlib.lines import Line2D
 import artistools.spectra as atspectra
 from artistools.commands import get_path
 from artistools.constants import c_ang_per_s
+from artistools.misc import add_figscale_args
+from artistools.misc import add_filter_args
+from artistools.misc import add_maxpacketfiles_arg
+from artistools.misc import add_outputfile_arg
+from artistools.misc import add_series_style_args
+from artistools.misc import add_timedays_arg
+from artistools.misc import add_timeminmax_args
+from artistools.misc import add_timestep_arg
 from artistools.misc import add_viewingangle_args
 from artistools.misc import df_filter_minmax_bounded
 from artistools.misc import firstexisting
@@ -1230,17 +1238,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "specpath", default=[], nargs="*", type=Path, help="Paths to ARTIS folders or reference spectra filenames"
     )
 
-    parser.add_argument("-label", default=[], nargs="*", help="List of series label overrides")
-
-    parser.add_argument("-color", "-colors", dest="color", default=[], nargs="*", help="List of line colors")
-
-    parser.add_argument("-linestyle", default=[], nargs="*", help="List of line styles")
-
-    parser.add_argument("-linewidth", default=[], nargs="*", help="List of line widths")
-
-    parser.add_argument("-linealpha", default=[], nargs="*", help="List of line alphas (opacities)")
-
-    parser.add_argument("-dashes", default=[], nargs="*", help="Dashes property of lines")
+    add_series_style_args(parser, include_linealpha=True)
 
     parser.add_argument(
         "--gamma", action="store_true", help="Plot the gamma-ray spectrum instead of the UVOIR spectrum"
@@ -1250,9 +1248,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--frompackets", action="store_true", help="Read packets files directly instead of exspec results"
     )
 
-    parser.add_argument(
-        "-maxpacketfiles", "-maxpacketsfiles", type=int, default=None, help="Limit the number of packet files read"
-    )
+    add_maxpacketfiles_arg(parser)
 
     parser.add_argument(
         "--plotinvalidpart",
@@ -1304,23 +1300,17 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Maximum number of plot series (ions/processes) for emission/absorption plot",
     )
 
-    parser.add_argument(
-        "-filtersavgol",
-        nargs=2,
-        help="Savitzky-Golay filter. Specify the window_length and poly_order, e.g. -filtersavgol 5 3",
+    add_filter_args(parser)
+
+    add_timestep_arg(parser)
+
+    add_timedays_arg(parser)
+
+    add_timeminmax_args(
+        parser,
+        helptext_min="Lower time in days to integrate spectrum",
+        helptext_max="Upper time in days to integrate spectrum",
     )
-
-    parser.add_argument("-filtermovingavg", type=int, default=0, help="Smoothing length (1 is same as none)")
-
-    parser.add_argument("-timestep", "-ts", dest="timestep", nargs="?", help="First timestep or a range e.g. 45-65")
-
-    parser.add_argument(
-        "-timedays", "-time", "-t", dest="timedays", nargs="?", help="Range of times in days to plot (e.g. 50-100)"
-    )
-
-    parser.add_argument("-timemin", type=float, help="Lower time in days to integrate spectrum")
-
-    parser.add_argument("-timemax", type=float, help="Upper time in days to integrate spectrum")
 
     parser.add_argument(
         "--notimeclamp", action="store_true", help="When plotting from packets, don't clamp to timestep start/end"
@@ -1419,11 +1409,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-scaletoreftime", type=float, default=None, help="Scale reference spectra flux using Co56 decay timescale"
     )
 
-    parser.add_argument(
-        "-figscale", type=float, default=1.8, help="Scale factor for plot area. 1.0 is for single-column"
-    )
-
-    parser.add_argument("-figwidthscale", type=float, default=1.0, help="Scale factor for plot width")
+    add_figscale_args(parser, figscaledefault=1.8, include_figwidthscale=True)
 
     parser.add_argument("--logscalex", action="store_true", help="Use log scale for x values")
 
@@ -1449,9 +1435,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--write_data", action="store_true", help="Save data used to generate the plot in a CSV file")
 
-    parser.add_argument(
-        "-outputfile", "-o", action="store", dest="outputfile", type=Path, help="path/filename for PDF file"
-    )
+    add_outputfile_arg(parser, helptext="path/filename for PDF file")
 
     parser.add_argument("-dpi", type=int, default=250, help="Dots Per Inch for output file")
 

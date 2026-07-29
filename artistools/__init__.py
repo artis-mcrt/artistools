@@ -80,6 +80,17 @@ if t.TYPE_CHECKING:
     from artistools.inputmodel import get_modeldata as get_modeldata
     from artistools.inputmodel import save_initelemabundances as save_initelemabundances
     from artistools.inputmodel import save_modeldata as save_modeldata
+    from artistools.misc import add_axis_limit_args as add_axis_limit_args
+    from artistools.misc import add_figscale_args as add_figscale_args
+    from artistools.misc import add_filter_args as add_filter_args
+    from artistools.misc import add_maxpacketfiles_arg as add_maxpacketfiles_arg
+    from artistools.misc import add_modelpath_arg as add_modelpath_arg
+    from artistools.misc import add_outputfile_arg as add_outputfile_arg
+    from artistools.misc import add_outputpath_arg as add_outputpath_arg
+    from artistools.misc import add_series_style_args as add_series_style_args
+    from artistools.misc import add_timedays_arg as add_timedays_arg
+    from artistools.misc import add_timeminmax_args as add_timeminmax_args
+    from artistools.misc import add_timestep_arg as add_timestep_arg
     from artistools.misc import add_viewingangle_args as add_viewingangle_args
     from artistools.misc import average_direction_bins as average_direction_bins
     from artistools.misc import firstexisting as firstexisting
@@ -203,6 +214,17 @@ else:
                 "save_modeldata",
             ),
             "artistools.misc": (
+                "add_axis_limit_args",
+                "add_figscale_args",
+                "add_filter_args",
+                "add_maxpacketfiles_arg",
+                "add_modelpath_arg",
+                "add_outputfile_arg",
+                "add_outputpath_arg",
+                "add_series_style_args",
+                "add_timedays_arg",
+                "add_timeminmax_args",
+                "add_timestep_arg",
                 "add_viewingangle_args",
                 "average_direction_bins",
                 "firstexisting",

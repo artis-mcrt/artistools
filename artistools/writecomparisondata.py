@@ -11,6 +11,8 @@ import numpy as np
 import polars as pl
 
 import artistools as at
+from artistools.misc import add_modelpath_arg
+from artistools.misc import add_outputpath_arg
 
 
 def write_spectra(modelpath: str | Path, selected_timesteps: Sequence[int], outfilepath: Path) -> None:
@@ -187,11 +189,11 @@ def write_lbol_edep(modelpath: str | Path, selected_timesteps: Sequence[int], ou
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("-modelpath", default=[], nargs="*", type=Path, help="Paths to ARTIS folders")
+    add_modelpath_arg(parser, multiplepaths=True, default=[], helptext="Paths to ARTIS folders")
 
     parser.add_argument("-selected_timesteps", default=[], nargs="*", type=int, help="Selected ARTIS timesteps")
 
-    parser.add_argument("-outputpath", "-o", action="store", type=Path, default=Path(), help="path for output files")
+    add_outputpath_arg(parser, astype=Path, default=Path())
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
