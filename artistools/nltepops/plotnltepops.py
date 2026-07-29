@@ -480,7 +480,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths: list[Path | str], ar
 
     figname = f"plotnltelevelpopsZ{Z}.pdf"
     plt.savefig(Path(modelpaths[0]) / figname, format="pdf")
-    at.print_saved(figname)
+    at.print_saved(Path(modelpaths[0]) / figname)
 
 
 def plot_populations_with_time_or_velocity(
