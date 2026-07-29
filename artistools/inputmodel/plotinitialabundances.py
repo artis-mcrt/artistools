@@ -67,7 +67,7 @@ def make_plot(args: argparse.Namespace) -> None:
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("-outputpath", "-o", type=Path, default=Path())
+    parser.add_argument("-outputpath", "-o", type=Path, default=Path(), help="Path for output files")
     parser.add_argument(
         "modelpath",
         default=[Path()],
@@ -77,9 +77,21 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "-xaxis", "-x", type=str, default="massnumber", choices=["massnumber", "atomicnumber", "Z", "A"]
+        "-xaxis",
+        "-x",
+        type=str,
+        default="massnumber",
+        choices=["massnumber", "atomicnumber", "Z", "A"],
+        help="Horizontal axis quantity: mass number A or atomic number Z",
     )
-    parser.add_argument("-yaxis", "-y", type=str, default="massfraction", choices=["massfraction", "abundance"])
+    parser.add_argument(
+        "-yaxis",
+        "-y",
+        type=str,
+        default="massfraction",
+        choices=["massfraction", "abundance"],
+        help="Vertical axis quantity: mass fraction or number abundance",
+    )
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

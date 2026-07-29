@@ -969,7 +969,7 @@ def make_figure(
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
-        "-modelpath", default=".", help="Paths to ARTIS folder (or virtual path e.g. codecomparison/ddc10/cmfgen)"
+        "-modelpath", default=".", help="Path to ARTIS folder (or virtual path e.g. codecomparison/ddc10/cmfgen)"
     )
 
     parser.add_argument(
@@ -1005,7 +1005,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-filtersavgol",
         nargs=2,
-        help="Savitzky-Golay filter. Specify the window_length and polyorder.e.g. -filtersavgol 5 3",
+        help="Savitzky-Golay filter. Specify the window_length and poly_order, e.g. -filtersavgol 5 3",
     )
 
     parser.add_argument("-format", "-f", default="pdf", choices=["pdf", "png"], help="Set format of output plot files")

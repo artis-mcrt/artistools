@@ -295,7 +295,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-o", action="store", dest="outputfile", type=str, default="", help="Filename for plot output file"
     )
 
-    parser.add_argument("-format", "-f", default="", choices=["pdf", "png"], help="Set format of output plot files")
+    parser.add_argument("-format", "-f", default="pdf", choices=["pdf", "png"], help="Set format of output plot files")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = None, **kwargs: t.Any) -> None:

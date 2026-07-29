@@ -750,7 +750,15 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-maxpacketfiles", "-maxpacketsfiles", type=int, default=None, help="Limit the number of packet files read"
     )
 
-    parser.add_argument("-emfeaturesearch", default=[], nargs="*", help="List of tuples (TODO explain)")
+    parser.add_argument(
+        "-emfeaturesearch",
+        default=[],
+        nargs="*",
+        help=(
+            "Emission features as (atomic_number, ion_stage, feature_wavelength, lower_wavelength, upper_wavelength)"
+            " tuples, e.g. (26, 2, 7155, 7150, 7160) for the Fe II 7155 Å feature"
+        ),
+    )
 
     parser.add_argument(
         "--frompops", action="store_true", help="Sum up internal emissivity instead of outgoing packets"

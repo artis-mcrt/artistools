@@ -28,6 +28,34 @@ def _write_timesteps_out(modeldir: Path) -> None:
     (modeldir / "timesteps.out").write_text("\n".join(lines) + "\n")
 
 
+# --- cliutils.py -------------------------------------------------------------------------------
+
+
+def test_set_args_from_dict_does_not_mutate_caller() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-outputfile", "-o", type=Path)
+    kwargs = {"o": "somefile.pdf"}
+    at.set_args_from_dict(parser, kwargs)
+    assert kwargs == {"o": "somefile.pdf"}
+    assert parser.parse_args([]).outputfile == Path("somefile.pdf")
+
+    with pytest.raises(ValueError, match="badargname"):
+        at.set_args_from_dict(parser, {"badargname": 1})
+
+
+# --- modelinfo.py ------------------------------------------------------------------------------
+
+
+def test_missing_inputfile_error_names_the_path(tmp_path: Path) -> None:
+    """A non-ARTIS directory must produce an error naming the path, not a bare 'input.txt' message."""
+    with pytest.raises(FileNotFoundError, match="ARTIS folder") as excinfo:
+        at.get_inputparams(tmp_path / "nonexistentmodel")
+    assert "nonexistentmodel" in str(excinfo.value)
+
+    with pytest.raises(FileNotFoundError, match="ARTIS folder"):
+        at.get_nprocs(tmp_path / "nonexistentmodel")
+
+
 # --- fileio.py ---------------------------------------------------------------------------------
 
 

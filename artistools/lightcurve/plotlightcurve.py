@@ -1466,7 +1466,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-filtersavgol",
         nargs=2,
-        help="Savitzky-Golay filter. Specify the window_length and poly_order.e.g. -filtersavgol 5 3",
+        help="Savitzky-Golay filter. Specify the window_length and poly_order, e.g. -filtersavgol 5 3",
     )
 
     parser.add_argument(

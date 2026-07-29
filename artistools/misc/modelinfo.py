@@ -157,17 +157,26 @@ def get_npts_model(modelpath: Path) -> int:
         return int(nptsline[0]) * int(nptsline[1])
 
 
+def get_inputfilepath(modelpath: Path | str) -> Path:
+    """Return the path to input.txt, raising a helpful error if it does not exist."""
+    inputfilepath = Path(modelpath, "input.txt")
+    if not inputfilepath.is_file():
+        msg = f"{inputfilepath} not found. Is {Path(modelpath).resolve()} an ARTIS folder?"
+        raise FileNotFoundError(msg)
+    return inputfilepath
+
+
 @lru_cache(maxsize=8)
 def get_nprocs(modelpath: Path) -> int:
     """Return the number of MPI processes specified in input.txt."""
-    return int(Path(modelpath, "input.txt").read_text(encoding="utf-8").split("\n")[21].split("#")[0])
+    return int(get_inputfilepath(modelpath).read_text(encoding="utf-8").split("\n")[21].split("#")[0])
 
 
 @lru_cache(maxsize=8)
 def get_inputparams(modelpath: Path) -> dict[str, t.Any]:
     """Return parameters specified in input.txt."""
     params: dict[str, t.Any] = {}
-    with Path(modelpath, "input.txt").open("r", encoding="utf-8") as inputfile:
+    with get_inputfilepath(modelpath).open("r", encoding="utf-8") as inputfile:
         params["pre_zseed"] = int(readnoncommentline(inputfile).split("#")[0])
 
         # number of time steps

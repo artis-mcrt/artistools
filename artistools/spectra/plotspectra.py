@@ -1056,7 +1056,7 @@ def make_emissionabsorption_plot(
     if not args.notitle:
         if args.inset_title:
             axis.annotate(
-                args.title,
+                plotlabel,
                 xy=(0.0, 1.0),
                 xycoords="axes fraction",
                 xytext=(10, -10),
@@ -1242,7 +1242,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("-dashes", default=[], nargs="*", help="Dashes property of lines")
 
-    parser.add_argument("--gamma", action="store_true", help="Make light curve from gamma rays instead of R-packets")
+    parser.add_argument(
+        "--gamma", action="store_true", help="Plot the gamma-ray spectrum instead of the UVOIR spectrum"
+    )
 
     parser.add_argument(
         "--frompackets", action="store_true", help="Read packets files directly instead of exspec results"
@@ -1305,7 +1307,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-filtersavgol",
         nargs=2,
-        help="Savitzky-Golay filter. Specify the window_length and poly_order.e.g. -filtersavgol 5 3",
+        help="Savitzky-Golay filter. Specify the window_length and poly_order, e.g. -filtersavgol 5 3",
     )
 
     parser.add_argument("-filtermovingavg", type=int, default=0, help="Smoothing length (1 is same as none)")
@@ -1433,7 +1435,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--notitle", action="store_true", help="Suppress the top title from the plot")
 
-    parser.add_argument("-title", action="store_true", help="Set the plot title")
+    parser.add_argument("-title", type=str, default=None, help="Custom plot title text")
 
     parser.add_argument("--inset_title", action="store_true", help="Place title inside the plot")
 
@@ -1614,13 +1616,14 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             else ""
         )
 
-        filenameout = (
-            str(args.outputfile).format(
+        filenameout = str(args.outputfile)
+        if args.timemin is not None:
+            filenameout = filenameout.format(
                 time_days_min=args.timemin, time_days_max=args.timemax, directionbins=strdirectionbins
             )
-            if args.timemin is not None
-            else "plotspec.pdf"
-        )
+        elif "{" in filenameout:
+            # no global time range was resolved (e.g. --multispecplot), so the time placeholders can't be filled
+            filenameout = str(Path(filenameout).with_name("plotspec.pdf"))
 
         if args.write_data and len(dfalldata.columns) > 0:
             datafilenameout = Path(filenameout).with_suffix(".txt")

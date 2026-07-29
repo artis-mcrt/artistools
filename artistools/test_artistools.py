@@ -1,8 +1,9 @@
-import contextlib
+import argparse
 import hashlib
 import importlib
 import inspect
 import math
+import tomllib
 import typing as t
 from pathlib import Path
 from unittest import mock
@@ -34,39 +35,52 @@ def get_plot_xy(callargs: t.Any) -> tuple[np.ndarray, np.ndarray]:
     return np.array(callargs[0][1], dtype=float), np.array(callargs[0][2], dtype=float)
 
 
-def test_commands() -> None:
-    commands: dict[str, tuple[str, str]] = {}
+def _console_script_targets() -> list[tuple[str, str, str]]:
+    """Return (command, submodulename, funcname) for every console script declared in pyproject.toml."""
+    with (REPOPATH / "pyproject.toml").open("rb") as f:
+        scripts: dict[str, str] = tomllib.load(f)["project"]["scripts"]
 
-    # just skip the test if tomllib is not available (python < 3.11)
-    with contextlib.suppress(ImportError):
-        import tomllib
+    targets = []
+    for command, target in scripts.items():
+        submodulename, _, targetfuncname = target.partition(":")
+        targets.append((command, submodulename, targetfuncname))
+    return targets
 
-        assert isinstance(REPOPATH, Path)
-        with (REPOPATH / "pyproject.toml").open("rb") as f:
-            pyproj = tomllib.load(f)
-        commands = {k: tuple(v.split(":")) for k, v in pyproj["project"]["scripts"].items()}
 
-        # ensure that the commands are pointing to valid submodule.function() targets
-        for command, (submodulename, funcname) in commands.items():
-            submodule = importlib.import_module(submodulename)
-            assert hasattr(submodule, funcname) or (
-                funcname == "main" and hasattr(importlib.import_module(f"{submodulename}.__main__"), funcname)
-            ), f"{submodulename}.{funcname} not found for command {command}"
+@pytest.mark.parametrize(("command", "submodulename", "targetfuncname"), _console_script_targets())
+def test_console_script_target(command: str, submodulename: str, targetfuncname: str) -> None:
+    """Every console script must point to an importable module with a callable target function."""
+    submodule = importlib.import_module(submodulename)
+    assert callable(getattr(submodule, targetfuncname, None)), (
+        f"{submodulename}.{targetfuncname} not found for command {command}"
+    )
 
+
+def test_commands_list_matches_scripts() -> None:
+    """The completion setup command list must stay in sync with the console scripts in pyproject.toml."""
+    assert set(at.commands.COMMANDS) == {command for command, _, _ in _console_script_targets()}
+
+
+def test_subcommandtree() -> None:
     def recursive_check(dictcmd: at.commands.CommandType) -> None:
         for cmdtarget in dictcmd.values():
             if isinstance(cmdtarget, dict):
                 recursive_check(cmdtarget)
             else:
-                submodulename, funcname = cmdtarget
+                submodulename, targetfuncname = cmdtarget
                 namestr = f"artistools.{submodulename.removeprefix('artistools.')}" if submodulename else "artistools"
-                print(namestr)
                 submodule = importlib.import_module(namestr, package="artistools")
-                assert hasattr(submodule, funcname) or (
-                    funcname == "main" and hasattr(importlib.import_module(f"{namestr}.__main__"), funcname)
-                )
+                assert callable(getattr(submodule, targetfuncname, None))
 
     recursive_check(at.commands.subcommandtree)
+
+
+def test_plotspherical_format_arg() -> None:
+    parser = argparse.ArgumentParser()
+    at.plotspherical.addargs(parser)
+    assert parser.parse_args([]).format == "pdf"
+    with pytest.raises(SystemExit):
+        parser.parse_args(["-format", "svg"])
 
 
 def test_timestep_times() -> None:

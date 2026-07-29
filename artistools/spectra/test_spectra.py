@@ -1,3 +1,4 @@
+import argparse
 import math
 import typing as t
 from pathlib import Path
@@ -283,6 +284,36 @@ def test_spectra_timeseries_subplots() -> None:
     at.spectra.plot(
         argsraw=[], specpath=modelpath, outputfile=outputpath, timedayslist=timedayslist, multispecplot=True
     )
+
+
+def test_spectra_multispec_outputfile(tmp_path: Path) -> None:
+    """A custom -outputfile must be honoured in multispecplot mode instead of falling back to plotspec.pdf in CWD."""
+    at.spectra.plot(
+        argsraw=[],
+        specpath=modelpath,
+        outputfile=tmp_path / "custom_multispec.pdf",
+        timedayslist=[295, 300],
+        multispecplot=True,
+    )
+    assert (tmp_path / "custom_multispec.pdf").is_file()
+
+
+def test_plotspectra_title_arg() -> None:
+    parser = argparse.ArgumentParser()
+    at.spectra.plotspectra.addargs(parser)
+    assert parser.parse_args(["-title", "Custom title"]).title == "Custom title"
+    assert parser.parse_args([]).title is None
+
+
+@mock.patch.object(mplax.Axes, "set_title", side_effect=mplax.Axes.set_title, autospec=True)
+def test_spectraplot_custom_title(mocksettitle: t.Any) -> None:
+    """-title text must be passed through to the axis title (previously store_true produced a title of 'True')."""
+    at.spectra.plot(
+        argsraw=[], specpath=modelpath, outputfile=outputpath, timemin=290, timemax=320, title="Custom title"
+    )
+    titles = [call[0][1] for call in mocksettitle.call_args_list]
+    assert "Custom title" in titles
+    assert all(isinstance(title, str) for title in titles)
 
 
 def test_writespectra() -> None:

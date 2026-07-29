@@ -372,7 +372,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-axis",
         default="+z",
         choices=["x", "y", "z", "+x", "-x", "+y", "-y", "+z", "-z"],
-        help="Choose an axis for use with args.readonlymgi. Hint: for negative use e.g. -axis=-z",
+        help="Slice axis for 2D plots. Hint: for negative use e.g. -axis=-z",
     )
 
 

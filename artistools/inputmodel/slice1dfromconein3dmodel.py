@@ -342,14 +342,14 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-axis",
         default="+x",
         choices=["+x", "-x", "+y", "-y", "+z", "-z"],
-        help="Choose an axis. USE INSTEAD OF DEPRECATED --POSITIVE_AXES AND -SLICEAXIS ARGS. Hint: for negative use e.g. -axis=-z",
+        help="Slice axis. Hint: for negative use e.g. -axis=-z",
     )
 
     parser.add_argument(
         "--makefromcone",
-        action="store",
+        action=argparse.BooleanOptionalAction,
         default=True,
-        help="Make 1D model from cone around axis. Default is True. If False uses points along axis.",
+        help="Make 1D model from a cone around the axis (--no-makefromcone samples points along the axis instead)",
     )
 
     parser.add_argument(
