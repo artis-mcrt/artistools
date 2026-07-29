@@ -216,7 +216,7 @@ def make_plot(
 
     fig.savefig(outputfilename, format="pdf")
     at.print_saved(outputfilename)
-    plt.close()
+    plt.close(fig)
 
 
 def add_upper_lte_pop(

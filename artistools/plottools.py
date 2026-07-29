@@ -345,17 +345,16 @@ def set_axis_properties(ax: Iterable[mplax.Axes] | mplax.Axes, args: argparse.Na
                 direction="in",
             )
 
-    if "ymin" in args or "ymax" in args:
-        plt.ylim(args.ymin, args.ymax)
-    if "xmin" in args or "xmax" in args:
-        plt.xlim(args.xmin, args.xmax)
+        if "ymin" in args or "ymax" in args:
+            axis.set_ylim(args.ymin, args.ymax)
+        if "xmin" in args or "xmax" in args:
+            axis.set_xlim(args.xmin, args.xmax)
 
-    if getattr(args, "logscalex", False):
-        plt.xscale("log")
-    if getattr(args, "logscaley", False):
-        plt.yscale("log")
+        if getattr(args, "logscalex", False):
+            axis.set_xscale("log")
+        if getattr(args, "logscaley", False):
+            axis.set_yscale("log")
 
-    plt.minorticks_on()
     return ax
 
 

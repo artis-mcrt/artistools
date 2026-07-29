@@ -964,13 +964,13 @@ def make_figure(
     if not args.notitle:
         axes[0].set_title(figure_title, fontsize=10)
 
-    at.print_saved(outfilename)
     fig.savefig(outfilename, dpi=600)
+    at.print_saved(outfilename)
 
     if args.show:
         plt.show()
     else:
-        plt.close()
+        plt.close(fig)
 
     return outfilename
 

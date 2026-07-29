@@ -165,7 +165,7 @@ def make_plot(xlist: list[float], ylists: list[list[float]], pdfoutputfile: str)
     axis.legend(loc="best", handlelength=2, frameon=False, numpoints=1, prop={"size": 10})
     fig.savefig(pdfoutputfile, format="pdf")
     at.print_saved(pdfoutputfile)
-    plt.close()
+    plt.close(fig)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-import matplotlib.pyplot as plt
+import matplotlib.axes as mplax
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
@@ -169,12 +169,12 @@ def make_energy_files(rho: npt.NDArray[np.floating], Mtot_grams: float | int, ou
         times_and_rate.to_pandas().to_csv(fmodel, sep="\t", index=False, header=False, float_format="%.10f")
 
 
-def plot_energy_rate(modelpath: str | Path) -> None:
+def plot_energy_rate(modelpath: str | Path, axis: mplax.Axes) -> None:
     times_and_rate, _ = at.inputmodel.energyinputfiles.rprocess_const_and_powerlaw()
     lzmodel, _ = at.inputmodel.get_modeldata(modelpath)
     model = lzmodel.collect()
     Mtot_grams = model["mass_g"].sum()
-    plt.plot(
+    axis.plot(
         times_and_rate["times"], np.array(times_and_rate["nuclear_heating_power"]) * Mtot_grams, color="k", zorder=10
     )
 

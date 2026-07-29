@@ -56,7 +56,7 @@ def make_ntstats_plot(ntstatfile: str | Path) -> None:
     outputfilename = Path(ntstatfile).with_suffix(".pdf")
     fig.savefig(outputfilename, format="pdf")
     at.print_saved(outputfilename)
-    plt.close()
+    plt.close(fig)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:

@@ -310,7 +310,8 @@ def make_plot(args: argparse.Namespace, logprint: Callable[..., None]) -> None:
     cone = make_cone(args, logprint)
 
     cone = cone.loc[cone["rho_model"] > 0.0002]  # cut low densities (empty cells?) from plot
-    ax: Axes3D = plt.figure().gca(projection="3d")  # type: ignore[call-arg,no-any-unimported] # pyright: ignore[reportCallIssue] # zuban: ignore [assignment]  # ty:ignore[invalid-assignment, unknown-argument]
+    fig = plt.figure()
+    ax: Axes3D = fig.add_subplot(projection="3d")  # type: ignore[no-any-unimported] # pyright: ignore[reportAssignmentType] # zuban: ignore [assignment]
 
     # print(cone['rho_model'])
 
@@ -327,8 +328,8 @@ def make_plot(args: argparse.Namespace, logprint: Callable[..., None]) -> None:
     ax.set_ylabel(r"y [10$^3$ km/s]")
     ax.set_zlabel(r"z [10$^3$ km/s]")  # zuban: ignore[no-untyped-call]
 
-    # plt.scatter(cone[f'pos_x_min']/1e11, cone[f'pos_y_min']/1e11)
     plt.show()
+    plt.close(fig)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:

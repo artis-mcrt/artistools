@@ -725,8 +725,9 @@ def make_lightcurve_plot(
         filenameout2 = str(filenameout).replace(".pdf", "_thermalisation.pdf")
         figtherm.savefig(filenameout2, format="pdf")
         at.print_saved(filenameout2)
+        plt.close(figtherm)
 
-    plt.close()
+    plt.close(fig)
 
 
 def create_axes(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[t.Any] | mplax.Axes]:
@@ -912,7 +913,11 @@ def make_colorbar_viewingangles(
         if fig:
             cbar = fig.colorbar(scaledmap, orientation="horizontal", location="top", pad=0.10, ax=ax, shrink=0.95)
         else:
-            cbar = plt.colorbar(scaledmap, ax=ax)
+            assert ax is not None
+            firstaxis = ax if isinstance(ax, mplax.Axes) else next(iter(ax))
+            axisfigure = firstaxis.get_figure()
+            assert axisfigure is not None
+            cbar = axisfigure.colorbar(scaledmap, ax=ax)
         if label:
             cbar.set_label(label, rotation=0)
         cbar.locator = mplticker.FixedLocator(ticklocs)
@@ -1056,8 +1061,9 @@ def make_band_lightcurves_plot(
     if ymin < ymax:
         firstaxis.invert_yaxis()
 
-    plt.savefig(args.outputfile, format="pdf")
+    fig.savefig(args.outputfile, format="pdf")
     at.print_saved(args.outputfile)
+    plt.close(fig)
 
 
 def colour_evolution_plot(
@@ -1160,7 +1166,8 @@ def colour_evolution_plot(
 
     if args.show:
         plt.show()
-    plt.savefig(args.outputfile, format="pdf")
+    fig.savefig(args.outputfile, format="pdf")
+    plt.close(fig)
 
 
 # Just in case it's needed...

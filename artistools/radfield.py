@@ -350,7 +350,7 @@ def plot_celltimestep(
 
     fig.savefig(str(outputfile), format="pdf")
     at.print_saved(outputfile)
-    plt.close()
+    plt.close(fig)
     return True
 
 

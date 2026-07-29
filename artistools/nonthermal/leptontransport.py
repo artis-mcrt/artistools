@@ -153,7 +153,7 @@ def main() -> None:
     axes[1].legend()
     # plt.show()
     fig.savefig("leptontransport.pdf", format="pdf")
-    plt.close()
+    plt.close(fig)
 
 
 if __name__ == "__main__":

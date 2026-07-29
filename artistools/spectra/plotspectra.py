@@ -220,6 +220,8 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
         else f"{timeavg} days"
     )
 
+    fig, axis = plt.subplots()
+
     if args.binflux:
         new_lambda_angstroms = []
         binned_flux = []
@@ -233,9 +235,9 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
             sum_flux = sum(fluxes[j] for j in range(i, i + nbins))
             binned_flux.append(sum_flux / nbins)
 
-        plt.plot(new_lambda_angstroms, binned_flux)
+        axis.plot(new_lambda_angstroms, binned_flux)
     else:
-        dfspectrum.plot(x="lambda_angstroms", y=timeavg, label=linelabel)
+        dfspectrum.plot(x="lambda_angstroms", y=timeavg, label=linelabel, ax=axis)
 
     if args.ymax is None:
         args.ymax = 0.5
@@ -248,14 +250,16 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
     assert args.xmin < args.xmax
     assert args.ymin < args.ymax
 
-    plt.ylim(args.ymin, args.ymax)
-    plt.xlim(args.xmin, args.xmax)
+    axis.set_ylim(args.ymin, args.ymax)
+    axis.set_xlim(args.xmin, args.xmax)
 
-    plt.ylabel(str(args.stokesparam))
-    plt.xlabel(r"Wavelength ($\mathrm{{\AA}}$)")
+    axis.set_ylabel(str(args.stokesparam))
+    axis.set_xlabel(r"Wavelength ($\mathrm{{\AA}}$)")
     figname = f"plotpol_{timeavg}_days_{args.stokesparam.split('/')[0]}_{args.stokesparam.split('/')[1]}.pdf"
-    plt.savefig(modelpath / figname, format="pdf")
-    print_saved(modelpath / figname)
+    outpath = resolve_outputfile(args.outputfile, figname)
+    fig.savefig(outpath, format="pdf")
+    print_saved(outpath)
+    plt.close(fig)
 
 
 def plot_reference_spectrum(
@@ -1620,7 +1624,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         fig.savefig(filenameout, dpi=args.dpi)
         # plt.show()
         print_saved(filenameout)
-        plt.close()
+        plt.close(fig)
 
 
 if __name__ == "__main__":

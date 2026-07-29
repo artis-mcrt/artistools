@@ -111,7 +111,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     fig.savefig(outputfile, format="pdf")
     at.print_saved(outputfile)
-    plt.close()
+    plt.close(fig)
 
 
 def read_files(

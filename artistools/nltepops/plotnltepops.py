@@ -474,13 +474,16 @@ def make_plot_populations_with_time_or_velocity(modelpaths: list[Path | str], ar
             title += f", mgi = {args.modelgridindex[0]}"
         elif args.x == "velocity":
             title += f", {timedayslist} days"
-        plt.title(title)
+        titleaxis = ax[-1] if args.subplots else ax  # pyright: ignore[reportIndexIssue]
+        assert isinstance(titleaxis, mplax.Axes)
+        titleaxis.set_title(title)
 
     at.plottools.set_axis_properties(ax, args)
 
     figname = f"plotnltelevelpopsZ{Z}.pdf"
-    plt.savefig(Path(modelpaths[0]) / figname, format="pdf")
-    at.print_saved(Path(modelpaths[0]) / figname)
+    fig.savefig(figname, format="pdf")
+    at.print_saved(figname)
+    plt.close(fig)
 
 
 def plot_populations_with_time_or_velocity(
@@ -720,7 +723,7 @@ def make_singletimestep_plot(
     )
     fig.savefig(outputfilename, format="pdf")
     at.print_saved(outputfilename)
-    plt.close()
+    plt.close(fig)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
