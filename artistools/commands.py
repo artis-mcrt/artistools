@@ -196,6 +196,9 @@ def addsubparsers(parser: argparse.ArgumentParser, parentcommand: str, subcomman
             )
             addsubparsers(parser=subparser, parentcommand=subcommand, subcommandtree=spec)
         else:
+            # omitting help= entirely keeps a hidden entry out of the parent help listing. Do not use
+            # help=argparse.SUPPRESS here: argparse only honours it for arguments, not subparsers, and
+            # it would show the command with a literal ==SUPPRESS== description
             addparserkwargs: dict[str, t.Any] = {} if spec.hidden else {"help": spec.helptext}
             subparser = subparsers.add_parser(
                 subcommand,
