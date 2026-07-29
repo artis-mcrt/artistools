@@ -75,7 +75,7 @@ def test_subcommandtree() -> None:
                 assert cmdtarget.helptext
                 submodule = importlib.import_module(f"artistools.{cmdtarget.module}")
                 assert callable(getattr(submodule, cmdtarget.funcname, None))
-                assert callable(getattr(submodule, cmdtarget.addargsname, None))
+                assert callable(getattr(submodule, "addargs", None))
 
     recursive_check(at.commands.subcommandtree)
 
