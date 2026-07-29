@@ -159,7 +159,7 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
     """Custom argparse formatter to show default values in help text, sorted with dashes last."""
 
     def __init__(self, *args: t.Any, **kwargs: t.Any) -> None:
-        kwargs["max_help_position"] = 39
+        kwargs["max_help_position"] = 50
         super().__init__(*args, **kwargs)
 
     @t.override
