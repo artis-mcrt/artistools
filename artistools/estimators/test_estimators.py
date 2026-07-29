@@ -1,4 +1,6 @@
+import re
 import typing as t
+from pathlib import Path
 from unittest import mock
 
 import matplotlib.axes as mplax
@@ -333,6 +335,46 @@ def test_estimator_timeevolution() -> None:
         modelgridindex=0,
         x="time",
     )
+
+
+def test_estimparse() -> None:
+    pldf = at.rustext.estimparse(modelpath, 0, 0)
+    assert pldf.height == 100
+    assert {"timestep", "modelgridindex", "TR", "Te", "nne", "nnion_Fe_II", "heating_ff"} <= set(pldf.columns)
+
+    firstcell = pldf.sort("timestep", "modelgridindex").row(0, named=True)
+    assert firstcell["timestep"] == 0
+    assert firstcell["modelgridindex"] == 0
+    assert firstcell["nne"] == pytest.approx(71393.3)
+    assert firstcell["nnion_Fe_II"] == pytest.approx(80.59)
+    # nnelement is the sum over the ion stages of the element
+    assert firstcell["nnelement_Fe"] == pytest.approx(6.226e05 + 8.059e01 + 3.940e-24 + 1.586e-27 + 1.010e-27)
+    # quantities recorded as X*nne are also stored divided by the electron density
+    assert firstcell["Alpha_R_Fe_II"] == pytest.approx(1.821e-07 / 71393.3)
+
+
+def test_estimparse_missing_file() -> None:
+    with pytest.raises(OSError, match="no estimator file found for rank 999"):
+        at.rustext.estimparse(modelpath, 999, 999)
+
+
+@pytest.mark.parametrize(
+    ("badline", "errormessage"),
+    [
+        ("populations    Z=26  1: 6.226e+05  2: NOTANUMBER", 'could not parse "NOTANUMBER" as a number'),
+        ("gamma_R        Z=26  12: 1.0", "no roman numeral for ion stage 12"),
+        ("gamma_R        Z=999  1: 1.0", "no element symbol for atomic number 999"),
+        ("populations    Z=26  1: 1.0  1: 2.0", "a column was given two values for one cell"),
+    ],
+)
+def test_estimparse_malformed_line(tmp_path: Path, badline: str, errormessage: str) -> None:
+    """Unparseable estimator data raises a Python exception naming the file and line, never a panic."""
+    (tmp_path / "estimators_0000.out").write_text(
+        f"timestep 0 modelgridindex 0 TR 2000 Te 2000 W 1 TJ 2000 nne 71393.3\n{badline}\n"
+    )
+
+    with pytest.raises(Exception, match=f"estimators_0000.out:2: {re.escape(errormessage)}"):
+        at.rustext.estimparse(tmp_path, 0, 0)
 
 
 def test_add_derived_estimator_columns_preserves_nulls() -> None:

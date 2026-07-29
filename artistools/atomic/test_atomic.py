@@ -1,7 +1,9 @@
 import math
+from pathlib import Path
 
 import numpy as np
 import polars as pl
+import polars.testing as pltest
 import pytest
 
 import artistools as at
@@ -18,6 +20,51 @@ def test_get_levels() -> None:
     assert len(fe2_levels) == 2823
     assert math.isclose(fe2_levels.item(0, "energy_ev"), 0.0, abs_tol=1e-6)
     assert math.isclose(fe2_levels.item(2822, "energy_ev"), 23.048643, abs_tol=1e-6)
+
+
+def test_read_transitiondata() -> None:
+    transitionsdict = at.rustext.read_transitiondata(modelpath / "transitiondata.txt")
+    assert sorted(transitionsdict.keys()) == [
+        (26, 1),
+        (26, 2),
+        (26, 3),
+        (26, 4),
+        (26, 5),
+        (27, 2),
+        (27, 3),
+        (27, 4),
+        (28, 2),
+        (28, 3),
+        (28, 4),
+        (28, 5),
+    ]
+
+    dftransitions = transitionsdict[26, 2]
+    assert dftransitions.columns == ["lower", "upper", "A", "collstr", "forbidden"]
+    assert dftransitions.dtypes == [pl.Int32, pl.Int32, pl.Float32, pl.Float32, pl.Int32]
+    assert dftransitions.shape == (539020, 5)
+    # level indices are zero-based, unlike the one-based level numbers in the file
+    assert dftransitions.row(0, named=True) == pytest.approx({
+        "lower": 0,
+        "upper": 1,
+        "A": 0.00209,
+        "collstr": 3.23,
+        "forbidden": 1,
+    })
+
+    # an ionlist selects a subset of the ions without changing what is read for them
+    selectedions = at.rustext.read_transitiondata(modelpath / "transitiondata.txt", ionlist={(26, 2)})
+    assert selectedions.keys() == {(26, 2)}
+    pltest.assert_frame_equal(selectedions[26, 2], dftransitions)
+
+
+def test_read_transitiondata_truncated(tmp_path: Path) -> None:
+    """A truncated ion header raises a Python exception rather than panicking in the extension."""
+    truncated = tmp_path / "transitiondata.txt"
+    truncated.write_text("26 2\n")
+
+    with pytest.raises(Exception, match="line ended where a transition count was expected"):
+        at.rustext.read_transitiondata(truncated)
 
 
 @pytest.mark.benchmark

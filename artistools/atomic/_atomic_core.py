@@ -192,7 +192,7 @@ def get_transitiondata(
     if not quiet:
         print(f"Reading {transition_filename.relative_to(Path(modelpath).parent)}...")
 
-    transitionsdict = at.rustext.read_transitiondata(str(transition_filename), ionlist=ionlist)
+    transitionsdict = at.rustext.read_transitiondata(transition_filename, ionlist=ionlist)
 
     if not quiet:
         print(f"  took {time.perf_counter() - time_start:.2f} seconds")

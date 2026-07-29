@@ -3,6 +3,7 @@ use crate::transitions::read_transitiondata;
 use pyo3::prelude::*;
 
 mod estimators;
+mod parse;
 mod transitions;
 
 /// This is an artistools submodule consisting of compiled rust functions to improve performance.

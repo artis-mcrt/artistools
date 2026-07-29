@@ -1,8 +1,8 @@
-from collections.abc import Collection
+import os
 
 import polars as pl
 
-def estimparse(folderpath: str, rankmin: int, rankmax: int) -> pl.DataFrame: ...
+def estimparse(folderpath: str | os.PathLike[str], rankmin: int, rankmax: int) -> pl.DataFrame: ...
 def read_transitiondata(
-    transitions_filename: str, ionlist: Collection[tuple[int, int]] | None
+    transitions_filename: str | os.PathLike[str], ionlist: set[tuple[int, int]] | None = None
 ) -> dict[tuple[int, int], pl.DataFrame]: ...
