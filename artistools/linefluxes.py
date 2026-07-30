@@ -192,8 +192,8 @@ def get_closelines(
     atomic_number: int,
     ion_stage: int,
     approxlambdalabel: str | int,
-    lambdamin: float | int | None = None,
-    lambdamax: float | int | None = None,
+    lambdamin: float | None = None,
+    lambdamax: float | None = None,
     lowerlevelindex: int | None = None,
     upperlevelindex: int | None = None,
 ) -> FeatureTuple:
@@ -397,7 +397,7 @@ def plot_nne_te_points(
     serieslabel: str,
     em_log10nne: Sequence[float] | npt.NDArray[np.floating],
     em_Te: Sequence[float] | npt.NDArray[np.floating],
-    normtotalpackets: float | int,
+    normtotalpackets: float,
     color: float | str | None,
     marker: MarkerType,
 ) -> None:

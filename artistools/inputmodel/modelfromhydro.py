@@ -117,7 +117,7 @@ def get_snapshot_time_geomunits(pathtogriddata: Path | str) -> tuple[float, floa
 
 
 def read_griddat_file(
-    pathtogriddata: str | Path, targetmodeltime_days: float | int | None = None
+    pathtogriddata: str | Path, targetmodeltime_days: float | None = None
 ) -> tuple[pd.DataFrame, float, float, float, dict[str, t.Any]]:
     griddatfilepath = Path(pathtogriddata) / "grid.dat"
 
@@ -209,8 +209,8 @@ def read_griddat_file(
 
 def add_mass_to_center(
     griddata: pd.DataFrame,
-    t_model_in_days: float | int,
-    vmax: float | int,  # ruff:ignore[unused-function-argument]
+    t_model_in_days: float,
+    vmax: float,  # ruff:ignore[unused-function-argument]
     args: argparse.Namespace,  # ruff:ignore[unused-function-argument]
 ) -> pd.DataFrame:
 
@@ -257,11 +257,11 @@ def add_mass_to_center(
 def makemodelfromgriddata(
     gridfolderpath: Path | str,
     outputpath: Path | str,
-    targetmodeltime_days: float | int | None = None,
+    targetmodeltime_days: float | None = None,
     traj_root: Path | str | None = None,
     dimensions: int = 3,
-    scalemass: float | int = 1.0,
-    scalevelocity: float | int = 1.0,
+    scalemass: float = 1.0,
+    scalevelocity: float = 1.0,
     args: argparse.Namespace | None = None,
 ) -> None:
     if args is None:

@@ -14,7 +14,7 @@ from artistools.misc.modelinfo import get_inputparams
 from artistools.misc.modelinfo import get_model_name
 
 
-def match_closest_time(reftime: float | int, searchtimes: Iterable[t.Any]) -> float:
+def match_closest_time(reftime: float, searchtimes: Iterable[t.Any]) -> float:
     """Return the time in searchtimes that is closest to reftime."""
     return min((float(x) for x in searchtimes), key=lambda x: abs(x - reftime))
 
@@ -117,7 +117,7 @@ def get_timestep_times(modelpath: Path | str, loc: t.Literal["mid", "start", "en
     raise ValueError(msg)
 
 
-def get_timestep_of_timedays(modelpath: Path | str, timedays: str | int | float) -> int:
+def get_timestep_of_timedays(modelpath: Path | str, timedays: str | float) -> int:
     """Return the timestep containing the given time in days."""
     if isinstance(timedays, str):
         # could be a string like '330d'
@@ -141,9 +141,9 @@ def get_timestep_of_timedays(modelpath: Path | str, timedays: str | int | float)
 def get_time_range(
     modelpath: Path | str,
     timestep_range_str: str | None = None,
-    timemin: float | int | str | None = None,
-    timemax: float | int | str | None = None,
-    timedays_range_str: str | float | int | None = None,
+    timemin: float | str | None = None,
+    timemax: float | str | None = None,
+    timedays_range_str: str | float | None = None,
     clamp_to_timesteps: bool = True,
 ) -> tuple[int, int, float, float]:
     """Handle a time range specified in either days or timesteps."""

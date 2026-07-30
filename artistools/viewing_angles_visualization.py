@@ -58,12 +58,12 @@ def gen_viewing_angle_df(length: int) -> pd.DataFrame:
 def viewing_angles_visualisation(
     modelfile: str,
     outfile: str | None = None,
-    isomin: float | int | None = None,
-    isomax: float | int | None = None,
-    opacity: float | int = 2.5,
+    isomin: float | None = None,
+    isomax: float | None = None,
+    opacity: float = 2.5,
     surface_count: int = 20,
-    linewidth: float | int = 2.5,
-    linelength: float | int = 1.0,
+    linewidth: float = 2.5,
+    linelength: float = 1.0,
     show_plot: bool = False,
 ) -> tuple[float, float]:
     """Tool to generate a 3D visualization of an ARTIS model. Viewing angle bins will get overplotted with an animation.

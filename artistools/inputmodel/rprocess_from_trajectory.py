@@ -131,7 +131,7 @@ def get_traj_network_timesteps(traj_root: Path, particleid: int) -> pl.DataFrame
 def get_closest_network_timesteps(
     traj_root: Path,
     particleid: int,
-    timesec: float | int | Sequence[float] | npt.NDArray[np.floating],
+    timesec: float | Sequence[float] | npt.NDArray[np.floating],
     cond: t.Literal["lessthan", "greaterthan", "nearest"] = "nearest",
 ) -> list[int]:
     """Find the closest network timestep to a given time in seconds.
@@ -241,7 +241,7 @@ def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, 
 def get_trajectory_abund_q(
     particleid: int,
     traj_root: Path,
-    t_model_s: float | int | None = None,
+    t_model_s: float | None = None,
     nts: int | None = None,  # GSI network timestep number
     getqdotintegral: bool = False,
 ) -> dict[tuple[int, int] | str, float]:
@@ -362,7 +362,7 @@ def save_gridparticlecontributions(dfcontribs: pl.DataFrame, gridcontribpath: Pa
 def add_abundancecontributions(
     dfgridcontributions: pl.DataFrame,
     dfmodel: pl.LazyFrame | pl.DataFrame,
-    t_model_days_incpremerger: float | int,
+    t_model_days_incpremerger: float,
     traj_root: Path | str,
 ) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
     """Contribute trajectory network calculation abundances to model cell abundances and return dfmodel, dfelabundances, dfcontribs."""

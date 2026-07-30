@@ -249,9 +249,9 @@ def lightcurve_polyfit(
     time: Sequence[float],
     magnitude: npt.NDArray[np.floating],
     args: argparse.Namespace,
-    deg: float | int = 10,
-    kernel_scale: float | int = 10,
-    lc_error: float | int = 0.01,
+    deg: float = 10,
+    kernel_scale: float = 10,
+    lc_error: float = 0.01,
 ) -> tuple[t.Any, t.Any]:
     try:
         import george
@@ -309,8 +309,8 @@ def make_plot_test_viewing_angle_fit(
     fxfit: Sequence[float],
     filternames_conversion_dict: dict[str, str],
     key: str,
-    mag_after15days_polyfit: float | int,
-    tmax_polyfit: float | int,
+    mag_after15days_polyfit: float,
+    tmax_polyfit: float,
     time_after15days_polyfit: float | str,
     modelname: str,
     angle: int,

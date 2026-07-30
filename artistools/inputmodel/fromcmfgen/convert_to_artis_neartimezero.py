@@ -41,9 +41,9 @@ def reverse_doubledecay(
     indexofisotope: dict[tuple[int, int], int],
     zparent: int,
     numnucleons: int,
-    tlate: float | int,
-    meanlife1_days: float | int,
-    meanlife2_days: float | int,
+    tlate: float,
+    meanlife1_days: float,
+    meanlife2_days: float,
 ) -> None:
     # get the abundances at time zero from the late time abundances
     # e.g. zparent=26, numnucleons=56 to reverse Ni56 -> Co56 -> Fe56 decay
@@ -125,9 +125,9 @@ def forward_doubledecay(
     indexofisotope: dict[tuple[int, int], int],
     zparent: int,
     numnucleons: int,
-    tlate: float | int,
-    meanlife1_days: float | int,
-    meanlife2_days: float | int,
+    tlate: float,
+    meanlife1_days: float,
+    meanlife2_days: float,
 ) -> None:
     # get the abundances at a late time from the time zero abundances
     # e.g. zdaughter=27, numnucleons=56 for Ni56 -> Co56 -> Fe56 decay
@@ -171,10 +171,10 @@ def timeshift_double_decay(
     indexofisotope: dict[tuple[int, int], int],
     zparent: int,
     numnucleons: int,
-    timeold: float | int,
-    timenew: float | int,
-    meanlife1_days: float | int,
-    meanlife2_days: float | int,
+    timeold: float,
+    timenew: float,
+    meanlife1_days: float,
+    meanlife2_days: float,
 ) -> None:
     # take abundances back to time zero and then forward to the selected model time
     elfracsum_before = sum(a["specfrac"][:, indexofatomicnumber[zparent - i]] for i in range(3))

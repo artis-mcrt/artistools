@@ -25,7 +25,7 @@ from artistools.misc import add_outputfile_arg
 defaultoutputfile = "plotnlte_{elsymbol}_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf"
 
 
-def annotate_emission_line(ax: mplax.Axes, y: float | int, upperlevel: int, lowerlevel: int, label: str) -> None:
+def annotate_emission_line(ax: mplax.Axes, y: float, upperlevel: int, lowerlevel: int, label: str) -> None:
     ax.annotate(
         "",
         xy=(lowerlevel, y),
@@ -125,12 +125,7 @@ def plot_reference_data(
 
 
 def get_floers_data(
-    dfpopthision: pd.DataFrame,
-    atomic_number: int,
-    ion_stage: int,
-    modelpath: Path,
-    T_e: float | int,
-    modelgridindex: int,
+    dfpopthision: pd.DataFrame, atomic_number: int, ion_stage: int, modelpath: Path, T_e: float, modelgridindex: int
 ) -> tuple[list[int] | None, list[float] | None]:
     floers_levelnums, floers_levelpop_values = None, None
 
@@ -190,8 +185,8 @@ def make_ionsubplot(
     dfpop: pd.DataFrame,
     adata: pl.DataFrame,
     estimators: dict[tuple[int, int], dict[str, t.Any]],
-    T_e: float | int,
-    T_R: float | int,
+    T_e: float,
+    T_R: float,
     modelgridindex: int,
     timestep: int,
     args: argparse.Namespace,
@@ -489,7 +484,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths: list[Path | str], ar
 def plot_populations_with_time_or_velocity(
     ax: mplax.Axes,
     modelpaths: list[Path | str],
-    timedays: float | int,
+    timedays: float,
     ion_stage: int,
     ionlevels: list[int],
     Z: int,

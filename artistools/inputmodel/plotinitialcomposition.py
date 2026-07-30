@@ -54,7 +54,7 @@ def plot_slice_modelcolumn(
     colname: str,
     plotaxis1: str,
     plotaxis2: str,
-    t_model_d: float | int,
+    t_model_d: float,
     args: argparse.Namespace,
 ) -> tuple[AxesImage, mplcm.ScalarMappable | None]:
     print(f"plotting {colname}")

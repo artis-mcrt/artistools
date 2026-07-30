@@ -48,7 +48,7 @@ class FluxContributionTuple(t.NamedTuple):
     color: str | tuple[float, float, float] | None
 
 
-def timeshift_fluxscale_co56law(scaletoreftime: float | int | None, spectime: float) -> float:
+def timeshift_fluxscale_co56law(scaletoreftime: float | None, spectime: float) -> float:
     if scaletoreftime is not None:
         # Co56 decay flux scaling
         assert spectime > 150
@@ -58,7 +58,7 @@ def timeshift_fluxscale_co56law(scaletoreftime: float | int | None, spectime: fl
 
 
 def get_dfspectrum_x_y_with_units(
-    dfspectrum: pl.DataFrame | pl.LazyFrame, xunit: str, yvariable: str, fluxdistance_mpc: float | int
+    dfspectrum: pl.DataFrame | pl.LazyFrame, xunit: str, yvariable: str, fluxdistance_mpc: float
 ) -> pl.LazyFrame:
     from artistools.constants import h_erg_s
     from artistools.constants import h_ev_s
@@ -173,8 +173,8 @@ def get_dfspectrum_x_y_with_units(
 def get_exspec_lambda_bin_edges(
     modelpath: str | Path | None = None,
     mnubins: int | None = None,
-    nu_min_r: float | int | None = None,
-    nu_max_r: float | int | None = None,
+    nu_min_r: float | None = None,
+    nu_max_r: float | None = None,
     gamma: bool = False,
 ) -> npt.NDArray[np.floating]:
     """Get the wavelength bins for the emergent spectrum."""
@@ -227,11 +227,11 @@ def get_exspec_lambda_bin_edges(
 
 
 def get_lambda_bin_edges(
-    xmin_plot: float | int,
-    xmax_plot: float | int,
-    deltax: float | int | None,
-    deltalogx: float | int | None,
-    deltalambda: float | int | None,
+    xmin_plot: float,
+    xmax_plot: float,
+    deltax: float | None,
+    deltalogx: float | None,
+    deltalambda: float | None,
     xunit: str,
     modelpath: Path | str,
     gamma: bool = False,
@@ -383,7 +383,7 @@ def weighted_average_spectra(
 def get_spectrum_at_time(
     modelpath: Path,
     timestep: int,
-    time: float | int,
+    time: float,
     args: argparse.Namespace | None,
     dirbin: int = -1,
     average_over_phi: bool | None = None,
@@ -417,8 +417,8 @@ def get_spectrum_at_time(
 
 def get_from_packets(
     modelpath: Path | str,
-    timelowdays: float | int,
-    timehighdays: float | int,
+    timelowdays: float,
+    timehighdays: float,
     lambda_bin_edges: npt.NDArray[np.floating] | None = None,
     use_time: t.Literal["arrival", "emission", "escape"] = "arrival",
     maxpacketfiles: int | None = None,
@@ -877,7 +877,7 @@ def split_dataframe_stokesparams(specdata: pl.DataFrame | pl.LazyFrame) -> dict[
 
 def get_vspecpol_spectrum(
     modelpath: Path | str,
-    timeavg: float | int,
+    timeavg: float,
     angle: int,
     args: argparse.Namespace,
     fluxfilterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
@@ -1132,8 +1132,8 @@ def get_flux_contributions(
 
 def get_flux_contributions_from_packets(
     modelpath: Path,
-    timelowdays: float | int,
-    timehighdays: float | int,
+    timelowdays: float,
+    timehighdays: float,
     lambda_bin_edges: npt.NDArray[np.floating],
     getemission: bool = True,
     getabsorption: bool = True,
@@ -1144,7 +1144,7 @@ def get_flux_contributions_from_packets(
     fixedionlist: list[str] | None = None,
     use_time: t.Literal["arrival", "emission", "escape"] = "arrival",
     emtypecolumn: str | None = None,
-    emissionvelocitycut: float | int | None = None,
+    emissionvelocitycut: float | None = None,
     directionbin: int | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
@@ -1206,8 +1206,8 @@ def get_flux_contributions_from_packets(
             lzdfpackets, directionbin, average_over_phi=average_over_phi, average_over_theta=average_over_theta
         )
 
-    condition_nu_emit = pl.col(dirbin_nu_column).is_between(nu_min, nu_max) if getemission else pl.lit(False)
-    condition_nu_abs = pl.col("absorption_freq").is_between(nu_min, nu_max) if getabsorption else pl.lit(False)
+    condition_nu_emit = pl.col(dirbin_nu_column).is_between(nu_min, nu_max) if getemission else pl.lit(value=False)
+    condition_nu_abs = pl.col("absorption_freq").is_between(nu_min, nu_max) if getabsorption else pl.lit(value=False)
     lzdfpackets = lzdfpackets.filter(condition_nu_emit | condition_nu_abs)
 
     if emissionvelocitycut is not None:

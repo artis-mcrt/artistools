@@ -113,7 +113,7 @@ def generate_ion_spectrum(
     transitions: pd.DataFrame,
     xvalues: npt.NDArray[np.floating] | npt.NDArray[np.integer],
     popcolumn: str,
-    plot_resolution: float | int,
+    plot_resolution: float,
     args: argparse.Namespace,
 ) -> npt.NDArray[np.floating]:
     yvalues = np.zeros(len(xvalues))
@@ -145,8 +145,8 @@ def make_plot(
     vardict: dict[str, float],
     ionlist: Sequence[IonTuple],
     ionpopdict: dict[IonTuple, float],
-    xmin: float | int,
-    xmax: float | int,
+    xmin: float,
+    xmax: float,
     figure_title: str,
     outputfilename: str,
 ) -> None:
@@ -220,11 +220,7 @@ def make_plot(
 
 
 def add_upper_lte_pop(
-    dftransitions: pl.DataFrame,
-    T_exc: float | int,
-    ionpop: float | int,
-    ltepartfunc: float | int,
-    columnname: str | None = None,
+    dftransitions: pl.DataFrame, T_exc: float, ionpop: float, ltepartfunc: float, columnname: str | None = None
 ) -> pl.DataFrame:
     scalefactor = ionpop / ltepartfunc
     if columnname is None:

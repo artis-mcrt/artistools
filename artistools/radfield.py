@@ -64,7 +64,7 @@ def get_binaverage_field(
     return arr_lambda, yvalues
 
 
-def j_nu_dbb(arr_nu_hz: Sequence[float] | npt.NDArray[np.floating], W: float | int, T: float) -> list[float]:
+def j_nu_dbb(arr_nu_hz: Sequence[float] | npt.NDArray[np.floating], W: float, T: float) -> list[float]:
     """Calculate the spectral energy density of a dilute blackbody radiation field.
 
     Parameters
@@ -95,11 +95,7 @@ def j_nu_dbb(arr_nu_hz: Sequence[float] | npt.NDArray[np.floating], W: float | i
 
 
 def get_fullspecfittedfield(
-    radfielddata: pl.DataFrame,
-    xmin: float | int,
-    xmax: float | int,
-    modelgridindex: int | None = None,
-    timestep: int | None = None,
+    radfielddata: pl.DataFrame, xmin: float, xmax: float, modelgridindex: int | None = None, timestep: int | None = None
 ) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     radfielddata = select_radfield_subset(radfielddata, pl.col("bin_num") == -1, modelgridindex, timestep)
     W = radfielddata.item(0, "W")
@@ -193,8 +189,8 @@ def plot_specout(
     axis: mplax.Axes,
     specfilename: str | Path,
     timestep: int,
-    peak_value: float | int | None = None,
-    scale_factor: float | int | None = None,
+    peak_value: float | None = None,
+    scale_factor: float | None = None,
     **plotkwargs: t.Any,
 ) -> None:
     """Plot the ARTIS spectrum."""
@@ -233,8 +229,8 @@ def plot_celltimestep(
     modelpath: Path | str,
     timestep: int,
     outputfile: Path | str,
-    xmin: float | int,
-    xmax: float | int,
+    xmin: float,
+    xmax: float,
     modelgridindex: int,
     args: argparse.Namespace,
     normalised: bool = False,

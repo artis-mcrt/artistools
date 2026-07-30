@@ -54,8 +54,8 @@ def get_from_packets(
     directionbins_are_vpkt_observers: bool = False,
     pellet_nucname: str | None = None,
     use_pellet_decay_time: bool = False,
-    timedaysmin: float | int | None = None,
-    timedaysmax: float | int | None = None,
+    timedaysmin: float | None = None,
+    timedaysmax: float | None = None,
 ) -> dict[int, pl.LazyFrame]:
     """Get ARTIS luminosity vs time from packets files."""
     if escape_type not in {"TYPE_RPKT", "TYPE_GAMMA"}:
@@ -385,9 +385,9 @@ def get_filter_data(
 def get_spectrum_in_filter_range(
     modelpath: Path | str,
     timestep: int,
-    time: float | int,
-    wavefilter_min: float | int,
-    wavefilter_max: float | int,
+    time: float,
+    wavefilter_min: float,
+    wavefilter_max: float,
     angle: int = -1,
     args: argparse.Namespace | None = None,
     average_over_phi: bool = False,

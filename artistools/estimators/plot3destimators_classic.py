@@ -99,7 +99,7 @@ def plot_Te_vs_velocity(
 def get_Te_vs_velocity_2D(
     modelpath: Path | str,
     modeldata: pd.DataFrame,
-    vmax: float | int,
+    vmax: float,
     estimators: dict[tuple[int, int], t.Any],
     readonly_mgi: list[int],
     timestep: int,
@@ -137,10 +137,10 @@ def get_Te_vs_velocity_2D(
 def make_2d_plot(
     grid: int,
     grid_Te: npt.NDArray[np.floating],
-    vmax: float | int,
+    vmax: float,
     modelpath: Path | str,
     xgrid: npt.NDArray[np.floating],
-    time: float | int,
+    time: float,
 ) -> None:
     import pyvista as pv
 

@@ -87,8 +87,8 @@ def get_grid_mapping(modelpath: Path | str) -> tuple[dict[int, list[int]], dict[
 def get_wid_init_at_tmodel(
     modelpath: Path | str | None = None,
     ngridpoints: int | None = None,
-    t_model_days: float | int | None = None,
-    xmax: float | int | None = None,
+    t_model_days: float | None = None,
+    xmax: float | None = None,
 ) -> float:
     """Return the Cartesian cell width [cm] at the model snapshot time."""
     if ngridpoints is None or t_model_days is None or xmax is None:

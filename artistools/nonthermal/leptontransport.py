@@ -14,7 +14,7 @@ CONST_ME = 9.10938356e-31  # mass of electron [kg]
 CONST_C = 299792458  # [m / s]
 
 
-def calculate_dE_on_dx_plasma(energy: float | int, n_e_free: float) -> float:
+def calculate_dE_on_dx_plasma(energy: float, n_e_free: float) -> float:
     # Barnes et al. (2016) eq 4
     # electron loss rate to plasma
     # in [J / m] (will always be negative)
@@ -48,7 +48,7 @@ def calculate_dE_on_dx_plasma(energy: float | int, n_e_free: float) -> float:
     return -de_on_dx
 
 
-def calculate_dE_on_dx_ionexc(energy: float | int, n_e_bound: float) -> float:
+def calculate_dE_on_dx_ionexc(energy: float, n_e_bound: float) -> float:
     # Barnes et al. (2016) electron loss rate to ionisation and excitation
     # in [J / m] (will always be negative)
 

@@ -57,7 +57,6 @@ extras = [
 [dependency-groups]
 dev = [
     "basedpyright>=1.39.9",
-    # "beartype>=0.22.9", # numpy 2.5.0 broke beartype, so we disable it for now
     "imageio>=2.37.3",
     "mypy>=2.3.0",
     "pandas-stubs>=3.0.3.260530",
@@ -150,7 +149,11 @@ disallow_untyped_defs = true
 error_summary = true
 enable_error_code = [
     "comparison-overlap",
+    "deprecated",
+    "exhaustive-match",
+    "explicit-override",
     "ignore-without-code",
+    "mutable-override",
     "no-any-return",
     "no-any-unimported",
     "no-untyped-call",
@@ -254,18 +257,18 @@ exclude = [
     '**/rd_cmfgen.py',
 ]
 reportAny = false
-reportCallInDefaultInitializer = false
-reportConstantRedefinition = false
+reportCallInDefaultInitializer = "error"
+reportConstantRedefinition = false # uppercase physics variables (Z, W, T_R) are reassignable by convention
 reportExplicitAny = false
 reportImplicitOverride = "error"
 reportImplicitStringConcatenation = false
 reportImportCycles = false
-reportMatchNotExhaustive = false
+reportMatchNotExhaustive = "error"
 reportMissingImports = "information"
 reportMissingTypeStubs = false
 reportPossiblyUnboundVariable = false
 reportPropertyTypeMismatch = "error"
-reportUninitializedInstanceVariable = false
+reportUninitializedInstanceVariable = "error"
 reportUnknownArgumentType = false
 reportUnknownLambdaType = false
 reportUnknownMemberType = false
@@ -307,7 +310,7 @@ extend-exclude = [
     ".venv/**",
 ]
 preview = true
-required-version = ">=0.15.22"
+required-version = ">=0.16.0"
 
 [tool.ruff.format]
 skip-magic-trailing-comma = true
@@ -328,18 +331,17 @@ ignore = [
     "undocumented-public-init",
     "incorrect-blank-line-before-class",
     "multi-line-summary-second-line",
-    "undocumented-param",
     "docstring-missing-returns",
     "docstring-missing-yields",
     "docstring-missing-exception",
     "line-too-long",
     "commented-out-code",
-    "FBT",
+    "boolean-type-hint-positional-argument",
+    "boolean-default-value-positional-argument",
     "line-contains-todo",
     "invalid-function-name",
     "invalid-argument-name",
     "non-lowercase-variable-in-function",
-    "mixed-case-variable-in-class-scope",
     "import-outside-top-level",
     "too-many-locals",
     "too-many-positional-arguments",
@@ -349,13 +351,8 @@ ignore = [
     "too-many-arguments",
     "too-many-statements",
     "magic-value-comparison",
-    "redefined-loop-name",
-    "redundant-numeric-union",
     "float-equality-comparison",
     "assert",
-    "suspicious-non-cryptographic-random-usage",
-    "suspicious-subprocess-import",
-    "start-process-with-partial-path",
     "print",
     "missing-todo-author",
     "missing-todo-link",
@@ -371,6 +368,10 @@ unfixable = [
 
 [tool.ruff.lint.per-file-ignores]
 "rd_cmfgen.py" = ["blanket-noqa"]
+"artistools/commands.py" = ["suspicious-subprocess-import", "start-process-with-partial-path"]
+"artistools/test_artistools.py" = ["suspicious-subprocess-import"]
+"artistools/spectra/sampleblackbodyfrompacket_tr.py" = ["suspicious-non-cryptographic-random-usage"]
+"set_version.py" = ["suspicious-subprocess-import", "start-process-with-partial-path"]
 
 [tool.ruff.lint.flake8-import-conventions.extend-aliases]
 "artistools" = "at"

@@ -352,7 +352,7 @@ def flatten_list(listin: list[t.Any]) -> list[t.Any]:
     return listout
 
 
-def normalize_path_list(paths: t.Any, default: Path | str = Path()) -> list[Path]:
+def normalize_path_list(paths: t.Any, default: Path | str = ".") -> list[Path]:
     """Return a flat list of Paths from a scalar or (possibly nested) sequence of paths, using the default if none given."""
     if not paths:
         return [Path(default)]

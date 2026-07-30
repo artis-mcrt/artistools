@@ -338,9 +338,14 @@ def get_modeldata(
 
     Parameters
     ----------
-        - modelpath: either a path to model.txt file, or a folder containing model.txt
-        - get_elemabundances: also read elemental abundances (from abundances.txt) and merge with the output DataFrame
-        - derived_cols: list of derived columns to add to the model data, or "all" to add all possible derived columns
+    modelpath : Path | str
+        either a path to model.txt file, or a folder containing model.txt
+    get_elemabundances : bool
+        also read elemental abundances (from abundances.txt) and merge with the output DataFrame
+    derived_cols : Sequence[str] | str | None
+        list of derived columns to add to the model data, or "all" to add all possible derived columns
+    printwarningsonly : bool
+        if True, print warnings but skip informational progress messages
 
     """
     if isinstance(derived_cols, str):
@@ -431,7 +436,7 @@ def get_modeldata(
 
 
 def get_empty_3d_model(
-    ncoordgrid: int, vmax: float | int, t_model_init_days: float | int, includenico57: bool = False
+    ncoordgrid: int, vmax: float, t_model_init_days: float, includenico57: bool = False
 ) -> tuple[pl.LazyFrame, dict[str, t.Any]]:
     xmax = vmax * t_model_init_days * day_to_s
 
@@ -648,7 +653,10 @@ def add_derived_cols_to_modeldata(
                 for ax1, ax2, ax3 in (("x", "y", "z"), ("y", "z", "x"), ("z", "x", "y"))
             )
 
-    assert axes
+        case _:
+            msg = f"Unhandled model dimensions: {dimensions}"
+            raise ValueError(msg)
+
     # get total kinetic energy from orthogonal components. Every coordinate system also gets a radial component, which
     # would double-count the orthogonal ones, so only use "r" for 1D models where it is the sole axis
     orthogonal_axes = ["r"] if dimensions == 1 else [ax for ax in axes if ax != "r"]
@@ -772,6 +780,9 @@ def get_standard_columns(dimensions: int, includenico57: bool = False, pos_unkno
                 if pos_unknown
                 else ["inputcellid", "pos_x_min", "pos_y_min", "pos_z_min", "rho"]
             )
+        case _:
+            msg = f"Unhandled model dimensions: {dimensions}"
+            raise ValueError(msg)
 
     cols += ["X_Fegroup", "X_Ni56", "X_Co56", "X_Fe52", "X_Cr48"]
 
@@ -784,7 +795,7 @@ def get_standard_columns(dimensions: int, includenico57: bool = False, pos_unkno
 def save_modeldata(
     dfmodel: pl.LazyFrame | pl.DataFrame,
     outpath: Path | str | None = None,
-    vmax: float | int | None = None,
+    vmax: float | None = None,
     headercommentlines: list[str] | None = None,
     modelmeta: dict[str, t.Any] | None = None,
     **kwargs: t.Any,
@@ -1317,8 +1328,8 @@ def dimension_reduce_model(
 
 def scale_model_to_time(
     dfmodel: pd.DataFrame,
-    targetmodeltime_days: float | int,
-    t_model_days: float | int | None = None,
+    targetmodeltime_days: float,
+    t_model_days: float | None = None,
     modelmeta: dict[str, t.Any] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, t.Any]]:
     """Homologously expand model to targetmodeltime_days by reducing densities and adjusting cell positions."""

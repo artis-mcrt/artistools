@@ -592,9 +592,9 @@ def get_packets(
 
 
 def get_directionbin(
-    dirx: float | int,
-    diry: float | int,
-    dirz: float | int,
+    dirx: float,
+    diry: float,
+    dirz: float,
     nphibins: int,
     ncosthetabins: int,
     syn_dir: tuple[float | int, float | int, float | int],
