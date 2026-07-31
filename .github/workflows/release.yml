@@ -1,0 +1,63 @@
+---
+name: Release
+permissions:
+    contents: read
+on:
+    workflow_dispatch:
+
+jobs:
+    release:
+        name: Set version and draft release
+        runs-on: ubuntu-26.04-arm
+        steps:
+            # a release drafted from any other ref would tag a commit that is not on main
+            - name: Check that the release is being made from main
+              run: |
+                  if [ "${GITHUB_REF_NAME}" != "main" ]; then
+                      echo "::error::Releases must be made from main, but this run is on ${GITHUB_REF_NAME}"
+                      exit 1
+                  fi
+
+            # main is protected and the github-actions bot is not in the bypass list, so the
+            # built-in token cannot push here. GH_TOKEN is a PAT owned by a user that can bypass it
+            # (a secret cannot be named GITHUB_TOKEN: that name is reserved for the built-in token)
+            - name: Checkout Code
+              uses: actions/checkout@v7
+              with:
+                  token: ${{ secrets.GH_TOKEN }}
+
+            - uses: astral-sh/setup-uv@v9.0.0
+
+            - name: Set the version
+              id: setversion
+              run: |
+                  rustup update stable
+                  python3 set_version.py
+                  version=$(python3 -c "import runpy; print(runpy.run_path('artistools/version.py')['version'])")
+                  echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+            - name: Commit the version bump
+              env:
+                  GH_TOKEN: ${{ secrets.GH_TOKEN }}
+                  VERSION: ${{ steps.setversion.outputs.version }}
+              run: |
+                  if gh release view "v${VERSION}" >/dev/null 2>&1; then
+                      echo "::error::A release for v${VERSION} already exists"
+                      exit 1
+                  fi
+                  if git diff --quiet; then
+                      echo "::error::The version is already set to ${VERSION}, so there is nothing to release"
+                      exit 1
+                  fi
+                  git config user.name "${GITHUB_ACTOR}"
+                  git config user.email "${GITHUB_ACTOR_ID}+${GITHUB_ACTOR}@users.noreply.github.com"
+                  git commit --all --message "Set version to ${VERSION}"
+                  git push
+
+            # a draft release only records the tag name: the tag itself is created at --target
+            # when the draft is published, which is also what triggers the PyPI deployment
+            - name: Draft the release
+              env:
+                  GH_TOKEN: ${{ secrets.GH_TOKEN }}
+                  VERSION: ${{ steps.setversion.outputs.version }}
+              run: gh release create "v${VERSION}" --draft --generate-notes --target "$(git rev-parse HEAD)"
