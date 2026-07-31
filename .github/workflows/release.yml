@@ -14,11 +14,13 @@ jobs:
         name: Set version and draft release
         runs-on: ubuntu-26.04-arm
         steps:
-            # a release drafted from any other ref would tag a commit that is not on main
-            - name: Check that the release is being made from main
+            # a release drafted from any other ref would tag a commit that is not on the release branch
+            - name: Check that the release is being made from the default branch
+              env:
+                  DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
               run: |
-                  if [ "${GITHUB_REF_NAME}" != "main" ]; then
-                      echo "::error::Releases must be made from main, but this run is on ${GITHUB_REF_NAME}"
+                  if [ "${GITHUB_REF_NAME}" != "${DEFAULT_BRANCH}" ]; then
+                      echo "::error::Releases must be made from ${DEFAULT_BRANCH}, but this run is on ${GITHUB_REF_NAME}"
                       exit 1
                   fi
 
@@ -60,9 +62,12 @@ jobs:
               env:
                   VERSION: ${{ steps.setversion.outputs.version }}
               run: |
-                  if git diff --quiet; then
-                      echo "::error::The version is already set to ${VERSION}, so there is nothing to release"
-                      exit 1
+                  # version.py holds nothing but the version, so lockfile churn alone cannot produce a
+                  # "Set version to" commit. With the checks above, an unchanged version.py means an
+                  # earlier run pushed the bump but failed before drafting the release
+                  if git diff --quiet -- artistools/version.py; then
+                      echo "Version ${VERSION} is already committed, so only the draft release is missing"
+                      exit 0
                   fi
                   git config user.name "${GITHUB_ACTOR}"
                   git config user.email "${GITHUB_ACTOR_ID}+${GITHUB_ACTOR}@users.noreply.github.com"
