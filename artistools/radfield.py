@@ -157,11 +157,11 @@ def plot_line_estimators(
     """Plot the Jblue_lu values from the detailed line estimators on a spectrum."""
     ymax = -1
 
-    radfielddataselected = radfielddata.to_pandas(use_pyarrow_extension_array=True).query(
-        "bin_num < -1"
-        + (" & modelgridindex==@modelgridindex" if modelgridindex else "")
-        + (" & timestep==@timestep" if timestep else "")
-    )[["nu_upper", "J_nu_avg"]]
+    # the detailed line estimators have bin_num < -1. Cell zero and timestep zero are falsy, so these filters must
+    # test against None rather than truthiness
+    radfielddataselected = select_radfield_subset(
+        radfielddata, pl.col("bin_num") < -1, modelgridindex, timestep
+    ).to_pandas(use_pyarrow_extension_array=True)[["nu_upper", "J_nu_avg"]]
     if radfielddataselected.empty:
         print("No line estimators to plot")
         return 0.0

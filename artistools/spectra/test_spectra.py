@@ -351,3 +351,36 @@ def test_get_emabs_timeblock_count() -> None:
     dfwrong = pl.DataFrame({"col": range(n_nu * n_timesteps * 2)})
     with pytest.raises(AssertionError, match="time blocks per frequency bin"):
         atspectra.get_emabs_timeblock_count(dfwrong, n_nu, n_timesteps, "emission.out")
+
+
+def test_get_spectra_gamma_does_not_mix_in_uvoir_dirbins() -> None:
+    """Gamma spectra must not pick up the UVOIR direction-resolved file.
+
+    test-classicmode_3d has spec_res.out but no gamma_spec_res.out, so a gamma request must return only the
+    spherically averaged bin rather than silently pairing gamma_spec.out with the UVOIR direction bins.
+    """
+    dirbin_spectra_uvoir = atspectra.get_spectra(modelpath=modelpath_classic_3d, timestepmin=10, timestepmax=10)
+    assert -1 in dirbin_spectra_uvoir
+    assert len(dirbin_spectra_uvoir) > 1, "expected direction-resolved UVOIR spectra in this test model"
+
+    dirbin_spectra_gamma = atspectra.get_spectra(
+        modelpath=modelpath_classic_3d, timestepmin=10, timestepmax=10, gamma=True
+    )
+    assert set(dirbin_spectra_gamma) == {-1}
+
+    # the gamma spectrum must actually differ from the UVOIR one, i.e. it came from gamma_spec.out
+    nu_gamma = dirbin_spectra_gamma[-1].select(pl.col("nu").max()).collect().item()
+    nu_uvoir = dirbin_spectra_uvoir[-1].select(pl.col("nu").max()).collect().item()
+    assert nu_gamma > nu_uvoir
+
+
+def test_get_spectra_rejects_averaging_over_both_angles() -> None:
+    """Averaging over phi and theta at once leaves too few bins, so it must be rejected up front."""
+    with pytest.raises(ValueError, match="both phi and theta"):
+        atspectra.get_spectra(
+            modelpath=modelpath_classic_3d,
+            timestepmin=10,
+            timestepmax=10,
+            average_over_phi=True,
+            average_over_theta=True,
+        )

@@ -205,7 +205,7 @@ def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
 
 
 def merge_pdf_files(pdf_files: list[str]) -> None:
-    """Merge a list of PDF files into a single PDF file."""
+    """Merge a list of PDF files into a single PDF file, deleting the inputs once the merged file is written."""
     from pypdf import PdfWriter
 
     merger = PdfWriter()
@@ -213,13 +213,16 @@ def merge_pdf_files(pdf_files: list[str]) -> None:
     for pdfpath in pdf_files:
         with Path(pdfpath).open("rb") as pdffile:
             merger.append(pdffile)
-        Path(pdfpath).unlink()
 
-    resultfilename = f"{pdf_files[0].replace('.pdf', '')}-{pdf_files[-1].replace('.pdf', '')}"
-    with Path(f"{resultfilename}.pdf").open("wb") as resultfile:
+    resultfilename = f"{Path(pdf_files[0]).with_suffix('')}-{Path(pdf_files[-1]).with_suffix('').name}.pdf"
+    with Path(resultfilename).open("wb") as resultfile:
         merger.write(resultfile)
 
-    print_saved(f"{resultfilename}.pdf")
+    # only remove the inputs once the merged file exists, so a failed write cannot destroy them
+    for pdfpath in pdf_files:
+        Path(pdfpath).unlink()
+
+    print_saved(resultfilename)
 
 
 def write_parquet_atomic(

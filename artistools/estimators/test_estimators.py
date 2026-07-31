@@ -411,3 +411,99 @@ def test_add_derived_estimator_columns_total_dep() -> None:
 
     assert dfout["total_dep"].to_list() == [7.0]
     assert "nntot" not in dfout.columns
+
+
+def test_add_derived_estimator_columns_fills_ion_and_isotope_nulls() -> None:
+    """A number density column that a whole MPI rank omitted arrives as null, and must be read as zero.
+
+    Within a single estimator file the reader already fills these with zero, so leaving the cross-rank nulls
+    alone would give the same missing ion two different values depending on which rank wrote the cell.
+    """
+    pldf = pl.LazyFrame({
+        "timestep": [0, 1],
+        "modelgridindex": [0, 1],
+        "nnelement_Fe": [2.0, None],
+        "nnion_Fe_II": [None, 1.5],
+        "nniso_Ni56": [None, 3.0],
+        "Te": [5000.0, None],
+    })
+
+    dfout = at.estimators.add_derived_estimator_columns(pldf).collect()
+
+    assert dfout["nnion_Fe_II"].to_list() == [0.0, 1.5]
+    assert dfout["nniso_Ni56"].to_list() == [0.0, 3.0]
+    assert dfout["nnelement_Fe"].to_list() == [2.0, 0.0]
+
+    # temperatures are not number densities, so a null must stay null
+    assert dfout["Te"].to_list() == [5000.0, None]
+
+
+def test_estimparse_rejects_missing_nne(tmp_path: Path) -> None:
+    """A '*nne' estimator must not be divided by another cell's electron density.
+
+    The nne column is only as long as the current row once this cell has set it, so a cell header without nne has
+    to be an error rather than silently reusing the previous cell's value.
+    """
+    (tmp_path / "estimators_0000.out").write_text(
+        "timestep 0 modelgridindex 0 TR 2000 Te 2000 W 1 TJ 2000 nne 1.0e5\n"
+        "Alpha_R*nne    Z=26  2: 2.0e5\n"
+        "timestep 0 modelgridindex 1 TR 2000 Te 2000 W 1 TJ 2000\n"
+        "Alpha_R*nne    Z=26  2: 4.0e5\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(Exception, match="nne is not set for this cell"):
+        at.rustext.estimparse(tmp_path, 0, 0)
+
+
+def test_estimparse_divides_by_own_cell_nne(tmp_path: Path) -> None:
+    """Each cell's '*nne' estimator is divided by that same cell's electron density."""
+    (tmp_path / "estimators_0000.out").write_text(
+        "timestep 0 modelgridindex 0 TR 2000 Te 2000 W 1 TJ 2000 nne 1.0e5\n"
+        "Alpha_R*nne    Z=26  2: 2.0e5\n"
+        "timestep 0 modelgridindex 1 TR 2000 Te 2000 W 1 TJ 2000 nne 4.0e5\n"
+        "Alpha_R*nne    Z=26  2: 8.0e5\n",
+        encoding="utf-8",
+    )
+
+    dfest = at.rustext.estimparse(tmp_path, 0, 0).sort("modelgridindex")
+
+    assert dfest["nne"].to_list() == pytest.approx([1.0e5, 4.0e5])
+    assert dfest["Alpha_R_Fe_II"].to_list() == pytest.approx([2.0, 2.0])
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_estimator_default_plotlist_skips_absent_elements(mockplot: t.Any) -> None:
+    """The built-in plot list names particular elements, which most models do not contain."""
+    funcoutpath = outputpath / "test_estimator_default_plotlist"
+    funcoutpath.mkdir(exist_ok=True, parents=True)
+
+    # testmodel has no Sr, so the default averageionisation/populations plots must be skipped rather than raising
+    at.estimators.plot(argsraw=[], modelpath=modelpath, timedays=300, outputfile=funcoutpath)
+
+    # the two element-independent default subplots (rho and TR) are still drawn
+    assert len(mockplot.call_args_list) == 2
+    for call in mockplot.call_args_list:
+        yvalues = np.array(call[0][2], dtype=float)
+        assert np.all(np.isfinite(yvalues))
+        assert np.all(yvalues > 0.0)
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_estimator_levelpopulation_dn_on_dvel(mockplot: t.Any) -> None:
+    """Plotting dN/dv needs the inner shell velocity, which is a derived model column."""
+    funcoutpath = outputpath / "test_estimator_levelpopulation_dn_on_dvel"
+    funcoutpath.mkdir(exist_ok=True, parents=True)
+
+    at.estimators.plot(
+        argsraw=[],
+        modelpath=modelpath,
+        timedays=300,
+        outputfile=funcoutpath,
+        plotlist=[[["levelpopulation_dn_on_dvel", ["Fe II 5"]]]],
+    )
+
+    assert mockplot.call_args_list, "nothing was plotted"
+    yvalues = np.array(mockplot.call_args_list[0][0][2], dtype=float)
+    assert np.all(np.isfinite(yvalues))
+    assert np.all(yvalues >= 0.0)

@@ -80,10 +80,10 @@ def slice_3dmodel(
                 print("Wrong line size")
                 sys.exit()
 
-            xmatch = cell["pos_x_min"] == "0.0000000" or (chosenaxis == "x" and float(cell["pos_x_min"]) >= 0.0)
-            ymatch = cell["pos_y_min"] == "0.0000000" or (chosenaxis == "y" and float(cell["pos_y_min"]) >= 0.0)
-            zmatch = cell["pos_z_min"] == "0.0000000" or (chosenaxis == "z" and float(cell["pos_z_min"]) >= 0.0)
-            if xmatch and ymatch and zmatch:
+            # a cell is on the chosen positive axis when its two other coordinates are zero. Compare the parsed
+            # numbers, not their text: model.txt is written in several formats (e.g. "0.0000000" or "0.0000e0")
+            positions = {ax: float(cell[f"pos_{ax}_min"]) for ax in ("x", "y", "z")}
+            if all(pos == 0.0 or (chosenaxis == ax and pos >= 0.0) for ax, pos in positions.items()):
                 outcellid += 1
                 dict3dcellidto1dcellid[int(cell["cellid"])] = outcellid
                 append_cell_to_output(cell, outcellid, t_model, listout, xlist, ylists)
@@ -126,8 +126,9 @@ def slice_abundance_file(
             else:
                 currentblock.extend(linesplit)
 
-    if keepcurrentblock:
-        print("WARNING: unfinished block")
+        # the loop only writes a block when the next one starts, so the last block still has to be flushed
+        if keepcurrentblock:
+            fabundancesout.write("  ".join(currentblock) + "\n")
 
 
 def append_cell_to_output(
@@ -161,7 +162,7 @@ def make_plot(xlist: list[float], ylists: list[list[float]], pdfoutputfile: str)
     ylabels = [r"$\rho$", "fNi56", "fCo"]
     for ylist, ylabel in zip(ylists, ylabels, strict=False):
         axis.plot(xlist, ylist, linewidth=1.5, label=ylabel)
-    axis.set_yscale("log", nonposy="clip")
+    axis.set_yscale("log", nonpositive="clip")
     axis.legend(loc="best", handlelength=2, frameon=False, numpoints=1, prop={"size": 10})
     fig.savefig(pdfoutputfile, format="pdf")
     at.print_saved(pdfoutputfile)

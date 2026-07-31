@@ -168,3 +168,17 @@ def test_get_virtual_packets() -> None:
     assert rank_summary["mpirank"].to_list() == [0, 1]
     assert rank_summary["packet_count"].to_list() == [9402, 4381]
     assert rank_summary["energy_sum"].to_list() == pytest.approx([5.56564454996292e44, 1.8265647804307455e44])
+
+
+def test_bin_and_sum_includes_both_outer_edges() -> None:
+    """Every value between the first and last edge must land in a bin, including values on either outer edge."""
+    values = [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0]
+    df = pl.DataFrame({"x": values, "e": [1.0] * len(values)})
+
+    binned = at.packets.bin_and_sum(df, bincol="x", bins=[0.0, 1.0, 2.0, 3.0], sumcols=["e"], getcounts=True).collect()
+
+    assert binned["x_bin"].to_list() == [0, 1, 2]
+    # bins are [lower, upper), except the last which also includes its upper edge
+    assert binned["count"].to_list() == [2, 2, 3]
+    assert binned["count"].sum() == len(values)
+    assert binned["e_sum"].to_list() == pytest.approx([2.0, 2.0, 3.0])

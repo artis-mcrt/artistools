@@ -28,6 +28,33 @@ from artistools.misc import add_modelpath_arg
 from artistools.misc import add_outputfile_arg
 from artistools.misc import add_series_style_args
 
+# the Fe II 7155 Å / 12570 Å pair used for the Flörs et al. (2020) ratio comparison
+DEFAULT_EMFEATURESEARCH: tuple[tuple[int, ...], ...] = ((26, 2, 7155, 7150, 7160), (26, 2, 12570, 12470, 12670))
+
+
+def parse_emfeaturesearch(strfeature: str) -> tuple[int, ...]:
+    """Parse an emission feature given on the command line, e.g. '(26, 2, 7155, 7150, 7160)'."""
+    import ast
+
+    try:
+        feature = ast.literal_eval(strfeature)
+    except (ValueError, SyntaxError) as exc:
+        msg = f"Could not parse emission feature {strfeature!r}. Expected e.g. '(26, 2, 7155, 7150, 7160)'"
+        raise argparse.ArgumentTypeError(msg) from exc
+
+    if (
+        not isinstance(feature, (tuple, list))
+        or not (3 <= len(feature) <= 7)
+        or not all(isinstance(x, int) for x in feature)
+    ):
+        msg = (
+            f"Emission feature {strfeature!r} must be 3 to 7 integers:"
+            " (atomic_number, ion_stage, feature_wavelength[, lambdamin, lambdamax, lowerlevelindex, upperlevelindex])"
+        )
+        raise argparse.ArgumentTypeError(msg)
+
+    return tuple(feature)
+
 
 class FeatureTuple(t.NamedTuple):
     colname: str
@@ -109,7 +136,12 @@ def get_line_luminosities_from_pops(
     # arr_timedelta = np.array(arr_tend) - np.array(arr_tstart)
     arr_tmid = (np.array(arr_tstart) + np.array(arr_tend)) / 2.0
 
-    modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect().to_pandas(use_pyarrow_extension_array=True)
+    modeldata = (
+        at.inputmodel
+        .get_modeldata(modelpath, derived_cols=["vel_r_min_kmps", "vel_r_max_kmps"])[0]
+        .collect()
+        .to_pandas(use_pyarrow_extension_array=True)
+    )
 
     ionlist = [(feature.atomic_number, feature.ion_stage) for feature in emfeatures]
     adata = at.atomic.get_levels_pandas(modelpath, ionlist=tuple(ionlist), get_transitions=True)
@@ -748,11 +780,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument(
         "-emfeaturesearch",
-        default=[],
+        default=list(DEFAULT_EMFEATURESEARCH),
         nargs="*",
+        type=parse_emfeaturesearch,
         help=(
             "Emission features as (atomic_number, ion_stage, feature_wavelength, lower_wavelength, upper_wavelength)"
-            " tuples, e.g. (26, 2, 7155, 7150, 7160) for the Fe II 7155 Å feature"
+            " tuples, e.g. '(26, 2, 7155, 7150, 7160)' for the Fe II 7155 Å feature. At least two are needed for the"
+            " flux ratio plot"
         ),
     )
 
@@ -782,10 +816,20 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "-timebins_tstart", default=[], nargs="*", action="append", help="Time bin start values in days"
+        "-timebins_tstart",
+        default=None,
+        nargs="*",
+        type=float,
+        help="Time bin start values in days. Defaults to the model timestep starts",
     )
 
-    parser.add_argument("-timebins_tend", default=[], nargs="*", action="append", help="Time bin end values in days")
+    parser.add_argument(
+        "-timebins_tend",
+        default=None,
+        nargs="*",
+        type=float,
+        help="Time bin end values in days. Defaults to the model timestep ends",
+    )
 
     add_figscale_args(parser, figscaledefault=1.8)
 
@@ -805,6 +849,24 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args.label, args.modeltag, args.color = at.trim_or_pad(len(args.modelpath), args.label, args.modeltag, args.color)
 
     args.emtypecolumn = "emissiontype" if args.use_lastemissiontype else "trueemissiontype"
+
+    args.emfeaturesearch = [parse_emfeaturesearch(f) if isinstance(f, str) else tuple(f) for f in args.emfeaturesearch]
+    if len(args.emfeaturesearch) < 2:
+        msg = f"At least two emission features are needed for a flux ratio, but got {len(args.emfeaturesearch)}"
+        raise ValueError(msg)
+
+    # the time bins default to the timesteps of the first model
+    if args.timebins_tstart is None:
+        args.timebins_tstart = at.get_timestep_times(args.modelpath[0], loc="start")
+    if args.timebins_tend is None:
+        args.timebins_tend = at.get_timestep_times(args.modelpath[0], loc="end")
+
+    if len(args.timebins_tstart) != len(args.timebins_tend):
+        msg = (
+            f"timebins_tstart has {len(args.timebins_tstart)} values but timebins_tend has"
+            f" {len(args.timebins_tend)}. They must match"
+        )
+        raise ValueError(msg)
 
     assert isinstance(args.label, list)
     for i in range(len(args.label)):

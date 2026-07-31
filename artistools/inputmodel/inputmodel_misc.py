@@ -1335,7 +1335,7 @@ def scale_model_to_time(
     """Homologously expand model to targetmodeltime_days by reducing densities and adjusting cell positions."""
     if t_model_days is None:
         assert modelmeta is not None
-        t_model_days = modelmeta["t_model_days"]
+        t_model_days = modelmeta["t_model_init_days"]
 
     assert t_model_days is not None
 
@@ -1357,7 +1357,7 @@ def scale_model_to_time(
     if modelmeta is None:
         modelmeta = {}
 
-    modelmeta["t_model_days"] = targetmodeltime_days
+    modelmeta["t_model_init_days"] = targetmodeltime_days
     modelmeta.setdefault("headercommentlines", []).append(
         f"scaled from {t_model_days} to {targetmodeltime_days} (no abund change from decays)"
     )

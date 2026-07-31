@@ -288,7 +288,7 @@ def plot_levelpop(
 
     modeldata = (
         at.inputmodel
-        .get_modeldata(modelpath, derived_cols=["mass_g", "volume"])[0]
+        .get_modeldata(modelpath, derived_cols=["mass_g", "volume", "vel_r_min_kmps", "vel_r_max_kmps"])[0]
         .collect()
         .to_pandas(use_pyarrow_extension_array=True)
     )
@@ -408,6 +408,24 @@ def could_be_ion(plotvar: t.Any) -> bool:
 
     # a string that is an integer is an atomic number
     return plotvar.isdigit() or "=" in plotvar or get_iontuple(plotvar)[0] >= 1
+
+
+def default_plotitem_has_data(plotitems: t.Any, estimatorcolumns: Collection[str]) -> bool:
+    """Return False if a plot item names an element that is missing from this model's estimators.
+
+    The built-in plot list names particular elements (e.g. Sr), which most models do not contain. This is only
+    applied to that default list: an explicitly requested plot item is never dropped, so a typo there still raises.
+    """
+    if isinstance(plotitems, str):
+        atomic_number = get_iontuple(plotitems)[0]
+        if atomic_number >= 1:
+            return f"nnelement_{at.get_elsymbol(atomic_number)}" in estimatorcolumns
+        return True
+
+    if isinstance(plotitems, (list, tuple)):
+        return all(default_plotitem_has_data(item, estimatorcolumns) for item in plotitems)
+
+    return True
 
 
 def normalise_plotitems(plotitems: t.Any, estimatorcolumns: Collection[str]) -> list[t.Any]:
@@ -1151,6 +1169,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     estimators = estimators.with_columns(deltavol_deltat=pl.col("volume") * pl.col("twidth_days"))
 
+    usingdefaultplotlist = not args.plotlist
     plotlist: list[t.Any] = args.plotlist or [
         # [["initabundances", ["Fe", "Ni_stable", "Ni_56"]]],
         # ['heating_dep', 'heating_coll', 'heating_bf', 'heating_ff',
@@ -1187,6 +1206,15 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     ]
 
     estimatorcolumns = estimators.collect_schema().names()
+
+    if usingdefaultplotlist:
+        keptplotlist = [x for x in plotlist if default_plotitem_has_data(x, estimatorcolumns)]
+        if skipped := [x for x in plotlist if x not in keptplotlist]:
+            print(f"Skipping default plots for elements that are not in this model: {skipped}")
+        if not keptplotlist:
+            msg = "No default plots apply to this model. Choose what to plot with -plot (e.g. -plot Te TR)"
+            raise ValueError(msg)
+        plotlist = keptplotlist
 
     plotlist = [normalise_plotitems(plotitems, estimatorcolumns) for plotitems in plotlist]
 

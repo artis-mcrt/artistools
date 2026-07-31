@@ -12,13 +12,16 @@ from pathlib import Path
 from unittest import mock
 
 import matplotlib.axes as mplax
+import matplotlib.pyplot as plt
 import numpy as np
+import polars as pl
 import pytest
 
 import artistools as at
 
 modelpath = at.get_path("testdata") / "testmodel"
 modelpath_3d = at.get_path("testdata") / "testmodel_3d_10^3"
+modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
 outputpath = at.get_path("testoutput")
 outputpath.mkdir(exist_ok=True, parents=True)
 
@@ -414,6 +417,21 @@ def test_get_ion_tuple() -> None:
     assert at.get_ion_tuple("26") == 26
 
 
+def test_get_ion_tuple_no_separator() -> None:
+    """Two-letter symbols must not be split on their first letter, e.g. 'FeII' is Fe II and not F + 'eII'."""
+    assert at.get_ion_tuple("FeII") == (26, 2)
+    assert at.get_ion_tuple("CoII") == (27, 2)
+    assert at.get_ion_tuple("NiIII") == (28, 3)
+    assert at.get_ion_tuple("HeII") == (2, 2)
+    # single-letter symbols still work, and are not shadowed by a longer symbol that starts the same way
+    assert at.get_ion_tuple("FII") == (9, 2)
+    assert at.get_ion_tuple("CIV") == (6, 4)
+    assert at.get_ion_tuple("OI") == (8, 1)
+
+    with pytest.raises(ValueError, match="Could not parse ionstr"):
+        at.get_ion_tuple("notanion")
+
+
 def test_parse_range_list() -> None:
     assert at.parse_range_list("5") == [5]
     assert at.parse_range_list("3-5") == [3, 4, 5]
@@ -535,3 +553,118 @@ def test_get_cellsofmpirank(tmp_path: Path) -> None:
     make_model(uneven_dir, npts=21, nprocs=4)
     assert list(at.get_cellsofmpirank(0, uneven_dir)) == list(range(6))
     assert list(at.get_cellsofmpirank(1, uneven_dir)) == list(range(6, 11))
+
+
+@mock.patch.object(mplax.Axes, "scatter", side_effect=mplax.Axes.scatter, autospec=True)
+def test_radfield_line_estimators_filter_cell_zero(mockscatter: t.Any) -> None:
+    """The line estimator plot must filter on cell and timestep zero, which are falsy."""
+    radfielddata = pl.DataFrame({
+        "bin_num": [-2, -3, -2, -3],
+        "modelgridindex": [0, 0, 1, 1],
+        "timestep": [0, 0, 0, 0],
+        "nu_upper": [1.0e15, 2.0e15, 3.0e15, 4.0e15],
+        "J_nu_avg": [1.0e-20, 2.0e-20, 3.0e-20, 4.0e-20],
+    })
+
+    fig, ax = plt.subplots()
+    at.radfield.plot_line_estimators(ax, radfielddata, modelgridindex=0, timestep=0)
+    plt.close(fig)
+
+    assert mockscatter.call_count == 1
+    lambdas = np.array(mockscatter.call_args_list[0][0][1], dtype=float)
+    # only the two rows of cell zero, not all four rows
+    assert len(lambdas) == 2
+    assert np.allclose(sorted(lambdas), sorted(at.constants.c_ang_per_s / np.array([1.0e15, 2.0e15])))
+
+
+def test_ejectaopacity() -> None:
+    """Binned expansion opacities need the level statistical weights, not only the transition wavelengths."""
+    at.ejectaopacity.main(
+        argsraw=[], modelpath=modelpath, timestep=40, lambdamin=3000.0, lambdamax=4000.0, deltalambda=10.0
+    )
+
+
+def test_kurucz_transitions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """gfall.dat is fixed-width, and the wavelength field is 11 characters wide, not 12.
+
+    Reading 12 characters takes the first character of the loggf field with it, which is only harmless while that
+    character happens to be a space.
+    """
+    line = (
+        f"{715.5170:11.4f}"  # 0-10  wavelength in nm
+        f"{-1.234:7.3f}"  # 11-17 log(gf)
+        f"{44.00:6.2f}"  # 18-23 element code Z.(ion_stage - 1)
+        f"{25000.000:12.3f}"  # 24-35 lower level energy in cm-1
+        f"{4.5:5.1f}"  # 36-40 lower level J
+        " a4F       "  # 41-51 configuration label
+        f"{35000.000:12.3f}"  # 52-63 upper level energy in cm-1
+        f"{3.5:5.1f}" + " " + " 0" * 16 + "\n"  # 64-68 upper level J
+        # the parser only reads lines with at least 24 whitespace-separated fields
+    )
+    (tmp_path / "gfall.dat").write_text(line, encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    dftransitions, ionlist = at.transitions.get_kurucz_transitions()
+
+    assert ionlist == [at.transitions.IonTuple(44, 1)]
+    assert len(dftransitions) == 1
+    transition = dftransitions.iloc[0]
+    assert transition.lambda_angstroms == pytest.approx(7155.170)
+    assert transition.lower_statweight == pytest.approx(2 * 4.5 + 1)
+    assert transition.upper_statweight == pytest.approx(2 * 3.5 + 1)
+
+    hc_in_ev_cm = 0.0001239841984332003
+    assert transition.lower_energy_ev == pytest.approx(hc_in_ev_cm * 25000.0)
+    assert transition.upper_energy_ev == pytest.approx(hc_in_ev_cm * 35000.0)
+
+
+def test_merge_pdf_files_keeps_inputs_until_written(tmp_path: Path) -> None:
+    """The input files must survive until the merged file exists."""
+    pdfpaths = []
+    for i in range(2):
+        fig, ax = plt.subplots()
+        ax.plot([0, 1], [i, i])
+        pdfpath = tmp_path / f"page{i}.pdf"
+        fig.savefig(pdfpath, format="pdf")
+        plt.close(fig)
+        pdfpaths.append(str(pdfpath))
+
+    at.merge_pdf_files(pdfpaths)
+
+    merged = tmp_path / "page0-page1.pdf"
+    assert merged.is_file()
+    assert merged.stat().st_size > 0
+    assert not any(Path(p).exists() for p in pdfpaths)
+
+
+def test_linefluxes_emfeaturesearch_parsing() -> None:
+    """Emission features given on the command line must arrive as tuples of ints, not as raw strings."""
+    parser = argparse.ArgumentParser()
+    at.linefluxes.addargs(parser)
+
+    args = parser.parse_args(["-emfeaturesearch", "(26, 2, 7155, 7150, 7160)", "(28, 2, 7378, 7373, 7383)"])
+    assert args.emfeaturesearch == [(26, 2, 7155, 7150, 7160), (28, 2, 7378, 7373, 7383)]
+
+    # the default must already be usable for the two-feature flux ratio plot
+    assert len(parser.parse_args([]).emfeaturesearch) >= 2
+
+    # time bins are floats, not appended lists of strings
+    args = parser.parse_args(["-timebins_tstart", "200", "250", "-timebins_tend", "250", "300"])
+    assert args.timebins_tstart == [200.0, 250.0]
+    assert args.timebins_tend == [250.0, 300.0]
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["-emfeaturesearch", "not a tuple"])
+
+
+def test_linefluxes_lineflux_ratio_plot() -> None:
+    """The line flux ratio plot must run with no arguments beyond the model path."""
+    funcoutpath = outputpath / funcname()
+    funcoutpath.mkdir(exist_ok=True, parents=True)
+    at.linefluxes.main(
+        argsraw=[],
+        modelpath=[modelpath_classic_3d],
+        emfeaturesearch=[(26, 2, 7155, 7100, 7200), (26, 2, 12570, 12400, 12700)],
+        outputfile=funcoutpath / "linefluxes.pdf",
+    )
+    assert (funcoutpath / "linefluxes.pdf").is_file()

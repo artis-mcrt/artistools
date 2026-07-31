@@ -164,10 +164,13 @@ impl EstimatorColumns {
 
             let ionstageroman = ionstage_roman(ionstage)?;
             if let Some(varname_nonne) = variablename.strip_suffix("*nne") {
-                // also store the quantity divided by the electron density of this cell
+                // also store the quantity divided by the electron density of this cell. The column is only as long
+                // as the current row once this cell has set it, so a shorter column means nne belongs to an
+                // earlier cell and must not be used here
                 let nne = self
                     .coldata
                     .get("nne")
+                    .filter(|values| values.len() == self.rownum)
                     .and_then(|values| values.last())
                     .copied()
                     .ok_or_else(|| malformed("nne is not set for this cell".into()))?;

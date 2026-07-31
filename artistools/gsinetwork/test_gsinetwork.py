@@ -1,5 +1,6 @@
 import math
 import typing as t
+from pathlib import Path
 from unittest import mock
 
 import matplotlib.axes as mplax
@@ -47,3 +48,22 @@ def test_decayproducts(mockplot: t.Any) -> None:
         y_arr = x[0][2]
         assert len(y_arr) == 1
         assert math.isclose(y_arr[0], expected_y_arr[0], rel_tol=1e-3)
+
+
+def test_decayproducts_parquet_output(tmp_path: Path) -> None:
+    """Parquet files must be written under the requested output path, not a relative 'parquet' folder."""
+    trajpath = at.get_path("testdata") / "kilonova" / "trajectories"
+    at.gsinetwork.decayproducts.main(
+        argsraw=[],
+        trajectoryroot=trajpath,
+        tmin=0.1,
+        tmax=0.1,
+        nsteps=1,
+        outputpath=tmp_path,
+        parquet=True,
+        trajparquet=True,
+    )
+
+    parquetfiles = sorted(p.name for p in (tmp_path / "parquet").glob("*.parquet"))
+    assert parquetfiles, "no parquet files written under the output path"
+    assert not Path("parquet").exists(), "parquet files must not be written relative to the working directory"

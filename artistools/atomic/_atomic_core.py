@@ -108,11 +108,11 @@ def parse_phixsdata(
                 nptargetlist = np.array([(upperionlevel, 1.0)], dtype=[("level", np.int32), ("fraction", np.float32)])
             else:
                 ntargets = int(fphixs.readline())
-                nptargetlist = np.empty((ntargets, 2), dtype=[("level", np.int32), ("fraction", np.float32)])
-                # targetlist = [(-1, 0.0) for _ in range(ntargets)]
+                # one structured entry per target, matching the shape of the single-target case above
+                nptargetlist = np.empty(ntargets, dtype=[("level", np.int32), ("fraction", np.float32)])
                 for phixstargetindex in range(ntargets):
                     level, fraction = fphixs.readline().split()
-                    nptargetlist[phixstargetindex, :] = (int(level) - firstlevelnumber, float(fraction))
+                    nptargetlist[phixstargetindex] = (int(level) - firstlevelnumber, float(fraction))
 
             if not ionlist or (Z, lowerion_stage) in ionlist:
                 phixslist = [float(fphixs.readline()) * 1e-18 for _ in range(nphixspoints)]
@@ -488,17 +488,21 @@ def get_ion_tuple(ionstr: str) -> tuple[int, int] | int:
     elem = "?"
     strion_stage = "?"
     if " " in ionstr:
-        elem, strion_stage = ionstr.split(" ")
+        elem, strion_stage = ionstr.split(" ", maxsplit=1)
     elif "_" in ionstr:
-        elem, strion_stage = ionstr.split("_")
+        elem, strion_stage = ionstr.split("_", maxsplit=1)
     else:
-        for elsym in get_elsymbolslist():
+        # no separator, e.g. 'FeII'. Longest symbols first, so that 'Fe' is preferred over 'F', and only accept a
+        # match where the remainder is a valid ion stage (otherwise 'Co' would be split as C + 'o')
+        for elsym in sorted(get_elsymbolslist(), key=len, reverse=True):
             if ionstr.startswith(elsym):
-                elem = elsym
-                strion_stage = ionstr.removeprefix(elsym)
-                break
+                remainder = ionstr.removeprefix(elsym)
+                if remainder.isdigit() or decode_roman_numeral(remainder) > 0:
+                    elem = elsym
+                    strion_stage = remainder
+                    break
 
-    if not elem:
+    if elem == "?":
         msg = f"Could not parse ionstr {ionstr}"
         raise ValueError(msg)
 

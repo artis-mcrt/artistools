@@ -777,15 +777,22 @@ def bin_and_sum(
     """Bins is a list of lower edges, and the final upper edge."""
     # Polars method
 
+    nbins = len(bins) - 1
     dfcut = (
         df
         .lazy()
         .filter(pl.col(bincol).is_between(bins[0], bins[-1], closed="both"))
         .with_columns(
-            (pl.col(bincol).cut(breaks=bins, labels=[str(x) for x in range(-1, len(bins))]))
-            .cast(pl.String)
-            .cast(pl.Int32)
-            .alias(f"{bincol}_bin")
+            # each bin is [lower, upper), except the last one, which also includes its upper edge. cut() would put a
+            # value sitting exactly on that final edge into the overflow bin, so clamp it back into the last bin
+            pl.min_horizontal(
+                pl
+                .col(bincol)
+                .cut(breaks=bins, labels=[str(x) for x in range(-1, len(bins))], left_closed=True)
+                .cast(pl.String)
+                .cast(pl.Int32),
+                nbins - 1,
+            ).alias(f"{bincol}_bin")
         )
     )
 
@@ -808,7 +815,7 @@ def bin_and_sum(
     # now we will include the empty bins
     return (
         pl
-        .LazyFrame({f"{bincol}_bin": range(len(bins) - 1)}, schema={f"{bincol}_bin": pl.Int32})
+        .LazyFrame({f"{bincol}_bin": range(nbins)}, schema={f"{bincol}_bin": pl.Int32})
         .join(wlbins, how="left", on=f"{bincol}_bin", coalesce=True)
         # fill nulls with 0 for sum columns
         .with_columns(pl.col(f"{sumcol}_sum").fill_null(0) for sumcol in sumcols)

@@ -39,6 +39,14 @@ def average_direction_bins(
         raise ValueError(msg)
     start_bin_range = get_dirbins(average_over_phi=overangle == "phi", average_over_theta=overangle == "theta")
 
+    if missingbins := sorted(set(range(dirbincount)) - set(dirbindataframes)):
+        # averaging twice (e.g. over theta and then over phi) leaves too few bins to average again
+        msg = (
+            f"Cannot average over {overangle}: expected all {dirbincount} direction bins, but"
+            f" {len(missingbins)} are missing (first missing bin is {missingbins[0]})"
+        )
+        raise ValueError(msg)
+
     # we will make a copy to ensure that we don't cause side effects from altering the original DataFrames
     # that might be returned again later by an lru_cached function
     dirbindataframesout: dict[int, pl.LazyFrame] = {}

@@ -205,7 +205,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     print()
     print(f"timestep {timestep} T_days = {time_days:.2f}")
 
-    adata = at.atomic.get_levels(args.modelpath, get_transitions=True, derived_transitions_columns=["lambda_angstroms"])
+    # get_binned_opacities_ion() needs the statistical weights as well as the wavelength, and
+    # add_transition_columns() drops every derived column that is not requested here
+    adata = at.atomic.get_levels(
+        args.modelpath, get_transitions=True, derived_transitions_columns=["lambda_angstroms", "lower_g", "upper_g"]
+    )
 
     pl.Config.set_tbl_cols(20)
     pl.Config.set_tbl_rows(5000)

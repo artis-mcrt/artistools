@@ -160,3 +160,16 @@ def test_colour_evolution_plot() -> None:
 
 def test_colour_evolution_subplots() -> None:
     at.lightcurve.plot(argsraw=[], modelpath=modelpath, colour_evolution=["U-B", "B-V"], outputfile=outputpath)
+
+
+def test_get_colour_delta_mag_unequal_sampling() -> None:
+    """A band with no flux at some time has no point there, so the two bands can be sampled differently."""
+    band_lightcurve_data: dict[str, list[tuple[float, float]]] = {
+        "B": [(10.0, -18.0), (20.0, -17.0), (30.0, -16.0)],
+        "V": [(10.0, -18.5), (30.0, -16.5), (40.0, -15.0)],
+    }
+
+    times, colours = at.lightcurve.get_colour_delta_mag(band_lightcurve_data, ["B", "V"])
+
+    assert times == [10.0, 30.0]
+    assert colours == pytest.approx([0.5, 0.5])
