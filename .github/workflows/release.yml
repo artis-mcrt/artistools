@@ -1,0 +1,83 @@
+---
+name: Release
+permissions:
+    contents: read
+on:
+    workflow_dispatch:
+# a second run while one is in flight would hit a non-fast-forward push or a duplicate tag
+concurrency:
+    group: release
+    cancel-in-progress: false
+
+jobs:
+    release:
+        name: Set version and draft release
+        runs-on: ubuntu-26.04-arm
+        steps:
+            # a release drafted from any other ref would tag a commit that is not on the release branch
+            - name: Check that the release is being made from the default branch
+              env:
+                  DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+              run: |
+                  if [ "${GITHUB_REF_NAME}" != "${DEFAULT_BRANCH}" ]; then
+                      echo "::error::Releases must be made from ${DEFAULT_BRANCH}, but this run is on ${GITHUB_REF_NAME}"
+                      exit 1
+                  fi
+
+            # main is protected and the github-actions bot is not in the bypass list, so the
+            # built-in token cannot push here. GH_TOKEN is a PAT owned by a user that can bypass it
+            # (a secret cannot be named GITHUB_TOKEN: that name is reserved for the built-in token)
+            - name: Checkout Code
+              uses: actions/checkout@v7
+              with:
+                  token: ${{ secrets.GH_TOKEN }}
+
+            - uses: astral-sh/setup-uv@v9.0.0
+
+            - name: Set the version
+              id: setversion
+              run: |
+                  rustup update stable
+                  python3 set_version.py
+                  version=$(python3 -c "import runpy; print(runpy.run_path('artistools/version.py')['version'])")
+                  echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+            # an existing tag would be reused as-is by gh release create, which ignores --target
+            # when the tag is already there, so the release would point at the wrong commit
+            - name: Check that the version has not been released
+              env:
+                  GH_TOKEN: ${{ secrets.GH_TOKEN }}
+                  VERSION: ${{ steps.setversion.outputs.version }}
+              run: |
+                  if git ls-remote --exit-code --tags origin "v${VERSION}" >/dev/null 2>&1; then
+                      echo "::error::Tag v${VERSION} already exists"
+                      exit 1
+                  fi
+                  if gh release view "v${VERSION}" >/dev/null 2>&1; then
+                      echo "::error::A release for v${VERSION} already exists"
+                      exit 1
+                  fi
+
+            - name: Commit the version bump
+              env:
+                  VERSION: ${{ steps.setversion.outputs.version }}
+              run: |
+                  # version.py holds nothing but the version, so lockfile churn alone cannot produce a
+                  # "Set version to" commit. With the checks above, an unchanged version.py means an
+                  # earlier run pushed the bump but failed before drafting the release
+                  if git diff --quiet -- artistools/version.py; then
+                      echo "Version ${VERSION} is already committed, so only the draft release is missing"
+                      exit 0
+                  fi
+                  git config user.name "${GITHUB_ACTOR}"
+                  git config user.email "${GITHUB_ACTOR_ID}+${GITHUB_ACTOR}@users.noreply.github.com"
+                  git commit --all --message "Set version to ${VERSION}"
+                  git push
+
+            # --target pins the release to the version bump commit, and publishing the draft is
+            # what fires release:published, which deploypypi.yml already listens for
+            - name: Draft the release
+              env:
+                  GH_TOKEN: ${{ secrets.GH_TOKEN }}
+                  VERSION: ${{ steps.setversion.outputs.version }}
+              run: gh release create "v${VERSION}" --draft --generate-notes --target "$(git rev-parse HEAD)"
