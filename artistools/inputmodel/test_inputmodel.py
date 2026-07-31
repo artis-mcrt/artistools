@@ -1686,3 +1686,41 @@ def test_slice_abundance_file_writes_last_block(tmp_path: Path) -> None:
     # both selected cells must appear, including cell 3 which is the final block in the input
     assert [int(line.split()[0]) for line in outlines] == [1, 2]
     assert all(len(line.split()) == 31 for line in outlines)
+
+
+def test_slice_3dmodel_matches_axis_numerically(tmp_path: Path) -> None:
+    """Cell positions must be compared as numbers: model.txt is written in several float formats."""
+    from artistools.inputmodel.make1dslicefrom3d import slice_3dmodel
+
+    inputfolder = tmp_path / "in"
+    outputfolder = tmp_path / "out"
+    inputfolder.mkdir()
+    outputfolder.mkdir()
+
+    xmax = 1.0e15
+    # a 2x2x2 grid written with scientific notation, as save_modeldata() does (float_scientific=True)
+    lines = ["8", "1.0", f"{xmax:.4e}"]
+    cellid = 0
+    for zpos in (-xmax, 0.0):
+        for ypos in (-xmax, 0.0):
+            for xpos in (-xmax, 0.0):
+                cellid += 1
+                lines.extend((f"{cellid} {xpos:.4e} {ypos:.4e} {zpos:.4e} 1.0e-10", "0.1 0.2 0.3 0.0 0.0"))
+    (inputfolder / "model.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    dict3dcellidto1dcellid, xlist, _ylists = slice_3dmodel(inputfolder, outputfolder, "x")
+
+    # only the cell at (0, 0, 0) is on the positive x axis with y == z == 0
+    assert dict3dcellidto1dcellid == {8: 1}
+    assert xlist == pytest.approx([0.0])
+    assert (outputfolder / "model.txt").read_text(encoding="utf-8").splitlines()[0].strip() == "1"
+
+
+def test_make1dslice_plot(tmp_path: Path) -> None:
+    """The log y-axis uses matplotlib's 'nonpositive' argument; 'nonposy' was removed in matplotlib 3.3."""
+    from artistools.inputmodel.make1dslicefrom3d import make_plot
+
+    pdfpath = tmp_path / "slice.pdf"
+    make_plot([1000.0, 2000.0], [[1e-10, 1e-12], [0.1, 0.05], [0.0, 0.01]], str(pdfpath))
+
+    assert pdfpath.is_file()

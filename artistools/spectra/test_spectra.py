@@ -376,7 +376,7 @@ def test_get_spectra_gamma_does_not_mix_in_uvoir_dirbins() -> None:
 
 def test_get_spectra_rejects_averaging_over_both_angles() -> None:
     """Averaging over phi and theta at once leaves too few bins, so it must be rejected up front."""
-    with pytest.raises(ValueError, match="both phi and theta"):
+    with pytest.raises(ValueError, match="both the phi and theta"):
         atspectra.get_spectra(
             modelpath=modelpath_classic_3d,
             timestepmin=10,

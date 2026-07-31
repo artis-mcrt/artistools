@@ -108,10 +108,12 @@ def slice_abundance_file(
     ):
         currentblock: list[str] = []
         keepcurrentblock = False
+        blocklens: set[int] = set()
         for line in fabundancesin:
             linesplit = line.split()
 
             if len(currentblock) + len(linesplit) >= 30:
+                blocklens.add(len(currentblock))
                 if keepcurrentblock:
                     fabundancesout.write("  ".join(currentblock) + "\n")
                 currentblock = []
@@ -127,8 +129,14 @@ def slice_abundance_file(
                 currentblock.extend(linesplit)
 
         # the loop only writes a block when the next one starts, so the last block still has to be flushed
-        if keepcurrentblock:
-            fabundancesout.write("  ".join(currentblock) + "\n")
+        if currentblock:
+            if blocklens and len(currentblock) < max(blocklens):
+                print(
+                    f"WARNING: the last block has {len(currentblock)} values, but earlier blocks have"
+                    f" {max(blocklens)}. The input file looks truncated"
+                )
+            if keepcurrentblock:
+                fabundancesout.write("  ".join(currentblock) + "\n")
 
 
 def append_cell_to_output(

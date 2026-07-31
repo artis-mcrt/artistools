@@ -42,10 +42,11 @@ def parse_emfeaturesearch(strfeature: str) -> tuple[int, ...]:
         msg = f"Could not parse emission feature {strfeature!r}. Expected e.g. '(26, 2, 7155, 7150, 7160)'"
         raise argparse.ArgumentTypeError(msg) from exc
 
+    # bool is a subclass of int, so isinstance() would accept '(26, True, 7155)'
     if (
         not isinstance(feature, (tuple, list))
         or not (3 <= len(feature) <= 7)
-        or not all(isinstance(x, int) for x in feature)
+        or not all(type(x) is int for x in feature)
     ):
         msg = (
             f"Emission feature {strfeature!r} must be 3 to 7 integers:"
@@ -855,18 +856,23 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         msg = f"At least two emission features are needed for a flux ratio, but got {len(args.emfeaturesearch)}"
         raise ValueError(msg)
 
-    # the time bins default to the timesteps of the first model
-    if args.timebins_tstart is None:
-        args.timebins_tstart = at.get_timestep_times(args.modelpath[0], loc="start")
-    if args.timebins_tend is None:
-        args.timebins_tend = at.get_timestep_times(args.modelpath[0], loc="end")
+    if (args.timebins_tstart is None) != (args.timebins_tend is None):
+        msg = "timebins_tstart and timebins_tend must be given together"
+        raise ValueError(msg)
 
-    if len(args.timebins_tstart) != len(args.timebins_tend):
+    if args.timebins_tstart is not None and len(args.timebins_tstart) != len(args.timebins_tend):
         msg = (
             f"timebins_tstart has {len(args.timebins_tstart)} values but timebins_tend has"
             f" {len(args.timebins_tend)}. They must match"
         )
         raise ValueError(msg)
+
+    if args.plotemittingregions and args.timebins_tstart is None:
+        # this plot needs concrete time bins, so fall back to the first model's timesteps. The flux ratio plot
+        # leaves them as None, which makes each model use its own timesteps
+        # copy the lists, because get_timestep_times() is lru_cached
+        args.timebins_tstart = list(at.get_timestep_times(args.modelpath[0], loc="start"))
+        args.timebins_tend = list(at.get_timestep_times(args.modelpath[0], loc="end"))
 
     assert isinstance(args.label, list)
     for i in range(len(args.label)):

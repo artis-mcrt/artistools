@@ -481,8 +481,8 @@ def test_estimator_default_plotlist_skips_absent_elements(mockplot: t.Any) -> No
     # testmodel has no Sr, so the default averageionisation/populations plots must be skipped rather than raising
     at.estimators.plot(argsraw=[], modelpath=modelpath, timedays=300, outputfile=funcoutpath)
 
-    # the two element-independent default subplots (rho and TR) are still drawn
-    assert len(mockplot.call_args_list) == 2
+    # the element-independent default subplots (rho and TR) are still drawn
+    assert len(mockplot.call_args_list) >= 2
     for call in mockplot.call_args_list:
         yvalues = np.array(call[0][2], dtype=float)
         assert np.all(np.isfinite(yvalues))

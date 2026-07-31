@@ -50,20 +50,28 @@ def test_decayproducts(mockplot: t.Any) -> None:
         assert math.isclose(y_arr[0], expected_y_arr[0], rel_tol=1e-3)
 
 
-def test_decayproducts_parquet_output(tmp_path: Path) -> None:
+def test_decayproducts_parquet_output(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Parquet files must be written under the requested output path, not a relative 'parquet' folder."""
     trajpath = at.get_path("testdata") / "kilonova" / "trajectories"
+    outputpath_requested = tmp_path / "requested"
+    outputpath_requested.mkdir()
+
+    # run from an empty directory so that a relative "parquet/..." write is visible and cannot hit a leftover folder
+    cwd = tmp_path / "cwd"
+    cwd.mkdir()
+    monkeypatch.chdir(cwd)
+
     at.gsinetwork.decayproducts.main(
         argsraw=[],
         trajectoryroot=trajpath,
         tmin=0.1,
         tmax=0.1,
         nsteps=1,
-        outputpath=tmp_path,
+        outputpath=outputpath_requested,
         parquet=True,
         trajparquet=True,
     )
 
-    parquetfiles = sorted(p.name for p in (tmp_path / "parquet").glob("*.parquet"))
+    parquetfiles = sorted(p.name for p in (outputpath_requested / "parquet").glob("*.parquet"))
     assert parquetfiles, "no parquet files written under the output path"
-    assert not Path("parquet").exists(), "parquet files must not be written relative to the working directory"
+    assert not (cwd / "parquet").exists(), "parquet files must not be written relative to the working directory"

@@ -460,3 +460,24 @@ def test_get_time_range_timesteps_without_clamping(tmp_path: Path) -> None:
         assert (timestepmin, timestepmax) == (1, 3)
         assert tlow == pytest.approx(at.get_timestep_times(tmp_path, loc="start")[1])
         assert thigh == pytest.approx(at.get_timestep_times(tmp_path, loc="end")[3])
+
+
+def test_check_averaging_angles() -> None:
+    """Averaging over phi and theta at once must be rejected wherever the values arrive."""
+    for phi, theta in ((False, False), (True, False), (False, True)):
+        at.check_averaging_angles(phi, theta)
+
+    with pytest.raises(ValueError, match="both the phi and theta"):
+        at.check_averaging_angles(average_over_phi=True, average_over_theta=True)
+
+
+def test_viewingangle_averaging_flags_are_mutually_exclusive() -> None:
+    """The two averaging flags are rejected by argparse itself, for every command that defines them."""
+    parser = argparse.ArgumentParser()
+    at.add_viewingangle_args(parser)
+
+    assert parser.parse_args(["--average_over_phi_angle"]).average_over_phi_angle
+    assert parser.parse_args(["--average_over_theta_angle"]).average_over_theta_angle
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--average_over_phi_angle", "--average_over_theta_angle"])

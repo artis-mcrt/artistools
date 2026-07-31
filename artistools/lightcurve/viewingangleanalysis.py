@@ -65,9 +65,7 @@ define_colours_list2 = [
 
 def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> tuple[Sequence[int], dict[int, str]]:
     modelpath = Path(modelpath)
-    if args.average_over_phi_angle and args.average_over_theta_angle:
-        msg = "Cannot use --average_over_phi_angle together with --average_over_theta_angle"
-        raise ValueError(msg)
+    at.check_averaging_angles(args.average_over_phi_angle, args.average_over_theta_angle)
 
     viewing_angle_data_exists = args.frompackets or bool(list(modelpath.glob("*_res.out*")))
     if isinstance(args.plotviewingangle, int):

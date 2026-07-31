@@ -670,3 +670,24 @@ def test_linefluxes_lineflux_ratio_plot() -> None:
         outputfile=funcoutpath / "linefluxes.pdf",
     )
     assert (funcoutpath / "linefluxes.pdf").is_file()
+
+
+def test_get_ion_tuple_rejects_missing_element() -> None:
+    """A string with a separator but no element symbol must raise rather than return atomic number -1."""
+    for badionstr in (" II", "_II", "notanion", "Fe "):
+        with pytest.raises(ValueError, match="Could not parse ionstr"):
+            at.get_ion_tuple(badionstr)
+
+
+def test_default_plotitem_keeps_estimator_columns_named_like_elements() -> None:
+    """Te and W are estimator names as well as element symbols, so a real column must win over the element reading."""
+    from artistools.estimators.plotestimators import default_plotitem_has_data
+
+    estimatorcolumns = ["timestep", "modelgridindex", "Te", "TR", "W", "nne", "rho", "nnelement_Fe"]
+
+    for plotitem in (["Te"], ["W"], ["TR"], ["rho"], ["nne"], [["averageionisation", ["Fe"]]]):
+        assert default_plotitem_has_data(plotitem, estimatorcolumns), plotitem
+
+    # an element that the model does not contain is still dropped
+    assert not default_plotitem_has_data([["averageionisation", ["Sr"]]], estimatorcolumns)
+    assert not default_plotitem_has_data([["populations", ["Sr I", "Sr II"]]], estimatorcolumns)

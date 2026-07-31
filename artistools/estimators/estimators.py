@@ -205,9 +205,8 @@ def add_derived_estimator_columns(pldflazy: pl.LazyFrame) -> pl.LazyFrame:
     # so a missing number density means zero. The file reader already fills these with zero for cells that skip them
     # within one file, and this makes the columns that a whole rank omitted agree. Every other column (Te, TR, nne,
     # ...) must keep its nulls so that missing data isn't silently read as a real zero
-    numberdensitycols = cs.starts_with("nnelement_", "nnion_", "nniso_")
-    if any(col.startswith(("nnelement_", "nnion_", "nniso_")) for col in colnames):
-        pldflazy = pldflazy.with_columns(numberdensitycols.fill_null(0))
+    # a selector that matches nothing makes this a no-op, so no guard is needed here
+    pldflazy = pldflazy.with_columns(cs.starts_with("nnelement_", "nnion_", "nniso_").fill_null(0))
 
     if any(col.startswith("nnelement_") for col in colnames):
         pldflazy = pldflazy.with_columns(nntot=pl.sum_horizontal(cs.starts_with("nnelement_")))

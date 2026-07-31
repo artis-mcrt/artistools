@@ -23,6 +23,7 @@ from artistools.atomic import get_ionstring
 from artistools.atomic import get_linelist_pldf
 from artistools.atomic import get_nuclides
 from artistools.misc import average_direction_bins
+from artistools.misc import check_averaging_angles
 from artistools.misc import df_filter_minmax_bounded
 from artistools.misc import firstexisting
 from artistools.misc import get_dirbins
@@ -682,9 +683,7 @@ def get_spectra(
     if timestepmax is None or timestepmax < 0:
         timestepmax = timestepmin
 
-    if average_over_phi and average_over_theta:
-        msg = "Cannot average over both phi and theta angles"
-        raise ValueError(msg)
+    check_averaging_angles(average_over_phi, average_over_theta)
 
     specdata_alltimesteps: dict[int, pl.LazyFrame] = {}
     if stokesparam == "I":

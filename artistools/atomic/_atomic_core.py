@@ -429,6 +429,15 @@ def get_elsymbolslist() -> list[str]:
     return ["n", *pl.read_csv(get_path("datadir") / "elements.csv", has_header=True, separator=",")["symbol"].to_list()]
 
 
+@lru_cache(maxsize=1)
+def get_elsymbols_longestfirst() -> tuple[str, ...]:
+    """Return the element symbols ordered longest first, for matching a symbol at the start of a string.
+
+    'Fe' must be tried before 'F', otherwise 'FeII' would match the fluorine prefix.
+    """
+    return tuple(sorted(get_elsymbolslist(), key=len, reverse=True))
+
+
 def get_elsymbols_df() -> pl.LazyFrame:
     """Return a polars LazyFrame of atomic number and element symbols."""
     return (
@@ -494,7 +503,7 @@ def get_ion_tuple(ionstr: str) -> tuple[int, int] | int:
     else:
         # no separator, e.g. 'FeII'. Longest symbols first, so that 'Fe' is preferred over 'F', and only accept a
         # match where the remainder is a valid ion stage (otherwise 'Co' would be split as C + 'o')
-        for elsym in sorted(get_elsymbolslist(), key=len, reverse=True):
+        for elsym in get_elsymbols_longestfirst():
             if ionstr.startswith(elsym):
                 remainder = ionstr.removeprefix(elsym)
                 if remainder.isdigit() or decode_roman_numeral(remainder) > 0:
@@ -502,7 +511,7 @@ def get_ion_tuple(ionstr: str) -> tuple[int, int] | int:
                     strion_stage = remainder
                     break
 
-    if elem == "?":
+    if elem in {"?", ""} or strion_stage in {"?", ""}:
         msg = f"Could not parse ionstr {ionstr}"
         raise ValueError(msg)
 

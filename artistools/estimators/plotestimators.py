@@ -417,8 +417,13 @@ def default_plotitem_has_data(plotitems: t.Any, estimatorcolumns: Collection[str
     applied to that default list: an explicitly requested plot item is never dropped, so a typo there still raises.
     """
     if isinstance(plotitems, str):
+        # an estimator variable always wins over the element reading of its name, because several estimator names
+        # are also element symbols (Te is tellurium, W is tungsten)
+        if plotitems in estimatorcolumns:
+            return True
+
         atomic_number = get_iontuple(plotitems)[0]
-        if atomic_number >= 1:
+        if 1 <= atomic_number < len(at.get_elsymbolslist()):
             return f"nnelement_{at.get_elsymbol(atomic_number)}" in estimatorcolumns
         return True
 
@@ -1208,9 +1213,14 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     estimatorcolumns = estimators.collect_schema().names()
 
     if usingdefaultplotlist:
-        keptplotlist = [x for x in plotlist if default_plotitem_has_data(x, estimatorcolumns)]
-        if skipped := [x for x in plotlist if x not in keptplotlist]:
-            print(f"Skipping default plots for elements that are not in this model: {skipped}")
+        keptplotlist: list[t.Any] = []
+        skippedplotlist: list[t.Any] = []
+        for plotitems in plotlist:
+            target = keptplotlist if default_plotitem_has_data(plotitems, estimatorcolumns) else skippedplotlist
+            target.append(plotitems)
+
+        if skippedplotlist:
+            print(f"Skipping default plots for elements that are not in this model: {skippedplotlist}")
         if not keptplotlist:
             msg = "No default plots apply to this model. Choose what to plot with -plot (e.g. -plot Te TR)"
             raise ValueError(msg)
