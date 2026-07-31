@@ -327,6 +327,39 @@ def read_rank_outputfiles(
     return dfout
 
 
+def read_rank_outputfiles_lazy(
+    modelpath: Path | str, filenameformat: str, timestep: int | None = None, modelgridindex: int | None = None
+) -> pl.LazyFrame:
+    """Read per-MPI-rank whitespace-separated output files (e.g. radfield_{mpirank:04d}.out) from the run folders into one LazyFrame.
+
+    When a timestep or model grid cell is given, only the run folders and ranks that could contain it are read,
+    and the rows are filtered to that selection (negative values mean no filter).
+    """
+    filepaths = [
+        firstexisting(filenameformat.format(mpirank=mpirank), folder=folderpath, tryzipped=True)
+        for folderpath in get_runfolders(modelpath, timestep=timestep)
+        for mpirank in get_mpiranklist(modelpath, modelgridindex=modelgridindex)
+    ]
+    assert filepaths, f"No {filenameformat} files found in {modelpath}"
+
+    # Lazy path: use scan_csv and perform lazy transformations
+    lazy_frames = [
+        pl.scan_csv(zopenpl(filepath), separator=" ", comment_prefix="#", truncate_ragged_lines=True)
+        for filepath in filepaths
+    ]
+    dfout = pl.concat(lazy_frames)
+    dfout = dfout.rename({"ionstage": "ion_stage"}, strict=False).with_columns(
+        pl.col("modelgridindex").cast(pl.Int64), pl.col("timestep").cast(pl.Int64)
+    )
+
+    if modelgridindex is not None and modelgridindex >= 0:
+        dfout = dfout.filter(pl.col("modelgridindex") == modelgridindex)
+    if timestep is not None and timestep >= 0:
+        dfout = dfout.filter(pl.col("timestep") == timestep)
+
+    return dfout
+
+
 def get_cellsofmpirank(mpirank: int, modelpath: Path | str) -> Iterable[int]:
     """Return an iterable of the cell numbers processed by a given MPI rank."""
     npts_model = get_npts_model(modelpath)

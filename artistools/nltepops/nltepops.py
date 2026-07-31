@@ -155,3 +155,11 @@ def read_files(modelpath: str | Path, timestep: int | None = None, modelgridinde
     return at.read_rank_outputfiles(
         modelpath, "nlte_{mpirank:04d}.out", timestep=timestep, modelgridindex=modelgridindex
     )
+
+
+def read_files_lazy(
+    modelpath: str | Path, timestep: int | None = None, modelgridindex: int | None = None
+) -> pl.LazyFrame:
+    return at.read_rank_outputfiles_lazy(
+        modelpath, "nlte_{mpirank:04d}.out", timestep=timestep, modelgridindex=modelgridindex
+    )

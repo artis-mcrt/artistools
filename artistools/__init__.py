@@ -134,6 +134,7 @@ from artistools.misc import parse_range_list as parse_range_list
 from artistools.misc import print_saved as print_saved
 from artistools.misc import print_theta_phi_definitions as print_theta_phi_definitions
 from artistools.misc import read_rank_outputfiles as read_rank_outputfiles
+from artistools.misc import read_rank_outputfiles_lazy as read_rank_outputfiles_lazy
 from artistools.misc import readnoncommentline as readnoncommentline
 from artistools.misc import resolve_outputfile as resolve_outputfile
 from artistools.misc import set_args_from_dict as set_args_from_dict
