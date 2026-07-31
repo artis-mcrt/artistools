@@ -620,6 +620,8 @@ def test_kurucz_transitions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
 
 def test_merge_pdf_files_keeps_inputs_until_written(tmp_path: Path) -> None:
     """The input files must survive until the merged file exists."""
+    pytest.importorskip("pypdf", reason="pypdf is only installed with the extras group")
+
     pdfpaths = []
     for i in range(2):
         fig, ax = plt.subplots()
