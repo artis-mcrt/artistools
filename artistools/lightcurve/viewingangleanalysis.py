@@ -401,47 +401,6 @@ def set_scatterplot_plot_params(fig: mplfig.Figure, axis: mplax.Axes, args: argp
         at.lightcurve.plotlightcurve.make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args, ax=axis)
 
 
-# COMBINED WITH DM15 plotting function now ###
-# def make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, key, args: argparse.Namespace):
-#     for ii, modelname in enumerate(modelnames):
-#         viewing_angle_plot_data = pd.read_csv(key + "band_" + f'{modelname}' + "_viewing_angle_data.txt",
-#                                               delimiter=" ")
-#         band_peak_mag_viewing_angles = viewing_angle_plot_data["peak_mag_polyfit"].values
-#         band_risetime_viewing_angles = viewing_angle_plot_data["risetime_polyfit"].values
-#
-#         plotkwargsviewingangles, plotkwargsangleaveraged = set_scatterplot_plotkwargs(ii, args)
-#
-#         a0 = plt.scatter(band_risetime_viewing_angles, band_peak_mag_viewing_angles, **plotkwargsviewingangles)
-#         if not args.noangleaveraged:
-#             p0 = plt.scatter(args.band_risetime_angle_averaged_polyfit[ii], args.band_peakmag_angle_averaged_polyfit[ii],
-#                              **plotkwargsangleaveraged)
-#             args.plotvalues.append((a0, p0))
-#         else:
-#             args.plotvalues.append((a0, a0))
-#         if not args.noerrorbars:
-#             plt.errorbar(args.band_risetime_angle_averaged_polyfit[ii], args.band_peakmag_angle_averaged_polyfit[ii],
-#                          xerr=np.std(band_risetime_viewing_angles),
-#                          yerr=np.std(band_peak_mag_viewing_angles), ecolor=define_colours_list[ii], capsize=2)
-#
-#     if not args.nolegend:
-#         plt.legend(args.plotvalues, modelnames, numpoints=1, handler_map={tuple: HandlerTuple(ndivide=None)},
-#                    loc='upper left', fontsize=8, ncol=2, columnspacing=1, frameon=False)
-#     plt.xlabel('Rise Time in Days', fontsize=14)
-#     if args.filter:
-#         ylabel = 'Peak ' + key + ' Band Magnitude'
-#     else:
-#         ylabel = 'Peak Magnitude'
-#     plt.ylabel(ylabel, fontsize=14)
-#     if args.title:
-#         plt.title(f"{at.get_model_name(args.modelpath[0])}")
-#     set_scatterplot_plot_params(args)
-#     if args.show:
-#         plt.show()
-#     plt.savefig(key + "_band_" + f'{modelnames[0]}' + "_viewing_angle_peakmag_risetime_scatter_plot.pdf", format="pdf")
-#     print("saving " + key + "_band_" + f'{modelnames[0]}' + "_viewing_angle_peakmag_risetime_scatter_plot.pdf")
-#     plt.close()
-
-
 def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
     modelnames: Sequence[str], key: str, args: argparse.Namespace
 ) -> None:

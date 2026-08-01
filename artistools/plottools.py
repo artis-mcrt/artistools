@@ -1,8 +1,6 @@
 """Matplotlib-related plotting functions."""
 
 import argparse
-import itertools
-import sys
 import typing as t
 from collections.abc import Iterable
 
@@ -10,7 +8,6 @@ import matplotlib.axes as mplax
 import matplotlib.figure as mplfig
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mplticker
-import numpy as np
 import numpy.typing as npt
 
 from artistools.commands import get_path
@@ -373,26 +370,3 @@ def set_axis_labels(
         assert isinstance(ax, mplax.Axes)
         ax.set_xlabel(xlabel, fontsize=labelfontsize)
         ax.set_ylabel(ylabel, fontsize=labelfontsize)
-
-
-def imshow_init_for_artis_grid(
-    ngrid: int, vmax: float, plot_variable_3d_array: npt.NDArray[t.Any], plot_axes: str = "xy"
-) -> tuple[npt.NDArray[t.Any], tuple[float, float, float, float]]:
-    # ngrid = round(len(model['inputcellid']) ** (1./3.))
-    extentdict = {"left": -vmax, "right": vmax, "bottom": vmax, "top": -vmax}
-    extent = extentdict["left"], extentdict["right"], extentdict["bottom"], extentdict["top"]
-    data = np.zeros((ngrid, ngrid))
-
-    plot_axes_choices = ["xy", "xz"]
-    if plot_axes not in plot_axes_choices:
-        print(f"Choose plot axes from {plot_axes_choices}")
-        sys.exit(1)
-
-    for z, y, x in itertools.product(range(ngrid), range(ngrid), range(ngrid)):
-        if plot_axes == "xy":
-            if z == round(ngrid / 2) - 1:
-                data[y, x] = plot_variable_3d_array[x, y, z]
-        elif plot_axes == "xz" and y == round(ngrid / 2) - 1:
-            data[z, x] = plot_variable_3d_array[x, y, z]
-
-    return data, extent

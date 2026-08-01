@@ -264,18 +264,11 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
 
     # generate grid from data
     grid = round(len(model["rho"]) ** (1.0 / 3.0))
-    surfacecolorscale = np.zeros((grid, grid, grid))  # needs 3D array
-    xgrid = np.zeros(grid)
-
-    surfacearr = np.array(model[coloursurfaceby])
+    surfacearr = np.asarray(model[coloursurfaceby], dtype=float)
     vmax /= C_cm_per_s
-    i = 0
-    for nz in range(grid):
-        for ny in range(grid):
-            for nx in range(grid):
-                surfacecolorscale[nx, ny, nz] = surfacearr[i]
-                xgrid[nx] = -vmax + 2 * nx * vmax / grid
-                i += 1
+    # cells are ordered with x varying fastest, i.e. Fortran order on (nx, ny, nz)
+    surfacecolorscale = surfacearr.reshape((grid, grid, grid), order="F")
+    xgrid = -vmax + 2 * np.arange(grid) * vmax / grid
 
     x, y, z = np.meshgrid(xgrid, xgrid, xgrid)
 
@@ -342,7 +335,7 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("-modelpath", type=Path, default=Path(), help="Path to ARTIS folder")
+    at.add_modelpath_arg(parser, default=Path())
 
     parser.add_argument("-o", action="store", dest="outputfile", type=Path, default=None, help="Filename for PDF file")
 

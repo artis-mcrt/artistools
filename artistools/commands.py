@@ -119,6 +119,10 @@ subcommandtree: CommandTree = {
     "plotestimators": CommandSpec(
         "estimators.plotestimators", helptext="Plot ARTIS estimators.", aliases=("estimators",)
     ),
+    "plotestimators3dclassic": CommandSpec(
+        "estimators.plot3destimators_classic",
+        helptext="Plot a 2D slice of the electron temperature from a classic-mode 3D model.",
+    ),
     "plotinitialcomposition": CommandSpec(
         "inputmodel.plotinitialcomposition", helptext="Plot ARTIS input model composition."
     ),
@@ -130,6 +134,7 @@ subcommandtree: CommandTree = {
         "lightcurve.plotlightcurve", helptext="Plot ARTIS light curves.", aliases=("lc", "plotlightcurve")
     ),
     "plotlinefluxes": CommandSpec("linefluxes", helptext="Plot line flux ratios for comparisons to Floers."),
+    "plotlogfiles": CommandSpec("logfiles", helptext="Plot per-rank stage durations from ARTIS log files."),
     "plotmacroatom": CommandSpec("macroatom", helptext="Plot the macroatom transitions."),
     "plotnltepops": CommandSpec("nltepops.plotnltepops", helptext="Plot ARTIS non-LTE populations."),
     "plotradfield": CommandSpec("radfield", helptext="Plot the radiation field estimators."),
