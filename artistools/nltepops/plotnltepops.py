@@ -610,18 +610,26 @@ def make_singletimestep_plot(
 
     prev_ion_stage = -1
     assert mgilist
+
+    # invariant to the cell loop, so read the estimators and the model once instead of once per cell
+    estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=list(mgilist))
+    lzmodeldata, _ = at.inputmodel.get_modeldata(modelpath, derived_cols="vel_r_mid")
+    velocity_kmps_of_mgi = {
+        mgi: vel_r_mid / 1e5
+        for mgi, vel_r_mid in lzmodeldata.select(["modelgridindex", "vel_r_mid"]).collect().iter_rows()
+    }
+
     for mgilistindex, modelgridindex in enumerate(mgilist):
         mgifirstaxindex = mgilistindex
         mgilastaxindex = mgilistindex + len(ion_stage_list) - 1
 
-        estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
         elsymbol = at.get_elsymbol(atomic_number)
         print(
             f"Plotting NLTE pops for {modelname} modelgridindex {modelgridindex}, timestep {timestep} (t={time_days}d)"
         )
         print(f"Z={atomic_number} {elsymbol}")
 
-        if estimators:
+        if (timestep, modelgridindex) in estimators:
             T_e = estimators[timestep, modelgridindex]["Te"]
             T_R = estimators[timestep, modelgridindex]["TR"]
             W = estimators[timestep, modelgridindex]["W"]
@@ -655,11 +663,7 @@ def make_singletimestep_plot(
         subplot_title = modelname
         if len(subplot_title) > 10:
             subplot_title += "\n"
-        modeldata, _ = at.inputmodel.get_modeldata(modelpath, derived_cols="vel_r_mid")
-        velocity_kmps = (
-            modeldata.filter(pl.col("modelgridindex") == modelgridindex).select("vel_r_mid").collect().item() / 1e5
-        )
-        subplot_title += f" {velocity_kmps:.0f} km/s at"
+        subplot_title += f" {velocity_kmps_of_mgi[modelgridindex]:.0f} km/s at"
 
         try:
             time_days = at.get_timestep_time(modelpath, timestep)
