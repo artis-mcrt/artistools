@@ -481,7 +481,7 @@ def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pd.Dat
 
     lightcurve_data["magnitude"] = pd.to_numeric(lightcurve_data["magnitude"])  # force column to be float
 
-    lightcurve_data["time"] = lightcurve_data["time"].apply(lambda x: x - (metadata["timecorrection"]))
+    lightcurve_data["time"] -= metadata["timecorrection"]
     # m - M = 5log(d) - 5  Get absolute magnitude
     if "dist_mpc" not in metadata and "z" in metadata:
         from astropy import cosmology
@@ -491,11 +491,9 @@ def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pd.Dat
         print(f"luminosity distance from redshift = {metadata['dist_mpc']} for {metadata['label']}")
 
     if "dist_mpc" in metadata:
-        lightcurve_data["magnitude"] = lightcurve_data["magnitude"].apply(
-            lambda x: x - 5 * np.log10(metadata["dist_mpc"] * 10**6) + 5
-        )
+        lightcurve_data["magnitude"] = lightcurve_data["magnitude"] - 5 * np.log10(metadata["dist_mpc"] * 10**6) + 5
     elif "dist_modulus" in metadata:
-        lightcurve_data["magnitude"] = lightcurve_data["magnitude"].apply(lambda x: x - metadata["dist_modulus"])
+        lightcurve_data["magnitude"] -= metadata["dist_modulus"]
 
     return lightcurve_data, metadata
 
