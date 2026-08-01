@@ -489,10 +489,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                     nltepopdict = {row["level"]: row["n_NLTE"] for _, row in dfnltepops_thision.iterrows()}
 
                     assert isinstance(dftransitions, pd.DataFrame)
-                    dftransitions.loc[:, "upper_pop_nlte"] = dftransitions.apply(
-                        lambda x: nltepopdict.get(x["upper"], 0.0),  # ruff:ignore[function-uses-loop-variable]
-                        axis=1,
-                    )
+                    dftransitions.loc[:, "upper_pop_nlte"] = dftransitions["upper"].map(nltepopdict).fillna(0.0)
 
                     # dftransitions['lower_pop_nlte'] = dftransitions.apply(
                     #     lambda x: nltepopdict.get(x.lower, 0.), axis=1)
