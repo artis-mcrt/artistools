@@ -43,7 +43,7 @@ Never report that checks passed when you could not run them. If the environment 
   raise KeyError(msg)
   ```
 - Line length is 120. Comments should explain *why*, not restate the code.
-- Docstrings are optional (the rules are disabled), but keep the existing one-line-summary style when a function has one.
+- Docstrings should be one line for simple functions, or a one-line summary followed by a blank line and a longer description. Use imperative mood for summaries: "Return the sum" not "Returns the sum". Use `"""` triple quotes, not `'''`.
 
 ## Suppressing lint and type errors
 

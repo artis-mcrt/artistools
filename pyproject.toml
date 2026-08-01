@@ -325,7 +325,6 @@ ignore = [
     "missing-copyright-notice",
     "undocumented-public-module",
     "undocumented-public-class",
-    "undocumented-public-method",
     "undocumented-public-function",
     "undocumented-public-package",
     "undocumented-public-init",
