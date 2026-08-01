@@ -79,7 +79,10 @@ def get_estimators_rankbatch_parquetfile(
     modelpath: Path | str | None = None,
     verbose: bool = False,
 ) -> Path:
-    printornot = print if verbose else lambda _: None
+    def printornot(msg: str) -> None:
+        if verbose:
+            print(msg)
+
     modelpath = Path(folderpath).parent if modelpath is None else Path(modelpath)
     folderpath = Path(folderpath)
     parquetfilename = f"estimbatch{batchindex:02d}_{batch_mpiranks[0]:04d}_{batch_mpiranks[-1]:04d}.out.parquet.tmp"
