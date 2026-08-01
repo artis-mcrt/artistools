@@ -25,7 +25,6 @@ from artistools.constants import day_to_s
 from artistools.misc import firstexisting
 from artistools.misc import resolve_outputfile
 from artistools.misc import stripallsuffixes
-from artistools.misc import vec_len
 from artistools.misc import write_parquet_atomic
 from artistools.misc import zopen
 
@@ -719,22 +718,17 @@ def get_cell_angle(dfmodel: pd.DataFrame) -> pd.DataFrame:
     swapped, giving phi_mirrored == 2 pi - phi. Each is self-consistent with its own binning, but the two are not
     interchangeable.
     """
-    syn_dir = np.array([0.0, 0.0, 1.0])
-    xhat = np.array([1.0, 0.0, 0.0])
+    # syn_dir is the z axis and xhat the x axis, so the vector algebra reduces to closed form:
+    #   cos_theta = z / |midpoint|
+    #   cross(midpoint, syn_dir) == [y, -x, 0] and cross(xhat, syn_dir) == [0, -1, 0], so cos(phi) = x / hypot(x, y)
+    #   the branch test dot(cross(midpoint, syn_dir), [-1, 0, 0]) reduces to -y, i.e. it selects y < 0
+    pos_x = dfmodel["pos_x_mid"].to_numpy(dtype=float)
+    pos_y = dfmodel["pos_y_mid"].to_numpy(dtype=float)
+    pos_z = dfmodel["pos_z_mid"].to_numpy(dtype=float)
 
-    cos_theta = np.zeros(len(dfmodel))
-    phi_mirrored = np.zeros(len(dfmodel))
-    for i, (_, cell) in enumerate(dfmodel.iterrows()):
-        mid_point = [cell["pos_x_mid"], cell["pos_y_mid"], cell["pos_z_mid"]]
-        cos_theta[i] = (np.dot(mid_point, syn_dir)) / (vec_len(mid_point) * vec_len(syn_dir))
-
-        vec1 = list(np.cross(mid_point, syn_dir))
-        vec2 = list(np.cross(xhat, syn_dir))
-        cosphi = np.dot(vec1, vec2) / vec_len(vec1) / vec_len(vec2)
-
-        vec3 = np.cross(vec2, syn_dir)
-        testphi = np.dot(vec1, vec3)
-        phi_mirrored[i] = math.acos(cosphi) if testphi > 0 else (math.acos(-cosphi) + np.pi)
+    cos_theta = pos_z / np.sqrt(pos_x**2 + pos_y**2 + pos_z**2)
+    cosphi = pos_x / np.sqrt(pos_y**2 + pos_x**2)
+    phi_mirrored = np.where(pos_y < 0, np.arccos(cosphi), np.arccos(-cosphi) + np.pi)
 
     dfmodel.loc[:, "cos_theta"] = cos_theta
     dfmodel.loc[:, "phi_mirrored"] = phi_mirrored

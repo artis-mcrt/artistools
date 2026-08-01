@@ -56,12 +56,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     """Tools to create an ARTIS input model."""
     args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
-    if not args.modelpath:
-        args.modelpath = [Path()]
-    elif isinstance(args.modelpath, str | Path):
-        args.modelpath = [args.modelpath]
-
-    args.modelpath = at.flatten_list(args.modelpath)
+    args.modelpath = at.normalize_path_list(args.modelpath)
 
     if args.downscale3dgrid:
         at.inputmodel.downscale3dgrid.make_downscaled_3d_grid(

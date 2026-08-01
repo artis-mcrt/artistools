@@ -1,5 +1,8 @@
+"""Plot a 2D slice of the electron temperature from a classic-mode 3D model."""
+
 import argparse
 import typing as t
+from collections.abc import Sequence
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -117,19 +120,11 @@ def get_Te_vs_velocity_2D(
         Te[assoc_cells[mgi][0] - 1] = estimators[timestep, mgi]["Te"]
 
     grid = round(len(modeldata["inputcellid"]) ** (1.0 / 3.0))
-    grid_Te = np.zeros((grid, grid, grid))  # needs 3D array
-    xgrid = np.zeros(grid)
-
     vmax /= CLIGHT
-    i = 0
-    for z in range(grid):
-        for y in range(grid):
-            for x in range(grid):
-                grid_Te[x, y, z] = Te[i]
-                if modeldata["rho"][i] == 0.0:
-                    grid_Te[x, y, z] = np.nan
-                xgrid[x] = -vmax + 2 * x * vmax / grid
-                i += 1
+    # cells are ordered with x varying fastest, i.e. Fortran order on (x, y, z)
+    rho = np.asarray(modeldata["rho"], dtype=float)
+    grid_Te = np.where(rho == 0.0, np.nan, Te).reshape((grid, grid, grid), order="F")
+    xgrid = -vmax + 2 * np.arange(grid) * vmax / grid
 
     return grid_Te, xgrid
 
@@ -214,17 +209,26 @@ def make_2d_plot(
         plt.close(fig)
 
 
-def main() -> None:
-    modelpath = Path()
+def addargs(parser: argparse.ArgumentParser) -> None:
+    at.add_modelpath_arg(parser, default=Path())
+    at.add_timestep_arg(parser, kind="int", default=82)
+
+
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
+    """Plot a 2D slice of the electron temperature from a classic-mode 3D model."""
+    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+
+    modelpath = Path(args.modelpath)
     plmodeldata, modelmeta = at.inputmodel.get_modeldata(modelpath)
     vmax = modelmeta["vmax_cmps"]
     modeldata = plmodeldata.collect().to_pandas(use_pyarrow_extension_array=True)
 
-    # # Get mgi of grid cells along axis for 1D plot
-    # # readonly_mgi = get_modelgridcells_along_axis(modelpath)
     readonly_mgi = get_modelgridcells_2D_slice(modeldata, modelpath)
-    timestep = 82
+    timestep = int(args.timestep)
     times = at.get_timestep_times(modelpath)
+    if not -len(times) <= timestep < len(times):
+        msg = f"timestep {timestep} is out of range: this model has {len(times)} timesteps (0-{len(times) - 1})"
+        raise IndexError(msg)
     time = times[timestep]
     estimators = read_selected_mgi(modelpath, readonly_mgi=readonly_mgi, readonly_timestep=[timestep])
     assert estimators is not None

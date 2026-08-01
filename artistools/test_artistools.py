@@ -318,6 +318,37 @@ def test_plotspherical_gif() -> None:
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
+def test_logfiles(mockplot: t.Any) -> None:
+    """Log file timings are parsed for every stage and rank, and plotted one page per timestep."""
+    logfilepaths = at.logfiles.read_logfiles(modelpath_classic_3d)
+    # compressed log files must be read too, not skipped
+    assert sorted(path.name for path in logfilepaths) == [
+        "output_0-0.txt",
+        "output_0-0.txt",
+        "output_1-0.txt.zst",
+        "output_1-0.txt.zst",
+    ]
+
+    timetaken = at.logfiles.read_time_taken(logfilepaths)
+    assert set(timetaken) == {"update_grid", "update_packets", "write_estimators"}
+    for stage, bytimestep in timetaken.items():
+        assert len(bytimestep) == 30, f"expected 30 timesteps of {stage} timings"
+        for byrank in bytimestep.values():
+            assert set(byrank) == {0, 1}, f"expected both mpi ranks for {stage}"
+    assert timetaken["update_grid"][0] == {0: 2, 1: 2}
+    assert timetaken["update_packets"][0] == {0: 1, 1: 1}
+    assert timetaken["write_estimators"][2] == {0: 1, 1: 1}
+
+    funcoutpath = outputpath / funcname()
+    funcoutpath.mkdir(exist_ok=True, parents=True)
+    at.logfiles.main(argsraw=[], modelpath=[modelpath_classic_3d], outputfile=funcoutpath / "logfiles.pdf")
+
+    # one line per stage on each of the 30 per-timestep pages
+    assert len(mockplot.call_args_list) == 3 * 30
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+@pytest.mark.benchmark
 def test_transitions(mockplot: t.Any) -> None:
     at.transitions.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, timedays=300)
 

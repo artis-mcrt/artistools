@@ -121,34 +121,31 @@ def read_files(
     timestepmax: int | None = None,
     atomic_number: int | None = None,
 ) -> pl.DataFrame:
-    dfall = None
     if not files:
         print("No files")
-    else:
-        for filepath in files:
-            print(f"Reading {filepath}...")
 
-            df_thisfile = pd.read_csv(filepath, sep=r"\s+")
-            # df_thisfile[['modelgridindex', 'timestep']].apply(pd.to_numeric)
-            if modelgridindex is not None:
-                df_thisfile = df_thisfile[df_thisfile["modelgridindex"] == modelgridindex]
-            if timestepmin is not None:
-                df_thisfile = df_thisfile[df_thisfile["timestep"] >= timestepmin]
-            if timestepmax is not None:
-                df_thisfile = df_thisfile[df_thisfile["timestep"] <= timestepmax]
-            if atomic_number:
-                df_thisfile = df_thisfile[df_thisfile["Z"] == atomic_number]
+    dfs_thisfile = []
+    for filepath in files:
+        print(f"Reading {filepath}...")
 
-            if not df_thisfile.empty:
-                if dfall is None:
-                    dfall = df_thisfile.copy()
-                else:
-                    dfall = pd.concat([dfall, df_thisfile.copy()], ignore_index=True)
-                assert isinstance(dfall, pd.DataFrame)
+        df_thisfile = pd.read_csv(filepath, sep=r"\s+")
+        if modelgridindex is not None:
+            df_thisfile = df_thisfile[df_thisfile["modelgridindex"] == modelgridindex]
+        if timestepmin is not None:
+            df_thisfile = df_thisfile[df_thisfile["timestep"] >= timestepmin]
+        if timestepmax is not None:
+            df_thisfile = df_thisfile[df_thisfile["timestep"] <= timestepmax]
+        if atomic_number:
+            df_thisfile = df_thisfile[df_thisfile["Z"] == atomic_number]
 
-    if dfall is None or len(dfall) == 0:
+        if not df_thisfile.empty:
+            dfs_thisfile.append(df_thisfile)
+
+    if not dfs_thisfile:
         msg = "No data found"
         raise AssertionError(msg)
+
+    dfall = pd.concat(dfs_thisfile, ignore_index=True) if len(dfs_thisfile) > 1 else dfs_thisfile[0]
 
     return pl.from_pandas(dfall)
 

@@ -72,7 +72,7 @@ Ruff rules are configured by **name**, not by code (`"any-type"`, not `"ANN401"`
 
 ## Polars
 
-Use polars (`import polars as pl`) for all new dataframe code. pandas remains only where an external interface requires it — do not introduce new pandas usage.
+Use polars (`import polars as pl`) for all new dataframe code. pandas remains only where an external interface requires it — do not introduce new pandas usage. Never round-trip polars → pandas → polars to run a Python loop; if a helper needs pandas input, rewrite the helper as a polars expression or join rather than converting around it.
 
 - `.group_by()`, not pandas' `.groupby()`.
 - There is no `.group_by().filter()`: aggregate first, then filter.
@@ -80,7 +80,8 @@ Use polars (`import polars as pl`) for all new dataframe code. pandas remains on
 - `None` is a missing value and `float("nan")` is NaN; they are distinct.
 - No multi-indexing — use columns for grouping and sorting.
 - Prefer native expressions over `.map_elements()`, which is slow and blocks query optimisation. When there is genuinely no expression equivalent, always pass `return_dtype`.
-- Prefer lazy evaluation: build `pl.LazyFrame` pipelines, take `pl.LazyFrame` in internal function signatures, and `.collect()` once at the end.
+- Never walk a dataframe row by row. `.iterrows()`, `.itertuples()`, and `.apply(..., axis=1)` are the pandas equivalents of `.map_elements()` and are slower still — replace them with a vectorised expression, a join, or `dict(zip(df["a"], df["b"], strict=True))`. Likewise, reshape a flat per-cell array onto a 3D grid with `arr.reshape((nx, ny, nz), order="F")` and `np.linspace`, never nested `nx`/`ny`/`nz` loops.
+- Prefer lazy evaluation: build `pl.LazyFrame` pipelines, take `pl.LazyFrame` in internal function signatures, and `.collect()` once at the end. Never call `.collect()` inside a loop over cells, timesteps, or ions — that re-runs the entire query every iteration. Collect once before the loop and index the resulting `pl.DataFrame`.
 - Join with explicit `on=` (and `how=`) arguments; convert types with `.cast()`.
 - Methods return new frames — there are no in-place operations, so use the return value.
 - Compare frames in tests with `pltest.assert_frame_equal`.
@@ -98,7 +99,16 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 ```
 
-Register new subcommands in `subcommandtree` in `artistools/commands.py` rather than adding a new console script. Keep data loading in importable functions separate from plotting, so both can be tested by calling `main(argsraw=[], **kwargs)`.
+Register new subcommands in `subcommandtree` in `artistools/commands.py` rather than adding a new console script. A module with the `addargs`/`main` shape that is not registered there is unreachable from the CLI and tends to rot unnoticed — register it or delete it, but do not extend it.
+
+Keep data loading in importable functions separate from plotting, so both can be tested by calling `main(argsraw=[], **kwargs)`. `main` should be argument parsing plus a handful of calls, roughly under 50 lines. When editing a `main` that already inlines loading, physics, and plotting, extract the part you are touching rather than adding to it.
+
+Build parsers and resolve paths with the shared helpers rather than hand-rolling them:
+
+- `at.add_modelpath_arg(parser)` for a `-modelpath` or positional model-path argument.
+- `at.normalize_path_list(args.modelpath)` to apply the default and coerce to `list[Path]`, instead of `if not args.modelpath: args.modelpath = Path()`.
+- `at.get_timestep_times(modelpath, loc="mid")` rather than averaging the `start` and `end` arrays.
+- `at.plottools.set_axis_properties` / `set_axis_labels` for standard axis and tick setup. `artistools/plottools.py` is reachable only as `at.plottools.*` — apart from `set_mpl_style` it is not re-exported at top level, so read it before writing new plot boilerplate.
 
 ## Tests
 
@@ -119,6 +129,8 @@ Register new subcommands in `subcommandtree` in `artistools/commands.py` rather 
 - Cache parsed text files as parquet with `at.write_parquet_atomic`, which writes to a temporary file and renames, so an interrupted run cannot leave a corrupt cache.
 - Use `at.parallel_map` instead of building multiprocessing pools directly; it picks threads or processes depending on whether the GIL is enabled.
 - Read compressed ARTIS output through `at.zopen`/`at.zopenpl` rather than handling `.gz`/`.xz`/`.zst` yourself.
+- Never grow a dataframe inside a loop: repeated `pd.concat([df, new])` or `.loc[key] = ...` row-appends are O(n²) in the iteration count. Accumulate into a list and concatenate once after the loop.
+- Prefer the lazy whole-run scanners (`at.scan_estimators`) to the eager per-cell readers (`at.estimators.read_estimators`), which are very slow when many cells and timesteps are collected. Never call an eager loader inside a per-cell loop.
 
 ## Repository hygiene
 
@@ -126,3 +138,4 @@ Register new subcommands in `subcommandtree` in `artistools/commands.py` rather 
 - Add dependencies sparingly: runtime deps in `[project.dependencies]`, heavy optional ones in `[project.optional-dependencies].extras` with a lazy in-function import, tooling in `[dependency-groups].dev`. Run `uv lock` afterwards and commit `uv.lock`.
 - Do not commit simulation output, generated plots, or files over 800 kB (blocked by pre-commit).
 - When renaming or deleting, search the whole repository for the old name — including `artistools/commands.py`, the `__init__.py` re-exports, and tests — and update it all in one commit.
+- Do not leave commented-out code behind when you replace or disable something — delete it, since git has the old version. Ruff's `commented-out-code` rule is deliberately both ignored and unfixable, so nothing catches this for you. The exception is a commented block that serves as documentation rather than as leftovers: a menu of alternative configuration entries showing what a setting accepts, or a published benchmark setup kept so it can be reproduced. Delete superseded code, keep worked examples — and if you are unsure which a block is, leave it and ask.

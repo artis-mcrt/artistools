@@ -213,7 +213,7 @@ def make_ionsubplot(
 
     ionpopulation = dfpopthision["n_NLTE"].sum()
     ionstr = at.get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
-    ionpopulation_fromest = estimators[timestep, modelgridindex].get(f"nnion_{ionstr}", 0.0)
+    ionpopulation_fromest = estimators.get((timestep, modelgridindex), {}).get(f"nnion_{ionstr}", 0.0)
 
     dfpopthision.loc[:, "parity"] = [
         1 if (row.level != -1 and ion_data["levels"]["levelname"].item(int(row.level)).split("[")[0][-1] == "o") else 0
@@ -392,7 +392,8 @@ def make_ionsubplot(
             markeredgecolor="black",
         )
 
-    if args.plotrefdata:
+    # reference data comparison needs the cell's estimator values, so skip it when they are absent
+    if args.plotrefdata and (timestep, modelgridindex) in estimators:
         plot_reference_data(
             ax, atomic_number, ion_stage, estimators[timestep, modelgridindex], dfpopthision, annotatelines=True
         )
@@ -610,27 +611,43 @@ def make_singletimestep_plot(
 
     prev_ion_stage = -1
     assert mgilist
+
+    # invariant to the cell loop, so read the estimators and the model once instead of once per cell
+    estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=list(mgilist))
+    lzmodeldata, _ = at.inputmodel.get_modeldata(modelpath, derived_cols="vel_r_mid")
+    velocity_kmps_of_mgi = {
+        mgi: vel_r_mid / 1e5
+        for mgi, vel_r_mid in lzmodeldata
+        .filter(pl.col("modelgridindex").is_in(mgilist))
+        .select(["modelgridindex", "vel_r_mid"])
+        .collect()
+        .iter_rows()
+    }
+
+    elsymbol = at.get_elsymbol(atomic_number)
+
     for mgilistindex, modelgridindex in enumerate(mgilist):
         mgifirstaxindex = mgilistindex
         mgilastaxindex = mgilistindex + len(ion_stage_list) - 1
 
-        estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
-        elsymbol = at.get_elsymbol(atomic_number)
         print(
             f"Plotting NLTE pops for {modelname} modelgridindex {modelgridindex}, timestep {timestep} (t={time_days}d)"
         )
         print(f"Z={atomic_number} {elsymbol}")
 
-        if estimators:
+        if (timestep, modelgridindex) in estimators:
             T_e = estimators[timestep, modelgridindex]["Te"]
             T_R = estimators[timestep, modelgridindex]["TR"]
             W = estimators[timestep, modelgridindex]["W"]
             nne = estimators[timestep, modelgridindex]["nne"]
             print(f"nne = {nne} cm^-3, T_e = {T_e} K, T_R = {T_R} K, W = {W}")
         else:
-            print("WARNING: No estimator data. Setting T_e = T_R =  6000 K")
+            print(f"WARNING: No estimator data. Setting T_e = T_R = {args.exc_temperature} K, nne and W unknown")
             T_e = args.exc_temperature
             T_R = args.exc_temperature
+            # only used for display in the subplot title, so report them as unknown rather than inventing a value
+            W = math.nan
+            nne = math.nan
 
         dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=modelgridindex).to_pandas(
             use_pyarrow_extension_array=True
@@ -648,18 +665,10 @@ def make_singletimestep_plot(
         if len(dfpop.query("ion_stage == @max_ion_stage")) == 1:  # single-level ion, so skip it
             max_ion_stage -= 1
 
-        # timearray = at.get_timestep_times(modelpath)
-        nne = estimators[timestep, modelgridindex]["nne"]
-        W = estimators[timestep, modelgridindex]["W"]
-
         subplot_title = modelname
         if len(subplot_title) > 10:
             subplot_title += "\n"
-        modeldata, _ = at.inputmodel.get_modeldata(modelpath, derived_cols="vel_r_mid")
-        velocity_kmps = (
-            modeldata.filter(pl.col("modelgridindex") == modelgridindex).select("vel_r_mid").collect().item() / 1e5
-        )
-        subplot_title += f" {velocity_kmps:.0f} km/s at"
+        subplot_title += f" {velocity_kmps_of_mgi[modelgridindex]:.0f} km/s at"
 
         try:
             time_days = at.get_timestep_time(modelpath, timestep)

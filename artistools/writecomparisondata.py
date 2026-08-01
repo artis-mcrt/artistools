@@ -94,6 +94,8 @@ def write_ionfracts(
     lzmodeldata = lzmodeldata.filter(pl.col("modelgridindex").is_in(allnonemptymgilist))
     elementlist = at.get_composition_data(modelpath)
     nelements = len(elementlist)
+    # invariant to element and timestep, so collect once instead of inside both loops
+    cellrows = lzmodeldata.select(["modelgridindex", "vel_r_mid"]).collect().rows()
     for elementindex in range(nelements):
         atomic_number = elementlist["Z"].item(elementindex)
         elsymb = at.get_elsymbol(atomic_number)
@@ -109,9 +111,7 @@ def write_ionfracts(
                 f.write(f"#TIME: {times[timestep]:.2f}\n")
                 f.write(f"#NVEL: {len(allnonemptymgilist)}\n")
                 f.write(f"#vel_mid[km/s] {' '.join([f'{elsymb.lower()}{ion}' for ion in range(nions)])}\n")
-                for modelgridindex, vel_r_mid in (
-                    lzmodeldata.select(["modelgridindex", "vel_r_mid"]).collect().iter_rows()
-                ):
+                for modelgridindex, vel_r_mid in cellrows:
                     f.write(f"{vel_r_mid / 1e5:.2f}")
                     elabund = estimators[timestep, modelgridindex].get(f"nnelement_{elsymb}", 0)
                     for ion in range(nions):
