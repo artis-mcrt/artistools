@@ -616,7 +616,11 @@ def make_singletimestep_plot(
     lzmodeldata, _ = at.inputmodel.get_modeldata(modelpath, derived_cols="vel_r_mid")
     velocity_kmps_of_mgi = {
         mgi: vel_r_mid / 1e5
-        for mgi, vel_r_mid in lzmodeldata.select(["modelgridindex", "vel_r_mid"]).collect().iter_rows()
+        for mgi, vel_r_mid in lzmodeldata
+        .filter(pl.col("modelgridindex").is_in(mgilist))
+        .select(["modelgridindex", "vel_r_mid"])
+        .collect()
+        .iter_rows()
     }
 
     for mgilistindex, modelgridindex in enumerate(mgilist):
@@ -636,9 +640,12 @@ def make_singletimestep_plot(
             nne = estimators[timestep, modelgridindex]["nne"]
             print(f"nne = {nne} cm^-3, T_e = {T_e} K, T_R = {T_R} K, W = {W}")
         else:
-            print("WARNING: No estimator data. Setting T_e = T_R =  6000 K")
+            print(f"WARNING: No estimator data. Setting T_e = T_R = {args.exc_temperature} K, nne and W unknown")
             T_e = args.exc_temperature
             T_R = args.exc_temperature
+            # only used for display in the subplot title, so report them as unknown rather than inventing a value
+            W = math.nan
+            nne = math.nan
 
         dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=modelgridindex).to_pandas(
             use_pyarrow_extension_array=True
@@ -655,10 +662,6 @@ def make_singletimestep_plot(
 
         if len(dfpop.query("ion_stage == @max_ion_stage")) == 1:  # single-level ion, so skip it
             max_ion_stage -= 1
-
-        # timearray = at.get_timestep_times(modelpath)
-        nne = estimators[timestep, modelgridindex]["nne"]
-        W = estimators[timestep, modelgridindex]["W"]
 
         subplot_title = modelname
         if len(subplot_title) > 10:

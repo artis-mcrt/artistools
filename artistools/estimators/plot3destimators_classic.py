@@ -1,3 +1,5 @@
+"""Plot a 2D slice of the electron temperature from a classic-mode 3D model."""
+
 import argparse
 import typing as t
 from collections.abc import Sequence

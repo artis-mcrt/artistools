@@ -1,3 +1,5 @@
+"""Plot per-rank stage durations from ARTIS log files."""
+
 import argparse
 import re
 import typing as t
