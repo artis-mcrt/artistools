@@ -1,7 +1,6 @@
 """Artistools - spectra related functions."""
 
 import argparse
-import contextlib
 import math
 import re
 import typing as t
@@ -24,6 +23,7 @@ from artistools.atomic import get_ionstring
 from artistools.atomic import get_linelist_pldf
 from artistools.atomic import get_nuclides
 from artistools.misc import average_direction_bins
+from artistools.misc import check_averaging_angles
 from artistools.misc import df_filter_minmax_bounded
 from artistools.misc import firstexisting
 from artistools.misc import get_dirbins
@@ -608,12 +608,11 @@ def read_spec(modelpath: Path | str, gamma: bool = False) -> pl.LazyFrame:
     )
 
 
-def read_spec_res(modelpath: Path | str) -> dict[int, pl.LazyFrame]:
+def read_spec_res(modelpath: Path | str, gamma: bool = False) -> dict[int, pl.LazyFrame]:
     """Return a dict of LazyFrames of time-series spectra keyed to the viewing direction bin."""
+    resfilenames = ["gamma_spec_res.out"] if gamma else ["spec_res.out", "specpol_res.out"]
     specfilename = (
-        modelpath
-        if Path(modelpath).is_file()
-        else firstexisting(["spec_res.out", "specpol_res.out"], folder=modelpath, tryzipped=True)
+        modelpath if Path(modelpath).is_file() else firstexisting(resfilenames, folder=modelpath, tryzipped=True)
     )
 
     print(f"Reading {specfilename} (in read_spec_res)")
@@ -684,10 +683,14 @@ def get_spectra(
     if timestepmax is None or timestepmax < 0:
         timestepmax = timestepmin
 
+    check_averaging_angles(average_over_phi, average_over_theta)
+
     specdata_alltimesteps: dict[int, pl.LazyFrame] = {}
     if stokesparam == "I":
         with suppress(FileNotFoundError):
-            res_specdata = read_spec_res(modelpath)
+            # the direction-resolved file must match the packet type of the spherically averaged one below,
+            # otherwise the dirbins would silently hold UVOIR spectra while dirbin -1 holds gamma spectra
+            res_specdata = read_spec_res(modelpath, gamma=gamma)
             if average_over_theta:
                 res_specdata = average_direction_bins(res_specdata, overangle="theta")
             if average_over_phi:
@@ -1359,26 +1362,20 @@ def get_flux_contributions_from_packets(
         other_groupnames = allgroupnames[maxseriescount:]
         allgroupnames = [*allgroupnames[:maxseriescount], "Other"]
 
-        if getemission:
-            other_subgroups = [
-                emissiongroups[groupname] for groupname in other_groupnames if groupname in emissiongroups
-            ]
-            emissiongroups["Other"] = (
+        # a group name can be present for only one of emission and absorption (e.g. "Fe II bound-free" is never an
+        # absorption label), so each dict is combined independently and may get no contributions at all
+        for groups, getthis in ((emissiongroups, getemission), (absorptiongroups, getabsorption)):
+            if not getthis or not groups:
+                continue
+            other_subgroups = [groups[groupname] for groupname in other_groupnames if groupname in groups]
+            groups["Other"] = (
                 pl.concat(other_subgroups, rechunk=False)
                 if other_subgroups
-                else pl.DataFrame(schema=emissiongroups[next(iter(emissiongroups))].schema)
+                else pl.DataFrame(schema=next(iter(groups.values())).schema)
             )
 
-        if getabsorption:
-            absorptiongroups["Other"] = pl.concat(
-                (absorptiongroups[groupname] for groupname in other_groupnames if groupname in absorptiongroups),
-                rechunk=False,
-            )
-
-        for groupname in other_groupnames:
-            with contextlib.suppress(KeyError):
-                del emissiongroups[groupname]
-                del absorptiongroups[groupname]
+            for groupname in other_groupnames:
+                groups.pop(groupname, None)
 
     array_flambda_emission_total = None
     contribution_list = []

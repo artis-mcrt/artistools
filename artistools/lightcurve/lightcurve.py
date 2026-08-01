@@ -3,6 +3,7 @@ import math
 import typing as t
 from collections.abc import Collection
 from collections.abc import Iterable
+from collections.abc import Mapping
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -308,12 +309,14 @@ def generate_band_lightcurve_data(
                     integration_grid = wavefilter
 
                 weighted_flux_obs = float(abs(np.trapezoid(integrand, integration_grid)))
-                phot_filtobs_mag: float | int = (
-                    0.0 if weighted_flux_obs == 0.0 else -2.5 * math.log10(weighted_flux_obs / zeropointenergyflux)
-                )
+                if weighted_flux_obs <= 0.0:
+                    # no flux in the band, so there is no magnitude to report. Appending zero here would look like
+                    # an extremely bright source
+                    print(f"  no {filter_name} band flux at {time:.2f} d. Skipping this time.")
+                    continue
 
-                if phot_filtobs_mag != 0.0:
-                    phot_filtobs_mag -= 25  # Absolute magnitude
+                # 25 converts the apparent magnitude at 10 pc to an absolute magnitude
+                phot_filtobs_mag = -2.5 * math.log10(weighted_flux_obs / zeropointenergyflux) - 25
                 filters_dict[filter_name].append((time, phot_filtobs_mag))
 
     return filters_dict
@@ -435,24 +438,17 @@ def get_band_lightcurve(
 
 
 def get_colour_delta_mag(
-    band_lightcurve_data: dict[str, Iterable[t.Any]], filter_names: Sequence[str]
+    band_lightcurve_data: Mapping[str, Iterable[tuple[float, float]]], filter_names: Sequence[str]
 ) -> tuple[list[float], list[float]]:
-    time_dict_1 = {}
-    time_dict_2 = {}
+    """Return the times and magnitude differences of two bands, using only the times sampled by both bands."""
+    # make magnitude dictionaries where time is the key
+    time_dict_1 = {float(time): mag for time, mag in band_lightcurve_data[filter_names[0]]}
+    time_dict_2 = {float(time): mag for time, mag in band_lightcurve_data[filter_names[1]]}
 
-    plot_times = []
-    colour_delta_mag = []
-
-    for filter_1, filter_2 in zip(
-        band_lightcurve_data[filter_names[0]], band_lightcurve_data[filter_names[1]], strict=True
-    ):
-        # Make magnitude dictionaries where time is the key
-        time_dict_1[float(filter_1[0])] = filter_1[1]
-        time_dict_2[float(filter_2[0])] = filter_2[1]
-
-    for time in time_dict_1 | time_dict_2:
-        plot_times.append(time)
-        colour_delta_mag.append(time_dict_1[time] - time_dict_2[time])
+    # a band with no flux at some time contributes no point there, so the two bands can be sampled at different
+    # times. Only times present in both bands have a colour
+    plot_times = sorted(time_dict_1.keys() & time_dict_2.keys())
+    colour_delta_mag = [time_dict_1[time] - time_dict_2[time] for time in plot_times]
 
     return plot_times, colour_delta_mag
 

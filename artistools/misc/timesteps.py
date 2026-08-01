@@ -231,21 +231,15 @@ def get_time_range(
         print(f"Warning timestepmax {timestepmax} > timesteplast {timesteplast}")
         timestepmax = timesteplast
 
+    # when the range was given as timesteps there is no requested time in days, so the timestep bounds are the only
+    # times available even if the caller asked not to clamp
     if time_days_lower is None:
-        if clamp_to_timesteps:
-            assert timestepmin is not None
-            time_days_lower = tstarts[timestepmin]
-        else:
-            assert timemin is not None
-            time_days_lower = float(timemin)
+        assert timestepmin is not None
+        time_days_lower = tstarts[timestepmin] if (clamp_to_timesteps or timemin is None) else float(timemin)
 
     if time_days_upper is None:
-        if clamp_to_timesteps:
-            assert timestepmax is not None
-            time_days_upper = tends[timestepmax]
-        else:
-            assert timemax is not None
-            time_days_upper = float(timemax)
+        assert timestepmax is not None
+        time_days_upper = tends[timestepmax] if (clamp_to_timesteps or timemax is None) else float(timemax)
 
     assert timestepmin is not None
     assert timestepmax is not None

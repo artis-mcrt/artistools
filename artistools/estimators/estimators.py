@@ -201,12 +201,15 @@ def add_derived_estimator_columns(pldflazy: pl.LazyFrame) -> pl.LazyFrame:
         # for older files with no deposition data, take heating part of deposition and heating fraction
         pldflazy = pldflazy.with_columns(total_dep=pl.col("heating_dep") / pl.col("heating_heating_dep/total_dep"))
 
+    # only fill the number density columns: ARTIS omits zero-abundance ions and isotopes from the estimator files,
+    # so a missing number density means zero. The file reader already fills these with zero for cells that skip them
+    # within one file, and this makes the columns that a whole rank omitted agree. Every other column (Te, TR, nne,
+    # ...) must keep its nulls so that missing data isn't silently read as a real zero
+    # a selector that matches nothing makes this a no-op, so no guard is needed here
+    pldflazy = pldflazy.with_columns(cs.starts_with("nnelement_", "nnion_", "nniso_").fill_null(0))
+
     if any(col.startswith("nnelement_") for col in colnames):
-        # only fill the nnelement columns: a missing number density means zero, but every other column (Te, TR, nne,
-        # ...) must keep its nulls so that missing data isn't silently read as a real zero
-        pldflazy = pldflazy.with_columns(cs.starts_with("nnelement_").fill_null(0)).with_columns(
-            nntot=pl.sum_horizontal(cs.starts_with("nnelement_"))
-        )
+        pldflazy = pldflazy.with_columns(nntot=pl.sum_horizontal(cs.starts_with("nnelement_")))
 
     return pldflazy
 

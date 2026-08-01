@@ -179,7 +179,7 @@ def process_trajectory(
     traj_masses_g: dict[int, float],
     arr_t_day: npt.NDArray[np.floating],
     nuclide_contrib: bool,
-    traj_parquet: bool,
+    traj_parquet_dir: Path | None,
     traj_ID: int,
 ) -> dict[str, npt.NDArray[np.floating]]:
     """Process a single trajectory to extract decay powers."""
@@ -314,7 +314,7 @@ def process_trajectory(
     #     # import shutil
 
     # dump to parquet
-    if traj_parquet:
+    if traj_parquet_dir is not None:
         traj_df = pl.DataFrame(decay_powers)
 
         # perform time interpolation to prevent effects from low trajectory time grid resolution
@@ -334,7 +334,7 @@ def process_trajectory(
         traj_df = pl.concat([main, last_row])
         traj_df = traj_df.fill_null(0.0).fill_nan(0.0)
 
-        traj_df.write_parquet(f"parquet/decay_powers_{traj_ID}.parquet")
+        traj_df.write_parquet(traj_parquet_dir / f"decay_powers_{traj_ID}.parquet")
     return decay_powers
 
 
@@ -358,13 +358,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     # get beta decay data
     nuc_data = get_nuc_data(nuc_dataset)
+    parquet_dir: Path | None = None
     if args.parquet or args.trajparquet:
-        traj_parquet_dir = args.outputpath / "parquet"
-        if not Path(traj_parquet_dir).exists():
-            Path(traj_parquet_dir).mkdir(parents=True)
-            print(f"Created directory '{traj_parquet_dir}'.")
-        else:
-            print(f"'{traj_parquet_dir}' already exists.")
+        parquet_dir = Path(args.outputpath) / "parquet"
+        parquet_dir.mkdir(parents=True, exist_ok=True)
+        print(f"Writing parquet files to '{parquet_dir}'.")
     assert nuc_data.height == nuc_data.unique(("Z", "A")).height
 
     # set timesteps logarithmically
@@ -403,7 +401,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     alltraj_decay_powers: list[dict[str, npt.NDArray[np.floating]]] = at.parallel_map(
         partial(
-            process_trajectory, nuc_data, args.trajectoryroot, traj_masses_g, arr_t_day, args.nuclides, args.trajparquet
+            process_trajectory,
+            nuc_data,
+            args.trajectoryroot,
+            traj_masses_g,
+            arr_t_day,
+            args.nuclides,
+            parquet_dir if args.trajparquet else None,
         ),
         traj_ids,
         chunksize=2,
@@ -460,8 +464,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         )
 
         if args.parquet:
+            assert parquet_dir is not None
             traj_set_df = pl.DataFrame(decay_powers)
-            traj_set_df.write_parquet(f"parquet/decay_powers_{labelfull}.parquet")
+            traj_set_df.write_parquet(parquet_dir / f"decay_powers_{labelfull}.parquet")
 
         fig, axes = plt.subplots(
             nrows=2, ncols=1, figsize=(6, 10), tight_layout={"pad": 0.4, "w_pad": 0.0, "h_pad": 0.0}

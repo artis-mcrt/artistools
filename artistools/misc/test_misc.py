@@ -429,3 +429,55 @@ def test_average_direction_bins_unequal_bincounts(monkeypatch: pytest.MonkeyPatc
     for start_bin in (0, 4, 8):
         expected = sum(start_bin + n for n in range(nphibins)) / nphibins
         assert averaged_phi[start_bin].collect()["value"].to_list() == pytest.approx([expected, expected])
+
+
+def test_average_direction_bins_rejects_missing_bins(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Averaging a second time must raise instead of a bare KeyError for the bins that no longer exist."""
+    nphibins = 4
+    ncosthetabins = 3
+
+    monkeypatch.setattr(dirbins, "get_viewingdirection_phibincount", lambda: nphibins)
+    monkeypatch.setattr(dirbins, "get_viewingdirection_costhetabincount", lambda: ncosthetabins)
+
+    dirbindataframes = {
+        dirbin: pl.DataFrame({"timestep": [0, 1], "value": [float(dirbin), float(dirbin)]})
+        for dirbin in range(nphibins * ncosthetabins)
+    }
+
+    averaged = dirbins.average_direction_bins(dirbindataframes, overangle="theta")
+    with pytest.raises(ValueError, match="Cannot average over phi"):
+        dirbins.average_direction_bins(averaged, overangle="phi")
+
+
+def test_get_time_range_timesteps_without_clamping(tmp_path: Path) -> None:
+    """A timestep range gives no times in days, so the timestep bounds must be used even when not clamping."""
+    _write_timesteps_out(tmp_path)
+
+    for clamp in (True, False):
+        timestepmin, timestepmax, tlow, thigh = at.get_time_range(
+            tmp_path, timestep_range_str="1-3", clamp_to_timesteps=clamp
+        )
+        assert (timestepmin, timestepmax) == (1, 3)
+        assert tlow == pytest.approx(at.get_timestep_times(tmp_path, loc="start")[1])
+        assert thigh == pytest.approx(at.get_timestep_times(tmp_path, loc="end")[3])
+
+
+def test_check_averaging_angles() -> None:
+    """Averaging over phi and theta at once must be rejected wherever the values arrive."""
+    for phi, theta in ((False, False), (True, False), (False, True)):
+        at.check_averaging_angles(phi, theta)
+
+    with pytest.raises(ValueError, match="both the phi and theta"):
+        at.check_averaging_angles(average_over_phi=True, average_over_theta=True)
+
+
+def test_viewingangle_averaging_flags_are_mutually_exclusive() -> None:
+    """The two averaging flags are rejected by argparse itself, for every command that defines them."""
+    parser = argparse.ArgumentParser()
+    at.add_viewingangle_args(parser)
+
+    assert parser.parse_args(["--average_over_phi_angle"]).average_over_phi_angle
+    assert parser.parse_args(["--average_over_theta_angle"]).average_over_theta_angle
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--average_over_phi_angle", "--average_over_theta_angle"])

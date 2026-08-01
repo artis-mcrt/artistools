@@ -40,16 +40,20 @@ def add_viewingangle_args(parser: argparse.ArgumentParser, allow_select_all: boo
         help="Use degrees instead of radians for direction angles. Only works with -plotviewingangle",
     )
 
-    parser.add_argument(
+    # averaging over one angle leaves one bin per index of the other, so the two cannot be combined. argparse
+    # enforces this once here for every command that takes these flags
+    averagegroup = parser.add_mutually_exclusive_group()
+
+    averagegroup.add_argument(
         "--average_over_phi_angle",
         action="store_true",
         help="Average over phi (azimuthal) viewing angles to make direction bins into polar angle bins",
     )
 
     # deprecated alias for --average_over_phi_angle kept for backwards compatibility
-    parser.add_argument("--average_every_tenth_viewing_angle", action="store_true", help=argparse.SUPPRESS)
+    averagegroup.add_argument("--average_every_tenth_viewing_angle", action="store_true", help=argparse.SUPPRESS)
 
-    parser.add_argument(
+    averagegroup.add_argument(
         "--average_over_theta_angle",
         action="store_true",
         help="Average over theta (polar) viewing angles to make direction bins into azimuthal angle bins",

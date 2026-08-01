@@ -51,7 +51,8 @@ def get_kurucz_transitions() -> tuple[pd.DataFrame, list[IonTuple]]:
                 Z, ion_stage = int(row[2].split(".")[0]), int(row[2].split(".")[1]) + 1
                 if Z < 44 or ion_stage >= 2:  # and Z not in [26, 27]
                     continue
-                lambda_angstroms = float(line[:12]) * 10
+                # gfall.dat is fixed-width: wavelength in nm is F11.4 (columns 0-10) and loggf is F7.3 (columns 11-17)
+                lambda_angstroms = float(line[:11]) * 10
                 loggf = float(line[11:18])
                 lower_energy_ev, upper_energy_ev = hc_in_ev_cm * float(line[24:36]), hc_in_ev_cm * float(line[52:64])
                 lower_statweight, upper_statweight = 2 * float(line[36:42]) + 1, 2 * float(line[64:70]) + 1

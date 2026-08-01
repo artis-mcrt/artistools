@@ -95,3 +95,31 @@ def test_get_ionrecombratecalibration() -> None:
         "rrc_total": 7.3507e-12,
         "T_e": 1.0e5,
     })
+
+
+def test_parse_phixsdata_multiple_targets(tmp_path: Path) -> None:
+    """A multi-target photoionisation entry must give one structured record per target, like the single-target case."""
+    nphixspoints = 3
+    lines = [
+        f"{nphixspoints}",
+        "0.1",
+        # upper ion level -1 means the targets are listed on the following lines
+        "26 3 -1 2 1 7.9",
+        "2",
+        "1 0.75",
+        "3 0.25",
+        *["1.0"] * nphixspoints,
+    ]
+    phixsfile = tmp_path / "phixsdata_v2.txt"
+    phixsfile.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    from artistools.atomic._atomic_core import parse_phixsdata
+
+    phixsdict = parse_phixsdata(phixsfile)
+
+    nptargetlist, phixstable = phixsdict[26, 2, 0]
+    # one entry per target, not an (ntargets, 2) grid of duplicated tuples
+    assert nptargetlist.shape == (2,)
+    assert nptargetlist["level"].tolist() == [0, 2]
+    assert nptargetlist["fraction"].tolist() == pytest.approx([0.75, 0.25])
+    assert len(phixstable) == nphixspoints
