@@ -113,7 +113,8 @@ def slice_abundance_file(
             linesplit = line.split()
 
             if len(currentblock) + len(linesplit) >= 30:
-                blocklens.add(len(currentblock))
+                if currentblock:  # record only completed blocks, not the empty state before the first one
+                    blocklens.add(len(currentblock))
                 if keepcurrentblock:
                     fabundancesout.write("  ".join(currentblock) + "\n")
                 currentblock = []

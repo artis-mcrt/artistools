@@ -15,6 +15,7 @@ import matplotlib.axes as mplax
 import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
+import polars.testing as pltest
 import pytest
 
 import artistools as at
@@ -655,8 +656,44 @@ def test_linefluxes_emfeaturesearch_parsing() -> None:
     assert args.timebins_tstart == [200.0, 250.0]
     assert args.timebins_tend == [250.0, 300.0]
 
-    with pytest.raises(SystemExit):
-        parser.parse_args(["-emfeaturesearch", "not a tuple"])
+    # unset time bins stay None, so that each model falls back to its own timestep grid
+    args = parser.parse_args([])
+    assert args.timebins_tstart is None
+    assert args.timebins_tend is None
+
+    # the wavelengths may be fractional, but the atomic number, ion stage, and level indices must be integers
+    assert parser.parse_args(["-emfeaturesearch", "(26, 2, 12570.5, 12470.5, 12670.5)"]).emfeaturesearch == [
+        (26, 2, 12570.5, 12470.5, 12670.5)
+    ]
+
+    for badfeature in ("not a tuple", "(26.0, 2, 7155)", "(26, True, 7155)", "(26, 2, 7155, 7150, 7160, 1.5, 2)"):
+        with pytest.raises(SystemExit):
+            parser.parse_args(["-emfeaturesearch", badfeature])
+
+
+def test_linefluxes_default_timebins_use_each_models_timesteps() -> None:
+    """With no explicit time bins, the packet binning must fall back to the model's own timestep grid."""
+    from artistools.linefluxes import get_closelines
+    from artistools.linefluxes import get_line_luminosities_from_packets
+
+    emfeatures = [get_closelines(modelpath_classic_3d, 26, 2, 7155, 7100, 7200)]
+
+    dflcdata_default = get_line_luminosities_from_packets("trueemissiontype", emfeatures, modelpath_classic_3d)
+    dflcdata_explicit = get_line_luminosities_from_packets(
+        "trueemissiontype",
+        emfeatures,
+        modelpath_classic_3d,
+        arr_tstart=at.get_timestep_times(modelpath_classic_3d, loc="start"),
+        arr_tend=at.get_timestep_times(modelpath_classic_3d, loc="end"),
+    )
+
+    pltest.assert_frame_equal(dflcdata_default, dflcdata_explicit)
+
+
+def test_linefluxes_rejects_lone_timebin_argument() -> None:
+    """Giving only one of the two time bin edge lists must be rejected before any data is read."""
+    with pytest.raises(ValueError, match="must be given together"):
+        at.linefluxes.main(argsraw=[], modelpath=[modelpath_classic_3d], timebins_tstart=[200.0, 250.0])
 
 
 def test_linefluxes_lineflux_ratio_plot() -> None:
@@ -691,3 +728,7 @@ def test_default_plotitem_keeps_estimator_columns_named_like_elements() -> None:
     # an element that the model does not contain is still dropped
     assert not default_plotitem_has_data([["averageionisation", ["Sr"]]], estimatorcolumns)
     assert not default_plotitem_has_data([["populations", ["Sr I", "Sr II"]]], estimatorcolumns)
+
+    # initabundances/initmasses come from the input model file, so they must not be gated on estimator columns
+    assert default_plotitem_has_data([["initabundances", ["Sr", "Ni_stable"]]], estimatorcolumns)
+    assert default_plotitem_has_data([["initmasses", ["Sr", "Ni_56"]]], estimatorcolumns)

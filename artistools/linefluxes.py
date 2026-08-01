@@ -32,7 +32,7 @@ from artistools.misc import add_series_style_args
 DEFAULT_EMFEATURESEARCH: tuple[tuple[int, ...], ...] = ((26, 2, 7155, 7150, 7160), (26, 2, 12570, 12470, 12670))
 
 
-def parse_emfeaturesearch(strfeature: str) -> tuple[int, ...]:
+def parse_emfeaturesearch(strfeature: str) -> tuple[int | float, ...]:
     """Parse an emission feature given on the command line, e.g. '(26, 2, 7155, 7150, 7160)'."""
     import ast
 
@@ -42,15 +42,18 @@ def parse_emfeaturesearch(strfeature: str) -> tuple[int, ...]:
         msg = f"Could not parse emission feature {strfeature!r}. Expected e.g. '(26, 2, 7155, 7150, 7160)'"
         raise argparse.ArgumentTypeError(msg) from exc
 
-    # bool is a subclass of int, so isinstance() would accept '(26, True, 7155)'
+    # the atomic number, ion stage, and level indices must be integers, but the wavelengths (entries 2 to 4) may be
+    # fractional. Exact type checks, because bool is a subclass of int and would otherwise be accepted
     if (
         not isinstance(feature, (tuple, list))
         or not (3 <= len(feature) <= 7)
-        or not all(type(x) is int for x in feature)
+        or not all(type(x) in {int, float} for x in feature)
+        or not all(type(x) is int for x in (*feature[:2], *feature[5:]))
     ):
         msg = (
-            f"Emission feature {strfeature!r} must be 3 to 7 integers:"
-            " (atomic_number, ion_stage, feature_wavelength[, lambdamin, lambdamax, lowerlevelindex, upperlevelindex])"
+            f"Emission feature {strfeature!r} must be 3 to 7 numbers:"
+            " (atomic_number, ion_stage, feature_wavelength[, lambdamin, lambdamax, lowerlevelindex,"
+            " upperlevelindex]), with integer atomic number, ion stage, and level indices"
         )
         raise argparse.ArgumentTypeError(msg)
 

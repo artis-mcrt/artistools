@@ -428,6 +428,11 @@ def default_plotitem_has_data(plotitems: t.Any, estimatorcolumns: Collection[str
         return True
 
     if isinstance(plotitems, (list, tuple)):
+        # initabundances/initmasses series read the input model file, not the estimators, so the element names in
+        # those items say nothing about which estimator columns exist
+        if len(plotitems) == 2 and isinstance(plotitems[0], str) and plotitems[0] in {"initabundances", "initmasses"}:
+            return True
+
         return all(default_plotitem_has_data(item, estimatorcolumns) for item in plotitems)
 
     return True
