@@ -317,6 +317,7 @@ def test_plotspherical_gif() -> None:
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+@pytest.mark.benchmark
 def test_logfiles(mockplot: t.Any) -> None:
     """Log file timings are parsed for every stage and rank, and plotted one page per timestep."""
     logfilepaths = at.logfiles.read_logfiles(modelpath_classic_3d)

@@ -213,7 +213,7 @@ def make_ionsubplot(
 
     ionpopulation = dfpopthision["n_NLTE"].sum()
     ionstr = at.get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
-    ionpopulation_fromest = estimators[timestep, modelgridindex].get(f"nnion_{ionstr}", 0.0)
+    ionpopulation_fromest = estimators.get((timestep, modelgridindex), {}).get(f"nnion_{ionstr}", 0.0)
 
     dfpopthision.loc[:, "parity"] = [
         1 if (row.level != -1 and ion_data["levels"]["levelname"].item(int(row.level)).split("[")[0][-1] == "o") else 0
@@ -392,7 +392,8 @@ def make_ionsubplot(
             markeredgecolor="black",
         )
 
-    if args.plotrefdata:
+    # reference data comparison needs the cell's estimator values, so skip it when they are absent
+    if args.plotrefdata and (timestep, modelgridindex) in estimators:
         plot_reference_data(
             ax, atomic_number, ion_stage, estimators[timestep, modelgridindex], dfpopthision, annotatelines=True
         )
@@ -623,11 +624,12 @@ def make_singletimestep_plot(
         .iter_rows()
     }
 
+    elsymbol = at.get_elsymbol(atomic_number)
+
     for mgilistindex, modelgridindex in enumerate(mgilist):
         mgifirstaxindex = mgilistindex
         mgilastaxindex = mgilistindex + len(ion_stage_list) - 1
 
-        elsymbol = at.get_elsymbol(atomic_number)
         print(
             f"Plotting NLTE pops for {modelname} modelgridindex {modelgridindex}, timestep {timestep} (t={time_days}d)"
         )

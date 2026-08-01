@@ -16,11 +16,19 @@ defaultoutputfile = "plotlogfiles_{0}.pdf"
 
 def read_logfiles(modelpath: Path | str) -> list[Path]:
     """Return the per-rank ARTIS log files of a model, including compressed ones."""
+    mpiranklist = at.get_mpiranklist(modelpath)
+    # search_subfolders=False so a rank file missing from one run folder is skipped
+    # rather than silently substituted by another folder's copy
     return [
         logfilepath
         for folderpath in at.get_runfolders(modelpath)
-        for mpirank in at.get_mpiranklist(modelpath)
-        if (logfilepath := at.firstexisting_or_none([f"output_{mpirank}-0.txt"], folder=folderpath)) is not None
+        for mpirank in mpiranklist
+        if (
+            logfilepath := at.firstexisting_or_none(
+                [f"output_{mpirank}-0.txt"], folder=folderpath, search_subfolders=False
+            )
+        )
+        is not None
     ]
 
 
@@ -66,8 +74,9 @@ def make_plot(logfiledict: dict[str, dict[int, dict[int, int]]], outputfile: Pat
     """Write one page per timestep of stage duration versus mpi rank to a multi-page PDF."""
     from matplotlib.backends.backend_pdf import PdfPages
 
-    # only timesteps recorded for every stage can be plotted together
-    timesteps = sorted(set.intersection(*(set(bytimestep) for bytimestep in logfiledict.values())))
+    # plot every timestep that has data for at least one stage, so a log format
+    # missing one stage entirely still yields plots of the others
+    timesteps = sorted(set().union(*(set(bytimestep) for bytimestep in logfiledict.values())))
     if not timesteps:
         print(f"No timing data found in the log files of {modelname}")
         return
@@ -76,6 +85,8 @@ def make_plot(logfiledict: dict[str, dict[int, dict[int, int]]], outputfile: Pat
         for timestep in timesteps:
             fig, axis = plt.subplots()
             for stage, bytimestep in logfiledict.items():
+                if timestep not in bytimestep:
+                    continue
                 mpirank, timetaken = zip(*sorted(bytimestep[timestep].items()), strict=True)
                 axis.plot(mpirank, timetaken, label=stage)
             axis.set_xlabel("mpi rank")
@@ -99,10 +110,14 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     """Plot durations from log files."""
     args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
-    for modelpath in at.normalize_path_list(args.modelpath):
+    modelpaths = at.normalize_path_list(args.modelpath)
+    outputfile = at.resolve_outputfile(args.outputfile, defaultoutputfile)
+    if len(modelpaths) > 1 and "{" not in str(outputfile):
+        print(f"WARNING: output filename {outputfile} has no {{0}} placeholder, so each model will overwrite it")
+
+    for modelpath in modelpaths:
         modelname = at.get_model_name(modelpath)
         logfiledict = read_time_taken(read_logfiles(modelpath))
-        outputfile = at.resolve_outputfile(args.outputfile, defaultoutputfile)
         make_plot(logfiledict, outputfile=str(outputfile).format(modelname), modelname=modelname)
 
 
