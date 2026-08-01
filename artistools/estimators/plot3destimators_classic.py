@@ -225,7 +225,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     readonly_mgi = get_modelgridcells_2D_slice(modeldata, modelpath)
     timestep = int(args.timestep)
-    time = at.get_timestep_times(modelpath)[timestep]
+    times = at.get_timestep_times(modelpath)
+    if not -len(times) <= timestep < len(times):
+        msg = f"timestep {timestep} is out of range: this model has {len(times)} timesteps (0-{len(times) - 1})"
+        raise IndexError(msg)
+    time = times[timestep]
     estimators = read_selected_mgi(modelpath, readonly_mgi=readonly_mgi, readonly_timestep=[timestep])
     assert estimators is not None
     grid_Te, xgrid = get_Te_vs_velocity_2D(modelpath, modeldata, vmax, estimators, readonly_mgi, timestep)
