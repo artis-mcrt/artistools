@@ -40,6 +40,17 @@ def test_nltepops_singletimestep(mockplot: t.Any) -> None:
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_nltepops_no_estimator_data(mockplot: t.Any) -> None:
+    """A cell with NLTE populations but no estimator data must still plot, using the LTE fallback temperature."""
+    with mock.patch.object(at.estimators, "read_estimators", return_value={}) as mockread:
+        at.nltepops.plot(argsraw=[], modelpath=modelpath, outputfile=outputpath, timestep=40)
+
+    assert mockread.call_count == 1  # the empty-estimators path was really exercised
+    # the same series as the with-estimators case are plotted, from the T_e = T_R = args.exc_temperature fallback
+    assert len(mockplot.call_args_list) == 15
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
 def test_nltepops_versus_velocity(mockplot: t.Any) -> None:
     at.nltepops.plot(
