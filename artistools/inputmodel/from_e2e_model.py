@@ -1012,7 +1012,9 @@ def merge_neighbour_cells(
     return dfmodel_out, dfelabundances, modelmeta_out
 
 
-def apply_density_perturbations(df_model: pl.DataFrame, vmax: float, pert_model: tuple[float | str]) -> pl.DataFrame:
+def apply_density_perturbations(
+    df_model: pl.DataFrame, vmax: float, pert_model: tuple[float | str, ...]
+) -> pl.DataFrame:
     n_cells = len(df_model)
     # infer cubic grid size from number of cells; this function assumes an N_x x N_x x N_x grid
     N_x = round(n_cells ** (1 / 3))
@@ -1024,8 +1026,8 @@ def apply_density_perturbations(df_model: pl.DataFrame, vmax: float, pert_model:
     Delta_v = 2 * vmax / N_x
     if pert_model[0] == "sinusoidal":
         assert len(pert_model) == 3, "Incomplete data provided for sinusoidal perturbations"
-        A = pert_model[1]  # relative amplitude
-        d = pert_model[2]  # fraction of c in velocity space
+        A = float(pert_model[1])  # relative amplitude
+        d = float(pert_model[2])  # fraction of c in velocity space
 
         # apply sinusoidal density perturbations
         x = np.linspace(-vmax + Delta_v / 2, vmax - Delta_v / 2, N_x)
@@ -1048,7 +1050,7 @@ def apply_density_perturbations(df_model: pl.DataFrame, vmax: float, pert_model:
     elif pert_model[0] == "random":
         # apply random perturbations to every 2D x-y slice. Random perturbation by default on each grid cell, i.e. no d-parameter as in the sinusoidal mode.
         assert len(pert_model) == 2, "Incomplete data provided for random perturbations"
-        delta_max = pert_model[1]
+        delta_max = float(pert_model[1])
         rng = np.random.default_rng()
         epsilon = rng.uniform(-delta_max, delta_max, size=pert_array.shape)
         pert_array = 1 + epsilon
