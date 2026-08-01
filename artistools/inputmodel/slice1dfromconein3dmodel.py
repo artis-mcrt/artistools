@@ -214,16 +214,14 @@ def make_1d_profile(args: argparse.Namespace, logprint: Callable[..., None]) -> 
 
         # Concatenate all bin results into a single DataFrame
         slice1d = pd.concat(cone1d_df, ignore_index=True)
-        slice1d["r_bin_max_boundary"] = slice1d["r_bin_max_boundary"].apply(
-            lambda x: x / (args.t_model * day_to_s * 1e5)
-        )
+        slice1d["r_bin_max_boundary"] /= args.t_model * day_to_s * 1e5
         slice1d = slice1d.rename(columns={"r_bin_max_boundary": "vel_r_max_kmps"})
 
     else:  # make from along chosen axis
         logprint("from along the axis")
         slice1d = get_profile_along_axis(args)
-        slice1d.loc[:, f"pos_{args.sliceaxis}_min"] = slice1d[f"pos_{args.sliceaxis}_min"].apply(
-            lambda x: x / (args.t_model * day_to_s * 1e5)
+        slice1d.loc[:, f"pos_{args.sliceaxis}_min"] = slice1d[f"pos_{args.sliceaxis}_min"] / (
+            args.t_model * day_to_s * 1e5
         )  # Convert positions to velocities
         slice1d = slice1d.rename(columns={f"pos_{args.sliceaxis}_min": "vel_r_max_kmps"})
         # Convert position to velocity
@@ -236,7 +234,8 @@ def make_1d_profile(args: argparse.Namespace, logprint: Callable[..., None]) -> 
         logprint("Scaling density by a factor of:", args.rhoscale)
         slice1d.loc[:, "rho"] *= args.rhoscale
 
-    slice1d.loc[:, "rho"] = slice1d["rho"].apply(lambda x: np.log10(x) if x != 0 else -100)
+    nonzero_rho = slice1d["rho"] != 0
+    slice1d.loc[:, "rho"] = np.where(nonzero_rho, np.log10(slice1d["rho"].where(nonzero_rho, 1.0)), -100)
     # slice1d = slice1d[slice1d['rho_model'] != -100]  # Remove empty cells
     # TODO: fix this, -100 probably breaks things if it's not one of the outer cells that gets chopped
     slice1d = slice1d.rename(columns={"rho": "logrho"})
@@ -316,9 +315,9 @@ def make_plot(args: argparse.Namespace, logprint: Callable[..., None]) -> None:
     # print(cone['rho_model'])
 
     # set up for big model. For scaled down artis input model switch x and z
-    x = cone["pos_z_min"].apply(lambda x: x / 1e5 / (args.t_model * day_to_s)) / 1e3
-    y = cone["pos_y_min"].apply(lambda x: x / 1e5 / (args.t_model * day_to_s)) / 1e3
-    z = cone["pos_x_min"].apply(lambda x: x / 1e5 / (args.t_model * day_to_s)) / 1e3
+    x = cone["pos_z_min"] / 1e5 / (args.t_model * day_to_s) / 1e3
+    y = cone["pos_y_min"] / 1e5 / (args.t_model * day_to_s) / 1e3
+    z = cone["pos_x_min"] / 1e5 / (args.t_model * day_to_s) / 1e3
 
     _surf = ax.scatter3D(x, y, z, c=-cone["fni"], cmap=plt.get_cmap("viridis"))  # pyright: ignore[reportArgumentType]
 
