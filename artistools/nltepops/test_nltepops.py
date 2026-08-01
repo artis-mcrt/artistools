@@ -1,5 +1,6 @@
 import math
 import typing as t
+from pathlib import Path
 from unittest import mock
 
 import matplotlib.axes as mplax
@@ -39,15 +40,59 @@ def test_nltepops_singletimestep(mockplot: t.Any) -> None:
         assert np.isclose(yarr.std(), expected_std, rtol=1e-4)
 
 
-@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_nltepops_no_estimator_data(mockplot: t.Any) -> None:
-    """A cell with NLTE populations but no estimator data must still plot, using the LTE fallback temperature."""
-    with mock.patch.object(at.estimators, "read_estimators", return_value={}) as mockread:
-        at.nltepops.plot(argsraw=[], modelpath=modelpath, outputfile=outputpath, timestep=40)
+def make_model_without_plotted_cell_estimators(tmp_path: Path) -> None:
+    """Fabricate a model whose estimator files cover timestep 40 but omit the plotted cell 0.
 
-    assert mockread.call_count == 1  # the empty-estimators path was really exercised
-    # the same series as the with-estimators case are plotted, from the T_e = T_R = args.exc_temperature fallback
+    The test model's files are symlinked, except that model.txt gains a second cell and the
+    estimator file's timestep 40 block is reassigned to that cell, so the run folder is matched
+    for timestep 40 yet read_estimators finds no (40, 0) entry.
+    """
+    for filename in (
+        "input.txt",
+        "adata.txt.xz",
+        "compositiondata.txt",
+        "transitiondata.txt",
+        "phixsdata_v2.txt.xz",
+        "nlte_0000.out.xz",
+    ):
+        (tmp_path / filename).symlink_to(modelpath / filename)
+
+    _npts_line, t_model_line, cellrow = (modelpath / "model.txt").read_text(encoding="utf-8").splitlines()
+    cellrow2 = "     2   16000.  " + cellrow.split(maxsplit=2)[2]
+    (tmp_path / "model.txt").write_text(f"2\n{t_model_line}\n{cellrow}\n{cellrow2}\n", encoding="utf-8")
+
+    estlines = (modelpath / "estimators_0000.out").read_text(encoding="utf-8").splitlines(keepends=True)
+    (tmp_path / "estimators_0000.out").write_text(
+        "".join(
+            line.replace("modelgridindex 0", "modelgridindex 1", 1) if line.startswith("timestep 40 ") else line
+            for line in estlines
+        ),
+        encoding="utf-8",
+    )
+
+
+@mock.patch.object(mplax.Axes, "set_title", side_effect=mplax.Axes.set_title, autospec=True)
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_nltepops_no_estimator_data(
+    mockplot: t.Any, mocktitle: t.Any, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A cell with NLTE populations but no estimator data must still plot, using the LTE fallback temperature."""
+    make_model_without_plotted_cell_estimators(tmp_path)
+
+    at.nltepops.plot(
+        argsraw=[], modelpath=tmp_path, outputfile=tmp_path, timestep=40, exc_temperature=5000.0, plotrefdata=True
+    )
+
+    assert "WARNING: No estimator data" in capsys.readouterr().out
+    titles = [callargs[0][1] for callargs in mocktitle.call_args_list]
+    assert any("Te=5000 K" in ti and "nne=nan" in ti and "T$_R$=5000 K" in ti and "W=nan" in ti for ti in titles)
+
+    # the same series as the with-estimators case are plotted, and the NLTE populations are unaffected
     assert len(mockplot.call_args_list) == 15
+    _, yarr = get_plot_xy(mockplot.call_args_list[2])
+    assert np.isclose(yarr[0], 5.31208, rtol=1e-4)
+
+    assert any(tmp_path.glob("plotnlte_Fe_cell000_ts40_*.pdf"))
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
