@@ -800,7 +800,7 @@ def plot_subplot(
             sameylabel = False
             break
 
-    remaining_plotitems = []
+    remaining_plotitems: list[t.Any] = []
     ymin, ymax = None, None
     for plotitem in plotitems:
         if isinstance(plotitem, str | pl.Expr):
