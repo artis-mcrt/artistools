@@ -78,6 +78,9 @@ subcommandtree: CommandTree = {
             "inputmodel.describeinputmodel",
             helptext="Describe an ARTIS input model, such as the mass, velocity structure, and abundances.",
         ),
+        "energyfiles": CommandSpec(
+            "inputmodel.energyinputfiles", helptext="Plot and inspect the ARTIS energy input files."
+        ),
         "from_e2e": CommandSpec(
             "inputmodel.from_e2e_model",
             helptext="Prepare data for an ARTIS kilonova calculation from end-to-end hydro models.",
@@ -101,6 +104,9 @@ subcommandtree: CommandTree = {
         ),
         "maptogrid": CommandSpec(
             "inputmodel.maptogrid", helptext="Map tracer particle trajectories to a Cartesian grid."
+        ),
+        "opacityfile": CommandSpec(
+            "inputmodel.opacityinputfile", helptext="Write or inspect an ARTIS grey opacity.txt."
         ),
         "plotinitialabundances": CommandSpec(
             "inputmodel.plotinitialabundances",
