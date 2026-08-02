@@ -617,11 +617,16 @@ def get_bflist(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame
     except pl.exceptions.NoDataError:
         dfboundfree = pl.DataFrame(schema=schema).lazy()
 
+    # elementindex is the row position in compositiondata; replace_strict keeps the original behaviour of
+    # failing loudly on an index that compositiondata does not cover
+    z_of_elementindex = dict(enumerate(compositiondata["Z"]))
+    lowermost_ion_stage_of_elementindex = dict(enumerate(compositiondata["lowermost_ion_stage"]))
+
     dfboundfree = dfboundfree.with_columns(
-        atomic_number=pl.col("elementindex").map_elements(compositiondata["Z"].item, return_dtype=pl.Int32),
+        atomic_number=pl.col("elementindex").replace_strict(z_of_elementindex, return_dtype=pl.Int32),
         ion_stage=(
             pl.col("ionindex")
-            + pl.col("elementindex").map_elements(compositiondata["lowermost_ion_stage"].item, return_dtype=pl.Int32)
+            + pl.col("elementindex").replace_strict(lowermost_ion_stage_of_elementindex, return_dtype=pl.Int32)
         ),
     )
 
