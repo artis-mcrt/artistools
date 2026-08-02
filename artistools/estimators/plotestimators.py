@@ -798,12 +798,7 @@ def get_xlist(
         estimators = (
             estimators
             .with_columns(
-                pl
-                .col("xvalue")
-                .cut(breaks=list(xbinedges), labels=[str(x) for x in range(-1, len(xbinedges))])
-                .cast(pl.String)
-                .cast(pl.Int32)
-                .alias("xbinindex")
+                (pl.col("xvalue").cut(breaks=list(xbinedges)).to_physical().cast(pl.Int32) - 1).alias("xbinindex")
             )
             .filter(pl.col("xbinindex").is_between(0, len(xmids) - 1, closed="both"))
             .join(pl.LazyFrame({"xvalue_binned": xmids}).with_row_index("xbinindex"), on="xbinindex", how="left")

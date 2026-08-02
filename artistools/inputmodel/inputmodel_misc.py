@@ -1178,26 +1178,16 @@ def dimension_reduce_model(
     # "r" is the cylindrical radius in 2D, or the spherical radius in 1D
     vel_r_bins = [vmax * n / ncoordgridr for n in range(ncoordgridr + 1)]
 
+    col_vel_r = pl.col("vel_rcyl_mid") if outputdimensions == 2 else pl.col("vel_r_mid")
     dfmodel_out = dfmodel_out.with_columns(
-        (
-            (pl.col("vel_rcyl_mid") if outputdimensions == 2 else pl.col("vel_r_mid"))
-            .cut(breaks=vel_r_bins, labels=[str(x) for x in range(-1, len(vel_r_bins))])
-            .cast(pl.String)
-            .cast(pl.Int32)
-        ).alias("out_n_r")
+        (col_vel_r.cut(breaks=vel_r_bins).to_physical().cast(pl.Int32) - 1).alias("out_n_r")
     ).filter(pl.col("out_n_r").is_between(0, ncoordgridr - 1))
 
     if outputdimensions == 2:
         dfmodel_out = (
             dfmodel_out
             .with_columns(
-                (
-                    pl
-                    .col("vel_z_mid")
-                    .cut(breaks=vel_z_bins, labels=[str(x) for x in range(-1, len(vel_z_bins))])
-                    .cast(pl.String)
-                    .cast(pl.Int32)
-                ).alias("out_n_z")
+                (pl.col("vel_z_mid").cut(breaks=vel_z_bins).to_physical().cast(pl.Int32) - 1).alias("out_n_z")
             )
             .filter(
                 pl.col("out_n_r").is_between(0, ncoordgridr - 1) & (pl.col("out_n_z").is_between(0, ncoordgridz - 1))
