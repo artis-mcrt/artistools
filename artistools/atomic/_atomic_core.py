@@ -605,8 +605,14 @@ def get_bflist(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame
         "lowerlevel": pl.Int32,
         "upperionlevel": pl.Int32,
     }
-    try:
-        dfboundfree = pl.scan_csv(
+    # a run with no bound-free transitions writes only the count line, and scan_csv would raise
+    # NoDataError at whatever collect() eventually consumes this frame, far from the cause here
+    with zopen(bflistpath) as fbflist:
+        fbflist.readline()  # the number of transitions
+        hastransitions = bool(fbflist.readline().strip())
+
+    dfboundfree = (
+        pl.scan_csv(
             bflistpath,
             skip_rows=1,
             has_header=False,
@@ -614,8 +620,9 @@ def get_bflist(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame
             new_columns=["bfindex", "elementindex", "ionindex", "lowerlevel", "upperionlevel"],
             schema_overrides=schema,
         )
-    except pl.exceptions.NoDataError:
-        dfboundfree = pl.DataFrame(schema=schema).lazy()
+        if hastransitions
+        else pl.LazyFrame(schema=schema)
+    )
 
     # elementindex is the row position in compositiondata; replace_strict keeps the original behaviour of
     # failing loudly on an index that compositiondata does not cover
