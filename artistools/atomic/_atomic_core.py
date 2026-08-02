@@ -638,16 +638,6 @@ def get_bflist(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame
     return dfboundfree
 
 
-class LineTuple(t.NamedTuple):
-    """Named tuple for a line in linestat.out."""
-
-    lambda_angstroms: float
-    atomic_number: int
-    ion_stage: int
-    upperlevelindex: int
-    lowerlevelindex: int
-
-
 def read_linestatfile(
     filepath: Path | str,
 ) -> tuple[

@@ -16,6 +16,5 @@ from artistools.atomic._atomic_core import get_levels_pandas as get_levels_panda
 from artistools.atomic._atomic_core import get_linelist_pldf as get_linelist_pldf
 from artistools.atomic._atomic_core import get_nuclides as get_nuclides
 from artistools.atomic._atomic_core import get_z_a_nucname as get_z_a_nucname
-from artistools.atomic._atomic_core import LineTuple as LineTuple
 from artistools.atomic._atomic_core import read_linestatfile as read_linestatfile
 from artistools.atomic._atomic_core import roman_numerals as roman_numerals

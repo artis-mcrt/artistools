@@ -61,7 +61,6 @@ from artistools.atomic import get_ionstring as get_ionstring
 from artistools.atomic import get_linelist_pldf as get_linelist_pldf
 from artistools.atomic import get_nuclides as get_nuclides
 from artistools.atomic import get_z_a_nucname as get_z_a_nucname
-from artistools.atomic import LineTuple as LineTuple
 from artistools.atomic import read_linestatfile as read_linestatfile
 from artistools.atomic import roman_numerals as roman_numerals
 from artistools.commands import addargs as addargs
