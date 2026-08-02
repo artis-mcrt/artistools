@@ -198,6 +198,7 @@ project-excludes = [
     '**/dist/**',
     '**/target/**',
     '**/.venv/**',
+    '**/rd_cmfgen.py',
 ]
 python-interpreter-path = ".venv/bin/python3"
 
@@ -220,6 +221,7 @@ exclude = [
     'dist',
     'target',
     '.venv',
+    '**/rd_cmfgen.py',
 ]
 reportAny = false
 reportCallInDefaultInitializer = "error"
@@ -266,6 +268,10 @@ enable_all = true
 python_version = "3.13"
 sort_by = "error"
 
+[[tool.refurb.amend]]
+path = "./artistools/inputmodel/fromcmfgen/rd_cmfgen.py"
+ignore = ["FURB108"]
+
 # `x == []` is an intentional exact-equality assertion in these tests: `not x` would also pass
 # if the function under test regressed to returning None
 [[tool.refurb.amend]]
@@ -279,7 +285,10 @@ ignore = ["FURB115"]
 [tool.ruff]
 line-length = 120
 fix = true
-extend-exclude = [".venv/**"]
+extend-exclude = [
+    "artistools/inputmodel/fromcmfgen/rd_cmfgen.py",
+    ".venv/**",
+]
 preview = true
 required-version = ">=0.16.1"
 
@@ -337,8 +346,10 @@ unfixable = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+"rd_cmfgen.py" = ["blanket-noqa"]
 "artistools/commands.py" = ["suspicious-subprocess-import", "start-process-with-partial-path"]
 "artistools/test_artistools.py" = ["suspicious-subprocess-import"]
+"artistools/spectra/sampleblackbodyfrompacket_tr.py" = ["suspicious-non-cryptographic-random-usage"]
 "set_version.py" = ["suspicious-subprocess-import", "start-process-with-partial-path"]
 
 [tool.ruff.lint.flake8-import-conventions.extend-aliases]
@@ -367,7 +378,7 @@ order-by-type = false
 unresolved-import = "ignore"
 
 [tool.ty.src]
-exclude = [".venv/**"]
+exclude = ["artistools/inputmodel/fromcmfgen/rd_cmfgen.py", ".venv/**"]
 
 [tool.uv.sources]
 # pyarrow = { index = "scientific-python-nightly" }
