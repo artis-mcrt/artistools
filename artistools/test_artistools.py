@@ -493,7 +493,7 @@ def test_make_vpkt_input_default_contents() -> None:
 
 def test_make_vpkt_input_optional_blocks() -> None:
     """The opacity exclusion and custom wavelength blocks must be prefixed by their own counts."""
-    contents = at.make_vpkt_input.format_vpkt_input(
+    config = at.make_vpkt_input.VpktConfig(
         directions_costheta_phi=[(-1, 0), (0.5, 90)],
         opacityexclusions=[0, -1, 26],
         custom_lambda_ranges=[(3500, 6000), (10000, 12000)],
@@ -501,7 +501,8 @@ def test_make_vpkt_input_optional_blocks() -> None:
         vgrid_on=True,
         override_thickcell_tau=False,
         tau_max_vpkt=7.5,
-    ).splitlines()
+    )
+    contents = at.make_vpkt_input.format_vpkt_input(config).splitlines()
 
     assert contents[0] == "2"
     assert contents[1] == "-1 0.5"
@@ -514,15 +515,95 @@ def test_make_vpkt_input_optional_blocks() -> None:
     assert contents[8] == "1"
 
 
+def test_make_vpkt_input_roundtrip() -> None:
+    """Parsing a written file must recover exactly the settings it was written from."""
+    for config in (
+        at.make_vpkt_input.VpktConfig(),
+        at.make_vpkt_input.VpktConfig(
+            directions_costheta_phi=[(-1, 0), (0.5, 90)],
+            opacityexclusions=[0, -1, 26],
+            custom_lambda_ranges=[(3500, 6000), (10000, 12000)],
+            override_tminmax=True,
+            vgrid_on=True,
+            override_thickcell_tau=False,
+            tau_max_vpkt=7.5,
+            vspec_tmin_in_days=1.25,
+        ),
+    ):
+        assert at.make_vpkt_input.parse_vpkt_input(at.make_vpkt_input.format_vpkt_input(config)) == config
+
+
+def test_make_vpkt_input_rejects_inconsistent_file() -> None:
+    """A declared count that disagrees with the values listed must be reported, not silently accepted."""
+    contents = at.make_vpkt_input.format_vpkt_input()
+    truncated = "\n".join(contents.splitlines()[:5])
+    with pytest.raises(ValueError, match="at least 11 lines"):
+        at.make_vpkt_input.parse_vpkt_input(truncated)
+
+    badcount = contents.replace("3\n1 0 -1", "2\n1 0 -1", 1)
+    with pytest.raises(ValueError, match="viewing directions"):
+        at.make_vpkt_input.parse_vpkt_input(badcount)
+
+
 def test_make_vpkt_input_cli_writes_file(tmp_path: Path) -> None:
     """The subcommand must honour -directions, including a negative leading costheta, and -outputfile."""
     outfile = tmp_path / "vpkt.txt"
-    at.make_vpkt_input.main(argsraw=["-directions=-1,0 1,0", "-o", str(outfile)])
+    at.make_vpkt_input.main(argsraw=["-directions=-1,0 1,0", "-o", str(outfile), "--non-interactive"])
 
     lines = outfile.read_text(encoding="utf-8").splitlines()
     assert lines[0] == "2"
     assert lines[1] == "-1 1"
     assert lines[2] == "0 0"
+
+
+def test_make_vpkt_input_cli_keeps_existing_settings(tmp_path: Path) -> None:
+    """Rerunning on an existing file must preserve settings that were not given on the command line."""
+    outfile = tmp_path / "vpkt.txt"
+    at.make_vpkt_input.main(argsraw=["-tau-max", "7.5", "-o", str(outfile), "--non-interactive"])
+    assert at.make_vpkt_input.parse_vpkt_input(outfile.read_text(encoding="utf-8")).tau_max_vpkt == 7.5
+
+    at.make_vpkt_input.main(argsraw=["-vspec-tmax", "9.0", "-o", str(outfile), "--non-interactive"])
+    config = at.make_vpkt_input.parse_vpkt_input(outfile.read_text(encoding="utf-8"))
+    assert config.vspec_tmax_in_days == 9.0
+    assert config.tau_max_vpkt == 7.5, "the tau-max from the first run must survive the second"
+
+
+def test_make_vpkt_input_interactive_edit() -> None:
+    """An empty reply keeps the current value, and an invalid reply is asked again."""
+    replies = iter([
+        "",  # keep the default viewing directions
+        "26 -1",  # set opacity choices
+        "maybe",  # rejected, so this question repeats
+        "yes",  # override_tminmax
+        "",  # keep vspec_tmin
+        "3.5",  # vspec_tmax
+        *[""] * 9,  # keep every remaining setting
+    ])
+    asked: list[str] = []
+
+    def fakeprompt(text: str) -> str:
+        asked.append(text)
+        return next(replies)
+
+    config = at.make_vpkt_input.edit_config_interactively(at.make_vpkt_input.VpktConfig(), promptfunc=fakeprompt)
+
+    assert config.directions_costheta_phi == [(1.0, 0.0), (0.0, 0.0), (-1.0, 0.0)]
+    assert config.opacityexclusions == [26, -1]
+    assert config.override_tminmax
+    assert config.vspec_tmin_in_days == 0.2
+    assert config.vspec_tmax_in_days == 3.5
+    # the rejected reply must have caused the same question to be asked twice
+    assert sum(question.startswith("Restrict virtual packets") for question in asked) == 2
+    assert "[1,0 0,0 -1,0]" in asked[0], "the prompt must show the current value"
+
+
+def test_make_vpkt_input_interactive_clears_list() -> None:
+    """A single '-' must clear a list-valued setting."""
+    config = at.make_vpkt_input.VpktConfig(opacityexclusions=[26])
+    replies = iter(["", "-", *[""] * 12])
+    config = at.make_vpkt_input.edit_config_interactively(config, promptfunc=lambda _: next(replies))
+
+    assert config.opacityexclusions == []
 
 
 def test_make_vpkt_input_rejects_bad_arguments() -> None:
@@ -533,6 +614,10 @@ def test_make_vpkt_input_rejects_bad_arguments() -> None:
     for badrange in ("3500", "3500,6000,7000", "blue,red", "6000,3500"):
         with pytest.raises(argparse.ArgumentTypeError):
             at.make_vpkt_input.parse_lambda_range(badrange)
+
+    for badbool in ("maybe", "", "2"):
+        with pytest.raises(argparse.ArgumentTypeError):
+            at.make_vpkt_input.parse_bool(badbool)
 
 
 def test_makelist() -> None:
