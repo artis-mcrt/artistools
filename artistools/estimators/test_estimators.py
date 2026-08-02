@@ -507,3 +507,64 @@ def test_estimator_levelpopulation_dn_on_dvel(mockplot: t.Any) -> None:
     yvalues = np.array(mockplot.call_args_list[0][0][2], dtype=float)
     assert np.all(np.isfinite(yvalues))
     assert np.all(yvalues >= 0.0)
+
+
+def test_get_averageexcitation() -> None:
+    """The average excitation energy must be the population-weighted mean level energy of the ion."""
+    dfpops = at.nltepops.read_files(modelpath).filter((pl.col("Z") == 26) & (pl.col("ion_stage") == 2))
+    timestep = min(dfpops["timestep"].to_list())
+    dftexc = pl.LazyFrame({"timestep": [timestep], "modelgridindex": [0], "T_exc": [6000.0]})
+
+    dfavgexc = at.estimators.get_averageexcitation(modelpath, 26, 2, dftexc).collect()
+    assert len(dfavgexc) == 1
+
+    avgexc = dfavgexc["averageexcitation"].item()
+    ionlevels = (
+        at.atomic.get_levels(modelpath).filter((pl.col("Z") == 26) & (pl.col("ion_stage") == 2))["levels"].item()
+    )
+    assert ionlevels is not None
+
+    # the mean must lie between the lowest and highest level energies of the ion
+    dfts = dfpops.filter((pl.col("timestep") == timestep) & (pl.col("modelgridindex") == 0))
+    occupiedlevels = dfts.filter(pl.col("level") >= 0)["level"].to_list()
+    energiesoccupied = ionlevels.filter(pl.col("levelindex").is_in(occupiedlevels))
+    assert energiesoccupied["energy_ev"].min() <= avgexc <= energiesoccupied["energy_ev"].max()
+
+    # weighting by hand over the resolved levels only must bracket the value, which also includes the superlevel
+    dfresolved = dfts.filter(pl.col("level") >= 0).join(
+        ionlevels.select(level=pl.col("levelindex").cast(pl.Int64), energy_ev="energy_ev"), on="level", how="inner"
+    )
+    avgexc_resolvedonly = float((dfresolved["energy_ev"] * dfresolved["n_NLTE"]).sum()) / float(dfts["n_NLTE"].sum())
+    assert avgexc >= avgexc_resolvedonly, "adding the superlevel population can only raise the mean energy"
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_estimator_averageexcitation_plot(mockplot: t.Any) -> None:
+    """The averageexcitation plot item must draw a finite series for each requested ion."""
+    funcoutpath = outputpath / "test_estimator_averageexcitation"
+    funcoutpath.mkdir(exist_ok=True, parents=True)
+
+    at.estimators.plot(
+        argsraw=[],
+        modelpath=modelpath,
+        plotlist=[[["averageexcitation", ["Fe II", "Fe III"]]]],
+        timedays=300,
+        outputfile=funcoutpath,
+    )
+
+    assert len(mockplot.call_args_list) >= 2
+    for call in mockplot.call_args_list:
+        yvalues = np.array(call[0][2], dtype=float)
+        assert np.all(np.isfinite(yvalues))
+        assert np.all(yvalues >= 0.0), "an excitation energy above the ground state cannot be negative"
+
+
+def test_averageexcitation_plotitem_needs_nlte_files(tmp_path: Path) -> None:
+    """The default plot list must drop averageexcitation for a model with no NLTE population files."""
+    from artistools.estimators.plotestimators import default_plotitem_has_data
+
+    plotitem = [["averageexcitation", ["Fe II"]]]
+    estimatorcolumns = ["timestep", "modelgridindex", "Te", "nnelement_Fe"]
+
+    assert default_plotitem_has_data(plotitem, estimatorcolumns, modelpath)
+    assert not default_plotitem_has_data(plotitem, estimatorcolumns, tmp_path)
