@@ -1,5 +1,6 @@
 import argparse
 import hashlib
+import json
 import math
 import shutil
 import typing as t
@@ -51,6 +52,46 @@ def test_get_modeldata_3d() -> None:
 
     lzdfmodel, modelmeta = at.get_modeldata(modelpath=modelpath_3d, derived_cols=["mass_g"])
     assert math.isclose(lzdfmodel.select(pl.col("mass_g").sum()).collect().item(), 2.7861855e33, rel_tol=1e-05)
+
+
+@pytest.mark.parametrize("cachecontents", [b"", b"not a parquet file", b"PAR1" + bytes(64)])
+def test_get_modeldata_replaces_unreadable_cache(tmp_path: Path, cachecontents: bytes) -> None:
+    """A damaged parquet cache must be deleted and rebuilt, not raise from read_parquet_metadata."""
+    shutil.copy(modelpath / "model.txt", tmp_path)
+    cachefilepath = tmp_path / "model.txt.parquet.tmp"
+    cachefilepath.write_bytes(cachecontents)
+
+    lzdfmodel, modelmeta = at.get_modeldata(modelpath=tmp_path)
+    assert modelmeta["npts_model"] == 1
+
+    # the rebuilt cache is written even though the text model is far under the 2 MiB threshold
+    assert cachefilepath.is_file()
+    pltest.assert_frame_equal(lzdfmodel.collect(), at.get_modeldata(modelpath=tmp_path)[0].collect())
+
+
+def test_get_modeldata_rejects_cache_without_metadata(tmp_path: Path) -> None:
+    """A readable parquet file that is missing the artistools metadata keys must not be trusted."""
+    shutil.copy(modelpath / "model.txt", tmp_path)
+    cachefilepath = tmp_path / "model.txt.parquet.tmp"
+    pl.DataFrame({"inputcellid": [1]}).write_parquet(cachefilepath)
+
+    _, modelmeta = at.get_modeldata(modelpath=tmp_path)
+    assert modelmeta["npts_model"] == 1
+    assert "modelmeta_json" in pl.read_parquet_metadata(cachefilepath)
+
+
+def test_get_modeldata_refreshes_stale_cache(tmp_path: Path) -> None:
+    """A cache whose recorded text-source mtime no longer matches must be rewritten from the text source."""
+    shutil.copy(modelpath / "model.txt", tmp_path)
+    textfilepath = tmp_path / "model.txt"
+    cachefilepath = tmp_path / "model.txt.parquet.tmp"
+    lzdfmodel, modelmeta = at.get_modeldata(modelpath=tmp_path)
+    at.write_parquet_atomic(
+        lzdfmodel.collect(), cachefilepath, metadata={"textsource_mtime": "0", "modelmeta_json": json.dumps(modelmeta)}
+    )
+
+    assert at.get_modeldata(modelpath=tmp_path)[1]["npts_model"] == 1
+    assert pl.read_parquet_metadata(cachefilepath)["textsource_mtime"] == str(textfilepath.stat().st_mtime)
 
 
 def test_get_cell_angle() -> None:
