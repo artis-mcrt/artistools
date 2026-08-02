@@ -72,10 +72,6 @@ jobs:
               if: always()
               run: uv run -- mypy
 
-            - name: Run pylint
-              if: always()
-              run: uv run -- pylint artistools
-
             # refurb runs mypy internally, which hits an internal error walking the pyvista
             # sources, so keep it to this project's own files
             - name: Run refurb

@@ -61,7 +61,6 @@ dev = [
     "mypy>=2.3.0",
     "pandas-stubs>=3.0.3.260530",
     "prek>=0.4.9",
-    "pylint>=4.0.2",
     "pynonthermal>=2026.4.27",
     "pyrefly>=1.2.0",
     "pytest>=9.0.3",
@@ -187,47 +186,6 @@ warn_return_any = true
 fixed_format_cache = true
 python_version = '3.13'
 native_parser = true
-
-[tool.pylint.'MESSAGES CONTROL']
-max-line-length = 120
-disable = """
-    broad-exception-caught,
-    cell-var-from-loop,
-    fixme,
-    missing-function-docstring,
-    missing-module-docstring,
-    import-outside-toplevel,
-    invalid-name,
-    line-too-long,
-    no-member,
-    not-an-iterable,
-    not-callable,
-    not-context-manager,
-    possibly-used-before-assignment,
-    protected-access,
-    redefined-outer-name,
-    too-many-arguments,
-    too-many-branches,
-    too-many-function-args,
-    too-many-lines,
-    too-many-locals,
-    too-many-nested-blocks,
-    too-many-statements,
-    unbalanced-tuple-unpacking,
-    unspecified-encoding,
-    unsupported-assignment-operation,
-    unused-argument,
-    C,
-    R,
-    assignment-from-no-return,
-    unexpected-keyword-arg,
-    unsubscriptable-object,
-    used-before-assignment,
-"""
-
-[tool.pylint.typecheck]
-ignored-modules = ["astropy", "extinction", "pyvista"]
-unsafe-load-any-extension = true
 
 [tool.pyrefly]
 preset = "strict"
