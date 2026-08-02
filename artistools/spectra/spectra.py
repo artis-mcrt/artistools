@@ -608,7 +608,9 @@ def read_spec(modelpath: Path | str, gamma: bool = False) -> pl.LazyFrame:
     )
 
 
-@lru_cache(maxsize=16)
+# maxsize is small because, unlike read_spec above, this reads eagerly and every cached entry
+# retains a whole spec_res file: the per-dirbin frames are all slices of one parsed frame
+@lru_cache(maxsize=2)
 def read_spec_res(modelpath: Path | str, gamma: bool = False) -> dict[int, pl.LazyFrame]:
     """Return a dict of LazyFrames of time-series spectra keyed to the viewing direction bin.
 

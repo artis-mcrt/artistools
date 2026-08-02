@@ -152,16 +152,17 @@ def get_line_luminosities_from_pops(
 
     # timearrayplusend = np.concatenate([arr_tstart, [arr_tend[-1]]])
 
+    # read_files is uncached, so read every rank's nlte output once rather than once per feature
+    dfnltepops_allions = at.nltepops.read_files(modelpath)
+
     dictlcdata = {"time": arr_tmid}
     for feature in emfeatures:
         lumdata = np.zeros_like(arr_tmid, dtype=float)
 
-        dfnltepops = (
-            at.nltepops
-            .read_files(modelpath)
-            .filter(pl.col("Z") == feature.atomic_number)
-            .filter(pl.col("ion_stage") == feature.ion_stage)
-            .filter(pl.col("level").is_in(feature.upperlevelindices))
+        dfnltepops = dfnltepops_allions.filter(
+            (pl.col("Z") == feature.atomic_number)
+            & (pl.col("ion_stage") == feature.ion_stage)
+            & pl.col("level").is_in(feature.upperlevelindices)
         )
 
         ion = adata.query("Z == @feature.atomic_number and ion_stage == @feature.ion_stage").iloc[0]

@@ -212,14 +212,10 @@ def get_costhetabin_phibin_labels(usedegrees: bool) -> tuple[list[str], list[str
 def get_opacity_condition_label(z_exclude: int) -> str:
     from artistools.atomic._atomic_core import get_elsymbol
 
-    if z_exclude == 0:
-        # normal case: all opacities sources included
-        return ""
-    if z_exclude == -1:
-        return "no-bb"
-    if z_exclude == -2:
-        return "no-bf"
-    return "no-es" if z_exclude == -3 else f"no-{get_elsymbol(z_exclude)}"
+    # codes match the opacityexclusions handling in read_vpktparameterfile() and trace_vpkt_direction()
+    labels = {0: "", -1: "no-bb", -2: "no-bf", -3: "no-ff", -4: "no-es"}
+
+    return labels[z_exclude] if z_exclude in labels else f"no-{get_elsymbol(z_exclude)}"
 
 
 def get_vspec_dir_labels(modelpath: str | Path, usedegrees: bool = False) -> dict[int, str]:

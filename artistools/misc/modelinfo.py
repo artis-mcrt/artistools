@@ -18,37 +18,24 @@ from artistools.misc.fileio import zopenpl
 
 
 def get_vpkt_config(modelpath: Path | str) -> dict[str, t.Any]:
-    filename = Path(modelpath, "vpkt.txt")
+    """Return the virtual packet settings from a model's vpkt.txt."""
+    from artistools.make_vpkt_input import parse_vpkt_input
 
-    with filename.open(encoding="utf-8") as vpkt_txt:
-        vpkt_config: dict[str, t.Any] = {
-            "nobsdirections": int(vpkt_txt.readline()),
-            "cos_theta": [float(x) for x in vpkt_txt.readline().split()],
-            "phi": [float(x) for x in vpkt_txt.readline().split()],
-        }
-        assert isinstance(vpkt_config["cos_theta"], t.Sized)
-        assert vpkt_config["nobsdirections"] == len(vpkt_config["cos_theta"])
-        assert isinstance(vpkt_config["phi"], t.Sized)
-        assert len(vpkt_config["cos_theta"]) == len(vpkt_config["phi"])
+    config = parse_vpkt_input(Path(modelpath, "vpkt.txt").read_text(encoding="utf-8"))
 
-        speclistline = vpkt_txt.readline().split()
-        nspecflag = int(speclistline[0])
+    # ARTIS runs one full-opacity spectrum per observer when the file gives no exclusion list
+    z_excludelist = config.opacityexclusions or [0]
 
-        if nspecflag == 1:
-            vpkt_config["nspectraperobs"] = int(speclistline[1])
-            vpkt_config["z_excludelist"] = [int(x) for x in speclistline[2:]]
-        else:
-            vpkt_config["nspectraperobs"] = 1
-            vpkt_config["z_excludelist"] = [0]
-
-        timesline = vpkt_txt.readline().split()
-        vpkt_config["time_limits_enabled"], vpkt_config["initial_time"], vpkt_config["final_time"] = (
-            int(timesline[0]),
-            float(timesline[1]),
-            float(timesline[2]),
-        )
-
-    return vpkt_config
+    return {
+        "nobsdirections": len(config.directions_costheta_phi),
+        "cos_theta": [costheta for costheta, _ in config.directions_costheta_phi],
+        "phi": [phi for _, phi in config.directions_costheta_phi],
+        "nspectraperobs": len(z_excludelist),
+        "z_excludelist": z_excludelist,
+        "time_limits_enabled": int(config.override_tminmax),
+        "initial_time": config.vspec_tmin_in_days,
+        "final_time": config.vspec_tmax_in_days,
+    }
 
 
 def get_grid_mapping(modelpath: Path | str) -> tuple[dict[int, list[int]], dict[int, int], bool]:

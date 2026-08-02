@@ -2,6 +2,7 @@ import argparse
 import hashlib
 import importlib
 import inspect
+import itertools
 import math
 import os
 import subprocess
@@ -488,7 +489,7 @@ def test_make_vpkt_input_default_contents() -> None:
         "0.2 1.5\n"  # velocity grid map time range
         "1 3500 6000"  # one wavelength range for the velocity grid map
     )
-    assert at.make_vpkt_input.format_vpkt_input() == expected
+    assert at.make_vpkt_input.format_vpkt_input(at.make_vpkt_input.VpktConfig()) == expected
 
 
 def test_make_vpkt_input_optional_blocks() -> None:
@@ -535,14 +536,16 @@ def test_make_vpkt_input_roundtrip() -> None:
 
 def test_make_vpkt_input_rejects_inconsistent_file() -> None:
     """A truncated or out-of-range file must be reported, not silently accepted."""
-    contents = at.make_vpkt_input.format_vpkt_input()
+    contents = at.make_vpkt_input.format_vpkt_input(at.make_vpkt_input.VpktConfig())
     truncated = "\n".join(contents.splitlines()[:5])
     with pytest.raises(ValueError, match="ended while reading"):
         at.make_vpkt_input.parse_vpkt_input(truncated)
 
-    # ARTIS aborts on |costheta| > 1, so it must not be read back as valid here either
+    # a file ARTIS would reject still loads, so it can be repaired, but reports the problem
+    badcostheta = at.make_vpkt_input.parse_vpkt_input(contents.replace("1 0 -1", "1 0 -2", 1))
+    assert "outside [-1, 1]" in str(at.make_vpkt_input.fatal_config_error(badcostheta))
     with pytest.raises(ValueError, match="outside"):
-        at.make_vpkt_input.parse_vpkt_input(contents.replace("1 0 -1", "1 0 -2", 1))
+        at.make_vpkt_input.format_vpkt_input(badcostheta)
 
 
 def test_make_vpkt_input_matches_artis_token_reader() -> None:
@@ -572,7 +575,7 @@ def test_make_vpkt_input_velocity_grid_ranges_roundtrip() -> None:
 
 def test_make_vpkt_input_accepts_file_without_velocity_grid_block() -> None:
     """ARTIS only reads the velocity grid block when the map is on, so a file may legitimately omit it."""
-    contents = at.make_vpkt_input.format_vpkt_input()
+    contents = at.make_vpkt_input.format_vpkt_input(at.make_vpkt_input.VpktConfig())
     withoutvgridblock = "\n".join(contents.splitlines()[:9])
 
     config = at.make_vpkt_input.parse_vpkt_input(withoutvgridblock)
@@ -631,8 +634,9 @@ def test_make_vpkt_input_interactive_edit() -> None:
         "yes",  # override_tminmax
         "",  # keep vspec_tmin
         "3.5",  # vspec_tmax
-        *[""] * 9,  # keep every remaining setting
     ])
+    # pad so the reply script does not have to track how many settings there are
+    replies = itertools.chain(replies, itertools.repeat(""))
     asked: list[str] = []
 
     def fakeprompt(text: str) -> str:
@@ -654,10 +658,20 @@ def test_make_vpkt_input_interactive_edit() -> None:
 def test_make_vpkt_input_interactive_clears_list() -> None:
     """A single '-' must clear a list-valued setting."""
     config = at.make_vpkt_input.VpktConfig(opacityexclusions=[26])
-    replies = iter(["", "-", *[""] * 12])
+    replies = itertools.chain(iter(["", "-"]), itertools.repeat(""))
     config = at.make_vpkt_input.edit_config_interactively(config, promptfunc=lambda _: next(replies))
 
     assert config.opacityexclusions == []
+
+
+def test_opacity_condition_labels_match_artis() -> None:
+    """The codes must match trace_vpkt_direction() in vpkt.cc: -2 bound-free, -3 free-free, -4 electron scattering."""
+    assert not at.misc.get_opacity_condition_label(0)
+    assert at.misc.get_opacity_condition_label(-1) == "no-bb"
+    assert at.misc.get_opacity_condition_label(-2) == "no-bf"
+    assert at.misc.get_opacity_condition_label(-3) == "no-ff"
+    assert at.misc.get_opacity_condition_label(-4) == "no-es"
+    assert at.misc.get_opacity_condition_label(26) == "no-Fe"
 
 
 def test_make_vpkt_input_rejects_bad_arguments() -> None:

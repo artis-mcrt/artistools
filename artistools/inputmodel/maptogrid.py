@@ -318,17 +318,16 @@ def maptogrid(
     gmass = np.sum(grho) * dx * dy * dz
 
     # k starts at 1 to match the original scan, which skipped the k=0 plane
-    gx = x0 + dx * np.arange(ncoordgrid)
-    gy = y0 + dy * np.arange(ncoordgrid)
-    gz = z0 + dz * np.arange(1, ncoordgrid)
-
     isempty = grho[:, :, 1:] < 1.0e-20
-    dis = np.sqrt(
-        gx[:, np.newaxis, np.newaxis] ** 2 + gy[np.newaxis, :, np.newaxis] ** 2 + gz[np.newaxis, np.newaxis, :] ** 2
+    # compare squared distances to avoid a sqrt over every cell
+    dis2 = (
+        arrgx[:, np.newaxis, np.newaxis] ** 2
+        + arrgy[np.newaxis, :, np.newaxis] ** 2
+        + arrgz[np.newaxis, np.newaxis, 1:] ** 2
     )
 
     nzero = int(np.count_nonzero(isempty))
-    nzerocentral = int(np.count_nonzero(isempty & (dis < rmean)))
+    nzerocentral = int(np.count_nonzero(isempty & (dis2 < rmean**2)))
 
     logprint(f"fraction of total mass on grid {gmass / totmass}")
 

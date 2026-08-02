@@ -18,9 +18,7 @@ OPACITY_CHOICE_HELP = (
     " or a positive atomic number to exclude that element's bound-bound opacity"
 )
 
-# Compile-time limits from the ARTIS vpkt.h that read_vpktparameterfile() asserts the file against.
-# They are constants in the C++ source rather than part of vpkt.txt, so a simulation built with
-# different values is fine and these only drive warnings.
+# defaults of the vpkt.h constants that read_vpktparameterfile() asserts against, so only warn
 ARTIS_VSPEC_TIMEMIN_DAYS = 3.0
 ARTIS_VSPEC_TIMEMAX_DAYS = 8.0
 ARTIS_VSPEC_LAMBDAMIN_ANGSTROMS = 3500.0
@@ -53,18 +51,23 @@ class VpktConfig:
     vgrid_lambda_ranges: list[tuple[float, float]] = dc.field(default_factory=lambda: [(3500.0, 6000.0)])
 
 
-def parse_direction(strdirection: str) -> tuple[float, float]:
-    """Parse a 'costheta,phi' viewing direction, e.g. '-1,0'."""
-    parts = strdirection.split(",")
+def parse_pair(strpair: str, label: str, example: str) -> tuple[float, float]:
+    """Parse a comma-separated pair of numbers, e.g. '-1,0'."""
+    msg = f"{label} {strpair!r} must be two numbers separated by a comma, e.g. {example!r}"
+    parts = strpair.split(",")
     if len(parts) != 2:
-        msg = f"Viewing direction {strdirection!r} must be given as 'costheta,phi', e.g. '-1,0'"
         raise argparse.ArgumentTypeError(msg)
     try:
-        costheta, phi = (float(x) for x in parts)
+        first, second = (float(x) for x in parts)
     except ValueError as exc:
-        msg = f"Viewing direction {strdirection!r} must be two numbers separated by a comma, e.g. '-1,0'"
         raise argparse.ArgumentTypeError(msg) from exc
 
+    return first, second
+
+
+def parse_direction(strdirection: str) -> tuple[float, float]:
+    """Parse a 'costheta,phi' viewing direction, e.g. '-1,0'."""
+    costheta, phi = parse_pair(strdirection, "Viewing direction", "-1,0")
     if not -1.0 <= costheta <= 1.0:
         msg = f"costheta {costheta} in viewing direction {strdirection!r} must be between -1 and 1"
         raise argparse.ArgumentTypeError(msg)
@@ -75,8 +78,8 @@ def parse_direction(strdirection: str) -> tuple[float, float]:
 def parse_directions(strdirections: str) -> list[tuple[float, float]]:
     """Parse whitespace-separated 'costheta,phi' viewing directions, e.g. '1,0 0,0 -1,0'.
 
-    This takes one string rather than a list of them because argparse reads a bare '-1,0' as an
-    option name, so a list would make the negative costheta half of the sky unreachable.
+    One string rather than a list, because argparse reads a bare '-1,0' as an option name and would
+    put the negative costheta half of the sky out of reach.
     """
     directions = [parse_direction(token) for token in strdirections.split()]
     if not directions:
@@ -88,16 +91,7 @@ def parse_directions(strdirections: str) -> list[tuple[float, float]]:
 
 def parse_lambda_range(strrange: str) -> tuple[float, float]:
     """Parse a 'lambdamin,lambdamax' wavelength range in Angstroms."""
-    parts = strrange.split(",")
-    if len(parts) != 2:
-        msg = f"Wavelength range {strrange!r} must be given as 'lambdamin,lambdamax', e.g. '3500,6000'"
-        raise argparse.ArgumentTypeError(msg)
-    try:
-        lambdamin, lambdamax = (float(x) for x in parts)
-    except ValueError as exc:
-        msg = f"Wavelength range {strrange!r} must be two numbers separated by a comma, e.g. '3500,6000'"
-        raise argparse.ArgumentTypeError(msg) from exc
-
+    lambdamin, lambdamax = parse_pair(strrange, "Wavelength range", "3500,6000")
     if lambdamin >= lambdamax:
         msg = f"Wavelength range {strrange!r} must have lambdamin < lambdamax"
         raise argparse.ArgumentTypeError(msg)
@@ -110,6 +104,14 @@ def parse_lambda_ranges(strranges: str) -> list[tuple[float, float]]:
     return [parse_lambda_range(token) for token in strranges.split()]
 
 
+def first_opacity_choice_error(firstchoice: int) -> str:
+    """Return the message for an opacity list that ARTIS would abort on."""
+    return (
+        f"The first opacity choice must be 0 (full opacity), not {firstchoice}."
+        " ARTIS asserts opacityexclusions[0] == 0 and will abort otherwise."
+    )
+
+
 def parse_opacityexclusions(strexclusions: str) -> list[int]:
     """Parse whitespace-separated opacity choices, or an empty string for none."""
     try:
@@ -119,11 +121,7 @@ def parse_opacityexclusions(strexclusions: str) -> list[int]:
         raise argparse.ArgumentTypeError(msg) from exc
 
     if exclusions and exclusions[0] != 0:
-        msg = (
-            f"The first opacity choice must be 0 (full opacity), not {exclusions[0]}."
-            " ARTIS asserts opacityexclusions[0] == 0 and will abort otherwise."
-        )
-        raise argparse.ArgumentTypeError(msg)
+        raise argparse.ArgumentTypeError(first_opacity_choice_error(exclusions[0]))
 
     return exclusions
 
@@ -139,20 +137,27 @@ def parse_bool(strbool: str) -> bool:
     raise argparse.ArgumentTypeError(msg)
 
 
-def check_config(config: VpktConfig) -> list[str]:
-    """Return warnings about settings ARTIS would reject, raising for the ones it always rejects.
-
-    read_vpktparameterfile() in ARTIS asserts opacityexclusions[0] == 0 unconditionally, so that one
-    is an error here. The time and wavelength bounds are asserted against compile-time constants that
-    a simulation may legitimately have been built with different values for, so those only warn.
-    """
+def fatal_config_error(config: VpktConfig) -> str | None:
+    """Return the reason ARTIS would abort on this config, or None if it would accept it."""
     if config.opacityexclusions and config.opacityexclusions[0] != 0:
-        msg = (
-            f"The first opacity choice must be 0 (full opacity), not {config.opacityexclusions[0]}."
-            " ARTIS asserts opacityexclusions[0] == 0 and will abort otherwise."
-        )
-        raise ValueError(msg)
+        return first_opacity_choice_error(config.opacityexclusions[0])
 
+    for i, (costheta, _) in enumerate(config.directions_costheta_phi):
+        if abs(costheta) > 1:
+            return f"Observer direction {i} has costheta {fmtnum(costheta)}, which is outside [-1, 1]"
+
+    for lambdamin, lambdamax in config.custom_lambda_ranges + config.vgrid_lambda_ranges:
+        if lambdamin >= lambdamax:
+            return f"Wavelength range [{fmtnum(lambdamin)}, {fmtnum(lambdamax)}] must have lambdamin < lambdamax"
+
+    return None
+
+
+def check_config(config: VpktConfig) -> list[str]:
+    """Return warnings for settings outside the limits vpkt.h was compiled with.
+
+    These only warn because a build may legitimately have been made with different constants.
+    """
     warnings = []
     if config.override_tminmax and not (
         ARTIS_VSPEC_TIMEMIN_DAYS <= config.vspec_tmin_in_days <= config.vspec_tmax_in_days <= ARTIS_VSPEC_TIMEMAX_DAYS
@@ -174,12 +179,10 @@ def check_config(config: VpktConfig) -> list[str]:
     return warnings
 
 
-def format_vpkt_input(config: VpktConfig | None = None) -> str:
+def format_vpkt_input(config: VpktConfig) -> str:
     """Return the contents of a vpkt.txt file."""
-    if config is None:
-        config = VpktConfig()
-
-    check_config(config)
+    if fatalerror := fatal_config_error(config):
+        raise ValueError(fatalerror)
 
     str_opacityexclusions = (
         f"{len(config.opacityexclusions)} " + " ".join(str(x) for x in config.opacityexclusions)
@@ -212,43 +215,33 @@ def format_vpkt_input(config: VpktConfig | None = None) -> str:
 
 
 class VpktTokenReader:
-    """Hand out whitespace-separated tokens, the way the fscanf calls in ARTIS consume the file.
-
-    ARTIS reads vpkt.txt with fscanf, which does not care where the line breaks fall, so this reads
-    a flat token stream rather than fixed lines. Anything ARTIS accepts is therefore accepted here.
-    """
+    """Hand out whitespace-separated tokens, so that any file ARTIS reads with fscanf is accepted."""
 
     def __init__(self, contents: str) -> None:
-        """Split the file into whitespace-separated tokens."""
         self.tokens = contents.split()
         self.pos = 0
 
-    def next_token(self, description: str) -> str:
-        """Return the next token, naming what was expected if the file ends first."""
+    def next_value[T](self, converter: Callable[[str], T], typename: str, description: str) -> T:
+        """Return the next token converted by converter, naming what was expected on failure."""
         if self.pos >= len(self.tokens):
             msg = f"vpkt.txt ended while reading {description}"
             raise ValueError(msg)
-        self.pos += 1
 
-        return self.tokens[self.pos - 1]
+        token = self.tokens[self.pos]
+        self.pos += 1
+        try:
+            return converter(token)
+        except ValueError as exc:
+            msg = f"vpkt.txt has {token!r} where {description} should be a {typename}"
+            raise ValueError(msg) from exc
 
     def next_int(self, description: str) -> int:
         """Return the next token as an integer."""
-        token = self.next_token(description)
-        try:
-            return int(token)
-        except ValueError as exc:
-            msg = f"vpkt.txt has {token!r} where {description} should be an integer"
-            raise ValueError(msg) from exc
+        return self.next_value(int, "integer", description)
 
     def next_float(self, description: str) -> float:
         """Return the next token as a float."""
-        token = self.next_token(description)
-        try:
-            return float(token)
-        except ValueError as exc:
-            msg = f"vpkt.txt has {token!r} where {description} should be a number"
-            raise ValueError(msg) from exc
+        return self.next_value(float, "number", description)
 
     def next_lambda_ranges(self, count: int, description: str) -> list[tuple[float, float]]:
         """Return count consecutive lambdamin/lambdamax pairs."""
@@ -274,13 +267,7 @@ def parse_vpkt_input(contents: str) -> VpktConfig:
     costhetas = [reader.next_float(f"costheta of direction {i}") for i in range(ndirections)]
     phis = [reader.next_float(f"phi of direction {i}") for i in range(ndirections)]
 
-    for i, costheta in enumerate(costhetas):
-        if abs(costheta) > 1:
-            msg = f"vpkt.txt observer direction {i} has costheta {costheta}, which is outside [-1, 1]"
-            raise ValueError(msg)
-
-    # ARTIS treats any value other than 1 as "one spectrum with full opacity", which is what an
-    # empty exclusion list means here
+    # any flag other than 1 means one full-opacity spectrum, which an empty list stands for here
     opacityexclusions: list[int] = []
     if reader.next_int("the custom opacity list flag") == 1:
         nspectraperobsdir = reader.next_int("the number of opacity choices")
@@ -313,28 +300,24 @@ def parse_vpkt_input(contents: str) -> VpktConfig:
         vgrid_on=vgrid_on,
     )
 
-    # ARTIS only reads the velocity grid block when the map is enabled, so a file written with it
-    # switched off may stop here. Keep the values when they are present so a round trip does not
-    # discard them.
+    # ARTIS stops reading here when the map is off, so the block may legitimately be absent
     if vgrid_on or not reader.exhausted:
         config.tmin_vgrid_in_days = reader.next_float("the velocity grid map start time")
         config.tmax_vgrid_in_days = reader.next_float("the velocity grid map end time")
         ngridranges = reader.next_int("the number of velocity grid wavelength ranges")
         config.vgrid_lambda_ranges = reader.next_lambda_ranges(ngridranges, "velocity grid wavelength range")
 
-    check_config(config)
-
     return config
 
 
-def show_directions(directions: Sequence[tuple[float, float]]) -> str:
-    """Render viewing directions the way the prompt and the -directions argument accept them."""
-    return " ".join(f"{fmtnum(costheta)},{fmtnum(phi)}" for costheta, phi in directions)
+def show_pairs(pairs: Sequence[tuple[float, float]]) -> str:
+    """Render number pairs in the comma-separated form the prompts and arguments accept."""
+    return " ".join(f"{fmtnum(first)},{fmtnum(second)}" for first, second in pairs)
 
 
-def show_lambda_ranges(lambdaranges: Sequence[tuple[float, float]]) -> str:
-    """Render wavelength ranges the way the prompt and the -lambdaranges argument accept them."""
-    return " ".join(f"{fmtnum(lmin)},{fmtnum(lmax)}" for lmin, lmax in lambdaranges)
+def show_bool(value: bool) -> str:
+    """Render a boolean as the yes/no that parse_bool reads back."""
+    return "yes" if value else "no"
 
 
 @dc.dataclass(frozen=True, slots=True)
@@ -344,48 +327,39 @@ class VpktField:
     attr: str
     prompt: str
     parse: Callable[[str], t.Any]
-    show: Callable[[t.Any], str] = str
+    show: Callable[[t.Any], str]
 
 
 def get_editable_fields() -> list[VpktField]:
     """Return the settings offered by the interactive editor, in file order."""
     return [
-        VpktField(
-            "directions_costheta_phi", "Viewing directions as costheta,phi pairs", parse_directions, show_directions
-        ),
+        VpktField("directions_costheta_phi", "Viewing directions as costheta,phi pairs", parse_directions, show_pairs),
         VpktField(
             "opacityexclusions",
             f"Opacity choices ({OPACITY_CHOICE_HELP})",
             parse_opacityexclusions,
             lambda values: " ".join(str(x) for x in values),
         ),
-        VpktField(
-            "override_tminmax", "Restrict virtual packets to a time window?", parse_bool, lambda x: "yes" if x else "no"
-        ),
+        VpktField("override_tminmax", "Restrict virtual packets to a time window?", parse_bool, show_bool),
         VpktField("vspec_tmin_in_days", "Virtual packet time window start [days]", float, fmtnum),
         VpktField("vspec_tmax_in_days", "Virtual packet time window end [days]", float, fmtnum),
         VpktField(
             "custom_lambda_ranges",
             "Custom wavelength ranges as lambdamin,lambdamax pairs [Angstroms]",
             parse_lambda_ranges,
-            show_lambda_ranges,
+            show_pairs,
         ),
-        VpktField(
-            "override_thickcell_tau",
-            "Skip virtual packets in optically thick cells?",
-            parse_bool,
-            lambda x: "yes" if x else "no",
-        ),
+        VpktField("override_thickcell_tau", "Skip virtual packets in optically thick cells?", parse_bool, show_bool),
         VpktField("cell_is_optically_thick_vpkt", "Cell optical depth counted as thick", float, fmtnum),
         VpktField("tau_max_vpkt", "Maximum optical depth before a virtual packet is discarded", float, fmtnum),
-        VpktField("vgrid_on", "Produce a velocity grid map?", parse_bool, lambda x: "yes" if x else "no"),
+        VpktField("vgrid_on", "Produce a velocity grid map?", parse_bool, show_bool),
         VpktField("tmin_vgrid_in_days", "Velocity grid map start [days]", float, fmtnum),
         VpktField("tmax_vgrid_in_days", "Velocity grid map end [days]", float, fmtnum),
         VpktField(
             "vgrid_lambda_ranges",
             "Velocity grid map wavelength ranges as lambdamin,lambdamax pairs [Angstroms]",
             parse_lambda_ranges,
-            show_lambda_ranges,
+            show_pairs,
         ),
     ]
 
@@ -393,8 +367,7 @@ def get_editable_fields() -> list[VpktField]:
 def edit_config_interactively(config: VpktConfig, promptfunc: Callable[[str], str] = input) -> VpktConfig:
     """Ask for each setting in turn, keeping the current value when the reply is empty.
 
-    The config is edited in place and returned. An invalid reply is reported and asked again, so
-    the caller never has to handle a parse failure.
+    An invalid reply is reported and the question repeated, so the caller sees no parse failures.
     """
     print("Press enter to keep the current value shown in brackets. Enter a single '-' to clear a list.")
 
@@ -408,8 +381,8 @@ def edit_config_interactively(config: VpktConfig, promptfunc: Callable[[str], st
                 setattr(config, field.attr, field.parse("" if reply == "-" else reply))
             except (argparse.ArgumentTypeError, ValueError) as exc:
                 print(f"  {exc}")
-                continue
-            break
+            else:
+                break
 
     return config
 
@@ -492,7 +465,7 @@ def apply_args_to_config(config: VpktConfig, args: argparse.Namespace) -> VpktCo
         "vgrid_lambda_ranges": "vgrid_lambdaranges",
     }
     for attr, argname in argname_of_attr.items():
-        value = getattr(args, argname, None)
+        value = getattr(args, argname)
         if value is not None:
             setattr(config, attr, value)
 
@@ -501,32 +474,32 @@ def apply_args_to_config(config: VpktConfig, args: argparse.Namespace) -> VpktCo
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Create or interactively edit a vpkt.txt virtual packet configuration file for an ARTIS simulation."""
-    args = at.parse_cli_args(addargs, main.__doc__, args, argsraw, kwargs)
+    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     outputfile = resolve_outputfile(args.outputfile, defaultoutputfile)
 
     if outputfile.is_file():
         config = parse_vpkt_input(outputfile.read_text(encoding="utf-8"))
         print(f"Read existing {outputfile}")
+        # report rather than raise, so a file that ARTIS would reject can still be loaded and repaired
+        if fatalerror := fatal_config_error(config):
+            print(f"PROBLEM in {outputfile}: {fatalerror}")
     else:
         config = VpktConfig()
         print(f"{outputfile} does not exist, so starting from the default settings")
 
     config = apply_args_to_config(config, args)
 
-    if args.non_interactive:
-        pass
-    elif sys.stdin.isatty():
-        config = edit_config_interactively(config)
-    else:
-        print("stdin is not a terminal, so keeping the settings above without prompting")
-
-    contents = format_vpkt_input(config)
+    if not args.non_interactive:
+        if sys.stdin.isatty():
+            config = edit_config_interactively(config)
+        else:
+            print("stdin is not a terminal, so keeping the settings above without prompting")
 
     for warning in check_config(config):
         print(f"WARNING: {warning}. ARTIS will abort unless it was built with matching constants.")
 
-    outputfile.write_text(contents, encoding="utf-8")
+    outputfile.write_text(format_vpkt_input(config), encoding="utf-8")
     at.print_saved(outputfile)
 
 
