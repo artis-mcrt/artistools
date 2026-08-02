@@ -72,6 +72,31 @@ jobs:
               if: always()
               run: uv run -- mypy
 
+            - name: Run pylint
+              if: always()
+              run: uv run -- pylint artistools
+
+            # refurb runs mypy internally, which hits an internal error walking the pyvista
+            # sources, so keep it to this project's own files
+            - name: Run refurb
+              if: always()
+              run: uv run -- refurb artistools --quiet --format github -- --follow-imports=skip
+
+            # informational only: vulture reports possibly-unused code at 60% confidence, which
+            # includes false positives, so it must not gate the build
+            - name: Run vulture (informational)
+              if: always()
+              continue-on-error: true
+              run: uv run -- vulture
+
+            # informational only: zuban shares mypy's `# type: ignore` syntax, so silencing a
+            # zuban-only error makes mypy fail warn_unused_ignores. Its --mode mypy also panics
+            # walking the pyvista sources. Report, but do not gate.
+            - name: Run zuban (informational)
+              if: always()
+              continue-on-error: true
+              run: uv run -- zuban check
+
             - name: Run prek pre-commit checks
               uses: j178/prek-action@v2
 
