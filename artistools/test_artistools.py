@@ -15,6 +15,7 @@ from unittest import mock
 import matplotlib.axes as mplax
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import polars as pl
 import polars.testing as pltest
 import pytest
@@ -662,6 +663,39 @@ def test_make_vpkt_input_interactive_clears_list() -> None:
     config = at.make_vpkt_input.edit_config_interactively(config, promptfunc=lambda _: next(replies))
 
     assert config.opacityexclusions == []
+
+
+def test_hesma_width_luminosity_roundtrip(tmp_path: Path) -> None:
+    """The widthluminosity action must build a file that plotwidthluminosity can read back."""
+    (tmp_path / "Bband_testmodel_viewing_angle_data.txt").write_text(
+        "peakmag risetime dm15\n"
+        + "".join(f"{-19 + i / 100:.4f} {17.0:.4f} {1.0 + i / 100:.4f}\n" for i in range(100)),
+        encoding="utf-8",
+    )
+
+    at.hesma_scripts.main(
+        argsraw=[], action="widthluminosity", band="B", modelname="testmodel", pathtofiles=tmp_path, outputpath=tmp_path
+    )
+
+    widthlumfile = tmp_path / "testmodel_width-luminosity.dat"
+    assert widthlumfile.is_file()
+    dfwidthlum = pd.read_csv(widthlumfile, sep=r"\s+")
+    assert list(dfwidthlum.columns) == ["peakmag", "dm15", "angle_bin"]
+    assert len(dfwidthlum) == 100
+
+    plotdir = tmp_path / "widthlum"
+    plotdir.mkdir()
+    widthlumfile.rename(plotdir / widthlumfile.name)
+    plotfile = tmp_path / "widthlum.pdf"
+    at.hesma_scripts.main(argsraw=["plotwidthluminosity", "-pathtofiles", str(plotdir), "-plotfile", str(plotfile)])
+    assert plotfile.is_file()
+
+
+def test_hesma_reports_missing_arguments(capsys: pytest.CaptureFixture[str]) -> None:
+    """An action must name the argument it needs rather than failing on a None."""
+    with pytest.raises(SystemExit):
+        at.hesma_scripts.main(argsraw=["vspecfiles"])
+    assert "requires -modelpath" in capsys.readouterr().out
 
 
 def test_opacity_condition_labels_match_artis() -> None:

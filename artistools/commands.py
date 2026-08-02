@@ -67,6 +67,9 @@ subcommandtree: CommandTree = {
     "getpath": CommandSpec(
         "commands", funcname="get_artistools_path", helptext="Print the installed artistools package directory."
     ),
+    "hesma": CommandSpec(
+        "hesma_scripts", helptext="Convert ARTIS output to the file formats used by the HESMA model archive."
+    ),
     "gsinetworkdecayproducts": CommandSpec(
         "gsinetwork.decayproducts", helptext="Load beta-decay energy release data from nucleosynthesis trajectories."
     ),
