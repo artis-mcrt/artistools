@@ -534,15 +534,68 @@ def test_make_vpkt_input_roundtrip() -> None:
 
 
 def test_make_vpkt_input_rejects_inconsistent_file() -> None:
-    """A declared count that disagrees with the values listed must be reported, not silently accepted."""
+    """A truncated or out-of-range file must be reported, not silently accepted."""
     contents = at.make_vpkt_input.format_vpkt_input()
     truncated = "\n".join(contents.splitlines()[:5])
-    with pytest.raises(ValueError, match="at least 11 lines"):
+    with pytest.raises(ValueError, match="ended while reading"):
         at.make_vpkt_input.parse_vpkt_input(truncated)
 
-    badcount = contents.replace("3\n1 0 -1", "2\n1 0 -1", 1)
-    with pytest.raises(ValueError, match="viewing directions"):
-        at.make_vpkt_input.parse_vpkt_input(badcount)
+    # ARTIS aborts on |costheta| > 1, so it must not be read back as valid here either
+    with pytest.raises(ValueError, match="outside"):
+        at.make_vpkt_input.parse_vpkt_input(contents.replace("1 0 -1", "1 0 -2", 1))
+
+
+def test_make_vpkt_input_matches_artis_token_reader() -> None:
+    """ARTIS reads vpkt.txt with fscanf, which ignores line breaks, so the parser must too."""
+    config = at.make_vpkt_input.VpktConfig(
+        directions_costheta_phi=[(0.5, 90)], opacityexclusions=[0, -1], custom_lambda_ranges=[(4000, 7000)]
+    )
+    contents = at.make_vpkt_input.format_vpkt_input(config)
+
+    allonelongline = " ".join(contents.split())
+    assert at.make_vpkt_input.parse_vpkt_input(allonelongline) == config
+
+    onetokenperline = "\n".join(contents.split())
+    assert at.make_vpkt_input.parse_vpkt_input(onetokenperline) == config
+
+
+def test_make_vpkt_input_velocity_grid_ranges_roundtrip() -> None:
+    """ARTIS reads as many velocity grid ranges as the count declares, so every one must be written."""
+    config = at.make_vpkt_input.VpktConfig(
+        vgrid_on=True, vgrid_lambda_ranges=[(3500, 6000), (6000, 9000), (9000, 10000)]
+    )
+    contents = at.make_vpkt_input.format_vpkt_input(config)
+
+    assert contents.splitlines()[-1] == "3 3500 6000 6000 9000 9000 10000"
+    assert at.make_vpkt_input.parse_vpkt_input(contents) == config
+
+
+def test_make_vpkt_input_accepts_file_without_velocity_grid_block() -> None:
+    """ARTIS only reads the velocity grid block when the map is on, so a file may legitimately omit it."""
+    contents = at.make_vpkt_input.format_vpkt_input()
+    withoutvgridblock = "\n".join(contents.splitlines()[:9])
+
+    config = at.make_vpkt_input.parse_vpkt_input(withoutvgridblock)
+    assert not config.vgrid_on
+    assert config.vgrid_lambda_ranges == [(3500.0, 6000.0)]
+
+
+def test_make_vpkt_input_rejects_nonzero_first_opacity_choice() -> None:
+    """ARTIS asserts opacityexclusions[0] == 0, so artistools must not be able to write such a file."""
+    config = at.make_vpkt_input.VpktConfig(opacityexclusions=[26, 0])
+    with pytest.raises(ValueError, match="first opacity choice must be 0"):
+        at.make_vpkt_input.format_vpkt_input(config)
+
+
+def test_make_vpkt_input_warns_outside_compiled_limits() -> None:
+    """Bounds that ARTIS asserts against compile-time constants must warn rather than fail."""
+    outsidetime = at.make_vpkt_input.VpktConfig(override_tminmax=True, vspec_tmin_in_days=0.2, vspec_tmax_in_days=1.5)
+    assert any("time window" in warning for warning in at.make_vpkt_input.check_config(outsidetime))
+
+    outsidelambda = at.make_vpkt_input.VpktConfig(custom_lambda_ranges=[(1000, 2000)])
+    assert any("wavelength range" in warning for warning in at.make_vpkt_input.check_config(outsidelambda))
+
+    assert not at.make_vpkt_input.check_config(at.make_vpkt_input.VpktConfig()), "the defaults must not warn"
 
 
 def test_make_vpkt_input_cli_writes_file(tmp_path: Path) -> None:
@@ -572,7 +625,8 @@ def test_make_vpkt_input_interactive_edit() -> None:
     """An empty reply keeps the current value, and an invalid reply is asked again."""
     replies = iter([
         "",  # keep the default viewing directions
-        "26 -1",  # set opacity choices
+        "26 -1",  # rejected: the first opacity choice must be 0, so this question repeats
+        "0 26 -1",  # set opacity choices
         "maybe",  # rejected, so this question repeats
         "yes",  # override_tminmax
         "",  # keep vspec_tmin
@@ -588,7 +642,7 @@ def test_make_vpkt_input_interactive_edit() -> None:
     config = at.make_vpkt_input.edit_config_interactively(at.make_vpkt_input.VpktConfig(), promptfunc=fakeprompt)
 
     assert config.directions_costheta_phi == [(1.0, 0.0), (0.0, 0.0), (-1.0, 0.0)]
-    assert config.opacityexclusions == [26, -1]
+    assert config.opacityexclusions == [0, 26, -1]
     assert config.override_tminmax
     assert config.vspec_tmin_in_days == 0.2
     assert config.vspec_tmax_in_days == 3.5

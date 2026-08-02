@@ -18,6 +18,14 @@ OPACITY_CHOICE_HELP = (
     " or a positive atomic number to exclude that element's bound-bound opacity"
 )
 
+# Compile-time limits from the ARTIS vpkt.h that read_vpktparameterfile() asserts the file against.
+# They are constants in the C++ source rather than part of vpkt.txt, so a simulation built with
+# different values is fine and these only drive warnings.
+ARTIS_VSPEC_TIMEMIN_DAYS = 3.0
+ARTIS_VSPEC_TIMEMAX_DAYS = 8.0
+ARTIS_VSPEC_LAMBDAMIN_ANGSTROMS = 3500.0
+ARTIS_VSPEC_LAMBDAMAX_ANGSTROMS = 10000.0
+
 
 def fmtnum(value: float) -> str:
     """Format a number for vpkt.txt, dropping the decimal part when it is a whole number."""
@@ -42,9 +50,7 @@ class VpktConfig:
     vgrid_on: bool = False
     tmin_vgrid_in_days: float = 0.2
     tmax_vgrid_in_days: float = 1.5
-    nrange_grid: int = 1
-    vgrid_lambda_min: float = 3500.0
-    vgrid_lambda_max: float = 6000.0
+    vgrid_lambda_ranges: list[tuple[float, float]] = dc.field(default_factory=lambda: [(3500.0, 6000.0)])
 
 
 def parse_direction(strdirection: str) -> tuple[float, float]:
@@ -107,10 +113,19 @@ def parse_lambda_ranges(strranges: str) -> list[tuple[float, float]]:
 def parse_opacityexclusions(strexclusions: str) -> list[int]:
     """Parse whitespace-separated opacity choices, or an empty string for none."""
     try:
-        return [int(token) for token in strexclusions.split()]
+        exclusions = [int(token) for token in strexclusions.split()]
     except ValueError as exc:
         msg = f"Opacity choices {strexclusions!r} must be whitespace-separated integers ({OPACITY_CHOICE_HELP})"
         raise argparse.ArgumentTypeError(msg) from exc
+
+    if exclusions and exclusions[0] != 0:
+        msg = (
+            f"The first opacity choice must be 0 (full opacity), not {exclusions[0]}."
+            " ARTIS asserts opacityexclusions[0] == 0 and will abort otherwise."
+        )
+        raise argparse.ArgumentTypeError(msg)
+
+    return exclusions
 
 
 def parse_bool(strbool: str) -> bool:
@@ -124,10 +139,47 @@ def parse_bool(strbool: str) -> bool:
     raise argparse.ArgumentTypeError(msg)
 
 
+def check_config(config: VpktConfig) -> list[str]:
+    """Return warnings about settings ARTIS would reject, raising for the ones it always rejects.
+
+    read_vpktparameterfile() in ARTIS asserts opacityexclusions[0] == 0 unconditionally, so that one
+    is an error here. The time and wavelength bounds are asserted against compile-time constants that
+    a simulation may legitimately have been built with different values for, so those only warn.
+    """
+    if config.opacityexclusions and config.opacityexclusions[0] != 0:
+        msg = (
+            f"The first opacity choice must be 0 (full opacity), not {config.opacityexclusions[0]}."
+            " ARTIS asserts opacityexclusions[0] == 0 and will abort otherwise."
+        )
+        raise ValueError(msg)
+
+    warnings = []
+    if config.override_tminmax and not (
+        ARTIS_VSPEC_TIMEMIN_DAYS <= config.vspec_tmin_in_days <= config.vspec_tmax_in_days <= ARTIS_VSPEC_TIMEMAX_DAYS
+    ):
+        warnings.append(
+            f"time window [{fmtnum(config.vspec_tmin_in_days)}, {fmtnum(config.vspec_tmax_in_days)}] d falls outside"
+            f" the default VSPEC_TIMEMIN/VSPEC_TIMEMAX of [{fmtnum(ARTIS_VSPEC_TIMEMIN_DAYS)},"
+            f" {fmtnum(ARTIS_VSPEC_TIMEMAX_DAYS)}] d in vpkt.h"
+        )
+
+    for lambdamin, lambdamax in config.custom_lambda_ranges:
+        if not ARTIS_VSPEC_LAMBDAMIN_ANGSTROMS <= lambdamin < lambdamax <= ARTIS_VSPEC_LAMBDAMAX_ANGSTROMS:
+            warnings.append(
+                f"wavelength range [{fmtnum(lambdamin)}, {fmtnum(lambdamax)}] A falls outside the default"
+                f" [{fmtnum(ARTIS_VSPEC_LAMBDAMIN_ANGSTROMS)}, {fmtnum(ARTIS_VSPEC_LAMBDAMAX_ANGSTROMS)}] A"
+                " set by VSPEC_NUMIN/VSPEC_NUMAX in vpkt.h"
+            )
+
+    return warnings
+
+
 def format_vpkt_input(config: VpktConfig | None = None) -> str:
     """Return the contents of a vpkt.txt file."""
     if config is None:
         config = VpktConfig()
+
+    check_config(config)
 
     str_opacityexclusions = (
         f"{len(config.opacityexclusions)} " + " ".join(str(x) for x in config.opacityexclusions)
@@ -154,69 +206,125 @@ def format_vpkt_input(config: VpktConfig | None = None) -> str:
         f"{fmtnum(config.tau_max_vpkt)}\n"
         f"{config.vgrid_on:d}\n"
         f"{fmtnum(config.tmin_vgrid_in_days)} {fmtnum(config.tmax_vgrid_in_days)}\n"
-        # only one wavelength range is written here, although the file format allows several
-        f"{config.nrange_grid} {fmtnum(config.vgrid_lambda_min)} {fmtnum(config.vgrid_lambda_max)}"
+        f"{len(config.vgrid_lambda_ranges)} "
+        + " ".join(f"{fmtnum(lmin)} {fmtnum(lmax)}" for lmin, lmax in config.vgrid_lambda_ranges)
     )
+
+
+class VpktTokenReader:
+    """Hand out whitespace-separated tokens, the way the fscanf calls in ARTIS consume the file.
+
+    ARTIS reads vpkt.txt with fscanf, which does not care where the line breaks fall, so this reads
+    a flat token stream rather than fixed lines. Anything ARTIS accepts is therefore accepted here.
+    """
+
+    def __init__(self, contents: str) -> None:
+        """Split the file into whitespace-separated tokens."""
+        self.tokens = contents.split()
+        self.pos = 0
+
+    def next_token(self, description: str) -> str:
+        """Return the next token, naming what was expected if the file ends first."""
+        if self.pos >= len(self.tokens):
+            msg = f"vpkt.txt ended while reading {description}"
+            raise ValueError(msg)
+        self.pos += 1
+
+        return self.tokens[self.pos - 1]
+
+    def next_int(self, description: str) -> int:
+        """Return the next token as an integer."""
+        token = self.next_token(description)
+        try:
+            return int(token)
+        except ValueError as exc:
+            msg = f"vpkt.txt has {token!r} where {description} should be an integer"
+            raise ValueError(msg) from exc
+
+    def next_float(self, description: str) -> float:
+        """Return the next token as a float."""
+        token = self.next_token(description)
+        try:
+            return float(token)
+        except ValueError as exc:
+            msg = f"vpkt.txt has {token!r} where {description} should be a number"
+            raise ValueError(msg) from exc
+
+    def next_lambda_ranges(self, count: int, description: str) -> list[tuple[float, float]]:
+        """Return count consecutive lambdamin/lambdamax pairs."""
+        return [
+            (self.next_float(f"{description} lambdamin"), self.next_float(f"{description} lambdamax"))
+            for _ in range(count)
+        ]
+
+    @property
+    def exhausted(self) -> bool:
+        """Whether every token has been consumed."""
+        return self.pos >= len(self.tokens)
 
 
 def parse_vpkt_input(contents: str) -> VpktConfig:
-    """Parse the contents of a vpkt.txt file."""
-    lines = contents.splitlines()
-    if len(lines) < 11:
-        msg = f"vpkt.txt must have at least 11 lines, but this one has {len(lines)}"
-        raise ValueError(msg)
+    """Parse the contents of a vpkt.txt file, following the same order as the ARTIS reader."""
+    reader = VpktTokenReader(contents)
 
-    ndirections = int(lines[0].split()[0])
-    costhetas = [float(x) for x in lines[1].split()]
-    phis = [float(x) for x in lines[2].split()]
-    if len(costhetas) != ndirections or len(phis) != ndirections:
-        msg = (
-            f"vpkt.txt declares {ndirections} viewing directions but lists"
-            f" {len(costhetas)} costheta and {len(phis)} phi values"
-        )
+    ndirections = reader.next_int("the number of observer directions")
+    if ndirections < 1:
+        msg = f"vpkt.txt must have at least one observer direction, but declares {ndirections}"
         raise ValueError(msg)
+    costhetas = [reader.next_float(f"costheta of direction {i}") for i in range(ndirections)]
+    phis = [reader.next_float(f"phi of direction {i}") for i in range(ndirections)]
 
-    opacityexclusions: list[int] = []
-    if int(lines[3].split()[0]):
-        exclusiontokens = [int(x) for x in lines[3].split()[1:]]
-        nexclusions, opacityexclusions = exclusiontokens[0], exclusiontokens[1:]
-        if len(opacityexclusions) != nexclusions:
-            msg = f"vpkt.txt declares {nexclusions} opacity choices but lists {len(opacityexclusions)}"
+    for i, costheta in enumerate(costhetas):
+        if abs(costheta) > 1:
+            msg = f"vpkt.txt observer direction {i} has costheta {costheta}, which is outside [-1, 1]"
             raise ValueError(msg)
 
-    override_tminmax, vspec_tmin, vspec_tmax = lines[4].split()
+    # ARTIS treats any value other than 1 as "one spectrum with full opacity", which is what an
+    # empty exclusion list means here
+    opacityexclusions: list[int] = []
+    if reader.next_int("the custom opacity list flag") == 1:
+        nspectraperobsdir = reader.next_int("the number of opacity choices")
+        opacityexclusions = [reader.next_int(f"opacity choice {i}") for i in range(nspectraperobsdir)]
+
+    override_tminmax = reader.next_int("the time window override flag")
+    vspec_tmin_in_days = reader.next_float("the time window start")
+    vspec_tmax_in_days = reader.next_float("the time window end")
 
     custom_lambda_ranges: list[tuple[float, float]] = []
-    if int(lines[5].split()[0]):
-        rangetokens = lines[5].split()[1:]
-        nranges = int(rangetokens[0])
-        bounds = [float(x) for x in rangetokens[1:]]
-        if len(bounds) != 2 * nranges:
-            msg = f"vpkt.txt declares {nranges} wavelength ranges but lists {len(bounds)} bounds"
-            raise ValueError(msg)
-        custom_lambda_ranges = list(zip(bounds[::2], bounds[1::2], strict=True))
+    if reader.next_int("the custom wavelength range flag") == 1:
+        nwavelengthranges = reader.next_int("the number of wavelength ranges")
+        custom_lambda_ranges = reader.next_lambda_ranges(nwavelengthranges, "wavelength range")
 
-    override_thickcell_tau, cell_is_optically_thick = lines[6].split()
-    tmin_vgrid, tmax_vgrid = lines[9].split()
-    nrange_grid, vgrid_lambda_min, vgrid_lambda_max = lines[10].split()
+    override_thickcell_tau = reader.next_int("the thick cell override flag")
+    cell_is_optically_thick_vpkt = reader.next_float("the thick cell optical depth")
+    tau_max_vpkt = reader.next_float("tau_max_vpkt")
+    vgrid_on = bool(reader.next_int("the velocity grid map flag"))
 
-    return VpktConfig(
+    config = VpktConfig(
         directions_costheta_phi=list(zip(costhetas, phis, strict=True)),
         opacityexclusions=opacityexclusions,
-        override_tminmax=bool(int(override_tminmax)),
-        vspec_tmin_in_days=float(vspec_tmin),
-        vspec_tmax_in_days=float(vspec_tmax),
+        override_tminmax=bool(override_tminmax),
+        vspec_tmin_in_days=vspec_tmin_in_days,
+        vspec_tmax_in_days=vspec_tmax_in_days,
         custom_lambda_ranges=custom_lambda_ranges,
-        override_thickcell_tau=bool(int(override_thickcell_tau)),
-        cell_is_optically_thick_vpkt=float(cell_is_optically_thick),
-        tau_max_vpkt=float(lines[7].split()[0]),
-        vgrid_on=bool(int(lines[8].split()[0])),
-        tmin_vgrid_in_days=float(tmin_vgrid),
-        tmax_vgrid_in_days=float(tmax_vgrid),
-        nrange_grid=int(nrange_grid),
-        vgrid_lambda_min=float(vgrid_lambda_min),
-        vgrid_lambda_max=float(vgrid_lambda_max),
+        override_thickcell_tau=bool(override_thickcell_tau),
+        cell_is_optically_thick_vpkt=cell_is_optically_thick_vpkt,
+        tau_max_vpkt=tau_max_vpkt,
+        vgrid_on=vgrid_on,
     )
+
+    # ARTIS only reads the velocity grid block when the map is enabled, so a file written with it
+    # switched off may stop here. Keep the values when they are present so a round trip does not
+    # discard them.
+    if vgrid_on or not reader.exhausted:
+        config.tmin_vgrid_in_days = reader.next_float("the velocity grid map start time")
+        config.tmax_vgrid_in_days = reader.next_float("the velocity grid map end time")
+        ngridranges = reader.next_int("the number of velocity grid wavelength ranges")
+        config.vgrid_lambda_ranges = reader.next_lambda_ranges(ngridranges, "velocity grid wavelength range")
+
+    check_config(config)
+
+    return config
 
 
 def show_directions(directions: Sequence[tuple[float, float]]) -> str:
@@ -273,8 +381,12 @@ def get_editable_fields() -> list[VpktField]:
         VpktField("vgrid_on", "Produce a velocity grid map?", parse_bool, lambda x: "yes" if x else "no"),
         VpktField("tmin_vgrid_in_days", "Velocity grid map start [days]", float, fmtnum),
         VpktField("tmax_vgrid_in_days", "Velocity grid map end [days]", float, fmtnum),
-        VpktField("vgrid_lambda_min", "Velocity grid map minimum wavelength [Angstroms]", float, fmtnum),
-        VpktField("vgrid_lambda_max", "Velocity grid map maximum wavelength [Angstroms]", float, fmtnum),
+        VpktField(
+            "vgrid_lambda_ranges",
+            "Velocity grid map wavelength ranges as lambdamin,lambdamax pairs [Angstroms]",
+            parse_lambda_ranges,
+            show_lambda_ranges,
+        ),
     ]
 
 
@@ -349,10 +461,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-vgrid-tmin", type=float, default=None, help="Start of the velocity grid map range [days]")
     parser.add_argument("-vgrid-tmax", type=float, default=None, help="End of the velocity grid map range [days]")
     parser.add_argument(
-        "-vgrid-lambdamin", type=float, default=None, help="Velocity grid map minimum wavelength [Angstroms]"
-    )
-    parser.add_argument(
-        "-vgrid-lambdamax", type=float, default=None, help="Velocity grid map maximum wavelength [Angstroms]"
+        "-vgrid-lambdaranges",
+        type=parse_lambda_ranges,
+        default=None,
+        help="Velocity grid map wavelength ranges as whitespace-separated lambdamin,lambdamax pairs in Angstroms",
     )
     parser.add_argument(
         "--non-interactive",
@@ -377,8 +489,7 @@ def apply_args_to_config(config: VpktConfig, args: argparse.Namespace) -> VpktCo
         "vgrid_on": "vgrid",
         "tmin_vgrid_in_days": "vgrid_tmin",
         "tmax_vgrid_in_days": "vgrid_tmax",
-        "vgrid_lambda_min": "vgrid_lambdamin",
-        "vgrid_lambda_max": "vgrid_lambdamax",
+        "vgrid_lambda_ranges": "vgrid_lambdaranges",
     }
     for attr, argname in argname_of_attr.items():
         value = getattr(args, argname, None)
@@ -410,7 +521,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     else:
         print("stdin is not a terminal, so keeping the settings above without prompting")
 
-    outputfile.write_text(format_vpkt_input(config), encoding="utf-8")
+    contents = format_vpkt_input(config)
+
+    for warning in check_config(config):
+        print(f"WARNING: {warning}. ARTIS will abort unless it was built with matching constants.")
+
+    outputfile.write_text(contents, encoding="utf-8")
     at.print_saved(outputfile)
 
 
