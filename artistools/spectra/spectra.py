@@ -260,7 +260,6 @@ def get_lambda_bin_edges(
         x_bin_edges = np.arange(xmin_plot - deltax * 0.5, xmax_plot + deltax * 1.5, deltax)
         lambda_bin_edges = np.sort(convert_unit_to_angstroms(x_bin_edges, xunit))
     elif deltalambda is not None:
-        deltalambda = float(deltalambda)
         if not deltalambda > 0:
             msg = f"deltalambda must be positive, got {deltalambda}"
             raise ValueError(msg)
