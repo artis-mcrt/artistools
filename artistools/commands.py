@@ -110,6 +110,9 @@ subcommandtree: CommandTree = {
         helptext="Create an ARTIS format model from grid.dat.",
         hidden=True,  # duplicate of "inputmodel makeartismodelfromparticlegridmap"
     ),
+    "makevpktinput": CommandSpec(
+        "make_vpkt_input", helptext="Create a vpkt.txt virtual packet configuration file for an ARTIS simulation."
+    ),
     "maptogrid": CommandSpec(
         "inputmodel.maptogrid",
         helptext="Map tracer particle trajectories to a Cartesian grid.",

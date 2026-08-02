@@ -34,6 +34,7 @@ from artistools import lightcurve as lightcurve
 from artistools import linefluxes as linefluxes
 from artistools import logfiles as logfiles
 from artistools import macroatom as macroatom
+from artistools import make_vpkt_input as make_vpkt_input
 from artistools import misc as misc
 from artistools import nltepops as nltepops
 from artistools import nonthermal as nonthermal

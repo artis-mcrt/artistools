@@ -473,6 +473,68 @@ def test_parse_range_list() -> None:
     assert at.parse_range_list("5-3") == [3, 4, 5]  # reversed range is sorted
 
 
+def test_make_vpkt_input_default_contents() -> None:
+    """The default vpkt.txt must keep the exact layout ARTIS parses, field by field."""
+    expected = (
+        "3\n"  # number of viewing directions
+        "1 0 -1\n"  # costheta of each direction
+        "0 0 0\n"  # phi of each direction
+        "0 \n"  # no opacity exclusions
+        "0 0.2 1.5\n"  # override_tminmax off, then the time window
+        "0\n"  # no custom wavelength ranges
+        "1 100\n"  # override thick cell tau, and the threshold
+        "10\n"  # tau_max_vpkt
+        "0\n"  # velocity grid map off
+        "0.2 1.5\n"  # velocity grid map time range
+        "1 3500 6000"  # one wavelength range for the velocity grid map
+    )
+    assert at.make_vpkt_input.format_vpkt_input() == expected
+
+
+def test_make_vpkt_input_optional_blocks() -> None:
+    """The opacity exclusion and custom wavelength blocks must be prefixed by their own counts."""
+    contents = at.make_vpkt_input.format_vpkt_input(
+        directions_costheta_phi=[(-1, 0), (0.5, 90)],
+        opacityexclusions=[0, -1, 26],
+        custom_lambda_ranges=[(3500, 6000), (10000, 12000)],
+        override_tminmax=True,
+        vgrid_on=True,
+        override_thickcell_tau=False,
+        tau_max_vpkt=7.5,
+    ).splitlines()
+
+    assert contents[0] == "2"
+    assert contents[1] == "-1 0.5"
+    assert contents[2] == "0 90"
+    assert contents[3] == "1 3 0 -1 26"
+    assert contents[4] == "1 0.2 1.5"
+    assert contents[5] == "1 2 3500 6000 10000 12000"
+    assert contents[6] == "0 100"
+    assert contents[7] == "7.5"
+    assert contents[8] == "1"
+
+
+def test_make_vpkt_input_cli_writes_file(tmp_path: Path) -> None:
+    """The subcommand must honour -directions, including a negative leading costheta, and -outputfile."""
+    outfile = tmp_path / "vpkt.txt"
+    at.make_vpkt_input.main(argsraw=["-directions=-1,0 1,0", "-o", str(outfile)])
+
+    lines = outfile.read_text(encoding="utf-8").splitlines()
+    assert lines[0] == "2"
+    assert lines[1] == "-1 1"
+    assert lines[2] == "0 0"
+
+
+def test_make_vpkt_input_rejects_bad_arguments() -> None:
+    for baddirection in ("1", "1,0,0", "north,0", "1.5,0"):
+        with pytest.raises(argparse.ArgumentTypeError):
+            at.make_vpkt_input.parse_directions(baddirection)
+
+    for badrange in ("3500", "3500,6000,7000", "blue,red", "6000,3500"):
+        with pytest.raises(argparse.ArgumentTypeError):
+            at.make_vpkt_input.parse_lambda_range(badrange)
+
+
 def test_makelist() -> None:
     assert at.makelist(None) == []
     assert at.makelist("hello") == ["hello"]
