@@ -608,8 +608,12 @@ def read_spec(modelpath: Path | str, gamma: bool = False) -> pl.LazyFrame:
     )
 
 
+@lru_cache(maxsize=16)
 def read_spec_res(modelpath: Path | str, gamma: bool = False) -> dict[int, pl.LazyFrame]:
-    """Return a dict of LazyFrames of time-series spectra keyed to the viewing direction bin."""
+    """Return a dict of LazyFrames of time-series spectra keyed to the viewing direction bin.
+
+    Callers must not mutate the returned dict, which is shared between calls.
+    """
     resfilenames = ["gamma_spec_res.out"] if gamma else ["spec_res.out", "specpol_res.out"]
     specfilename = (
         modelpath if Path(modelpath).is_file() else firstexisting(resfilenames, folder=modelpath, tryzipped=True)
