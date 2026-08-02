@@ -166,6 +166,14 @@ def get_line_luminosities_from_pops(
 
         ion = adata.query("Z == @feature.atomic_number and ion_stage == @feature.ion_stage").iloc[0]
 
+        # one pass over the populations instead of re-filtering the whole frame for every cell below.
+        # setdefault keeps the first row for a duplicated key, matching the .item(0) this replaces
+        levelpop_of_ts_level_mgi: dict[tuple[int, int, int], float] = {}
+        for ts, level, mgi, n_nlte in zip(
+            dfnltepops["timestep"], dfnltepops["level"], dfnltepops["modelgridindex"], dfnltepops["n_NLTE"], strict=True
+        ):
+            levelpop_of_ts_level_mgi.setdefault((ts, level, mgi), n_nlte)
+
         for timeindex, timedays in enumerate(arr_tmid):
             v_inner = modeldata.vel_r_min_kmps.to_numpy(dtype=float) * 1e5
             v_outer = modeldata.vel_r_max_kmps.to_numpy(dtype=float) * 1e5
@@ -190,15 +198,8 @@ def get_line_luminosities_from_pops(
                 ) * EV_to_erg
 
                 for modelgridindex in modeldata.index:
-                    try:
-                        levelpop = dfnltepops.filter(
-                            (pl.col("modelgridindex") == modelgridindex)
-                            & (pl.col("timestep") == timestep)
-                            & (pl.col("Z") == feature.atomic_number)
-                            & (pl.col("ion_stage") == feature.ion_stage)
-                            & (pl.col("level") == upperlevelindex)
-                        )["n_NLTE"].item(0)
-                    except IndexError:
+                    levelpop = levelpop_of_ts_level_mgi.get((timestep, upperlevelindex, modelgridindex))
+                    if levelpop is None:
                         # no population data for this cell, so roll its volume into the next one that has data
                         unaccounted_shellvol += shell_volumes[modelgridindex]
                         unaccounted_shells.append(modelgridindex)
