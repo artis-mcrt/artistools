@@ -184,42 +184,6 @@ fixed_format_cache = true
 python_version = '3.13'
 native_parser = true
 
-[tool.pylint.'MESSAGES CONTROL']
-max-line-length = 120
-disable = """
-    broad-exception-caught,
-    cell-var-from-loop,
-    fixme,
-    missing-function-docstring,
-    missing-module-docstring,
-    import-outside-toplevel,
-    invalid-name,
-    line-too-long,
-    no-member,
-    not-an-iterable,
-    not-context-manager,
-    possibly-used-before-assignment,
-    protected-access,
-    redefined-outer-name,
-    too-many-arguments,
-    too-many-branches,
-    too-many-function-args,
-    too-many-lines,
-    too-many-locals,
-    too-many-nested-blocks,
-    too-many-statements,
-    unbalanced-tuple-unpacking,
-    unspecified-encoding,
-    unsupported-assignment-operation,
-    unused-argument,
-    C,
-    R,
-"""
-
-[tool.pylint.typecheck]
-ignored-modules = ["astropy", "extinction", "pyvista"]
-unsafe-load-any-extension = true
-
 [tool.pyrefly]
 preset = "strict"
 project-excludes = [
@@ -290,17 +254,6 @@ addopts = [
     "auto",
 ]
 testpaths = ["artistools"]
-
-[tool.refurb]
-ignore = ["FURB120"]
-quiet = false
-enable_all = true
-python_version = "3.13"
-sort_by = "error"
-
-[[tool.refurb.amend]]
-path = "./artistools/inputmodel/fromcmfgen/rd_cmfgen.py"
-ignore = ["FURB108"]
 
 [tool.ruff]
 line-length = 120
@@ -407,12 +360,3 @@ exclude = ["artistools/inputmodel/fromcmfgen/rd_cmfgen.py", ".venv/**"]
 name = "scientific-python-nightly"
 url = "https://pypi.anaconda.org/scientific-python-nightly-wheels/simple/"
 explicit = true
-
-[tool.vulture]
-exclude = [".*", "build/", ".eggs/", ".venv", "venv"]
-paths = ["artistools"]
-sort_by_size = true
-
-[tool.zuban]
-mode = "default"
-disallow_untyped_calls = false
