@@ -383,12 +383,8 @@ def get_modeldata(
                     f"Modification time of text source ({textsource_mtime!s}) does not match parquet metadata ({pqmetadata.get('textsource_mtime')!s}). Will regenerate."
                 )
             else:
-                try:
-                    modelmeta = json.loads(pqmetadata["modelmeta_json"])
-                    dfmodel = pl.scan_parquet(parquetfilepath)
-
-                except pl.exceptions.ComputeError:
-                    print(f"Problem reading {parquetfilepath}. Will regenerate and overwrite from text source.")
+                modelmeta = json.loads(pqmetadata["modelmeta_json"])
+                dfmodel = pl.scan_parquet(parquetfilepath)
 
     if dfmodel is None:
         # read from text file
