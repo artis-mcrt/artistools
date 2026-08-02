@@ -1,4 +1,3 @@
-import argparse
 import re
 import typing as t
 from pathlib import Path
@@ -569,44 +568,3 @@ def test_averageexcitation_plotitem_needs_nlte_files(tmp_path: Path) -> None:
 
     assert default_plotitem_has_data(plotitem, estimatorcolumns, modelpath)
     assert not default_plotitem_has_data(plotitem, estimatorcolumns, tmp_path)
-
-
-def test_get_modelgridcells_along_axis() -> None:
-    """The line-of-sight cell selection must return cells of the 3D model along the requested axis."""
-    from artistools.estimators.plot3destimators_classic import get_modelgridcells_along_axis
-
-    sliceargs = argparse.Namespace(modelpath=modelpath_classic_3d, sliceaxis="x", positive_axis=True)
-    mgilist = get_modelgridcells_along_axis(modelpath_classic_3d, sliceargs)
-
-    assert mgilist, "the 3D test model must have cells along the x axis"
-    assert len(set(mgilist)) == len(mgilist), "each cell must appear once"
-    assert all(mgi >= 0 for mgi in mgilist)
-
-
-@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_plot_te_vs_velocity(mockplot: t.Any, tmp_path: Path) -> None:
-    """Te against velocity must draw one finite line per timestep.
-
-    The estimators are synthetic because no test model has classic-format estimator files.
-    """
-    from artistools.estimators.plot3destimators_classic import get_modelgridcells_2D_slice
-    from artistools.estimators.plot3destimators_classic import plot_Te_vs_velocity
-
-    plmodeldata, _ = at.inputmodel.get_modeldata(modelpath_classic_3d, derived_cols=["vel_y_mid"])
-    modeldata = plmodeldata.collect().to_pandas(use_pyarrow_extension_array=True)
-    readonly_mgi = get_modelgridcells_2D_slice(modeldata, modelpath_classic_3d)
-
-    timesteps = [0, 1]
-    estimators = {
-        (timestep, mgi): {"Te": 5000.0 + 100.0 * timestep + mgi} for timestep in timesteps for mgi in readonly_mgi
-    }
-
-    outputfile = tmp_path / "te_vs_velocity.pdf"
-    plot_Te_vs_velocity(modelpath_classic_3d, modeldata, estimators, readonly_mgi, timesteps, outputfile)
-
-    assert outputfile.is_file()
-    assert len(mockplot.call_args_list) == len(timesteps)
-    for call in mockplot.call_args_list:
-        yvalues = np.array(call[0][2], dtype=float)
-        assert len(yvalues) == len(readonly_mgi)
-        assert np.all(np.isfinite(yvalues))

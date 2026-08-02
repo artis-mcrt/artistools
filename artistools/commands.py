@@ -131,10 +131,6 @@ subcommandtree: CommandTree = {
     "plotestimators": CommandSpec(
         "estimators.plotestimators", helptext="Plot ARTIS estimators.", aliases=("estimators",)
     ),
-    "plotestimators3dclassic": CommandSpec(
-        "estimators.plot3destimators_classic",
-        helptext="Plot a 2D slice of the electron temperature from a classic-mode 3D model.",
-    ),
     "plotinitialcomposition": CommandSpec(
         "inputmodel.plotinitialcomposition", helptext="Plot ARTIS input model composition."
     ),
