@@ -29,7 +29,6 @@ from artistools import constants as constants
 from artistools import ejectaopacity as ejectaopacity
 from artistools import estimators as estimators
 from artistools import gsinetwork as gsinetwork
-from artistools import hesma_scripts as hesma_scripts
 from artistools import inputmodel as inputmodel
 from artistools import lightcurve as lightcurve
 from artistools import linefluxes as linefluxes

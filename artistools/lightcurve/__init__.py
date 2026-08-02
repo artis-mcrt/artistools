@@ -49,5 +49,3 @@ from artistools.lightcurve.viewingangleanalysis import (
     update_plotkwargs_for_viewingangle_colorbar as update_plotkwargs_for_viewingangle_colorbar,
 )
 from artistools.lightcurve.viewingangleanalysis import write_viewing_angle_data as write_viewing_angle_data
-from artistools.lightcurve.writebollightcurvedata import get_bol_lc_from_lightcurveout as get_bol_lc_from_lightcurveout
-from artistools.lightcurve.writebollightcurvedata import get_bol_lc_from_spec as get_bol_lc_from_spec

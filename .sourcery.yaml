@@ -24,7 +24,6 @@ ignore: # A list of paths or files which Sourcery will ignore.
     - .*
     - build
     - dist
-    - rd_cmfgen.py
 
 rule_settings:
     enable:
