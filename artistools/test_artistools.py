@@ -548,7 +548,7 @@ def test_get_cellsofmpirank(tmp_path: Path) -> None:
         (path / "input.txt").write_text("".join(lines))
         (path / "model.txt").write_text(f"{npts}\n")
 
-    for npts, nprocs in [(20, 4), (21, 4), (7, 3)]:
+    for npts, nprocs in ((20, 4), (21, 4), (7, 3)):
         subdir = tmp_path / f"npts{npts}_nprocs{nprocs}"
         subdir.mkdir()
         make_model(subdir, npts=npts, nprocs=nprocs)

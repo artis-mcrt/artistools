@@ -101,7 +101,7 @@ def test_parse_phixsdata_multiple_targets(tmp_path: Path) -> None:
     """A multi-target photoionisation entry must give one structured record per target, like the single-target case."""
     nphixspoints = 3
     lines = [
-        f"{nphixspoints}",
+        str(nphixspoints),
         "0.1",
         # upper ion level -1 means the targets are listed on the following lines
         "26 3 -1 2 1 7.9",

@@ -1,18 +1,8 @@
 from pathlib import Path
 
 import numpy as np
-import numpy.typing as npt
 import pandas as pd
 import polars as pl
-
-
-def all_cells_same_opacity(modelpath: str | Path, ngrid: int) -> None:
-    cell_opacities = np.array([0.1] * ngrid)
-
-    with Path(modelpath, "opacity.txt").open("w", encoding="utf-8") as fopacity:
-        fopacity.write(f"{ngrid}\n")
-
-        fopacity.writelines(f"{cellid + 1}    {opacity}\n" for cellid, opacity in enumerate(cell_opacities))
 
 
 def opacity_by_Ye(outputfilepath: Path | str, griddata: pd.DataFrame | pl.DataFrame) -> None:
@@ -47,12 +37,6 @@ def opacity_by_Ye(outputfilepath: Path | str, griddata: pd.DataFrame | pl.DataFr
     with Path(outputfilepath, "opacity.txt").open("w", encoding="utf-8") as fopacity:
         fopacity.write(f"{len(griddata['inputcellid'])}\n")
         griddata[["inputcellid", "opacity"]].to_csv(fopacity, sep="\t", index=False, header=False, float_format="%.10f")
-
-
-def get_opacity_from_file(modelpath: Path | str) -> npt.NDArray[np.float64]:
-    opacity_file_contents = np.loadtxt(Path(modelpath) / "opacity.txt", unpack=True, skiprows=1)
-    assert isinstance(opacity_file_contents[1], np.ndarray)
-    return opacity_file_contents[1]
 
 
 def write_Ye_file(outputfilepath: Path | str, griddata: pl.DataFrame) -> None:

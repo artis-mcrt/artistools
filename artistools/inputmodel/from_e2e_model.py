@@ -626,7 +626,7 @@ def map_to_artis(
 
             dfmodel = dfmodel.with_columns([
                 pl.when(pl.col(col).is_infinite()).then(0.0).otherwise(pl.col(col)).fill_null(0.0).alias(col)
-                for col in ["beta_3D", "beta_2D"]
+                for col in ("beta_3D", "beta_2D")
             ])
 
             # interpolate q and Ye and threshold small values
@@ -729,16 +729,6 @@ def map_to_artis(
                 else:
                     dictelabunds[elem_str] = interpol_X_iso
             dfabundances = pl.DataFrame(dictelabunds).fill_null(0.0)
-            """
-            # old interpolation
-            el_list = [value for value in dfabundances.columns if value in dyn_abunds.columns]
-            el_list.remove('inputcellid')
-            model_el_X = dfabundances.loc[:, el_list]
-            dyn_el_X = dyn_abunds.loc[:, el_list]
-            final_el_X = dyn_el_X.to_numpy() * w_3D.to_numpy()[:, None] + model_el_X.to_numpy() * w_2D.to_numpy()[:, None]
-            dfabundances.loc[:,el_list] = final_el_X
-            dfabundances[el_list] = dfabundances[el_list].mask(dfabundances[el_list] < 1e-10, 0)
-            """
         else:
             # replace above threshold
             print(f"Replace dynamical ejecta above dynamical ejecta fraction threshold using model {replacedyn}...")

@@ -1659,7 +1659,7 @@ def test_scale_model_to_time_uses_modelmeta() -> None:
     rho_before = pddfmodel["logrho"].to_numpy().copy()
 
     dfscaled, modelmeta_out = at.inputmodel.scale_model_to_time(
-        dfmodel=pddfmodel, targetmodeltime_days=targettime, modelmeta=dict(modelmeta)
+        dfmodel=pddfmodel, targetmodeltime_days=targettime, modelmeta=modelmeta.copy()
     )
 
     assert modelmeta_out["t_model_init_days"] == targettime

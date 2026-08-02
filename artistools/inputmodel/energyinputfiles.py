@@ -1,55 +1,8 @@
 from pathlib import Path
 
-import matplotlib.axes as mplax
 import numpy as np
 import numpy.typing as npt
-import pandas as pd
 import polars as pl
-
-import artistools as at
-from artistools.constants import day_to_s
-
-
-def rprocess_const_and_powerlaw() -> tuple[pl.DataFrame, float]:
-    """Following eqn 4 Korobkin 2012."""
-
-    def integrand(
-        t_days: float, t0: float, epsilon0: float, sigma: float, alpha: float, thermalisation_factor: float
-    ) -> float:
-        return float(epsilon0 * ((1 / 2) - (1 / np.pi * np.arctan((t_days - t0) / sigma))) ** alpha) * (
-            thermalisation_factor / 0.5
-        )
-
-    from scipy.integrate import quad
-
-    tmin = 0.01 * day_to_s
-    tmax = 50 * day_to_s
-    t0 = 1.3  # seconds
-    epsilon0 = 2e18
-    sigma = 0.11
-    alpha = 1.3
-    thermalisation_factor = 0.5
-
-    E_tot = quad(integrand, tmin, tmax, args=(t0, epsilon0, sigma, alpha, thermalisation_factor))  # ergs/s/g
-    print("Etot per gram", E_tot[0])
-    E_tot = E_tot[0]
-
-    times = np.logspace(np.log10(tmin), np.log10(tmax), num=200)
-    energy_per_gram_cumulative = [0.0]
-    for time in times[1:]:
-        cumulative_integral = quad(
-            integrand, tmin, time, args=(t0, epsilon0, sigma, alpha, thermalisation_factor)
-        )  # ergs/s/g
-        energy_per_gram_cumulative.append(cumulative_integral[0])
-
-    rate = np.array(energy_per_gram_cumulative) / E_tot
-
-    nuclear_heating_power = [integrand(time, t0, epsilon0, sigma, alpha, thermalisation_factor) for time in times]
-
-    times_and_rate = {"times": times / day_to_s, "rate": rate, "nuclear_heating_power": nuclear_heating_power}
-    dftimes_and_rate = pl.DataFrame(data=times_and_rate)
-
-    return dftimes_and_rate, E_tot
 
 
 def get_cumulative_heating_fraction() -> tuple[pl.DataFrame, float]:
@@ -101,35 +54,6 @@ def get_cumulative_heating_fraction() -> tuple[pl.DataFrame, float]:
     return dftimes_and_rate, E_tot
 
 
-def energy_from_rprocess_calculation(
-    energy_thermo_data: pl.DataFrame, get_rate: bool = True
-) -> float | tuple[pl.DataFrame, float]:
-
-    energy_thermo_data = energy_thermo_data.filter(pl.col("time/s") <= 1e7)
-    # print("Dropping times later than 116 days")
-
-    skipfirstnrows = 0  # not sure first values look sensible -- check this
-    times = energy_thermo_data["time/s"][skipfirstnrows:]
-    qdot = energy_thermo_data["Qdot"][skipfirstnrows:]
-
-    E_tot = float(np.trapezoid(y=qdot, x=times))  # erg / g
-
-    if get_rate:
-        print(f"E_tot {E_tot} erg/g")
-        from scipy import integrate
-
-        cumulative_integrated_energy = integrate.cumulative_trapezoid(y=qdot, x=times)
-        cumulative_integrated_energy = np.insert(cumulative_integrated_energy, 0, 0)
-
-        rate = cumulative_integrated_energy / E_tot
-
-        dftimes_and_rate = pl.DataFrame({"times": times / day_to_s, "rate": rate})
-
-        return dftimes_and_rate, E_tot
-
-    return E_tot
-
-
 def make_energydistribution_weightedbyrho(
     rho: npt.NDArray[np.floating], E_tot_per_gram: float, Mtot_grams: float
 ) -> pl.DataFrame:
@@ -162,33 +86,3 @@ def make_energy_files(rho: npt.NDArray[np.floating], Mtot_grams: float, outputpa
     with Path(outputpath, "energyrate.txt").open("w", encoding="utf-8") as fmodel:
         fmodel.write(f"{len(times_and_rate['times'])}\n")  # write number of points
         times_and_rate.to_pandas().to_csv(fmodel, sep="\t", index=False, header=False, float_format="%.10f")
-
-
-def plot_energy_rate(modelpath: str | Path, axis: mplax.Axes) -> None:
-    times_and_rate, _ = at.inputmodel.energyinputfiles.rprocess_const_and_powerlaw()
-    lzmodel, _ = at.inputmodel.get_modeldata(modelpath)
-    model = lzmodel.collect()
-    Mtot_grams = model["mass_g"].sum()
-    axis.plot(
-        times_and_rate["times"], np.array(times_and_rate["nuclear_heating_power"]) * Mtot_grams, color="k", zorder=10
-    )
-
-
-def get_etot_fromfile(modelpath: str | Path) -> tuple[float, pl.DataFrame]:
-    energydistribution_data = pl.from_pandas(
-        pd.read_csv(
-            Path(modelpath) / "energydistribution.txt",
-            skiprows=1,
-            sep=r"\s+",
-            header=None,
-            names=["cellid", "cell_energy"],
-        )
-    )
-    etot = float(energydistribution_data["cell_energy"].sum())
-    return etot, energydistribution_data
-
-
-def get_energy_rate_fromfile(modelpath: str | Path) -> pl.DataFrame:
-    return pl.from_pandas(
-        pd.read_csv(Path(modelpath) / "energyrate.txt", skiprows=1, sep=r"\s+", header=None, names=["times", "rate"])
-    )

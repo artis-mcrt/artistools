@@ -17,7 +17,7 @@ def df_filter_minmax_bounded(
 ) -> pl.LazyFrame:
     """Filter a DataFrame to selects rows where the value in colname is between minval and maxval, and also include the closest exterior rows if xmin/xmax are between two rows. This enables linear interpolation at xmin and xmax (if the surrounding values existed in the DataFrame)."""
     df = df.lazy()
-    if minval is None and maxval is None:
+    if minval is maxval is None:
         return df
 
     if minval is not None:

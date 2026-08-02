@@ -275,7 +275,7 @@ def resolve_outputfile(outputfile: Path | str | None, defaultoutputfile: Path | 
 
 def set_args_from_dict(parser: argparse.ArgumentParser, kwargs: dict[str, t.Any]) -> None:
     """Set argparse defaults from a dictionary."""
-    kwargs = dict(kwargs)  # keys are renamed to argument dests below, so don't mutate the caller's dict
+    kwargs = kwargs.copy()  # keys are renamed to argument dests below, so don't mutate the caller's dict
     # set_defaults expects the dest of an argument. Here we allow the option strings to be used as keys
     for arg in parser._actions:  # ruff:ignore[private-member-access]
         for optstring in arg.option_strings:

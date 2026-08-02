@@ -91,7 +91,7 @@ def append_electroncapture_betaplus_nuclei(df: pl.DataFrame, nuc_dataset: str) -
         ],
     }
 
-    new_rows = pl.DataFrame(data) if nuc_dataset == "Hotokezaka" else pl.DataFrame({**data, "source": ["ENSDF"] * 7})
+    new_rows = pl.DataFrame(data) if nuc_dataset == "Hotokezaka" else pl.DataFrame(data | {"source": ["ENSDF"] * 7})
 
     return pl.concat([df, new_rows], how="vertical_relaxed")
 
