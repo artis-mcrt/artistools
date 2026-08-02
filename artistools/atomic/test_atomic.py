@@ -1,4 +1,5 @@
 import math
+import shutil
 from pathlib import Path
 
 import numpy as np
@@ -101,7 +102,7 @@ def test_parse_phixsdata_multiple_targets(tmp_path: Path) -> None:
     """A multi-target photoionisation entry must give one structured record per target, like the single-target case."""
     nphixspoints = 3
     lines = [
-        f"{nphixspoints}",
+        str(nphixspoints),
         "0.1",
         # upper ion level -1 means the targets are listed on the following lines
         "26 3 -1 2 1 7.9",
@@ -123,3 +124,32 @@ def test_parse_phixsdata_multiple_targets(tmp_path: Path) -> None:
     assert nptargetlist["level"].tolist() == [0, 2]
     assert nptargetlist["fraction"].tolist() == pytest.approx([0.75, 0.25])
     assert len(phixstable) == nphixspoints
+
+
+@pytest.mark.parametrize("bflistcontents", ["0\n", "", "0"])
+def test_get_bflist_with_no_transitions(tmp_path: Path, bflistcontents: str) -> None:
+    """A run with no bound-free transitions must give an empty frame, not fail at a later collect().
+
+    pl.scan_csv is lazy, so an empty bflist.out used to surface as NoDataError from whichever
+    collect() consumed the frame, e.g. deep inside the packet query of a --frompackets spectrum.
+    """
+    shutil.copy(modelpath_classic_3d / "compositiondata.txt", tmp_path)
+    (tmp_path / "bflist.out").write_text(bflistcontents, encoding="utf-8")
+
+    dfbflist = at.get_bflist(tmp_path).collect()
+    assert dfbflist.is_empty()
+    assert set(dfbflist.columns) == {"bfindex", "lowerlevel", "upperionlevel", "atomic_number", "ion_stage"}
+
+    dfbflist_ionstr = at.get_bflist(tmp_path, get_ion_str=True).collect()
+    assert dfbflist_ionstr.is_empty()
+    assert "ion_str" in dfbflist_ionstr.columns
+
+
+def test_get_bflist_reads_transitions() -> None:
+    """The populated case must be unaffected by the empty-file handling."""
+    dfbflist = at.get_bflist(modelpath_classic_3d, get_ion_str=True).collect()
+
+    assert len(dfbflist) == 10780
+    assert dfbflist["atomic_number"].sum() == 289060
+    assert dfbflist["ion_stage"].sum() == 23822
+    assert dfbflist["ion_str"].to_list()[0] == "Fe I"

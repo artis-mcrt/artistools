@@ -1,3 +1,7 @@
+"""Convert ARTIS output to the file formats used by the HESMA model archive."""
+
+import argparse
+import typing as t
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -11,10 +15,9 @@ import polars as pl
 import artistools as at
 
 
-def plot_hesma_spectrum(timeavg: float, axes: Sequence[mplax.Axes]) -> None:
-    hesma_file = Path("/Users/ccollins/Downloads/hesma_files/M2a/hesma_specseq.dat")
-    hesma_spec = pd.read_csv(hesma_file, comment="#", sep=r"\s+", dtype=float)
-    # print(hesma_spec)
+def plot_hesma_spectrum(timeavg: float, axes: Sequence[mplax.Axes], hesmafile: Path | str) -> None:
+    """Plot a HESMA reference spectrum at the time closest to timeavg onto each of axes."""
+    hesma_spec = pd.read_csv(hesmafile, comment="#", sep=r"\s+", dtype=float)
 
     searchtimes = [float(x) for x in hesma_spec.keys()[1:]]
 
@@ -29,20 +32,10 @@ def plot_hesma_spectrum(timeavg: float, axes: Sequence[mplax.Axes]) -> None:
         ax.plot(hesma_spec["0.00"], hesma_spec[closest_time], label="HESMA model")
 
 
-def plothesmaresspec(fig: mplfig.Figure, ax: mplax.Axes) -> None:
-    # specfiles = ["/Users/ccollins/Downloads/hesma_files/M2a_i55/hesma_specseq_theta.dat"]
-    specfiles = ["/Users/ccollins/Downloads/hesma_files/M2a/hesma_virtualspecseq_theta.dat"]
+def plothesmaresspec(fig: mplfig.Figure, ax: mplax.Axes, specfiles: Sequence[Path | str]) -> None:
+    """Plot the first five direction bins of each HESMA direction-resolved spectrum file."""
     for specfilename in specfiles:
         specdata = pl.from_pandas(pd.read_csv(specfilename, sep=r"\s+", header=None, dtype=float))
-
-        # index_to_split = specdata.index[specdata.iloc[:, 1] == specdata.iloc[0, 1]]
-        # res_specdata = []
-        # for i, index_value in enumerate(index_to_split):
-        #     if index_value != index_to_split[-1]:
-        #         chunk = specdata.iloc[index_to_split[i]:index_to_split[i + 1], :]
-        #     else:
-        #         chunk = specdata.iloc[index_to_split[i]:, :]
-        #     res_specdata.append(chunk)
 
         res_specdata = {
             dirbin: pldf.collect().to_pandas(use_pyarrow_extension_array=True)
@@ -60,17 +53,17 @@ def plothesmaresspec(fig: mplfig.Figure, ax: mplax.Axes) -> None:
                 .drop(res_specdata[i].index[0])
             )
 
-        ax.plot(res_specdata[0]["lambda"], res_specdata[0][11.7935] * (1e-5) ** 2, label="hesma 0")
-        ax.plot(res_specdata[1]["lambda"], res_specdata[1][11.7935] * (1e-5) ** 2, label="hesma 1")
-        ax.plot(res_specdata[2]["lambda"], res_specdata[2][11.7935] * (1e-5) ** 2, label="hesma 2")
-        ax.plot(res_specdata[3]["lambda"], res_specdata[3][11.7935] * (1e-5) ** 2, label="hesma 3")
-        ax.plot(res_specdata[4]["lambda"], res_specdata[4][11.7935] * (1e-5) ** 2, label="hesma 4")
+        # 11.7935 d is the epoch these HESMA files were tabulated at, and 1e-5 rescales 10 pc to 1 Mpc
+        for dirbin in range(5):
+            ax.plot(
+                res_specdata[dirbin]["lambda"], res_specdata[dirbin][11.7935] * (1e-5) ** 2, label=f"hesma {dirbin}"
+            )
 
     fig.legend()
-    # plt.show()
 
 
 def make_hesma_vspecfiles(modelpath: Path, outpath: Path | None = None) -> None:
+    """Write the virtual packet spectra of the first five direction bins in HESMA format."""
     if not outpath:
         outpath = modelpath
     modelname = at.get_model_name(modelpath)
@@ -156,36 +149,128 @@ def make_hesma_peakmag_dm15_dm40(
     outdataframe.to_csv(outpath / f"{modelname}_width-luminosity.dat", sep=" ", index=False, header=True)
 
 
-def read_hesma_peakmag_dm15_dm40(pathtofiles: Path | str) -> None:
-    data = []
-    for filepath in Path(pathtofiles).iterdir():
-        print(filepath)
-        data.append(pd.read_csv(filepath, sep=r"\s+"))
-    print(data[0])
-
-    fig, axis = plt.subplots()
-    for df in data:
-        print(df)
-        axis.scatter(df["dm15"], df["peakmag"])
-    axis.invert_yaxis()
-    plt.show()
+def save_or_show(fig: mplfig.Figure, outputfile: Path | str | None) -> None:
+    """Save the figure when an output file was given, otherwise show it."""
+    if outputfile:
+        fig.savefig(outputfile)
+        at.print_saved(outputfile)
+    else:
+        plt.show()
     plt.close(fig)
 
 
-# def main():
-#     # pathtomodel = Path("/home/localadmin_ccollins/harddrive4TB/parameterstudy/")
-#     # modelnames = ['M08_03', 'M08_05', 'M08_10', 'M09_03', 'M09_05', 'M09_10',
-#     #               'M10_02_end55', 'M10_03', 'M10_05', 'M10_10', 'M11_05_1']
-#     # outpath = Path("/home/localadmin_ccollins/harddrive4TB/parameterstudy/hesma_lc")
-#     # timemin = 5
-#     # timemax = 70
-#     # for modelname in modelnames:
-#     #     modelpath = pathtomodel / modelname
-#     #     make_hesma_bol_lightcurve(modelpath, outpath, timemin, timemax)
-#
-#     # pathtofiles = Path("/home/localadmin_ccollins/harddrive4TB/parameterstudy/declinerate")
-#     # read_hesma_peakmag_dm15_dm40(pathtofiles)
-#
-#
-# if __name__ == '__main__':
-#     main()
+def plot_hesma_peakmag_dm15_dm40(pathtofiles: Path | str, outputfile: Path | str | None = None) -> None:
+    """Plot peak magnitude against dm15 for every width-luminosity file in a folder."""
+    fig, axis = plt.subplots()
+    for filepath in sorted(Path(pathtofiles).iterdir()):
+        print(f"Reading {filepath}")
+        dfwidthlum = pd.read_csv(filepath, sep=r"\s+")
+        axis.scatter(dfwidthlum["dm15"], dfwidthlum["peakmag"], label=filepath.stem)
+
+    axis.invert_yaxis()
+    axis.set_xlabel(r"$\Delta m_{15}$")
+    axis.set_ylabel("Peak magnitude")
+    axis.legend()
+
+    save_or_show(fig, outputfile)
+
+
+def addargs(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "action",
+        # optional so that main(argsraw=[], action=...) works, since parse_cli_args ignores
+        # argsraw as soon as any keyword argument is given
+        nargs="?",
+        default=None,
+        choices=[
+            "vspecfiles",
+            "bollightcurve",
+            "widthluminosity",
+            "plotwidthluminosity",
+            "plotspectrum",
+            "plotresspec",
+        ],
+        help=(
+            "vspecfiles: write virtual packet spectra in HESMA format."
+            " bollightcurve: write the angle-averaged bolometric light curve."
+            " widthluminosity: build a peak magnitude/dm15 file from viewing angle data."
+            " plotwidthluminosity: plot peak magnitude against dm15 for a folder of those files."
+            " plotspectrum/plotresspec: plot a HESMA reference spectrum file."
+        ),
+    )
+    at.add_modelpath_arg(parser, helptext="Path to ARTIS folder (vspecfiles, bollightcurve)")
+    at.add_outputpath_arg(parser, astype=Path, helptext="Folder for the written HESMA files")
+    # not -outputfile/-o, because add_outputpath_arg above already claims -o for the folder
+    parser.add_argument("-plotfile", type=Path, help="Path for the plot, or omit to show it interactively")
+    at.add_timeminmax_args(parser)
+    parser.add_argument(
+        "-hesmafile", type=Path, nargs="+", help="HESMA spectrum file(s) to plot (plotspectrum, plotresspec)"
+    )
+    parser.add_argument("-timedays", "-time", "-t", type=float, help="Time in days to plot (plotspectrum)")
+    parser.add_argument("-band", default="B", help="Filter band of the viewing angle data (widthluminosity)")
+    parser.add_argument("-modelname", help="Model name in the viewing angle filenames (widthluminosity)")
+    parser.add_argument(
+        "-pathtofiles", type=Path, help="Folder of viewing angle data (widthluminosity, plotwidthluminosity)"
+    )
+    parser.add_argument("--dm40", action="store_true", help="Also read the deltam40 file (widthluminosity)")
+
+
+def require(value: t.Any, argname: str, action: str) -> t.Any:
+    """Return value, or exit with a message naming the argument the action needs."""
+    if value is None:
+        print(f"ERROR: {action} requires {argname}")
+        raise SystemExit(1)
+
+    return value
+
+
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
+    """Convert ARTIS output to the file formats used by the HESMA model archive."""
+    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+
+    if args.action is None:
+        print("ERROR: no action given. Run with --help to see the available actions.")
+        raise SystemExit(1)
+
+    outputpath = Path(args.outputpath)
+
+    if args.action == "vspecfiles":
+        make_hesma_vspecfiles(require(args.modelpath, "-modelpath", args.action), outputpath)
+
+    elif args.action == "bollightcurve":
+        make_hesma_bol_lightcurve(
+            require(args.modelpath, "-modelpath", args.action),
+            outputpath,
+            require(args.timemin, "-timemin", args.action),
+            require(args.timemax, "-timemax", args.action),
+        )
+
+    elif args.action == "widthluminosity":
+        make_hesma_peakmag_dm15_dm40(
+            args.band,
+            require(args.pathtofiles, "-pathtofiles", args.action),
+            require(args.modelname, "-modelname", args.action),
+            outputpath,
+            dm40=args.dm40,
+        )
+
+    elif args.action == "plotwidthluminosity":
+        plot_hesma_peakmag_dm15_dm40(require(args.pathtofiles, "-pathtofiles", args.action), args.plotfile)
+
+    elif args.action == "plotspectrum":
+        fig, axis = plt.subplots()
+        plot_hesma_spectrum(
+            require(args.timedays, "-timedays", args.action),
+            [axis],
+            require(args.hesmafile, "-hesmafile", args.action)[0],
+        )
+        save_or_show(fig, args.plotfile)
+
+    else:
+        fig, axis = plt.subplots()
+        plothesmaresspec(fig, axis, require(args.hesmafile, "-hesmafile", args.action))
+        save_or_show(fig, args.plotfile)
+
+
+if __name__ == "__main__":
+    main()

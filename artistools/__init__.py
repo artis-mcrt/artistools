@@ -35,6 +35,7 @@ from artistools import lightcurve as lightcurve
 from artistools import linefluxes as linefluxes
 from artistools import logfiles as logfiles
 from artistools import macroatom as macroatom
+from artistools import make_vpkt_input as make_vpkt_input
 from artistools import misc as misc
 from artistools import nltepops as nltepops
 from artistools import nonthermal as nonthermal
@@ -62,7 +63,6 @@ from artistools.atomic import get_ionstring as get_ionstring
 from artistools.atomic import get_linelist_pldf as get_linelist_pldf
 from artistools.atomic import get_nuclides as get_nuclides
 from artistools.atomic import get_z_a_nucname as get_z_a_nucname
-from artistools.atomic import LineTuple as LineTuple
 from artistools.atomic import read_linestatfile as read_linestatfile
 from artistools.atomic import roman_numerals as roman_numerals
 from artistools.commands import addargs as addargs

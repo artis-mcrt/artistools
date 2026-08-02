@@ -67,6 +67,9 @@ subcommandtree: CommandTree = {
     "getpath": CommandSpec(
         "commands", funcname="get_artistools_path", helptext="Print the installed artistools package directory."
     ),
+    "hesma": CommandSpec(
+        "hesma_scripts", helptext="Convert ARTIS output to the file formats used by the HESMA model archive."
+    ),
     "gsinetworkdecayproducts": CommandSpec(
         "gsinetwork.decayproducts", helptext="Load beta-decay energy release data from nucleosynthesis trajectories."
     ),
@@ -74,6 +77,9 @@ subcommandtree: CommandTree = {
         "describe": CommandSpec(
             "inputmodel.describeinputmodel",
             helptext="Describe an ARTIS input model, such as the mass, velocity structure, and abundances.",
+        ),
+        "energyfiles": CommandSpec(
+            "inputmodel.energyinputfiles", helptext="Plot and inspect the ARTIS energy input files."
         ),
         "from_e2e": CommandSpec(
             "inputmodel.from_e2e_model",
@@ -99,6 +105,9 @@ subcommandtree: CommandTree = {
         "maptogrid": CommandSpec(
             "inputmodel.maptogrid", helptext="Map tracer particle trajectories to a Cartesian grid."
         ),
+        "opacityfile": CommandSpec(
+            "inputmodel.opacityinputfile", helptext="Write or inspect an ARTIS grey opacity.txt."
+        ),
         "plotinitialabundances": CommandSpec(
             "inputmodel.plotinitialabundances",
             helptext="Plot initial abundances or mass fractions from one or more ARTIS models.",
@@ -110,6 +119,9 @@ subcommandtree: CommandTree = {
         helptext="Create an ARTIS format model from grid.dat.",
         hidden=True,  # duplicate of "inputmodel makeartismodelfromparticlegridmap"
     ),
+    "makevpktinput": CommandSpec(
+        "make_vpkt_input", helptext="Create a vpkt.txt virtual packet configuration file for an ARTIS simulation."
+    ),
     "maptogrid": CommandSpec(
         "inputmodel.maptogrid",
         helptext="Map tracer particle trajectories to a Cartesian grid.",
@@ -118,10 +130,6 @@ subcommandtree: CommandTree = {
     "plotdensity": CommandSpec("inputmodel.plotdensity", helptext="Plot the radial density profile of an ARTIS model."),
     "plotestimators": CommandSpec(
         "estimators.plotestimators", helptext="Plot ARTIS estimators.", aliases=("estimators",)
-    ),
-    "plotestimators3dclassic": CommandSpec(
-        "estimators.plot3destimators_classic",
-        helptext="Plot a 2D slice of the electron temperature from a classic-mode 3D model.",
     ),
     "plotinitialcomposition": CommandSpec(
         "inputmodel.plotinitialcomposition", helptext="Plot ARTIS input model composition."

@@ -442,8 +442,8 @@ def get_colour_delta_mag(
 ) -> tuple[list[float], list[float]]:
     """Return the times and magnitude differences of two bands, using only the times sampled by both bands."""
     # make magnitude dictionaries where time is the key
-    time_dict_1 = {float(time): mag for time, mag in band_lightcurve_data[filter_names[0]]}
-    time_dict_2 = {float(time): mag for time, mag in band_lightcurve_data[filter_names[1]]}
+    time_dict_1 = dict(band_lightcurve_data[filter_names[0]])
+    time_dict_2 = dict(band_lightcurve_data[filter_names[1]])
 
     # a band with no flux at some time contributes no point there, so the two bands can be sampled at different
     # times. Only times present in both bands have a colour

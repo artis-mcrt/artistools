@@ -352,52 +352,95 @@ def read_estimators(
 
 
 def get_averageexcitation(
-    modelpath: Path | str, modelgridindex: int, timestep: int, atomic_number: int, ion_stage: int, T_exc: float
-) -> float | int | None:
-    dfnltepops = at.nltepops.read_files(modelpath, modelgridindex=modelgridindex, timestep=timestep).to_pandas(
-        use_pyarrow_extension_array=True
+    modelpath: Path | str, atomic_number: int, ion_stage: int, dftexc: pl.LazyFrame
+) -> pl.LazyFrame:
+    """Return the population-weighted mean level excitation energy [eV] of an ion per timestep and cell.
+
+    dftexc gives the excitation temperature (columns timestep, modelgridindex, T_exc) used to spread
+    the superlevel population over the levels it stands in for.
+    """
+    dfpops = (
+        at.nltepops
+        .read_files(modelpath)
+        .lazy()
+        .filter((pl.col("Z") == atomic_number) & (pl.col("ion_stage") == ion_stage))
     )
-    if dfnltepops.empty:
-        print(f"WARNING: NLTE pops not found for cell {modelgridindex} at timestep {timestep}")
 
     adata = at.atomic.get_levels(modelpath)
-    ionlevels = adata.filter((pl.col("Z") == atomic_number) & (pl.col("ion_stage") == ion_stage))["levels"].item()
-
-    energypopsum = 0
-    ionpopsum = 0
-    if dfnltepops.empty:
-        return None
-
-    dfnltepops_ion = dfnltepops.query(
-        "modelgridindex==@modelgridindex and timestep==@timestep and Z==@atomic_number & ion_stage==@ion_stage"
+    dfionlevels = adata.filter((pl.col("Z") == atomic_number) & (pl.col("ion_stage") == ion_stage))["levels"].item()
+    if dfionlevels is None:
+        msg = f"No level data for Z={atomic_number} ion_stage={ion_stage}"
+        raise ValueError(msg)
+    dflevels = dfionlevels.lazy().select(
+        level=pl.col("levelindex").cast(pl.Int64), energy_ev=pl.col("energy_ev"), g=pl.col("g")
     )
 
-    ionpopsum = dfnltepops_ion.n_NLTE.sum()
-    assert isinstance(ionpopsum, float)
-    energypopsum = sum(
-        ionlevels["energy_ev"].item(level) * n_NLTE
-        for level, n_NLTE in dfnltepops_ion[dfnltepops_ion.level >= 0][["level", "n_NLTE"]].itertuples(index=False)
+    groupcols = ["timestep", "modelgridindex"]
+
+    # resolved levels contribute their own energy; the superlevel is added below
+    dfresolved = (
+        dfpops
+        .filter(pl.col("level") >= 0)
+        .join(dflevels, on="level", how="inner")
+        .group_by(groupcols)
+        .agg(energypopsum=(pl.col("energy_ev") * pl.col("n_NLTE")).sum(), levelnumber_sl=pl.col("level").max() + 1)
     )
-    assert isinstance(energypopsum, float)
 
-    with contextlib.suppress(IndexError):  # no superlevel will cause IndexError
-        superlevelrow = dfnltepops_ion[dfnltepops_ion.level < 0].iloc[0]
-        levelnumber_sl = dfnltepops_ion.level.max() + 1
+    dfionpopsum = dfpops.group_by(groupcols).agg(ionpopsum=pl.col("n_NLTE").sum())
 
-        energy_boltzfac_sum = (
-            ionlevels[levelnumber_sl:]
-            .select(pl.col("energy_ev") * pl.col("g") * (-pl.col("energy_ev") / K_B_ev_per_K / T_exc).exp())
-            .sum()
-            .item()
+    dfsuperlevel = (
+        dfpops
+        .filter(pl.col("level") < 0)
+        .group_by(groupcols)
+        .agg(n_NLTE_sl=pl.col("n_NLTE").sum())
+        .join(dfresolved.select([*groupcols, "levelnumber_sl"]), on=groupcols, how="inner")
+        .join(dftexc, on=groupcols, how="inner")
+        .collect()
+    )
+
+    dfsuperlevelenergy = _superlevel_energy(dfsuperlevel, dflevels.collect(), groupcols)
+
+    # inner join on dftexc, so the result covers exactly the cells a temperature was given for and a
+    # missing one cannot silently drop the superlevel term
+    return (
+        dfresolved
+        .join(dftexc.select(groupcols), on=groupcols, how="inner")
+        .join(dfionpopsum, on=groupcols, how="inner")
+        .join(dfsuperlevelenergy.lazy(), on=groupcols, how="left")
+        .with_columns(
+            averageexcitation=(pl.col("energypopsum") + pl.col("energypopsum_sl").fill_null(0.0)) / pl.col("ionpopsum")
+        )
+        .select([*groupcols, "averageexcitation"])
+    )
+
+
+def _superlevel_energy(dfsuperlevel: pl.DataFrame, dflevels: pl.DataFrame, groupcols: list[str]) -> pl.DataFrame:
+    """Return the energy the superlevel population contributes, Boltzmann-distributed at T_exc."""
+    schema: dict[str, pl.DataType] = {
+        **{col: dfsuperlevel.schema[col] for col in groupcols},
+        "energypopsum_sl": pl.Float64(),
+    }
+    if dfsuperlevel.is_empty():
+        return pl.DataFrame(schema=schema)
+
+    # levelnumber_sl is the same for every cell in practice, so this loops once
+    contributions = []
+    for levelnumber_sl in dfsuperlevel["levelnumber_sl"].unique().sort():
+        dflevels_above = dflevels.filter(pl.col("level") >= levelnumber_sl)
+        if dflevels_above.is_empty():
+            continue
+
+        contributions.append(
+            dfsuperlevel
+            .filter(pl.col("levelnumber_sl") == levelnumber_sl)
+            .join(dflevels_above, how="cross")
+            .with_columns(boltzfac=pl.col("g") * (-pl.col("energy_ev") / K_B_ev_per_K / pl.col("T_exc")).exp())
+            .group_by(groupcols)
+            .agg(
+                energypopsum_sl=pl.col("n_NLTE_sl").first()
+                * (pl.col("energy_ev") * pl.col("boltzfac")).sum()
+                / pl.col("boltzfac").sum()
+            )
         )
 
-        boltzfac_sum = (
-            ionlevels[levelnumber_sl:]
-            .select(pl.col("g") * (-pl.col("energy_ev") / K_B_ev_per_K / T_exc).exp())
-            .sum()
-            .item()
-        )
-        # adjust to the actual superlevel population from ARTIS
-        energypopsum += energy_boltzfac_sum * superlevelrow.n_NLTE / boltzfac_sum
-
-    return energypopsum / ionpopsum
+    return pl.concat(contributions) if contributions else pl.DataFrame(schema=schema)

@@ -605,8 +605,14 @@ def get_bflist(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame
         "lowerlevel": pl.Int32,
         "upperionlevel": pl.Int32,
     }
-    try:
-        dfboundfree = pl.scan_csv(
+    # a run with no bound-free transitions writes only the count line, and scan_csv would raise
+    # NoDataError at whatever collect() eventually consumes this frame, far from the cause here
+    with zopen(bflistpath) as fbflist:
+        fbflist.readline()  # the number of transitions
+        hastransitions = bool(fbflist.readline().strip())
+
+    dfboundfree = (
+        pl.scan_csv(
             bflistpath,
             skip_rows=1,
             has_header=False,
@@ -614,14 +620,20 @@ def get_bflist(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame
             new_columns=["bfindex", "elementindex", "ionindex", "lowerlevel", "upperionlevel"],
             schema_overrides=schema,
         )
-    except pl.exceptions.NoDataError:
-        dfboundfree = pl.DataFrame(schema=schema).lazy()
+        if hastransitions
+        else pl.LazyFrame(schema=schema)
+    )
+
+    # elementindex is the row position in compositiondata; replace_strict keeps the original behaviour of
+    # failing loudly on an index that compositiondata does not cover
+    z_of_elementindex = dict(enumerate(compositiondata["Z"]))
+    lowermost_ion_stage_of_elementindex = dict(enumerate(compositiondata["lowermost_ion_stage"]))
 
     dfboundfree = dfboundfree.with_columns(
-        atomic_number=pl.col("elementindex").map_elements(compositiondata["Z"].item, return_dtype=pl.Int32),
+        atomic_number=pl.col("elementindex").replace_strict(z_of_elementindex, return_dtype=pl.Int32),
         ion_stage=(
             pl.col("ionindex")
-            + pl.col("elementindex").map_elements(compositiondata["lowermost_ion_stage"].item, return_dtype=pl.Int32)
+            + pl.col("elementindex").replace_strict(lowermost_ion_stage_of_elementindex, return_dtype=pl.Int32)
         ),
     )
 
@@ -636,16 +648,6 @@ def get_bflist(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame
         )
 
     return dfboundfree
-
-
-class LineTuple(t.NamedTuple):
-    """Named tuple for a line in linestat.out."""
-
-    lambda_angstroms: float
-    atomic_number: int
-    ion_stage: int
-    upperlevelindex: int
-    lowerlevelindex: int
 
 
 def read_linestatfile(

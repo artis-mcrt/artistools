@@ -260,7 +260,6 @@ def get_lambda_bin_edges(
         x_bin_edges = np.arange(xmin_plot - deltax * 0.5, xmax_plot + deltax * 1.5, deltax)
         lambda_bin_edges = np.sort(convert_unit_to_angstroms(x_bin_edges, xunit))
     elif deltalambda is not None:
-        deltalambda = float(deltalambda)
         if not deltalambda > 0:
             msg = f"deltalambda must be positive, got {deltalambda}"
             raise ValueError(msg)
@@ -608,8 +607,14 @@ def read_spec(modelpath: Path | str, gamma: bool = False) -> pl.LazyFrame:
     )
 
 
+# maxsize is small because, unlike read_spec above, this reads eagerly and every cached entry
+# retains a whole spec_res file: the per-dirbin frames are all slices of one parsed frame
+@lru_cache(maxsize=2)
 def read_spec_res(modelpath: Path | str, gamma: bool = False) -> dict[int, pl.LazyFrame]:
-    """Return a dict of LazyFrames of time-series spectra keyed to the viewing direction bin."""
+    """Return a dict of LazyFrames of time-series spectra keyed to the viewing direction bin.
+
+    Callers must not mutate the returned dict, which is shared between calls.
+    """
     resfilenames = ["gamma_spec_res.out"] if gamma else ["spec_res.out", "specpol_res.out"]
     specfilename = (
         modelpath if Path(modelpath).is_file() else firstexisting(resfilenames, folder=modelpath, tryzipped=True)
@@ -1509,7 +1514,7 @@ def sort_and_reduce_flux_contribution_list(
 
     color_list = [
         color
-        for color in [*list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20))), *glasbey_category20_nogreys[10:]]
+        for color in (*list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20))), *glasbey_category20_nogreys[10:])
         if color[0] != color[1] or color[1] != color[2] or color[0] != color[2]  # remove greys
     ]
 

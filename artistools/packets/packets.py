@@ -150,13 +150,7 @@ def add_derived_columns_lazy(
             at.get_timestep_times(modelpath, loc="end")[-1] * day_to_s
         ]
         dfpackets = dfpackets.with_columns(
-            (
-                pl
-                .col("em_time")
-                .cut(breaks=timebins, labels=[str(x) for x in range(-1, len(timebins))])
-                .cast(pl.String)
-                .cast(pl.Int32)
-            ).alias("em_timestep")
+            (pl.col("em_time").cut(breaks=timebins).to_physical().cast(pl.Int32) - 1).alias("em_timestep")
         )
 
     if "trueem_posx" in dfpackets.collect_schema().names():
@@ -217,25 +211,13 @@ def add_derived_columns_lazy(
         assert dfmodel is not None, "dfmodel must be provided for 1D models to set em_modelgridindex"
 
         velbins = [0.0, *(dfmodel.select(pl.col("vel_r_max_kmps") * 100000.0).collect().to_series().to_list())]
-        dfpackets = dfpackets.with_columns(
-            em_modelgridindex=(
-                pl
-                .col("emission_velocity")
-                .cut(breaks=velbins, labels=[str(x) for x in range(-1, len(velbins))])
-                .cast(pl.String)
-                .cast(pl.Int32)
-            )
-        )
+
+        def velocity_to_mgi(velcol: str) -> pl.Expr:
+            return pl.col(velcol).cut(breaks=velbins).to_physical().cast(pl.Int32) - 1
+
+        dfpackets = dfpackets.with_columns(em_modelgridindex=velocity_to_mgi("emission_velocity"))
         if "true_emission_velocity" in dfpackets.collect_schema().names():
-            dfpackets = dfpackets.with_columns(
-                emtrue_modelgridindex=(
-                    pl
-                    .col("true_emission_velocity")
-                    .cut(breaks=velbins, labels=[str(x) for x in range(-1, len(velbins))])
-                    .cast(pl.String)
-                    .cast(pl.Int32)
-                )
-            )
+            dfpackets = dfpackets.with_columns(emtrue_modelgridindex=velocity_to_mgi("true_emission_velocity"))
 
     return dfpackets
 
@@ -786,12 +768,7 @@ def bin_and_sum(
             # each bin is [lower, upper), except the last one, which also includes its upper edge. cut() would put a
             # value sitting exactly on that final edge into the overflow bin, so clamp it back into the last bin
             pl.min_horizontal(
-                pl
-                .col(bincol)
-                .cut(breaks=bins, labels=[str(x) for x in range(-1, len(bins))], left_closed=True)
-                .cast(pl.String)
-                .cast(pl.Int32),
-                nbins - 1,
+                pl.col(bincol).cut(breaks=bins, left_closed=True).to_physical().cast(pl.Int32) - 1, nbins - 1
             ).alias(f"{bincol}_bin")
         )
     )

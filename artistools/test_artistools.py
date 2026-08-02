@@ -2,6 +2,7 @@ import argparse
 import hashlib
 import importlib
 import inspect
+import itertools
 import math
 import os
 import subprocess
@@ -14,6 +15,7 @@ from unittest import mock
 import matplotlib.axes as mplax
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import polars as pl
 import polars.testing as pltest
 import pytest
@@ -473,6 +475,253 @@ def test_parse_range_list() -> None:
     assert at.parse_range_list("5-3") == [3, 4, 5]  # reversed range is sorted
 
 
+def test_make_vpkt_input_default_contents() -> None:
+    """The default vpkt.txt must keep the exact layout ARTIS parses, field by field."""
+    expected = (
+        "3\n"  # number of viewing directions
+        "1 0 -1\n"  # costheta of each direction
+        "0 0 0\n"  # phi of each direction
+        "0 \n"  # no opacity exclusions
+        "0 0.2 1.5\n"  # override_tminmax off, then the time window
+        "0\n"  # no custom wavelength ranges
+        "1 100\n"  # override thick cell tau, and the threshold
+        "10\n"  # tau_max_vpkt
+        "0\n"  # velocity grid map off
+        "0.2 1.5\n"  # velocity grid map time range
+        "1 3500 6000"  # one wavelength range for the velocity grid map
+    )
+    assert at.make_vpkt_input.format_vpkt_input(at.make_vpkt_input.VpktConfig()) == expected
+
+
+def test_make_vpkt_input_optional_blocks() -> None:
+    """The opacity exclusion and custom wavelength blocks must be prefixed by their own counts."""
+    config = at.make_vpkt_input.VpktConfig(
+        directions_costheta_phi=[(-1, 0), (0.5, 90)],
+        opacityexclusions=[0, -1, 26],
+        custom_lambda_ranges=[(3500, 6000), (10000, 12000)],
+        override_tminmax=True,
+        vgrid_on=True,
+        override_thickcell_tau=False,
+        tau_max_vpkt=7.5,
+    )
+    contents = at.make_vpkt_input.format_vpkt_input(config).splitlines()
+
+    assert contents[0] == "2"
+    assert contents[1] == "-1 0.5"
+    assert contents[2] == "0 90"
+    assert contents[3] == "1 3 0 -1 26"
+    assert contents[4] == "1 0.2 1.5"
+    assert contents[5] == "1 2 3500 6000 10000 12000"
+    assert contents[6] == "0 100"
+    assert contents[7] == "7.5"
+    assert contents[8] == "1"
+
+
+def test_make_vpkt_input_roundtrip() -> None:
+    """Parsing a written file must recover exactly the settings it was written from."""
+    for config in (
+        at.make_vpkt_input.VpktConfig(),
+        at.make_vpkt_input.VpktConfig(
+            directions_costheta_phi=[(-1, 0), (0.5, 90)],
+            opacityexclusions=[0, -1, 26],
+            custom_lambda_ranges=[(3500, 6000), (10000, 12000)],
+            override_tminmax=True,
+            vgrid_on=True,
+            override_thickcell_tau=False,
+            tau_max_vpkt=7.5,
+            vspec_tmin_in_days=1.25,
+        ),
+    ):
+        assert at.make_vpkt_input.parse_vpkt_input(at.make_vpkt_input.format_vpkt_input(config)) == config
+
+
+def test_make_vpkt_input_rejects_inconsistent_file() -> None:
+    """A truncated or out-of-range file must be reported, not silently accepted."""
+    contents = at.make_vpkt_input.format_vpkt_input(at.make_vpkt_input.VpktConfig())
+    truncated = "\n".join(contents.splitlines()[:5])
+    with pytest.raises(ValueError, match="ended while reading"):
+        at.make_vpkt_input.parse_vpkt_input(truncated)
+
+    # a file ARTIS would reject still loads, so it can be repaired, but reports the problem
+    badcostheta = at.make_vpkt_input.parse_vpkt_input(contents.replace("1 0 -1", "1 0 -2", 1))
+    assert "outside [-1, 1]" in str(at.make_vpkt_input.fatal_config_error(badcostheta))
+    with pytest.raises(ValueError, match="outside"):
+        at.make_vpkt_input.format_vpkt_input(badcostheta)
+
+
+def test_make_vpkt_input_matches_artis_token_reader() -> None:
+    """ARTIS reads vpkt.txt with fscanf, which ignores line breaks, so the parser must too."""
+    config = at.make_vpkt_input.VpktConfig(
+        directions_costheta_phi=[(0.5, 90)], opacityexclusions=[0, -1], custom_lambda_ranges=[(4000, 7000)]
+    )
+    contents = at.make_vpkt_input.format_vpkt_input(config)
+
+    allonelongline = " ".join(contents.split())
+    assert at.make_vpkt_input.parse_vpkt_input(allonelongline) == config
+
+    onetokenperline = "\n".join(contents.split())
+    assert at.make_vpkt_input.parse_vpkt_input(onetokenperline) == config
+
+
+def test_make_vpkt_input_velocity_grid_ranges_roundtrip() -> None:
+    """ARTIS reads as many velocity grid ranges as the count declares, so every one must be written."""
+    config = at.make_vpkt_input.VpktConfig(
+        vgrid_on=True, vgrid_lambda_ranges=[(3500, 6000), (6000, 9000), (9000, 10000)]
+    )
+    contents = at.make_vpkt_input.format_vpkt_input(config)
+
+    assert contents.splitlines()[-1] == "3 3500 6000 6000 9000 9000 10000"
+    assert at.make_vpkt_input.parse_vpkt_input(contents) == config
+
+
+def test_make_vpkt_input_accepts_file_without_velocity_grid_block() -> None:
+    """ARTIS only reads the velocity grid block when the map is on, so a file may legitimately omit it."""
+    contents = at.make_vpkt_input.format_vpkt_input(at.make_vpkt_input.VpktConfig())
+    withoutvgridblock = "\n".join(contents.splitlines()[:9])
+
+    config = at.make_vpkt_input.parse_vpkt_input(withoutvgridblock)
+    assert not config.vgrid_on
+    assert config.vgrid_lambda_ranges == [(3500.0, 6000.0)]
+
+
+def test_make_vpkt_input_rejects_nonzero_first_opacity_choice() -> None:
+    """ARTIS asserts opacityexclusions[0] == 0, so artistools must not be able to write such a file."""
+    config = at.make_vpkt_input.VpktConfig(opacityexclusions=[26, 0])
+    with pytest.raises(ValueError, match="first opacity choice must be 0"):
+        at.make_vpkt_input.format_vpkt_input(config)
+
+
+def test_make_vpkt_input_warns_outside_compiled_limits() -> None:
+    """Bounds that ARTIS asserts against compile-time constants must warn rather than fail."""
+    outsidetime = at.make_vpkt_input.VpktConfig(override_tminmax=True, vspec_tmin_in_days=0.2, vspec_tmax_in_days=1.5)
+    assert any("time window" in warning for warning in at.make_vpkt_input.check_config(outsidetime))
+
+    outsidelambda = at.make_vpkt_input.VpktConfig(custom_lambda_ranges=[(1000, 2000)])
+    assert any("wavelength range" in warning for warning in at.make_vpkt_input.check_config(outsidelambda))
+
+    assert not at.make_vpkt_input.check_config(at.make_vpkt_input.VpktConfig()), "the defaults must not warn"
+
+
+def test_make_vpkt_input_cli_writes_file(tmp_path: Path) -> None:
+    """The subcommand must honour -directions, including a negative leading costheta, and -outputfile."""
+    outfile = tmp_path / "vpkt.txt"
+    at.make_vpkt_input.main(argsraw=["-directions=-1,0 1,0", "-o", str(outfile), "--non-interactive"])
+
+    lines = outfile.read_text(encoding="utf-8").splitlines()
+    assert lines[0] == "2"
+    assert lines[1] == "-1 1"
+    assert lines[2] == "0 0"
+
+
+def test_make_vpkt_input_cli_keeps_existing_settings(tmp_path: Path) -> None:
+    """Rerunning on an existing file must preserve settings that were not given on the command line."""
+    outfile = tmp_path / "vpkt.txt"
+    at.make_vpkt_input.main(argsraw=["-tau-max", "7.5", "-o", str(outfile), "--non-interactive"])
+    assert at.make_vpkt_input.parse_vpkt_input(outfile.read_text(encoding="utf-8")).tau_max_vpkt == 7.5
+
+    at.make_vpkt_input.main(argsraw=["-vspec-tmax", "9.0", "-o", str(outfile), "--non-interactive"])
+    config = at.make_vpkt_input.parse_vpkt_input(outfile.read_text(encoding="utf-8"))
+    assert config.vspec_tmax_in_days == 9.0
+    assert config.tau_max_vpkt == 7.5, "the tau-max from the first run must survive the second"
+
+
+def test_make_vpkt_input_interactive_edit() -> None:
+    """An empty reply keeps the current value, and an invalid reply is asked again."""
+    replies = iter([
+        "",  # keep the default viewing directions
+        "26 -1",  # rejected: the first opacity choice must be 0, so this question repeats
+        "0 26 -1",  # set opacity choices
+        "maybe",  # rejected, so this question repeats
+        "yes",  # override_tminmax
+        "",  # keep vspec_tmin
+        "3.5",  # vspec_tmax
+    ])
+    # pad so the reply script does not have to track how many settings there are
+    replies = itertools.chain(replies, itertools.repeat(""))
+    asked: list[str] = []
+
+    def fakeprompt(text: str) -> str:
+        asked.append(text)
+        return next(replies)
+
+    config = at.make_vpkt_input.edit_config_interactively(at.make_vpkt_input.VpktConfig(), promptfunc=fakeprompt)
+
+    assert config.directions_costheta_phi == [(1.0, 0.0), (0.0, 0.0), (-1.0, 0.0)]
+    assert config.opacityexclusions == [0, 26, -1]
+    assert config.override_tminmax
+    assert config.vspec_tmin_in_days == 0.2
+    assert config.vspec_tmax_in_days == 3.5
+    # the rejected reply must have caused the same question to be asked twice
+    assert sum(question.startswith("Restrict virtual packets") for question in asked) == 2
+    assert "[1,0 0,0 -1,0]" in asked[0], "the prompt must show the current value"
+
+
+def test_make_vpkt_input_interactive_clears_list() -> None:
+    """A single '-' must clear a list-valued setting."""
+    config = at.make_vpkt_input.VpktConfig(opacityexclusions=[26])
+    replies = itertools.chain(iter(["", "-"]), itertools.repeat(""))
+    config = at.make_vpkt_input.edit_config_interactively(config, promptfunc=lambda _: next(replies))
+
+    assert config.opacityexclusions == []
+
+
+def test_hesma_width_luminosity_roundtrip(tmp_path: Path) -> None:
+    """The widthluminosity action must build a file that plotwidthluminosity can read back."""
+    (tmp_path / "Bband_testmodel_viewing_angle_data.txt").write_text(
+        "peakmag risetime dm15\n"
+        + "".join(f"{-19 + i / 100:.4f} {17.0:.4f} {1.0 + i / 100:.4f}\n" for i in range(100)),
+        encoding="utf-8",
+    )
+
+    at.hesma_scripts.main(
+        argsraw=[], action="widthluminosity", band="B", modelname="testmodel", pathtofiles=tmp_path, outputpath=tmp_path
+    )
+
+    widthlumfile = tmp_path / "testmodel_width-luminosity.dat"
+    assert widthlumfile.is_file()
+    dfwidthlum = pd.read_csv(widthlumfile, sep=r"\s+")
+    assert list(dfwidthlum.columns) == ["peakmag", "dm15", "angle_bin"]
+    assert len(dfwidthlum) == 100
+
+    plotdir = tmp_path / "widthlum"
+    plotdir.mkdir()
+    widthlumfile.rename(plotdir / widthlumfile.name)
+    plotfile = tmp_path / "widthlum.pdf"
+    at.hesma_scripts.main(argsraw=["plotwidthluminosity", "-pathtofiles", str(plotdir), "-plotfile", str(plotfile)])
+    assert plotfile.is_file()
+
+
+def test_hesma_reports_missing_arguments(capsys: pytest.CaptureFixture[str]) -> None:
+    """An action must name the argument it needs rather than failing on a None."""
+    with pytest.raises(SystemExit):
+        at.hesma_scripts.main(argsraw=["vspecfiles"])
+    assert "requires -modelpath" in capsys.readouterr().out
+
+
+def test_opacity_condition_labels_match_artis() -> None:
+    """The codes must match trace_vpkt_direction() in vpkt.cc: -2 bound-free, -3 free-free, -4 electron scattering."""
+    assert not at.misc.get_opacity_condition_label(0)
+    assert at.misc.get_opacity_condition_label(-1) == "no-bb"
+    assert at.misc.get_opacity_condition_label(-2) == "no-bf"
+    assert at.misc.get_opacity_condition_label(-3) == "no-ff"
+    assert at.misc.get_opacity_condition_label(-4) == "no-es"
+    assert at.misc.get_opacity_condition_label(26) == "no-Fe"
+
+
+def test_make_vpkt_input_rejects_bad_arguments() -> None:
+    for baddirection in ("1", "1,0,0", "north,0", "1.5,0"):
+        with pytest.raises(argparse.ArgumentTypeError):
+            at.make_vpkt_input.parse_directions(baddirection)
+
+    for badrange in ("3500", "3500,6000,7000", "blue,red", "6000,3500"):
+        with pytest.raises(argparse.ArgumentTypeError):
+            at.make_vpkt_input.parse_lambda_range(badrange)
+
+    for badbool in ("maybe", "", "2"):
+        with pytest.raises(argparse.ArgumentTypeError):
+            at.make_vpkt_input.parse_bool(badbool)
+
+
 def test_makelist() -> None:
     assert at.makelist(None) == []
     assert at.makelist("hello") == ["hello"]
@@ -548,7 +797,7 @@ def test_get_cellsofmpirank(tmp_path: Path) -> None:
         (path / "input.txt").write_text("".join(lines))
         (path / "model.txt").write_text(f"{npts}\n")
 
-    for npts, nprocs in [(20, 4), (21, 4), (7, 3)]:
+    for npts, nprocs in ((20, 4), (21, 4), (7, 3)):
         subdir = tmp_path / f"npts{npts}_nprocs{nprocs}"
         subdir.mkdir()
         make_model(subdir, npts=npts, nprocs=nprocs)

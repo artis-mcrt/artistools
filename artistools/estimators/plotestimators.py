@@ -265,6 +265,58 @@ def plot_average_ionisation(
         )
 
 
+def plot_average_excitation(
+    ax: mplax.Axes,
+    params: Sequence[str],
+    estimators: pl.LazyFrame,
+    modelpath: str | Path,
+    startfromzero: bool,
+    args: argparse.Namespace | None = None,
+    **plotkwargs: t.Any,
+) -> None:
+    """Plot the population-weighted mean level excitation energy of each requested ion."""
+    if args is None:
+        args = argparse.Namespace()
+
+    ax.set_ylabel("Average excitation energy [eV]")
+
+    estimatorcolumns = estimators.collect_schema().names()
+    # the superlevel population is spread over the levels it stands in for at the electron temperature
+    dftexc = estimators.select("timestep", "modelgridindex", T_exc=pl.col("Te"))
+
+    for paramvalue in params:
+        print(f"  plotting averageexcitation {paramvalue}")
+        iontuple = at.get_ion_tuple(paramvalue)
+        if isinstance(iontuple, int):
+            msg = f"averageexcitation needs an ion such as 'Fe II', but got {paramvalue!r}"
+            raise TypeError(msg)
+        atomic_number, ion_stage = iontuple
+
+        dfavgexc = at.estimators.get_averageexcitation(modelpath, atomic_number, ion_stage, dftexc)
+
+        # weight the average by the ion population where it is available, as plot_average_ionisation
+        # weights by the element population
+        nnioncol = f"nnion_{at.get_elsymbol(atomic_number)}_{at.roman_numerals[ion_stage]}"
+        weightcol = pl.col(nnioncol) if nnioncol in estimatorcolumns else pl.lit(1.0)
+
+        dfplotdata = (
+            estimators
+            .join(dfavgexc, on=["timestep", "modelgridindex"], how="inner")
+            .with_columns(celltsweight=weightcol * pl.col("deltavol_deltat"), yvalue=pl.col("averageexcitation"))
+            .filter(pl.col("yvalue").is_not_nan() & pl.col("yvalue").is_not_null())
+        )
+
+        plot_data(
+            dfplotdata=dfplotdata,
+            ax=ax,
+            args=args,
+            startfromzero=startfromzero,
+            label=paramvalue,
+            color=get_elemcolor(atomic_number=atomic_number),
+            **plotkwargs,
+        )
+
+
 def plot_levelpop(
     ax: mplax.Axes,
     xlist: Sequence[int | float],
@@ -410,7 +462,9 @@ def could_be_ion(plotvar: t.Any) -> bool:
     return plotvar.isdigit() or "=" in plotvar or get_iontuple(plotvar)[0] >= 1
 
 
-def default_plotitem_has_data(plotitems: t.Any, estimatorcolumns: Collection[str]) -> bool:
+def default_plotitem_has_data(
+    plotitems: t.Any, estimatorcolumns: Collection[str], modelpath: str | Path | None = None
+) -> bool:
     """Return False if a plot item names an element that is missing from this model's estimators.
 
     The built-in plot list names particular elements (e.g. Sr), which most models do not contain. This is only
@@ -433,7 +487,13 @@ def default_plotitem_has_data(plotitems: t.Any, estimatorcolumns: Collection[str
         if len(plotitems) == 2 and isinstance(plotitems[0], str) and plotitems[0] in {"initabundances", "initmasses"}:
             return True
 
-        return all(default_plotitem_has_data(item, estimatorcolumns) for item in plotitems)
+        # averageexcitation reads the NLTE population files, which a model need not have written
+        if len(plotitems) == 2 and plotitems[0] == "averageexcitation" and modelpath is not None:
+            if at.firstexisting_or_none("nlte_0000.out", folder=modelpath, tryzipped=True) is None:
+                return False
+            return all(default_plotitem_has_data(item, estimatorcolumns, modelpath) for item in plotitems[1])
+
+        return all(default_plotitem_has_data(item, estimatorcolumns, modelpath) for item in plotitems)
 
     return True
 
@@ -738,12 +798,7 @@ def get_xlist(
         estimators = (
             estimators
             .with_columns(
-                pl
-                .col("xvalue")
-                .cut(breaks=list(xbinedges), labels=[str(x) for x in range(-1, len(xbinedges))])
-                .cast(pl.String)
-                .cast(pl.Int32)
-                .alias("xbinindex")
+                (pl.col("xvalue").cut(breaks=list(xbinedges)).to_physical().cast(pl.Int32) - 1).alias("xbinindex")
             )
             .filter(pl.col("xbinindex").is_between(0, len(xmids) - 1, closed="both"))
             .join(pl.LazyFrame({"xvalue_binned": xmids}).with_row_index("xbinindex"), on="xbinindex", how="left")
@@ -869,6 +924,11 @@ def plot_subplot(
 
             elif seriestype == "averageionisation":
                 plot_average_ionisation(ax, params, estimators, startfromzero=startfromzero, args=args, **plotkwargs)
+
+            elif seriestype == "averageexcitation":
+                plot_average_excitation(
+                    ax, params, estimators, modelpath, startfromzero=startfromzero, args=args, **plotkwargs
+                )
 
             else:
                 seriestype, ionlist = plotitem
@@ -1198,7 +1258,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         # ["Te"],
         # ["Te", "TR"],
         [["averageionisation", ["Sr"]]],
-        # [["averageexcitation", ["Fe II", "Fe III"]]],
+        [["averageexcitation", ["Fe II", "Fe III"]]],
         # [["populations", ["Sr90", "Sr91", "Sr92", "Sr94"]]],
         [["populations", ["Sr I", "Sr II", "Sr III", "Sr IV"]]],
         # [['populations', ['He I', 'He II', 'He III']]],
@@ -1221,7 +1281,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         keptplotlist: list[t.Any] = []
         skippedplotlist: list[t.Any] = []
         for plotitems in plotlist:
-            target = keptplotlist if default_plotitem_has_data(plotitems, estimatorcolumns) else skippedplotlist
+            target = (
+                keptplotlist if default_plotitem_has_data(plotitems, estimatorcolumns, modelpath) else skippedplotlist
+            )
             target.append(plotitems)
 
         if skippedplotlist:

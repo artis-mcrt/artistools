@@ -1,6 +1,10 @@
+import argparse
+import typing as t
+from collections.abc import Sequence
 from pathlib import Path
 
 import matplotlib.axes as mplax
+import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
@@ -8,48 +12,6 @@ import polars as pl
 
 import artistools as at
 from artistools.constants import day_to_s
-
-
-def rprocess_const_and_powerlaw() -> tuple[pl.DataFrame, float]:
-    """Following eqn 4 Korobkin 2012."""
-
-    def integrand(
-        t_days: float, t0: float, epsilon0: float, sigma: float, alpha: float, thermalisation_factor: float
-    ) -> float:
-        return float(epsilon0 * ((1 / 2) - (1 / np.pi * np.arctan((t_days - t0) / sigma))) ** alpha) * (
-            thermalisation_factor / 0.5
-        )
-
-    from scipy.integrate import quad
-
-    tmin = 0.01 * day_to_s
-    tmax = 50 * day_to_s
-    t0 = 1.3  # seconds
-    epsilon0 = 2e18
-    sigma = 0.11
-    alpha = 1.3
-    thermalisation_factor = 0.5
-
-    E_tot = quad(integrand, tmin, tmax, args=(t0, epsilon0, sigma, alpha, thermalisation_factor))  # ergs/s/g
-    print("Etot per gram", E_tot[0])
-    E_tot = E_tot[0]
-
-    times = np.logspace(np.log10(tmin), np.log10(tmax), num=200)
-    energy_per_gram_cumulative = [0.0]
-    for time in times[1:]:
-        cumulative_integral = quad(
-            integrand, tmin, time, args=(t0, epsilon0, sigma, alpha, thermalisation_factor)
-        )  # ergs/s/g
-        energy_per_gram_cumulative.append(cumulative_integral[0])
-
-    rate = np.array(energy_per_gram_cumulative) / E_tot
-
-    nuclear_heating_power = [integrand(time, t0, epsilon0, sigma, alpha, thermalisation_factor) for time in times]
-
-    times_and_rate = {"times": times / day_to_s, "rate": rate, "nuclear_heating_power": nuclear_heating_power}
-    dftimes_and_rate = pl.DataFrame(data=times_and_rate)
-
-    return dftimes_and_rate, E_tot
 
 
 def get_cumulative_heating_fraction() -> tuple[pl.DataFrame, float]:
@@ -101,35 +63,6 @@ def get_cumulative_heating_fraction() -> tuple[pl.DataFrame, float]:
     return dftimes_and_rate, E_tot
 
 
-def energy_from_rprocess_calculation(
-    energy_thermo_data: pl.DataFrame, get_rate: bool = True
-) -> float | tuple[pl.DataFrame, float]:
-
-    energy_thermo_data = energy_thermo_data.filter(pl.col("time/s") <= 1e7)
-    # print("Dropping times later than 116 days")
-
-    skipfirstnrows = 0  # not sure first values look sensible -- check this
-    times = energy_thermo_data["time/s"][skipfirstnrows:]
-    qdot = energy_thermo_data["Qdot"][skipfirstnrows:]
-
-    E_tot = float(np.trapezoid(y=qdot, x=times))  # erg / g
-
-    if get_rate:
-        print(f"E_tot {E_tot} erg/g")
-        from scipy import integrate
-
-        cumulative_integrated_energy = integrate.cumulative_trapezoid(y=qdot, x=times)
-        cumulative_integrated_energy = np.insert(cumulative_integrated_energy, 0, 0)
-
-        rate = cumulative_integrated_energy / E_tot
-
-        dftimes_and_rate = pl.DataFrame({"times": times / day_to_s, "rate": rate})
-
-        return dftimes_and_rate, E_tot
-
-    return E_tot
-
-
 def make_energydistribution_weightedbyrho(
     rho: npt.NDArray[np.floating], E_tot_per_gram: float, Mtot_grams: float
 ) -> pl.DataFrame:
@@ -164,9 +97,80 @@ def make_energy_files(rho: npt.NDArray[np.floating], Mtot_grams: float, outputpa
         times_and_rate.to_pandas().to_csv(fmodel, sep="\t", index=False, header=False, float_format="%.10f")
 
 
+def rprocess_const_and_powerlaw() -> tuple[pl.DataFrame, float]:
+    """Following eqn 4 Korobkin 2012."""
+
+    def integrand(
+        t_days: float, t0: float, epsilon0: float, sigma: float, alpha: float, thermalisation_factor: float
+    ) -> float:
+        return float(epsilon0 * ((1 / 2) - (1 / np.pi * np.arctan((t_days - t0) / sigma))) ** alpha) * (
+            thermalisation_factor / 0.5
+        )
+
+    from scipy.integrate import quad
+
+    tmin = 0.01 * day_to_s
+    tmax = 50 * day_to_s
+    t0 = 1.3  # seconds
+    epsilon0 = 2e18
+    sigma = 0.11
+    alpha = 1.3
+    thermalisation_factor = 0.5
+
+    E_tot = quad(integrand, tmin, tmax, args=(t0, epsilon0, sigma, alpha, thermalisation_factor))  # ergs/s/g
+    print("Etot per gram", E_tot[0])
+    E_tot = E_tot[0]
+
+    times = np.logspace(np.log10(tmin), np.log10(tmax), num=200)
+    energy_per_gram_cumulative = [0.0]
+    for time in times[1:]:
+        cumulative_integral = quad(
+            integrand, tmin, time, args=(t0, epsilon0, sigma, alpha, thermalisation_factor)
+        )  # ergs/s/g
+        energy_per_gram_cumulative.append(cumulative_integral[0])
+
+    rate = np.array(energy_per_gram_cumulative) / E_tot
+
+    nuclear_heating_power = [integrand(time, t0, epsilon0, sigma, alpha, thermalisation_factor) for time in times]
+
+    times_and_rate = {"times": times / day_to_s, "rate": rate, "nuclear_heating_power": nuclear_heating_power}
+    dftimes_and_rate = pl.DataFrame(data=times_and_rate)
+
+    return dftimes_and_rate, E_tot
+
+
+def energy_from_rprocess_calculation(
+    energy_thermo_data: pl.DataFrame, get_rate: bool = True
+) -> float | tuple[pl.DataFrame, float]:
+
+    energy_thermo_data = energy_thermo_data.filter(pl.col("time/s") <= 1e7)
+    # print("Dropping times later than 116 days")
+
+    skipfirstnrows = 0  # not sure first values look sensible -- check this
+    times = energy_thermo_data["time/s"][skipfirstnrows:]
+    qdot = energy_thermo_data["Qdot"][skipfirstnrows:]
+
+    E_tot = float(np.trapezoid(y=qdot, x=times))  # erg / g
+
+    if get_rate:
+        print(f"E_tot {E_tot} erg/g")
+        from scipy import integrate
+
+        cumulative_integrated_energy = integrate.cumulative_trapezoid(y=qdot, x=times)
+        cumulative_integrated_energy = np.insert(cumulative_integrated_energy, 0, 0)
+
+        rate = cumulative_integrated_energy / E_tot
+
+        dftimes_and_rate = pl.DataFrame({"times": times / day_to_s, "rate": rate})
+
+        return dftimes_and_rate, E_tot
+
+    return E_tot
+
+
 def plot_energy_rate(modelpath: str | Path, axis: mplax.Axes) -> None:
     times_and_rate, _ = at.inputmodel.energyinputfiles.rprocess_const_and_powerlaw()
-    lzmodel, _ = at.inputmodel.get_modeldata(modelpath)
+    lzmodel, _ = at.inputmodel.get_modeldata(modelpath, derived_cols=["mass_g"])
     model = lzmodel.collect()
     Mtot_grams = model["mass_g"].sum()
     axis.plot(
@@ -192,3 +196,81 @@ def get_energy_rate_fromfile(modelpath: str | Path) -> pl.DataFrame:
     return pl.from_pandas(
         pd.read_csv(Path(modelpath) / "energyrate.txt", skiprows=1, sep=r"\s+", header=None, names=["times", "rate"])
     )
+
+
+def read_trajectory_thermo(trajthermofile: Path | str) -> pl.DataFrame:
+    """Read the time/s and Qdot columns of a trajectory energy_thermo.dat.
+
+    Times below one second are dropped, matching get_trajectory_qdotintegral: Qdot is negative there
+    and integrating over it gives a negative total energy.
+    """
+    dfthermo = pl.from_pandas(
+        pd.read_csv(trajthermofile, sep=r"\s+", usecols=["time/s", "Qdot"], engine="c", dtype_backend="pyarrow")
+    )
+
+    return dfthermo.filter(pl.col("time/s") >= 1.0)
+
+
+def addargs(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "action",
+        nargs="?",
+        default=None,
+        choices=["plotrate", "describe", "fromtrajectory"],
+        help=(
+            "plotrate: plot the analytic nuclear heating power against time."
+            " describe: report the total energy and rate from the written energy files."
+            " fromtrajectory: integrate a trajectory energy_thermo.dat to get the total energy and rate."
+        ),
+    )
+    at.add_modelpath_arg(parser, default=Path())
+    at.add_outputfile_arg(parser, helptext="Path for the plot, or omit to show it interactively")
+    parser.add_argument("-trajthermofile", type=Path, help="Trajectory energy_thermo.dat (fromtrajectory)")
+
+
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
+    """Plot and inspect the ARTIS energy input files."""
+    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+
+    if args.action is None:
+        print("ERROR: no action given. Run with --help to see the available actions.")
+        raise SystemExit(1)
+
+    modelpath = Path(args.modelpath)
+
+    if args.action == "plotrate":
+        fig, axis = plt.subplots()
+        plot_energy_rate(modelpath, axis)
+        axis.set_xlabel("time [days]")
+        axis.set_ylabel("Nuclear heating power [erg/s]")
+        axis.set_xscale("log")
+        axis.set_yscale("log")
+        if args.outputfile:
+            fig.savefig(args.outputfile)
+            at.print_saved(args.outputfile)
+        else:
+            plt.show()
+        plt.close(fig)
+
+    elif args.action == "describe":
+        etot, energydistribution = get_etot_fromfile(modelpath)
+        print(f"energydistribution.txt: {len(energydistribution)} cells, total energy {etot:.4e} erg")
+        dfrate = get_energy_rate_fromfile(modelpath)
+        times, rates = dfrate["times"].to_numpy(), dfrate["rate"].to_numpy()
+        tmin, tmax = float(times.min()), float(times.max())
+        ratemin, ratemax = float(rates.min()), float(rates.max())
+        print(f"energyrate.txt: {len(dfrate)} times from {tmin:g} to {tmax:g} days")
+        print(f"  cumulative energy fraction runs {ratemin:.4g} to {ratemax:.4g}")
+
+    else:
+        if args.trajthermofile is None:
+            print("ERROR: fromtrajectory requires -trajthermofile")
+            raise SystemExit(1)
+        result = energy_from_rprocess_calculation(read_trajectory_thermo(args.trajthermofile), get_rate=True)
+        assert isinstance(result, tuple)
+        dftimes_and_rate, e_tot = result
+        print(f"E_tot {e_tot:.4e} erg/g over {len(dftimes_and_rate)} times")
+
+
+if __name__ == "__main__":
+    main()

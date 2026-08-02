@@ -1,5 +1,6 @@
 import argparse
 import hashlib
+import json
 import math
 import shutil
 import typing as t
@@ -18,6 +19,7 @@ modelpath = at.get_path("testdata") / "testmodel"
 modelpath_3d = at.get_path("testdata") / "testmodel_3d_10^3"
 outputpath = at.get_path("testoutput")
 testdatapath = at.get_path("testdata")
+modelpath_classic_3d = testdatapath / "test-classicmode_3d"
 
 
 def test_describeinputmodel() -> None:
@@ -50,6 +52,46 @@ def test_get_modeldata_3d() -> None:
 
     lzdfmodel, modelmeta = at.get_modeldata(modelpath=modelpath_3d, derived_cols=["mass_g"])
     assert math.isclose(lzdfmodel.select(pl.col("mass_g").sum()).collect().item(), 2.7861855e33, rel_tol=1e-05)
+
+
+@pytest.mark.parametrize("cachecontents", [b"", b"not a parquet file", b"PAR1" + bytes(64)])
+def test_get_modeldata_replaces_unreadable_cache(tmp_path: Path, cachecontents: bytes) -> None:
+    """A damaged parquet cache must be deleted and rebuilt, not raise from read_parquet_metadata."""
+    shutil.copy(modelpath / "model.txt", tmp_path)
+    cachefilepath = tmp_path / "model.txt.parquet.tmp"
+    cachefilepath.write_bytes(cachecontents)
+
+    lzdfmodel, modelmeta = at.get_modeldata(modelpath=tmp_path)
+    assert modelmeta["npts_model"] == 1
+
+    # the rebuilt cache is written even though the text model is far under the 2 MiB threshold
+    assert cachefilepath.is_file()
+    pltest.assert_frame_equal(lzdfmodel.collect(), at.get_modeldata(modelpath=tmp_path)[0].collect())
+
+
+def test_get_modeldata_rejects_cache_without_metadata(tmp_path: Path) -> None:
+    """A readable parquet file that is missing the artistools metadata keys must not be trusted."""
+    shutil.copy(modelpath / "model.txt", tmp_path)
+    cachefilepath = tmp_path / "model.txt.parquet.tmp"
+    pl.DataFrame({"inputcellid": [1]}).write_parquet(cachefilepath)
+
+    _, modelmeta = at.get_modeldata(modelpath=tmp_path)
+    assert modelmeta["npts_model"] == 1
+    assert "modelmeta_json" in pl.read_parquet_metadata(cachefilepath)
+
+
+def test_get_modeldata_refreshes_stale_cache(tmp_path: Path) -> None:
+    """A cache whose recorded text-source mtime no longer matches must be rewritten from the text source."""
+    shutil.copy(modelpath / "model.txt", tmp_path)
+    textfilepath = tmp_path / "model.txt"
+    cachefilepath = tmp_path / "model.txt.parquet.tmp"
+    lzdfmodel, modelmeta = at.get_modeldata(modelpath=tmp_path)
+    at.write_parquet_atomic(
+        lzdfmodel.collect(), cachefilepath, metadata={"textsource_mtime": "0", "modelmeta_json": json.dumps(modelmeta)}
+    )
+
+    assert at.get_modeldata(modelpath=tmp_path)[1]["npts_model"] == 1
+    assert pl.read_parquet_metadata(cachefilepath)["textsource_mtime"] == str(textfilepath.stat().st_mtime)
 
 
 def test_get_cell_angle() -> None:
@@ -1659,7 +1701,7 @@ def test_scale_model_to_time_uses_modelmeta() -> None:
     rho_before = pddfmodel["logrho"].to_numpy().copy()
 
     dfscaled, modelmeta_out = at.inputmodel.scale_model_to_time(
-        dfmodel=pddfmodel, targetmodeltime_days=targettime, modelmeta=dict(modelmeta)
+        dfmodel=pddfmodel, targetmodeltime_days=targettime, modelmeta=modelmeta.copy()
     )
 
     assert modelmeta_out["t_model_init_days"] == targettime
@@ -1724,3 +1766,61 @@ def test_make1dslice_plot(tmp_path: Path) -> None:
     make_plot([1000.0, 2000.0], [[1e-10, 1e-12], [0.1, 0.05], [0.0, 0.01]], str(pdfpath))
 
     assert pdfpath.is_file()
+
+
+def test_opacityfile_uniform_roundtrip(tmp_path: Path) -> None:
+    """A written uniform opacity.txt must read back with the same opacity in every cell."""
+    at.inputmodel.opacityinputfile.main(
+        argsraw=[], action="uniform", modelpath=modelpath, outputpath=tmp_path, kappa=0.25
+    )
+
+    opacities = at.inputmodel.opacityinputfile.get_opacity_from_file(tmp_path)
+    assert len(opacities) == 1, "testmodel is a single-cell 1D model"
+    assert np.allclose(opacities, 0.25)
+
+
+def test_opacityfile_uniform_multicell(tmp_path: Path) -> None:
+    """The single-cell case must not be special: a 1000-cell model reads back 1000 opacities."""
+    at.inputmodel.opacityinputfile.main(
+        argsraw=[], action="uniform", modelpath=modelpath_classic_3d, outputpath=tmp_path, kappa=0.1
+    )
+
+    opacities = at.inputmodel.opacityinputfile.get_opacity_from_file(tmp_path)
+    assert len(opacities) == 1000
+    assert np.allclose(opacities, 0.1)
+
+
+def test_energyfiles_written_then_described(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """The energy files must read back with the totals and rate bounds they were written with."""
+    rho = np.array([1.0, 2.0, 3.0])
+    mtot_grams = 1e33
+    at.inputmodel.energyinputfiles.make_energy_files(rho, mtot_grams, tmp_path)
+
+    etot, energydistribution = at.inputmodel.energyinputfiles.get_etot_fromfile(tmp_path)
+    assert len(energydistribution) == len(rho)
+    # the energy is distributed over the cells in proportion to density
+    assert np.allclose(energydistribution["cell_energy"].to_numpy() / etot, rho / rho.sum(), rtol=1e-6)
+
+    dfrate = at.inputmodel.energyinputfiles.get_energy_rate_fromfile(tmp_path)
+    assert dfrate["rate"].min() == pytest.approx(0.0)
+    assert dfrate["rate"].max() == pytest.approx(1.0), "the cumulative energy fraction must reach one"
+
+    at.inputmodel.energyinputfiles.main(argsraw=[], action="describe", modelpath=tmp_path)
+    assert "energydistribution.txt" in capsys.readouterr().out
+
+
+def test_energyfiles_from_trajectory() -> None:
+    """Integrating a trajectory's heating rate must give a positive total energy."""
+    thermofile = at.inputmodel.rprocess_from_trajectory.get_tar_member_extracted_path(
+        traj_root=testdatapath / "kilonova" / "trajectories",
+        particleid=109215,
+        memberfilename="./Run_rprocess/energy_thermo.dat",
+    )
+    dfthermo = at.inputmodel.energyinputfiles.read_trajectory_thermo(thermofile)
+    assert dfthermo["time/s"].to_numpy().min() >= 1.0, "the unphysical sub-second Qdot values must be dropped"
+
+    result = at.inputmodel.energyinputfiles.energy_from_rprocess_calculation(dfthermo, get_rate=True)
+    assert isinstance(result, tuple)
+    dftimes_and_rate, e_tot = result
+    assert e_tot > 0.0
+    assert dftimes_and_rate["rate"].max() == pytest.approx(1.0)

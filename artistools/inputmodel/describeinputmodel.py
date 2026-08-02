@@ -197,10 +197,22 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
     mass_msun_actinides = 0.0
     speciesmasses: dict[str, float] = {}
 
-    for column in dfmodel.select(cs.starts_with("X_") - cs.by_name("X_Fegroup")).collect_schema().names():
+    abundcolumns = dfmodel.select(cs.starts_with("X_") - cs.by_name("X_Fegroup")).collect_schema().names()
+
+    # one collect for every species, rather than re-running the whole scan once per column
+    speciesabund_g_of_column: dict[str, t.Any] = (
+        dfmodel
+        .select(pl.col(col).dot(pl.col("mass_g")).alias(col) for col in abundcolumns)
+        .collect()
+        .row(0, named=True)
+        if abundcolumns
+        else {}
+    )
+
+    for column in abundcolumns:
         species = column.removeprefix("X_")
 
-        speciesabund_g = dfmodel.select(pl.col(column).dot(pl.col("mass_g"))).collect().item()
+        speciesabund_g = speciesabund_g_of_column[column]
 
         assert isinstance(speciesabund_g, float)
 

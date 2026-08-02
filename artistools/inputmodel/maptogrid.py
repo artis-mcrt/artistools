@@ -315,27 +315,19 @@ def maptogrid(
 
     # check some stuff on the grid
 
-    nzero = 0
-    nzerocentral = 0
     gmass = np.sum(grho) * dx * dy * dz
-    # nzero = np.count_nonzero(grho[1:][1:][1:] < 1.e-20)
 
-    for i in range(ncoordgrid):
-        gx = x0 + dx * i
-        for j in range(ncoordgrid):
-            gy = y0 + dy * j
-            for k in range(1, ncoordgrid):
-                # how many cells with rho=0?
+    # k starts at 1 to match the original scan, which skipped the k=0 plane
+    isempty = grho[:, :, 1:] < 1.0e-20
+    # compare squared distances to avoid a sqrt over every cell
+    dis2 = (
+        arrgx[:, np.newaxis, np.newaxis] ** 2
+        + arrgy[np.newaxis, :, np.newaxis] ** 2
+        + arrgz[np.newaxis, np.newaxis, 1:] ** 2
+    )
 
-                if grho[i, j, k] < 1.0e-20:
-                    nzero += 1
-
-                gz = z0 + dz * k
-
-                dis = math.sqrt(gx * gx + gy * gy + gz * gz)
-
-                if grho[i, j, k] < 1.0e-20 and dis < rmean:
-                    nzerocentral += 1
+    nzero = int(np.count_nonzero(isempty))
+    nzerocentral = int(np.count_nonzero(isempty & (dis2 < rmean**2)))
 
     logprint(f"fraction of total mass on grid {gmass / totmass}")
 
