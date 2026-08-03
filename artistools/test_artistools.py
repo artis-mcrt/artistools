@@ -33,11 +33,16 @@ REPOPATH = at.get_path("artistools_repository")
 
 def funcname() -> str:
     """Get the name of the calling function."""
+    thisframe = inspect.currentframe()
     try:
-        return inspect.currentframe().f_back.f_code.co_name  # type: ignore[union-attr] # pyright: ignore[reportOptionalMemberAccess]  # ty:ignore[unresolved-attribute]
-    except AttributeError as e:
-        msg = "Could not get the name of the calling function."
-        raise RuntimeError(msg) from e
+        if thisframe is None or thisframe.f_back is None:
+            msg = "Could not get the name of the calling function."
+            raise RuntimeError(msg)
+
+        return thisframe.f_back.f_code.co_name
+    finally:
+        # a frame held in one of its own locals is a reference cycle, so drop it as the inspect docs advise
+        del thisframe
 
 
 def get_plot_xy(callargs: t.Any) -> tuple[np.ndarray, np.ndarray]:
@@ -96,7 +101,7 @@ def test_shared_cli_args_consistent() -> None:
     def collect(parser: argparse.ArgumentParser, prefix: str) -> None:
         for action in parser._actions:  # ruff:ignore[private-member-access]
             if isinstance(action, argparse._SubParsersAction):  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
-                nameparsermap: dict[str, argparse.ArgumentParser] = action._name_parser_map  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]  # ty:ignore[invalid-assignment]
+                nameparsermap: dict[str, argparse.ArgumentParser] = action._name_parser_map  # ruff:ignore[private-member-access]  # ty:ignore[invalid-assignment]
                 for name, subparser in nameparsermap.items():
                     collect(subparser, f"{prefix}{name} ")
             elif action.dest != "help":
@@ -974,6 +979,12 @@ def test_linefluxes_rejects_lone_timebin_argument() -> None:
     """Giving only one of the two time bin edge lists must be rejected before any data is read."""
     with pytest.raises(ValueError, match="must be given together"):
         at.linefluxes.main(argsraw=[], modelpath=[modelpath_classic_3d], timebins_tstart=[200.0, 250.0])
+
+
+def test_linefluxes_rejects_emittingregions_without_enough_colours() -> None:
+    """More models than the default palette must be rejected up front, not crash inside the colour conversion."""
+    with pytest.raises(ValueError, match="needs a colour for each"):
+        at.linefluxes.main(argsraw=[], modelpath=[modelpath_classic_3d] * 11, plotemittingregions=True)
 
 
 def test_linefluxes_lineflux_ratio_plot() -> None:

@@ -151,7 +151,7 @@ def plot_data(
         ax.plot(
             dfplotdata.select("xvalue").collect().to_series(),
             dfplotdata.select("yvalue").collect().to_series(),
-            **plotkwargs_markers,  # pyright: ignore[reportArgumentType]
+            **plotkwargs_markers,
         )
 
     else:
@@ -1343,14 +1343,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             if args.makegif:
                 assert args.multiplot
                 assert args.format == "png"
-                import imageio.v2 as iio
-
                 gifname = outdir / f"plotestim_evolution_ts{timestepmin:03d}_ts{timestepmax:03d}.gif"
-                with iio.get_writer(gifname, mode="I", duration=1000) as writer:
-                    for filename in outputfiles:
-                        image = iio.imread(filename)
-                        writer.append_data(image)  # type: ignore[attr-defined] # pyright: ignore[reportAttributeAccessIssue]  # ty:ignore[unresolved-attribute]
-                print(f"Created gif: {gifname}")
+                at.write_gif(gifname, outputfiles, duration=1000)
             elif args.format == "pdf":
                 at.merge_pdf_files(outputfiles)
 

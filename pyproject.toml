@@ -409,5 +409,5 @@ ignore_names = [
 ]
 
 [tool.zuban]
-mode = "default"
-disallow_untyped_calls = false
+mode = "mypy"
+warn_return_any = false

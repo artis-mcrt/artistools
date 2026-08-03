@@ -65,11 +65,11 @@ def parallel_map[IterableType, ResultType](
         mp.set_start_method("spawn", force=True)
         from tqdm.contrib.concurrent import process_map
 
-        results = process_map(fn, *iterables, tqdm_class=tqdm.rich.tqdm, **kwargs)  # type: ignore[arg-type] # zuban: ignore[no-untyped-call]
+        results = process_map(fn, *iterables, tqdm_class=tqdm.rich.tqdm, **kwargs)  # type: ignore[arg-type]
     else:
         from tqdm.contrib.concurrent import thread_map
 
-        results = thread_map(fn, *iterables, tqdm_class=tqdm.rich.tqdm, **kwargs)  # type: ignore[arg-type] # zuban: ignore[no-untyped-call]
+        results = thread_map(fn, *iterables, tqdm_class=tqdm.rich.tqdm, **kwargs)  # type: ignore[arg-type]
 
     assert isinstance(results, list)
     return results

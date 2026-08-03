@@ -353,8 +353,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if args.npz:
         npz_dict = np.load(args.npz)
-        npz_idcs = npz_dict["idx"]
-        npz_types = npz_dict["state"]
+        npz_idcs = np.asarray(npz_dict["idx"])
+        npz_types = np.asarray(npz_dict["state"])
 
     # get beta decay data
     nuc_data = get_nuc_data(nuc_dataset)
@@ -436,7 +436,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         else:
             # select by ejecta type
             selected_traj_ids = (
-                traj_ids if state == "any" else list(set(traj_ids) & set(npz_idcs[np.where(npz_types == state)]))  # pyright: ignore[reportCallIssue,reportArgumentType]
+                traj_ids if state == "any" else list(set(traj_ids) & set(npz_idcs[npz_types == state].tolist()))
             )
             print(f" {len(selected_traj_ids)} trajectories selected")
             if len(selected_traj_ids) == 0:

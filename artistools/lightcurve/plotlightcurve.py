@@ -50,8 +50,8 @@ def plot_deposition_thermalisation(
 
     depdata = at.get_deposition(modelpath).collect()
 
-    color_gamma = axis._get_lines.get_next_color()  # type: ignore[attr-defined] # ruff:ignore[private-member-access] # pyright: ignore[reportAttributeAccessIssue]  # ty:ignore[unresolved-attribute]
-    color_gamma = axis._get_lines.get_next_color()  # type: ignore[attr-defined] # ruff:ignore[private-member-access] # pyright: ignore[reportAttributeAccessIssue]  # ty:ignore[unresolved-attribute]
+    at.plottools.get_next_color(axis)  # skip a colour so the deposition curves differ from the light curve
+    color_gamma = at.plottools.get_next_color(axis)
 
     axis.plot(
         depdata["tmid_days"],
@@ -62,7 +62,7 @@ def plot_deposition_thermalisation(
         color=color_gamma,
     )
 
-    color_beta = axis._get_lines.get_next_color()  # type: ignore[attr-defined] # ruff:ignore[private-member-access] # pyright: ignore[reportAttributeAccessIssue]  # ty:ignore[unresolved-attribute]
+    color_beta = at.plottools.get_next_color(axis)
 
     if "eps_elec_Lsun" in depdata:
         axis.plot(

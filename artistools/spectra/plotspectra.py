@@ -12,9 +12,11 @@ from pathlib import Path
 
 import matplotlib.artist as mplartist
 import matplotlib.axes as mplax
+import matplotlib.colors as mplcolors
 import matplotlib.figure as mplfig
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
+import matplotlib.typing as mplt
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
@@ -973,19 +975,26 @@ def make_emissionabsorption_plot(
             plotobjects.append(mpatches.Patch(color=linecolor))
 
     elif contributions_sorted_reduced:
+        contribcolors = [x.color for x in contributions_sorted_reduced]
+        # if any contribution has no colour set, let matplotlib assign the whole stack from the Axes property cycle
+        stackcolors: list[mplt.ColorType] | None = (
+            None if any(c is None for c in contribcolors) else [c for c in contribcolors if c is not None]
+        )
+
+        facecolors: list[mplt.ColorType] | None
         if args.showemission:
             dfemissionspectra = pl.collect_all([to_xy(x.array_flambda_emission) for x in contributions_sorted_reduced])
-            assert not any(x.color is None for x in contributions_sorted_reduced)
             stackplot = axis.stackplot(
                 dfemissionspectra[0]["x"],
                 [dfspec["y"] * scalefactor for dfspec in dfemissionspectra],
-                colors=[x.color for x in contributions_sorted_reduced if x.color is not None],
+                colors=stackcolors,
                 linewidth=0,
             )
             plotobjects.extend(stackplot)
-            facecolors = [p.get_facecolor()[0] for p in stackplot]
+            # read back the drawn colours, which matplotlib assigned when stackcolors was None
+            facecolors = [mplcolors.to_rgba(np.asarray(p.get_facecolor())[0]) for p in stackplot]
         else:
-            facecolors = [x.color for x in contributions_sorted_reduced]
+            facecolors = stackcolors
 
         if args.showabsorption:
             dfabsorptionspectra = pl.collect_all([
@@ -994,7 +1003,7 @@ def make_emissionabsorption_plot(
             absstackplot = axis.stackplot(
                 dfabsorptionspectra[0]["x"],
                 [-dfspec["y"] * scalefactor for dfspec in dfabsorptionspectra],
-                colors=facecolors,  # type: ignore[arg-type] # pyright: ignore[reportArgumentType]  # ty:ignore[invalid-argument-type]
+                colors=facecolors,
                 linewidth=0,
             )
             if not args.showemission:
@@ -1085,9 +1094,9 @@ def make_emissionabsorption_plot(
     # axis.annotate(plotlabel, xy=(0.97, 0.03), xycoords='axes fraction',
     #               horizontalalignment='right', verticalalignment='bottom', fontsize=7)
 
-    ymax = max(ymaxrefall, scalefactor * max_f_emission_total * 1.2)
+    ymax = float(max(ymaxrefall, scalefactor * max_f_emission_total * 1.2))
     if args.ymax is None:
-        axis.set_ylim(top=ymax)  # ty:ignore[invalid-argument-type]
+        axis.set_ylim(top=ymax)
 
     if args.ymin is None:
         axis.set_ylim(bottom=float(-scalefactor * max_absorption * 1.2))

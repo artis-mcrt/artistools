@@ -142,6 +142,7 @@ from artistools.misc import split_multitable_dataframe as split_multitable_dataf
 from artistools.misc import stripallsuffixes as stripallsuffixes
 from artistools.misc import trim_or_pad as trim_or_pad
 from artistools.misc import vec_len as vec_len
+from artistools.misc import write_gif as write_gif
 from artistools.misc import write_parquet_atomic as write_parquet_atomic
 from artistools.misc import zopen as zopen
 from artistools.misc import zopenpl as zopenpl

@@ -1,7 +1,6 @@
 """Shared helpers for command-line argument parsing and list/path argument normalisation."""
 
 import argparse
-import functools
 import itertools
 import typing as t
 from collections.abc import Callable
@@ -387,10 +386,11 @@ def get_filterfunc(args: argparse.Namespace) -> Callable[[t.Any], t.Any] | None:
 
         window_length, polyorder = (int(x) for x in args.filtersavgol)
 
+        def savgolfilterfunc(ylist: t.Any) -> t.Any:
+            return scipy.signal.savgol_filter(ylist, window_length=window_length, polyorder=polyorder, mode="interp")
+
         assert filterfunc is None
-        filterfunc = functools.partial(  # pyright: ignore[reportCallIssue]
-            scipy.signal.savgol_filter, window_length=window_length, polyorder=polyorder, mode="interp"
-        )
+        filterfunc = savgolfilterfunc
 
         print("Applying Savitzky-Golay filter")
 

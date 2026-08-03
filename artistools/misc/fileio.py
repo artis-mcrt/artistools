@@ -49,7 +49,7 @@ def get_decompress_open(ext: str) -> t.Any:
         import gzip
         import lzma
 
-        import zstandard as zstd  # pyright: ignore[reportMissingImports]
+        import zstandard as zstd
 
     return {".zst": zstd.open, ".gz": gzip.open, ".xz": lzma.open}[ext]
 
@@ -223,6 +223,19 @@ def merge_pdf_files(pdf_files: list[str]) -> None:
         Path(pdfpath).unlink()
 
     print_saved(resultfilename)
+
+
+def write_gif(giffile: Path | str, imagefiles: Sequence[Path | str], duration: float) -> None:
+    """Combine image files into an animated gif, showing each frame for duration milliseconds."""
+    import imageio.v2 as iio
+
+    # bind the writer outside the with, because __enter__ is typed as returning the reader/writer base class
+    writer = iio.get_writer(giffile, mode="I", duration=duration)
+    with writer:
+        for imagefile in imagefiles:
+            writer.append_data(iio.imread(imagefile))
+
+    print(f"Created gif: {giffile}")
 
 
 def write_parquet_atomic(

@@ -264,8 +264,8 @@ def make_ionsubplot(
         else float(ionpopulation / dfpopthision["n_LTE_T_e"].sum())
     )
 
-    dfpopthision = dfpopthision.assign(n_LTE_T_e_normed=pd.col("n_LTE_T_e") * lte_scalefactor).assign(  # pyright: ignore[reportAttributeAccessIssue]
-        departure_coeff=pd.col("n_NLTE") / pd.col("n_LTE_T_e_normed")  # pyright: ignore[reportAttributeAccessIssue]
+    dfpopthision = dfpopthision.assign(n_LTE_T_e_normed=pd.col("n_LTE_T_e") * lte_scalefactor).assign(
+        departure_coeff=pd.col("n_NLTE") / pd.col("n_LTE_T_e_normed")
     )
 
     pd.set_option("display.max_columns", 150)
@@ -320,7 +320,7 @@ def make_ionsubplot(
         ycolumnname = "departure_coeff"
 
         # skip one color, since T_e is not plotted in departure mode
-        ax._get_lines.get_next_color()  # type: ignore[attr-defined] # ruff:ignore[private-member-access] # pyright: ignore[reportAttributeAccessIssue]  # ty:ignore[unresolved-attribute]
+        at.plottools.get_next_color(ax)
         if floers_levelpop_values is not None:
             assert floers_levelnums is not None
             ax.plot(
@@ -358,7 +358,7 @@ def make_ionsubplot(
 
         if not args.hide_lte_tr:
             lte_scalefactor = float(ionpopulation / dfpopthision["n_LTE_T_R"].sum())
-            dfpopthision = dfpopthision.assign(n_LTE_T_R_normed=pd.col("n_LTE_T_R") * lte_scalefactor)  # pyright: ignore[reportAttributeAccessIssue]
+            dfpopthision = dfpopthision.assign(n_LTE_T_R_normed=pd.col("n_LTE_T_R") * lte_scalefactor)
             ax.plot(
                 dfpopthision["level"],
                 dfpopthision["n_LTE_T_R_normed"],
@@ -470,8 +470,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths: list[Path | str], ar
             title += f", mgi = {args.modelgridindex[0]}"
         elif args.x == "velocity":
             title += f", {timedayslist} days"
-        titleaxis = ax[-1] if args.subplots else ax  # pyright: ignore[reportIndexIssue]
-        assert isinstance(titleaxis, mplax.Axes)
+        titleaxis = ax if isinstance(ax, mplax.Axes) else ax[-1]
         titleaxis.set_title(title)
 
     at.plottools.set_axis_properties(ax, args)
