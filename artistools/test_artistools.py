@@ -34,11 +34,15 @@ REPOPATH = at.get_path("artistools_repository")
 def funcname() -> str:
     """Get the name of the calling function."""
     thisframe = inspect.currentframe()
-    if thisframe is None or thisframe.f_back is None:
-        msg = "Could not get the name of the calling function."
-        raise RuntimeError(msg)
+    try:
+        if thisframe is None or thisframe.f_back is None:
+            msg = "Could not get the name of the calling function."
+            raise RuntimeError(msg)
 
-    return thisframe.f_back.f_code.co_name
+        return thisframe.f_back.f_code.co_name
+    finally:
+        # a frame held in one of its own locals is a reference cycle, so drop it as the inspect docs advise
+        del thisframe
 
 
 def get_plot_xy(callargs: t.Any) -> tuple[np.ndarray, np.ndarray]:
