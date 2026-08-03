@@ -310,7 +310,7 @@ def make_plot(args: argparse.Namespace, logprint: Callable[..., None]) -> None:
 
     cone = cone.loc[cone["rho_model"] > 0.0002]  # cut low densities (empty cells?) from plot
     fig = plt.figure()
-    ax: Axes3D = fig.add_subplot(projection="3d")  # type: ignore[no-any-unimported] # pyright: ignore[reportAssignmentType] # zuban: ignore [assignment]
+    ax: Axes3D = fig.add_subplot(projection="3d")  # type: ignore[no-any-unimported]
 
     # print(cone['rho_model'])
 
@@ -319,13 +319,13 @@ def make_plot(args: argparse.Namespace, logprint: Callable[..., None]) -> None:
     y = cone["pos_y_min"] / 1e5 / (args.t_model * day_to_s) / 1e3
     z = cone["pos_x_min"] / 1e5 / (args.t_model * day_to_s) / 1e3
 
-    _surf = ax.scatter3D(x, y, z, c=-cone["fni"], cmap=plt.get_cmap("viridis"))  # pyright: ignore[reportArgumentType]
+    _surf = ax.scatter3D(x, y, z, c=-cone["fni"], cmap=plt.get_cmap("viridis"))
 
     # fig.colorbar(_surf, shrink=0.5, aspect=5)
 
     ax.set_xlabel(r"x [10$^3$ km/s]")
     ax.set_ylabel(r"y [10$^3$ km/s]")
-    ax.set_zlabel(r"z [10$^3$ km/s]")  # zuban: ignore[no-untyped-call]
+    ax.set_zlabel(r"z [10$^3$ km/s]")
 
     plt.show()
     plt.close(fig)

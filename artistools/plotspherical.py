@@ -381,18 +381,12 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
         outputfilenames.append(outfilename)
 
     if args.makegif:
-        import imageio.v2 as iio
-
         gifname = (
             Path(args.outputfile) / "sphericalplot.gif"
             if Path(args.outputfile).is_dir()
             else args.outputfile.format(outformat=outformat)
         )
-        with iio.get_writer(gifname, mode="I", duration=(1000 * 1 / 1.5)) as writer:
-            for filename in outputfilenames:
-                image = iio.imread(filename)
-                writer.append_data(image)  # type: ignore[attr-defined] # pyright: ignore[reportAttributeAccessIssue]  # ty:ignore[unresolved-attribute]
-        print(f"Created gif: {gifname}")
+        at.write_gif(gifname, outputfilenames, duration=(1000 * 1 / 1.5))
 
 
 if __name__ == "__main__":

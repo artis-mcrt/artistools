@@ -43,6 +43,7 @@ from artistools.misc.fileio import merge_pdf_files as merge_pdf_files
 from artistools.misc.fileio import print_saved as print_saved
 from artistools.misc.fileio import readnoncommentline as readnoncommentline
 from artistools.misc.fileio import stripallsuffixes as stripallsuffixes
+from artistools.misc.fileio import write_gif as write_gif
 from artistools.misc.fileio import write_parquet_atomic as write_parquet_atomic
 from artistools.misc.fileio import zopen as zopen
 from artistools.misc.fileio import zopenpl as zopenpl

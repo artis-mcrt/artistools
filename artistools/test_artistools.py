@@ -33,11 +33,12 @@ REPOPATH = at.get_path("artistools_repository")
 
 def funcname() -> str:
     """Get the name of the calling function."""
-    try:
-        return inspect.currentframe().f_back.f_code.co_name  # type: ignore[union-attr] # pyright: ignore[reportOptionalMemberAccess]  # ty:ignore[unresolved-attribute]
-    except AttributeError as e:
+    thisframe = inspect.currentframe()
+    if thisframe is None or thisframe.f_back is None:
         msg = "Could not get the name of the calling function."
-        raise RuntimeError(msg) from e
+        raise RuntimeError(msg)
+
+    return thisframe.f_back.f_code.co_name
 
 
 def get_plot_xy(callargs: t.Any) -> tuple[np.ndarray, np.ndarray]:
@@ -96,7 +97,7 @@ def test_shared_cli_args_consistent() -> None:
     def collect(parser: argparse.ArgumentParser, prefix: str) -> None:
         for action in parser._actions:  # ruff:ignore[private-member-access]
             if isinstance(action, argparse._SubParsersAction):  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
-                nameparsermap: dict[str, argparse.ArgumentParser] = action._name_parser_map  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]  # ty:ignore[invalid-assignment]
+                nameparsermap: dict[str, argparse.ArgumentParser] = action._name_parser_map  # ruff:ignore[private-member-access]  # ty:ignore[invalid-assignment]
                 for name, subparser in nameparsermap.items():
                     collect(subparser, f"{prefix}{name} ")
             elif action.dest != "help":

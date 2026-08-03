@@ -5,12 +5,14 @@ import contextlib
 import json
 import math
 import typing as t
+from collections import Counter
 from collections.abc import Sequence
 from pathlib import Path
 
-import matplotlib as mpl
 import matplotlib.axes as mplax
+import matplotlib.colors as mplcolors
 import matplotlib.pyplot as plt
+import matplotlib.typing as mplt
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
@@ -265,8 +267,8 @@ def get_closelines(
         featurelabel=featurelabel,
         approxlambda=approxlambdalabel,
         linelistindices=tuple(dflinelistclosematches["lineindex"].to_list()),
-        lowestlambda=lowestlambda,  # ty:ignore[invalid-argument-type]
-        highestlambda=highestlambda,  # ty:ignore[invalid-argument-type]
+        lowestlambda=float(lowestlambda),
+        highestlambda=float(highestlambda),
         atomic_number=atomic_number,
         ion_stage=ion_stage,
         upperlevelindices=tuple(dflinelistclosematches["upperlevelindex"].to_list()),
@@ -436,17 +438,13 @@ def plot_nne_te_points(
     em_log10nne: Sequence[float] | npt.NDArray[np.floating],
     em_Te: Sequence[float] | npt.NDArray[np.floating],
     normtotalpackets: float,
-    color: float | str | None,
+    color: mplt.ColorType,
     marker: MarkerType,
 ) -> None:
-    color_adj = [(c + 0.1) / 1.1 for c in mpl.colors.to_rgb(color)]  # type: ignore[arg-type] # pyright: ignore[reportAttributeAccessIssue]  # ty:ignore[invalid-argument-type]
-    hitcount: dict[tuple[float, float], int] = {}
-    for log10nne, Te in zip(em_log10nne, em_Te, strict=True):
-        assert isinstance(log10nne, float | np.floating)
-        assert isinstance(Te, float | np.floating)
-        # pyrefly: ignore [unnecessary-type-conversion]
-        dictkey = (float(log10nne), float(Te))
-        hitcount[dictkey] = hitcount.get(dictkey, 0) + 1
+    color_adj = [(c + 0.1) / 1.1 for c in mplcolors.to_rgb(color)]
+    hitcount: Counter[tuple[float, float]] = Counter(
+        zip(np.asarray(em_log10nne, dtype=float).tolist(), np.asarray(em_Te, dtype=float).tolist(), strict=True)
+    )
 
     arr_log10nne: list[float] = []
     arr_te: list[float] = []
@@ -879,11 +877,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.timebins_tstart = list(at.get_timestep_times(args.modelpath[0], loc="start"))
         args.timebins_tend = list(at.get_timestep_times(args.modelpath[0], loc="end"))
 
-    assert isinstance(args.label, list)
-    for i in range(len(args.label)):
-        if args.label[i] is None:
-            assert hasattr(args.label, "__setitem__")
-            args.label[i] = at.get_model_name(args.modelpath[i])  # ty:ignore[invalid-assignment]
+    args.label = [
+        label if label is not None else at.get_model_name(modelpath)
+        for label, modelpath in zip(args.label, args.modelpath, strict=True)
+    ]
 
     at.plottools.set_mpl_style()
 

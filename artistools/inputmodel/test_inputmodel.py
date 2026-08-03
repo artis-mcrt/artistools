@@ -1613,12 +1613,13 @@ def test_dimension_reduce(outputdimensions: int, benchmark: BenchmarkFixture) ->
 
     outpath.mkdir(exist_ok=True, parents=True)
 
-    @benchmark
-    def run_dimension_reduce() -> None:  # pyright: ignore[reportUnusedFunction]
+    def run_dimension_reduce() -> None:
         (dfmodel_lowerd, _, _, modelmeta_lowerd) = (at.inputmodel.dimension_reduce_model)(
             dfmodel=dfmodel3d_pl, modelmeta=modelmeta_3d, outputdimensions=outputdimensions
         )
         at.inputmodel.save_modeldata(outpath=outpath, dfmodel=dfmodel_lowerd, modelmeta=modelmeta_lowerd)
+
+    benchmark(run_dimension_reduce)
 
     dfmodel_lowerd_lz, _ = at.inputmodel.get_modeldata(modelpath=outpath, derived_cols=["mass_g", "kinetic_en_erg"])
     dfmodel_lowerd = dfmodel_lowerd_lz.collect()

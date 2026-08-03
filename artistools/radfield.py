@@ -84,9 +84,10 @@ def j_nu_dbb(arr_nu_hz: Sequence[float] | npt.NDArray[np.floating], W: float, T:
     """
     if W > 0.0:
         try:
+            # iterate Python floats, since math.expm1 on numpy scalars is much slower
             return [
                 W * 1.4745007e-47 * pow(nu_hz, 3) * 1.0 / (math.expm1(h_erg_s * nu_hz / T / K_B_erg_per_K))
-                for nu_hz in (arr_nu_hz.tolist() if isinstance(arr_nu_hz, np.ndarray) else arr_nu_hz)  # ty:ignore[no-matching-overload]
+                for nu_hz in np.asarray(arr_nu_hz, dtype=float).tolist()
             ]
         except OverflowError:
             print(f"WARNING: overflow error W {W}, T {T} (Did this happen in ARTIS too?)")

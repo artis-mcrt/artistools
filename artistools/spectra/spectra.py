@@ -9,6 +9,7 @@ from contextlib import suppress
 from functools import lru_cache
 from pathlib import Path
 
+import matplotlib.typing as mplt
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
@@ -45,7 +46,7 @@ class FluxContributionTuple(t.NamedTuple):
     linelabel: str
     array_flambda_emission: npt.NDArray[np.floating]
     array_flambda_absorption: npt.NDArray[np.floating]
-    color: str | tuple[float, float, float] | None
+    color: mplt.ColorType | None = None
 
 
 def timeshift_fluxscale_co56law(scaletoreftime: float | None, spectime: float) -> float:
@@ -314,19 +315,31 @@ def convert_xunit_aliases_to_canonical(xunit: str) -> str:
             raise ValueError(msg)
 
 
-def convert_angstroms_to_unit[T: (float, npt.NDArray[np.floating])](value_angstroms: T, new_units: str) -> T:
+@t.overload
+def convert_angstroms_to_unit(value_angstroms: float, new_units: str) -> float: ...
+
+
+@t.overload
+def convert_angstroms_to_unit(
+    value_angstroms: npt.NDArray[np.floating], new_units: str
+) -> npt.NDArray[np.floating]: ...
+
+
+def convert_angstroms_to_unit(
+    value_angstroms: float | npt.NDArray[np.floating], new_units: str
+) -> float | npt.NDArray[np.floating]:
     """Convert a wavelength in angstroms to a different unit, either length, frequency, or energy."""
     hc_ev_angstroms = const.h_ev_s * const.c_ang_per_s  # [eV angstroms]
     hc_erg_angstroms = hc_ev_angstroms * const.EV_to_erg  # [erg angstroms]
     match new_units.lower():
         case "erg":
-            return hc_erg_angstroms / value_angstroms  # ty:ignore[invalid-return-type]
+            return hc_erg_angstroms / value_angstroms
         case "ev":
-            return hc_ev_angstroms / value_angstroms  # ty:ignore[invalid-return-type]
+            return hc_ev_angstroms / value_angstroms
         case "kev":
-            return hc_ev_angstroms / value_angstroms / 1.0e3  # ty:ignore[invalid-return-type]
+            return hc_ev_angstroms / value_angstroms / 1.0e3
         case "mev":
-            return hc_ev_angstroms / value_angstroms / 1.0e6  # ty:ignore[invalid-return-type]
+            return hc_ev_angstroms / value_angstroms / 1.0e6
         case "hz":
             return const.c_ang_per_s / value_angstroms
         case "angstroms":
@@ -340,28 +353,38 @@ def convert_angstroms_to_unit[T: (float, npt.NDArray[np.floating])](value_angstr
             raise ValueError(msg)
 
 
-def convert_unit_to_angstroms[T: (float, npt.NDArray[np.floating])](value: T, old_units: str) -> T:
+@t.overload
+def convert_unit_to_angstroms(value: float, old_units: str) -> float: ...
+
+
+@t.overload
+def convert_unit_to_angstroms(value: npt.NDArray[np.floating], old_units: str) -> npt.NDArray[np.floating]: ...
+
+
+def convert_unit_to_angstroms(
+    value: float | npt.NDArray[np.floating], old_units: str
+) -> float | npt.NDArray[np.floating]:
     """Convert a wavelength, frequency, or energy to wavelength angstroms."""
     c = const.c_ang_per_s
     h = const.h_ev_s
     hc_ev_angstroms = h * c  # [eV angstroms]
     match old_units.lower():
         case "erg":
-            return hc_ev_angstroms * const.EV_to_erg / value  # ty:ignore[invalid-return-type]
+            return hc_ev_angstroms * const.EV_to_erg / value
         case "ev":
-            return hc_ev_angstroms / value  # ty:ignore[invalid-return-type]
+            return hc_ev_angstroms / value
         case "kev":
-            return hc_ev_angstroms / value / 1e3  # ty:ignore[invalid-return-type]
+            return hc_ev_angstroms / value / 1e3
         case "mev":
-            return hc_ev_angstroms / value / 1e6  # ty:ignore[invalid-return-type]
+            return hc_ev_angstroms / value / 1e6
         case "hz":
             return c / value
         case "angstroms":
             return value
         case "nm":
-            return value * 10  # ty:ignore[invalid-return-type]
+            return value * 10
         case "micron":
-            return value * 10000  # ty:ignore[invalid-return-type]
+            return value * 10000
         case _:
             msg = f"Unknown xunit {old_units}"
             raise ValueError(msg)
@@ -1512,10 +1535,14 @@ def sort_and_reduce_flux_contribution_list(
 
     from artistools.plottools import glasbey_category20_nogreys
 
-    color_list = [
-        color
-        for color in (*list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20))), *glasbey_category20_nogreys[10:])
-        if color[0] != color[1] or color[1] != color[2] or color[0] != color[2]  # remove greys
+    tab20_rgba = np.asarray(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20)))
+    rgb_candidates: list[tuple[float, float, float]] = [(float(r), float(g), float(b)) for r, g, b, _a in tab20_rgba]
+    rgb_candidates.extend(glasbey_category20_nogreys[10:])
+
+    color_list: list[mplt.ColorType] = [
+        rgb
+        for rgb in rgb_candidates
+        if rgb[0] != rgb[1] or rgb[1] != rgb[2] or rgb[0] != rgb[2]  # remove greys
     ]
 
     # combine the items past maxseriescount or not in manual list into a single item

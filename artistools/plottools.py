@@ -5,6 +5,7 @@ import typing as t
 from collections.abc import Iterable
 
 import matplotlib.axes as mplax
+import matplotlib.axis as mplaxis
 import matplotlib.figure as mplfig
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mplticker
@@ -281,6 +282,16 @@ def set_mpl_style() -> None:
     plt.style.use("file://" + str(get_path("artistools_dir") / "matplotlibrc"))
 
 
+def get_next_color(ax: mplax.Axes) -> str:
+    """Take the next colour from the Axes property cycle, advancing it.
+
+    Call this to keep colours consistent with the automatic ones, or to skip a colour that would otherwise
+    be reused. matplotlib exposes no public accessor, hence the private attribute.
+    """
+    nextcolor: str = ax._get_lines.get_next_color()  # type: ignore[attr-defined] # ruff:ignore[private-member-access] # pyright: ignore[reportAttributeAccessIssue]  # ty:ignore[unresolved-attribute]
+    return nextcolor
+
+
 class ExponentLabelFormatter(mplticker.ScalarFormatter):
     """Formatter to move the 'x10^x' offset text into the axis label."""
 
@@ -305,15 +316,18 @@ class ExponentLabelFormatter(mplticker.ScalarFormatter):
         if stroffset:
             stroffset = stroffset.replace(r"$\times", "$") + " "
         strnewlabel = self.labeltemplate.format(stroffset)
+        # a dummy axis (used when a formatter is called standalone) has no label to set
         assert self.axis is not None
-        self.axis.set_label_text(strnewlabel)  # type: ignore[union-attr] # pyright: ignore[reportAttributeAccessIssue]  # ty:ignore[unresolved-attribute]
+        if isinstance(self.axis, mplaxis.Axis):
+            self.axis.set_label_text(strnewlabel)
 
     @t.override
     def set_locs(self, locs: t.Any) -> None:
         super().set_locs(locs)
-        # ScalarFormatter otherwise drops the decimal point for integer-spaced ticks.
-        self._format = self._format.replace("%1.0f", "%1.1f")
-        self._set_formatted_label_text()
+        if self._format is not None:
+            # ScalarFormatter otherwise drops the decimal point for integer-spaced ticks.
+            self._format = self._format.replace("%1.0f", "%1.1f")
+            self._set_formatted_label_text()
 
     @t.override
     def set_axis(self, axis: t.Any) -> None:
