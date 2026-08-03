@@ -977,6 +977,12 @@ def test_linefluxes_rejects_lone_timebin_argument() -> None:
         at.linefluxes.main(argsraw=[], modelpath=[modelpath_classic_3d], timebins_tstart=[200.0, 250.0])
 
 
+def test_linefluxes_rejects_emittingregions_without_enough_colours() -> None:
+    """More models than the default palette must be rejected up front, not crash inside the colour conversion."""
+    with pytest.raises(ValueError, match="needs a colour for each"):
+        at.linefluxes.main(argsraw=[], modelpath=[modelpath_classic_3d] * 11, plotemittingregions=True)
+
+
 def test_linefluxes_lineflux_ratio_plot() -> None:
     """The line flux ratio plot must run with no arguments beyond the model path."""
     funcoutpath = outputpath / funcname()

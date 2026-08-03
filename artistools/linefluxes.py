@@ -870,6 +870,16 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         )
         raise ValueError(msg)
 
+    if args.plotemittingregions and any(color is None for color in args.color):
+        # the emitting region markers shade their colour, so every series needs a real one. The default palette
+        # runs out past 10 models, and trim_or_pad fills the rest with None
+        ncolors = sum(color is not None for color in args.color)
+        msg = (
+            f"-plotemittingregions needs a colour for each of the {len(args.modelpath)} models,"
+            f" but only {ncolors} are set. Pass -color with one value per model"
+        )
+        raise ValueError(msg)
+
     if args.plotemittingregions and args.timebins_tstart is None:
         # this plot needs concrete time bins, so fall back to the first model's timesteps. The flux ratio plot
         # leaves them as None, which makes each model use its own timesteps
