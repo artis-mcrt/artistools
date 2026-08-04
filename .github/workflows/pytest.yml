@@ -1,205 +1,203 @@
+---
 name: Test and lint
 permissions:
-  contents: read
+    contents: read
 on:
-  push:
-  merge_group:
-  schedule:
-  - cron: 0 10 * * 2
-  workflow_dispatch:
-  repository_dispatch:
-    types: [trigger_checks]
+    push:
+    merge_group:
+    schedule:
+        - cron: 0 10 * * 2
+    workflow_dispatch:
+    repository_dispatch:
+        types: [trigger_checks]
 env:
-  PYO3_USE_ABI3_FORWARD_COMPATIBILITY: 1
-  RUFF_OUTPUT_FORMAT: github
-  UV_FROZEN: 1
+    PYO3_USE_ABI3_FORWARD_COMPATIBILITY: 1
+    RUFF_OUTPUT_FORMAT: github
+    UV_FROZEN: 1
 jobs:
-  lint:
-    name: Format, lint, and type check
-    runs-on: ubuntu-26.04-arm
-    steps:
-    - name: Checkout Code
-      uses: actions/checkout@v7
+    lint:
+        name: Format, lint, and type check
+        runs-on: ubuntu-26.04-arm
+        steps:
+            - name: Checkout Code
+              uses: actions/checkout@v7
 
-    - uses: astral-sh/setup-uv@v9.0.0
-      id: setup-uv
-      with:
-        activate-environment: true
-        cache-suffix: lint
-        cache-dependency-glob: '**/uv.lock'
+            - uses: astral-sh/setup-uv@v9.0.0
+              id: setup-uv
+              with:
+                  activate-environment: true
+                  cache-suffix: lint
+                  cache-dependency-glob: '**/uv.lock'
 
-    - name: Cache cargo and rust build
-      uses: actions/cache@v6
-      with:
-        path: |
-          ~/.cargo/registry/index/
-          ~/.cargo/registry/cache/
-          ~/.cargo/git/db/
-          rust/target/
-        key: lint-cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python${{ steps.setup-uv.outputs.python-version
-          }}-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}
-        restore-keys: |
-          lint-cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python${{ steps.setup-uv.outputs.python-version }}-${{ hashFiles('**/Cargo.lock') }}-
-          lint-cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python${{ steps.setup-uv.outputs.python-version }}-
-          lint-cargo-rust-target-${{ runner.os }}${{ runner.arch }}-
-          cargo-rust-target-${{ runner.os }}${{ runner.arch }}-
+            - name: Cache cargo and rust build
+              uses: actions/cache@v6
+              with:
+                  path: |
+                      ~/.cargo/registry/index/
+                      ~/.cargo/registry/cache/
+                      ~/.cargo/git/db/
+                      rust/target/
+                  key: lint-cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python${{ steps.setup-uv.outputs.python-version }}-${{ hashFiles('**/Cargo.lock')
+                      }}-${{ github.run_id }}
+                  restore-keys: |
+                      lint-cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python${{ steps.setup-uv.outputs.python-version }}-${{ hashFiles('**/Cargo.lock') }}-
+                      lint-cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python${{ steps.setup-uv.outputs.python-version }}-
+                      lint-cargo-rust-target-${{ runner.os }}${{ runner.arch }}-
+                      cargo-rust-target-${{ runner.os }}${{ runner.arch }}-
 
-    - name: Install artistools[extras]
-      run: |
-        rustup update stable
-        uv sync --all-extras
+            - name: Install artistools[extras]
+              run: |
+                  rustup update stable
+                  uv sync --all-extras
 
-    - name: Run Ruff
-      if: always()
-      run: |
-        uv run -- ruff --version
-        uv run -- ruff check --exit-non-zero-on-fix --no-fix
+            - name: Run Ruff
+              if: always()
+              run: |
+                  uv run -- ruff --version
+                  uv run -- ruff check --exit-non-zero-on-fix --no-fix
 
-    - name: Run Ruff Format
-      if: always()
-      run: uv run -- ruff format --check --exit-non-zero-on-format
+            - name: Run Ruff Format
+              if: always()
+              run: uv run -- ruff format --check --exit-non-zero-on-format
 
-    - name: Run basedpyright
-      if: always()
-      run: uv run -- basedpyright --warnings
+            - name: Run basedpyright
+              if: always()
+              run: uv run -- basedpyright --warnings
 
-    - name: Run pyrefly
-      if: always()
-      run: uv run -- pyrefly check --output-format github
+            - name: Run pyrefly
+              if: always()
+              run: uv run -- pyrefly check --output-format github
 
-    - name: Run mypy
-      if: always()
-      run: uv run -- mypy
+            - name: Run mypy
+              if: always()
+              run: uv run -- mypy
 
             # refurb runs mypy internally, which hits an internal error walking the pyvista
             # sources, so keep it to this project's own files
-    - name: Run refurb
-      if: always()
-      run: uv run -- refurb artistools --quiet --format github -- --follow-imports=skip
+            - name: Run refurb
+              if: always()
+              run: uv run -- refurb artistools --quiet --format github -- --follow-imports=skip
 
             # informational only: vulture reports possibly-unused code at 60% confidence, which
             # includes false positives, so it must not gate the build
-    - name: Run vulture (informational)
-      if: always()
-      continue-on-error: true
-      run: uv run -- vulture
+            - name: Run vulture (informational)
+              if: always()
+              continue-on-error: true
+              run: uv run -- vulture
 
             # informational only: zuban shares mypy's `# type: ignore` syntax, so silencing a
             # zuban-only error makes mypy fail warn_unused_ignores. Its --mode mypy also panics
             # walking the pyvista sources. Report, but do not gate.
-    - name: Run zuban (informational)
-      if: always()
-      continue-on-error: true
-      run: uv run -- zuban check
+            - name: Run zuban (informational)
+              if: always()
+              continue-on-error: true
+              run: uv run -- zuban check
 
-    - name: Run prek pre-commit checks
-      uses: j178/prek-action@v2
+            - name: Run prek pre-commit checks
+              uses: j178/prek-action@v2
 
-    - name: Run rust clippy
-      if: always()
-      working-directory: rust/
-      run: |
-        rustup component add clippy
-        cargo clippy --all-features -- -D warnings -D clippy::pedantic
+            - name: Run rust clippy
+              if: always()
+              working-directory: rust/
+              run: |
+                  rustup component add clippy
+                  cargo clippy --all-features -- -D warnings -D clippy::pedantic
 
-  pytest:
-    timeout-minutes: 120
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ['3.13', '3.14', 3.14t]
-    runs-on: ubuntu-26.04${{ !endsWith(matrix.python-version, 't') && '-arm' || ''
-      }}
-    name: pytest python ${{ matrix.python-version }}
-    steps:
-    - name: Checkout Code
-      uses: actions/checkout@v7
+    pytest:
+        timeout-minutes: 120
+        strategy:
+            fail-fast: false
+            matrix:
+                python-version: ['3.13', '3.14', 3.14t]
+        runs-on: ubuntu-26.04${{ !endsWith(matrix.python-version, 't') && '-arm' || '' }}
+        name: pytest python ${{ matrix.python-version }}
+        steps:
+            - name: Checkout Code
+              uses: actions/checkout@v7
 
-    - name: Setup uv
-      uses: astral-sh/setup-uv@v9.0.0
-      id: setup-uv
-      with:
-        activate-environment: true
-        python-version: ${{ matrix.python-version }}
-        cache-dependency-glob: '**/uv.lock'
+            - name: Setup uv
+              uses: astral-sh/setup-uv@v9.0.0
+              id: setup-uv
+              with:
+                  activate-environment: true
+                  python-version: ${{ matrix.python-version }}
+                  cache-dependency-glob: '**/uv.lock'
 
-    - name: Cache cargo and rust build
-      uses: actions/cache@v6
-      with:
-        path: |
-          ~/.cargo/registry/index/
-          ~/.cargo/registry/cache/
-          ~/.cargo/git/db/
-          rust/target/
-        key: cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python${{ steps.setup-uv.outputs.python-version
-          }}-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}
-        restore-keys: |
-          cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python${{ steps.setup-uv.outputs.python-version }}-${{ hashFiles('**/Cargo.lock') }}-
-          cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python${{ steps.setup-uv.outputs.python-version }}-
-          cargo-rust-target-${{ runner.os }}${{ runner.arch }}-
+            - name: Cache cargo and rust build
+              uses: actions/cache@v6
+              with:
+                  path: |
+                      ~/.cargo/registry/index/
+                      ~/.cargo/registry/cache/
+                      ~/.cargo/git/db/
+                      rust/target/
+                  key: cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python${{ steps.setup-uv.outputs.python-version }}-${{ hashFiles('**/Cargo.lock')
+                      }}-${{ github.run_id }}
+                  restore-keys: |
+                      cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python${{ steps.setup-uv.outputs.python-version }}-${{ hashFiles('**/Cargo.lock') }}-
+                      cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python${{ steps.setup-uv.outputs.python-version }}-
+                      cargo-rust-target-${{ runner.os }}${{ runner.arch }}-
 
-    - name: Install artistools (no dev deps)
-      run: |
-        rustup update stable
-        uv sync --no-dev --compile-bytecode
+            - name: Install artistools (no dev deps)
+              run: |
+                  rustup update stable
+                  uv sync --no-dev --compile-bytecode
 
-    - name: Check artistools command line tool
-      run: |
-        artistools --help
-        artistools completions
+            - name: Check artistools command line tool
+              run: |
+                  artistools --help
+                  artistools completions
 
-    - name: Download/extract test data
-      working-directory: tests/data/
-      run: source ./setuptestdata.sh
+            - name: Download/extract test data
+              working-directory: tests/data/
+              run: source ./setuptestdata.sh
 
-    - name: Install dev deps
-      run: uv sync --compile-bytecode
+            - name: Install dev deps
+              run: uv sync --compile-bytecode
 
-    - name: Test with pytest
-      run: uv run --no-sync -- python -m pytest --cov=./ --cov-report=xml
+            - name: Test with pytest
+              run: uv run --no-sync -- python -m pytest --cov=./ --cov-report=xml
 
-    - name: Report coverage
-      run: uv run -- python -m coverage report
+            - name: Report coverage
+              run: uv run -- python -m coverage report
 
-    - uses: codecov/codecov-action@v7
-      env:
-        OS: ubuntu-26.04${{ !endsWith(matrix.python-version, 't') && '-arm' || ''
-          }}
-        PYTHON: ${{ matrix.python-version }}
-      with:
-        token: ${{ secrets.CODECOV_TOKEN }}
-        files: ./coverage.xml
-        flags: unittests
-        env_vars: OS,PYTHON
-        name: codecov-umbrella
-        fail_ci_if_error: false
-        verbose: true
+            - uses: codecov/codecov-action@v7
+              env:
+                  OS: ubuntu-26.04${{ !endsWith(matrix.python-version, 't') && '-arm' || '' }}
+                  PYTHON: ${{ matrix.python-version }}
+              with:
+                  token: ${{ secrets.CODECOV_TOKEN }}
+                  files: ./coverage.xml
+                  flags: unittests
+                  env_vars: OS,PYTHON
+                  name: codecov-umbrella
+                  fail_ci_if_error: false
+                  verbose: true
 
-    - name: Upload coverage artifact
-      if: matrix.python-version == '3.13' && (github.event_name != 'pull_request'
-        || github.event.pull_request.head.repo.full_name == github.repository)
-      uses: actions/upload-artifact@v7
-      with:
-        name: coverage-report-python
-        path: coverage.xml
+            - name: Upload coverage artifact
+              if: matrix.python-version == '3.13' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+              uses: actions/upload-artifact@v7
+              with:
+                  name: coverage-report-python
+                  path: coverage.xml
 
-  upload-coverage-python:
-    needs: pytest
-    if: ${{ !cancelled() && needs.pytest.result == 'success' && (github.event_name
-      != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-      }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      code-quality: write
-      pull-requests: read
-    steps:
-    - name: Download coverage artifact
-      uses: actions/download-artifact@v8
-      with:
-        name: coverage-report-python
-    - uses: actions/upload-code-coverage@v1
-      with:
-        file: coverage.xml
-        language: Python
-        label: code-coverage-agent
+    upload-coverage-python:
+        needs: pytest
+        if: ${{ !cancelled() && needs.pytest.result == 'success' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name
+            == github.repository) }}
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            code-quality: write
+            pull-requests: read
+        steps:
+            - name: Download coverage artifact
+              uses: actions/download-artifact@v8
+              with:
+                  name: coverage-report-python
+            - uses: actions/upload-code-coverage@v1
+              with:
+                  file: coverage.xml
+                  language: Python
+                  label: code-coverage-agent
+                  fail-on-error: false
