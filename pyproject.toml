@@ -129,11 +129,12 @@ module-name = "artistools.rustext"
 use-base-python = true
 include = [
     "artistools/data/**",
-    "**/artistoolscompletions.sh",
-    "**/matplotlibrc",
+    "artistools/**/artistoolscompletions.sh",
+    "artistools/**/matplotlibrc",
 ]
 exclude = [
-    "set_version.py",
+    { path = "**/test_*.py", format = "wheel" },
+    { path = "set_version.py", format = "sdist" },
 ]
 
 [tool.mypy]
