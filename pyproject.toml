@@ -168,7 +168,9 @@ enable_error_code = [
     "type-arg",
     "unused-awaitable",
 ]
-exclude = "(build)|(dist)|(tests)|(data)|(.venv)|(venv)"
+# anchored to whole path components: an unanchored "data" also matched artistools/data/ and
+# every *data.py module, leaving them checked only by the other type checkers
+exclude = '(^|/)(build|dist|venv|\.venv)/'
 extra_checks = true
 ignore_missing_imports = true
 implicit_optional = false
