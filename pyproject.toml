@@ -81,7 +81,7 @@ dev = [
     "pytest-cov>=7.1.0",
     "pytest-xdist[psutil]>=3.8.0",
     "refurb>=2.2.0",
-    "ruff>=0.16.1",
+    "ruff>=0.16.1,<0.17", # keep in step with the required-version bound below
     "scipy-stubs>=1.18.0.1",
     "ty>=0.0.65",
     "types-python-dateutil>=2.9.0.20260408",
@@ -135,8 +135,10 @@ before-all = [
 ]
 
 [tool.coverage.run]
+# scopes the report to the package: --cov=./ also measured conftest.py, set_version.py and
+# tests/__init__.py. Test modules stay measured, so this stays comparable to the historical
+# baseline; omitting them would be more honest but resets it by about 4.5 points.
 source = ["artistools"]
-omit = ["*/test_*.py", "*/conftest.py"]
 
 [tool.maturin]
 bindings = "pyo3"
@@ -294,9 +296,6 @@ line-length = 120
 fix = true
 extend-exclude = ["artistools/inputmodel/fromcmfgen/rd_cmfgen.py"]
 preview = true
-# preview rules change between minor versions, so keep this in step with the pinned
-# ruff-pre-commit rev rather than letting a newer local ruff disagree with CI
-required-version = ">=0.16.1,<0.17"
 
 [tool.ruff.format]
 skip-magic-trailing-comma = true
