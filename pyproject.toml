@@ -131,10 +131,9 @@ include = [
     "artistools/data/**",
     "**/artistoolscompletions.sh",
     "**/matplotlibrc",
-    "**/pyproject.toml",
-    "**/README.md",
-    "**/*.cff",
-    "**/LICENSE*",
+]
+exclude = [
+    "set_version.py",
 ]
 
 [tool.mypy]
