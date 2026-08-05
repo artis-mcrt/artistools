@@ -1,5 +1,5 @@
 [build-system]
-requires = ["maturin>=1.14"]
+requires = ["maturin>=1.14,<2.0"]
 build-backend = "maturin"
 
 [project]
@@ -14,8 +14,21 @@ authors = [
     { name = "Gerrit Leck", email = "g.leck@gsi.de" },
 ]
 description = "Plotting and analysis tools for the ARTIS 3D radiative transfer code for supernovae and kilonovae."
+keywords = [
+    "artis",
+    "astronomy",
+    "astrophysics",
+    "kilonova",
+    "monte-carlo",
+    "radiative-transfer",
+    "supernova",
+]
 classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
     "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
     "Programming Language :: Python :: Free Threading",
@@ -47,7 +60,7 @@ dependencies = [
 extras = [
     "astropy>=7.2",
     "george>=0.4.4",
-    "imageio>=2.37.2",
+    "imageio>=2.37.3",
     "plotly>=6.7.0",
     "pypdf>=6.14.2",
     "pynonthermal>=2026.4.27",
@@ -68,7 +81,7 @@ dev = [
     "pytest-cov>=7.1.0",
     "pytest-xdist[psutil]>=3.8.0",
     "refurb>=2.2.0",
-    "ruff>=0.16.1",
+    "ruff>=0.16.1,<0.17",
     "scipy-stubs>=1.18.0.1",
     "ty>=0.0.65",
     "types-python-dateutil>=2.9.0.20260408",
@@ -79,8 +92,8 @@ dev = [
 ]
 
 [project.urls]
-Repository = "https://www.github.com/artis-mcrt/artistools"
-Source = "https://www.github.com/artis-mcrt/artistools"
+Repository = "https://github.com/artis-mcrt/artistools"
+Issues = "https://github.com/artis-mcrt/artistools/issues"
 
 [project.scripts]
 at = 'artistools.__main__:main'
@@ -121,6 +134,13 @@ before-all = [
     "rustup update stable",
 ]
 
+[tool.coverage.run]
+# --cov=./ also measured conftest.py, set_version.py and tests/__init__.py. Test modules are
+# ~100% covered by definition, so counting them inflated the project figure; dropping them is a
+# one-off baseline reset of about 4.5 points, not a regression.
+source = ["artistools"]
+omit = ["*/test_*.py", "*/conftest.py"]
+
 [tool.maturin]
 bindings = "pyo3"
 profile = "release"
@@ -139,16 +159,11 @@ exclude = [
 
 [tool.mypy]
 python_executable = ".venv/bin/python3"
-check_untyped_defs = true
+strict = true
+# only settings that strict does not already imply, so the deliberate choices stay visible
 allow_redefinition = true
 disallow_any_explicit = false
-disallow_any_generics = true
 disallow_any_unimported = true
-disallow_incomplete_defs = true
-disallow_subclassing_any = true
-disallow_untyped_calls = true
-disallow_untyped_decorators = true
-disallow_untyped_defs = true
 error_summary = true
 enable_error_code = [
     "comparison-overlap",
@@ -168,23 +183,18 @@ enable_error_code = [
     "type-arg",
     "unused-awaitable",
 ]
-exclude = "(build)|(dist)|(tests)|(data)|(.venv)|(venv)"
-extra_checks = true
+# anchored to whole path components: an unanchored "data" also matched artistools/data/ and
+# every *data.py module, leaving them checked only by the other type checkers
+exclude = '(^|/)(build|dist|venv|\.venv)/'
 ignore_missing_imports = true
 implicit_optional = false
-implicit_reexport = false
+implicit_reexport = false # strict implies this too, but the re-export rule is documented in CLAUDE.md
 packages = "artistools"
 pretty = true
 scripts_are_modules = true
-strict = true
-strict_equality = true
-warn_redundant_casts = true
 warn_unreachable = false
-warn_unused_configs = true
-warn_unused_ignores = true
-warn_return_any = true
 fixed_format_cache = true
-python_version = '3.13'
+python_version = "3.13"
 native_parser = true
 
 [tool.pyrefly]
@@ -285,12 +295,8 @@ ignore = ["FURB115"]
 [tool.ruff]
 line-length = 120
 fix = true
-extend-exclude = [
-    "artistools/inputmodel/fromcmfgen/rd_cmfgen.py",
-    ".venv/**",
-]
+extend-exclude = ["artistools/inputmodel/fromcmfgen/rd_cmfgen.py"]
 preview = true
-required-version = ">=0.16.1"
 
 [tool.ruff.format]
 skip-magic-trailing-comma = true
@@ -336,7 +342,6 @@ ignore = [
     "missing-todo-author",
     "missing-todo-link",
 ]
-fixable = ["ALL"]
 unfixable = [
     "commented-out-code", # (will just delete it!)
     "unused-import",      # (can be annoying to have import disappear while editing)
@@ -346,7 +351,6 @@ unfixable = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"rd_cmfgen.py" = ["blanket-noqa"]
 "artistools/commands.py" = ["suspicious-subprocess-import", "start-process-with-partial-path"]
 "artistools/test_artistools.py" = ["suspicious-subprocess-import"]
 "artistools/spectra/sampleblackbodyfrompacket_tr.py" = ["suspicious-non-cryptographic-random-usage"]
