@@ -82,7 +82,7 @@ requires-dist = [
     { name = "astropy", marker = "extra == 'extras'", specifier = ">=7.2" },
     { name = "extinction", specifier = ">=0.4.7" },
     { name = "george", marker = "extra == 'extras'", specifier = ">=0.4.4" },
-    { name = "imageio", marker = "extra == 'extras'", specifier = ">=2.37.2" },
+    { name = "imageio", marker = "extra == 'extras'", specifier = ">=2.37.3" },
     { name = "matplotlib", specifier = ">=3.10.8" },
     { name = "numpy", specifier = ">=2.4.6" },
     { name = "pandas", specifier = ">=3.0.3" },
