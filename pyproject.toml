@@ -135,10 +135,11 @@ before-all = [
 ]
 
 [tool.coverage.run]
-# scopes the report to the package: --cov=./ also measured conftest.py, set_version.py and
-# tests/__init__.py. Test modules stay measured, so this stays comparable to the historical
-# baseline; omitting them would be more honest but resets it by about 4.5 points.
+# --cov=./ also measured conftest.py, set_version.py and tests/__init__.py. Test modules are
+# ~100% covered by definition, so counting them inflated the project figure; dropping them is a
+# one-off baseline reset of about 4.5 points, not a regression.
 source = ["artistools"]
+omit = ["*/test_*.py", "*/conftest.py"]
 
 [tool.maturin]
 bindings = "pyo3"
