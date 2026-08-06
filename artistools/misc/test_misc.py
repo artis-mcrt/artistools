@@ -10,6 +10,7 @@ import io
 import lzma
 from pathlib import Path
 
+import numpy as np
 import polars as pl
 import polars.testing as pltest
 import pytest
@@ -356,6 +357,84 @@ def test_get_filterfunc() -> None:
     filterfunc = at.get_filterfunc(argparse.Namespace(filtermovingavg=3))
     assert filterfunc is not None
     assert filterfunc([1.0, 2.0, 3.0, 4.0, 5.0]) == pytest.approx([4 / 3, 2.0, 3.0, 4.0, 14 / 3])
+
+    # the Savitzky-Golay filter matches scipy.signal.savgol_filter(y, window_length=5, polyorder=3, mode="interp"),
+    # which it replaced
+    filterfunc = at.get_filterfunc(argparse.Namespace(filtersavgol=["5", "3"]))
+    assert filterfunc is not None
+    yvalues = np.sin(np.linspace(0.0, 3.0, num=12)) + np.linspace(0.0, 0.5, num=12) ** 2
+    expected = [
+        -4.0498103264955503e-05,
+        2.7158701565113680e-01,
+        5.2682820534895669e-01,
+        7.4815740267140873e-01,
+        9.1968938266004074e-01,
+        1.0298135494226284e00,
+        1.0717640450420927e00,
+        1.0441198836391163e00,
+        9.5090999103591567e-01,
+        8.0131538546057457e-01,
+        6.0937710159007052e-01,
+        3.9107049789170700e-01,
+    ]
+    assert np.allclose(filterfunc(yvalues), expected, rtol=1e-10, atol=1e-12)
+
+    # invalid parameters are rejected
+    with pytest.raises(ValueError, match="must be an odd number"):
+        at.savgol_filter(yvalues, window_length=4, polyorder=3)
+    with pytest.raises(ValueError, match="must be at least zero and less than window_length"):
+        at.savgol_filter(yvalues, window_length=5, polyorder=7)
+    with pytest.raises(ValueError, match="must be at least zero and less than window_length"):
+        at.savgol_filter(yvalues, window_length=5, polyorder=-1)
+    with pytest.raises(ValueError, match="exceeds the data length"):
+        at.savgol_filter(yvalues[:3], window_length=5, polyorder=3)
+    with pytest.raises(ValueError, match="needs a 1D array"):
+        at.savgol_filter(np.tile(yvalues, (2, 1)), window_length=5, polyorder=3)
+
+
+def test_gaussian_filter_wrap() -> None:
+    """The smoothing must match scipy.ndimage.gaussian_filter(data, sigma=1.2, mode="wrap"), which it replaced."""
+    data = np.outer(np.sin(np.linspace(0.0, np.pi, 4)), np.cos(np.linspace(0.0, 2 * np.pi, 6, endpoint=False)))
+    expected = np.array([
+        [
+            0.16333386804037386,
+            0.08166693402018696,
+            -0.08166693402018693,
+            -0.16333386804037395,
+            -0.08166693402018704,
+            0.08166693402018683,
+        ],
+        [
+            0.22987577583564325,
+            0.11493788791782167,
+            -0.11493788791782165,
+            -0.22987577583564336,
+            -0.11493788791782181,
+            0.11493788791782150,
+        ],
+        [
+            0.22987577583564328,
+            0.11493788791782168,
+            -0.11493788791782164,
+            -0.22987577583564340,
+            -0.11493788791782182,
+            0.11493788791782152,
+        ],
+        [
+            0.16333386804037386,
+            0.08166693402018697,
+            -0.08166693402018695,
+            -0.16333386804037395,
+            -0.08166693402018706,
+            0.08166693402018685,
+        ],
+    ])
+    assert np.allclose(at.gaussian_filter_wrap(data, sigma=1.2), expected, rtol=1e-10, atol=1e-12)
+
+    with pytest.raises(ValueError, match="must be greater than zero"):
+        at.gaussian_filter_wrap(data, sigma=0.0)
+    with pytest.raises(ValueError, match="needs a 2D array"):
+        at.gaussian_filter_wrap(data[0], sigma=1.2)
 
 
 # --- timesteps.py ------------------------------------------------------------------------------

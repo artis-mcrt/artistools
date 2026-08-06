@@ -48,7 +48,9 @@ from artistools.misc.fileio import write_parquet_atomic as write_parquet_atomic
 from artistools.misc.fileio import zopen as zopen
 from artistools.misc.fileio import zopenpl as zopenpl
 from artistools.misc.general import df_filter_minmax_bounded as df_filter_minmax_bounded
+from artistools.misc.general import gaussian_filter_wrap as gaussian_filter_wrap
 from artistools.misc.general import parallel_map as parallel_map
+from artistools.misc.general import savgol_filter as savgol_filter
 from artistools.misc.general import vec_len as vec_len
 from artistools.misc.modelinfo import get_cellsofmpirank as get_cellsofmpirank
 from artistools.misc.modelinfo import get_dfrankassignments as get_dfrankassignments

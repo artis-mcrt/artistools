@@ -36,7 +36,6 @@ dependencies = [
     { name = "pyarrow" },
     { name = "pyyaml" },
     { name = "rich" },
-    { name = "scipy" },
     { name = "tqdm" },
     { name = "zstandard", marker = "python_full_version < '3.14'" },
 ]
@@ -44,7 +43,7 @@ dependencies = [
 [package.optional-dependencies]
 extras = [
     { name = "astropy" },
-    { name = "george" },
+    { name = "george", marker = "python_full_version < '3.15'" },
     { name = "imageio" },
     { name = "plotly" },
     { name = "pynonthermal" },
@@ -81,7 +80,7 @@ requires-dist = [
     { name = "argcomplete", specifier = ">=3.6.3" },
     { name = "astropy", marker = "extra == 'extras'", specifier = ">=7.2" },
     { name = "extinction", specifier = ">=0.4.7" },
-    { name = "george", marker = "extra == 'extras'", specifier = ">=0.4.4" },
+    { name = "george", marker = "python_full_version < '3.15' and extra == 'extras'", specifier = ">=0.4.4" },
     { name = "imageio", marker = "extra == 'extras'", specifier = ">=2.37.3" },
     { name = "matplotlib", specifier = ">=3.10.8" },
     { name = "numpy", specifier = ">=2.4.6" },
@@ -94,7 +93,6 @@ requires-dist = [
     { name = "pyvista", marker = "python_full_version < '3.15' and extra == 'extras'", specifier = ">=0.47.1" },
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "rich", specifier = ">=15.0.0" },
-    { name = "scipy", specifier = ">=1.18.0" },
     { name = "tqdm", specifier = ">=4.67.3" },
     { name = "zstandard", marker = "python_full_version < '3.14'", specifier = ">=0.25.0" },
 ]

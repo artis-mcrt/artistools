@@ -205,8 +205,6 @@ def generate_band_lightcurve_data(
     **kwargs: t.Any,
 ) -> dict[str, t.Any]:
     """Integrate spectra to get band magnitude vs time. Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py."""
-    from scipy.interpolate import interp1d
-
     args = args_from_kwargs(
         args,
         kwargs,
@@ -298,14 +296,17 @@ def generate_band_lightcurve_data(
                     average_over_theta=args.average_over_theta_angle,
                 )
 
-                # interpolate the coarser-sampled series onto the finer wavelength grid before multiplying
+                # interpolate the coarser-sampled series onto the finer wavelength grid before multiplying,
+                # with zero contribution outside the sampled range
                 if len(wavelength_from_spectrum) > len(wavefilter):
-                    interpolate_fn = interp1d(x=wavefilter, y=transmission, bounds_error=False, fill_value=0.0)
-                    integrand = flux * interpolate_fn(wavelength_from_spectrum)
+                    integrand = flux * np.interp(
+                        wavelength_from_spectrum, wavefilter, transmission, left=0.0, right=0.0
+                    )
                     integration_grid = wavelength_from_spectrum
                 else:
-                    interpolate_fn = interp1d(wavelength_from_spectrum, flux, bounds_error=False, fill_value=0.0)
-                    integrand = interpolate_fn(wavefilter) * transmission
+                    integrand = (
+                        np.interp(wavefilter, wavelength_from_spectrum, flux, left=0.0, right=0.0) * transmission
+                    )
                     integration_grid = wavefilter
 
                 weighted_flux_obs = float(abs(np.trapezoid(integrand, integration_grid)))
@@ -379,10 +380,13 @@ def get_filter_data(
         wavefilter.append(float(row.split()[0]))
         transmission.append(float(row.split()[1]))
 
-    wavefilter_min = min(wavefilter)
-    wavefilter_max = max(wavefilter)
+    # the files under data/filters/NOT are not in ascending wavelength order, and callers both
+    # interpolate on this grid and integrate over it with np.trapezoid, so sort it here
+    sortidx = np.argsort(wavefilter)
+    arr_wavefilter = np.array(wavefilter)[sortidx]
+    arr_transmission = np.array(transmission)[sortidx]
 
-    return zeropointenergyflux, np.array(wavefilter), np.array(transmission), wavefilter_min, wavefilter_max
+    return zeropointenergyflux, arr_wavefilter, arr_transmission, float(arr_wavefilter[0]), float(arr_wavefilter[-1])
 
 
 def get_spectrum_in_filter_range(

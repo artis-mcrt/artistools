@@ -1,6 +1,7 @@
 """Small generic utilities."""
 
 import contextlib
+import functools
 import sys
 import typing as t
 from collections.abc import Callable
@@ -37,6 +38,76 @@ def df_filter_minmax_bounded(
 
 def vec_len(vec: Sequence[float] | npt.NDArray[np.floating]) -> float:
     return float(np.sqrt(np.dot(vec, vec)))
+
+
+@functools.lru_cache
+def _savgol_coeffs(window_length: int, polyorder: int) -> npt.NDArray[np.float64]:
+    """Return the Savitzky-Golay smoothing coefficients for a centred window."""
+    halflen = window_length // 2
+    xwindow = np.arange(-halflen, halflen + 1, dtype=np.float64)
+    # the first pseudoinverse row evaluates the least-squares fitted polynomial at the window centre
+    return np.asarray(np.linalg.pinv(np.vander(xwindow, polyorder + 1, increasing=True))[0], dtype=np.float64)
+
+
+def savgol_filter(ylist: npt.ArrayLike, window_length: int, polyorder: int) -> npt.NDArray[np.float64]:
+    """Apply Savitzky-Golay smoothing to a 1D array, fitting polynomials to the edge windows.
+
+    Matches scipy.signal.savgol_filter with mode="interp" for an odd window_length. Unlike scipy,
+    only odd windows and 1D input are accepted: an even window is centred half a sample off, which
+    phase-shifts the output, and every caller here smooths a single series.
+    """
+    y = np.asarray(ylist, dtype=np.float64)
+    if y.ndim != 1:
+        msg = f"savgol_filter needs a 1D array, got {y.ndim} dimensions"
+        raise ValueError(msg)
+    if window_length % 2 == 0 or window_length < 3:
+        msg = f"window_length {window_length} must be an odd number of at least 3"
+        raise ValueError(msg)
+    if not 0 <= polyorder < window_length:
+        msg = f"polyorder {polyorder} must be at least zero and less than window_length {window_length}"
+        raise ValueError(msg)
+    if y.size < window_length:
+        msg = f"window_length {window_length} exceeds the data length {y.size}"
+        raise ValueError(msg)
+
+    halflen = window_length // 2
+    filtered = np.correlate(y, _savgol_coeffs(window_length, polyorder), mode="same")
+
+    # the outermost points have incomplete windows, so evaluate polynomial fits to the first and last full windows
+    xedge = np.arange(window_length, dtype=np.float64)
+    filtered[:halflen] = np.polynomial.Polynomial.fit(xedge, y[:window_length], polyorder)(xedge[:halflen])
+    filtered[-halflen:] = np.polynomial.Polynomial.fit(xedge, y[-window_length:], polyorder)(xedge[-halflen:])
+
+    return filtered
+
+
+def gaussian_filter_wrap(data: npt.NDArray[np.floating], sigma: float) -> npt.NDArray[np.float64]:
+    """Smooth a 2D array with a Gaussian kernel, wrapping at the array boundaries.
+
+    Matches scipy.ndimage.gaussian_filter with mode="wrap" and the default truncation of four
+    standard deviations, but only for a 2D array and a scalar sigma greater than zero.
+    """
+    out = np.asarray(data, dtype=np.float64)
+    if out.ndim != 2:
+        msg = f"gaussian_filter_wrap needs a 2D array, got {out.ndim} dimensions"
+        raise ValueError(msg)
+    if sigma <= 0.0:
+        msg = f"sigma {sigma} must be greater than zero"
+        raise ValueError(msg)
+
+    radius = int(4.0 * sigma + 0.5)
+    xkernel = np.arange(-radius, radius + 1, dtype=np.float64)
+    kernel = np.exp(-0.5 * (xkernel / sigma) ** 2)
+    kernel /= kernel.sum()
+
+    def convolve_valid(arr: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+        return np.asarray(np.convolve(arr, kernel, mode="valid"), dtype=np.float64)
+
+    for axis in (0, 1):
+        padwidth = [(0, 0), (0, 0)]
+        padwidth[axis] = (radius, radius)
+        out = np.apply_along_axis(convolve_valid, axis, np.pad(out, padwidth, mode="wrap"))
+    return out
 
 
 def parallel_map[IterableType, ResultType](

@@ -258,6 +258,10 @@ def lightcurve_polyfit(
     try:
         import george
 
+        # scipy is not a direct dependency of artistools, but george depends on it. Import it here
+        # so a george install without scipy also falls back to the polynomial fit.
+        import scipy.optimize as op
+
     except ModuleNotFoundError:
         print(
             "Could not find 'george' module, falling back to polynomial fit. WARNING: polynomial fit method is sensitive to the degrees of freedom used in the polynomial fit. "
@@ -271,7 +275,6 @@ def lightcurve_polyfit(
         fxfit = np.poly1d(zfit)
         pred = fxfit(xfit)
     else:
-        import scipy.optimize as op
         from george import kernels
 
         kernel = np.var(magnitude) * kernels.Matern32Kernel(kernel_scale)
