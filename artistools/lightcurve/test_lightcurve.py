@@ -66,6 +66,31 @@ def test_band_lightcurve_plot() -> None:
     at.lightcurve.plot(argsraw=[], modelpath=modelpath, filter=["B"], outputfile=outputpath)
 
 
+def test_filter_data_is_sorted_by_wavelength() -> None:
+    """Filter curves must come back in ascending wavelength order with transmissions still paired.
+
+    The files under data/filters/NOT are stored out of order. Callers interpolate on this grid and
+    integrate over it with np.trapezoid, which silently cancels flux across negative-width segments,
+    so the sort must happen here rather than at each use.
+    """
+    filterdir = Path(at.get_path("artistools_dir"), "data/filters/")
+
+    rawlines = (filterdir / "NOT" / "B.txt").read_text(encoding="utf-8").splitlines()[4:]
+    rawpairs = {float(row.split()[0]): float(row.split()[1]) for row in rawlines if row.split()}
+    assert sorted(rawpairs) != list(rawpairs), "this fixture is only meaningful while the file is unsorted"
+
+    _, wavefilter, transmission, wavefilter_min, wavefilter_max = at.lightcurve.get_filter_data(filterdir, "NOT/B")
+
+    assert np.all(np.diff(wavefilter) > 0), "wavelengths must be strictly ascending after sorting"
+    assert wavefilter_min == wavefilter[0]
+    assert wavefilter_max == wavefilter[-1]
+
+    # the sort must move transmissions with their wavelengths, not just reorder one of the two
+    assert len(wavefilter) == len(rawpairs)
+    for wavelength, transmit in zip(wavefilter, transmission, strict=True):
+        assert transmit == rawpairs[wavelength]
+
+
 def test_band_magnitude_calculations() -> None:
     band_magnitude_data = at.lightcurve.generate_band_lightcurve_data(
         modelpath,

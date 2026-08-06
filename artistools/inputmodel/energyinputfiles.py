@@ -23,30 +23,38 @@ def _cumulative_trapezoid(y: npt.ArrayLike, x: npt.ArrayLike) -> npt.NDArray[np.
     return np.concatenate(([0.0], np.cumsum(np.diff(xarr) * (yarr[:-1] + yarr[1:]) / 2.0)))
 
 
-def _quad_adaptive(func: Callable[[float], float], a: float, b: float, *, rtol: float = 1.5e-8) -> float:
+def _quad_adaptive(
+    func: Callable[[float], float], a: float, b: float, *, rtol: float = 1.5e-8, maxdepth: int = 20
+) -> float:
     """Integrate a smooth function over [a, b] with adaptive Simpson quadrature.
 
     rtol must stay above the rounding noise of the integrand (e.g. cancellation in
-    1/2 - arctan(x)/pi at large x leaves ~1e-9 relative noise), or the recursion never converges.
+    1/2 - arctan(x)/pi at large x leaves ~1e-9 relative noise). Below that noise floor no
+    subdivision can meet the tolerance, so the recursion raises rather than subdividing until
+    maxdepth is exhausted, which would cost up to 2**maxdepth evaluations and silently return
+    an unconverged result.
     """
 
     def simpson(x0: float, x2: float, f0: float, f1: float, f2: float) -> float:
         return (x2 - x0) / 6.0 * (f0 + 4.0 * f1 + f2)
 
-    def recurse(x0: float, x2: float, f0: float, f1: float, f2: float, whole: float, depth: int) -> float:
+    def recurse(x0: float, x2: float, f0: float, f1: float, f2: float, depth: int) -> float:
         x1 = 0.5 * (x0 + x2)
         fleft = func(0.5 * (x0 + x1))
         fright = func(0.5 * (x1 + x2))
+        whole = simpson(x0, x2, f0, f1, f2)
         left = simpson(x0, x1, f0, fleft, f1)
         right = simpson(x1, x2, f1, fright, f2)
-        if depth <= 0 or abs(left + right - whole) <= rtol * (abs(left) + abs(right)):
+        if abs(left + right - whole) <= rtol * (abs(left) + abs(right)):
             # Richardson extrapolation of the two half-interval estimates
             return left + right + (left + right - whole) / 15.0
-        return recurse(x0, x1, f0, fleft, f1, left, depth - 1) + recurse(x1, x2, f1, fright, f2, right, depth - 1)
+        if depth <= 0:
+            msg = f"adaptive quadrature did not reach rtol={rtol:g} on [{x0:g}, {x2:g}] within {maxdepth} levels"
+            raise RuntimeError(msg)
+        return recurse(x0, x1, f0, fleft, f1, depth - 1) + recurse(x1, x2, f1, fright, f2, depth - 1)
 
     x1 = 0.5 * (a + b)
-    fa, f1, fb = func(a), func(x1), func(b)
-    return recurse(a, b, fa, f1, fb, simpson(a, b, fa, f1, fb), 30)
+    return recurse(a, b, func(a), func(x1), func(b), maxdepth)
 
 
 def get_cumulative_heating_fraction() -> tuple[pl.DataFrame, float]:

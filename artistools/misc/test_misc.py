@@ -392,14 +392,45 @@ def test_gaussian_filter_wrap() -> None:
     """The smoothing must match scipy.ndimage.gaussian_filter(data, sigma=1.2, mode="wrap"), which it replaced."""
     data = np.outer(np.sin(np.linspace(0.0, np.pi, 4)), np.cos(np.linspace(0.0, 2 * np.pi, 6, endpoint=False)))
     expected = np.array([
-        [0.16333386804037386, 0.08166693402018696, -0.08166693402018693],
-        [0.22987577583564325, 0.11493788791782167, -0.11493788791782165],
-        [0.22987577583564328, 0.11493788791782168, -0.11493788791782164],
-        [0.16333386804037386, 0.08166693402018697, -0.08166693402018695],
+        [
+            0.16333386804037386,
+            0.08166693402018696,
+            -0.08166693402018693,
+            -0.16333386804037395,
+            -0.08166693402018704,
+            0.08166693402018683,
+        ],
+        [
+            0.22987577583564325,
+            0.11493788791782167,
+            -0.11493788791782165,
+            -0.22987577583564336,
+            -0.11493788791782181,
+            0.11493788791782150,
+        ],
+        [
+            0.22987577583564328,
+            0.11493788791782168,
+            -0.11493788791782164,
+            -0.22987577583564340,
+            -0.11493788791782182,
+            0.11493788791782152,
+        ],
+        [
+            0.16333386804037386,
+            0.08166693402018697,
+            -0.08166693402018695,
+            -0.16333386804037395,
+            -0.08166693402018706,
+            0.08166693402018685,
+        ],
     ])
-    # the input's symmetry means columns 3-5 mirror columns 0-2 with alternating sign
-    expected = np.hstack((expected, -expected))
     assert np.allclose(at.gaussian_filter_wrap(data, sigma=1.2), expected, rtol=1e-10, atol=1e-12)
+
+    with pytest.raises(ValueError, match="must be greater than zero"):
+        at.gaussian_filter_wrap(data, sigma=0.0)
+    with pytest.raises(ValueError, match="needs a 2D array"):
+        at.gaussian_filter_wrap(data[0], sigma=1.2)
 
 
 # --- timesteps.py ------------------------------------------------------------------------------

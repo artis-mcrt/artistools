@@ -380,13 +380,11 @@ def get_filter_data(
         wavefilter.append(float(row.split()[0]))
         transmission.append(float(row.split()[1]))
 
-    # some filter files (e.g. data/filters/NOT) are not in ascending wavelength order, but callers
-    # interpolate and integrate over the wavelength grid, so sort here
-    arr_wavefilter = np.array(wavefilter)
-    arr_transmission = np.array(transmission)
-    sortidx = np.argsort(arr_wavefilter)
-    arr_wavefilter = arr_wavefilter[sortidx]
-    arr_transmission = arr_transmission[sortidx]
+    # the files under data/filters/NOT are not in ascending wavelength order, and callers both
+    # interpolate on this grid and integrate over it with np.trapezoid, so sort it here
+    sortidx = np.argsort(wavefilter)
+    arr_wavefilter = np.array(wavefilter)[sortidx]
+    arr_transmission = np.array(transmission)[sortidx]
 
     return zeropointenergyflux, arr_wavefilter, arr_transmission, float(arr_wavefilter[0]), float(arr_wavefilter[-1])
 
