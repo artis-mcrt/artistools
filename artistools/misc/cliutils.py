@@ -382,12 +382,12 @@ def get_filterfunc(args: argparse.Namespace) -> Callable[[t.Any], t.Any] | None:
         filterfunc = movavgfilterfunc
 
     if dictargs.get("filtersavgol", False):
-        import scipy.signal
+        from artistools.misc.general import savgol_filter
 
         window_length, polyorder = (int(x) for x in args.filtersavgol)
 
         def savgolfilterfunc(ylist: t.Any) -> t.Any:
-            return scipy.signal.savgol_filter(ylist, window_length=window_length, polyorder=polyorder, mode="interp")
+            return savgol_filter(ylist, window_length=window_length, polyorder=polyorder)
 
         assert filterfunc is None
         filterfunc = savgolfilterfunc

@@ -15,6 +15,7 @@ from artistools.misc import add_figscale_args
 from artistools.misc import add_maxpacketfiles_arg
 from artistools.misc import add_modelpath_arg
 from artistools.misc import add_outputfile_arg
+from artistools.misc import gaussian_filter_wrap
 from artistools.misc import print_theta_phi_definitions
 
 
@@ -202,10 +203,8 @@ def plot_spherical(
         data = alldirbins.get_column(plotvar).to_numpy().reshape((ncosthetabins, nphibins))
 
         if gaussian_sigma is not None and gaussian_sigma > 0:
-            import scipy.ndimage
-
             sigma_bins = gaussian_sigma / 360 * nphibins
-            data = scipy.ndimage.gaussian_filter(data, sigma=sigma_bins, mode="wrap")
+            data = gaussian_filter_wrap(data, sigma_bins)
 
         colormesh = ax.pcolormesh(meshgrid_phi, meshgrid_theta, data, rasterized=True, cmap=cmap)
 

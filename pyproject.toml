@@ -51,7 +51,6 @@ dependencies = [
     "pyarrow>=24.0.0",
     "pyyaml>=6.0.2",
     "rich>=15.0.0",
-    "scipy>=1.18.0",
     "tqdm>=4.67.3",
     "zstandard>=0.25.0;python_version<'3.14'",
 ]
@@ -59,12 +58,12 @@ dependencies = [
 [project.optional-dependencies]
 extras = [
     "astropy>=7.2",
-    "george>=0.4.4",
+    "george>=0.4.4;python_version<'3.15'", # not compatible with 3.15 yet
     "imageio>=2.37.3",
     "plotly>=6.7.0",
     "pypdf>=6.14.2",
     "pynonthermal>=2026.4.27",
-    "pyvista>=0.47.1;python_version<'3.15'", # not compatible with cpython 3.15 yet
+    "pyvista>=0.47.1;python_version<'3.15'", # not compatible with 3.15 yet
 ]
 
 [dependency-groups]

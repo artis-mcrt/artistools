@@ -271,6 +271,8 @@ def lightcurve_polyfit(
         fxfit = np.poly1d(zfit)
         pred = fxfit(xfit)
     else:
+        # scipy is not a direct dependency of artistools, but george depends on it, so it is
+        # always importable when this branch is reached
         import scipy.optimize as op
         from george import kernels
 

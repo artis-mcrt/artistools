@@ -1810,6 +1810,13 @@ def test_energyfiles_written_then_described(tmp_path: Path, capsys: pytest.Captu
     assert "energydistribution.txt" in capsys.readouterr().out
 
 
+def test_rprocess_const_and_powerlaw() -> None:
+    """The adaptive quadrature must match the scipy.integrate.quad total it replaced for the Korobkin 2012 rate."""
+    times_and_rate, e_tot = at.inputmodel.energyinputfiles.rprocess_const_and_powerlaw()
+    assert np.isclose(e_tot, 1.0364888092e16, rtol=1e-6)
+    assert times_and_rate["rate"].is_sorted(), "the cumulative energy fraction must be non-decreasing"
+
+
 def test_energyfiles_from_trajectory() -> None:
     """Integrating a trajectory's heating rate must give a positive total energy."""
     thermofile = at.inputmodel.rprocess_from_trajectory.get_tar_member_extracted_path(

@@ -95,6 +95,7 @@ from artistools.misc import check_averaging_angles as check_averaging_angles
 from artistools.misc import firstexisting as firstexisting
 from artistools.misc import firstexisting_or_none as firstexisting_or_none
 from artistools.misc import flatten_list as flatten_list
+from artistools.misc import gaussian_filter_wrap as gaussian_filter_wrap
 from artistools.misc import get_cellsofmpirank as get_cellsofmpirank
 from artistools.misc import get_costheta_bins as get_costheta_bins
 from artistools.misc import get_costhetabin_phibin_labels as get_costhetabin_phibin_labels
@@ -137,6 +138,7 @@ from artistools.misc import print_theta_phi_definitions as print_theta_phi_defin
 from artistools.misc import read_rank_outputfiles as read_rank_outputfiles
 from artistools.misc import readnoncommentline as readnoncommentline
 from artistools.misc import resolve_outputfile as resolve_outputfile
+from artistools.misc import savgol_filter as savgol_filter
 from artistools.misc import set_args_from_dict as set_args_from_dict
 from artistools.misc import split_multitable_dataframe as split_multitable_dataframe
 from artistools.misc import stripallsuffixes as stripallsuffixes
