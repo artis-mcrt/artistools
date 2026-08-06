@@ -63,8 +63,8 @@ def savgol_filter(ylist: npt.ArrayLike, window_length: int, polyorder: int) -> n
     if window_length % 2 == 0 or window_length < 3:
         msg = f"window_length {window_length} must be an odd number of at least 3"
         raise ValueError(msg)
-    if polyorder >= window_length:
-        msg = f"polyorder {polyorder} must be less than window_length {window_length}"
+    if not 0 <= polyorder < window_length:
+        msg = f"polyorder {polyorder} must be at least zero and less than window_length {window_length}"
         raise ValueError(msg)
     if y.size < window_length:
         msg = f"window_length {window_length} exceeds the data length {y.size}"

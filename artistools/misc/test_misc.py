@@ -382,10 +382,14 @@ def test_get_filterfunc() -> None:
     # invalid parameters are rejected
     with pytest.raises(ValueError, match="must be an odd number"):
         at.savgol_filter(yvalues, window_length=4, polyorder=3)
-    with pytest.raises(ValueError, match="must be less than window_length"):
+    with pytest.raises(ValueError, match="must be at least zero and less than window_length"):
         at.savgol_filter(yvalues, window_length=5, polyorder=7)
+    with pytest.raises(ValueError, match="must be at least zero and less than window_length"):
+        at.savgol_filter(yvalues, window_length=5, polyorder=-1)
     with pytest.raises(ValueError, match="exceeds the data length"):
         at.savgol_filter(yvalues[:3], window_length=5, polyorder=3)
+    with pytest.raises(ValueError, match="needs a 1D array"):
+        at.savgol_filter(np.tile(yvalues, (2, 1)), window_length=5, polyorder=3)
 
 
 def test_gaussian_filter_wrap() -> None:

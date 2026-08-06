@@ -319,6 +319,13 @@ def test_plotspherical() -> None:
     at.plotspherical.main(argsraw=[], modelpath=modelpath, outputfile=funcoutpath)
 
 
+def test_plotspherical_gaussian_filter() -> None:
+    """-gaussian_sigma must reach the smoothing helper, which lives in artistools.misc."""
+    funcoutpath = outputpath / funcname()
+    funcoutpath.mkdir(exist_ok=True, parents=True)
+    at.plotspherical.main(argsraw=[], modelpath=modelpath, gaussian_sigma=20, outputfile=funcoutpath)
+
+
 def test_plotspherical_gif() -> None:
     at.plotspherical.main(argsraw=[], modelpath=modelpath, makegif=True, timemax=270, outputfile=outputpath)
 
