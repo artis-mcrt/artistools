@@ -10,6 +10,10 @@ import numpy as np
 import polars as pl
 
 from artistools.constants import C_cm_per_s
+from artistools.misc.fileio import firstexisting
+from artistools.misc.fileio import firstexisting_or_none
+from artistools.misc.fileio import zopen
+from artistools.misc.fileio import zopenpl
 from artistools.misc.modelinfo import get_inputparams
 from artistools.misc.modelinfo import get_model_name
 
@@ -25,11 +29,13 @@ def get_deposition(modelpath: Path | str = ".") -> pl.LazyFrame:
         depfilepath = Path(modelpath)
         modelpath = Path(modelpath).parent
     else:
-        depfilepath = Path(modelpath, "deposition.out")
+        # read through firstexisting/zopen so that a compressed deposition.out is found like every other
+        # ARTIS output file, instead of being reported as missing
+        depfilepath = firstexisting("deposition.out", folder=modelpath, tryzipped=True, search_subfolders=False)
 
     ts_mids = get_timestep_times(modelpath, loc="mid")
 
-    with depfilepath.open(encoding="utf-8") as fdep:
+    with zopen(depfilepath) as fdep:
         line = fdep.readline()
         if line.startswith("#"):
             skiprows = 1
@@ -38,7 +44,9 @@ def get_deposition(modelpath: Path | str = ".") -> pl.LazyFrame:
             skiprows = 0
             columns = ["tmid_days", "gammadep_Lsun", "positrondep_Lsun", "total_dep_Lsun"]
 
-    depdata = pl.scan_csv(depfilepath, separator=" ", skip_rows=skiprows, has_header=False, new_columns=columns)
+    depdata = pl.scan_csv(
+        zopenpl(depfilepath), separator=" ", skip_rows=skiprows, has_header=False, new_columns=columns
+    )
 
     if "ts" in depdata.collect_schema().names():
         depdata = depdata.rename({"ts": "timestep"})
@@ -77,12 +85,13 @@ def get_timesteps(modelpath: Path | str) -> pl.LazyFrame:
             .with_columns(pl.col("timestep").cast(pl.Int32))
         )
 
-    # use timesteps.out if possible (allowing arbitrary timestep lengths)
-    tsfilepath = Path(modelpath, "timesteps.out")
-    if tsfilepath.exists():
+    # use timesteps.out if possible (allowing arbitrary timestep lengths), compressed or not, so that a run
+    # folder with compressed output does not silently fall back to reconstructing logarithmic timesteps
+    tsfilepath = firstexisting_or_none("timesteps.out", folder=modelpath, tryzipped=True, search_subfolders=False)
+    if tsfilepath is not None:
         return (
             pl
-            .scan_csv(tsfilepath, has_header=True, separator=" ")
+            .scan_csv(zopenpl(tsfilepath), has_header=True, separator=" ")
             .rename(lambda column_name: column_name.removeprefix("#"))
             .with_columns(tend_days=pl.col("tstart_days") + pl.col("twidth_days"))
         )

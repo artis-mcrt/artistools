@@ -208,29 +208,39 @@ def calculate_peak_time_mag_deltam15(
     )
     fxfit, xfit = lightcurve_polyfit(time, magnitude, args)
 
-    index_min = np.argmin(fxfit)
-    tmax_polyfit = xfit[index_min]
-    time_after15days_polyfit = at.match_closest_time(tmax_polyfit + 15, xfit)
-    if args.include_delta_m40:
-        time_after40days_polyfit = at.match_closest_time(tmax_polyfit + 40, xfit)
-    index_after_40_days = None
-    for ii, xfits in enumerate(xfit):
-        if float(xfits) == time_after15days_polyfit:
-            index_after_15_days = ii
-        elif args.include_delta_m40 and float(xfits) == time_after40days_polyfit:
-            index_after_40_days = ii
+    arr_xfit = np.asarray(xfit, dtype=float)
+    tmax_polyfit = float(arr_xfit[np.argmin(fxfit)])
+    peakmag_polyfit = float(np.min(fxfit))
 
+    def index_of_days_after_peak(days: float) -> int:
+        """Return the index of the fitted point closest to days after peak, warning if the fit stops short.
+
+        Searching for an exact float match instead would leave the index unset whenever the requested time did
+        not land precisely on a fitted point.
+        """
+        index = int(np.abs(arr_xfit - (tmax_polyfit + days)).argmin())
+        if arr_xfit[-1] < tmax_polyfit + days:
+            print(
+                f"WARNING: the fitted range ends at {arr_xfit[-1]:.1f} d, which is before {days:.0f} d after the"
+                f" peak at {tmax_polyfit:.1f} d. deltam{days:.0f} is really the decline to"
+                f" {arr_xfit[-1] - tmax_polyfit:.1f} d after peak. Widen -timemax to cover the full range."
+            )
+        return index
+
+    index_after_15_days = index_of_days_after_peak(15)
+    time_after15days_polyfit = float(arr_xfit[index_after_15_days])
     mag_after15days_polyfit = fxfit[index_after_15_days]
-    print(f"{key}_max polyfit = {min(fxfit)} at time = {tmax_polyfit}")
-    print(f"deltam15 polyfit = {min(fxfit) - mag_after15days_polyfit}")
+
+    print(f"{key}_max polyfit = {peakmag_polyfit} at time = {tmax_polyfit}")
+    print(f"deltam15 polyfit = {peakmag_polyfit - mag_after15days_polyfit}")
 
     args.band_risetime_polyfit.append(tmax_polyfit)
-    args.band_peakmag_polyfit.append(min(fxfit))
-    args.band_deltam15_polyfit.append((min(fxfit) - mag_after15days_polyfit) * -1)
+    args.band_peakmag_polyfit.append(peakmag_polyfit)
+    args.band_deltam15_polyfit.append((peakmag_polyfit - mag_after15days_polyfit) * -1)
     if args.include_delta_m40:
-        mag_after40days_polyfit = fxfit[index_after_40_days]
-        print(f"deltam40 polyfit = {min(fxfit) - mag_after40days_polyfit}")
-        args.band_deltam40_polyfit.append((min(fxfit) - mag_after40days_polyfit) * -1)
+        mag_after40days_polyfit = fxfit[index_of_days_after_peak(40)]
+        print(f"deltam40 polyfit = {peakmag_polyfit - mag_after40days_polyfit}")
+        args.band_deltam40_polyfit.append((peakmag_polyfit - mag_after40days_polyfit) * -1)
 
     # Plotting the lightcurves for all viewing angles specified in the command line along with the
     # polynomial fit and peak mag, risetime to peak and delta m15 marked on the plots to check the

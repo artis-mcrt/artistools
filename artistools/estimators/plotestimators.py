@@ -9,8 +9,11 @@ import math
 import string
 import typing as t
 from collections.abc import Collection
+from collections.abc import Mapping
 from collections.abc import Sequence
+from functools import lru_cache
 from pathlib import Path
+from types import MappingProxyType
 
 import matplotlib.axes as mplax
 import matplotlib.pyplot as plt
@@ -44,21 +47,55 @@ colors_tab10 = [
     (0.09019607843137255, 0.7450980392156863, 0.8117647058823529, 1.0),
 ]
 
-# reserve colours for these elements
-elementcolors = {"Fe": colors_tab10[0], "Ni": colors_tab10[1], "Co": colors_tab10[2]}
+# reserve colours for these elements. Immutable, because _get_unreserved_elemcolors() derives the rest of the
+# palette from it once and caches the result, so a later mutation would silently hand a reserved colour out twice
+elementcolors: t.Final[Mapping[str, tuple[float, float, float, float]]] = MappingProxyType({
+    "Fe": colors_tab10[0],
+    "Ni": colors_tab10[1],
+    "Co": colors_tab10[2],
+})
 
 VARIABLE_ALIASES = {"T_e": "Te", "n_e": "nne", "T_R": "TR", "T_J": "TJ"}
 
 
 def get_elemcolor(atomic_number: int | None = None, elsymbol: str | None = None) -> t.Any:
-    """Get the colour of an element from the reserved color list (reserving a new one if needed)."""
-    assert (atomic_number is None) != (elsymbol is None)
-    if atomic_number is not None:
-        elsymbol = at.get_elsymbol(atomic_number)
-    assert elsymbol is not None
-    # assign a new colour to this element if needed
+    """Return the plot colour of an element, keyed on the element itself so that it never varies between plots.
 
-    return elementcolors.setdefault(elsymbol, colors_tab10[len(elementcolors)])
+    The three reserved elements keep their colour. Every other element takes one from a long palette indexed by
+    atomic number, so a given element gets the same colour in every figure of every run. Handing out colours in
+    call order instead made an element's colour depend on which plots preceded it in the same process, and ran
+    off the end of the ten-colour list once eleven elements had been seen.
+    """
+    assert (atomic_number is None) != (elsymbol is None)
+    if atomic_number is None:
+        assert elsymbol is not None
+        atomic_number = at.get_atomic_number(elsymbol)
+        if atomic_number < 0:
+            msg = f"{elsymbol!r} is not an element symbol, so it has no colour"
+            raise ValueError(msg)
+    else:
+        elsymbol = at.get_elsymbol(atomic_number)
+
+    if elsymbol in elementcolors:
+        return elementcolors[elsymbol]
+
+    palette = _get_unreserved_elemcolors()
+
+    return palette[atomic_number % len(palette)]
+
+
+@lru_cache(maxsize=1)
+def _get_unreserved_elemcolors() -> tuple[tuple[float, float, float, float], ...]:
+    """Return the colours available to elements with no reserved colour, in a stable order."""
+    from artistools.plottools import glasbey_category20_nogreys
+
+    reserved = set(elementcolors.values())
+
+    return tuple(
+        rgba
+        for rgba in (*colors_tab10, *((r, g, b, 1.0) for r, g, b in glasbey_category20_nogreys))
+        if rgba not in reserved
+    )
 
 
 def get_ylabel(variable: str) -> str:

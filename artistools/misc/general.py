@@ -134,8 +134,14 @@ def parallel_map[IterableType, ResultType](
                 use_multiprocessing = False
 
     if use_multiprocessing:
-        mp.set_start_method("spawn", force=True)
         from tqdm.contrib.concurrent import process_map
+
+        # Set the start method globally rather than passing mp_context to the pool. process_map shares one
+        # progress-bar lock with its workers, and tqdm builds that lock from the *default* context, so a pool
+        # running in a different context gets a lock it cannot use: on Linux, where the default was fork before
+        # Python 3.14, that raises "A SemLock created in a fork context is being shared with a process in a spawn
+        # context". Spawn is needed because forking a process that already has polars/rayon threads is unsafe.
+        mp.set_start_method("spawn", force=True)
 
         results = process_map(fn, *iterables, tqdm_class=tqdm.rich.tqdm, **kwargs)  # type: ignore[arg-type]
     else:

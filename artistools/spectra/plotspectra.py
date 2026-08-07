@@ -656,7 +656,9 @@ def make_spectrum_plot(
             plotkwargs["linewidth"] = args.linewidth[seriesindex]
         seriesname = "UNKNOWN"
 
-        seriesdata: pl.DataFrame | None
+        # only an ARTIS spectrum produces writable series data. Reset it every iteration, so that a reference
+        # spectrum neither reads an unset variable nor re-writes the previous model's spectrum under its own name
+        seriesdata: pl.DataFrame | None = None
         if (
             Path(specpath).is_file()
             or Path(get_path("artistools_dir"), "data", "refspectra", specpath).is_file()

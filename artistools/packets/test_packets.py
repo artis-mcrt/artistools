@@ -1,4 +1,5 @@
 import math
+from pathlib import Path
 
 import numpy as np
 import polars as pl
@@ -182,3 +183,23 @@ def test_bin_and_sum_includes_both_outer_edges() -> None:
     assert binned["count"].to_list() == [2, 2, 3]
     assert binned["count"].sum() == len(values)
     assert binned["e_sum"].to_list() == pytest.approx([2.0, 2.0, 3.0])
+
+
+def test_readfile_text_drops_trailing_null_column(tmp_path: Path) -> None:
+    """The all-null column produced by the trailing space on each packets line must not reach the DataFrame.
+
+    The drop used to run after the mpirank column had been appended, so it tested mpirank (never null) and the
+    null column survived into every cached parquet file.
+    """
+    columns = ["number", "where", "type_id", "posx", "posy", "posz"]
+    # each line ends with a space, exactly as ARTIS writes them
+    lines = ["1 58900 32 -2.2e16 2.7e15 -1.6e15 " for _ in range(3)]
+    packetsfile = tmp_path / "packets00_0000.out"
+    packetsfile.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    from artistools.packets.packets import readfile_text
+
+    dfpackets = readfile_text(packetsfile, column_names=columns)
+
+    assert dfpackets.columns == [*columns, "mpirank"]
+    assert dfpackets["mpirank"].to_list() == [0, 0, 0]

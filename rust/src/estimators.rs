@@ -57,31 +57,59 @@ fn ionstage_roman(ionstage: &str) -> PolarsResult<&'static str> {
 #[derive(Default)]
 struct EstimatorColumns {
     coldata: HashMap<String, Vec<f32>>,
+    /// index columns, kept as integers because f32 cannot hold every cell number of a large 3D grid exactly
+    intcoldata: HashMap<String, Vec<i32>>,
     /// number of cells seen so far, including the one currently being filled
     rownum: usize,
+}
+
+/// Columns that identify a row rather than measure a quantity, and so must stay exact integers.
+/// Only names verified to be written as integers belong here: parsing is strict, so listing a column that
+/// some ARTIS version writes as a float would turn a readable file into a hard error.
+const INDEX_COLUMNS: [&str; 2] = ["timestep", "modelgridindex"];
+
+/// Pad every column of a store out to `rownum`, for the columns the current cell did not define
+fn resize_columns<T: Copy + Default>(coldata: &mut HashMap<String, Vec<T>>, rownum: usize) {
+    for values in coldata.values_mut() {
+        values.resize(rownum, T::default());
+    }
+}
+
+/// Set a column value for the current cell, creating the column if it doesn't exist yet
+fn push_value<T: Copy + Default>(
+    coldata: &mut HashMap<String, Vec<T>>,
+    rownum: usize,
+    colname: String,
+    colvalue: T,
+) -> PolarsResult<()> {
+    let values = coldata.entry(colname).or_default();
+    if values.len() >= rownum {
+        return Err(malformed(
+            "a column was given two values for one cell".into(),
+        ));
+    }
+    // back-fill with zeros if the column first appeared part-way through the file
+    values.resize(rownum - 1, T::default());
+    values.push(colvalue);
+
+    Ok(())
 }
 
 impl EstimatorColumns {
     /// Finish the current cell by padding every column that it did not define with a zero
     fn end_cell(&mut self) {
-        for values in self.coldata.values_mut() {
-            values.resize(self.rownum, 0.);
-        }
+        resize_columns(&mut self.coldata, self.rownum);
+        resize_columns(&mut self.intcoldata, self.rownum);
     }
 
-    /// Set a column value for the current cell, creating the column if it doesn't exist yet
+    /// Set a measured column value for the current cell
     fn push(&mut self, colname: String, colvalue: f32) -> PolarsResult<()> {
-        let values = self.coldata.entry(colname).or_default();
-        if values.len() >= self.rownum {
-            return Err(malformed(
-                "a column was given two values for one cell".into(),
-            ));
-        }
-        // back-fill with zeros if the column first appeared part-way through the file
-        values.resize(self.rownum - 1, 0.);
-        values.push(colvalue);
+        push_value(&mut self.coldata, self.rownum, colname, colvalue)
+    }
 
-        Ok(())
+    /// Set an index column value for the current cell
+    fn push_int(&mut self, colname: String, colvalue: i32) -> PolarsResult<()> {
+        push_value(&mut self.intcoldata, self.rownum, colname, colvalue)
     }
 
     /// Parse a single line from an estimator file and update the column data
@@ -116,7 +144,11 @@ impl EstimatorColumns {
 
         self.rownum += 1;
         for (colname, value) in token_pairs(tokens) {
-            self.push(colname.to_owned(), parse_field(value, "a number")?)?;
+            if INDEX_COLUMNS.contains(&colname) {
+                self.push_int(colname.to_owned(), parse_field(value, "an integer")?)?;
+            } else {
+                self.push(colname.to_owned(), parse_field(value, "a number")?)?;
+            }
         }
 
         Ok(())
@@ -194,13 +226,18 @@ impl EstimatorColumns {
     fn into_dataframe(mut self) -> PolarsResult<DataFrame> {
         self.end_cell();
 
-        DataFrame::new(
-            self.rownum,
-            self.coldata
-                .into_iter()
-                .map(|(colname, values)| Column::new(colname.into(), values))
-                .collect(),
-        )
+        let columns: Vec<Column> = self
+            .intcoldata
+            .into_iter()
+            .map(|(colname, values)| Column::new(colname.into(), values))
+            .chain(
+                self.coldata
+                    .into_iter()
+                    .map(|(colname, values)| Column::new(colname.into(), values)),
+            )
+            .collect();
+
+        DataFrame::new(self.rownum, columns)
     }
 }
 

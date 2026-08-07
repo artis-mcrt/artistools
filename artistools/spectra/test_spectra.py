@@ -298,6 +298,34 @@ def test_spectra_multispec_outputfile(tmp_path: Path) -> None:
     assert (tmp_path / "custom_multispec.pdf").is_file()
 
 
+def test_write_data_skips_reference_spectra(tmp_path: Path) -> None:
+    """--write_data must write one column per ARTIS model and nothing for a reference spectrum.
+
+    Only the ARTIS branch produces series data, so an unset variable used to raise UnboundLocalError for a
+    reference spectrum alone, and to re-write the preceding model's spectrum as a bogus extra column after it.
+    """
+    at.spectra.plot(
+        argsraw=[],
+        specpath=[modelpath, "2003du_20031213_3219_8822_00.txt"],
+        outputfile=tmp_path / "spec.pdf",
+        timedays="300",
+        write_data=True,
+    )
+
+    dfout = pl.read_csv(tmp_path / "spec.txt", separator=" ")
+    assert [col for col in dfout.columns if col.startswith("f_lambda")] == ["f_lambda.TEST MODEL"]
+
+    # a reference spectrum on its own has nothing to write, but must still plot without error
+    at.spectra.plot(
+        argsraw=[],
+        specpath=["2003du_20031213_3219_8822_00.txt"],
+        outputfile=tmp_path / "refonly.pdf",
+        timedays="300",
+        write_data=True,
+    )
+    assert (tmp_path / "refonly.pdf").is_file()
+
+
 def test_plotspectra_title_arg() -> None:
     parser = argparse.ArgumentParser()
     at.spectra.plotspectra.addargs(parser)

@@ -197,22 +197,33 @@ def read_modelfile_text(
         modelmeta["wid_init_rcyl"] = wid_init_rcyl
         modelmeta["wid_init_z"] = wid_init_z
 
-        # check pos_rcyl_mid and pos_z_mid are correct
-        for inputcellid, cell_pos_rcyl_mid, cell_pos_z_mid in (
-            dfmodel.select(["inputcellid", "pos_rcyl_mid", "pos_z_mid"]).collect().iter_rows()
-        ):
-            modelgridindex = inputcellid - 1
-            n_r = modelgridindex % modelmeta["ncoordgridrcyl"]
-            n_z = modelgridindex // modelmeta["ncoordgridrcyl"]
-            pos_rcyl_min = modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridrcyl"] * n_r
-            pos_z_min = (
-                -modelmeta["vmax_cmps"] * t_model_init_seconds
-                + 2.0 * modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridz"] * n_z
+        # check pos_rcyl_mid and pos_z_mid are correct. One expression over the whole column instead of a Python
+        # loop, which cost a round trip through the interpreter for every cell of the grid
+        n_r = (pl.col("inputcellid") - 1) % modelmeta["ncoordgridrcyl"]
+        n_z = (pl.col("inputcellid") - 1) // modelmeta["ncoordgridrcyl"]
+        pos_z_min_grid = -modelmeta["vmax_cmps"] * t_model_init_seconds
+
+        maxoffby = (
+            dfmodel
+            .select(
+                rcyl_offby=(pl.col("pos_rcyl_mid") - wid_init_rcyl * (n_r + 0.5)).abs().max(),
+                z_offby=(pl.col("pos_z_mid") - (pos_z_min_grid + wid_init_z * (n_z + 0.5))).abs().max(),
+                rcyl_expected=(wid_init_rcyl * (n_r + 0.5)).abs().max(),
+                z_expected=(pos_z_min_grid + wid_init_z * (n_z + 0.5)).abs().max(),
             )
-            pos_rcyl_mid = pos_rcyl_min + 0.5 * wid_init_rcyl
-            pos_z_mid = pos_z_min + 0.5 * wid_init_z
-            assert np.isclose(cell_pos_rcyl_mid, pos_rcyl_mid, atol=wid_init_rcyl / 2.0)
-            assert np.isclose(cell_pos_z_mid, pos_z_mid, atol=wid_init_z / 2.0)
+            .collect()
+            .row(0, named=True)
+        )
+
+        # half a cell width, plus the relative term np.isclose() used to contribute, so that a model which
+        # loaded before this check was vectorised is not now rejected over float32 rounding of a ~1e15 cm position
+        rtol = 1.0e-5
+        assert maxoffby["rcyl_offby"] <= wid_init_rcyl / 2.0 + rtol * maxoffby["rcyl_expected"], (
+            f"pos_rcyl_mid is up to {maxoffby['rcyl_offby']:.3e} cm from the expected cell centre"
+        )
+        assert maxoffby["z_offby"] <= wid_init_z / 2.0 + rtol * maxoffby["z_expected"], (
+            f"pos_z_mid is up to {maxoffby['z_offby']:.3e} cm from the expected cell centre"
+        )
 
     elif modelmeta["dimensions"] == 3:
         wid_init_x = 2 * modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridx"]
@@ -847,7 +858,8 @@ def save_modeldata(
     modelmeta must define: vmax, ncoordgridr and ncoordgridz
     """
     assert isinstance(dfmodel, (pl.LazyFrame, pl.DataFrame))
-    if "inputcellid" not in dfmodel.columns and "modelgridindex" in dfmodel.columns:
+    colnames_in = dfmodel.collect_schema().names()
+    if "inputcellid" not in colnames_in and "modelgridindex" in colnames_in:
         dfmodel = dfmodel.with_columns(inputcellid=pl.col("modelgridindex") + 1)
 
     dfmodel = dfmodel.drop("mass_g", "modelgridindex", strict=False).lazy().collect()
@@ -1002,11 +1014,15 @@ def get_initelemabundances(modelpath: Path | str = ".", printwarningsonly: bool 
     textfilepath = firstexisting("abundances.txt", folder=modelpath, tryzipped=True)
     parquetfilepath = stripallsuffixes(Path(textfilepath)).with_suffix(".txt.parquet.tmp")
 
-    if parquetfilepath.exists() and Path(textfilepath).stat().st_mtime > parquetfilepath.stat().st_mtime:
-        print(f"{textfilepath} has been modified after {parquetfilepath}. Deleting out of date parquet file.")
-        parquetfilepath.unlink()
+    # leave a stale cache in place rather than deleting it: write_parquet_atomic() swaps the new one in with a
+    # rename, so the path always resolves to a complete parquet even while another process is regenerating it
+    cache_is_current = (
+        parquetfilepath.is_file() and Path(textfilepath).stat().st_mtime <= parquetfilepath.stat().st_mtime
+    )
+    if parquetfilepath.is_file() and not cache_is_current:
+        print(f"{textfilepath} has been modified after {parquetfilepath}. Regenerating out of date parquet file.")
 
-    if parquetfilepath.is_file():
+    if cache_is_current:
         if not printwarningsonly:
             print(f"Reading {parquetfilepath}")
 

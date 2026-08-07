@@ -13,6 +13,7 @@ from artistools.lightcurve.lightcurve import get_phillips_relation_data as get_p
 from artistools.lightcurve.lightcurve import get_spectrum_in_filter_range as get_spectrum_in_filter_range
 from artistools.lightcurve.lightcurve import read_bol_reflightcurve_data as read_bol_reflightcurve_data
 from artistools.lightcurve.lightcurve import read_hesma_lightcurve as read_hesma_lightcurve
+from artistools.lightcurve.lightcurve import read_hesma_lightcurve_file as read_hesma_lightcurve_file
 from artistools.lightcurve.lightcurve import read_reflightcurve_band_data as read_reflightcurve_band_data
 from artistools.lightcurve.lightcurve import readfile as readfile
 from artistools.lightcurve.plotlightcurve import addargs as addargs

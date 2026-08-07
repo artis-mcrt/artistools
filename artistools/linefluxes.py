@@ -15,7 +15,6 @@ import matplotlib.pyplot as plt
 import matplotlib.typing as mplt
 import numpy as np
 import numpy.typing as npt
-import pandas as pd
 import polars as pl
 from matplotlib import markers as mplmarkers
 from matplotlib.typing import MarkerType
@@ -180,12 +179,14 @@ def get_line_luminosities_from_pops(
         ):
             levelpop_of_ts_level_mgi.setdefault((ts, level, mgi), n_nlte)
 
-        for timeindex, timedays in enumerate(arr_tmid):
-            v_inner = modeldata.vel_r_min_kmps.to_numpy(dtype=float) * 1e5
-            v_outer = modeldata.vel_r_max_kmps.to_numpy(dtype=float) * 1e5
+        # the shell velocities do not change with time, so take them out of the loop and scale the volume by t^3
+        v_inner = modeldata.vel_r_min_kmps.to_numpy(dtype=float) * 1e5
+        v_outer = modeldata.vel_r_max_kmps.to_numpy(dtype=float) * 1e5
+        shell_volumes_at_1s = (4 * math.pi / 3) * (v_outer**3 - v_inner**3)
 
+        for timeindex, timedays in enumerate(arr_tmid):
             t_sec = timedays * day_to_s
-            shell_volumes = (4 * math.pi / 3) * ((v_outer * t_sec) ** 3 - (v_inner * t_sec) ** 3)
+            shell_volumes = shell_volumes_at_1s * t_sec**3
 
             timestep = at.get_timestep_of_timedays(modelpath, float(timedays))
             print(f"{feature.approxlambda}A {timedays}d (ts {timestep})")
@@ -297,6 +298,45 @@ def get_labelandlineindices(modelpath: Path | str, emfeaturesearch: Sequence[t.A
     return labelandlineindices
 
 
+def plot_floers_model_ratios(axis: mplax.Axes, floersmodelratiopath: Path, args: argparse.Namespace) -> None:
+    """Overplot the NIR/VIS ratios of the Flörs models from a CSV of columns file, epoch, NIR_VIS_ratio."""
+    if not floersmodelratiopath.is_file():
+        msg = f"{floersmodelratiopath} not found"
+        raise FileNotFoundError(msg)
+
+    # the 263 d epoch is excluded because those models were not run to that epoch with the same setup
+    dffloers = (
+        pl
+        .read_csv(floersmodelratiopath)
+        .filter(pl.col("epoch").cast(pl.Int32) != 263)
+        .with_columns(
+            modelname=pl
+            .col("file")
+            .str.replace("fig-nne_Te_allcells-", "", literal=True)
+            .str.replace(r"-\d+d\.txt$", "")
+        )
+    )
+
+    # the modelname column also holds the sub-Chandrasekhar variants (subch, subch_shen2018,
+    # subch_shen2018_electronlossboost{4,8,12}x), but only W7 is overplotted
+    dfmodel = dffloers.filter(pl.col("modelname") == "w7").sort("epoch")
+    if dfmodel.is_empty():
+        print(f"WARNING: no rows for Flörs model w7 in {floersmodelratiopath}")
+        return
+
+    axis.plot(
+        dfmodel["epoch"].to_list(),
+        dfmodel["NIR_VIS_ratio"].to_list(),
+        color=args.color[0] if args.color else None,
+        label="Flörs W7",
+        marker="+",
+        markersize=10,
+        markeredgewidth=2,
+        lw=0,
+        alpha=0.8,
+    )
+
+
 def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
     """Plot the luminosity ratio of pairs of spectral features against time, and save the figure."""
     # font = {'size': 16}
@@ -375,45 +415,8 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
         for ax in axes:
             ax.plot(arr_tdays, arr_floersfit, color="black", label="Flörs+2020 fit", lw=2.0)
 
-        floersmodelratiopath = Path(
-            "/Users/luke/iCloud/Papers (first-author)/2022 Artis ionisation/"
-            "generateplots/floers_model_NIR_VIS_ratio_20201126.csv"
-        )
-        if floersmodelratiopath.is_file():
-            femis = pd.read_csv(floersmodelratiopath)
-
-            amodels: dict[str, tuple[list[int], list[float]]] = {}
-            for _index, row in femis.iterrows():
-                modelname = row.file.replace("fig-nne_Te_allcells-", "").replace(f"-{row.epoch}d.txt", "")
-                if modelname not in amodels:
-                    amodels[modelname] = ([], [])
-                if int(row.epoch) != 263:
-                    amodels[modelname][0].append(row.epoch)
-                    amodels[modelname][1].append(row.NIR_VIS_ratio)
-
-            # for amodelname, (xlist, ylist) in amodels.items():
-            for aindex, (amodelname, alabel) in enumerate([
-                ("w7", "W7")
-                # ("subch", "S0"),
-                # ('subch_shen2018', r'1M$_\odot$'),
-                # ('subch_shen2018_electronlossboost4x', '1M$_\odot$ (Shen+18) 4x e- loss'),
-                # ('subch_shen2018_electronlossboost8x', r'1M$_\odot$ heatboost8'),
-                # ('subch_shen2018_electronlossboost12x', '1M$_\odot$ (Shen+18) 12x e- loss'),
-            ]):
-                xlist, ylist = amodels[amodelname]
-                color = args.color[aindex] if aindex < len(args.color) else None
-                print(amodelname, xlist, ylist)
-                axis.plot(
-                    xlist,
-                    ylist,
-                    color=color,
-                    label="Flörs " + alabel,
-                    marker="+",
-                    markersize=10,
-                    markeredgewidth=2,
-                    lw=0,
-                    alpha=0.8,
-                )
+        if args.floersmodelratiofile:
+            plot_floers_model_ratios(axis, Path(args.floersmodelratiofile), args)
     m18_tdays = np.array([206, 229, 303, 339])
     m18_pew = {}
     # m18_pew[(26, 2, 12570)] = np.array([2383, 1941, 2798, 6770])
@@ -806,6 +809,16 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument(
         "--frompops", action="store_true", help="Sum up internal emissivity instead of outgoing packets"
+    )
+
+    parser.add_argument(
+        "-floersmodelratiofile",
+        type=Path,
+        default=None,
+        help=(
+            "Path to a CSV of Flörs model NIR/VIS ratios (columns: file, epoch, NIR_VIS_ratio) to overplot on the"
+            " Fe II 7155/12570 ratio plot"
+        ),
     )
 
     parser.add_argument(

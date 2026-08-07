@@ -168,28 +168,33 @@ def write_phys(
 
 def write_lbol_edep(modelpath: str | Path, selected_timesteps: Sequence[int], outputpath: Path) -> None:
     """Write the bolometric luminosity and energy deposition rate in code comparison workshop format."""
+    # light_curve.out has one row per timestep in order, and deposition.out names its timesteps, so join on the
+    # light curve's row index. The columns are time_days and luminosity_Lsun, not the time and lum this used to read
     dflightcurve = (
         at.lightcurve
         .readfile(Path(modelpath, "light_curve.out"))[-1]
+        .with_row_index("timestep")
+        .with_columns(pl.col("timestep").cast(pl.Int32))
+        .join(at.get_deposition(modelpath), on="timestep", how="inner")
+        .filter(pl.col("timestep").is_in(list(selected_timesteps)))
+        .sort("timestep")
+        .select("timestep", "time_days", "luminosity_Lsun", "total_dep_Lsun")
         .collect()
-        .to_pandas(use_pyarrow_extension_array=True)
-        .merge(
-            at.get_deposition(modelpath).collect().to_pandas(use_pyarrow_extension_array=True),
-            left_index=True,
-            right_index=True,
-            suffixes=("", "_dep"),
-        )
     )
 
+    if missing := sorted(set(selected_timesteps) - set(dflightcurve["timestep"])):
+        print(f"WARNING: no light curve or deposition data for timesteps {missing}. They are left out of the file")
+
     with outputpath.open("w", encoding="utf-8") as f:
-        f.write(f"#NTIMES: {len(selected_timesteps)}\n")
+        # the row count, not len(selected_timesteps): a selected timestep missing from either input is dropped by
+        # the join above, and a header promising more times than the file contains would misalign every reader
+        f.write(f"#NTIMES: {dflightcurve.height}\n")
         f.write("#time[d] Lbol[erg/s] Edep[erg/s] \n")
 
-        for timestep, row in dflightcurve.iterrows():
-            if timestep not in selected_timesteps:
-                continue
+        for time_days, luminosity_Lsun, total_dep_Lsun in dflightcurve.drop("timestep").iter_rows():
             f.write(
-                f"{row.time:.2f} {row.lum * at.constants.Lsun_to_erg_per_s:.2e} {row.total_dep_Lsun * at.constants.Lsun_to_erg_per_s:.2e}\n"
+                f"{time_days:.2f} {luminosity_Lsun * at.constants.Lsun_to_erg_per_s:.2e}"
+                f" {total_dep_Lsun * at.constants.Lsun_to_erg_per_s:.2e}\n"
             )
 
 

@@ -8,6 +8,9 @@ import argparse
 import gzip
 import io
 import lzma
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -560,3 +563,72 @@ def test_viewingangle_averaging_flags_are_mutually_exclusive() -> None:
 
     with pytest.raises(SystemExit):
         parser.parse_args(["--average_over_phi_angle", "--average_over_theta_angle"])
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="needs a platform with a fork start method")
+def test_parallel_map_works_when_fork_is_the_default_start_method(tmp_path: Path) -> None:
+    """parallel_map must run its workers under spawn even when the interpreter default is fork.
+
+    process_map shares one progress-bar lock with its workers, and tqdm builds that lock from the default
+    context, so the pool has to run in that same context. Passing an mp_context to the pool instead of setting
+    the default raises "A SemLock created in a fork context is being shared with a process in a spawn context"
+    wherever fork is the default, which was every Linux run before Python 3.14.
+
+    This runs in a subprocess: the default start method is process-wide state, so setting it here would leak
+    into the rest of the session, and a broken parallel_map would fork a pytest process full of threads.
+    """
+    script = tmp_path / "forkdefault.py"
+    script.write_text(
+        """
+import multiprocessing as mp
+
+import artistools as at
+
+
+def square(x):
+    return x * x
+
+
+if __name__ == "__main__":
+    mp.set_start_method("fork", force=True)
+    assert at.parallel_map(square, range(4)) == [0, 1, 4, 9]
+    print("OK")
+""",
+        encoding="utf-8",
+    )
+
+    # put the package's parent on the child's path, so this works from an editable or a plain install
+    env = os.environ.copy()
+    packageparent = str(at.get_path("artistools_repository"))
+    env["PYTHONPATH"] = os.pathsep.join([packageparent, env["PYTHONPATH"]]) if "PYTHONPATH" in env else packageparent
+
+    proc = subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
+        [sys.executable, str(script)], capture_output=True, text=True, check=False, cwd=tmp_path, env=env
+    )
+
+    assert proc.returncode == 0, f"parallel_map failed under a fork default:\n{proc.stderr}"
+    assert "OK" in proc.stdout
+
+
+def test_drop_trailing_null_column() -> None:
+    """The all-null trailing column must go, but only when there is data to judge it by.
+
+    is_null().all() is vacuously true over an empty column, so a file with no data rows would otherwise lose a
+    real column and no longer match the schema of its sibling rank files.
+    """
+    # a genuine trailing null column, as a line-ending space produces
+    assert at.drop_trailing_null_column(pl.DataFrame({"a": [1, 2], "b": [None, None]})).columns == ["a"]
+    assert at.drop_trailing_null_column(pl.LazyFrame({"a": [1, 2], "b": [None, None]})).collect_schema().names() == [
+        "a"
+    ]
+
+    # a real last column, including one that is only partly null, must stay
+    assert at.drop_trailing_null_column(pl.DataFrame({"a": [1, 2], "b": [3, 4]})).columns == ["a", "b"]
+    assert at.drop_trailing_null_column(pl.DataFrame({"a": [1, 2], "b": [None, 4]})).columns == ["a", "b"]
+
+    # no rows means nothing to judge, so keep every column
+    emptyschema = {"a": pl.Int64, "b": pl.Float64}
+    assert at.drop_trailing_null_column(pl.DataFrame({"a": [], "b": []}, schema=emptyschema)).columns == ["a", "b"]
+    assert at.drop_trailing_null_column(
+        pl.LazyFrame({"a": [], "b": []}, schema=emptyschema)
+    ).collect_schema().names() == ["a", "b"]

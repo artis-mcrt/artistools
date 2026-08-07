@@ -226,7 +226,7 @@ def generate_band_lightcurve_data(
             else at.spectra.get_specpol_data(dirbin=dirbin, modelpath=modelpath)
         )
         vspecdata = stokes_params["I"]
-        timearray = vspecdata.columns[1:]
+        timearray = vspecdata.collect_schema().names()[1:]
     elif args.plotviewingangle and at.firstexisting_or_none(
         ["specpol_res.out", "spec_res.out"], folder=modelpath, tryzipped=True
     ):
@@ -461,22 +461,23 @@ def get_colour_delta_mag(
     return plot_times, colour_delta_mag
 
 
+def read_hesma_lightcurve_file(hesma_modelpath: Path | str) -> pd.DataFrame:
+    """Read a HESMA model light curve, taking the column names from a leading comment line if there is one."""
+    hesma_modelpath = Path(hesma_modelpath)
+    with at.zopen(hesma_modelpath) as f:
+        first_line = f.readline()
+
+    if first_line.lstrip().startswith("#"):
+        # split the header into column names. Iterating the line itself would give one "column" per character
+        column_names = first_line.lstrip().removeprefix("#").split()
+        return pd.read_csv(at.zopen(hesma_modelpath), sep=r"\s+", header=None, comment="#", names=column_names)
+
+    return pd.read_csv(at.zopen(hesma_modelpath), sep=r"\s+")
+
+
 def read_hesma_lightcurve(args: argparse.Namespace) -> pd.DataFrame:
     """Return the HESMA model light curve named by args.plot_hesma_model."""
-    hesma_directory = Path(at.get_path("artistools_dir"), "data/hesma")
-    filename = args.plot_hesma_model
-    hesma_modelname = hesma_directory / filename
-
-    column_names: list[str] = []
-    with hesma_modelname.open(encoding="utf-8") as f:
-        first_line = f.readline()
-        if "#" in first_line:
-            column_names.extend(i for i in first_line if i not in {"#", " ", "\n"})
-            hesma_model = pd.read_csv(hesma_modelname, sep=r"\s+", header=None, comment="#", names=column_names)
-
-        else:
-            hesma_model = pd.read_csv(hesma_modelname, sep=r"\s+")
-    return hesma_model
+    return read_hesma_lightcurve_file(Path(at.get_path("artistools_dir"), "data/hesma", args.plot_hesma_model))
 
 
 def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pd.DataFrame, dict[str, t.Any]]:

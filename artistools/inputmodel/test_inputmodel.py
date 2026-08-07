@@ -1840,3 +1840,64 @@ def test_energyfiles_from_trajectory() -> None:
     dftimes_and_rate, e_tot = result
     assert e_tot > 0.0
     assert dftimes_and_rate["rate"].max() == pytest.approx(1.0)
+
+
+def _write_2d_model(
+    modeldir: Path, ncoordgridrcyl: int, ncoordgridz: int, vmax_cmps: float, t_model_days: float, zshift: float = 0.0
+) -> Path:
+    """Write a 2D cylindrical model.txt whose cell midpoints follow the ARTIS grid definition."""
+    t_model_s = t_model_days * at.constants.day_to_s
+    wid_init_rcyl = vmax_cmps * t_model_s / ncoordgridrcyl
+    wid_init_z = 2 * vmax_cmps * t_model_s / ncoordgridz
+
+    lines = [f"{ncoordgridrcyl} {ncoordgridz}", str(t_model_days), f"{vmax_cmps:.4e}"]
+    for modelgridindex in range(ncoordgridrcyl * ncoordgridz):
+        n_r = modelgridindex % ncoordgridrcyl
+        n_z = modelgridindex // ncoordgridrcyl
+        pos_rcyl_mid = wid_init_rcyl * n_r + 0.5 * wid_init_rcyl
+        pos_z_mid = -vmax_cmps * t_model_s + wid_init_z * n_z + 0.5 * wid_init_z + zshift
+        lines.append(f"{modelgridindex + 1} {pos_rcyl_mid:.6e} {pos_z_mid:.6e} 1.0e-10 0.5 0.4 0.05 0.03 0.02")
+
+    modelfile = modeldir / "model.txt"
+    modelfile.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return modelfile
+
+
+def test_get_modeldata_2d(tmp_path: Path) -> None:
+    """A 2D cylindrical model must be read with the right grid metadata and cell positions."""
+    ncoordgridrcyl, ncoordgridz = 4, 6
+    vmax_cmps, t_model_days = 1.0e9, 1.0
+    modelfile = _write_2d_model(tmp_path, ncoordgridrcyl, ncoordgridz, vmax_cmps, t_model_days)
+
+    dfmodel, modelmeta = at.inputmodel.get_modeldata(modelfile)
+
+    assert modelmeta["dimensions"] == 2
+    assert modelmeta["ncoordgridrcyl"] == ncoordgridrcyl
+    assert modelmeta["ncoordgridz"] == ncoordgridz
+    assert modelmeta["npts_model"] == ncoordgridrcyl * ncoordgridz
+    assert math.isclose(modelmeta["vmax_cmps"], vmax_cmps)
+
+    t_model_s = t_model_days * at.constants.day_to_s
+    assert math.isclose(modelmeta["wid_init_rcyl"], vmax_cmps * t_model_s / ncoordgridrcyl)
+    assert math.isclose(modelmeta["wid_init_z"], 2 * vmax_cmps * t_model_s / ncoordgridz)
+
+    dfcollect = dfmodel.collect()
+    assert dfcollect.height == ncoordgridrcyl * ncoordgridz
+    assert dfcollect["modelgridindex"].to_list() == list(range(ncoordgridrcyl * ncoordgridz))
+    # innermost cell of the lowest z row sits half a cell width from the axis and from the -z boundary
+    assert dfcollect.item(0, "pos_rcyl_mid") == pytest.approx(0.5 * modelmeta["wid_init_rcyl"], rel=1e-5)
+    assert dfcollect.item(0, "pos_z_mid") == pytest.approx(
+        -vmax_cmps * t_model_s + 0.5 * modelmeta["wid_init_z"], rel=1e-5
+    )
+
+
+def test_get_modeldata_2d_rejects_misplaced_cells(tmp_path: Path) -> None:
+    """Cell midpoints inconsistent with vmax and the grid size must be rejected rather than read silently."""
+    ncoordgridrcyl, ncoordgridz = 4, 6
+    vmax_cmps, t_model_days = 1.0e9, 1.0
+    wid_init_z = 2 * vmax_cmps * t_model_days * at.constants.day_to_s / ncoordgridz
+    # shift every cell a whole cell width along z, which no cell centre can be
+    modelfile = _write_2d_model(tmp_path, ncoordgridrcyl, ncoordgridz, vmax_cmps, t_model_days, zshift=1.5 * wid_init_z)
+
+    with pytest.raises(AssertionError, match="pos_z_mid"):
+        at.inputmodel.get_modeldata(modelfile)

@@ -1,6 +1,7 @@
 """Solve the Spencer-Fano equation for a cell's nonthermal electron spectrum and plot the energy deposition."""
 
 import argparse
+import math
 import sys
 import typing as t
 from collections.abc import Sequence
@@ -62,6 +63,36 @@ def make_ntstats_plot(ntstatfile: str | Path) -> None:
     plt.close(fig)
 
 
+def ionpops_for_electronfraction(atomic_number: int, x_e: float, nntot: float) -> dict[tuple[int, int], float]:
+    """Distribute nntot nuclei of one element over ion stages whose mean charge is x_e free electrons per nucleus.
+
+    x_e = N_e / N_ions is not bounded by one: a nucleus ionised k times contributes k free electrons, so a
+    doubly-ionised plasma has x_e = 2. The nuclei are split between the two ion stages either side of x_e, which
+    for x_e <= 1 reduces to the neutral/singly-ionised pair (1 - x_e, x_e).
+    """
+    if x_e < 0.0:
+        msg = f"Electron fraction x_e must not be negative, got {x_e}"
+        raise ValueError(msg)
+
+    # a nucleus cannot give up more electrons than it has
+    if x_e > atomic_number:
+        msg = (
+            f"Electron fraction x_e={x_e} exceeds the atomic number {atomic_number} of"
+            f" {at.get_elsymbol(atomic_number)}, which cannot supply that many free electrons"
+        )
+        raise ValueError(msg)
+
+    charge_lower = math.floor(x_e)
+    frac_upper = x_e - charge_lower  # fraction of nuclei carrying one more charge than charge_lower
+
+    # ion stage 1 is neutral, so a charge of k is ion stage k + 1
+    ionpopdict: dict[tuple[int, int], float] = {(atomic_number, charge_lower + 1): nntot * (1.0 - frac_upper)}
+    if frac_upper > 0.0:
+        ionpopdict[atomic_number, charge_lower + 2] = nntot * frac_upper
+
+    return ionpopdict
+
+
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     add_modelpath_arg(parser, default=".")
@@ -101,7 +132,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-x_e",
         type=float,
         default=2,
-        help="If not using artis composition, specify the electron fraction = N_e / N_ions",
+        help=(
+            "If not using artis composition, specify the electron fraction = N_e / N_ions. Values above one mean"
+            " multiply-ionised nuclei, e.g. 2 for a doubly-ionised plasma, up to the atomic number"
+        ),
     )
 
     parser.add_argument("--makeplot", action="store_true", help="Save a plot of the non-thermal spectrum")
@@ -293,9 +327,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             ionpopdict = {}
             dfpops = None
             T_e = 3000
-            assert x_e <= 1.0
-            ionpopdict[compelement_atomicnumber, 1] = nntot * (1.0 - x_e)
-            ionpopdict[compelement_atomicnumber, 2] = nntot * x_e
+            ionpopdict |= ionpops_for_electronfraction(compelement_atomicnumber, x_e, nntot)
 
         # keep only the ion populations, not element or total populations
         ions = [key for key in ionpopdict if isinstance(key, tuple) and ionpopdict[key] / nntot >= minionfraction]
