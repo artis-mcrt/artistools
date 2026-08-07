@@ -1850,7 +1850,7 @@ def _write_2d_model(
     wid_init_rcyl = vmax_cmps * t_model_s / ncoordgridrcyl
     wid_init_z = 2 * vmax_cmps * t_model_s / ncoordgridz
 
-    lines = [f"{ncoordgridrcyl} {ncoordgridz}", f"{t_model_days}", f"{vmax_cmps:.4e}"]
+    lines = [f"{ncoordgridrcyl} {ncoordgridz}", str(t_model_days), f"{vmax_cmps:.4e}"]
     for modelgridindex in range(ncoordgridrcyl * ncoordgridz):
         n_r = modelgridindex % ncoordgridrcyl
         n_z = modelgridindex // ncoordgridrcyl
