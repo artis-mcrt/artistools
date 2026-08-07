@@ -1,3 +1,5 @@
+"""Read ARTIS packets and virtual packets files, caching them as parquet, and bin them by viewing direction."""
+
 import calendar
 import math
 import time
@@ -72,6 +74,7 @@ columns_full = [
 
 @lru_cache(maxsize=16)
 def get_column_names_artiscode(modelpath: str | Path) -> list[str] | None:
+    """Return the packet column names parsed from the ARTIS source in the model folder, or None if it is absent."""
     modelpath = Path(modelpath)
     if Path(modelpath, "artis").is_dir():
         print("detected artis code directory")
@@ -223,6 +226,7 @@ def add_derived_columns_lazy(
 
 
 def get_packets_text_columns(packetsfile: Path | str, modelpath: Path | str = ".") -> list[str]:
+    """Return the column names of a packets file, from its header, the ARTIS source, or the historical defaults."""
     column_names: list[str] = []
     with at.zopen(packetsfile, mode="rt", encoding="utf-8") as fpackets:
         firstline = fpackets.readline()
@@ -344,6 +348,7 @@ def readfile_text(packetsfiletext: Path | str, column_names: list[str]) -> pl.Da
 
 
 def read_virtual_packets_text_file(vpacketsfiletext: Path | str, column_names: list[str]) -> pl.DataFrame:
+    """Read one rank's virtual packets text file, adding the MPI rank taken from the filename."""
     vpacketsfiletext = Path(vpacketsfiletext)
     mpirank = int(vpacketsfiletext.name.split("_")[-1].split(".")[0])
 
@@ -365,6 +370,7 @@ def read_virtual_packets_text_file(vpacketsfiletext: Path | str, column_names: l
 
 
 def get_vpackets_text_columns(vpacketsfiletext: Path) -> list[str]:
+    """Return the column names from the header line of a virtual packets file."""
     with at.zopen(vpacketsfiletext, mode="rt", encoding="utf-8") as f:
         firstline: str = f.readline()
     assert firstline.lstrip().startswith("#")
@@ -510,6 +516,7 @@ def get_packets_batch_parquet_paths(
 
 
 def get_virtual_packets(modelpath: str | Path, maxpacketfiles: int | None = None) -> tuple[int, pl.LazyFrame]:
+    """Return the number of MPI ranks read and a lazy frame of all of the model's virtual packets."""
     nprocs_read, vpacketparquetfiles = get_packets_batch_parquet_paths(
         modelpath, maxpacketfiles=maxpacketfiles, virtual=True
     )
@@ -535,6 +542,7 @@ def get_packets(
     packet_type: str | None = None,
     escape_type: str | None = None,
 ) -> tuple[int, pl.LazyFrame]:
+    """Return the number of MPI ranks read and a lazy frame of the model's packets, filtered by type if given."""
     if escape_type is not None:
         assert packet_type in {None, "TYPE_ESCAPE"}
         if packet_type is None:
@@ -581,6 +589,7 @@ def get_directionbin(
     ncosthetabins: int,
     syn_dir: tuple[float | int, float | int, float | int],
 ) -> int:
+    """Return the viewing direction bin index for a single packet direction vector."""
     dirmag = np.sqrt(dirx**2 + diry**2 + dirz**2)
     pkt_dir = [dirx / dirmag, diry / dirmag, dirz / dirmag]
     costheta = np.dot(pkt_dir, syn_dir)
@@ -611,6 +620,7 @@ def get_directionbin(
 
 
 def add_packet_directions_lazypolars(dfpackets: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame:
+    """Add the normalised direction vector and the costheta and phi angles of each packet."""
     dfpackets = dfpackets.lazy()
     syn_dir = np.array([0.0, 0.0, 1.0])
     xhat = np.array([1.0, 0.0, 0.0])
@@ -683,6 +693,10 @@ def bin_packet_directions_polars(
         "phibinhistoricaldescendingdiscont", "phibinmonotonicasc"
     ] = "phibinhistoricaldescendingdiscont",
 ) -> pl.LazyFrame:
+    """Add the costheta, phi, and combined viewing direction bin index of each packet.
+
+    phibintype selects between the historical descending-and-discontinuous phi bins and monotonically ascending ones.
+    """
     dfpackets = dfpackets.lazy()
     if nphibins is None:
         nphibins = at.get_viewingdirection_phibincount()

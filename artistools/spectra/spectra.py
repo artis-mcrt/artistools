@@ -42,6 +42,8 @@ from artistools.misc import zopenpl
 
 
 class FluxContributionTuple(t.NamedTuple):
+    """One emission/absorption series (an ion, line, or nuclide) and its total contribution to the flux."""
+
     fluxcontrib: float
     linelabel: str
     array_flambda_emission: npt.NDArray[np.floating]
@@ -50,6 +52,7 @@ class FluxContributionTuple(t.NamedTuple):
 
 
 def timeshift_fluxscale_co56law(scaletoreftime: float | None, spectime: float) -> float:
+    """Return the factor that scales a spectrum to scaletoreftime assuming Co56 decay, or 1.0 when unset."""
     if scaletoreftime is not None:
         # Co56 decay flux scaling
         assert spectime > 150
@@ -61,6 +64,7 @@ def timeshift_fluxscale_co56law(scaletoreftime: float | None, spectime: float) -
 def get_dfspectrum_x_y_with_units(
     dfspectrum: pl.DataFrame | pl.LazyFrame, xunit: str, yvariable: str, fluxdistance_mpc: float
 ) -> pl.LazyFrame:
+    """Add an x column in xunit and a y column for yvariable, scaled to an observer at fluxdistance_mpc."""
     from artistools.constants import h_erg_s
     from artistools.constants import h_ev_s
     from artistools.constants import megaparsec_to_cm
@@ -293,6 +297,7 @@ def get_lambda_bin_edges(
 
 
 def convert_xunit_aliases_to_canonical(xunit: str) -> str:
+    """Return the canonical spelling of a spectrum x-axis unit name."""
     match xunit.lower():
         case "erg" | "ergs":
             return "erg"
@@ -411,6 +416,7 @@ def get_spectrum_at_time(
     average_over_phi: bool | None = None,
     average_over_theta: bool | None = None,
 ) -> pd.DataFrame:
+    """Return the spectrum of one direction bin at a single timestep."""
     if dirbin >= 0:
         if args is not None and args.plotvspecpol and (modelpath / "vpkt.txt").is_file():
             return (
@@ -619,6 +625,7 @@ def get_from_packets(
 
 @lru_cache(maxsize=16)
 def read_spec(modelpath: Path | str, gamma: bool = False) -> pl.LazyFrame:
+    """Return the angle-averaged spectra from spec.out, or from gamma_spec.out when gamma is set."""
     specfilename = firstexisting("gamma_spec.out" if gamma else "spec.out", folder=modelpath, tryzipped=True)
     print(f"Reading {specfilename}")
 
@@ -770,6 +777,7 @@ def get_spectra(
 
 
 def make_virtual_spectra_summed_file(modelpath: Path | str) -> None:
+    """Sum the per-rank virtual packet spectra into one vspecpol_total file per observer direction."""
     nprocs = get_nprocs(modelpath)
     print("nprocs", nprocs)
     # virtual packet spectra for each observer (all directions and opacity choices)
@@ -815,6 +823,7 @@ def make_virtual_spectra_summed_file(modelpath: Path | str) -> None:
 
 
 def make_averaged_vspecfiles(args: argparse.Namespace) -> None:
+    """Average the vspecpol_total files of several models into one vspecpol_averaged file per observer direction."""
     filenames = [
         vspecfile.name
         for vspecfile in Path(args.modelpath[0]).iterdir()
@@ -844,6 +853,7 @@ def make_averaged_vspecfiles(args: argparse.Namespace) -> None:
 
 
 def get_specpol_data(dirbin: int = -1, modelpath: Path | str | None = None) -> dict[str, pl.LazyFrame]:
+    """Return the I, Q, and U spectra of one direction bin, read from specpol.out or specpol_res_<dirbin>.out."""
     assert modelpath is not None
     specfilename = (
         firstexisting("specpol.out", folder=modelpath, tryzipped=True)
@@ -860,6 +870,7 @@ def get_specpol_data(dirbin: int = -1, modelpath: Path | str | None = None) -> d
 
 
 def get_vspecpol_data(vspecindex: int, modelpath: Path | str) -> dict[str, pl.LazyFrame]:
+    """Return the I, Q, and U virtual packet spectra of one observer, summing the per-rank files if needed."""
     assert modelpath is not None
     # alternatively use f'vspecpol_averaged-{angle}.out' ?
 
@@ -913,6 +924,7 @@ def get_vspecpol_spectrum(
     args: argparse.Namespace,
     fluxfilterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
 ) -> pl.LazyFrame:
+    """Return the virtual packet spectrum of one observer, averaged over the timesteps around timeavg."""
     stokes_params = get_vspecpol_data(vspecindex=angle, modelpath=Path(modelpath))
     if "stokesparam" not in args:
         args.stokesparam = "I"
@@ -985,7 +997,7 @@ def get_flux_contributions(
     average_over_phi: bool = False,
     average_over_theta: bool = False,
 ) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
-
+    """Return the per-ion emission and absorption contributions from emission.out, and the flux and wavelength arrays."""
     arr_tmid = get_timestep_times(modelpath, loc="mid")
     arr_tdelta = get_timestep_times(modelpath, loc="delta")
     arraynu = get_nu_grid(modelpath)
@@ -1183,7 +1195,10 @@ def get_flux_contributions_from_packets(
     vpkt_match_emission_exclusion_to_opac: bool = False,
     gamma: bool = False,
 ) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
+    """Return the emission and absorption contributions binned from the packets, and the flux and wavelength arrays.
 
+    groupby selects whether the packets are grouped by ion, line, nuclide, or nuclide mass.
+    """
     assert groupby in {"ion", "line", "nuc", "nucmass"}
     assert emtypecolumn in {"emissiontype", "trueemissiontype", "pellet_nucindex"}
     if groupby == "line":
@@ -1511,7 +1526,7 @@ def sort_and_reduce_flux_contribution_list(
     fixedionlist: list[str] | None = None,
     hideother: bool = False,
 ) -> list[FluxContributionTuple]:
-
+    """Return the contributions sorted by flux, keeping at most maxseriescount and merging the rest into 'Other'."""
     if fixedionlist:
         if unrecognised_items := [x for x in fixedionlist if x not in [y.linelabel for y in contribution_list_in]]:
             print(f"WARNING: did not understand these items in fixedionlist: {unrecognised_items}")
@@ -1614,7 +1629,7 @@ def sort_and_reduce_flux_contribution_list(
 def print_integrated_flux(
     arr_df_on_dx: npt.NDArray[np.floating] | pl.Series, arr_x: npt.NDArray[np.floating] | pl.Series
 ) -> float:
-
+    """Print and return the flux integrated over the given x range [erg/s/cm2 at 1 Mpc]."""
     integrated_flux = abs(np.trapezoid(np.nan_to_num(arr_df_on_dx, nan=0.0), x=arr_x))
     x_min = arr_x.min()
     x_max = arr_x.max()
@@ -1627,6 +1642,7 @@ def print_integrated_flux(
 
 
 def get_reference_spectrum(filepath: Path | str) -> pl.DataFrame:
+    """Return an observed reference spectrum, applying any scaling and time shift from its metadata."""
     metadata = get_file_metadata(filepath)
 
     flambdaindex = metadata.get("f_lambda_columnindex", 1)

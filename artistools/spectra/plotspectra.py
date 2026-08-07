@@ -60,6 +60,7 @@ from artistools.spectra.writespectra import write_flambda_spectra
 
 
 def path_is_artis_model(filepath: str | Path) -> bool:
+    """Return whether the path is an ARTIS model rather than a reference spectrum file."""
     return Path(filepath).name.endswith((".out", ".out.zst")) or Path(filepath).is_dir()
 
 
@@ -72,6 +73,7 @@ def find_reference_spectrum_file(filename: Path | str) -> Path:
 
 
 def check_time_range_is_valid(modelpath: Path, timemin: float, timemax: float, allow_invalid: bool) -> None:
+    """Warn, or raise unless allow_invalid, when the requested times fall outside the model's packet arrival range."""
     with contextlib.suppress(FileNotFoundError):
         _, validrange_start_days, validrange_end_days = get_escaped_arrivalrange(modelpath)
         problem_messages: list[str] = []
@@ -185,6 +187,7 @@ def get_axis_labels(args: argparse.Namespace) -> tuple[str | None, str | None]:
 
 
 def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
+    """Plot the Stokes parameter selected by args.stokesparam against wavelength."""
     if args.plotvspecpol:
         angle = args.plotvspecpol[0]
         stokes_params = atspectra.get_vspecpol_data(vspecindex=angle, modelpath=modelpath)
@@ -361,6 +364,7 @@ def plot_reference_spectrum(
 
 
 def plot_filter_functions(axis: mplax.Axes) -> None:
+    """Plot the UBVI filter transmission curves on a twinned y axis."""
     filter_names = ["U", "B", "V", "I"]
     colours = ["r", "b", "g", "c", "m"]
 
@@ -1105,6 +1109,7 @@ def make_emissionabsorption_plot(
 
 
 def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[t.Any], pl.DataFrame]:
+    """Plot the spectra selected by args, and return the figure, the axes, and the plotted data."""
     nrows = len(args.timedayslist) if args.multispecplot else 1
 
     figwidth = args.figscale * 5.0 * args.figwidthscale
@@ -1249,6 +1254,7 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[t.An
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
+    """Add arguments to an argparse parser object."""
     parser.add_argument(
         "specpath", default=[], nargs="*", type=Path, help="Paths to ARTIS folders or reference spectra filenames"
     )

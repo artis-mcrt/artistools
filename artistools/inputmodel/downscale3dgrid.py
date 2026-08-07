@@ -1,3 +1,5 @@
+"""Resample a 3D ARTIS model onto a coarser Cartesian grid."""
+
 import itertools
 from pathlib import Path
 

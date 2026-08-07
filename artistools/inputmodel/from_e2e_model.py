@@ -24,9 +24,7 @@ t_model_init_s = 0.1 * day_to_s  # snapshot time is fixed by the npz files
 def sphkernel(
     dist: npt.NDArray[np.floating], hsph: float | npt.NDArray[np.float64], nu: int
 ) -> npt.NDArray[np.floating]:
-    # smoothing kernel for SPH-like interpolation of particle
-    # data
-
+    """Return the cubic spline smoothing kernel for SPH-like interpolation of particle data in nu dimensions."""
     q = dist / hsph
     w = np.where(q < 1.0, 1.0 - 1.5 * q**2 + 0.75 * q**3, np.where(q < 2.0, 0.25 * (2.0 - q) ** 3, 0.0))
 
@@ -42,9 +40,10 @@ def sphkernel(
 
 
 def f1corr(rcyl: npt.NDArray[np.floating], hsph: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
-    # correction factor to improve behavior near the axis
-    # see Garcia-Senz et al Mon. Not. R. Astron. Soc. 392, 346-360 (2009)
+    """Return the kernel correction factor that improves behaviour near the symmetry axis.
 
+    See Garcia-Senz et al., Mon. Not. R. Astron. Soc. 392, 346-360 (2009).
+    """
     xi = abs(rcyl) / hsph
     return np.where(
         xi < 1.0,
@@ -76,6 +75,11 @@ def get_grid(
     notorus: bool,
     no_nu_trapping: bool,
 ) -> tuple[Any, ...]:
+    """Interpolate the end-to-end tracer particles onto a grid, returning the density, composition, Ye, and heating.
+
+    The ejecta components (dynamical, NS-torus, BH-torus, neutrino-trapped) can each be excluded with the
+    corresponding no* flag.
+    """
     dat = np.load(dat_path)
     iso = np.load(iso_path)
 
@@ -493,6 +497,10 @@ def map_to_artis(
     interpolate: bool = False,
     M_2Ddyn: float | None = None,
 ) -> tuple[pl.DataFrame, pl.DataFrame, dict[str, t.Any]]:
+    """Assemble the interpolated grid into an ARTIS model, returning the model, the abundances, and the metadata.
+
+    When equatorial symmetry was assumed, the upper half space is reflected to fill the lower half.
+    """
     dfmodel: pl.DataFrame
     if model_dim == 2:
         ngridrcyl = grid_dims[0]
@@ -864,7 +872,7 @@ def map_to_artis(
 
 
 def get_old_cell_indices(red_fact: int, new_r: int, new_z: int, N_cell_r_old: int) -> list[int]:
-    # function to get old grid indices for a given new grid index
+    """Return the indices of the fine-grid cells that make up one cell of the grid coarsened by red_fact."""
     old_r_indices = np.arange(red_fact * (new_r - 1) + 1, red_fact * new_r + 1)
     old_z_indices = np.arange(red_fact * (new_z - 1), red_fact * new_z) * N_cell_r_old
     indices = np.add.outer(old_r_indices, old_z_indices).flatten().tolist()
@@ -881,7 +889,7 @@ def remap_mass_weighted_quantity(
     Delta_r: float,
     Delta_z: float,
 ) -> npt.NDArray[np.float64]:
-    # function that remaps any mass-weighted quantity
+    """Return fieldname remapped onto the coarser grid, weighting each fine cell by its mass."""
     new_numb_cells = N_cell_r_new * N_cell_z_new
     new_field = np.zeros(new_numb_cells)
 
@@ -1005,6 +1013,7 @@ def merge_neighbour_cells(
 def apply_density_perturbations(
     df_model: pl.DataFrame, vmax: float, pert_model: tuple[float | str, ...]
 ) -> pl.DataFrame:
+    """Return the model with its densities multiplied by the perturbation pattern named in pert_model."""
     n_cells = len(df_model)
     # infer cubic grid size from number of cells; this function assumes an N_x x N_x x N_x grid
     N_x = round(n_cells ** (1 / 3))
@@ -1054,6 +1063,7 @@ def apply_density_perturbations(
 
 
 def float_or_str(x: str) -> float | str:
+    """Return the argument parsed as a float, or unchanged if it is not numeric."""
     try:
         return float(x)
     except ValueError:
@@ -1061,6 +1071,7 @@ def float_or_str(x: str) -> float | str:
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
+    """Add arguments to an argparse parser object."""
     parser.add_argument("-outputpath", "-o", default=None, help="Path of output ARTIS model file")
 
     parser.add_argument("-npz", required=True, type=Path, help="Path to the model npz file")

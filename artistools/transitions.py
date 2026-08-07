@@ -1,3 +1,5 @@
+"""Plot synthetic emission spectra of individual ions from Kurucz, NIST, or ARTIS transition data."""
+
 import argparse
 import math
 import sys
@@ -25,11 +27,14 @@ defaultoutputfile = "plottransitions_cell{cell:03d}_ts{timestep:02d}_{time_days:
 
 
 class IonTuple(t.NamedTuple):
+    """An ion, identified by its atomic number and ion stage."""
+
     Z: int
     ion_stage: int
 
 
 def get_kurucz_transitions() -> tuple[pd.DataFrame, list[IonTuple]]:
+    """Return the transitions from the bundled Kurucz gfall line list, and the ions they cover."""
     hc_in_ev_cm = 0.0001239841984332003
 
     class KuruczTransitionTuple(t.NamedTuple):
@@ -79,6 +84,8 @@ def get_kurucz_transitions() -> tuple[pd.DataFrame, list[IonTuple]]:
 
 
 def get_nist_transitions(filename: Path | str) -> pd.DataFrame:
+    """Return the transitions read from a NIST Atomic Spectra Database line list export."""
+
     class NISTTransitionTuple(t.NamedTuple):
         lambda_angstroms: float
         A: float
@@ -117,6 +124,7 @@ def generate_ion_spectrum(
     plot_resolution: float,
     args: argparse.Namespace,
 ) -> npt.NDArray[np.floating]:
+    """Return the emission spectrum of one ion, summing a Gaussian profile for each line."""
     yvalues = np.zeros(len(xvalues))
 
     # iterate over lines
@@ -151,6 +159,7 @@ def make_plot(
     figure_title: str,
     outputfilename: str,
 ) -> None:
+    """Plot one panel per ion plus a combined panel, and save the figure."""
     npanels = len(ionlist)
 
     fig, axes = plt.subplots(
@@ -223,6 +232,7 @@ def make_plot(
 def add_upper_lte_pop(
     dftransitions: pl.DataFrame, T_exc: float, ionpop: float, ltepartfunc: float, columnname: str | None = None
 ) -> pl.DataFrame:
+    """Add a column of upper level populations in LTE at T_exc."""
     scalefactor = ionpop / ltepartfunc
     if columnname is None:
         columnname = f"upper_pop_lte_{T_exc:.0f}K"
@@ -235,6 +245,7 @@ def add_upper_lte_pop(
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
+    """Add arguments to an argparse parser object."""
     add_modelpath_arg(parser, default=None)
 
     add_axis_limit_args(

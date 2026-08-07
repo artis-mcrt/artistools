@@ -27,6 +27,7 @@ amu_g = 1.66e-24
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
+    """Add arguments to an argparse parser object."""
     parser.add_argument(
         "-trajectoryroot", "-trajroot", required=True, type=Path, help="Path to nuclear network trajectory folder"
     )
@@ -73,6 +74,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 
 def append_electroncapture_betaplus_nuclei(df: pl.DataFrame, nuc_dataset: str) -> pl.DataFrame:
+    """Append the electron capture and beta-plus decays, which the beta-minus data files do not cover."""
     data = {
         "A": [48, 48, 52, 56, 56, 57, 57],
         "Z": [23, 24, 25, 27, 28, 27, 28],
@@ -97,6 +99,7 @@ def append_electroncapture_betaplus_nuclei(df: pl.DataFrame, nuc_dataset: str) -
 
 
 def get_nuc_data(nuc_dataset: str) -> pl.DataFrame:
+    """Return the decay energy per channel for every nuclide, from either the Hotokezaka or ENSDF dataset."""
     assert nuc_dataset in {"Hotokezaka", "ENSDF"}
     hotokezaka_betaminus = (
         pl

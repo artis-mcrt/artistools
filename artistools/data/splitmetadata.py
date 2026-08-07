@@ -1,9 +1,12 @@
+"""Split a combined metadata.yml into one .meta.yml file beside each observation file it describes."""
+
 from pathlib import Path
 
 import yaml
 
 
 def main() -> None:
+    """Write a separate .meta.yml file for every entry in metadata.yml."""
     with Path("metadata.yml").open("r", encoding="utf-8") as yamlfile:
         metadata = yaml.safe_load(yamlfile)
 

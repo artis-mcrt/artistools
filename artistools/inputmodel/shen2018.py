@@ -1,3 +1,5 @@
+"""Convert the Shen et al. (2018) sub-Chandrasekhar detonation models to ARTIS format."""
+
 import argparse
 import math
 import string
@@ -13,6 +15,7 @@ from artistools.constants import Msun_to_g
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
+    """Add arguments to an argparse parser object."""
     parser.add_argument("-inputpath", "-i", default="1.00_5050.dat", help="Path of input file")
     parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")
 

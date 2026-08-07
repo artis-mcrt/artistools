@@ -1,4 +1,6 @@
 # PYTHON_ARGCOMPLETE_OK
+"""Summarise the mass, velocity structure, and abundances of an ARTIS input model."""
+
 import argparse
 import math
 import os
@@ -318,6 +320,7 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
+    """Add arguments to an argparse parser object."""
     parser.add_argument(
         "modelpath", default=[], nargs="*", type=Path, help="Path of input file or folder containing model.txt"
     )

@@ -1,4 +1,6 @@
 # PYTHON_ARGCOMPLETE_OK
+"""Plot density, Ye, and abundances of a multidimensional ARTIS model as 2D slices or 3D surfaces."""
+
 import argparse
 import math
 import string
@@ -30,6 +32,7 @@ def get_2D_slice_through_3d_model(
     plotaxis2: AxisType | None = None,
     sliceindex: int | None = None,
 ) -> pd.DataFrame:
+    """Return the cells of a 3D model at one position along sliceaxis, defaulting to the slice nearest the origin."""
     if sliceindex is None:
         # get midpoint
         sliceposition: float | int = dfmodel.iloc[(dfmodel["pos_x_min"]).abs().argsort()][:1]["pos_x_min"].item()
@@ -57,6 +60,7 @@ def plot_slice_modelcolumn(
     t_model_d: float,
     args: argparse.Namespace,
 ) -> tuple[AxesImage, mplcm.ScalarMappable | None]:
+    """Draw one model column as a colour image on the axes, and return the image and its scalar mappable."""
     print(f"plotting {colname}")
     colorscale = (
         dfmodelslice[colname] * dfmodelslice["rho"] if colname.startswith("X_") else dfmodelslice[colname]
@@ -142,6 +146,7 @@ def plot_slice_modelcolumn(
 
 
 def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) -> None:
+    """Plot each of args.plotvars as a 2D slice through the model and save the figure."""
     # if the species doesn't end in a number (isotope, e.g. Sr92) then we need to also get element abundances (e.g., Sr)
     get_elemabundances = any(plotvar[-1] not in string.digits for plotvar in args.plotvars)
     lzdfmodel, modelmeta = at.get_modeldata(
@@ -229,6 +234,7 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
 
 
 def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
+    """Render an isosurface of the 3D model with pyvista, coloured by the first of args.plotvars."""
     import pyvista as pv
 
     # set white background
@@ -335,6 +341,7 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
+    """Add arguments to an argparse parser object."""
     at.add_modelpath_arg(parser, default=Path())
 
     parser.add_argument("-o", action="store", dest="outputfile", type=Path, default=None, help="Filename for PDF file")

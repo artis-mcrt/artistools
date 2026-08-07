@@ -1,3 +1,5 @@
+"""Extract a 1D ARTIS model from the cells of a 3D model that lie along one coordinate axis."""
+
 import argparse
 import math
 import sys
@@ -12,6 +14,7 @@ from artistools.constants import day_to_s
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
+    """Add arguments to an argparse parser object."""
     parser.add_argument("-inputfolder", action="store", default=".", help="Path to folder with 3D files")
 
     parser.add_argument(
@@ -49,6 +52,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 def slice_3dmodel(
     inputfolder: Path | str, outputfolder: Path | str, chosenaxis: str
 ) -> tuple[dict[int, int], list[float], list[list[float]]]:
+    """Write a 1D model.txt from the cells along chosenaxis, and return the 3D-to-1D cell id map and plot data."""
     xlist: list[float] = []
     ylists: list[list[float]] = [[], [], []]
     listout: list[str] = []
@@ -102,6 +106,7 @@ def slice_3dmodel(
 def slice_abundance_file(
     inputfolder: Path | str, outputfolder: Path | str, dict3dcellidto1dcellid: dict[int, int]
 ) -> None:
+    """Write an abundances.txt holding only the cells kept by slice_3dmodel, renumbered to the 1D cell ids."""
     with (
         Path(inputfolder, "abundances.txt").open(encoding="utf-8") as fabundancesin,
         Path(outputfolder, "abundances.txt").open("w", encoding="utf-8") as fabundancesout,
@@ -148,6 +153,7 @@ def append_cell_to_output(
     xlist: list[float],
     ylists: list[list[float]],
 ) -> None:
+    """Append one cell to the 1D model output lines and to the density and abundance plot series."""
     dist = math.sqrt(float(cell["pos_x_min"]) ** 2 + float(cell["pos_y_min"]) ** 2 + float(cell["pos_z_min"]) ** 2)
     velocity = dist / float(t_model) / day_to_s / 1.0e5
 
@@ -163,6 +169,7 @@ def append_cell_to_output(
 
 
 def make_plot(xlist: list[float], ylists: list[list[float]], pdfoutputfile: str) -> None:
+    """Plot density and the Ni56 and Co mass fractions of the slice against velocity, and save it as a PDF."""
     fig, axis = plt.subplots(
         nrows=1, ncols=1, sharey=True, figsize=(6, 4), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0}
     )

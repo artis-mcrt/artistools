@@ -1,3 +1,5 @@
+"""Track the energy loss of a fast lepton to plasma, ionisation, and excitation, following Barnes et al. (2016)."""
+
 import math
 
 import matplotlib.pyplot as plt
@@ -15,10 +17,10 @@ CONST_C = 299792458  # [m / s]
 
 
 def calculate_dE_on_dx_plasma(energy: float, n_e_free: float) -> float:
-    # Barnes et al. (2016) eq 4
-    # electron loss rate to plasma
-    # in [J / m] (will always be negative)
+    """Return the electron energy loss rate to the plasma [J/m], from Barnes et al. (2016) eq 4.
 
+    The result is always negative.
+    """
     assert energy > 0
 
     energy_ev = energy / CONST_EV_IN_J  # [eV]
@@ -49,9 +51,10 @@ def calculate_dE_on_dx_plasma(energy: float, n_e_free: float) -> float:
 
 
 def calculate_dE_on_dx_ionexc(energy: float, n_e_bound: float) -> float:
-    # Barnes et al. (2016) electron loss rate to ionisation and excitation
-    # in [J / m] (will always be negative)
+    """Return the electron energy loss rate to ionisation and excitation [J/m], from Barnes et al. (2016).
 
+    The result is always negative.
+    """
     assert energy > 0
     energy_ev = energy / CONST_EV_IN_J  # [eV]
     tau = energy / (CONST_ME * CONST_C**2)
@@ -90,6 +93,7 @@ def calculate_dE_on_dx_ionexc(energy: float, n_e_bound: float) -> float:
 
 
 def main() -> None:
+    """Integrate a 100 keV electron's energy loss over distance and plot the result."""
     E_0_ev = 1e5  # initial energy [eV]
     E_0 = E_0_ev * CONST_EV_IN_J  # initial energy [J]
     n_e_bound_cgs = 1e5 * 26  # density of bound electrons in [cm-3]

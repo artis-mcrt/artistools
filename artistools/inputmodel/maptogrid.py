@@ -1,6 +1,7 @@
 # PYTHON_ARGCOMPLETE_OK
 # adapted from Fortran maptogrid.f90 and kernelmodule.f90
 # original Fortran code by Andreas Bauswein
+"""Map SPH ejecta particles onto a Cartesian grid using a cubic spline kernel."""
 
 import argparse
 import math
@@ -26,6 +27,7 @@ i1 = int(1.0 // dvtable)
 
 
 def get_wij() -> npt.NDArray[np.floating]:
+    """Return a lookup table of the normalised cubic spline kernel sampled on a grid of v^2."""
     #
     # --normalisation constant
     #
@@ -58,6 +60,7 @@ def get_wij() -> npt.NDArray[np.floating]:
 def kernelvals2(
     rij2: float, hmean: float, wij: npt.NDArray[np.floating]
 ) -> float:  # ist schnell berechnet aber keine Gradienten
+    """Return the kernel value for a pair separation rij2 and mean smoothing length, interpolated from wij."""
     hmean21 = 1.0 / hmean**2
     hmean31 = hmean21 / hmean
     v2 = rij2 * hmean21
@@ -79,6 +82,7 @@ def maptogrid(
     setgrid_fractionrmax: float = 0.5,
     modifysmoothinglength: str = "option4",
 ) -> None:
+    """Map an SPH ejecta snapshot onto an ncoordgrid^3 Cartesian grid and write grid.dat and gridcontributions.txt."""
     if not ejectasnapshotpath.is_file():
         print(f"{ejectasnapshotpath} not found")
         raise FileNotFoundError
@@ -371,6 +375,7 @@ def maptogrid(
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
+    """Add arguments to an argparse parser object."""
     parser.add_argument("-inputpath", "-i", default=".", help="Path to ejectasnapshot")
     parser.add_argument(
         "-ncoordgrid", type=int, default=50, help="Number of grid positions per axis (numcells = ncoordgrid^3)"

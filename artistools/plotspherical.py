@@ -1,4 +1,6 @@
 # PYTHON_ARGCOMPLETE_OK
+"""Plot packet escape luminosity and estimator values on a sphere of viewing directions."""
+
 import argparse
 import typing as t
 from pathlib import Path
@@ -36,6 +38,7 @@ def plot_spherical(
     cmap: str | None = None,
     phireverse: bool = False,
 ) -> tuple[mplfig.Figure, t.Any, float, float, str]:
+    """Plot each plotvar on a sphere of viewing directions, and return the figure, axes, time range, and condition."""
     condition = ""
     if plotvars is None:
         plotvars = ["luminosity", "emvelocityoverc", "emlosvelocityoverc"]
@@ -258,6 +261,7 @@ def plot_spherical(
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
+    """Add arguments to an argparse parser object."""
     add_modelpath_arg(parser, default=Path())
     parser.add_argument("-timestep", "-ts", action="store", type=str, default=None, help="Timestep index")
     parser.add_argument("-timemin", "-tmin", action="store", type=float, default=None, help="Time minimum [d]")

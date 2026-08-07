@@ -1,4 +1,6 @@
 # PYTHON_ARGCOMPLETE_OK
+"""Plot the mass fractions of an ARTIS input model against atomic or mass number."""
+
 import argparse
 import math
 import typing as t
@@ -13,6 +15,7 @@ import artistools as at
 
 
 def make_plot(args: argparse.Namespace) -> None:
+    """Plot the mass-weighted abundances of every model in args.modelpath and save the figure."""
     args.xaxis = {"Z": "atomicnumber", "A": "massnumber"}.get(args.xaxis, args.xaxis)
 
     at.plottools.set_mpl_style()
@@ -68,6 +71,7 @@ def make_plot(args: argparse.Namespace) -> None:
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
+    """Add arguments to an argparse parser object."""
     parser.add_argument("-outputpath", "-o", type=Path, default=Path(), help="Path for output files")
     parser.add_argument(
         "modelpath",

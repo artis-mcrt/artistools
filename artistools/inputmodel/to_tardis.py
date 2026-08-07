@@ -1,4 +1,6 @@
 # PYTHON_ARGCOMPLETE_OK
+"""Convert an ARTIS input model into a TARDIS model file."""
+
 import argparse
 import typing as t
 from collections.abc import Sequence
@@ -8,6 +10,7 @@ import artistools as at
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
+    """Add arguments to an argparse parser object."""
     parser.add_argument("-inputpath", "-i", default=".", help="Path of input ARTIS model")
 
     parser.add_argument("-temperature", "-T", default=10000, help="Temperature to use in TARDIS file")

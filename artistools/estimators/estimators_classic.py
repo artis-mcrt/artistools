@@ -1,3 +1,5 @@
+"""Read estimator files written by classic (pre-2020) versions of ARTIS."""
+
 import itertools
 import typing as t
 from pathlib import Path
@@ -26,6 +28,7 @@ def get_atomic_composition(modelpath: Path) -> dict[int, int]:
 
 
 def parse_ion_row_classic(row: list[str], outdict: dict[str, t.Any], atomic_composition: dict[int, int]) -> None:
+    """Parse the per-ion populations of one estimator row into outdict."""
     elements = atomic_composition.keys()
 
     i = 6  # skip first 6 numbers in est file. These are n, TR, Te, W, TJ, grey_depth.
@@ -45,6 +48,7 @@ def parse_ion_row_classic(row: list[str], outdict: dict[str, t.Any], atomic_comp
 
 
 def get_first_ts_in_run_directory(modelpath: str | Path) -> dict[str, int]:
+    """Return the first timestep contained in each run folder, since classic estimator files restart their numbering."""
     folderlist_all = (*sorted([child for child in Path(modelpath).iterdir() if child.is_dir()]), Path(modelpath))
 
     first_timesteps_in_dir = {}
@@ -66,6 +70,7 @@ def get_first_ts_in_run_directory(modelpath: str | Path) -> dict[str, int]:
 def read_classic_estimators(
     modelpath: Path, readonly_mgi: list[int] | None = None, readonly_timestep: list[int] | None = None
 ) -> dict[tuple[int, int], t.Any] | None:
+    """Return the classic estimators keyed by (timestep, modelgridindex), or None when no estimator files are found."""
     modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect().to_pandas(use_pyarrow_extension_array=True)
     estimfiles = list(
         itertools.chain(Path(modelpath).glob("estimators_????.out"), Path(modelpath).glob("*/estimators_????.out"))

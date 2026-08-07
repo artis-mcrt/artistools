@@ -19,6 +19,7 @@ from artistools.constants import K_B_ev_per_K
 
 
 def get_variableunits(key: str) -> str | None:
+    """Return the unit string for an estimator variable, or None if it is dimensionless or unknown."""
     variableunits = {
         "time": "days",
         "gamma_NT": "s^-1",
@@ -47,12 +48,14 @@ def get_variableunits(key: str) -> str | None:
 
 
 def get_variablelongunits(key: str) -> str | None:
+    """Return the full axis label for an estimator variable, or None when only the short unit is wanted."""
     return {"heating_dep/total_dep": "", "TR": "Temperature [K]", "Te": "Temperature [K]", "TJ": "Temperature [K]"}.get(
         key
     )
 
 
 def get_varname_formatted(varname: str) -> str:
+    """Return the LaTeX-formatted name of an estimator variable, or the name unchanged if there is no mapping."""
     return {
         "nne": r"n$_{\rm e}$",
         "lognne": r"Log n$_{\rm e}$",
@@ -69,6 +72,7 @@ def get_varname_formatted(varname: str) -> str:
 
 
 def get_units_string(variable: str) -> str:
+    """Return an estimator variable's units in square brackets, or an empty string when it has none."""
     return f" [{units}]" if (units := get_variableunits(variable)) else ""
 
 
@@ -79,6 +83,8 @@ def get_estimators_rankbatch_parquetfile(
     modelpath: Path | str | None = None,
     verbose: bool = False,
 ) -> Path:
+    """Return the parquet cache for one batch of MPI ranks' estimator files, creating it if it is missing or stale."""
+
     def printornot(msg: str) -> None:
         if verbose:
             print(msg)

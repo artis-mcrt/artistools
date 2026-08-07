@@ -1,4 +1,6 @@
 # PYTHON_ARGCOMPLETE_OK
+"""Plot mass density against velocity for one or more ARTIS input models."""
+
 import argparse
 import typing as t
 from collections.abc import Sequence
@@ -17,6 +19,7 @@ from artistools.misc import add_series_style_args
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
+    """Add arguments to an argparse parser object."""
     add_modelpath_arg(
         parser,
         positional=True,

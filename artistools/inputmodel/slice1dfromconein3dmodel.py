@@ -1,3 +1,5 @@
+"""Extract a 1D ARTIS model from a cone around one axis of a 3D model."""
+
 import argparse
 import typing as t
 from collections.abc import Callable
@@ -19,6 +21,7 @@ if t.TYPE_CHECKING:
 
 
 def make_cone(args: argparse.Namespace, logprint: Callable[..., None]) -> pd.DataFrame:
+    """Return the cells of the 3D model lying within args.coneangle of the chosen axis."""
     print("Making cone")
 
     angle_of_cone = args.coneangle  # in deg
@@ -72,6 +75,7 @@ def make_cone(args: argparse.Namespace, logprint: Callable[..., None]) -> pd.Dat
 def get_profile_along_axis(
     args: argparse.Namespace, modeldata: pd.DataFrame | None = None, derived_cols: Sequence[str] | None = None
 ) -> pd.DataFrame:
+    """Return the cells of the 3D model running along the chosen axis, nearest to the other two axes' origin."""
     print("Getting profile along axis")
 
     if modeldata is None:
@@ -255,6 +259,7 @@ def make_1d_profile(args: argparse.Namespace, logprint: Callable[..., None]) -> 
 
 
 def make_1d_model_files(args: argparse.Namespace, logprint: Callable[..., None]) -> None:
+    """Write the 1D model.txt and abundances.txt for the extracted profile."""
     slice1d = make_1d_profile(args, logprint)
 
     # query_abundances_positions = slice1d.columns.str.startswith("X_")
@@ -306,6 +311,7 @@ def make_1d_model_files(args: argparse.Namespace, logprint: Callable[..., None])
 
 
 def make_plot(args: argparse.Namespace, logprint: Callable[..., None]) -> None:
+    """Show a 3D scatter plot of the cone cells, coloured by density."""
     cone = make_cone(args, logprint)
 
     cone = cone.loc[cone["rho_model"] > 0.0002]  # cut low densities (empty cells?) from plot
@@ -332,6 +338,7 @@ def make_plot(args: argparse.Namespace, logprint: Callable[..., None]) -> None:
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
+    """Add arguments to an argparse parser object."""
     add_modelpath_arg(
         parser, multiplepaths=True, default=[], helptext="Path to ARTIS model folders with model.txt and abundances.txt"
     )

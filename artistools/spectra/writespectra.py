@@ -16,6 +16,7 @@ from artistools.spectra.spectra import get_spectra
 
 
 def write_spectrum(dfspectrum: pl.DataFrame, outfilepath: Path) -> None:
+    """Write one spectrum between 1500 and 60000 Angstroms as a two-column text file."""
     dfspectrum = dfspectrum.filter(pl.col("lambda_angstroms").is_between(1500, 60000))
     with outfilepath.open("w", encoding="utf-8") as spec_file:
         spec_file.write("#lambda f_lambda_1Mpc\n")
@@ -63,6 +64,7 @@ def write_flambda_spectra(modelpath: Path) -> None:
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
+    """Add arguments to an argparse parser object."""
     add_modelpath_arg(parser, default=Path())
 
 

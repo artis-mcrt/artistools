@@ -1,3 +1,5 @@
+"""Read ARTIS packets files and bin packets by direction, time, and emission type."""
+
 from artistools.packets.packets import add_derived_columns_lazy as add_derived_columns_lazy
 from artistools.packets.packets import add_packet_directions_lazypolars as add_packet_directions_lazypolars
 from artistools.packets.packets import bin_and_sum as bin_and_sum

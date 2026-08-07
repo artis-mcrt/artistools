@@ -218,6 +218,7 @@ class VpktTokenReader:
     """Hand out whitespace-separated tokens, so that any file ARTIS reads with fscanf is accepted."""
 
     def __init__(self, contents: str) -> None:
+        """Split the file contents into tokens, ready to be consumed in order."""
         self.tokens = contents.split()
         self.pos = 0
 
@@ -388,6 +389,7 @@ def edit_config_interactively(config: VpktConfig, promptfunc: Callable[[str], st
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
+    """Add arguments to an argparse parser object."""
     parser.add_argument(
         "-directions",
         type=parse_directions,

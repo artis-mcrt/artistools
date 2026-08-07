@@ -1,3 +1,5 @@
+"""Map a spherically symmetric 1D model onto a 3D Cartesian ARTIS grid."""
+
 import numpy as np
 import pandas as pd
 import polars as pl
@@ -7,6 +9,7 @@ from artistools.constants import C_cm_per_s as CLIGHT
 
 
 def change_cell_positions_to_new_time(dfgriddata: pd.DataFrame, t_model_1d: float) -> tuple[pd.DataFrame, float]:
+    """Return the grid with cell positions rescaled to t_model_1d, along with the resulting cell width."""
     dfgriddata["pos_x_min"] = dfgriddata["vel_x_min"] * t_model_1d
     dfgriddata["pos_y_min"] = dfgriddata["vel_y_min"] * t_model_1d
     dfgriddata["pos_z_min"] = dfgriddata["vel_z_min"] * t_model_1d
@@ -25,6 +28,7 @@ def map_1d_to_3d(
     t_model_1d: float,
     wid_init: float,
 ) -> None:
+    """Interpolate the 1D density profile onto the 3D grid and save the result as an ARTIS model."""
     modelgridindex = np.zeros(n_3d_gridcells)
     modelgrid_rho_3d = np.zeros(n_3d_gridcells)
     modelgrid_mid_vel = np.zeros(n_3d_gridcells)

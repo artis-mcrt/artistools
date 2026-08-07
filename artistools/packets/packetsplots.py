@@ -1,4 +1,6 @@
 # PYTHON_ARGCOMPLETE_OK
+"""Plot 2D histograms of where in the ejecta packets were last emitted or scattered."""
+
 import argparse
 import typing as t
 from collections.abc import Sequence
@@ -90,6 +92,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
     wavelen: float | None = None,
     binwidth: float | None = None,
 ) -> None:
+    """Plot a 2D histogram of packet emission position against ejecta velocity, and save the figure."""
     at.plottools.set_mpl_style()
     start_of_filename = "" if modelpath == Path() else f"{modelpath.name}_"
     if wavelen is not None:
@@ -201,6 +204,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
+    """Add arguments to an argparse parser object."""
     add_modelpath_arg(parser, required=True, helptext="Path to ARTIS simulation")
 
     parser.add_argument(

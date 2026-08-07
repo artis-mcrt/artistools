@@ -126,6 +126,7 @@ def make_hesma_bol_lightcurve(modelpath: Path, outpath: Path, timemin: float, ti
 def make_hesma_peakmag_dm15_dm40(
     band: str, pathtofiles: Path, modelname: str, outpath: Path, dm40: bool = False
 ) -> None:
+    """Write a HESMA-format file of peak magnitude, rise time, and decline rate per viewing angle."""
     dm15filename = f"{band}band_{modelname}_viewing_angle_data.txt"
     dm15data = pd.read_csv(
         pathtofiles / dm15filename, sep=r"\s+", header=None, names=["peakmag", "risetime", "dm15"], skiprows=1
@@ -176,6 +177,7 @@ def plot_hesma_peakmag_dm15_dm40(pathtofiles: Path | str, outputfile: Path | str
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
+    """Add arguments to an argparse parser object."""
     parser.add_argument(
         "action",
         # optional so that main(argsraw=[], action=...) works, since parse_cli_args ignores

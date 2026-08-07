@@ -1,3 +1,5 @@
+"""Define the artistools subcommand tree and dispatch to each subcommand's module."""
+
 import argparse
 import dataclasses as dc
 import importlib
@@ -172,6 +174,7 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
     """Custom argparse formatter to show default values in help text, sorted with dashes last."""
 
     def __init__(self, *args: t.Any, **kwargs: t.Any) -> None:
+        """Widen the help column so long option names stay on one line."""
         kwargs["max_help_position"] = 50
         super().__init__(*args, **kwargs)
 
@@ -269,6 +272,7 @@ def show_version(*args: t.Any, **kwargs: t.Any) -> None:  # ruff:ignore[unused-f
 
 
 def get_path(key: str) -> Path:
+    """Return a well-known path by name, such as the package folder or the code comparison data folder."""
     match key:
         case "codecomparisondata1path":
             return Path(Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/GitHub/sn-rad-trans/data1")

@@ -1,4 +1,6 @@
 # PYTHON_ARGCOMPLETE_OK
+"""Build ARTIS model abundances from r-process nucleosynthesis trajectory calculations."""
+
 import argparse
 import contextlib
 import gc
@@ -33,6 +35,7 @@ def get_elemabund_from_nucabund(dfnucabund: pl.DataFrame) -> dict[str, float]:
 
 
 def get_dfelemabund_from_dfmodel(dfmodel: pl.DataFrame) -> pl.DataFrame:
+    """Return per-element mass fractions by summing the isotopic X_ columns of the model."""
     timestart = time.perf_counter()
     print("Adding up isotopes for elemental abundances and creating dfelabundances...", end="", flush=True)
 
@@ -111,6 +114,7 @@ def get_tar_member_extracted_path(traj_root: Path | str, particleid: int, member
 
 @lru_cache(maxsize=16)
 def get_traj_network_timesteps(traj_root: Path, particleid: int) -> pl.DataFrame:
+    """Return the network step numbers and times [s] of one trajectory's energy_thermo.dat."""
     with get_tar_member_extracted_path(
         traj_root=traj_root, particleid=particleid, memberfilename="./Run_rprocess/energy_thermo.dat"
     ).open(encoding="utf-8") as evolfile:
@@ -292,6 +296,7 @@ def get_trajectory_abund_q(
 
 
 def get_gridparticlecontributions(gridcontribpath: Path | str) -> pl.DataFrame:
+    """Return the mass fraction that each trajectory particle contributes to each grid cell."""
     return pl.read_csv(
         at.firstexisting("gridcontributions.txt", folder=gridcontribpath, tryzipped=True),
         has_header=True,
@@ -306,6 +311,7 @@ def get_gridparticlecontributions(gridcontribpath: Path | str) -> pl.DataFrame:
 
 
 def filtermissinggridparticlecontributions(dfcontribs: pl.DataFrame, missing_particleids: list[int]) -> pl.DataFrame:
+    """Zero the contributions of particles that have no abundance data and renormalise the rest per cell."""
     print(
         f"Adding gridcontributions column that excludes {len(missing_particleids)} "
         "particles without abundance data and renormalising...",
@@ -349,6 +355,7 @@ def filtermissinggridparticlecontributions(dfcontribs: pl.DataFrame, missing_par
 
 
 def save_gridparticlecontributions(dfcontribs: pl.DataFrame, gridcontribpath: Path | str) -> None:
+    """Write gridcontributions.txt, renaming any existing file to a .bak suffix first."""
     gridcontribpath = Path(gridcontribpath)
     if gridcontribpath.is_dir():
         gridcontribpath /= "gridcontributions.txt"
@@ -435,6 +442,7 @@ def add_abundancecontributions(
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
+    """Add arguments to an argparse parser object."""
     parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")
 
 
@@ -508,6 +516,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
 
 def get_wollaeger_density_profile(wollaeger_profilename: Path | str, t_model_init_seconds: float) -> pl.DataFrame:
+    """Read a Wollaeger density profile and expand it homologously to t_model_init_seconds."""
     wollaeger_profilename = Path(wollaeger_profilename)
     print(f"{wollaeger_profilename} found")
     with Path(wollaeger_profilename).open("rt", encoding="utf-8") as f:

@@ -1,3 +1,5 @@
+"""Write and inspect the energydistribution.txt and energyrate.txt radioactive energy input files."""
+
 import argparse
 import itertools
 import typing as t
@@ -58,7 +60,10 @@ def _quad_adaptive(
 
 
 def get_cumulative_heating_fraction() -> tuple[pl.DataFrame, float]:
+    """Return the cumulative fraction of energy released by each time, and the total energy [erg/g].
 
+    The heating rate follows the 5e9 * t^-1.3 erg/g/s r-process power law.
+    """
     tmin = 0.0001  # days
     tmax = 50
 
@@ -104,6 +109,7 @@ def get_cumulative_heating_fraction() -> tuple[pl.DataFrame, float]:
 def make_energydistribution_weightedbyrho(
     rho: npt.NDArray[np.floating], E_tot_per_gram: float, Mtot_grams: float
 ) -> pl.DataFrame:
+    """Return the per-cell energy release, distributing the total energy in proportion to cell density."""
     print(f"energy distribution weighted by rho (E_tot per gram {E_tot_per_gram})")
     Etot = E_tot_per_gram * Mtot_grams
     print("Etot", Etot)
@@ -119,6 +125,7 @@ def make_energydistribution_weightedbyrho(
 
 
 def make_energy_files(rho: npt.NDArray[np.floating], Mtot_grams: float, outputpath: Path | str) -> None:
+    """Write energydistribution.txt and energyrate.txt for the power-law heating rate."""
     print("Using power law for energy rate")
     times_and_rate, E_tot_per_gram = get_cumulative_heating_fraction()
 
@@ -171,7 +178,7 @@ def rprocess_const_and_powerlaw() -> tuple[pl.DataFrame, float]:
 def energy_from_rprocess_calculation(
     energy_thermo_data: pl.DataFrame, get_rate: bool = True
 ) -> float | tuple[pl.DataFrame, float]:
-
+    """Integrate a trajectory Qdot to get the total energy [erg/g], and the cumulative rate when get_rate is set."""
     energy_thermo_data = energy_thermo_data.filter(pl.col("time/s") <= 1e7)
     # print("Dropping times later than 116 days")
 
@@ -194,6 +201,7 @@ def energy_from_rprocess_calculation(
 
 
 def plot_energy_rate(modelpath: str | Path, axis: mplax.Axes) -> None:
+    """Plot the analytic nuclear heating power of the whole model against time."""
     times_and_rate, _ = at.inputmodel.energyinputfiles.rprocess_const_and_powerlaw()
     lzmodel, _ = at.inputmodel.get_modeldata(modelpath, derived_cols=["mass_g"])
     model = lzmodel.collect()
@@ -204,6 +212,7 @@ def plot_energy_rate(modelpath: str | Path, axis: mplax.Axes) -> None:
 
 
 def get_etot_fromfile(modelpath: str | Path) -> tuple[float, pl.DataFrame]:
+    """Return the total energy [erg] and the per-cell energies read from energydistribution.txt."""
     energydistribution_data = pl.from_pandas(
         pd.read_csv(
             Path(modelpath) / "energydistribution.txt",
@@ -218,6 +227,7 @@ def get_etot_fromfile(modelpath: str | Path) -> tuple[float, pl.DataFrame]:
 
 
 def get_energy_rate_fromfile(modelpath: str | Path) -> pl.DataFrame:
+    """Return the cumulative energy release fraction against time read from energyrate.txt."""
     return pl.from_pandas(
         pd.read_csv(Path(modelpath) / "energyrate.txt", skiprows=1, sep=r"\s+", header=None, names=["times", "rate"])
     )
@@ -237,6 +247,7 @@ def read_trajectory_thermo(trajthermofile: Path | str) -> pl.DataFrame:
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
+    """Add arguments to an argparse parser object."""
     parser.add_argument(
         "action",
         nargs="?",

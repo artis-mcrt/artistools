@@ -26,6 +26,7 @@ defaultoutputfile = "plotnlte_{elsymbol}_cell{cell:03d}_ts{timestep:02d}_{time_d
 
 
 def annotate_emission_line(ax: mplax.Axes, y: float, upperlevel: int, lowerlevel: int, label: str) -> None:
+    """Draw a labelled arrow between the upper and lower level of an emission line."""
     ax.annotate(
         "",
         xy=(lowerlevel, y),
@@ -53,6 +54,7 @@ def plot_reference_data(
     dfpopthision: pd.DataFrame,
     annotatelines: bool,
 ) -> None:
+    """Overplot the CHIANTI level populations for the same conditions, when a level map file is available."""
     nne, Te, TR, W = (estimators_celltimestep[s] for s in ("nne", "Te", "TR", "W"))
     # comparison to Chianti file
     elsym = at.get_elsymbol(atomic_number)
@@ -127,6 +129,7 @@ def plot_reference_data(
 def get_floers_data(
     dfpopthision: pd.DataFrame, atomic_number: int, ion_stage: int, modelpath: Path, T_e: float, modelgridindex: int
 ) -> tuple[list[int] | None, list[float] | None]:
+    """Return Andreas Floers's Fe II/III level populations for Shingles et al. (2022), or None if unavailable."""
     floers_levelnums, floers_levelpop_values = None, None
 
     # comparison to Andeas Floers's NLTE pops for Shingles et al. (2022)
@@ -400,6 +403,7 @@ def make_ionsubplot(
 
 
 def make_plot_populations_with_time_or_velocity(modelpaths: list[Path | str], args: argparse.Namespace) -> None:
+    """Plot how selected level populations vary with time or velocity, and save the figure."""
     font = {"size": 18}
     mpl.rc("font", **font)
 
@@ -491,6 +495,7 @@ def plot_populations_with_time_or_velocity(
     levelconfignames: list[str | int],
     args: argparse.Namespace,
 ) -> None:
+    """Plot one series per level, against time or velocity as selected by args.x."""
     if args.x == "time":
         timesteps = list(range(args.timestepmin, args.timestepmax + 1))
 
@@ -730,6 +735,7 @@ def make_singletimestep_plot(
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
+    """Add arguments to an argparse parser object."""
     parser.add_argument("elements", nargs="*", default=["Fe"], help="List of elements to plot")
 
     add_modelpath_arg(parser, default=Path())

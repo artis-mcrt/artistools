@@ -1,3 +1,5 @@
+"""Plot the binned radiation field estimators and their fitted dilute blackbody parameters."""
+
 import argparse
 import math
 import typing as t
@@ -98,6 +100,7 @@ def j_nu_dbb(arr_nu_hz: Sequence[float] | npt.NDArray[np.floating], W: float, T:
 def get_fullspecfittedfield(
     radfielddata: pl.DataFrame, xmin: float, xmax: float, modelgridindex: int | None = None, timestep: int | None = None
 ) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating]]:
+    """Return the wavelengths and J_lambda of the full-spectrum dilute blackbody fit for one cell and timestep."""
     radfielddata = select_radfield_subset(radfielddata, pl.col("bin_num") == -1, modelgridindex, timestep)
     W = radfielddata.item(0, "W")
     assert isinstance(W, float)
@@ -222,6 +225,7 @@ def plot_specout(
 
 
 def get_binedges(radfielddata: pl.DataFrame) -> list[float]:
+    """Return the radiation field bin boundaries as wavelengths [Angstroms]."""
     radfielddata = radfielddata.filter(pl.col("bin_num") >= 0)
     return [c_ang_per_s / radfielddata["nu_lower"].item(0), *list(c_ang_per_s / radfielddata["nu_upper"])]
 

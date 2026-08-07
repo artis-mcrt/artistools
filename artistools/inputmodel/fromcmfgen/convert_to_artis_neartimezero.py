@@ -22,7 +22,7 @@ def undecay(
     zparent: int,
     numnucleons: int,
 ) -> None:
-    # e.g. parent=26, numnucleons=56 to reverse Ni56 -> Co56 decay
+    """Return all of the decay chain's mass to the parent isotope, e.g. zparent=26, numnucleons=56 for Ni56 -> Co56."""
     daughterisofracin = a["isofrac"][:, indexofisotope[zparent - 1, numnucleons]]
     granddaughterisofracin = a["isofrac"][:, indexofisotope[zparent - 2, numnucleons]]
 
@@ -45,9 +45,10 @@ def reverse_doubledecay(
     meanlife1_days: float,
     meanlife2_days: float,
 ) -> None:
-    # get the abundances at time zero from the late time abundances
-    # e.g. zparent=26, numnucleons=56 to reverse Ni56 -> Co56 -> Fe56 decay
-    # meanlife1 is the mean lifetime of the parent (e.g. Ni56) and meanlife2 is the mean life of the daughter nucleus (e.g. Co56)
+    """Get the abundances at time zero from the abundances at tlate, e.g. zparent=26, numnucleons=56 for Ni56 -> Co56 -> Fe56.
+
+    meanlife1_days is the mean lifetime of the parent (e.g. Ni56) and meanlife2_days that of the daughter (e.g. Co56).
+    """
     assert tlate > 0
     iso1fraclate = a["isofrac"][:, indexofisotope[zparent, numnucleons]]
     iso2fraclate = a["isofrac"][:, indexofisotope[zparent - 1, numnucleons]]
@@ -129,9 +130,10 @@ def forward_doubledecay(
     meanlife1_days: float,
     meanlife2_days: float,
 ) -> None:
-    # get the abundances at a late time from the time zero abundances
-    # e.g. zdaughter=27, numnucleons=56 for Ni56 -> Co56 -> Fe56 decay
-    # meanlife1 is the mean lifetime of the parent (e.g. Ni56) and meanlife2 is the mean life of the daughter nucleus (e.g. Co56)
+    """Get the abundances at tlate from the time zero abundances, e.g. zparent=26, numnucleons=56 for Ni56 -> Co56 -> Fe56.
+
+    meanlife1_days is the mean lifetime of the parent (e.g. Ni56) and meanlife2_days that of the daughter (e.g. Co56).
+    """
     assert tlate > 0
     iso1fract0 = a["isofrac"][:, indexofisotope[zparent, numnucleons]]
     iso2fract0 = a["isofrac"][:, indexofisotope[zparent - 1, numnucleons]]
@@ -176,7 +178,7 @@ def timeshift_double_decay(
     meanlife1_days: float,
     meanlife2_days: float,
 ) -> None:
-    # take abundances back to time zero and then forward to the selected model time
+    """Move a decay chain's abundances from timeold to timenew, by decaying back to time zero and forward again."""
     elfracsum_before = sum(a["specfrac"][:, indexofatomicnumber[zparent - i]] for i in range(3))
     # isofracsum_before = sum(a["isofrac"][:, indexofisotope[(zparent - i, numnucleons)]] for i in range(3))
 
@@ -208,6 +210,7 @@ def timeshift_double_decay(
 
 
 def main() -> None:
+    """Write an ARTIS model from a CMFGEN SN_HYDRO_DATA snapshot, decayed back towards time zero."""
     a: dict[str, t.Any] = rd_sn_hydro_data(snapshot, reverse=True)
 
     # Mapping of the CMFGEN species to atomic numbers, and masking IGEs
