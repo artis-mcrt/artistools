@@ -161,7 +161,12 @@ jobs:
             - name: Report coverage
               run: uv run -- python -m coverage report
 
-            - uses: codecov/codecov-action@v7
+            # only 3.14 uploads, so codecov compares a single session and can post its verdict as soon as that job
+            # finishes. Uploading from every matrix entry made codecov/project fail for ~30 minutes on every PR,
+            # because it judged the two fast jobs against a base that already had all three. Dropping the 3.13 and
+            # 3.14t sessions is a one-off baseline reset of about 0.24 points, not a regression.
+            - if: matrix.python-version == '3.14'
+              uses: codecov/codecov-action@v7
               env:
                   OS: ubuntu-26.04${{ !endsWith(matrix.python-version, 't') && '-arm' || '' }}
                   PYTHON: ${{ matrix.python-version }}
@@ -175,7 +180,7 @@ jobs:
                   verbose: true
 
             - name: Upload coverage artifact
-              if: matrix.python-version == '3.13' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+              if: matrix.python-version == '3.14' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
               uses: actions/upload-artifact@v7
               with:
                   name: coverage-report-python
