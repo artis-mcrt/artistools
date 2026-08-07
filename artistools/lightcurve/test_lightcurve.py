@@ -198,3 +198,26 @@ def test_get_colour_delta_mag_unequal_sampling() -> None:
 
     assert times == [10.0, 30.0]
     assert colours == pytest.approx([0.5, 0.5])
+
+
+def test_read_hesma_lightcurve_file_header(tmp_path: Path) -> None:
+    """Column names must come from splitting the comment header into words, not into characters."""
+    hesmafile = tmp_path / "hesma_model.dat"
+    hesmafile.write_text("# time bol B V\n1.0 2.0 3.0 4.0\n5.0 6.0 7.0 8.0\n", encoding="utf-8")
+
+    dfhesma = at.lightcurve.read_hesma_lightcurve_file(hesmafile)
+
+    assert list(dfhesma.columns) == ["time", "bol", "B", "V"]
+    assert dfhesma["time"].to_list() == [1.0, 5.0]
+    assert dfhesma["V"].to_list() == [4.0, 8.0]
+
+
+def test_read_hesma_lightcurve_file_no_header(tmp_path: Path) -> None:
+    """A file with no comment header keeps pandas' own header handling."""
+    hesmafile = tmp_path / "hesma_model_noheader.dat"
+    hesmafile.write_text("time bol\n1.0 2.0\n3.0 4.0\n", encoding="utf-8")
+
+    dfhesma = at.lightcurve.read_hesma_lightcurve_file(hesmafile)
+
+    assert list(dfhesma.columns) == ["time", "bol"]
+    assert dfhesma["bol"].to_list() == [2.0, 4.0]

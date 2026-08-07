@@ -2,6 +2,7 @@
 
 import argparse
 import math
+import sys
 import typing as t
 from collections.abc import Sequence
 from pathlib import Path
@@ -84,17 +85,22 @@ def j_nu_dbb(arr_nu_hz: Sequence[float] | npt.NDArray[np.floating], W: float, T:
         A list of spectral energy density values (in CGS units) corresponding to the input frequencies.
 
     """
-    if W > 0.0:
-        try:
-            # iterate Python floats, since math.expm1 on numpy scalars is much slower
-            return [
-                W * 1.4745007e-47 * pow(nu_hz, 3) * 1.0 / (math.expm1(h_erg_s * nu_hz / T / K_B_erg_per_K))
-                for nu_hz in np.asarray(arr_nu_hz, dtype=float).tolist()
-            ]
-        except OverflowError:
-            print(f"WARNING: overflow error W {W}, T {T} (Did this happen in ARTIS too?)")
+    if W <= 0.0:
+        return [0.0 for _ in arr_nu_hz]
 
-    return [0.0 for _ in arr_nu_hz]
+    # hnu/kT above this overflows math.expm1, and the Wien tail there is far below any plotted value, so those
+    # frequencies contribute zero. Catching OverflowError around the whole comprehension instead would discard
+    # every frequency's value, not just the ones that overflowed
+    max_exponent = math.log(sys.float_info.max)
+
+    def j_nu(nu_hz: float) -> float:
+        exponent = h_erg_s * nu_hz / T / K_B_erg_per_K
+        if exponent >= max_exponent:
+            return 0.0
+        return W * 1.4745007e-47 * pow(nu_hz, 3) / math.expm1(exponent)
+
+    # iterate Python floats, since math.expm1 on numpy scalars is much slower
+    return [j_nu(nu_hz) for nu_hz in np.asarray(arr_nu_hz, dtype=float).tolist()]
 
 
 def get_fullspecfittedfield(

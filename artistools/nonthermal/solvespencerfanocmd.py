@@ -100,8 +100,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-x_e",
         type=float,
-        default=2,
-        help="If not using artis composition, specify the electron fraction = N_e / N_ions",
+        default=0.01,
+        help="If not using artis composition, specify the electron fraction = N_e / N_ions (between 0 and 1)",
     )
 
     parser.add_argument("--makeplot", action="store_true", help="Save a plot of the non-thermal spectrum")
@@ -293,7 +293,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             ionpopdict = {}
             dfpops = None
             T_e = 3000
-            assert x_e <= 1.0
+            if not 0.0 <= x_e <= 1.0:
+                msg = f"Electron fraction x_e must be between 0 and 1, got {x_e}"
+                raise ValueError(msg)
             ionpopdict[compelement_atomicnumber, 1] = nntot * (1.0 - x_e)
             ionpopdict[compelement_atomicnumber, 2] = nntot * x_e
 

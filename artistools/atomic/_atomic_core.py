@@ -39,36 +39,39 @@ def parse_adata(
         level_count = int(ionheader[2])
 
         if not ionlist or (Z, ion_stage) in ionlist:
-            level_list: list[
-                tuple[float, float, int, str | None, npt.NDArray[t.Any] | None, npt.NDArray[t.Any] | None]
-            ] = []
+            energies_ev: list[float] = []
+            statweights: list[float] = []
+            transition_counts: list[int] = []
+            levelnames: list[str | None] = []
+            phixstargetlists: list[npt.NDArray[t.Any] | None] = []
+            phixstables: list[npt.NDArray[t.Any] | None] = []
             for levelindex in range(level_count):
                 row = fadata.readline().split(maxsplit=4)
 
-                levelname = (row[4]).strip("'") if len(row) >= 5 else None
                 inputlevelnumber = int(row[0])
                 assert levelindex == inputlevelnumber - firstlevelnumber
-                phixstargetlist, phixstable = phixsdict.get((Z, ion_stage, inputlevelnumber), (None, None))
+                # parse_phixsdata() keys on the zero-based level index, so look up levelindex and not the
+                # one-based inputlevelnumber, which would attach each level the next level's cross-sections
+                phixstargetlist, phixstable = phixsdict.get((Z, ion_stage, levelindex), (None, None))
 
-                level_list.append((float(row[1]), float(row[2]), int(row[3]), levelname, phixstargetlist, phixstable))
+                energies_ev.append(float(row[1]))
+                statweights.append(float(row[2]))
+                transition_counts.append(int(row[3]))
+                levelnames.append((row[4]).strip("'") if len(row) >= 5 else None)
+                phixstargetlists.append(phixstargetlist)
+                phixstables.append(phixstable)
 
-            dflevels = (
-                pl
-                .DataFrame(
-                    level_list,
-                    schema=[
-                        ("energy_ev", pl.Float64),
-                        ("g", pl.Float32),
-                        ("transition_count", pl.Int32),
-                        ("levelname", pl.String),
-                        ("phixstargetlist", pl.Object),
-                        ("phixstable", pl.Object),
-                    ],
-                    orient="row",
-                )
-                .with_row_index("levelindex")
-                .with_columns(pl.col("levelindex").cast(pl.Int32))
-            )
+            # build column by column, because a row-oriented constructor unpacks each structured numpy array
+            # into a list of numpy scalars instead of storing the array itself in the object column
+            dflevels = pl.DataFrame({
+                "energy_ev": pl.Series("energy_ev", energies_ev, dtype=pl.Float64),
+                "g": pl.Series("g", statweights, dtype=pl.Float32),
+                "transition_count": pl.Series("transition_count", transition_counts, dtype=pl.Int32),
+                "levelname": pl.Series("levelname", levelnames, dtype=pl.String),
+                "phixstargetlist": pl.Series("phixstargetlist", phixstargetlists, dtype=pl.Object),
+                "phixstable": pl.Series("phixstable", phixstables, dtype=pl.Object),
+            }).with_row_index("levelindex")
+            dflevels = dflevels.with_columns(pl.col("levelindex").cast(pl.Int32))
 
             ionisation_energy_ev = float(ionheader[3])
             yield Z, ion_stage, level_count, ionisation_energy_ev, dflevels
@@ -418,15 +421,23 @@ def get_z_a_nucname(nucname: str) -> tuple[int, int]:
 
 
 @lru_cache(maxsize=1)
-def get_elsymbolslist() -> list[str]:
-    """Return a list of element symbols.
+def get_elsymbolslist() -> tuple[str, ...]:
+    """Return the element symbols indexed by atomic number.
+
+    A tuple, not a list, because the single cached instance is shared by every caller.
 
     Example:
     -------
-    elsymbolslist()[26] = 'Fe'.
+    get_elsymbolslist()[26] = 'Fe'.
 
     """
-    return ["n", *pl.read_csv(get_path("datadir") / "elements.csv", has_header=True, separator=",")["symbol"].to_list()]
+    return ("n", *pl.read_csv(get_path("datadir") / "elements.csv", has_header=True, separator=",")["symbol"].to_list())
+
+
+@lru_cache(maxsize=1)
+def _get_atomic_number_of_elsymbol() -> dict[str, int]:
+    """Return a mapping of element symbol to atomic number, for lookups that would otherwise scan the whole list."""
+    return {elsymbol: atomic_number for atomic_number, elsymbol in enumerate(get_elsymbolslist())}
 
 
 @lru_cache(maxsize=1)
@@ -451,15 +462,13 @@ def get_elsymbols_df() -> pl.LazyFrame:
 
 
 def get_atomic_number(elsymbol: str) -> int:
-    """Return the atomic number of an element symbol."""
+    """Return the atomic number of an element symbol, or -1 if it is not an element symbol."""
     assert elsymbol is not None
     elsymbol = elsymbol.removeprefix("X_")
     elsymbol = elsymbol.split("_")[0].split("-")[0].rstrip(string.digits)
 
-    if elsymbol.title() in get_elsymbolslist():
-        return get_elsymbolslist().index(elsymbol.title())
-
-    return -1
+    # a dict lookup, because this is called once per column name in some loops
+    return _get_atomic_number_of_elsymbol().get(elsymbol.title(), -1)
 
 
 def decode_roman_numeral(strin: str) -> int:
@@ -683,7 +692,8 @@ def read_linestatfile(
 
 def get_linelist_pldf(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame:
     textfile = firstexisting("linestat.out", folder=modelpath)
-    parquetfile = Path(modelpath, "linelist.out.parquet")
+    # the .tmp suffix marks this as a regenerable cache, matching every other parquet file artistools writes
+    parquetfile = Path(modelpath, "linelist.out.parquet.tmp")
     if not parquetfile.is_file() or parquetfile.stat().st_mtime < textfile.stat().st_mtime:
         lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels = read_linestatfile(textfile)
 

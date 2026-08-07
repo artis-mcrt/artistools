@@ -1030,3 +1030,26 @@ def test_default_plotitem_keeps_estimator_columns_named_like_elements() -> None:
     # initabundances/initmasses come from the input model file, so they must not be gated on estimator columns
     assert default_plotitem_has_data([["initabundances", ["Sr", "Ni_stable"]]], estimatorcolumns)
     assert default_plotitem_has_data([["initmasses", ["Sr", "Ni_56"]]], estimatorcolumns)
+
+
+def test_write_lbol_edep(tmp_path: Path) -> None:
+    """The bolometric luminosity / deposition writer must produce one line per selected timestep.
+
+    test_writecomparisondata() uses a model with no deposition.out, so its FileNotFoundError guard skipped this
+    function entirely and hid the fact that it read column names the light curve frame does not have.
+    """
+    from artistools.writecomparisondata import write_lbol_edep
+
+    outputpath = tmp_path / "lbol_edep.txt"
+    selected_timesteps = [0, 1, 2, 5]
+    write_lbol_edep(modelpath_classic_3d, selected_timesteps, outputpath)
+
+    lines = outputpath.read_text(encoding="utf-8").splitlines()
+    assert lines[0] == f"#NTIMES: {len(selected_timesteps)}"
+    datalines = [line for line in lines if not line.startswith("#")]
+    assert len(datalines) == len(selected_timesteps)
+    for line in datalines:
+        timedays, lbol, edep = (float(x) for x in line.split())
+        assert timedays > 0.0
+        assert lbol > 0.0
+        assert edep > 0.0

@@ -134,9 +134,11 @@ def parallel_map[IterableType, ResultType](
                 use_multiprocessing = False
 
     if use_multiprocessing:
-        mp.set_start_method("spawn", force=True)
         from tqdm.contrib.concurrent import process_map
 
+        # pass a spawn context rather than calling mp.set_start_method(force=True), which would reconfigure
+        # multiprocessing for the whole interpreter as a side effect of running one map
+        kwargs.setdefault("mp_context", mp.get_context("spawn"))
         results = process_map(fn, *iterables, tqdm_class=tqdm.rich.tqdm, **kwargs)  # type: ignore[arg-type]
     else:
         from tqdm.contrib.concurrent import thread_map

@@ -57,15 +57,23 @@ fn ionstage_roman(ionstage: &str) -> PolarsResult<&'static str> {
 #[derive(Default)]
 struct EstimatorColumns {
     coldata: HashMap<String, Vec<f32>>,
+    /// index columns, kept as integers because f32 cannot hold every cell number of a large 3D grid exactly
+    intcoldata: HashMap<String, Vec<i32>>,
     /// number of cells seen so far, including the one currently being filled
     rownum: usize,
 }
+
+/// Columns that identify a row rather than measure a quantity, and so must stay exact integers
+const INDEX_COLUMNS: [&str; 3] = ["timestep", "modelgridindex", "titeration"];
 
 impl EstimatorColumns {
     /// Finish the current cell by padding every column that it did not define with a zero
     fn end_cell(&mut self) {
         for values in self.coldata.values_mut() {
             values.resize(self.rownum, 0.);
+        }
+        for values in self.intcoldata.values_mut() {
+            values.resize(self.rownum, 0);
         }
     }
 
@@ -79,6 +87,20 @@ impl EstimatorColumns {
         }
         // back-fill with zeros if the column first appeared part-way through the file
         values.resize(self.rownum - 1, 0.);
+        values.push(colvalue);
+
+        Ok(())
+    }
+
+    /// Set an index column value for the current cell, creating the column if it doesn't exist yet
+    fn push_int(&mut self, colname: String, colvalue: i32) -> PolarsResult<()> {
+        let values = self.intcoldata.entry(colname).or_default();
+        if values.len() >= self.rownum {
+            return Err(malformed(
+                "a column was given two values for one cell".into(),
+            ));
+        }
+        values.resize(self.rownum - 1, 0);
         values.push(colvalue);
 
         Ok(())
@@ -116,7 +138,11 @@ impl EstimatorColumns {
 
         self.rownum += 1;
         for (colname, value) in token_pairs(tokens) {
-            self.push(colname.to_owned(), parse_field(value, "a number")?)?;
+            if INDEX_COLUMNS.contains(&colname) {
+                self.push_int(colname.to_owned(), parse_field(value, "an integer")?)?;
+            } else {
+                self.push(colname.to_owned(), parse_field(value, "a number")?)?;
+            }
         }
 
         Ok(())
@@ -194,13 +220,18 @@ impl EstimatorColumns {
     fn into_dataframe(mut self) -> PolarsResult<DataFrame> {
         self.end_cell();
 
-        DataFrame::new(
-            self.rownum,
-            self.coldata
-                .into_iter()
-                .map(|(colname, values)| Column::new(colname.into(), values))
-                .collect(),
-        )
+        let columns: Vec<Column> = self
+            .intcoldata
+            .into_iter()
+            .map(|(colname, values)| Column::new(colname.into(), values))
+            .chain(
+                self.coldata
+                    .into_iter()
+                    .map(|(colname, values)| Column::new(colname.into(), values)),
+            )
+            .collect();
+
+        DataFrame::new(self.rownum, columns)
     }
 }
 

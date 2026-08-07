@@ -197,22 +197,26 @@ def read_modelfile_text(
         modelmeta["wid_init_rcyl"] = wid_init_rcyl
         modelmeta["wid_init_z"] = wid_init_z
 
-        # check pos_rcyl_mid and pos_z_mid are correct
-        for inputcellid, cell_pos_rcyl_mid, cell_pos_z_mid in (
-            dfmodel.select(["inputcellid", "pos_rcyl_mid", "pos_z_mid"]).collect().iter_rows()
-        ):
-            modelgridindex = inputcellid - 1
-            n_r = modelgridindex % modelmeta["ncoordgridrcyl"]
-            n_z = modelgridindex // modelmeta["ncoordgridrcyl"]
-            pos_rcyl_min = modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridrcyl"] * n_r
-            pos_z_min = (
-                -modelmeta["vmax_cmps"] * t_model_init_seconds
-                + 2.0 * modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridz"] * n_z
-            )
-            pos_rcyl_mid = pos_rcyl_min + 0.5 * wid_init_rcyl
-            pos_z_mid = pos_z_min + 0.5 * wid_init_z
-            assert np.isclose(cell_pos_rcyl_mid, pos_rcyl_mid, atol=wid_init_rcyl / 2.0)
-            assert np.isclose(cell_pos_z_mid, pos_z_mid, atol=wid_init_z / 2.0)
+        # check pos_rcyl_mid and pos_z_mid are correct. One expression over the whole column instead of a Python
+        # loop, which cost a round trip through the interpreter for every cell of the grid
+        expected_pos = dfmodel.select(
+            n_r=(pl.col("inputcellid") - 1) % modelmeta["ncoordgridrcyl"],
+            n_z=(pl.col("inputcellid") - 1) // modelmeta["ncoordgridrcyl"],
+            cell_pos_rcyl_mid=pl.col("pos_rcyl_mid"),
+            cell_pos_z_mid=pl.col("pos_z_mid"),
+        ).select(
+            rcyl_offby=(pl.col("cell_pos_rcyl_mid") - (wid_init_rcyl * pl.col("n_r") + 0.5 * wid_init_rcyl)).abs(),
+            z_offby=(
+                pl.col("cell_pos_z_mid")
+                - (-modelmeta["vmax_cmps"] * t_model_init_seconds + wid_init_z * pl.col("n_z") + 0.5 * wid_init_z)
+            ).abs(),
+        )
+
+        maxoffby = expected_pos.select(pl.col("rcyl_offby").max(), pl.col("z_offby").max()).collect().row(0)
+        assert maxoffby[0] <= wid_init_rcyl / 2.0, (
+            f"pos_rcyl_mid is up to {maxoffby[0]:.3e} cm from the expected cell centre"
+        )
+        assert maxoffby[1] <= wid_init_z / 2.0, f"pos_z_mid is up to {maxoffby[1]:.3e} cm from the expected cell centre"
 
     elif modelmeta["dimensions"] == 3:
         wid_init_x = 2 * modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridx"]
@@ -847,7 +851,8 @@ def save_modeldata(
     modelmeta must define: vmax, ncoordgridr and ncoordgridz
     """
     assert isinstance(dfmodel, (pl.LazyFrame, pl.DataFrame))
-    if "inputcellid" not in dfmodel.columns and "modelgridindex" in dfmodel.columns:
+    colnames_in = dfmodel.collect_schema().names()
+    if "inputcellid" not in colnames_in and "modelgridindex" in colnames_in:
         dfmodel = dfmodel.with_columns(inputcellid=pl.col("modelgridindex") + 1)
 
     dfmodel = dfmodel.drop("mass_g", "modelgridindex", strict=False).lazy().collect()

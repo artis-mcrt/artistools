@@ -568,3 +568,44 @@ def test_averageexcitation_plotitem_needs_nlte_files(tmp_path: Path) -> None:
 
     assert default_plotitem_has_data(plotitem, estimatorcolumns, modelpath)
     assert not default_plotitem_has_data(plotitem, estimatorcolumns, tmp_path)
+
+
+def test_get_elemcolor_is_stable_and_unbounded() -> None:
+    """Every element must have a colour, fixed by the element and not by how many plots came before it.
+
+    Colours used to be handed out in call order from a ten-entry list, so an element's colour depended on the
+    plots that preceded it in the same process, and the eleventh element raised IndexError.
+    """
+    from artistools.estimators.plotestimators import colors_tab10
+    from artistools.estimators.plotestimators import get_elemcolor
+
+    assert get_elemcolor(elsymbol="Fe") == colors_tab10[0]
+    assert get_elemcolor(elsymbol="Ni") == colors_tab10[1]
+    assert get_elemcolor(elsymbol="Co") == colors_tab10[2]
+
+    # far more elements than the reserved list can hold, in two different orders
+    colors_ascending = [get_elemcolor(atomic_number=Z) for Z in range(1, 93)]
+    colors_descending = [get_elemcolor(atomic_number=Z) for Z in reversed(range(1, 93))]
+    assert colors_ascending == list(reversed(colors_descending))
+
+    assert get_elemcolor(elsymbol="O") == get_elemcolor(atomic_number=8)
+
+    # a reserved colour must stay unique to its element, so that Fe, Ni and Co remain identifiable
+    reserved = {colors_tab10[0], colors_tab10[1], colors_tab10[2]}
+    unreserved = [get_elemcolor(atomic_number=Z) for Z in range(1, 93) if Z not in {26, 27, 28}]
+    assert not reserved.intersection(unreserved)
+
+
+def test_estimparse_index_columns_are_integers() -> None:
+    """The timestep and modelgridindex columns must be parsed as integers, not floats.
+
+    Everything in the cell header used to be stored as f32, which cannot represent every cell number of a large
+    3D grid exactly: 26999999 comes back as 27000000.
+    """
+    dfestim = at.rustext.estimparse(modelpath, 0, 0)
+
+    for colname in ("timestep", "modelgridindex"):
+        assert dfestim.schema[colname] == pl.Int32, f"{colname} must stay an exact integer"
+
+    # the physical quantities are still f32
+    assert dfestim.schema["Te"] == pl.Float32

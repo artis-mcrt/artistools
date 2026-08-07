@@ -355,7 +355,6 @@ unfixable = [
 "tests/__init__.py" = ["undocumented-public-package"]
 "artistools/commands.py" = ["suspicious-subprocess-import", "start-process-with-partial-path"]
 "artistools/test_artistools.py" = ["suspicious-subprocess-import"]
-"artistools/spectra/sampleblackbodyfrompacket_tr.py" = ["suspicious-non-cryptographic-random-usage"]
 "set_version.py" = ["suspicious-subprocess-import", "start-process-with-partial-path"]
 
 [tool.ruff.lint.flake8-import-conventions.extend-aliases]

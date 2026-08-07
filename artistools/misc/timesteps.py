@@ -10,6 +10,9 @@ import numpy as np
 import polars as pl
 
 from artistools.constants import C_cm_per_s
+from artistools.misc.fileio import firstexisting
+from artistools.misc.fileio import zopen
+from artistools.misc.fileio import zopenpl
 from artistools.misc.modelinfo import get_inputparams
 from artistools.misc.modelinfo import get_model_name
 
@@ -25,11 +28,13 @@ def get_deposition(modelpath: Path | str = ".") -> pl.LazyFrame:
         depfilepath = Path(modelpath)
         modelpath = Path(modelpath).parent
     else:
-        depfilepath = Path(modelpath, "deposition.out")
+        # read through firstexisting/zopen so that a compressed deposition.out is found like every other
+        # ARTIS output file, instead of being reported as missing
+        depfilepath = firstexisting("deposition.out", folder=modelpath, tryzipped=True, search_subfolders=False)
 
     ts_mids = get_timestep_times(modelpath, loc="mid")
 
-    with depfilepath.open(encoding="utf-8") as fdep:
+    with zopen(depfilepath) as fdep:
         line = fdep.readline()
         if line.startswith("#"):
             skiprows = 1
@@ -38,7 +43,9 @@ def get_deposition(modelpath: Path | str = ".") -> pl.LazyFrame:
             skiprows = 0
             columns = ["tmid_days", "gammadep_Lsun", "positrondep_Lsun", "total_dep_Lsun"]
 
-    depdata = pl.scan_csv(depfilepath, separator=" ", skip_rows=skiprows, has_header=False, new_columns=columns)
+    depdata = pl.read_csv(
+        zopenpl(depfilepath), separator=" ", skip_rows=skiprows, has_header=False, new_columns=columns
+    ).lazy()
 
     if "ts" in depdata.collect_schema().names():
         depdata = depdata.rename({"ts": "timestep"})

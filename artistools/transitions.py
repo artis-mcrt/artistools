@@ -1,7 +1,6 @@
 """Plot synthetic emission spectra of individual ions from Kurucz, NIST, or ARTIS transition data."""
 
 import argparse
-import math
 import sys
 import typing as t
 from collections.abc import Iterable
@@ -124,25 +123,36 @@ def generate_ion_spectrum(
     plot_resolution: float,
     args: argparse.Namespace,
 ) -> npt.NDArray[np.floating]:
-    """Return the emission spectrum of one ion, summing a Gaussian profile for each line."""
-    yvalues = np.zeros(len(xvalues))
+    """Return the emission spectrum of one ion, summing a Gaussian profile for each line.
 
-    # iterate over lines
-    for _, line in transitions.iterrows():
-        flux = line["flux_factor"] * line[popcolumn]
+    Each line is accumulated over its own window of grid points, so the work stays proportional to the total
+    window width rather than to the number of lines times the whole grid.
+    """
+    npoints = len(xvalues)
+    yvalues = np.zeros(npoints)
+    if transitions.empty:
+        return yvalues
 
-        # contribute the Gaussian line profile to the discrete flux bins
+    lambda_angstroms = transitions["lambda_angstroms"].to_numpy(dtype=float)
+    flux = transitions["flux_factor"].to_numpy(dtype=float) * transitions[popcolumn].to_numpy(dtype=float)
 
-        centre_index = round((line["lambda_angstroms"] - args.xmin) / plot_resolution)
-        sigma_angstroms = line["lambda_angstroms"] * args.sigma_v * 1e5 / C_cm_per_s
-        sigma_gridpoints = math.ceil(sigma_angstroms / plot_resolution)
-        window_left_index = max(int(centre_index - args.gaussian_window * sigma_gridpoints), 0)
-        window_right_index = min(int(centre_index + args.gaussian_window * sigma_gridpoints), len(xvalues))
+    centre_index = np.round((lambda_angstroms - args.xmin) / plot_resolution).astype(np.int64)
+    sigma_angstroms = lambda_angstroms * args.sigma_v * 1e5 / C_cm_per_s
+    sigma_gridpoints = np.ceil(sigma_angstroms / plot_resolution).astype(np.int64)
+    halfwidth = (args.gaussian_window * sigma_gridpoints).astype(np.int64)
 
-        for x in range(max(0, window_left_index), min(len(xvalues), window_right_index)):
-            yvalues[x] += (
-                flux * math.exp(-(((x - centre_index) * plot_resolution / sigma_angstroms) ** 2)) / sigma_angstroms
-            )
+    window_left = np.clip(centre_index - halfwidth, 0, npoints)
+    window_right = np.clip(centre_index + halfwidth, 0, npoints)
+
+    for lineindex in np.flatnonzero(window_right > window_left):
+        left = int(window_left[lineindex])
+        right = int(window_right[lineindex])
+        offsets = np.arange(left, right) - centre_index[lineindex]
+        yvalues[left:right] += (
+            flux[lineindex]
+            * np.exp(-((offsets * plot_resolution / sigma_angstroms[lineindex]) ** 2))
+            / sigma_angstroms[lineindex]
+        )
 
     return yvalues
 

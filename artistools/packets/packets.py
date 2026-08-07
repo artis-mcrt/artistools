@@ -314,6 +314,11 @@ def readfile_text(packetsfiletext: Path | str, column_names: list[str]) -> pl.Da
         print(f"Error occurred in file {packetsfiletext}")
         raise
 
+    # drop last column of nulls (caused by trailing space on each line). This must happen before any column is
+    # appended below, otherwise by_index(-1) selects the appended column and the null column is never dropped
+    if dfpackets.select(cs.by_index(-1).is_null().all()).item():
+        dfpackets = dfpackets.drop(cs.by_index(-1))
+
     mpirank = int(packetsfiletext.name.split("_")[-1].split(".")[0])
     dfpackets = dfpackets.drop(
         [
@@ -333,10 +338,6 @@ def readfile_text(packetsfiletext: Path | str, column_names: list[str]) -> pl.Da
         strict=False,
     ).with_columns(mpirank=pl.lit(mpirank, dtype=pl.Int32))
 
-    # drop last column of nulls (caused by trailing space on each line)
-    if dfpackets.select(cs.by_index(-1).is_null().all()).item():
-        dfpackets = dfpackets.drop(cs.by_index(-1))
-
     if "originated_from_positron" in dfpackets.columns:
         dfpackets = dfpackets.with_columns([pl.col("originated_from_positron").cast(pl.Boolean)])
 
@@ -352,8 +353,10 @@ def read_virtual_packets_text_file(vpacketsfiletext: Path | str, column_names: l
     vpacketsfiletext = Path(vpacketsfiletext)
     mpirank = int(vpacketsfiletext.name.split("_")[-1].split(".")[0])
 
-    return pl.read_csv(
-        vpacketsfiletext,
+    # the caller resolves the path with tryzipped=True, so read through zopenpl to handle the .xz case
+    # that polars cannot open from a path
+    dfvpackets = pl.read_csv(
+        at.zopenpl(vpacketsfiletext),
         separator=" ",
         has_header=False,
         comment_prefix="#",
@@ -366,7 +369,13 @@ def read_virtual_packets_text_file(vpacketsfiletext: Path | str, column_names: l
         }
         | {col: pl.Float64 for col in column_names if col.endswith("_nu_rf") or "_e_rf" in col}
         | {col: pl.Float32 for col in column_names if col.endswith("_t_arrive_d")},
-    ).with_columns(mpirank=pl.lit(mpirank, dtype=pl.Int32))
+    )
+
+    # drop last column of nulls (caused by trailing space on each line), before appending the rank column
+    if dfvpackets.select(cs.by_index(-1).is_null().all()).item():
+        dfvpackets = dfvpackets.drop(cs.by_index(-1))
+
+    return dfvpackets.with_columns(mpirank=pl.lit(mpirank, dtype=pl.Int32))
 
 
 def get_vpackets_text_columns(vpacketsfiletext: Path) -> list[str]:
@@ -392,7 +401,8 @@ def get_packets_rankbatch_parquetfile(
     parquetfilepath = packetdir / parquetfilename
 
     # time when the schema for the parquet files last changed (e.g. new computed columns added or data types changed)
-    time_parquetschemachange = (2024, 4, 23, 9, 0, 0)
+    # 2026-08-07: the all-null trailing column from the text file's line-ending space is now dropped
+    time_parquetschemachange = (2026, 8, 7, 9, 0, 0)
     t_lastschemachange = calendar.timegm(time_parquetschemachange)
 
     text_filenames = [

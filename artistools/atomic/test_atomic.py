@@ -126,6 +126,28 @@ def test_parse_phixsdata_multiple_targets(tmp_path: Path) -> None:
     assert len(phixstable) == nphixspoints
 
 
+def test_get_levels_photoionisation_level_alignment() -> None:
+    """Each level must carry its own photoionisation data.
+
+    parse_phixsdata() keys on the zero-based level index while adata.txt numbers levels from one, so looking up
+    the file's level number attached every level the cross-sections of the level above it, and left the highest
+    level with none at all. Neither mismatch raises, so compare against the parsed file directly.
+    """
+    from artistools.atomic._atomic_core import parse_phixsdata
+
+    phixsdict = parse_phixsdata(modelpath / "phixsdata_v2.txt.xz", ionlist=[(26, 1)])
+    dflevels = at.atomic.get_levels(modelpath, ionlist=[(26, 1)], get_photoionisations=True)
+    levels = dflevels.filter((pl.col("Z") == 26) & (pl.col("ion_stage") == 1)).item(0, "levels")
+
+    assert len(levels) > 1
+    for levelindex in range(len(levels)):
+        nptargetlist, phixstable = phixsdict[26, 1, levelindex]
+        # an object column built from rows would hold a list of numpy scalars instead of the array itself
+        assert isinstance(levels.item(levelindex, "phixstable"), np.ndarray)
+        assert np.array_equal(levels.item(levelindex, "phixstable"), phixstable)
+        assert np.array_equal(levels.item(levelindex, "phixstargetlist"), nptargetlist)
+
+
 @pytest.mark.parametrize("bflistcontents", ["0\n", "", "0"])
 def test_get_bflist_with_no_transitions(tmp_path: Path, bflistcontents: str) -> None:
     """A run with no bound-free transitions must give an empty frame, not fail at a later collect().
