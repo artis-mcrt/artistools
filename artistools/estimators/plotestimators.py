@@ -756,7 +756,7 @@ def plot_series(
 def get_xlist(
     xvariable: str, estimators: pl.LazyFrame, timestepslist: Collection[int] | None, args: t.Any
 ) -> tuple[list[float | int], list[int], list[int], pl.LazyFrame]:
-    """Return the x values, timesteps, and model grid indices to plot, along with the filtered estimators."""
+    """Return the x values, model grid indices, and timesteps to plot, along with the filtered estimators."""
     if timestepslist is not None:
         estimators = estimators.filter(pl.col("timestep").is_in(timestepslist))
 

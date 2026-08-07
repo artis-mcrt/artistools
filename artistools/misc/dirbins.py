@@ -178,7 +178,10 @@ def get_phi_bins(usedegrees: bool) -> tuple[npt.NDArray[np.floating], npt.NDArra
 def get_costheta_bins(
     usedegrees: bool, usepiminustheta: bool = False
 ) -> tuple[tuple[float, ...], tuple[float, ...], list[str]]:
-    """Return the lower and upper cos(theta) boundaries of each direction bin, and a label for each."""
+    """Return the lower and upper cos(theta) boundaries of each direction bin, and a label for each.
+
+    The boundaries are always cos(theta); usedegrees and usepiminustheta only change how the labels are written.
+    """
     ncosthetabins = get_viewingdirection_costhetabincount()
     # the costheta bins are ordered by ascending cos θ from -1. to 1.,
     # which means that they are in descending order of theta from π to 0

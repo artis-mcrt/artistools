@@ -351,7 +351,7 @@ unfixable = [
     "undocumented-public-class",
     "undocumented-public-function",
 ]
-"conftest.py" = ["undocumented-public-module", "undocumented-public-function"]
+"**/conftest.py" = ["undocumented-public-module", "undocumented-public-function"]
 "tests/__init__.py" = ["undocumented-public-package"]
 "artistools/commands.py" = ["suspicious-subprocess-import", "start-process-with-partial-path"]
 "artistools/test_artistools.py" = ["suspicious-subprocess-import"]

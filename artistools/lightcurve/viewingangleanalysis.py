@@ -260,7 +260,11 @@ def lightcurve_polyfit(
     kernel_scale: float = 10,
     lc_error: float = 0.01,
 ) -> tuple[t.Any, t.Any]:
-    """Return a smooth fit to a band light curve, using a george Gaussian process or a polynomial fallback."""
+    """Return a smooth fit to a band light curve, as (fitted magnitudes, times) in that order.
+
+    Note the fitted values come first, not the times. The fit uses a george Gaussian process, falling back to a
+    polynomial when george is unavailable.
+    """
     try:
         import george
 
