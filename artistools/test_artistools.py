@@ -101,7 +101,7 @@ def test_shared_cli_args_consistent() -> None:
     def collect(parser: argparse.ArgumentParser, prefix: str) -> None:
         for action in parser._actions:  # ruff:ignore[private-member-access]
             if isinstance(action, argparse._SubParsersAction):  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
-                nameparsermap: dict[str, argparse.ArgumentParser] = action._name_parser_map  # ruff:ignore[private-member-access]  # ty:ignore[invalid-assignment]
+                nameparsermap: dict[str, argparse.ArgumentParser] = action._name_parser_map  # ruff:ignore[private-member-access]
                 for name, subparser in nameparsermap.items():
                     collect(subparser, f"{prefix}{name} ")
             elif action.dest != "help":
