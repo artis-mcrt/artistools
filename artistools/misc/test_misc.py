@@ -579,25 +579,27 @@ def test_parallel_map_works_when_fork_is_the_default_start_method(tmp_path: Path
     """
     script = tmp_path / "forkdefault.py"
     script.write_text(
-        "import multiprocessing as mp\n"
-        "\n"
-        "import artistools as at\n"
-        "\n"
-        "\n"
-        "def square(x):\n"
-        "    return x * x\n"
-        "\n"
-        "\n"
-        "if __name__ == '__main__':\n"
-        "    mp.set_start_method('fork', force=True)\n"
-        "    assert at.parallel_map(square, range(4)) == [0, 1, 4, 9]\n"
-        "    print('OK')\n",
+        """
+import multiprocessing as mp
+
+import artistools as at
+
+
+def square(x):
+    return x * x
+
+
+if __name__ == "__main__":
+    mp.set_start_method("fork", force=True)
+    assert at.parallel_map(square, range(4)) == [0, 1, 4, 9]
+    print("OK")
+""",
         encoding="utf-8",
     )
 
     # put the package's parent on the child's path, so this works from an editable or a plain install
     env = os.environ.copy()
-    packageparent = str(Path(at.__file__).parent.parent)
+    packageparent = str(at.get_path("artistools_repository"))
     env["PYTHONPATH"] = os.pathsep.join([packageparent, env["PYTHONPATH"]]) if "PYTHONPATH" in env else packageparent
 
     proc = subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]

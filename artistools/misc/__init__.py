@@ -36,6 +36,7 @@ from artistools.misc.dirbins import get_viewingdirectionbincount as get_viewingd
 from artistools.misc.dirbins import get_vspec_dir_labels as get_vspec_dir_labels
 from artistools.misc.dirbins import print_theta_phi_definitions as print_theta_phi_definitions
 from artistools.misc.dirbins import split_multitable_dataframe as split_multitable_dataframe
+from artistools.misc.fileio import drop_trailing_null_column as drop_trailing_null_column
 from artistools.misc.fileio import firstexisting as firstexisting
 from artistools.misc.fileio import firstexisting_or_none as firstexisting_or_none
 from artistools.misc.fileio import get_file_metadata as get_file_metadata

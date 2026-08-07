@@ -26,6 +26,7 @@ from artistools.atomic import get_nuclides
 from artistools.misc import average_direction_bins
 from artistools.misc import check_averaging_angles
 from artistools.misc import df_filter_minmax_bounded
+from artistools.misc import drop_trailing_null_column
 from artistools.misc import firstexisting
 from artistools.misc import get_dirbins
 from artistools.misc import get_file_metadata
@@ -651,11 +652,9 @@ def read_spec_res(modelpath: Path | str, gamma: bool = False) -> dict[int, pl.La
     )
 
     print(f"Reading {specfilename} (in read_spec_res)")
-    res_specdata_in = pl.read_csv(zopenpl(specfilename), separator=" ", has_header=False, infer_schema=False).lazy()
-
-    # drop last column of nulls (caused by trailing space on each line)
-    if res_specdata_in.select(cs.by_index(-1).is_null().all()).collect().item():
-        res_specdata_in = res_specdata_in.drop(cs.by_index(-1))
+    res_specdata_in = drop_trailing_null_column(
+        pl.read_csv(zopenpl(specfilename), separator=" ", has_header=False, infer_schema=False).lazy()
+    )
 
     res_specdata = split_multitable_dataframe(res_specdata_in)
 
@@ -697,11 +696,7 @@ def read_emission_absorption_file(emabsfilename: str | Path) -> pl.LazyFrame:
         pl.all().cast(pl.Float32, strict=True)
     )
 
-    # drop last column of nulls (caused by trailing space on each line)
-    if dfemabs.select(cs.by_index(-1).is_null().all()).collect().item():
-        dfemabs = dfemabs.drop(cs.by_index(-1))
-
-    return dfemabs
+    return drop_trailing_null_column(dfemabs)
 
 
 def get_spectra(
@@ -795,10 +790,9 @@ def make_virtual_spectra_summed_file(modelpath: Path | str) -> None:
         )
         print(f"Reading rank {mpirank} filename {vspecpolpath}")
 
-        vspecpol_data_alldirs = pl.read_csv(vspecpolpath, separator=" ", has_header=False)
-
-        if vspecpol_data_alldirs[vspecpol_data_alldirs.columns[-1]].is_null().all():
-            vspecpol_data_alldirs = vspecpol_data_alldirs.drop(cs.last())
+        vspecpol_data_alldirs = drop_trailing_null_column(
+            pl.read_csv(zopenpl(vspecpolpath), separator=" ", has_header=False)
+        )
 
         vspecpol_data = {k: v.collect() for k, v in split_multitable_dataframe(vspecpol_data_alldirs).items()}
         assert len(vspecpol_data) == nvirtual_spectra
@@ -882,7 +876,7 @@ def get_vspecpol_data(vspecindex: int, modelpath: Path | str) -> dict[str, pl.La
         specfilename = firstexisting(f"vspecpol_total-{vspecindex}.out", folder=modelpath, tryzipped=True)
 
     print(f"Reading {specfilename}")
-    specdata = pl.read_csv(specfilename, separator=" ", has_header=True)
+    specdata = pl.read_csv(zopenpl(specfilename), separator=" ", has_header=True)
 
     return split_dataframe_stokesparams(specdata)
 

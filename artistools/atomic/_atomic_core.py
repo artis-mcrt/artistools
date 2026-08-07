@@ -39,12 +39,9 @@ def parse_adata(
         level_count = int(ionheader[2])
 
         if not ionlist or (Z, ion_stage) in ionlist:
-            energies_ev: list[float] = []
-            statweights: list[float] = []
-            transition_counts: list[int] = []
-            levelnames: list[str | None] = []
-            phixstargetlists: list[npt.NDArray[t.Any] | None] = []
-            phixstables: list[npt.NDArray[t.Any] | None] = []
+            level_list: list[
+                tuple[float, float, int, str | None, npt.NDArray[t.Any] | None, npt.NDArray[t.Any] | None]
+            ] = []
             for levelindex in range(level_count):
                 row = fadata.readline().split(maxsplit=4)
 
@@ -54,24 +51,34 @@ def parse_adata(
                 # one-based inputlevelnumber, which would attach each level the next level's cross-sections
                 phixstargetlist, phixstable = phixsdict.get((Z, ion_stage, levelindex), (None, None))
 
-                energies_ev.append(float(row[1]))
-                statweights.append(float(row[2]))
-                transition_counts.append(int(row[3]))
-                levelnames.append((row[4]).strip("'") if len(row) >= 5 else None)
-                phixstargetlists.append(phixstargetlist)
-                phixstables.append(phixstable)
+                level_list.append((
+                    float(row[1]),
+                    float(row[2]),
+                    int(row[3]),
+                    (row[4]).strip("'") if len(row) >= 5 else None,
+                    phixstargetlist,
+                    phixstable,
+                ))
 
-            # build column by column, because a row-oriented constructor unpacks each structured numpy array
-            # into a list of numpy scalars instead of storing the array itself in the object column
-            dflevels = pl.DataFrame({
-                "energy_ev": pl.Series("energy_ev", energies_ev, dtype=pl.Float64),
-                "g": pl.Series("g", statweights, dtype=pl.Float32),
-                "transition_count": pl.Series("transition_count", transition_counts, dtype=pl.Int32),
-                "levelname": pl.Series("levelname", levelnames, dtype=pl.String),
-                "phixstargetlist": pl.Series("phixstargetlist", phixstargetlists, dtype=pl.Object),
-                "phixstable": pl.Series("phixstable", phixstables, dtype=pl.Object),
-            }).with_row_index("levelindex")
-            dflevels = dflevels.with_columns(pl.col("levelindex").cast(pl.Int32))
+            colnames = ["energy_ev", "g", "transition_count", "levelname", "phixstargetlist", "phixstable"]
+            # transpose to columns, because a row-oriented constructor unpacks each structured numpy array into a
+            # list of numpy scalars instead of storing the array itself in the object column
+            dflevels = (
+                pl
+                .DataFrame(
+                    dict(zip(colnames, zip(*level_list, strict=True), strict=True)) if level_list else {},
+                    schema={
+                        "energy_ev": pl.Float64,
+                        "g": pl.Float32,
+                        "transition_count": pl.Int32,
+                        "levelname": pl.String,
+                        "phixstargetlist": pl.Object,
+                        "phixstable": pl.Object,
+                    },
+                )
+                .with_row_index("levelindex")
+                .with_columns(pl.col("levelindex").cast(pl.Int32))
+            )
 
             ionisation_energy_ev = float(ionheader[3])
             yield Z, ion_stage, level_count, ionisation_energy_ev, dflevels

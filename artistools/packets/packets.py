@@ -314,10 +314,7 @@ def readfile_text(packetsfiletext: Path | str, column_names: list[str]) -> pl.Da
         print(f"Error occurred in file {packetsfiletext}")
         raise
 
-    # drop last column of nulls (caused by trailing space on each line). This must happen before any column is
-    # appended below, otherwise by_index(-1) selects the appended column and the null column is never dropped
-    if dfpackets.select(cs.by_index(-1).is_null().all()).item():
-        dfpackets = dfpackets.drop(cs.by_index(-1))
+    dfpackets = at.drop_trailing_null_column(dfpackets)
 
     mpirank = int(packetsfiletext.name.split("_")[-1].split(".")[0])
     dfpackets = dfpackets.drop(
@@ -371,11 +368,7 @@ def read_virtual_packets_text_file(vpacketsfiletext: Path | str, column_names: l
         | {col: pl.Float32 for col in column_names if col.endswith("_t_arrive_d")},
     )
 
-    # drop last column of nulls (caused by trailing space on each line), before appending the rank column
-    if dfvpackets.select(cs.by_index(-1).is_null().all()).item():
-        dfvpackets = dfvpackets.drop(cs.by_index(-1))
-
-    return dfvpackets.with_columns(mpirank=pl.lit(mpirank, dtype=pl.Int32))
+    return at.drop_trailing_null_column(dfvpackets).with_columns(mpirank=pl.lit(mpirank, dtype=pl.Int32))
 
 
 def get_vpackets_text_columns(vpacketsfiletext: Path) -> list[str]:

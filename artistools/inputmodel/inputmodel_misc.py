@@ -199,24 +199,26 @@ def read_modelfile_text(
 
         # check pos_rcyl_mid and pos_z_mid are correct. One expression over the whole column instead of a Python
         # loop, which cost a round trip through the interpreter for every cell of the grid
-        expected_pos = dfmodel.select(
-            n_r=(pl.col("inputcellid") - 1) % modelmeta["ncoordgridrcyl"],
-            n_z=(pl.col("inputcellid") - 1) // modelmeta["ncoordgridrcyl"],
-            cell_pos_rcyl_mid=pl.col("pos_rcyl_mid"),
-            cell_pos_z_mid=pl.col("pos_z_mid"),
-        ).select(
-            rcyl_offby=(pl.col("cell_pos_rcyl_mid") - (wid_init_rcyl * pl.col("n_r") + 0.5 * wid_init_rcyl)).abs(),
-            z_offby=(
-                pl.col("cell_pos_z_mid")
-                - (-modelmeta["vmax_cmps"] * t_model_init_seconds + wid_init_z * pl.col("n_z") + 0.5 * wid_init_z)
-            ).abs(),
+        n_r = (pl.col("inputcellid") - 1) % modelmeta["ncoordgridrcyl"]
+        n_z = (pl.col("inputcellid") - 1) // modelmeta["ncoordgridrcyl"]
+        pos_z_min_grid = -modelmeta["vmax_cmps"] * t_model_init_seconds
+
+        maxoffby = (
+            dfmodel
+            .select(
+                rcyl_offby=(pl.col("pos_rcyl_mid") - wid_init_rcyl * (n_r + 0.5)).abs().max(),
+                z_offby=(pl.col("pos_z_mid") - (pos_z_min_grid + wid_init_z * (n_z + 0.5))).abs().max(),
+            )
+            .collect()
+            .row(0, named=True)
         )
 
-        maxoffby = expected_pos.select(pl.col("rcyl_offby").max(), pl.col("z_offby").max()).collect().row(0)
-        assert maxoffby[0] <= wid_init_rcyl / 2.0, (
-            f"pos_rcyl_mid is up to {maxoffby[0]:.3e} cm from the expected cell centre"
+        assert maxoffby["rcyl_offby"] <= wid_init_rcyl / 2.0, (
+            f"pos_rcyl_mid is up to {maxoffby['rcyl_offby']:.3e} cm from the expected cell centre"
         )
-        assert maxoffby[1] <= wid_init_z / 2.0, f"pos_z_mid is up to {maxoffby[1]:.3e} cm from the expected cell centre"
+        assert maxoffby["z_offby"] <= wid_init_z / 2.0, (
+            f"pos_z_mid is up to {maxoffby['z_offby']:.3e} cm from the expected cell centre"
+        )
 
     elif modelmeta["dimensions"] == 3:
         wid_init_x = 2 * modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridx"]

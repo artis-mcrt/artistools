@@ -317,24 +317,24 @@ def plot_floers_model_ratios(axis: mplax.Axes, floersmodelratiopath: Path, args:
         )
     )
 
-    plotmodels = [("w7", "W7")]
-    for aindex, (amodelname, alabel) in enumerate(plotmodels):
-        dfmodel = dffloers.filter(pl.col("modelname") == amodelname).sort("epoch")
-        if dfmodel.is_empty():
-            print(f"WARNING: no rows for Flörs model {amodelname} in {floersmodelratiopath}")
-            continue
+    # the modelname column also holds the sub-Chandrasekhar variants (subch, subch_shen2018,
+    # subch_shen2018_electronlossboost{4,8,12}x), but only W7 is overplotted
+    dfmodel = dffloers.filter(pl.col("modelname") == "w7").sort("epoch")
+    if dfmodel.is_empty():
+        print(f"WARNING: no rows for Flörs model w7 in {floersmodelratiopath}")
+        return
 
-        axis.plot(
-            dfmodel["epoch"].to_list(),
-            dfmodel["NIR_VIS_ratio"].to_list(),
-            color=args.color[aindex] if aindex < len(args.color) else None,
-            label=f"Flörs {alabel}",
-            marker="+",
-            markersize=10,
-            markeredgewidth=2,
-            lw=0,
-            alpha=0.8,
-        )
+    axis.plot(
+        dfmodel["epoch"].to_list(),
+        dfmodel["NIR_VIS_ratio"].to_list(),
+        color=args.color[0] if args.color else None,
+        label="Flörs W7",
+        marker="+",
+        markersize=10,
+        markeredgewidth=2,
+        lw=0,
+        alpha=0.8,
+    )
 
 
 def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:

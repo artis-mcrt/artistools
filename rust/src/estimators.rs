@@ -66,44 +66,48 @@ struct EstimatorColumns {
 /// Columns that identify a row rather than measure a quantity, and so must stay exact integers
 const INDEX_COLUMNS: [&str; 3] = ["timestep", "modelgridindex", "titeration"];
 
+/// Pad every column of a store out to `rownum`, for the columns the current cell did not define
+fn resize_columns<T: Copy + Default>(coldata: &mut HashMap<String, Vec<T>>, rownum: usize) {
+    for values in coldata.values_mut() {
+        values.resize(rownum, T::default());
+    }
+}
+
+/// Set a column value for the current cell, creating the column if it doesn't exist yet
+fn push_value<T: Copy + Default>(
+    coldata: &mut HashMap<String, Vec<T>>,
+    rownum: usize,
+    colname: String,
+    colvalue: T,
+) -> PolarsResult<()> {
+    let values = coldata.entry(colname).or_default();
+    if values.len() >= rownum {
+        return Err(malformed(
+            "a column was given two values for one cell".into(),
+        ));
+    }
+    // back-fill with zeros if the column first appeared part-way through the file
+    values.resize(rownum - 1, T::default());
+    values.push(colvalue);
+
+    Ok(())
+}
+
 impl EstimatorColumns {
     /// Finish the current cell by padding every column that it did not define with a zero
     fn end_cell(&mut self) {
-        for values in self.coldata.values_mut() {
-            values.resize(self.rownum, 0.);
-        }
-        for values in self.intcoldata.values_mut() {
-            values.resize(self.rownum, 0);
-        }
+        resize_columns(&mut self.coldata, self.rownum);
+        resize_columns(&mut self.intcoldata, self.rownum);
     }
 
-    /// Set a column value for the current cell, creating the column if it doesn't exist yet
+    /// Set a measured column value for the current cell
     fn push(&mut self, colname: String, colvalue: f32) -> PolarsResult<()> {
-        let values = self.coldata.entry(colname).or_default();
-        if values.len() >= self.rownum {
-            return Err(malformed(
-                "a column was given two values for one cell".into(),
-            ));
-        }
-        // back-fill with zeros if the column first appeared part-way through the file
-        values.resize(self.rownum - 1, 0.);
-        values.push(colvalue);
-
-        Ok(())
+        push_value(&mut self.coldata, self.rownum, colname, colvalue)
     }
 
-    /// Set an index column value for the current cell, creating the column if it doesn't exist yet
+    /// Set an index column value for the current cell
     fn push_int(&mut self, colname: String, colvalue: i32) -> PolarsResult<()> {
-        let values = self.intcoldata.entry(colname).or_default();
-        if values.len() >= self.rownum {
-            return Err(malformed(
-                "a column was given two values for one cell".into(),
-            ));
-        }
-        values.resize(self.rownum - 1, 0);
-        values.push(colvalue);
-
-        Ok(())
+        push_value(&mut self.intcoldata, self.rownum, colname, colvalue)
     }
 
     /// Parse a single line from an estimator file and update the column data

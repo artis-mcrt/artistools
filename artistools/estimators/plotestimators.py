@@ -5,12 +5,12 @@ Examples are temperatures, populations, heating/cooling rates.
 """
 
 import argparse
-import functools
 import math
 import string
 import typing as t
 from collections.abc import Collection
 from collections.abc import Sequence
+from functools import lru_cache
 from pathlib import Path
 
 import matplotlib.axes as mplax
@@ -74,7 +74,7 @@ def get_elemcolor(atomic_number: int | None = None, elsymbol: str | None = None)
     return palette[atomic_number % len(palette)]
 
 
-@functools.cache
+@lru_cache(maxsize=1)
 def _get_unreserved_elemcolors() -> tuple[tuple[float, float, float, float], ...]:
     """Return the colours available to elements with no reserved colour, in a stable order."""
     from artistools.plottools import glasbey_category20_nogreys

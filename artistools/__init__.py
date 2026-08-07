@@ -92,6 +92,7 @@ from artistools.misc import add_timestep_arg as add_timestep_arg
 from artistools.misc import add_viewingangle_args as add_viewingangle_args
 from artistools.misc import average_direction_bins as average_direction_bins
 from artistools.misc import check_averaging_angles as check_averaging_angles
+from artistools.misc import drop_trailing_null_column as drop_trailing_null_column
 from artistools.misc import firstexisting as firstexisting
 from artistools.misc import firstexisting_or_none as firstexisting_or_none
 from artistools.misc import flatten_list as flatten_list

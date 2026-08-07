@@ -12,11 +12,33 @@ from functools import lru_cache
 from pathlib import Path
 
 import polars as pl
+import polars.selectors as cs
 
 COMPRESSED_EXTENSIONS = (".zst", ".gz", ".xz")
 
 # polars can read these compressed formats directly from a path
 POLARS_READABLE_EXTENSIONS = (".zst", ".gz")
+
+
+@t.overload
+def drop_trailing_null_column(df: pl.DataFrame) -> pl.DataFrame: ...
+
+
+@t.overload
+def drop_trailing_null_column(df: pl.LazyFrame) -> pl.LazyFrame: ...
+
+
+def drop_trailing_null_column(df: pl.DataFrame | pl.LazyFrame) -> pl.DataFrame | pl.LazyFrame:
+    """Drop the all-null last column that a trailing space on every line of an ARTIS text file produces.
+
+    Call this on the frame as it comes back from read_csv/scan_csv, before adding any column of your own: the
+    check is positional, so a column appended first would be tested instead and the null column would survive.
+    """
+    isnullcol = df.select(cs.by_index(-1).is_null().all())
+    if isinstance(isnullcol, pl.LazyFrame):
+        isnullcol = isnullcol.collect()
+
+    return df.drop(cs.by_index(-1)) if isnullcol.item() else df
 
 
 def print_saved(filepath: Path | str) -> None:

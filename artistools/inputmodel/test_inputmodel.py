@@ -1846,7 +1846,7 @@ def _write_2d_model(
     modeldir: Path, ncoordgridrcyl: int, ncoordgridz: int, vmax_cmps: float, t_model_days: float, zshift: float = 0.0
 ) -> Path:
     """Write a 2D cylindrical model.txt whose cell midpoints follow the ARTIS grid definition."""
-    t_model_s = t_model_days * 86400.0
+    t_model_s = t_model_days * at.constants.day_to_s
     wid_init_rcyl = vmax_cmps * t_model_s / ncoordgridrcyl
     wid_init_z = 2 * vmax_cmps * t_model_s / ncoordgridz
 
@@ -1877,7 +1877,7 @@ def test_get_modeldata_2d(tmp_path: Path) -> None:
     assert modelmeta["npts_model"] == ncoordgridrcyl * ncoordgridz
     assert math.isclose(modelmeta["vmax_cmps"], vmax_cmps)
 
-    t_model_s = t_model_days * 86400.0
+    t_model_s = t_model_days * at.constants.day_to_s
     assert math.isclose(modelmeta["wid_init_rcyl"], vmax_cmps * t_model_s / ncoordgridrcyl)
     assert math.isclose(modelmeta["wid_init_z"], 2 * vmax_cmps * t_model_s / ncoordgridz)
 
@@ -1895,7 +1895,7 @@ def test_get_modeldata_2d_rejects_misplaced_cells(tmp_path: Path) -> None:
     """Cell midpoints inconsistent with vmax and the grid size must be rejected rather than read silently."""
     ncoordgridrcyl, ncoordgridz = 4, 6
     vmax_cmps, t_model_days = 1.0e9, 1.0
-    wid_init_z = 2 * vmax_cmps * t_model_days * 86400.0 / ncoordgridz
+    wid_init_z = 2 * vmax_cmps * t_model_days * at.constants.day_to_s / ncoordgridz
     # shift every cell a whole cell width along z, which no cell centre can be
     modelfile = _write_2d_model(tmp_path, ncoordgridrcyl, ncoordgridz, vmax_cmps, t_model_days, zshift=1.5 * wid_init_z)
 

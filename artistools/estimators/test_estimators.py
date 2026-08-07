@@ -577,6 +577,7 @@ def test_get_elemcolor_is_stable_and_unbounded() -> None:
     plots that preceded it in the same process, and the eleventh element raised IndexError.
     """
     from artistools.estimators.plotestimators import colors_tab10
+    from artistools.estimators.plotestimators import elementcolors
     from artistools.estimators.plotestimators import get_elemcolor
 
     assert get_elemcolor(elsymbol="Fe") == colors_tab10[0]
@@ -591,9 +592,9 @@ def test_get_elemcolor_is_stable_and_unbounded() -> None:
     assert get_elemcolor(elsymbol="O") == get_elemcolor(atomic_number=8)
 
     # a reserved colour must stay unique to its element, so that Fe, Ni and Co remain identifiable
-    reserved = {colors_tab10[0], colors_tab10[1], colors_tab10[2]}
-    unreserved = [get_elemcolor(atomic_number=Z) for Z in range(1, 93) if Z not in {26, 27, 28}]
-    assert not reserved.intersection(unreserved)
+    reservedZ = {at.get_atomic_number(elsymbol) for elsymbol in elementcolors}
+    unreserved = [get_elemcolor(atomic_number=Z) for Z in range(1, 93) if Z not in reservedZ]
+    assert not set(elementcolors.values()).intersection(unreserved)
 
 
 def test_estimparse_index_columns_are_integers() -> None:

@@ -135,7 +135,7 @@ def test_get_levels_photoionisation_level_alignment() -> None:
     """
     from artistools.atomic._atomic_core import parse_phixsdata
 
-    phixsdict = parse_phixsdata(modelpath / "phixsdata_v2.txt.xz", ionlist=[(26, 1)])
+    phixsdict = parse_phixsdata(modelpath / "phixsdata_v2.txt", ionlist=[(26, 1)])
     dflevels = at.atomic.get_levels(modelpath, ionlist=[(26, 1)], get_photoionisations=True)
     levels = dflevels.filter((pl.col("Z") == 26) & (pl.col("ion_stage") == 1)).item(0, "levels")
 
