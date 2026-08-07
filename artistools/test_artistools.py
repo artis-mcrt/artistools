@@ -1053,3 +1053,21 @@ def test_write_lbol_edep(tmp_path: Path) -> None:
         assert timedays > 0.0
         assert lbol > 0.0
         assert edep > 0.0
+
+
+def test_write_lbol_edep_ntimes_matches_rows(tmp_path: Path) -> None:
+    """The NTIMES header must count the rows actually written, not the timesteps asked for.
+
+    A selected timestep with no light curve or deposition data is dropped by the join, so a header quoting
+    len(selected_timesteps) would promise more times than the file contains and misalign every reader.
+    """
+    from artistools.writecomparisondata import write_lbol_edep
+
+    outputpath = tmp_path / "lbol_edep.txt"
+    write_lbol_edep(modelpath_classic_3d, [0, 1, 2, 5, 9999], outputpath)
+
+    lines = outputpath.read_text(encoding="utf-8").splitlines()
+    datalines = [line for line in lines if not line.startswith("#")]
+    assert lines[0] == f"#NTIMES: {len(datalines)}"
+    # timestep 9999 does not exist, so it must not be counted
+    assert len(datalines) == 4

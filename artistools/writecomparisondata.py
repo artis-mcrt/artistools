@@ -178,15 +178,20 @@ def write_lbol_edep(modelpath: str | Path, selected_timesteps: Sequence[int], ou
         .join(at.get_deposition(modelpath), on="timestep", how="inner")
         .filter(pl.col("timestep").is_in(list(selected_timesteps)))
         .sort("timestep")
-        .select("time_days", "luminosity_Lsun", "total_dep_Lsun")
+        .select("timestep", "time_days", "luminosity_Lsun", "total_dep_Lsun")
         .collect()
     )
 
+    if missing := sorted(set(selected_timesteps) - set(dflightcurve["timestep"])):
+        print(f"WARNING: no light curve or deposition data for timesteps {missing}. They are left out of the file")
+
     with outputpath.open("w", encoding="utf-8") as f:
-        f.write(f"#NTIMES: {len(selected_timesteps)}\n")
+        # the row count, not len(selected_timesteps): a selected timestep missing from either input is dropped by
+        # the join above, and a header promising more times than the file contains would misalign every reader
+        f.write(f"#NTIMES: {dflightcurve.height}\n")
         f.write("#time[d] Lbol[erg/s] Edep[erg/s] \n")
 
-        for time_days, luminosity_Lsun, total_dep_Lsun in dflightcurve.iter_rows():
+        for time_days, luminosity_Lsun, total_dep_Lsun in dflightcurve.drop("timestep").iter_rows():
             f.write(
                 f"{time_days:.2f} {luminosity_Lsun * at.constants.Lsun_to_erg_per_s:.2e}"
                 f" {total_dep_Lsun * at.constants.Lsun_to_erg_per_s:.2e}\n"

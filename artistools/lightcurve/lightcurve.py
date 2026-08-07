@@ -464,15 +464,15 @@ def get_colour_delta_mag(
 def read_hesma_lightcurve_file(hesma_modelpath: Path | str) -> pd.DataFrame:
     """Read a HESMA model light curve, taking the column names from a leading comment line if there is one."""
     hesma_modelpath = Path(hesma_modelpath)
-    with hesma_modelpath.open(encoding="utf-8") as f:
+    with at.zopen(hesma_modelpath) as f:
         first_line = f.readline()
 
     if first_line.lstrip().startswith("#"):
         # split the header into column names. Iterating the line itself would give one "column" per character
         column_names = first_line.lstrip().removeprefix("#").split()
-        return pd.read_csv(hesma_modelpath, sep=r"\s+", header=None, comment="#", names=column_names)
+        return pd.read_csv(at.zopen(hesma_modelpath), sep=r"\s+", header=None, comment="#", names=column_names)
 
-    return pd.read_csv(hesma_modelpath, sep=r"\s+")
+    return pd.read_csv(at.zopen(hesma_modelpath), sep=r"\s+")
 
 
 def read_hesma_lightcurve(args: argparse.Namespace) -> pd.DataFrame:

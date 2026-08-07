@@ -608,3 +608,27 @@ if __name__ == "__main__":
 
     assert proc.returncode == 0, f"parallel_map failed under a fork default:\n{proc.stderr}"
     assert "OK" in proc.stdout
+
+
+def test_drop_trailing_null_column() -> None:
+    """The all-null trailing column must go, but only when there is data to judge it by.
+
+    is_null().all() is vacuously true over an empty column, so a file with no data rows would otherwise lose a
+    real column and no longer match the schema of its sibling rank files.
+    """
+    # a genuine trailing null column, as a line-ending space produces
+    assert at.drop_trailing_null_column(pl.DataFrame({"a": [1, 2], "b": [None, None]})).columns == ["a"]
+    assert at.drop_trailing_null_column(pl.LazyFrame({"a": [1, 2], "b": [None, None]})).collect_schema().names() == [
+        "a"
+    ]
+
+    # a real last column, including one that is only partly null, must stay
+    assert at.drop_trailing_null_column(pl.DataFrame({"a": [1, 2], "b": [3, 4]})).columns == ["a", "b"]
+    assert at.drop_trailing_null_column(pl.DataFrame({"a": [1, 2], "b": [None, 4]})).columns == ["a", "b"]
+
+    # no rows means nothing to judge, so keep every column
+    emptyschema = {"a": pl.Int64, "b": pl.Float64}
+    assert at.drop_trailing_null_column(pl.DataFrame({"a": [], "b": []}, schema=emptyschema)).columns == ["a", "b"]
+    assert at.drop_trailing_null_column(
+        pl.LazyFrame({"a": [], "b": []}, schema=emptyschema)
+    ).collect_schema().names() == ["a", "b"]

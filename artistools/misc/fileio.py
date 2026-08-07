@@ -34,7 +34,9 @@ def drop_trailing_null_column(df: pl.DataFrame | pl.LazyFrame) -> pl.DataFrame |
     Call this on the frame as it comes back from read_csv/scan_csv, before adding any column of your own: the
     check is positional, so a column appended first would be tested instead and the null column would survive.
     """
-    isnullcol = df.select(cs.by_index(-1).is_null().all())
+    # require at least one row: is_null().all() is vacuously true over an empty column, which would drop a real
+    # column from a file that has no data rows (a rank that emitted no packets, say)
+    isnullcol = df.select(cs.by_index(-1).is_null().all() & (pl.len() > 0))
     if isinstance(isnullcol, pl.LazyFrame):
         isnullcol = isnullcol.collect()
 
@@ -149,7 +151,10 @@ def firstexisting(
 
 
 def firstexisting_or_none(
-    filelist: Sequence[str | Path], folder: Path | str = ".", tryzipped: bool = True, search_subfolders: bool = True
+    filelist: Sequence[str | Path] | str | Path,
+    folder: Path | str = ".",
+    tryzipped: bool = True,
+    search_subfolders: bool = True,
 ) -> Path | None:
     """Return the first existing file in file list, or None if none exist."""
     try:

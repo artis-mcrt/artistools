@@ -208,15 +208,20 @@ def read_modelfile_text(
             .select(
                 rcyl_offby=(pl.col("pos_rcyl_mid") - wid_init_rcyl * (n_r + 0.5)).abs().max(),
                 z_offby=(pl.col("pos_z_mid") - (pos_z_min_grid + wid_init_z * (n_z + 0.5))).abs().max(),
+                rcyl_expected=(wid_init_rcyl * (n_r + 0.5)).abs().max(),
+                z_expected=(pos_z_min_grid + wid_init_z * (n_z + 0.5)).abs().max(),
             )
             .collect()
             .row(0, named=True)
         )
 
-        assert maxoffby["rcyl_offby"] <= wid_init_rcyl / 2.0, (
+        # half a cell width, plus the relative term np.isclose() used to contribute, so that a model which
+        # loaded before this check was vectorised is not now rejected over float32 rounding of a ~1e15 cm position
+        rtol = 1.0e-5
+        assert maxoffby["rcyl_offby"] <= wid_init_rcyl / 2.0 + rtol * maxoffby["rcyl_expected"], (
             f"pos_rcyl_mid is up to {maxoffby['rcyl_offby']:.3e} cm from the expected cell centre"
         )
-        assert maxoffby["z_offby"] <= wid_init_z / 2.0, (
+        assert maxoffby["z_offby"] <= wid_init_z / 2.0 + rtol * maxoffby["z_expected"], (
             f"pos_z_mid is up to {maxoffby['z_offby']:.3e} cm from the expected cell centre"
         )
 

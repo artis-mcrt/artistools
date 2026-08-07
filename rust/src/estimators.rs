@@ -63,8 +63,10 @@ struct EstimatorColumns {
     rownum: usize,
 }
 
-/// Columns that identify a row rather than measure a quantity, and so must stay exact integers
-const INDEX_COLUMNS: [&str; 3] = ["timestep", "modelgridindex", "titeration"];
+/// Columns that identify a row rather than measure a quantity, and so must stay exact integers.
+/// Only names verified to be written as integers belong here: parsing is strict, so listing a column that
+/// some ARTIS version writes as a float would turn a readable file into a hard error.
+const INDEX_COLUMNS: [&str; 2] = ["timestep", "modelgridindex"];
 
 /// Pad every column of a store out to `rownum`, for the columns the current cell did not define
 fn resize_columns<T: Copy + Default>(coldata: &mut HashMap<String, Vec<T>>, rownum: usize) {

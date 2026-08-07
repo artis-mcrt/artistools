@@ -9,9 +9,11 @@ import math
 import string
 import typing as t
 from collections.abc import Collection
+from collections.abc import Mapping
 from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
+from types import MappingProxyType
 
 import matplotlib.axes as mplax
 import matplotlib.pyplot as plt
@@ -45,8 +47,13 @@ colors_tab10 = [
     (0.09019607843137255, 0.7450980392156863, 0.8117647058823529, 1.0),
 ]
 
-# reserve colours for these elements
-elementcolors = {"Fe": colors_tab10[0], "Ni": colors_tab10[1], "Co": colors_tab10[2]}
+# reserve colours for these elements. Immutable, because _get_unreserved_elemcolors() derives the rest of the
+# palette from it once and caches the result, so a later mutation would silently hand a reserved colour out twice
+elementcolors: t.Final[Mapping[str, tuple[float, float, float, float]]] = MappingProxyType({
+    "Fe": colors_tab10[0],
+    "Ni": colors_tab10[1],
+    "Co": colors_tab10[2],
+})
 
 VARIABLE_ALIASES = {"T_e": "Te", "n_e": "nne", "T_R": "TR", "T_J": "TJ"}
 
@@ -63,6 +70,9 @@ def get_elemcolor(atomic_number: int | None = None, elsymbol: str | None = None)
     if atomic_number is None:
         assert elsymbol is not None
         atomic_number = at.get_atomic_number(elsymbol)
+        if atomic_number < 0:
+            msg = f"{elsymbol!r} is not an element symbol, so it has no colour"
+            raise ValueError(msg)
     else:
         elsymbol = at.get_elsymbol(atomic_number)
 
