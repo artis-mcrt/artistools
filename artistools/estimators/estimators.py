@@ -106,10 +106,13 @@ def get_estimators_rankbatch_parquetfile(
     if not parquetfilepath.exists():
         generate_parquet = True
     elif textsource_mtime and textsource_mtime > parquetfilepath.stat().st_mtime:
+        # leave the stale file in place: write_parquet_atomic() swaps the new one in with a rename, so the path
+        # always resolves to a complete parquet. Deleting it first opens a window in which a concurrent reader
+        # finds it missing or half-swapped
         print(
-            f"  {parquetfilepath.relative_to(modelpath.parent)} is older than the estimator text files. File will be deleted and regenerated..."
+            f"  {parquetfilepath.relative_to(modelpath.parent)} is older than the estimator text files."
+            " File will be regenerated..."
         )
-        parquetfilepath.unlink()
         generate_parquet = True
     else:
         generate_parquet = False

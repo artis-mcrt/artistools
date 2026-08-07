@@ -1014,11 +1014,15 @@ def get_initelemabundances(modelpath: Path | str = ".", printwarningsonly: bool 
     textfilepath = firstexisting("abundances.txt", folder=modelpath, tryzipped=True)
     parquetfilepath = stripallsuffixes(Path(textfilepath)).with_suffix(".txt.parquet.tmp")
 
-    if parquetfilepath.exists() and Path(textfilepath).stat().st_mtime > parquetfilepath.stat().st_mtime:
-        print(f"{textfilepath} has been modified after {parquetfilepath}. Deleting out of date parquet file.")
-        parquetfilepath.unlink()
+    # leave a stale cache in place rather than deleting it: write_parquet_atomic() swaps the new one in with a
+    # rename, so the path always resolves to a complete parquet even while another process is regenerating it
+    cache_is_current = (
+        parquetfilepath.is_file() and Path(textfilepath).stat().st_mtime <= parquetfilepath.stat().st_mtime
+    )
+    if parquetfilepath.is_file() and not cache_is_current:
+        print(f"{textfilepath} has been modified after {parquetfilepath}. Regenerating out of date parquet file.")
 
-    if parquetfilepath.is_file():
+    if cache_is_current:
         if not printwarningsonly:
             print(f"Reading {parquetfilepath}")
 
