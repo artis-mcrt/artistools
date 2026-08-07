@@ -1,3 +1,5 @@
+"""Compare ARTIS abundances and heating rates against GSI nuclear network trajectory calculations."""
+
 __all__ = ["plot", "plotqdotabund"]
 
 from artistools.gsinetwork import decayproducts as decayproducts

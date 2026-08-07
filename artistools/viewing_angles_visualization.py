@@ -1,3 +1,5 @@
+"""Animate the ARTIS viewing angle bins as vectors around a 3D model."""
+
 import argparse
 import sys
 from collections.abc import Sequence
@@ -29,7 +31,7 @@ def get_theta_phi(anglebin: int) -> tuple[float | int | None, float | int | None
 
 
 def gen_viewing_angle_df(length: int) -> pd.DataFrame:
-    # Build viewing angle vector DataFrame
+    """Return the Cartesian endpoint of a vector of the given length pointing into each viewing angle bin."""
     viewing_angles: dict[str, list[float | str]] = {"Angle-bin": [], "x_coord": [], "y_coord": [], "z_coord": []}
 
     for i in range(100):
@@ -167,6 +169,7 @@ def viewing_angles_visualisation(
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
+    """Add arguments to an argparse parser object."""
     parser.add_argument("modelfile", help="Path to the ARTIS model.")
     add_outputfile_arg(
         parser,

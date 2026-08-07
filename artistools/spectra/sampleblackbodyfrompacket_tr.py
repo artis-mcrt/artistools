@@ -1,3 +1,5 @@
+"""Resample r-packet frequencies from a blackbody, to check the packet emission sampling used by ARTIS."""
+
 import copy
 import math
 import random
@@ -39,6 +41,8 @@ type_ids = {v: k for k, v in types.items()}
 
 
 def sample_planck(temperature: float, nu_max_r: float, nu_min_r: float) -> float:
+    """Return a frequency drawn from the Planck function between nu_min_r and nu_max_r by rejection sampling."""
+
     def planck(nu: float, temperature: float) -> float:
         return TWOHOVERCLIGHTSQUARED * pow(nu, 3) / (math.exp(HOVERKB * nu / temperature) - 1)
 

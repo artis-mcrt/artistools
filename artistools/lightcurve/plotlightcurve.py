@@ -1,4 +1,6 @@
 # PYTHON_ARGCOMPLETE_OK
+"""Plot ARTIS bolometric and band light curves, colour evolution, and deposition curves."""
+
 import argparse
 import math
 import sys
@@ -42,6 +44,7 @@ def plot_deposition_thermalisation(
     args: argparse.Namespace,
     **plotkwargs: t.Any,
 ) -> None:
+    """Plot the gamma-ray and positron deposition rates, and the thermalisation efficiencies when axistherm is given."""
     if args.plotthermalisation:
         dfmodel, _ = at.inputmodel.get_modeldata(modelpath, derived_cols=["mass_g", "vel_r_mid", "kinetic_en_erg"])
 
@@ -228,6 +231,7 @@ def plot_artis_lightcurve(
     use_pellet_decay_time: bool = False,
     **plotkwargs: t.Any,
 ) -> dict[int, pl.DataFrame] | None:
+    """Plot one model's bolometric light curve, and return the plotted data per direction bin."""
     if args is None:
         args = argparse.Namespace()
     if escape_type not in {"TYPE_RPKT", "TYPE_GAMMA"}:
@@ -731,6 +735,7 @@ def make_lightcurve_plot(
 
 
 def create_axes(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[t.Any] | mplax.Axes]:
+    """Return the figure and axes, using a subplot grid when several filters or colours are plotted."""
     if "labelfontsize" in args:
         font = {"size": args.labelfontsize}
         mpl.rc("font", **font)
@@ -780,6 +785,7 @@ def get_linelabel(
     angle_definition: dict[int, str] | None,
     args: argparse.Namespace,
 ) -> str:
+    """Return the legend label for one series, from the model name and viewing angle."""
     if angle is not None and angle != -1:
         assert angle_definition is not None
         return angle_definition[angle] if args.nomodelname else f"{modelname} {angle_definition[angle]}"
@@ -789,6 +795,7 @@ def get_linelabel(
 
 
 def set_lightcurveplot_legend(ax: mplax.Axes | npt.NDArray[t.Any], args: argparse.Namespace) -> None:
+    """Add the legend, placing it on args.legendsubplotnumber when the figure has subplots."""
     if args.nolegend:
         return
 
@@ -815,6 +822,7 @@ def set_lightcurve_plot_labels(
     args: argparse.Namespace,
     band_name: str | None = None,
 ) -> tuple[mplfig.Figure, mplax.Axes | npt.NDArray[t.Any]]:
+    """Set the axis labels and limits for a band magnitude or colour evolution plot."""
     ylabel = None
     if args.subplots:
         if args.filter:
@@ -846,6 +854,7 @@ def set_lightcurve_plot_labels(
 
 
 def make_colorbar_viewingangles_colormap() -> t.Any:
+    """Return a tab10 scalar mappable covering the ten viewing angle bins."""
     norm = mplcolors.Normalize(vmin=0, vmax=9)
     scaledmap = mplcm.ScalarMappable(cmap="tab10", norm=norm)
     scaledmap.set_array([])
@@ -860,6 +869,7 @@ def get_viewinganglecolor_for_colorbar(
     plotkwargs: dict[str, t.Any],
     args: argparse.Namespace,
 ) -> tuple[dict[str, t.Any], int]:
+    """Set the series colour from the direction bin's cos(theta) or phi, and return the kwargs and the colour index."""
     nphibins = at.get_viewingdirection_phibincount()
     if args.colorbarcostheta:
         costheta_index = angle // nphibins
@@ -883,6 +893,7 @@ def make_colorbar_viewingangles(
     fig: mplfig.Figure | None = None,
     ax: mplax.Axes | Iterable[mplax.Axes] | None = None,
 ) -> None:
+    """Add a colorbar labelled with the cos(theta) or phi viewing angle bin boundaries."""
     if args.colorbarcostheta:
         # ticklabels = costheta_viewing_angle_bins
         ticklabels = [" -1", " -0.8", " -0.6", " -0.4", " -0.2", " 0", " 0.2", " 0.4", " 0.6", " 0.8", " 1"]
@@ -931,6 +942,7 @@ def make_band_lightcurves_plot(
     outputfolder: Path | str,
     args: argparse.Namespace,
 ) -> None:
+    """Plot band magnitude light curves for every model and save the figure."""
     if args.labelfontsize is None:
         args.labelfontsize = 22
     fig, ax = create_axes(args)
@@ -1072,6 +1084,7 @@ def colour_evolution_plot(
     outputfolder: str | Path,
     args: argparse.Namespace,
 ) -> None:
+    """Plot the evolution of the colour between each pair of bands for every model, and save the figure."""
     if args.labelfontsize is None:
         args.labelfontsize = 24
     angle_counter = 0
@@ -1193,6 +1206,7 @@ def plot_lightcurve_from_refdata(
     ax: npt.NDArray[t.Any] | mplax.Axes,
     plotnumber: int,
 ) -> str | None:
+    """Plot an observed band light curve, dereddened with CCM89, and return its legend label."""
     from extinction import apply
     from extinction import ccm89
 
@@ -1278,6 +1292,7 @@ def plot_color_evolution_from_data(
     plotnumber: int,
     args: argparse.Namespace,
 ) -> None:
+    """Plot the observed colour evolution between two bands, dereddened with CCM89."""
     from extinction import apply
     from extinction import ccm89
 
@@ -1336,6 +1351,7 @@ def plot_color_evolution_from_data(
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
+    """Add arguments to an argparse parser object."""
     add_modelpath_arg(
         parser,
         positional=True,

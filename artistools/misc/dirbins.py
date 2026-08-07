@@ -84,14 +84,17 @@ def average_direction_bins(
 
 
 def get_viewingdirectionbincount() -> int:
+    """Return the total number of viewing direction bins."""
     return get_viewingdirection_phibincount() * get_viewingdirection_costhetabincount()
 
 
 def get_viewingdirection_phibincount() -> int:
+    """Return the number of phi bins that the viewing directions are divided into."""
     return 10
 
 
 def get_viewingdirection_costhetabincount() -> int:
+    """Return the number of cos(theta) bins that the viewing directions are divided into."""
     return 10
 
 
@@ -117,12 +120,14 @@ def get_dirbins(average_over_phi: bool = False, average_over_theta: bool = False
 
 
 def print_theta_phi_definitions() -> None:
+    """Print the spherical polar convention that the theta and phi direction bins follow."""
     print(
         "Spherical polar: x = r sinθ cosϕ, y = r sinθ sinϕ, z = r cosθ -> θ=0 is +Z and θ=π is -Z. At Z=0, ϕ=0 is +X and ϕ=π/2 is +Y"
     )
 
 
 def get_phi_bins(usedegrees: bool) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating], list[str]]:
+    """Return the lower and upper phi boundaries of each direction bin, and a label for each."""
     nphibins = get_viewingdirection_phibincount()
     # pi/2 must be an exact boundary because of the change in behaviour there
     assert nphibins % 2 == 0
@@ -173,6 +178,10 @@ def get_phi_bins(usedegrees: bool) -> tuple[npt.NDArray[np.floating], npt.NDArra
 def get_costheta_bins(
     usedegrees: bool, usepiminustheta: bool = False
 ) -> tuple[tuple[float, ...], tuple[float, ...], list[str]]:
+    """Return the lower and upper cos(theta) boundaries of each direction bin, and a label for each.
+
+    The boundaries are always cos(theta); usedegrees and usepiminustheta only change how the labels are written.
+    """
     ncosthetabins = get_viewingdirection_costhetabincount()
     # the costheta bins are ordered by ascending cos θ from -1. to 1.,
     # which means that they are in descending order of theta from π to 0
@@ -204,12 +213,14 @@ def get_costheta_bins(
 
 
 def get_costhetabin_phibin_labels(usedegrees: bool) -> tuple[list[str], list[str]]:
+    """Return the cos(theta) and phi bin labels."""
     _, _, costhetabinlabels = get_costheta_bins(usedegrees=usedegrees)
     _, _, phibinlabels = get_phi_bins(usedegrees=usedegrees)
     return costhetabinlabels, phibinlabels
 
 
 def get_opacity_condition_label(z_exclude: int) -> str:
+    """Return the label for a virtual packet opacity exclusion code, such as 'no-bb' or 'no-Fe'."""
     from artistools.atomic._atomic_core import get_elsymbol
 
     # codes match the opacityexclusions handling in read_vpktparameterfile() and trace_vpkt_direction()
@@ -219,6 +230,7 @@ def get_opacity_condition_label(z_exclude: int) -> str:
 
 
 def get_vspec_dir_labels(modelpath: str | Path, usedegrees: bool = False) -> dict[int, str]:
+    """Return a label for each virtual packet observer direction and opacity choice combination."""
     vpkt_config = get_vpkt_config(modelpath)
     dirlabels = {}
     for dirindex in range(vpkt_config["nobsdirections"]):

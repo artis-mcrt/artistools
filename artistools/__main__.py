@@ -1,4 +1,6 @@
 # PYTHON_ARGCOMPLETE_OK
+"""Entry point for `python -m artistools` and the artistools command."""
+
 import argparse
 import os
 import sys

@@ -1,3 +1,5 @@
+"""Solve the Spencer-Fano equation for a cell's nonthermal electron spectrum and plot the energy deposition."""
+
 import argparse
 import sys
 import typing as t
@@ -21,6 +23,7 @@ defaultoutputfile = "spencerfano_cell{cell:03d}_ts{timestep:02d}_{timedays:.0f}d
 
 
 def make_ntstats_plot(ntstatfile: str | Path) -> None:
+    """Plot the fractions of nonthermal energy going to heating, ionisation, and excitation over time."""
     fig, ax = plt.subplots(
         nrows=1, ncols=1, sharex=True, figsize=(4, 3), tight_layout={"pad": 0.5, "w_pad": 0.3, "h_pad": 0.3}
     )
@@ -60,6 +63,7 @@ def make_ntstats_plot(ntstatfile: str | Path) -> None:
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
+    """Add arguments to an argparse parser object."""
     add_modelpath_arg(parser, default=".")
 
     add_timedays_arg(parser, kind="str")

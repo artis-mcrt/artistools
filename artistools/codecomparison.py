@@ -20,6 +20,7 @@ import artistools as at
 
 
 def get_timestep_times(modelpath: Path | str, loc: t.Literal["start", "mid", "end", "delta"] = "mid") -> list[float]:
+    """Return the timestep times [days] of a code comparison workshop model."""
     modelpath = Path(modelpath)
     _, modelname, codename = modelpath.parts
 
@@ -171,6 +172,7 @@ def read_reference_estimators(
 
 
 def get_spectra(modelpath: str | Path) -> tuple[pl.DataFrame, npt.NDArray[np.floating]]:
+    """Return the spectra of a code comparison workshop model, and the time [days] of each spectrum."""
     modelpath = Path(modelpath)
     virtualfolder, inputmodel, codename = modelpath.parts
     assert virtualfolder == "codecomparison"
@@ -192,6 +194,7 @@ def get_spectra(modelpath: str | Path) -> tuple[pl.DataFrame, npt.NDArray[np.flo
 
 
 def plot_spectrum(modelpath: str | Path, timedays: str | float, axis: mplax.Axes, **plotkwargs: t.Any) -> None:
+    """Plot a code comparison workshop model's spectrum at the time closest to timedays."""
     dfspectra, arr_timedays = get_spectra(modelpath)
     timeindex = int((np.abs(arr_timedays - float(timedays))).argmin())
     timedays_found = dfspectra.columns[timeindex + 1]

@@ -1,3 +1,5 @@
+"""Write bolometric light curve data out as plain text files, one per model."""
+
 import typing as t
 from pathlib import Path
 
@@ -8,7 +10,7 @@ import artistools as at
 
 
 def get_bol_lc_from_spec(modelpath: Path) -> pd.DataFrame:
-
+    """Return log10(bolometric luminosity) per direction bin between 5 and 80 days, integrated from the spectra."""
     res_specdata = at.spectra.read_spec_res(modelpath)
     timearray = res_specdata[0].columns[1:]
     times = [time for time in timearray if 5 < float(time) < 80]
@@ -35,6 +37,7 @@ def get_bol_lc_from_spec(modelpath: Path) -> pd.DataFrame:
 
 
 def get_bol_lc_from_lightcurveout(modelpath: Path, res: bool = False) -> pd.DataFrame:
+    """Return the bolometric luminosity against time read from light_curve.out, or light_curve_res.out when res."""
     lcdataframes = {
         dirbin: df.collect().to_pandas()
         for dirbin, df in at.lightcurve.readfile(
@@ -58,6 +61,7 @@ def get_bol_lc_from_lightcurveout(modelpath: Path, res: bool = False) -> pd.Data
 
 
 def main() -> None:
+    """Write a bolometric light curve text file for each model in the hardcoded model list."""
     # modelnames = ['M08_03', 'M08_05', 'M08_10', 'M09_03', 'M09_05', 'M09_10',
     #               'M10_02_end55', 'M10_03', 'M10_05', 'M10_10', 'M11_05_1']
     modelnames = ["M2a"]

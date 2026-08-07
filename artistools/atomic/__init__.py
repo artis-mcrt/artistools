@@ -1,3 +1,5 @@
+"""Atomic data: element and ion names, level and transition data, and composition files."""
+
 from artistools.atomic._atomic_core import add_transition_columns as add_transition_columns
 from artistools.atomic._atomic_core import decode_roman_numeral as decode_roman_numeral
 from artistools.atomic._atomic_core import get_atomic_number as get_atomic_number

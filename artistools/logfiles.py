@@ -100,6 +100,7 @@ def make_plot(logfiledict: dict[str, dict[int, dict[int, int]]], outputfile: Pat
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
+    """Add arguments to an argparse parser object."""
     at.add_modelpath_arg(
         parser, multiplepaths=True, default=[], helptext="Path to ARTIS model folders with model.txt and abundances.txt"
     )

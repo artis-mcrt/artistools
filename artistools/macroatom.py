@@ -1,3 +1,5 @@
+"""Plot the macro atom transition rates recorded in ARTIS macroatom_????.out files."""
+
 import argparse
 import typing as t
 from collections.abc import Sequence
@@ -18,6 +20,7 @@ defaultoutputfile = "plotmacroatom_cell{0:03d}_{1:03d}-{2:03d}.pdf"
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
+    """Add arguments to an argparse parser object."""
     add_modelpath_arg(parser, default=Path())
     # deprecated double-dash spelling kept as a hidden alias
     parser.add_argument("--modelpath", dest="modelpath", type=Path, help=argparse.SUPPRESS)
@@ -121,6 +124,7 @@ def read_files(
     timestepmax: int | None = None,
     atomic_number: int | None = None,
 ) -> pl.DataFrame:
+    """Return the macro atom transitions from the given files, filtered by cell, timestep range, and element."""
     if not files:
         print("No files")
 

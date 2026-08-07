@@ -37,6 +37,7 @@ def df_filter_minmax_bounded(
 
 
 def vec_len(vec: Sequence[float] | npt.NDArray[np.floating]) -> float:
+    """Return the Euclidean length of a vector."""
     return float(np.sqrt(np.dot(vec, vec)))
 
 

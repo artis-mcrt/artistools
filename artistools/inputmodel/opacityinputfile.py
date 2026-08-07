@@ -1,3 +1,5 @@
+"""Write and inspect the grey opacity.txt and Ye.txt input files for an ARTIS model."""
+
 import argparse
 import typing as t
 from collections.abc import Sequence
@@ -46,6 +48,7 @@ def opacity_by_Ye(outputfilepath: Path | str, griddata: pd.DataFrame | pl.DataFr
 
 
 def write_Ye_file(outputfilepath: Path | str, griddata: pl.DataFrame) -> None:
+    """Write the per-cell electron fraction to Ye.txt in the given folder."""
     assert griddata.schema["inputcellid"].is_integer()
 
     with Path(outputfilepath, "Ye.txt").open("w", encoding="utf-8") as fYe:
@@ -75,6 +78,7 @@ def get_opacity_from_file(modelpath: Path | str) -> npt.NDArray[np.float64]:
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
+    """Add arguments to an argparse parser object."""
     parser.add_argument(
         "action",
         nargs="?",

@@ -1,3 +1,5 @@
+"""Export elemental mass fractions from the ARTIS estimators to a text file."""
+
 import argparse
 import typing as t
 from collections.abc import Sequence
@@ -9,6 +11,7 @@ import artistools as at
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
+    """Add arguments to an argparse parser object."""
     parser.add_argument("-outputpath", "-o", default="massfracs.txt", help="Path to output file of mass fractions")
 
 

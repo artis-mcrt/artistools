@@ -16,6 +16,7 @@ from artistools.misc import add_outputpath_arg
 
 
 def write_spectra(modelpath: str | Path, selected_timesteps: Sequence[int], outfilepath: Path) -> None:
+    """Write the spectra at the selected timesteps in code comparison workshop format."""
     spec_data = np.loadtxt(Path(modelpath, "spec.out"))
 
     times = spec_data[0, 1:]
@@ -48,6 +49,7 @@ def write_spectra(modelpath: str | Path, selected_timesteps: Sequence[int], outf
 
 
 def write_ntimes_nvel(outfile: TextIOWrapper, selected_timesteps: Sequence[int], modelpath: str | Path) -> None:
+    """Write the header lines giving the number of times, the number of cells, and the times themselves."""
     times = at.get_timestep_times(modelpath)
     _, modelmeta = at.inputmodel.get_modeldata(modelpath)
     outfile.write(f"#NTIMES: {len(selected_timesteps)}\n")
@@ -63,6 +65,7 @@ def write_single_estimator(
     outfile: Path,
     keyname: str,
 ) -> None:
+    """Write one estimator's value in every cell at the selected timesteps, in code comparison workshop format."""
     lzmodeldata, _modelmeta = at.inputmodel.get_modeldata(modelpath, derived_cols=["vel_r_mid"])
     lzmodeldata = lzmodeldata.filter(pl.col("modelgridindex").is_in(allnonemptymgilist))
     with Path(outfile).open("w", encoding="utf-8") as f:
@@ -89,6 +92,7 @@ def write_ionfracts(
     allnonemptymgilist: Sequence[int],
     outputpath: Path,
 ) -> None:
+    """Write the ion fractions of every element in code comparison workshop format, one file per element."""
     times = at.get_timestep_times(modelpath)
     lzmodeldata, _modelmeta = at.inputmodel.get_modeldata(modelpath, derived_cols=["vel_r_mid"])
     lzmodeldata = lzmodeldata.filter(pl.col("modelgridindex").is_in(allnonemptymgilist))
@@ -136,6 +140,7 @@ def write_phys(
     allnonemptymgilist: Sequence[int],
     outputpath: Path,
 ) -> None:
+    """Write the physical conditions of every cell in code comparison workshop format."""
     times = at.get_timestep_times(modelpath)
     lzmodeldata, modelmeta = at.inputmodel.get_modeldata(modelpath, derived_cols=["vel_r_mid"])
     modeldata = lzmodeldata.filter(pl.col("modelgridindex").is_in(allnonemptymgilist)).collect()
@@ -162,7 +167,7 @@ def write_phys(
 
 
 def write_lbol_edep(modelpath: str | Path, selected_timesteps: Sequence[int], outputpath: Path) -> None:
-    # times = at.get_timestep_times(modelpath)
+    """Write the bolometric luminosity and energy deposition rate in code comparison workshop format."""
     dflightcurve = (
         at.lightcurve
         .readfile(Path(modelpath, "light_curve.out"))[-1]
@@ -189,6 +194,7 @@ def write_lbol_edep(modelpath: str | Path, selected_timesteps: Sequence[int], ou
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
+    """Add arguments to an argparse parser object."""
     add_modelpath_arg(parser, multiplepaths=True, default=[], helptext="Paths to ARTIS folders")
 
     parser.add_argument("-selected_timesteps", default=[], nargs="*", type=int, help="Selected ARTIS timesteps")

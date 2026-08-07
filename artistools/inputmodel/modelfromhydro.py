@@ -1,4 +1,6 @@
 # PYTHON_ARGCOMPLETE_OK
+"""Build an ARTIS input model from the gridded output of a neutron star merger hydrodynamics simulation."""
+
 import argparse
 import math
 import sys
@@ -20,6 +22,7 @@ from artistools.constants import Msun_to_g as MSUN
 def read_ejectasnapshot(
     pathtosnapshot: str | Path, usecols: list[str] | None, downsamplefactor: int | None
 ) -> pl.DataFrame:
+    """Read an SPH ejecta snapshot, optionally keeping only every downsamplefactor-th particle."""
     column_names = [
         "id",
         "h",
@@ -72,6 +75,7 @@ def read_ejectasnapshot(
 
 
 def get_merger_time_geomunits(pathtogriddata: Path) -> float:
+    """Return the merger time in geometric units read from tmerger.txt."""
     mergertimefile = pathtogriddata / "tmerger.txt"
     if mergertimefile.exists():
         with mergertimefile.open("rt", encoding="utf-8") as fmergertimefile:
@@ -86,6 +90,7 @@ def get_merger_time_geomunits(pathtogriddata: Path) -> float:
 
 
 def get_snapshot_time_geomunits(pathtogriddata: Path | str) -> tuple[float, float]:
+    """Return the simulation end time and the merger time, both in geometric units."""
     pathtogriddata = Path(pathtogriddata)
     snapshotinfofiles = list(pathtogriddata.glob("*_info.dat*"))
     if not snapshotinfofiles:
@@ -119,6 +124,10 @@ def get_snapshot_time_geomunits(pathtogriddata: Path | str) -> tuple[float, floa
 def read_griddat_file(
     pathtogriddata: str | Path, targetmodeltime_days: float | None = None
 ) -> tuple[pd.DataFrame, float, float, float, dict[str, t.Any]]:
+    """Read grid.dat and return the cell data, the model and merger times, vmax, and the model metadata.
+
+    When targetmodeltime_days is given, the grid is expanded homologously to that time.
+    """
     griddatfilepath = Path(pathtogriddata) / "grid.dat"
 
     # Get simulation time for ejecta snapshot
@@ -213,7 +222,7 @@ def add_mass_to_center(
     vmax: float,  # ruff:ignore[unused-function-argument]
     args: argparse.Namespace,  # ruff:ignore[unused-function-argument]
 ) -> pd.DataFrame:
-
+    """Fill the low-velocity hole at the grid centre with the mass profile of Just et al. (2021) Fig. 16."""
     print(griddata)
 
     # Just (2021) Fig. 16 top left panel
@@ -264,6 +273,7 @@ def makemodelfromgriddata(
     scalevelocity: float = 1.0,
     args: argparse.Namespace | None = None,
 ) -> None:
+    """Write an ARTIS model from grid.dat, taking abundances from the trajectories under traj_root if given."""
     if args is None:
         args = argparse.Namespace()
     pddfmodel, t_model_days, t_mergertime_s, vmax, modelmeta = at.inputmodel.modelfromhydro.read_griddat_file(
@@ -362,6 +372,7 @@ def makemodelfromgriddata(
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
+    """Add arguments to an argparse parser object."""
     parser.add_argument(
         "-gridfolderpath", "-i", default=".", help="Path to folder containing grid.dat and gridcontributions.dat"
     )

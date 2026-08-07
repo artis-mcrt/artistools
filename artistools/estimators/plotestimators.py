@@ -62,10 +62,12 @@ def get_elemcolor(atomic_number: int | None = None, elsymbol: str | None = None)
 
 
 def get_ylabel(variable: str) -> str:
+    """Return the y-axis label for an estimator variable, preferring its long units over the short ones."""
     return at.estimators.get_variablelongunits(variable) or at.estimators.get_units_string(variable)
 
 
 def adjust_lightness(color: t.Any, amount: float = 0.5) -> tuple[float, float, float]:
+    """Return the colour with its lightness scaled by amount, so related series can share a hue."""
     import colorsys
 
     import matplotlib.colors as mc
@@ -171,6 +173,7 @@ def plot_init_abundances(
     args: argparse.Namespace,
     **plotkwargs: t.Any,
 ) -> None:
+    """Plot the initial abundance or mass of each species in specieslist."""
     if seriestype == "initmasses":
         estimators = estimators.with_columns(
             (pl.col(massfraccol) * pl.col("mass_g") / Msun_to_g).alias(
@@ -228,6 +231,7 @@ def plot_average_ionisation(
     args: argparse.Namespace | None = None,
     **plotkwargs: t.Any,
 ) -> None:
+    """Plot the mean ion charge of each element in params."""
     if args is None:
         args = argparse.Namespace()
 
@@ -329,6 +333,7 @@ def plot_levelpop(
     args: argparse.Namespace,
     **plotkwargs: t.Any,
 ) -> None:
+    """Plot the population of each level in params, either directly or per unit velocity."""
     if seriestype == "levelpopulation_dn_on_dvel":
         ax.set_ylabel("dN/dV [{}km$^{{-1}}$ s]")
         ax.yaxis.set_major_formatter(at.plottools.ExponentLabelFormatter(ax.get_ylabel()))
@@ -530,6 +535,7 @@ def normalise_plotitems(plotitems: t.Any, estimatorcolumns: Collection[str]) -> 
 
 
 def get_column_name(seriestype: str, atomic_number: int, ion_stage: str | int) -> tuple[str, str]:
+    """Return the estimator column name for one ion, element, or isotope, along with its plot label."""
     ionstr = at.get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
     if seriestype == "populations":
         if ion_stage == "ALL":
@@ -750,6 +756,7 @@ def plot_series(
 def get_xlist(
     xvariable: str, estimators: pl.LazyFrame, timestepslist: Collection[int] | None, args: t.Any
 ) -> tuple[list[float | int], list[int], list[int], pl.LazyFrame]:
+    """Return the x values, model grid indices, and timesteps to plot, along with the filtered estimators."""
     if timestepslist is not None:
         estimators = estimators.filter(pl.col("timestep").is_in(timestepslist))
 
@@ -963,6 +970,7 @@ def make_figure(
     args: t.Any,
     **plotkwargs: t.Any,
 ) -> str:
+    """Plot one subplot per entry in plotlist, save the figure, and return the output filename."""
     modelname = at.get_model_name(modelpath)
 
     fig, axes = plt.subplots(
@@ -1063,6 +1071,7 @@ def make_figure(
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
+    """Add arguments to an argparse parser object."""
     add_modelpath_arg(
         parser, default=".", helptext="Path to ARTIS folder (or virtual path e.g. codecomparison/ddc10/cmfgen)"
     )

@@ -63,6 +63,8 @@ def parse_emfeaturesearch(strfeature: str) -> tuple[int | float, ...]:
 
 
 class FeatureTuple(t.NamedTuple):
+    """A spectral feature: its label and wavelength range, and the line list entries that make it up."""
+
     colname: str
     featurelabel: str
     approxlambda: float | str
@@ -134,6 +136,7 @@ def get_line_luminosities_from_pops(
     arr_tstart: Sequence[float] | None = None,
     arr_tend: Sequence[float] | None = None,
 ) -> pl.DataFrame:
+    """Return each feature's luminosity against time, computed from the NLTE level populations."""
     if arr_tstart is None:
         arr_tstart = at.get_timestep_times(modelpath, loc="start")
     if arr_tend is None:
@@ -237,6 +240,7 @@ def get_closelines(
     lowerlevelindex: int | None = None,
     upperlevelindex: int | None = None,
 ) -> FeatureTuple:
+    """Return the feature made up of one ion's lines matching the given wavelength range and level indices."""
     lzdflinelistclosematches = (
         at.atomic
         .get_linelist_pldf(modelpath)
@@ -277,6 +281,7 @@ def get_closelines(
 
 
 def get_labelandlineindices(modelpath: Path | str, emfeaturesearch: Sequence[t.Any]) -> list[FeatureTuple]:
+    """Return one feature per search specification in emfeaturesearch."""
     labelandlineindices = []
     for params in emfeaturesearch:
         feature = get_closelines(modelpath, params[0], params[1], params[2], *params[3:])
@@ -293,6 +298,7 @@ def get_labelandlineindices(modelpath: Path | str, emfeaturesearch: Sequence[t.A
 
 
 def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
+    """Plot the luminosity ratio of pairs of spectral features against time, and save the figure."""
     # font = {'size': 16}
     # matplotlib.rc('font', **font)
     nrows = 1
@@ -441,6 +447,7 @@ def plot_nne_te_points(
     color: mplt.ColorType,
     marker: MarkerType,
 ) -> None:
+    """Scatter plot the electron density and temperature of the emitting cells, sized by how many packets each emitted."""
     color_adj = [(c + 0.1) / 1.1 for c in mplcolors.to_rgb(color)]
     hitcount: Counter[tuple[float, float]] = Counter(
         zip(np.asarray(em_log10nne, dtype=float).tolist(), np.asarray(em_Te, dtype=float).tolist(), strict=True)
@@ -481,6 +488,7 @@ def plot_nne_te_bars(
     em_Te: Sequence[float] | npt.NDArray[np.floating],
     color: t.Any,
 ) -> None:
+    """Draw error bars at the mean electron density and temperature of the emitting cells, sized by their spread."""
     if len(em_log10nne) == 0:
         return
     # black larger one for an outline
@@ -513,6 +521,7 @@ def plot_nne_te_bars(
 
 
 def make_emitting_regions_plot(args: argparse.Namespace) -> None:
+    """Plot the electron density and temperature of the cells emitting each feature, and save the figure."""
     # font = {'size': 16}
     # matplotlib.rc('font', **font)
     # 'floers_te_nne.json',
@@ -770,6 +779,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
+    """Add arguments to an argparse parser object."""
     add_modelpath_arg(
         parser, multiplepaths=True, default=[], helptext="Paths to ARTIS folders with spec.out or packets files"
     )

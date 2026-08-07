@@ -1,4 +1,6 @@
 # PYTHON_ARGCOMPLETE_OK
+"""Compare ARTIS heating rates and abundances against GSI nuclear network trajectory calculations."""
+
 import argparse
 import contextlib
 import math
@@ -102,6 +104,7 @@ def get_artis_abund_sequences(
     arr_species: Sequence[str],
     correction_factors: dict[str, float],
 ) -> dict[int, pl.DataFrame]:
+    """Return the ARTIS abundance of each species against time, for each model cell in mgiplotlist."""
     arr_abund_artis: dict[int, pl.DataFrame] = {}
     MH = 1.67352e-24  # g
 
@@ -183,6 +186,7 @@ def plot_qdot(
     pdfoutpath: Path | str,
     xmax: float | None = None,
 ) -> None:
+    """Plot the ARTIS radioactive heating rate against the rate from the nuclear network trajectories."""
     try:
         depdata = at.misc.df_filter_minmax_bounded(
             at.get_deposition(modelpath=modelpath), "tmid_days", None, xmax
@@ -316,6 +320,7 @@ def plot_cell_abund_evolution(
     mgi: int,
     hideinputmodelpoints: bool = True,
 ) -> None:
+    """Plot the abundance evolution of one model cell, comparing ARTIS to the nuclear network trajectories."""
     if dfcontribsparticledata is not None:
         print(f"Calculating abundances in model cell {mgi} from the individual particle abundances")
         dfpartcontrib_thiscell = (
@@ -584,6 +589,7 @@ def plot_qdot_abund_modelcells(
     timedaysmax: float | None = None,
     nogsinet: bool = False,
 ) -> None:
+    """Plot the heating rate and the abundance evolution of each cell in mgiplotlist."""
     # default values, because early model.txt didn't specify this
     griddatafolder: Path = Path("SFHo_snapshot")
     mergermodelfolder: Path = Path("SFHo_short")
@@ -685,6 +691,7 @@ def plot_qdot_abund_modelcells(
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
+    """Add arguments to an argparse parser object."""
     add_modelpath_arg(parser, default=Path(), helptext="Path for ARTIS files")
 
     parser.add_argument(

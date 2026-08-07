@@ -1,4 +1,6 @@
 # PYTHON_ARGCOMPLETE_OK
+"""Build an ARTIS input model by downscaling, dimension-reducing, or rescaling an existing model."""
+
 import argparse
 import typing as t
 from collections.abc import Sequence
@@ -11,6 +13,7 @@ from artistools.misc import add_outputpath_arg
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
+    """Add arguments to an argparse parser object."""
     add_modelpath_arg(parser, multiplepaths=True, default=[], helptext="Path to input model file")
 
     parser.add_argument(

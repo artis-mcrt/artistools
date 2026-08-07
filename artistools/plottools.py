@@ -279,6 +279,7 @@ glasbey_category20_nogreys = [
 
 
 def set_mpl_style() -> None:
+    """Apply the bundled artistools matplotlibrc style."""
     plt.style.use("file://" + str(get_path("artistools_dir") / "matplotlibrc"))
 
 
@@ -298,6 +299,7 @@ class ExponentLabelFormatter(mplticker.ScalarFormatter):
     labeltemplate: str
 
     def __init__(self, labeltemplate: str) -> None:
+        """Store the axis label template, which must contain a placeholder for the exponent."""
         assert "{" in labeltemplate
         self.labeltemplate = labeltemplate
 
@@ -336,6 +338,7 @@ class ExponentLabelFormatter(mplticker.ScalarFormatter):
 
 
 def set_axis_properties(ax: Iterable[mplax.Axes] | mplax.Axes, args: argparse.Namespace) -> t.Any:
+    """Apply the standard tick, minor tick, and font size settings to one or more axes."""
     if "subplots" not in args:
         args.subplots = False
     if "labelfontsize" not in args:
@@ -377,6 +380,7 @@ def set_axis_labels(
     labelfontsize: int | None,
     args: argparse.Namespace,
 ) -> None:
+    """Set the x and y axis labels, placing them on the figure rather than the axes when there are subplots."""
     if args.subplots:
         fig.text(0.5, 0.02, xlabel, ha="center", va="center")
         fig.text(0.02, 0.5, ylabel, ha="center", va="center", rotation="vertical")

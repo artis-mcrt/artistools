@@ -30,6 +30,7 @@ def get_binned_opacities_ion(
     expopac_deltalambda: float,
     time_days: float,
 ) -> pl.LazyFrame:
+    """Return one ion's Sobolev expansion opacity, summed into the given wavelength bins."""
     time_s = time_days * day_to_s
     dfcelllevelpops = dflevels.join(dfcells, how="cross").with_columns(
         nnlevel=pl.col("g")
@@ -103,6 +104,7 @@ def get_expansion_opacities(
     lambdamax: float,
     deltalambda: float,
 ) -> pl.LazyFrame:
+    """Return the binned expansion opacity of every cell, summed over all ions in the atomic data."""
     numbins = int((lambdamax - lambdamin) / deltalambda)
 
     print("Summing opacities...")
@@ -146,6 +148,7 @@ def get_expansion_opacities(
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
+    """Add arguments to an argparse parser object."""
     # mutex with time in days:
     timegroup = parser.add_argument_group("time selection (specify either timestep or time in days)")
     timegroup.add_argument("-timestep", "-ts", type=int, help="Timestep number to select")

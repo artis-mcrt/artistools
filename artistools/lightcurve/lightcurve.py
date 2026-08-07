@@ -1,3 +1,5 @@
+"""Read ARTIS light curves and reference observational light curves, and derive band magnitudes from spectra."""
+
 import argparse
 import math
 import typing as t
@@ -331,7 +333,7 @@ def bolometric_magnitude(
     average_over_phi: bool = False,
     average_over_theta: bool = False,
 ) -> tuple[list[float], list[float]]:
-
+    """Return the times and bolometric magnitudes obtained by integrating the spectra of one direction bin."""
     magnitudes = []
     times = []
 
@@ -400,6 +402,7 @@ def get_spectrum_in_filter_range(
     average_over_phi: bool = False,
     average_over_theta: bool = False,
 ) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating]]:
+    """Return the wavelengths and fluxes of the spectrum at one timestep, restricted to a filter's wavelength range."""
     spectrum = at.spectra.get_spectrum_at_time(
         Path(modelpath),
         timestep=timestep,
@@ -427,6 +430,7 @@ def get_band_lightcurve(
     args: argparse.Namespace | None = None,
     **kwargs: t.Any,
 ) -> tuple[Sequence[float], npt.NDArray[np.floating]]:
+    """Return the times and magnitudes of one band's light curve, restricted to the args.timemin/timemax range."""
     args = args_from_kwargs(args, kwargs)
 
     times, brightness_in_mag = zip(
@@ -458,6 +462,7 @@ def get_colour_delta_mag(
 
 
 def read_hesma_lightcurve(args: argparse.Namespace) -> pd.DataFrame:
+    """Return the HESMA model light curve named by args.plot_hesma_model."""
     hesma_directory = Path(at.get_path("artistools_dir"), "data/hesma")
     filename = args.plot_hesma_model
     hesma_modelname = hesma_directory / filename
@@ -475,6 +480,7 @@ def read_hesma_lightcurve(args: argparse.Namespace) -> pd.DataFrame:
 
 
 def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pd.DataFrame, dict[str, t.Any]]:
+    """Return an observed band light curve from the bundled reference data, along with its metadata."""
     filepath = Path(at.get_path("artistools_dir"), "data", "lightcurves", lightcurvefilename)
     metadata = at.get_file_metadata(filepath)
 
@@ -503,6 +509,7 @@ def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pd.Dat
 
 
 def read_bol_reflightcurve_data(lightcurvefilename: str | Path) -> tuple[pd.DataFrame, dict[str, t.Any]]:
+    """Return an observed bolometric light curve and its metadata, from a given path or the bundled reference data."""
     data_path = (
         Path(lightcurvefilename)
         if Path(lightcurvefilename).is_file()
@@ -535,6 +542,7 @@ def read_bol_reflightcurve_data(lightcurvefilename: str | Path) -> tuple[pd.Data
 
 
 def get_phillips_relation_data() -> tuple[pd.DataFrame, str]:
+    """Return the observed dm15(B) against peak MB data of Hicken et al. (2009), and its plot label."""
     datafilepath = Path(at.get_path("artistools_dir"), "data", "lightcurves", "SNsample", "CfA3_Phillips.dat")
     sn_data = pd.read_csv(datafilepath, sep=r"\s+", comment="#")
     print(sn_data)

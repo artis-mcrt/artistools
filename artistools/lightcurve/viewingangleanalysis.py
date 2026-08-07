@@ -1,3 +1,5 @@
+"""Measure and plot how peak magnitude, rise time, and decline rate vary with viewing angle."""
+
 import argparse
 import sys
 import typing as t
@@ -64,6 +66,7 @@ define_colours_list2 = [
 
 
 def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> tuple[Sequence[int], dict[int, str]]:
+    """Return the direction bins selected by args, and a label for each of them."""
     modelpath = Path(modelpath)
     at.check_averaging_angles(args.average_over_phi_angle, args.average_over_theta_angle)
 
@@ -108,6 +111,7 @@ def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> 
 
 
 def save_viewing_angle_data_for_plotting(band_name: str, modelname: str, args: argparse.Namespace) -> None:
+    """Write one model's per-direction-bin peak magnitude, rise time, and decline rate to a text file."""
     if args.save_viewing_angle_peakmag_risetime_delta_m15_to_file:
         outputfolder = Path(args.outputfile) if Path(args.outputfile).is_dir() else Path(args.outputfile).parent
         if args.include_delta_m40:
@@ -156,6 +160,7 @@ def save_viewing_angle_data_for_plotting(band_name: str, modelname: str, args: a
 
 
 def write_viewing_angle_data(band_name: str, modelnames: list[str], args: argparse.Namespace) -> None:
+    """Write the angle-averaged peak magnitude, rise time, and decline rate of every model to a text file."""
     if (
         args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
         or args.make_viewing_angle_peakmag_risetime_scatter_plot
@@ -255,6 +260,11 @@ def lightcurve_polyfit(
     kernel_scale: float = 10,
     lc_error: float = 0.01,
 ) -> tuple[t.Any, t.Any]:
+    """Return a smooth fit to a band light curve, as (fitted magnitudes, times) in that order.
+
+    Note the fitted values come first, not the times. The fit uses a george Gaussian process, falling back to a
+    polynomial when george is unavailable.
+    """
     try:
         import george
 
@@ -321,6 +331,7 @@ def make_plot_test_viewing_angle_fit(
     angle: int,
     args: argparse.Namespace,
 ) -> None:
+    """Plot a band light curve against its fit, so the quality of the fit can be checked by eye."""
     fig, axis = plt.subplots()
     axis.plot(time, magnitude)
     axis.plot(xfit, fxfit)
@@ -349,6 +360,7 @@ def make_plot_test_viewing_angle_fit(
 
 
 def set_scatterplot_plotkwargs(modelnumber: int, args: argparse.Namespace) -> tuple[dict[str, t.Any], dict[str, t.Any]]:
+    """Return the plot kwargs for one model's per-direction-bin points and for its angle-averaged point."""
     plotkwargsviewingangles = {"marker": "x", "zorder": 0, "alpha": 0.8}
     if args.colorbarcostheta or args.colorbarphi:
         update_plotkwargs_for_viewingangle_colorbar(plotkwargsviewingangles, args)
@@ -373,6 +385,7 @@ def set_scatterplot_plotkwargs(modelnumber: int, args: argparse.Namespace) -> tu
 def update_plotkwargs_for_viewingangle_colorbar(
     plotkwargsviewingangles: dict[str, t.Any], args: argparse.Namespace
 ) -> dict[str, t.Any]:
+    """Set one colour per direction bin in the plot kwargs, matching the viewing angle colorbar."""
     costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(usedegrees=args.usedegrees)
     scaledmap = at.lightcurve.plotlightcurve.make_colorbar_viewingangles_colormap()
 
@@ -389,6 +402,7 @@ def update_plotkwargs_for_viewingangle_colorbar(
 
 
 def set_scatterplot_plot_params(fig: mplfig.Figure, axis: mplax.Axes, args: argparse.Namespace) -> None:
+    """Set the axis limits, labels, and legend shared by the viewing angle scatter plots."""
     if not args.colouratpeak:
         axis.invert_yaxis()
     axis.set_xlim(args.xmin, args.xmax)
@@ -407,6 +421,7 @@ def set_scatterplot_plot_params(fig: mplfig.Figure, axis: mplax.Axes, args: argp
 def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
     modelnames: Sequence[str], key: str, args: argparse.Namespace
 ) -> None:
+    """Scatter plot peak magnitude against rise time or decline rate, one point per direction bin per model."""
     fig, ax = plt.subplots(
         nrows=1, ncols=1, sharex=True, figsize=(8, 6), tight_layout={"pad": 0.5, "w_pad": 1.5, "h_pad": 0.3}
     )
@@ -492,6 +507,7 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
 
 
 def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
+    """Scatter plot the colour at peak against the peak magnitude, one point per direction bin per model."""
     fig, ax = plt.subplots(
         nrows=1, ncols=1, sharex=True, figsize=(8, 6), tight_layout={"pad": 0.5, "w_pad": 1.5, "h_pad": 0.3}
     )
@@ -557,6 +573,7 @@ def second_band_brightness_at_peak_first_band(
     modelnumber: int,
     args: argparse.Namespace,
 ) -> list[float]:
+    """Return the second band's magnitude at the time the first band peaks, for each direction bin."""
     second_band_brightness: list[float] = []
     for anglenumber, _ in enumerate(data[f"time_{bands[0]}max"]):
         lightcurve_data = at.lightcurve.generate_band_lightcurve_data(
@@ -587,6 +604,7 @@ def peakmag_risetime_declinerate_init(
     filternames_conversion_dict: dict[str, str],
     args: argparse.Namespace,
 ) -> None:
+    """Fit every model's band light curves and store the peak magnitudes, rise times, and decline rates on args."""
     # if args.calculate_peak_time_mag_deltam15_bool:  # If there's viewing angle scatter plot stuff define some arrays
     args.plotvalues = []  # a0 and p0 values for viewing angle scatter plots
 
@@ -680,6 +698,7 @@ def peakmag_risetime_declinerate_init(
 
 
 def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Namespace) -> None:
+    """Plot the luminosity of each direction bin at one time, to show the angular brightness variation."""
     fig, axis = plt.subplots(
         nrows=1, ncols=1, sharey=True, figsize=(8, 5), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0}
     )

@@ -1,3 +1,5 @@
+"""Read, write, and derive columns for ARTIS model.txt and abundance input files."""
+
 import calendar
 import datetime
 import errno
@@ -469,6 +471,7 @@ def get_modeldata(
 def get_empty_3d_model(
     ncoordgrid: int, vmax: float, t_model_init_days: float, includenico57: bool = False
 ) -> tuple[pl.LazyFrame, dict[str, t.Any]]:
+    """Return a zero-density 3D model of ncoordgrid^3 cells, and its metadata, ready to be filled in."""
     xmax = vmax * t_model_init_days * day_to_s
 
     modelmeta: dict[str, t.Any] = {
@@ -1382,7 +1385,7 @@ def scale_model_to_time(
 
 
 def savetologfile(outputfolderpath: Path, logfilename: str = "modellog.txt") -> Callable[..., None]:
-    # save the printed output to a log file
+    """Return a print-alike that also appends to a log file, truncating any previous log."""
     outputfolderpath.mkdir(parents=True, exist_ok=True)
     logfilepath = outputfolderpath / logfilename
     logfilepath.unlink(missing_ok=True)

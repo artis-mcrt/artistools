@@ -46,8 +46,8 @@ dependencies = [
     "extinction>=0.4.7",
     "matplotlib>=3.10.8",
     "numpy>=2.4.6",
-    "pandas>=3.0.3",
-    "polars>=1.43",
+    "pandas>=3.0.5",
+    "polars>=1.43.2",
     "pyarrow>=24.0.0",
     "pyyaml>=6.0.2",
     "rich>=15.0.0",
@@ -71,8 +71,8 @@ dev = [
     "basedpyright>=1.39.9",
     "imageio>=2.37.3",
     "mypy>=2.3.0",
-    "pandas-stubs>=3.0.3.260530",
-    "prek>=0.4.9",
+    "pandas-stubs>=3.0.5.260730",
+    "prek>=0.4.12",
     "pynonthermal>=2026.4.27",
     "pyrefly>=1.2.0",
     "pytest>=9.0.3",
@@ -82,7 +82,7 @@ dev = [
     "refurb>=2.2.0",
     "ruff>=0.16.1,<0.17",
     "scipy-stubs>=1.18.0.1",
-    "ty>=0.0.65",
+    "ty>=0.0.69",
     "types-python-dateutil>=2.9.0.20260408",
     "types-pyyaml>=6.0.12.20260408",
     "types-tqdm>=4.67.3.20260408",
@@ -308,11 +308,6 @@ ignore = [
     "complex-structure",
     "missing-trailing-comma",
     "missing-copyright-notice",
-    "undocumented-public-module",
-    "undocumented-public-class",
-    "undocumented-public-function",
-    "undocumented-public-package",
-    "undocumented-public-init",
     "incorrect-blank-line-before-class",
     "multi-line-summary-second-line",
     "docstring-missing-returns",
@@ -350,6 +345,14 @@ unfixable = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+# Test names describe the case already; a docstring restating them is noise.
+"**/test_*.py" = [
+    "undocumented-public-module",
+    "undocumented-public-class",
+    "undocumented-public-function",
+]
+"**/conftest.py" = ["undocumented-public-module", "undocumented-public-function"]
+"tests/__init__.py" = ["undocumented-public-package"]
 "artistools/commands.py" = ["suspicious-subprocess-import", "start-process-with-partial-path"]
 "artistools/test_artistools.py" = ["suspicious-subprocess-import"]
 "artistools/spectra/sampleblackbodyfrompacket_tr.py" = ["suspicious-non-cryptographic-random-usage"]
@@ -376,6 +379,11 @@ require-lazy = "all"
 [tool.ruff.lint.isort]
 force-single-line = true
 order-by-type = false
+
+[tool.ruff.lint.pydocstyle]
+# Resolves the D203/D211 and D212/D213 conflicts that selecting the whole D group creates, and
+# leaves Args/Returns/Raises sections optional.
+convention = "pep257"
 
 [tool.ty.rules]
 unresolved-import = "ignore"

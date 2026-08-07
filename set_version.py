@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Set the package version and release date to today, across pyproject.toml and the other files that carry them."""
+
 import datetime as dt
 import re
 import subprocess
@@ -20,6 +22,7 @@ def replace_line(path: Path, pattern: str, replacement: str) -> None:
 
 
 def main() -> None:
+    """Write today's date as the version and release date wherever they appear in the repository."""
     today = dt.datetime.now(dt.UTC).date()
     date_released = today.isoformat()
     # version has no zero padding and '.' for separator, e.g. 2026.4.20
@@ -39,7 +42,11 @@ def main() -> None:
     replace_line(repo_path / "CITATION.cff", r"^version: .*$", f"version: {version}")
     replace_line(repo_path / "CITATION.cff", r"^date-released: .*$", f"date-released: {date_released}")
 
-    (repo_path / "artistools" / "version.py").write_text(f'version = "{version}"\n', encoding="utf-8")
+    # version.py is regenerated in full, so it must carry its own docstring or ruff's D100 fails after a release
+    (repo_path / "artistools" / "version.py").write_text(
+        f'"""Package version, updated by set_version.py at release time."""\n\nversion = "{version}"\n',
+        encoding="utf-8",
+    )
 
     subprocess.check_call(["uv", "lock"], cwd=repo_path)
 

@@ -161,21 +161,8 @@ jobs:
             - name: Report coverage
               run: uv run -- python -m coverage report
 
-            - uses: codecov/codecov-action@v7
-              env:
-                  OS: ubuntu-26.04${{ !endsWith(matrix.python-version, 't') && '-arm' || '' }}
-                  PYTHON: ${{ matrix.python-version }}
-              with:
-                  token: ${{ secrets.CODECOV_TOKEN }}
-                  files: ./coverage.xml
-                  flags: unittests
-                  env_vars: OS,PYTHON
-                  name: codecov-umbrella
-                  fail_ci_if_error: false
-                  verbose: true
-
             - name: Upload coverage artifact
-              if: matrix.python-version == '3.13' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+              if: matrix.python-version == '3.14' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
               uses: actions/upload-artifact@v7
               with:
                   name: coverage-report-python

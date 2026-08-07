@@ -336,6 +336,7 @@ def get_cellsofmpirank(mpirank: int, modelpath: Path | str) -> Iterable[int]:
 
 @lru_cache(maxsize=16)
 def get_dfrankassignments(modelpath: Path | str) -> pl.LazyFrame | None:
+    """Return the cell-to-MPI-rank assignments, or None when modelgridrankassignments.out is absent."""
     filerankassignments = Path(modelpath, "modelgridrankassignments.out")
     if filerankassignments.is_file():
         return pl.scan_csv(filerankassignments, has_header=True, separator=" ").rename(
