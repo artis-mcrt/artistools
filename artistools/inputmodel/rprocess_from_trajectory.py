@@ -63,6 +63,35 @@ def get_dfelemabund_from_dfmodel(dfmodel: pl.DataFrame) -> pl.DataFrame:
     return dfelabundances
 
 
+def _extracted_file_is_complete(path_extracted_file: Path) -> bool:
+    """Report whether a previously extracted member is present and non-empty."""
+    if not path_extracted_file.is_file() or path_extracted_file.stat().st_size == 0:
+        return False
+
+    with contextlib.suppress(OSError), path_extracted_file.open(encoding="utf-8") as f:
+        return bool(f.read(1))
+
+    return False
+
+
+def _extract_tar_member_atomic(tarfilepath: Path, memberfilename: str, path_extracted_file: Path) -> None:
+    """Extract one tar member into place through a temporary file and an atomic replace.
+
+    Several processes routinely want the same trajectory member at once. Extracting straight to the destination
+    lets a reader open a file that another process is still writing, so unpack into a private directory and move
+    the result into place: a reader then sees either no file or a complete one, never a half-written one.
+    """
+    import tempfile
+
+    path_extracted_file.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=path_extracted_file.parent, prefix=".partial") as tempdir:
+        with tarfile.open(tarfilepath, "r:*") as tarfilehandle:
+            tarfilehandle.extract(path=tempdir, member=memberfilename, filter="data")
+
+        # a concurrent process may have extracted the same member first, but the contents are identical
+        Path(tempdir, memberfilename).replace(path_extracted_file)
+
+
 def get_tar_member_extracted_path(traj_root: Path | str, particleid: int, memberfilename: str) -> Path:
     """Trajectory files are generally stored as {particleid}.tar.xz, but this is slow to access, so first check for extracted files, or decompressed .tar files, which are much faster to access.
 
@@ -80,20 +109,13 @@ def get_tar_member_extracted_path(traj_root: Path | str, particleid: int, member
     ]
     tarfilepath = next((tarfilepath for tarfilepath in tarfilepaths if tarfilepath.is_file()), None)
 
-    if path_extracted_file.is_file():
-        if path_extracted_file.stat().st_size > 0:
-            with contextlib.suppress(OSError), path_extracted_file.open(encoding="utf-8") as f:
-                if f.read(1):
-                    return path_extracted_file
-
-        # file is empty, so remove it
-        path_extracted_file.unlink(missing_ok=True)
+    if _extracted_file_is_complete(path_extracted_file):
+        return path_extracted_file
 
     # and memberfilename.endswith(".dat")
-    if not path_extracted_file.is_file() and tarfilepath is not None:
+    if tarfilepath is not None:
         try:
-            with tarfile.open(tarfilepath, "r:*") as tarfilehandle:
-                tarfilehandle.extract(path=Path(traj_root, str(particleid)), member=memberfilename, filter="data")
+            _extract_tar_member_atomic(tarfilepath, memberfilename, path_extracted_file)
         except OSError:
             print(f"Problem extracting file {memberfilename} from {tarfilepath}")
             raise

@@ -3,7 +3,11 @@ import hashlib
 import json
 import math
 import shutil
+import tarfile
+import time
 import typing as t
+from concurrent.futures import ProcessPoolExecutor
+from functools import partial
 from pathlib import Path
 
 import numpy as np
@@ -20,6 +24,38 @@ modelpath_3d = at.get_path("testdata") / "testmodel_3d_10^3"
 outputpath = at.get_path("testoutput")
 testdatapath = at.get_path("testdata")
 modelpath_classic_3d = testdatapath / "test-classicmode_3d"
+
+
+def _trajectory_member_size(traj_root: Path, memberfilename: str, _worker: int) -> int:
+    """Return the byte count one process sees for a trajectory tar member, extracting it if needed."""
+    filepath = at.inputmodel.rprocess_from_trajectory.get_tar_member_extracted_path(
+        traj_root=traj_root, particleid=114511, memberfilename=memberfilename
+    )
+    return len(filepath.read_bytes())
+
+
+def test_tar_member_extraction_is_atomic(tmp_path: Path) -> None:
+    """Processes extracting the same trajectory member at once must never see a half-written file.
+
+    Extracting straight to the destination let one process read what another was still writing, which failed
+    runs at random on a truncated file.
+    """
+    nworkers = 16
+    memberfilename = "./Run_rprocess/heating.dat"  # the largest member, so the widest window to catch a partial read
+    traj_root = tmp_path / "trajectories"
+    traj_root.mkdir()
+    shutil.copy(testdatapath / "kilonova" / "trajectories" / "114511.tar.xz", traj_root)
+    with tarfile.open(traj_root / "114511.tar.xz", "r:*") as tarfilehandle:
+        membersize = tarfilehandle.getmember(memberfilename).size
+
+    readsize = partial(_trajectory_member_size, traj_root, memberfilename)
+    with ProcessPoolExecutor(max_workers=nworkers) as executor:
+        # start the workers up front so that each trial races on the extraction rather than on process startup
+        list(executor.map(time.sleep, [0.0] * nworkers))
+
+        for _trial in range(20):
+            shutil.rmtree(traj_root / "114511", ignore_errors=True)
+            assert list(executor.map(readsize, range(nworkers), chunksize=1)) == [membersize] * nworkers
 
 
 def test_describeinputmodel() -> None:
