@@ -368,7 +368,7 @@ def add_abundancecontributions(
         particleid for particleid, df in zip(particleids, list_traj_nuc_abund, strict=True) if not df
     ]
     dfcontribs = filtermissinggridparticlecontributions(dfcontribs, missing_particle_ids).sort("particleid")
-    active_inputcellcount = dfcontribs["cellindex"].unique().shape[0]
+    active_inputcellcount = dfcontribs["cellindex"].n_unique()
 
     print(
         f"{active_inputcellcount} of {len(dfmodel)} model cells have >0 particles contributing "

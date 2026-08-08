@@ -15,6 +15,11 @@ if sys.version_info >= (3, 15) and hasattr(sys, "set_lazy_imports_filter") and h
     )
     sys.set_lazy_imports("all")
 
+if sys.version_info >= (3, 15):
+    from artistools._polarscompat import repair_series_expr_dispatch
+
+    repair_series_expr_dispatch()
+
 from artistools import atomic as atomic
 from artistools import codecomparison as codecomparison
 from artistools import commands as commands
