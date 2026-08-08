@@ -210,6 +210,10 @@ def test_read_wsv(tmp_path: Path) -> None:
         f.write("p   q\n1   2\n")
     pltest.assert_frame_equal(at.read_wsv(tmp_path / "data.txt"), pl.DataFrame({"p": [1], "q": [2]}))
 
+    # trailing whitespace on every line must not become a trailing null column
+    (tmp_path / "trailing.txt").write_text("colA colB  \n1 2 \n3 4 \t\n", encoding="utf-8")
+    pltest.assert_frame_equal(at.read_wsv(tmp_path / "trailing.txt"), pl.DataFrame({"colA": [1, 3], "colB": [2, 4]}))
+
 
 def test_read_wsv_late_type_change(tmp_path: Path) -> None:
     """A column that turns from integer to float beyond the schema inference sample is read as floats."""
