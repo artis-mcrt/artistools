@@ -14,7 +14,6 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 import polars as pl
 import polars.selectors as cs
 
@@ -25,6 +24,7 @@ from artistools.commands import get_path
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.misc import firstexisting
+from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
 from artistools.misc import stripallsuffixes
 from artistools.misc import write_parquet_atomic
@@ -154,15 +154,11 @@ def read_modelfile_text(
 
     else:
         # dfmodelraw can have cells split across two lines, so to avoid reading twice, we read in everything and slice later
-        dfmodelraw = pl.from_pandas(
-            pd.read_csv(
-                zopen(filename),
-                sep=r"\s+",
-                engine="c",
-                header=None,
-                skiprows=numheaderrows,
-                names=[str(i) for i in range(max(ncols_line_even, ncols_line_odd))],
-            )
+        dfmodelraw = read_wsv(
+            filename,
+            has_header=False,
+            skip_rows=numheaderrows,
+            new_columns=[str(i) for i in range(max(ncols_line_even, ncols_line_odd))],
         )
 
         dfmodel = (
@@ -746,7 +742,7 @@ def add_derived_cols_to_modeldata(
 
     if "angle_bin" in derived_cols:
         assert modelpath is not None
-        dfmodel = pl.from_pandas(get_cell_angle(dfmodel.collect().to_pandas(use_pyarrow_extension_array=True))).lazy()
+        dfmodel = get_cell_angle(dfmodel.collect()).lazy()
 
     # if "Ye" in derived_cols and os.path.isfile(modelpath / "Ye.txt"):
     #     dfmodel["Ye"] = at.inputmodel.opacityinputfile.get_Ye_from_file(modelpath)
@@ -756,7 +752,7 @@ def add_derived_cols_to_modeldata(
     return dfmodel
 
 
-def get_cell_angle(dfmodel: pd.DataFrame) -> pd.DataFrame:
+def get_cell_angle(dfmodel: pl.DataFrame) -> pl.DataFrame:
     """Get angle between origin to cell midpoint and the syn_dir axis.
 
     The azimuthal angle is named phi_mirrored rather than phi because it is measured in the opposite sense to the
@@ -768,42 +764,37 @@ def get_cell_angle(dfmodel: pd.DataFrame) -> pd.DataFrame:
     #   cos_theta = z / |midpoint|
     #   cross(midpoint, syn_dir) == [y, -x, 0] and cross(xhat, syn_dir) == [0, -1, 0], so cos(phi) = x / hypot(x, y)
     #   the branch test dot(cross(midpoint, syn_dir), [-1, 0, 0]) reduces to -y, i.e. it selects y < 0
-    pos_x = dfmodel["pos_x_mid"].to_numpy(dtype=float)
-    pos_y = dfmodel["pos_y_mid"].to_numpy(dtype=float)
-    pos_z = dfmodel["pos_z_mid"].to_numpy(dtype=float)
+    pos_x = pl.col("pos_x_mid").cast(pl.Float64)
+    pos_y = pl.col("pos_y_mid").cast(pl.Float64)
+    pos_z = pl.col("pos_z_mid").cast(pl.Float64)
 
-    cos_theta = pos_z / np.sqrt(pos_x**2 + pos_y**2 + pos_z**2)
-    cosphi = pos_x / np.sqrt(pos_y**2 + pos_x**2)
-    phi_mirrored = np.where(pos_y < 0, np.arccos(cosphi), np.arccos(-cosphi) + np.pi)
+    cosphi = pos_x / (pos_y**2 + pos_x**2).sqrt()
 
-    dfmodel.loc[:, "cos_theta"] = cos_theta
-    dfmodel.loc[:, "phi_mirrored"] = phi_mirrored
-    cos_bins = [-1, -0.8, -0.6, -0.4, -0.2, 0, 0.2, 0.4, 0.6, 0.8, 1]  # including end bin
-    labels = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90]
+    # cut() takes only the interior bin boundaries: cos_theta spans [-1, 1] and phi_mirrored spans [0, 2 pi]
+    cos_bins = [-0.8, -0.6, -0.4, -0.2, 0, 0.2, 0.4, 0.6, 0.8]
+    cos_labels = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90]
     # assert at.get_viewingdirection_costhetabincount() == 10
     # assert at.get_viewingdirection_phibincount() == 10
-    dfmodel.loc[:, "cos_bin"] = pd.cut(dfmodel["cos_theta"], cos_bins, labels=labels)
-    # dfmodel['cos_bin'] = np.searchsorted(cos_bins, dfmodel['cos_theta'].values) -1
 
-    # phibins = ["0", "π/5", "2π/5", "3π/5", "4π/5", "π", "6π/5", "7π/5", "8π/5", "9π/5", "2π"]
-    phibins = [
-        0,
-        np.pi / 5,
-        2 * np.pi / 5,
-        3 * np.pi / 5,
-        4 * np.pi / 5,
-        np.pi,
-        6 * np.pi / 5,
-        7 * np.pi / 5,
-        8 * np.pi / 5,
-        9 * np.pi / 5,
-        2 * np.pi,
-    ]
+    phibins = [math.pi * frac / 5 for frac in (1, 2, 3, 4, 5, 6, 7, 8, 9)]
     # reorderphibins = {5: 9, 6: 8, 7: 7, 8: 6, 9: 5}
-    labels = [0, 1, 2, 3, 4, 9, 8, 7, 6, 5]
-    dfmodel.loc[:, "phi_bin"] = pd.cut(dfmodel["phi_mirrored"], phibins, labels=labels)
+    phi_labels = [0, 1, 2, 3, 4, 9, 8, 7, 6, 5]
 
-    return dfmodel
+    return dfmodel.with_columns(
+        cos_theta=pos_z / (pos_x**2 + pos_y**2 + pos_z**2).sqrt(),
+        phi_mirrored=pl.when(pos_y < 0).then(cosphi.arccos()).otherwise((-cosphi).arccos() + math.pi),
+    ).with_columns(
+        cos_bin=pl
+        .col("cos_theta")
+        .cut(cos_bins, labels=[str(binlabel) for binlabel in cos_labels])
+        .cast(pl.String)
+        .cast(pl.Int32),
+        phi_bin=pl
+        .col("phi_mirrored")
+        .cut(phibins, labels=[str(binlabel) for binlabel in phi_labels])
+        .cast(pl.String)
+        .cast(pl.Int32),
+    )
 
 
 def get_standard_columns(dimensions: int, includenico57: bool = False, pos_unknown: bool = False) -> list[str]:
@@ -1031,7 +1022,7 @@ def get_initelemabundances(modelpath: Path | str = ".", printwarningsonly: bool 
         if not printwarningsonly:
             print(f"Reading {textfilepath}")
 
-        abundancedata = pl.from_pandas(pd.read_csv(zopen(textfilepath), sep=r"\s+", comment="#", header=None))
+        abundancedata = read_wsv(textfilepath, has_header=False, comment_prefix="#")
 
         colnames = ["inputcellid", *[f"X_{get_elsymbol(x)}" for x in range(1, len(abundancedata.columns))]]
         abundancedata = abundancedata.rename({
@@ -1362,11 +1353,11 @@ def dimension_reduce_model(
 
 
 def scale_model_to_time(
-    dfmodel: pd.DataFrame,
+    dfmodel: pl.DataFrame,
     targetmodeltime_days: float,
     t_model_days: float | None = None,
     modelmeta: dict[str, t.Any] | None = None,
-) -> tuple[pd.DataFrame, dict[str, t.Any]]:
+) -> tuple[pl.DataFrame, dict[str, t.Any]]:
     """Homologously expand model to targetmodeltime_days by reducing densities and adjusting cell positions."""
     if t_model_days is None:
         assert modelmeta is not None
@@ -1381,13 +1372,12 @@ def scale_model_to_time(
         "using homologous expansion of positions and densities"
     )
 
-    for col in dfmodel.columns:
-        if col.startswith("pos_"):
-            dfmodel.loc[:, col] *= timefactor
-        elif col == "rho":
-            dfmodel.loc[:, "rho"] *= timefactor**-3
-        elif col == "logrho":
-            dfmodel.loc[:, "logrho"] += math.log10(timefactor**-3)
+    scale_exprs: list[pl.Expr] = [cs.starts_with("pos_") * timefactor]
+    if "rho" in dfmodel.columns:
+        scale_exprs.append(pl.col("rho") * timefactor**-3)
+    if "logrho" in dfmodel.columns:
+        scale_exprs.append(pl.col("logrho") + math.log10(timefactor**-3))
+    dfmodel = dfmodel.with_columns(scale_exprs)
 
     if modelmeta is None:
         modelmeta = {}

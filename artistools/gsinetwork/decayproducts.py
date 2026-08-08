@@ -12,8 +12,8 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
-import pandas as pd
 import polars as pl
+import polars.selectors as cs
 
 import artistools as at
 from artistools.commands import get_path
@@ -118,6 +118,8 @@ def get_nuc_data(nuc_dataset: str) -> pl.DataFrame:
     csvpath = Path(get_path("datadir"), "betaminusdecays_ensdf.txt")
     if not csvpath.exists():
         print("Collecting ENSDF data...")
+        import urllib.request
+
         rows = []
         for hrow in hotokezaka_betaminus.iter_rows(named=True):
             atomic_number = hrow["Z"]
@@ -125,22 +127,30 @@ def get_nuc_data(nuc_dataset: str) -> pl.DataFrame:
             elsymb = at.get_elsymbol(atomic_number)
             print(f"Element: Z={atomic_number} {elsymb} A={A}")
             isot_str = f"{A}{elsymb.lower()}"
-            dfnuc = pd.read_csv(
+            request = urllib.request.Request(
                 f"https://nds.iaea.org/relnsd/v1/data?fields=decay_rads&nuclides={isot_str}&rad_types=bm",
-                storage_options={
-                    "User-Agent": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:77.0) Gecko/20100101 Firefox/77.0"
-                },
+                headers={"User-Agent": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:77.0) Gecko/20100101 Firefox/77.0"},
             )
+            with urllib.request.urlopen(request) as response:  # ruff:ignore[suspicious-url-open-usage]
+                dfnuc = pl.read_csv(response.read(), infer_schema_length=None)
             if "mean_energy" in dfnuc.columns:
-                dfnuc = dfnuc.dropna(subset=["mean_energy"])
-            if len(dfnuc) > 0:
-                dfnuc = dfnuc.loc[dfnuc["p_energy"] == 0]
-                if dfnuc.empty:
+                dfnuc = dfnuc.drop_nulls(subset="mean_energy")
+            if dfnuc.height > 0:
+                dfnuc = dfnuc.filter(pl.col("p_energy") == 0)
+                if dfnuc.is_empty():
                     print(f"No beta decay found for Z={atomic_number} A={A}")
                     continue
-                tau_s = dfnuc.iloc[0]["half_life_sec"] / math.log(2)
+                # a missing value poisons the derived quantities to NaN (visible in the written file)
+                # instead of crashing on None or being silently skipped by the sums
+                dfnuc = dfnuc.with_columns(
+                    pl
+                    .col("half_life_sec", "q", "intensity_beta", "mean_energy", "anti_nu_mean_energy")
+                    .cast(pl.Float64)
+                    .fill_null(math.nan)
+                )
+                tau_s = dfnuc["half_life_sec"].item(0) / math.log(2)
                 # tau_s = hrow["tau[s]"]
-                Q_MeV = dfnuc.iloc[0]["q"] / 1000
+                Q_MeV = dfnuc["q"].item(0) / 1000
                 E_elec = (dfnuc["intensity_beta"] * dfnuc["mean_energy"]).sum() / 100 / 1000
                 E_nu = (dfnuc["intensity_beta"] * dfnuc["anti_nu_mean_energy"]).sum() / 100 / 1000
                 # dfnuc["E_gamma"] = (Q_MeV * 1000 - dfnuc["mean_energy"] - dfnuc["anti_nu_mean_energy"]) / 1000
@@ -189,27 +199,28 @@ def process_trajectory(
     traj_mass_grams = traj_masses_g[traj_ID]
     traj_root = Path(traj_root)
     dfheatingthermo = (
-        pl
-        .from_pandas(
-            pd.read_csv(
-                get_tar_member_extracted_path(
-                    traj_root=traj_root, particleid=traj_ID, memberfilename="./Run_rprocess/heating.dat"
-                ),
-                sep=r"\s+",
-                usecols=["#count", "hbeta", "htot"],
+        at
+        .read_wsv(
+            get_tar_member_extracted_path(
+                traj_root=traj_root, particleid=traj_ID, memberfilename="./Run_rprocess/heating.dat"
             )
         )
-        .with_columns(pl.col("htot").cast(pl.Float64, strict=False))
+        .select("#count", "hbeta", "htot")
+        .with_columns(
+            # repair Fortran triple-digit exponents like 1.735904-244 (missing "e"), which make a
+            # column parse as strings, then cast strictly so genuinely corrupt values still raise
+            pl
+            .when(cs.by_dtype(pl.String).str.slice(-4, 1) == "-")
+            .then(cs.by_dtype(pl.String).str.replace_all("-", "e-"))
+            .otherwise(cs.by_dtype(pl.String))
+            .cast(pl.Float64)
+        )
         .join(
-            pl.from_pandas(
-                pd.read_csv(
-                    get_tar_member_extracted_path(
-                        traj_root=traj_root, particleid=traj_ID, memberfilename="./Run_rprocess/energy_thermo.dat"
-                    ),
-                    sep=r"\s+",
-                    usecols=["#count", "time/s", "Qdot"],
+            at.read_wsv(
+                get_tar_member_extracted_path(
+                    traj_root=traj_root, particleid=traj_ID, memberfilename="./Run_rprocess/energy_thermo.dat"
                 )
-            ),
+            ).select("#count", "time/s", "Qdot"),
             on="#count",
             how="left",
             coalesce=True,
@@ -374,27 +385,15 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     arr_t_day = 10 ** (np.linspace(log_t_compar_min_s, log_t_compar_max_s, args.nsteps, endpoint=True))
 
     # get masses of trajectories
-    colnames = None
-    skiprows = 0
-    with Path(args.trajectoryroot, "summary-all.dat").open("r", encoding="utf-8") as f:
-        possible_header_line = f.readline()
-        if possible_header_line.startswith("#"):
-            colnames = possible_header_line[1:].split()
-            skiprows = 1
+    summarypath = Path(args.trajectoryroot, "summary-all.dat")
+    with summarypath.open("r", encoding="utf-8") as f:
+        if not f.readline().startswith("#"):
+            msg = "ERROR: No header found in summary-all.dat. Please check the file format."
+            raise ValueError(msg)
 
-    if colnames is None:
-        msg = "ERROR: No header found in summary-all.dat. Please check the file format."
-        raise ValueError(msg)
-
-    traj_summ_data = pl.from_pandas(
-        pd.read_csv(
-            Path(args.trajectoryroot, "summary-all.dat"),
-            delimiter=r"\s+",
-            skiprows=skiprows,
-            names=colnames,
-            dtype_backend="pyarrow",
-        )
-    ).filter(pl.any_horizontal(pl.col("Ye").is_between(Ye_lower, Ye_upper) for _, Ye_lower, Ye_upper in Ye_bins))
+    traj_summ_data = at.read_wsv(summarypath, comment_prefix="#", header_from_comment=True).filter(
+        pl.any_horizontal(pl.col("Ye").is_between(Ye_lower, Ye_upper) for _, Ye_lower, Ye_upper in Ye_bins)
+    )
 
     print(traj_summ_data)
 

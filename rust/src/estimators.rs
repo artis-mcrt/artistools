@@ -1,4 +1,5 @@
 use crate::parse::malformed;
+use crate::parse::open_decompressed;
 use crate::parse::parse_field;
 use polars::prelude::*;
 use pyo3::prelude::*;
@@ -262,7 +263,7 @@ fn read_estimator_file(folderpath: &Path, rank: i32) -> PolarsResult<DataFrame> 
     })?;
 
     let mut columns = EstimatorColumns::default();
-    for (linenum, line) in BufReader::new(autocompress::autodetect_open(&filepath)?)
+    for (linenum, line) in BufReader::new(open_decompressed(&filepath)?)
         .lines()
         .enumerate()
     {

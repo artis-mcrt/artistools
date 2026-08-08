@@ -17,8 +17,8 @@ from pathlib import Path
 
 import numpy as np
 import numpy.typing as npt
-import pandas as pd
 import polars as pl
+import polars.selectors as cs
 
 import artistools as at
 from artistools.constants import day_to_s
@@ -115,21 +115,12 @@ def get_tar_member_extracted_path(traj_root: Path | str, particleid: int, member
 @lru_cache(maxsize=16)
 def get_traj_network_timesteps(traj_root: Path, particleid: int) -> pl.DataFrame:
     """Return the network step numbers and times [s] of one trajectory's energy_thermo.dat."""
-    with get_tar_member_extracted_path(
+    filepath = get_tar_member_extracted_path(
         traj_root=traj_root, particleid=particleid, memberfilename="./Run_rprocess/energy_thermo.dat"
-    ).open(encoding="utf-8") as evolfile:
-        return pl.from_pandas(
-            pd.read_csv(
-                evolfile,
-                sep=r"\s+",
-                comment="#",
-                usecols=[0, 1],
-                names=["nstep", "timesec"],
-                engine="c",
-                dtype={0: "int32[pyarrow]", 1: "float32[pyarrow]"},
-                dtype_backend="pyarrow",
-            )
-        )
+    )
+    return at.read_wsv(filepath, has_header=False, comment_prefix="#").select(
+        cs.by_index(0).cast(pl.Int32).alias("nstep"), cs.by_index(1).cast(pl.Float32).alias("timesec")
+    )
 
 
 def get_closest_network_timesteps(
@@ -206,38 +197,23 @@ def get_trajectory_timestepfile_nuc_abund(
 
 def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, t_model_s: float) -> float:
     """Calculate initial cell energy [erg/g] from reactions t < t_model_s (reduced by work done)."""
-    with get_tar_member_extracted_path(
+    enthermofilepath = get_tar_member_extracted_path(
         traj_root=traj_root, particleid=particleid, memberfilename="./Run_rprocess/energy_thermo.dat"
-    ).open(encoding="utf-8") as enthermofile:
-        try:
-            dfthermo = pl.from_pandas(
-                pd.read_csv(
-                    enthermofile,
-                    sep=r"\s+",
-                    usecols=["time/s", "Qdot"],
-                    engine="c",
-                    dtype={0: "float32[pyarrow]", 1: "float32[pyarrow]"},
-                    dtype_backend="pyarrow",
-                )
-            )
-        except pd.errors.EmptyDataError:
-            print(f"Problem with file {enthermofile}")
-            raise
+    )
+    dfthermo = at.read_wsv(enthermofilepath).select("time/s", "Qdot").rename({"time/s": "time_s"})
+    startindex: int = int(np.argmax(dfthermo["time_s"] >= 1))  # start integrating at this number of seconds
 
-        dfthermo = dfthermo.rename({"time/s": "time_s"})
-        startindex: int = int(np.argmax(dfthermo["time_s"] >= 1))  # start integrating at this number of seconds
+    assert all(dfthermo["Qdot"][startindex : nts_max + 1] >= 0.0)
 
-        assert all(dfthermo["Qdot"][startindex : nts_max + 1] >= 0.0)
+    dfthermo = dfthermo.with_columns(Qdot_expansionadjusted=pl.col("Qdot") * pl.col("time_s") / t_model_s)
 
-        dfthermo = dfthermo.with_columns(Qdot_expansionadjusted=pl.col("Qdot") * pl.col("time_s") / t_model_s)
-
-        qdotintegral = float(
-            np.trapezoid(
-                y=dfthermo["Qdot_expansionadjusted"][startindex : nts_max + 1],
-                x=dfthermo["time_s"][startindex : nts_max + 1],
-            )
+    qdotintegral = float(
+        np.trapezoid(
+            y=dfthermo["Qdot_expansionadjusted"][startindex : nts_max + 1],
+            x=dfthermo["time_s"][startindex : nts_max + 1],
         )
-        assert qdotintegral >= 0.0
+    )
+    assert qdotintegral >= 0.0
 
     return qdotintegral
 
@@ -524,8 +500,8 @@ def get_wollaeger_density_profile(wollaeger_profilename: Path | str, t_model_ini
     t_model_init_seconds_in = t_model_init_days_in * 24 * 60 * 60
 
     return (
-        pl
-        .from_pandas(pd.read_csv(wollaeger_profilename, sep=r"\s+", skiprows=1, names=["mgi", "vel_r_max_kmps", "rho"]))
+        at
+        .read_wsv(wollaeger_profilename, has_header=False, skip_rows=1, new_columns=["mgi", "vel_r_max_kmps", "rho"])
         .with_columns(pl.col("mgi").cast(pl.Int32))
         .with_columns(vel_r_min_kmps=pl.col("vel_r_max_kmps").shift(n=1, fill_value=0.0))
         .with_columns(

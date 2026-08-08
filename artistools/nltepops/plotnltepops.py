@@ -12,7 +12,7 @@ import matplotlib as mpl
 import matplotlib.axes as mplax
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
+import numpy.typing as npt
 import polars as pl
 from matplotlib import ticker
 
@@ -51,7 +51,7 @@ def plot_reference_data(
     atomic_number: int,
     ion_stage: int,
     estimators_celltimestep: dict[str, t.Any],
-    dfpopthision: pd.DataFrame,
+    dfpopthision: pl.DataFrame,
     annotatelines: bool,
 ) -> None:
     """Overplot the CHIANTI level populations for the same conditions, when a level map file is available."""
@@ -127,8 +127,8 @@ def plot_reference_data(
 
 
 def get_floers_data(
-    dfpopthision: pd.DataFrame, atomic_number: int, ion_stage: int, modelpath: Path, T_e: float, modelgridindex: int
-) -> tuple[list[int] | None, list[float] | None]:
+    dfpopthision: pl.DataFrame, atomic_number: int, ion_stage: int, modelpath: Path, T_e: float, modelgridindex: int
+) -> tuple[list[int] | None, npt.NDArray[np.floating] | None]:
     """Return Andreas Floers's Fe II/III level populations for Shingles et al. (2022), or None if unavailable."""
     floers_levelnums, floers_levelpop_values = None, None
 
@@ -137,10 +137,9 @@ def get_floers_data(
         floersfilename = "andreas_level_populations_fe2.txt" if ion_stage == 2 else "andreas_level_populations_fe3.txt"
         if Path(modelpath / floersfilename).is_file():
             print(f"reading {floersfilename}")
-            dffloers_levelpops = pd.read_csv(modelpath / floersfilename, comment="#", sep=r"\s+")
+            dffloers_levelpops = at.read_wsv(modelpath / floersfilename, comment_prefix="#").sort("energypercm")
             # floers_levelnums = floers_levelpops['index'].values - 1
-            dffloers_levelpops = dffloers_levelpops.sort_values(by="energypercm")
-            floers_levelnums = list(range(len(dffloers_levelpops)))
+            floers_levelnums = list(range(dffloers_levelpops.height))
             floers_levelpop_values = dffloers_levelpops["frac_ionpop"].to_numpy() * dfpopthision["n_NLTE"].sum()
 
         floersmultizonefilename = None
@@ -163,19 +162,18 @@ def get_floers_data(
                 floersmultizonefilename = "level_pops_subch_shen2018-247d.csv"
 
         if floersmultizonefilename and Path(floersmultizonefilename).is_file():
-            modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect().to_pandas(use_pyarrow_extension_array=True)
-            vel_outer = modeldata.iloc[modelgridindex].vel_r_max_kmps
+            modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect()
+            vel_outer = modeldata["vel_r_max_kmps"].item(modelgridindex)
             print(f"  reading {floersmultizonefilename}", vel_outer, T_e)
-            dffloers = pd.read_csv(floersmultizonefilename)
-            for _, row in dffloers.iterrows():
-                if abs(row["vel_outer"] - vel_outer) < 0.5:
-                    print(f"  ARTIS cell vel_outer: {vel_outer}, Floersfile: {row['vel_outer']}")
-                    print(f"  ARTIS cell Te: {T_e}, Floersfile: {row['Te']}")
-                    floers_levelpops = row.to_numpy()[4:]
-                    if len(dfpopthision["level"]) < len(floers_levelpops):
-                        floers_levelpops = floers_levelpops[: len(dfpopthision["level"])]
-                    floers_levelnums = list(range(len(floers_levelpops)))
-                    floers_levelpop_values = floers_levelpops * (dfpopthision["n_NLTE"].sum() / sum(floers_levelpops))
+            dffloers = pl.read_csv(floersmultizonefilename).filter((pl.col("vel_outer") - vel_outer).abs() < 0.5)
+            for row in dffloers.iter_rows(named=True):
+                print(f"  ARTIS cell vel_outer: {vel_outer}, Floersfile: {row['vel_outer']}")
+                print(f"  ARTIS cell Te: {T_e}, Floersfile: {row['Te']}")
+                floers_levelpops = np.array(list(row.values())[4:], dtype=float)
+                if len(dfpopthision["level"]) < len(floers_levelpops):
+                    floers_levelpops = floers_levelpops[: len(dfpopthision["level"])]
+                floers_levelnums = list(range(len(floers_levelpops)))
+                floers_levelpop_values = floers_levelpops * (dfpopthision["n_NLTE"].sum() / sum(floers_levelpops))
 
     return floers_levelnums, floers_levelpop_values
 
@@ -185,7 +183,7 @@ def make_ionsubplot(
     modelpath: Path,
     atomic_number: int,
     ion_stage: int,
-    dfpop: pd.DataFrame,
+    dfpop: pl.DataFrame,
     adata: pl.DataFrame,
     estimators: dict[tuple[int, int], dict[str, t.Any]],
     T_e: float,
@@ -199,11 +197,12 @@ def make_ionsubplot(
     ionstr = at.get_ionstring(atomic_number, ion_stage, style="chargelatex")
     ion_data = adata.filter((pl.col("Z") == atomic_number) & (pl.col("ion_stage") == ion_stage)).row(0, named=True)
 
-    dfpopthision: t.Any = dfpop.query(
-        "modelgridindex == @modelgridindex and timestep == @timestep "
-        "and Z == @atomic_number and ion_stage == @ion_stage",
-        inplace=False,
-    ).copy()
+    dfpopthision = dfpop.filter(
+        (pl.col("modelgridindex") == modelgridindex)
+        & (pl.col("timestep") == timestep)
+        & (pl.col("Z") == atomic_number)
+        & (pl.col("ion_stage") == ion_stage)
+    )
 
     lte_columns: list[tuple[str, float]] = [("n_LTE_T_e", T_e)]
     if not args.hide_lte_tr:
@@ -212,18 +211,23 @@ def make_ionsubplot(
     dfpopthision = at.nltepops.add_lte_pops(dfpopthision, adata, lte_columns, noprint=False, maxlevel=args.maxlevel)
 
     if args.maxlevel >= 0:
-        dfpopthision = dfpopthision.query("level <= @args.maxlevel")
+        dfpopthision = dfpopthision.filter(pl.col("level") <= args.maxlevel)
 
-    ionpopulation = dfpopthision["n_NLTE"].sum()
+    ionpopulation = float(dfpopthision["n_NLTE"].sum())
     ionstr = at.get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
     ionpopulation_fromest = estimators.get((timestep, modelgridindex), {}).get(f"nnion_{ionstr}", 0.0)
 
-    dfpopthision.loc[:, "parity"] = [
-        1 if (row.level != -1 and ion_data["levels"]["levelname"].item(int(row.level)).split("[")[0][-1] == "o") else 0
-        for _, row in dfpopthision.iterrows()
-    ]
+    levelnames = ion_data["levels"]["levelname"].to_list()
+    dfpopthision = dfpopthision.with_columns(
+        parity=pl.Series([
+            1 if (level != -1 and levelnames[int(level)].split("[")[0][-1] == "o") else 0
+            for level in dfpopthision["level"]
+        ])
+    )
 
-    configlist = ion_data["levels"]["levelname"][: max(dfpopthision.level) + 1]
+    maxlevel_ion = dfpopthision["level"].max()
+    assert isinstance(maxlevel_ion, int)
+    configlist = ion_data["levels"]["levelname"][: maxlevel_ion + 1]
 
     configtexlist = [at.nltepops.texifyconfiguration(configlist[0])]
     for i in range(1, len(configlist)):
@@ -234,12 +238,14 @@ def make_ionsubplot(
         else:
             configtexlist.append(at.nltepops.texifyconfiguration(configlist[i]))
 
-    dfpopthision.loc[:, "config"] = [configlist[level] for level in dfpopthision.level]
-    dfpopthision.loc[:, "texname"] = [configtexlist[level] for level in dfpopthision.level]
+    dfpopthision = dfpopthision.with_columns(
+        config=pl.Series([configlist[level] for level in dfpopthision["level"]]),
+        texname=pl.Series([configtexlist[level] for level in dfpopthision["level"]]),
+    )
 
     if args.x == "config":
         # ax.xaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=100))
-        ax.set_xticks(ion_data["levels"]["levelindex"][: max(dfpopthision.level) + 1])
+        ax.set_xticks(ion_data["levels"]["levelindex"][: maxlevel_ion + 1])
 
         if not lastsubplot:
             ax.set_xticklabels("" for _ in configtexlist)
@@ -261,36 +267,30 @@ def make_ionsubplot(
 
     lte_scalefactor = (
         # scale to match the ground state populations
-        float(dfpopthision["n_NLTE"].iloc[0] / dfpopthision["n_LTE_T_e"].iloc[0])
+        float(dfpopthision["n_NLTE"].item(0) / dfpopthision["n_LTE_T_e"].item(0))
         if args.departuremode
         # else scale to match the ion population
-        else float(ionpopulation / dfpopthision["n_LTE_T_e"].sum())
+        else ionpopulation / float(dfpopthision["n_LTE_T_e"].sum())
     )
 
-    dfpopthision = dfpopthision.assign(n_LTE_T_e_normed=pd.col("n_LTE_T_e") * lte_scalefactor).assign(
-        departure_coeff=pd.col("n_NLTE") / pd.col("n_LTE_T_e_normed")
+    dfpopthision = dfpopthision.with_columns(n_LTE_T_e_normed=pl.col("n_LTE_T_e") * lte_scalefactor).with_columns(
+        departure_coeff=pl.col("n_NLTE") / pl.col("n_LTE_T_e_normed")
     )
 
-    pd.set_option("display.max_columns", 150)
-    if len(dfpopthision) < 30:
+    if dfpopthision.height < 30:
         # print(dfpopthision[
         #     ['Z', 'ion_stage', 'level', 'config', 'departure_coeff', 'texname']].to_string(index=False))
-        print(
-            dfpopthision.loc[
-                :, [c not in {"timestep", "modelgridindex", "Z", "parity", "texname"} for c in dfpopthision.columns]
-            ].to_string(index=False)
-        )
+        with pl.Config(tbl_cols=150, tbl_rows=30):
+            print(dfpopthision.drop("timestep", "modelgridindex", "Z", "parity", "texname"))
 
-    maxlevel = max(dfpopthision["level"])
     dftrans: pl.DataFrame | None = None
     if "upper" in ion_data["transitions"].collect_schema().names():
-        dftrans = ion_data["transitions"].filter(pl.col("upper") <= maxlevel).collect()
+        dftrans = ion_data["transitions"].filter(pl.col("upper") <= maxlevel_ion).collect()
         if dftrans is not None and dftrans.is_empty():
             dftrans = None
 
     if dftrans is not None:
-        dflevel_and_pop = pl.from_pandas(dfpopthision[["level", "n_NLTE"]])
-        assert isinstance(dflevel_and_pop, pl.DataFrame)
+        dflevel_and_pop = dfpopthision.select("level", "n_NLTE")
         dftrans = dftrans.join(
             dflevel_and_pop.with_columns(pl.col("level").cast(pl.Int32)),
             how="left",
@@ -328,7 +328,7 @@ def make_ionsubplot(
             assert floers_levelnums is not None
             ax.plot(
                 floers_levelnums,
-                floers_levelpop_values / dfpopthision["n_LTE_T_e_normed"],
+                floers_levelpop_values / dfpopthision["n_LTE_T_e_normed"].to_numpy(),
                 linewidth=1.5,
                 label=f"{ionstr} Flörs NLTE",
                 linestyle="None",
@@ -360,8 +360,8 @@ def make_ionsubplot(
             )
 
         if not args.hide_lte_tr:
-            lte_scalefactor = float(ionpopulation / dfpopthision["n_LTE_T_R"].sum())
-            dfpopthision = dfpopthision.assign(n_LTE_T_R_normed=pd.col("n_LTE_T_R") * lte_scalefactor)
+            lte_scalefactor = ionpopulation / float(dfpopthision["n_LTE_T_R"].sum())
+            dfpopthision = dfpopthision.with_columns(n_LTE_T_R_normed=pl.col("n_LTE_T_R") * lte_scalefactor)
             ax.plot(
                 dfpopthision["level"],
                 dfpopthision["n_LTE_T_R_normed"],
@@ -381,8 +381,8 @@ def make_ionsubplot(
         color="black",
     )
 
-    dfpopthisionoddlevels = dfpopthision.query("parity==1")
-    if not dfpopthisionoddlevels.level.empty:
+    dfpopthisionoddlevels = dfpopthision.filter(pl.col("parity") == 1)
+    if not dfpopthisionoddlevels.is_empty():
         ax.plot(
             dfpopthisionoddlevels["level"],
             dfpopthisionoddlevels[ycolumnname],
@@ -412,9 +412,9 @@ def make_plot_populations_with_time_or_velocity(modelpaths: list[Path | str], ar
     Z = at.get_atomic_number(args.elements[0])
     ion_stage = int(args.ion_stages[0])
 
-    adata = at.atomic.get_levels_pandas(modelpaths[0], get_transitions=True)
+    adata = at.atomic.get_levels(modelpaths[0], get_transitions=True)
 
-    ion_data = adata.query("Z == @Z and ion_stage == @ion_stage").iloc[0]
+    ion_data = adata.filter((pl.col("Z") == Z) & (pl.col("ion_stage") == ion_stage)).row(0, named=True)
     levelconfignames = ion_data["levels"]["levelname"].to_list()
     # levelconfignames = [at.nltepops.texifyconfiguration(name) for name in levelconfignames]
 
@@ -506,7 +506,7 @@ def plot_populations_with_time_or_velocity(
         modelgridindex_list = [int(args.modelgridindex[0])] * len(timesteps)
 
     if args.x == "velocity":
-        modeldata = at.inputmodel.get_modeldata(modelpaths[0])[0].collect().to_pandas(use_pyarrow_extension_array=True)
+        modeldata = at.inputmodel.get_modeldata(modelpaths[0])[0].collect()
         velocity = modeldata["vel_r_max_kmps"]
         modelgridindex_list = [mgi for mgi, _ in enumerate(velocity)]
 
@@ -520,19 +520,18 @@ def plot_populations_with_time_or_velocity(
         # populationsLTE = {}
 
         for timestep, mgi in zip(timesteps, modelgridindex_list, strict=False):
-            dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=mgi).to_pandas(
-                use_pyarrow_extension_array=True
-            )
-            try:
-                timesteppops = dfpop.loc[(dfpop["Z"] == Z) & (dfpop["ion_stage"] == ion_stage)]
-            except KeyError:
+            dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=mgi)
+            if dfpop.is_empty():
                 continue
-            if timesteppops.empty:
+            timesteppops = dfpop.filter((pl.col("Z") == Z) & (pl.col("ion_stage") == ion_stage))
+            if timesteppops.is_empty():
                 continue
+            # setdefault keeps the first row for a duplicated level, matching the .item(0) this replaces
+            pop_of_level: dict[int, float] = {}
+            for level, n_nlte in zip(timesteppops["level"], timesteppops["n_NLTE"], strict=True):
+                pop_of_level.setdefault(level, n_nlte)
             for ionlevel in ionlevels:
-                populations[timestep, ionlevel, mgi] = timesteppops.loc[timesteppops["level"] == ionlevel][
-                    "n_NLTE"
-                ].to_numpy()[0]
+                populations[timestep, ionlevel, mgi] = pop_of_level[ionlevel]
                 # populationsLTE[(timestep, ionlevel)] = (timesteppops.loc[timesteppops['level']
                 #                                                          == ionlevel]['n_LTE'].values[0])
 
@@ -575,25 +574,24 @@ def make_singletimestep_plot(
     time_days = at.get_timestep_time(modelpath, timestep)
     modelname = at.get_model_name(modelpath)
 
-    dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=mgilist[0]).to_pandas(
-        use_pyarrow_extension_array=True
-    )
+    dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=mgilist[0])
 
-    if dfpop.empty:
+    if dfpop.is_empty():
         print(f"No NLTE population data for modelgrid cell {mgilist[0]} timestep {timestep}")
         return
 
-    dfpop = dfpop.query("Z == @atomic_number")
+    dfpop = dfpop.filter(pl.col("Z") == atomic_number)
 
     # top_ion = 9999
-    max_ion_stage = dfpop.ion_stage.max()
+    max_ion_stage = dfpop["ion_stage"].max()
 
-    if len(dfpop.query("ion_stage == @max_ion_stage")) == 1:  # single-level ion, so skip it
+    assert isinstance(max_ion_stage, int)
+    if dfpop.filter(pl.col("ion_stage") == max_ion_stage).height == 1:  # single-level ion, so skip it
         max_ion_stage -= 1
 
     ion_stage_list = sorted([
         i
-        for i in dfpop.ion_stage.unique()
+        for i in dfpop["ion_stage"].unique()
         if i <= max_ion_stage and (ion_stages_displayed is None or i in ion_stages_displayed)
     ])
 
@@ -653,20 +651,19 @@ def make_singletimestep_plot(
             W = math.nan
             nne = math.nan
 
-        dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=modelgridindex).to_pandas(
-            use_pyarrow_extension_array=True
-        )
+        dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=modelgridindex)
 
-        if dfpop.empty:
+        if dfpop.is_empty():
             print(f"No NLTE population data for modelgrid cell {modelgridindex} timestep {timestep}")
             return
 
-        dfpop = dfpop.query("Z == @atomic_number")
+        dfpop = dfpop.filter(pl.col("Z") == atomic_number)
 
         # top_ion = 9999
-        max_ion_stage = dfpop.ion_stage.max()
+        max_ion_stage = dfpop["ion_stage"].max()
 
-        if len(dfpop.query("ion_stage == @max_ion_stage")) == 1:  # single-level ion, so skip it
+        assert isinstance(max_ion_stage, int)
+        if dfpop.filter(pl.col("ion_stage") == max_ion_stage).height == 1:  # single-level ion, so skip it
             max_ion_stage -= 1
 
         subplot_title = modelname

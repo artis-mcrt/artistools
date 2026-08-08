@@ -144,15 +144,10 @@ def get_line_luminosities_from_pops(
     # arr_timedelta = np.array(arr_tend) - np.array(arr_tstart)
     arr_tmid = (np.array(arr_tstart) + np.array(arr_tend)) / 2.0
 
-    modeldata = (
-        at.inputmodel
-        .get_modeldata(modelpath, derived_cols=["vel_r_min_kmps", "vel_r_max_kmps"])[0]
-        .collect()
-        .to_pandas(use_pyarrow_extension_array=True)
-    )
+    modeldata = at.inputmodel.get_modeldata(modelpath, derived_cols=["vel_r_min_kmps", "vel_r_max_kmps"])[0].collect()
 
     ionlist = [(feature.atomic_number, feature.ion_stage) for feature in emfeatures]
-    adata = at.atomic.get_levels_pandas(modelpath, ionlist=tuple(ionlist), get_transitions=True)
+    adata = at.atomic.get_levels(modelpath, ionlist=tuple(ionlist), get_transitions=True)
 
     # timearrayplusend = np.concatenate([arr_tstart, [arr_tend[-1]]])
 
@@ -169,7 +164,9 @@ def get_line_luminosities_from_pops(
             & pl.col("level").is_in(feature.upperlevelindices)
         )
 
-        ion = adata.query("Z == @feature.atomic_number and ion_stage == @feature.ion_stage").iloc[0]
+        ion = adata.filter((pl.col("Z") == feature.atomic_number) & (pl.col("ion_stage") == feature.ion_stage)).row(
+            0, named=True
+        )
 
         # one pass over the populations instead of re-filtering the whole frame for every cell below.
         # setdefault keeps the first row for a duplicated key, matching the .item(0) this replaces
@@ -180,9 +177,23 @@ def get_line_luminosities_from_pops(
             levelpop_of_ts_level_mgi.setdefault((ts, level, mgi), n_nlte)
 
         # the shell velocities do not change with time, so take them out of the loop and scale the volume by t^3
-        v_inner = modeldata.vel_r_min_kmps.to_numpy(dtype=float) * 1e5
-        v_outer = modeldata.vel_r_max_kmps.to_numpy(dtype=float) * 1e5
+        v_inner = modeldata["vel_r_min_kmps"].cast(pl.Float64).to_numpy() * 1e5
+        v_outer = modeldata["vel_r_max_kmps"].cast(pl.Float64).to_numpy() * 1e5
         shell_volumes_at_1s = (4 * math.pi / 3) * (v_outer**3 - v_inner**3)
+
+        # the transition data is the same for every cell and timestep, so look it up once per line. An IndexError
+        # here is a missing transition rather than an empty cell, and must not be silently absorbed below
+        dftransitions_ion = ion["transitions"].collect()
+        linedata = []
+        for upperlevelindex, lowerlevelindex in zip(feature.upperlevelindices, feature.lowerlevelindices, strict=False):
+            A_val = dftransitions_ion.filter(
+                (pl.col("upper") == upperlevelindex) & (pl.col("lower") == lowerlevelindex)
+            )["A"].item(0)
+
+            delta_ergs = (
+                ion["levels"]["energy_ev"].item(upperlevelindex) - ion["levels"]["energy_ev"].item(lowerlevelindex)
+            ) * EV_to_erg
+            linedata.append((upperlevelindex, A_val, delta_ergs))
 
         for timeindex, timedays in enumerate(arr_tmid):
             t_sec = timedays * day_to_s
@@ -191,20 +202,11 @@ def get_line_luminosities_from_pops(
             timestep = at.get_timestep_of_timedays(modelpath, float(timedays))
             print(f"{feature.approxlambda}A {timedays}d (ts {timestep})")
 
-            for upperlevelindex, lowerlevelindex in zip(
-                feature.upperlevelindices, feature.lowerlevelindices, strict=False
-            ):
+            for upperlevelindex, A_val, delta_ergs in linedata:
                 unaccounted_shellvol = 0.0  # account for the volume of empty shells
                 unaccounted_shells: list[int] = []
-                # the transition data is the same for every cell, so look it up once. An IndexError here is a missing
-                # transition rather than an empty cell, and must not be silently absorbed below
-                A_val = ion.transitions.query("upper == @upperlevelindex and lower == @lowerlevelindex").iloc[0].A
 
-                delta_ergs = (
-                    ion.levels.iloc[upperlevelindex].energy_ev - ion.levels.iloc[lowerlevelindex].energy_ev
-                ) * EV_to_erg
-
-                for modelgridindex in modeldata.index:
+                for modelgridindex in range(modeldata.height):
                     levelpop = levelpop_of_ts_level_mgi.get((timestep, upperlevelindex, modelgridindex))
                     if levelpop is None:
                         # no population data for this cell, so roll its volume into the next one that has data
@@ -224,7 +226,7 @@ def get_line_luminosities_from_pops(
                     unaccounted_shellvol = 0.0
                 if unaccounted_shells:
                     print(f"No data for cells {unaccounted_shells} (expected for empty cells)")
-                assert len(unaccounted_shells) < len(modeldata.index)  # must be data for at least one shell
+                assert len(unaccounted_shells) < modeldata.height  # must be data for at least one shell
 
         dictlcdata[feature.colname] = lumdata
 
@@ -619,7 +621,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
                         }
 
             estimators = at.estimators.read_estimators(modelpath)
-            modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect().to_pandas(use_pyarrow_extension_array=True)
+            modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect()
             Tedata_all[modelindex] = {}
             log10nnedata_all[modelindex] = {}
             for tmid, tstart, tend in zip(times_days, args.timebins_tstart, args.timebins_tend, strict=False):
@@ -629,7 +631,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
                 tendlist = at.get_timestep_times(modelpath, loc="end")
                 tslist = [ts for ts in range(len(tstartlist)) if tendlist[ts] >= tstart and tstartlist[ts] <= tend]
                 for timestep in tslist:
-                    for modelgridindex in modeldata.index:
+                    for modelgridindex in range(modeldata.height):
                         Te, log10nne = None, None
                         with contextlib.suppress(KeyError):
                             Te = estimators[timestep, modelgridindex]["Te"]

@@ -12,6 +12,7 @@ import polars as pl
 
 from artistools.constants import day_to_s
 from artistools.misc.fileio import firstexisting
+from artistools.misc.fileio import read_wsv
 from artistools.misc.fileio import readnoncommentline
 from artistools.misc.fileio import zopen
 from artistools.misc.fileio import zopenpl
@@ -290,8 +291,6 @@ def read_rank_outputfiles(
     When a timestep or model grid cell is given, only the run folders and ranks that could contain it are read,
     and the rows are filtered to that selection (negative values mean no filter).
     """
-    import pandas as pd
-
     filepaths = [
         firstexisting(filenameformat.format(mpirank=mpirank), folder=folderpath, tryzipped=True)
         for folderpath in get_runfolders(modelpath, timestep=timestep)
@@ -301,7 +300,7 @@ def read_rank_outputfiles(
 
     dfout = (
         pl
-        .concat(pl.from_pandas(pd.read_csv(filepath, sep=r"\s+", dtype_backend="pyarrow")) for filepath in filepaths)
+        .concat((read_wsv(filepath) for filepath in filepaths), how="vertical_relaxed")
         .rename({"ionstage": "ion_stage"}, strict=False)
         .with_columns(pl.col("modelgridindex").cast(pl.Int64), pl.col("timestep").cast(pl.Int64))
     )
