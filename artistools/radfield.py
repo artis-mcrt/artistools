@@ -171,20 +171,20 @@ def plot_line_estimators(
     # test against None rather than truthiness
     radfielddataselected = select_radfield_subset(
         radfielddata, pl.col("bin_num") < -1, modelgridindex, timestep
-    ).to_pandas(use_pyarrow_extension_array=True)[["nu_upper", "J_nu_avg"]]
-    if radfielddataselected.empty:
+    ).select("nu_upper", "J_nu_avg")
+    if radfielddataselected.is_empty():
         print("No line estimators to plot")
         return 0.0
 
-    radfielddataselected.loc[:, "lambda_angstroms"] = c_ang_per_s / radfielddataselected["nu_upper"]
-    radfielddataselected.loc[:, "Jb_lambda"] = (
-        radfielddataselected["J_nu_avg"] * (radfielddataselected["nu_upper"] ** 2) / c_ang_per_s
+    radfielddataselected = radfielddataselected.with_columns(
+        lambda_angstroms=c_ang_per_s / pl.col("nu_upper"),
+        Jb_lambda=pl.col("J_nu_avg") * (pl.col("nu_upper") ** 2) / c_ang_per_s,
     )
 
     ymax = radfielddataselected["Jb_lambda"].max()
     assert isinstance(ymax, float)
 
-    if not radfielddataselected.empty:
+    if not radfielddataselected.is_empty():
         axis.scatter(
             radfielddataselected["lambda_angstroms"],
             radfielddataselected["Jb_lambda"],
@@ -212,22 +212,17 @@ def plot_specout(
     elif specfilename.is_file():
         modelpath = Path(specfilename).parent
 
-    dfspectrum = (
-        at.spectra
-        .get_spectra(modelpath=modelpath, timestepmin=timestep)[-1]
-        .collect()
-        .to_pandas(use_pyarrow_extension_array=True)
-    )
+    dfspectrum = at.spectra.get_spectra(modelpath=modelpath, timestepmin=timestep)[-1].collect()
     label = "Emergent spectrum"
     if scale_factor is not None:
         label += " (scaled)"
-        dfspectrum.loc[:, "f_lambda"] *= scale_factor
+        dfspectrum = dfspectrum.with_columns(pl.col("f_lambda") * scale_factor)
 
     if peak_value is not None:
         label += " (normalised)"
-        dfspectrum.loc[:, "f_lambda"] = dfspectrum["f_lambda"] / dfspectrum["f_lambda"].max() * peak_value
+        dfspectrum = dfspectrum.with_columns(pl.col("f_lambda") / pl.col("f_lambda").max() * peak_value)
 
-    dfspectrum.plot(x="lambda_angstroms", y="f_lambda", ax=axis, label=label, **plotkwargs)
+    axis.plot(dfspectrum["lambda_angstroms"], dfspectrum["f_lambda"], label=label, **plotkwargs)
 
 
 def get_binedges(radfielddata: pl.DataFrame) -> list[float]:

@@ -13,7 +13,7 @@ import matplotlib.cm as mplcm
 import matplotlib.colors as mplcolors
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
+import polars as pl
 from matplotlib import gridspec
 from matplotlib.image import AxesImage
 
@@ -25,34 +25,34 @@ type AxisType = t.Literal["x", "y", "z", "r", "rcyl"]
 
 
 def get_2D_slice_through_3d_model(
-    dfmodel: pd.DataFrame,
+    dfmodel: pl.DataFrame,
     sliceaxis: AxisType,
     modelmeta: dict[str, t.Any] | None = None,
     plotaxis1: AxisType | None = None,
     plotaxis2: AxisType | None = None,
     sliceindex: int | None = None,
-) -> pd.DataFrame:
+) -> pl.DataFrame:
     """Return the cells of a 3D model at one position along sliceaxis, defaulting to the slice nearest the origin."""
     if sliceindex is None:
-        # get midpoint
-        sliceposition: float | int = dfmodel.iloc[(dfmodel["pos_x_min"]).abs().argsort()][:1]["pos_x_min"].item()
         # Choose position to slice. This gets minimum absolute value as the closest to 0
+        argmin = dfmodel["pos_x_min"].abs().arg_min()
+        assert argmin is not None
+        sliceposition: float | int = dfmodel["pos_x_min"].item(argmin)
     else:
-        cell_boundaries = list(dfmodel[f"pos_{sliceaxis}_min"].unique())
+        cell_boundaries = dfmodel[f"pos_{sliceaxis}_min"].unique(maintain_order=True).to_list()
         sliceposition = cell_boundaries[sliceindex]
 
-    slicedf = dfmodel.loc[dfmodel[f"pos_{sliceaxis}_min"] == sliceposition]
-    assert isinstance(slicedf, pd.DataFrame)
+    slicedf = dfmodel.filter(pl.col(f"pos_{sliceaxis}_min") == sliceposition)
 
     if modelmeta is not None and plotaxis1 is not None and plotaxis2 is not None:
-        assert slicedf.shape[0] == modelmeta[f"ncoordgrid{plotaxis1}"] * modelmeta[f"ncoordgrid{plotaxis2}"]
+        assert slicedf.height == modelmeta[f"ncoordgrid{plotaxis1}"] * modelmeta[f"ncoordgrid{plotaxis2}"]
 
     return slicedf
 
 
 def plot_slice_modelcolumn(
     ax: mplax.Axes,
-    dfmodelslice: pd.DataFrame,
+    dfmodelslice: pl.DataFrame,
     modelmeta: dict[str, t.Any],
     colname: str,
     plotaxis1: str,
@@ -63,7 +63,7 @@ def plot_slice_modelcolumn(
     """Draw one model column as a colour image on the axes, and return the image and its scalar mappable."""
     print(f"plotting {colname}")
     colorscale = (
-        dfmodelslice[colname] * dfmodelslice["rho"] if colname.startswith("X_") else dfmodelslice[colname]
+        (dfmodelslice[colname] * dfmodelslice["rho"]) if colname.startswith("X_") else dfmodelslice[colname]
     ).to_numpy()
 
     if args.hideemptycells:
@@ -96,10 +96,18 @@ def plot_slice_modelcolumn(
     # turn 1D flattened array back into 2D array
     valuegrid = colorscale.reshape((modelmeta[f"ncoordgrid{plotaxis2}"], modelmeta[f"ncoordgrid{plotaxis1}"]))
 
-    vmin_ax1 = dfmodelslice[f"pos_{plotaxis1}_min"].min() / t_model_s * unitfactor
-    vmax_ax1 = dfmodelslice[f"pos_{plotaxis1}_max"].max() / t_model_s * unitfactor
-    vmin_ax2 = dfmodelslice[f"pos_{plotaxis2}_min"].min() / t_model_s * unitfactor
-    vmax_ax2 = dfmodelslice[f"pos_{plotaxis2}_max"].max() / t_model_s * unitfactor
+    posmin_ax1 = dfmodelslice[f"pos_{plotaxis1}_min"].min()
+    posmax_ax1 = dfmodelslice[f"pos_{plotaxis1}_max"].max()
+    posmin_ax2 = dfmodelslice[f"pos_{plotaxis2}_min"].min()
+    posmax_ax2 = dfmodelslice[f"pos_{plotaxis2}_max"].max()
+    assert isinstance(posmin_ax1, int | float)
+    assert isinstance(posmax_ax1, int | float)
+    assert isinstance(posmin_ax2, int | float)
+    assert isinstance(posmax_ax2, int | float)
+    vmin_ax1 = posmin_ax1 / t_model_s * unitfactor
+    vmax_ax1 = posmax_ax1 / t_model_s * unitfactor
+    vmin_ax2 = posmin_ax2 / t_model_s * unitfactor
+    vmax_ax2 = posmax_ax2 / t_model_s * unitfactor
     if colname == "rho":
         if args.logcolorscale:
             vmin = args.floorval or -15
@@ -153,7 +161,7 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
         modelpath, get_elemabundances=get_elemabundances, derived_cols=["pos_min", "pos_max"]
     )
     assert modelmeta["dimensions"] > 1
-    dfmodel = lzdfmodel.collect().to_pandas()
+    dfmodel = lzdfmodel.collect()
 
     targetmodeltime_days = None
     if targetmodeltime_days is not None:
@@ -253,20 +261,11 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
 
     plmodel, modelmeta = at.inputmodel.get_modeldata(modelpath, get_elemabundances=get_elemabundances)
     vmax = modelmeta["vmax_cmps"]
-    model = plmodel.collect().to_pandas(use_pyarrow_extension_array=True)
+    model = plmodel.collect()
 
-    if "Ye" in args.plotvars and "Ye" not in model:
+    if "Ye" in args.plotvars and "Ye" not in model.columns:
         file_contents = np.loadtxt(Path(modelpath) / "Ye.txt", unpack=True, skiprows=1)
-        Ye = file_contents[1]
-        model["Ye"] = Ye
-
-    mincellparticles = 0
-    if mincellparticles > 0:
-        if "tracercount" not in model:
-            griddata = pd.read_csv(modelpath / "grid.dat", sep=r"\s+", comment="#", skiprows=3)
-            model["tracercount"] = griddata["tracercount"]
-        print(model["tracercount"], max(model["tracercount"]))
-        model[coloursurfaceby][model["tracercount"] < mincellparticles] = 0
+        model = model.with_columns(Ye=pl.Series(file_contents[1]))
 
     # generate grid from data
     grid = round(len(model["rho"]) ** (1.0 / 3.0))

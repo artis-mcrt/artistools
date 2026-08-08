@@ -9,8 +9,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-import numpy.typing as npt
-import pandas as pd
+import polars as pl
 
 import artistools as at
 from artistools.constants import EV_to_erg
@@ -29,29 +28,23 @@ def make_ntstats_plot(ntstatfile: str | Path) -> None:
         nrows=1, ncols=1, sharex=True, figsize=(4, 3), tight_layout={"pad": 0.5, "w_pad": 0.3, "h_pad": 0.3}
     )
 
-    dfstats = pd.read_csv(ntstatfile, sep=r"\s+", escapechar="#").fillna(0)
+    # the header line was written as a "#" comment
+    dfstats = at.read_wsv(ntstatfile, comment_prefix="#", header_from_comment=True).fill_null(0)
 
-    norm_frac_sum = False
-    norm_factors: float | npt.NDArray[np.float64]
-    if norm_frac_sum:
-        # scale up (or down) ionisation, excitation, and heating to force frac_sum = 1.0
-        dfstats["frac_sum"] = dfstats["frac_ionization"] + dfstats["frac_excitation"] + dfstats["frac_heating"]
-        norm_factors = 1.0 / dfstats["frac_sum"].to_numpy(dtype=float)
-    else:
-        norm_factors = 1.0
-    pd.set_option("display.width", 250)
-    pd.set_option("display.max_rows", 50)
-    print(dfstats.to_string())
+    with pl.Config(tbl_cols=-1, tbl_rows=50):
+        print(dfstats)
 
-    xarr = np.log10(dfstats.x_e)
-    ax.plot(xarr, dfstats.frac_ionization * norm_factors, label="Ionisation")
-    if max(dfstats.frac_excitation) > 0.0:
-        ax.plot(xarr, dfstats.frac_excitation * norm_factors, label="Excitation")
-    ax.plot(xarr, dfstats.frac_heating * norm_factors, label="Heating")
-    ioncols = [col for col in dfstats.columns.to_numpy() if col.startswith("frac_ionization_")]
+    xarr = np.log10(dfstats["x_e"])
+    ax.plot(xarr, dfstats["frac_ionization"], label="Ionisation")
+    max_frac_excitation = dfstats["frac_excitation"].max()
+    assert isinstance(max_frac_excitation, int | float)
+    if max_frac_excitation > 0.0:
+        ax.plot(xarr, dfstats["frac_excitation"], label="Excitation")
+    ax.plot(xarr, dfstats["frac_heating"], label="Heating")
+    ioncols = [col for col in dfstats.columns if col.startswith("frac_ionization_")]
     for ioncol in ioncols:
         ion = ioncol.replace("frac_ionization_", "")
-        ax.plot(xarr, dfstats[ioncol] * norm_factors, label=f"{ion} ionisation")
+        ax.plot(xarr, dfstats[ioncol], label=f"{ion} ionisation")
 
     ax.set_ylabel(r"Energy fraction")
     ax.set_xlabel(r"log x$_e$")
@@ -183,7 +176,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     modelpath = Path(args.modelpath)
 
     args.outputfile = at.resolve_outputfile(args.outputfile, defaultoutputfile)
-    dfpops: pd.DataFrame | None
+    dfpops: pl.DataFrame | None
     ionpopdict: dict[tuple[int, int] | int, float]
     if args.composition == "artis":
         if args.timedays:
@@ -192,7 +185,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             print("A time or timestep must be specified.")
             sys.exit()
 
-        modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect().to_pandas(use_pyarrow_extension_array=True)
+        modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect()
         if args.velocity >= 0.0:
             args.modelgridindex = at.inputmodel.get_mgi_of_velocity_kms(modelpath, args.velocity)
         else:
@@ -205,11 +198,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         assert isinstance(args.modelgridindex, int)
         estim = estimators[args.timestep, args.modelgridindex]
 
-        dfpops = at.nltepops.read_files(
-            modelpath, modelgridindex=args.modelgridindex, timestep=args.timestep
-        ).to_pandas(use_pyarrow_extension_array=True)
+        dfpops = at.nltepops.read_files(modelpath, modelgridindex=args.modelgridindex, timestep=args.timestep)
 
-        if dfpops.empty:
+        if dfpops.is_empty():
             print(f"ERROR: no NLTE populations for cell {args.modelgridindex} at timestep {args.timestep}")
             raise AssertionError
 

@@ -71,7 +71,7 @@ def read_classic_estimators(
     modelpath: Path, readonly_mgi: list[int] | None = None, readonly_timestep: list[int] | None = None
 ) -> dict[tuple[int, int], t.Any] | None:
     """Return the classic estimators keyed by (timestep, modelgridindex), or None when no estimator files are found."""
-    modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect().to_pandas(use_pyarrow_extension_array=True)
+    modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect()
     estimfiles = list(
         itertools.chain(Path(modelpath).glob("estimators_????.out"), Path(modelpath).glob("*/estimators_????.out"))
     )

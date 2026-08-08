@@ -12,7 +12,6 @@ from pathlib import Path
 import matplotlib.typing as mplt
 import numpy as np
 import numpy.typing as npt
-import pandas as pd
 import polars as pl
 import polars.selectors as cs
 
@@ -38,6 +37,7 @@ from artistools.misc import get_viewingdirectionbincount
 from artistools.misc import get_vpkt_config
 from artistools.misc import match_closest_time
 from artistools.misc import print_saved
+from artistools.misc import read_wsv
 from artistools.misc import split_multitable_dataframe
 from artistools.misc import zopenpl
 
@@ -416,32 +416,24 @@ def get_spectrum_at_time(
     dirbin: int = -1,
     average_over_phi: bool | None = None,
     average_over_theta: bool | None = None,
-) -> pd.DataFrame:
+) -> pl.DataFrame:
     """Return the spectrum of one direction bin at a single timestep."""
     if dirbin >= 0:
         if args is not None and args.plotvspecpol and (modelpath / "vpkt.txt").is_file():
-            return (
-                get_vspecpol_spectrum(modelpath, time, dirbin, args)
-                .collect()
-                .to_pandas(use_pyarrow_extension_array=True)
-            )
+            return get_vspecpol_spectrum(modelpath, time, dirbin, args).collect()
         assert average_over_phi is not None
         assert average_over_theta is not None
     else:
         average_over_phi = False
         average_over_theta = False
 
-    return (
-        get_spectra(
-            modelpath=modelpath,
-            timestepmin=timestep,
-            timestepmax=timestep,
-            average_over_phi=average_over_phi,
-            average_over_theta=average_over_theta,
-        )[dirbin]
-        .collect()
-        .to_pandas(use_pyarrow_extension_array=True)
-    )
+    return get_spectra(
+        modelpath=modelpath,
+        timestepmin=timestep,
+        timestepmax=timestep,
+        average_over_phi=average_over_phi,
+        average_over_theta=average_over_theta,
+    )[dirbin].collect()
 
 
 def get_from_packets(
@@ -836,13 +828,12 @@ def make_averaged_vspecfiles(args: argparse.Namespace) -> None:
     filenames = sorted_by_number(filenames)
 
     for spec_index, filename in enumerate(filenames):  # vspecpol-total files
-        vspecdata = [pd.read_csv(modelpath / filename, sep=r"\s+", header=None) for modelpath in args.modelpath]
-        for i in range(1, len(vspecdata)):
-            vspecdata[0].iloc[1:, 1:] += vspecdata[i].iloc[1:, 1:]
-
-        vspecdata[0].iloc[1:, 1:] /= len(vspecdata)
-        vspecdata[0].to_csv(
-            args.modelpath[0] / f"vspecpol_averaged-{spec_index}.out", sep=" ", index=False, header=False
+        vspecarrays = [read_wsv(modelpath / filename, has_header=False).to_numpy() for modelpath in args.modelpath]
+        averaged = vspecarrays[0].copy()
+        # the first row (times) and first column (frequencies) are labels shared by all models, so average the rest
+        averaged[1:, 1:] = np.mean([arr[1:, 1:] for arr in vspecarrays], axis=0)
+        pl.DataFrame(averaged).write_csv(
+            args.modelpath[0] / f"vspecpol_averaged-{spec_index}.out", separator=" ", include_header=False
         )
 
 
@@ -1641,16 +1632,8 @@ def get_reference_spectrum(filepath: Path | str) -> pl.DataFrame:
 
     flambdaindex = metadata.get("f_lambda_columnindex", 1)
 
-    specdata = pl.from_pandas(
-        pd.read_csv(
-            filepath,
-            sep=r"\s+",
-            header=None,
-            comment="#",
-            names=["lambda_angstroms", "f_lambda"],
-            usecols=[0, flambdaindex],
-            dtype_backend="pyarrow",
-        )
+    specdata = read_wsv(filepath, has_header=False, comment_prefix="#").select(
+        cs.by_index(0).alias("lambda_angstroms"), cs.by_index(flambdaindex).alias("f_lambda")
     )
 
     if "a_v" in metadata and "r_v" in metadata:

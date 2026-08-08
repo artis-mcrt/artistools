@@ -380,33 +380,27 @@ def plot_levelpop(
     else:
         raise ValueError
 
-    modeldata = (
-        at.inputmodel
-        .get_modeldata(modelpath, derived_cols=["mass_g", "volume", "vel_r_min_kmps", "vel_r_max_kmps"])[0]
-        .collect()
-        .to_pandas(use_pyarrow_extension_array=True)
-    )
+    modeldata = at.inputmodel.get_modeldata(
+        modelpath, derived_cols=["mass_g", "volume", "vel_r_min_kmps", "vel_r_max_kmps"]
+    )[0].collect()
 
-    adata = (
-        at.atomic
-        .get_levels(modelpath)
-        .with_columns(
-            levels=pl.col("levels").map_elements(
-                lambda x: x.to_pandas(use_pyarrow_extension_array=True), return_dtype=pl.Object
-            )
-        )
-        .to_pandas(use_pyarrow_extension_array=True)
-    )
+    adata = at.atomic.get_levels(modelpath)
 
     arr_tdelta = at.get_timestep_times(modelpath, loc="delta")
+
+    # read_files is uncached, so read every rank's nlte output once rather than once per param
+    dfnltepops_allions = at.nltepops.read_files(modelpath)
+
     for paramvalue in params:
         paramsplit = paramvalue.split(" ")
         atomic_number = at.get_atomic_number(paramsplit[0])
         ion_stage = at.decode_roman_numeral(paramsplit[1])
         levelindex = int(paramsplit[2])
 
-        ionlevels = adata.query("Z == @atomic_number and ion_stage == @ion_stage").iloc[0].levels
-        levelname = ionlevels.iloc[levelindex].levelname
+        ionlevels = adata.filter((pl.col("Z") == atomic_number) & (pl.col("ion_stage") == ion_stage)).row(
+            0, named=True
+        )["levels"]
+        levelname = ionlevels["levelname"].item(levelindex)
         label = (
             f"{at.get_ionstring(atomic_number, ion_stage, style='chargelatex')} level {levelindex}:"
             f" {at.nltepops.texifyconfiguration(levelname)}"
@@ -414,38 +408,34 @@ def plot_levelpop(
 
         print(f"plot_levelpop {label}")
 
-        dfnltepops = (
-            at.nltepops
-            .read_files(modelpath)
-            .filter((pl.col("Z") == atomic_number) & (pl.col("ion_stage") == ion_stage))
-            .filter(pl.col("level") == levelindex)
-            .to_pandas(use_pyarrow_extension_array=True)
+        dfnltepops = dfnltepops_allions.filter(
+            (pl.col("Z") == atomic_number) & (pl.col("ion_stage") == ion_stage) & (pl.col("level") == levelindex)
         )
+
+        # one pass over the populations instead of re-filtering the frame for every cell and timestep below.
+        # setdefault keeps the first row for a duplicated key, matching the .item(0) this replaces
+        levelpop_of_mgi_ts: dict[tuple[int, int], float] = {}
+        for mgi, ts, n_nlte in dfnltepops.select("modelgridindex", "timestep", "n_NLTE").iter_rows():
+            levelpop_of_mgi_ts.setdefault((mgi, ts), n_nlte)
 
         ylist = []
         for modelgridindex in mgilist:
+            assert isinstance(modelgridindex, int)
             valuesum = 0.0
             tdeltasum = 0.0
             # print(f'modelgridindex {modelgridindex} timesteps {timesteps}')
 
             for timestep in timestepslist:
-                levelpop = (
-                    dfnltepops
-                    .query(
-                        "modelgridindex==@modelgridindex and timestep==@timestep and Z==@atomic_number"
-                        " and ion_stage==@ion_stage and level==@levelindex"
-                    )
-                    .iloc[0]
-                    .n_NLTE
-                )
+                levelpop = levelpop_of_mgi_ts[modelgridindex, timestep]
 
                 valuesum += levelpop * arr_tdelta[timestep]
                 tdeltasum += arr_tdelta[timestep]
 
             if seriestype == "levelpopulation_dn_on_dvel":
                 assert isinstance(modelgridindex, int)
-                deltav = modeldata.loc[modelgridindex].vel_r_max_kmps - modeldata.loc[modelgridindex].vel_r_min_kmps
-                ylist.append(valuesum / tdeltasum * modeldata.loc[modelgridindex].volume / deltav)
+                cell = modeldata.row(modelgridindex, named=True)
+                deltav = cell["vel_r_max_kmps"] - cell["vel_r_min_kmps"]
+                ylist.append(valuesum / tdeltasum * cell["volume"] / deltav)
             else:
                 ylist.append(valuesum / tdeltasum)
 
@@ -1252,7 +1242,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         else:
             msg = f"Invalid args.readonlymgi: {args.readonlymgi}"
             raise ValueError(msg)
-        dfselectedcells = dfselectedcells[dfselectedcells["rho"] > 0]
+        dfselectedcells = dfselectedcells.filter(pl.col("rho") > 0)
         args.modelgridindex = list(dfselectedcells["inputcellid"])
 
     timesteps_included = list(range(timestepmin, timestepmax + 1))

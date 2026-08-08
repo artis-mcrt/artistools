@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from typing import Any
 
 import numpy as np
-import pandas as pd
+import polars as pl
 
 import artistools as at
 from artistools.misc import add_outputfile_arg
@@ -30,7 +30,7 @@ def get_theta_phi(anglebin: int) -> tuple[float | int | None, float | int | None
     return None, None
 
 
-def gen_viewing_angle_df(length: int) -> pd.DataFrame:
+def gen_viewing_angle_df(length: int) -> pl.DataFrame:
     """Return the Cartesian endpoint of a vector of the given length pointing into each viewing angle bin."""
     viewing_angles: dict[str, list[float | str]] = {"Angle-bin": [], "x_coord": [], "y_coord": [], "z_coord": []}
 
@@ -54,7 +54,7 @@ def gen_viewing_angle_df(length: int) -> pd.DataFrame:
         viewing_angles["y_coord"].append(y_c)
         viewing_angles["z_coord"].append(z_c)
 
-    return pd.DataFrame(viewing_angles)
+    return pl.DataFrame(viewing_angles)
 
 
 def viewing_angles_visualisation(
@@ -107,11 +107,9 @@ def viewing_angles_visualisation(
         sys.exit()
 
     # Load model contents
-    dfmodel = (
-        at.get_modeldata(modelfile, derived_cols=["pos_mid"])[0].collect().to_pandas(use_pyarrow_extension_array=True)
-    )
-    x, y, z = (dfmodel[f"pos_{ax}_mid"].to_numpy(dtype=float) for ax in ("x", "y", "z"))
-    rho = dfmodel["rho"].to_numpy(dtype=float)
+    dfmodel = at.get_modeldata(modelfile, derived_cols=["pos_mid"])[0].collect()
+    x, y, z = (dfmodel[f"pos_{ax}_mid"].cast(pl.Float64).to_numpy() for ax in ("x", "y", "z"))
+    rho = dfmodel["rho"].cast(pl.Float64).to_numpy()
 
     if isomin is None:
         isomin = min(rho.flatten())

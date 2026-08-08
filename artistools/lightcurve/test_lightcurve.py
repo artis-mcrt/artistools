@@ -213,7 +213,7 @@ def test_read_hesma_lightcurve_file_header(tmp_path: Path) -> None:
 
 
 def test_read_hesma_lightcurve_file_no_header(tmp_path: Path) -> None:
-    """A file with no comment header keeps pandas' own header handling."""
+    """A file with no comment header uses its first line as the header."""
     hesmafile = tmp_path / "hesma_model_noheader.dat"
     hesmafile.write_text("time bol\n1.0 2.0\n3.0 4.0\n", encoding="utf-8")
 

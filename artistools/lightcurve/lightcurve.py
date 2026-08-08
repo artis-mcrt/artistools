@@ -11,7 +11,6 @@ from pathlib import Path
 
 import numpy as np
 import numpy.typing as npt
-import pandas as pd
 import polars as pl
 import polars.selectors as cs
 
@@ -227,29 +226,20 @@ def generate_band_lightcurve_data(
         )
         vspecdata = stokes_params["I"]
         timearray = vspecdata.collect_schema().names()[1:]
-    elif args.plotviewingangle and at.firstexisting_or_none(
-        ["specpol_res.out", "spec_res.out"], folder=modelpath, tryzipped=True
-    ):
-        specfilename = at.firstexisting(["specpol_res.out", "spec_res.out"], folder=modelpath, tryzipped=True)
-        specdataresdata = pd.read_csv(specfilename, sep=r"\s+")
-        timearray = [i for i in specdataresdata.columns.to_numpy()[1:] if i[-2] != "."]
-    # elif Path(modelpath, 'specpol.out').is_file():
-    #     specfilename = os.path.join(modelpath, "specpol.out")
-    #     specdata = pd.read_csv(specfilename, sep='\s+')
-    #     timearray = [i for i in specdata.columns.values[1:] if i[-2] != '.']
     else:
-        if args.plotviewingangle:
-            print("WARNING: no direction-resolved spectra available. Using angle-averaged spectra.")
-
-        specfilename = at.firstexisting(["spec.out", "specpol.out"], folder=modelpath, tryzipped=True)
-        specdata = pd.read_csv(specfilename, sep=r"\s+")
-
-        timearray = (
-            # Ignore Q and U values in pol file
-            [i for i in specdata.columns.to_numpy()[1:] if i[-2] != "."]
-            if "specpol.out" in str(specfilename)
-            else specdata.columns.to_list()[1:]
+        specfilename = (
+            at.firstexisting_or_none(["specpol_res.out", "spec_res.out"], folder=modelpath, tryzipped=True)
+            if args.plotviewingangle
+            else None
         )
+        if specfilename is None:
+            if args.plotviewingangle:
+                print("WARNING: no direction-resolved spectra available. Using angle-averaged spectra.")
+            specfilename = at.firstexisting(["spec.out", "specpol.out"], folder=modelpath, tryzipped=True)
+
+        with at.zopen(specfilename) as fspec:
+            # pol and res files repeat the time columns for the Stokes Q and U blocks, so keep the first of each
+            timearray = list(dict.fromkeys(fspec.readline().split()[1:]))
 
     filters_dict = {}
     if not args.filter:
@@ -461,38 +451,28 @@ def get_colour_delta_mag(
     return plot_times, colour_delta_mag
 
 
-def read_hesma_lightcurve_file(hesma_modelpath: Path | str) -> pd.DataFrame:
+def read_hesma_lightcurve_file(hesma_modelpath: Path | str) -> pl.DataFrame:
     """Read a HESMA model light curve, taking the column names from a leading comment line if there is one."""
-    hesma_modelpath = Path(hesma_modelpath)
-    with at.zopen(hesma_modelpath) as f:
-        first_line = f.readline()
-
-    if first_line.lstrip().startswith("#"):
-        # split the header into column names. Iterating the line itself would give one "column" per character
-        column_names = first_line.lstrip().removeprefix("#").split()
-        return pd.read_csv(at.zopen(hesma_modelpath), sep=r"\s+", header=None, comment="#", names=column_names)
-
-    return pd.read_csv(at.zopen(hesma_modelpath), sep=r"\s+")
+    return at.read_wsv(hesma_modelpath, comment_prefix="#", header_from_comment=True)
 
 
-def read_hesma_lightcurve(args: argparse.Namespace) -> pd.DataFrame:
+def read_hesma_lightcurve(args: argparse.Namespace) -> pl.DataFrame:
     """Return the HESMA model light curve named by args.plot_hesma_model."""
     return read_hesma_lightcurve_file(Path(at.get_path("artistools_dir"), "data/hesma", args.plot_hesma_model))
 
 
-def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pd.DataFrame, dict[str, t.Any]]:
+def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pl.DataFrame, dict[str, t.Any]]:
     """Return an observed band light curve from the bundled reference data, along with its metadata."""
     filepath = Path(at.get_path("artistools_dir"), "data", "lightcurves", lightcurvefilename)
     metadata = at.get_file_metadata(filepath)
 
     data_path = Path(at.get_path("artistools_dir"), f"data/lightcurves/{lightcurvefilename}")
-    lightcurve_data = pd.read_csv(data_path, comment="#")
-    if len(lightcurve_data.keys()) == 1:
-        lightcurve_data = pd.read_csv(data_path, comment="#", sep=r"\s+")
+    # like the pandas comment="#" this replaces, cut each line at a "#" anywhere, not only at line starts
+    csvtext = "\n".join(line.split("#", 1)[0].rstrip() for line in data_path.read_text(encoding="utf-8").splitlines())
+    lightcurve_data = pl.read_csv(csvtext.encode())
+    if lightcurve_data.width == 1:
+        lightcurve_data = at.read_wsv(data_path, comment_prefix="#")
 
-    lightcurve_data["magnitude"] = pd.to_numeric(lightcurve_data["magnitude"])  # force column to be float
-
-    lightcurve_data["time"] -= metadata["timecorrection"]
     # m - M = 5log(d) - 5  Get absolute magnitude
     if "dist_mpc" not in metadata and "z" in metadata:
         from astropy import cosmology
@@ -501,15 +481,18 @@ def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pd.Dat
         metadata["dist_mpc"] = cosmo.luminosity_distance(metadata["z"]).value  # pyright: ignore[reportAttributeAccessIssue]  # ty:ignore[unresolved-attribute]
         print(f"luminosity distance from redshift = {metadata['dist_mpc']} for {metadata['label']}")
 
+    magnitude = pl.col("magnitude").cast(pl.Float64)
     if "dist_mpc" in metadata:
-        lightcurve_data["magnitude"] = lightcurve_data["magnitude"] - 5 * np.log10(metadata["dist_mpc"] * 10**6) + 5
+        magnitude = magnitude - 5 * np.log10(metadata["dist_mpc"] * 10**6) + 5
     elif "dist_modulus" in metadata:
-        lightcurve_data["magnitude"] -= metadata["dist_modulus"]
+        magnitude -= metadata["dist_modulus"]
+
+    lightcurve_data = lightcurve_data.with_columns(magnitude, pl.col("time") - metadata["timecorrection"])
 
     return lightcurve_data, metadata
 
 
-def read_bol_reflightcurve_data(lightcurvefilename: str | Path) -> tuple[pd.DataFrame, dict[str, t.Any]]:
+def read_bol_reflightcurve_data(lightcurvefilename: str | Path) -> tuple[pl.DataFrame, dict[str, t.Any]]:
     """Return an observed bolometric light curve and its metadata, from a given path or the bundled reference data."""
     data_path = (
         Path(lightcurvefilename)
@@ -519,17 +502,8 @@ def read_bol_reflightcurve_data(lightcurvefilename: str | Path) -> tuple[pd.Data
 
     metadata = at.get_file_metadata(data_path)
 
-    # check for possible header line and read table
-    with data_path.open(encoding="utf-8") as flc:
-        filepos = flc.tell()
-        line = flc.readline()
-        if line.startswith("#"):
-            columns = line.lstrip("#").split()
-        else:
-            flc.seek(filepos)  # undo the readline() and go back
-            columns = None
-
-        dflightcurve = pd.read_csv(flc, sep=r"\s+", header=None, names=columns)
+    # the column names come from a leading comment line if there is one
+    dflightcurve = at.read_wsv(data_path, has_header=False, comment_prefix="#", header_from_comment=True)
 
     if colrenames := {
         k: v
@@ -537,18 +511,17 @@ def read_bol_reflightcurve_data(lightcurvefilename: str | Path) -> tuple[pd.Data
         if k != v
     }:
         print(f"{data_path}: renaming columns {colrenames}")
-        dflightcurve = dflightcurve.rename(columns=colrenames)
+        dflightcurve = dflightcurve.rename(colrenames)
 
     return dflightcurve, metadata
 
 
-def get_phillips_relation_data() -> tuple[pd.DataFrame, str]:
+def get_phillips_relation_data() -> tuple[pl.DataFrame, str]:
     """Return the observed dm15(B) against peak MB data of Hicken et al. (2009), and its plot label."""
     datafilepath = Path(at.get_path("artistools_dir"), "data", "lightcurves", "SNsample", "CfA3_Phillips.dat")
-    sn_data = pd.read_csv(datafilepath, sep=r"\s+", comment="#")
+    sn_data = at.read_wsv(datafilepath, comment_prefix="#").with_columns(
+        pl.col("dm15(B)").cast(pl.Float64), pl.col("MB").cast(pl.Float64)
+    )
     print(sn_data)
-
-    sn_data["dm15(B)"] = sn_data["dm15(B)"].astype(float)
-    sn_data["MB"] = sn_data["MB"].astype(float)
 
     return sn_data, "Observed (Hicken et al. 2009)"
