@@ -11,6 +11,7 @@ import matplotlib.figure as mplfig
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
+import pandas as pd
 import polars as pl
 from matplotlib.legend_handler import HandlerTuple
 
@@ -436,11 +437,11 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
     )
 
     for ii, modelname in enumerate(modelnames):
-        viewing_angle_plot_data = at.read_wsv(f"{key}band_{modelname!s}_viewing_angle_data.txt")
+        viewing_angle_plot_data = pd.read_csv(f"{key}band_{modelname!s}_viewing_angle_data.txt", delimiter=" ")
 
-        band_peak_mag_viewing_angles = viewing_angle_plot_data["peak_mag_polyfit"].cast(pl.Float64).to_numpy()
-        band_delta_m15_viewing_angles = viewing_angle_plot_data["deltam15_polyfit"].cast(pl.Float64).to_numpy()
-        band_risetime_viewing_angles = viewing_angle_plot_data["risetime_polyfit"].cast(pl.Float64).to_numpy()
+        band_peak_mag_viewing_angles = viewing_angle_plot_data["peak_mag_polyfit"].to_numpy(dtype=np.float64)
+        band_delta_m15_viewing_angles = viewing_angle_plot_data["deltam15_polyfit"].to_numpy(dtype=np.float64)
+        band_risetime_viewing_angles = viewing_angle_plot_data["risetime_polyfit"].to_numpy(dtype=np.float64)
 
         plotkwargsviewingangles, plotkwargsangleaveraged = set_scatterplot_plotkwargs(ii, args)
 
@@ -527,9 +528,9 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
         bands = [args.filter[0], args.filter[1]]
 
         datafilename = f"{bands[0]}band_{modelname}_viewing_angle_data.txt"
-        viewing_angle_plot_data = at.read_wsv(datafilename)
-        data = {f"{bands[0]}max": viewing_angle_plot_data["peak_mag_polyfit"].cast(pl.Float64).to_numpy()}
-        data[f"time_{bands[0]}max"] = viewing_angle_plot_data["risetime_polyfit"].cast(pl.Float64).to_numpy()
+        viewing_angle_plot_data = pd.read_csv(datafilename, delimiter=" ")
+        data = {f"{bands[0]}max": viewing_angle_plot_data["peak_mag_polyfit"].to_numpy(dtype=np.float64)}
+        data[f"time_{bands[0]}max"] = viewing_angle_plot_data["risetime_polyfit"].to_numpy(dtype=np.float64)
 
         # Get brightness in second band at time of peak in first band
         if len(data[f"time_{bands[0]}max"]) != 100:
@@ -542,9 +543,8 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
 
         data[f"{bands[1]}at{bands[0]}max"] = second_band_brightness
 
-        dfdata = pl.DataFrame(data).with_columns(
-            (pl.col(f"{bands[0]}max") - pl.col(f"{bands[1]}at{bands[0]}max")).alias("peakcolour")
-        )
+        dfdata = pd.DataFrame(data)
+        dfdata["peakcolour"] = dfdata[f"{bands[0]}max"] - dfdata[f"{bands[1]}at{bands[0]}max"]
         print(dfdata["peakcolour"], dfdata[f"{bands[0]}max"], dfdata[f"{bands[1]}at{bands[0]}max"])
 
         plotkwargsviewingangles, _ = set_scatterplot_plotkwargs(modelnumber, args)

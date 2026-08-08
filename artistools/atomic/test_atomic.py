@@ -23,18 +23,6 @@ def test_get_levels() -> None:
     assert math.isclose(fe2_levels.item(2822, "energy_ev"), 23.048643, abs_tol=1e-6)
 
 
-def test_read_transitiondata_xz_high_preset(tmp_path: Path) -> None:
-    """A transition data file compressed with xz -9 declares a 64 MiB dictionary and must still be readable."""
-    import lzma
-
-    (tmp_path / "transitiondata.txt.xz").write_bytes(
-        lzma.compress((modelpath / "transitiondata.txt").read_bytes(), preset=9)
-    )
-
-    transitionsdict = at.rustext.read_transitiondata(tmp_path / "transitiondata.txt.xz")
-    assert (26, 2) in transitionsdict
-
-
 def test_read_transitiondata() -> None:
     transitionsdict = at.rustext.read_transitiondata(modelpath / "transitiondata.txt")
     assert sorted(transitionsdict.keys()) == [

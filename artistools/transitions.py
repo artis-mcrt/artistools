@@ -10,6 +10,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
+import pandas as pd
 import polars as pl
 
 import artistools as at
@@ -31,7 +32,7 @@ class IonTuple(t.NamedTuple):
     ion_stage: int
 
 
-def get_kurucz_transitions() -> tuple[pl.DataFrame, list[IonTuple]]:
+def get_kurucz_transitions() -> tuple[pd.DataFrame, list[IonTuple]]:
     """Return the transitions from the bundled Kurucz gfall line list, and the ions they cover."""
     hc_in_ev_cm = 0.0001239841984332003
 
@@ -77,11 +78,11 @@ def get_kurucz_transitions() -> tuple[pl.DataFrame, list[IonTuple]]:
                 if IonTuple(Z, ion_stage) not in ionlist:
                     ionlist.append(IonTuple(Z, ion_stage))
 
-    dftransitions = pl.DataFrame(translist, orient="row", schema=list(KuruczTransitionTuple._fields))
+    dftransitions = pd.DataFrame(translist, columns=KuruczTransitionTuple._fields)
     return dftransitions, ionlist
 
 
-def get_nist_transitions(filename: Path | str) -> pl.DataFrame:
+def get_nist_transitions(filename: Path | str) -> pd.DataFrame:
     """Return the transitions read from a NIST Atomic Spectra Database line list export."""
 
     class NISTTransitionTuple(t.NamedTuple):
@@ -112,11 +113,11 @@ def get_nist_transitions(filename: Path | str) -> pl.DataFrame:
                     )
                 )
 
-    return pl.DataFrame(translist, orient="row", schema=list(NISTTransitionTuple._fields))
+    return pd.DataFrame(translist, columns=NISTTransitionTuple._fields)
 
 
 def generate_ion_spectrum(
-    transitions: pl.DataFrame,
+    transitions: pd.DataFrame,
     xvalues: npt.NDArray[np.floating] | npt.NDArray[np.integer],
     popcolumn: str,
     plot_resolution: float,
@@ -129,11 +130,11 @@ def generate_ion_spectrum(
     """
     npoints = len(xvalues)
     yvalues = np.zeros(npoints)
-    if transitions.is_empty():
+    if transitions.empty:
         return yvalues
 
-    lambda_angstroms = transitions["lambda_angstroms"].cast(pl.Float64).to_numpy()
-    flux = (transitions["flux_factor"] * transitions[popcolumn]).cast(pl.Float64).to_numpy()
+    lambda_angstroms = transitions["lambda_angstroms"].to_numpy(dtype=float)
+    flux = transitions["flux_factor"].to_numpy(dtype=float) * transitions[popcolumn].to_numpy(dtype=float)
 
     centre_index = np.round((lambda_angstroms - args.xmin) / plot_resolution).astype(np.int64)
     sigma_angstroms = lambda_angstroms * args.sigma_v * 1e5 / C_cm_per_s
@@ -319,7 +320,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         timestep = at.get_timestep_of_timedays(modelpath, args.timedays) if args.timedays else args.timestep
 
-        modeldata = at.inputmodel.get_modeldata(Path(modelpath, "model.txt"))[0].collect()
+        modeldata = (
+            at.inputmodel
+            .get_modeldata(Path(modelpath, "model.txt"))[0]
+            .collect()
+            .to_pandas(use_pyarrow_extension_array=True)
+        )
         estimators_all = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
         if not estimators_all:
             print("no estimators")
@@ -360,16 +366,16 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         adata = at.atomic.get_levels(modelpath, tuple(ionlist), get_transitions=True)
     ionpopdict: dict[IonTuple, float] = {}
     if from_model:
-        dfnltepops = at.nltepops.read_files(modelpath, modelgridindex=modelgridindex, timestep=timestep)
+        dfnltepops = at.nltepops.read_files(modelpath, modelgridindex=modelgridindex, timestep=timestep).to_pandas(
+            use_pyarrow_extension_array=True
+        )
 
-        if dfnltepops.is_empty():
+        if dfnltepops.empty:
             print(f"ERROR: no NLTE populations for cell {modelgridindex} at timestep {timestep}")
             sys.exit(1)
 
         ionpopdict = {
-            IonTuple(Z, ion_stage): float(
-                dfnltepops.filter((pl.col("Z") == Z) & (pl.col("ion_stage") == ion_stage))["n_NLTE"].sum()
-            )
+            IonTuple(Z, ion_stage): dfnltepops.query("Z==@Z and ion_stage==@ion_stage")["n_NLTE"].sum()
             for Z, ion_stage in ionlist
         }
 
@@ -429,9 +435,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         ionindex = ionlist.index(ionid)
 
         if args.atomicdatabase == "kurucz":
-            pldftransitions = dftransgfall.filter((pl.col("Z") == ion["Z"]) & (pl.col("ion_stage") == ion["ion_stage"]))
+            pldftransitions = pl.from_pandas(
+                dftransgfall.query("Z == @ion.Z and ion_stage == @ion.ion_stage", inplace=False)
+            )
         elif args.atomicdatabase == "nist":
-            pldftransitions = get_nist_transitions(f"nist/nist-{ion['Z']:02d}-{ion['ion_stage']:02d}.txt")
+            pldftransitions = pl.from_pandas(
+                get_nist_transitions(f"nist/nist-{ion['Z']:02d}-{ion['ion_stage']:02d}.txt")
+            )
         else:
             pldftransitions = ion["transitions"]
             assert isinstance(pldftransitions, pl.DataFrame | pl.LazyFrame)
@@ -494,30 +504,31 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
             for seriesindex, temperature in enumerate(temperature_list):
                 if temperature == "NOTEMPNLTE":
-                    dfnltepops_thision = dfnltepops.filter(
-                        (pl.col("Z") == ionid.Z) & (pl.col("ion_stage") == ionid.ion_stage)
-                    )
+                    dftransitions = pldftransitions.to_pandas(use_pyarrow_extension_array=False)
+                    dfnltepops_thision = dfnltepops.query("Z==@ionid.Z & ion_stage==@ionid.ion_stage")
 
                     nltepopdict = dict(zip(dfnltepops_thision["level"], dfnltepops_thision["n_NLTE"], strict=True))
 
+                    assert isinstance(dftransitions, pd.DataFrame)
+                    dftransitions.loc[:, "upper_pop_nlte"] = dftransitions["upper"].map(nltepopdict).fillna(0.0)
+
+                    # dftransitions['lower_pop_nlte'] = dftransitions.apply(
+                    #     lambda x: nltepopdict.get(x.lower, 0.), axis=1)
+
                     popcolumnname = "upper_pop_nlte"
-                    dftransitions = pldftransitions.with_columns(
-                        upper_pop_nlte=pl.col("upper").replace_strict(nltepopdict, default=0.0, return_dtype=pl.Float64)
-                    ).with_columns(
-                        flux_factor_nlte=pl.col("flux_factor") * pl.col(popcolumnname),
-                        upper_departure=pl.col("upper_pop_nlte") / pl.col("upper_pop_Te"),
+                    dftransitions.loc[:, "flux_factor_nlte"] = (
+                        dftransitions["flux_factor"] * dftransitions[popcolumnname]
+                    )
+                    dftransitions.loc[:, "upper_departure"] = (
+                        dftransitions["upper_pop_nlte"] / dftransitions["upper_pop_Te"]
                     )
                     if ionid == IonTuple(26, 2):
-                        fe2depcoeff = dftransitions.filter((pl.col("upper") == 16) & (pl.col("lower") == 5))[
-                            "upper_departure"
-                        ].item(0)
+                        fe2depcoeff = dftransitions.query("upper == 16 and lower == 5").iloc[0]["upper_departure"]
                     elif ionid == IonTuple(28, 2):
-                        ni2depcoeff = dftransitions.filter((pl.col("upper") == 6) & (pl.col("lower") == 0))[
-                            "upper_departure"
-                        ].item(0)
+                        ni2depcoeff = dftransitions.query("upper == 6 and lower == 0").iloc[0]["upper_departure"]
 
-                    with pl.Config(tbl_cols=-1):
-                        print(dftransitions.top_k(1, by="flux_factor_nlte"))
+                    with pd.option_context("display.width", 200):
+                        print(dftransitions.nlargest(1, "flux_factor_nlte"))
                 else:
                     T_exc = vardict[temperature]
                     popcolumnname = f"upper_pop_lte_{T_exc:.0f}K"
@@ -532,11 +543,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                         ltepartfunc = 1.0
                     dftransitions = add_upper_lte_pop(
                         pldftransitions, T_exc, ionpopdict[ionid], ltepartfunc, columnname=popcolumnname
-                    )
+                    ).to_pandas(use_pyarrow_extension_array=True)
 
                 if args.print_lines:
-                    dftransitions = dftransitions.with_columns(
-                        (pl.col("flux_factor") * pl.col(popcolumnname)).alias(f"flux_factor_{popcolumnname}")
+                    dftransitions[f"flux_factor_{popcolumnname}"] = (
+                        dftransitions["flux_factor"] * dftransitions[popcolumnname]
                     )
 
                 yvalues[seriesindex][ionindex] = generate_ion_spectrum(
@@ -547,7 +558,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         if args.print_lines:
             print(dftransitions.columns)
-            print(dftransitions.select("lower", "upper", "forbidden", "A", "lambda_angstroms"))
+            print(dftransitions[["lower", "upper", "forbidden", "A", "lambda_angstroms"]])
     print()
 
     if from_model:

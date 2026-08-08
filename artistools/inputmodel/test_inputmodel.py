@@ -95,17 +95,21 @@ def test_get_modeldata_refreshes_stale_cache(tmp_path: Path) -> None:
 
 
 def test_get_cell_angle() -> None:
-    modeldata = at.inputmodel.get_modeldata(
-        modelpath=modelpath_3d, derived_cols=["pos_x_mid", "pos_y_mid", "pos_z_mid"]
-    )[0].collect()
-    modeldata = at.inputmodel.inputmodel_misc.get_cell_angle(modeldata)
-    assert "cos_bin" in modeldata.columns
-    assert "phi_bin" in modeldata.columns
+    modeldata = (
+        at.inputmodel
+        .get_modeldata(modelpath=modelpath_3d, derived_cols=["pos_x_mid", "pos_y_mid", "pos_z_mid"])[0]
+        .collect()
+        .to_pandas(use_pyarrow_extension_array=True)
+    )
+    at.inputmodel.inputmodel_misc.get_cell_angle(modeldata)
+    assert "cos_bin" in modeldata
+    assert "phi_bin" in modeldata
 
     # the azimuth is measured in the opposite sense to the packet "phi", so it must not be named "phi"
-    assert "phi_mirrored" in modeldata.columns
-    assert "phi" not in modeldata.columns
-    assert modeldata["phi_mirrored"].is_between(0.0, 2 * math.pi).all()
+    assert "phi_mirrored" in modeldata
+    assert "phi" not in modeldata
+    assert modeldata["phi_mirrored"].min() >= 0.0
+    assert modeldata["phi_mirrored"].max() <= 2 * math.pi
 
 
 def test_downscale_3dmodel() -> None:
@@ -1486,8 +1490,7 @@ def test_get_trajectory_abund_q() -> None:
         (101, 162): 2.626364863419118e-18,
         (102, 159): 2.0727160885628824e-18,
         (102, 161): 4.2496685570656285e-20,
-        # the Qdot integration reads time/s at float64 precision (an earlier pandas reader downcast it to float32)
-        "q": 5737336759237193.0,
+        "q": 5737336984921079.0,
     }
 
     for key, value in expected.items():
@@ -1695,11 +1698,11 @@ def test_scale_model_to_time_uses_modelmeta() -> None:
     t_model_init_days = modelmeta["t_model_init_days"]
     targettime = t_model_init_days * 2.0
 
-    dfmodel_collected = dfmodel.collect()
-    rho_before = dfmodel_collected["logrho"].to_numpy().copy()
+    pddfmodel = dfmodel.collect().to_pandas(use_pyarrow_extension_array=False)
+    rho_before = pddfmodel["logrho"].to_numpy().copy()
 
     dfscaled, modelmeta_out = at.inputmodel.scale_model_to_time(
-        dfmodel=dfmodel_collected, targetmodeltime_days=targettime, modelmeta=modelmeta.copy()
+        dfmodel=pddfmodel, targetmodeltime_days=targettime, modelmeta=modelmeta.copy()
     )
 
     assert modelmeta_out["t_model_init_days"] == targettime

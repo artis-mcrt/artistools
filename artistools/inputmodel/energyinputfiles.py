@@ -11,6 +11,7 @@ import matplotlib.axes as mplax
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
+import pandas as pd
 import polars as pl
 
 import artistools as at
@@ -133,12 +134,12 @@ def make_energy_files(rho: npt.NDArray[np.floating], Mtot_grams: float, outputpa
     print("Writing energydistribution.txt")
     with Path(outputpath, "energydistribution.txt").open("w", encoding="utf-8") as fmodel:
         fmodel.write(f"{len(energydistributiondata['cell_energy'])}\n")  # write number of points
-        fmodel.writelines(f"{cellid}\t{cell_energy:g}\n" for cellid, cell_energy in energydistributiondata.iter_rows())
+        energydistributiondata.to_pandas().to_csv(fmodel, header=False, sep="\t", index=False, float_format="%g")
 
     print("Writing energyrate.txt")
     with Path(outputpath, "energyrate.txt").open("w", encoding="utf-8") as fmodel:
         fmodel.write(f"{len(times_and_rate['times'])}\n")  # write number of points
-        times_and_rate.write_csv(fmodel, separator="\t", include_header=False, float_precision=10)
+        times_and_rate.to_pandas().to_csv(fmodel, sep="\t", index=False, header=False, float_format="%.10f")
 
 
 def rprocess_const_and_powerlaw() -> tuple[pl.DataFrame, float]:
@@ -212,8 +213,14 @@ def plot_energy_rate(modelpath: str | Path, axis: mplax.Axes) -> None:
 
 def get_etot_fromfile(modelpath: str | Path) -> tuple[float, pl.DataFrame]:
     """Return the total energy [erg] and the per-cell energies read from energydistribution.txt."""
-    energydistribution_data = at.read_wsv(
-        Path(modelpath) / "energydistribution.txt", has_header=False, skip_rows=1, new_columns=["cellid", "cell_energy"]
+    energydistribution_data = pl.from_pandas(
+        pd.read_csv(
+            Path(modelpath) / "energydistribution.txt",
+            skiprows=1,
+            sep=r"\s+",
+            header=None,
+            names=["cellid", "cell_energy"],
+        )
     )
     etot = float(energydistribution_data["cell_energy"].sum())
     return etot, energydistribution_data
@@ -221,7 +228,9 @@ def get_etot_fromfile(modelpath: str | Path) -> tuple[float, pl.DataFrame]:
 
 def get_energy_rate_fromfile(modelpath: str | Path) -> pl.DataFrame:
     """Return the cumulative energy release fraction against time read from energyrate.txt."""
-    return at.read_wsv(Path(modelpath) / "energyrate.txt", has_header=False, skip_rows=1, new_columns=["times", "rate"])
+    return pl.from_pandas(
+        pd.read_csv(Path(modelpath) / "energyrate.txt", skiprows=1, sep=r"\s+", header=None, names=["times", "rate"])
+    )
 
 
 def read_trajectory_thermo(trajthermofile: Path | str) -> pl.DataFrame:
@@ -230,7 +239,9 @@ def read_trajectory_thermo(trajthermofile: Path | str) -> pl.DataFrame:
     Times below one second are dropped, matching get_trajectory_qdotintegral: Qdot is negative there
     and integrating over it gives a negative total energy.
     """
-    dfthermo = at.read_wsv(trajthermofile).select("time/s", "Qdot")
+    dfthermo = pl.from_pandas(
+        pd.read_csv(trajthermofile, sep=r"\s+", usecols=["time/s", "Qdot"], engine="c", dtype_backend="pyarrow")
+    )
 
     return dfthermo.filter(pl.col("time/s") >= 1.0)
 

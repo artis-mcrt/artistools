@@ -42,7 +42,6 @@ from artistools.misc.fileio import firstexisting_or_none as firstexisting_or_non
 from artistools.misc.fileio import get_file_metadata as get_file_metadata
 from artistools.misc.fileio import merge_pdf_files as merge_pdf_files
 from artistools.misc.fileio import print_saved as print_saved
-from artistools.misc.fileio import read_wsv as read_wsv
 from artistools.misc.fileio import readnoncommentline as readnoncommentline
 from artistools.misc.fileio import stripallsuffixes as stripallsuffixes
 from artistools.misc.fileio import write_gif as write_gif

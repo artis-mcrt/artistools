@@ -6,8 +6,6 @@ import typing as t
 from collections.abc import Sequence
 from pathlib import Path
 
-import polars as pl
-
 import artistools as at
 
 
@@ -43,7 +41,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     pldfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath, get_elemabundances=(args.abundtype == "elemental"))
     t_model_init_days = modelmeta["t_model_init_days"]
 
-    dfmodel = pldfmodel.collect().with_columns(rho=pl.lit(10.0) ** pl.col("logrho"))
+    dfmodel = pldfmodel.collect().to_pandas(use_pyarrow_extension_array=True)
+    dfmodel.loc[:, "rho"] = 10 ** dfmodel["logrho"]
 
     if args.abundtype == "nuclear":
         # nuclide abundances
@@ -92,10 +91,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         # fileout.write(f'{0.},{0.:.4e},{0.},{0.},{",".join([f"{0.:.4e}" for _ in listspecies])}\n')
 
-        for cell in dfmodel.iter_rows(named=True):
-            abundlist = [f"{cell[f'X_{strnuc}']:.4e}" for strnuc in listspecies]
+        for cell in dfmodel.itertuples(index=False):
+            abundlist = [f"{getattr(cell, f'X_{strnuc}'):.4e}" for strnuc in listspecies]
             fileout.write(
-                f"{cell['vel_r_max_kmps']},{cell['rho']:.4e},{temperature},{dilution_factor},{','.join(abundlist)}\n"
+                f"{cell.vel_r_max_kmps},{cell.rho:.4e},{temperature},{dilution_factor},{','.join(abundlist)}\n"
             )
 
     at.print_saved(outputfilepath)

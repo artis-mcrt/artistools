@@ -8,6 +8,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import polars as pl
 
 import artistools as at
@@ -19,7 +20,7 @@ if t.TYPE_CHECKING:
     from mpl_toolkits.mplot3d import Axes3D
 
 
-def make_cone(args: argparse.Namespace, logprint: Callable[..., None]) -> pl.DataFrame:
+def make_cone(args: argparse.Namespace, logprint: Callable[..., None]) -> pd.DataFrame:
     """Return the cells of the 3D model lying within args.coneangle of the chosen axis."""
     print("Making cone")
 
@@ -68,36 +69,47 @@ def make_cone(args: argparse.Namespace, logprint: Callable[..., None]) -> pl.Dat
             )
         )
 
-    return cone.collect()
+    return cone.collect().to_pandas(use_pyarrow_extension_array=True)
 
 
 def get_profile_along_axis(
-    args: argparse.Namespace, modeldata: pl.DataFrame | None = None, derived_cols: Sequence[str] | None = None
-) -> pl.DataFrame:
+    args: argparse.Namespace, modeldata: pd.DataFrame | None = None, derived_cols: Sequence[str] | None = None
+) -> pd.DataFrame:
     """Return the cells of the 3D model running along the chosen axis, nearest to the other two axes' origin."""
     print("Getting profile along axis")
 
     if modeldata is None:
-        modeldata = at.inputmodel.get_modeldata(args.modelpath, get_elemabundances=True, derived_cols=derived_cols)[
-            0
-        ].collect()
+        modeldata = (
+            at.inputmodel
+            .get_modeldata(args.modelpath, get_elemabundances=True, derived_cols=derived_cols)[0]
+            .collect()
+            .to_pandas(use_pyarrow_extension_array=True)
+        )
 
-    argmin = modeldata[f"pos_{args.other_axis2}_min"].abs().arg_min()
-    assert argmin is not None
-    position_closest_to_axis = modeldata[f"pos_{args.other_axis2}_min"].item(argmin)
+    position_closest_to_axis = modeldata.iloc[(modeldata[f"pos_{args.other_axis2}_min"]).abs().argsort()][:1][
+        f"pos_{args.other_axis2}_min"
+    ].item()
 
-    sliceaxis_cond = (
-        (pl.col(f"pos_{args.sliceaxis}_min") > 0) if args.positive_axis else (pl.col(f"pos_{args.sliceaxis}_min") < 0)
-    )
+    if args.positive_axis:
+        profile1d = modeldata.loc[
+            (modeldata[f"pos_{args.other_axis1}_min"] == position_closest_to_axis)
+            & (modeldata[f"pos_{args.other_axis2}_min"] == position_closest_to_axis)
+            & (modeldata[f"pos_{args.sliceaxis}_min"] > 0)
+        ]
+    else:
+        profile1d = modeldata.loc[
+            (modeldata[f"pos_{args.other_axis1}_min"] == position_closest_to_axis)
+            & (modeldata[f"pos_{args.other_axis2}_min"] == position_closest_to_axis)
+            & (modeldata[f"pos_{args.sliceaxis}_min"] < 0)
+        ]
 
-    return modeldata.filter(
-        (pl.col(f"pos_{args.other_axis1}_min") == position_closest_to_axis)
-        & (pl.col(f"pos_{args.other_axis2}_min") == position_closest_to_axis)
-        & sliceaxis_cond
-    )
+    profile1d = profile1d.reset_index(drop=True)
+
+    assert isinstance(profile1d, pd.DataFrame)
+    return profile1d
 
 
-def make_1d_profile(args: argparse.Namespace, logprint: Callable[..., None]) -> pl.DataFrame:
+def make_1d_profile(args: argparse.Namespace, logprint: Callable[..., None]) -> pd.DataFrame:
     """Make 1D model from 3D model."""
     logprint("Making 1D model from 3D model:", at.get_model_name(args.modelpath[0]))
     _, modelmeta = at.get_modeldata(modelpath=args.modelpath[0])
@@ -123,16 +135,14 @@ def make_1d_profile(args: argparse.Namespace, logprint: Callable[..., None]) -> 
             logprint(f"Spacing shells in 1D model so they are equally spaced on a radius^{shell_spacing_power} grid")
             cone_radius_spacing = np.linspace(0, r_max**shell_spacing_power, N_shells + 1)
             cone1d_bins = list(np.power(cone_radius_spacing, (1 / shell_spacing_power)))
-        speciescols = [colname for colname in cone.columns if colname.startswith("X_")]
-        shellrows: list[dict[str, float]] = []
+        cone1d_df = []
         for i in range(len(cone1d_bins) - 1):
             # Filter cells within bin
-            cells_within_bin = cone.filter(
-                (pl.col("pos_r_mid") >= cone1d_bins[i]) & (pl.col("pos_r_mid") < cone1d_bins[i + 1])
-            )
+            cone1d_bin_mask = (cone["pos_r_mid"] >= cone1d_bins[i]) & (cone["pos_r_mid"] < cone1d_bins[i + 1])
+            cells_within_bin = cone[cone1d_bin_mask]
             # Sum mass and volume for each of the 3D cells that are being included in this 1D shell
-            total_mass_g = float(cells_within_bin["mass_g"].sum())
-            total_volume = float(cells_within_bin["volume"].sum())
+            total_mass_g = cells_within_bin["mass_g"].sum()
+            total_volume = cells_within_bin["volume"].sum()
 
             if total_mass_g <= 0:
                 assert total_volume > 0, (
@@ -159,9 +169,15 @@ def make_1d_profile(args: argparse.Namespace, logprint: Callable[..., None]) -> 
                 )
                 break
 
-            # mass of each species in each 3D grid cell, summed over the cells and divided by the shell mass
-            species_total_mass = cells_within_bin.select((pl.col(speciescols) * pl.col("mass_g")).sum())
-            composition = {species: species_total_mass[species].item() / total_mass_g for species in speciescols}
+            species_mass = cells_within_bin.filter(regex=r"^X_", axis=1)
+            mass_g_values = cells_within_bin["mass_g"].to_numpy().reshape(-1, 1)
+            # Calculate mass of each species in each 3D grid cell
+            species_mass *= mass_g_values
+            # Sum masses of individual species
+            species_total_mass = species_mass.sum(axis=0)
+
+            # Calculate composition
+            composition = species_total_mass / total_mass_g
 
             # Sum all composition values to ensure compositions are normalised to 1 in 3D model
             if i == 0:
@@ -181,51 +197,64 @@ def make_1d_profile(args: argparse.Namespace, logprint: Callable[..., None]) -> 
             # the remaining columns contain the 30 elements in the composition file for SN models
             # which have the radioisotopes already included in the composition total for the
             # relevant elements
-            sum_composition_check = sum(composition[species] for species in speciescols[5:])
+            sum_composition_check = composition.iloc[5:].sum()
             logprint(
-                f"Shell {i + 1:<3}     3D cells averaged: {cells_within_bin.height:<6} composition sum before norm: {sum_composition_check}"
+                f"Shell {i + 1:<3}     3D cells averaged: {len(cells_within_bin):<6} composition sum before norm: {sum_composition_check}"
             )
-            composition = {species: massfrac / sum_composition_check for species, massfrac in composition.items()}
+            composition /= sum_composition_check
+
+            bin_cone1d_df_dict = {
+                "inputcellid": [i + 1],
+                "r_bin_max_boundary": [cone1d_bins[i + 1]],
+                "rho": [total_mass_g / total_volume],
+                **{species: [composition[species]] for species in composition.index},
+            }
+
+            # Create DataFrame from the dictionary
+            bin_cone1d_df = pd.DataFrame(bin_cone1d_df_dict)
 
             # Append results for this bin to the overall results
-            shellrows.append(
-                {"inputcellid": i + 1, "r_bin_max_boundary": cone1d_bins[i + 1], "rho": total_mass_g / total_volume}
-                | composition
-            )
+            cone1d_df.append(bin_cone1d_df)
 
-        # Combine all bin results into a single DataFrame
-        slice1d = pl.DataFrame(shellrows)
-        slice1d = slice1d.with_columns(pl.col("r_bin_max_boundary") / (args.t_model * day_to_s * 1e5)).rename({
-            "r_bin_max_boundary": "vel_r_max_kmps"
-        })
+        # Concatenate all bin results into a single DataFrame
+        slice1d = pd.concat(cone1d_df, ignore_index=True)
+        slice1d["r_bin_max_boundary"] /= args.t_model * day_to_s * 1e5
+        slice1d = slice1d.rename(columns={"r_bin_max_boundary": "vel_r_max_kmps"})
 
     else:  # make from along chosen axis
         logprint("from along the axis")
         slice1d = get_profile_along_axis(args)
-        slice1d = (
-            # Convert positions to velocities
-            slice1d
-            .with_columns(pl.col(f"pos_{args.sliceaxis}_min") / (args.t_model * day_to_s * 1e5))
-            .rename({f"pos_{args.sliceaxis}_min": "vel_r_max_kmps"})
-            # Remove columns we don't need
-            .drop("inputcellid", f"pos_{args.other_axis1}_min", f"pos_{args.other_axis2}_min")
-        )
+        slice1d.loc[:, f"pos_{args.sliceaxis}_min"] = slice1d[f"pos_{args.sliceaxis}_min"] / (
+            args.t_model * day_to_s * 1e5
+        )  # Convert positions to velocities
+        slice1d = slice1d.rename(columns={f"pos_{args.sliceaxis}_min": "vel_r_max_kmps"})
+        # Convert position to velocity
+        slice1d = slice1d.drop(
+            ["inputcellid", f"pos_{args.other_axis1}_min", f"pos_{args.other_axis2}_min"], axis=1
+        )  # Remove columns we don't need
     logprint("using axis:", args.axis)
 
     if args.rhoscale:
         logprint("Scaling density by a factor of:", args.rhoscale)
-        slice1d = slice1d.with_columns(pl.col("rho") * args.rhoscale)
+        slice1d.loc[:, "rho"] *= args.rhoscale
 
+    nonzero_rho = slice1d["rho"] != 0
+    slice1d.loc[:, "rho"] = np.where(nonzero_rho, np.log10(slice1d["rho"].where(nonzero_rho, 1.0)), -100)
     # slice1d = slice1d[slice1d['rho_model'] != -100]  # Remove empty cells
     # TODO: fix this, -100 probably breaks things if it's not one of the outer cells that gets chopped
-    slice1d = slice1d.with_columns(
-        pl.when(pl.col("rho") != 0).then(pl.col("rho").log10()).otherwise(-100).alias("rho")
-    ).rename({"rho": "logrho"})
+    slice1d = slice1d.rename(columns={"rho": "logrho"})
+
+    slice1d.index += 1
 
     if not args.positive_axis and not args.makefromcone:
         # Invert rows and *velocity by -1 to make velocities positive for slice on negative axis
-        slice1d = slice1d.reverse().with_columns(pl.col("vel_r_max_kmps") * -1)
+        slice1d.iloc[:] = slice1d.iloc[::-1].to_numpy()
+        slice1d.loc[:, "vel_r_max_kmps"] *= -1
 
+    # with pd.option_context('display.max_rows', None, 'display.max_columns', None):
+    #     print(slice1d)
+
+    # print(slice1d.keys())
     return slice1d
 
 
@@ -233,23 +262,35 @@ def make_1d_model_files(args: argparse.Namespace, logprint: Callable[..., None])
     """Write the 1D model.txt and abundances.txt for the extracted profile."""
     slice1d = make_1d_profile(args, logprint)
 
-    abundancecolumns = [
-        column
+    # query_abundances_positions = slice1d.columns.str.startswith("X_")
+    query_abundances_positions = np.array([
+        (column.startswith("X_") and not (any(i.isdigit() for i in column))) and (len(column) < 5)
         for column in slice1d.columns
-        if column.startswith("X_") and not any(i.isdigit() for i in column) and len(column) < 5
-    ]
+    ])
 
-    npts_model = slice1d.height
-    inputcellid = pl.Series("inputcellid", np.arange(1, npts_model + 1))
+    model_df = slice1d.loc[:, ~query_abundances_positions]
+    abundances_df = slice1d.loc[:, query_abundances_positions]
 
-    model_df = slice1d.drop(abundancecolumns).with_columns(inputcellid)
-    abundances_df = slice1d.select(abundancecolumns).with_columns(inputcellid)
+    # with pd.option_context('display.max_rows', None, 'display.max_columns', None):  # Print all rows in df
+    #     print(model_df)
 
+    # print(modelpath)
+    # model_df = model_df.round(decimals=5)  # model files seem to be to 5 sf
+    # model_df.to_csv(args.modelpath[0] / "model_1d.txt", sep=" ", header=False)  # write model.txt
+
+    npts_model = len(model_df)
+    inputcellid = np.arange(1, npts_model + 1)
+    model_df.loc[:, ["inputcellid"]] = inputcellid
+    abundances_df.loc[:, ["inputcellid"]] = inputcellid
+    assert isinstance(model_df, pd.DataFrame)
     at.inputmodel.save_modeldata(
-        dfmodel=model_df, t_model_init_days=args.t_model, outpath=Path(args.outputpath, "model_1d.txt")
+        dfmodel=pl.from_pandas(model_df), t_model_init_days=args.t_model, outpath=Path(args.outputpath, "model_1d.txt")
     )
 
-    at.inputmodel.save_initelemabundances(abundances_df, outpath=Path(args.outputpath, "abundances_1d.txt"))
+    assert isinstance(abundances_df, pd.DataFrame)
+    at.inputmodel.save_initelemabundances(
+        pl.from_pandas(abundances_df), outpath=Path(args.outputpath, "abundances_1d.txt")
+    )
 
     # with Path(args.modelpath[0], "model_1d.txt").open("r+") as f:  # add number of cells and tmodel to start of file
     #     content = f.read()
@@ -273,7 +314,7 @@ def make_plot(args: argparse.Namespace, logprint: Callable[..., None]) -> None:
     """Show a 3D scatter plot of the cone cells, coloured by density."""
     cone = make_cone(args, logprint)
 
-    cone = cone.filter(pl.col("rho_model") > 0.0002)  # cut low densities (empty cells?) from plot
+    cone = cone.loc[cone["rho_model"] > 0.0002]  # cut low densities (empty cells?) from plot
     fig = plt.figure()
     ax: Axes3D = fig.add_subplot(projection="3d")  # type: ignore[no-any-unimported]
 

@@ -10,7 +10,14 @@ import sys
 if sys.version_info >= (3, 15) and hasattr(sys, "set_lazy_imports_filter") and hasattr(sys, "set_lazy_imports"):
     sys.set_lazy_imports_filter(
         lambda _importing, imported, _fromlist: (
-            not imported.startswith(("matplotlib.", "polars", "polars.exceptions", "polars.selectors"))
+            not imported.startswith((
+                "matplotlib.",
+                "pandas._libs",
+                "pandas.core",
+                "polars",
+                "polars.exceptions",
+                "polars.selectors",
+            ))
         )
     )
     sys.set_lazy_imports("all")
@@ -130,7 +137,6 @@ from artistools.misc import parse_range_list as parse_range_list
 from artistools.misc import print_saved as print_saved
 from artistools.misc import print_theta_phi_definitions as print_theta_phi_definitions
 from artistools.misc import read_rank_outputfiles as read_rank_outputfiles
-from artistools.misc import read_wsv as read_wsv
 from artistools.misc import readnoncommentline as readnoncommentline
 from artistools.misc import resolve_outputfile as resolve_outputfile
 from artistools.misc import savgol_filter as savgol_filter

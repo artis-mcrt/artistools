@@ -337,17 +337,6 @@ def test_estimator_timeevolution() -> None:
     )
 
 
-def test_estimparse_xz_high_preset(tmp_path: Path) -> None:
-    """An estimator file compressed with xz -9 declares a 64 MiB dictionary and must still be readable."""
-    import lzma
-
-    with lzma.open(tmp_path / "estimators_0000.out.xz", "wt", preset=9) as f:
-        f.write("timestep 0 modelgridindex 0 TR 2000 Te 3000 W 1 TJ 2000 nne 1.0e5\n")
-
-    dfest = at.rustext.estimparse(tmp_path, 0, 0)
-    assert dfest["Te"].to_list() == pytest.approx([3000.0])
-
-
 def test_estimparse() -> None:
     pldf = at.rustext.estimparse(modelpath, 0, 0)
     assert pldf.height == 100

@@ -9,6 +9,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import polars as pl
 import polars.selectors as cs
 
@@ -55,14 +56,17 @@ def read_ejectasnapshot(
         "iwasequil(i, 2)",
         "iwasequil(i, 3)",
     ]
-    dfsnapshot = at.read_wsv(
-        Path(pathtosnapshot) / "ejectasnapshot.dat" if Path(pathtosnapshot).is_dir() else pathtosnapshot,
-        has_header=False,
-        new_columns=column_names,
-        schema_overrides={col: pl.Int64 if col == "id" else pl.Float64 for col in column_names},
+    dfsnapshot = pl.from_pandas(
+        pd.read_csv(
+            Path(pathtosnapshot) / "ejectasnapshot.dat" if Path(pathtosnapshot).is_dir() else pathtosnapshot,
+            sep=r"\s+",
+            header=None,
+            names=column_names,
+            usecols=usecols,
+            dtype={"id": "int64[pyarrow]", **{col: "float64[pyarrow]" for col in column_names if col != "id"}},
+            dtype_backend="pyarrow",
+        )
     )
-    if usecols is not None:
-        dfsnapshot = dfsnapshot.select(usecols)
 
     if downsamplefactor is not None and downsamplefactor > 1:
         dfsnapshot = dfsnapshot.sample(len(dfsnapshot) // downsamplefactor)
@@ -119,7 +123,7 @@ def get_snapshot_time_geomunits(pathtogriddata: Path | str) -> tuple[float, floa
 
 def read_griddat_file(
     pathtogriddata: str | Path, targetmodeltime_days: float | None = None
-) -> tuple[pl.DataFrame, float, float, float, dict[str, t.Any]]:
+) -> tuple[pd.DataFrame, float, float, float, dict[str, t.Any]]:
     """Read grid.dat and return the cell data, the model and merger times, vmax, and the model metadata.
 
     When targetmodeltime_days is given, the grid is expanded homologously to that time.
@@ -129,8 +133,8 @@ def read_griddat_file(
     # Get simulation time for ejecta snapshot
     simulation_end_time_geomunits, mergertime_geomunits = get_snapshot_time_geomunits(pathtogriddata)
 
-    griddata = at.read_wsv(griddatfilepath, comment_prefix="#", skip_rows=3).rename(
-        {
+    griddata = pd.read_csv(griddatfilepath, sep=r"\s+", comment="#", skiprows=3, dtype_backend="pyarrow").rename(
+        columns={
             "gridindex": "inputcellid",
             "pos_x": "pos_x_min",
             "pos_y": "pos_y_min",
@@ -138,19 +142,24 @@ def read_griddat_file(
             "posx": "pos_x_min",  # for compatibility with fortran maptogrid script
             "posy": "pos_y_min",
             "posz": "pos_z_min",
-        },
-        strict=False,
+        }
     )
+    # griddata in geom units
+    griddata.loc[:, "rho"] = griddata["rho"].fillna(0.0)
+
+    if "cellYe" in griddata:
+        griddata.loc[:, "cellYe"] = griddata["cellYe"].fillna(0.0)
+
+    if "Q" in griddata:
+        griddata.loc[:, "Q"] = griddata["Q"].fillna(0.0)
 
     factor_position = 1.478  # in km
     km_to_cm = 1e5
-    griddata = griddata.with_columns(
-        # griddata in geom units
-        cs.by_name("rho", "cellYe", "Q", require_all=False).fill_null(0.0)
-    ).with_columns(
-        cs.starts_with("pos_") * factor_position * km_to_cm,
-        pl.col("rho") * 6.176e17,  # convert to g/cm³
-    )
+    griddata.loc[:, "pos_x_min"] = griddata["pos_x_min"] * factor_position * km_to_cm
+    griddata.loc[:, "pos_y_min"] = griddata["pos_y_min"] * factor_position * km_to_cm
+    griddata.loc[:, "pos_z_min"] = griddata["pos_z_min"] * factor_position * km_to_cm
+
+    griddata.loc[:, "rho"] *= 6.176e17  # convert to g/cm³
 
     with griddatfilepath.open(encoding="utf-8") as gridfile:
         ngrid = int(gridfile.readline().split()[0])
@@ -181,19 +190,15 @@ def read_griddat_file(
             targetmodeltime_days=targetmodeltime_days, t_model_days=t_model_days, dfmodel=griddata
         )
         t_model_days = targetmodeltime_days
-        min_pos_x = griddata["pos_x_min"].min()
-        assert isinstance(min_pos_x, int | float)
-        xmax = -min_pos_x
+        xmax = -griddata.pos_x_min.min()
 
     ncoordgridx = round(len(griddata) ** (1.0 / 3.0))
     assert ncoordgridx**3 == len(griddata)
     wid_init = 2 * xmax / ncoordgridx
     print(f"Grid model is {ncoordgridx} x {ncoordgridx} x {ncoordgridx} = {len(griddata)} cells")
-    griddata = griddata.with_columns(mass_g=pl.col("rho") * wid_init**3)
+    griddata.loc[:, "mass_g"] = griddata["rho"] * wid_init**3
 
-    max_tracercount = griddata["tracercount"].max()
-    assert isinstance(max_tracercount, int | float)
-    print(f"Max tracers in a cell {max_tracercount}")
+    print(f"Max tracers in a cell {max(griddata['tracercount'])}")
 
     modelmeta = {
         "dimensions": 3,
@@ -212,11 +217,11 @@ def read_griddat_file(
 
 
 def add_mass_to_center(
-    griddata: pl.DataFrame,
+    griddata: pd.DataFrame,
     t_model_in_days: float,
     vmax: float,  # ruff:ignore[unused-function-argument]
     args: argparse.Namespace,  # ruff:ignore[unused-function-argument]
-) -> pl.DataFrame:
+) -> pd.DataFrame:
     """Fill the low-velocity hole at the grid centre with the mass profile of Just et al. (2021) Fig. 16."""
     print(griddata)
 
@@ -236,23 +241,24 @@ def add_mass_to_center(
     density_hole = (mass_integrated * MSUN) / vol_hole  # g / cm^3
     print(density_hole)
 
-    # cells with velocity below 0.1 c get the hole density added and a Ye floor of 0.4
-    inhole = (
-        (pl.col("pos_x_min") ** 2 + pl.col("pos_y_min") ** 2 + pl.col("pos_z_min") ** 2).sqrt()
-        / (t_model_in_days * (24.0 * 3600))
-        / CLIGHT
-    ) < 0.1
-
-    showcols = ["inputcellid", "pos_x_min", "pos_y_min", "pos_z_min", "rho"]
-    print("Inner empty cells")
-    print(griddata.filter(inhole).select(showcols))
-
-    griddata = griddata.with_columns(
-        rho=pl.when(inhole).then(pl.col("rho") + density_hole).otherwise(pl.col("rho")),
-        cellYe=pl.when(inhole).then(pl.max_horizontal(pl.col("cellYe"), pl.lit(0.4))).otherwise(pl.col("cellYe")),
-    )
-
-    print(griddata.filter(inhole).select(showcols))
+    for i, cellid in enumerate(griddata["inputcellid"]):
+        # if pos < 0.1 c
+        if (
+            (np.sqrt(griddata["pos_x_min"][i] ** 2 + griddata["pos_y_min"][i] ** 2 + griddata["pos_z_min"][i] ** 2))
+            / (t_model_in_days * (24.0 * 3600))
+            / CLIGHT
+        ) < 0.1:
+            # if griddata['rho'][i] == 0:
+            print("Inner empty cells")
+            print(
+                cellid, griddata["pos_x_min"][i], griddata["pos_y_min"][i], griddata["pos_z_min"][i], griddata["rho"][i]
+            )
+            griddata.loc[i, "rho"] = griddata["rho"][i] + density_hole
+            griddata.loc[i, "cellYe"] = max(griddata["cellYe"][i], 0.4)
+            # print("Inner empty cells filled")
+            print(
+                cellid, griddata["pos_x_min"][i], griddata["pos_y_min"][i], griddata["pos_z_min"][i], griddata["rho"][i]
+            )
 
     return griddata
 
@@ -270,15 +276,15 @@ def makemodelfromgriddata(
     """Write an ARTIS model from grid.dat, taking abundances from the trajectories under traj_root if given."""
     if args is None:
         args = argparse.Namespace()
-    dfmodel, t_model_days, t_mergertime_s, vmax, modelmeta = at.inputmodel.modelfromhydro.read_griddat_file(
+    pddfmodel, t_model_days, t_mergertime_s, vmax, modelmeta = at.inputmodel.modelfromhydro.read_griddat_file(
         pathtogriddata=gridfolderpath, targetmodeltime_days=targetmodeltime_days
     )
 
     if getattr(args, "fillcentralhole", False):
-        dfmodel = at.inputmodel.modelfromhydro.add_mass_to_center(dfmodel, t_model_days, vmax, args)
+        pddfmodel = at.inputmodel.modelfromhydro.add_mass_to_center(pddfmodel, t_model_days, vmax, args)
 
     if getattr(args, "getcellopacityfromYe", False):
-        at.inputmodel.opacityinputfile.opacity_by_Ye(outputpath, dfmodel)
+        at.inputmodel.opacityinputfile.opacity_by_Ye(outputpath, pddfmodel)
 
     dfgridcontributions = (
         at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(gridfolderpath)
@@ -286,8 +292,9 @@ def makemodelfromgriddata(
         else None
     )
 
-    dfmodel = dfmodel.sort("inputcellid")
+    dfmodel = pl.from_pandas(pddfmodel).sort("inputcellid")
     assert dfmodel.schema["inputcellid"].is_integer()
+    assert isinstance(dfmodel, pl.DataFrame)
     dfmodel = dfmodel.with_columns(pl.col("inputcellid").cast(pl.Int32))
     if scalemass != 1.0:
         origmass_msun = float(dfmodel["mass_g"].sum()) / MSUN

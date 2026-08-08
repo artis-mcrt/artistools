@@ -6,8 +6,6 @@ import typing as t
 from collections.abc import Sequence
 from pathlib import Path
 
-import polars as pl
-
 import artistools as at
 from artistools.constants import Msun_to_g
 from artistools.misc import add_modelpath_arg
@@ -113,9 +111,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if args.makeenergyinputfiles:
         plmodel, modelmeta = at.inputmodel.get_modeldata(args.modelpath[0], derived_cols=["mass_g", "rho"])
-        model = plmodel.collect()
-        rho = model["rho"].cast(pl.Float64).to_numpy()
-        Mtot_grams = float(model["mass_g"].sum())
+        model = plmodel.collect().to_pandas(use_pyarrow_extension_array=True)
+        rho = model["rho"].to_numpy(dtype=float)
+        Mtot_grams = model["mass_g"].sum()
 
         print(f"total mass {Mtot_grams / Msun_to_g} Msun")
 

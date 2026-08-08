@@ -7,6 +7,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import polars as pl
 
 import artistools as at
@@ -131,25 +132,26 @@ def read_files(
     for filepath in files:
         print(f"Reading {filepath}...")
 
-        df_thisfile = at.read_wsv(filepath)
+        df_thisfile = pd.read_csv(filepath, sep=r"\s+")
         if modelgridindex is not None:
-            df_thisfile = df_thisfile.filter(pl.col("modelgridindex") == modelgridindex)
+            df_thisfile = df_thisfile[df_thisfile["modelgridindex"] == modelgridindex]
         if timestepmin is not None:
-            df_thisfile = df_thisfile.filter(pl.col("timestep") >= timestepmin)
+            df_thisfile = df_thisfile[df_thisfile["timestep"] >= timestepmin]
         if timestepmax is not None:
-            df_thisfile = df_thisfile.filter(pl.col("timestep") <= timestepmax)
+            df_thisfile = df_thisfile[df_thisfile["timestep"] <= timestepmax]
         if atomic_number:
-            df_thisfile = df_thisfile.filter(pl.col("Z") == atomic_number)
+            df_thisfile = df_thisfile[df_thisfile["Z"] == atomic_number]
 
-        if df_thisfile.height > 0:
+        if not df_thisfile.empty:
             dfs_thisfile.append(df_thisfile)
 
     if not dfs_thisfile:
         msg = "No data found"
         raise AssertionError(msg)
 
-    # relaxed, because a column can be inferred as integer in one rank's file and float in another's
-    return pl.concat(dfs_thisfile, how="vertical_relaxed")
+    dfall = pd.concat(dfs_thisfile, ignore_index=True) if len(dfs_thisfile) > 1 else dfs_thisfile[0]
+
+    return pl.from_pandas(dfall)
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ import itertools
 from pathlib import Path
 
 import numpy as np
+import polars as pl
 
 import artistools as at
 
@@ -18,8 +19,15 @@ def make_downscaled_3d_grid(
     modelpath = Path(modelpath)
 
     pldfmodel, modelmeta = at.get_modeldata(modelpath)
-    dfmodel = pldfmodel.collect()
-    dfelemabund = at.inputmodel.get_initelemabundances(modelpath=modelpath).collect()
+    dfmodel = pldfmodel.collect().to_pandas(use_pyarrow_extension_array=True)
+    dfelemabund = (
+        at.inputmodel
+        .get_initelemabundances(modelpath=modelpath)
+        .with_columns(pl.col("inputcellid").sub(1).alias("modelgridindex"))
+        .collect()
+        .to_pandas(use_pyarrow_extension_array=True)
+        .set_index("modelgridindex")
+    )
 
     inputgridsize = modelmeta["ncoordgridx"]
     grid = int(inputgridsize)
@@ -37,20 +45,26 @@ def make_downscaled_3d_grid(
 
     abundcols = [x for x in dfmodel.columns if x.startswith("X_")]
     nabundcols = len(abundcols)
+    rho = np.zeros((grid, grid, grid))
+    radioabunds = np.zeros((grid, grid, grid, nabundcols))
+
     max_atomic_number = len([col for col in dfelemabund.columns if col.startswith("X_")])
     assert max_atomic_number == 30
+    abund = np.zeros((grid, grid, grid, max_atomic_number + 1))
 
     print("reading abundance file")
 
-    # the flat cell lists vary x fastest, so a Fortran-order reshape gives arrays indexed [x, y, z]
-    abund = dfelemabund.to_numpy().reshape((grid, grid, grid, max_atomic_number + 1), order="F")
+    cellindex = 0
+    for cellindex, (z, y, x) in enumerate(itertools.product(range(grid), range(grid), range(grid))):
+        abund[x, y, z] = dfelemabund.iloc[cellindex].to_numpy()
 
     print("reading model file")
     t_model_days = modelmeta["t_model_init_days"]
     vmax = modelmeta["vmax_cmps"]
 
-    rho = dfmodel["rho"].to_numpy().reshape((grid, grid, grid), order="F")
-    radioabunds = dfmodel.select(abundcols).to_numpy().reshape((grid, grid, grid, nabundcols), order="F")
+    for cellindex, (z, y, x) in enumerate(itertools.product(range(grid), range(grid), range(grid))):
+        rho[x, y, z] = dfmodel.iloc[cellindex]["rho"]
+        radioabunds[x, y, z, :] = dfmodel.iloc[cellindex][abundcols]
 
     rho_small = np.zeros((smallgrid, smallgrid, smallgrid))
     radioabunds_small = np.zeros((smallgrid, smallgrid, smallgrid, nabundcols))

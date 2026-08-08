@@ -15,6 +15,7 @@ from unittest import mock
 import matplotlib.axes as mplax
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import polars as pl
 import polars.testing as pltest
 import pytest
@@ -690,9 +691,9 @@ def test_hesma_width_luminosity_roundtrip(tmp_path: Path) -> None:
 
     widthlumfile = tmp_path / "testmodel_width-luminosity.dat"
     assert widthlumfile.is_file()
-    dfwidthlum = at.read_wsv(widthlumfile)
-    assert dfwidthlum.columns == ["peakmag", "dm15", "angle_bin"]
-    assert dfwidthlum.height == 100
+    dfwidthlum = pd.read_csv(widthlumfile, sep=r"\s+")
+    assert list(dfwidthlum.columns) == ["peakmag", "dm15", "angle_bin"]
+    assert len(dfwidthlum) == 100
 
     plotdir = tmp_path / "widthlum"
     plotdir.mkdir()
@@ -900,14 +901,14 @@ def test_kurucz_transitions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
 
     assert ionlist == [at.transitions.IonTuple(44, 1)]
     assert len(dftransitions) == 1
-    transition = dftransitions.row(0, named=True)
-    assert transition["lambda_angstroms"] == pytest.approx(7155.170)
-    assert transition["lower_statweight"] == pytest.approx(2 * 4.5 + 1)
-    assert transition["upper_statweight"] == pytest.approx(2 * 3.5 + 1)
+    transition = dftransitions.iloc[0]
+    assert transition.lambda_angstroms == pytest.approx(7155.170)
+    assert transition.lower_statweight == pytest.approx(2 * 4.5 + 1)
+    assert transition.upper_statweight == pytest.approx(2 * 3.5 + 1)
 
     hc_in_ev_cm = 0.0001239841984332003
-    assert transition["lower_energy_ev"] == pytest.approx(hc_in_ev_cm * 25000.0)
-    assert transition["upper_energy_ev"] == pytest.approx(hc_in_ev_cm * 35000.0)
+    assert transition.lower_energy_ev == pytest.approx(hc_in_ev_cm * 25000.0)
+    assert transition.upper_energy_ev == pytest.approx(hc_in_ev_cm * 35000.0)
 
 
 def test_merge_pdf_files_keeps_inputs_until_written(tmp_path: Path) -> None:

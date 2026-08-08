@@ -192,41 +192,6 @@ def test_zopen_zopenpl(tmp_path: Path) -> None:
         assert f.read().decode("utf-8") == "xz contents\n"
 
 
-def test_read_wsv(tmp_path: Path) -> None:
-    """Columns aligned with variable whitespace parse correctly, with comments and blank lines removed."""
-    filepath = tmp_path / "aligned.txt"
-    filepath.write_text("# file header comment\n  colA   colB  colC\n1    2.5  x # inline comment\n\n 4\t5\ty\n")
-
-    df = at.read_wsv(filepath, comment_prefix="#")
-    pltest.assert_frame_equal(df, pl.DataFrame({"colA": [1, 4], "colB": [2.5, 5.0], "colC": ["x", "y"]}))
-
-    # skip_rows applies before comment handling, and new_columns names a headerless read
-    df_noheader = at.read_wsv(filepath, has_header=False, skip_rows=2, new_columns=["a", "b", "c"], comment_prefix="#")
-    assert df_noheader.columns == ["a", "b", "c"]
-    assert df_noheader.height == 2
-
-    # a compressed file is read transparently
-    with gzip.open(tmp_path / "data.txt.gz", "wt", encoding="utf-8") as f:
-        f.write("p   q\n1   2\n")
-    pltest.assert_frame_equal(at.read_wsv(tmp_path / "data.txt"), pl.DataFrame({"p": [1], "q": [2]}))
-
-    # trailing whitespace on every line must not become a trailing null column
-    (tmp_path / "trailing.txt").write_text("colA colB  \n1 2 \n3 4 \t\n", encoding="utf-8")
-    pltest.assert_frame_equal(at.read_wsv(tmp_path / "trailing.txt"), pl.DataFrame({"colA": [1, 3], "colB": [2, 4]}))
-
-
-def test_read_wsv_late_type_change(tmp_path: Path) -> None:
-    """A column that turns from integer to float beyond the schema inference sample is read as floats."""
-    filepath = tmp_path / "latefloat.txt"
-    nintrows = 20000  # more rows than the schema inference sample
-    filepath.write_text("a b\n" + "".join(f"{i} 1\n" for i in range(nintrows)) + f"{nintrows} 2.5\n")
-
-    df = at.read_wsv(filepath)
-    assert df["b"].dtype == pl.Float64
-    assert df["b"].item(-1) == pytest.approx(2.5)
-    assert df.height == nintrows + 1
-
-
 def test_firstexisting_anyexist(tmp_path: Path) -> None:
     # first existing entry in the list wins
     firstdir = tmp_path / "first"

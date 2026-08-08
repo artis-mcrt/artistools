@@ -1,10 +1,13 @@
 """Artistools - NLTE population related functions."""
 
+import math
 import re
 import string
+import typing as t
 from collections.abc import Sequence
 from pathlib import Path
 
+import pandas as pd
 import polars as pl
 
 import artistools as at
@@ -60,83 +63,89 @@ def texifyconfiguration(levelname: str) -> str:
 
 
 def add_lte_pops(
-    dfpop: pl.DataFrame,
+    dfpop: pd.DataFrame,
     adata: pl.DataFrame,
     columntemperature_tuples: Sequence[tuple[str, float | int]],
     noprint: bool = False,
     maxlevel: int = -1,
-) -> pl.DataFrame:
+) -> pd.DataFrame:
     """Add columns to dfpop with LTE populations.
 
     columntemperature_tuples is a sequence of tuples of column name and temperature, e.g., ('mycolumn', 3000)
     """
-    ionlevels_of_ion = {
-        (Z, ion_stage): adata.filter((pl.col("Z") == Z) & (pl.col("ion_stage") == ion_stage))["levels"].item(0)
-        for Z, ion_stage in dfpop.select("Z", "ion_stage").unique(maintain_order=True).iter_rows()
-    }
+    for _, row in dfpop.drop_duplicates(["modelgridindex", "timestep", "Z", "ion_stage"]).iterrows():
+        modelgridindex = int(row.modelgridindex)
+        timestep = int(row.timestep)
+        Z = int(row.Z)
+        ion_stage = int(row.ion_stage)
 
-    def ltepop_exprs(ionlevels: pl.DataFrame) -> list[pl.Expr]:
-        """Return one expression per output column giving each level's LTE population relative to the ground state."""
-        gs_g = float(ionlevels["g"].item(0))
-        gs_energy = float(ionlevels["energy_ev"].item(0))
-        return [
-            (pl.col("g") / gs_g * (-(pl.col("energy_ev") - gs_energy) / K_B_ev_per_K / T_exc).exp()).alias(columnname)
-            for columnname, T_exc in columntemperature_tuples
-        ]
+        ionlevels = adata.filter((pl.col("Z") == Z) & (pl.col("ion_stage") == ion_stage))["levels"].item(0)
 
-    # the LTE populations depend only on the ion and level index, so build one lookup frame and join it on.
-    # Superlevel rows (level -1) and levels beyond the atomic data are left null, as before
-    dflte = pl.concat([
-        ionlevels.select(
-            pl.lit(Z, dtype=dfpop.schema["Z"]).alias("Z"),
-            pl.lit(ion_stage, dtype=dfpop.schema["ion_stage"]).alias("ion_stage"),
-            pl.int_range(pl.len()).cast(dfpop.schema["level"]).alias("level"),
-            *ltepop_exprs(ionlevels),
-        )
-        for (Z, ion_stage), ionlevels in ionlevels_of_ion.items()
-    ])
-    dfpop = dfpop.join(dflte, on=["Z", "ion_stage", "level"], how="left", maintain_order="left")
+        gs_g = ionlevels["g"].item(0)
+        gs_energy = ionlevels["energy_ev"].item(0)
 
-    for modelgridindex, timestep, Z, ion_stage in (
-        dfpop
-        .filter(pl.col("level") == -1)
-        .select("modelgridindex", "timestep", "Z", "ion_stage")
-        .unique(maintain_order=True)
-        .iter_rows()
-    ):
-        maskion = (
-            (pl.col("modelgridindex") == modelgridindex)
-            & (pl.col("timestep") == timestep)
-            & (pl.col("Z") == Z)
-            & (pl.col("ion_stage") == ion_stage)
+        # gs_pop = dfpop.query(
+        #     "modelgridindex == @modelgridindex and timestep == @timestep "
+        #     "and Z == @Z and ion_stage == @ion_stage and level == 0"
+        # ).iloc[0]["n_NLTE"]
+
+        masksuperlevel = (
+            (dfpop["modelgridindex"] == modelgridindex)
+            & (dfpop["timestep"] == timestep)
+            & (dfpop["Z"] == Z)
+            & (dfpop["ion_stage"] == ion_stage)
+            & (dfpop["level"] == -1)
         )
 
-        maxlevel_ion = dfpop.filter(maskion)["level"].max()
-        assert isinstance(maxlevel_ion, int)
-        levelnumber_sl = maxlevel_ion + 1
+        masknotsuperlevel = (
+            (dfpop["modelgridindex"] == modelgridindex)
+            & (dfpop["timestep"] == timestep)
+            & (dfpop["Z"] == Z)
+            & (dfpop["ion_stage"] == ion_stage)
+            & (dfpop["level"] != -1)
+        )
 
-        if maxlevel < 0 or levelnumber_sl <= maxlevel:
-            if not noprint:
-                print(f"{at.get_elsymbol(Z)} {at.roman_numerals[ion_stage]} has a superlevel at level {levelnumber_sl}")
+        def f_ltepop(x: t.Any, T_exc: float, gsg: float, gse: float, ionlevels: t.Any) -> float:
+            levelindex = int(x["level"])
+            ltepop = (
+                ionlevels["g"].item(levelindex)
+                / gsg
+                * math.exp(-(ionlevels["energy_ev"].item(levelindex) - gse) / K_B_ev_per_K / T_exc)
+            )
+            assert isinstance(ltepop, float)
+            return ltepop
 
-            ionlevels = ionlevels_of_ion[Z, ion_stage]
-            superlevelpops = ionlevels[levelnumber_sl:].select(ltepop_exprs(ionlevels)).sum()
-            dfpop = dfpop.with_columns(
-                pl
-                .when(maskion & (pl.col("level") == -1))
-                .then(superlevelpops[columnname].item())
-                .otherwise(pl.col(columnname))
-                .alias(columnname)
-                for columnname, _ in columntemperature_tuples
+        for columnname, T_exc in columntemperature_tuples:
+            dfpop.loc[masknotsuperlevel, columnname] = dfpop.loc[masknotsuperlevel].apply(
+                f_ltepop, args=(T_exc, gs_g, gs_energy, ionlevels), axis=1
             )
 
-        dfpop = dfpop.with_columns(
-            pl
-            .when(maskion & (pl.col("level") == -1))
-            .then(levelnumber_sl + 2)
-            .otherwise(pl.col("level"))
-            .alias("level")
-        )
+        if not dfpop[masksuperlevel].empty:
+            levelnumber_sl = (
+                dfpop.query(
+                    "modelgridindex == @modelgridindex and timestep == @timestep "
+                    "and Z == @Z and ion_stage == @ion_stage"
+                ).level.max()
+                + 1
+            )
+
+            if maxlevel < 0 or levelnumber_sl <= maxlevel:
+                if not noprint:
+                    print(
+                        f"{at.get_elsymbol(Z)} {at.roman_numerals[ion_stage]} "
+                        f"has a superlevel at level {levelnumber_sl}"
+                    )
+
+                for columnname, T_exc in columntemperature_tuples:
+                    superlevelpop = (
+                        ionlevels[levelnumber_sl:]
+                        .select(pl.col("g") / gs_g * (-(pl.col("energy_ev") - gs_energy) / K_B_ev_per_K / T_exc).exp())
+                        .sum()
+                        .item()
+                    )
+                    dfpop.loc[masksuperlevel, columnname] = superlevelpop
+
+            dfpop.loc[masksuperlevel, "level"] = levelnumber_sl + 2
 
     return dfpop
 

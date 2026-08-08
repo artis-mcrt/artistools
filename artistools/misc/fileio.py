@@ -99,67 +99,6 @@ def zopenpl(filename: Path | str, mode: str = "r", encoding: str | None = None) 
     return Path(filename)
 
 
-def read_wsv(
-    filename: Path | str,
-    *,
-    has_header: bool = True,
-    new_columns: Sequence[str] | None = None,
-    comment_prefix: str | None = None,
-    header_from_comment: bool = False,
-    skip_rows: int = 0,
-    schema_overrides: t.Mapping[str, pl.DataType | type[pl.DataType]] | None = None,
-) -> pl.DataFrame:
-    """Read a whitespace-separated text file into a DataFrame, treating any run of spaces or tabs as one separator.
-
-    Use this instead of pl.read_csv(separator=" ") for files whose columns are aligned with variable amounts of
-    whitespace. Text from comment_prefix to the end of a line is removed, blank lines are dropped, and the file may
-    be compressed (.zst/.gz/.xz). A column that starts with integers but later contains floats is read as floats,
-    at the cost of a second parse with full-file schema inference. Not-a-number tokens such as "nan" and "NA"
-    become nulls rather than making the column a string column.
-
-    When header_from_comment is set and the first line is a comment, its words (after comment_prefix) become the
-    column names, covering files whose header line is written as a comment.
-    """
-    from artistools import rustext
-
-    found = find_compressed(filename)
-    filepath = found[1] if found is not None else Path(filename)
-
-    if header_from_comment:
-        assert comment_prefix is not None
-        with zopen(filename) as fin:
-            first_line = fin.readline()
-        if first_line.lstrip().startswith(comment_prefix):
-            new_columns = first_line.lstrip().removeprefix(comment_prefix).split()
-            has_header = False
-
-    normalized = rustext.read_wsv_normalized(filepath, skip_rows=skip_rows, comment_prefix=comment_prefix)
-
-    def parse(infer_schema_length: int | None) -> pl.DataFrame:
-        return pl.read_csv(
-            normalized,
-            separator=" ",
-            has_header=has_header,
-            new_columns=list(new_columns) if new_columns is not None else None,
-            schema_overrides=schema_overrides,
-            infer_schema_length=infer_schema_length,
-            null_values=["nan", "NaN", "-nan", "-NaN", "NA", "N/A", "null", "NULL"],
-        )
-
-    try:
-        try:
-            # inferring the schema from a sample is much faster than scanning the whole file
-            return parse(infer_schema_length=10000)
-        except pl.exceptions.ComputeError:
-            # a column changed type after the sampled rows (e.g. integers followed by floats),
-            # so pay for a full-file schema inference pass
-            return parse(infer_schema_length=None)
-    except pl.exceptions.PolarsError as exc:
-        # the parser sees only in-memory bytes, so name the file for it
-        exc.add_note(f"while reading {filepath}")
-        raise
-
-
 def firstexisting(
     filelist: Sequence[str | Path] | str | Path,
     folder: Path | str = ".",

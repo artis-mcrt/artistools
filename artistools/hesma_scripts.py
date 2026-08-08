@@ -9,24 +9,24 @@ import matplotlib.axes as mplax
 import matplotlib.figure as mplfig
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import polars as pl
-import polars.selectors as cs
 
 import artistools as at
 
 
 def plot_hesma_spectrum(timeavg: float, axes: Sequence[mplax.Axes], hesmafile: Path | str) -> None:
     """Plot a HESMA reference spectrum at the time closest to timeavg onto each of axes."""
-    hesma_spec = at.read_wsv(hesmafile, comment_prefix="#").cast(pl.Float64)
+    hesma_spec = pd.read_csv(hesmafile, comment="#", sep=r"\s+", dtype=float)
 
-    searchtimes = [float(x) for x in hesma_spec.columns[1:]]
+    searchtimes = [float(x) for x in hesma_spec.keys()[1:]]
 
     closest_time = f"{at.match_closest_time(timeavg, searchtimes):.2f}"
     print(closest_time)
 
     # Scale distance to 1 Mpc
     dist_mpc = 1e-5  # HESMA specta at 10 pc
-    hesma_spec = hesma_spec.with_columns(pl.col(closest_time) * dist_mpc**2)  # refspecditance Mpc / 1 Mpc ** 2
+    hesma_spec[closest_time] *= dist_mpc**2  # refspecditance Mpc / 1 Mpc ** 2
 
     for ax in axes:
         ax.plot(hesma_spec["0.00"], hesma_spec[closest_time], label="HESMA model")
@@ -35,23 +35,28 @@ def plot_hesma_spectrum(timeavg: float, axes: Sequence[mplax.Axes], hesmafile: P
 def plothesmaresspec(fig: mplfig.Figure, ax: mplax.Axes, specfiles: Sequence[Path | str]) -> None:
     """Plot the first five direction bins of each HESMA direction-resolved spectrum file."""
     for specfilename in specfiles:
-        specdata = at.read_wsv(specfilename, has_header=False).cast(pl.Float64)
-
-        res_specdata = {dirbin: pldf.collect() for dirbin, pldf in at.split_multitable_dataframe(specdata).items()}
-
-        # the first row of each table holds the time of each spectrum column
-        new_column_names = ["lambda", *(str(time) for time in res_specdata[0].row(0)[1:])]
-        print(new_column_names)
+        specdata = pl.from_pandas(pd.read_csv(specfilename, sep=r"\s+", header=None, dtype=float))
 
         res_specdata = {
-            i: df.rename(dict(zip(df.columns, new_column_names, strict=True))).slice(1)
-            for i, df in res_specdata.items()
+            dirbin: pldf.collect().to_pandas(use_pyarrow_extension_array=True)
+            for dirbin, pldf in at.split_multitable_dataframe(specdata).items()
         }
+
+        new_column_names = res_specdata[0].iloc[0]
+        new_column_names[0] = "lambda"
+        print(new_column_names)
+
+        for i in range(len(res_specdata)):
+            res_specdata[i] = (
+                res_specdata[i]
+                .rename(columns=dict(zip(res_specdata[i].columns, new_column_names, strict=True)))
+                .drop(res_specdata[i].index[0])
+            )
 
         # 11.7935 d is the epoch these HESMA files were tabulated at, and 1e-5 rescales 10 pc to 1 Mpc
         for dirbin in range(5):
             ax.plot(
-                res_specdata[dirbin]["lambda"], res_specdata[dirbin]["11.7935"] * (1e-5) ** 2, label=f"hesma {dirbin}"
+                res_specdata[dirbin]["lambda"], res_specdata[dirbin][11.7935] * (1e-5) ** 2, label=f"hesma {dirbin}"
             )
 
     fig.legend()
@@ -69,25 +74,31 @@ def make_hesma_vspecfiles(modelpath: Path, outpath: Path | None = None) -> None:
     for dirbin in angles:
         angle_names.append(rf"cos(theta) = {vpkt_config['cos_theta'][dirbin]}")
         print(rf"cos(theta) = {vpkt_config['cos_theta'][dirbin]}")
-        vspecdata = at.spectra.get_specpol_data(dirbin=dirbin, modelpath=modelpath)["I"].collect()
-
-        timearray = vspecdata.columns[1:]
         vspecdata = (
-            vspecdata
-            .sort("nu", descending=True)
-            .with_columns(lambda_angstroms=at.constants.c_ang_per_s / pl.col("nu"))
-            .with_columns(
-                # scale to 10 pc with the factor (1 Mpc / 10 pc) ** 2
-                pl.col(time) * pl.col("nu") / pl.col("lambda_angstroms") * 100000.0**2
-                for time in timearray
-            )
-            .select(pl.col("lambda_angstroms").alias("0"), *timearray)
+            at.spectra
+            .get_specpol_data(dirbin=dirbin, modelpath=modelpath)["I"]
+            .collect()
+            .to_pandas(use_pyarrow_extension_array=True)
         )
 
+        timearray = vspecdata.columns.to_numpy()[1:]
+        vspecdata = vspecdata.sort_values(by="nu", ascending=False)
+        vspecdata["lambda_angstroms"] = at.constants.c_ang_per_s / vspecdata["nu"]
+        for time in timearray:
+            vspecdata[time] = vspecdata[time] * vspecdata["nu"] / vspecdata["lambda_angstroms"]
+            vspecdata[time] *= 100000.0**2  # Scale to 10 pc (1 Mpc/10 pc) ** 2
+
+        vspecdata = vspecdata.set_index("lambda_angstroms").reset_index()
+        vspecdata = vspecdata.drop(["nu"], axis=1)
+
+        vspecdata = vspecdata.rename(columns={"lambda_angstroms": "0"})
+
         outfilename = f"{modelname}_vspec_res.dat"
-        # create the file for the first direction bin, then append the others
-        with (outpath / outfilename).open("w" if dirbin == 0 else "a", encoding="utf-8") as fout:
-            vspecdata.write_csv(fout, separator=" ")
+        if dirbin == 0:
+            vspecdata.to_csv(outpath / outfilename, sep=" ", index=False)  # create file
+        else:
+            # append to file
+            vspecdata.to_csv(outpath / outfilename, mode="a", sep=" ", index=False)
 
     with (outpath / outfilename).open("r+") as f:  # add comment to start of file
         content = f.read()
@@ -100,16 +111,16 @@ def make_hesma_vspecfiles(modelpath: Path, outpath: Path | None = None) -> None:
         )
 
 
-def make_hesma_bol_lightcurve(modelpath: Path, outpath: Path, timemin: float, timemax: float) -> None:
+def make_hesma_bol_lightcurve(modelpath: Path, outpath: Path, timemin: float, timemax: float) -> None:  # ruff:ignore[unused-function-argument]
     """UVOIR bolometric light curve (angle-averaged)."""
     lightcurvedataframe = at.lightcurve.get_bol_lc_from_lightcurveout(modelpath)
     print(lightcurvedataframe)
-    lightcurvedataframe = lightcurvedataframe.filter((pl.col("time") > timemin) & (pl.col("time") < timemax))
+    lightcurvedataframe = lightcurvedataframe.query("time > @timemin and time < @timemax")
 
     modelname = at.get_model_name(modelpath)
     outfilename = f"doubledet_2021_{modelname}.dat"
 
-    lightcurvedataframe.write_csv(outpath / outfilename, separator=" ", include_header=False)
+    lightcurvedataframe.to_csv(outpath / outfilename, sep=" ", index=False, header=False)
 
 
 def make_hesma_peakmag_dm15_dm40(
@@ -117,14 +128,14 @@ def make_hesma_peakmag_dm15_dm40(
 ) -> None:
     """Write a HESMA-format file of peak magnitude, rise time, and decline rate per viewing angle."""
     dm15filename = f"{band}band_{modelname}_viewing_angle_data.txt"
-    dm15data = at.read_wsv(
-        pathtofiles / dm15filename, has_header=False, new_columns=["peakmag", "risetime", "dm15"], skip_rows=1
+    dm15data = pd.read_csv(
+        pathtofiles / dm15filename, sep=r"\s+", header=None, names=["peakmag", "risetime", "dm15"], skiprows=1
     )
 
     if dm40:
         dm40filename = f"{band}band_{modelname}_viewing_angle_data_deltam40.txt"
-        dm40data = at.read_wsv(
-            pathtofiles / dm40filename, has_header=False, new_columns=["peakmag", "risetime", "dm40"], skip_rows=1
+        dm40data = pd.read_csv(
+            pathtofiles / dm40filename, sep=r"\s+", header=None, names=["peakmag", "risetime", "dm40"], skiprows=1
         )
 
     outdata = {
@@ -135,8 +146,8 @@ def make_hesma_peakmag_dm15_dm40(
     if dm40:
         outdata["dm40"] = dm40data["dm40"]
 
-    outdataframe = pl.DataFrame(outdata).with_columns(cs.float().round(4))
-    outdataframe.write_csv(outpath / f"{modelname}_width-luminosity.dat", separator=" ")
+    outdataframe = pd.DataFrame(outdata).round(decimals=4)
+    outdataframe.to_csv(outpath / f"{modelname}_width-luminosity.dat", sep=" ", index=False, header=True)
 
 
 def save_or_show(fig: mplfig.Figure, outputfile: Path | str | None) -> None:
@@ -154,7 +165,7 @@ def plot_hesma_peakmag_dm15_dm40(pathtofiles: Path | str, outputfile: Path | str
     fig, axis = plt.subplots()
     for filepath in sorted(Path(pathtofiles).iterdir()):
         print(f"Reading {filepath}")
-        dfwidthlum = at.read_wsv(filepath)
+        dfwidthlum = pd.read_csv(filepath, sep=r"\s+")
         axis.scatter(dfwidthlum["dm15"], dfwidthlum["peakmag"], label=filepath.stem)
 
     axis.invert_yaxis()

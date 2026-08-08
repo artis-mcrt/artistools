@@ -19,6 +19,7 @@ import matplotlib.pyplot as plt
 import matplotlib.typing as mplt
 import numpy as np
 import numpy.typing as npt
+import pandas as pd
 import polars as pl
 import polars.selectors as cs
 from matplotlib import ticker
@@ -51,7 +52,6 @@ from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
 from artistools.misc import print_saved
 from artistools.misc import print_theta_phi_definitions
-from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
 from artistools.misc import trim_or_pad
 from artistools.plottools import ExponentLabelFormatter
@@ -195,9 +195,14 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
         angle = args.plotviewingangle[0] if args.plotviewingangle else -1
         stokes_params = atspectra.get_specpol_data(dirbin=angle, modelpath=modelpath)
 
-    dfspectrum = stokes_params[args.stokesparam].with_columns(lambda_angstroms=c_ang_per_s / pl.col("nu")).collect()
+    dfspectrum = (
+        stokes_params[args.stokesparam]
+        .with_columns(lambda_angstroms=c_ang_per_s / pl.col("nu"))
+        .collect()
+        .to_pandas(use_pyarrow_extension_array=True)
+    )
 
-    timearray = dfspectrum.columns[1:-1]
+    timearray = dfspectrum.keys()[1:-1]
     (_, _, args.timemin, args.timemax) = get_time_range(
         modelpath, args.timestep, args.timemin, args.timemax, args.timedays
     )
@@ -210,7 +215,7 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
     filterfunc = get_filterfunc(args)
     if filterfunc is not None:
         print("Applying filter to ARTIS spectrum")
-        dfspectrum = dfspectrum.with_columns(pl.Series(timeavg, filterfunc(dfspectrum[timeavg])))
+        dfspectrum[timeavg] = filterfunc(dfspectrum[timeavg])
 
     vpkt_config = get_vpkt_config(modelpath)
 
@@ -237,7 +242,7 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
 
         axis.plot(new_lambda_angstroms, binned_flux)
     else:
-        axis.plot(dfspectrum["lambda_angstroms"], dfspectrum[timeavg], label=linelabel)
+        dfspectrum.plot(x="lambda_angstroms", y=timeavg, label=linelabel, ax=axis)
 
     if args.ymax is None:
         args.ymax = 0.5
@@ -365,18 +370,15 @@ def plot_filter_functions(axis: mplax.Axes) -> None:
 
     filterdir = Path(get_path("artistools_dir"), "data/filters/")
     for index, filter_name in enumerate(filter_names):
-        filter_data = read_wsv(
+        filter_data = pd.read_csv(
             filterdir / f"{filter_name}.txt",
-            has_header=False,
-            skip_rows=4,
-            new_columns=["lambda_angstroms", "flux_normalised"],
+            sep=r"\s+",
+            header=None,
+            skiprows=4,
+            names=["lambda_angstroms", "flux_normalised"],
         )
-        axis.plot(
-            filter_data["lambda_angstroms"],
-            filter_data["flux_normalised"],
-            label=filter_name,
-            color=colours[index],
-            alpha=0.3,
+        filter_data.plot(
+            x="lambda_angstroms", y="flux_normalised", ax=axis, label=filter_name, color=colours[index], alpha=0.3
         )
 
 

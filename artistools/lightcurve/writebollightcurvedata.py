@@ -4,13 +4,12 @@ import typing as t
 from pathlib import Path
 
 import numpy as np
-import polars as pl
-import polars.selectors as cs
+import pandas as pd
 
 import artistools as at
 
 
-def get_bol_lc_from_spec(modelpath: Path) -> pl.DataFrame:
+def get_bol_lc_from_spec(modelpath: Path) -> pd.DataFrame:
     """Return log10(bolometric luminosity) per direction bin between 5 and 80 days, integrated from the spectra."""
     res_specdata = at.spectra.read_spec_res(modelpath)
     timearray = res_specdata[0].columns[1:]
@@ -30,16 +29,17 @@ def get_bol_lc_from_spec(modelpath: Path) -> pl.DataFrame:
 
         lightcurvedata[f"angle={angle}"] = np.log10(bol_luminosity)
 
-    lightcurvedataframe = pl.DataFrame(lightcurvedata).with_columns(cs.float().replace([np.inf, -np.inf], 0.0))
+    lightcurvedataframe = pd.DataFrame(lightcurvedata)
+    lightcurvedataframe = lightcurvedataframe.replace([np.inf, -np.inf], 0)
     print(lightcurvedataframe)
 
     return lightcurvedataframe
 
 
-def get_bol_lc_from_lightcurveout(modelpath: Path, res: bool = False) -> pl.DataFrame:
+def get_bol_lc_from_lightcurveout(modelpath: Path, res: bool = False) -> pd.DataFrame:
     """Return the bolometric luminosity against time read from light_curve.out, or light_curve_res.out when res."""
     lcdataframes = {
-        dirbin: df.collect()
+        dirbin: df.collect().to_pandas()
         for dirbin, df in at.lightcurve.readfile(
             modelpath / ("light_curve_res.out" if res else "light_curve.out")
         ).items()
@@ -50,12 +50,14 @@ def get_bol_lc_from_lightcurveout(modelpath: Path, res: bool = False) -> pl.Data
     dirbins = range(len(lcdataframes)) if res else [-1]
     for dirbin in dirbins:
         lcdata = lcdataframes[dirbin]
+        # lightcurvedata[f'angle={angle}'] = np.log10(bol_luminosity)
         columnname = "lum (erg/s)"
         if dirbin != -1:
             columnname += f"angle={dirbin}"
         lightcurvedata[columnname] = lcdata["luminosity_erg/s"]
 
-    return pl.DataFrame(lightcurvedata).with_columns(cs.float().replace([np.inf, -np.inf], 0.0))
+    lightcurvedataframe = pd.DataFrame(lightcurvedata)
+    return lightcurvedataframe.replace([np.inf, -np.inf], 0)
 
 
 def main() -> None:
@@ -72,8 +74,8 @@ def main() -> None:
         # lightcurvedataframe = get_bol_lc_from_spec(modelpath)
         lightcurvedataframe = get_bol_lc_from_lightcurveout(modelpath)
 
-        lightcurvedataframe.write_csv(
-            outfilepath / f"bol_lightcurvedata_{modelname}.txt", separator=" ", include_header=False
+        lightcurvedataframe.to_csv(
+            outfilepath / f"bol_lightcurvedata_{modelname}.txt", sep=" ", index=False, header=False
         )
 
         with (outfilepath / f"bol_lightcurvedata_{modelname}.txt").open("r+") as f:  # add comment to start of file

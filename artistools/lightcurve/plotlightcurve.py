@@ -998,11 +998,9 @@ def make_band_lightcurves_plot(
                 if filterfunc is not None:
                     brightness_in_mag = filterfunc(brightness_in_mag)
 
-                if (
-                    modelnumber == 0 and args.plot_hesma_model and band_name in hesma_model.columns
-                ):  # TODO: see if this works
+                if modelnumber == 0 and args.plot_hesma_model and band_name in hesma_model:  # TODO: see if this works
                     assert isinstance(ax, mplax.Axes)
-                    ax.plot(hesma_model["t"], hesma_model[band_name], color="black")
+                    ax.plot(hesma_model.t, hesma_model[band_name], color="black")
 
                 text_key = filternames_conversion_dict.get(band_name, band_name)
 
@@ -1230,7 +1228,7 @@ def plot_lightcurve_from_refdata(
         if filter_name_raw == "bol":
             continue
         filter_name = filternames_conversion_dict.get(filter_name_raw, filter_name_raw)
-        filter_data[filter_name] = lightcurve_data.filter(pl.col("band") == filter_name)
+        filter_data[filter_name] = lightcurve_data.loc[lightcurve_data["band"] == filter_name]
         # plt.plot(limits_x, limits_y, 'v', label=None, color=color)
         # else:
 
@@ -1239,18 +1237,18 @@ def plot_lightcurve_from_refdata(
 
             clightinangstroms = 3e18
             # Convert to flux, deredden, then convert back to magnitudes
-            filters = np.full(filter_data[filter_name].height, lambda0, dtype=float)
+            filters = np.array([lambda0] * len(filter_data[filter_name]["magnitude"]), dtype=float)
 
-            flux = (
-                clightinangstroms
-                / (lambda0**2)
-                * 10 ** -((filter_data[filter_name]["magnitude"].to_numpy() + 48.6) / 2.5)
+            filter_data[filter_name]["flux"] = (
+                clightinangstroms / (lambda0**2) * 10 ** -((filter_data[filter_name]["magnitude"] + 48.6) / 2.5)
             )  # gs
 
-            dered = apply(ccm89(filters, a_v=-metadata["a_v"], r_v=metadata["r_v"]), flux)
+            filter_data[filter_name]["dered"] = apply(
+                ccm89(filters[:], a_v=-metadata["a_v"], r_v=metadata["r_v"]), filter_data[filter_name]["flux"]
+            )
 
-            filter_data[filter_name] = filter_data[filter_name].with_columns(
-                pl.Series("magnitude", 2.5 * np.log10(clightinangstroms / (dered * lambda0**2)) - 48.6)
+            filter_data[filter_name]["magnitude"] = (
+                2.5 * np.log10(clightinangstroms / (filter_data[filter_name]["dered"] * lambda0**2)) - 48.6
             )
         else:
             print("WARNING: did not correct for reddening")
@@ -1308,7 +1306,7 @@ def plot_color_evolution_from_data(
         lambda0 = float(lines[2])
 
         filter_name = filternames_conversion_dict.get(filter_name_raw, filter_name_raw)
-        filter_data.append(lightcurve_from_data.filter(pl.col("band") == filter_name))
+        filter_data.append(lightcurve_from_data.loc[lightcurve_from_data["band"] == filter_name])
 
         if "a_v" in metadata or "e_bminusv" in metadata:
             print("Correcting for reddening")
@@ -1319,14 +1317,18 @@ def plot_color_evolution_from_data(
 
             clightinangstroms = 3e18
             # Convert to flux, deredden, then convert back to magnitudes
-            filters = np.full(filter_data[i].height, lambda0, dtype=float)
+            filters = np.array([lambda0] * filter_data[i].shape[0], dtype=float)
 
-            flux = clightinangstroms / (lambda0**2) * 10 ** -((filter_data[i]["magnitude"].to_numpy() + 48.6) / 2.5)
+            filter_data[i]["flux"] = (
+                clightinangstroms / (lambda0**2) * 10 ** -((filter_data[i]["magnitude"] + 48.6) / 2.5)
+            )
 
-            dered = apply(ccm89(filters, a_v=-metadata["a_v"], r_v=metadata["r_v"]), flux)
+            filter_data[i]["dered"] = apply(
+                ccm89(filters[:], a_v=-metadata["a_v"], r_v=metadata["r_v"]), filter_data[i]["flux"]
+            )
 
-            filter_data[i] = filter_data[i].with_columns(
-                pl.Series("magnitude", 2.5 * np.log10(clightinangstroms / (dered * lambda0**2)) - 48.6)
+            filter_data[i]["magnitude"] = (
+                2.5 * np.log10(clightinangstroms / (filter_data[i]["dered"] * lambda0**2)) - 48.6
             )
 
     # for i in range(2):
@@ -1335,14 +1337,12 @@ def plot_color_evolution_from_data(
     #     if metadata['label'] in ['SN 2016jhr', 'SN 2018byg']:
     #         filter_data[i]['time'] = filter_data[i]['time'].apply(lambda x: round(float(x)))  # round to nearest day
 
-    merge_dataframes = filter_data[0].join(
-        filter_data[1], how="inner", on="time", suffix="_second", maintain_order="left"
-    )
+    merge_dataframes = filter_data[0].merge(filter_data[1], how="inner", on=["time"])
     axis = ax if isinstance(ax, mplax.Axes) else ax[plotnumber]
     assert isinstance(axis, mplax.Axes)
     axis.plot(
         merge_dataframes["time"],
-        merge_dataframes["magnitude"] - merge_dataframes["magnitude_second"],
+        merge_dataframes["magnitude_x"] - merge_dataframes["magnitude_y"],
         marker,
         label=metadata["label"],
         color=color,

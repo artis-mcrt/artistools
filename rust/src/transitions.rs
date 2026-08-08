@@ -1,6 +1,6 @@
 use crate::parse::next_field;
-use crate::parse::open_decompressed;
 use crate::parse::parse_field;
+use autocompress::autodetect_open;
 use polars::prelude::*;
 use pyo3::prelude::*;
 use pyo3::types::{IntoPyDict as _, PyDict};
@@ -72,7 +72,7 @@ pub fn read_transitiondata(
     ionlist: Option<HashSet<(i32, i32)>>,
 ) -> PyResult<Py<PyDict>> {
     let mut filecontent = String::new();
-    open_decompressed(&transitions_filename)?.read_to_string(&mut filecontent)?;
+    autodetect_open(transitions_filename)?.read_to_string(&mut filecontent)?;
 
     let mut transitiondata = Vec::new();
     let mut lines = filecontent.lines();

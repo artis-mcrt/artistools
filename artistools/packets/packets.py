@@ -10,6 +10,7 @@ from itertools import batched
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import polars as pl
 import polars.selectors as cs
 
@@ -127,15 +128,17 @@ def get_column_names_artiscode(modelpath: str | Path) -> list[str] | None:
 def add_derived_columns_lazy(
     dfpackets: pl.LazyFrame | pl.DataFrame,
     modelmeta: dict[str, t.Any] | None = None,
-    dfmodel: pl.DataFrame | pl.LazyFrame | None = None,
+    dfmodel: pd.DataFrame | pl.LazyFrame | None = None,
     modelpath: Path | str | None = None,
 ) -> pl.LazyFrame:
     """Add columns to a packets DataFrame that are derived from the values that are stored in the packets files.
 
     We might as well add everything, since the columns only get calculated when they are actually used (polars LazyFrame).
     """
-    if isinstance(dfmodel, pl.DataFrame):
-        dfmodel = dfmodel.lazy()
+    if isinstance(dfmodel, pd.DataFrame):
+        dfmodel = pl.from_pandas(dfmodel).lazy()
+
+    assert isinstance(dfmodel, pl.LazyFrame | None)
 
     if dfmodel is None:
         assert modelpath is not None, "modelpath must be provided if dfmodel is not provided"

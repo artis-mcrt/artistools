@@ -10,6 +10,7 @@ from pathlib import Path
 
 import numpy as np
 import numpy.typing as npt
+import pandas as pd
 import polars as pl
 from polars import selectors as cs
 
@@ -258,6 +259,29 @@ def get_levels(
             level_lists.append(IonTuple(Z, ion_stage, level_count, ionisation_energy_ev, dflevels, dftransitions))
 
     return pl.DataFrame(level_lists, orient="row")
+
+
+def get_levels_pandas(
+    modelpath: str | Path,
+    ionlist: Collection[tuple[int, int]] | None = None,
+    get_transitions: bool = False,
+    get_photoionisations: bool = False,
+) -> pd.DataFrame:
+    """Return get_levels() as a pandas DataFrame with the nested levels/transitions frames also converted to pandas."""
+    return (
+        get_levels(
+            modelpath, ionlist=ionlist, get_transitions=get_transitions, get_photoionisations=get_photoionisations
+        )
+        .with_columns(
+            levels=pl.col("levels").map_elements(
+                lambda x: x.to_pandas(use_pyarrow_extension_array=True), return_dtype=pl.Object
+            ),
+            transitions=pl.col("transitions").map_elements(
+                lambda x: x.collect().to_pandas(use_pyarrow_extension_array=True), return_dtype=pl.Object
+            ),
+        )
+        .to_pandas(use_pyarrow_extension_array=True)
+    )
 
 
 def parse_recombratefile(frecomb: io.TextIOBase) -> Generator[tuple[int, int, pl.DataFrame]]:

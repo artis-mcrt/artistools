@@ -13,6 +13,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
+import pandas as pd
 import polars as pl
 from polars import selectors as cs
 
@@ -444,30 +445,36 @@ def get_particledata(
             )
 
         particledata = pl.LazyFrame({"particleid": [particleid]}, schema={"particleid": pl.Int32})
-        heatingfilepath = get_tar_member_extracted_path(
+        nstep_timesec: dict[int, float] = {}
+        with get_tar_member_extracted_path(
             traj_root=traj_root, particleid=particleid, memberfilename="./Run_rprocess/heating.dat"
-        )
-        heatcols = ["hbeta", "halpha", "hspof"]
-        dfheating = at.read_wsv(heatingfilepath).select("#count", "time/s", *heatcols)
-        # triple digit exponents like 1.735904-244 need to be converted to 1.735904e-244
-        # because of Fortran output
-        dfheating = dfheating.with_columns(
-            pl
-            .when(cs.by_dtype(pl.String).str.slice(-4, 1) == "-")
-            .then(cs.by_dtype(pl.String).str.replace_all("-", "e-"))
-            .otherwise(cs.by_dtype(pl.String))
-            .cast(pl.Float32)
-        )
+        ).open(encoding="utf-8") as f:
+            dfheating = pl.from_pandas(
+                pd.read_csv(
+                    f, sep=r"\s+", usecols=["#count", "time/s", "hbeta", "halpha", "hspof"], dtype_backend="pyarrow"
+                )
+            )
+            # triple digit exponents like 1.735904-244 need to be converted to 1.735904e-244
+            # because of Fortran output
+            dfheating = dfheating.with_columns(
+                pl
+                .when(cs.by_dtype(pl.String).str.slice(-4, 1) == "-")
+                .then(cs.by_dtype(pl.String).str.replace_all("-", "e-"))
+                .otherwise(cs.by_dtype(pl.String))
+                .cast(pl.Float32)
+            )
 
-        nstep_timesec: dict[int, float] = dict(dfheating.select("#count", "time/s").iter_rows())
+            heatcols = ["hbeta", "halpha", "hspof"]
 
-        particledata = particledata.with_columns(
-            pl.Series(
-                [np.interp(arr_time_s_incpremerger, dfheating["time/s"], dfheating[col])],
-                dtype=pl.Array(pl.Float32, len(arr_time_s_incpremerger)),
-            ).alias(col)
-            for col in heatcols
-        )
+            nstep_timesec = dict(dfheating.select("#count", "time/s").iter_rows())
+
+            particledata = particledata.with_columns(
+                pl.Series(
+                    [np.interp(arr_time_s_incpremerger, dfheating["time/s"], dfheating[col])],
+                    dtype=pl.Array(pl.Float32, len(arr_time_s_incpremerger)),
+                ).alias(col)
+                for col in heatcols
+            )
 
         if arr_strnuc_z_n:
             ntslowers = at.inputmodel.rprocess_from_trajectory.get_closest_network_timesteps(
