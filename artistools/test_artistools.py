@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tomllib
 import typing as t
+from datetime import date
 from pathlib import Path
 from unittest import mock
 
@@ -46,6 +47,24 @@ def funcname() -> str:
 
 def get_plot_xy(callargs: t.Any) -> tuple[np.ndarray, np.ndarray]:
     return np.array(callargs[0][1], dtype=float), np.array(callargs[0][2], dtype=float)
+
+
+def test_polars_series_expr_dispatch() -> None:
+    """Polars leaves most Series methods unimplemented, so check that they reach their Expr implementations.
+
+    On CPython 3.15 polars fails to rebind them and they silently return None, which artistools/_polarscompat.py
+    repairs. Sample the plain Series methods and each namespace that the repair covers.
+    """
+    assert pl.Series("x", [2, 1, 1, None]).unique().sort().to_list() == [None, 1, 2]
+    assert pl.Series("x", [-1, 2]).abs().to_list() == [1, 2]
+    assert pl.Series("x", [1, None]).drop_nulls().to_list() == [1]
+    assert pl.Series("x", ["ab"]).str.to_uppercase().to_list() == ["AB"]
+    assert pl.Series("x", [[1, 1, 2]]).list.unique().list.len().to_list() == [2]
+    assert pl.Series("x", [[1, 2]], dtype=pl.Array(pl.Int64, 2)).arr.sum().to_list() == [3]
+    assert pl.Series("x", [date(2026, 8, 8)]).dt.year().to_list() == [2026]
+    assert pl.Series("x", [{"a": 7}]).struct.field("a").to_list() == [7]
+    assert pl.Series("x", ["a"], dtype=pl.Categorical).cat.len_bytes().to_list() == [1]
+    assert pl.Series("x", [b"ab"]).bin.size().to_list() == [2]
 
 
 def _console_script_targets() -> list[tuple[str, str, str]]:
