@@ -112,23 +112,24 @@ def get_tar_member_extracted_path(traj_root: Path | str, particleid: int, member
     if _extracted_file_is_complete(path_extracted_file):
         return path_extracted_file
 
+    if tarfilepath is None:
+        # an incomplete leftover is unusable and there is no archive to replace it from, so clear it out
+        path_extracted_file.unlink(missing_ok=True)
+        msg = f"  No network data found for particle {particleid} (so can't access {memberfilename})"
+        raise FileNotFoundError(msg)
+
     # and memberfilename.endswith(".dat")
-    if tarfilepath is not None:
-        try:
-            _extract_tar_member_atomic(tarfilepath, memberfilename, path_extracted_file)
-        except OSError:
-            print(f"Problem extracting file {memberfilename} from {tarfilepath}")
-            raise
-        except KeyError:
-            print(f"File {memberfilename} not found in {tarfilepath}")
-            raise
+    try:
+        _extract_tar_member_atomic(tarfilepath, memberfilename, path_extracted_file)
+    except OSError:
+        print(f"Problem extracting file {memberfilename} from {tarfilepath}")
+        raise
+    except KeyError:
+        print(f"File {memberfilename} not found in {tarfilepath}")
+        raise
 
     if path_extracted_file.is_file():
         return path_extracted_file
-
-    if tarfilepath is None:
-        msg = f"  No network data found for particle {particleid} (so can't access {memberfilename})"
-        raise FileNotFoundError(msg)
 
     print(f"Member {memberfilename} not found in {tarfilepath}")
     raise AssertionError
