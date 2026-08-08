@@ -267,20 +267,6 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
         file_contents = np.loadtxt(Path(modelpath) / "Ye.txt", unpack=True, skiprows=1)
         model = model.with_columns(Ye=pl.Series(file_contents[1]))
 
-    mincellparticles = 0
-    if mincellparticles > 0:
-        if "tracercount" not in model.columns:
-            griddata = at.read_wsv(modelpath / "grid.dat", comment_prefix="#", skip_rows=3)
-            model = model.with_columns(tracercount=griddata["tracercount"])
-        print(model["tracercount"], model["tracercount"].max())
-        model = model.with_columns(
-            pl
-            .when(pl.col("tracercount") < mincellparticles)
-            .then(0.0)
-            .otherwise(pl.col(coloursurfaceby))
-            .alias(coloursurfaceby)
-        )
-
     # generate grid from data
     grid = round(len(model["rho"]) ** (1.0 / 3.0))
     surfacearr = np.asarray(model[coloursurfaceby], dtype=float)

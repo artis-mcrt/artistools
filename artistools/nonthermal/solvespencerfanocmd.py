@@ -9,7 +9,6 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-import numpy.typing as npt
 import polars as pl
 
 import artistools as at
@@ -32,30 +31,20 @@ def make_ntstats_plot(ntstatfile: str | Path) -> None:
     # the header line was written as a "#" comment
     dfstats = at.read_wsv(ntstatfile, comment_prefix="#", header_from_comment=True).fill_null(0)
 
-    norm_frac_sum = False
-    norm_factors: float | npt.NDArray[np.float64]
-    if norm_frac_sum:
-        # scale up (or down) ionisation, excitation, and heating to force frac_sum = 1.0
-        dfstats = dfstats.with_columns(
-            frac_sum=pl.col("frac_ionization") + pl.col("frac_excitation") + pl.col("frac_heating")
-        )
-        norm_factors = 1.0 / dfstats["frac_sum"].cast(pl.Float64).to_numpy()
-    else:
-        norm_factors = 1.0
     with pl.Config(tbl_cols=-1, tbl_rows=50):
         print(dfstats)
 
     xarr = np.log10(dfstats["x_e"])
-    ax.plot(xarr, dfstats["frac_ionization"] * norm_factors, label="Ionisation")
+    ax.plot(xarr, dfstats["frac_ionization"], label="Ionisation")
     max_frac_excitation = dfstats["frac_excitation"].max()
     assert isinstance(max_frac_excitation, int | float)
     if max_frac_excitation > 0.0:
-        ax.plot(xarr, dfstats["frac_excitation"] * norm_factors, label="Excitation")
-    ax.plot(xarr, dfstats["frac_heating"] * norm_factors, label="Heating")
+        ax.plot(xarr, dfstats["frac_excitation"], label="Excitation")
+    ax.plot(xarr, dfstats["frac_heating"], label="Heating")
     ioncols = [col for col in dfstats.columns if col.startswith("frac_ionization_")]
     for ioncol in ioncols:
         ion = ioncol.replace("frac_ionization_", "")
-        ax.plot(xarr, dfstats[ioncol] * norm_factors, label=f"{ion} ionisation")
+        ax.plot(xarr, dfstats[ioncol], label=f"{ion} ionisation")
 
     ax.set_ylabel(r"Energy fraction")
     ax.set_xlabel(r"log x$_e$")

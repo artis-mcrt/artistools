@@ -188,12 +188,10 @@ def make_1d_profile(args: argparse.Namespace, logprint: Callable[..., None]) -> 
             composition = {species: massfrac / sum_composition_check for species, massfrac in composition.items()}
 
             # Append results for this bin to the overall results
-            shellrows.append({
-                "inputcellid": i + 1,
-                "r_bin_max_boundary": cone1d_bins[i + 1],
-                "rho": total_mass_g / total_volume,
-                **composition,
-            })
+            shellrows.append(
+                {"inputcellid": i + 1, "r_bin_max_boundary": cone1d_bins[i + 1], "rho": total_mass_g / total_volume}
+                | composition
+            )
 
         # Combine all bin results into a single DataFrame
         slice1d = pl.DataFrame(shellrows)
