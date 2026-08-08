@@ -10,10 +10,16 @@ import sys
 if sys.version_info >= (3, 15) and hasattr(sys, "set_lazy_imports_filter") and hasattr(sys, "set_lazy_imports"):
     sys.set_lazy_imports_filter(
         lambda _importing, imported, _fromlist: (
-            not imported.startswith(("matplotlib.", "polars", "polars.exceptions", "polars.selectors"))
+            not imported.startswith(("matplotlib.", "numpy", "polars", "polars.exceptions", "polars.selectors"))
         )
     )
     sys.set_lazy_imports("all")
+
+    # numpy has to reach sys.modules before anything imports polars. polars substitutes its own lazy proxy for
+    # numpy whenever numpy is absent at that moment, and on free-threaded 3.15 that proxy cannot resolve itself:
+    # polars._dependencies captures globals() to publish the real module, which raises there with
+    # "'module' object does not support item assignment".
+    import numpy as np  # ruff:ignore[unused-import]
 
 if sys.version_info >= (3, 15):
     from artistools._polarscompat import repair_series_expr_dispatch
