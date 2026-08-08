@@ -24,7 +24,7 @@ wheels = [
 
 [[package]]
 name = "artistools"
-version = "2026.8.5"
+version = "2026.8.8"
 source = { editable = "." }
 dependencies = [
     { name = "argcomplete" },
