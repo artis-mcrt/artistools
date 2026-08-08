@@ -59,10 +59,9 @@ def read_ejectasnapshot(
         Path(pathtosnapshot) / "ejectasnapshot.dat" if Path(pathtosnapshot).is_dir() else pathtosnapshot,
         has_header=False,
         new_columns=column_names,
-        schema_overrides={col: pl.Int64 if col == "id" else pl.Float64 for col in column_names},
+        columns=usecols,
+        schema_overrides={col: pl.Int64 if col == "id" else pl.Float64 for col in (usecols or column_names)},
     )
-    if usecols is not None:
-        dfsnapshot = dfsnapshot.select(usecols)
 
     if downsamplefactor is not None and downsamplefactor > 1:
         dfsnapshot = dfsnapshot.sample(len(dfsnapshot) // downsamplefactor)

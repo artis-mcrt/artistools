@@ -214,6 +214,40 @@ def test_read_wsv(tmp_path: Path) -> None:
     (tmp_path / "trailing.txt").write_text("colA colB  \n1 2 \n3 4 \t\n", encoding="utf-8")
     pltest.assert_frame_equal(at.read_wsv(tmp_path / "trailing.txt"), pl.DataFrame({"colA": [1, 3], "colB": [2, 4]}))
 
+    # a name-based projection parses only the requested columns, in the requested order
+    dfprojected = at.read_wsv(
+        tmp_path / "aligned.txt",
+        has_header=False,
+        skip_rows=2,
+        new_columns=["a", "b", "c"],
+        columns=["c", "a"],
+        comment_prefix="#",
+    )
+    assert dfprojected.columns == ["c", "a"]
+    assert dfprojected["a"].to_list() == [1, 4]
+    assert dfprojected["c"].to_list() == ["x", "y"]
+
+
+def test_read_wsv_prefers_uncompressed_file(tmp_path: Path) -> None:
+    """A freshly written uncompressed file must win over a stale compressed sibling of the same name."""
+    (tmp_path / "f.txt").write_text("v\n2\n", encoding="utf-8")
+    with gzip.open(tmp_path / "f.txt.gz", "wt", encoding="utf-8") as f:
+        f.write("v\n1\n")
+
+    assert at.read_wsv(tmp_path / "f.txt")["v"].to_list() == [2]
+
+
+def test_read_wsv_all_null_inference_sample(tmp_path: Path) -> None:
+    """A column whose first 10000 rows are all null tokens must still infer as numeric from the later rows."""
+    filepath = tmp_path / "nullsample.txt"
+    nnullrows = 12000  # more rows than the schema inference sample
+    filepath.write_text("a b\n" + "".join(f"{i} nan\n" for i in range(nnullrows)) + f"{nnullrows} 3.5\n")
+
+    df = at.read_wsv(filepath)
+    assert df["b"].dtype == pl.Float64
+    assert df["b"].item(-1) == pytest.approx(3.5)
+    assert df["b"].null_count() == nnullrows
+
 
 def test_read_wsv_late_type_change(tmp_path: Path) -> None:
     """A column that turns from integer to float beyond the schema inference sample is read as floats."""
