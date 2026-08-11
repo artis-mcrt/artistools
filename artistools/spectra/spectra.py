@@ -1480,10 +1480,9 @@ def get_flux_contributions_from_packets(
         if array_flambda_emission is None:
             array_flambda_emission = np.zeros_like(array_flambda_absorption, dtype=float)
 
-        fluxcontribthisseries = abs(np.trapezoid(array_flambda_emission, x=array_lambda)) + abs(
-            np.trapezoid(array_flambda_absorption, x=array_lambda)
+        fluxcontribthisseries = abs(float(np.trapezoid(array_flambda_emission, x=array_lambda))) + abs(
+            float(np.trapezoid(array_flambda_absorption, x=array_lambda))
         )
-        assert isinstance(fluxcontribthisseries, float)
 
         if fluxcontribthisseries > 0.0:
             contribution_list.append(

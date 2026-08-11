@@ -823,6 +823,11 @@ def get_standard_columns(dimensions: int, includenico57: bool = False, pos_unkno
     return cols
 
 
+def _customcolsortkey(col: str) -> tuple[float, int]:
+    """Sort nuclide mass fraction columns by atomic number then mass number, and other columns last."""
+    return get_z_a_nucname(col) if col.startswith("X_") else (math.inf, 0)
+
+
 def save_modeldata(
     dfmodel: pl.LazyFrame | pl.DataFrame,
     outpath: Path | str | None = None,
@@ -912,9 +917,7 @@ def save_modeldata(
 
     dfmodel = dfmodel.with_columns(pl.col("inputcellid").cast(pl.Int32))
     customcols = [col for col in dfmodel.collect_schema().names() if col not in standardcols]
-    customcols.sort(
-        key=lambda col: get_z_a_nucname(col) if col.startswith("X_") else (math.inf, 0)
-    )  # sort columns by atomic number, mass number
+    customcols.sort(key=_customcolsortkey)
 
     modelfilepath = resolve_outputfile(outpath, "model.txt")
 

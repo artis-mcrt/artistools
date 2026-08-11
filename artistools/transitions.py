@@ -3,7 +3,6 @@
 import argparse
 import sys
 import typing as t
-from collections.abc import Iterable
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -20,6 +19,9 @@ from artistools.misc import add_modelpath_arg
 from artistools.misc import add_outputfile_arg
 from artistools.misc import add_timedays_arg
 from artistools.misc import add_timestep_arg
+
+if t.TYPE_CHECKING:
+    from collections.abc import Iterable
 
 defaultoutputfile = "plottransitions_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf"
 

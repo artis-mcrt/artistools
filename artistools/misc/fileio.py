@@ -94,7 +94,10 @@ def zopenpl(filename: Path | str, mode: str = "r", encoding: str | None = None) 
         ext, filepath = found
         if ext in POLARS_READABLE_EXTENSIONS:
             return filepath
-        return get_decompress_open(ext)(filepath, mode=mode, encoding=encoding)
+        # get_decompress_open() erases the three backends' differing signatures to Any, so the file
+        # object is Any by design and the annotation says so rather than leaving it implicit
+        fileobj: t.Any = get_decompress_open(ext)(filepath, mode=mode, encoding=encoding)
+        return fileobj
 
     return Path(filename)
 
