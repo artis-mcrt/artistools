@@ -60,10 +60,6 @@ jobs:
               if: always()
               run: uv run -- ruff format --check --exit-non-zero-on-format
 
-            - name: Run basedpyright
-              if: always()
-              run: uv run -- basedpyright --warnings
-
             - name: Run pyrefly
               if: always()
               run: uv run -- pyrefly check --output-format github

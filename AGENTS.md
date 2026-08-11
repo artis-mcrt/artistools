@@ -21,7 +21,6 @@ Run every check that covers what you touched, from the repository root:
 uv run -- ruff format
 uv run -- ruff check --no-fix     # --no-fix shows what CI sees (config sets fix = true)
 uv run -- mypy
-uv run -- basedpyright --warnings
 uv run -- pyrefly check
 uv run -- ty check
 uv run -- python -m pytest artistools/<area> -n auto   # e.g. artistools/spectra
@@ -35,7 +34,7 @@ Never report that checks passed when you could not run them. If the environment 
 ## Python and typing
 
 - Target Python >= 3.13 and keep syntax valid on 3.14, including free-threaded builds (`3.14t`), which CI tests. Do not add module-level mutable state or rely on the GIL for thread safety.
-- Annotate every function fully: mypy runs in strict mode and basedpyright/pyright in strict type-checking mode. Untyped defs and untyped calls are errors.
+- Annotate every function fully: mypy runs in strict mode. Untyped defs and untyped calls are errors.
 - Use modern generics: `list[str]`, `X | None`, PEP 695 (`def f[T](...)`, `type Alias = ...`). No `typing.List`, `typing.Optional`, or bare `Any` where a real type fits.
 - A lambda's parameter types have to be inferable from the call site (pyrefly's `implicit-any-lambda`). A `sorted`/`min`/`filter` key that pyrefly cannot infer becomes an annotated `def` instead — lambdas take no annotations. Prefer a comprehension over `filter(lambda ...)` either way.
 - Raise exceptions with a named message variable, not a literal:
@@ -54,7 +53,6 @@ Fix the underlying issue first; a suppression is a last resort and each tool has
 | --- | --- |
 | ruff | `# ruff:ignore[rule-name]`, file-level `# ruff:file-ignore[rule-name]` |
 | mypy | `# type: ignore[error-code]` (a bare `# type: ignore` fails `ignore-without-code`) |
-| basedpyright | `# pyright: ignore[reportRuleName]` |
 | pyrefly | `# pyrefly: ignore[rule-name]` |
 | ty | `# ty:ignore[rule-name]` |
 

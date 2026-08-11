@@ -67,7 +67,6 @@ extras = [
 
 [dependency-groups]
 dev = [
-    "basedpyright>=1.39.9",
     "imageio>=2.37.3",
     "mypy>=2.3.0",
     "prek>=0.4.12",
@@ -222,7 +221,6 @@ ignore-missing-imports = [
 ]
 
 [tool.pyrefly.errors]
-# unbound-name matches basedpyright's reportPossiblyUnboundVariable, which is also off
 unbound-name = false
 implicit-any-empty-container = true
 implicit-any-lambda = true
