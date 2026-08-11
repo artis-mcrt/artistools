@@ -83,7 +83,6 @@ dev = [
     "types-pyyaml>=6.0.12.20260408",
     "types-tqdm>=4.67.3.20260408",
     "vulture>=2.14",
-    "zuban>=0.0.24",
 ]
 
 [project.urls]
@@ -430,7 +429,3 @@ ignore_names = [
     "locator",
     "formatter",
 ]
-
-[tool.zuban]
-mode = "mypy"
-warn_return_any = false
