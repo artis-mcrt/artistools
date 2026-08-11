@@ -682,8 +682,8 @@ def map_to_artis(
             )
 
             # mass fractions, avoid looping
-            X_list = list(filter(lambda c: c.startswith("X_"), dfmodel.columns))
-            X_list_dyn_model = list(filter(lambda c: c.startswith("X_"), dyn_model.columns))
+            X_list = [c for c in dfmodel.columns if c.startswith("X_")]
+            X_list_dyn_model = [c for c in dyn_model.columns if c.startswith("X_")]
             els_missing_in_dyn = [value for value in X_list if value not in X_list_dyn_model]
             dyn_model = dyn_model.with_columns(**{col: pl.lit(0.0) for col in els_missing_in_dyn})
             X_list.remove("X_Fegroup")

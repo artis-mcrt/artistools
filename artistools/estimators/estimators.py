@@ -76,6 +76,11 @@ def get_units_string(variable: str) -> str:
     return f" [{units}]" if (units := get_variableunits(variable)) else ""
 
 
+def _estimator_colsortkey(col: str) -> str:
+    """Sort timestep, modelgridindex, and titeration first, then the remaining columns alphabetically."""
+    return f"-{col!r}" if col in {"timestep", "modelgridindex", "titeration"} else col
+
+
 def get_estimators_rankbatch_parquetfile(
     folderpath: Path | str,
     batch_mpiranks: Sequence[int],
@@ -134,13 +139,8 @@ def get_estimators_rankbatch_parquetfile(
             cs.by_name("titeration", "timestep", "modelgridindex", require_all=False).cast(pl.Int32)
         )
 
-        pldf_batch = pldf_batch.select(
-            # sort columns with timestep, modelgridindex, and titeration first, then the rest alphabetically
-            sorted(
-                pldf_batch.columns,
-                key=lambda col: f"-{col!r}" if col in {"timestep", "modelgridindex", "titeration"} else str(col),
-            )
-        )
+        sortedcols: list[str] = sorted(pldf_batch.columns, key=_estimator_colsortkey)
+        pldf_batch = pldf_batch.select(sortedcols)
         print(f"took {time.perf_counter() - time_start:.1f} s. Writing parquet file...", end="", flush=True)
         time_start = time.perf_counter()
 

@@ -37,6 +37,7 @@ Never report that checks passed when you could not run them. If the environment 
 - Target Python >= 3.13 and keep syntax valid on 3.14, including free-threaded builds (`3.14t`), which CI tests. Do not add module-level mutable state or rely on the GIL for thread safety.
 - Annotate every function fully: mypy runs in strict mode and basedpyright/pyright in strict type-checking mode. Untyped defs and untyped calls are errors.
 - Use modern generics: `list[str]`, `X | None`, PEP 695 (`def f[T](...)`, `type Alias = ...`). No `typing.List`, `typing.Optional`, or bare `Any` where a real type fits.
+- A lambda's parameter types have to be inferable from the call site (pyrefly's `implicit-any-lambda`). A `sorted`/`min`/`filter` key that pyrefly cannot infer becomes an annotated `def` instead — lambdas take no annotations. Prefer a comprehension over `filter(lambda ...)` either way.
 - Raise exceptions with a named message variable, not a literal:
   ```python
   msg = f"Unknown path key: {key}"
@@ -68,6 +69,8 @@ Ruff rules are configured by **name**, not by code (`"any-type"`, not `"ANN401"`
 - Use the configured aliases: `artistools as at`, `polars as pl`, `polars.selectors as cs`, `polars.testing as pltest`, `numpy as np`, `numpy.typing as npt`, `matplotlib.pyplot as plt`, `matplotlib.axes as mplax`, `matplotlib.figure as mplfig`, `typing as t`.
 - Inside package modules, import the specific submodule or function (`from artistools.misc import get_nu_grid`) to avoid import cycles. `import artistools as at` is for tests and top-level scripts.
 - Import heavy or optional dependencies (astropy, pyvista, plotly, imageio, pynonthermal, argcomplete) inside the function that needs them. `import-outside-top-level` is disabled deliberately to keep CLI startup fast.
+- flake8-type-checking runs in `strict` mode: an import used *only* in annotations belongs in an `if t.TYPE_CHECKING:` block after the normal imports, for the same startup-cost reason. Adding a runtime use of that name means moving the import back out.
+- Pyrefly's `missing-import` is an error, so a renamed or mistyped module fails CI. A genuinely optional dependency that a plain `uv sync` would not install belongs in `ignore-missing-imports` in `[tool.pyrefly]`.
 - `implicit_reexport` is off: a new public function must be re-exported in the parent `__init__.py` using the `from module import name as name` form, matching the surrounding alphabetical order.
 
 ## Polars

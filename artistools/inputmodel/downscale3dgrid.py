@@ -83,9 +83,9 @@ def make_downscaled_3d_grid(
     with smallabundancefile.open("w", encoding="utf-8") as newabundancefile:
         for z, y, x in itertools.product(range(smallgrid), range(smallgrid), range(smallgrid)):
             line = abund_small[x, y, z, :][1:31]  # index 1:30 are abundances
-            newabundancefile.writelines(f"{i + 1} ")
+            newabundancefile.write(f"{i + 1} ")
             newabundancefile.writelines(f"{item:g} " for item in line)
-            newabundancefile.writelines("\n")
+            newabundancefile.write("\n")
             i += 1
 
     print("writing model file")
@@ -107,9 +107,9 @@ def make_downscaled_3d_grid(
             ]
             line2 = radioabunds_small[x, y, z, :]
             newmodelfile.writelines(f"{item:g} " for item in line1)
-            newmodelfile.writelines("\n")
+            newmodelfile.write("\n")
             newmodelfile.writelines(f"{item:g} " for item in line2)
-            newmodelfile.writelines("\n")
+            newmodelfile.write("\n")
             cellindex += 1
 
     if plot:

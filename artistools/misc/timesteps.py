@@ -20,7 +20,11 @@ from artistools.misc.modelinfo import get_model_name
 
 def match_closest_time(reftime: float, searchtimes: Iterable[t.Any]) -> float:
     """Return the time in searchtimes that is closest to reftime."""
-    return min((float(x) for x in searchtimes), key=lambda x: abs(x - reftime))
+
+    def offset_from_reftime(time: float) -> float:
+        return abs(time - reftime)
+
+    return min((float(x) for x in searchtimes), key=offset_from_reftime)
 
 
 def get_deposition(modelpath: Path | str = ".") -> pl.LazyFrame:

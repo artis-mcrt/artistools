@@ -54,6 +54,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# adding a package here also needs an entry in `ignore-missing-imports` under [tool.pyrefly]
 extras = [
     "astropy>=7.2",
     "george>=0.4.4;python_version<'3.15'", # not compatible with 3.15 yet
@@ -205,13 +206,31 @@ project-excludes = [
     '**/rd_cmfgen.py',
 ]
 python-interpreter-path = ".venv/bin/python3"
+# missing-import is left enabled so a renamed or mistyped first-party module is an error (no other
+# checker catches that: mypy sets ignore_missing_imports and pyright downgrades it to information).
+# The [project.optional-dependencies] packages are absent from a plain `uv sync`, and zstandard is
+# not installed on 3.14+, so those resolve to Any rather than erroring.
+ignore-missing-imports = [
+    "astropy.*",
+    "george",
+    "george.*",
+    "imageio.*",
+    "plotly.*",
+    "pynonthermal",
+    "pypdf",
+    "pyvista",
+    "zstandard",
+]
 
 [tool.pyrefly.errors]
-missing-import = false
+# unbound-name matches basedpyright's reportPossiblyUnboundVariable, which is also off
 unbound-name = false
-unsupported-operation = false
 implicit-any-empty-container = true
-implicit-any-lambda = false
+implicit-any-lambda = true
+no-any-return-implicit = true
+string-as-iterable = true
+unnecessary-type-conversion = true
+unsupported-operation = true
 
 [tool.pyright]
 venvPath = "."
@@ -295,6 +314,7 @@ preview = true
 [tool.ruff.format]
 skip-magic-trailing-comma = true
 preview = true
+docstring-code-format = true
 
 [tool.ruff.lint]
 select = ["ALL"]
@@ -370,6 +390,11 @@ unfixable = [
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
 require-lazy = "all"
+
+[tool.ruff.lint.flake8-type-checking]
+# imports used only in annotations belong in a `if t.TYPE_CHECKING:` block, which keeps them out
+# of the CLI startup path for the same reason `import-outside-top-level` is allowed
+strict = true
 
 [tool.ruff.lint.isort]
 force-single-line = true

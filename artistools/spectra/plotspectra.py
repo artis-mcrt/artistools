@@ -10,13 +10,11 @@ from collections.abc import Callable
 from collections.abc import Sequence
 from pathlib import Path
 
-import matplotlib.artist as mplartist
 import matplotlib.axes as mplax
 import matplotlib.colors as mplcolors
 import matplotlib.figure as mplfig
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
-import matplotlib.typing as mplt
 import numpy as np
 import numpy.typing as npt
 import polars as pl
@@ -47,6 +45,7 @@ from artistools.misc import get_model_name
 from artistools.misc import get_time_range
 from artistools.misc import get_vpkt_config
 from artistools.misc import get_vspec_dir_labels
+from artistools.misc import match_closest_time
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
 from artistools.misc import print_saved
@@ -57,6 +56,10 @@ from artistools.misc import trim_or_pad
 from artistools.plottools import ExponentLabelFormatter
 from artistools.plottools import set_mpl_style
 from artistools.spectra.writespectra import write_flambda_spectra
+
+if t.TYPE_CHECKING:
+    import matplotlib.artist as mplartist
+    import matplotlib.typing as mplt
 
 
 def path_is_artis_model(filepath: str | Path) -> bool:
@@ -205,7 +208,7 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
     assert args.timemax is not None
 
     timeavg_float = (args.timemin + args.timemax) / 2.0
-    timeavg = f"{min((float(x) for x in timearray), key=lambda x: abs(x - timeavg_float)):.4f}"
+    timeavg = f"{match_closest_time(timeavg_float, timearray):.4f}"
 
     filterfunc = get_filterfunc(args)
     if filterfunc is not None:
@@ -933,6 +936,7 @@ def make_emissionabsorption_plot(
 
     max_f_emission_total = dfspectotal.filter(pl.col("x").is_between(xmin, xmax))["y"].max()
     assert isinstance(max_f_emission_total, (float, np.floating))
+    max_f_emission_total = float(max_f_emission_total)
     max_absorption = 0.0
 
     scalefactor = scale_to_peak / max_f_emission_total if scale_to_peak else 1.0
@@ -1098,12 +1102,12 @@ def make_emissionabsorption_plot(
     # axis.annotate(plotlabel, xy=(0.97, 0.03), xycoords='axes fraction',
     #               horizontalalignment='right', verticalalignment='bottom', fontsize=7)
 
-    ymax = float(max(ymaxrefall, scalefactor * max_f_emission_total * 1.2))
+    ymax = max(ymaxrefall, scalefactor * max_f_emission_total * 1.2)
     if args.ymax is None:
         axis.set_ylim(top=ymax)
 
     if args.ymin is None:
-        axis.set_ylim(bottom=float(-scalefactor * max_absorption * 1.2))
+        axis.set_ylim(bottom=-scalefactor * max_absorption * 1.2)
 
     return plotobjects, plotobjectlabels, dfaxisdata
 
