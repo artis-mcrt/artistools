@@ -26,32 +26,23 @@ jobs:
                   persist-credentials: false
 
             - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
-              id: setup-uv
               with:
                   activate-environment: true
                   cache-suffix: lint
                   cache-dependency-glob: '**/uv.lock'
 
+            # the toolchain is updated before the cache step so that the key rust-cache derives
+            # from `rustc -vV` describes the toolchain that actually builds the extension
+            - name: Update the rust toolchain
+              run: rustup update stable
+
             - name: Cache cargo and rust build
-              uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+              uses: Swatinem/rust-cache@63fed3e2fecf6f7b51dc6f043341b79ef82a9ae7 # v2.9.2
               with:
-                  path: |
-                      ~/.cargo/registry/index/
-                      ~/.cargo/registry/cache/
-                      ~/.cargo/git/db/
-                      rust/target/
-                  key: lint-cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python${{ steps.setup-uv.outputs.python-version }}-${{ hashFiles('**/Cargo.lock')
-                      }}-${{ github.run_id }}
-                  restore-keys: |
-                      lint-cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python${{ steps.setup-uv.outputs.python-version }}-${{ hashFiles('**/Cargo.lock') }}-
-                      lint-cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python${{ steps.setup-uv.outputs.python-version }}-
-                      lint-cargo-rust-target-${{ runner.os }}${{ runner.arch }}-
-                      cargo-rust-target-${{ runner.os }}${{ runner.arch }}-
+                  workspaces: rust
 
             - name: Install artistools[extras]
-              run: |
-                  rustup update stable
-                  uv sync --all-extras
+              run: uv sync --all-extras
 
             - name: Run Ruff
               if: always()
@@ -111,31 +102,23 @@ jobs:
 
             - name: Setup uv
               uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
-              id: setup-uv
               with:
                   activate-environment: true
                   python-version: ${{ matrix.python-version }}
                   cache-dependency-glob: '**/uv.lock'
 
+            - name: Update the rust toolchain
+              run: rustup update stable
+
             - name: Cache cargo and rust build
-              uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+              uses: Swatinem/rust-cache@63fed3e2fecf6f7b51dc6f043341b79ef82a9ae7 # v2.9.2
               with:
-                  path: |
-                      ~/.cargo/registry/index/
-                      ~/.cargo/registry/cache/
-                      ~/.cargo/git/db/
-                      rust/target/
-                  key: cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python${{ steps.setup-uv.outputs.python-version }}-${{ hashFiles('**/Cargo.lock')
-                      }}-${{ github.run_id }}
-                  restore-keys: |
-                      cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python${{ steps.setup-uv.outputs.python-version }}-${{ hashFiles('**/Cargo.lock') }}-
-                      cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python${{ steps.setup-uv.outputs.python-version }}-
-                      cargo-rust-target-${{ runner.os }}${{ runner.arch }}-
+                  workspaces: rust
+                  # the automatic key covers the job but not the matrix leg it is running
+                  key: ${{ matrix.python-version }}
 
             - name: Install artistools (no dev deps)
-              run: |
-                  rustup update stable
-                  uv sync --no-dev --compile-bytecode
+              run: uv sync --no-dev --compile-bytecode
 
             - name: Check artistools command line tool
               run: |

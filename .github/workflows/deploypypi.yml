@@ -42,19 +42,11 @@ jobs:
             # slow path rather than trusting one to end up inside a published wheel
             - name: Cache cargo and rust build
               if: github.event_name != 'release'
-              uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0 # zizmor: ignore[cache-poisoning]
+              uses: Swatinem/rust-cache@63fed3e2fecf6f7b51dc6f043341b79ef82a9ae7 # v2.9.2 # zizmor: ignore[cache-poisoning]
               with:
-                  path: |
-                      ~/.cargo/registry/index/
-                      ~/.cargo/registry/cache/
-                      ~/.cargo/git/db/
-                      rust/target/
-                  key: cibw-rust-target-${{ runner.os }}${{ runner.arch }}-python3${{ matrix.freethreading }}-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id
-                      }}
-                  restore-keys: |
-                      cibw-rust-target-${{ runner.os }}${{ runner.arch }}-python3${{ matrix.freethreading }}-${{ hashFiles('**/Cargo.lock') }}
-                      cibw-rust-target-${{ runner.os }}${{ runner.arch }}-python3${{ matrix.freethreading }}-
-                      cibw-rust-target-${{ runner.os }}${{ runner.arch }}-
+                  workspaces: rust
+                  # the automatic key covers the job but not the matrix leg it is running
+                  key: ${{ matrix.target.os_arch }}-${{ matrix.freethreading }}
 
             - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
               with:
