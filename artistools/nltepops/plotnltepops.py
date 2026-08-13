@@ -23,6 +23,9 @@ from artistools.misc import add_modelpath_arg
 from artistools.misc import add_outputfile_arg
 
 defaultoutputfile = "plotnlte_{elsymbol}_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf"
+# a plot against time covers a range of timesteps, and one against velocity a range of cells, so
+# neither can be named after the single cell and timestep that the default filename describes
+defaultoutputfile_timeorvelocity = "plotnltelevelpops_{elsymbol}.pdf"
 
 
 def annotate_emission_line(ax: mplax.Axes, y: float, upperlevel: int, lowerlevel: int, label: str) -> None:
@@ -479,9 +482,9 @@ def make_plot_populations_with_time_or_velocity(modelpaths: list[Path | str], ar
 
     at.plottools.set_axis_properties(ax, args)
 
-    figname = f"plotnltelevelpopsZ{Z}.pdf"
-    fig.savefig(figname, format="pdf")
-    at.print_saved(figname)
+    outputfilename = str(args.outputfile).format(elsymbol=at.get_elsymbol(Z))
+    fig.savefig(outputfilename, format="pdf")
+    at.print_saved(outputfilename)
     plt.close(fig)
 
 
@@ -785,7 +788,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     add_axis_limit_args(parser)
 
-    add_outputfile_arg(parser, default=defaultoutputfile, helptext="path/filename for PDF file")
+    # no default here: which one applies depends on -x, so main chooses it when resolving the path
+    add_outputfile_arg(parser, helptext="path/filename for PDF file")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -826,7 +830,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         msg = "Please specify time with -timedays or -timestep"
         raise ValueError(msg)
 
-    args.outputfile = at.resolve_outputfile(args.outputfile, defaultoutputfile)
+    args.outputfile = at.resolve_outputfile(
+        args.outputfile, defaultoutputfile_timeorvelocity if args.x in {"time", "velocity"} else defaultoutputfile
+    )
 
     ion_stages_permitted = at.parse_range_list(args.ion_stages) if args.ion_stages else None
 
