@@ -81,14 +81,6 @@ jobs:
               continue-on-error: true
               run: uv run -- vulture
 
-            # informational only: zuban shares mypy's `# type: ignore` syntax, so silencing a
-            # zuban-only error makes mypy fail warn_unused_ignores. Its --mode mypy also panics
-            # walking the pyvista sources. Report, but do not gate.
-            - name: Run zuban (informational)
-              if: always()
-              continue-on-error: true
-              run: uv run -- zuban check
-
             - name: Run prek pre-commit checks
               uses: j178/prek-action@v2
 
