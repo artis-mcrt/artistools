@@ -38,16 +38,6 @@ jobs:
               with:
                   persist-credentials: false
 
-            # a cache entry written by any branch can be restored here, so a release build takes the
-            # slow path rather than trusting one to end up inside a published wheel
-            - name: Cache cargo and rust build
-              if: github.event_name != 'release'
-              uses: Swatinem/rust-cache@63fed3e2fecf6f7b51dc6f043341b79ef82a9ae7 # v2.9.2 # zizmor: ignore[cache-poisoning]
-              with:
-                  workspaces: rust
-                  # the automatic key covers the job but not the matrix leg it is running
-                  key: ${{ matrix.target.os_arch }}-${{ matrix.freethreading }}
-
             - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
               with:
                   enable-cache: false
