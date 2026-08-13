@@ -37,7 +37,7 @@ jobs:
 
             - name: Setup uv
               id: setup-uv
-              uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+              uses: astral-sh/setup-uv@ae62891fec2bb8e7d6c99fc78c9fec3a63790f8d # v10.0.0
               with:
                   activate-environment: true
                   cache-suffix: codspeed
@@ -47,7 +47,7 @@ jobs:
               run: rustup update stable
 
             - name: Cache cargo and rust build
-              uses: Swatinem/rust-cache@63fed3e2fecf6f7b51dc6f043341b79ef82a9ae7 # v2.9.2
+              uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
               with:
                   workspaces: rust
                   cache-on-failure: true
@@ -64,7 +64,7 @@ jobs:
               run: source ./setuptestdata.sh
 
             - name: Run benchmarks
-              uses: CodSpeedHQ/action@d4c3ecc6c52771046d80d8575a8d9e6487fda279 # v5.0.3
+              uses: CodSpeedHQ/action@4296e51e7041e24dadb86d1d6e8b9320d223dbe8 # v5.0.3
               with:
                   mode: simulation
                   token: ${{ secrets.CODSPEED_TOKEN }}
