@@ -119,16 +119,11 @@ def test_nltepops_versus_velocity(mockplot: t.Any, tmp_path: Path) -> None:
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
-def test_nltepops_versus_time(mockplot: t.Any, tmp_path: Path) -> None:
+def test_nltepops_versus_time(mockplot: t.Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # no outputfile, so this covers the default filename that -x time selects
+    monkeypatch.chdir(tmp_path)
     at.nltepops.plot(
-        argsraw=[],
-        modelpath=modelpath,
-        outputfile=tmp_path,
-        cell=0,
-        x="time",
-        timedays="270-275",
-        ion_stages=[1, 2],
-        levels=[0, 1],
+        argsraw=[], modelpath=modelpath, cell=0, x="time", timedays="270-275", ion_stages=[1, 2], levels=[0, 1]
     )
 
     assert len(mockplot.call_args_list) == 10

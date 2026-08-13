@@ -788,7 +788,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     add_axis_limit_args(parser)
 
-    add_outputfile_arg(parser, default=defaultoutputfile, helptext="path/filename for PDF file")
+    # no default here: which one applies depends on -x, so main chooses it when resolving the path
+    add_outputfile_arg(parser, helptext="path/filename for PDF file")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
