@@ -36,6 +36,7 @@ jobs:
                   persist-credentials: false
 
             - name: Setup uv
+              id: setup-uv
               uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
               with:
                   activate-environment: true
@@ -49,8 +50,8 @@ jobs:
               uses: Swatinem/rust-cache@63fed3e2fecf6f7b51dc6f043341b79ef82a9ae7 # v2.9.2
               with:
                   workspaces: rust
-                  # actions/cache saved on failure too, and a red run still built the dependencies
                   cache-on-failure: true
+                  key: ${{ steps.setup-uv.outputs.python-version }}
 
             - name: Install artistools
               run: |
