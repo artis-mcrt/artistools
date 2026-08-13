@@ -18,8 +18,11 @@ concurrency:
     cancel-in-progress: true
 jobs:
     codspeed-benchmarks:
-        # a pull request from a fork cannot read CODSPEED_TOKEN, so the upload would fail
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        # a pull request from a fork cannot read CODSPEED_TOKEN, so the upload would fail. Dependabot
+        # runs read the Dependabot secret store rather than the Actions one, so they cannot read it
+        # either, even though the branch lives in this repository
+        if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login
+            != 'dependabot[bot]')
         timeout-minutes: 180
         runs-on: ubuntu-24.04
         env:
@@ -46,6 +49,8 @@ jobs:
               uses: Swatinem/rust-cache@63fed3e2fecf6f7b51dc6f043341b79ef82a9ae7 # v2.9.2
               with:
                   workspaces: rust
+                  # actions/cache saved on failure too, and a red run still built the dependencies
+                  cache-on-failure: true
 
             - name: Install artistools
               run: |

@@ -40,6 +40,8 @@ jobs:
               uses: Swatinem/rust-cache@63fed3e2fecf6f7b51dc6f043341b79ef82a9ae7 # v2.9.2
               with:
                   workspaces: rust
+                  # actions/cache saved on failure too, and a red lint run still built the dependencies
+                  cache-on-failure: true
 
             - name: Install artistools[extras]
               run: uv sync --all-extras
@@ -114,6 +116,8 @@ jobs:
               uses: Swatinem/rust-cache@63fed3e2fecf6f7b51dc6f043341b79ef82a9ae7 # v2.9.2
               with:
                   workspaces: rust
+                  # actions/cache saved on failure too, and a red test run still built the dependencies
+                  cache-on-failure: true
                   # the automatic key covers the job but not the matrix leg it is running
                   key: ${{ matrix.python-version }}
 
