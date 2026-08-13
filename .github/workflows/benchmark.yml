@@ -6,6 +6,7 @@ on:
     push:
         branches:
             - main
+    pull_request:
     workflow_dispatch:
     repository_dispatch:
         types: [trigger_checks]
@@ -17,6 +18,8 @@ concurrency:
     cancel-in-progress: true
 jobs:
     codspeed-benchmarks:
+        # a pull request from a fork cannot read CODSPEED_TOKEN, so the upload would fail
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         timeout-minutes: 180
         runs-on: ubuntu-24.04
         env:
@@ -25,10 +28,12 @@ jobs:
         name: codspeed benchmarks
         steps:
             - name: Checkout Code
-              uses: actions/checkout@v7
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  persist-credentials: false
 
             - name: Setup uv
-              uses: astral-sh/setup-uv@v9.0.0
+              uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
               id: setup-uv
               with:
                   activate-environment: true
@@ -36,7 +41,7 @@ jobs:
                   cache-dependency-glob: '**/uv.lock'
 
             - name: Cache cargo and rust build
-              uses: actions/cache@v6
+              uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
               with:
                   path: |
                       ~/.cargo/registry/index/
@@ -63,7 +68,7 @@ jobs:
               run: source ./setuptestdata.sh
 
             - name: Run benchmarks
-              uses: CodSpeedHQ/action@v5.0.3
+              uses: CodSpeedHQ/action@d4c3ecc6c52771046d80d8575a8d9e6487fda279 # v5.0.3
               with:
                   mode: simulation
                   token: ${{ secrets.CODSPEED_TOKEN }}

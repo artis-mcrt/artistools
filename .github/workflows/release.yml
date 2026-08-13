@@ -11,6 +11,7 @@ concurrency:
 
 jobs:
     release:
+        timeout-minutes: 15
         name: Set version and draft release
         runs-on: ubuntu-26.04-arm
         steps:
@@ -28,11 +29,13 @@ jobs:
             # built-in token cannot push here. GH_TOKEN is a PAT owned by a user that can bypass it
             # (a secret cannot be named GITHUB_TOKEN: that name is reserved for the built-in token)
             - name: Checkout Code
-              uses: actions/checkout@v7
-              with:
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              # this is the one checkout that has to keep its credentials: the version bump is
+              # pushed from the working copy further down
+              with: # zizmor: ignore[artipacked]
                   token: ${{ secrets.GH_TOKEN }}
 
-            - uses: astral-sh/setup-uv@v9.0.0
+            - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
 
             - name: Set the version
               id: setversion
