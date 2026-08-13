@@ -96,11 +96,11 @@ def test_nltepops_no_estimator_data(
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
-def test_nltepops_versus_velocity(mockplot: t.Any) -> None:
+def test_nltepops_versus_velocity(mockplot: t.Any, tmp_path: Path) -> None:
     at.nltepops.plot(
         argsraw=[],
         modelpath=modelpath,
-        outputfile=outputpath,
+        outputfile=tmp_path,
         timestep=40,
         x="velocity",
         ion_stages=[1, 2],
@@ -114,14 +114,16 @@ def test_nltepops_versus_velocity(mockplot: t.Any) -> None:
         assert np.allclose(xarr, [8000.0], rtol=1e-4)
         assert np.allclose(yarr, [expected_yval], rtol=1e-4)
 
+    assert (tmp_path / "plotnltelevelpops_Fe.pdf").is_file()
+
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
-def test_nltepops_versus_time(mockplot: t.Any) -> None:
+def test_nltepops_versus_time(mockplot: t.Any, tmp_path: Path) -> None:
     at.nltepops.plot(
         argsraw=[],
         modelpath=modelpath,
-        outputfile=outputpath,
+        outputfile=tmp_path,
         cell=0,
         x="time",
         timedays="270-275",
@@ -138,6 +140,8 @@ def test_nltepops_versus_time(mockplot: t.Any) -> None:
         xarr, yarr = get_plot_xy(callargs)
         assert np.allclose(xarr, expected_xarr, rtol=1e-4)
         assert np.allclose(yarr, expected_yarr, rtol=1e-4)
+
+    assert (tmp_path / "plotnltelevelpops_Fe.pdf").is_file()
 
 
 def test_texifyterm_handles_multiplicity_parity_and_jvalue() -> None:
