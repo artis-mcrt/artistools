@@ -9,6 +9,12 @@ on:
     workflow_dispatch:
     repository_dispatch:
         types: [trigger_checks]
+# a run takes up to three hours, so several pushes in a row would queue up runs that are already
+# superseded. CodSpeed falls back to the nearest ancestor that does have results, so skipping the
+# intermediate commits costs a data point rather than a comparison
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
 jobs:
     codspeed-benchmarks:
         timeout-minutes: 180
