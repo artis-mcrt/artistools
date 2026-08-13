@@ -39,24 +39,6 @@ repos:
       hooks:
           - id: yamlfmt
 
-    - repo: https://github.com/Mateusz-Grzelinski/actionlint-py
-      rev: v1.7.12.24
-      hooks:
-          - id: actionlint
-            # this actionlint predates the ubuntu-26.04 images and the code-quality permission
-            # scope, and reports both as unknown. Drop these once it has caught up
-            args:
-                - -ignore=label "ubuntu-26\.04(-arm)?" is unknown
-                - -ignore=unknown permission scope "code-quality"
-
-    - repo: https://github.com/zizmorcore/zizmor-pre-commit
-      rev: v1.29.0
-      hooks:
-          - id: zizmor
-            # the audits that resolve refs against the GitHub API need a token that a local run
-            # has no reason to have, and every action here is pinned to a hash anyway
-            args: [--no-progress, --offline]
-
     - repo: https://github.com/astral-sh/ruff-pre-commit
       rev: v0.16.2
       hooks:

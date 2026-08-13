@@ -1,8 +1,7 @@
 ---
 version: 2
 # depapprove.yml auto-merges these pull requests, so a brand-new release would reach main with
-# nobody having looked at it. The cooldown leaves a day for a compromised release to be yanked,
-# which is shorter than the week zizmor wants, hence the suppressions below
+# nobody having looked at it. The cooldown leaves a day for a compromised release to be yanked
 updates:
 
     - package-ecosystem: github-actions
@@ -10,7 +9,7 @@ updates:
       schedule:
           interval: weekly
       cooldown:
-          default-days: 1 # zizmor: ignore[dependabot-cooldown]
+          default-days: 1
       groups:
           github-actions:
               patterns:
@@ -21,7 +20,7 @@ updates:
       schedule:
           interval: monthly
       cooldown:
-          default-days: 1 # zizmor: ignore[dependabot-cooldown]
+          default-days: 1
       groups:
           lockfile:
               patterns:
@@ -32,7 +31,7 @@ updates:
       schedule:
           interval: weekly
       cooldown:
-          default-days: 1 # zizmor: ignore[dependabot-cooldown]
+          default-days: 1
       versioning-strategy: lockfile-only
       groups:
           lockfile:
@@ -44,7 +43,7 @@ updates:
       schedule:
           interval: weekly
       cooldown:
-          default-days: 1 # zizmor: ignore[dependabot-cooldown]
+          default-days: 1
       versioning-strategy: lockfile-only
       groups:
           lockfile:
