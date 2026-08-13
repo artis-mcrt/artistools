@@ -830,8 +830,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         raise ValueError(msg)
 
     args.outputfile = at.resolve_outputfile(
-        args.outputfile,
-        defaultoutputfile_timeorvelocity if args.x in {"time", "velocity"} else defaultoutputfile,
+        args.outputfile, defaultoutputfile_timeorvelocity if args.x in {"time", "velocity"} else defaultoutputfile
     )
 
     ion_stages_permitted = at.parse_range_list(args.ion_stages) if args.ion_stages else None
