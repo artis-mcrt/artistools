@@ -16,39 +16,36 @@ env:
     UV_FROZEN: 1
 jobs:
     lint:
+        timeout-minutes: 30
         name: Format, lint, and type check
         runs-on: ubuntu-26.04-arm
         steps:
             - name: Checkout Code
-              uses: actions/checkout@v7
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  persist-credentials: false
 
-            - uses: astral-sh/setup-uv@v9.0.0
+            - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
               id: setup-uv
               with:
                   activate-environment: true
                   cache-suffix: lint
                   cache-dependency-glob: '**/uv.lock'
 
+            # the toolchain is updated before the cache step so that the key rust-cache derives
+            # from `rustc -vV` describes the toolchain that actually builds the extension
+            - name: Update the rust toolchain
+              run: rustup update stable
+
             - name: Cache cargo and rust build
-              uses: actions/cache@v6
+              uses: Swatinem/rust-cache@63fed3e2fecf6f7b51dc6f043341b79ef82a9ae7 # v2.9.2
               with:
-                  path: |
-                      ~/.cargo/registry/index/
-                      ~/.cargo/registry/cache/
-                      ~/.cargo/git/db/
-                      rust/target/
-                  key: lint-cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python${{ steps.setup-uv.outputs.python-version }}-${{ hashFiles('**/Cargo.lock')
-                      }}-${{ github.run_id }}
-                  restore-keys: |
-                      lint-cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python${{ steps.setup-uv.outputs.python-version }}-${{ hashFiles('**/Cargo.lock') }}-
-                      lint-cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python${{ steps.setup-uv.outputs.python-version }}-
-                      lint-cargo-rust-target-${{ runner.os }}${{ runner.arch }}-
-                      cargo-rust-target-${{ runner.os }}${{ runner.arch }}-
+                  workspaces: rust
+                  cache-on-failure: true
+                  key: ${{ steps.setup-uv.outputs.python-version }}
 
             - name: Install artistools[extras]
-              run: |
-                  rustup update stable
-                  uv sync --all-extras
+              run: uv sync --all-extras
 
             - name: Run Ruff
               if: always()
@@ -81,16 +78,9 @@ jobs:
               continue-on-error: true
               run: uv run -- vulture
 
-            # informational only: zuban shares mypy's `# type: ignore` syntax, so silencing a
-            # zuban-only error makes mypy fail warn_unused_ignores. Its --mode mypy also panics
-            # walking the pyvista sources. Report, but do not gate.
-            - name: Run zuban (informational)
-              if: always()
-              continue-on-error: true
-              run: uv run -- zuban check
-
             - name: Run prek pre-commit checks
-              uses: j178/prek-action@v2
+              if: always()
+              uses: j178/prek-action@6dd76cd3f10a318f0fb0b7743a9651fda964a551 # v2
 
             - name: Run rust clippy
               if: always()
@@ -109,35 +99,30 @@ jobs:
         name: pytest python ${{ matrix.python-version }}
         steps:
             - name: Checkout Code
-              uses: actions/checkout@v7
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  persist-credentials: false
 
             - name: Setup uv
-              uses: astral-sh/setup-uv@v9.0.0
               id: setup-uv
+              uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
               with:
                   activate-environment: true
                   python-version: ${{ matrix.python-version }}
                   cache-dependency-glob: '**/uv.lock'
 
+            - name: Update the rust toolchain
+              run: rustup update stable
+
             - name: Cache cargo and rust build
-              uses: actions/cache@v6
+              uses: Swatinem/rust-cache@63fed3e2fecf6f7b51dc6f043341b79ef82a9ae7 # v2.9.2
               with:
-                  path: |
-                      ~/.cargo/registry/index/
-                      ~/.cargo/registry/cache/
-                      ~/.cargo/git/db/
-                      rust/target/
-                  key: cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python${{ steps.setup-uv.outputs.python-version }}-${{ hashFiles('**/Cargo.lock')
-                      }}-${{ github.run_id }}
-                  restore-keys: |
-                      cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python${{ steps.setup-uv.outputs.python-version }}-${{ hashFiles('**/Cargo.lock') }}-
-                      cargo-rust-target-${{ runner.os }}${{ runner.arch }}-python${{ steps.setup-uv.outputs.python-version }}-
-                      cargo-rust-target-${{ runner.os }}${{ runner.arch }}-
+                  workspaces: rust
+                  cache-on-failure: true
+                  key: ${{ steps.setup-uv.outputs.python-version }}
 
             - name: Install artistools (no dev deps)
-              run: |
-                  rustup update stable
-                  uv sync --no-dev --compile-bytecode
+              run: uv sync --no-dev --compile-bytecode
 
             - name: Check artistools command line tool
               run: |
@@ -159,12 +144,13 @@ jobs:
 
             - name: Upload coverage artifact
               if: matrix.python-version == '3.14' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-              uses: actions/upload-artifact@v7
+              uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
               with:
                   name: coverage-report-python
                   path: coverage.xml
 
     upload-coverage-python:
+        timeout-minutes: 10
         needs: pytest
         if: ${{ !cancelled() && needs.pytest.result == 'success' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name
             == github.repository) }}
@@ -175,7 +161,7 @@ jobs:
             pull-requests: read
         steps:
             - name: Download coverage artifact
-              uses: actions/download-artifact@v8
+              uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
               with:
                   name: coverage-report-python
             - name: Check for a pull request associated with this commit
@@ -185,7 +171,7 @@ jobs:
                   GH_TOKEN: ${{ github.token }}
               run: echo "found=$(gh api "repos/${{ github.repository }}/commits/${{ github.sha }}/pulls" --jq 'length > 0')" >> "$GITHUB_OUTPUT"
 
-            - uses: actions/upload-code-coverage@v1
+            - uses: actions/upload-code-coverage@1c15be36fc3733ba839b1dd643bd9556e4426dc1 # v1.4.1
               if: github.ref == 'refs/heads/main' || steps.haspr.outputs.found == 'true'
               with:
                   file: coverage.xml

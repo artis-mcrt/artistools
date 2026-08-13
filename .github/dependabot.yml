@@ -1,11 +1,15 @@
 ---
 version: 2
+# depapprove.yml auto-merges these pull requests, so a brand-new release would reach main with
+# nobody having looked at it. The cooldown leaves a day for a compromised release to be yanked
 updates:
 
     - package-ecosystem: github-actions
       directory: /
       schedule:
           interval: weekly
+      cooldown:
+          default-days: 1
       groups:
           github-actions:
               patterns:
@@ -15,6 +19,8 @@ updates:
       directory: /
       schedule:
           interval: monthly
+      cooldown:
+          default-days: 1
       groups:
           lockfile:
               patterns:
@@ -24,6 +30,8 @@ updates:
       directory: /
       schedule:
           interval: weekly
+      cooldown:
+          default-days: 1
       versioning-strategy: lockfile-only
       groups:
           lockfile:
@@ -34,6 +42,8 @@ updates:
       directory: /
       schedule:
           interval: weekly
+      cooldown:
+          default-days: 1
       versioning-strategy: lockfile-only
       groups:
           lockfile:

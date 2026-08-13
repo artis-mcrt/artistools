@@ -6,6 +6,7 @@ permissions:
     pull-requests: write
 jobs:
     dependabot:
+        timeout-minutes: 10
         runs-on: ubuntu-latest
         if: github.event.pull_request.user.login == 'dependabot[bot]' || github.event.pull_request.user.login == 'pre-commit-ci'
         steps:
