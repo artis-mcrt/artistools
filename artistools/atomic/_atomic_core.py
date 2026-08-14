@@ -15,6 +15,7 @@ from polars import selectors as cs
 
 import artistools as at
 from artistools.commands import get_path
+from artistools.constants import hc_in_ev_angstrom
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import write_parquet_atomic
 from artistools.misc.fileio import zopen
@@ -174,8 +175,7 @@ def add_transition_columns(
         .with_columns(epsilon_trans_ev=(pl.col("upper_energy_ev") - pl.col("lower_energy_ev")))
     )
 
-    hc = 12398.419843320025  # h * c in eV * Angstrom
-    dftransitions = dftransitions.with_columns(lambda_angstroms=hc / pl.col("epsilon_trans_ev"))
+    dftransitions = dftransitions.with_columns(lambda_angstroms=hc_in_ev_angstrom / pl.col("epsilon_trans_ev"))
 
     # clean up any columns used for intermediate calculations
     dftransitions = dftransitions.drop(

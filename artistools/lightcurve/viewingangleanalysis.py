@@ -610,7 +610,6 @@ def peakmag_risetime_declinerate_init(
     args: argparse.Namespace,
 ) -> None:
     """Fit every model's band light curves and store the peak magnitudes, rise times, and decline rates on args."""
-    # if args.calculate_peak_time_mag_deltam15_bool:  # If there's viewing angle scatter plot stuff define some arrays
     args.plotvalues = []  # a0 and p0 values for viewing angle scatter plots
 
     args.band_risetime_polyfit = []
@@ -672,26 +671,23 @@ def peakmag_risetime_declinerate_init(
                     ]
 
                 # Calculating band peak time, peak magnitude and delta m15
-                if args.calculate_peak_time_mag_deltam15_bool:
-                    calculate_peak_time_mag_deltam15(
-                        time,
-                        brightness,
-                        modelname,
-                        dirbin,
-                        band_name,
-                        args,
-                        filternames_conversion_dict=filternames_conversion_dict,
-                    )
+                calculate_peak_time_mag_deltam15(
+                    time,
+                    brightness,
+                    modelname,
+                    dirbin,
+                    band_name,
+                    args,
+                    filternames_conversion_dict=filternames_conversion_dict,
+                )
 
         # Saving viewing angle data so it can be read in and plotted later on without re-running the script
         #    as it is quite time consuming
-        if args.calculate_peak_time_mag_deltam15_bool:
-            save_viewing_angle_data_for_plotting(plottinglist[0], modelname, args)
+        save_viewing_angle_data_for_plotting(plottinglist[0], modelname, args)
 
     # Saving all this viewing angle info for each model to a file so that it is available to plot if required again
     # as it takes relatively long to run this for all viewing angles
-    if args.calculate_peak_time_mag_deltam15_bool:
-        write_viewing_angle_data(plottinglist[0], modelnames, args)
+    write_viewing_angle_data(plottinglist[0], modelnames, args)
 
     # if args.make_viewing_angle_peakmag_risetime_scatter_plot:
     #     make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, plottinglist[0], args)

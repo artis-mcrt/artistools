@@ -312,11 +312,8 @@ def plot_cell_abund_evolution(
     arr_time_gsi_days: Sequence[float] | None,
     arr_species: Sequence[str],
     arr_abund_artis: pl.DataFrame | None,
-    t_model_init_days: float,
-    dfcell: pl.DataFrame,
     pdfoutpath: Path,
     mgi: int,
-    hideinputmodelpoints: bool = True,
 ) -> None:
     """Plot the abundance evolution of one model cell, comparing ARTIS to the nuclear network trajectories."""
     if dfcontribsparticledata is not None:
@@ -402,17 +399,6 @@ def plot_cell_abund_evolution(
             )
         else:
             print(" [no ARTIS data]")
-
-        if f"X_{strspecies}" in dfcell and not hideinputmodelpoints:
-            axis.plot(
-                t_model_init_days,
-                dfcell[f"X_{strspecies}"],
-                marker="+",
-                markersize=15,
-                markeredgewidth=2,
-                label=f"{strnuc_latex} ARTIS inputmodel",
-                color="blue",
-            )
 
         axis.legend(loc="best", frameon=False, handlelength=1, ncol=1, numpoints=1)
 
@@ -673,8 +659,6 @@ def plot_qdot_abund_modelcells(
                 arr_time_gsi_days,
                 arr_species,
                 arr_abund_artis.get(mgi),
-                modelmeta["t_model_init_days"],
-                lzdfmodel.filter(modelgridindex=mgi).collect(),
                 mgi=mgi,
                 pdfoutpath=Path(modelpath, f"gsinetwork_{strmgi}-abundance.pdf"),
             )

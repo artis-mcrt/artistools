@@ -1048,7 +1048,6 @@ def make_band_lightcurves_plot(
                 if args.linestyle:
                     plotkwargs["linestyle"] = args.linestyle[modelnumber]
 
-                # if not (args.test_viewing_angle_fit or args.calculate_peak_time_mag_deltam15_bool):
                 axis.plot(time, brightness_in_mag, linewidth=4 if args.subplots else 3.5, **plotkwargs)
 
     at.set_mpl_style()
@@ -1637,14 +1636,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     filternames_conversion_dict = {"rs": "r", "gs": "g", "is": "i", "zs": "z"}
 
     # determine if this will be a scatter plot or not
-    args.calculate_peak_time_mag_deltam15_bool = False
     if (  # args.calculate_peakmag_risetime_delta_m15 or
         args.save_viewing_angle_peakmag_risetime_delta_m15_to_file
         or args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
         or args.make_viewing_angle_peakmag_risetime_scatter_plot
         or args.make_viewing_angle_peakmag_delta_m15_scatter_plot
     ):
-        args.calculate_peak_time_mag_deltam15_bool = True
         at.lightcurve.peakmag_risetime_declinerate_init(modelpaths, filternames_conversion_dict, args)
         return
 

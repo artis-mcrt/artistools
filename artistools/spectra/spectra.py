@@ -698,7 +698,6 @@ def get_spectra(
     fluxfilterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     average_over_theta: bool = False,
     average_over_phi: bool = False,
-    stokesparam: t.Literal["I", "Q", "U"] = "I",
     gamma: bool = False,
 ) -> dict[int, pl.LazyFrame]:
     """Get a mapping direction bins to polars LazyFrames containing ARTIS emergent UVOIR spectra."""
@@ -708,27 +707,24 @@ def get_spectra(
     check_averaging_angles(average_over_phi, average_over_theta)
 
     specdata_alltimesteps: dict[int, pl.LazyFrame] = {}
-    if stokesparam == "I":
-        with suppress(FileNotFoundError):
-            # the direction-resolved file must match the packet type of the spherically averaged one below,
-            # otherwise the dirbins would silently hold UVOIR spectra while dirbin -1 holds gamma spectra
-            res_specdata = read_spec_res(modelpath, gamma=gamma)
-            if average_over_theta:
-                res_specdata = average_direction_bins(res_specdata, overangle="theta")
-            if average_over_phi:
-                res_specdata = average_direction_bins(res_specdata, overangle="phi")
-            specdata_alltimesteps |= res_specdata
+    with suppress(FileNotFoundError):
+        # the direction-resolved file must match the packet type of the spherically averaged one below,
+        # otherwise the dirbins would silently hold UVOIR spectra while dirbin -1 holds gamma spectra
+        res_specdata = read_spec_res(modelpath, gamma=gamma)
+        if average_over_theta:
+            res_specdata = average_direction_bins(res_specdata, overangle="theta")
+        if average_over_phi:
+            res_specdata = average_direction_bins(res_specdata, overangle="phi")
+        specdata_alltimesteps |= res_specdata
 
-        # spherically averaged spectra
-        try:
-            specdata_alltimesteps[-1] = read_spec(modelpath=modelpath, gamma=gamma)
+    # spherically averaged spectra
+    try:
+        specdata_alltimesteps[-1] = read_spec(modelpath=modelpath, gamma=gamma)
 
-        except FileNotFoundError as e:
-            if gamma:
-                msg = "ERROR: No spherically averaged gamma spectrum found."
-                raise FileNotFoundError(msg) from e
-    else:
-        specdata_alltimesteps[-1] = get_specpol_data(dirbin=-1, modelpath=modelpath)[stokesparam]
+    except FileNotFoundError as e:
+        if gamma:
+            msg = "ERROR: No spherically averaged gamma spectrum found."
+            raise FileNotFoundError(msg) from e
 
     arr_tdelta = get_timestep_times(modelpath, loc="delta")
     specdataout: dict[int, pl.LazyFrame] = {}

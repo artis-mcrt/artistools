@@ -55,7 +55,6 @@ from artistools.misc.general import parallel_map as parallel_map
 from artistools.misc.general import savgol_filter as savgol_filter
 from artistools.misc.general import vec_len as vec_len
 from artistools.misc.modelinfo import get_cellsofmpirank as get_cellsofmpirank
-from artistools.misc.modelinfo import get_dfrankassignments as get_dfrankassignments
 from artistools.misc.modelinfo import get_grid_mapping as get_grid_mapping
 from artistools.misc.modelinfo import get_inputparams as get_inputparams
 from artistools.misc.modelinfo import get_model_name as get_model_name
@@ -64,7 +63,6 @@ from artistools.misc.modelinfo import get_mpirankofcell as get_mpirankofcell
 from artistools.misc.modelinfo import get_nprocs as get_nprocs
 from artistools.misc.modelinfo import get_npts_model as get_npts_model
 from artistools.misc.modelinfo import get_nu_grid as get_nu_grid
-from artistools.misc.modelinfo import get_runfolder_timesteps as get_runfolder_timesteps
 from artistools.misc.modelinfo import get_runfolders as get_runfolders
 from artistools.misc.modelinfo import get_vpkt_config as get_vpkt_config
 from artistools.misc.modelinfo import get_wid_init_at_tmodel as get_wid_init_at_tmodel

@@ -36,24 +36,16 @@ def get_bol_lc_from_spec(modelpath: Path) -> pl.DataFrame:
     return lightcurvedataframe
 
 
-def get_bol_lc_from_lightcurveout(modelpath: Path, res: bool = False) -> pl.DataFrame:
-    """Return the bolometric luminosity against time read from light_curve.out, or light_curve_res.out when res."""
+def get_bol_lc_from_lightcurveout(modelpath: Path) -> pl.DataFrame:
+    """Return the spherically averaged bolometric luminosity against time, read from light_curve.out."""
     lcdataframes = {
-        dirbin: df.collect()
-        for dirbin, df in at.lightcurve.readfile(
-            modelpath / ("light_curve_res.out" if res else "light_curve.out")
-        ).items()
+        dirbin: df.collect() for dirbin, df in at.lightcurve.readfile(modelpath / "light_curve.out").items()
     }
 
-    lightcurvedata = {"time": lcdataframes[next(iter(lcdataframes.keys()))]["time_days"]}
-
-    dirbins = range(len(lcdataframes)) if res else [-1]
-    for dirbin in dirbins:
-        lcdata = lcdataframes[dirbin]
-        columnname = "lum (erg/s)"
-        if dirbin != -1:
-            columnname += f"angle={dirbin}"
-        lightcurvedata[columnname] = lcdata["luminosity_erg/s"]
+    lightcurvedata = {
+        "time": lcdataframes[next(iter(lcdataframes.keys()))]["time_days"],
+        "lum (erg/s)": lcdataframes[-1]["luminosity_erg/s"],
+    }
 
     return pl.DataFrame(lightcurvedata).with_columns(cs.float().replace([np.inf, -np.inf], 0.0))
 

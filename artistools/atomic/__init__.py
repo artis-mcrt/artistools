@@ -9,7 +9,6 @@ from artistools.atomic._atomic_core import get_composition_data_from_outputfile 
 from artistools.atomic._atomic_core import get_elsymbol as get_elsymbol
 from artistools.atomic._atomic_core import get_elsymbols_df as get_elsymbols_df
 from artistools.atomic._atomic_core import get_elsymbolslist as get_elsymbolslist
-from artistools.atomic._atomic_core import get_ion_stage_roman_numeral_df as get_ion_stage_roman_numeral_df
 from artistools.atomic._atomic_core import get_ion_tuple as get_ion_tuple
 from artistools.atomic._atomic_core import get_ionrecombratecalibration as get_ionrecombratecalibration
 from artistools.atomic._atomic_core import get_ionstring as get_ionstring
@@ -17,5 +16,4 @@ from artistools.atomic._atomic_core import get_levels as get_levels
 from artistools.atomic._atomic_core import get_linelist_pldf as get_linelist_pldf
 from artistools.atomic._atomic_core import get_nuclides as get_nuclides
 from artistools.atomic._atomic_core import get_z_a_nucname as get_z_a_nucname
-from artistools.atomic._atomic_core import read_linestatfile as read_linestatfile
 from artistools.atomic._atomic_core import roman_numerals as roman_numerals

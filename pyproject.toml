@@ -416,6 +416,7 @@ ignore_names = [
     # reached by name from subcommandtree in commands.py, so there is no textual call site
     "get_artistools_path",
     "setup_completions",
+    "show_version",
     # NamedTuple field
     "ion_pot",
     # run by the CodSpeed benchmark fixture rather than called directly

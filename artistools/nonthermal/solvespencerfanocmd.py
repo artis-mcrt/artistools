@@ -187,8 +187,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect()
         if args.velocity >= 0.0:
             args.modelgridindex = at.inputmodel.get_mgi_of_velocity_kms(modelpath, args.velocity)
-        else:
-            args.modelgridindex = args.modelgridindex
         assert isinstance(args.modelgridindex, int)
         estimators = at.estimators.read_estimators(
             modelpath, timestep=args.timestep, modelgridindex=args.modelgridindex
