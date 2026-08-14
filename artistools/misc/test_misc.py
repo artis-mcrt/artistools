@@ -263,6 +263,15 @@ def test_read_wsv_prefers_uncompressed_file(tmp_path: Path) -> None:
 
     assert at.read_wsv(tmp_path / "f.txt")["v"].to_list() == [2]
 
+    # the header comment is read through a second open, which must apply the same precedence: reading it
+    # from the stale sibling would label the fresh data with the stale column names
+    (tmp_path / "h.txt").write_text("# freshA freshB\n1 2\n", encoding="utf-8")
+    with gzip.open(tmp_path / "h.txt.gz", "wt", encoding="utf-8") as f:
+        f.write("# staleX staleY\n9 9\n")
+
+    dfheader = at.read_wsv(tmp_path / "h.txt", header_from_comment=True, comment_prefix="#")
+    pltest.assert_frame_equal(dfheader, pl.DataFrame({"freshA": [1], "freshB": [2]}))
+
 
 def test_read_wsv_all_null_inference_sample(tmp_path: Path) -> None:
     """A column whose first 10000 rows are all null tokens must still infer as numeric from the later rows."""

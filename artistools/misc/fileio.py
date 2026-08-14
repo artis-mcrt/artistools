@@ -105,7 +105,7 @@ def zopen_unshadowed(filename: Path | str, encoding: str | None = None) -> t.Any
 
     # the named file exists, so open it directly. Going through zopen here would re-run find_compressed
     # and hand back a compressed sibling instead, which is the shadowing this function exists to avoid.
-    if filepath.suffix in {".zst", ".gz", ".xz"}:
+    if filepath.suffix in COMPRESSED_EXTENSIONS:
         return get_decompress_open(filepath.suffix)(filepath, mode="rt", encoding=encoding)
 
     return filepath.open(encoding=encoding)
@@ -161,7 +161,9 @@ def read_wsv(
 
     if header_from_comment:
         assert comment_prefix is not None
-        with zopen(filepath) as fin:
+        # filepath was already resolved with unshadowed precedence above, so zopen would undo that by
+        # re-running find_compressed and reading the header out of a stale compressed sibling
+        with zopen_unshadowed(filepath) as fin:
             first_line = fin.readline()
         if first_line.lstrip().startswith(comment_prefix):
             new_columns = first_line.lstrip().removeprefix(comment_prefix).split()

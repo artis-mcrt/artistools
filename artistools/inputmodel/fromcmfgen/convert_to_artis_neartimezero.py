@@ -270,11 +270,14 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     abund = np.zeros((a["nd"], 31))
 
     # the snapshot used to be a module constant, so this mapping always matched it. It is a CLI argument now,
-    # so check rather than index out of bounds (or silently write species into the wrong columns)
-    if a["nspec"] - 1 > len(spectoz):
+    # so check rather than index out of bounds (or silently write species into the wrong columns). The binding
+    # constraint is the width of abund, not the length of spectoz: spectoz ends with Ba (Z=56), which is
+    # counted into the IGE mass fraction above but has no column of its own here
+    species_columns = spectoz[: a["nspec"] - 1]
+    if a["nspec"] - 1 > len(spectoz) or (species_columns and max(species_columns) >= abund.shape[1]):
         msg = (
             f"snapshot has {a['nspec']} species, but the CMFGEN-to-atomic-number mapping only covers "
-            f"{len(spectoz)}. Extend spectoz to convert this model."
+            f"{len(spectoz)} with atomic numbers below {abund.shape[1]}. Extend spectoz to convert this model."
         )
         raise ValueError(msg)
 

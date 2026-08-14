@@ -344,10 +344,7 @@ def make_plot_test_viewing_angle_fit(
     axis.plot(time, magnitude)
     axis.plot(xfit, fxfit)
 
-    if key in FILTERNAME_ALIASES:
-        axis.set_ylabel(f"{FILTERNAME_ALIASES[key]} Magnitude")
-    else:
-        axis.set_ylabel(f"{key} Magnitude")
+    axis.set_ylabel(f"{FILTERNAME_ALIASES.get(key, key)} Magnitude")
 
     axis.set_xlabel("Time Since Explosion [d]")
     axis.invert_yaxis()

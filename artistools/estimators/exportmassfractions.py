@@ -9,13 +9,15 @@ import numpy as np
 
 import artistools as at
 
+defaultoutputfile = "massfracs.txt"
+
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     at.add_modelpath_arg(parser, default=Path())
     at.add_timestep_arg(parser, kind="int", default=14, helptext="Timestep number to export")
     parser.add_argument("-modelgridindex", "-cell", default="0-9", help="Range of cell numbers to export")
-    at.add_outputpath_arg(parser, default="massfracs.txt", helptext="Path to output file of mass fractions")
+    at.add_outputpath_arg(parser, default=defaultoutputfile, helptext="Path to output file of mass fractions")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -26,7 +28,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     timestep = args.timestep
     elmass: dict[int, float] = dict(at.get_composition_data(modelpath).select("Z", "mass").iter_rows())
     tdays = at.get_timestep_time(modelpath, timestep)
-    outfilename = args.outputpath
+    outfilename = at.resolve_outputfile(args.outputpath, defaultoutputfile)
+    excluded_atomic_numbers: set[int] = set()
     with Path(outfilename).open("w", encoding="utf-8") as fout:
         modelgridindexlist = at.parse_range_list(args.modelgridindex)
         estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindexlist)
@@ -40,7 +43,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                         # the estimators can carry an element that compositiondata.txt gives no mass for, and
                         # there is no mass to weight it by. Report the fractions among the rest, which still sum
                         # to one, rather than failing on the lookup
-                        print(f"WARNING: no mass in compositiondata.txt for Z={atomic_number}, excluding it")
+                        if atomic_number not in excluded_atomic_numbers:
+                            excluded_atomic_numbers.add(atomic_number)
+                            print(f"WARNING: no mass in compositiondata.txt for Z={atomic_number}, excluding it")
                         continue
                     numberdens[atomic_number] = val
                     totaldens += numberdens[atomic_number] * elmass[atomic_number]

@@ -112,12 +112,10 @@ def make_downscaled_3d_grid(
 
     if plot:
         print("making diagnostic plot")
-        try:
-            import matplotlib.pyplot as plt
-            from mpl_toolkits.axes_grid1 import make_axes_locatable
-        except ModuleNotFoundError:
-            print("matplotlib not found, skipping")
-            return outputfolder
+        # no ModuleNotFoundError fallback here: artistools.plottools imports matplotlib at module scope, so
+        # this module cannot be imported at all without it
+        import matplotlib.pyplot as plt
+        from mpl_toolkits.axes_grid1 import make_axes_locatable
 
         fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(6.8 * 1.5, 4.8))
         assert isinstance(axes, np.ndarray)

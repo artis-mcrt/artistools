@@ -16,12 +16,12 @@ def get_bol_lc_from_spec(modelpath: Path) -> pl.DataFrame:
     """Return log10(bolometric luminosity) per direction bin between 5 and 80 days, integrated from the spectra."""
     res_specdata = at.spectra.read_spec_res(modelpath)
     timearray = res_specdata[0].collect_schema().names()[1:]
-    times = [time for time in timearray if 5 < float(time) < 80]
-    lightcurvedata: dict[str, t.Any] = {"time": times}
+    # one pass gives both the time labels and the timesteps they came from, so the two cannot drift apart
+    selected = [(ts, timestr) for ts, timestr in enumerate(timearray) if 5 < float(timestr) < 80]
+    lightcurvedata: dict[str, t.Any] = {"time": [timestr for _, timestr in selected]}
     Mpc_to_cm = at.constants.megaparsec_to_cm
-    selected_timesteps = [ts for ts, timestr in enumerate(timearray) if 5 < float(timestr) < 80]
     bol_luminosity: dict[int, list[t.Any]] = {angle: [] for angle in range(len(res_specdata))}
-    for timestep in selected_timesteps:
+    for timestep, _ in selected:
         spectra_alldirbins = at.spectra.get_spectra(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)
         for angle in range(len(res_specdata)):
             spectrum = spectra_alldirbins[angle].collect()
@@ -39,14 +39,10 @@ def get_bol_lc_from_spec(modelpath: Path) -> pl.DataFrame:
 
 def get_bol_lc_from_lightcurveout(modelpath: Path) -> pl.DataFrame:
     """Return the spherically averaged bolometric luminosity against time, read from light_curve.out."""
-    lcdataframes = {
-        dirbin: df.collect() for dirbin, df in at.lightcurve.readfile(modelpath / "light_curve.out").items()
-    }
+    # readfile keys the spherically averaged light curve as dirbin -1, and light_curve.out has no other bins
+    lcdata = at.lightcurve.readfile(modelpath / "light_curve.out")[-1].collect()
 
-    lightcurvedata = {
-        "time": lcdataframes[next(iter(lcdataframes.keys()))]["time_days"],
-        "lum (erg/s)": lcdataframes[-1]["luminosity_erg/s"],
-    }
+    lightcurvedata = {"time": lcdata["time_days"], "lum (erg/s)": lcdata["luminosity_erg/s"]}
 
     return pl.DataFrame(lightcurvedata).with_columns(cs.float().replace([np.inf, -np.inf], 0.0))
 

@@ -45,8 +45,7 @@ def make_plot(args: argparse.Namespace) -> None:
             msg = f"Unknown element symbols in {model_path}: {unknown}"
             raise ValueError(msg)
 
-        df = df.lazy()
-        massfracsum = df.select(pl.col("massfraction").sum()).collect().item()
+        massfracsum = df["massfraction"].sum()
         if not math.isclose(massfracsum, 1.0, abs_tol=1e-5):
             print(f"WARNING: mass fractions for model {model_path} sum to {massfracsum:.3f} instead of 1.0.")
 
@@ -59,7 +58,6 @@ def make_plot(args: argparse.Namespace) -> None:
             .group_by("xvalue")
             .agg(pl.col("yvalue").sum())
             .sort("xvalue")
-            .collect()
         )
 
         ax.plot(df["xvalue"], df["yvalue"], label=at.get_model_name(model_path))

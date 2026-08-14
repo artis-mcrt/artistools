@@ -791,18 +791,18 @@ def get_xlist(
         assert xvariable in estimators.collect_schema().names()
         estimators = estimators.with_columns(xvalue=pl.col(xvariable))
 
-    # one collect for these three streaming aggregations, rather than re-running the whole scan once per column.
-    # xdeltamax stays out: it needs a full sort, and it is only read when automatic binning was requested.
-    xstats = (
-        estimators
-        .select(
-            xmin=pl.col("xvalue").min(),
-            xmax=pl.col("xvalue").max(),
-            multiple_points_per_xvalue=pl.n_unique("xvalue") * pl.n_unique("timestep") < pl.len(),
-        )
-        .collect()
-        .row(0, named=True)
-    )
+    # one collect for these streaming aggregations, rather than re-running the whole scan once per column. Only
+    # the ones the command line did not already pin down are requested, so supplying -xmin -xmax -xbins scans
+    # nothing at all here. xdeltamax stays out: it needs a full sort, and is only read for automatic binning.
+    statexprs: dict[str, pl.Expr] = {}
+    if args.xmin is None:
+        statexprs["xmin"] = pl.col("xvalue").min()
+    if args.xmax is None:
+        statexprs["xmax"] = pl.col("xvalue").max()
+    if args.xbins is None:
+        statexprs["multiple_points_per_xvalue"] = pl.n_unique("xvalue") * pl.n_unique("timestep") < pl.len()
+
+    xstats: dict[str, t.Any] = estimators.select(**statexprs).collect().row(0, named=True) if statexprs else {}
 
     xmin = xstats["xmin"] if args.xmin is None else args.xmin
     xmax = xstats["xmax"] if args.xmax is None else args.xmax
@@ -853,9 +853,11 @@ def get_xlist(
     uniques = (
         estimators
         .select(
+            # sort all three: mgilist[0] and timestepslist[0] name the output file and the figure title,
+            # and polars' unique() does not maintain order, so an unsorted list makes those vary between runs
             xvalue=pl.col("xvalue").unique().sort().implode(),
-            modelgridindex=pl.col("modelgridindex").unique().implode(),
-            timestep=pl.col("timestep").unique().implode(),
+            modelgridindex=pl.col("modelgridindex").unique().sort().implode(),
+            timestep=pl.col("timestep").unique().sort().implode(),
         )
         .collect()
         .row(0, named=True)

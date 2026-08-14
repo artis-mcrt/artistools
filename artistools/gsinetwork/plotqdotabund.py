@@ -71,14 +71,15 @@ def get_abundance_correction_factors(
         # for spherical models, ARTIS mapping to a cubic grid introduces some errors in the cell volumes
         lzdfmodel = lzdfmodel.with_columns(mass_g_mapped=10 ** pl.col("logrho") * wid_init**3 * pl.col("n_assoc_cells"))
         modelcolumns = lzdfmodel.collect_schema().names()
+        # an arr_strnuc entry is either a nuclide like "Sr89", naming one column, or an element like "Sr",
+        # covering every isotope column of that element. Selecting out of modelcolumns keeps the list free of
+        # duplicates when arr_strnuc holds both forms, and drops names the model does not carry
         nucisocols = [
-            nucisocol
-            for strnuc in arr_strnuc
-            # could be a nuclide like "Sr89" or an element like "Sr"
-            for nucisocol in (
-                [f"X_{strnuc}"] if strnuc[-1].isdigit() else [c for c in modelcolumns if c.startswith(f"X_{strnuc}")]
+            col
+            for col in modelcolumns
+            if any(
+                col == f"X_{strnuc}" if strnuc[-1].isdigit() else col.startswith(f"X_{strnuc}") for strnuc in arr_strnuc
             )
-            if nucisocol in modelcolumns
         ]
 
         # one collect for every nuclide, rather than re-running the whole model scan once per isotope column

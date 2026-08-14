@@ -299,7 +299,9 @@ def set_plot_title(ax: mplax.Axes, title: str | None, args: argparse.Namespace) 
     if args.notitle or not title:
         return
 
-    if args.inset_title:
+    # five parsers define --notitle but only plotspectra defines --inset_title, so default it here rather
+    # than making every other caller add the flag just to use this helper (set_axis_properties does the same)
+    if getattr(args, "inset_title", False):
         ax.annotate(
             title,
             xy=(0.0, 1.0),

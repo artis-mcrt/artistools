@@ -438,10 +438,7 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
 
     args.outputfile = at.resolve_outputfile(args.outputfile, "linefluxes.pdf")
 
-    fig.savefig(args.outputfile, format="pdf")
-    # plt.show()
-    at.print_saved(args.outputfile)
-    plt.close(fig)
+    save_figure(fig, args.outputfile, format="pdf")
 
 
 def plot_nne_te_points(
