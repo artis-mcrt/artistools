@@ -177,3 +177,6 @@ jobs:
                   file: coverage.xml
                   language: Python
                   label: code-coverage-agent
+                  # the upload succeeds and the report still lands, but waiting for the processing
+                  # id has been failing server-side, and coverage reporting should not gate a build
+                  fail-on-error: false
