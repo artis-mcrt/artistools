@@ -400,12 +400,16 @@ def write_parquet_atomic(
     """Write a zstd-compressed parquet file via a temporary file and an atomic replace, so a partial write is never mistaken for a complete file.
 
     If a concurrent process wrote the destination first, it is atomically overwritten by this equally-valid replacement.
+
+    The temporary name is prefixed with a dot so that it does not start with the destination's name. A glob
+    keyed on that name (get_runfolder_timesteps() looks for "estimbatch*.out.parquet*") would otherwise match
+    the in-flight temporary and read a file that is empty, half-written, or already renamed away.
     """
     import os
     import tempfile
 
     fd, partialfilename = tempfile.mkstemp(
-        dir=parquetfilepath.parent, prefix=f"{parquetfilepath.name}.partial", suffix=".partial"
+        dir=parquetfilepath.parent, prefix=f".{parquetfilepath.name}.partial", suffix=".partial"
     )
     os.close(fd)
     partialfilepath = Path(partialfilename)

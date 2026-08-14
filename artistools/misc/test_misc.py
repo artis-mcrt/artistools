@@ -11,7 +11,9 @@ import lzma
 import os
 import subprocess
 import sys
+import typing as t
 from pathlib import Path
+from unittest import mock
 
 import numpy as np
 import polars as pl
@@ -380,6 +382,25 @@ def test_write_parquet_atomic(tmp_path: Path) -> None:
     pltest.assert_frame_equal(pl.read_parquet(parquetpath), df)
     # the temporary partial file must not be left behind
     assert list(tmp_path.glob("*.partial*")) == []
+
+
+def test_write_parquet_atomic_temp_file_is_invisible_to_globs(tmp_path: Path) -> None:
+    """A reader globbing for the destination name must not pick up the in-flight temporary file."""
+    # get_runfolder_timesteps() scans the first match of this pattern, so a match on the temporary means
+    # reading a file that is empty, half-written, or already renamed away
+    parquetpath = tmp_path / "estimbatch00_0000_0000.out.parquet.tmp"
+    seen_midwrite: list[list[str]] = []
+    real_sink_parquet = pl.LazyFrame.sink_parquet
+
+    def spy_sink_parquet(self: pl.LazyFrame, path: t.Any, **kwargs: t.Any) -> t.Any:
+        seen_midwrite.append(sorted(p.name for p in tmp_path.glob("estimbatch*.out.parquet*")))
+        return real_sink_parquet(self, path, **kwargs)
+
+    with mock.patch.object(pl.LazyFrame, "sink_parquet", spy_sink_parquet):
+        at.write_parquet_atomic(pl.DataFrame({"timestep": [0, 1]}), parquetpath)
+
+    assert seen_midwrite == [[]], "a concurrent reader would have globbed the in-flight temporary file"
+    assert pl.read_parquet(parquetpath)["timestep"].to_list() == [0, 1]
 
 
 # --- general.py --------------------------------------------------------------------------------

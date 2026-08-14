@@ -122,7 +122,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if n_e_bound < 0.0 or n_e_free < 0.0:
         msg = "-nnebound and -nnefree are number densities and cannot be negative"
         raise ValueError(msg)
-    if n_e_bound == 0.0 and n_e_free == 0.0:
+    if n_e_bound == n_e_free == 0.0:
         msg = "at least one of -nnebound and -nnefree must be positive, otherwise the lepton never loses energy"
         raise ValueError(msg)
     print(f"initial energy: {E_0 / CONST_EV_IN_J:.1e} [eV]")
