@@ -192,6 +192,33 @@ def test_zopen_zopenpl(tmp_path: Path) -> None:
         assert f.read().decode("utf-8") == "xz contents\n"
 
 
+def test_zopen_unshadowed(tmp_path: Path) -> None:
+    """A stale compressed sibling never shadows a freshly written uncompressed file."""
+    (tmp_path / "both.txt").write_text("fresh contents\n")
+    with gzip.open(tmp_path / "both.txt.gz", "wt", encoding="utf-8") as f:
+        f.write("stale contents\n")
+
+    # zopen prefers the compressed sibling, which is why the plain-open call sites need the other helper
+    with at.zopen(tmp_path / "both.txt") as f:
+        assert f.read() == "stale contents\n"
+
+    with at.zopen_unshadowed(tmp_path / "both.txt") as f:
+        assert f.read() == "fresh contents\n"
+
+    # with the plain file gone, the compressed sibling is used after all
+    (tmp_path / "both.txt").unlink()
+    with at.zopen_unshadowed(tmp_path / "both.txt") as f:
+        assert f.read() == "stale contents\n"
+
+    # a compressed file addressed by its own name is decompressed, not opened raw
+    with at.zopen_unshadowed(tmp_path / "both.txt.gz") as f:
+        assert f.read() == "stale contents\n"
+
+    # a name with no file and no compressed sibling reports the name the caller asked for
+    with pytest.raises(FileNotFoundError):
+        at.zopen_unshadowed(tmp_path / "absent.txt")
+
+
 def test_read_wsv(tmp_path: Path) -> None:
     """Columns aligned with variable whitespace parse correctly, with comments and blank lines removed."""
     filepath = tmp_path / "aligned.txt"
