@@ -603,3 +603,47 @@ def test_estimparse_index_columns_are_integers() -> None:
 
     # the physical quantities are still f32
     assert dfestim.schema["Te"] == pl.Float32
+
+
+def test_scan_estimators_filters_codecomparison(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The codecomparison branch must honour modelgridindex and timestep like the ARTIS branch does.
+
+    scan_estimators returns early for a codecomparison/ path, so it has to apply the filters itself:
+    read_reference_estimators ignores both arguments and always parses the whole phys file.
+    """
+    physdir = tmp_path / "toymodel"
+    physdir.mkdir()
+    (physdir / "phys_toymodel_toycode.txt").write_text(
+        "#NTIMES: 2\n"
+        "#TIMES[d]: 1.0 2.0\n"
+        "#TIME: 1.0\n"
+        "#NVEL: 3\n"
+        "#vel_mid Te rho nne nntot\n"
+        "1000.0 5000.0 1e-13 1e6 1e6\n"
+        "2000.0 5100.0 2e-13 2e6 2e6\n"
+        "3000.0 5200.0 3e-13 3e6 3e6\n"
+        "#TIME: 2.0\n"
+        "#NVEL: 3\n"
+        "1000.0 6000.0 1e-14 1e5 1e5\n"
+        "2000.0 6100.0 2e-14 2e5 2e5\n"
+        "3000.0 6200.0 3e-14 3e5 3e5\n"
+    )
+
+    realgetpath = at.get_path
+
+    def fake_get_path(key: str) -> Path:
+        return tmp_path if key == "codecomparisondata1path" else realgetpath(key)
+
+    # codecomparison.py calls at.get_path, i.e. the top-level re-export rather than commands.get_path
+    monkeypatch.setattr(at, "get_path", fake_get_path)
+
+    modelpath = "codecomparison/toymodel/toycode"
+
+    dfall = at.estimators.scan_estimators(modelpath=modelpath).collect()
+    assert dfall.height == 6, "the unfiltered scan should return every timestep and cell"
+
+    dfone = at.estimators.scan_estimators(modelpath=modelpath, timestep=1, modelgridindex=2).collect()
+    assert dfone.height == 1
+    assert dfone["timestep"].item() == 1
+    assert dfone["modelgridindex"].item() == 2
+    assert np.isclose(dfone["Te"].item(), 6200.0)
