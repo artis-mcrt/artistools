@@ -12,6 +12,9 @@ import artistools as at
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
+    at.add_modelpath_arg(parser, default=Path())
+    at.add_timestep_arg(parser, kind="int", default=14, helptext="Timestep number to export")
+    parser.add_argument("-modelgridindex", "-cell", default="0-9", help="Range of cell numbers to export")
     at.add_outputpath_arg(parser, default="massfracs.txt", helptext="Path to output file of mass fractions")
 
 
@@ -19,12 +22,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     """Export elemental mass fractions from the estimators to a text file."""
     args = at.parse_cli_args(addargs, main.__doc__, args, argsraw, kwargs)
 
-    modelpath: Path = Path()
-    timestep = 14
+    modelpath = Path(args.modelpath)
+    timestep = args.timestep
     elmass: dict[int, float] = dict(at.get_composition_data(modelpath).select("Z", "mass").iter_rows())
     outfilename = args.outputpath
     with Path(outfilename).open("w", encoding="utf-8") as fout:
-        modelgridindexlist = range(10)
+        modelgridindexlist = at.parse_range_list(args.modelgridindex)
         estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindexlist)
         for modelgridindex in modelgridindexlist:
             tdays = estimators[timestep, modelgridindex]["tdays"]

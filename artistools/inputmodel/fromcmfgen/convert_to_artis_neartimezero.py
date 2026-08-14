@@ -1,18 +1,16 @@
 """Convert a CMFGEN model file to ARTIS format."""
 
-# from rd_cmfgen import rd_nuc_decay_data
+import argparse
 import typing as t
+from collections.abc import Sequence
 from math import exp
 from pathlib import Path
 
 import numpy as np
 
+import artistools as at
 from artistools.constants import Msun_to_g
 from artistools.inputmodel.fromcmfgen.rd_cmfgen import rd_sn_hydro_data
-
-model = "DDC25"
-snapshot = "SN_HYDRO_DATA_1.300d"
-# snapshot = 'SN_HYDRO_DATA_203.1d'
 
 
 def undecay(
@@ -217,9 +215,20 @@ def timeshift_double_decay(
     assert np.all(abs(elfracsum_before - elfracsum_after) < 1e-10)
 
 
-def main() -> None:
+def addargs(parser: argparse.ArgumentParser) -> None:
+    """Add arguments to an argparse parser object."""
+    parser.add_argument("-snapshot", default="SN_HYDRO_DATA_1.300d", help="CMFGEN SN_HYDRO_DATA snapshot file")
+    at.add_outputpath_arg(parser, default=Path(), astype=Path, helptext="Folder to write model.txt/abundances.txt to")
+
+
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Write an ARTIS model from a CMFGEN SN_HYDRO_DATA snapshot, decayed back towards time zero."""
-    a: dict[str, t.Any] = rd_sn_hydro_data(snapshot, reverse=True)
+    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+
+    outputpath = Path(args.outputpath)
+    outputpath.mkdir(parents=True, exist_ok=True)
+
+    a: dict[str, t.Any] = rd_sn_hydro_data(args.snapshot, reverse=True)
 
     # Mapping of the CMFGEN species to atomic numbers, and masking IGEs
     # For now I include Ba in the IGE mass fraction, but do not include it as a chemical species
@@ -239,7 +248,7 @@ def main() -> None:
     dm = 4 / 3 * np.pi * (rout**3 - rin**3) * a["dens"] / Msun_to_g
     print(dm.sum(), dm.sum() / (a["dmass"].sum() / Msun_to_g))  # Check total mass
 
-    with Path(model, "model.txt").open("w", encoding="utf-8") as f:
+    with (outputpath / "model.txt").open("w", encoding="utf-8") as f:
         f.write(str(a["nd"]) + "\n")
         f.write(str(a["time"]) + "\n")
 
@@ -266,7 +275,10 @@ def main() -> None:
 
     # Write to file abundances.txt
     fmtstring = "%d " + "%1.7e " * 30
-    np.savetxt(f"{model}/abundances.txt", abund[:, :], fmt=fmtstring)
+    np.savetxt(outputpath / "abundances.txt", abund[:, :], fmt=fmtstring)
+
+    at.print_saved(outputpath / "model.txt")
+    at.print_saved(outputpath / "abundances.txt")
 
     # M = 0
     # for i in range(a['nd']):

@@ -1,6 +1,8 @@
 """Write bolometric light curve data out as plain text files, one per model."""
 
+import argparse
 import typing as t
+from collections.abc import Sequence
 from pathlib import Path
 
 import numpy as np
@@ -50,36 +52,39 @@ def get_bol_lc_from_lightcurveout(modelpath: Path) -> pl.DataFrame:
     return pl.DataFrame(lightcurvedata).with_columns(cs.float().replace([np.inf, -np.inf], 0.0))
 
 
-def main() -> None:
-    """Write a bolometric light curve text file for each model in the hardcoded model list."""
-    # modelnames = ['M08_03', 'M08_05', 'M08_10', 'M09_03', 'M09_05', 'M09_10',
-    #               'M10_02_end55', 'M10_03', 'M10_05', 'M10_10', 'M11_05_1']
-    modelnames = ["M2a"]
+def addargs(parser: argparse.ArgumentParser) -> None:
+    """Add arguments to an argparse parser object."""
+    at.add_modelpath_arg(parser, positional=True, multiplepaths=True, default=[Path()])
+    parser.add_argument(
+        "--fromspectra",
+        action="store_true",
+        help="Integrate the direction-resolved spectra instead of reading light_curve.out",
+    )
+    at.add_outputpath_arg(parser, default=Path(), astype=Path)
 
-    for modelname in modelnames:
-        # modelpath = Path("/Users/ccollins/harddrive4TB/parameterstudy") / Path(modelname)
-        modelpath = Path("/Users/ccollins/harddrive4TB/Gronow2020") / Path(modelname)
-        outfilepath = Path("/Users/ccollins/Desktop/bollightcurvedata")
 
-        # lightcurvedataframe = get_bol_lc_from_spec(modelpath)
-        lightcurvedataframe = get_bol_lc_from_lightcurveout(modelpath)
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
+    """Write bolometric light curve data out as a plain text file for each model."""
+    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
-        lightcurvedataframe.write_csv(
-            outfilepath / f"bol_lightcurvedata_{modelname}.txt", separator=" ", include_header=False
+    header = (
+        "# 1st col is time in days. Next columns are log10(luminosity) for each model viewing angle"
+        if args.fromspectra
+        else "# 1st col is time in days, 2nd col is the spherically averaged bolometric luminosity in erg/s"
+    )
+
+    for modelpath in at.normalize_path_list(args.modelpath):
+        modelname = at.get_model_name(modelpath)
+        lightcurvedataframe = (
+            get_bol_lc_from_spec(modelpath) if args.fromspectra else get_bol_lc_from_lightcurveout(modelpath)
         )
 
-        with (outfilepath / f"bol_lightcurvedata_{modelname}.txt").open("r+") as f:  # add comment to start of file
-            content = f.read()
-            f.seek(0, 0)
-            f.write(
-                "# 1st col is time in days. Next columns are log10(luminosity) for each model viewing angle".rstrip(
-                    "\r\n"
-                )
-                + "\n"
-                + content
-            )
+        outfilepath = Path(args.outputpath) / f"bol_lightcurvedata_{modelname}.txt"
+        with outfilepath.open("w", encoding="utf-8") as f:
+            f.write(f"{header}\n")
+            lightcurvedataframe.write_csv(f, separator=" ", include_header=False)
 
-        print("done")
+        at.print_saved(outfilepath)
 
 
 if __name__ == "__main__":
