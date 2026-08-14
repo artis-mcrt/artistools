@@ -66,3 +66,10 @@ def test_leptontransport_rejects_empty_plasma() -> None:
     """With neither bound nor free electrons the lepton never loses energy, so the integration cannot terminate."""
     with pytest.raises(ValueError, match="must be positive"):
         at.nonthermal.leptontransport.main(argsraw=[], nnebound=0.0, nnefree=0.0)
+
+
+@pytest.mark.parametrize(("nnebound", "nnefree"), [(-1.0, 1.0), (1.0, -1.0), (-1.0, -1.0)])
+def test_leptontransport_rejects_negative_density(nnebound: float, nnefree: float) -> None:
+    """A negative density would contribute as a positive one, since the helpers return a loss magnitude."""
+    with pytest.raises(ValueError, match="cannot be negative"):
+        at.nonthermal.leptontransport.main(argsraw=[], nnebound=nnebound, nnefree=nnefree)
