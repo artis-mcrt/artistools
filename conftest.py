@@ -18,7 +18,9 @@ def pytest_configure(config: t.Any) -> None:  # ruff:ignore[unused-function-argu
                 print(
                     f"Refusing to delete {file.resolve()} as it is not a descendant of the repository {repopath.resolve()}"
                 )
-            elif not file.stem.startswith("."):
+            # dotfiles are left alone, except the temp files write_parquet_atomic names with a leading dot,
+            # which only survive if a run was killed before its cleanup ran
+            elif not file.stem.startswith(".") or file.name.endswith(".partial"):
                 file.unlink(missing_ok=True)
 
     outputpath.mkdir(exist_ok=True)

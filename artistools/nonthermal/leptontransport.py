@@ -104,6 +104,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-energy", type=float, default=1e5, help="Initial lepton energy in eV")
     parser.add_argument("-nnebound", type=float, default=1e5 * 26, help="Number density of bound electrons in cm^-3")
     parser.add_argument("-nnefree", type=float, default=1e5, help="Number density of free electrons in cm^-3")
+    parser.add_argument("-nsteps", type=int, default=1000000, help="Number of energy steps to integrate over")
     at.add_outputfile_arg(parser, default=defaultoutputfile, astype=None, helptext="Filename for PDF file")
 
 
@@ -125,6 +126,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if n_e_bound == n_e_free == 0.0:
         msg = "at least one of -nnebound and -nnefree must be positive, otherwise the lepton never loses energy"
         raise ValueError(msg)
+    if args.nsteps < 1:
+        msg = f"-nsteps must be at least 1, not {args.nsteps}"
+        raise ValueError(msg)
     print(f"initial energy: {E_0 / CONST_EV_IN_J:.1e} [eV]")
     print(f"n_e_bound: {n_e_bound_cgs:.1e} [cm-3]")
     arr_energy_ev = []
@@ -133,7 +137,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     arr_dE_on_dx_plasma = []
     energy = E_0
     mean_free_path = 0.0
-    delta_energy = -E_0 / 1000000
+    delta_energy = -E_0 / args.nsteps
     x = 0.0  # distance moved [m]
     steps = 0
     while True:

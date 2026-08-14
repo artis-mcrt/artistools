@@ -51,14 +51,18 @@ def test_leptontransport_fully_ionised(tmp_path: Path) -> None:
     """A fully ionised plasma has no bound electrons, so only the plasma loss term stops the lepton."""
     from artistools.nonthermal.leptontransport import calculate_dE_on_dx_ionexc
     from artistools.nonthermal.leptontransport import calculate_dE_on_dx_plasma
+    from artistools.nonthermal.leptontransport import CONST_EV_IN_J
 
-    energy = 1e3 * 1.602176634e-19  # [J]
+    energy = 1e3 * CONST_EV_IN_J  # [J]
     assert calculate_dE_on_dx_ionexc(energy, 0.0) == 0.0
     assert calculate_dE_on_dx_plasma(energy, 1e11) < 0.0
 
-    # propagating on the ion/exc term alone would divide by zero here
+    # propagating on the ion/exc term alone would divide by zero here. A coarse grid is enough to show the
+    # integration terminates; the default million steps would add seconds to the suite for no extra coverage
     outputfile = tmp_path / "leptontransport.pdf"
-    at.nonthermal.leptontransport.main(argsraw=[], energy=1e3, nnebound=0.0, nnefree=1e5, outputfile=outputfile)
+    at.nonthermal.leptontransport.main(
+        argsraw=[], energy=1e3, nnebound=0.0, nnefree=1e5, nsteps=1000, outputfile=outputfile
+    )
     assert outputfile.is_file()
 
 

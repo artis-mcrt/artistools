@@ -8,9 +8,11 @@ from pathlib import Path
 from types import MappingProxyType
 
 import numpy as np
+import numpy.typing as npt
 import polars as pl
 
 import artistools as at
+from artistools.constants import day_to_s
 from artistools.constants import Msun_to_g
 from artistools.inputmodel.fromcmfgen.rd_cmfgen import rd_sn_hydro_data
 
@@ -52,13 +54,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 
 def get_cmfgen_atomic_numbers(specnames: Sequence[str]) -> list[int]:
-    """Return the atomic number of each CMFGEN species name, in the snapshot's own order.
-
-    CMFGEN abbreviates species rather than using element symbols (CARB, IRON, NICK), so the names cannot
-    go through get_atomic_number directly. Deriving the mapping from the file's own species list, instead
-    of a positional table, means a snapshot with a different species set converts correctly or fails
-    loudly rather than writing every mass fraction into the wrong column.
-    """
+    """Return the atomic number of each CMFGEN species name, in the snapshot's own order."""
     unknown = [name for name in specnames if name not in CMFGEN_SPECIES_ATOMIC_NUMBER]
     if unknown:
         msg = f"Unknown CMFGEN species names {unknown}. Add them to CMFGEN_SPECIES_ATOMIC_NUMBER."
@@ -67,30 +63,37 @@ def get_cmfgen_atomic_numbers(specnames: Sequence[str]) -> list[int]:
     return [CMFGEN_SPECIES_ATOMIC_NUMBER[name] for name in specnames]
 
 
-def get_isotope_massfracs(a: dict[str, t.Any], nuclides: Sequence[tuple[str, int]]) -> dict[str, t.Any]:
+def get_isotope_massfracs(
+    isonames: Sequence[str],
+    massnumbers: Sequence[int],
+    isofrac: npt.NDArray[t.Any],
+    nuclides: Sequence[tuple[str, int]],
+) -> dict[str, npt.NDArray[t.Any]]:
     """Return the per-cell mass fraction column of each (CMFGEN species name, mass number) nuclide.
 
     The isotope table is looked up by name and mass number rather than by a hardcoded column index, so the
     result does not depend on the isotope ordering of one particular snapshot.
     """
-    isonames = list(a["iso"])
-    massnumbers = list(a["aiso"])
-
-    massfracs = {}
-    for specname, massnumber in nuclides:
-        matches = [
-            i
-            for i, (name, A) in enumerate(zip(isonames, massnumbers, strict=True))
-            if name == specname and massnumber == A
-        ]
-        if len(matches) != 1:
-            msg = f"Expected exactly one {specname}{massnumber} isotope column, found {len(matches)}"
+    colof_nuclide: dict[tuple[str, int], int] = {}
+    for i, (name, massnumber) in enumerate(zip(isonames, massnumbers, strict=True)):
+        if (name, massnumber) in colof_nuclide:
+            msg = f"Duplicate {name}{massnumber} isotope column in the snapshot"
             raise ValueError(msg)
+        colof_nuclide[name, massnumber] = i
 
-        elsymbol = at.get_elsymbol(CMFGEN_SPECIES_ATOMIC_NUMBER[specname])
-        massfracs[f"X_{elsymbol}{massnumber}"] = a["isofrac"][:, matches[0]]
+    missing = [
+        f"{specname}{massnumber}" for specname, massnumber in nuclides if (specname, massnumber) not in colof_nuclide
+    ]
+    if missing:
+        msg = f"Snapshot has no isotope column for {missing}"
+        raise ValueError(msg)
 
-    return massfracs
+    return {
+        f"X_{at.get_elsymbol(CMFGEN_SPECIES_ATOMIC_NUMBER[specname])}{massnumber}": isofrac[
+            :, colof_nuclide[specname, massnumber]
+        ]
+        for specname, massnumber in nuclides
+    }
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -115,31 +118,31 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     # The radii/velocity in the CMFGEN files are zone centered, while in ARTIS they represent
     # the outer radius of a given zone. So we need to do a transformation
     r = a["rad"] * 1e10
-    rmax = 0.5 * (r[:-1] + r[1:])
-    rout = rmax
-    rout = np.append(rout, r[-1])  # cmfgen uses the radius of the outermost zone as the outer boundary
-    rin = rmax
-    rin = np.insert(rin, 0, 0)  # for artis we use 0 as inner radius for the innermost shell, cmfgen uses
+    rmid = 0.5 * (r[:-1] + r[1:])
+    rout = np.append(rmid, r[-1])  # cmfgen uses the radius of the outermost zone as the outer boundary
+    rin = np.insert(rmid, 0, 0)  # for artis we use 0 as inner radius for the innermost shell, cmfgen uses
     # the innermost radius r[0], this gives a slight discrepancy (<1%) in the total mass
-    dm = 4 / 3 * np.pi * (rout**3 - rin**3) * a["dens"] / Msun_to_g
-    print(f"total mass {dm.sum():.4f} Msun ({dm.sum() / (a['dmass'].sum() / Msun_to_g):.4f} of the snapshot's)")
+    mass_msun = (4 / 3 * np.pi * (rout**3 - rin**3) * a["dens"]).sum() / Msun_to_g
+    print(f"total mass {mass_msun:.4f} Msun ({mass_msun / (a['dmass'].sum() / Msun_to_g):.4f} of the snapshot's)")
+
+    inputcellid = np.arange(1, a["nd"] + 1)
 
     # ARTIS reads model.txt by column position, so build the frame by name and let save_modeldata place the
-    # columns. The previous hand-rolled writer emitted the right values, but under local names that said Cr48
-    # and V48 where the isotope table actually holds Fe52 and Cr48 — which repeatedly read as a column-order
-    # bug on review.
+    # columns rather than relying on the order they are written in
     dfmodel = pl.DataFrame(
         {
-            "inputcellid": np.arange(1, a["nd"] + 1),
-            "vel_r_max_kmps": rout / a["time"] / 3600 / 24 / 1e5,
+            "inputcellid": inputcellid,
+            "vel_r_max_kmps": rout / (a["time"] * day_to_s) / 1e5,
             "logrho": np.log10(a["dens"]),
             "X_Fegroup": a["specfrac"][:, ige_index].sum(axis=1),
         }
-        | get_isotope_massfracs(a, [("NICK", 56), ("COB", 56), ("IRON", 52), ("CHRO", 48)])
+        | get_isotope_massfracs(
+            a["iso"], a["aiso"], a["isofrac"], [("NICK", 56), ("COB", 56), ("IRON", 52), ("CHRO", 48)]
+        )
     )
 
     dfelabundances = pl.DataFrame({
-        "inputcellid": np.arange(1, a["nd"] + 1),
+        "inputcellid": inputcellid,
         **{
             f"X_{at.get_elsymbol(Z)}": a["specfrac"][:, i]
             for i, Z in enumerate(atomic_numbers)

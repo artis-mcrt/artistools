@@ -389,17 +389,17 @@ def test_write_parquet_atomic_temp_file_is_invisible_to_globs(tmp_path: Path) ->
     # get_runfolder_timesteps() scans the first match of this pattern, so a match on the temporary means
     # reading a file that is empty, half-written, or already renamed away
     parquetpath = tmp_path / "estimbatch00_0000_0000.out.parquet.tmp"
-    seen_midwrite: list[list[str]] = []
+    seen_midwrite: list[str] = []
     real_sink_parquet = pl.LazyFrame.sink_parquet
 
     def spy_sink_parquet(self: pl.LazyFrame, path: t.Any, **kwargs: t.Any) -> t.Any:
-        seen_midwrite.append(sorted(p.name for p in tmp_path.glob("estimbatch*.out.parquet*")))
+        seen_midwrite.extend(p.name for p in tmp_path.glob("estimbatch*.out.parquet*"))
         return real_sink_parquet(self, path, **kwargs)
 
     with mock.patch.object(pl.LazyFrame, "sink_parquet", spy_sink_parquet):
         at.write_parquet_atomic(pl.DataFrame({"timestep": [0, 1]}), parquetpath)
 
-    assert seen_midwrite == [[]], "a concurrent reader would have globbed the in-flight temporary file"
+    assert not seen_midwrite, f"a concurrent reader would have globbed the in-flight temporary file {seen_midwrite}"
     assert pl.read_parquet(parquetpath)["timestep"].to_list() == [0, 1]
 
 

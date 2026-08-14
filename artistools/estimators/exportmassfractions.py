@@ -43,7 +43,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                     atomic_number = at.get_atomic_number(elsymbol)
                     assert atomic_number in elmass, f"Unrecognised element in estimator column {key}: {elsymbol}"
                     numberdens[atomic_number] = val
-                    totaldens += numberdens[atomic_number] * elmass[atomic_number]
+                    totaldens += val * elmass[atomic_number]
             massfracs = {
                 atomic_number: numberdens[atomic_number] * elmass[atomic_number] / totaldens
                 for atomic_number in numberdens

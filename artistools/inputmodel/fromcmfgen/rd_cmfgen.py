@@ -1,4 +1,4 @@
-"""Read and write the CMFGEN input/output files NUC_DECAY_DATA and SN_HYDRO_DATA."""
+"""Read the CMFGEN SN_HYDRO_DATA output files."""
 
 import pathlib
 import sys

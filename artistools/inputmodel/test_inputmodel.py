@@ -1972,8 +1972,6 @@ def test_fromcmfgen_writes_named_columns(tmp_path: Path) -> None:
 
     snapshot = {
         "nd": nd,
-        "nspec": len(specnames),
-        "niso": len(isonames),
         "time": 1.3,
         "spec": specnames,
         "iso": isonames,

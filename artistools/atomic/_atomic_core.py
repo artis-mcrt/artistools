@@ -407,6 +407,18 @@ def get_z_a_nucname(nucname: str) -> tuple[int, int]:
 
 
 @lru_cache(maxsize=1)
+def _get_elements_df() -> pl.DataFrame:
+    """Return the whole element table (Z, symbol, name, mass) from data/elements.csv.
+
+    The single place that knows the file's schema, so adding a column does not have to be mirrored into
+    every helper below. Cached and shared, so callers must derive a new frame rather than modify this one.
+    """
+    return pl.read_csv(
+        get_path("datadir") / "elements.csv", has_header=True, separator=",", schema_overrides={"Z": pl.Int32}
+    )
+
+
+@lru_cache(maxsize=1)
 def get_elsymbolslist() -> tuple[str, ...]:
     """Return the element symbols indexed by atomic number.
 
@@ -417,7 +429,7 @@ def get_elsymbolslist() -> tuple[str, ...]:
     get_elsymbolslist()[26] = 'Fe'.
 
     """
-    return ("n", *pl.read_csv(get_path("datadir") / "elements.csv", has_header=True, separator=",")["symbol"].to_list())
+    return ("n", *_get_elements_df()["symbol"].to_list())
 
 
 @lru_cache(maxsize=1)
@@ -430,7 +442,7 @@ def get_atomic_masses() -> Mapping[int, float]:
 
     A read-only mapping, because the single cached instance is shared by every caller.
     """
-    dfelements = pl.read_csv(get_path("datadir") / "elements.csv", has_header=True, separator=",")
+    dfelements = _get_elements_df()
     return MappingProxyType(dict(zip(dfelements["Z"].to_list(), dfelements["mass"].to_list(), strict=True)))
 
 
@@ -450,10 +462,11 @@ def get_elsymbols_longestfirst() -> tuple[str, ...]:
 
 
 def get_elsymbols_df() -> pl.LazyFrame:
-    """Return a polars LazyFrame of atomic number and element symbols."""
-    return pl.scan_csv(
-        get_path("datadir") / "elements.csv", separator=",", has_header=True, schema_overrides={"Z": pl.Int32}
-    ).select(pl.col("Z").alias("atomic_number"), pl.col("symbol").alias("elsymbol"))
+    """Return a polars LazyFrame of atomic number and element symbols.
+
+    Only the two columns, so that a join against this frame never picks up the rest of the element table.
+    """
+    return _get_elements_df().lazy().select(pl.col("Z").alias("atomic_number"), pl.col("symbol").alias("elsymbol"))
 
 
 def get_atomic_number(elsymbol: str) -> int:
