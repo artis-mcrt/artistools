@@ -88,8 +88,8 @@ subcommandtree: CommandTree = {
             helptext="Prepare data for an ARTIS kilonova calculation from end-to-end hydro models.",
         ),
         "fromcmfgen": CommandSpec(
-            "inputmodel.fromcmfgen.convert_to_artis_neartimezero",
-            helptext="Convert a CMFGEN SN_HYDRO_DATA snapshot to ARTIS model.txt and abundances.txt.",
+            "inputmodel.fromcmfgen.convert_to_artis",
+            helptext="Convert a CMFGEN SN_HYDRO_DATA snapshot to an ARTIS model at the snapshot's own time.",
         ),
         "make1dslicefrom3dmodel": CommandSpec(
             "inputmodel.make1dslicefrom3d",

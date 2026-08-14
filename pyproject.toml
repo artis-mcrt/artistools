@@ -412,14 +412,6 @@ ignore_names = [
     "show_version",
     # NamedTuple field
     "ion_pot",
-    # CMFGEN readers and the radioactive-decay chain helpers in fromcmfgen. These have no caller inside
-    # artistools: they are the format/physics knowledge the conversion script is built from, kept so the
-    # decay handling can be wired into "inputmodel fromcmfgen" without reconstructing it.
-    "rd_nuc_decay_data",
-    "undecay",
-    "reverse_doubledecay",
-    "forward_doubledecay",
-    "timeshift_double_decay",
     # run by the CodSpeed benchmark fixture rather than called directly
     "run_dimension_reduce",
     # attributes set on pyvista plotters and matplotlib axis objects
