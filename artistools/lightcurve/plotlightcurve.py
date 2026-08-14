@@ -1145,8 +1145,6 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | 
     set_lightcurveplot_legend(ax, args)
 
     args.outputfile = Path(outputfolder, f"plotcolorevolution{filter_names[0]}-{filter_names[1]}.pdf")
-    filter_names = [FILTERNAME_ALIASES.get(name, name) for name in filter_names]
-    # plt.text(10, args.ymax - 0.5, f'{filter_names[0]}-{filter_names[1]}', fontsize='x-large')
 
     if args.show:
         plt.show()
