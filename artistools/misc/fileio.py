@@ -413,6 +413,14 @@ def write_parquet_atomic(
     )
     os.close(fd)
     partialfilepath = Path(partialfilename)
+    # mkstemp creates the file 0600, and replace() carries that mode onto the destination, so a cache written
+    # into a group-shared model directory would be unreadable to everyone but its author. Reuse the mode the
+    # destination already has, or else the read/write bits of the directory holding it — reading the process
+    # umask would need a get-and-restore that is not safe against other threads.
+    destmode = (
+        parquetfilepath.stat().st_mode if parquetfilepath.is_file() else parquetfilepath.parent.stat().st_mode & 0o666
+    )
+    partialfilepath.chmod(destmode & 0o777)
     try:
         pldf.lazy().sink_parquet(
             partialfilepath, compression="zstd", compression_level=compression_level, metadata=metadata

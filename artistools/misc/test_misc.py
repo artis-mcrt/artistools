@@ -403,6 +403,30 @@ def test_write_parquet_atomic_temp_file_is_invisible_to_globs(tmp_path: Path) ->
     assert pl.read_parquet(parquetpath)["timestep"].to_list() == [0, 1]
 
 
+def test_write_parquet_atomic_is_readable_in_a_shared_directory(tmp_path: Path) -> None:
+    """A cache written into a group-shared model directory must not inherit mkstemp's private 0600 mode."""
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    shared.chmod(0o775)  # chmod, not mkdir(mode=...), which the process umask would mask off
+    parquetpath = shared / "out.parquet"
+
+    at.write_parquet_atomic(pl.DataFrame({"a": [1]}), parquetpath)
+    assert parquetpath.stat().st_mode & 0o777 == 0o664
+
+    # a private directory must stay private, and rewriting keeps whatever mode the destination already had
+    private = tmp_path / "private"
+    private.mkdir()
+    private.chmod(0o700)
+    privatepath = private / "out.parquet"
+    at.write_parquet_atomic(pl.DataFrame({"a": [1]}), privatepath)
+    assert privatepath.stat().st_mode & 0o777 == 0o600
+
+    privatepath.chmod(0o640)
+    at.write_parquet_atomic(pl.DataFrame({"a": [2]}), privatepath)
+    assert privatepath.stat().st_mode & 0o777 == 0o640
+    assert pl.read_parquet(privatepath)["a"].item() == 2
+
+
 # --- general.py --------------------------------------------------------------------------------
 
 
