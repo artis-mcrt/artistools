@@ -34,6 +34,7 @@ from artistools.misc import add_modelpath_arg
 from artistools.misc import add_outputfile_arg
 from artistools.misc import add_series_style_args
 from artistools.misc import print_theta_phi_definitions
+from artistools.plottools import save_figure
 
 
 def plot_deposition_thermalisation(
@@ -720,18 +721,13 @@ def make_lightcurve_plot(
     if args.show:
         plt.show()
 
-    fig.savefig(str(filenameout), format="pdf")
-    at.print_saved(filenameout)
+    save_figure(fig, filenameout, format="pdf")
 
     if args.plotthermalisation:
         assert figtherm is not None
 
         filenameout2 = str(filenameout).replace(".pdf", "_thermalisation.pdf")
-        figtherm.savefig(filenameout2, format="pdf")
-        at.print_saved(filenameout2)
-        plt.close(figtherm)
-
-    plt.close(fig)
+        save_figure(figtherm, filenameout2, format="pdf")
 
 
 def create_axes(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[t.Any] | mplax.Axes]:
@@ -1075,9 +1071,7 @@ def make_band_lightcurves_plot(
     if ymin < ymax:
         firstaxis.invert_yaxis()
 
-    fig.savefig(args.outputfile, format="pdf")
-    at.print_saved(args.outputfile)
-    plt.close(fig)
+    save_figure(fig, args.outputfile, format="pdf")
 
 
 def colour_evolution_plot(

@@ -12,6 +12,7 @@ import polars as pl
 import polars.selectors as cs
 
 import artistools as at
+from artistools.plottools import save_figure
 
 
 def make_plot(args: argparse.Namespace) -> None:
@@ -65,9 +66,7 @@ def make_plot(args: argparse.Namespace) -> None:
     strxaxis = "A" if args.xaxis == "massnumber" else "Z"
     stryaxis = "X" if args.yaxis == "massfraction" else "abundance"
     outpath = Path(args.outputpath) / f"plotinitialabundances_{stryaxis}vs{strxaxis}.pdf"
-    fig.savefig(outpath, dpi=300)
-    at.print_saved(outpath)
-    plt.close(fig)
+    save_figure(fig, outpath, dpi=300)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:

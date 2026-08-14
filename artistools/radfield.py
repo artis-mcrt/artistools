@@ -24,6 +24,7 @@ from artistools.misc import add_modelpath_arg
 from artistools.misc import add_outputfile_arg
 from artistools.misc import add_timedays_arg
 from artistools.misc import add_timestep_arg
+from artistools.plottools import save_figure
 
 
 def read_files(modelpath: Path | str, timestep: int | None = None, modelgridindex: int | None = None) -> pl.DataFrame:
@@ -350,9 +351,7 @@ def plot_celltimestep(
 
     axis.legend(loc="best", handlelength=2, frameon=False, numpoints=1, fontsize=9)
 
-    fig.savefig(str(outputfile), format="pdf")
-    at.print_saved(outputfile)
-    plt.close(fig)
+    save_figure(fig, outputfile, format="pdf")
     return True
 
 

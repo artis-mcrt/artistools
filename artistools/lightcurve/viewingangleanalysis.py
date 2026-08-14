@@ -15,6 +15,7 @@ import polars as pl
 from matplotlib.legend_handler import HandlerTuple
 
 import artistools as at
+from artistools.plottools import save_figure
 
 _base_colours = [
     "k",
@@ -363,9 +364,7 @@ def make_plot_test_viewing_angle_fit(
     print("time after 15 days polyfit = ", time_after15days_polyfit)
     fig.tight_layout()
     plotname = f"{key}_band_{modelname}_viewing_angle{angle!s}.png"
-    fig.savefig(plotname)
-    at.print_saved(plotname)
-    plt.close(fig)
+    save_figure(fig, plotname)
 
 
 def set_scatterplot_plotkwargs(modelnumber: int, args: argparse.Namespace) -> tuple[dict[str, t.Any], dict[str, t.Any]]:
@@ -510,9 +509,7 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
         filename = rf"{key}_band_{modelnames[0]}_dm15_peakmag.pdf"
     if args.make_viewing_angle_peakmag_risetime_scatter_plot:
         filename = rf"{key}_band_{modelnames[0]}_risetime_peakmag.pdf"
-    fig.savefig(filename, format="pdf")
-    at.print_saved(filename)
-    plt.close(fig)
+    save_figure(fig, filename, format="pdf")
 
 
 def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
@@ -571,9 +568,7 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
     ax.set_ylabel(f"{bands[0]}max", fontsize=14)
     set_scatterplot_plot_params(fig, ax, args)
     plotname = f"plotviewinganglecolour{bands[0]}-{bands[1]}.pdf"
-    fig.savefig(plotname, format="pdf")
-    at.print_saved(plotname)
-    plt.close(fig)
+    save_figure(fig, plotname, format="pdf")
 
 
 def second_band_brightness_at_peak_first_band(
@@ -754,6 +749,4 @@ def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Names
         plt.show()
 
     plotname = f"plotviewinganglebrightnessat{args.timedays}days.pdf"
-    fig.savefig(plotname, format="pdf")
-    at.print_saved(plotname)
-    plt.close(fig)
+    save_figure(fig, plotname, format="pdf")

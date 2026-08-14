@@ -21,6 +21,7 @@ from artistools.constants import day_to_s
 from artistools.constants import MEV_to_erg
 from artistools.constants import Msun_to_g
 from artistools.inputmodel.rprocess_from_trajectory import get_tar_member_extracted_path
+from artistools.plottools import save_figure
 
 ARTIS_colors = ["r", "g", "b", "m", "c", "orange"]  # reddish colors
 amu_g = 1.66e-24
@@ -527,9 +528,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             ax.set_xscale("log")
 
         outfilepath = args.outputpath / f"beta_release_ratios_tot_{nuc_dataset}_Ye{label}.pdf"
-        fig.savefig(outfilepath, bbox_inches="tight")
-        at.print_saved(outfilepath)
-        plt.close(fig)
+        save_figure(fig, outfilepath, bbox_inches="tight")
 
 
 if __name__ == "__main__":

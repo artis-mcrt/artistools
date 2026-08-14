@@ -12,6 +12,10 @@ import matplotlib.ticker as mplticker
 import numpy.typing as npt
 
 from artistools.commands import get_path
+from artistools.misc import print_saved
+
+if t.TYPE_CHECKING:
+    from pathlib import Path
 
 # colorcet.glasbey_category20
 glasbey_category20 = [
@@ -281,6 +285,33 @@ glasbey_category20_nogreys = [
 def set_mpl_style() -> None:
     """Apply the bundled artistools matplotlibrc style."""
     plt.style.use("file://" + str(get_path("artistools_dir") / "matplotlibrc"))
+
+
+def save_figure(fig: mplfig.Figure, outpath: "Path | str", **savefig_kwargs: t.Any) -> None:
+    """Save the figure to outpath, report the path, and close the figure."""
+    fig.savefig(outpath, **savefig_kwargs)
+    print_saved(outpath)
+    plt.close(fig)
+
+
+def set_plot_title(ax: mplax.Axes, title: str, args: argparse.Namespace) -> None:
+    """Set the plot title, unless -notitle was given, placing it inside the axes for -inset_title."""
+    if getattr(args, "notitle", False) or not title:
+        return
+
+    if getattr(args, "inset_title", False):
+        ax.annotate(
+            title,
+            xy=(0.0, 1.0),
+            xycoords="axes fraction",
+            xytext=(10, -10),
+            textcoords="offset points",
+            horizontalalignment="left",
+            verticalalignment="top",
+            fontsize="large",
+        )
+    else:
+        ax.set_title(title, fontsize=11)
 
 
 def get_next_color(ax: mplax.Axes) -> str:

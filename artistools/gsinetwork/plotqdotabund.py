@@ -22,6 +22,7 @@ from artistools.constants import Msun_to_g
 from artistools.inputmodel.rprocess_from_trajectory import get_tar_member_extracted_path
 from artistools.misc import add_modelpath_arg
 from artistools.misc import add_outputpath_arg
+from artistools.plottools import save_figure
 
 
 def get_abundance_correction_factors(
@@ -302,9 +303,7 @@ def plot_qdot(
     axis.autoscale(enable=True, axis="both")
     axis.set_xmargin(0.02)
     axis.set_ymargin(0.02)
-    fig.savefig(pdfoutpath, format="pdf")
-    at.print_saved(pdfoutpath)
-    plt.close(fig)
+    save_figure(fig, pdfoutpath, format="pdf")
 
 
 def plot_cell_abund_evolution(
@@ -423,9 +422,7 @@ def plot_cell_abund_evolution(
 
     strcell = f"cell {mgi}" if mgi >= 0 else "global"
     fig.suptitle(f"{at.get_model_name(modelpath)} {strcell}", y=0.999, fontsize=10)
-    fig.savefig(pdfoutpath, format="pdf")
-    at.print_saved(pdfoutpath)
-    plt.close(fig)
+    save_figure(fig, pdfoutpath, format="pdf")
 
 
 def get_particledata(

@@ -16,6 +16,7 @@ from artistools.constants import EV_to_erg
 from artistools.misc import add_modelpath_arg
 from artistools.misc import add_timedays_arg
 from artistools.misc import add_timestep_arg
+from artistools.plottools import save_figure
 
 minionfraction = 0.0  # minimum number fraction of the total population to include in SF solution
 
@@ -51,9 +52,7 @@ def make_ntstats_plot(ntstatfile: str | Path) -> None:
     ax.legend(loc="best", handlelength=2, frameon=False, numpoints=1)
     ax.autoscale(enable=True, axis="both", tight=True)
     outputfilename = Path(ntstatfile).with_suffix(".pdf")
-    fig.savefig(outputfilename, format="pdf")
-    at.print_saved(outputfilename)
-    plt.close(fig)
+    save_figure(fig, outputfilename, format="pdf")
 
 
 def ionpops_for_electronfraction(atomic_number: int, x_e: float, nntot: float) -> dict[tuple[int, int], float]:

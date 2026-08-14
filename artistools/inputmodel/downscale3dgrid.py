@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 
 import artistools as at
+from artistools.plottools import save_figure
 
 
 def make_downscaled_3d_grid(
@@ -148,8 +149,6 @@ def make_downscaled_3d_grid(
         fig.tight_layout()
 
         diagnosticpath = outputfolder / "downscaled_density_diagnostic.png"
-        fig.savefig(diagnosticpath, dpi=300, bbox_inches="tight")
-        at.print_saved(diagnosticpath)
-        plt.close(fig)
+        save_figure(fig, diagnosticpath, dpi=300, bbox_inches="tight")
 
     return outputfolder

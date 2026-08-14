@@ -20,6 +20,7 @@ from matplotlib.image import AxesImage
 import artistools as at
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
+from artistools.plottools import save_figure
 
 type AxisType = t.Literal["x", "y", "z", "r", "rcyl"]
 
@@ -235,10 +236,7 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
     defaultfilename = f"plotcomposition_{','.join(v.lower() for v in args.plotvars)}.pdf"
     outfilename = at.resolve_outputfile(args.outputfile, defaultfilename)
 
-    fig.savefig(outfilename, format="pdf")
-
-    at.print_saved(outfilename)
-    plt.close(fig)
+    save_figure(fig, outfilename, format="pdf")
 
 
 def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:

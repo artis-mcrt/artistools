@@ -14,6 +14,7 @@ from artistools.misc import add_axis_limit_args
 from artistools.misc import add_modelpath_arg
 from artistools.misc import add_outputfile_arg
 from artistools.misc import add_timestep_arg
+from artistools.plottools import save_figure
 
 defaultoutputfile = "plotmacroatom_cell{0:03d}_{1:03d}-{2:03d}.pdf"
 
@@ -111,9 +112,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     # axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 13})
 
-    fig.savefig(outputfile, format="pdf")
-    at.print_saved(outputfile)
-    plt.close(fig)
+    save_figure(fig, outputfile, format="pdf")
 
 
 def read_files(

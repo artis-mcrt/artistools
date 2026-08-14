@@ -21,6 +21,7 @@ from artistools.misc import add_axis_limit_args
 from artistools.misc import add_figscale_args
 from artistools.misc import add_modelpath_arg
 from artistools.misc import add_outputfile_arg
+from artistools.plottools import save_figure
 
 defaultoutputfile = "plotnlte_{elsymbol}_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf"
 # a plot against time covers a range of timesteps, and one against velocity a range of cells, so
@@ -483,9 +484,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths: list[Path | str], ar
     at.plottools.set_axis_properties(ax, args)
 
     outputfilename = str(args.outputfile).format(elsymbol=at.get_elsymbol(Z))
-    fig.savefig(outputfilename, format="pdf")
-    at.print_saved(outputfilename)
-    plt.close(fig)
+    save_figure(fig, outputfilename, format="pdf")
 
 
 def plot_populations_with_time_or_velocity(
@@ -729,9 +728,7 @@ def make_singletimestep_plot(
     outputfilename = str(args.outputfile).format(
         elsymbol=at.get_elsymbol(atomic_number), cell=mgilist[0], timestep=timestep, time_days=time_days
     )
-    fig.savefig(outputfilename, format="pdf")
-    at.print_saved(outputfilename)
-    plt.close(fig)
+    save_figure(fig, outputfilename, format="pdf")
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:

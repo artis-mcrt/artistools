@@ -16,6 +16,7 @@ from artistools.misc import add_axis_limit_args
 from artistools.misc import add_modelpath_arg
 from artistools.misc import add_outputpath_arg
 from artistools.misc import add_series_style_args
+from artistools.plottools import save_figure
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -152,9 +153,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     outfilepath = at.resolve_outputfile(args.outputpath, "densityprofile.pdf")
 
-    fig.savefig(outfilepath)
-    at.print_saved(outfilepath)
-    plt.close(fig)
+    save_figure(fig, outfilepath)
 
 
 if __name__ == "__main__":
