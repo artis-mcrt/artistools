@@ -1,11 +1,16 @@
 """Track the energy loss of a fast lepton to plasma, ionisation, and excitation, following Barnes et al. (2016)."""
 
+import argparse
 import math
+import typing as t
+from collections.abc import Sequence
 
 import matplotlib.pyplot as plt
 import numpy as np
 
+import artistools as at
 from artistools.constants import K_B_ev_per_K as CONST_KB  # Boltzmann constant [eV / K]
+from artistools.plottools import save_figure
 
 # CONST_KB above is shared with the rest of artistools. The constants below stay local because this module works in
 # SI units (J, m, kg, s), which artistools.constants does not provide
@@ -14,6 +19,8 @@ CONST_EV_IN_J = 1.602176634e-19  # 1 eV [J]
 CONST_RE = 2.8179403262e-15  # classical electron radius [m]
 CONST_ME = 9.10938356e-31  # mass of electron [kg]
 CONST_C = 299792458  # [m / s]
+
+defaultoutputfile = "leptontransport.pdf"
 
 
 def calculate_dE_on_dx_plasma(energy: float, n_e_free: float) -> float:
@@ -92,14 +99,41 @@ def calculate_dE_on_dx_ionexc(energy: float, n_e_bound: float) -> float:
     return -de_on_dx
 
 
-def main() -> None:
-    """Integrate a 100 keV electron's energy loss over distance and plot the result."""
-    E_0_ev = 1e5  # initial energy [eV]
-    E_0 = E_0_ev * CONST_EV_IN_J  # initial energy [J]
-    n_e_bound_cgs = 1e5 * 26  # density of bound electrons in [cm-3]
+def addargs(parser: argparse.ArgumentParser) -> None:
+    """Add arguments to an argparse parser object."""
+    parser.add_argument("-energy", type=float, default=1e5, help="Initial lepton energy in eV")
+    parser.add_argument("-nnebound", type=float, default=1e5 * 26, help="Number density of bound electrons in cm^-3")
+    parser.add_argument("-nnefree", type=float, default=1e5, help="Number density of free electrons in cm^-3")
+    parser.add_argument("-nsteps", type=int, default=1000000, help="Number of energy steps to integrate over")
+    at.add_outputfile_arg(parser, default=defaultoutputfile, astype=None, helptext="Filename for PDF file")
+
+
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
+    """Integrate a fast lepton's energy loss over distance and plot the result."""
+    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+
+    outputfile = at.resolve_outputfile(args.outputfile, defaultoutputfile)
+
+    E_0 = args.energy * CONST_EV_IN_J  # initial energy [J]
+    n_e_bound_cgs = args.nnebound  # density of bound electrons in [cm-3]
     n_e_bound = n_e_bound_cgs * 1e6  # [m^-3]
-    n_e_free_cgs = 1e5
+    n_e_free_cgs = args.nnefree
     n_e_free = n_e_free_cgs * 1e6  # [m^-3]
+    # both stopping-power helpers require energy > 0, and without their asserts (python -O) a zero energy
+    # reaches a division by beta = 0 and log(0)
+    if args.energy <= 0.0:
+        msg = f"-energy must be positive, not {args.energy}"
+        raise ValueError(msg)
+    # both helpers return the magnitude of a loss rate, so a negative density would contribute as a positive one
+    if n_e_bound < 0.0 or n_e_free < 0.0:
+        msg = "-nnebound and -nnefree are number densities and cannot be negative"
+        raise ValueError(msg)
+    if n_e_bound == n_e_free == 0.0:
+        msg = "at least one of -nnebound and -nnefree must be positive, otherwise the lepton never loses energy"
+        raise ValueError(msg)
+    if args.nsteps < 1:
+        msg = f"-nsteps must be at least 1, not {args.nsteps}"
+        raise ValueError(msg)
     print(f"initial energy: {E_0 / CONST_EV_IN_J:.1e} [eV]")
     print(f"n_e_bound: {n_e_bound_cgs:.1e} [cm-3]")
     arr_energy_ev = []
@@ -108,7 +142,7 @@ def main() -> None:
     arr_dE_on_dx_plasma = []
     energy = E_0
     mean_free_path = 0.0
-    delta_energy = -E_0 / 1000000
+    delta_energy = -E_0 / args.nsteps
     x = 0.0  # distance moved [m]
     steps = 0
     while True:
@@ -120,7 +154,10 @@ def main() -> None:
         arr_dE_on_dx_ionexc.append(-dE_on_dx_ionexc / CONST_EV_IN_J)
         dE_on_dx_plasma = calculate_dE_on_dx_plasma(energy, n_e_free)
         arr_dE_on_dx_plasma.append(-dE_on_dx_plasma / CONST_EV_IN_J)
-        dE_on_dx = dE_on_dx_ionexc
+        # the lepton loses energy to both channels at once, so the trajectory follows the total stopping power.
+        # Using the ion/exc term alone would make -nnefree affect only the plotted loss curve, and would divide
+        # by zero for a fully ionised plasma
+        dE_on_dx = dE_on_dx_ionexc + dE_on_dx_plasma
         if steps % 100000 == 0:
             print(
                 f"E: {energy / CONST_EV_IN_J:.1f} eV x: {x:.1e} dE_on_dx_ionexc: {dE_on_dx}, dE_on_dx_plasma:"
@@ -155,9 +192,7 @@ def main() -> None:
     axes[1].set_xscale("log")
     axes[1].set_yscale("log")
     axes[1].legend()
-    # plt.show()
-    fig.savefig("leptontransport.pdf", format="pdf")
-    plt.close(fig)
+    save_figure(fig, outputfile, format="pdf")
 
 
 if __name__ == "__main__":

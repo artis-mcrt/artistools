@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 
 import artistools as at
+from artistools.plottools import save_figure
 
 
 def make_downscaled_3d_grid(
@@ -21,14 +22,11 @@ def make_downscaled_3d_grid(
     dfmodel = pldfmodel.collect()
     dfelemabund = at.inputmodel.get_initelemabundances(modelpath=modelpath).collect()
 
-    inputgridsize = modelmeta["ncoordgridx"]
-    grid = int(inputgridsize)
-
-    assert inputgridsize % outputgridsize == 0
+    grid = int(modelmeta["ncoordgridx"])
     smallgrid = outputgridsize
 
-    merge = grid / smallgrid
-    merge = int(merge)
+    assert grid % smallgrid == 0
+    merge = grid // smallgrid
 
     outputfolder = Path(modelpath, f"downscale_{outputgridsize}^3") if outputfolder is None else Path(outputfolder)
     outputfolder.mkdir(exist_ok=True)
@@ -114,12 +112,10 @@ def make_downscaled_3d_grid(
 
     if plot:
         print("making diagnostic plot")
-        try:
-            import matplotlib.pyplot as plt
-            from mpl_toolkits.axes_grid1 import make_axes_locatable
-        except ModuleNotFoundError:
-            print("matplotlib not found, skipping")
-            return outputfolder
+        # no ModuleNotFoundError fallback here: artistools.plottools imports matplotlib at module scope, so
+        # this module cannot be imported at all without it
+        import matplotlib.pyplot as plt
+        from mpl_toolkits.axes_grid1 import make_axes_locatable
 
         fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(6.8 * 1.5, 4.8))
         assert isinstance(axes, np.ndarray)
@@ -148,8 +144,6 @@ def make_downscaled_3d_grid(
         fig.tight_layout()
 
         diagnosticpath = outputfolder / "downscaled_density_diagnostic.png"
-        fig.savefig(diagnosticpath, dpi=300, bbox_inches="tight")
-        at.print_saved(diagnosticpath)
-        plt.close(fig)
+        save_figure(fig, diagnosticpath, dpi=300, bbox_inches="tight")
 
     return outputfolder

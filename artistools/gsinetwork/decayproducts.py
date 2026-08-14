@@ -21,6 +21,7 @@ from artistools.constants import day_to_s
 from artistools.constants import MEV_to_erg
 from artistools.constants import Msun_to_g
 from artistools.inputmodel.rprocess_from_trajectory import get_tar_member_extracted_path
+from artistools.plottools import save_figure
 
 ARTIS_colors = ["r", "g", "b", "m", "c", "orange"]  # reddish colors
 amu_g = 1.66e-24
@@ -68,9 +69,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--trajparquet", action="store_true", help="Writes individual parquet files for all trajectories."
     )
 
-    parser.add_argument(
-        "-outputpath", "-o", action="store", type=Path, default=Path(), help="Path for output PDF and parquet files"
-    )
+    at.add_outputpath_arg(parser, default=Path(), astype=Path, helptext="Path for output PDF and parquet files")
 
 
 def append_electroncapture_betaplus_nuclei(df: pl.DataFrame, nuc_dataset: str) -> pl.DataFrame:
@@ -348,7 +347,7 @@ def process_trajectory(
         traj_df = pl.concat([main, last_row])
         traj_df = traj_df.fill_null(0.0).fill_nan(0.0)
 
-        traj_df.write_parquet(traj_parquet_dir / f"decay_powers_{traj_ID}.parquet")
+        at.write_parquet_atomic(traj_df, traj_parquet_dir / f"decay_powers_{traj_ID}.parquet")
     return decay_powers
 
 
@@ -468,7 +467,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         if args.parquet:
             assert parquet_dir is not None
             traj_set_df = pl.DataFrame(decay_powers)
-            traj_set_df.write_parquet(parquet_dir / f"decay_powers_{labelfull}.parquet")
+            at.write_parquet_atomic(traj_set_df, parquet_dir / f"decay_powers_{labelfull}.parquet")
 
         fig, axes = plt.subplots(
             nrows=2, ncols=1, figsize=(6, 10), tight_layout={"pad": 0.4, "w_pad": 0.0, "h_pad": 0.0}
@@ -527,9 +526,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             ax.set_xscale("log")
 
         outfilepath = args.outputpath / f"beta_release_ratios_tot_{nuc_dataset}_Ye{label}.pdf"
-        fig.savefig(outfilepath, bbox_inches="tight")
-        at.print_saved(outfilepath)
-        plt.close(fig)
+        save_figure(fig, outfilepath, bbox_inches="tight")
 
 
 if __name__ == "__main__":

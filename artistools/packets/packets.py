@@ -17,9 +17,7 @@ import artistools as at
 from artistools.constants import C_cm_per_s as CLIGHT
 from artistools.constants import day_to_s
 
-types = {10: "TYPE_GAMMA", 11: "TYPE_RPKT", 20: "TYPE_NTLEPTON", 32: "TYPE_ESCAPE"}
-
-type_ids = {v: k for k, v in types.items()}
+type_ids = {"TYPE_GAMMA": 10, "TYPE_RPKT": 11, "TYPE_NTLEPTON": 20, "TYPE_ESCAPE": 32}
 
 # new artis added extra columns to the end of this list, but they may be absent in older versions
 # the packets file may have a truncated set of columns, but we assume that they
@@ -87,7 +85,6 @@ def get_column_names_artiscode(modelpath: str | Path) -> list[str] | None:
         for i, element in enumerate(packet_properties):
             packet_properties[i] = element.split(".")[1].split(")")[0]
 
-        columns = packet_properties
         replacements_dict = {
             "type": "type_id",
             "pos[0]": "posx",
@@ -114,12 +111,12 @@ def get_column_names_artiscode(modelpath: str | Path) -> list[str] | None:
             "trueemissionvelocity": "true_emission_velocity",
         }
 
-        for i, column_name in enumerate(columns):
+        for i, column_name in enumerate(packet_properties):
             if column_name in replacements_dict:
-                columns[i] = replacements_dict[column_name]
-        print(columns)
+                packet_properties[i] = replacements_dict[column_name]
+        print(packet_properties)
 
-        return columns
+        return packet_properties
 
     return None
 

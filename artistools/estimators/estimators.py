@@ -254,16 +254,42 @@ def scan_estimators(
     else:
         match_timestep = tuple(timestep)
 
-    if not Path(modelpath).exists() and Path(modelpath).parts[0] == "codecomparison":
+    # a codecomparison path has no ARTIS run folders to scan, so build the frame from the reference file and
+    # fall through to the shared filter/derive/join tail rather than returning early and skipping it
+    is_codecomparison = not Path(modelpath).exists() and Path(modelpath).parts[0] == "codecomparison"
+
+    # print(f" matching cells {match_modelgridindex} and timesteps {match_timestep}")
+    if is_codecomparison:
         estimators = at.codecomparison.read_reference_estimators(
             modelpath, timestep=timestep, modelgridindex=modelgridindex
         )
-        return pl.LazyFrame(
+        pldflazy = pl.LazyFrame(
             [{"timestep": ts, "modelgridindex": mgi, **estimvals} for (ts, mgi), estimvals in estimators.items()],
             orient="row",
         )
+    else:
+        pldflazy = _scan_artis_estimators(
+            modelpath, match_modelgridindex=match_modelgridindex, match_timestep=match_timestep, verbose=verbose
+        )
 
-    # print(f" matching cells {match_modelgridindex} and timesteps {match_timestep}")
+    if match_modelgridindex is not None:
+        pldflazy = pldflazy.filter(pl.col("modelgridindex").is_in(match_modelgridindex))
+
+    if match_timestep is not None:
+        pldflazy = pldflazy.filter(pl.col("timestep").is_in(match_timestep))
+
+    pldflazy = add_derived_estimator_columns(pldflazy)
+
+    if join_modeldata:
+        pldflazy, _ = join_cell_modeldata(estimators=pldflazy, modelpath=modelpath, verbose=verbose)
+
+    return pldflazy
+
+
+def _scan_artis_estimators(
+    modelpath: Path, match_modelgridindex: Sequence[int] | None, match_timestep: Sequence[int] | None, verbose: bool
+) -> pl.LazyFrame:
+    """Scan the parquet estimator caches of an ARTIS run, or cross join model cells with timesteps if there are none."""
     mpiranklist = at.get_mpiranklist(modelpath, only_ranks_withgridcells=True)
     mpiranks_matched = (
         {at.get_mpirankofcell(modelpath=modelpath, modelgridindex=mgi) for mgi in match_modelgridindex}
@@ -314,17 +340,6 @@ def scan_estimators(
             .join(at.inputmodel.get_modeldata(modelpath)[0].select("modelgridindex"), how="cross")
         )
 
-    if match_modelgridindex is not None:
-        pldflazy = pldflazy.filter(pl.col("modelgridindex").is_in(match_modelgridindex))
-
-    if match_timestep is not None:
-        pldflazy = pldflazy.filter(pl.col("timestep").is_in(match_timestep))
-
-    pldflazy = add_derived_estimator_columns(pldflazy)
-
-    if join_modeldata:
-        pldflazy, _ = join_cell_modeldata(estimators=pldflazy, modelpath=modelpath, verbose=verbose)
-
     return pldflazy
 
 
@@ -337,18 +352,8 @@ def read_estimators(
 
     When collecting many cells and timesteps, this is very slow, and it's almost always better to use scan_estimators instead.
     """
-    lzpldfestimators = scan_estimators(modelpath, modelgridindex, timestep)
-
-    if isinstance(modelgridindex, int):
-        lzpldfestimators = lzpldfestimators.filter(pl.col("modelgridindex") == modelgridindex)
-    elif isinstance(modelgridindex, Sequence):
-        lzpldfestimators = lzpldfestimators.filter(pl.col("modelgridindex").is_in(modelgridindex))
-    if isinstance(timestep, int):
-        lzpldfestimators = lzpldfestimators.filter(pl.col("timestep") == timestep)
-    elif isinstance(timestep, Sequence):
-        lzpldfestimators = lzpldfestimators.filter(pl.col("timestep").is_in(timestep))
-
-    pldfestimators = lzpldfestimators.collect()
+    # scan_estimators already applies the modelgridindex and timestep filters
+    pldfestimators = scan_estimators(modelpath, modelgridindex, timestep).collect()
 
     estimators: dict[tuple[int, int], dict[str, t.Any]] = {}
     for estimtsmgi in pldfestimators.iter_rows(named=True):

@@ -88,6 +88,29 @@ def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None) -
     return Path(filename).open(mode=mode, encoding=encoding)
 
 
+def zopen_unshadowed(filename: Path | str, encoding: str | None = None) -> t.Any:
+    """Open filename, falling back to a compressed sibling only when the named file does not exist.
+
+    Unlike zopen, a stale compressed copy never shadows a freshly written uncompressed file. This is the
+    same precedence read_wsv uses, and is what a plain Path.open call is replaced by.
+    """
+    filepath = Path(filename)
+    if not filepath.is_file():
+        found = find_compressed(filename)
+        if found is None:
+            # let open() raise the FileNotFoundError naming the file the caller actually asked for
+            return filepath.open(encoding=encoding)
+        ext, foundpath = found
+        return get_decompress_open(ext)(foundpath, mode="rt", encoding=encoding)
+
+    # the named file exists, so open it directly. Going through zopen here would re-run find_compressed
+    # and hand back a compressed sibling instead, which is the shadowing this function exists to avoid.
+    if filepath.suffix in COMPRESSED_EXTENSIONS:
+        return get_decompress_open(filepath.suffix)(filepath, mode="rt", encoding=encoding)
+
+    return filepath.open(encoding=encoding)
+
+
 def zopenpl(filename: Path | str, mode: str = "r", encoding: str | None = None) -> t.Any | Path:
     """Open filename, filename.zst, filename.gz or filename.xz. If polars.read_csv can read the file directly, return a Path object instead of a file object."""
     if found := find_compressed(filename):
@@ -138,7 +161,9 @@ def read_wsv(
 
     if header_from_comment:
         assert comment_prefix is not None
-        with zopen(filepath) as fin:
+        # filepath was already resolved with unshadowed precedence above, so zopen would undo that by
+        # re-running find_compressed and reading the header out of a stale compressed sibling
+        with zopen_unshadowed(filepath) as fin:
             first_line = fin.readline()
         if first_line.lstrip().startswith(comment_prefix):
             new_columns = first_line.lstrip().removeprefix(comment_prefix).split()
@@ -375,15 +400,27 @@ def write_parquet_atomic(
     """Write a zstd-compressed parquet file via a temporary file and an atomic replace, so a partial write is never mistaken for a complete file.
 
     If a concurrent process wrote the destination first, it is atomically overwritten by this equally-valid replacement.
+
+    The temporary name is prefixed with a dot so that it does not start with the destination's name. A glob
+    keyed on that name (get_runfolder_timesteps() looks for "estimbatch*.out.parquet*") would otherwise match
+    the in-flight temporary and read a file that is empty, half-written, or already renamed away.
     """
     import os
     import tempfile
 
     fd, partialfilename = tempfile.mkstemp(
-        dir=parquetfilepath.parent, prefix=f"{parquetfilepath.name}.partial", suffix=".partial"
+        dir=parquetfilepath.parent, prefix=f".{parquetfilepath.name}.partial", suffix=".partial"
     )
     os.close(fd)
     partialfilepath = Path(partialfilename)
+    # mkstemp creates the file 0600, and replace() carries that mode onto the destination, so a cache written
+    # into a group-shared model directory would be unreadable to everyone but its author. Reuse the mode the
+    # destination already has, or else the read/write bits of the directory holding it — reading the process
+    # umask would need a get-and-restore that is not safe against other threads.
+    destmode = (
+        parquetfilepath.stat().st_mode if parquetfilepath.is_file() else parquetfilepath.parent.stat().st_mode & 0o666
+    )
+    partialfilepath.chmod(destmode & 0o777)
     try:
         pldf.lazy().sink_parquet(
             partialfilepath, compression="zstd", compression_level=compression_level, metadata=metadata

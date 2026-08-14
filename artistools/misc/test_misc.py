@@ -11,7 +11,9 @@ import lzma
 import os
 import subprocess
 import sys
+import typing as t
 from pathlib import Path
+from unittest import mock
 
 import numpy as np
 import polars as pl
@@ -192,6 +194,33 @@ def test_zopen_zopenpl(tmp_path: Path) -> None:
         assert f.read().decode("utf-8") == "xz contents\n"
 
 
+def test_zopen_unshadowed(tmp_path: Path) -> None:
+    """A stale compressed sibling never shadows a freshly written uncompressed file."""
+    (tmp_path / "both.txt").write_text("fresh contents\n")
+    with gzip.open(tmp_path / "both.txt.gz", "wt", encoding="utf-8") as f:
+        f.write("stale contents\n")
+
+    # zopen prefers the compressed sibling, which is why the plain-open call sites need the other helper
+    with at.zopen(tmp_path / "both.txt") as f:
+        assert f.read() == "stale contents\n"
+
+    with at.zopen_unshadowed(tmp_path / "both.txt") as f:
+        assert f.read() == "fresh contents\n"
+
+    # with the plain file gone, the compressed sibling is used after all
+    (tmp_path / "both.txt").unlink()
+    with at.zopen_unshadowed(tmp_path / "both.txt") as f:
+        assert f.read() == "stale contents\n"
+
+    # a compressed file addressed by its own name is decompressed, not opened raw
+    with at.zopen_unshadowed(tmp_path / "both.txt.gz") as f:
+        assert f.read() == "stale contents\n"
+
+    # a name with no file and no compressed sibling reports the name the caller asked for
+    with pytest.raises(FileNotFoundError):
+        at.zopen_unshadowed(tmp_path / "absent.txt")
+
+
 def test_read_wsv(tmp_path: Path) -> None:
     """Columns aligned with variable whitespace parse correctly, with comments and blank lines removed."""
     filepath = tmp_path / "aligned.txt"
@@ -235,6 +264,15 @@ def test_read_wsv_prefers_uncompressed_file(tmp_path: Path) -> None:
         f.write("v\n1\n")
 
     assert at.read_wsv(tmp_path / "f.txt")["v"].to_list() == [2]
+
+    # the header comment is read through a second open, which must apply the same precedence: reading it
+    # from the stale sibling would label the fresh data with the stale column names
+    (tmp_path / "h.txt").write_text("# freshA freshB\n1 2\n", encoding="utf-8")
+    with gzip.open(tmp_path / "h.txt.gz", "wt", encoding="utf-8") as f:
+        f.write("# staleX staleY\n9 9\n")
+
+    dfheader = at.read_wsv(tmp_path / "h.txt", header_from_comment=True, comment_prefix="#")
+    pltest.assert_frame_equal(dfheader, pl.DataFrame({"freshA": [1], "freshB": [2]}))
 
 
 def test_read_wsv_all_null_inference_sample(tmp_path: Path) -> None:
@@ -344,6 +382,49 @@ def test_write_parquet_atomic(tmp_path: Path) -> None:
     pltest.assert_frame_equal(pl.read_parquet(parquetpath), df)
     # the temporary partial file must not be left behind
     assert list(tmp_path.glob("*.partial*")) == []
+
+
+def test_write_parquet_atomic_temp_file_is_invisible_to_globs(tmp_path: Path) -> None:
+    """A reader globbing for the destination name must not pick up the in-flight temporary file."""
+    # get_runfolder_timesteps() scans the first match of this pattern, so a match on the temporary means
+    # reading a file that is empty, half-written, or already renamed away
+    parquetpath = tmp_path / "estimbatch00_0000_0000.out.parquet.tmp"
+    seen_midwrite: list[str] = []
+    real_sink_parquet = pl.LazyFrame.sink_parquet
+
+    def spy_sink_parquet(self: pl.LazyFrame, path: t.Any, **kwargs: t.Any) -> t.Any:
+        seen_midwrite.extend(p.name for p in tmp_path.glob("estimbatch*.out.parquet*"))
+        return real_sink_parquet(self, path, **kwargs)
+
+    with mock.patch.object(pl.LazyFrame, "sink_parquet", spy_sink_parquet):
+        at.write_parquet_atomic(pl.DataFrame({"timestep": [0, 1]}), parquetpath)
+
+    assert not seen_midwrite, f"a concurrent reader would have globbed the in-flight temporary file {seen_midwrite}"
+    assert pl.read_parquet(parquetpath)["timestep"].to_list() == [0, 1]
+
+
+def test_write_parquet_atomic_is_readable_in_a_shared_directory(tmp_path: Path) -> None:
+    """A cache written into a group-shared model directory must not inherit mkstemp's private 0600 mode."""
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    shared.chmod(0o775)  # chmod, not mkdir(mode=...), which the process umask would mask off
+    parquetpath = shared / "out.parquet"
+
+    at.write_parquet_atomic(pl.DataFrame({"a": [1]}), parquetpath)
+    assert parquetpath.stat().st_mode & 0o777 == 0o664
+
+    # a private directory must stay private, and rewriting keeps whatever mode the destination already had
+    private = tmp_path / "private"
+    private.mkdir()
+    private.chmod(0o700)
+    privatepath = private / "out.parquet"
+    at.write_parquet_atomic(pl.DataFrame({"a": [1]}), privatepath)
+    assert privatepath.stat().st_mode & 0o777 == 0o600
+
+    privatepath.chmod(0o640)
+    at.write_parquet_atomic(pl.DataFrame({"a": [2]}), privatepath)
+    assert privatepath.stat().st_mode & 0o777 == 0o640
+    assert pl.read_parquet(privatepath)["a"].item() == 2
 
 
 # --- general.py --------------------------------------------------------------------------------

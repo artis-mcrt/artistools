@@ -87,6 +87,10 @@ subcommandtree: CommandTree = {
             "inputmodel.from_e2e_model",
             helptext="Prepare data for an ARTIS kilonova calculation from end-to-end hydro models.",
         ),
+        "fromcmfgen": CommandSpec(
+            "inputmodel.fromcmfgen.convert_to_artis",
+            helptext="Convert a CMFGEN SN_HYDRO_DATA snapshot to an ARTIS model at the snapshot's own time.",
+        ),
         "make1dslicefrom3dmodel": CommandSpec(
             "inputmodel.make1dslicefrom3d",
             helptext="Convert abundances.txt and model.txt from a 3D model to a one-dimensional slice.",
@@ -116,6 +120,10 @@ subcommandtree: CommandTree = {
         ),
         "to_tardis": CommandSpec("inputmodel.to_tardis", helptext="Convert an ARTIS format model to TARDIS format."),
     },
+    "leptontransport": CommandSpec(
+        "nonthermal.leptontransport",
+        helptext="Plot the energy loss of a fast lepton to plasma, ionisation, and excitation with distance.",
+    ),
     "makeartismodelfromparticlegridmap": CommandSpec(
         "inputmodel.modelfromhydro",
         helptext="Create an ARTIS format model from grid.dat.",
@@ -161,6 +169,10 @@ subcommandtree: CommandTree = {
         helptext="Solve the Spencer-Fano equation using data from an ARTIS cell at some timestep.",
     ),
     "version": CommandSpec("commands", funcname="show_version", helptext="Print the artistools version."),
+    "writebollightcurvedata": CommandSpec(
+        "lightcurve.writebollightcurvedata",
+        helptext="Write the bolometric light curve of each model out as a plain text file.",
+    ),
     "writecodecomparisondata": CommandSpec(
         "writecomparisondata", helptext="Write ARTIS model data out in code comparison workshop format."
     ),

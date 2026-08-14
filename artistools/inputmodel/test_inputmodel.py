@@ -10,6 +10,7 @@ import typing as t
 from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 from pathlib import Path
+from unittest import mock
 
 import numpy as np
 import polars as pl
@@ -1953,3 +1954,82 @@ def test_get_modeldata_2d_rejects_misplaced_cells(tmp_path: Path) -> None:
 
     with pytest.raises(AssertionError, match="pos_z_mid"):
         at.inputmodel.get_modeldata(modelfile)
+
+
+def test_fromcmfgen_writes_named_columns(tmp_path: Path) -> None:
+    """The CMFGEN converter must resolve isotopes by name, not by a snapshot-specific column index.
+
+    CMFGEN's isotope table holds Fe52 and Cr48 at the indices the original writer labelled cr48frac and
+    v48frac, so the values were right but the names were not. Writing through save_modeldata by column name
+    means the reader's X_Fe52/X_Cr48 slots are filled from the Fe52/Cr48 isotopes by construction.
+    """
+    from artistools.inputmodel.fromcmfgen import convert_to_artis as cmfgen
+
+    nd = 3
+    specnames = ["OXY", "CHRO", "IRON", "COB", "NICK", "BAR"]
+    isonames = ["CHRO", "IRON", "COB", "NICK"]
+    massnumbers = [48, 52, 56, 56]
+
+    snapshot = {
+        "nd": nd,
+        "time": 1.3,
+        "spec": specnames,
+        "iso": isonames,
+        "aiso": np.array(massnumbers),
+        "rad": np.array([1.0, 2.0, 3.0]),
+        "dens": np.array([1e-10, 1e-11, 1e-12]),
+        "dmass": np.ones(nd),
+        # one distinguishable value per (cell, species) and (cell, isotope)
+        "specfrac": np.array([[0.5, 0.1, 0.2, 0.05, 0.1, 0.05]] * nd),
+        "isofrac": np.array([[0.011, 0.022, 0.033, 0.044]] * nd),
+    }
+
+    with mock.patch.object(cmfgen, "rd_sn_hydro_data", return_value=snapshot):
+        cmfgen.main(argsraw=["-snapshot", "unused", "-o", str(tmp_path)])
+
+    dfmodel, modelmeta = at.get_modeldata(tmp_path)
+    dfmodel = dfmodel.collect()
+
+    assert modelmeta["npts_model"] == nd
+    assert np.isclose(modelmeta["t_model_init_days"], 1.3)
+
+    # each isotope must reach the column named after it, not the one that shares its table position
+    assert np.allclose(dfmodel["X_Cr48"].to_numpy(), 0.011, rtol=1e-4)
+    assert np.allclose(dfmodel["X_Fe52"].to_numpy(), 0.022, rtol=1e-4)
+    assert np.allclose(dfmodel["X_Co56"].to_numpy(), 0.033, rtol=1e-4)
+    assert np.allclose(dfmodel["X_Ni56"].to_numpy(), 0.044, rtol=1e-4)
+
+    # Cr, Fe, Co, Ni and Ba are all Z > 20, so the iron-group fraction is their sum
+    assert np.allclose(dfmodel["X_Fegroup"].to_numpy(), 0.1 + 0.2 + 0.05 + 0.1 + 0.05, rtol=1e-4)
+
+    dfabund = at.inputmodel.get_initelemabundances(tmp_path).collect()
+    assert np.allclose(dfabund["X_O"].to_numpy(), 0.5, rtol=1e-4)
+    assert np.allclose(dfabund["X_Fe"].to_numpy(), 0.2, rtol=1e-4)
+    # Ba is folded into X_Fegroup and gets no element column
+    assert "X_Ba" not in dfabund.columns
+
+
+def test_fromcmfgen_rejects_unknown_species() -> None:
+    """An unrecognised CMFGEN species name must be reported rather than silently mapped by position."""
+    from artistools.inputmodel.fromcmfgen import convert_to_artis as cmfgen
+
+    assert cmfgen.get_cmfgen_atomic_numbers(["IRON", "NICK"]) == [26, 28]
+
+    with pytest.raises(ValueError, match="UNOBTAINIUM"):
+        cmfgen.get_cmfgen_atomic_numbers(["IRON", "UNOBTAINIUM"])
+
+
+def test_fromcmfgen_isotope_lookup_rejects_bad_tables() -> None:
+    """A snapshot whose isotope table cannot supply a requested nuclide must say so, not pick a wrong column."""
+    from artistools.inputmodel.fromcmfgen import convert_to_artis as cmfgen
+
+    isofrac = np.array([[0.1, 0.2, 0.3]] * 2)
+
+    massfracs = cmfgen.get_isotope_massfracs(["CHRO", "IRON", "NICK"], [48, 52, 56], isofrac, [("IRON", 52)])
+    assert np.allclose(massfracs["X_Fe52"], 0.2)
+
+    with pytest.raises(ValueError, match="no isotope column"):
+        cmfgen.get_isotope_massfracs(["CHRO", "IRON", "NICK"], [48, 52, 56], isofrac, [("COB", 56)])
+
+    with pytest.raises(ValueError, match="Duplicate"):
+        cmfgen.get_isotope_massfracs(["IRON", "IRON", "NICK"], [52, 52, 56], isofrac, [("IRON", 52)])

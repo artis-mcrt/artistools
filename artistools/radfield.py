@@ -24,6 +24,7 @@ from artistools.misc import add_modelpath_arg
 from artistools.misc import add_outputfile_arg
 from artistools.misc import add_timedays_arg
 from artistools.misc import add_timestep_arg
+from artistools.plottools import save_figure
 
 
 def read_files(modelpath: Path | str, timestep: int | None = None, modelgridindex: int | None = None) -> pl.DataFrame:
@@ -300,10 +301,11 @@ def plot_celltimestep(
         print("Could not find spec.out")
         args.nospec = True
 
+    modeldata, modelmeta = at.inputmodel.get_modeldata(modelpath, derived_cols="vel_r_mid")
+
     if not args.nospec:
         plotkwargs: dict[str, t.Any] = {}
         if not normalised:
-            _, modelmeta = at.inputmodel.get_modeldata(modelpath)
             # outer velocity
             v_surface = modelmeta["vmax_cmps"]
             r_surface = time_days * day_to_s * v_surface
@@ -323,7 +325,6 @@ def plot_celltimestep(
         binedges = get_binedges(radfielddata)
         axis.vlines(binedges, ymin=0.0, ymax=ymax, linewidth=0.5, color="red", label="", zorder=-1, alpha=0.4)
 
-    modeldata, _ = at.inputmodel.get_modeldata(modelpath, derived_cols="vel_r_mid")
     velocity_kmps = (
         modeldata.filter(pl.col("modelgridindex") == modelgridindex).select("vel_r_mid").collect().item() / 1e5
     )
@@ -350,9 +351,7 @@ def plot_celltimestep(
 
     axis.legend(loc="best", handlelength=2, frameon=False, numpoints=1, fontsize=9)
 
-    fig.savefig(str(outputfile), format="pdf")
-    at.print_saved(outputfile)
-    plt.close(fig)
+    save_figure(fig, outputfile, format="pdf")
     return True
 
 

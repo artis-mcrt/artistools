@@ -16,6 +16,7 @@ from artistools.constants import EV_to_erg
 from artistools.misc import add_modelpath_arg
 from artistools.misc import add_timedays_arg
 from artistools.misc import add_timestep_arg
+from artistools.plottools import save_figure
 
 minionfraction = 0.0  # minimum number fraction of the total population to include in SF solution
 
@@ -51,9 +52,7 @@ def make_ntstats_plot(ntstatfile: str | Path) -> None:
     ax.legend(loc="best", handlelength=2, frameon=False, numpoints=1)
     ax.autoscale(enable=True, axis="both", tight=True)
     outputfilename = Path(ntstatfile).with_suffix(".pdf")
-    fig.savefig(outputfilename, format="pdf")
-    at.print_saved(outputfilename)
-    plt.close(fig)
+    save_figure(fig, outputfilename, format="pdf")
 
 
 def ionpops_for_electronfraction(atomic_number: int, x_e: float, nntot: float) -> dict[tuple[int, int], float]:
@@ -188,8 +187,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect()
         if args.velocity >= 0.0:
             args.modelgridindex = at.inputmodel.get_mgi_of_velocity_kms(modelpath, args.velocity)
-        else:
-            args.modelgridindex = args.modelgridindex
         assert isinstance(args.modelgridindex, int)
         estimators = at.estimators.read_estimators(
             modelpath, timestep=args.timestep, modelgridindex=args.modelgridindex
@@ -214,24 +211,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         velocity = modeldata["vel_r_max_kmps"][args.modelgridindex]
         args.timedays = at.get_timestep_time(modelpath, args.timestep)
         print(f"timestep {args.timestep} cell {args.modelgridindex} (v={velocity} km/s at {args.timedays:.1f}d)")
-
-    # ionpopdict = {}
-    # deposition_density_ev = 327
-    # nne = 6.7e5
-    #
-    # ionpopdict[(26, 1)] = ionpopdict[26] * 1e-4
-    # ionpopdict[(26, 2)] = ionpopdict[26] * 0.20
-    # ionpopdict[(26, 3)] = ionpopdict[26] * 0.80
-    # ionpopdict[(26, 4)] = ionpopdict[26] * 0.
-    # ionpopdict[(26, 5)] = ionpopdict[26] * 0.
-    # ionpopdict[(27, 2)] = ionpopdict[27] * 0.20
-    # ionpopdict[(27, 3)] = ionpopdict[27] * 0.80
-    # ionpopdict[(27, 4)] = 0.
-    # # ionpopdict[(28, 1)] = ionpopdict[28] * 6e-3
-    # ionpopdict[(28, 2)] = ionpopdict[28] * 0.18
-    # ionpopdict[(28, 3)] = ionpopdict[28] * 0.82
-    # ionpopdict[(28, 4)] = ionpopdict[28] * 0.
-    # ionpopdict[(28, 5)] = ionpopdict[28] * 0.
 
     # x_e = 1.e-2
     # deposition_density_ev = 5.e3

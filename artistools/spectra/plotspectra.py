@@ -54,7 +54,9 @@ from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
 from artistools.misc import trim_or_pad
 from artistools.plottools import ExponentLabelFormatter
+from artistools.plottools import save_figure
 from artistools.plottools import set_mpl_style
+from artistools.plottools import set_plot_title
 from artistools.spectra.writespectra import write_flambda_spectra
 
 if t.TYPE_CHECKING:
@@ -260,9 +262,7 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
     axis.set_xlabel(r"Wavelength ($\mathrm{{\AA}}$)")
     figname = f"plotpol_{timeavg}_days_{args.stokesparam.split('/')[0]}_{args.stokesparam.split('/')[1]}.pdf"
     outpath = resolve_outputfile(args.outputfile, figname)
-    fig.savefig(outpath, format="pdf")
-    print_saved(outpath)
-    plt.close(fig)
+    save_figure(fig, outpath, format="pdf")
 
 
 def plot_reference_spectrum(
@@ -790,20 +790,7 @@ def make_spectrum_plot(
         if args.stokesparam == "I" and not args.logscaley:
             axis.set_ylim(bottom=0.0)
 
-        if not args.notitle and args.title:
-            if args.inset_title:
-                axis.annotate(
-                    args.title,
-                    xy=(0.0, 1.0),
-                    xycoords="axes fraction",
-                    xytext=(10, -10),
-                    textcoords="offset points",
-                    horizontalalignment="left",
-                    verticalalignment="top",
-                    fontsize="large",
-                )
-            else:
-                axis.set_title(args.title, fontsize=11)
+        set_plot_title(axis, args.title, args)
 
     return dfalldata
 
@@ -1084,20 +1071,7 @@ def make_emissionabsorption_plot(
             if dirbin != -1:
                 print_theta_phi_definitions()
 
-    if not args.notitle:
-        if args.inset_title:
-            axis.annotate(
-                plotlabel,
-                xy=(0.0, 1.0),
-                xycoords="axes fraction",
-                xytext=(10, -10),
-                textcoords="offset points",
-                horizontalalignment="left",
-                verticalalignment="top",
-                fontsize="large",
-            )
-        else:
-            axis.set_title(plotlabel, fontsize=11)
+    set_plot_title(axis, plotlabel, args)
 
     # axis.annotate(plotlabel, xy=(0.97, 0.03), xycoords='axes fraction',
     #               horizontalalignment='right', verticalalignment='bottom', fontsize=7)
@@ -1639,12 +1613,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             dfalldata.write_csv(datafilenameout, separator=" ")
             print_saved(datafilenameout)
 
-        # plt.minorticks_on()
-
-        fig.savefig(filenameout, dpi=args.dpi)
-        # plt.show()
-        print_saved(filenameout)
-        plt.close(fig)
+        save_figure(fig, filenameout, dpi=args.dpi)
 
 
 if __name__ == "__main__":

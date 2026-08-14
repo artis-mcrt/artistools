@@ -12,6 +12,7 @@ import polars as pl
 import polars.selectors as cs
 
 import artistools as at
+from artistools.plottools import save_figure
 
 
 def make_plot(args: argparse.Namespace) -> None:
@@ -27,15 +28,24 @@ def make_plot(args: argparse.Namespace) -> None:
             df
             .select((cs.matches(r"^X_[A-Z][a-z]?\d+$").dot(pl.col("mass_g"))) / pl.col("mass_g").sum())
             .unpivot(variable_name="nuclide", value_name="massfraction")
+            # split X_Ni56 into its element symbol and mass number, then look Z up by joining the element table
             .with_columns(
-                pl.col("nuclide").map_elements(
-                    at.get_z_a_nucname, return_dtype=pl.Struct({"Z": pl.Int32, "A": pl.Int32})
-                )  # convert X_Ni56 to {28, 56}
+                elsymbol=pl.col("nuclide").str.extract(r"^X_([A-Z][a-z]?)\d+$"),
+                A=pl.col("nuclide").str.extract(r"^X_[A-Z][a-z]?(\d+)$").cast(pl.Int32),
             )
-            .unnest("nuclide")  # convert {28, 56} struct to columns Z and A
+            .join(at.get_elsymbols_df(), on="elsymbol", how="left")
+            .rename({"atomic_number": "Z"})
             .with_columns(abundance=pl.col("massfraction") / pl.col("A"))
+            .collect()
         )
-        massfracsum = df.select(pl.col("massfraction").sum()).collect().item()
+
+        # the join replaced get_atomic_number's assert, so an unrecognised symbol would otherwise leave a null Z
+        # and be plotted as a stray bin instead of raising
+        if unknown := df.filter(pl.col("Z").is_null())["elsymbol"].unique().to_list():
+            msg = f"Unknown element symbols in {model_path}: {unknown}"
+            raise ValueError(msg)
+
+        massfracsum = df["massfraction"].sum()
         if not math.isclose(massfracsum, 1.0, abs_tol=1e-5):
             print(f"WARNING: mass fractions for model {model_path} sum to {massfracsum:.3f} instead of 1.0.")
 
@@ -48,7 +58,6 @@ def make_plot(args: argparse.Namespace) -> None:
             .group_by("xvalue")
             .agg(pl.col("yvalue").sum())
             .sort("xvalue")
-            .collect()
         )
 
         ax.plot(df["xvalue"], df["yvalue"], label=at.get_model_name(model_path))
@@ -65,20 +74,18 @@ def make_plot(args: argparse.Namespace) -> None:
     strxaxis = "A" if args.xaxis == "massnumber" else "Z"
     stryaxis = "X" if args.yaxis == "massfraction" else "abundance"
     outpath = Path(args.outputpath) / f"plotinitialabundances_{stryaxis}vs{strxaxis}.pdf"
-    fig.savefig(outpath, dpi=300)
-    at.print_saved(outpath)
-    plt.close(fig)
+    save_figure(fig, outpath, dpi=300)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    parser.add_argument("-outputpath", "-o", type=Path, default=Path(), help="Path for output files")
-    parser.add_argument(
-        "modelpath",
+    at.add_outputpath_arg(parser, default=Path(), astype=Path)
+    at.add_modelpath_arg(
+        parser,
+        positional=True,
+        multiplepaths=True,
         default=[Path()],
-        nargs="*",
-        type=Path,
-        help="Path(s) to ARTIS folders for which abundances / mass fractions shall be plotted",
+        helptext="Path(s) to ARTIS folders for which abundances / mass fractions shall be plotted",
     )
 
     parser.add_argument(

@@ -19,6 +19,7 @@ from artistools.misc import add_modelpath_arg
 from artistools.misc import add_outputfile_arg
 from artistools.misc import gaussian_filter_wrap
 from artistools.misc import print_theta_phi_definitions
+from artistools.plottools import save_figure
 
 
 def plot_spherical(
@@ -303,9 +304,6 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
     """Plot direction maps based on escaped packets."""
     args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
-    if not args.modelpath:
-        args.modelpath = Path()
-
     if args.elem is not None:
         assert args.atomic_number is None
         args.atomic_number = at.get_atomic_number(args.elem)
@@ -377,9 +375,7 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
             else Path(args.outputfile) / defaultfilename
         ).format(timemindays=timemindays, timemaxdays=timemaxdays, outformat=outformat)
 
-        fig.savefig(outfilename, format=outformat, dpi=300, pad_inches=0.0)
-        at.print_saved(outfilename)
-        plt.close(fig)
+        save_figure(fig, outfilename, format=outformat, dpi=300, pad_inches=0.0)
 
         outputfilenames.append(outfilename)
 

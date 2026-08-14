@@ -14,23 +14,37 @@ modelpath = at.get_path("testdata") / "testmodel"
 modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
 outputpath = at.get_path("testoutput")
 
+PLOTLIST_FULL: t.Final = (
+    [["initabundances", ["Fe", "Ni_stable", "Ni_56"]]],
+    ["nne"],
+    ["TR", ["_yscale", "linear"], ["_ymin", 1000], ["_ymax", 22000]],
+    ["Te"],
+    [["averageionisation", ["Fe", "Ni"]]],
+    [["populations", ["Fe I", "Fe II", "Fe III", "Fe IV", "Fe V"]]],
+    [["populations", ["Co II", "Co III", "Co IV"]]],
+    [["gamma_NT", ["Fe I", "Fe II", "Fe III", "Fe IV"]]],
+    ["heating_dep", "heating_coll", "heating_bf", "heating_ff", ["_yscale", "linear"]],
+    ["cooling_adiabatic", "cooling_coll", "cooling_fb", "cooling_ff", ["_yscale", "linear"]],
+    [(pl.col("heating_coll") - pl.col("cooling_coll")).alias("collisional heating - cooling")],
+)
+
+PLOTLIST_IONS: t.Final = (
+    [["initabundances", ["Fe", "Ni_stable", "Ni_56"]]],
+    ["nne"],
+    ["TR", ["_yscale", "linear"], ["_ymin", 1000], ["_ymax", 22000]],
+    ["Te"],
+    [["averageionisation", ["Fe"]]],
+    [["populations", ["Fe I", "Fe II", "Fe III", "Fe IV", "Fe V"]]],
+    [["populations", ["Co II", "Co III", "Co IV"]]],
+    ["heating_dep", "heating_coll", "heating_bf", "heating_ff", ["_yscale", "linear"]],
+    ["cooling_adiabatic", "cooling_coll", "cooling_fb", "cooling_ff", ["_yscale", "linear"]],
+)
+
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
 def test_estimator_snapshot(mockplot: t.Any) -> None:
-    plotlist = [
-        [["initabundances", ["Fe", "Ni_stable", "Ni_56"]]],
-        ["nne"],
-        ["TR", ["_yscale", "linear"], ["_ymin", 1000], ["_ymax", 22000]],
-        ["Te"],
-        [["averageionisation", ["Fe", "Ni"]]],
-        [["populations", ["Fe I", "Fe II", "Fe III", "Fe IV", "Fe V"]]],
-        [["populations", ["Co II", "Co III", "Co IV"]]],
-        [["gamma_NT", ["Fe I", "Fe II", "Fe III", "Fe IV"]]],
-        ["heating_dep", "heating_coll", "heating_bf", "heating_ff", ["_yscale", "linear"]],
-        ["cooling_adiabatic", "cooling_coll", "cooling_fb", "cooling_ff", ["_yscale", "linear"]],
-        [(pl.col("heating_coll") - pl.col("cooling_coll")).alias("collisional heating - cooling")],
-    ]
+    plotlist = PLOTLIST_FULL
 
     at.estimators.plot(
         argsraw=[],
@@ -93,19 +107,7 @@ def test_estimator_snapshot(mockplot: t.Any) -> None:
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
 def test_estimator_averaging(mockplot: t.Any) -> None:
-    plotlist = [
-        [["initabundances", ["Fe", "Ni_stable", "Ni_56"]]],
-        ["nne"],
-        ["TR", ["_yscale", "linear"], ["_ymin", 1000], ["_ymax", 22000]],
-        ["Te"],
-        [["averageionisation", ["Fe", "Ni"]]],
-        [["populations", ["Fe I", "Fe II", "Fe III", "Fe IV", "Fe V"]]],
-        [["populations", ["Co II", "Co III", "Co IV"]]],
-        [["gamma_NT", ["Fe I", "Fe II", "Fe III", "Fe IV"]]],
-        ["heating_dep", "heating_coll", "heating_bf", "heating_ff", ["_yscale", "linear"]],
-        ["cooling_adiabatic", "cooling_coll", "cooling_fb", "cooling_ff", ["_yscale", "linear"]],
-        [(pl.col("heating_coll") - pl.col("cooling_coll")).alias("collisional heating - cooling")],
-    ]
+    plotlist = PLOTLIST_FULL
 
     at.estimators.plot(
         argsraw=[],
@@ -164,17 +166,7 @@ def test_estimator_averaging(mockplot: t.Any) -> None:
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_estimator_snapshot_classic_3d(mockplot: t.Any) -> None:
-    plotlist = [
-        [["initabundances", ["Fe", "Ni_stable", "Ni_56"]]],
-        ["nne"],
-        ["TR", ["_yscale", "linear"], ["_ymin", 1000], ["_ymax", 22000]],
-        ["Te"],
-        [["averageionisation", ["Fe"]]],
-        [["populations", ["Fe I", "Fe II", "Fe III", "Fe IV", "Fe V"]]],
-        [["populations", ["Co II", "Co III", "Co IV"]]],
-        ["heating_dep", "heating_coll", "heating_bf", "heating_ff", ["_yscale", "linear"]],
-        ["cooling_adiabatic", "cooling_coll", "cooling_fb", "cooling_ff", ["_yscale", "linear"]],
-    ]
+    plotlist = PLOTLIST_IONS
 
     at.estimators.plot(
         argsraw=[],
@@ -261,17 +253,7 @@ def test_estimator_snapshot_classic_3d(mockplot: t.Any) -> None:
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_estimator_snapshot_classic_3d_x_axis(mockplot: t.Any) -> None:
-    plotlist = [
-        [["initabundances", ["Fe", "Ni_stable", "Ni_56"]]],
-        ["nne"],
-        ["TR", ["_yscale", "linear"], ["_ymin", 1000], ["_ymax", 22000]],
-        ["Te"],
-        [["averageionisation", ["Fe"]]],
-        [["populations", ["Fe I", "Fe II", "Fe III", "Fe IV", "Fe V"]]],
-        [["populations", ["Co II", "Co III", "Co IV"]]],
-        ["heating_dep", "heating_coll", "heating_bf", "heating_ff", ["_yscale", "linear"]],
-        ["cooling_adiabatic", "cooling_coll", "cooling_fb", "cooling_ff", ["_yscale", "linear"]],
-    ]
+    plotlist = PLOTLIST_IONS
 
     at.estimators.plot(
         argsraw=[],
@@ -621,3 +603,63 @@ def test_estimparse_index_columns_are_integers() -> None:
 
     # the physical quantities are still f32
     assert dfestim.schema["Te"] == pl.Float32
+
+
+def test_scan_estimators_filters_codecomparison(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The codecomparison branch must honour modelgridindex and timestep like the ARTIS branch does.
+
+    scan_estimators returns early for a codecomparison/ path, so it has to apply the filters itself:
+    read_reference_estimators ignores both arguments and always parses the whole phys file.
+    """
+    physdir = tmp_path / "toymodel"
+    physdir.mkdir()
+    (physdir / "phys_toymodel_toycode.txt").write_text(
+        "#NTIMES: 2\n"
+        "#TIMES[d]: 1.0 2.0\n"
+        "#TIME: 1.0\n"
+        "#NVEL: 3\n"
+        "#vel_mid Te rho nne nntot\n"
+        "1000.0 5000.0 1e-13 1e6 1e6\n"
+        "2000.0 5100.0 2e-13 2e6 2e6\n"
+        "3000.0 5200.0 3e-13 3e6 3e6\n"
+        "#TIME: 2.0\n"
+        "#NVEL: 3\n"
+        "1000.0 6000.0 1e-14 1e5 1e5\n"
+        "2000.0 6100.0 2e-14 2e5 2e5\n"
+        "3000.0 6200.0 3e-14 3e5 3e5\n"
+    )
+
+    realgetpath = at.get_path
+
+    def fake_get_path(key: str) -> Path:
+        return tmp_path if key == "codecomparisondata1path" else realgetpath(key)
+
+    # codecomparison.py calls at.get_path, i.e. the top-level re-export rather than commands.get_path
+    monkeypatch.setattr(at, "get_path", fake_get_path)
+
+    modelpath = "codecomparison/toymodel/toycode"
+
+    dfall = at.estimators.scan_estimators(modelpath=modelpath).collect()
+    assert dfall.height == 6, "the unfiltered scan should return every timestep and cell"
+
+    dfone = at.estimators.scan_estimators(modelpath=modelpath, timestep=1, modelgridindex=2).collect()
+    assert dfone.height == 1
+    assert dfone["timestep"].item() == 1
+    assert dfone["modelgridindex"].item() == 2
+    assert np.isclose(dfone["Te"].item(), 6200.0)
+
+
+def test_exportmassfractions(tmp_path: Path) -> None:
+    """Every element the estimators carry should appear, weighted by its standard atomic mass."""
+    outfile = tmp_path / "massfracs.txt"
+    at.estimators.exportmassfractions.main(argsraw=[], modelpath=modelpath, modelgridindex="0", outputpath=outfile)
+
+    lines = outfile.read_text(encoding="utf-8").splitlines()
+    assert lines[0].endswith("d shell 0")
+    massfracs = {parts[1]: float(parts[2]) for parts in (line.split() for line in lines[1:])}
+
+    # compositiondata.txt lists only Fe and Co, so an element mass taken from there would drop Ni
+    assert set(massfracs) == {"Fe", "Co", "Ni"}
+    assert np.isclose(sum(massfracs.values()), 1.0)
+    assert np.isclose(massfracs["Fe"], 0.9030389, rtol=1e-5)
+    assert np.isclose(massfracs["Co"], 0.0969611, rtol=1e-5)

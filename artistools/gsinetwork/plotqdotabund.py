@@ -22,6 +22,7 @@ from artistools.constants import Msun_to_g
 from artistools.inputmodel.rprocess_from_trajectory import get_tar_member_extracted_path
 from artistools.misc import add_modelpath_arg
 from artistools.misc import add_outputpath_arg
+from artistools.plottools import save_figure
 
 
 def get_abundance_correction_factors(
@@ -69,22 +70,31 @@ def get_abundance_correction_factors(
 
         # for spherical models, ARTIS mapping to a cubic grid introduces some errors in the cell volumes
         lzdfmodel = lzdfmodel.with_columns(mass_g_mapped=10 ** pl.col("logrho") * wid_init**3 * pl.col("n_assoc_cells"))
-        for strnuc in arr_strnuc:
-            # could be a nuclide like "Sr89" or an element like "Sr"
-            nucisocols = (
-                [f"X_{strnuc}"]
-                if strnuc[-1].isdigit()
-                else [c for c in lzdfmodel.collect_schema().names() if c.startswith(f"X_{strnuc}")]
+        modelcolumns = lzdfmodel.collect_schema().names()
+        # an arr_strnuc entry is either a nuclide like "Sr89", naming one column, or an element like "Sr",
+        # covering every isotope column of that element. Selecting out of modelcolumns keeps the list free of
+        # duplicates when arr_strnuc holds both forms, and drops names the model does not carry
+        nucisocols = [
+            col
+            for col in modelcolumns
+            if any(
+                col == f"X_{strnuc}" if strnuc[-1].isdigit() else col.startswith(f"X_{strnuc}") for strnuc in arr_strnuc
             )
-            for nucisocol in nucisocols:
-                if nucisocol not in lzdfmodel.collect_schema().names():
-                    continue
-                correction_factors[nucisocol.removeprefix("X_")] = (
-                    lzdfmodel
-                    .select(pl.col(nucisocol).dot(pl.col("mass_g_mapped")) / pl.col(nucisocol).dot(pl.col("mass_g")))
-                    .collect()
-                    .item()
-                )
+        ]
+
+        # one collect for every nuclide, rather than re-running the whole model scan once per isotope column
+        if nucisocols:
+            factors = (
+                lzdfmodel
+                .select(**{
+                    nucisocol: pl.col(nucisocol).dot(pl.col("mass_g_mapped")) / pl.col(nucisocol).dot(pl.col("mass_g"))
+                    for nucisocol in nucisocols
+                })
+                .collect()
+                .row(0, named=True)
+            )
+            correction_factors |= {col.removeprefix("X_"): value for col, value in factors.items()}
+
     return correction_factors
 
 
@@ -302,9 +312,7 @@ def plot_qdot(
     axis.autoscale(enable=True, axis="both")
     axis.set_xmargin(0.02)
     axis.set_ymargin(0.02)
-    fig.savefig(pdfoutpath, format="pdf")
-    at.print_saved(pdfoutpath)
-    plt.close(fig)
+    save_figure(fig, pdfoutpath, format="pdf")
 
 
 def plot_cell_abund_evolution(
@@ -313,11 +321,8 @@ def plot_cell_abund_evolution(
     arr_time_gsi_days: Sequence[float] | None,
     arr_species: Sequence[str],
     arr_abund_artis: pl.DataFrame | None,
-    t_model_init_days: float,
-    dfcell: pl.DataFrame,
     pdfoutpath: Path,
     mgi: int,
-    hideinputmodelpoints: bool = True,
 ) -> None:
     """Plot the abundance evolution of one model cell, comparing ARTIS to the nuclear network trajectories."""
     if dfcontribsparticledata is not None:
@@ -404,17 +409,6 @@ def plot_cell_abund_evolution(
         else:
             print(" [no ARTIS data]")
 
-        if f"X_{strspecies}" in dfcell and not hideinputmodelpoints:
-            axis.plot(
-                t_model_init_days,
-                dfcell[f"X_{strspecies}"],
-                marker="+",
-                markersize=15,
-                markeredgewidth=2,
-                label=f"{strnuc_latex} ARTIS inputmodel",
-                color="blue",
-            )
-
         axis.legend(loc="best", frameon=False, handlelength=1, ncol=1, numpoints=1)
 
         axis.autoscale(enable=True, axis="both")
@@ -423,9 +417,7 @@ def plot_cell_abund_evolution(
 
     strcell = f"cell {mgi}" if mgi >= 0 else "global"
     fig.suptitle(f"{at.get_model_name(modelpath)} {strcell}", y=0.999, fontsize=10)
-    fig.savefig(pdfoutpath, format="pdf")
-    at.print_saved(pdfoutpath)
-    plt.close(fig)
+    save_figure(fig, pdfoutpath, format="pdf")
 
 
 def get_particledata(
@@ -676,8 +668,6 @@ def plot_qdot_abund_modelcells(
                 arr_time_gsi_days,
                 arr_species,
                 arr_abund_artis.get(mgi),
-                modelmeta["t_model_init_days"],
-                lzdfmodel.filter(modelgridindex=mgi).collect(),
                 mgi=mgi,
                 pdfoutpath=Path(modelpath, f"gsinetwork_{strmgi}-abundance.pdf"),
             )

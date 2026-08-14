@@ -1,143 +1,22 @@
-# mypy: ignore-errors
-"""various functions to read/write CMFGEN input/output files:
+"""Read the CMFGEN SN_HYDRO_DATA output files."""
 
-rd_nuc_decay_data
-rd_sn_hydro_data
-"""
-
+import pathlib
 import sys
 import typing as t
 
 import numpy as np
 
-# constants
-DAY2SEC = 86400.0
-MEV2ERG = 1.60217733e-6
-
-
-def rd_nuc_decay_data(file: str, quiet: bool = False):
-    """read in NUC_DECAY_DATA file and return namespace
-    set quiet=True to disable verbose output
-    """
-
-    # open file
-    with open(file) as f:
-        # read in header
-        while True:
-            line = f.readline()
-            linearr = line.split()
-            if "Format date" in line:
-                date = linearr[0]
-            elif "Number of species" in line:
-                nspec = int(linearr[0])
-            elif "Total number of isotopes" in line:
-                niso = int(linearr[0])
-            elif "Maximum number of isotopes/species" in line:
-                maxisospec = int(linearr[0])
-            elif "Number of reactions" in line:
-                nreac = int(linearr[0])
-                break
-        if not quiet:
-            print("*** INPUT FILE: " + file)
-            print("Format date: " + str(date))
-            print("Number of species: " + str(nspec))
-            print("Total number of isotopes: " + str(niso))
-            print("Maximum number of isotopes/species: " + str(maxisospec))
-            print("Number of reactions: " + str(nreac))
-
-        # isotopes
-        isospec = []
-        amu = np.zeros(niso)
-        aiso = np.zeros(niso, dtype="int32")
-        stable = []  # True or False
-        for i in range(niso):
-            line = ""
-            while len(line.strip()) == 0 or line[0] == "!":
-                line = f.readline()
-            linearr = line.split()
-            isospec.append(linearr[0])
-            amu[i] = float(linearr[1])
-            aiso[i] = np.rint(amu[i])
-            stable.append(linearr[2] == "s")
-        if not quiet:
-            print("INFO - Read in isotope information")
-
-        # decay chains
-        isospec_parent = []
-        amu_parent = np.zeros(nreac)
-        aiso_parent = np.zeros(nreac, dtype="int32")
-        thalf = np.zeros(nreac)
-        decay_const = np.zeros(nreac)
-        isospec_daughter = []
-        amu_daughter = np.zeros(nreac)
-        aiso_daughter = np.zeros(nreac, dtype="int32")
-        edec = np.zeros(nreac)
-        seqnum = []
-        nlines = np.zeros(nreac, dtype="int32")
-
-        nchains = 0
-        for i in range(nreac):
-            line = ""
-            while len(line.strip()) == 0 or line[0] == "!":
-                line = f.readline()
-            linearr = line.split()
-            isospec_parent.append(linearr[0])
-            amu_parent[i] = float(linearr[1])
-            aiso_parent[i] = np.rint(amu_parent[i])
-            thalf[i] = float(linearr[2]) * DAY2SEC  # convert to seconds
-            decay_const[i] = np.log(2) / thalf[i]
-            isospec_daughter.append(linearr[3])
-            amu_daughter[i] = float(linearr[4])
-            aiso_daughter[i] = np.rint(amu_daughter[i])
-            edec[i] = float(linearr[5]) * MEV2ERG  # convert to ergs
-            seqnum.append(linearr[6])
-            if seqnum[-1] in ("F", "E"):
-                nchains = nchains + 1
-            nlines[i] = int(linearr[7])
-        if not quiet:
-            print("INFO - Read in decay chains")
-
-    # output
-    out = {}
-    out["date"] = date
-    out["nspec"] = nspec
-    out["niso"] = niso
-    out["maxisospec"] = maxisospec
-    out["nreac"] = nreac
-    out["nchains"] = nchains
-    out["isospec"] = isospec
-    out["amu"] = amu
-    out["aiso"] = aiso
-    out["stable"] = stable
-    out["isospec_parent"] = isospec_parent
-    out["amu_parent"] = amu_parent
-    out["aiso_parent"] = aiso_parent
-    out["thalf"] = thalf
-    out["decay_const"] = decay_const
-    out["isospec_daughter"] = isospec_daughter
-    out["amu_daughter"] = amu_daughter
-    out["aiso_daughter"] = aiso_daughter
-    out["edec"] = edec
-    out["seqnum"] = seqnum
-    out["nlines"] = nlines
-
-    # end
-    return out
-
-
-###############################################################################
-
 
 def rd_sn_hydro_data(file: str, ncol: int = 8, reverse: bool = False, quiet: bool = False) -> dict[str, t.Any]:
-    """read in SN_HYDRO_DATA or SN_HYDRO_FOR_NEXT_MODEL files and return namespace
-    set reverse=True to output vectors from vmin to vmax (CMFGEN's grid moves inward from vmax to vmin)
-    set quiet=True to disable verbose output
-    """
+    """Read an SN_HYDRO_DATA or SN_HYDRO_FOR_NEXT_MODEL file into a dict of arrays.
 
+    Set reverse=True to output vectors from vmin to vmax (CMFGEN's grid moves inward from vmax to vmin).
+    Set quiet=True to disable verbose output.
+    """
     MAX_POP_DIFF = 1e-5  # maximum absolute difference between sum(isofrac) and corresponding specfrac
 
     # open file
-    with open(file) as f:
+    with pathlib.Path(file).open(encoding="utf-8") as f:
         # read in header
         okhdr = 0
         nd, nspec, niso = 0, 0, 0
@@ -154,7 +33,7 @@ def rd_sn_hydro_data(file: str, ncol: int = 8, reverse: bool = False, quiet: boo
             elif "Time(days) since explosion:" in line:
                 time = float(line.split()[3])
             elif "Radius grid" in line:
-                if nd == 0 or nspec == 0 or niso == 0 or time == 0.0:
+                if 0 in {nd, nspec, niso, time}:
                     sys.exit("nd, nspec, niso or model time undefined")
                 else:
                     okhdr = 1
@@ -198,7 +77,7 @@ def rd_sn_hydro_data(file: str, ncol: int = 8, reverse: bool = False, quiet: boo
             elif "Kappa" in line:
                 kappa = np.fromfile(f, count=nd, sep=" ", dtype=float)
             elif "mass fraction" in line:
-                if rad[0] == 0.0 or temp[0] == 0.0 or atomdens[0] == 0.0 or ed[0] == 0.0:
+                if 0.0 in {rad[0], temp[0], atomdens[0], ed[0]}:
                     sys.exit("Error reading SN hydro data: R or T is zero")
                 else:
                     okhydro = 1
@@ -236,13 +115,12 @@ def rd_sn_hydro_data(file: str, ncol: int = 8, reverse: bool = False, quiet: boo
                     if not quiet:
                         print(" INFO - set mass fraction = 0.0 everywhere for " + spec[ispec])
                     break
-                else:
-                    entries = line.split()
-                    # set mass fractions to 0.0 if < 1D-99 (written e.g. 1.0000000-100)
-                    entries = [entries[k] if "E" in entries[k] else "0.0" for k in range(len(entries))]
-                    idx0 = ii * ncol
-                    idx1 = idx0 + len(entries)
-                    specfrac[idx0:idx1, ispec] = np.array([float(xx) for xx in entries])
+                entries = line.split()
+                # set mass fractions to 0.0 if < 1D-99 (written e.g. 1.0000000-100)
+                entries = [entries[k] if "E" in entries[k] else "0.0" for k in range(len(entries))]
+                idx0 = ii * ncol
+                idx1 = idx0 + len(entries)
+                specfrac[idx0:idx1, ispec] = np.array([float(xx) for xx in entries])
             line = ""
         if not quiet:
             print(" INFO - Read in species mass fractions")
@@ -263,13 +141,12 @@ def rd_sn_hydro_data(file: str, ncol: int = 8, reverse: bool = False, quiet: boo
                     if not quiet:
                         print(" INFO - set mass fraction = 0.0 everywhere for " + iso[iiso] + " " + str(aiso[iiso]))
                     break
-                else:
-                    entries = line.split()
-                    # set mass fractions to 0.0 if < 1D-99 (written e.g. 1.0000000-100)
-                    entries = [entries[k] if "E" in entries[k] else "0.0" for k in range(len(entries))]
-                    idx0 = ii * ncol
-                    idx1 = idx0 + len(entries)
-                    isofrac[idx0:idx1, iiso] = np.array([float(xx) for xx in entries])
+                entries = line.split()
+                # set mass fractions to 0.0 if < 1D-99 (written e.g. 1.0000000-100)
+                entries = [entries[k] if "E" in entries[k] else "0.0" for k in range(len(entries))]
+                idx0 = ii * ncol
+                idx1 = idx0 + len(entries)
+                isofrac[idx0:idx1, iiso] = np.array([float(xx) for xx in entries])
             line = ""
         if not quiet:
             print(" INFO - Read in isotope mass fractions")
@@ -307,7 +184,7 @@ def rd_sn_hydro_data(file: str, ncol: int = 8, reverse: bool = False, quiet: boo
         dmass = dmass[::-1]
 
     # output
-    out = {}
+    out: dict[str, t.Any] = {}
     out["nd"] = nd
     out["nspec"] = nspec
     out["niso"] = niso
@@ -331,13 +208,3 @@ def rd_sn_hydro_data(file: str, ncol: int = 8, reverse: bool = False, quiet: boo
 
     # end
     return out
-
-
-###############################################################################
-
-
-if __name__ == "__main__":
-    a = rd_sn_hydro_data("DDC10/SN_HYDRO_DATA_0.976d")
-    b = rd_nuc_decay_data("NUC_DECAY_DATA")
-    print(a["vel"])
-    print(b["amu_parent"])

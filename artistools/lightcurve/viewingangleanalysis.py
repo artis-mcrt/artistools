@@ -15,6 +15,8 @@ import polars as pl
 from matplotlib.legend_handler import HandlerTuple
 
 import artistools as at
+from artistools.lightcurve.lightcurve import FILTERNAME_ALIASES
+from artistools.plottools import save_figure
 
 _base_colours = [
     "k",
@@ -187,7 +189,6 @@ def calculate_peak_time_mag_deltam15(
     angle: int,
     key: str,
     args: argparse.Namespace,
-    filternames_conversion_dict: dict[str, str],
 ) -> None:
     """Calculate band peak time, peak magnitude and delta m15."""
     if args.timemin is None or args.timemax is None:
@@ -250,7 +251,6 @@ def calculate_peak_time_mag_deltam15(
             magnitude,
             xfit,
             fxfit,
-            filternames_conversion_dict,
             key,
             mag_after15days_polyfit,
             tmax_polyfit,
@@ -331,7 +331,6 @@ def make_plot_test_viewing_angle_fit(
     magnitude: npt.NDArray[np.floating],
     xfit: Sequence[float],
     fxfit: Sequence[float],
-    filternames_conversion_dict: dict[str, str],
     key: str,
     mag_after15days_polyfit: float,
     tmax_polyfit: float,
@@ -345,10 +344,7 @@ def make_plot_test_viewing_angle_fit(
     axis.plot(time, magnitude)
     axis.plot(xfit, fxfit)
 
-    if key in filternames_conversion_dict:
-        axis.set_ylabel(f"{filternames_conversion_dict[key]} Magnitude")
-    else:
-        axis.set_ylabel(f"{key} Magnitude")
+    axis.set_ylabel(f"{FILTERNAME_ALIASES.get(key, key)} Magnitude")
 
     axis.set_xlabel("Time Since Explosion [d]")
     axis.invert_yaxis()
@@ -363,9 +359,7 @@ def make_plot_test_viewing_angle_fit(
     print("time after 15 days polyfit = ", time_after15days_polyfit)
     fig.tight_layout()
     plotname = f"{key}_band_{modelname}_viewing_angle{angle!s}.png"
-    fig.savefig(plotname)
-    at.print_saved(plotname)
-    plt.close(fig)
+    save_figure(fig, plotname)
 
 
 def set_scatterplot_plotkwargs(modelnumber: int, args: argparse.Namespace) -> tuple[dict[str, t.Any], dict[str, t.Any]]:
@@ -510,9 +504,7 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
         filename = rf"{key}_band_{modelnames[0]}_dm15_peakmag.pdf"
     if args.make_viewing_angle_peakmag_risetime_scatter_plot:
         filename = rf"{key}_band_{modelnames[0]}_risetime_peakmag.pdf"
-    fig.savefig(filename, format="pdf")
-    at.print_saved(filename)
-    plt.close(fig)
+    save_figure(fig, filename, format="pdf")
 
 
 def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
@@ -571,9 +563,7 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
     ax.set_ylabel(f"{bands[0]}max", fontsize=14)
     set_scatterplot_plot_params(fig, ax, args)
     plotname = f"plotviewinganglecolour{bands[0]}-{bands[1]}.pdf"
-    fig.savefig(plotname, format="pdf")
-    at.print_saved(plotname)
-    plt.close(fig)
+    save_figure(fig, plotname, format="pdf")
 
 
 def second_band_brightness_at_peak_first_band(
@@ -610,12 +600,9 @@ def second_band_brightness_at_peak_first_band(
 
 
 def peakmag_risetime_declinerate_init(
-    modelpaths: list[str | Path] | list[Path] | list[str],
-    filternames_conversion_dict: dict[str, str],
-    args: argparse.Namespace,
+    modelpaths: list[str | Path] | list[Path] | list[str], args: argparse.Namespace
 ) -> None:
     """Fit every model's band light curves and store the peak magnitudes, rise times, and decline rates on args."""
-    # if args.calculate_peak_time_mag_deltam15_bool:  # If there's viewing angle scatter plot stuff define some arrays
     args.plotvalues = []  # a0 and p0 values for viewing angle scatter plots
 
     args.band_risetime_polyfit = []
@@ -677,26 +664,15 @@ def peakmag_risetime_declinerate_init(
                     ]
 
                 # Calculating band peak time, peak magnitude and delta m15
-                if args.calculate_peak_time_mag_deltam15_bool:
-                    calculate_peak_time_mag_deltam15(
-                        time,
-                        brightness,
-                        modelname,
-                        dirbin,
-                        band_name,
-                        args,
-                        filternames_conversion_dict=filternames_conversion_dict,
-                    )
+                calculate_peak_time_mag_deltam15(time, brightness, modelname, dirbin, band_name, args)
 
         # Saving viewing angle data so it can be read in and plotted later on without re-running the script
         #    as it is quite time consuming
-        if args.calculate_peak_time_mag_deltam15_bool:
-            save_viewing_angle_data_for_plotting(plottinglist[0], modelname, args)
+        save_viewing_angle_data_for_plotting(plottinglist[0], modelname, args)
 
     # Saving all this viewing angle info for each model to a file so that it is available to plot if required again
     # as it takes relatively long to run this for all viewing angles
-    if args.calculate_peak_time_mag_deltam15_bool:
-        write_viewing_angle_data(plottinglist[0], modelnames, args)
+    write_viewing_angle_data(plottinglist[0], modelnames, args)
 
     # if args.make_viewing_angle_peakmag_risetime_scatter_plot:
     #     make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, plottinglist[0], args)
@@ -754,6 +730,4 @@ def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Names
         plt.show()
 
     plotname = f"plotviewinganglebrightnessat{args.timedays}days.pdf"
-    fig.savefig(plotname, format="pdf")
-    at.print_saved(plotname)
-    plt.close(fig)
+    save_figure(fig, plotname, format="pdf")

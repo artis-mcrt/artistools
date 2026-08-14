@@ -28,6 +28,7 @@ from artistools.misc import add_maxpacketfiles_arg
 from artistools.misc import add_modelpath_arg
 from artistools.misc import add_outputfile_arg
 from artistools.misc import add_series_style_args
+from artistools.plottools import save_figure
 
 # the Fe II 7155 Å / 12570 Å pair used for the Flörs et al. (2020) ratio comparison
 DEFAULT_EMFEATURESEARCH: tuple[tuple[int, ...], ...] = ((26, 2, 7155, 7150, 7160), (26, 2, 12570, 12470, 12670))
@@ -437,10 +438,7 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
 
     args.outputfile = at.resolve_outputfile(args.outputfile, "linefluxes.pdf")
 
-    fig.savefig(args.outputfile, format="pdf")
-    # plt.show()
-    at.print_saved(args.outputfile)
-    plt.close(fig)
+    save_figure(fig, args.outputfile, format="pdf")
 
 
 def plot_nne_te_points(
@@ -778,9 +776,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
             #               horizontalalignment='right', verticalalignment='center', fontsize=16)
 
             outputfile = str(args.outputfile).format(timeavg=tmid, modeltag=modeltag)
-            fig.savefig(outputfile, format="pdf")
-            at.print_saved(outputfile)
-            plt.close(fig)
+            save_figure(fig, outputfile, format="pdf")
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:

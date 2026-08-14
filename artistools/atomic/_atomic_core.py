@@ -4,9 +4,11 @@ import time
 import typing as t
 from collections.abc import Collection
 from collections.abc import Generator
+from collections.abc import Mapping
 from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
+from types import MappingProxyType
 
 import numpy as np
 import numpy.typing as npt
@@ -15,9 +17,11 @@ from polars import selectors as cs
 
 import artistools as at
 from artistools.commands import get_path
+from artistools.constants import hc_in_ev_angstrom
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import write_parquet_atomic
 from artistools.misc.fileio import zopen
+from artistools.misc.fileio import zopen_unshadowed
 
 
 def parse_adata(
@@ -174,8 +178,7 @@ def add_transition_columns(
         .with_columns(epsilon_trans_ev=(pl.col("upper_energy_ev") - pl.col("lower_energy_ev")))
     )
 
-    hc = 12398.419843320025  # h * c in eV * Angstrom
-    dftransitions = dftransitions.with_columns(lambda_angstroms=hc / pl.col("epsilon_trans_ev"))
+    dftransitions = dftransitions.with_columns(lambda_angstroms=hc_in_ev_angstrom / pl.col("epsilon_trans_ev"))
 
     # clean up any columns used for intermediate calculations
     dftransitions = dftransitions.drop(
@@ -289,7 +292,7 @@ def parse_recombratefile(frecomb: io.TextIOBase) -> Generator[tuple[int, int, pl
 def get_ionrecombratecalibration(modelpath: str | Path) -> dict[tuple[int, int], pl.DataFrame]:
     """Read recombrates.txt file."""
     recombdata = {}
-    with Path(modelpath, "recombrates.txt").open("r", encoding="utf-8") as frecomb:
+    with zopen_unshadowed(Path(modelpath, "recombrates.txt"), encoding="utf-8") as frecomb:
         for Z, upper_ion_stage, dfrrc in parse_recombratefile(frecomb):
             recombdata[Z, upper_ion_stage] = dfrrc
 
@@ -327,7 +330,7 @@ def get_composition_data(filename: Path | str) -> pl.DataFrame:
     filename = Path(filename, "compositiondata.txt") if Path(filename).is_dir() else Path(filename)
 
     rows = []
-    with filename.open(encoding="utf-8") as fcompdata:
+    with zopen_unshadowed(filename, encoding="utf-8") as fcompdata:
         nelements = int(fcompdata.readline())
         fcompdata.readline()  # T_preset
         fcompdata.readline()  # homogeneous_abundances
@@ -354,12 +357,12 @@ def get_composition_data(filename: Path | str) -> pl.DataFrame:
 
 
 def get_composition_data_from_outputfile(modelpath: Path | str) -> pl.DataFrame:
-    """Read ion list from output file."""
+    """Read ion list from output file, in case compositiondata.txt is not available."""
     element_Z = []
     lowermost_ion_stage: list[int | None] = []
     uppermost_ion_stage: list[int | None] = []
 
-    with Path(modelpath, "output_0-0.txt").open(encoding="utf-8") as foutput:
+    with zopen_unshadowed(Path(modelpath, "output_0-0.txt"), encoding="utf-8") as foutput:
         Z: int | None = None
         elementindex = -1
         for row in foutput:
@@ -404,6 +407,18 @@ def get_z_a_nucname(nucname: str) -> tuple[int, int]:
 
 
 @lru_cache(maxsize=1)
+def _get_elements_df() -> pl.DataFrame:
+    """Return the whole element table (Z, symbol, name, mass) from data/elements.csv.
+
+    The single place that knows the file's schema, so adding a column does not have to be mirrored into
+    every helper below. Cached and shared, so callers must derive a new frame rather than modify this one.
+    """
+    return pl.read_csv(
+        get_path("datadir") / "elements.csv", has_header=True, separator=",", schema_overrides={"Z": pl.Int32}
+    )
+
+
+@lru_cache(maxsize=1)
 def get_elsymbolslist() -> tuple[str, ...]:
     """Return the element symbols indexed by atomic number.
 
@@ -414,7 +429,21 @@ def get_elsymbolslist() -> tuple[str, ...]:
     get_elsymbolslist()[26] = 'Fe'.
 
     """
-    return ("n", *pl.read_csv(get_path("datadir") / "elements.csv", has_header=True, separator=",")["symbol"].to_list())
+    return ("n", *_get_elements_df()["symbol"].to_list())
+
+
+@lru_cache(maxsize=1)
+def get_atomic_masses() -> Mapping[int, float]:
+    """Return the atomic mass in atomic mass units of every element, keyed by atomic number.
+
+    These are the IUPAC standard atomic weights, except for the elements with no stable isotope, where the
+    convention is the mass number of the longest-lived isotope. Every element from H to Og has an entry, so a
+    lookup never needs a fallback.
+
+    A read-only mapping, because the single cached instance is shared by every caller.
+    """
+    dfelements = _get_elements_df()
+    return MappingProxyType(dict(zip(dfelements["Z"].to_list(), dfelements["mass"].to_list(), strict=True)))
 
 
 @lru_cache(maxsize=1)
@@ -433,15 +462,11 @@ def get_elsymbols_longestfirst() -> tuple[str, ...]:
 
 
 def get_elsymbols_df() -> pl.LazyFrame:
-    """Return a polars LazyFrame of atomic number and element symbols."""
-    return (
-        pl
-        .scan_csv(
-            get_path("datadir") / "elements.csv", separator=",", has_header=True, schema_overrides={"Z": pl.Int32}
-        )
-        .drop("name")
-        .rename({"symbol": "elsymbol", "Z": "atomic_number"})
-    )
+    """Return a polars LazyFrame of atomic number and element symbols.
+
+    Only the two columns, so that a join against this frame never picks up the rest of the element table.
+    """
+    return _get_elements_df().lazy().select(pl.col("Z").alias("atomic_number"), pl.col("symbol").alias("elsymbol"))
 
 
 def get_atomic_number(elsymbol: str) -> int:

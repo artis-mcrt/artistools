@@ -19,6 +19,7 @@ from artistools.misc import add_modelpath_arg
 from artistools.misc import add_outputfile_arg
 from artistools.misc import add_timedays_arg
 from artistools.misc import add_timestep_arg
+from artistools.plottools import save_figure
 
 if t.TYPE_CHECKING:
     from collections.abc import Iterable
@@ -235,9 +236,7 @@ def make_plot(
         axis.set_xlim(xmin, xmax)
         axis.set_ylabel(r"$\propto$ F$_\lambda$")
 
-    fig.savefig(outputfilename, format="pdf")
-    at.print_saved(outputfilename)
-    plt.close(fig)
+    save_figure(fig, outputfilename, format="pdf")
 
 
 def add_upper_lte_pop(

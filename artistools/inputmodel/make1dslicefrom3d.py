@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 
 import artistools as at
 from artistools.constants import day_to_s
+from artistools.plottools import save_figure
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -180,9 +181,7 @@ def make_plot(xlist: list[float], ylists: list[list[float]], pdfoutputfile: str)
         axis.plot(xlist, ylist, linewidth=1.5, label=ylabel)
     axis.set_yscale("log", nonpositive="clip")
     axis.legend(loc="best", handlelength=2, frameon=False, numpoints=1, prop={"size": 10})
-    fig.savefig(pdfoutputfile, format="pdf")
-    at.print_saved(pdfoutputfile)
-    plt.close(fig)
+    save_figure(fig, pdfoutputfile, format="pdf")
 
 
 if __name__ == "__main__":

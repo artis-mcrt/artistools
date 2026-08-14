@@ -201,7 +201,6 @@ project-excludes = [
     '**/dist/**',
     '**/target/**',
     '**/.venv/**',
-    '**/rd_cmfgen.py',
 ]
 python-interpreter-path = ".venv/bin/python3"
 # missing-import is left enabled so a renamed or mistyped first-party module is an error (no other
@@ -241,7 +240,6 @@ exclude = [
     'dist',
     'target',
     '.venv',
-    '**/rd_cmfgen.py',
 ]
 reportAny = false
 reportCallInDefaultInitializer = "error"
@@ -288,10 +286,6 @@ enable_all = true
 python_version = "3.13"
 sort_by = "error"
 
-[[tool.refurb.amend]]
-path = "./artistools/inputmodel/fromcmfgen/rd_cmfgen.py"
-ignore = ["FURB108"]
-
 # `x == []` is an intentional exact-equality assertion in these tests: `not x` would also pass
 # if the function under test regressed to returning None
 [[tool.refurb.amend]]
@@ -305,7 +299,6 @@ ignore = ["FURB115"]
 [tool.ruff]
 line-length = 120
 fix = true
-extend-exclude = ["artistools/inputmodel/fromcmfgen/rd_cmfgen.py"]
 preview = true
 
 [tool.ruff.format]
@@ -406,7 +399,7 @@ convention = "pep257"
 unresolved-import = "ignore"
 
 [tool.ty.src]
-exclude = ["artistools/inputmodel/fromcmfgen/rd_cmfgen.py", ".venv/**"]
+exclude = [".venv/**"]
 
 [tool.vulture]
 exclude = [".*", "build/", ".eggs/", ".venv", "venv"]
@@ -416,6 +409,7 @@ ignore_names = [
     # reached by name from subcommandtree in commands.py, so there is no textual call site
     "get_artistools_path",
     "setup_completions",
+    "show_version",
     # NamedTuple field
     "ion_pot",
     # run by the CodSpeed benchmark fixture rather than called directly

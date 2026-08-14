@@ -57,6 +57,15 @@ elementcolors: t.Final[Mapping[str, tuple[float, float, float, float]]] = Mappin
 
 VARIABLE_ALIASES = {"T_e": "Te", "n_e": "nne", "T_R": "TR", "T_J": "TJ"}
 
+POPTYPE_YLABELS: t.Final[Mapping[str, str]] = MappingProxyType({
+    "absolute": r"Number density $\left[\rm{cm}^{-3}\right]$",
+    "elpop": r"X$_{i}$/X$_{\rm element}$",
+    "totalpop": r"X$_{i}$/X$_{\rm tot}$",
+    "radialdensity": r"Radial density dN/dr $\left[\rm{cm}^{-1}\right]$",
+    "cylradialdensity": r"Cylindrical radial density dN/drcyl $\left[\rm{cm}^{-1}\right]$",
+    "cumulative": r"Cumulative particle count",
+})
+
 
 def get_elemcolor(atomic_number: int | None = None, elsymbol: str | None = None) -> t.Any:
     """Return the plot colour of an element, keyed on the element itself so that it never varies between plots.
@@ -150,24 +159,18 @@ def plot_data(
             pl.col("yvalue_binned").map_batches(filterfunc, return_dtype=pl.self_dtype())
         )
 
-    if startfromzero:
-        dflinepoints = pl.concat([
-            pl.LazyFrame(
-                {
-                    "xvalue_binned": [0.0],
-                    **{
-                        col: [dflinepoints.select(pl.col(col).head(1)).collect().item()]
-                        for col in dflinepoints.collect_schema().names()
-                        if col != "xvalue_binned"
-                    },
-                },
-                schema=dflinepoints.collect_schema(),
-            ),
-            dflinepoints,
-        ]).lazy()
+    # collect once and index the DataFrame, rather than re-running this aggregation for every column read below
+    dflinepointsdf = dflinepoints.collect()
 
-    xvalues_binned = dflinepoints.select(["xvalue_binned"]).collect().get_column("xvalue_binned")
-    yvalues_binned = dflinepoints.select(["yvalue_binned"]).collect().get_column("yvalue_binned")
+    if startfromzero:
+        # repeat the first point at x=0, keeping the column's own dtype so the frames stack
+        firstrow = dflinepointsdf.head(1).with_columns(
+            xvalue_binned=pl.lit(0.0, dtype=dflinepointsdf.schema["xvalue_binned"])
+        )
+        dflinepointsdf = pl.concat([firstrow, dflinepointsdf])
+
+    xvalues_binned = dflinepointsdf.get_column("xvalue_binned")
+    yvalues_binned = dflinepointsdf.get_column("yvalue_binned")
 
     (plotobj,) = ax.plot(xvalues_binned, yvalues_binned, label=label, **plotkwargs)
     color = plotobj.get_color()
@@ -184,18 +187,15 @@ def plot_data(
         }
         plotkwargs_markers.pop("dashes", None)
         plotkwargs_markers.pop("label", None)
-        if dfplotdata.select(pl.len() > 10000).collect().item():
+        dfplotdatadf = dfplotdata.select("xvalue", "yvalue").collect()
+        if dfplotdatadf.height > 10000:
             plotkwargs_markers["rasterized"] = True
         # plot the markers first
-        ax.plot(
-            dfplotdata.select("xvalue").collect().to_series(),
-            dfplotdata.select("yvalue").collect().to_series(),
-            **plotkwargs_markers,
-        )
+        ax.plot(dfplotdatadf.get_column("xvalue"), dfplotdatadf.get_column("yvalue"), **plotkwargs_markers)
 
     else:
-        yvalues_binned_min = dflinepoints.select("yvalue_binned_min").collect().get_column("yvalue_binned_min")
-        yvalues_binned_max = dflinepoints.select("yvalue_binned_max").collect().get_column("yvalue_binned_max")
+        yvalues_binned_min = dflinepointsdf.get_column("yvalue_binned_min")
+        yvalues_binned_max = dflinepointsdf.get_column("yvalue_binned_max")
         plotobj = ax.fill_between(
             xvalues_binned, yvalues_binned_min, yvalues_binned_max, alpha=0.2, color=color, linewidth=0, zorder=-2
         )
@@ -712,21 +712,11 @@ def plot_multi_ion_series(
         plotted_something = True
 
     if seriestype == "populations":
-        if args.poptype == "absolute":
-            ax.set_ylabel(r"Number density $\left[\rm{cm}^{-3}\right]$")
-        elif args.poptype == "elpop":
-            # elsym = at.get_elsymbol(atomic_number)
-            ax.set_ylabel(r"X$_{i}$/X$_{\rm element}$")
-        elif args.poptype == "totalpop":
-            ax.set_ylabel(r"X$_{i}$/X$_{\rm tot}$")
-        elif args.poptype == "radialdensity":
-            ax.set_ylabel(r"Radial density dN/dr $\left[\rm{cm}^{-1}\right]$")
-        elif args.poptype == "cylradialdensity":
-            ax.set_ylabel(r"Cylindrical radial density dN/drcyl $\left[\rm{cm}^{-1}\right]$")
-        elif args.poptype == "cumulative":
-            ax.set_ylabel(r"Cumulative particle count")
-        else:
-            raise AssertionError
+        ylabel = POPTYPE_YLABELS.get(args.poptype)
+        if ylabel is None:
+            msg = f"Unknown poptype: {args.poptype}"
+            raise ValueError(msg)
+        ax.set_ylabel(ylabel)
     else:
         ax.set_ylabel(at.estimators.get_varname_formatted(seriestype))
 
@@ -801,13 +791,23 @@ def get_xlist(
         assert xvariable in estimators.collect_schema().names()
         estimators = estimators.with_columns(xvalue=pl.col(xvariable))
 
-    xmin = estimators.select(pl.col("xvalue").min()).collect().item() if args.xmin is None else args.xmin
-    xmax = estimators.select(pl.col("xvalue").max()).collect().item() if args.xmax is None else args.xmax
+    # one collect for these streaming aggregations, rather than re-running the whole scan once per column. Only
+    # the ones the command line did not already pin down are requested, so supplying -xmin -xmax -xbins scans
+    # nothing at all here. xdeltamax stays out: it needs a full sort, and is only read for automatic binning.
+    statexprs: dict[str, pl.Expr] = {}
+    if args.xmin is None:
+        statexprs["xmin"] = pl.col("xvalue").min()
+    if args.xmax is None:
+        statexprs["xmax"] = pl.col("xvalue").max()
+    if args.xbins is None:
+        statexprs["multiple_points_per_xvalue"] = pl.n_unique("xvalue") * pl.n_unique("timestep") < pl.len()
 
-    if (
-        args.xbins is None
-        and estimators.select(pl.n_unique("xvalue") * pl.n_unique("timestep") < pl.len()).collect().item()
-    ):
+    xstats: dict[str, t.Any] = estimators.select(**statexprs).collect().row(0, named=True) if statexprs else {}
+
+    xmin = xstats["xmin"] if args.xmin is None else args.xmin
+    xmax = xstats["xmax"] if args.xmax is None else args.xmax
+
+    if args.xbins is None and xstats["multiple_points_per_xvalue"]:
         print("There are multiple plot points per x value. Using automatic bins (use -xbins N to change this)")
         args.xbins = -1
         args.colorbyion = True
@@ -848,15 +848,24 @@ def get_xlist(
         estimators = estimators.filter(pl.col("xvalue") <= args.xmax)
 
     estimators = estimators.sort("xvalue")
-    xvalues = estimators.select("xvalue").unique().collect().get_column("xvalue")
-    assert len(xvalues) > 0, "No data found for x-axis variable"
 
-    return (
-        xvalues.to_list(),
-        estimators.select(pl.col("modelgridindex").unique()).collect()["modelgridindex"].to_list(),
-        estimators.select(pl.col("timestep").unique()).collect()["timestep"].to_list(),
-        estimators,
+    # again one collect rather than three separate scans of the same query
+    uniques = (
+        estimators
+        .select(
+            # sort all three: mgilist[0] and timestepslist[0] name the output file and the figure title,
+            # and polars' unique() does not maintain order, so an unsorted list makes those vary between runs
+            xvalue=pl.col("xvalue").unique().sort().implode(),
+            modelgridindex=pl.col("modelgridindex").unique().sort().implode(),
+            timestep=pl.col("timestep").unique().sort().implode(),
+        )
+        .collect()
+        .row(0, named=True)
     )
+
+    assert len(uniques["xvalue"]) > 0, "No data found for x-axis variable"
+
+    return (uniques["xvalue"], uniques["modelgridindex"], uniques["timestep"], estimators)
 
 
 def plot_subplot(
@@ -1150,7 +1159,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-poptype",
         dest="poptype",
         default="elpop",
-        choices=["absolute", "totalpop", "elpop", "radialdensity", "cylradialdensity", "cumulative"],
+        choices=list(POPTYPE_YLABELS),
         help="Plot absolute ion populations, or ion populations as a fraction of total or element population",
     )
 
@@ -1261,6 +1270,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         )
 
     estimators, modelmeta = at.estimators.join_cell_modeldata(estimators=estimators, modelpath=modelpath, verbose=False)
+    # pl.len() lets projection pushdown read 2 columns; head(1) would force every column to materialise
     if estimators.select(pl.len()).collect().item() == 0:
         print("No data was found for the requested timesteps/cells.")
         estimators = at.estimators.scan_estimators(modelpath=modelpath)
