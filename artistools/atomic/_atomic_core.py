@@ -357,7 +357,7 @@ def get_composition_data(filename: Path | str) -> pl.DataFrame:
 
 
 def get_composition_data_from_outputfile(modelpath: Path | str) -> pl.DataFrame:
-    """Read ion list from output file."""
+    """Read ion list from output file, in case compositiondata.txt is not available."""
     element_Z = []
     lowermost_ion_stage: list[int | None] = []
     uppermost_ion_stage: list[int | None] = []
