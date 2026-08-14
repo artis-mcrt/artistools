@@ -814,18 +814,27 @@ def set_lightcurveplot_legend(ax: mplax.Axes | npt.NDArray[t.Any], args: argpars
 
 
 def set_lightcurve_plot_labels(
-    fig: mplfig.Figure, ax: mplax.Axes | npt.NDArray[t.Any], args: argparse.Namespace, band_name: str | None = None
+    fig: mplfig.Figure,
+    ax: mplax.Axes | npt.NDArray[t.Any],
+    args: argparse.Namespace,
+    band_name: str | None = None,
+    colour_evolution: bool = False,
 ) -> tuple[mplfig.Figure, mplax.Axes | npt.NDArray[t.Any]]:
-    """Set the axis labels and limits for a band magnitude or colour evolution plot."""
-    if args.filter:
-        # the subplots layout shares one figure-level label, so it cannot name a particular band
+    """Set the axis labels and limits for a band magnitude or colour evolution plot.
+
+    The caller states which kind of plot this is rather than it being read back off args: colour_evolution_plot
+    assigns args.filter before it asks for labels, so sniffing args.filter here labels a colour plot as a
+    band plot.
+    """
+    if colour_evolution:
+        ylabel = r"$\Delta$m"
+    elif args.filter:
         if args.subplots:
+            # the subplots layout shares one figure-level label, so it cannot name a particular band
             ylabel = "Absolute Magnitude"
         else:
-            bandlabel = FILTERNAME_ALIASES.get(band_name, band_name) if band_name is not None else band_name
-            ylabel = f"{bandlabel} Magnitude"
-    elif args.colour_evolution:
-        ylabel = r"$\Delta$m"
+            assert band_name is not None, "a single-axes band plot needs its band name for the y label"
+            ylabel = f"{FILTERNAME_ALIASES.get(band_name, band_name)} Magnitude"
     else:
         msg = "No filter or colour evolution specified"
         raise AssertionError(msg)
@@ -1140,7 +1149,7 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | 
             # print(f'{filter_names[0]} - {filter_names[1]} at t_Bmax ({tmax_B}) = '
             #       f'{diff[plot_times.index(tmax_B)]}')
 
-    fig, ax = set_lightcurve_plot_labels(fig, ax, args)
+    fig, ax = set_lightcurve_plot_labels(fig, ax, args, colour_evolution=True)
     ax = at.plottools.set_axis_properties(ax, args)
     set_lightcurveplot_legend(ax, args)
 

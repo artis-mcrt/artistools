@@ -183,6 +183,19 @@ def test_colour_evolution_plot() -> None:
     at.lightcurve.plot(argsraw=[], modelpath=modelpath, colour_evolution=["B-V"], outputfile=outputpath)
 
 
+@mock.patch.object(mplax.Axes, "set_ylabel", side_effect=mplax.Axes.set_ylabel, autospec=True)
+def test_colour_evolution_plot_ylabel(mockylabel: t.Any) -> None:
+    """A colour evolution plot must be labelled in delta magnitudes, not as a band magnitude.
+
+    colour_evolution_plot assigns args.filter before asking for the labels, so reading the plot kind back off
+    args labelled these axes "None Magnitude".
+    """
+    at.lightcurve.plot(argsraw=[], modelpath=modelpath, colour_evolution=["B-V"], outputfile=outputpath)
+
+    ylabels = [callargs[0][1] for callargs in mockylabel.call_args_list]
+    assert r"$\Delta$m" in ylabels, ylabels
+
+
 def test_colour_evolution_subplots() -> None:
     at.lightcurve.plot(argsraw=[], modelpath=modelpath, colour_evolution=["U-B", "B-V"], outputfile=outputpath)
 

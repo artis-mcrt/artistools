@@ -239,6 +239,17 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     spectoz = [1, 2, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 56]
     ige_index = np.array(spectoz) > 20
 
+    # the snapshot used to be a module constant, so this mapping always matched it; it is a CLI argument now.
+    # ige_index is used as a boolean mask over the species axis and spectoz indexes the abundance columns, so
+    # both require exactly this many species. Check before writing anything, or a mismatch raises a bare numpy
+    # IndexError partway through model.txt and leaves a truncated file behind.
+    if a["nspec"] != len(spectoz):
+        msg = (
+            f"snapshot has {a['nspec']} species, but the CMFGEN-to-atomic-number mapping covers exactly "
+            f"{len(spectoz)}. Extend spectoz to convert this model."
+        )
+        raise ValueError(msg)
+
     # The radii/velocity in the CMFGEN files are zone centered, while in ARTIS they represent
     # the outer radius of a given zone. So we need to do a transformation
     r = a["rad"] * 1e10
@@ -268,18 +279,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     # Create an array of size n_radial_cells*31 (31=running index + 30 ARTIS species)
     abund = np.zeros((a["nd"], 31))
-
-    # the snapshot used to be a module constant, so this mapping always matched it. It is a CLI argument now,
-    # so check rather than index out of bounds (or silently write species into the wrong columns). The binding
-    # constraint is the width of abund, not the length of spectoz: spectoz ends with Ba (Z=56), which is
-    # counted into the IGE mass fraction above but has no column of its own here
-    species_columns = spectoz[: a["nspec"] - 1]
-    if a["nspec"] - 1 > len(spectoz) or (species_columns and max(species_columns) >= abund.shape[1]):
-        msg = (
-            f"snapshot has {a['nspec']} species, but the CMFGEN-to-atomic-number mapping only covers "
-            f"{len(spectoz)} with atomic numbers below {abund.shape[1]}. Extend spectoz to convert this model."
-        )
-        raise ValueError(msg)
 
     # Fill the array with available mass fractions and the running index
     for i in range(a["nspec"] - 1):
