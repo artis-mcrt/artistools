@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 import artistools as at
@@ -43,3 +45,24 @@ def test_ionpops_for_electronfraction_rejects_impossible_values() -> None:
 
     with pytest.raises(ValueError, match="exceeds the atomic number"):
         ionpops_for_electronfraction(26, 26.5, 1.0)
+
+
+def test_leptontransport_fully_ionised(tmp_path: Path) -> None:
+    """A fully ionised plasma has no bound electrons, so only the plasma loss term stops the lepton."""
+    from artistools.nonthermal.leptontransport import calculate_dE_on_dx_ionexc
+    from artistools.nonthermal.leptontransport import calculate_dE_on_dx_plasma
+
+    energy = 1e3 * 1.602176634e-19  # [J]
+    assert calculate_dE_on_dx_ionexc(energy, 0.0) == 0.0
+    assert calculate_dE_on_dx_plasma(energy, 1e11) < 0.0
+
+    # propagating on the ion/exc term alone would divide by zero here
+    outputfile = tmp_path / "leptontransport.pdf"
+    at.nonthermal.leptontransport.main(argsraw=[], energy=1e3, nnebound=0.0, nnefree=1e5, outputfile=outputfile)
+    assert outputfile.is_file()
+
+
+def test_leptontransport_rejects_empty_plasma() -> None:
+    """With neither bound nor free electrons the lepton never loses energy, so the integration cannot terminate."""
+    with pytest.raises(ValueError, match="must be positive"):
+        at.nonthermal.leptontransport.main(argsraw=[], nnebound=0.0, nnefree=0.0)

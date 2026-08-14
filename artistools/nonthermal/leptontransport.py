@@ -118,6 +118,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     n_e_bound = n_e_bound_cgs * 1e6  # [m^-3]
     n_e_free_cgs = args.nnefree
     n_e_free = n_e_free_cgs * 1e6  # [m^-3]
+    if n_e_bound <= 0.0 and n_e_free <= 0.0:
+        msg = "at least one of -nnebound and -nnefree must be positive, otherwise the lepton never loses energy"
+        raise ValueError(msg)
     print(f"initial energy: {E_0 / CONST_EV_IN_J:.1e} [eV]")
     print(f"n_e_bound: {n_e_bound_cgs:.1e} [cm-3]")
     arr_energy_ev = []
@@ -138,7 +141,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         arr_dE_on_dx_ionexc.append(-dE_on_dx_ionexc / CONST_EV_IN_J)
         dE_on_dx_plasma = calculate_dE_on_dx_plasma(energy, n_e_free)
         arr_dE_on_dx_plasma.append(-dE_on_dx_plasma / CONST_EV_IN_J)
-        dE_on_dx = dE_on_dx_ionexc
+        # the lepton loses energy to both channels at once, so the trajectory follows the total stopping power.
+        # Using the ion/exc term alone would make -nnefree affect only the plotted loss curve, and would divide
+        # by zero for a fully ionised plasma
+        dE_on_dx = dE_on_dx_ionexc + dE_on_dx_plasma
         if steps % 100000 == 0:
             print(
                 f"E: {energy / CONST_EV_IN_J:.1f} eV x: {x:.1e} dE_on_dx_ionexc: {dE_on_dx}, dE_on_dx_plasma:"

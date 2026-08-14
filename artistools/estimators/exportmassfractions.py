@@ -26,10 +26,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     modelpath = Path(args.modelpath)
     timestep = args.timestep
-    elmass: dict[int, float] = dict(at.get_composition_data(modelpath).select("Z", "mass").iter_rows())
+    # the standard atomic weights, not the masses in compositiondata.txt, which only cover the elements that
+    # ARTIS treated in detail. Weighting over a subset would renormalise the fractions to a partial total
+    elmass = at.get_atomic_masses()
     tdays = at.get_timestep_time(modelpath, timestep)
     outfilename = at.resolve_outputfile(args.outputpath, defaultoutputfile)
-    excluded_atomic_numbers: set[int] = set()
     with Path(outfilename).open("w", encoding="utf-8") as fout:
         modelgridindexlist = at.parse_range_list(args.modelgridindex)
         estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindexlist)
@@ -38,15 +39,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             totaldens = 0.0  # number density times atomic mass summed over all elements
             for key, val in estimators[timestep, modelgridindex].items():
                 if key.startswith("nnelement_"):
-                    atomic_number = at.get_atomic_number(key.removeprefix("nnelement_"))
-                    if atomic_number not in elmass:
-                        # the estimators can carry an element that compositiondata.txt gives no mass for, and
-                        # there is no mass to weight it by. Report the fractions among the rest, which still sum
-                        # to one, rather than failing on the lookup
-                        if atomic_number not in excluded_atomic_numbers:
-                            excluded_atomic_numbers.add(atomic_number)
-                            print(f"WARNING: no mass in compositiondata.txt for Z={atomic_number}, excluding it")
-                        continue
+                    elsymbol = key.removeprefix("nnelement_")
+                    atomic_number = at.get_atomic_number(elsymbol)
+                    assert atomic_number in elmass, f"Unrecognised element in estimator column {key}: {elsymbol}"
                     numberdens[atomic_number] = val
                     totaldens += numberdens[atomic_number] * elmass[atomic_number]
             massfracs = {

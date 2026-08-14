@@ -54,6 +54,7 @@ from artistools import version as version
 from artistools import viewing_angles_visualization as viewing_angles_visualization
 from artistools import writecomparisondata as writecomparisondata
 from artistools.atomic import decode_roman_numeral as decode_roman_numeral
+from artistools.atomic import get_atomic_masses as get_atomic_masses
 from artistools.atomic import get_atomic_number as get_atomic_number
 from artistools.atomic import get_bflist as get_bflist
 from artistools.atomic import get_composition_data as get_composition_data

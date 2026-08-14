@@ -3,6 +3,7 @@
 __all__ = ["plot"]
 
 from artistools.estimators import estimators_classic as estimators_classic
+from artistools.estimators import exportmassfractions as exportmassfractions
 from artistools.estimators import plotestimators as plotestimators
 from artistools.estimators.estimators import add_derived_estimator_columns as add_derived_estimator_columns
 from artistools.estimators.estimators import get_averageexcitation as get_averageexcitation

@@ -4,9 +4,11 @@ import time
 import typing as t
 from collections.abc import Collection
 from collections.abc import Generator
+from collections.abc import Mapping
 from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
+from types import MappingProxyType
 
 import numpy as np
 import numpy.typing as npt
@@ -419,6 +421,20 @@ def get_elsymbolslist() -> tuple[str, ...]:
 
 
 @lru_cache(maxsize=1)
+def get_atomic_masses() -> Mapping[int, float]:
+    """Return the atomic mass in atomic mass units of every element, keyed by atomic number.
+
+    These are the IUPAC standard atomic weights, except for the elements with no stable isotope, where the
+    convention is the mass number of the longest-lived isotope. Every element from H to Og has an entry, so a
+    lookup never needs a fallback.
+
+    A read-only mapping, because the single cached instance is shared by every caller.
+    """
+    dfelements = pl.read_csv(get_path("datadir") / "elements.csv", has_header=True, separator=",")
+    return MappingProxyType(dict(zip(dfelements["Z"].to_list(), dfelements["mass"].to_list(), strict=True)))
+
+
+@lru_cache(maxsize=1)
 def _get_atomic_number_of_elsymbol() -> dict[str, int]:
     """Return a mapping of element symbol to atomic number, for lookups that would otherwise scan the whole list."""
     return {elsymbol: atomic_number for atomic_number, elsymbol in enumerate(get_elsymbolslist())}
@@ -435,14 +451,9 @@ def get_elsymbols_longestfirst() -> tuple[str, ...]:
 
 def get_elsymbols_df() -> pl.LazyFrame:
     """Return a polars LazyFrame of atomic number and element symbols."""
-    return (
-        pl
-        .scan_csv(
-            get_path("datadir") / "elements.csv", separator=",", has_header=True, schema_overrides={"Z": pl.Int32}
-        )
-        .drop("name")
-        .rename({"symbol": "elsymbol", "Z": "atomic_number"})
-    )
+    return pl.scan_csv(
+        get_path("datadir") / "elements.csv", separator=",", has_header=True, schema_overrides={"Z": pl.Int32}
+    ).select(pl.col("Z").alias("atomic_number"), pl.col("symbol").alias("elsymbol"))
 
 
 def get_atomic_number(elsymbol: str) -> int:

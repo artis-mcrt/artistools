@@ -647,3 +647,19 @@ def test_scan_estimators_filters_codecomparison(tmp_path: Path, monkeypatch: pyt
     assert dfone["timestep"].item() == 1
     assert dfone["modelgridindex"].item() == 2
     assert np.isclose(dfone["Te"].item(), 6200.0)
+
+
+def test_exportmassfractions(tmp_path: Path) -> None:
+    """Every element the estimators carry should appear, weighted by its standard atomic mass."""
+    outfile = tmp_path / "massfracs.txt"
+    at.estimators.exportmassfractions.main(argsraw=[], modelpath=modelpath, modelgridindex="0", outputpath=outfile)
+
+    lines = outfile.read_text(encoding="utf-8").splitlines()
+    assert lines[0].endswith("d shell 0")
+    massfracs = {parts[1]: float(parts[2]) for parts in (line.split() for line in lines[1:])}
+
+    # compositiondata.txt lists only Fe and Co, so an element mass taken from there would drop Ni
+    assert set(massfracs) == {"Fe", "Co", "Ni"}
+    assert np.isclose(sum(massfracs.values()), 1.0)
+    assert np.isclose(massfracs["Fe"], 0.9030389, rtol=1e-5)
+    assert np.isclose(massfracs["Co"], 0.0969611, rtol=1e-5)

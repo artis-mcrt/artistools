@@ -2,6 +2,7 @@
 
 from artistools.atomic._atomic_core import add_transition_columns as add_transition_columns
 from artistools.atomic._atomic_core import decode_roman_numeral as decode_roman_numeral
+from artistools.atomic._atomic_core import get_atomic_masses as get_atomic_masses
 from artistools.atomic._atomic_core import get_atomic_number as get_atomic_number
 from artistools.atomic._atomic_core import get_bflist as get_bflist
 from artistools.atomic._atomic_core import get_composition_data as get_composition_data
