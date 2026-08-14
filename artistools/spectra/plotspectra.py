@@ -329,10 +329,7 @@ def plot_reference_spectrum(
 
     print(" metadata: " + ", ".join([f"{k}='{v}'" if hasattr(v, "lower") else f"{k}={v}" for k, v in metadata.items()]))
 
-    lambda_min, lambda_max = sorted([
-        atspectra.convert_unit_to_angstroms(xmin, xunit),
-        atspectra.convert_unit_to_angstroms(xmax, xunit),
-    ])
+    lambda_min, lambda_max = atspectra.convert_xlimits_to_lambda_range(xmin, xmax, xunit)
 
     specdata = specdata.filter(pl.col("lambda_angstroms").is_between(lambda_min, lambda_max))
 
@@ -883,6 +880,7 @@ def make_emissionabsorption_plot(
         )
     else:
         assert not args.vpkt_match_emission_exclusion_to_opac
+        lambda_min, lambda_max = atspectra.convert_xlimits_to_lambda_range(xmin, xmax, args.xunit)
         contribution_list, array_flambda_emission_total, arraylambda_angstroms = atspectra.get_flux_contributions(
             modelpath,
             filterfunc,
@@ -894,6 +892,8 @@ def make_emissionabsorption_plot(
             directionbin=dirbin,
             average_over_phi=args.average_over_phi_angle,
             average_over_theta=args.average_over_theta_angle,
+            lambda_min=lambda_min,
+            lambda_max=lambda_max,
         )
 
     atspectra.print_integrated_flux(array_flambda_emission_total, arraylambda_angstroms)
