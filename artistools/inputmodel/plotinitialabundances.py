@@ -36,7 +36,16 @@ def make_plot(args: argparse.Namespace) -> None:
             .join(at.get_elsymbols_df(), on="elsymbol", how="left")
             .rename({"atomic_number": "Z"})
             .with_columns(abundance=pl.col("massfraction") / pl.col("A"))
+            .collect()
         )
+
+        # the join replaced get_atomic_number's assert, so an unrecognised symbol would otherwise leave a null Z
+        # and be plotted as a stray bin instead of raising
+        if unknown := df.filter(pl.col("Z").is_null())["elsymbol"].unique().to_list():
+            msg = f"Unknown element symbols in {model_path}: {unknown}"
+            raise ValueError(msg)
+
+        df = df.lazy()
         massfracsum = df.select(pl.col("massfraction").sum()).collect().item()
         if not math.isclose(massfracsum, 1.0, abs_tol=1e-5):
             print(f"WARNING: mass fractions for model {model_path} sum to {massfracsum:.3f} instead of 1.0.")

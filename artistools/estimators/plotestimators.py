@@ -57,14 +57,14 @@ elementcolors: t.Final[Mapping[str, tuple[float, float, float, float]]] = Mappin
 
 VARIABLE_ALIASES = {"T_e": "Te", "n_e": "nne", "T_R": "TR", "T_J": "TJ"}
 
-POPTYPE_YLABELS = {
+POPTYPE_YLABELS: t.Final[Mapping[str, str]] = MappingProxyType({
     "absolute": r"Number density $\left[\rm{cm}^{-3}\right]$",
     "elpop": r"X$_{i}$/X$_{\rm element}$",
     "totalpop": r"X$_{i}$/X$_{\rm tot}$",
     "radialdensity": r"Radial density dN/dr $\left[\rm{cm}^{-1}\right]$",
     "cylradialdensity": r"Cylindrical radial density dN/drcyl $\left[\rm{cm}^{-1}\right]$",
     "cumulative": r"Cumulative particle count",
-}
+})
 
 
 def get_elemcolor(atomic_number: int | None = None, elsymbol: str | None = None) -> t.Any:
@@ -162,7 +162,7 @@ def plot_data(
     # collect once and index the DataFrame, rather than re-running this aggregation for every column read below
     dflinepointsdf = dflinepoints.collect()
 
-    if startfromzero and dflinepointsdf.height > 0:
+    if startfromzero:
         # repeat the first point at x=0, keeping the column's own dtype so the frames stack
         firstrow = dflinepointsdf.head(1).with_columns(
             xvalue_binned=pl.lit(0.0, dtype=dflinepointsdf.schema["xvalue_binned"])
@@ -791,14 +791,14 @@ def get_xlist(
         assert xvariable in estimators.collect_schema().names()
         estimators = estimators.with_columns(xvalue=pl.col(xvariable))
 
-    # one collect for every statistic, rather than re-running the whole scan once per column
+    # one collect for these three streaming aggregations, rather than re-running the whole scan once per column.
+    # xdeltamax stays out: it needs a full sort, and it is only read when automatic binning was requested.
     xstats = (
         estimators
         .select(
             xmin=pl.col("xvalue").min(),
             xmax=pl.col("xvalue").max(),
             multiple_points_per_xvalue=pl.n_unique("xvalue") * pl.n_unique("timestep") < pl.len(),
-            xdeltamax=pl.col("xvalue").sort().diff().max(),
         )
         .collect()
         .row(0, named=True)
@@ -813,7 +813,7 @@ def get_xlist(
         args.colorbyion = True
 
     if args.xbins is not None and args.xbins < 0:
-        xdeltamax = xstats["xdeltamax"]
+        xdeltamax = estimators.select(pl.col("xvalue").sort().diff().max()).collect().item()
         args.xbins = int((xmax - xmin) / xdeltamax)
         print(
             f"Setting xbins to {args.xbins} based on data range [{xmin}, {xmax}] and largest x interval of {xdeltamax}"
@@ -1157,7 +1157,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-poptype",
         dest="poptype",
         default="elpop",
-        choices=["absolute", "totalpop", "elpop", "radialdensity", "cylradialdensity", "cumulative"],
+        choices=list(POPTYPE_YLABELS),
         help="Plot absolute ion populations, or ion populations as a fraction of total or element population",
     )
 
@@ -1268,7 +1268,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         )
 
     estimators, modelmeta = at.estimators.join_cell_modeldata(estimators=estimators, modelpath=modelpath, verbose=False)
-    if estimators.head(1).collect().is_empty():
+    # pl.len() lets projection pushdown read 2 columns; head(1) would force every column to materialise
+    if estimators.select(pl.len()).collect().item() == 0:
         print("No data was found for the requested timesteps/cells.")
         estimators = at.estimators.scan_estimators(modelpath=modelpath)
         print("Cells with data: ")

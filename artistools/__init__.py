@@ -149,5 +149,6 @@ from artistools.misc import vec_len as vec_len
 from artistools.misc import write_gif as write_gif
 from artistools.misc import write_parquet_atomic as write_parquet_atomic
 from artistools.misc import zopen as zopen
+from artistools.misc import zopen_unshadowed as zopen_unshadowed
 from artistools.misc import zopenpl as zopenpl
 from artistools.plottools import set_mpl_style as set_mpl_style

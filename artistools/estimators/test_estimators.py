@@ -14,7 +14,7 @@ modelpath = at.get_path("testdata") / "testmodel"
 modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
 outputpath = at.get_path("testoutput")
 
-PLOTLIST_FULL = [
+PLOTLIST_FULL: t.Final = (
     [["initabundances", ["Fe", "Ni_stable", "Ni_56"]]],
     ["nne"],
     ["TR", ["_yscale", "linear"], ["_ymin", 1000], ["_ymax", 22000]],
@@ -26,9 +26,9 @@ PLOTLIST_FULL = [
     ["heating_dep", "heating_coll", "heating_bf", "heating_ff", ["_yscale", "linear"]],
     ["cooling_adiabatic", "cooling_coll", "cooling_fb", "cooling_ff", ["_yscale", "linear"]],
     [(pl.col("heating_coll") - pl.col("cooling_coll")).alias("collisional heating - cooling")],
-]
+)
 
-PLOTLIST_IONS = [
+PLOTLIST_IONS: t.Final = (
     [["initabundances", ["Fe", "Ni_stable", "Ni_56"]]],
     ["nne"],
     ["TR", ["_yscale", "linear"], ["_ymin", 1000], ["_ymax", 22000]],
@@ -38,7 +38,7 @@ PLOTLIST_IONS = [
     [["populations", ["Co II", "Co III", "Co IV"]]],
     ["heating_dep", "heating_coll", "heating_bf", "heating_ff", ["_yscale", "linear"]],
     ["cooling_adiabatic", "cooling_coll", "cooling_fb", "cooling_ff", ["_yscale", "linear"]],
-]
+)
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)

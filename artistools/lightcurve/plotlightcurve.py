@@ -1148,8 +1148,7 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | 
 
     if args.show:
         plt.show()
-    fig.savefig(args.outputfile, format="pdf")
-    plt.close(fig)
+    save_figure(fig, args.outputfile, format="pdf")
 
 
 # Just in case it's needed...
@@ -1617,7 +1616,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     elif args.colour_evolution:
         colour_evolution_plot(modelpaths, outputfolder, args)
-        at.print_saved(args.outputfile)
     else:
         make_lightcurve_plot(
             modelpaths=args.modelpath,

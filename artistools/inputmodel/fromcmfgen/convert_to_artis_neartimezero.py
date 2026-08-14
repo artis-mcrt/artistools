@@ -222,7 +222,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
-    """Write an ARTIS model from a CMFGEN SN_HYDRO_DATA snapshot, decayed back towards time zero."""
+    """Write ARTIS model.txt and abundances.txt from a CMFGEN SN_HYDRO_DATA snapshot.
+
+    The snapshot abundances are written as-is; the decay helpers in this module are not wired in yet.
+    """
     args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     outputpath = Path(args.outputpath)
@@ -265,6 +268,15 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     # Create an array of size n_radial_cells*31 (31=running index + 30 ARTIS species)
     abund = np.zeros((a["nd"], 31))
+
+    # the snapshot used to be a module constant, so this mapping always matched it. It is a CLI argument now,
+    # so check rather than index out of bounds (or silently write species into the wrong columns)
+    if a["nspec"] - 1 > len(spectoz):
+        msg = (
+            f"snapshot has {a['nspec']} species, but the CMFGEN-to-atomic-number mapping only covers "
+            f"{len(spectoz)}. Extend spectoz to convert this model."
+        )
+        raise ValueError(msg)
 
     # Fill the array with available mass fractions and the running index
     for i in range(a["nspec"] - 1):

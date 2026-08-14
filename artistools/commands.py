@@ -83,13 +83,13 @@ subcommandtree: CommandTree = {
         "energyfiles": CommandSpec(
             "inputmodel.energyinputfiles", helptext="Plot and inspect the ARTIS energy input files."
         ),
-        "fromcmfgen": CommandSpec(
-            "inputmodel.fromcmfgen.convert_to_artis_neartimezero",
-            helptext="Convert a CMFGEN SN_HYDRO_DATA snapshot to an ARTIS model, decayed back towards time zero.",
-        ),
         "from_e2e": CommandSpec(
             "inputmodel.from_e2e_model",
             helptext="Prepare data for an ARTIS kilonova calculation from end-to-end hydro models.",
+        ),
+        "fromcmfgen": CommandSpec(
+            "inputmodel.fromcmfgen.convert_to_artis_neartimezero",
+            helptext="Convert a CMFGEN SN_HYDRO_DATA snapshot to ARTIS model.txt and abundances.txt.",
         ),
         "make1dslicefrom3dmodel": CommandSpec(
             "inputmodel.make1dslicefrom3d",
@@ -169,9 +169,6 @@ subcommandtree: CommandTree = {
         helptext="Solve the Spencer-Fano equation using data from an ARTIS cell at some timestep.",
     ),
     "version": CommandSpec("commands", funcname="show_version", helptext="Print the artistools version."),
-    "splitmetadata": CommandSpec(
-        "data.splitmetadata", helptext="Split a combined metadata.yml into one .meta.yml file per observation file."
-    ),
     "writebollightcurvedata": CommandSpec(
         "lightcurve.writebollightcurvedata",
         helptext="Write the bolometric light curve of each model out as a plain text file.",

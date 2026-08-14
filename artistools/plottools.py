@@ -294,12 +294,12 @@ def save_figure(fig: mplfig.Figure, outpath: "Path | str", **savefig_kwargs: t.A
     plt.close(fig)
 
 
-def set_plot_title(ax: mplax.Axes, title: str, args: argparse.Namespace) -> None:
+def set_plot_title(ax: mplax.Axes, title: str | None, args: argparse.Namespace) -> None:
     """Set the plot title, unless -notitle was given, placing it inside the axes for -inset_title."""
-    if getattr(args, "notitle", False) or not title:
+    if args.notitle or not title:
         return
 
-    if getattr(args, "inset_title", False):
+    if args.inset_title:
         ax.annotate(
             title,
             xy=(0.0, 1.0),

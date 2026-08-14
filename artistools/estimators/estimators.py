@@ -258,10 +258,15 @@ def scan_estimators(
         estimators = at.codecomparison.read_reference_estimators(
             modelpath, timestep=timestep, modelgridindex=modelgridindex
         )
-        return pl.LazyFrame(
+        lzestimators = pl.LazyFrame(
             [{"timestep": ts, "modelgridindex": mgi, **estimvals} for (ts, mgi), estimvals in estimators.items()],
             orient="row",
         )
+        if match_modelgridindex is not None:
+            lzestimators = lzestimators.filter(pl.col("modelgridindex").is_in(match_modelgridindex))
+        if match_timestep is not None:
+            lzestimators = lzestimators.filter(pl.col("timestep").is_in(match_timestep))
+        return lzestimators
 
     # print(f" matching cells {match_modelgridindex} and timesteps {match_timestep}")
     mpiranklist = at.get_mpiranklist(modelpath, only_ranks_withgridcells=True)

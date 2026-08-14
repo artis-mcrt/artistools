@@ -88,6 +88,29 @@ def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None) -
     return Path(filename).open(mode=mode, encoding=encoding)
 
 
+def zopen_unshadowed(filename: Path | str, encoding: str | None = None) -> t.Any:
+    """Open filename, falling back to a compressed sibling only when the named file does not exist.
+
+    Unlike zopen, a stale compressed copy never shadows a freshly written uncompressed file. This is the
+    same precedence read_wsv uses, and is what a plain Path.open call is replaced by.
+    """
+    filepath = Path(filename)
+    if not filepath.is_file():
+        found = find_compressed(filename)
+        if found is None:
+            # let open() raise the FileNotFoundError naming the file the caller actually asked for
+            return filepath.open(encoding=encoding)
+        ext, foundpath = found
+        return get_decompress_open(ext)(foundpath, mode="rt", encoding=encoding)
+
+    # the named file exists, so open it directly. Going through zopen here would re-run find_compressed
+    # and hand back a compressed sibling instead, which is the shadowing this function exists to avoid.
+    if filepath.suffix in {".zst", ".gz", ".xz"}:
+        return get_decompress_open(filepath.suffix)(filepath, mode="rt", encoding=encoding)
+
+    return filepath.open(encoding=encoding)
+
+
 def zopenpl(filename: Path | str, mode: str = "r", encoding: str | None = None) -> t.Any | Path:
     """Open filename, filename.zst, filename.gz or filename.xz. If polars.read_csv can read the file directly, return a Path object instead of a file object."""
     if found := find_compressed(filename):

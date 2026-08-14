@@ -798,9 +798,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if args.x in {"time", "velocity"}:
         args.modelpath = at.normalize_path_list(args.modelpath)
 
-        # if not args.timedays:
-        #     print("Please specify time range with -timedays")
-        #     sys.exit(1)
         if not args.ion_stages:
             msg = "Please specify ion_stage"
             raise ValueError(msg)

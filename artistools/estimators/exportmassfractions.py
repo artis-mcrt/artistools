@@ -25,18 +25,23 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     modelpath = Path(args.modelpath)
     timestep = args.timestep
     elmass: dict[int, float] = dict(at.get_composition_data(modelpath).select("Z", "mass").iter_rows())
+    tdays = at.get_timestep_time(modelpath, timestep)
     outfilename = args.outputpath
     with Path(outfilename).open("w", encoding="utf-8") as fout:
         modelgridindexlist = at.parse_range_list(args.modelgridindex)
         estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindexlist)
         for modelgridindex in modelgridindexlist:
-            tdays = estimators[timestep, modelgridindex]["tdays"]
-
             numberdens = {}
             totaldens = 0.0  # number density times atomic mass summed over all elements
             for key, val in estimators[timestep, modelgridindex].items():
                 if key.startswith("nnelement_"):
                     atomic_number = at.get_atomic_number(key.removeprefix("nnelement_"))
+                    if atomic_number not in elmass:
+                        # the estimators can carry an element that compositiondata.txt gives no mass for, and
+                        # there is no mass to weight it by. Report the fractions among the rest, which still sum
+                        # to one, rather than failing on the lookup
+                        print(f"WARNING: no mass in compositiondata.txt for Z={atomic_number}, excluding it")
+                        continue
                     numberdens[atomic_number] = val
                     totaldens += numberdens[atomic_number] * elmass[atomic_number]
             massfracs = {

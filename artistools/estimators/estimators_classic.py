@@ -7,6 +7,32 @@ from pathlib import Path
 import artistools as at
 
 
+def get_atomic_composition(modelpath: Path) -> dict[int, int]:
+    """Return the number of ions of each element, counted from the [input.c] lines of output_0-0.txt.
+
+    This counts ion lines rather than reusing get_composition_data_from_outputfile, which returns
+    uppermost - lowermost + 1 and yields a null count for an element with no ion lines at all. The
+    estimator rows are sliced by these counts, so a null or a gap-inflated count misaligns every
+    element after it.
+    """
+    atomic_composition = {}
+
+    with at.zopen_unshadowed(Path(modelpath, "output_0-0.txt"), encoding="utf-8") as foutput:
+        ioncount = 0
+        Z = None
+        for row in foutput:
+            if row.split()[0] == "[input.c]":
+                split_row = row.split()
+                if split_row[1] == "element":
+                    Z = int(split_row[4])
+                    ioncount = 0
+                elif split_row[1] == "ion":
+                    ioncount += 1
+                    assert Z is not None, "Z should be set before ioncount"
+                    atomic_composition[Z] = ioncount
+    return atomic_composition
+
+
 def parse_ion_row_classic(row: list[str], outdict: dict[str, t.Any], atomic_composition: dict[int, int]) -> None:
     """Parse the per-ion populations of one estimator row into outdict."""
     elements = atomic_composition.keys()
@@ -34,9 +60,9 @@ def get_first_ts_in_run_directory(modelpath: str | Path) -> dict[str, int]:
     first_timesteps_in_dir = {}
 
     for folder in folderlist_all:
-        outputfile = at.firstexisting_or_none("output_0-0.txt", folder=folder, tryzipped=True)
+        outputfile = at.firstexisting_or_none("output_0-0.txt", folder=folder, tryzipped=True, search_subfolders=False)
         if outputfile is not None:
-            with at.zopen(outputfile, encoding="utf-8") as output_0:
+            with at.zopen_unshadowed(outputfile, encoding="utf-8") as output_0:
                 timesteps_in_dir = [
                     line.strip(".\n").split(" ")[-1]
                     for line in output_0
@@ -60,8 +86,7 @@ def read_classic_estimators(modelpath: Path) -> dict[tuple[int, int], t.Any] | N
     print(f"Reading {len(estimfiles)} estimator files...")
 
     first_timesteps_in_dir = get_first_ts_in_run_directory(modelpath)
-    dfcomposition = at.get_composition_data_from_outputfile(modelpath)
-    atomic_composition = dict(zip(dfcomposition["Z"], dfcomposition["nions"], strict=True))
+    atomic_composition = get_atomic_composition(modelpath)
 
     inputparams = at.get_inputparams(modelpath)
     ndimensions = inputparams["n_dimensions"]
@@ -106,11 +131,6 @@ def read_classic_estimators(modelpath: Path) -> dict[tuple[int, int], t.Any] | N
                 estimcell["cooling_fb"] = float(row[-4])
                 estimcell["cooling_coll"] = float(row[-3])
                 estimcell["cooling_adiabatic"] = float(row[-2])
-
-                # estimcell['cooling_coll - heating_coll'] = estimcell['cooling_coll'] - estimcell['heating_coll']
-                # estimcell['cooling_fb - heating_bf'] = estimcell['cooling_fb'] - estimcell['heating_bf']
-                # estimcell['cooling_ff - heating_ff'] = estimcell['cooling_ff'] - estimcell['heating_ff']
-                # estimcell['cooling_adiabatic - heating_dep'] = estimcell['cooling_adiabatic'] - estimcell['heating_dep']
 
                 estimcell["energy_deposition"] = float(row[-1])
 

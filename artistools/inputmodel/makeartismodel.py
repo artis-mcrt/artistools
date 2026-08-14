@@ -26,8 +26,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--downscaleplot", action="store_true", help="Write a density-slice diagnostic plot when downscaling"
     )
 
-    parser.add_argument("-inputgridsize", default=200, type=int, help="Size of big model grid for downscale script")
-
     parser.add_argument("-outputgridsize", default=50, type=int, help="Size of small model grid for downscale script")
 
     parser.add_argument(
