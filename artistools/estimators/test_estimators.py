@@ -14,23 +14,37 @@ modelpath = at.get_path("testdata") / "testmodel"
 modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
 outputpath = at.get_path("testoutput")
 
+PLOTLIST_FULL = [
+    [["initabundances", ["Fe", "Ni_stable", "Ni_56"]]],
+    ["nne"],
+    ["TR", ["_yscale", "linear"], ["_ymin", 1000], ["_ymax", 22000]],
+    ["Te"],
+    [["averageionisation", ["Fe", "Ni"]]],
+    [["populations", ["Fe I", "Fe II", "Fe III", "Fe IV", "Fe V"]]],
+    [["populations", ["Co II", "Co III", "Co IV"]]],
+    [["gamma_NT", ["Fe I", "Fe II", "Fe III", "Fe IV"]]],
+    ["heating_dep", "heating_coll", "heating_bf", "heating_ff", ["_yscale", "linear"]],
+    ["cooling_adiabatic", "cooling_coll", "cooling_fb", "cooling_ff", ["_yscale", "linear"]],
+    [(pl.col("heating_coll") - pl.col("cooling_coll")).alias("collisional heating - cooling")],
+]
+
+PLOTLIST_IONS = [
+    [["initabundances", ["Fe", "Ni_stable", "Ni_56"]]],
+    ["nne"],
+    ["TR", ["_yscale", "linear"], ["_ymin", 1000], ["_ymax", 22000]],
+    ["Te"],
+    [["averageionisation", ["Fe"]]],
+    [["populations", ["Fe I", "Fe II", "Fe III", "Fe IV", "Fe V"]]],
+    [["populations", ["Co II", "Co III", "Co IV"]]],
+    ["heating_dep", "heating_coll", "heating_bf", "heating_ff", ["_yscale", "linear"]],
+    ["cooling_adiabatic", "cooling_coll", "cooling_fb", "cooling_ff", ["_yscale", "linear"]],
+]
+
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
 def test_estimator_snapshot(mockplot: t.Any) -> None:
-    plotlist = [
-        [["initabundances", ["Fe", "Ni_stable", "Ni_56"]]],
-        ["nne"],
-        ["TR", ["_yscale", "linear"], ["_ymin", 1000], ["_ymax", 22000]],
-        ["Te"],
-        [["averageionisation", ["Fe", "Ni"]]],
-        [["populations", ["Fe I", "Fe II", "Fe III", "Fe IV", "Fe V"]]],
-        [["populations", ["Co II", "Co III", "Co IV"]]],
-        [["gamma_NT", ["Fe I", "Fe II", "Fe III", "Fe IV"]]],
-        ["heating_dep", "heating_coll", "heating_bf", "heating_ff", ["_yscale", "linear"]],
-        ["cooling_adiabatic", "cooling_coll", "cooling_fb", "cooling_ff", ["_yscale", "linear"]],
-        [(pl.col("heating_coll") - pl.col("cooling_coll")).alias("collisional heating - cooling")],
-    ]
+    plotlist = PLOTLIST_FULL
 
     at.estimators.plot(
         argsraw=[],
@@ -93,19 +107,7 @@ def test_estimator_snapshot(mockplot: t.Any) -> None:
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
 def test_estimator_averaging(mockplot: t.Any) -> None:
-    plotlist = [
-        [["initabundances", ["Fe", "Ni_stable", "Ni_56"]]],
-        ["nne"],
-        ["TR", ["_yscale", "linear"], ["_ymin", 1000], ["_ymax", 22000]],
-        ["Te"],
-        [["averageionisation", ["Fe", "Ni"]]],
-        [["populations", ["Fe I", "Fe II", "Fe III", "Fe IV", "Fe V"]]],
-        [["populations", ["Co II", "Co III", "Co IV"]]],
-        [["gamma_NT", ["Fe I", "Fe II", "Fe III", "Fe IV"]]],
-        ["heating_dep", "heating_coll", "heating_bf", "heating_ff", ["_yscale", "linear"]],
-        ["cooling_adiabatic", "cooling_coll", "cooling_fb", "cooling_ff", ["_yscale", "linear"]],
-        [(pl.col("heating_coll") - pl.col("cooling_coll")).alias("collisional heating - cooling")],
-    ]
+    plotlist = PLOTLIST_FULL
 
     at.estimators.plot(
         argsraw=[],
@@ -164,17 +166,7 @@ def test_estimator_averaging(mockplot: t.Any) -> None:
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_estimator_snapshot_classic_3d(mockplot: t.Any) -> None:
-    plotlist = [
-        [["initabundances", ["Fe", "Ni_stable", "Ni_56"]]],
-        ["nne"],
-        ["TR", ["_yscale", "linear"], ["_ymin", 1000], ["_ymax", 22000]],
-        ["Te"],
-        [["averageionisation", ["Fe"]]],
-        [["populations", ["Fe I", "Fe II", "Fe III", "Fe IV", "Fe V"]]],
-        [["populations", ["Co II", "Co III", "Co IV"]]],
-        ["heating_dep", "heating_coll", "heating_bf", "heating_ff", ["_yscale", "linear"]],
-        ["cooling_adiabatic", "cooling_coll", "cooling_fb", "cooling_ff", ["_yscale", "linear"]],
-    ]
+    plotlist = PLOTLIST_IONS
 
     at.estimators.plot(
         argsraw=[],
@@ -261,17 +253,7 @@ def test_estimator_snapshot_classic_3d(mockplot: t.Any) -> None:
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_estimator_snapshot_classic_3d_x_axis(mockplot: t.Any) -> None:
-    plotlist = [
-        [["initabundances", ["Fe", "Ni_stable", "Ni_56"]]],
-        ["nne"],
-        ["TR", ["_yscale", "linear"], ["_ymin", 1000], ["_ymax", 22000]],
-        ["Te"],
-        [["averageionisation", ["Fe"]]],
-        [["populations", ["Fe I", "Fe II", "Fe III", "Fe IV", "Fe V"]]],
-        [["populations", ["Co II", "Co III", "Co IV"]]],
-        ["heating_dep", "heating_coll", "heating_bf", "heating_ff", ["_yscale", "linear"]],
-        ["cooling_adiabatic", "cooling_coll", "cooling_fb", "cooling_ff", ["_yscale", "linear"]],
-    ]
+    plotlist = PLOTLIST_IONS
 
     at.estimators.plot(
         argsraw=[],

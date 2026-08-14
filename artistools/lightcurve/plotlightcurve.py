@@ -26,6 +26,7 @@ from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import Lsun_to_erg_per_s
 from artistools.constants import Msun_to_g
+from artistools.lightcurve.lightcurve import FILTERNAME_ALIASES
 from artistools.misc import add_axis_limit_args
 from artistools.misc import add_figscale_args
 from artistools.misc import add_filter_args
@@ -813,11 +814,7 @@ def set_lightcurveplot_legend(ax: mplax.Axes | npt.NDArray[t.Any], args: argpars
 
 
 def set_lightcurve_plot_labels(
-    fig: mplfig.Figure,
-    ax: mplax.Axes | npt.NDArray[t.Any],
-    filternames_conversion_dict: dict[str, str],
-    args: argparse.Namespace,
-    band_name: str | None = None,
+    fig: mplfig.Figure, ax: mplax.Axes | npt.NDArray[t.Any], args: argparse.Namespace, band_name: str | None = None
 ) -> tuple[mplfig.Figure, mplax.Axes | npt.NDArray[t.Any]]:
     """Set the axis labels and limits for a band magnitude or colour evolution plot."""
     if args.filter:
@@ -825,7 +822,7 @@ def set_lightcurve_plot_labels(
         if args.subplots:
             ylabel = "Absolute Magnitude"
         else:
-            bandlabel = filternames_conversion_dict.get(band_name, band_name) if band_name is not None else band_name
+            bandlabel = FILTERNAME_ALIASES.get(band_name, band_name) if band_name is not None else band_name
             ylabel = f"{bandlabel} Magnitude"
     elif args.colour_evolution:
         ylabel = r"$\Delta$m"
@@ -922,10 +919,7 @@ def make_colorbar_viewingangles(
 
 
 def make_band_lightcurves_plot(
-    modelpaths: Sequence[str | Path],
-    filternames_conversion_dict: dict[str, str],
-    outputfolder: Path | str,
-    args: argparse.Namespace,
+    modelpaths: Sequence[str | Path], outputfolder: Path | str, args: argparse.Namespace
 ) -> None:
     """Plot band magnitude light curves for every model and save the figure."""
     if args.labelfontsize is None:
@@ -989,7 +983,7 @@ def make_band_lightcurves_plot(
                     assert isinstance(ax, mplax.Axes)
                     ax.plot(hesma_model["t"], hesma_model[band_name], color="black")
 
-                text_key = filternames_conversion_dict.get(band_name, band_name)
+                text_key = FILTERNAME_ALIASES.get(band_name, band_name)
 
                 if args.subplots:
                     assert isinstance(text_key, str)
@@ -1016,7 +1010,6 @@ def make_band_lightcurves_plot(
                                 reflightcurve,
                                 define_colours_list[i],
                                 markers[i],
-                                filternames_conversion_dict,
                                 ax,
                                 plotnumber,
                             )
@@ -1042,7 +1035,7 @@ def make_band_lightcurves_plot(
     at.set_mpl_style()
 
     ax = at.plottools.set_axis_properties(ax, args)
-    fig, ax = set_lightcurve_plot_labels(fig, ax, filternames_conversion_dict, args, band_name=first_band_name)
+    fig, ax = set_lightcurve_plot_labels(fig, ax, args, band_name=first_band_name)
     set_lightcurveplot_legend(ax, args)
 
     if args.colorbarcostheta or args.colorbarphi:
@@ -1062,12 +1055,7 @@ def make_band_lightcurves_plot(
     save_figure(fig, args.outputfile, format="pdf")
 
 
-def colour_evolution_plot(
-    modelpaths: Sequence[str | Path],
-    filternames_conversion_dict: dict[str, str],
-    outputfolder: str | Path,
-    args: argparse.Namespace,
-) -> None:
+def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | Path, args: argparse.Namespace) -> None:
     """Plot the evolution of the colour between each pair of bands for every model, and save the figure."""
     if args.labelfontsize is None:
         args.labelfontsize = 24
@@ -1125,7 +1113,6 @@ def colour_evolution_plot(
                                 reflightcurve,
                                 args.refspeccolors[i],
                                 args.refspecmarkers[i],
-                                filternames_conversion_dict,
                                 ax,
                                 plotnumber,
                                 args,
@@ -1153,12 +1140,12 @@ def colour_evolution_plot(
             # print(f'{filter_names[0]} - {filter_names[1]} at t_Bmax ({tmax_B}) = '
             #       f'{diff[plot_times.index(tmax_B)]}')
 
-    fig, ax = set_lightcurve_plot_labels(fig, ax, filternames_conversion_dict, args)
+    fig, ax = set_lightcurve_plot_labels(fig, ax, args)
     ax = at.plottools.set_axis_properties(ax, args)
     set_lightcurveplot_legend(ax, args)
 
     args.outputfile = Path(outputfolder, f"plotcolorevolution{filter_names[0]}-{filter_names[1]}.pdf")
-    filter_names = [filternames_conversion_dict.get(name, name) for name in filter_names]
+    filter_names = [FILTERNAME_ALIASES.get(name, name) for name in filter_names]
     # plt.text(10, args.ymax - 0.5, f'{filter_names[0]}-{filter_names[1]}', fontsize='x-large')
 
     if args.show:
@@ -1186,7 +1173,6 @@ def plot_lightcurve_from_refdata(
     lightcurvefilename: Path | str,
     color: t.Any,
     marker: t.Any,
-    filternames_conversion_dict: dict[str, str],
     ax: npt.NDArray[t.Any] | mplax.Axes,
     plotnumber: int,
 ) -> str | None:
@@ -1211,7 +1197,7 @@ def plot_lightcurve_from_refdata(
 
         if filter_name_raw == "bol":
             continue
-        filter_name = filternames_conversion_dict.get(filter_name_raw, filter_name_raw)
+        filter_name = FILTERNAME_ALIASES.get(filter_name_raw, filter_name_raw)
         filter_data[filter_name] = lightcurve_data.filter(pl.col("band") == filter_name)
         # plt.plot(limits_x, limits_y, 'v', label=None, color=color)
         # else:
@@ -1245,24 +1231,6 @@ def plot_lightcurve_from_refdata(
             color=color,
             linewidth=4 if len(filter_names) == 1 else None,
         )
-
-        # if linename == 'SN 2018byg':
-        #     x_values = []
-        #     y_values = []
-        #     limits_x = []
-        #     limits_y = []
-        #     for index, row in filter_data[filter_name].iterrows():
-        #         if row['date'] == 58252:
-        #             plt.plot(row['time'], row['magnitude'], '*', label=linename, color=color)
-        #         elif row['e_magnitude'] != -1:
-        #             x_values.append(row['time'])
-        #             y_values.append(row['magnitude'])
-        #         else:
-        #             limits_x.append(row['time'])
-        #             limits_y.append(row['magnitude'])
-        #     print(x_values, y_values)
-        #     plt.plot(x_values, y_values, 'o', label=linename, color=color)
-        #     plt.plot(limits_x, limits_y, 's', label=linename, color=color)
     return linename
 
 
@@ -1271,7 +1239,6 @@ def plot_color_evolution_from_data(
     lightcurvefilename: Path | str,
     color: t.Any,
     marker: t.Any,
-    filternames_conversion_dict: dict[str, str],
     ax: npt.NDArray[t.Any] | mplax.Axes,
     plotnumber: int,
     args: argparse.Namespace,
@@ -1289,7 +1256,7 @@ def plot_color_evolution_from_data(
             lines = f.readlines()
         lambda0 = float(lines[2])
 
-        filter_name = filternames_conversion_dict.get(filter_name_raw, filter_name_raw)
+        filter_name = FILTERNAME_ALIASES.get(filter_name_raw, filter_name_raw)
         filter_data.append(lightcurve_from_data.filter(pl.col("band") == filter_name))
 
         if "a_v" in metadata or "e_bminusv" in metadata:
@@ -1622,8 +1589,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args.outputfile = at.resolve_outputfile(args.outputfile, defaultoutputfile)
     outputfolder = args.outputfile.parent
 
-    filternames_conversion_dict = {"rs": "r", "gs": "g", "is": "i", "zs": "z"}
-
     # determine if this will be a scatter plot or not
     if (  # args.calculate_peakmag_risetime_delta_m15 or
         args.save_viewing_angle_peakmag_risetime_delta_m15_to_file
@@ -1631,7 +1596,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         or args.make_viewing_angle_peakmag_risetime_scatter_plot
         or args.make_viewing_angle_peakmag_delta_m15_scatter_plot
     ):
-        at.lightcurve.peakmag_risetime_declinerate_init(modelpaths, filternames_conversion_dict, args)
+        at.lightcurve.peakmag_risetime_declinerate_init(modelpaths, args)
         return
 
     if args.colouratpeak:  # make scatter plot of colour at peak, eg. B-V at Bmax
@@ -1650,10 +1615,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         return
 
     if args.filter:
-        make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfolder, args)
+        make_band_lightcurves_plot(modelpaths, outputfolder, args)
 
     elif args.colour_evolution:
-        colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder, args)
+        colour_evolution_plot(modelpaths, outputfolder, args)
         at.print_saved(args.outputfile)
     else:
         make_lightcurve_plot(

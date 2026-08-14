@@ -212,24 +212,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.timedays = at.get_timestep_time(modelpath, args.timestep)
         print(f"timestep {args.timestep} cell {args.modelgridindex} (v={velocity} km/s at {args.timedays:.1f}d)")
 
-    # ionpopdict = {}
-    # deposition_density_ev = 327
-    # nne = 6.7e5
-    #
-    # ionpopdict[(26, 1)] = ionpopdict[26] * 1e-4
-    # ionpopdict[(26, 2)] = ionpopdict[26] * 0.20
-    # ionpopdict[(26, 3)] = ionpopdict[26] * 0.80
-    # ionpopdict[(26, 4)] = ionpopdict[26] * 0.
-    # ionpopdict[(26, 5)] = ionpopdict[26] * 0.
-    # ionpopdict[(27, 2)] = ionpopdict[27] * 0.20
-    # ionpopdict[(27, 3)] = ionpopdict[27] * 0.80
-    # ionpopdict[(27, 4)] = 0.
-    # # ionpopdict[(28, 1)] = ionpopdict[28] * 6e-3
-    # ionpopdict[(28, 2)] = ionpopdict[28] * 0.18
-    # ionpopdict[(28, 3)] = ionpopdict[28] * 0.82
-    # ionpopdict[(28, 4)] = ionpopdict[28] * 0.
-    # ionpopdict[(28, 5)] = ionpopdict[28] * 0.
-
     # x_e = 1.e-2
     # deposition_density_ev = 5.e3
     # nntot = 1.

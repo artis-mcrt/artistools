@@ -8,6 +8,7 @@ from collections.abc import Iterable
 from collections.abc import Mapping
 from collections.abc import Sequence
 from pathlib import Path
+from types import MappingProxyType
 
 import numpy as np
 import numpy.typing as npt
@@ -18,6 +19,9 @@ import artistools as at
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import Lsun_to_erg_per_s
+
+# ARTIS writes the Sloan filters with a trailing "s"; map them back to the conventional single-letter names
+FILTERNAME_ALIASES: t.Final[Mapping[str, str]] = MappingProxyType({"rs": "r", "gs": "g", "is": "i", "zs": "z"})
 
 
 def readfile(filepath: str | Path) -> dict[int, pl.LazyFrame]:

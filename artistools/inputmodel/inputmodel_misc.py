@@ -87,15 +87,12 @@ def read_modelfile_text(
             if "dimensions" not in modelmeta:  # not already detected as 2D
                 modelmeta["dimensions"] = 3
                 # number of grid cell steps along an axis (currently the same for xyz)
-                ncoordgridx = round(npts_model ** (1.0 / 3.0))
-                ncoordgridy = round(npts_model ** (1.0 / 3.0))
-                ncoordgridz = round(npts_model ** (1.0 / 3.0))
+                ncoordgridx = ncoordgridy = ncoordgridz = round(npts_model ** (1.0 / 3.0))
                 assert (ncoordgridx * ncoordgridy * ncoordgridz) == npts_model
                 modelmeta["ncoordgridx"] = ncoordgridx
                 modelmeta["ncoordgridy"] = ncoordgridy
                 modelmeta["ncoordgridz"] = ncoordgridz
-                if ncoordgridx == ncoordgridy == ncoordgridz:
-                    modelmeta["ncoordgrid"] = ncoordgridx
+                modelmeta["ncoordgrid"] = ncoordgridx
 
                 if not printwarningsonly:
                     print(f"  detected 3D model file with {ncoordgridx}x{ncoordgridy}x{ncoordgridz}={npts_model} cells")

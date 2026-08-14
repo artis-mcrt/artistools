@@ -57,6 +57,15 @@ elementcolors: t.Final[Mapping[str, tuple[float, float, float, float]]] = Mappin
 
 VARIABLE_ALIASES = {"T_e": "Te", "n_e": "nne", "T_R": "TR", "T_J": "TJ"}
 
+POPTYPE_YLABELS = {
+    "absolute": r"Number density $\left[\rm{cm}^{-3}\right]$",
+    "elpop": r"X$_{i}$/X$_{\rm element}$",
+    "totalpop": r"X$_{i}$/X$_{\rm tot}$",
+    "radialdensity": r"Radial density dN/dr $\left[\rm{cm}^{-1}\right]$",
+    "cylradialdensity": r"Cylindrical radial density dN/drcyl $\left[\rm{cm}^{-1}\right]$",
+    "cumulative": r"Cumulative particle count",
+}
+
 
 def get_elemcolor(atomic_number: int | None = None, elsymbol: str | None = None) -> t.Any:
     """Return the plot colour of an element, keyed on the element itself so that it never varies between plots.
@@ -703,21 +712,11 @@ def plot_multi_ion_series(
         plotted_something = True
 
     if seriestype == "populations":
-        if args.poptype == "absolute":
-            ax.set_ylabel(r"Number density $\left[\rm{cm}^{-3}\right]$")
-        elif args.poptype == "elpop":
-            # elsym = at.get_elsymbol(atomic_number)
-            ax.set_ylabel(r"X$_{i}$/X$_{\rm element}$")
-        elif args.poptype == "totalpop":
-            ax.set_ylabel(r"X$_{i}$/X$_{\rm tot}$")
-        elif args.poptype == "radialdensity":
-            ax.set_ylabel(r"Radial density dN/dr $\left[\rm{cm}^{-1}\right]$")
-        elif args.poptype == "cylradialdensity":
-            ax.set_ylabel(r"Cylindrical radial density dN/drcyl $\left[\rm{cm}^{-1}\right]$")
-        elif args.poptype == "cumulative":
-            ax.set_ylabel(r"Cumulative particle count")
-        else:
-            raise AssertionError
+        ylabel = POPTYPE_YLABELS.get(args.poptype)
+        if ylabel is None:
+            msg = f"Unknown poptype: {args.poptype}"
+            raise ValueError(msg)
+        ax.set_ylabel(ylabel)
     else:
         ax.set_ylabel(at.estimators.get_varname_formatted(seriestype))
 

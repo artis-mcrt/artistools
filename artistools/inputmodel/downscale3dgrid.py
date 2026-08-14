@@ -22,14 +22,11 @@ def make_downscaled_3d_grid(
     dfmodel = pldfmodel.collect()
     dfelemabund = at.inputmodel.get_initelemabundances(modelpath=modelpath).collect()
 
-    inputgridsize = modelmeta["ncoordgridx"]
-    grid = int(inputgridsize)
-
-    assert inputgridsize % outputgridsize == 0
+    grid = int(modelmeta["ncoordgridx"])
     smallgrid = outputgridsize
 
-    merge = grid / smallgrid
-    merge = int(merge)
+    assert grid % smallgrid == 0
+    merge = grid // smallgrid
 
     outputfolder = Path(modelpath, f"downscale_{outputgridsize}^3") if outputfolder is None else Path(outputfolder)
     outputfolder.mkdir(exist_ok=True)

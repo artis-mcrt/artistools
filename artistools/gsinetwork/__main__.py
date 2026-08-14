@@ -1,12 +1,6 @@
 """Entry point for `python -m artistools.gsinetwork`."""
 
-from artistools.gsinetwork import plotqdotabund
-
-
-def main() -> None:
-    """Plot ARTIS heating rates and abundances against the nuclear network trajectories."""
-    plotqdotabund.main()
-
+from artistools.gsinetwork.plotqdotabund import main
 
 if __name__ == "__main__":
     main()

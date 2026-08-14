@@ -15,6 +15,7 @@ import polars as pl
 from matplotlib.legend_handler import HandlerTuple
 
 import artistools as at
+from artistools.lightcurve.lightcurve import FILTERNAME_ALIASES
 from artistools.plottools import save_figure
 
 _base_colours = [
@@ -188,7 +189,6 @@ def calculate_peak_time_mag_deltam15(
     angle: int,
     key: str,
     args: argparse.Namespace,
-    filternames_conversion_dict: dict[str, str],
 ) -> None:
     """Calculate band peak time, peak magnitude and delta m15."""
     if args.timemin is None or args.timemax is None:
@@ -251,7 +251,6 @@ def calculate_peak_time_mag_deltam15(
             magnitude,
             xfit,
             fxfit,
-            filternames_conversion_dict,
             key,
             mag_after15days_polyfit,
             tmax_polyfit,
@@ -332,7 +331,6 @@ def make_plot_test_viewing_angle_fit(
     magnitude: npt.NDArray[np.floating],
     xfit: Sequence[float],
     fxfit: Sequence[float],
-    filternames_conversion_dict: dict[str, str],
     key: str,
     mag_after15days_polyfit: float,
     tmax_polyfit: float,
@@ -346,8 +344,8 @@ def make_plot_test_viewing_angle_fit(
     axis.plot(time, magnitude)
     axis.plot(xfit, fxfit)
 
-    if key in filternames_conversion_dict:
-        axis.set_ylabel(f"{filternames_conversion_dict[key]} Magnitude")
+    if key in FILTERNAME_ALIASES:
+        axis.set_ylabel(f"{FILTERNAME_ALIASES[key]} Magnitude")
     else:
         axis.set_ylabel(f"{key} Magnitude")
 
@@ -605,9 +603,7 @@ def second_band_brightness_at_peak_first_band(
 
 
 def peakmag_risetime_declinerate_init(
-    modelpaths: list[str | Path] | list[Path] | list[str],
-    filternames_conversion_dict: dict[str, str],
-    args: argparse.Namespace,
+    modelpaths: list[str | Path] | list[Path] | list[str], args: argparse.Namespace
 ) -> None:
     """Fit every model's band light curves and store the peak magnitudes, rise times, and decline rates on args."""
     args.plotvalues = []  # a0 and p0 values for viewing angle scatter plots
@@ -671,15 +667,7 @@ def peakmag_risetime_declinerate_init(
                     ]
 
                 # Calculating band peak time, peak magnitude and delta m15
-                calculate_peak_time_mag_deltam15(
-                    time,
-                    brightness,
-                    modelname,
-                    dirbin,
-                    band_name,
-                    args,
-                    filternames_conversion_dict=filternames_conversion_dict,
-                )
+                calculate_peak_time_mag_deltam15(time, brightness, modelname, dirbin, band_name, args)
 
         # Saving viewing angle data so it can be read in and plotted later on without re-running the script
         #    as it is quite time consuming
