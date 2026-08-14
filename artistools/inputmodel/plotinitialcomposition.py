@@ -383,9 +383,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.axis = args.axis[1]
     args.sliceaxis = args.axis
 
-    if not args.modelpath:
-        args.modelpath = Path()
-
     if args.plot3d:
         make_3d_plot(Path(args.modelpath), args)
         return

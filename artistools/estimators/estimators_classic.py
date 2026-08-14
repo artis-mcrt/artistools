@@ -7,26 +7,6 @@ from pathlib import Path
 import artistools as at
 
 
-def get_atomic_composition(modelpath: Path) -> dict[int, int]:
-    """Read ion list from output file."""
-    atomic_composition = {}
-
-    with (modelpath / "output_0-0.txt").open(encoding="utf-8") as foutput:
-        ioncount = 0
-        Z = None
-        for row in foutput:
-            if row.split()[0] == "[input.c]":
-                split_row = row.split()
-                if split_row[1] == "element":
-                    Z = int(split_row[4])
-                    ioncount = 0
-                elif split_row[1] == "ion":
-                    ioncount += 1
-                    assert Z is not None, "Z should be set before ioncount"
-                    atomic_composition[Z] = ioncount
-    return atomic_composition
-
-
 def parse_ion_row_classic(row: list[str], outdict: dict[str, t.Any], atomic_composition: dict[int, int]) -> None:
     """Parse the per-ion populations of one estimator row into outdict."""
     elements = atomic_composition.keys()
@@ -54,8 +34,9 @@ def get_first_ts_in_run_directory(modelpath: str | Path) -> dict[str, int]:
     first_timesteps_in_dir = {}
 
     for folder in folderlist_all:
-        if (folder / "output_0-0.txt").is_file():
-            with (folder / "output_0-0.txt").open(encoding="utf-8") as output_0:
+        outputfile = at.firstexisting_or_none("output_0-0.txt", folder=folder, tryzipped=True)
+        if outputfile is not None:
+            with at.zopen(outputfile, encoding="utf-8") as output_0:
                 timesteps_in_dir = [
                     line.strip(".\n").split(" ")[-1]
                     for line in output_0
@@ -79,7 +60,8 @@ def read_classic_estimators(modelpath: Path) -> dict[tuple[int, int], t.Any] | N
     print(f"Reading {len(estimfiles)} estimator files...")
 
     first_timesteps_in_dir = get_first_ts_in_run_directory(modelpath)
-    atomic_composition = get_atomic_composition(modelpath)
+    dfcomposition = at.get_composition_data_from_outputfile(modelpath)
+    atomic_composition = dict(zip(dfcomposition["Z"], dfcomposition["nions"], strict=True))
 
     inputparams = at.get_inputparams(modelpath)
     ndimensions = inputparams["n_dimensions"]

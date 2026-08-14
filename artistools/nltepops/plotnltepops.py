@@ -406,7 +406,7 @@ def make_ionsubplot(
         )
 
 
-def make_plot_populations_with_time_or_velocity(modelpaths: list[Path | str], args: argparse.Namespace) -> None:
+def make_plot_populations_with_time_or_velocity(modelpaths: Sequence[Path | str], args: argparse.Namespace) -> None:
     """Plot how selected level populations vary with time or velocity, and save the figure."""
     font = {"size": 18}
     mpl.rc("font", **font)
@@ -489,7 +489,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths: list[Path | str], ar
 
 def plot_populations_with_time_or_velocity(
     ax: mplax.Axes,
-    modelpaths: list[Path | str],
+    modelpaths: Sequence[Path | str],
     timedays: float,
     ion_stage: int,
     ionlevels: list[int],
@@ -796,7 +796,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     at.set_mpl_style()
     modelpath = args.modelpath
     if args.x in {"time", "velocity"}:
-        args.modelpath = [args.modelpath]
+        args.modelpath = at.normalize_path_list(args.modelpath)
 
         # if not args.timedays:
         #     print("Please specify time range with -timedays")

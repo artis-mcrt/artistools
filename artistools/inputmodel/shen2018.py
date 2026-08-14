@@ -15,7 +15,7 @@ from artistools.constants import Msun_to_g
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     parser.add_argument("-inputpath", "-i", default="1.00_5050.dat", help="Path of input file")
-    parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")
+    at.add_outputpath_arg(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

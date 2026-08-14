@@ -35,6 +35,7 @@ from artistools.misc import add_outputfile_arg
 from artistools.misc import add_series_style_args
 from artistools.misc import print_theta_phi_definitions
 from artistools.plottools import save_figure
+from artistools.plottools import set_axis_labels
 
 
 def plot_deposition_thermalisation(
@@ -819,32 +820,20 @@ def set_lightcurve_plot_labels(
     band_name: str | None = None,
 ) -> tuple[mplfig.Figure, mplax.Axes | npt.NDArray[t.Any]]:
     """Set the axis labels and limits for a band magnitude or colour evolution plot."""
-    ylabel = None
-    if args.subplots:
-        if args.filter:
+    if args.filter:
+        # the subplots layout shares one figure-level label, so it cannot name a particular band
+        if args.subplots:
             ylabel = "Absolute Magnitude"
-        elif args.colour_evolution:
-            ylabel = r"$\Delta$m"
         else:
-            msg = "No filter or colour evolution specified"
-            raise AssertionError(msg)
-        fig.text(0.5, 0.025, "Time Since Explosion [days]", ha="center", va="center")
-        fig.text(0.02, 0.5, ylabel, ha="center", va="center", rotation="vertical")
+            bandlabel = filternames_conversion_dict.get(band_name, band_name) if band_name is not None else band_name
+            ylabel = f"{bandlabel} Magnitude"
+    elif args.colour_evolution:
+        ylabel = r"$\Delta$m"
     else:
-        assert isinstance(ax, mplax.Axes)
-        if args.filter and band_name in filternames_conversion_dict:
-            assert band_name is not None
-            ylabel = f"{filternames_conversion_dict[band_name]} Magnitude"
-        elif args.filter:
-            ylabel = f"{band_name} Magnitude"
-        elif args.colour_evolution:
-            ylabel = r"$\Delta$m"
-        else:
-            msg = "No filter or colour evolution specified"
-            raise AssertionError(msg)
+        msg = "No filter or colour evolution specified"
+        raise AssertionError(msg)
 
-        ax.set_ylabel(ylabel, fontsize=args.labelfontsize)  # r'M$_{\mathrm{bol}}$'
-        ax.set_xlabel("Time Since Explosion [days]", fontsize=args.labelfontsize)
+    set_axis_labels(fig, ax, "Time Since Explosion [days]", ylabel, args.labelfontsize, args)
 
     return fig, ax
 

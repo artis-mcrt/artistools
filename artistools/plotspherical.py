@@ -304,9 +304,6 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
     """Plot direction maps based on escaped packets."""
     args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
-    if not args.modelpath:
-        args.modelpath = Path()
-
     if args.elem is not None:
         assert args.atomic_number is None
         args.atomic_number = at.get_atomic_number(args.elem)

@@ -337,18 +337,8 @@ def read_estimators(
 
     When collecting many cells and timesteps, this is very slow, and it's almost always better to use scan_estimators instead.
     """
-    lzpldfestimators = scan_estimators(modelpath, modelgridindex, timestep)
-
-    if isinstance(modelgridindex, int):
-        lzpldfestimators = lzpldfestimators.filter(pl.col("modelgridindex") == modelgridindex)
-    elif isinstance(modelgridindex, Sequence):
-        lzpldfestimators = lzpldfestimators.filter(pl.col("modelgridindex").is_in(modelgridindex))
-    if isinstance(timestep, int):
-        lzpldfestimators = lzpldfestimators.filter(pl.col("timestep") == timestep)
-    elif isinstance(timestep, Sequence):
-        lzpldfestimators = lzpldfestimators.filter(pl.col("timestep").is_in(timestep))
-
-    pldfestimators = lzpldfestimators.collect()
+    # scan_estimators already applies the modelgridindex and timestep filters
+    pldfestimators = scan_estimators(modelpath, modelgridindex, timestep).collect()
 
     estimators: dict[tuple[int, int], dict[str, t.Any]] = {}
     for estimtsmgi in pldfestimators.iter_rows(named=True):

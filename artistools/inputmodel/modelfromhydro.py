@@ -396,7 +396,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         default=1.0,
         help="Multiply ejecta velocities by some factor (adjusting density to conserve mass) before writing the model file",
     )
-    parser.add_argument("-outputpath", "-o", default=None, help="Path for output model files")
+    at.add_outputpath_arg(parser, default=None, helptext="Path for output model files")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

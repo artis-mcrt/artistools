@@ -71,13 +71,13 @@ def make_plot(args: argparse.Namespace) -> None:
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    parser.add_argument("-outputpath", "-o", type=Path, default=Path(), help="Path for output files")
-    parser.add_argument(
-        "modelpath",
+    at.add_outputpath_arg(parser, default=Path(), astype=Path)
+    at.add_modelpath_arg(
+        parser,
+        positional=True,
+        multiplepaths=True,
         default=[Path()],
-        nargs="*",
-        type=Path,
-        help="Path(s) to ARTIS folders for which abundances / mass fractions shall be plotted",
+        helptext="Path(s) to ARTIS folders for which abundances / mass fractions shall be plotted",
     )
 
     parser.add_argument(

@@ -12,7 +12,7 @@ import artistools as at
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    parser.add_argument("-outputpath", "-o", default="massfracs.txt", help="Path to output file of mass fractions")
+    at.add_outputpath_arg(parser, default="massfracs.txt", helptext="Path to output file of mass fractions")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

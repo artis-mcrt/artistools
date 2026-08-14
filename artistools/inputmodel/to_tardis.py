@@ -28,7 +28,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("-maxatomicnumber", default=92, help="Maximum atomic number for elemental abundances")
 
-    parser.add_argument("-outputpath", "-o", default=".", help="Path of output TARDIS model file")
+    at.add_outputpath_arg(parser, helptext="Path of output TARDIS model file")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

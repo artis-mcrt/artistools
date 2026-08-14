@@ -415,7 +415,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "Default modifies h. Set to False for no modifications to h.",
     )
 
-    parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")
+    at.add_outputpath_arg(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

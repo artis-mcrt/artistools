@@ -289,7 +289,7 @@ def parse_recombratefile(frecomb: io.TextIOBase) -> Generator[tuple[int, int, pl
 def get_ionrecombratecalibration(modelpath: str | Path) -> dict[tuple[int, int], pl.DataFrame]:
     """Read recombrates.txt file."""
     recombdata = {}
-    with Path(modelpath, "recombrates.txt").open("r", encoding="utf-8") as frecomb:
+    with zopen(Path(modelpath, "recombrates.txt"), encoding="utf-8") as frecomb:
         for Z, upper_ion_stage, dfrrc in parse_recombratefile(frecomb):
             recombdata[Z, upper_ion_stage] = dfrrc
 
@@ -327,7 +327,7 @@ def get_composition_data(filename: Path | str) -> pl.DataFrame:
     filename = Path(filename, "compositiondata.txt") if Path(filename).is_dir() else Path(filename)
 
     rows = []
-    with filename.open(encoding="utf-8") as fcompdata:
+    with zopen(filename, encoding="utf-8") as fcompdata:
         nelements = int(fcompdata.readline())
         fcompdata.readline()  # T_preset
         fcompdata.readline()  # homogeneous_abundances
@@ -359,7 +359,7 @@ def get_composition_data_from_outputfile(modelpath: Path | str) -> pl.DataFrame:
     lowermost_ion_stage: list[int | None] = []
     uppermost_ion_stage: list[int | None] = []
 
-    with Path(modelpath, "output_0-0.txt").open(encoding="utf-8") as foutput:
+    with zopen(Path(modelpath, "output_0-0.txt"), encoding="utf-8") as foutput:
         Z: int | None = None
         elementindex = -1
         for row in foutput:
