@@ -2017,3 +2017,19 @@ def test_fromcmfgen_rejects_unknown_species() -> None:
 
     with pytest.raises(ValueError, match="UNOBTAINIUM"):
         cmfgen.get_cmfgen_atomic_numbers(["IRON", "UNOBTAINIUM"])
+
+
+def test_fromcmfgen_isotope_lookup_rejects_bad_tables() -> None:
+    """A snapshot whose isotope table cannot supply a requested nuclide must say so, not pick a wrong column."""
+    from artistools.inputmodel.fromcmfgen import convert_to_artis as cmfgen
+
+    isofrac = np.array([[0.1, 0.2, 0.3]] * 2)
+
+    massfracs = cmfgen.get_isotope_massfracs(["CHRO", "IRON", "NICK"], [48, 52, 56], isofrac, [("IRON", 52)])
+    assert np.allclose(massfracs["X_Fe52"], 0.2)
+
+    with pytest.raises(ValueError, match="no isotope column"):
+        cmfgen.get_isotope_massfracs(["CHRO", "IRON", "NICK"], [48, 52, 56], isofrac, [("COB", 56)])
+
+    with pytest.raises(ValueError, match="Duplicate"):
+        cmfgen.get_isotope_massfracs(["IRON", "IRON", "NICK"], [52, 52, 56], isofrac, [("IRON", 52)])

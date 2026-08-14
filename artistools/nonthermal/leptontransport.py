@@ -119,6 +119,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     n_e_bound = n_e_bound_cgs * 1e6  # [m^-3]
     n_e_free_cgs = args.nnefree
     n_e_free = n_e_free_cgs * 1e6  # [m^-3]
+    # both stopping-power helpers require energy > 0, and without their asserts (python -O) a zero energy
+    # reaches a division by beta = 0 and log(0)
+    if args.energy <= 0.0:
+        msg = f"-energy must be positive, not {args.energy}"
+        raise ValueError(msg)
     # both helpers return the magnitude of a loss rate, so a negative density would contribute as a positive one
     if n_e_bound < 0.0 or n_e_free < 0.0:
         msg = "-nnebound and -nnefree are number densities and cannot be negative"

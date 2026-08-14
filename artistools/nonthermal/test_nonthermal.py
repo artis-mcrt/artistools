@@ -77,3 +77,16 @@ def test_leptontransport_rejects_negative_density(nnebound: float, nnefree: floa
     """A negative density would contribute as a positive one, since the helpers return a loss magnitude."""
     with pytest.raises(ValueError, match="cannot be negative"):
         at.nonthermal.leptontransport.main(argsraw=[], nnebound=nnebound, nnefree=nnefree)
+
+
+def test_leptontransport_rejects_nonpositive_nsteps() -> None:
+    """A step count below one would make the energy step zero or positive, so the integration never ends."""
+    with pytest.raises(ValueError, match="nsteps must be at least 1"):
+        at.nonthermal.leptontransport.main(argsraw=[], nsteps=0)
+
+
+@pytest.mark.parametrize("energy", [0.0, -1.0])
+def test_leptontransport_rejects_nonpositive_energy(energy: float) -> None:
+    """Both stopping-power helpers require a positive energy, and reach a division by zero without it."""
+    with pytest.raises(ValueError, match="energy must be positive"):
+        at.nonthermal.leptontransport.main(argsraw=[], energy=energy)
