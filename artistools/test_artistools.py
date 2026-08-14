@@ -205,15 +205,17 @@ def test_hidden_duplicate_commands() -> None:
 
 
 def test_cli_version(capsys: pytest.CaptureFixture[str]) -> None:
+    from importlib.metadata import version
+
     import artistools.__main__
 
     artistools.__main__.main(argsraw=["version"])
-    assert f"artistools {at.version.version}" in capsys.readouterr().out
+    assert f"artistools {version('artistools')}" in capsys.readouterr().out
 
     with pytest.raises(SystemExit) as excinfo:
         artistools.__main__.main(argsraw=["--version"])
     assert excinfo.value.code == 0
-    assert at.version.version in capsys.readouterr().out
+    assert version("artistools") in capsys.readouterr().out
 
 
 def test_cli_unknown_command() -> None:

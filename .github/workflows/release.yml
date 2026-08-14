@@ -42,7 +42,7 @@ jobs:
               run: |
                   rustup update stable
                   python3 set_version.py
-                  version=$(python3 -c "import runpy; print(runpy.run_path('artistools/version.py')['version'])")
+                  version=$(python3 -c "import pathlib, tomllib; print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")
                   echo "version=${version}" >> "$GITHUB_OUTPUT"
 
             # an existing tag would be reused as-is by gh release create, which ignores --target
@@ -65,10 +65,11 @@ jobs:
               env:
                   VERSION: ${{ steps.setversion.outputs.version }}
               run: |
-                  # version.py holds nothing but the version, so lockfile churn alone cannot produce a
-                  # "Set version to" commit. With the checks above, an unchanged version.py means an
-                  # earlier run pushed the bump but failed before drafting the release
-                  if git diff --quiet -- artistools/version.py; then
+                  # set_version.py is the only thing that edits pyproject.toml here, and the lockfiles
+                  # it also refreshes are separate files, so churn alone cannot produce a "Set version
+                  # to" commit. With the checks above, an unchanged pyproject.toml means an earlier
+                  # run pushed the bump but failed before drafting the release
+                  if git diff --quiet -- pyproject.toml; then
                       echo "Version ${VERSION} is already committed, so only the draft release is missing"
                       exit 0
                   fi

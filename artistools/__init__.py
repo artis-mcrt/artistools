@@ -50,7 +50,6 @@ from artistools import radfield as radfield
 from artistools import rustext as rustext
 from artistools import spectra as spectra
 from artistools import transitions as transitions
-from artistools import version as version
 from artistools import viewing_angles_visualization as viewing_angles_visualization
 from artistools import writecomparisondata as writecomparisondata
 from artistools.atomic import decode_roman_numeral as decode_roman_numeral
