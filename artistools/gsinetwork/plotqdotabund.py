@@ -70,22 +70,30 @@ def get_abundance_correction_factors(
 
         # for spherical models, ARTIS mapping to a cubic grid introduces some errors in the cell volumes
         lzdfmodel = lzdfmodel.with_columns(mass_g_mapped=10 ** pl.col("logrho") * wid_init**3 * pl.col("n_assoc_cells"))
-        for strnuc in arr_strnuc:
+        modelcolumns = lzdfmodel.collect_schema().names()
+        nucisocols = [
+            nucisocol
+            for strnuc in arr_strnuc
             # could be a nuclide like "Sr89" or an element like "Sr"
-            nucisocols = (
-                [f"X_{strnuc}"]
-                if strnuc[-1].isdigit()
-                else [c for c in lzdfmodel.collect_schema().names() if c.startswith(f"X_{strnuc}")]
+            for nucisocol in (
+                [f"X_{strnuc}"] if strnuc[-1].isdigit() else [c for c in modelcolumns if c.startswith(f"X_{strnuc}")]
             )
-            for nucisocol in nucisocols:
-                if nucisocol not in lzdfmodel.collect_schema().names():
-                    continue
-                correction_factors[nucisocol.removeprefix("X_")] = (
-                    lzdfmodel
-                    .select(pl.col(nucisocol).dot(pl.col("mass_g_mapped")) / pl.col(nucisocol).dot(pl.col("mass_g")))
-                    .collect()
-                    .item()
-                )
+            if nucisocol in modelcolumns
+        ]
+
+        # one collect for every nuclide, rather than re-running the whole model scan once per isotope column
+        if nucisocols:
+            factors = (
+                lzdfmodel
+                .select(**{
+                    nucisocol: pl.col(nucisocol).dot(pl.col("mass_g_mapped")) / pl.col(nucisocol).dot(pl.col("mass_g"))
+                    for nucisocol in nucisocols
+                })
+                .collect()
+                .row(0, named=True)
+            )
+            correction_factors |= {col.removeprefix("X_"): value for col, value in factors.items()}
+
     return correction_factors
 
 

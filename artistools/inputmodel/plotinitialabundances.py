@@ -28,12 +28,13 @@ def make_plot(args: argparse.Namespace) -> None:
             df
             .select((cs.matches(r"^X_[A-Z][a-z]?\d+$").dot(pl.col("mass_g"))) / pl.col("mass_g").sum())
             .unpivot(variable_name="nuclide", value_name="massfraction")
+            # split X_Ni56 into its element symbol and mass number, then look Z up by joining the element table
             .with_columns(
-                pl.col("nuclide").map_elements(
-                    at.get_z_a_nucname, return_dtype=pl.Struct({"Z": pl.Int32, "A": pl.Int32})
-                )  # convert X_Ni56 to {28, 56}
+                elsymbol=pl.col("nuclide").str.extract(r"^X_([A-Z][a-z]?)\d+$"),
+                A=pl.col("nuclide").str.extract(r"^X_[A-Z][a-z]?(\d+)$").cast(pl.Int32),
             )
-            .unnest("nuclide")  # convert {28, 56} struct to columns Z and A
+            .join(at.get_elsymbols_df(), on="elsymbol", how="left")
+            .rename({"atomic_number": "Z"})
             .with_columns(abundance=pl.col("massfraction") / pl.col("A"))
         )
         massfracsum = df.select(pl.col("massfraction").sum()).collect().item()

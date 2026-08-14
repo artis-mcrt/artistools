@@ -150,24 +150,18 @@ def plot_data(
             pl.col("yvalue_binned").map_batches(filterfunc, return_dtype=pl.self_dtype())
         )
 
-    if startfromzero:
-        dflinepoints = pl.concat([
-            pl.LazyFrame(
-                {
-                    "xvalue_binned": [0.0],
-                    **{
-                        col: [dflinepoints.select(pl.col(col).head(1)).collect().item()]
-                        for col in dflinepoints.collect_schema().names()
-                        if col != "xvalue_binned"
-                    },
-                },
-                schema=dflinepoints.collect_schema(),
-            ),
-            dflinepoints,
-        ]).lazy()
+    # collect once and index the DataFrame, rather than re-running this aggregation for every column read below
+    dflinepointsdf = dflinepoints.collect()
 
-    xvalues_binned = dflinepoints.select(["xvalue_binned"]).collect().get_column("xvalue_binned")
-    yvalues_binned = dflinepoints.select(["yvalue_binned"]).collect().get_column("yvalue_binned")
+    if startfromzero and dflinepointsdf.height > 0:
+        # repeat the first point at x=0, keeping the column's own dtype so the frames stack
+        firstrow = dflinepointsdf.head(1).with_columns(
+            xvalue_binned=pl.lit(0.0, dtype=dflinepointsdf.schema["xvalue_binned"])
+        )
+        dflinepointsdf = pl.concat([firstrow, dflinepointsdf])
+
+    xvalues_binned = dflinepointsdf.get_column("xvalue_binned")
+    yvalues_binned = dflinepointsdf.get_column("yvalue_binned")
 
     (plotobj,) = ax.plot(xvalues_binned, yvalues_binned, label=label, **plotkwargs)
     color = plotobj.get_color()
@@ -184,18 +178,15 @@ def plot_data(
         }
         plotkwargs_markers.pop("dashes", None)
         plotkwargs_markers.pop("label", None)
-        if dfplotdata.select(pl.len() > 10000).collect().item():
+        dfplotdatadf = dfplotdata.select("xvalue", "yvalue").collect()
+        if dfplotdatadf.height > 10000:
             plotkwargs_markers["rasterized"] = True
         # plot the markers first
-        ax.plot(
-            dfplotdata.select("xvalue").collect().to_series(),
-            dfplotdata.select("yvalue").collect().to_series(),
-            **plotkwargs_markers,
-        )
+        ax.plot(dfplotdatadf.get_column("xvalue"), dfplotdatadf.get_column("yvalue"), **plotkwargs_markers)
 
     else:
-        yvalues_binned_min = dflinepoints.select("yvalue_binned_min").collect().get_column("yvalue_binned_min")
-        yvalues_binned_max = dflinepoints.select("yvalue_binned_max").collect().get_column("yvalue_binned_max")
+        yvalues_binned_min = dflinepointsdf.get_column("yvalue_binned_min")
+        yvalues_binned_max = dflinepointsdf.get_column("yvalue_binned_max")
         plotobj = ax.fill_between(
             xvalues_binned, yvalues_binned_min, yvalues_binned_max, alpha=0.2, color=color, linewidth=0, zorder=-2
         )
@@ -801,19 +792,29 @@ def get_xlist(
         assert xvariable in estimators.collect_schema().names()
         estimators = estimators.with_columns(xvalue=pl.col(xvariable))
 
-    xmin = estimators.select(pl.col("xvalue").min()).collect().item() if args.xmin is None else args.xmin
-    xmax = estimators.select(pl.col("xvalue").max()).collect().item() if args.xmax is None else args.xmax
+    # one collect for every statistic, rather than re-running the whole scan once per column
+    xstats = (
+        estimators
+        .select(
+            xmin=pl.col("xvalue").min(),
+            xmax=pl.col("xvalue").max(),
+            multiple_points_per_xvalue=pl.n_unique("xvalue") * pl.n_unique("timestep") < pl.len(),
+            xdeltamax=pl.col("xvalue").sort().diff().max(),
+        )
+        .collect()
+        .row(0, named=True)
+    )
 
-    if (
-        args.xbins is None
-        and estimators.select(pl.n_unique("xvalue") * pl.n_unique("timestep") < pl.len()).collect().item()
-    ):
+    xmin = xstats["xmin"] if args.xmin is None else args.xmin
+    xmax = xstats["xmax"] if args.xmax is None else args.xmax
+
+    if args.xbins is None and xstats["multiple_points_per_xvalue"]:
         print("There are multiple plot points per x value. Using automatic bins (use -xbins N to change this)")
         args.xbins = -1
         args.colorbyion = True
 
     if args.xbins is not None and args.xbins < 0:
-        xdeltamax = estimators.select(pl.col("xvalue").sort().diff().max()).collect().item()
+        xdeltamax = xstats["xdeltamax"]
         args.xbins = int((xmax - xmin) / xdeltamax)
         print(
             f"Setting xbins to {args.xbins} based on data range [{xmin}, {xmax}] and largest x interval of {xdeltamax}"
@@ -848,15 +849,22 @@ def get_xlist(
         estimators = estimators.filter(pl.col("xvalue") <= args.xmax)
 
     estimators = estimators.sort("xvalue")
-    xvalues = estimators.select("xvalue").unique().collect().get_column("xvalue")
-    assert len(xvalues) > 0, "No data found for x-axis variable"
 
-    return (
-        xvalues.to_list(),
-        estimators.select(pl.col("modelgridindex").unique()).collect()["modelgridindex"].to_list(),
-        estimators.select(pl.col("timestep").unique()).collect()["timestep"].to_list(),
-        estimators,
+    # again one collect rather than three separate scans of the same query
+    uniques = (
+        estimators
+        .select(
+            xvalue=pl.col("xvalue").unique().sort().implode(),
+            modelgridindex=pl.col("modelgridindex").unique().implode(),
+            timestep=pl.col("timestep").unique().implode(),
+        )
+        .collect()
+        .row(0, named=True)
     )
+
+    assert len(uniques["xvalue"]) > 0, "No data found for x-axis variable"
+
+    return (uniques["xvalue"], uniques["modelgridindex"], uniques["timestep"], estimators)
 
 
 def plot_subplot(
@@ -1261,7 +1269,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         )
 
     estimators, modelmeta = at.estimators.join_cell_modeldata(estimators=estimators, modelpath=modelpath, verbose=False)
-    if estimators.select(pl.len()).collect().item() == 0:
+    if estimators.head(1).collect().is_empty():
         print("No data was found for the requested timesteps/cells.")
         estimators = at.estimators.scan_estimators(modelpath=modelpath)
         print("Cells with data: ")

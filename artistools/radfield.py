@@ -301,10 +301,11 @@ def plot_celltimestep(
         print("Could not find spec.out")
         args.nospec = True
 
+    modeldata, modelmeta = at.inputmodel.get_modeldata(modelpath, derived_cols="vel_r_mid")
+
     if not args.nospec:
         plotkwargs: dict[str, t.Any] = {}
         if not normalised:
-            _, modelmeta = at.inputmodel.get_modeldata(modelpath)
             # outer velocity
             v_surface = modelmeta["vmax_cmps"]
             r_surface = time_days * day_to_s * v_surface
@@ -324,7 +325,6 @@ def plot_celltimestep(
         binedges = get_binedges(radfielddata)
         axis.vlines(binedges, ymin=0.0, ymax=ymax, linewidth=0.5, color="red", label="", zorder=-1, alpha=0.4)
 
-    modeldata, _ = at.inputmodel.get_modeldata(modelpath, derived_cols="vel_r_mid")
     velocity_kmps = (
         modeldata.filter(pl.col("modelgridindex") == modelgridindex).select("vel_r_mid").collect().item() / 1e5
     )
