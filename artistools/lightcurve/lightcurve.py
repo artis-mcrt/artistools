@@ -465,6 +465,34 @@ def read_hesma_lightcurve(args: argparse.Namespace) -> pl.DataFrame:
     return read_hesma_lightcurve_file(Path(at.get_path("artistools_dir"), "data/hesma", args.plot_hesma_model))
 
 
+def luminosity_distance(H0: float, Om0: float, z: float) -> float:
+    """Return the luminosity distance in Mpc to redshift z for a flat LambdaCDM cosmology.
+
+    H0 is the Hubble constant in km/s/Mpc and Om0 the present-day matter density parameter. Radiation is
+    neglected, so the dark energy density is 1 - Om0. The comoving distance
+
+        D_C = (c / H0) * int_0^z dz' / sqrt(Om0 (1 + z')^3 + 1 - Om0)
+
+    is rewritten with the substitution u = (1 + z')^(-1/2), which flattens the (1 + z')^(-3/2) tail into
+
+        D_C = (c / H0) * int_u(z)^1 2 du / sqrt(Om0 + (1 - Om0) u^6),
+
+    an entire function of u. Gauss-Legendre quadrature therefore converges to double precision with few
+    nodes for any z, and the luminosity distance is D_L = (1 + z) D_C.
+    """
+    nodes, weights = np.polynomial.legendre.leggauss(32)
+
+    # half the width of the u integration range, i.e. (1 - (1 + z)^(-1/2)) / 2 without cancellation as z -> 0
+    uhalfwidth = -0.5 * math.expm1(-0.5 * math.log1p(z))
+    uvals = uhalfwidth * (nodes + 1.0) + (1.0 + z) ** -0.5
+
+    integral = float(weights @ (2.0 / np.sqrt(Om0 + (1.0 - Om0) * uvals**6))) * uhalfwidth
+
+    dist_hubble_mpc = (C_cm_per_s / 1e5) / H0  # c in km/s over H0 in km/s/Mpc
+
+    return (1.0 + z) * dist_hubble_mpc * integral
+
+
 def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pl.DataFrame, dict[str, t.Any]]:
     """Return an observed band light curve from the bundled reference data, along with its metadata."""
     filepath = Path(at.get_path("artistools_dir"), "data", "lightcurves", lightcurvefilename)
@@ -479,10 +507,7 @@ def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pl.Dat
 
     # m - M = 5log(d) - 5  Get absolute magnitude
     if "dist_mpc" not in metadata and "z" in metadata:
-        from astropy import cosmology
-
-        cosmo = cosmology.FlatLambdaCDM(H0=70, Om0=0.3)  # pyright: ignore[reportCallIssue] # pyrefly: ignore[unexpected-keyword]  # ty:ignore[unknown-argument]
-        metadata["dist_mpc"] = cosmo.luminosity_distance(metadata["z"]).value  # pyright: ignore[reportAttributeAccessIssue]  # ty:ignore[unresolved-attribute]
+        metadata["dist_mpc"] = luminosity_distance(H0=70.0, Om0=0.3, z=metadata["z"])
         print(f"luminosity distance from redshift = {metadata['dist_mpc']} for {metadata['label']}")
 
     magnitude = pl.col("magnitude").cast(pl.Float64)

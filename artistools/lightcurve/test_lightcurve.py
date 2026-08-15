@@ -213,6 +213,38 @@ def test_get_colour_delta_mag_unequal_sampling() -> None:
     assert colours == pytest.approx([0.5, 0.5])
 
 
+@pytest.mark.parametrize(
+    ("z", "dist_mpc"),
+    [
+        (0.0, 0.0),
+        (0.005791, 24.912483443375777),  # SN 1991T
+        (0.0133, 57.54493109140769),  # iPTF13ebh
+        (0.01433, 62.04993050233093),  # SN 1999dq
+        (0.1, 460.2999363904721),
+        (0.5, 2832.9380939001253),
+        (1.0, 6607.6576117749355),
+        (3.0, 25422.741745189862),
+    ],
+)
+def test_luminosity_distance(z: float, dist_mpc: float) -> None:
+    """Reference values are astropy's FlatLambdaCDM(H0=70, Om0=0.3).luminosity_distance(z), which this replaced."""
+    assert at.lightcurve.luminosity_distance(H0=70.0, Om0=0.3, z=z) == pytest.approx(dist_mpc, rel=1e-10, abs=1e-12)
+
+
+def test_luminosity_distance_planck18_parameters() -> None:
+    """The cosmology parameters must be used, not baked in (reference values from astropy)."""
+    for z, dist_mpc in ((0.01433, 64.43316428422708), (0.5, 2927.080479237606), (2.0, 15936.22617736705)):
+        assert at.lightcurve.luminosity_distance(H0=67.4, Om0=0.315, z=z) == pytest.approx(dist_mpc, rel=1e-10)
+
+
+def test_luminosity_distance_matter_only() -> None:
+    """For Om0 = 1 the integral is analytic: D_L = 2 (c / H0) (1 + z) (1 - 1 / sqrt(1 + z))."""
+    hubble_dist_mpc = 299792.458 / 70.0
+    for z in (0.01, 0.5, 2.0, 10.0):
+        expected = 2 * hubble_dist_mpc * (1.0 + z) * (1.0 - 1.0 / np.sqrt(1.0 + z))
+        assert at.lightcurve.luminosity_distance(H0=70.0, Om0=1.0, z=z) == pytest.approx(expected, rel=1e-12)
+
+
 def test_read_hesma_lightcurve_file_header(tmp_path: Path) -> None:
     """Column names must come from splitting the comment header into words, not into characters."""
     hesmafile = tmp_path / "hesma_model.dat"

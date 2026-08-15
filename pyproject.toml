@@ -56,7 +56,6 @@ dependencies = [
 [project.optional-dependencies]
 # adding a package here also needs an entry in `ignore-missing-imports` under [tool.pyrefly]
 extras = [
-    "astropy>=7.2",
     "george>=0.4.4;python_version<'3.15'", # not compatible with 3.15 yet
     "imageio>=2.37.3",
     "plotly>=6.7.0",
@@ -208,7 +207,6 @@ python-interpreter-path = ".venv/bin/python3"
 # The [project.optional-dependencies] packages are absent from a plain `uv sync`, and zstandard is
 # not installed on 3.14+, so those resolve to Any rather than erroring.
 ignore-missing-imports = [
-    "astropy.*",
     "george",
     "george.*",
     "imageio.*",

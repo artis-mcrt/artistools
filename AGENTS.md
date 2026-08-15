@@ -66,7 +66,7 @@ Ruff rules are configured by **name**, not by code (`"any-type"`, not `"ANN401"`
 - One import per line (`force-single-line`); no `from x import a, b`.
 - Use the configured aliases: `artistools as at`, `polars as pl`, `polars.selectors as cs`, `polars.testing as pltest`, `numpy as np`, `numpy.typing as npt`, `matplotlib.pyplot as plt`, `matplotlib.axes as mplax`, `matplotlib.figure as mplfig`, `typing as t`.
 - Inside package modules, import the specific submodule or function (`from artistools.misc import get_nu_grid`) to avoid import cycles. `import artistools as at` is for tests and top-level scripts.
-- Import heavy or optional dependencies (astropy, pyvista, plotly, imageio, pynonthermal, argcomplete) inside the function that needs them. `import-outside-top-level` is disabled deliberately to keep CLI startup fast.
+- Import heavy or optional dependencies (pyvista, plotly, imageio, pynonthermal, argcomplete) inside the function that needs them. `import-outside-top-level` is disabled deliberately to keep CLI startup fast.
 - flake8-type-checking runs in `strict` mode: an import used *only* in annotations belongs in an `if t.TYPE_CHECKING:` block after the normal imports, for the same startup-cost reason. Adding a runtime use of that name means moving the import back out.
 - Pyrefly's `missing-import` is an error, so a renamed or mistyped module fails CI. A genuinely optional dependency that a plain `uv sync` would not install belongs in `ignore-missing-imports` in `[tool.pyrefly]`.
 - `implicit_reexport` is off: a new public function must be re-exported in the parent `__init__.py` using the `from module import name as name` form, matching the surrounding alphabetical order.
