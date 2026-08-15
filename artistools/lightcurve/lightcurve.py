@@ -469,35 +469,51 @@ def luminosity_distance(H0: float, Om0: float, z: float) -> float:
     """Return the luminosity distance in Mpc to redshift z for a flat LambdaCDM cosmology.
 
     H0 is the Hubble constant in km/s/Mpc and Om0 the present-day matter density parameter. Radiation is
-    neglected, so the dark energy density is 1 - Om0. The comoving distance
+    neglected, so the dark energy density is 1 - Om0. The luminosity distance is D_L = (1 + z) D_C for a
+    comoving distance
 
-        D_C = (c / H0) * int_0^z dz' / sqrt(Om0 (1 + z')^3 + 1 - Om0)
+        D_C = (c / H0) * int_0^z dz' / sqrt(Om0 (1 + z')^3 + 1 - Om0),
 
-    is rewritten with the substitution u = (1 + z')^(-1/2), which flattens the (1 + z')^(-3/2) tail into
+    evaluated by 32-node Gauss-Legendre quadrature. A blueshift (-1 < z < 0) integrates that form as it
+    stands, since the integrand only varies between 1 and 1 / sqrt(1 - Om0) over the whole of (-1, 0]. A
+    redshift substitutes u = (1 + z')^(-1/2) first, folding the (1 + z')^(-3/2) tail into
 
         D_C = (c / H0) * int_u(z)^1 2 du / sqrt(Om0 + (1 - Om0) u^6),
 
-    an entire function of u. Gauss-Legendre quadrature therefore converges to double precision with few
-    nodes for any z, and the luminosity distance is D_L = (1 + z) D_C.
+    an entire function of u, so that the quadrature stays accurate to a few ulp out to arbitrarily high z
+    rather than needing hundreds of nodes beyond z ~ 10.
 
-    The quadrature is accurate to a few ulp for any matter density down to Om0 ~ 0.01. Below that the
-    integrand grows a plateau of height 2 / sqrt(Om0) that a fixed node count resolves less and less well,
-    reaching a relative error of ~1e-4 for Om0 ~ 1e-8 at z ~ 1e8, far outside any cosmology of interest.
+    That accuracy holds for any matter density from Om0 ~ 0.01 up to Om0 = 1. Outside that range the
+    integrand develops an endpoint the fixed node count cannot follow, and only in the two limits that have
+    a closed form does this function stay exact. As Om0 -> 0 the u integrand grows a plateau of height
+    2 / sqrt(Om0), giving a relative error of ~1e-4 for Om0 ~ 1e-8 at z ~ 1e8, and as Om0 -> 1 the z
+    integrand diverges at z' -> -1, giving ~1e-5 for Om0 = 1 at z = -0.99. Both are far outside any
+    cosmology of interest.
     """
+    if z <= -1.0:
+        msg = f"1 + z is a ratio of scale factors, so the redshift must be greater than -1, but got z={z}"
+        raise ValueError(msg)
+
     dist_hubble_mpc = (C_cm_per_s / 1e5) / H0  # c in km/s over H0 in km/s/Mpc
 
     # a matter-free universe expands with E(z) = 1, making the comoving distance exactly (c / H0) z. The
-    # transformed integrand is 2 / u^3 there, which diverges as u -> 0, so no quadrature rule would do.
+    # u integrand is 2 / u^3 there, which diverges as u -> 0, so no fixed-node quadrature would do.
     if Om0 == 0.0:
         return (1.0 + z) * dist_hubble_mpc * z
 
     nodes, weights = np.polynomial.legendre.leggauss(32)
 
-    # half the width of the u integration range, i.e. (1 - (1 + z)^(-1/2)) / 2 without cancellation as z -> 0
-    uhalfwidth = -0.5 * math.expm1(-0.5 * math.log1p(z))
-    uvals = uhalfwidth * (nodes + 1.0) + (1.0 + z) ** -0.5
-
-    integral = float(weights @ (2.0 / np.sqrt(Om0 + (1.0 - Om0) * uvals**6))) * uhalfwidth
+    if z < 0.0:
+        # substituting u here would stretch the range to (1, (1 + z)^(-1/2)], which runs away to infinity
+        # as z -> -1 while the integrand collapses into a spike at u = 1 that the nodes then miss
+        zhalfwidth = 0.5 * z
+        zvals = zhalfwidth * (nodes + 1.0)
+        integral = float(weights @ (1.0 / np.sqrt(Om0 * (1.0 + zvals) ** 3 + (1.0 - Om0)))) * zhalfwidth
+    else:
+        # half the width of the u range, i.e. (1 - (1 + z)^(-1/2)) / 2 without cancellation as z -> 0
+        uhalfwidth = -0.5 * math.expm1(-0.5 * math.log1p(z))
+        uvals = uhalfwidth * (nodes + 1.0) + (1.0 + z) ** -0.5
+        integral = float(weights @ (2.0 / np.sqrt(Om0 + (1.0 - Om0) * uvals**6))) * uhalfwidth
 
     return (1.0 + z) * dist_hubble_mpc * integral
 

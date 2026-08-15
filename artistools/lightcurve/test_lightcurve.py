@@ -245,6 +245,31 @@ def test_luminosity_distance_matter_only() -> None:
         assert at.lightcurve.luminosity_distance(H0=70.0, Om0=1.0, z=z) == pytest.approx(expected, rel=1e-12)
 
 
+def test_luminosity_distance_blueshift() -> None:
+    """A blueshift is a valid redshift, and the closed forms hold for negative z as well.
+
+    The u substitution used for redshifts would stretch the integration range towards infinity as z -> -1,
+    so blueshifts integrate over z directly.
+    """
+    hubble_dist_mpc = 299792.458 / 70.0
+    for z in (-1e-6, -0.001, -0.01, -0.1, -0.5, -0.9, -0.999999):
+        # Om0 = 0 has E(z) = 1, and Om0 = 1 integrates to 2 (1 + z) (1 - 1 / sqrt(1 + z))
+        assert at.lightcurve.luminosity_distance(H0=70.0, Om0=0.0, z=z) == pytest.approx(
+            hubble_dist_mpc * z * (1.0 + z), rel=1e-13
+        )
+        assert at.lightcurve.luminosity_distance(H0=70.0, Om0=0.3, z=z) < 0.0
+
+    # the mildly negative redshifts of nearby blueshifted galaxies are the only ones of practical interest
+    assert at.lightcurve.luminosity_distance(H0=70.0, Om0=0.3, z=-0.001) == pytest.approx(-4.279429096775459)
+
+
+def test_luminosity_distance_below_minus_one_rejected() -> None:
+    """1 + z is a ratio of scale factors, so z <= -1 is not a redshift and must not silently give a NaN."""
+    for z in (-1.0, -1.5, -10.0):
+        with pytest.raises(ValueError, match="must be greater than -1"):
+            at.lightcurve.luminosity_distance(H0=70.0, Om0=0.3, z=z)
+
+
 def test_luminosity_distance_matter_free() -> None:
     """A matter-free universe expands with E(z) = 1, so D_L = (c / H0) z (1 + z) at every redshift.
 
