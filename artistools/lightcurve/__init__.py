@@ -9,6 +9,7 @@ from artistools.lightcurve.lightcurve import get_colour_delta_mag as get_colour_
 from artistools.lightcurve.lightcurve import get_filter_data as get_filter_data
 from artistools.lightcurve.lightcurve import get_from_packets as get_from_packets
 from artistools.lightcurve.lightcurve import get_phillips_relation_data as get_phillips_relation_data
+from artistools.lightcurve.lightcurve import luminosity_distance as luminosity_distance
 from artistools.lightcurve.lightcurve import read_bol_reflightcurve_data as read_bol_reflightcurve_data
 from artistools.lightcurve.lightcurve import read_hesma_lightcurve as read_hesma_lightcurve
 from artistools.lightcurve.lightcurve import read_hesma_lightcurve_file as read_hesma_lightcurve_file

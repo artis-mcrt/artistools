@@ -465,6 +465,111 @@ def read_hesma_lightcurve(args: argparse.Namespace) -> pl.DataFrame:
     return read_hesma_lightcurve_file(Path(at.get_path("artistools_dir"), "data/hesma", args.plot_hesma_model))
 
 
+def luminosity_distance(H0: float, Om0: float, z: float) -> float:
+    """Return the luminosity distance in Mpc to redshift z for a flat LambdaCDM cosmology.
+
+    H0 is the Hubble constant in km/s/Mpc and Om0 the present-day matter density parameter. Radiation is
+    neglected, so the dark energy density is 1 - Om0. The luminosity distance is D_L = (1 + z) D_C for a
+    comoving distance
+
+        D_C = (c / H0) * int_0^z dz' / sqrt(Om0 (1 + z')^3 + 1 - Om0).
+
+    This splits the same three ways as astropy's FlatLambdaCDM for a cosmology without radiation. The de
+    Sitter (Om0 = 0) and Einstein-de Sitter (Om0 = 1) cases have the closed forms astropy uses, and every
+    other matter density reduces to the function of Baes, Camps & Van De Putte (2017),
+
+        T(x) = 2 sqrt(x) 2F1(1/6, 1/2; 7/6; -x^3) = 2 * int_0^sqrt(x) dy / sqrt(1 + y^6),
+
+    as D_C = (c / H0) [T(s) - T(s / (1 + z))] / sqrt(s Om0) with s = ((1 - Om0) / Om0)^(1/3). astropy
+    evaluates T through scipy's hyp2f1. This evaluates the difference of the two T values as the single
+    integral it stands for, substituting y = sqrt(s) u to absorb s and give
+
+        D_C = (c / H0) * int_u(z)^1 2 du / sqrt(Om0 + (1 - Om0) u^6),   u = (1 + z')^(-1/2),
+
+    which needs no scipy, and improves on the hypergeometric form in two places: subtracting two T values
+    of nearly equal size loses precision as z -> 0, where integrating over the range between them does not,
+    and s is a cube root of a negative number for Om0 > 1, which this form never has to take.
+
+    No one variable suits the whole range, since 1 / E falls off as (1 + z')^(-3/2) only above the point
+    where the two terms of the radicand balance, and a fixed node count cannot follow that corner once the
+    sides differ by decades. So the range is split there and each side taken in the variable that flattens
+    it: u above, and below it whichever of the two the sign of 1 - Om0 calls for. Dark energy (Om0 < 1)
+    holds 1 / E within sqrt(2) of 1 / sqrt(1 - Om0) below its crossover at Om0 (1 + z')^3 = 1 - Om0, which
+    is astropy's s, so z serves as it stands. A negative density (Om0 > 1) instead cancels the matter term
+    at the turnaround rejected below, leaving an integrable pole that q = sqrt((1 + z')^3 - cturn) unfolds
+    into 2 dq / (3 sqrt(Om0) (q^2 + cturn)^(2/3)), flat while q^2 stays under cturn = (Om0 - 1) / Om0.
+
+    Measured against adaptive quadrature, that holds every matter density from 1e-8 to 1e6 accurate to a
+    few ulp over the whole domain, from the turnaround or z = -1 + 1e-12 out to z = 1e8.
+
+    The de Sitter and Einstein-de Sitter closed forms are exact and cheaper, so they stay, but only the
+    first is now needed: Om0 = 0 has no crossover to divide by.
+    """
+    if z <= -1.0:
+        msg = f"1 + z is a ratio of scale factors, so the redshift must be greater than -1, but got z={z}"
+        raise ValueError(msg)
+
+    # A negative dark energy density (Om0 > 1) halts the expansion where E(z)^2 falls to zero, and nothing
+    # beyond that turnaround has a distance. E(z)^2 rises with z, so this endpoint covers the whole range.
+    # Without the check the radicand goes negative: at the endpoint alone that gives a plausible finite
+    # number from the interior nodes, and further out a NaN, which would reach the magnitudes as one.
+    if Om0 * (1.0 + z) ** 3 + (1.0 - Om0) <= 0.0:
+        zturnaround = ((Om0 - 1.0) / Om0) ** (1.0 / 3.0) - 1.0
+        msg = f"a flat cosmology with Om0={Om0} stops expanding at z={zturnaround}, so z={z} has no distance"
+        raise ValueError(msg)
+
+    dist_hubble_mpc = (C_cm_per_s / 1e5) / H0  # c in km/s over H0 in km/s/Mpc
+
+    # de Sitter: a matter-free universe expands with E(z) = 1, making the comoving distance exactly (c/H0) z
+    if Om0 == 0.0:
+        return (1.0 + z) * dist_hubble_mpc * z
+
+    # Einstein-de Sitter: a matter-only universe integrates to D_C = 2 (c / H0) (1 - (1 + z)^(-1/2)). expm1
+    # keeps the bracket exact as z -> 0, where 1 - 1 / sqrt(1 + z) would lose most of it to cancellation.
+    if Om0 == 1.0:
+        return (1.0 + z) * dist_hubble_mpc * -2.0 * math.expm1(-0.5 * math.log1p(z))
+
+    nodes, weights = np.polynomial.legendre.leggauss(32)
+
+    # where the two terms of the radicand balance: the dark energy crossover, or twice the turnaround
+    cturn = (Om0 - 1.0) / Om0
+    zbalance = ((1.0 - Om0) / Om0) ** (1.0 / 3.0) - 1.0 if Om0 < 1.0 else (2.0 * cturn) ** (1.0 / 3.0) - 1.0
+    zlo, zhi = min(0.0, z), max(0.0, z)
+    zsplit = min(max(zbalance, zlo), zhi)
+
+    integral = 0.0
+
+    if zsplit > zlo:
+        if Om0 < 1.0:
+            # dark energy holds 1 / E to within sqrt(2) below the crossover, so integrate it as it stands
+            halfwidth = 0.5 * (zsplit - zlo)
+            zvals = halfwidth * (nodes + 1.0) + zlo
+            integral += float(weights @ (1.0 / np.sqrt(Om0 * (1.0 + zvals) ** 3 + (1.0 - Om0)))) * halfwidth
+        else:
+            # q unfolds the pole that a negative dark energy density leaves at the turnaround. Its width
+            # comes from the difference of cubes expanded about z' rather than from qhi - qlo, which would
+            # cancel as the range shrinks onto z' = 0. The clamp is only in case this difference rounds
+            # below zero where the check above, on the algebraically equivalent E(z)^2, found it positive.
+            qlo = math.sqrt(max(0.0, (1.0 + zlo) ** 3 - cturn))
+            qhi = math.sqrt(max(0.0, (1.0 + zsplit) ** 3 - cturn))
+            cubediff = (zsplit - zlo) * (3.0 + 3.0 * (zlo + zsplit) + (zlo * zlo + zlo * zsplit + zsplit**2))
+            halfwidth = 0.5 * cubediff / (qhi + qlo)
+            qvals = halfwidth * (nodes + 1.0) + qlo
+            qintegrand = 2.0 / (3.0 * math.sqrt(Om0) * (qvals**2 + cturn) ** (2.0 / 3.0))
+            integral += float(weights @ qintegrand) * halfwidth
+
+    if zhi > zsplit:
+        # above it, u = (1 + z')^(-1/2) flattens the (1 + z')^(-3/2) tail. Taking the width of the u range
+        # from the difference of the roots keeps it exact as the range shrinks onto z' = 0, where
+        # (1 + z')^(-1/2) - 1 would lose it to cancellation.
+        rootlo, roothi = math.sqrt(1.0 + zsplit), math.sqrt(1.0 + zhi)
+        halfwidth = 0.5 * (zhi - zsplit) / (rootlo * roothi * (rootlo + roothi))
+        uvals = halfwidth * (nodes + 1.0) + 1.0 / roothi
+        integral += float(weights @ (2.0 / np.sqrt(Om0 + (1.0 - Om0) * uvals**6))) * halfwidth
+
+    return (1.0 + z) * dist_hubble_mpc * (integral if z >= 0.0 else -integral)
+
+
 def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pl.DataFrame, dict[str, t.Any]]:
     """Return an observed band light curve from the bundled reference data, along with its metadata."""
     filepath = Path(at.get_path("artistools_dir"), "data", "lightcurves", lightcurvefilename)
@@ -479,10 +584,7 @@ def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pl.Dat
 
     # m - M = 5log(d) - 5  Get absolute magnitude
     if "dist_mpc" not in metadata and "z" in metadata:
-        from astropy import cosmology
-
-        cosmo = cosmology.FlatLambdaCDM(H0=70, Om0=0.3)  # pyright: ignore[reportCallIssue] # pyrefly: ignore[unexpected-keyword]  # ty:ignore[unknown-argument]
-        metadata["dist_mpc"] = cosmo.luminosity_distance(metadata["z"]).value  # pyright: ignore[reportAttributeAccessIssue]  # ty:ignore[unresolved-attribute]
+        metadata["dist_mpc"] = luminosity_distance(H0=70.0, Om0=0.3, z=metadata["z"])
         print(f"luminosity distance from redshift = {metadata['dist_mpc']} for {metadata['label']}")
 
     magnitude = pl.col("magnitude").cast(pl.Float64)

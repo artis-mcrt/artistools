@@ -213,6 +213,190 @@ def test_get_colour_delta_mag_unequal_sampling() -> None:
     assert colours == pytest.approx([0.5, 0.5])
 
 
+@pytest.mark.parametrize(
+    ("z", "dist_mpc"),
+    [
+        (0.0, 0.0),
+        (0.005791, 24.912483443375777),  # SN 1991T
+        (0.0133, 57.54493109140769),  # iPTF13ebh
+        (0.01433, 62.04993050233093),  # SN 1999dq
+        (0.1, 460.2999363904721),
+        (0.5, 2832.9380939001253),
+        (1.0, 6607.6576117749355),
+        (3.0, 25422.741745189862),
+    ],
+)
+def test_luminosity_distance(z: float, dist_mpc: float) -> None:
+    """Reference values are astropy's FlatLambdaCDM(H0=70, Om0=0.3).luminosity_distance(z), which this replaced.
+
+    astropy evaluates the same Baes et al. (2017) function through scipy's hyp2f1 where this integrates it,
+    so the two agree to ~4e-14 and the tolerance is set well inside the 1e-10 that any use here needs.
+    """
+    assert at.lightcurve.luminosity_distance(H0=70.0, Om0=0.3, z=z) == pytest.approx(dist_mpc, rel=1e-11, abs=1e-12)
+
+
+def test_luminosity_distance_planck18_parameters() -> None:
+    """The cosmology parameters must be used, not baked in (reference values from astropy)."""
+    for z, dist_mpc in ((0.01433, 64.43316428422708), (0.5, 2927.080479237606), (2.0, 15936.22617736705)):
+        assert at.lightcurve.luminosity_distance(H0=67.4, Om0=0.315, z=z) == pytest.approx(dist_mpc, rel=1e-11)
+
+
+def test_luminosity_distance_negative_dark_energy() -> None:
+    """Om0 > 1 leaves a flat universe with a negative dark energy density, which is still integrable.
+
+    astropy's s = ((1 - Om0) / Om0)^(1/3) is a cube root of a negative number here, which it survives only
+    by carrying a complex s through and discarding the imaginary part. The u form never forms s at all, so
+    these come from adaptive quadrature rather than from astropy, which is itself ~7e-15 off at the first.
+    """
+    assert at.lightcurve.luminosity_distance(H0=70.0, Om0=1.5, z=0.1) == pytest.approx(425.1405279377727, rel=1e-12)
+    assert at.lightcurve.luminosity_distance(H0=70.0, Om0=2.0, z=1.0) == pytest.approx(4066.82076478827, rel=1e-12)
+
+
+def test_luminosity_distance_dense_matter() -> None:
+    """A negative dark energy density leaves an integrable pole in 1 / E at the turnaround.
+
+    The larger Om0 is, the closer that turnaround crowds up to z = 0 and the further its pole reaches, so
+    integrating over u alone ran 1.1% low for Om0 = 1e6 at z = 1 and ~1% over the last 0.01 in z above the
+    turnaround of any Om0 > 1. The first two values agree with adaptive quadrature in ln(1 + z), the third
+    with 32 to 1024 node rules in q, which converge where the adaptive routine warns and stops short.
+    """
+    assert at.lightcurve.luminosity_distance(H0=70.0, Om0=1e6, z=1.0) == pytest.approx(8.56941262664432, rel=1e-11)
+    assert at.lightcurve.luminosity_distance(H0=70.0, Om0=100.0, z=1.0) == pytest.approx(803.7609074618974, rel=1e-11)
+    assert at.lightcurve.luminosity_distance(H0=70.0, Om0=1e6, z=1e-10) == pytest.approx(
+        4.28242824230702e-07, rel=1e-11, abs=0
+    )
+
+    # just above the turnaround of Om0 = 2, where 1 / E is unbounded and u alone was 1.3% out
+    assert at.lightcurve.luminosity_distance(H0=70.0, Om0=2.0, z=-0.2062994740159002) == pytest.approx(
+        -1523.69803, rel=1e-6
+    )
+
+    # the q width has to come from the difference of cubes: taking qhi - qlo directly was 1.8e-7 out here
+    hubble_dist_mpc = 299792.458 / 70.0
+    for z in (1e-10, 1e-8):
+        expected = hubble_dist_mpc * z * (1.0 + z) * (1.0 - 0.75 * 5.0 * z)
+        assert at.lightcurve.luminosity_distance(H0=70.0, Om0=5.0, z=z) == pytest.approx(expected, rel=1e-11, abs=0)
+
+
+def test_luminosity_distance_past_turnaround_rejected() -> None:
+    """A negative dark energy density halts the expansion, and nothing beyond that turnaround has a distance.
+
+    E(z)^2 is negative there, which no domain check on z alone would catch. Below the turnaround the
+    quadrature returns a NaN that would reach the magnitudes as one, and immediately below it something
+    worse: the interior nodes still straddle positive radicands, so it returns a plausible finite number.
+    """
+    for Om0, z in ((2.0, -0.5), (2.0, -0.999), (1.5, -0.4), (1.5, -0.306638726649365)):
+        with pytest.raises(ValueError, match="stops expanding"):
+            at.lightcurve.luminosity_distance(H0=70.0, Om0=Om0, z=z)
+
+    # just above its turnaround of z = -0.2063 the distance exists and must still be returned
+    assert at.lightcurve.luminosity_distance(H0=70.0, Om0=2.0, z=-0.1) == pytest.approx(-462.8923430069639, rel=1e-11)
+
+
+def test_luminosity_distance_matter_only() -> None:
+    """For Om0 = 1 the integral is analytic: D_L = 2 (c / H0) (1 + z) (1 - 1 / sqrt(1 + z)).
+
+    Its z integrand diverges as z' -> -1, so the blueshifts here are the ones quadrature cannot follow.
+    """
+    hubble_dist_mpc = 299792.458 / 70.0
+    for z in (-0.999999, -0.99, -0.9, -0.01, 0.01, 0.5, 2.0, 10.0, 1e8):
+        expected = 2 * hubble_dist_mpc * (1.0 + z) * (1.0 - 1.0 / np.sqrt(1.0 + z))
+        assert at.lightcurve.luminosity_distance(H0=70.0, Om0=1.0, z=z) == pytest.approx(expected, rel=1e-10, abs=0)
+
+
+def test_luminosity_distance_matter_only_tiny_redshift() -> None:
+    """Expanding the Om0 = 1 closed form gives D_L = (c / H0) z (1 + z) (1 - 3z/4 + O(z^2)) as z -> 0.
+
+    The tolerance is tight enough to fail if that closed form is evaluated as 1 - 1 / sqrt(1 + z), which
+    loses all but a few digits to cancellation here (8e-8 relative at z = 1e-10).
+    """
+    hubble_dist_mpc = 299792.458 / 70.0
+    for z in (1e-10, 1e-8, 1e-6):
+        expected = hubble_dist_mpc * z * (1.0 + z) * (1.0 - 0.75 * z)
+        # abs=0 because these distances are ~1e-7 Mpc, so the default absolute tolerance of approx would
+        # swallow the cancellation error entirely
+        assert at.lightcurve.luminosity_distance(H0=70.0, Om0=1.0, z=z) == pytest.approx(expected, rel=1e-11, abs=0)
+
+
+def test_luminosity_distance_blueshift() -> None:
+    """A blueshift is a valid redshift, and the closed forms hold for negative z as well.
+
+    A blueshift lies below the crossover for any Om0 < 0.5, so these integrate over z rather than over u,
+    which would stretch the range towards infinity as z -> -1.
+    """
+    hubble_dist_mpc = 299792.458 / 70.0
+    for z in (-1e-6, -0.001, -0.01, -0.1, -0.5, -0.9, -0.999999):
+        # Om0 = 0 has E(z) = 1, so the comoving distance is exactly (c / H0) z
+        assert at.lightcurve.luminosity_distance(H0=70.0, Om0=0.0, z=z) == pytest.approx(
+            hubble_dist_mpc * z * (1.0 + z), rel=1e-13, abs=0
+        )
+        assert at.lightcurve.luminosity_distance(H0=70.0, Om0=0.3, z=z) < 0.0
+
+    # the mildly negative redshifts of nearby blueshifted galaxies are the only ones of practical interest
+    assert at.lightcurve.luminosity_distance(H0=70.0, Om0=0.3, z=-0.001) == pytest.approx(-4.279429096775459)
+
+    # at the edge of the domain a cosmology with no closed form has to come from the z quadrature: this
+    # value agrees with both a 2048-node rule and adaptive quadrature, where the u substitution used for
+    # redshifts would give a magnitude 41% too small
+    assert at.lightcurve.luminosity_distance(H0=70.0, Om0=0.3, z=-0.999999) == pytest.approx(
+        -0.0048851852579134521, rel=1e-12, abs=0
+    )
+
+
+def test_luminosity_distance_below_minus_one_rejected() -> None:
+    """1 + z is a ratio of scale factors, so z <= -1 is not a redshift and must not silently give a NaN."""
+    for z in (-1.0, -1.5, -10.0):
+        with pytest.raises(ValueError, match="must be greater than -1"):
+            at.lightcurve.luminosity_distance(H0=70.0, Om0=0.3, z=z)
+
+
+def test_luminosity_distance_quadrature_extremes() -> None:
+    """Pin the ends of the range that the quadrature, rather than a closed form, has to cover.
+
+    A tiny z falls on whichever side of the crossover z = 0 sits: below it for Om0 = 0.3, whose width is
+    z itself, and above it for Om0 = 0.9, whose width has to come from the difference of the roots.
+    """
+    hubble_dist_mpc = 299792.458 / 70.0
+
+    # expanding the integrand gives D_L = (c / H0) z (1 + z) (1 - 3 Om0 z / 4 + O(z^2)) as z -> 0
+    for Om0 in (0.3, 0.9):
+        for z in (1e-10, 1e-8):
+            expected = hubble_dist_mpc * z * (1.0 + z) * (1.0 - 0.75 * Om0 * z)
+            assert at.lightcurve.luminosity_distance(H0=70.0, Om0=Om0, z=z) == pytest.approx(expected, rel=1e-11, abs=0)
+
+    # adaptive quadrature in ln(1 + z), which resolves every regime of the integrand, gives this
+    assert at.lightcurve.luminosity_distance(H0=70.0, Om0=0.3, z=1e8) == pytest.approx(1415324782383.9055, rel=1e-11)
+
+
+def test_luminosity_distance_across_the_crossover() -> None:
+    """1 / E has a plateau below Om0 (1 + z')^3 = 1 - Om0 and a (1 + z')^(-3/2) tail above it.
+
+    Neither variable covers both once they differ by decades, which is why the range is split there. These
+    are the two ways that goes wrong with a single variable: integrating a strongly blueshifted, nearly
+    matter-only cosmology over z alone was 64% low, and taking a nearly matter-free one to high z over u
+    alone was ~1e-4 out. Reference values are from adaptive quadrature in ln(1 + z).
+    """
+    assert at.lightcurve.luminosity_distance(H0=70.0, Om0=1 - 1e-12, z=-0.999999) == pytest.approx(
+        -1.1881950472843847, rel=1e-11
+    )
+    assert at.lightcurve.luminosity_distance(H0=70.0, Om0=0.999, z=-0.999999) == pytest.approx(
+        -0.02942354607438868, rel=1e-11
+    )
+    assert at.lightcurve.luminosity_distance(H0=70.0, Om0=1e-8, z=1e8) == pytest.approx(556188062894733.94, rel=1e-11)
+    assert at.lightcurve.luminosity_distance(H0=70.0, Om0=1e-4, z=1e5) == pytest.approx(25177127557.013027, rel=1e-11)
+
+
+def test_luminosity_distance_matter_free() -> None:
+    """A matter-free universe expands with E(z) = 1, so D_L = (c / H0) z (1 + z) at every redshift.
+
+    The 2 / u^3 integrand of this limit defeats any fixed-node quadrature at high z, so it is a closed form.
+    """
+    hubble_dist_mpc = 299792.458 / 70.0
+    for z in (0.0, 0.01, 1.0, 1e3, 1e8):
+        expected = hubble_dist_mpc * z * (1.0 + z)
+        assert at.lightcurve.luminosity_distance(H0=70.0, Om0=0.0, z=z) == pytest.approx(expected, rel=1e-13)
+
+
 def test_read_hesma_lightcurve_file_header(tmp_path: Path) -> None:
     """Column names must come from splitting the comment header into words, not into characters."""
     hesmafile = tmp_path / "hesma_model.dat"
