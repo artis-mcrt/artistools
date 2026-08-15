@@ -483,12 +483,11 @@ def luminosity_distance(H0: float, Om0: float, z: float) -> float:
     an entire function of u, so that the quadrature stays accurate to a few ulp out to arbitrarily high z
     rather than needing hundreds of nodes beyond z ~ 10.
 
-    That accuracy holds for any matter density from Om0 ~ 0.01 up to Om0 = 1. Outside that range the
-    integrand develops an endpoint the fixed node count cannot follow, and only in the two limits that have
-    a closed form does this function stay exact. As Om0 -> 0 the u integrand grows a plateau of height
-    2 / sqrt(Om0), giving a relative error of ~1e-4 for Om0 ~ 1e-8 at z ~ 1e8, and as Om0 -> 1 the z
-    integrand diverges at z' -> -1, giving ~1e-5 for Om0 = 1 at z = -0.99. Both are far outside any
-    cosmology of interest.
+    Both ends of the matter density range are closed forms, taken exactly rather than integrated, since
+    each turns one of the two integrands singular at an endpoint that no fixed node count can follow. In
+    between, the quadrature is accurate to a few ulp for any matter density down to Om0 ~ 0.01. Below that
+    the u integrand grows a plateau of height 2 / sqrt(Om0) that is resolved less and less well, reaching a
+    relative error of ~1e-4 for Om0 ~ 1e-8 at z ~ 1e8, far outside any cosmology of interest.
     """
     if z <= -1.0:
         msg = f"1 + z is a ratio of scale factors, so the redshift must be greater than -1, but got z={z}"
@@ -496,10 +495,16 @@ def luminosity_distance(H0: float, Om0: float, z: float) -> float:
 
     dist_hubble_mpc = (C_cm_per_s / 1e5) / H0  # c in km/s over H0 in km/s/Mpc
 
-    # a matter-free universe expands with E(z) = 1, making the comoving distance exactly (c / H0) z. The
-    # u integrand is 2 / u^3 there, which diverges as u -> 0, so no fixed-node quadrature would do.
+    # a matter-free universe expands with E(z) = 1, making the comoving distance exactly (c / H0) z, while
+    # its u integrand would be 2 / u^3, which diverges as u -> 0
     if Om0 == 0.0:
         return (1.0 + z) * dist_hubble_mpc * z
+
+    # a matter-only universe integrates to D_C = 2 (c / H0) (1 - (1 + z)^(-1/2)), while its z integrand
+    # would be (1 + z')^(-3/2), which diverges as z' -> -1. expm1 keeps the bracket exact as z -> 0, where
+    # writing it as 1 - 1 / sqrt(1 + z) would lose most of the precision to cancellation.
+    if Om0 == 1.0:
+        return (1.0 + z) * dist_hubble_mpc * -2.0 * math.expm1(-0.5 * math.log1p(z))
 
     nodes, weights = np.polynomial.legendre.leggauss(32)
 

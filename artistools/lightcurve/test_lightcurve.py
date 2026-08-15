@@ -238,11 +238,28 @@ def test_luminosity_distance_planck18_parameters() -> None:
 
 
 def test_luminosity_distance_matter_only() -> None:
-    """For Om0 = 1 the integral is analytic: D_L = 2 (c / H0) (1 + z) (1 - 1 / sqrt(1 + z))."""
+    """For Om0 = 1 the integral is analytic: D_L = 2 (c / H0) (1 + z) (1 - 1 / sqrt(1 + z)).
+
+    Its z integrand diverges as z' -> -1, so the blueshifts here are the ones quadrature cannot follow.
+    """
     hubble_dist_mpc = 299792.458 / 70.0
-    for z in (0.01, 0.5, 2.0, 10.0):
+    for z in (-0.999999, -0.99, -0.9, -0.01, 0.01, 0.5, 2.0, 10.0, 1e8):
         expected = 2 * hubble_dist_mpc * (1.0 + z) * (1.0 - 1.0 / np.sqrt(1.0 + z))
-        assert at.lightcurve.luminosity_distance(H0=70.0, Om0=1.0, z=z) == pytest.approx(expected, rel=1e-12)
+        assert at.lightcurve.luminosity_distance(H0=70.0, Om0=1.0, z=z) == pytest.approx(expected, rel=1e-10, abs=0)
+
+
+def test_luminosity_distance_matter_only_tiny_redshift() -> None:
+    """Expanding the Om0 = 1 closed form gives D_L = (c / H0) z (1 + z) (1 - 3z/4 + O(z^2)) as z -> 0.
+
+    The tolerance is tight enough to fail if that closed form is evaluated as 1 - 1 / sqrt(1 + z), which
+    loses all but a few digits to cancellation here (8e-8 relative at z = 1e-10).
+    """
+    hubble_dist_mpc = 299792.458 / 70.0
+    for z in (1e-10, 1e-8, 1e-6):
+        expected = hubble_dist_mpc * z * (1.0 + z) * (1.0 - 0.75 * z)
+        # abs=0 because these distances are ~1e-7 Mpc, so the default absolute tolerance of approx would
+        # swallow the cancellation error entirely
+        assert at.lightcurve.luminosity_distance(H0=70.0, Om0=1.0, z=z) == pytest.approx(expected, rel=1e-11, abs=0)
 
 
 def test_luminosity_distance_blueshift() -> None:
@@ -253,14 +270,21 @@ def test_luminosity_distance_blueshift() -> None:
     """
     hubble_dist_mpc = 299792.458 / 70.0
     for z in (-1e-6, -0.001, -0.01, -0.1, -0.5, -0.9, -0.999999):
-        # Om0 = 0 has E(z) = 1, and Om0 = 1 integrates to 2 (1 + z) (1 - 1 / sqrt(1 + z))
+        # Om0 = 0 has E(z) = 1, so the comoving distance is exactly (c / H0) z
         assert at.lightcurve.luminosity_distance(H0=70.0, Om0=0.0, z=z) == pytest.approx(
-            hubble_dist_mpc * z * (1.0 + z), rel=1e-13
+            hubble_dist_mpc * z * (1.0 + z), rel=1e-13, abs=0
         )
         assert at.lightcurve.luminosity_distance(H0=70.0, Om0=0.3, z=z) < 0.0
 
     # the mildly negative redshifts of nearby blueshifted galaxies are the only ones of practical interest
     assert at.lightcurve.luminosity_distance(H0=70.0, Om0=0.3, z=-0.001) == pytest.approx(-4.279429096775459)
+
+    # at the edge of the domain a cosmology with no closed form has to come from the z quadrature: this
+    # value agrees with both a 2048-node rule and adaptive quadrature, where the u substitution used for
+    # redshifts would give a magnitude 41% too small
+    assert at.lightcurve.luminosity_distance(H0=70.0, Om0=0.3, z=-0.999999) == pytest.approx(
+        -0.0048851852579134521, rel=1e-12, abs=0
+    )
 
 
 def test_luminosity_distance_below_minus_one_rejected() -> None:
@@ -268,6 +292,23 @@ def test_luminosity_distance_below_minus_one_rejected() -> None:
     for z in (-1.0, -1.5, -10.0):
         with pytest.raises(ValueError, match="must be greater than -1"):
             at.lightcurve.luminosity_distance(H0=70.0, Om0=0.3, z=z)
+
+
+def test_luminosity_distance_quadrature_extremes() -> None:
+    """Pin the two ends of the range that the quadrature, rather than a closed form, has to cover.
+
+    Om0 = 0.3 has no closed form, so both values come from the u substitution: at z -> 0 its integration
+    width needs expm1 to stay exact, and at very high z it needs the substitution itself to stay converged.
+    """
+    hubble_dist_mpc = 299792.458 / 70.0
+
+    # expanding the integrand gives D_L = (c / H0) z (1 + z) (1 - 3 Om0 z / 4 + O(z^2)) as z -> 0
+    for z in (1e-10, 1e-8):
+        expected = hubble_dist_mpc * z * (1.0 + z) * (1.0 - 0.75 * 0.3 * z)
+        assert at.lightcurve.luminosity_distance(H0=70.0, Om0=0.3, z=z) == pytest.approx(expected, rel=1e-11, abs=0)
+
+    # adaptive quadrature in ln u, which resolves every regime of the integrand, gives 1415324782383.9055
+    assert at.lightcurve.luminosity_distance(H0=70.0, Om0=0.3, z=1e8) == pytest.approx(1415324782383.9055, rel=1e-11)
 
 
 def test_luminosity_distance_matter_free() -> None:
