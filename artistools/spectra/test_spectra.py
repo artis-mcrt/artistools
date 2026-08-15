@@ -240,6 +240,41 @@ def test_spectra_get_flux_contributions(benchmark: BenchmarkFixture) -> None:
     assert max(diff) / integrated_flux_specout < 1e-9
 
 
+def test_spectra_get_flux_contributions_wavelength_window() -> None:
+    """A wavelength window restricts the spectra and the flux contributions used for ranking."""
+    timestepmin = 40
+    timestepmax = 80
+    lambda_min = 3500.0
+    lambda_max = 7000.0
+
+    contributions_full, flambda_total_full, arraylambda_full = at.spectra.get_flux_contributions(
+        modelpath, timestepmin=timestepmin, timestepmax=timestepmax, use_lastemissiontype=False
+    )
+
+    contributions_window, flambda_total_window, arraylambda_window = at.spectra.get_flux_contributions(
+        modelpath,
+        timestepmin=timestepmin,
+        timestepmax=timestepmax,
+        use_lastemissiontype=False,
+        lambda_min=lambda_min,
+        lambda_max=lambda_max,
+    )
+
+    nu_select = (arraylambda_full >= lambda_min) & (arraylambda_full <= lambda_max)
+    assert np.array_equal(arraylambda_window, arraylambda_full[nu_select])
+    assert np.allclose(flambda_total_window, flambda_total_full[nu_select], rtol=1e-12)
+
+    contrib_full_bylabel = {c.linelabel: c for c in contributions_full}
+    assert any(c.fluxcontrib < 0.999 * contrib_full_bylabel[c.linelabel].fluxcontrib for c in contributions_window), (
+        "expected some flux contribution outside the window to be excluded from the ranking integral"
+    )
+    for contrib in contributions_window:
+        full = contrib_full_bylabel[contrib.linelabel]
+        assert contrib.fluxcontrib <= full.fluxcontrib * (1 + 1e-12)
+        assert np.allclose(contrib.array_flambda_emission, full.array_flambda_emission[nu_select], rtol=1e-12)
+        assert np.allclose(contrib.array_flambda_absorption, full.array_flambda_absorption[nu_select], rtol=1e-12)
+
+
 def test_spectra_get_flux_contributions_from_packets(benchmark: BenchmarkFixture) -> None:
     lambdamin = 200.0
     lambdamax = 20000.0

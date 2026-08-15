@@ -273,10 +273,10 @@ def get_lambda_bin_edges(
         deltax = convert_angstroms_to_unit(deltalambda, xunit)
         xmin = xmin_plot - deltax * 0.5
         xmax = xmax_plot + deltax * 0.5
-        lambda_min, lambda_max = sorted(convert_unit_to_angstroms(np.array((xmin, xmax)), xunit))
+        lambda_min, lambda_max = convert_xlimits_to_lambda_range(xmin, xmax, xunit)
         lambda_bin_edges = np.arange(lambda_min, lambda_max + deltalambda, deltalambda)
     else:
-        lambda_min_plot, lambda_max_plot = sorted(convert_unit_to_angstroms(np.array((xmin_plot, xmax_plot)), xunit))
+        lambda_min_plot, lambda_max_plot = convert_xlimits_to_lambda_range(xmin_plot, xmax_plot, xunit)
         lambda_bin_edges_fullrange = get_exspec_lambda_bin_edges(modelpath=modelpath, gamma=gamma)
         lambda_bin_edges = (
             df_filter_minmax_bounded(
@@ -394,6 +394,15 @@ def convert_unit_to_angstroms(
         case _:
             msg = f"Unknown xunit {old_units}"
             raise ValueError(msg)
+
+
+def convert_xlimits_to_lambda_range(xmin: float, xmax: float, xunit: str) -> tuple[float, float]:
+    """Convert plot x-axis limits to an ascending wavelength range in angstroms.
+
+    Frequency and energy units invert the ordering, so the converted limits are sorted.
+    """
+    lambda_min, lambda_max = sorted((convert_unit_to_angstroms(xmin, xunit), convert_unit_to_angstroms(xmax, xunit)))
+    return lambda_min, lambda_max
 
 
 def weighted_average_spectra(
@@ -977,12 +986,21 @@ def get_flux_contributions(
     directionbin: int | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
+    lambda_min: float = 0.0,
+    lambda_max: float = math.inf,
 ) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
-    """Return the per-ion emission and absorption contributions from emission.out, and the flux and wavelength arrays."""
+    """Return the per-ion emission and absorption contributions from emission.out, and the flux and wavelength arrays.
+
+    The returned spectra are restricted to lambda_min to lambda_max [Å], so that the flux contributions used for
+    ranking count only the plotted window, matching get_flux_contributions_from_packets.
+    """
     arr_tmid = get_timestep_times(modelpath, loc="mid")
     arr_tdelta = get_timestep_times(modelpath, loc="delta")
-    arraynu = get_nu_grid(modelpath)
-    arraylambda = const.c_ang_per_s / arraynu
+    arraynu_full = get_nu_grid(modelpath)
+    arraylambda_full = const.c_ang_per_s / arraynu_full
+    nu_select = (arraylambda_full >= lambda_min) & (arraylambda_full <= lambda_max)
+    arraynu = arraynu_full[nu_select]
+    arraylambda = arraylambda_full[nu_select]
     if not Path(modelpath, "compositiondata.txt").is_file():
         print("WARNING: compositiondata.txt not found. Using output*.txt instead")
         from artistools.atomic import get_composition_data_from_outputfile
@@ -1027,7 +1045,7 @@ def get_flux_contributions(
 
             emissiondata[dbin] = read_emission_absorption_file(emissionfilename).collect()
             emission_timeblocks[dbin] = get_emabs_timeblock_count(
-                emissiondata[dbin], len(arraynu), len(arr_tmid), str(emissionfilename)
+                emissiondata[dbin], len(arraynu_full), len(arr_tmid), str(emissionfilename)
             )
 
             if emission_timeblocks[dbin] > len(arr_tmid) and not polarisation_notified:
@@ -1056,7 +1074,7 @@ def get_flux_contributions(
 
             absorptiondata[dbin] = read_emission_absorption_file(absorptionfilename).collect()
             absorption_timeblocks[dbin] = get_emabs_timeblock_count(
-                absorptiondata[dbin], len(arraynu), len(arr_tmid), str(absorptionfilename)
+                absorptiondata[dbin], len(arraynu_full), len(arr_tmid), str(absorptionfilename)
             )
 
             if absorption_timeblocks[dbin] > len(arr_tmid) and not polarisation_notified:
@@ -1104,7 +1122,7 @@ def get_flux_contributions(
                         )
                         for timestep in range(timestepmin, timestepmax + 1)
                         for dbin in dbinlist
-                    ])
+                    ])[nu_select]
                 else:
                     array_fnu_emission = np.zeros_like(arraylambda, dtype=float)
 
@@ -1116,7 +1134,7 @@ def get_flux_contributions(
                         )
                         for timestep in range(timestepmin, timestepmax + 1)
                         for dbin in dbinlist
-                    ])
+                    ])[nu_select]
                 else:
                     array_fnu_absorption = np.zeros_like(arraylambda, dtype=float)
 
