@@ -280,8 +280,8 @@ def test_luminosity_distance_matter_only_tiny_redshift() -> None:
 def test_luminosity_distance_blueshift() -> None:
     """A blueshift is a valid redshift, and the closed forms hold for negative z as well.
 
-    The u substitution used for redshifts would stretch the integration range towards infinity as z -> -1,
-    so blueshifts integrate over z directly.
+    A blueshift lies below the crossover for any Om0 < 0.5, so these integrate over z rather than over u,
+    which would stretch the range towards infinity as z -> -1.
     """
     hubble_dist_mpc = 299792.458 / 70.0
     for z in (-1e-6, -0.001, -0.01, -0.1, -0.5, -0.9, -0.999999):
@@ -310,20 +310,39 @@ def test_luminosity_distance_below_minus_one_rejected() -> None:
 
 
 def test_luminosity_distance_quadrature_extremes() -> None:
-    """Pin the two ends of the range that the quadrature, rather than a closed form, has to cover.
+    """Pin the ends of the range that the quadrature, rather than a closed form, has to cover.
 
-    Om0 = 0.3 has no closed form, so both values come from the u substitution: at z -> 0 its integration
-    width needs expm1 to stay exact, and at very high z it needs the substitution itself to stay converged.
+    A tiny z falls on whichever side of the crossover z = 0 sits: below it for Om0 = 0.3, whose width is
+    z itself, and above it for Om0 = 0.9, whose width has to come from the difference of the roots.
     """
     hubble_dist_mpc = 299792.458 / 70.0
 
     # expanding the integrand gives D_L = (c / H0) z (1 + z) (1 - 3 Om0 z / 4 + O(z^2)) as z -> 0
-    for z in (1e-10, 1e-8):
-        expected = hubble_dist_mpc * z * (1.0 + z) * (1.0 - 0.75 * 0.3 * z)
-        assert at.lightcurve.luminosity_distance(H0=70.0, Om0=0.3, z=z) == pytest.approx(expected, rel=1e-11, abs=0)
+    for Om0 in (0.3, 0.9):
+        for z in (1e-10, 1e-8):
+            expected = hubble_dist_mpc * z * (1.0 + z) * (1.0 - 0.75 * Om0 * z)
+            assert at.lightcurve.luminosity_distance(H0=70.0, Om0=Om0, z=z) == pytest.approx(expected, rel=1e-11, abs=0)
 
-    # adaptive quadrature in ln u, which resolves every regime of the integrand, gives 1415324782383.9055
+    # adaptive quadrature in ln(1 + z), which resolves every regime of the integrand, gives this
     assert at.lightcurve.luminosity_distance(H0=70.0, Om0=0.3, z=1e8) == pytest.approx(1415324782383.9055, rel=1e-11)
+
+
+def test_luminosity_distance_across_the_crossover() -> None:
+    """1 / E has a plateau below Om0 (1 + z')^3 = 1 - Om0 and a (1 + z')^(-3/2) tail above it.
+
+    Neither variable covers both once they differ by decades, which is why the range is split there. These
+    are the two ways that goes wrong with a single variable: integrating a strongly blueshifted, nearly
+    matter-only cosmology over z alone was 64% low, and taking a nearly matter-free one to high z over u
+    alone was ~1e-4 out. Reference values are from adaptive quadrature in ln(1 + z).
+    """
+    assert at.lightcurve.luminosity_distance(H0=70.0, Om0=1 - 1e-12, z=-0.999999) == pytest.approx(
+        -1.1881950472843847, rel=1e-11
+    )
+    assert at.lightcurve.luminosity_distance(H0=70.0, Om0=0.999, z=-0.999999) == pytest.approx(
+        -0.02942354607438868, rel=1e-11
+    )
+    assert at.lightcurve.luminosity_distance(H0=70.0, Om0=1e-8, z=1e8) == pytest.approx(556188062894733.94, rel=1e-11)
+    assert at.lightcurve.luminosity_distance(H0=70.0, Om0=1e-4, z=1e5) == pytest.approx(25177127557.013027, rel=1e-11)
 
 
 def test_luminosity_distance_matter_free() -> None:

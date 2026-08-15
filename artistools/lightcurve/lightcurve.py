@@ -487,18 +487,19 @@ def luminosity_distance(H0: float, Om0: float, z: float) -> float:
         D_C = (c / H0) * int_u(z)^1 2 du / sqrt(Om0 + (1 - Om0) u^6),   u = (1 + z')^(-1/2),
 
     which needs no scipy, and improves on the hypergeometric form in two places: subtracting two T values
-    of nearly equal size loses precision as z -> 0, where a single integration over a short range does not,
+    of nearly equal size loses precision as z -> 0, where integrating over the range between them does not,
     and s is a cube root of a negative number for Om0 > 1, which this form never has to take.
 
-    The integrand is an entire function of u, so 32-node Gauss-Legendre quadrature is accurate to a few ulp
-    out to arbitrarily high z rather than needing hundreds of nodes beyond z ~ 10. A blueshift
-    (-1 < z < 0) is the one case that integrates over z as it stands, the substitution being no help there.
+    Neither variable suits the whole range on its own, because 1 / E has a plateau of height
+    1 / sqrt(1 - Om0) below the crossover at Om0 (1 + z')^3 = 1 - Om0 and falls off as (1 + z')^(-3/2)
+    above it, and a fixed node count cannot follow that corner once the two sides differ by decades. Each
+    side is flat in one of the variables though, so the range is split at the crossover (astropy's s, at
+    1 + zcross) and integrated over z below it and over u above it. Measured against adaptive quadrature,
+    that holds every matter density from 1e-8 to 2 accurate to a few ulp over the whole domain, from
+    z = -1 + 1e-12 out to z = 1e8.
 
-    Both ends of the matter density range are closed forms, taken exactly rather than integrated, since
-    each turns one of the two integrands singular at an endpoint that no fixed node count can follow. In
-    between, the quadrature is accurate to a few ulp for any matter density down to Om0 ~ 0.01. Below that
-    the u integrand grows a plateau of height 2 / sqrt(Om0) that is resolved less and less well, reaching a
-    relative error of ~1e-4 for Om0 ~ 1e-8 at z ~ 1e8, far outside any cosmology of interest.
+    The de Sitter and Einstein-de Sitter closed forms are exact and cheaper, so they stay, but only the
+    first is now needed: Om0 = 0 has no crossover to divide by.
     """
     if z <= -1.0:
         msg = f"1 + z is a ratio of scale factors, so the redshift must be greater than -1, but got z={z}"
@@ -506,32 +507,40 @@ def luminosity_distance(H0: float, Om0: float, z: float) -> float:
 
     dist_hubble_mpc = (C_cm_per_s / 1e5) / H0  # c in km/s over H0 in km/s/Mpc
 
-    # de Sitter: a matter-free universe expands with E(z) = 1, making the comoving distance exactly
-    # (c / H0) z, while its u integrand would be 2 / u^3, which diverges as u -> 0
+    # de Sitter: a matter-free universe expands with E(z) = 1, making the comoving distance exactly (c/H0) z
     if Om0 == 0.0:
         return (1.0 + z) * dist_hubble_mpc * z
 
-    # Einstein-de Sitter: a matter-only universe integrates to D_C = 2 (c / H0) (1 - (1 + z)^(-1/2)), while
-    # its z integrand would be (1 + z')^(-3/2), which diverges as z' -> -1. expm1 keeps the bracket exact
-    # as z -> 0, where writing it as 1 - 1 / sqrt(1 + z) would lose most of the precision to cancellation.
+    # Einstein-de Sitter: a matter-only universe integrates to D_C = 2 (c / H0) (1 - (1 + z)^(-1/2)). expm1
+    # keeps the bracket exact as z -> 0, where 1 - 1 / sqrt(1 + z) would lose most of it to cancellation.
     if Om0 == 1.0:
         return (1.0 + z) * dist_hubble_mpc * -2.0 * math.expm1(-0.5 * math.log1p(z))
 
     nodes, weights = np.polynomial.legendre.leggauss(32)
 
-    if z < 0.0:
-        # substituting u here would stretch the range to (1, (1 + z)^(-1/2)], which runs away to infinity
-        # as z -> -1 while the integrand collapses into a spike at u = 1 that the nodes then miss
-        zhalfwidth = 0.5 * z
-        zvals = zhalfwidth * (nodes + 1.0)
-        integral = float(weights @ (1.0 / np.sqrt(Om0 * (1.0 + zvals) ** 3 + (1.0 - Om0)))) * zhalfwidth
-    else:
-        # half the width of the u range, i.e. (1 - (1 + z)^(-1/2)) / 2 without cancellation as z -> 0
-        uhalfwidth = -0.5 * math.expm1(-0.5 * math.log1p(z))
-        uvals = uhalfwidth * (nodes + 1.0) + (1.0 + z) ** -0.5
-        integral = float(weights @ (2.0 / np.sqrt(Om0 + (1.0 - Om0) * uvals**6))) * uhalfwidth
+    # Om0 > 1 leaves a negative dark energy density, which dominates nowhere, so there is no crossover
+    zcross = ((1.0 - Om0) / Om0) ** (1.0 / 3.0) - 1.0 if Om0 < 1.0 else -1.0
+    zlo, zhi = min(0.0, z), max(0.0, z)
+    zsplit = min(max(zcross, zlo), zhi)
 
-    return (1.0 + z) * dist_hubble_mpc * integral
+    integral = 0.0
+
+    if zsplit > zlo:
+        # below the crossover 1 / E varies by at most sqrt(2), so integrate it as it stands
+        halfwidth = 0.5 * (zsplit - zlo)
+        zvals = halfwidth * (nodes + 1.0) + zlo
+        integral += float(weights @ (1.0 / np.sqrt(Om0 * (1.0 + zvals) ** 3 + (1.0 - Om0)))) * halfwidth
+
+    if zhi > zsplit:
+        # above it, u = (1 + z')^(-1/2) flattens the (1 + z')^(-3/2) tail. Taking the width of the u range
+        # from the difference of the roots keeps it exact as the range shrinks onto z' = 0, where
+        # (1 + z')^(-1/2) - 1 would lose it to cancellation.
+        rootlo, roothi = math.sqrt(1.0 + zsplit), math.sqrt(1.0 + zhi)
+        halfwidth = 0.5 * (zhi - zsplit) / (rootlo * roothi * (rootlo + roothi))
+        uvals = halfwidth * (nodes + 1.0) + 1.0 / roothi
+        integral += float(weights @ (2.0 / np.sqrt(Om0 + (1.0 - Om0) * uvals**6))) * halfwidth
+
+    return (1.0 + z) * dist_hubble_mpc * (integral if z >= 0.0 else -integral)
 
 
 def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pl.DataFrame, dict[str, t.Any]]:
