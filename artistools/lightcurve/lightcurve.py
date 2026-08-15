@@ -490,15 +490,17 @@ def luminosity_distance(H0: float, Om0: float, z: float) -> float:
     of nearly equal size loses precision as z -> 0, where integrating over the range between them does not,
     and s is a cube root of a negative number for Om0 > 1, which this form never has to take.
 
-    Neither variable suits the whole range on its own, because 1 / E has a plateau of height
-    1 / sqrt(1 - Om0) below the crossover at Om0 (1 + z')^3 = 1 - Om0 and falls off as (1 + z')^(-3/2)
-    above it, and a fixed node count cannot follow that corner once the two sides differ by decades. Each
-    side is flat in one of the variables though, so the range is split at the crossover (astropy's s, at
-    1 + zcross) and integrated over z below it and over u above it. Measured against adaptive quadrature,
-    that holds every matter density from 1e-8 to 2 accurate to a few ulp over the whole domain, from
-    z = -1 + 1e-12 out to z = 1e8. The exception is the turnaround of an Om0 > 1 cosmology, rejected below
-    as having no distance at all: 1 / E has an integrable pole there, which costs the last ~0.01 in z above
-    it up to ~1% until the quadrature recovers its usual accuracy.
+    No one variable suits the whole range, since 1 / E falls off as (1 + z')^(-3/2) only above the point
+    where the two terms of the radicand balance, and a fixed node count cannot follow that corner once the
+    sides differ by decades. So the range is split there and each side taken in the variable that flattens
+    it: u above, and below it whichever of the two the sign of 1 - Om0 calls for. Dark energy (Om0 < 1)
+    holds 1 / E within sqrt(2) of 1 / sqrt(1 - Om0) below its crossover at Om0 (1 + z')^3 = 1 - Om0, which
+    is astropy's s, so z serves as it stands. A negative density (Om0 > 1) instead cancels the matter term
+    at the turnaround rejected below, leaving an integrable pole that q = sqrt((1 + z')^3 - cturn) unfolds
+    into 2 dq / (3 sqrt(Om0) (q^2 + cturn)^(2/3)), flat while q^2 stays under cturn = (Om0 - 1) / Om0.
+
+    Measured against adaptive quadrature, that holds every matter density from 1e-8 to 1e6 accurate to a
+    few ulp over the whole domain, from the turnaround or z = -1 + 1e-12 out to z = 1e8.
 
     The de Sitter and Einstein-de Sitter closed forms are exact and cheaper, so they stay, but only the
     first is now needed: Om0 = 0 has no crossover to divide by.
@@ -529,18 +531,32 @@ def luminosity_distance(H0: float, Om0: float, z: float) -> float:
 
     nodes, weights = np.polynomial.legendre.leggauss(32)
 
-    # Om0 > 1 leaves a negative dark energy density, which dominates nowhere, so there is no crossover
-    zcross = ((1.0 - Om0) / Om0) ** (1.0 / 3.0) - 1.0 if Om0 < 1.0 else -1.0
+    # where the two terms of the radicand balance: the dark energy crossover, or twice the turnaround
+    cturn = (Om0 - 1.0) / Om0
+    zbalance = ((1.0 - Om0) / Om0) ** (1.0 / 3.0) - 1.0 if Om0 < 1.0 else (2.0 * cturn) ** (1.0 / 3.0) - 1.0
     zlo, zhi = min(0.0, z), max(0.0, z)
-    zsplit = min(max(zcross, zlo), zhi)
+    zsplit = min(max(zbalance, zlo), zhi)
 
     integral = 0.0
 
     if zsplit > zlo:
-        # below the crossover 1 / E varies by at most sqrt(2), so integrate it as it stands
-        halfwidth = 0.5 * (zsplit - zlo)
-        zvals = halfwidth * (nodes + 1.0) + zlo
-        integral += float(weights @ (1.0 / np.sqrt(Om0 * (1.0 + zvals) ** 3 + (1.0 - Om0)))) * halfwidth
+        if Om0 < 1.0:
+            # dark energy holds 1 / E to within sqrt(2) below the crossover, so integrate it as it stands
+            halfwidth = 0.5 * (zsplit - zlo)
+            zvals = halfwidth * (nodes + 1.0) + zlo
+            integral += float(weights @ (1.0 / np.sqrt(Om0 * (1.0 + zvals) ** 3 + (1.0 - Om0)))) * halfwidth
+        else:
+            # q unfolds the pole that a negative dark energy density leaves at the turnaround. Its width
+            # comes from the difference of cubes expanded about z' rather than from qhi - qlo, which would
+            # cancel as the range shrinks onto z' = 0. The clamp is only in case this difference rounds
+            # below zero where the check above, on the algebraically equivalent E(z)^2, found it positive.
+            qlo = math.sqrt(max(0.0, (1.0 + zlo) ** 3 - cturn))
+            qhi = math.sqrt(max(0.0, (1.0 + zsplit) ** 3 - cturn))
+            cubediff = (zsplit - zlo) * (3.0 + 3.0 * (zlo + zsplit) + (zlo * zlo + zlo * zsplit + zsplit**2))
+            halfwidth = 0.5 * cubediff / (qhi + qlo)
+            qvals = halfwidth * (nodes + 1.0) + qlo
+            qintegrand = 2.0 / (3.0 * math.sqrt(Om0) * (qvals**2 + cturn) ** (2.0 / 3.0))
+            integral += float(weights @ qintegrand) * halfwidth
 
     if zhi > zsplit:
         # above it, u = (1 + z')^(-1/2) flattens the (1 + z')^(-3/2) tail. Taking the width of the u range

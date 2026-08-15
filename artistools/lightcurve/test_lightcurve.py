@@ -252,6 +252,32 @@ def test_luminosity_distance_negative_dark_energy() -> None:
     assert at.lightcurve.luminosity_distance(H0=70.0, Om0=2.0, z=1.0) == pytest.approx(4066.82076478827, rel=1e-12)
 
 
+def test_luminosity_distance_dense_matter() -> None:
+    """A negative dark energy density leaves an integrable pole in 1 / E at the turnaround.
+
+    The larger Om0 is, the closer that turnaround crowds up to z = 0 and the further its pole reaches, so
+    integrating over u alone ran 1.1% low for Om0 = 1e6 at z = 1 and ~1% over the last 0.01 in z above the
+    turnaround of any Om0 > 1. The first two values agree with adaptive quadrature in ln(1 + z), the third
+    with 32 to 1024 node rules in q, which converge where the adaptive routine warns and stops short.
+    """
+    assert at.lightcurve.luminosity_distance(H0=70.0, Om0=1e6, z=1.0) == pytest.approx(8.56941262664432, rel=1e-11)
+    assert at.lightcurve.luminosity_distance(H0=70.0, Om0=100.0, z=1.0) == pytest.approx(803.7609074618974, rel=1e-11)
+    assert at.lightcurve.luminosity_distance(H0=70.0, Om0=1e6, z=1e-10) == pytest.approx(
+        4.28242824230702e-07, rel=1e-11, abs=0
+    )
+
+    # just above the turnaround of Om0 = 2, where 1 / E is unbounded and u alone was 1.3% out
+    assert at.lightcurve.luminosity_distance(H0=70.0, Om0=2.0, z=-0.2062994740159002) == pytest.approx(
+        -1523.69803, rel=1e-6
+    )
+
+    # the q width has to come from the difference of cubes: taking qhi - qlo directly was 1.8e-7 out here
+    hubble_dist_mpc = 299792.458 / 70.0
+    for z in (1e-10, 1e-8):
+        expected = hubble_dist_mpc * z * (1.0 + z) * (1.0 - 0.75 * 5.0 * z)
+        assert at.lightcurve.luminosity_distance(H0=70.0, Om0=5.0, z=z) == pytest.approx(expected, rel=1e-11, abs=0)
+
+
 def test_luminosity_distance_past_turnaround_rejected() -> None:
     """A negative dark energy density halts the expansion, and nothing beyond that turnaround has a distance.
 
