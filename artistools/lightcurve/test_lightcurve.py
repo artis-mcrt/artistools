@@ -252,6 +252,21 @@ def test_luminosity_distance_negative_dark_energy() -> None:
     assert at.lightcurve.luminosity_distance(H0=70.0, Om0=2.0, z=1.0) == pytest.approx(4066.82076478827, rel=1e-12)
 
 
+def test_luminosity_distance_past_turnaround_rejected() -> None:
+    """A negative dark energy density halts the expansion, and nothing beyond that turnaround has a distance.
+
+    E(z)^2 is negative there, which no domain check on z alone would catch. Below the turnaround the
+    quadrature returns a NaN that would reach the magnitudes as one, and immediately below it something
+    worse: the interior nodes still straddle positive radicands, so it returns a plausible finite number.
+    """
+    for Om0, z in ((2.0, -0.5), (2.0, -0.999), (1.5, -0.4), (1.5, -0.306638726649365)):
+        with pytest.raises(ValueError, match="stops expanding"):
+            at.lightcurve.luminosity_distance(H0=70.0, Om0=Om0, z=z)
+
+    # just above its turnaround of z = -0.2063 the distance exists and must still be returned
+    assert at.lightcurve.luminosity_distance(H0=70.0, Om0=2.0, z=-0.1) == pytest.approx(-462.8923430069639, rel=1e-11)
+
+
 def test_luminosity_distance_matter_only() -> None:
     """For Om0 = 1 the integral is analytic: D_L = 2 (c / H0) (1 + z) (1 - 1 / sqrt(1 + z)).
 

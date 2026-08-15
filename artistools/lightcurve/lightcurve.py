@@ -496,13 +496,24 @@ def luminosity_distance(H0: float, Om0: float, z: float) -> float:
     side is flat in one of the variables though, so the range is split at the crossover (astropy's s, at
     1 + zcross) and integrated over z below it and over u above it. Measured against adaptive quadrature,
     that holds every matter density from 1e-8 to 2 accurate to a few ulp over the whole domain, from
-    z = -1 + 1e-12 out to z = 1e8.
+    z = -1 + 1e-12 out to z = 1e8. The exception is the turnaround of an Om0 > 1 cosmology, rejected below
+    as having no distance at all: 1 / E has an integrable pole there, which costs the last ~0.01 in z above
+    it up to ~1% until the quadrature recovers its usual accuracy.
 
     The de Sitter and Einstein-de Sitter closed forms are exact and cheaper, so they stay, but only the
     first is now needed: Om0 = 0 has no crossover to divide by.
     """
     if z <= -1.0:
         msg = f"1 + z is a ratio of scale factors, so the redshift must be greater than -1, but got z={z}"
+        raise ValueError(msg)
+
+    # A negative dark energy density (Om0 > 1) halts the expansion where E(z)^2 falls to zero, and nothing
+    # beyond that turnaround has a distance. E(z)^2 rises with z, so this endpoint covers the whole range.
+    # Without the check the radicand goes negative: at the endpoint alone that gives a plausible finite
+    # number from the interior nodes, and further out a NaN, which would reach the magnitudes as one.
+    if Om0 * (1.0 + z) ** 3 + (1.0 - Om0) <= 0.0:
+        zturnaround = ((Om0 - 1.0) / Om0) ** (1.0 / 3.0) - 1.0
+        msg = f"a flat cosmology with Om0={Om0} stops expanding at z={zturnaround}, so z={z} has no distance"
         raise ValueError(msg)
 
     dist_hubble_mpc = (C_cm_per_s / 1e5) / H0  # c in km/s over H0 in km/s/Mpc
