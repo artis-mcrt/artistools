@@ -227,14 +227,29 @@ def test_get_colour_delta_mag_unequal_sampling() -> None:
     ],
 )
 def test_luminosity_distance(z: float, dist_mpc: float) -> None:
-    """Reference values are astropy's FlatLambdaCDM(H0=70, Om0=0.3).luminosity_distance(z), which this replaced."""
-    assert at.lightcurve.luminosity_distance(H0=70.0, Om0=0.3, z=z) == pytest.approx(dist_mpc, rel=1e-10, abs=1e-12)
+    """Reference values are astropy's FlatLambdaCDM(H0=70, Om0=0.3).luminosity_distance(z), which this replaced.
+
+    astropy evaluates the same Baes et al. (2017) function through scipy's hyp2f1 where this integrates it,
+    so the two agree to ~4e-14 and the tolerance is set well inside the 1e-10 that any use here needs.
+    """
+    assert at.lightcurve.luminosity_distance(H0=70.0, Om0=0.3, z=z) == pytest.approx(dist_mpc, rel=1e-11, abs=1e-12)
 
 
 def test_luminosity_distance_planck18_parameters() -> None:
     """The cosmology parameters must be used, not baked in (reference values from astropy)."""
     for z, dist_mpc in ((0.01433, 64.43316428422708), (0.5, 2927.080479237606), (2.0, 15936.22617736705)):
-        assert at.lightcurve.luminosity_distance(H0=67.4, Om0=0.315, z=z) == pytest.approx(dist_mpc, rel=1e-10)
+        assert at.lightcurve.luminosity_distance(H0=67.4, Om0=0.315, z=z) == pytest.approx(dist_mpc, rel=1e-11)
+
+
+def test_luminosity_distance_negative_dark_energy() -> None:
+    """Om0 > 1 leaves a flat universe with a negative dark energy density, which is still integrable.
+
+    astropy's s = ((1 - Om0) / Om0)^(1/3) is a cube root of a negative number here, which it survives only
+    by carrying a complex s through and discarding the imaginary part. The u form never forms s at all, so
+    these come from adaptive quadrature rather than from astropy, which is itself ~7e-15 off at the first.
+    """
+    assert at.lightcurve.luminosity_distance(H0=70.0, Om0=1.5, z=0.1) == pytest.approx(425.1405279377727, rel=1e-12)
+    assert at.lightcurve.luminosity_distance(H0=70.0, Om0=2.0, z=1.0) == pytest.approx(4066.82076478827, rel=1e-12)
 
 
 def test_luminosity_distance_matter_only() -> None:

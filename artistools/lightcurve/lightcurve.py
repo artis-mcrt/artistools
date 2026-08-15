@@ -472,16 +472,27 @@ def luminosity_distance(H0: float, Om0: float, z: float) -> float:
     neglected, so the dark energy density is 1 - Om0. The luminosity distance is D_L = (1 + z) D_C for a
     comoving distance
 
-        D_C = (c / H0) * int_0^z dz' / sqrt(Om0 (1 + z')^3 + 1 - Om0),
+        D_C = (c / H0) * int_0^z dz' / sqrt(Om0 (1 + z')^3 + 1 - Om0).
 
-    evaluated by 32-node Gauss-Legendre quadrature. A blueshift (-1 < z < 0) integrates that form as it
-    stands, since the integrand only varies between 1 and 1 / sqrt(1 - Om0) over the whole of (-1, 0]. A
-    redshift substitutes u = (1 + z')^(-1/2) first, folding the (1 + z')^(-3/2) tail into
+    This splits the same three ways as astropy's FlatLambdaCDM for a cosmology without radiation. The de
+    Sitter (Om0 = 0) and Einstein-de Sitter (Om0 = 1) cases have the closed forms astropy uses, and every
+    other matter density reduces to the function of Baes, Camps & Van De Putte (2017),
 
-        D_C = (c / H0) * int_u(z)^1 2 du / sqrt(Om0 + (1 - Om0) u^6),
+        T(x) = 2 sqrt(x) 2F1(1/6, 1/2; 7/6; -x^3) = 2 * int_0^sqrt(x) dy / sqrt(1 + y^6),
 
-    an entire function of u, so that the quadrature stays accurate to a few ulp out to arbitrarily high z
-    rather than needing hundreds of nodes beyond z ~ 10.
+    as D_C = (c / H0) [T(s) - T(s / (1 + z))] / sqrt(s Om0) with s = ((1 - Om0) / Om0)^(1/3). astropy
+    evaluates T through scipy's hyp2f1. This evaluates the difference of the two T values as the single
+    integral it stands for, substituting y = sqrt(s) u to absorb s and give
+
+        D_C = (c / H0) * int_u(z)^1 2 du / sqrt(Om0 + (1 - Om0) u^6),   u = (1 + z')^(-1/2),
+
+    which needs no scipy, and improves on the hypergeometric form in two places: subtracting two T values
+    of nearly equal size loses precision as z -> 0, where a single integration over a short range does not,
+    and s is a cube root of a negative number for Om0 > 1, which this form never has to take.
+
+    The integrand is an entire function of u, so 32-node Gauss-Legendre quadrature is accurate to a few ulp
+    out to arbitrarily high z rather than needing hundreds of nodes beyond z ~ 10. A blueshift
+    (-1 < z < 0) is the one case that integrates over z as it stands, the substitution being no help there.
 
     Both ends of the matter density range are closed forms, taken exactly rather than integrated, since
     each turns one of the two integrands singular at an endpoint that no fixed node count can follow. In
@@ -495,14 +506,14 @@ def luminosity_distance(H0: float, Om0: float, z: float) -> float:
 
     dist_hubble_mpc = (C_cm_per_s / 1e5) / H0  # c in km/s over H0 in km/s/Mpc
 
-    # a matter-free universe expands with E(z) = 1, making the comoving distance exactly (c / H0) z, while
-    # its u integrand would be 2 / u^3, which diverges as u -> 0
+    # de Sitter: a matter-free universe expands with E(z) = 1, making the comoving distance exactly
+    # (c / H0) z, while its u integrand would be 2 / u^3, which diverges as u -> 0
     if Om0 == 0.0:
         return (1.0 + z) * dist_hubble_mpc * z
 
-    # a matter-only universe integrates to D_C = 2 (c / H0) (1 - (1 + z)^(-1/2)), while its z integrand
-    # would be (1 + z')^(-3/2), which diverges as z' -> -1. expm1 keeps the bracket exact as z -> 0, where
-    # writing it as 1 - 1 / sqrt(1 + z) would lose most of the precision to cancellation.
+    # Einstein-de Sitter: a matter-only universe integrates to D_C = 2 (c / H0) (1 - (1 + z)^(-1/2)), while
+    # its z integrand would be (1 + z')^(-3/2), which diverges as z' -> -1. expm1 keeps the bracket exact
+    # as z -> 0, where writing it as 1 - 1 / sqrt(1 + z) would lose most of the precision to cancellation.
     if Om0 == 1.0:
         return (1.0 + z) * dist_hubble_mpc * -2.0 * math.expm1(-0.5 * math.log1p(z))
 
