@@ -479,7 +479,18 @@ def luminosity_distance(H0: float, Om0: float, z: float) -> float:
 
     an entire function of u. Gauss-Legendre quadrature therefore converges to double precision with few
     nodes for any z, and the luminosity distance is D_L = (1 + z) D_C.
+
+    The quadrature is accurate to a few ulp for any matter density down to Om0 ~ 0.01. Below that the
+    integrand grows a plateau of height 2 / sqrt(Om0) that a fixed node count resolves less and less well,
+    reaching a relative error of ~1e-4 for Om0 ~ 1e-8 at z ~ 1e8, far outside any cosmology of interest.
     """
+    dist_hubble_mpc = (C_cm_per_s / 1e5) / H0  # c in km/s over H0 in km/s/Mpc
+
+    # a matter-free universe expands with E(z) = 1, making the comoving distance exactly (c / H0) z. The
+    # transformed integrand is 2 / u^3 there, which diverges as u -> 0, so no quadrature rule would do.
+    if Om0 == 0.0:
+        return (1.0 + z) * dist_hubble_mpc * z
+
     nodes, weights = np.polynomial.legendre.leggauss(32)
 
     # half the width of the u integration range, i.e. (1 - (1 + z)^(-1/2)) / 2 without cancellation as z -> 0
@@ -487,8 +498,6 @@ def luminosity_distance(H0: float, Om0: float, z: float) -> float:
     uvals = uhalfwidth * (nodes + 1.0) + (1.0 + z) ** -0.5
 
     integral = float(weights @ (2.0 / np.sqrt(Om0 + (1.0 - Om0) * uvals**6))) * uhalfwidth
-
-    dist_hubble_mpc = (C_cm_per_s / 1e5) / H0  # c in km/s over H0 in km/s/Mpc
 
     return (1.0 + z) * dist_hubble_mpc * integral
 

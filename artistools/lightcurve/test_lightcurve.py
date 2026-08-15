@@ -245,6 +245,17 @@ def test_luminosity_distance_matter_only() -> None:
         assert at.lightcurve.luminosity_distance(H0=70.0, Om0=1.0, z=z) == pytest.approx(expected, rel=1e-12)
 
 
+def test_luminosity_distance_matter_free() -> None:
+    """A matter-free universe expands with E(z) = 1, so D_L = (c / H0) z (1 + z) at every redshift.
+
+    The 2 / u^3 integrand of this limit defeats any fixed-node quadrature at high z, so it is a closed form.
+    """
+    hubble_dist_mpc = 299792.458 / 70.0
+    for z in (0.0, 0.01, 1.0, 1e3, 1e8):
+        expected = hubble_dist_mpc * z * (1.0 + z)
+        assert at.lightcurve.luminosity_distance(H0=70.0, Om0=0.0, z=z) == pytest.approx(expected, rel=1e-13)
+
+
 def test_read_hesma_lightcurve_file_header(tmp_path: Path) -> None:
     """Column names must come from splitting the comment header into words, not into characters."""
     hesmafile = tmp_path / "hesma_model.dat"
