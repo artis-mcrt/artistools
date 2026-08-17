@@ -1323,7 +1323,8 @@ def get_flux_contributions_from_packets(
 
     if emissionvelocitycut is not None:
         lzdfpackets = atpackets.add_derived_columns_lazy(lzdfpackets, modelpath=modelpath)
-        lzdfpackets = lzdfpackets.filter(pl.col("emission_velocity") > emissionvelocitycut)
+        # the cut is given in km/s, but emission_velocity is in cm/s like the packet positions it is derived from
+        lzdfpackets = lzdfpackets.filter(pl.col("emission_velocity") > emissionvelocitycut * const.km_to_cm)
 
     if getemission:
         cols |= {emtypecolumn, dirbin_nu_column}
@@ -1571,10 +1572,12 @@ def get_flux_contributions_from_packets(
                 )
             )
 
+    if array_lambda is None:
+        # no group produced a spectrum, so there is no binned wavelength axis to return alongside an empty result
+        array_lambda = 0.5 * (lambda_bin_edges[:-1] + lambda_bin_edges[1:])
+
     if array_flambda_emission_total is None:
         array_flambda_emission_total = np.zeros_like(array_lambda, dtype=float)
-
-    assert array_lambda is not None
 
     return contribution_list, array_flambda_emission_total, array_lambda
 

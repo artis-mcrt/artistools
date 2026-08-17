@@ -270,6 +270,29 @@ def test_spectra_absorption_contributions_from_packets(groupby: str) -> None:
     assert all(contrib.linelabel for contrib in contributions)
 
 
+def test_spectra_emissionvelocitycut_from_packets() -> None:
+    """The cut is given in km/s, so it must bite well below the ~10,000-25,000 km/s the test model emits at."""
+
+    def total_emission(emissionvelocitycut: float | None) -> float:
+        _, array_flambda_emission_total, array_lambda = atspectra.get_flux_contributions_from_packets(
+            modelpath=modelpath_classic_3d,
+            timelowdays=3.0,
+            timehighdays=8.0,
+            lambda_bin_edges=np.linspace(3500.0, 8000.0, 101),
+            groupby="ion",
+            emtypecolumn="emissiontype",
+            getabsorption=False,
+            emissionvelocitycut=emissionvelocitycut,
+        )
+        return float(np.trapezoid(array_flambda_emission_total, x=array_lambda))
+
+    uncut = total_emission(None)
+    # a cut below every packet's emission velocity must keep everything, and one inside the range must remove flux
+    assert np.isclose(total_emission(1.0), uncut, rtol=1e-12)
+    assert 0.0 < total_emission(15000.0) < 0.9 * uncut
+    assert total_emission(1e6) == 0.0
+
+
 def test_spectra_absorption_contributions_reject_nuclide_groupby() -> None:
     with pytest.raises(ValueError, match="cannot be grouped by nuclide"):
         atspectra.get_flux_contributions_from_packets(

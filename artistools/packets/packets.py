@@ -373,6 +373,11 @@ def get_vpackets_text_columns(vpacketsfiletext: Path) -> list[str]:
     return firstline.lstrip("#").split()
 
 
+def format_timestamp(timestamp: float) -> str:
+    """Return a UTC timestamp string, for log messages that compare file modification times."""
+    return time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime(timestamp))
+
+
 def get_packets_rankbatch_parquetfile(
     modelpath: Path | str, batch_mpiranks: Sequence[int], batchindex: int, virtual: bool
 ) -> Path:
@@ -412,9 +417,19 @@ def get_packets_rankbatch_parquetfile(
                 # leave the stale file in place: write_parquet_atomic() swaps the new one in with a rename, so
                 # the path always resolves to a complete parquet. Deleting it first opens a window in which a
                 # concurrent reader (another rank, or another pytest-xdist worker) finds it missing or half-swapped
+                reasons = []
+                if parquet_mtime <= last_textfile_mtime:
+                    reasons.append(
+                        f"{text_filepath.relative_to(modelpath)} was modified later"
+                        f" ({format_timestamp(last_textfile_mtime)})"
+                    )
+                if parquet_mtime <= t_lastschemachange:
+                    reasons.append(f"the parquet schema changed later ({format_timestamp(t_lastschemachange)})")
+
                 print(
-                    f"  {parquetfilepath.relative_to(modelpath)} is older than the packet text files or schema"
-                    " change. File will be regenerated..."
+                    f"  {parquetfilepath.relative_to(modelpath)} was written"
+                    f" {format_timestamp(parquet_mtime)} but {' and '.join(reasons)}."
+                    " File will be regenerated..."
                 )
         else:
             conversion_needed = False
