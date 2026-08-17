@@ -6,6 +6,7 @@ from unittest import mock
 
 import matplotlib.axes as mplax
 import numpy as np
+import numpy.typing as npt
 import polars as pl
 import pytest
 from pytest_codspeed.plugin import BenchmarkFixture
@@ -207,6 +208,79 @@ def test_spectra_get_spectrum_polar_angles_frompackets(benchmark: BenchmarkFixtu
         expected_std = expected_results[dirbin][1]
         actual_std = actual_results[dirbin][1]
         assert math.isclose(actual_std, expected_std, rel_tol=1e-3)
+
+
+def get_contributions_classic_3d(
+    **kwargs: t.Any,
+) -> tuple[list[atspectra.FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
+    """Bin the packets of the classic 3d model. The time window and the wavelength window are constant.
+
+    Thus the results of the different tests are comparable.
+    """
+    kwargs.setdefault("emtypecolumn", "emissiontype")
+    return atspectra.get_flux_contributions_from_packets(
+        modelpath=modelpath_classic_3d,
+        timelowdays=3.0,
+        timehighdays=8.0,
+        lambda_bin_edges=np.linspace(3500.0, 8000.0, 101),
+        **kwargs,
+    )
+
+
+@pytest.mark.parametrize(
+    ("groupby", "expected_contribs", "expected_top"),
+    [
+        (
+            "ion",
+            10,
+            [
+                ("Co II", 1.541452039348011e-08),
+                ("free-free", 5.6865311711303595e-09),
+                ("Co III", 6.196070067481124e-10),
+            ],
+        ),
+        (
+            "line",
+            776,
+            [
+                ("free-free", 5.6865311711303595e-09),
+                ("Co II λ3754 69-25", 4.2743896083241423e-10),
+                ("Co II λ4160 69-31", 3.974052796767683e-10),
+            ],
+        ),
+    ],
+)
+def test_spectra_flux_contribution_labels_from_packets(
+    groupby: str, expected_contribs: int, expected_top: list[tuple[str, float]]
+) -> None:
+    """The emission group labels and the absorption group labels come from the linelist.
+
+    This test makes sure that the labels and their fluxes do not change.
+    """
+    contributions, array_flambda_emission_total, array_lambda = get_contributions_classic_3d(groupby=groupby)
+
+    assert len(contributions) == expected_contribs
+    for contrib, (linelabel, fluxcontrib) in zip(contributions[: len(expected_top)], expected_top, strict=True):
+        assert contrib.linelabel == linelabel
+        assert np.isclose(contrib.fluxcontrib, fluxcontrib, rtol=1e-4)
+
+    assert np.isclose(np.trapezoid(array_flambda_emission_total, x=array_lambda), 2.019784984151385e-08, rtol=1e-4)
+
+
+# The "ion" group makes an ion label for the absorption. The "nucmass" group makes a line label.
+# These two groups thus test the two conditions. The "line" group gives the same result as the "nucmass" group.
+@pytest.mark.parametrize("groupby", ["ion", "nucmass"])
+def test_spectra_absorption_contributions_from_packets(groupby: str) -> None:
+    """Each absorption label is a line label. The group of the emission contributions does not change this."""
+    contributions, _, _ = get_contributions_classic_3d(groupby=groupby, getemission=False)
+
+    assert contributions
+    assert all(contrib.linelabel for contrib in contributions)
+
+
+def test_spectra_absorption_contributions_reject_nuclide_groupby() -> None:
+    with pytest.raises(ValueError, match="cannot be grouped by nuclide"):
+        get_contributions_classic_3d(groupby="nuc", emtypecolumn="pellet_nucindex")
 
 
 def test_spectra_get_flux_contributions(benchmark: BenchmarkFixture) -> None:

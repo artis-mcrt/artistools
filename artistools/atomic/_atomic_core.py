@@ -493,6 +493,21 @@ def get_ion_stage_roman_numeral_df() -> pl.DataFrame:
     )
 
 
+def add_ion_str_column(lz: pl.LazyFrame) -> pl.LazyFrame:
+    """Add an ion_str column, for example 'Fe II'.
+
+    The frame must have an atomic_number column and an ion_stage column.
+    The function adds one column only. It removes the two columns that the joins supply.
+    """
+    return (
+        lz
+        .join(get_ion_stage_roman_numeral_df().lazy(), on="ion_stage", how="left")
+        .join(get_elsymbols_df().lazy(), on="atomic_number", how="left")
+        .with_columns(ion_str=pl.col("elsymbol") + " " + pl.col("ion_stage_roman"))
+        .drop("elsymbol", "ion_stage_roman")
+    )
+
+
 def get_elsymbol(atomic_number: int | np.int64) -> str:
     """Return the element symbol of an atomic number."""
     return get_elsymbolslist()[atomic_number]
@@ -610,8 +625,8 @@ def get_nuclides(modelpath: Path | str) -> pl.LazyFrame:
     ).lazy()
 
 
-def get_bflist(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame:
-    """Return a LazyFrame of bound-free transitions from bflist.out."""
+def get_bflist(modelpath: Path | str) -> pl.LazyFrame:
+    """Return a LazyFrame of the bound-free transitions in bflist.out. The frame includes an ion_str column."""
     compositiondata = get_composition_data(modelpath)
     bflistpath = firstexisting(["bflist.out", "bflist.dat"], folder=modelpath, tryzipped=True)
     print(f"Reading {bflistpath}")
@@ -654,17 +669,7 @@ def get_bflist(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame
         ),
     )
 
-    dfboundfree = dfboundfree.drop(["elementindex", "ionindex"])
-
-    if get_ion_str:
-        dfboundfree = (
-            dfboundfree
-            .join(get_ion_stage_roman_numeral_df().lazy(), on="ion_stage", how="left")
-            .join(get_elsymbols_df().lazy(), on="atomic_number", how="left")
-            .with_columns(ion_str=pl.col("elsymbol") + " " + pl.col("ion_stage_roman"))
-        )
-
-    return dfboundfree
+    return add_ion_str_column(dfboundfree.drop(["elementindex", "ionindex"]))
 
 
 def read_linestatfile(
@@ -698,7 +703,13 @@ def read_linestatfile(
     return lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels
 
 
-def get_linelist_pldf(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame:
+def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
+    """Return the transition list. Each row is one line. The rows are in lineindex order.
+
+    Keep the rows in lineindex order. A caller finds a line by its row position in this frame.
+    The emission and the absorption type codes of a packet are lineindex values.
+    Do not add a sort operation, a filter operation, or a unique operation to this function.
+    """
     textfile = firstexisting("linestat.out", folder=modelpath)
     # the .tmp suffix marks this as a regenerable cache, matching every other parquet file artistools writes
     parquetfile = Path(modelpath, "linelist.out.parquet.tmp")
@@ -742,13 +753,5 @@ def get_linelist_pldf(modelpath: Path | str, get_ion_str: bool = False) -> pl.La
 
     if "ionstage" in linelist_lazy.collect_schema().names():
         linelist_lazy = linelist_lazy.rename({"ionstage": "ion_stage"})
-
-    if get_ion_str:
-        linelist_lazy = (
-            linelist_lazy
-            .join(get_ion_stage_roman_numeral_df().lazy(), on="ion_stage", how="left")
-            .join(get_elsymbols_df().lazy(), on="atomic_number", how="left")
-            .with_columns(ion_str=pl.col("elsymbol") + " " + pl.col("ion_stage_roman"))
-        )
 
     return linelist_lazy

@@ -373,6 +373,11 @@ def get_vpackets_text_columns(vpacketsfiletext: Path) -> list[str]:
     return firstline.lstrip("#").split()
 
 
+def format_timestamp(timestamp: float) -> str:
+    """Return a UTC time as a string. Log messages use it to compare the modification times of files."""
+    return time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime(timestamp))
+
+
 def get_packets_rankbatch_parquetfile(
     modelpath: Path | str, batch_mpiranks: Sequence[int], batchindex: int, virtual: bool
 ) -> Path:
@@ -387,9 +392,10 @@ def get_packets_rankbatch_parquetfile(
     )
     parquetfilepath = packetdir / parquetfilename
 
-    # time when the schema for the parquet files last changed (e.g. new computed columns added or data types changed)
-    # 2026-08-07: the all-null trailing column from the text file's line-ending space is now dropped
-    time_parquetschemachange = (2026, 8, 7, 9, 0, 0)
+    # The time of the last change to the parquet schema. A schema change adds a column or changes a data type.
+    # The code makes a new cache file if the cache is older than this time.
+    # Increase this time only for a change that makes an older cache file incorrect.
+    time_parquetschemachange = (2024, 4, 23, 9, 0, 0)
     t_lastschemachange = calendar.timegm(time_parquetschemachange)
 
     text_filenames = [
@@ -412,9 +418,19 @@ def get_packets_rankbatch_parquetfile(
                 # leave the stale file in place: write_parquet_atomic() swaps the new one in with a rename, so
                 # the path always resolves to a complete parquet. Deleting it first opens a window in which a
                 # concurrent reader (another rank, or another pytest-xdist worker) finds it missing or half-swapped
+                reasons = []
+                if parquet_mtime <= last_textfile_mtime:
+                    reasons.append(
+                        f"{text_filepath.relative_to(modelpath)} was modified later"
+                        f" ({format_timestamp(last_textfile_mtime)})"
+                    )
+                if parquet_mtime <= t_lastschemachange:
+                    reasons.append(f"the parquet schema changed later ({format_timestamp(t_lastschemachange)})")
+
                 print(
-                    f"  {parquetfilepath.relative_to(modelpath)} is older than the packet text files or schema"
-                    " change. File will be regenerated..."
+                    f"  {parquetfilepath.relative_to(modelpath)} was written"
+                    f" {format_timestamp(parquet_mtime)} but {' and '.join(reasons)}."
+                    " File will be regenerated..."
                 )
         else:
             conversion_needed = False

@@ -15,6 +15,7 @@ import polars.selectors as cs
 import artistools as at
 from artistools.constants import C_cm_per_s as CLIGHT
 from artistools.constants import day_to_s
+from artistools.constants import km_to_cm
 from artistools.constants import Msun_to_g as MSUN
 
 
@@ -142,7 +143,6 @@ def read_griddat_file(
     )
 
     factor_position = 1.478  # in km
-    km_to_cm = 1e5
     griddata = griddata.with_columns(
         # griddata in geom units
         cs.by_name("rho", "cellYe", "Q", require_all=False).fill_null(0.0)

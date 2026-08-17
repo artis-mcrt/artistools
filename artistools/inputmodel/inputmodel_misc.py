@@ -23,6 +23,7 @@ from artistools.atomic import get_z_a_nucname
 from artistools.commands import get_path
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
+from artistools.constants import km_to_cm
 from artistools.misc import firstexisting
 from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
@@ -1266,7 +1267,6 @@ def dimension_reduce_model(
             pos_z_mid=(pl.col("out_n_z") + 0.5) * (2 * xmax / ncoordgridz) - xmax,
         )
     else:
-        km_to_cm = 1e5
         dfmodel_out = dfmodel_out.with_columns(vel_r_max_kmps=(pl.col("out_n_r") + 1) * (vmax / ncoordgridr) / km_to_cm)
 
     dfmodel_out = (
