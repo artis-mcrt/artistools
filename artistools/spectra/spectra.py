@@ -1383,7 +1383,7 @@ def get_flux_contributions_from_packets(
                     schema={emtypecolumn: pl.Int32, "emissiontype_str": pl.String},
                     orient="col",
                 ),
-                get_bflist(modelpath, get_ion_str=True).select(
+                get_bflist(modelpath).select(
                     (-1 - pl.col("bfindex").cast(pl.Int32)).alias(emtypecolumn),
                     expr_bflist_to_str.alias("emissiontype_str"),
                 ),

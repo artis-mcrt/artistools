@@ -623,8 +623,8 @@ def get_nuclides(modelpath: Path | str) -> pl.LazyFrame:
     ).lazy()
 
 
-def get_bflist(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame:
-    """Return a LazyFrame of bound-free transitions from bflist.out."""
+def get_bflist(modelpath: Path | str) -> pl.LazyFrame:
+    """Return a LazyFrame of the bound-free transitions in bflist.out. The frame includes an ion_str column."""
     compositiondata = get_composition_data(modelpath)
     bflistpath = firstexisting(["bflist.out", "bflist.dat"], folder=modelpath, tryzipped=True)
     print(f"Reading {bflistpath}")
@@ -667,12 +667,7 @@ def get_bflist(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame
         ),
     )
 
-    dfboundfree = dfboundfree.drop(["elementindex", "ionindex"])
-
-    if get_ion_str:
-        dfboundfree = add_ion_str_column(dfboundfree)
-
-    return dfboundfree
+    return add_ion_str_column(dfboundfree.drop(["elementindex", "ionindex"]))
 
 
 def read_linestatfile(
