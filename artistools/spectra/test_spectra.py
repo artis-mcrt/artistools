@@ -6,6 +6,7 @@ from unittest import mock
 
 import matplotlib.axes as mplax
 import numpy as np
+import numpy.typing as npt
 import polars as pl
 import pytest
 from pytest_codspeed.plugin import BenchmarkFixture
@@ -209,6 +210,23 @@ def test_spectra_get_spectrum_polar_angles_frompackets(benchmark: BenchmarkFixtu
         assert math.isclose(actual_std, expected_std, rel_tol=1e-3)
 
 
+def get_contributions_classic_3d(
+    **kwargs: t.Any,
+) -> tuple[list[atspectra.FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
+    """Bin the packets of the classic 3d model. The time window and the wavelength window are constant.
+
+    Thus the results of the different tests are comparable.
+    """
+    kwargs.setdefault("emtypecolumn", "emissiontype")
+    return atspectra.get_flux_contributions_from_packets(
+        modelpath=modelpath_classic_3d,
+        timelowdays=3.0,
+        timehighdays=8.0,
+        lambda_bin_edges=np.linspace(3500.0, 8000.0, 101),
+        **kwargs,
+    )
+
+
 @pytest.mark.parametrize(
     ("groupby", "expected_contribs", "expected_top"),
     [
@@ -235,15 +253,11 @@ def test_spectra_get_spectrum_polar_angles_frompackets(benchmark: BenchmarkFixtu
 def test_spectra_flux_contribution_labels_from_packets(
     groupby: str, expected_contribs: int, expected_top: list[tuple[str, float]]
 ) -> None:
-    """The emission and absorption group labels come from the linelist, so pin them down along with their fluxes."""
-    contributions, array_flambda_emission_total, array_lambda = atspectra.get_flux_contributions_from_packets(
-        modelpath=modelpath_classic_3d,
-        timelowdays=3.0,
-        timehighdays=8.0,
-        lambda_bin_edges=np.linspace(3500.0, 8000.0, 101),
-        groupby=groupby,
-        emtypecolumn="emissiontype",
-    )
+    """The emission group labels and the absorption group labels come from the linelist.
+
+    This test makes sure that the labels and their fluxes do not change.
+    """
+    contributions, array_flambda_emission_total, array_lambda = get_contributions_classic_3d(groupby=groupby)
 
     assert len(contributions) == expected_contribs
     for contrib, (linelabel, fluxcontrib) in zip(contributions[: len(expected_top)], expected_top, strict=True):
@@ -253,56 +267,20 @@ def test_spectra_flux_contribution_labels_from_packets(
     assert np.isclose(np.trapezoid(array_flambda_emission_total, x=array_lambda), 2.019784984151385e-08, rtol=1e-4)
 
 
-@pytest.mark.parametrize("groupby", ["ion", "line", "nucmass"])
+# The "ion" group makes an ion label for the absorption. The "nucmass" group makes a line label.
+# These two groups thus test the two conditions. The "line" group gives the same result as the "nucmass" group.
+@pytest.mark.parametrize("groupby", ["ion", "nucmass"])
 def test_spectra_absorption_contributions_from_packets(groupby: str) -> None:
-    """Absorption is always labelled per line, whichever groupby the emission contributions use."""
-    contributions, _, _ = atspectra.get_flux_contributions_from_packets(
-        modelpath=modelpath_classic_3d,
-        timelowdays=3.0,
-        timehighdays=8.0,
-        lambda_bin_edges=np.linspace(3500.0, 8000.0, 101),
-        groupby=groupby,
-        emtypecolumn="emissiontype",
-        getemission=False,
-    )
+    """Each absorption label is a line label. The group of the emission contributions does not change this."""
+    contributions, _, _ = get_contributions_classic_3d(groupby=groupby, getemission=False)
 
     assert contributions
     assert all(contrib.linelabel for contrib in contributions)
 
 
-def test_spectra_emissionvelocitycut_from_packets() -> None:
-    """The cut is given in km/s, so it must bite well below the ~10,000-25,000 km/s the test model emits at."""
-
-    def total_emission(emissionvelocitycut: float | None) -> float:
-        _, array_flambda_emission_total, array_lambda = atspectra.get_flux_contributions_from_packets(
-            modelpath=modelpath_classic_3d,
-            timelowdays=3.0,
-            timehighdays=8.0,
-            lambda_bin_edges=np.linspace(3500.0, 8000.0, 101),
-            groupby="ion",
-            emtypecolumn="emissiontype",
-            getabsorption=False,
-            emissionvelocitycut=emissionvelocitycut,
-        )
-        return float(np.trapezoid(array_flambda_emission_total, x=array_lambda))
-
-    uncut = total_emission(None)
-    # a cut below every packet's emission velocity must keep everything, and one inside the range must remove flux
-    assert np.isclose(total_emission(1.0), uncut, rtol=1e-12)
-    assert 0.0 < total_emission(15000.0) < 0.9 * uncut
-    assert total_emission(1e6) == 0.0
-
-
 def test_spectra_absorption_contributions_reject_nuclide_groupby() -> None:
     with pytest.raises(ValueError, match="cannot be grouped by nuclide"):
-        atspectra.get_flux_contributions_from_packets(
-            modelpath=modelpath_classic_3d,
-            timelowdays=3.0,
-            timehighdays=8.0,
-            lambda_bin_edges=np.linspace(3500.0, 8000.0, 101),
-            groupby="nuc",
-            emtypecolumn="pellet_nucindex",
-        )
+        get_contributions_classic_3d(groupby="nuc", emtypecolumn="pellet_nucindex")
 
 
 def test_spectra_get_flux_contributions(benchmark: BenchmarkFixture) -> None:

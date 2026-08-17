@@ -374,7 +374,7 @@ def get_vpackets_text_columns(vpacketsfiletext: Path) -> list[str]:
 
 
 def format_timestamp(timestamp: float) -> str:
-    """Return a UTC timestamp string, for log messages that compare file modification times."""
+    """Return a UTC time as a string. Log messages use it to compare the modification times of files."""
     return time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime(timestamp))
 
 
@@ -392,8 +392,9 @@ def get_packets_rankbatch_parquetfile(
     )
     parquetfilepath = packetdir / parquetfilename
 
-    # time when the schema for the parquet files last changed (e.g. new computed columns added or data types changed).
-    # Caches written before this are regenerated, so only raise it for a change that makes an older cache wrong.
+    # The time of the last change to the parquet schema. A schema change adds a column or changes a data type.
+    # The code makes a new cache file if the cache is older than this time.
+    # Increase this time only for a change that makes an older cache file incorrect.
     time_parquetschemachange = (2024, 4, 23, 9, 0, 0)
     t_lastschemachange = calendar.timegm(time_parquetschemachange)
 

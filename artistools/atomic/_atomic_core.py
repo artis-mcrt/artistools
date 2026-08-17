@@ -494,7 +494,10 @@ def get_ion_stage_roman_numeral_df() -> pl.DataFrame:
 
 
 def add_ion_str_column(lz: pl.LazyFrame) -> pl.LazyFrame:
-    """Add an ion_str column such as 'Fe II' to a frame with atomic_number and ion_stage columns."""
+    """Add an ion_str column, for example 'Fe II'.
+
+    The frame must have an atomic_number column and an ion_stage column.
+    """
     return (
         lz
         .join(get_ion_stage_roman_numeral_df().lazy(), on="ion_stage", how="left")
@@ -704,10 +707,11 @@ def read_linestatfile(
 
 
 def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
-    """Return the transition list, one row per line, in lineindex order.
+    """Return the transition list. Each row is one line. The rows are in lineindex order.
 
-    Rows must stay in lineindex order: callers look a line up by its position in this frame, since a packet's
-    emission and absorption type codes are lineindex values. Do not add a sort, a filter, or a unique here.
+    Keep the rows in lineindex order. A caller finds a line by its row position in this frame.
+    The emission and the absorption type codes of a packet are lineindex values.
+    Do not add a sort operation, a filter operation, or a unique operation to this function.
     """
     textfile = firstexisting("linestat.out", folder=modelpath)
     # the .tmp suffix marks this as a regenerable cache, matching every other parquet file artistools writes
