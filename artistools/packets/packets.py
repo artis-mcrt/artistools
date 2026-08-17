@@ -389,7 +389,7 @@ def get_packets_rankbatch_parquetfile(
 
     # time when the schema for the parquet files last changed (e.g. new computed columns added or data types changed)
     # 2026-08-07: the all-null trailing column from the text file's line-ending space is now dropped
-    time_parquetschemachange = (2026, 8, 7, 9, 0, 0)
+    time_parquetschemachange = (2024, 4, 23, 9, 0, 0)
     t_lastschemachange = calendar.timegm(time_parquetschemachange)
 
     text_filenames = [
