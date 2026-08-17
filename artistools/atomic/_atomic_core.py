@@ -497,12 +497,14 @@ def add_ion_str_column(lz: pl.LazyFrame) -> pl.LazyFrame:
     """Add an ion_str column, for example 'Fe II'.
 
     The frame must have an atomic_number column and an ion_stage column.
+    The function adds one column only. It removes the two columns that the joins supply.
     """
     return (
         lz
         .join(get_ion_stage_roman_numeral_df().lazy(), on="ion_stage", how="left")
         .join(get_elsymbols_df().lazy(), on="atomic_number", how="left")
         .with_columns(ion_str=pl.col("elsymbol") + " " + pl.col("ion_stage_roman"))
+        .drop("elsymbol", "ion_stage_roman")
     )
 
 
