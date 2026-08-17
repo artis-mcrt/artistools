@@ -5,6 +5,7 @@ import math
 import re
 import typing as t
 from collections.abc import Callable
+from collections.abc import Sequence
 from contextlib import suppress
 from functools import lru_cache
 from pathlib import Path
@@ -17,6 +18,7 @@ import polars.selectors as cs
 
 import artistools.constants as const
 import artistools.packets as atpackets
+from artistools.atomic import add_ion_str_column
 from artistools.atomic import get_bflist
 from artistools.atomic import get_elsymbol
 from artistools.atomic import get_ionstring
@@ -445,6 +447,18 @@ def get_spectrum_at_time(
     )[dirbin].collect()
 
 
+def select_dirbins(alldirbins: list[int], requested: Sequence[int] | None) -> list[int]:
+    """Return the requested subset of the available direction bins, or all of them when nothing was requested."""
+    if requested is None:
+        return alldirbins
+
+    if unavailable := [dirbin for dirbin in requested if dirbin not in alldirbins]:
+        msg = f"Direction bins {unavailable} are not available (have {alldirbins})"
+        raise ValueError(msg)
+
+    return list(requested)
+
+
 def get_from_packets(
     modelpath: Path | str,
     timelowdays: float,
@@ -458,9 +472,14 @@ def get_from_packets(
     fluxfilterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     nprocs_read_dfpackets: tuple[int, pl.DataFrame | pl.LazyFrame] | None = None,
     directionbins_are_vpkt_observers: bool = False,
+    directionbins: Sequence[int] | None = None,
     gamma: bool = False,
 ) -> dict[int, pl.LazyFrame]:
-    """Get a spectrum dataframe using the packets files as input."""
+    """Get a spectrum dataframe using the packets files as input.
+
+    directionbins selects which viewing direction bins to build a query for, defaulting to all of them. Building a
+    query is not free, so a caller that wants one bin should ask for one bin.
+    """
     assert use_time in {"arrival", "emission", "escape"}
 
     if nu_column == "absorption_freq":
@@ -507,8 +526,8 @@ def get_from_packets(
     dirbin_spectra: dict[int, pl.LazyFrame] = {}
     if directionbins_are_vpkt_observers:
         vpkt_config = get_vpkt_config(modelpath)
-        directionbins = range(vpkt_config["nobsdirections"] * vpkt_config["nspectraperobs"])
-        for vspecindex in directionbins:
+        alldirbins = list(range(vpkt_config["nobsdirections"] * vpkt_config["nspectraperobs"]))
+        for vspecindex in select_dirbins(alldirbins, directionbins):
             obsdirindex, opacchoiceindex = divmod(vspecindex, vpkt_config["nspectraperobs"])
             lambda_column = (
                 f"dir{obsdirindex}_lambda_angstroms_rf"
@@ -545,7 +564,7 @@ def get_from_packets(
 
         assert use_time == "arrival"
     else:
-        directionbins = [-1, *get_dirbins(average_over_phi=average_over_phi, average_over_theta=average_over_theta)]
+        alldirbins = [-1, *get_dirbins(average_over_phi=average_over_phi, average_over_theta=average_over_theta)]
         lambda_column = nu_column.replace("nu_", "lambda_angstroms_")
         energy_column = "e_cmf" if use_time == "escape" else "e_rf"
 
@@ -577,7 +596,7 @@ def get_from_packets(
 
         dfpackets = dfpackets.filter(pl.col(lambda_column).is_between(lambda_bin_edges[0], lambda_bin_edges[-1]))
 
-        for dirbin in directionbins:
+        for dirbin in select_dirbins(alldirbins, directionbins):
             pldfpackets_dirbin_lazy, inverse_solidangle_fraction = atpackets.filter_packets_dirbin(
                 dfpackets, dirbin, average_over_phi=average_over_phi, average_over_theta=average_over_theta
             )
@@ -1172,6 +1191,52 @@ def get_flux_contributions(
     return contribution_list, array_flambda_emission_total, arraylambda
 
 
+@lru_cache(maxsize=1)
+def get_linelist_label_columns(modelpath: Path | str, groupby: str) -> pl.DataFrame:
+    """Return the per-line columns needed to build a groupby label, in lineindex order.
+
+    Cached because a spectrum with both emission and absorption contributions labels two sets of line indices from
+    the same linelist, which can hold tens of millions of rows. Callers must treat the result as read-only.
+    """
+    linecolumns = ["atomic_number", "ion_stage"]
+    if groupby != "ion":
+        linecolumns += ["lambda_angstroms_air", "upperlevelindex", "lowerlevelindex"]
+
+    return get_linelist_pldf(modelpath=modelpath).select(linecolumns).collect()
+
+
+def get_line_labels(
+    modelpath: Path | str, lineindices: pl.Series, groupby: str, typecolumn: str, labelcolumn: str
+) -> pl.LazyFrame:
+    """Return a frame mapping each of the given line indices to its ion or line label.
+
+    A linelist can hold tens of millions of lines while a single spectrum touches only a small fraction of them, so
+    the line properties are gathered at the indices that occur rather than joining the packets against the full list.
+    """
+    dflines = get_linelist_label_columns(modelpath, groupby)
+
+    # negative codes are the free-free and bound-free sentinels, and gather() would silently wrap them around to the
+    # end of the linelist; codes at or past the end would raise. Both are left unmatched by the caller's join instead.
+    lineindices = lineindices.filter(lineindices.is_between(0, dflines.height - 1)).unique()
+
+    return add_ion_str_column(
+        pl.LazyFrame({typecolumn: lineindices.cast(pl.Int32)}).select(
+            typecolumn, *[pl.lit(dflines[col]).gather(pl.col(typecolumn)).alias(col) for col in dflines.columns]
+        )
+    ).select(
+        typecolumn,
+        pl.col("ion_str").alias(labelcolumn)
+        if groupby == "ion"
+        else pl.format(
+            "{} λ{} {}-{}",
+            pl.col("ion_str"),
+            pl.col("lambda_angstroms_air").sub(0.5).round(0).cast(pl.String).str.strip_suffix(".0"),
+            pl.col("upperlevelindex"),
+            pl.col("lowerlevelindex"),
+        ).alias(labelcolumn),
+    )
+
+
 def get_flux_contributions_from_packets(
     modelpath: Path,
     timelowdays: float,
@@ -1200,6 +1265,13 @@ def get_flux_contributions_from_packets(
     """
     assert groupby in {"ion", "line", "nuc", "nucmass"}
     assert emtypecolumn in {"emissiontype", "trueemissiontype", "pellet_nucindex"}
+    if getabsorption and groupby == "nuc":
+        # a nuclide emits a packet but never absorbs one, so nuclide names cannot label absorption contributions
+        msg = (
+            "Absorption contributions cannot be grouped by nuclide. Use -groupby ion or line, or drop --showabsorption"
+        )
+        raise ValueError(msg)
+
     if groupby == "line":
         print(
             "Grouping by line. Line labels are wavelengths in air between 2,000-20,000 Å, and vacuum wavelengths outside this range. This matches the NIST default options and many astrophysics papers."
@@ -1211,12 +1283,6 @@ def get_flux_contributions_from_packets(
 
     if directionbin is None:
         directionbin = -1
-
-    linelistlazy, bflistlazy = (
-        (get_linelist_pldf(modelpath=modelpath, get_ion_str=True), get_bflist(modelpath, get_ion_str=True))
-        if groupby != "nuc"
-        else (None, None)
-    )
 
     cols = {"e_rf"}
     cols.add({"arrival": "t_arrive_d", "emission": "em_time", "escape": "escape_time"}[use_time])
@@ -1256,85 +1322,14 @@ def get_flux_contributions_from_packets(
     lzdfpackets = lzdfpackets.filter(condition_nu_emit | condition_nu_abs)
 
     if emissionvelocitycut is not None:
-        lzdfpackets = atpackets.add_derived_columns_lazy(lzdfpackets)
+        lzdfpackets = atpackets.add_derived_columns_lazy(lzdfpackets, modelpath=modelpath)
         lzdfpackets = lzdfpackets.filter(pl.col("emission_velocity") > emissionvelocitycut)
 
-    expr_linelist_to_str = (
-        pl.col("ion_str")
-        if groupby == "ion"
-        else pl.format(
-            "{} λ{} {}-{}",
-            pl.col("ion_str"),
-            pl.col("lambda_angstroms_air").sub(0.5).round(0).cast(pl.String).str.strip_suffix(".0"),
-            pl.col("upperlevelindex"),
-            pl.col("lowerlevelindex"),
-        )
-    )
-
     if getemission:
-        cols |= {"emissiontype_str", dirbin_nu_column}
-        if groupby == "nuc":
-            emtypestrings = get_nuclides(modelpath=modelpath).rename({"nucname": "emissiontype_str"})
-        elif groupby == "nucmass":
-            emtypestrings = get_nuclides(modelpath=modelpath).with_columns(
-                (
-                    pl.when(pl.col("pellet_nucindex") == -1).then("nucname").otherwise(pl.format("A={}", pl.col("A")))
-                ).alias("emissiontype_str")
-            )
-        else:
-            assert linelistlazy is not None
-            assert bflistlazy is not None
-            bflistlazy = bflistlazy.with_columns((-1 - pl.col("bfindex").cast(pl.Int32)).alias(emtypecolumn))
-            expr_bflist_to_str = (
-                pl.col("ion_str") + " bound-free"
-                if groupby == "ion"
-                else pl.format("{} bound-free {}-{}", pl.col("ion_str"), pl.col("lowerlevel"), pl.col("upperionlevel"))
-            )
-
-            emtypestrings = pl.concat([
-                linelistlazy.select([
-                    pl.col("lineindex").cast(pl.Int32).alias(emtypecolumn),
-                    expr_linelist_to_str.alias("emissiontype_str"),
-                ]),
-                pl.LazyFrame(
-                    {emtypecolumn: [-9999999, -9999000], "emissiontype_str": ["free-free", "NOT SET"]},
-                    schema={emtypecolumn: pl.Int32, "emissiontype_str": pl.String},
-                    orient="col",
-                ),
-                bflistlazy.select([pl.col(emtypecolumn), expr_bflist_to_str.alias("emissiontype_str")]),
-            ])
-
-        lzdfpackets = lzdfpackets.join(emtypestrings, on=emtypecolumn, how="left")
-
-        if vpkt_match_emission_exclusion_to_opac and directionbins_are_vpkt_observers:
-            assert vpkt_config is not None
-            assert opacchoiceindex is not None
-            z_exclude = int(vpkt_config["z_excludelist"][opacchoiceindex])
-            if z_exclude == -1:
-                # no bound-bound
-                lzdfpackets = lzdfpackets.filter(pl.col("emissiontype_str").str.contains("bound-free"))
-            elif z_exclude == -2:
-                # no bound-free
-                lzdfpackets = lzdfpackets.filter(pl.col("emissiontype_str").str.contains("bound-free").not_())
-            elif z_exclude > 0:
-                elsymb = get_elsymbol(z_exclude)
-                lzdfpackets = lzdfpackets.filter(pl.col("emissiontype_str").str.starts_with(f"{elsymb} ").not_())
+        cols |= {emtypecolumn, dirbin_nu_column}
 
     if getabsorption:
-        cols |= {"absorptiontype_str", "absorption_freq"}
-        assert linelistlazy is not None
-        abstypestrings = pl.concat([
-            linelistlazy.select(
-                absorption_type=pl.col("lineindex").cast(pl.Int32), absorptiontype_str=expr_linelist_to_str
-            ),
-            pl.LazyFrame(
-                {"absorption_type": [-1, -2], "absorptiontype_str": ["free-free", "bound-free"]},
-                schema={"absorption_type": pl.Int32, "absorptiontype_str": pl.String},
-                orient="col",
-            ),
-        ]).with_columns(pl.col("absorptiontype_str"))
-
-        lzdfpackets = lzdfpackets.join(abstypestrings, on="absorption_type", how="left")
+        cols |= {"absorption_type", "absorption_freq"}
 
     if directionbin != -1:
         if average_over_phi:
@@ -1345,47 +1340,112 @@ def get_flux_contributions_from_packets(
             cols.add("dirbin")
 
     dfpackets = lzdfpackets.select(cs.by_name(cols, require_all=False)).collect()
-    emissiongroups: dict[str, pl.DataFrame] = {}
-    emission_e_rf_sum: dict[str, float] = {}
-    if getemission:
-        empackets = (
-            dfpackets
-            .drop("absorptiontype_str", "absorption_freq", strict=False)
-            .filter(pl.col(dirbin_nu_column).is_between(nu_min, nu_max))
-            .drop_nulls("emissiontype_str")
-        )
-        emissiongroups = {k: v.drop(cs.by_dtype(pl.String)) for (k,), v in empackets.group_by("emissiontype_str")}
-        emission_e_rf_sum = dict(
-            empackets.group_by("emissiontype_str").agg(pl.col("e_rf").sum().alias("e_rf")).iter_rows()
-        )
 
-    absorptiongroups: dict[str, pl.DataFrame] = {}
-    absorption_e_rf_sum: dict[str, float] = {}
+    # the labels are attached after collecting, so that only the type codes that packets actually used are looked up
+    if getemission:
+        if groupby == "nuc":
+            emtypelabels = get_nuclides(modelpath=modelpath).rename({"nucname": "emissiontype_str"})
+        elif groupby == "nucmass":
+            emtypelabels = get_nuclides(modelpath=modelpath).with_columns(
+                (
+                    pl.when(pl.col("pellet_nucindex") == -1).then("nucname").otherwise(pl.format("A={}", pl.col("A")))
+                ).alias("emissiontype_str")
+            )
+        else:
+            expr_bflist_to_str = (
+                pl.col("ion_str") + " bound-free"
+                if groupby == "ion"
+                else pl.format("{} bound-free {}-{}", pl.col("ion_str"), pl.col("lowerlevel"), pl.col("upperionlevel"))
+            )
+
+            emtypelabels = pl.concat([
+                get_line_labels(modelpath, dfpackets[emtypecolumn], groupby, emtypecolumn, "emissiontype_str"),
+                pl.LazyFrame(
+                    {emtypecolumn: [-9999999, -9999000], "emissiontype_str": ["free-free", "NOT SET"]},
+                    schema={emtypecolumn: pl.Int32, "emissiontype_str": pl.String},
+                    orient="col",
+                ),
+                get_bflist(modelpath, get_ion_str=True).select(
+                    (-1 - pl.col("bfindex").cast(pl.Int32)).alias(emtypecolumn),
+                    expr_bflist_to_str.alias("emissiontype_str"),
+                ),
+            ])
+
+        # only the key and the label: the nuclide table carries columns that would otherwise ride along on every packet
+        dfpackets = dfpackets.join(
+            emtypelabels.select(emtypecolumn, "emissiontype_str").collect(), on=emtypecolumn, how="left"
+        ).drop(emtypecolumn)
+
+        if vpkt_match_emission_exclusion_to_opac and directionbins_are_vpkt_observers:
+            assert vpkt_config is not None
+            assert opacchoiceindex is not None
+            z_exclude = int(vpkt_config["z_excludelist"][opacchoiceindex])
+            if z_exclude == -1:
+                # no bound-bound
+                dfpackets = dfpackets.filter(pl.col("emissiontype_str").str.contains("bound-free"))
+            elif z_exclude == -2:
+                # no bound-free
+                dfpackets = dfpackets.filter(pl.col("emissiontype_str").str.contains("bound-free").not_())
+            elif z_exclude > 0:
+                elsymb = get_elsymbol(z_exclude)
+                dfpackets = dfpackets.filter(pl.col("emissiontype_str").str.starts_with(f"{elsymb} ").not_())
+
     if getabsorption:
-        abspackets = (
-            dfpackets
-            .drop(dirbin_nu_column, "emissiontype_str", strict=False)
-            .filter(pl.col("absorption_freq").is_between(nu_min, nu_max))
-            .drop_nulls("absorptiontype_str")
+        abstypelabels = pl.concat([
+            get_line_labels(modelpath, dfpackets["absorption_type"], groupby, "absorption_type", "absorptiontype_str"),
+            pl.LazyFrame(
+                {"absorption_type": [-1, -2], "absorptiontype_str": ["free-free", "bound-free"]},
+                schema={"absorption_type": pl.Int32, "absorptiontype_str": pl.String},
+                orient="col",
+            ),
+        ])
+
+        dfpackets = dfpackets.join(abstypelabels.collect(), on="absorption_type", how="left").drop("absorption_type")
+
+    def group_by_label(
+        dfpkts: pl.DataFrame, labelcolumn: str, nucolumn: str, dropcolumns: Sequence[str]
+    ) -> dict[str, pl.DataFrame]:
+        """Split the packets into one frame per label, keeping only the columns that binning needs."""
+        # partition_by copies each group into its own buffers, so the intermediate frame is released on return
+        return {
+            groupname: dfgroup
+            for (groupname,), dfgroup in (
+                dfpkts
+                .drop(dropcolumns, strict=False)
+                .filter(pl.col(nucolumn).is_between(nu_min, nu_max))
+                .drop_nulls(labelcolumn)
+                .partition_by(labelcolumn, include_key=False, as_dict=True)
+            ).items()
+        }
+
+    emissiongroups: dict[str, pl.DataFrame] = {}
+    absorptiongroups: dict[str, pl.DataFrame] = {}
+    if getemission:
+        emissiongroups = group_by_label(
+            dfpackets, "emissiontype_str", dirbin_nu_column, ["absorptiontype_str", "absorption_freq"]
         )
-        absorptiongroups = {k: v.drop(cs.by_dtype(pl.String)) for (k,), v in abspackets.group_by("absorptiontype_str")}
-        absorption_e_rf_sum = dict(
-            abspackets.group_by("absorptiontype_str").agg(pl.col("e_rf").sum().alias("e_rf")).iter_rows()
+    if getabsorption:
+        absorptiongroups = group_by_label(
+            dfpackets, "absorptiontype_str", "absorption_freq", [dirbin_nu_column, "emissiontype_str"]
         )
 
     del dfpackets
 
-    emptystrset: set[str] = set()
-    allgroupnames = list(
-        set(empackets.select(pl.col("emissiontype_str").unique()).to_series() if getemission else emptystrset)
-        | set(abspackets.select(pl.col("absorptiontype_str").unique()).to_series() if getabsorption else emptystrset)
-    )
+    allgroupnames = list(set(emissiongroups) | set(absorptiongroups))
+    group_e_rf_sum = {
+        groupname: sum(
+            float(groups[groupname]["e_rf"].sum())
+            for groups in (emissiongroups, absorptiongroups)
+            if groupname in groups
+        )
+        for groupname in allgroupnames
+    }
 
     if fixedionlist is not None and (unrecognised_items := [x for x in fixedionlist if x not in allgroupnames]):
         print(f"WARNING: (packets) did not find {len(unrecognised_items)} items in fixedionlist: {unrecognised_items}")
 
     def sortkey(groupname: str) -> tuple[int, float | int]:
-        grouptotal = emission_e_rf_sum.get(groupname, 0.0) + absorption_e_rf_sum.get(groupname, 0.0)
+        grouptotal = group_e_rf_sum[groupname]
 
         if fixedionlist is None:
             return (0, -grouptotal)
@@ -1435,6 +1495,7 @@ def get_flux_contributions_from_packets(
                     fluxfilterfunc=filterfunc,
                     nprocs_read_dfpackets=(nprocs_read, dfpkts),
                     directionbins_are_vpkt_observers=directionbins_are_vpkt_observers,
+                    directionbins=[directionbin],
                     average_over_phi=average_over_phi,
                     average_over_theta=average_over_theta,
                     gamma=gamma,
@@ -1458,6 +1519,7 @@ def get_flux_contributions_from_packets(
                     fluxfilterfunc=filterfunc,
                     nprocs_read_dfpackets=(nprocs_read, dfpkts),
                     directionbins_are_vpkt_observers=directionbins_are_vpkt_observers,
+                    directionbins=[directionbin],
                     average_over_phi=average_over_phi,
                     average_over_theta=average_over_theta,
                 )[directionbin].select("lambda_angstroms", "f_lambda")

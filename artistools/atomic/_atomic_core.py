@@ -493,6 +493,16 @@ def get_ion_stage_roman_numeral_df() -> pl.DataFrame:
     )
 
 
+def add_ion_str_column(lz: pl.LazyFrame) -> pl.LazyFrame:
+    """Add an ion_str column such as 'Fe II' to a frame with atomic_number and ion_stage columns."""
+    return (
+        lz
+        .join(get_ion_stage_roman_numeral_df().lazy(), on="ion_stage", how="left")
+        .join(get_elsymbols_df().lazy(), on="atomic_number", how="left")
+        .with_columns(ion_str=pl.col("elsymbol") + " " + pl.col("ion_stage_roman"))
+    )
+
+
 def get_elsymbol(atomic_number: int | np.int64) -> str:
     """Return the element symbol of an atomic number."""
     return get_elsymbolslist()[atomic_number]
@@ -657,12 +667,7 @@ def get_bflist(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame
     dfboundfree = dfboundfree.drop(["elementindex", "ionindex"])
 
     if get_ion_str:
-        dfboundfree = (
-            dfboundfree
-            .join(get_ion_stage_roman_numeral_df().lazy(), on="ion_stage", how="left")
-            .join(get_elsymbols_df().lazy(), on="atomic_number", how="left")
-            .with_columns(ion_str=pl.col("elsymbol") + " " + pl.col("ion_stage_roman"))
-        )
+        dfboundfree = add_ion_str_column(dfboundfree)
 
     return dfboundfree
 
@@ -698,7 +703,12 @@ def read_linestatfile(
     return lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels
 
 
-def get_linelist_pldf(modelpath: Path | str, get_ion_str: bool = False) -> pl.LazyFrame:
+def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
+    """Return the transition list, one row per line, in lineindex order.
+
+    Rows must stay in lineindex order: callers look a line up by its position in this frame, since a packet's
+    emission and absorption type codes are lineindex values. Do not add a sort, a filter, or a unique here.
+    """
     textfile = firstexisting("linestat.out", folder=modelpath)
     # the .tmp suffix marks this as a regenerable cache, matching every other parquet file artistools writes
     parquetfile = Path(modelpath, "linelist.out.parquet.tmp")
@@ -742,13 +752,5 @@ def get_linelist_pldf(modelpath: Path | str, get_ion_str: bool = False) -> pl.La
 
     if "ionstage" in linelist_lazy.collect_schema().names():
         linelist_lazy = linelist_lazy.rename({"ionstage": "ion_stage"})
-
-    if get_ion_str:
-        linelist_lazy = (
-            linelist_lazy
-            .join(get_ion_stage_roman_numeral_df().lazy(), on="ion_stage", how="left")
-            .join(get_elsymbols_df().lazy(), on="atomic_number", how="left")
-            .with_columns(ion_str=pl.col("elsymbol") + " " + pl.col("ion_stage_roman"))
-        )
 
     return linelist_lazy
