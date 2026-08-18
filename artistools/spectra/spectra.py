@@ -1394,6 +1394,9 @@ def get_flux_contributions_from_packets(
         dfpackets = dfpackets.join(
             emtypelabels.select(emtypecolumn, "emissiontype_str").collect(), on=emtypecolumn, how="left"
         ).drop(emtypecolumn)
+        # get_line_labels() puts the columns of the linelist in the plan of this frame. Delete the frame here,
+        # because the linelist is not free while a plan holds it, and the linelist can be hundreds of megabytes.
+        del emtypelabels
 
         if vpkt_match_emission_exclusion_to_opac and directionbins_are_vpkt_observers:
             assert vpkt_config is not None
@@ -1420,9 +1423,12 @@ def get_flux_contributions_from_packets(
         ])
 
         dfpackets = dfpackets.join(abstypelabels.collect(), on="absorption_type", how="left").drop("absorption_type")
+        del abstypelabels
 
     # The label column and the frequency column of each type of contribution.
     # When the code bins one type, it removes the columns of the other type.
+    del dflines
+
     emission_columns = ("emissiontype_str", dirbin_nu_column)
     absorption_columns = ("absorptiontype_str", "absorption_freq")
 
@@ -1451,7 +1457,7 @@ def get_flux_contributions_from_packets(
     if getabsorption:
         absorptiongroups = group_by_label(dfpackets, absorption_columns, emission_columns)
 
-    del dfpackets, dflines
+    del dfpackets
 
     group_e_rf_sum: dict[str, float] = {}
     for groups in (emissiongroups, absorptiongroups):
