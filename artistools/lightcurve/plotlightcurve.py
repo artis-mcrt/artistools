@@ -62,18 +62,15 @@ def get_plot_lum_unit(args: argparse.Namespace) -> LumUnit:
     return "Lsun" if args.Lsun else "erg/s"
 
 
-def get_plot_lum_column(args: argparse.Namespace) -> str:
+def get_plot_lum_column(lumunit: LumUnit) -> str:
     """Return the light curve dataframe column holding the luminosity in the y axis units."""
-    lumunit = get_plot_lum_unit(args)
-
     return "mag" if lumunit == "mag" else f"luminosity_{lumunit}"
 
 
 def convert_lum_lsun_to_plotunits(
-    lum_lsun: npt.NDArray[np.floating[t.Any]], args: argparse.Namespace
+    lum_lsun: npt.NDArray[np.floating[t.Any]], lumunit: LumUnit
 ) -> npt.NDArray[np.floating[t.Any]]:
     """Convert a luminosity in solar luminosities to the y axis units: bolometric magnitude, Lsun, or erg/s."""
-    lumunit = get_plot_lum_unit(args)
     if lumunit == "mag":
         return lum_lsun_to_mag(lum_lsun)
 
@@ -81,41 +78,41 @@ def convert_lum_lsun_to_plotunits(
 
 
 def convert_lum_ergs_to_plotunits(
-    lum_erg_per_s: npt.NDArray[np.floating[t.Any]], args: argparse.Namespace
+    lum_erg_per_s: npt.NDArray[np.floating[t.Any]], lumunit: LumUnit
 ) -> npt.NDArray[np.floating[t.Any]]:
     """Convert a luminosity in erg/s to the y axis units: bolometric magnitude, Lsun, or erg/s."""
-    if get_plot_lum_unit(args) == "erg/s":
+    if lumunit == "erg/s":
         return lum_erg_per_s
 
-    return convert_lum_lsun_to_plotunits(lum_erg_per_s / Lsun_to_erg_per_s, args)
+    return convert_lum_lsun_to_plotunits(lum_erg_per_s / Lsun_to_erg_per_s, lumunit)
 
 
 def get_reflightcurve_yerr(
     lum_erg_per_s: npt.NDArray[np.floating[t.Any]],
     errminus_erg_per_s: npt.NDArray[np.floating[t.Any]],
     errplus_erg_per_s: npt.NDArray[np.floating[t.Any]],
-    args: argparse.Namespace,
+    lumunit: LumUnit,
 ) -> list[npt.NDArray[np.floating[t.Any]]]:
     """Return the [lower, upper] error bar sizes in the y axis units for a luminosity in erg/s and its errors."""
-    if get_plot_lum_unit(args) == "mag":
+    if lumunit == "mag":
         # a magnitude gets smaller as the luminosity gets larger, so the error bars swap sides and become asymmetric
-        mag = convert_lum_ergs_to_plotunits(lum_erg_per_s, args)
+        mag = convert_lum_ergs_to_plotunits(lum_erg_per_s, lumunit)
         # an error bar reaching zero luminosity has no faintest magnitude, so leave it undefined
         lum_faintest = np.where(lum_erg_per_s > errminus_erg_per_s, lum_erg_per_s - errminus_erg_per_s, np.nan)
         return [
-            mag - convert_lum_ergs_to_plotunits(lum_erg_per_s + errplus_erg_per_s, args),
-            convert_lum_ergs_to_plotunits(lum_faintest, args) - mag,
+            mag - convert_lum_ergs_to_plotunits(lum_erg_per_s + errplus_erg_per_s, lumunit),
+            convert_lum_ergs_to_plotunits(lum_faintest, lumunit) - mag,
         ]
 
     # the conversion is a simple scaling, so it applies to the error sizes directly
     return [
-        convert_lum_ergs_to_plotunits(errminus_erg_per_s, args),
-        convert_lum_ergs_to_plotunits(errplus_erg_per_s, args),
+        convert_lum_ergs_to_plotunits(errminus_erg_per_s, lumunit),
+        convert_lum_ergs_to_plotunits(errplus_erg_per_s, lumunit),
     ]
 
 
 def plot_bol_reflightcurve(
-    axis: mplax.Axes, lightcurvefilename: str | Path, args: argparse.Namespace, color: str, label: str | None = None
+    axis: mplax.Axes, lightcurvefilename: str | Path, lumunit: LumUnit, color: str, label: str | None = None
 ) -> str:
     """Plot an observed bolometric light curve in the y axis units, with error bars if the data file has them.
 
@@ -128,12 +125,12 @@ def plot_bol_reflightcurve(
     if {"luminosity_errminus_erg/s", "luminosity_errplus_erg/s"}.issubset(dflightcurve.columns):
         axis.errorbar(
             dflightcurve["time_days"],
-            convert_lum_ergs_to_plotunits(lum_erg_per_s, args),
+            convert_lum_ergs_to_plotunits(lum_erg_per_s, lumunit),
             yerr=get_reflightcurve_yerr(
                 lum_erg_per_s,
                 dflightcurve["luminosity_errminus_erg/s"].to_numpy(),
                 dflightcurve["luminosity_errplus_erg/s"].to_numpy(),
-                args,
+                lumunit,
             ),
             fmt="o",
             capsize=3,
@@ -144,7 +141,7 @@ def plot_bol_reflightcurve(
     else:
         axis.scatter(
             dflightcurve["time_days"],
-            convert_lum_ergs_to_plotunits(lum_erg_per_s, args),
+            convert_lum_ergs_to_plotunits(lum_erg_per_s, lumunit),
             label=plotlabel,
             color=color,
             zorder=0,
@@ -166,6 +163,8 @@ def plot_deposition_thermalisation(
     Every curve below appends its own suffix to modelname and picks its own linestyle and colour, so plotkwargs
     must carry none of those: matplotlib would receive them twice ("dashes" also overrides "linestyle").
     """
+    lumunit = get_plot_lum_unit(args)
+
     if args.plotthermalisation:
         dfmodel, _ = at.inputmodel.get_modeldata(modelpath, derived_cols=["mass_g", "vel_r_mid", "kinetic_en_erg"])
 
@@ -198,7 +197,7 @@ def plot_deposition_thermalisation(
             continue
         axis.plot(
             depdata["tmid_days"],
-            convert_lum_lsun_to_plotunits(depdata[depcol].to_numpy(), args),
+            convert_lum_lsun_to_plotunits(depdata[depcol].to_numpy(), lumunit),
             **plotkwargs,
             label=modelname + labelsuffix,
             linestyle=curvelinestyle,
@@ -379,7 +378,8 @@ def plot_artis_lightcurve(
                 lcdataframes, overangle="theta", derivedcols=derived_lum_unit_cols()
             )
 
-    ycolumn = get_plot_lum_column(args)
+    lumunit = get_plot_lum_unit(args)
+    ycolumn = get_plot_lum_column(lumunit)
 
     if args.dashes[lcindex]:
         plotkwargs["dashes"] = args.dashes[lcindex]
@@ -537,7 +537,7 @@ def plot_artis_lightcurve(
             print(lcdata)
 
         if args.plotcmf:
-            assert get_plot_lum_unit(args) != "mag", "Cannot plot cmf luminosity if magnitude is selected"
+            assert lumunit != "mag", "Cannot plot cmf luminosity if magnitude is selected"
             plotkwargs["linewidth"] = 1
             if not linelabel_is_custom:
                 assert label_with_tags is not None
@@ -597,6 +597,8 @@ def make_lightcurve_plot(
     if "figwidthscale" not in args:
         args.figwidthscale = 1.0
 
+    lumunit = get_plot_lum_unit(args)
+
     figwidth = args.figscale * 5.0 * args.figwidthscale
     figheight = args.figscale * 5.0 * (0.25 + 0.4)
     fig, axis = plt.subplots(
@@ -630,7 +632,7 @@ def make_lightcurve_plot(
             bolreflightcurve = Path(modelpath)
 
             lightcurvelabel = plot_bol_reflightcurve(
-                axis, bolreflightcurve, args, color=args.color[lcindex], label=args.label[lcindex]
+                axis, bolreflightcurve, lumunit, color=args.color[lcindex], label=args.label[lcindex]
             )
             print(f"====> {lightcurvelabel}")
             plottedsomething = True
@@ -698,7 +700,7 @@ def make_lightcurve_plot(
 
     if args.reflightcurves:
         for refindex, bolreflightcurve in enumerate(args.reflightcurves):
-            plot_bol_reflightcurve(axis, bolreflightcurve, args, color=args.refspeccolors[refindex])
+            plot_bol_reflightcurve(axis, bolreflightcurve, lumunit, color=args.refspeccolors[refindex])
             plottedsomething = True
 
     assert plottedsomething, "No light curve was plotted"
@@ -716,7 +718,6 @@ def make_lightcurve_plot(
     # plot_deposition_thermalisation draws the deposition rates on the main axis for either flag
     showsdeposition = args.plotdeposition or args.plotalphadeposition or args.plotthermalisation
 
-    lumunit = get_plot_lum_unit(args)
     if lumunit == "mag":
         # the gamma-ray light curve and the deposition rates are converted onto this same magnitude axis, so
         # the label must name what is drawn rather than always claiming a bolometric luminosity

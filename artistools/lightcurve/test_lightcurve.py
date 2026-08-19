@@ -709,17 +709,14 @@ def test_convert_lum_lsun_to_plotunits() -> None:
     """Deposition rates and reference data must use the same unit conversion as the ARTIS light curves."""
     lum_lsun = np.array([1.0, 1e8])
 
-    args = argparse.Namespace(magnitude=False, Lsun=True)
-    assert np.allclose(at.lightcurve.plotlightcurve.convert_lum_lsun_to_plotunits(lum_lsun, args), lum_lsun)
+    assert np.allclose(at.lightcurve.plotlightcurve.convert_lum_lsun_to_plotunits(lum_lsun, "Lsun"), lum_lsun)
 
-    args = argparse.Namespace(magnitude=False, Lsun=False)
     assert np.allclose(
-        at.lightcurve.plotlightcurve.convert_lum_lsun_to_plotunits(lum_lsun, args), lum_lsun * Lsun_to_erg_per_s
+        at.lightcurve.plotlightcurve.convert_lum_lsun_to_plotunits(lum_lsun, "erg/s"), lum_lsun * Lsun_to_erg_per_s
     )
 
-    args = argparse.Namespace(magnitude=True, Lsun=False)
     assert np.allclose(
-        at.lightcurve.plotlightcurve.convert_lum_lsun_to_plotunits(lum_lsun, args), [Mbol_sun, Mbol_sun - 20.0]
+        at.lightcurve.plotlightcurve.convert_lum_lsun_to_plotunits(lum_lsun, "mag"), [Mbol_sun, Mbol_sun - 20.0]
     )
 
 
@@ -727,23 +724,19 @@ def test_convert_lum_ergs_to_plotunits() -> None:
     """The erg/s axis must pass the reference data through untouched, with no round trip through Lsun."""
     lum_erg_per_s = np.array([1.1246049739669314e42, 3.0e41])
 
-    args = argparse.Namespace(magnitude=False, Lsun=False)
-    assert (at.lightcurve.plotlightcurve.convert_lum_ergs_to_plotunits(lum_erg_per_s, args) == lum_erg_per_s).all()
+    assert (at.lightcurve.plotlightcurve.convert_lum_ergs_to_plotunits(lum_erg_per_s, "erg/s") == lum_erg_per_s).all()
 
-    args = argparse.Namespace(magnitude=False, Lsun=True)
     assert np.allclose(
-        at.lightcurve.plotlightcurve.convert_lum_ergs_to_plotunits(lum_erg_per_s, args),
+        at.lightcurve.plotlightcurve.convert_lum_ergs_to_plotunits(lum_erg_per_s, "Lsun"),
         lum_erg_per_s / Lsun_to_erg_per_s,
     )
 
 
 def test_convert_lum_to_plotunits_nonpositive() -> None:
     """A zero or negative luminosity has no magnitude, and must not raise a numpy warning."""
-    args = argparse.Namespace(magnitude=True, Lsun=False)
-
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        result = at.lightcurve.plotlightcurve.convert_lum_lsun_to_plotunits(np.array([0.0, -1.0, 1.0]), args)
+        result = at.lightcurve.plotlightcurve.convert_lum_lsun_to_plotunits(np.array([0.0, -1.0, 1.0]), "mag")
 
     assert np.isinf(result[0])
     assert np.isnan(result[1])
@@ -756,13 +749,12 @@ def test_get_reflightcurve_yerr_magnitude() -> None:
     matplotlib draws the bar from y - yerr[0] to y + yerr[1], and a brighter (larger) luminosity is a smaller
     magnitude, so the two rows are asymmetric and must not be swapped.
     """
-    args = argparse.Namespace(magnitude=True, Lsun=False)
     lum = np.array([1e42, 1e42, 1e42])
     errplus = np.array([1e42, 0.0, 1e42])
     errminus = np.array([0.9e42, 0.0, 2e42])  # the last error bar reaches past zero luminosity
 
-    yerr = at.lightcurve.plotlightcurve.get_reflightcurve_yerr(lum, errminus, errplus, args)
-    mag = at.lightcurve.plotlightcurve.convert_lum_ergs_to_plotunits(lum, args)
+    yerr = at.lightcurve.plotlightcurve.get_reflightcurve_yerr(lum, errminus, errplus, "mag")
+    mag = at.lightcurve.plotlightcurve.convert_lum_ergs_to_plotunits(lum, "mag")
 
     assert np.isclose(yerr[0][0], 2.5 * np.log10(2.0))  # brighter by a factor of two
     assert np.isclose(yerr[1][0], 2.5)  # fainter by a factor of ten
@@ -785,13 +777,11 @@ def test_get_reflightcurve_yerr_scaling() -> None:
     errminus = np.array([1e41, 3e41])
     errplus = np.array([2e41, 4e41])
 
-    args = argparse.Namespace(magnitude=False, Lsun=False)
-    yerr = at.lightcurve.plotlightcurve.get_reflightcurve_yerr(lum, errminus, errplus, args)
+    yerr = at.lightcurve.plotlightcurve.get_reflightcurve_yerr(lum, errminus, errplus, "erg/s")
     assert np.allclose(yerr[0], errminus)
     assert np.allclose(yerr[1], errplus)
 
-    args = argparse.Namespace(magnitude=False, Lsun=True)
-    yerr = at.lightcurve.plotlightcurve.get_reflightcurve_yerr(lum, errminus, errplus, args)
+    yerr = at.lightcurve.plotlightcurve.get_reflightcurve_yerr(lum, errminus, errplus, "Lsun")
     assert np.allclose(yerr[0], errminus / Lsun_to_erg_per_s)
     assert np.allclose(yerr[1], errplus / Lsun_to_erg_per_s)
 
@@ -895,7 +885,6 @@ def test_reflightcurves_arg_draws_error_bars(mockerrorbar: t.Any) -> None:
 
     dflightcurve, _metadata = at.lightcurve.read_bol_reflightcurve_data(REFLIGHTCURVE)
     lum_erg_per_s = dflightcurve["luminosity_erg/s"].to_numpy()
-    args = argparse.Namespace(magnitude=True, Lsun=False)
 
     assert mockerrorbar.call_count == 1
     arr_mag = np.array(mockerrorbar.call_args_list[0][0][2])
@@ -906,7 +895,7 @@ def test_reflightcurves_arg_draws_error_bars(mockerrorbar: t.Any) -> None:
         lum_erg_per_s,
         dflightcurve["luminosity_errminus_erg/s"].to_numpy(),
         dflightcurve["luminosity_errplus_erg/s"].to_numpy(),
-        args,
+        "mag",
     )
     assert np.allclose(yerr[0], expected[0])
     assert np.allclose(yerr[1], expected[1])
@@ -921,8 +910,9 @@ def test_get_plot_lum_unit_and_column() -> None:
         (False, False, "erg/s", "luminosity_erg/s"),
     ):
         args = argparse.Namespace(magnitude=magnitude, Lsun=lsun)
-        assert at.lightcurve.plotlightcurve.get_plot_lum_unit(args) == expected_unit
-        assert at.lightcurve.plotlightcurve.get_plot_lum_column(args) == expected_col
+        lumunit = at.lightcurve.plotlightcurve.get_plot_lum_unit(args)
+        assert lumunit == expected_unit
+        assert at.lightcurve.plotlightcurve.get_plot_lum_column(lumunit) == expected_col
 
 
 @pytest.mark.parametrize(
