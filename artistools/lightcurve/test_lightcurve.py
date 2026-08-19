@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest import mock
 
 import matplotlib.axes as mplax
+import matplotlib.colors as mplcolors
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
@@ -809,12 +810,16 @@ def test_bol_reflightcurve_magnitude_asymmetric(mockerrorbar: t.Any) -> None:
     )
 
     dflightcurve, _metadata = at.lightcurve.read_bol_reflightcurve_data(reflightcurve)
-    expected = at.lightcurve.plotlightcurve.get_reflightcurve_yerr(
-        dflightcurve["luminosity_erg/s"].to_numpy(),
-        dflightcurve["luminosity_errminus_erg/s"].to_numpy(),
-        dflightcurve["luminosity_errplus_erg/s"].to_numpy(),
-        argparse.Namespace(magnitude=True, Lsun=False),
-    )
+    lum_erg_per_s = dflightcurve["luminosity_erg/s"].to_numpy()
+    errminus = dflightcurve["luminosity_errminus_erg/s"].to_numpy()
+    errplus = dflightcurve["luminosity_errplus_erg/s"].to_numpy()
+
+    # computed from the luminosity ratios rather than from the function under test, so that swapping the two
+    # rows of get_reflightcurve_yerr fails here instead of swapping the expectation with it
+    expected = [
+        2.5 * np.log10((lum_erg_per_s + errplus) / lum_erg_per_s),
+        2.5 * np.log10(lum_erg_per_s / (lum_erg_per_s - errminus)),
+    ]
 
     yerr = mockerrorbar.call_args_list[0][1]["yerr"]
     assert np.allclose(yerr[0], expected[0])
@@ -823,7 +828,8 @@ def test_bol_reflightcurve_magnitude_asymmetric(mockerrorbar: t.Any) -> None:
 
 
 @pytest.mark.parametrize("lumunit", ["erg/s", "Lsun", "magnitude"])
-def test_plotdeposition(lumunit: str) -> None:
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_plotdeposition(mockplot: t.Any, lumunit: str) -> None:
     """Deposition curves are drawn in the y axis units, in every unit mode.
 
     plot_deposition_thermalisation() appends a suffix to the caller's label and picks its own linestyle and
@@ -842,6 +848,22 @@ def test_plotdeposition(lumunit: str) -> None:
             outputfile=outputpath / f"lc_deposition_{lumunit.replace('/', '')}.pdf",
             **plotkwargs,
         )
+
+    gammadep_lsun = at.get_deposition(modelpath_classic_3d).collect()["gammadep_Lsun"].to_numpy()
+    with np.errstate(divide="ignore"):
+        expected = {
+            "erg/s": gammadep_lsun * Lsun_to_erg_per_s,
+            "Lsun": gammadep_lsun,
+            "magnitude": Mbol_sun - 2.5 * np.log10(gammadep_lsun),
+        }[lumunit]
+
+    gammacurves = [
+        callargs
+        for callargs in mockplot.call_args_list
+        if str(callargs.kwargs.get("label", "")).endswith(r"$\dot{E}_{dep,\gamma}$")
+    ]
+    assert len(gammacurves) == 1
+    assert np.allclose(np.asarray(gammacurves[0][0][2], dtype=float), expected, equal_nan=True)
 
 
 def test_plotthermalisation() -> None:
@@ -899,3 +921,145 @@ def test_get_plot_lum_unit_and_column() -> None:
         args = argparse.Namespace(magnitude=magnitude, Lsun=lsun)
         assert at.lightcurve.plotlightcurve.get_plot_lum_unit(args) == expected_unit
         assert at.lightcurve.plotlightcurve.get_plot_lum_column(args) == expected_col
+
+
+@pytest.mark.parametrize(
+    ("dirbins", "colour_evolution"),
+    [([0], ["B-V"]), ([0, 1], ["B-V"]), ([0], ["U-B", "B-V"]), ([0, 1], ["U-B", "B-V"])],
+)
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_colour_evolution_plot_yaxis_is_inverted(
+    mockplot: t.Any, dirbins: list[int], colour_evolution: list[str]
+) -> None:
+    """The colour axis points downwards however many direction bins and filter pairs are drawn.
+
+    invert_yaxis() toggles rather than sets, and the subplots share one y axis, so inverting once per plotted
+    line left the axis the right way up whenever an even number of lines was drawn.
+    """
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=modelpath_classic_3d,
+        colour_evolution=colour_evolution,
+        plotviewingangle=dirbins,
+        timemin=5,
+        timemax=8,
+        outputfile=outputpath / "lc_colourevolution_inverted.pdf",
+    )
+
+    axes = {id(callargs[0][0]): callargs[0][0] for callargs in mockplot.call_args_list}
+    assert axes
+    for axis in axes.values():
+        ymin, ymax = axis.get_ylim()
+        assert ymin > ymax, f"the colour axis is not inverted for {len(dirbins)} bins and {colour_evolution}"
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_colour_evolution_plot_dirbin_colours_avoid_the_model_colours(mockplot: t.Any) -> None:
+    """A direction bin must not be given the colour that a whole model was assigned.
+
+    The direction bin palette and the per-model colours are two independent sources drawn on one set of axes,
+    and both used to start at the first colour of the matplotlib cycle.
+    """
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=[modelpath, modelpath_classic_3d],
+        colour_evolution=["B-V"],
+        plotviewingangle=[0, 1],
+        timemin=5,
+        timemax=8,
+        outputfile=outputpath / "lc_colourevolution_colours.pdf",
+    )
+
+    colors = [mplcolors.to_hex(callargs.kwargs["color"]) for callargs in mockplot.call_args_list]
+    assert len(colors) == 3
+    assert len(set(colors)) == len(colors), colors
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_plotdeposition_does_not_inherit_the_light_curve_style(mockplot: t.Any) -> None:
+    """The deposition curves take their style from the command line, not from the last direction bin drawn.
+
+    plot_artis_lightcurve mutates its plot kwargs per direction bin, and those used to ride into the
+    deposition curves, drawing them semi-transparent and above the light curves for no stated reason.
+    """
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=[modelpath_classic_3d],
+        plotdeposition=True,
+        plotviewingangle=[0, 1],
+        colorbarphi=True,
+        outputfile=outputpath / "lc_deposition_style.pdf",
+    )
+
+    depositionkwargs = [
+        callargs.kwargs for callargs in mockplot.call_args_list if r"\dot{E}" in str(callargs.kwargs.get("label"))
+    ]
+    assert depositionkwargs
+    for kwargs in depositionkwargs:
+        assert "alpha" not in kwargs
+        assert "zorder" not in kwargs
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_lightcurve_plot_one_sided_time_limit_keeps_the_data_in_view(mockplot: t.Any) -> None:
+    """A -timemin with no -timemax leaves the right hand side fitted to the light curve.
+
+    Setting a one-sided limit before anything is drawn turns autoscaling off, freezing the other side at the
+    default 0-1 view instead of the range of the data.
+    """
+    at.lightcurve.plot(argsraw=[], modelpath=modelpath, timemin=250.0, outputfile=outputpath / "lc_timemin_only.pdf")
+
+    axis = mockplot.call_args_list[0][0][0]
+    xmin, xmax = axis.get_xlim()
+    assert np.isclose(xmin, 250.0)
+    assert xmax > 300.0, xmax
+
+
+@mock.patch.object(mplax.Axes, "set_ylabel", side_effect=mplax.Axes.set_ylabel, autospec=True)
+def test_gamma_lightcurve_magnitude_ylabel(mockylabel: t.Any) -> None:
+    """A gamma-ray light curve in magnitudes is not a bolometric magnitude, and must not be labelled as one."""
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=modelpath_classic_3d,
+        gamma=True,
+        rpkt=False,
+        magnitude=True,
+        outputfile=outputpath / "lc_gamma_mag.pdf",
+    )
+
+    ylabels = [callargs[0][1] for callargs in mockylabel.call_args_list]
+    assert ylabels == [r"Absolute $\gamma$-ray Magnitude"]
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_averaged_direction_bin_magnitude_is_rebuilt(mockplot: t.Any) -> None:
+    """Averaging direction bins averages the luminosity, so the magnitude must be rebuilt from the result.
+
+    average_direction_bins takes the mean of every column, and a magnitude is logarithmic: the mean of the
+    magnitudes is not the magnitude of the mean luminosity, and one dark bin sends the mean to inf.
+    """
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=modelpath_classic_3d,
+        magnitude=True,
+        plotviewingangle=[0],
+        average_over_phi_angle=True,
+        outputfile=outputpath / "lc_averagedphi_mag.pdf",
+    )
+
+    lcpath = at.firstexisting("light_curve_res.out", folder=modelpath_classic_3d, tryzipped=True)
+    averaged = at.average_direction_bins(at.lightcurve.readfile(lcpath), overangle="phi")[0].collect()
+    lum_lsun_by_time = dict(zip(averaged["time_days"], averaged["luminosity_Lsun"], strict=True))
+    meanofmags_by_time = dict(zip(averaged["time_days"], averaged["mag"], strict=True))
+
+    arr_time_d = np.array(mockplot.call_args_list[0][0][1])
+    arr_mag = np.array(mockplot.call_args_list[0][0][2])
+    assert arr_time_d.size > 0
+
+    with np.errstate(divide="ignore"):
+        expected = Mbol_sun - 2.5 * np.log10(np.array([lum_lsun_by_time[t_d] for t_d in arr_time_d]))
+    assert np.allclose(arr_mag, expected, equal_nan=True)
+
+    meanofmags = np.array([meanofmags_by_time[t_d] for t_d in arr_time_d])
+    assert not np.allclose(arr_mag, meanofmags, equal_nan=True), "the stale mean of the magnitudes was plotted"
+    assert np.isfinite(arr_mag).sum() > np.isfinite(meanofmags).sum(), "a dark bin still poisons the average"

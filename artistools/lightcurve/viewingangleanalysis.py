@@ -387,19 +387,17 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
 
         plotkwargsviewingangles, plotkwargsangleaveraged = set_scatterplot_plotkwargs(ii, args)
 
+        # the error bars below use the angle-averaged x value whether or not its point is drawn
         if args.make_viewing_angle_peakmag_delta_m15_scatter_plot:
             xvalues_viewingangles = band_delta_m15_viewing_angles
+            xvalues_angleaveraged = args.band_delta_m15_angle_averaged_polyfit[ii]
         if args.make_viewing_angle_peakmag_risetime_scatter_plot:
             xvalues_viewingangles = band_risetime_viewing_angles
+            xvalues_angleaveraged = args.band_risetime_angle_averaged_polyfit[ii]
 
         a0 = ax.scatter(xvalues_viewingangles, band_peak_mag_viewing_angles, **plotkwargsviewingangles)
 
         if not args.noangleaveraged:
-            if args.make_viewing_angle_peakmag_delta_m15_scatter_plot:
-                xvalues_angleaveraged = args.band_delta_m15_angle_averaged_polyfit[ii]
-            if args.make_viewing_angle_peakmag_risetime_scatter_plot:
-                xvalues_angleaveraged = args.band_risetime_angle_averaged_polyfit[ii]
-
             p0 = ax.scatter(
                 xvalues_angleaveraged, args.band_peakmag_angle_averaged_polyfit[ii], **plotkwargsangleaveraged
             )
@@ -416,7 +414,11 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
                 capsize=2,
             )
 
-    linelabels = args.label or modelnames
+    # args.label has one entry per model path, each None unless the user gave a -label for it, so the list
+    # is always truthy and a whole-list fallback would never fire
+    linelabels = [
+        (args.label[ii] if ii < len(args.label) else None) or modelname for ii, modelname in enumerate(modelnames)
+    ]
 
     # a0, datalabel = at.lightcurve.get_sn_sample_bol()
     # a0, datalabel = at.lightcurve.plot_phillips_relation_data()

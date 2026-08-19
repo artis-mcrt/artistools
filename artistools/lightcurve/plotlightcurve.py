@@ -27,6 +27,7 @@ from artistools.constants import day_to_s
 from artistools.constants import Lsun_to_erg_per_s
 from artistools.constants import Mbol_sun
 from artistools.constants import Msun_to_g
+from artistools.lightcurve.lightcurve import derived_lum_unit_cols
 from artistools.lightcurve.lightcurve import FILTERNAME_ALIASES
 from artistools.lightcurve.lightcurve import path_is_reference_lightcurve
 from artistools.misc import add_axis_limit_args
@@ -43,6 +44,9 @@ from artistools.plottools import get_series_colors
 from artistools.plottools import save_figure
 from artistools.plottools import set_axis_labels
 from artistools.plottools import set_prop_cycle_unusedcolors
+
+if t.TYPE_CHECKING:
+    from collections.abc import Mapping
 
 type LumUnit = t.Literal["mag", "Lsun", "erg/s"]
 
@@ -61,7 +65,9 @@ def get_plot_lum_unit(args: argparse.Namespace) -> LumUnit:
 
 def get_plot_lum_column(args: argparse.Namespace) -> str:
     """Return the light curve dataframe column holding the luminosity in the y axis units."""
-    return {"mag": "mag", "Lsun": "luminosity_Lsun", "erg/s": "luminosity_erg/s"}[get_plot_lum_unit(args)]
+    # annotated so that a unit added to LumUnit without a column here is a type error, not a plot-time KeyError
+    lumcolumns: Mapping[LumUnit, str] = {"mag": "mag", "Lsun": "luminosity_Lsun", "erg/s": "luminosity_erg/s"}
+    return lumcolumns[get_plot_lum_unit(args)]
 
 
 def convert_lum_lsun_to_plotunits(
@@ -94,7 +100,7 @@ def get_reflightcurve_yerr(
     args: argparse.Namespace,
 ) -> list[npt.NDArray[np.floating[t.Any]]]:
     """Return the [lower, upper] error bar sizes in the y axis units for a luminosity in erg/s and its errors."""
-    if args.magnitude:
+    if get_plot_lum_unit(args) == "mag":
         # a magnitude gets smaller as the luminosity gets larger, so the error bars swap sides and become asymmetric
         mag = convert_lum_ergs_to_plotunits(lum_erg_per_s, args)
         # an error bar reaching zero luminosity has no faintest magnitude, so leave it undefined
@@ -155,16 +161,15 @@ def plot_deposition_thermalisation(
     axistherm: mplax.Axes | None,
     modelpath: str | Path,
     modelname: str,
+    label: str,
     args: argparse.Namespace,
     **plotkwargs: t.Any,
 ) -> None:
-    """Plot the gamma-ray and positron deposition rates, and the thermalisation efficiencies when axistherm is given."""
-    # every curve below appends a suffix to the caller's label and picks its own linestyle and colour, so these
-    # must leave the kwargs splat or matplotlib gets them twice ("dashes" silently overrides "linestyle")
-    label = plotkwargs.pop("label")
-    for overridden in ("linestyle", "color", "dashes"):
-        plotkwargs.pop(overridden, None)
+    """Plot the gamma-ray and positron deposition rates, and the thermalisation efficiencies when axistherm is given.
 
+    Every curve below appends its own suffix to label and picks its own linestyle and colour, so plotkwargs must
+    carry none of those: matplotlib would receive them twice ("dashes" also silently overrides "linestyle").
+    """
     if args.plotthermalisation:
         dfmodel, _ = at.inputmodel.get_modeldata(modelpath, derived_cols=["mass_g", "vel_r_mid", "kinetic_en_erg"])
 
@@ -175,70 +180,34 @@ def plot_deposition_thermalisation(
 
     at.plottools.get_next_color(axis)  # skip a colour so the deposition curves differ from the light curve
     color_gamma = at.plottools.get_next_color(axis)
-
-    axis.plot(
-        depdata["tmid_days"],
-        convert_lum_lsun_to_plotunits(depdata["gammadep_Lsun"].to_numpy(), args),
-        **plotkwargs,
-        label=label + r" $\dot{E}_{dep,\gamma}$",
-        linestyle="dashed",
-        color=color_gamma,
-    )
-
     color_beta = at.plottools.get_next_color(axis)
-
-    if "eps_elec_Lsun" in depdata:
-        axis.plot(
-            depdata["tmid_days"],
-            convert_lum_lsun_to_plotunits(depdata["eps_elec_Lsun"].to_numpy(), args),
-            **plotkwargs,
-            label=label + r" $\dot{E}_{rad,\beta^-}$",
-            linestyle="dotted",
-            color=color_beta,
-        )
-
-    if "elecdep_Lsun" in depdata:
-        axis.plot(
-            depdata["tmid_days"],
-            convert_lum_lsun_to_plotunits(depdata["elecdep_Lsun"].to_numpy(), args),
-            **plotkwargs,
-            label=label + r" $\dot{E}_{dep,\beta^-}$",
-            linestyle="dashed",
-            color=color_beta,
-        )
-
-    # color_alpha = axis._get_lines.get_next_color()
     color_alpha = "C1"
+
+    depositioncurves = [
+        ("gammadep_Lsun", r" $\dot{E}_{dep,\gamma}$", "dashed", color_gamma),
+        ("eps_elec_Lsun", r" $\dot{E}_{rad,\beta^-}$", "dotted", color_beta),
+        ("elecdep_Lsun", r" $\dot{E}_{dep,\beta^-}$", "dashed", color_beta),
+    ]
 
     plotalphadep = False
     if plotalphadep:
-        if "eps_alpha_ana_Lsun" in depdata:
-            axis.plot(
-                depdata["tmid_days"],
-                convert_lum_lsun_to_plotunits(depdata["eps_alpha_ana_Lsun"].to_numpy(), args),
-                **plotkwargs,
-                label=label + r" $\dot{E}_{rad,\alpha}$ analytical",
-                linestyle="solid",
-                color=color_alpha,
-            )
+        depositioncurves += [
+            ("eps_alpha_ana_Lsun", r" $\dot{E}_{rad,\alpha}$ analytical", "solid", color_alpha),
+            ("eps_alpha_Lsun", r" $\dot{E}_{rad,\alpha}$", "dashed", color_alpha),
+            ("alphadep_Lsun", r" $\dot{E}_{dep,\alpha}$", "dotted", color_alpha),
+        ]
 
-        if "eps_alpha_Lsun" in depdata:
-            axis.plot(
-                depdata["tmid_days"],
-                convert_lum_lsun_to_plotunits(depdata["eps_alpha_Lsun"].to_numpy(), args),
-                **plotkwargs,
-                label=label + r" $\dot{E}_{rad,\alpha}$",
-                linestyle="dashed",
-                color=color_alpha,
-            )
-
+    # an older deposition.out has only the gamma columns, so skip any curve whose column is absent
+    for depcol, labelsuffix, curvelinestyle, curvecolor in depositioncurves:
+        if depcol not in depdata:
+            continue
         axis.plot(
             depdata["tmid_days"],
-            convert_lum_lsun_to_plotunits(depdata["alphadep_Lsun"].to_numpy(), args),
+            convert_lum_lsun_to_plotunits(depdata[depcol].to_numpy(), args),
             **plotkwargs,
-            label=label + r" $\dot{E}_{dep,\alpha}$",
-            linestyle="dotted",
-            color=color_alpha,
+            label=label + labelsuffix,
+            linestyle=curvelinestyle,
+            color=curvecolor,
         )
 
     if args.plotthermalisation:
@@ -413,6 +382,11 @@ def plot_artis_lightcurve(
         if average_over_theta:
             lcdataframes = at.average_direction_bins(lcdataframes, overangle="theta")
 
+        if average_over_phi or average_over_theta:
+            # averaging is linear, so it is only valid for the luminosity columns. Rebuild the magnitude from
+            # the averaged luminosity rather than averaging magnitudes, which a single dark bin sends to inf.
+            lcdataframes = {dirbin: lzdf.with_columns(derived_lum_unit_cols()) for dirbin, lzdf in lcdataframes.items()}
+
     if args.dashes[lcindex]:
         plotkwargs["dashes"] = args.dashes[lcindex]
     if args.linewidth[lcindex]:
@@ -571,7 +545,7 @@ def plot_artis_lightcurve(
             print(lcdata)
 
         if args.plotcmf:
-            assert not args.magnitude, "Cannot plot cmf luminosity if magnitude is selected"
+            assert get_plot_lum_unit(args) != "mag", "Cannot plot cmf luminosity if magnitude is selected"
             plotkwargs["linewidth"] = 1
             if not linelabel_is_custom:
                 assert label_with_tags is not None
@@ -586,11 +560,27 @@ def plot_artis_lightcurve(
             )
 
     if args.plotdeposition or args.plotthermalisation:
+        # plotkwargs is whatever the direction bin loop above left behind, so build the deposition style from
+        # the command line instead of inheriting one bin's colour, transparency, z order and line width
+        depositionkwargs: dict[str, t.Any] = {"linewidth": args.linewidth[lcindex]} if args.linewidth[lcindex] else {}
         plot_deposition_thermalisation(
-            axis, axistherm, modelpath, label=linelabel, args=args, modelname=linelabel, **plotkwargs
+            axis, axistherm, modelpath, label=linelabel, args=args, modelname=linelabel, **depositionkwargs
         )
 
     return lcdataframes
+
+
+def invert_magnitude_yaxis(ax: mplax.Axes | npt.NDArray[t.Any]) -> None:
+    """Point the magnitude axis downwards, so that a brighter series is drawn higher.
+
+    invert_yaxis() toggles rather than sets and the axes of a subplot grid share one y axis, so calling it once
+    per plotted series flips the axis back and forth instead of inverting it.
+    """
+    firstaxis = ax if isinstance(ax, mplax.Axes) else ax[0]
+    assert isinstance(firstaxis, mplax.Axes)
+    ymin, ymax = firstaxis.get_ylim()
+    if ymin < ymax:
+        firstaxis.invert_yaxis()
 
 
 def set_time_axis_limits(axis: mplax.Axes, args: argparse.Namespace) -> None:
@@ -738,10 +728,12 @@ def make_lightcurve_plot(
 
     lumunit = get_plot_lum_unit(args)
     if lumunit == "mag":
-        # deposition rates are converted onto the same magnitude axis, so say so when they are drawn
-        axis.set_ylabel(
-            r"Absolute Bolometric Magnitude ($L$ or $\dot{E}$)" if showsdeposition else "Absolute Bolometric Magnitude"
-        )
+        # the gamma-ray light curve and the deposition rates are converted onto this same magnitude axis, so
+        # the label must name what is drawn rather than always claiming a bolometric luminosity
+        ylabel = r"Absolute $\gamma$-ray Magnitude" if showgamma and not showuvoir else "Absolute Bolometric Magnitude"
+        if showsdeposition:
+            ylabel += r" ($L$ or $\dot{E}$)"
+        axis.set_ylabel(ylabel)
     else:
         str_units = r" [{}$\mathrm{{L}}_\odot$]" if lumunit == "Lsun" else " [{}erg/s]"
         if args.logscaley:
@@ -781,9 +773,10 @@ def make_lightcurve_plot(
         axis.set_ylim(bottom=args.ymin)
     if args.ymax is not None:
         axis.set_ylim(top=args.ymax)
-    if args.magnitude:
-        # invert last: set_ylim always writes the limits back in ascending order, undoing an earlier inversion
-        axis.invert_yaxis()
+    if lumunit == "mag":
+        # invert last: set_ylim re-sorts the limits into the order of the pair it is given, so an inversion
+        # applied before a one-sided limit is lost
+        invert_magnitude_yaxis(axis)
 
     if args.plotthermalisation:
         assert axistherm is not None
@@ -1121,14 +1114,10 @@ def make_band_lightcurves_plot(
 
     if args.filter and len(band_lightcurve_data) == 1:
         args.outputfile = Path(outputfolder, f"plot{first_band_name}lightcurves.pdf")
+    invert_magnitude_yaxis(ax)
+
     if args.show:
         plt.show()
-
-    firstaxis = ax if isinstance(ax, mplax.Axes) else ax[0]
-    assert isinstance(firstaxis, mplax.Axes)
-    ymin, ymax = firstaxis.get_ylim()
-    if ymin < ymax:
-        firstaxis.invert_yaxis()
 
     save_figure(fig, args.outputfile, format="pdf")
 
@@ -1138,7 +1127,10 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | 
     if args.labelfontsize is None:
         args.labelfontsize = 24
     angle_counter = 0
-    color_list = list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20)))
+    # a direction bin must not repeat the colour that a whole model was given, since both go on the same axes
+    assignedcolors = {mplcolors.to_hex(color) for color in [*args.color, *args.refspeccolors] if color}
+    tab20colors = list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20)))
+    color_list = [color for color in tab20colors if mplcolors.to_hex(color) not in assignedcolors] or tab20colors
 
     fig, ax = create_axes(args)
 
@@ -1160,13 +1152,14 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | 
             else:
                 dirbincolor = args.color[modelnumber]
 
+            # the filter pairs share bands, so integrate the bands of every pair once for this direction bin
+            args.filter = sorted({name for filters in args.colour_evolution for name in filters.split("-")})
+            band_lightcurve_data = at.lightcurve.generate_band_lightcurve_data(
+                modelpath, args, dirbin=dirbin, modelnumber=modelnumber
+            )
+
             for plotnumber, filters in enumerate(args.colour_evolution):
                 filter_names = filters.split("-")
-                args.filter = filter_names
-                band_lightcurve_data = at.lightcurve.generate_band_lightcurve_data(
-                    modelpath, args, dirbin=dirbin, modelnumber=modelnumber
-                )
-
                 plot_times, colour_delta_mag = at.lightcurve.get_colour_delta_mag(band_lightcurve_data, filter_names)
 
                 plotkwargs["label"] = get_linelabel(modelname, modelnumber, dirbin, dirbin_definition, args)
@@ -1197,7 +1190,6 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | 
                 curax.plot(plot_times, colour_delta_mag, linewidth=4 if args.subplots else 3, **plotkwargs)
 
                 assert isinstance(curax, mplax.Axes)
-                curax.invert_yaxis()
                 curax.annotate(
                     f"{filter_names[0]}-{filter_names[1]}",
                     xy=(1.0, 1.0),
@@ -1218,6 +1210,8 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | 
     fig, ax = set_lightcurve_plot_labels(fig, ax, args, colour_evolution=True)
     ax = at.plottools.set_axis_properties(ax, args)
     set_lightcurveplot_legend(ax, args)
+
+    invert_magnitude_yaxis(ax)
 
     args.outputfile = Path(outputfolder, f"plotcolorevolution{filter_names[0]}-{filter_names[1]}.pdf")
 
