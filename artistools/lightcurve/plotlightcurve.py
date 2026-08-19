@@ -500,6 +500,35 @@ def plot_artis_lightcurve(
     return lcdataframes
 
 
+def plot_bol_reflightcurve(
+    axis: mplax.Axes, lightcurvefilename: str | Path, color: str, label: str | None = None
+) -> str:
+    """Plot an observed bolometric light curve, with error bars if the data file has them.
+
+    Return the label used in the plot legend, which comes from the file metadata unless label is given.
+    """
+    dflightcurve, metadata = at.lightcurve.read_bol_reflightcurve_data(lightcurvefilename)
+    plotlabel = label or str(metadata.get("label", lightcurvefilename))
+
+    if {"luminosity_errminus_erg/s", "luminosity_errplus_erg/s"}.issubset(dflightcurve.columns):
+        axis.errorbar(
+            dflightcurve["time_days"],
+            dflightcurve["luminosity_erg/s"],
+            yerr=[dflightcurve["luminosity_errminus_erg/s"], dflightcurve["luminosity_errplus_erg/s"]],
+            fmt="o",
+            capsize=3,
+            label=plotlabel,
+            color=color,
+            zorder=0,
+        )
+    else:
+        axis.scatter(
+            dflightcurve["time_days"], dflightcurve["luminosity_erg/s"], label=plotlabel, color=color, zorder=0
+        )
+
+    return plotlabel
+
+
 def make_lightcurve_plot(
     modelpaths: Sequence[str | Path],
     filenameout: str | Path,
@@ -564,31 +593,9 @@ def make_lightcurve_plot(
         if path_is_reference_lightcurve(modelpath):
             bolreflightcurve = Path(modelpath)
 
-            dflightcurve, metadata = at.lightcurve.read_bol_reflightcurve_data(bolreflightcurve)
-            lightcurvelabel = args.label[lcindex] or metadata.get("label", bolreflightcurve)
-            color = args.color[lcindex]
-            if (
-                "luminosity_errminus_erg/s" in dflightcurve.columns
-                and "luminosity_errplus_erg/s" in dflightcurve.columns
-            ):
-                axis.errorbar(
-                    dflightcurve["time_days"],
-                    dflightcurve["luminosity_erg/s"],
-                    yerr=[dflightcurve["luminosity_errminus_erg/s"], dflightcurve["luminosity_errplus_erg/s"]],
-                    fmt="o",
-                    capsize=3,
-                    label=lightcurvelabel,
-                    color=color,
-                    zorder=0,
-                )
-            else:
-                axis.scatter(
-                    dflightcurve["time_days"],
-                    dflightcurve["luminosity_erg/s"],
-                    label=lightcurvelabel,
-                    color=color,
-                    zorder=0,
-                )
+            lightcurvelabel = plot_bol_reflightcurve(
+                axis, bolreflightcurve, color=args.color[lcindex], label=args.label[lcindex]
+            )
             print(f"====> {lightcurvelabel}")
             plottedsomething = True
 
@@ -658,13 +665,7 @@ def make_lightcurve_plot(
             if args.Lsun:
                 print("Check units - trying to plot ref light curve in erg/s")
                 sys.exit(1)
-            bollightcurve_data, metadata = at.lightcurve.read_bol_reflightcurve_data(bolreflightcurve)
-            axis.scatter(
-                bollightcurve_data["time_days"],
-                bollightcurve_data["luminosity_erg/s"],
-                label=metadata.get("label", bolreflightcurve),
-                color=args.refspeccolors[refindex],
-            )
+            plot_bol_reflightcurve(axis, bolreflightcurve, color=args.refspeccolors[refindex])
             plottedsomething = True
 
     assert plottedsomething, "No light curve was plotted"

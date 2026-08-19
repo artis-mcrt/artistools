@@ -62,6 +62,39 @@ def test_lightcurve_plot_frompackets(mockplot: t.Any, benchmark: BenchmarkFixtur
     assert np.isclose(arr_lum.std(), 3.614004402353378e38, rtol=1e-4)
 
 
+@mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
+def test_lightcurve_plot_reflightcurves_keep_their_errorbars(mockerrorbar: t.Any) -> None:
+    """Reference light curves keep their error bars by either route, the model path list or -reflightcurves."""
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=["AT2017gfo_waxmanetal2018.txt"],
+        reflightcurves=["AT2017gfo_smarttetal2017.txt"],
+        outputfile=Path(outputpath, "lightcurve_reflightcurves.pdf"),
+    )
+
+    # one call for the reference light curve given as a model path, one for the -reflightcurves file
+    assert mockerrorbar.call_count == 2
+
+    labels = [callitem[1]["label"] for callitem in mockerrorbar.call_args_list]
+    assert labels == ["AT2017gfo (Waxman+2018)", "AT2017gfo (Smartt+2017)"]
+
+    # the -reflightcurves file continues the grey sequence rather than starting it again
+    assert [callitem[1]["color"] for callitem in mockerrorbar.call_args_list] == ["0.0", "0.4"]
+
+    assert all(callitem[1]["zorder"] == 0 for callitem in mockerrorbar.call_args_list)
+
+    for callitem, expected_time_d_min in zip(mockerrorbar.call_args_list, (0.5, 0.638), strict=True):
+        arr_time_d = np.array(callitem[0][1])
+        arr_lum = np.array(callitem[0][2])
+        arr_errminus, arr_errplus = (np.array(err) for err in callitem[1]["yerr"])
+
+        assert np.isclose(arr_time_d.min(), expected_time_d_min, rtol=1e-4)
+        assert arr_errminus.shape == arr_lum.shape
+        assert arr_errplus.shape == arr_lum.shape
+        assert (arr_errminus > 0.0).all()
+        assert (arr_errplus > 0.0).all()
+
+
 def test_band_lightcurve_plot() -> None:
     at.lightcurve.plot(argsraw=[], modelpath=modelpath, filter=["B"], outputfile=outputpath)
 
@@ -447,8 +480,10 @@ def test_lightcurve_plot_reflightcurves_continue_the_greys(mockerrorbar: t.Any, 
         outputfile=outputpath,
     )
 
-    assert [callargs.kwargs["color"] for callargs in mockerrorbar.call_args_list] == ["0.0"]
-    assert [callargs.kwargs["color"] for callargs in mockscatter.call_args_list] == ["0.4"]
+    assert [callargs.kwargs["color"] for callargs in mockerrorbar.call_args_list] == ["0.0", "0.4"]
+
+    # both files have error columns, so neither route falls back to a plain scatter
+    assert mockscatter.call_args_list == []
 
 
 @mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
