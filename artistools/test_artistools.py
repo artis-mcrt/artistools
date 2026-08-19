@@ -1089,3 +1089,10 @@ def test_write_lbol_edep_ntimes_matches_rows(tmp_path: Path) -> None:
     assert lines[0] == f"#NTIMES: {len(datalines)}"
     # timestep 9999 does not exist, so it must not be counted
     assert len(datalines) == 4
+
+
+def test_get_series_colors_greys_then_cycle() -> None:
+    """More reference series than greys must fall back to the colour cycle instead of an IndexError."""
+    colors = at.plottools.get_series_colors([False, True, True, False, True, True, True, True])
+
+    assert colors == ["C0", "0.0", "0.4", "C1", "0.6", "0.7", "C2", "C3"]

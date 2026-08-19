@@ -48,12 +48,14 @@ from artistools.misc import get_vspec_dir_labels
 from artistools.misc import match_closest_time
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
+from artistools.misc import path_is_artis_model
 from artistools.misc import print_saved
 from artistools.misc import print_theta_phi_definitions
 from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
 from artistools.misc import trim_or_pad
 from artistools.plottools import ExponentLabelFormatter
+from artistools.plottools import get_series_colors
 from artistools.plottools import save_figure
 from artistools.plottools import set_mpl_style
 from artistools.plottools import set_plot_title
@@ -62,11 +64,6 @@ from artistools.spectra.writespectra import write_flambda_spectra
 if t.TYPE_CHECKING:
     import matplotlib.artist as mplartist
     import matplotlib.typing as mplt
-
-
-def path_is_artis_model(filepath: str | Path) -> bool:
-    """Return whether the path is an ARTIS model rather than a reference spectrum file."""
-    return Path(filepath).name.endswith((".out", ".out.zst")) or Path(filepath).is_dir()
 
 
 def find_reference_spectrum_file(filename: Path | str) -> Path:
@@ -638,7 +635,8 @@ def make_spectrum_plot(
         color for i, color in enumerate(plt.rcParams["axes.prop_cycle"].by_key()["color"]) if f"C{i}" not in args.color
     ]
     for axis in axes:
-        axis.set_prop_cycle(color=colors)
+        if colors:
+            axis.set_prop_cycle(color=colors)
         axis.margins(0.0, 0.0)
 
     for seriesindex, specpath in enumerate(speclist):
@@ -1508,15 +1506,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.timedays = args.timedayslist[0]
 
     if not args.color:
-        args.color = []
-        refspeccolors = ["0.0", "0.4", "0.6", "0.7"]
-        refspecnum = 0
-        for filepath in args.specpath:
-            if path_is_artis_model(filepath):
-                args.color.append(None)
-            else:
-                args.color.append(refspeccolors[refspecnum])
-                refspecnum += 1
+        # the reference spectra get black and greys, and the ARTIS models get the colour cycle
+        args.color = get_series_colors([not path_is_artis_model(filepath) for filepath in args.specpath])
 
     if args.distmpc is None:
         for filepath in args.specpath:

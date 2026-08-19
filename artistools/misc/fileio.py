@@ -302,6 +302,11 @@ def stripallsuffixes(f: Path) -> Path:
     return f_nosuffixes
 
 
+def path_is_artis_model(filepath: Path | str) -> bool:
+    """Return whether the path is an ARTIS model and not a reference data file."""
+    return Path(filepath).name.endswith((".out", ".out.zst")) or Path(filepath).is_dir()
+
+
 def readnoncommentline(file: io.TextIOBase) -> str:
     """Read a line from the text file, skipping blank and comment lines that begin with #.
 

@@ -418,3 +418,19 @@ def test_read_hesma_lightcurve_file_no_header(tmp_path: Path) -> None:
 
     assert list(dfhesma.columns) == ["time", "bol"]
     assert dfhesma["bol"].to_list() == [2.0, 4.0]
+
+
+@mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_lightcurve_plot_reference_colors(mockplot: t.Any, mockerrorbar: t.Any) -> None:
+    """The reference light curves get black and then grey, and the model keeps the first colour of the cycle."""
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=["AT2017gfo_smarttetal2017.txt", modelpath, "AT2017gfo_waxmanetal2018.txt"],
+        outputfile=outputpath,
+    )
+
+    assert [callargs.kwargs["color"] for callargs in mockerrorbar.call_args_list] == ["0.0", "0.4"]
+
+    modelcolors = [callargs.kwargs["color"] for callargs in mockplot.call_args_list if "color" in callargs.kwargs]
+    assert modelcolors == ["C0"]

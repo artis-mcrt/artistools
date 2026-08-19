@@ -3,6 +3,7 @@
 import argparse
 import typing as t
 from collections.abc import Iterable
+from collections.abc import Sequence
 
 import matplotlib.axes as mplax
 import matplotlib.axis as mplaxis
@@ -280,6 +281,31 @@ glasbey_category20 = [
 glasbey_category20_nogreys = [
     color for color in glasbey_category20 if color[0] != color[1] or color[1] != color[2] or color[0] != color[2]
 ]
+
+# the plot colours of the reference data series, in the order that they are used
+refseries_colors = ("0.0", "0.4", "0.6", "0.7")
+
+
+def get_series_colors(isreference: Sequence[bool]) -> list[str]:
+    """Return the default plot colour of each data series.
+
+    The first reference data series get black and then lighter greys. The other series, and the reference
+    series after the greys, get the colours of the matplotlib colour cycle in order.
+    """
+    cyclecolorcount = len(plt.rcParams["axes.prop_cycle"])
+    colors: list[str] = []
+    refindex = 0
+    cycleindex = 0
+    for isref in isreference:
+        if isref and refindex < len(refseries_colors):
+            colors.append(refseries_colors[refindex])
+        else:
+            colors.append(f"C{cycleindex % cyclecolorcount}")
+            cycleindex += 1
+        if isref:
+            refindex += 1
+
+    return colors
 
 
 def set_mpl_style() -> None:

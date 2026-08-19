@@ -598,13 +598,30 @@ def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pl.Dat
     return lightcurve_data, metadata
 
 
+def find_bol_reflightcurve_file(lightcurvefilename: str | Path) -> Path | None:
+    """Return the path of a bolometric reference light curve file, or None if no such file exists.
+
+    The file is either at the given path, or in the bundled data/lightcurves/bollightcurves folder.
+    """
+    if Path(lightcurvefilename).is_file():
+        return Path(lightcurvefilename)
+
+    bundledpath = Path(at.get_path("artistools_dir"), "data/lightcurves/bollightcurves", lightcurvefilename)
+
+    return bundledpath if bundledpath.is_file() else None
+
+
+def path_is_reference_lightcurve(filepath: str | Path) -> bool:
+    """Return whether the path is a bolometric reference light curve file and not an ARTIS model."""
+    return not at.path_is_artis_model(filepath) and find_bol_reflightcurve_file(filepath) is not None
+
+
 def read_bol_reflightcurve_data(lightcurvefilename: str | Path) -> tuple[pl.DataFrame, dict[str, t.Any]]:
     """Return an observed bolometric light curve and its metadata, from a given path or the bundled reference data."""
-    data_path = (
-        Path(lightcurvefilename)
-        if Path(lightcurvefilename).is_file()
-        else Path(at.get_path("artistools_dir"), "data/lightcurves/bollightcurves", lightcurvefilename)
-    )
+    data_path = find_bol_reflightcurve_file(lightcurvefilename)
+    if data_path is None:
+        msg = f"Reference light curve file not found: {lightcurvefilename}"
+        raise FileNotFoundError(msg)
 
     metadata = at.get_file_metadata(data_path)
 
