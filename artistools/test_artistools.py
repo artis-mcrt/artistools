@@ -1091,3 +1091,39 @@ def test_write_lbol_edep_ntimes_matches_rows(tmp_path: Path) -> None:
     assert lines[0] == f"#NTIMES: {len(datalines)}"
     # timestep 9999 does not exist, so it must not be counted
     assert len(datalines) == 4
+
+
+def test_get_series_colors_greys_then_cycle() -> None:
+    """More reference series than greys must fall back to the colour cycle instead of an IndexError."""
+    colors = at.plottools.get_series_colors([False, True, True, False, True, True, True, True])
+
+    assert colors == ["C0", "0.0", "0.4", "C1", "0.6", "0.7", "C2", "C3"]
+
+
+def test_get_series_colors_keeps_the_colours_of_the_user() -> None:
+    """A colour of the user has priority, and no other series gets that colour."""
+    assert at.plottools.get_series_colors([False, False, True], ["C1"]) == ["C1", "C0", "0.0"]
+    assert at.plottools.get_series_colors([False, True], [None, "red"]) == ["C0", "red"]
+
+    # a grey that the user asked for goes out of the sequence of the reference series
+    assert at.plottools.get_series_colors([True, True], ["0.0"]) == ["0.0", "0.4"]
+    assert at.plottools.get_series_colors([True, True], [None, "0.0"]) == ["0.4", "0.0"]
+    assert at.plottools.get_series_colors([False, True], ["0.0"]) == ["0.0", "0.4"]
+
+    # a colour that is not a grey does not take a grey of the sequence
+    assert at.plottools.get_series_colors([True, True], ["red"]) == ["red", "0.0"]
+
+
+def test_get_series_colors_knows_the_value_of_a_cycle_colour() -> None:
+    """A colour value of the cycle that the user asked for must go out of the cycle, like the name CN."""
+    at.set_mpl_style()
+    cyclecolors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+
+    assert at.plottools.get_series_colors([False, False], [cyclecolors[0]]) == [cyclecolors[0], "C1"]
+    assert at.plottools.get_series_colors([False, False], [cyclecolors[1]]) == [cyclecolors[1], "C0"]
+
+
+def test_path_is_artis_model_accepts_a_compressed_output_file() -> None:
+    """A compressed ARTIS output file is a model, and not a reference data file."""
+    assert all(at.path_is_artis_model(f"light_curve.out{ext}") for ext in ("", ".zst", ".gz", ".xz"))
+    assert not at.path_is_artis_model("AT2017gfo_smarttetal2017.txt")

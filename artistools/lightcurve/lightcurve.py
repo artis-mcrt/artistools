@@ -19,6 +19,8 @@ import artistools as at
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import Lsun_to_erg_per_s
+from artistools.misc import path_is_artis_model
+from artistools.misc.fileio import find_compressed
 
 # ARTIS writes the Sloan filters with a trailing "s"; map them back to the conventional single-letter names
 FILTERNAME_ALIASES: t.Final[Mapping[str, str]] = MappingProxyType({"rs": "r", "gs": "g", "is": "i", "zs": "z"})
@@ -598,13 +600,36 @@ def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pl.Dat
     return lightcurve_data, metadata
 
 
+def find_bol_reflightcurve_file(lightcurvefilename: str | Path) -> Path | None:
+    """Return the path of a file with a reference light curve, or None if no such file exists.
+
+    The file is either at the given path, or in the bundled data/lightcurves/bollightcurves folder.
+    A compressed file with the same name is also accepted.
+    """
+    bundledfolder = Path(at.get_path("artistools_dir"), "data/lightcurves/bollightcurves")
+    for folder in (Path(), bundledfolder):
+        filepath = Path(folder, lightcurvefilename)
+        if filepath.is_file():
+            return filepath
+
+        compressedfile = find_compressed(filepath)
+        if compressedfile is not None:
+            return compressedfile[1]
+
+    return None
+
+
+def path_is_reference_lightcurve(filepath: str | Path) -> bool:
+    """Return whether the path is a bolometric reference light curve file and not an ARTIS model."""
+    return not path_is_artis_model(filepath) and find_bol_reflightcurve_file(filepath) is not None
+
+
 def read_bol_reflightcurve_data(lightcurvefilename: str | Path) -> tuple[pl.DataFrame, dict[str, t.Any]]:
     """Return an observed bolometric light curve and its metadata, from a given path or the bundled reference data."""
-    data_path = (
-        Path(lightcurvefilename)
-        if Path(lightcurvefilename).is_file()
-        else Path(at.get_path("artistools_dir"), "data/lightcurves/bollightcurves", lightcurvefilename)
-    )
+    data_path = find_bol_reflightcurve_file(lightcurvefilename)
+    if data_path is None:
+        msg = f"Reference light curve file not found: {lightcurvefilename}"
+        raise FileNotFoundError(msg)
 
     metadata = at.get_file_metadata(data_path)
 

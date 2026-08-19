@@ -27,6 +27,7 @@ from artistools.constants import day_to_s
 from artistools.constants import Lsun_to_erg_per_s
 from artistools.constants import Msun_to_g
 from artistools.lightcurve.lightcurve import FILTERNAME_ALIASES
+from artistools.lightcurve.lightcurve import path_is_reference_lightcurve
 from artistools.misc import add_axis_limit_args
 from artistools.misc import add_figscale_args
 from artistools.misc import add_filter_args
@@ -34,9 +35,13 @@ from artistools.misc import add_maxpacketfiles_arg
 from artistools.misc import add_modelpath_arg
 from artistools.misc import add_outputfile_arg
 from artistools.misc import add_series_style_args
+from artistools.misc import makelist
 from artistools.misc import print_theta_phi_definitions
+from artistools.misc import trim_or_pad
+from artistools.plottools import get_series_colors
 from artistools.plottools import save_figure
 from artistools.plottools import set_axis_labels
+from artistools.plottools import set_prop_cycle_unusedcolors
 
 
 def plot_deposition_thermalisation(
@@ -552,24 +557,16 @@ def make_lightcurve_plot(
     else:
         axistherm = None
 
-    # take any specified colours out of the cycle
-    colors = [
-        color
-        for i, color in enumerate(plt.rcParams["axes.prop_cycle"].by_key()["color"])
-        if f"C{i}" not in args.color and color not in args.color
-    ]
-    axis.set_prop_cycle(color=colors)
-    reflightcurveindex = 0
+    set_prop_cycle_unusedcolors([axis], [*args.color, *args.refspeccolors])
 
     plottedsomething = False
-    lcindex = 0
-    for modelpath in modelpaths:
-        if not Path(modelpath).is_dir() and not Path(modelpath).exists() and "." in str(modelpath):
+    for lcindex, modelpath in enumerate(modelpaths):
+        if path_is_reference_lightcurve(modelpath):
             bolreflightcurve = Path(modelpath)
 
             dflightcurve, metadata = at.lightcurve.read_bol_reflightcurve_data(bolreflightcurve)
             lightcurvelabel = args.label[lcindex] or metadata.get("label", bolreflightcurve)
-            color = args.color[lcindex] or ["0.0", "0.5", "0.7"][reflightcurveindex]
+            color = args.color[lcindex]
             if (
                 "luminosity_errminus_erg/s" in dflightcurve.columns
                 and "luminosity_errplus_erg/s" in dflightcurve.columns
@@ -593,7 +590,6 @@ def make_lightcurve_plot(
                     zorder=0,
                 )
             print(f"====> {lightcurvelabel}")
-            reflightcurveindex += 1
             plottedsomething = True
 
         else:
@@ -657,11 +653,8 @@ def make_lightcurve_plot(
 
         print()
 
-        if plottedsomething:
-            lcindex += 1
-
     if args.reflightcurves:
-        for bolreflightcurve in args.reflightcurves:
+        for refindex, bolreflightcurve in enumerate(args.reflightcurves):
             if args.Lsun:
                 print("Check units - trying to plot ref light curve in erg/s")
                 sys.exit(1)
@@ -670,11 +663,11 @@ def make_lightcurve_plot(
                 bollightcurve_data["time_days"],
                 bollightcurve_data["luminosity_erg/s"],
                 label=metadata.get("label", bolreflightcurve),
-                color="k",
+                color=args.refspeccolors[refindex],
             )
             plottedsomething = True
 
-    assert plottedsomething
+    assert plottedsomething, "No light curve was plotted"
 
     if not args.nolegend:
         axis.legend(loc="best", handlelength=2, frameon=args.legendframeon, numpoints=1, prop={"size": 9})
@@ -1011,23 +1004,18 @@ def make_band_lightcurves_plot(
                         print("already plotted reflightcurve")
                     else:
                         assert isinstance(ax, mplax.Axes)
-                        define_colours_list = args.refspeccolors
-                        markers = args.refspecmarkers
                         for i, reflightcurve in enumerate(args.reflightcurves):
                             plot_lightcurve_from_refdata(
                                 list(band_lightcurve_data.keys()),
                                 reflightcurve,
-                                define_colours_list[i],
-                                markers[i],
+                                args.refspeccolors[i],
+                                args.refspecmarkers[i],
                                 ax,
                                 plotnumber,
                             )
 
                 if len(dirbins) == 1:
-                    if args.color:
-                        plotkwargs["color"] = args.color[modelnumber]
-                    else:
-                        plotkwargs["color"] = define_colours_list[modelnumber]
+                    plotkwargs["color"] = args.color[modelnumber]
 
                 if args.colorbarcostheta or args.colorbarphi:
                     # Update plotkwargs with viewing angle colour
@@ -1315,7 +1303,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         helptext="Path(s) to ARTIS folders with light_curve.out or packets files (may include wildcards such as * and **)",
     )
 
-    add_series_style_args(parser, colordefault=[f"C{i}" for i in range(10)])
+    add_series_style_args(parser)
 
     parser.add_argument("--nolegend", action="store_true", help="Suppress the legend from the plot")
 
@@ -1433,11 +1421,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "-refspeccolors", default=["0.0", "0.3", "0.5"], nargs="*", help="Set a list of color for reference spectra"
+        "-refspeccolors", default=[], nargs="*", help="Set a list of colors for the reference light curves"
     )
 
     parser.add_argument(
-        "-refspecmarkers", default=["o", "s", "h"], nargs="*", help="Set a list of markers for reference spectra"
+        "-refspecmarkers", default=[], nargs="*", help="Set a list of markers for the reference light curves"
     )
 
     add_filter_args(parser)
@@ -1574,9 +1562,27 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     modelpaths = args.modelpath
 
-    args.color, args.label, args.linestyle, args.dashes, args.linewidth = at.trim_or_pad(
+    args.color, args.label, args.linestyle, args.dashes, args.linewidth = trim_or_pad(
         len(args.modelpath), args.color, args.label, args.linestyle, args.dashes, args.linewidth
     )
+
+    args.reflightcurves = makelist(args.reflightcurves)
+    args.refspeccolors, args.refspecmarkers = trim_or_pad(
+        len(args.reflightcurves), args.refspeccolors, args.refspecmarkers
+    )
+
+    # the reference data get black and greys, and the ARTIS models get the colours of the cycle
+    isreference = [path_is_reference_lightcurve(path) for path in args.modelpath]
+    seriescolors = get_series_colors(
+        [*isreference, *([True] * len(args.reflightcurves))], [*args.color, *args.refspeccolors]
+    )
+    args.color = seriescolors[: len(args.modelpath)]
+    args.refspeccolors = seriescolors[len(args.modelpath) :]
+
+    defaultmarkers = ("o", "s", "h")
+    args.refspecmarkers = [
+        marker or defaultmarkers[i % len(defaultmarkers)] for i, marker in enumerate(args.refspecmarkers)
+    ]
 
     if args.rpkt is False and not args.gamma:
         # if we're not plotting gamma, then we want to plot the r-packets by default
