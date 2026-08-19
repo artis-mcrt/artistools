@@ -975,6 +975,24 @@ def test_colour_evolution_plot_dirbin_colours_avoid_the_model_colours(mockplot: 
     assert len(set(colors)) == len(colors), colors
 
 
+@pytest.mark.parametrize("plotalpha", [False, True])
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_plotalphadeposition_draws_the_alpha_curves(mockplot: t.Any, plotalpha: bool) -> None:
+    """The alpha decay curves are drawn only when -plotalphadeposition asks for them."""
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=[modelpath_classic_3d],
+        plotdeposition=not plotalpha,
+        plotalphadeposition=plotalpha,
+        outputfile=outputpath / "lc_alphadep.pdf",
+    )
+
+    labels = [str(callargs.kwargs.get("label")) for callargs in mockplot.call_args_list]
+    assert any(r"\alpha" in label for label in labels) == plotalpha, labels
+    # the gamma and beta curves are drawn either way, so the alpha rates can be compared against them
+    assert any(r"\gamma" in label for label in labels), labels
+
+
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_plotdeposition_does_not_inherit_the_light_curve_style(mockplot: t.Any) -> None:
     """The deposition curves take their style from the command line, not from the last direction bin drawn.

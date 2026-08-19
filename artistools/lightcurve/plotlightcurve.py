@@ -189,8 +189,7 @@ def plot_deposition_thermalisation(
         ("elecdep_Lsun", r" $\dot{E}_{dep,\beta^-}$", "dashed", color_beta),
     ]
 
-    plotalphadep = False
-    if plotalphadep:
+    if args.plotalphadeposition:
         depositioncurves += [
             ("eps_alpha_ana_Lsun", r" $\dot{E}_{rad,\alpha}$ analytical", "solid", color_alpha),
             ("eps_alpha_Lsun", r" $\dot{E}_{rad,\alpha}$", "dashed", color_alpha),
@@ -559,7 +558,7 @@ def plot_artis_lightcurve(
                 **plotkwargs,
             )
 
-    if args.plotdeposition or args.plotthermalisation:
+    if args.plotdeposition or args.plotalphadeposition or args.plotthermalisation:
         # plotkwargs is whatever the direction bin loop above left behind, so build the deposition style from
         # the command line instead of inheriting one bin's colour, transparency, z order and line width
         depositionkwargs: dict[str, t.Any] = {"linewidth": args.linewidth[lcindex]} if args.linewidth[lcindex] else {}
@@ -724,7 +723,7 @@ def make_lightcurve_plot(
     axis.set_xlabel(r"Time [days]")
 
     # plot_deposition_thermalisation draws the deposition rates on the main axis for either flag
-    showsdeposition = args.plotdeposition or args.plotthermalisation
+    showsdeposition = args.plotdeposition or args.plotalphadeposition or args.plotthermalisation
 
     lumunit = get_plot_lum_unit(args)
     if lumunit == "mag":
@@ -1128,7 +1127,7 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | 
         args.labelfontsize = 24
     angle_counter = 0
     # a direction bin must not repeat the colour that a whole model was given, since both go on the same axes
-    assignedcolors = {mplcolors.to_hex(color) for color in [*args.color, *args.refspeccolors] if color}
+    assignedcolors = {mplcolors.to_hex(color) for color in (*args.color, *args.refspeccolors) if color}
     tab20colors = list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20)))
     color_list = [color for color in tab20colors if mplcolors.to_hex(color) not in assignedcolors] or tab20colors
 
@@ -1425,6 +1424,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument("--plotdeposition", action="store_true", help="Plot model deposition rates")
+
+    parser.add_argument(
+        "--plotalphadeposition", action="store_true", help="Plot alpha decay energy release and deposition rates"
+    )
 
     parser.add_argument(
         "--plotthermalisation", action="store_true", help="Plot thermalisation rates (in separate plot)"
