@@ -342,6 +342,8 @@ def test_colour_evolution_plot_single_dirbin_colour(mockplot: t.Any) -> None:
         colour_evolution=["B-V"],
         plotviewingangle=[5],
         color=["magenta"],
+        timemin=5,
+        timemax=8,
         outputfile=outputpath,
     )
 

@@ -7,6 +7,7 @@ from collections.abc import Sequence
 
 import matplotlib.axes as mplax
 import matplotlib.axis as mplaxis
+import matplotlib.colors as mplcolors
 import matplotlib.figure as mplfig
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mplticker
@@ -324,17 +325,20 @@ def get_series_colors(isreference: Sequence[bool], usercolors: Sequence[str | No
     return colors
 
 
-def set_prop_cycle_unusedcolors(axes: Iterable[mplax.Axes], seriescolors: Sequence[str | None]) -> None:
-    """Remove the colours of seriescolors from the colour cycle of each axis.
+def get_unused_colors(palette: Sequence[t.Any], seriescolors: Sequence[str | None]) -> list[t.Any]:
+    """Return the colours of palette that no series in seriescolors was given.
 
-    A series that gets its colour from the cycle, e.g. an extra direction bin, then does not
-    repeat the colour of another series.
+    A series that takes its colour from the palette, e.g. an extra direction bin, then does not
+    repeat the colour of another series. Colours are compared by value, so "C0" matches "#1f77b4".
     """
-    colors = [
-        color
-        for i, color in enumerate(plt.rcParams["axes.prop_cycle"].by_key()["color"])
-        if f"C{i}" not in seriescolors and color not in seriescolors
-    ]
+    assignedcolors = {mplcolors.to_hex(color) for color in seriescolors if color}
+
+    return [color for color in palette if mplcolors.to_hex(color) not in assignedcolors]
+
+
+def set_prop_cycle_unusedcolors(axes: Iterable[mplax.Axes], seriescolors: Sequence[str | None]) -> None:
+    """Remove the colours of seriescolors from the colour cycle of each axis."""
+    colors = get_unused_colors(plt.rcParams["axes.prop_cycle"].by_key()["color"], seriescolors)
     if colors:
         for axis in axes:
             axis.set_prop_cycle(color=colors)

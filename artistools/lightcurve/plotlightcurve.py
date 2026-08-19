@@ -25,10 +25,10 @@ import artistools as at
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import Lsun_to_erg_per_s
-from artistools.constants import Mbol_sun
 from artistools.constants import Msun_to_g
 from artistools.lightcurve.lightcurve import derived_lum_unit_cols
 from artistools.lightcurve.lightcurve import FILTERNAME_ALIASES
+from artistools.lightcurve.lightcurve import lum_lsun_to_mag
 from artistools.lightcurve.lightcurve import path_is_reference_lightcurve
 from artistools.misc import add_axis_limit_args
 from artistools.misc import add_figscale_args
@@ -37,16 +37,15 @@ from artistools.misc import add_maxpacketfiles_arg
 from artistools.misc import add_modelpath_arg
 from artistools.misc import add_outputfile_arg
 from artistools.misc import add_series_style_args
+from artistools.misc import get_series_label
 from artistools.misc import makelist
 from artistools.misc import print_theta_phi_definitions
 from artistools.misc import trim_or_pad
 from artistools.plottools import get_series_colors
+from artistools.plottools import get_unused_colors
 from artistools.plottools import save_figure
 from artistools.plottools import set_axis_labels
 from artistools.plottools import set_prop_cycle_unusedcolors
-
-if t.TYPE_CHECKING:
-    from collections.abc import Mapping
 
 type LumUnit = t.Literal["mag", "Lsun", "erg/s"]
 
@@ -65,9 +64,9 @@ def get_plot_lum_unit(args: argparse.Namespace) -> LumUnit:
 
 def get_plot_lum_column(args: argparse.Namespace) -> str:
     """Return the light curve dataframe column holding the luminosity in the y axis units."""
-    # annotated so that a unit added to LumUnit without a column here is a type error, not a plot-time KeyError
-    lumcolumns: Mapping[LumUnit, str] = {"mag": "mag", "Lsun": "luminosity_Lsun", "erg/s": "luminosity_erg/s"}
-    return lumcolumns[get_plot_lum_unit(args)]
+    lumunit = get_plot_lum_unit(args)
+
+    return "mag" if lumunit == "mag" else f"luminosity_{lumunit}"
 
 
 def convert_lum_lsun_to_plotunits(
@@ -76,9 +75,7 @@ def convert_lum_lsun_to_plotunits(
     """Convert a luminosity in solar luminosities to the y axis units: bolometric magnitude, Lsun, or erg/s."""
     lumunit = get_plot_lum_unit(args)
     if lumunit == "mag":
-        # a zero or negative luminosity has no magnitude, so let it become inf/nan instead of warning
-        with np.errstate(divide="ignore", invalid="ignore"):
-            return Mbol_sun - 2.5 * np.log10(lum_lsun)
+        return lum_lsun_to_mag(lum_lsun)
 
     return lum_lsun if lumunit == "Lsun" else lum_lsun * Lsun_to_erg_per_s
 
@@ -161,14 +158,13 @@ def plot_deposition_thermalisation(
     axistherm: mplax.Axes | None,
     modelpath: str | Path,
     modelname: str,
-    label: str,
     args: argparse.Namespace,
     **plotkwargs: t.Any,
 ) -> None:
     """Plot the gamma-ray and positron deposition rates, and the thermalisation efficiencies when axistherm is given.
 
-    Every curve below appends its own suffix to label and picks its own linestyle and colour, so plotkwargs must
-    carry none of those: matplotlib would receive them twice ("dashes" also silently overrides "linestyle").
+    Every curve below appends its own suffix to modelname and picks its own linestyle and colour, so plotkwargs
+    must carry none of those: matplotlib would receive them twice ("dashes" also overrides "linestyle").
     """
     if args.plotthermalisation:
         dfmodel, _ = at.inputmodel.get_modeldata(modelpath, derived_cols=["mass_g", "vel_r_mid", "kinetic_en_erg"])
@@ -204,7 +200,7 @@ def plot_deposition_thermalisation(
             depdata["tmid_days"],
             convert_lum_lsun_to_plotunits(depdata[depcol].to_numpy(), args),
             **plotkwargs,
-            label=label + labelsuffix,
+            label=modelname + labelsuffix,
             linestyle=curvelinestyle,
             color=curvecolor,
         )
@@ -384,7 +380,10 @@ def plot_artis_lightcurve(
         if average_over_phi or average_over_theta:
             # averaging is linear, so it is only valid for the luminosity columns. Rebuild the magnitude from
             # the averaged luminosity rather than averaging magnitudes, which a single dark bin sends to inf.
-            lcdataframes = {dirbin: lzdf.with_columns(derived_lum_unit_cols()) for dirbin, lzdf in lcdataframes.items()}
+            unitcols = derived_lum_unit_cols()
+            lcdataframes = {dirbin: lzdf.with_columns(unitcols) for dirbin, lzdf in lcdataframes.items()}
+
+    ycolumn = get_plot_lum_column(args)
 
     if args.dashes[lcindex]:
         plotkwargs["dashes"] = args.dashes[lcindex]
@@ -477,8 +476,6 @@ def plot_artis_lightcurve(
         if pellet_nucname is not None:
             plotkwargs["color"] = None
 
-        ycolumn = get_plot_lum_column(args)
-
         if (
             args.average_over_phi_angle
             and dirbin % at.get_viewingdirection_costhetabincount() == 0
@@ -562,9 +559,7 @@ def plot_artis_lightcurve(
         # plotkwargs is whatever the direction bin loop above left behind, so build the deposition style from
         # the command line instead of inheriting one bin's colour, transparency, z order and line width
         depositionkwargs: dict[str, t.Any] = {"linewidth": args.linewidth[lcindex]} if args.linewidth[lcindex] else {}
-        plot_deposition_thermalisation(
-            axis, axistherm, modelpath, label=linelabel, args=args, modelname=linelabel, **depositionkwargs
-        )
+        plot_deposition_thermalisation(axis, axistherm, modelpath, modelname=linelabel, args=args, **depositionkwargs)
 
     return lcdataframes
 
@@ -846,12 +841,11 @@ def get_linelabel(
     args: argparse.Namespace,
 ) -> str:
     """Return the legend label for one series, from the model name and viewing angle."""
-    # args.label has one entry per model path, each None unless the user gave a -label for it
-    serieslabel = args.label[modelnumber] or modelname
+    serieslabel = get_series_label(args.label, modelnumber, modelname)
     if angle is not None and angle != -1:
         assert angle_definition is not None
         return angle_definition[angle] if args.nomodelname else f"{serieslabel} {angle_definition[angle]}"
-    return str(serieslabel)
+    return serieslabel
 
 
 def set_lightcurveplot_legend(ax: mplax.Axes | npt.NDArray[t.Any], args: argparse.Namespace) -> None:
@@ -1127,13 +1121,15 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | 
         args.labelfontsize = 24
     angle_counter = 0
     # a direction bin must not repeat the colour that a whole model was given, since both go on the same axes
-    assignedcolors = {mplcolors.to_hex(color) for color in (*args.color, *args.refspeccolors) if color}
     tab20colors = list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20)))
-    color_list = [color for color in tab20colors if mplcolors.to_hex(color) not in assignedcolors] or tab20colors
+    color_list = get_unused_colors(tab20colors, [*args.color, *args.refspeccolors]) or tab20colors
 
     fig, ax = create_axes(args)
 
     plotkwargs: dict[str, t.Any] = {}
+
+    # the filter pairs share bands, so integrate the bands of every pair once per direction bin
+    args.filter = sorted({name for filters in args.colour_evolution for name in filters.split("-")})
 
     for modelnumber, modelpath in enumerate(modelpaths):
         modelname = at.get_model_name(modelpath)
@@ -1151,8 +1147,6 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | 
             else:
                 dirbincolor = args.color[modelnumber]
 
-            # the filter pairs share bands, so integrate the bands of every pair once for this direction bin
-            args.filter = sorted({name for filters in args.colour_evolution for name in filters.split("-")})
             band_lightcurve_data = at.lightcurve.generate_band_lightcurve_data(
                 modelpath, args, dirbin=dirbin, modelnumber=modelnumber
             )

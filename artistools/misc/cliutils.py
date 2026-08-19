@@ -344,6 +344,17 @@ def trim_or_pad(requiredlength: int, *listoflistin: t.Any) -> Sequence[Sequence[
     return list_sequence
 
 
+def get_series_label(labels: Sequence[str | None], index: int, fallback: str) -> str:
+    """Return the -label value for one series, or fallback when the user gave none for it.
+
+    trim_or_pad pads the list with None, so an entry can be missing either as a None or, when the series
+    count is not the model path count, by running off the end.
+    """
+    label = labels[index] if index < len(labels) else None
+
+    return label or fallback
+
+
 def flatten_list(listin: list[t.Any]) -> list[t.Any]:
     """Flatten a list of lists."""
     listout = []

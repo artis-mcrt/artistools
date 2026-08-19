@@ -14,6 +14,7 @@ from artistools.misc.cliutils import add_timestep_arg as add_timestep_arg
 from artistools.misc.cliutils import add_viewingangle_args as add_viewingangle_args
 from artistools.misc.cliutils import flatten_list as flatten_list
 from artistools.misc.cliutils import get_filterfunc as get_filterfunc
+from artistools.misc.cliutils import get_series_label as get_series_label
 from artistools.misc.cliutils import makelist as makelist
 from artistools.misc.cliutils import normalize_path_list as normalize_path_list
 from artistools.misc.cliutils import parse_cli_args as parse_cli_args

@@ -414,11 +414,8 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
                 capsize=2,
             )
 
-    # args.label has one entry per model path, each None unless the user gave a -label for it, so the list
-    # is always truthy and a whole-list fallback would never fire
-    linelabels = [
-        (args.label[ii] if ii < len(args.label) else None) or modelname for ii, modelname in enumerate(modelnames)
-    ]
+    # modelnames has one entry per (model, direction bin), so it can outrun the per-model -label list
+    linelabels = [at.get_series_label(args.label, ii, modelname) for ii, modelname in enumerate(modelnames)]
 
     # a0, datalabel = at.lightcurve.get_sn_sample_bol()
     # a0, datalabel = at.lightcurve.plot_phillips_relation_data()

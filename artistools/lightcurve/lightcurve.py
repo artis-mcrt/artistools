@@ -38,6 +38,15 @@ def derived_lum_unit_cols() -> list[pl.Expr]:
     ]
 
 
+def lum_lsun_to_mag(lum_lsun: npt.NDArray[np.floating[t.Any]]) -> npt.NDArray[np.floating[t.Any]]:
+    """Return the bolometric magnitude of a luminosity in solar luminosities.
+
+    A zero or negative luminosity has no magnitude, so it becomes inf or nan rather than warning.
+    """
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return Mbol_sun - (2.5 * np.log10(lum_lsun))
+
+
 def readfile(filepath: str | Path) -> dict[int, pl.LazyFrame]:
     """Read an ARTIS light curve file."""
     print(f"Reading {filepath}")
@@ -355,8 +364,7 @@ def bolometric_magnitude(
                 )[angle].collect()
             integrated_flux = np.trapezoid(spectrum["f_lambda"], spectrum["lambda_angstroms"])
             integrated_luminosity = integrated_flux * 4 * np.pi * np.power(Mpc_to_cm, 2)
-            with np.errstate(divide="ignore"):
-                magnitude = Mbol_sun - (2.5 * np.log10(integrated_luminosity / Lsun_to_erg_per_s))
+            magnitude = float(lum_lsun_to_mag(np.asarray(integrated_luminosity / Lsun_to_erg_per_s)))
             magnitudes.append(magnitude)
             times.append(time)
 
