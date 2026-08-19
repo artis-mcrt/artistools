@@ -23,11 +23,12 @@ uv run -- ruff check --no-fix     # --no-fix shows what CI sees (config sets fix
 uv run -- mypy
 uv run -- pyrefly check
 uv run -- ty check
+uv run -- refurb artistools --quiet -- --follow-imports=skip   # --follow-imports=skip avoids a mypy crash on pyvista
 uv run -- python -m pytest artistools/<area> -n auto   # e.g. artistools/spectra
 cargo clippy --all-features -- -D warnings -D clippy::pedantic   # in rust/, for Rust changes
 ```
 
-All four type checkers must be clean, and a change that satisfies one must not break another. `.github/workflows/pytest.yml` is the authority on what CI runs; it also runs the `prek` hooks from `.pre-commit-config.yaml`.
+All four type checkers must be clean, and a change that satisfies one must not break another. refurb is a separate linter that CI fails on, so run it too. `.github/workflows/pytest.yml` is the authority on what CI runs; it also runs the `prek` hooks from `.pre-commit-config.yaml`, which `uv run -- prek run --all-files` reproduces.
 
 Never report that checks passed when you could not run them. If the environment lacks the tools, the venv, the network, or the test data, say which checks were skipped and why.
 
