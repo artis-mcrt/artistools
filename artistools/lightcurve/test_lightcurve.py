@@ -986,6 +986,30 @@ def test_plotalphadeposition_draws_the_alpha_curves(mockplot: t.Any, plotalpha: 
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_deposition_curves_do_not_reuse_a_model_colour(mockplot: t.Any) -> None:
+    """The deposition curves take their colours from the axis cycle, which the model colours were removed from.
+
+    A hardcoded colour would collide with whichever model get_series_colors happened to give that colour to.
+    """
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=[modelpath_classic_3d, modelpath_classic_3d],
+        plotalphadeposition=True,
+        timemin=3,
+        timemax=8,
+        outputfile=outputpath / "lc_deposition_colours.pdf",
+    )
+
+    lines = [(str(callargs.kwargs.get("label")), callargs.kwargs.get("color")) for callargs in mockplot.call_args_list]
+    modelcolors = {mplcolors.to_hex(color) for label, color in lines if "dot" not in label}
+    depositioncolors = {mplcolors.to_hex(color) for label, color in lines if "dot" in label}
+
+    assert modelcolors
+    assert depositioncolors
+    assert not modelcolors & depositioncolors, f"{modelcolors} and {depositioncolors} share a colour"
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_plotdeposition_does_not_inherit_the_light_curve_style(mockplot: t.Any) -> None:
     """The deposition curves take their style from the command line, not from the last direction bin drawn.
 
@@ -1008,6 +1032,34 @@ def test_plotdeposition_does_not_inherit_the_light_curve_style(mockplot: t.Any) 
     for kwargs in depositionkwargs:
         assert "alpha" not in kwargs
         assert "zorder" not in kwargs
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_plotdeposition_is_drawn_once_per_model(mockplot: t.Any) -> None:
+    """A model draws its deposition rates once, however many light curve series it contributes.
+
+    plot_artis_lightcurve runs once per escape type and once per top nuclide, and the deposition rates were
+    drawn on every run: the gamma-ray series repeated all three curves in new colours, labelled with the
+    gamma-ray series name even though the deposition rates have nothing to do with the escape type.
+    """
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=[modelpath_classic_3d],
+        gamma=True,
+        rpkt=True,
+        plotdeposition=True,
+        outputfile=outputpath / "lc_deposition_gamma_and_rpkt.pdf",
+    )
+
+    depositionlabels = [
+        str(callargs.kwargs.get("label"))
+        for callargs in mockplot.call_args_list
+        if r"\dot{E}" in str(callargs.kwargs.get("label"))
+    ]
+    assert depositionlabels
+    assert len(depositionlabels) == len(set(depositionlabels)), depositionlabels
+    # the deposition rates are a model property, so they keep the model name rather than the gamma series name
+    assert not any(r"$\gamma$ $\dot{E}" in label for label in depositionlabels), depositionlabels
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)

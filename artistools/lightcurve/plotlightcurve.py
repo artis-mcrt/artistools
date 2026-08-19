@@ -43,6 +43,7 @@ from artistools.misc import print_theta_phi_definitions
 from artistools.misc import trim_or_pad
 from artistools.plottools import get_series_colors
 from artistools.plottools import get_unused_colors
+from artistools.plottools import iter_axes
 from artistools.plottools import save_figure
 from artistools.plottools import set_axis_labels
 from artistools.plottools import set_prop_cycle_unusedcolors
@@ -65,6 +66,15 @@ def get_plot_lum_unit(args: argparse.Namespace) -> LumUnit:
 def get_plot_lum_column(lumunit: LumUnit) -> str:
     """Return the light curve dataframe column holding the luminosity in the y axis units."""
     return "mag" if lumunit == "mag" else f"luminosity_{lumunit}"
+
+
+def shows_deposition(args: argparse.Namespace) -> bool:
+    """Return whether plot_deposition_thermalisation draws deposition rates on the light curve axis.
+
+    Every deposition flag puts the gamma and beta curves on that axis, so the y axis label has to agree
+    with the same condition that decides whether to call it.
+    """
+    return bool(args.plotdeposition or args.plotalphadeposition or args.plotthermalisation)
 
 
 def convert_lum_lsun_to_plotunits(
@@ -176,7 +186,7 @@ def plot_deposition_thermalisation(
     at.plottools.get_next_color(axis)  # skip a colour so the deposition curves differ from the light curve
     color_gamma = at.plottools.get_next_color(axis)
     color_beta = at.plottools.get_next_color(axis)
-    color_alpha = "C1"
+    color_alpha = at.plottools.get_next_color(axis)
 
     depositioncurves = [
         ("gammadep_Lsun", r" $\dot{E}_{dep,\gamma}$", "dashed", color_gamma),
@@ -299,9 +309,14 @@ def plot_artis_lightcurve(
     args: argparse.Namespace | None = None,
     pellet_nucname: str | None = None,
     use_pellet_decay_time: bool = False,
+    showdeposition: bool = True,
     **plotkwargs: t.Any,
 ) -> dict[int, pl.DataFrame] | None:
-    """Plot one model's bolometric light curve, and return the plotted data per direction bin."""
+    """Plot one model's bolometric light curve, and return the plotted data per direction bin.
+
+    The deposition rates belong to the model rather than to one escape type or pellet nuclide, so a caller
+    that plots several series from one model asks for them on one series only, with showdeposition.
+    """
     if args is None:
         args = argparse.Namespace()
     if escape_type not in {"TYPE_RPKT", "TYPE_GAMMA"}:
@@ -551,7 +566,7 @@ def plot_artis_lightcurve(
                 **plotkwargs,
             )
 
-    if args.plotdeposition or args.plotalphadeposition or args.plotthermalisation:
+    if showdeposition and shows_deposition(args):
         # plotkwargs is whatever the direction bin loop above left behind, so build the deposition style from
         # the command line instead of inheriting one bin's colour, transparency, z order and line width
         depositionkwargs: dict[str, t.Any] = {"linewidth": args.linewidth[lcindex]} if args.linewidth[lcindex] else {}
@@ -566,8 +581,7 @@ def invert_magnitude_yaxis(ax: mplax.Axes | npt.NDArray[t.Any]) -> None:
     invert_yaxis() toggles rather than sets and the axes of a subplot grid share one y axis, so calling it once
     per plotted series flips the axis back and forth instead of inverting it.
     """
-    firstaxis = ax if isinstance(ax, mplax.Axes) else ax[0]
-    assert isinstance(firstaxis, mplax.Axes)
+    firstaxis = iter_axes(ax)[0]
     ymin, ymax = firstaxis.get_ylim()
     if ymin < ymax:
         firstaxis.invert_yaxis()
@@ -688,6 +702,9 @@ def make_lightcurve_plot(
                         args=args,
                         pellet_nucname=pellet_nucname,
                         use_pellet_decay_time=args.use_pellet_decay_time,
+                        # one model can contribute an r-packet series, a gamma series and one series per
+                        # nuclide, but it has a single set of deposition rates to draw
+                        showdeposition=escape_type == escape_types[0] and pellet_nucname is None,
                         linestyle=args.linestyle[lcindex]
                         if (escape_type == "TYPE_RPKT" or len(escape_types) == 1)
                         else ":",
@@ -715,8 +732,7 @@ def make_lightcurve_plot(
 
     axis.set_xlabel(r"Time [days]")
 
-    # plot_deposition_thermalisation draws the deposition rates on the main axis for either flag
-    showsdeposition = args.plotdeposition or args.plotalphadeposition or args.plotthermalisation
+    showsdeposition = shows_deposition(args)
 
     if lumunit == "mag":
         # the gamma-ray light curve and the deposition rates are converted onto this same magnitude axis, so
@@ -753,10 +769,11 @@ def make_lightcurve_plot(
 
     # set the limits only now that the data is drawn: on an empty axes matplotlib turns autoscaling off, so a
     # one-sided limit would freeze the other side at the default 0-1 view instead of fitting the light curves
-    set_time_axis_limits(axis, args)
     # the y limits, the log scales and the tick style are shared with the band and colour evolution figures.
     # This parser has no -xmin/-xmax (the time range is -timemin/-timemax), so it leaves the x limits alone
     at.plottools.set_axis_properties(axis, args)
+    # after the scales, so that a non-positive time limit on a log axis is rejected rather than applied
+    set_time_axis_limits(axis, args)
     if lumunit == "mag":
         # invert last: set_ylim re-sorts the limits into the order of the pair it is given, so an inversion
         # applied before a one-sided limit is lost
@@ -765,7 +782,9 @@ def make_lightcurve_plot(
     if args.plotthermalisation:
         assert axistherm is not None
         set_time_axis_limits(axistherm, args)
-        axistherm.set_ylim(bottom=0.0)
+        # a thermalisation efficiency is a ratio, so keep the physical range rather than letting a
+        # near-zero denominator at one timestep rescale every curve into the bottom of the panel
+        axistherm.set_ylim(0.0, 1.0)
 
     if args.show:
         plt.show()
@@ -983,7 +1002,7 @@ def make_band_lightcurves_plot(
 
     # a model with several direction bins takes its line colours from the cycle, so keep the cycle clear of
     # the colours that other series were given
-    set_prop_cycle_unusedcolors([ax] if isinstance(ax, mplax.Axes) else ax.tolist(), [*args.color, *args.refspeccolors])
+    set_prop_cycle_unusedcolors(iter_axes(ax), [*args.color, *args.refspeccolors])
 
     plotkwargs: dict[str, t.Any] = {}
 
@@ -1196,7 +1215,7 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | 
 
     invert_magnitude_yaxis(ax)
 
-    args.outputfile = Path(outputfolder, f"plotcolorevolution{filter_names[0]}-{filter_names[1]}.pdf")
+    args.outputfile = Path(outputfolder, f"plotcolorevolution{'_'.join(args.colour_evolution)}.pdf")
 
     if args.show:
         plt.show()

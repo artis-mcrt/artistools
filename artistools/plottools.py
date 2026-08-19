@@ -432,6 +432,17 @@ class ExponentLabelFormatter(mplticker.ScalarFormatter):
         self._set_formatted_label_text()
 
 
+def iter_axes(ax: mplax.Axes | Iterable[t.Any]) -> list[mplax.Axes]:
+    """Return a flat list of the axes, whether the figure has a single axes or a grid of them."""
+    if isinstance(ax, mplax.Axes):
+        return [ax]
+
+    axes = list(ax)
+    assert all(isinstance(axis, mplax.Axes) for axis in axes)
+
+    return axes
+
+
 def set_axis_properties(ax: Iterable[mplax.Axes] | mplax.Axes, args: argparse.Namespace) -> t.Any:
     """Apply the standard tick, minor tick, and font size settings to one or more axes."""
     if "subplots" not in args:
@@ -439,8 +450,7 @@ def set_axis_properties(ax: Iterable[mplax.Axes] | mplax.Axes, args: argparse.Na
     if "labelfontsize" not in args:
         args.labelfontsize = 18
 
-    for axis in ax if isinstance(ax, Iterable) else [ax]:
-        assert isinstance(axis, mplax.Axes)
+    for axis in iter_axes(ax):
         axis.minorticks_on()
         for which, ticklength in (("minor", 5), ("major", 8)):
             axis.tick_params(
@@ -461,10 +471,13 @@ def set_axis_properties(ax: Iterable[mplax.Axes] | mplax.Axes, args: argparse.Na
         if getattr(args, "logscaley", False):
             axis.set_yscale("log")
 
-        if getattr(args, "ymin", None) is not None or getattr(args, "ymax", None) is not None:
-            axis.set_ylim(args.ymin, args.ymax)
-        if getattr(args, "xmin", None) is not None or getattr(args, "xmax", None) is not None:
-            axis.set_xlim(args.xmin, args.xmax)
+        ymin, ymax = getattr(args, "ymin", None), getattr(args, "ymax", None)
+        if ymin is not None or ymax is not None:
+            axis.set_ylim(ymin, ymax)
+
+        xmin, xmax = getattr(args, "xmin", None), getattr(args, "xmax", None)
+        if xmin is not None or xmax is not None:
+            axis.set_xlim(xmin, xmax)
 
     return ax
 
