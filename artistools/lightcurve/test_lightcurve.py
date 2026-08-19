@@ -237,6 +237,41 @@ def test_colour_evolution_plot_ylabel(mockylabel: t.Any) -> None:
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_linelabel_falls_back_to_the_model_name(mockplot: t.Any) -> None:
+    """A series with no -label is named after its model, not after the None that pads the -label list."""
+    at.lightcurve.plot(argsraw=[], modelpath=modelpath, filter=["B"], outputfile=outputpath)
+
+    assert [callargs.kwargs["label"] for callargs in mockplot.call_args_list] == ["TEST MODEL"]
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_linelabel_uses_the_label_arg(mockplot: t.Any) -> None:
+    """A -label value names its series, in place of the model name."""
+    at.lightcurve.plot(argsraw=[], modelpath=modelpath, filter=["B"], label=["My model"], outputfile=outputpath)
+
+    assert [callargs.kwargs["label"] for callargs in mockplot.call_args_list] == ["My model"]
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_linelabel_direction_bin_keeps_the_label_arg(mockplot: t.Any) -> None:
+    """A direction bin is named after the -label value of its model, with the bin appended."""
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=modelpath_classic_3d,
+        filter=["B"],
+        plotviewingangle=[0],
+        label=["My model"],
+        timemin=5,
+        timemax=8,
+        outputfile=outputpath,
+    )
+
+    labels = [callargs.kwargs["label"] for callargs in mockplot.call_args_list]
+    assert len(labels) == 1
+    assert labels[0].startswith("My model "), labels
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_colour_evolution_plot_color_arg(mockplot: t.Any) -> None:
     """A -color value must reach the plotted line."""
     at.lightcurve.plot(

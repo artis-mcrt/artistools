@@ -854,12 +854,12 @@ def get_linelabel(
     args: argparse.Namespace,
 ) -> str:
     """Return the legend label for one series, from the model name and viewing angle."""
+    # args.label has one entry per model path, each None unless the user gave a -label for it
+    serieslabel = args.label[modelnumber] or modelname
     if angle is not None and angle != -1:
         assert angle_definition is not None
-        return angle_definition[angle] if args.nomodelname else f"{modelname} {angle_definition[angle]}"
-    if args.label:
-        return str(args.label[modelnumber])
-    return modelname
+        return angle_definition[angle] if args.nomodelname else f"{serieslabel} {angle_definition[angle]}"
+    return str(serieslabel)
 
 
 def set_lightcurveplot_legend(ax: mplax.Axes | npt.NDArray[t.Any], args: argparse.Namespace) -> None:
