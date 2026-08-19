@@ -1151,6 +1151,15 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | 
         dirbins, dirbin_definition = at.lightcurve.parse_directionbin_args(modelpath, args)
 
         for index, dirbin in enumerate(dirbins):
+            if len(dirbins) > 1:
+                # -color has one colour per model, which cannot distinguish a model's direction bins, so take a
+                # colour per bin from the colour map instead, wrapping around when it runs out. The colour is
+                # chosen once per bin, so a bin keeps its colour across the subplots of the filter pairs.
+                dirbincolor = color_list[angle_counter % len(color_list)]
+                angle_counter += 1
+            else:
+                dirbincolor = args.color[modelnumber]
+
             for plotnumber, filters in enumerate(args.colour_evolution):
                 filter_names = filters.split("-")
                 args.filter = filter_names
@@ -1166,13 +1175,7 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | 
                 if filterfunc is not None:
                     colour_delta_mag = filterfunc(colour_delta_mag)
 
-                if len(dirbins) > 1:
-                    # -color has one colour per model, which cannot distinguish a model's direction bins, so
-                    # take a colour per line from the colour map instead, wrapping around when it runs out
-                    plotkwargs["color"] = color_list[angle_counter % len(color_list)]
-                    angle_counter += 1
-                else:
-                    plotkwargs["color"] = args.color[modelnumber]
+                plotkwargs["color"] = dirbincolor
                 plotkwargs["linestyle"] = args.linestyle[modelnumber]
 
                 if args.reflightcurves and modelnumber == 0:

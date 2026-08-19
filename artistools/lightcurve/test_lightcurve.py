@@ -308,6 +308,31 @@ def test_colour_evolution_plot_viewingangle_colours(mockplot: t.Any) -> None:
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_colour_evolution_plot_dirbin_colour_is_stable_across_subplots(mockplot: t.Any) -> None:
+    """A direction bin keeps one colour across the subplots of the filter pairs.
+
+    The legend is drawn on one subplot only, so a bin drawn in a different colour in each subplot
+    contradicts the legend everywhere else.
+    """
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=modelpath_classic_3d,
+        colour_evolution=["U-B", "B-V"],
+        plotviewingangle=[0, 1],
+        timemin=5,
+        timemax=8,
+        outputfile=outputpath,
+    )
+
+    # one call per (direction bin, filter pair), the filter pairs of a bin together
+    colors = [callargs.kwargs["color"] for callargs in mockplot.call_args_list]
+    assert len(colors) == 4
+    assert np.allclose(colors[0], colors[1]), "bin 0 changed colour between the subplots"
+    assert np.allclose(colors[2], colors[3]), "bin 1 changed colour between the subplots"
+    assert not np.allclose(colors[0], colors[2]), "the two direction bins share a colour"
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_colour_evolution_plot_single_dirbin_colour(mockplot: t.Any) -> None:
     """Use the -color value when a model contributes a single line, even if that line is one direction bin."""
     at.lightcurve.plot(
